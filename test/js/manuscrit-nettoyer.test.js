@@ -1157,3 +1157,98 @@ test('manuscrit-nettoyer.py : dans_docx recopie stats.devenir — une alerte fix
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°17 — Traçabilité note -> appel (§7 ter du contrat, révision du 21.09.2026 ter) :
+// `_numeros_notes()` (numéro de SORTIE, ordre de première rencontre, cellules de tableau
+// comprises) et `_paragraphes_notes_pour_vale()`/`_marquer_notes_dans_alertes()` (source
+// SYNTHÉTIQUE d'un paragraphe de note -> note_id/note_numero/para RÉEL sur l'alerte, APRÈS le
+// passage par Vale). Éprouvé directement sur le modèle riche (mm.Document construit à la
+// main), pas via un .docx réel : plus rapide, et indépendant de manuscrit_docx.py/
+// manuscrit_gabarit.py (hors des fichiers de ce lot, un autre agent y travaille en ce moment).
+//
+// Fixture : un appel de note 5 dans un paragraphe de PREMIER NIVEAU (source=1, ancrable), un
+// appel de note 2 dans un paragraphe DE CELLULE (dans un Tableau de premier niveau, jamais
+// ancrable — même règle que _paragraphe_source_appelant_note pour Vale) et un second appel de
+// note 5 plus loin (ne doit pas réserver un second numéro).
+
+const PONT_NOTES_MODELE = [
+  'import importlib.util, json, sys',
+  'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+  'sys.path.insert(0, dossier_pipeline)',
+  'spec = importlib.util.spec_from_file_location("nettoyeur_notes", chemin_nettoyeur)',
+  'mod = importlib.util.module_from_spec(spec)',
+  'spec.loader.exec_module(mod)',
+  'import manuscrit_modele as mm',
+  '',
+  'def frag(t, note=None):',
+  '    return mm.Fragment(texte=t, note=note)',
+  '',
+  'p0 = mm.Paragraphe(fragments=[frag("Titre")], source=0)',
+  'p1 = mm.Paragraphe(fragments=[frag("Corps un "), frag("", note=5), frag(" fin.")], source=1)',
+  '# note=2 appelee DANS UNE CELLULE (source LOCAL a la cellule, jamais un Paragraphe.source',
+  '# de premier niveau) : jamais ancrable, meme regle que Vale pour le corps/la bibliographie.',
+  'p_cellule = mm.Paragraphe(fragments=[frag("Dans cellule "), frag("", note=2)], source=0)',
+  'cellule = mm.Cellule(blocs=[p_cellule])',
+  'tableau = mm.Tableau(rangees=[[cellule]], source=2)',
+  '# second appel de la note 5 : ne doit RIEN changer au numero deja attribue (5 -> 1).',
+  'p2 = mm.Paragraphe(fragments=[frag("Encore appel "), frag("", note=5)], source=3)',
+  '',
+  'document = mm.Document(',
+  '    blocs=[p0, p1, tableau, p2],',
+  '    notes={5: [mm.Paragraphe(fragments=[frag("Contenu note cinq")])],',
+  '           2: [mm.Paragraphe(fragments=[frag("Contenu note deux")])]})',
+  '',
+  'numeros = mod._numeros_notes(document)',
+  'paragraphes, correspondance_notes = mod._paragraphes_notes_pour_vale(document, numeros)',
+  '',
+  '# Une alerte Vale (imite mv.analyser() : `para` = le `source`, synthétique ou réel, du',
+  '# paragraphe qui a produit la ligne) sur CHAQUE paragraphe de note rendu, plus une alerte',
+  '# sur un paragraphe de CORPS ordinaire (jamais une note) qui ne doit JAMAIS être touchée.',
+  'alertes = [{"rule": "Vale.Note%d" % i, "severity": "warning", "action": "comment",',
+  '            "para": p["source"], "span": None, "found": None, "suggested": None,',
+  '            "message": "m%d" % i} for i, p in enumerate(paragraphes)]',
+  'alertes.append({"rule": "Vale.CorpsOrdinaire", "severity": "warning", "action": "comment",',
+  '                 "para": 1, "span": None, "found": None, "suggested": None, "message": "corps"})',
+  'mod._marquer_notes_dans_alertes(alertes, correspondance_notes)',
+  '',
+  'print(json.dumps({"numeros": numeros, "paragraphes": paragraphes,',
+  '                   "correspondance_notes": {str(k): v for k, v in correspondance_notes.items()},',
+  '                   "alertes": alertes}, default=str))',
+].join('\n');
+
+test('manuscrit-nettoyer.py : traçabilité note -> appel — numéro de sortie, cellules de '
+  + 'tableau jamais ancrables, alertes de note marquées après Vale', { skip: sansPython }, () => {
+    const r = python(['-c', PONT_NOTES_MODELE, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const obj = JSON.parse(r.stdout);
+
+    // Numéros de SORTIE : note 5 (premier appel rencontré, p1) -> 1 ; note 2 (appel en
+    // cellule, rencontré ensuite via le Tableau) -> 2. Un id d'origine élevé (5) ne dicte pas
+    // le numéro écrit — c'est l'ORDRE DE RENCONTRE qui décide, comme manuscrit_gabarit.py.
+    assert.deepStrictEqual(obj.numeros, { '5': 1, '2': 2 });
+
+    // note 2 est appelée depuis une CELLULE : jamais ancrable (source=None, comme Vale pour
+    // le corps/la bibliographie) — son paragraphe de note ne doit PORTER aucun `source`.
+    const paraNote2 = obj.paragraphes.find((p) => p.texte === 'Contenu note deux');
+    assert.strictEqual(paraNote2.source, null,
+      'une note appelée depuis une cellule ne doit jamais recevoir de source synthétique');
+    assert.strictEqual(Object.keys(obj.correspondance_notes).length, 1,
+      'une seule note (5, appelée au premier niveau) doit avoir une correspondance');
+
+    const alerteNote5 = obj.alertes.find((a) => a.rule === 'Vale.Note0');
+    assert.strictEqual(alerteNote5.note_id, 5);
+    assert.strictEqual(alerteNote5.note_numero, 1);
+    assert.strictEqual(alerteNote5.para, 1, 'para doit redevenir le paragraphe RÉEL (source=1 de p1)');
+
+    const alerteNote2 = obj.alertes.find((a) => a.rule === 'Vale.Note1');
+    assert.strictEqual(alerteNote2.note_id, undefined,
+      'une alerte sur la note 2 (jamais ancrable) ne doit jamais recevoir note_id/note_numero');
+    assert.strictEqual(alerteNote2.para, null);
+
+    const alerteCorps = obj.alertes.find((a) => a.rule === 'Vale.CorpsOrdinaire');
+    assert.strictEqual(alerteCorps.note_id, undefined,
+      'une alerte sur un paragraphe de corps ORDINAIRE (para=1, jamais synthétique) ne doit '
+      + 'jamais être prise pour une alerte de note');
+    assert.strictEqual(alerteCorps.para, 1);
+  });

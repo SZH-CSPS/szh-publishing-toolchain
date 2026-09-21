@@ -400,20 +400,82 @@ def _paragraphe_source_appelant_note(document, note_id):
     return None
 
 
-def _paragraphes_notes_pour_vale(document):
+def _numeros_notes(document):
+    """{note_id: numero} — le numéro de SORTIE (1, 2, 3… dans l'ordre d'appel du corps,
+    cellules de tableau comprises) que `manuscrit_gabarit._RegistreNotes` donnera à chaque
+    note APPELÉE, recalculé ICI en lecture seule sur le modèle riche, AVANT l'écriture du
+    gabarit (§7 ter du contrat, point « traçabilité note -> appel ») : c'est le numéro que
+    Word affichera, et c'est lui que manuscrit_annoter.py cherche dans
+    `<w:footnoteReference w:id="…">` du paragraphe de sortie. Même ordre de parcours que
+    l'écrivain (`_parcourir_blocs`, premier niveau + cellules, dans l'ordre) et même règle
+    (« ordre de PREMIÈRE rencontre ») — voir manuscrit_gabarit.py, lu en lecture seule,
+    jamais modifié (hors des fichiers autorisés pour ce lot)."""
+    numeros = {}
+    for bloc in _parcourir_blocs(document.blocs):
+        if not isinstance(bloc, mm.Paragraphe):
+            continue
+        for f in bloc.fragments:
+            if f.note is not None and f.note not in numeros:
+                numeros[f.note] = len(numeros) + 1
+    return numeros
+
+
+# Décalage hors de portée de tout Paragraphe.source réel (un index de <w:p>/<w:tbl> du corps,
+# toujours largement < 1 000 000 sur un article réel) : un paragraphe de note reçoit un
+# `source` SYNTHÉTIQUE négatif, jamais ancrable tel quel — voir _paragraphes_notes_pour_vale().
+_DECALAGE_SOURCE_SYNTHETIQUE_NOTE = 1_000_000
+
+
+def _paragraphes_notes_pour_vale(document, numeros_notes):
+    """(paragraphes, correspondance_notes) — `paragraphes` : même forme qu'avant (texte/
+    source/role) mais `source` porte, pour un paragraphe de NOTE, un identifiant SYNTHÉTIQUE
+    (voir _DECALAGE_SOURCE_SYNTHETIQUE_NOTE), jamais un vrai `Paragraphe.source` : Vale ne
+    fait que recopier ce `source` dans `para` de chaque alerte qu'il rend (manuscrit_vale.
+    _convertir_alerte() : `'para': index.get(ligne_num)`), sans rien savoir de plus sur son
+    origine. `correspondance_notes[synthetique] = {'note_id', 'para', 'numero'}` permet à
+    _marquer_notes_dans_alertes(), APRÈS le passage par Vale, de retrouver le paragraphe RÉEL
+    du corps qui porte l'appel (c'est lui que manuscrit_annoter.py doit ancrer, §7 ter du
+    contrat) et le numéro de note écrit. Un identifiant synthétique DISTINCT par note (jamais
+    partagé) : deux notes appelées depuis le MÊME paragraphe de corps restent distinguables."""
     resultat = []
+    correspondance_notes = {}
     for note_id, contenu in (document.notes or {}).items():
-        source = _paragraphe_source_appelant_note(document, note_id)
+        para = _paragraphe_source_appelant_note(document, note_id)
+        numero = numeros_notes.get(note_id)
+        # Ni l'appelant (hors premier niveau) ni le numéro (note jamais appelée, ne devrait
+        # pas arriver, §4 du contrat) ne sont garantis : sans les deux, `source=None` reste le
+        # seul choix sûr (comme avant ce lot) — jamais un ancrage à moitié construit.
+        synthetique = (-(_DECALAGE_SOURCE_SYNTHETIQUE_NOTE + note_id)
+                       if para is not None and numero is not None else None)
         for bloc in (contenu or []):
             if isinstance(bloc, mm.Paragraphe):
                 texte = bloc.texte()
                 if texte.strip():
-                    resultat.append({'texte': texte, 'source': source, 'role': ''})
+                    resultat.append({'texte': texte, 'source': synthetique, 'role': ''})
             elif isinstance(bloc, mm.Tableau):
                 # Rare (un tableau dans une note) mais possible : mêmes cellules, jamais
                 # ancrables non plus.
                 resultat.extend(_paragraphes_cellules_pour_vale([bloc]))
-    return resultat
+        if synthetique is not None:
+            correspondance_notes[synthetique] = {'note_id': note_id, 'para': para, 'numero': numero}
+    return resultat, correspondance_notes
+
+
+def _marquer_notes_dans_alertes(alertes, correspondance_notes):
+    """Pour chaque alerte dont `para` est un identifiant SYNTHÉTIQUE de note (voir
+    _paragraphes_notes_pour_vale ci-dessus) : remplace `para` par le paragraphe RÉEL qui porte
+    l'appel et ajoute `note_id`/`note_numero` — les deux champs que manuscrit_annoter.py lit
+    pour ancrer sur le mot qui précède l'appel (ou écrire une révision DANS la note, §7 ter du
+    contrat) plutôt que sur le paragraphe de corps entier. Mute et rend la MÊME liste (mêmes
+    dicts que le reste de la CLI, jamais une copie)."""
+    for a in alertes:
+        info = correspondance_notes.get(a.get('para'))
+        if info is None:
+            continue
+        a['note_id'] = info['note_id']
+        a['note_numero'] = info['numero']
+        a['para'] = info['para']
+    return alertes
 
 
 # ---------------------------------------------------------------------------------
@@ -726,17 +788,27 @@ def principal(argv):
     # contenu des notes s'y ajoutent, à toute profondeur, jamais ancrables (voir
     # _paragraphes_cellules_pour_vale()/_paragraphe_source_appelant_note() plus haut).
     progres('contrôle du vocabulaire et du langage...')
+    numeros_notes = _numeros_notes(document)
     paragraphes_vale_biblio = [{'texte': e['texte'], 'source': e['source'], 'role': 'bibliographie'}
                                 for e in entrees_biblio]
+    paragraphes_vale_notes, correspondance_notes_vale = _paragraphes_notes_pour_vale(
+        document, numeros_notes)
     paragraphes_vale_corps = (
         [p for p in paragraphes_corps_biblio if p['role'] != 'bibliographie']
         + _paragraphes_cellules_pour_vale(document.blocs)
-        + _paragraphes_notes_pour_vale(document))
+        + paragraphes_vale_notes)
     alertes_vale, vale_indisponible = mv.analyser(
         paragraphes_vale_corps, paragraphes_vale_biblio, langue, RACINE_DEPOT)
     if vale_indisponible:
         alertes_vale = [_alerte_vale_indisponible()]
         progres("contrôle du vocabulaire indisponible")
+    else:
+        # §7 ter du contrat (traçabilité note -> appel) : une alerte dont `para` est le
+        # `source` SYNTHÉTIQUE d'un paragraphe de note (voir _paragraphes_notes_pour_vale)
+        # reçoit ICI `note_id`/`note_numero` et son `para` RÉEL (le paragraphe de corps qui
+        # porte l'appel) — manuscrit_annoter.py ancre alors sur le mot qui précède l'appel,
+        # jamais sur ce paragraphe entier.
+        _marquer_notes_dans_alertes(alertes_vale, correspondance_notes_vale)
 
     # Bibliographie (point 2) — mêmes deux corpus, sans le rôle (manuscrit_biblio.py ne le lit
     # pas, il reçoit déjà deux listes séparées). --sans-reseau : choix explicite du lanceur

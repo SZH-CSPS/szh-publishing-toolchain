@@ -65,6 +65,19 @@ _COMMENTS_XML_DEBUT = (
 
 _ETIQUETA_SUGGESTION = {'fr': 'Suggestion', 'de': 'Vorschlag'}
 
+# Note de bas de page (§7 ter du contrat, ancrage sur une note) — le commentaire d'une alerte
+# qui porte sur le texte d'une note commence par « Note N : » puis cite le passage visé, pour
+# que la relectrice le retrouve DANS la note (Word n'accepte aucun commentaire ancré à
+# l'intérieur d'une note de bas de page : le seul ancrage possible dans le CORPS est le mot qui
+# précède l'appel, voir _mot_avant_position()).
+_ETIQUETA_PASSAGE = {'fr': 'Passage', 'de': 'Textstelle'}
+
+# Rang de sévérité partagé entre le classement des commentaires (point 4 du contrat) et la
+# résolution des chevauchements de révisions (point 3, révision du 21.09.2026 bis) — CORPS et
+# notes de bas de page (§7 ter, point 4) l'utilisent tous les deux, module-level pour ne pas le
+# redéfinir deux fois.
+_RANGO_SEVERIDAD = {'error': 0, 'warning': 1, 'suggestion': 2}
+
 # Nom canonique anglais du style de caractère qui marque un renvoi de commentaire — même
 # convention que STYLE_TITRE/STYLE_CORPS de manuscrit_gabarit.py (« heading 1 »/« Body Text ») :
 # le w:name reste en anglais même dans un gabarit francophone.
@@ -229,6 +242,67 @@ def _localizar(texto, span, found):
             pos = ocurrencias_n[0]
             return (pos, pos + len(found))
     return None
+
+
+# ---------------------------------------------------------------------------------
+# Ancrage d'une alerte de NOTE (§7 ter du contrat, révision du 21.09.2026 ter) — Word
+# n'accepte pas de commentaire posé à l'intérieur d'une note de bas de page : une alerte dont
+# le `found`/`span` visent le TEXTE DE LA NOTE ne peuvent donc jamais se localiser tels quels
+# contre le texte du paragraphe de CORPS qui porte l'appel (le mot cherché n'y est simplement
+# pas). Ce qui EST dans le corps, en revanche, c'est l'appel lui-même (w:footnoteReference) :
+# on ancre alors sur le dernier mot qui le précède immédiatement, jamais sur tout le
+# paragraphe — capture réelle qui a déclenché ce lot : un commentaire sur « reconnaître ->
+# reconnaitre » (texte de la note 1) surlignait tout le paragraphe du corps qui appelle cette
+# note, sans dire quel mot est concerné.
+
+# Ponctuation qu'on ne garde jamais comme DERNIER caractère du mot retenu (une virgule ou un
+# point collé juste avant l'appel de note ne fait pas partie du mot) — jamais la barre oblique
+# ni le trait d'union, INTÉRIEURS à un mot comme « in/capacités » (§7 ter, décision : la barre
+# oblique comme le trait d'union restent dans le mot, seule la ponctuation FINALE est retirée).
+_PONCTUATION_FINALE_MOT_NOTE = '.,;:!?)]}»›»”’\'"'
+
+
+def _mot_avant_position(texto, pos):
+    """(debut, fin) du dernier mot qui précède immédiatement `pos` dans `texto` — la séquence
+    de caractères non blancs juste avant, ponctuation finale exclue (barre oblique et trait
+    d'union intérieurs conservés : « in/capacités » compte comme un seul mot). None si `pos`
+    est en tête de paragraphe (rien à ancrer avant)."""
+    fin = pos
+    while fin > 0 and texto[fin - 1] in _PONCTUATION_FINALE_MOT_NOTE:
+        fin -= 1
+    if fin == 0:
+        return None
+    debut = fin
+    while debut > 0 and not texto[debut - 1].isspace():
+        debut -= 1
+    if debut == fin:
+        return None
+    return (debut, fin)
+
+
+def _localizar_appel_nota(p_xml, runs, texto, note_numero):
+    """Position, dans le TEXTE du paragraphe de CORPS, du mot qui précède l'appel
+    (w:footnoteReference) de `note_numero` — None si cet appel n'est pas retrouvé dans CE
+    paragraphe, ou si rien ne le précède : l'appelant replie alors sur le paragraphe entier
+    (§7 ter du contrat : « si l'appel n'est pas retrouvé »), jamais une exception."""
+    m = re.search(r'<w:footnoteReference\s+w:id="%d"\s*/?>' % note_numero, p_xml)
+    if not m:
+        return None
+    run_appel = next((r for r in runs if r['debut_xml'] <= m.start() < r['fin_xml']), None)
+    if run_appel is None:
+        return None
+    return _mot_avant_position(texto, run_appel['debut_texto'])
+
+
+def _footnote_match(footnotes_xml, note_numero):
+    """Le match (groupe 1 = XML intérieur) de `<w:footnote w:id="note_numero">...</w:footnote>`
+    dans `word/footnotes.xml` — None si la partie est absente ou ne porte pas cette note (filet
+    de sécurité : `note_numero` est recalculé indépendamment côté manuscrit-nettoyer.py, voir
+    son en-tête ; un désaccord ne doit jamais lever, seulement replier sur un commentaire)."""
+    if not footnotes_xml:
+        return None
+    return re.search(r'<w:footnote\s+w:id="%d"[^>]*>(.*?)</w:footnote>' % note_numero,
+                      footnotes_xml, re.S)
 
 
 # ---------------------------------------------------------------------------------
@@ -599,14 +673,18 @@ def _fecha_iso():
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def _proximo_contador(doc_xml, comments_xml):
+def _proximo_contador(doc_xml, comments_xml, footnotes_xml=None):
     """Premier identifiant libre pour w:id — au-delà du plus grand déjà présent dans le
     document (révisions, commentaires, MAIS AUSSI signets : un surensemble ne peut jamais
     provoquer de collision, voir §7 ter du contrat : « identifiants uniques croissants pour
-    tous les w:id de révision et de commentaire »)."""
+    tous les w:id de révision et de commentaire »). `footnotes_xml` (révision du 21.09.2026
+    ter) : une révision peut désormais aussi s'écrire DANS une note (point 4 du contrat) —
+    son compteur est le MÊME que celui du corps, jamais un second compteur séparé."""
     ids = [int(m) for m in re.findall(r'\bw:id="(\d+)"', doc_xml)]
     if comments_xml:
         ids += [int(m) for m in re.findall(r'\bw:id="(\d+)"', comments_xml)]
+    if footnotes_xml:
+        ids += [int(m) for m in re.findall(r'\bw:id="(\d+)"', footnotes_xml)]
     return (max(ids) + 1) if ids else 1
 
 
@@ -636,7 +714,17 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
         extra = total_por_regla.get(alerta.get('rule'), 0) - 5
         frase = '… et %d autres occurrences de cette règle, voir le rapport.' % extra
         mensaje = ('%s %s' % (mensaje, frase)) if mensaje else frase
+    # Alerte de NOTE (§7 ter du contrat) : « Note N : » en tête, puis le passage cité de la
+    # note elle-même — le commentaire, lui, est ancré dans le CORPS (sur le mot qui précède
+    # l'appel, jamais dans la note), la relectrice a donc besoin de CE passage pour savoir de
+    # quoi il retourne dans la note.
+    note_numero = alerta.get('note_numero')
+    if note_numero is not None:
+        mensaje = ('Note %d : %s' % (note_numero, mensaje)) if mensaje else 'Note %d :' % note_numero
     lineas = [mensaje]
+    if note_numero is not None and alerta.get('found'):
+        etiqueta_passage = _ETIQUETA_PASSAGE.get(langue, 'Passage')
+        lineas.append('%s : « %s »' % (etiqueta_passage, alerta['found']))
     if alerta.get('suggested'):
         etiqueta = _ETIQUETA_SUGGESTION.get(langue, 'Suggestion')
         lineas.append('%s : %s' % (etiqueta, _texto_sin_marcas_italica(alerta['suggested'])))
@@ -760,6 +848,13 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                   if 'word/styles.xml' in contenidos else '')
     comments_previos_xml = (contenidos['word/comments.xml'].decode('utf-8')
                              if 'word/comments.xml' in contenidos else None)
+    # Notes de bas de page (§7 ter du contrat, point 4) — lu UNE fois ici, modifié en mémoire
+    # (jamais contenidos directement) le temps de la passe de révision, comme `interior` pour
+    # le corps ci-dessous ; réécrit dans contenidos seulement si une révision y a bien été
+    # posée (footnotes_modificado, voir plus bas).
+    footnotes_xml = (contenidos['word/footnotes.xml'].decode('utf-8')
+                      if 'word/footnotes.xml' in contenidos else None)
+    footnotes_modificado = False
 
     i_body = doc_xml.index('<w:body>')
     i_fin_body = doc_xml.rindex('</w:body>')
@@ -773,7 +868,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     for c in (correspondance or []):
         origen_a_salida.setdefault(c['source'], c['sortie'])
 
-    contador = itertools.count(_proximo_contador(doc_xml, comments_previos_xml))
+    contador = itertools.count(_proximo_contador(doc_xml, comments_previos_xml, footnotes_xml))
     fecha = _fecha_iso()
     iniciales = _iniciales(auteur)
     style_comentario = _styleid_por_nombre(styles_xml, _NOMS_STYLE_MARQUE_COMMENTAIRE)
@@ -787,7 +882,12 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     # mentir. Ce module, qui SEUL sait ce qu'il a écrit, porte désormais la vérité).
     devenir = [None] * len(alertes)
     stats = {'revisions': 0, 'commentaires': 0, 'commentaires_synthese': 0,
-             'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}, 'devenir': devenir}
+             'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}, 'devenir': devenir,
+             # Ventilation des alertes de NOTE (§7 ter du contrat) — pas dans le contrat lui-
+             # même, ajoutée pour que le rapport dise combien d'alertes de note ont fini en
+             # révision DANS la note, en commentaire ancré sur l'appel, ou en repli paragraphe
+             # entier (appel introuvable, filet de sécurité jamais mesuré sur le corpus réel).
+             'notes': {'revisions': 0, 'commentaires': 0, 'repli_paragraphe_entier': 0}}
 
     # 1. Ancrage — quel <w:p> de sortie, si aucun jamais perdu en silence (§7 ter, point 1).
     por_salida = {}
@@ -804,6 +904,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     # l'en-tête : jamais recalculé après une première modification du même paragraphe).
     candidatos_comentario = []
     revisiones_por_salida = {}
+    notas_candidatas = []  # (idx, alerta, note_numero, salida, mot_appel) -- voir 2 ter, plus bas
     for salida, lista in por_salida.items():
         debut_p, fin_p = indices_p[salida]
         p_xml_tmp = interior[debut_p:fin_p]
@@ -812,6 +913,29 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         runs_tmp = _leer_runs(p_xml_tmp)
         texto_tmp = ''.join(r['texto'] for r in runs_tmp)
         for idx, alerta in lista:
+            note_numero = alerta.get('note_numero')
+            if note_numero is not None:
+                # Alerte de NOTE (§7 ter du contrat) : `found`/`span` visent le texte de la
+                # NOTE, jamais celui de CE paragraphe de corps — la localiser ici comme une
+                # alerte normale la manquerait TOUJOURS. On cherche plutôt l'appel lui-même
+                # (w:footnoteReference) et on ancre sur le mot qui le précède ; les révisions
+                # `fix`/`track` tentent d'abord une écriture DANS footnotes.xml (2 ter,
+                # ci-dessous) — ce repli-ci (mot avant l'appel) est posé MAINTENANT et retiré
+                # si cette tentative réussit.
+                mot_appel = _localizar_appel_nota(p_xml_tmp, runs_tmp, texto_tmp, note_numero)
+                accion = alerta.get('action')
+                if mot_appel is None:
+                    # Appel introuvable dans ce paragraphe (jamais mesuré sur le corpus réel,
+                    # filet de sécurité) : repli sur le paragraphe entier, comme une alerte non
+                    # localisée (§7 ter, point « note » : « si l'appel n'est pas retrouvé »).
+                    candidatos_comentario.append((idx, alerta, salida, None))
+                    stats['notes']['repli_paragraphe_entier'] += 1
+                elif accion in ('fix', 'track') and alerta.get('suggested'):
+                    notas_candidatas.append((idx, alerta, note_numero, salida, mot_appel))
+                else:
+                    candidatos_comentario.append((idx, alerta, salida, mot_appel))
+                    stats['notes']['commentaires'] += 1
+                continue  # ne rejoint jamais le classement révision/commentaire standard
             localizado = _localizar(texto_tmp, alerta.get('span'), alerta.get('found'))
             accion = alerta.get('action')
             # Un span qui touche un run de lien ne devient JAMAIS une révision (défaut n°3,
@@ -849,11 +973,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     # fait la plus large. Le span le plus LARGE l'emporte désormais à sévérité égale (la
     # révision la plus large a beaucoup plus de chances d'englober ce que fait la plus étroite
     # que l'inverse) ; l'ordre d'apparition ne tranche plus qu'en tout dernier recours.
-    rango_severidad = {'error': 0, 'warning': 1, 'suggestion': 2}
     for salida, lista_rev in list(revisiones_por_salida.items()):
         ordenada = sorted(
             lista_rev,
-            key=lambda t: (rango_severidad.get(t[2].get('severity'), 3),
+            key=lambda t: (_RANGO_SEVERIDAD.get(t[2].get('severity'), 3),
                             -(t[1][1] - t[1][0]), t[0]))
         spans_aceptados = []
         conservadas = []
@@ -868,10 +991,87 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 devenir[idx] = 'revision'
         revisiones_por_salida[salida] = conservadas
 
+    # 2 ter. Notes : révisions DANS footnotes.xml (§7 ter du contrat, point 4 — préférence de
+    # Robin : « reconnaître -> reconnaitre » dans une note doit s'accepter d'un clic, comme
+    # dans le corps). Tentée ICI, une fois par note (jamais par alerte) : `found` est cherché
+    # dans le texte RÉEL de CHAQUE paragraphe de la note écrite (dans l'ordre), le premier qui
+    # le contient gagne — `_localizar()` (span d'abord, puis found seul si le span ne colle
+    # plus) absorbe déjà le décalage introduit par le repère de note (« N  ») que l'écrivain
+    # pose en tête du premier paragraphe, jamais présent dans le texte que le lecteur a vu.
+    # Un `found` introuvable dans AUCUN paragraphe de la note retombe sur le commentaire de
+    # repli déjà préparé (mot avant l'appel, dans candidatos_comentario) : « trop de risque »
+    # pour une révision à l'aveugle, jamais un plantage.
+    notas_por_numero = {}
+    for idx, alerta, note_numero, salida, mot_appel in notas_candidatas:
+        notas_por_numero.setdefault(note_numero, []).append((idx, alerta, salida, mot_appel))
+
+    revisiones_notas_por_numero = {}   # note_numero -> [(indice_p_nota, localizado, alerta)]
+    notas_info = {}                    # note_numero -> {'inicio', 'fin', 'interior', 'indices_p'}
+    for note_numero, lista_nota in notas_por_numero.items():
+        m_nota = _footnote_match(footnotes_xml, note_numero)
+        if m_nota is None:
+            # Note introuvable dans footnotes.xml (désaccord entre le numéro recalculé côté
+            # manuscrit-nettoyer.py et ce qui a été réellement écrit — filet de sécurité jamais
+            # mesuré sur le corpus réel) : repli commentaire pour TOUTES les alertes de cette
+            # note, comme un appel introuvable.
+            for idx, alerta, salida, mot_appel in lista_nota:
+                candidatos_comentario.append((idx, alerta, salida, mot_appel))
+                stats['notes']['commentaires'] += 1
+            continue
+        interior_nota = m_nota.group(1)
+        indices_p_nota = [(d, f) for (tag, d, f) in _hijos_directos_cuerpo(interior_nota)
+                           if tag == 'w:p']
+        notas_info[note_numero] = {'inicio': m_nota.start(1), 'fin': m_nota.end(1),
+                                    'interior': interior_nota, 'indices_p': indices_p_nota}
+
+        candidatas_localizadas = []   # (idx, alerta, salida, mot_appel, i_p, localizado_nota)
+        for idx, alerta, salida, mot_appel in lista_nota:
+            hallado = None
+            for i_p, (d, f) in enumerate(indices_p_nota):
+                p_xml_nota = interior_nota[d:f]
+                if p_xml_nota.endswith('/>'):
+                    p_xml_nota = p_xml_nota[:-2] + '></w:p>'
+                runs_nota = _leer_runs(p_xml_nota)
+                texto_nota = ''.join(r['texto'] for r in runs_nota)
+                localizado_nota = _localizar(texto_nota, alerta.get('span'), alerta.get('found'))
+                if localizado_nota is not None and not _span_toca_enlace(runs_nota, *localizado_nota):
+                    hallado = (i_p, localizado_nota)
+                    break
+            if hallado is None:
+                candidatos_comentario.append((idx, alerta, salida, mot_appel))
+                stats['notes']['commentaires'] += 1
+                continue
+            i_p, localizado_nota = hallado
+            candidatas_localizadas.append((idx, alerta, salida, mot_appel, i_p, localizado_nota))
+
+        # Chevauchement — même principe qu'en 2 bis (span le plus large gagne à sévérité
+        # égale), groupé PAR PARAGRAPHE DE NOTE : deux alertes sur deux paragraphes distincts
+        # de la MÊME note ne se chevauchent jamais entre elles.
+        par_paragrafo_nota = {}
+        for item in candidatas_localizadas:
+            par_paragrafo_nota.setdefault(item[4], []).append(item)
+        for i_p, items in par_paragrafo_nota.items():
+            ordenados = sorted(
+                items, key=lambda t: (_RANGO_SEVERIDAD.get(t[1].get('severity'), 3),
+                                       -(t[5][1] - t[5][0]), t[0]))
+            spans_aceptados_nota = []
+            for idx, alerta, salida, mot_appel, _i_p, localizado_nota in ordenados:
+                s, e = localizado_nota
+                solapa = any(s < e2 and s2 < e for (s2, e2) in spans_aceptados_nota)
+                if solapa:
+                    candidatos_comentario.append((idx, alerta, salida, mot_appel))
+                    stats['notes']['commentaires'] += 1
+                else:
+                    spans_aceptados_nota.append((s, e))
+                    revisiones_notas_por_numero.setdefault(note_numero, []).append(
+                        (i_p, localizado_nota, alerta))
+                    devenir[idx] = 'revision'
+                    stats['notes']['revisions'] += 1
+
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
     # puis le plafond global.
-    candidatos_comentario.sort(key=lambda t: (rango_severidad.get(t[1].get('severity'), 3), t[0]))
+    candidatos_comentario.sort(key=lambda t: (_RANGO_SEVERIDAD.get(t[1].get('severity'), 3), t[0]))
 
     total_por_regla = {}
     for _idx, alerta, _s, _l in candidatos_comentario:
@@ -927,6 +1127,36 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         interior = interior[:debut_p] + nuevo_p_xml + interior[fin_p:]
 
     contenidos['word/document.xml'] = (prefijo_doc + interior + sufijo_doc).encode('utf-8')
+
+    # 4 bis. Écriture des révisions DE NOTE, DANS footnotes.xml (§7 ter, point 4) — même
+    # mécanisme que le corps (_anotar_parrafo, ordre décroissant de position), mais SANS
+    # commentaire : Word n'en accepte aucun à l'intérieur d'une note (voir l'en-tête « 2 ter »
+    # plus haut). `contador` est le MÊME compteur que le corps (partagé, voir sa docstring).
+    for note_numero in sorted(revisiones_notas_por_numero,
+                               key=lambda n: notas_info[n]['inicio'], reverse=True):
+        # Ordre décroissant de position dans footnotes.xml — même raison qu'au niveau du
+        # corps (§4 ci-dessus) : sans lui, réécrire la note N invaliderait les offsets déjà
+        # calculés (`info['inicio']`/`['fin']`) d'une note N' physiquement APRÈS elle.
+        revisiones_nota = revisiones_notas_por_numero[note_numero]
+        info = notas_info[note_numero]
+        interior_nota = info['interior']
+        indices_p_nota = info['indices_p']
+        por_paragrafo_nota = {}
+        for i_p, localizado_nota, alerta in revisiones_nota:
+            por_paragrafo_nota.setdefault(i_p, []).append((localizado_nota, alerta))
+        for i_p in sorted(por_paragrafo_nota, key=lambda i: indices_p_nota[i][0], reverse=True):
+            d, f = indices_p_nota[i_p]
+            p_xml_nota = interior_nota[d:f]
+            nuevo_p_xml_nota = _anotar_parrafo(
+                p_xml_nota, por_paragrafo_nota[i_p], [], contador, auteur, fecha, iniciales,
+                style_comentario, langue, stats, total_por_regla, comments_nuevos)
+            interior_nota = interior_nota[:d] + nuevo_p_xml_nota + interior_nota[f:]
+        footnotes_xml = (footnotes_xml[:info['inicio']] + interior_nota
+                          + footnotes_xml[info['fin']:])
+        footnotes_modificado = True
+
+    if footnotes_modificado:
+        contenidos['word/footnotes.xml'] = footnotes_xml.encode('utf-8')
 
     if comments_nuevos:
         if comments_previos_xml is not None:

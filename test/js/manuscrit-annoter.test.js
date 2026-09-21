@@ -57,14 +57,19 @@ function dossierJetable() {
 // l'indexation des <w:p> (§7 ter, point « correspondance »).
 const FABRICAR_DOCX_PY = [
   'import json, sys, zipfile',
-  'chemin, paras = sys.argv[1], json.loads(sys.argv[2])',
+  'chemin, paras, notas = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])',
   'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
   'def rpr_xml(f):',
   '    partes = ""',
   '    if f.get("gras"): partes += "<w:b/>"',
   '    if f.get("italique"): partes += "<w:i/>"',
   '    return ("<w:rPr>%s</w:rPr>" % partes) if partes else ""',
+  '# notaAppel (§7 ter, ancrage de note) : un w:footnoteReference, superscript, sans w:t —',
+  '# meme forme que manuscrit_gabarit._RegistreNotes.run_appel_xml().',
   'def run_xml(r):',
+  '    if r.get("notaAppel") is not None:',
+  '        return ("<w:r><w:rPr><w:vertAlign w:val=\\"superscript\\"/></w:rPr>"',
+  '                "<w:footnoteReference w:id=\\"%d\\"/></w:r>" % r["notaAppel"])',
   '    return "<w:r>%s<w:t xml:space=\\"preserve\\">%s</w:t></w:r>" % (rpr_xml(r.get("rpr", {})), r["texte"])',
   'def grupos_por_enlace(runs):',
   '    # runs consecutifs qui partagent enlace=True -> un seul <w:hyperlink> les enveloppe.',
@@ -93,6 +98,16 @@ const FABRICAR_DOCX_PY = [
   'TABLA = ("<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/></w:tblGrid>"',
   '         "<w:tr><w:tc><w:tcPr/><w:p/></w:tc></w:tr></w:tbl>")',
   'corps = TABLA + "<w:p/>" + TABLA + "<w:p/>" + "".join(para_xml(p) for p in paras) + "<w:sectPr/>"',
+  '# footnotes.xml (§7 ter, révisions/commentaires de note) : un <w:footnote w:id="N"> par clé',
+  '# de `notas` ({"1": [{texte:...}|{runs:...}, ...], ...}), même forme de paragraphe que corps.',
+  'footnotes_xml = None',
+  'if notas:',
+  '    fn = "".join(',
+  '        "<w:footnote w:id=\\"%s\\">%s</w:footnote>"',
+  '        % (nid, "".join(para_xml(p) for p in paras_nota))',
+  '        for nid, paras_nota in notas.items())',
+  '    footnotes_xml = ("<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?>"',
+  '                      "<w:footnotes xmlns:w=\\"%s\\">%s</w:footnotes>" % (W, fn))',
   'doc = ("<?xml version=\\"1.0\\" encoding=\\"UTF-8\\"?><w:document xmlns:w=\\"%s\\">"',
   '       "<w:body>%s</w:body></w:document>") % (W, corps)',
   '# _rels/.rels (racine du paquet) et l\'Override de word/document.xml dans [Content_Types] :',
@@ -118,10 +133,12 @@ const FABRICAR_DOCX_PY = [
   '    z.writestr("word/_rels/document.xml.rels", rels_doc.encode("utf-8"))',
   '    z.writestr("[Content_Types].xml", ct.encode("utf-8"))',
   '    z.writestr("word/styles.xml", styles.encode("utf-8"))',
+  '    if footnotes_xml is not None:',
+  '        z.writestr("word/footnotes.xml", footnotes_xml.encode("utf-8"))',
 ].join('\n');
 
-function fabriquerDocx(chemin, paragraphes) {
-  const r = python(['-c', FABRICAR_DOCX_PY, chemin, JSON.stringify(paragraphes)]);
+function fabriquerDocx(chemin, paragraphes, notes) {
+  const r = python(['-c', FABRICAR_DOCX_PY, chemin, JSON.stringify(paragraphes), JSON.stringify(notes || {})]);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -148,6 +165,8 @@ const ANNOTER_PY = [
   '    doc_xml = z.read("word/document.xml").decode("utf-8")',
   '    comments_xml = (z.read("word/comments.xml").decode("utf-8")',
   '                     if "word/comments.xml" in parties else None)',
+  '    footnotes_xml = (z.read("word/footnotes.xml").decode("utf-8")',
+  '                      if "word/footnotes.xml" in parties else None)',
   '    rels_xml = z.read("word/_rels/document.xml.rels").decode("utf-8")',
   '    ct_xml = z.read("[Content_Types].xml").decode("utf-8")',
   '    for nom in parties:',
@@ -157,17 +176,18 @@ const ANNOTER_PY = [
   '            except Exception as e:',
   '                erreurs_xml.append(nom + " : " + str(e))',
   'print(json.dumps({"stats": stats, "documentXml": doc_xml, "commentsXml": comments_xml,',
+  '                   "footnotesXml": footnotes_xml,',
   '                   "relsXml": rels_xml, "ctXml": ct_xml, "parties": parties,',
   '                   "erroresXml": erreurs_xml},',
   '                  ensure_ascii=True))',
 ].join('\n');
 
-function anotar(paragraphes, alertes, correspondance, options) {
+function anotar(paragraphes, alertes, correspondance, options, notas) {
   const base = dossierJetable();
   try {
     const entree = path.join(base, 'entree.docx');
     const sortie = path.join(base, 'sortie.docx');
-    fabriquerDocx(entree, paragraphes);
+    fabriquerDocx(entree, paragraphes, notas);
     const r = python(['-c', ANNOTER_PY, PIPELINE, entree, sortie,
       JSON.stringify(alertes), JSON.stringify(correspondance), JSON.stringify(options || {})]);
     assert.strictEqual(r.status, 0, 'manuscrit_annoter.annoter() a échoué : ' + r.stderr);
@@ -191,7 +211,10 @@ function validerBienFormees(resultat) {
   // (sabotage vérifié, voir le rapport de chantier). Ne compte PAS commentRangeStart/End ni
   // commentReference : ceux-là RÉPÈTENT légitimement l'id de leur commentaire, plusieurs fois.
   const idsDe = (xml, motif) => ((xml || '').match(motif) || []).map((m) => m.match(/\d+/)[0]);
+  // footnotesXml (§7 ter, révisions de note) : mêmes w:ins/w:del que le corps, même compteur
+  // partagé — un doublon là-dedans doit rougir exactement comme dans document.xml.
   const tousLesIds = idsDe(resultat.documentXml, /<w:(?:ins|del) w:id="\d+"/g)
+    .concat(idsDe(resultat.footnotesXml, /<w:(?:ins|del) w:id="\d+"/g))
     .concat(idsDe(resultat.commentsXml, /<w:comment w:id="\d+"/g));
   const doublons = tousLesIds.filter((id_, i) => tousLesIds.indexOf(id_) !== i);
   assert.deepStrictEqual(Array.from(new Set(doublons)), [],
@@ -774,6 +797,118 @@ test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--corres
   });
 
 // ---------------------------------------------------------------------------------
+// 11. Notes de bas de page (§7 ter du contrat, révision du 21.09.2026 ter) — capture réelle de
+// Robin : une alerte sur le TEXTE D'UNE NOTE ne doit jamais surligner tout le paragraphe de
+// corps qui porte l'appel. Ancrage : le dernier mot avant w:footnoteReference (barre oblique et
+// trait d'union intérieurs conservés, ponctuation finale exclue). Texte du commentaire :
+// « Note N : <message> » puis « Passage : « <found> » ».
+
+const PARA_AVEC_APPEL_NOTE = [{
+  runs: [
+    { texte: 'Une personne en in/capacités' },
+    { notaAppel: 1 },
+    { texte: ' doit être accompagnée.' },
+  ],
+}];
+const NOTE_RECONNAITRE = { '1': [{ texte: 'Reconnaître les personnes en situation de handicap est essentiel.' }] };
+
+test('note : commentaire ancré sur le seul mot qui précède l\'appel (barre oblique intérieure '
+  + 'conservée), jamais sur le paragraphe entier', { skip: sansPython }, () => {
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Note.Comment', severity: 'warning', action: 'comment', para: 0, span: null,
+      found: 'Reconnaître', suggested: null, message: 'orthographe rectifiée',
+      note_id: 1, note_numero: 1,
+    }];
+    const resultat = anotar(PARA_AVEC_APPEL_NOTE, alertes, correspondance, {}, NOTE_RECONNAITRE);
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.strictEqual(resultat.stats.notes.commentaires, 1);
+    assert.strictEqual(resultat.stats.notes.repli_paragraphe_entier, 0);
+    // le passage encerclé est EXACTEMENT « in/capacités » (avec sa barre oblique intérieure),
+    // jamais « Une personne en in/capacités » ni le paragraphe entier.
+    const m = resultat.documentXml.match(
+      /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
+    assert.ok(m, 'commentRangeStart/End introuvables');
+    const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1];
+    assert.strictEqual(texteEncercle, 'in/capacités',
+      'seul le mot précédant l\'appel doit être encerclé : ' + m[1]);
+    // le commentReference suit le commentRangeEnd, AVANT le footnoteReference lui-même (choix
+    // documenté : l\'icône de commentaire colle au mot annoté, le chiffre d\'appel vient juste après).
+    assert.match(resultat.documentXml,
+      /<w:commentRangeEnd w:id="\d+"\/><w:r>.*?<w:commentReference w:id="\d+"\/><\/w:r>.*?<w:footnoteReference/s);
+    assert.match(resultat.commentsXml, /Note 1 :/);
+    assert.match(resultat.commentsXml, /Passage : « Reconnaître »/);
+    assert.match(resultat.commentsXml, /\[Test\.Note\.Comment\]/);
+  });
+
+test('note : alerte fix avec `found` dans le texte de la note -> révision DANS footnotes.xml, '
+  + 'jamais dans document.xml, accepter/rejeter changent le texte de la note',
+  { skip: sansPython }, () => {
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Note.Fix', severity: 'error', action: 'fix', para: 0, span: null,
+      found: 'Reconnaître', suggested: 'Reconnaitre', message: 'orthographe rectifiée',
+      note_id: 1, note_numero: 1,
+    }];
+    const resultat = anotar(PARA_AVEC_APPEL_NOTE, alertes, correspondance, {}, NOTE_RECONNAITRE);
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.strictEqual(resultat.stats.notes.revisions, 1);
+    assert.ok(resultat.footnotesXml, 'word/footnotes.xml doit exister');
+    assert.match(resultat.footnotesXml, /<w:delText[^>]*>Reconnaître<\/w:delText>/);
+    assert.match(resultat.footnotesXml, /<w:ins\b[^>]*><w:r><w:t[^>]*>Reconnaitre<\/w:t>/);
+    // jamais dans document.xml : ni commentaire (Word n'en accepte pas dans une note), ni
+    // révision (la révision est DANS la note, pas sur le mot qui précède l'appel).
+    assert.ok(!resultat.documentXml.includes('commentRangeStart'),
+      'aucun commentaire ne doit être posé dans le corps pour une révision de note réussie');
+    assert.ok(!resultat.documentXml.includes('<w:ins'), 'la révision ne doit pas être dans document.xml');
+    const { aceptado, rechazado } = simularAceptarRechazar(resultat.footnotesXml);
+    assert.match(aceptado, /Reconnaitre les personnes/);
+    assert.match(rechazado, /Reconnaître les personnes/);
+  });
+
+test('note : `note_numero` qui ne correspond à aucun appel réel -> repli sur le paragraphe '
+  + 'entier, compté dans stats.notes.repli_paragraphe_entier', { skip: sansPython }, () => {
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Note.NumeroFaux', severity: 'warning', action: 'comment', para: 0, span: null,
+      found: 'Reconnaître', suggested: null, message: 'numéro de note faux',
+      note_id: 1, note_numero: 99,
+    }];
+    const resultat = anotar(PARA_AVEC_APPEL_NOTE, alertes, correspondance, {}, NOTE_RECONNAITRE);
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.notes.repli_paragraphe_entier, 1);
+    assert.strictEqual(resultat.stats.notes.commentaires, 0);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    // repli paragraphe entier : le commentaire encercle TOUT le texte du paragraphe, pas un mot.
+    const m = resultat.documentXml.match(
+      /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
+    const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || []).join('');
+    assert.match(texteEncercle, /Une personne en in\/capacités/,
+      'le repli doit encercler le paragraphe entier : ' + m[1]);
+  });
+
+test('note : `found` introuvable dans le texte de la note -> repli commentaire sur le mot '
+  + 'avant l\'appel (jamais une révision à l\'aveugle dans la note)', { skip: sansPython }, () => {
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Note.FoundIntrouvable', severity: 'error', action: 'fix', para: 0, span: null,
+      found: 'texte-absent-de-la-note', suggested: 'remplacement', message: 'ne doit pas se localiser',
+      note_id: 1, note_numero: 1,
+    }];
+    const resultat = anotar(PARA_AVEC_APPEL_NOTE, alertes, correspondance, {}, NOTE_RECONNAITRE);
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 0, 'jamais de révision à l\'aveugle dans la note');
+    assert.strictEqual(resultat.stats.notes.commentaires, 1);
+    assert.ok(!(resultat.footnotesXml || '').includes('<w:ins'));
+    const texteEncercle = (resultat.documentXml.match(
+      /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s) || [])[1];
+    assert.strictEqual((texteEncercle.match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1], 'in/capacités',
+      'le repli (found introuvable DANS la note) reste ancré sur le mot avant l\'appel, pas le paragraphe entier');
+  });
+
+// ---------------------------------------------------------------------------------
 // Preuve indépendante (§7 ter, point « validation ») : pandoc RÉEL dans la WSL, sur le
 // document produit ci-dessus — jamais un simulateur maison. --track-changes=accept doit
 // rendre le texte suggéré, =reject l'original, =all doit faire apparaître le texte des
@@ -830,6 +965,41 @@ test('preuve indépendante pandoc : accepter/rejeter/lire les commentaires', (t)
     const accepterMd = wsl(['pandoc', '--track-changes=accept', '-t', 'markdown', cible]);
     assert.strictEqual(accepterMd.status, 0, accepterMd.stderr);
     assert.match(accepterMd.stdout, /\*ordinaire\*/);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// Preuve indépendante pandoc, notes (§7 ter, point 4) — une révision DANS footnotes.xml doit
+// s'accepter/se rejeter comme n'importe quelle révision (Word affiche le suivi de
+// modifications DANS les notes), et un commentaire ancré sur le mot avant l'appel doit
+// rester lisible par pandoc au même titre qu'un commentaire du corps.
+test('preuve indépendante pandoc, notes : accepter/rejeter une révision DANS footnotes.xml, '
+  + 'lire un commentaire ancré sur le mot avant l\'appel', (t) => {
+  if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
+  const base = dossierJetable();
+  try {
+    const docx = path.join(base, 'preuve-notes.docx');
+    fabriquerDocx(docx, PARA_AVEC_APPEL_NOTE, NOTE_RECONNAITRE);
+    const alertes = [
+      { rule: 'Test.Pandoc.Note.Fix', severity: 'error', action: 'fix', para: 0, span: null,
+        found: 'Reconnaître', suggested: 'Reconnaitre', message: 'orthographe rectifiée',
+        note_id: 1, note_numero: 1 },
+    ];
+    const r = python(['-c', ANNOTER_PY, PIPELINE, docx, docx, JSON.stringify(alertes),
+      JSON.stringify([{ source: 0, sortie: 2 }]), JSON.stringify({})]);
+    assert.strictEqual(r.status, 0, r.stderr);
+
+    const cible = cheminVersWsl(docx);
+    const accepter = wsl(['pandoc', '--track-changes=accept', '-t', 'markdown', cible]);
+    assert.strictEqual(accepter.status, 0, 'pandoc --track-changes=accept a échoué : ' + accepter.stderr);
+    assert.match(accepter.stdout, /Reconnaitre les personnes/,
+      'la note acceptée doit porter la correction : ' + accepter.stdout);
+
+    const rejeter = wsl(['pandoc', '--track-changes=reject', '-t', 'markdown', cible]);
+    assert.strictEqual(rejeter.status, 0, 'pandoc --track-changes=reject a échoué : ' + rejeter.stderr);
+    assert.match(rejeter.stdout, /Reconnaître les personnes/,
+      'la note rejetée doit garder le texte d\'origine : ' + rejeter.stdout);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
