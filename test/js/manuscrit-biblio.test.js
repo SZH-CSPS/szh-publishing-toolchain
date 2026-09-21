@@ -97,7 +97,9 @@ const FIXTURE_FR = [
       + "scolaire. Ressources, 22, 64-72.",
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'Toullec-Théry', initiales: 'M.' }], annee: 2020,
-      conteneur: 'Ressources', volume: '', numero: '22', pages: '64-72', doi: '',
+      // Nombre NU dans l'original (« Ressources, 22, 64-72 », pas de parenthèses) : c'est un
+      // volume, pas un numéro — voir _regles_article() dans le module.
+      conteneur: 'Ressources', volume: '22', numero: '', pages: '64-72', doi: '',
       type: 'article', confiance: 'haute',
     },
   },
@@ -115,7 +117,9 @@ const FIXTURE_FR = [
       + "pédagogie spécialisée, 3, 20-29.",
     attendu: {
       nb_auteurs: 1, annee: 2016, conteneur: 'Revue suisse de pédagogie spécialisée',
-      volume: '', numero: '3', pages: '20-29', type: 'article', confiance: 'haute',
+      // Nombre NU (pas de parenthèses dans l'original) : volume, pas numéro — même règle
+      // que Toullec-Théry ci-dessus.
+      volume: '3', numero: '', pages: '20-29', type: 'article', confiance: 'haute',
     },
   },
   {
@@ -140,7 +144,14 @@ const FIXTURE_FR = [
       nb_auteurs: 4,
       auteurs: [{ nom: 'Allenbach', initiales: 'M' }, { nom: 'Gabola', initiales: 'P.' },
         { nom: 'Leblanc', initiales: 'M.' }, { nom: 'Rebetez', initiales: 'F.' }],
-      annee: 2022, editeur: 'Editions Inshea', type: 'ouvrage', confiance: 'haute',
+      annee: 2022,
+      // Un éditeur commercial oublié APRÈS les pages (pas de comportement prescrit par les
+      // guides, mais vu tel quel sur le corpus) : la référence reste un article, pages et
+      // conteneur compris, l'éditeur en trop atterrit dans 'editeur' plutôt que de faire
+      // échouer tout le motif et rejeter titre/conteneur/volume/pages en bloc.
+      conteneur: 'La nouvelle revue - Education et société inclusives', volume: '95',
+      numero: '', pages: '91-109', editeur: 'Editions Inshea', type: 'article',
+      confiance: 'haute',
     },
   },
   {
@@ -304,6 +315,51 @@ test('analyser_reference : au moins 80% de confiance haute sur les 18 référenc
     'taux de confiance haute trop bas : ' + haute + '/' + confiances.length);
 });
 
+// Trouvaille du superviseur (rejeu réel) : un chapitre dont les pages sont données SANS
+// « (pp. x-x) » (forme non prescrite par les guides mais vue sur le corpus) faisait prendre
+// le TROISIÈME NOM D'ÉDITEUR pour le titre de l'ouvrage collectif — titre ET éditeurs perdus
+// d'un coup. Trois éditeurs, virgules comprises, doivent être reconnus et retirés de tête.
+test('analyser_reference : un chapitre à trois éditeurs et pages SANS "(pp.)" garde son '
+  + 'titre d\'ouvrage', { skip: sansPython }, () => {
+  const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
+  const texte = 'Assude, T. & Millon-Faure, K. (2021). Un chapitre. In G. Pelgrims, T. Assude, '
+    + '& J.-M. Perez (Éds.), Transitions et transformations, 151-167. Berne : SZH/CSPS.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.type, 'chapitre');
+  assert.strictEqual(d.conteneur, 'Transitions et transformations',
+    'le titre de l\'ouvrage collectif a été perdu : ' + JSON.stringify(d));
+  assert.strictEqual(d.pages, '151-167');
+  assert.strictEqual(d.editeur, 'Berne : SZH/CSPS');
+  assert.strictEqual(d.confiance, 'haute');
+  // Les trois éditeurs de l'ouvrage collectif eux-mêmes, retirés de tête : sans
+  // _consommer_editeurs_de_tete(), ce champ reste vide (rien n'est reconnu comme éditeur) et
+  // mise_en_forme_apa() rend « In (Éd.), » sans les noms — un cas que le test du titre seul,
+  // ci-dessus, ne suffit pas à prouver (le repli sur les pages nues isole déjà le bon titre
+  // même sans cette consommation, puisqu'il ne prend que le DERNIER segment avant les pages).
+  assert.strictEqual(d.editeurs_ouvrage, 'G. Pelgrims, T. Assude, & J.-M. Perez',
+    'les éditeurs de l\'ouvrage collectif ont été perdus : ' + JSON.stringify(d));
+});
+
+// Trouvaille du superviseur : le genre entre crochets (« [Thèse de doctorat] ») disparaissait
+// de la proposition de mise en forme — une information prescrite par les deux guides.
+test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rapport '
+  + 'survit à la mise en forme', { skip: sansPython }, () => {
+  const programme = [
+    'r = mb.analyser_reference(sys.argv[1])',
+    "r['_langue'] = 'fr'",
+    'print(json.dumps({"genre": r["genre"], "rendu": mb.mise_en_forme_apa(r)}))',
+  ].join('\n');
+  const texte = 'Booms, A. (2022). Un travail. [Thèse de doctorat, Université de Reims].';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.genre, 'Thèse de doctorat');
+  assert.match(d.rendu, /\[Thèse de doctorat\]/,
+    'le genre a disparu de la mise en forme : ' + d.rendu);
+});
+
 // ---------------------------------------------------------------------------------
 // 2. citations_du_corps() — narrative, parenthétique, et al., plusieurs années, particule,
 //    année isolée hors citation exclue.
@@ -380,6 +436,37 @@ test('croiser : un suffixe générationnel (Jr/Sr/II/III) ne casse pas l\'appari
       '« Jr » aurait dû être ignoré dans la clé d\'appariement : ' + JSON.stringify(alertes));
   });
 
+// Trouvaille du superviseur : un auteur institutionnel MULTI-MOTS cité en entier
+// (« Ministère de l'Éducation nationale & DEPP, 2006, 2024 ») ne s'appariait qu'à son
+// PREMIER mot (« Ministère »), jamais présent seul dans la bibliographie (qui porte le nom
+// entier, sans virgule interne). Les deux années de la citation doivent apparier chacune SA
+// référence.
+test('croiser : un auteur institutionnel multi-mots cité en entier s\'apparie (repli sur '
+  + 'nom_brut)', { skip: sansPython }, () => {
+    const programme = [
+      "corps = [{'source': 1, 'texte': \"Ces chiffres (Minist\\u00e8re de l'\\u00e9ducation "
+        + 'nationale & DEPP, 2006, 2024) le montrent."}]',
+      'citations = mb.citations_du_corps(corps)',
+      "refs_texte = [",
+      "  \"Minist\\u00e8re de l'\\u00e9ducation nationale & DEPP. (2006). Un rapport.\",",
+      "  \"Minist\\u00e8re de l'\\u00e9ducation nationale & DEPP. (2024). Un autre rapport.\",",
+      ']',
+      'references = []',
+      'for i, t in enumerate(refs_texte):',
+      "    r = mb.analyser_reference(t)",
+      "    r['para'] = 100 + i",
+      "    r['texte'] = t",
+      '    references.append(r)',
+      'print(json.dumps({"citations": len(citations), '
+        + '"alertes": mb.croiser(citations, references)}))',
+    ].join('\n');
+    const r = executer(programme);
+    assert.strictEqual(r.citations, 2, 'deux années -> deux citations attendues');
+    assert.deepStrictEqual(r.alertes, [],
+      'l\'auteur institutionnel entier aurait dû apparier les deux références : '
+      + JSON.stringify(r.alertes));
+  });
+
 test('croiser : référence jamais citée -> warning', { skip: sansPython }, () => {
   const programme = [
     'citations = []',
@@ -446,6 +533,60 @@ test('verifier_ordre : ordre alphabétique rompu, et suffixes manquants sur mêm
     'Zorro avant Abeille non signalé');
   assert.ok(alertes.some((a) => a.rule === 'APA.Suffixe'),
     'deux Muster (2015) sans suffixe a/b non signalés');
+});
+
+// Trouvaille du superviseur (rejeu des 12 manuscrits, lot4) : une bibliographie DÉJÀ triée
+// correctement (25 références réelles) voyait TOUTES ses entrées signalées « mal classées »
+// dès qu'UNE SEULE d'entre elles (ici une entrée fabriquée, sans année) atterrissait au
+// mauvais endroit — la comparaison position par position décalait tout ce qui suit. Seule
+// l'entrée réellement fautive doit ressortir.
+test('verifier_ordre : une seule entrée mal placée ne fait pas rougir tout le reste de la '
+  + 'liste (pas de cascade)', { skip: sansPython }, () => {
+  const noms = ['Caron', 'Claparede', 'Cnesco', 'Coen', 'Connac', 'Dottrens', 'Dupriez'];
+  const programme = [
+    'references = [',
+    "  {'auteurs': [{'nom': 'Intrus sans annee', 'initiales': ''}], 'annee': None, "
+      + "'suffixe': '', 'para': 0, 'texte': 'Intrus'},",
+    ...noms.map((n, i) => `  {'auteurs': [{'nom': '${n}', 'initiales': 'X.'}], `
+      + `'annee': ${2000 + i}, 'suffixe': '', 'para': ${i + 1}, 'texte': '${n}'},`),
+    ']',
+    'print(json.dumps(mb.verifier_ordre(references)))',
+  ].join('\n');
+  const alertes = executer(programme);
+  assert.strictEqual(alertes.length, 1,
+    'une seule entrée (l\'intrus) doit être signalée, pas ' + alertes.length + ' : '
+    + JSON.stringify(alertes.map((a) => a.found)));
+  assert.strictEqual(alertes[0].found, 'Intrus');
+});
+
+// Trouvaille du superviseur : « Le Prévost » (particule EN FRANÇAIS) se classe en L, jamais
+// en P — les Lignes directrices Revue le disent explicitement (§3.2.1, « écrite en
+// majuscule »). En allemand, à l'inverse, la particule est ignorée pour le tri (guide
+// Zeitschrift, Literaturverzeichnis/Anordnung).
+test('verifier_ordre : la particule compte dans le tri fr, pas en de', { skip: sansPython }, () => {
+  const refs = "references = ["
+    + "{'auteurs': [{'nom': 'Haramein', 'initiales': 'A.'}], 'annee': 1981, 'suffixe': '', "
+    + "'para': 1, 'texte': 'Haramein'},"
+    + "{'auteurs': [{'nom': 'Le Prévost', 'initiales': 'M.'}], 'annee': 2010, 'suffixe': '', "
+    + "'para': 2, 'texte': 'Le Prévost'},"
+    + "{'auteurs': [{'nom': 'Leroux', 'initiales': 'M.'}], 'annee': 2015, 'suffixe': '', "
+    + "'para': 3, 'texte': 'Leroux'},"
+    + "]";
+  const programmeFr = [refs, "print(json.dumps(mb.verifier_ordre(references, 'fr')))"].join('\n');
+  const fr = executer(programmeFr);
+  assert.deepStrictEqual(fr, [], '« Le Prévost » entre Haramein et Leroux : ordre fr correct, '
+    + 'rien à signaler : ' + JSON.stringify(fr));
+
+  // Même liste, mais « Le Prévost » n'a plus sa place en allemand une fois la particule
+  // ignorée pour le tri (elle se classerait sous P, après Leroux) : Haramein/Prévost/Leroux
+  // n'est plus monotone, une des deux entrées en cause doit ressortir — laquelle des deux
+  // n'est pas déterministe en cas d'égalité de longueur, seul le NOMBRE l'est ici.
+  const programmeDe = [refs, "print(json.dumps(mb.verifier_ordre(references, 'de')))"].join('\n');
+  const de = executer(programmeDe);
+  assert.strictEqual(de.length, 1,
+    'la particule aurait dû être ignorée pour le tri allemand, cassant l\'ordre : '
+    + JSON.stringify(de));
+  assert.ok(de[0].found === 'Le Prévost' || de[0].found === 'Leroux', JSON.stringify(de));
 });
 
 // ---------------------------------------------------------------------------------

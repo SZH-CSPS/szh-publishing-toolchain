@@ -86,6 +86,28 @@ def _normaliser_nom(nom):
     return pronto_modele.aplatir(reste)
 
 
+def _cle_tri(nom, langue):
+    """Clé d'ALPHABÉTISATION d'un nom — DIFFÉRENTE de _normaliser_nom() (celle-ci sert à
+    APPARIER une citation, pas à trier). Les deux guides donnent une règle opposée pour la
+    particule :
+      - Revue, §3.2.1 : « Les noms avec particule sont ordonnés avec la première lettre de
+        la particule écrite en majuscule » — la particule COMPTE dans le tri
+        (« Le Prévost » se classe en L, avant « Leroux », jamais en P) ;
+      - Zeitschrift, Literaturverzeichnis/Anordnung : « Namen mit Namenszusatz werden unter
+        dem ersten Buchstaben des Namens eingeordnet » — la particule est IGNORÉE, seul le
+        nom qui suit compte (convention des bibliothèques allemandes : « von Arx » se classe
+        en A).
+    aplatir() ne retire ni espace ni particule : le nom entier, particule comprise, devient
+    la clé pour le français ; seule la version allemande la retire d'abord."""
+    n = nom or ''
+    if langue == 'de':
+        mots = n.split()
+        while mots and mots[0].strip('.,').lower() in dm.PARTICULES:
+            mots.pop(0)
+        n = ' '.join(mots) or (nom or '')
+    return pronto_modele.aplatir(n)
+
+
 def _ressemble_initiales(segment):
     """« I. », « I.-F. », « AB », « M » : ni un nom (que des majuscules), ni trop long."""
     s = (segment or '').strip()
@@ -130,19 +152,32 @@ _SEP_TITRE = r'[.?!]'
 _SEP_TITRE_REPLI = r'[.?!:]'
 RE_CHAPITRE = re.compile(_SEP_TITRE + r'\s+(?:Dans|In)\s+(.+)$', re.S)
 RE_CHAPITRE_REPLI = re.compile(_SEP_TITRE_REPLI + r'\s+(?:Dans|In)\s+(.+)$', re.S)
+# Le marqueur de pages peut porter une mention d'édition devant lui DANS la même parenthèse
+# (« (2e éd., pp. 307-328) », exemple du guide Revue lui-même) : le motif n'exige donc plus
+# que « pp. »/« p. »/« S. » ouvre la parenthèse, seulement qu'il s'y trouve.
 RE_PAGES_PARENTHESE = re.compile(
-    r'\(\s*(?:pp?\.|S\.)\s*([\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\s*\)')
+    r'\((?:[^()]*,\s*)?(?:pp?\.|S\.)\s*([\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\s*\)')
+PAGES = r'[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?'
 
 
 def _regles_article(sep):
+    # Le nombre après la revue peut être suivi d'AUTRE CHOSE que la fin de la chaîne — un
+    # éditeur commercial oublié après les pages, vu sur le corpus réel (« …, 95, 91-109.
+    # Editions Inshea » : sans ce groupe optionnel, la référence entière était rejetée comme
+    # article et retombait en « ouvrage », titre et conteneur confondus).
     avec_vol = re.compile(
         r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*(?:[Nn]°\s*)?(?P<vol>\d+)\s*'
         r'\((?P<num>[^)]+)\)\s*,\s*'
-        r'(?P<pages>[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\.?\s*$')
+        r'(?P<pages>' + PAGES + r')\.?\s*(?:(?P<extra>\S.*))?$')
+    # Un seul nombre avant les pages : « (3) » entre parenthèses dans le texte d'origine EST
+    # un numéro (sans volume, forme que les deux guides montrent) ; un nombre NU, sans
+    # parenthèses dans l'original, est le plus souvent un volume SEUL — le garder bare (pas de
+    # parenthèses ajoutées) évite de reformuler une entrée déjà conforme (mesuré : « Revue X,
+    # 22, 64-72 » devenait à tort « Revue X, *(22)*, 64-72 »).
     sans_vol = re.compile(
-        r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*\(?(?:[Nn]°\s*)?'
-        r'(?P<num>\d+[a-zA-Z]?)\)?\s*,\s*'
-        r'(?P<pages>[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\.?\s*$')
+        r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*(?:[Nn]°\s*)?(?:'
+        r'\((?P<num_paren>\d+[a-zA-Z]?)\)|(?P<num_nu>\d+[a-zA-Z]?)'
+        r')\s*,\s*(?P<pages>' + PAGES + r')\.?\s*(?:(?P<extra>\S.*))?$')
     return avec_vol, sans_vol
 
 
@@ -234,6 +269,63 @@ def _trouver_annee(texte):
     return None, '', None, None
 
 
+def _segmenter_hors_parentheses(texte, sep):
+    """Découpe `texte` sur le caractère `sep` (',' ou '.') suivi d'une espace ou de la fin de
+    la chaîne, JAMAIS à l'intérieur d'une parenthèse — sinon « (p. 396) » ou « (2e éd., pp.
+    307-328) » se scindent sur leur propre ponctuation interne. Mesuré : cassait un titre
+    d'ouvrage juste avant sa mention de page (« […] la recherche [RERS 2006] (p » / «. 396). »
+    au lieu d'un seul segment)."""
+    segments = []
+    debut = 0
+    profondeur = 0
+    n = len(texte)
+    i = 0
+    while i < n:
+        c = texte[i]
+        if c == '(':
+            profondeur += 1
+        elif c == ')':
+            profondeur = max(0, profondeur - 1)
+        elif c == sep and profondeur == 0 and (i + 1 == n or texte[i + 1].isspace()):
+            segments.append(texte[debut:i])
+            i += 1
+            while i < n and texte[i].isspace():
+                i += 1
+            debut = i
+            continue
+        i += 1
+    segments.append(texte[debut:])
+    return segments
+
+
+# Un éditeur d'ouvrage collectif, dans la clause « In … (Éd.), » : écrit INITIALES puis NOM
+# (l'ordre INVERSE de la bibliographie elle-même, qui écrit NOM, INITIALES) — c'est ce que
+# montrent les deux guides dans leur propre exemple de chapitre (« In E. E. Editor (Ed.),
+# Titre du livre… »). Jusqu'à deux éditeurs joints par « & » DANS le même segment (pas de
+# virgule avant un « & » à deux éditeurs, mesuré sur le corpus : « In C. Delorme & K.
+# Millon-Fauré (Ed.), … »).
+RE_EDITEUR_INITIALES_NOM = re.compile(
+    r"^(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*"
+    r"(?:\s*&\s*(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*)?$")
+
+
+def _consommer_editeurs_de_tete(apres):
+    """Le nombre de segments (virgule, hors parenthèses) de tête qui listent les éditeurs
+    d'un ouvrage collectif — jamais leurs noms eux-mêmes, seulement COMBIEN en retirer pour
+    atteindre ce qui reste : le titre de l'ouvrage, ses pages, son éditeur commercial. Mesuré
+    sans cette consommation : une liste de 3 éditeurs (« G. Pelgrims, T. Assude, & J.-M.
+    Perez ») faisait prendre le TROISIÈME NOM D'ÉDITEUR pour le titre du livre, perdant à la
+    fois les vrais éditeurs et le vrai titre."""
+    segments = _segmenter_hors_parentheses(apres, ',')
+    i = 0
+    while i < len(segments):
+        seg = re.sub(r'^(?:&|et|und)\s+', '', segments[i].strip(), flags=re.IGNORECASE)
+        if not RE_EDITEUR_INITIALES_NOM.match(seg):
+            break
+        i += 1
+    return segments, i
+
+
 def _nettoyer_titre(t):
     return pronto_modele.normaliser(t or '').strip(' .').strip()
 
@@ -271,7 +363,8 @@ def analyser_reference(texte):
     texte_n = pronto_modele.normaliser(brut)
     champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
               'conteneur': '', 'volume': '', 'numero': '', 'pages': '', 'editeur': '',
-              'doi': '', 'url': '', 'type': 'inconnu', 'confiance': 'basse'}
+              'genre': '', 'editeurs_ouvrage': '', 'doi': '', 'url': '', 'type': 'inconnu',
+              'confiance': 'basse'}
     if not texte_n.strip():
         return champs
 
@@ -320,13 +413,32 @@ def analyser_reference(texte):
             champs['type'] = 'chapitre'
             champs['titre'] = _nettoyer_titre(reste[:m_chap.start() + 1])
             apres = MARQUEUR_EDITEUR_RE.sub('', m_chap.group(1))
-            m_pages = RE_PAGES_PARENTHESE.search(apres)
+            # La liste des éditeurs (« G. Pelgrims, T. Assude, & J.-M. Perez ») se retire de
+            # tête AVANT de chercher le titre de l'ouvrage : sans ça, son dernier nom se
+            # faisait prendre pour le titre (voir _consommer_editeurs_de_tete()).
+            segments_apres, n_editeurs = _consommer_editeurs_de_tete(apres)
+            apres_editeurs = ', '.join(segments_apres[n_editeurs:]).strip(' ,')
+            if n_editeurs:
+                champs['editeurs_ouvrage'] = _nettoyer_titre(
+                    ', '.join(segments_apres[:n_editeurs]))
+            m_pages = RE_PAGES_PARENTHESE.search(apres_editeurs)
             if m_pages:
                 champs['pages'] = _nettoyer_pages(m_pages.group(1))
-                avant, apres_pages = apres[:m_pages.start()], apres[m_pages.end():]
+                avant, apres_pages = apres_editeurs[:m_pages.start()], apres_editeurs[m_pages.end():]
             else:
-                avant, apres_pages = apres, ''
-            segments_avant = [s.strip() for s in avant.split(',') if s.strip()]
+                # Pages données SANS « (pp. x-x) » — juste « …, 151-167. Éditeur. » : forme
+                # non prescrite par les guides mais vue sur le corpus réel. Repli sur la
+                # première virgule suivie d'un nombre de pages plausible.
+                m_pages_nues = re.search(
+                    r',\s*(' + PAGES + r')\s*\.?\s*(.*)$', apres_editeurs, re.S)
+                if m_pages_nues:
+                    champs['pages'] = _nettoyer_pages(m_pages_nues.group(1))
+                    avant = apres_editeurs[:m_pages_nues.start()]
+                    apres_pages = m_pages_nues.group(2)
+                else:
+                    avant, apres_pages = apres_editeurs, ''
+            segments_avant = [s.strip() for s in _segmenter_hors_parentheses(avant, ',')
+                               if s.strip()]
             champs['conteneur'] = _nettoyer_titre(segments_avant[-1]) if segments_avant else ''
             champs['editeur'] = _nettoyer_titre(apres_pages)
         else:
@@ -339,8 +451,19 @@ def analyser_reference(texte):
                 champs['titre'] = _nettoyer_titre(gd['titre'])
                 champs['conteneur'] = _nettoyer_titre(gd['conteneur'])
                 champs['volume'] = gd.get('vol') or ''
-                champs['numero'] = gd.get('num') or ''
+                # Un numéro déjà entre parenthèses dans l'original (« (3) ») reste un numéro ;
+                # un nombre NU (« , 22, » sans volume distinct) est le plus souvent un simple
+                # volume — la forme d'origine décide, jamais un ajout de parenthèses qui
+                # reformaterait une entrée déjà conforme (voir _regles_article()).
+                if gd.get('num') is not None:
+                    champs['numero'] = gd['num']
+                elif gd.get('num_paren') is not None:
+                    champs['numero'] = gd['num_paren']
+                elif gd.get('num_nu') is not None:
+                    champs['volume'] = champs['volume'] or gd['num_nu']
                 champs['pages'] = _nettoyer_pages(gd['pages'])
+                if gd.get('extra'):
+                    champs['editeur'] = _nettoyer_titre(gd['extra'])
             else:
                 m_genre = RE_GENRE_ENTRE_CROCHETS.search(reste)
                 if m_genre:
@@ -348,25 +471,36 @@ def analyser_reference(texte):
                     champs['titre'] = _nettoyer_titre(reste[:m_genre.start()])
                     apres_crochet = _nettoyer_titre(reste[m_genre.end():])
                     if apres_crochet:
+                        champs['genre'] = _nettoyer_titre(m_genre.group(1))
                         champs['editeur'] = apres_crochet
                     else:
                         # Rien après le crochet : l'institution est DEDANS
                         # (« [Thèse de doctorat, Université de Reims] ») — le genre lui-même
                         # (avant la première virgule) n'est pas un éditeur, le reste l'est.
                         morceaux_genre = m_genre.group(1).split(',', 1)
+                        champs['genre'] = _nettoyer_titre(morceaux_genre[0])
                         if len(morceaux_genre) == 2:
                             champs['editeur'] = _nettoyer_titre(morceaux_genre[1])
                 elif champs['url'] and not champs['doi']:
                     champs['type'] = 'web'
-                    morceaux = reste.split('. ', 1)
-                    champs['titre'] = _nettoyer_titre(morceaux[0])
+                    morceaux = _segmenter_hors_parentheses(reste, '.')
+                    champs['titre'] = _nettoyer_titre(
+                        '. '.join(morceaux[:-1]) if len(morceaux) > 1 else morceaux[0])
                     if len(morceaux) > 1:
-                        champs['editeur'] = _nettoyer_titre(morceaux[1])
+                        champs['editeur'] = _nettoyer_titre(morceaux[-1])
                 elif reste:
                     champs['type'] = 'ouvrage'
-                    morceaux = reste.split('. ', 1)
-                    champs['titre'] = _nettoyer_titre(morceaux[0])
-                    champs['editeur'] = _nettoyer_titre(morceaux[1]) if len(morceaux) > 1 else ''
+                    # Le DERNIER segment est l'éditeur commercial (toujours en fin de
+                    # référence APA) ; tout ce qui précède — titre ET sous-titre écrit avec un
+                    # point plutôt qu'un ':' — reste ensemble, italicisé comme un seul titre
+                    # (mesuré : « Titre. Sous-titre. Éditeur. » perdait le sous-titre, pris à
+                    # tort pour l'éditeur).
+                    morceaux = _segmenter_hors_parentheses(reste, '.')
+                    if len(morceaux) > 1:
+                        champs['titre'] = _nettoyer_titre('. '.join(morceaux[:-1]))
+                        champs['editeur'] = _nettoyer_titre(morceaux[-1])
+                    else:
+                        champs['titre'] = _nettoyer_titre(reste)
                 else:
                     champs['type'] = 'inconnu'
 
@@ -442,7 +576,8 @@ def _citations_du_fragment(frag, source, decalage_absolu):
     annees = list(re.finditer(r'(?:19|20)\d{2}([a-z]?)', travail))
     if not annees:
         return out
-    premier = _premier_auteur(travail[:annees[0].start()])
+    zone_brute = travail[:annees[0].start()].strip(' ,;')
+    premier = _premier_auteur(zone_brute)
     if not premier:
         return out
     for am in annees:
@@ -450,7 +585,7 @@ def _citations_du_fragment(frag, source, decalage_absolu):
         fin = decalage_absolu + decalage_ouvreur + am.end()
         out.append({'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
                      'suffixe': am.group(1) or '', 'para': source, 'span': [deb, fin],
-                     'et_al': et_al, 'texte': frag.strip()})
+                     'et_al': et_al, 'texte': frag.strip(), 'nom_brut': zone_brute})
     return out
 
 
@@ -474,7 +609,7 @@ def citations_du_corps(paragraphes):
                     'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
                     'suffixe': am.group(1) or '', 'para': source,
                     'span': [contenu_debut + am.start(), contenu_debut + am.end()],
-                    'et_al': et_al, 'texte': m.group(0)})
+                    'et_al': et_al, 'texte': m.group(0), 'nom_brut': nom_brut})
             if trouve:
                 occupes.append((m.start(), m.end()))
         for m in re.finditer(r'\(([^()]*(?:19|20)\d{2}[^()]*)\)', texte):
@@ -498,6 +633,9 @@ def _cle(nom, annee):
     return (_normaliser_nom(nom), annee)
 
 
+RE_ET_AL_MILIEU = re.compile(r'\bet\s*al\.?', re.IGNORECASE)
+
+
 def croiser(citations, references):
     alertes = []
     refs_par_cle = {}
@@ -511,6 +649,18 @@ def croiser(citations, references):
     for c in citations or []:
         cle = _cle(c['nom_premier_auteur'], c['annee'])
         correspondances = refs_par_cle.get(cle)
+        if not correspondances and c.get('nom_brut'):
+            # Repli pour un auteur institutionnel multi-mots (« Ministère de l'Éducation
+            # nationale & DEPP ») : le premier mot seul ('Ministère') ne suffit pas à
+            # retrouver la référence, qui porte le nom ENTIER (aucune virgule interne ne le
+            # découpe en « auteurs » côté bibliographie). Essayé seulement si la clé courte a
+            # échoué, jamais à sa place : un nom de personne, lui, EST son premier mot.
+            nom_large = RE_ET_AL_MILIEU.sub('', c['nom_brut']).strip(' ,;&')
+            cle_large = _cle(nom_large, c['annee'])
+            if cle_large != cle:
+                correspondances = refs_par_cle.get(cle_large)
+                if correspondances:
+                    cle = cle_large
         if not correspondances:
             alertes.append({
                 'rule': 'APA.CitationAbsente', 'severity': 'error', 'action': 'comment',
@@ -578,24 +728,50 @@ def croiser(citations, references):
 # ---------------------------------------------------------------------------------
 # 4. verifier_ordre() — alphabétique puis chronologique, suffixes a/b requis.
 
-def verifier_ordre(references):
+def verifier_ordre(references, langue='fr'):
     alertes = []
     avec_cle = []
     for r in references or []:
         if not r.get('auteurs'):
             continue
-        nom = _normaliser_nom(r['auteurs'][0]['nom'])
+        nom = _cle_tri(r['auteurs'][0]['nom'], langue)
         annee = r.get('annee') if r.get('annee') is not None else 9999
         avec_cle.append((nom, annee, r.get('suffixe') or '', r))
 
-    ordre_attendu = sorted(range(len(avec_cle)), key=lambda i: avec_cle[i][:3])
-    for position, i in enumerate(ordre_attendu):
-        if i != position:
+    # Une alerte par ENTRÉE déplacée, pas par voisinage — et pas non plus une comparaison
+    # POSITION PAR POSITION entre l'ordre lu et l'ordre trié : comparer les positions absolues
+    # fait qu'UNE SEULE entrée mal rangée décale la position attendue de TOUTES celles qui la
+    # suivent, et déclenche une alerte en cascade sur un bloc entier déjà correctement trié
+    # ENTRE LUI (mesuré : une entrée isolée, annee=None, glissée au milieu d'une liste de 25
+    # références par ailleurs impeccables, en faisait signaler 25 — au lieu d'1). La bonne
+    # question n'est pas « cette entrée est-elle à la bonne position ? » mais « existe-t-il un
+    # sous-ensemble déjà dans le bon ordre, aussi long que possible, qui la contient ? » —
+    # c'est la plus longue sous-suite croissante (LIS) : toute entrée qui n'en fait pas partie
+    # est celle qu'il faut déplacer, les autres sont déjà bien rangées ENTRE ELLES.
+    cles = [t[:3] for t in avec_cle]
+    n = len(cles)
+    longueur = [1] * n
+    precedent = [-1] * n
+    for i in range(n):
+        for j in range(i):
+            if cles[j] <= cles[i] and longueur[j] + 1 > longueur[i]:
+                longueur[i] = longueur[j] + 1
+                precedent[i] = j
+    dans_lis = set()
+    if n:
+        fin = max(range(n), key=lambda i: longueur[i])
+        i = fin
+        while i != -1:
+            dans_lis.add(i)
+            i = precedent[i]
+
+    for i in range(n):
+        if i not in dans_lis:
             r = avec_cle[i][3]
             alertes.append({
                 'rule': 'APA.OrdreBiblio', 'severity': 'warning', 'action': 'report',
                 'para': r.get('para'), 'span': None,
-                'found': r.get('texte') or avec_cle[i][3].get('titre'), 'suggested': None,
+                'found': r.get('texte') or r.get('titre'), 'suggested': None,
                 'message': 'Référence mal classée : l\'ordre alphabétique puis '
                            'chronologique n\'est pas respecté.',
             })
@@ -805,19 +981,36 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
     elif t == 'chapitre':
         marqueur_editeur = '(Hrsg.)' if langue == 'de' else '(Éd.)'
-        dans = 'In' if True else 'Dans'   # les deux revues introduisent le chapitre par « In »
+        # Les noms des éditeurs de l'ouvrage collectif (« In E. E. Editor (Ed.), … ») ne sont
+        # repris que si _consommer_editeurs_de_tete() a pu les isoler à la lecture — sinon on
+        # ne les invente pas, on garde la forme sans eux plutôt qu'une fausse liste vide.
+        editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if ref.get('editeurs_ouvrage') else ''
         pages = ' (pp. %s)' % ref['pages'] if ref.get('pages') else ''
-        corps = '%s. %s %s%s, *%s*%s. %s.' % (
-            titre, dans, marqueur_editeur, '', ref.get('conteneur') or '', pages,
+        # Un titre de chapitre garde son « ? »/« ! » d'origine (voir plus haut, m_chap) : ne
+        # pas lui rajouter un point qui produirait « … ?. In … », une double ponctuation que
+        # personne n'a écrite.
+        fin_titre = titre if titre[-1:] in '?!' else titre + '.'
+        corps = '%s In %s%s, *%s*%s. %s.' % (
+            fin_titre, editeurs_ouvrage, marqueur_editeur, ref.get('conteneur') or '', pages,
             ref.get('editeur') or '')
-    elif t in ('ouvrage', 'rapport', 'web'):
+    elif t == 'rapport':
+        # Le genre entre crochets (« [Thèse de doctorat] », « [Mémoire de Master] »…) fait
+        # partie de la forme APA prescrite par les deux guides — le perdre a été mesuré comme
+        # un défaut réel (une thèse rendue comme un ouvrage ordinaire).
+        genre = ' [%s]' % ref['genre'] if ref.get('genre') else ''
+        corps = ('*%s*%s. %s.' % (titre, genre, ref['editeur']) if ref.get('editeur')
+                  else '*%s*%s.' % (titre, genre))
+    elif t in ('ouvrage', 'web'):
         corps = '*%s*. %s.' % (titre, ref['editeur']) if ref.get('editeur') else '*%s*.' % titre
     else:
         corps = '%s.' % titre if titre else ''
+    # rstrip de toute la ponctuation de fin, pas seulement le point : un éditeur qui finit par
+    # ':' (repli web, « Vu le … sur : ») produisait « sur :. https://... », un « :. » que
+    # personne n'a écrit.
     if ref.get('doi'):
-        corps = corps.rstrip('.') + '. ' + ref['doi']
+        corps = corps.rstrip(' .:,;') + '. ' + ref['doi']
     elif ref.get('url'):
-        corps = corps.rstrip('.') + '. ' + ref['url']
+        corps = corps.rstrip(' .:,;') + '. ' + ref['url']
     rendu = ' '.join(x for x in morceaux if x) + ' ' + corps
     return re.sub(r'\s+', ' ', rendu).strip()
 
@@ -850,7 +1043,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
     stats['citees_absentes'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.CitationAbsente')
     stats['non_citees'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.ReferenceNonCitee')
 
-    alertes.extend(verifier_ordre(references))
+    alertes.extend(verifier_ordre(references, langue))
 
     for r in references:
         alertes_doi = doi_normaliser(r)
