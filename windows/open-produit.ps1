@@ -2351,6 +2351,14 @@ function Invoke-SzhManuscrit {
   $dossierSortiePreproc = ''
   $processusPreproc = $null
   $tacheSortiePreproc = $null
+  # Succes avec alertes bloquantes (code 1 du contrat CLI, CODE_ALERTE_ERROR) : le
+  # .docx et le rapport existent, seul le texte du journal change -- voir plus bas.
+  $alerteBloquantePreproc = $false
+  # Les trois dernieres lignes de progression non vides vues sur stderr, hors la ligne
+  # finale qui porte le code de sortie (jamais montre a une relectrice) : le seul indice
+  # qui reste quand le processus s'arrete sans refus ni JSON exploitable (code 3 ou
+  # inattendu).
+  $dernieresLignesErreurPreproc = New-Object System.Collections.ArrayList
 
   try {
     $cliWindowsPreproc = Test-SzhManuscritPret
@@ -2400,7 +2408,15 @@ function Invoke-SzhManuscrit {
       try { $lignePreproc = $tacheLignePreproc.Result } catch { $lignePreproc = $null }
       if ($null -eq $lignePreproc) { break }
       $ligneVuePreproc = $lignePreproc.Trim()
-      if ($ligneVuePreproc) { Add-SzhLigneJournal $Journal $ligneVuePreproc }
+      if ($ligneVuePreproc) {
+        Add-SzhLigneJournal $Journal $ligneVuePreproc
+        # La toute derniere ligne de progression porte "(code de sortie N)" -- jamais
+        # retenue ici, un code de sortie ne se montre pas a une relectrice.
+        if ($ligneVuePreproc -notmatch 'code de sortie') {
+          [void]$dernieresLignesErreurPreproc.Add($ligneVuePreproc)
+          if ($dernieresLignesErreurPreproc.Count -gt 3) { $dernieresLignesErreurPreproc.RemoveAt(0) }
+        }
+      }
     }
 
     if ($futAnnulePreproc) {
@@ -2417,8 +2433,36 @@ function Invoke-SzhManuscrit {
       # code non nul mais N'EST PAS un echec technique -- la ligne JSON de stdout est deja
       # complete ($statsPreproc.refus), et c'est elle que le gabarit du rapport doit rendre
       # (page courte, le message et rien d'autre), jamais le texte generique ci-dessous.
-      $okPreproc = ($processusPreproc.ExitCode -eq 0) -or ($statsPreproc -and $statsPreproc.refus)
-      if (-not $okPreproc) { $textePreproc = (T 'lanceur.preproc.echec.inconnu') }
+      $refusePreprocInterne = [bool]($statsPreproc -and $statsPreproc.refus)
+      # Code 1 (§8 du contrat, CODE_ALERTE_ERROR) : le nettoyage a REUSSI -- .docx ecrit,
+      # annote, rapport ecrit -- il reste seulement des alertes de niveau error a traiter.
+      # Ce n'est un echec que si $statsPreproc manque ou ne confirme pas d'alerte error.
+      $alerteBloquantePreproc = [bool]($statsPreproc -and -not $refusePreprocInterne `
+        -and ($processusPreproc.ExitCode -eq 1) -and ([int]$statsPreproc.alertes_error -gt 0))
+      $okPreproc = ($processusPreproc.ExitCode -eq 0) -or $refusePreprocInterne -or $alerteBloquantePreproc
+      if ($alerteBloquantePreproc) {
+        # Revisions et commentaires poses ne sont PAS sur la ligne JSON de stdout (§8 du
+        # contrat : seuls les compteurs d'alertes y sont) -- ils vivent dans le rapport
+        # complet, deja ecrit sur le disque, dont stdout porte le chemin WSL.
+        $revisionsPreproc = 0
+        $commentairesPreproc = 0
+        try {
+          $cheminRapportDisquePreproc = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$statsPreproc.sortie_rapport)
+          $rapportCompletPreproc = Get-Content -LiteralPath $cheminRapportDisquePreproc -Raw -Encoding UTF8 | ConvertFrom-Json
+          if ($rapportCompletPreproc.compteurs) {
+            $revisionsPreproc = [int]$rapportCompletPreproc.compteurs.revisions
+            $commentairesPreproc = [int]$rapportCompletPreproc.compteurs.commentaires_poses
+          }
+        } catch { }
+        $textePreproc = (T 'lanceur.preproc.resultat.alertes' @(
+          [int]$statsPreproc.alertes_error, $revisionsPreproc, $commentairesPreproc))
+      } elseif (-not $okPreproc) {
+        if ($dernieresLignesErreurPreproc.Count -gt 0) {
+          $textePreproc = [string]::Join(' | ', $dernieresLignesErreurPreproc.ToArray())
+        } else {
+          $textePreproc = (T 'lanceur.preproc.echec.inconnu')
+        }
+      }
     }
   } catch {
     $okPreproc = $false
@@ -2439,11 +2483,12 @@ function Invoke-SzhManuscrit {
     if ($BoutonInterrompre) { $BoutonInterrompre.Enabled = $false }
   }
   return [pscustomobject]@{
-    ok      = $okPreproc
-    texte   = $textePreproc
-    stats   = $statsPreproc
-    dossier = $dossierSortiePreproc
-    produit = $Produit
+    ok                = $okPreproc
+    texte             = $textePreproc
+    stats             = $statsPreproc
+    dossier           = $dossierSortiePreproc
+    produit           = $Produit
+    alertesBloquantes = $alerteBloquantePreproc
   }
 }
 
@@ -2549,7 +2594,14 @@ function New-SzhRapportManuscrit {
 function Show-SzhResultatPreproc($Resultat) {
   $refusePreproc = [bool]($Resultat.stats -and $Resultat.stats.refus)
   if ($Resultat.ok -and -not $refusePreproc) {
-    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
+    if ($Resultat.alertesBloquantes -and $Resultat.texte) {
+      # Nettoyage reussi (§8 du contrat : code 1 = alerte error, pas un echec), mais des
+      # points restent a traiter -- le ton reste celui d'une attention, pas d'un succes
+      # silencieux ; le texte porte deja les trois nombres.
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($Resultat.texte))
+    } else {
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
+    }
     # Ligne compacte gardee en plus du rapport HTML (ci-dessous) : un repli lisible si son
     # rendu echoue pour une raison ou une autre, jamais la seule trace de ce qui s'est passe.
     if ($Resultat.stats) {

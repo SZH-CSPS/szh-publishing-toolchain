@@ -402,6 +402,109 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive 
       'la raison du refus n\'apparait pas dans le journal');
   });
 
+// ---- Code 1 (CODE_ALERTE_ERROR, §8 du contrat) : un nettoyage REUSSI, pas un echec -----
+// Robin l'a vu en vrai sur le lanceur : .docx ecrit, annote, rapport ecrit, et pourtant
+// "Raison inconnue" a l'ecran parce que le code de sortie n'est pas 0. Ce test prouve le
+// correctif : ok:true, le message porte les trois nombres (alertes error, revisions,
+// commentaires) sans jamais nommer le code de sortie -- ce dernier ne vit QUE dans les
+// revisions/commentaires releves sur le rapport ecrit sur le disque, jamais sur la ligne
+// JSON de stdout (§8 : elle ne porte que les compteurs d'alertes).
+test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a traiter, message avec les trois nombres',
+  { skip: sansPowerShell || sansPython }, () => {
+    const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-alerte-'));
+    const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-alerte-'));
+    const manuscrit = path.join(manuscritsDir, 'brouillon.docx');
+    fs.writeFileSync(manuscrit, 'contenu jetable, jamais lu par le faux script', 'utf8');
+    const rapportPath = path.join(travailScript, 'brouillon-rapport.json');
+    const cli = fabriquerScriptPython(travailScript, [
+      'import sys, json',
+      "print('lecture du manuscrit...', file=sys.stderr)",
+      "print('annotation : 4 revision(s), 3 commentaire(s), 0 renvoyee(s) au rapport', file=sys.stderr)",
+      'with open(' + JSON.stringify(rapportPath) + ", 'w', encoding='utf-8') as f:",
+      "    json.dump({'compteurs': {'revisions': 4, 'commentaires_poses': 3}}, f)",
+      "print('58 alerte(s) (2 error, 1 warning, 0 suggestion)', file=sys.stderr)",
+      "print('termine en 500 ms (code de sortie 1)', file=sys.stderr)",
+      'print(json.dumps({' +
+        "'entree': " + JSON.stringify(manuscrit) + ', ' +
+        "'sortie_rapport': " + JSON.stringify(rapportPath) + ', ' +
+        "'alertes_total': 3, 'alertes_error': 2, 'alertes_warning': 1, 'alertes_suggestion': 0, " +
+        "'code_sortie': 1}))",
+      'sys.exit(1)',
+    ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+      '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
+        '-Journal $journalFaux -NomExport "test"',
+      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; alertesBloquantes = $resultat.alertesBloquantes; ' +
+        'stats = $resultat.stats; dossier = $resultat.dossier }',
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
+
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
+    assert.strictEqual(r.r.ok, true,
+      'un code 1 avec alerte error doit rester un succes - ' + JSON.stringify(r.r));
+    assert.strictEqual(r.r.alertesBloquantes, true);
+    assert.match(r.r.texte, /2/, 'le nombre d\'alertes error n\'est pas dans le message : ' + r.r.texte);
+    assert.match(r.r.texte, /4/, 'le nombre de revisions n\'est pas dans le message : ' + r.r.texte);
+    assert.match(r.r.texte, /3/, 'le nombre de commentaires n\'est pas dans le message : ' + r.r.texte);
+    assert.ok(!/code de sortie|exit ?code/i.test(r.r.texte),
+      'le code de sortie a fuite dans le message : ' + r.r.texte);
+    // Le rapport est bien celui ecrit par la CLI (chemin porte par stdout, releve sur le
+    // disque) : c'est de la que Show-SzhResultatPreproc le rend et l'ouvre, exactement
+    // comme pour un code 0 -- $resultat.ok et $resultat.dossier suffisent a cet appelant.
+    assert.ok(r.r.stats && r.r.stats.sortie_rapport, 'sortie_rapport absent des stats');
+    assert.strictEqual(path.resolve(r.r.dossier), path.resolve(manuscritsDir),
+      'le dossier propose n\'est pas celui du manuscrit');
+  });
+
+// ---- Code 3 (CODE_ECHEC_INTERNE) et tout code inattendu : un vrai echec, mais utile -----
+test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, les dernieres lignes de stderr dans le message',
+  { skip: sansPowerShell || sansPython }, () => {
+    const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-interne-'));
+    const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-interne-'));
+    const manuscrit = path.join(manuscritsDir, 'illisible.docx');
+    fs.writeFileSync(manuscrit, 'contenu jetable', 'utf8');
+    const cli = fabriquerScriptPython(travailScript, [
+      'import sys',
+      "print('entree : illisible.docx (produit=revue)', file=sys.stderr)",
+      "print('lecture du manuscrit...', file=sys.stderr)",
+      "print('lecture impossible : document corrompu', file=sys.stderr)",
+      "print('termine en 80 ms (code de sortie 3)', file=sys.stderr)",
+      'sys.exit(3)',
+    ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+      '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
+        '-Journal $journalFaux -NomExport "test"',
+      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; alertesBloquantes = $resultat.alertesBloquantes }',
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
+
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
+    assert.strictEqual(r.r.ok, false, 'un code 3 reste un echec - ' + JSON.stringify(r.r));
+    assert.strictEqual(r.r.alertesBloquantes, false);
+    assert.match(r.r.texte, /lecture impossible/, 'la derniere cause utile n\'est pas dans le message : ' + r.r.texte);
+    assert.match(r.r.texte, /document corrompu/, 'le detail de la cause n\'est pas dans le message : ' + r.r.texte);
+    assert.notStrictEqual(r.r.texte, 'Raison inconnue.',
+      '"Raison inconnue" est encore le message affiche alors que stderr avait une cause');
+    assert.ok(!/code de sortie|exit ?code/i.test(r.r.texte),
+      'le code de sortie a fuite dans le message : ' + r.r.texte);
+  });
+
 test('Invoke-SzhManuscrit : distribution WSL absente - message clair, jamais une trace brute',
   { skip: sansPowerShell }, () => {
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-abs-'));
