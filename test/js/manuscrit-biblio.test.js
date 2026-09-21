@@ -783,8 +783,48 @@ test('analyser_bibliographie : APA.MiseEnForme porte suggested_texte, sans asté
 // 10. APA.DoiRetrouve — désormais une RÉVISION (insertion pure), plus un commentaire (lot du
 //     21.09.2026, demande de Robin).
 
-test('analyser_bibliographie : un DOI retrouvé devient une révision qui INSÈRE le DOI en fin '
-  + 'de référence (pas une réécriture)', { skip: sansPython }, () => {
+// Révision du 21.09.2026 quater (demande de Robin, mesuré sur le manuscrit réel
+// « coenseignement » : 10 DOI retrouvés, seulement 2/10 en révision avant ce correctif) :
+// quand une remise en forme est de toute façon proposée pour la référence, le DOI retrouvé est
+// FUSIONNÉ dans `r['doi']` AVANT mise_en_forme_apa() — une seule révision par référence, jamais
+// deux qui se disputent le même paragraphe (`APA.MiseEnForme`, span = toute la référence,
+// gagnait systématiquement contre `APA.DoiRetrouve`, 'suggestion' — la sévérité la plus basse).
+test('analyser_bibliographie : un DOI retrouvé pour une référence à reformer est fusionné '
+  + 'dans APA.MiseEnForme — une seule révision, zéro APA.DoiRetrouve séparée', { skip: sansPython }, () => {
+  const texteRef = "Ploessl, D. M., et Rock, M. L. (2014). Coaching: The effects on co-teachers' "
+    + 'planning and instruction. Teacher Education and Special Education, 37(3), 191-215.';
+  const programme = [
+    "def fausse_requete(url, delai):",
+    "    return json.dumps({'message': {'items': [",
+    "        {\"title\": [\"Coaching: The effects on co-teachers' planning and instruction\"],",
+    "         'author': [{'family': 'Ploessl'}], 'issued': {'date-parts': [[2014]]},",
+    "         'DOI': '10.1177/8756870514540836'},",
+    "    ]}}).encode('utf-8')",
+    'mb._requete = fausse_requete',
+    'corps = []',
+    'biblio = [{"source": 55, "texte": ' + JSON.stringify(texteRef) + '}]',
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=True)",
+    'print(json.dumps({"alertes": alertes, "stats": stats}))',
+  ].join('\n');
+  const r = executer(programme);
+  const drs = r.alertes.filter((a) => a.rule === 'APA.DoiRetrouve');
+  assert.deepStrictEqual(drs, [],
+    'aucune APA.DoiRetrouve séparée ne doit apparaître quand APA.MiseEnForme porte déjà le '
+    + 'DOI : ' + JSON.stringify(drs));
+  const mef = r.alertes.find((a) => a.rule === 'APA.MiseEnForme');
+  assert.ok(mef, 'APA.MiseEnForme absente : ' + JSON.stringify(r.alertes));
+  assert.strictEqual(mef.action, 'track');
+  assert.match(mef.suggested, /https:\/\/doi\.org\/10\.1177\/8756870514540836$/,
+    'le DOI retrouvé doit terminer la révision unique : ' + mef.suggested);
+  assert.match(mef.message, /DOI ajouté/);
+  assert.strictEqual(r.stats.doi_retrouves, 1);
+});
+
+// Le repli en insertion `track` AUTONOME (aucune remise en forme possible pour cette
+// référence) reste éprouvé, isolé de la question de confiance par injection de dépendance
+// (mb.mise_en_forme_apa remplacée) — patron déjà utilisé dans ce fichier pour `_requete`.
+test('analyser_bibliographie : sans remise en forme possible, le DOI retrouvé reste sa propre '
+  + 'insertion track', { skip: sansPython }, () => {
   const programme = [
     "def fausse_requete(url, delai):",
     "    return json.dumps({'message': {'items': [",
@@ -792,6 +832,7 @@ test('analyser_bibliographie : un DOI retrouvé devient une révision qui INSÈR
     "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/bon'},",
     "    ]}}).encode('utf-8')",
     'mb._requete = fausse_requete',
+    'mb.mise_en_forme_apa = lambda *a, **k: None',
     "corps = []",
     "biblio = [{'source': 10, 'texte': "
       + "'Tremblay, A. (2023). Un titre presque identique la. Revue X, 1(1), 12-34.'}]",
@@ -805,10 +846,11 @@ test('analyser_bibliographie : un DOI retrouvé devient une révision qui INSÈR
   assert.strictEqual(dr.found, '12-34', 'l\'ancrage doit être les pages, dernier segment sûr');
   assert.strictEqual(dr.suggested, '12-34 https://doi.org/10.1/bon',
     'insertion pure du DOI après les pages, jamais une réécriture de la référence');
+  assert.strictEqual(r.alertes.filter((a) => a.rule === 'APA.MiseEnForme').length, 0);
 });
 
-test('analyser_bibliographie : un DOI retrouvé sans pages localisables retombe sur un '
-  + 'commentaire (rien de sûr à ancrer)', { skip: sansPython }, () => {
+test('analyser_bibliographie : un DOI retrouvé sans pages localisables ni remise en forme '
+  + 'retombe sur un commentaire (rien de sûr à ancrer)', { skip: sansPython }, () => {
   const programme = [
     "def fausse_requete(url, delai):",
     "    return json.dumps({'message': {'items': [",
@@ -816,6 +858,7 @@ test('analyser_bibliographie : un DOI retrouvé sans pages localisables retombe 
     "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/bon'},",
     "    ]}}).encode('utf-8')",
     'mb._requete = fausse_requete',
+    'mb.mise_en_forme_apa = lambda *a, **k: None',
     "corps = []",
     // Un chapitre SANS pages ('In …' mais aucun marqueur de pages) ET SANS point final dans
     // le texte d'origine -> aucun segment de fin sûr : ni les pages (absentes), ni le point
@@ -830,6 +873,118 @@ test('analyser_bibliographie : un DOI retrouvé sans pages localisables retombe 
   assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(alertes));
   assert.strictEqual(dr.action, 'comment');
   assert.strictEqual(dr.found, null);
+});
+
+// ---------------------------------------------------------------------------------
+// 11. Chapitre d'ouvrage collectif — révision du 21.09.2026 quinquies, référence réelle du
+//     manuscrit de Robin : « … Dans E. Guyton et J. Ranier (dir.), Research on meeting
+//     standards in the preparation of teachers (p. 11-24). Kendall-Hunt. » perdait ses DEUX
+//     éditeurs (connecteur "et" jamais reconnu, seul "&" l'était) et proposait « In (Éd. »,
+//     un marqueur hybride absent des deux guides. Vérifié dans les deux PDF
+//     Redaktionsrichtlinien (§3.2.2.2 Revue, Sammelwerke/Herausgeberschaft Zeitschrift) :
+//     « In » dans les deux langues, « (Ed.) »/« (Eds.) » (jamais accentué, jamais « (dir.) »)
+//     pour un ouvrage cité en anglais OU en français, « (Hrsg.) » pour un ouvrage cité en
+//     allemand — décidé par LA LANGUE DE L'OUVRAGE CITÉ, jamais celle du produit ; « pp. »
+//     (Revue) contre « S. » (Zeitschrift, vu tel quel dans son exemple « S. 113–156 ») pour la
+//     plage de pages d'un chapitre — un choix de STYLE DE CITATION, donc la langue du produit.
+
+const TEXTE_GUYTON = 'Untel, A. (2020). Une pratique de coenseignement. Dans E. Guyton et '
+  + 'J. Ranier (dir.), Research on meeting standards in the preparation of teachers '
+  + '(p. 11-24). Kendall-Hunt.';
+
+test('analyser_reference : deux éditeurs liés par "et" (pas seulement "&") sont capturés, '
+  + 'jamais perdus — connecteur normalisé en "&"', { skip: sansPython }, () => {
+  const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
+  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.type, 'chapitre');
+  assert.strictEqual(d.editeurs_ouvrage, 'E. Guyton & J. Ranier',
+    'les deux éditeurs doivent survivre : ' + JSON.stringify(d.editeurs_ouvrage));
+  assert.strictEqual(d.nb_editeurs_ouvrage, 2);
+  assert.strictEqual(d.conteneur, 'Research on meeting standards in the preparation of teachers');
+  assert.strictEqual(d.pages, '11-24');
+});
+
+test('mise_en_forme_apa : "In", "(Eds.)" (jamais "(dir.)"/accentué), éditeurs conservés, '
+  + '"pp." pour la Revue', { skip: sansPython }, () => {
+  const programme = [
+    'r = mb.analyser_reference(sys.argv[1])',
+    "r['_langue'] = 'fr'",
+    'print(json.dumps({"rendu": mb.mise_en_forme_apa(r)}))',
+  ].join('\n');
+  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.match(d.rendu, /In E\. Guyton & J\. Ranier \(Eds\.\),/,
+    'connecteur "In", marqueur "(Eds.)" (deux éditeurs), jamais "(dir.)" : ' + d.rendu);
+  assert.doesNotMatch(d.rendu, /\(dir\.\)/);
+  assert.doesNotMatch(d.rendu, /\(Éd/);
+  assert.match(d.rendu, /\(pp\. 11-24\)/,
+    'la Revue (APA) prescrit "pp.", jamais "p." : ' + d.rendu);
+});
+
+test('mise_en_forme_apa : la Zeitschrift (langue du produit) prescrit "S.", même pour un '
+  + 'chapitre cité en anglais', { skip: sansPython }, () => {
+  const programme = [
+    'r = mb.analyser_reference(sys.argv[1])',
+    "r['_langue'] = 'de'",
+    'print(json.dumps({"rendu": mb.mise_en_forme_apa(r)}))',
+  ].join('\n');
+  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.match(d.rendu, /\(S\. 11–24\)/,
+    'la Zeitschrift (DGPs) prescrit "S." et le demi-cadratin, même pour un ouvrage cité en '
+    + 'anglais : ' + d.rendu);
+  // L'ouvrage cité reste anglais (langue_ref) : le marqueur d'éditeur reste "(Eds.)", jamais
+  // "(Hrsg.)" — seul le PRÉFIXE de pages suit la langue du produit.
+  assert.match(d.rendu, /\(Eds\.\)/);
+});
+
+test('mise_en_forme_apa : un ouvrage collectif cité en ALLEMAND prend "(Hrsg.)", quelle que '
+  + 'soit la langue du produit', { skip: sansPython }, () => {
+  const programme = [
+    "r = mb.analyser_reference(sys.argv[1], langue_doc='fr')",
+    "r['_langue'] = 'fr'",
+    'print(json.dumps({"rendu": mb.mise_en_forme_apa(r), "langue_ref": r["langue_ref"]}))',
+  ].join('\n');
+  const texte = 'Muster, E. (2010). Über die Plausibilität von Schmetterlingseffekten. In '
+    + 'T. Meier und H. Schneider (dir.), Ökosysteme im Wandel (p. 113-156). Musterverlag.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.langue_ref, 'de');
+  assert.match(d.rendu, /\(Hrsg\.\)/, 'un ouvrage cité en allemand prend "(Hrsg.)" même dans '
+    + 'un article français : ' + d.rendu);
+  assert.match(d.rendu, /T\. Meier & H\. Schneider/, 'connecteur "und" normalisé en "&" : ' + d.rendu);
+});
+
+// Le garde-fou général (§7 bis, révision du 21.09.2026 quinquies) : reproduit le défaut réel
+// EXACT (sabotage LOCAL au test, jamais le fichier de production) — sous l'ancien regex qui ne
+// reconnaissait "&" et jamais "et"/"und", les deux éditeurs disparaissent de la forme
+// canonique. Le garde-fou doit alors bloquer TOUTE proposition (pas seulement celle des
+// éditeurs) et compter la perte dans stats.non_proposees, jamais laisser sortir une révision
+// qui efface une information.
+test('analyser_bibliographie : le garde-fou "aucun jeton perdu" bloque la proposition si les '
+  + 'éditeurs disparaissent (rejoue le défaut réel corrigé)', { skip: sansPython }, () => {
+  const programme = [
+    // Sabotage LOCAL au test (jamais le fichier de production) : un motif qui ne reconnaît
+    // plus qu'UN SEUL éditeur, quel que soit le connecteur — reproduit fidèlement « le
+    // connecteur d'un deuxième éditeur n'est jamais reconnu », sans reproduire l'intégralité
+    // de l'ancien motif caractère pour caractère.
+    "mb.RE_EDITEUR_INITIALES_NOM = __import__('re').compile(r\"^(?:[A-Z]\\.-?){1,3}\\s+[A-Z][\\w'-]*$\")",
+    'corps = []',
+    'biblio = [{"source": 7, "texte": ' + JSON.stringify(TEXTE_GUYTON) + '}]',
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+    'print(json.dumps({"alertes": alertes, "stats": stats}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.strictEqual(r.alertes.filter((a) => a.rule === 'APA.MiseEnForme').length, 0,
+    'sous l\'ancien regex, les éditeurs disparaissent : aucune révision ne doit être proposée : '
+    + JSON.stringify(r.alertes));
+  assert.strictEqual(r.stats.non_proposees.length, 1,
+    'la perte doit être comptée dans non_proposees : ' + JSON.stringify(r.stats.non_proposees));
 });
 
 // ---------------------------------------------------------------------------------

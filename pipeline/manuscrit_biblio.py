@@ -118,10 +118,13 @@ def _ressemble_initiales(segment):
 
 
 # ---------------------------------------------------------------------------------
-# Langue DE LA RÉFÉRENCE — distincte de `_langue` (la langue du PRODUIT, qui pilote le reste
-# de la mise en forme APA : espacement volume/numéro, « (Éd.) »/« (Hrsg.) »). Un titre
-# anglais cité dans une bibliographie française ne prend jamais l'insécable française devant
-# son propre « : » interne. Détection par mots-outils, jamais un détecteur de langue général
+# Langue DE LA RÉFÉRENCE — distincte de `_langue` (la langue du PRODUIT). Un titre anglais
+# cité dans une bibliographie française ne prend jamais l'insécable française devant son
+# propre « : » interne ; l'éditeur d'un ouvrage collectif porte « (Ed.) »/« (Eds.) » ou
+# « (Hrsg.) » selon la langue DE L'OUVRAGE CITÉ, pas celle du produit (révision du 21.09.2026
+# quinquies, vérifiée dans les deux PDF Redaktionsrichtlinien). `_langue` reste seule à piloter
+# ce qui dépend du STYLE DE CITATION suivi par l'article citant (espacement volume/numéro,
+# « pp. » contre « S. »). Détection par mots-outils, jamais un détecteur de langue général
 # (stdlib seule, §2 du contrat) : anglais d'abord, allemand ensuite, sinon la langue du
 # document — le seul repli qui ait un sens pour un titre sans aucun mot-outil reconnu.
 _MOTS_OUTILS_ANGLAIS = ('the', 'of', 'and', 'for', 'in')
@@ -158,6 +161,52 @@ def _composer_separateur_titre(titre, langue_ref):
         return titre
     avant = ' ' if langue_ref == 'fr' else ''
     return _RE_SEPARATEUR_TITRE.sub(avant + ': ', titre)
+
+
+# ---------------------------------------------------------------------------------
+# Garde-fou « aucun jeton significatif perdu » (révision du 21.09.2026 quinquies, demande de
+# Robin) : une forme canonique qui a PERDU une information — un nom propre, une année, un
+# nombre, un mot du titre — de l'original ne doit JAMAIS être proposée comme révision. Mesuré
+# sur le défaut réel (deux éditeurs « E. Guyton et J. Ranier » disparus, voir
+# RE_EDITEUR_INITIALES_NOM) : ce garde-fou est ce qui aurait dû empêcher la proposition fautive
+# de partir, quelle qu'en soit la cause exacte — un filet, pas un correctif ciblé.
+RE_JETON_SIGNIFICATIF = re.compile(r"[\wÀ-ÿ]+")
+
+# Mots STRUCTURELS que la mise en forme réécrit DÉLIBÉRÉMENT (§7 bis, révision du 21.09.2026
+# quinquies) : « Dans » (toujours capitalisé — début de clause après un point) devient « In »
+# dans les deux langues, c'est la correction elle-même, jamais une perte. Mesuré : sans cette
+# exclusion, le garde-fou bloquait à tort une référence par ailleurs correctement réécrite,
+# rien que parce que « Dans » disparaissait au profit d'« In ». Les marqueurs d'éditeur en
+# sortent aussi (« (Ed.) »/« (Eds.) »/« (Hrsg.) »/« (dir.) ») : leur forme change de choix,
+# jamais leur absence ne signale une information perdue.
+_JETONS_STRUCTURELS_IGNORES = {'dans', 'in', 'ed', 'eds', 'hrsg', 'dir'}
+
+
+def _jetons_significatifs(texte):
+    """Les mots qui commencent par une majuscule (noms propres, mots de titre en début de
+    phrase) et les nombres (années, volume, pages, DOI) — jamais les mots-outils, jamais une
+    simple initiale (« E. » seule ne prouve rien), jamais un marqueur structurel que la mise en
+    forme réécrit exprès (voir _JETONS_STRUCTURELS_IGNORES)."""
+    jetons = set()
+    for t in RE_JETON_SIGNIFICATIF.findall(texte or ''):
+        if len(t) < 2:
+            continue
+        if t[:1].isupper() or t.isdigit():
+            aplati = pronto_modele.aplatir(t)
+            if aplati in _JETONS_STRUCTURELS_IGNORES:
+                continue
+            jetons.add(aplati)
+    return jetons
+
+
+def _jeton_manquant(original, rendu):
+    """Le premier jeton significatif de `original` absent de `rendu` (comparaison aplatie —
+    accents et casse ignorés), ou None si tous y sont."""
+    rendu_aplati = pronto_modele.aplatir(rendu or '')
+    for jeton in _jetons_significatifs(original):
+        if jeton and jeton not in rendu_aplati:
+            return jeton
+    return None
 
 
 def _texte_suggere_sans_italique(suggested):
@@ -350,15 +399,33 @@ def _segmenter_hors_parentheses(texte, sep):
     return segments
 
 
-# Un éditeur d'ouvrage collectif, dans la clause « In … (Éd.), » : écrit INITIALES puis NOM
+# Un éditeur d'ouvrage collectif, dans la clause « In … (Ed.), » : écrit INITIALES puis NOM
 # (l'ordre INVERSE de la bibliographie elle-même, qui écrit NOM, INITIALES) — c'est ce que
 # montrent les deux guides dans leur propre exemple de chapitre (« In E. E. Editor (Ed.),
 # Titre du livre… »). Jusqu'à deux éditeurs joints par « & » DANS le même segment (pas de
 # virgule avant un « & » à deux éditeurs, mesuré sur le corpus : « In C. Delorme & K.
 # Millon-Fauré (Ed.), … »).
+#
+# ⚠ Révision du 21.09.2026 quinquies, défaut réel signalé par Robin : « E. Guyton et J.
+# Ranier » (deux éditeurs joints par « et », jamais une virgule devant, donc UN SEUL segment
+# pour `_consommer_editeurs_de_tete()`) ne matchait PAS — le connecteur interne n'acceptait
+# que « & », jamais « et »/« und » — et les deux éditeurs disparaissaient ENTIÈREMENT de la
+# forme canonique (pris à tort pour le début du titre de l'ouvrage). Le connecteur interne
+# accepte désormais les trois formes, comme le repli en tête de segment le fait déjà pour un
+# éditeur de TROP (`_consommer_editeurs_de_tete`, la ligne du dessous).
 RE_EDITEUR_INITIALES_NOM = re.compile(
     r"^(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*"
-    r"(?:\s*&\s*(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*)?$")
+    r"(?:\s*(?:&|et|und)\s*(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*)?$")
+
+# Nombre d'éditeurs dans `editeurs_ouvrage` (déjà isolé par _consommer_editeurs_de_tete()) —
+# chaque occurrence « Initiales Nom » comptée, quel que soit le séparateur (virgule, &, et,
+# und) : compter les CONNECTEURS sous-estimerait une liste « A, B, & C » (une seule occurrence
+# de « & », deux virgules, trois éditeurs).
+RE_UN_EDITEUR = re.compile(r"(?:[A-ZÀ-ÞŒ]\.-?){1,3}\s+[A-ZÀ-ÞŒ][\w'’\-]*")
+
+
+def _compter_editeurs(texte):
+    return len(RE_UN_EDITEUR.findall(texte or ''))
 
 
 def _consommer_editeurs_de_tete(apres):
@@ -419,8 +486,8 @@ def analyser_reference(texte, langue_doc='fr'):
     texte_n = pronto_modele.normaliser(brut)
     champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
               'conteneur': '', 'volume': '', 'numero': '', 'pages': '', 'editeur': '',
-              'genre': '', 'editeurs_ouvrage': '', 'doi': '', 'url': '', 'type': 'inconnu',
-              'confiance': 'basse', 'langue_ref': ''}
+              'genre': '', 'editeurs_ouvrage': '', 'nb_editeurs_ouvrage': 0, 'doi': '',
+              'url': '', 'type': 'inconnu', 'confiance': 'basse', 'langue_ref': ''}
     if not texte_n.strip():
         return champs
 
@@ -475,8 +542,13 @@ def analyser_reference(texte, langue_doc='fr'):
             segments_apres, n_editeurs = _consommer_editeurs_de_tete(apres)
             apres_editeurs = ', '.join(segments_apres[n_editeurs:]).strip(' ,')
             if n_editeurs:
-                champs['editeurs_ouvrage'] = _nettoyer_titre(
-                    ', '.join(segments_apres[:n_editeurs]))
+                editeurs_bruts = _nettoyer_titre(', '.join(segments_apres[:n_editeurs]))
+                # « & » entre deux éditeurs, jamais « et »/« und » — c'est ce que les DEUX
+                # guides montrent dans leurs propres exemples à deux éditeurs (« M. G. P.
+                # Hessels & C. Hessels-Schlatter (Eds.) », « T. Meier & H. Schneider (Hrsg.) »),
+                # que le manuscrit d'origine ait tapé l'un ou l'autre.
+                champs['editeurs_ouvrage'] = re.sub(r'\s+(?:et|und)\s+', ' & ', editeurs_bruts)
+                champs['nb_editeurs_ouvrage'] = _compter_editeurs(champs['editeurs_ouvrage'])
             m_pages = RE_PAGES_PARENTHESE.search(apres_editeurs)
             if m_pages:
                 champs['pages'] = _nettoyer_pages(m_pages.group(1))
@@ -1006,10 +1078,19 @@ def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
 # Différences relevées dans les deux PDF Redaktionsrichtlinien (extraits par pypdf, faute de
 # pdftotext dans la WSL — voir le rapport de chantier) :
 #   - volume(numéro) : collé en français « 12(3) », espacé en allemand « 12 (3) » ;
-#   - éditeur d'ouvrage collectif : « (Éd.) »/« (Éds.) » en français, « (Hrsg.) » en allemand ;
+#   - éditeur d'ouvrage collectif : « (Ed.) »/« (Eds.) » (jamais accentué, jamais « (dir.) »)
+#     pour un ouvrage cité en anglais OU EN FRANÇAIS, « (Hrsg.) » pour un ouvrage cité en
+#     allemand — décidé par LA LANGUE DE L'OUVRAGE CITÉ (`langue_ref`), pas celle du produit ni
+#     du produit citant : révision du 21.09.2026 quinquies, vérifiée dans le guide Zeitschrift
+#     (Sammelwerke/Herausgeberschaft, texte explicite) et confirmée par les propres exemples du
+#     guide Revue, qui écrit « (Ed.) »/« (Eds.) » même dans un article français ;
+#   - « pp. » (Revue) contre « S. » (Zeitschrift, vu tel quel dans son propre exemple de
+#     chapitre, « S. 113–156 ») pour la plage de pages d'un CHAPITRE : un choix de style de
+#     citation, donc la langue du PRODUIT ; un article, lui, ne porte jamais ce préfixe ;
 #   - le chapitre s'introduit par « In » dans les DEUX langues (bien que le corps du texte
 #     français reste rédigé en français — c'est ce que les Lignes directrices Revue montrent
-#     dans leurs propres exemples, page 13).
+#     dans leurs propres exemples, page 13 — et « Dans » n'apparaît nulle part dans ce contexte
+#     dans aucun des deux guides).
 # Rendue seulement si la confiance est haute ou si Crossref a confirmé — une référence
 # 'moyenne'/'basse' n'est jamais reformulée à la place de la rédaction.
 
@@ -1065,12 +1146,31 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         queue = ', '.join(x for x in (conteneur, volnum, ref.get('pages') or '') if x)
         corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
     elif t == 'chapitre':
-        marqueur_editeur = '(Hrsg.)' if langue == 'de' else '(Éd.)'
+        # Marqueur d'éditeur : vérifié dans les deux PDF Redaktionsrichtlinien (§7 bis, révision
+        # du 21.09.2026 quinquies). Le guide Zeitschrift (Sammelwerke/Herausgeberschaft) le dit
+        # explicitement : « (Hrsg.) » pour un ouvrage collectif EN ALLEMAND, « (Ed.) »/« (Eds.) »
+        # (jamais accentué, jamais « (dir.) ») pour un ouvrage collectif anglais OU FRANÇAIS —
+        # c'est la langue DE L'OUVRAGE CITÉ (`langue_ref`, §7 bis point 1) qui décide, pas celle
+        # du produit : le guide Revue lui-même (§3.2.2.2, ses propres exemples) écrit
+        # systématiquement « In N. Rousseau (Ed.), » même dans un article français. Singulier vs
+        # pluriel distingué par `nb_editeurs_ouvrage` (jamais fixe : « (Ed.) » pour un seul
+        # éditeur, « (Eds.) » dès deux, comme « M. G. P. Hessels & C. Hessels-Schlatter (Eds.) »
+        # dans l'exemple du guide Revue).
+        langue_marqueur = ref.get('langue_ref') or langue
+        if langue_marqueur == 'de':
+            marqueur_editeur = '(Hrsg.)'
+        else:
+            marqueur_editeur = '(Eds.)' if (ref.get('nb_editeurs_ouvrage') or 0) >= 2 else '(Ed.)'
         # Les noms des éditeurs de l'ouvrage collectif (« In E. E. Editor (Ed.), … ») ne sont
         # repris que si _consommer_editeurs_de_tete() a pu les isoler à la lecture — sinon on
         # ne les invente pas, on garde la forme sans eux plutôt qu'une fausse liste vide.
         editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if ref.get('editeurs_ouvrage') else ''
-        pages = (' (pp. %s)' % _t2_plage_pages_chapitre(ref['pages'], langue)
+        # « pp. » (Revue, APA) contre « S. » (Zeitschrift, DGPs — vu tel quel dans son propre
+        # exemple : « S. 113–156 ») : un choix de STYLE DE CITATION, donc la langue du PRODUIT
+        # (`langue`), pas celle de l'ouvrage cité — un chapitre anglais cité dans la Zeitschrift
+        # prend quand même « S. », comme le ferait n'importe quelle référence de cet article.
+        etiquette_pages = 'S.' if langue == 'de' else 'pp.'
+        pages = (' (%s %s)' % (etiquette_pages, _t2_plage_pages_chapitre(ref['pages'], langue))
                  if ref.get('pages') else '')
         # Un titre de chapitre garde son « ? »/« ! » d'origine (voir plus haut, m_chap) : ne
         # pas lui rajouter un point qui produirait « … ?. In … », une double ponctuation que
@@ -1124,7 +1224,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
     alertes = []
     stats = {'references': 0, 'analysees_haute': 0, 'analysees_moyenne': 0,
              'analysees_basse': 0, 'citations': 0, 'citees_absentes': 0, 'non_citees': 0,
-             'doi_normalises': 0, 'doi_retrouves': 0,
+             'doi_normalises': 0, 'doi_retrouves': 0, 'non_proposees': [],
              'crossref': {'consultes': 0, 'confirmes': 0, 'divergents': 0, 'indisponible': not reseau}}
 
     references = []
@@ -1172,33 +1272,27 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                                % ', '.join(champs_divergents) if champs_divergents else
                                'Le DOI renvoie à une autre publication.',
                 })
-        elif reseau and not r.get('doi'):
+        doi_retrouve = None
+        if reseau and not r.get('doi'):
             trouve = retrouver_doi(r)
             if trouve:
-                doi, score = trouve
+                doi_retrouve, score = trouve
                 stats['doi_retrouves'] += 1
-                message = ('Un DOI correspondant a été trouvé pour cette référence : %s '
-                            '(à confirmer avant de l\'ajouter).' % doi)
-                segment = _segment_fin_reference(r)
-                if segment:
-                    # Insertion pure (§7 bis, demande du 21.09.2026) : jamais une réécriture
-                    # de la référence, seulement le DOI ajouté après son dernier segment sûr.
-                    alertes.append({
-                        'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
-                        'para': r.get('para'), 'span': None, 'found': segment,
-                        'suggested': segment + ' ' + doi, 'message': message,
-                    })
-                else:
-                    # Rien de fiable à ancrer (pages absentes/introuvables telles quelles, et
-                    # la référence ne finit pas sur un point) : repli commentaire, jamais une
-                    # insertion à l'aveugle.
-                    alertes.append({
-                        'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
-                        'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi,
-                        'message': message,
-                    })
+                # Posé AVANT mise_en_forme_apa() (révision du 21.09.2026 quater, demande de
+                # Robin) : sinon la chaîne canonique se rend SANS le DOI, et une seconde
+                # alerte séparée (APA.DoiRetrouve, en 'suggestion' — la moins sévère du
+                # catalogue) se bat pour la MÊME référence contre `APA.MiseEnForme` ('warning',
+                # toujours plus sévère). Mesuré sur le manuscrit réel « coenseignement » :
+                # 10 DOI retrouvés, seulement 2 en révision, 5 en commentaire, 3 renvoyées au
+                # rapport — la mise en forme APA gagnait systématiquement le chevauchement et
+                # emportait le DOI avec elle, en commentaire, malgré `action='track'`. Avec le
+                # DOI déjà DANS `r['doi']`, la révision `APA.MiseEnForme` (ci-dessous) le porte
+                # directement : une seule révision par référence, jamais deux qui se disputent
+                # le même paragraphe.
+                r['doi'] = doi_retrouve
 
         rendu = mise_en_forme_apa(r, meta_crossref)
+        mef_emise = False
         if rendu:
             # Retirer l'astérisque D'ABORD, séparément du tassement des espaces : le
             # remplacer par une espace (comme le ferait un seul passage [\s*]+ -> ' ')
@@ -1207,16 +1301,58 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
             attendu = re.sub(r'\s+', ' ', rendu.replace('*', '')).strip()
             original = re.sub(r'\s+', ' ', (r.get('texte') or '').replace('*', '')).strip()
             if attendu and original and attendu != original:
+                jeton_manquant = _jeton_manquant(r.get('texte') or '', rendu)
+                if jeton_manquant:
+                    # Garde-fou (révision du 21.09.2026 quinquies) : une forme canonique qui a
+                    # perdu un nom propre/une année/un nombre de l'original n'est JAMAIS
+                    # proposée — mieux vaut ne rien suggérer qu'une révision qui efface une
+                    # information (mesuré : deux éditeurs disparus d'un chapitre réel).
+                    stats['non_proposees'].append({
+                        'para': r.get('para'), 'raison': 'jeton_manquant',
+                        'jeton': jeton_manquant, 'found': r.get('texte'),
+                    })
+                else:
+                    message = ('La mise en forme APA 7 de cette référence diffère de '
+                                'l\'original — révision proposée.')
+                    if doi_retrouve:
+                        message += (' DOI ajouté : un DOI correspondant a été trouvé (%s), à '
+                                     'confirmer avant d\'accepter cette révision.' % doi_retrouve)
+                    alertes.append({
+                        'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
+                        'para': r.get('para'), 'span': None, 'found': r.get('texte'),
+                        'suggested': rendu,
+                        # Sans marquage *…* (point 4 du lot du 21.09.2026) : pour un usage en
+                        # texte plat (rapport HTML) — `suggested` garde ses astérisques pour
+                        # l'annotation Word, qui sait les traduire en italique réel.
+                        'suggested_texte': _texte_suggere_sans_italique(rendu),
+                        'message': message,
+                    })
+                    mef_emise = True
+
+        if doi_retrouve and not mef_emise:
+            # Aucune `APA.MiseEnForme` n'a été émise pour cette référence (confiance
+            # insuffisante pour une chaîne canonique complète, ou — cas limite — le texte
+            # rendu coïncidait déjà avec l'original malgré le DOI ajouté) : le DOI retrouvé
+            # reste sa propre insertion `track`, seule, comme avant ce correctif.
+            message = ('Un DOI correspondant a été trouvé pour cette référence : %s '
+                        '(à confirmer avant de l\'ajouter).' % doi_retrouve)
+            segment = _segment_fin_reference(r)
+            if segment:
+                # Insertion pure (§7 bis, demande du 21.09.2026) : jamais une réécriture
+                # de la référence, seulement le DOI ajouté après son dernier segment sûr.
                 alertes.append({
-                    'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
-                    'para': r.get('para'), 'span': None, 'found': r.get('texte'),
-                    'suggested': rendu,
-                    # Sans marquage *…* (point 4 du lot du 21.09.2026) : pour un usage en
-                    # texte plat (rapport HTML) — `suggested` garde ses astérisques pour
-                    # l'annotation Word, qui sait les traduire en italique réel.
-                    'suggested_texte': _texte_suggere_sans_italique(rendu),
-                    'message': 'La mise en forme APA 7 de cette référence diffère de '
-                               'l\'original — révision proposée.',
+                    'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
+                    'para': r.get('para'), 'span': None, 'found': segment,
+                    'suggested': segment + ' ' + doi_retrouve, 'message': message,
+                })
+            else:
+                # Rien de fiable à ancrer (pages absentes/introuvables telles quelles, et
+                # la référence ne finit pas sur un point) : repli commentaire, jamais une
+                # insertion à l'aveugle.
+                alertes.append({
+                    'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
+                    'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi_retrouve,
+                    'message': message,
                 })
 
     return alertes, stats
