@@ -1,0 +1,24 @@
+# Zeitschrift : Literaturverzeichnis / Weitere Regeln — le « & » n'a sa place QU'entre
+# parenthèses (Quellenangabe) ; dans le texte courant (Lauftext), deux autrices ou auteurs
+# sont liés par « und ». Équivalent allemand exact de CSPS/APA/EsperluetteHorsParentheses.yml
+# (Revue : 3.1.3). RE2 ne sait pas exclure « à l'intérieur d'une parenthèse » par lookaround :
+# ce fichier repère TOUT « & », pipeline/manuscrit_vale.py rejette ensuite (sans émettre
+# d'alerte) les occurrences qui tombent dans une parenthèse de la même ligne.
+#
+# ⚠ Mesuré sur le corpus publié (194 articles, 21.09.2026, chantier vale-passe-2) : 437
+# alertes sur 41/194 documents (21 %) — au-dessus du seuil de 10 % du brief, même symptôme
+# que le jumeau français (voir sa propre note) : la quasi-totalité vient de la rubrique
+# récurrente « News & Ressourcen » (une liste de lectures recommandées au format « Nom, A., &
+# Nom, B. (Année). Titre. »), qui n'est pas balisée bibliographie Word mais EST
+# structurellement une liste de références, jamais le « Lauftext » que vise le PDF.
+# Rétrogradée de `warning` à `suggestion` plutôt que retirée : sur de la vraie prose
+# (Zitationsrichtlinien, Lauftext), la règle reste juste.
+extends: existence
+message: "«&» ausserhalb der Klammer (Zeitschrift: Literaturverzeichnis, durch «und» zu ersetzen)."
+level: suggestion
+ignorecase: false
+# Vale entoure par défaut chaque token de \b — mortel pour un symbole seul comme « & », voir
+# la même remarque dans le fichier français.
+nonword: true
+tokens:
+  - '&'

@@ -5,9 +5,20 @@
 # tombent dans une parenthèse de la même ligne — la même logique de détection de parenthèses
 # que l'ancien détecteur Python retiré de manuscrit_regles.py, simplement déplacée après
 # Vale au lieu d'avant.
+#
+# ⚠ Mesuré sur le corpus publié (94 articles, 21.09.2026, chantier vale-passe-2) : 137
+# alertes sur 18/94 documents (19 %) — au-dessus du seuil de 10 % du brief. Échantillon
+# examiné : l'écrasante majorité provient de listes bibliographiques (« Scruggs, T. E., &
+# Mastropieri, M. A. (1996)... », titres de revue « Journal of Developmental & Behavioral
+# Pediatrics ») dans la rubrique récurrente « Actualités et ressources », qui n'est pas
+# balisée comme bibliographie Word (role='bibliographie') mais qui EST structurellement une
+# liste de références — le PDF (3.1.3, « dans le texte » = une phrase de prose) ne vise pas
+# ce cas, une liste de suggestions de lecture n'est pas « le texte ». Rétrogradée
+# de `warning` à `suggestion` plutôt que retirée : la règle reste juste sur de la prose
+# authentique (voir CAS positif du test), seul son poids baisse.
 extends: existence
 message: "« & » hors parenthèse (Revue : 3.1.3, à remplacer par « et »)."
-level: warning
+level: suggestion
 ignorecase: false
 # Vale entoure par défaut chaque token de \b — mortel pour un symbole seul comme « & », qui
 # n'est un caractère de mot d'aucun côté : \b n'y matcherait jamais. `nonword: true` retire

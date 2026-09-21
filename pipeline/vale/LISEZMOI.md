@@ -29,14 +29,19 @@ pipeline/vale/
         FormuleGenerique.yml
       Vocabulaire/
         Handicap.yml
+        HandicapPersonne.yml    « personne handicapée » (jamais un nom de loi/convention)
+        Cf.yml
       Casse/
         Internet.yml
       Editions/
         SZH.yml
+      Forme/
+        AbreviationHorsParentheses.yml
       APA/
         EtDansParentheses.yml
         EsperluetteHorsParentheses.yml
         CitationDirectePage.yml
+      Lexique/             généré, voir sa propre note plus bas — jamais édité à la main
     CSPS-Biblio/          règles de la bibliographie SEULEMENT, en français
       APA/
         DoiForme.yml
@@ -44,9 +49,19 @@ pipeline/vale/
     SZH/                  règles du corps de l'article, en allemand
       Epicene/
         Paarform.yml
+        GenerischesMaskulinum.yml
       Vokabular/
         Behinderung.yml
+      APA/
+        WoertlichesZitatSeite.yml
+        UndInKlammern.yml
+        KaufmannsUndAusserhalbKlammern.yml
+      Lexique/             généré, voir sa propre note plus bas — jamais édité à la main
 ```
+
+Le dossier `Lexique/` (français comme allemand) est généré par
+`outils-dev/lexique/generer-lexique.py` depuis `pipeline/vale/lexique/lexique-{fr,de}.csv` :
+ne jamais l'éditer à la main, corriger le CSV puis régénérer (voir l'en-tête de ces fichiers).
 
 Le dossier (`Epicene`, `Vocabulaire`...) et le nom du fichier (`FormesContractees`...)
 forment ensemble le nom complet de la règle dans le rapport, par exemple
@@ -123,15 +138,20 @@ suivante.
 
 ## Ce qui ne se répare PAS ici : le raffinage en Python
 
-Quatre règles (`APA/EtDansParentheses`, `APA/EsperluetteHorsParentheses`,
-`CSPS-Biblio/APA/DoiForme`, `CSPS-Biblio/APA/Esperluette`) capturent volontairement plus de
-texte que le seul mot fautif, parce que Vale ne peut pas viser un mot précis « à l'intérieur
-d'une parenthèse » sans capturer la parenthèse entière. La correction exacte (le mot précis,
-la suggestion précise) est calculée ensuite par `pipeline/manuscrit_vale.py`, dans une petite
-table nommée `RAFFINEURS`. Si l'une de ces quatre règles se comporte mal (elle manque un cas,
-ou elle en signale un qui ne devrait pas l'être), il faut regarder cette table-là, pas
-seulement le fichier `.yml` — et c'est du code, donc l'affaire de qui code, pas de la
-rédaction. Dites-le plutôt que d'essayer de resserrer le motif YAML : ça ne suffira pas.
+Dix règles (`Vocabulaire/Cf`, `Vocabulaire/HandicapPersonne`, `Forme/
+AbreviationHorsParentheses`, `APA/EtDansParentheses`, `APA/EsperluetteHorsParentheses`,
+`CSPS-Biblio/APA/DoiForme`, `CSPS-Biblio/APA/Esperluette`, et côté allemand `APA/
+UndInKlammern`, `APA/KaufmannsUndAusserhalbKlammern`, `APA/WoertlichesZitatSeite`) capturent
+volontairement plus de texte
+que le seul mot fautif, ou ont besoin du contexte autour du constat, parce que Vale ne peut
+pas viser un mot précis « à l'intérieur d'une parenthèse », ni « sauf si ce qui précède est le
+nom d'une loi », sans capturer ou regarder plus large. La correction exacte (le mot précis, la
+suggestion précise, ou le rejet d'un faux positif) est calculée ensuite par
+`pipeline/manuscrit_vale.py`, dans une petite table nommée `RAFFINEURS`. Si l'une de ces
+règles se comporte mal (elle manque un cas, ou elle en signale un qui ne devrait pas l'être),
+il faut regarder cette table-là, pas seulement le fichier `.yml` — et c'est du code, donc
+l'affaire de qui code, pas de la rédaction. Dites-le plutôt que d'essayer de resserrer le
+motif YAML : ça ne suffira pas.
 
 ## Ce qu'il ne faut PAS toucher
 

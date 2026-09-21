@@ -1245,16 +1245,59 @@ plus petite. La validation (`ET.fromstring` sur chaque partie) doit se faire dan
 processus qui vient d'écrire le `.docx`, jamais dans un second qui recevrait son contenu en
 ligne de commande.
 
+### Trois défauts mesurés sur le corpus réel par le branchement, corrigés le 21.09.2026
+
+Le branchement dans `manuscrit-nettoyer.py` (§8) a mesuré, sur les 12 manuscrits réels, trois
+défauts réels de ce module — les deux premiers corrompaient ou faisaient planter en silence,
+le troisième laissait sortir un `.docx` invalide sans jamais le dire.
+
+1. **Deux révisions dont les spans se chevauchent dans le même paragraphe levaient un
+   `KeyError: 'texto'`** — mesuré sur `2-grappes_En Route pour Apprendre.docx` : Vale
+   (`CSPS-Biblio.APA.DoiForme`) et `manuscrit_biblio.py` (`APA.DoiForme`) lèvent chacun leur
+   propre alerte sur le MÊME DOI, ou une correction ponctuelle (le DOI) tombe à l'intérieur
+   d'une révision plus large qui reformate toute la référence (`APA.MiseEnForme`) — la seconde,
+   traitée après la première, tentait de fusionner un atome déjà fusionné (donc sans la clé
+   `'texto'`). **Corrigé** : avant d'écrire quoi que ce soit, les révisions d'un même paragraphe
+   sont triées par sévérité puis ordre d'apparition ; la première qui touche un passage encore
+   libre devient la révision, toute suivante dont le span **chevauche** une révision déjà
+   retenue devient un COMMENTAIRE sur ce même passage — jamais deux modifications imbriquées.
+2. **`_localizar()` mésancrait un `found` court sans `span` valide.** L'ancien repli prenait
+   `texto.find(found)`, sans borne : un `found` banal comme « et » (raffineurs Vale,
+   `CSPS.APA.EtDansParentheses`) pouvait matcher à l'INTÉRIEUR d'un autre mot avant la vraie
+   occurrence (« et » dans « **Cet**te ») et corrompre du texte réel, sans le moindre signe dans
+   le `.docx` produit. **Corrigé** : sans `span` valide (absent, ou `texte[span] != found`), le
+   repli n'accepte plus qu'un `found` d'au moins 4 caractères présent EXACTEMENT une fois dans
+   le paragraphe — 0 ou plusieurs occurrences, ou moins de 4 caractères, rendent `None` :
+   l'alerte devient un commentaire sur le paragraphe entier, jamais un remplacement à l'aveugle.
+3. **Une révision qui touche un run enveloppé dans `<w:hyperlink>` pouvait laisser un
+   `word/document.xml` mal formé SANS lever d'exception** — mesuré sur 3 fichiers/12
+   (`2-dense_…`, `3bis_CSPS…`, `5bis_20250208…`). Cause : fusionner en un seul atome de
+   remplacement plusieurs atomes originaux perd le XML « de collage » qui vivait ENTRE eux ; si
+   l'ouverture ou la fermeture d'un `<w:hyperlink>` s'y trouvait, elle disparaît — un
+   `</w:hyperlink>` orphelin, par exemple. **Corrigé, option la plus simple des deux offertes**
+   (jamais modifier un run de lien) : `_leer_runs()` marque chaque run `en_lien` (à l'intérieur
+   d'un `<w:hyperlink>…</w:hyperlink>`, détecté par balise, jamais par position) ; un span qui
+   touche un tel run ne devient JAMAIS une révision — il repart, localisé, dans le flot des
+   commentaires (non destructif, donc jamais ce risque). **Et, en filet, une validation
+   SYSTÉMATIQUE** : chaque partie `.xml`/`.rels` de la sortie (pas seulement celles que ce
+   module modifie) est reparsée par `ET.fromstring` JUSTE avant l'écriture du `.docx` ; la
+   moindre malformation lève une exception explicite — rien ne part sur disque à moitié corrompu
+   avec un code de succès.
+
+Mesuré après ces trois correctifs, chaîne complète dans la WSL sur les 12 manuscrits réels
+(`--sans-reseau`) : **0 exception d'annotation, 0 partie XML malformée sur 231** (`*-nettoye.docx`
+produits), 129 révisions, 113 commentaires posés, 56 renvoyées au plafond, 34 non ancrées.
+
 ### Ce qui reste hors de ce module
 
 L'écriture d'un rapport HTML groupé (§10 : « deux cents signalements rendent l'outil détestable
 ») reste dans `lib/gabarits.js`/`rendre-gabarit.js`, comme le reste des rapports du produit —
 `renvoyees_au_rapport` et `non_ancrees` sont pensés pour l'alimenter, jamais pour le remplacer.
-Le branchement dans la CLI (`manuscrit-nettoyer.py`) et dans l'onglet du lanceur n'est pas fait
-ici : ce module expose une fonction pure et une CLI d'essai
-(`manuscrit_annoter.py <sortie.docx> --alertes … --correspondance … [--plafond 25]`, qui accepte
-aussi bien le tableau/la liste bruts que le rapport JSON complet du nettoyeur pour ces deux
-options, afin de pouvoir passer le MÊME fichier aux deux).
+Le branchement dans la CLI (`manuscrit-nettoyer.py`, §8) et dans l'onglet du lanceur : voir §8
+pour le premier, le second reste à faire. Ce module expose toujours une fonction pure et une CLI
+d'essai (`manuscrit_annoter.py <sortie.docx> --alertes … --correspondance … [--plafond 25]`, qui
+accepte aussi bien le tableau/la liste bruts que le rapport JSON complet du nettoyeur pour ces
+deux options, afin de pouvoir passer le MÊME fichier aux deux).
 
 ---
 

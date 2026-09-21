@@ -1,0 +1,16 @@
+# Zeitschrift : Sprachliche Richtlinien / Geschlechtergerechte und inklusive Sprache — « Zu
+# vermeiden sind [...] Generalklauseln, mit denen das generische Maskulinum gerechtfertigt
+# wird (z. B. Hinweis zu Beginn des Textes in einer Fussnote, dass die an und für sich
+# "männlichen" Formen im Sinn der generischen Bedeutung für beide Geschlechter Geltung
+# haben) ». L'équivalent allemand exact de CSPS/Epicene/FormuleGenerique.yml (Revue : 2.2) —
+# même clause, cherchée par la co-occurrence de « maskulin » (la forme grammaticale visée),
+# d'un verbe justifiant l'usage (gerechtfertigt/gilt/Geltung) et de « generisch » : la formule
+# exacte varie d'une autrice à l'autre, ces trois éléments ensemble ne décrivent que cette
+# clause-là.
+extends: existence
+message: "Generalklausel vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache): « %s »."
+level: error
+ignorecase: true
+tokens:
+  - '\bmaskulin[a-zäöüß]*\b[^.\n]{0,80}\b(gerechtfertigt|gilt|geltung|gültig)[a-zäöüß]*\b[^.\n]{0,80}\bgenerisch[a-zäöüß]*\b'
+  - '\bgenerisch[a-zäöüß]*\b[^.\n]{0,80}\bmaskulin[a-zäöüß]*\b'

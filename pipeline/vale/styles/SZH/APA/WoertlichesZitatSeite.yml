@@ -1,0 +1,27 @@
+# Zeitschrift : Zitationsrichtlinien / Wörtliche Zitate im Text — « Zitate sind durch
+# Anführungszeichen (« ») zu kennzeichnen. Die Quellenangabe besteht aus Namen, Jahr und
+# Seitenangabe. » Équivalent allemand exact de CSPS/APA/CitationDirectePage.yml (Revue :
+# 3.1.1) : un guillemet fermant suivi d'une parenthèse avec une année mais sans « S. » (Seite)
+# est suspect.
+#
+# Net large en RE2 (pas de lookahead pour exclure « contient déjà S. X »).
+#
+# ⚠ Mesuré sur le corpus publié (194 articles, 21.09.2026, chantier vale-passe-2) : 51 alertes
+# sur 38/194 documents (20 %) — au-dessus du seuil de 10 % du brief, et bien plus bruyant que
+# son jumeau français CitationDirectePage.yml. Échantillon examiné : l'allemand utilise « »
+# beaucoup plus largement que le français dans ce corpus — pour un TITRE d'ouvrage, de projet
+# ou de programme entre guillemets (« Agenda 2030 für nachhaltige Entwicklung » (EDA/UVEK,
+# 2020) ; « grafset » (Projektnummer...)), qui n'est structurellement jamais une citation
+# directe et n'a donc jamais besoin d'une page — un guillemet ne sait pas dire « ceci est un
+# titre, pas une citation », jugement sémantique hors de portée d'un motif de texte (voir
+# LISEZMOI.md). Rétrogradée de `warning` à `suggestion` pour cette raison. Un sous-cas est
+# mécanisable et corrigé ici : une citation de « persönliche Kommunikation » (communication
+# personnelle, typiquement un entretien) ne porte structurellement JAMAIS de numéro de page
+# en APA — pipeline/manuscrit_vale.py rejette ce cas précis.
+extends: existence
+message: "Wörtliches Zitat ohne Seitenangabe (Zeitschrift: Wörtliche Zitate im Text) : « %s »."
+level: suggestion
+ignorecase: false
+nonword: true
+tokens:
+  - '«[^»\n]{3,200}»\s*\([^()\n]{0,120}(?:19|20)\d{2}[a-z]?\)'

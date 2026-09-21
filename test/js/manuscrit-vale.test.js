@@ -18,7 +18,10 @@
 //   6. extraire() rend une ligne par paragraphe et un index exact, et refuse un mélange
 //      corps/bibliographie plutôt que de rendre un index ambigu en silence ;
 //   7. analyser() rend indisponible=True proprement (jamais une exception) quand vale ne
-//      peut pas tourner — configuration cassée ou règle YAML mal formée.
+//      peut pas tourner — configuration cassée ou règle YAML mal formée ;
+//   8. _resoudre_vale_bin() retrouve un vale installé hors PATH (poste de développement sans
+//      sudo, ~/.local/bin) — bug mesuré le 21.09.2026 : Vale.Indisponible sur 11 manuscrits
+//      sur 11 dans un exec WSL non interactif, PATH sans ~/.local/bin.
 //
 //   node --test test/js/manuscrit-vale.test.js
 //
@@ -163,10 +166,13 @@ test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés'
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — un positif et un négatif pour chacune des quatorze règles du catalogue.
-// Chaque cas nomme la fonction d'analyse (corps/biblio) et la langue, comme le fait le
-// contexte réel. Les sabotages minimaux sont documentés dans le rapport (une ligne YAML par
-// règle), pas ici : les répéter quatorze fois ici serait le bruit que le contrat proscrit.
+// Contrôle n°2 — un positif et un négatif pour chacune des vingt règles du catalogue (les six
+// dernières ajoutées lors de la passe du 21.09.2026 : HandicapPersonne, Forme.
+// AbreviationHorsParentheses côté français ; GenerischesMaskulinum, WoertlichesZitatSeite,
+// UndInKlammern, KaufmannsUndAusserhalbKlammern côté allemand). Chaque cas nomme la fonction
+// d'analyse (corps/biblio) et la langue, comme le fait le contexte réel. Les sabotages
+// minimaux sont documentés dans le rapport (une ligne YAML par règle), pas ici : les répéter
+// vingt fois ici serait le bruit que le contrat proscrit.
 
 const CAS = [
   { regle: 'CSPS.Epicene.FormesContractees',
@@ -183,6 +189,10 @@ const CAS = [
     negatif: () => analyserCorps('Le masculin est un genre grammatical courant.', 'fr'),
     severitePositif: 'error' },
   { regle: 'CSPS.Vocabulaire.Handicap',
+    positif: () => analyserCorps('Ces places pour handicapés sont réservées.', 'fr'),
+    negatif: () => analyserCorps('Ces places accessibles sont réservées.', 'fr'),
+    severitePositif: 'suggestion' },
+  { regle: 'CSPS.Vocabulaire.HandicapPersonne',
     positif: () => analyserCorps('Cette personne handicapée participe pleinement.', 'fr'),
     negatif: () => analyserCorps(
       'Cette personne en situation de handicap participe pleinement.', 'fr'),
@@ -206,11 +216,17 @@ const CAS = [
   { regle: 'CSPS.APA.EsperluetteHorsParentheses',
     positif: () => analyserCorps('Dupont & Martin le montrent clairement.', 'fr'),
     negatif: () => analyserCorps('Ils le montrent (Dupont & Martin, 2020).', 'fr'),
-    severitePositif: 'warning' },
+    severitePositif: 'suggestion' },
   { regle: 'CSPS.APA.CitationDirectePage',
     positif: () => analyserCorps('« Une citation directe » (Fougeyrollas, 2010).', 'fr'),
     negatif: () => analyserCorps('« Une citation directe » (Fougeyrollas, 2010, p. 9).', 'fr'),
     severitePositif: 'warning' },
+  { regle: 'CSPS.Forme.AbreviationHorsParentheses',
+    positif: () => analyserCorps(
+      'Les autrices utilisent des tableaux, des graphiques, etc. dans leur article.', 'fr'),
+    negatif: () => analyserCorps(
+      'Les autrices utilisent plusieurs supports visuels (tableaux, graphiques, etc.).', 'fr'),
+    severitePositif: 'suggestion' },
   { regle: 'CSPS-Biblio.APA.DoiForme',
     positif: () => analyserBiblio(
       'Muster, E. (2010). Un article. Revue X, 3, 1-10. doi:10.1000/xyz123', 'fr'),
@@ -231,6 +247,22 @@ const CAS = [
     positif: () => analyserCorps('Wir sprechen über behinderte Menschen im Alltag.', 'de'),
     negatif: () => analyserCorps('Wir sprechen über Menschen mit Behinderung im Alltag.', 'de'),
     severitePositif: 'warning' },
+  { regle: 'SZH.Epicene.GenerischesMaskulinum',
+    positif: () => analyserCorps('Das Maskulinum gilt hier generisch für beide Geschlechter.', 'de'),
+    negatif: () => analyserCorps('Das Team bespricht die Struktur des Artikels sorgfältig.', 'de'),
+    severitePositif: 'error' },
+  { regle: 'SZH.APA.WoertlichesZitatSeite',
+    positif: () => analyserCorps('«Ein wörtliches Zitat» (Muster, 2015).', 'de'),
+    negatif: () => analyserCorps('«Ein wörtliches Zitat» (Muster, 2015, S. 10).', 'de'),
+    severitePositif: 'suggestion' },
+  { regle: 'SZH.APA.UndInKlammern',
+    positif: () => analyserCorps('Das zeigen sie deutlich (Muster und Meier, 2015).', 'de'),
+    negatif: () => analyserCorps('Das zeigen sie deutlich (Muster & Meier, 2015).', 'de'),
+    severitePositif: 'warning' },
+  { regle: 'SZH.APA.KaufmannsUndAusserhalbKlammern',
+    positif: () => analyserCorps('Muster & Meier zeigen das deutlich.', 'de'),
+    negatif: () => analyserCorps('Das zeigen sie deutlich (Muster & Meier, 2015).', 'de'),
+    severitePositif: 'suggestion' },
 ];
 
 for (const cas of CAS) {
@@ -276,6 +308,57 @@ test('CSPS.Vocabulaire.Cf : « Cf. » en tête de phrase devient « Voir », jam
     assert.deepStrictEqual(
       motOrdinaire.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.Cf'), [],
       '« cf » à l\'intérieur d\'un autre mot ne doit jamais être touché');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle complémentaire — CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de
+// convention n'est jamais corrigé (Revue : 3.1.3, exemples exacts du PDF). Le cas positif
+// générique (hors contexte légal) est déjà couvert par le tableau CAS ci-dessus.
+//
+// Sabotage minimal : dans pipeline/manuscrit_vale._raffiner_handicap_personne, remplacer le
+// `or` par un `and` entre les deux signaux (mot introducteur ET sigle requis simultanément
+// au lieu de l'un ou l'autre) — la première assertion ci-dessous (LHand, sigle après mais
+// « Loi » à plus de 90 caractères dans le vrai intitulé complet) resterait correcte par
+// chance, mais le second cas (une loi nommée sans sigle qui suit d'assez près) rougirait.
+
+test("CSPS.Vocabulaire.HandicapPersonne : un nom propre de loi ou de convention n'est jamais corrigé",
+  { skip: sansVale }, () => {
+    const { sortie: loi } = analyserCorps(
+      "Selon la Loi sur l'égalité pour les personnes handicapées (LHand), l'accès doit être garanti.",
+      'fr');
+    assert.deepStrictEqual(
+      loi.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.HandicapPersonne'), [],
+      "le nom d'une loi ne doit jamais être signalé : " + JSON.stringify(loi.alertes));
+
+    const { sortie: convention } = analyserCorps(
+      'La Convention relative aux droits des personnes handicapées (CDPH) le garantit.', 'fr');
+    assert.deepStrictEqual(
+      convention.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.HandicapPersonne'), [],
+      "le nom d'une convention ne doit jamais être signalé : " + JSON.stringify(convention.alertes));
+
+    const { sortie: ordinaire } = analyserCorps(
+      'Cette personne handicapée participe pleinement aux activités.', 'fr');
+    const trouve = ordinaire.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.HandicapPersonne');
+    assert.strictEqual(trouve.length, 1,
+      "un usage ordinaire, hors nom de loi, doit rester signalé : " + JSON.stringify(ordinaire.alertes));
+    assert.strictEqual(trouve[0].suggested, 'personne(s) en situation de handicap');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle complémentaire — SZH.APA.WoertlichesZitatSeite : une citation de « persönliche
+// Kommunikation » (entretien, communication personnelle) ne porte jamais de numéro de page en
+// APA, ce n'est donc jamais une faute. Le cas positif générique est déjà couvert par CAS.
+//
+// Sabotage minimal : dans pipeline/manuscrit_vale._raffiner_woertliches_zitat_seite,
+// remplacer `return None` par `return {}` — l'exclusion disparaît, l'assertion rougit.
+
+test('SZH.APA.WoertlichesZitatSeite : une communication personnelle ne demande jamais de page',
+  { skip: sansVale }, () => {
+    const { sortie } = analyserCorps(
+      '«Das war schwierig» (Müller, persönliche Kommunikation, 12.03.2025).', 'de');
+    assert.deepStrictEqual(
+      sortie.alertes.filter((a) => a.rule === 'SZH.APA.WoertlichesZitatSeite'), [],
+      'une communication personnelle ne doit jamais être signalée : ' + JSON.stringify(sortie.alertes));
   });
 
 // ---------------------------------------------------------------------------------
@@ -488,4 +571,48 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
     assert.strictEqual(sortie.indisponible, true,
       'une configuration introuvable doit rendre indisponible=True');
     assert.deepStrictEqual(sortie.alertes, [], 'aucune alerte quand vale est indisponible');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°8 — _resoudre_vale_bin() retrouve un vale installé hors PATH (poste de
+// développement sans sudo, ~/.local/bin), sans avoir besoin de lancer vale pour de vrai. Le
+// PATH réel de la machine de test n'est PAS fiable pour ce contrôle (une CI qui installerait
+// vale sur le PATH ferait trouver CE vale-là par shutil.which, avant même le repli) : un
+// petit pont Python (même patron que le contrôle n°7 ci-dessus, « config cassée ») monkey-
+// patche donc `manuscrit_vale.shutil.which` pour qu'il rende toujours None, et appelle
+// `_resoudre_vale_bin(domicile_factice)` directement — domicile_factice est le PARAMÈTRE
+// INJECTABLE (jamais HOME : os.path.expanduser('~') ignore HOME sous Windows, mesuré) qui ne
+// contient QUE .local/bin/vale, jamais /usr/local/bin.
+//
+// Sabotage minimal : dans manuscrit_vale._resoudre_vale_bin(), retirer le candidat
+// `os.path.join(domicile, '.local', 'bin', 'vale')` de la boucle — la fonction rend alors le
+// repli littéral 'vale' au lieu du chemin du faux domicile, et l'assertion rougit.
+
+test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé',
+  { skip: sansPython }, () => {
+    const fauxHome = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-home-'));
+    const dossierBin = path.join(fauxHome, '.local', 'bin');
+    fs.mkdirSync(dossierBin, { recursive: true });
+    // Toujours 'vale' sans extension, même sous Windows : _resoudre_vale_bin() cherche ce nom
+    // littéral (le repli ~/.local/bin ne joue de toute façon que sous Linux/WSL en
+    // production — voir _lancer_vale ; ce test éprouve la fonction seule, indépendamment de
+    // l'OS qui exécute la suite).
+    const fauxVale = path.join(dossierBin, 'vale');
+    fs.writeFileSync(fauxVale, '#!/bin/sh\necho vale version 3.22.0\n');
+    try { fs.chmodSync(fauxVale, 0o755); } catch (e) { /* Windows : pas de bit x, ignoré */ }
+
+    const pontFactice = path.join(fauxHome, 'pont_resolution_factice.py');
+    fs.writeFileSync(pontFactice, [
+      'import sys',
+      'sys.path.insert(0, ' + JSON.stringify(path.dirname(MANUSCRIT_VALE)) + ')',
+      'import manuscrit_vale',
+      'manuscrit_vale.shutil.which = lambda nom: None',  // jamais un vale trouvé ailleurs
+      'print(manuscrit_vale._resoudre_vale_bin(sys.argv[1]))',
+    ].join('\n'), 'utf8');
+
+    const r = cp.spawnSync(PYTHON, [pontFactice, fauxHome], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, 'le pont de résolution a échoué : ' + r.stderr);
+    assert.strictEqual(r.stdout.trim(), fauxVale,
+      'la résolution doit rendre le vale du faux ~/.local/bin, pas un repli littéral : '
+      + 'stdout=' + JSON.stringify(r.stdout) + ' stderr=' + r.stderr);
   });

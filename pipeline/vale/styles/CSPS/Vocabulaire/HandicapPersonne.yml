@@ -1,0 +1,24 @@
+# Revue : 2.3 Vocabulaire — « personnes en situation de handicap », et renvoi explicite du
+# PDF à la liste de l'OQLF pour les autres termes. LE PIÈGE OQLF/CSPS : l'OQLF privilégie
+# « personne handicapée », la Revue (RIPPH/MDH-PPH) privilégie « personne en situation de
+# handicap ». Le motif ci-dessous cible EXCLUSIVEMENT l'adjectif « (personne) handicapée » —
+# la locution « en situation de » qui sépare « personne » de « handicap » dans la forme
+# recommandée le rend structurellement inatteignable par ce motif : ne JAMAIS élargir ce
+# motif pour « couvrir plus de cas », c'est exactement l'erreur que le PDF met en garde.
+#
+# ⚠ Second piège mesuré sur le corpus publié (3.1.3, exemples du PDF lui-même) : le nom
+# propre d'une loi ou d'une convention porte parfois « personnes handicapées » dans son
+# intitulé officiel (« Loi fédérale sur l'élimination des inégalités frappant les personnes
+# handicapées (Loi sur l'égalité pour les handicapés, LHand) », « Convention relative aux
+# droits des personnes handicapées (CDPH) »). Un nom propre de texte légal ne se corrige pas —
+# on cite une loi telle qu'elle s'appelle, jamais reformulée. RE2 ne sachant pas viser
+# seulement le mot fautif SANS regarder son contexte (pas de lookaround), ce fichier reste une
+# `existence` à net normal ; c'est pipeline/manuscrit_vale.RAFFINEURS qui rejette le constat
+# quand « Loi »/« Convention »/« Ordonnance » précède de près, ou qu'un sigle entre
+# parenthèses suit immédiatement — les deux signaux qu'utilisent les exemples du PDF.
+extends: existence
+message: "personne(s) en situation de handicap est préférable à « %s » (Revue : 2.3 Vocabulaire, cf. liste OQLF)."
+level: suggestion
+ignorecase: true
+tokens:
+  - '\bpersonnes? handicap[ée]e?s?\b'

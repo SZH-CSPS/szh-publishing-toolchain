@@ -102,6 +102,37 @@ def _masquer_urls(ligne):
 # périmètre de ce chantier. Sous Linux (production : la CLI tourne DANS la WSL, §2 du
 # contrat), vale s'appelle directement — jamais via wsl.exe, qui n'y existe pas. Sous
 # Windows (postes de développement/tests), on passe par wsl.exe -d SZH-Publishing.
+#
+# ⚠ Bug mesuré le 21.09.2026 : un simple 'vale' sur la branche Linux suppose que le binaire
+# est sur le PATH du PROCESSUS — vrai pour un shell de CONNEXION (bash -lc, utilisé par la
+# branche Windows ci-dessous), FAUX pour un exec non interactif (`wsl -d SZH-Publishing --
+# python3 manuscrit-nettoyer.py ...`, ou tout lancement direct dans l'image) : sur un poste
+# de développement sans sudo, vale vit dans ~/.local/bin, qui n'entre sur le PATH que via
+# .profile — jamais sourcé hors shell de connexion. Résultat mesuré : Vale.Indisponible sur
+# 11 manuscrits sur 11. _resoudre_vale_bin() cherche donc, dans l'ordre : le PATH courant
+# (shutil.which, fonctionne déjà en shell de connexion et en production), puis
+# /usr/local/bin/vale (chemin épinglé de l'image de production, Containerfile), puis
+# ~/.local/bin/vale (repli de poste de développement sans sudo, HOME lu par
+# os.path.expanduser — une variable HOME de test y suffit, pas besoin d'un paramètre
+# séparé). Le nom du chemin retenu part sur stderr : jamais montré à une relectrice (ce
+# n'est le message d'aucune alerte), utile pour diagnostiquer un déploiement.
+
+def _resoudre_vale_bin(repertoire_personnel=None):
+    """`repertoire_personnel` : paramètre injectable pour les tests (voir --resoudre-vale-bin
+    et test/js/manuscrit-vale.test.js) — os.path.expanduser('~') ignore HOME sous Windows
+    (mesuré : seul USERPROFILE compte), une variable d'environnement n'aurait donc pas permis
+    de fabriquer un faux domicile depuis un test lancé avec le Python de Windows. Repli sur le
+    domicile réel quand l'appelant ne fournit rien (cas normal, production comme diagnostic
+    manuel)."""
+    chemin = shutil.which('vale')
+    if chemin:
+        return chemin
+    domicile = repertoire_personnel if repertoire_personnel is not None else os.path.expanduser('~')
+    for candidat in ('/usr/local/bin/vale', os.path.join(domicile, '.local', 'bin', 'vale')):
+        if os.path.isfile(candidat) and os.access(candidat, os.X_OK):
+            return candidat
+    return 'vale'  # aucun candidat : on laisse _executer() échouer avec son message habituel
+
 
 def _chemin_wsl_exe():
     racine = os.environ.get('WINDIR', 'C:\\Windows')
@@ -155,7 +186,9 @@ def _executer(commande):
 
 def _lancer_vale(fichiers, chemin_ini):
     if sys.platform.startswith('linux'):
-        return _executer(['vale', '--output=JSON', '--config', chemin_ini] + list(fichiers))
+        vale_bin = _resoudre_vale_bin()
+        print('[manuscrit_vale] vale résolu : %s' % vale_bin, file=sys.stderr)
+        return _executer([vale_bin, '--output=JSON', '--config', chemin_ini] + list(fichiers))
     wsl_exe = _chemin_wsl_exe()
     ini_wsl = _vers_wsl(wsl_exe, chemin_ini)
     fichiers_wsl = [_vers_wsl(wsl_exe, f) for f in fichiers]
@@ -213,6 +246,92 @@ def _raffiner_doi_forme(constat, ligne_texte):
             'action': 'fix'}
 
 
+# Zeitschrift : Literaturverzeichnis — « Bei zwei Autor:innen werden beide Namen im Lauftext
+# mit "und" und in der Quellenangabe mit "&" verbunden. » Même mécanisme, même limite RE2, que
+# la paire française EtDansParentheses/EsperluetteHorsParentheses : le motif YAML capture le
+# contexte entier (parenthèse ou non), ce module vise le seul mot fautif.
+_RE_UND = re.compile(r'\bund\b')
+
+
+def _raffiner_und_in_klammern(constat, ligne_texte):
+    texte = constat['Match']
+    if _RE_ET_AL.search(texte):
+        return None  # « et al. » : jamais une faute, aussi en allemand (Zeitschrift, exemple)
+    m = _RE_UND.search(texte)
+    if not m:
+        return None
+    corrige = texte[:m.start()] + '&' + texte[m.end():]
+    return {'found': 'und', 'suggested': '&', 'action': 'fix',
+            'message': 'Zitation korrigieren (Zeitschrift: Literaturverzeichnis) : « %s » wird'
+                       ' « %s ».' % (texte, corrige)}
+
+
+def _raffiner_kaufmannsund_ausserhalb_klammern(constat, ligne_texte):
+    debut = constat['_span0'][0]
+    if _dans_une_parenthese(ligne_texte, debut):
+        return None  # "&" correctement entre parenthèses : ce n'est pas cette règle-là
+    return {'found': '&', 'suggested': 'und', 'action': 'fix'}
+
+
+# Revue : 1.1 Mise en page — « les abréviations figurent uniquement entre parenthèses ou en
+# note de bas de page et non dans le texte (p. ex. : etc. ; min. ; max.) ». Même mécanisme que
+# EsperluetteHorsParentheses : le motif YAML (CSPS.Forme.AbreviationHorsParentheses) attrape
+# CHAQUE occurrence de ces trois abréviations, ce module rejette celles déjà entre parenthèses
+# (conformes au PDF) et ne laisse passer que celles qui ne le sont pas.
+def _raffiner_abreviation_hors_parentheses(constat, ligne_texte):
+    debut = constat['_span0'][0]
+    if _dans_une_parenthese(ligne_texte, debut):
+        return None  # déjà entre parenthèses : conforme (Revue : 1.1)
+    return {}
+
+
+# Revue : 2.3 Vocabulaire, et 3.1.3 (exemples « Loi sur l'égalité pour les handicapés,
+# LHand » ; « Convention relative aux droits des personnes handicapées (CDPH) ») — un nom
+# propre de texte légal ne se corrige jamais. Le motif YAML de HandicapPersonne.yml reste un
+# net simple (juste « personne(s) handicapée(s) ») : c'est ici, sur le contexte autour du
+# constat (jamais capturé dans le motif lui-même, RE2 sans lookaround), qu'on écarte les deux
+# signaux qui trahissent un intitulé officiel — un mot introducteur peu avant, ou un sigle
+# entre parenthèses juste après (LHand, CDPH...).
+#
+# ⚠ Mesuré sur le corpus publié (94 articles, 21.09.2026) : le PDF ne cite que « Loi »,
+# « Convention », « Ordonnance » (3.1.3), mais le corpus déborde largement de ce seul cas —
+# une part importante de la rubrique récurrente « Actualités et ressources » (9 des 19
+# documents touchés) et des articles centrés sur les politiques du handicap citent des noms
+# d'INSTITUTIONS (« Bureau fédéral de l'égalité pour les personnes handicapées », « Comité des
+# droits des personnes handicapées », « Office fédéral de la statistique », « session des
+# personnes handicapées », une association ou une fondation) qui portent la même logique que
+# le PDF donne pour une loi : un nom propre officiel ne se corrige pas. Décision prise seule
+# (chantier vale-passe-2) : élargir aux désignations institutionnelles usuelles plutôt que de
+# laisser cette règle, déjà au niveau le plus bas (suggestion), toucher un cinquième des
+# articles pour des citations de titres officiels.
+_RE_NOM_LOI_AVANT = re.compile(
+    r'\b(?:loi|convention|ordonnance|comit[ée]|bureau|conseil|office|d[ée]partement|'
+    r'session|association|fondation)\b', re.IGNORECASE)
+_RE_SIGLE_APRES = re.compile(r'^[\s,]{0,5}\([A-ZÉÈÀÇ][\wÉÈÀÇ.\'-]{0,15}\)')
+
+
+# Zeitschrift : Zitationsrichtlinien — une « persönliche Kommunikation » (entretien, courriel)
+# ne porte structurellement jamais de numéro de page en APA : ce n'est pas un jugement
+# éditorial mais un fait de la norme elle-même, jamais une faute à signaler.
+_RE_PERSOENLICHE_KOMMUNIKATION = re.compile(
+    r'pers(?:önliche|\.)\s*Komm', re.IGNORECASE)
+
+
+def _raffiner_woertliches_zitat_seite(constat, ligne_texte):
+    if _RE_PERSOENLICHE_KOMMUNIKATION.search(constat['Match']):
+        return None  # jamais de page pour une communication personnelle (norme APA)
+    return {}
+
+
+def _raffiner_handicap_personne(constat, ligne_texte):
+    debut, fin = constat['_span0']
+    avant = ligne_texte[max(0, debut - 90):debut]
+    apres = ligne_texte[fin:fin + 25]
+    if _RE_NOM_LOI_AVANT.search(avant) or _RE_SIGLE_APRES.match(apres):
+        return None  # nom propre d'un texte légal (Revue : 3.1.3) : jamais corrigé
+    return {'suggested': 'personne(s) en situation de handicap', 'action': 'fix'}
+
+
 def _raffiner_esperluette_biblio(constat, ligne_texte):
     texte = constat['Match']
     if ' et ' not in texte:
@@ -237,6 +356,11 @@ RAFFINEURS = {
     'CSPS-Biblio.APA.DoiForme': _raffiner_doi_forme,
     'CSPS-Biblio.APA.Esperluette': _raffiner_esperluette_biblio,
     'CSPS.Vocabulaire.Cf': _raffiner_cf,
+    'CSPS.Vocabulaire.HandicapPersonne': _raffiner_handicap_personne,
+    'CSPS.Forme.AbreviationHorsParentheses': _raffiner_abreviation_hors_parentheses,
+    'SZH.APA.UndInKlammern': _raffiner_und_in_klammern,
+    'SZH.APA.KaufmannsUndAusserhalbKlammern': _raffiner_kaufmannsund_ausserhalb_klammern,
+    'SZH.APA.WoertlichesZitatSeite': _raffiner_woertliches_zitat_seite,
 }
 
 
@@ -383,6 +507,19 @@ def principal(argv):
     args = argv[1:]
     racine_depot = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+    if '--resoudre-vale-bin' in args:
+        # Essai à la main / test : quel binaire _lancer_vale choisirait-il sur CETTE machine,
+        # avec CE PATH — sans lancer vale pour de vrai. Sert à éprouver la résolution (voir
+        # l'en-tête de _resoudre_vale_bin) sans dépendre d'un vale installé. --domicile-factice
+        # est réservé aux tests : il fait jouer le repli ~/.local/bin sur un faux domicile,
+        # jamais le vrai — inutile hors test.
+        _reconfigurer_flux_utf8()
+        domicile_factice = None
+        if '--domicile-factice' in args:
+            domicile_factice = args[args.index('--domicile-factice') + 1]
+        print(_resoudre_vale_bin(domicile_factice))
+        return 0
+
     if '--extraire' in args:
         _reconfigurer_flux_utf8()
         try:
@@ -417,7 +554,8 @@ def principal(argv):
     if '--texte' not in args or '--langue' not in args:
         print('usage : manuscrit_vale.py --texte <fichier.txt> --langue fr|de\n'
               '        manuscrit_vale.py --extraire   (Contexte JSON sur stdin)\n'
-              '        manuscrit_vale.py --analyser   (Contexte JSON sur stdin)',
+              '        manuscrit_vale.py --analyser   (Contexte JSON sur stdin)\n'
+              '        manuscrit_vale.py --resoudre-vale-bin   (chemin choisi, sans lancer vale)',
               file=sys.stderr)
         return 2
 

@@ -1,0 +1,19 @@
+# Zeitschrift : Literaturverzeichnis — « Im Literaturverzeichnis werden bis zu 20 Autor:innen
+# aufgeführt. Die letzten beiden Namen werden mit "&" verbunden. » Et, pour la citation dans
+# le texte (Weitere Regeln) : « Bei zwei Autor:innen werden beide Namen im Lauftext mit "und"
+# und in der Quellenangabe mit "&" verbunden. » Équivalent allemand exact de CSPS/APA/
+# EtDansParentheses.yml (Revue : 3.1.3) : un « und » à l'intérieur d'une parenthèse de
+# citation qui porte une année devrait être « & ».
+#
+# RE2 (le moteur régulier de Vale/Go) ne supporte ni lookahead ni lookbehind : impossible de
+# viser directement le seul mot « und » sans capturer la parenthèse entière qui l'entoure. Ce
+# fichier détecte donc la PARENTHÈSE DE CITATION QUI CONTIENT UN "und"+année (net large) ;
+# pipeline/manuscrit_vale.py affine ensuite found/suggested/action, et exclut « et al. »
+# (utilisé tel quel en allemand, voir l'exemple du PDF).
+extends: existence
+message: "Zitation zu korrigieren (Zeitschrift: Literaturverzeichnis, «und» -> «&» in Klammern) : « %s »."
+level: warning
+ignorecase: false
+nonword: true
+tokens:
+  - '\([\p{L}][\p{L}.\x27-]*(?:,\s*[\p{L}][\p{L}.\x27-]*)*\s+und\s+[\p{L}][\p{L}.\x27-]*,\s*(?:19|20)\d{2}[a-z]?\)'

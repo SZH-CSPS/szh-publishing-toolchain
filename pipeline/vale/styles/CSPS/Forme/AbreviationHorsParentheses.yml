@@ -1,0 +1,28 @@
+# Revue : 1.1 Mise en page — « Les abréviations figurent uniquement entre parenthèses ou en
+# note de bas de page et non dans le texte (p. ex. : etc. ; min. ; max.) ». Les trois
+# abréviations données en exemple par le PDF lui-même : une occurrence de l'une d'elles en
+# texte courant, hors parenthèse, est ce que ce chapitre proscrit.
+#
+# RE2 ne sait pas exclure « à l'intérieur d'une parenthèse » par lookaround (même limite que
+# APA/EsperluetteHorsParentheses.yml) : ce fichier repère TOUTE occurrence, et
+# pipeline/manuscrit_vale.py rejette ensuite celles qui tombent dans une parenthèse.
+#
+# ⚠ Mesuré sur le corpus publié (94 articles, 21.09.2026, chantier vale-passe-2) : 42 alertes
+# sur 18/94 documents (19 %) — au-dessus du seuil de 10 % du brief. Échantillon examiné : la
+# quasi-totalité est « etc. » fermant une énumération en fin de phrase (« ... des vidéos,
+# etc. »), une forme extrêmement courante et jamais retouchée dans ce corpus DÉJÀ publié après
+# quatre relectures — un signe fort que la rédaction ne traite pas ce cas comme une faute,
+# malgré la lettre du PDF (1.1). Rétrogradée de `warning` à `suggestion` plutôt que retirée :
+# le PDF le dit bien, et « min. »/« max. » bruts (plus rares) restent une vraie faute
+# probable.
+extends: existence
+message: "Abréviation hors parenthèse (Revue : 1.1 Mise en page) : « %s »."
+level: suggestion
+ignorecase: false
+# Chaque motif finit sur un point, un caractère non-mot : même piège que
+# Vocabulaire/Cf.yml, qui documente pourquoi nonword est requis ici.
+nonword: true
+tokens:
+  - '\betc\.'
+  - '\bmin\.'
+  - '\bmax\.'
