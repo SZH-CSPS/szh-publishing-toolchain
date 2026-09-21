@@ -29,7 +29,7 @@ pseudo-titres 6/17, 1/20, 2/16 (le lot titres v3 était en cours, voir ci-dessou
   signatures sur la mise en forme effective, titres en liste numérotée isolés promus et numéro
   retiré, exclusions `────`/e-mail/téléphone/URL/légendes, plafond 3 niveaux rabattu. Cibles :
   ≥ 29/33, 0 détruit, ≥ 14/17, ≥ 15/20, ≥ 12/16, « coenseignement » 4/4.
-- **En-tête** (`manuscrit_entete.py` nouveau, CLI, remplissage des deux tableaux du gabarit,
+- **En-tête** : COMMITÉ le 21.09 (182 tests verts) — titre 10/11, résumé 10/10, auteurs 9/11 ; manques connus : byline avant le titre (`3_VF`), auteur multi-lignes avec emoji (`4_`). Était :
   `manuscrit-entete.test.js`) : titre, sous-titre, auteurs, résumé, mots-clés vers le gabarit,
   relus par `pronto-lire.py` ; rôles passés aux règles ; en-tête retiré du corps AVANT
   `classer_titres`. Doit aussi remplacer dans `manuscrit-nettoyer.test.js` les deux attentes
@@ -42,7 +42,7 @@ Pour juger ce qui est dans l'arbre : `git status --short`, lire `RAPPORT.md` de 
 s'il existe encore dans le scratchpad de la session, sinon relancer les fichiers de test
 concernés, puis la chaîne complète dans la WSL.
 
-## Reste à faire après ces trois lots
+## Reste à faire après ces trois lots (le branchement CLI et le rapport Twig sont EN COURS le 21.09)
 1. **Branchement CLI** : appeler `manuscrit_vale.analyser()` (rôles `bibliographie` sur les
    paragraphes de biblio) et `manuscrit_biblio.analyser_bibliographie()` depuis
    `manuscrit-nettoyer.py`, fusionner les alertes (retirer de `manuscrit_regles.py` ce que
