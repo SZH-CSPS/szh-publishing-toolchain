@@ -584,6 +584,18 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
 // INJECTABLE (jamais HOME : os.path.expanduser('~') ignore HOME sous Windows, mesuré) qui ne
 // contient QUE .local/bin/vale, jamais /usr/local/bin.
 //
+// ⚠ Bug mesuré le 21.09.2026 : monkey-patcher shutil.which ne suffit PAS — le premier
+// candidat du repli, `/usr/local/bin/vale`, est un chemin LITTÉRAL (le contrat le veut ainsi,
+// chemin épinglé de l'image de production, Containerfile), jamais un appel à shutil.which.
+// Sur la CI (job `contrats`, qui installe un vrai vale justement à cet endroit) comme sur la
+// WSL SZH-Publishing de ce poste (même image), ce fichier existe pour de vrai : le premier
+// candidat gagne avant même d'atteindre le domicile factice, et le test rougit — vert
+// seulement sous le Python DE WINDOWS de ce poste, où `/usr/local/bin/vale` n'existe pas.
+// Le pont neutralise donc aussi `os.path.isfile` : False pour CE chemin précis (jamais un
+// vrai binaire ne doit pouvoir gagner ici, quelle que soit la machine), l'implémentation
+// réelle pour tout le reste — la seule façon d'isoler ce contrôle de ce qui est réellement
+// installé sur la machine qui l'exécute.
+//
 // Sabotage minimal : dans manuscrit_vale._resoudre_vale_bin(), retirer le candidat
 // `os.path.join(domicile, '.local', 'bin', 'vale')` de la boucle — la fonction rend alors le
 // repli littéral 'vale' au lieu du chemin du faux domicile, et l'assertion rougit.
@@ -607,6 +619,8 @@ test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé
       'sys.path.insert(0, ' + JSON.stringify(path.dirname(MANUSCRIT_VALE)) + ')',
       'import manuscrit_vale',
       'manuscrit_vale.shutil.which = lambda nom: None',  // jamais un vale trouvé ailleurs
+      '_vrai_isfile = manuscrit_vale.os.path.isfile',
+      "manuscrit_vale.os.path.isfile = lambda p: False if p == '/usr/local/bin/vale' else _vrai_isfile(p)",
       'print(manuscrit_vale._resoudre_vale_bin(sys.argv[1]))',
     ].join('\n'), 'utf8');
 

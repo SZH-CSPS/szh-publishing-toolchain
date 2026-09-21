@@ -113,8 +113,19 @@ def _masquer_urls(ligne):
 # /usr/local/bin/vale (chemin épinglé de l'image de production, Containerfile), puis
 # ~/.local/bin/vale (repli de poste de développement sans sudo, HOME lu par
 # os.path.expanduser — une variable HOME de test y suffit, pas besoin d'un paramètre
-# séparé). Le nom du chemin retenu part sur stderr : jamais montré à une relectrice (ce
-# n'est le message d'aucune alerte), utile pour diagnostiquer un déploiement.
+# séparé).
+#
+# ⚠ Bug mesuré le 21.09.2026 (le suivant) : _lancer_vale() tracait le chemin retenu sur
+# stderr par un simple print(). En production, manuscrit-nettoyer.py importe ce module et
+# tourne LUI-MÊME dans la WSL (sys.platform == 'linux' au sens de ce fichier, §2 du
+# contrat) : ce print() atterrit donc directement sur le stderr DE manuscrit-nettoyer.py,
+# jamais filtré par son PREFIXE `[manuscrit-nettoyer]` — et Invoke-SzhManuscrit
+# (open-produit.ps1) recopie une ligne de stderr non reconnue telle quelle dans le journal
+# de la relectrice. Un module qui ne dépend d'aucun autre (§3) ne peut pas non plus router
+# sa trace par le progres() de l'appelant : la bonne place pour ce diagnostic est le mode
+# --resoudre-vale-bin ci-dessous, déjà prévu pour ça, jamais un print() automatique — même
+# principe que manuscrit_typo.py, qui ne trace rien sur la résolution de son propre binaire
+# externe (pandoc).
 
 def _resoudre_vale_bin(repertoire_personnel=None):
     """`repertoire_personnel` : paramètre injectable pour les tests (voir --resoudre-vale-bin
@@ -186,7 +197,6 @@ def _executer(commande):
 def _lancer_vale(fichiers, chemin_ini):
     if sys.platform.startswith('linux'):
         vale_bin = _resoudre_vale_bin()
-        print('[manuscrit_vale] vale résolu : %s' % vale_bin, file=sys.stderr)
         return _executer([vale_bin, '--output=JSON', '--config', chemin_ini] + list(fichiers))
     wsl_exe = _chemin_wsl_exe()
     ini_wsl = _vers_wsl(wsl_exe, chemin_ini)

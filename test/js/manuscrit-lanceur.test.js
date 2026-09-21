@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { POWERSHELL, sansPowerShell } = require('./gardes');
+const { POWERSHELL, sansPowerShell, PYTHON, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const OPEN_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
@@ -280,8 +280,59 @@ function fabriquerScriptPython(dossier, lignes) {
   return chemin;
 }
 
+// ---- Faux wsl.exe -- pour ne plus dependre d'une vraie distro sur la machine qui teste --
+//
+// Bug mesure le 21.09.2026 : "succes" et "code de sortie non nul" (ci-dessous) posaient
+// SZH_MANUSCRIT_CLI et SZH_MANUSCRIT_DISTRO mais jamais SZH_MANUSCRIT_WSL_EXE -- Invoke-
+// SzhManuscrit passait donc par le VRAI wsl.exe du poste (Get-WslExe, szh-common.ps1) pour
+// verifier que la distribution existe (Test-SzhManuscritPret), avant meme d'atteindre le
+// faux script Python. Vert sur un poste de developpement qui a reellement la distro SZH-
+// Publishing ; rouge sur un runner CI sans WSL (le refus de distro absente arrive AVANT le
+// faux CLI, jamais un JSON). Seul "distribution WSL absente" (plus bas) le controle deja
+// pour de vrai avec le vrai wsl.exe -- lui, ca lui est egal QUELLE distro manque.
+//
+// Un .cmd qui relaie vers un petit script Node : le format des trois appels que ce fichier
+// adresse a wsl.exe est fixe (`-l -q` ; `-d <distro> -e wslpath -a|-w <chemin>` ; `-d
+// <distro> -e python3 <script> <args...>`), mais un parsing par position en pur batch est
+// fragile des le 10e argument -- Node fait ca sans limite. wslpath : identite (aucun test
+// n'inspecte la conversion elle-meme, seulement ce que le faux script Python rend).
+// python3 : relaye vers PYTHON (gardes.js -- jamais un `python3` nu, le piege du stub
+// WindowsApps qui gele un lancement, deja mesure ailleurs dans ce chantier).
+function fabriquerFauxWsl(dossier) {
+  const script = path.join(dossier, 'faux-wsl.js');
+  fs.writeFileSync(script, [
+    "'use strict';",
+    "const { spawnSync } = require('child_process');",
+    'const args = process.argv.slice(2);',
+    "if (args[0] === '-l' && args[1] === '-q') {",
+    "  process.stdout.write((process.env.SZH_MANUSCRIT_DISTRO || '') + '\\n');",
+    '  process.exit(0);',
+    '}',
+    "const iE = args.indexOf('-e');",
+    'if (iE === -1) {',
+    "  process.stderr.write('faux-wsl : commande non reconnue (pas de -e)\\n');",
+    '  process.exit(1);',
+    '}',
+    'const reste = args.slice(iE + 1);',
+    "if (reste[0] === 'wslpath') {",
+    '  process.stdout.write(reste[reste.length - 1] + \'\\n\');',
+    '  process.exit(0);',
+    '}',
+    "if (reste[0] === 'python3') {",
+    "  const r = spawnSync(process.env.SZH_MANUSCRIT_FAUX_PYTHON || 'python', reste.slice(1),",
+    "    { stdio: 'inherit' });",
+    '  process.exit(r.status === null ? 1 : r.status);',
+    '}',
+    "process.stderr.write('faux-wsl : commande non reconnue : ' + reste.join(' ') + '\\n');",
+    'process.exit(1);',
+  ].join('\n') + '\n', 'utf8');
+  const cmd = path.join(dossier, 'faux-wsl.cmd');
+  fs.writeFileSync(cmd, '@echo off\r\nnode "%~dp0faux-wsl.js" %*\r\nexit /b %errorlevel%\r\n', 'utf8');
+  return cmd;
+}
+
 test('Invoke-SzhManuscrit : succes - JSON de stdout lu, lignes de stderr dans le journal, dossier propose',
-  { skip: sansPowerShell }, () => {
+  { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-'));
     const manuscrit = path.join(manuscritsDir, 'brouillon.docx');
@@ -294,13 +345,17 @@ test('Invoke-SzhManuscrit : succes - JSON de stdout lu, lignes de stderr dans le
       "print(json.dumps({'alertes': 2, 'erreurs': 0}))",
       'sys.exit(0)',
     ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
 
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
       '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
         '-Journal $journalFaux -NomExport "test"',
       '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; stats = $resultat.stats; ' +
         'dossier = $resultat.dossier; journal = $journalFaux.Text }',
-    ]), { SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing' });
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
     fs.rmSync(manuscritsDir, { recursive: true, force: true });
@@ -316,7 +371,7 @@ test('Invoke-SzhManuscrit : succes - JSON de stdout lu, lignes de stderr dans le
   });
 
 test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive dans le journal',
-  { skip: sansPowerShell }, () => {
+  { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-echec-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-echec-'));
     const manuscrit = path.join(manuscritsDir, 'suivi-modif.docx');
@@ -326,12 +381,16 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive 
       "print('refus : document en suivi de modifications', file=sys.stderr)",
       'sys.exit(1)',
     ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
 
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
       '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
         '-Journal $journalFaux -NomExport "test"',
       '$r = [ordered]@{ ok = $resultat.ok; journal = $journalFaux.Text }',
-    ]), { SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing' });
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
     fs.rmSync(manuscritsDir, { recursive: true, force: true });
