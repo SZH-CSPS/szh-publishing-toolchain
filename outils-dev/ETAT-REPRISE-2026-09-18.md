@@ -42,7 +42,29 @@ Pour juger ce qui est dans l'arbre : `git status --short`, lire `RAPPORT.md` de 
 s'il existe encore dans le scratchpad de la session, sinon relancer les fichiers de test
 concernés, puis la chaîne complète dans la WSL.
 
-## Reste à faire après ces trois lots (le branchement CLI et le rapport Twig sont EN COURS le 21.09)
+## Fait le 21.09 (tous commités)
+Titres v3 + plancher d'homogénéité ; en-tête ; rapport HTML Twig (rendu par `rendre-gabarit.js`,
+ouvert par le lanceur) ; branchement CLI de Vale, de la bibliographie et de l'annotation
+(`--sans-annotation`, `--sans-reseau`, `alertes.origine`, `dans_docx`) ; moisson OJS
+(`outils-dev/lexique/moissonner-ojs.py`, 288 DOCX dans `tmp/corpus-ojs/`) ; lexique
+(`pipeline/vale/lexique/*.csv`, `generer-lexique.py` → xlsx, TBX, règles Lexique).
+
+Premier rejeu de bout en bout (WSL, 12 manuscrits, 70 s avec réseau) — ce qu'il a montré,
+EN COURS de correction par les agents concernés :
+- `Vale.Indisponible` 11/11 : Vale est dans `~/.local/bin` sur le poste (pas de sudo) et le PATH
+  d'un `wsl -e python3` ne le contient pas → `manuscrit_vale.py` doit chercher aussi
+  `/usr/local/bin/vale` et `~/.local/bin/vale` ;
+- annotation : `KeyError` sur spans qui se chevauchent, `found` court (« et ») mésancré qui peut
+  corrompre du texte, XML mal formé dans un `w:hyperlink` → la CLI restaure la version non
+  annotée (4 fichiers sur 11), correctifs dans `manuscrit_annoter.py` ;
+- bibliographie : `APA.OrdreBiblio` (57) compare sans normaliser (Ca/Cl/Cn jugés désordonnés),
+  `APA.CitationAbsente` (46) rate les auteurs institutionnels avec `&` et les citations à
+  plusieurs années, `2-fin` 9 absentes sur 9 ; `APA.MiseEnForme` (67 révisions) à échantillonner ;
+- `correspondance.source` de `manuscrit_gabarit.ecrire()` est une position de liste, pas
+  `Paragraphe.source` : remappé dans la CLI, à corriger à la source un jour ;
+- rapport HTML : « paragraphe 0 » pour les paragraphes en cellule (source relatif à la cellule).
+
+## Reste à faire ensuite
 1. **Branchement CLI** : appeler `manuscrit_vale.analyser()` (rôles `bibliographie` sur les
    paragraphes de biblio) et `manuscrit_biblio.analyser_bibliographie()` depuis
    `manuscrit-nettoyer.py`, fusionner les alertes (retirer de `manuscrit_regles.py` ce que
