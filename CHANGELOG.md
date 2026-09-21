@@ -11,6 +11,35 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.3.0
+
+**Les métadonnées d'un bloc figure ou tableau ne vivent plus dans un tableau enveloppe.**
+Décision de Robin du 21 septembre 2026 : dans le gabarit « Pronto — modèle d'article » (`.docx`
+et `.odt`), une légende, un texte alternatif, un crédit et une source s'écrivent désormais dans
+quatre paragraphes ordinaires — nouveau style « SZH Cle Abb/Tab », bordure ouverte au-dessus de
+l'image ou du tableau — juste avant celui-ci, au lieu d'un tableau à deux rangées. C'est un
+changement de forme dans le gabarit que la rédaction remplit à la main : d'où le medium.
+
+- Le lecteur Pronto (`pipeline/pronto_modele.py`, pas encore branché sur la chaîne d'import)
+  reconnaît la nouvelle forme (1 à 4 paragraphes de clé, image ou tableau à 1-2 paragraphes de
+  distance) et l'ancienne en repli, avec un avertissement invitant à convertir.
+- Le nettoyeur de manuscrit (`pipeline/manuscrit_gabarit.py`) écrit désormais la nouvelle forme ;
+  les onze manuscrits réels et le manuscrit « coenseignement développemental » traversent la
+  chaîne complète sans régression (aucun texte perdu, table de correspondance exacte).
+- Des clés de figure sans image ni tableau à proximité sont désormais signalées, plutôt que de
+  rester invisibles dans le corps.
+
+**Annotation : des commentaires posés au bon endroit.** Une alerte sur le texte d'une note de
+bas de page s'ancre sur le mot qui précède l'appel de note, avec « Note N : » et le passage cité,
+et une correction déterministe s'écrit en révision dans la note elle-même. La table de
+correspondance entre paragraphes d'entrée et de sortie comptait un bloc figure pour zéro
+paragraphe : 76 % de ses entrées étaient fausses sur le corpus, et presque tout commentaire posé
+après la première figure tombait sur le mauvais paragraphe ; elle est exacte désormais. Audit de
+257 alertes sur douze manuscrits : les raffineurs Vale « et/und » et les citations du corps
+portaient une position fausse, l'alerte de texte alternatif cherchait une phrase absente ; les
+replis sur un paragraphe entier passent de 33 à 0, l'alerte de texte alternatif se posant sur la
+clé « Texte alternatif : » de son bloc.
+
 ## 1.2.4
 
 **Bibliographie : une seule révision par référence, et rien de perdu.** Un DOI retrouvé par

@@ -16,6 +16,25 @@
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
 
+  "1.3": {
+    "fr": {
+      "titre": "Les métadonnées d’une figure passent au-dessus, sans tableau",
+      "points": [
+        "Dans le modèle d’article, les métadonnées d’une image ou d’un tableau s’écrivent maintenant dans les lignes encadrées juste au-dessus de l’image ou du tableau, à la place de l’ancien tableau à deux rangées.",
+        "Les documents déjà remplis à l’ancienne forme continuent à se lire normalement ; le rapport vous invite simplement à les convertir la prochaine fois que vous les rouvrez.",
+        "Si des lignes encadrées ne sont suivies d’aucune image ni d’aucun tableau à proximité, le rapport vous le signale plutôt que de les ignorer en silence."
+      ]
+    },
+    "de": {
+      "titre": "Die Angaben zu einer Abbildung stehen jetzt darüber, ohne Tabelle",
+      "points": [
+        "In der Artikelvorlage stehen die Angaben zu einem Bild oder einer Tabelle jetzt in den umrahmten Zeilen direkt darüber, anstelle der früheren zweizeiligen Tabelle.",
+        "Bereits in der alten Form ausgefüllte Dokumente lassen sich weiterhin normal einlesen; der Bericht bittet Sie lediglich, sie beim nächsten Öffnen umzuwandeln.",
+        "Stehen umrahmte Zeilen ohne ein nahes Bild oder eine nahe Tabelle da, weist der Bericht Sie darauf hin, statt sie stillschweigend zu übergehen."
+      ]
+    }
+  },
+
   "1.2": {
     "fr": {
       "titre": "Un manuscrit se nettoie tout seul",
