@@ -154,6 +154,24 @@ def etiquettes_cle(cellule):
     return out
 
 
+def etiquettes_groupe_cle_abb_tab(blocs, depart):
+    # Étiquettes (aplaties, triées) d'un groupe de 1 à 4 paragraphes SZH Cle Abb/Tab
+    # consécutifs à partir de l'indice depart, quel que soit le contenu qui les suit — une
+    # vérification STRUCTURELLE (le gabarit porte-t-il les bonnes étiquettes ?), pas une
+    # vérification de reconnaissance de bloc (pronto-lire.test.js s'en charge, fenêtre de
+    # contenu comprise).
+    out = []
+    fin = depart
+    while fin < len(blocs) and fin - depart < 4:
+        b = blocs[fin]
+        if not isinstance(b, pm.Par) or pm.normaliser_nom_style(b.style) != pm.NOM_STYLE_CLE_BLOC:
+            break
+        if b.texte:
+            out.append(pm.aplatir(b.texte.partition(':')[0]))
+        fin += 1
+    return sorted(out), fin
+
+
 def dump(chemin):
     blocs = lire(chemin)
     tables = [e for e in blocs if isinstance(e, pm.Tableau)]
@@ -168,14 +186,31 @@ def dump(chemin):
         t2 = tables[1]
         lignes = [etiquettes_cle(rangee[1]) for rangee in t2.rangees if len(rangee) == 2]
         resultat['table2_lignes'] = lignes
-    resultat['blocs'] = []
+
+    # Ancienne forme (tableau enveloppe) : reste reconnue en repli, mais le gabarit livré
+    # (révision du 21.09.2026) n'en porte plus aucune — devrait donner [] des deux côtés.
+    resultat['blocs_ancienne_forme'] = []
     for t in tables[2:]:
         if not pm.est_bloc_meta(t):
             continue
         etiquettes = []
         for c in t.rangees[0]:
             etiquettes.extend(etiquettes_cle(c))
-        resultat['blocs'].append(sorted(etiquettes))
+        resultat['blocs_ancienne_forme'].append(sorted(etiquettes))
+
+    # Nouvelle forme (paragraphes SZH Cle Abb/Tab) : un groupe par run de 1 à 4 paragraphes
+    # de ce style trouvé au premier niveau du document, dans l'ordre — le gabarit livré en
+    # porte deux (l'exemple de bloc figure, non rempli, et l'exemple de bloc tableau).
+    resultat['blocs_nouvelle_forme'] = []
+    i = 0
+    while i < len(blocs):
+        b = blocs[i]
+        if isinstance(b, pm.Par) and pm.normaliser_nom_style(b.style) == pm.NOM_STYLE_CLE_BLOC:
+            etiquettes, fin = etiquettes_groupe_cle_abb_tab(blocs, i)
+            resultat['blocs_nouvelle_forme'].append(etiquettes)
+            i = fin
+        else:
+            i += 1
     return resultat
 
 
@@ -219,20 +254,28 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   assert.deepStrictEqual(structDocx.table2_lignes, structOdt.table2_lignes,
     'rangées (et leurs étiquettes de champ) du tableau des auteurs différentes : docx='
     + JSON.stringify(structDocx.table2_lignes) + ' odt=' + JSON.stringify(structOdt.table2_lignes));
-  assert.deepStrictEqual(structDocx.blocs, structOdt.blocs,
-    'étiquettes des blocs figure/tableau différentes : docx=' + JSON.stringify(structDocx.blocs)
-    + ' odt=' + JSON.stringify(structOdt.blocs));
+  assert.deepStrictEqual(structDocx.blocs_ancienne_forme, structOdt.blocs_ancienne_forme,
+    'blocs à l’ancienne forme différents : docx=' + JSON.stringify(structDocx.blocs_ancienne_forme)
+    + ' odt=' + JSON.stringify(structOdt.blocs_ancienne_forme));
+  assert.deepStrictEqual(structDocx.blocs_nouvelle_forme, structOdt.blocs_nouvelle_forme,
+    'étiquettes des blocs figure/tableau (nouvelle forme) différentes : docx='
+    + JSON.stringify(structDocx.blocs_nouvelle_forme) + ' odt='
+    + JSON.stringify(structOdt.blocs_nouvelle_forme));
 
   // Le gabarit réel porte cinq étiquettes de métadonnées, quatre rangées dans le tableau des
-  // auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois rangées-modèle), et un
-  // bloc figure/tableau à quatre étiquettes — mesuré à la main sur les deux fichiers. Si ces
-  // nombres changent un jour, c'est que le gabarit a changé : les deux assertions
-  // deepStrictEqual ci-dessus l'auraient déjà dit, celles-ci ne font que documenter la forme
-  // attendue pour qui lit ce test.
+  // auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois rangées-modèle) — mesuré à
+  // la main sur les deux fichiers. Depuis la révision du 21.09.2026 (plus de tableau
+  // enveloppe), il ne porte plus AUCUN bloc à l'ancienne forme, et deux à la nouvelle (les
+  // exemples de bloc figure et de bloc tableau), chacun à quatre étiquettes. Si ces nombres
+  // changent un jour, c'est que le gabarit a changé : les deux assertions deepStrictEqual
+  // ci-dessus l'auraient déjà dit, celles-ci ne font que documenter la forme attendue pour
+  // qui lit ce test.
   assert.strictEqual(structDocx.table1_labels.length, 5);
   assert.strictEqual(structDocx.table2_lignes.length, 4);
-  assert.strictEqual(structDocx.blocs.length, 1);
-  assert.strictEqual(structDocx.blocs[0].length, 4);
+  assert.strictEqual(structDocx.blocs_ancienne_forme.length, 0);
+  assert.strictEqual(structDocx.blocs_nouvelle_forme.length, 2);
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 4);
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 4);
 });
 
 // Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),

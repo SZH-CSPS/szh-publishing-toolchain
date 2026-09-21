@@ -34,6 +34,21 @@ ci-dessous.
 
 ### 1. Apprendre à `docx-tables.py` à déballer un bloc tableau
 
+**Révision du 21.09.2026 — la nouvelle forme des blocs (décision de Robin, voir
+`outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md`, §5.3) change la donne pour les documents qui
+l'emploient, mais NE SUPPRIME PAS cette étape.** Les métadonnées d'un bloc ne sont plus un
+tableau enveloppe : ce sont des paragraphes SZH Cle Abb/Tab, et le tableau d'un bloc tableau est
+désormais **directement au premier niveau du document**, plus jamais imbriqué. Conséquence
+mesurée (`pronto_modele._extraire_blocs_nouvelle_forme()`, `test/js/pronto-lire.test.js`) : le
+lecteur Pronto **n'émet plus de ligne `T`** pour le contenu d'un bloc à la nouvelle forme — ni
+figure (jamais de tableau à faire sauter), ni tableau (rien à déballer, il se rend comme un
+tableau de corps ordinaire). `docx-tables.py` n'a donc **rien de plus à apprendre** pour lire un
+document à la nouvelle forme : un bloc tableau s'y rend tout seul, correctement, sans ligne `T`.
+
+Le problème décrit ci-dessous reste néanmoins entier pour l'**ancienne forme**, reconnue en
+repli (avec un avertissement `bloc-ancienne-forme`) pour les documents déjà remplis avant cette
+révision — et le restera tant qu'ils circulent. Ce qui suit décrit ce cas précis.
+
 **C'est le seul endroit où le contrat de sortie ne suffit pas, et il casserait en silence.**
 
 Mesuré : `tableaux_de_premier_niveau()` ne compte jamais un tableau imbriqué comme séparé (il est
@@ -65,7 +80,10 @@ ils s'affichent bruts ou pas du tout.
 
 Les codes relevés dans le lecteur : `etiquette-metadonnees-inconnue`, `auteur-etiquette-inconnue`,
 `bloc-etiquette-inconnue`, `bloc-contenu-absent`, `type-article-non-reconnu`,
-`structure-inattendue`, `blocs-colles`, `biblio-tableau-apres-titre`, `bloc-mal-forme`.
+`structure-inattendue`, `blocs-colles`, `biblio-tableau-apres-titre`, `bloc-mal-forme`. Depuis le
+21.09.2026 (nouvelle forme des blocs) : `bloc-ancienne-forme` (le document lu emploie encore
+l'ancien tableau enveloppe : lu normalement, mais à convertir) et `bloc-cles-sans-contenu` (des
+paragraphes de clé existent, mais aucune image ni tableau ne les suit dans la fenêtre attendue).
 
 ⚠ Relire la liste dans le code avant de la recopier : elle a bougé plusieurs fois.
 

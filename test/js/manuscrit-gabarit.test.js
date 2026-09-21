@@ -452,15 +452,16 @@ test('manuscrit_gabarit.ecrire : chaque image est dans un bloc figure, octets id
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — chaque bloc porte sa rangée de métadonnées fusionnée sur TOUTE la largeur
-// déclarée du bloc (§5.3), quel que soit le nombre de colonnes du tableau qu'il enveloppe (ici
-// 3, pour distinguer cette fusion de celle, différente, du tableau imbriqué lui-même).
+// Contrôle n°4 — révisé le 21.09.2026 (plus de tableau enveloppe) : les métadonnées d'un bloc
+// sont TOUJOURS exactement quatre paragraphes SZH Cle Abb/Tab, jamais répétés par colonne du
+// tableau de contenu (ici 3, pour distinguer ce risque de la structure du tableau imbriqué
+// lui-même), et ils précèdent DIRECTEMENT ce tableau — aucun <w:tbl> enveloppe ne doit rester.
 //
-// Sabotage minimal : dans _rangee_meta_xml(), remplacer LARGEUR_BLOC_DXA par
-// LARGEUR_BLOC_DXA // 2 dans le w:tcW de la rangée de métadonnées — la cellule ne couvre plus
-// que la moitié de la largeur déclarée du tableau qui l'enveloppe.
+// Sabotage minimal : dans _meta_paragraphes_xml(), répéter la boucle `for cle, label in
+// CHAMPS_BLOC` une fois par ligne du tableau de contenu (`for _ in tableau.rangees: for cle,
+// label in CHAMPS_BLOC: ...`) — quatre paragraphes de clé deviennent huit (deux rangées).
 
-test('manuscrit_gabarit.ecrire : la rangée de métadonnées d\'un bloc est une seule cellule, fusionnée sur toute sa largeur',
+test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont quatre paragraphes SZH Cle Abb/Tab, jamais un par colonne ni par rangée',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
@@ -473,45 +474,46 @@ test('manuscrit_gabarit.ecrire : la rangée de métadonnées d\'un bloc est une 
 
       const xml = lireDocumentXml(sortie);
 
-      // Isole la rangée de métadonnées du bloc : après les deux tableaux fixes du gabarit
-      // (métadonnées de l'article, autrices et auteurs), le premier <w:tbl> suivant est le
-      // bloc que ce test a produit, et sa PREMIÈRE <w:tr> est la rangée de métadonnées — elle
-      // ne peut jamais contenir de <w:tbl> imbriqué (les libellés SZH Cle n'en portent pas),
-      // un `indexOf('</w:tr>')` simple depuis là suffit donc à la borner correctement.
+      // Après les deux tableaux fixes du gabarit (métadonnées de l'article, autrices et
+      // auteurs), les quatre paragraphes de clé du bloc suivent directement.
       const finTable1 = xml.indexOf('</w:tbl>') + '</w:tbl>'.length;
       const finTable2 = xml.indexOf('</w:tbl>', finTable1) + '</w:tbl>'.length;
-      const debutBloc = xml.indexOf('<w:tbl', finTable2);
-      assert.ok(debutBloc > 0, 'le bloc tableau doit suivre les deux tableaux fixes du gabarit');
-      const debutRangeeMeta = xml.indexOf('<w:tr>', debutBloc);
-      const finRangeeMeta = xml.indexOf('</w:tr>', debutRangeeMeta) + '</w:tr>'.length;
-      const rangeeMeta = xml.slice(debutRangeeMeta, finRangeeMeta);
+      const reste = xml.slice(finTable2);
 
-      const nbCellules = (rangeeMeta.match(/<w:tc>/g) || []).length;
-      assert.strictEqual(nbCellules, 1,
-        'la rangée de métadonnées doit être UNE seule cellule, jamais une par colonne du '
-        + 'tableau imbriqué (3 colonnes ici)');
-      const largeur = rangeeMeta.match(/<w:tcW w:w="(\d+)"/);
-      assert.ok(largeur, 'la cellule de métadonnées doit déclarer sa largeur');
-      assert.strictEqual(Number(largeur[1]), 8220,
-        'la cellule de métadonnées doit couvrir la largeur ENTIÈRE déclarée du bloc (8220 dxa, '
-        + 'mesurée sur le gabarit livré), jamais une fraction');
+      const nbCles = (reste.match(/<w:pStyle w:val="SZHCleAbbTab"\/>/g) || []).length;
+      assert.strictEqual(nbCles, 4,
+        'un bloc doit toujours porter EXACTEMENT quatre paragraphes de clé, jamais un par '
+        + 'colonne ou par rangée du tableau de contenu (obtenu : ' + nbCles + ')');
+
+      // Le tableau de contenu (3 colonnes, mesurées par son propre tblGrid) suit DIRECTEMENT
+      // les quatre paragraphes de clé — plus aucun <w:tbl> enveloppe autour d'eux.
+      const debutContenu = reste.indexOf('<w:tbl');
+      assert.ok(debutContenu > 0, 'le tableau de contenu doit suivre les paragraphes de clé');
+      const finContenu = reste.indexOf('</w:tbl>', debutContenu) + '</w:tbl>'.length;
+      const tableauContenu = reste.slice(debutContenu, finContenu);
+      const nbColonnes = (tableauContenu.match(/<w:gridCol\b/g) || []).length;
+      assert.strictEqual(nbColonnes, 3,
+        'le tableau de contenu doit garder ses 3 colonnes, non touché par les métadonnées');
+      assert.strictEqual((tableauContenu.match(/SZHCleAbbTab/g) || []).length, 0,
+        'aucun paragraphe de clé ne doit se retrouver DANS le tableau de contenu lui-même');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°5 — un paragraphe vide sépare toujours deux blocs qui se touchent (§10 : sans
-// lui, LibreOffice fond deux tableaux voisins en un seul — mesuré sur le gabarit réel, 4
-// tableaux côté .docx contre 3 côté .odt). Deux images consécutives, sans texte entre elles,
-// produisent donc deux blocs figure consécutifs : ce test vérifie qu'ils ne se touchent
-// JAMAIS dans le XML brut.
+// Contrôle n°5 — révisé le 21.09.2026 : un bloc figure n'écrit plus de <w:tbl> du tout (juste
+// des <w:p>), donc le risque mesuré au §10 (LibreOffice qui fond deux <w:tbl> voisins) ne peut
+// plus se produire pour deux blocs figure adjacents — mais la CONVENTION éditoriale (« un
+// paragraphe vide reste garanti entre deux blocs », décision de Robin) doit survivre quand
+// même : deux images consécutives, sans texte entre elles, doivent rester visiblement séparées
+// par un paragraphe vide, jamais collées bord à bord.
 //
 // Sabotage minimal : dans _separateur_requis(), remplacer
-// `return est_bloc_courant or est_bloc_precedent` par `return False` — les deux blocs figure
-// se retrouvent collés, `</w:tbl><w:tbl` apparaît dans le document.xml produit.
+// `return est_bloc_courant or est_bloc_precedent` par `return False` — le paragraphe vide entre
+// les deux blocs figure disparaît.
 
-test('manuscrit_gabarit.ecrire : un paragraphe vide sépare toujours deux blocs qui se touchent',
+test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs figure qui se touchent',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
@@ -524,15 +526,67 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare toujours deux blocs 
       ]);
       ecrireDepuisSpec(spec, sortie);
 
-      const xml = lireDocumentXml(sortie);
+      const textes = textesWp(enfantsCorps(sortie));
+      const indicesLegende = [];
+      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
+      assert.strictEqual(indicesLegende.length, 2,
+        'deux blocs figure (deux groupes de quatre clés) attendus : ' + JSON.stringify(textes));
+      const [i1, i2] = indicesLegende;
+      // Entre les deux « Légende : » : les trois autres clés du premier bloc, son image, PUIS
+      // le paragraphe séparateur — 6 <w:p> d'écart. Un écart de 5 signalerait un paragraphe vide
+      // manquant (le sabotage ci-dessus).
+      assert.strictEqual(i2 - i1, 6,
+        'il doit y avoir exactement un paragraphe vide entre l\'image du premier bloc et les '
+        + 'clés du second (6 <w:p> d\'écart attendus, obtenu ' + (i2 - i1) + ') : '
+        + JSON.stringify(textes.slice(i1, i2 + 1)));
+      assert.strictEqual(textes[i2 - 1], '',
+        'le <w:p> juste avant le second bloc doit être le séparateur vide');
+      assert.strictEqual(textes[i2 - 2], '',
+        'le <w:p> juste avant le séparateur doit être l\'image du premier bloc (texte vide)');
 
+      // Positif : aucun <w:tbl> nulle part — un bloc figure n'en écrit plus (contrairement à
+      // l'ancienne forme).
+      const xml = lireDocumentXml(sortie);
+      assert.strictEqual((xml.match(/<w:tbl\b/g) || []).length, 2,
+        'seuls les deux tableaux FIXES du gabarit (métadonnées, auteurs) doivent rester : un '
+        + 'bloc figure n\'écrit plus de <w:tbl>');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Même principe, pour deux blocs TABLEAU cette fois (où le risque mesuré au §10 — deux <w:tbl>
+// qui se touchent — reste théoriquement possible si le contenu suivait directement, sans les
+// quatre clés) : deux tableaux de contenu consécutifs, un paragraphe vide doit les séparer.
+test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs tableau qui se touchent, et leurs deux <w:tbl> de contenu ne se touchent jamais',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        tableau([[cellule('A1')]]),
+        tableau([[cellule('B1')]]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+
+      const xml = lireDocumentXml(sortie);
       assert.ok(!/<\/w:tbl>\s*<w:tbl\b/.test(xml),
-        'deux blocs (deux tableaux) ne doivent JAMAIS se toucher directement dans le XML — '
-        + 'sans paragraphe entre eux, LibreOffice les fond en un seul (§10)');
-      // Contrôle positif : il y a bien deux blocs distincts à séparer (sinon le test ne
-      // prouverait rien — deux images consécutives doivent produire deux <w:tbl> distincts).
-      const nbTbl = (xml.match(/<w:tbl\b/g) || []).length;
-      assert.ok(nbTbl >= 4, 'au moins 4 tableaux attendus (2 fixes du gabarit + 2 blocs figure)');
+        'deux tableaux de contenu ne doivent jamais se toucher directement dans le XML — sans '
+        + 'paragraphe entre eux, LibreOffice les fond en un seul (§10)');
+
+      const textes = textesWp(enfantsCorps(sortie));
+      const indicesLegende = [];
+      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
+      assert.strictEqual(indicesLegende.length, 2);
+      const [i1, i2] = indicesLegende;
+      // Entre les deux « Légende : » : les trois autres clés puis le séparateur — le tableau de
+      // contenu lui-même n'est PAS un <w:p> (il n'apparaît donc pas dans cette liste), d'où un
+      // écart de 5 (3 clés + séparateur, en comptant l'index de départ).
+      assert.strictEqual(i2 - i1, 5,
+        'écart inattendu entre les deux groupes de clés (5 <w:p> d\'écart attendus — 3 autres '
+        + 'clés puis le séparateur) : ' + JSON.stringify(textes.slice(i1, i2 + 1)));
+      assert.strictEqual(textes[i2 - 1], '',
+        'le <w:p> juste avant le second bloc doit être le paragraphe séparateur vide');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -1130,13 +1184,14 @@ test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       // Les DEUX premiers <w:tbl> du corps sont les tableaux FIXES du gabarit (métadonnées,
       // autrices et auteurs) : document.blocs les porte aussi (le lecteur ne les distingue
-      // pas). Le tableau du TEST, imbriqué dans son bloc figure/tableau, se retrouve à
-      // l'intérieur de la cellule du bloc — jamais au premier niveau de document.blocs.
-      const blocTableau = document.blocs.find((b) => b.type === 'tableau'
-        && b.rangees[0][0].blocs.some((p) => p.fragments && p.fragments.some((f) => f.texte === 'Légende : ')));
-      assert.ok(blocTableau, 'le bloc tableau du test doit être retrouvé');
-      const tbl = blocTableau.rangees[1][0].blocs.find((b) => b.type === 'tableau');
-      assert.ok(tbl, 'le tableau imbriqué (celui du manuscrit) doit être relu');
+      // pas). Depuis le 21.09.2026, le tableau du bloc n'est plus imbriqué dans une enveloppe :
+      // c'est directement le premier <w:tbl> de premier niveau qui SUIT les quatre paragraphes
+      // de clé (« Légende : », etc.).
+      const idxLegende = document.blocs.findIndex((b) => b.type !== 'tableau' && b.fragments
+        && b.fragments.some((f) => f.texte === 'Légende : '));
+      assert.ok(idxLegende >= 0, 'les quatre paragraphes de clé du bloc doivent être retrouvés');
+      const tbl = document.blocs.slice(idxLegende).find((b) => b.type === 'tableau');
+      assert.ok(tbl, 'le tableau du manuscrit (directement au premier niveau) doit être relu');
       assert.strictEqual(tbl.rangees[1].length, 3,
         'la seconde rangée (3 cellules) ne doit perdre aucune cellule');
       const c2Textes = tbl.rangees[1].map((c) => c.blocs.map((b) => b.fragments.map((f) => f.texte).join('')).join(''));
@@ -1190,13 +1245,10 @@ const RANGEES_TABLEAU_IMBRIQUE_PY = [
   'doc = z.read("word/document.xml").decode("utf-8")',
   'interieur = doc[doc.index("<w:body>") + len("<w:body>"):doc.rindex("</w:body>")]',
   'tbls = [xml for tag, xml in enfants_directs(interieur, ["w:p", "w:tbl", "w:sectPr"]) if tag == "w:tbl"]',
-  '# le DERNIER <w:tbl> de premier niveau est le bloc tableau de ce test (les deux premiers',
-  '# sont les tableaux fixes du gabarit) — son contenu (rangee 1) enveloppe le tableau du',
-  '# MANUSCRIT, imbriqué, qu\'il faut isoler à son tour avant d\'en lire les <w:tr>.',
-  'bloc = tbls[-1]',
-  'interieur_bloc = bloc[bloc.index(">") + 1:bloc.rindex("</w:tbl>")]',
-  'nested = [xml for tag, xml in enfants_directs(interieur_bloc, ["w:tbl"])]',
-  'tbl_manuscrit = nested[0]',
+  '# le DERNIER <w:tbl> de premier niveau est le tableau du MANUSCRIT lui-même — depuis le',
+  '# 21.09.2026 (plus de tableau enveloppe), il n\'est plus imbriqué : les deux premiers <w:tbl>',
+  '# sont les tableaux fixes du gabarit, le troisième est directement celui de ce test.',
+  'tbl_manuscrit = tbls[-1]',
   'interieur_tbl = tbl_manuscrit[tbl_manuscrit.index(">") + 1:tbl_manuscrit.rindex("</w:tbl>")]',
   'lignes = [xml for tag, xml in enfants_directs(interieur_tbl, ["w:tr"])]',
   'print(json.dumps(lignes))',
@@ -1287,13 +1339,18 @@ test('manuscrit_gabarit.ecrire : une légende déjà écrite dans le manuscrit g
       const xml = lireDocumentXml(sortie);
       assert.ok(/<w:vertAlign w:val="superscript"\/>/.test(xml),
         'un vertAlign superscript doit survivre quelque part dans le document');
-      // La légende ne doit PAS être dupliquée comme paragraphe de corps ordinaire, ET son
+      // La légende ne doit PAS être dupliquée comme paragraphe de corps ORDINAIRE, ET son
       // exposant doit être RETROUVÉ précisément dans le bloc figure (pas ailleurs par hasard).
+      // Depuis le 21.09.2026, le champ « Légende : » du bloc EST lui-même un paragraphe de
+      // premier niveau (style SZH Cle Abb/Tab, plus de tableau enveloppe) : il porte le texte
+      // de la légende par construction — ce n'est pas la duplication que ce contrôle traque,
+      // seulement un VRAI paragraphe de corps (un autre style) qui la répéterait par erreur.
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       const corpsOrdinaire = document.blocs.filter((b) => b.type !== 'tableau'
+        && b.style !== 'szh cle abb/tab'
         && b.fragments.some((f) => f.texte.includes('Résultat au m')));
       assert.strictEqual(corpsOrdinaire.length, 0,
-        'la légende ne doit pas rester EN PLUS comme paragraphe de corps');
+        'la légende ne doit pas rester EN PLUS comme paragraphe de corps ORDINAIRE');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -1333,10 +1390,14 @@ test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux para
         && blocTableau.legende.includes('Comparaison des résultats'),
         'la légende doit réunir le titre ET le texte : obtenu ' + JSON.stringify(blocTableau.legende));
 
+      // Même remarque que le contrôle précédent : le paragraphe « Légende : » du bloc (style
+      // SZH Cle Abb/Tab) porte légitimement ce texte depuis le 21.09.2026 — seul un VRAI
+      // paragraphe de corps qui le répéterait serait une duplication.
       const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
       const resteTitre = document.blocs.some((b) => b.type !== 'tableau'
-        && b.fragments.some((f) => f.texte === 'Tableau 1'));
+        && b.style !== 'szh cle abb/tab' && b.fragments.some((f) => f.texte === 'Tableau 1'));
       const resteTexte = document.blocs.some((b) => b.type !== 'tableau'
+        && b.style !== 'szh cle abb/tab'
         && b.fragments.some((f) => f.texte.includes('Comparaison des résultats')));
       assert.strictEqual(resteTitre, false, 'le titre « Tableau 1 » ne doit plus rester dans le corps');
       assert.strictEqual(resteTexte, false, 'le texte de la légende ne doit plus rester dans le corps');
@@ -1355,6 +1416,14 @@ test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux para
 // — trois paragraphes vides entre les deux tableaux ci-dessous ressortent tous les trois,
 // PLUS un éventuel séparateur injecté.
 
+// Depuis le 21.09.2026, un bloc tableau écrit ses quatre paragraphes de clé AVANT son <w:tbl>
+// de contenu : la zone entre le <w:tbl> du premier bloc et celui du second n'est donc plus
+// UNIQUEMENT le séparateur, elle porte aussi les quatre clés du second bloc. Ce que ce
+// contrôle vérifie reste le même dans son PRINCIPE (repliage à un seul vide, jamais zéro,
+// jamais plusieurs) : le tout premier élément après le <w:tbl> du premier bloc doit être LE
+// séparateur (un unique <w:p> vide), immédiatement suivi de la première clé du second bloc —
+// jamais un second <w:p> vide.
+
 test('manuscrit_gabarit.ecrire : au plus un paragraphe vide sépare deux blocs, même si le manuscrit en portait plusieurs',
   { skip: sansPython }, () => {
     const base = dossierJetable();
@@ -1367,16 +1436,17 @@ test('manuscrit_gabarit.ecrire : au plus un paragraphe vide sépare deux blocs, 
       ]);
       ecrireDepuisSpec(spec, sortie);
       const enfants = enfantsCorps(sortie);
-      // Isole la zone entre les DEUX tableaux produits par CE test (après les deux tableaux
-      // fixes du gabarit) : les indices des <w:tbl> de premier niveau.
       const indicesTbl = enfants.map((e, i) => (e.tag === 'w:tbl' ? i : -1)).filter((i) => i >= 0);
       assert.ok(indicesTbl.length >= 4, 'au moins 4 tableaux attendus (2 fixes + 2 du test)');
-      const [, , iTbl3, iTbl4] = indicesTbl;
-      const entreDeux = enfants.slice(iTbl3 + 1, iTbl4);
-      assert.strictEqual(entreDeux.length, 1,
-        'exactement UN paragraphe doit séparer les deux tableaux du test, obtenu '
-        + JSON.stringify(entreDeux));
-      assert.strictEqual(entreDeux[0].tag, 'w:p');
+      const [, , iTbl3] = indicesTbl;
+      assert.strictEqual(enfants[iTbl3 + 1].tag, 'w:p');
+      assert.strictEqual(enfants[iTbl3 + 1].texte, '',
+        'le tout premier élément après le tableau du premier bloc doit être LE séparateur vide');
+      assert.strictEqual(enfants[iTbl3 + 2].tag, 'w:p');
+      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
+        'la première clé du second bloc doit suivre IMMÉDIATEMENT le séparateur — un second '
+        + 'paragraphe vide signalerait que les trois vides du manuscrit n\'ont pas été '
+        + 'repliés : obtenu ' + JSON.stringify(enfants[iTbl3 + 2]));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -1394,9 +1464,11 @@ test('manuscrit_gabarit.ecrire : deux tableaux directement adjacents (rien entre
       ecrireDepuisSpec(spec, sortie);
       const enfants = enfantsCorps(sortie);
       const indicesTbl = enfants.map((e, i) => (e.tag === 'w:tbl' ? i : -1)).filter((i) => i >= 0);
-      const [, , iTbl3, iTbl4] = indicesTbl;
-      const entreDeux = enfants.slice(iTbl3 + 1, iTbl4);
-      assert.strictEqual(entreDeux.length, 1, 'exactement un séparateur injecté');
+      const [, , iTbl3] = indicesTbl;
+      assert.strictEqual(enfants[iTbl3 + 1].tag, 'w:p');
+      assert.strictEqual(enfants[iTbl3 + 1].texte, '', 'exactement un séparateur injecté');
+      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
+        'la clé du second bloc doit suivre immédiatement le séparateur, jamais un second vide');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -1592,7 +1664,10 @@ test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont �
 // ===================================================================================
 // Table de correspondance (ajout du 19.09.2026, demandé par le superviseur pour un futur
 // module d'annotation) : ecrire() rend `correspondance`, une entrée par paragraphe de CORPS
-// écrit comme <w:p> de premier niveau — jamais pour un bloc figure/tableau.
+// écrit comme <w:p> de premier niveau — jamais pour les paragraphes qu'un bloc figure/tableau
+// écrit lui-même (ses quatre clés, son image), qui n'ont pas de source unique évidente, mais
+// qui COMPTENT bien dans l'indice `sortie` des paragraphes qui les suivent (révision du
+// 21.09.2026, alertée par l'agent de l'annotation : voir le contrôle dédié juste après).
 
 test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque paragraphe de corps, le bon <w:p> de la sortie',
   { skip: sansPython }, () => {
@@ -1611,6 +1686,52 @@ test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque 
 
       const attendus = { 0: 'Premier paragraphe.', 1: 'Second paragraphe.',
                           3: 'Troisième paragraphe.' };
+      const textes = textesWp(enfantsCorps(sortie));
+      for (const c of resultat.correspondance) {
+        assert.strictEqual(textes[c.sortie], attendus[c.source],
+          'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
+          + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Contrôle demandé par l'agent de l'annotation (21.09.2026) : sur une fixture à DEUX blocs
+// figure et UN bloc tableau, la correspondance des paragraphes de corps qui les encadrent doit
+// rester exacte. Avant le correctif de `n_wp` (voir §10 du contrat), un bloc contribuait 0 au
+// compteur alors qu'il écrit RÉELLEMENT 4 ou 5 <w:p> (ses clés, plus l'image d'un bloc figure) :
+// mesuré, ce défaut faisait dérailler 540 entrées sur 706 (76 %) sur les onze manuscrits réels
+// — voir le rapport final pour le détail de cette mesure.
+//
+// Sabotage minimal : dans `_convertir_niveau_racine`, remplacer `compteur_wp += n_wp` par
+// `compteur_wp += (0 if est_bloc else n_wp)` (l'ancien comportement) — ce contrôle rougit.
+
+test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'autre de deux blocs figure et un bloc tableau',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Avant tout.')], { source: 0 }),
+        paragraphe([fragment('', {}, { image: image('un.png', Buffer.from('UN').toString('base64')) })],
+          { source: 1 }),
+        paragraphe([fragment('Entre les deux figures.')], { source: 2 }),
+        paragraphe([fragment('', {}, { image: image('deux.png', Buffer.from('DEUX').toString('base64')) })],
+          { source: 3 }),
+        paragraphe([fragment('Avant le tableau.')], { source: 4 }),
+        tableau([[cellule('A1')]], { source: 5 }),
+        paragraphe([fragment('Après tout.')], { source: 6 }),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      // Quatre paragraphes de corps RÉELS (0, 2, 4, 6) : les deux images et le tableau sont
+      // des blocs, jamais une entrée de correspondance à eux-mêmes.
+      assert.strictEqual(resultat.correspondance.length, 4,
+        'quatre paragraphes de corps attendus dans la correspondance, obtenu '
+        + JSON.stringify(resultat.correspondance));
+
+      const attendus = { 0: 'Avant tout.', 2: 'Entre les deux figures.',
+                          4: 'Avant le tableau.', 6: 'Après tout.' };
       const textes = textesWp(enfantsCorps(sortie));
       for (const c of resultat.correspondance) {
         assert.strictEqual(textes[c.sortie], attendus[c.source],

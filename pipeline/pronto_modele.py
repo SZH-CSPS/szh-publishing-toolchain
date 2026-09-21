@@ -252,10 +252,22 @@ def normaliser_nom_style(nom):
 
 NOM_STYLE_CLE = normaliser_nom_style('SZH Cle')
 NOM_STYLE_AIDE = normaliser_nom_style('SZH Aide')
+# Révision du 21.09.2026 (décision de Robin) : les métadonnées d'un bloc figure/tableau ne
+# vivent plus dans un tableau enveloppe mais dans des paragraphes ordinaires de CE style, juste
+# avant l'image ou le tableau — voir n_blocs_meta()/extraire_bloc() pour l'ancienne forme,
+# conservée en repli, et _extraire_blocs_nouvelle_forme() pour la nouvelle.
+NOM_STYLE_CLE_BLOC = normaliser_nom_style('SZH Cle Abb/Tab')
 
 
 def _style_par(par):
     return normaliser_nom_style(par.style)
+
+
+def _est_cle_bloc(bloc):
+    """Vrai pour un paragraphe SZH Cle Abb/Tab — jamais pour un SZH Cle ordinaire (qui ne
+    forme un bloc que par l'ancienne forme, à l'intérieur d'un tableau enveloppe, jamais posé
+    seul au premier niveau du document)."""
+    return isinstance(bloc, Par) and _style_par(bloc) == NOM_STYLE_CLE_BLOC
 
 
 # ---------------------------------------------------------------------------------
@@ -860,9 +872,35 @@ def _avertir_bloc_mal_forme(tableau, rang, slug):
 #    du Word source à avertir(), ce que ce module ne fait pas aujourd'hui.
 
 
+def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
+    """Partagé par l'ancienne forme (_champs_bloc_meta) et la nouvelle
+    (_champs_bloc_meta_paragraphes) : même code, même message, quelle que soit la forme du
+    bloc — c'est le point que le test différentiel vérifie."""
+    avertir(
+        'bloc-etiquette-inconnue',
+        ['article « %s »' % slug, 'etiquette « %s »' % etiquette, 'valeur « %s »' % valeur],
+        'Un bloc figure ou tableau de cet article porte une étiquette que le gabarit ne '
+        'connaît pas : « %s » (valeur : « %s »). Le tableau reste imprimé dans le texte.'
+        % (etiquette, valeur),
+        'Ein Abbildungs- oder Tabellenblock dieses Artikels enthält eine der Vorlage '
+        'unbekannte Bezeichnung: « %s » (Wert: « %s »). Die Tabelle bleibt im Text gedruckt.'
+        % (etiquette, valeur))
+
+
+def _lire_champ_bloc(texte):
+    """(champ, etiquette, valeur) | (None, etiquette, valeur) | None — découpe UN paragraphe
+    « Étiquette : valeur » ; None si `texte` ne porte pas de ':' du tout (paragraphe qui n'a
+    simplement rien à dire — jamais un avertissement, voir les deux appelants)."""
+    if not texte or ':' not in texte:
+        return None
+    etiquette, _, valeur = texte.partition(':')
+    return LABELS_FIGURE.get(aplatir(etiquette)), etiquette, valeur.strip()
+
+
 def _champs_bloc_meta(row0, slug):
     """(champs, consommee) — légende / texte alternatif / crédit / source lus sur TOUTES
-    les cellules de la rangée 0, dans l'ordre."""
+    les cellules de la rangée 0, dans l'ordre. Ancienne forme (tableau enveloppe) ; voir
+    _champs_bloc_meta_paragraphes() pour la nouvelle."""
     champs = {}
     consommee = True
     for tc in row0:
@@ -871,30 +909,41 @@ def _champs_bloc_meta(row0, slug):
                 continue
             if _style_par(p) == NOM_STYLE_AIDE:
                 continue
-            texte = p.texte
-            if not texte:
+            lu = _lire_champ_bloc(p.texte)
+            if lu is None:
+                if p.texte:
+                    consommee = False
                 continue
-            if ':' not in texte:
-                consommee = False
-                continue
-            etiquette, _, valeur = texte.partition(':')
-            champ = LABELS_FIGURE.get(aplatir(etiquette))
-            valeur = valeur.strip()
+            champ, etiquette, valeur = lu
             if champ is None:
                 consommee = False
-                avertir(
-                    'bloc-etiquette-inconnue',
-                    ['article « %s »' % slug, 'etiquette « %s »' % etiquette,
-                     'valeur « %s »' % valeur],
-                    'Un bloc figure ou tableau de cet article porte une étiquette que le '
-                    'gabarit ne connaît pas : « %s » (valeur : « %s »). Le tableau reste '
-                    'imprimé dans le texte.' % (etiquette, valeur),
-                    'Ein Abbildungs- oder Tabellenblock dieses Artikels enthält eine der '
-                    'Vorlage unbekannte Bezeichnung: « %s » (Wert: « %s »). Die Tabelle '
-                    'bleibt im Text gedruckt.' % (etiquette, valeur))
+                _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug)
                 continue
             if valeur:
                 champs[champ] = valeur
+    return champs, consommee
+
+
+def _champs_bloc_meta_paragraphes(paragraphes, slug):
+    """(champs, consommee) — même lecture que _champs_bloc_meta(), sur une liste de
+    paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme, révision du 21.09.2026) au lieu
+    d'une rangée de cellules : plus de tableau autour, mais la même règle « Étiquette : valeur »
+    et le même avertissement en cas d'étiquette inconnue."""
+    champs = {}
+    consommee = True
+    for p in paragraphes:
+        lu = _lire_champ_bloc(p.texte)
+        if lu is None:
+            if p.texte:
+                consommee = False
+            continue
+        champ, etiquette, valeur = lu
+        if champ is None:
+            consommee = False
+            _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug)
+            continue
+        if valeur:
+            champs[champ] = valeur
     return champs, consommee
 
 
@@ -915,7 +964,11 @@ def _contenu_bloc(row1):
 def extraire_bloc(tableau, slug, indice=0):
     """(nature, champs, consommee, tbl_interne) pour LA PAIRE de rangées n° `indice` (0 pour
     le premier bloc, 1 pour le second si deux blocs sont collés dans le même tableau, etc.)
-    d'un tableau reconnu par est_bloc_meta()/n_blocs_meta()."""
+    d'un tableau reconnu par est_bloc_meta()/n_blocs_meta() — l'ANCIENNE forme (tableau
+    enveloppe). Voie de REPLI depuis le 21.09.2026 (décision de Robin) : un document rempli
+    depuis maintenant emploie _extraire_blocs_nouvelle_forme() ; celle-ci reste pour lire les
+    documents déjà remplis à l'ancienne forme, jamais retirée — voir principal(), qui pose
+    l'avertissement 'bloc-ancienne-forme' quand ce chemin est emprunté."""
     row0, row1 = tableau.rangees[indice * 2], tableau.rangees[indice * 2 + 1]
     champs, consommee = _champs_bloc_meta(row0, slug)
     nature, tbl_interne = _contenu_bloc(row1)
@@ -931,6 +984,89 @@ def extraire_bloc(tableau, slug, indice=0):
             'Ergänzen Sie sie im Dokument und importieren Sie den Artikel neu.'
             % champs.get('legende', ''))
     return nature, champs, consommee, tbl_interne
+
+
+# ---------------------------------------------------------------------------------
+# Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) : 1 à 4
+# paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2 paragraphes de distance (un
+# paragraphe vide toléré entre les deux — une fausse manipulation courante) par un paragraphe
+# qui porte une image, ou par un tableau. Plus de tableau enveloppe : la bordure du style
+# dessine seule le cadre, à l'écriture (manuscrit_gabarit.py) comme à la lecture (ici, rien à
+# faire de la bordure elle-même — seul le STYLE compte pour reconnaître le bloc).
+
+def _cherche_contenu_bloc_nouvelle_forme(blocs, depart):
+    """(indice, 'image'|'table') du contenu d'un bloc à `depart` (le premier indice APRÈS le
+    groupe de clés), ou (None, None). La fenêtre ne dépasse JAMAIS 2 paragraphes : le contenu
+    est cherché à `depart`, puis — SEULEMENT si ce premier paragraphe est vide (ni texte ni
+    image, la fausse manipulation tolérée par le contrat) — à `depart + 1`. Un paragraphe de
+    corps bien réel (du texte, mais ni image ni tableau) arrête la recherche NET : il n'est
+    jamais traversé, même s'il reste un paragraphe de marge dans la fenêtre — ce qui rend une
+    fenêtre de 3 paragraphes (deux vides puis le contenu) non reconnue, comme le veut le
+    contrat."""
+    n = len(blocs)
+    for decalage in (0, 1):
+        idx = depart + decalage
+        if idx >= n:
+            return None, None
+        candidat = blocs[idx]
+        if isinstance(candidat, Tableau):
+            return idx, 'table'
+        if isinstance(candidat, Par):
+            if any(candidat.images):
+                return idx, 'image'
+            if not candidat.texte:
+                continue                  # paragraphe vide toléré : on tente le suivant
+        return None, None
+    return None, None
+
+
+def _avertir_cles_sans_contenu(champs, slug):
+    legende = champs.get('legende', '')
+    avertir(
+        'bloc-cles-sans-contenu',
+        ['article « %s »' % slug, 'legende « %s »' % legende],
+        'Une ou plusieurs clés de figure ou de tableau (« Légende : », « Texte alternatif : »,'
+        ' « Crédit : », « Source : ») ont été trouvées dans cet article, mais ni une image ni '
+        'un tableau ne les suit dans les un ou deux paragraphes qui viennent juste après : '
+        'rien n\'a été reconnu comme un bloc, ces paragraphes restent tels quels dans le '
+        'texte. Vérifiez leur position par rapport à l\'image ou au tableau dans le document.',
+        'In diesem Artikel wurden Schlüsselabsätze eines Abbildungs- oder Tabellenblocks '
+        'gefunden (« Légende : », « Texte alternatif : », « Crédit : », « Source : »), aber '
+        'weder ein Bild noch eine Tabelle folgt in den ein oder zwei Absätzen unmittelbar '
+        'danach: nichts wurde als Block erkannt, diese Absätze bleiben unverändert im Text. '
+        'Prüfen Sie ihre Position gegenüber dem Bild oder der Tabelle im Dokument.')
+
+
+def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug):
+    """Liste de dicts {'pos', 'nature', 'champs', 'consommee', 'tbl_interne'} — un par bloc
+    figure/tableau à la NOUVELLE forme trouvé dans `blocs` (hors table1_elem/table2_elem, qui
+    ne sont de toute façon jamais des Par et ne peuvent donc jamais démarrer un groupe de clés).
+    `pos` est l'indice du PREMIER paragraphe de clé, dans `blocs` : il sert à `principal()` à
+    fusionner cette liste avec celle de l'ancienne forme, dans l'ordre du document — jamais
+    exposé dans stats['blocs'] (voir principal()), qui doit rendre la MÊME forme quelle que
+    soit la forme d'entrée (c'est le test différentiel, pronto-gabarits.test.js)."""
+    resultat = []
+    n = len(blocs)
+    i = 0
+    while i < n:
+        elem = blocs[i]
+        if elem is table1_elem or elem is table2_elem or not _est_cle_bloc(elem):
+            i += 1
+            continue
+        depart = i
+        fin = depart
+        while fin < n and fin - depart < 4 and _est_cle_bloc(blocs[fin]):
+            fin += 1
+        champs, consommee = _champs_bloc_meta_paragraphes(blocs[depart:fin], slug)
+        idx_contenu, nature = _cherche_contenu_bloc_nouvelle_forme(blocs, fin)
+        if nature is None:
+            _avertir_cles_sans_contenu(champs, slug)
+            i = fin                       # les paragraphes de clé restent tels quels
+            continue
+        resultat.append({'pos': depart, 'nature': nature, 'champs': champs,
+                         'consommee': consommee, 'tbl_interne': nature == 'table'})
+        i = idx_contenu + 1
+    return resultat
 
 
 # ---------------------------------------------------------------------------------
@@ -1056,6 +1192,19 @@ def principal(blocs, chemin_source, slug, dossier):
             if ressemble_a_un_bloc(tbl):
                 _avertir_bloc_mal_forme(tbl, k + 1, slug)
             continue
+        avertir(
+            'bloc-ancienne-forme',
+            ['article « %s »' % slug, 'tableau %d' % (k + 1)],
+            'Le tableau %d de cet article utilise l\'ancienne forme de bloc figure ou tableau '
+            '(un tableau à deux rangées) : il a été lu normalement, mais cette forme est '
+            'dépassée depuis le 21.09.2026. Convertissez-le vers la nouvelle forme (quatre '
+            'paragraphes « SZH Cle Abb/Tab » suivis de l\'image ou du tableau) au prochain '
+            'remaniement du document.' % (k + 1),
+            'Die Tabelle %d dieses Artikels verwendet die alte Form eines Abbildungs- oder '
+            'Tabellenblocks (eine zweizeilige Tabelle): sie wurde normal gelesen, ist aber '
+            'seit dem 21.09.2026 veraltet. Wandeln Sie sie bei der nächsten Überarbeitung des '
+            'Dokuments in die neue Form um (vier Absätze «SZH Cle Abb/Tab», gefolgt vom Bild '
+            'oder der Tabelle).' % (k + 1))
         if n_paires > 1:
             # Deux (ou plus) blocs collés, fusionnés en un seul tableau Word — voir
             # n_blocs_meta(). Ne concerne pas que les figures : deux tableaux voisins, ou un
@@ -1078,11 +1227,21 @@ def principal(blocs, chemin_source, slug, dossier):
         sous_consommees = []
         for p in range(n_paires):
             nature, champs, consommee, tbl_interne = extraire_bloc(tbl, slug, p)
-            blocs_figtab.append({'k': k, 'nature': nature, 'champs': champs,
+            blocs_figtab.append({'pos': idx_bloc, 'k': k, 'nature': nature, 'champs': champs,
                                  'consommee': consommee,
                                  'tbl_interne': tbl_interne is not None})
             sous_consommees.append(consommee)
         k_pleinement_consomme[k] = all(sous_consommees)
+
+    # Nouvelle forme (révision du 21.09.2026) : jamais de tableau enveloppe, donc jamais rien
+    # à ajouter à `tables_consommees` — il n'y a pas de tableau à faire sauter par la chaîne
+    # d'import pour un bloc figure (le contenu est un simple paragraphe), et le tableau d'un
+    # bloc tableau, n'étant plus imbriqué dans une enveloppe, n'a lui non plus RIEN à faire
+    # sauter : il doit se rendre comme n'importe quel tableau de contenu ordinaire. C'est une
+    # différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md, révision du
+    # 21.09.2026) — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
+    blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug)
+    blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
 
     tables_consommees = []
     for k, (idx_bloc, tbl) in enumerate(tables):

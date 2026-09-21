@@ -69,6 +69,11 @@ const FABRICANTE_PY = `#!/usr/bin/env python3
 import json, sys, zipfile
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+
+RIDS_IMAGES = []   # (rid, nomfichier) — accumulé pendant la construction, écrit dans .rels
 
 
 def esc(s):
@@ -76,10 +81,21 @@ def esc(s):
             .replace('"', "&quot;"))
 
 
-def para(style, texte):
+def drawing(nom_image):
+    # Minimal, mais tout ce que pronto_docx.images_de_paragraphe() cherche : un w:drawing
+    # portant quelque part un wp:extent (surface) et un a:blip r:embed (résolu via .rels).
+    rid = 'rIdImg%d' % (len(RIDS_IMAGES) + 1)
+    RIDS_IMAGES.append((rid, nom_image))
+    return ('<w:drawing xmlns:wp="%s" xmlns:a="%s" xmlns:r="%s">'
+            '<wp:extent cx="100000" cy="100000"/><a:blip r:embed="%s"/></w:drawing>'
+            % (WP, A, R, rid))
+
+
+def para(style, texte, image=None):
     ppr = ('<w:pPr><w:pStyle w:val="%s"/></w:pPr>' % esc(style)) if style else ''
     r = '<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % esc(texte) if texte else ''
-    return '<w:p>%s%s</w:p>' % (ppr, r)
+    d = '<w:r>%s</w:r>' % drawing(image) if image else ''
+    return '<w:p>%s%s%s</w:p>' % (ppr, r, d)
 
 
 def contenu_item(it):
@@ -88,7 +104,7 @@ def contenu_item(it):
             return table(it['tbl'])
         if 'p' in it:
             s, t = it['p']
-            return para(s, t)
+            return para(s, t, it.get('image'))
         raise ValueError('élément de cellule inconnu : %r' % it)
     style, texte = it
     return para(style, texte)
@@ -122,7 +138,7 @@ def marqueurs_page(n):
 def bloc(b):
     if 'p' in b:
         style, texte = b['p']
-        return para(style, texte)
+        return para(style, texte, b.get('image'))
     if 'tbl' in b:
         return table(b['tbl'])
     if 'marqueurs' in b:
@@ -141,6 +157,16 @@ def build(chemin, spec):
     with zipfile.ZipFile(chemin, 'w') as z:
         z.writestr('word/document.xml', doc_xml.encode('utf-8'))
         z.writestr('word/styles.xml', styles_xml.encode('utf-8'))
+        if RIDS_IMAGES:
+            rels = ('<?xml version="1.0" encoding="UTF-8"?>'
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+                    'relationships">')
+            for rid, nom in RIDS_IMAGES:
+                rels += ('<Relationship Id="%s" Type="http://schemas.openxmlformats.org/'
+                         'officeDocument/2006/relationships/image" Target="media/%s"/>'
+                         % (esc(rid), esc(nom)))
+            rels += '</Relationships>'
+            z.writestr('word/_rels/document.xml.rels', rels.encode('utf-8'))
 
 
 if __name__ == '__main__':
@@ -165,8 +191,12 @@ test.after(() => {
 
 // Styles de base présents dans tout document fabriqué : les deux styles maison du gabarit
 // Pronto (reconnus par leur NOM, pas par leur styleId — d'où l'écart volontaire entre
-// l'id "SZHCle" et le nom « SZH Cle ») et Normal pour les valeurs.
-const STYLES_BASE = [['SZHCle', 'SZH Cle'], ['SZHAide', 'SZH Aide'], ['Normal', 'Normal']];
+// l'id "SZHCle" et le nom « SZH Cle ») et Normal pour les valeurs. « SZH Cle Abb/Tab »
+// (révision du 21.09.2026) : le style des clés de bloc à la NOUVELLE forme.
+const STYLES_BASE = [
+  ['SZHCle', 'SZH Cle'], ['SZHAide', 'SZH Aide'], ['Normal', 'Normal'],
+  ['SZHCleAbbTab', 'SZH Cle Abb/Tab']
+];
 
 function fabriquerDocx(chemin, spec) {
   const r = python([fabricantePy(), chemin, JSON.stringify(spec)]);
@@ -489,8 +519,14 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
       }
     ]
   });
-  assert.strictEqual(vu.avertissements.length, 0,
-    'un bloc tableau bien formé ne devrait rien signaler : ' + vu.avertissements.join(' / '));
+  // L'ancienne forme (tableau enveloppe) est encore lue, mais avertit désormais qu'il faut la
+  // convertir (révision du 21.09.2026) — c'est le SEUL avertissement attendu ici.
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('bloc-ancienne-forme') === -1), [],
+    'un bloc tableau bien formé ne devrait signaler que la conversion vers la nouvelle forme : '
+    + vu.avertissements.join(' / '));
+  assert.ok(vu.avertissements.find((l) => l.indexOf('bloc-ancienne-forme') !== -1),
+    'l’ancienne forme, bien lue, devrait quand même avertir qu’elle est dépassée');
   assert.strictEqual(vu.stats.blocs.length, 1, 'le bloc n’a pas été trouvé');
   const b = vu.stats.blocs[0];
   assert.strictEqual(b.nature, 'table', 'la nature du bloc n’est pas « table »');
@@ -519,8 +555,10 @@ test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellu
       }
     ]
   });
-  assert.strictEqual(vu.avertissements.length, 0,
-    'un bloc bien formé à plusieurs cellules ne devrait rien signaler : ' + vu.avertissements.join(' / '));
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('bloc-ancienne-forme') === -1), [],
+    'un bloc bien formé à plusieurs cellules ne devrait signaler que la conversion vers la '
+    + 'nouvelle forme : ' + vu.avertissements.join(' / '));
   const b = vu.stats.blocs[0];
   assert.strictEqual(b.nature, 'table');
   assert.strictEqual(b.legende, 'Résultats bruts',
@@ -852,6 +890,236 @@ test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne 
 });
 
 // ---- 19. Un bloc bien formé ne déclenche jamais ce code ---------------------------------
+
+// ---- 21. Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) -
+//
+// Plus de tableau enveloppe : 1 à 4 paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2
+// paragraphes de distance (un paragraphe vide toléré) par un paragraphe portant une image, ou
+// par un tableau. Un document reçoit un fichier de relations (word/_rels/document.xml.rels)
+// dès qu'une image y est posée — voir drawing()/RIDS_IMAGES dans FABRICANTE_PY.
+
+function clesAbbTab(champs) {
+  // champs : liste de chaînes "Étiquette : valeur" (ordre quelconque, comme le contrat
+  // l'autorise) — un paragraphe SZH Cle Abb/Tab par entrée.
+  return champs.map((t) => ({ p: ['SZHCleAbbTab', t] }));
+}
+
+function pVide() {
+  return { p: ['Normal', ''] };
+}
+
+function pImage(nomImage) {
+  return { p: ['Normal', ''], image: nomImage || 'figure.png' };
+}
+
+const CHAMPS_TEST = ['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
+  'Crédit : Photographe X', 'Source : Archives Y'];
+
+test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directement : reconnu', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('21-nouvelle-d1', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST),
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 1, 'le bloc nouvelle forme n’a pas été trouvé : '
+    + JSON.stringify(vu.stats.blocs));
+  const b = vu.stats.blocs[0];
+  assert.strictEqual(b.nature, 'image');
+  assert.strictEqual(b.legende, 'Une figure de test');
+  assert.strictEqual(b.consommee, true);
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('bloc-cles-sans-contenu') !== -1), [],
+    'un bloc bien formé à distance 1 ne devrait jamais avertir de contenu absent : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : nouvelle forme, distance 2 — un paragraphe vide toléré entre les clés et l’image', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('22-nouvelle-d2', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST),
+      pVide(),
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 1,
+    'le bloc à distance 2 (un vide toléré) n’a pas été reconnu : ' + JSON.stringify(vu.stats.blocs));
+  assert.strictEqual(vu.stats.blocs[0].nature, 'image');
+});
+
+test('pronto-lire.py : nouvelle forme, distance 3 (deux vides) — NON reconnu, avertit, rien ne se perd', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('23-nouvelle-d3', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST),
+      pVide(),
+      pVide(),
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 0,
+    'une fenêtre de 3 paragraphes (deux vides) n’aurait pas dû être reconnue : '
+    + JSON.stringify(vu.stats.blocs));
+  const ligne = vu.avertissements.find((l) => l.indexOf('bloc-cles-sans-contenu') !== -1);
+  assert.ok(ligne, 'aucun avertissement pour la fenêtre trop large : ' + vu.avertissements.join(' / '));
+  assert.ok(ligne.indexOf('Une figure de test') !== -1,
+    'la légende annoncée n’apparaît pas dans l’avertissement : ' + ligne);
+});
+
+test('pronto-lire.py : nouvelle forme — un vrai paragraphe de corps interposé arrête la fenêtre net', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('23b-corps-interpose', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST),
+      { p: ['Normal', 'Un paragraphe de corps bien réel, pas une fausse manipulation.'] },
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 0,
+    'un paragraphe de corps réel n’aurait jamais dû être traversé : ' + JSON.stringify(vu.stats.blocs));
+  const ligne = vu.avertissements.find((l) => l.indexOf('bloc-cles-sans-contenu') !== -1);
+  assert.ok(ligne, 'aucun avertissement malgré la fenêtre cassée : ' + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : nouvelle forme — clés sans aucun contenu nulle part dans le document', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('24-cles-sans-contenu', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST)
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 0);
+  const ligne = vu.avertissements.find((l) => l.indexOf('bloc-cles-sans-contenu') !== -1);
+  assert.ok(ligne, 'aucun avertissement pour des clés sans le moindre contenu : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne T (rien à faire sauter)', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('25-nouvelle-table', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(CHAMPS_TEST),
+      { tbl: TABLEAU_INTERNE }
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 1);
+  const b = vu.stats.blocs[0];
+  assert.strictEqual(b.nature, 'table');
+  assert.strictEqual(b.tbl_interne, true);
+  assert.strictEqual(b.consommee, true);
+  // Différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md) : le
+  // tableau n'est plus enveloppé, rien ne doit donc le faire sauter à l'import — seuls les
+  // tableaux 1 et 2 (métadonnées, auteurs) sont consommés.
+  assert.deepStrictEqual(vu.stats.tableaux_consommes, [1, 2],
+    'le tableau de contenu de la nouvelle forme n’aurait pas dû recevoir de ligne T : '
+    + JSON.stringify(vu.stats.tableaux_consommes));
+  assert.ok(!/^T\t3$/m.test(vu.instructions),
+    'une ligne T3 est apparue pour un tableau de contenu qui doit se rendre normalement :\n'
+    + vu.instructions);
+});
+
+test('pronto-lire.py : un paragraphe SZH Cle ORDINAIRE (pas Abb/Tab) au premier niveau n’est jamais un bloc', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('26-cle-ordinaire', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      { p: ['SZHCle', 'Légende : ne devrait rien déclencher'] },
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 0,
+    'un SZH Cle ordinaire hors des deux tableaux fixes a pourtant été pris pour un bloc : '
+    + JSON.stringify(vu.stats.blocs));
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('bloc-cles-sans-contenu') !== -1), [],
+    'un SZH Cle ordinaire ne devrait même pas être tenté comme bloc : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais avec l’avertissement de conversion', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('27-ancienne-forme-avertit', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      {
+        tbl: [
+          ligneBlocMeta(CHAMPS_TEST),
+          ligneBlocContenuTable(TABLEAU_INTERNE)
+        ]
+      }
+    ]
+  });
+  const ligne = vu.avertissements.find((l) => l.indexOf('bloc-ancienne-forme') !== -1);
+  assert.ok(ligne, 'aucun avertissement pour l’ancienne forme : ' + vu.avertissements.join(' / '));
+  assert.strictEqual(vu.stats.blocs.length, 1);
+  assert.strictEqual(vu.stats.blocs[0].nature, 'table');
+});
+
+// ---- 22. Test différentiel : même bloc logique, ancienne et nouvelle forme, même sortie ---
+//
+// C'est le contrôle demandé par le contrat (§5.3, révision du 21.09.2026) : la fiche, les
+// lignes B/BT et stats.blocs doivent être IDENTIQUES pour le même bloc logique, quelle que
+// soit la forme d'entrée — SAUF la ligne T (voir le test 25 ci-dessus : la nouvelle forme n'a
+// justement plus de tableau enveloppe à faire sauter, une différence assumée et documentée).
+
+test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle forme, même stats.blocs', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const specBase = (blocBody) => ({
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...blocBody
+    ]
+  });
+
+  const vuAncienne = importer('28a-differentiel-ancienne', specBase([{
+    tbl: [ligneBlocMeta(CHAMPS_TEST), ligneBlocContenuTable(TABLEAU_INTERNE)]
+  }]));
+  const vuNouvelle = importer('28b-differentiel-nouvelle', specBase([
+    ...clesAbbTab(CHAMPS_TEST),
+    { tbl: TABLEAU_INTERNE }
+  ]));
+
+  assert.deepStrictEqual(vuNouvelle.stats.blocs, vuAncienne.stats.blocs,
+    'stats.blocs diffère entre l’ancienne et la nouvelle forme pour le même bloc logique :\n'
+    + 'ancienne=' + JSON.stringify(vuAncienne.stats.blocs) + '\nnouvelle='
+    + JSON.stringify(vuNouvelle.stats.blocs));
+
+  const sansSource = (fiche) => (fiche || '').split(/\r?\n/)
+    .filter((l) => l.indexOf('source:') !== 0).join('\n');
+  assert.strictEqual(sansSource(vuNouvelle.fiche), sansSource(vuAncienne.fiche),
+    'la fiche (hors ligne source:) diffère entre l’ancienne et la nouvelle forme');
+
+  // Divergence ASSUMÉE (voir le test 25 et TODO-BRANCHEMENT-PARSER-V2.md) : l'ancienne forme
+  // consomme le tableau enveloppe (ligne T3), la nouvelle n'a rien à faire sauter.
+  assert.deepStrictEqual(vuAncienne.stats.tableaux_consommes, [1, 2, 3]);
+  assert.deepStrictEqual(vuNouvelle.stats.tableaux_consommes, [1, 2]);
+});
 
 test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais bloc-mal-forme', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }

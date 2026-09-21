@@ -318,11 +318,36 @@ reconnaît le corps par son nom teste les deux formes.
 
 ### 5.3 Les blocs
 
-- **Chaque image** devient un bloc figure du gabarit : une rangée de métadonnées (`Légende :`,
-  `Texte alternatif :`, `Crédit :`, `Source :`, en style `SZH Cle`) puis l'image. Les champs que
-  le manuscrit ne fournit pas restent **vides et listés dans le rapport**.
-- **Chaque tableau** reçoit en première rangée une cellule fusionnée sur toute sa largeur,
-  portant les mêmes métadonnées.
+**Révision du 21.09.2026 (décision de Robin) : plus de tableau enveloppe.** Les métadonnées
+d'un bloc figure ou tableau sont des **paragraphes ordinaires placés juste avant** l'image ou le
+tableau, dans le style **« SZH Cle Abb/Tab »** (styleId `SZHCleAbbTab` côté `.docx`, display-name
+identique côté `.odt`) — clone de « SZH Cle », avec une bordure de 1,5 pt sur le haut, la gauche
+et la droite, **jamais en bas** : les paragraphes consécutifs de ce style dessinent ainsi un seul
+cadre ouvert au-dessus du contenu (Word/LibreOffice fusionnent les bordures de paragraphes
+adjacents identiques). L'ancien tableau enveloppe à deux rangées (rangée 1 : cellule fusionnée en
+style `SZH Cle` ; rangée 2 : l'image ou le tableau imbriqué) reste reconnu **en repli**, pour les
+documents déjà remplis à l'ancienne forme — avec un avertissement invitant à le convertir.
+
+- **Chaque image** devient un bloc figure : 1 à 4 paragraphes de clé (`Légende :`,
+  `Texte alternatif :`, `Crédit :`, `Source :`, dans un ordre quelconque, l'étiquette avant le
+  premier deux-points) puis l'image, **directement** — plus de tableau, plus de rangée. Les
+  champs que le manuscrit ne fournit pas restent **vides et listés dans le rapport**.
+- **Chaque tableau** reçoit ses paragraphes de clé juste avant lui, puis le tableau lui-même
+  **directement au premier niveau du document** — il n'est plus jamais imbriqué dans une cellule
+  d'enveloppe.
+- **Détection** : les paragraphes de clé sont suivis, **à 1 ou 2 paragraphes de distance** (un
+  paragraphe vide toléré entre les clés et le contenu — une fausse manipulation courante), par un
+  paragraphe portant une image ou par un tableau. Sans contenu trouvé dans cette fenêtre, les
+  paragraphes restent tels quels et un avertissement (`bloc-cles-sans-contenu`) est émis — jamais
+  une décision silencieuse. Un paragraphe `SZH Cle` ordinaire (sans Abb/Tab) au premier niveau du
+  document n'est **jamais** pris pour un bloc — il ne peut en former un qu'à l'intérieur de
+  l'ancienne forme, jamais posé seul.
+- **Conséquence sur la chaîne d'import** (§ « point d'intégration », `pronto_modele.py`) : la
+  dette historique — `docx-tables.py` ne sait pas déballer un tableau imbriqué dans un bloc
+  consommé — ne s'applique plus qu'aux documents à l'ANCIENNE forme. À la nouvelle forme, le
+  contenu d'un bloc tableau n'est plus imbriqué dans rien : aucune ligne `T` (tableau consommé)
+  n'est émise pour lui, il se rend comme un tableau de corps ordinaire. Un bloc figure, lui, n'a
+  jamais eu de tableau à faire sauter (voir `TODO-BRANCHEMENT-PARSER-V2.md`).
 - Une **légende déjà présente** (paragraphe voisin commençant par « Figure 1 », « Abbildung 2 »,
   « Tableau 3 »…, lexique `RE_LEGENDE` de `docx-titres.py`) est reprise dans `Légende :` et
   retirée du corps, **avec sa mise en forme** (italique, exposant…), jamais aplatie en texte
@@ -934,6 +959,22 @@ jamais d'HTML à la main.
 
 Tous constatés, aucun supposé, datés. Ils sont la valeur de ce document : les corriger ailleurs
 sans les relire ici revient à les repayer.
+
+**21.09.2026 — retirer le tableau enveloppe d'un bloc déplace le décompte des `<w:p>`, pas
+seulement leur forme.** `_convertir_niveau_racine()` calcule `correspondance` (§7 ter, §8) en
+comptant les `<w:p>` qu'elle écrit ; avant cette révision, un bloc entier valait TOUJOURS zéro
+`<w:p>` (il n'écrivait qu'un `<w:tbl>`). À la nouvelle forme, un bloc écrit RÉELLEMENT 4 ou 5
+`<w:p>` de premier niveau (les paragraphes de clé, plus l'image d'un bloc figure) — sans en tenir
+compte, le compteur déraillait dès le premier bloc rencontré et toute la correspondance qui le
+suit pointait le mauvais paragraphe. Mesuré en sabotant le correctif lui-même (`compteur_wp +=
+n_wp` → `compteur_wp += (0 if est_bloc else n_wp)`) puis en rejouant le contrôle du corpus réel
+(onze manuscrits, `manuscrit-gabarit.test.js`) : **540 entrées sur 706 (76 %)** pointaient le
+mauvais paragraphe. Alerté en cours de chantier par l'agent en charge de l'annotation, qui avait
+mesuré la même dérive sur `2-fin-de-document_Article_RSPS.docx` (38 désaccords sur ses 40
+premières entrées) — un signalement redondant avec le correctif déjà posé ici, mais qui en a
+confirmé l'ampleur réelle par une mesure indépendante. Corrigé en
+donnant à chaque segment son propre `n_wp` (1 pour un paragraphe de corps, 4 pour un bloc
+tableau, 5 pour un bloc figure) au lieu de la simple alternative « bloc ou pas ».
 
 **18.09.2026 — `docx+styles` existe, `odt+styles` n'existe pas.** pandoc 3.5 répond « The
 extension styles is not supported for odt ». Ne jamais bâtir la conservation des styles

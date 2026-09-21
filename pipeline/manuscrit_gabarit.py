@@ -83,6 +83,13 @@ import manuscrit_modele as mm
 STYLE_TITRE = {1: 'Titre1', 2: 'Titre2', 3: 'Titre3'}
 STYLE_CORPS = 'Corpsdetexte'
 STYLE_CLE = 'SZHCle'
+# Révision du 21.09.2026 (décision de Robin) : les métadonnées d'un bloc figure/tableau ne
+# vont plus dans un tableau enveloppe, mais dans des paragraphes de CE style, juste avant
+# l'image ou le tableau — clone de SZHCle avec une bordure ouverte (haut/gauche/droite, pas en
+# bas), ajoutée à word/styles.xml du gabarit. Les paragraphes consécutifs de ce style dessinent
+# un seul cadre : Word fusionne les bordures de paragraphes adjacents identiques — c'est cette
+# propriété du format qui rend inutile toute table enveloppe ici.
+STYLE_CLE_ABB_TAB = 'SZHCleAbbTab'
 
 # docx-titres.py, RE_LEGENDE : reconnaît une légende déjà écrite dans le manuscrit (« Figure
 # 1 », « Abbildung 2 », « Tableau 3 »…) — copié tel quel, voir l'en-tête pour la raison (nom
@@ -99,12 +106,11 @@ RE_LEGENDE = re.compile(
 CHAMPS_BLOC = (('legende', 'Légende'), ('alt', 'Texte alternatif'),
                ('credit', 'Crédit'), ('source', 'Source'))
 
-# Largeur de la table qui enveloppe un bloc figure/tableau, en vingtièmes de point (dxa) —
-# mesurée sur le bloc figure d'exemple du gabarit livré (w:tblW w:w="8220").
-LARGEUR_BLOC_DXA = 8220
-# Largeur par défaut d'un tableau de contenu IMBRIQUÉ (le tableau du manuscrit lui-même, posé
-# dans la rangée 1 d'un bloc tableau) — un peu moins que LARGEUR_BLOC_DXA pour tenir dans la
-# marge intérieure de la cellule qui l'enveloppe (tblCellMar mesurée : 85 dxa de chaque côté).
+# Largeur par défaut d'un tableau de contenu d'un bloc tableau (le tableau du manuscrit
+# lui-même — depuis le 21.09.2026, posé directement au premier niveau, plus jamais imbriqué
+# dans une cellule d'enveloppe) ou d'un tableau imbriqué ailleurs (note, cellule) — mesurée sur
+# le bloc figure d'exemple du gabarit livré (l'ancienne largeur de l'enveloppe, w:tblW
+# w:w="8220", moins une marge raisonnable).
 LARGEUR_TABLEAU_INTERNE_DXA = 8000
 
 # Bordures/marges du bloc figure/tableau — copiées telles quelles depuis le bloc figure
@@ -683,7 +689,7 @@ def _runs_xml(fragments, registre, espace='document'):
 def _paragraphe_simple_xml(texte, style_id):
     """Un paragraphe à un seul run de texte plat, sans mise en forme — les lignes
     d'étiquette (« Texte alternatif : … ») des blocs figure/tableau qui n'ont pas de fragments
-    à préserver (voir _rangee_meta_xml pour la Légende, seul champ qui peut en avoir)."""
+    à préserver (voir _meta_paragraphes_xml pour la Légende, seul champ qui peut en avoir)."""
     return ('<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>'
             '<w:r><w:t xml:space="preserve">%s</w:t></w:r></w:p>' % (style_id, _echapper(texte)))
 
@@ -830,20 +836,24 @@ def _tableau_xml(tableau, registre, espace='document'):
 
 
 # ---------------------------------------------------------------------------------
-# Blocs figure/tableau — §5.3 : une rangée de métadonnées (Légende/Texte alternatif/Crédit/
-# Source, style SZH Cle) puis le contenu. Le gabarit livré ne pose qu'UNE colonne pour ce
-# tableau (mesuré : tblGrid à un seul w:gridCol) — la « cellule fusionnée sur toute la
-# largeur » du §5.3 est donc DÉJÀ acquise par construction, aucun w:gridSpan n'est nécessaire
-# ici (à la différence du tableau du MANUSCRIT lui-même, qui peut avoir plusieurs colonnes,
-# voir _tableau_xml ci-dessus).
+# Blocs figure/tableau — révision du 21.09.2026 (décision de Robin) : quatre paragraphes de
+# métadonnées (Légende/Texte alternatif/Crédit/Source, style SZH Cle Abb/Tab) puis le contenu
+# — une image en ligne, ou le tableau du manuscrit directement. Plus de tableau enveloppe :
+# c'est la bordure ouverte du style (haut/gauche/droite, pas en bas — voir word/styles.xml du
+# gabarit) qui dessine seule le cadre, les paragraphes consécutifs de même bordure se
+# fusionnant visuellement dans Word. Le risque mesuré au §10 du contrat (LibreOffice qui fond
+# deux `w:tbl`/`table:table` adjacents) ne peut plus se produire pour un bloc FIGURE, qui n'a
+# plus de tableau du tout ; pour un bloc TABLEAU, il ne peut plus se produire non plus, puisque
+# son contenu est désormais TOUJOURS précédé d'au moins un paragraphe de clé — deux tableaux ne
+# peuvent donc plus jamais se toucher directement à cause d'un bloc.
 
-def _rangee_meta_xml(champs, registre):
-    """`champs['legende']` peut être soit une chaîne (Crédit/Source/Texte alternatif, ou
-    Légende sans contenu retrouvé dans le manuscrit — jamais inventée), soit une LISTE DE
-    FRAGMENTS (la légende déjà écrite dans le manuscrit, préservée avec sa mise en forme —
-    voir _cherche_legende). Défaut mesuré, corrigé ici : une légende aplatie en texte plat
-    perdait ses exposants (2 occurrences sur 2 dans le corpus), l'ancienne version ne
-    produisant qu'un texte brut pour les quatre champs sans distinction."""
+def _meta_paragraphes_xml(champs, registre):
+    """Les quatre paragraphes de métadonnées d'un bloc, en style SZH Cle Abb/Tab — remplace
+    l'ancienne rangée de tableau (_rangee_meta_xml). `champs['legende']` peut être soit une
+    chaîne (Crédit/Source/Texte alternatif, ou Légende sans contenu retrouvé dans le manuscrit
+    — jamais inventée), soit une LISTE DE FRAGMENTS (la légende déjà écrite dans le manuscrit,
+    préservée avec sa mise en forme — voir _cherche_legende) : une légende aplatie en texte
+    plat perdrait ses exposants, d'où la distinction."""
     paras = []
     for cle, label in CHAMPS_BLOC:
         valeur = champs.get(cle)
@@ -851,34 +861,29 @@ def _rangee_meta_xml(champs, registre):
             runs = _runs_xml(valeur, registre)
             paras.append('<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>'
                          '<w:r><w:t xml:space="preserve">%s : </w:t></w:r>%s</w:p>'
-                          % (STYLE_CLE, _echapper(label), runs))
+                          % (STYLE_CLE_ABB_TAB, _echapper(label), runs))
         else:
             texte_plat = valeur.strip() if isinstance(valeur, str) else ''
             texte = '%s : %s' % (label, texte_plat) if texte_plat else '%s : ' % label
-            paras.append(_paragraphe_simple_xml(texte, STYLE_CLE))
-    return ('<w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/></w:tcPr>%s</w:tc></w:tr>'
-             % (LARGEUR_BLOC_DXA, ''.join(paras)))
+            paras.append(_paragraphe_simple_xml(texte, STYLE_CLE_ABB_TAB))
+    return ''.join(paras)
 
 
-def _rangee_image_xml(image, registre):
+def _image_paragraphe_xml(image, registre):
+    """Le contenu d'un bloc figure : un paragraphe ordinaire portant l'image, en ligne — plus
+    de rangée de tableau autour (remplace _rangee_image_xml)."""
     rid = registre.enregistrer_image(image)
     docpr_id = registre.nouveau_docpr_id()
-    p = '<w:p><w:r>%s</w:r></w:p>' % _drawing_xml(rid, image, docpr_id, registre.largeur_max_dxa)
-    return ('<w:tr><w:trPr><w:trHeight w:val="1701"/></w:trPr>'
-             '<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/></w:tcPr>%s</w:tc></w:tr>'
-             % (LARGEUR_BLOC_DXA, p))
+    return '<w:p><w:r>%s</w:r></w:p>' % _drawing_xml(rid, image, docpr_id,
+                                                       registre.largeur_max_dxa)
 
 
-def _rangee_tableau_interne_xml(tableau, registre):
-    contenu = _fermer_sur_paragraphe(_tableau_xml(tableau, registre))
-    return ('<w:tr><w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/></w:tcPr>%s</w:tc></w:tr>'
-             % (LARGEUR_BLOC_DXA, contenu))
-
-
-def _bloc_xml(champs, rangee_contenu_xml, registre):
-    return ('<w:tbl>' + (_BLOC_TBLPR % LARGEUR_BLOC_DXA)
-            + '<w:tblGrid><w:gridCol w:w="%d"/></w:tblGrid>' % LARGEUR_BLOC_DXA
-            + _rangee_meta_xml(champs, registre) + rangee_contenu_xml + '</w:tbl>')
+def _meta_et_contenu_xml(champs, contenu_xml, registre):
+    """Un bloc figure ou tableau complet : les quatre paragraphes de clé suivis directement du
+    contenu — remplace l'ancien _bloc_xml (qui enveloppait tout dans un <w:tbl>). `contenu_xml`
+    est soit _image_paragraphe_xml(...), soit _tableau_xml(...) directement (le tableau du
+    manuscrit n'est plus jamais imbriqué dans une cellule d'enveloppe, voir plus bas)."""
+    return _meta_paragraphes_xml(champs, registre) + contenu_xml
 
 
 # ---------------------------------------------------------------------------------
@@ -893,7 +898,7 @@ def _texte_paragraphe(paragraphe):
 def _cherche_legende(blocs, idx, consommes):
     """([indices consommés], fragments) d'une légende déjà écrite dans le manuscrit pour le
     bloc figure/tableau à `idx` — ([], None) si rien ne convient. Rend la liste de FRAGMENT
-    (mise en forme comprise, jamais un texte déjà aplati — voir _rangee_meta_xml).
+    (mise en forme comprise, jamais un texte déjà aplati — voir _meta_paragraphes_xml).
 
     Deux formes reconnues :
     - un titre bref (« Tableau 1 », SANS ponctuation finale, ≤ 20 caractères) qui matche
@@ -971,10 +976,11 @@ def _convertir_niveau_racine(blocs, registre, trace):
     `correspondance` (ajout du 19.09.2026, pour un module d'annotation) : une liste de
     {'source': Paragraphe.source du bloc d'ORIGINE, 'sortie': indice RELATIF, parmi les <w:p>
     écrits ICI, du <w:p> qui le porte} — un couple par paragraphe de CORPS effectivement écrit
-    comme <w:p> de premier niveau (jamais pour un bloc figure/tableau, qui produit un <w:tbl>,
-    pas un <w:p> ; jamais pour un paragraphe consommé comme légende ou fondu comme vide
-    surnuméraire, aucun des deux ne produisant de <w:p>). `source` est le vrai `Paragraphe.
-    source` du bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que
+    comme <w:p> de premier niveau (jamais pour les paragraphes de clé ou l'image d'un bloc
+    figure/tableau, même s'ils produisent eux aussi des <w:p> depuis la nouvelle forme du
+    21.09.2026 — ils n'ont pas de source unique évidente ; jamais non plus pour un paragraphe
+    consommé comme légende ou fondu comme vide surnuméraire, qui ne produit rien). `source` est
+    le vrai `Paragraphe.source` du bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que
     l'appelant a retiré des blocs de la liste avant d'appeler cette fonction (l'en-tête, §5.5)
     — un `para` d'alerte porte toujours `Paragraphe.source`, jamais une position de liste.
     L'indice `sortie` est RELATIF à ce que cette fonction écrit seule : ecrire() y ajoute le
@@ -983,7 +989,17 @@ def _convertir_niveau_racine(blocs, registre, trace):
     """
     n = len(blocs)
     legendes, consommes = _associer_legendes(blocs)
-    segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide)
+    segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide, n_wp)
+    # `n_wp` (ajouté le 21.09.2026, avec la nouvelle forme des blocs) : le nombre de <w:p>
+    # RÉELLEMENT écrits par ce segment au premier niveau du corps — 1 pour un paragraphe de
+    # corps ordinaire, comme avant ; pour un bloc, ce n'est PLUS zéro comme du temps de
+    # l'enveloppe <w:tbl> unique : un bloc écrit désormais ses quatre paragraphes de clé (SZH
+    # Cle Abb/Tab) en <w:p> de plein droit, plus un cinquième pour l'image d'un bloc figure (le
+    # contenu d'un bloc tableau, lui, est un <w:tbl>, qui n'en ajoute aucun). Sans ce compte
+    # correct, `compteur_wp` déraille dès le premier bloc rencontré et toute la table de
+    # correspondance qui le suit pointe le mauvais <w:p> — mesuré : le contrôle du corpus réel
+    # (§11) rougissait entièrement après le premier bloc de chaque manuscrit illustré tant que
+    # ce champ n'existait pas.
 
     idx = 0
     while idx < n:
@@ -995,8 +1011,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
         if isinstance(bloc, mm.Tableau):
             fragments_legende = legendes.get(idx)
             champs = {'legende': fragments_legende or '', 'alt': '', 'credit': '', 'source': ''}
-            xml = _bloc_xml(champs, _rangee_tableau_interne_xml(bloc, registre), registre)
-            segments.append((True, xml, None, False))
+            xml = _meta_et_contenu_xml(champs, _tableau_xml(bloc, registre), registre)
+            segments.append((True, xml, None, False, 4))
             texte_legende = _texte_legende_trace(fragments_legende)
             trace.append({'portee': 'bloc', 'source': bloc.source, 'decision': 'bloc_tableau',
                           'motif': 'tableau posé dans un bloc tableau ; légende %s'
@@ -1013,7 +1029,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                              fragments=fragments_texte, source=bloc.source)
                     style_id = _style_pour_paragraphe(p_texte)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
-                                      bloc.source, False))
+                                      bloc.source, False, 1))
                 # La légende éventuellement trouvée pour ce paragraphe ne va QUE sur la
                 # première image : un paragraphe portant plusieurs images est rare, et le
                 # contrat n'envisage pas d'en répartir une seule légende entre plusieurs blocs.
@@ -1021,8 +1037,9 @@ def _convertir_niveau_racine(blocs, registre, trace):
                 for k, image in enumerate(images):
                     champs = {'legende': (fragments_legende if k == 0 else None) or '',
                               'alt': image.alt, 'credit': '', 'source': ''}
-                    xml = _bloc_xml(champs, _rangee_image_xml(image, registre), registre)
-                    segments.append((True, xml, None, False))
+                    xml = _meta_et_contenu_xml(champs, _image_paragraphe_xml(image, registre),
+                                                registre)
+                    segments.append((True, xml, None, False, 5))
                     champs_vides = [label for cle, label in CHAMPS_BLOC if not champs.get(cle)]
                     trace.append({'portee': 'bloc', 'source': bloc.source,
                                   'decision': 'bloc_figure',
@@ -1050,7 +1067,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                   'motif': motif})
                 style_id = _style_pour_paragraphe(bloc)
                 segments.append((False, _paragraphe_xml(bloc, style_id, registre),
-                                  bloc.source, est_vide))
+                                  bloc.source, est_vide, 1))
         idx += 1
 
     # Défaut mesuré (§10, décision n°2 de l'en-tête) : des paragraphes vides consécutifs —
@@ -1068,16 +1085,15 @@ def _convertir_niveau_racine(blocs, registre, trace):
     compteur_wp = 0
     precedent_est_bloc = False
     precedent_est_vide = False
-    for i, (est_bloc, xml, idx_source, est_vide) in enumerate(segments_reduits):
+    for i, (est_bloc, xml, idx_source, est_vide, n_wp) in enumerate(segments_reduits):
         if (i > 0 and _separateur_requis(est_bloc, precedent_est_bloc)
                 and not precedent_est_vide and not est_vide):
             morceaux.append(PARAGRAPHE_VIDE)
             compteur_wp += 1
         morceaux.append(xml)
-        if not est_bloc:
-            if idx_source is not None:
-                correspondance.append({'source': idx_source, 'sortie': compteur_wp})
-            compteur_wp += 1
+        if not est_bloc and idx_source is not None:
+            correspondance.append({'source': idx_source, 'sortie': compteur_wp})
+        compteur_wp += n_wp
         precedent_est_bloc = est_bloc
         precedent_est_vide = est_vide
     return ''.join(morceaux), correspondance
