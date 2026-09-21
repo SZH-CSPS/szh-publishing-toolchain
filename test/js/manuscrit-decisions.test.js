@@ -58,7 +58,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { PYTHON, sansPython, sauter } = require('./gardes');
 
 const fs = require('fs');
 const RACINE = path.resolve(__dirname, '..', '..');
@@ -931,7 +931,7 @@ test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune ré
 test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption ne promeut pas le corps du document',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichier = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('1_') && n.endsWith('.docx'));

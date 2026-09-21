@@ -144,26 +144,62 @@ collées en `de`. Il se corrige tout seul : `python3 test/typo-check.py --corrig
 
 ### Publier une version
 
-Pousser un tag déclenche [`release.yml`](.github/workflows/release.yml) :
+**Depuis le 21 septembre 2026, c'est la CI qui pose le tag, plus un `git tag` à la main.**
+Avant, un tag `vX.Y.Z` poussé à la main déclenchait `release.yml`, qui rejouait `ci.yml` —
+mais rien n'empêchait de poser ce tag sur un commit resté vert seulement en local : la 1.2.0
+a coûté trois poses avant qu'un runner GitHub confirme ce que le poste de développement
+n'avait pas vu. Publier tient maintenant en deux étapes :
 
 ```bash
-git tag -a v1.2.0 -m "Release 1.2.0 : <resume en une ligne>" && git push origin v1.2.0
+node test/js/porte-release.js --runner tous --version 1.2.1   # la même porte, en local, d'abord
+git commit -m "release: 1.2.1 <resume en une ligne>" && git push
 ```
 
-`release.yml` rejoue d'abord entièrement `ci.yml` (contrats du cockpit, contraste APCA,
-typographie, compilation et validation PDF/UA des bancs) avant de publier quoi que ce soit :
-une régression qui n'aurait dû se voir qu'au prochain push sur `main` s'arrête ici. Il vérifie
-ensuite qu'une extension modifiée depuis le tag précédent porte bien une version supérieure —
-sinon la release échoue avec le nom du `package.json` en cause, avant de construire les VSIX.
-Une fois ces deux portes passées : construction des VSIX, assemblage du toolkit, publication
-d'une Release avec `manifest.json`. Le rootfs n'est reconstruit que si `image/` a changé ; une
-retouche de maquette produit donc une release de quelques kilooctets. Reconstruction forcée :
-Actions → release → *Run workflow*, case `force_rootfs`.
+Le commit part sur `main` comme n'importe quel autre. `ci` (`.github/workflows/ci.yml`)
+tourne dessus comme toujours ; s'il conclut en succès ET que le sujet du commit de tête suit
+la forme `release: X.Y.Z …`, [`release.yml`](.github/workflows/release.yml) (déclenché par
+`workflow_run`, jamais par un tag poussé à la main) pose alors le tag annoté `vX.Y.Z` et
+enchaîne la publication — sans rejouer `ci.yml` une seconde fois, puisqu'il vient de tourner
+pour de vrai sur ce commit. Un commit `release:` dont `ci` échoue ne pose donc **aucun** tag.
+Avant ce commit, `release.yml` vérifie encore qu'une extension modifiée depuis le tag
+précédent porte bien une version supérieure, et que `CHANGELOG.md` porte la section
+`## X.Y.Z` — les deux mêmes portes qu'avant, désormais rejouables en local par
+[`test/js/porte-release.js`](test/js/porte-release.js) plutôt que découvertes après coup :
+
+```bash
+node test/js/porte-release.js [--runner ubuntu|windows|poste|tous] [--version X.Y.Z] [--rapide]
+```
+
+Sans `--runner` : le poste (réel). `--runner tous` rejoue le poste, puis simule ubuntu-latest
+et windows-latest (`SZH_SIMULER_RUNNER`, voir `test/js/gardes.js`) pour juger la suite de
+tests comme CES runners-là la verraient, sans attendre un run GitHub. `--rapide` ne joue que
+les contrôles rapides (YAML des deux workflows, typographie, bump, CHANGELOG) — c'est ce que
+lance le crochet `pre-push` (voir plus bas), en moins de 30 s.
+
+Le rootfs n'est reconstruit que si `image/` a changé ; une retouche de maquette produit donc
+une release de quelques kilooctets. Reconstruction forcée, ou repose manuelle d'une version
+dont le tag existe déjà (une étape de publication a échoué après coup) : Actions → release →
+*Run workflow*, avec la version et, au besoin, `force_rootfs`.
 
 ⚠ **Incrémenter la `version` dans le `package.json` de chaque extension modifiée** reste le
-geste attendu de qui prépare la release — la CI le refuse sinon, elle ne le fait pas à sa
+geste attendu de qui prépare la release — la porte le refuse sinon, elle ne le fait pas à sa
 place. `update.ps1` compare les numéros de version, pas les empreintes : sans bump, le VSIX
 reconstruit n'est jamais réinstallé sur les postes.
+
+#### Le crochet `pre-push`
+
+`.githooks/pre-push` rejoue la partie rapide de la porte (YAML, typographie, bump, CHANGELOG
+si ce qui part est un commit `release:`, et un balayage statique des `t.skip()` qui ne
+passent pas par un assistant `sauter.*`) avant d'autoriser un `git push`. Activation, une
+fois par poste :
+
+```bash
+git config core.hooksPath .githooks
+```
+
+(posée automatiquement par `outils-dev/pronto-dev.ps1` sur une instance de développement).
+Le crochet ne bloque que sur un rouge ; `SZH_SANS_PORTE=1 git push` le contourne, à dire
+pourquoi dans le message au moment du push.
 
 ### Préparer un poste — une fois, en administrateur
 

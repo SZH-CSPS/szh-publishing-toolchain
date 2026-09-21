@@ -28,7 +28,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl, sansPowerShell } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -79,7 +79,7 @@ test('date : le lanceur ne fabrique pas de date à partir du nom du dossier', ()
     'le lanceur ne dit pas où saisir la date de publication');
 });
 
-test('date : le fichier du lanceur reste analysable, avec BOM et CRLF', () => {
+test('date : le fichier du lanceur reste analysable, avec BOM et CRLF', (t) => {
   const octets = fs.readFileSync(LANCEUR);
   assert.deepStrictEqual([...octets.slice(0, 3)], [0xEF, 0xBB, 0xBF],
     'new-revue.ps1 a perdu son BOM UTF-8');
@@ -87,8 +87,11 @@ test('date : le fichier du lanceur reste analysable, avec BOM et CRLF', () => {
   const lf = (texte.match(/\n/g) || []).length;
   const crlf = (texte.match(/\r\n/g) || []).length;
   assert.strictEqual(lf, crlf, 'new-revue.ps1 porte des fins de ligne LF : .gitattributes exige CRLF');
-  // L'analyse PowerShell n'est possible que sous Windows ; ailleurs, la forme suffit.
-  if (process.platform !== 'win32') { return; }
+  // L'analyse PowerShell n'est possible que si l'outil l'est : la forme (ci-dessus) suffit
+  // sinon. `process.platform !== 'win32'` seul ne suffisait pas — un Windows sans
+  // powershell.exe joignable (simulation, poste dégradé) appelait quand même
+  // spawnSync('powershell.exe', ...) en dur, et l'échec ne se lisait pas comme un saut.
+  if (sansPowerShell) { sauter.powershell(t); return; }
   const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
     '$e=$null; $t=$null; ' +
     '[void][System.Management.Automation.Language.Parser]::ParseFile(' +
@@ -173,9 +176,9 @@ const NBSP = '\u00A0';
 const NO_FR = 'N<sup>o</sup>';
 
 function sauterSansLua(t, raison) {
-  const msg = "Lua non vérifié : " + raison;
-  console.warn("\n*** " + msg + " — la ligne « n°/année » de la couverture n’est PAS composée ***\n");
-  t.skip(msg);
+  console.warn("\n*** Lua non vérifié : " + raison + " — la ligne « n°/année » de la "
+    + "couverture n’est PAS composée ***\n");
+  sauter.wsl(t);
 }
 
 // Compose la ligne de couverture d'un numéro posé dans un dossier nommé `dossier`, avec la

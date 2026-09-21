@@ -27,6 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
+const { sauter, sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -182,19 +183,9 @@ function bashCompatible() {
 // pandoc ni WSL, en est un exemple réel) passerait bashCompatible() puis ferait échouer
 // reimporter.py --pipeline, dont le faux import-docx.sh de ce fichier n'a pas besoin de
 // pandoc lui-même, mais dont la chaîne réelle en amont (import-docx.sh non simulé, appelé
-// ailleurs par le même reimporter.py) en a besoin. Même patron que pandocAbsent() /
-// t.skip() dans test/js/ancrages.test.js : un saut bruyant, jamais un vert par défaut.
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  try {
-    const r = cp.spawnSync('pandoc', ['--version'], { encoding: 'utf8' });
-    pandocVu = (!r.error && r.status === 0) ? null : 'pandoc introuvable sur ce poste';
-  } catch (e) {
-    pandocVu = 'pandoc introuvable sur ce poste (' + e.message + ')';
-  }
-  return pandocVu;
-}
+// ailleurs par le même reimporter.py) en a besoin. Détection centralisée dans
+// test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
+// défaut.
 
 const PYTHON = interpretePython();
 
@@ -294,8 +285,8 @@ test('bibliographie : un Word dont SEULES les références changent est réimpor
       'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
     return;
   }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, null);
   try {
     const { r, j } = reimporter(racine, CORPS, REFS_CORRIGEE);
@@ -320,8 +311,8 @@ test('bibliographie : un Word dont SEULES les références changent est réimpor
 test('bibliographie : « rien à faire » reste « rien à faire » quand rien ne change', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) { return; }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, null);
   try {
     const { r, j } = reimporter(racine, CORPS, REFS_IMPORT);
@@ -337,8 +328,8 @@ test('bibliographie : « rien à faire » reste « rien à faire » quand rien n
 test('bibliographie gardée : le Word livre les mêmes références qu’à l’import', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) { return; }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
   try {
     const shaImport = shaBiblioNote(racine);
@@ -365,8 +356,8 @@ test('bibliographie gardée : le Word livre les mêmes références qu’à l’
 test('bibliographie en conflit : les deux ont bougé, le Word gagne et on le dit', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) { return; }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
   try {
     const { r, j } = reimporter(racine, CORPS, REFS_CORRIGEE);
@@ -393,8 +384,8 @@ test('bibliographie en conflit : les deux ont bougé, le Word gagne et on le dit
 test('bibliographie retirée : le Word n’en détache plus, et la perte est nommée', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) { return; }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
   try {
     // Les références de ce Word ne portent plus le style : leur liste reste dans le corps.
@@ -417,8 +408,8 @@ test('bibliographie retirée : le Word n’en détache plus, et la perte est nom
 test('bibliographie : « Annuler le réimport » la remet avec le reste', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) { return; }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
   try {
     const { r } = reimporter(racine, CORPS, REFS_CORRIGEE);
@@ -447,8 +438,8 @@ test('bibliographie : vide comme absent, un Word sans bibliographie reste « rie
   (t) => {
     assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
     if (!bashCompatible()) { return; }
-    const absent = pandocAbsent();
-    if (absent) { return t.skip(absent); }
+    const absent = sansPandoc;
+    if (absent) { return sauter.pandoc(t); }
     // L'article n'a jamais eu de bibliographie : pas de fichier vivant (bibliolInstallee
     // absent), comme le veut « pas de création rétroactive ».
     const racine = revueImportee(null, null);
@@ -469,8 +460,8 @@ test('bibliographie : un Word qui livre un fichier vide retire la bibliographie,
   (t) => {
     assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
     if (!bashCompatible()) { return; }
-    const absent = pandocAbsent();
-    if (absent) { return t.skip(absent); }
+    const absent = sansPandoc;
+    if (absent) { return sauter.pandoc(t); }
     const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
     try {
       const { r, j } = reimporter(racine,

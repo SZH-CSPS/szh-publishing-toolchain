@@ -24,7 +24,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync, execFileSync } = require('child_process');
 const { sourceExtensionEtLib } = require('./hote-factice');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl } = require('./gardes');
 
 process.env.SZH_LANGUE = 'fr';
 
@@ -78,9 +78,9 @@ function wsl(args) {
 // Saut bruyant : le contrôle n’est pas vert, il est déclaré non fait.
 // SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = "Lua non vérifié : " + raison;
-  console.warn("\n*** " + msg + " — la clé d’appariement n’est PAS comparée ***\n");
-  t.skip(msg);
+  console.warn("\n*** Lua non vérifié : " + raison + " — la clé d’appariement n’est PAS "
+    + "comparée ***\n");
+  sauter.wsl(t);
 }
 
 // Le filtre expose cle() dans SZH_BIBLIO_DETACHER pour être éprouvé sur son résultat.
@@ -496,11 +496,11 @@ test('intégrité : sur un .docx réel, tout ce que les styles annoncent est dé
   if (!fs.existsSync(CORPUS)) {
     // Le corpus vit hors du dépôt (750 Mo). Sans lui, ce contrôle ne peut pas se faire, et
     // il le dit plutôt que de passer.
-    return t.skip('corpus hors dépôt absent : ' + CORPUS);
+    return sauter.corpus(t, CORPUS);
   }
   if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const docx = trouverUnDocx(CORPUS);
-  if (!docx) { return t.skip('aucun .docx dans ' + CORPUS); }
+  if (!docx) { return t.skip('aucun .docx dans ' + CORPUS); } // fragment corpus (motifs-saut.js), garde son libelle propre
 
   const revue = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-biblio-import-'));
   fs.mkdirSync(path.join(revue, 'articles-word'), { recursive: true });

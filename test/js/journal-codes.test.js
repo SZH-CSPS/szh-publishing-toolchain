@@ -34,7 +34,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { chargerAvecVscodeFactice } = require('./dom-minimal');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -354,9 +354,9 @@ function wsl(args) {
 // Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait.
 // SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = 'Filtres non exécutés : ' + raison;
-  console.warn('\n*** ' + msg + ' — les blocages du pipeline ne sont PAS vérifiés ***\n');
-  t.skip(msg);
+  console.warn('\n*** Filtres non exécutés : ' + raison + ' — les blocages du pipeline ne '
+    + 'sont PAS vérifiés ***\n');
+  sauter.wsl(t);
 }
 
 // Compile un article factice avec un filtre, depuis son dossier : szh-maquette.lua relit

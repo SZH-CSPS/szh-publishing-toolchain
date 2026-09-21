@@ -33,7 +33,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { PYTHON, sansPython, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_DOCX = path.join(RACINE, 'pipeline', 'manuscrit_docx.py');
@@ -528,7 +528,7 @@ test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leu
 test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occurrences pour 21 médias distincts, toutes avec des dimensions en pixels non nulles',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A)
@@ -852,7 +852,7 @@ test('manuscrit_docx.py : projeter_pronto() == pronto_docx.lire() sur le gabarit
 test('manuscrit_docx.py --diagnostic : les onze manuscrits réels de lot-A se lisent sans exception',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
@@ -995,7 +995,7 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 3_ et 3bis_ résolve
     const fichiers = ['3_VF_Chanier-Delorme_Article CSPS_290626.docx',
       '3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx'];
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const nom4 = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('4_'));
@@ -1284,7 +1284,7 @@ test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (f
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 2-fin-de-document_Article_RSPS.docx porte 12 notes distinctes',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const nom = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('2-fin'));
@@ -1316,7 +1316,7 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 2-fin-de-document_Ar
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 1bis/2-dense/2-grappes/5bis n\'ont AUCUNE vraie note (continuationNotice fantôme)',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     for (const prefixe of ['1bis', '2-dense', '2-grappes', '5bis']) {
@@ -1342,7 +1342,7 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 1bis/2-dense/2-grapp
 test('manuscrit_docx.py --diagnostic : sur le corpus réel, 5bis_...BEP.docx porte 24 hyperliens',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+      sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const nom = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('5bis'));

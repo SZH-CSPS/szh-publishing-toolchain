@@ -28,6 +28,7 @@ const fs = require('fs');
 const os = require('os');
 
 const { spawnSync } = require('child_process');
+const { sauter, sansPliage } = require('./js/gardes');
 
 const RACINE = path.resolve(__dirname, '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
@@ -174,40 +175,17 @@ function trierMotscles(langues) {
   return res;
 }
 
-// Raison du défaut de pliage de CE pandoc, ou null s'il est sain — mémoïsé.
-// undefined = pas encore vérifié ; null = sain (ou pandoc en échec, déjà dit par les six
-// premiers tests du fichier, pas notre rôle ici de le redire) ; string = raison du défaut.
-let pliageRaison;
-function pliageCasse() {
-  if (pliageRaison !== undefined) { return pliageRaison; }
-  // 'É' (U+00C9) en UTF-8 = les octets \195\137, écrits en échappement pour ne rien devoir
-  // à l'encodage de l'argument de ligne de commande lui-même. Sous une locale saine,
-  // string.lower() ne touche pas ces octets (ASCII seul) : la chaîne reste égale à
-  // elle-même.
-  const r = spawnSync('pandoc', ['lua', '-e', "print(('\\195\\137'):lower() == '\\195\\137')"],
-                       { encoding: 'utf8' });
-  if (r.error || r.status !== 0 || r.stdout.trim() === 'true') {
-    pliageRaison = null;
-  } else {
-    pliageRaison = 'string.lower() corrompt le premier octet UTF-8 d’une lettre accentuée ' +
-      'sur ce build de pandoc (locale/page de code, pas le filtre — voir szh-maquette.lua, ' +
-      'PLIAGE_ACCENTS) : (\'É\'):lower() ne se rend plus égal à lui-même.';
-  }
-  return pliageRaison;
-}
-
-// Saut bruyant, jamais silencieux : ce n'est pas le tri qui est déclaré correct, c'est le
-// test qui est déclaré non fait — et pourquoi. SZH_LUA_OBLIGATOIRE=1 en fait un échec, pour
-// qu'une CI (qui tourne sous ubuntu-24.04, jamais concernée par ce défaut) ne se contente
-// jamais d'un saut.
+// Détection centralisée (test/js/gardes.js, sansPliage/sauter.pliage) : mémoïsée là-bas,
+// un seul appel pandoc pour tout le processus, et le motif « pliage des accents » composé
+// une seule fois — la famille que test/js/motifs-saut.js et verifier-tap.js reconnaissent.
+// SZH_LUA_OBLIGATOIRE (géré par sauter.pliage) y transforme le saut en échec, pour qu'une
+// CI qui tourne sous ubuntu-24.04 (jamais concernée par ce défaut de build Windows) ne se
+// contente jamais d'un saut.
 function sauterSiPliageCasse(t) {
-  const raison = pliageCasse();
-  if (!raison) { return false; }
-  const msg = 'pliage des accents cassé : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
-  console.warn('\n*** ' + msg + ' — tri des mots-clés NON vérifié ici ; il l’est par la CI ' +
-    '(ubuntu-24.04, job pdf-ua) ***\n');
-  t.skip(msg);
+  if (!sansPliage()) { return false; }
+  console.warn('\n*** pliage des accents cassé — tri des mots-clés NON vérifié ici ; il '
+    + 'l’est par la CI (ubuntu-24.04, job pdf-ua) ***\n');
+  sauter.pliage(t);
   return true;
 }
 

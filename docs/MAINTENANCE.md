@@ -588,9 +588,12 @@ son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suiv
 cas jusqu'ici — plusieurs releases de septembre ont été reconstruites sans être réinstallées
 nulle part, faute de ce contrôle.
 
-**À observer.** La CI refuse un tag qui oublierait le bump ; elle ne dispense pas de le
-vérifier soi-même avant de taguer, en comparant à `git show <tag précédent>:<…>/package.json`
-et non à ce que le fichier local raconte.
+**À observer.** Depuis le 21.09.2026, il n'y a plus de tag à poser à la main : un commit
+`release: X.Y.Z résumé` poussé sur `main` suffit, et `release.yml` (déclenché par
+`workflow_run` après un `ci` réussi) pose le tag lui-même avant de construire quoi que ce
+soit — voir le README, § « Publier une version ». `node test/js/porte-release.js --version
+X.Y.Z` rejoue ce même contrôle de bump en local, avant de committer, plutôt que de le vérifier
+à la main en comparant à `git show <tag précédent>:<…>/package.json`.
 
 ⚠ **La version d'une extension n'est pas celle du toolkit, et ne le devient pas avec
 `1.0.0`.** `szh-cockpit` suit son propre compte (`0.60.0` à la release `1.0.0`), parce que le

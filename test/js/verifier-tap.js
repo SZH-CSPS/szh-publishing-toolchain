@@ -20,34 +20,10 @@
 //      n'est pas une suite, quel que soit le motif.
 // Le code de sortie du process `node --test` (pipefail dans ci.yml) reste la première porte.
 const fs = require('fs');
-
-// L'ordre compte : la première famille dont un fragment apparaît dans le motif l'emporte,
-// et le motif du pliage cite lui aussi « pandoc ». Les fragments sont ceux que
-// test/js/gardes.js, rapport-erreur.test.js, biblio.test.js, raccourcis.test.js et
-// filtres-pandoc.test.js écrivent réellement dans leurs sauts.
-const MOTIFS = {
-  pliage: ['pliage des accents'],
-  powershell: ['powershell.exe indisponible'],
-  python: ['Python 3'],
-  wsl: ['wsl.exe', 'dans la distro'],
-  pandoc: ['pandoc introuvable', 'pandoc ou python3 introuvable'],
-  horsWindows: ['chemins Windows'],
-  corpus: ['corpus hors dépôt absent', 'aucun .docx dans'],
-  eleve: ['processus élevé'],
-  // courriel-support.test.js rend un gabarit par VSCodium-en-Node : aucun runner ne l'a.
-  vscodium: ['VSCodium introuvable', 'pas Windows'],
-  // Aucun runner d'intégration continue n'a d'installation en C:\ProgramData\SZH,
-  // donc les contrôles d'isolement n'y ont rien à mesurer.
-  production: ['installation de production absente']
-};
-const ADMIS = {
-  // Pas de PowerShell, pas de WSL, pas de pandoc dans le job contrats ; python est exigé.
-  ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus', 'vscodium', 'production'],
-  // PowerShell exigé ; le runner tourne élevé, donc l'ACL ne bloque rien.
-  windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium', 'production'],
-  // Un poste complet : ne restent que les accents du pandoc 3.9 et le corpus hors dépôt.
-  poste: ['pliage', 'corpus', 'eleve']
-};
+// Table partagée avec gardes.js (qui ÉCRIT ces motifs via ses assistants `sauter.*`) : un
+// seul endroit décide de ce qu'un motif de saut doit dire pour être admis, plutôt que deux
+// copies qui peuvent diverger sans que rien ne le signale.
+const { MOTIFS, ADMIS } = require('./motifs-saut');
 
 function lireCompte(tap, cle) {
   const m = tap.match(new RegExp('^# ' + cle + ' (\\d+)$', 'm'));

@@ -89,10 +89,13 @@ function exiger(variable, motif) {
   }
   return motif;
 }
-// Motif choisi pour recouper les familles DÉJÀ admises par test/js/verifier-tap.js
-// (`wsl.exe`, `dans la distro`) sans y toucher — voir l'en-tête.
+// Motif de la famille `vale` (test/js/motifs-saut.js), admise sur windows et poste,
+// refusée sur ubuntu (le job `contrats` y installe vale et pose SZH_VALE_OBLIGATOIRE=1) —
+// avant cette famille, ce motif se déguisait en `wsl` (« dans la distro », « wsl.exe »)
+// pour passer la porte : un motif qu'on peut mal écrire, exactement ce que la famille
+// dédiée existe pour éviter.
 const sansVale = exiger('SZH_VALE_OBLIGATOIRE',
-  _valeOk ? false : 'vale introuvable (ni sur le PATH, ni dans la distro ' + DISTRO
+  _valeOk ? false : 'vale absent (ni sur le PATH, ni dans la distro ' + DISTRO
     + ' via wsl.exe)');
 
 // ---------------------------------------------------------------------------------

@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
@@ -78,7 +78,7 @@ function rendre(markdown, fichiers, meta) {
 test('szh-metafichier : une image du corps est remplacée, ses dimensions conservées', (t) => {
   if (sansPandocWsl) {
     console.warn('\n*** substitution non vérifiée : ' + sansPandocWsl + ' ***\n');
-    return t.skip(sansPandocWsl);
+    return sauter.wsl(t);
   }
   const r = rendre(
     '![Un dessin collé depuis Excel](./media/dessin.emf){width="3.6in" height="5.1in"}\n',
@@ -102,7 +102,7 @@ test('szh-metafichier : une image du corps est remplacée, ses dimensions conser
 });
 
 test("szh-metafichier : une image citée SEULEMENT dans un tableau extrait l’est aussi", (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   // Ce que szh-tabelle-inclure.lua réinjecte : du HTML brut, où il n'y a plus de nœud
   // Image. Un walker Image seul passerait à côté — c'est ce qui est arrivé à fig-73.
   const r = rendre(
@@ -120,7 +120,7 @@ test("szh-metafichier : une image citée SEULEMENT dans un tableau extrait l’e
 });
 
 test('szh-metafichier : le texte alternatif NOMME ce qui manque', (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   const r = rendre('![](./media/dessin.emf)\n', { 'media/dessin.emf': 'x' });
 
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
@@ -132,7 +132,7 @@ test('szh-metafichier : le texte alternatif NOMME ce qui manque', (t) => {
 });
 
 test('szh-metafichier : une image ordinaire traverse le filtre intacte', (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   const r = rendre('![Une vraie image](./media/photo.png)\n', { 'media/photo.png': 'x' });
 
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
@@ -142,7 +142,7 @@ test('szh-metafichier : une image ordinaire traverse le filtre intacte', (t) => 
 });
 
 test('szh-metafichier : le constat est écrit une seule fois par fichier, en deux langues', (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   // La même image citée trois fois ne doit pas remplir le journal de trois lignes.
   const r = rendre('![a](./media/d.emf)\n\n![b](./media/d.emf)\n\n![c](./media/d.emf)\n',
     { 'media/d.emf': 'x' });
@@ -161,7 +161,7 @@ test('szh-metafichier : le constat est écrit une seule fois par fichier, en deu
 });
 
 test('szh-metafichier : « .EMF » en capitales est reconnu comme « .emf »', (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   const r = rendre('![a](./media/DESSIN.EMF)\n', { 'media/DESSIN.EMF': 'x' });
 
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
@@ -171,7 +171,7 @@ test('szh-metafichier : « .EMF » en capitales est reconnu comme « .emf »', (
 });
 
 test('szh-metafichier : dans un ouvrage allemand, ce qui manque se dit en allemand', (t) => {
-  if (sansPandocWsl) { return t.skip(sansPandocWsl); }
+  if (sansPandocWsl) { return sauter.wsl(t); }
   const r = rendre('![a](./media/d.emf)\n', { 'media/d.emf': 'x' }, '--metadata=lang:de');
 
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);

@@ -1,6 +1,6 @@
 name: release
 
-# Publie une Release par tag vX (par exemple v2026.07.0) :
+# Publie une Release par commit `release: X.Y.Z résumé` poussé sur main :
 #   manifest.json          toujours    versions et sha256 de tous les assets
 #   toolkit-X.zip          toujours    pipeline/, vscodium-user/, revue-template/,
 #                                      livre-template/, windows/
@@ -10,14 +10,31 @@ name: release
 #
 # update.ps1 lit manifest.json et ne télécharge que ce qui a changé : une retouche de
 # styles ne pèse que quelques Ko.
+#
+# ── Le tag est posé PAR la CI, plus par un `git tag` humain (Révision du 21.09.2026) ──────
+# Avant : `push: tags: ["v*"]` déclenchait release.yml, qui REJOUAIT ci.yml (job `controles`)
+# avant de publier. Le défaut mesuré sur la 1.2.0 (21.09.2026, trois poses du tag) : un tag
+# posé à la main pouvait très bien être vert EN LOCAL et rouge sur le runner — la porte
+# n'existait qu'après coup, au prix d'une pose à effacer et reposer (`git push --delete`,
+# `git tag -d`). Ici, `workflow_run` ne déclenche ce workflow qu'APRÈS que `ci` (ci.yml) a
+# fini de tourner sur `main` — la job `tag`, ci-dessous, ne pose le tag QUE si `ci` a conclu
+# en succès ET que le commit de tête est un `release: X.Y.Z …` : la CI valide avant de
+# publier, jamais après. Le job `controles` qui rejouait ci.yml a donc disparu : `ci` vient
+# de tourner pour de vrai sur ce commit, le rejouer serait redondant (voir job `tag`).
+#
+# `workflow_dispatch` reste pour une repose manuelle (une étape de la publication a échoué
+# après que le tag était déjà posé) : le tag n'est alors PAS reposé s'il existe déjà — un tag
+# qui existe pour de bon n'est jamais écrasé, dans ce chemin ni dans l'autre.
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version (ex. 2026.07.0)"
+        description: "Version à publier (ex. 1.2.1) — repose manuelle ; si le tag existe déjà, il n'est pas reposé"
         required: true
       force_rootfs:
         description: "Forcer la reconstruction du rootfs"
@@ -25,43 +42,119 @@ on:
         default: false
 
 permissions:
-  contents: write          # créer/mettre à jour la Release
-  packages: write          # pousser l'image sur GHCR
+  contents: read
 
 jobs:
-  # Rejoue ci.yml (contrats du cockpit + PDF/UA) avant de publier : release.yml ne rejouait
-  # jusqu'ici que `node --test`, et une régression de maquette ou de balisage ne se voyait
-  # qu'au moment de la release, trop tard. `permissions` borne ce que le workflow réutilisé
-  # peut faire, comme sa propre déclaration en tête de ci.yml.
-  controles:
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-
-  release:
-    needs: controles
+  # Pose le tag annoté vX.Y.Z, seulement si :
+  #   - déclenché à la main (workflow_dispatch), ou
+  #   - `ci` vient de conclure en succès sur `main` ET le commit de tête est un
+  #     `release: X.Y.Z résumé` (sujet, première ligne du message de commit).
+  # Un commit `release:` dont `ci` échoue ne pose donc aucun tag : c'est le but.
+  tag:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    # Groupe distinct de celui de ci.yml : github.workflow y vaut le nom de l'appelant une
-    # fois réutilisé par le job controles ci-dessus. Jamais de cancel-in-progress : une
-    # release à moitié publiée est pire qu'une release qui attend son tour.
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      pose: ${{ steps.version.outputs.pose }}
+    steps:
+      # Le SHA du commit que `ci` a réellement validé — jamais `main` HEAD par défaut, qui
+      # a pu avancer entre la fin de `ci` et le déclenchement de CE workflow.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
+
+      # Le message de commit est une donnée EXTERNE (écrite par qui pousse sur main) : elle
+      # passe par `env`, jamais interpolée directement dans `run:` — sans quoi un sujet de
+      # commit portant des guillemets ou un `$(...)` s'exécuterait comme du shell.
+      - name: Lire le sujet du commit de tête (workflow_run)
+        if: github.event_name == 'workflow_run'
+        id: sujet
+        env:
+          MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          PREMIERE_LIGNE="${MESSAGE%%$'\n'*}"
+          if [[ "$PREMIERE_LIGNE" =~ ^release:\ ([0-9]+\.[0-9]+\.[0-9]+)\ (.*)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "resume=${BASH_REMATCH[2]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::sujet de commit non reconnu comme release, rien à publier : $PREMIERE_LIGNE"
+          fi
+
+      - name: Déterminer la version et si le tag doit être posé
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            V="${{ inputs.version }}"
+          else
+            V="${{ steps.sujet.outputs.version }}"
+          fi
+          if [ -z "$V" ]; then
+            echo "pas de version à publier -- fin de ce workflow"
+            echo "pose=non" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "le tag v$V existe déjà -- repose manuelle, on continue sans le reposer"
+              echo "pose=non" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::le tag v$V existe déjà -- un tag posé automatiquement n'est JAMAIS écrasé. Ce commit a-t-il déjà été publié, ou ci a-t-il rejoué deux fois sur le même commit ?"
+              exit 1
+            fi
+          else
+            echo "pose=oui" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Poser et pousser le tag annoté
+        if: steps.version.outputs.pose == 'oui'
+        env:
+          V: ${{ steps.version.outputs.version }}
+          RESUME: ${{ steps.sujet.outputs.resume }}
+        run: |
+          MESSAGE="Release $V"
+          if [ -n "$RESUME" ]; then MESSAGE="Release $V : $RESUME"; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$V" -m "$MESSAGE"
+          git push "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" "v$V"
+
+  # Ce qui existait déjà avant le 21.09.2026, inchangé au fond : construit et publie les
+  # assets d'une version dont le tag vX.Y.Z existe désormais (posé par le job `tag`
+  # ci-dessus, ou déjà là pour une repose manuelle). Ne rejoue PLUS `ci.yml` (l'ancien job
+  # `controles`) : `tag` ne s'exécute qu'après un succès de `ci` sur ce même commit, le
+  # rejouer serait redondant. `needs: tag` lit sa version en sortie plutôt que `github.ref`
+  # (il n'y a plus de push de tag qui déclenche directement ce workflow).
+  release:
+    needs: tag
+    if: needs.tag.outputs.version != ''
+    runs-on: ubuntu-latest
+    # Groupe par version, pas par ref (il n'y a plus de ref de tag qui déclenche ce
+    # workflow) : deux déclenchements pour la même version ne se chevauchent jamais.
+    # cancel-in-progress: jamais — une release à moitié publiée est pire qu'une release qui
+    # attend son tour.
     concurrency:
-      group: release-publish-${{ github.ref }}
+      group: release-publish-${{ needs.tag.outputs.version }}
       cancel-in-progress: false
+    permissions:
+      contents: write          # créer/mettre à jour la Release
+      packages: write          # pousser l'image sur GHCR
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0        # tags + historique : nécessaires au diff image/
+          ref: refs/tags/v${{ needs.tag.outputs.version }}
 
       - name: Déterminer la version
         id: ver
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-          else
-            echo "v=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "v=${{ needs.tag.outputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Récupérer la release précédente (manifest)
         id: prev

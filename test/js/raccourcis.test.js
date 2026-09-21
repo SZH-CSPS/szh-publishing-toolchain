@@ -77,7 +77,7 @@ const NOMS_ACTUELS = [NOM_APPLICATION, NOM_MISE_A_JOUR];
 // là. Hissé en tête de fichier (il ne l'était qu'en bas avant) : plusieurs contrôles plus
 // haut exécutent maintenant réellement la fonction, pour un fait (l'ordre des noms selon la
 // langue) qu'une lecture de texte ne peut pas prouver.
-const { POWERSHELL, sansPowerShell } = require('./gardes');
+const { POWERSHELL, sansPowerShell, sauter } = require('./gardes');
 
 // ---- Ce que szh-shell.ps1 déclare ----
 
@@ -584,7 +584,7 @@ test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: s
   // ACL (voir PILOTE plus haut) ; si l'écriture est passée, on saute plutôt que de
   // prétendre observer un blocage qui n'a pas eu lieu -- même patron que pandocAbsent()
   // / t.skip() dans test/js/ancrages.test.js.
-  if (v.aclContournee) { t.skip('processus élevé : l’ACL ne bloque pas'); return; }
+  if (v.aclContournee) { sauter.eleve(t); return; }
   // Le contrat : la fonction ne lève pas — le pilote entier serait tombé sinon.
   assert.strictEqual(bilan.status, 0);
   assert.strictEqual(v.poses, 0);

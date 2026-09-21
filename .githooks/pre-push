@@ -1,0 +1,49 @@
+#!/bin/sh
+# Crochet pre-push : la partie RAPIDE de la porte de release (YAML des deux workflows,
+# typographie, bump des extensions, CHANGELOG/nouveautes si ce qui part est un commit
+# `release: X.Y.Z …`, et un balayage statique des t.skip() sans assistant sauter.*). Jamais
+# la suite complète — c'est la CI qui la rejoue pour de vrai après le push, et attendre 90 s
+# à chaque push découragerait vite de le laisser actif.
+#
+# Activation, une fois par poste : git config core.hooksPath .githooks (posé automatiquement
+# par outils-dev/pronto-dev.ps1 ; sinon voir le README, § « Publier une release »).
+#
+# Ce crochet ne bloque QUE sur un rouge. SZH_SANS_PORTE=1 le contourne, en le disant.
+
+if [ -n "$SZH_SANS_PORTE" ]; then
+  echo "pre-push : SZH_SANS_PORTE=1 -- porte contournee, rien de verifie avant ce push"
+  exit 0
+fi
+
+racine="$(git rev-parse --show-toplevel)" || exit 1
+
+# S'il n'y a pas de Node sur ce poste, le crochet ne doit pas empecher un push : la CI, elle,
+# tourne toujours la porte complete.
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-push : node introuvable sur ce poste -- porte non jouee ici, la CI la joue apres le push"
+  exit 0
+fi
+
+# Le sujet du commit de tete decide si le controle CHANGELOG/nouveautes entre en jeu :
+# pousser autre chose qu'un commit `release: X.Y.Z ...` n'a pas de version a y verifier.
+sujet="$(git -C "$racine" log -1 --format=%s 2>/dev/null || true)"
+version=""
+case "$sujet" in
+  release\ [0-9]*|release:\ [0-9]*)
+    version="$(printf '%s\n' "$sujet" | sed -nE 's/^release:? ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p')"
+    ;;
+esac
+
+if [ -n "$version" ]; then
+  node "$racine/test/js/porte-release.js" --rapide --version "$version"
+else
+  node "$racine/test/js/porte-release.js" --rapide
+fi
+statut=$?
+
+if [ $statut -ne 0 ]; then
+  echo ""
+  echo "pre-push : porte rapide rouge -- push refuse. Corriger, ou SZH_SANS_PORTE=1 git push (a dire pourquoi)."
+fi
+
+exit $statut

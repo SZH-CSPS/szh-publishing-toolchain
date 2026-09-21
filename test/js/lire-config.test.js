@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
-const { sansPandoc } = require('./gardes');
+const { sauter, sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(RACINE, 'pipeline', 'filters', 'szh-lire-config.lua');
@@ -25,9 +25,8 @@ const SCRIPT = path.join(RACINE, 'pipeline', 'filters', 'szh-lire-config.lua');
 // SZH_PANDOC_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSiPandocAbsent(t) {
   if (!sansPandoc) { return false; }
-  const msg = 'szh-lire-config.lua non vérifié : ' + sansPandoc;
-  console.warn('\n*** ' + msg + ' ***\n');
-  t.skip(msg);
+  console.warn('\n*** szh-lire-config.lua non vérifié : ' + sansPandoc + ' ***\n');
+  sauter.pandoc(t);
   return true;
 }
 

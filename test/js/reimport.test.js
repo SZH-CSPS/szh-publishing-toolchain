@@ -24,6 +24,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
+const { sauter, sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -331,19 +332,9 @@ function bashCompatible() {
 // Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
 // une distribution). Un poste « bash sans pandoc » (le runner CI windows-latest, sans
 // pandoc ni WSL, en est un exemple réel) passerait bashCompatible() et ferait alors échouer
-// la conversion réelle, plus loin dans la chaîne. Même patron que pandocAbsent() /
-// t.skip() dans test/js/ancrages.test.js : un saut bruyant, jamais un vert par défaut.
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  try {
-    const r = cp.spawnSync('pandoc', ['--version'], { encoding: 'utf8' });
-    pandocVu = (!r.error && r.status === 0) ? null : 'pandoc introuvable sur ce poste';
-  } catch (e) {
-    pandocVu = 'pandoc introuvable sur ce poste (' + e.message + ')';
-  }
-  return pandocVu;
-}
+// la conversion réelle, plus loin dans la chaîne. Détection centralisée dans
+// test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
+// défaut.
 
 const PYTHON = interpretePython();
 
@@ -460,8 +451,8 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', (t) 
       'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
     return;
   }
-  const absent = pandocAbsent();
-  if (absent) { return t.skip(absent); }
+  const absent = sansPandoc;
+  if (absent) { return sauter.pandoc(t); }
   const slug = '01-essai';
   const racine = revueJetable(slug);
   try {
@@ -507,8 +498,8 @@ test('réimport : un sidecar inventé (tâches) que le Word ne possède pas surv
         'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
       return;
     }
-    const absent = pandocAbsent();
-    if (absent) { return t.skip(absent); }
+    const absent = sansPandoc;
+    if (absent) { return sauter.pandoc(t); }
     const slug = '01-essai';
     const racine = revueJetable(slug);
     try {

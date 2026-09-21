@@ -40,6 +40,14 @@ if (-not (Test-Path -LiteralPath $makefileDepot)) {
   exit 1
 }
 
+# ---- crochet pre-push : la porte rapide (test/js/porte-release.js --rapide) avant un push ----
+# Idempotent (git config ecrase sans se plaindre) et jamais bloquant : un vieux clone sans
+# .githooks/pre-push ne doit pas empecher pronto-dev.ps1 de demarrer. SZH_SANS_PORTE=1
+# contourne le crochet lui-meme, au moment du push - voir .githooks/pre-push et le README.
+try {
+  git -C $racineDepot config core.hooksPath .githooks 2>$null | Out-Null
+} catch { }
+
 # ---- conversion vers la forme WSL d'un chemin Windows ----
 # Identique, au caractere pres, a versWsl() de
 # vscodium-extension\szh-cockpit\lib\chemins-poste.js - lettre de lecteur minusculisee,

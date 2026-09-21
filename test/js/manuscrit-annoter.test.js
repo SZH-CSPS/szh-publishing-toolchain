@@ -24,7 +24,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
+const { PYTHON, sansPython, sansPandocWsl, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -621,9 +621,9 @@ function wsl(args) {
 }
 
 function sauterSansWsl(t, raison) {
-  const msg = 'pandoc/WSL non vérifié : ' + raison;
-  console.warn('\n*** ' + msg + ' — la preuve indépendante n\'est PAS faite ***\n');
-  t.skip(msg);
+  console.warn('\n*** pandoc/WSL non vérifié : ' + raison + ' — la preuve indépendante n\'est '
+    + 'PAS faite ***\n');
+  sauter.wsl(t);
 }
 
 test('preuve indépendante pandoc : accepter/rejeter/lire les commentaires', (t) => {
@@ -674,11 +674,11 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
   if (!fs.existsSync(CORPUS_LOT_A)) {
     console.warn('\n*** corpus tmp/corpus-relecture/lot-A absent (hors git) — essai réel sauté ***\n');
-    t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
+    sauter.corpus(t, 'tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
     return;
   }
   const manuscrit = path.join(CORPUS_LOT_A, '3_VF_Chanier-Delorme_Article CSPS_290626.docx');
-  if (!fs.existsSync(manuscrit)) { t.skip('corpus hors dépôt absent : manuscrit de référence lot-A'); return; }
+  if (!fs.existsSync(manuscrit)) { sauter.corpus(t, 'manuscrit de référence lot-A'); return; }
 
   const base = dossierJetable();
   try {

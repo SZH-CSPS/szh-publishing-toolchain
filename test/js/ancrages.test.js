@@ -27,7 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -123,9 +123,9 @@ function wsl(args, options) {
 // Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait.
 // SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = "Lua non vérifié : " + raison;
-  console.warn('\n*** ' + msg + ' — les ancrages du pipeline ne sont PAS comparés ***\n');
-  t.skip(msg);
+  console.warn('\n*** Lua non vérifié : ' + raison + ' — les ancrages du pipeline ne sont '
+    + 'PAS comparés ***\n');
+  sauter.wsl(t);
 }
 
 let sortieLua = null;

@@ -27,7 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sansPandocWsl } = require('./gardes');
+const { sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DISTRO = 'SZH-Publishing';
@@ -55,7 +55,7 @@ test(".docx du modèle : les titres sont numérotés par le style, pas par le te
   // la distro WSL de la chaîne — aucune dépendance zip n'existe côté Node de ce dépôt.
   if (sansPandocWsl) {
     console.warn("\n*** prémisse non vérifiée : " + sansPandocWsl + " ***\n");
-    return t.skip(sansPandocWsl);
+    return sauter.wsl(t);
   }
   const programme = [
     'import sys, zipfile',
@@ -79,7 +79,7 @@ test(".docx du modèle : les titres sont numérotés par le style, pas par le te
 test("import-docx.sh : la numérotation automatique des titres Word ne survit pas à l’import", (t) => {
   if (sansPandocWsl) {
     console.warn("\n*** aller-retour non vérifié : " + sansPandocWsl + " ***\n");
-    return t.skip(sansPandocWsl);
+    return sauter.wsl(t);
   }
   assert.ok(fs.existsSync(MODELE), 'le modèle de chapitre a disparu : ' + MODELE);
 

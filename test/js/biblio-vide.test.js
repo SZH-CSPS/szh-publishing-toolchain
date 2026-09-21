@@ -25,6 +25,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
+const { sauter, sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DETACHEUR = path.join(RACINE, 'pipeline', 'filters', 'szh-biblio-detacher.lua');
@@ -32,23 +33,14 @@ const CITATIONS = path.join(RACINE, 'pipeline', 'filters', 'szh-citations.lua');
 
 const LF = String.fromCharCode(10);
 
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  try {
-    const r = cp.spawnSync('pandoc', ['--version'], { encoding: 'utf8' });
-    pandocVu = (!r.error && r.status === 0) ? null : 'pandoc introuvable sur ce poste';
-  } catch (e) {
-    pandocVu = 'pandoc introuvable sur ce poste (' + e.message + ')';
-  }
-  return pandocVu;
-}
-
+// Détection centralisée (test/js/gardes.js, sansPandoc). SZH_LUA_OBLIGATOIRE, distinct de
+// SZH_PANDOC_OBLIGATOIRE (gardes.js) : un poste sans pandoc peut être un poste normal, mais
+// une CI qui tourne ces contrôles-là ne doit jamais se contenter d'un saut.
 function sauterSansPandoc(t, raison) {
-  const msg = 'Lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
-  console.warn('\n*** ' + msg + ' — le filtre n’est pas éprouvé en exécution ***\n');
-  t.skip(msg);
+  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail('Lua non vérifié : ' + raison); }
+  console.warn('\n*** Lua non vérifié : ' + raison + ' — le filtre n’est pas éprouvé en '
+    + 'exécution ***\n');
+  sauter.pandoc(t);
 }
 
 function lancerLua(dossier, script, args) {
@@ -78,7 +70,7 @@ const HARNAIS_DETACHEUR = [
 
 test('szh-biblio-detacher : sans bibliographie dans le Word, le fichier se crée vide',
   (t) => {
-    const absent = pandocAbsent();
+    const absent = sansPandoc;
     if (absent) { return sauterSansPandoc(t, absent); }
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-biblio-vide-'));
     try {
@@ -112,7 +104,7 @@ const HARNAIS_EST_VIDE = [
 ].join(LF) + LF;
 
 test('szh-citations : est_vide() efface l’insécable, l’espace fine et le BOM', (t) => {
-  const absent = pandocAbsent();
+  const absent = sansPandoc;
   if (absent) { return sauterSansPandoc(t, absent); }
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-est-vide-'));
   try {
@@ -153,7 +145,7 @@ function resoudre(dossier, cas) {
 
 test('szh-citations : un fichier de bibliographie vide n’imprime rien, sans avertissement',
   (t) => {
-    const absent = pandocAbsent();
+    const absent = sansPandoc;
     if (absent) { return sauterSansPandoc(t, absent); }
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-resolution-'));
     try {
@@ -167,7 +159,7 @@ test('szh-citations : un fichier de bibliographie vide n’imprime rien, sans av
 
 test('szh-citations : un fichier fait seulement de blancs invisibles n’imprime rien non plus',
   (t) => {
-    const absent = pandocAbsent();
+    const absent = sansPandoc;
     if (absent) { return sauterSansPandoc(t, absent); }
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-resolution-'));
     try {
@@ -180,7 +172,7 @@ test('szh-citations : un fichier fait seulement de blancs invisibles n’imprime
   });
 
 test('szh-citations : un fichier de bibliographie ABSENT reste signalé comme avant', (t) => {
-  const absent = pandocAbsent();
+  const absent = sansPandoc;
   if (absent) { return sauterSansPandoc(t, absent); }
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-resolution-'));
   try {
@@ -194,7 +186,7 @@ test('szh-citations : un fichier de bibliographie ABSENT reste signalé comme av
 });
 
 test('szh-citations : une vraie bibliographie continue de s’imprimer avec son titre', (t) => {
-  const absent = pandocAbsent();
+  const absent = sansPandoc;
   if (absent) { return sauterSansPandoc(t, absent); }
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-resolution-'));
   try {
