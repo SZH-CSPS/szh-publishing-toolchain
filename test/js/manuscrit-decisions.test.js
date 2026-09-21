@@ -1256,3 +1256,67 @@ test('classer_titres : titres de liste numérotée, même gras/taille mais align
       'un alignement hérité incidemment ne doit jamais, à lui seul, séparer deux titres de '
       + 'liste par ailleurs identiques (gras, taille, police)');
   });
+
+// ---------------------------------------------------------------------------------------
+// 23. Reprise du 21.09.2026 — hiérarchie portée par le gras SEUL, avec des titres réels de
+// longueurs très inégales (1 à 10 mots). Mesuré sur `3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP`
+// (LISEZMOI du corpus : « tout le document en style Normal 11 pt, 20 pseudo-titres, aucun
+// changement de corps » — la hiérarchie n'est portée QUE par le gras) : le corps N'EST PAS
+// gras (mesuré : 3/44 paragraphes longs seulement, contre une hypothèse initiale erronée de
+// « corps globalement gras ») ; le vrai coupable était le critère d'homogénéité de longueurs
+// de la passe 3, dont le plancher à 1 mot rejetait le seul groupe qualifiant (1 à 10 mots,
+// dès qu'un titre à un seul mot — « Résumé », « Perspectives », « Références » — y figurait) :
+// 1/17 pseudo-titres retrouvés avant cette révision.
+//
+// Sabotage minimal : dans _filtrer_groupes(), remplacer
+// `SEUIL_HOMOGENEITE_MOTS * max(mn, PLANCHER_HOMOGENEITE_MOTS)` par
+// `SEUIL_HOMOGENEITE_MOTS * max(mn, 1)` (l'ancien plancher) — le groupe entier redevient
+// rejeté, ce contrôle rougit.
+
+test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 mots -> un seul groupe, tous promus',
+  { skip: sansPython }, () => {
+    // Corps délibérément LONG (~300 signes chacun, proche des 274 signes médians mesurés sur
+    // 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP) et en MAJORITÉ (7 paragraphes de corps pour 5
+    // titres, comme un vrai document) : sans cette majorité, la MÉDIANE du corps se calcule à
+    // cheval entre les titres courts et les paragraphes longs (piège déjà noté par le
+    // contrôle 4 plus haut : « il faut une masse de corps représentative ») et le titre le
+    // plus long du groupe (10 mots, 74 signes) échoue à tort le seuil relatif de la passe 3
+    // (RATIO_LONGUEUR_TITRE=3) — mesuré : avec seulement 5 paragraphes de corps pour 5 titres,
+    // la médiane tombe à 182,5 (entre 74 et 291) et exclut ce candidat AVANT même le critère
+    // d'homogénéité que ce contrôle vise à exercer.
+    const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
+      + 'dominante cohérente sur ce document testé ici pour de bon, non gras comme tout le '
+      + 'corps, numéro ' + n + ', avec largement assez de texte pour représenter fidèlement '
+      + 'la longueur typique d\'un paragraphe de cet article sans aucune ambiguïté ici.';
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, corpsLong(1), { taille: 22 }),
+        para(1, 'Résumé', { gras: true, taille: 22 }),
+        para(2, corpsLong(2), { taille: 22 }),
+        para(3, 'Le dispositif et ses enjeux curriculaires', { gras: true, taille: 22 }),
+        para(4, corpsLong(3), { taille: 22 }),
+        para(5, 'Résultats préliminaires sur les questions de recherche envisagées ici même',
+          { gras: true, taille: 22 }),
+        para(6, corpsLong(4), { taille: 22 }),
+        para(7, 'Perspectives', { gras: true, taille: 22 }),
+        para(8, corpsLong(5), { taille: 22 }),
+        // Les deux paragraphes de corps SUPPLÉMENTAIRES viennent AVANT « Références » — placés
+        // après, ils tomberaient dans l'étendue de bibliographie que ce titre déclenche
+        // (§5.1 : TITRES_BIB de szh-citations.lua), exclus de la médiane du corps comme le
+        // fait, à raison, la passe 1 sur le vrai fichier.
+        para(9, corpsLong(6), { taille: 22 }),
+        para(10, corpsLong(7), { taille: 22 }),
+        para(11, 'Références', { gras: true, taille: 22 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    for (const source of [1, 3, 5, 7, 11]) {
+      const ligne = trouver(titres.trace, source);
+      assert.strictEqual(ligne.decision, 'promue', 'source=' + source + ' doit être promu');
+    }
+    const niveaux = new Set([1, 3, 5, 7, 11].map((s) => trouver(titres.trace, s).niveau_retenu));
+    assert.strictEqual(niveaux.size, 1,
+      'un seul groupe qualifiant (même gras, même taille, aucune autre distinction) : un seul niveau');
+    assert.strictEqual(titres.stats.promus, 5);
+  });

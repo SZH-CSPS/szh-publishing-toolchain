@@ -169,13 +169,27 @@ MAX_NIVEAUX = 3
 RATIO_LONGUEUR_TITRE = 3
 
 # §5.1 passe 3, critère « longueurs homogènes entre elles » : à l'intérieur d'un groupe de
-# même signature, le plus long candidat ne dépasse pas ce multiple du plus court (plancher à
-# 1 mot pour éviter une division par zéro). Aucune mesure directe dans le contrat — posé par
-# prudence : les deux seuls intertitres réels mesurés de même signature (l'italique de
-# Chanier-Delorme) font 17 et 19 mots, un rapport de 1,1 seulement ; un plafond à 3x laisse
-# une marge large sans laisser passer un groupe hétérogène (un titre de 3 mots mélangé à une
-# phrase de corps de 30 aurait échappé faute de ce garde-fou).
+# même signature, le plus long candidat ne dépasse pas ce multiple du plus court. Aucune
+# mesure directe dans le contrat — posé par prudence : les deux seuls intertitres réels
+# mesurés de même signature (l'italique de Chanier-Delorme) font 17 et 19 mots, un rapport de
+# 1,1 seulement ; un plafond à 3x laisse une marge large sans laisser passer un groupe
+# hétérogène (un titre de 3 mots mélangé à une phrase de corps de 30 aurait échappé faute de
+# ce garde-fou).
 SEUIL_HOMOGENEITE_MOTS = 3
+
+# ⚠ Révision du 21.09.2026 — PLANCHER du dénominateur de ce ratio, mesuré sur
+# 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP (LISEZMOI du corpus : « tout en style Normal 11 pt,
+# 20 pseudo-titres, aucun changement de corps » — la hiérarchie n'est portée QUE par le gras).
+# Ses vrais titres vont d'UN mot (« Résumé », « Perspectives », « Références ») à dix
+# (« Résultats – Signaux préliminaires sur les questions de recherche ») : le ratio SEUL,
+# plancher à 1 mot, exigeait alors max <= 3 mots — rejetant en bloc le seul groupe qualifiant
+# du document (14 membres, 1 à 10 mots) et le réduisant à zéro titre promu (1/17 mesuré). Le
+# danger que le ratio protège (« un titre de 3 mots mélangé à une phrase de corps de 30 »,
+# voir plus haut) reste couvert : à ce plancher, un membre de 30 mots échoue toujours
+# (30 > 3×4=12). Seul le cas d'un dénominateur PATHOLOGIQUEMENT petit (un titre à un seul mot,
+# aussi réel que légitime) cesse d'imposer un ratio que même deux vrais titres ordinaires ne
+# tiendraient pas.
+PLANCHER_HOMOGENEITE_MOTS = 4
 
 # §5.1 passe 3, critère « occurrences réparties, pas toutes collées » : ce garde-fou ne joue
 # qu'à partir de ce nombre d'occurrences dans un groupe (en dessous, juger une « répartition »
@@ -1185,12 +1199,14 @@ def _grouper_candidats(paras, exclus, niveaux_a_chercher, corps_sig, corps_media
 def _filtrer_groupes(groupes, paras):
     """Ne garde que les groupes dont les occurrences sont réparties (pas toutes consécutives,
     à partir de SEUIL_DISPERSION_MIN occurrences) et dont les longueurs sont homogènes entre
-    elles (le plus long ne dépasse pas SEUIL_HOMOGENEITE_MOTS fois le plus court)."""
+    elles (le plus long ne dépasse pas SEUIL_HOMOGENEITE_MOTS fois le plus court — le plus
+    court étant plafonné à PLANCHER_HOMOGENEITE_MOTS, voir sa note : un titre à un seul mot ne
+    doit pas, à lui seul, imposer un ratio pathologiquement serré au reste du groupe)."""
     qualifies = {}
     for sig, indices in groupes.items():
         mots = [len(_mots(paras[i].texte().rstrip())) for i in indices]
         mn, mx = min(mots), max(mots)
-        if mx > SEUIL_HOMOGENEITE_MOTS * max(mn, 1):
+        if mx > SEUIL_HOMOGENEITE_MOTS * max(mn, PLANCHER_HOMOGENEITE_MOTS):
             continue
         if len(indices) >= SEUIL_DISPERSION_MIN:
             tries = sorted(indices)
