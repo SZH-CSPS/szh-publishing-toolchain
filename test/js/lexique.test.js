@@ -1,9 +1,10 @@
 // outils-dev/lexique/generer-lexique.py : lit pipeline/vale/lexique/lexique-{fr,de}.csv (la
 // source de vérité éditable au tableur) et écrit le classeur xlsx, le TBX et les règles Vale
-// générées (Coherence.yml, Sigle.yml). Ce fichier ne rejoue JAMAIS le vrai lexique (483/478
-// lignes, issu du corpus OJS — voir outils-dev/lexique/analyser-corpus.py) : un mini-CSV
-// fabriqué ici, cinq lignes fr, deux lignes de, suffit à prouver le contrat sans dépendre
-// d'un corpus qui n'est pas versionné (tmp/corpus-ojs est hors git).
+// générées (Coherence.yml, un Sigle-<SIGLE>.yml par sigle à exiger_developpement=oui). Ce
+// fichier ne rejoue JAMAIS le vrai lexique (475/472 lignes, issu du corpus OJS — voir
+// outils-dev/lexique/analyser-corpus.py) : un mini-CSV fabriqué ici, cinq lignes fr, deux
+// lignes de, suffit à prouver le contrat sans dépendre d'un corpus qui n'est pas versionné
+// (tmp/corpus-ojs est hors git).
 //
 //   node --test "test/js/*.test.js"
 //
@@ -24,25 +25,30 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const GENERER = path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py');
 
 const ENTETE = 'terme;categorie;forme_privilegiee;variantes;frequence;documents;' +
-  'sigle_developpement;statut;source_normative;exemple_1;exemple_2;note';
+  'sigle_developpement;statut;source_normative;exemple_1;exemple_2;note;exiger_developpement';
 
-// Mêmes colonnes, mêmes séparateurs que pipeline/vale/lexique/lexique-fr.csv réel.
+// Mêmes colonnes, mêmes séparateurs que pipeline/vale/lexique/lexique-fr.csv réel. CUA porte
+// `exiger_developpement=oui` (doit produire Sigle-CUA.yml), OMS `non` (ne doit produire
+// AUCUN fichier Sigle-OMS.yml — c'est exactement le garde-fou demandé par le superviseur :
+// un sigle établi que le corpus ne redéveloppe pas assez souvent lui-même ne doit jamais
+// entrer dans la règle, quel que soit son développement connu par ailleurs).
 const LEXIQUE_FR = [
   ENTETE,
   'co-enseignement;ecole;co-enseignement;coenseignement;10;5;;privilegie;' +
-    'lexique maison (test);;;',
-  'élèves;ecole;élèves;élève;20;8;;a_trancher;;;;variante de nombre',
-  'CUA;sigle;CUA;;15;6;conception universelle de l\'apprentissage;neutre;;;;',
-  'OMS;sigle;OMS;;3;2;;neutre;;;;jamais développe dans le corpus',
+    'lexique maison (test);;;;non',
+  'élèves;ecole;élèves;élève;20;8;;a_trancher;;;;variante de nombre;non',
+  'CUA;sigle;CUA;;15;6;conception universelle de l\'apprentissage;neutre;;;;;oui',
+  'OMS;sigle;OMS;;3;2;Organisation mondiale de la santé;neutre;;;;' +
+    'sigle établi, développement connu mais jamais exigé (preuve d\'usage insuffisante);non',
   'personne handicapée;handicap;personne handicapée;;4;3;;deconseille;' +
-    'CSPS.Vocabulaire.Handicap;;;faux positif mesuré',
+    'CSPS.Vocabulaire.Handicap;;;faux positif mesuré;non',
 ].join('\n') + '\n';
 
 const LEXIQUE_DE = [
   ENTETE,
-  'CUA;sigle;CUA;;9;4;conception universelle de l\'apprentissage;neutre;;;;',
+  'CUA;sigle;CUA;;9;4;conception universelle de l\'apprentissage;neutre;;;;;oui',
   'Schüler:innen;ecole;Schüler:innen;Schülerinnen und Schüler;12;5;;' +
-    'privilegie;lexique maison (test);;;',
+    'privilegie;lexique maison (test);;;;non',
 ].join('\n') + '\n';
 
 function dossierJetable(prefixe) {
@@ -169,15 +175,22 @@ test('Coherence.yml (de) : la paire privilegie Schüler:innen est présente',
     assert.match(coherence, /Schülerinnen/, 'la variante (forme complète) doit apparaître en clé');
   });
 
-// ---- Sigle.yml : le sigle avec un développement connu (CUA) est dans `first`, celui sans
-// développement (OMS) n'y figure pas. ----
+// ---- Sigle-<SIGLE>.yml : un fichier par sigle à `exiger_developpement=oui` (CUA), jamais
+// un fichier générique à `%s` (mesuré en vrai : Vale 3.22.0 ne substitue pas `%s` dans
+// `second`, voir generer-lexique.py). OMS (`exiger_developpement=non`, sabotage demandé par
+// le superviseur : un sigle à `non` — même avec un développement connu par ailleurs — ne
+// doit produire AUCUN fichier). ----
 
-test('Sigle.yml : seul le sigle avec un développement connu entre dans `first`',
+test('Sigle-CUA.yml existe (exiger_developpement=oui), aucun Sigle-OMS.yml (=non)',
   { skip: sansPython }, () => {
     const { stylesDir } = preparerEtLancer();
-    const sigle = fs.readFileSync(path.join(stylesDir, 'CSPS', 'Lexique', 'Sigle.yml'), 'utf8');
-    assert.match(sigle, /CUA/);
-    assert.doesNotMatch(sigle, /OMS/, 'un sigle sans développement connu ne doit pas être exigé');
+    const dossier = path.join(stylesDir, 'CSPS', 'Lexique');
+    assert.ok(fs.existsSync(path.join(dossier, 'Sigle-CUA.yml')), 'Sigle-CUA.yml doit exister');
+    const cua = fs.readFileSync(path.join(dossier, 'Sigle-CUA.yml'), 'utf8');
+    assert.match(cua, /extends: conditional/);
+    assert.match(cua, /\\bCUA\\b/);
+    assert.ok(!fs.existsSync(path.join(dossier, 'Sigle-OMS.yml')),
+      'un sigle à exiger_developpement=non ne doit produire aucun fichier Sigle-*.yml');
   });
 
 // ---- Idempotence : même CSV en entrée -> mêmes octets en sortie, deux exécutions. ----
@@ -197,10 +210,15 @@ test('idempotence : deux exécutions sur le même CSV produisent des fichiers id
       const b = fs.readFileSync(path.join(sortie2, nom));
       assert.ok(a.equals(b), nom + ' diffère entre les deux exécutions');
     }
-    for (const rel of [['CSPS', 'Coherence.yml'], ['CSPS', 'Sigle.yml'],
-      ['SZH', 'Coherence.yml'], ['SZH', 'Sigle.yml']]) {
+    for (const rel of [['CSPS', 'Coherence.yml'], ['CSPS', 'Sigle-CUA.yml'],
+      ['SZH', 'Coherence.yml'], ['SZH', 'Sigle-CUA.yml']]) {
       const a = fs.readFileSync(path.join(styles1, rel[0], 'Lexique', rel[1]));
       const b = fs.readFileSync(path.join(styles2, rel[0], 'Lexique', rel[1]));
       assert.ok(a.equals(b), rel.join('/') + ' diffère entre les deux exécutions');
     }
+    // le nettoyage (retrait des anciens Sigle-*.yml avant réécriture) est lui aussi
+    // idempotent : la liste des fichiers du dossier doit être identique, pas seulement le
+    // contenu de Sigle-CUA.yml.
+    const listeFichiers = (d) => fs.readdirSync(path.join(d, 'CSPS', 'Lexique')).sort();
+    assert.deepStrictEqual(listeFichiers(styles1), listeFichiers(styles2));
   });

@@ -10,7 +10,7 @@ nettoyeur de manuscrit.
 ## Lire et éditer le CSV
 
 Ouvrez `lexique-fr.csv` ou `lexique-de.csv` dans un tableur (Excel, LibreOffice Calc) en
-précisant le séparateur `;` et l'encodage UTF-8. Douze colonnes :
+précisant le séparateur `;` et l'encodage UTF-8. Treize colonnes :
 
 | colonne | sens |
 |---|---|
@@ -24,6 +24,19 @@ précisant le séparateur `;` et l'encodage UTF-8. Douze colonnes :
 | `source_normative` | quel document ou quelle règle Vale fonde `privilegie`/`deconseille` |
 | `exemple_1` / `exemple_2` | deux phrases réelles du corpus |
 | `note` | remarque libre |
+| `exiger_developpement` | `oui`/`non`, défaut `non` — pour un sigle SEULEMENT : faut-il exiger qu'il soit redéveloppé dans chaque article ? Voir plus bas, c'est un garde-fou, pas un détail. |
+
+**`exiger_developpement`** : un sigle avec un `sigle_developpement` connu n'entre dans la
+règle Vale « ce sigle doit être développé » QUE si cette colonne vaut `oui`. Calculé par
+l'analyseur : `oui` seulement si la maison redéveloppe elle-même le sigle dans plus de 75 %
+des documents où il apparaît (preuve d'usage réelle, pas une supposition) — un sigle établi
+que le corpus ne redéveloppe pas systématiquement (ex. mesuré : HES, CDPH, ARTISET) reste à
+`non`, sans quoi la règle serait fausse par construction sur des textes déjà relus quatre
+fois. Deux sigles cités comme exemples de « jamais développés » lors de la demande de ce
+garde-fou se sont révélés, à la mesure, développés très systématiquement par la maison (CUA :
+11/11 documents où il apparaît, BEP : 6/7) et sont donc passés à `oui` malgré l'intuition de
+départ — la preuve d'usage l'emporte sur la supposition ; changez la colonne à la main si vous
+n'êtes pas d'accord, la source de vérité est éditable.
 
 **Le statut** décide ce que Vale fera du terme :
 - `privilegie` + `variantes` non vide → une variante sera automatiquement suggérée en
@@ -60,22 +73,35 @@ Ceci écrit :
 - `pipeline/vale/styles/CSPS/Lexique/Coherence.yml` et `.../SZH/Lexique/Coherence.yml` —
   règle de substitution : une variante listée avec un statut `privilegie` est suggérée en
   faveur de la forme privilégiée.
-- `pipeline/vale/styles/CSPS/Lexique/Sigle.yml` et `.../SZH/Lexique/Sigle.yml` — un sigle
-  dont `sigle_developpement` est rempli doit être développé au moins une fois dans l'article
-  (motif générique « Mots (SIGLE) »), sinon suggestion de vérification. Un sigle SANS
-  développement connu n'entre jamais dans cette règle (rien à vérifier).
+- `pipeline/vale/styles/{CSPS,SZH}/Lexique/Sigle-<SIGLE>.yml` — UN FICHIER PAR SIGLE à
+  `exiger_developpement=oui` (jamais un seul fichier générique pour tous les sigles — voir
+  l'encadré ci-dessous, c'est mesuré, pas une préférence de style). Chacun vérifie que son
+  sigle est développé au moins une fois dans l'article (motif « Mots (SIGLE) » ou
+  « SIGLE (Mots) »), sinon suggestion de vérification. Une régénération retire d'abord TOUS
+  les anciens `Sigle-*.yml` du dossier avant d'écrire les nouveaux — un sigle qui sort de la
+  liste `oui` voit son fichier disparaître automatiquement.
+
+  > **Pourquoi un fichier par sigle, et pas un seul avec `%s` ?** Vale documente un idiome à
+  > une seule règle « acronyme » où `second` réutilise le sigle capturé par `first` via `%s`.
+  > Mesuré en vrai sur Vale 3.22.0 (trois essais isolés, hors de ce dépôt) : `%s` n'est
+  > JAMAIS substitué dans `second` — le texte reste littéralement « %s », qu'aucun document
+  > ne contient, donc `second` ne matche jamais et CHAQUE occurrence du sigle est signalée,
+  > développé ou non (mesuré : 1172 fausses alertes sur seulement 76 articles avant ce
+  > correctif). Un `first`/`second` tous deux littéraux, sans aucun `%s`, fonctionne
+  > correctement (mesuré aussi) — d'où un fichier par sigle.
 - `tmp/lexique/accept-fr.txt` et `accept-de.txt` — la liste des termes et sigles du lexique,
   pour un futur vocabulaire Vale accepté (voir « Ce qui n'est pas encore branché » ci-dessous).
 
-Ces trois `.yml` sont marqués « généré, ne pas éditer » en tête de fichier : toute correction
+Tous ces `.yml` sont marqués « généré, ne pas éditer » en tête de fichier : toute correction
 se fait dans le CSV, puis on relance la commande ci-dessus. Le script est idempotent : la
-même entrée produit toujours exactement les mêmes octets.
+même entrée produit toujours exactement les mêmes octets (nettoyage des anciens `Sigle-*.yml`
+compris).
 
-**Les règles `Coherence.yml` et `Sigle.yml` sont DÉJÀ actives**, sans toucher à `.vale.ini` :
-`Lexique` est un sous-dossier de `CSPS` et de `SZH` au même titre que `Epicene` ou
-`Vocabulaire`, et `.vale.ini` charge déjà tout le style `CSPS`/`SZH` (`BasedOnStyles`). Elles
-apparaissent dans le rapport sous les noms `CSPS.Lexique.Coherence`, `CSPS.Lexique.Sigle`,
-`SZH.Lexique.Coherence`, `SZH.Lexique.Sigle`.
+**Les règles `Coherence.yml` et `Sigle-<SIGLE>.yml` sont DÉJÀ actives**, sans toucher à
+`.vale.ini` : `Lexique` est un sous-dossier de `CSPS` et de `SZH` au même titre que `Epicene`
+ou `Vocabulaire`, et `.vale.ini` charge déjà tout le style `CSPS`/`SZH` (`BasedOnStyles`).
+Chaque sigle apparaît dans le rapport sous son propre nom (`CSPS.Lexique.Sigle-CUA`,
+`CSPS.Lexique.Sigle-BEP`…) ; `CSPS.Lexique.Coherence` regroupe toutes les substitutions.
 
 ## Ce qui n'est pas encore branché : `accept-*.txt`
 

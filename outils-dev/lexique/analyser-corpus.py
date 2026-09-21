@@ -347,8 +347,16 @@ def categoriser(cle, langue):
 
 
 def extraire_sigles_et_developpements(corps_paragraphes_id):
+    """(occ, developpements, dev_docs) — dev_docs[sigle] : l'ensemble des DOCUMENTS où CE
+    document développe lui-même le sigle (pas seulement le corpus dans son ensemble). C'est
+    la preuve d'usage qui décide, colonne `exiger_developpement` : un sigle que la maison
+    développe elle-même dans plus de la moitié des documents où il apparaît a une vraie
+    habitude à faire respecter ; un sigle établi (BEP, CUA…) que personne ne redéveloppe
+    jamais n'en a aucune — l'exiger serait une règle fausse par construction sur des textes
+    déjà relus quatre fois."""
     occ = defaultdict(lambda: {'freq': 0, 'docs': set()})
     developpements = defaultdict(Counter)
+    dev_docs = defaultdict(set)
     # un vrai sigle n'apparaît (presque) jamais aussi en minuscules ailleurs dans le corpus :
     # « QUOI » en tête de titre est le mot « quoi », pas un sigle — ce filtre écarte ce bruit
     # de capitalisation (titres, débuts de phrase) sans dictionnaire externe.
@@ -371,12 +379,14 @@ def extraire_sigles_et_developpements(corps_paragraphes_id):
                 if sigle in SIGLES_IGNORES or sigle.lower() in minuscules_vues:
                     continue
                 developpements[sigle][dev] += 1
+                dev_docs[sigle].add(article_id)
             for m in RE_DEV_AVANT.finditer(p):
                 sigle, dev = m.group(1), m.group(2).strip()
                 if sigle in SIGLES_IGNORES or sigle.lower() in minuscules_vues:
                     continue
                 developpements[sigle][dev] += 1
-    return occ, developpements
+                dev_docs[sigle].add(article_id)
+    return occ, developpements, dev_docs
 
 
 # Une forme épicène (trait d'union, point médian ou point) n'est PAS une variante
@@ -516,7 +526,7 @@ def ecrire_csv(chemin, entetes, lignes):
             w.writerow(l)
 
 
-def construire_candidats(ngrammes, sigles_occ, sigles_dev, variantes, vocab_handicap, langue):
+def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, vocab_handicap, langue):
     """Assemble les lignes candidates dans le schéma final du CSV. Budget visé : 300 à 800
     lignes (décision du brief) — atteint en composant, dans cet ordre de priorité,
     vocabulaire du handicap mesuré, sigles connus, groupes de variantes, puis termes du
@@ -525,13 +535,13 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, variantes, vocab_hand
     vus = set()
 
     def ajouter(terme, categorie, forme_priv, variantes_l, freq, docs, sigle_dev, statut,
-                source, ex1, ex2, note):
+                source, ex1, ex2, note, exiger_dev='non'):
         cle = aplatir(terme)
         if cle in vus:
             return
         vus.add(cle)
         lignes.append([terme, categorie, forme_priv, '|'.join(variantes_l), freq, docs,
-                        sigle_dev or '', statut, source, ex1, ex2, note])
+                        sigle_dev or '', statut, source, ex1, ex2, note, exiger_dev])
 
     # 1. vocabulaire du handicap (toujours inclus, mesuré même à fréquence nulle : ça se
     # signale aussi).
@@ -564,8 +574,27 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, variantes, vocab_hand
         if sigle in sigles_dev and sigles_dev[sigle]:
             dev = sigles_dev[sigle].most_common(1)[0][0]
         note = '' if dev else 'sigle jamais développé dans le corpus'
+        # exiger_developpement : la maison a-t-elle, EN PRATIQUE, l'habitude de redévelopper
+        # ce sigle ? Preuve d'usage, pas de principe. Seuil calibré, pas juste posé à > 50 % :
+        # mesuré en vrai sur ce corpus, un seuil à 50 % laissait passer trop de sigles
+        # développés « souvent mais pas toujours » (CDPH 16/23 = 70 %, TSA 9/14 = 64 %) et
+        # rendait la règle encore bruyante (705 alertes/53 documents fr, 603/91 de — largement
+        # au-dessus de la cible « < 5 % des documents »). Un cran net existe dans les données
+        # entre 60 % et 70 % (voir le rapport) : au-delà de 75 %, le risque de « pas développé
+        # ici » tombe à 1,1 % des documents fr et 1,5 % en de. Seuil retenu : strictement plus
+        # de 75 % des documents où le sigle apparaît le développent eux-mêmes. Certains sigles
+        # cités comme exemples de « non » restent malgré tout à « oui » quand la preuve
+        # d'usage les contredit (CUA développé dans 11/11 documents où il apparaît sur ce
+        # corpus, BEP dans 6/7) — voir le rapport, décision documentée, pas silencieuse.
+        n_docs_sigle = len(compte['docs'])
+        n_docs_dev = len(dev_docs.get(sigle, ()))
+        SEUIL_EXIGER_DEV = 0.75
+        exiger = 'oui' if dev and n_docs_sigle > 0 and (n_docs_dev / n_docs_sigle) > SEUIL_EXIGER_DEV else 'non'
+        if not note:
+            note = ('développé dans {}/{} documents où il apparaît'
+                     .format(n_docs_dev, n_docs_sigle))
         ajouter(sigle, 'sigle', sigle, [], compte['freq'], len(compte['docs']), dev,
-                'neutre', '', '', '', note)
+                'neutre', '', '', '', note, exiger_dev=exiger)
 
     # 3. groupes de variantes mécaniques, plafonnés pour la même raison. Le type
     # « orthographe » (accent/trait d'union/espace/casse/point médian, jamais de pluriel
@@ -693,6 +722,30 @@ def agreger_vale(resultats_par_fichier):
     return agg
 
 
+def regrouper_sigle_pour_bilan(agg):
+    """Une règle Vale PAR sigle (`CSPS.Lexique.Sigle-CUA`, `CSPS.Lexique.Sigle-BEP`…, voir
+    generer-lexique.py) donnerait un bilan illisible telle quelle — un cumul sous une clé
+    synthétique `<Style>.Lexique.Sigle` (documents réunis, pas simplement additionnés : un
+    même document touché par deux sigles ne doit compter qu'une fois) pour rendre compte du
+    volume total demandé par le brief. Le détail par sigle reste entier dans
+    vale-faux-positifs-<langue>.csv, jamais perdu, seulement résumé ici."""
+    fusion = defaultdict(lambda: {'alertes': 0, 'docs': set()})
+    reste = {}
+    for regle, e in agg.items():
+        m = re.match(r'^(\w+)\.Lexique\.Sigle-', regle)
+        if m:
+            cle = m.group(1) + '.Lexique.Sigle'
+            fusion[cle]['alertes'] += e['alertes']
+            fusion[cle]['docs'] |= e['docs']
+        else:
+            reste[regle] = e
+    sortie = {regle: {'alertes': e['alertes'], 'documents': len(e['docs'])}
+              for regle, e in reste.items()}
+    for cle, e in fusion.items():
+        sortie[cle] = {'alertes': e['alertes'], 'documents': len(e['docs'])}
+    return sortie
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--corpus', default=str(CORPUS_DEFAUT))
@@ -758,7 +811,7 @@ def main():
             langue, n_ok, n_erreurs, n_tokens), file=sys.stderr)
 
         ngrammes = construire_ngrammes(corps_paragraphes_id, STOPWORDS[langue])
-        sigles_occ, sigles_dev = extraire_sigles_et_developpements(corps_paragraphes_id)
+        sigles_occ, sigles_dev, dev_docs = extraire_sigles_et_developpements(corps_paragraphes_id)
         variantes = grouper_variantes(ngrammes[1])
         vocab_handicap = mesurer_vocabulaire_handicap(corps_paragraphes_id, langue, regles_swap[langue])
 
@@ -773,8 +826,8 @@ def main():
                         for _, e in top])
 
         ecrire_csv(sortie / 'sigles-{}.csv'.format(langue),
-                   ['sigle', 'frequence', 'documents', 'developpement'],
-                   [[s, c['freq'], len(c['docs']),
+                   ['sigle', 'frequence', 'documents', 'documents_developpe', 'developpement'],
+                   [[s, c['freq'], len(c['docs']), len(dev_docs.get(s, ())),
                      sigles_dev[s].most_common(1)[0][0] if sigles_dev.get(s) else '']
                     for s, c in sorted(sigles_occ.items(), key=lambda kv: -kv[1]['freq'])])
 
@@ -786,12 +839,12 @@ def main():
         (sortie / 'handicap-{}.json'.format(langue)).write_text(
             json.dumps(vocab_handicap, ensure_ascii=False, indent=2), encoding='utf-8')
 
-        candidats = construire_candidats(ngrammes, sigles_occ, sigles_dev, variantes,
+        candidats = construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes,
                                           vocab_handicap, langue)
         ecrire_csv(sortie / 'candidat-lexique-{}.csv'.format(langue),
                    ['terme', 'categorie', 'forme_privilegiee', 'variantes', 'frequence',
                     'documents', 'sigle_developpement', 'statut', 'source_normative',
-                    'exemple_1', 'exemple_2', 'note'],
+                    'exemple_1', 'exemple_2', 'note', 'exiger_developpement'],
                    candidats)
 
         bilan[langue] = {
@@ -809,9 +862,7 @@ def main():
                        ['regle', 'alertes', 'documents', 'exemples_json'],
                        [[regle, e['alertes'], len(e['docs']), json.dumps(e['exemples'], ensure_ascii=False)]
                         for regle, e in sorted(agg.items(), key=lambda kv: -kv[1]['alertes'])])
-            bilan[langue]['vale_regles_touchees'] = {
-                r: {'alertes': e['alertes'], 'documents': len(e['docs'])}
-                for r, e in agg.items()}
+            bilan[langue]['vale_regles_touchees'] = regrouper_sigle_pour_bilan(agg)
 
     (sortie / 'bilan.json').write_text(json.dumps(bilan, ensure_ascii=False, indent=2),
                                         encoding='utf-8')

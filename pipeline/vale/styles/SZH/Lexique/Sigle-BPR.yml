@@ -1,0 +1,14 @@
+# généré par outils-dev/lexique/generer-lexique.py depuis pipeline/vale/lexique/lexique-de.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# « BPR » doit être développé au moins une fois dans le document (motif
+# « Mots (SIGLE) » ou « SIGLE (Mots) »). Entre ici parce que le CSV le marque
+# `exiger_developpement=oui` — le seuil qui décide de ce "oui" est calculé et
+# documenté dans outils-dev/lexique/analyser-corpus.py, pas ici (ce script ne
+# fait que respecter la colonne). Un fichier PAR SIGLE, jamais une seule règle
+# générique à `%s` : Vale 3.22.0 ne substitue pas `%s` dans `second`, mesuré en
+# vrai (voir pipeline/vale/lexique/LISEZMOI.md).
+extends: conditional
+message: "Sigle « BPR » : à développer au moins une fois dans l'article."
+level: suggestion
+ignorecase: false
+first: '\bBPR\b'
+second: '(?:[\wÀ-ÿ’]+[\s-]+){1,6}\(BPR\)|BPR\s*\([\wÀ-ÿ’ -]{2,80}?\)'

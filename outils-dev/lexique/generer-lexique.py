@@ -3,8 +3,10 @@
 # au tableur) et écrit, de façon idempotente (même entrée -> mêmes octets) :
 #   - tmp/lexique/lexique-<langue>.xlsx   un classeur Office Open XML, stdlib seule
 #   - tmp/lexique/lexique.tbx             TBX-Basic (ISO 30042), fr+de
-#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Coherence.yml   règle de substitution générée
-#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Sigle.yml       règle conditionnelle générée
+#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Coherence.yml    règle de substitution générée
+#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Sigle-<SIGLE>.yml  une règle conditionnelle PAR
+#     sigle à `exiger_developpement=oui` (jamais une seule règle générique à `%s` : mesuré en
+#     vrai que Vale 3.22.0 ne substitue pas `%s` dans `second`, voir construire_regles_sigle)
 #   - tmp/lexique/accept-<langue>.txt     vocabulaire accepté (voir LISEZMOI : ce fichier
 #     n'est PAS dans la liste des fichiers autorisés sous pipeline/vale/styles/.../Lexique/
 #     (glob *.yml uniquement) — il est donc généré en zone hors git, comme le xlsx et le
@@ -25,7 +27,8 @@ SORTIE_TMP = RACINE / 'tmp' / 'lexique'
 STYLES_DIR = RACINE / 'pipeline' / 'vale' / 'styles'
 
 COLONNES = ['terme', 'categorie', 'forme_privilegiee', 'variantes', 'frequence', 'documents',
-            'sigle_developpement', 'statut', 'source_normative', 'exemple_1', 'exemple_2', 'note']
+            'sigle_developpement', 'statut', 'source_normative', 'exemple_1', 'exemple_2', 'note',
+            'exiger_developpement']
 
 STATUT_TBX = {
     'privilegie': 'preferredTerm-admn-sts',
@@ -297,26 +300,51 @@ def construire_coherence_yaml(lignes, langue):
     return ''.join(lignes_yaml), ecartes
 
 
-def construire_sigle_yaml(lignes, langue):
+# Vale 3.22.0 mesuré EN VRAI (trois essais isolés, un style minimal, un seul sigle) : la
+# règle `conditional` ne substitue JAMAIS `%s` dans `second` — le `%s` reste le texte
+# littéral « %s », que le document ne contient jamais, donc `second` ne matche JAMAIS et
+# CHAQUE occurrence de `first` est signalée, sigle développé ou non. C'est l'idiome « un seul
+# `first` en alternation + `%s` dans `second` » que la documentation Vale décrit pour les
+# acronymes qui est en cause : il ne fonctionne pas dans cette version, mesuré, pas supposé
+# (voir le rapport : test isolé « (CUA) » présent sur la MÊME ligne que le sigle, toujours
+# signalé). Sans `%s`, un `first`/`second` tous deux littéraux fonctionne bien (mesuré aussi).
+# D'où une règle PAR SIGLE (fichier `Sigle-<SIGLE>.yml`), jamais une règle générique.
+def construire_regles_sigle(lignes, langue):
+    """{nom_fichier: contenu} — un fichier YAML par sigle à `exiger_developpement=oui`.
+    `exiger_developpement` (oui/non, défaut non) est le SEUL filtre qui compte : un sigle
+    dont le développement est connu mais que la maison ne redéveloppe elle-même que
+    rarement (mesuré : HES, CDPH…) reste hors de cette règle — l'exiger serait une règle
+    fausse par construction sur des textes déjà relus quatre fois."""
+    sortie = {}
     sigles = sorted({row['terme'] for row in lignes
-                      if row.get('categorie') == 'sigle' and row.get('sigle_developpement')})
-    lignes_yaml = [ENTETE_YAML_GENERE.format(langue=langue)]
-    lignes_yaml.append(
-        '# Un sigle de cette liste doit être développé au moins une fois dans le document\n'
-        '# (motif générique "Mots (SIGLE)" avant ou après). Seuls les sigles dont le\n'
-        '# développement a été retrouvé dans le corpus publié figurent ici — un sigle sans\n'
-        '# développement connu n\'est pas de la responsabilité de cette règle (voir le\n'
-        '# lexique, colonne note : "jamais développé dans le corpus").\n')
-    lignes_yaml.append('extends: conditional\n')
-    lignes_yaml.append('message: "Sigle « %s » : à développer au moins une fois dans l\'article."\n')
-    lignes_yaml.append('level: suggestion\n')
-    lignes_yaml.append('ignorecase: false\n')
-    if sigles:
-        lignes_yaml.append('first: \'\\b({})\\b\'\n'.format('|'.join(re.escape(s) for s in sigles)))
-    else:
-        lignes_yaml.append("first: '(?!x)x'  # aucun sigle avec développement connu dans le CSV actuel\n")
-    lignes_yaml.append("second: '(?:[\\wÀ-ÿ]+[\\s-]+){1,6}\\(%s\\)'\n")
-    return ''.join(lignes_yaml)
+                      if row.get('categorie') == 'sigle' and row.get('sigle_developpement')
+                      and row.get('exiger_developpement') == 'oui'})
+    for sigle in sigles:
+        s = re.escape(sigle)
+        lignes_yaml = [ENTETE_YAML_GENERE.format(langue=langue)]
+        lignes_yaml.append(
+            '# « {sigle} » doit être développé au moins une fois dans le document (motif\n'
+            '# « Mots (SIGLE) » ou « SIGLE (Mots) »). Entre ici parce que le CSV le marque\n'
+            '# `exiger_developpement=oui` — le seuil qui décide de ce "oui" est calculé et\n'
+            '# documenté dans outils-dev/lexique/analyser-corpus.py, pas ici (ce script ne\n'
+            '# fait que respecter la colonne). Un fichier PAR SIGLE, jamais une seule règle\n'
+            '# générique à `%s` : Vale 3.22.0 ne substitue pas `%s` dans `second`, mesuré en\n'
+            '# vrai (voir pipeline/vale/lexique/LISEZMOI.md).\n'.format(sigle=sigle))
+        lignes_yaml.append('extends: conditional\n')
+        lignes_yaml.append(
+            'message: "Sigle « {sigle} » : à développer au moins une fois dans l\'article."\n'
+            .format(sigle=sigle))
+        lignes_yaml.append('level: suggestion\n')
+        lignes_yaml.append('ignorecase: false\n')
+        lignes_yaml.append("first: '\\b{s}\\b'\n".format(s=s))
+        # apostrophe : seule la courbe ’ (celle que pandoc écrit pour une élision, mesuré sur
+        # le corpus — « l’apprentissage ») — jamais la droite ' à l'intérieur d'une valeur
+        # YAML entre guillemets simples, qui exigerait un doublage ('') pour s'échapper.
+        lignes_yaml.append(
+            "second: '(?:[\\wÀ-ÿ’]+[\\s-]+){{1,6}}\\({s}\\)|{s}\\s*\\([\\wÀ-ÿ’ -]{{2,80}}?\\)'\n"
+            .format(s=s))
+        sortie['Sigle-{}.yml'.format(sigle)] = ''.join(lignes_yaml)
+    return sortie
 
 
 def construire_accept_txt(lignes):
@@ -359,14 +387,24 @@ def main():
 
     coherence_fr, ecartes_fr = construire_coherence_yaml(lignes_fr, 'fr')
     coherence_de, ecartes_de = construire_coherence_yaml(lignes_de, 'de')
-    (styles_dir / 'CSPS' / 'Lexique').mkdir(parents=True, exist_ok=True)
-    (styles_dir / 'SZH' / 'Lexique').mkdir(parents=True, exist_ok=True)
-    (styles_dir / 'CSPS' / 'Lexique' / 'Coherence.yml').write_text(coherence_fr, encoding='utf-8', newline='\n')
-    (styles_dir / 'SZH' / 'Lexique' / 'Coherence.yml').write_text(coherence_de, encoding='utf-8', newline='\n')
-    (styles_dir / 'CSPS' / 'Lexique' / 'Sigle.yml').write_text(
-        construire_sigle_yaml(lignes_fr, 'fr'), encoding='utf-8', newline='\n')
-    (styles_dir / 'SZH' / 'Lexique' / 'Sigle.yml').write_text(
-        construire_sigle_yaml(lignes_de, 'de'), encoding='utf-8', newline='\n')
+    dossier_fr = styles_dir / 'CSPS' / 'Lexique'
+    dossier_de = styles_dir / 'SZH' / 'Lexique'
+    dossier_fr.mkdir(parents=True, exist_ok=True)
+    dossier_de.mkdir(parents=True, exist_ok=True)
+    (dossier_fr / 'Coherence.yml').write_text(coherence_fr, encoding='utf-8', newline='\n')
+    (dossier_de / 'Coherence.yml').write_text(coherence_de, encoding='utf-8', newline='\n')
+
+    # Un fichier PAR SIGLE (voir construire_regles_sigle) : on nettoie d'abord tous les
+    # anciens Sigle-*.yml (et l'ancien Sigle.yml, un seul fichier générique, abandonné —
+    # voir le rapport) pour qu'une régénération soit vraiment reproductible même quand un
+    # sigle sort de la liste `exiger_developpement=oui` d'une exécution à l'autre.
+    for dossier in (dossier_fr, dossier_de):
+        for f in dossier.glob('Sigle*.yml'):
+            f.unlink()
+    for nom, contenu in construire_regles_sigle(lignes_fr, 'fr').items():
+        (dossier_fr / nom).write_text(contenu, encoding='utf-8', newline='\n')
+    for nom, contenu in construire_regles_sigle(lignes_de, 'de').items():
+        (dossier_de / nom).write_text(contenu, encoding='utf-8', newline='\n')
 
     (sortie_tmp / 'accept-fr.txt').write_text(construire_accept_txt(lignes_fr), encoding='utf-8', newline='\n')
     (sortie_tmp / 'accept-de.txt').write_text(construire_accept_txt(lignes_de), encoding='utf-8', newline='\n')
