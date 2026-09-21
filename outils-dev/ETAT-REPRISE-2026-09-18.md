@@ -64,6 +64,16 @@ EN COURS de correction par les agents concernés :
   `Paragraphe.source` : remappé dans la CLI, à corriger à la source un jour ;
 - rapport HTML : « paragraphe 0 » pour les paragraphes en cellule (source relatif à la cellule).
 
+## État final du 21.09.2026 (32 commits sur la branche, arbre propre)
+Suite complète : 2103/2103. Chaîne de bout en bout dans la WSL sur 12 manuscrits (90 s avec
+réseau) : Vale effectué 11/11, 231 parties XML valides, 75 révisions et 105 commentaires Word
+posés, 37 alertes renvoyées au rapport, 0 vrai titre détruit. Tout ce qui précède dans « EN COURS
+de correction » est corrigé et commité (Vale trouvé, annotation, bibliographie, correspondance,
+cellules, bloc final des auteurs, cohérence lexicale 59→5, commentaires raccourcis, contrat réécrit).
+Divergence ouverte : `score.py` du harnais compte 22/34 faux titres rattrapés, le contrat dit
+25/34 (mesure directe `lire()+classer_titres()`, sans retrait d'en-tête) — méthode de comptage,
+à trancher avant de citer un chiffre.
+
 ## Reste à faire ensuite
 1. **Branchement CLI** : appeler `manuscrit_vale.analyser()` (rôles `bibliographie` sur les
    paragraphes de biblio) et `manuscrit_biblio.analyser_bibliographie()` depuis
