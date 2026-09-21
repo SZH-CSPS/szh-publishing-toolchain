@@ -405,6 +405,177 @@ test('révision touchant un run de lien : jamais fusionnée, repli sur un commen
   });
 
 // ---------------------------------------------------------------------------------
+// 2 ter. Révision du 21.09.2026 bis — demande de Robin, lot APA anglais.
+
+// Point 6 : diff PAR JETON, pas la référence entière barrée pour trois mots changés. Trois
+// changements distincts (« et » -> « & », l'ajout d'italique sur le nom de revue, le volume
+// isolé en italique) doivent ressortir comme plusieurs petites paires w:del/w:ins, avec le
+// texte INCHANGÉ entre elles laissé en runs normaux (jamais marqué).
+test('révision par jeton : plusieurs petits changements dans une longue référence ne barrent '
+  + 'pas tout le texte, seuls les segments qui changent deviennent w:del/w:ins',
+  { skip: sansPython }, () => {
+    const original = 'Scruggs, T. E., Mastropieri, M. A. et McDuffie, K. A. (2007). '
+      + 'Co-teaching in inclusive classrooms: A metasynthesis of qualitative research. '
+      + 'Exceptional children, 73(4), 392-416.';
+    const suggere = 'Scruggs, T. E., Mastropieri, M. A., & McDuffie, K. A. (2007). '
+      + 'Co-teaching in inclusive classrooms: A metasynthesis of qualitative research. '
+      + '*Exceptional children*, *73*(4), 392-416.';
+    const paragraphes = [{ texte: original }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Jeton', severity: 'warning', action: 'track', para: 0, span: null,
+      found: original, suggested: suggere, message: 'mise en forme',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1, 'une seule ALERTE convertie en révision');
+    // Plusieurs w:del/w:ins DISTINCTS (l'ancien comportement n'en produisait qu'un seul,
+    // couvrant toute la référence) : au moins un pour « et » -> « & », un autre pour
+    // l'italique du nom de revue et du volume. Les segments identiques entre les deux
+    // (« Scruggs, T. E., Mastropieri, M. A. », « McDuffie… qualitative research. »,
+    // « (4), 392-416. ») ne doivent JAMAIS être repris dans un w:del.
+    const nbDel = (resultat.documentXml.match(/<w:del\b/g) || []).length;
+    assert.ok(nbDel >= 2, 'attendu plusieurs w:del distincts (un par changement), trouvé '
+      + nbDel + ' : ' + resultat.documentXml);
+    // Le texte inchangé au milieu (« McDuffie... Co-teaching... qualitative research. ») doit
+    // apparaître en run NORMAL, jamais entouré de w:del/w:ins.
+    assert.match(resultat.documentXml,
+      /<w:r><w:t[^>]*>[^<]*Co-teaching in inclusive classrooms: A metasynthesis of qualitative research\.[^<]*<\/w:t><\/w:r>/,
+      'le texte inchangé au milieu de la référence devrait rester un run normal, non marqué');
+    // simularAceptarRechazar() ne réécrit pas les entités XML (&amp; reste &amp;) ni ne
+    // dépouille les astérisques (qui, dans le document réel, n'existent pas : ils sont
+    // traduits en <w:i/>, jamais écrits comme caractères — voir la preuve indépendante
+    // pandoc pour la lecture ENTITÉS/ITALIQUE réelle). La comparaison porte donc sur la
+    // forme sans astérisque, entité XML brute.
+    const { aceptado, rechazado } = simularAceptarRechazar(resultat.documentXml);
+    assert.strictEqual(aceptado, suggere.replace(/\*/g, '').replace('&', '&amp;'));
+    assert.strictEqual(rechazado, original);
+  });
+
+// Repli : une reformulation profonde (plus de 60% des jetons changés) retombe sur l'ancien
+// comportement — un seul w:del/w:ins couvrant tout le span, comme avant ce lot.
+test('révision par jeton : une reformulation trop profonde (>60% des jetons) retombe sur un '
+  + 'seul w:del/w:ins pour tout le span', { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Un texte tout à fait différent du résultat attendu ici.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Profond', severity: 'warning', action: 'track', para: 0, span: null,
+      found: 'Un texte tout à fait différent du résultat attendu ici.',
+      suggested: 'Une phrase entièrement récrite sans aucun rapport avec la précédente.',
+      message: 'reformulation complète',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.strictEqual((resultat.documentXml.match(/<w:del\b/g) || []).length, 1,
+      'un seul w:del attendu pour une reformulation aussi profonde');
+    assert.strictEqual((resultat.documentXml.match(/<w:ins\b/g) || []).length, 1);
+  });
+
+// Point 6, cas italique : un segment dont le TEXTE est égal mais qui doit devenir italique
+// (marquage *…* du suggested) s'émet en w:del + w:ins du seul segment ; un segment déjà
+// italique et qui doit le rester n'est JAMAIS touché.
+test('révision par jeton : un segment à texte égal qui doit devenir italique est del+ins ; '
+  + 'un segment déjà italique qui le reste n\'est pas touché', { skip: sansPython }, () => {
+    const paragraphes = [{
+      runs: [
+        { texte: 'Titre ' },
+        { texte: 'Revue X' },
+        { texte: ' et ' },
+        { texte: 'Sous-titre', rpr: { italique: true } },
+        { texte: ' fin.' },
+      ],
+    }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Italique', severity: 'warning', action: 'track', para: 0, span: null,
+      found: 'Titre Revue X et Sous-titre fin.',
+      suggested: 'Titre *Revue X* et *Sous-titre* fin.', message: 'italique manquant',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    // « Revue X » (pas italique -> italique) : del+ins. « Sous-titre » (déjà italique, le
+    // reste) : jamais touché, run normal intact avec son rPr d'origine.
+    assert.match(resultat.documentXml, /<w:delText[^>]*>Revue X<\/w:delText>/);
+    assert.match(resultat.documentXml,
+      /<w:ins\b[^>]*><w:r><w:rPr><w:i\/><\/w:rPr><w:t[^>]*>Revue X<\/w:t>/);
+    assert.ok(!resultat.documentXml.includes('<w:delText'.concat('>Sous-titre<')),
+      'Sous-titre était déjà italique et le reste : il ne doit jamais être supprimé/réinséré');
+    assert.match(resultat.documentXml,
+      /<w:r><w:rPr><w:i\/><\/w:rPr><w:t[^>]*>Sous-titre<\/w:t><\/w:r>/,
+      'Sous-titre doit rester un run normal intact, inchangé');
+    const { aceptado, rechazado } = simularAceptarRechazar(resultat.documentXml);
+    assert.strictEqual(aceptado, 'Titre Revue X et Sous-titre fin.');
+    assert.strictEqual(rechazado, 'Titre Revue X et Sous-titre fin.');
+  });
+
+// Point 3 (bis) : repli TOLÉRANT à la typographie — le texte du paragraphe porte une
+// apostrophe typographique (’) alors que `found` porte l'apostrophe droite (') : sans le
+// repli, ce found ne se localiserait jamais et l'alerte finirait en commentaire.
+test('localisation tolérante à la typographie : apostrophe droite dans found, typographique '
+  + 'dans le texte -> quand même une révision', { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Les enseignants’ pratiques évoluent avec le temps.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.Tolerant', severity: 'warning', action: 'fix', para: 0, span: null,
+      found: "enseignants' pratiques", suggested: 'pratiques enseignantes',
+      message: 'reformulation',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1,
+      'le repli tolérant devrait localiser found malgré la différence d\'apostrophe');
+    assert.strictEqual(resultat.stats.commentaires, 0);
+  });
+
+// Point 3 (ter) : chevauchement à sévérité ÉGALE -> le span le plus LARGE gagne désormais,
+// pas le plus proche du début de la liste (mesuré sur le corpus réel : APA.MiseEnForme,
+// span = la référence entière, perdait systématiquement face à une règle Vale plus étroite
+// qui ne corrige qu'un détail déjà couvert par la révision la plus large).
+test('chevauchement à sévérité égale : le span le plus large gagne (la révision la plus '
+  + 'large a plus de chances d\'englober la plus étroite que l\'inverse)', { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Dupont, A. et Martin, B. (2020). Un titre. Revue Y, 1, 1-9.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [
+      // Posée EN PREMIER dans la liste (index le plus bas) mais span ÉTROIT.
+      { rule: 'Test.Etroit', severity: 'warning', action: 'fix', para: 0, span: null,
+        found: 'et Martin', suggested: '& Martin', message: 'liaison' },
+      // Posée ensuite, span LARGE (toute la référence) : doit l'emporter malgré son index
+      // plus élevé.
+      { rule: 'Test.Large', severity: 'warning', action: 'track', para: 0, span: null,
+        found: 'Dupont, A. et Martin, B. (2020). Un titre. Revue Y, 1, 1-9.',
+        suggested: 'Dupont, A., & Martin, B. (2020). Un titre. *Revue Y*, 1, 1-9.',
+        message: 'mise en forme complète' },
+    ];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.strictEqual(resultat.stats.par_regle['Test.Large'].revisions, 1,
+      'la révision au span le plus large doit gagner le chevauchement');
+    assert.strictEqual(resultat.stats.par_regle['Test.Etroit'].commentes, 1,
+      'la révision au span le plus étroit doit devenir un commentaire au même endroit');
+  });
+
+// Point 4 : un commentaire dont le `suggested` porte un marquage *…* ne doit jamais afficher
+// d'astérisque littéral — le texte reste lisible, une note signale l'italique perdu.
+test('commentaire : le texte plat ne porte jamais d\'astérisque littéral quand suggested est '
+  + 'marqué en italique', { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Une référence mal formée dans le texte.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      rule: 'Test.CommentaireItalique', severity: 'suggestion', action: 'comment', para: 0,
+      span: null, found: null, suggested: '*Revue X*, *12*(3), 45-67.',
+      message: 'suggestion de mise en forme',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.ok(!resultat.commentsXml.includes('*'),
+      'aucun astérisque littéral ne doit apparaître dans le commentaire : ' + resultat.commentsXml);
+    assert.match(resultat.commentsXml, /Revue X, 12\(3\), 45-67\./);
+    assert.match(resultat.commentsXml, /italique/);
+  });
+
+// ---------------------------------------------------------------------------------
 // 3. Commentaire ancré sur un passage localisé, et commentaire de repli sur paragraphe
 // entier (found introuvable) — jamais perdu, jamais confondu avec une révision.
 

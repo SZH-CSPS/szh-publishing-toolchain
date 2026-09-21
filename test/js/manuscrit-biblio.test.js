@@ -682,6 +682,157 @@ test('retrouver_doi : accepte seulement une similarité de titre >= 0.9 avec aut
 });
 
 // ---------------------------------------------------------------------------------
+// 8. langue_ref et séparateur titre/sous-titre composé selon CETTE langue (lot du
+//    21.09.2026, trouvaille du superviseur sur « Le coenseignement développemental… » :
+//    l'insécable française posée à tort devant le ':' d'un titre ANGLAIS cité dans une
+//    bibliographie française — « Coaching : The effects » au lieu de « Coaching: The
+//    effects »).
+
+test('analyser_reference : un titre anglais cité dans une bibliographie française garde le '
+  + 'séparateur anglais (pas d\'insécable, majuscule d\'origine conservée)', { skip: sansPython }, () => {
+  const programme = [
+    "r = mb.analyser_reference(sys.argv[1], langue_doc='fr')",
+    'print(json.dumps(r))',
+  ].join('\n');
+  const texte = "Ploessl, D. M., et Rock, M. L. (2014). Coaching : The effects on "
+    + "co-teachers' planning and instruction. Teacher Education and Special Education, "
+    + "37(3), 191-215.";
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.langue_ref, 'en', 'mots-outils anglais (the, effects...) non détectés');
+  assert.strictEqual(d.titre, "Coaching: The effects on co-teachers' planning and instruction",
+    'le séparateur devrait perdre son insécable française devant un titre anglais : '
+    + JSON.stringify(d.titre));
+});
+
+test('analyser_reference : un titre français garde l\'insécable devant son séparateur',
+  { skip: sansPython }, () => {
+  const programme = [
+    "r = mb.analyser_reference(sys.argv[1], langue_doc='fr')",
+    'print(json.dumps(r))',
+  ].join('\n');
+  // Deux-points SANS insécable dans le texte source (manuscrit tapé au clavier) : la
+  // composition doit quand même la poser, la référence étant détectée française (aucun
+  // mot-outil anglais/allemand).
+  const texte = 'Pelgrims, G. (2016). Une question de terrain: enjeux pour la pratique. '
+    + 'Revue suisse de pédagogie spécialisée, 3, 20-29.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.langue_ref, 'fr');
+  assert.strictEqual(d.titre, 'Une question de terrain : enjeux pour la pratique',
+    'le séparateur français devrait porter une insécable devant : ' + JSON.stringify(d.titre));
+});
+
+test('analyser_reference : un titre allemand (mots-outils der/die/das/und/für) prend aussi '
+  + 'le séparateur sans espace', { skip: sansPython }, () => {
+  const programme = [
+    "r = mb.analyser_reference(sys.argv[1], langue_doc='fr')",
+    'print(json.dumps(r))',
+  ].join('\n');
+  const texte = 'Muster, E. (2010). Der Titel : Und der Untertitel. Zeitschrift für '
+    + 'Umweltfragen, 27, 56-78.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.langue_ref, 'de');
+  assert.strictEqual(d.titre, 'Der Titel: Und der Untertitel');
+});
+
+// ---------------------------------------------------------------------------------
+// 9. mise_en_forme_apa() — italique du volume SEUL (pas le numéro entre parenthèses), et
+//    suggested_texte sans astérisques sur l'alerte APA.MiseEnForme.
+
+test('mise_en_forme_apa : seul le volume est en italique — "*37*(3)", jamais "*37(3)*"',
+  { skip: sansPython }, () => {
+  const programme = [
+    'r = mb.analyser_reference(sys.argv[1])',
+    "r['_langue'] = 'fr'",
+    'print(json.dumps({"rendu": mb.mise_en_forme_apa(r)}))',
+  ].join('\n');
+  const texte = 'Ploessl, D. M., & Rock, M. L. (2014). Coaching: The effects on co-teachers\''
+    + ' planning and instruction. Teacher Education and Special Education, 37(3), 191-215.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.match(d.rendu, /\*37\*\(3\)/, 'le volume seul doit être en italique : ' + d.rendu);
+  assert.doesNotMatch(d.rendu, /\*37\(3\)\*/, 'le numéro entre parenthèses ne doit jamais '
+    + 'être en italique avec le volume : ' + d.rendu);
+});
+
+test('analyser_bibliographie : APA.MiseEnForme porte suggested_texte, sans astérisques',
+  { skip: sansPython }, () => {
+  const programme = [
+    "corps = []",
+    "biblio = [{'source': 10, 'texte': "
+      + "'Toullec-Th\\u00e9ry, M. (2020). Titre original mal forme. Ressources, 22, 64-72'}]",
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+    'print(json.dumps(alertes))',
+  ].join('\n');
+  const alertes = executer(programme);
+  const mef = alertes.find((a) => a.rule === 'APA.MiseEnForme');
+  assert.ok(mef, 'aucune alerte APA.MiseEnForme levée : ' + JSON.stringify(alertes));
+  assert.ok(mef.suggested.includes('*'), 'suggested devrait porter le marquage italique');
+  assert.ok(!mef.suggested_texte.includes('*'),
+    'suggested_texte ne doit jamais porter d\'astérisque : ' + mef.suggested_texte);
+  assert.strictEqual(mef.suggested_texte, mef.suggested.replace(/\*/g, ''));
+});
+
+// ---------------------------------------------------------------------------------
+// 10. APA.DoiRetrouve — désormais une RÉVISION (insertion pure), plus un commentaire (lot du
+//     21.09.2026, demande de Robin).
+
+test('analyser_bibliographie : un DOI retrouvé devient une révision qui INSÈRE le DOI en fin '
+  + 'de référence (pas une réécriture)', { skip: sansPython }, () => {
+  const programme = [
+    "def fausse_requete(url, delai):",
+    "    return json.dumps({'message': {'items': [",
+    "        {'title': ['Un titre presque identique ici'], 'author': [{'family': 'Tremblay'}],",
+    "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/bon'},",
+    "    ]}}).encode('utf-8')",
+    'mb._requete = fausse_requete',
+    "corps = []",
+    "biblio = [{'source': 10, 'texte': "
+      + "'Tremblay, A. (2023). Un titre presque identique la. Revue X, 1(1), 12-34.'}]",
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=True)",
+    'print(json.dumps({"alertes": alertes, "stats": stats}))',
+  ].join('\n');
+  const r = executer(programme);
+  const dr = r.alertes.find((a) => a.rule === 'APA.DoiRetrouve');
+  assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(r.alertes));
+  assert.strictEqual(dr.action, 'track', 'doit être une révision, pas un commentaire');
+  assert.strictEqual(dr.found, '12-34', 'l\'ancrage doit être les pages, dernier segment sûr');
+  assert.strictEqual(dr.suggested, '12-34 https://doi.org/10.1/bon',
+    'insertion pure du DOI après les pages, jamais une réécriture de la référence');
+});
+
+test('analyser_bibliographie : un DOI retrouvé sans pages localisables retombe sur un '
+  + 'commentaire (rien de sûr à ancrer)', { skip: sansPython }, () => {
+  const programme = [
+    "def fausse_requete(url, delai):",
+    "    return json.dumps({'message': {'items': [",
+    "        {'title': ['Un chapitre presque identique ici'], 'author': [{'family': 'Tremblay'}],",
+    "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/bon'},",
+    "    ]}}).encode('utf-8')",
+    'mb._requete = fausse_requete',
+    "corps = []",
+    // Un chapitre SANS pages ('In …' mais aucun marqueur de pages) ET SANS point final dans
+    // le texte d'origine -> aucun segment de fin sûr : ni les pages (absentes), ni le point
+    // final (absent). Le seul cas qui doit produire un repli commentaire.
+    "biblio = [{'source': 10, 'texte': 'Tremblay, A. (2023). Un chapitre presque identique "
+      + "la. In G. Pelgrims (\\u00c9d.), Un ouvrage collectif'}]",
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=True)",
+    'print(json.dumps(alertes))',
+  ].join('\n');
+  const alertes = executer(programme);
+  const dr = alertes.find((a) => a.rule === 'APA.DoiRetrouve');
+  assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(alertes));
+  assert.strictEqual(dr.action, 'comment');
+  assert.strictEqual(dr.found, null);
+});
+
+// ---------------------------------------------------------------------------------
 // 7. analyser_bibliographie() — reseau=False : aucune tentative, indisponible=True.
 
 test('analyser_bibliographie : reseau=False ne tente jamais Crossref', { skip: sansPython }, () => {

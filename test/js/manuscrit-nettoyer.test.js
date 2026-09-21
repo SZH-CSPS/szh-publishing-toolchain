@@ -909,8 +909,14 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       const rMarques = python(['-c', LIRE_MARQUES, obj.sortie_docx]);
       assert.strictEqual(rMarques.status, 0, 'lecture des marques a échoué : ' + rMarques.stderr);
       const marques = JSON.parse(rMarques.stdout);
-      assert.ok(marques.w_ins >= 1 && marques.w_del >= 1,
-        'le DOI corrigé doit apparaître en révision (w:ins/w:del) : ' + JSON.stringify(marques));
+      // Depuis le diff par jeton (§7 ter, révision du 21.09.2026 bis) : « 10.1000/x » ->
+      // « https://doi.org/10.1000/x » est une INSERTION PURE (le suffixe « 10.1000/x » ne
+      // change pas) — un w:ins sans w:del associé est donc le résultat CORRECT ici, plus
+      // fidèle que l'ancien comportement qui aurait barré puis réécrit tout le DOI. Seul
+      // w:ins est garanti par CETTE fixture (aucune autre alerte de ce lot n'est une révision
+      // qui supprime du texte).
+      assert.ok(marques.w_ins >= 1,
+        'le DOI corrigé doit apparaître en révision (w:ins) : ' + JSON.stringify(marques));
       assert.ok(marques.comments_xml, 'comments.xml doit exister (la forme épicène commentée)');
       assert.ok(marques.comments_text.indexOf('CSPS.Epicene.FormesContractees') !== -1,
         'le commentaire ne cite pas la règle : ' + marques.comments_text);

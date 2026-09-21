@@ -42,6 +42,7 @@
 # le w:p d'origine, entre la fin du dernier run couvert par le premier et le début du premier
 # run couvert par le second.
 
+import difflib
 import itertools
 import json
 import os
@@ -189,6 +190,23 @@ def _span_toca_enlace(runs, s, e):
 
 _LONGUEUR_MIN_FOUND_SANS_SPAN = 4
 
+# Repli TOLÉRANT à la typographie (révision du 21.09.2026) : le pont typographique (§6 du
+# contrat) peut avoir posé une apostrophe typographique, une insécable ou un tiret différent
+# entre le moment où `found` a été capturé (texte de paragraphe déjà lu par un module
+# d'analyse) et celui où l'annotation le cherche dans le MÊME paragraphe. Chaque substitution
+# ci-dessous est UN caractère pour UN caractère : une position trouvée dans le texte
+# NORMALISÉ reste donc valide telle quelle dans le texte ORIGINAL, jamais besoin de remapper
+# des offsets. Ne sert JAMAIS à écrire, seulement à comparer.
+_TRANS_TOLERANTE_TYPO = str.maketrans({
+    '’': "'", '‘': "'",
+    ' ': ' ', ' ': ' ', ' ': ' ',
+    '–': '-', '—': '-', '‑': '-',
+})
+
+
+def _normalizar_para_comparar(t):
+    return (t or '').translate(_TRANS_TOLERANTE_TYPO)
+
 
 def _localizar(texto, span, found):
     if not found:
@@ -200,10 +218,17 @@ def _localizar(texto, span, found):
     if len(found) < _LONGUEUR_MIN_FOUND_SANS_SPAN:
         return None
     ocurrencias = [m.start() for m in re.finditer(re.escape(found), texto)]
-    if len(ocurrencias) != 1:
-        return None
-    pos = ocurrencias[0]
-    return (pos, pos + len(found))
+    if len(ocurrencias) == 1:
+        pos = ocurrencias[0]
+        return (pos, pos + len(found))
+    if len(ocurrencias) == 0:
+        texto_n = _normalizar_para_comparar(texto)
+        found_n = _normalizar_para_comparar(found)
+        ocurrencias_n = [m.start() for m in re.finditer(re.escape(found_n), texto_n)]
+        if len(ocurrencias_n) == 1:
+            pos = ocurrencias_n[0]
+            return (pos, pos + len(found))
+    return None
 
 
 # ---------------------------------------------------------------------------------
@@ -329,6 +354,202 @@ def _xml_ins(id_, autor, fecha, rpr_origen, texto_sugerido):
         id_, _escapar_attr(autor), fecha, ''.join(partes))
 
 
+# ---------------------------------------------------------------------------------
+# Révision par JETON — révision du 21.09.2026, demande de Robin : une référence entière ne
+# doit plus être barrée puis réinsérée pour trois mots changés (« et » -> « & », un italique,
+# un espace). Diff au niveau du MOT/de l'espace/du signe (jamais du caractère, trop bavard ;
+# jamais de la phrase entière, ce que ce module faisait jusqu'ici) entre le texte d'ORIGINE
+# (les atomes déjà localisés, `grupo`) et `suggested` : seuls les jetons qui changent — texte
+# OU italique — deviennent w:del/w:ins, le reste reste des runs NORMAUX, mise en forme
+# d'origine intacte, jamais touchés. Un diff qui change plus de 60 % des jetons d'origine
+# retombe sur l'ancien comportement (un seul w:del/w:ins couvrant tout le span) : une
+# reformulation aussi profonde n'a plus rien à gagner à être éparpillée en petites révisions.
+
+_RE_JETON = re.compile(r'\w+|\s+|[^\w\s]')
+_UMBRAL_REEMPLAZO_TOTAL = 0.6
+_MIN_JETONES_ISLOTE = 3
+
+
+def _jetonizar(texto):
+    return _RE_JETON.findall(texto or '')
+
+
+def _jetones_origen(grupo):
+    """[(jeton, rpr_de_son_atome)] — un jeton ne franchit jamais la frontière entre deux
+    atomes : chaque atome (donc chaque run d'origine) est jetonné SÉPARÉMENT, jamais le texte
+    concaténé, pour que le w:rPr d'origine reste attaché au bon fragment."""
+    jetones = []
+    for a in grupo:
+        for tok in _jetonizar(a['texto']):
+            jetones.append((tok, a['rpr']))
+    return jetones
+
+
+def _jetones_destino(suggested):
+    """[(jeton, est_italique)] — l'italique *…* d'abord segmentée (jamais les astérisques
+    eux-mêmes dans un jeton), puis chaque segment jetonné."""
+    jetones = []
+    for fragmento, es_italica in _segmentos_italica(suggested):
+        for tok in _jetonizar(fragmento):
+            jetones.append((tok, es_italica))
+    return jetones
+
+
+def _jeton_origen_es_italico(rpr):
+    return bool(rpr) and '<w:i/>' in rpr
+
+
+def _agrupar_para_revision(jetones_o, jetones_d):
+    """[{cambia, i1, i2, j1, j2}, ...] à partir d'un diff PAR JETON — seuls les groupes
+    `cambia` deviennent w:del/w:ins. Un groupe 'equal' (même texte) dont l'italique doit
+    changer est aussi `cambia` : le seul moyen de basculer l'italique est w:del + w:ins,
+    jamais w:rPrChange (trop fragile, §7 ter). Les îlots INCHANGÉS de moins de
+    `_MIN_JETONES_ISLOTE` jetons, coincés ENTRE deux groupes changés, sont absorbés dans le
+    changement voisin — sinon trois mots changés à deux mots d'écart produisent trois
+    révisions séparées par un îlot minuscule, la « mitraille » que ce lot doit éviter."""
+    origenes = [t for t, _ in jetones_o]
+    destinos = [t for t, _ in jetones_d]
+    opcodes = difflib.SequenceMatcher(None, origenes, destinos, autojunk=False).get_opcodes()
+    grupos = []
+    for tag, i1, i2, j1, j2 in opcodes:
+        if tag != 'equal':
+            grupos.append({'cambia': True, 'i1': i1, 'i2': i2, 'j1': j1, 'j2': j2})
+            continue
+        # Un opcode 'equal' (même TEXTE) peut rester très long — c'est justement le but du
+        # diff par jeton. Le resubdiviser jeton par jeton, là où l'italique bascule, est donc
+        # OBLIGATOIRE : marquer tout le groupe `cambia` dès qu'UN SEUL jeton doit changer
+        # d'italique ferait à nouveau barrer une référence entière pour un seul mot en
+        # italique perdu au milieu d'un long passage par ailleurs identique (défaut mesuré en
+        # écrivant ce lot).
+        debut, cambia_courant = i1, None
+        for k in range(i1, i2):
+            c = _jeton_origen_es_italico(jetones_o[k][1]) != bool(jetones_d[j1 + (k - i1)][1])
+            if cambia_courant is None:
+                cambia_courant = c
+            elif c != cambia_courant:
+                grupos.append({'cambia': cambia_courant, 'i1': debut, 'i2': k,
+                                'j1': j1 + (debut - i1), 'j2': j1 + (k - i1)})
+                debut, cambia_courant = k, c
+        grupos.append({'cambia': bool(cambia_courant), 'i1': debut, 'i2': i2,
+                        'j1': j1 + (debut - i1), 'j2': j1 + (i2 - i1)})
+
+    encore = True
+    while encore:
+        encore = False
+        for idx in range(1, len(grupos) - 1):
+            g = grupos[idx]
+            if (not g['cambia'] and (g['i2'] - g['i1']) < _MIN_JETONES_ISLOTE
+                    and grupos[idx - 1]['cambia'] and grupos[idx + 1]['cambia']):
+                g['cambia'] = True
+                encore = True
+        fusion = []
+        for g in grupos:
+            if fusion and fusion[-1]['cambia'] and g['cambia']:
+                fusion[-1] = {'cambia': True, 'i1': fusion[-1]['i1'], 'i2': g['i2'],
+                               'j1': fusion[-1]['j1'], 'j2': g['j2']}
+            else:
+                fusion.append(dict(g))
+        grupos = fusion
+    return grupos
+
+
+def _xml_del_jetones(id_, autor, fecha, jetones):
+    """Comme _xml_del, à partir d'une liste (jeton, rpr) — un w:r par changement de rpr
+    CONSÉCUTIF, jamais un w:r par jeton (XML inutilement bavard)."""
+    runs_xml = []
+    rpr_actuel, tampon = None, []
+    for tok, rpr in jetones:
+        if rpr_actuel is None or rpr == rpr_actuel:
+            tampon.append(tok)
+            rpr_actuel = rpr
+        else:
+            if tampon:
+                runs_xml.append('<w:r>%s<w:delText xml:space="preserve">%s</w:delText></w:r>'
+                                 % (rpr_actuel or '', _escapar(''.join(tampon))))
+            tampon, rpr_actuel = [tok], rpr
+    if tampon:
+        runs_xml.append('<w:r>%s<w:delText xml:space="preserve">%s</w:delText></w:r>'
+                         % (rpr_actuel or '', _escapar(''.join(tampon))))
+    return '<w:del w:id="%d" w:author="%s" w:date="%s">%s</w:del>' % (
+        id_, _escapar_attr(autor), fecha, ''.join(runs_xml))
+
+
+def _xml_ins_jetones(id_, autor, fecha, rpr_base, jetones):
+    """Comme _xml_ins, à partir d'une liste (jeton, est_italique) — un w:r par changement
+    d'italique CONSÉCUTIF."""
+    banderas_base = dict(_banderas_desde_rpr(rpr_base), italique=False)
+    runs_xml = []
+    italica_actuelle, tampon = None, []
+    for tok, es_italica in jetones:
+        if italica_actuelle is None or es_italica == italica_actuelle:
+            tampon.append(tok)
+            italica_actuelle = es_italica
+        else:
+            if tampon:
+                b = dict(banderas_base, italique=bool(italica_actuelle))
+                runs_xml.append('<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>'
+                                 % (_rpr_desde_banderas(b), _escapar(''.join(tampon))))
+            tampon, italica_actuelle = [tok], es_italica
+    if tampon:
+        b = dict(banderas_base, italique=bool(italica_actuelle))
+        runs_xml.append('<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>'
+                         % (_rpr_desde_banderas(b), _escapar(''.join(tampon))))
+    return '<w:ins w:id="%d" w:author="%s" w:date="%s">%s</w:ins>' % (
+        id_, _escapar_attr(autor), fecha, ''.join(runs_xml))
+
+
+def _run_plano_jetones(jetones):
+    """Jetons NON changés -> runs plats (un par changement de rpr CONSÉCUTIF) — la mise en
+    forme d'origine reste intacte, rien n'est marqué w:del/w:ins."""
+    piezas = []
+    rpr_actuel, tampon = None, []
+    for tok, rpr in jetones:
+        if rpr_actuel is None or rpr == rpr_actuel:
+            tampon.append(tok)
+            rpr_actuel = rpr
+        else:
+            piezas.append(_run_plano_xml(rpr_actuel or '', ''.join(tampon)))
+            tampon, rpr_actuel = [tok], rpr
+    if tampon:
+        piezas.append(_run_plano_xml(rpr_actuel or '', ''.join(tampon)))
+    return ''.join(piezas)
+
+
+def _construir_revision(grupo, suggested, contador, autor, fecha):
+    """XML d'une révision — diff PAR JETON entre le texte d'origine de `grupo` et `suggested`
+    (voir l'en-tête ci-dessus). Retombe sur l'ancien remplacement complet (un seul w:del/w:ins
+    couvrant tout le span) si `grupo` ne porte aucun texte ou si plus de 60 % de ses jetons
+    changent."""
+    jetones_o = _jetones_origen(grupo)
+    jetones_d = _jetones_destino(suggested)
+    rpr_base = grupo[0]['rpr']
+
+    if not jetones_o:
+        grupos, ratio = [], 1.0
+    else:
+        grupos = _agrupar_para_revision(jetones_o, jetones_d)
+        n_cambies = sum(g['i2'] - g['i1'] for g in grupos if g['cambia'])
+        ratio = n_cambies / len(jetones_o)
+
+    if not jetones_o or ratio > _UMBRAL_REEMPLAZO_TOTAL:
+        id_del, id_ins = next(contador), next(contador)
+        return (_xml_del(id_del, autor, fecha, grupo)
+                + _xml_ins(id_ins, autor, fecha, rpr_base, suggested))
+
+    piezas = []
+    for g in grupos:
+        seg_o = jetones_o[g['i1']:g['i2']]
+        seg_d = jetones_d[g['j1']:g['j2']]
+        if not g['cambia']:
+            piezas.append(_run_plano_jetones(seg_o))
+            continue
+        if seg_o:
+            piezas.append(_xml_del_jetones(next(contador), autor, fecha, seg_o))
+        if seg_d:
+            piezas.append(_xml_ins_jetones(next(contador), autor, fecha, rpr_base, seg_d))
+    return ''.join(piezas)
+
+
 def _marca_inicio(id_):
     return '<w:commentRangeStart w:id="%d"/>' % id_
 
@@ -396,6 +617,19 @@ def _contar_regla(stats, alerta, campo):
     entrada[campo] = entrada.get(campo, 0) + 1
 
 
+def _texto_sin_marcas_italica(suggested):
+    """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (un commentaire Word ne
+    rend jamais le Markdown, §7 ter, point 4) : des astérisques littéraux n'y disent rien à
+    une relectrice. Une note signale qu'un passage était en italique, sans jamais le marquer."""
+    if not suggested or '*' not in suggested:
+        return suggested
+    segments = _segmentos_italica(suggested)
+    texte = ''.join(t for t, _ in segments)
+    if any(es for _, es in segments):
+        return texte + ' (élément(s) en italique dans la révision)'
+    return texte
+
+
 def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
     mensaje = alerta.get('message') or ''
     if es_sintesis:
@@ -405,7 +639,7 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
     lineas = [mensaje]
     if alerta.get('suggested'):
         etiqueta = _ETIQUETA_SUGGESTION.get(langue, 'Suggestion')
-        lineas.append('%s : %s' % (etiqueta, alerta['suggested']))
+        lineas.append('%s : %s' % (etiqueta, _texto_sin_marcas_italica(alerta['suggested'])))
     lineas.append('[%s]' % alerta.get('rule'))
     return lineas
 
@@ -471,10 +705,9 @@ def _anotar_parrafo(p_xml, revisiones, comentarios, contador, autor, fecha, inic
             continue
         i1 = next(i for i, a in enumerate(atomos) if a is grupo[0])
         i2 = next(i for i, a in enumerate(atomos) if a is grupo[-1])
-        id_del, id_ins = next(contador), next(contador)
-        xml_del = _xml_del(id_del, autor, fecha, grupo)
-        xml_ins = _xml_ins(id_ins, autor, fecha, grupo[0]['rpr'], str(alerta.get('suggested')))
-        nuevo = {'debut': s, 'fin': e, 'xml': xml_del + xml_ins,
+        xml_revision = _construir_revision(
+            grupo, str(alerta.get('suggested')), contador, autor, fecha)
+        nuevo = {'debut': s, 'fin': e, 'xml': xml_revision,
                  'run_ini': grupo[0]['run_ini'], 'run_fin': grupo[-1]['run_fin']}
         atomos[i1:i2 + 1] = [nuevo]
         stats['revisions'] += 1
@@ -591,12 +824,27 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     # 21.09.2026, défaut n°1) : fusionner deux atomes déjà fusionnés par une révision voisine
     # fait perdre la clé 'texto' de l'atome de remplacement (KeyError, mesuré sur le corpus
     # réel : deux règles distinctes — Vale et manuscrit_biblio.py — lèvent chacune leur propre
-    # alerte sur le MÊME DOI). La plus sévère (puis la plus proche du début de `alertes`)
-    # reste une révision ; l'autre devient un commentaire sur le MÊME ancrage — jamais deux
-    # modifications imbriquées.
+    # alerte sur le MÊME DOI). La plus sévère reste une révision ; l'autre devient un
+    # commentaire sur le MÊME ancrage — jamais deux modifications imbriquées.
+    #
+    # ⚠ Révision du 21.09.2026 bis, mesurée sur le corpus réel (chaîne complète, manuscrit
+    # « coenseignement ») : à sévérité ÉGALE, l'ancien tri (index d'apparition croissant)
+    # faisait systématiquement perdre `APA.MiseEnForme` — dont le span couvre TOUJOURS la
+    # référence entière (§7 bis : `found` est tout le texte de l'entrée) — face à une règle
+    # Vale bien plus étroite qui corrige la MÊME chose en passant (ici,
+    # `CSPS-Biblio.APA.Esperluette`, « et » -> « & », sur 4 références du manuscrit réel).
+    # Résultat mesuré AVANT ce correctif : toute la mise en forme APA proposée (italique,
+    # séparateur anglais, DOI…) disparaissait en commentaire pour ne garder qu'un « et » -> « &
+    # » isolé — la règle la plus étroite gagnait alors qu'elle ne fait QU'UNE PARTIE de ce que
+    # fait la plus large. Le span le plus LARGE l'emporte désormais à sévérité égale (la
+    # révision la plus large a beaucoup plus de chances d'englober ce que fait la plus étroite
+    # que l'inverse) ; l'ordre d'apparition ne tranche plus qu'en tout dernier recours.
     rango_severidad = {'error': 0, 'warning': 1, 'suggestion': 2}
     for salida, lista_rev in list(revisiones_por_salida.items()):
-        ordenada = sorted(lista_rev, key=lambda t: (rango_severidad.get(t[2].get('severity'), 3), t[0]))
+        ordenada = sorted(
+            lista_rev,
+            key=lambda t: (rango_severidad.get(t[2].get('severity'), 3),
+                            -(t[1][1] - t[1][0]), t[0]))
         spans_aceptados = []
         conservadas = []
         for idx, localizado, alerta in ordenada:

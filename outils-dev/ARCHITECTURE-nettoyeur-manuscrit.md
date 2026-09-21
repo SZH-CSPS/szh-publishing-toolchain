@@ -657,6 +657,37 @@ repli, tenté seulement si `.?!` échouent partout.
 mesuré) : l'écriture APA de classement qui place la particule APRÈS les initiales (`Chambrier,
 A.-F. de`) — `_decouper_initiales_et_particule()` la détecte.
 
+### Révision du 21.09.2026 — langue DE LA RÉFÉRENCE, italique du volume, DOI retrouvé en révision
+
+Quatre défauts mesurés sur `outils-dev/Le coenseignement développemental_revue Suisse_10082026.docx`
+(référence Ploessl & Rock, 2014) et corrigés :
+
+1. **`langue_ref`**, un nouveau champ de `analyser_reference(texte, langue_doc='fr')` : la langue de
+   CETTE référence (mots-outils anglais « the, of, and, for, in », allemands « der, die, das, und,
+   für », sinon `langue_doc`), distincte de `_langue` (la langue du PRODUIT, qui pilote le reste de
+   la mise en forme APA — volume/numéro, « (Éd.) »/« (Hrsg.) »). Elle décide seulement de
+   l'espacement du séparateur `:` titre/sous-titre À L'INTÉRIEUR du titre cité (insécable en
+   français, aucune espace en anglais ET en allemand — le filtre Lua ne connaît que fr/de, jamais
+   'en' : un titre anglais cité dans une bibliographie française n'est donc jamais couvert par lui).
+   **Mesuré, non corrigé (sujet de compilation, hors de ce module)** : `szh-typographie.lua` pose
+   une insécable AVANT ce `:` en français, y compris dans un titre anglais, parce qu'il traite tout
+   le document comme une seule langue (`-M lang=`) — c'est ce qui produisait le texte d'origine
+   fautif (« Coaching␣: The effects ») que `manuscrit_biblio.py` corrige maintenant dans son propre
+   `suggested`.
+2. **Italique du volume seul** (`mise_en_forme_apa()`) : `*37*(3)`, jamais `*37(3)*` — l'ancien
+   rendu italicisait le numéro entre parenthèses avec le volume. La plage de pages d'un CHAPITRE
+   (seul contexte « pp. » du module) suit désormais la même règle T2 que le filtre
+   (`_t2_plage_pages_chapitre()`, trait d'union en français, demi-cadratin en allemand) ; un
+   ARTICLE ne préfixe jamais ses pages, T2 ne s'y applique donc jamais (inchangé).
+3. **`suggested_texte`** sur `APA.MiseEnForme` : `suggested` SANS le marquage `*…*`, pour un usage
+   en texte plat (rapport HTML) — `suggested` garde ses astérisques pour l'annotation Word, seule
+   destinataire qui sait les traduire en italique réel. Même principe côté `manuscrit_annoter.py`
+   (§7 ter) pour un commentaire.
+4. **`APA.DoiRetrouve` devient une révision** (`action='track'`), plus un commentaire : ancrée sur
+   le dernier segment sûr de la référence (ses pages telles qu'écrites dans le texte d'origine, ou
+   le point final), `suggested` = ce segment suivi de ` https://doi.org/…` — une INSERTION pure,
+   jamais une réécriture de l'entrée. Repli commentaire si aucun segment sûr n'existe.
+
 ### Ce qui n'a pas pu être fait ici
 
 - **Un auteur institutionnel cité par son SIGLE** (`OFS, 2022`) ne s'apparie pas à la référence
@@ -752,6 +783,53 @@ seulement un compte.
 Ce module expose toujours une fonction pure et une CLI d'essai (`manuscrit_annoter.py
 <sortie.docx> --alertes … --correspondance … [--plafond 25]`), en plus d'être branché dans
 `manuscrit-nettoyer.py` (§8).
+
+### Révision du 21.09.2026 bis — diff par jeton, chevauchement au span le plus large, repli tolérant
+
+Trois changements, mesurés sur le corpus réel (`Le coenseignement développemental…`, 27 références,
+et sur `manuscrit-annoter.test.js`) :
+
+1. **Une révision `found` -> `suggested` n'est plus systématiquement un seul `w:del`/`w:ins`
+   couvrant tout le span.** `_construir_revision()` calcule un diff PAR JETON (`\w+|\s+|[^\w\s]`,
+   `difflib.SequenceMatcher(autojunk=False)`) entre le texte d'origine et `suggested` : seuls les
+   jetons qui changent — texte OU italique — deviennent `w:del`/`w:ins`, le reste reste des runs
+   NORMAUX avec leur mise en forme d'origine intacte. Un jeton dont le TEXTE est égal mais qui doit
+   changer d'italique est aussi émis en `w:del` + `w:ins` du seul jeton (jamais `w:rPrChange`,
+   trop fragile) ; un jeton déjà dans l'état voulu (italique ou non) n'est jamais touché — la
+   resubdivision se fait À L'INTÉRIEUR d'un opcode `equal` du diff, jeton par jeton, jamais à
+   l'échelle de l'opcode entier (piège mesuré en écrivant ce lot : marquer tout un opcode `equal`
+   de 50 jetons comme changé parce qu'UN SEUL doit devenir italique revenait à barrer toute la
+   référence). Les îlots inchangés de moins de 3 jetons, coincés entre deux changements, sont
+   absorbés dans le changement voisin (évite la mitraille de micro-révisions). Un diff qui change
+   plus de 60 % des jetons d'origine retombe sur l'ancien comportement (un seul `w:del`/`w:ins`
+   pour tout le span) — une reformulation aussi profonde n'a plus rien à gagner à être éparpillée.
+2. **Repli tolérant à la typographie**, dans `_localizar()` : si `found` n'a AUCUNE occurrence
+   exacte dans le paragraphe, un second essai compare les deux textes après une normalisation
+   caractère-pour-caractère (apostrophe typographique/droite, insécable/fine/espace ordinaire,
+   demi-cadratin/cadratin/trait d'union insécable → un caractère ASCII), qui préserve la longueur :
+   une position trouvée dans le texte normalisé reste donc valide telle quelle dans l'original,
+   sans remapper d'offsets. Ne s'applique jamais quand l'occurrence exacte est déjà AMBIGUË
+   (plusieurs correspondances) — le repli désambiguïse un texte introuvable, jamais un texte trouvé
+   plusieurs fois.
+3. **Chevauchement à sévérité ÉGALE : le span le plus LARGE gagne**, plus le premier de la liste.
+   Mesuré : `APA.MiseEnForme` (span = la référence entière) perdait systématiquement face à une
+   règle Vale bien plus étroite qui corrige la MÊME chose en passant (ici,
+   `CSPS-Biblio.APA.Esperluette`, « et » → « & », sur 4 références du manuscrit réel) — toute la
+   mise en forme APA proposée disparaissait en commentaire pour ne garder qu'un « et » → « & »
+   isolé. La révision la plus large a beaucoup plus de chances d'englober ce que fait la plus
+   étroite que l'inverse ; l'ordre d'apparition ne tranche plus qu'en tout dernier recours. Mesuré
+   après ce correctif, chaîne complète WSL sur le manuscrit « coenseignement » (27 références,
+   `--sans-reseau`) : `APA.MiseEnForme` passe de 15/19 (79 %) à 19/19 (100 %) en révision Word ;
+   même mesure sur `2-clairseme_Article_CSPS_C.Pedrosa.docx` (lot-A) : 8/8 (100 %).
+
+**Défaut vu ailleurs, non corrigé ici (hors des deux fichiers de ce lot)** : `dans_docx` sur chaque
+alerte (`manuscrit-nettoyer.py`, `_marquer_dans_docx()`, §8) est déduit par `id()` des seules listes
+`non_ancrees`/`renvoyees_au_rapport` de `annoter()` — une alerte `fix`/`track` DÉMOTÉE en commentaire
+par le chevauchement (point 3 ci-dessus, ou toute démotion future) n'apparaît dans AUCUNE des deux
+et reste marquée `'revision'` dans le rapport alors qu'elle est un vrai commentaire dans le `.docx`
+(mesuré : les 4 alertes `APA.MiseEnForme` démotées avant ce correctif portaient toutes
+`dans_docx: 'revision'`). `manuscrit-nettoyer.py` est hors des fichiers autorisés pour ce lot
+au-delà de l'ordre des étapes.
 
 ---
 

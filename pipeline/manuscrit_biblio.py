@@ -118,6 +118,58 @@ def _ressemble_initiales(segment):
 
 
 # ---------------------------------------------------------------------------------
+# Langue DE LA RÉFÉRENCE — distincte de `_langue` (la langue du PRODUIT, qui pilote le reste
+# de la mise en forme APA : espacement volume/numéro, « (Éd.) »/« (Hrsg.) »). Un titre
+# anglais cité dans une bibliographie française ne prend jamais l'insécable française devant
+# son propre « : » interne. Détection par mots-outils, jamais un détecteur de langue général
+# (stdlib seule, §2 du contrat) : anglais d'abord, allemand ensuite, sinon la langue du
+# document — le seul repli qui ait un sens pour un titre sans aucun mot-outil reconnu.
+_MOTS_OUTILS_ANGLAIS = ('the', 'of', 'and', 'for', 'in')
+_MOTS_OUTILS_ALLEMAND = ('der', 'die', 'das', 'und', 'für')
+RE_MOTS_OUTILS_ANGLAIS = re.compile(
+    r'\b(?:' + '|'.join(_MOTS_OUTILS_ANGLAIS) + r')\b', re.IGNORECASE)
+RE_MOTS_OUTILS_ALLEMAND = re.compile(
+    r'\b(?:' + '|'.join(_MOTS_OUTILS_ALLEMAND) + r')\b', re.IGNORECASE)
+
+
+def _detecter_langue_reference(titre, conteneur, langue_doc):
+    zone = (titre or '') + ' ' + (conteneur or '')
+    if RE_MOTS_OUTILS_ANGLAIS.search(zone):
+        return 'en'
+    if RE_MOTS_OUTILS_ALLEMAND.search(zone):
+        return 'de'
+    return langue_doc or 'fr'
+
+
+# Séparateur titre/sous-titre ':' À L'INTÉRIEUR d'un titre cité : insécable devant en
+# français (même convention que le pont typographique, §6 du contrat), AUCUNE espace devant
+# en allemand ET en anglais. Le filtre Lua ne connaît que fr/de (`-M lang=` ne vaut jamais
+# 'en') : un titre anglais cité dans une bibliographie française ou allemande n'est donc
+# JAMAIS couvert par lui — mesuré : il pose au contraire une insécable À TORT devant ce
+# ':'-là, puisqu'il traite tout le document comme français (voir le rapport de chantier,
+# « ce que fait le pont typographique sur les paragraphes de bibliographie »). La CASSE qui
+# suit le séparateur n'est jamais forcée ici : un titre cité garde sa casse d'origine, seul
+# l'espacement du signe est composé.
+_RE_SEPARATEUR_TITRE = re.compile(r'[   ]*:[   ]*')
+
+
+def _composer_separateur_titre(titre, langue_ref):
+    if not titre or ':' not in titre:
+        return titre
+    avant = ' ' if langue_ref == 'fr' else ''
+    return _RE_SEPARATEUR_TITRE.sub(avant + ': ', titre)
+
+
+def _texte_suggere_sans_italique(suggested):
+    """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (rapport HTML, §7 du
+    contrat point 4) : des astérisques littéraux n'y signifient rien pour une relectrice, ils
+    y sont lus comme des astérisques, pas comme de l'italique."""
+    if not suggested or '*' not in suggested:
+        return suggested
+    return re.sub(r'\*([^*]+)\*', r'\1', suggested)
+
+
+# ---------------------------------------------------------------------------------
 # 1. analyser_reference() — découpe une entrée APA 7 (fr et de) en champs structurés.
 
 MARQUEUR_EDITEUR_RE = re.compile(
@@ -355,16 +407,20 @@ def _calculer_confiance(champs, annee, auteurs, entete_brute):
     return 'moyenne' if champs['titre'] else 'basse'
 
 
-def analyser_reference(texte):
+def analyser_reference(texte, langue_doc='fr'):
     """Découpe une entrée APA 7 (fr/de) en dict structuré — voir l'en-tête du module pour les
     champs. Jamais d'exception : une entrée illisible rend une confiance 'basse', pas un
-    plantage — le rapport doit pouvoir lister TOUTES les références, même ratées."""
+    plantage — le rapport doit pouvoir lister TOUTES les références, même ratées.
+
+    `langue_doc` : langue du PRODUIT (jamais document.langue, §8 du contrat) — sert
+    uniquement de REPLI à la détection de `langue_ref` (voir _detecter_langue_reference) quand
+    le titre ne porte aucun mot-outil reconnu ; elle ne pilote rien d'autre ici."""
     brut = texte or ''
     texte_n = pronto_modele.normaliser(brut)
     champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
               'conteneur': '', 'volume': '', 'numero': '', 'pages': '', 'editeur': '',
               'genre': '', 'editeurs_ouvrage': '', 'doi': '', 'url': '', 'type': 'inconnu',
-              'confiance': 'basse'}
+              'confiance': 'basse', 'langue_ref': ''}
     if not texte_n.strip():
         return champs
 
@@ -503,6 +559,14 @@ def analyser_reference(texte):
                         champs['titre'] = _nettoyer_titre(reste)
                 else:
                     champs['type'] = 'inconnu'
+
+        # Langue DE LA RÉFÉRENCE et séparateur titre/sous-titre composé en conséquence
+        # (point 1 du lot du 21.09.2026) : après que titre/conteneur sont fixés, quel que soit
+        # le type de référence — un titre anglais cité dans une bibliographie française ne
+        # doit jamais porter l'insécable française devant son ':' interne.
+        champs['langue_ref'] = _detecter_langue_reference(
+            champs['titre'], champs['conteneur'], langue_doc)
+        champs['titre'] = _composer_separateur_titre(champs['titre'], champs['langue_ref'])
 
         champs['confiance'] = _calculer_confiance(champs, annee, auteurs, entete_brute)
     except Exception:
@@ -949,6 +1013,20 @@ def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
 # Rendue seulement si la confiance est haute ou si Crossref a confirmé — une référence
 # 'moyenne'/'basse' n'est jamais reformulée à la place de la rédaction.
 
+# Même règle T2 que le pont typographique (szh-typographie.lua, §6 du contrat) — mais
+# SEULEMENT dans le contexte « pp. » qui la rend sûre (un chapitre, ici : un article APA 7 ne
+# préfixe jamais ses pages, la règle ne s'applique donc jamais à lui, voir le rapport de
+# chantier — « la plage de pages ne prend le demi-cadratin que dans ce contexte »). Trait
+# d'union en français, demi-cadratin en allemand : même sens que le filtre (mesuré ligne 269
+# de szh-typographie.lua, « depuis, vers = ... ; if not COLLEE then ... »).
+def _t2_plage_pages_chapitre(pages, langue):
+    if not pages:
+        return pages
+    if langue == 'de':
+        return re.sub(r'(?<=\d)-(?=\d)', '–', pages)
+    return pages.replace('–', '-')
+
+
 def _auteurs_en_chaine(auteurs, langue):
     if not auteurs:
         return ''
@@ -972,12 +1050,19 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
     titre = ref.get('titre') or ''
     t = ref.get('type')
     if t == 'article':
-        volnum = ref.get('volume') or ''
+        volume = ref.get('volume') or ''
+        numero_paren = ''
         if ref.get('numero'):
-            volnum += (' (' if langue == 'de' else '(') + ref['numero'] + ')'
+            numero_paren = (' (' if langue == 'de' else '(') + ref['numero'] + ')'
+        # APA 7 : seul le VOLUME est en italique, jamais le numéro entre parenthèses qui le
+        # suit — « *37*(3) », pas « *37(3)* » (défaut réel mesuré : la forme précédente
+        # italicisait les deux ensemble).
+        volnum = ('*%s*' % volume if volume else '') + numero_paren
         conteneur = '*%s*' % ref['conteneur'] if ref.get('conteneur') else ''
-        queue = ', '.join(x for x in (conteneur, '*%s*' % volnum if volnum else '',
-                                       ref.get('pages') or '') if x)
+        # Un article APA ne préfixe jamais ses pages de « p./pp. » : le T2 du pont
+        # typographique ne s'applique donc jamais ici (voir _t2_plage_pages_chapitre) — les
+        # pages restent telles que l'entrée les porte, trait d'union compris.
+        queue = ', '.join(x for x in (conteneur, volnum, ref.get('pages') or '') if x)
         corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
     elif t == 'chapitre':
         marqueur_editeur = '(Hrsg.)' if langue == 'de' else '(Éd.)'
@@ -985,7 +1070,8 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         # repris que si _consommer_editeurs_de_tete() a pu les isoler à la lecture — sinon on
         # ne les invente pas, on garde la forme sans eux plutôt qu'une fausse liste vide.
         editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if ref.get('editeurs_ouvrage') else ''
-        pages = ' (pp. %s)' % ref['pages'] if ref.get('pages') else ''
+        pages = (' (pp. %s)' % _t2_plage_pages_chapitre(ref['pages'], langue)
+                 if ref.get('pages') else '')
         # Un titre de chapitre garde son « ? »/« ! » d'origine (voir plus haut, m_chap) : ne
         # pas lui rajouter un point qui produirait « … ?. In … », une double ponctuation que
         # personne n'a écrite.
@@ -1015,6 +1101,22 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
     return re.sub(r'\s+', ' ', rendu).strip()
 
 
+# Ancrage d'une INSERTION du DOI retrouvé (action='track', demande du 21.09.2026) : jamais
+# toute la référence, une pure addition en fin de ligne — le dernier segment localisable,
+# ses pages telles qu'écrites dans le texte d'origine (trait d'union ou demi-cadratin
+# tolérés) si elles s'y retrouvent, sinon le point final seul.
+def _segment_fin_reference(ref):
+    texte = ref.get('texte') or ''
+    pages = ref.get('pages') or ''
+    if pages:
+        for c in (pages, pages.replace('-', '–'), pages.replace('–', '-')):
+            if c and texte.count(c) == 1:
+                return c
+    if texte.endswith('.'):
+        return '.'
+    return None
+
+
 # ---------------------------------------------------------------------------------
 # 8. analyser_bibliographie() — enchaîne tout.
 
@@ -1027,7 +1129,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
 
     references = []
     for p in paragraphes_biblio or []:
-        r = analyser_reference(p.get('texte') or '')
+        r = analyser_reference(p.get('texte') or '', langue_doc=langue)
         r['para'] = p.get('source')
         r['texte'] = (p.get('texte') or '').strip()
         r['_langue'] = langue
@@ -1075,12 +1177,26 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
             if trouve:
                 doi, score = trouve
                 stats['doi_retrouves'] += 1
-                alertes.append({
-                    'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
-                    'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi,
-                    'message': 'Un DOI correspondant a été trouvé pour cette référence : '
-                               '%s (à confirmer avant de l\'ajouter).' % doi,
-                })
+                message = ('Un DOI correspondant a été trouvé pour cette référence : %s '
+                            '(à confirmer avant de l\'ajouter).' % doi)
+                segment = _segment_fin_reference(r)
+                if segment:
+                    # Insertion pure (§7 bis, demande du 21.09.2026) : jamais une réécriture
+                    # de la référence, seulement le DOI ajouté après son dernier segment sûr.
+                    alertes.append({
+                        'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
+                        'para': r.get('para'), 'span': None, 'found': segment,
+                        'suggested': segment + ' ' + doi, 'message': message,
+                    })
+                else:
+                    # Rien de fiable à ancrer (pages absentes/introuvables telles quelles, et
+                    # la référence ne finit pas sur un point) : repli commentaire, jamais une
+                    # insertion à l'aveugle.
+                    alertes.append({
+                        'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
+                        'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi,
+                        'message': message,
+                    })
 
         rendu = mise_en_forme_apa(r, meta_crossref)
         if rendu:
@@ -1095,6 +1211,10 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                     'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
                     'para': r.get('para'), 'span': None, 'found': r.get('texte'),
                     'suggested': rendu,
+                    # Sans marquage *…* (point 4 du lot du 21.09.2026) : pour un usage en
+                    # texte plat (rapport HTML) — `suggested` garde ses astérisques pour
+                    # l'annotation Word, qui sait les traduire en italique réel.
+                    'suggested_texte': _texte_suggere_sans_italique(rendu),
                     'message': 'La mise en forme APA 7 de cette référence diffère de '
                                'l\'original — révision proposée.',
                 })
