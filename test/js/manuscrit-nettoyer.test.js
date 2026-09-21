@@ -36,10 +36,15 @@
 //       commentaire, --sans-reseau porte bien jusqu'à bibliographie.crossref.indisponible.
 //       Sauté proprement si vale est absent du poste (ni PATH ni WSL) ; SZH_VALE_OBLIGATOIRE=1
 //       transforme ce saut en échec, comme test/js/manuscrit-vale.test.js.
-//   14. Révision du 21.09.2026 — un XML rendu mal formé par l'annotation (révision à la
-//       frontière d'un w:hyperlink, défaut réel de manuscrit_annoter.py mesuré sur 3
-//       manuscrits du corpus sur 12) est détecté par la CLI elle-même et la version
-//       pré-annotation restaurée, sur le déclencheur RÉEL du corpus.
+//   14. Révision du 21.09.2026 (soir) — les trois défauts réels de manuscrit_annoter.py
+//       (chevauchement de révisions, mésancrage d'un `found` court, frontière de
+//       w:hyperlink) sont corrigés en amont : `2-dense_…`, le déclencheur réel de l'ancien
+//       défaut, s'annote désormais pour de vrai (révisions/commentaires posés, XML bien
+//       formé, jamais Annotation.Impossible).
+//   15. Le FILET DE SÉCURITÉ de la CLI (try/except + validation XML + restauration autour de
+//       manuscrit_annoter.annoter()) reste éprouvé indépendamment de l'état de ce module, par
+//       injection de dépendance (mod.ma.annoter remplacé après chargement) — jamais une
+//       modification du code de production pour le faire échouer.
 //
 //   node --test test/js/manuscrit-nettoyer.test.js
 //
@@ -940,21 +945,21 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°14 — troisième défaut réel de manuscrit_annoter.py (révision du 21.09.2026,
-// mesuré sur le corpus réel via le harnais de chantier, 3 fichiers sur 12) : une révision dont
-// le span touche la frontière d'un <w:hyperlink> peut rendre un word/document.xml mal formé
-// SANS lever d'exception — le pire des deux défauts, puisqu'il ne se signale ni par un crash
-// ni par un code de sortie non nul côté manuscrit_annoter.py. La CLI valide donc elle-même le
-// XML produit et restaure la version pré-annotation au besoin (voir _valider_docx_bien_forme()
-// et son point d'appel). Ce contrôle rejoue le déclencheur RÉEL trouvé sur le corpus, jamais
-// une fixture qui ne prouverait qu'une hypothèse.
+// Contrôle n°14 — révisé le 21.09.2026 (soir) : les trois défauts réels de
+// manuscrit_annoter.py (chevauchement de révisions, mésancrage d'un `found` court, révision à
+// la frontière d'un w:hyperlink) ont été CORRIGÉS et commités (voir
+// test/js/manuscrit-annoter.test.js pour ses propres contrôles). `2-dense_…` — le déclencheur
+// RÉEL qui rendait un XML mal formé avant cette correction — doit désormais s'ANNOTER pour de
+// vrai : des révisions et/ou des commentaires posés, un XML bien formé sur toutes les parties,
+// jamais Annotation.Impossible. Ce contrôle ne rejoue donc plus un échec, il prouve que le
+// déclencheur réel ne l'est plus.
 //
-// Sabotage minimal : dans principal(), retirer l'appel `_valider_docx_bien_forme(sortie_docx)`
-// (le laisser dans le bloc `try` sans effet) — ce contrôle rougit sur l'assertion « bien
-// formé », l'ancien `2-dense_…` corrompu ressort tel quel, code de sortie 1 malgré tout
-// (aucune alerte error liée à l'annotation elle-même) et sans Annotation.Impossible.
+// Sabotage minimal : dans manuscrit_annoter._localizar(), remplacer `_LONGUEUR_MIN_FOUND_SANS_SPAN`
+// par 0 (défaut n°2 réintroduit) — ce contrôle ne rougit pas nécessairement lui-même (le XML
+// reste bien formé même avec un mésancrage), mais `test/js/manuscrit-annoter.test.js` le fait ;
+// voir plutôt le contrôle n°15 ci-dessous pour le filet de sécurité PROPRE à cette CLI.
 
-test('manuscrit-nettoyer.py : un XML rendu mal formé par l’annotation (frontière de w:hyperlink) est détecté et la version pré-annotation restaurée',
+test('manuscrit-nettoyer.py : sur 2-dense_… (déclencheur réel de l’ancien défaut), l’annotation réussit et le XML reste bien formé',
   { skip: sansPython }, () => {
     const CORPUS_2_DENSE = path.join(CORPUS_LOT_A,
       '2-dense_20250404_Quelle inclusion pour les personnes en situation de handicap.docx');
@@ -986,11 +991,96 @@ test('manuscrit-nettoyer.py : un XML rendu mal formé par l’annotation (fronti
         'le .docx produit doit rester un XML bien formé sur toutes ses parties');
 
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.ok(rapport.annotation, 'l’annotation doit désormais réussir sur ce fichier : '
+        + JSON.stringify(rapport.annotation));
+      assert.ok(rapport.annotation.revisions + rapport.annotation.commentaires > 0,
+        'au moins une révision ou un commentaire doit être posé : '
+        + JSON.stringify(rapport.annotation));
+      assert.ok(!rapport.alertes.liste.some((a) => a.rule === 'Annotation.Impossible'),
+        'Annotation.Impossible ne doit plus apparaître, le défaut est corrigé : '
+        + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°15 — le FILET DE SÉCURITÉ de la CLI elle-même (try/except autour de
+// manuscrit_annoter.annoter() + _valider_docx_bien_forme() + restauration de la version
+// pré-annotation, voir le point d'appel dans principal()) reste éprouvé MÊME MAINTENANT que
+// les trois défauts connus de manuscrit_annoter.py sont corrigés — un filet ne se retire pas
+// parce que le trapèze n'est, pour l'instant, plus tombé : une régression future dans ce
+// module, ou tout autre module, doit encore être rattrapée sans corrompre le .docx ni faire
+// planter la CLI.
+//
+// Aucune fixture normale ne fait plus lever manuscrit_annoter.annoter() (c'est justement ce
+// que corrige le commit relu) : ni un `suggested` avec des caractères XML spéciaux (échappés
+// par _escapar()/_escapar_attr(), vérifié en lisant le module), ni un chevauchement de spans
+// (résolu, le plus sévère devient révision, l'autre commentaire), ni un `found` court sans
+// span (rejeté, jamais localisé), ni une frontière de w:hyperlink (jamais révisée). La CLI
+// n'offre aucune variable d'environnement pour injecter une panne (ni --sans-annotation, qui
+// n'APPELLE PAS annoter() du tout, ce n'est donc pas ce filet-ci qu'il éprouve). Le seul levier
+// qui reste, SANS toucher pipeline/manuscrit-nettoyer.py ni pipeline/manuscrit_annoter.py :
+// charger manuscrit-nettoyer.py comme un module Python (patron déjà utilisé par
+// test/js/manuscrit-vale.test.js, contrôle n°7, pour la même raison) et remplacer SON
+// attribut `ma.annoter` par une fonction qui lève — une injection de dépendance au niveau du
+// test, jamais une modification du code de production.
+
+test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) restaure la version pré-annotation et pose Annotation.Impossible — même moteur d’injection que manuscrit-vale.test.js n°7',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+
+      const PONT_ANNOTER_SABOTE = [
+        'import importlib.util, sys',
+        'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+        'sys.path.insert(0, dossier_pipeline)',
+        'spec = importlib.util.spec_from_file_location("nettoyeur_sabote", chemin_nettoyeur)',
+        'mod = importlib.util.module_from_spec(spec)',
+        'spec.loader.exec_module(mod)',
+        'def _annoter_sabote(*a, **k):',
+        '    raise ValueError("SABOTAGE test filet de securite : annoter() indisponible")',
+        'mod.ma.annoter = _annoter_sabote',
+        'sys.argv = [chemin_nettoyeur] + sys.argv[3:]',
+        'sys.exit(mod.principal(sys.argv))',
+      ].join('\n');
+
+      const r = python(['-c', PONT_ANNOTER_SABOTE, PIPELINE, NETTOYEUR,
+        entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.ok(fs.existsSync(obj.sortie_docx),
+        'le .docx pré-annotation doit rester livré malgré la panne : ' + r.stderr);
+
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
       assert.strictEqual(rapport.annotation, null,
-        'l’annotation a échoué sur ce fichier précis (défaut connu) : elle doit être signalée '
-        + 'comme None, pas laissée à moitié faite');
-      assert.ok(rapport.alertes.liste.some((a) => a.rule === 'Annotation.Impossible'),
-        'aucune alerte Annotation.Impossible : ' + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
+        'annotation ratée injectée : rapport.annotation doit être None, jamais à moitié fait');
+      const alerteImpossible = rapport.alertes.liste.find((a) => a.rule === 'Annotation.Impossible');
+      assert.ok(alerteImpossible,
+        'aucune alerte Annotation.Impossible malgré la panne injectée : '
+        + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
+      assert.strictEqual(alerteImpossible.severity, 'warning');
+
+      // Le .docx livré est celui d'AVANT l'annotation : ni révision ni commentaire posé —
+      // la panne injectée n'a jamais pu toucher le fichier sur le disque.
+      const LIRE_MARQUES_SABOTE = [
+        'import sys, zipfile, json',
+        'z = zipfile.ZipFile(sys.argv[1])',
+        'print(json.dumps({',
+        '    "w_ins": z.read("word/document.xml").decode("utf-8").count("<w:ins "),',
+        '    "w_del": z.read("word/document.xml").decode("utf-8").count("<w:del "),',
+        '    "comments_xml": "word/comments.xml" in z.namelist(),',
+        '}))',
+      ].join('\n');
+      const rMarques = python(['-c', LIRE_MARQUES_SABOTE, obj.sortie_docx]);
+      assert.strictEqual(rMarques.status, 0, 'lecture des marques a échoué : ' + rMarques.stderr);
+      const marques = JSON.parse(rMarques.stdout);
+      assert.strictEqual(marques.w_ins, 0);
+      assert.strictEqual(marques.w_del, 0);
+      assert.strictEqual(marques.comments_xml, false);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
