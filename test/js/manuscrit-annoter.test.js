@@ -32,8 +32,16 @@ const ANNOTER = path.join(PIPELINE, 'manuscrit_annoter.py');
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 const DISTRO = 'SZH-Publishing';
 
+// PYTHONIOENCODING=utf-8 : sans elle, l'interprète Python de ce poste écrit son stdout dans
+// l'encodage de la console Windows (cp1252) plutôt qu'en UTF-8 — un accent revient mangled
+// (« démarche » -> « d�marche ») alors que le XML produit, lui, est parfaitement correct.
+// Même piège que documenté dans manuscrit-gabarit.test.js ; mesuré ici sur le nouveau
+// contrôle « found court ou ambigu » (le seul de ce fichier à faire transiter un accent par
+// simularAceptarRechazar()).
+const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
+
 function python(args) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
 }
 
 function dossierJetable() {
@@ -58,11 +66,30 @@ const FABRICAR_DOCX_PY = [
   '    return ("<w:rPr>%s</w:rPr>" % partes) if partes else ""',
   'def run_xml(r):',
   '    return "<w:r>%s<w:t xml:space=\\"preserve\\">%s</w:t></w:r>" % (rpr_xml(r.get("rpr", {})), r["texte"])',
+  'def grupos_por_enlace(runs):',
+  '    # runs consecutifs qui partagent enlace=True -> un seul <w:hyperlink> les enveloppe.',
+  '    grupos, actuel = [], None',
+  '    for r in runs:',
+  '        en = bool(r.get("enlace"))',
+  '        if actuel is not None and actuel[0] == en:',
+  '            actuel[1].append(r)',
+  '        else:',
+  '            actuel = (en, [r]); grupos.append(actuel)',
+  '    return grupos',
   'def para_xml(p):',
   '    if p.get("vide"):',
   '        return "<w:p/>"',
   '    runs = p.get("runs") or [{"texte": p.get("texte", "")}]',
-  '    return "<w:p>%s</w:p>" % "".join(run_xml(r) for r in runs)',
+  '    piezas = []',
+  '    for en_lien, grupo in grupos_por_enlace(runs):',
+  '        contenido = "".join(run_xml(r) for r in grupo)',
+  '        if en_lien:',
+  '            piezas.append(',
+  '                "<w:hyperlink xmlns:r=\\"http://schemas.openxmlformats.org/officeDocument/"',
+  '                "2006/relationships\\" r:id=\\"rIdLien\\">%s</w:hyperlink>" % contenido)',
+  '        else:',
+  '            piezas.append(contenido)',
+  '    return "<w:p>%s</w:p>" % "".join(piezas)',
   'TABLA = ("<w:tbl><w:tblPr/><w:tblGrid><w:gridCol/></w:tblGrid>"',
   '         "<w:tr><w:tc><w:tcPr/><w:p/></w:tc></w:tr></w:tbl>")',
   'corps = TABLA + "<w:p/>" + TABLA + "<w:p/>" + "".join(para_xml(p) for p in paras) + "<w:sectPr/>"',
@@ -281,6 +308,100 @@ test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par
     const { aceptado, rechazado } = simularAceptarRechazar(resultat.documentXml);
     assert.strictEqual(aceptado, 'Une personne en situation de handicap doit etre respectee.');
     assert.strictEqual(rechazado, 'Une personne en situation de handicap doit etre respectee.');
+  });
+
+// ---------------------------------------------------------------------------------
+// 2 bis. Révision du 21.09.2026 — trois défauts mesurés sur le corpus réel par le lot de
+// branchement (voir le contrat, §7 ter, section datée 21.09.2026).
+
+// Défaut n°1 : deux révisions du même paragraphe dont les spans se chevauchent levaient un
+// KeyError('texto') — la seconde fusionnait un atome déjà fusionné par la première. Mesuré en
+// rejouant 2-grappes_En Route pour Apprendre.docx (deux règles distinctes sur le même DOI).
+test('chevauchement de révisions dans un même paragraphe : la plus sévère devient révision, l\'autre un commentaire au même endroit',
+  { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Un lien https://exemple.org/rapport-2026 est cite deux fois.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [
+      // Span plus LARGE, contenant le second, mais moins sévère (warning) : posée en premier
+      // dans la liste pour prouver que c'est bien la SÉVÉRITÉ qui décide, pas l'ordre brut.
+      { rule: 'Test.Chevauchement.Large', severity: 'warning', action: 'fix', para: 0,
+        span: null, found: 'lien https://exemple.org/rapport-2026 est',
+        suggested: 'lien *https://exemple.org/rapport-2026* est', message: 'reformulation large' },
+      // Span plus étroit, contenu dans le premier, mais plus sévère (error) : doit l'emporter.
+      { rule: 'Test.Chevauchement.Etroit', severity: 'error', action: 'fix', para: 0,
+        span: null, found: 'https://exemple.org/rapport-2026', suggested: 'URL-CORRIGEE',
+        message: 'DOI/URL mal formé' },
+    ];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    // Aucun crash (c'était un KeyError avant le correctif) : une seule révision retenue.
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Etroit'].revisions, 1,
+      'la règle la plus sévère (error) doit devenir la révision');
+    assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Large'].commentes, 1,
+      'la règle la moins sévère doit devenir un commentaire, jamais une seconde révision imbriquée');
+    assert.match(resultat.documentXml, /<w:delText[^>]*>https:\/\/exemple\.org\/rapport-2026<\/w:delText>/);
+    assert.match(resultat.documentXml, /<w:t[^>]*>URL-CORRIGEE<\/w:t>/);
+  });
+
+// Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
+// TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
+// contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).
+test('found court ou ambigu sans span valide : jamais remplacé, repli sur un commentaire du paragraphe entier',
+  { skip: sansPython }, () => {
+    const paragraphes = [{ texte: 'Cette approche associe recherche et pratique, et convainc.' }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [
+      // "et" est un préfixe caché de "Cette" ET apparaît deux fois par ailleurs : ambigu.
+      { rule: 'Test.EtCourt', severity: 'error', action: 'fix', para: 0, span: null,
+        found: 'et', suggested: '&', message: 'liaison et/&' },
+      // "approche" ne fait que 8 caractères mais est UNIQUE : doit rester une révision normale.
+      { rule: 'Test.Unique', severity: 'error', action: 'fix', para: 0, span: null,
+        found: 'approche', suggested: 'démarche', message: 'reformulation' },
+    ];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1, 'seul le found unique et assez long devient une révision');
+    assert.strictEqual(resultat.stats.par_regle['Test.EtCourt'].commentes, 1,
+      'un found court/ambigu sans span devient un commentaire, jamais un remplacement');
+    const { aceptado, rechazado } = simularAceptarRechazar(resultat.documentXml);
+    assert.strictEqual(aceptado, 'Cette démarche associe recherche et pratique, et convainc.',
+      'le texte réel ("Cette", "et") ne doit JAMAIS être corrompu par le repli sur "et"');
+    assert.strictEqual(rechazado, 'Cette approche associe recherche et pratique, et convainc.');
+  });
+
+// Défaut n°3 : une révision qui touche un run enveloppé dans <w:hyperlink> pouvait laisser un
+// document.xml mal formé SANS lever d'exception (le XML « de collage » interne à un groupe
+// fusionné, dont l'ouverture/fermeture du lien, était perdu). Mesuré sur 3/12 manuscrits réels.
+test('révision touchant un run de lien : jamais fusionnée, repli sur un commentaire, XML toujours bien formé',
+  { skip: sansPython }, () => {
+    const paragraphes = [{
+      runs: [
+        { texte: 'Voir le lien ' },
+        { texte: 'https://exemple.org/rapport-cdph', enlace: true },
+        { texte: ' pour plus de détails.' },
+      ],
+    }];
+    const correspondance = [{ source: 0, sortie: 2 }];
+    const alertes = [{
+      // Le span demandé commence AVANT le lien et se termine DEDANS -> chevauche sa frontière.
+      rule: 'Test.SpanSurLien', severity: 'error', action: 'fix', para: 0, span: null,
+      found: 'lien https://exemple.org/rapport-cdph', suggested: 'REMPLACEMENT-REFUSE',
+      message: 'ne doit jamais toucher le lien',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 0, 'un span qui touche un run de lien ne doit jamais devenir une révision');
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.ok(!resultat.documentXml.includes('REMPLACEMENT-REFUSE'),
+      'le texte suggéré ne doit jamais être écrit quand la cible touche un lien');
+    // <w:hyperlink> doit rester équilibré (ouvertures == fermetures) : c'est exactement ce
+    // que le défaut n°3 cassait silencieusement.
+    const ouvertures = (resultat.documentXml.match(/<w:hyperlink\b/g) || []).length;
+    const fermetures = (resultat.documentXml.match(/<\/w:hyperlink>/g) || []).length;
+    assert.strictEqual(ouvertures, 1);
+    assert.strictEqual(fermetures, 1);
   });
 
 // ---------------------------------------------------------------------------------

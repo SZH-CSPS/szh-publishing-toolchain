@@ -48,6 +48,7 @@ import os
 import re
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime, timezone
 
@@ -73,6 +74,7 @@ _RE_RPR = re.compile(r'<w:rPr>(.*?)</w:rPr>', re.S)
 _RE_T = re.compile(r'<w:t(?:\s[^>]*)?>(.*?)</w:t>', re.S)
 _RE_ITALICA = re.compile(r'\*([^*]+)\*')
 _RE_TAG_INICIO_CUERPO = re.compile(r'<(w:p|w:tbl|w:sectPr)\b')
+_RE_HYPERLINK = re.compile(r'<w:hyperlink\b[^>]*>.*?</w:hyperlink>', re.S)
 
 
 # ---------------------------------------------------------------------------------
@@ -140,7 +142,15 @@ def _leer_runs(p_xml):
     parce que la préservation du « collage » (voir l'en-tête) ne dépend pas de cette
     distinction. Chaque run porte son texte concaténé (les seuls w:t, jamais w:tab/w:br/une
     image — §7 ter du contrat : « concatène ses w:t »), son w:rPr brut, ses offsets XML dans
-    p_xml, et ses offsets dans le texte du paragraphe."""
+    p_xml, ses offsets dans le texte du paragraphe, et `en_lien` (dans un <w:hyperlink>).
+
+    ⚠ `en_lien` existe pour un seul usage : EMPÊCHER une révision de fusionner ce run avec
+    ses voisins (§7 ter, révision du 21.09.2026, défaut n°3). Fusionner des atomes qui
+    chevauchent la frontière d'un <w:hyperlink> perd le XML « de collage » interne au groupe
+    (l'ouverture ou la fermeture du lien tombait ENTRE deux atomes désormais fondus en un
+    seul) — mesuré sur le corpus réel : un </w:hyperlink> orphelin, sans la moindre exception
+    à l'écriture."""
+    enlaces = [(m.start(), m.end()) for m in _RE_HYPERLINK.finditer(p_xml)]
     runs = []
     pos_texto = 0
     for m in _RE_RUN.finditer(p_xml):
@@ -148,15 +158,37 @@ def _leer_runs(p_xml):
         rpr_m = _RE_RPR.search(contenido)
         rpr = rpr_m.group(0) if rpr_m else ''
         texto = ''.join(_desescapar(t) for t in _RE_T.findall(contenido))
+        en_lien = any(a <= m.start() and m.end() <= b for a, b in enlaces)
         runs.append({'debut_xml': m.start(), 'fin_xml': m.end(), 'rpr': rpr, 'texto': texto,
-                     'debut_texto': pos_texto, 'fin_texto': pos_texto + len(texto)})
+                     'debut_texto': pos_texto, 'fin_texto': pos_texto + len(texto),
+                     'en_lien': en_lien})
         pos_texto += len(texto)
     return runs
 
 
+def _span_toca_enlace(runs, s, e):
+    """Vrai si [s, e) touche le texte d'un run enveloppé dans <w:hyperlink> — une révision ne
+    doit alors JAMAIS s'appliquer (voir _leer_runs) : le repli est un commentaire au même
+    endroit, jamais un remplacement."""
+    return any(r['en_lien'] and r['debut_texto'] < e and s < r['fin_texto'] for r in runs)
+
+
 # ---------------------------------------------------------------------------------
-# Localisation (§7 ter, point 1) — span exact si `found` s'y trouve, sinon première occurrence
-# dans le paragraphe, sinon None (ancrage sur le paragraphe entier, décidé par l'appelant).
+# Localisation (§7 ter, point 1) — span exact si `found` s'y trouve ; sinon (span absent ou
+# faux) un repli PRUDENT, jamais « la première occurrence trouvée ».
+#
+# ⚠ Révision du 21.09.2026 (défaut n°2 mesuré sur le corpus réel par le lot de branchement) :
+# l'ancien repli prenait `texto.find(found)` sans aucune borne — un `found` court et banal
+# (« et », « & », raffineurs Vale comme CSPS.APA.EtDansParentheses) peut apparaître À
+# L'INTÉRIEUR d'un autre mot avant la vraie occurrence visée (« et » dans « **Cet**te ») et
+# corrompt alors du texte réel, sans le moindre signe visible dans le `.docx` produit. Sans
+# `span` fiable, le repli n'accepte donc désormais qu'un `found` d'au moins 4 caractères ET
+# présent EXACTEMENT une fois dans le paragraphe — ambigu (0 ou plusieurs) ou trop court,
+# c'est None : l'appelant ancre alors sur le paragraphe entier (un commentaire, jamais un
+# remplacement à l'aveugle).
+
+_LONGUEUR_MIN_FOUND_SANS_SPAN = 4
+
 
 def _localizar(texto, span, found):
     if not found:
@@ -165,10 +197,13 @@ def _localizar(texto, span, found):
         d, f = span
         if 0 <= d <= f <= len(texto) and texto[d:f] == found:
             return (d, f)
-    pos = texto.find(found)
-    if pos >= 0:
-        return (pos, pos + len(found))
-    return None
+    if len(found) < _LONGUEUR_MIN_FOUND_SANS_SPAN:
+        return None
+    ocurrencias = [m.start() for m in re.finditer(re.escape(found), texto)]
+    if len(ocurrencias) != 1:
+        return None
+    pos = ocurrencias[0]
+    return (pos, pos + len(found))
 
 
 # ---------------------------------------------------------------------------------
@@ -537,19 +572,46 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         for idx, alerta in lista:
             localizado = _localizar(texto_tmp, alerta.get('span'), alerta.get('found'))
             accion = alerta.get('action')
-            if accion in ('fix', 'track') and alerta.get('suggested') and localizado is not None:
-                revisiones_por_salida.setdefault(salida, []).append((localizado, alerta))
+            # Un span qui touche un run de lien ne devient JAMAIS une révision (défaut n°3,
+            # voir _span_toca_enlace) : il reste localisé, mais repart au fil des commentaires.
+            peut_reviser = (accion in ('fix', 'track') and alerta.get('suggested')
+                             and localizado is not None
+                             and not _span_toca_enlace(runs_tmp, *localizado))
+            if peut_reviser:
+                revisiones_por_salida.setdefault(salida, []).append((idx, localizado, alerta))
             elif accion == 'report':
                 _contar_regla(stats, alerta, 'signalees')
             else:
-                # action == 'comment', ou fix/track non localisable / sans suggestion (§7 ter,
-                # point 3) : repli commentaire, jamais perdu.
+                # action == 'comment', fix/track non localisable/sans suggestion, ou span
+                # touchant un lien (§7 ter, points 3 et défaut n°3) : repli commentaire,
+                # jamais perdu.
                 candidatos_comentario.append((idx, alerta, salida, localizado))
+
+    # 2 bis. Chevauchements entre révisions d'un MÊME paragraphe (§7 ter, révision du
+    # 21.09.2026, défaut n°1) : fusionner deux atomes déjà fusionnés par une révision voisine
+    # fait perdre la clé 'texto' de l'atome de remplacement (KeyError, mesuré sur le corpus
+    # réel : deux règles distinctes — Vale et manuscrit_biblio.py — lèvent chacune leur propre
+    # alerte sur le MÊME DOI). La plus sévère (puis la plus proche du début de `alertes`)
+    # reste une révision ; l'autre devient un commentaire sur le MÊME ancrage — jamais deux
+    # modifications imbriquées.
+    rango_severidad = {'error': 0, 'warning': 1, 'suggestion': 2}
+    for salida, lista_rev in list(revisiones_por_salida.items()):
+        ordenada = sorted(lista_rev, key=lambda t: (rango_severidad.get(t[2].get('severity'), 3), t[0]))
+        spans_aceptados = []
+        conservadas = []
+        for idx, localizado, alerta in ordenada:
+            s, e = localizado
+            solapa = any(s < e2 and s2 < e for (s2, e2) in spans_aceptados)
+            if solapa:
+                candidatos_comentario.append((idx, alerta, salida, localizado))
+            else:
+                spans_aceptados.append((s, e))
+                conservadas.append((localizado, alerta))
+        revisiones_por_salida[salida] = conservadas
 
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
     # puis le plafond global.
-    rango_severidad = {'error': 0, 'warning': 1, 'suggestion': 2}
     candidatos_comentario.sort(key=lambda t: (rango_severidad.get(t[1].get('severity'), 3), t[0]))
 
     total_por_regla = {}
@@ -627,6 +689,22 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                     '"application/vnd.openxmlformats-officedocument.wordprocessingml.'
                     'comments+xml"/></Types>')
                 contenidos['[Content_Types].xml'] = ct_xml.encode('utf-8')
+
+    # Contrôle systématique AVANT écriture (§7 ter, révision du 21.09.2026, défaut n°3) :
+    # aucune partie XML/rels de la sortie ne part sur disque sans avoir été reparsée — un
+    # module qui rendrait un XML mal formé doit lever une exception EXPLICITE ici, jamais
+    # laisser un .docx corrompu sortir avec un code de succès. Toutes les parties (pas
+    # seulement celles que ce module vient de modifier) : un défaut mesuré une fois ne suffit
+    # pas à garantir qu'il n'y en a pas d'autre.
+    for nombre, datos in contenidos.items():
+        if nombre.endswith('.xml') or nombre.endswith('.rels'):
+            try:
+                ET.fromstring(datos)
+            except ET.ParseError as e:
+                raise ValueError(
+                    "manuscrit_annoter.annoter() a produit une partie XML mal formee (%s) : "
+                    "%s -- annotation refusee, rien n'est ecrit sur %s"
+                    % (nombre, e, chemin_docx_sortie))
 
     dossier = os.path.dirname(os.path.abspath(chemin_docx_sortie)) or '.'
     if not os.path.isdir(dossier):
