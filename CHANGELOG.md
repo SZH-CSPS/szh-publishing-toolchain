@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.2.1
+
+**La release se publie sans tag posé à la main — mineure, outillage seul, rien qui se voit
+en dehors du dépôt.** La 1.2.0 a demandé trois poses du tag : vert en local n'a jamais garanti
+vert sur un runner GitHub, et la CI ne parlait qu'après la pose, quand la réparer coûtait
+déjà un `git push --delete` puis un retag.
+
+- **`test/js/porte-release.js` rejoue en local, avant tout push,** ce que `ci.yml` et
+  `release.yml` vérifient après coup : YAML des deux workflows, typographie des textes
+  visibles, bump des extensions modifiées depuis le dernier tag, section `CHANGELOG.md`
+  (et `nouveautes.json` si le medium change), puis la suite complète — en simulant
+  ubuntu-latest et windows-latest (`SZH_SIMULER_RUNNER`) pour juger un `--runner ubuntu` ou
+  `--runner windows` comme CE runner-là le verrait, sans attendre un run distant.
+- **Le tag est désormais posé par la CI, pas par un `git tag` humain** : `release.yml` se
+  déclenche sur la fin d'un `ci` réussi sur `main` dont le commit de tête est
+  `release: X.Y.Z résumé`, pose alors `vX.Y.Z`, et enchaîne la publication sans rejouer
+  `ci.yml` une seconde fois. Un commit `release:` dont `ci` échoue ne pose aucun tag.
+- **Un motif de saut a désormais une seule source vraie** : `test/js/motifs-saut.js`, importé
+  à la fois par `test/js/gardes.js` (qui les écrit, via les assistants `sauter.corpus`,
+  `sauter.wsl`, `sauter.pandoc`, `sauter.powershell`, `sauter.vale`, `sauter.vscodium`,
+  `sauter.production`, `sauter.eleve`, `sauter.pliage`) et par `test/js/verifier-tap.js` (qui
+  les relit). Une nouvelle famille `vale` distingue enfin l'absence de Vale de l'absence de la
+  WSL, que les tests concernés empruntaient jusqu'ici pour passer la porte.
+- **Un crochet `pre-push`** (`.githooks/pre-push`, activé par `git config core.hooksPath
+  .githooks`) rejoue la partie rapide de cette porte avant d'autoriser un push, en moins de
+  30 secondes.
+
 ## 1.2.0
 
 **Le nettoyeur de manuscrit : un onglet « Préprocessing » dans le lanceur.** Un manuscrit
