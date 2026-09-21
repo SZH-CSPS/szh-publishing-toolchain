@@ -1,0 +1,45 @@
+# « ex- » au sens de « ancien, précédent » : trait d'union systématique.
+# Source : Wikipédia, « Emploi du trait d'union pour les préfixes en français », §3 « Préfixes
+# à exceptions » / « In, en, ex » — « Ex (ancien/précédent) : toujours trait d'union
+# (ex-président, ex-république) ».
+#
+# Un lexique FERMÉ de noms de rôle/fonction, jamais « ex + N'IMPORTE QUEL nom » : dans ce
+# sens précis, « ex » n'introduit jamais autre chose qu'un nom de personne/rôle/statut — pas
+# d'ambiguïté nom/adjectif ici (contrairement à « non »/« quasi », voir PrefixeNonQuasiNoms.yml).
+extends: substitution
+message: "%s (« ex- » = ancien, trait d'union obligatoire) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bex président\b': 'ex-président'
+  '\bex présidente\b': 'ex-présidente'
+  '\bex ministre\b': 'ex-ministre'
+  '\bex directeur\b': 'ex-directeur'
+  '\bex directrice\b': 'ex-directrice'
+  '\bex mari\b': 'ex-mari'
+  '\bex femme\b': 'ex-femme'
+  '\bex époux\b': 'ex-époux'
+  '\bex épouse\b': 'ex-épouse'
+  '\bex conjoint\b': 'ex-conjoint'
+  '\bex conjointe\b': 'ex-conjointe'
+  '\bex collègue\b': 'ex-collègue'
+  '\bex employé\b': 'ex-employé'
+  '\bex employée\b': 'ex-employée'
+  '\bex étudiant\b': 'ex-étudiant'
+  '\bex étudiante\b': 'ex-étudiante'
+  '\bex élève\b': 'ex-élève'
+  '\bex membre\b': 'ex-membre'
+  '\bex chef\b': 'ex-chef'
+  '\bex patron\b': 'ex-patron'
+  '\bex patronne\b': 'ex-patronne'
+  '\bex associé\b': 'ex-associé'
+  '\bex associée\b': 'ex-associée'
+  '\bex partenaire\b': 'ex-partenaire'
+  '\bex enseignant\b': 'ex-enseignant'
+  '\bex enseignante\b': 'ex-enseignante'
+  '\bex professeur\b': 'ex-professeur'
+  '\bex collaborateur\b': 'ex-collaborateur'
+  '\bex collaboratrice\b': 'ex-collaboratrice'
+  '\bex responsable\b': 'ex-responsable'

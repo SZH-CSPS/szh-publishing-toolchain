@@ -1,0 +1,32 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : soudure de mots composés usuels (Wikipédia : Rectifications orthographiques du français en 1990, §Soudure de mots composés).
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bAgro\-alimentaire\b': "Agroalimentaire"
+  '\bContre\-appel\b': "Contrappel"
+  '\bContre\-attaque\b': "Contrattaque"
+  '\bContre\-attaques\b': "Contrattaques"
+  '\bContre\-pied\b': "Contrepied"
+  '\bEntre\-temps\b': "Entretemps"
+  '\bPorte\-monnaie\b': "Portemonnaie"
+  '\bTic\-tac\b': "Tictac"
+  '\bTic\-tacs\b': "Tictacs"
+  '\bWeek\-end\b': "Weekend"
+  '\bWeek\-ends\b': "Weekends"
+  '\bagro\-alimentaire\b': "agroalimentaire"
+  '\bcontre\-appel\b': "contrappel"
+  '\bcontre\-attaque\b': "contrattaque"
+  '\bcontre\-attaques\b': "contrattaques"
+  '\bcontre\-pied\b': "contrepied"
+  '\bentre\-temps\b': "entretemps"
+  '\bporte\-monnaie\b': "portemonnaie"
+  '\btic\-tac\b': "tictac"
+  '\btic\-tacs\b': "tictacs"
+  '\bweek\-end\b': "weekend"
+  '\bweek\-ends\b': "weekends"

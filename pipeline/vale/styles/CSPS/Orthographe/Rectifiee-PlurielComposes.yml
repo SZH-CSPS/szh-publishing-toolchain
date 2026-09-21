@@ -1,0 +1,18 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : pluriel régulier des noms composés verbe/préposition + nom (Wikipédia : Rectifications orthographiques du français en 1990, §Pluriel des noms composés). Limité à des phrases COMPLÈTES déterminant + composé (« des après-midi » ...) : le pluriel dépend de savoir si le groupe est employé au pluriel, une question syntaxique que Vale ne sait pas trancher sans le déterminant capturé dans le motif lui-même — jamais une règle productive sur le composé seul.
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bCes\ après\-midi\b': "Ces après-midis"
+  '\bDes\ après\-midi\b': "Des après-midis"
+  '\bLes\ après\-midi\b': "Les après-midis"
+  '\bPlusieurs\ après\-midi\b': "Plusieurs après-midis"
+  '\bces\ après\-midi\b': "ces après-midis"
+  '\bdes\ après\-midi\b': "des après-midis"
+  '\bles\ après\-midi\b': "les après-midis"
+  '\bplusieurs\ après\-midi\b': "plusieurs après-midis"

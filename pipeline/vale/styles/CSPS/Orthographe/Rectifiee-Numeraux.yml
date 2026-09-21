@@ -1,0 +1,52 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : trait d'union entre TOUS les éléments d'un numéral composé, y compris autour de « et » (Wikipédia : Rectifications orthographiques du français en 1990, §Traits d'union dans les numéraux) — classé ici, pas dans la famille TraitUnion, décision du brief du 21.09.2026 : c'est la rectification de 1990 qui change la règle, pas l'usage traditionnel déjà en vigueur.
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bCent\ un\b': "Cent-un"
+  '\bCent\ une\b': "Cent-une"
+  '\bCent\ unième\b': "Cent-unième"
+  '\bCinquante\ et\ un\b': "Cinquante-et-un"
+  '\bCinquante\ et\ une\b': "Cinquante-et-une"
+  '\bCinquante\ et\ unième\b': "Cinquante-et-unième"
+  '\bMille\ un\b': "Mille-un"
+  '\bMille\ une\b': "Mille-une"
+  '\bQuarante\ et\ un\b': "Quarante-et-un"
+  '\bQuarante\ et\ une\b': "Quarante-et-une"
+  '\bQuarante\ et\ unième\b': "Quarante-et-unième"
+  '\bSoixante\ et\ onze\b': "Soixante-et-onze"
+  '\bSoixante\ et\ un\b': "Soixante-et-un"
+  '\bSoixante\ et\ une\b': "Soixante-et-une"
+  '\bSoixante\ et\ unième\b': "Soixante-et-unième"
+  '\bTrente\ et\ un\b': "Trente-et-un"
+  '\bTrente\ et\ une\b': "Trente-et-une"
+  '\bTrente\ et\ unième\b': "Trente-et-unième"
+  '\bVingt\ et\ un\b': "Vingt-et-un"
+  '\bVingt\ et\ une\b': "Vingt-et-une"
+  '\bVingt\ et\ unième\b': "Vingt-et-unième"
+  '\bcent\ un\b': "cent-un"
+  '\bcent\ une\b': "cent-une"
+  '\bcent\ unième\b': "cent-unième"
+  '\bcinquante\ et\ un\b': "cinquante-et-un"
+  '\bcinquante\ et\ une\b': "cinquante-et-une"
+  '\bcinquante\ et\ unième\b': "cinquante-et-unième"
+  '\bmille\ un\b': "mille-un"
+  '\bmille\ une\b': "mille-une"
+  '\bquarante\ et\ un\b': "quarante-et-un"
+  '\bquarante\ et\ une\b': "quarante-et-une"
+  '\bquarante\ et\ unième\b': "quarante-et-unième"
+  '\bsoixante\ et\ onze\b': "soixante-et-onze"
+  '\bsoixante\ et\ un\b': "soixante-et-un"
+  '\bsoixante\ et\ une\b': "soixante-et-une"
+  '\bsoixante\ et\ unième\b': "soixante-et-unième"
+  '\btrente\ et\ un\b': "trente-et-un"
+  '\btrente\ et\ une\b': "trente-et-une"
+  '\btrente\ et\ unième\b': "trente-et-unième"
+  '\bvingt\ et\ un\b': "vingt-et-un"
+  '\bvingt\ et\ une\b': "vingt-et-une"
+  '\bvingt\ et\ unième\b': "vingt-et-unième"

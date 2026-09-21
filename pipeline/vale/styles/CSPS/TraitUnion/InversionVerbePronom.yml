@@ -1,0 +1,125 @@
+# Inversion verbe-pronom (interrogation, incise) : trait d'union obligatoire entre le verbe et
+# le pronom sujet inversé — avec un « -t- » euphonique intercalé quand la forme verbale se
+# termine par une lettre-voyelle (a, e), jamais quand elle se termine déjà par une consonne
+# écrite (t, d).
+# Source : Wikipédia, « Trait d'union » (fr.wikipedia.org/wiki/Trait_d'union), §Inversion
+# verbe-pronom / « Le phonème éphelcystique /t/ s'écrit donne-t-il, y a-t-il (jamais
+# apostrophe) ». Revue : 4.5 Autres aspects typographiques cite elle-même « y a-t-il » comme
+# exemple de trait d'union.
+#
+# Petit lexique fermé de verbes courants à la 3e personne (jamais « n'importe quel verbe » :
+# un participe/adjectif qui ressemble à une 3e personne ne s'inverse jamais ainsi). Le choix
+# entre trait d'union direct et « -t- » euphonique n'est PAS arbitraire : une forme plurielle
+# française (« -ent », « ont », « sont », « vont ») se termine TOUJOURS par un « t » écrit —
+# jamais de « -t- » au pluriel. Seules les formes SINGULIÈRES qui se terminent par une lettre
+# voyelle (a, va, et les verbes en -e du 1er groupe) prennent le « -t- » (erreur mesurée en se
+# relisant avant livraison : une première version insérait à tort un « -t- » après toutes les
+# formes plurielles en -ent, corrigée ici).
+#
+# ⚠ « elle »/« elles » ABSENTS de tout couple, et « part »/« partent » RETIRÉS du lexique de
+# verbes — deux défauts mesurés en vrai sur les 92 articles publiés du corpus (21.09.2026,
+# rapport de chantier) :
+#   - « part » est aussi le nom de l'idiome « d'une part... d'autre part » : « d'une part elle
+#     vise... » n'est jamais une inversion, c'était pourtant signalé avant ce retrait.
+#   - le français réutilise « elle »/« elles » comme pronom SUJET (l'inversion visée ici) ET
+#     comme pronom DISJOINT/réfléchi (« c'est elle », « elle-même », « elles-mêmes ») —
+#     « est elle » collisionnait avec CES DEUX constructions, très fréquentes, jamais des
+#     fautes (mesuré : 4 des 5 fausses alertes de cette règle sur le corpus venaient de là).
+#     Le masculin n'a pas ce problème (le disjoint/réfléchi y prend une forme différente :
+#     « lui-même », « eux-mêmes », « c'est lui », jamais « il-même »/« ils-mêmes ») — il/ils
+#     restent donc dans le lexique, « on » aussi (pas de forme disjointe).
+extends: substitution
+message: "%s (inversion verbe-pronom, trait d'union obligatoire) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\ba il\b': 'a-t-il'
+  '\ba on\b': 'a-t-on'
+  '\baffirme il\b': 'affirme-t-il'
+  '\baffirme on\b': 'affirme-t-on'
+  '\baffirment ils\b': 'affirment-ils'
+  '\bajoute il\b': 'ajoute-t-il'
+  '\bajoute on\b': 'ajoute-t-on'
+  '\bajoutent ils\b': 'ajoutent-ils'
+  '\battend il\b': 'attend-il'
+  '\battend on\b': 'attend-on'
+  '\battendent ils\b': 'attendent-ils'
+  '\bcomprend il\b': 'comprend-il'
+  '\bcomprend on\b': 'comprend-on'
+  '\bcomprennent ils\b': 'comprennent-ils'
+  '\bconviennent ils\b': 'conviennent-ils'
+  '\bconvient il\b': 'convient-il'
+  '\bconvient on\b': 'convient-on'
+  '\bdisent ils\b': 'disent-ils'
+  '\bdit il\b': 'dit-il'
+  '\bdit on\b': 'dit-on'
+  '\bdoit il\b': 'doit-il'
+  '\bdoit on\b': 'doit-on'
+  '\bdoivent ils\b': 'doivent-ils'
+  '\bentend il\b': 'entend-il'
+  '\bentend on\b': 'entend-on'
+  '\bentendent ils\b': 'entendent-ils'
+  '\best il\b': 'est-il'
+  '\best on\b': 'est-on'
+  '\bexplique il\b': 'explique-t-il'
+  '\bexplique on\b': 'explique-t-on'
+  '\bexpliquent ils\b': 'expliquent-ils'
+  '\bfaut il\b': 'faut-il'
+  '\bimporte il\b': 'importe-t-il'
+  '\bimporte on\b': 'importe-t-on'
+  '\bimportent ils\b': 'importent-ils'
+  '\bnote il\b': 'note-t-il'
+  '\bnote on\b': 'note-t-on'
+  '\bnotent ils\b': 'notent-ils'
+  '\bont ils\b': 'ont-ils'
+  '\bpermet il\b': 'permet-il'
+  '\bpermet on\b': 'permet-on'
+  '\bpermettent ils\b': 'permettent-ils'
+  '\bpeut il\b': 'peut-il'
+  '\bpeut on\b': 'peut-on'
+  '\bpeuvent ils\b': 'peuvent-ils'
+  '\bprend il\b': 'prend-il'
+  '\bprend on\b': 'prend-on'
+  '\bprennent ils\b': 'prennent-ils'
+  '\bprécise il\b': 'précise-t-il'
+  '\bprécise on\b': 'précise-t-on'
+  '\bprécisent ils\b': 'précisent-ils'
+  '\breste il\b': 'reste-t-il'
+  '\breste on\b': 'reste-t-on'
+  '\brestent ils\b': 'restent-ils'
+  '\brépond il\b': 'répond-il'
+  '\brépond on\b': 'répond-on'
+  '\brépondent ils\b': 'répondent-ils'
+  '\bsait il\b': 'sait-il'
+  '\bsait on\b': 'sait-on'
+  '\bsavent ils\b': 'savent-ils'
+  '\bsemble il\b': 'semble-t-il'
+  '\bsemble on\b': 'semble-t-on'
+  '\bsont ils\b': 'sont-ils'
+  '\bsort il\b': 'sort-il'
+  '\bsort on\b': 'sort-on'
+  '\bsortent ils\b': 'sortent-ils'
+  '\bsouligne il\b': 'souligne-t-il'
+  '\bsouligne on\b': 'souligne-t-on'
+  '\bsoulignent ils\b': 'soulignent-ils'
+  '\bsuffisent ils\b': 'suffisent-ils'
+  '\bsuffit il\b': 'suffit-il'
+  '\bsuffit on\b': 'suffit-on'
+  '\bsuit il\b': 'suit-il'
+  '\bsuit on\b': 'suit-on'
+  '\bsuivent ils\b': 'suivent-ils'
+  '\btiennent ils\b': 'tiennent-ils'
+  '\btient il\b': 'tient-il'
+  '\btient on\b': 'tient-on'
+  '\bva il\b': 'va-t-il'
+  '\bva on\b': 'va-t-on'
+  '\bveulent ils\b': 'veulent-ils'
+  '\bveut il\b': 'veut-il'
+  '\bveut on\b': 'veut-on'
+  '\bviennent ils\b': 'viennent-ils'
+  '\bvient il\b': 'vient-il'
+  '\bvient on\b': 'vient-on'
+  '\bvont ils\b': 'vont-ils'
+  '\by a t il\b': 'y a-t-il'

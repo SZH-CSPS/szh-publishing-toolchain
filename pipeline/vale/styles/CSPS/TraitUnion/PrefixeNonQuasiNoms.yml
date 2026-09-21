@@ -1,0 +1,44 @@
+# « non- »/« quasi- » devant un NOM : trait d'union obligatoire. Devant un ADJECTIF, pas de
+# trait d'union (« non payée », « quasi certain »).
+# Source : Wikipédia, « Emploi du trait d'union pour les préfixes en français », §3 « Préfixes
+# à exceptions » / « Non, hors, très, quasi » — « Substantif/nom composé/verbe infinitif :
+# trait d'union (non-paiement, quasi-certitude)... Adjectif : pas de trait d'union (non payée,
+# quasi certain) ».
+#
+# Le brief exclut explicitement tout ce qui exige de savoir si le mot qui suit est un nom ou
+# un adjectif — Vale n'a ni lookahead ni lookbehind, aucun motif ne peut trancher ça en
+# général. La résolution ici N'EST PAS une règle productive « non/quasi + n'importe quel
+# nom » : c'est un lexique FERMÉ de noms abstraits déjà établis comme noms composés (jamais
+# employés comme adjectifs en français) — la distinction nom/adjectif est donc tranchée UNE
+# FOIS, à la main, par mot, jamais devinée au moment de l'analyse.
+extends: substitution
+message: "%s (« non-»/« quasi- » devant un nom, trait d'union obligatoire) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bnon respect\b': 'non-respect'
+  '\bnon discrimination\b': 'non-discrimination'
+  '\bnon conformité\b': 'non-conformité'
+  '\bnon inclusion\b': 'non-inclusion'
+  '\bnon paiement\b': 'non-paiement'
+  '\bnon lieu\b': 'non-lieu'
+  '\bnon sens\b': 'non-sens'
+  '\bnon ingérence\b': 'non-ingérence'
+  '\bnon acceptation\b': 'non-acceptation'
+  '\bnon appartenance\b': 'non-appartenance'
+  '\bnon reconnaissance\b': 'non-reconnaissance'
+  '\bnon adhésion\b': 'non-adhésion'
+  '\bnon usage\b': 'non-usage'
+  '\bnon recours\b': 'non-recours'
+  '\bnon application\b': 'non-application'
+  '\bnon réalisation\b': 'non-réalisation'
+  '\bnon disponibilité\b': 'non-disponibilité'
+  '\bnon communication\b': 'non-communication'
+  '\bquasi totalité\b': 'quasi-totalité'
+  '\bquasi certitude\b': 'quasi-certitude'
+  '\bquasi consensus\b': 'quasi-consensus'
+  '\bquasi absence\b': 'quasi-absence'
+  '\bquasi unanimité\b': 'quasi-unanimité'
+  '\bquasi monopole\b': 'quasi-monopole'

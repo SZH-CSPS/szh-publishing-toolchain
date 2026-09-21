@@ -1,0 +1,49 @@
+# Locutions adverbiales figées à trait d'union obligatoire, écrites sans lui.
+# Source : Wikipédia, « Trait d'union » (fr.wikipedia.org/wiki/Trait_d'union), §Mots composés
+# avec trait d'union obligatoire — « ci-joint », « vis-à-vis », « au-delà » y sont cités comme
+# mots figés à trait d'union. Revue : 4.5 Autres aspects typographiques cite elle-même le
+# trait d'union pour une union entre deux mots (« porte-monnaie, y a-t-il »).
+#
+# ⚠ Chaque motif est encadré par `\b` (limite de mot) — SANS lui, une phrase comme « à un
+# niveau dessus » contiendrait littéralement la sous-chaîne « au dessus » (les deux dernières
+# lettres de « niveau » + « dessus ») et lèverait une fausse alerte. Motifs entre guillemets
+# SIMPLES uniquement (jamais doubles) : dans une chaîne YAML entre guillemets doubles, `\b`
+# est un échappement reconnu (le caractère « retour arrière »), pas un antislash suivi d'un
+# `b` — piège mesuré en vrai (vale 3.22.0, 21.09.2026), voir generer-orthographe.py qui documente
+# la même mesure pour la famille Orthographe.
+#
+# EXCLUS volontairement (pièges mesurés en le vérifiant contre le sens réel du mot) :
+#   - « peut être » : verbe « pouvoir » + « être » (« cela peut être vrai ») est une
+#     construction légitime bien plus fréquente que l'adverbe « peut-être » — les deux
+#     graphies sont correctes selon le sens, aucun motif sans lecture syntaxique ne peut les
+#     distinguer. Jamais mécanisé ici.
+#   - « à/a priori » : locution latine qui échappe à la règle générale du trait d'union — la
+#     rectification de 1990 la fait même SOUDER (« apriori », un seul mot), jamais
+#     l'hyphéner. Ajouter une règle « à priori -> à-priori » serait une fausse correction.
+#   - l'accord grammatical de « ci-joint » (jointe, joints, jointes) n'est PAS jugé ici : seul
+#     le trait d'union manquant est corrigé, jamais la forme d'accord choisie par l'autrice ou
+#     l'auteur.
+extends: substitution
+message: "%s (trait d'union obligatoire) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bau dessus\b': 'au-dessus'
+  '\bau dessous\b': 'au-dessous'
+  '\bau dedans\b': 'au-dedans'
+  '\bau dehors\b': 'au-dehors'
+  '\bau delà\b': 'au-delà'
+  '\bci joint\b': 'ci-joint'
+  '\bci jointe\b': 'ci-jointe'
+  '\bci joints\b': 'ci-joints'
+  '\bci jointes\b': 'ci-jointes'
+  '\bci dessus\b': 'ci-dessus'
+  '\bci dessous\b': 'ci-dessous'
+  '\bci contre\b': 'ci-contre'
+  '\bci après\b': 'ci-après'
+  '\bci inclus\b': 'ci-inclus'
+  '\bci incluse\b': 'ci-incluse'
+  '\bvis à vis\b': 'vis-à-vis'
+  '\bc''est à dire\b': "c'est-à-dire"

@@ -1,0 +1,23 @@
+# Pronoms démonstratifs composés « celui/celle/ceux/celles » + « -ci »/« -là » : trait
+# d'union obligatoire.
+# Source : Wikipédia, « Trait d'union » (fr.wikipedia.org/wiki/Trait_d'union), §Démonstratifs.
+#
+# Limité aux PRONOMS démonstratifs (huit combinaisons fermées), jamais étendu à « déterminant
+# démonstratif + nom + ci/là » (« cette maison ci ») : cette forme générale demanderait de
+# reconnaître N'IMPORTE QUEL nom entre le déterminant et « ci »/« là », hors de portée d'un
+# motif Vale sans lookaround — voir le LISEZMOI, même limite que les règles APA existantes.
+extends: substitution
+message: "%s (trait d'union obligatoire, Wikipédia : trait d'union) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bcelui ci\b': 'celui-ci'
+  '\bcelle ci\b': 'celle-ci'
+  '\bceux ci\b': 'ceux-ci'
+  '\bcelles ci\b': 'celles-ci'
+  '\bcelui là\b': 'celui-là'
+  '\bcelle là\b': 'celle-là'
+  '\bceux là\b': 'ceux-là'
+  '\bcelles là\b': 'celles-là'

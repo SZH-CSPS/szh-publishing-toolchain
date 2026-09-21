@@ -1,0 +1,26 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : verbes en -eler/-eter réguliers, accent grave + consonne simple, sur le modèle de peler/acheter (Wikipédia : Rectifications orthographiques du français en 1990, §Verbes en -eler et -eter). Exceptions JAMAIS mécanisées (absentes du CSV) : appeler, jeter et leurs dérivés (dont interpeler), qui gardent le doublement traditionnel.
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bAmoncelle\b': "Amoncèle"
+  '\bAmoncellement\b': "Amoncèlement"
+  '\bNivelle\b': "Nivèle"
+  '\bNivellement\b': "Nivèlement"
+  '\bRenouvelle\b': "Renouvèle"
+  '\bRenouvellement\b': "Renouvèlement"
+  '\bRuisselle\b': "Ruissèle"
+  '\bRuissellement\b': "Ruissèlement"
+  '\bamoncelle\b': "amoncèle"
+  '\bamoncellement\b': "amoncèlement"
+  '\bnivelle\b': "nivèle"
+  '\bnivellement\b': "nivèlement"
+  '\brenouvelle\b': "renouvèle"
+  '\brenouvellement\b': "renouvèlement"
+  '\bruisselle\b': "ruissèle"
+  '\bruissellement\b': "ruissèlement"

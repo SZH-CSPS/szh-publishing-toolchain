@@ -1,0 +1,14 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : pluriel des mots empruntés francisé (Wikipédia : Rectifications orthographiques du français en 1990, §Mots empruntés).
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bMatches\b': "Matchs"
+  '\bSandwiches\b': "Sandwichs"
+  '\bmatches\b': "matchs"
+  '\bsandwiches\b': "sandwichs"

@@ -41,6 +41,25 @@ pipeline/vale/
         EtDansParentheses.yml
         EsperluetteHorsParentheses.yml
         CitationDirectePage.yml
+      TraitUnion/          trait d'union manquant — voir sa propre note plus bas
+        ComposesFiges.yml
+        PrefixesInvariables.yml
+        PrefixeExAncien.yml
+        PrefixeAntiVoyelleI.yml
+        PrefixeNonQuasiNoms.yml
+        InversionVerbePronom.yml
+        MemeApresPronom.yml
+        DemonstratifsCiLa.yml
+      Orthographe/         orthographe rectifiée (1990) — généré, jamais édité à la main
+        Rectifiee-Circonflexe.yml
+        Rectifiee-Grave.yml
+        Rectifiee-Trema.yml
+        Rectifiee-Numeraux.yml
+        Rectifiee-Soudure.yml
+        Rectifiee-OlleOtte.yml
+        Rectifiee-ElerEter.yml
+        Rectifiee-PlurielComposes.yml
+        Rectifiee-Emprunts.yml
       Lexique/             généré, voir sa propre note plus bas — jamais édité à la main
     CSPS-Biblio/          règles de la bibliographie SEULEMENT, en français
       APA/
@@ -62,6 +81,69 @@ pipeline/vale/
 Le dossier `Lexique/` (français comme allemand) est généré par
 `outils-dev/lexique/generer-lexique.py` depuis `pipeline/vale/lexique/lexique-{fr,de}.csv` :
 ne jamais l'éditer à la main, corriger le CSV puis régénérer (voir l'en-tête de ces fichiers).
+
+## TraitUnion — le trait d'union manquant
+
+Huit fichiers, écrits à la main (contrairement à `Orthographe/` ci-dessous), fondés sur deux
+pages Wikipédia : « Emploi du trait d'union pour les préfixes en français » (préfixe par
+préfixe : `PrefixesInvariables`, `PrefixeExAncien`, `PrefixeAntiVoyelleI`,
+`PrefixeNonQuasiNoms`) et « Trait d'union » (le reste : `ComposesFiges`, `InversionVerbePronom`,
+`MemeApresPronom`, `DemonstratifsCiLa`). Chaque règle cite la section Wikipédia exacte dans son
+commentaire d'en-tête.
+
+**Chaque règle est un lexique FERMÉ**, jamais un motif productif « préfixe + n'importe quel
+mot » : la plupart des préfixes concernés (sous-, sans-, après-, avant-...) sont AUSSI des
+prépositions très courantes, et « non-»/« quasi- » ne prennent le trait d'union que devant un
+NOM, jamais devant un adjectif (« non-respect » mais « non payée ») — une distinction que Vale,
+sans lookaround, ne peut pas trancher en général. La solution retenue partout : une liste de
+composés déjà vérifiés un par un, jamais une règle générale. **Le préfixe « sans- » est
+volontairement absent** de `PrefixesInvariables.yml` : « sans + nom » est aussi une locution
+adjectivale/adverbiale parfaite sans trait d'union (« il est sans emploi »), exactement la même
+ambiguïté nom/adjectif — voir le commentaire du fichier.
+
+**Le piège YAML à connaître avant de toucher un motif** : chaque motif est écrit entre
+guillemets SIMPLES (`'\bau dessus\b'`), jamais doubles. Dans une chaîne YAML entre guillemets
+doubles, `\b` est un échappement reconnu (le caractère « retour arrière »), pas un antislash
+suivi d'un `b` — un motif tapé à la main avec des guillemets doubles ne lèverait alors JAMAIS
+rien, silencieusement (mesuré en vrai, vale 3.22.0, 21.09.2026). Toujours garder les guillemets
+simples en copiant une ligne existante.
+
+**Niveau** : `warning` partout (une graphie fautive certaine, jamais une simple suggestion) ;
+`ignorecase: true` (comme `Lexique/Coherence.yml`) — la suggestion reste donc toujours en
+bas-de-casse même sur une occurrence en tête de phrase, limite connue, acceptée ailleurs dans ce
+dossier.
+
+## Orthographe — l'orthographe rectifiée de 1990
+
+Neuf fichiers `Rectifiee-<Catégorie>.yml`, **générés** par
+`outils-dev/lexique/generer-orthographe.py` depuis `pipeline/vale/lexique/
+orthographe-rectifiee.csv` (colonnes `traditionnelle;rectifiee;categorie;source`) : ne jamais
+les éditer à la main, corriger le CSV puis régénérer.
+
+**Décision de la rédaction (21.09.2026)** : la Revue écrit en orthographe rectifiée, pas en
+traditionnelle. Toutes les règles sont donc `level: warning` avec `action: replace` (révision
+Word, §7 ter du contrat) — une graphie traditionnelle rencontrée dans un manuscrit est une
+faute résiduelle à corriger, jamais une politique à trancher au cas par cas. Ceci vaut pour
+TOUTES les catégories, y compris celles dont les deux PDF Redaktionsrichtlinien ne disent rien
+(silence qui, avant cette décision, aurait plutôt appelé `suggestion`).
+
+**Ce que le CSV NE couvre PAS**, volontairement : les quatre exceptions qui gardent le
+circonflexe (dû — masculin singulier seul, mûr, sûr, jeûne) et le verbe « croître » nu (mais
+pas ses dérivés accroître/décroître, qui perdent bien l'accent) ; les conjugaisons complètes
+d'un verbe en -eler/-eter (seules quelques formes attestées par une source figurent au CSV,
+jamais un paradigme entier) ; le pluriel général des mots composés (seules des phrases
+COMPLÈTES déterminant + composé, comme « des après-midi », sont couvertes — le pluriel dépend
+de savoir si le groupe est réellement employé au pluriel, une question syntaxique).
+
+**Le piège de la majuscule initiale** : `ignorecase: false` ici (contrairement à `TraitUnion/`)
+pour que la suggestion garde TOUJOURS la bonne casse. Sans casse pliée, une paire CSV
+« événement;évènement » ne lève rien sur « Événement » en tête de phrase — mesuré en vrai. Le
+générateur ajoute donc, pour chaque mot dont la première lettre est bas-de-casse, une SECONDE
+paire à majuscule initiale — jamais dans le CSV lui-même, qui ne porte qu'une ligne par mot.
+
+**Le même piège YAML que TraitUnion/** s'applique aux motifs générés : le générateur écrit
+chaque motif entre guillemets SIMPLES (`_yaml_regex_str()`), jamais doubles, pour la même
+raison. Si vous modifiez `generer-orthographe.py`, gardez cette convention.
 
 Le dossier (`Epicene`, `Vocabulaire`...) et le nom du fichier (`FormesContractees`...)
 forment ensemble le nom complet de la règle dans le rapport, par exemple

@@ -1,0 +1,28 @@
+# « anti- » devant un mot commençant par « i » : trait d'union (pour éviter la collision de
+# deux « i »), alors que « anti- » devant les autres voyelles reste soudé (antioxydant).
+# Source : Wikipédia, « Emploi du trait d'union pour les préfixes en français », §3 « Préfixes
+# à exceptions » / « Anti » — « Trait d'union si le mot commence par i... : anti-inflation...
+# Sinon soudure : antisociale, antioxydant ».
+#
+# Un lexique FERMÉ de mots réels soudés à tort (le motif vise le mot ENTIER, glué sans trait
+# d'union), jamais un motif productif « anti + n'importe quel mot en i » : un motif productif
+# capturerait aussi bien un futur mot inventé que ceux déjà orthographiés autrement par une
+# exception lexicale non recensée ici.
+extends: substitution
+message: "%s (trait d'union devant « i », Wikipédia : préfixes) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bantiinflammatoire\b': 'anti-inflammatoire'
+  '\bantiinfectieux\b': 'anti-infectieux'
+  '\bantiinflation\b': 'anti-inflation'
+  '\bantiincendie\b': 'anti-incendie'
+  '\bantiinstitutionnel\b': 'anti-institutionnel'
+  '\bantiinstitutionnelle\b': 'anti-institutionnelle'
+  '\bantiintellectuel\b': 'anti-intellectuel'
+  '\bantiindividualiste\b': 'anti-individualiste'
+  '\bantiinclusif\b': 'anti-inclusif'
+  '\bantiinclusive\b': 'anti-inclusive'
+  '\bantiimmigration\b': 'anti-immigration'

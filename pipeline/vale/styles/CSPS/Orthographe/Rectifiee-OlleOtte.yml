@@ -1,0 +1,26 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : simplification -olle -> -ole et -otter -> -oter (Wikipédia : Rectifications orthographiques du français en 1990, §Mots en -olle et verbes en -otter). Exceptions JAMAIS mécanisées (absentes du CSV) : colle, folle, molle.
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bCachotterie\b': "Cachoterie"
+  '\bCachottier\b': "Cachotier"
+  '\bCorolle\b': "Corole"
+  '\bCorolles\b': "Coroles"
+  '\bFrisottement\b': "Frisotement"
+  '\bFrisotter\b': "Frisoter"
+  '\bGirolle\b': "Girole"
+  '\bGirolles\b': "Giroles"
+  '\bcachotterie\b': "cachoterie"
+  '\bcachottier\b': "cachotier"
+  '\bcorolle\b': "corole"
+  '\bcorolles\b': "coroles"
+  '\bfrisottement\b': "frisotement"
+  '\bfrisotter\b': "frisoter"
+  '\bgirolle\b': "girole"
+  '\bgirolles\b': "giroles"

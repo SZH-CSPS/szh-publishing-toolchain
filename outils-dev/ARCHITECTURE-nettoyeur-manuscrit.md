@@ -574,6 +574,32 @@ règle `CSPS.Vocabulaire.Handicap` (`pipeline/vale/styles/CSPS/Vocabulaire/Handi
 que « personne en situation de handicap » ne lève aucune alerte — testé par
 `test/js/manuscrit-vale.test.js`.
 
+**Révision du 21.09.2026 — deux familles CSPS ajoutées** : `TraitUnion` (huit règles,
+`pipeline/vale/styles/CSPS/TraitUnion/*.yml`, écrites à la main, fondées sur Wikipédia « Emploi
+du trait d'union pour les préfixes en français » et « Trait d'union ») et `Orthographe` (neuf
+catégories, `pipeline/vale/styles/CSPS/Orthographe/Rectifiee-*.yml`, **générées** par
+`outils-dev/lexique/generer-orthographe.py` depuis `pipeline/vale/lexique/
+orthographe-rectifiee.csv`, fondées sur Wikipédia « Rectifications orthographiques du français
+en 1990 »). Voir `pipeline/vale/LISEZMOI.md` pour le détail de chaque famille — deux décisions
+à retenir ici :
+- **Décision de la rédaction (21.09.2026)** : la Revue écrit en orthographe rectifiée, pas en
+  traditionnelle. Toutes les règles `Orthographe.Rectifiee-*` sont donc `level: warning` avec
+  `action: replace` (révision Word, §7 ter), quel que soit ce que les deux PDF
+  Redaktionsrichtlinien en disent (rien, pour l'orthographe rectifiée — silence vérifié dans les
+  deux PDF) : une graphie traditionnelle rencontrée est une faute résiduelle à corriger, jamais
+  une politique à trancher au cas par cas.
+- **Chaque règle des deux familles est un lexique FERMÉ**, jamais un motif productif : un
+  préfixe comme « sous- »/« sans- » est aussi une préposition très courante, et « non-»/
+  « quasi- » ne prennent le trait d'union que devant un nom, jamais un adjectif — une
+  distinction que Vale (RE2, sans lookaround) ne peut pas trancher en général. Chaque paire est
+  donc vérifiée un mot à la fois, jamais une combinaison générée à la volée.
+
+**Piège YAML mesuré en vrai (vale 3.22.0)**, à ne pas repayer en modifiant l'une ou l'autre
+famille : un motif contenant `\b` doit être écrit entre guillemets SIMPLES (`'\bmot\b'`), jamais
+doubles — dans une chaîne YAML entre guillemets doubles, `\b` est l'échappement du caractère
+« retour arrière », pas un antislash suivi d'un `b`, et le motif ne lève alors plus rien,
+silencieusement.
+
 ---
 
 ## 7 bis. Bibliographie — contrôle, DOI, mise en forme

@@ -1,0 +1,32 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : accent aigu remplacé par un accent grave (Wikipédia : Rectifications orthographiques du français en 1990, §Accent grave). Limité ici aux noms/adjectifs (événement, réglementaire...) — jamais aux formes conjuguées de type « je cèderai » (accord verbal, hors mécanisable sans lookaround).
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bAbrégement\b': "Abrègement"
+  '\bAllégement\b': "Allègement"
+  '\bAllégements\b': "Allègements"
+  '\bEmpiétement\b': "Empiètement"
+  '\bRéglementaire\b': "Règlementaire"
+  '\bRéglementairement\b': "Règlementairement"
+  '\bRéglementation\b': "Règlementation"
+  '\bRéglementer\b': "Règlementer"
+  '\bRéglementé\b': "Règlementé"
+  '\babrégement\b': "abrègement"
+  '\ballégement\b': "allègement"
+  '\ballégements\b': "allègements"
+  '\bempiétement\b': "empiètement"
+  '\bréglementaire\b': "règlementaire"
+  '\bréglementairement\b': "règlementairement"
+  '\bréglementation\b': "règlementation"
+  '\bréglementer\b': "règlementer"
+  '\bréglementé\b': "règlementé"
+  '\bÉvénement\b': "Évènement"
+  '\bÉvénements\b': "Évènements"
+  '\bévénement\b': "évènement"
+  '\bévénements\b': "évènements"

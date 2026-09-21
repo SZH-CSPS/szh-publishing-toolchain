@@ -1,0 +1,61 @@
+# Préfixes invariables (toujours trait d'union, quel que soit le mot qui suit) :
+# après-, arrière-, avant-, outre-, sans-, semi-, sous-, vice-, demi-, mi-.
+# Source : Wikipédia, « Emploi du trait d'union pour les préfixes en français »
+# (fr.wikipedia.org/wiki/Emploi_du_trait_d'union_pour_les_préfixes_en_français), §1 « Mots
+# composés avec trait d'union (obligatoire) » — « après-, arrière-, avant-, demi-, mi-,
+# outre-, sans-, semi-, sous-, vice- exigent systématiquement le trait d'union ».
+#
+# Un lexique FERMÉ de composés connus, jamais une règle productive « préfixe + N'IMPORTE QUEL
+# nom » : la plupart de ces préfixes sont AUSSI des prépositions ou adverbes très courants
+# (« sous la table », « avant la guerre »...) — une règle productive lèverait une alerte sur
+# chaque emploi normal de la préposition. Chaque paire ci-dessous est un composé lexicalisé
+# réel, vérifié un par un, jamais une combinaison générée.
+#
+# EXCLUS volontairement, tout le préfixe « sans- » : contrairement aux autres, « sans + nom »
+# est ausi une locution ADJECTIVALE/ADVERBIALE parfaitement correcte SANS trait d'union
+# (« une personne sans abri », « il est sans emploi », « agir sans gêne », « répondre sans
+# faute ») — exactement la distinction nom/adjectif que le brief demande d'exclure : « un
+# sans-abri » (nom) et « il est sans abri » (locution) ne se distinguent QUE par la syntaxe,
+# jamais par un motif de texte seul.
+extends: substitution
+message: "%s (préfixe invariable, trait d'union obligatoire) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\baprès guerre\b': 'après-guerre'
+  '\baprès vente\b': 'après-vente'
+  '\baprès coup\b': 'après-coup'
+  '\bavant propos\b': 'avant-propos'
+  '\bavant garde\b': 'avant-garde'
+  '\bavant scène\b': 'avant-scène'
+  '\bavant projet\b': 'avant-projet'
+  '\barrière plan\b': 'arrière-plan'
+  '\barrière pensée\b': 'arrière-pensée'
+  '\barrière goût\b': 'arrière-goût'
+  '\barrière pays\b': 'arrière-pays'
+  '\boutre mer\b': 'outre-mer'
+  '\boutre Atlantique\b': 'outre-Atlantique'
+  '\bsemi remorque\b': 'semi-remorque'
+  '\bvice président\b': 'vice-président'
+  '\bvice présidente\b': 'vice-présidente'
+  '\bvice recteur\b': 'vice-recteur'
+  '\bvice doyen\b': 'vice-doyen'
+  '\bdemi heure\b': 'demi-heure'
+  '\bdemi journée\b': 'demi-journée'
+  '\bdemi groupe\b': 'demi-groupe'
+  '\bdemi classe\b': 'demi-classe'
+  '\bdemi finale\b': 'demi-finale'
+  '\bdemi tour\b': 'demi-tour'
+  '\bdemi mesure\b': 'demi-mesure'
+  '\bdemi teinte\b': 'demi-teinte'
+  '\bmi temps\b': 'mi-temps'
+  '\bmi parcours\b': 'mi-parcours'
+  '\bmi chemin\b': 'mi-chemin'
+  '\bmi hauteur\b': 'mi-hauteur'
+  '\bsous groupe\b': 'sous-groupe'
+  '\bsous catégorie\b': 'sous-catégorie'
+  '\bsous ensemble\b': 'sous-ensemble'
+  '\bsous titre\b': 'sous-titre'
+  '\bsous total\b': 'sous-total'

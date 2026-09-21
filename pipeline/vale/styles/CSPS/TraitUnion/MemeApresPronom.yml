@@ -1,0 +1,24 @@
+# « même » après un pronom personnel/réfléchi : trait d'union obligatoire (nous-mêmes,
+# eux-mêmes, moi-même...).
+# Source : Wikipédia, « Trait d'union » (fr.wikipedia.org/wiki/Trait_d'union), §Formes avec
+# pronoms enclitiques / pronoms personnels et démonstratifs.
+#
+# Lexique FERMÉ des neuf pronoms concernés — jamais « n'importe quel mot + même », qui
+# capturerait aussi l'adverbe « même » employé seul (« même les élèves », « même si »absent de
+# ce motif car il n'a jamais la forme pronom+même).
+extends: substitution
+message: "%s (trait d'union obligatoire, Wikipédia : trait d'union) au lieu de « %s »."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  '\bnous mêmes\b': 'nous-mêmes'
+  '\bvous mêmes\b': 'vous-mêmes'
+  '\beux mêmes\b': 'eux-mêmes'
+  '\belles mêmes\b': 'elles-mêmes'
+  '\bmoi même\b': 'moi-même'
+  '\btoi même\b': 'toi-même'
+  '\blui même\b': 'lui-même'
+  '\belle même\b': 'elle-même'
+  '\bsoi même\b': 'soi-même'

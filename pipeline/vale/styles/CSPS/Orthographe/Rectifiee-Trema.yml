@@ -1,0 +1,40 @@
+# généré par outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/orthographe-rectifiee.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Orthographe rectifiée (1990) : tréma déplacé sur la voyelle réellement prononcée (Wikipédia : Rectifications orthographiques du français en 1990, §Tréma).
+# Décision de la rédaction (21.09.2026) : la Revue écrit en orthographe rectifiée, pas en traditionnelle -- une graphie traditionnelle rencontrée ici est une faute résiduelle, jamais une politique à trancher. `warning`, jamais `suggestion`.
+extends: substitution
+message: "Orthographe rectifiée (recommandation de la rédaction, 21.09.2026) : %s au lieu de %s."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bAiguë\b': "Aigüe"
+  '\bAiguës\b': "Aigües"
+  '\bAmbigument\b': "Ambigüment"
+  '\bAmbiguë\b': "Ambigüe"
+  '\bAmbiguës\b': "Ambigües"
+  '\bAmbiguïté\b': "Ambigüité"
+  '\bAmbiguïtés\b': "Ambigüités"
+  '\bArguer\b': "Argüer"
+  '\bContiguë\b': "Contigüe"
+  '\bContiguës\b': "Contigües"
+  '\bContiguïté\b': "Contigüité"
+  '\bExiguë\b': "Exigüe"
+  '\bExiguës\b': "Exigües"
+  '\bExiguïté\b': "Exigüité"
+  '\bGageure\b': "Gageüre"
+  '\baiguë\b': "aigüe"
+  '\baiguës\b': "aigües"
+  '\bambigument\b': "ambigüment"
+  '\bambiguë\b': "ambigüe"
+  '\bambiguës\b': "ambigües"
+  '\bambiguïté\b': "ambigüité"
+  '\bambiguïtés\b': "ambigüités"
+  '\barguer\b': "argüer"
+  '\bcontiguë\b': "contigüe"
+  '\bcontiguës\b': "contigües"
+  '\bcontiguïté\b': "contigüité"
+  '\bexiguë\b': "exigüe"
+  '\bexiguës\b': "exigües"
+  '\bexiguïté\b': "exigüité"
+  '\bgageure\b': "gageüre"
