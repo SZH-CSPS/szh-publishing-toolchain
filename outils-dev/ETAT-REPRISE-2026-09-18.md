@@ -57,6 +57,22 @@ concernés, puis la chaîne complète dans la WSL.
    cas A réel, puis merge dans `main` et release (bump des extensions, image WSL à reconstruire
    pour Vale — voir `TODO-UPGRADE-WSL.md`).
 
+## Demandé par Robin le 21.09.2026, à faire une fois le branchement terminé
+1. **Seconde passe sur les lignes directrices** (`outils-dev/Redaktionsrichtlinien Revue 2025.pdf`
+   et `Zeitschrift 2025.pdf`) : relire chapitre par chapitre, améliorer les règles Vale YAML
+   existantes et en ajouter pour toute prescription mécanisable non couverte, chaque règle avec
+   son chapitre source et un positif/négatif au test.
+2. **Lexique maison depuis les articles publiés** des deux dernières années sur ojs.szh.ch
+   (galleys DOCX/PDF, Revue et Zeitschrift ; le corpus `tmp/corpus-ojs` de 421 galleys a été
+   effacé, à remoissonner — voir la mémoire « Ce qu'ojs.szh.ch expose vraiment » pour les
+   pièges du moissonnage) : analyse linguistique (fréquences, collocations, variantes
+   orthographiques d'un même terme, sigles et leur développement, termes du handicap
+   effectivement employés) → un lexique versionné dans `pipeline/vale/lexique/` (fr et de),
+   exploité par Vale : vocabulaire accepté (`Vocab`), variantes à unifier (`Vocabulaire.Coherence`),
+   sigles à développer (`Vocabulaire.Sigle`), termes privilégiés vs déconseillés mesurés sur
+   l'usage réel, pas supposés. Mesure de faux positifs sur ces mêmes articles publiés.
+Supervision seule, tout délégué.
+
 ## Pièges payés ce soir
 - Un agent qui fait `git add` fait entrer ses fichiers dans le commit du superviseur :
   toujours `git commit -- <chemins>`, et `git add` seulement pour les fichiers neufs voulus.
