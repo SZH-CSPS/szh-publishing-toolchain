@@ -696,7 +696,7 @@ test('manuscrit_gabarit.ecrire : un document sans image ni tableau produit un .d
 test('manuscrit_gabarit.ecrire : les onze manuscrits réels de lot-A s\'écrivent au gabarit et se relisent tous',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
@@ -922,7 +922,7 @@ test('manuscrit_gabarit.ecrire : un gabarit sans définition de liste produit un
 test('manuscrit_gabarit.ecrire : les trois manuscrits réels à listes (3_, 3bis_, 4_) traversent la chaîne, 20 paragraphes reportés, format toujours déterminé',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const nom4 = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('4_'));
@@ -1556,7 +1556,7 @@ test('manuscrit_gabarit.ecrire : sans style de note dans le gabarit, le renvoi e
 test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont écrites en nombre attendu',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const attendu = {
@@ -1652,7 +1652,7 @@ test('manuscrit_gabarit.ecrire : correspondance.source est Paragraphe.source, pa
 test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la table de correspondance pointe un texte identique',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
@@ -1697,7 +1697,7 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la tabl
 test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, chaque partie XML de la sortie est valide et la structure est cohérente',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
@@ -1721,7 +1721,7 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, chaque partie X
 test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, aucun texte (corps ou note) n\'est perdu par rapport à l\'entrée',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));

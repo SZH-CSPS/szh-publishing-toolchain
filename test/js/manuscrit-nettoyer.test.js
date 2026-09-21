@@ -558,7 +558,7 @@ test('manuscrit-nettoyer.py : un nom de fichier accentué traverse toute la cha�
 test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la chaîne complète sans exception',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));

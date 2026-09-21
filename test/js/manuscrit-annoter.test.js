@@ -674,11 +674,11 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
   if (!fs.existsSync(CORPUS_LOT_A)) {
     console.warn('\n*** corpus tmp/corpus-relecture/lot-A absent (hors git) — essai réel sauté ***\n');
-    t.skip('tmp/corpus-relecture/lot-A absent');
+    t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
     return;
   }
   const manuscrit = path.join(CORPUS_LOT_A, '3_VF_Chanier-Delorme_Article CSPS_290626.docx');
-  if (!fs.existsSync(manuscrit)) { t.skip('manuscrit de référence absent du corpus'); return; }
+  if (!fs.existsSync(manuscrit)) { t.skip('corpus hors dépôt absent : manuscrit de référence lot-A'); return; }
 
   const base = dossierJetable();
   try {

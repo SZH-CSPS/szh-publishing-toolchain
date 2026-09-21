@@ -931,12 +931,12 @@ test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune ré
 test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption ne promeut pas le corps du document',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
-      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      t.skip('corpus hors dépôt absent : tmp/corpus-relecture/lot-A (hors git, effacé sans prévenir)');
       return;
     }
     const fichier = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('1_') && n.endsWith('.docx'));
     if (!fichier) {
-      t.skip('aucun fichier "1_*.docx" dans lot-A (corpus incomplet)');
+      t.skip('corpus hors dépôt absent : aucun fichier "1_*.docx" dans lot-A');
       return;
     }
     const { stats, n_titres_retenus: nTitres, n_paragraphes: nParagraphes } =
