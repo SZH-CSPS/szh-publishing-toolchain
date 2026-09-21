@@ -112,6 +112,11 @@ Divergence ouverte : `score.py` du harnais compte 22/34 faux titres rattrapés, 
    (`Vocab`, `Vocabulaire.Coherence`, `Vocabulaire.Sigle`) sont **générées** depuis le CSV, jamais
    éditées à la main — un seul endroit à corriger.
 Supervision seule, tout délégué.
+3. **Décidé par Robin le 21.09.2026** : la Revue écrit en **orthographe rectifiée (1990)**, pas en
+   traditionnelle → règles Vale `Orthographe.Rectifiee-*` en `warning`/`fix` (révision Word) ;
+   famille `TraitUnion` fondée sur la page Wikipédia « Emploi du trait d'union pour les préfixes
+   en français ». En cours le 21.09 au soir, avec le lot CI (porte locale, motifs de saut
+   partagés, tag posé par la CI, mode « simuler le runner », crochet pre-push).
 
 ## Pièges payés ce soir
 - Un agent qui fait `git add` fait entrer ses fichiers dans le commit du superviseur :
