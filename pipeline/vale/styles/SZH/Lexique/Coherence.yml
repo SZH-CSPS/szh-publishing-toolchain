@@ -1,0 +1,10 @@
+# généré par outils-dev/lexique/generer-lexique.py depuis pipeline/vale/lexique/lexique-de.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Variantes -> forme privilégiée, uniquement les paires dont le CSV porte le statut "privilegie" (la rédaction, ou une règle Vale existante, l'a fondé).
+extends: substitution
+message: "%s est la forme privilégiée du lexique maison (au lieu de « %s »)."
+level: suggestion
+ignorecase: true
+action:
+  name: replace
+swap:
+  # aucune paire "privilegie" avec variantes dans le CSV actuel

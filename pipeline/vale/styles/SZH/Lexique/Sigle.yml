@@ -1,0 +1,12 @@
+# généré par outils-dev/lexique/generer-lexique.py depuis pipeline/vale/lexique/lexique-de.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Un sigle de cette liste doit être développé au moins une fois dans le document
+# (motif générique "Mots (SIGLE)" avant ou après). Seuls les sigles dont le
+# développement a été retrouvé dans le corpus publié figurent ici — un sigle sans
+# développement connu n'est pas de la responsabilité de cette règle (voir le
+# lexique, colonne note : "jamais développé dans le corpus").
+extends: conditional
+message: "Sigle « %s » : à développer au moins une fois dans l'article."
+level: suggestion
+ignorecase: false
+first: '\b(AHVN13|AR|ASS|BAG|BASPO|BNE|BPR|BRK|BSFH|BSO|BSV|BV|CASEL|CI|CIIP|EA|EAA|EASIE|EASNIE|EBA|EFK|EFZ|EPAFF|ESE|ETH|FH|GDK|HFE|HPS|HUG|IDB|IFEG|IFI|IKL|ISB|ISV|IVG|KI|LP|LRS|MA|NFA|NMG|NRW|ORF|PDA|PMT|PTBS|RLP|SBB|SBV|SD|SEL|SG|SHP|SHP1|SKBF|SNF|SODK|SP|UDL|UK|UPK|USA|VR|VSG|VZÄ|WCAG|WG|ZEL)\b'
+second: '(?:[\wÀ-ÿ]+[\s-]+){1,6}\(%s\)'

@@ -1,0 +1,26 @@
+# généré par outils-dev/lexique/generer-lexique.py depuis pipeline/vale/lexique/lexique-fr.csv — NE PAS ÉDITER À LA MAIN, corriger le CSV puis régénérer.
+# Variantes -> forme privilégiée, uniquement les paires dont le CSV porte le statut "privilegie" (la rédaction, ou une règle Vale existante, l'a fondé).
+extends: substitution
+message: "%s est la forme privilégiée du lexique maison (au lieu de « %s »)."
+level: suggestion
+ignorecase: true
+action:
+  name: replace
+swap:
+  "\\bbien\\-être\\b": "bienêtre"
+  "\\bburn\\-out\\b": "burnout"
+  "\\bco\\-construire\\b": "coconstruire"
+  "\\bcoconstruction\\b": "co-construction"
+  "\\bcoenseignement\\b": "co-enseignement"
+  "\\bcontreprojet\\b": "contre-projet"
+  "\\bcoresponsable\\b": "Co-responsable"
+  "\\bl’auto\\-évaluation\\b": "L’autoévaluation"
+  "\\bmal\\-être\\b": "malêtre"
+  "\\bmédicopédagogique\\b": "médico-pédagogique"
+  "\\bmédicosocial\\b": "médico-social"
+  "\\bparis\\-nanterre\\b": "parisnanterre"
+  "\\bpost\\-obligatoire\\b": "postobligatoire"
+  "\\bsocio\\-éducatif\\b": "socioéducatif"
+  "\\bsocio\\-éducatifs\\b": "socioéducatifs"
+  "\\bsocio\\-éducatives\\b": "socioéducatives"
+  "\\bsocioémotionnel\\b": "socio-émotionnel"
