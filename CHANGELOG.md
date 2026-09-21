@@ -11,6 +11,15 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.2.4
+
+**Bibliographie : une seule révision par référence, et rien de perdu.** Un DOI retrouvé par
+Crossref entre désormais dans la révision de remise en forme de sa référence au lieu de finir en
+commentaire ; les éditeurs d'un ouvrage collectif liés par « et » ou « und » sont reconnus (ils
+disparaissaient en silence) ; aucune révision qui perdrait un nom, une année ou un nombre de
+l'original n'est plus jamais proposée ; marqueurs « In », « (Ed.) », « (Eds.) », « (Hrsg.) » et
+« pp. »/« S. » conformes aux deux Redaktionsrichtlinien.
+
 ## 1.2.3
 
 **Le lanceur ne prend plus un manuscrit nettoyé avec des points bloquants pour un échec.**
