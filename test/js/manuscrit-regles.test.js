@@ -17,10 +17,16 @@
 //      allemande ;
 //   6. un saut de niveau de titre (H1 -> H3 sans H2) est détecté, un niveau de titre qui
 //      reste dans l'ordre ne l'est pas ;
-//   7. une bibliographie mal ordonnée est signalée, et une entrée SANS nom/année n'y entre
-//      plus jamais comme un « None (None) » ;
-//   8. `regle.langue` (toujours courte) se compare à la sous-étiquette PRIMAIRE d'une
+//   7. `regle.langue` (toujours courte) se compare à la sous-étiquette PRIMAIRE d'une
 //      langue de Contexte longue (fr-CH -> fr), jamais à la chaîne brute.
+//
+// ⚠ Révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py) : le contrôle sur
+// APA.OrdreAlphabetiqueBiblio (ordre fautif détecté, entrée incomplète jamais « None (None) »)
+// a été RETIRÉ d'ici — la règle elle-même a quitté le catalogue de ce module,
+// manuscrit_biblio.verifier_ordre() la recouvre (APA.OrdreBiblio) et fait plus (suffixes
+// a/b/c en prime). Le contrôle équivalent vit maintenant dans
+// test/js/manuscrit-biblio.test.js, sur la fonction verifier_ordre() elle-même. Un contrôle
+// n°8, ci-dessous, garde spécifiquement l'ABSENCE de ce doublon dans le catalogue.
 //
 //   node --test test/js/manuscrit-regles.test.js
 //
@@ -227,34 +233,7 @@ test('Structure.NiveauxTitre : un saut H1 -> H3 est détecté, un départ à H2 
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°7 — APA.OrdreAlphabetiqueBiblio signale une entrée mal classée, et une entrée
-// SANS nom ni année (donnée manquante côté lecteur) n'y entre plus comme comparateur : elle
-// ne produit jamais de message « None (None) ».
-//
-// Sabotage minimal : dans _detecter_ordre_biblio, retirer la garde
-// `if nom is None or annee is None: continue` — le message redevient
-// « Référence mal classée : None (None). » dès qu'une entrée incomplète précède une entrée
-// valide, et la deuxième assertion (aucun "None" dans les messages) rougit.
-
-test('APA.OrdreAlphabetiqueBiblio : ordre fautif détecté, entrée incomplète jamais "None (None)"',
-  { skip: sansPython }, () => {
-    const { sortie } = diagnostiquer({
-      produit: 'revue', langue: 'fr',
-      bibliographie: [
-        { nom: 'Zorro', annee: 2020, source: 0 },
-        { source: 1 },  // entrée incomplète : ne doit jamais apparaître dans un message
-        { nom: 'Adam', annee: 2019, source: 2 },
-      ]
-    });
-    assert.strictEqual(sortie.alertes.length, 1);
-    assert.strictEqual(sortie.alertes[0].rule, 'APA.OrdreAlphabetiqueBiblio');
-    assert.strictEqual(sortie.alertes[0].para, 2);
-    assert.ok(!sortie.alertes.some((a) => /None/.test(a.message)),
-      'aucune alerte ne doit jamais citer "None" : ' + JSON.stringify(sortie.alertes));
-  });
-
-// ---------------------------------------------------------------------------------
-// Contrôle n°8 — `regle.langue` (toujours courte : 'fr', 'de', '') se compare à la
+// Contrôle n°7 — `regle.langue` (toujours courte : 'fr', 'de', '') se compare à la
 // sous-étiquette PRIMAIRE d'une langue de Contexte longue ('fr-CH' -> 'fr'), jamais à la
 // chaîne brute — la CLI passera des codes courts après ce lot, mais le module doit rester
 // robuste aux deux formes.
@@ -272,4 +251,23 @@ test('la comparaison de langue se fait sur la sous-étiquette primaire (fr-CH ->
     });
     assert.deepStrictEqual(sortie.alertes.map((a) => a.rule), ['Forme.LongueurResume.Revue'],
       'langue="fr-CH" doit déclencher les règles langue="fr", comme langue="fr" tout court');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°8 — révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py) :
+// APA.OrdreAlphabetiqueBiblio ne doit JAMAIS réapparaître dans ce catalogue —
+// manuscrit_biblio.verifier_ordre() (APA.OrdreBiblio) la recouvre entièrement, une
+// réintroduction produirait deux alertes pour le même défaut de classement, vues du rapport
+// final (le mécanisme de fusion de la CLI ne fusionne pas les doublons entre moteurs, il
+// concatène).
+//
+// Sabotage minimal : dans CATALOGUE, réintroduire l'entrée
+// `Regle('APA.OrdreAlphabetiqueBiblio', ...)` retirée le 21.09.2026 — l'assertion rougit.
+
+test('APA.OrdreAlphabetiqueBiblio ne réapparaît jamais dans le catalogue (recouverte par manuscrit_biblio.verifier_ordre)',
+  { skip: sansPython }, () => {
+    const regles = catalogue();
+    assert.ok(!regles.some((r) => r.id === 'APA.OrdreAlphabetiqueBiblio'),
+      'cette règle est un doublon de manuscrit_biblio.py (APA.OrdreBiblio) : elle ne doit '
+      + 'jamais revenir dans le catalogue structurel');
   });

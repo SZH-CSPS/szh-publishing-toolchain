@@ -1305,6 +1305,100 @@ langue déclarée du document ne sert plus qu'à une alerte `warning`
 produit — jamais à choisir le traitement. Mesuré avant correction : un article français déclaré
 `de-CH` recevait la typographie allemande ; cinq manuscrits du corpus lot-A sont déclarés `en-US`.
 
+### ⚠ Révision du 21.09.2026 — branchement de Vale, de la bibliographie et de l'annotation
+
+Jusqu'ici §7/§7 bis/§7 ter décrivaient trois modules PURS (`manuscrit_vale.py`,
+`manuscrit_biblio.py`, `manuscrit_annoter.py`), chacun avec sa propre CLI d'essai, mais
+**jamais appelés par `manuscrit-nettoyer.py`** — le reste à faire n°1 de
+`outils-dev/ETAT-REPRISE-2026-09-18.md`. C'est fait :
+
+```
+manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
+                      [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]
+                      [--sans-annotation] [--sans-reseau]
+```
+
+**Deux corpus, construits une fois, partagés par les trois moteurs** : les paragraphes de
+premier niveau du corps (rôle `''`) et ceux de la bibliographie (rôle `'bibliographie'`,
+identifiés comme avant, §1 de l'en-tête du fichier). Vale reçoit EN PLUS le contenu des
+cellules de tableau et des notes, à toute profondeur — un motif lexical ne doit pas ignorer un
+tableau ou une note sous prétexte qu'ils ne sont pas ancrables dans le `.docx` produit ; leur
+`source` vaut alors toujours `None` (voir plus bas, « ce que `correspondance` ne couvre pas »),
+pour ne jamais risquer une fausse collision avec un indice de premier niveau sans rapport.
+
+**Fusion des alertes** : les quatre moteurs (structurel, Vale, bibliographie, la reprise des
+avertissements du filtre typographique) sont concaténés puis triés par sévérité, puis par
+`para`. `manuscrit_regles.grouper()` ne connaît que le catalogue structurel (les règles Vale et
+bibliographie n'y figurent jamais) — la CLI regroupe donc elle-même par famille et par règle
+(une règle à trois segments comme `CSPS.Epicene.FormesContractees` donne sa famille au segment
+du milieu ; une règle à deux segments, comme celles de `manuscrit_biblio.py`, au premier).
+`rapport['alertes']['origine']` compte les quatre moteurs séparément.
+
+**`APA.OrdreAlphabetiqueBiblio` a quitté le catalogue structurel** (§7, `manuscrit_regles.py`) :
+`manuscrit_biblio.verifier_ordre()` la recouvre entièrement (`APA.OrdreBiblio`) et fait
+strictement plus (suffixes a/b/c). Les trois autres règles APA du catalogue structurel
+(`APA.NombreAuteursListes.*`, `APA.TroisAuteursPlus`, `APA.MemeAuteurMemeAnnee`) restent : ce
+sont des règles de FORME (troncature, ponctuation, espacement), jamais une comparaison entre
+citation et référence — `manuscrit_biblio.py` n'en couvre aucune.
+
+**Annotation** : après l'écriture du gabarit, si ni `--analyse-seule` ni `--sans-annotation` ne
+sont posés, `manuscrit_annoter.annoter()` reçoit les alertes fusionnées et
+`decisions.ecriture.correspondance`. Chaque alerte de `alertes.liste` reçoit ensuite `dans_docx`
+(`'revision' | 'commentaire' | 'rapport'`), déduit par identité d'objet des listes que
+`annoter()` rend (`non_ancrees`, `renvoyees_au_rapport`) — jamais recalculé.
+
+**Ce que `correspondance` ne couvre pas — piège mesuré en branchant l'annotation** :
+`manuscrit_gabarit._convertir_niveau_racine()` rend `correspondance[i].source` comme la
+POSITION du bloc dans la liste `blocs` qu'elle reçoit, PAS `Paragraphe.source` (voir sa propre
+docstring, et `test/js/manuscrit-gabarit.test.js` qui indexe `docEntree.blocs[c.source]` sur un
+document lu TEL QUEL, jamais amputé de son en-tête). Les deux coïncident seulement si
+`document.blocs` passé à `ecrire()` est la liste COMPLÈTE. En cas B, §5.5 retire les
+paragraphes d'en-tête de `document.blocs` AVANT `ecrire()` : la position dans la liste filtrée
+glisse par rapport à `Paragraphe.source`, et une alerte ancrée par `para` (qui porte toujours
+`Paragraphe.source`) se serait posée sur le mauvais paragraphe, ou aucun. **Remappé dans
+`manuscrit-nettoyer.py`**, la seule couche qui connaît à la fois la liste filtrée et la valeur
+d'origine de chaque `.source` (`c['source'] = document.blocs[c['source']].source`) —
+`manuscrit_gabarit.py` reste inchangé, hors des deux fichiers autorisés pour ce lot ; ce défaut
+existait déjà avant ce lot (depuis l'en-tête, §5.5, 19.09.2026), silencieux tant que rien ne
+consommait `correspondance` pour de vrai.
+
+⚠ **Deux défauts RÉELS de `manuscrit_annoter.py`, mesurés sur le corpus réel en branchant
+l'annotation, non corrigés (hors des deux fichiers autorisés pour ce lot, signalés au rapport
+de chantier)** :
+
+1. deux révisions dont les spans se chevauchent EXACTEMENT (mesuré : Vale et
+   `manuscrit_biblio.py` lèvent chacun leur propre règle `*.APA.DoiForme` sur le MÊME DOI —
+   un doublon de détection distinct de celui du point précédent, entre Vale et
+   `manuscrit_biblio.py` cette fois, non traité par ce lot) font lever `_xml_del()` un
+   `KeyError: 'texto'` — un atome déjà fusionné par la première révision, sans texte propre,
+   est repris par la seconde. `manuscrit-nettoyer.py` capture désormais cette exception :
+   le `.docx` déjà écrit reste utilisable, sans aucune annotation posée pour tout le document,
+   une alerte `Annotation.Impossible` le dit ;
+2. `_localizar()` résout un `found` non localisé par sa position `span` (motif `RE2` de Vale
+   trop large pour capturer autre chose que le contexte, §7) à la PREMIÈRE occurrence de ce
+   texte dans tout le paragraphe, sans borne de mot — pour un `found` court et banal comme
+   `"et"` (la précision de `CSPS.APA.EtDansParentheses`), un paragraphe qui contient "et" AVANT
+   la citation visée (n'importe quel mot qui le porte en interne, comme « **Cet**te ») voit sa
+   révision posée au mauvais endroit et CORRUPT le texte réel de l'article (mesuré :
+   « Cette approche » devient « C&te approche »). Aucun contournement posé dans ce lot (ni
+   dans `manuscrit-nettoyer.py`, qui ne construit aucun `found`/`span` lui-même) — la fixture
+   de `test/js/manuscrit-nettoyer.test.js` choisit une phrase sans "et" avant la citation pour
+   ne pas dépendre de ce défaut, mais il reste entier et frapperait un manuscrit réel
+   ordinaire.
+
+**Options d'essai** : `--sans-annotation` (comme `--sans-typo`) n'écrit ni révision ni
+commentaire — pour comparer une sortie annotée et une sortie nue sans relancer toute la chaîne ;
+`--sans-reseau` transmis tel quel à `manuscrit_biblio.analyser_bibliographie(reseau=…)` — le
+lanceur ne le pose jamais (Crossref reste tenté par défaut en production), les tests d'essai
+et automatisés le posent toujours (déterminisme, aucune dépendance au réseau en CI).
+
+**Le rapport JSON s'enrichit**, sans qu'aucune clé existante ne change de sens :
+`controles.vale` (`'effectue' | 'indisponible'`), `bibliographie` (les stats de
+`manuscrit_biblio.analyser_bibliographie()`, dont `crossref.indisponible`), `annotation` (les
+stats de `manuscrit_annoter.annoter()`, ou `null` si l'annotation n'a pas tourné),
+`alertes.origine`, `dans_docx` sur chaque alerte, et `compteurs.notes` /
+`compteurs.revisions` / `compteurs.commentaires_poses`.
+
 ---
 
 ## 9. L'onglet du lanceur

@@ -13,6 +13,17 @@
 # frontière est la même que celle du §7 du contrat : « chaque couche de règles, un seul
 # propriétaire ». Voir pipeline/vale/LISEZMOI.md pour ce qui a déménagé et pourquoi.
 #
+# ⚠ Révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py dans la CLI) :
+# APA.OrdreAlphabetiqueBiblio est RETIRÉE de ce catalogue. `manuscrit_biblio.verifier_ordre()`
+# la recouvre entièrement et fait STRICTEMENT plus (APA.OrdreBiblio, désormais posée sur une
+# bibliographie RÉELLEMENT extraite — nom, année ET suffixe a/b/c — plutôt que sur les deux
+# seuls champs (nom, année) que cette CLI savait deviner par regex avant ce lot). Vérifié une
+# à une, faute d'un « retrait en bloc » : APA.NombreAuteursListes.{Revue,Zeitschrift} (la
+# troncature à 20 auteurs) et APA.TroisAuteursPlus (le point final de « et al. ») et
+# APA.MemeAuteurMemeAnnee (l'espace parasite entre l'année et sa lettre) ne sont couvertes par
+# AUCUNE règle de manuscrit_biblio.py — trois concernent une FORME (troncature, ponctuation,
+# espace), jamais une comparaison entre référence et citation ; elles RESTENT ici.
+#
 # Ce module ne connaît NI Word NI OpenDocument (§3 : « Ne sait rien de : les formats »). Il
 # reçoit un Contexte — un dict JSON simple, jamais les classes de manuscrit_modele.py — et ne
 # regarde que des chaînes et des nombres déjà extraits par l'appelant. C'est délibéré : ce
@@ -323,35 +334,10 @@ def _detecter_annee_lettre_espacee(contexte):
     return constats
 
 
-# APA.OrdreAlphabetiqueBiblio / APA.NombreAuteursListes : nécessitent une bibliographie déjà
-# extraite (nom, année, nombre d'auteurs) — donnée que ce module ne devine jamais, fournie
-# par l'appelant dans contexte['bibliographie'].
-
-def _detecter_ordre_biblio(contexte):
-    constats = []
-    precedent = None
-    precedent_repr = None
-    for e in _bibliographie(contexte):
-        nom = e.get('nom')
-        annee = e.get('annee')
-        cle = (str(nom or '').lower(), annee or 0)
-        # ⚠ Bug corrigé le 19.09.2026 : une entrée sans nom/année produisait littéralement
-        # « None (None) » dans le message — jamais utile à une relectrice. Une entrée
-        # incomplète n'entre plus dans la comparaison (elle ne peut pas être mal classée par
-        # rapport à ce qu'on ne connaît pas), et n'est jamais citée par un texte inventé.
-        if nom is None or annee is None:
-            continue
-        repr_lisible = '%s (%s)' % (nom, annee)
-        if precedent is not None and cle < precedent:
-            constats.append({'para': e.get('source'), 'span': None,
-                              'found': repr_lisible,
-                              'suggested': 'reclasser par ordre alphabétique, puis '
-                                           'chronologique pour un même auteur (après %s)'
-                                           % precedent_repr})
-        precedent = cle
-        precedent_repr = repr_lisible
-    return constats
-
+# APA.NombreAuteursListes : nécessite une bibliographie déjà extraite (nom, année, nombre
+# d'auteurs) — donnée que ce module ne devine jamais, fournie par l'appelant dans
+# contexte['bibliographie']. (APA.OrdreAlphabetiqueBiblio, qui vivait ici, est retirée depuis
+# le 21.09.2026 : pipeline/manuscrit_biblio.py la recouvre, voir l'en-tête de ce fichier.)
 
 def _detecter_nb_auteurs_revue(contexte):
     constats = []
@@ -467,10 +453,6 @@ CATALOGUE = [
           _detecter_annee_lettre_espacee,
           'La lettre colle à l’année, sans espace : « %(found)s ».',
           'Der Buchstabe klebt am Jahr, ohne Leerzeichen: « %(found)s ».'),
-    Regle('APA.OrdreAlphabetiqueBiblio', 'APA', '', '', 'warning', 'report',
-          'Revue: 3.2.1 / Zeitschrift: Literaturverzeichnis / Anordnung',
-          _detecter_ordre_biblio,
-          'Référence mal classée : %(found)s.', 'Falsch eingeordnete Referenz: %(found)s.'),
     Regle('APA.NombreAuteursListes.Revue', 'APA', 'fr', 'revue', 'error', 'comment',
           'Revue: 3.2.2.1', _detecter_nb_auteurs_revue,
           'Liste d’auteurs non tronquée : %(found)s.', ''),

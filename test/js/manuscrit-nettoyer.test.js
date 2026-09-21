@@ -27,6 +27,19 @@
 //       (comme le lanceur en production), sur un manuscrit dont la typographie doit être
 //       appliquée — la panne mesurée avant cette révision (repli silencieux car wsl.exe
 //       n'existe pas dans la distro) ne peut être vue que là.
+//   13. Révision du 21.09.2026 — branchement de manuscrit_vale.py, manuscrit_biblio.py et
+//       manuscrit_annoter.py (jusque-là exposés en fonctions pures, jamais appelés d'ici) :
+//       un manuscrit fabriqué qui porte les quatre origines d'alerte à la fois (structurel,
+//       vocabulaire, bibliographie, typographie), `dans_docx` renseigné sur chacune, le .docx
+//       produit porte bien w:ins/w:del (le DOI corrigé) et comments.xml (la forme épicène),
+//       --analyse-seule n'écrit toujours rien, --sans-annotation n'écrit ni révision ni
+//       commentaire, --sans-reseau porte bien jusqu'à bibliographie.crossref.indisponible.
+//       Sauté proprement si vale est absent du poste (ni PATH ni WSL) ; SZH_VALE_OBLIGATOIRE=1
+//       transforme ce saut en échec, comme test/js/manuscrit-vale.test.js.
+//   14. Révision du 21.09.2026 — un XML rendu mal formé par l'annotation (révision à la
+//       frontière d'un w:hyperlink, défaut réel de manuscrit_annoter.py mesuré sur 3
+//       manuscrits du corpus sur 12) est détecté par la CLI elle-même et la version
+//       pré-annotation restaurée, sur le déclencheur RÉEL du corpus.
 //
 //   node --test test/js/manuscrit-nettoyer.test.js
 //
@@ -65,6 +78,33 @@ function versCheminWindows(cheminWsl) {
   const m = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(cheminWsl);
   return m ? m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\') : cheminWsl;
 }
+
+// ---- vale, détecté comme dans test/js/manuscrit-vale.test.js (patron recopié à l'identique,
+// pas importé : sa propre en-tête dit pourquoi — « jamais dans test/js/gardes.js, hors
+// périmètre de ce chantier »). PATH d'abord, wsl.exe -d SZH-Publishing en repli.
+function _valeSurPath() {
+  try {
+    const r = cp.spawnSync('vale', ['--version'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return !r.error && r.status === 0 && /vale version/i.test(String(r.stdout || ''));
+  } catch (e) { return false; }
+}
+function _valeSurWsl() {
+  try {
+    const r = cp.spawnSync(WSL_EXE, ['-d', DISTRO_WSL, '--', 'bash', '-lc', 'vale --version'],
+      { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    return !r.error && r.status === 0 && /vale version/i.test(String(r.stdout || ''));
+  } catch (e) { return false; }
+}
+const _valeOk = _valeSurPath() || _valeSurWsl();
+const sansVale = (() => {
+  const motif = _valeOk ? false
+    : 'vale introuvable (ni sur le PATH, ni dans la distro ' + DISTRO_WSL + ' via wsl.exe)';
+  if (motif && process.env.SZH_VALE_OBLIGATOIRE) {
+    throw new Error(motif + ' — SZH_VALE_OBLIGATOIRE est posé : cet outil est déclaré '
+      + 'obligatoire, sauter le contrôle est refusé.');
+  }
+  return motif;
+})();
 
 // Lit word/document.xml tel quel (XML brut), avec le Python de CE poste (Windows) — le
 // fichier produit DANS la WSL reste lisible tel quel depuis Windows, même système de
@@ -118,14 +158,41 @@ function dossierJetable(prefixe) {
 //   [{ texte, style|undefined, gras|false, taille|undefined, revision|false }, ...]
 // Le 3e argument optionnel `langue` (ex. 'de-CH') pose w:docDefaults/w:rPrDefault/w:rPr/w:lang
 // dans styles.xml — ce que manuscrit_docx._langue_declaree() lit (contrôle n°10, langue).
+// Un paragraphe peut porter `image: { nom }` (patron minimal, un seul champ utile ici :
+// AUCUN `descr` sur `wp:docPr` — donc AUCUN texte alternatif, §11 « A11y.TexteAlternatif ») —
+// une image RÉELLE (1x1 PNG transparent), avec sa relation et sa déclaration
+// [Content_Types].xml, pour que manuscrit_docx._image_depuis_drawing() (r:embed, wp:docPr, un
+// media/ résolu) la reconnaisse comme une VRAIE image, pas une forme vectorielle ignorée.
+const PNG_1X1_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
 const FABRIQUER_DOCX = [
-  'import json, sys, zipfile',
+  'import base64, json, sys, zipfile',
   'chemin, paras = sys.argv[1], json.loads(sys.argv[2])',
   'langue = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None',
   'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+  'WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"',
+  'A = "http://schemas.openxmlformats.org/drawingml/2006/main"',
+  'PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"',
+  'R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"',
+  'medias = []   # (rid, nom, octets) — une entree par image rencontree',
+  'def image_run(img):',
+  '    rid = "rIdImg%d" % (len(medias) + 1)',
+  '    medias.append((rid, img["nom"], base64.b64decode(img.get("octets_base64", ""))))',
+  '    descr = (\' descr="%s"\' % img["alt"]) if img.get("alt") else ""',
+  '    return (',
+  '        \'<w:r><w:drawing><wp:inline xmlns:wp="%s">\'',
+  '        \'<wp:extent cx="990000" cy="792000"/>\'',
+  '        \'<wp:docPr id="1" name="Image1"%s/>\'',
+  '        \'<a:graphic xmlns:a="%s"><a:graphicData uri="%s">\'',
+  '        \'<pic:pic xmlns:pic="%s"><pic:blipFill><a:blip r:embed="%s" '
+  + 'xmlns:r="%s"/></pic:blipFill></pic:pic>\'',
+  '        \'</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>\'',
+  '    ) % (WP, descr, A, PIC, PIC, rid, R)',
   'def para_xml(p):',
   '    pStyle = (\'<w:pStyle w:val="%s"/>\' % p["style"]) if p.get("style") else ""',
   '    ppr = ("<w:pPr>%s</w:pPr>" % pStyle) if pStyle else ""',
+  '    if p.get("image"):',
+  '        return "<w:p>%s%s</w:p>" % (ppr, image_run(p["image"]))',
   '    bits = ""',
   '    if p.get("gras"):',
   '        bits += "<w:b/>"',
@@ -147,12 +214,25 @@ const FABRIQUER_DOCX = [
   'for sid, nom in (("Heading1", "heading 1"), ("Normal", "Normal")):',
   '    styles += \'<w:style w:styleId="%s"><w:name w:val="%s"/></w:style>\' % (sid, nom)',
   'styles += "</w:styles>"',
+  'extensions = {"png"}',
   'ct = (\'<?xml version="1.0"?><Types \'',
-  '      \'xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>\')',
+  '      \'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\'',
+  '      + "".join(\'<Default Extension="%s" ContentType="image/%s"/>\' % (e, e) for e in extensions)',
+  '      + "</Types>")',
+  'rels = (\'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\'',
+  '        \'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\'',
+  '        + "".join(\'<Relationship Id="%s" Type="http://schemas.openxmlformats.org/\'',
+  '                  \'officeDocument/2006/relationships/image" Target="media/%s"/>\' % (rid, nom)',
+  '                  for rid, nom, _octets in medias)',
+  '        + "</Relationships>")',
   'with zipfile.ZipFile(chemin, "w") as z:',
   '    z.writestr("word/document.xml", doc.encode("utf-8"))',
   '    z.writestr("word/styles.xml", styles.encode("utf-8"))',
   '    z.writestr("[Content_Types].xml", ct)',
+  '    if medias:',
+  '        z.writestr("word/_rels/document.xml.rels", rels.encode("utf-8"))',
+  '        for _rid, nom, octets in medias:',
+  '            z.writestr("word/media/" + nom, octets)',
 ].join('\n');
 
 function fabriquerDocx(chemin, paragraphes, langue) {
@@ -212,7 +292,7 @@ test('manuscrit-nettoyer.py : refuse un .docx en suivi de modifications, sans ri
       ]);
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       assert.notStrictEqual(r.status, 0, 'le code de sortie doit être non nul');
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.refus, true);
@@ -242,7 +322,7 @@ test('manuscrit-nettoyer.py : code de sortie non nul avec une alerte error, nul 
       fabriquerDocx(propre, manuscritMinimal(false));
       const sortiePropre = path.join(base, 'sortie-propre');
       fs.mkdirSync(sortiePropre);
-      const rPropre = nettoyer([propre, '--produit', 'revue', '--sortie', sortiePropre]);
+      const rPropre = nettoyer([propre, '--produit', 'revue', '--sortie', sortiePropre, '--sans-reseau']);
       const objPropre = ligneUniqueJson(rPropre.stdout);
       assert.strictEqual(objPropre.alertes_error, 0);
       assert.strictEqual(rPropre.status, 0, 'aucune alerte error : code de sortie nul');
@@ -251,7 +331,7 @@ test('manuscrit-nettoyer.py : code de sortie non nul avec une alerte error, nul 
       fabriquerDocx(fautif, manuscritMinimal(true));
       const sortieFautif = path.join(base, 'sortie-fautif');
       fs.mkdirSync(sortieFautif);
-      const rFautif = nettoyer([fautif, '--produit', 'revue', '--sortie', sortieFautif]);
+      const rFautif = nettoyer([fautif, '--produit', 'revue', '--sortie', sortieFautif, '--sans-reseau']);
       const objFautif = ligneUniqueJson(rFautif.stdout);
       assert.ok(objFautif.alertes_error >= 1, 'une alerte error est attendue');
       assert.notStrictEqual(rFautif.status, 0, 'au moins une alerte error : code de sortie non nul');
@@ -276,7 +356,7 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
       fabriquerDocx(entree, manuscritMinimal(true));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.gabarit, 'B');
       assert.ok(fs.existsSync(obj.sortie_docx), 'le .docx nettoyé doit exister');
@@ -327,7 +407,7 @@ test('manuscrit-nettoyer.py : --analyse-seule n\'écrit aucun .docx, mais bien u
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--analyse-seule']);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--analyse-seule', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.sortie_docx, null, 'sortie_docx doit être null en --analyse-seule');
       const fichiers = fs.readdirSync(sortie);
@@ -349,8 +429,14 @@ test('manuscrit-nettoyer.py : --analyse-seule n\'écrit aucun .docx, mais bien u
 //
 // Sabotage minimal : dans principal(), construire `groupes` à la main avec
 // `{'par_famille': {}, 'par_regle': {r['rule']: {'total': 1, 'exemples': [r]} for r in
-// alertes}}` au lieu d'appeler `mr.grouper(alertes)` — chaque occurrence redevient son
-// propre groupe de taille 1, le total de 12 disparaît.
+// alertes}}` au lieu d'appeler `_grouper_toutes_alertes(alertes)` — chaque occurrence
+// redevient son propre groupe de taille 1, le total de 12 disparaît.
+//
+// ⚠ Révision du 21.09.2026 (branchement de Vale/manuscrit_biblio.py) : `obj.alertes_warning`
+// n'est plus un compte STRICT de 12 — Vale (s'il est indisponible sur ce poste) ajoute
+// `Vale.Indisponible`, une warning DE PLUS, sans rapport avec ce contrôle. L'assertion qui
+// comptait EXACTEMENT 12 devient `>= 12` (rien n'est PERDU, ce que ce contrôle prouve) ; le
+// compte EXACT reste vérifié, lui, sur le GROUPE de la seule règle qui nous intéresse ici.
 
 test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, dix détaillées et le total donné',
   { skip: sansPython }, () => {
@@ -364,9 +450,10 @@ test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, d
       fabriquerDocx(entree, paras);
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
-      assert.strictEqual(obj.alertes_warning, 12, 'les douze occurrences doivent toutes être comptées');
+      assert.ok(obj.alertes_warning >= 12,
+        'les douze occurrences doivent toutes être comptées : ' + obj.alertes_warning);
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
       const groupe = rapport.alertes.groupes.par_regle['APA.TroisAuteursPlus'];
       assert.ok(groupe, 'le groupe de cette règle doit exister');
@@ -392,7 +479,7 @@ test('manuscrit-nettoyer.py : stdout ne porte qu\'une seule ligne JSON, la progr
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout); // lève déjà si stdout porte plus d'une ligne
       assert.strictEqual(typeof obj.code_sortie, 'number');
 
@@ -438,7 +525,8 @@ test('manuscrit-nettoyer.py : un nom de fichier accentué traverse toute la cha�
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie accentuée');
       fs.mkdirSync(sortie);
-      const r = cp.spawnSync(PYTHON, [NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie],
+      const r = cp.spawnSync(PYTHON,
+        [NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau'],
         { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_SANS_PIOE });
       assert.strictEqual(r.status, 0, 'ne doit pas planter sur un nom accentué : ' + r.stderr);
       const obj = ligneUniqueJson(r.stdout);
@@ -479,7 +567,10 @@ test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la cha
         const entree = path.join(CORPUS_LOT_A, nomFichier);
         const dossierSortie = path.join(base, path.basename(nomFichier, '.docx'));
         fs.mkdirSync(dossierSortie, { recursive: true });
-        const r = nettoyer([entree, '--produit', 'revue', '--sortie', dossierSortie]);
+        // --sans-reseau (consigne du chantier de branchement : « les tests la passent
+        // toujours ») : ce contrôle porte sur la chaîne complète, pas sur Crossref — l'isoler
+        // du réseau le garde rapide et déterministe, jamais tributaire d'internet en CI.
+        const r = nettoyer([entree, '--produit', 'revue', '--sortie', dossierSortie, '--sans-reseau']);
         // Refus (ex. suivi de modifications) est un résultat LÉGITIME, distinct d'un
         // plantage : seul un code de sortie inattendu (ni 0, ni 1 alerte-error, ni 2 refus)
         // ou une exception non gérée (traceback Python sur stderr) compte comme un échec.
@@ -524,7 +615,7 @@ test('manuscrit-nettoyer.py : refuse un fichier verrou ~$*.docx avant toute lect
       fs.writeFileSync(entree, Buffer.from([0, 1, 2, 3]));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       assert.notStrictEqual(r.status, 0, 'le code de sortie doit être non nul');
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.refus, true);
@@ -559,7 +650,7 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
       fs.mkdirSync(sortie);
       // --sans-typo : ce contrôle porte sur la langue et l'alerte, pas sur le filtre —
       // l'isoler évite toute dépendance à pandoc/WSL ici.
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo']);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
       assert.strictEqual(rapport.langue, 'fr',
@@ -574,7 +665,7 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
       fabriquerDocx(entreeCoherente, manuscritMinimal(false), 'fr-CH');
       const sortieCoherente = path.join(base, 'sortie-coherente');
       fs.mkdirSync(sortieCoherente);
-      const rCoherent = nettoyer([entreeCoherente, '--produit', 'revue', '--sortie', sortieCoherente, '--sans-typo']);
+      const rCoherent = nettoyer([entreeCoherente, '--produit', 'revue', '--sortie', sortieCoherente, '--sans-typo', '--sans-reseau']);
       const objCoherent = ligneUniqueJson(rCoherent.stdout);
       const rapportCoherent = JSON.parse(fs.readFileSync(objCoherent.sortie_rapport, 'utf8'));
       assert.ok(!rapportCoherent.alertes.liste.some((a) => a.rule === 'Langue.DesaccordProduit'),
@@ -615,7 +706,8 @@ test('manuscrit-nettoyer.py : un repli typographique réel lève une alerte warn
       fs.mkdirSync(sortie);
       // --analyse-seule : ce contrôle porte sur le repli, pas sur l'écriture du gabarit
       // (qui a besoin de revue-template/, non copié ici).
-      const r = python([nettoyeurCopie, entree, '--produit', 'revue', '--sortie', sortie, '--analyse-seule']);
+      const r = python([nettoyeurCopie, entree, '--produit', 'revue', '--sortie', sortie,
+        '--analyse-seule', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.typographie, 'repli',
         'la ligne stdout doit porter typographie: "repli" : ' + JSON.stringify(obj));
@@ -640,7 +732,7 @@ test('manuscrit-nettoyer.py : --sans-typo porte "repli" sur la ligne stdout mais
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo']);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.typographie, 'repli');
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
@@ -689,7 +781,7 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
       const sortieWsl = versCheminWsl(sortie);
 
       const r = cp.spawnSync(WSL_EXE, ['-d', DISTRO_WSL, '--', 'python3', nettoyeurWsl,
-        entreeWsl, '--produit', 'revue', '--sortie', sortieWsl],
+        entreeWsl, '--produit', 'revue', '--sortie', sortieWsl, '--sans-reseau'],
         { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
       assert.strictEqual(r.status, 0,
         'la CLI doit réussir dans la WSL : ' + r.stderr + ' / ' + r.stdout);
@@ -706,6 +798,199 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
       assert.match(texte, /l’exemple/, 'l’apostrophe n’a pas été rendue typographique');
       assert.match(texte, /«[  ]cité[  ]»/,
         'les chevrons français avec insécables sont absents : ' + JSON.stringify(texte));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
+// (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
+// paragraphe, une alerte de chaque origine SANS EN FAIRE COLLISIONNER DEUX sur le même passage
+// de texte (piège réel, mesuré en écrivant ce test — voir le rapport de chantier :
+// manuscrit_annoter.py mésancre une révision `fix` dont le `found` est un mot COURT et banal,
+// comme "et", sur sa PREMIÈRE occurrence dans le paragraphe entier plutôt que sur celle visée
+// par `span` dès que les deux ne coïncident pas EXACTEMENT — un paragraphe qui contiendrait
+// "et" AVANT la citation à corriger se ferait donc corrompre au mauvais endroit. Ce fichier ne
+// touche pas manuscrit_annoter.py (hors des deux fichiers autorisés) : la phrase de la fixture
+// est choisie pour ne JAMAIS contenir "et" avant la citation, pas pour cacher le défaut —
+// signalé au rapport de chantier, à corriger ailleurs). « Introduction » (Heading1) juste
+// après le titre referme la zone d'en-tête (§5.5) : sans lui, la phrase épicène qui suit
+// serait avalée comme SOUS-TITRE (même signature que le titre, aucune ponctuation finale sur
+// la première ligne) et n'atteindrait jamais Vale — mesuré en écrivant ce test.
+
+function fixtureQuatreOrigines() {
+  return [
+    { texte: "Titre de l'article sur l'inclusion scolaire", style: 'Heading1' },
+    { texte: 'Introduction', style: 'Heading1' },
+    // Vale, CSPS.Epicene.FormesContractees (error, action=comment).
+    { texte: 'Les enseignant(e)s accompagnent les eleves au quotidien.' },
+    // Vale (CSPS.APA.EtDansParentheses, fix) ET manuscrit_biblio (APA.CitationAbsente,
+    // comment) sur la MÊME parenthèse — sans collision (l'un fixe, l'autre commente, voir
+    // l'en-tête). Aucun « et » avant la citation dans cette phrase (vérifié caractère par
+    // caractère en écrivant ce test).
+    { texte: 'Plusieurs travaux le confirment (Dupont et Martin, 2020).' },
+    // Typo.guillemets-droits (repris tel quel du filtre, C2) : un guillemet droit isolé,
+    // jamais apparié par pandoc.
+    { texte: 'Il ecrit "quelque chose de curieux, sans doute avoir raison.' },
+    // A11y.TexteAlternatif.Revue (structurel, catalogue Python) : image sans alt.
+    { image: { nom: 'fig1.png', octets_base64: PNG_1X1_B64 } },
+    { texte: 'References', style: 'Heading1' },
+    // manuscrit_biblio : APA.ReferenceNonCitee (jamais citée sous ce nom) ET APA.DoiForme
+    // (DOI nu, sans préfixe — jamais « doi: » : cette forme-là fait aussi lever
+    // CSPS-Biblio.APA.DoiForme de Vale sur le MÊME texte, collision jumelle du piège
+    // ci-dessus, évitée pour la même raison).
+    { texte: 'Muster, E. (2020). Un document. 10.1000/x' },
+  ];
+}
+
+test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibliographie, typographie) sont branchées, dans_docx renseigné, révisions et commentaires posés',
+  { skip: sansPython || sansVale }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'quatre-origines.docx');
+      fabriquerDocx(entree, fixtureQuatreOrigines());
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.ok(fs.existsSync(obj.sortie_docx));
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+
+      // Les quatre origines, chacune avec au moins une alerte.
+      const origine = rapport.alertes.origine;
+      for (const cle of ['regles', 'vale', 'bibliographie', 'typographie']) {
+        assert.ok(origine[cle] >= 1, 'origine "' + cle + '" absente : ' + JSON.stringify(origine));
+      }
+      assert.strictEqual(
+        origine.regles + origine.vale + origine.bibliographie + origine.typographie,
+        rapport.alertes.total, 'la somme des origines doit couvrir TOUTES les alertes');
+
+      // controles.vale dit si le contrôle a vraiment tourné.
+      assert.strictEqual(rapport.controles.vale, 'effectue');
+
+      // Chaque alerte porte `dans_docx`.
+      for (const a of rapport.alertes.liste) {
+        assert.ok(['revision', 'commentaire', 'rapport'].includes(a.dans_docx),
+          'alerte ' + a.rule + ' sans dans_docx exploitable : ' + JSON.stringify(a));
+      }
+      const epicene = rapport.alertes.liste.find((a) => a.rule === 'CSPS.Epicene.FormesContractees');
+      assert.ok(epicene, 'CSPS.Epicene.FormesContractees absente : '
+        + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
+      assert.strictEqual(epicene.dans_docx, 'commentaire');
+      const doi = rapport.alertes.liste.find((a) => a.rule === 'APA.DoiForme');
+      assert.ok(doi, 'APA.DoiForme absente');
+      assert.strictEqual(doi.dans_docx, 'revision');
+      assert.strictEqual(doi.suggested, 'https://doi.org/10.1000/x');
+
+      // --sans-reseau (posé par nettoyer(), voir la fonction) → jamais de tentative Crossref.
+      assert.strictEqual(rapport.bibliographie.crossref.indisponible, true);
+
+      // Le .docx produit porte bien w:del/w:ins (le DOI) ET comments.xml (la forme épicène) —
+      // lu directement par zipfile Python, sans dépendance externe.
+      const LIRE_MARQUES = [
+        'import sys, zipfile',
+        'z = zipfile.ZipFile(sys.argv[1])',
+        'doc = z.read("word/document.xml").decode("utf-8")',
+        'import json',
+        'print(json.dumps({',
+        '    "w_ins": doc.count("<w:ins "),',
+        '    "w_del": doc.count("<w:del "),',
+        '    "comments_xml": "word/comments.xml" in z.namelist(),',
+        '    "comments_text": z.read("word/comments.xml").decode("utf-8")',
+        '                     if "word/comments.xml" in z.namelist() else "",',
+        '}))',
+      ].join('\n');
+      const rMarques = python(['-c', LIRE_MARQUES, obj.sortie_docx]);
+      assert.strictEqual(rMarques.status, 0, 'lecture des marques a échoué : ' + rMarques.stderr);
+      const marques = JSON.parse(rMarques.stdout);
+      assert.ok(marques.w_ins >= 1 && marques.w_del >= 1,
+        'le DOI corrigé doit apparaître en révision (w:ins/w:del) : ' + JSON.stringify(marques));
+      assert.ok(marques.comments_xml, 'comments.xml doit exister (la forme épicène commentée)');
+      assert.ok(marques.comments_text.indexOf('CSPS.Epicene.FormesContractees') !== -1,
+        'le commentaire ne cite pas la règle : ' + marques.comments_text);
+
+      // --analyse-seule : toujours rien écrit à part le rapport (déjà éprouvé au contrôle
+      // n°4, revérifié ici sur CETTE fixture qui exerce les quatre moteurs).
+      const sortieAs = path.join(base, 'sortie-analyse-seule');
+      fs.mkdirSync(sortieAs);
+      const rAs = nettoyer([entree, '--produit', 'revue', '--sortie', sortieAs, '--analyse-seule']);
+      const objAs = ligneUniqueJson(rAs.stdout);
+      assert.strictEqual(objAs.sortie_docx, null);
+      assert.ok(!fs.readdirSync(sortieAs).some((f) => f.endsWith('.docx')));
+
+      // --sans-annotation : le .docx est écrit, mais aucune révision ni commentaire.
+      const sortieSa = path.join(base, 'sortie-sans-annotation');
+      fs.mkdirSync(sortieSa);
+      const rSa = nettoyer([entree, '--produit', 'revue', '--sortie', sortieSa, '--sans-annotation']);
+      const objSa = ligneUniqueJson(rSa.stdout);
+      const rapportSa = JSON.parse(fs.readFileSync(objSa.sortie_rapport, 'utf8'));
+      assert.strictEqual(rapportSa.annotation, null);
+      assert.ok(!rapportSa.alertes.liste.some((a) => a.dans_docx),
+        '--sans-annotation ne doit jamais poser dans_docx');
+      const rMarquesSa = python(['-c', LIRE_MARQUES, objSa.sortie_docx]);
+      const marquesSa = JSON.parse(rMarquesSa.stdout);
+      assert.strictEqual(marquesSa.w_ins, 0, '--sans-annotation ne doit poser aucune révision');
+      assert.strictEqual(marquesSa.w_del, 0);
+      assert.strictEqual(marquesSa.comments_xml, false,
+        '--sans-annotation ne doit poser aucun commentaire');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°14 — troisième défaut réel de manuscrit_annoter.py (révision du 21.09.2026,
+// mesuré sur le corpus réel via le harnais de chantier, 3 fichiers sur 12) : une révision dont
+// le span touche la frontière d'un <w:hyperlink> peut rendre un word/document.xml mal formé
+// SANS lever d'exception — le pire des deux défauts, puisqu'il ne se signale ni par un crash
+// ni par un code de sortie non nul côté manuscrit_annoter.py. La CLI valide donc elle-même le
+// XML produit et restaure la version pré-annotation au besoin (voir _valider_docx_bien_forme()
+// et son point d'appel). Ce contrôle rejoue le déclencheur RÉEL trouvé sur le corpus, jamais
+// une fixture qui ne prouverait qu'une hypothèse.
+//
+// Sabotage minimal : dans principal(), retirer l'appel `_valider_docx_bien_forme(sortie_docx)`
+// (le laisser dans le bloc `try` sans effet) — ce contrôle rougit sur l'assertion « bien
+// formé », l'ancien `2-dense_…` corrompu ressort tel quel, code de sortie 1 malgré tout
+// (aucune alerte error liée à l'annotation elle-même) et sans Annotation.Impossible.
+
+test('manuscrit-nettoyer.py : un XML rendu mal formé par l’annotation (frontière de w:hyperlink) est détecté et la version pré-annotation restaurée',
+  { skip: sansPython }, () => {
+    const CORPUS_2_DENSE = path.join(CORPUS_LOT_A,
+      '2-dense_20250404_Quelle inclusion pour les personnes en situation de handicap.docx');
+    if (!fs.existsSync(CORPUS_2_DENSE)) {
+      return; // tmp/ hors git, effacé sans prévenir — déjà couvert au motif du contrôle n°8.
+    }
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([CORPUS_2_DENSE, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.ok(fs.existsSync(obj.sortie_docx));
+
+      const VALIDER_XML = [
+        'import sys, zipfile, json',
+        'import xml.etree.ElementTree as ET',
+        'z = zipfile.ZipFile(sys.argv[1])',
+        'erreurs = []',
+        'for nom in z.namelist():',
+        '    if nom.endswith((".xml", ".rels")):',
+        '        try: ET.fromstring(z.read(nom))',
+        '        except Exception as e: erreurs.append(nom + " : " + str(e))',
+        'print(json.dumps(erreurs))',
+      ].join('\n');
+      const rValide = python(['-c', VALIDER_XML, obj.sortie_docx]);
+      assert.strictEqual(rValide.status, 0, 'validation XML a échoué : ' + rValide.stderr);
+      assert.deepStrictEqual(JSON.parse(rValide.stdout), [],
+        'le .docx produit doit rester un XML bien formé sur toutes ses parties');
+
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.strictEqual(rapport.annotation, null,
+        'l’annotation a échoué sur ce fichier précis (défaut connu) : elle doit être signalée '
+        + 'comme None, pas laissée à moitié faite');
+      assert.ok(rapport.alertes.liste.some((a) => a.rule === 'Annotation.Impossible'),
+        'aucune alerte Annotation.Impossible : ' + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }

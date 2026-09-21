@@ -8,6 +8,7 @@
 #
 #   manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
 #                         [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]
+#                         [--sans-annotation] [--sans-reseau]
 #
 # Convention du tiret (§3 du contrat) : ce fichier PORTE un tiret dans son nom, c'est une
 # CLI, jamais un module importé par un autre fichier Python.
@@ -16,7 +17,8 @@
 #
 # ── Enchaînement (§8, dans l'ordre imposé par la mission) ──────────────────────────────────
 #   lire -> reconnaître le cas -> classer les titres -> nettoyer la mise en forme ->
-#   normaliser la typographie -> passer les règles -> écrire le gabarit -> écrire le rapport.
+#   normaliser la typographie -> passer les règles (structurel + Vale + bibliographie) ->
+#   écrire le gabarit -> annoter le .docx écrit -> écrire le rapport.
 #
 # ── Ce que le contrat ne précisait pas et qu'il a fallu décider ici (à signaler, pas à
 #    corriger en silence dans les modules qui ne sont pas les deux fichiers de ce chantier) ─
@@ -89,11 +91,42 @@
 #      un à côté) est désormais refusé proprement (code 2, code_refus='fichier-verrou') avant
 #      toute lecture. Avant cette révision, `md.lire()` levait « File is not a zip file » et
 #      le code de sortie était 3, sans message pour la rédaction.
+#
+# 6. Révision du 21.09.2026 — branchement de manuscrit_vale.py (§7), manuscrit_biblio.py
+#    (§7 bis) et manuscrit_annoter.py (§7 ter), jusque-là exposés en fonctions pures avec une
+#    CLI d'essai mais jamais appelés d'ici :
+#    - Vale et la bibliographie reçoivent chacun DEUX corpus (corps / bibliographie), les mêmes
+#      paragraphes de premier niveau que le moteur structurel, MOINS l'en-tête (déjà retiré du
+#      corps avant ce point) ; Vale reçoit EN PLUS les cellules de tableau et le contenu des
+#      notes, à toute profondeur — jamais ancrables dans le .docx produit (`source=None`,
+#      voir _paragraphes_cellules_pour_vale()), mais Vale doit les VOIR quand même.
+#    - le point 2 ci-dessus (nb_auteurs toujours à 0) ne vaut que pour
+#      `contexte['bibliographie']`, le corpus du moteur STRUCTUREL : manuscrit_biblio.py, lui,
+#      compte les auteurs pour de vrai (son propre harnais), ses propres alertes (APA.EtAl,
+#      APA.CitationAbsente...) n'ont jamais eu ce défaut.
+#    - `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : les alertes Vale
+#      et bibliographie ont leur PROPRE regroupement ici (_grouper_toutes_alertes()), sans
+#      toucher à manuscrit_regles.py au-delà du retrait des règles qu'APA.OrdreBiblio
+#      (manuscrit_biblio.py) recouvre désormais (voir manuscrit_regles.py).
+#    - `dans_docx` sur chaque alerte de `alertes.liste` (voir _marquer_dans_docx()) est déduit
+#      PAR IDENTITÉ D'OBJET (id()) des listes que manuscrit_annoter.annoter() rend, dans le
+#      MÊME processus — jamais recalculé, jamais un aller-retour JSON.
+#    - troisième défaut RÉEL de manuscrit_annoter.py, mesuré sur le corpus réel (3 fichiers sur
+#      12, voir le rapport de chantier) : une révision dont le span touche la frontière d'un
+#      <w:hyperlink> (le XML « de collage » recopié tel quel, §7 ter du contrat) peut rendre
+#      un word/document.xml qui n'est PLUS bien formé, SANS lever d'exception — pire que le
+#      défaut précédent, qui au moins se signalait par un crash capturé. La CLI valide donc
+#      désormais elle-même, après annotation, que chaque partie .xml/.rels de la sortie reste
+#      un XML bien formé (voir _valider_docx_bien_forme()) : si ce n'est pas le cas, elle
+#      restaure la version PRÉ-annotation (déjà écrite par mg.ecrire(), déjà valide) plutôt que
+#      de livrer un .docx corrompu, et lève la même alerte Annotation.Impossible.
 
 import json
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
+import zipfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -103,7 +136,10 @@ import manuscrit_modele as mm
 import manuscrit_entete as me
 import manuscrit_typo as mt
 import manuscrit_regles as mr
+import manuscrit_vale as mv
+import manuscrit_biblio as mb
 import manuscrit_gabarit as mg
+import manuscrit_annoter as ma
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHEMIN_GABARIT = os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article.docx")
@@ -147,7 +183,8 @@ def _ligne_stdout(objet):
 
 def _analyser_args(argv):
     args = {'entree': None, 'produit': None, 'sortie': None, 'rapport': None,
-            'analyse_seule': False, 'sans_typo': False}
+            'analyse_seule': False, 'sans_typo': False, 'sans_annotation': False,
+            'sans_reseau': False}
     positionnels = []
     reste = argv[1:]
     i = 0
@@ -166,6 +203,10 @@ def _analyser_args(argv):
             args['analyse_seule'] = True
         elif a == '--sans-typo':
             args['sans_typo'] = True
+        elif a == '--sans-annotation':
+            args['sans_annotation'] = True
+        elif a == '--sans-reseau':
+            args['sans_reseau'] = True
         else:
             positionnels.append(a)
         i += 1
@@ -175,7 +216,8 @@ def _analyser_args(argv):
 
 
 USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift '
-         '--sortie <dossier> [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]')
+         '--sortie <dossier> [--rapport <fichier.json>] [--analyse-seule] [--sans-typo] '
+         '[--sans-annotation] [--sans-reseau]')
 
 
 # ---------------------------------------------------------------------------------
@@ -217,6 +259,106 @@ def _alerte_repli_typo():
             'para': None, 'span': None, 'found': None, 'suggested': None,
             'message': "La typographie n'a pas pu être appliquée à ce document ; le texte "
                        "est rendu tel quel."}
+
+
+def _alerte_vale_indisponible():
+    """vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, config cassée — voir
+    manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
+    return {'rule': 'Vale.Indisponible', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None,
+            'message': "Le contrôle du vocabulaire et du langage n'a pas pu être effectué sur "
+                       "ce document."}
+
+
+def _valider_docx_bien_forme(chemin):
+    """Après manuscrit_annoter.annoter() (troisième défaut connu, voir le commentaire au point
+    d'appel) : chaque partie .xml/.rels de la sortie doit rester un XML bien formé. Lève sinon
+    — l'appelant restaure alors la version PRÉ-annotation plutôt que de livrer un .docx
+    corrompu qui semblerait avoir réussi (code de sortie 0, aucune exception)."""
+    with zipfile.ZipFile(chemin) as z:
+        for nom in z.namelist():
+            if nom.endswith('.xml') or nom.endswith('.rels'):
+                ET.fromstring(z.read(nom))
+
+
+def _alerte_annotation_impossible():
+    """manuscrit_annoter.annoter() a levé une exception (défaut connu, voir le commentaire à
+    son point d'appel) : le .docx déjà écrit reste utilisable, sans révisions ni commentaires
+    posés — une alerte le dit, jamais un plantage silencieux de la CLI."""
+    return {'rule': 'Annotation.Impossible', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None,
+            'message': "Les corrections n'ont pas pu être posées dans le document : "
+                       "consultez le rapport pour la liste complète des remarques."}
+
+
+# ---------------------------------------------------------------------------------
+# Fusion des quatre moteurs (point 4 du brief de branchement) — CATALOGUE_PAR_ID ne connaît
+# que les règles structurelles Python : les règles Vale (« CSPS.Epicene.… »,
+# « SZH.Vokabular.… », « CSPS-Biblio.APA.… ») et celles de manuscrit_biblio.py (« APA.… », à
+# deux segments) n'y figurent jamais. `manuscrit_regles.grouper()` reste donc CORRECT pour son
+# propre périmètre (règles structurelles + reprise Typo.*) mais ne doit pas être appelé sur le
+# lot fusionné : cette fonction-ci le remplace ICI, dans la CLI, sans toucher à
+# manuscrit_regles.py au-delà du retrait des doublons (discipline du brief de ce lot).
+
+def _famille_regle(identifiant_regle):
+    if identifiant_regle.startswith('Typo.'):
+        return 'Typo'
+    regle = mr.CATALOGUE_PAR_ID.get(identifiant_regle)
+    if regle is not None:
+        return regle.famille
+    # Une règle Vale (« CSPS.Epicene.FormesContractees », « CSPS-Biblio.APA.DoiForme »,
+    # « SZH.Vokabular.Behinderung ») porte sa famille au segment du MILIEU ; une règle de
+    # manuscrit_biblio.py ou une alerte manuelle de cette CLI (« APA.CitationAbsente »,
+    # « Langue.DesaccordProduit », « Vale.Indisponible ») n'a que deux segments, la famille
+    # est alors le premier.
+    parties = identifiant_regle.split('.')
+    return parties[1] if len(parties) >= 3 else parties[0]
+
+
+def _grouper_toutes_alertes(alertes):
+    par_famille = {}
+    par_regle = {}
+    for a in alertes:
+        famille = _famille_regle(a['rule'])
+        par_famille[famille] = par_famille.get(famille, 0) + 1
+        par_regle.setdefault(a['rule'], []).append(a)
+    resume_par_regle = {identifiant: {'total': len(lot), 'exemples': lot[:mr.MAX_EXEMPLES_PAR_REGLE]}
+                         for identifiant, lot in par_regle.items()}
+    return {'par_famille': par_famille, 'par_regle': resume_par_regle}
+
+
+RANG_SEVERITE = {'error': 0, 'warning': 1, 'suggestion': 2}
+
+
+def _trier_alertes(alertes):
+    """Triées par sévérité puis par `para` (point 4 du brief) — une alerte sans `para` (None)
+    va en dernier de son groupe de sévérité, jamais avant une alerte ancrée."""
+    alertes.sort(key=lambda a: (RANG_SEVERITE.get(a.get('severity'), 3),
+                                 a.get('para') if a.get('para') is not None else float('inf')))
+    return alertes
+
+
+def _marquer_dans_docx(alertes, stats_annotation):
+    """Ajoute `dans_docx` ('revision' | 'commentaire' | 'rapport') à chaque alerte (point 5 du
+    brief) — SANS retoucher aux autres clés. Déduit du même processus qui a appelé
+    manuscrit_annoter.annoter() : `stats['non_ancrees']`/`stats['renvoyees_au_rapport']`
+    portent les objets alerte EUX-MÊMES (mêmes références Python, même appel), un test
+    d'identité (id()) suffit donc à savoir ce que l'annotation en a fait, sans rejouer sa
+    logique ici."""
+    jamais_ecrites = {id(a) for a in stats_annotation.get('non_ancrees', [])}
+    jamais_ecrites |= {id(a) for a in stats_annotation.get('renvoyees_au_rapport', [])}
+    for a in alertes:
+        if id(a) in jamais_ecrites:
+            a['dans_docx'] = 'rapport'
+        elif a.get('action') == 'report':
+            # §7 ter du contrat : une alerte 'report' n'est JAMAIS écrite dans le document,
+            # quel que soit le sort des autres — jamais besoin de consulter les stats pour
+            # celle-ci.
+            a['dans_docx'] = 'rapport'
+        elif a.get('action') in ('fix', 'track') and a.get('suggested'):
+            a['dans_docx'] = 'revision'
+        else:
+            a['dans_docx'] = 'commentaire'
 
 
 # ---------------------------------------------------------------------------------
@@ -279,6 +421,63 @@ def _collecter_tableaux(document):
                          for rangee in bloc.rangees for c in rangee)
             tableaux.append({'fusion': fusion, 'source': bloc.source})
     return tableaux
+
+
+# ---------------------------------------------------------------------------------
+# Paragraphes de cellule et de note pour Vale (point 1 de la consigne de branchement) — Vale
+# doit VOIR ce texte (une forme épicène dans un tableau ou une note n'est pas moins fautive),
+# mais ni l'un ni l'autre n'est ANCRABLE : `correspondance` de manuscrit_gabarit.ecrire() ne
+# porte que les <w:p> de PREMIER NIVEAU qu'elle écrit elle-même (§7 ter du contrat, mesuré en
+# lisant _convertir_niveau_racine()) — jamais un <w:p> de cellule (sa `source` n'est qu'une
+# position LOCALE au conteneur, §4 : « pas de chemin complet ») ni le <w:p> d'une note. Y
+# recopier une `source` non ancrable risquerait pire qu'une alerte perdue : une COLLISION
+# silencieuse avec un indice de premier niveau sans rapport (une cellule à la position locale
+# 3 « ancrée » par erreur sur le 4e paragraphe du corps). `source=None` est donc le seul choix
+# sûr ici ; manuscrit_annoter.annoter() la classe alors normalement dans `non_ancrees`.
+
+def _paragraphes_cellules_pour_vale(blocs):
+    resultat = []
+    for bloc in blocs:
+        if not isinstance(bloc, mm.Tableau):
+            continue
+        for rangee in bloc.rangees:
+            for cellule in rangee:
+                for sous in cellule.blocs:
+                    if isinstance(sous, mm.Paragraphe):
+                        texte = sous.texte()
+                        if texte.strip():
+                            resultat.append({'texte': texte, 'source': None, 'role': ''})
+                    elif isinstance(sous, mm.Tableau):
+                        resultat.extend(_paragraphes_cellules_pour_vale([sous]))
+    return resultat
+
+
+def _paragraphe_source_appelant_note(document, note_id):
+    """Le `source` du paragraphe qui APPELLE cette note (un Fragment dont `.note ==
+    note_id`) — seulement s'il est de PREMIER NIVEAU, le seul espace que `correspondance`
+    sait ancrer (voir ci-dessus) : None si l'appel vient d'une cellule, ou si aucun appelant
+    n'est trouvé (ne devrait pas arriver — document.notes ne porte que des notes déjà APPELÉES,
+    les orphelines sont filtrées par le lecteur, §4 du contrat)."""
+    for bloc in document.blocs:
+        if isinstance(bloc, mm.Paragraphe) and any(f.note == note_id for f in bloc.fragments):
+            return bloc.source
+    return None
+
+
+def _paragraphes_notes_pour_vale(document):
+    resultat = []
+    for note_id, contenu in (document.notes or {}).items():
+        source = _paragraphe_source_appelant_note(document, note_id)
+        for bloc in (contenu or []):
+            if isinstance(bloc, mm.Paragraphe):
+                texte = bloc.texte()
+                if texte.strip():
+                    resultat.append({'texte': texte, 'source': source, 'role': ''})
+            elif isinstance(bloc, mm.Tableau):
+                # Rare (un tableau dans une note) mais possible : mêmes cellules, jamais
+                # ancrables non plus.
+                resultat.extend(_paragraphes_cellules_pour_vale([bloc]))
+    return resultat
 
 
 # ---------------------------------------------------------------------------------
@@ -561,8 +760,8 @@ def principal(argv):
 
     progres('évaluation des règles éditoriales...')
     sources_biblio, entrees_biblio = _construire_bibliographie(document)
-    paragraphes_ctx = (paragraphes_entete_ctx
-                        + _construire_paragraphes_contexte(document, sources_biblio, gabarit))
+    paragraphes_corps_biblio = _construire_paragraphes_contexte(document, sources_biblio, gabarit)
+    paragraphes_ctx = paragraphes_entete_ctx + paragraphes_corps_biblio
     images = _collecter_images(document)
     tableaux_ctx = _collecter_tableaux(document)
     contexte = {
@@ -572,19 +771,53 @@ def principal(argv):
         'tableaux': tableaux_ctx,
         'avertissements_typo': avertissements_typo,
     }
-    alertes = mr.evaluer(contexte) + alertes_manuelles
-    groupes = mr.grouper(alertes)
-    n_error = sum(1 for a in alertes if a['severity'] == 'error')
-    n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
-    n_suggestion = sum(1 for a in alertes if a['severity'] == 'suggestion')
-    progres('%d alerte(s) (%d error, %d warning, %d suggestion)'
-            % (len(alertes), n_error, n_warning, n_suggestion))
+    alertes_python = mr.evaluer(contexte)
+    # mr.evaluer() rend les règles STRUCTURELLES du catalogue ET la reprise des avertissements
+    # C1/C2 du filtre typographique (préfixe 'Typo.') mélangés dans une seule liste — on les
+    # sépare ICI pour que `alertes.origine` (point 4 de la consigne de branchement) compte
+    # chaque moteur pour de vrai, sans toucher à manuscrit_regles.evaluer() lui-même.
+    alertes_regles = [a for a in alertes_python if not a['rule'].startswith('Typo.')]
+    alertes_typo_reprises = [a for a in alertes_python if a['rule'].startswith('Typo.')]
+
+    # Vale (point 1) — le titre de la bibliographie n'y passe pas : `entrees_biblio` l'exclut
+    # déjà (voir _construire_bibliographie()), et le corps de Vale ci-dessous exclut tout
+    # paragraphe de rôle 'bibliographie' (donc aussi ce titre). Les cellules de tableau et le
+    # contenu des notes s'y ajoutent, à toute profondeur, jamais ancrables (voir
+    # _paragraphes_cellules_pour_vale()/_paragraphe_source_appelant_note() plus haut).
+    progres('contrôle du vocabulaire et du langage...')
+    paragraphes_vale_biblio = [{'texte': e['texte'], 'source': e['source'], 'role': 'bibliographie'}
+                                for e in entrees_biblio]
+    paragraphes_vale_corps = (
+        [p for p in paragraphes_corps_biblio if p['role'] != 'bibliographie']
+        + _paragraphes_cellules_pour_vale(document.blocs)
+        + _paragraphes_notes_pour_vale(document))
+    alertes_vale, vale_indisponible = mv.analyser(
+        paragraphes_vale_corps, paragraphes_vale_biblio, langue, RACINE_DEPOT)
+    if vale_indisponible:
+        alertes_vale = [_alerte_vale_indisponible()]
+        progres("contrôle du vocabulaire indisponible")
+
+    # Bibliographie (point 2) — mêmes deux corpus, sans le rôle (manuscrit_biblio.py ne le lit
+    # pas, il reçoit déjà deux listes séparées). --sans-reseau : choix explicite du lanceur
+    # d'essai ou d'un test, jamais posé par le lanceur en production (point 2 de la consigne).
+    progres('contrôle de la bibliographie...')
+    paragraphes_biblio_module = [{'texte': e['texte'], 'source': e['source']}
+                                  for e in entrees_biblio]
+    paragraphes_corps_module = [{'texte': p['texte'], 'source': p['source']}
+                                 for p in paragraphes_corps_biblio if p['role'] != 'bibliographie']
+    alertes_biblio, stats_biblio = mb.analyser_bibliographie(
+        paragraphes_corps_module, paragraphes_biblio_module, langue, reseau=not args['sans_reseau'])
+
+    alertes = _trier_alertes(alertes_regles + alertes_vale + alertes_biblio
+                              + alertes_typo_reprises + alertes_manuelles)
+    progres('%d alerte(s) avant écriture' % len(alertes))
 
     # Sorties — toujours à côté du manuscrit d'entrée, jamais une boîte de dialogue (§8).
     dossier = args['sortie']
     os.makedirs(dossier, exist_ok=True)
     sortie_docx = None
     resultat_ecriture = None
+    stats_annotation = None
     if args['analyse_seule']:
         progres('analyse seule (--analyse-seule) : aucun .docx écrit')
     else:
@@ -594,6 +827,88 @@ def principal(argv):
                      'formatage': {'stats': stats_formatage, 'trace': trace_formatage}}
         resultat_ecriture = mg.ecrire(document, CHEMIN_GABARIT, sortie_docx,
                                        decisions=decisions, entete=entete)
+
+        # ⚠ Défaut découvert en branchant l'annotation (non corrigé dans manuscrit_gabarit.py,
+        # hors des deux fichiers autorisés pour ce lot — signalé, pas trafiqué en silence) :
+        # `correspondance[i].source` rendu par `_convertir_niveau_racine()` n'est PAS
+        # `Paragraphe.source` — c'est la POSITION du bloc dans la LISTE `document.blocs` telle
+        # que REÇUE par ecrire() (voir sa docstring : « indice du bloc dans `blocs` », et
+        # test/js/manuscrit-gabarit.test.js qui indexe `docEntree.blocs[c.source]` sur le
+        # document LU TEL QUEL, jamais amputé de son en-tête). Les deux ne coïncident QUE si
+        # `document.blocs` passé à ecrire() est la liste COMPLÈTE, non filtrée. Ici, en cas B,
+        # §5.5 retire les paragraphes d'en-tête de `document.blocs` AVANT ecrire() : la
+        # position dans la liste filtrée glisse par rapport à `Paragraphe.source` (mesuré :
+        # sur un article d'un seul paragraphe d'en-tête, source=3 pointait sur le <w:p> qui
+        # correspond en réalité à source=4). Une alerte ancrée par `para` (qui porte
+        # TOUJOURS `Paragraphe.source`, jamais une position de liste) se serait donc posée
+        # sur le MAUVAIS paragraphe, ou aucun. Remappé ici, dans la seule couche qui connaît
+        # à la fois la liste filtrée ET la valeur d'origine de chaque `.source`.
+        for c in resultat_ecriture['correspondance']:
+            c['source'] = document.blocs[c['source']].source
+
+        if args['sans_annotation']:
+            progres('annotation désactivée (--sans-annotation)')
+        else:
+            progres('annotation du document...')
+            # Sauvegarde du .docx PRÉ-annotation (déjà écrit, déjà valide) en mémoire : si
+            # l'annotation échoue — par exception OU en laissant un XML mal formé, voir plus
+            # bas — c'est cette version qui est restituée, jamais un fichier à moitié annoté.
+            with open(sortie_docx, 'rb') as _f:
+                octets_avant_annotation = _f.read()
+            try:
+                stats_annotation = ma.annoter(
+                    sortie_docx, sortie_docx, alertes, resultat_ecriture['correspondance'],
+                    langue=langue, auteur='Relecture automatique', plafond_commentaires=25)
+                # ⚠ Deuxième défaut RÉEL, PLUS SOURNOIS que le premier (voir ci-dessous) : une
+                # révision dont le span touche la frontière d'un <w:hyperlink> peut rendre un
+                # document.xml mal formé SANS lever d'exception (mesuré sur 3 fichiers du
+                # corpus réel sur 12 — voir le rapport de chantier). annoter() « réussit »,
+                # code de sortie 0, et livre pourtant un .docx que Word ne rouvrirait pas
+                # proprement. Validée ici, explicitement, plutôt que supposée.
+                _valider_docx_bien_forme(sortie_docx)
+            except Exception as e:
+                # ⚠ Premier défaut RÉEL, trouvé sur le corpus réel en branchant ce module
+                # (mesuré, signalé, PAS corrigé ici — manuscrit_annoter.py est hors des deux
+                # fichiers autorisés pour ce lot, voir le rapport de chantier) :
+                # `2-grappes_En Route pour Apprendre.docx` fait lever un `KeyError: 'texto'`
+                # dans `_xml_del()` — un atome déjà FUSIONNÉ par une révision précédente (donc
+                # sans clé 'texto', voir `_anotar_parrafo()`) est repris par une seconde
+                # révision du même paragraphe dont le span touche ou chevauche le premier. Une
+                # panne d'un moteur optionnel ne doit jamais faire perdre le .docx déjà écrit
+                # ni le rapport : capturée ici comme une indisponibilité, au même principe que
+                # Vale (§7) et le repli typographique (§8) — jamais un plantage de la CLI, et
+                # jamais un .docx corrompu au repos (restauration ci-dessous).
+                with open(sortie_docx, 'wb') as _f:
+                    _f.write(octets_avant_annotation)
+                stats_annotation = None
+                progres('annotation impossible : %s' % e)
+                alertes.append(_alerte_annotation_impossible())
+                _trier_alertes(alertes)
+            else:
+                _marquer_dans_docx(alertes, stats_annotation)
+                progres('annotation : %d révision(s), %d commentaire(s), %d renvoyée(s) au '
+                        'rapport' % (stats_annotation['revisions'],
+                                     stats_annotation['commentaires'],
+                                     len(stats_annotation['renvoyees_au_rapport'])))
+
+    groupes = _grouper_toutes_alertes(alertes)
+    # 'regles' accueille aussi les deux alertes propres à cette CLI qui ne viennent d'aucun
+    # des trois moteurs externes : Langue.DesaccordProduit (§8) et, si l'annotation a échoué
+    # (voir plus haut), Annotation.Impossible — la plus proche des quatre origines du brief,
+    # faute d'une cinquième catégorie prévue par le contrat.
+    alertes_origine = {
+        'regles': len(alertes_regles) + sum(
+            1 for a in alertes if a['rule'] in ('Langue.DesaccordProduit', 'Annotation.Impossible')),
+        'vale': len(alertes_vale),
+        'bibliographie': len(alertes_biblio),
+        'typographie': len(alertes_typo_reprises) + sum(1 for a in alertes_manuelles
+                                                          if a['rule'] == 'Typo.ApplicationImpossible'),
+    }
+    n_error = sum(1 for a in alertes if a['severity'] == 'error')
+    n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
+    n_suggestion = sum(1 for a in alertes if a['severity'] == 'suggestion')
+    progres('%d alerte(s) (%d error, %d warning, %d suggestion)'
+            % (len(alertes), n_error, n_warning, n_suggestion))
 
     # §5.5 : l'en-tête (titre, sous-titre, résumé, mots-clés, auteurs) n'est plus dans le
     # corps de l'article — signes_total ne doit pas le recompter. La bibliographie, elle,
@@ -607,11 +922,16 @@ def principal(argv):
     rapport = {
         'entree': entree, 'produit': args['produit'], 'langue': langue, 'gabarit': gabarit,
         'analyse_seule': args['analyse_seule'], 'sans_typo': args['sans_typo'],
+        'sans_annotation': args['sans_annotation'], 'sans_reseau': args['sans_reseau'],
         'sortie_docx': sortie_docx,
+        'controles': {'vale': 'indisponible' if vale_indisponible else 'effectue'},
         'compteurs': {
             'signes_total': signes_total, 'signes_bibliographie': signes_biblio,
             'nb_references': len(entrees_biblio), 'commentaires': document.commentaires,
             'note_commentaires': note_commentaires,
+            'notes': len(document.notes or {}),
+            'revisions': stats_annotation['revisions'] if stats_annotation else 0,
+            'commentaires_poses': stats_annotation['commentaires'] if stats_annotation else 0,
             'images': {'total': len(images), 'sans_alt': images_sans_alt,
                        # dimensions en pixels, JAMAIS un verdict (§7 du contrat) : le verdict
                        # de qualité vient de lib/qualite-image.js, au moment du rapport HTML.
@@ -630,8 +950,11 @@ def principal(argv):
                              'avertissements': avertissements_typo, 'statut': statut_typo},
             'ecriture': resultat_ecriture,
         },
+        'bibliographie': stats_biblio,
+        'annotation': stats_annotation,
         'alertes': {'total': len(alertes), 'error': n_error, 'warning': n_warning,
-                    'suggestion': n_suggestion, 'liste': alertes, 'groupes': groupes},
+                    'suggestion': n_suggestion, 'liste': alertes, 'groupes': groupes,
+                    'origine': alertes_origine},
     }
 
     code_sortie = CODE_ALERTE_ERROR if n_error > 0 else CODE_OK
