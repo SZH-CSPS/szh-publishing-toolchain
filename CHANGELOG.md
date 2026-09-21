@@ -11,6 +11,18 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.2.2
+
+**Orthographe rectifiée et trait d'union des préfixes dans le nettoyeur.** La Revue écrit en
+orthographe rectifiée (décision de la rédaction du 21 septembre 2026) : une graphie
+traditionnelle trouvée dans un manuscrit part désormais en révision Word, acceptable d'un clic.
+
+- Neuf catégories de règles Vale générées depuis `pipeline/vale/lexique/orthographe-rectifiee.csv`
+  (185 paires sûres) ; « dû », « mûr », « sûr », « jeûne » et « croître » ne sont jamais touchés.
+- Huit règles de trait d'union à lexique fermé, fondées sur la page Wikipédia « Emploi du trait
+  d'union pour les préfixes en français » ; « sans- », « peut être » et « a priori » sont écartés.
+- Mesuré sur 92 articles publiés : aucune règle ne touche plus de 5,4 % des documents.
+
 ## 1.2.1
 
 **La release se publie sans tag posé à la main — mineure, outillage seul, rien qui se voit
