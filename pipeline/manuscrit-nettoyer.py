@@ -283,25 +283,18 @@ def _trier_alertes(alertes):
 
 def _marquer_dans_docx(alertes, stats_annotation):
     """Ajoute `dans_docx` ('revision' | 'commentaire' | 'rapport') à chaque alerte (point 5 du
-    brief) — SANS retoucher aux autres clés. Déduit du même processus qui a appelé
-    manuscrit_annoter.annoter() : `stats['non_ancrees']`/`stats['renvoyees_au_rapport']`
-    portent les objets alerte EUX-MÊMES (mêmes références Python, même appel), un test
-    d'identité (id()) suffit donc à savoir ce que l'annotation en a fait, sans rejouer sa
-    logique ici."""
-    jamais_ecrites = {id(a) for a in stats_annotation.get('non_ancrees', [])}
-    jamais_ecrites |= {id(a) for a in stats_annotation.get('renvoyees_au_rapport', [])}
-    for a in alertes:
-        if id(a) in jamais_ecrites:
-            a['dans_docx'] = 'rapport'
-        elif a.get('action') == 'report':
-            # §7 ter du contrat : une alerte 'report' n'est JAMAIS écrite dans le document,
-            # quel que soit le sort des autres — jamais besoin de consulter les stats pour
-            # celle-ci.
-            a['dans_docx'] = 'rapport'
-        elif a.get('action') in ('fix', 'track') and a.get('suggested'):
-            a['dans_docx'] = 'revision'
-        else:
-            a['dans_docx'] = 'commentaire'
+    brief) — SANS retoucher aux autres clés.
+
+    Révision du 21.09.2026 ter : ne déduit plus rien de `action`. Une alerte `fix`/`track` avec
+    `suggested` n'est PAS forcément devenue une révision — le chevauchement (§7 ter, point
+    « 2 bis ») peut l'avoir démotée en commentaire, et le plafond (point 3) peut avoir renvoyé
+    ce commentaire au rapport. Seul `manuscrit_annoter.annoter()` sait ce qu'il a vraiment
+    écrit : `stats['devenir']`, une liste indexée EXACTEMENT comme `alertes` (même appel, même
+    ordre), porte ce verdict alerte par alerte — recopié ici tel quel, jamais recalculé."""
+    devenir = stats_annotation.get('devenir') or []
+    for i, a in enumerate(alertes):
+        verdict = devenir[i] if i < len(devenir) else None
+        a['dans_docx'] = verdict if verdict in ('revision', 'commentaire') else 'rapport'
 
 
 # ---------------------------------------------------------------------------------

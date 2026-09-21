@@ -778,8 +778,16 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     iniciales = _iniciales(auteur)
     style_comentario = _styleid_por_nombre(styles_xml, _NOMS_STYLE_MARQUE_COMMENTAIRE)
 
+    # `devenir[i]` dit ce qu'est VRAIMENT devenue `alertes[i]` — 'revision' | 'commentaire' |
+    # 'rapport' | 'non_ancree' — indexé comme `alertes`, jamais déduit après coup de `action`
+    # (défaut réel mesuré, révision du 21.09.2026 ter : `manuscrit-nettoyer.py` déduisait
+    # `dans_docx` de `action` pour toute alerte `fix`/`track`, sans savoir que le
+    # chevauchement, §7 ter point « 2 bis », avait pu la démoter en commentaire, ou que le
+    # plafond, point 3, l'avait renvoyée au rapport — `dans_docx: 'revision'` pouvait donc
+    # mentir. Ce module, qui SEUL sait ce qu'il a écrit, porte désormais la vérité).
+    devenir = [None] * len(alertes)
     stats = {'revisions': 0, 'commentaires': 0, 'commentaires_synthese': 0,
-             'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}}
+             'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}, 'devenir': devenir}
 
     # 1. Ancrage — quel <w:p> de sortie, si aucun jamais perdu en silence (§7 ter, point 1).
     por_salida = {}
@@ -788,6 +796,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         salida = origen_a_salida.get(para) if para is not None else None
         if salida is None or not (0 <= salida < len(indices_p)):
             stats['non_ancrees'].append(alerta)
+            devenir[idx] = 'non_ancree'
             continue
         por_salida.setdefault(salida, []).append((idx, alerta))
 
@@ -814,6 +823,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 revisiones_por_salida.setdefault(salida, []).append((idx, localizado, alerta))
             elif accion == 'report':
                 _contar_regla(stats, alerta, 'signalees')
+                devenir[idx] = 'rapport'
             else:
                 # action == 'comment', fix/track non localisable/sans suggestion, ou span
                 # touchant un lien (§7 ter, points 3 et défaut n°3) : repli commentaire,
@@ -855,6 +865,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             else:
                 spans_aceptados.append((s, e))
                 conservadas.append((localizado, alerta))
+                devenir[idx] = 'revision'
         revisiones_por_salida[salida] = conservadas
 
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
@@ -878,11 +889,13 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
         else:
             stats['renvoyees_au_rapport'].append(item[1])
             _contar_regla(stats, item[1], 'renvoyees')
+            devenir[item[0]] = 'rapport'
 
     escritos = conservados[:plafond_commentaires]
     for item in conservados[plafond_commentaires:]:
         stats['renvoyees_au_rapport'].append(item[1])
         _contar_regla(stats, item[1], 'renvoyees')
+        devenir[item[0]] = 'rapport'
 
     conteo_escritos_regla = {}
     sintesis_para = set()
@@ -896,6 +909,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     for idx, alerta, salida, localizado in escritos:
         comentarios_por_salida.setdefault(salida, []).append(
             (localizado, alerta, id(alerta) in sintesis_para))
+        devenir[idx] = 'commentaire'
 
     # 4. Écriture, paragraphe par paragraphe, dans l'ordre DÉCROISSANT de position dans
     # `interior` — chaque remplacement ne touche que ce qui est à sa droite pour les

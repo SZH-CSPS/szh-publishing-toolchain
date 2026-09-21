@@ -45,6 +45,11 @@
 //       manuscrit_annoter.annoter()) reste éprouvé indépendamment de l'état de ce module, par
 //       injection de dépendance (mod.ma.annoter remplacé après chargement) — jamais une
 //       modification du code de production pour le faire échouer.
+//   16. Révision du 21.09.2026 ter — `_marquer_dans_docx()` recopie désormais le verdict de
+//       `stats['devenir']` (manuscrit_annoter.annoter()) au lieu de le déduire de `action` :
+//       une alerte `fix`/`track` avec `suggested`, DÉMOTÉE en commentaire par le chevauchement
+//       (§7 ter, point « 2 bis »), doit ressortir `dans_docx: 'commentaire'`, jamais
+//       'revision'. Même moteur d'injection que le contrôle n°15.
 //
 //   node --test test/js/manuscrit-nettoyer.test.js
 //
@@ -1087,6 +1092,67 @@ test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) re
       assert.strictEqual(marques.w_ins, 0);
       assert.strictEqual(marques.w_del, 0);
       assert.strictEqual(marques.comments_xml, false);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°16 — `dans_docx` recopie `stats['devenir']`, jamais déduit de `action`.
+//
+// `APA.DoiForme` (action='fix', suggested renseigné) est l'alerte fiable de
+// fixtureQuatreOrigines() pour ce test — sous l'ANCIEN code, action='fix'+suggested suffisait
+// à marquer `dans_docx: 'revision'`, quoi que l'annotation ait réellement fait. Ici,
+// `mod.ma.annoter` est remplacée (même injection de dépendance que le contrôle n°15, jamais
+// une modification du code de production) par une fonction qui simule le SORT RÉEL d'un
+// chevauchement (§7 ter, point « 2 bis ») : elle démote APA.DoiForme en commentaire via
+// `devenir`, sans toucher au `.docx` (déjà valide, écrit par mg.ecrire() avant l'appel). Si la
+// CLI relaie fidèlement ce verdict, `dans_docx` doit valoir 'commentaire' — jamais 'revision'.
+
+test('manuscrit-nettoyer.py : dans_docx recopie stats.devenir — une alerte fix/track démotée '
+  + 'en commentaire par le chevauchement ne ressort jamais "revision"', { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'devenir.docx');
+      fabriquerDocx(entree, fixtureQuatreOrigines());
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+
+      const PONT_DEVENIR_SABOTE = [
+        'import importlib.util, sys',
+        'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+        'sys.path.insert(0, dossier_pipeline)',
+        'spec = importlib.util.spec_from_file_location("nettoyeur_devenir", chemin_nettoyeur)',
+        'mod = importlib.util.module_from_spec(spec)',
+        'spec.loader.exec_module(mod)',
+        'def _annoter_devenir_sabote(*a, **k):',
+        '    alertes = a[2]',
+        "    devenir = ['rapport'] * len(alertes)",
+        "    idx_doi = next(i for i, al in enumerate(alertes) if al.get('rule') == 'APA.DoiForme')",
+        "    devenir[idx_doi] = 'commentaire'",  // simule la démotion par chevauchement
+        "    return {'revisions': 0, 'commentaires': 0, 'commentaires_synthese': 0,",
+        "            'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {},",
+        "            'devenir': devenir}",
+        'mod.ma.annoter = _annoter_devenir_sabote',
+        'sys.argv = [chemin_nettoyeur] + sys.argv[3:]',
+        'sys.exit(mod.principal(sys.argv))',
+      ].join('\n');
+
+      const r = python(['-c', PONT_DEVENIR_SABOTE, PIPELINE, NETTOYEUR,
+        entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.ok(fs.existsSync(obj.sortie_docx), 'le .docx doit rester livré : ' + r.stderr);
+
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const doi = rapport.alertes.liste.find((a) => a.rule === 'APA.DoiForme');
+      assert.ok(doi, 'APA.DoiForme absente : '
+        + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
+      assert.strictEqual(doi.action, 'fix');
+      assert.ok(doi.suggested, 'suggested doit rester renseigné (sous l’ancien code, cela '
+        + 'suffisait à lui seul à déduire "revision")');
+      assert.strictEqual(doi.dans_docx, 'commentaire',
+        'dans_docx doit porter le verdict RÉEL de l’annotation (devenir), jamais une '
+        + 'déduction depuis action : ' + JSON.stringify(doi));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
