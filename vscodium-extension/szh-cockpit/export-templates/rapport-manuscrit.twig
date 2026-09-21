@@ -1,0 +1,271 @@
+{# rapport-manuscrit.twig : la page HTML autonome du nettoyeur de manuscrit (Article),
+   rendue par lib/gabarits.js via outils/rendre-gabarit.js (Invoke-SzhManuscrit,
+   windows/open-produit.ps1). Contrat complet : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md,
+   §7/§7 bis/§7 ter/§9/§10. Sans réseau, sans script, une seule page ouverte dans le
+   navigateur par défaut du poste -- une relectrice ne voit jamais la machine qui l'a produite.
+
+   Le JSON brut de pipeline/manuscrit-nettoyer.py n'arrive jamais ici tel quel : ce gabarit
+   ne sait ni trancher une liste ni juger une image (lib/gabarits.js n'a pas d'arithmétique),
+   donc outils/rendre-gabarit.js le transforme d'abord en `vue` (voir
+   construireVueRapportManuscrit, même fichier, et test/js/manuscrit-rapport.test.js qui la
+   prouve). `produit` seul arrive à côté, brut.
+
+   Variables disponibles ici :
+   produit                         "revue" | "zeitschrift" -- décide la langue de CETTE page
+   vue.refus                       true sur un refus : alors SEULS vue.entree/message existent
+   vue.entree                      nom de fichier seul, jamais un chemin
+   vue.message                     phrase de refus, déjà rédigée pour une relectrice
+   -- sinon (vue.refus est faux) --
+   vue.gabarit                     "A" | "B"
+   vue.date                        "21.09.2026"
+   vue.compteurs.*                 signes_total, signes_bibliographie, nb_references,
+                                    commentaires_perdus, note_commentaires, images_total,
+                                    images_sans_alt, notes_ecrites, typographie_appliquee,
+                                    revisions_posees, commentaires_poses, alertes_renvoyees
+   vue.entete                      null (cas A) ou {titre, sous_titre, auteurs[], resume,
+                                    resume_signes, fourchette_resume, langue_resume,
+                                    resumes_autres{}, mots_cles[], doi, ligne_revue,
+                                    titre_absent, auteurs_absents, resume_absent,
+                                    mots_cles_absents, doi_absent}
+   vue.entete.auteurs[]             {prenom, nom, fonction, institution, email}
+   vue.alertes_familles[]           {famille, total, severite, regles[]}
+   vue.alertes_familles[].regles[]  {regle, total, reste, severite,
+                                     occurrences[] (10 au plus)}
+   ...occurrences[]                 {severity, action, para, span, found, suggested,
+                                     message, posee}
+   vue.titres.retenus[]             {source, niveau, style, depuis_liste, motif}
+   vue.titres.retrogrades[]         {source, style, motif}
+   vue.titres.signal_inhabituel     bool ; vue.titres.total_retenus
+   vue.titres.rabattus_niveau3      int ; vue.titres.rejet_contrainte bool
+   vue.gras_non_promus[]            {source, motif}
+   vue.images[]                     {nom, source, largeur_px, hauteur_px, alt_absent,
+                                     niveau, mesure, min, conseille}
+   vue.bibliographie                null tant que non branché, sinon {stats{...}}
+   vue.typographie_abandons[]       {source, motif}
+   vue.typographie_avertissements[] phrases déjà dans la langue du produit
+#}
+{% block contenu %}<!DOCTYPE html>
+<html lang="{% if produit == 'zeitschrift' %}de{% else %}fr{% endif %}">
+<head>
+<meta charset="utf-8">
+<title>{% if produit == 'zeitschrift' %}Bereinigungsbericht{% else %}Rapport de nettoyage{% endif %} – {{ vue.entree|e }}</title>
+<style>
+{# Palette : pipeline/styles/couleurs.css, crans 800/900 (texte blanc, |Lc| >= 90 dès 14 px)
+   et 50/100 (texte noir, |Lc| >= 91) -- copiés ici, jamais importés, pour rester une page
+   AUTONOME (§8 du contrat) ; à resynchroniser si la charte annuelle change ces crans. #}
+:root {
+  --papier: #FFFFFF; --texte: #1A1A1A; --bord: #CCCCCC;
+  --gris-clair: #E6E6E6; --zebre: #F2F2F2;
+  --erreur-fond: #9F001F; --erreur-clair: #FFDFDD;
+  --alerte-fond: #555900; --alerte-clair: #E8EFAB;
+  --suggestion-fond: #2E5A6D; --suggestion-clair: #D8EBF5;
+  --ok-fond: #26613B; --ok-clair: #D7EFDC;
+  --neutre-fond: #624C58; --neutre-clair: #F0E4EA;
+}
+* { box-sizing: border-box; }
+body { font-family: "Segoe UI", Arial, sans-serif; background: var(--papier); color: var(--texte);
+  margin: 0; padding: 24px; max-width: 980px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; border-bottom: 2px solid var(--bord); padding-bottom: 4px; margin-top: 2rem; }
+h3 { font-size: 1rem; margin-bottom: 0.3rem; }
+table { border-collapse: collapse; width: 100%; margin: 0.6rem 0 1.2rem; font-size: 0.92rem; }
+th, td { border: 1px solid var(--bord); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: var(--gris-clair); }
+tr:nth-child(even) td { background: var(--zebre); }
+.bandeau { border: 1px solid var(--bord); border-radius: 6px; padding: 12px 16px; margin-bottom: 1.2rem;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px 20px; }
+.bandeau .fichier { grid-column: 1 / -1; font-size: 1.05rem; font-weight: 600; }
+.puce { display: inline-block; padding: 1px 9px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; }
+.puce-erreur { background: var(--erreur-fond); color: #fff; }
+.puce-alerte { background: var(--alerte-fond); color: #fff; }
+.puce-suggestion { background: var(--suggestion-fond); color: #fff; }
+.puce-ok { background: var(--ok-fond); color: #fff; }
+.puce-neutre { background: var(--neutre-fond); color: #fff; }
+.regle { margin: 0.9rem 0; padding: 8px 12px; border-left: 4px solid var(--bord); }
+.regle-error { border-left-color: var(--erreur-fond); }
+.regle-warning { border-left-color: var(--alerte-fond); }
+.regle-suggestion { border-left-color: var(--suggestion-fond); }
+.regle h3 { display: flex; align-items: center; gap: 8px; }
+.occurrence { padding: 4px 0; border-top: 1px dashed var(--bord); font-size: 0.92rem; }
+.occurrence:first-child { border-top: none; }
+mark { background: var(--erreur-clair); padding: 0 2px; }
+.suggere { color: #1A1A1A; background: var(--ok-clair); padding: 0 4px; border-radius: 3px; }
+.reste { color: #555; font-style: italic; }
+.absent { color: #8A1A1A; font-style: italic; }
+.indent-1 { padding-left: 0; }
+.indent-2 { padding-left: 1.4rem; }
+.indent-3 { padding-left: 2.8rem; }
+.section-vide { color: #555; font-style: italic; }
+.refus-page { max-width: 640px; margin: 10vh auto; text-align: center; }
+.refus-page .puce { display: block; width: fit-content; margin: 0 auto 1rem; }
+.refus-page p { font-size: 1.05rem; line-height: 1.5; }
+</style>
+</head>
+<body>
+{% if vue.refus %}
+<div class="refus-page">
+<span class="puce puce-erreur">{% if produit == 'zeitschrift' %}Abgelehnt{% else %}Refusé{% endif %}</span>
+<h1>{{ vue.entree|e }}</h1>
+<p>{{ vue.message|e }}</p>
+</div>
+{% else %}
+{% set casLettre = vue.gabarit %}
+<div class="bandeau">
+  <div class="fichier">{{ vue.entree|e }} – {% if produit == 'zeitschrift' %}Zeitschrift{% else %}Revue{% endif %} – {% if produit == 'zeitschrift' %}Fall {{ casLettre|e }}{% else %}cas {{ casLettre|e }}{% endif %} – {{ vue.date|e }}</div>
+  <div>{% if produit == 'zeitschrift' %}Zeichen (ohne Kopfteil){% else %}Signes (hors en-tête){% endif %} : {{ vue.compteurs.signes_total }}</div>
+  <div>{% if produit == 'zeitschrift' %}Literaturzeichen{% else %}Signes de bibliographie{% endif %} : {{ vue.compteurs.signes_bibliographie }}</div>
+  <div>{% if produit == 'zeitschrift' %}Referenzen{% else %}Références{% endif %} : {{ vue.compteurs.nb_references }}</div>
+  <div>{% if produit == 'zeitschrift' %}Bilder{% else %}Images{% endif %} : {{ vue.compteurs.images_total }} ({% if produit == 'zeitschrift' %}ohne Alt-Text{% else %}sans texte alternatif{% endif %} : {{ vue.compteurs.images_sans_alt }})</div>
+  <div>{% if produit == 'zeitschrift' %}Fussnoten{% else %}Notes{% endif %} : {{ vue.compteurs.notes_ecrites }}</div>
+  <div>{% if produit == 'zeitschrift' %}Verlorene Word-Kommentare{% else %}Commentaires Word perdus{% endif %} : {{ vue.compteurs.commentaires_perdus }}</div>
+  <div>{% if vue.compteurs.typographie_appliquee %}<span class="puce puce-ok">{% if produit == 'zeitschrift' %}Typografie angewendet{% else %}Typographie appliquée{% endif %}</span>{% else %}<span class="puce puce-erreur">{% if produit == 'zeitschrift' %}Typografie NICHT angewendet{% else %}Typographie NON appliquée{% endif %}</span>{% endif %}</div>
+  <div>{% if produit == 'zeitschrift' %}Im Dokument eingetragen (Änderungen/Kommentare){% else %}Posées dans le document (révisions/commentaires){% endif %} : {{ vue.compteurs.revisions_posees }} / {{ vue.compteurs.commentaires_poses }}</div>
+  <div>{% if produit == 'zeitschrift' %}An diesen Bericht weitergeleitete Meldungen{% else %}Alertes renvoyées à ce rapport{% endif %} : {{ vue.compteurs.alertes_renvoyees }}</div>
+</div>
+
+<h2>{% if produit == 'zeitschrift' %}Erkannter Kopfteil{% else %}En-tête reconnue{% endif %}</h2>
+{% if vue.entete %}
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Titel{% else %}Titre{% endif %}</th><td>{% if vue.entete.titre_absent %}<span class="absent">{% if produit == 'zeitschrift' %}nicht gefunden{% else %}non trouvé{% endif %}</span>{% else %}{{ vue.entete.titre|e }}{% endif %}</td></tr>
+{% if vue.entete.sous_titre is not empty %}<tr><th>{% if produit == 'zeitschrift' %}Untertitel{% else %}Sous-titre{% endif %}</th><td>{{ vue.entete.sous_titre|e }}</td></tr>{% endif %}
+<tr><th>{% if produit == 'zeitschrift' %}Autor/innen{% else %}Auteurs{% endif %}</th><td>
+{% if vue.entete.auteurs_absents %}<span class="absent">{% if produit == 'zeitschrift' %}nicht gefunden{% else %}non trouvés{% endif %}</span>{% else %}
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Vorname{% else %}Prénom{% endif %}</th><th>{% if produit == 'zeitschrift' %}Name{% else %}Nom{% endif %}</th><th>{% if produit == 'zeitschrift' %}Funktion{% else %}Fonction{% endif %}</th><th>{% if produit == 'zeitschrift' %}Institution{% else %}Institution{% endif %}</th><th>E-mail</th></tr>
+{% for a in vue.entete.auteurs %}<tr><td>{{ a.prenom|e }}</td><td>{{ a.nom|e }}</td><td>{{ a.fonction|default('')|e }}</td><td>{{ a.institution|default('')|e }}</td><td>{{ a.email|default('')|e }}</td></tr>
+{% endfor %}</table>
+{% endif %}
+</td></tr>
+<tr><th>{% if produit == 'zeitschrift' %}Zusammenfassung{% else %}Résumé{% endif %}</th><td>
+{% if vue.entete.resume_absent %}<span class="absent">{% if produit == 'zeitschrift' %}nicht gefunden{% else %}non trouvé{% endif %}</span>{% else %}
+<p>{{ vue.entete.resume|e }}</p>
+<p{% if vue.entete.resume_hors_fourchette %} class="absent"{% endif %}>{% if produit == 'zeitschrift' %}{{ vue.entete.resume_signes }} Zeichen (Richtwert: {{ vue.entete.fourchette_resume|e }}){% else %}{{ vue.entete.resume_signes }} signes (fourchette du produit : {{ vue.entete.fourchette_resume|e }}){% endif %}</p>
+{% endif %}
+</td></tr>
+<tr><th>{% if produit == 'zeitschrift' %}Schlüsselwörter{% else %}Mots-clés{% endif %}</th><td>{% if vue.entete.mots_cles_absents %}<span class="absent">{% if produit == 'zeitschrift' %}nicht gefunden{% else %}non trouvés{% endif %}</span>{% else %}{{ vue.entete.mots_cles|join(', ')|e }}{% endif %}</td></tr>
+<tr><th>DOI</th><td>{% if vue.entete.doi_absent %}<span class="absent">{% if produit == 'zeitschrift' %}nicht gefunden{% else %}non trouvé{% endif %}</span>{% else %}<a href="https://doi.org/{{ vue.entete.doi|e }}">{{ vue.entete.doi|e }}</a>{% endif %}</td></tr>
+{% if vue.entete.ligne_revue is not empty %}<tr><th>{% if produit == 'zeitschrift' %}Zeitschriftenzeile{% else %}Ligne de revue{% endif %}</th><td>{{ vue.entete.ligne_revue|e }}</td></tr>{% endif %}
+</table>
+{% else %}
+<p class="section-vide">{% if produit == 'zeitschrift' %}Fall A: Das Dokument entspricht bereits der Vorlage, der Kopfteil wurde nicht neu analysiert.{% else %}Cas A : le document est déjà au gabarit, l’en-tête n’a pas été ré-analysée.{% endif %}</p>
+{% endif %}
+
+<h2>{% if produit == 'zeitschrift' %}Meldungen{% else %}Alertes{% endif %}</h2>
+{% if vue.alertes_familles is empty %}
+<p class="section-vide">{% if produit == 'zeitschrift' %}Keine Meldung.{% else %}Aucune alerte.{% endif %}</p>
+{% else %}
+{% for famille in vue.alertes_familles %}
+<h3>{{ famille.famille|e }} – {{ famille.total }} {% if produit == 'zeitschrift' %}Meldung(en){% else %}alerte(s){% endif %}</h3>
+{% for regle in famille.regles %}
+<div class="regle regle-{{ regle.severite }}">
+<h3>
+{% if regle.severite == 'error' %}<span class="puce puce-erreur">{% if produit == 'zeitschrift' %}Fehler{% else %}Erreur{% endif %}</span>
+{% elseif regle.severite == 'warning' %}<span class="puce puce-alerte">{% if produit == 'zeitschrift' %}Warnung{% else %}Avertissement{% endif %}</span>
+{% else %}<span class="puce puce-suggestion">{% if produit == 'zeitschrift' %}Vorschlag{% else %}Suggestion{% endif %}</span>
+{% endif %}
+{{ regle.regle|e }} ({{ regle.total }})
+</h3>
+{% for occ in regle.occurrences %}
+<div class="occurrence">
+{% if occ.para is not empty %}{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %} {{ occ.para }} – {% endif %}
+{% if occ.found is not empty %}<mark>{{ occ.found|e }}</mark>{% endif %}
+{% if occ.suggested is not empty %} → <span class="suggere">{{ occ.suggested|e }}</span>{% endif %}
+{% if occ.posee %} <span class="puce puce-neutre">{% if produit == 'zeitschrift' %}im Dokument eingetragen{% else %}déjà posée dans le document{% endif %}</span>{% endif %}
+<br>{{ occ.message|e }}
+</div>
+{% endfor %}
+{% if regle.reste %}<p class="reste">{% if produit == 'zeitschrift' %}und {{ regle.reste }} weitere{% else %}et {{ regle.reste }} autres{% endif %}</p>{% endif %}
+</div>
+{% endfor %}
+{% endfor %}
+{% endif %}
+
+<h2>{% if produit == 'zeitschrift' %}Gefundene Struktur{% else %}Structure retrouvée{% endif %}</h2>
+{% if vue.titres.signal_inhabituel %}
+<p><span class="puce puce-alerte">{% if produit == 'zeitschrift' %}Ungewöhnliche Anzahl{% else %}Nombre inhabituel{% endif %}</span> {% if produit == 'zeitschrift' %}{{ vue.titres.total_retenus }} Überschriften beibehalten – deutlich mehr als üblich (Median 9, Höchstwert 21 im Korpus). Prüfen Sie, ob es sich nicht um ein Interview oder ein Glossar handelt.{% else %}{{ vue.titres.total_retenus }} titres retenus, bien au-delà de ce qu’on observe habituellement (médiane 9, maximum 21 sur le corpus) – vérifiez qu’il ne s’agit pas d’un entretien ou d’un glossaire.{% endif %}</p>
+{% endif %}
+{% if vue.titres.retenus is empty %}
+<p class="section-vide">{% if produit == 'zeitschrift' %}Keine Überschrift beibehalten.{% else %}Aucun titre retenu.{% endif %}</p>
+{% else %}
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %}</th><th>{% if produit == 'zeitschrift' %}Ebene{% else %}Niveau{% endif %}</th><th>{% if produit == 'zeitschrift' %}Begründung{% else %}Motif{% endif %}</th></tr>
+{% for t in vue.titres.retenus %}
+<tr class="indent-{{ t.niveau }}"><td>{{ t.source }}</td><td>{{ t.niveau }}{% if t.depuis_liste %} {% if produit == 'zeitschrift' %}(aus einer nummerierten Liste übernommen){% else %}(promu depuis une liste numérotée){% endif %}{% endif %}</td><td>{{ t.motif|e }}</td></tr>
+{% endfor %}
+</table>
+{% endif %}
+{% if vue.titres.retrogrades is not empty %}
+<h3>{% if produit == 'zeitschrift' %}Herabgestufte Überschriften{% else %}Titres rétrogradés{% endif %}</h3>
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %}</th><th>{% if produit == 'zeitschrift' %}Begründung{% else %}Motif{% endif %}</th></tr>
+{% for t in vue.titres.retrogrades %}<tr><td>{{ t.source }}</td><td>{{ t.motif|e }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% if vue.gras_non_promus is not empty %}
+<h3>{% if produit == 'zeitschrift' %}Fettgedruckte Absätze, nicht als Überschrift übernommen{% else %}Paragraphes en gras non promus{% endif %}</h3>
+<p>{% if produit == 'zeitschrift' %}Prüfen Sie, ob es sich nicht um eine Zwischenüberschrift handelt.{% else %}Vérifiez si ce n’est pas un intertitre.{% endif %}</p>
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %}</th><th>{% if produit == 'zeitschrift' %}Begründung{% else %}Motif{% endif %}</th></tr>
+{% for g in vue.gras_non_promus %}<tr><td>{{ g.source }}</td><td>{{ g.motif|e }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% if vue.titres.rabattus_niveau3 %}<p class="section-vide">{% if produit == 'zeitschrift' %}{{ vue.titres.rabattus_niveau3 }} Gruppe(n) auf Ebene 3 zurückgestuft (mehr als drei erkannte Ebenen).{% else %}{{ vue.titres.rabattus_niveau3 }} groupe(s) rabattu(s) au niveau 3 (plus de trois niveaux détectés).{% endif %}</p>{% endif %}
+{% if vue.titres.rejet_contrainte %}<p class="section-vide">{% if produit == 'zeitschrift' %}Die gefundene Gruppierung überschreitet drei Ebenen und wurde verworfen.{% else %}Le groupement trouvé dépassait trois niveaux et a été rejeté.{% endif %}</p>{% endif %}
+
+<h2>{% if produit == 'zeitschrift' %}Bilder{% else %}Images{% endif %}</h2>
+{% if vue.images is empty %}
+<p class="section-vide">{% if produit == 'zeitschrift' %}Keine Bilder.{% else %}Aucune image.{% endif %}</p>
+{% else %}
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Datei{% else %}Fichier{% endif %}</th><th>{% if produit == 'zeitschrift' %}Pixel{% else %}Pixels{% endif %}</th><th>{% if produit == 'zeitschrift' %}Beurteilung{% else %}Verdict{% endif %}</th><th>Alt</th></tr>
+{% for im in vue.images %}
+<tr>
+<td>{{ im.nom|e }}</td>
+<td>{{ im.largeur_px }} × {{ im.hauteur_px }}</td>
+<td>
+{% if im.niveau == 'insuffisant' %}<span class="puce puce-erreur">{% if produit == 'zeitschrift' %}zu klein{% else %}trop petite{% endif %}</span>
+{% elseif im.niveau == 'juste' %}<span class="puce puce-alerte">{% if produit == 'zeitschrift' %}gerade ausreichend{% else %}juste suffisante{% endif %}</span>
+{% elseif im.niveau == 'ok' %}<span class="puce puce-ok">{% if produit == 'zeitschrift' %}gut{% else %}bonne{% endif %}</span>
+{% elseif im.niveau == 'vectoriel' %}<span class="puce puce-ok">{% if produit == 'zeitschrift' %}vektoriell{% else %}vectorielle{% endif %}</span>
+{% else %}<span class="puce puce-neutre">{% if produit == 'zeitschrift' %}unbekannt{% else %}inconnue{% endif %}</span>
+{% endif %}
+</td>
+<td>{% if im.alt_absent %}<span class="absent">{% if produit == 'zeitschrift' %}fehlt{% else %}absent{% endif %}</span>{% else %}{% if produit == 'zeitschrift' %}vorhanden{% else %}présent{% endif %}{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
+{% if vue.bibliographie %}
+<h2>{% if produit == 'zeitschrift' %}Literaturverzeichnis{% else %}Bibliographie{% endif %}</h2>
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Referenzen{% else %}Références{% endif %}</th><td>{{ vue.bibliographie.stats.references|default(0) }}</td></tr>
+<tr><th>{% if produit == 'zeitschrift' %}Zitate{% else %}Citations{% endif %}</th><td>{{ vue.bibliographie.stats.citations|default(0) }}</td></tr>
+<tr><th>{% if produit == 'zeitschrift' %}Zitiert, aber fehlend{% else %}Citées, absentes{% endif %}</th><td>{{ vue.bibliographie.stats.citees_absentes|default(0) }}</td></tr>
+<tr><th>DOI {% if produit == 'zeitschrift' %}normalisiert{% else %}normalisés{% endif %}</th><td>{{ vue.bibliographie.stats.doi_normalises|default(0) }}</td></tr>
+<tr><th>DOI {% if produit == 'zeitschrift' %}gefunden{% else %}retrouvés{% endif %}</th><td>{{ vue.bibliographie.stats.doi_retrouves|default(0) }}</td></tr>
+</table>
+{% endif %}
+
+<h2>{% if produit == 'zeitschrift' %}Was das Werkzeug nicht konnte{% else %}Ce que l’outil n’a pas su faire{% endif %}</h2>
+{% if vue.typographie_abandons is empty and vue.typographie_avertissements is empty %}
+<p class="section-vide">{% if produit == 'zeitschrift' %}Nichts zu melden.{% else %}Rien à signaler.{% endif %}</p>
+{% else %}
+{% if vue.typographie_avertissements is not empty %}
+<h3>{% if produit == 'zeitschrift' %}Typografie{% else %}Typographie{% endif %}</h3>
+<ul>
+{% for av in vue.typographie_avertissements %}<li>{{ av|e }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% if vue.typographie_abandons is not empty %}
+<h3>{% if produit == 'zeitschrift' %}Nicht neu geschriebene Absätze{% else %}Paragraphes non réécrits{% endif %}</h3>
+<table>
+<tr><th>{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %}</th><th>{% if produit == 'zeitschrift' %}Begründung{% else %}Motif{% endif %}</th></tr>
+{% for ab in vue.typographie_abandons %}<tr><td>{{ ab.source }}</td><td>{{ ab.motif|e }}</td></tr>{% endfor %}
+</table>
+{% endif %}
+{% endif %}
+{% endif %}
+</body>
+</html>
+{% endblock %}

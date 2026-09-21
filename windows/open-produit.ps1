@@ -2413,7 +2413,11 @@ function Invoke-SzhManuscrit {
       if ($sortieVuePreproc) {
         try { $statsPreproc = $sortieVuePreproc | ConvertFrom-Json -ErrorAction Stop } catch { $statsPreproc = $null }
       }
-      $okPreproc = ($processusPreproc.ExitCode -eq 0)
+      # Un refus (§8 du contrat : suivi de modifications, fichier verrou...) sort avec un
+      # code non nul mais N'EST PAS un echec technique -- la ligne JSON de stdout est deja
+      # complete ($statsPreproc.refus), et c'est elle que le gabarit du rapport doit rendre
+      # (page courte, le message et rien d'autre), jamais le texte generique ci-dessous.
+      $okPreproc = ($processusPreproc.ExitCode -eq 0) -or ($statsPreproc -and $statsPreproc.refus)
       if (-not $okPreproc) { $textePreproc = (T 'lanceur.preproc.echec.inconnu') }
     }
   } catch {
@@ -2439,23 +2443,143 @@ function Invoke-SzhManuscrit {
     texte   = $textePreproc
     stats   = $statsPreproc
     dossier = $dossierSortiePreproc
+    produit = $Produit
   }
 }
 
+# Rend rapport-manuscrit.twig (lib/gabarits.js, via outils/rendre-gabarit.js -- meme moteur
+# que le reste du produit, meme mecanisme que Get-SzhCourriel dans szh-common.ps1 :
+# VSCodium-en-Node, ELECTRON_RUN_AS_NODE=1, un aller-retour JSON sur stdin/stdout) et ecrit
+# la page a cote du manuscrit. Rend le chemin Windows du fichier ecrit.
+#
+# $Stats est soit le JSON complet du rapport (execution normale, relu depuis
+# sortie_rapport), soit l'enveloppe courte d'un refus -- aucun -rapport.json n'existe alors
+# sur le disque, tout est deja dans $Stats. Les deux portent 'entree', jamais 'produit' cote
+# refus (le nettoyeur ne le sait pas encore a ce stade, §8 du contrat) : $Produit, deja
+# choisi par la personne avant de lancer le nettoyage, comble ce trou.
+function New-SzhRapportManuscrit {
+  param(
+    [Parameter(Mandatory = $true)]$Stats,
+    [Parameter(Mandatory = $true)][string]$Produit
+  )
+  $dossierCockpitRapport = Get-SzhDossierCockpit
+  if (-not $dossierCockpitRapport) { throw 'dossier de l''extension du cockpit introuvable' }
+  $scriptRenduRapport = Join-Path $dossierCockpitRapport 'outils\rendre-gabarit.js'
+  if (-not (Test-Path -LiteralPath $scriptRenduRapport)) {
+    throw ('outils\rendre-gabarit.js introuvable dans ' + $dossierCockpitRapport)
+  }
+  $cheminGabaritRapport = Join-Path $dossierCockpitRapport 'export-templates\rapport-manuscrit.twig'
+  if (-not (Test-Path -LiteralPath $cheminGabaritRapport)) {
+    throw ('rapport-manuscrit.twig introuvable dans ' + $dossierCockpitRapport)
+  }
+  $codiumRapport = Get-VSCodiumExe
+  if (-not $codiumRapport) { throw 'VSCodium introuvable sur ce poste' }
+
+  if ($Stats.refus) {
+    $rapportJsonTexte = $Stats | ConvertTo-Json -Depth 6 -Compress
+    $cheminManuscritWindowsRapport = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.entree)
+    $dossierSortieRapport = Split-Path -Parent $cheminManuscritWindowsRapport
+    $nomBaseRapport = [System.IO.Path]::GetFileNameWithoutExtension($cheminManuscritWindowsRapport)
+  } else {
+    if (-not $Stats.sortie_rapport) { throw 'sortie_rapport absent de la ligne de statistiques' }
+    $cheminRapportWindows = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.sortie_rapport)
+    # Lu tel quel, jamais reconverti par ConvertFrom-Json/ConvertTo-Json (profondeur du
+    # rapport bien au-dela de ce que ConvertTo-Json accepte sans -Depth explicite, et un
+    # second passage arrondirait ou tronquerait des valeurs sans avertir personne) :
+    # l'enveloppe plus bas s'assemble par CONCATENATION de texte JSON deja valide.
+    $rapportJsonTexte = Get-Content -LiteralPath $cheminRapportWindows -Raw -Encoding UTF8
+    $dossierSortieRapport = Split-Path -Parent $cheminRapportWindows
+    $nomBaseRapport = ([System.IO.Path]::GetFileNameWithoutExtension($cheminRapportWindows)) -replace '-rapport$', ''
+  }
+
+  $enveloppeRapport = '{"chemin":' + ($cheminGabaritRapport | ConvertTo-Json -Compress) +
+    ',"variables":{"produit":' + ($Produit | ConvertTo-Json -Compress) +
+    ',"rapport":' + $rapportJsonTexte + '}}'
+
+  $psiRapport = New-Object System.Diagnostics.ProcessStartInfo
+  $psiRapport.FileName = $codiumRapport
+  $psiRapport.Arguments = '"' + $scriptRenduRapport + '"'
+  $psiRapport.RedirectStandardInput = $true
+  $psiRapport.RedirectStandardOutput = $true
+  $psiRapport.RedirectStandardError = $true
+  $psiRapport.UseShellExecute = $false
+  $psiRapport.CreateNoWindow = $true
+  $psiRapport.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+  $psiRapport.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+  $psiRapport.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+
+  $processusRapport = New-Object System.Diagnostics.Process
+  $processusRapport.StartInfo = $psiRapport
+  $contenuHtmlRapport = ''
+  try {
+    [void]$processusRapport.Start()
+    # Les deux taches AVANT l'ecriture de l'entree, comme Get-SzhCourriel : ni stdout ni
+    # stderr ne peut alors saturer son tube et bloquer l'enfant pendant qu'on ecrit.
+    $tacheSortieRapport = $processusRapport.StandardOutput.ReadToEndAsync()
+    $tacheErreurRapport = $processusRapport.StandardError.ReadToEndAsync()
+    $encodageEntreeRapport = New-Object System.Text.UTF8Encoding($false)
+    $octetsEntreeRapport = $encodageEntreeRapport.GetBytes($enveloppeRapport)
+    $processusRapport.StandardInput.BaseStream.Write($octetsEntreeRapport, 0, $octetsEntreeRapport.Length)
+    $processusRapport.StandardInput.Close()
+    [System.Threading.Tasks.Task]::WaitAll(@($tacheSortieRapport, $tacheErreurRapport))
+    $processusRapport.WaitForExit()
+
+    $objetRenduRapport = $null
+    try { $objetRenduRapport = $tacheSortieRapport.Result.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRenduRapport = $null }
+    if ($processusRapport.ExitCode -ne 0 -or (-not $objetRenduRapport) -or (-not $objetRenduRapport.ok)) {
+      $detailRapport = ''
+      if ($objetRenduRapport -and $objetRenduRapport.erreur) { $detailRapport = [string]$objetRenduRapport.erreur }
+      if (-not $detailRapport) { $detailRapport = $tacheErreurRapport.Result.Trim() }
+      if (-not $detailRapport) { $detailRapport = 'code de sortie ' + $processusRapport.ExitCode }
+      throw ('rendre-gabarit.js : ' + $detailRapport)
+    }
+    $contenuHtmlRapport = [string]$objetRenduRapport.blocs.contenu
+  } finally {
+    try {
+      if ($processusRapport -and -not $processusRapport.HasExited) { $processusRapport.Kill() }
+      if ($processusRapport) { $processusRapport.Dispose() }
+    } catch { }
+  }
+
+  $cheminHtmlRapport = Join-Path $dossierSortieRapport ($nomBaseRapport + '-rapport.html')
+  [System.IO.File]::WriteAllText($cheminHtmlRapport, $contenuHtmlRapport, (New-Object System.Text.UTF8Encoding($false)))
+  return $cheminHtmlRapport
+}
+
 function Show-SzhResultatPreproc($Resultat) {
-  if ($Resultat.ok) {
+  $refusePreproc = [bool]($Resultat.stats -and $Resultat.stats.refus)
+  if ($Resultat.ok -and -not $refusePreproc) {
     Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
+    # Ligne compacte gardee en plus du rapport HTML (ci-dessous) : un repli lisible si son
+    # rendu echoue pour une raison ou une autre, jamais la seule trace de ce qui s'est passe.
     if ($Resultat.stats) {
       Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.stats' @(($Resultat.stats | ConvertTo-Json -Compress)))
     }
-    if ($Resultat.dossier) {
-      $script:preprocDossierCourant = $Resultat.dossier
-      $script:boutonPreprocDossier.Enabled = $true
-    }
+  } elseif ($refusePreproc) {
+    $texteRefusPreproc = [string]$Resultat.stats.message
+    if (-not $texteRefusPreproc) { $texteRefusPreproc = (T 'lanceur.preproc.echec.inconnu') }
+    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteRefusPreproc))
   } else {
     $texteEchecPreproc = $Resultat.texte
     if (-not $texteEchecPreproc) { $texteEchecPreproc = (T 'lanceur.preproc.echec.inconnu') }
     Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteEchecPreproc))
+  }
+  # Le rapport HTML se rend dans les DEUX cas (refus compris, §8 : « page courte, le
+  # message et rien d'autre ») -- seul un vrai echec technique (WSL absente, CLI introuvable,
+  # processus tue) n'a rien a rendre : $Resultat.ok reste faux dans ce cas-la seulement.
+  if ($Resultat.ok -and $Resultat.stats) {
+    try {
+      $cheminHtmlPreproc = New-SzhRapportManuscrit -Stats $Resultat.stats -Produit $Resultat.produit
+      if ($cheminHtmlPreproc -and (Test-Path -LiteralPath $cheminHtmlPreproc)) {
+        Start-Process $cheminHtmlPreproc
+      }
+    } catch {
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.erreur' @($_.Exception.Message))
+    }
+  }
+  if ($Resultat.ok -and $Resultat.dossier) {
+    $script:preprocDossierCourant = $Resultat.dossier
+    $script:boutonPreprocDossier.Enabled = $true
   }
 }
 
