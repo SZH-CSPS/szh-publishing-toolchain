@@ -395,6 +395,51 @@ test('nettoyer_mise_en_forme : descend dans les cellules d\'un tableau, à toute
     assert.strictEqual(fCellule.forme.couleur, null, 'la couleur doit disparaître en cellule aussi');
   });
 
+// La trace d'un paragraphe de cellule porte un `.source` LOCAL à sa cellule (0, 1, …) : deux
+// cellules distinctes d'un même tableau produisent donc chacune un « paragraphe 0 », jamais
+// ancrable et impossible à distinguer dans le rapport HTML (mesuré : 5 lignes « paragraphe 0 »
+// sur 3_VF_Chanier-Delorme_Article CSPS_290626.docx, toutes en cellule). Décision : la trace
+// porte le `.source` du TABLEAU porteur, avec `dans_tableau: true`.
+//
+// Sabotage minimal : dans _nettoyer_paragraphe(), remplacer
+// `source = source_tableau if source_tableau is not None else paragraphe.source` par
+// `source = paragraphe.source` (revient à la position locale) — les deux assertions sur
+// `ligne.source`/`ligne.dans_tableau` rougissent (les deux paragraphes de cellule rendent
+// `0` au lieu de `1`, la source du tableau).
+
+test('nettoyer_mise_en_forme : la trace d\'un paragraphe de cellule porte le source du TABLEAU porteur, pas sa position locale',
+  { skip: sansPython }, () => {
+    const celluleGrasse = (texte) => ({
+      colspan: 1, rowspan: 1, entete: false,
+      blocs: [{
+        type: 'paragraphe', source: 0, style: '', niveau_declare: 0, alignement: '', retrait: 0,
+        fragments: [{ texte, forme: { gras: true } }]
+      }]
+    });
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante du '
+          + 'document, largement suffisant pour ce test.', { taille: 20 }),
+        {
+          type: 'tableau', source: 1, page: null,
+          rangees: [[celluleGrasse('Première cellule en gras intégral'),
+                     celluleGrasse('Seconde cellule en gras intégral')]]
+        }
+      ]
+    };
+    const { formatage } = diagnostiquer(doc);
+    const lignesCellule = formatage.trace.filter(
+      (l) => l.portee === 'paragraphe' && Array.isArray(l.signalements) && l.signalements.length);
+    assert.strictEqual(lignesCellule.length, 2, 'les deux cellules doivent signaler leur gras intégral');
+    for (const ligne of lignesCellule) {
+      assert.strictEqual(ligne.source, 1,
+        'la trace doit porter le source du TABLEAU (1), pas la position locale (0) en cellule : '
+        + JSON.stringify(ligne));
+      assert.strictEqual(ligne.dans_tableau, true, 'dans_tableau doit être vrai en cellule');
+    }
+  });
+
 // Même défaut, côté notes (document.notes, devenu un dict{id: [bloc, ...]} le 19.09.2026).
 //
 // Sabotage minimal : dans nettoyer_mise_en_forme(), retirer la boucle

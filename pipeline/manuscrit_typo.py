@@ -16,40 +16,27 @@
 # jamais besoin d'exister au moment où CE fichier est écrit ; elle doit seulement exister
 # À L'EXÉCUTION, avec cette forme.
 #
-# Révision du 19.09.2026 (§4 du contrat) : `Fragment.note` (int|None, `texte == ''` quand
-# rempli) porte l'appel de note (w:footnoteReference/w:endnoteReference). Un fragment à note
-# est une unité OPAQUE, au même titre qu'une image : jamais envoyé au filtre, jamais reconstruit,
-# réinséré tel quel à sa place (voir _partitionner, _fragment_depuis). Lu via `getattr(...,
-# 'note', None)`, jamais un accès direct `f.note` : un Fragment-like plus ancien qui ne le
-# porterait pas encore ne doit pas lever `AttributeError` ici.
+# `Fragment.note` (int|None, `texte == ''` quand rempli, §4 du contrat) porte l'appel de note
+# (w:footnoteReference/w:endnoteReference). Un fragment à note est une unité OPAQUE, au même
+# titre qu'une image : jamais envoyé au filtre, réinséré tel quel à sa place (voir
+# _partitionner, _fragment_depuis). Lu via `getattr(..., 'note', None)`, jamais un accès
+# direct `f.note` : un Fragment-like plus ancien qui ne le porterait pas encore ne doit pas
+# lever `AttributeError` ici.
 #
-# ── Ce qui a été mesuré avant d'écrire une ligne (18.09.2026, WSL SZH-Publishing) ──────────
+# Mesures qui gouvernent ce module :
 #
-# 1. Piper des octets JSON à travers `wsl.exe -d SZH-Publishing -- pandoc ...` (arguments en
-#    tableau, jamais `-e bash -lc`) rend un flux UTF-8 PARFAITEMENT PROPRE — vérifié octet
-#    par octet (l'insécable U+00A0 ressort en \xc2\xa0, sans troncature ni ré-encodage). La
-#    mise en garde du contrat sur « la sortie de wsl.exe n'est pas de l'UTF-8 propre » se
-#    vérifie sur `wsl -l -v` (une commande native Windows qui parle UTF-16), PAS sur la
-#    sortie d'un programme Linux relayée telle quelle par un pipe : ce n'est pas la même
-#    situation, et ce module n'a pas besoin de filtrer le flux.
-#
-# 2. En revanche l'exemple « `--` devenu insécable + demi-cadratin » du contrat vient de
-#    pandoc LUI-MÊME (l'extension « smart » du lecteur Markdown, qui convertit `--` en tiret
-#    demi-cadratin AVANT même que szh-typographie.lua ne voie le document) — pas du filtre.
-#    Un AST construit à la main (comme ici, en `-f json`, sans jamais passer par le lecteur
-#    Markdown) NE bénéficie PAS de cette conversion : un double tiret ASCII tapé tel quel
-#    dans Word reste tel quel. Ce que le filtre traite bien LUI-MÊME, vérifié séparément : un
-#    vrai tiret cadratin (U+2014, ce que l'autocorrection de Word pose réellement) devient
-#    insécable + demi-cadratin. La différence ne se voit que sur `--` littéral, un cas rare
-#    dans un manuscrit Word réel — signalé à Robin, pas corrigé ici en silence : ce serait
-#    réinventer un bout de l'extension « smart » de pandoc en Python.
-#
-# 3. Les guillemets droits (") non appariés ne sont PAS convertis par le filtre — il le dit
-#    lui-même (code C2, « rien ne dit lequel ouvre et lequel ferme ») — alors que des
-#    guillemets COURBES (le résultat le plus courant de l'autocorrection Word, “ ”) sont bien
-#    reconnus et deviennent des chevrons. Ce module n'a pas besoin de construire de noeud
-#    Quoted pandoc : les guillemets courbes suffisent, et les droits sont un cas signalé par
-#    le filtre lui-même, pas une régression d'ici.
+# - Piper des octets JSON à travers `wsl.exe -d SZH-Publishing -- pandoc ...` (arguments en
+#   tableau, jamais `-e bash -lc`) rend un flux UTF-8 parfaitement propre — vérifié octet par
+#   octet. La mise en garde du contrat sur « la sortie de wsl.exe n'est pas de l'UTF-8 propre »
+#   vaut pour `wsl -l -v` (UTF-16), pas pour un programme Linux relayé tel quel par un pipe.
+# - `--` littéral ne devient PAS insécable + demi-cadratin : cette conversion vient de
+#   l'extension « smart » du lecteur Markdown de pandoc, jamais atteinte par un AST construit
+#   à la main (`-f json`). Un vrai cadratin (U+2014, ce que pose l'autocorrection Word) DEVIENT
+#   bien insécable + demi-cadratin — le filtre le traite lui-même. La différence ne se voit
+#   que sur `--` tapé tel quel, un cas rare : signalé, pas réimplémenté en Python.
+# - Les guillemets droits non appariés ne sont pas convertis (le filtre le dit, code C2) ;
+#   les guillemets courbes de l'autocorrection Word le sont, en chevrons — ce module n'a donc
+#   jamais besoin de construire de nœud Quoted pandoc.
 
 import difflib
 import json

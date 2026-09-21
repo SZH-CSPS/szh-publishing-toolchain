@@ -193,6 +193,31 @@ test('(a) le JSON minimal rend du HTML bien formé, en français et en allemand'
   }
 });
 
+// Un paragraphe de cellule signalé (gras intégral) porte désormais le `.source` du TABLEAU
+// porteur (manuscrit_modele.py, §5.2 : jamais la position locale à la cellule, qui produisait
+// un « paragraphe 0 » indiscernable d'une cellule à l'autre) et `dans_tableau: true` -- la
+// page doit le dire, en clair, à côté du numéro.
+test('(a bis) un paragraphe de cellule (dans_tableau) affiche la mention à côté de son numéro', () => {
+  const rapport = JSON.parse(JSON.stringify(RAPPORT_MINIMAL));
+  rapport.decisions.formatage.trace = [
+    { portee: 'paragraphe', source: 6, decision: 'nettoye', signalements: ['gras intégral'],
+      motif: 'gras intégral conservé, non retenu comme titre', dans_tableau: true }
+  ];
+  const htmlFr = rendre(rapport, 'revue');
+  assertBienForme(htmlFr, 'cellule/revue');
+  assert.match(htmlFr, /<td>6 \(dans un tableau\)<\/td>/,
+    'revue : la mention « (dans un tableau) » doit suivre le source du tableau');
+  const htmlDe = rendre(rapport, 'zeitschrift');
+  assertBienForme(htmlDe, 'cellule/zeitschrift');
+  assert.match(htmlDe, /<td>6 \(in einer Tabelle\)<\/td>/,
+    'zeitschrift : la mention allemande doit suivre le source du tableau');
+
+  // Un paragraphe de PREMIER NIVEAU (dans_tableau absent/faux) ne porte jamais cette mention --
+  // sinon elle apparaîtrait partout, plus aucun signal.
+  assert.doesNotMatch(rendre(RAPPORT_MINIMAL, 'revue'), /dans un tableau/,
+    'un paragraphe de premier niveau ne doit jamais porter la mention « dans un tableau »');
+});
+
 test('(b) un refus rend une page COURTE, jamais la page complète', () => {
   const html = rendre(RAPPORT_REFUS, 'revue');
   assertBienForme(html, 'refus');

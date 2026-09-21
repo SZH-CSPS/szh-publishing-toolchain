@@ -4,25 +4,21 @@
 # nettoyeur de manuscrit (article). Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md,
 # §7.
 #
-# ⚠ Révision du 19.09.2026 : les familles LEXICALES et ÉDITORIALES (langage épicène,
-# vocabulaire du handicap, casse maison, liaison et/&, citation directe, nom des éditions)
-# ont déménagé vers Vale — pipeline/vale/ (règles YAML) et pipeline/manuscrit_vale.py (le
-# pont). Ce module ne garde que le STRUCTUREL, ce qu'un motif lexical ne peut pas voir :
-# longueurs (article, résumé, titres), niveaux de titre, cohérence d'une bibliographie déjà
-# extraite (ordre, troncature, année dupliquée), accessibilité, style nominal allemand. La
-# frontière est la même que celle du §7 du contrat : « chaque couche de règles, un seul
-# propriétaire ». Voir pipeline/vale/LISEZMOI.md pour ce qui a déménagé et pourquoi.
+# Les familles LEXICALES et ÉDITORIALES (langage épicène, vocabulaire du handicap, casse
+# maison, liaison et/&, citation directe, nom des éditions) vivent dans Vale — pipeline/vale/
+# (règles YAML) et pipeline/manuscrit_vale.py (le pont). Ce module ne garde que le
+# STRUCTUREL, ce qu'un motif lexical ne peut pas voir : longueurs (article, résumé, titres),
+# niveaux de titre, cohérence d'une bibliographie déjà extraite (ordre, troncature, année
+# dupliquée), accessibilité, style nominal allemand — chaque couche de règles, un seul
+# propriétaire (§7 du contrat). Voir pipeline/vale/LISEZMOI.md pour le détail.
 #
-# ⚠ Révision du 21.09.2026 (branchement de pipeline/manuscrit_biblio.py dans la CLI) :
-# APA.OrdreAlphabetiqueBiblio est RETIRÉE de ce catalogue. `manuscrit_biblio.verifier_ordre()`
-# la recouvre entièrement et fait STRICTEMENT plus (APA.OrdreBiblio, désormais posée sur une
-# bibliographie RÉELLEMENT extraite — nom, année ET suffixe a/b/c — plutôt que sur les deux
-# seuls champs (nom, année) que cette CLI savait deviner par regex avant ce lot). Vérifié une
-# à une, faute d'un « retrait en bloc » : APA.NombreAuteursListes.{Revue,Zeitschrift} (la
-# troncature à 20 auteurs) et APA.TroisAuteursPlus (le point final de « et al. ») et
-# APA.MemeAuteurMemeAnnee (l'espace parasite entre l'année et sa lettre) ne sont couvertes par
-# AUCUNE règle de manuscrit_biblio.py — trois concernent une FORME (troncature, ponctuation,
-# espace), jamais une comparaison entre référence et citation ; elles RESTENT ici.
+# APA.OrdreAlphabetiqueBiblio n'est PAS dans ce catalogue : `manuscrit_biblio.verifier_ordre()`
+# la recouvre entièrement et fait strictement plus (nom, année ET suffixe a/b/c, sur une
+# bibliographie réellement extraite). APA.NombreAuteursListes.{Revue,Zeitschrift} (troncature
+# à 20 auteurs), APA.TroisAuteursPlus (point final de « et al. ») et APA.MemeAuteurMemeAnnee
+# (espace parasite entre l'année et sa lettre) RESTENT ici : ce sont des questions de FORME,
+# jamais une comparaison entre référence et citation, qu'aucune règle de manuscrit_biblio.py
+# ne couvre.
 #
 # Ce module ne connaît NI Word NI OpenDocument (§3 : « Ne sait rien de : les formats »). Il
 # reçoit un Contexte — un dict JSON simple, jamais les classes de manuscrit_modele.py — et ne

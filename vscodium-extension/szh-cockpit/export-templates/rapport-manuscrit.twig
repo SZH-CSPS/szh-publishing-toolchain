@@ -37,7 +37,9 @@
    vue.titres.retrogrades[]         {source, style, motif}
    vue.titres.signal_inhabituel     bool ; vue.titres.total_retenus
    vue.titres.rabattus_niveau3      int ; vue.titres.rejet_contrainte bool
-   vue.gras_non_promus[]            {source, motif}
+   vue.gras_non_promus[]            {source, motif, dans_tableau} -- source d'un paragraphe de
+                                    cellule = celui du TABLEAU porteur (jamais une position
+                                    locale à la cellule) ; dans_tableau le dit
    vue.images[]                     {nom, source, largeur_px, hauteur_px, alt_absent,
                                      niveau, mesure, min, conseille}
    vue.bibliographie                null tant que non branché, sinon {stats{...}}
@@ -206,7 +208,7 @@ mark { background: var(--erreur-clair); padding: 0 2px; }
 <p>{% if produit == 'zeitschrift' %}Prüfen Sie, ob es sich nicht um eine Zwischenüberschrift handelt.{% else %}Vérifiez si ce n’est pas un intertitre.{% endif %}</p>
 <table>
 <tr><th>{% if produit == 'zeitschrift' %}Absatz{% else %}Paragraphe{% endif %}</th><th>{% if produit == 'zeitschrift' %}Begründung{% else %}Motif{% endif %}</th></tr>
-{% for g in vue.gras_non_promus %}<tr><td>{{ g.source }}</td><td>{{ g.motif|e }}</td></tr>{% endfor %}
+{% for g in vue.gras_non_promus %}<tr><td>{{ g.source }}{% if g.dans_tableau %}{% if produit == 'zeitschrift' %} (in einer Tabelle){% else %} (dans un tableau){% endif %}{% endif %}</td><td>{{ g.motif|e }}</td></tr>{% endfor %}
 </table>
 {% endif %}
 {% if vue.titres.rabattus_niveau3 %}<p class="section-vide">{% if produit == 'zeitschrift' %}{{ vue.titres.rabattus_niveau3 }} Gruppe(n) auf Ebene 3 zurückgestuft (mehr als drei erkannte Ebenen).{% else %}{{ vue.titres.rabattus_niveau3 }} groupe(s) rabattu(s) au niveau 3 (plus de trois niveaux détectés).{% endif %}</p>{% endif %}

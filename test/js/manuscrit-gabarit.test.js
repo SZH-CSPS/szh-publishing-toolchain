@@ -1600,10 +1600,10 @@ test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque 
     try {
       const sortie = path.join(base, 'sortie.docx');
       const spec = specDocument([
-        paragraphe([fragment('Premier paragraphe.')]),
-        paragraphe([fragment('Second paragraphe.')]),
-        tableau([[cellule('A1')]]),
-        paragraphe([fragment('Troisième paragraphe.')]),
+        paragraphe([fragment('Premier paragraphe.')], { source: 0 }),
+        paragraphe([fragment('Second paragraphe.')], { source: 1 }),
+        tableau([[cellule('A1')]], { source: 2 }),
+        paragraphe([fragment('Troisième paragraphe.')], { source: 3 }),
       ]);
       const resultat = ecrireDepuisSpec(spec, sortie);
       assert.strictEqual(resultat.correspondance.length, 3,
@@ -1617,6 +1617,33 @@ test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque 
           'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
           + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
       }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// `correspondance.source` doit être le vrai `Paragraphe.source` du bloc d'origine, pas sa
+// position dans la liste `blocs` reçue par ecrire() : la CLI retire les paragraphes d'en-tête
+// de `document.blocs` AVANT d'appeler ecrire() (§5.5), donc la liste que ce module reçoit est
+// déjà un SOUS-ENSEMBLE, avec des trous. Ici, les deux paragraphes portent `source` 5 et 9
+// (comme si les indices 0-4 et 6-8 avaient déjà été retirés) alors qu'ils occupent les
+// positions 0 et 2 de la liste (position 1 = tableau) — un remappage par position rendrait
+// 0 et 2, jamais 5 et 9.
+test('manuscrit_gabarit.ecrire : correspondance.source est Paragraphe.source, pas une position de liste',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Avant le tableau.')], { source: 5 }),
+        tableau([[cellule('A1')]], { source: 6 }),
+        paragraphe([fragment('Après le tableau.')], { source: 9 }),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      const sources = resultat.correspondance.map((c) => c.source).sort((a, b) => a - b);
+      assert.deepStrictEqual(sources, [5, 9],
+        'correspondance.source doit porter les Paragraphe.source 5 et 9, jamais des positions '
+        + 'de liste (0 et 2) : obtenu ' + JSON.stringify(sources));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }

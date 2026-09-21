@@ -6,140 +6,62 @@
 # ici — ni classement de titre, ni nettoyage de mise en forme : seulement de la lecture.
 # Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §10, §11.
 #
-# Repris SANS LES MODIFIER de pronto_docx.py (interdiction du chantier — Robin valide ce
-# lecteur la semaine du 22.09.2026) : la résolution de style (charger_styles / pstyle /
-# resoudre_style), le comptage des marqueurs de page (compter_marqueurs_page) et la liste des
-# blocs de premier niveau (blocs_du_corps). Les reprendre TELS QUELS plutôt que les récrire
-# ici est ce qui rend projeter_pronto() fiable par construction : les deux lecteurs appellent
-# alors littéralement le même code pour résoudre un style ou une page, et ne peuvent plus
-# diverger sur ce point précis. Idem pour niveau_depuis_style() et normaliser(), repris de
-# pronto_modele.py. Le reste — runs, mise en forme DIRECTE, hyperliens, images DrawingML,
-# fusions verticales, révisions, commentaires, notes de bas de page — est écrit ici, parce
-# que pronto_docx.py ne le lit pas.
+# Repris SANS LES MODIFIER de pronto_docx.py : résolution de style (charger_styles/pstyle/
+# resoudre_style), comptage des marqueurs de page (compter_marqueurs_page), liste des blocs
+# de premier niveau (blocs_du_corps) — les deux lecteurs appellent le même code, donc ne
+# peuvent pas diverger sur ces points. Idem pour niveau_depuis_style()/normaliser(), repris
+# de pronto_modele.py. Le reste (runs, mise en forme directe, hyperliens, images DrawingML,
+# fusions verticales, révisions, commentaires, notes) est écrit ici : pronto_docx.py ne le lit
+# pas.
 #
 # stdlib uniquement : zipfile, xml.etree.ElementTree, re, json, hashlib — pas de
 # python-docx, pas de lxml (§2 du contrat).
 #
-# ── Ce que le contrat ne précisait pas et qu'il a fallu décider ────────────────────────────
+# Pièges mesurés sur le corpus réel, à ne pas repayer :
 #
-# 1. Fragment.texte et la normalisation. ⚠ Révision du 19.09.2026 (défaut constaté sur le
-#    corpus réel — voir le rapport de chantier) : une VERSION ANTÉRIEURE de ce module
-#    appliquait ICI les trois substitutions de tiret de pronto_modele.normaliser() (–, —, ‑
-#    -> '-') à CHAQUE Fragment.texte. Mesuré sur lot-A : 4 cadratins et 89 demi-cadratins
-#    RÉELS, dans le texte visible d'un manuscrit, dégradés en simple trait d'union dès la
-#    LECTURE — avant même que le filtre typographique (règle T2 de szh-typographie.lua, qui
-#    décide JUSTEMENT entre eux) ait pu les voir. « pp. 12–25 » devenait « pp. 12-25 », sans
-#    aucun moyen de revenir en arrière plus loin dans la chaîne. Ces substitutions sont
-#    SUPPRIMÉES : Fragment.texte porte désormais le tiret RÉEL du document, tel quel — c'est
-#    l'écrivain (manuscrit_gabarit.py) et le pont typographique, pas ce lecteur, qui décident
-#    quoi en faire. `projeter_pronto()` continue, lui, à rappeler pronto_modele.normaliser()
-#    sur la concaténation ENTIÈRE du paragraphe (texte_paragraphe() plus bas) : c'est là, et
-#    SEULEMENT là, que la substitution de tiret doit avoir lieu, pour rester l'exact miroir de
-#    pronto_docx.lire() (§3, « dette assumée ») — la projection, contrairement au modèle
-#    riche, n'a jamais eu vocation à garder le tiret réel.
-#
-#    Le compactage d'espaces de pronto_modele.normaliser() (' '.join(t.split())), lui, n'a
-#    JAMAIS été appliqué par Fragment séparé, pour une raison qui reste valable : un mot coupé
-#    par Word exactement sur une espace de run («Bonjour[FIN DE RUN] le monde») perdrait cette
-#    espace à la concaténation, ce qui casserait le contrôle n°1 du §11 (reconstruction exacte
-#    d'un mot coupé). Voir _texte_depuis_enfants().
-#
-# 2. Les ancrages flottants qui ne portent aucune image. Mesuré sur le corpus réel
-#    (tmp/corpus-relecture/lot-A/4_La méthode Flip Flap.docx) : ses 10 « ancrages flottants »
-#    sont des RECTANGLES et des GROUPES de formes (annotations posées sur une capture
-#    d'écran), AUCUN ne porte de <a:blip> — ce ne sont pas des images au sens du §4 (rien à
-#    reposer). Ce module ne leur fabrique donc pas d'Image : il les recense
-#    ('forme_vectorielle_ignoree') et le déclare (§10), plutôt que de mentir sur un objet
-#    Image sans octets ou de les faire disparaître en silence.
-#
-#    ⚠ Pour les voir DU TOUT, il a fallu déplier mc:AlternateContent (voir _enfants_utiles) :
-#    ces 10 ancrages sont, mesuré, TOUS enveloppés dans un mc:AlternateContent deux niveaux
-#    sous leur w:r (<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing>…). Un
-#    premier jet de ce module, qui ne regardait que les enfants DIRECTS d'un w:r, ne les
-#    voyait pas — pas même comme « forme vectorielle ignorée » : ils disparaissaient sans
-#    aucun avertissement, exactement le silence que le §10 interdit. Corrigé avant livraison,
-#    voir _enfants_utiles ci-dessous ; mc:Fallback (la même forme, redite en VML) est
-#    délibérément ignoré pour ne pas compter chaque dessin deux fois.
-#
-#    ⚠ Correction du 18.09.2026 (revue adverse) : cette hypothèse — « mc:Fallback ne fait que
-#    redire la même forme » — est fausse pour 4 des 10 ancrages de ce même fichier. Leur
-#    Fallback porte un VRAI groupe de 5 images embarquées (<v:imagedata>) que leur Choice, lui,
-#    n'a pas (aucun <a:blip>). Ignorer tout le Fallback les aurait laissées hors de TOUT
-#    recensement. Voir _images_fantomes_du_repli : on revisite le Fallback uniquement quand la
-#    Choice correspondante n'a trouvé aucune image propre, pour ne rien compter deux fois.
-#
-# 3. Les images VML héritées (w:pict / v:imagedata) et les zones de texte, en-têtes, pieds de
-#    page et champs Word (fldSimple/fldChar) : couverts par pronto_docx.py / docx-meta.py pour
-#    le corpus des 486 Word HÉRITÉS, mais un manuscrit d'autrice ARRIVANT aujourd'hui est du
-#    DrawingML moderne (mesuré sur les onze fichiers de lot-A et sur le gabarit livré). Ce
-#    module ne les lit pas et le RECENSE (§10) plutôt que de dupliquer cette lecture pour un
-#    cas que le corpus ne présente pas aujourd'hui.
-#
-# 4. projeter_pronto() ne re-lit AUCUN XML : il part du Document déjà construit par lire(),
-#    dont chaque champ a été délibérément calculé pour coïncider avec pronto_docx.lire() (même
-#    resoudre_style, même niveau_depuis_style, même règle de page — voir plus haut). Deux
-#    clauses bornent cette égalité, aucune n'étant exercée par le gabarit livré ni par le
-#    corpus réel (mesuré, les deux à zéro) : un document qui utiliserait une fusion verticale
-#    (w:vMerge) — pronto_docx.lire() ne masque JAMAIS une telle cellule (bogue latent de ce
-#    fichier, non touché ici), alors que le Document riche masque la continuation et augmente
-#    rowspan de la cellule de départ, comme le §4 du contrat l'exige explicitement pour CE
-#    lecteur — ou une image VML héritée (point 3 ci-dessus, absente du Document riche donc
-#    absente de la projection, alors que pronto_docx.lire() la lirait). ⚠ Révision du
-#    19.09.2026 : ce n'est plus vrai pour toute image VML — voir le point 5 ci-dessous, qui
-#    en récupère désormais une partie ; projeter_pronto(), lui, ne s'en préoccupe toujours
-#    pas : images_paragraphe() ne regarde que `f.image`, quelle que soit sa provenance.
-#
-# 5. Défauts corrigés le 19.09.2026, mesurés sur le corpus réel ou constatés en lisant le XML
-#    (revue de chantier, tous documentés en détail au fil du fichier ci-dessous) :
-#      - w:noBreakHyphen rendait '-' (trait d'union banal) : rend désormais U+2011 (le VRAI
-#        trait d'union insécable), distinct d'un tiret ordinaire — voir _texte_depuis_enfants.
-#      - w:tab et w:br/w:cr rendaient tous trois une simple espace, ce qui rendait MORTE la
-#        logique de nettoyer_mise_en_forme() qui cherche un '\t' en tête ou un '\n' en queue
-#        de paragraphe (elle ne pouvait jamais les trouver). Ce lecteur porte maintenant le
-#        VRAI caractère ('\t' / '\n') — voir _texte_depuis_enfants et la note sur ce choix.
-#      - w:sym (Insertion > Symbole) n'était pas lu du tout : silence total sur un caractère
-#        pourtant visible à l'écran. Voir _rendu_sym().
-#      - w:fldSimple n'était pas déplié : l'avertissement 'champs-word-non-resolus' prétendait
-#        lire sa valeur affichée, mais _runs_de_paragraphe ne descendait jamais dedans. Corrigé
-#        en l'ajoutant à _CONTENEURS_PASSE_PLAT (w:fldChar, lui, n'a jamais eu ce problème : le
-#        texte affiché d'un champ à w:fldChar vit dans un w:r ordinaire, entre les marqueurs
-#        'separate' et 'end', déjà lu comme n'importe quel texte).
-#      - w:sdt de niveau BLOC (un contrôle de contenu enveloppant un ou plusieurs w:p entiers,
-#        directement enfant du corps ou d'une cellule) faisait disparaître ces paragraphes
-#        SANS AVERTISSEMENT : blocs_du_corps() de pronto_docx.py (repris tel quel, §3) ne
-#        reconnaît que w:p/w:tbl comme enfants directs du corps, jamais w:sdt. Voir
-#        _deplier_sdt_niveau_bloc(), appelée sur le corps et sur chaque conteneur de bloc
-#        AVANT tout parcours — le cas de niveau RUN (un sdt enveloppant des w:r à l'intérieur
-#        d'un paragraphe) était déjà couvert par _CONTENEURS_PASSE_PLAT.
-#      - word/endnotes.xml n'était jamais lu : les notes de fin disparaissaient purement et
-#        simplement. Lu maintenant comme les notes de bas de page, avec un identifiant décalé
-#        au-delà du plus grand identifiant de footnote (voir _decalage_notes_fin plus bas) —
-#        Document.notes devient un dict{id: contenu} pour que les deux familles cohabitent
-#        sans jamais se percuter (§4 du contrat, révision du 19.09.2026).
-#      - Le décompte d'images VML héritées comptait les OCCURRENCES de v:imagedata, pas les
-#        identifiants DISTINCTS : un groupe qui référence 5 fois la même image (répétitions
-#        d'un même r:id, mesuré réel) comptait 5 images ignorées au lieu d'une. Corrigé, ET ces
-#        images sont maintenant RÉCUPÉRÉES quand leur relation résout vers un média présent
-#        dans l'archive — voir _images_depuis_vml().
-#      - Image.source portait l'indice du w:r (celui de Fragment.source), pas celui du w:p
-#        porteur dans le corps : sur 6 rapports d'images sur 7, source valait 0 pour toutes.
-#        Corrigé (voir `indice_paragraphe` dans _fragments_de_run) : Fragment.source RESTE
-#        l'indice du run (§4 du contrat, inchangé), seul Image.source change de référentiel.
-#      - _liste_depuis() ne lisait qu'un w:numPr posé DIRECTEMENT sur le paragraphe, jamais un
-#        w:numPr hérité d'un style de paragraphe (via w:pStyle -> ... -> w:pPr/w:numPr) : une
-#        autrice qui applique un style de liste sans reposer numPr sur chaque paragraphe voyait
-#        sa liste disparaître. Résolu par la même chaîne de styles que Fragment.effectif, voir
-#        _index_styles_complet() et _numpr_depuis_style().
-#      - w:numId="0" (convention Word : « retire explicitement la numérotation héritée d'un
-#        style ») était traité comme un numId ordinaire de format indéterminé, jamais comme
-#        « pas de liste » : corrigé dans _liste_depuis().
-#      - _compter_revisions() ne comptait que document.xml : un suivi de modifications confiné
-#        aux notes de bas de page ou de fin n'était pas détecté. Compte désormais aussi
-#        footnotes.xml et endnotes.xml.
-#      - Fragment.effectif (§4 du contrat) : la mise en forme EFFECTIVEMENT appliquée — directe
-#        sinon style de caractère (w:rStyle) sinon chaîne des styles de paragraphe (w:pStyle ->
-#        w:basedOn -> ...) sinon w:docDefaults/w:rPrDefault. Voir _index_styles_complet(),
-#        _chaine_styles() et _forme_effective(). Idem pour Paragraphe.alignement_effectif.
+# - `Fragment.texte` garde le TIRET RÉEL du document (–/—/‑), jamais normalisé ici — un
+#   premier jet appliquait les substitutions de pronto_modele.normaliser() à la lecture et
+#   dégradait cadratins/demi-cadratins en simple trait d'union avant que le filtre
+#   typographique (règle T2) ait pu les voir. Seul `projeter_pronto()` normalise, en miroir
+#   exact de pronto_docx.lire(). Le compactage d'espaces, lui, n'est jamais appliqué par
+#   Fragment séparé (`_texte_depuis_enfants()`) : un mot coupé pile sur une espace de run
+#   perdrait cette espace à la concaténation.
+# - Un ancrage flottant sans `<a:blip>` (rectangle, groupe de formes) n'est pas une image :
+#   recensé (`forme_vectorielle_ignoree`), jamais fabriqué en Image vide. Beaucoup sont
+#   enveloppés dans `mc:AlternateContent` deux niveaux sous leur `w:r` — sans dépliage
+#   (`_enfants_utiles`), ils disparaissent sans le moindre avertissement. `mc:Fallback` est
+#   ignoré par défaut (même forme que `mc:Choice`, compter les deux doublerait), SAUF quand la
+#   Choice ne porte aucune image propre : son Fallback peut alors porter un vrai groupe
+#   `<v:imagedata>` que la Choice n'a pas (`_images_fantomes_du_repli`).
+# - Les images VML héritées, zones de texte, en-têtes/pieds et champs Word restent hors de ce
+#   module (couverts par pronto_docx.py/docx-meta.py pour le corpus hérité) : un manuscrit
+#   arrivant aujourd'hui est du DrawingML moderne. Recensé (§10), jamais lu en double.
+# - `projeter_pronto()` ne relit aucun XML : il part du Document déjà construit et diverge de
+#   pronto_docx.lire() sur deux points seulement, aucun exercé par le corpus réel — une fusion
+#   verticale (w:vMerge, masquée ici, jamais par pronto_docx.py) et une image VML non résolue.
+# - `w:noBreakHyphen` rend U+2011 (jamais un simple `-`) ; `w:tab`/`w:br`/`w:cr` rendent le
+#   vrai caractère (`'\t'`/`'\n'`), pas une espace — sinon le nettoyage §5.2 (qui cherche ces
+#   caractères en tête/queue de paragraphe) ne trouve jamais rien. `w:sym` est lu
+#   (`_rendu_sym`). `w:fldSimple` est déplié comme conteneur passe-plat (`w:fldChar` n'a
+#   jamais eu ce problème). `w:sdt` de niveau BLOC est déplié AVANT tout parcours
+#   (`_deplier_sdt_niveau_bloc`) : sans ça, ces paragraphes disparaissent sans avertissement.
+# - `word/endnotes.xml` est lu comme les notes de bas de page, identifiant décalé au-delà du
+#   plus grand id de footnote (`_decalage_notes_fin`) ; `Document.notes` est un
+#   `dict{id: contenu}`, jamais une liste plate.
+# - Le décompte d'images VML comptait les OCCURRENCES de `v:imagedata`, pas les identifiants
+#   DISTINCTS (un même r:id répété gonflait le compte) ; ces images sont récupérées quand leur
+#   relation résout vers un média présent dans l'archive (`_images_depuis_vml`).
+# - `Image.source` porte l'indice du `w:p` PORTEUR, jamais celui du `w:r` (qui reste
+#   `Fragment.source`) — voir `indice_paragraphe` dans `_fragments_de_run`.
+# - Une liste se résout aussi depuis un `numPr` HÉRITÉ du style de paragraphe
+#   (`_index_styles_complet`/`_numpr_depuis_style`), pas seulement posé directement ;
+#   `numId="0"` (Word : « retire la numérotation héritée ») rend `None`, jamais un format
+#   indéterminé.
+# - `_compter_revisions()` compte aussi footnotes.xml/endnotes.xml, pas seulement document.xml.
+# - `Fragment.effectif`/`Paragraphe.alignement_effectif` (§4 du contrat) : mise en forme
+#   EFFECTIVE — directe, sinon style de caractère (w:rStyle), sinon chaîne de styles de
+#   paragraphe (w:pStyle → w:basedOn → …), sinon docDefaults (`_index_styles_complet`,
+#   `_chaine_styles`, `_forme_effective`).
 
 import hashlib
 import json

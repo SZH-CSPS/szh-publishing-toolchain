@@ -15,111 +15,54 @@
 #
 # stdlib seule : aucune dépendance nouvelle (§2 du contrat).
 #
-# ── Enchaînement (§8, dans l'ordre imposé par la mission) ──────────────────────────────────
-#   lire -> reconnaître le cas -> classer les titres -> nettoyer la mise en forme ->
-#   normaliser la typographie -> passer les règles (structurel + Vale + bibliographie) ->
-#   écrire le gabarit -> annoter le .docx écrit -> écrire le rapport.
+# Enchaînement (§8) : lire -> reconnaître le cas -> reconnaître l'en-tête (et le bloc final
+# d'autrices/auteurs, §5.5) -> classer les titres -> nettoyer la mise en forme -> normaliser
+# la typographie -> passer les règles (structurel + Vale + bibliographie) -> écrire le
+# gabarit -> annoter le .docx écrit -> écrire le rapport.
 #
-# ── Ce que le contrat ne précisait pas et qu'il a fallu décider ici (à signaler, pas à
-#    corriger en silence dans les modules qui ne sont pas les deux fichiers de ce chantier) ─
+# Pièges et décisions qui ne sont pas dans le contrat, à ne pas repayer :
 #
-# 1. Le rôle ('role') attendu par manuscrit_regles.py n'est fourni QUE dans deux cas, tous
-#    deux à faible risque de faux positif (§7 du contrat : « un résumé deviné à tort ferait
-#    crier une règle... quand tu ne sais pas, laisse '' ») :
-#      - 'titre' : le tout premier bloc du document, SI c'est un Paragraphe et que
-#        classer_titres() (ou, en cas A, le niveau déclaré) lui a retenu un niveau de titre.
-#        Un manuscrit commence presque toujours par son propre titre ; au-delà de ce premier
-#        bloc, aucun autre niveau de titre n'est jamais pris pour LE titre de l'article.
-#      - 'bibliographie' : le DERNIER paragraphe de niveau de titre dont le texte, aplati,
-#        tombe dans le lexique de TITRES_BIB (pipeline/filters/szh-citations.lua), ET tout ce
-#        qui suit jusqu'à la fin du document ou jusqu'à un tableau — MÊME critère que
-#        pronto_modele.etendue_biblio(), reconstruit ici sur le modèle RICHE avec les mêmes
-#        briques PUBLIQUES (lire_titres_bib(), RE_NUM_TITRE_BIBLIO, PREFIXES_TITRE_BIBLIO,
-#        aplatir()) : le lexique n'est jamais recopié, seule la petite comparaison est
-#        réécrite ici parce que pronto_modele._titre_est_biblio() porte un tiret bas (privé
-#        à son propre module dans les conventions de ce dépôt).
-#    'sous_titre' et 'resume' ne sont JAMAIS déduits : rien, dans le modèle riche d'un
-#    manuscrit quelconque (cas B), ne les distingue de façon fiable d'un titre de section ou
-#    d'un paragraphe de corps ordinaire. Conséquence assumée : Forme.LongueurResume et les
-#    règles de sous-titre du catalogue ne se déclenchent jamais sur la sortie de cette CLI —
-#    c'est le comportement sûr que le contrat demande explicitement, pas un oubli.
-#
-# 2. Le nombre d'auteurs d'une entrée de bibliographie (bibliographie[i].nb_auteurs) reste
-#    TOUJOURS 0 : dénombrer les auteurs d'une référence APA est un problème à part entière,
-#    déjà pourvu de son propre harnais dans ce dépôt (le parser d'auteurs). Le réinventer ici
-#    en trois lignes de regex ferait à coup sûr un compte faux sur les cas réels (particules,
-#    « et al. », sigles d'auteur institutionnel...). nb_auteurs = 0 ne peut jamais dépasser
-#    NB_AUTEURS_TRONCATURE : APA.NombreAuteursListes ne se déclenche donc jamais — sûr, pas
-#    utile pour cette règle précise, signalé ici plutôt que tu.
-#
-# 3. Révision du 19.09.2026 : ce point est corrigé. manuscrit_typo.normaliser_paragraphes()
-#    rend maintenant aussi les lignes stderr [typo-avertissement] d'un appel pandoc RÉUSSI
-#    (avant : cette lecture ne se faisait que sur l'échec, et les lignes d'un succès étaient
-#    capturées puis jetées en silence). Elles alimentent avertissements_typo du contexte passé
-#    aux règles — plus jamais une liste vide codée en dur ici.
-#
-# 4. Cas A (§1) : aucun document réel n'existe pour l'éprouver (contrat, 18.09.2026). classer_
-#    titres() n'est PAS appelé — niveau_retenu := niveau_declare, sans heuristique de
-#    promotion/rétrogradation ('aucune restructuration' au sens des TITRES). nettoyer_mise_en_
-#    forme() est appliqué dans les deux cas ('style de corps' — ce qui reste manuel dessus
-#    part, dans les deux cas). ⚠ Risque connu, NON corrigé ici (hors des deux fichiers de ce
-#    chantier) : manuscrit_gabarit.ecrire() insère TOUJOURS ses propres deux tableaux fixes
-#    (métadonnées, autrices/auteurs), vides, recopiés depuis le gabarit pristine, AVANT le
-#    corps qu'il construit depuis document.blocs. Un document de cas A porte pourtant DÉJÀ
-#    ces deux tableaux, remplis, comme les deux premiers blocs de son propre document.blocs
-#    (manuscrit_docx.lire() ne les filtre pas — rien dans le contrat ne le lui demande). Le
-#    repasser tel quel dans ecrire() re-lirait donc CES tableaux remplis comme s'ils étaient
-#    de simples tableaux du corps du manuscrit (probablement enveloppés dans un bloc tableau
-#    avec sa propre rangée de métadonnées ajoutée), EN PLUS des deux tableaux fixes, VIDES,
-#    que ecrire() insère lui-même. Signalé au rapport de chantier, non trafiqué en silence
-#    ici : aucun document réel n'existe pour vérifier quelle correction serait la bonne.
-#
-# 5. Révision du 19.09.2026, trois décisions prises seul :
-#    - la langue de traitement ('fr'/'de', passée au filtre ET aux règles ET au rapport) vient
-#      DÉSORMAIS du produit (--produit revue -> fr, zeitschrift -> de), plus jamais de
-#      `document.langue or 'fr'` : un article français déclaré `de-CH` recevait la
-#      typographie allemande (mesuré sur lot-A). La langue déclarée du document ne sert plus
-#      qu'à une alerte warning (Langue.DesaccordProduit) quand sa sous-étiquette primaire
-#      (« fr » de « fr-CH ») diffère de celle du produit ;
-#    - un repli typographique (pandoc/WSL indisponible) produit maintenant une alerte warning
-#      (Typo.ApplicationImpossible) en plus de la trace enfouie dans le rapport, et la ligne
-#      stdout porte `typographie: "appliquee" | "repli"`. --sans-typo compte aussi comme
-#      "repli" sur cette ligne (rien n'a été tenté), mais ne lève PAS cette alerte : c'est un
-#      choix explicite déjà visible via `sans_typo` dans le rapport, pas une panne d'outillage
-#      à signaler à la rédaction ;
-#    - un fichier `~$*.docx` (verrou temporaire de Word, un document ouvert dans Word en pose
-#      un à côté) est désormais refusé proprement (code 2, code_refus='fichier-verrou') avant
-#      toute lecture. Avant cette révision, `md.lire()` levait « File is not a zip file » et
-#      le code de sortie était 3, sans message pour la rédaction.
-#
-# 6. Révision du 21.09.2026 — branchement de manuscrit_vale.py (§7), manuscrit_biblio.py
-#    (§7 bis) et manuscrit_annoter.py (§7 ter), jusque-là exposés en fonctions pures avec une
-#    CLI d'essai mais jamais appelés d'ici :
-#    - Vale et la bibliographie reçoivent chacun DEUX corpus (corps / bibliographie), les mêmes
-#      paragraphes de premier niveau que le moteur structurel, MOINS l'en-tête (déjà retiré du
-#      corps avant ce point) ; Vale reçoit EN PLUS les cellules de tableau et le contenu des
-#      notes, à toute profondeur — jamais ancrables dans le .docx produit (`source=None`,
-#      voir _paragraphes_cellules_pour_vale()), mais Vale doit les VOIR quand même.
-#    - le point 2 ci-dessus (nb_auteurs toujours à 0) ne vaut que pour
-#      `contexte['bibliographie']`, le corpus du moteur STRUCTUREL : manuscrit_biblio.py, lui,
-#      compte les auteurs pour de vrai (son propre harnais), ses propres alertes (APA.EtAl,
-#      APA.CitationAbsente...) n'ont jamais eu ce défaut.
-#    - `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : les alertes Vale
-#      et bibliographie ont leur PROPRE regroupement ici (_grouper_toutes_alertes()), sans
-#      toucher à manuscrit_regles.py au-delà du retrait des règles qu'APA.OrdreBiblio
-#      (manuscrit_biblio.py) recouvre désormais (voir manuscrit_regles.py).
-#    - `dans_docx` sur chaque alerte de `alertes.liste` (voir _marquer_dans_docx()) est déduit
-#      PAR IDENTITÉ D'OBJET (id()) des listes que manuscrit_annoter.annoter() rend, dans le
-#      MÊME processus — jamais recalculé, jamais un aller-retour JSON.
-#    - troisième défaut RÉEL de manuscrit_annoter.py, mesuré sur le corpus réel (3 fichiers sur
-#      12, voir le rapport de chantier) : une révision dont le span touche la frontière d'un
-#      <w:hyperlink> (le XML « de collage » recopié tel quel, §7 ter du contrat) peut rendre
-#      un word/document.xml qui n'est PLUS bien formé, SANS lever d'exception — pire que le
-#      défaut précédent, qui au moins se signalait par un crash capturé. La CLI valide donc
-#      désormais elle-même, après annotation, que chaque partie .xml/.rels de la sortie reste
-#      un XML bien formé (voir _valider_docx_bien_forme()) : si ce n'est pas le cas, elle
-#      restaure la version PRÉ-annotation (déjà écrite par mg.ecrire(), déjà valide) plutôt que
-#      de livrer un .docx corrompu, et lève la même alerte Annotation.Impossible.
+# - Le rôle ('role') passé à manuscrit_regles.py n'est jamais deviné : 'titre' seulement pour
+#   le tout premier bloc du document s'il porte un niveau de titre ; 'bibliographie' pour le
+#   DERNIER paragraphe de titre reconnu par le lexique TITRES_BIB (szh-citations.lua) et tout
+#   ce qui suit jusqu'à la fin ou un tableau (même critère que pronto_modele.etendue_biblio(),
+#   reconstruit ici sur le modèle riche — le lexique n'est jamais recopié, seule la petite
+#   comparaison l'est, `_titre_est_biblio()` de pronto_modele étant privée). 'sous_titre' et
+#   'resume' ne sont jamais déduits en dehors de l'en-tête : rien ne les distingue de façon
+#   fiable d'un intertitre ou d'un paragraphe de corps.
+# - `bibliographie[i].nb_auteurs` reste TOUJOURS 0 pour le moteur STRUCTUREL
+#   (`contexte['bibliographie']`) : dénombrer les auteurs d'une référence APA a son propre
+#   harnais ailleurs dans ce dépôt, pas réinventé ici en trois lignes de regex.
+#   `manuscrit_biblio.py`, lui, compte les auteurs pour de vrai et n'a jamais eu ce défaut.
+# - Cas A : `manuscrit_gabarit.ecrire()` insère toujours ses deux tableaux fixes, vides, AVANT
+#   le corps — un document de cas A porte pourtant déjà ces tableaux, remplis, comme les deux
+#   premiers blocs de `document.blocs`. Risque connu (double tableau de métadonnées), non
+#   corrigé faute d'un document réel pour valider la correction (§1 du contrat).
+# - La langue de traitement ('fr'/'de', pour le filtre, les règles et le rapport) vient
+#   TOUJOURS du produit (`--produit revue` -> fr), jamais de `document.langue` : un article
+#   français déclaré `de-CH` recevait sinon la typographie allemande. La langue déclarée ne
+#   sert qu'à une alerte `Langue.DesaccordProduit` en cas de désaccord.
+# - Un repli typographique (pandoc/WSL indisponible) lève `Typo.ApplicationImpossible` ;
+#   `--sans-typo` compte comme "repli" sur la ligne stdout mais ne lève PAS cette alerte —
+#   c'est un choix explicite, pas une panne.
+# - Un fichier `~$*.docx` (verrou temporaire de Word) est refusé (code 2,
+#   `code_refus='fichier-verrou'`) avant toute lecture, plutôt que de laisser `md.lire()`
+#   échouer sans message pour la rédaction.
+# - Vale et la bibliographie reçoivent chacun DEUX corpus (corps / bibliographie) — les
+#   paragraphes de premier niveau, moins l'en-tête déjà retiré. Vale reçoit EN PLUS les
+#   cellules de tableau et le contenu des notes, à toute profondeur, jamais ancrables dans le
+#   .docx produit (`source=None`, voir `_paragraphes_cellules_pour_vale()`) : Vale doit les
+#   voir quand même, même sans pouvoir y poser une révision.
+# - `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : les alertes Vale et
+#   bibliographie ont leur propre regroupement ici (`_grouper_toutes_alertes()`).
+# - `dans_docx` sur chaque alerte (`_marquer_dans_docx()`) est déduit PAR IDENTITÉ D'OBJET
+#   (`id()`) des listes que `manuscrit_annoter.annoter()` rend, dans le MÊME processus —
+#   jamais recalculé, jamais un aller-retour JSON.
+# - Une révision dont le span touche la frontière d'un `<w:hyperlink>` peut rendre un
+#   `word/document.xml` mal formé SANS lever d'exception (mesuré, 3 fichiers sur 12 du
+#   corpus). La CLI valide donc elle-même chaque partie .xml/.rels après annotation
+#   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
+#   de livrer un .docx corrompu.
 
 import json
 import os
@@ -719,6 +662,11 @@ def principal(argv):
     if gabarit == 'B':
         progres("reconnaissance de l'en-tête...")
         entete, indices_entete, trace_entete = me.extraire_entete(document, langue)
+        progres("reconnaissance du bloc d'autrices et auteurs en fin de document...")
+        indices_final, trace_final = me.extraire_bloc_auteurs_final(document, entete, langue,
+                                                                      indices_entete)
+        indices_entete.update(indices_final)
+        trace_entete = trace_entete + trace_final
         paragraphes_entete_ctx = _paragraphes_entete_contexte(document, indices_entete)
         document.blocs = [b for idx, b in enumerate(document.blocs)
                            if idx not in indices_entete]
@@ -827,24 +775,6 @@ def principal(argv):
                      'formatage': {'stats': stats_formatage, 'trace': trace_formatage}}
         resultat_ecriture = mg.ecrire(document, CHEMIN_GABARIT, sortie_docx,
                                        decisions=decisions, entete=entete)
-
-        # ⚠ Défaut découvert en branchant l'annotation (non corrigé dans manuscrit_gabarit.py,
-        # hors des deux fichiers autorisés pour ce lot — signalé, pas trafiqué en silence) :
-        # `correspondance[i].source` rendu par `_convertir_niveau_racine()` n'est PAS
-        # `Paragraphe.source` — c'est la POSITION du bloc dans la LISTE `document.blocs` telle
-        # que REÇUE par ecrire() (voir sa docstring : « indice du bloc dans `blocs` », et
-        # test/js/manuscrit-gabarit.test.js qui indexe `docEntree.blocs[c.source]` sur le
-        # document LU TEL QUEL, jamais amputé de son en-tête). Les deux ne coïncident QUE si
-        # `document.blocs` passé à ecrire() est la liste COMPLÈTE, non filtrée. Ici, en cas B,
-        # §5.5 retire les paragraphes d'en-tête de `document.blocs` AVANT ecrire() : la
-        # position dans la liste filtrée glisse par rapport à `Paragraphe.source` (mesuré :
-        # sur un article d'un seul paragraphe d'en-tête, source=3 pointait sur le <w:p> qui
-        # correspond en réalité à source=4). Une alerte ancrée par `para` (qui porte
-        # TOUJOURS `Paragraphe.source`, jamais une position de liste) se serait donc posée
-        # sur le MAUVAIS paragraphe, ou aucun. Remappé ici, dans la seule couche qui connaît
-        # à la fois la liste filtrée ET la valeur d'origine de chaque `.source`.
-        for c in resultat_ecriture['correspondance']:
-            c['source'] = document.blocs[c['source']].source
 
         if args['sans_annotation']:
             progres('annotation désactivée (--sans-annotation)')

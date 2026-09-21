@@ -14,16 +14,11 @@
 # stdlib uniquement : pas de PyYAML, pas de python-docx, pas de jinja2 — ils ne sont pas dans
 # la WSL de la flotte (§2 du contrat).
 #
-# ── Ce que le contrat dit et que ce module a dû corriger en le CONSTATANT, pas en le taisant ─
-#
-# Le §4 du contrat écrit : « texte est déjà normalisé par le lecteur (normaliser() de
-# szh_commun), comme le fait déjà pronto_modele. » Mesuré (grep) : szh_commun.py ne porte
-# PAS de fonction normaliser() — elle est dupliquée, identique, dans pronto_modele.py,
-# docx-titres.py, docx-meta.py et docx-tables.py. Ce module importe donc normaliser() (et
-# normaliser_nom_style(), NOM_STYLE_CLE, NOM_STYLE_AIDE, déjà éprouvés pour reconnaître les
-# styles maison) depuis pronto_modele — qui, comme celui-ci, ne sait rien de Word ni
-# d'OpenDocument, donc l'importer ne viole pas la frontière du §3. avertir() vient bien de
-# szh_commun, lui, comme le contrat le dit. Voir le rapport de chantier pour le détail.
+# `normaliser()` (§4 du contrat) ne vit pas dans szh_commun.py — elle y est absente et
+# dupliquée à l'identique dans pronto_modele.py, docx-titres.py, docx-meta.py et
+# docx-tables.py. Ce module importe donc `normaliser()` (et `normaliser_nom_style()`,
+# `NOM_STYLE_CLE`, `NOM_STYLE_AIDE`) depuis pronto_modele, qui ne sait rien de Word ni
+# d'OpenDocument non plus (§3, frontière respectée) ; `avertir()` vient bien de szh_commun.
 #
 # ── Schéma JSON du mode --diagnostic (lu sur stdin) ─────────────────────────────────────────
 #
@@ -31,10 +26,9 @@
 #     "styles": ["heading 1", "heading 2", "SZH Cle", ...],   // noms de word/styles.xml
 #     "langue": "fr",                                          // ou "" si non déclarée
 #     "revisions": 0, "commentaires": 0,
-#     "notes": {"3": [ <bloc>, ... ], "12": [ <bloc>, ... ]},   // CHANGÉ le 19.09.2026 (§4) :
-#                                              // dict identifiant -> contenu, jamais plus une
-#                                              // liste plate qui fondait toutes les notes
-#                                              // ensemble. Notes de bas de page ET de fin
+#     "notes": {"3": [ <bloc>, ... ], "12": [ <bloc>, ... ]},   // dict identifiant -> contenu,
+#                                              // jamais une liste plate (fondrait toutes les
+#                                              // notes ensemble). Notes de bas de page ET de fin
 #                                              // cohabitent (une note de fin porte un
 #                                              // identifiant décalé, voir manuscrit_docx.py).
 #     "blocs": [ <bloc>, ... ]                                  // blocs de premier niveau, en ordre
@@ -47,13 +41,12 @@
 #     "style": "heading 2",              // nom humain déjà résolu, "" si aucun
 #     "niveau_declare": 2,               // 1..3 si le STYLE dit titre, 0 sinon — jamais déduit
 #     "fragments": [ <fragment>, ... ],
-#     "liste": [numId, ilvl, format] | null,  // format : 'puce'|'numero'|'' — ajouté le
-#                                              // 18.09.2026 (§5.4) ; '' = non déterminé par
-#                                              // le lecteur (numbering.xml absent, ou format
-#                                              // inconnu), JAMAIS deviné ici
+#     "liste": [numId, ilvl, format] | null,  // format : 'puce'|'numero'|'' — '' = non
+#                                              // déterminé par le lecteur (numbering.xml
+#                                              // absent, ou format inconnu), JAMAIS deviné ici
 #     "alignement": "",                  // "" = non déclaré
-#     "alignement_effectif": "",         // AJOUTÉ le 19.09.2026 (§4) : direct sinon cascade
-#                                          // des styles ; "" si non déclaré nulle part
+#     "alignement_effectif": "",         // direct sinon cascade des styles (§4) ; "" si non
+#                                          // déclaré nulle part
 #     "retrait": 0,
 #     "source": 3                        // index dans le corps ; laissé au décompte si absent
 #   }
@@ -64,13 +57,13 @@
 #     "forme": {                         // dict figé : les 12 clés de FORME_CLES ; une clé
 #       "gras": true, "italique": false, ...  // absente vaut None (« non déclaré »),
 #     },                                  // à distinguer de false (« déclaré éteint »)
-#     "effectif": { ... },                // AJOUTÉ le 19.09.2026 (§4) : même forme que
-#                                          // "forme", mais la mise en forme EFFECTIVEMENT
-#                                          // appliquée (directe, sinon cascade des styles)
+#     "effectif": { ... },                // même forme que "forme" (§4), mais la mise en forme
+#                                          // EFFECTIVEMENT appliquée (directe, sinon cascade
+#                                          // des styles)
 #     "lien": "https://…" | null,
 #     "source": 0,
-#     "note": 3 | null                    // AJOUTÉ le 19.09.2026 (§4) : identifiant de la
-#                                          // note appelée par ce fragment, ou null
+#     "note": 3 | null                    // identifiant de la note appelée par ce fragment,
+#                                          // ou null (§4)
 #   }
 #
 #   <image> = {"nom": "image1.png", "surface": 0, "cx": 0, "cy": 0, "largeur_px": 0,
@@ -1562,7 +1555,13 @@ def _nettoyer_fragments(paragraphe, est_corps):
     return champs_retires, signalements
 
 
-def _nettoyer_paragraphe(paragraphe):
+def _nettoyer_paragraphe(paragraphe, source_tableau=None):
+    """`source_tableau` : `.source` du Tableau qui porte ce paragraphe (None au premier
+    niveau). Un paragraphe de cellule a un `.source` LOCAL à sa cellule (0, 1, …) — plusieurs
+    cellules d'un même document produisent donc le même « paragraphe 0 », inutile et jamais
+    ancrable. La trace porte alors le `.source` du tableau, avec `dans_tableau=True`, plutôt
+    que cette position locale (mesuré sur 3_VF_Chanier-Delorme_Article CSPS_290626.docx :
+    5 lignes « paragraphe 0 » distinctes avant ce correctif, toutes en cellule)."""
     est_corps = (paragraphe.niveau_retenu == 0)
     champs_retires, signalements = _nettoyer_fragments(paragraphe, est_corps)
 
@@ -1609,16 +1608,20 @@ def _nettoyer_paragraphe(paragraphe):
     if not motif_parts:
         motif_parts.append('rien à nettoyer')
 
-    return a_change, {'portee': 'paragraphe', 'source': paragraphe.source,
+    source = source_tableau if source_tableau is not None else paragraphe.source
+    return a_change, {'portee': 'paragraphe', 'source': source, 'dans_tableau': source_tableau is not None,
                        'decision': 'nettoye' if a_change else 'inchange',
                        'signalements': signalements, 'motif': '; '.join(motif_parts)}
 
 
-def _paragraphes_en_profondeur(blocs):
-    """Chaque Paragraphe atteignable depuis `blocs` (Paragraphe | Tableau), à N'IMPORTE
-    QUELLE PROFONDEUR de cellule — jamais les Tableau eux-mêmes. À ne pas confondre avec
-    _paragraphes_premier_niveau() (réservée à classer_titres()/§5.1, qui ne doit statuer QUE
-    sur le premier niveau : un paragraphe de cellule ne peut pas devenir un titre).
+def _paragraphes_en_profondeur(blocs, source_tableau=None):
+    """Chaque (Paragraphe, source_tableau) atteignable depuis `blocs` (Paragraphe | Tableau), à
+    N'IMPORTE QUELLE PROFONDEUR de cellule — jamais les Tableau eux-mêmes. `source_tableau` est
+    le `.source` du Tableau PORTEUR (celui qui contient directement la cellule), None au
+    premier niveau — un tableau imbriqué dans une cellule écrase la valeur avec la sienne, le
+    plus proche l'emporte. À ne pas confondre avec _paragraphes_premier_niveau() (réservée à
+    classer_titres()/§5.1, qui ne doit statuer QUE sur le premier niveau : un paragraphe de
+    cellule ne peut pas devenir un titre).
 
     Correction du 19.09.2026 (§5.2) : nettoyer_mise_en_forme() ne bouclait QUE sur
     document.blocs (premier niveau) — 171 paragraphes en cellule, mesurés sur le corpus réel,
@@ -1627,9 +1630,9 @@ def _paragraphes_en_profondeur(blocs):
         if isinstance(b, Tableau):
             for rangee in b.rangees:
                 for c in rangee:
-                    yield from _paragraphes_en_profondeur(c.blocs)
+                    yield from _paragraphes_en_profondeur(c.blocs, b.source)
         else:
-            yield b
+            yield b, source_tableau
 
 
 def nettoyer_mise_en_forme(document):
@@ -1674,8 +1677,8 @@ def nettoyer_mise_en_forme(document):
     paragraphes_a_nettoyer = list(_paragraphes_en_profondeur(document.blocs))
     for blocs_note in document.notes.values():
         paragraphes_a_nettoyer.extend(_paragraphes_en_profondeur(blocs_note))
-    for bloc in paragraphes_a_nettoyer:
-        a_change, ligne = _nettoyer_paragraphe(bloc)
+    for bloc, source_tableau in paragraphes_a_nettoyer:
+        a_change, ligne = _nettoyer_paragraphe(bloc, source_tableau)
         if a_change:
             n_nettoyes += 1
         else:

@@ -29,10 +29,12 @@ import json
 import os
 import re
 import sys
+import unicodedata
 
 _ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ICI)
 import manuscrit_modele as mm
+import pronto_modele
 
 
 def _charger_module_a_tiret(nom_fichier, nom_module):
@@ -100,6 +102,30 @@ RE_LETTRE_LANGUE_ISOLEE = re.compile(r'^[A-Za-zÀ-ÿ]\n\s*')
 # être ÉCARTÉ (aucun champ téléphone dans le schéma EnTete.auteurs), jamais confondu avec
 # un ORCID (qui a sa propre forme, RE_ORCID) ni gardé comme fonction/institution.
 RE_TELEPHONE = re.compile(r'^\+?[\d][\d .\-/]{5,}\d$')
+
+# Bloc final « Informations sur les autrices et auteurs » (décision de Robin, 21.09.2026) :
+# la Revue le demande en FIN de manuscrit (nom, fonction, institution, e-mail) — jamais
+# confondu avec la zone d'en-tête ci-dessus, qui a son propre repérage depuis le DÉBUT du
+# document. Sans reconnaissance, ces paragraphes tombaient dans l'étendue de bibliographie
+# de la CLI (leurs coordonnées ressortant en APA.OrdreBiblio / APA.CitationAbsente /
+# confiance basse — mesuré sur 2-clairseme_Article_CSPS_C.Pedrosa.docx et
+# 2-fin-de-document_Article_RSPS.docx).
+RE_INTERTITRE_AUTEURS_FINAL = re.compile(
+    r'^(?:informations?\s+sur\s+les\s+(?:autrices?|auteur[^\s:]*)(?:\s*(?:et|,)\s*auteurs?)?'
+    r'|angaben\s+zu\s+den\s+autor)\W*$', re.I)
+
+# Libellés allemands qui accompagnent parfois le bloc SANS l'introduire eux-mêmes (un intitulé
+# de champ, jamais un nom ni une info) — reconnus pour être ignorés, jamais attribués comme
+# fonction/institution par erreur. Aucun manuscrit réel allemand n'a encore validé cette forme
+# (§1 du contrat : conservateur tant que non éprouvé) — sans effet si elle n'apparaît jamais.
+RE_LIBELLE_AUTEUR_FINAL_DE = re.compile(
+    r'^(?:autorinnen\s+und\s+autoren|kontakt)\s*:?\s*$', re.I)
+
+# Seuil du repli SANS intertitre (§ ci-dessous) : les 117 références réelles de lot-A
+# (manuscrit_biblio.py, même corpus) font toutes plus de 120 signes ; une ligne de fonction,
+# d'adresse ou d'e-mail du bloc auteurs en fait 15 à 50. Un intitulé court non reconnu comme
+# marqueur (« Bibliographie », « Références ») reste exclu par ailleurs (lire_titres_bib()).
+SEUIL_LIGNE_AUTEUR_FINAL = 120
 
 
 # ---------------------------------------------------------------------------------
@@ -557,6 +583,198 @@ def extraire_entete(document, langue):
 
 
 # ---------------------------------------------------------------------------------
+# Bloc final « Informations sur les autrices et auteurs » — appelé APRÈS extraire_entete(),
+# sur le document encore complet (mêmes indices que `indices_consommes` ci-dessus, même
+# convention pour l'appelant). Fusionne ce qu'il trouve dans l'EnTete déjà construite par la
+# tête du manuscrit, ne crée jamais un second EnTete.
+
+def _cle_nom(texte):
+    """Normalisation grossière d'un nom pour la fusion ci-dessous : casse et accents retirés,
+    espaces multiples réduits — « Isabel Valarino » == « ISABEL   VALARINO »."""
+    t = unicodedata.normalize('NFKD', texte or '')
+    t = ''.join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r'\s+', ' ', t).strip().casefold()
+
+
+def _fusionner_auteurs(entete, auteurs_nouveaux):
+    """Fusionne chaque auteur du bloc final dans `entete.auteurs` : MÊME NOM (prénom+nom,
+    comparaison insensible à la casse et aux accents) -> complète les champs VIDES de la
+    fiche déjà ouverte par la tête du manuscrit (jamais un champ déjà rempli écrasé, même
+    règle que _fusionner_info ci-dessus) ; nom absent ou inconnu -> nouvelle fiche, ajoutée à
+    la fin, jamais une fiche dupliquée pour la même personne. Rend (n_fusionnes, n_ajoutes)."""
+    n_fusionnes = n_ajoutes = 0
+    for nouveau in auteurs_nouveaux:
+        cle_nouveau = (_cle_nom(nouveau['prenom']), _cle_nom(nouveau['nom']))
+        cible = None
+        if cle_nouveau != ('', ''):
+            for a in entete.auteurs:
+                if (_cle_nom(a['prenom']), _cle_nom(a['nom'])) == cle_nouveau:
+                    cible = a
+                    break
+        if cible is not None:
+            for champ in ('fonction', 'institution', 'email', 'orcid'):
+                if not cible[champ] and nouveau[champ]:
+                    cible[champ] = nouveau[champ]
+            n_fusionnes += 1
+        else:
+            entete.auteurs.append(nouveau)
+            n_ajoutes += 1
+    return n_fusionnes, n_ajoutes
+
+
+def _analyser_bloc_auteurs(lignes):
+    """`lignes` : [(source, texte), ...] — une ligne LOGIQUE, éventuellement une parmi
+    plusieurs issues d'un même paragraphe scindé sur '\\n' (Word pose souvent tout le bloc
+    « informations sur les autrices » en UN SEUL paragraphe, séparé par des sauts de ligne
+    manuels, §4 du contrat : Fragment '\\n' pour w:br). Rend une liste de dicts auteur (même
+    schéma que _nouvel_auteur), dans l'ordre de première apparition — réutilise EXACTEMENT
+    les mêmes reconnaissances que la zone d'en-tête (_tenter_noms / _tenter_nom_virgule_avec_
+    info / _fusionner_info) : un nom, un « Nom, Prénom », une ligne d'info rattachée au
+    dernier auteur ouvert. Un libellé allemand isolé (RE_LIBELLE_AUTEUR_FINAL_DE) n'est ni un
+    nom ni une info : ignoré, sans rompre l'attribution en cours."""
+    auteurs = []
+    cible_courante = None
+    ambigu_courant = False
+    for _source, texte in lignes:
+        texte = (texte or '').strip()
+        if not texte or RE_LIBELLE_AUTEUR_FINAL_DE.match(texte):
+            continue
+        noms = _tenter_noms(texte)
+        if noms:
+            for a in noms:
+                auteurs.append(_nouvel_auteur(a['prenom'], a['nom'], texte))
+            cible_courante = auteurs[-1] if len(noms) == 1 else None
+            ambigu_courant = len(noms) > 1
+            continue
+        resultat_virgule = _tenter_nom_virgule_avec_info(texte)
+        if resultat_virgule:
+            prenom, nom, segments_info = resultat_virgule
+            auteur = _nouvel_auteur(prenom, nom, texte)
+            for seg in segments_info:
+                if not RE_TELEPHONE.match(seg):
+                    _fusionner_info(auteur, seg)
+            auteurs.append(auteur)
+            cible_courante = auteur
+            ambigu_courant = False
+            continue
+        if RE_TELEPHONE.match(texte):
+            continue
+        if cible_courante is not None and not ambigu_courant:
+            _fusionner_info(cible_courante, texte)
+        # sinon : ligne non attribuable — jamais inventé (même principe que
+        # 'auteur_info_non_attribuee' dans extraire_entete()).
+    return auteurs
+
+
+def _est_titre_biblio_pour_repli(texte, lexique):
+    """Même reconnaissance que _construire_bibliographie() de manuscrit-nettoyer.py — jamais
+    une seconde liste de titres, seule la petite comparaison est réécrite ici (ce module ne
+    peut pas importer un fichier qui porte un tiret dans son nom sans le charger par chemin,
+    et la CLI, elle, ne peut pas être importée du tout : convention du dépôt, §3 du contrat)."""
+    plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
+    if plat in lexique:
+        return True
+    for prefixe in pronto_modele.PREFIXES_TITRE_BIBLIO:
+        if plat.startswith(prefixe) and plat[len(prefixe):] in lexique:
+            return True
+    return False
+
+
+def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
+    """(indices_consommes, trace) — même convention que extraire_entete() : l'appelant retire
+    ces indices de `document.blocs`. Appelée APRÈS extraire_entete(), sur le document encore
+    COMPLET (les indices sont donc dans le même espace que ceux d'extraire_entete()).
+
+    `indices_entete` : les indices déjà consommés par extraire_entete() (la ZONE D'EN-TÊTE,
+    §5.5) — jamais revisités ici, ni comme marqueur ni comme repli. Sans cette frontière, un
+    document COURT où toutes les lignes sont brèves (un des cas de ce fichier de test) se fait
+    reparcourir en entier par le repli ci-dessous, qui réattribue à tort une ligne de la TÊTE
+    (par exemple l'intertitre qui clôt la zone d'en-tête) comme complément d'un auteur déjà
+    ouvert plus haut — mesuré, corrigé par cette frontière.
+
+    Deux voies de reconnaissance, dans cet ordre :
+    1. un intertitre connu (RE_INTERTITRE_AUTEURS_FINAL, le DERNIER du document s'il y en a
+       plusieurs) : tout, du marqueur jusqu'à la fin du document ou jusqu'à un Tableau, est le
+       bloc ;
+    2. à défaut, un repli : le plus long groupe de paragraphes COURTS (< SEUIL_LIGNE_AUTEUR_
+       FINAL signes) en fin de document, en s'arrêtant net sur un intitulé de bibliographie
+       reconnu (jamais avalé) — consommé SEULEMENT s'il porte au moins un nom plausible
+       (sinon rien, §1 du contrat : « en cas de doute, rien, et on le dit »)."""
+    blocs = document.blocs
+    n = len(blocs)
+    indices_entete = indices_entete or {}
+    lexique_biblio = pronto_modele.lire_titres_bib()
+
+    indice_marqueur = None
+    for i, bloc in enumerate(blocs):
+        if i in indices_entete or isinstance(bloc, mm.Tableau):
+            continue
+        texte = bloc.texte().strip()
+        if texte and RE_INTERTITRE_AUTEURS_FINAL.match(texte):
+            indice_marqueur = i
+
+    if indice_marqueur is not None:
+        indices = {}
+        lignes = []
+        for i in range(indice_marqueur, n):
+            bloc = blocs[i]
+            if isinstance(bloc, mm.Tableau):
+                break
+            indices[i] = 'auteurs'
+            if i == indice_marqueur:
+                continue
+            for ligne in bloc.texte().strip().split('\n'):
+                lignes.append((bloc.source, ligne))
+        auteurs = _analyser_bloc_auteurs(lignes)
+        n_fusionnes, n_ajoutes = _fusionner_auteurs(entete, auteurs)
+        trace = [{'source': blocs[indice_marqueur].source,
+                  'decision': 'bloc_auteurs_final_marqueur',
+                  'motif': "intertitre « %s » reconnu : %d fiche(s) fusionnée(s), %d "
+                           "ajoutée(s)" % (blocs[indice_marqueur].texte().strip(),
+                                           n_fusionnes, n_ajoutes)}]
+        return indices, trace
+
+    i = n - 1
+    indices_candidats = []
+    while i >= 0:
+        if i in indices_entete:
+            break
+        bloc = blocs[i]
+        if isinstance(bloc, mm.Tableau):
+            break
+        texte = bloc.texte().strip()
+        if texte:
+            if _est_titre_biblio_pour_repli(texte, lexique_biblio):
+                break
+            if len(texte) >= SEUIL_LIGNE_AUTEUR_FINAL:
+                break
+        indices_candidats.append(i)
+        i -= 1
+    indices_candidats.reverse()
+
+    lignes = []
+    for idx in indices_candidats:
+        texte = blocs[idx].texte().strip()
+        if texte:
+            for ligne in texte.split('\n'):
+                lignes.append((blocs[idx].source, ligne))
+    auteurs = _analyser_bloc_auteurs(lignes)
+    if not auteurs:
+        return {}, [{'portee': 'document', 'source': None,
+                     'decision': 'bloc_auteurs_final_absent',
+                     'motif': "aucun bloc d'informations sur les autrices et auteurs reconnu "
+                              "en fin de document"}]
+    n_fusionnes, n_ajoutes = _fusionner_auteurs(entete, auteurs)
+    trace = [{'source': blocs[indices_candidats[0]].source,
+              'decision': 'bloc_auteurs_final_heuristique',
+              'motif': "%d paragraphe(s) court(s) en fin de document reconnus comme "
+                       "informations d'autrices/auteurs (aucun intertitre) : %d fiche(s) "
+                       "fusionnée(s), %d ajoutée(s)"
+                       % (len(indices_candidats), n_fusionnes, n_ajoutes)}]
+    return {i: 'auteurs' for i in indices_candidats}, trace
+
+
+# ---------------------------------------------------------------------------------
 # JSON — même schéma d'esprit que manuscrit_modele.py : `document_depuis_json`/
 # `document_vers_json` sont réutilisés tels quels (importés, jamais recopiés) pour le
 # Document ; seule EnTete a besoin de sa propre conversion.
@@ -598,6 +816,9 @@ def principal(argv):
     document = mm.document_depuis_json(donnees.get('document') or {})
     langue = donnees.get('langue') or 'fr'
     entete, indices, trace = extraire_entete(document, langue)
+    indices_final, trace_final = extraire_bloc_auteurs_final(document, entete, langue, indices)
+    indices.update(indices_final)
+    trace = trace + trace_final
     document.blocs = [b for idx, b in enumerate(document.blocs) if idx not in indices]
 
     resultat = {

@@ -227,7 +227,7 @@ function construireGrasNonPromus(decisions) {
   const trace = (decisions && decisions.formatage && decisions.formatage.trace) || [];
   return trace
     .filter((e) => Array.isArray(e.signalements) && e.signalements.some((s) => /gras/i.test(s)))
-    .map((e) => ({ source: e.source, motif: e.motif || '' }));
+    .map((e) => ({ source: e.source, motif: e.motif || '', dans_tableau: !!e.dans_tableau }));
 }
 
 // [typo-avertissement] <code> | <contexte> | <phrase fr> | [de] <phrase de> -- une ligne

@@ -501,3 +501,137 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+// ---------------------------------------------------------------------------------------
+// 10. Bloc final « Informations sur les autrices et auteurs » (décision de Robin,
+// 21.09.2026) : la Revue le demande en FIN de manuscrit — reconnu par extraire_bloc_auteurs_
+// final(), retiré du corps ET de l'étendue de bibliographie de la CLI (mesuré, avant ce
+// correctif, sur 2-clairseme_Article_CSPS_C.Pedrosa.docx et 2-fin-de-document_Article_RSPS.
+// docx : ces coordonnées ressortaient en APA.OrdreBiblio / APA.CitationAbsente / confiance
+// basse). Fusionné dans entete.auteurs : même nom -> complète la fiche déjà ouverte par la
+// tête, jamais dupliquée.
+//
+// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
+// remplacer `if texte and RE_INTERTITRE_AUTEURS_FINAL.match(texte):` par `if False:` — le
+// marqueur n'est plus jamais reconnu, indices_consommes reste vide et le bloc final reste
+// dans le corps.
+
+test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices et auteurs », un seul paragraphe multi-lignes',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire.'),
+      para('Informations sur les autrices et auteurs :'),
+      para('Caroline Pedrosa\nAssistante diplômée - Doctorante\nCERF, Université de Fribourg\ncaroline.pedrosa@unifr.ch'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.prenom, 'Caroline');
+    assert.strictEqual(a.nom, 'Pedrosa');
+    assert.strictEqual(a.fonction, 'Assistante diplômée - Doctorante');
+    assert.strictEqual(a.institution, 'CERF, Université de Fribourg');
+    assert.strictEqual(a.email, 'caroline.pedrosa@unifr.ch');
+    // Le marqueur ET le paragraphe qui le suit ont quitté le corps (indices 3 et 4).
+    assert.strictEqual(out.indices_consommes[3], 'auteurs');
+    assert.strictEqual(out.indices_consommes[4], 'auteurs');
+    assert.strictEqual(out.document.blocs.length, 2,
+      'le titre (en-tête) et le bloc final doivent avoir quitté le corps ; intro et corps restent');
+  });
+
+test('extraire_bloc_auteurs_final : sans intertitre, un groupe final de paragraphes courts (nom/institution/e-mail) est reconnu',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire, assez long pour ne '
+        + 'jamais être pris pour une ligne d’information d’autrice ou auteur.'),
+      para('Bibliographie'),
+      para('Ebersold, S., & Detraux, J.-J. (2013). Scolarisation et besoin éducatif '
+        + 'particulier : enjeux conceptuels et méthodologiques.'),
+      para(''),
+      para('Edith Guilley'),
+      para('Collaboratrice de recherche'),
+      para('Service de la recherche en éducation (DIP Genève)'),
+      para('edith.guilley@orange.fr'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.prenom, 'Edith');
+    assert.strictEqual(a.nom, 'Guilley');
+    assert.strictEqual(a.fonction, 'Collaboratrice de recherche');
+    assert.strictEqual(a.institution, 'Service de la recherche en éducation (DIP Genève)');
+    assert.strictEqual(a.email, 'edith.guilley@orange.fr');
+    // La référence bibliographique et son intitulé ne doivent JAMAIS être consommés.
+    assert.strictEqual(out.indices_consommes[3], undefined, 'l’intitulé « Bibliographie » ne doit pas être avalé');
+    assert.strictEqual(out.indices_consommes[4], undefined, 'la référence réelle ne doit jamais être prise pour une info d’auteur');
+  });
+
+test('extraire_bloc_auteurs_final : fusionne avec un auteur déjà connu de la tête (même nom), sans dupliquer',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Caroline Pedrosa'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire.'),
+      para('Informations sur les autrices et auteurs :'),
+      para('Caroline Pedrosa\nCERF, Université de Fribourg\ncaroline.pedrosa@unifr.ch'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      'même nom en tête et en fin de document -> UNE SEULE fiche, jamais dupliquée');
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.institution, 'CERF, Université de Fribourg');
+    assert.strictEqual(a.email, 'caroline.pedrosa@unifr.ch');
+  });
+
+// Le repli ne doit jamais avaler l'intitulé de bibliographie lui-même (court, comme les
+// lignes d'info) — même quand rien de long ne le sépare du bloc final (pas de référence
+// entre l'intitulé et les coordonnées, ce qui prive le seuil de longueur de tout rôle ici :
+// seul le lexique de titres de bibliographie peut arrêter la marche arrière).
+//
+// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
+// remplacer `if _est_titre_biblio_pour_repli(texte, lexique_biblio): break` par `if False:
+// break` — « Bibliographie » se fait alors avaler avec le bloc final.
+
+test('extraire_bloc_auteurs_final : le repli s\'arrête net sur l\'intitulé de bibliographie, même collé au bloc final',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire, assez long pour ne '
+        + 'jamais être pris pour une ligne d’information d’autrice ou auteur.'),
+      para('Bibliographie'),
+      para(''),
+      para('Edith Guilley'),
+      para('Collaboratrice de recherche'),
+      para('Service de la recherche en éducation (DIP Genève)'),
+      para('edith.guilley@orange.fr'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.indices_consommes[3], undefined,
+      'l’intitulé « Bibliographie » ne doit jamais être consommé par le repli, même sans '
+      + 'référence longue pour l’arrêter autrement');
+  });
+
+// Frontière avec la zone d'en-tête (§ ci-dessus) : sur un document COURT où toutes les
+// lignes sont brèves, le repli ne doit jamais revisiter une ligne déjà consommée par
+// extraire_entete() — sinon un intertitre de tête (« Introduction ») se fait absorber comme
+// complément d'un auteur ouvert plus haut (régression constatée en construisant ce module).
+//
+// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
+// retirer la garde `if i in indices_entete: break` du repli — la fonction fait alors
+// `a.fonction === 'Introduction'` au lieu de `''`.
+
+test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà consommé par extraire_entete()',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Jean Dupont'),
+      para('ORCID 0000-0001-2345-6789'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.entete.auteurs[0].fonction, '',
+      'l’intertitre de tête ne doit jamais être réattribué comme fonction par le repli');
+    assert.deepStrictEqual(out.indices_consommes, { 0: 'titre', 1: 'auteurs', 2: 'auteurs' });
+  });

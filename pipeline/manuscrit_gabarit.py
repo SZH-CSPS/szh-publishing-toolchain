@@ -21,94 +21,51 @@
 # w:vertAlign) — jamais les recalculer.
 #
 # Repris depuis manuscrit_docx.py, PAR COPIE et non par import (ce module ne lit pas de
-# .docx, il en écrit — importer le lecteur pour deux constantes serait une dépendance dans
-# le mauvais sens) : rien. En revanche RE_LEGENDE est recopié tel quel depuis docx-titres.py
-# (§5.3 : « le lexique est celui de RE_LEGENDE dans docx-titres.py ») — ce fichier a un tiret
-# dans son nom, `import docx-titres` est syntaxiquement impossible en Python, la copie est
-# donc la seule option, comme pronto_modele.py l'a déjà fait pour normaliser().
+# .docx, il en écrit). RE_LEGENDE est recopié tel quel depuis docx-titres.py (nom à tiret,
+# `import docx-titres` est syntaxiquement impossible), comme pronto_modele.py l'a déjà fait
+# pour normaliser().
 #
 # stdlib uniquement : zipfile, re, os — pas de python-docx, pas de lxml (§2 du contrat).
 #
-# ── Contrat partagé du 19.09.2026 (notes de bas de page, décidé avec le superviseur) ────────
 # `Fragment.note : int | None` — identifiant de la note appelée par ce fragment. `Document.
-# notes : dict[int, list[Paragraphe|Tableau]]` — contenu de chaque note, par identifiant.
-# Au moment d'écrire ce module, manuscrit_modele.py ne portait PAS encore ces deux champs
-# (Fragment n'a pas de slot `note`, Document.notes était une simple liste) : ce module lit
-# donc `fragment.note` par `getattr(fragment, 'note', None)`, JAMAIS `fragment.note` en dur
-# (lèverait AttributeError sur un Fragment pas encore mis à jour), et n'utilise
-# `document.notes` que s'il est bien un dict — sinon (ancienne forme liste, ou le champ
-# n'existe pas encore côté lecteur) le document traverse sans aucune note écrite, comme
-# avant ce chantier. Rien à corriger ici si l'autre module n'a pas encore livré : le
-# comportement s'active tout seul dès qu'il le fait, sans aucun redéploiement de CE fichier.
+# notes : dict[int, list[Paragraphe|Tableau]]` — contenu de chaque note, par identifiant. Lus
+# par `getattr(fragment, 'note', None)` et en vérifiant que `document.notes` est bien un dict
+# (jamais en dur) : un Fragment ou un Document plus ancien, sans ces champs, traverse alors
+# sans aucune note écrite plutôt que de lever une AttributeError.
 #
-# ── Décisions prises ici, faute de préciser du contrat (à signaler, pas à corriger en silence) ─
+# Pièges et décisions qui ne sont pas dans le contrat, à ne pas repayer :
 #
-# 1. Les deux tableaux fixes du gabarit (métadonnées de l'article, autrices et auteurs) sont
-#    recopiés VERBATIM depuis le gabarit, vides, tels que livrés. Le Document du §4 ne porte
-#    aucun champ titre/type/langue/auteur — ce n'est pas ce module qui les remplit (ça reste
-#    le rôle du formulaire « Métadonnées des articles » du cockpit, inchangé). Ce module ne
-#    produit donc que ce qui SUIT ces deux tableaux : le corps du manuscrit.
-#
-# 2. « Toujours un paragraphe vide entre deux blocs » (§5.3/§10) est appliqué à la lettre
-#    entre un bloc figure/tableau et SON VOISIN QUEL QU'IL SOIT (bloc ou paragraphe simple) —
-#    jamais entre deux paragraphes de corps ordinaires, qui n'ont jamais fait fondre quoi que
-#    ce soit sous LibreOffice (le risque mesuré au §10 est spécifiquement DEUX TABLEAUX qui se
-#    touchent). Semer une ligne vide entre CHAQUE paragraphe de texte aurait été une lecture
-#    possible du mot « toujours », mais aurait dégradé la mise en page sans corriger aucun
-#    défaut connu — non retenue. Correctif du 19.09.2026 : un ou plusieurs paragraphes VIDES
-#    déjà présents dans le manuscrit, collés à un bloc, ne s'ajoutent plus au séparateur
-#    injecté — ils s'y substituent (jamais deux paragraphes vides consécutifs autour d'un
-#    bloc, jamais zéro non plus). Voir _separateur_requis() et le fondu des vides consécutifs
-#    dans _convertir_niveau_racine().
-#
-# 3. Une image rencontrée DANS UNE CELLULE d'un tableau du manuscrit (donc pas au premier
-#    niveau du document) est laissée EN PLACE, en ligne dans son paragraphe : elle n'est PAS
-#    extraite dans un bloc figure séparé. Le §5.3 ne distingue pas explicitement les deux cas ;
-#    imbriquer un bloc figure (donc un tableau) DANS une cellule de tableau ajoute une
-#    complexité que le corpus mesuré ne justifie pas (aucune image dans une cellule de tableau
-#    sur les onze manuscrits de lot-A ni sur le gabarit livré).
-#
-# 4. §5.4 : la numérotation de liste EST reportée, mais PAR CORRESPONDANCE — jamais par
-#    recopie du numId d'origine, qui désigne une entrée d'un numbering.xml qui n'est pas
-#    celui qu'on écrit. Le lecteur (manuscrit_docx.py) résout le FORMAT ('puce'/'numero'/'')
-#    de chaque liste depuis le numbering.xml du MANUSCRIT ; cet écrivain choisit alors, pour
-#    la SORTIE, une définition du gabarit si elle est adéquate (aucun niveau lié à un style de
-#    titre — voir _RegistreListes), et en injecte une sinon, en le disant dans la trace
-#    ('liste_reportee'). Un format non déterminé par le lecteur reçoit le repli déclaré de
-#    l'écrivain — puce, la forme la plus commune — et la trace distingue explicitement « lu »
-#    de « deviné par défaut ».
-#
-# 5. Une image dont l'extension n'est pas reconnue (§ CONTENU_TYPES_IMAGE) reçoit tout de
-#    même un [Content_Types].xml valide (Default générique 'application/octet-stream') plutôt
-#    que d'échouer : Word l'ouvrira sans doute mal, mais le document entier reste utilisable
-#    et le défaut est tracé ('image-extension-inconnue').
-#
-# 6. `document.notes` (notes de bas de page) EST maintenant écrit (correctif du 19.09.2026,
-#    voir le contrat partagé plus haut) : chaque note appelée par un fragment du corps devient
-#    un `w:footnote` de word/footnotes.xml, renuméroté à partir de 1 (ou après le plus grand
-#    id positif déjà présent dans le gabarit, s'il en avait — jamais sur le gabarit livré,
-#    qui n'a que ses deux notes techniques séparateur/continuation). Le style de renvoi
-#    (rStyle) et le style de paragraphe de note sont ceux du GABARIT s'il en définit (recherche
-#    par le nom canonique anglais du style, « footnote reference »/« footnote text », comme
-#    ailleurs dans ce module pour 'heading 1'/'Body Text' — jamais par un nom localisé qui
-#    varierait selon la langue de Word) ; à défaut, un simple exposant (vertAlign) pour le
-#    renvoi et Corpsdetexte pour le paragraphe — le gabarit livré n'a ni l'un ni l'autre, ce
-#    repli est donc la voie normale aujourd'hui, comme pour les listes (décision n°4). Une
-#    note appelée par le corps mais absente de `document.notes` (ne devrait jamais arriver
-#    depuis un vrai lecteur) reçoit un contenu vide, tracé ; une note présente mais jamais
-#    appelée n'est PAS écrite (elle serait sans ancre), et c'est tracé aussi.
-#
-# 7. Table de correspondance (ajoutée le 19.09.2026 à la demande du superviseur, pour un futur
-#    module d'annotation) : `ecrire()` rend aussi `correspondance`, une liste de
-#    {'source': indice du bloc dans document.blocs, 'sortie': indice, parmi les <w:p> enfants
-#    DIRECTS de w:body, du <w:p> qui porte ce paragraphe dans la sortie} — un couple par
-#    paragraphe de CORPS effectivement écrit comme <w:p> de premier niveau (jamais pour un
-#    bloc figure/tableau — ce sont des <w:tbl>, pas des <w:p> — jamais pour le contenu d'une
-#    cellule, jamais pour une note, jamais pour un paragraphe consommé comme légende ou fondu
-#    comme vide surnuméraire : aucun de ceux-là ne produit de <w:p> de premier niveau à
-#    pointer). _convertir_niveau_racine() calcule un indice RELATIF au corps qu'elle écrit ;
-#    ecrire() y ajoute le nombre de <w:p> qui la précèdent dans le document final (les deux
-#    paragraphes vides après les tableaux fixes du gabarit) pour obtenir l'indice ABSOLU.
+# - Les deux tableaux fixes du gabarit (métadonnées, autrices et auteurs) sont recopiés
+#   VERBATIM, vides, tels que livrés : ce module ne produit que ce qui SUIT ces deux tableaux.
+# - « Toujours un paragraphe vide entre deux blocs » (§5.3/§10) ne s'applique qu'entre un bloc
+#   figure/tableau et SON VOISIN, jamais entre deux paragraphes de corps ordinaires (le risque
+#   mesuré est spécifiquement DEUX TABLEAUX qui se touchent, fondus en un seul par
+#   LibreOffice). Des paragraphes vides déjà présents dans le manuscrit, collés à un bloc, ne
+#   s'ajoutent pas au séparateur injecté — ils s'y substituent (`_separateur_requis()`, jamais
+#   deux vides consécutifs autour d'un bloc, jamais zéro).
+# - Une image DANS UNE CELLULE de tableau reste en ligne dans son paragraphe, jamais extraite
+#   en bloc figure séparé (imbriquer un tableau dans une cellule est une complexité que le
+#   corpus ne justifie pas — aucun cas mesuré).
+# - §5.4, les listes : la numérotation est reportée PAR CORRESPONDANCE, jamais par recopie du
+#   numId d'origine (qui désigne une entrée d'un numbering.xml qui n'est pas celui qu'on
+#   écrit). Une définition du gabarit est réutilisée si elle convient (`_RegistreListes`),
+#   sinon injectée, tracé ('liste_reportee') ; un format non déterminé par le lecteur reçoit
+#   le repli — puce — et la trace distingue « lu » de « deviné par défaut ».
+# - Une image d'extension non reconnue reçoit quand même un [Content_Types].xml valide
+#   (Default générique) plutôt que d'échouer ; tracé ('image-extension-inconnue').
+# - `document.notes` : chaque note appelée par un fragment du corps devient un `w:footnote`,
+#   renuméroté à partir de 1 (ou après le plus grand id déjà présent). Style de renvoi et de
+#   paragraphe de note pris dans le GABARIT s'il en définit (nom canonique anglais du style,
+#   jamais un nom localisé) ; à défaut, simple exposant + Corpsdetexte — le gabarit livré n'a
+#   ni l'un ni l'autre, ce repli est la voie normale. Une note appelée mais absente de
+#   `document.notes` reçoit un contenu vide, tracé ; une note jamais appelée n'est pas écrite.
+# - Table de correspondance : `ecrire()` rend `correspondance`, une liste de {'source':
+#   Paragraphe.source du bloc d'origine, 'sortie': indice, parmi les <w:p> enfants DIRECTS de
+#   w:body, du <w:p> qui le porte} — un couple par paragraphe de CORPS écrit comme <w:p> de
+#   premier niveau (jamais pour un bloc figure/tableau, une cellule, une note, une légende
+#   consommée ou un vide surnuméraire). `_convertir_niveau_racine()` calcule un indice RELATIF
+#   au corps qu'elle écrit ; `ecrire()` y ajoute le nombre de <w:p> qui la précèdent (les deux
+#   paragraphes vides après les tableaux fixes) pour obtenir l'indice ABSOLU.
 
 import os
 import re
@@ -1011,14 +968,18 @@ def _texte_legende_trace(fragments):
 def _convertir_niveau_racine(blocs, registre, trace):
     """Rend (xml_du_corps, correspondance) — xml_du_corps hors les deux tableaux fixes.
 
-    `correspondance` (ajout du 19.09.2026, pour un futur module d'annotation) : une liste de
-    {'source': indice du bloc dans `blocs`, 'sortie': indice RELATIF, parmi les <w:p> écrits
-    ICI, du <w:p> qui le porte} — un couple par paragraphe de CORPS effectivement écrit comme
-    <w:p> de premier niveau (jamais pour un bloc figure/tableau, qui produit un <w:tbl>, pas
-    un <w:p> ; jamais pour un paragraphe consommé comme légende ou fondu comme vide
-    surnuméraire, aucun des deux ne produisant de <w:p>). L'indice est RELATIF à ce que cette
-    fonction écrit seule : ecrire() y ajoute le nombre de <w:p> qui la précèdent dans le
-    document final pour obtenir l'indice ABSOLU demandé.
+    `correspondance` (ajout du 19.09.2026, pour un module d'annotation) : une liste de
+    {'source': Paragraphe.source du bloc d'ORIGINE, 'sortie': indice RELATIF, parmi les <w:p>
+    écrits ICI, du <w:p> qui le porte} — un couple par paragraphe de CORPS effectivement écrit
+    comme <w:p> de premier niveau (jamais pour un bloc figure/tableau, qui produit un <w:tbl>,
+    pas un <w:p> ; jamais pour un paragraphe consommé comme légende ou fondu comme vide
+    surnuméraire, aucun des deux ne produisant de <w:p>). `source` est le vrai `Paragraphe.
+    source` du bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que
+    l'appelant a retiré des blocs de la liste avant d'appeler cette fonction (l'en-tête, §5.5)
+    — un `para` d'alerte porte toujours `Paragraphe.source`, jamais une position de liste.
+    L'indice `sortie` est RELATIF à ce que cette fonction écrit seule : ecrire() y ajoute le
+    nombre de <w:p> qui la précèdent dans le document final pour obtenir l'indice ABSOLU
+    demandé.
     """
     n = len(blocs)
     legendes, consommes = _associer_legendes(blocs)
@@ -1052,7 +1013,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                              fragments=fragments_texte, source=bloc.source)
                     style_id = _style_pour_paragraphe(p_texte)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
-                                      idx, False))
+                                      bloc.source, False))
                 # La légende éventuellement trouvée pour ce paragraphe ne va QUE sur la
                 # première image : un paragraphe portant plusieurs images est rare, et le
                 # contrat n'envisage pas d'en répartir une seule légende entre plusieurs blocs.
@@ -1088,7 +1049,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                   'format_determine': format_lu in ('puce', 'numero'),
                                   'motif': motif})
                 style_id = _style_pour_paragraphe(bloc)
-                segments.append((False, _paragraphe_xml(bloc, style_id, registre), idx, est_vide))
+                segments.append((False, _paragraphe_xml(bloc, style_id, registre),
+                                  bloc.source, est_vide))
         idx += 1
 
     # Défaut mesuré (§10, décision n°2 de l'en-tête) : des paragraphes vides consécutifs —
