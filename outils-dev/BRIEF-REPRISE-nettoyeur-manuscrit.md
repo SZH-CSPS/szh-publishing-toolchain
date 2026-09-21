@@ -1,5 +1,8 @@
 # Nettoyeur de manuscrit — brief de reprise
 
+> **État historique du 18.09.2026, dépassé.** L'état courant est dans `ETAT-REPRISE-2026-09-18.md`,
+> le contrat dans `ARCHITECTURE-nettoyeur-manuscrit.md`.
+
 **Pour qui :** l'agent qui reprend ce chantier sans l'avoir suivi. Tu connais le dépôt, tu n'as
 pas assisté à la session du 18.09.2026 où tout ceci a été écrit.
 
