@@ -361,6 +361,52 @@ test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rap
 });
 
 // ---------------------------------------------------------------------------------
+// 1 bis. _calculer_confiance() : plausibilité des champs (révision du 22.09.2026).
+//
+// Défaut réel (corpus tmp/docx-cleaner-error/1408_Alves.docx) : « United Nations, 2016.
+// General Comment No. 4 (2016), Article 24… » porte une SECONDE parenthèse à 4 chiffres, celle
+// du titre du texte cité. `_trouver_annee()` s'y arrête, `analyser_reference()` découpe dessus,
+// et l'« éditeur » qui en ressort vaut « 1-24 » — une plage de pages, jamais un éditeur. Avant
+// ce correctif, `_calculer_confiance()` accordait 'haute' sur la seule non-vacuité du champ.
+const TEXTE_UNITED_NATIONS = 'United Nations, 2016. General Comment No. 4 (2016), Article 24: '
+  + 'Right to Inclusive Education. UN Committee on the Rights of Persons With Disabilities '
+  + '(CRPD), pp. 1-24';
+
+test('analyser_reference : une seconde parenthèse à 4 chiffres dans le TITRE ne doit pas '
+  + 'faire passer une plage de pages égarée pour un éditeur plausible', { skip: sansPython }, () => {
+  const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
+  const r = python(PREAMBULE + '\n' + programme, [TEXTE_UNITED_NATIONS]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.editeur, '1-24',
+    'le déraillement de découpage doit rester identique, seule la confiance change : '
+    + JSON.stringify(d));
+  assert.notStrictEqual(d.confiance, 'haute',
+    'un « éditeur » qui vaut une plage de pages ne doit jamais valoir la confiance haute : '
+    + JSON.stringify(d));
+});
+
+test('analyser_bibliographie : l\'entrée "United Nations, 2016…" ne reçoit plus de '
+  + 'réécriture fabriquée (rendu = None)', { skip: sansPython }, () => {
+  const programme = [
+    'corps = []',
+    'biblio = [{"source": 30, "texte": ' + JSON.stringify(TEXTE_UNITED_NATIONS) + '}]',
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+    'print(json.dumps({"alertes": alertes, "stats": stats}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.strictEqual(r.alertes.filter((a) => a.rule === 'APA.MiseEnForme').length, 0,
+    'aucune révision APA.MiseEnForme ne doit être proposée pour cette entrée : '
+    + JSON.stringify(r.alertes));
+});
+
+// Non-régression (à ne jamais affaiblir) : les 18 références de la fixture ci-dessus — dont 12
+// viennent du corpus réel — gardent leur confiance haute, vérifiée champ par champ pour CHACUNE
+// (tests ci-dessus, "12 références fr…"/"6 références de…") et par le seuil global "au moins
+// 80%" (juste après). Si le contrôle de plausibilité introduit ici affaiblissait l'une de ces
+// références réellement APA, ces trois tests rougiraient déjà — nul besoin de les dupliquer.
+
+// ---------------------------------------------------------------------------------
 // 2. citations_du_corps() — narrative, parenthétique, et al., plusieurs années, particule,
 //    année isolée hors citation exclue.
 
@@ -572,6 +618,94 @@ test('croiser : "et al." manquant dès trois auteurs, et posé à tort pour deux
     assert.ok(trop, 'et al. de trop sur 2 auteurs non signalé');
     assert.match(trop.suggested, /Deux & Autre/);
   });
+
+// ---------------------------------------------------------------------------------
+// 3 bis. signaler_references_non_verifiees() — l'appel, dans le corps, d'une référence de
+// confiance non haute (§7 bis, révision du 22.09.2026). `mise_en_forme_apa()` refuse déjà de
+// réécrire une telle référence ; la relectrice doit néanmoins être avertie, mais SUR L'APPEL,
+// jamais sur l'entrée de bibliographie.
+
+const BIBLIO_UNESCO_NON_APA = [{ source: 20,
+  texte: "UNESCO, 2017. Rapport mondial de suivi sur l'éducation. Éditions UNESCO." }];
+
+test('analyser_bibliographie : une entrée non-APA ("UNESCO, 2017…", année sans '
+  + 'parenthèses) retrouve son appel dans un corps qui la cite (repli d\'appariement)',
+  { skip: sansPython }, () => {
+    const programme = [
+      'corps = [{"source": 1, "texte": '
+        + '"Ce constat est partagé (UNESCO, 2017) par plusieurs experts."}]',
+      'biblio = ' + JSON.stringify(BIBLIO_UNESCO_NON_APA),
+      "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+      'print(json.dumps({"alertes": alertes, "stats": stats}))',
+    ].join('\n');
+    const r = executer(programme);
+    const rnv = r.alertes.filter((a) => a.rule === 'APA.ReferenceNonVerifiee');
+    assert.strictEqual(rnv.length, 1, JSON.stringify(r.alertes));
+    assert.strictEqual(rnv[0].action, 'comment');
+    assert.strictEqual(rnv[0].para, 1, 'ancrée sur le PARAGRAPHE DU CORPS, pas la bibliographie');
+    assert.strictEqual(rnv[0].found, 'UNESCO, 2017');
+    assert.match(rnv[0].message, /UNESCO/, 'la référence concernée doit être nommée dans le '
+      + 'message : ' + rnv[0].message);
+    assert.strictEqual(r.stats.non_verifiees, 1);
+  });
+
+test('analyser_bibliographie : une référence non-APA citée trois fois ne reçoit qu\'un '
+  + 'commentaire, sur le PREMIER appel', { skip: sansPython }, () => {
+  const programme = [
+    'corps = [',
+    '  {"source": 1, "texte": "Première mention (UNESCO, 2017) du constat."},',
+    '  {"source": 2, "texte": "Deuxième mention (UNESCO, 2017) du même constat."},',
+    '  {"source": 3, "texte": "Troisième mention (UNESCO, 2017) encore."},',
+    ']',
+    'biblio = ' + JSON.stringify(BIBLIO_UNESCO_NON_APA),
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+    'print(json.dumps(alertes))',
+  ].join('\n');
+  const alertes = executer(programme);
+  const rnv = alertes.filter((a) => a.rule === 'APA.ReferenceNonVerifiee');
+  assert.strictEqual(rnv.length, 1,
+    'une seule référence citée trois fois ne doit produire qu\'UN commentaire, pas trois : '
+    + JSON.stringify(rnv));
+  assert.strictEqual(rnv[0].para, 1, 'doit porter sur le PREMIER appel (paragraphe 1), pas '
+    + 'un appel ultérieur : ' + JSON.stringify(rnv[0]));
+});
+
+test('analyser_bibliographie : une référence non-APA jamais citée ne reçoit aucun '
+  + 'commentaire de cette règle (pas de doublon avec APA.ReferenceNonCitee)',
+  { skip: sansPython }, () => {
+    const programme = [
+      'corps = [{"source": 1, "texte": "Ce paragraphe ne parle de rien de tel ici."}]',
+      'biblio = ' + JSON.stringify(BIBLIO_UNESCO_NON_APA),
+      "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+      'print(json.dumps({"alertes": alertes, "stats": stats}))',
+    ].join('\n');
+    const r = executer(programme);
+    assert.strictEqual(
+      r.alertes.filter((a) => a.rule === 'APA.ReferenceNonVerifiee').length, 0,
+      'une référence jamais citée ne doit produire aucun commentaire de cette règle : '
+      + JSON.stringify(r.alertes));
+    assert.strictEqual(r.stats.non_verifiees, 0);
+  });
+
+test('analyser_bibliographie : le message de APA.ReferenceNonVerifiee est localisé (fr/de), '
+  + 'même mécanisme que les autres alertes de l\'outil', { skip: sansPython }, () => {
+  const programme = (langue) => [
+    'corps = [{"source": 1, "texte": '
+      + '"Ce constat est partagé (UNESCO, 2017) par plusieurs experts."}]',
+    'biblio = ' + JSON.stringify(BIBLIO_UNESCO_NON_APA),
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, '" + langue + "', reseau=False)",
+    'print(json.dumps([a for a in alertes if a["rule"] == "APA.ReferenceNonVerifiee"]))',
+  ].join('\n');
+  const fr = executer(programme('fr'));
+  const de = executer(programme('de'));
+  assert.strictEqual(fr.length, 1);
+  assert.strictEqual(de.length, 1);
+  assert.match(fr[0].message, /référence/i);
+  assert.match(fr[0].message, /UNESCO, 2017/);
+  assert.match(de[0].message, /Verweis|Literaturverzeichnis/,
+    'le message allemand doit être en allemand, pas une copie du français : ' + de[0].message);
+  assert.notStrictEqual(fr[0].message, de[0].message);
+});
 
 // ---------------------------------------------------------------------------------
 // 4. verifier_ordre() — alphabétique/chronologique, suffixes a/b requis.
@@ -1021,6 +1155,35 @@ test('mise_en_forme_apa : un ouvrage collectif cité en ALLEMAND prend "(Hrsg.)"
   assert.match(d.rendu, /\(Hrsg\.\)/, 'un ouvrage cité en allemand prend "(Hrsg.)" même dans '
     + 'un article français : ' + d.rendu);
   assert.match(d.rendu, /T\. Meier & H\. Schneider/, 'connecteur "und" normalisé en "&" : ' + d.rendu);
+});
+
+// Défaut réel repéré en marge (corpus tmp/docx-cleaner-error/1408_Alves.docx, entrée
+// « Alves, I., & Fernandes, D. (2022)… ») : la branche `chapitre` posait « (Ed.) »/« (Eds.) »
+// sans jamais vérifier que `_consommer_editeurs_de_tete()` avait effectivement isolé des noms
+// d'éditeurs — une entrée par ailleurs bien formée et légitimement en confiance haute rendait
+// « In (Ed.), *Conteneur*… », un marqueur d'éditeur sans nom, jamais correct dans aucun des
+// deux guides.
+test('mise_en_forme_apa : un chapitre sans éditeur identifié ne produit plus "In (Ed.), "',
+  { skip: sansPython }, () => {
+  const programme = [
+    'r = mb.analyser_reference(sys.argv[1])',
+    "r['_langue'] = 'fr'",
+    'print(json.dumps({"rendu": mb.mise_en_forme_apa(r), '
+      + '"nb_editeurs_ouvrage": r["nb_editeurs_ouvrage"], "confiance": r["confiance"]}))',
+  ].join('\n');
+  const texte = 'Alves, I., & Fernandes, D. (2022). Un chapitre bien formé. In Un ouvrage '
+    + 'collectif (pp. 10-20). Éditeur X.';
+  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const d = JSON.parse(r.stdout);
+  assert.strictEqual(d.nb_editeurs_ouvrage, 0,
+    'ce cas doit être celui où AUCUN éditeur n\'a pu être isolé : ' + JSON.stringify(d));
+  assert.strictEqual(d.confiance, 'haute',
+    'l\'entrée reste par ailleurs bien formée, en confiance haute : ' + JSON.stringify(d));
+  assert.doesNotMatch(d.rendu, /\(Eds?\.\)/,
+    'un marqueur d\'éditeur sans nom ne doit plus être posé : ' + d.rendu);
+  assert.match(d.rendu, /In \*Un ouvrage collectif\*/,
+    'le "In" et le conteneur doivent survivre, sans marqueur creux entre eux : ' + d.rendu);
 });
 
 // Le garde-fou général (§7 bis, révision du 21.09.2026 quinquies) : reproduit le défaut réel

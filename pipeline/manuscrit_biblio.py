@@ -453,25 +453,44 @@ def _nettoyer_pages(t):
     return pronto_modele.normaliser(t or '').strip()
 
 
+# Contrôle de PLAUSIBILITÉ d'un champ réécrit (titre, conteneur, éditeur) — révision du
+# 22.09.2026 : `_calculer_confiance()` accordait 'haute' sur la seule NON-VACUITÉ de ces
+# champs, jamais sur la FORME de leur contenu. Mesuré sur `United Nations, 2016. General
+# Comment No. 4 (2016), Article 24…` : ce texte porte, par hasard, une SECONDE parenthèse à 4
+# chiffres (celle du titre du texte cité) ; `_trouver_annee()` s'y arrête, `analyser_reference()`
+# découpe dessus, et l'« éditeur » qui en ressort vaut `1-24` — une plage de pages égarée par ce
+# découpage, jamais un éditeur. Un champ non vide n'est donc plausible que s'il contient au
+# moins une LETTRE : un titre, un conteneur (revue/ouvrage) ou un éditeur en portent toujours
+# une, une plage de pages ou un numéro de volume égarés n'en portent jamais.
+RE_CONTIENT_LETTRE = re.compile(r'[^\W\d_]', re.UNICODE)
+
+
+def _champ_plausible(valeur):
+    return bool(RE_CONTIENT_LETTRE.search(valeur or ''))
+
+
 def _calculer_confiance(champs, annee, auteurs, entete_brute):
     if annee is None:
         return 'basse'
     if not auteurs and not (entete_brute or '').strip():
         return 'basse'
     t = champs['type']
-    if t == 'article' and champs['titre'] and champs['conteneur']:
+    titre_ok = _champ_plausible(champs['titre'])
+    conteneur_ok = _champ_plausible(champs['conteneur'])
+    editeur_ok = _champ_plausible(champs['editeur'])
+    if t == 'article' and titre_ok and conteneur_ok:
         return 'haute'
-    if t == 'chapitre' and champs['titre'] and champs['conteneur']:
+    if t == 'chapitre' and titre_ok and conteneur_ok:
         return 'haute'
-    if t == 'ouvrage' and champs['titre'] and champs['editeur']:
+    if t == 'ouvrage' and titre_ok and editeur_ok:
         return 'haute'
-    if t in ('rapport', 'web') and champs['titre'] and champs['editeur']:
+    if t in ('rapport', 'web') and titre_ok and editeur_ok:
         return 'haute'
-    if t in ('rapport', 'web') and champs['titre']:
+    if t in ('rapport', 'web') and titre_ok:
         return 'moyenne'
     if t == 'inconnu':
         return 'basse'
-    return 'moyenne' if champs['titre'] else 'basse'
+    return 'moyenne' if titre_ok else 'basse'
 
 
 def analyser_reference(texte, langue_doc='fr'):
@@ -874,6 +893,144 @@ def croiser(citations, references):
 
 
 # ---------------------------------------------------------------------------------
+# 3 bis. signaler_references_non_verifiees() — l'appel, dans le corps, d'une référence de
+# confiance non haute (§7 bis, révision du 22.09.2026, décision de Robin).
+#
+# `mise_en_forme_apa()` refuse déjà de RÉÉCRIRE une référence de confiance non haute — c'est
+# voulu, mieux vaut aucune proposition qu'une réécriture fautive. Mais la relectrice lit le
+# TEXTE, pas la liste des références : une référence qu'on n'a pas pu analyser complètement
+# doit donc recevoir un signal sur son APPEL dans le corps, jamais sur l'entrée de
+# bibliographie elle-même.
+#
+# La confiance nécessaire pour RETROUVER une référence (nom + année, pour l'apparier à un
+# appel) est bien plus faible que celle nécessaire pour la RÉÉCRIRE (une analyse complète de
+# tous ses champs) : extraire « UNESCO » et « 2017 » d'une entrée non-APA est facile, largement
+# suffisant pour retrouver l'appel — c'est réécrire l'ENTRÉE qui exige l'analyse complète que
+# `_calculer_confiance()` sanctionne. Le code d'origine confondait les deux exigences et
+# perdait les deux à la fois : `croiser()` (ci-dessus) exclut de `refs_par_cle` toute référence
+# dont `annee` est None (ligne « if not r.get('auteurs') or r.get('annee') is None: continue »)
+# — c'est le cas de 4 des 5 entrées non-APA du corpus réel (année écrite SANS parenthèses, que
+# `_trouver_annee()` n'y voit donc jamais). `_extraire_repli_appariement()` ci-dessous est un
+# second chemin, VOLONTAIREMENT séparé de celui de `croiser()` : il ne sert JAMAIS à construire
+# `champs['annee']`/`champs['auteurs']` (qui restent sous la seule autorité de
+# `analyser_reference()`), seulement à retrouver un appel pour LE SIGNALER. Cette frontière ne
+# doit jamais se brouiller : rien ici n'alimente jamais `mise_en_forme_apa()`.
+
+RE_ANNEE_REPLI = re.compile(r'(?:19|20)\d{2}')
+
+
+def _extraire_repli_appariement(texte_brut):
+    """(nom, annee) au sens le plus LÂCHE possible : la première année plausible du texte
+    (4 chiffres, PARENTHÈSES OU NON — contrairement à `_trouver_annee()`, strict), et ce qui la
+    précède comme nom du premier auteur (« et al. » et connecteur de tête ôtés, mêmes règles
+    que `_preparer_entete_auteurs()`). (None, None) si aucune année n'est trouvée.
+
+    ⚠ RÉSERVÉE à l'appariement (voir l'en-tête de section ci-dessus) : jamais utilisée par
+    `analyser_reference()` ni `mise_en_forme_apa()` — un nom/une année trouvés ici ne deviennent
+    jamais un champ structuré, seulement une clé de recherche pour `signaler_...` ci-dessous."""
+    t = pronto_modele.normaliser(texte_brut or '')
+    m = RE_ANNEE_REPLI.search(t)
+    if not m:
+        return None, None
+    entete = t[:m.start()].strip().strip(',.').strip()
+    entete = RE_ET_AL_FIN.sub('', entete).strip().strip(',.').strip()
+    premier_segment = entete.split(',')[0].strip()
+    nom = re.sub(r'^(?:&|et|und)\s+', '', premier_segment, flags=re.IGNORECASE).strip()
+    if not nom:
+        return None, None
+    return nom, int(m.group(0))
+
+
+def _cle_appariement_repli(ref):
+    """(nom, annee) d'une référence de confiance NON haute, pour l'apparier à un appel du
+    corps — la clé STRICTE (`auteurs[0].nom`, `annee`) si `analyser_reference()` a pu les lire
+    normalement (cas de `United Nations, 2016…` : sa LECTURE reste correcte, seule sa
+    CONFIANCE tombe — la seconde parenthèse à 4 chiffres du titre a fait dérailler la découpe
+    des champs, pas celle de l'année elle-même) ; sinon `_extraire_repli_appariement()` (cas
+    des références où `annee` vaut None, la lecture formelle exigeant des parenthèses).
+    (None, None) si même ce repli échoue."""
+    if ref.get('auteurs') and ref.get('annee') is not None:
+        return ref['auteurs'][0]['nom'], ref['annee']
+    return _extraire_repli_appariement(ref.get('texte') or '')
+
+
+def _appels_en_ordre_texte(citations):
+    """`citations` (voir citations_du_corps()) reclassées dans l'ordre RÉEL du texte.
+    citations_du_corps() traite, POUR CHAQUE PARAGRAPHE, d'abord toutes les citations
+    narratives puis toutes les parenthétiques : l'ordre ENTRE paragraphes est donc déjà correct
+    (un seul passage sur la liste donnée), mais PAS forcément celui, à l'intérieur d'un même
+    paragraphe, entre les deux formes si elles s'y mélangent. Ne réordonne donc QUE l'intérieur
+    de chaque paragraphe (sur `span[0]`), sans jamais permuter deux paragraphes entre eux —
+    nécessaire pour que « le premier appel » (policy ci-dessous) désigne réellement le premier
+    dans le texte, pas le premier que citations_du_corps() a rencontré dans son propre
+    parcours."""
+    groupes = []
+    for c in citations or []:
+        if groupes and groupes[-1][0] == c.get('para'):
+            groupes[-1][1].append(c)
+        else:
+            groupes.append((c.get('para'), [c]))
+    out = []
+    for _para, lot in groupes:
+        out.extend(sorted(lot, key=lambda c: c['span'][0] if c.get('span') else 0))
+    return out
+
+
+_MESSAGE_REFERENCE_NON_VERIFIEE = {
+    'fr': ('La référence « %s » n\'a pas pu être vérifiée automatiquement : son format n\'a '
+           'pas été reconnu. Contrôlez l\'entrée correspondante dans la liste des références, '
+           'puis corrigez cet appel si nécessaire.'),
+    'de': ('Der Verweis «%s» konnte nicht automatisch überprüft werden: Sein Format wurde '
+           'nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
+           'Literaturverzeichnis und korrigieren Sie diesen Verweis bei Bedarf.'),
+}
+
+
+def _message_reference_non_verifiee(repere, langue):
+    # Même mécanisme que Regle.message_fr/message_de de manuscrit_regles.py (évaluer(), choix
+    # sur la langue COURTE du produit) — la seule localisation de message déjà en usage dans cet
+    # outil ; manuscrit_biblio.py lui-même n'a encore aucun message bilingue, ce module-ci ne
+    # devait pas en inventer un second mécanisme.
+    gabarit = _MESSAGE_REFERENCE_NON_VERIFIEE.get(langue) or _MESSAGE_REFERENCE_NON_VERIFIEE['fr']
+    return gabarit % repere
+
+
+def signaler_references_non_verifiees(citations, references, langue):
+    """Alertes `APA.ReferenceNonVerifiee` : une référence de confiance non haute, mais dont
+    l'appel a pu être retrouvé dans le corps (voir `_cle_appariement_repli()`), reçoit un
+    commentaire SUR CET APPEL — jamais sur l'entrée de bibliographie.
+
+    Deux règles de policy (décidées, jamais rediscutées ici) :
+      - citée plusieurs fois -> commentaire sur le PREMIER appel SEULEMENT (le plafond de
+        `manuscrit_annoter.py` est de 5 commentaires PAR RÈGLE, §7 du contrat : une référence
+        citée six fois ne doit pas, seule, épuiser tout le budget) ;
+      - jamais citée -> AUCUN commentaire ici : `APA.ReferenceNonCitee` (croiser(), ci-dessus)
+        couvre déjà ce cas en se posant sur l'entrée — pas de doublon."""
+    alertes = []
+    premier_appel_par_cle = {}
+    for c in _appels_en_ordre_texte(citations):
+        cle = _cle(c['nom_premier_auteur'], c['annee'])
+        premier_appel_par_cle.setdefault(cle, c)
+
+    for r in references or []:
+        if r.get('confiance') == 'haute':
+            continue
+        nom, annee = _cle_appariement_repli(r)
+        if nom is None or annee is None:
+            continue
+        appel = premier_appel_par_cle.get(_cle(nom, annee))
+        if appel is None:
+            continue  # jamais citée : APA.ReferenceNonCitee s'en charge déjà, pas de doublon
+        alertes.append({
+            'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
+            'para': appel.get('para'), 'span': appel.get('span'), 'found': appel.get('texte'),
+            'suggested': None,
+            'message': _message_reference_non_verifiee('%s, %d' % (nom, annee), langue),
+        })
+    return alertes
+
+
+# ---------------------------------------------------------------------------------
 # 4. verifier_ordre() — alphabétique puis chronologique, suffixes a/b requis.
 
 def verifier_ordre(references, langue='fr'):
@@ -1168,15 +1325,29 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         # pluriel distingué par `nb_editeurs_ouvrage` (jamais fixe : « (Ed.) » pour un seul
         # éditeur, « (Eds.) » dès deux, comme « M. G. P. Hessels & C. Hessels-Schlatter (Eds.) »
         # dans l'exemple du guide Revue).
-        langue_marqueur = ref.get('langue_ref') or langue
-        if langue_marqueur == 'de':
-            marqueur_editeur = '(Hrsg.)'
-        else:
-            marqueur_editeur = '(Eds.)' if (ref.get('nb_editeurs_ouvrage') or 0) >= 2 else '(Ed.)'
         # Les noms des éditeurs de l'ouvrage collectif (« In E. E. Editor (Ed.), … ») ne sont
         # repris que si _consommer_editeurs_de_tete() a pu les isoler à la lecture — sinon on
         # ne les invente pas, on garde la forme sans eux plutôt qu'une fausse liste vide.
-        editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if ref.get('editeurs_ouvrage') else ''
+        #
+        # ⚠ Défaut réel corrigé (22.09.2026) : le marqueur « (Ed.) »/« (Eds.) »/« (Hrsg.) »
+        # était posé INCONDITIONNELLEMENT, même quand AUCUN éditeur n'avait pu être isolé —
+        # mesuré sur `Alves, I., & Fernandes, D. (2022)…`, une entrée par ailleurs bien formée
+        # et légitimement en confiance haute, qui rendait « In (Ed.), … » : un marqueur
+        # d'éditeur sans nom n'est jamais correct, dans aucun des deux guides. Le marqueur (et
+        # la virgule qui l'accompagne) ne s'écrit désormais que si `editeurs_ouvrage` a
+        # effectivement été trouvé.
+        sait_editeurs = bool(ref.get('editeurs_ouvrage'))
+        if not sait_editeurs:
+            marqueur_editeur = ''
+        else:
+            langue_marqueur = ref.get('langue_ref') or langue
+            if langue_marqueur == 'de':
+                marqueur_editeur = '(Hrsg.)'
+            else:
+                marqueur_editeur = ('(Eds.)' if (ref.get('nb_editeurs_ouvrage') or 0) >= 2
+                                     else '(Ed.)')
+        editeurs_ouvrage = ('%s ' % ref['editeurs_ouvrage']) if sait_editeurs else ''
+        intro_editeurs = (editeurs_ouvrage + marqueur_editeur + ', ') if marqueur_editeur else ''
         # « pp. » (Revue, APA) contre « S. » (Zeitschrift, DGPs — vu tel quel dans son propre
         # exemple : « S. 113–156 ») : un choix de STYLE DE CITATION, donc la langue du PRODUIT
         # (`langue`), pas celle de l'ouvrage cité — un chapitre anglais cité dans la Zeitschrift
@@ -1188,8 +1359,8 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         # pas lui rajouter un point qui produirait « … ?. In … », une double ponctuation que
         # personne n'a écrite.
         fin_titre = titre if titre[-1:] in '?!' else titre + '.'
-        corps = '%s In %s%s, *%s*%s. %s.' % (
-            fin_titre, editeurs_ouvrage, marqueur_editeur, ref.get('conteneur') or '', pages,
+        corps = '%s In %s*%s*%s. %s.' % (
+            fin_titre, intro_editeurs, ref.get('conteneur') or '', pages,
             ref.get('editeur') or '')
     elif t == 'rapport':
         # Le genre entre crochets (« [Thèse de doctorat] », « [Mémoire de Master] »…) fait
@@ -1256,6 +1427,10 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
     alertes.extend(alertes_croisement)
     stats['citees_absentes'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.CitationAbsente')
     stats['non_citees'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.ReferenceNonCitee')
+
+    alertes_non_verifiees = signaler_references_non_verifiees(citations, references, langue)
+    alertes.extend(alertes_non_verifiees)
+    stats['non_verifiees'] = len(alertes_non_verifiees)
 
     alertes.extend(verifier_ordre(references, langue))
 
