@@ -1370,12 +1370,12 @@ const TEXTES_COCKPIT = {
     // La typographie (szh-typographie.lua). L'usage suisse écrit « ss » ; un nom propre et
     // une citation gardent le « ß », et le filtre n'y touche pas — nuance à garder, d'où
     // le détail pour ce seul cas des trois.
-    'defaut.typo-eszett': '« ß » à la place de « ss »',
-    'detail.typo-eszett': 'L’usage suisse écrit « ss » ; un nom propre ou une citation le gardent, le filtre n’y touche pas.',
+    'defaut.typo-eszett': '« ß » à la place de « ss »',
+    'detail.typo-eszett': 'L’usage suisse écrit « ss » ; un nom propre ou une citation le gardent, le filtre n’y touche pas.',
     'defaut.typo-guillemets-droits': 'Guillemets droits au lieu de chevrons',
-    'detail.typo-guillemets-droits': 'Rien ne dit lequel ouvre et lequel ferme : le filtre n’y touche pas. Remplacez-les par des chevrons à la relecture.',
+    'detail.typo-guillemets-droits': 'Rien ne dit lequel ouvre et lequel ferme : le filtre n’y touche pas. Remplacez-les par des chevrons à la relecture.',
     'defaut.typo-majuscule-accentuee': 'Majuscule non accentuée',
-    'detail.typo-majuscule-accentuee': 'Le Guide du typographe l’accentue, mais le filtre ne corrige que les titres — un mot anglais peut s’écrire ainsi. À trancher à la relecture.',
+    'detail.typo-majuscule-accentuee': 'Le Guide du typographe l’accentue, mais le filtre ne corrige que les titres – un mot anglais peut s’écrire ainsi. À trancher à la relecture.',
     // Les images natives Word (szh-metafichier.lua).
     'defaut.metafichier-image-native': 'Image native Word non rendue',
     'defaut.metafichier-placeholder-introuvable': 'Substitut d’image manquant sur ce poste',
@@ -2855,8 +2855,8 @@ const TEXTES_COCKPIT = {
     'defaut.image-manquante': 'Bild nicht gefunden',
     'defaut.niveaux-ecrases': 'Zu tiefe Titelebenen',
     'defaut.police-manquante': 'Schrift nicht installiert',
-    'defaut.typo-eszett': '„ß“ statt „ss“',
-    'detail.typo-eszett': 'Die Schweizer Rechtschreibung schreibt „ss“; ein Eigenname oder ein Zitat behalten es, der Filter rührt sie nicht an.',
+    'defaut.typo-eszett': 'Eszett statt «ss»',
+    'detail.typo-eszett': 'Die Schweizer Rechtschreibung schreibt «ss»; ein Eigenname oder ein Zitat behalten das Eszett, der Filter rührt es nicht an.',
     'defaut.typo-guillemets-droits': 'Gerade Anführungszeichen statt Guillemets',
     'detail.typo-guillemets-droits': 'Nichts sagt, welches öffnet und welches schliesst: der Filter rührt sie nicht an. Ersetzen Sie sie bei der Korrektur durch Guillemets.',
     'defaut.typo-majuscule-accentuee': 'Grossbuchstabe ohne Akzent',

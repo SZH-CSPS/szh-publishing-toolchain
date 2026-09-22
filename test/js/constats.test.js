@@ -202,8 +202,11 @@ test('typo : le mot fautif mène à l’article, quand le filtre le fournit', ()
   const c = constat('typo', 'eszett', { mot: 'Strasse' });
   assert.deepStrictEqual(constats.cible(c),
     { lieu: 'article', slug: '01-essai', focus: 'Strasse' });
-  assert.match(constats.phrase(c, 'fr'), /^« ß » à la place de « ss » : Strasse$/);
-  assert.match(constats.phrase(c, 'de'), /^„ß“ statt „ss“: Strasse$/);
+  // `\s` et non une espace littérale : test/typo-check.py pose des insécables dans les
+  // guillemets français et les colle en allemand. La typographie de ces libellés est sa
+  // décision ; ce test ne juge que la composition de la phrase.
+  assert.match(constats.phrase(c, 'fr'), /^«\s*ß\s*» à la place de «\s*ss\s*»\s*: Strasse$/);
+  assert.match(constats.phrase(c, 'de'), /^Eszett statt «\s*ss\s*»\s*: Strasse$/);
   // La nuance du filtre (nom propre, citation) ne doit pas se perdre : elle vit dans le
   // détail, à part de l’intitulé court.
   for (const langue of ['fr', 'de']) {

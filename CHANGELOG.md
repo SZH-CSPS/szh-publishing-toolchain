@@ -11,6 +11,47 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.0.0
+
+**Un numéro déjà compilé sort différent : une citation narrative devient un lien.** Jusqu'ici,
+un appel écrit au fil du texte avec « et al. » — « Selon Capurso et al. (2025) » — n'était ni
+lié, ni compté, ni signalé : la prose qui précède la parenthèse était coupée au dernier point,
+et « al. » finit par un point. C'est la forme la plus courante dès trois auteurs, et l'en-tête
+du filtre l'annonçait pourtant comme prise en charge. Ces appels reçoivent désormais leur lien
+interne, et leur référence sa flèche de retour. Recompiler un numéro paru change donc son PDF.
+
+**Une parenthèse de prose allemande n'est plus prise pour un appel.** « (mindestens fünf
+Treffen pro Tandem zwischen Juli 2026 und Oktober 2027) » produisait deux « Verweis ohne
+Eintrag ». En allemand tout nom commun est capitalisé, et le découpage des noms ne rognait
+qu'à gauche : il s'arrêtait au premier mot capitalisé et en faisait un patronyme. Règle posée,
+sans lexique ni comptage de mots — aucune heuristique ne sépare « Werte » de « Bovey » : quand
+le millésime n'est pas précédé d'une virgule, l'appel n'existe que s'il s'apparie à une entrée
+de la bibliographie. Le coût est assumé et écrit dans le code, un appel sans virgule dont la
+référence manque vraiment n'est plus signalé.
+
+**La flèche d'un message mène au passage fautif et le surligne.** Elle ouvrait le bon fichier,
+curseur au début. Elle sélectionne maintenant le passage, le centre et le surligne trois
+secondes. La recherche absorbe la normalisation que la compilation fait subir au texte —
+insécables, tirets, espaces écrasées — et retrouve même un appel coupé par un retour à la
+ligne ; introuvable, elle ne fait rien plutôt que de désigner un endroit faux.
+
+**Dix-sept familles de messages reçoivent une destination.** Les trois contrôles
+typographiques, les deux du méta-fichier, les huit de la scission d'un livre et quatre codes
+de l'import s'affichaient avec un libellé générique et sans flèche. Les émetteurs disent
+désormais OÙ : le filtre typographique joint le mot fautif, le convertisseur de tableaux un
+extrait de la première cellule. Le cockpit ne peut pas désigner ce qu'on ne lui dit pas.
+
+**Deux flèches menaient au mauvais endroit.** Le découpage au dernier séparateur de chemin
+s'appliquait à tous les champs : une référence portant un DOI s'affichait « Référence jamais
+citée : abc », et la flèche visait « abc ». Et le message d'un PDF verrouillé n'avait pas de
+slug du tout — son bouton aurait ouvert le PDF de l'article actif, donc un autre que celui qui
+est verrouillé.
+
+**Un message ne pouvait plus jamais apparaître.** Le lecteur du journal cherchait une phrase
+que le `Makefile` n'écrit plus depuis un moment : le constat du profil « book » sans
+`buch.yaml` était devenu invisible, ni carte ni flèche. Un test de contrat relit le `Makefile`
+pour que la dérive ne recommence pas en silence.
+
 ## 1.3.0
 
 **Les métadonnées d'un bloc figure ou tableau ne vivent plus dans un tableau enveloppe.**

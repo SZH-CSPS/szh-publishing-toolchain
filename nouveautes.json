@@ -15,7 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
-
+  "2.0": {
+    "fr": {
+      "titre": "Les messages de contrôle mènent à l’endroit exact, et les citations en cachaient",
+      "points": [
+        "La flèche d’un message vous amène au passage en cause, le sélectionne et le surligne quelques secondes : vous n’avez plus à le chercher dans l’article.",
+        "Des messages qui n’avaient aucune flèche en ont une maintenant, dont le « ß » resté dans un texte allemand, les guillemets droits et les images d’un chapitre.",
+        "Une parenthèse de prose allemande qui contient des millésimes n’est plus prise pour une citation : les faux « renvoi sans entrée » disparaissent.",
+        "Une citation écrite « Autrice et al. (2025) » au fil du texte devient enfin un lien vers sa référence, et la référence renvoie vers elle.",
+        "Le message d’un PDF verrouillé ouvre le PDF concerné, et non celui de l’article que vous aviez sous les yeux."
+      ]
+    },
+    "de": {
+      "titre": "Die Meldungen führen an die genaue Stelle, und Zitatverweise blieben verborgen",
+      "points": [
+        "Der Pfeil einer Meldung bringt Sie an die betroffene Stelle, markiert sie und hebt sie einige Sekunden hervor: Sie müssen sie nicht mehr selbst suchen.",
+        "Meldungen ohne Pfeil haben nun einen, darunter das im deutschen Text gebliebene «ss», die geraden Anführungszeichen und die Bilder eines Kapitels.",
+        "Eine deutsche Klammer mit Jahreszahlen gilt nicht mehr als Zitatverweis: die falschen «Verweis ohne Eintrag» verschwinden.",
+        "Ein im Fliesstext geschriebener Verweis «Autorin et al. (2025)» wird endlich zur Verknüpfung auf seinen Eintrag, und der Eintrag verweist zurück.",
+        "Die Meldung zu einem gesperrten PDF öffnet das betroffene PDF und nicht jenes des gerade offenen Artikels."
+      ]
+    }
+  },
   "1.3": {
     "fr": {
       "titre": "Les métadonnées d’une figure passent au-dessus, sans tableau",
@@ -34,7 +55,6 @@
       ]
     }
   },
-
   "1.2": {
     "fr": {
       "titre": "Un manuscrit se nettoie tout seul",
@@ -57,7 +77,6 @@
       ]
     }
   },
-
   "1.1": {
     "fr": {
       "titre": "Les nouveautés s’affichent",
