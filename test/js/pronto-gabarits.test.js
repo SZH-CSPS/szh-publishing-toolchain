@@ -87,6 +87,17 @@ function sansLigneSource(fiche) {
   return (fiche || '').split(/\r?\n/).filter((l) => l.indexOf('source:') !== 0).join('\n');
 }
 
+// La seule instruction qui a le droit de différer entre les deux formats : le ou les NOMS DE
+// FICHIER de l'image d'un bloc figure (ligne FI). Word et LibreOffice ne nomment pas les médias
+// pareil — media/image1.png + media/image2.svg d'un côté (l'aperçu PNG et le SVG qu'il cache),
+// « 1000038800000A0600000A067B9F4EE9.svg » de l'autre — et c'est sans conséquence : ce nom ne
+// sert qu'à retrouver LA MÊME image dans le .md que pandoc vient d'écrire depuis LE MÊME
+// fichier. Tout le reste de la ligne (légende, texte alternatif, crédit, source) doit, lui,
+// être identique au caractère près, et c'est ce que ce masquage laisse comparer.
+function sansNomsImages(instructions) {
+  return (instructions || '').replace(/^(FI\t)[^\t\n]*/gm, '$1<image>');
+}
+
 test('pronto-lire.py : le même gabarit en .docx et en .odt donne la même fiche', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
   assert.ok(fs.existsSync(REVUE_DOCX), 'gabarit .docx manquant dans revue-template/ : ' + REVUE_DOCX);
@@ -101,7 +112,7 @@ test('pronto-lire.py : le même gabarit en .docx et en .odt donne la même fiche
     'la fiche (hors ligne source:) diffère entre le .docx et le .odt :\n--- docx ---\n'
     + vuDocx.fiche + '\n--- odt ---\n' + vuOdt.fiche);
 
-  assert.strictEqual(vuDocx.instructions, vuOdt.instructions,
+  assert.strictEqual(sansNomsImages(vuDocx.instructions), sansNomsImages(vuOdt.instructions),
     'les lignes $SZH_META diffèrent entre le .docx et le .odt :\n--- docx ---\n'
     + vuDocx.instructions + '\n--- odt ---\n' + vuOdt.instructions);
 
@@ -288,7 +299,9 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
     + JSON.stringify(structDocx.blocs_nouvelle_forme) + ' odt='
     + JSON.stringify(structOdt.blocs_nouvelle_forme));
 
-  // Le gabarit réel porte cinq étiquettes de métadonnées, quatre rangées dans le tableau des
+  // Le gabarit réel porte quatre étiquettes de métadonnées — « Langue de l'article » en a été
+  // retirée le 22.09.2026, la langue venant désormais de la revue du numéro —, quatre rangées
+  // dans le tableau des
   // auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois rangées-modèle) — mesuré à
   // la main sur les deux fichiers. Depuis la révision du 21.09.2026 (plus de tableau
   // enveloppe), il ne porte plus AUCUN bloc à l'ancienne forme, et deux à la nouvelle (les
@@ -296,12 +309,17 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   // changent un jour, c'est que le gabarit a changé : les deux assertions deepStrictEqual
   // ci-dessus l'auraient déjà dit, celles-ci ne font que documenter la forme attendue pour
   // qui lit ce test.
-  assert.strictEqual(structDocx.table1_labels.length, 5);
+  assert.strictEqual(structDocx.table1_labels.length, 4);
   assert.strictEqual(structDocx.table2_lignes.length, 4);
   assert.strictEqual(structDocx.blocs_ancienne_forme.length, 0);
   assert.strictEqual(structDocx.blocs_nouvelle_forme.length, 2);
   assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 4);
-  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 4);
+  // Le second bloc (l'exemple de bloc TABLEAU) n'en porte que trois depuis la v3 du gabarit :
+  // « Source : » n'y figure pas. Sans conséquence — une clé attendue absente est une simple
+  // information, jamais un blocage — mais la ligne d'aide juste en dessous dit encore
+  // « Copiez ces quatre paragraphes ». À trancher : rétablir la quatrième clé, ou corriger
+  // l'aide.
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 3);
 });
 
 // Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),
@@ -334,4 +352,54 @@ test('decoder_nom_style() : les noms de style ODT encodés se décodent en noms 
   const r = python(['-c', script]);
   assert.strictEqual(r.status, 0, 'decoder_nom_style a echoue : ' + r.stderr);
   assert.strictEqual(r.stdout.trim(), 'OK');
+});
+
+// ── Le choix du lecteur, document par document ────────────────────────────────────────────
+//
+// C'est LA décision du branchement (22.09.2026) : pipeline/import-docx.sh demande
+// `pronto-lire.py --reconnaitre` pour chaque document déposé, et envoie au lecteur du gabarit
+// ceux qui en déclarent les styles, à l'ancien docx-meta.py tous les autres. Un réglage de
+// poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent le
+// même jour.
+//
+// Le critère porte sur styles.xml, pas sur le corps : un document parti du gabarit reste
+// reconnu même si l'autrice a effacé toutes les lignes d'aide, et un Word hérité ne peut pas
+// le devenir par accident.
+
+const CHAPITRE_HERITE = path.join(RACINE, 'livre-template', 'Modele-chapitre-SZH.docx');
+
+function reconnait(chemin) {
+  const r = python([PRONTO_LIRE, '--reconnaitre', chemin]);
+  assert.ok(r.status === 0 || r.status === 1,
+    '--reconnaitre a échoué de façon inattendue (code ' + r.status + ') : ' + r.stderr);
+  return r.status === 0;
+}
+
+test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un Word hérité ne l’est pas', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
+  assert.ok(fs.existsSync(CHAPITRE_HERITE),
+    'le Word hérité de référence manque : ' + CHAPITRE_HERITE);
+
+  assert.strictEqual(reconnait(REVUE_DOCX), true,
+    'le gabarit .docx livré n’est plus reconnu : tout document du gabarit repartirait chez '
+    + 'docx-meta.py, qui devine au lieu de lire');
+  assert.strictEqual(reconnait(REVUE_ODT), true, 'le gabarit .odt livré n’est plus reconnu');
+  assert.strictEqual(reconnait(CHAPITRE_HERITE), false,
+    'un Word hérité a été pris pour un document du gabarit : il serait lu par un lecteur qui '
+    + 'refuse de deviner, et son import échouerait');
+});
+
+test('pronto-lire.py --reconnaitre : un fichier absent ou illisible n’est jamais « au gabarit »', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Un document qu'on ne sait pas ouvrir doit partir chez l'ancien lecteur, dont le message
+  // d'échec dit mieux que nous ce qui ne va pas.
+  assert.strictEqual(reconnait(path.join(RACINE, 'nulle-part-du-tout.docx')), false);
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pronto-'));
+  try {
+    const bidon = path.join(base, 'pas-un-zip.docx');
+    fs.writeFileSync(bidon, 'ceci n’est pas une archive', 'utf8');
+    assert.strictEqual(reconnait(bidon), false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });

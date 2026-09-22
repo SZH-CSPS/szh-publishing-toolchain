@@ -72,6 +72,7 @@ W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 
 RIDS_IMAGES = []   # (rid, nomfichier) — accumulé pendant la construction, écrit dans .rels
 
@@ -81,20 +82,30 @@ def esc(s):
             .replace('"', "&quot;"))
 
 
-def drawing(nom_image):
+def drawing(nom_image, nom_svg=None):
     # Minimal, mais tout ce que pronto_docx.images_de_paragraphe() cherche : un w:drawing
     # portant quelque part un wp:extent (surface) et un a:blip r:embed (résolu via .rels).
+    # nom_svg reproduit la forme que Word donne à une image VECTORIELLE : le a:blip pointe
+    # un aperçu PNG, et le vrai SVG se cache dans son extension asvg:svgBlip. pandoc, lui,
+    # écrit le SVG — d'où les deux noms à connaître.
     rid = 'rIdImg%d' % (len(RIDS_IMAGES) + 1)
     RIDS_IMAGES.append((rid, nom_image))
+    svg = ''
+    if nom_svg:
+        rid_svg = 'rIdImg%d' % (len(RIDS_IMAGES) + 1)
+        RIDS_IMAGES.append((rid_svg, nom_svg))
+        svg = ('<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">'
+               '<asvg:svgBlip xmlns:asvg="%s" r:embed="%s"/></a:ext></a:extLst>'
+               % (ASVG, rid_svg))
     return ('<w:drawing xmlns:wp="%s" xmlns:a="%s" xmlns:r="%s">'
-            '<wp:extent cx="100000" cy="100000"/><a:blip r:embed="%s"/></w:drawing>'
-            % (WP, A, R, rid))
+            '<wp:extent cx="100000" cy="100000"/><a:blip r:embed="%s">%s</a:blip></w:drawing>'
+            % (WP, A, R, rid, svg))
 
 
-def para(style, texte, image=None):
+def para(style, texte, image=None, image_svg=None):
     ppr = ('<w:pPr><w:pStyle w:val="%s"/></w:pPr>' % esc(style)) if style else ''
     r = '<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % esc(texte) if texte else ''
-    d = '<w:r>%s</w:r>' % drawing(image) if image else ''
+    d = '<w:r>%s</w:r>' % drawing(image, image_svg) if image else ''
     return '<w:p>%s%s%s</w:p>' % (ppr, r, d)
 
 
@@ -104,7 +115,7 @@ def contenu_item(it):
             return table(it['tbl'])
         if 'p' in it:
             s, t = it['p']
-            return para(s, t, it.get('image'))
+            return para(s, t, it.get('image'), it.get('imageSvg'))
         raise ValueError('élément de cellule inconnu : %r' % it)
     style, texte = it
     return para(style, texte)
@@ -138,7 +149,7 @@ def marqueurs_page(n):
 def bloc(b):
     if 'p' in b:
         style, texte = b['p']
-        return para(style, texte, b.get('image'))
+        return para(style, texte, b.get('image'), b.get('imageSvg'))
     if 'tbl' in b:
         return table(b['tbl'])
     if 'marqueurs' in b:
@@ -272,13 +283,19 @@ function marqueursPage(n) {
 // Le statut de sortie n'est plus systématiquement 0 depuis les clés bloquantes (22.09.2026) :
 // 1 signale un import refusé (voir stats.bloquant / stats.cles_non_reconnues), toute autre
 // valeur reste un vrai échec de script.
-function importer(slug, spec) {
+// `produit` : le jeton `revue:` du numéro, d'où vient la LANGUE de l'article depuis le
+// 22.09.2026 (le gabarit ne porte plus de champ « Langue de l'article »). La chaîne réelle le
+// pose dans $SZH_PRODUIT, lu à la racine du numéro par import-docx.sh ; tous les contrôles
+// tournent donc « dans la Revue » par défaut, comme un vrai import. Les deux contrôles qui
+// visent la langue elle-même passent leur propre valeur — dont '' pour le cas sans numéro.
+function importer(slug, spec, produit) {
   const base = dossierJetable();
   try {
     const docx = path.join(base, slug + '.docx');
     fabriquerDocx(docx, spec);
     const instr = path.join(base, 'instructions.txt');
-    const r = python([DOCX_PRONTO, docx, slug, base], { SZH_META: instr });
+    const r = python([DOCX_PRONTO, docx, slug, base],
+      { SZH_META: instr, SZH_PRODUIT: produit === undefined ? 'revue' : produit });
     assert.ok(r.status === 0 || r.status === 1,
       'docx-pronto.py a échoué de façon inattendue (code ' + r.status + ') : ' + r.stderr);
     const lignes = String(r.stdout).trim().split(/\r?\n/);
@@ -308,7 +325,6 @@ const SPEC_COMPLET = {
     tableMeta([
       ligneMeta("Type d’article", 'dossier thématique',
         'dossier thématique · éditorial · varia · tribune libre'),
-      ligneMeta('Langue de l’article', 'français', 'français · deutsch · italiano'),
       ligneMeta('Titre (FR)', 'Inclusion scolaire et pratiques enseignantes'),
       ligneMeta('Sous-titre (FR)', 'Une enquête romande'),
       ligneMeta('Résumé (FR)', 'Un résumé de test suffisamment long.')
@@ -377,7 +393,7 @@ function specEmail(separateur) {
   return {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([
         ligneAuteur(['Prénom : Ana', 'Nom : Rossi', 'Email' + separateur + 'ana.rossi@ex.ch'])
       ])
@@ -400,7 +416,7 @@ test('docx-pronto.py : une rangée d’auteur entièrement vide ne crée pas d�
   const vu = importer('03-vide', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([
         ligneAuteur(['Prénom : ', 'Nom : ', 'Fonction : ', 'Institution : ',
           'ROR : ', 'ORCID : ', 'Email : ']),
@@ -421,7 +437,6 @@ test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) b
     styles: STYLES_BASE,
     body: [
       tableMeta([
-        ligneMeta('Langue de l’article', 'français'),
         ligneMeta('Titre (FR)', 'Titre malgré tout'),
         ligneMeta('Mots-clés', 'inclusion, école')
       ]),
@@ -460,7 +475,7 @@ function docTypeSeul(libelle) {
   return {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta("Type d’article", libelle), ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([ligneMeta("Type d’article", libelle)]),
       tableAuteurs([])
     ]
   };
@@ -500,7 +515,7 @@ test('docx-pronto.py : un bloc resté sans image ni tableau avertit', () => {
   const vu = importer('06-vide', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       {
         tbl: [
@@ -529,7 +544,7 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
   const vu = importer('07-bloc-table', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       {
         tbl: [
@@ -554,9 +569,19 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
   assert.strictEqual(b.legende, 'Résultats bruts', 'la légende n’a pas été lue');
   assert.strictEqual(b.tbl_interne, true, 'le tableau interne n’a pas été retrouvé');
   assert.strictEqual(b.consommee, true, 'le bloc n’est pas marqué consommé');
-  // Le bloc externe (3e tableau de premier niveau : métadonnées, auteurs, puis le bloc)
-  // est consommé — ligne T comme pour les deux premiers tableaux.
-  assert.match(vu.instructions, /^T\t3$/m, 'le bloc externe n’a pas reçu de ligne T');
+  // Le tableau enveloppe (3e tableau de premier niveau : métadonnées, auteurs, puis le bloc)
+  // n'est PAS consommé, et c'est délibéré depuis le 22.09.2026. Une ligne T dit à la chaîne
+  // de faire disparaître un tableau : docx-tables.py le saute ENTIÈREMENT, sans descendre
+  // dedans, et szh-meta.lua le retire de l'AST. Sur une enveloppe de bloc TABLEAU, cela
+  // ferait disparaître le tableau qu'elle contient, sans un mot. Le bloc s'imprime donc tel
+  // quel, et 'bloc-ancienne-forme' dit comment retrouver un tableau légendé.
+  // ⚠ Ne pas « réparer » ce contrôle en remettant une ligne T : c'est le tableau interne
+  //   qu'on perdrait.
+  assert.doesNotMatch(vu.instructions, /^T\t3$/m,
+    'le tableau enveloppe d’un bloc ne doit JAMAIS recevoir de ligne T : son tableau interne '
+    + 'disparaîtrait de l’article. Instructions : ' + vu.instructions);
+  assert.deepStrictEqual(vu.stats.tableaux_consommes, [1, 2],
+    'seuls les deux tableaux fixes de la tête se consomment');
 });
 
 test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellules se lit pareil', () => {
@@ -564,7 +589,7 @@ test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellu
   const vu = importer('08-bloc-table-multicol', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       {
         tbl: [
@@ -586,7 +611,7 @@ test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellu
     'la légende répartie sur plusieurs cellules n’a pas été retrouvée');
   assert.strictEqual(b.tbl_interne, true);
   assert.strictEqual(b.consommee, true);
-  assert.match(vu.instructions, /^T\t3$/m);
+  assert.doesNotMatch(vu.instructions, /^T\t3$/m);   // voir le contrôle précédent
 });
 
 // ---- 8. Fiche déjà présente : jamais réécrite -------------------------------------------
@@ -628,7 +653,6 @@ test('docx-pronto.py : aucun mot-clé n’est jamais écrit dans la fiche', () =
       styles: STYLES_BASE,
       body: [
         tableMeta([
-          ligneMeta('Langue de l’article', 'français'),
           ligneMeta('Mots-clés', 'un, deux, trois')
         ]),
         tableAuteurs([])
@@ -657,7 +681,7 @@ function titre1(texte) {
 
 function specBiblioTitre(titreTexte, entrees) {
   const corps = [
-    tableMeta([ligneMeta('Langue de l’article', 'français')]),
+    tableMeta([]),
     tableAuteurs([]),
     { p: ['Normal', 'Un paragraphe de corps, avant la bibliographie.'] },
     titre1(titreTexte)
@@ -702,7 +726,7 @@ test('pronto-lire.py : un paragraphe de CORPS commençant par « Références »
   const vu = importer('11-faux-positif', {
     styles: STYLES_TITRE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { p: ['Normal', 'Références multiples ont servi à documenter cette étude, sans lien '
         + 'avec la bibliographie finale.'] },
@@ -750,7 +774,7 @@ function specBlocsColles(nBlocs) {
   return {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { tbl: rangees }
     ]
@@ -801,7 +825,7 @@ function specTableauMalForme(rangees) {
   return {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { tbl: rangees }
     ]
@@ -853,7 +877,7 @@ test('pronto-lire.py : des w:lastRenderedPageBreak avant le tableau donnent la b
   const vu = importer('18-page-connue', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       marqueursPage(5),
       { tbl: [
@@ -900,7 +924,7 @@ test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne 
   const vu = importer('19-faux-positif', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { tbl: [
         [[['Normal', 'Légende']], [['Normal', 'Auteur']]],
@@ -946,7 +970,7 @@ test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directeme
   const vu = importer('21-nouvelle-d1', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST),
       pImage()
@@ -969,7 +993,7 @@ test('pronto-lire.py : nouvelle forme, distance 2 — un paragraphe vide tolér�
   const vu = importer('22-nouvelle-d2', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST),
       pVide(),
@@ -986,7 +1010,7 @@ test('pronto-lire.py : nouvelle forme, distance 3 (deux vides) — NON reconnu, 
   const vu = importer('23-nouvelle-d3', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST),
       pVide(),
@@ -1008,7 +1032,7 @@ test('pronto-lire.py : nouvelle forme — un vrai paragraphe de corps interposé
   const vu = importer('23b-corps-interpose', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST),
       { p: ['Normal', 'Un paragraphe de corps bien réel, pas une fausse manipulation.'] },
@@ -1026,7 +1050,7 @@ test('pronto-lire.py : nouvelle forme — clés sans aucun contenu nulle part da
   const vu = importer('24-cles-sans-contenu', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST)
     ]
@@ -1042,7 +1066,7 @@ test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne 
   const vu = importer('25-nouvelle-table', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(CHAMPS_TEST),
       { tbl: TABLEAU_INTERNE }
@@ -1069,7 +1093,7 @@ test('pronto-lire.py : un paragraphe SZH Cle ORDINAIRE (pas Abb/Tab) au premier 
   const vu = importer('26-cle-ordinaire', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { p: ['SZHCle', 'Légende : ne devrait rien déclencher'] },
       pImage()
@@ -1089,7 +1113,7 @@ test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais ave
   const vu = importer('27-ancienne-forme-avertit', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       {
         tbl: [
@@ -1117,7 +1141,7 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
   const specBase = (blocBody) => ({
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...blocBody
     ]
@@ -1141,10 +1165,21 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
   assert.strictEqual(sansSource(vuNouvelle.fiche), sansSource(vuAncienne.fiche),
     'la fiche (hors ligne source:) diffère entre l’ancienne et la nouvelle forme');
 
-  // Divergence ASSUMÉE (voir le test 25 et TODO-BRANCHEMENT-PARSER-V2.md) : l'ancienne forme
-  // consomme le tableau enveloppe (ligne T3), la nouvelle n'a rien à faire sauter.
-  assert.deepStrictEqual(vuAncienne.stats.tableaux_consommes, [1, 2, 3]);
+  // Depuis le 22.09.2026, plus aucune divergence de lignes T : ni l'une ni l'autre forme ne
+  // consomme de tableau de bloc — seuls les deux tableaux fixes de la tête s'en vont. C'est ce
+  // qui rend impossible la perte du tableau interne d'un bloc tableau à l'ancienne forme.
+  assert.deepStrictEqual(vuAncienne.stats.tableaux_consommes, [1, 2]);
   assert.deepStrictEqual(vuNouvelle.stats.tableaux_consommes, [1, 2]);
+
+  // Ce qui, lui, diverge toujours et doit diverger : la nouvelle forme fait retirer du corps
+  // ses quatre paragraphes de clé (lignes P) et pose ses champs sur le contenu (ligne FT),
+  // quand l'ancienne laisse son tableau enveloppe s'imprimer tel quel.
+  assert.match(vuNouvelle.instructions, /^FT\t3\t/m,
+    'la nouvelle forme doit poser ses champs sur son tableau');
+  assert.strictEqual((vuNouvelle.instructions.match(/^P\t/gm) || []).length, 4,
+    'les quatre paragraphes de clé doivent quitter le corps');
+  assert.doesNotMatch(vuAncienne.instructions, /^(P|FT|FI)\t/m,
+    'l’ancienne forme ne fait rien retirer et ne pose rien');
 });
 
 test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais bloc-mal-forme', () => {
@@ -1152,7 +1187,7 @@ test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais blo
   const vu = importer('20-bien-forme', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       { tbl: [
         ligneBlocMeta([LEGENDE_TEST, 'Texte alternatif : alt', 'Crédit : c', 'Source : s']),
@@ -1188,7 +1223,6 @@ test('pronto-lire.py : « Resumé (FR) » (accent oublié) est reconnu comme Ré
     styles: STYLES_BASE,
     body: [
       tableMeta([
-        ligneMeta('Langue de l’article', 'français'),
         ligneMeta('Resumé (FR)', 'Un résumé de test suffisamment long.')
       ]),
       tableAuteurs([])
@@ -1209,7 +1243,6 @@ test('pronto-lire.py : « résumé (fr) : » (minuscules, sans espace avant les 
     styles: STYLES_BASE,
     body: [
       tableMeta([
-        ligneMeta('Langue de l’article', 'français'),
         ligneMeta('résumé (fr)', 'Un résumé de test suffisamment long.')
       ]),
       tableAuteurs([])
@@ -1226,7 +1259,7 @@ test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom
   const vu = importer('31-prenom-accent', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([ligneAuteur(['Prenom : Jeanne', 'Nom : Dupont', 'Email : j@ex.ch'])])
     ]
   });
@@ -1242,7 +1275,7 @@ test('pronto-lire.py : « E-mail : » (variante avec trait d’union) est reconn
   const vu = importer('32-e-mail', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([ligneAuteur(['Prénom : Ana', 'Nom : Rossi', 'E-mail : ana.rossi@ex.ch'])])
     ]
   });
@@ -1260,7 +1293,6 @@ test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » s
       styles: STYLES_BASE,
       body: [
         tableMeta([
-          ligneMeta('Langue de l’article', 'français'),
           ligneMeta(libelle, 'inclusion, école')
         ]),
         tableAuteurs([])
@@ -1292,7 +1324,6 @@ test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score m
     styles: STYLES_BASE,
     body: [
       tableMeta([
-        ligneMeta('Langue de l’article', 'français'),
         ligneMeta('Résultats', 'Un contenu qui ne doit jamais devenir un résumé.')
       ]),
       tableAuteurs([])
@@ -1318,7 +1349,7 @@ test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, por
   const vu = importer('35-nom-revue', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([ligneAuteur(['Nom de la revue : Revue suisse', 'Prénom : Ida', 'Nom : Keller'])])
     ]
   });
@@ -1345,7 +1376,7 @@ test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (d
   const vu = importer('36-legende-nbsp', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(champs),
       pImage()
@@ -1366,7 +1397,7 @@ test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux
   const vu = importer('37-cle-trop-longue', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab([etiquetteLongue + ' : une valeur quelconque']),
       pImage()
@@ -1416,7 +1447,7 @@ test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’
   const vu = importer('38-sans-deux-points', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(['Ceci n’a pas la forme Étiquette deux-points valeur']),
       pImage()
@@ -1464,7 +1495,7 @@ test('pronto-lire.py : une clé attendue absente du document est une simple info
   const vu = importer('40-absente', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),   // type/titre/soustitre/résumé : jamais posés
+      tableMeta([]),   // type/titre/soustitre/résumé : jamais posés
       tableAuteurs([])
     ]
   });
@@ -1485,7 +1516,6 @@ test('pronto-lire.py : une clé présente mais vide (espaces seuls) est traitée
     styles: STYLES_BASE,
     body: [
       tableMeta([
-        ligneMeta('Langue de l’article', 'français'),
         ligneMeta('Resumé (FR)', '   ')            // clé mal tapée EN PLUS vide : ne compte que comme absente
       ]),
       tableAuteurs([])
@@ -1504,7 +1534,7 @@ test('pronto-lire.py : un auteur — un champ facultatif laissé vide est une in
   const vu = importer('42-auteur-vide', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([ligneAuteur(['Prénom : Ida', 'Nom : Keller', 'ROR : ', 'Email : ida@ex.ch'])])
     ]
   });
@@ -1520,7 +1550,7 @@ test('pronto-lire.py : un bloc — un champ laissé vide est une information, ja
   const vu = importer('43-bloc-vide', {
     styles: STYLES_BASE,
     body: [
-      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableMeta([]),
       tableAuteurs([]),
       ...clesAbbTab(['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
         'Crédit : Photographe X', 'Source :   ']),
@@ -1563,4 +1593,298 @@ test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gab
     vu.avertissements.filter((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1), [],
     'un tableau de contenu ordinaire ne devrait même pas produire d’étiquette inconnue : '
     + vu.avertissements.join(' / '));
+});
+
+// ---- 32. La langue vient du PRODUIT du numéro, plus jamais du document (22.09.2026) ------
+//
+// Décision de la rédaction : le champ « Langue de l'article » a quitté le gabarit. La langue
+// se déduit de la revue du numéro — Revue = français, Zeitschrift = allemand — et un article
+// italien se corrige à la main dans la fiche après l'import. La chaîne pose le jeton dans
+// $SZH_PRODUIT (import-docx.sh le lit dans ausgabe.yaml, à la racine du numéro).
+
+const SPEC_NUE = { styles: STYLES_BASE, body: [tableMeta([]), tableAuteurs([])] };
+
+test('pronto-lire.py : la langue de l’article vient de la revue du numéro', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  for (const [produit, attendue] of [['revue', 'fr'], ['zeitschrift', 'de'],
+    // Le jeton canonique comme le nom complet de l'ancien ausgabe.yaml, même règle que
+    // derive_revue() de szh-maquette.lua.
+    ['Schweizerische Zeitschrift für Heilpädagogik', 'de'],
+    ['Revue suisse de pédagogie spécialisée', 'fr']]) {
+    const vu = importer('45-langue-' + attendue, SPEC_NUE, produit);
+    assert.strictEqual(vu.stats.langue, attendue,
+      'produit « ' + produit + ' » devrait donner la langue ' + attendue);
+    assert.strictEqual(vu.stats.langue_deduite, false,
+      'une langue venue du produit n’est pas une devinette');
+    assert.match(vu.fiche, new RegExp('^lang: ' + attendue + '$', 'm'));
+    assert.deepStrictEqual(
+      vu.avertissements.filter((l) => l.indexOf('langue-deduite') !== -1), [],
+      'un produit connu ne doit jamais faire avertir d’une langue devinée');
+  }
+});
+
+test('pronto-lire.py : sans produit (hors numéro), le français est posé — et c’est DIT', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('46-sans-produit', SPEC_NUE, '');
+  assert.strictEqual(vu.stats.langue, 'fr', 'le repli doit rester le français');
+  assert.strictEqual(vu.stats.langue_deduite, true);
+  assert.ok(vu.avertissements.find((l) => l.indexOf('langue-deduite') !== -1),
+    'un repli silencieux sur le français serait exactement l’échec muet qu’on refuse : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : un champ « Langue de l’article » resté dans le document avertit, ne bloque pas, et n’impose pas sa langue', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Un document rempli avant le 22.09.2026 porte encore la ligne. Elle ne doit NI bloquer
+  // l'import (une clé présente non reconnue le ferait), NI décider de la langue — mais elle
+  // doit se dire, sans quoi un article italien sortirait en français sans que personne ne
+  // l'apprenne.
+  const vu = importer('47-langue-heritee', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'italiano')]),
+      tableAuteurs([])
+    ]
+  }, 'revue');
+  assert.strictEqual(vu.bloquant, false,
+    'un champ retiré du gabarit ne doit jamais bloquer l’import : '
+    + JSON.stringify(vu.stats.cles_non_reconnues || []));
+  assert.strictEqual(vu.stats.langue, 'fr',
+    'la langue du document ne doit plus l’emporter sur celle du produit');
+  assert.ok(vu.avertissements.find((l) => l.indexOf('langue-du-document-ignoree') !== -1),
+    'ignorer ce champ sans le dire ferait sortir un article italien en français en silence : '
+    + vu.avertissements.join(' / '));
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1), [],
+    'la clé reste RECONNUE, elle n’est simplement plus lue');
+});
+
+// ---- 33. Les champs d'un bloc atteignent l'image et le tableau ---------------------------
+//
+// Sans ces instructions, les quatre paragraphes « Légende : », « Texte alternatif : »,
+// « Crédit : », « Source : » s'impriment tels quels au milieu de l'article et le texte
+// alternatif est perdu — mesuré sur le gabarit réel, chaîne complète, avant le branchement.
+// FI (figure) est consommée par szh-legendes.lua, FT (tableau) par docx-tables.py.
+
+test('pronto-lire.py : un bloc figure fait retirer ses clés du corps et pose ses champs sur l’image', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('48-bloc-figure-instructions', {
+    styles: STYLES_BASE,
+    body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST), pImage('figure.png')]
+  });
+  const pLignes = (vu.instructions.match(/^P\t.*$/gm) || []);
+  assert.deepStrictEqual(pLignes.sort(), CHAMPS_TEST.map((c) => 'P\t' + c).sort(),
+    'les quatre paragraphes de clé doivent quitter le corps, et eux seuls : '
+    + vu.instructions);
+  const fi = (vu.instructions.match(/^FI\t.*$/m) || [])[0];
+  assert.ok(fi, 'aucune ligne FI : les champs du bloc n’atteindraient pas l’image');
+  assert.deepStrictEqual(fi.split('\t'),
+    ['FI', 'figure.png', 'Une figure de test', 'Un texte alternatif', 'Photographe X',
+      'Archives Y'],
+    'la ligne FI ne porte pas les quatre champs dans l’ordre du contrat');
+});
+
+test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Word range une image vectorielle derrière un aperçu PNG : le lecteur voit le PNG, pandoc
+  // écrit le SVG. Un seul nom ferait manquer l'appariement — mesuré sur le gabarit réel, dont
+  // la figure sort en media/image2.svg alors que le a:blip pointe media/image1.png.
+  const vu = importer('49-bloc-figure-svg', {
+    styles: STYLES_BASE,
+    body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST),
+      { p: ['Normal', ''], image: 'apercu.png', imageSvg: 'vraie.svg' }]
+  });
+  const fi = (vu.instructions.match(/^FI\t([^\t]*)/m) || [])[1];
+  assert.strictEqual(fi, 'apercu.png|vraie.svg',
+    'les deux noms de l’image doivent être donnés, séparés par « | » : ' + vu.instructions);
+});
+
+// ---- 34. Le contrat entre le lecteur et docx-tables.py, de bout en bout ------------------
+//
+// Le lecteur écrit la ligne FT, docx-tables.py la lit et bake les quatre champs dans
+// tables/table-NN.html — sous la forme que szh-numerotation.lua attend à la compilation :
+// <caption> pour la légende, data-alt / data-copyright / data-source sur la balise <table>.
+// Les deux programmes sont exercés ensemble, sur le MÊME document et le MÊME fichier
+// d'instructions : c'est le seul moyen de voir la ligne FT telle qu'elle voyage vraiment.
+
+const DOCX_TABLES = path.join(RACINE, 'pipeline', 'docx-tables.py');
+
+test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent dans le HTML du tableau', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const base = dossierJetable();
+  try {
+    const docx = path.join(base, 'bloc-tableau.docx');
+    fabriquerDocx(docx, {
+      styles: STYLES_BASE,
+      body: [
+        tableMeta([]),
+        tableAuteurs([]),
+        ...clesAbbTab(CHAMPS_TEST),
+        { tbl: TABLEAU_INTERNE }
+      ]
+    });
+    const instr = path.join(base, 'instructions.txt');
+    const lecture = python([DOCX_PRONTO, docx, 'bloc-tableau', base],
+      { SZH_META: instr, SZH_PRODUIT: 'revue' });
+    assert.strictEqual(lecture.status, 0, 'le lecteur a échoué : ' + lecture.stderr);
+
+    const dossierTables = path.join(base, 'tables');
+    fs.mkdirSync(dossierTables, { recursive: true });
+    const rendu = python([DOCX_TABLES, docx, dossierTables], { SZH_META: instr });
+    assert.strictEqual(rendu.status, 0, 'docx-tables.py a échoué : ' + rendu.stderr);
+
+    // Les deux tableaux fixes de la tête sont consommés (lignes T) : le tableau du bloc est
+    // donc le PREMIER rendu, et il est bien rendu — ne pas le rendre du tout serait la perte
+    // silencieuse que tout ce mécanisme existe pour empêcher.
+    const html = fs.readFileSync(path.join(dossierTables, 'table-01.html'), 'utf8');
+    assert.match(html, /<caption>Une figure de test<\/caption>/,
+      'la légende du bloc n’a pas été bakée dans le <caption> : ' + html);
+    assert.match(html, /data-alt="Un texte alternatif"/,
+      'le texte alternatif n’atteint pas le tableau : ' + html);
+    assert.match(html, /data-copyright="Photographe X"/, 'le crédit n’atteint pas le tableau : ' + html);
+    assert.match(html, /data-source="Archives Y"/, 'la source n’atteint pas le tableau : ' + html);
+    assert.match(html, /Groupe A/, 'le contenu du tableau a été perdu : ' + html);
+    assert.ok(!fs.existsSync(path.join(dossierTables, 'table-02.html')),
+      'un second tableau a été rendu : les deux tableaux de la tête auraient dû être sautés');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// ---- 35. Les rangs de titre au-delà du troisième (gabarit v3, 22.09.2026) ----------------
+//
+// Le gabarit porte un « Titre niveau 4 » depuis sa v3. Le lecteur ne s'en servait pas : son
+// motif de rang s'arrêtait à 3, alors que famille() classait DÉJÀ « Titre 4 » en 'heading' —
+// les deux se contredisaient. Ce que ça coûtait : une bibliographie intitulée en rang 4
+// n'était pas détachée, sa liste restait dans le corps et l'export OJS partait sans
+// références. C'est le LEXIQUE des titres qui doit trancher, jamais le rang.
+//
+// (Le rang lui-même ne voyage pas dans les instructions : c'est pandoc qui lit le style Word
+// et écrit « #### » dans le .md, puis szh-niveaux.lua qui compacte le corps entre <h2> et
+// <h6>. Ce contrôle vise donc le seul endroit où le lecteur, lui, regarde le rang.)
+
+test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée comme les autres', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const stylesH4 = STYLES_BASE.concat([['H4', 'heading 4']]);
+  const vu = importer('50-biblio-rang-4', {
+    styles: stylesH4,
+    body: [
+      tableMeta([]),
+      tableAuteurs([]),
+      { p: ['Normal', 'Un paragraphe de corps, avant la bibliographie.'] },
+      { p: ['H4', 'Références'] },
+      { p: ['Normal', 'Flavell, J. H. (1976). Metacognitive aspects of problem-solving.'] },
+      { p: ['Normal', 'Vygotski, L. S. (1934). Pensée et langage.'] }
+    ]
+  });
+  assert.strictEqual(vu.stats.biblio.voie, 'titre',
+    'un titre de bibliographie en rang 4 n’a pas été reconnu : ' + JSON.stringify(vu.stats.biblio));
+  assert.strictEqual(vu.stats.biblio.paragraphes, 2,
+    'les entrées n’ont pas été comptées : ' + JSON.stringify(vu.stats.biblio));
+});
+
+// ---- 36. Clés tolérantes : ce que le gabarit admet, et ce qu'il doit refuser -------------
+//
+// Deux mécanismes travaillent ensemble, et il ne faut pas les confondre :
+//
+//   * les ALIAS (CANON_*) reconnaissent à coup sûr les formes qu'on sait que la rédaction
+//     tape — la forme sans accent, les synonymes, l'italien. C'est eux qui font le gros du
+//     travail, et c'est là qu'on ajoute un cas nouveau ;
+//   * le SEUIL de proximité (SEUIL_CLE, 0,75 depuis le 22.09.2026) rattrape ce que personne
+//     n'avait prévu — une lettre en trop, deux lettres inversées.
+//
+// Ce qui est en jeu : une clé PRÉSENTE non reconnue REFUSE l'import en entier. Un faux négatif
+// coûte donc un aller-retour à l'autrice ; un faux POSITIF, lui, range une valeur dans le
+// mauvais champ, et ça ne se voit pas. Les deux contrôles ci-dessous tiennent les deux bouts.
+
+function mesurerCle(etiquette, table) {
+  const script = [
+    'import json, sys',
+    'sys.path.insert(0, ' + JSON.stringify(path.join(RACINE, 'pipeline')) + ')',
+    'import pronto_modele as pm',
+    'seuil = pm.SEUIL_CLE',
+    'pm.SEUIL_CLE = 0.0',   // 0 : on veut le score brut, pas le verdict
+    'r = pm.identifier_cle(sys.argv[2], getattr(pm, sys.argv[1]))',
+    // ⚠ identifier_cle() rend DEUX formes : (jeton, score, exact), et
+    //   ('__ambigu__', jeton1, jeton2, score1, score2) quand les deux meilleures clés se
+    //   tiennent. Lire r[1] comme un score dans le second cas rend un JETON — une chaîne, qui
+    //   fait passer toute comparaison numérique à NaN, donc au vert par accident.
+    'if r is None:',
+    '    sortie = {"jeton": None, "score": 0.0}',
+    'elif r[0] == "__ambigu__":',
+    '    sortie = {"jeton": "__ambigu__", "score": r[3]}',
+    'else:',
+    '    sortie = {"jeton": r[0], "score": r[1]}',
+    'sortie["seuil"] = seuil',
+    'print(json.dumps(sortie))'
+  ].join('\n');
+  const r = python(['-c', script, table, etiquette]);
+  assert.strictEqual(r.status, 0, 'mesure du score impossible : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, sur la bonne clé', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Trois familles : la forme sans accent (c'est celle qui tombait sous le seuil — perdre deux
+  // accents suffit), les synonymes de réflexe, et les fautes de frappe. « Legandes » est la
+  // faute qu'a réellement portée la v3 du gabarit.
+  const attendus = [
+    // sans accent
+    ['CANON_METADONNEES', 'Resume', 'resume'], ['CANON_FIGURE', 'Legende', 'legende'],
+    ['CANON_AUTEUR', 'Prenom', 'prenom'], ['CANON_FIGURE', 'Credit', 'credit'],
+    // synonymes de réflexe
+    ['CANON_FIGURE', 'Copyright', 'credit'], ['CANON_FIGURE', 'Description', 'alt'],
+    ['CANON_FIGURE', 'Provenance', 'source'], ['CANON_AUTEUR', 'Poste', 'fonction'],
+    ['CANON_AUTEUR', 'Adresse e-mail', 'email'], ['CANON_AUTEUR', 'Nom de famille', 'nom'],
+    // italien, aux côtés du français et de l'allemand
+    ['CANON_METADONNEES', 'Riassunto', 'resume'], ['CANON_METADONNEES', 'Titolo', 'titre'],
+    // fautes de frappe, rattrapées par le seuil
+    ['CANON_AUTEUR', 'Prenoom', 'prenom'], ['CANON_AUTEUR', 'Fontion', 'fonction'],
+    ['CANON_AUTEUR', 'Instituion', 'affiliation'], ['CANON_FIGURE', 'Sourse', 'source'],
+    ['CANON_FIGURE', 'Legandes', 'legende'], ['CANON_METADONNEES', 'Resumé', 'resume']
+  ];
+  for (const [table, etiquette, jetonAttendu] of attendus) {
+    const { jeton, score, seuil } = mesurerCle(etiquette, table);
+    assert.strictEqual(jeton, jetonAttendu,
+      '« ' + etiquette + ' » devrait se lire « ' + jetonAttendu + ' » (lue « ' + jeton
+      + ' », score ' + score.toFixed(3) + ') — une clé non reconnue REFUSE l’import');
+    assert.ok(score >= seuil,
+      '« ' + etiquette + ' » passe sous le seuil (' + score.toFixed(3) + ' < ' + seuil + ')');
+  }
+});
+
+test('clés tolérantes : une étiquette étrangère au gabarit reste sous le seuil, avec de la marge', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Des étiquettes qu'on rencontre pour de vrai — dans un tableau de contenu, dans la fiche
+  // d'un autre gabarit — et qui ne doivent JAMAIS être prises pour un champ Pronto.
+  const etrangeres = [
+    ['CANON_AUTEUR', 'Photo'], ['CANON_AUTEUR', 'Biographie'], ['CANON_AUTEUR', 'Adresse'],
+    ['CANON_AUTEUR', 'Ville'], ['CANON_AUTEUR', 'Téléphone'],
+    ['CANON_METADONNEES', 'Résultats'], ['CANON_METADONNEES', 'Nom de la revue'],
+    ['CANON_METADONNEES', 'DOI'], ['CANON_METADONNEES', 'Volume'],
+    ['CANON_METADONNEES', 'Rubrique'],
+    ['CANON_FIGURE', 'Licence'], ['CANON_FIGURE', 'Cellule 1'], ['CANON_FIGURE', 'Note'],
+    ['CANON_FIGURE', 'Tableau']
+  ];
+  let pire = 0, pireNom = '';
+  let seuil = 0;
+  for (const [table, etiquette] of etrangeres) {
+    const mesure = mesurerCle(etiquette, table);
+    seuil = mesure.seuil;
+    assert.ok(mesure.score < mesure.seuil,
+      '« ' + etiquette + ' » est prise pour « ' + mesure.jeton + ' » (' + mesure.score.toFixed(3)
+      + ' ≥ ' + mesure.seuil + ') : sa valeur partirait dans le mauvais champ, en silence');
+    if (mesure.score > pire) { pire = mesure.score; pireNom = etiquette; }
+  }
+  // La plus proche mesurée est « Adresse » à 0,737 — tirée par l'alias allemand
+  // « e-mail-adresse », qui est légitime et qu'on garde. 0,013 de marge sous un seuil à 0,75 :
+  // c'est peu, et c'est exactement ce que ce contrôle est là pour surveiller. Le jour où
+  // quelqu'un rebaisse le seuil, ce message doit tomber avant la production.
+  assert.ok(pire < seuil,
+    'plus aucune marge : « ' + pireNom + ' » atteint ' + pire.toFixed(3) + ' pour un seuil à '
+    + seuil);
+  assert.ok(seuil - pire >= 0.01,
+    'la marge entre la dernière étiquette étrangère (« ' + pireNom + ' », ' + pire.toFixed(3)
+    + ') et le seuil (' + seuil + ') est tombée sous 0,01 : le mécanisme devient un tirage au '
+    + 'sort. Posez un alias plutôt que de baisser le seuil.');
 });

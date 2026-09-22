@@ -15,14 +15,20 @@
 # l'article est entier, et docx-meta.py le dit au rédacteur.
 #
 # L'ordre de la chaîne est voulu :
-#   1. docx-meta.py   : métadonnées -> meta.yaml et instructions de retrait ($SZH_META).
-#   2. docx-tables.py : tableaux -> tables/*.html, en sautant ceux que docx-meta.py a
+#   1. le LECTEUR   : métadonnées -> meta.yaml et instructions de retrait ($SZH_META). Deux
+#                     lecteurs, choisis document par document (voir « QUEL LECTEUR ? » plus
+#                     bas) : pronto-lire.py pour un document au gabarit « Pronto — modèle
+#                     d'article », docx-meta.py pour un Word hérité.
+#   2. docx-tables.py : tableaux -> tables/*.html, en sautant ceux que le lecteur a
 #                       consommés (lignes T) — c'est ce qui garde sa numérotation alignée
-#                       sur celle de szh-tabelle-reference.lua.
+#                       sur celle de szh-tabelle-reference.lua — et en posant sur le tableau
+#                       d'un bloc du gabarit sa légende et ses crédits (lignes FT).
 #   3. docx-titres.py : titres déduits -> $SZH_TITRES.
 #   4. pandoc + filtres Lua dans cet ordre :
 #        szh-meta      (retire les blocs consommés avant tout raisonnement aval)
-#        szh-legendes  (légendes -> alt d'image ; purge des paragraphes bakés)
+#        szh-legendes  (légendes -> alt d'image ; purge des paragraphes bakés ; et les
+#                      champs d'un bloc figure du gabarit -> légende, alt, crédit et source
+#                      de son image, lignes FI)
 #        szh-titres    (promotion des titres déduits, jamais sur un bloc consommé)
 #        szh-biblio-detacher (l'étendue de bibliographie -> <slug>.biblio.md, et une
 #                      référence à sa place ; après szh-titres, qui a fait des Header des
@@ -55,6 +61,17 @@ DOCX_ABS="$(realpath "$F")"
 # Le slug, pour que les pré-passes nomment l'article dans leurs messages.
 export SZH_SLUG="$SLUG"
 
+# Le PRODUIT du numéro (« revue » | « zeitschrift »), lu AVANT le cd : on est encore à la
+# racine du numéro, là où vit ausgabe.yaml. C'est de lui que le lecteur du gabarit tire la
+# LANGUE de l'article — le champ « Langue de l'article » a quitté le gabarit le 22.09.2026,
+# et un article italien se corrige à la main dans la fiche après l'import (décision de la
+# rédaction). Lu par le même chemin que le Makefile, `pandoc lua szh-lire-config.lua`, pour
+# que les deux lisent la configuration exactement comme pandoc la relira à la compilation.
+# Absent (dossier sans ausgabe.yaml, livre) : variable vide, le lecteur se rabat sur le
+# français et le dit — il ne devine jamais en silence.
+SZH_PRODUIT="$(pandoc lua "$PIPE/filters/szh-lire-config.lua" ausgabe.yaml revue 2>/dev/null || true)"
+export SZH_PRODUIT
+
 # Les quatre fichiers temporaires de la chaîne (métadonnées, appariement photo, légendes de
 # tableaux, titres déduits), nettoyés par un seul trap plutôt que par des rm épars à chaque
 # sortie possible — succès, `exit 1` d'une pré-passe, ou un futur point de sortie qu'on
@@ -76,7 +93,7 @@ signaler() {
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
 
-# Métadonnées d'abord : docx-meta.py écrit <slug>.meta.yaml (sauf s'il existe), le
+# Métadonnées d'abord : le lecteur écrit <slug>.meta.yaml (sauf s'il existe), le
 # fichier d'instructions $SZH_META et une ligne JSON de stats, logguée ici. Bloquant : sans
 # fiche, la compilation refuserait l'article (titre de document vide, exigé par PDF/UA), et
 # l'article aurait disparu du numéro sans un mot. Mieux vaut refuser l'import tout de
@@ -87,8 +104,38 @@ export SZH_META="$META"
 # après pandoc : les images n'existent sous media/ qu'une fois la conversion faite.
 PHOTOS="$(mktemp)"
 export SZH_PHOTOS="$PHOTOS"
-if ! STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" .)"; then
-  signaler "[import] ⚠ Les métadonnées de « $SLUG » n'ont pas pu être lues : l'article n'est pas importé et son fichier Word reste en attente. Vérifiez que le document s'ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von « $SLUG » konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
+
+# QUEL LECTEUR ? Deux existent, et ils ne font pas le même métier :
+#
+#   * pronto-lire.py LIT une structure imposée par le gabarit « Pronto — modèle d'article »
+#     (deux tableaux fixes en tête, blocs figure/tableau à clés). Il n'a pas le droit de
+#     deviner : une étiquette qu'il ne reconnaît pas arrête l'import plutôt que de perdre en
+#     silence ce qu'elle portait.
+#   * docx-meta.py DEVINE, sur des Word hérités de formes toutes différentes. C'est le bon
+#     outil pour un document qui ne vient pas du gabarit, et le mauvais pour un qui en vient.
+#
+# Le partage se fait sur la DÉCLARATION des styles du gabarit dans le document (mode
+# `--reconnaitre`), jamais sur un réglage de poste : la rédaction reçoit les deux sortes de
+# documents, souvent le même jour, et personne n'a à basculer quoi que ce soit.
+if python3 "$PIPE/pronto-lire.py" --reconnaitre "$DOCX_ABS" 2>/dev/null; then
+  LECTEUR="$PIPE/pronto-lire.py"
+  NOM_LECTEUR=pronto
+else
+  LECTEUR="$PIPE/docx-meta.py"
+  NOM_LECTEUR=herite
+fi
+
+if ! STATS="$(python3 "$LECTEUR" "$DOCX_ABS" "$SLUG" .)"; then
+  # Le lecteur du gabarit a deux façons d'échouer, et elles ne se disent pas pareil : une clé
+  # présente qu'il n'a pas su ranger (code 1, il a déjà écrit un avertissement par clé, et
+  # n'a RIEN écrit d'autre — ni fiche, ni instructions), ou une panne de lecture. Dans les
+  # deux cas l'article n'entre pas dans le numéro et son Word reste en attente ; seul le
+  # geste à faire diffère, et c'est lui que la personne doit lire.
+  if [ "$NOM_LECTEUR" = pronto ]; then
+    signaler "[import] ⚠ « $SLUG » n'a pas été importé : son document suit le gabarit « Pronto », mais un ou plusieurs champs n'ont pas pu être lus (voir les messages juste au-dessus, qui nomment chaque étiquette en cause). Rien n'a été créé, et le fichier Word reste en attente. Corrigez les étiquettes dans le document, puis enregistrez (Ctrl+S). [de] « $SLUG » wurde nicht importiert: das Dokument folgt der Vorlage «Pronto», aber ein oder mehrere Felder konnten nicht gelesen werden (siehe die Meldungen direkt darüber, die jede betroffene Bezeichnung nennen). Es wurde nichts angelegt, die Word-Datei bleibt in der Warteschlange. Korrigieren Sie die Bezeichnungen im Dokument und speichern Sie (Ctrl+S)."
+  else
+    signaler "[import] ⚠ Les métadonnées de « $SLUG » n'ont pas pu être lues : l'article n'est pas importé et son fichier Word reste en attente. Vérifiez que le document s'ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von « $SLUG » konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
+  fi
   exit 1
 fi
 [ -n "$STATS" ] && echo "[import-meta] $STATS"

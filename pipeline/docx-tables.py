@@ -271,11 +271,16 @@ def nom_article():
     return os.getenv('SZH_SLUG') or os.path.basename(os.getcwd()) or '?'
 
 
-def html_du_tableau(tbl, caption=None, info=None):
+def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
     """Rend un w:tbl en <table>, fusions préservées et en-têtes accessibles.
 
     `info`, si fourni, reçoit ce que l'appelant ne peut pas redeviner sans refaire le
-    calcul : `lignes_entete`, le nombre de rangées d'en-tête retenues (0 = tableau plat)."""
+    calcul : `lignes_entete`, le nombre de rangées d'en-tête retenues (0 = tableau plat).
+
+    `attributs_table`, si fourni, est un dict d'attributs à poser sur la balise <table>
+    elle-même : c'est par là que les champs d'un bloc du gabarit Pronto (texte alternatif,
+    crédit, source) arrivent sous la forme que szh-numerotation.lua attend — data-alt,
+    data-copyright, data-source."""
     lignes = [tr for tr in tbl if tr.tag == W + 'tr']
     # Pré-analyse : pour chaque ligne, les cellules avec (colonne de départ, colspan,
     # vmerge, élément). Les cellules « continue » occupent leur colonne — elles sont bien
@@ -409,7 +414,10 @@ def html_du_tableau(tbl, caption=None, info=None):
     if info is not None:
         info['lignes_entete'] = lignes_entete
 
-    sortie = ['<table>']
+    ouvrante = ''.join(' %s="%s"' % (nom, escape(str(valeur), quote=True))
+                       for nom, valeur in sorted((attributs_table or {}).items())
+                       if str(valeur).strip())
+    sortie = ['<table%s>' % ouvrante]
     if caption:
         sortie.append('<caption>%s</caption>' % escape(caption))
     if lignes_entete > 0:
@@ -524,6 +532,39 @@ def tables_consommees_par_meta():
     return ordinaux
 
 
+def blocs_pronto_par_meta():
+    """Ordinal (1-based, celui des lignes T) -> {'legende', 'alt', 'credit', 'source'} pour
+    chaque tableau qui est le CONTENU d'un bloc du gabarit « Pronto » (lignes FT de
+    $SZH_META, écrites par pronto-lire.py) :
+
+        FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source
+
+    Les quatre valeurs sont celles que l'autrice ou l'auteur a tapées sous « Légende : »,
+    « Texte alternatif : », « Crédit : » et « Source : » ; les paragraphes qui les portaient
+    quittent le corps par les lignes P. Sans cette reprise, ils s'imprimeraient tels quels et
+    la légende du tableau serait perdue. Le pendant figure vit dans szh-legendes.lua (FI)."""
+    chemin = os.getenv('SZH_META')
+    if not chemin:
+        return {}
+    blocs = {}
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            for ligne in f:
+                if not ligne.startswith('FT\t'):
+                    continue
+                champs = ligne.rstrip('\n').split('\t')
+                try:
+                    ordinal = int(champs[1])
+                except (IndexError, ValueError):
+                    continue
+                champs += [''] * (6 - len(champs))
+                blocs[ordinal] = {'legende': champs[2].strip(), 'alt': champs[3].strip(),
+                                  'credit': champs[4].strip(), 'source': champs[5].strip()}
+    except OSError:
+        return {}
+    return blocs
+
+
 def principal(argv):
     try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
         sys.stdout.reconfigure(encoding='utf-8')
@@ -548,6 +589,7 @@ def principal(argv):
     # Tableau des auteurs : sauté ici et retiré du corps par szh-meta.lua, les tableaux
     # restants étant renumérotés en séquence des deux côtés.
     sautes = tables_consommees_par_meta()
+    blocs_pronto = blocs_pronto_par_meta()
     consommes = set()
     legendes = []                             # textes normalisés des légendes prises
     plats = []                                # tableaux rendus sans aucune rangée d'en-tête
@@ -556,15 +598,24 @@ def principal(argv):
         if ordinal in sautes:
             continue
         n += 1
-        el, caption = legende_de_table(parent, tbl, consommes, styles_legende)
-        if el is not None and caption:
-            legendes.append(normaliser(texte_plat(el)))
+        bloc = blocs_pronto.get(ordinal)
+        attributs = None
+        if bloc:
+            # Bloc du gabarit : la légende est ÉCRITE, on ne cherche donc aucun voisin —
+            # un paragraphe tout en gras au-dessus du tableau lui volerait la sienne.
+            caption = bloc['legende'] or None
+            attributs = {'data-alt': bloc['alt'], 'data-copyright': bloc['credit'],
+                         'data-source': bloc['source']}
         else:
-            caption = None
+            el, caption = legende_de_table(parent, tbl, consommes, styles_legende)
+            if el is not None and caption:
+                legendes.append(normaliser(texte_plat(el)))
+            else:
+                caption = None
         chemin = os.path.join(dossier, 'table-%02d.html' % n)
         info = {}
         with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(html_du_tableau(tbl, caption, info) + '\n')
+            f.write(html_du_tableau(tbl, caption, info, attributs) + '\n')
         if not info.get('lignes_entete'):
             plats.append((n, chemin))
     if n == 0:

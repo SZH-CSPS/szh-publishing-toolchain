@@ -15,7 +15,7 @@
 #                                          lecteur (pronto_docx.py / pronto_odt.py), jamais
 #                                          ici. `texte` est déjà normalisé (normaliser()) —
 #                                          le lecteur ne rend jamais de texte brut. `niveau`
-#                                          vaut 1..3 pour un titre, 0 sinon. `images` est une
+#                                          vaut 1..6 pour un titre, 0 sinon. `images` est une
 #                                          liste de (nom de fichier sous media/ ou Pictures/,
 #                                          surface déclarée — 0 si inconnue).
 #   Cellule(colspan, blocs)             — `blocs` est une liste de Par | Tableau, dans l'ordre
@@ -76,7 +76,7 @@ import szh_commun
 
 class Par:
     """Un paragraphe (ou un titre). `style` est le nom humain déjà résolu par le lecteur,
-    `texte` le texte déjà normalisé (normaliser()), `niveau` 1..3 pour un titre (0 sinon),
+    `texte` le texte déjà normalisé (normaliser()), `niveau` 1..6 pour un titre (0 sinon),
     `images` la liste (nom_fichier, surface) des images qu'il porte, dans l'ordre."""
 
     __slots__ = ('style', 'texte', 'niveau', 'images')
@@ -133,11 +133,37 @@ class Tableau:
 TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
                  'documentation')
 LANGUES_META = ('fr', 'de', 'it')          # ordre d'écriture du YAML (cockpit)
+
+
+# La langue d'un article ne se lit PLUS dans le document (décision de Robin, 22.09.2026 : le
+# champ « Langue de l'article » a quitté le tableau des métadonnées du gabarit) : elle vient du
+# PRODUIT du numéro, comme partout ailleurs dans la chaîne — Revue suisse de pédagogie
+# spécialisée -> fr, Schweizerische Zeitschrift für Heilpädagogik -> de. Même règle et mêmes
+# jetons que derive_revue() de szh-maquette.lua et langue_de() de szh-rubrique.lua : le jeton
+# canonique (« revue », « zeitschrift ») comme le nom complet de l'ancien ausgabe.yaml. Un
+# article italien ne peut pas se déclarer dans le gabarit ; il se corrige à la main dans
+# « Métadonnées des articles » après l'import, ce que la rédaction a explicitement accepté.
+def langue_du_produit(produit):
+    """'fr' | 'de' | '' — '' quand le produit est inconnu (clé `revue:` absente d'ausgabe.yaml,
+    lecteur appelé hors d'un numéro) : c'est alors à l'appelant de décider du repli, et de le
+    dire."""
+    v = (produit or '').strip().lower()
+    if 'zeitschrift' in v:
+        return 'de'
+    if 'revue' in v:
+        return 'fr'
+    return ''
 # HUIT champs, `ror` compris : aligné sur CHAMPS_AUTEUR de lib/yaml.js (cockpit), PAS sur
 # celui de docx-meta.py, qui ne porte pas `ror` — voir l'en-tête d'origine de docx-pronto.py
 # (git log) : ce n'était pas un contrat à imiter, c'était l'absence de ce champ sur les Word
 # hérités que docx-meta.py doit encore lire.
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'email', 'photo')
+
+# Les styles qui SIGNENT le gabarit, en minuscules (les deux lecteurs rendent des noms déjà
+# minusculés). C'est sur eux que pipeline/import-docx.sh décide, document par document, si le
+# lecteur Pronto ou l'ancien docx-meta.py lit ce qu'on vient de déposer — voir
+# pronto_docx.est_pronto() pour le détail du critère et pourquoi les DEUX sont exigés.
+STYLES_GABARIT = ('szh cle', 'szh aide')
 # Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
 # le pipeline de portraits : une image d'un autre format n'est pas appariée.
 EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
@@ -191,7 +217,12 @@ def citer(v):
 
 NOMS_PANDOC_META = {'title', 'subtitle', 'author', 'abstract', 'date'}
 
-RE_NIVEAU_TITRE = re.compile(r'^(?:heading|titre|titolo|berschrift)\s*([1-3])\b', re.I)
+# 1 à 6, et non 1 à 3 : le gabarit porte un rang 4 depuis sa v3 (22.09.2026), et famille()
+# classait DÉJÀ « Titre 4 » en 'heading' (son motif accepte n'importe quel chiffre) — les deux
+# se contredisaient. La borne à 6 est celle de szh-niveaux.lua, qui compacte le corps entre
+# <h2> et <h6> : au-delà, pandoc dégraderait le titre en paragraphe, il n'y a donc rien à
+# reconnaître.
+RE_NIVEAU_TITRE = re.compile(r'^(?:heading|titre|titolo|berschrift)\s*([1-6])\b', re.I)
 
 
 def famille(nom_style):
@@ -231,7 +262,7 @@ def pandoc_mange(nom_style):
 
 
 def niveau_depuis_style(nom_style):
-    """Niveau de titre 1..3 déduit du nom de style résolu, 0 sinon. Utilisé par LES DEUX
+    """Niveau de titre 1..6 déduit du nom de style résolu, 0 sinon. Utilisé par LES DEUX
     lecteurs (docx ET odt) — plutôt que de faire confiance à @text:outline-level côté ODT
     (qui existe et serait tout aussi valide), pour que les deux formats s'accordent par
     construction sur la même règle : si un style de titre s'appelle pareil des deux côtés
@@ -362,7 +393,10 @@ def etendue_biblio(blocs, type_article, slug):
     lexique = lire_titres_bib()
     titre = None
     for i, e in enumerate(blocs):
-        if not isinstance(e, Par) or not e.texte or e.niveau not in (1, 2, 3):
+        # Tous les rangs de titre, pas seulement les trois premiers : une bibliographie
+        # intitulée en rang 4 reste une bibliographie. C'est le LEXIQUE des titres qui
+        # tranche, jamais le rang.
+        if not isinstance(e, Par) or not e.texte or not e.niveau:
             continue
         if _titre_est_biblio(e.texte, lexique):
             titre = i
@@ -414,12 +448,8 @@ VALEURS_TYPE = {
     aplatir('tribune libre'): 'tribune-libre',
 }
 VALEURS_TYPE_CANONIQUES = {aplatir(t): t for t in TYPES_VALIDES}
-VALEURS_LANGUE = {
-    aplatir('français'): 'fr',
-    aplatir('francais'): 'fr',
-    aplatir('deutsch'): 'de',
-    aplatir('italiano'): 'it',
-}
+# (Il n'y a plus de VALEURS_LANGUE : la valeur du champ « Langue de l'article » n'est plus
+# interprétée du tout depuis le 22.09.2026 — voir langue_du_produit().)
 
 
 # ---------------------------------------------------------------------------------
@@ -429,13 +459,34 @@ VALEURS_LANGUE = {
 # il a fallu tolérer quelque chose (voir identifier_cle()). La VALEUR d'une clé n'est JAMAIS
 # comparée ici — seule l'étiquette l'est.
 
-SEUIL_CLE = 0.80
-# Mesuré (script jetable, voir le rapport de ce chantier) : à 0,85 — la valeur d'abord
-# envisagée — « Resumé » (accent oublié, score 0,833 contre Résumé) et « Prenom » (0,833
-# contre Prénom), les deux premiers cas visés par la demande, restaient sous le seuil et
-# valaient donc « clé inconnue » : l'inverse de ce qui est demandé. 0,80 les admet avec une
-# marge confortable, tout en laissant loin en dessous les deux négatifs mesurés : « Résultats »
-# (0,571 contre Résumé) et « Nom de la revue » (0,400 contre Nom).
+SEUIL_CLE = 0.75
+# Trois valeurs successives, et chacune a été MESURÉE avant d'être posée.
+#
+# 0,85 (d'abord envisagée) : « Resumé » (un accent oublié, 0,833) et « Prenom » (0,833)
+# restaient dehors — l'inverse de ce que la tolérance devait apporter.
+# 0,80 : les admettait, avec les deux négatifs mesurés loin en dessous — « Résultats » (0,571
+# contre Résumé) et « Nom de la revue » (0,400 contre Nom).
+# 0,75 (décision de Robin, 22.09.2026) : mesurée sur 75 étiquettes (les vraies, des fautes de
+# frappe plausibles, et des étiquettes qui doivent rester inconnues). **74 verdicts sur 75 sont
+# identiques à 0,80** ; le seul qui change est un gain : « Prenoom » (0,769) devient `prenom`.
+# AUCUNE étiquette ne part sur une mauvaise clé, AUCUNE de celles qui doivent rester inconnues
+# ne passe la barre — la plus haute d'entre elles plafonne à 0,615 (« Photo » contre Fonction),
+# ce qui laisse 0,135 de marge.
+#
+# ⚠ CE QUE LE SEUIL NE RATTRAPE PAS, et qu'il ne faut pas essayer de rattraper en le baissant
+#   encore : une étiquette tapée SANS AUCUN accent quand la forme canonique en porte deux.
+#   Mesuré AVANT les alias : « Resume » contre Résumé = 0,667, « Legandes » contre Légende =
+#   0,714 — tous deux refusés, donc tous deux refusant l'import. Descendre à 0,65 pour les
+#   admettre n'aurait laissé que 0,035 de marge au-dessus du premier faux positif : le
+#   mécanisme serait devenu un tirage au sort. La réponse a donc été un jeu d'ALIAS explicites
+#   dans les tables CANON_* (voir leur commentaire), et ces deux cas se lisent désormais 1,000
+#   et 0,857. Refaire ce choix à chaque cas nouveau : un alias, jamais un seuil plus bas.
+#
+# ⚠ MARGE RESTANTE, à surveiller : l'étiquette étrangère la plus proche du seuil est
+#   « Adresse » (une adresse postale) à 0,737 contre `email` — tirée par l'alias allemand
+#   « e-mail-adresse », légitime et gardé. 0,013 sous le seuil. C'est peu ; un contrôle le tient
+#   (test/js/pronto-lire.test.js, « une étiquette étrangère au gabarit reste sous le seuil,
+#   avec de la marge ») et tombera avant la production si quelqu'un rebaisse le seuil.
 ECART_CLE = 0.08
 LONGUEUR_ETIQUETTE_SCORE = 40  # au-delà, ce n'est plus une étiquette : jamais scoré (garde-fou).
 
@@ -517,11 +568,13 @@ def _avertir_cle_ambigue(brute, table, jeton1, jeton2, slug, lieu):
         'cle-ambigue',
         ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % brute],
         'La clé « %s » est ambiguë : elle ressemble presque autant à « %s » qu\'à « %s ». '
-        'Aucune des deux n\'a été retenue automatiquement ; corrigez l\'étiquette dans le '
-        'document.' % (brute, c1, c2),
+        'Aucune des deux n\'a été retenue, et l\'article n\'a PAS été importé : rien n\'a été '
+        'créé, et le fichier Word reste en attente. Réécrivez l\'étiquette exactement comme '
+        'dans le gabarit, puis enregistrez.' % (brute, c1, c2),
         'Der Schlüssel « %s » ist mehrdeutig: er ähnelt « %s » fast ebenso stark wie « %s ». '
-        'Keiner von beiden wurde automatisch übernommen; korrigieren Sie die Bezeichnung im '
-        'Dokument.' % (brute, c1, c2))
+        'Keiner von beiden wurde übernommen, und der Artikel wurde NICHT importiert: es wurde '
+        'nichts angelegt, und die Word-Datei bleibt in der Warteschlange. Schreiben Sie die '
+        'Bezeichnung genau wie in der Vorlage und speichern Sie.' % (brute, c1, c2))
 
 
 def resoudre_cle(etiquette, table, slug, lieu, bloquants=None):
@@ -601,15 +654,42 @@ def _avertir_cles_attendues_absentes(table, jetons_attendus, cles_vues, slug, li
             _avertir_cle_attendue_absente(table[jeton][0], slug, lieu)
 
 
-CLES_METADONNEES_ATTENDUES = ('type', 'langue', 'titre', 'soustitre', 'resume')  # PAS motscles
+# PAS motscles (voir CANON_METADONNEES), et PLUS langue depuis le 22.09.2026 : le champ a quitté
+# le gabarit, son absence est donc la normale et n'a plus rien à signaler. Sa clé reste
+# reconnaissable dans CANON_METADONNEES — un document rempli avant ce jour en porte encore une,
+# et une clé PRÉSENTE non reconnue bloquerait tout l'import.
+CLES_METADONNEES_ATTENDUES = ('type', 'titre', 'soustitre', 'resume')
 
 
 CANON_METADONNEES = {
-    'type': ("Type d'article", 'type', 'artikeltyp'),
+    # Les ALIAS ne sont pas de la décoration : chaque forme listée ici est comparée au score
+    # maximum (voir identifier_cle), donc une étiquette qui tombe sur un alias est reconnue à
+    # coup sûr, là où le seul seuil de proximité l'aurait laissée dehors — et c'est là qu'un
+    # faux négatif coûte le plus cher, puisqu'une clé présente non reconnue REFUSE l'import.
+    # Trois familles, posées le 22.09.2026 :
+    #   * la forme SANS ACCENT de chaque forme canonique accentuée (« resume », « legende »,
+    #     « prenom », « credit ») — perdre deux accents fait tomber le score sous le seuil, et
+    #     baisser le seuil jusqu'à les rattraper supprimerait la marge (voir SEUIL_CLE) ;
+    #   * les synonymes que la rédaction tape par réflexe (« Copyright », « Droits »,
+    #     « Description », « Provenance », « Poste », « Adresse e-mail »…) ;
+    #   * l'italien, aux côtés du français et de l'allemand déjà présents — la revue publie des
+    #     articles italiens, même s'ils se corrigent à la main après l'import.
+    # Un alias reconnu n'est JAMAIS silencieux : `exact` ne compare qu'à la forme canonique
+    # (position 0), donc tout ce qui n'est pas tapé comme le gabarit avertit (cle-approximee).
+    # ⚠ PAS d'alias « rubrique » ici, quoi qu'en dise l'intuition : dans la maison, une rubrique
+    #   n'est pas un type d'article (voir szh-rubrique.lua). L'alias a été posé, mesuré — il
+    #   faisait entrer « Rubrique » sur `type` avec un score de 1,000 — et retiré.
+    'type': ("Type d'article", 'type', 'artikeltyp', 'tipo di articolo'),
+    # Champ RETIRÉ du gabarit le 22.09.2026 : sa valeur n'est plus lue (la langue vient du
+    # produit, voir langue_du_produit()), mais sa clé reste reconnue pour que le tableau d'un
+    # document rempli avant ce jour ne bloque pas l'import — il avertit, voir la branche
+    # 'langue' d'extraire_table_metadonnees().
     'langue': ("Langue de l'article", 'langue', 'sprache', 'language'),
-    'titre': ('Titre', 'title', 'titel'),
-    'soustitre': ('Sous-titre', 'sous titre', 'subtitle', 'untertitel'),
-    'resume': ('Résumé', 'abstract', 'zusammenfassung'),
+    'titre': ('Titre', 'title', 'titel', 'titolo', 'titre de l\'article'),
+    'soustitre': ('Sous-titre', 'sous titre', 'soustitre', 'subtitle', 'untertitel',
+                  'sottotitolo'),
+    'resume': ('Résumé', 'resume', 'abstract', 'zusammenfassung', 'riassunto',
+               'résumé de l\'article'),
     # Décision prise seul (Robin absent) : le gabarit ne définit AUCUN champ « Mots-clés » —
     # voir serialiser_meta(), les mots-clés sont choisis dans le cockpit, jamais lus dans le
     # document, et ÇA NE CHANGE PAS ICI. Gardée quand même reconnaissable (la demande la cite
@@ -624,20 +704,29 @@ CANON_METADONNEES = {
 }
 
 CANON_AUTEUR = {
-    'prenom': ('Prénom', 'first name', 'firstname', 'vorname'),
-    'nom': ('Nom', 'name', 'nachname', 'last name', 'lastname', 'surname'),
-    'fonction': ('Fonction', 'position', 'funktion'),
-    'affiliation': ('Institution', 'affiliation'),
-    'ror': ('ROR',),
-    'orcid': ('ORCID',),
-    'email': ('Email', 'e-mail', 'courriel', 'mail'),
+    'prenom': ('Prénom', 'prenom', 'first name', 'firstname', 'vorname', 'nome'),
+    'nom': ('Nom', 'name', 'nachname', 'last name', 'lastname', 'surname',
+            'nom de famille', 'familienname', 'cognome'),
+    'fonction': ('Fonction', 'position', 'funktion', 'poste', 'rôle', 'role', 'funzione',
+                 'titre et fonction'),
+    'affiliation': ('Institution', 'affiliation', 'institution / organisation', 'organisation',
+                    'établissement', 'etablissement', 'einrichtung', 'istituzione'),
+    'ror': ('ROR', 'ror id', 'identifiant ror'),
+    'orcid': ('ORCID', 'orcid id', 'identifiant orcid'),
+    # ⚠ « adresse mail » a été posé, mesuré, puis retiré : il faisait entrer « Adresse » (une
+    #   adresse postale) sur `email` avec 0,778. « adresse e-mail », plus long, laisse
+    #   « Adresse » à 0,737 — sous le seuil, donc dehors, ce qui est le bon verdict.
+    'email': ('Email', 'e-mail', 'courriel', 'mail', 'adresse e-mail', 'e-mail-adresse'),
 }
 
 CANON_FIGURE = {
-    'legende': ('Légende', 'caption', 'bildunterschrift', 'abbildung'),
-    'alt': ('Texte alternatif', 'alt', 'alternativtext', 'alt text'),
-    'credit': ('Crédit', 'credit', 'photo credit', 'bildnachweis'),
-    'source': ('Source', 'quelle'),
+    'legende': ('Légende', 'legende', 'caption', 'bildunterschrift', 'abbildung',
+                'légende de la figure', 'didascalia'),
+    'alt': ('Texte alternatif', 'texte alternatif', 'alt', 'alternativtext', 'alt text',
+            'description', 'texte de remplacement', 'testo alternativo'),
+    'credit': ('Crédit', 'credit', 'crédit photo', 'credit photo', 'photo credit', 'copyright',
+               'droits', 'bildnachweis', 'credito'),
+    'source': ('Source', 'quelle', 'provenance', 'fonte'),
 }
 
 
@@ -684,11 +773,11 @@ def _valeur_cellule(cellule):
 
 
 def extraire_table_metadonnees(tableau, slug, bloquants=None):
-    """(valeurs, consommee). `valeurs` = {'type', 'langue', 'titre', 'soustitre', 'resume'}
+    """(valeurs, consommee). `valeurs` = {'type', 'titre', 'soustitre', 'resume'}
     — les trois derniers étant des dict langue -> texte. `bloquants`, si fourni (list), reçoit
     une entrée {'texte', 'lieu'} pour chaque clé PRÉSENTE (valeur non vide) mais non reconnue,
     ou reconnue sans destination — voir resoudre_cle() et principal()."""
-    valeurs = {'type': '', 'langue': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
+    valeurs = {'type': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
     consommee = True
     cles_vues = set()
     for i, rangee in enumerate(tableau.rangees):
@@ -727,10 +816,25 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                     'Metadaten nicht gesetzt; wählen Sie ihn unter «Metadaten der '
                     'Artikel».' % valeur)
         elif jeton == 'langue':
+            # Le champ a quitté le gabarit le 22.09.2026 et sa valeur n'est PLUS lue : la
+            # langue vient du produit du numéro. Ne rien dire ferait sortir un article
+            # italien en français sans que personne ne l'apprenne — d'où cette information,
+            # qui nomme la seule voie restante.
             cles_vues.add('langue')
-            code = VALEURS_LANGUE.get(aplatir(valeur))
-            if code:
-                valeurs['langue'] = code
+            avertir(
+                'langue-du-document-ignoree',
+                ['article « %s »' % slug, 'valeur « %s »' % valeur],
+                'Le tableau des métadonnées de cet article porte encore un champ « Langue '
+                'de l\'article » (« %s ») : il n\'est plus lu. La langue vient désormais de '
+                'la revue du numéro — Revue en français, Zeitschrift en allemand. Si cet '
+                'article est dans une autre langue, corrigez-la dans « Métadonnées des '
+                'articles » ; vous pouvez retirer ce champ du document.' % valeur,
+                'Die Metadatentabelle dieses Artikels enthält noch ein Feld « Langue de '
+                'l\'article » (« %s »): es wird nicht mehr gelesen. Die Sprache ergibt sich '
+                'jetzt aus der Zeitschrift der Ausgabe — Revue auf Französisch, Zeitschrift '
+                'auf Deutsch. Ist dieser Artikel in einer anderen Sprache, korrigieren Sie '
+                'sie unter «Metadaten der Artikel»; das Feld können Sie aus dem Dokument '
+                'entfernen.' % valeur)
         elif jeton == 'titre' and langue_champ:
             cles_vues.add('titre')
             valeurs['titre'][langue_champ] = valeur
@@ -747,17 +851,15 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                 ['article « %s »' % slug, 'etiquette « %s »' % etiquette,
                  'valeur « %s »' % valeur],
                 'Le tableau des métadonnées de cet article porte une étiquette que le '
-                'gabarit ne connaît pas : « %s » (valeur : « %s »). Rien n\'est perdu — '
-                'le tableau reste imprimé dans le texte — mais cette valeur n\'est pas '
-                'reprise dans la fiche. Corrigez l\'étiquette dans le document puis '
-                'réimportez l\'article, ou complétez « Métadonnées des articles » à la '
-                'main.' % (etiquette, valeur),
+                'gabarit ne connaît pas : « %s » (valeur : « %s »). L\'article n\'a PAS '
+                'été importé, pour ne pas perdre cette valeur : rien n\'a été créé, et le '
+                'fichier Word reste en attente. Corrigez l\'étiquette dans le document, '
+                'puis enregistrez.' % (etiquette, valeur),
                 'Die Metadatentabelle dieses Artikels enthält eine der Vorlage '
-                'unbekannte Bezeichnung: « %s » (Wert: « %s »). Nichts geht verloren — '
-                'die Tabelle bleibt im Text gedruckt — aber dieser Wert wird nicht in '
-                'die Metadaten übernommen. Korrigieren Sie die Bezeichnung im Dokument '
-                'und importieren Sie den Artikel neu, oder ergänzen Sie «Metadaten der '
-                'Artikel» von Hand.' % (etiquette, valeur))
+                'unbekannte Bezeichnung: « %s » (Wert: « %s »). Der Artikel wurde NICHT '
+                'importiert, damit dieser Wert nicht verloren geht: es wurde nichts '
+                'angelegt, und die Word-Datei bleibt in der Warteschlange. Korrigieren Sie '
+                'die Bezeichnung im Dokument und speichern Sie.' % (etiquette, valeur))
             if jeton is not None and bloquants is not None:
                 # Résolu (motscles, ou langue manquante pour titre/sous-titre/résumé) mais
                 # sans branche de dispatch : resoudre_cle() n'a rien ajouté à bloquants pour
@@ -873,14 +975,16 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
             avertir(
                 'auteur-etiquette-inconnue',
                 ['article « %s »' % slug] + ['ligne « %s »' % t for t in lignes_inconnues],
-                'La fiche d\'une autrice ou d\'un auteur de cet article porte une ligne '
-                'que le gabarit ne reconnaît pas (%s). Elle n\'a pas été reprise dans la '
-                'fiche ; les autres champs de cette personne, eux, le sont.'
+                'Le tableau des autrices et auteurs porte une ligne que le gabarit ne '
+                'reconnaît pas (%s). L\'article n\'a PAS été importé, pour ne pas perdre '
+                'ce que cette ligne contient : rien n\'a été créé, et le fichier Word reste '
+                'en attente. Corrigez l\'étiquette dans le document, puis enregistrez.'
                 % ' ; '.join('« %s »' % t for t in lignes_inconnues),
-                'Der Eintrag einer Autorin oder eines Autors dieses Artikels enthält eine '
-                'von der Vorlage nicht erkannte Zeile (%s). Sie wurde nicht in die '
-                'Metadaten übernommen; die übrigen Felder dieser Person hingegen schon.'
-                % ' ; '.join('« %s »' % t for t in lignes_inconnues))
+                'Die Tabelle der Autorinnen und Autoren enthält eine von der Vorlage nicht '
+                'erkannte Zeile (%s). Der Artikel wurde NICHT importiert, damit ihr Inhalt '
+                'nicht verloren geht: es wurde nichts angelegt, und die Word-Datei bleibt in '
+                'der Warteschlange. Korrigieren Sie die Bezeichnung im Dokument und speichern '
+                'Sie.' % ' ; '.join('« %s »' % t for t in lignes_inconnues))
 
         auteur = {c: champs.get(c, '') for c in ('prenom', 'nom', 'fonction', 'affiliation',
                                                   'ror', 'orcid', 'email')}
@@ -1133,11 +1237,15 @@ def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
         'bloc-etiquette-inconnue',
         ['article « %s »' % slug, 'etiquette « %s »' % etiquette, 'valeur « %s »' % valeur],
         'Un bloc figure ou tableau de cet article porte une étiquette que le gabarit ne '
-        'connaît pas : « %s » (valeur : « %s »). Le tableau reste imprimé dans le texte.'
+        'connaît pas : « %s » (valeur : « %s »). L\'article n\'a PAS été importé : rien n\'a '
+        'été créé, et le fichier Word reste en attente. Les quatre étiquettes attendues sont '
+        '« Légende : », « Texte alternatif : », « Crédit : » et « Source : ».'
         % (etiquette, valeur),
         'Ein Abbildungs- oder Tabellenblock dieses Artikels enthält eine der Vorlage '
-        'unbekannte Bezeichnung: « %s » (Wert: « %s »). Die Tabelle bleibt im Text gedruckt.'
-        % (etiquette, valeur))
+        'unbekannte Bezeichnung: « %s » (Wert: « %s »). Der Artikel wurde NICHT importiert: es '
+        'wurde nichts angelegt, und die Word-Datei bleibt in der Warteschlange. Erwartet '
+        'werden die vier Bezeichnungen «Légende :», «Texte alternatif :», «Crédit :» und '
+        '«Source :».' % (etiquette, valeur))
 
 
 def _decouper_champ_bloc(texte):
@@ -1186,13 +1294,21 @@ def _champs_bloc_meta(row0, slug, bloquants=None):
 
 
 def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
-    """(champs, consommee, cles_vues) — même lecture que _champs_bloc_meta(), sur une liste de
-    paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme, révision du 21.09.2026) au lieu
-    d'une rangée de cellules : plus de tableau autour, mais la même règle « Étiquette : valeur »
-    et le même avertissement en cas d'étiquette inconnue."""
+    """(champs, consommee, cles_vues, textes_pris) — même lecture que _champs_bloc_meta(), sur
+    une liste de paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme, révision du
+    21.09.2026) au lieu d'une rangée de cellules : plus de tableau autour, mais la même règle
+    « Étiquette : valeur » et le même avertissement en cas d'étiquette inconnue.
+
+    `textes_pris` est la liste des paragraphes dont l'étiquette a été RECONNUE — les seuls que
+    la chaîne d'import a le droit de retirer du corps (lignes P, voir principal()). Un
+    paragraphe laissé vide par l'autrice ou l'auteur (« Crédit : » tout seul, comme dans le
+    gabarit livré) en fait partie : il n'apporte rien, mais il s'imprimerait. Un paragraphe
+    dont l'étiquette n'est reconnue par rien n'en fait JAMAIS partie : on ne retire pas du
+    texte qu'on n'a pas compris."""
     champs = {}
     consommee = True
     cles_vues = set()
+    textes_pris = []
     for p in paragraphes:
         lu = _decouper_champ_bloc(p.texte)
         if lu is None:
@@ -1201,7 +1317,13 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
             continue
         etiquette, valeur = lu
         if not valeur:
-            continue                   # clé présente mais vide : traitée comme absente
+            # Clé présente mais vide : traitée comme absente — jamais bloquante, donc jamais
+            # passée à resoudre_cle(). Son étiquette est quand même identifiée, en silence,
+            # pour savoir si ce paragraphe vide peut quitter le corps.
+            resolu = identifier_cle(etiquette, CANON_FIGURE)
+            if resolu is not None and resolu[0] != '__ambigu__':
+                textes_pris.append(p.texte)
+            continue
         champ = resoudre_cle(etiquette, CANON_FIGURE, slug, 'bloc', bloquants)
         if champ is None:
             consommee = False
@@ -1209,7 +1331,8 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
             continue
         champs[champ] = valeur
         cles_vues.add(champ)
-    return champs, consommee, cles_vues
+        textes_pris.append(p.texte)
+    return champs, consommee, cles_vues, textes_pris
 
 
 def _contenu_bloc(row1):
@@ -1305,7 +1428,8 @@ def _avertir_cles_sans_contenu(champs, slug):
         'Prüfen Sie ihre Position gegenüber dem Bild oder der Tabelle im Dokument.')
 
 
-def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloquants=None):
+def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloquants=None,
+                                    variantes=None):
     """Liste de dicts {'pos', 'nature', 'champs', 'consommee', 'tbl_interne'} — un par bloc
     figure/tableau à la NOUVELLE forme trouvé dans `blocs` (hors table1_elem/table2_elem, qui
     ne sont de toute façon jamais des Par et ne peuvent donc jamais démarrer un groupe de clés).
@@ -1314,6 +1438,14 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
     exposé dans stats['blocs'] (voir principal()), qui doit rendre la MÊME forme quelle que
     soit la forme d'entrée (c'est le test différentiel, pronto-gabarits.test.js)."""
     resultat = []
+    # Rang de chaque tableau de PREMIER NIVEAU (1-based), par son indice dans `blocs` : c'est
+    # la numérotation de docx-tables.py et de szh-tabelle-reference.lua, celle des lignes T. Un
+    # bloc tableau la porte dans sa clé 'contenu', pour que ses champs aillent se poser sur le
+    # bon tables/table-NN.html.
+    rang_table = {}
+    for idx, e in enumerate(blocs):
+        if isinstance(e, Tableau):
+            rang_table[idx] = len(rang_table) + 1
     n = len(blocs)
     i = 0
     while i < n:
@@ -1325,8 +1457,8 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
         fin = depart
         while fin < n and fin - depart < 4 and _est_cle_bloc(blocs[fin]):
             fin += 1
-        champs, consommee, cles_vues = _champs_bloc_meta_paragraphes(blocs[depart:fin], slug,
-                                                                       bloquants)
+        champs, consommee, cles_vues, textes_pris = _champs_bloc_meta_paragraphes(
+            blocs[depart:fin], slug, bloquants)
         idx_contenu, nature = _cherche_contenu_bloc_nouvelle_forme(blocs, fin)
         if nature is None:
             _avertir_cles_sans_contenu(champs, slug)
@@ -1335,9 +1467,33 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
         _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
                                           'bloc')
         resultat.append({'pos': depart, 'nature': nature, 'champs': champs,
-                         'consommee': consommee, 'tbl_interne': nature == 'table'})
+                         'consommee': consommee, 'tbl_interne': nature == 'table',
+                         'cles': textes_pris,
+                         'contenu': (rang_table.get(idx_contenu) if nature == 'table'
+                                     else _images_du_bloc(blocs[idx_contenu], variantes))})
         i = idx_contenu + 1
     return resultat
+
+
+def _images_du_bloc(par, variantes=None):
+    """Les noms de fichier (sous media/) que l'image d'un bloc peut porter dans le .md, séparés
+    par « | » et rangés de la plus grande surface déclarée à la plus petite, chacun suivi de ses
+    variantes. Plusieurs noms parce qu'une même image peut en avoir deux : Word range un SVG
+    derrière un aperçu bitmap, le lecteur voit l'aperçu et pandoc écrit le SVG (voir
+    pronto_docx.variantes_images()). L'instruction FI les donne tous, et szh-legendes.lua pose
+    les champs du bloc sur l'image qui répond à l'un d'eux — plutôt que sur un rang, qu'un
+    paragraphe d'image de plus dans le document suffirait à décaler. '' si le paragraphe ne
+    porte aucune image (jamais le cas ici : _cherche_contenu_bloc_nouvelle_forme() ne rend
+    'image' que pour un paragraphe qui en porte)."""
+    variantes = variantes or {}
+    noms = []
+    for nom, _ in sorted(par.images, key=lambda t: t[1], reverse=True):
+        if not nom:
+            continue
+        for candidat in [nom] + list(variantes.get(nom, [])):
+            if candidat not in noms:
+                noms.append(candidat)
+    return '|'.join(noms)
 
 
 # ---------------------------------------------------------------------------------
@@ -1383,17 +1539,16 @@ def serialiser_meta(meta):
 # `chemin_source` sert seulement au champ `source` de la fiche (son basename) — voir
 # l'en-tête d'origine.
 #
-# ⚠ POINT D'INTÉGRATION À DOCUMENTER, PAS À CORRIGER ICI (aucun fichier existant n'est
-# modifié par ce chantier) : pipeline/docx-tables.py saute ENTIÈREMENT tout tableau de
-# premier niveau consommé (lignes T de $SZH_META) et ne descend alors plus du tout dans ce
-# tableau. tableaux_de_premier_niveau() ne compte pas les imbriqués comme des tableaux
-# séparés. Résultat : le jour où ce fichier posera une ligne T sur un bloc TABLEAU (pas
-# figure), le tableau interne qu'il enveloppe ne sera plus jamais visité par
-# docx-tables.py — ni rendu à part, ni rendu dans son parent, puisque le parent entier est
-# sauté. Il faudra alors soit apprendre à docx-tables.py à déballer un bloc consommé pour en
-# extraire le tableau interne comme s'il était de premier niveau, soit distinguer « T de bloc
-# figure » (à sauter entièrement) de « T de bloc tableau » (dont seule la rangée 0 doit
-# disparaître). Ce fichier-ci ne le fait pas : il se contente de le dire.
+# ⚠ CE QU'UNE LIGNE T ENGAGE (branchement du 22.09.2026). Une ligne T dit à la chaîne
+# d'import de faire DISPARAÎTRE un tableau de premier niveau : docx-tables.py ne le rend pas,
+# szh-meta.lua le retire de l'AST. Or docx-tables.py saute un tableau consommé ENTIÈREMENT et
+# ne descend plus dedans (tableaux_de_premier_niveau() ne compte pas les imbriqués comme des
+# tableaux séparés) : une ligne T posée sur l'enveloppe d'un bloc TABLEAU ferait disparaître
+# le tableau qu'elle contient — ni rendu à part, ni rendu dans son parent, puisque le parent
+# s'en va. Un tableau perdu sans un mot. D'où la règle, tenue par principal() : SEULS les deux
+# tableaux fixes de la tête (métadonnées, autrices et auteurs) sont consommés. Jamais un bloc
+# figure ou tableau, ni à la nouvelle forme (il n'y a pas d'enveloppe), ni à l'ancienne (elle
+# s'imprime telle quelle, avec ses étiquettes — voir 'bloc-ancienne-forme').
 #
 # Aucun mot-clé n'est jamais écrit dans la fiche : ils sont choisis dans le cockpit, jamais
 # lus dans le document.
@@ -1412,7 +1567,14 @@ def serialiser_meta(meta):
 # chaînes différentes selon le format déposé. NE PAS L'IMPLÉMENTER ICI : ce n'est pas
 # demandé, et ce parser n'est branché nulle part.
 
-def principal(blocs, chemin_source, slug, dossier):
+def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
+    """`produit` est le jeton `revue:` du numéro (« revue » | « zeitschrift »), d'où vient la
+    LANGUE de l'article depuis le 22.09.2026 — voir langue_du_produit(). Vide (lecteur appelé
+    hors d'un numéro) : repli sur le français, dit par l'avertissement 'langue-deduite'.
+
+    `variantes` : {nom d'image -> [autres noms]}, la table que le lecteur de format tient à
+    côté du modèle neutre (pronto_docx.variantes_images()). Elle ne sert qu'à nommer l'image
+    d'un bloc figure dans l'instruction FI, sous TOUS les noms qu'elle peut porter dans le .md."""
     stats = {'slug': slug, 'avertissements': []}
     # Une clé PRÉSENTE (valeur non vide) mais non reconnue est bloquante (décision de Robin,
     # 22.09.2026) : {'texte', 'lieu'} par occurrence, alimentée par resoudre_cle() et par le
@@ -1425,7 +1587,7 @@ def principal(blocs, chemin_source, slug, dossier):
     table1_elem = tables[0][1] if len(tables) >= 1 else None
     table2_elem = tables[1][1] if len(tables) >= 2 else None
 
-    valeurs = {'type': '', 'langue': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
+    valeurs = {'type': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
     table1_consommee = False
     if table1_elem is not None:
         valeurs, table1_consommee = extraire_table_metadonnees(table1_elem, slug, bloquants)
@@ -1459,7 +1621,6 @@ def principal(blocs, chemin_source, slug, dossier):
             '«Metadaten der Artikel» von Hand.')
 
     blocs_figtab = []
-    k_pleinement_consomme = {}
     for k, (idx_bloc, tbl) in enumerate(tables):
         if tbl is table1_elem or tbl is table2_elem:
             continue
@@ -1472,15 +1633,20 @@ def principal(blocs, chemin_source, slug, dossier):
             'bloc-ancienne-forme',
             ['article « %s »' % slug, 'tableau %d' % (k + 1)],
             'Le tableau %d de cet article utilise l\'ancienne forme de bloc figure ou tableau '
-            '(un tableau à deux rangées) : il a été lu normalement, mais cette forme est '
-            'dépassée depuis le 21.09.2026. Convertissez-le vers la nouvelle forme (quatre '
-            'paragraphes « SZH Cle Abb/Tab » suivis de l\'image ou du tableau) au prochain '
-            'remaniement du document.' % (k + 1),
+            '(un tableau à deux rangées), dépassée depuis le 21.09.2026 : il s\'imprimera tel '
+            'quel, avec ses étiquettes (« Légende : », « Texte alternatif : »…), et sa légende '
+            'ne sera ni numérotée ni reprise comme texte alternatif. Rien n\'est perdu. Pour '
+            'que ce bloc redevienne une figure ou un tableau légendé, convertissez-le vers la '
+            'nouvelle forme (quatre paragraphes « SZH Cle Abb/Tab » suivis de l\'image ou du '
+            'tableau) puis réimportez l\'article.' % (k + 1),
             'Die Tabelle %d dieses Artikels verwendet die alte Form eines Abbildungs- oder '
-            'Tabellenblocks (eine zweizeilige Tabelle): sie wurde normal gelesen, ist aber '
-            'seit dem 21.09.2026 veraltet. Wandeln Sie sie bei der nächsten Überarbeitung des '
-            'Dokuments in die neue Form um (vier Absätze «SZH Cle Abb/Tab», gefolgt vom Bild '
-            'oder der Tabelle).' % (k + 1))
+            'Tabellenblocks (eine zweizeilige Tabelle), seit dem 21.09.2026 veraltet: sie wird '
+            'so gedruckt, wie sie ist, mitsamt ihren Bezeichnungen («Légende :», «Texte '
+            'alternatif :»…), und ihre Legende wird weder nummeriert noch als Alternativtext '
+            'übernommen. Es geht nichts verloren. Damit dieser Block wieder eine beschriftete '
+            'Abbildung oder Tabelle wird, wandeln Sie ihn in die neue Form um (vier Absätze '
+            '«SZH Cle Abb/Tab», gefolgt vom Bild oder der Tabelle) und importieren Sie den '
+            'Artikel neu.' % (k + 1))
         if n_paires > 1:
             # Deux (ou plus) blocs collés, fusionnés en un seul tableau Word — voir
             # n_blocs_meta(). Ne concerne pas que les figures : deux tableaux voisins, ou un
@@ -1500,14 +1666,14 @@ def principal(blocs, chemin_source, slug, dossier):
                 'Blöcke wurden trotzdem einzeln erkannt; lassen Sie im Word künftig eine '
                 'leere Zeile zwischen zwei Blöcken, um das zu vermeiden.'
                 % (n_paires, n_paires * 2, n_paires))
-        sous_consommees = []
         for p in range(n_paires):
             nature, champs, consommee, tbl_interne = extraire_bloc(tbl, slug, p, bloquants)
+            # `cles` et `contenu` vides : un bloc à l'ancienne forme ne fait rien retirer du
+            # corps et ne pose ses champs nulle part — son tableau enveloppe s'imprime tel
+            # quel (voir tables_consommees et l'avertissement 'bloc-ancienne-forme').
             blocs_figtab.append({'pos': idx_bloc, 'k': k, 'nature': nature, 'champs': champs,
-                                 'consommee': consommee,
+                                 'consommee': consommee, 'contenu': None, 'cles': [],
                                  'tbl_interne': tbl_interne is not None})
-            sous_consommees.append(consommee)
-        k_pleinement_consomme[k] = all(sous_consommees)
 
     # Nouvelle forme (révision du 21.09.2026) : jamais de tableau enveloppe, donc jamais rien
     # à ajouter à `tables_consommees` — il n'y a pas de tableau à faire sauter par la chaîne
@@ -1517,16 +1683,30 @@ def principal(blocs, chemin_source, slug, dossier):
     # différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md, révision du
     # 21.09.2026) — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
     blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug,
-                                                            bloquants)
+                                                            bloquants, variantes)
     blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
 
+    # Un tableau « consommé » (ligne T) est un tableau que la chaîne d'import doit faire
+    # DISPARAÎTRE du corps — docx-tables.py ne le rend pas, szh-meta.lua le retire de l'AST. Il
+    # n'y en a que deux, et ce sont les deux tableaux fixes de la tête : métadonnées et
+    # autrices/auteurs. JAMAIS un bloc figure ou tableau, quelle que soit sa forme :
+    #
+    #   * nouvelle forme — il n'y a pas de tableau enveloppe à faire sauter (le contenu est un
+    #     paragraphe d'image, ou un tableau de premier niveau qui doit se rendre comme
+    #     n'importe quel tableau de contenu) ;
+    #   * ancienne forme — le tableau enveloppe reste, lui aussi. C'est la décision du
+    #     22.09.2026, et elle supprime d'un coup le piège décrit dans
+    #     TODO-BRANCHEMENT-PARSER-V2.md (étape 1) : consommer une enveloppe aurait fait
+    #     disparaître le tableau qu'elle contient — ni rendu à part par docx-tables.py (qui
+    #     saute le tableau consommé en entier), ni rendu dans son parent (puisque le parent
+    #     s'en va). Un tableau perdu sans un mot. Ne rien consommer le rend impossible : le
+    #     bloc s'imprime tel quel, avec ses étiquettes, et l'avertissement
+    #     'bloc-ancienne-forme' dit ce qu'il faut faire pour retrouver une vraie figure.
     tables_consommees = []
     for k, (idx_bloc, tbl) in enumerate(tables):
         if tbl is table1_elem and table1_consommee:
             tables_consommees.append(k + 1)
         elif tbl is table2_elem and table2_consommee:
-            tables_consommees.append(k + 1)
-        elif k_pleinement_consomme.get(k):
             tables_consommees.append(k + 1)
 
     # Verdict : une clé PRÉSENTE non reconnue bloque tout l'import (décision de Robin,
@@ -1539,7 +1719,11 @@ def principal(blocs, chemin_source, slug, dossier):
         return stats
 
     type_article = valeurs['type'] if valeurs['type'] in TYPES_VALIDES else ''
-    langue = valeurs['langue'] if valeurs['langue'] in LANGUES_META else ''
+    # La langue vient du PRODUIT du numéro, jamais du document (voir langue_du_produit()).
+    # `langue_deduite` ne vaut donc plus « devinée dans le texte » mais « pas de produit du
+    # tout » — lecteur appelé hors d'un numéro, ausgabe.yaml sans clé `revue:` : on se rabat
+    # sur le français, et l'avertissement le dit.
+    langue = langue_du_produit(produit)
     langue_deduite = not langue
 
     lignes_b, ligne_bt, biblio = etendue_biblio(blocs, type_article or 'article', slug)
@@ -1570,12 +1754,16 @@ def principal(blocs, chemin_source, slug, dossier):
         avertir(
             'langue-deduite',
             ['article « %s »' % slug, 'langue « %s »' % meta['lang']],
-            "La langue de cet article n'était pas indiquée dans le document : elle a "
-            "été devinée. Vérifiez-la dans « Métadonnées des articles » : la maquette "
-            "et les résumés en dépendent.",
-            'Die Sprache dieses Artikels stand nicht im Dokument: sie wurde erraten. '
-            'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
-            'Zusammenfassungen richten sich danach.')
+            "La langue de cet article n'a pas pu être établie : le numéro ne dit pas s'il "
+            "s'agit de la Revue ou de la Zeitschrift, et la langue du document ne se lit "
+            "plus dans le document lui-même. Le français a été posé par défaut ; "
+            "vérifiez-le dans « Métadonnées des articles », la maquette et les résumés en "
+            "dépendent.",
+            'Die Sprache dieses Artikels konnte nicht bestimmt werden: die Ausgabe sagt '
+            'nicht, ob es sich um die Revue oder die Zeitschrift handelt, und die Sprache '
+            'steht nicht mehr im Dokument selbst. Ersatzweise wurde Französisch gesetzt; '
+            'prüfen Sie es unter «Metadaten der Artikel» — Layout und Zusammenfassungen '
+            'richten sich danach.')
 
     chemin_photos = os.getenv('SZH_PHOTOS')
     if chemin_photos:
@@ -1593,6 +1781,23 @@ def principal(blocs, chemin_source, slug, dossier):
             f.write('L\t%s\n' % meta['lang'])
             for k in tables_consommees:
                 f.write('T\t%d\n' % k)
+            # Les quatre paragraphes de clé d'un bloc quittent le corps (szh-meta.lua les
+            # apparie sur leur texte, une ligne P retirant une occurrence), et leurs valeurs
+            # vont se poser sur l'image (FI, szh-legendes.lua) ou sur le tableau (FT,
+            # docx-tables.py). Sans ces lignes, « Légende : », « Texte alternatif : »,
+            # « Crédit : » et « Source : » s'impriment tels quels au milieu de l'article et le
+            # texte alternatif est perdu — mesuré sur le gabarit réel avant ce branchement.
+            for b in blocs_figtab:
+                for texte in b['cles']:
+                    f.write('P\t%s\n' % texte)
+            for b in blocs_figtab:
+                if b['contenu'] is None:
+                    continue
+                champs = b['champs']
+                queue = '\t'.join([champs.get('legende', ''), champs.get('alt', ''),
+                                   champs.get('credit', ''), champs.get('source', '')])
+                f.write('%s\t%s\t%s\n' % ('FT' if b['nature'] == 'table' else 'FI',
+                                          b['contenu'], queue))
             if ligne_bt:
                 f.write('BT\t%s\n' % ligne_bt)
             for t in lignes_b:

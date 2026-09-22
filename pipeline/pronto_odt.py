@@ -120,6 +120,31 @@ def charger_catalogue_styles(z):
     return catalogue
 
 
+def variantes_images(chemin_odt):
+    """{} — OpenDocument n'a pas d'équivalent de l'aperçu bitmap que Word range derrière une
+    image vectorielle (voir pronto_docx.variantes_images()) : LibreOffice écrit le SVG et rien
+    d'autre. La fonction existe pour que les deux lecteurs offrent la même surface à
+    pronto-lire.py, jamais pour deviner quoi que ce soit ici."""
+    return {}
+
+
+def est_pronto(chemin_odt):
+    """Vrai si cet .odt déclare les styles du gabarit « Pronto — modèle d'article ». Même
+    critère et même raison que pronto_docx.est_pronto() (voir son commentaire), sur le nom
+    AFFICHÉ des styles communs : « SZH Cle » s'écrit @style:name="SZH_20_Cle"
+    @style:display-name="SZH Cle" — c'est le display-name qui porte le nom humain, le nom
+    interne étant encodé (point 1 de l'en-tête). Toute erreur de lecture rend Faux."""
+    try:
+        with zipfile.ZipFile(chemin_odt) as z:
+            catalogue = charger_catalogue_styles(z)
+    except Exception:
+        return False
+    noms = set()
+    for nom, (affiche, _) in catalogue.items():
+        noms.add((affiche or decoder_nom_style(nom)).lower())
+    return all(nom in noms for nom in pm.STYLES_GABARIT)
+
+
 def resoudre_style(nom_style, catalogue):
     """Nom humain résolu d'un @text:style-name : suit @style:parent-style-name jusqu'à
     trouver un display-name ; à défaut, décode le dernier nom atteint (_XX_). '' si

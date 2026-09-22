@@ -64,6 +64,9 @@ def charger_rels_images(z):
     return rels
 
 
+ASVG = '{http://schemas.microsoft.com/office/drawing/2016/SVG/main}'
+
+
 def images_de_paragraphe(p, rels_images):
     """[(nom sous media/, surface déclarée)] des images d'un w:p, dans l'ordre. La surface
     vient de wp:extent (EMU²) ; elle vaut 0 quand la taille n'est pas déclarée, ce qui est le
@@ -91,6 +94,43 @@ def images_de_paragraphe(p, rels_images):
     return trouvees
 
 
+def variantes_images(chemin_docx):
+    """{nom de l'aperçu -> [noms des variantes]} — les AUTRES noms de fichier sous lesquels une
+    même image peut apparaître dans le .md.
+
+    Word range une image vectorielle DEUX fois : le SVG lui-même, et un aperçu bitmap pour les
+    lecteurs qui ne savent pas l'afficher. Le a:blip pointe l'APERÇU (rId7 -> media/image1.png
+    sur le gabarit réel) et le vrai SVG se cache dans son extension asvg:svgBlip (rId8 ->
+    media/image2.svg). Or pandoc, lui, extrait et cite le SVG : un bloc figure du gabarit
+    nommerait image1.png là où le .md porte image2.svg, et l'instruction FI (légende, texte
+    alternatif, crédit, source) ne retrouverait jamais son image.
+
+    ⚠ Cette table vit À CÔTÉ du modèle neutre, jamais dedans : `Par.images` doit continuer de
+      dire « les images de ce paragraphe », une par image réelle. Y ajouter la variante ferait
+      croire à deux images là où il n'y en a qu'une — et ferait diverger ce lecteur de
+      manuscrit_docx.projeter_pronto(), dont un contrôle exige l'égalité stricte sur le gabarit
+      livré (test/js/manuscrit-docx.test.js).
+
+    Toute erreur de lecture rend {} : l'appariement se fera alors sur le seul nom principal.
+    """
+    variantes = {}
+    try:
+        with zipfile.ZipFile(chemin_docx) as z:
+            racine = ET.fromstring(z.read('word/document.xml'))
+            rels = charger_rels_images(z)
+    except Exception:
+        return variantes
+    for blip in racine.iter(A + 'blip'):
+        nom = rels.get(blip.get(R + 'embed') or '')
+        if not nom:
+            continue
+        for svg in blip.iter(ASVG + 'svgBlip'):
+            autre = rels.get(svg.get(R + 'embed') or '')
+            if autre and autre != nom and autre not in variantes.setdefault(nom, []):
+                variantes[nom].append(autre)
+    return variantes
+
+
 def charger_styles(z):
     """id -> nom (minuscules). styles.xml absent : dictionnaire vide (repli)."""
     try:
@@ -103,6 +143,36 @@ def charger_styles(z):
         nom = st.find(W + 'name')
         styles[sid] = (nom.get(W + 'val') or '').lower() if nom is not None else ''
     return styles
+
+
+# ---------------------------------------------------------------------------------
+# Reconnaissance du gabarit — c'est elle qui décide, dans pipeline/import-docx.sh, si un
+# document déposé part à ce lecteur ou à docx-meta.py (le lecteur des Word hérités).
+#
+# Le critère est la DÉCLARATION des deux styles maison dans styles.xml, pas leur emploi dans
+# le corps : un document parti du gabarit les porte même si l'autrice ou l'auteur a effacé
+# toutes les lignes d'aide, et un Word hérité ne peut pas les porter par accident. Un réglage
+# de poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent
+# le même jour (voir TODO-BRANCHEMENT-PARSER-V2.md, étape 4).
+#
+# Les DEUX sont exigés, et non l'un ou l'autre : « SZH Cle » seul se retrouve dans un document
+# fabriqué par manuscrit_gabarit.py à partir d'un gabarit ancien, « SZH Aide » seul n'existe
+# nulle part. Exiger les deux, c'est exiger le gabarit entier. La liste elle-même vit dans
+# pronto_modele.py (pm.STYLES_GABARIT) : les deux lecteurs y lisent la MÊME, plutôt que d'en
+# tenir chacun une qui dériverait de l'autre.
+
+
+def est_pronto(chemin_docx):
+    """Vrai si ce .docx déclare les styles du gabarit « Pronto — modèle d'article ». Toute
+    erreur de lecture (zip invalide, styles.xml absent) rend Faux : un document qu'on ne sait
+    pas ouvrir n'est pas un document Pronto, et l'ancienne chaîne dira mieux que nous ce qui
+    ne va pas."""
+    try:
+        with zipfile.ZipFile(chemin_docx) as z:
+            noms = set(charger_styles(z).values())
+    except Exception:
+        return False
+    return all(nom in noms for nom in pm.STYLES_GABARIT)
 
 
 def pstyle(p):

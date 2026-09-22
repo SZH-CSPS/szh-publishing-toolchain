@@ -174,6 +174,59 @@ test('méta : G retire le logo de tête, jamais une image du corps', () => {
   } finally { instr.nettoyer(); }
 });
 
+// ── szh-legendes.lua : les champs d'un bloc du gabarit Pronto ──────────────────────────
+// pipeline/import-docx.sh, juste après szh-meta.lua. Une ligne FI de $SZH_META dit, pour une
+// image donnée, ce que l'autrice ou l'auteur a tapé sous « Légende : », « Texte alternatif : »,
+// « Crédit : » et « Source : ». Sans cette reprise, ces quatre paragraphes s'impriment tels
+// quels au milieu de l'article et le texte alternatif est perdu — mesuré sur le gabarit réel,
+// chaîne complète, avant le branchement du 22.09.2026.
+//
+// ⚠ ENTRÉE NATIVE, PAS MARKDOWN, pour la même raison que le test du logo ci-dessus : le
+//   lecteur markdown range un paragraphe ne portant qu'une image dans un bloc Figure, là où le
+//   lecteur docx — celui de la vraie chaîne — rend un Para. C'est ce Para que para_image()
+//   reconnaît.
+const FIGURE_NATIVE = '[ Para [Image ("",[],[]) [] ("media/image1.png","")]\n'
+  + ', Para [Str "Corps",Space,Str "du",Space,Str "texte."]\n'
+  + ']\n';
+
+test('legendes (préparation) : sans ligne FI, l\'image reste nue', () => {
+  const md = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown', filtres: ['szh-legendes.lua'] });
+  assert.ok(!/copyright=/.test(md), 'un crédit est apparu sans instruction : ' + md);
+  assert.match(md, /!\[\]\(media\/image1\.png\)/, md);
+});
+
+test('legendes : une ligne FI pose légende, texte alternatif, crédit et source sur l\'image', () => {
+  // Deux noms séparés par « | » : une image vectorielle en porte deux dans le .docx (l'aperçu
+  // PNG que voit le lecteur, le SVG qu'écrit pandoc). N'importe lequel doit apparier.
+  const instr = instructionsTemporaires(
+    'FI\tmedia-inconnue.png|image1.png\tUne legende\tUn texte alternatif\t(c) X\tArchives Y\n');
+  try {
+    const md = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: instr.chemin } });
+    assert.match(md, /!\[Une legende\]/, 'la légende n\'est pas devenue celle de l\'image : ' + md);
+    assert.match(md, /alt="Un texte alternatif"/, 'le texte alternatif n\'est pas posé : ' + md);
+    assert.match(md, /copyright="\(c\) X"/, 'le crédit n\'est pas posé : ' + md);
+    assert.match(md, /source="Archives Y"/, 'la source n\'est pas posée : ' + md);
+    assert.match(md, /Corps du texte\./, 'le corps a été abîmé : ' + md);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes : une ligne FI l\'emporte sur un voisin en gras, qui ne vole plus la légende', () => {
+  // Le gabarit est explicite : quand les champs sont écrits, la règle du voisinage ne doit
+  // PAS s'appliquer, sans quoi un intertitre en gras juste au-dessus de la figure lui
+  // prendrait sa légende.
+  const avecVoisin = '[ Para [Strong [Str "Un",Space,Str "intertitre",Space,Str "en",Space,Str "gras"]]\n'
+    + ', Para [Image ("",[],[]) [] ("media/image1.png","")]\n'
+    + ']\n';
+  const instr = instructionsTemporaires('FI\timage1.png\tUne legende\t\t\t\n');
+  try {
+    const md = pandoc(avecVoisin, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: instr.chemin } });
+    assert.match(md, /!\[Une legende\]/, 'la légende du gabarit devait l\'emporter : ' + md);
+    assert.match(md, /intertitre en gras/, 'le voisin en gras a été mangé : ' + md);
+  } finally { instr.nettoyer(); }
+});
+
 // ── szh-titres.lua : import DOCX, promeut un paragraphe en Header ──────────────────────
 // pipeline/import-docx.sh, juste après szh-legendes. SZH_TITRES pointe un fichier
 // « niveau<TAB>texte » écrit par docx-titres.py (tailles de police perdues par pandoc).

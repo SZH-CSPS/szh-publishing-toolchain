@@ -1,3 +1,85 @@
+### Le parser v2 est branché (22 septembre 2026)
+
+Le lecteur du gabarit « Pronto — modèle d'article » existait, était éprouvé, et **n'était appelé
+par personne** : `pipeline/import-docx.sh` envoyait tous les documents à `docx-meta.py`, qui
+DEVINE sur des Word hérités. Un document rempli au gabarit était donc lu par l'outil fait pour
+ne pas le lire. Mesuré avant le branchement, sur le gabarit réel passé dans la vraie chaîne :
+0 autrice ou auteur lu sur 3, bibliographie non détachée, et les quatre paragraphes
+« Légende : », « Texte alternatif : », « Crédit : », « Source : » imprimés tels quels au milieu
+de l'article.
+
+**Le choix du lecteur se fait document par document**, sur la déclaration des styles du gabarit
+dans `styles.xml` (`SZH Cle` ET `SZH Aide`, mode `pronto-lire.py --reconnaitre`) : au gabarit →
+`pronto-lire.py`, sinon → `docx-meta.py`. Pas de réglage de poste — la rédaction reçoit les deux
+sortes de documents, souvent le même jour, et personne n'a à basculer quoi que ce soit.
+
+**La langue ne se lit plus dans le document.** Décision de la rédaction : le champ « Langue de
+l'article » quitte le gabarit, et la langue vient du produit du numéro (`revue:` d'`ausgabe.yaml`
+→ `$SZH_PRODUIT`) — Revue en français, Zeitschrift en allemand. Un article italien se corrige à
+la main dans la fiche après l'import. Un document qui porte encore l'ancien champ ne bloque
+jamais : il avertit, parce qu'un article italien qui sortirait en français sans un mot est
+exactement l'échec muet qu'on refuse.
+
+**Les métadonnées d'un bloc atteignent enfin l'image et le tableau.** C'est le trou que le
+branchement a révélé, et il n'était dans aucun plan : les quatre champs d'un bloc ne partaient
+nulle part. Le lecteur écrit désormais des lignes `P` (les clés quittent le corps) et
+`FI` / `FT`, consommées par `szh-legendes.lua` et `docx-tables.py`, qui posent légende, texte
+alternatif, crédit et source sur l'image (`![légende](…){alt= copyright= source=}`) et sur le
+tableau (`<caption>` + `data-alt` / `data-copyright` / `data-source`). Les deux contrats étaient
+déjà ceux qu'attend `szh-numerotation.lua` : rien n'a été inventé, on a rempli ce qui restait
+vide. Piège mesuré au passage : Word range un SVG derrière un aperçu PNG, le lecteur voit le PNG
+et pandoc écrit le SVG — l'instruction nomme donc l'image sous **tous** ses noms.
+
+**Un bloc figure ou tableau n'est plus jamais « consommé ».** Seuls les deux tableaux fixes de la
+tête le sont. Cela supprime par construction le piège qui attendait ce branchement depuis des
+semaines : une ligne `T` sur l'enveloppe d'un bloc tableau aurait fait disparaître le tableau
+qu'elle contient — ni rendu à part, ni rendu dans son parent. Un bloc à l'ancienne forme
+s'imprime désormais tel quel, avec ses étiquettes, et l'avertissement dit comment le convertir.
+
+**Une clé présente mais illisible refuse l'import en entier** (décision de Robin) : rien n'est
+créé, le Word reste en attente, et chaque étiquette en cause est nommée. Vérifié de bout en bout
+sur un document fautif. Les phrases des quatre codes bloquants ont été réécrites : elles
+dataient d'avant cette règle et annonçaient encore que « les autres champs, eux, sont repris ».
+
+**Côté cockpit** : les quinze codes du lecteur ont leur ton, leur bouton et leur phrase dans les
+deux langues (`lib/journal.js`, `lib/constats.js`, `lib/i18n.js`), et `bloc-mal-forme` lève une
+**boîte de dialogue** après l'import — un tableau aux allures de bloc ne se répare que dans le
+Word, et un avertissement lu trois jours plus tard ne fait rouvrir aucun Word.
+
+**Le gabarit passe en v3** (livrée par Robin le même jour) : un rang de titre 4, et le
+`heading 2` qui traînait sur la ligne « Titre niveau 3 » enfin corrigé. Le `.odt` a été
+régénéré depuis le `.docx` — il était resté à la version précédente, et le contrôle de parité
+l'a dit. Une clé du second bloc, tapée « Legandes : », tombait **sous le seuil de
+reconnaissance** (0,75 pour un seuil à 0,80) : vide elle ne gênait pas, remplie elle aurait
+refusé l'import. Corrigée.
+
+Le rang 4 traverse la chaîne correctement : `#### ` dans le .md, `<h5>` en HTML et en PDF (le
+`<h1>` est le titre de l'article, et `szh-niveaux.lua` compacte le corps à partir de `<h2>`).
+Mesuré sur le document mis en page par WeasyPrint : 14,00 px comme le corps, graisse 700 — ce
+qui était demandé, et qui ne demandait donc aucune retouche de feuille de style.
+
+**Le seuil de reconnaissance des étiquettes passe de 0,80 à 0,75** (décision de Robin), et
+surtout **les tables gagnent un jeu d'alias**. Mesuré sur 75 étiquettes avant de toucher au
+chiffre : 74 verdicts sur 75 sont identiques entre 0,80 et 0,75, aucune étiquette ne part sur
+une mauvaise clé, aucune de celles qui doivent rester inconnues ne passe la barre. Mais la
+mesure a surtout montré que **le seuil n'était pas le bon instrument** : une étiquette qui perd
+TOUS ses accents tombe à 0,667 (« Resume ») ou 0,714 (« Legandes », la faute qu'a réellement
+portée la v3 du gabarit), et descendre à 0,65 pour les rattraper n'aurait laissé que 0,035 de
+marge au-dessus du premier faux positif. Les alias — forme sans accent, synonymes de réflexe
+(« Copyright », « Description », « Provenance », « Poste », « Adresse e-mail »), italien à côté
+du français et de l'allemand — les font reconnaître à coup sûr, et sans silence : un alias
+avertit toujours (`cle-approximee`), seule la forme canonique compte pour « tapé juste ». Deux
+alias que j'avais posés ont été retirés après mesure : « rubrique » faisait entrer *Rubrique*
+sur le type d'article à 1,000 (une rubrique n'est pas un type), et « adresse mail » faisait
+entrer une adresse postale sur l'e-mail à 0,778. Ce qui reste à surveiller est écrit dans le
+code et tenu par un contrôle : l'étiquette étrangère la plus proche du seuil est « Adresse », à
+0,013 en dessous.
+
+**Ce qui reste**, et pourquoi : l'`.odt` n'est toujours pas accepté par le reste de la chaîne.
+Le contrat des photos d'auteur avec `import-medias.py` n'a jamais été vérifié pour ce format, et
+l'ouvrir sans cette mesure reviendrait à parier sur les portraits. Détail dans
+`TODO-BRANCHEMENT-PARSER-V2.md`.
+
 ### Cinq livraisons (7 septembre 2026)
 
 - **Modèles de courriel en fichiers Twig** : les e-mails du cockpit (version finale à

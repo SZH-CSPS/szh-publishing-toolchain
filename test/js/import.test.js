@@ -177,10 +177,20 @@ test('Makefile : un article sans titre de fiche ne se compile plus', () => {
 
 test('import-docx.sh : des métadonnées illisibles ne passent plus pour un import réussi', () => {
   const sh = lire('pipeline', 'import-docx.sh');
-  assert.ok(!/docx-meta\.py"[^\n]*\|\| true/.test(sh),
-    'le « || true » sur docx-meta.py est de retour : l’article s’importerait sans fiche');
-  assert.match(sh, /if ! STATS="\$\(python3 "\$PIPE\/docx-meta\.py"/,
-    'l’échec de docx-meta.py n’est plus testé');
+  assert.ok(!/(docx-meta|pronto-lire)\.py"[^\n]*\|\| true/.test(sh),
+    'le « || true » sur le lecteur est de retour : l’article s’importerait sans fiche');
+  // Depuis le branchement du lecteur du gabarit (22.09.2026), le programme appelé n'est plus
+  // écrit en dur : $LECTEUR vaut pronto-lire.py pour un document au gabarit « Pronto »,
+  // docx-meta.py pour un Word hérité. Ce qui ne doit pas bouger, c'est que son échec soit
+  // TESTÉ — un import qui continue sans fiche fait disparaître l'article du numéro sans un mot.
+  assert.match(sh, /if ! STATS="\$\(python3 "\$LECTEUR"/,
+    'l’échec du lecteur n’est plus testé');
+  assert.match(sh, /--reconnaitre/,
+    'le choix du lecteur ne se fait plus sur le document : un réglage de poste ou un lecteur '
+    + 'en dur laisserait la moitié des documents au mauvais lecteur');
+  assert.match(sh, /export SZH_PRODUIT/,
+    'le produit du numéro n’est plus passé au lecteur : la langue de l’article ne peut plus '
+    + 'en être déduite');
   assert.match(sh, /export SZH_SLUG="\$SLUG"/,
     'le slug n’est plus annoncé aux pré-passes, qui ne peuvent plus nommer l’article');
   // Le message d'échec vaut pour un rédacteur, en deux langues.

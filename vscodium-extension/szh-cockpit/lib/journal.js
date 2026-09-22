@@ -95,6 +95,35 @@ const TONS_IMPORT = {
   'titre-manquant': 'attention',
   'meta-illisible': 'attention',
   'homonymes-epuises': 'danger',
+  // ---- Le lecteur du gabarit « Pronto » (pipeline/pronto-lire.py) ------------------
+  //
+  // Branché sur la chaîne d'import le 22.09.2026. Ce lecteur LIT une structure imposée par
+  // un gabarit, là où docx-meta.py DEVINE sur des Word hérités : il n'a donc pas le droit de
+  // deviner, et ses codes se rangent en trois familles, listées ici d'un bloc parce que c'est
+  // la règle qui se relit, pas le code isolé.
+  //
+  //   ROUGE — une clé PRÉSENTE (valeur non vide) qu'il n'a pas su ranger. L'import est
+  //   REFUSÉ en entier : ni fiche, ni article, le Word reste en attente. C'est la seule
+  //   façon de ne pas perdre en silence ce que cette clé portait.
+  'etiquette-metadonnees-inconnue': 'danger',
+  'auteur-etiquette-inconnue': 'danger',
+  'bloc-etiquette-inconnue': 'danger',
+  'cle-ambigue': 'danger',
+  //   AMBRE — l'article est importé, mais quelque chose demande un coup d'œil dans le Word.
+  'cle-approximee': 'attention',
+  'type-article-non-reconnu': 'attention',
+  'structure-inattendue': 'attention',
+  'bloc-ancienne-forme': 'attention',
+  'bloc-contenu-absent': 'attention',
+  'bloc-cles-sans-contenu': 'attention',
+  'bloc-mal-forme': 'attention',
+  'biblio-tableau-apres-titre': 'attention',
+  //   INFO — un constat, aucun geste. Un champ du gabarit laissé vide, deux blocs que la
+  //   conversion a collés et que le lecteur a RÉPARÉS, un champ retiré du gabarit qui traîne
+  //   encore dans un vieux document : rien n'est perdu et il n'y a rien à faire tout de suite.
+  'cle-attendue-absente': 'info',
+  'blocs-colles': 'info',
+  'langue-du-document-ignoree': 'info',
   // ---- Le réimport d'un article corrigé -----------------------------------------
   //
   // Ses codes sont listés en entier, ton par ton, même quand c'est « attention » : c'est
@@ -153,6 +182,25 @@ const CLES_IMPORT = {
   'biblio-incomplete': 'ctl.import.biblio-incomplete',
   'biblio-bornes-perdues': 'ctl.import.biblio-bornes-perdues',
   'biblio-fichier-refuse': 'ctl.import.biblio-fichier-refuse',
+  // Le lecteur du gabarit « Pronto ». Ses phrases à lui sont longues et détaillées (elles
+  // doivent tenir seules dans un terminal) ; celles-ci sont plus courtes, et disent le geste
+  // plutôt que le mécanisme. Le lecteur nomme déjà l'étiquette fautive dans ses champs — c'est
+  // elle, et rien d'autre, qui est reprise en substitution.
+  'etiquette-metadonnees-inconnue': 'ctl.import.pronto-meta-inconnue',
+  'auteur-etiquette-inconnue': 'ctl.import.pronto-auteur-inconnue',
+  'bloc-etiquette-inconnue': 'ctl.import.pronto-bloc-inconnue',
+  'cle-ambigue': 'ctl.import.pronto-cle-ambigue',
+  'cle-approximee': 'ctl.import.pronto-cle-approximee',
+  'cle-attendue-absente': 'ctl.import.pronto-cle-absente',
+  'type-article-non-reconnu': 'ctl.import.pronto-type-inconnu',
+  'structure-inattendue': 'ctl.import.pronto-structure',
+  'bloc-ancienne-forme': 'ctl.import.pronto-bloc-ancien',
+  'bloc-contenu-absent': 'ctl.import.pronto-bloc-vide',
+  'bloc-cles-sans-contenu': 'ctl.import.pronto-cles-sans-contenu',
+  'bloc-mal-forme': 'ctl.import.pronto-bloc-mal-forme',
+  'blocs-colles': 'ctl.import.pronto-blocs-colles',
+  'biblio-tableau-apres-titre': 'ctl.import.pronto-biblio-tableau',
+  'langue-du-document-ignoree': 'ctl.import.pronto-langue-ignoree',
   // Le réimport. Une seule table pour les deux chemins qui mènent ces codes à l'écran —
   // le journal d'import relu ligne à ligne, et la ligne JSON que le cockpit reçoit quand
   // il lance le réimport lui-même (constatsReimport ci-dessous).
@@ -230,6 +278,23 @@ const ARGS = {
   // Le seul des quatre codes de bibliographie qui ait un nombre à dire : combien de
   // paragraphes sont restés dans le texte. Les trois autres se suffisent.
   'import/biblio-incomplete': (ch) => [ch('paragraphes')],
+  // Le lecteur du gabarit « Pronto ». Chaque phrase nomme CE qui a bloqué ou surpris —
+  // l'étiquette telle qu'elle est tapée dans le Word, le numéro du tableau, la légende du
+  // bloc : sans ça, on renverrait la personne chercher dans son document sans lui dire quoi.
+  'import/etiquette-metadonnees-inconnue': (ch) => [ch('etiquette')],
+  'import/auteur-etiquette-inconnue': (ch) => [ch('ligne')],
+  'import/bloc-etiquette-inconnue': (ch) => [ch('etiquette')],
+  'import/cle-ambigue': (ch) => [ch('clé')],
+  'import/cle-approximee': (ch) => [ch('clé'), ch('reconnue')],
+  'import/cle-attendue-absente': (ch) => [ch('clé')],
+  'import/type-article-non-reconnu': (ch) => [ch('valeur')],
+  'import/bloc-ancienne-forme': (ch) => [ch('tableau')],
+  'import/bloc-contenu-absent': (ch) => [ch('legende')],
+  'import/bloc-cles-sans-contenu': (ch) => [ch('legende')],
+  'import/bloc-mal-forme': (ch) => [ch('tableau')],
+  'import/blocs-colles': (ch) => [ch('blocs')],
+  'import/biblio-tableau-apres-titre': (ch) => [ch('titre')],
+  'import/langue-du-document-ignoree': (ch) => [ch('valeur')],
   'meta/champ-vide': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-champ': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-motcle': (ch, l) => [ch('motcle'), nomLangue(ch('langue'), l)],
@@ -661,6 +726,30 @@ function slugsCompiles(texte) {
 
 // La phrase à montrer : celle de la maison si le constat a une clé, celle du pipeline
 // sinon. Jamais les deux langues, jamais une clé nue.
+// Les phrases du seul constat d'import qui mérite une BOÎTE DE DIALOGUE, et non une ligne de
+// plus dans un panneau : `bloc-mal-forme`, le garde-fou du gabarit « Pronto ». Un tableau qui
+// porte les étiquettes d'une figure ou d'un tableau sans en avoir la forme s'imprimera tel
+// quel, sa légende ne sera ni numérotée ni reprise comme texte alternatif, et la seule
+// réparation possible est dans le document Word — qu'il faut donc rouvrir avant de continuer.
+// Un avertissement qu'on lit trois jours plus tard ne fait rouvrir aucun Word.
+//
+// La phrase rendue est celle du pipeline (`brut`), déjà dans la langue demandée et déjà
+// porteuse des trois repères qui permettent de retrouver le tableau — sa page quand Word a
+// repaginé, son rang, sa légende. On ne la reformule pas : elle se dégrade déjà proprement
+// quand la pagination manque, et c'est mesuré côté pipeline.
+//
+// Dédoublonné : le journal d'import n'est pas remis à zéro entre deux conversions, la même
+// ligne peut s'y trouver deux fois, et une modale qui se répète se lit mal.
+function phrasesBlocMalForme(texte, langue) {
+  const vues = [];
+  for (const c of analyserJournal(texte, langue)) {
+    if (c.source !== 'import' || c.code !== 'bloc-mal-forme') { continue; }
+    const phrase = String(c.brut || '').trim();
+    if (phrase !== '' && vues.indexOf(phrase) === -1) { vues.push(phrase); }
+  }
+  return vues;
+}
+
 function phraseConstat(constat, langue) {
   if (constat.cle) { return TL(langue, constat.cle, constat.args); }
   return constat.brut || '';
@@ -768,7 +857,7 @@ function constatsReimport(resultat, slug) {
 
 module.exports = {
   TONS_IMPORT, CLES_IMPORT, TONS_RESULTAT_REIMPORT,
-  analyserJournal, phraseConstat, resumeJournal, slugsCompiles,
+  analyserJournal, phrasesBlocMalForme, phraseConstat, resumeJournal, slugsCompiles,
   CODES_CITATIONS_CARTE, citationsParArticle,
   constatsReimport, tonResultatReimport,
   verdictsPdfUa

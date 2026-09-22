@@ -165,6 +165,55 @@ const TABLE = Object.freeze({
     objetChamp: 'soustitre', defaut: 'defaut.sous-titre-deduit' },
   'import/word-redepose': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.word-redepose' },
+  // ---- Le lecteur du gabarit « Pronto » (branché le 22.09.2026) -------------------
+  //
+  // La destination se décide sur UNE question : où va-t-on corriger ? Presque toujours dans
+  // le document Word — c'est lui qui porte l'étiquette mal tapée, le bloc mal formé, le champ
+  // laissé vide — donc `word`, et jamais `article` : le .md n'existe même pas quand l'import
+  // a été refusé. Les deux exceptions sont des champs de la fiche, où la correction se fait
+  // sans rouvrir Word.
+  //
+  // `barrage: 'geste'` sur les quatre premiers : l'import a été REFUSÉ, l'article n'est pas
+  // dans le numéro, et le Word attend toujours. C'est le même barrage que « import/echec ».
+  'import/etiquette-metadonnees-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-meta-inconnue' },
+  'import/auteur-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-auteur-inconnue' },
+  'import/bloc-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-bloc-inconnue' },
+  'import/cle-ambigue': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',
+    defaut: 'defaut.pronto-cle-ambigue' },
+  // L'article est importé : plus de barrage, mais un geste à faire dans le Word avant la
+  // prochaine version.
+  'import/cle-approximee': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
+    defaut: 'defaut.pronto-cle-approximee' },
+  'import/structure-inattendue': { barrage: null, nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-structure' },
+  'import/bloc-ancienne-forme': { barrage: null, nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-bloc-ancien' },
+  'import/bloc-contenu-absent': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
+    defaut: 'defaut.pronto-bloc-vide' },
+  'import/bloc-cles-sans-contenu': { barrage: null, nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-cles-sans-contenu' },
+  // Le garde-fou : un tableau qui porte les étiquettes d'un bloc sans en avoir la forme. Il
+  // lève AUSSI une boîte de dialogue après l'import (lib/import-hote.js) — un avertissement
+  // qu'on lit plus tard ne ferait pas rouvrir le Word, et c'est pourtant ce qu'il faut faire.
+  'import/bloc-mal-forme': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
+    defaut: 'defaut.pronto-bloc-mal-forme' },
+  'import/biblio-tableau-apres-titre': { barrage: null, nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-biblio-tableau' },
+  // Le type se choisit dans la fiche, pas dans le Word : c'est là qu'on l'y remet.
+  'import/type-article-non-reconnu': { barrage: null, nature: D, lieu: 'fiche',
+    focusFixe: 'type', defaut: 'defaut.pronto-type-inconnu' },
+  // Les trois informations : rien n'est perdu, rien à faire tout de suite.
+  'import/cle-attendue-absente': { barrage: null, nature: F, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-cle-absente' },
+  'import/blocs-colles': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
+    defaut: 'defaut.pronto-blocs-colles' },
+  // La langue se corrige dans la fiche — c'est même la seule façon de déclarer un article
+  // italien depuis que le champ a quitté le gabarit.
+  'import/langue-du-document-ignoree': { barrage: null, nature: F, lieu: 'fiche',
+    focusFixe: 'lang', defaut: 'defaut.pronto-langue-ignoree' },
   'import/origine-inconnue': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.origine-inconnue' },
   // ---- Le réimport d'un Word corrigé ---------------------------------------------

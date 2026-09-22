@@ -7,7 +7,8 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T } = require('./i18n');
+const { T, langueCockpit } = require('./i18n');
+const { phrasesBlocMalForme } = require('./journal');
 const session = require('./session');
 const profils = require('./profil');
 const { slugifierArticle, numeroOrdreArticle } = require('./slug');
@@ -175,6 +176,41 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
   return renommes;
 }
 
+// ---- Le garde-fou du gabarit : une boîte de dialogue, pas une ligne de plus ------------
+//
+// `bloc-mal-forme` se lève quand un tableau porte les étiquettes d'une figure ou d'un tableau
+// (« Légende : », « Texte alternatif : », « Crédit : », « Source : ») sans en avoir la forme.
+// Ce qui suit n'est PAS cosmétique : ce tableau s'imprimera tel quel, sa légende ne sera ni
+// numérotée ni reprise comme texte alternatif, et il n'y a qu'un seul endroit où le réparer —
+// le document Word, qu'il faut rouvrir. Un avertissement qu'on lit trois jours plus tard, dans
+// un panneau, ne fait rouvrir aucun Word : d'où la modale.
+//
+// Le message vient du pipeline (`brut`), déjà écrit dans la langue du cockpit et déjà porteur
+// des trois repères qui permettent de retrouver le tableau : sa page quand Word a repaginé, son
+// rang, et sa légende. Il se dégrade proprement sans pagination — c'est mesuré côté pipeline,
+// et c'est pour ça qu'on ne le reformule pas ici.
+
+// La lecture du disque, et rien d'autre : le tri des constats vit dans lib/journal.js
+// (phrasesBlocMalForme), pur et exerçable sans vscode.
+function blocsMalFormes(racine, depot) {
+  let texte = '';
+  try { texte = fs.readFileSync(path.join(racine, depot, '.import.log'), 'utf8'); }
+  catch (e) { return []; }
+  return phrasesBlocMalForme(texte, langueCockpit());
+}
+
+async function avertirBlocsMalFormes(racine) {
+  const phrases = blocsMalFormes(racine, profilCourant().depot);
+  if (phrases.length === 0) { return; }
+  // `detail` porte les phrases : le titre d'une modale VS Code est tronqué, et c'est dans le
+  // détail que tient le repérage (page, rang, légende) sans lequel on cherche à l'aveugle.
+  await vscode.window.showWarningMessage(
+    T('modale.bloc-mal-forme.titre', [String(phrases.length)]),
+    { modal: true, detail: phrases.join('\n\n') },
+    T('modale.bloc-mal-forme.bouton')
+  );
+}
+
 // Appelée pendant que session.importEnCours() est posé, d'où le drapeau de compilation géré
 // ici. Un échec n'annule pas l'import.
 async function compilerApresImport() {
@@ -231,6 +267,9 @@ async function lancerConversion(fournisseur, rafraichirTout) {
       // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
       await compilerApresImport();
       rafraichirTout();
+      // Avant le dialogue de vérification : celui-ci fait relire l'article, et il vaut mieux
+      // savoir AVANT de le relire qu'un de ses tableaux n'a pas été lu comme une figure.
+      await avertirBlocsMalFormes(fournisseur.racine);
       await ctx.ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
     } else {
       vscode.window.showInformationMessage(T('info.importes.aucun'));
@@ -329,5 +368,6 @@ module.exports = {
   configurer,
   numerosOrdreEnAttente, resoudreNumeroOrdre, prefixerNouveauxArticles, ecrireOrdreNouveauxArticles,
   compilerApresImport, lancerConversion, importerFichiersWord, importerWord,
+  blocsMalFormes, avertirBlocsMalFormes,
   controleurDepotVue
 };

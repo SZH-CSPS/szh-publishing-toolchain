@@ -1,12 +1,45 @@
 # TODO — branchement du parser v2 (gabarit Pronto)
 
-**Pour qui :** la personne qui branchera le lecteur du gabarit « Pronto » dans la chaîne
-d'import. Elle connaît le dépôt mais n'a pas suivi la session où ce lecteur a été écrit.
+> ## ✅ BRANCHÉ LE 22.09.2026
+>
+> `pipeline/import-docx.sh` choisit désormais son lecteur **document par document** :
+> `pronto-lire.py` pour tout document qui déclare les styles du gabarit (`SZH Cle` ET
+> `SZH Aide` dans `styles.xml`, mode `pronto-lire.py --reconnaitre`), `docx-meta.py` pour
+> tous les autres. Aucun réglage de poste : la rédaction reçoit les deux sortes de documents,
+> souvent le même jour.
+>
+> **Ce qui a changé par rapport au plan ci-dessous**, et qu'il faut lire avant de s'en servir :
+>
+> - **Étape 1 (déballer un bloc tableau) : SANS OBJET, par construction.** Le lecteur ne pose
+>   plus JAMAIS de ligne `T` sur un bloc, ni à la nouvelle forme ni à l'ancienne — seuls les
+>   deux tableaux fixes de la tête (métadonnées, autrices et auteurs) sont consommés. Le piège
+>   décrit plus bas (un tableau interne qui disparaît sans un mot) devient donc impossible :
+>   il n'y a plus d'enveloppe consommée. Un bloc à l'ancienne forme s'imprime tel quel, avec
+>   ses étiquettes, et `bloc-ancienne-forme` dit comment le convertir.
+> - **Un trou qui n'était pas dans ce plan, mesuré sur le gabarit réel avant le branchement :**
+>   les quatre paragraphes « Légende : », « Texte alternatif : », « Crédit : », « Source : »
+>   s'imprimaient tels quels au milieu de l'article, et le texte alternatif était perdu. Le
+>   lecteur écrit maintenant des lignes `P` (les clés quittent le corps) et des lignes
+>   `FI` / `FT`, qui portent les quatre champs jusqu'à l'image (`szh-legendes.lua`) et jusqu'au
+>   tableau (`docx-tables.py`, en `<caption>` + `data-alt` / `data-copyright` / `data-source`).
+>   Les deux contrats étaient déjà ceux qu'attend `szh-numerotation.lua` à la compilation :
+>   rien n'a été inventé, on a seulement rempli ce qui restait vide.
+> - **La langue ne vient plus du document** (décision de la rédaction, 22.09.2026) : le champ
+>   « Langue de l'article » a quitté le gabarit, et `import-docx.sh` passe le produit du numéro
+>   (`revue:` d'`ausgabe.yaml`) dans `$SZH_PRODUIT` — Revue = fr, Zeitschrift = de. Un article
+>   italien se corrige à la main dans la fiche après l'import. Un document qui porte encore
+>   l'ancien champ ne bloque jamais : il avertit (`langue-du-document-ignoree`).
+> - **Étapes 2 et 3 : faites.** Les quinze codes du lecteur sont déclarés (`lib/journal.js`,
+>   `lib/constats.js`, `lib/i18n.js` dans les deux langues), et `bloc-mal-forme` lève une
+>   boîte de dialogue après l'import (`lib/import-hote.js`, `phrasesBlocMalForme()`).
+> - **Étape 5 (`.odt` dans toute la chaîne) : PAS FAITE**, et volontairement — voir « Ce qui
+>   reste » à la fin de ce fichier.
 
-**Où en est-on :** le lecteur existe, il est éprouvé, et il n'est **appelé par personne**.
-`pipeline/import-docx.sh` continue d'appeler l'ancienne chaîne (`docx-meta.py`), qui reste la
-seule en service. Rien de ce qui suit n'est urgent ; rien de ce qui suit n'est facultatif non
-plus si l'on veut que le gabarit serve un jour.
+**Pour qui :** la personne qui reprendra ce branchement. Elle connaît le dépôt mais n'a pas
+suivi la session où ce lecteur a été écrit.
+
+**Ce qui suit est le plan d'origine**, gardé parce que ses *pièges mesurés* valent toujours —
+ce sont eux qui expliquent pourquoi le branchement a la forme qu'il a.
 
 ---
 
@@ -78,9 +111,9 @@ dès aujourd'hui pour qui l'appelle directement en ligne de commande.
 
 ---
 
-## Les étapes, dans l'ordre
+## Les étapes, dans l'ordre — LE PLAN D'ORIGINE, gardé pour ses pièges mesurés
 
-### 1. Apprendre à `docx-tables.py` à déballer un bloc tableau
+### 1. ~~Apprendre à `docx-tables.py` à déballer un bloc tableau~~ — SANS OBJET
 
 **Révision du 21.09.2026 — la nouvelle forme des blocs (décision de Robin, voir
 `outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md`, §5.3) change la donne pour les documents qui
@@ -117,7 +150,7 @@ Deux issues, au choix :
 
 **Écrire d'abord un contrôle qui tombe si le tableau interne se perd**, avant de toucher au reste.
 
-### 2. Déclarer les codes d'avertissement
+### 2. ~~Déclarer les codes d'avertissement~~ — FAIT (22.09.2026)
 
 Le lecteur émet des codes que le cockpit ne connaît pas encore. Tant qu'ils ne sont pas déclarés,
 ils s'affichent bruts ou pas du tout.
@@ -140,7 +173,7 @@ n'est retenue).
 
 ⚠ Relire la liste dans le code avant de la recopier : elle a bougé plusieurs fois.
 
-### 3. La modale du garde-fou
+### 3. ~~La modale du garde-fou~~ — FAITE (22.09.2026)
 
 **La détection est faite et mesurée ; il ne reste que l'affichage.** `bloc-mal-forme` se déclenche
 quand un tableau porte les étiquettes d'un bloc (`Légende :`, `Texte alternatif :`, `Crédit :`,
@@ -160,14 +193,14 @@ Ce qu'il reste à faire : lever une **boîte de dialogue**, pas une ligne dans 
 doit rouvrir son Word avant de continuer, et un avertissement qu'on lit plus tard ne sert à rien.
 Le point d'accroche existe déjà — `lib/import-hote.js` lève une modale après import.
 
-### 4. Choisir le lecteur
+### 4. ~~Choisir le lecteur~~ — FAIT (22.09.2026) : sur les styles du document
 
 `import-docx.sh` appelle `docx-meta.py` en dur. Il faut décider **comment on reconnaît un document
 Pronto** d'un Word hérité. Le plus sûr : la présence des styles du gabarit (`SZH Cle`, `SZH Aide`)
 dans `styles.xml`. Un réglage de poste serait un pis-aller — la rédaction recevra les deux sortes
 de documents pendant des mois.
 
-### 5. Accepter le `.odt` dans toute la chaîne
+### 5. Accepter le `.odt` dans toute la chaîne — TOUJOURS À FAIRE
 
 Le lecteur sait lire les deux formats ; la chaîne autour ne connaît que `.docx`. À reprendre :
 `pipeline/Makefile` (la cible `import`, le balayage de `$(WORD_DIR)`), le dépôt par
@@ -237,17 +270,61 @@ vaut aussi pour les articles hérités.
 
 ## Décisions en attente
 
-- [ ] **« Riferimenti »** pour l'italien : absent de `TITRES_BIB`, qui ne porte que
-  `bibliografia`. À ajouter ?
-- [ ] **Les styles de corps** (`SZH Important` et consorts) : les conserver à la compilation, ou
-  accepter qu'ils se posent dans le cockpit après l'import ?
+- [ ] **« Riferimenti »** pour l'italien : absent de `TITRES_BIB`, qui ne porte que
+  `bibliografia`. À ajouter ?
+- [ ] **Les styles de corps** (`SZH Important` et consorts) : les conserver à la compilation, ou
+  accepter qu'ils se posent dans le cockpit après l'import ?
 - [ ] **Les deux gabarits dans `revue-template/`** partent désormais dans chaque nouveau numéro,
-  à sa racine — comme `livre-template/Modele-chapitre-SZH.docx`. Voulu, ou à déplacer ?
-- [ ] **Le style `heading 2` sur la ligne « Titre niveau 3 »** du gabarit : à corriger en
-  `heading 3`, sinon qui copie cette ligne obtient un rang 2.
+  à sa racine — comme `livre-template/Modele-chapitre-SZH.docx`. Voulu, ou à déplacer ?
+- [x] ~~**Le style `heading 2` sur la ligne « Titre niveau 3 »**~~ — corrigé par la v3 du
+  gabarit (22.09.2026) : la ligne porte bien `Titre3`.
 - [ ] **`Fichier d'origine`** a disparu du bloc figure entre la v1 et la v2 du gabarit.
-  Volontaire ?
+  Volontaire ?
+- [ ] **Le second bloc du gabarit v3 n'a que trois clés** (pas de « Source : »), alors que la
+  ligne d'aide juste dessous dit « Copiez ces quatre paragraphes ». Rétablir la clé, ou
+  corriger l'aide ? Sans conséquence technique (une clé attendue absente est une information),
+  mais le gabarit se contredit.
+- [ ] **La ligne « Titre niveau 3 (pas de niveau 4 !) »** du gabarit v3 se contredit elle
+  aussi, maintenant qu'un rang 4 existe.
+- [ ] **Un titre de rang 4 est visuellement identique à un rang 3** : tous deux à la taille du
+  corps et en gras (`print.css`, `h4, h5, h6`), le rang 3 portant seul un numéro de section.
+  Mesuré sur le document mis en page. Voulu, ou faut-il les distinguer ?
 
 ---
 
-*Dernière mise à jour : 17.09.2026, après le nettoyage de `tmp/`. À reprendre chaque fois qu'une de ces lignes bouge.*
+## Ce qui reste
+
+### 1. Le `.odt` dans toute la chaîne — pas fait, et pas par oubli
+
+Le lecteur sait lire les deux formats, et la parité `.docx` / `.odt` est vérifiée à chaque
+exécution (`test/js/pronto-gabarits.test.js`). Mais la chaîne autour ne connaît que `.docx`, et
+**le contrat `$SZH_PHOTOS` avec `import-medias.py` n'a jamais été vérifié pour l'ODT** : rien ne
+dit que LibreOffice nomme les images comme Word. C'est une mesure à faire sur un article
+ILLUSTRÉ, pas une ligne de code à écrire — tant qu'elle manque, ouvrir la chaîne à l'ODT
+reviendrait à parier sur les portraits des autrices et auteurs.
+
+À reprendre le jour où cette mesure existe : `pipeline/Makefile` (la cible `import`, le balayage
+de `$(WORD_DIR)`), le dépôt par glisser-déposer de `lib/import-hote.js` (message
+`drop.seulement.docx`), le sélecteur de fichiers d'`importerWord()`, et `windows/open-md.ps1`
+pour le double-clic.
+
+Indice déjà relevé au passage : sur le même gabarit, la figure sort en `media/image1.png` +
+`media/image2.svg` côté Word (l'aperçu et le SVG qu'il cache) et en
+`1000038800000A0600000A067B9F4EE9.svg` côté LibreOffice. Les noms ne se ressemblent en rien.
+
+### 2. Un vrai document rempli à la main
+
+Tout ce qui précède a été mesuré sur le gabarit livré, rempli **par script**
+(`tmp/`, jetable). C'est assez pour prouver que la chaîne ne perd rien ; ça ne dit **rien** de
+ce qu'une autrice saura remplir. Un seul document rempli à la main par une vraie personne en
+apprendra plus que dix bancs circulaires — voir le piège « Le banc de 20 articles ne prouve pas
+ce qu'il a l'air de prouver », plus haut.
+
+Ce que ce document devrait mettre à l'épreuve en priorité : une étiquette mal tapée avec une
+valeur remplie (c'est le cas qui **refuse l'import**, et la v3 du gabarit en portait un —
+« Legandes : », sous le seuil de reconnaissance, corrigé le 22.09.2026), un bloc figure avec
+une vraie image, et un article allemand pour vérifier la langue venue du produit.
+
+---
+
+*Dernière mise à jour : 22.09.2026, jour du branchement. À reprendre chaque fois qu'une de ces lignes bouge.*

@@ -220,9 +220,73 @@ local function charger_legendes_figures()
   return ens
 end
 
+-- ─── Blocs figure du gabarit « Pronto » ──────────────────────────────────────
+-- Le lecteur du gabarit (pipeline/pronto-lire.py) écrit une ligne FI par bloc figure :
+--   FI<TAB>nom1|nom2<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source
+-- Les quatre valeurs sont celles que l'autrice ou l'auteur a TAPÉES dans le document, sous
+-- les étiquettes « Légende : », « Texte alternatif : », « Crédit : », « Source : » ; les
+-- paragraphes qui les portaient ont déjà quitté le corps (lignes P, szh-meta.lua, qui tourne
+-- avant ce filtre). Sans cette reprise, ils s'imprimeraient tels quels au milieu de l'article
+-- et le texte alternatif serait perdu — mesuré sur le gabarit réel avant le branchement.
+--
+-- PLUSIEURS noms de fichier par bloc, et non un rang : Word range une image vectorielle
+-- derrière un aperçu PNG, le lecteur voit le PNG et pandoc écrit le SVG (voir
+-- images_de_paragraphe() de pronto_docx.py). On apparie donc sur le nom, en acceptant toutes
+-- les variantes — un rang se décalerait au premier paragraphe d'image de plus.
+local function charger_blocs_pronto()
+  local par_nom = {}
+  local chemin = os.getenv('SZH_META')
+  if not chemin or chemin == '' then return par_nom end
+  local f = io.open(chemin, 'r')
+  if not f then return par_nom end
+  for ligne in f:lines() do
+    local reste = ligne:match('^FI\t(.*)$')
+    if reste then
+      local champs = {}
+      for champ in (reste .. '\t'):gmatch('([^\t]*)\t') do champs[#champs + 1] = champ end
+      local bloc = { legende = trim(champs[2] or ''), alt = trim(champs[3] or ''),
+                     credit = trim(champs[4] or ''), source = trim(champs[5] or '') }
+      for nom in (champs[1] or ''):gmatch('[^|]+') do par_nom[nom] = bloc end
+    end
+  end
+  f:close()
+  return par_nom
+end
+
+-- Nom de fichier seul d'un src d'image : les chemins du .md sont relatifs (media/…, ./media/…)
+-- et le lecteur, lui, ne connaît que le nom sous media/.
+local function base_fichier(chemin)
+  return (tostring(chemin):gsub('[?#].*$', ''):gsub('^.*[/\\]', ''))
+end
+
+-- Pose les quatre champs d'un bloc Pronto sur son image. Renvoie (nfig, nalt) à ajouter aux
+-- compteurs. Le contrat d'attributs est celui de szh-numerotation.lua :
+--   ![légende](media/x.png){alt="…" copyright="…" source="…"}
+local function poser_bloc_pronto(img, bloc)
+  local nfig, nalt = 0, 0
+  if bloc.alt ~= '' then
+    img.caption = pandoc.Inlines({})        -- le descr de Word cède à ce qui a été tapé
+    img.attributes['alt'] = bloc.alt
+    nalt = 1
+  else
+    -- Rien de tapé sous « Texte alternatif : » : le descr de Word, s'il existe et n'est pas
+    -- une description automatique, vaut mieux que rien.
+    nalt = alt_depuis_word(img, bloc.legende)
+  end
+  if bloc.credit ~= '' then img.attributes['copyright'] = bloc.credit end
+  if bloc.source ~= '' then img.attributes['source'] = bloc.source end
+  local legende = trim(nettoyer_figure(bloc.legende))
+  if legende ~= '' then
+    img.caption = pandoc.Inlines({ pandoc.Str(legende) })
+    nfig = 1
+  end
+  return nfig, nalt
+end
+
 function Pandoc(doc)
   local legT = charger_legendes_table()
   local legF = charger_legendes_figures()
+  local blocsP = charger_blocs_pronto()
   local nfig, ntab, nalt = 0, 0, 0
 
   -- 1) retirer les paragraphes déjà bakés en <caption> de tableau (appariement au
@@ -271,6 +335,15 @@ function Pandoc(doc)
       end
     end
     local img = para_image(b)
+    -- Bloc du gabarit : tout est écrit, il n'y a rien à deviner. La règle du voisinage est
+    -- court-circuitée EXPRÈS — un paragraphe de corps tout en gras juste au-dessus de la
+    -- figure lui volerait sa légende alors que l'autrice ou l'auteur en a tapé une.
+    if img and blocsP[base_fichier(img.src)] then
+      local dfig, dalt = poser_bloc_pronto(img, blocsP[base_fichier(img.src)])
+      nfig, nalt = nfig + dfig, nalt + dalt
+      sortie:insert(pandoc.Para({ img }))
+      goto continue
+    end
     if img then
       local cap, capidx = nil, nil
       for _, j in ipairs({ idx - 1, idx + 1 }) do
