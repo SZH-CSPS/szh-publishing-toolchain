@@ -1345,6 +1345,11 @@ const TEXTES_COCKPIT = {
     'action.documentation.tip': 'Ouvrir la page « Actualité et ressources » du numéro.',
     'action.apercu': 'Fermer l’aperçu',
     'action.apercu.tip': 'Fermer l’aperçu PDF, qui tient peut-être le fichier ouvert.',
+    // Le PDF déjà produit d’un article précis (szh.voirPdfArticle) : distinct d’« apercu »,
+    // qui est un INTERRUPTEUR sur l’article en aperçu courant et ne peut viser personne en
+    // particulier (revue F03, 22.09.2026 — pipeline/pdf-verrouille visait « apercu » à tort).
+    'action.pdf': 'Voir le PDF',
+    'action.pdf.tip': 'Ouvrir le PDF de cet article dans l’Explorateur.',
     // Les intitulés des défauts : un groupe nominal court, jamais une phrase. L’objet
     // vient des champs du constat, le geste est dans le bouton — voir lib/constats.js.
     'defaut.titre-manquant': 'Titre manquant',
@@ -2833,6 +2838,8 @@ const TEXTES_COCKPIT = {
     'action.documentation.tip': 'Die Seite «News & Ressourcen» der Ausgabe öffnen.',
     'action.apercu': 'Vorschau schliessen',
     'action.apercu.tip': 'Die PDF-Vorschau schliessen, die die Datei geöffnet halten könnte.',
+    'action.pdf': 'PDF anzeigen',
+    'action.pdf.tip': 'Das PDF dieses Artikels im Explorer öffnen.',
     'defaut.titre-manquant': 'Titel fehlt',
     'defaut.dossier-espaces': 'Leerzeichen im Ordnernamen',
     'detail.dossier-espaces': 'Benennen Sie den Ordner ohne Leerzeichen um: die Kette kann ihnen nicht folgen.',

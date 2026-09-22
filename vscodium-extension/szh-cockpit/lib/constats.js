@@ -57,7 +57,15 @@ const LIEUX = Object.freeze({
   documentation: Object.freeze({ commande: 'szh.documentation', icone: 'megaphone',
     libelle: 'action.documentation', tip: 'action.documentation.tip' }),
   apercu: Object.freeze({ commande: 'szh.basculerApercu', icone: 'oeil',
-    libelle: 'action.apercu', tip: 'action.apercu.tip' })
+    libelle: 'action.apercu', tip: 'action.apercu.tip' }),
+  // Le PDF déjà produit d'un article précis, révélé dans l'Explorateur (szh.voirPdfArticle,
+  // extension.js). Distinct d'« apercu » : basculerApercu est un INTERRUPTEUR sur l'article
+  // en aperçu courant (session.apercuCourantSlug()) et ne prend même pas de slug — il ne
+  // peut pas viser « tel » article. voirPdfArticle, lui, accepte déjà { slug, focus } sans
+  // rien y changer (cibleTraduction lit cible.slug) : c'est lui qui doit recevoir la flèche
+  // de pipeline/pdf-verrouille (revue F03, 22.09.2026).
+  pdf: Object.freeze({ commande: 'szh.voirPdfArticle', icone: 'oeil',
+    libelle: 'action.pdf', tip: 'action.pdf.tip' })
 });
 
 // ---------------------------------------------------------------------------------------
@@ -99,9 +107,9 @@ const TABLE = Object.freeze({
   'pipeline/profil-inconnu': { barrage: 'compilation', nature: D, lieu: 'numero',
     defaut: 'defaut.profil-inconnu' },
   // Le PDF est tenu ouvert par un lecteur : WeasyPrint a produit le fichier, c'est le
-  // déplacement final qui a refusé. Le seul geste du cockpit est de fermer son aperçu ;
-  // Adobe, lui, se ferme à la main — le détail le dit.
-  'pipeline/pdf-verrouille': { barrage: 'compilation', nature: D, lieu: 'apercu',
+  // déplacement final qui a refusé. Le bouton révèle CE PDF dans l'Explorateur (lieu
+  // 'pdf' -> szh.voirPdfArticle) : Adobe, lui, se ferme à la main — le détail le dit.
+  'pipeline/pdf-verrouille': { barrage: 'compilation', nature: D, lieu: 'pdf',
     focusChamp: 'fichier', defaut: 'defaut.pdf-verrouille', detail: 'detail.pdf-verrouille' },
   // ---- Le balisage du PDF --------------------------------------------------------
   'pipeline/balisage-simple': { barrage: null, nature: D, lieu: '',

@@ -1060,6 +1060,10 @@ var SZH = (function () {
   // opts.conteneur   élément qui reçoit les cartes
   // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
   // opts.onOuvrir(cle) / opts.onAction(cle, id) / opts.onTache(cle, id, cochee)
+  //
+  // Rend { rendre, majPastilles, focaliser }. `focaliser(valeur)` amène à l'écran la carte
+  // dont `cle` vaut `valeur` et la marque quelques secondes — additif : une carte dont
+  // `cle` est vide ne porte pas de [data-cle] et ne se rend pas autrement qu'avant.
   function listeCartes(opts) {
     var conteneur = opts.conteneur;
     var lireTextes = opts.textes || function () { return {}; };
@@ -1218,6 +1222,10 @@ var SZH = (function () {
           poser(conteneur, 'h2', 'titre-section', groupe);
         }
         var carte = poser(conteneur, 'section', 'szh-carte ligne');
+        // [data-cle] additif : posé seulement quand la ligne porte une clé (le rapport de
+        // conversion, par ex., n'en a pas). C'est ce que focaliser() retrouve — une carte
+        // sans identifiant se rend exactement comme avant (revue F03, 22.09.2026).
+        if (l.cle) { carte.dataset.cle = String(l.cle); }
         var tete = poser(carte, 'header', 'szh-tete');
         poser(tete, 'p', 'szh-tete-nom', l.titre || '');
         if (l.meta) { poser(tete, 'span', 'szh-tete-meta', l.meta); }
@@ -1254,7 +1262,43 @@ var SZH = (function () {
       }
     }
 
-    return { rendre: rendre, majPastilles: majPastilles };
+    // Amène une carte précise à l'écran et la marque quelques secondes — le pendant, pour
+    // une liste, de ce que focaliserChamp() fait sur un formulaire (media/_fiches.js) et
+    // focaliser() sur une figure (media/medias-article.js) : même économie, un [data-cle]
+    // et un temps d'affichage, jamais une seconde implémentation.
+    //
+    // `valeur` vide, ou qui ne correspond à aucun [data-cle] : rien ne se passe, jamais
+    // d'erreur affichée, jamais de marquage faux — la table (lib/constats.js) vise « word »
+    // avec des focus que toutes les cartes ne portent pas (le rapport de conversion n'a pas
+    // de `cle`), et un fichier réimporté peut avoir disparu de la liste entre-temps.
+    var minuteurFocus = null;
+    var carteFocalisee = null;
+    function focaliser(valeur) {
+      var v = String(valeur === undefined || valeur === null ? '' : valeur);
+      if (minuteurFocus) { clearTimeout(minuteurFocus); minuteurFocus = null; }
+      if (carteFocalisee) { carteFocalisee.classList.remove('szh-carte--focus'); carteFocalisee = null; }
+      if (v === '') { return; }
+      // Une comparaison directe, pas un sélecteur CSS construit avec `v` : un nom de
+      // fichier Word porte des caractères (espaces, parenthèses, accents) qu'un sélecteur
+      // attribut ne prend pas tous proprement, là où focaliserChamp() peut se permettre un
+      // sélecteur parce que ses clés de champ sont un jeu fermé (id de formulaire).
+      var carte = null;
+      var candidates = conteneur.querySelectorAll('.szh-carte[data-cle]');
+      for (var i = 0; i < candidates.length; i++) {
+        if (candidates[i].dataset.cle === v) { carte = candidates[i]; break; }
+      }
+      if (!carte) { return; }
+      try { carte.scrollIntoView({ block: 'center' }); } catch (e) { carte.scrollIntoView(); }
+      carte.classList.add('szh-carte--focus');
+      carteFocalisee = carte;
+      minuteurFocus = setTimeout(function () {
+        carte.classList.remove('szh-carte--focus');
+        if (carteFocalisee === carte) { carteFocalisee = null; }
+        minuteurFocus = null;
+      }, 3000);
+    }
+
+    return { rendre: rendre, majPastilles: majPastilles, focaliser: focaliser };
   }
 
   // ---- Petits gestes de construction, recopiés à l'identique dans plusieurs pages ----

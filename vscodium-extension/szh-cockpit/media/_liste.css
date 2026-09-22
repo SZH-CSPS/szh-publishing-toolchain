@@ -100,3 +100,16 @@
    gap du conteneur : deux messages voisins se retrouvaient à trois interlignes l'un de
    l'autre dans un encadré qui cherche justement à les serrer. */
 .szh-constats .szh-notif { font-size: var(--t-mini); padding: var(--e1) var(--e2); margin: 0; }
+
+/* La carte que SZH.listeCartes().focaliser() vient d'amener à l'écran (revue F03, boutons
+   de constat qui visent le dépôt Word par nom de fichier) : les mêmes couleurs que le
+   surlignage d'un passage dans l'éditeur (extension.js, surlignerFocus), jamais une teinte
+   en dur — pour que la carte se lise comme le même geste, sous une autre forme. La
+   transition n'anime que la disparition : la carte apparaît déjà marquée, à l'instant où
+   elle vient d'être amenée à l'écran. */
+.szh-carte--focus {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, .33));
+  outline: 2px solid var(--vscode-editor-findMatchBorder, var(--accent));
+  outline-offset: 2px;
+  transition: background-color 1.2s ease, outline-color 1.2s ease;
+}

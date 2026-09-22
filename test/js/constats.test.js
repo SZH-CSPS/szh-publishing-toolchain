@@ -170,6 +170,22 @@ test('cible : le fichier et l’image, eux, restent rognés à leur nom', () => 
   assert.strictEqual(constats.cible(image).focus, 'fig-01.png');
 });
 
+// Revue F03 (22.09.2026) : pdf-verrouille visait « apercu » (szh.basculerApercu), un
+// INTERRUPTEUR sur l'article en aperçu courant qui ne prend même pas de slug — la flèche ne
+// menait donc jamais au bon PDF, ni à aucun PDF en particulier. Il vise désormais « pdf »
+// (szh.voirPdfArticle), qui accepte { slug, focus } et ouvre le PDF de CET article.
+test('cible : pdf-verrouille mène à « pdf » (szh.voirPdfArticle), pas à l’interrupteur d’aperçu', () => {
+  const fichier = constat('pipeline', 'pdf-verrouille', { fichier: 'out/01-essai/01-essai.pdf' });
+  const cible = constats.cible(fichier);
+  assert.strictEqual(cible.lieu, 'pdf');
+  assert.strictEqual(cible.slug, '01-essai');
+  const b = constats.bouton(fichier, 'fr');
+  assert.ok(b, 'aucun bouton pour pdf-verrouille');
+  assert.strictEqual(b.commande, 'szh.voirPdfArticle');
+  assert.strictEqual(b.slug, '01-essai');
+  assert.notStrictEqual(b.commande, 'szh.basculerApercu');
+});
+
 test('objet : la phrase et le bouton désignent la même chose, / compris', () => {
   const appel = constat('citations', 'appel-sans-reference', { appel: '(Schuljahr 2021/2022, 2019)' });
   assert.strictEqual(constats.objet(appel, 'fr'), constats.cible(appel).focus);

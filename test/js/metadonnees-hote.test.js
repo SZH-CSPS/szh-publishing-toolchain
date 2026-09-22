@@ -115,11 +115,12 @@ test('numero : sans item du tout (démarrage, palette), la commande n’échoue 
 
 // ---- Les trois destinations sans focus utile : acceptent l'objet sans se casser ----------
 //
-// constats.js ne vise ni « reglages » ni « documentation » avec un focusChamp/focusFixe
-// (vérifié dans TABLE) ; « apercu » (pipeline/pdf-verrouille) en porte un, mais
-// basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif, pas un « ouvrir
-// l'aperçu de tel article » — hors des fichiers de ce chantier (extension.js,
-// lib/metadonnees-hote.js). Les trois doivent au moins ne pas lever quand on leur passe
+// constats.js ne vise ni « reglages », ni « documentation », ni (depuis la revue F03,
+// 22.09.2026) « apercu » avec un focusChamp/focusFixe : pipeline/pdf-verrouille visait
+// « apercu » à tort et vise désormais « pdf » (szh.voirPdfArticle), qui sait viser un
+// article précis — basculerApercu (lib/apercu.js) reste un INTERRUPTEUR sur l'article
+// actif, pas un « ouvrir l'aperçu de tel article ». Les trois doivent au moins ne pas lever
+// quand on leur passe
 // { slug, focus }, ce qu'elles ignoraient déjà avant (une fonction fléchée sans paramètre
 // n'échoue pas non plus sur un argument surnuméraire) — la revue F03 demande la
 // déclaration explicite du paramètre, pas un nouveau comportement ici.

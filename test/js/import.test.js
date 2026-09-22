@@ -23,10 +23,12 @@ const os = require('os');
 const path = require('path');
 const cp = require('child_process');
 const { PYTHON } = require('./gardes');
+const { chargerAvecVscodeFactice } = require('./dom-minimal');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
+const journal = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'journal.js'));
 const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
 const DOCX_TABLES = path.join(RACINE, 'pipeline', 'docx-tables.py');
 
@@ -267,6 +269,48 @@ test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la pr
     // Le nouveau champ `debut` porte le texte de la première cellule, pas le numéro.
     assert.match(ligne, /\|\s*debut « Canton de Zurich et ses environs proches »\s*\|/,
       'le champ `debut` est absent ou ne porte pas le texte de la 1re cellule : ' + ligne);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+// Non-régression : lib/journal.js n'extrait le numéro du champ `tableau` que parce que le
+// texte de la ligne suit le patron « nom valeur » (champsNommes()) — « tableau 1 » s'y lit
+// nom=tableau, valeur=1, exactement comme « article « 02-essai » » s'y lit nom=article,
+// valeur=02-essai. C'est ce dépouillement, pas le texte écrit par docx-tables.py, qui rend
+// déjà un numéro nu à la phrase du cockpit (i18n.js: « …dans le tableau {0}… ») — vérifié
+// en exécutant la chaîne réelle. Si `champs.tableau` se met à porter autre chose qu'une
+// suite de chiffres (le mot « tableau » compris dedans, une légende, une chaîne vide), la
+// substitution {0} de la phrase se dégraderait en silence.
+test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des chiffres', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-numero-nu-'));
+  try {
+    const docx = path.join(base, '02-essai.docx');
+    fabriquerDocxTableaux(docx, [
+      { tbl: [
+        [[['Normal', 'Canton de Zurich']], [['Normal', '128']]],
+        [[['Normal', 'Berne']], [['Normal', '96']]]
+      ] }
+    ]);
+    const dossierTables = path.join(base, 'tables');
+    fs.mkdirSync(dossierTables);
+    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '02-essai' })
+    });
+    assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
+    const ligne = String(r.stderr).split(/\r?\n/)
+      .find((l) => l.indexOf('tableau-sans-entete') !== -1);
+    assert.ok(ligne, 'aucun constat tableau-sans-entete : ' + r.stderr);
+    const c = journal.analyserJournal(ligne, 'fr').find((x) => x.code === 'tableau-sans-entete');
+    assert.ok(c, 'lib/journal.js n’a pas reconnu la ligne : ' + ligne);
+    assert.match(c.champs.tableau, /^\d+$/,
+      'le champ `tableau` parsé n’est pas un numéro nu : ' + JSON.stringify(c.champs.tableau));
+    // Et la phrase du cockpit dit le numéro une seule fois, dans la bonne langue.
+    assert.match(journal.phraseConstat(c, 'fr'), /dans le tableau \d+ de cet article/);
+    const cDe = journal.analyserJournal(ligne, 'de').find((x) => x.code === 'tableau-sans-entete');
+    assert.match(journal.phraseConstat(cDe, 'de'), /^In Tabelle \d+ dieses Artikels/);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }

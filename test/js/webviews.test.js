@@ -1746,3 +1746,87 @@ test('traduction : le placeholder d’un mot-clé vide est dans la langue de l�
   assert.strictEqual(input.placeholder, T('mc.aTraduire'));
   assert.notStrictEqual(input.placeholder, 'TO BE TRANSLATED', 'la sentinelle anglaise ne doit jamais s’afficher');
 });
+
+// ---- Vue d'ensemble : le focus d'un bouton de constat jusqu'à la carte (revue F03, 22.09.2026) --
+//
+// « Word en attente », « Traductions » et « Contrôles » partagent SZH.listeCartes
+// (media/_commun.js) : rien n'y posait d'identifiant sur une carte DOM, donc rien ne
+// permettait de retrouver une ligne depuis l'extérieur (import/echec, import/word-redepose,
+// import/origine-inconnue, import/reimport-* visent « word » avec un focus qui vaut un nom
+// de fichier). Trois choses à prouver : la bonne carte est marquée, une carte sans
+// identifiant (le rapport de conversion, `cle: ''`) ne change pas, un focus introuvable ne
+// marque rien et ne lève pas — les deux chemins (charge initiale, message à un panneau déjà
+// ouvert) empruntent le même code de marquage.
+function pageVueEnsemble() {
+  return ouvrir({
+    racine: RACINE, page: 'vue-ensemble',
+    cssPartage: ['_design.css', '_liste.css'], jsPartage: ['_messages.js'],
+    txt: libellesHote(RACINE, ['textesVueEnsemble'])
+  });
+}
+
+// Trois lignes, comme vueWord() les construit réellement (extension.js) : un rapport de
+// conversion sans clé, et deux fichiers Word en attente dont `cle` vaut leur nom — c'est ce
+// que import/echec et consorts portent en `focus` (lib/constats.js, focusChamp: 'fichier').
+const LIGNES_WORD = [
+  { cle: '', groupe: 'Rapport', titre: 'Conversion du 22.09.2026', notif: { ton: 'attention', texte: '1 avertissement' } },
+  { cle: '9_Essai.docx', groupe: 'En attente', titre: '9_Essai.docx', meta: '09-essai', ouvrir: false },
+  { cle: '10_Autre.docx', groupe: 'En attente', titre: '10_Autre.docx', meta: '10-autre', ouvrir: false }
+];
+
+test('vue d’ensemble : le focus de la charge initiale marque la bonne carte, et elle seule', () => {
+  const page = pageVueEnsemble();
+  page.envoyer({ type: 'valeurs', titre: 'Word en attente', boutons: [], lignes: LIGNES_WORD,
+                 focus: '9_Essai.docx' });
+  const cartes = page.conteneur().querySelectorAll('.szh-carte');
+  assert.strictEqual(cartes.length, 3, 'les trois lignes ne se sont pas toutes rendues');
+  const parCle = (cle) => cartes.find((c) => c.dataset.cle === cle);
+  assert.strictEqual(parCle('9_Essai.docx').classes.has('szh-carte--focus'), true,
+    'la carte visée par le focus n’est pas marquée');
+  assert.strictEqual(parCle('9_Essai.docx')._scrolled, true,
+    'la carte visée par le focus n’est pas amenée à l’écran');
+  assert.strictEqual(parCle('10_Autre.docx').classes.has('szh-carte--focus'), false,
+    'une carte voisine, non visée, est marquée par erreur');
+  // La carte du rapport (cle: '') ne porte aucun [data-cle] : additif et neutre, elle se
+  // rend exactement comme avant.
+  const carteRapport = cartes.find((c) => c.querySelectorAll('.szh-tete-nom')
+    .some((n) => n.textContent === 'Conversion du 22.09.2026'));
+  assert.ok(carteRapport, 'la carte du rapport a disparu');
+  assert.strictEqual(carteRapport.dataset.cle, undefined,
+    'une ligne sans clé ne doit porter aucun [data-cle]');
+  assert.strictEqual(carteRapport.classes.has('szh-carte--focus'), false);
+});
+
+test('vue d’ensemble : un message « focaliser » marque une carte sans reconstruire la liste', () => {
+  const page = pageVueEnsemble();
+  page.envoyer({ type: 'valeurs', titre: 'Word en attente', boutons: [], lignes: LIGNES_WORD });
+  const cartes = page.conteneur().querySelectorAll('.szh-carte');
+  assert.strictEqual(cartes.every((c) => !c.classes.has('szh-carte--focus')), true,
+    'une carte est déjà marquée sans qu’aucun focus n’ait été envoyé');
+  page.envoyer({ type: 'focaliser', focus: '10_Autre.docx' });
+  // Même liste DOM qu’avant (pas de « valeurs » reçu entre-temps) : la marque doit porter
+  // sur EXACTEMENT les mêmes nœuds (même référence), pas sur une liste reconstruite à côté.
+  const memesCartes = page.conteneur().querySelectorAll('.szh-carte');
+  assert.strictEqual(memesCartes.length, cartes.length,
+    'le message « focaliser » a changé le nombre de cartes');
+  assert.ok(memesCartes.every((c, i) => c === cartes[i]),
+    'le message « focaliser » a reconstruit la liste');
+  const parCle = (cle) => cartes.find((c) => c.dataset.cle === cle);
+  assert.strictEqual(parCle('10_Autre.docx').classes.has('szh-carte--focus'), true);
+  assert.strictEqual(parCle('9_Essai.docx').classes.has('szh-carte--focus'), false);
+});
+
+test('vue d’ensemble : un focus introuvable, ou vide, ne marque rien et ne lève pas', () => {
+  const page = pageVueEnsemble();
+  assert.doesNotThrow(() => page.envoyer({
+    type: 'valeurs', titre: 'Word en attente', boutons: [], lignes: LIGNES_WORD,
+    focus: '99_Inconnu.docx'
+  }), 'un focus introuvable ne doit jamais lever');
+  const cartes = page.conteneur().querySelectorAll('.szh-carte');
+  assert.ok(cartes.every((c) => !c.classes.has('szh-carte--focus')),
+    'un focus introuvable a quand même marqué une carte');
+  assert.doesNotThrow(() => page.envoyer({ type: 'focaliser', focus: '' }),
+    'un focus vide, envoyé à part, ne doit jamais lever');
+  assert.doesNotThrow(() => page.envoyer({ type: 'focaliser' }),
+    'un message « focaliser » sans focus du tout ne doit jamais lever');
+});

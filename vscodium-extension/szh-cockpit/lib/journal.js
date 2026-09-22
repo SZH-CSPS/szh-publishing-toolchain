@@ -527,10 +527,19 @@ function lireConstatCode(famille, reste, langue) {
   // Un livre n'a pas d'« article » : ses unités sont des chapitres, et le champ qui les
   // nomme s'appelle donc « chapitre » — seul un numéro écrit « article ». Les deux ne
   // coexistent jamais sur une même ligne, l'un des deux vaut toujours ''.
+  // pdf-verrouille est le seul code où ni l'un ni l'autre n'existe : `mv` ne connaît que le
+  // fichier de destination (out/<slug>/<slug>.pdf), pas le contexte d'article de pandoc.
+  // Mesuré (22.09.2026) : sans ce repli, cette ligne sort du format à codes avec slug: '' —
+  // la carte s'affichait, mais son bouton n'aurait rien eu à ouvrir. Même dérivation que le
+  // repli sur l'ancienne prose de `mv` ci-dessus (slugDuPdf + nomFichier).
+  let slug = ch('article') || ch('chapitre');
+  if (!slug && famille.source === 'pipeline' && code === 'pdf-verrouille') {
+    slug = slugDuPdf(nomFichier(ch('fichier')));
+  }
   return {
     source: famille.source, code: code,
     ton: (TONS[famille.source] || {})[code] || famille.ton,
-    slug: ch('article') || ch('chapitre'), cle: (CLES[famille.source] || {})[code] || '',
+    slug: slug, cle: (CLES[famille.source] || {})[code] || '',
     args: args ? args(ch, langue) : [], champs: nommes,
     brut: (langue === 'de' && de !== '') ? de : fr
   };

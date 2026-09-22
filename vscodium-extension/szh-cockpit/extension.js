@@ -3181,9 +3181,13 @@ function contexteConstats() {
   return { pdfua: pdfuaHote.reglageActif() };
 }
 
-// Les trois destinations qui parlent d'un article : un constat peut nommer un Word qui
+// Les quatre destinations qui parlent d'un article : un constat peut nommer un Word qui
 // n'est jamais devenu un article, et un bouton qui ouvrirait le vide serait pire que rien.
-const LIEUX_ARTICLE = new Set(['article', 'fiche', 'medias']);
+// « pdf » (szh.voirPdfArticle) en fait partie depuis la revue F03 (22.09.2026) pour une
+// raison de plus : voirPdfArticle passe par cibleTraduction, qui retombe sur l'article
+// ACTIF ou en aperçu quand le slug reçu est vide — un bouton sans garde ouvrirait alors le
+// PDF d'un AUTRE article plutôt que rien, ce qui est pire qu'un bouton absent.
+const LIEUX_ARTICLE = new Set(['article', 'fiche', 'medias', 'pdf']);
 
 // Le bouton d'un constat, ou aucun. L'identifiant porte la destination ET l'objet à
 // atteindre — « medias:fig-01.png » — parce que la page renvoie l'identifiant tel quel :
@@ -3458,20 +3462,36 @@ const VUES = {
 
 // Hors de ouvrirVueEnsemble : la fin d'une compilation doit pouvoir rafraîchir une vue
 // déjà ouverte sans repasser par la commande, qui la révélerait sous les yeux du rédacteur.
-function envoyerVue(panneau, fournisseur, type) {
+// `focus` ne voyage que dans LA charge initiale d'un panneau qui vient de s'ouvrir (voir
+// ouvrirVueEnsemble) : un rafraîchissement ordinaire (action, croix fermée) n'en porte pas,
+// et la page ne remarque donc jamais un focus périmé.
+function envoyerVue(panneau, fournisseur, type, focus) {
   const charge = VUES[type].charge(fournisseur);
-  repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge, {
+  const valeurs = Object.assign({ type: 'valeurs' }, charge, {
     accent: lireCouleurAccent(fournisseur.racine), i18n: textesVueEnsemble()
-  }));
+  });
+  if (focus) { valeurs.focus = focus; }
+  repondrePanneau(panneau, valeurs);
   panneau.title = charge.titre;
 }
 
-async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
+// `item` ({ slug, focus }) vient d'un bouton de constat (lib/constats.js, lieu 'word') :
+// focus nomme un fichier Word que la vue doit amener à l'écran et marquer. Les deux chemins
+// du rédacteur qui clique deux fois de suite doivent marcher : le panneau est déjà ouvert
+// (un message FOCALISER dédié lui parvient, la vue tournant déjà) ou il s'ouvre à l'instant
+// (le focus voyage dans la toute première « valeurs », avant que PRET ne reparte).
+async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type, item) {
   if (!fournisseur.racine || !VUES[type]) { return; }
   const def = VUES[type];
+  const focus = item && typeof item === 'object' ? String(item.focus || '') : '';
   const envoyer = (panneau) => envoyerVue(panneau, fournisseur, type);
   const ouvert = panneauxVue.get(type);
-  if (ouvert) { ouvert.reveal(vscode.ViewColumn.One); envoyer(ouvert); return; }
+  if (ouvert) {
+    ouvert.reveal(vscode.ViewColumn.One);
+    envoyer(ouvert);
+    if (focus !== '') { repondrePanneau(ouvert, { type: MSG.FOCALISER, focus: focus }); }
+    return;
+  }
   const charge = def.charge(fournisseur);
   const panneau = vscode.window.createWebviewPanel(
     def.id, charge.titre, vscode.ViewColumn.One,
@@ -3484,7 +3504,10 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
     // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
     // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
     if (repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) { envoyer(panneau); return; }
+    // Seule réponse au tout premier PRET de ce panneau : `focus` (capturé ci-dessus) part
+    // avec cette « valeurs »-là, jamais avec celles qui suivent (envoyer(), plus bas, n'en
+    // porte pas).
+    if (msg.type === MSG.PRET) { envoyerVue(panneau, fournisseur, type, focus); return; }
     // La croix d'un constat gris. Retenue, puis la vue est renvoyée : la page l'a déjà
     // retirée de son côté, mais c'est l'hôte qui décide de ce qu'elle montre, et le lot
     // « Pour information » peut s'être vidé en entier.
@@ -6767,7 +6790,9 @@ function activate(context) {
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
     cmd('szh.envoyerAuteur', (item) => envoyerAuteur(fournisseur, item)),
     // Rien n'est écrit : `cmd`, pas `cmdEcriture`, et pas de garde szh.verrouillee dans le
-    // `when` du menu (package.json) — voir voirPdfArticle ci-dessus.
+    // `when` du menu (package.json) — voir voirPdfArticle ci-dessus. C'est aussi la
+    // destination de pipeline/pdf-verrouille (lieu « pdf », lib/constats.js) : `item` porte
+    // déjà { slug, focus } sans rien y changer — cibleTraduction (ci-dessous) lit cible.slug.
     cmd('szh.voirPdfArticle', (item) => voirPdfArticle(fournisseur, item)),
     // Monter et descendre depuis l'arbre. ⚠ `cmd` et non `cmdEcriture` : un numéro
     // verrouillé a ses textes figés mais son sommaire peut encore se décider, et
@@ -6778,12 +6803,13 @@ function activate(context) {
       deplacerUnite(fournisseur, item && item.slug, -1, rafraichirTout))),
     cmd('szh.descendreUnite', (item) => messageDeplacement(
       deplacerUnite(fournisseur, item && item.slug, 1, rafraichirTout))),
-    // `item` ({ slug, focus }) est accepté pour honorer le contrat des boutons de constat
-    // (revue F03), mais focus — un nom de fichier Word — reste sans effet : la liste
-    // partagée (SZH.listeCartes, media/_commun.js) n'a aucun moyen de désigner une ligne
-    // précise, et lui en donner un toucherait aussi « Traductions » et « Contrôles ».
+    // `item` ({ slug, focus }) porte le contrat des boutons de constat (revue F03) : focus,
+    // un nom de fichier Word, amène désormais sa carte à l'écran et la marque quelques
+    // secondes (SZH.listeCartes.focaliser, media/_commun.js, media/vue-ensemble.js) — un
+    // [data-cle] additif, posé seulement quand une ligne en porte un, laisse « Traductions »
+    // et « Contrôles » inchangées : rien n'y appelle jamais ouvrirVueEnsemble avec un focus.
     vscode.commands.registerCommand('szh.vueWord',
-      (item) => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word')),
+      (item) => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word', item)),
     vscode.commands.registerCommand('szh.vueControles',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'controles')),
     // Fabriquer un lien ne modifie rien : disponible même sur un numéro verrouillé.
@@ -6791,10 +6817,12 @@ function activate(context) {
     // Aucun constat de constats.js ne vise « reglages » avec un focus utile (vérifié dans
     // TABLE) : `item` est accepté pour honorer le contrat, rien de plus n'est câblé.
     cmd('szh.reglages', (item) => ouvrirReglages(rafraichirTout)),
-    // pipeline/pdf-verrouille vise « apercu » avec focus = nom du PDF verrouillé, mais
     // basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif/en aperçu, pas
-    // un « ouvrir l'aperçu de tel article » — lui donner ce sens demanderait de refaire son
-    // ciblage (hors des fichiers de ce chantier). `item` est accepté sans y toucher.
+    // un « ouvrir l'aperçu de tel article », et ne prend même pas de slug — lui donner ce
+    // sens demanderait de refaire son ciblage. `item` est accepté sans y toucher.
+    // pipeline/pdf-verrouille ne vise plus « apercu » : il vise désormais « pdf »
+    // (szh.voirPdfArticle, ci-dessus), qui SAIT viser un article précis (revue F03,
+    // 22.09.2026 — voir lib/constats.js, LIEUX.pdf).
     cmd('szh.basculerApercu', (item) => basculerApercu(fournisseur, majBarreApercu)),
     // La bibliographie d'un article : son texte à gauche, son rendu à droite. Lecture
     // seule du côté du cockpit — rien n'est écrit ici — donc `cmd` et non `cmdEcriture` :

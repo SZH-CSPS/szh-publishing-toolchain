@@ -12,7 +12,8 @@
 // Protocole. Vers l'hôte :
 //   pret ; action { id, cle } ; ouvrir { cle } ; constat-fermer { empreinte }
 // Depuis l'hôte :
-//   valeurs { titre, boutons, lignes, accent, i18n } ; etat { message }
+//   valeurs { titre, boutons, lignes, accent, i18n, focus? } ; etat { message } ;
+//   focaliser { focus }
 // où i18n vaut { ouvrir, listeVide, fermerConstat }.
 // où un bouton vaut { id, libelle, icone, tip, principal, danger, desactive } et une ligne
 // { cle, groupe, titre, meta, pastilles: [{ texte, ton, icone }], notif: { ton, texte },
@@ -21,6 +22,14 @@
 //
 // `fermable` ne se devine pas ici : c'est l'hôte qui sait qu'un constat est gris, donc
 // effaçable, et lui qui retient l'empreinte de ceux qu'on a fermés.
+//
+// `focus` (un nom de fichier Word, pour l'instant) désigne la carte dont `cle` lui est égal
+// (SZH.listeCartes pose [data-cle] à la construction) : amenée à l'écran, marquée quelques
+// secondes. Absent, ou sans carte correspondante : rien ne se passe, jamais d'erreur — la
+// table (lib/constats.js) vise « word » avec des focus que toutes les cartes ne portent pas
+// (le rapport de conversion, par ex., n'a pas de `cle`). Il arrive soit dans la première
+// « valeurs » (panneau qui s'ouvre), soit dans un message « focaliser » à part (panneau déjà
+// ouvert, dont la liste ne serait pas reconstruite sinon) — voir extension.js, ouvrirVueEnsemble.
 //
 // « action » sert aux deux : la barre l'envoie sans `cle`, le bouton d'une carte avec celle
 // de sa ligne. C'est l'hôte qui départage, et il n'y a qu'un message à traiter.
@@ -46,6 +55,9 @@
   window.addEventListener('message', function (ev) {
     var msg = ev.data || {};
     recu = true;
+    // Le panneau était déjà ouvert : l'hôte envoie ce message à part, sans reconstruire la
+    // liste (revue F03, boutons de constat qui visent le dépôt Word par nom de fichier).
+    if (msg.type === SZH.MSG.FOCALISER) { liste.focaliser(msg.focus); return; }
     if (msg.type !== SZH.MSG.VALEURS) {
       if (msg.type === SZH.MSG.ETAT) { if (ctlEtat) { ctlEtat.textContent = msg.message || ''; } }
       else { console.warn('vue d’ensemble : type de message inconnu', msg.type); }
@@ -58,6 +70,8 @@
       api.postMessage({ type: SZH.MSG.ACTION, id: id });
     });
     liste.rendre(msg.lignes || []);
+    // Le panneau vient de s'ouvrir : le focus voyage dans cette toute première « valeurs ».
+    if (msg.focus) { liste.focaliser(msg.focus); }
   });
   SZH.annoncerPret(api, function () { return recu; });
 })();
