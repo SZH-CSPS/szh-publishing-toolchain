@@ -240,6 +240,13 @@ def texte_plat(p):
     return ''.join(morceaux)
 
 
+def texte_plat_cellule(tc):
+    """Texte brut d'une cellule (w:tc) : ses paragraphes directs joints par une espace.
+    Un tableau imbriqué n'y contribue pas, comme html_de_cellule() le traite à part."""
+    morceaux = [texte_plat(p) for p in tc if p.tag == W + 'p']
+    return ' '.join(m for m in morceaux if m)
+
+
 def paragraphe_tout_gras(p):
     """Vrai si tous les runs porteurs de texte du paragraphe (w:p) sont en gras.
     ⚠ prend un paragraphe et ses propres runs, pas une cellule comme _runs_directs."""
@@ -263,6 +270,14 @@ PREFIXE_AVERT = '[import-avertissement]'
 
 def avertir(code, champs, fr, de):
     szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
+
+
+# « | » sépare les champs (szh_commun.formater_avertissement) : un texte de cellule qui en
+# porterait un couperait la ligne en deux. Même précaution que sans_barre() de
+# szh-citations.lua, appliquée ici à ce qui vient du texte du docx plutôt que d'un nom de
+# fichier ou d'un slug, qui n'en portent jamais.
+def sans_barre(t):
+    return str(t).replace('|', '/')
 
 
 def nom_article():
@@ -413,6 +428,14 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
 
     if info is not None:
         info['lignes_entete'] = lignes_entete
+        # Le texte de la première cellule : lu ici parce que la grille est déjà montée pour
+        # le rendu (grille[0][0]['tc']), et rendu au même endroit que 'lignes_entete' pour
+        # que l'appelant n'ait pas à refaire l'analyse. Une première cellule vide (ou un
+        # tableau sans aucune rangée) laisse la clé absente plutôt que vide.
+        if grille and grille[0]:
+            debut_cellule = normaliser(texte_plat_cellule(grille[0][0]['tc']))
+            if debut_cellule:
+                info['premiere_cellule'] = debut_cellule
 
     ouvrante = ''.join(' %s="%s"' % (nom, escape(str(valeur), quote=True))
                        for nom, valeur in sorted((attributs_table or {}).items())
@@ -617,7 +640,7 @@ def principal(argv):
         with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
             f.write(html_du_tableau(tbl, caption, info, attributs) + '\n')
         if not info.get('lignes_entete'):
-            plats.append((n, chemin))
+            plats.append((n, chemin, info.get('premiere_cellule', '')))
     if n == 0:
         return 0                              # tous consommés : pas de tables/ vide
     # Sidecar : légendes consommées -> szh-legendes.lua retire les paragraphes gras
@@ -635,10 +658,23 @@ def principal(argv):
     # ferait poser une relation fausse sur un tableau correct. Cas fréquent qui justifie la
     # question : un en-tête mis en valeur par un fond coloré plutôt que par du gras.
     slug = nom_article()
-    for numero, chemin in plats:
+    # Le champ `tableau` reste un numéro nu : la recherche littérale du cockpit le prend
+    # pour n'importe quel autre nombre de l'article (une date, une page) avant le bon
+    # tableau. `debut` lui donne un texte à chercher à la place. 40 caractères : assez pour
+    # dépasser un seul mot répété ailleurs dans l'article (un intitulé de colonne isolé ne
+    # suffirait pas à distinguer), assez court pour rester une ligne de constat lisible —
+    # la même longueur que cle_comparaison() de docx-meta.py et de pronto_modele.py, qui
+    # tronquent déjà un extrait de texte à cette borne pour rester discriminants sans être
+    # des pavés (là pour apparier un paragraphe, ici pour le retrouver dans l'éditeur).
+    LONGUEUR_EXTRAIT_DEBUT = 40
+    for numero, chemin, debut_txt in plats:
+        champs = ['article « %s »' % slug, 'tableau %d' % numero]
+        if debut_txt:
+            champs.append('debut « %s »' % sans_barre(debut_txt[:LONGUEUR_EXTRAIT_DEBUT]))
+        champs.append(chemin.replace(os.sep, '/'))
         avertir(
             'tableau-sans-entete',
-            ['article « %s »' % slug, 'tableau %d' % numero, chemin.replace(os.sep, '/')],
+            champs,
             "Aucun en-tête n'a pu être reconnu dans ce tableau. Si sa première rangée "
             "ou sa première colonne en est un, ouvrez-le dans l'éditeur de tableaux et "
             "déclarez-le : un lecteur d'écran pourra alors relier chaque cellule à son "

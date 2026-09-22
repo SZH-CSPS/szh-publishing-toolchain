@@ -130,6 +130,31 @@ test('le formulaire n’envoie jamais la clé revue à l’hôte, même après a
   assert.strictEqual(envois[0].modifies.title, 'Un autre titre', 'le champ touché, lui, n’est pas parti');
 });
 
+// Revue F03 (22.09.2026) : szh.metadonnees était enregistrée sans paramètre, donc « numero »
+// perdait le focus des constats qui en portent un (meta/champ-vide, sans-langue…). Le champ
+// visé reçoit le curseur, comme pour la fiche (voir focaliser(), media/_numero.js) ; un
+// focus qui ne correspond à aucune clé de CHAMPS ne fait rien, jamais d'erreur.
+test('focus amène le champ visé à l’écran et lui pose le curseur', () => {
+  const page = ouvrirNumero();
+  page.envoyer({ type: 'valeurs', valeurs: { revue: 'revue', title: 'Un dossier' }, focus: 'title' });
+  const champ = conteneurNumero(page).querySelectorAll('[data-cle="title"]')[0];
+  assert.ok(champ, 'le champ titre est introuvable');
+  assert.strictEqual(champ._focused, true, 'le champ titre n’a pas reçu le curseur');
+  assert.strictEqual(champ._scrolled, true, 'le champ titre n’a pas été amené à l’écran');
+});
+
+test('un focus qui ne correspond à aucune clé ne focalise rien, sans lever', () => {
+  const page = ouvrirNumero();
+  // « pièce »/« chapitre » : focusChamp du formulaire du livre-dans-un-numéro
+  // (livre/liminaire-introuvable, livre/chapitre-introuvable), absents de CHAMPS.
+  assert.doesNotThrow(() => page.envoyer({
+    type: 'valeurs', valeurs: { revue: 'revue', title: 'Un dossier' }, focus: 'pièce'
+  }));
+  const rien = conteneurNumero(page).querySelectorAll('input, select, textarea')
+    .every((e) => !e._focused);
+  assert.ok(rien, 'un focus inconnu a quand même focalisé un champ du formulaire du numéro');
+});
+
 test('aucun élément du formulaire ne porte un contrôle modifiable pour la revue', () => {
   const page = ouvrirNumero();
   page.envoyer({ type: 'valeurs', valeurs: { revue: 'revue', title: 'Un dossier' } });

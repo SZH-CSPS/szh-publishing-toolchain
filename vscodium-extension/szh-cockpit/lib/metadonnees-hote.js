@@ -410,15 +410,23 @@ function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
 
 // Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues du
 // disque. Un seul panneau pour les deux profils, deux formulaires distincts derrière.
-async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
+//
+// `item` porte { slug, focus } quand la commande vient d'un bouton de constat (revue F03) :
+// le slug ne sert à rien ici (un seul numéro par dossier), mais focus nomme un champ de
+// CHAMPS/CHAMPS_LIVRE (media/_numero.js) — envoyé avec les valeurs à CHAQUE ouverture,
+// panneau neuf ou déjà ouvert, puisque envoyerValeurs() est le seul chemin des deux cas ;
+// un focus vide ou qui ne désigne aucun champ ne fait rien de plus, sans jamais d'erreur.
+async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
+  const focus = String((item && item.focus) || '');
   await fermerTousLesApercus();
   const estLivre = profilCourant().cle === 'livre';
   const titre = estLivre ? T('meta.livre.panneau') : T('meta.titre');
   const envoyerValeurs = (panneau) => {
-    if (estLivre) { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeLivre(racine))); }
-    else { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true))); }
+    const extra = focus ? { focus: focus } : {};
+    if (estLivre) { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeLivre(racine), extra)); }
+    else { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true), extra)); }
     ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
   if (panneauMetadonnees) {
@@ -1111,9 +1119,17 @@ async function basculerMarkdownFiche(fournisseur, panneau, msg) {
 }
 
 // Pleine page : les aperçus sont fermés avant, même pour un simple reveal.
-async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
+//
+// `focus` nomme un champ de la carte ([data-cle], media/_fiches.js — title, subtitle,
+// resume, lang, licence, doi ; 'keywords' vise la grille de mots-clés) : il part avec CHAQUE
+// message « valeurs », le seul chemin qui construise les cartes ici — il n'y a pas, comme
+// pour les médias, de second chemin « panneau déjà ouvert, pas de rechargement » à part, la
+// vue des fiches reconstruisant déjà tout à chaque filtre. Un focus vide ou qui ne désigne
+// aucun champ ne fait rien de plus, jamais d'erreur.
+async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus) {
   if (!fournisseur.racine) { return; }
   const filtre = filtreValide(fournisseur, slugs);
+  const focusNorme = String(focus || '');
   await fermerTousLesApercus();
   const envoyerValeurs = (panneau, extra) => {
     const langue = langueRevue(fournisseur.racine);
@@ -1150,11 +1166,13 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (panneauArticles) {
     panneauArticles.reveal(vscode.ViewColumn.One);
     if (fichesModifie) {
-      rechargementEnAttente = { filtre: filtre };
+      // Des cartes portent une saisie non enregistrée : le focus attend la décision de la
+      // personne (RECHARGEMENT ci-dessous), pour ne pas se perdre derrière la question.
+      rechargementEnAttente = { filtre: filtre, focus: focusNorme };
       repondrePanneau(panneauArticles, { type: 'demande-rechargement' });
       return;
     }
-    appliquerFiltre(panneauArticles, filtre);
+    appliquerFiltre(panneauArticles, filtre, focusNorme ? { focus: focusNorme } : undefined);
     return;
   }
   filtreArticles = filtre;
@@ -1176,7 +1194,11 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
     // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
     if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) { envoyerValeurs(panneau, { requete: msg.requete }); return; }
+    if (msg.type === MSG.PRET) {
+      envoyerValeurs(panneau, Object.assign({ requete: msg.requete },
+        focusNorme ? { focus: focusNorme } : {}));
+      return;
+    }
     if (msg.type === MSG.MODIFIE) { fichesModifie = !!msg.modifie; return; }
     if (msg.type === MSG.TOUS) { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }
     if (msg.type === MSG.MARKDOWN) { await basculerMarkdownFiche(fournisseur, panneau, msg); return; }
@@ -1198,7 +1220,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
         if (rafraichirTout) { rafraichirTout(); }
         relancerCompilationCartes(fournisseur, res);
       }
-      appliquerFiltre(panneau, attente.filtre, { rechargement: true });
+      appliquerFiltre(panneau, attente.filtre, Object.assign({ rechargement: true },
+        attente.focus ? { focus: attente.focus } : {}));
       return;
     }
     if (msg.type === MSG.PHOTO_DEPOSER) { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
@@ -1377,7 +1400,8 @@ async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
     return;
   }
   ctx.focaliserUnite(fournisseur, slug);
-  await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug]);
+  // item.focus (revue F03) : un champ de la carte, voir le commentaire d'ouvrirApercuMetadonnees.
+  await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug], item && item.focus);
 }
 
 module.exports = {

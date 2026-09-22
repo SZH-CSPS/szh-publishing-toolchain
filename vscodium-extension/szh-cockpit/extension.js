@@ -67,6 +67,8 @@ const {
   configBiblio, configAvecTitresBiblio, configAvecLiensDesactives, nomFichierBiblio, cheminBiblio,
   REVUES_BIBLIO, LANGUES_BIBLIO
 } = require('./lib/citations');
+// Retrouver dans un .md le passage qu'un focus de constat désigne (bouton « Vers l'article »).
+const { trouverPlageFocus } = require('./lib/reperage-focus');
 // ---- Poste et traduction -> lib/archivage.js ; cycle de vie -> lib/cycle-vie.js --
 const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
@@ -1930,6 +1932,38 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
   catch (e) { /* au démarrage, ne pas bloquer l'ouverture de la revue */ }
 }
 
+// Combien de temps le surlignage reste visible avant de s'effacer de lui-même.
+const DUREE_SURLIGNAGE_FOCUS = 3000;
+
+// Retrouve le passage désigné par `focus` dans le .md qu'on vient d'ouvrir, l'amène à
+// l'écran et le surligne quelques secondes. La recherche (lib/reperage-focus.js) absorbe la
+// normalisation que le filtre Lua a fait subir au texte du constat — pas trouvé, rien ne se
+// passe : jamais de faux surlignage, jamais de message d'erreur pour si peu.
+function surlignerFocus(md, focus) {
+  try {
+    const editeur = vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === md)
+      || vscode.window.activeTextEditor;
+    if (!editeur || editeur.document.uri.fsPath !== md) { return; }
+    const plage = trouverPlageFocus(editeur.document.getText(), focus);
+    if (!plage) { return; }
+    const debut = editeur.document.positionAt(plage.debut);
+    const fin = editeur.document.positionAt(plage.fin);
+    const zone = new vscode.Range(debut, fin);
+    editeur.selection = new vscode.Selection(debut, fin);
+    editeur.revealRange(zone, vscode.TextEditorRevealType.InCenter);
+    // Couleurs du thème, jamais en dur : une teinte fixe serait illisible dans l'autre thème.
+    const decoration = vscode.window.createTextEditorDecorationType({
+      backgroundColor: new vscode.ThemeColor('editor.findMatchHighlightBackground'),
+      border: '1px solid', borderColor: new vscode.ThemeColor('editor.findMatchBorder'),
+      overviewRulerColor: new vscode.ThemeColor('editor.findMatchBorder'),
+      overviewRulerLane: vscode.OverviewRulerLane.Center
+    });
+    editeur.setDecorations(decoration, [zone]);
+    setTimeout(() => { try { decoration.dispose(); } catch (e) { /* éditeur déjà fermé */ } },
+      DUREE_SURLIGNAGE_FOCUS);
+  } catch (e) { /* un focus qui échoue n'empêche pas d'avoir ouvert l'article */ }
+}
+
 // .md en colonne 1 ; compilation incrémentale si l'aperçu du mode courant est absent ou
 // plus vieux que ses sources ; aperçu en colonne 2, à la place du précédent. Une
 // compilation en échec ne montre pas d'aperçu périmé, `opts.sansTexte` laisse la
@@ -1960,6 +1994,10 @@ async function ouvrirArticle(fournisseur, slug, opts) {
 
   if (!(opts && opts.sansTexte)) {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
+    // Le bouton « Vers l'article » d'un constat vise un passage précis (lib/constats.js,
+    // focusChamp) : le retrouver et le montrer, sinon le rédacteur ouvre le bon fichier sans
+    // savoir où regarder.
+    if (opts && opts.focus) { surlignerFocus(md, opts.focus); }
   }
 
   // Depuis la vue d'ensemble Articles, on vient lire ou corriger le texte, pas mettre en
@@ -3119,6 +3157,10 @@ const GROUPE_GRAVITE = {
 const SOURCES_CONSTAT = {
   citations: 'ctl.source.citations', import: 'ctl.source.import', meta: 'ctl.source.meta',
   pdfua: 'ctl.source.pdfua', pipeline: 'ctl.source.pipeline', rendu: 'ctl.source.rendu',
+  // szh-typographie.lua (« ß », guillemets droits, majuscule non accentuée) et
+  // szh-metafichier.lua (images natives Word) : même mécanisme générique que « scission »
+  // ci-dessous, seule l'étiquette de section manquait (revue F03, 22.09.2026).
+  typo: 'ctl.source.typo', metafichier: 'ctl.source.metafichier',
   // pipeline/livre-scinder.py, appelé depuis la cible `import` du Makefile pour un livre :
   // ses constats « [scission-avertissement] » arrivent ici sans code à ajouter (familleCode()
   // de lib/journal.js reconnaît déjà tout préfixe « <source>-<ton> » générique) — seule cette
@@ -6699,7 +6741,10 @@ function activate(context) {
     }),
     // Le SourceControl est créé à la demande : il faut quand même le défaire à l'extinction.
     { dispose: () => { if (scmConflits) { scmConflits.dispose(); scmConflits = null; } } },
-    cmdEcriture('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
+    // `item` porte { slug, focus } quand la commande vient d'un bouton de constat (voir
+    // ouvrirCible) : le slug ne sert à rien ici (un seul numéro), mais focus nomme un champ
+    // du formulaire — lu par ouvrirMetadonnees, qui le fait suivre jusqu'à la webview.
+    cmdEcriture('szh.metadonnees', (item) => ouvrirMetadonnees(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
     // Le même formulaire, filtré sur un article.
     cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
@@ -6733,14 +6778,24 @@ function activate(context) {
       deplacerUnite(fournisseur, item && item.slug, -1, rafraichirTout))),
     cmd('szh.descendreUnite', (item) => messageDeplacement(
       deplacerUnite(fournisseur, item && item.slug, 1, rafraichirTout))),
+    // `item` ({ slug, focus }) est accepté pour honorer le contrat des boutons de constat
+    // (revue F03), mais focus — un nom de fichier Word — reste sans effet : la liste
+    // partagée (SZH.listeCartes, media/_commun.js) n'a aucun moyen de désigner une ligne
+    // précise, et lui en donner un toucherait aussi « Traductions » et « Contrôles ».
     vscode.commands.registerCommand('szh.vueWord',
-      () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word')),
+      (item) => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word')),
     vscode.commands.registerCommand('szh.vueControles',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'controles')),
     // Fabriquer un lien ne modifie rien : disponible même sur un numéro verrouillé.
     cmd('szh.envoyerTraduction', (item) => envoyerPourTraduction(fournisseur, item)),
-    cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
-    cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
+    // Aucun constat de constats.js ne vise « reglages » avec un focus utile (vérifié dans
+    // TABLE) : `item` est accepté pour honorer le contrat, rien de plus n'est câblé.
+    cmd('szh.reglages', (item) => ouvrirReglages(rafraichirTout)),
+    // pipeline/pdf-verrouille vise « apercu » avec focus = nom du PDF verrouillé, mais
+    // basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif/en aperçu, pas
+    // un « ouvrir l'aperçu de tel article » — lui donner ce sens demanderait de refaire son
+    // ciblage (hors des fichiers de ce chantier). `item` est accepté sans y toucher.
+    cmd('szh.basculerApercu', (item) => basculerApercu(fournisseur, majBarreApercu)),
     // La bibliographie d'un article : son texte à gauche, son rendu à droite. Lecture
     // seule du côté du cockpit — rien n'est écrit ici — donc `cmd` et non `cmdEcriture` :
     // un numéro verrouillé se relit.
@@ -6769,11 +6824,12 @@ function activate(context) {
     // contrat que lib/constats.js écrit en tête de sa table des destinations. La seconde
     // repartait sans un mot (ouvrirArticle exige `typeof slug === 'string'`), et le bouton
     // « Vers l'article » des Contrôles ne faisait rien du tout. On normalise donc ici,
-    // au bord, plutôt que d'obliger chaque appelant à connaître l'autre.
+    // au bord, plutôt que d'obliger chaque appelant à connaître l'autre — et `focus` passe
+    // maintenant avec le reste : ouvrirArticle s'en sert pour surligner le passage visé.
     cmd('szh.ouvrirArticle', (arg, opts) => {
       const objet = arg !== null && typeof arg === 'object';
       return ouvrirArticle(fournisseur, objet ? String(arg.slug || '') : arg,
-        objet ? undefined : opts);
+        objet ? { focus: String(arg.focus || '') } : opts);
     }),
     // Le clic sur un en-tête de section : sa section se déplie, les autres se replient,
     // et la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon,
@@ -6805,7 +6861,8 @@ function activate(context) {
     // La page de Documentation du numéro, créée au besoin. Volontairement hors cmdEcriture :
     // la relire sur un numéro verrouillé doit rester possible, seule sa création est refusée
     // (voir ouvrirPageDocumentation).
-    cmd('szh.documentation', () => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
+    // Comme « reglages » : aucun constat ne vise « documentation » avec un focus utile.
+    cmd('szh.documentation', (item) => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
     // La réserve : le magasin de fiches hors numéro, et le canal d'échange avec la revue
     // sœur (lib/reserve.js). Commande d'écriture : insérer et supprimer y touchent au disque.
     cmdEcriture('szh.reserve', () => ouvrirReserve(fournisseur, rafraichirTout)),

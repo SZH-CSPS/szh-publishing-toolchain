@@ -23,6 +23,8 @@ const refs = require(path.join(COCKPIT, 'lib', 'references.js'));
 const cit = require(path.join(COCKPIT, 'lib', 'citations.js'));
 const qualite = require(path.join(COCKPIT, 'lib', 'qualite-image.js'));
 const wsl = require(path.join(COCKPIT, 'lib', 'wsl.js'));
+const journal = require(path.join(COCKPIT, 'lib', 'journal.js'));
+const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 const { sourceExtensionEtLib } = require('./hote-factice');
 
 const CHEMIN_EXTENSION = path.join(COCKPIT, 'extension.js');
@@ -974,6 +976,41 @@ test('aucune compilation parallèle ne part sans --output-sync', () => {
       + 'entrelacé et lib/journal.js attribuerait les avertissements au mauvais article');
   }
   assert.ok(vus > 0, 'plus aucune tâche ne compile en parallèle : le gain de -j est perdu');
+});
+
+// pipeline/profil-book-sans-fichier (Makefile:242) écrit la prose que lib/journal.js doit
+// reconnaître pour produire pipeline/profil-differe (lirePipeline) : la regex avait dérivé
+// de la prose — « profil « book » » attendu, « Ce dossier déclare « profil: book » … »
+// écrit — et le constat ne pouvait plus jamais apparaître (revue F03, 22.09.2026). Ce test
+// lit le Makefile réel et la fait passer dans journal.js : une reformulation de l'un des
+// deux sans l'autre le fait échouer, ce qu'aucun test ne voyait avant.
+test('profil-differe : la prose que le Makefile écrit est celle que journal.js reconnaît', () => {
+  const makefile = lire('pipeline', 'Makefile');
+  const m = /@echo "\[pipeline\] (Ce dossier déclare[^"]*)"/.exec(makefile);
+  assert.ok(m, 'la ligne de profil-book-sans-fichier est introuvable dans le Makefile (~L242)');
+  const constats = journal.analyserJournal('[pipeline] ' + m[1] + '\n', 'fr');
+  assert.ok(constats.some((c) => c.source === 'pipeline' && c.code === 'profil-differe'),
+    'lib/journal.js ne reconnaît plus la prose de profil-book-sans-fichier : « ' + m[1] + ' »');
+});
+
+// typo et metafichier suivent le même mécanisme générique que scission (familleCode() de
+// lib/journal.js reconnaît tout préfixe « <source>-<ton> » sans code à ajouter) : seule
+// l'étiquette de section peut manquer, et la carte se serait affichée sous
+// « ctl.source.pipeline » (revue F03, 22.09.2026).
+test('SOURCES_CONSTAT (extension.js) connaît typo et metafichier, avec leur clé traduite', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const i = src.indexOf('const SOURCES_CONSTAT');
+  assert.ok(i !== -1, 'SOURCES_CONSTAT introuvable dans extension.js');
+  const bloc = src.slice(i, src.indexOf('};', i));
+  for (const source of ['typo', 'metafichier']) {
+    const m = new RegExp(source + ":\\s*'(ctl\\.source\\.[a-z]+)'").exec(bloc);
+    assert.ok(m, 'SOURCES_CONSTAT ne connaît pas la source « ' + source + ' »');
+    for (const langue of ['fr', 'de']) {
+      const dit = i18n.TL(langue, m[1]);
+      assert.ok(dit && dit !== m[1],
+        'étiquette de section sans texte ' + langue + ' pour « ' + source + ' » : ' + m[1]);
+    }
+  }
 });
 
 test('les libellés de tâches attendus par le code existent dans tasks.json', () => {

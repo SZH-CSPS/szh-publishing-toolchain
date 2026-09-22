@@ -163,15 +163,51 @@ end
 
 -- ------------------------------------------------------------------------- les constats
 --
+-- « | » sépare les champs : un mot du texte qui en porterait un couperait la ligne en
+-- deux. Même protection que szh-citations.lua (sans_barre) ; le cas ne peut guère se
+-- produire pour un mot, mais autant s'en prémunir au même endroit qu'ailleurs.
+local function sans_barre(t) return (tostring(t):gsub('|', '/')) end
+
+-- Le mot qui contient l'octet de position `pos` (telle que la rend t:find) dans `t` : ses
+-- bornes sont les caractères qui l'entourent jusqu'à la première espace de part et
+-- d'autre, ou le début/la fin de la chaîne. Construit sur caracteres() — la liste de
+-- caractères UTF-8 pleins définie en tête de fichier — et non sur des octets, pour ne
+-- jamais couper au milieu d'un caractère multioctet ; c'est ce qui permet à ce qui suit de
+-- ne jamais indexer d'octets pour retrouver « Klauß » ou une majuscule accentuée.
+local function mot_en(t, pos)
+  if not pos then return nil end
+  local cs = caracteres(t)
+  local acc = 0
+  local debut, fin
+  for i, c in ipairs(cs) do
+    local lo, hi = acc + 1, acc + #c
+    if pos >= lo and pos <= hi then
+      local g = i
+      while g > 1 and not EST_ESPACE[cs[g - 1]] do g = g - 1 end
+      local d = i
+      while d < #cs and not EST_ESPACE[cs[d + 1]] do d = d + 1 end
+      debut, fin = g, d
+      break
+    end
+    acc = hi
+  end
+  if not debut then return nil end
+  return table.concat(cs, '', debut, fin)
+end
+
 -- Format du journal, celui que lib/journal.js sait déjà découper :
---   [typo-avertissement] <code> | article « … » | <phrase fr> | [de] <Satz de>
--- La famille « typo » lui est neuve : elle s'affichera sans clé d'i18n, avec la phrase
--- écrite ici, dans la langue de l'interface. C'est prévu, et dit dans journal.js.
-local function signaler(code, phrase_fr, phrase_de)
+--   [typo-avertissement] <code> | article « … » | mot « … » | <phrase fr> | [de] <Satz de>
+-- Le champ « mot » est le mot fautif tel qu'il s'écrit dans le texte ; absent quand aucune
+-- position n'a pu être établie, jamais écrit vide. La famille « typo » lui est neuve :
+-- elle s'affichera sans clé d'i18n, avec la phrase écrite ici, dans la langue de
+-- l'interface. C'est prévu, et dit dans journal.js.
+local function signaler(code, mot, phrase_fr, phrase_de)
   if vus[code] then return end
   vus[code] = true
+  local champ_mot = ''
+  if mot ~= nil and mot ~= '' then champ_mot = ' | mot « ' .. sans_barre(mot) .. ' »' end
   constats[#constats + 1] = '[typo-avertissement] ' .. code ..
-    ' | article « ' .. SLUG .. ' » | ' .. phrase_fr .. ' | [de] ' .. phrase_de
+    ' | article « ' .. SLUG .. ' »' .. champ_mot .. ' | ' .. phrase_fr .. ' | [de] ' .. phrase_de
 end
 
 -- ------------------------------------------------------ règles internes à une chaîne
@@ -347,15 +383,17 @@ end
 
 -- C1/C2 · ce qui se signale sans se corriger
 local function controler(t)
-  if COLLEE and t:find('\195\159') then
-    signaler('eszett',
+  local pos_ss = t:find('\195\159')
+  if COLLEE and pos_ss then
+    signaler('eszett', mot_en(t, pos_ss),
       'un « ß » subsiste : l’usage suisse écrit « ss », mais un nom propre et une citation '
         .. 'le gardent. À trancher à la relecture — le filtre n’y touche pas.',
       'ein «ß» ist geblieben: Der Schweizer Usus schreibt «ss», Eigennamen und Zitate '
         .. 'behalten es aber. Bei der Korrektur zu entscheiden – der Filter rührt es nicht an.')
   end
-  if t:find('"', 1, true) then
-    signaler('guillemets-droits',
+  local pos_guill = t:find('"', 1, true)
+  if pos_guill then
+    signaler('guillemets-droits', mot_en(t, pos_guill),
       'des guillemets droits (") subsistent : rien ne dit lequel ouvre et lequel ferme. '
         .. 'Remplacez-les par « et » à la relecture.',
       'gerade Anführungszeichen (") sind geblieben: Nichts sagt, welches öffnet und welches '
@@ -679,8 +717,9 @@ end
 local function a4_signaler(t)
   if COLLEE then return end
   for _, paire in ipairs(LEXIQUE_MAJ) do
-    if t:find('%f[%a]' .. paire[1]) then
-      signaler('majuscule-accentuee',
+    local pos = t:find('%f[%a]' .. paire[1])
+    if pos then
+      signaler('majuscule-accentuee', mot_en(t, pos),
         'une majuscule non accentuée subsiste dans le corps (« Etat », « Ecole ») : le '
           .. 'Guide du typographe les accentue. Le filtre ne corrige que les titres, un '
           .. 'mot anglais pouvant s’écrire de même — à trancher à la relecture.',

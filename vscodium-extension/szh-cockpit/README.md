@@ -154,6 +154,10 @@ lib/
                         compilation, affichés en lecture seule tant qu'on n'a pas
                         déverrouillé, et comparés à la version déployée pour dire quand un
                         poste diverge
+  reperage-focus.js     retrouve dans le .md le passage qu'un constat désigne (son focus),
+                        malgré la normalisation que le filtre Lua des citations lui a fait subir
+                        au texte. Fonction pure, sans vscode ni fs : extension.js s'en sert pour
+                        surligner le bouton « Vers l'article »
   reserve.js            réserve de fiches hors numéro (dossier parent, _reserve/<revue>/) :
                         mettre de côté, et envoyer une copie à traduire dans la revue sœur
   ressources.js         fiches de « ressources » d'un article (livre, film, intervention

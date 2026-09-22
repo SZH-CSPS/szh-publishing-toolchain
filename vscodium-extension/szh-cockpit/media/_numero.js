@@ -13,8 +13,10 @@
 // Protocole avec l'hôte, celui des deux pages qui portent ce fragment :
 //   webview -> hôte : enregistrer { auto, modifies } ;
 //                     couverture-deposer { nomFichier, donneesBase64 }
-//   hôte -> webview : valeurs { valeurs, couverture } ;
+//   hôte -> webview : valeurs { valeurs, couverture, focus } ;
 //                     enregistre ; erreur { message } ; couverture { nom, description, apercu }
+// focus (revue F03, boutons de constat) nomme une clé de CHAMPS/CHAMPS_LIVRE à amener à
+// l'écran ; voir focaliser() plus bas — une clé absente de la table ne fait rien.
 
 (function () {
   'use strict';
@@ -504,6 +506,22 @@
       enregistrer: envoyer
     });
 
+    // Amène un champ à l'écran et y pose le curseur (revue F03, boutons de constat). `cle`
+    // est une clé de champsTable (CHAMPS/CHAMPS_LIVRE) — une clé inconnue ou vide ne fait
+    // rien, jamais d'erreur : la table n'en connaît pas toutes (« pièce », « chapitre »).
+    function focaliser(cle) {
+      var c = ctl[String(cle || '')];
+      if (!c) { return; }
+      // ctl[cle] est l'élément lui-même pour texte/select/case/hex ; un accessoire pour
+      // radio (groupe de boutons), couleurs (zone de pastilles) et lecture (texte figé) —
+      // rien de ces trois derniers ne reçoit le curseur, on se contente de les amener à
+      // l'écran.
+      var el = (c.nodeType === 1) ? c : (c.radios ? c.radios[0] : (c.zone || c.texte || null));
+      if (!el) { return; }
+      try { el.scrollIntoView({ block: 'center' }); } catch (e) { el.scrollIntoView(); }
+      if (typeof el.focus === 'function') { el.focus(); }
+    }
+
     // Les messages que ce fragment connaît ; rend vrai quand il les a traités, pour que la
     // page n'ait rien à réimplémenter.
     function message(msg) {
@@ -512,6 +530,7 @@
         // La couverture n'est redessinée que si le message la porte : un re-rendu de la vue
         // ne la renvoie pas, son aperçu pesant plusieurs mégaoctets en base64.
         if (zoneCouverture && msg.couverture !== undefined) { poserCouverture(msg.couverture); }
+        if (msg.focus) { focaliser(msg.focus); }
         return true;
       }
       if (msg.type === SZH.MSG.ENREGISTRE) {
@@ -562,7 +581,7 @@
 
     return {
       remplir: remplir, message: message, enregistrement: enregistrement,
-      estModifie: aDesModifs, champs: champsTable
+      estModifie: aDesModifs, champs: champsTable, focaliser: focaliser
     };
   }
 

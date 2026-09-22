@@ -616,6 +616,73 @@ test('figure-sans-alt : sans SZH_APERCU (passe PDF), jamais de constat', () => {
   assert.ok(!/figure-sans-alt/.test(r.stderr), 'la passe PDF signale une image : ' + r.stderr);
 });
 
+// ── szh-typographie.lua : le champ `mot`, pour que la flèche vise le passage fautif ─────
+//
+// signaler() n'écrivait que le code et le slug de l'article : aucun champ ne désignait le
+// mot fautif (revue F03). mot_en() retrouve, sur la liste de caractères UTF-8 pleins —
+// jamais sur des octets, pour ne jamais couper « Klauß » en deux —, le jeton qui contient
+// l'octet de la position fautive. Entrée en `native`, comme FIGURE_DOCX plus haut : c'est
+// la seule façon d'obtenir un « ß » et un « " » sans que le lecteur markdown « smart » ne
+// les ait déjà changés avant que le filtre ne les voie — pour les guillemets, un RawBlock
+// html, comme szh-tabelle-inclure en pose pour un tableau réinjecté.
+
+const NATIF_ESZETT = '[ Para [ Str "Herr", Space, Str "Klau\\223", Space, Str "kam." ] ]';
+
+test('typographie : eszett (allemand) — le constat porte le mot fautif, en champ nommé', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': NATIF_ESZETT, 'essai.meta.yaml': 'lang: de\n' },
+    'essai.md', 'szh-typographie.lua', { from: 'native' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /^\[typo-avertissement\] eszett \|/m, 'aucun constat codé : ' + r.stderr);
+  assert.match(r.stderr, /article « essai »/);
+  assert.match(r.stderr, /mot « Klauß »/, 'le mot fautif n’est pas nommé : ' + r.stderr);
+  // Le champ se place AVANT la phrase française, qui ferme toujours la liste.
+  const ligne = r.stderr.split(/\r?\n/).find((l) => l.indexOf('eszett') !== -1);
+  assert.ok(ligne.indexOf('mot « Klauß »') < ligne.indexOf('un « ß » subsiste'),
+    'le champ `mot` ne précède pas la phrase française : ' + ligne);
+});
+
+test('typographie : eszett — en français (pas COLLEE), aucun constat', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': NATIF_ESZETT }, 'essai.md', 'szh-typographie.lua', { from: 'native' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/eszett/.test(r.stderr), 'un « ß » est signalé alors que l’article est français : ' + r.stderr);
+});
+
+const NATIF_GUILLEMETS =
+  '[ RawBlock (Format "html") "<table><tr><td>Er sagte \\"Hallo\\" da.</td></tr></table>" ]';
+
+test('typographie : guillemets droits — le constat porte le mot qui les entoure', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': NATIF_GUILLEMETS }, 'essai.md', 'szh-typographie.lua', { from: 'native' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /^\[typo-avertissement\] guillemets-droits \|/m, 'aucun constat codé : ' + r.stderr);
+  assert.match(r.stderr, /mot « "Hallo" »/, 'le mot fautif n’est pas nommé : ' + r.stderr);
+});
+
+const NATIF_MAJUSCULE =
+  '[ Para [ Str "Ecole", Space, Str "inclusive", Space, Str "pour", Space, Str "tous." ] ]';
+
+test('typographie : majuscule non accentuée (français, corps) — le constat porte le mot fautif', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': NATIF_MAJUSCULE }, 'essai.md', 'szh-typographie.lua', { from: 'native' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /^\[typo-avertissement\] majuscule-accentuee \|/m, 'aucun constat codé : ' + r.stderr);
+  assert.match(r.stderr, /mot « Ecole »/, 'le mot fautif n’est pas nommé : ' + r.stderr);
+});
+
+test('typographie : un « | » venu du texte, dans le mot fautif, ne coupe pas la ligne en deux', () => {
+  const md = '[ RawBlock (Format "html") "<table><tr><td>Vor a|\\"y\\" nach.</td></tr></table>" ]';
+  const r = pandocDansDossier(
+    { 'essai.md': md }, 'essai.md', 'szh-typographie.lua', { from: 'native' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const ligne = r.stderr.split(/\r?\n/).find((l) => l.indexOf('guillemets-droits') !== -1);
+  assert.ok(ligne, 'aucun constat : ' + r.stderr);
+  assert.match(ligne, /mot « a\/"y" »/, 'le « | » du texte n’a pas été neutralisé : ' + ligne);
+  assert.strictEqual(ligne.split(' | ').length, 5,
+    'le « | » du texte a coupé la ligne en deux : ' + ligne);
+});
+
 // ── szh-ressource.lua : SA propre langue_de(), plus simple — meta.lang direct (fr/de
 // seulement, pas de lecture de fiche), puis le jeton de revue, « fr » en dernier repli.
 // Sortie observée : le texte du lien généré, qui nomme la ressource dans la langue

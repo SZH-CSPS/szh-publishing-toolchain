@@ -28,6 +28,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
 const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
+const DOCX_TABLES = path.join(RACINE, 'pipeline', 'docx-tables.py');
 
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
@@ -228,6 +229,75 @@ test('docx-tables.py : un tableau sans en-tête avertit sans faire échouer l’
   // La ligne de statistiques porte le compte, comme le reste.
   assert.match(py, /sans en-tête' % len\(plats\)/,
     'le compte de tableaux plats a quitté la ligne de statistiques');
+});
+
+// ---- Tableau sans en-tête : le champ `debut`, pour que la flèche vise le bon tableau ----
+//
+// `tableau %d` reste un numéro nu — une recherche littérale de « 2 » tombe sur la première
+// date ou le premier numéro de page venu avant le bon tableau. `debut` porte un extrait de
+// la première cellule : un texte que le cockpit peut chercher tel quel. fabriquerDocxTableaux
+// (plus bas dans ce fichier) fabrique le .docx : une table sans w:tblHeader et sans première
+// rangée tout en gras, ce que docx-tables.py lit comme un tableau plat.
+
+test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la première cellule', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-debut-'));
+  try {
+    const docx = path.join(base, '02-essai.docx');
+    fabriquerDocxTableaux(docx, [
+      { p: ['Normal', 'Un paragraphe avant le tableau.'] },
+      { tbl: [
+        [[['Normal', 'Canton de Zurich et ses environs proches']], [['Normal', '128']]],
+        [[['Normal', 'Berne']], [['Normal', '96']]]
+      ] }
+    ]);
+    const dossierTables = path.join(base, 'tables');
+    fs.mkdirSync(dossierTables);
+    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '02-essai' })
+    });
+    assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
+    const ligne = String(r.stderr).split(/\r?\n/)
+      .find((l) => l.indexOf('tableau-sans-entete') !== -1);
+    assert.ok(ligne, 'aucun constat tableau-sans-entete : ' + r.stderr);
+    // Le champ `tableau` reste un numéro nu, inchangé : c'est lui que la phrase affichée
+    // continue de nommer.
+    assert.match(ligne, /\|\s*tableau 1\s*\|/, 'le champ `tableau` a disparu ou changé de forme : ' + ligne);
+    // Le nouveau champ `debut` porte le texte de la première cellule, pas le numéro.
+    assert.match(ligne, /\|\s*debut « Canton de Zurich et ses environs proches »\s*\|/,
+      'le champ `debut` est absent ou ne porte pas le texte de la 1re cellule : ' + ligne);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('docx-tables.py : première cellule vide — pas de champ `debut`, jamais vide', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-debut-vide-'));
+  try {
+    const docx = path.join(base, '03-essai.docx');
+    fabriquerDocxTableaux(docx, [
+      { tbl: [
+        [[['Normal', '']], [['Normal', '128']]],
+        [[['Normal', 'Berne']], [['Normal', '96']]]
+      ] }
+    ]);
+    const dossierTables = path.join(base, 'tables');
+    fs.mkdirSync(dossierTables);
+    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '03-essai' })
+    });
+    assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
+    const ligne = String(r.stderr).split(/\r?\n/)
+      .find((l) => l.indexOf('tableau-sans-entete') !== -1);
+    assert.ok(ligne, 'aucun constat tableau-sans-entete : ' + r.stderr);
+    assert.ok(!/debut «/.test(ligne),
+      'un champ `debut` est écrit alors que la première cellule est vide : ' + ligne);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });
 
 // ---- Redépôt du même Word contre homonymie de deux Word différents ----

@@ -36,11 +36,13 @@
   //
   // Protocole avec l'hôte :
   //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent,
-  //                     formeDoi: { motif, exemple }, verifTrad } ; formeDoi vaut la forme
-  //                     des DOI de la revue du numéro — absente sur la page de vérification
-  //                     d'import, qui ne l'envoie pas (voir champDoi plus bas) ; verifTrad
-  //                     dit si le vérificateur de traduction est actif (voir la pastille
-  //                     plus bas) ;
+  //                     formeDoi: { motif, exemple }, verifTrad, filtre, focus } ; formeDoi
+  //                     vaut la forme des DOI de la revue du numéro — absente sur la page de
+  //                     vérification d'import, qui ne l'envoie pas (voir champDoi plus bas) ;
+  //                     verifTrad dit si le vérificateur de traduction est actif (voir la
+  //                     pastille plus bas) ; focus nomme un [data-cle] à amener à l'écran —
+  //                     boutons de constat (revue F03), n'a d'effet que si filtre vaut une
+  //                     seule carte (voir focaliserChamp) ;
   //                     doi-manuel-reponse { slug, sens, ok } ;
   //                     mots-cles-connus { motsCles: [{ de, fr }] } (autocomplétion, voir
   //                     attacherAutocompletionMotsCles plus bas)
@@ -1032,6 +1034,9 @@
       };
       var editeurMots = SZH.motsCles(motsClesOpts);
       motsClesParCarte.set(carte, editeurMots);
+      // Pas de champ unique à focaliser (une grille) : la clé permet quand même à
+      // focaliserChamp() de retrouver le bloc par [data-cle], comme les autres champs.
+      editeurMots.element.dataset.cle = 'keywords';
       carte.appendChild(editeurMots.element);
       attacherAutocompletionMotsCles(editeurMots, motsClesOpts);
       // Une pastille PAR LANGUE et non par mot : le champ traduisible est la liste
@@ -1222,6 +1227,31 @@
       for (var carte of conteneur.querySelectorAll('.carte.modifie')) { carte.classList.remove('modifie'); }
     }
 
+    // Amène un champ à l'écran et y pose le curseur (revue F03, boutons de constat).
+    // `filtre` est celui du message « valeurs » — un focus n'a de sens que sur UNE carte, la
+    // vue filtrée sur un seul article : sur « tous les articles », on ne devine rien. `cle`
+    // vide, ou qui ne correspond à aucun [data-cle] de la carte, ne fait rien : la table
+    // (lib/constats.js) porte des focusChamp qui n'ont pas tous leur pendant ici (« pièce »,
+    // « chapitre », propres au formulaire du numéro/livre) — jamais d'erreur affichée.
+    function focaliserChamp(filtre, cle) {
+      var f = String(cle || '');
+      if (f === '' || !/^[A-Za-z0-9_-]+$/.test(f)) { return; }
+      if (!Array.isArray(filtre) || filtre.length !== 1) { return; }
+      var carte = null;
+      for (var c of conteneur.querySelectorAll('.carte')) {
+        if (c.dataset.slug === filtre[0]) { carte = c; break; }
+      }
+      if (!carte) { return; }
+      var el = carte.querySelector('[data-cle="' + f + '"]');
+      if (!el) { return; }
+      // La grille de mots-clés n'est pas elle-même saisissable : on pose le curseur sur sa
+      // première case, mais on amène le bloc entier à l'écran (plus lisible qu'une case
+      // isolée en haut de la fenêtre).
+      var cible = (f === 'keywords' && el.querySelector) ? (el.querySelector('input, textarea') || el) : el;
+      try { el.scrollIntoView({ block: 'center' }); } catch (e) { el.scrollIntoView(); }
+      if (typeof cible.focus === 'function') { cible.focus(); }
+    }
+
     // Traite les réponses de l'hôte qui concernent l'enregistrement et la photo. Rend
     // true si le message a été consommé, pour que la page n'ait pas à les connaître.
     // Course pret/valeurs : le « pret » de SZH.annoncerPret est redemandé toutes les
@@ -1243,6 +1273,7 @@
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
           msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null);
         surValeurs(msg);
+        if (msg.focus) { focaliserChamp(msg.filtre, msg.focus); }
         return true;
       }
       if (msg.type === SZH.MSG.ENREGISTRE) {
@@ -1337,6 +1368,7 @@
       marquer: marquer,
       message: message,
       enregistrement: enregistrement,
+      focaliserChamp: focaliserChamp,
 
       estModifie: function () { return modifies.size > 0; }
     };

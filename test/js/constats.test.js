@@ -147,6 +147,158 @@ test('cible : chaque lieu nommé existe, avec sa commande et son libellé', () =
   }
 });
 
+test('cible : un appel avec « / » n’est pas un chemin — il passe entier', () => {
+  // « / » sépare des années, pas des dossiers : dernierSegment() le mutilerait.
+  const c = constat('citations', 'appel-sans-reference', { appel: '(Schuljahr 2021/2022, 2019)' });
+  assert.deepStrictEqual(constats.cible(c),
+    { lieu: 'article', slug: '01-essai', focus: '(Schuljahr 2021/2022, 2019)' },
+    'l’appel a été rogné comme un chemin de fichier');
+});
+
+test('cible : une référence avec son DOI n’est pas un chemin — elle passe entière', () => {
+  const c = constat('citations', 'reference-orpheline',
+    { reference: 'Bovey, L. (2022). https://doi.org/10.1234/abc' });
+  assert.deepStrictEqual(constats.cible(c),
+    { lieu: 'article', slug: '01-essai', focus: 'Bovey, L. (2022). https://doi.org/10.1234/abc' },
+    'la référence a été rognée au dernier segment de son DOI');
+});
+
+test('cible : le fichier et l’image, eux, restent rognés à leur nom', () => {
+  const fichier = constat('pipeline', 'pdf-verrouille', { fichier: 'out/01-essai/01-essai.pdf' });
+  assert.strictEqual(constats.cible(fichier).focus, '01-essai.pdf');
+  const image = constat('numerotation', 'figure-sans-alt', { image: 'media/sous-dossier/fig-01.png' });
+  assert.strictEqual(constats.cible(image).focus, 'fig-01.png');
+});
+
+test('objet : la phrase et le bouton désignent la même chose, / compris', () => {
+  const appel = constat('citations', 'appel-sans-reference', { appel: '(Schuljahr 2021/2022, 2019)' });
+  assert.strictEqual(constats.objet(appel, 'fr'), constats.cible(appel).focus);
+  const reference = constat('citations', 'reference-orpheline',
+    { reference: 'Bovey, L. (2022). https://doi.org/10.1234/abc' });
+  assert.strictEqual(constats.objet(reference, 'fr'), constats.cible(reference).focus);
+  const image = constat('numerotation', 'figure-sans-alt', { image: 'media/sous-dossier/fig-01.png' });
+  assert.strictEqual(constats.objet(image, 'fr'), constats.cible(image).focus);
+});
+
+// ---- 2 bis. Les trois familles qui n’avaient aucune ligne (revue F03, 22.09.2026) --
+
+test('typo : le mot fautif mène à l’article, quand le filtre le fournit', () => {
+  const c = constat('typo', 'eszett', { mot: 'Strasse' });
+  assert.deepStrictEqual(constats.cible(c),
+    { lieu: 'article', slug: '01-essai', focus: 'Strasse' });
+  assert.match(constats.phrase(c, 'fr'), /^« ß » à la place de « ss » : Strasse$/);
+  assert.match(constats.phrase(c, 'de'), /^„ß“ statt „ss“: Strasse$/);
+  // La nuance du filtre (nom propre, citation) ne doit pas se perdre : elle vit dans le
+  // détail, à part de l’intitulé court.
+  for (const langue of ['fr', 'de']) {
+    assert.ok(constats.detail(c, langue).length > 0, 'détail manquant en ' + langue);
+  }
+});
+
+test('typo : sans le champ « mot » (pas encore écrit par le filtre), la flèche se dégrade proprement', () => {
+  // Deux chantiers parallèles ajoutent ce champ à l’émetteur ; en attendant, focusChamp lit
+  // un champ absent — la carte s’affiche quand même, sans flèche ni objet dans la phrase.
+  for (const code of ['eszett', 'guillemets-droits', 'majuscule-accentuee']) {
+    const c = constat('typo', code, {});
+    assert.strictEqual(constats.cible(c).focus, '', code + ' : la flèche n’a pas dégradé sur focus vide');
+    assert.strictEqual(constats.objet(c, 'fr'), '', code + ' : un objet est apparu sans champ');
+  }
+});
+
+test('typo : guillemets droits et majuscule non accentuée ont leur phrase, en fr et en de', () => {
+  const guillemets = constat('typo', 'guillemets-droits', { mot: '"cité"' });
+  assert.match(constats.phrase(guillemets, 'fr'), /^Guillemets droits au lieu de chevrons : "cité"$/);
+  assert.match(constats.phrase(guillemets, 'de'), /^Gerade Anführungszeichen statt Guillemets: "cité"$/);
+  const majuscule = constat('typo', 'majuscule-accentuee', { mot: 'Ecole' });
+  assert.match(constats.phrase(majuscule, 'fr'), /^Majuscule non accentuée : Ecole$/);
+  assert.match(constats.phrase(majuscule, 'de'), /^Grossbuchstabe ohne Akzent: Ecole$/);
+  // Les trois typo/* portent une nuance du filtre (ce qu'il NE corrige pas, et pourquoi) :
+  // perdue dans l'intitulé court, elle vit dans le détail — comme pour « eszett ».
+  for (const c of [guillemets, majuscule]) {
+    for (const langue of ['fr', 'de']) {
+      assert.ok(constats.detail(c, langue).length > 0,
+        c.code + ' : détail manquant en ' + langue);
+    }
+  }
+});
+
+test('metafichier : l’image native Word mène au formulaire des médias', () => {
+  const c = constat('metafichier', 'image-native-word', { image: 'schema.wmf' });
+  assert.deepStrictEqual(constats.cible(c),
+    { lieu: 'medias', slug: '01-essai', focus: 'schema.wmf' });
+  assert.match(constats.phrase(c, 'fr'), /^Image native Word non rendue : schema\.wmf$/);
+  assert.match(constats.phrase(c, 'de'), /^Natives Word-Bild nicht gerendert: schema\.wmf$/);
+});
+
+test('metafichier : le placeholder introuvable n’a aucun geste dans l’application', () => {
+  const c = constat('metafichier', 'placeholder-introuvable', {});
+  assert.strictEqual(constats.cible(c), null, 'panne de déploiement du poste : pas de bouton');
+  assert.match(constats.phrase(c, 'fr'), /^Substitut d’image manquant sur ce poste$/);
+});
+
+test('scission : image et tableau introuvables mènent au bon endroit, dans le bon champ', () => {
+  const image = constat('scission', 'image-introuvable', { chapitre: '02-suite', image: 'media/fig.png' });
+  assert.deepStrictEqual(constats.cible(image),
+    { lieu: 'medias', slug: '01-essai', focus: 'fig.png' });
+  const tableau = constat('scission', 'tableau-introuvable', { chapitre: '02-suite', tableau: 'tables/table-01.html' });
+  assert.strictEqual(constats.cible(tableau).lieu, 'article');
+  assert.strictEqual(constats.objet(tableau, 'fr'), 'tables/table-01.html');
+});
+
+test('scission : le champ « média » (accentué) du texte de tête et des liminaires est bien lu', () => {
+  // livre-scinder.py nomme ce champ « média », pas « media » : un désaccord d’accent
+  // laisserait la flèche muette (champsNommes de lib/journal.js est sensible à l’accent).
+  for (const code of ['liminaire-texte-media-introuvable', 'liminaire-media-introuvable']) {
+    const c = constat('scission', code, { média: 'media/x.png' });
+    assert.deepStrictEqual(constats.cible(c),
+      { lieu: 'medias', slug: '01-essai', focus: 'x.png' }, code);
+  }
+});
+
+test('scission : deux codes arrêtent vraiment la compilation, malgré leur préfixe « avertissement »', () => {
+  // livre-scinder.py appelle sys.exit(1) juste après avoir écrit ces deux-là : le barrage
+  // réel ne suit pas le ton du préfixe, il a été vérifié dans le code (revue F03).
+  for (const code of ['aucun-titre-niveau-1', 'chapitre-cible-existe']) {
+    assert.strictEqual(constats.gravite(constat('scission', code), { pdfua: true }), 'bloquant', code);
+  }
+});
+
+test('scission : le dossier d’origine conservé est une information, pas un défaut', () => {
+  const c = constat('scission', 'source-non-supprimee', { chapitre: '01-inclusion' });
+  assert.strictEqual(constats.gravite(c, { pdfua: true }), 'info');
+  assert.strictEqual(constats.fermable(c, { pdfua: true }), true);
+});
+
+test('import : le tableau des autrices et auteurs mène à l’article, sans flèche précise', () => {
+  for (const code of ['tableau-auteurs-non-lu', 'biblio-references-restees', 'biblio-non-detachee']) {
+    const c = constat('import', code, {});
+    assert.strictEqual(constats.cible(c).lieu, 'article', code);
+  }
+});
+
+test('import : le crédit de photo non repris est une information, sans geste possible', () => {
+  const c = constat('import', 'credit-photo-non-repris', {});
+  assert.strictEqual(constats.cible(c), null);
+  assert.strictEqual(constats.gravite(c, { pdfua: true }), 'info');
+});
+
+test('import : tableau sans en-tête — la flèche vise l’extrait, la phrase continue de nommer le tableau', () => {
+  const c = constat('import', 'tableau-sans-entete', { tableau: '2', debut: 'Nom de la colonne' });
+  assert.strictEqual(constats.cible(c).focus, 'Nom de la colonne',
+    'la flèche doit viser l’extrait repérable, pas le numéro nu');
+  assert.strictEqual(constats.objet(c, 'fr'), '2',
+    'la phrase doit continuer de nommer le tableau par son numéro');
+  assert.match(constats.phrase(c, 'fr'), /^Tableau sans en-tête : 2$/);
+});
+
+test('import : tableau sans en-tête — sans « debut » pas encore écrit, la phrase garde son objet', () => {
+  // L’autre chantier n’a pas encore ajouté ce champ à docx-tables.py : la flèche se
+  // dégrade sur focus vide, mais objetChamp continue de nommer le tableau.
+  const c = constat('import', 'tableau-sans-entete', { tableau: '2' });
+  assert.strictEqual(constats.cible(c).focus, '');
+  assert.strictEqual(constats.objet(c, 'fr'), '2');
+});
+
 // ---- 3. La phrase : un gabarit, pas un paragraphe ----------------------------------
 
 test('phrase : « {défaut} : {objet} », et rien de plus', () => {
@@ -223,7 +375,22 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
   const propres = ['pipeline/pdf-verrouille', 'pdfua/non-conforme', 'pdfua/outillage',
     'export/refus',
     'pdfua/regle', 'cockpit/doi-double', 'cockpit/sans-fiche', 'cockpit/image-sans-alt',
-    'cockpit/image-sans-legende'];
+    'cockpit/image-sans-legende',
+    // typo (szh-typographie.lua), metafichier (szh-metafichier.lua) et scission
+    // (livre-scinder.py) passent par le préfixe générique « <source>-<ton> » que
+    // familleCode() de lib/journal.js reconnaît sans code ni table CLES_* dédiée (même
+    // mécanisme que « scission » dans extension.js, SOURCES_CONSTAT) : codesDeJournal()
+    // ci-dessus ne peut donc pas les voir, alors que le journal les produit bel et bien.
+    'typo/eszett', 'typo/guillemets-droits', 'typo/majuscule-accentuee',
+    'metafichier/image-native-word', 'metafichier/placeholder-introuvable',
+    'scission/aucun-titre-niveau-1', 'scission/chapitre-cible-existe',
+    'scission/image-introuvable', 'scission/tableau-introuvable',
+    'scission/liminaire-texte-non-repris', 'scission/liminaire-texte-media-introuvable',
+    'scission/liminaire-media-introuvable', 'scission/source-non-supprimee',
+    // Quatre codes de docx-meta.py qui passent par « [import-avertissement] » sans entrée
+    // dans CLES_IMPORT (revue F03, 22.09.2026) : même raison, même repli.
+    'import/tableau-auteurs-non-lu', 'import/biblio-references-restees',
+    'import/biblio-non-detachee', 'import/credit-photo-non-repris'];
   const mortes = Object.keys(constats.TABLE)
     .filter((cle) => !connus.has(cle) && propres.indexOf(cle) === -1);
   assert.deepStrictEqual(mortes, [], 'entrées sans émetteur : ' + mortes.join(', '));

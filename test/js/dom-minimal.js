@@ -233,7 +233,11 @@ function element(balise) {
       while (n) { if (correspond(n, s)) { return n; } n = n.parent; }
       return null;
     },
-    focus() {}, click() { e.dispatchEvent({ type: 'click' }); }, scrollIntoView() {},
+    // `_focused`/`_scrolled` : posés sur l'élément lui-même, pas sur un état partagé de la
+    // page — un test qui veut prouver « ce champ précis a reçu le curseur » (revue F03,
+    // focaliserChamp/focaliser) n'a qu'à relire l'élément qu'il a retrouvé par [data-cle].
+    focus() { e._focused = true; }, click() { e.dispatchEvent({ type: 'click' }); },
+    scrollIntoView() { e._scrolled = true; },
     getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
   };
   return e;

@@ -133,6 +133,93 @@ test('métadonnées des articles : deux « valeurs » avec le même jeton ne rec
     'rechargement: true n’a pas passé outre le jeton déjà consommé');
 });
 
+// ---- Revue F03 (22.09.2026) : le focus d'un bouton de constat, jusqu'au champ -----------
+//
+// lib/constats.js déclare un focusChamp/focusFixe (« title », « doi », « keywords »…) pour
+// une quinzaine de codes visant « fiche » ; ouvrirMetadonneesArticle le fait maintenant
+// suivre jusqu'ici (test/js/metadonnees-hote.test.js le tient côté hôte, le clic complet
+// depuis un vrai constat est dans test/js/controles.test.js). Ce qui manquait aux deux :
+// la preuve que le champ visé reçoit VRAIMENT le curseur — dom-minimal.js pose _focused et
+// _scrolled sur l'élément quand la page appelle .focus()/.scrollIntoView().
+test('métadonnées des articles : focus amène le bon champ à l’écran et lui pose le curseur', () => {
+  const cible = articlesDuCorpus()[0];
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: [cible], types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: [cible.slug],
+                 focus: 'title' });
+  const carte = page.conteneur().querySelectorAll('.carte')[0];
+  const champ = carte.querySelector('[data-cle="title"]');
+  assert.ok(champ, 'le champ titre est introuvable');
+  assert.strictEqual(champ._focused, true, 'le champ visé n’a pas reçu le curseur');
+  assert.strictEqual(champ._scrolled, true, 'le champ visé n’a pas été amené à l’écran');
+});
+
+// meta/marque-motcle vise « keywords », qui n'est pas un champ isolé mais une grille
+// (SZH.motsCles) : editeurMots.element porte quand même data-cle="keywords", pour que
+// focaliserChamp() le retrouve comme les autres champs, et pose le curseur sur sa première
+// case plutôt que sur le bloc lui-même (qui n'est pas saisissable).
+test('métadonnées des articles : focus « keywords » vise la grille de mots-clés', () => {
+  // Une grille sans aucun mot-clé n'a AUCUNE rangée à l'écran (SZH.motsCles, _commun.js,
+  // nbRangees()) : rien à focaliser tant qu'on n'a pas cliqué « Ajouter ». Un mot-clé
+  // existant donne à la grille au moins une case, comme le cas réel que vise le constat
+  // meta/marque-motcle (un mot-clé déjà là, marqué à compléter).
+  const valeurs = analyserMeta('');
+  valeurs.lang = 'fr';
+  valeurs.keywords = { fr: ['un mot-clé'] };
+  const cible = { slug: 'a', valeurs: valeurs };
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: [cible], types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: ['a'],
+                 focus: 'keywords' });
+  const carte = page.conteneur().querySelectorAll('.carte')[0];
+  const grille = carte.querySelector('[data-cle="keywords"]');
+  assert.ok(grille, 'la grille de mots-clés ne porte pas data-cle="keywords"');
+  assert.strictEqual(grille._scrolled, true, 'la grille n’est pas amenée à l’écran');
+  const premiereCase = grille.querySelector('input, textarea');
+  assert.ok(premiereCase && premiereCase._focused,
+    'aucune case de la grille de mots-clés n’a reçu le curseur');
+});
+
+// Un focus qui ne désigne aucun champ de CETTE carte (« pièce », « chapitre » : propres au
+// formulaire du numéro/livre — lib/constats.js en porte pour « numero ») ne doit rien
+// focaliser et surtout ne rien lever ; un filtre qui ne vaut pas une seule carte (« Voir
+// tous les articles ») ne devine pas laquelle viser, et ne focalise rien non plus.
+test('métadonnées des articles : focus introuvable ou filtre ambigu ne focalisent rien, sans lever', () => {
+  const articles = articlesDuCorpus().slice(0, 2);
+  assert.ok(articles.length >= 2, 'corpus trop maigre pour éprouver le filtre ambigu');
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  assert.doesNotThrow(() => page.envoyer({
+    type: 'valeurs', articles: [articles[0]], types: TYPES, langue: 'fr',
+    licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: [articles[0].slug],
+    focus: 'pièce'
+  }), 'un focus inconnu ne doit jamais lever');
+  const aucunFocalise = (page) => page.conteneur().querySelectorAll('input, select, textarea')
+    .every((e) => !e._focused);
+  assert.ok(aucunFocalise(page), 'un focus inconnu a quand même focalisé un champ');
+
+  // Filtre à deux articles (ou tous) : focus présent, mais rien à viser sans ambiguïté.
+  assert.doesNotThrow(() => page.envoyer({
+    type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+    licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null, focus: 'title'
+  }), 'un filtre ambigu ne doit jamais lever');
+  assert.ok(aucunFocalise(page), 'un filtre ambigu a quand même focalisé un champ');
+});
+
 // « Markdown » : le texte de l'article à droite de sa fiche. La page ne décide de RIEN —
 // elle demande la bascule et se peint sur la réponse de l'hôte, qui seul sait ce que les
 // onglets portent. Un bouton qui tiendrait son propre état resterait allumé devant un

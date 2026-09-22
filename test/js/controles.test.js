@@ -760,6 +760,43 @@ test('vue : le bouton ouvre le formulaire sur l’image en cause', async () => {
   await HOTE.finirTache('Aperçu / Export PDF', 0);
 });
 
+// Revue F03 (22.09.2026) : szh.metadonneesArticle était enregistrée sans paramètre, donc
+// « fiche » perdait TOUJOURS son focus — même quand la table le déclarait (champ-vide ->
+// focusChamp 'champ'). Les deux chemins de médias, ci-dessus, ont leur pendant ici : une
+// charge neuve qui porte « focus », un panneau déjà ouvert qui en reçoit une nouvelle
+// (les fiches se reconstruisent à chaque filtre, il n'y a pas de second message « focaliser »
+// à part — voir le commentaire d'ouvrirApercuMetadonnees, lib/metadonnees-hote.js).
+test('vue : le bouton ouvre la fiche sur le champ en cause, panneau neuf puis déjà ouvert', async () => {
+  poserJournal(JOURNAL_CIBLES);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const champ = parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /Champ vide/);
+  assert.strictEqual(champ.action.id, 'fiche:title');
+
+  await p._recepteur({ type: 'action', cle: champ.carte.cle, id: champ.action.id });
+  const fiches = HOTE.panneauDeType('szhApercuMetadonnees');
+  assert.ok(fiches, 'le bouton n’a pas ouvert le formulaire des fiches');
+  await fiches._recepteur({ type: 'pret' });
+  let valeurs = fiches.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.strictEqual(valeurs.focus, 'title',
+    'le panneau neuf ne reçoit pas le focus dans sa charge : ' + JSON.stringify(valeurs));
+  assert.deepStrictEqual(valeurs.filtre, ['01-essai']);
+
+  // Le panneau vit déjà : on reclique le même bouton (rien de modifié entre les deux, donc
+  // pas de question « recharger ? »). Une seconde « valeurs » doit reporter le focus, sans
+  // qu'on repasse par « pret » — qui rechargerait sur l'état précédent du panneau.
+  fiches.messages.length = 0;
+  await p._recepteur({ type: 'action', cle: champ.carte.cle, id: champ.action.id });
+  valeurs = fiches.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.ok(valeurs, 'le panneau déjà ouvert ne reçoit rien au second clic');
+  assert.strictEqual(valeurs.focus, 'title');
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
 // Le défaut que Robin a signalé le 13.09.2026 : la flèche était là, elle ne faisait rien.
 // lib/constats.js appelle chaque destination avec { slug, focus } — c'est écrit en tête de
 // sa table — et szh.ouvrirArticle attendait un slug tout court : elle repartait sur

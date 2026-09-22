@@ -397,7 +397,10 @@ function lirePipeline(reste) {
     return { source: 'pipeline', code: 'profil-rien', ton: 'info', slug: '',
              cle: 'ctl.profil.rien', args: [], champs: {} };
   }
-  if (/^profil « book »/.test(reste)) {
+  // La prose a dérivé (Makefile:242, cible profil-book-sans-fichier) : la regex suit
+  // désormais celle-là, mot pour mot — sans quoi ce constat ne peut plus jamais apparaître
+  // (revue F03, 22.09.2026 ; test/js/contrats.test.js le tient depuis).
+  if (/^Ce dossier déclare « profil: book » mais n'a pas de buch\.yaml\./.test(reste)) {
     return { source: 'pipeline', code: 'profil-differe', ton: 'danger', slug: '',
              cle: 'ctl.profil.differe', args: [], champs: {} };
   }

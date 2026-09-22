@@ -117,6 +117,23 @@ const TABLE = Object.freeze({
     defaut: 'defaut.niveaux-ecrases' },
   'rendu/police-manquante': { barrage: null, nature: D, lieu: '',
     defaut: 'defaut.police-manquante' },
+  // ---- La typographie (szh-typographie.lua) ---------------------------------------
+  // Les trois codes n'écrivent pas encore de champ « mot » : deux chantiers parallèles
+  // l'ajoutent à l'émetteur. En attendant, focusChamp lit un champ absent et la flèche se
+  // dégrade proprement (focus '') — voir valeurChamp() ci-dessus.
+  'typo/eszett': { barrage: null, nature: D, lieu: 'article', focusChamp: 'mot',
+    defaut: 'defaut.typo-eszett', detail: 'detail.typo-eszett' },
+  'typo/guillemets-droits': { barrage: null, nature: D, lieu: 'article', focusChamp: 'mot',
+    defaut: 'defaut.typo-guillemets-droits', detail: 'detail.typo-guillemets-droits' },
+  'typo/majuscule-accentuee': { barrage: null, nature: D, lieu: 'article', focusChamp: 'mot',
+    defaut: 'defaut.typo-majuscule-accentuee', detail: 'detail.typo-majuscule-accentuee' },
+  // ---- Les images natives Word (szh-metafichier.lua) ------------------------------
+  'metafichier/image-native-word': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.metafichier-image-native' },
+  // Le toolkit déployé sur ce poste n'a pas le placeholder : un défaut de déploiement,
+  // aucun geste dans l'application.
+  'metafichier/placeholder-introuvable': { barrage: null, nature: D, lieu: '',
+    defaut: 'defaut.metafichier-placeholder-introuvable' },
   // ---- Les métadonnées et la langue ----------------------------------------------
   'meta/champ-vide': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusChamp: 'champ', defaut: 'defaut.champ-vide' },
@@ -155,8 +172,12 @@ const TABLE = Object.freeze({
   'import/echec': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.import-echec' },
   'import/restes': { barrage: null, nature: A, lieu: 'word', defaut: 'defaut.import-restes' },
+  // La flèche vise un extrait repérable de la première cellule (« debut », que l'autre
+  // chantier ajoute à docx-tables.py) ; la phrase continue de nommer le tableau
+  // (« tableau », déjà écrit) — objetChamp passe désormais avant focusChamp dans objet(),
+  // pour ce cas précis où cible et objet ne doivent plus être le même champ.
   'import/tableau-sans-entete': { barrage: null, nature: D, lieu: 'article',
-    focusChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
+    focusChamp: 'debut', objetChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
   'import/langue-deduite': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'lang',
     defaut: 'defaut.langue-deduite' },
   // Titre et sous-titre sont voisins dans le formulaire : la carte ouvre le premier, et
@@ -221,6 +242,18 @@ const TABLE = Object.freeze({
     focusFixe: 'lang', defaut: 'defaut.pronto-langue-ignoree' },
   'import/origine-inconnue': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.origine-inconnue' },
+  // Quatre codes de docx-meta.py restés sans ligne ici ni dans lib/journal.js : ils
+  // s'affichaient par le repli générique, sans flèche (revue F03, 22.09.2026).
+  'import/tableau-auteurs-non-lu': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.tableau-auteurs-non-lu' },
+  'import/biblio-references-restees': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.biblio-references-restees' },
+  'import/biblio-non-detachee': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.biblio-non-detachee' },
+  // Le crédit de photo n'a nulle part où aller : la fiche n'a pas de champ pour lui. Une
+  // information, pas un défaut à corriger dans l'application.
+  'import/credit-photo-non-repris': { barrage: null, nature: F, lieu: '',
+    defaut: 'defaut.credit-photo-non-repris' },
   // ---- Le réimport d'un Word corrigé ---------------------------------------------
   'import/reimport-sans-article': { barrage: null, nature: D, lieu: 'word',
     defaut: 'defaut.reimport-sans-article' },
@@ -281,6 +314,30 @@ const TABLE = Object.freeze({
   // chose, et un bouton qui mènerait « quelque part » serait un mensonge.
   'import/biblio-fichier-refuse': { barrage: null, nature: D, lieu: '',
     defaut: 'defaut.biblio-fichier-refuse', detail: 'detail.biblio-fichier-refuse' },
+  // ---- La scission d'un manuscrit de livre (livre-scinder.py) --------------------
+  // Préfixe « [scission-avertissement] » pour tous, mais deux d'entre eux appellent
+  // sys.exit(1) juste après avoir écrit leur constat : ils arrêtent bel et bien la
+  // compilation (barrage réel vérifié dans le code, pas seulement dans le préfixe).
+  'scission/aucun-titre-niveau-1': { barrage: 'compilation', nature: D, lieu: 'article',
+    defaut: 'defaut.scission-aucun-titre' },
+  // Un dossier de chapitre porte déjà ce nom, sans rapport avec ce manuscrit : à renommer
+  // dans l'explorateur de Windows, le cockpit n'a pas ce geste.
+  'scission/chapitre-cible-existe': { barrage: 'compilation', nature: D, lieu: '',
+    defaut: 'defaut.scission-chapitre-existe' },
+  'scission/image-introuvable': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.scission-image-introuvable' },
+  'scission/tableau-introuvable': { barrage: null, nature: D, lieu: 'article',
+    focusChamp: 'tableau', defaut: 'defaut.scission-tableau-introuvable' },
+  'scission/liminaire-texte-non-repris': { barrage: null, nature: D, lieu: 'numero',
+    defaut: 'defaut.scission-liminaire-texte-non-repris' },
+  'scission/liminaire-texte-media-introuvable': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'média', defaut: 'defaut.scission-liminaire-texte-media-introuvable' },
+  'scission/liminaire-media-introuvable': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'média', defaut: 'defaut.scission-liminaire-media-introuvable' },
+  // Le dossier d'origine reste sur le disque, en plus des nouveaux chapitres : une
+  // information à lire, le nettoyage qui suit est manuel.
+  'scission/source-non-supprimee': { barrage: null, nature: F, lieu: '',
+    defaut: 'defaut.scission-source-non-supprimee' },
   // ---- Le livre ------------------------------------------------------------------
   'livre/liminaire-introuvable': { barrage: 'compilation', nature: D, lieu: 'numero',
     focusChamp: 'pièce', defaut: 'defaut.liminaire-introuvable' },
@@ -352,12 +409,29 @@ function fermable(constat, contexte) {
   return gravite(constat, contexte) === 'info';
 }
 
+// Les focusChamp qui désignent vraiment un fichier sur le disque — les seuls dont le
+// formulaire ne veut que le nom. Une donnée, pas un `if` au milieu de cible() : objet()
+// lit le même ensemble, pour que le bouton et la phrase désignent toujours la même chose.
+// « média » : le même chemin qu'« image » (livre-scinder.py, un média de pièce liminaire),
+// vers le même formulaire des médias — le nom seul, pas le chemin.
+const CHAMPS_FICHIER = new Set(['fichier', 'image', 'média']);
+
 // Un chemin ne sert à personne dans un formulaire : seul le nom du fichier y désigne une
-// image. Les noms de champ, eux, ne portent jamais de séparateur.
+// image ou un Word. Ne s'applique qu'aux champs de CHAMPS_FICHIER : un appel de citation,
+// une référence (son DOI est une URL) ou une fourchette d'années portent parfois un « / »
+// sans être un chemin, et les couper au dernier séparateur mutilerait le texte affiché.
 function dernierSegment(valeur) {
   const v = String(valeur === undefined || valeur === null ? '' : valeur);
   const i = Math.max(v.lastIndexOf('/'), v.lastIndexOf('\\'));
   return i === -1 ? v : v.slice(i + 1);
+}
+
+// La valeur d'un focusChamp telle qu'elle doit se lire : rognée au nom de fichier pour
+// CHAMPS_FICHIER, entière pour tous les autres. cible() (le bouton) et objet() (la phrase)
+// appellent tous deux celle-ci — jamais chacun sa règle.
+function valeurChamp(nomChamp, valeur) {
+  if (CHAMPS_FICHIER.has(nomChamp)) { return dernierSegment(valeur); }
+  return String(valeur === undefined || valeur === null ? '' : valeur);
 }
 
 // -> { lieu, slug, focus } ou null quand aucun geste n'existe pour ce défaut.
@@ -371,7 +445,7 @@ function cible(constat) {
   const champs = (constat && constat.champs) || {};
   let focus = '';
   if (e.focusFixe) { focus = e.focusFixe; }
-  else if (e.focusChamp) { focus = dernierSegment(champs[e.focusChamp]); }
+  else if (e.focusChamp) { focus = valeurChamp(e.focusChamp, champs[e.focusChamp]); }
   return { lieu: lieu, slug: String((constat && constat.slug) || ''), focus: focus };
 }
 
@@ -391,11 +465,13 @@ function objet(constat, langue) {
   const e = entree(constat);
   if (!e) { return ''; }
   const champs = (constat && constat.champs) || {};
-  if (e.focusChamp && champs[e.focusChamp] !== undefined) {
-    return dernierSegment(champs[e.focusChamp]);
-  }
-  // Les constats dont l'objet ne sert pas de cible : leur champ est nommé ici.
+  // objetChamp d'abord : posé exprès quand l'objet de la phrase doit différer de la cible
+  // du bouton (import/tableau-sans-entete — la flèche vise un extrait repérable, la
+  // phrase continue de nommer le tableau). Sans lui, on retombe sur le champ de la cible.
   if (e.objetChamp && champs[e.objetChamp] !== undefined) { return String(champs[e.objetChamp]); }
+  if (e.focusChamp && champs[e.focusChamp] !== undefined) {
+    return valeurChamp(e.focusChamp, champs[e.focusChamp]);
+  }
   return '';
 }
 
