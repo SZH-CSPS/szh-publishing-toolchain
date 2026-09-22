@@ -2,7 +2,7 @@
 
 > **Écrit le 22.09.2026** pour l'agent qui prend ce chantier **sur un autre poste**, sans avoir
 > assisté à la session où il a été cadré. Tu connais peut-être le dépôt ; tu ne connais pas ce
-> lot-ci, qui est récent et **pas encore committé**.
+> lot-ci, qui date du jour même.
 
 **La demande en une phrase :** `pipeline/lexique/noms-famille.txt` ne porte aujourd'hui que les
 1 282 noms tirés des bibliographies du corpus local ; il faut l'élargir aux noms de famille les
@@ -21,26 +21,32 @@ Vérifie ces quatre points **avant** de commencer ; trois sur quatre sont bloqua
 
 | | État | Quoi faire |
 |---|---|---|
-| **Le code du lot** | ⛔ **non suivi par git** au 22.09.2026 | Voir ci-dessous — sans ça, rien à faire |
+| **Le code du lot** | ✅ committé et poussé le 22.09.2026 | `git pull`, puis lis le §1. Voir la réserve ci-dessous |
 | `tmp/docx-dev` (77 galleys) | ⛔ hors dépôt (`tmp/` est dans `.gitignore`) | Tu n'en as **pas besoin** si tu suis le §7. Ne tente pas de le reconstituer |
 | `C:\ProgramData\SZH\auteurs.json` | ⚠ absent d'un poste neuf | Nécessaire au banc de mesure (§6). Il se moissonne tout seul sur l'OAI-PMH **public** de `ojs.szh.ch` : lance VSCodium avec le cockpit, ou le lanceur `windows/open-produit.ps1`. Voir le §5.5 quinquies du contrat |
 | Python 3.11+ | — | Mesuré ici sur 3.11.9. **stdlib seule**, aucune dépendance tierce nulle part dans ce lot |
 
-**Les fichiers non suivis**, au 22.09.2026 (`git status --porcelain`) :
+**Le lot est dans `4d47dec`**, sur `main` — 17 fichiers, 5 508 lignes :
 
 ```
-?? pipeline/manuscrit_noms.py                              <- le consommateur du lexique
-?? pipeline/lexique/                                       <- noms-famille.txt lui-même
-?? outils-dev/lexique/generer-noms.py                      <- le générateur
-?? test/js/manuscrit-noms.test.js
-?? test/js/lexique-noms.test.js
-?? vscodium-extension/szh-cockpit/outils/auteurs-cli.js
- M outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md          <- le contrat, §5.5 ter/quater/quinquies
+pipeline/manuscrit_noms.py                    765 l.   <- le consommateur du lexique
+pipeline/lexique/noms-famille.txt            1285 l.   <- le lexique lui-même
+outils-dev/lexique/generer-noms.py            459 l.   <- le générateur
+outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md +307 l. <- le contrat, §5.5 ter/quater/quinquies
+test/js/manuscrit-noms.test.js, lexique-noms.test.js, auteurs-cli.test.js, auteurs-lanceur.test.js
+pipeline/manuscrit_entete.py, manuscrit-nettoyer.py, docx-meta.py, windows/open-produit.ps1,
+vscodium-extension/szh-cockpit/outils/auteurs-cli.js   <- le branchement
 ```
 
-Ils sont mêlés dans l'arbre à un autre chantier non committé. **Demande à Robin de committer et
-pousser ce lot, ou de te transférer ces fichiers**, et refuse de partir d'une reconstitution :
-`manuscrit_noms.py` fait 765 lignes de décisions mesurées, elles ne se devinent pas.
+⚠ **Réserve** : c'est un commit `wip(`, poussé sous pression de temps et **mêlé à d'autres
+chantiers du même arbre** (import, pronto, typographie). Ne prends pas son contenu pour une
+frontière de lot propre, et ne conclus rien d'un `git log` sur ces fichiers-là. Le contrat
+(`ARCHITECTURE-nettoyeur-manuscrit.md`) fait foi, pas l'historique.
+
+⚠ **Sept tests de réimport échouent sur un poste Windows** (`test/js/reimport.test.js`) : un défaut
+connu de chemin Windows dans le harnais (`C:UsersrobinAppData…`, les antislashs mangés), **pas une
+régression** et **hors de ton périmètre**. Ne les corrige pas, ne t'en sers pas comme ligne de
+base : compare le nombre d'échecs avant et après ton lot, pas à zéro.
 
 ---
 
