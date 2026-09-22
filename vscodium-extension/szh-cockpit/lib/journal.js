@@ -144,6 +144,15 @@ const CLES_IMPORT = {
   'sous-titre-deduit': 'ctl.import.sous-titre-deduit',
   'word-redepose': 'ctl.import.word-redepose',
   'origine-inconnue': 'ctl.import.origine-inconnue',
+  // La bibliographie détachée du corps de l'article, à l'import (szh-biblio-detacher.lua).
+  // Ses quatre codes passent par le chemin générique — préfixe « [import-<ton>] », sans
+  // règle nommée ici — et arrivaient donc à l'écran avec la prose du filtre, en allemand
+  // sur un poste allemand et sous un triangle d'avertissement pour le cas NOMINAL. Ils ont
+  // désormais leur phrase, et leur ligne dans lib/constats.js décide de leur couleur.
+  'biblio-detachee': 'ctl.import.biblio-detachee',
+  'biblio-incomplete': 'ctl.import.biblio-incomplete',
+  'biblio-bornes-perdues': 'ctl.import.biblio-bornes-perdues',
+  'biblio-fichier-refuse': 'ctl.import.biblio-fichier-refuse',
   // Le réimport. Une seule table pour les deux chemins qui mènent ces codes à l'écran —
   // le journal d'import relu ligne à ligne, et la ligne JSON que le cockpit reçoit quand
   // il lance le réimport lui-même (constatsReimport ci-dessous).
@@ -218,6 +227,9 @@ const ARGS = {
   'import/sous-titre-deduit': (ch) => [ch('soustitre')],
   'import/word-redepose': (ch) => [ch('fichier')],
   'import/origine-inconnue': (ch) => [ch('fichier')],
+  // Le seul des quatre codes de bibliographie qui ait un nombre à dire : combien de
+  // paragraphes sont restés dans le texte. Les trois autres se suffisent.
+  'import/biblio-incomplete': (ch) => [ch('paragraphes')],
   'meta/champ-vide': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-champ': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-motcle': (ch, l) => [ch('motcle'), nomLangue(ch('langue'), l)],

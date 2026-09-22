@@ -50,6 +50,10 @@ var SZH = (function () {
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
     ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
+    // Fermer un message : deux traits nus. Jamais un cercle autour — ce serait l'icône
+    // `danger`, et la croix qui efface se lirait comme la croix qui alarme.
+    croix: [['path', { d: 'M4.3 4.3 11.7 11.7M11.7 4.3 4.3 11.7', fill: 'none',
+      stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round' }]],
     // Ajouter : deux barres, rien de plus. Le libellé du bouton dit quoi.
     plus: [['path', { d: 'M7.25 3h1.5v4.25H13v1.5H8.75V13h-1.5V8.75H3v-1.5h4.25V3z' }]],
     // Rien n'est commencé : le cercle vide de l'arbre.
@@ -1149,7 +1153,25 @@ var SZH = (function () {
           }(String(ligne.cle || ''), String(action.id || ''))),
           'szh-ico--enligne'));
       }
-      return notif(msg.ton || 'info', contenu);
+      var boite = notif(msg.ton || 'info', contenu);
+      // La croix, seulement là où l'hôte l'autorise — c'est lui qui sait qu'un message est
+      // gris (lib/constats.js, fermable), et la page ne le redevine pas. Elle est posée
+      // hors du corps, contre le bord droit : le geste du défaut suit la phrase, celui-ci
+      // ferme la boîte et n'a rien à voir avec ce qu'elle dit.
+      if (msg.fermable && msg.empreinte) {
+        var mots = lireTextes() || {};
+        boite.appendChild(boutonIcone('croix', mots.fermerConstat || '',
+          (function (empreinte, elem) {
+            return function () {
+              // Retirée tout de suite : l'hôte renverra la vue, mais le clic doit se voir
+              // sans attendre l'aller-retour.
+              elem.remove();
+              if (opts.onFermer) { opts.onFermer(empreinte); }
+            };
+          }(String(msg.empreinte), boite)),
+          'szh-notif-croix'));
+      }
+      return boite;
     }
 
     // Les pastilles d'une carte, reposées seules, et le compteur de son entête « À faire »

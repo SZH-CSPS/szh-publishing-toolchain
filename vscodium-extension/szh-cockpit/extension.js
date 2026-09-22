@@ -2807,7 +2807,8 @@ function htmlVueEnsemble(nonce, titre) {
 }
 
 function textesVueEnsemble() {
-  return { ouvrir: T('vue.ouvrir'), listeVide: T('vue.rien') };
+  return { ouvrir: T('vue.ouvrir'), listeVide: T('vue.rien'),
+           fermerConstat: T('ctl.constat.fermer') };
 }
 
 // Ton et pictogramme d'un état d'atelier, les mêmes que dans l'arbre : bleu ce qui est
@@ -3157,6 +3158,53 @@ function actionsConstat(constat, connus) {
             libelle: T(lieu.libelle), icone: lieu.icone, tip: T(lieu.tip) }];
 }
 
+// ---- Les constats « Pour information » qu'on a fermés d'un clic -------------------
+//
+// Un constat gris ne demande rien : il dit qu'une chose s'est bien passée, ou qu'on a pris
+// une décision à la place du rédacteur. Il a donc une croix, et lui seul — un bloquant se
+// corrige, il ne se referme pas (lib/constats.js, `fermable`).
+//
+// Ce qu'on retient n'est pas le code du constat mais son EMPREINTE : la racine, l'article,
+// le code et la phrase affichée. Le jour où le fait change — « sauf 2 paragraphes » là où
+// il n'y en avait aucun —, la phrase change avec lui, l'empreinte ne correspond plus, et le
+// message revient. Fermer, c'est donc dire « j'ai lu CE fait », jamais « tais-toi sur ce
+// sujet ». globalState : « l'ai-je lu ? » est propre au compte, pas à la machine.
+const CLE_CONSTATS_FERMES = 'szh.constats.fermes';
+// La liste ne peut pas croître sans fin : les plus anciennes empreintes tombent. 400 tient
+// plusieurs numéros entiers, et une empreinte oubliée ne fait que réafficher un message gris.
+const MAX_CONSTATS_FERMES = 400;
+
+// L'état de l'extension, gardé pour les fonctions qui ne le reçoivent pas en argument.
+// Posé par activate() et jamais ailleurs ; nul avant elle, et tout ce qui le lit s'en
+// accommode — un cockpit sans mémoire montre simplement tous ses constats.
+let etatPoste = null;
+
+const SEP_EMPREINTE = '\u0001';   // le même qu'en lib/journal.js
+
+function empreinteConstat(racine, constat, texte) {
+  return [String(racine || ''), String((constat && constat.source) || ''),
+          String((constat && constat.code) || ''), String((constat && constat.slug) || ''),
+          String(texte || '')].join(SEP_EMPREINTE);
+}
+
+function constatsFermes() {
+  if (!etatPoste) { return new Set(); }
+  const liste = etatPoste.globalState.get(CLE_CONSTATS_FERMES);
+  return new Set(Array.isArray(liste) ? liste.map(String) : []);
+}
+
+// -> true si la liste a changé, c'est-à-dire s'il y a une vue à renvoyer.
+async function fermerConstat(empreinte) {
+  const cle = String(empreinte || '');
+  if (!etatPoste || cle === '') { return false; }
+  const liste = Array.from(constatsFermes());
+  if (liste.indexOf(cle) !== -1) { return false; }
+  liste.push(cle);
+  await etatPoste.globalState.update(CLE_CONSTATS_FERMES,
+    liste.slice(Math.max(0, liste.length - MAX_CONSTATS_FERMES)));
+  return true;
+}
+
 // Une carte par article, et non une par constat. Trois défauts de citation sur le même
 // article donnaient trois cartes portant le même nom, le même sous-titre et le même bouton :
 // on relisait l'entête trois fois pour trois phrases, et rien ne disait qu'elles parlaient
@@ -3173,12 +3221,19 @@ function vueControles(fournisseur) {
   const langue = langueCockpit();
   const connus = new Set(fournisseur.listerArticles());
   const contexte = contexteConstats();
+  const fermes = constatsFermes();
   const lignes = [];
   for (const gravite of ['bloquant', 'avert', 'info']) {
     const cartes = new Map();
     for (const c of constats) {
       if (tableConstats.gravite(c, contexte) !== gravite) { continue; }
       const detail = tableConstats.detail(c, langue);
+      // La phrase est calculée avant la carte : c'est elle qui entre dans l'empreinte, et
+      // un message fermé ne doit pas faire naître une carte vide à lui tout seul.
+      const texte = tableConstats.phrase(c, langue) + (detail === '' ? '' : ' ' + detail);
+      const fermable = tableConstats.fermable(c, contexte);
+      const empreinte = fermable ? empreinteConstat(racine, c, texte) : '';
+      if (fermable && fermes.has(empreinte)) { continue; }
       const source = T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline');
       let carte = cartes.get(c.slug);
       if (!carte) {
@@ -3200,9 +3255,12 @@ function vueControles(fournisseur) {
       if (carte.meta !== source) { carte.meta = ''; }
       carte.messages.push({
         ton: tableConstats.ton(c, contexte),
-        texte: tableConstats.phrase(c, langue) + (detail === '' ? '' : ' ' + detail),
+        texte: texte,
         // Un seul geste par défaut, ou aucun : actionsConstat rend au plus une entrée.
-        action: actionsConstat(c, connus)[0] || null
+        action: actionsConstat(c, connus)[0] || null,
+        // La croix, et de quoi la retenir. Vide partout ailleurs : la page ne pose pas de
+        // croix sans empreinte, et n'a donc rien à décider.
+        fermable: fermable, empreinte: empreinte
       });
     }
   }
@@ -3385,6 +3443,13 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
     // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
     if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { envoyer(panneau); return; }
+    // La croix d'un constat gris. Retenue, puis la vue est renvoyée : la page l'a déjà
+    // retirée de son côté, mais c'est l'hôte qui décide de ce qu'elle montre, et le lot
+    // « Pour information » peut s'être vidé en entier.
+    if (msg.type === MSG.CONSTAT_FERMER) {
+      if (await fermerConstat(msg.empreinte)) { envoyer(panneau); }
+      return;
+    }
     if (msg.type === MSG.OUVRIR) {
       // Par la commande, et non par la fonction : c'est cmdEcriture qui porte la garde du
       // verrou. Ouvrir en direct laissait écrire un numéro verrouillé, l'enregistrement
@@ -6347,6 +6412,9 @@ async function poserReglagesMaison(context) {
 }
 
 function activate(context) {
+  // Le contexte, gardé au module : les constats fermés s'écrivent dans son globalState, et
+  // vueControles les relit sans l'avoir en argument.
+  etatPoste = context;
   // Rien n'attend ce travail : il ne conditionne aucune commande, et le faire attendre
   // retarderait l'ouverture de la barre latérale.
   poserReglagesMaison(context).catch((e) => {

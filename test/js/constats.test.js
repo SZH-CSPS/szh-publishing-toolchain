@@ -69,6 +69,38 @@ test('gravité : une information reste grise', () => {
     constats.gravite(constat('livre', 'chapitre-ecarte'), { pdfua: true }), 'info');
 });
 
+test('gravité : la bibliographie récupérée est une information, pas un défaut', () => {
+  // Le cas NOMINAL de szh-biblio-detacher.lua. Sans ligne dans la table, il arrivait en
+  // ambre, sous un triangle, et dans la prose allemande du filtre — un succès déguisé en
+  // défaut. Ses trois voisins, eux, constatent bien quelque chose à regarder.
+  assert.strictEqual(
+    constats.gravite(constat('import', 'biblio-detachee'), { pdfua: true }), 'info');
+  for (const code of ['biblio-incomplete', 'biblio-bornes-perdues', 'biblio-fichier-refuse']) {
+    assert.strictEqual(constats.gravite(constat('import', code), { pdfua: true }), 'avert',
+      'ce constat bloque ou se tait : ' + code);
+  }
+});
+
+// ---- 1 bis. La croix : ce qu'on a le droit d'effacer d'un clic --------------------
+
+test('fermable : les gris seulement, jamais un bloquant ni un avertissement', () => {
+  // Un constat gris ne demande rien : il dit qu'une chose s'est bien passée. Le faire
+  // taire ne cache aucun geste à faire — à l'inverse d'un ambre, qu'on refermerait pour se
+  // donner un numéro propre sans l'avoir corrigé.
+  assert.strictEqual(
+    constats.fermable(constat('import', 'biblio-detachee'), { pdfua: true }), true);
+  assert.strictEqual(
+    constats.fermable(constat('pipeline', 'titre-manquant'), { pdfua: true }), false,
+    'un bloquant se referme d’un clic : le défaut disparaît sans avoir été corrigé');
+  assert.strictEqual(
+    constats.fermable(constat('import', 'restes'), { pdfua: true }), false,
+    'une attente se referme d’un clic');
+  // Le réglage PDF/UA déplace la frontière du rouge, jamais celle de la croix : une image
+  // muette reste un défaut là où la validation est éteinte, donc sans croix.
+  const muette = constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' });
+  assert.strictEqual(constats.fermable(muette, { pdfua: false }), false);
+});
+
 test('gravité : un code inconnu ne disparaît pas et ne bloque pas', () => {
   // Une source neuve arrive à l'écran sans être passée par ce module : elle doit se voir,
   // en avertissement, plutôt que d'être tue ou de tout arrêter.

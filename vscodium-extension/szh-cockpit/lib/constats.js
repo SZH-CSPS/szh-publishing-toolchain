@@ -206,6 +206,27 @@ const TABLE = Object.freeze({
     defaut: 'defaut.biblio-retiree' },
   'import/biblio-origine-inconnue': { barrage: null, nature: F, lieu: '',
     defaut: 'defaut.biblio-inconnue' },
+  // ---- La bibliographie détachée à l'import --------------------------------------
+  //
+  // szh-biblio-detacher.lua sort la liste des références du corps de l'article et
+  // l'enregistre à part. Le cas NOMINAL se disait aussi : il arrivait sans ligne ici, donc
+  // ambre, sous un triangle, et dans la prose du filtre — un succès déguisé en défaut.
+  // C'est une information, et rien d'autre.
+  'import/biblio-detachee': { barrage: null, nature: F, lieu: '',
+    defaut: 'defaut.biblio-detachee' },
+  // Des paragraphes sont restés dans le texte, juste après la liste. Rien n'est perdu et
+  // le PDF sort : ambre, avec le geste qui mène au texte de l'article.
+  // Le compte est dans le DÉTAIL, et non en objet : la phrase se lit « {intitulé} : {objet} »
+  // puis le détail, et un nombre nu coincé entre deux points et une majuscule ne se lisait
+  // pas (« restés dans le texte : 2 Rien n'est perdu »).
+  'import/biblio-incomplete': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.biblio-incomplete', detail: 'detail.biblio-incomplete' },
+  'import/biblio-bornes-perdues': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.biblio-bornes-perdues', detail: 'detail.biblio-bornes-perdues' },
+  // Le dossier du numéro refuse l'écriture : aucun geste du cockpit n'y change quelque
+  // chose, et un bouton qui mènerait « quelque part » serait un mensonge.
+  'import/biblio-fichier-refuse': { barrage: null, nature: D, lieu: '',
+    defaut: 'defaut.biblio-fichier-refuse', detail: 'detail.biblio-fichier-refuse' },
   // ---- Le livre ------------------------------------------------------------------
   'livre/liminaire-introuvable': { barrage: 'compilation', nature: D, lieu: 'numero',
     focusChamp: 'pièce', defaut: 'defaut.liminaire-introuvable' },
@@ -267,6 +288,14 @@ function gravite(constat, contexte) {
 function ton(constat, contexte) {
   const g = gravite(constat, contexte);
   return g === 'bloquant' ? 'danger' : (g === 'avert' ? 'attention' : 'info');
+}
+
+// Ce qu'on a le droit d'effacer d'un clic. Les gris seulement : ils constatent, ils ne
+// demandent rien, et une vue qui les accumule finit par cacher ce qu'il reste à faire. Un
+// bloquant n'a pas de croix, et un avertissement non plus — les faire taire, c'est se
+// donner un numéro propre en le décidant, et le rouge doit se corriger, pas se refermer.
+function fermable(constat, contexte) {
+  return gravite(constat, contexte) === 'info';
 }
 
 // Un chemin ne sert à personne dans un formulaire : seul le nom du fichier y désigne une
@@ -341,4 +370,4 @@ function detail(constat, langue) {
   return e && e.detail ? TL(langue, e.detail, (constat && constat.args) || []) : '';
 }
 
-module.exports = { LIEUX, TABLE, gravite, ton, cible, bouton, phrase, detail, objet };
+module.exports = { LIEUX, TABLE, gravite, ton, fermable, cible, bouton, phrase, detail, objet };

@@ -10,13 +10,17 @@
 // trois étages fixes — la tête et sa mesure, ce qu'il y a à lire, puis « Ouvrir » et l'état.
 //
 // Protocole. Vers l'hôte :
-//   pret ; action { id, cle } ; ouvrir { cle }
+//   pret ; action { id, cle } ; ouvrir { cle } ; constat-fermer { empreinte }
 // Depuis l'hôte :
 //   valeurs { titre, boutons, lignes, accent, i18n } ; etat { message }
-// où i18n vaut { ouvrir, listeVide }.
+// où i18n vaut { ouvrir, listeVide, fermerConstat }.
 // où un bouton vaut { id, libelle, icone, tip, principal, danger, desactive } et une ligne
 // { cle, groupe, titre, meta, pastilles: [{ texte, ton, icone }], notif: { ton, texte },
+// messages: [{ ton, texte, action, fermable, empreinte }],
 // actions: [{ id, libelle, icone, tip, desactive, danger }], ouvrir }.
+//
+// `fermable` ne se devine pas ici : c'est l'hôte qui sait qu'un constat est gris, donc
+// effaçable, et lui qui retient l'empreinte de ceux qu'on a fermés.
 //
 // « action » sert aux deux : la barre l'envoie sans `cle`, le bouton d'une carte avec celle
 // de sa ligne. C'est l'hôte qui départage, et il n'y a qu'un message à traiter.
@@ -32,7 +36,10 @@
     conteneur: document.getElementById('lignes'),
     textes: function () { return TXT; },
     onOuvrir: function (cle) { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); },
-    onAction: function (cle, id) { api.postMessage({ type: SZH.MSG.ACTION, id: id, cle: cle }); }
+    onAction: function (cle, id) { api.postMessage({ type: SZH.MSG.ACTION, id: id, cle: cle }); },
+    onFermer: function (empreinte) {
+      api.postMessage({ type: SZH.MSG.CONSTAT_FERMER, empreinte: empreinte });
+    }
   });
 
   var recu = false;

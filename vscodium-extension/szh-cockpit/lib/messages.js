@@ -49,7 +49,10 @@ const MSG = Object.freeze({
   COUVERTURE_DEPOSER: 'couverture-deposer', COUVERTURE: 'couverture',
 
   // Vues d'ensemble et « Articles »
+  // CONSTAT_FERMER : la croix d'un constat « Pour information ». La page envoie l'empreinte
+  // du message, l'hôte la retient et ne le renvoie plus tant que sa phrase ne change pas.
   OUVRIR: 'ouvrir', ACTION: 'action', TACHE: 'tache', SANSDOI: 'sansdoi',
+  CONSTAT_FERMER: 'constat-fermer',
   TACHES_ENREGISTRER: 'taches-enregistrer', TACHES: 'taches',
   COMMANDE: 'commande', AVANCEMENT: 'avancement',
 

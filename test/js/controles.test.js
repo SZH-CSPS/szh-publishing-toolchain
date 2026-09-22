@@ -897,3 +897,101 @@ test('journal : recompiler un seul article n’efface pas les constats des autre
   poserJournal(JOURNAL_CITATIONS);
   await HOTE.finirTache('Aperçu / Export PDF', 0);
 });
+
+// ---- 4. La bibliographie détachée, et la croix des messages gris ----
+//
+// Le cas nominal de szh-biblio-detacher.lua arrivait à l'écran sans ligne dans
+// lib/constats.js : en ambre, sous un triangle, et dans la prose du filtre — « ⚠
+// Literaturverzeichnis ausgelagert : 9 von 9 erwarteten Absätzen » sur un poste français.
+// Un succès déguisé en défaut, et dans l'autre langue.
+const JOURNAL_BIBLIO = [
+  'pandoc articles/01-inclusion/01-inclusion.md -> out/01-inclusion/01-inclusion.html',
+  '[import-info] biblio-detachee | article « 01-inclusion » | attendus 9 | detaches 9 | Bibliographie correctement récupérée (9 paragraphe(s) sur 9). | [de] Literaturverzeichnis korrekt übernommen (9 von 9 Absätzen).'
+].join(LF) + LF;
+
+test('hôte : la bibliographie récupérée se dit en français, en gris, et se ferme', async () => {
+  poserJournal(JOURNAL_BIBLIO);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  const charge = async () => {
+    await p._recepteur({ type: 'pret' });
+    return p.messages.filter((m) => m.type === 'valeurs').pop();
+  };
+
+  const biblio = defauts((await charge()).lignes)
+    .find((m) => /[Bb]ibliographie/.test(m.texte));
+  assert.ok(biblio, 'le constat de bibliographie n’arrive pas à l’écran');
+  // Gris, et non ambre : rien n'est faux, et le triangle d'avertissement mentait.
+  assert.strictEqual(biblio.ton, 'info',
+    'le cas nominal se présente encore comme un défaut : ' + biblio.texte);
+  assert.strictEqual(biblio.carte.groupe, 'Pour information');
+  // La phrase de la maison, et non la prose du filtre restée en allemand.
+  assert.strictEqual(biblio.texte, 'Bibliographie correctement récupérée');
+  // La croix : l'hôte l'autorise et donne de quoi la retenir.
+  assert.strictEqual(biblio.fermable, true, 'un message gris sans croix');
+  assert.ok(biblio.empreinte, 'la croix n’a rien à retenir');
+
+  // Fermé, il ne revient pas — même après une compilation qui le redit à l'identique.
+  await p._recepteur({ type: 'constat-fermer', empreinte: biblio.empreinte });
+  assert.strictEqual(
+    defauts((await charge()).lignes).filter((m) => /[Bb]ibliographie/.test(m.texte)).length, 0,
+    'le message fermé est revenu tout seul');
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  assert.strictEqual(
+    defauts((await charge()).lignes).filter((m) => /[Bb]ibliographie/.test(m.texte)).length, 0,
+    'une recompilation réaffiche un message que la rédactrice avait fermé');
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+test('hôte : ce qui bloque ou mérite un regard n’a pas de croix', async () => {
+  poserJournal(JOURNAL_AVERTISSEMENTS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const dits = defauts(p.messages.filter((m) => m.type === 'valeurs').pop().lignes);
+  for (const m of dits) {
+    assert.strictEqual(m.fermable, m.ton === 'info',
+      'un message « ' + m.ton + ' » se ferme d’un clic : ' + m.texte);
+  }
+  assert.ok(dits.some((m) => m.ton !== 'info'), 'le contrôle ne porte sur rien');
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+test('page : la croix retire le message et prévient l’hôte, et elle seule', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'vue-ensemble', cssPartage: ['_design.css', '_liste.css'],
+    jsPartage: ['_messages.js']
+  });
+  page.envoyer({
+    type: 'valeurs', titre: 'À corriger',
+    i18n: { ouvrir: 'Ouvrir', listeVide: 'Rien à signaler.',
+            fermerConstat: 'Ne plus afficher ce message' },
+    boutons: [],
+    lignes: [
+      { cle: '01-inclusion', groupe: 'À regarder avant de publier',
+        titre: 'Article « 01-inclusion »', meta: 'Citations et références',
+        messages: [{ ton: 'attention', texte: 'L’appel (Sen, 2001) est ambigu.',
+          action: null, fermable: false, empreinte: '' }],
+        pastilles: [], ouvrir: false, actions: [] },
+      { cle: '01-inclusion', groupe: 'Pour information',
+        titre: 'Article « 01-inclusion »', meta: 'Import Word',
+        messages: [{ ton: 'info', texte: 'Bibliographie correctement récupérée',
+          action: null, fermable: true, empreinte: 'e-1' }],
+        pastilles: [], ouvrir: false, actions: [] }
+    ]
+  });
+  // Une seule croix, sur le seul message gris : l'ambre n'en a pas.
+  assert.strictEqual(page.compter('.szh-notif-croix'), 1,
+    'la croix se pose sur autre chose que le message gris');
+  page.conteneur().querySelectorAll('.szh-notif-croix')[0].dispatchEvent({ type: 'click' });
+  // La page ne l'attend pas : le message part tout de suite.
+  assert.strictEqual(page.compter('.szh-notif-croix'), 0, 'le message fermé reste à l’écran');
+  const dernier = page.messages[page.messages.length - 1];
+  assert.strictEqual(dernier.type, 'constat-fermer', 'l’hôte n’est pas prévenu');
+  assert.strictEqual(dernier.empreinte, 'e-1', 'l’hôte ne sait pas quoi retenir');
+});

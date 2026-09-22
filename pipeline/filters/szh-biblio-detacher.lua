@@ -260,11 +260,15 @@ function Pandoc(doc)
         .. 'Einträge, geben Sie ihnen im Word die Formatvorlage für '
         .. 'Literaturverzeichnisse und importieren Sie neu.', manquants))
   else
+    -- Le cas nominal. La phrase le dit comme tel : le compte reste dans le journal, qui
+    -- est la preuve, mais l'écran n'a pas à faire lire une soustraction pour conclure que
+    -- tout s'est bien passé. Le cockpit lui substitue de toute façon sa propre phrase
+    -- (ctl.import.biblio-detachee) ; celle-ci sert au journal et aux vieux numéros.
     constat('info', 'biblio-detachee',
       { 'article « ' .. slug .. ' »', 'attendus ' .. #bornes, 'detaches ' .. pris },
-      string.format('Bibliographie mise à part : %d paragraphe(s) sur %d attendu(s).',
+      string.format('Bibliographie correctement récupérée (%d paragraphe(s) sur %d).',
         pris, #bornes),
-      string.format('Literaturverzeichnis ausgelagert: %d von %d erwarteten Absätzen.',
+      string.format('Literaturverzeichnis korrekt übernommen (%d von %d Absätzen).',
         pris, #bornes))
   end
   return doc

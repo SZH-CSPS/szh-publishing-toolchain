@@ -1405,6 +1405,17 @@ const TEXTES_COCKPIT = {
     'detail.biblio-conflit': 'La liste corrigée ici a été remplacée par celle du Word. À vérifier.',
     'defaut.biblio-retiree': 'Liste de références retirée du Word',
     'defaut.biblio-inconnue': 'État de la liste de références inconnu',
+    // La bibliographie détachée à l'import (szh-biblio-detacher.lua). Le premier est le cas
+    // NOMINAL : il se disait « Literaturverzeichnis ausgelagert : 9 von 9 erwarteten
+    // Absätzen », dans la langue du filtre et sous un triangle d'avertissement. Un succès
+    // s'annonce comme un succès, et la croix de la carte permet de le faire taire.
+    'defaut.biblio-detachee': 'Bibliographie correctement récupérée',
+    'defaut.biblio-incomplete': 'Bibliographie récupérée, sauf quelques paragraphes',
+    'detail.biblio-incomplete': 'Ils sont {0} et suivent la liste dans le texte ; rien n’est perdu. Si ce sont des références, donnez-leur le style de bibliographie dans le Word et réimportez.',
+    'defaut.biblio-bornes-perdues': 'Bibliographie laissée dans le texte',
+    'detail.biblio-bornes-perdues': 'Elle a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion. L’article s’imprime normalement ; signalez ce cas, il n’est pas censé arriver.',
+    'defaut.biblio-fichier-refuse': 'Bibliographie non enregistrée à part',
+    'detail.biblio-fichier-refuse': 'Elle reste dans le texte de l’article. Vérifiez que le dossier du numéro est accessible en écriture.',
     'defaut.liminaire-introuvable': 'Pièce liminaire introuvable',
     'defaut.chapitre-ecarte': 'Chapitre écarté de l’impression',
     'defaut.chapitre-introuvable': 'Chapitre introuvable',
@@ -1416,6 +1427,9 @@ const TEXTES_COCKPIT = {
     'ctl.groupe.bloquant': 'Ce qui empêche de publier',
     'ctl.groupe.avert': 'À regarder avant de publier',
     'ctl.groupe.info': 'Pour information',
+    // La croix d'un message gris. Elle ne se pose que sur eux (lib/constats.js, fermable) :
+    // un bloquant se corrige, il ne se referme pas.
+    'ctl.constat.fermer': 'Ne plus afficher ce message',
     'ctl.badge.bloquant': 'bloquant',
     'ctl.badge.avert': 'à vérifier',
     'ctl.barre.bloquant': '$(error) {0} à corriger',
@@ -1491,6 +1505,12 @@ const TEXTES_COCKPIT = {
     'ctl.import.sous-titre-deduit': 'Le document Word ne donnait qu’un titre, avec un deux-points au milieu : ce qui suit est devenu le sous-titre « {0} ». Vérifiez la coupe dans « Métadonnées des articles » – titre et sous-titre ne se composent pas de la même façon, et il suffit de recoller les deux champs si elle est fausse.',
     'ctl.import.word-redepose': 'Le document « {0} » a déjà servi à créer cet article : c’est sa version corrigée qui vient d’être déposée. Rien n’a été touché, et l’article publié est encore l’ancien. Pour publier la correction sans perdre la fiche, les portraits ni les traductions, faites un clic droit sur l’article, « Réimporter cet article » – ou servez-vous du bouton posé sur ce fichier dans l’onglet « Word en attente ».',
     'ctl.import.origine-inconnue': 'Un article porte déjà le nom de dossier qu’aurait pris « {0} », et on ne sait pas de quel document Word il vient. Rien n’a été créé, pour ne pas mettre deux fois le même article dans le numéro. S’il s’agit d’un autre article, renommez le fichier Word et enregistrez (Ctrl+S) ; s’il s’agit du même, corrigé, servez-vous du bouton « Réimporter cet article » posé sur ce fichier dans l’onglet « Word en attente » : il vous fera désigner l’article à corriger.',
+    // Les quatre constats de la bibliographie détachée. Phrases entières : elles partent
+    // aussi en notification, où il n'y a pas de tête de carte pour nommer l'article.
+    'ctl.import.biblio-detachee': 'La bibliographie de cet article a été correctement récupérée.',
+    'ctl.import.biblio-incomplete': 'La bibliographie a été récupérée, sauf {0} paragraphe(s) restés dans le texte, juste après la liste.',
+    'ctl.import.biblio-bornes-perdues': 'La bibliographie a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion : elle reste dans le texte.',
+    'ctl.import.biblio-fichier-refuse': 'La bibliographie n’a pas pu être enregistrée à part : elle reste dans le texte de l’article.',
     // ---- Le réimport d'un article corrigé ----
     //
     // Les libellés des codes que le réimport rend. La table qui les associe à leur code
@@ -2805,6 +2825,14 @@ const TEXTES_COCKPIT = {
     'detail.biblio-conflit': 'Die hier korrigierte Liste wurde durch jene des Word ersetzt. Zu prüfen.',
     'defaut.biblio-retiree': 'Literaturliste im Word entfernt',
     'defaut.biblio-inconnue': 'Zustand der Literaturliste unbekannt',
+    // Das ausgelagerte Literaturverzeichnis beim Import (szh-biblio-detacher.lua).
+    'defaut.biblio-detachee': 'Literaturverzeichnis korrekt übernommen',
+    'defaut.biblio-incomplete': 'Literaturverzeichnis übernommen, ausser einigen Absätzen',
+    'detail.biblio-incomplete': 'Es sind {0}; sie folgen im Text direkt auf die Liste, es geht nichts verloren. Sind es Einträge, geben Sie ihnen im Word die Formatvorlage für Literaturverzeichnisse und importieren Sie neu.',
+    'defaut.biblio-bornes-perdues': 'Literaturverzeichnis im Text belassen',
+    'detail.biblio-bornes-perdues': 'Es wurde im Word erkannt, seine Grenzen liessen sich nach der Konvertierung aber nicht wiederfinden. Der Artikel wird normal gedruckt; melden Sie diesen Fall, er sollte nicht vorkommen.',
+    'defaut.biblio-fichier-refuse': 'Literaturverzeichnis nicht separat gespeichert',
+    'detail.biblio-fichier-refuse': 'Es bleibt im Text des Artikels. Prüfen Sie, ob der Ordner der Ausgabe beschreibbar ist.',
     'defaut.liminaire-introuvable': 'Titelei-Stück nicht gefunden',
     'defaut.chapitre-ecarte': 'Kapitel vom Druck ausgenommen',
     'defaut.chapitre-introuvable': 'Kapitel nicht gefunden',
@@ -2816,6 +2844,7 @@ const TEXTES_COCKPIT = {
     'ctl.groupe.bloquant': 'Was die Veröffentlichung verhindert',
     'ctl.groupe.avert': 'Vor der Veröffentlichung anzusehen',
     'ctl.groupe.info': 'Zur Information',
+    'ctl.constat.fermer': 'Diese Meldung nicht mehr anzeigen',
     'ctl.badge.bloquant': 'blockierend',
     'ctl.badge.avert': 'zu prüfen',
     'ctl.barre.bloquant': '$(error) {0} zu beheben',
@@ -2878,6 +2907,10 @@ const TEXTES_COCKPIT = {
     'ctl.import.sous-titre-deduit': 'Das Word-Dokument enthielt nur einen Titel, mit einem Doppelpunkt darin: was darauf folgt, wurde zum Untertitel «{0}». Prüfen Sie die Trennung unter «Metadaten der Artikel» – Titel und Untertitel werden nicht gleich gesetzt; bei einer falschen Trennung genügt es, die beiden Felder wieder zusammenzufügen.',
     'ctl.import.word-redepose': 'Das Dokument «{0}» hat diesen Artikel schon erzeugt: eben wurde seine korrigierte Fassung abgelegt. Es wurde nichts angerührt, veröffentlicht ist noch die alte Fassung. Um die Korrektur zu veröffentlichen, ohne Metadaten, Porträts und Übersetzungen zu verlieren, klicken Sie mit der rechten Maustaste auf den Artikel, «Artikel neu importieren» – oder nutzen Sie die Schaltfläche auf dieser Datei im Reiter «Wartende Word-Dateien».',
     'ctl.import.origine-inconnue': 'Ein Artikel trägt bereits den Ordnernamen, den «{0}» erhalten hätte, und es ist unbekannt, aus welchem Word-Dokument er stammt. Es wurde nichts angelegt, um denselben Artikel nicht zweimal in die Ausgabe zu setzen. Handelt es sich um einen anderen Artikel, benennen Sie die Word-Datei um und speichern Sie (Ctrl+S); ist es derselbe, korrigierte, nutzen Sie die Schaltfläche «Artikel neu importieren» auf dieser Datei im Reiter «Wartende Word-Dateien»: sie lässt Sie den zu korrigierenden Artikel bestimmen.',
+    'ctl.import.biblio-detachee': 'Das Literaturverzeichnis dieses Artikels wurde korrekt übernommen.',
+    'ctl.import.biblio-incomplete': 'Das Literaturverzeichnis wurde übernommen, ausser {0} Absatz/Absätzen, die im Text direkt nach der Liste geblieben sind.',
+    'ctl.import.biblio-bornes-perdues': 'Das Literaturverzeichnis wurde im Word erkannt, seine Grenzen liessen sich nach der Konvertierung aber nicht wiederfinden: es bleibt im Text.',
+    'ctl.import.biblio-fichier-refuse': 'Das Literaturverzeichnis konnte nicht separat gespeichert werden: es bleibt im Text des Artikels.',
     // ---- Neuimport eines korrigierten Artikels ----
     'ctl.reimport.sans-article': 'Kein Artikel dieser Ausgabe passt zu diesem Word-Dokument. Es wurde nichts angetastet. Ist es ein neuer Artikel, ziehen Sie die Datei auf die Leiste «Pronto», und sie wird importiert; ist es die korrigierte Fassung eines Artikels, dessen Dateiname sich geändert hat, starten Sie «Artikel neu importieren» beim Artikel und weisen Sie ihm diese Datei zu.',
     'ctl.reimport.sans-word': 'Die Word-Datei dieses Artikels wartet nicht in der Ausgabe: es gibt nichts neu zu importieren, und es wurde nichts angetastet. Legen Sie die korrigierte Fassung unter demselben Dateinamen auf der Leiste «Pronto» ab und versuchen Sie es erneut.',

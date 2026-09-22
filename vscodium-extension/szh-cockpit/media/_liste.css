@@ -39,6 +39,16 @@
   vertical-align: -.35em; color: inherit;
 }
 
+/* La croix d'un message « Pour information », contre le bord droit de sa boîte. Elle est
+   discrète tant qu'on ne la vise pas : ce message n'a rien à faire faire, et sa croix ne
+   doit pas peser plus que sa phrase. margin-left: auto — .szh-notif est un flex, et c'est
+   ce qui plaque la croix à droite sans la sortir de la boîte. */
+.szh-notif-croix {
+  margin-left: auto; flex: 0 0 auto;
+  width: 1.5rem; height: 1.5rem; opacity: .55;
+}
+.szh-notif-croix:hover, .szh-notif-croix:focus-visible { opacity: 1; }
+
 /* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
    thème, le fond reste celui des autres. */
 .bouton-danger { color: var(--danger); }
