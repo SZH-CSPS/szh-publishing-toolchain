@@ -71,9 +71,17 @@ du français et de l'allemand — les font reconnaître à coup sûr, et sans si
 avertit toujours (`cle-approximee`), seule la forme canonique compte pour « tapé juste ». Deux
 alias que j'avais posés ont été retirés après mesure : « rubrique » faisait entrer *Rubrique*
 sur le type d'article à 1,000 (une rubrique n'est pas un type), et « adresse mail » faisait
-entrer une adresse postale sur l'e-mail à 0,778. Ce qui reste à surveiller est écrit dans le
-code et tenu par un contrôle : l'étiquette étrangère la plus proche du seuil est « Adresse », à
-0,013 en dessous.
+entrer une adresse postale sur l'e-mail à 0,778. **Et les champs que le gabarit ne porte pas sont déclarés.** La mesure laissait un point faible :
+« Adresse » (une adresse postale) arrivait à 0,737 contre le champ e-mail — tirée par l'alias
+allemand « e-mail-adresse » —, soit 0,013 sous le seuil. Une adresse postale à un cheveu du
+champ e-mail. La réponse n'est ni le seuil ni un alias, mais une **déclaration** : « Adresse »,
+« Biographie », « Téléphone » et « Photo » sont désormais des clés reconnues **sans
+destination**, exactement comme « Mots-clés » côté métadonnées. Elles se reconnaissent
+elles-mêmes à 1,000, la concurrence de proximité disparaît, et une ligne remplie sous l'une
+d'elles refuse l'import — avec un message qui dit la vérité (« le gabarit n'a pas ce champ »,
+et non « étiquette inconnue », qui enverrait corriger une orthographe juste) et le geste à
+faire, la photo ayant le sien : elle se dépose dans la cellule de gauche. L'étiquette étrangère
+la plus proche du seuil retombe à 0,667, soit 0,083 de marge.
 
 **Ce qui reste**, et pourquoi : l'`.odt` n'est toujours pas accepté par le reste de la chaîne.
 Le contrat des photos d'auteur avec `import-medias.py` n'a jamais été vérifié pour ce format, et

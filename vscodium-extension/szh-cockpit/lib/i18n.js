@@ -1391,6 +1391,7 @@ const TEXTES_COCKPIT = {
     // Le lecteur du gabarit « Pronto », branché sur l'import le 22.09.2026.
     'defaut.pronto-meta-inconnue': 'Étiquette inconnue dans les métadonnées',
     'defaut.pronto-auteur-inconnue': 'Étiquette inconnue chez les auteur·e·s',
+    'defaut.pronto-champ-hors-gabarit': 'Champ absent du gabarit',
     'defaut.pronto-bloc-inconnue': 'Étiquette inconnue dans un bloc',
     'defaut.pronto-cle-ambigue': 'Étiquette ambiguë',
     'defaut.pronto-cle-approximee': 'Étiquette approchante',
@@ -1537,6 +1538,7 @@ const TEXTES_COCKPIT = {
     // donc d'abord ce qui n'a PAS eu lieu, puis le geste, jamais le mécanisme.
     'ctl.import.pronto-meta-inconnue': 'Le tableau des métadonnées porte l’étiquette « {0} », que le gabarit ne connaît pas. L’article n’a pas été importé : ce que cette étiquette annonçait serait parti nulle part. Corrigez-la dans le document Word et enregistrez (Ctrl+S) – la conversion repart toute seule.',
     'ctl.import.pronto-auteur-inconnue': 'Le tableau des autrices et auteurs porte une ligne que le gabarit ne connaît pas : « {0} ». L’article n’a pas été importé, pour ne pas perdre ce qu’elle contient. Corrigez l’étiquette dans le document Word, puis enregistrez (Ctrl+S).',
+    'ctl.import.pronto-champ-hors-gabarit': 'Le tableau des autrices et auteurs porte un champ que le gabarit n’a pas : « {0} ». L’étiquette n’a rien de fautif, c’est le gabarit qui n’a pas de case pour elle. L’article n’a pas été importé, pour ne pas perdre cette valeur ; le message du journal dit où va l’information (la photo, par exemple, se dépose dans la cellule de gauche).',
     'ctl.import.pronto-bloc-inconnue': 'Un bloc figure ou tableau porte l’étiquette « {0} », que le gabarit ne connaît pas. L’article n’a pas été importé. Les quatre étiquettes attendues sont « Légende : », « Texte alternatif : », « Crédit : » et « Source : ».',
     'ctl.import.pronto-cle-ambigue': 'L’étiquette « {0} » ressemble presque autant à deux champs différents du gabarit : aucun des deux n’a été retenu, et l’article n’a pas été importé. Réécrivez-la exactement comme dans le gabarit, puis enregistrez (Ctrl+S).',
     'ctl.import.pronto-cle-approximee': 'L’étiquette « {0} » n’était pas tapée comme dans le gabarit ; elle a été lue comme « {1} ». L’article est bien importé. Si ce n’était pas l’intention, corrigez-la dans le document Word.',
@@ -2847,6 +2849,7 @@ const TEXTES_COCKPIT = {
     // Der Leser der Vorlage « Pronto », seit dem 22.09.2026 am Import angeschlossen.
     'defaut.pronto-meta-inconnue': 'Unbekannte Bezeichnung in den Metadaten',
     'defaut.pronto-auteur-inconnue': 'Unbekannte Bezeichnung bei den Autor:innen',
+    'defaut.pronto-champ-hors-gabarit': 'Feld nicht in der Vorlage',
     'defaut.pronto-bloc-inconnue': 'Unbekannte Bezeichnung in einem Block',
     'defaut.pronto-cle-ambigue': 'Mehrdeutige Bezeichnung',
     'defaut.pronto-cle-approximee': 'Ungenaue Bezeichnung',
@@ -2972,6 +2975,7 @@ const TEXTES_COCKPIT = {
     // Der Leser der Vorlage « Pronto ». Die ersten vier verweigern den Import.
     'ctl.import.pronto-meta-inconnue': 'Die Metadatentabelle enthält die Bezeichnung «{0}», die der Vorlage unbekannt ist. Der Artikel wurde nicht importiert: was diese Bezeichnung ankündigte, wäre nirgendwo gelandet. Korrigieren Sie sie im Word-Dokument und speichern Sie (Ctrl+S) – die Konvertierung startet von selbst neu.',
     'ctl.import.pronto-auteur-inconnue': 'Die Tabelle der Autorinnen und Autoren enthält eine der Vorlage unbekannte Zeile: «{0}». Der Artikel wurde nicht importiert, damit ihr Inhalt nicht verloren geht. Korrigieren Sie die Bezeichnung im Word-Dokument und speichern Sie (Ctrl+S).',
+    'ctl.import.pronto-champ-hors-gabarit': 'Die Tabelle der Autorinnen und Autoren enthält ein Feld, das die Vorlage nicht hat: «{0}». An der Bezeichnung ist nichts falsch, die Vorlage hat nur kein Feld dafür. Der Artikel wurde nicht importiert, damit dieser Wert nicht verloren geht; die Meldung im Protokoll sagt, wohin die Angabe gehört (das Foto etwa in die linke Zelle).',
     'ctl.import.pronto-bloc-inconnue': 'Ein Abbildungs- oder Tabellenblock trägt die Bezeichnung «{0}», die der Vorlage unbekannt ist. Der Artikel wurde nicht importiert. Erwartet werden die vier Bezeichnungen «Légende:», «Texte alternatif:», «Crédit:» und «Source:».',
     'ctl.import.pronto-cle-ambigue': 'Die Bezeichnung «{0}» ähnelt zwei verschiedenen Feldern der Vorlage fast gleich stark: keines von beiden wurde übernommen, und der Artikel wurde nicht importiert. Schreiben Sie sie genau wie in der Vorlage und speichern Sie (Ctrl+S).',
     'ctl.import.pronto-cle-approximee': 'Die Bezeichnung «{0}» war nicht wie in der Vorlage getippt; sie wurde als «{1}» gelesen. Der Artikel ist importiert. War das nicht beabsichtigt, korrigieren Sie sie im Word-Dokument.',

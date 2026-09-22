@@ -1858,8 +1858,11 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
   // Des étiquettes qu'on rencontre pour de vrai — dans un tableau de contenu, dans la fiche
   // d'un autre gabarit — et qui ne doivent JAMAIS être prises pour un champ Pronto.
   const etrangeres = [
-    ['CANON_AUTEUR', 'Photo'], ['CANON_AUTEUR', 'Biographie'], ['CANON_AUTEUR', 'Adresse'],
-    ['CANON_AUTEUR', 'Ville'], ['CANON_AUTEUR', 'Téléphone'],
+    // Adresse, Biographie, Téléphone et Photo ne sont PLUS ici : elles sont déclarées dans
+    // CANON_AUTEUR comme des champs sans destination (section 37 plus bas), donc reconnues à
+    // 1,000 et hors de toute concurrence de proximité. C'est leur départ qui rend la marge
+    // ci-dessous confortable : la plus proche était « Adresse » à 0,737.
+    ['CANON_AUTEUR', 'Ville'], ['CANON_AUTEUR', 'Pays'],
     ['CANON_METADONNEES', 'Résultats'], ['CANON_METADONNEES', 'Nom de la revue'],
     ['CANON_METADONNEES', 'DOI'], ['CANON_METADONNEES', 'Volume'],
     ['CANON_METADONNEES', 'Rubrique'],
@@ -1883,8 +1886,83 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
   assert.ok(pire < seuil,
     'plus aucune marge : « ' + pireNom + ' » atteint ' + pire.toFixed(3) + ' pour un seuil à '
     + seuil);
-  assert.ok(seuil - pire >= 0.01,
+  assert.ok(seuil - pire >= 0.05,
     'la marge entre la dernière étiquette étrangère (« ' + pireNom + ' », ' + pire.toFixed(3)
-    + ') et le seuil (' + seuil + ') est tombée sous 0,01 : le mécanisme devient un tirage au '
-    + 'sort. Posez un alias plutôt que de baisser le seuil.');
+    + ') et le seuil (' + seuil + ') est tombée sous 0,05 : le mécanisme s’approche du tirage '
+    + 'au sort. Deux issues, dans cet ordre : déclarer la clé gênante sans destination (voir '
+    + 'CLES_AUTEUR_SANS_DESTINATION), ou poser un alias. Jamais baisser le seuil.');
+});
+
+// ---- 37. Les champs que le gabarit NE PORTE PAS, déclarés exprès ------------------------
+//
+// Adresse, biographie, téléphone, photo : la rédaction les tape par réflexe, le schéma d'auteur
+// n'en a aucun. Ils sont déclarés dans CANON_AUTEUR sans destination — même procédé que
+// « Mots-clés » côté métadonnées — pour deux raisons, dans cet ordre :
+//
+//   1. la VALEUR ne doit pas se perdre : une ligne remplie qu'on ne sait pas ranger refuse
+//      l'import, elle ne s'évapore pas ;
+//   2. la clé ne doit plus JAMAIS entrer en concurrence de proximité avec un vrai champ.
+//      Mesuré avant cette déclaration : « Adresse » arrivait à 0,737 contre Email — tirée par
+//      l'alias allemand « e-mail-adresse » — soit 0,013 sous le seuil. Une adresse postale à
+//      0,013 de finir dans le champ e-mail. Déclarée, elle se reconnaît elle-même à 1,000.
+
+test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-mail', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const { jeton, score } = mesurerCle('Adresse', 'CANON_AUTEUR');
+  assert.strictEqual(jeton, 'adresse',
+    '« Adresse » se lit « ' + jeton + ' » (score ' + score.toFixed(3) + ') : si c’est « email », '
+    + 'une adresse postale part dans le champ e-mail');
+  assert.strictEqual(score, 1,
+    'la clé doit se reconnaître elle-même exactement, sinon la concurrence de proximité revient');
+});
+
+test('champs hors gabarit : la ligne refuse l’import, et le message dit où va l’information', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // Un cas par champ : le geste à faire diffère, et c'est tout l'intérêt de les avoir nommés.
+  const cas = [
+    ['Adresse : Bergstrasse 12, 3007 Berne', 'Adresse', /retirez cette ligne/i],
+    ['Biographie : Chercheuse en pédagogie depuis 2009.', 'Biographie', /biographique/i],
+    ['Téléphone : 031 000 00 00', 'Téléphone', /retirez cette ligne/i],
+    // La photo est le seul de ces champs qui ait une vraie place dans le document.
+    ['Photo : portrait.jpg', 'Photo', /cellule de gauche/i]
+  ];
+  for (const [ligne, nom, motifGeste] of cas) {
+    const vu = importer('51-hors-gabarit-' + nom.toLowerCase().slice(0, 4), {
+      styles: STYLES_BASE,
+      body: [
+        tableMeta([]),
+        tableAuteurs([ligneAuteur(['Prénom : Camille', 'Nom : Sauvage', ligne])])
+      ]
+    });
+    assert.strictEqual(vu.bloquant, true,
+      '« ' + nom +' » n’a pas refusé l’import : sa valeur se serait perdue en silence');
+    const avert = vu.avertissements.find((l) => l.indexOf('auteur-champ-hors-gabarit') !== -1);
+    assert.ok(avert, 'aucun avertissement « auteur-champ-hors-gabarit » pour « ' + nom + ' » : '
+      + vu.avertissements.join(' / '));
+    assert.match(avert, motifGeste,
+      'le message ne dit pas quoi faire de « ' + nom + ' » : ' + avert);
+    // Et surtout : pas « étiquette inconnue ». Elle est parfaitement reconnue — le dire
+    // autrement serait un mensonge, et enverrait corriger une orthographe qui est juste.
+    assert.deepStrictEqual(
+      vu.avertissements.filter((l) => l.indexOf('auteur-etiquette-inconnue') !== -1), [],
+      '« ' + nom + ' » est annoncée comme une étiquette inconnue, alors qu’elle est reconnue');
+  }
+});
+
+test('champs hors gabarit : les vrais champs de la même rangée restent lus', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // L'import est refusé, donc rien n'est écrit — mais le lecteur doit avoir compris le reste
+  // de la rangée, sans quoi le rapport nommerait des fautes qui n'existent pas.
+  const vu = importer('52-hors-gabarit-reste', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([]),
+      tableAuteurs([ligneAuteur(['Prénom : Camille', 'Nom : Sauvage',
+        'Adresse : Bergstrasse 12'])])
+    ]
+  });
+  assert.strictEqual(vu.bloquant, true);
+  assert.deepStrictEqual(vu.stats.cles_non_reconnues.map((e) => e.texte), ['Adresse'],
+    'une seule clé doit être en cause, celle qui n’a pas de place : '
+    + JSON.stringify(vu.stats.cles_non_reconnues));
 });

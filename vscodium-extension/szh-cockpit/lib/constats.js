@@ -179,6 +179,11 @@ const TABLE = Object.freeze({
     focusChamp: 'fichier', defaut: 'defaut.pronto-meta-inconnue' },
   'import/auteur-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-auteur-inconnue' },
+  // Champ RECONNU mais que le gabarit ne porte pas (adresse, biographie, téléphone, photo).
+  // Même barrage que ci-dessus — l'import est refusé, sa valeur serait perdue — mais un
+  // intitulé distinct : l'étiquette n'a rien de fautif, c'est le gabarit qui n'a pas de case.
+  'import/auteur-champ-hors-gabarit': { barrage: 'geste', nature: D, lieu: 'word',
+    focusChamp: 'fichier', defaut: 'defaut.pronto-champ-hors-gabarit' },
   'import/bloc-etiquette-inconnue': { barrage: 'geste', nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-bloc-inconnue' },
   'import/cle-ambigue': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',

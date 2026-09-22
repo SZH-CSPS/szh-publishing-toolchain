@@ -482,11 +482,15 @@ SEUIL_CLE = 0.75
 #   dans les tables CANON_* (voir leur commentaire), et ces deux cas se lisent désormais 1,000
 #   et 0,857. Refaire ce choix à chaque cas nouveau : un alias, jamais un seuil plus bas.
 #
-# ⚠ MARGE RESTANTE, à surveiller : l'étiquette étrangère la plus proche du seuil est
-#   « Adresse » (une adresse postale) à 0,737 contre `email` — tirée par l'alias allemand
-#   « e-mail-adresse », légitime et gardé. 0,013 sous le seuil. C'est peu ; un contrôle le tient
-#   (test/js/pronto-lire.test.js, « une étiquette étrangère au gabarit reste sous le seuil,
-#   avec de la marge ») et tombera avant la production si quelqu'un rebaisse le seuil.
+# ⚠ MARGE RESTANTE. Elle était mince : « Adresse » (une adresse postale) arrivait à 0,737
+#   contre `email`, tirée par l'alias allemand « e-mail-adresse » — 0,013 sous le seuil, une
+#   adresse postale à un cheveu du champ e-mail. La réponse n'a été ni le seuil ni un alias mais
+#   une DÉCLARATION : « Adresse », comme « Biographie », « Téléphone » et « Photo », est
+#   maintenant une clé reconnue SANS DESTINATION (CLES_AUTEUR_SANS_DESTINATION), donc à 1,000
+#   sur elle-même et hors de toute concurrence. La plus proche étiquette étrangère restante
+#   plafonne à 0,667, soit 0,083 de marge. Un contrôle la tient (test/js/pronto-lire.test.js,
+#   « une étiquette étrangère au gabarit reste sous le seuil, avec de la marge ») et dit, quand
+#   il tombe, laquelle des deux issues employer.
 ECART_CLE = 0.08
 LONGUEUR_ETIQUETTE_SCORE = 40  # au-delà, ce n'est plus une étiquette : jamais scoré (garde-fou).
 
@@ -628,6 +632,7 @@ GRAVITE_AVERT = 'avert'
 GRAVITE_CODES = {
     'etiquette-metadonnees-inconnue': GRAVITE_BLOQUANT,
     'auteur-etiquette-inconnue': GRAVITE_BLOQUANT,
+    'auteur-champ-hors-gabarit': GRAVITE_BLOQUANT,
     'bloc-etiquette-inconnue': GRAVITE_BLOQUANT,
     'cle-ambigue': GRAVITE_BLOQUANT,
     'cle-attendue-absente': GRAVITE_INFO,
@@ -717,6 +722,43 @@ CANON_AUTEUR = {
     #   adresse postale) sur `email` avec 0,778. « adresse e-mail », plus long, laisse
     #   « Adresse » à 0,737 — sous le seuil, donc dehors, ce qui est le bon verdict.
     'email': ('Email', 'e-mail', 'courriel', 'mail', 'adresse e-mail', 'e-mail-adresse'),
+    # ── Champs que le gabarit NE PORTE PAS, déclarés exprès ────────────────────────────
+    # Même procédé que « Mots-clés » dans CANON_METADONNEES : une clé qu'on sait que la
+    # rédaction tape, reconnue pour qu'elle ne soit JAMAIS confondue avec un vrai champ, mais
+    # sans destination — elle refuse donc l'import, avec un message qui dit ce qu'il en est
+    # (voir CLES_AUTEUR_SANS_DESTINATION et _avertir_champ_hors_gabarit()).
+    #
+    # Ce n'est pas de la politesse : « Adresse » arrivait à 0,737 contre `email`, tirée par
+    # l'alias allemand « e-mail-adresse », soit 0,013 sous le seuil. Une adresse postale à
+    # 0,013 de finir dans le champ e-mail, c'est un tirage au sort qui attend son tour.
+    # Déclarée, elle se reconnaît elle-même à 1,000 et la question ne se pose plus.
+    'adresse': ('Adresse', 'adresse postale', 'anschrift'),
+    'biographie': ('Biographie', 'notice biographique', 'bio', 'kurzbiografie'),
+    'telephone': ('Téléphone', 'telephone', 'tél', 'tel', 'telefon'),
+    'photo': ('Photo', 'portrait', 'foto', 'bild'),
+}
+
+# Les clés de CANON_AUTEUR qui n'ont pas de champ où aller. Tenue à part de la table plutôt
+# que devinée (« tout ce qui n'est pas dans CHAMPS_AUTEUR ») : la liste se lit d'un regard, et
+# ajouter une clé reconnue sans la ranger ici deviendrait une valeur perdue en silence.
+CLES_AUTEUR_SANS_DESTINATION = ('adresse', 'biographie', 'telephone', 'photo')
+
+# Ce qu'il faut faire, par champ, quand il n'a pas de place dans le gabarit. Le cas de la photo
+# est le seul qui ait une VRAIE destination dans le document : la cellule de gauche.
+GESTE_HORS_GABARIT = {
+    'photo': ("La photo se dépose dans la cellule de gauche de cette rangée, pas dans une "
+              "clé.",
+              'Das Foto gehört in die linke Zelle dieser Zeile, nicht in einen Schlüssel.'),
+    'adresse': ("Le gabarit ne porte pas d'adresse : retirez cette ligne du document.",
+                'Die Vorlage sieht keine Adresse vor: entfernen Sie diese Zeile aus dem '
+                'Dokument.'),
+    'biographie': ("Le gabarit ne porte pas de notice biographique : retirez cette ligne du "
+                   "document. Une notice en prose libre reste dans le corps de l'article.",
+                   'Die Vorlage sieht keine Kurzbiografie vor: entfernen Sie diese Zeile aus '
+                   'dem Dokument. Eine Biografie in Fließtext bleibt im Artikeltext.'),
+    'telephone': ("Le gabarit ne porte pas de téléphone : retirez cette ligne du document.",
+                  'Die Vorlage sieht keine Telefonnummer vor: entfernen Sie diese Zeile aus '
+                  'dem Dokument.'),
 }
 
 CANON_FIGURE = {
@@ -959,6 +1001,18 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
                 ligne_ok = False
                 lignes_inconnues.append(texte)
                 continue
+            if champ in CLES_AUTEUR_SANS_DESTINATION:
+                # Champ RECONNU, mais que le gabarit ne porte pas : le schéma d'auteur n'a ni
+                # adresse, ni biographie, ni téléphone, et la photo se dépose dans la cellule
+                # de gauche. Bloquant comme une étiquette inconnue — sa valeur serait perdue —
+                # mais avec un message qui dit la vérité, et surtout : reconnu, donc plus
+                # jamais en concurrence de proximité avec un vrai champ (voir SEUIL_CLE, la
+                # marge de 0,013 que « Adresse » frôlait contre Email avant cette déclaration).
+                ligne_ok = False
+                _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug)
+                if bloquants is not None:
+                    bloquants.append({'texte': etiquette, 'lieu': 'auteur'})
+                continue
             champs[champ] = valeur
             cles_vues.add(champ)
 
@@ -972,6 +1026,12 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
 
         if not ligne_ok:
             consommee = False
+        # Deux causes distinctes pour `ligne_ok` à faux, et un seul message ne peut pas dire
+        # les deux : une ligne qu'on n'a PAS reconnue (ci-dessous), et un champ parfaitement
+        # reconnu mais que le gabarit ne porte pas (déjà dit par _avertir_champ_hors_gabarit()).
+        # D'où la condition sur `lignes_inconnues` et non sur `ligne_ok` : annoncer une
+        # « étiquette inconnue » pour « Adresse : … » enverrait corriger une orthographe juste.
+        if lignes_inconnues:
             avertir(
                 'auteur-etiquette-inconnue',
                 ['article « %s »' % slug] + ['ligne « %s »' % t for t in lignes_inconnues],
@@ -1227,6 +1287,27 @@ def _avertir_bloc_mal_forme(tableau, rang, slug):
 #    ses champs d'avertissement (seulement article/tableau/page/etiquette, voir
 #    _avertir_bloc_mal_forme ci-dessus) — en poser un supposerait de faire aussi porter le nom
 #    du Word source à avertir(), ce que ce module ne fait pas aujourd'hui.
+
+
+def _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug):
+    """Un champ RECONNU mais que le gabarit ne porte pas (voir CLES_AUTEUR_SANS_DESTINATION).
+    Bloquant, comme une étiquette inconnue : sa valeur serait perdue. Le message dit ce qui est
+    vrai — « ce champ n'existe pas dans le gabarit » — là où « étiquette inconnue » serait un
+    mensonge, puisqu'on l'a parfaitement reconnue."""
+    geste_fr, geste_de = GESTE_HORS_GABARIT.get(
+        champ, ("Retirez cette ligne du document.",
+                'Entfernen Sie diese Zeile aus dem Dokument.'))
+    avertir(
+        'auteur-champ-hors-gabarit',
+        ['article « %s »' % slug, 'champ « %s »' % etiquette, 'valeur « %s »' % valeur],
+        'Le tableau des autrices et auteurs porte un champ « %s » (« %s ») : le gabarit n\'en '
+        'a pas. L\'article n\'a PAS été importé, pour ne pas perdre cette valeur — rien n\'a '
+        'été créé, et le fichier Word reste en attente. %s'
+        % (etiquette, valeur, geste_fr),
+        'Die Tabelle der Autorinnen und Autoren enthält ein Feld « %s » (« %s »), das die '
+        'Vorlage nicht kennt. Der Artikel wurde NICHT importiert, damit dieser Wert nicht '
+        'verloren geht — es wurde nichts angelegt, und die Word-Datei bleibt in der '
+        'Warteschlange. %s' % (etiquette, valeur, geste_de))
 
 
 def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
