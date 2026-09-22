@@ -37,6 +37,8 @@ local ELL = '\226\128\166'                    -- U+2026, points de suspension
 local PMILLE = '\226\128\176'                 -- U+2030, pour mille
 local GO, GF = '\194\171', '\194\187'         -- « »
 local SO, SF = '\226\128\185', '\226\128\186' -- ‹ ›
+local SIMPLE_OUVRANT_FR = '\226\128\152'      -- U+2018 ‘ : ouvre en français, ferme en allemand
+local SIMPLE_OUVRANT_DE = '\226\128\154'      -- U+201A ‚ : ouvre toujours (idiome allemand natif)
 
 -- Lettre « au sens large » : les classes Lua sont des classes d'octets et %a ne connaît
 -- que l'ASCII. « d'été » porte un é sur deux octets, dont le premier vaut 0xC3 : sans la
@@ -187,7 +189,7 @@ local function a1_apostrophe(t)
   return t
 end
 
--- A2/A3 · les guillemets courbes d'un traitement de texte deviennent des chevrons.
+-- A2 · les guillemets DOUBLES courbes d'un traitement de texte deviennent des chevrons.
 --
 -- ⚠ « “ » n'a pas de sens fixe : il ouvre en anglais (“word”) et il ferme en allemand
 -- d'Allemagne („Wort“). Une table de correspondance fixe le rendait donc ouvrant dans
@@ -195,14 +197,18 @@ end
 -- fait tout correcteur de guillemets : un guillemet suivi d'une lettre ouvre, un
 -- guillemet précédé d'une lettre ferme.
 --
--- « ’ » n'est jamais touché : c'est l'apostrophe, et A1 vient de la poser.
+-- Les guillemets SIMPLES (règle A3 : ‘ ’ ‚) n'y figurent plus depuis le 22.09.2026. Cette
+-- fonction travaille chaîne par chaîne, et « ’ » ne peut pas s'y décider seul : c'est tantôt
+-- un fermant (« ‘mot’ »), tantôt une apostrophe d'élision (« qu’il », posée par A1) — la
+-- même question qui distingue ‘ ouvrant du français de ‘ fermant de l'idiome allemand
+-- ‚…‘. Aucune des deux ne se tranche sans savoir si une citation est déjà ouverte, un état
+-- qu'une seule chaîne ne porte pas. Voir a3_chevrons_sur_liste, plus bas, qui voit le
+-- paragraphe entier et fait cet appariement.
 local COURBES = {
   ['\226\128\158'] = { GO, GO },       -- „ : ouvre toujours
   ['\226\128\159'] = { GO, GO },       -- ‟ : ouvre toujours
   ['\226\128\157'] = { GF, GF },       -- ” : ferme toujours
   ['\226\128\156'] = { GO, GF },       -- “ : selon le voisinage
-  ['\226\128\154'] = { SO, SO },       -- ‚ : ouvre toujours
-  ['\226\128\152'] = { SO, SF },       -- ‘ : selon le voisinage
 }
 
 local function a2a3_chevrons(t)
@@ -301,7 +307,13 @@ local function e_espacement(t)
       -- « 80 % » arrive en trois inlines et c'est sort_de_l_espace qui tranche.
       local separe = (apres ~= nil and SEPARE_NOMBRE[apres]
                       and avant ~= nil and avant:match('^%d$') ~= nil)
-      local colle = (avant == GO) or (apres == GF) or (apres ~= nil and HAUTE[apres])
+      -- Les chevrons SIMPLES (‹ ›, posés par a3_chevrons_sur_liste) suivent la même règle
+      -- que les doubles : E1 ne distingue pas le niveau de citation, seulement « juste à
+      -- l'intérieur d'un chevron ». Ajouté le 22.09.2026 avec la conscience du niveau
+      -- dans a3_chevrons_sur_liste, qui réutilise CETTE fonction plutôt que d'inventer un
+      -- mécanisme d'espacement parallèle.
+      local colle = (avant == GO or avant == SO) or (apres == GF or apres == SF)
+                    or (apres ~= nil and HAUTE[apres])
       if separe then
         out[#out + 1] = insec
       elseif colle then
@@ -315,9 +327,9 @@ local function e_espacement(t)
       if SEPARE_NOMBRE[c] and avant ~= nil and avant:match('^%d$') then
         out[#out + 1] = NBSP                      -- % et ‰ se séparent dans les trois langues
       elseif not COLLEE then
-        if avant == GO then
+        if avant == GO or avant == SO then
           out[#out + 1] = NBSP
-        elseif c == GF and avant ~= nil and not EST_ESPACE[avant] then
+        elseif (c == GF or c == SF) and avant ~= nil and not EST_ESPACE[avant] then
           out[#out + 1] = NBSP
         elseif HAUTE[c] and est_lettre(avant)
             and (cs[i + 1] == nil or EST_ESPACE[cs[i + 1]] or HAUTE[cs[i + 1]]) then
@@ -911,9 +923,12 @@ local function sort_de_l_espace(avant, apres)
   local ts = texte_de(apres)
   if ta:sub(-1) == '\0' or ts:sub(1, 1) == '\0' then return 'garder' end
 
-  -- E1 · guillemets. L'ouvrant se reconnaît en queue de chaîne, le fermant en tête.
-  if ta:sub(-2) == GO then return COLLEE and 'retirer' or 'insecable' end
-  if ts:sub(1, 2) == GF then return COLLEE and 'retirer' or 'insecable' end
+  -- E1 · guillemets. L'ouvrant se reconnaît en queue de chaîne, le fermant en tête. Le
+  -- chevron simple (SO/SF, 3 octets) compte au même titre que le double (GO/GF, 2 octets) :
+  -- a3_chevrons_sur_liste peut laisser un ouvrant ou un fermant simple juste contre une
+  -- frontière d'inline, exactement comme A2 le fait déjà pour le double.
+  if ta:sub(-2) == GO or ta:sub(-3) == SO then return COLLEE and 'retirer' or 'insecable' end
+  if ts:sub(1, 2) == GF or ts:sub(1, 3) == SF then return COLLEE and 'retirer' or 'insecable' end
 
   -- E2 · ponctuation haute. Le signe doit être seul ou en tête d'un groupe de signes :
   -- « ? », « ?! », mais pas le « : » de « ://ror.org ».
@@ -1148,9 +1163,157 @@ local function transformer_header(h)
   return h
 end
 
+-- A3 · les guillemets SIMPLES, appariés ET NIVELÉS sur toute la liste d'inlines d'un
+-- paragraphe.
+--
+-- a2a3_chevrons (ci-dessus, table COURBES) ne voit qu'une seule chaîne. Un « ‘mot’ » qui
+-- tient dans un seul Str s'apparierait très bien tout seul, caractère par caractère — mais
+-- le pont du nettoyeur de manuscrit (pipeline/manuscrit_typo.py, _construire_inlines)
+-- découpe le texte en un Str PAR MOT : dès qu'une citation dépasse un mot, le cas courant,
+-- l'ouvrant et le fermant vivent dans deux Str différents et sont invisibles l'un à l'autre
+-- à l'intérieur d'une seule chaîne. Cette passe-ci voit toute la liste — le même principe
+-- que sort_de_l_espace pour E1/E2 — et c'est elle qui apparie pour de bon. Défaut mesuré le
+-- 22.09.2026 sur un document réel : 18 paires sur 18 dépareillées avant ce correctif.
+--
+-- ⚠ Un premier correctif (toujours daté du 22.09.2026) appariait déjà juste, mais écrivait
+-- TOUJOURS des chevrons simples ‹ ›, quel que soit le niveau — confondant l'appariement
+-- (un problème résolu) avec la RÈGLE (A2/A3 : docs/TYPOGRAPHIE-FR.md, lignes 24-40), qui ne
+-- regarde jamais le caractère d'origine mais le niveau de citation. Une paire de PREMIER
+-- niveau donne « » comme n'importe quel guillemet (A2 : « quels qu'ils soient ») ; seule
+-- une paire imbriquée DANS une citation déjà ouverte donne ‹ › (A3). Mesuré une seconde
+-- fois sur le même document réel (tmp/docx-cleaner-error/1408_Alves.docx) : ‘cartographie’
+-- et ‘étiquette’ y sont des citations de premier niveau, et sortaient à tort en ‹ ›.
+--
+-- Deux idiomes à distinguer, jamais par la seule POSITION (un « ‘ » n'annonce pas la même
+-- chose selon la langue) mais par un ÉTAT qui se pose au premier caractère ouvrant
+-- rencontré :
+--   * français : « ‘ » ouvre, « ’ » ferme — sauf quand « ’ » est une élision
+--     (lettre’lettre, posée par A1), qui n'est jamais un fermant. Le caractère ‘ ’ est
+--     AMBIGU sur le niveau : la rédaction française l'emploie aussi bien pour un premier
+--     niveau (habitude de clavier) que pour une vraie imbrication — le niveau se mesure
+--     donc, il ne se déduit pas du caractère ;
+--   * allemand : « ‚ » (U+201A, ouvrant bas) ouvre, et c'est alors « ‘ » qui ferme — le
+--     MÊME caractère qui ouvre en français. D'où l'état : jamais la position seule, toujours
+--     la conjonction (position ET citation ouverte). Ici le caractère n'est PAS ambigu :
+--     l'idiome allemand natif réserve ‚ ‘ au second niveau (le premier niveau natif est
+--     „ “, et le Duden ne l'emploie jamais seul) — ‚ganz konkret‘ vaut donc TOUJOURS ‹ › ,
+--     même hors de toute « » déjà ouverte dans le paragraphe, par construction de l'idiome
+--     et non par mesure de profondeur. Vérifié le 22.09.2026 : aucune occurrence de ‚ ‘
+--     dans le corpus allemand disponible (tmp/docx-dev, tmp/docx-cleaner-error) pour le
+--     mesurer sur du réel — la règle retenue est donc celle du Duden, non une mesure locale.
+--
+-- Le niveau d'une paire française se décide à l'OUVERTURE, à la profondeur de chevrons
+-- doubles « » déjà comptée dans le flux à cet instant — qu'ils viennent de la plume de
+-- l'autrice ou de a2a3_chevrons, qui a déjà tourné sur chaque Str (transformer_str précède
+-- transformer_inlines, voir transformer_header ci-dessous pour la même remarque) : au
+-- moment où a3_chevrons_sur_liste s'exécute, un « " » tapé par l'autrice et un « “ »
+-- converti par A2 sont déjà le même caractère GO/GF, indiscernables et c'est très bien
+-- ainsi. profondeur > 0 à l'ouverture => paire DANS une citation déjà ouverte => ‹ › ;
+-- profondeur == 0 => premier niveau => « ».
+--
+-- Aucun chevron orphelin : la passe travaille en DEUX temps, un repérage de toutes les
+-- paires complètes d'abord (rien n'est écrit tant qu'un fermant n'est pas trouvé), puis
+-- l'écriture des seules paires trouvées. Un ouvrant resté sans fermant jusqu'à la fin du
+-- paragraphe reste donc « ‘ » ou « ‚ » tel quel — un texte inchangé vaut mieux qu'un texte
+-- à moitié converti.
+--
+-- Une frontière opaque (Code, RawInline, tout ce qui n'est ni Str ni Space/SoftBreak)
+-- referme la recherche sans convertir : une citation ouverte avant elle n'est jamais réputée
+-- fermée au-delà.
+--
+-- Les insécables : posées en relançant e_espacement (E1, plus haut) sur la chaîne déjà
+-- réécrite, pour CHAQUE Str touché — la même fonction qui pose déjà l'insécable après un
+-- GO et avant un GF pour les chevrons doubles d'A2. e_espacement reconnaît maintenant SO et
+-- SF au même titre que GO et GF (extension du 22.09.2026, voir plus haut) : aucun mécanisme
+-- d'espacement parallèle n'est écrit ici. e_espacement est sûre à rappeler sur une chaîne
+-- déjà normalisée (elle reconnaît une insécable déjà posée et ne la double pas), ce qui
+-- permet de la relancer sans rejouer tout normaliser_texte.
+local function a3_chevrons_sur_liste(inl)
+  local flux = {}
+  for i = 1, #inl do
+    local el = inl[i]
+    if el.t == 'Str' then
+      for k, c in ipairs(caracteres(el.text)) do
+        flux[#flux + 1] = { i = i, k = k, c = c }
+      end
+    elseif el.t == 'Space' or el.t == 'SoftBreak' then
+      flux[#flux + 1] = { i = i, c = ' ' }
+    else
+      flux[#flux + 1] = { i = i, c = '\0' }        -- frontière opaque
+    end
+  end
+
+  -- attente : 'fr' ou 'de' tant qu'un ouvrant cherche son fermant, sinon nil ; `debut` est
+  -- sa position dans `flux`. `profondeur` compte les chevrons doubles « » déjà présents
+  -- dans le flux à mesure qu'on avance ; `profondeur_ouverture` fige sa valeur au moment où
+  -- une paire française s'ouvre, seule mesure qui compte pour décider de son niveau (une
+  -- paire refermée après que profondeur a changé ne doit pas changer d'avis en route).
+  local attente, debut, profondeur_ouverture = nil, nil, 0
+  local profondeur = 0
+  local paires = {}
+
+  for n = 1, #flux do
+    local c = flux[n].c
+    if c == GO then
+      profondeur = profondeur + 1
+    elseif c == GF then
+      if profondeur > 0 then profondeur = profondeur - 1 end
+    end
+    if c == '\0' then
+      attente, debut = nil, nil
+    elseif c == SIMPLE_OUVRANT_DE then           -- ‚ : ouvre toujours l'idiome allemand,
+                                                  -- et c'est TOUJOURS un second niveau —
+                                                  -- voir la note de tête de fonction.
+      if attente == nil then attente, debut = 'de', n end
+    elseif c == SIMPLE_OUVRANT_FR then           -- ‘ : ferme l'allemand en attente, sinon ouvre le français
+      if attente == 'de' then
+        paires[#paires + 1] = { ouvrant = debut, fermant = n, niveau = 'de' }
+        attente, debut = nil, nil
+      elseif attente == nil then
+        attente, debut, profondeur_ouverture = 'fr', n, profondeur
+      end
+    elseif c == APO and attente == 'fr' then     -- ’ : ferme le français, sauf élision
+      local avant = flux[n - 1] and flux[n - 1].c
+      local apres = flux[n + 1] and flux[n + 1].c
+      local elision = est_lettre(avant) and est_lettre(apres)
+      if est_lettre(avant) and not elision then
+        paires[#paires + 1] = {
+          ouvrant = debut, fermant = n,
+          niveau = (profondeur_ouverture > 0) and 'imbriquee' or 'premier',
+        }
+        attente, debut = nil, nil
+      end
+    end
+  end
+  -- `attente` encore posé ici : ouvrant sans fermant, volontairement laissé tel quel.
+
+  if #paires == 0 then return inl end
+
+  local ecrire = {}
+  for _, p in ipairs(paires) do
+    local fo, ff = flux[p.ouvrant], flux[p.fermant]
+    -- Premier niveau français => chevrons doubles, comme n'importe quel guillemet (A2).
+    -- Idiome allemand et imbrication française => chevrons simples (A3).
+    local co, cf = SO, SF
+    if p.niveau == 'premier' then co, cf = GO, GF end
+    ecrire[fo.i] = ecrire[fo.i] or {}
+    ecrire[fo.i][fo.k] = co
+    ecrire[ff.i] = ecrire[ff.i] or {}
+    ecrire[ff.i][ff.k] = cf
+  end
+  for i, par_k in pairs(ecrire) do
+    local cs = caracteres(inl[i].text)
+    for k, nouveau in pairs(par_k) do cs[k] = nouveau end
+    inl[i] = pandoc.Str(e_espacement(table.concat(cs)))
+  end
+
+  return inl
+end
+
 local function transformer_inlines(inl)
   inl = t2_sur_liste(inl)
   inl = a4_sur_liste(inl)
+  inl = a3_chevrons_sur_liste(inl)
   local sortie = pandoc.Inlines({})
   for i = 1, #inl do
     local el = inl[i]

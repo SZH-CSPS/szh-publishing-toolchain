@@ -401,7 +401,18 @@ test('manuscrit-typo : les quatre corrections mesurées sur lot-A (A->À, 3ème-
       { original: 'A la suite de cet essai.', sabote: '\u00c0 la suite de cet essai.' },
       { original: 'Voir le 3ème exemple.', sabote: 'Voir le 3e exemple.' },
       { original: 'Un texte\u2009espace fine.', sabote: 'Un texte\u202fespace fine.' },
-      { original: 'Il a dit \u2018bonjour\u2019 gentiment.', sabote: 'Il a dit \u2039bonjour\u2019 gentiment.' }
+      // Corrig\u00e9 le 22.09.2026, une SECONDE fois : la valeur \u00ab sabote \u00bb pr\u00e9c\u00e9dente
+      // (\u2039bonjour\u203a, un chevron SIMPLE) appariait juste mais reproduisait le d\u00e9faut de
+      // R\u00c8GLE de a3_chevrons_sur_liste \u2014 elle convertissait TOUTE paire de guillemets simples
+      // en chevron simple, sans regarder le niveau de citation (A2/A3, docs/TYPOGRAPHIE-FR.md
+      // lignes 24-40 : le niveau d\u00e9cide de la forme, jamais le caract\u00e8re d'origine).
+      // \u2018bonjour\u2019 est une citation de PREMIER niveau (rien n'est ouvert avant elle dans le
+      // paragraphe) : la sortie correcte du filtre est \u00ab\u00a0bonjour\u00a0\u00bb, pas \u2039bonjour\u203a. Ce
+      // test-ci ne rejoue jamais le vrai filtre (sortie_sabotee le remplace), donc cette
+      // correction ne change rien \u00e0 son verdict \u2014 mais la valeur fig\u00e9e ici doit repr\u00e9senter
+      // une sortie CORRECTE du filtre, pas une sortie bogu\u00e9e. Voir les tests A3 plus bas, qui
+      // eux appellent le vrai pandoc et couvrent l'appariement ET le niveau r\u00e9els.
+      { original: 'Il a dit \u2018bonjour\u2019 gentiment.', sabote: 'Il a dit \u00ab\u00a0bonjour\u00a0\u00bb gentiment.' }
     ];
     for (const { original, sabote } of cas) {
       const sortie = normaliser({
@@ -567,4 +578,202 @@ test('manuscrit-typo : un fragment a note (texte/note/texte), coupe en plein mot
     assert.match(texteApres, /vraiment\.$/, 'la fin du texte apres la note a ete perdue');
     assert.match(texteAvant + texteApres, /impor/, 'le mot coupe a perdu du contenu');
     assert.match(texteAvant + texteApres, /tant/, 'le mot coupe a perdu du contenu');
+  });
+
+// ---- 14. A3 · appariement ET NIVEAU des guillemets simples, sur le chemin réel (pandoc +
+// filtre) ------------------------------------------------------------------------------
+//
+// Défaut n°1, mesuré le 22.09.2026 : pipeline/filters/szh-typographie.lua (a2a3_chevrons) ne
+// voyait qu'une seule chaîne, et pipeline/manuscrit_typo.py (_construire_inlines) découpe le
+// texte en un Str PAR MOT -- dès qu'une citation dépasse un mot, l'ouvrant '‘' et le
+// fermant '’' vivaient dans deux Str différents, invisibles l'un à l'autre. Correctif :
+// a3_chevrons_sur_liste, dans le filtre Lua, qui voit tout le paragraphe.
+//
+// Défaut n°2, mesuré le même jour sur un document réel (tmp/docx-cleaner-error/1408_Alves.
+// docx) : le premier correctif appariait juste mais écrivait TOUJOURS des chevrons simples
+// ‹ ›, sans regarder si la paire était de premier niveau ou imbriquée dans une citation déjà
+// ouverte — alors que la règle (A2/A3, docs/TYPOGRAPHIE-FR.md lignes 24-40) ne regarde que
+// le niveau, jamais le caractère d'origine : premier niveau => « », imbriqué => ‹ ›. Les
+// tests ci-dessous vérifient maintenant le NIVEAU autant que l'appariement.
+//
+// Ces contrôles passent par le VRAI pandoc (WSL), pas par sortie_sabotee : c'est le chemin
+// qu'aucun test de correction typographique ne couvrait avant ce lot.
+
+test('A3 : ‘mot’ de PREMIER niveau sur un seul mot devient « mot » (jamais ‹mot›)',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{ texte: 'Il a dit ‘mot’ simplement.', forme: { italique: false } }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    // Rien n'est ouvert avant ‘mot’ dans ce paragraphe : premier niveau, donc chevron
+    // DOUBLE (A2 : « les guillemets, quels qu'ils soient »), avec ses insécables (E1).
+    assert.match(texte, /« mot »/, 'la paire « mot » n’a pas été formée : ' + texte);
+    assert.doesNotMatch(texte, /[‘’‹›]/,
+      'un guillemet simple non converti, ou un chevron SIMPLE indu (niveau faux), subsiste : ' + texte);
+  });
+
+test('A3 : citation MULTI-MOTS de premier niveau, apostrophes internes, chevrons DOUBLES aux deux bouts, l’élision intacte',
+  { skip: sansPython || sansPandocWsl }, () => {
+    // « qu’il » est le piège : un fermant mal détecté à l’intérieur de la citation la
+    // couperait en deux, ou confondrait l’élision avec le fermant réel après « décrit ».
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'Elle cite ‘Le cours sinueux des rivières qu’il décrit’ avec émotion.',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    // Premier niveau (rien d'ouvert avant) : chevrons DOUBLES, insécable seulement aux deux
+    // bouts de la citation — pas entre les mots internes (E1, comme pour A2).
+    assert.match(texte, /« Le cours sinueux des rivières qu’il décrit »/,
+      'la citation multi-mots n’a pas été correctement appariée et nivelée, ou l’élision a été touchée : ' + texte);
+    // Aucun guillemet simple ni chevron simple ne doit subsister hors de l’élision « qu’il » :
+    // ni un ‘ resté non converti (appariement raté), ni un ’ isolé (fermant perdu ailleurs),
+    // ni un ‹ ›  (niveau faux).
+    assert.doesNotMatch(texte.replace('qu’il', 'quil'), /[‘’‹›]/,
+      'un guillemet simple non converti, ou un chevron simple indu, subsiste hors de l’élision : ' + texte);
+  });
+
+test('A3 : ouvrant de premier niveau suivi de ponctuation (‘…) devient « …, jamais un fermant ni un ‹',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'Le texte affirme ‘…ne refuse pas cette réalité’ avec force.',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    assert.match(texte, /« …ne refuse pas cette réalité »/,
+      'l’ouvrant de premier niveau suivi de ponctuation n’a pas produit « … : ' + texte);
+    assert.doesNotMatch(texte, /[›‹]|»…/,
+      'l’ouvrant a été pris pour un fermant, ou nivelé en chevron simple : ' + texte);
+  });
+
+test('A3 : fermant de premier niveau collé à un mot à apostrophe (‘c’est cela’) -> « c’est cela »',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'Elle affirme que ‘c’est cela’ qui compte.',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    assert.match(texte, /« c’est cela »/,
+      'la paire n’a pas été formée et nivelée autour de ‘c’est cela’, ou l’élision a été altérée : '
+      + texte);
+  });
+
+// ---- 14bis. A3 · une paire simple IMBRIQUÉE dans une citation « » déjà ouverte ---------
+//
+// Le seul contrôle qui prouve que la mesure de profondeur fonctionne : une paire simple
+// trouvée ENTRE un « et son » doit sortir en chevrons SIMPLES, alors que la même paire, sans
+// « » autour, sort en chevrons doubles (contrôles ci-dessus). C'est le cas mesuré sur
+// tmp/docx-cleaner-error/1408_Alves.docx, à ceci près qu'ici le « » est déjà présent dans le
+// texte source (posé par l'autrice), condition que a2a3_chevrons ne modifie jamais.
+
+test('A3 : ‘référence’ IMBRIQUÉE entre un « et un » déjà ouverts devient ‹ référence › (chevron simple)',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'L’auteure écrit : « c’est une ‘référence’ importante ».',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    // La citation imbriquée prend le chevron SIMPLE, avec ses insécables (même règle E1
+    // que pour le double) ; la citation englobante garde son chevron DOUBLE, inchangé.
+    assert.match(texte, /« c’est une ‹ référence › importante »/,
+      'la paire imbriquée n’a pas été nivelée en chevron simple, ou l’englobante a régressé : ' + texte);
+  });
+
+test('A3 : citation non fermée dans le paragraphe -> rien n’est converti (pas de chevron orphelin)',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'Il commence par ‘une remarque qui ne se referme pas dans ce paragraphe.',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    assert.doesNotMatch(texte, /[‹›]/,
+      'un chevron orphelin a été émis alors qu’aucun fermant n’existe : ' + texte);
+    assert.match(texte, /‘une remarque/, 'l’ouvrant non apparié aurait dû rester tel quel : ' + texte);
+  });
+
+// Verdict du 22.09.2026 sur le cas allemand (voir la note de tête de a3_chevrons_sur_liste,
+// pipeline/filters/szh-typographie.lua) : contrairement au français, où ‘ ’ est AMBIGU sur le
+// niveau (une rédactrice l'emploie aussi bien en premier niveau qu'en imbrication réelle),
+// l'idiome allemand natif réserve ‚ ‘ au SECOND niveau par construction — le premier niveau
+// natif est „ “, jamais ‚ ‘ seul (Duden). ‚ganz konkret‘ vaut donc TOUJOURS ‹ganz konkret›,
+// même hors de toute « » déjà ouverte dans le paragraphe : ce n'est pas une mesure de
+// profondeur qui le décide ici (a3_chevrons_sur_liste ne la lui applique d'ailleurs pas,
+// voir son code), mais l'idiome lui-même. Le comportement d'avant ce lot était donc déjà
+// juste, pour cette raison précise — et seulement pour elle. Aucune occurrence de ‚ ‘ n'a
+// été trouvée dans le corpus allemand disponible (tmp/docx-dev, tmp/docx-cleaner-error) pour
+// le mesurer sur du réel ; la règle retenue est celle du Duden, non une mesure locale.
+test('A3 : non-régression allemande — ‚ganz konkret‘ -> ‹ganz konkret›, TOUJOURS (idiome, pas profondeur)',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'de',
+      paragraphes: [{
+        source: 0,
+        fragments: [{ texte: 'er sagt ‚ganz konkret‘ dazu', forme: { italique: false } }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    // COLLEE = true en allemand : aucune insécable, ‹ et › collés au mot (comme « » l'est
+    // déjà pour A2).
+    assert.strictEqual(texte, 'er sagt ‹ganz konkret› dazu',
+      'l’idiome allemand ‚…‘ a régressé : ' + texte);
+  });
+
+test('A3 : non-régression des guillemets doubles « » (forme inchangée, y compris multi-mots)',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [{
+          texte: 'Elle cite “Le cours sinueux des rivières” en exemple.',
+          forme: { italique: false }
+        }]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    // E1 pose une insécable à l’intérieur des « » en français : « Le … rivières » et non
+    // «Le … rivières» collé — attendu, pas une régression de ce lot.
+    assert.match(texte, /« Le cours sinueux des rivières »/,
+      'les guillemets doubles multi-mots ont régressé : ' + texte);
   });
