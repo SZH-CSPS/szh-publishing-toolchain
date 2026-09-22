@@ -797,6 +797,84 @@ test('vue : le bouton ouvre la fiche sur le champ en cause, panneau neuf puis d�
   await HOTE.finirTache('Aperçu / Export PDF', 0);
 });
 
+// La ligne EXACTE que pipeline/Makefile (~l.542) écrit en pratique : un seul champ nommé,
+// « fichier », jamais « article ».
+const JOURNAL_PDF_VERROUILLE = [
+  '[pipeline-blocage] pdf-verrouille | fichier « out/01-essai/01-essai.pdf » | '
+    + 'Le PDF est ouvert dans une autre application. | '
+    + '[de] Das PDF ist in einer anderen Anwendung geöffnet.'
+].join(LF) + LF;
+
+// Le slug vide, mesuré le 22.09.2026 : une ligne pdf-verrouille ne porte ni « article » ni
+// « chapitre » — seulement « fichier » — et lireConstatCode en tirait un slug vide avant
+// que le repli slugDuPdf(nomFichier(...)) ne soit posé. La carte s'affichait quand même
+// (rien n'échoue à afficher une phrase), mais son geste, une fois cliqué, envoyait
+// szh.voirPdfArticle avec un slug vide : cibleTraduction() retombe alors sur l'article
+// ACTIF dans l'éditeur, ou celui de l'aperçu. Un rédacteur qui avait un AUTRE article ouvert
+// au moment du clic se voyait donc révéler LE PDF DE CET AUTRE ARTICLE, jamais celui que la
+// carte annonçait. lib/constats.js (cible/bouton) et la mesure du slug seuls ne l'auraient
+// pas vu : il faut aller jusqu'au chemin réellement passé à revealFileInOS pour l'attraper —
+// c'est ce que fait ce test, avec un second article bien réel ouvert dans l'éditeur pour
+// servir de piège.
+test('vue : le bouton « Voir le PDF » révèle CE PDF, jamais celui d’un autre article ouvert',
+  async () => {
+    // Le piège : un autre article, réel, ouvert dans l'éditeur — s'il fallait s'y rabattre,
+    // c'est SON PDF à lui que la commande révélerait.
+    HOTE.poserEditeurActif(path.join(REVUE, 'articles', '02-sans-fiche', '02-sans-fiche.md'));
+    const pdfAutre = path.join(REVUE, 'out', '02-sans-fiche', '02-sans-fiche.pdf');
+    fs.mkdirSync(path.dirname(pdfAutre), { recursive: true });
+    fs.writeFileSync(pdfAutre, Buffer.alloc(8));
+
+    poserJournal(JOURNAL_PDF_VERROUILLE);
+    await HOTE.finirTache('Aperçu / Export PDF', 2);
+    await HOTE.executer('szh.vueControles');
+    const p = HOTE.panneauDeType('szhVueControles');
+    await p._recepteur({ type: 'pret' });
+    const defaut = parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes,
+      /application/);
+    assert.ok(defaut, 'le PDF verrouillé n’est pas dans la liste');
+
+    // 1. Le bouton existe, et son identifiant porte la destination ET l'objet — « pdf » et
+    // le nom du fichier — tel qu'actionsConstat les forme. La clé de la carte est le slug
+    // lui-même : vide, ouvrirCible enverrait '' à la commande.
+    assert.ok(defaut.action, 'le PDF verrouillé n’a pas de geste');
+    assert.strictEqual(defaut.action.id, 'pdf:01-essai.pdf');
+    assert.strictEqual(defaut.carte.cle, '01-essai',
+      'le slug de la carte s’est perdu : ' + JSON.stringify(defaut.carte));
+
+    // 2. et 4. Ni le PDF ni le dossier out/01-essai n'existent encore (l'état réel d'une
+    // revue d'essai fraîche) : le clic doit jouer szh.voirPdfArticle avec le BON slug, et ne
+    // doit RIEN révéler à tort — ni le dossier, ni, surtout, le PDF de l'autre article resté
+    // ouvert dans l'éditeur.
+    const avant = HOTE.stub.commands._journal.length;
+    await p._recepteur({ type: 'action', cle: defaut.carte.cle, id: defaut.action.id });
+    const joues = HOTE.stub.commands._journal.slice(avant);
+    assert.ok(joues.some((c) => c.id === 'szh.voirPdfArticle' && c.args[0]
+      && c.args[0].slug === '01-essai'),
+      'le clic n’a pas joué szh.voirPdfArticle avec le bon slug : ' + JSON.stringify(joues));
+    assert.ok(!joues.some((c) => c.id === 'revealFileInOS'),
+      'quelque chose est révélé alors qu’aucun PDF n’existe encore : ' + JSON.stringify(joues));
+
+    // 3. Le PDF paraît enfin sur le disque : un second clic doit révéler CE fichier-là, et
+    // aucun autre. L'assertion qui compte : celle qui aurait attrapé le slug vide.
+    const pdf = path.join(REVUE, 'out', '01-essai', '01-essai.pdf');
+    fs.mkdirSync(path.dirname(pdf), { recursive: true });
+    fs.writeFileSync(pdf, Buffer.alloc(8));
+    const avant2 = HOTE.stub.commands._journal.length;
+    await p._recepteur({ type: 'action', cle: defaut.carte.cle, id: defaut.action.id });
+    const joues2 = HOTE.stub.commands._journal.slice(avant2);
+    const revele = joues2.filter((c) => c.id === 'revealFileInOS');
+    assert.strictEqual(revele.length, 1, 'le PDF n’est pas révélé : ' + JSON.stringify(joues2));
+    assert.strictEqual(revele[0].args[0].fsPath, pdf,
+      'ce n’est pas CE PDF qui est révélé : ' + JSON.stringify(revele[0].args[0]));
+
+    // Nettoyage : l'éditeur actif et le disque, tels qu'ils étaient avant ce test.
+    HOTE.poserEditeurActif();
+    fs.rmSync(path.join(REVUE, 'out'), { recursive: true, force: true });
+    poserJournal(JOURNAL_CITATIONS);
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+  });
+
 // Le défaut que Robin a signalé le 13.09.2026 : la flèche était là, elle ne faisait rien.
 // lib/constats.js appelle chaque destination avec { slug, focus } — c'est écrit en tête de
 // sa table — et szh.ouvrirArticle attendait un slug tout court : elle repartait sur
