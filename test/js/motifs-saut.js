@@ -24,8 +24,9 @@ const MOTIFS = {
   // continue n'a d'installation VSCodium.
   vscodium: ['VSCodium introuvable', 'pas Windows'],
   // Aucun runner d'intégration continue n'a d'installation en C:\ProgramData\SZH, donc les
-  // contrôles d'isolement n'y ont rien à mesurer.
-  production: ['installation de production absente'],
+  // contrôles d'isolement n'y ont rien à mesurer. La base d'auteurs moissonnée d'OJS
+  // (C:\ProgramData\SZHuteurs.json) en fait partie : c'est le banc des noms qui la lit.
+  production: ['installation de production absente', 'base OJS du poste absente'],
   // Vale : présent sur ubuntu (job `contrats` de ci.yml l'installe et pose
   // SZH_VALE_OBLIGATOIRE=1) ; absent sur windows-latest et sur un poste qui ne l'a pas encore
   // dans son image WSL.
