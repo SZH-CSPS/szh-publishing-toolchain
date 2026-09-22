@@ -288,6 +288,232 @@ test('ancrages : les ancres posées par pandoc sont celles que le cockpit propos
     'ref-duric-2020', 'ref-dordevic-2018', 'ref-olmez-2022']);
 });
 
+// Une parenthèse de prose allemande devant un millésime ressemble à un appel APA : tout nom
+// commun y est capitalisé. « (mindestens fünf Treffen pro Tandem zwischen Juli 2026 und
+// Oktober 2027) » rognait jusqu'à « Treffen pro Tandem zwischen Juli » et en faisait un
+// « auteur ». Aucune longueur ni lexique de noms communs ne distingue ensuite un nom commun
+// allemand capitalisé (« Werte ») d'un patronyme (« Bovey ») : la seule chose qui tranche, sans
+// virgule devant le millésime, est l'appariement à la bibliographie. D'où les deux preuves dans
+// les deux sens : « (Bovey 2022) » sans virgule s'apparie et reste lié ; « (Tabelle 3 zeigt die
+// Werte für 2019) » ne s'apparie à rien et reste muette — le prix payé est qu'un vrai appel
+// écrit sans virgule et dont la référence manque vraiment ne serait plus signalé, mais cette
+// forme est déjà hors norme APA.
+test('ancrages : sans virgule devant le millésime, seule la bibliographie fait l’appel',
+  (t) => {
+    if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
+    const md = [
+      'T01 On le sait (Bovey, 2022).',
+      '',
+      'T02 On le sait aussi (Bundesamt für Statistik, 2021).',
+      '',
+      'T03 Vu ailleurs (von der Heide, 2020).',
+      '',
+      'T04 Vu encore (Kunz, 2016).',
+      '',
+      'T05 Et sans virgule cette fois (Bovey 2022).',
+      '',
+      'F01 Der Austausch ist geplant (mindestens fünf Treffen pro Tandem zwischen Juli 2026 '
+        + 'und Oktober 2027).',
+      '',
+      'F02 Die Umsetzung erfolgte (Das Projekt läuft von 2020 bis 2024).',
+      '',
+      'F03 Laut Bericht (Die Erhebung erfolgte im Schuljahr 2021/2022).',
+      '',
+      'F04 Laut Plan (Der Workshop endet im Dezember 2027).',
+      '',
+      'F05 (Tabelle 3 zeigt die Werte für 2019).',
+      '',
+      '# Références',
+      '',
+      'Bovey, L. (2022). Ein Titel. Verlag.',
+      '',
+      'Bundesamt für Statistik (2021). Ein Titel. BFS.',
+      '',
+      'von der Heide, M. (2020). Ein Titel. Verlag.',
+      '',
+      'Kunz, A. (2016). Ein Titel. Verlag.'
+    ].join('\n');
+    fs.mkdirSync(TRAVAIL, { recursive: true });
+    const source = path.join(TRAVAIL, 'prose-allemande.md');
+    fs.writeFileSync(source, md, 'utf8');
+    const r = wsl(['pandoc', '--from=markdown', '--to=html',
+      '--lua-filter=' + cheminVersWsl(FILTRE), cheminVersWsl(source)]);
+    assert.ok(!r.error, 'pandoc : ' + (r.error && r.error.message));
+    assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
+    const err = String(r.stderr);
+    assert.doesNotMatch(err, /appel-sans-reference/,
+      'une parenthèse de prose allemande est encore prise pour un appel :\n' + err);
+    const posees = [...String(r.stdout).matchAll(/href="#(ref-[^"]+)"/g)].map((m) => m[1]);
+    // Cinq liens : Bovey deux fois (avec et sans virgule, même référence), les trois autres
+    // une fois. « Tabelle 3 zeigt die Werte für 2019 » n'en ajoute aucun.
+    assert.strictEqual(posees.length, 5,
+      'nombre de liens inattendu : ' + posees.join(' '));
+    assert.deepStrictEqual([...new Set(posees)].sort(), ['ref-bovey-2022', 'ref-bundesamt-2021',
+      'ref-kunz-2016', 'ref-von-2020'].sort(),
+      'les quatre références légitimes doivent toutes être liées : ' + posees.join(' '));
+  });
+
+// « al. » finit par un point, et le point est une frontière de phrase pour la queue de
+// l'appel narratif : « Selon Capurso et al. (2025) » perdait donc son appel en silence — ni
+// lien, ni avertissement, ni comptage. Idem pour « u. a. » (allemand) et « et coll. ». Le
+// remède neutralise ces points d'abréviation avant de couper à la frontière, plutôt que
+// d'assouplir la frontière elle-même — voir neutraliser_abreviations_dauteur() dans le
+// filtre.
+test('ancrages : les appels narratifs avec « et al. »/« u. a. » sont liés', (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
+  const md = [
+    'Selon Capurso et al. (2025), les résultats sont là.',
+    '',
+    'Laut Capurso u. a. (2025) ist das Ergebnis eindeutig.',
+    '',
+    'Selon Bovey (2022), le constat est net.',
+    '',
+    '# Références',
+    '',
+    'Capurso, M., Rossi, P., & Bianchi, L. (2025). Ein Titel. Verlag.',
+    '',
+    'Bovey, L. (2022). Ein Titel. Verlag.'
+  ].join('\n');
+  fs.mkdirSync(TRAVAIL, { recursive: true });
+  const source = path.join(TRAVAIL, 'narratif-et-al.md');
+  fs.writeFileSync(source, md, 'utf8');
+  const r = wsl(['pandoc', '--from=markdown', '--to=html',
+    '--lua-filter=' + cheminVersWsl(FILTRE), cheminVersWsl(source)]);
+  assert.ok(!r.error, 'pandoc : ' + (r.error && r.error.message));
+  assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
+  const posees = [...String(r.stdout).matchAll(/href="#(ref-[^"]+)"/g)].map((m) => m[1]);
+  // Trois appels, trois liens : les deux formes « et al. »/« u. a. » vers Capurso, et
+  // l'appel narratif simple vers Bovey.
+  assert.strictEqual(posees.length, 3,
+    'les trois appels narratifs ne sont pas tous liés : ' + posees.join(' ') + '\n' + r.stderr);
+  assert.deepStrictEqual([...new Set(posees)].sort(),
+    ['ref-bovey-2022', 'ref-capurso-2025'].sort(),
+    'les deux références doivent être liées : ' + posees.join(' '));
+});
+
+// Le remède ci-dessus ne doit pas aller chercher un nom dans la phrase précédente : un point
+// qui ferme une vraie phrase reste une frontière. « Meier » et « Bovey » partagent ici le
+// même millésime — si la queue de l'appel narratif remontait par-dessus le point, Bovey
+// deviendrait ambigu ou Meier recevrait le lien à sa place.
+test('ancrages : une frontière de phrase reste une frontière pour l’appel narratif', (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
+  const md = [
+    'Il cite Meier dans son propos. Bovey (2022) affirme autre chose.',
+    '',
+    '# Références',
+    '',
+    'Meier, K. (2022). Ein Titel. Verlag.',
+    '',
+    'Bovey, L. (2022). Ein Titel. Verlag.'
+  ].join('\n');
+  fs.mkdirSync(TRAVAIL, { recursive: true });
+  const source = path.join(TRAVAIL, 'frontiere-phrase.md');
+  fs.writeFileSync(source, md, 'utf8');
+  const r = wsl(['pandoc', '--from=markdown', '--to=html',
+    '--lua-filter=' + cheminVersWsl(FILTRE), cheminVersWsl(source)]);
+  assert.ok(!r.error, 'pandoc : ' + (r.error && r.error.message));
+  assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
+  const posees = [...String(r.stdout).matchAll(/href="#(ref-[^"]+)"/g)].map((m) => m[1]);
+  assert.deepStrictEqual(posees, ['ref-bovey-2022'],
+    'le point après « propos » n’arrête plus la remontée : ' + posees.join(' ')
+    + '\n' + r.stderr);
+});
+
+// Le champ « reference » d'un constat reference-orpheline sert au cockpit à retrouver le
+// passage dans le .md par recherche littérale. Le filtre y ajoutait un « … » qui n'existe
+// nulle part dans le texte source : la recherche rendait null, et la flèche restait muette
+// pour toute référence de plus de 70 caractères. Les phrases fr/de gardent leur ellipse —
+// cosmétique, personne n'y cherche — seul le champ ne doit plus en porter.
+test('ancrages : le champ « reference » d’un constat orphelin ne porte pas d’ellipse ajoutée',
+  (t) => {
+    if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
+    const md = [
+      'On le sait grâce à Dupont (2020).',
+      '',
+      '# Références',
+      '',
+      'Dupont, J. (2020). Un titre. Verlag.',
+      '',
+      'Abernathy, Q. R., Blackwood, S. T., & Chesterfield, V. W. (2024). Un titre '
+        + 'extremement long qui depasse largement soixante-dix caracteres pour de vrai. '
+        + 'Editeur.'
+    ].join('\n');
+    fs.mkdirSync(TRAVAIL, { recursive: true });
+    const source = path.join(TRAVAIL, 'reference-sans-ellipse.md');
+    fs.writeFileSync(source, md, 'utf8');
+    const r = wsl(['pandoc', '--from=markdown', '--to=html',
+      '--lua-filter=' + cheminVersWsl(FILTRE), cheminVersWsl(source)]);
+    assert.ok(!r.error, 'pandoc : ' + (r.error && r.error.message));
+    assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
+    const err = String(r.stderr);
+    const ligne = err.split('\n').find((l) => l.includes('reference-orpheline'));
+    assert.ok(ligne, 'aucun constat reference-orpheline dans stderr :\n' + err);
+    // Les champs sont séparés par « | » (sans_barre() garantit qu'aucun champ n'en porte un
+    // lui-même) : le champ « reference » est le troisième.
+    const champs = ligne.split(' | ');
+    const champReference = champs[2];
+    assert.match(champReference, /^reference « (.*) »$/, 'forme inattendue : ' + champReference);
+    const interieur = champReference.match(/^reference « (.*) »$/)[1];
+    assert.ok(!interieur.includes('…'),
+      'le champ reference porte encore une ellipse ajoutée : ' + interieur);
+    assert.ok(md.includes(interieur),
+      'le champ reference n’est pas une sous-chaîne littérale du markdown source : '
+      + JSON.stringify(interieur));
+  });
+
+// Le libellé d'un appel NARRATIF (« Selon Lefebvre et al. (2019) ») ne tenait que la
+// parenthèse — « (2019) » — parce que relever() le construit toujours à partir de s..e, les
+// bornes de LA PARENTHÈSE, jamais de la prose qui la précède. Ce libellé sert deux fois :
+// dans le constat que lit le rédacteur (« Appel sans référence : (2019) » ne lui apprend
+// rien), et comme cible de la flèche « Vers l'article » du cockpit, qui le cherche mot pour
+// mot dans le .md — « (2019) » y tombe sur la première parenthèse d'année venue.
+// La correction narrative de « et al. » rend ce défaut fréquent : avant elle, les appels
+// narratifs avec « et al. » n'étaient simplement jamais vus.
+test('ancrages : le libellé d’un appel narratif couvre le nom et la parenthèse', (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
+  const md = [
+    'Selon Lefebvre et al. (2019), les résultats sont là.',
+    '',
+    'Laut Lefebvre u. a. (2019) ist das Ergebnis eindeutig.',
+    '',
+    'Selon Lefebvre (2019), le constat est net.',
+    '',
+    '# Références',
+    '',
+    'Bovey, L. (2022). Ein Titel. Verlag.'
+  ].join('\n');
+  fs.mkdirSync(TRAVAIL, { recursive: true });
+  const source = path.join(TRAVAIL, 'libelle-narratif.md');
+  fs.writeFileSync(source, md, 'utf8');
+  const r = wsl(['pandoc', '--from=markdown', '--to=html',
+    '--lua-filter=' + cheminVersWsl(FILTRE), cheminVersWsl(source)]);
+  assert.ok(!r.error, 'pandoc : ' + (r.error && r.error.message));
+  assert.strictEqual(r.status, 0, 'pandoc sorti en ' + r.status + ' : ' + r.stderr);
+  const err = String(r.stderr);
+  const lignes = err.split('\n').filter((l) => l.includes('appel-sans-reference'));
+  assert.strictEqual(lignes.length, 3,
+    'trois appels sans référence attendus (Lefebvre n’est jamais dans la liste) :\n' + err);
+  // Champs séparés par « | » (comme pour reference-orpheline plus haut) : le champ « appel »
+  // est le troisième. Les guillemets françaises posées par constat() encadrent le texte
+  // d'une espace insécable (U+00A0) — \s de JavaScript la reconnaît, un simple espace non.
+  const libelles = lignes.map((l) => {
+    const champs = l.split(' | ');
+    const m = champs[2] && champs[2].match(/^appel\s*«\s*([\s\S]*?)\s*»$/);
+    assert.ok(m, 'forme de constat inattendue : ' + l);
+    return m[1];
+  });
+  // Ni « Selon »/« Laut », ni la seule parenthèse : le nom et la parenthèse, rien de plus.
+  assert.deepStrictEqual(libelles.sort(),
+    ['Lefebvre (2019)', 'Lefebvre et al. (2019)', 'Lefebvre u. a. (2019)'].sort(),
+    'libellés narratifs inattendus : ' + JSON.stringify(libelles));
+  // Chacun doit rester une sous-chaîne littérale du .md source, sinon la flèche « Vers
+  // l'article » du cockpit ne le retrouvera pas.
+  for (const l of libelles) {
+    assert.ok(md.includes(l),
+      'libellé absent du markdown source, la flèche du cockpit le manquerait : ' + l);
+  }
+});
+
 test('ancrages : le cockpit lit la table du filtre au lieu d’en tenir une copie', () => {
   assert.strictEqual(cit.cheminDuFiltre(), FILTRE,
     'le cockpit doit lire szh-citations.lua du dépôt quand il est là');

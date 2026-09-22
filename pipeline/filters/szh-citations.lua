@@ -751,6 +751,82 @@ local function noms_de_lappel(bloc)
   return noms
 end
 
+-- Abréviations à point qui ne ferment pas la phrase, pour la lecture de la prose qui précède
+-- un appel narratif (« Selon Capurso et al. (2025) », « Laut Capurso u. a. (2025) ») : le
+-- point de « al. » est aussi un point de fin de phrase, et la queue prise avant la
+-- parenthèse — coupée à la dernière frontière — s'arrêtait donc sur lui, vide. On neutralise
+-- ici les points qui ne ferment rien (« et al. », « u. a. », « et coll. », une initiale de
+-- prénom comme « J.-J. ») AVANT de couper à la frontière, plutôt que d'assouplir la
+-- frontière elle-même : un vrai point de fin de phrase (« … la théorie. Bovey (2022) »)
+-- continue de l'arrêter.
+-- Motif puis remplacement : la même liste sert à neutraliser_abreviations_dauteur() (la
+-- queue qu'on lit) et à debut_prose_narrative() plus bas (la position, en coordonnées de
+-- `txt`, où cette queue commence — pour le libellé du constat, qui doit rester une
+-- sous-chaîne littérale du document). Une seule liste, pour que les deux ne divergent
+-- jamais : voir la mise en garde de tête sur ce risque précis.
+local ABREVIATIONS_DAUTEUR = {
+  { '%f[%a]et%s+al%.', 'et al' },
+  { '%f[%a]et%s+coll%.', 'et coll' },
+  { '%f[%a]u%.%s*a%.', 'u a' },
+  -- Initiale de prénom : une seule majuscule suivie d'un point, à une frontière de mot —
+  -- « J.-J. Dupont », jamais un mot de plusieurs lettres suivi d'un point.
+  { '%f[%a](%u)%.', '%1' },
+}
+
+local function neutraliser_abreviations_dauteur(t)
+  for _, m in ipairs(ABREVIATIONS_DAUTEUR) do t = t:gsub(m[1], m[2]) end
+  return t
+end
+
+-- Position, en coordonnées de `prefixe` (donc de `txt`, dont `prefixe` est un sous-texte
+-- depuis le début), juste après la dernière frontière de phrase qui n'est pas un point
+-- d'abréviation d'auteur. C'est le pendant de neutraliser_abreviations_dauteur() pour un
+-- usage différent : celle-ci sert à lire les noms (sa copie neutralisée peut changer de
+-- longueur — « u.a. » devient « u a », un caractère de plus — donc ses décalages ne se
+-- reportent pas sur `txt`) ; celle-ci sert à découper le libellé du constat, qui DOIT rester
+-- une sous-chaîne littérale de `txt` pour que la flèche « Vers l'article » du cockpit la
+-- retrouve. Elle repère donc les mêmes motifs directement sur le texte original, sans jamais
+-- le modifier ni recalculer de décalage.
+local function debut_prose_narrative(prefixe)
+  local protege = {}
+  for _, m in ipairs(ABREVIATIONS_DAUTEUR) do
+    local motif = m[1]
+    local i = 1
+    while true do
+      local a, b = prefixe:find(motif, i)
+      if not a then break end
+      for k = a, b do protege[k] = true end
+      i = b + 1
+    end
+  end
+  for i = #prefixe, 1, -1 do
+    local c = prefixe:byte(i)
+    -- . ; : ! ? ( ) et l'octet sentinelle \1 (voir aplatir()) : les mêmes frontières que le
+    -- motif utilisé pour extraire la queue narrative.
+    local frontiere = (c == 46 or c == 59 or c == 58 or c == 33 or c == 63
+                        or c == 40 or c == 41 or c == 1)
+    if frontiere and not protege[i] then return i + 1 end
+  end
+  return 1
+end
+
+-- Une parenthèse de prose allemande devant un millésime ressemble à un appel APA : tout nom
+-- commun y est capitalisé, et noms_de_lappel() ne rogne qu'à gauche — il s'arrête au premier
+-- mot capitalisé et en fait un « nom ». Aucune longueur ni lexique de noms communs ne sépare
+-- alors « Werte » (un nom commun) de « Bovey » (un patronyme) : les deux sont un seul mot
+-- capitalisé sans virgule devant le millésime. La virgule devant le millésime, elle, est la
+-- forme APA et ne trompe pas : quand elle manque, seul l'appariement à la bibliographie tranche
+-- — voir son usage dans relever(), branche des appels entre parenthèses.
+local function virgule_avant_millesime(tete)
+  local t = trim(tete)
+  if t:match(',%s*$') then return true end
+  -- « et al. », « u. a. », « et coll. » : noms_de_lappel() les change déjà en virgule.
+  if t:match('%f[%w]et%s+al%.?%s*$') then return true end
+  if t:match('%f[%w]u%.%s?a%.%s*$') then return true end
+  if t:match('%f[%w]et%s+coll%.?%s*$') then return true end
+  return false
+end
+
 -- ------------------------------------------------------------------------- appariement
 local function variantes(nom)
   local mots, out = {}, {}
@@ -1122,34 +1198,80 @@ function Pandoc(doc)
       decalage = decalage + #frag + 1
     end
     local noms_precedents = nil
+    -- Début du libellé (coordonnées de txt) pour un appel NARRATIF, reconduit d'un fragment
+    -- à l'autre comme noms_precedents ci-dessus (« Capurso et al. (2025, 2026) ») ; nil pour
+    -- un appel entre parenthèses, où le libellé reste la parenthèse entière (voir plus bas).
+    local depart_narratif_precedent = nil
     for rang, fr in ipairs(frags) do
       local ans = annees_du_fragment(fr.texte)
       if #ans > 0 then
         local noms
+        local depart_narratif = nil
+        -- Vrai seulement dans la branche des appels entre parenthèses, et seulement quand le
+        -- millésime n'y suit pas une virgule : c'est alors la bibliographie qui décide si la
+        -- parenthèse est un appel, pas la forme du nom rogné (voir virgule_avant_millesime).
+        local exige_appariement = false
         if rang > 1 and noms_precedents and fragment_annees_seules(fr.texte) then
           -- « (Weiß, 2016 ; 2023) », « (Schröttle et al., 2024a ; 2024b) » : le second
-          -- fragment ne porte qu'une année, l'auteur est celui du fragment précédent.
+          -- fragment ne porte qu'une année, l'auteur est celui du fragment précédent — et,
+          -- si ce précédent était narratif, le libellé reprend le même départ.
           noms = noms_precedents
+          depart_narratif = depart_narratif_precedent
         elseif fragment_annees_seules(fr.texte) then
-          -- appel narratif : les noms sont dans la prose qui precede la parenthese
-          local queue = txt:sub(1, s - 1):match('([^%.;:!%?%(%)\1]*)$') or ''
+          -- appel narratif : les noms sont dans la prose qui precede la parenthese. Les
+          -- abréviations d'auteur sont neutralisées avant la coupe, pas la frontière : voir
+          -- neutraliser_abreviations_dauteur(). Le libellé, lui, doit rester une sous-chaîne
+          -- littérale de txt — debut_prose_narrative() rend sa position SANS neutraliser la
+          -- chaîne, pour ne jamais avoir à reporter un décalage d'une copie plus courte.
+          local prefixe = txt:sub(1, s - 1)
+          local depart_phrase = debut_prose_narrative(prefixe)
+          local queue = neutraliser_abreviations_dauteur(prefixe)
+                          :match('([^%.;:!%?%(%)\1]*)$') or ''
           noms = noms_de_lappel(queue)
+          -- « Selon Lefebvre et al. (2019) » : le libellé ne doit pas porter l'amorce
+          -- (« Selon »/« Laut »…) — noms_de_lappel() l'a déjà rognée pour lire noms[1], mais
+          -- seulement dans sa copie. On retrouve ici la position du premier mot du nom
+          -- retenu par une recherche littérale dans txt, bornée à la prose qui précède la
+          -- parenthèse ; rien trouvé (nom vide, mot introuvable tel quel) laisse
+          -- depart_phrase — l'amorce reste alors dans le libellé, jamais une position fausse.
+          depart_narratif = depart_phrase
+          local premier_mot = noms[1] and noms[1]:match('^(%S+)')
+          if premier_mot then
+            local trouve = txt:find(premier_mot, depart_phrase, true)
+            if trouve and trouve <= s - 1 then depart_narratif = trouve end
+          end
         else
           local coupe = fr.texte:find('%f[%w]%d%d%d%d%f[%W]') or (#fr.texte + 1)
-          noms = noms_de_lappel(fr.texte:sub(1, coupe - 1))
+          local tete = fr.texte:sub(1, coupe - 1)
+          noms = noms_de_lappel(tete)
           if #noms == 0 then
             -- « (… prose …, Ryan & Deci, 1989) » : on retente sur la fin seulement
-            local queue = fr.texte:sub(1, coupe - 1):match('([^,;:%(%)]*[,;]?%s*)$') or ''
+            local queue = tete:match('([^,;:%(%)]*[,;]?%s*)$') or ''
             noms = noms_de_lappel(queue)
           end
+          exige_appariement = not virgule_avant_millesime(tete)
         end
         if #noms > 0 then
           noms_precedents = noms
+          depart_narratif_precedent = depart_narratif
           for _, a in ipairs(ans) do
-            appels = appels + 1
             local cands = apparier({ noms = noms, annee = a.annee, suffixe = a.suffixe },
                                    fiches)
-            local libelle = normaliser(txt:sub(s, e))
+            -- Sans virgule devant le millésime, une parenthèse qui ne s'apparie à aucune
+            -- référence n'est pas comptée comme appel : ni bilan, ni constat, ni lien. Le
+            -- coût, assumé : un vrai appel écrit sans virgule et dont la référence manque
+            -- vraiment ne sera plus signalé. La perte est étroite — cette forme est déjà hors
+            -- norme APA — et elle achète l'absence de faux positifs sur toute la prose
+            -- allemande, où le nom rogné ne se distingue jamais d'un nom commun capitalisé.
+            if exige_appariement and #cands == 0 then goto continue end
+            appels = appels + 1
+            -- Le libellé est ce que lit le rédacteur dans le constat, et ce que la flèche
+            -- « Vers l'article » du cockpit cherche mot pour mot dans le .md : un appel
+            -- entre parenthèses tient tout entier dans s..e, mais un appel narratif a son
+            -- nom AVANT la parenthèse (« Lefebvre et al. » n'est pas dans « (2019) ») —
+            -- depart_narratif, posé par debut_prose_narrative(), l'y ajoute sans jamais
+            -- inventer de texte : c'est toujours une plage de txt, telle quelle.
+            local libelle = normaliser(txt:sub(depart_narratif or s, e))
             local ds, de
             if #frags == 1 and #ans == 1 then
               ds, de = s, e                                   -- toute la parenthese
@@ -1185,6 +1307,7 @@ function Pandoc(doc)
                                         faire = marque('szh-appel-orphelin') }
               end
             end
+            ::continue::
           end
         end
       end
@@ -1392,7 +1515,11 @@ function Pandoc(doc)
       'Mehrdeutiger Zitatverweis, von Hand zu verknüpfen: ' .. a .. '.')
   end
   for _, j in ipairs(jamais) do
-    avertir('reference-orpheline', { 'reference « ' .. j .. '… »' },
+    -- Le champ « reference » n'ajoute rien au texte source : le cockpit y cherche le passage
+    -- par recherche littérale, et un « … » qui n'existe nulle part dans le .md la rend
+    -- muette. La troncature seule ne gêne pas cette recherche ; l'ellipse la casse. Les
+    -- phrases fr/de, elles, gardent leur « … » — purement cosmétique, personne n'y cherche.
+    avertir('reference-orpheline', { 'reference « ' .. j .. ' »' },
       'Référence jamais appelée : ' .. j .. '…',
       'Nie zitierter Eintrag: ' .. j .. '…')
   end
