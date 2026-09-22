@@ -68,6 +68,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
 import time
@@ -76,6 +77,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele
 import manuscrit_docx as md
 import manuscrit_modele as mm
+import manuscrit_noms as mn
 import manuscrit_entete as me
 import manuscrit_typo as mt
 import manuscrit_regles as mr
@@ -126,8 +128,8 @@ def _ligne_stdout(objet):
 
 def _analyser_args(argv):
     args = {'entree': None, 'produit': None, 'sortie': None, 'rapport': None,
-            'analyse_seule': False, 'sans_typo': False, 'sans_annotation': False,
-            'sans_reseau': False}
+            'base_auteurs': None, 'analyse_seule': False, 'sans_typo': False,
+            'sans_annotation': False, 'sans_reseau': False}
     positionnels = []
     reste = argv[1:]
     i = 0
@@ -142,6 +144,14 @@ def _analyser_args(argv):
         elif a == '--rapport' and i + 1 < len(reste):
             i += 1
             args['rapport'] = reste[i]
+        elif a == '--base-auteurs' and i + 1 < len(reste):
+            # §6.1 du contrat de lot D (CONTRAT-noms.md) : chemin explicite de la base OJS
+            # (format v2, mn.BaseNoms.charger()). Absent -> recherche automatique de
+            # mn.BaseNoms.charger() (SZH_AUTEURS_CACHE, puis /mnt/c/ProgramData/SZH/
+            # auteurs.json ou C:\ProgramData\SZH\auteurs.json) — le lanceur PowerShell n'est
+            # PAS modifié, cette détection automatique le couvre déjà.
+            i += 1
+            args['base_auteurs'] = reste[i]
         elif a == '--analyse-seule':
             args['analyse_seule'] = True
         elif a == '--sans-typo':
@@ -159,8 +169,8 @@ def _analyser_args(argv):
 
 
 USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift '
-         '--sortie <dossier> [--rapport <fichier.json>] [--analyse-seule] [--sans-typo] '
-         '[--sans-annotation] [--sans-reseau]')
+         '--sortie <dossier> [--rapport <fichier.json>] [--base-auteurs <fichier>] '
+         '[--analyse-seule] [--sans-typo] [--sans-annotation] [--sans-reseau]')
 
 
 # ---------------------------------------------------------------------------------
@@ -479,6 +489,59 @@ def _marquer_notes_dans_alertes(alertes, correspondance_notes):
 
 
 # ---------------------------------------------------------------------------------
+# Noms de bibliographie, AVANT l'en-tête (§6.1 du contrat de lot D, CONTRAT-noms.md —
+# ⚠ tranché par le superviseur le 22.09.2026, à ne pas rouvrir) : _construire_bibliographie()
+# ci-dessous tourne APRÈS l'en-tête (elle dépend de son retrait du corps) et ne peut donc pas
+# fournir `noms_biblio` à temps pour me.extraire_entete(). Cette passe-ci est délibérément
+# LÉGÈRE et INDÉPENDANTE : elle ne décide d'AUCUNE étendue de bibliographie (ne déplace, ne
+# duplique jamais _construire_bibliographie()), elle ne fait que récolter des jetons de noms
+# de famille certifiés par la forme APA (« Nom, P. »), sur tout le document, avant tout
+# retrait.
+
+def _plier_jeton_biblio(jeton):
+    """Pliage minimal (NFD, accents retirés, minuscule, ponctuation de bord retirée) — même
+    principe que manuscrit_noms._plier() (privée, non importable telle quelle depuis ce
+    fichier), sans avoir besoin d'être bit-identique : manuscrit_noms._signal_biblio() replie
+    de toute façon chaque jeton de `noms_biblio` à la réception (voir son code) — cette
+    fonction-ci n'a donc besoin que d'être RAISONNABLE, jamais canonique."""
+    t = unicodedata.normalize('NFD', (jeton or '').strip().lower())
+    t = ''.join(c for c in t if not unicodedata.combining(c))
+    return t.strip('.,;:!?()[]{}«»“”‘’\'"-')
+
+
+def _noms_de_bibliographie(document):
+    """Ensemble de jetons pliés (§6.1) : le dernier jeton non-particule de chaque nom, plus
+    le nom entier — jamais une étendue, jamais une exception. Repéré par
+    dm.ressemble_a_une_reference() (mn.dm, le docx-meta.py déjà chargé par manuscrit_noms.py
+    — ≥ 25 signes, un millésime, une initiale : vérifié en la relisant, une ligne d'en-tête
+    comme « Marie Dupont, Université de Genève » n'a pas d'année, elle ne passe pas ce
+    filtre) ; ce qui précède la PREMIÈRE virgule, s'il est capitalisé et sans chiffre, est un
+    nom de famille certifié par la forme APA (« Wood de Wilde, H. » -> « wood de wilde »)."""
+    jetons = set()
+    for bloc in document.blocs:
+        if not isinstance(bloc, mm.Paragraphe):
+            continue
+        texte = bloc.texte().strip()
+        if not texte or not mn.dm.ressemble_a_une_reference(texte):
+            continue
+        avant_virgule = texte.split(',', 1)[0].strip()
+        if not avant_virgule or any(c.isdigit() for c in avant_virgule):
+            continue
+        if not avant_virgule[0].isupper():
+            continue
+        mots = avant_virgule.split()
+        dernier_non_particule = None
+        for mot in reversed(mots):
+            if _plier_jeton_biblio(mot) not in mn.PARTICULES:
+                dernier_non_particule = mot
+                break
+        if dernier_non_particule:
+            jetons.add(_plier_jeton_biblio(dernier_non_particule))
+        jetons.add(_plier_jeton_biblio(avant_virgule))
+    return jetons
+
+
+# ---------------------------------------------------------------------------------
 # Bibliographie — voir le point 1 de l'en-tête : mêmes briques PUBLIQUES que
 # pronto_modele.etendue_biblio(), jamais une seconde liste de titres.
 
@@ -707,6 +770,17 @@ def principal(argv):
     # Calculée ICI (avant classer_titres) : extraire_entete() en a besoin.
     langue = 'fr' if args['produit'] == 'revue' else 'de'
 
+    # Base de noms (§6.1 du contrat de lot D) — chargée UNE FOIS ici, passée telle quelle à
+    # me.extraire_entete() et me.extraire_bloc_auteurs_final() ci-dessous. --base-auteurs
+    # absent -> mn.BaseNoms.charger() fait sa recherche automatique ; silencieuse de bout en
+    # bout (aucune source trouvée = base indisponible, jamais une exception).
+    progres('chargement de la base de noms...')
+    base_noms = mn.BaseNoms.charger(chemin_base_auteurs=args['base_auteurs'])
+    if base_noms.disponible:
+        progres('base de noms : %s' % '; '.join(base_noms.sources))
+    else:
+        progres('base de noms indisponible (aucune source trouvée)')
+
     # En-tête (§5.5) — cas B seulement (§1 : « en cas A, rien de tout ceci, le gabarit est
     # déjà rempli »). Retire le titre/sous-titre/auteurs/résumé/mots-clés/DOI/ligne de revue
     # du corps AVANT le classement des titres de section, qui ne doit juger que ce qui reste.
@@ -714,15 +788,35 @@ def principal(argv):
     trace_entete = []
     indices_entete = {}
     paragraphes_entete_ctx = []
+    auteurs_ctx = []
     if gabarit == 'B':
+        # Noms de bibliographie (§6.1) — AVANT extraire_entete(), sur le document ENCORE
+        # complet (voir _noms_de_bibliographie() plus haut pour le pourquoi).
+        progres('repérage des noms de bibliographie...')
+        noms_biblio = _noms_de_bibliographie(document)
+        progres('%d jeton(s) de nom retenu(s) depuis la bibliographie' % len(noms_biblio))
+
         progres("reconnaissance de l'en-tête...")
-        entete, indices_entete, trace_entete = me.extraire_entete(document, langue)
+        entete, indices_entete, trace_entete = me.extraire_entete(
+            document, langue, base_noms=base_noms, noms_biblio=noms_biblio)
         progres("reconnaissance du bloc d'autrices et auteurs en fin de document...")
-        indices_final, trace_final = me.extraire_bloc_auteurs_final(document, entete, langue,
-                                                                      indices_entete)
+        indices_final, trace_final = me.extraire_bloc_auteurs_final(
+            document, entete, langue, indices_entete,
+            base_noms=base_noms, noms_biblio=noms_biblio)
         indices_entete.update(indices_final)
         trace_entete = trace_entete + trace_final
         paragraphes_entete_ctx = _paragraphes_entete_contexte(document, indices_entete)
+        # §6.2 du contrat de lot D (étendu par le superviseur le 22.09.2026 : `ordre_conflit`
+        # est un TROISIÈME champ de la fiche EnTete.auteurs, pas une inspection de
+        # `ordre_motif`) : contexte['auteurs'] pour manuscrit_regles.py
+        # (Entete.OrdreNomIncertain / Entete.OrdreNomParDefaut) — vide en cas A par
+        # construction (cette liste n'est remplie que dans la branche gabarit == 'B').
+        auteurs_ctx = [{'prenom': a.get('prenom') or '', 'nom': a.get('nom') or '',
+                         'ordre_confiance': a.get('ordre_confiance') or '',
+                         'ordre_motif': a.get('ordre_motif') or '',
+                         'ordre_conflit': bool(a.get('ordre_conflit')),
+                         'texte_source': a.get('texte_source') or ''}
+                        for a in entete.auteurs]
         document.blocs = [b for idx, b in enumerate(document.blocs)
                            if idx not in indices_entete]
         progres('en-tête : titre=%r, %d auteur(s), résumé=%d signe(s), %d mot(s)-clé(s)'
@@ -773,6 +867,7 @@ def principal(argv):
         'images': [{'alt': i['alt'], 'source': i['source']} for i in images],
         'tableaux': tableaux_ctx,
         'avertissements_typo': avertissements_typo,
+        'auteurs': auteurs_ctx,
     }
     alertes_python = mr.evaluer(contexte)
     # mr.evaluer() rend les règles STRUCTURELLES du catalogue ET la reprise des avertissements

@@ -1,7 +1,7 @@
 # Nettoyeur de manuscrit (article) — contrat d'architecture
 
 **Ce fichier est le contrat que suit chaque module.** Il fixe les frontières, les noms et les
-formats d'échange, à l'état du **21.09.2026**. Il dit ce qui EST, pas ce qui a été — l'historique
+formats d'échange, à l'état du **22.09.2026**. Il dit ce qui EST, pas ce qui a été — l'historique
 des révisions vit dans git ; les mesures et les pièges réels, eux, sont rassemblés dans une
 section unique, « Pièges mesurés » (§10), plutôt que dispersés au fil du texte. Un désaccord avec
 ce fichier se règle en le modifiant, jamais en s'en écartant dans le code.
@@ -80,6 +80,7 @@ importable porte un tiret bas, une CLI porte un tiret**.
 | `pipeline/manuscrit_odt.py` | `.odt` → modèle riche (reste à écrire, voir `ETAT-REPRISE`) | les décisions |
 | `pipeline/manuscrit_typo.py` | le pont typographique (§6) | les décisions |
 | `pipeline/manuscrit_entete.py` | l'en-tête et le bloc final d'autrices/auteurs (§5.5) | Word, OpenDocument |
+| `pipeline/manuscrit_noms.py` | l'ordre prénom/nom et sa répartition (§5.5 ter) | Word, OpenDocument, le modèle riche |
 | `pipeline/manuscrit_gabarit.py` | modèle riche → `.docx` au gabarit (§5.3, §5.4) | les décisions |
 | `pipeline/manuscrit_regles.py` | le catalogue structurel et le moteur d'alertes (§7) | les formats |
 | `pipeline/manuscrit_vale.py` | le pont Vale (§7) | les décisions |
@@ -407,13 +408,23 @@ connu, ou est l'intertitre qui clôt la zone. À défaut, `docx-meta.scinder_tit
 ligne unique sur son premier deux-points suivi d'un espace.
 
 **Auteurs**, trois motifs essayés dans l'ordre : 1) **byline groupée** (« Prénom Nom, Prénom Nom
-et Prénom Nom »), chaque segment devant individuellement passer `nom_plausible()` ; 2) **« Nom,
-Prénom »** — essayé seulement après l'échec du premier motif : les deux premiers segments,
-chacun un seul mot capitalisé, valent Nom puis Prénom (ordre inversé, c'est ce qui les
+et Prénom Nom ») — `_segments_plausibles()` **partitionne** la ligne en `(noms, infos)` : un
+segment qui porte une institution, un e-mail, un ORCID ou un téléphone est une INFO, un segment
+qui passe `nom_plausible(sans_titres_academiques(...))` est un NOM, et tout segment qui n'est ni
+l'un ni l'autre fait échouer la ligne entière (§5.1 : une fonction en texte libre ne se devine
+pas). Aucun nom → ce n'est pas une ligne d'introduction de noms, et la ligne retombe sur le
+motif 3. Les infos de la même ligne ne se rattachent que s'il y a **exactement un** nom ;
+2) **« Nom, Prénom »** — essayé seulement après l'échec du premier motif : les deux premiers
+segments, chacun un seul mot capitalisé, valent Nom puis Prénom (ordre inversé, c'est ce qui les
 distingue) ; 3) une ligne sans nom mais avec un e-mail/ORCID/mot d'institution se rattache à la
 DERNIÈRE fiche ouverte, seulement si un seul nom a été introduit juste avant. Un numéro de
 téléphone est reconnu et **écarté** — le schéma `EnTete.auteurs` n'a pas de champ téléphone.
 `ROR` n'est jamais rempli (la rédaction le choisit dans le cockpit).
+
+L'**ordre prénom/nom** à l'intérieur d'un segment n'appartient plus à ce module : il est demandé
+à `manuscrit_noms` (§5.5 ter). Chaque fiche porte donc trois champs de plus — `ordre_confiance`,
+`ordre_motif`, `ordre_conflit` — que `manuscrit_gabarit.ecrire()` ignore (il remplit par liste
+blanche d'étiquettes) et que la CLI passe aux règles (§7).
 
 **Résumé — capture bornée** : commence à un marqueur reconnu (`docx-meta.RE_RESUME`) et se
 poursuit jusqu'à la première condition atteinte parmi : un nouveau marqueur reconnu ; l'intertitre
@@ -461,12 +472,33 @@ cet ordre :
    unique séparé par des sauts de ligne manuels (Word pose souvent tout le bloc en UN SEUL
    paragraphe) est scindé sur `'\n'` avant d'être analysé ligne par ligne ;
 2. à défaut, un **repli heuristique** : le plus long groupe de paragraphes COURTS
-   (`SEUIL_LIGNE_AUTEUR_FINAL` = 120 signes — mesuré : les 117 références réelles du corpus font
-   toutes plus de 120 signes, une ligne de fonction/adresse/e-mail du bloc auteurs en fait 15 à
-   50) en fin de document, en s'arrêtant net sur un intitulé de bibliographie reconnu (même
-   lexique que `_construire_bibliographie()`, jamais une seconde liste de titres). Consommé
-   SEULEMENT s'il porte au moins un nom plausible (sinon rien, §5.1 : « en cas de doute, rien, et
-   on le dit »).
+   (`SEUIL_LIGNE_AUTEUR_FINAL` = 120 signes — une ligne de fonction/adresse/e-mail du bloc
+   auteurs en fait 15 à 50 ; la plupart des références bibliographiques dépassent largement ce
+   seuil, mais pas toutes, d'où la garde suivante) en fin de document, en s'arrêtant net :
+   - sur un **intitulé** de bibliographie reconnu (même lexique que `_construire_
+     bibliographie()`, jamais une seconde liste de titres) ;
+   - ou sur la **silhouette d'une entrée** de bibliographie (`_ressemble_reference_biblio_pour_
+     repli()` : une année de publication — 19xx/20xx — entre parenthèses ou non, immédiatement
+     encadrée par la ponctuation d'une référence, indépendamment de sa longueur). Une référence
+     courte n'est pas un trou à sauter : la marche arrière s'arrête NET dessus (`break`), elle
+     n'est ni exclue seule ni traversée.
+
+   Consommé SEULEMENT s'il porte au moins un nom plausible (sinon rien, §5.1 : « en cas de
+   doute, rien, et on le dit »).
+
+   ⚠ **Mesure de corpus corrigée (22.09.2026)** : une version antérieure de ce paragraphe
+   affirmait que « les 117 références réelles de lot-A font toutes plus de 120 signes », ce qui
+   justifiait le seuil de longueur SEUL comme condition d'arrêt du repli. C'est faux : trois
+   références réelles, mesurées sur `tmp/docx-cleaner-error/1408_Alves.docx`, restent sous ce
+   seuil — « Morin, E. (2005). Introduction à la pensée complexe. Points éditions du Seuil. »
+   (78 signes), « UNESCO, 2017. A Guide for Ensuring Inclusion and Equity in Education. UNESCO,
+   Paris » (83), « Walton, E. (2025). The knowledge of inclusive education: An ecological
+   approach. Routledge. » (91). Sans la garde de silhouette ci-dessus, chacune se faisait avaler
+   avec le bloc d'autrices voisin (une suite contiguë de références courtes en fin de
+   bibliographie, jusqu'à la première entrée assez longue pour faire mur) — disparue du document
+   nettoyé sans trace, ni réémise ni proposée en suppression suivie. Un futur désaccord avec
+   cette mesure se règle en la remesurant sur un corpus réel, jamais en la relisant comme
+   acquise.
 
 Les lignes reconnues (`_analyser_bloc_auteurs()`) réutilisent EXACTEMENT les mêmes primitives que
 la zone d'en-tête (`_tenter_noms`/`_tenter_nom_virgule_avec_info`/`_fusionner_info`) ; un libellé
@@ -480,12 +512,130 @@ Les indices consommés (marqueur + bloc, ou groupe du repli) sont fusionnés dan
 par la CLI (§8), retirés du corps **avant** `_construire_bibliographie()` : ces coordonnées ne
 peuvent donc plus entrer dans l'étendue de bibliographie, ni comme paragraphes de corps.
 
-⚠ **Limite connue, non corrigée ici** : le head-parsing (`_tenter_noms()`/`decouper_prenom_nom`)
-ne sait pas distinguer « Prénom Nom » de « Nom Prénom » écrit sans virgule (une byline « Guilley
-Edith, Valarino Isabel » donne « Guilley » comme prénom). Quand le même auteur apparaît sous les
-deux ordres (tête et bloc final), la fusion par nom échoue et produit deux fiches au lieu d'une
-seule complétée — mesuré sur `2-fin-de-document_Article_RSPS.docx`. Défaut pré-existant du
-head-parsing, hors du périmètre de §5.5 bis.
+**La fusion tête ↔ bloc final** apparie d'abord sur l'**e-mail** quand les deux fiches en portent
+un (identique → même personne, quels que soient les noms), puis à défaut sur l'**ensemble** des
+jetons pliés (`{guilley, edith}` == `{edith, guilley}`) plutôt que sur la chaîne ordonnée : c'est
+ce qui répare l'ancienne limite du 21.09 (« le même auteur écrit sous les deux ordres produisait
+deux fiches », mesurée sur `2-fin-de-document_Article_RSPS.docx`). Égalité d'ensembles avec un
+ordre différent → l'ordre de la fiche à la **meilleure confiance** l'emporte, et la trace porte
+une entrée `ordre_repris_bloc_final`.
+
+---
+
+### 5.5 ter L'ordre prénom/nom — `manuscrit_noms.py`
+
+`decouper_prenom_nom()` posait une **convention** (« premier jeton = prénom ») sans consulter
+aucun indice et sans jamais pouvoir échouer bruyamment. `pipeline/manuscrit_noms.py` (module PUR,
+stdlib seule) reprend cette question et elle seule ; `manuscrit_entete.py` ne recueille plus que
+les jetons et les indices.
+
+**Quatre signaux**, chacun rendant un ordre, un poids et un motif français lisible au rapport :
+
+| Signal | Poids | Ce qu'il lit |
+|---|---|---|
+| `casse` | 3 | un jeton en MAJUSCULES ou en petites capitales quand les autres ne le sont pas → ce jeton est le NOM. Casse **tapée** (`GUILLEY Edith`) comme **mise en forme** (`majuscules`/`petites_capitales` du modèle riche, §4). Muet si tous les jetons sont en capitales |
+| `email` | 3 | la partie locale d'un e-mail du même bloc (`delphine.protti@…`) comparée aux jetons ; muette si les deux jetons s'y trouvent, ou devant une adresse institutionnelle |
+| `biblio` | 2 | les noms de famille certifiés par la forme APA des références du manuscrit lui-même, récoltés par la CLI (§8) |
+| `lexique` | 2 | `BaseNoms` : la base OJS du poste (`C:\ProgramData\SZH\auteurs.json`, où le couple prénom/nom est **structurel**) et le lexique du dépôt (§5.5 quater) |
+
+**Combinaison** : un signal de poids 3 qu'aucun autre poids 3 ne contredit donne
+`confiance='certaine'` ; sinon la somme la plus forte donne `'probable'` ; des signaux qui se
+contredisent à poids égal donnent `conflit=True` et la convention par défaut ; aucun signal donne
+`'defaut'`. Puis **propagation** (`trancher_groupe()`) : une byline est écrite dans UN ordre —
+dès qu'un segment est tranché et qu'aucun autre tranché ne le contredit, les segments restés en
+`defaut` adoptent cet ordre en `'propagee'`.
+
+**Le lexique n'est jamais un filtre** : un auteur absent de la base n'est jamais rejeté ni
+signalé comme douteux, il ne sert qu'à départager un ordre. La base est **facultative** —
+absente ou illisible, les trois autres signaux jouent seuls et rien ne casse (aucun runner CI ne
+possède `C:\ProgramData\SZH`).
+
+**Marge du signal lexique = 1** (tout écart tranche). Mesuré en *leave-one-out* sur les
+1155 fiches de la base réelle, 22.09.2026 — chaque auteur retiré de la base avant d'être jugé,
+donc inconnu d'elle :
+
+| marge | tranché juste | à l'envers | indécis | muet |
+|---|---|---|---|---|
+| **1 (retenue)** | 792 (68,6 %) | 9 (0,8 %) | 34 (2,9 %) | 320 (27,7 %) |
+| 2 (écartée) | 139 (12,0 %) | 3 (0,3 %) | 693 (60,0 %) | 320 (27,7 %) |
+| 1, avec `noms-famille.txt` | 834 (72,2 %) | 12 (1,0 %) | 29 (2,5 %) | 280 (24,2 %) |
+
+Pourquoi 1 plutôt que 2 : quand le lexique se tait, le repli n'est **pas** « aucune décision »,
+c'est la convention prénom-nom — fausse sur tout manuscrit écrit à l'envers, le cas même que ce
+module existe pour corriger. Un signal à 0,8 % d'erreur bat donc la convention partout où il
+parle ; et comme il pèse 2, la casse et l'e-mail le recouvrent.
+
+**Propriété de sûreté mesurée** (même base, 22.09.2026) : sur les 1155 noms réels écrits dans
+l'ordre DIRECT, l'ordre n'est retourné à tort **qu'une seule fois** (0,09 %), et cette unique
+fiche est « SZH/CSPS Edition », qui n'est pas une personne. Les signaux ne fabriquent pas
+d'inversions.
+
+**Répartition** : `repartir(jetons, ordre)` — publique, **un seul propriétaire**. Le prénom est
+l'ancre, prolongée à travers un tiret isolé ou une chaîne d'initiales pointées (« Susan C. A.
+Burkhardt » → prénom « Susan C. A. ») ; le reste, particules comprises, est le nom. En ordre
+inverse la remontée part de la fin, jamais par un renversement de la liste.
+
+⚠ **Limite connue, mesurée et non corrigée** : 12 fiches sur 1155 (1,0 %) ont un vrai prénom
+composé à l'ESPACE (« Salomé Calina » / Schneiter, « Laura Marie » / Maaß). Rien, dans le texte
+seul, ne distingue « Laura Marie Maaß » d'un second nom de famille ou d'un trait d'union oublié :
+la coupe reste « ancre + le reste », fausse sur ces douze-là mais fausse de façon repérable (une
+coupe optimiste, jamais un prénom et un nom permutés). Seule une base connaissant le prénom
+composé en entier pourrait lever ce doute.
+
+⚠ **Défaut de données, hors périmètre** : la base OJS elle-même range l'initiale intermédiaire
+tantôt dans le prénom (8 fiches : « Bernard N. » / Schumacher), tantôt dans le nom (5 fiches :
+« Uwe » / « H. Bittlingmayer ») — et deux personnes y figurent **deux fois**, saisies dans les
+deux sens (Andrea C. Samson, Markus P. Neuenschwander). C'est une saisie à corriger dans OJS,
+pas un défaut de ce module : en APA, « Uwe H. Bittlingmayer » se cite « Bittlingmayer, U. H. ».
+
+### 5.5 quater Le lexique du dépôt — `pipeline/lexique/`
+
+**Un seul fichier** : `noms-famille.txt`, 1282 jetons pliés, un par ligne, trié, fabriqué par
+`outils-dev/lexique/generer-noms.py` et **jamais édité à la main**. Source : les bibliographies
+de 56 des 77 galleys publiées du corpus local, au format APA « Nom, P. », où le nom de famille
+est certifié par la forme. C'est lui qui porte le gain mesuré du §5.5 ter (muet 27,7 → 24,2 %).
+
+Il ne porte que des **jetons de noms nus** : aucun e-mail, aucune affiliation, aucun ORCID, aucun
+couple prénom↔nom reconstituable. Le dépôt a vocation à devenir public.
+
+**Décision de Robin, 22.09.2026 — `prenoms.txt` a été retiré.** Ce second fichier (599 prénoms)
+était le champ `prenom` de la base OJS de la maison : une dérivée de la base d'auteurs, dans un
+dépôt destiné à devenir public. Mesuré, il ne coûte **rien** : le gain du tableau du §5.5 ter est
+identique avec et sans lui, parce qu'il n'était que la copie figée de ce que `auteurs.json`
+apporte déjà quand elle est là. Son seul rôle était de servir de repli quand elle ne l'est pas —
+rôle désormais couvert à la source par le moissonnage au lancement (§5.5 quinquies).
+
+Conséquence assumée et documentée dans `BaseNoms.charger()` : sans base OJS sur le poste, le
+signal `lexique` ne connaît plus que des noms de famille, donc `score_direct`/`score_inverse` ne
+peuvent plus valoir que 0 ou 1, jamais 2 — le signal s'affaiblit, il ne devient jamais faux, et
+les trois autres (casse, e-mail, bibliographie du manuscrit) sont intacts.
+
+`--base-auteurs` reste un argument du générateur, pour un **autre** usage qu'il faut ne pas
+casser par mégarde : l'immunité au seuil de bruit (« ne jamais écarter un jeton présent dans la
+base OJS »).
+
+### 5.5 quinquies D'où vient la base d'auteurs, et pourquoi elle arrive toute seule
+
+`C:\ProgramData\SZH\auteurs.json` est moissonnée sur l'OAI-PMH public d'ojs.szh.ch par
+`vscodium-extension/szh-cockpit/lib/auteurs-ojs.js` — cache v2, moissonnage incrémental,
+`JOURS_FRAICHEUR = 30`, et un `cacheFrais()` qui rend **false** quand il n'y a pas de cache du
+tout : un poste neuf moissonne donc tout, sans code « premier lancement » à écrire.
+
+Elle était appelée au seul démarrage de VSCodium (`rafraichirAuteursPubliesEnFond()`, activation
+`onStartupFinished` du cockpit). **Trou mesuré le 22.09.2026** : les raccourcis du menu Démarrer
+(`Set-SzhRaccourcisMenu`, `windows/szh-shell.ps1`) pointent sur `windows/open-produit.ps1`, le
+lanceur PowerShell lancé DIRECTEMENT — on pouvait donc nettoyer un manuscrit depuis l'onglet
+« Preprocessing » sans que VSCodium ait jamais démarré, donc sans base.
+
+Le lanceur déclenche désormais le même moissonnage, par un point d'entrée CLI sur le moissonneur
+**existant** (Node embarqué de VSCodium, `ELECTRON_RUN_AS_NODE=1`, comme `rendre-gabarit.js` et
+`secretariat-cli.js`). Un seul moissonneur dans le produit, une seule politique de fraîcheur.
+
+**Non bloquant, et muet** (décision de Robin, 22.09.2026) : l'ouverture du lanceur n'attend jamais
+le réseau — faire patienter tout le monde pour un millier de notices serait une régression
+visible, quand l'absence de base ne coûte qu'un signal sur quatre. Conséquence assumée : sur un
+poste tout neuf, le premier nettoyage peut tourner sans la base, le suivant l'aura. Hors ligne
+reste un état normal du poste, jamais une erreur affichée.
 
 ---
 
@@ -585,6 +735,27 @@ verifier_ordre()` (§7 bis) la recouvre entièrement et fait strictement plus (s
 une bibliographie réellement extraite). `APA.NombreAuteursListes.*`, `APA.TroisAuteursPlus` et
 `APA.MemeAuteurMemeAnnee` restent ici : ce sont des questions de FORME (troncature, ponctuation,
 espacement), jamais une comparaison entre citation et référence.
+
+**La famille `Entete` — deux règles, et l'aveu qui va avec (§5.5 ter).** Aucune heuristique
+d'ordre prénom/nom n'atteindra 100 % : le débouché de l'incertitude doit donc être le rapport,
+jamais un pari silencieux (§5.1). Le Contexte porte pour cela une clé `auteurs`, et le catalogue
+deux règles seulement :
+
+| id | sévérité | portée | levée quand |
+|---|---|---|---|
+| `Entete.OrdreNomIncertain` | `warning` | **par fiche** | `ordre_conflit` : des signaux se contredisent à poids égal. Le message donne les deux lectures possibles |
+| `Entete.OrdreNomParDefaut` | `suggestion` | **une seule fois par document** | au moins une fiche en `confiance='defaut'` sans conflit. `found` liste les noms concernés |
+
+Pourquoi une agrégée plutôt qu'une par fiche : sur un manuscrit français ordinaire, sans casse
+marquée ni e-mail, la plupart des fiches tombent en `defaut` — en lever autant d'alertes serait
+exactement le « volume d'alertes est un défaut » que ce paragraphe interdit. Une fiche en
+`probable` ou `propagee` ne lève **rien**. Ni l'une ni l'autre règle n'a de chapitre dans les
+lignes directrices : leur champ `chapitre` le dit franchement plutôt que d'inventer une
+référence, comme `A11y.TexteAlternatif.ZeitschriftHeritee` le fait déjà pour son cas limite.
+
+⚠ Le conflit voyage comme une **donnée** (`ordre_conflit`, booléen), jamais comme un préfixe de
+phrase dans `ordre_motif` : dans ce dépôt les messages sont reformulés souvent, et un test qui
+dépend d'une sous-chaîne de prose ne devient jamais rouge le jour où elle change.
 
 Trois pièges Vale mesurés (Vale 3.22.0), à ne pas repayer, voir §10.
 
@@ -712,6 +883,72 @@ Quatre défauts mesurés sur `outils-dev/Le coenseignement développemental_revu
    le dernier segment sûr de la référence (ses pages telles qu'écrites dans le texte d'origine, ou
    le point final), `suggested` = ce segment suivi de ` https://doi.org/…` — une INSERTION pure,
    jamais une réécriture de l'entrée. Repli commentaire si aucun segment sûr n'existe.
+
+### Révision du 22.09.2026 — plausibilité des champs, signalement sur l'appel, éditeur creux
+
+Trois défauts indépendants, mesurés sur `tmp/docx-cleaner-error/1408_Alves.docx` (13 entrées, dont
+5 non conformes au format APA — année sans parenthèses) et corrigés séparément :
+
+1. **Plausibilité des champs** (`_calculer_confiance()`) : la NON-VACUITÉ d'un champ réécrit
+   (`titre`/`conteneur`/`editeur`) ne suffit plus, il doit aussi contenir une LETTRE
+   (`_champ_plausible()`, `RE_CONTIENT_LETTRE`). Mesuré : `United Nations, 2016. General Comment
+   No. 4 (2016), Article 24…` porte une SECONDE parenthèse à 4 chiffres — celle du titre du texte
+   cité, pas celle de l'année de la référence. `_trouver_annee()` s'y arrête, `analyser_reference()`
+   découpe dessus, et l'« éditeur » qui en ressort vaut `1-24` : une plage de pages égarée, jamais
+   un éditeur, qui obtenait pourtant la confiance haute. Cette entrée retombe désormais en
+   `'moyenne'`, aux côtés des 4 autres entrées non-APA du document (`'basse'`) : plus aucune
+   réécriture n'en sort. Vérifié sans régression sur les 8 entrées réellement APA de ce document
+   (confiance haute conservée) et sur les 18 références de la fixture de test
+   (`test/js/manuscrit-biblio.test.js`).
+
+2. **`APA.ReferenceNonVerifiee`** (`signaler_references_non_verifiees()`) — décision de Robin :
+   toute référence de confiance non haute reçoit désormais un commentaire, ancré sur son APPEL DANS
+   LE CORPS, jamais sur l'entrée de bibliographie (la relectrice lit le texte, pas la liste).
+   Message : la référence n'a pas pu être vérifiée automatiquement (format non reconnu), contrôler
+   l'entrée correspondante dans la liste des références puis corriger l'appel si nécessaire —
+   localisé fr/de par un gabarit `{'fr':…, 'de':…}` choisi sur `langue`, même mécanisme que
+   `Regle.message_fr`/`message_de` de `manuscrit_regles.py` (seule localisation de message déjà en
+   usage dans l'outil ; `manuscrit_biblio.py` lui-même n'en avait encore aucune).
+
+   **Confiance pour RETROUVER ≠ confiance pour RÉÉCRIRE.** `mise_en_forme_apa()` continue de
+   n'écrire une chaîne canonique que si `confiance == 'haute'` (inchangé) : c'est l'exigence forte.
+   RETROUVER l'appel d'une référence dans le corps — l'apparier par nom + année — est une exigence
+   bien plus faible : extraire « UNESCO » et « 2017 » d'une entrée qui écrit son année sans
+   parenthèses est facile, largement suffisant pour l'appariement. `croiser()` (point 3 ci-dessus)
+   exclut pourtant de son index `refs_par_cle` toute référence dont `annee` est `None` — 4 des 5
+   entrées non-APA du corpus réel. `_extraire_repli_appariement()` est un second chemin,
+   DÉLIBÉRÉMENT séparé de celui de `analyser_reference()` : une année sans parenthèses y suffit
+   (`RE_ANNEE_REPLI`, contre `RE_ANNEE` qui les exige), le nom qui précède devient la clé
+   (`_cle_appariement_repli()`). Cette fonction ne renseigne JAMAIS `champs['annee']`/
+   `champs['auteurs']` (qui restent sous la seule autorité de `analyser_reference()`) : elle ne sert
+   QU'À l'appariement de `signaler_references_non_verifiees()`, jamais à construire une proposition
+   de réécriture — frontière tenue par construction (une fonction séparée, en-tête d'avertissement).
+
+   Deux règles de policy, décidées, non rediscutées :
+   - référence citée plusieurs fois → commentaire sur le PREMIER appel seulement, dans l'ordre RÉEL
+     du texte (`_appels_en_ordre_texte()`, qui corrige l'ordre narrative-puis-parenthétique interne
+     à un paragraphe de `citations_du_corps()`) — le plafond de `manuscrit_annoter.py` est de 5
+     commentaires PAR RÈGLE (§7 ter), une référence citée six fois ne doit pas, seule, épuiser tout
+     le budget ;
+   - référence jamais citée → aucun commentaire ici — `APA.ReferenceNonCitee` (`croiser()`) couvre
+     déjà ce cas en se posant sur l'entrée, pas de doublon.
+
+   **Limite héritée, non traitée par ce lot** : une référence dont le nom n'est retrouvable dans le
+   corps que par un SIGLE différent du nom développé (`European Agency for Special Needs and
+   Inclusive Education` citée `L'EASNIE`) n'est pas appariée — exactement la limite déjà documentée
+   ci-dessous (« Ce qui n'a pas pu être fait ici », auteur institutionnel cité par son sigle).
+   Constaté aussi sur le corpus réel : `APA.CitationAbsente` (`croiser()`, non modifié par ce lot)
+   se déclenche À TORT en parallèle de `APA.ReferenceNonVerifiee` sur le même appel dès que celle-ci
+   retrouve la référence par le repli (`UNESCO (2017)`, `Marques et al., 2007`) — les deux alertes
+   coexistent alors sur le même appel, l'une fausse, l'autre correcte ; `manuscrit_annoter.py` les
+   pose toutes les deux (les commentaires, contrairement aux révisions, ne s'excluent pas entre eux
+   au même span). Défaut croisé, signalé, hors périmètre de ce lot.
+
+3. **`(Ed.)`/`(Eds.)`/`(Hrsg.)` sans nom d'éditeur** (`mise_en_forme_apa()`, branche `chapitre`) :
+   le marqueur n'est plus posé que si `_consommer_editeurs_de_tete()` a réellement isolé des noms
+   (`editeurs_ouvrage` non vide) — sinon la clause s'écrit directement `In *Conteneur*…`, sans
+   marqueur creux ni virgule orpheline. Mesuré : `Alves, I., & Fernandes, D. (2022)…`, entrée par
+   ailleurs bien formée et légitimement en confiance haute, rendait `In (Ed.), *Conteneur*…`.
 
 ### Ce qui n'a pas pu être fait ici
 
@@ -863,16 +1100,23 @@ au-delà de l'ordre des étapes.
 ```
 manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
                       [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]
-                      [--sans-annotation] [--sans-reseau]
+                      [--sans-annotation] [--sans-reseau] [--base-auteurs <fichier>]
 ```
 
-Enchaînement : lire → reconnaître le cas → reconnaître l'en-tête et le bloc final d'autrices/
-auteurs (§5.5, §5.5 bis, cas B seulement) → classer les titres → nettoyer la mise en forme →
+Enchaînement : lire → reconnaître le cas → **récolter les noms de famille des références**
+(`_noms_de_bibliographie()`, une passe légère et indépendante : `_construire_bibliographie()`
+tourne bien plus tard, elle dépend du retrait préalable de l'en-tête) → reconnaître l'en-tête et
+le bloc final d'autrices/auteurs (§5.5, §5.5 bis, §5.5 ter, cas B seulement) → classer les
+titres → nettoyer la mise en forme →
 normaliser la typographie → passer les règles (structurel + Vale + bibliographie) → écrire le
 gabarit → annoter le `.docx` écrit → écrire le rapport.
 
 - écrit `<dossier>/<nom>-nettoye.docx` et `<dossier>/<nom>-rapport.json` ;
 - `--analyse-seule` : aucun `.docx` écrit, seulement le rapport ;
+- `--base-auteurs <fichier>` : la base de noms du §5.5 ter. Absent, `BaseNoms.charger()` cherche
+  `SZH_AUTEURS_CACHE`, puis `/mnt/c/ProgramData/SZH/auteurs.json`, puis le chemin Windows. Rien
+  trouvé = cas normal, jamais une panne : les trois autres signaux jouent seuls. Le lanceur
+  PowerShell ne passe pas cet argument, la détection automatique le couvre ;
 - **code de sortie non nul s'il existe au moins une alerte `error`** ;
 - une ligne JSON de statistiques sur stdout, rien d'autre sur ce flux. Les messages de
   progression vont sur stderr, une ligne par étape ;
@@ -1113,6 +1357,27 @@ mesurée au moins 3 fois plus fréquente que la variante sur le corpus publié (
 1,4×) ; passées en `a_trancher`, avec le ratio mesuré dans le champ `note`. Conséquence sur le
 corpus réel : `CSPS.Lexique.Coherence` passe de 59 à 5 alertes sur les 11 manuscrits de lot-A.
 
+**22.09.2026 — une copie d'algorithme avait déjà divergé, les deux suites restant vertes
+(§5.5 ter).** `manuscrit_entete.py` avait repris la répartition prénom/nom de `manuscrit_noms.py`
+« à l'identique », au motif que la fonction d'origine était privée. Mesuré en croisant les deux
+modules à la main : la copie ignorait les initiales pointées (« Bernard N. Schumacher » → prénom
+« Bernard », nom « N. Schumacher ») et renversait naïvement la liste en ordre inverse
+(« Burkhardt Susan C. A. » → prénom « A. », nom « Burkhardt Susan C. »), c'est-à-dire exactement
+la variante que `_borne_prenom_inverse()` documente comme fausse. **Les 28 tests du module de
+décision et les 37 du module d'en-tête étaient verts** : aucun ne croisait les deux sur une
+initiale. Corrigé par un alias public `manuscrit_noms.repartir()` et la suppression de la copie,
+plus un test qui croise les deux modules. La leçon n'est pas « il manquait un test » mais
+« une décision, un seul propriétaire » (§3) — une duplication justifiée par la visibilité d'un
+nom se paie toujours, et ici elle s'est payée en quelques heures.
+
+**22.09.2026 — la marge du signal lexique : une glose et ses propres chiffres qui ne disaient
+pas la même chose.** Le brief de ce lot exigeait une marge de 2 tout en citant, pour la
+justifier, des mesures faites à marge 1. Deux lots l'ont relevé indépendamment, la mesure leur a
+donné raison (12,0 % de couverture à marge 2 contre 68,6 % à marge 1), et le brief a été corrigé,
+pas le code. Le raisonnement qui a tranché est au §5.5 ter et vaut au-delà de ce cas : **quand un
+signal se tait, le repli n'est pas « aucune décision », c'est la convention** — comparer un
+signal à la perfection est une erreur de cadrage, il faut le comparer à ce qui se passe sans lui.
+
 **Risque latent, allemand, non levé** : `RE_NIVEAU_TITRE` de `pronto_modele.py` ne reconnaît un
 style de titre allemand que par le repli sur le styleId brut (`berschrift1`, sans accent), jamais
 par le nom affiché complet « Überschrift 1 » (qui commence par « Ü »). Sur un document allemand
@@ -1145,7 +1410,9 @@ fixtures `.docx` **fabriquées dans le test** et non figées en binaire — patr
 | `manuscrit-annoter.test.js` | Ancrage par atomes, révisions/commentaires, plafond, spans qui se chevauchent, frontière d'un `<w:hyperlink>`, validation XML systématique et restauration pré-annotation sur essai réel du corpus. |
 | `manuscrit-docx.test.js` | Le lecteur : tirets réels préservés, `w:tab`/`w:br`, `w:sym`, `w:fldSimple`, `w:sdt` de niveau bloc, notes de bas de page et de fin, listes héritées du style, `Image.source`, `Fragment.effectif`. |
 | `manuscrit-parite-lecteur.test.js` | `projeter_pronto()` et `pronto_docx.lire()` s'accordent sur les deux gabarits livrés. Ce fichier disparaît avec la dette du §3. |
-| `manuscrit-entete.test.js` | Titre + sous-titre, auteurs (byline groupée, lignes séparées, « Nom, Prénom », téléphone écarté), résumé plafonné, mots-clés, DOI, en-tête vide. Le bloc final d'autrices/auteurs (§5.5 bis) : intertitre connu, repli heuristique, fusion sans duplication, frontière avec la zone d'en-tête. Un test de bout en bout compare la sortie relue par `pronto-lire.py` aux valeurs attendues. |
+| `manuscrit-entete.test.js` | Titre + sous-titre, auteurs (byline groupée, lignes séparées, « Nom, Prénom », téléphone écarté), résumé plafonné, mots-clés, DOI, en-tête vide. Le bloc final d'autrices/auteurs (§5.5 bis) : intertitre connu, repli heuristique, fusion sans duplication, frontière avec la zone d'en-tête. Un test de bout en bout compare la sortie relue par `pronto-lire.py` aux valeurs attendues. Depuis le 22.09 : les quatre défauts de partition (institution en virgule, institution seule, titres académiques, emoji), la propagation d'ordre sur une byline, la fusion par e-mail puis par ensemble de jetons, les trois champs `ordre_*`, et **une initiale intermédiaire à travers les deux modules** — ce dernier ferme le trou qui avait laissé diverger une copie de la répartition. |
+| `manuscrit-noms.test.js` | Le module de décision seul (§5.5 ter), par son mode `--diagnostic`, base toujours fournie **en ligne** — aucun test ne lit `C:\ProgramData\SZH`, absent des runners CI. Les quatre signaux un à un, le conflit, la propagation et sa non-propagation, les titres académiques, les particules dans les deux ordres, les initiales pointées, et un test qui **constate** la limite du prénom composé à l'espace au lieu de prétendre la corriger. |
+| `lexique-noms.test.js` | Le générateur (§5.5 quater) sur un corpus fabriqué, et les deux fichiers livrés : triés, sans doublon, sans `@`, sans chiffre, sans espace. Le corpus réel hors dépôt absent → `sauter.corpus(t, chemin)`. |
 | `manuscrit-rapport.test.js` | La vue du rapport HTML (`construireVueRapportManuscrit`) : groupement par famille/règle, plafond d'occurrences, verdict d'image délégué à `qualite-image.js`, mention « (dans un tableau) » sur un paragraphe de cellule signalé. |
 
 **Le contrôle qui compte plus que tous les autres** n'est pas dans cette table, parce qu'il

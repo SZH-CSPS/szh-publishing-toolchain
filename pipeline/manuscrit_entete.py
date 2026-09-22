@@ -15,12 +15,15 @@
 # `import docx-meta` est syntaxiquement impossible — patron déjà suivi par
 # manuscrit_biblio.py pour ce même fichier) : RE_RESUME, LANG_RESUME, RE_KEYWORDS,
 # RE_DOI_LIGNE, RE_DOI, RE_JOURNAL, langue_resume(), nettoyer_doi(), decouper_keywords(),
-# scinder_titre(), CONNECTEURS, nom_plausible(), decouper_prenom_nom(), RE_EMAIL, RE_ORCID.
-# C'est le parser de l'import Word déjà en service (et son harnais,
+# scinder_titre(), CONNECTEURS, nom_plausible(), sans_titres_academiques(), RE_EMAIL,
+# RE_ORCID. C'est le parser de l'import Word déjà en service (et son harnais,
 # test/js/auteurs-corpus.test.js) : rien de tout cela n'est recopié — seulement importé et
 # recombiné pour lire des PARAGRAPHES LIBRES plutôt que des cellules d'un tableau déjà
 # rempli (docx-meta.py ne lit que le tableau des auteurs du gabarit ; ici le manuscrit n'a
-# encore AUCUNE structure de gabarit).
+# encore AUCUNE structure de gabarit). `decouper_prenom_nom()` (« premier jeton = prénom »,
+# une convention posée qui ne consultait aucun indice) N'EST PLUS APPELÉ depuis le 22.09.2026
+# (lot B, CONTRAT-noms.md) : c'est pipeline/manuscrit_noms.py qui possède désormais la
+# question « qui est le prénom, qui est le nom » — voir plus bas, import manuscrit_noms.
 #
 # stdlib seule.
 
@@ -35,6 +38,12 @@ _ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ICI)
 import manuscrit_modele as mm
 import pronto_modele
+# manuscrit_noms.py porte un tiret BAS (comme docx-meta.py en porte un — voir la convention
+# du §3 du contrat) : import ordinaire, comme pour un module frère (§4.2 du contrat de lot).
+# Ce module possède la question « qui est le prénom, qui est le nom » (b) et lui seul ; celui-
+# ci ne recueille que les jetons et les indices, jamais la répartition ou la décision elles-
+# mêmes : elles se demandent à mn.trancher_groupe() puis à mn.repartir().
+import manuscrit_noms as mn
 
 
 def _charger_module_a_tiret(nom_fichier, nom_module):
@@ -121,10 +130,18 @@ RE_INTERTITRE_AUTEURS_FINAL = re.compile(
 RE_LIBELLE_AUTEUR_FINAL_DE = re.compile(
     r'^(?:autorinnen\s+und\s+autoren|kontakt)\s*:?\s*$', re.I)
 
-# Seuil du repli SANS intertitre (§ ci-dessous) : les 117 références réelles de lot-A
-# (manuscrit_biblio.py, même corpus) font toutes plus de 120 signes ; une ligne de fonction,
-# d'adresse ou d'e-mail du bloc auteurs en fait 15 à 50. Un intitulé court non reconnu comme
-# marqueur (« Bibliographie », « Références ») reste exclu par ailleurs (lire_titres_bib()).
+# Seuil du repli SANS intertitre (§ ci-dessous) : la plupart des références bibliographiques
+# dépassent largement ce seuil ; une ligne de fonction, d'adresse ou d'e-mail du bloc auteurs
+# en fait 15 à 50. MAIS ce seuil seul ne suffit pas : trois références réelles, mesurées sur
+# tmp/docx-cleaner-error/1408_Alves.docx (lot correctifs septembre 2026), restent EN DESSOUS
+# et se faisaient avaler avec le bloc d'autrices voisin — « Morin, E. (2005). Introduction à
+# la pensée complexe. Points éditions du Seuil. » (78 signes), « UNESCO, 2017. A Guide for
+# Ensuring Inclusion and Equity in Education. UNESCO, Paris » (83) et « Walton, E. (2025). The
+# knowledge of inclusive education: An ecological approach. Routledge. » (91). D'où la seconde
+# garde, _ressemble_reference_biblio_pour_repli() ci-dessous, qui arrête le repli sur la
+# SILHOUETTE d'une référence (année de publication) indépendamment de sa longueur. Un intitulé
+# court non reconnu comme marqueur (« Bibliographie », « Références ») reste exclu par
+# ailleurs (lire_titres_bib()).
 SEUIL_LIGNE_AUTEUR_FINAL = 120
 
 
@@ -161,13 +178,32 @@ class EnTete:
             self.titre, len(self.auteurs), len(self.resume))
 
 
+# §4.4 du contrat de lot : trois champs ajoutés à LA FIN — jamais insérés ailleurs, pour ne
+# rien décaler chez un lecteur qui itérerait sur les valeurs par position plutôt que par clé.
+# `ordre_confiance` : une valeur de mn.CONFIANCE ('certaine'|'probable'|'propagee'|'defaut').
+# `ordre_motif` : la phrase française qui la justifie (mn.trancher()/trancher_groupe(), ou —
+# pour une fiche issue de _tenter_nom_virgule_avec_info() — le motif structurel propre à ce
+# module, l'ordre y étant certain par construction, jamais par un signal de mn).
+# `ordre_conflit` : booléen, ajouté par le superviseur le 22.09.2026 — reprend TEL QUEL le
+# `conflit` que mn.trancher() rend déjà. Sans lui, distinguer un `defaut` PAR CONFLIT (deux
+# signaux contraires à poids égal) d'un `defaut` FAUTE D'INDICE (aucun signal) obligeait le
+# lot D à chercher un préfixe de phrase dans `ordre_motif` — fragile dans un dépôt où les
+# messages sont reformulés souvent, sans qu'aucun test ne devienne rouge pour le signaler.
+# Un état voyage comme une donnée, jamais comme une sous-chaîne de prose.
+# `manuscrit_gabarit._remplir_fiche_auteur()` (vérifié en lisant le fichier avant d'écrire
+# cette ligne) ne lit QUE les champs d'une liste blanche fermée (_CHAMPS_AUTEUR_GABARIT :
+# prenom/nom/fonction/institution/orcid/email) — ces trois champs de plus dans le dict ne le
+# perturbent en rien, ils sont simplement ignorés par ce lecteur-là.
 CHAMPS_AUTEUR_ENTETE = ('prenom', 'nom', 'fonction', 'institution', 'email', 'orcid',
-                         'texte_source')
+                         'texte_source', 'ordre_confiance', 'ordre_motif', 'ordre_conflit')
 
 
-def _nouvel_auteur(prenom, nom, texte_source):
+def _nouvel_auteur(prenom, nom, texte_source, ordre_confiance='defaut', ordre_motif='',
+                    ordre_conflit=False):
     return {'prenom': prenom, 'nom': nom, 'fonction': '', 'institution': '',
-            'email': '', 'orcid': '', 'texte_source': texte_source}
+            'email': '', 'orcid': '', 'texte_source': texte_source,
+            'ordre_confiance': ordre_confiance, 'ordre_motif': ordre_motif,
+            'ordre_conflit': bool(ordre_conflit)}
 
 
 # ---------------------------------------------------------------------------------
@@ -239,25 +275,200 @@ def _titre_et_sous_titre(bloc1, texte1, bloc2, texte2):
 # extraire_entete() pour l'enchaînement exact.
 
 def _segments_plausibles(texte):
-    """Découpe comme docx-meta.auteurs_depuis_byline(), mais dit si CHAQUE segment ressemble
-    à un nom — condition pour traiter la ligne comme une INTRODUCTION de nom(s), jamais comme
-    une ligne d'info. None si un seul segment échoue (byline.auteurs_depuis_byline(), lui, a
-    un repli qui accepte tout — inutilisable ici pour distinguer les deux cas)."""
-    segments = []
+    """Découpe comme docx-meta.auteurs_depuis_byline(), mais PARTITIONNE chaque segment au
+    lieu de se contenter de tester s'il ressemble à un nom (§4.1 du contrat de lot —
+    correction du superviseur, 22.09.2026 : la première rédaction disait de rendre None dès
+    qu'un segment matchait RE_INSTITUTION, ce qui aurait donné ZÉRO auteur sur
+    « Marie Dupont, Université de Genève » — vérifié en relisant le flux : le motif Nom-
+    virgule refuse ensuite « Marie Dupont » (deux mots), puis _est_ligne_auteur() retombe
+    avec cible_courante=None, pire qu'aujourd'hui un bon + un fantôme).
+
+    Chaque segment (après retrait de l'obèle †, comme avant) devient :
+    - une INFO s'il matche RE_INSTITUTION, dm.RE_EMAIL, dm.RE_ORCID ou RE_TELEPHONE ;
+    - sinon un NOM s'il passe dm.nom_plausible(dm.sans_titres_academiques(segment)) — c'est
+      le retrait des titres académiques qui manquait ici (§4.1, deuxième défaut du §0:
+      « Dr. phil. Romain Lanners » ne passait pas nom_plausible() sans lui, contrairement à
+      dm.auteurs_depuis_byline(), qui l'appelle déjà) ;
+    - sinon la ligne entière n'introduit pas des noms : None (§2 de la maison, « en cas de
+      doute, rien » — un segment en texte libre, non reconnaissable, disqualifie tout, on ne
+      devine jamais à qui il appartient).
+
+    Un jeton fait UNIQUEMENT de symboles/ponctuation/emoji (aucune lettre) est retiré du
+    segment AVANT ces tests, jamais compté comme un jeton (§4.1, troisième défaut du §0,
+    mesuré : « Marie Dupont 🎓 » — un jeton non capitalisé disqualifiait toute la ligne dans
+    dm.nom_plausible(), qui n'a pourtant rien à voir avec un emoji). Retiré ICI et pas dans
+    docx-meta.nom_plausible() : cette fonction sert un AUTRE appelant (dm.auteurs_depuis_
+    byline(), lot A), et docx-meta.py n'est pas un fichier de ce lot.
+
+    Rend (noms, infos) — `noms` : liste de segments NETTOYÉS (sans titre académique, prêts à
+    être tokenisés) ; `infos` : liste de segments bruts (filtrés de l'emoji) — ou None si
+    aucun nom n'a été reconnu OU si un segment n'a été reconnu ni comme nom ni comme info.
+    Aucun nom trouvé -> None : ce n'est pas une ligne d'introduction de noms — c'est ce qui
+    fait qu'« Université de Genève » seule sur sa ligne retombe correctement sur
+    _est_ligne_auteur(), qui la rattache comme institution à l'auteur ouvert juste avant."""
+    noms, infos = [], []
     for part in dm.CONNECTEURS.split(texte):
         part = (part or '').strip().strip(',;').replace('†', '').strip()
-        if part:
-            segments.append(part)
-    if not segments or not all(dm.nom_plausible(s) for s in segments):
+        if not part:
+            continue
+        part_filtre = ' '.join(j for j in part.split() if any(c.isalpha() for c in j))
+        if not part_filtre:
+            continue
+        if (RE_INSTITUTION.search(part_filtre) or dm.RE_EMAIL.search(part_filtre)
+                or dm.RE_ORCID.search(part_filtre) or RE_TELEPHONE.match(part_filtre)):
+            infos.append(part_filtre)
+            continue
+        sans_titres = dm.sans_titres_academiques(part_filtre)
+        if dm.nom_plausible(sans_titres):
+            noms.append(sans_titres)
+            continue
         return None
-    return segments
+    if not noms:
+        return None
+    return noms, infos
 
 
-def _tenter_noms(texte):
-    segments = _segments_plausibles(texte)
-    if segments is None:
+# ---------------------------------------------------------------------------------
+# Le branchement de manuscrit_noms (§4.2 du contrat de lot). mn.trancher_groupe() rend
+# volontairement la DÉCISION seule (ordre, confiance, motif, conflit) et jamais la
+# répartition, pour que la propagation (§3.5) reste testable indépendamment du découpage :
+# la répartition se demande ensuite à mn.repartir(), la fonction PUBLIQUE de manuscrit_noms.
+#
+# ⚠ Ce fichier a porté un temps sa PROPRE copie de cet algorithme (_repartir_jetons /
+# _absorber_prenom_compose), au motif que la fonction d'origine était privée. Mesuré le
+# 22.09.2026 : les deux copies avaient déjà divergé au moment du contrôle — celle-ci ignorait
+# les initiales pointées (« Bernard N. Schumacher » -> prénom « Bernard », nom
+# « N. Schumacher ») et renversait naïvement la liste en ordre inverse (« Burkhardt Susan
+# C. A. » -> prénom « A. », nom « Burkhardt Susan C. »). Les deux fichiers de test étaient
+# verts : aucun ne croisait les deux modules sur une initiale. D'où l'alias public
+# mn.repartir() et la suppression de la copie. Une décision, un seul propriétaire (§3 du
+# contrat d'architecture) — c'est ce que ce fichier applique déjà pour la typographie et pour
+# les titres académiques, et la duplication d'un algorithme de décision n'y fait pas
+# exception, si petit soit-il.
+def _forme_effective_du_fragment(f):
+    """La forme EFFECTIVE d'UN SEUL fragment (cascade des styles, §4 du contrat), repli sur
+    `forme` clé par clé si `effectif` n'a rien de propre — même repli que _forme_reference()
+    ci-dessus, réduit à un seul fragment plutôt qu'« au premier fragment porteur de texte »."""
+    effectif = f.effectif or {}
+    if any(v is not None for v in effectif.values()):
+        return effectif
+    return f.forme or {}
+
+
+def _mots_casse_paragraphe(paragraphe):
+    """Pour chaque MOT du texte du paragraphe, dans l'ordre : sa forme EFFECTIVE majuscules/
+    petites_capitales (§4.2 du contrat de lot : « les indices de casse viennent du modèle
+    riche »). Construit fragment par fragment (chaque mot appartient, en pratique, à UN SEUL
+    fragment — Word coupe rarement un w:r au milieu d'un mot pour une ligne de byline),
+    jamais caractère par caractère : plus simple, et suffisant ici. Garde-fou : si un mot
+    chevauche malgré tout deux fragments de mise en forme différente, la liste reconstruite
+    fragment par fragment ne correspond plus MOT À MOT à paragraphe.texte().split() — rend
+    alors [] plutôt qu'une position fausse (§2 de la maison : en cas de doute, rien). La
+    casse TAPÉE (texte en capitales) n'a de toute façon pas besoin de cette carte : mn.
+    _signal_casse() la lit directement dans le texte des jetons, sans indices — cette carte
+    ne sert qu'à la casse MISE EN FORME (petites capitales sur un texte tapé normalement)."""
+    mots, maj, petcap = [], [], []
+    for f in paragraphe.fragments:
+        if not f.texte:
+            continue
+        eff = _forme_effective_du_fragment(f)
+        est_maj = bool(eff.get('majuscules'))
+        est_pc = bool(eff.get('petites_capitales'))
+        for mot in f.texte.split():
+            mots.append(mot)
+            maj.append(est_maj)
+            petcap.append(est_pc)
+    if mots != paragraphe.texte().split():
+        return []
+    return list(zip(mots, maj, petcap))
+
+
+def _indices_casse_segments(paragraphe, segments_jetons):
+    """Une liste PARALLÈLE à `segments_jetons` de dicts {'majuscules': set(...),
+    'petites_capitales': set(...)} (positions LOCALES à chaque segment, §3.3 du contrat de
+    lot A — mn._jetons_marques_majuscule() les lit ainsi) — dict vide pour un segment dont la
+    correspondance mot à mot avec le paragraphe n'a pas pu être établie (silence, jamais une
+    position devinée). `paragraphe` : None si l'appelant n'a pas de Paragraphe du modèle
+    riche sous la main (le bloc final d'autrices/auteurs, §5.5 bis, travaille sur des LIGNES
+    scindées sur '\\n' d'un paragraphe déjà éclaté — aucune correspondance fragment/ligne n'y
+    survit, la casse mise en forme n'y est donc jamais disponible ; la casse TAPÉE, elle,
+    continue de fonctionner sans cette carte)."""
+    vide = [{} for _ in segments_jetons]
+    if paragraphe is None:
+        return vide
+    mots = _mots_casse_paragraphe(paragraphe)
+    if not mots:
+        return vide
+    resultat = []
+    curseur = 0
+    for jetons in segments_jetons:
+        n = len(jetons)
+        trouve = None
+        fin = min(curseur + 4, len(mots) - n + 1) if n <= len(mots) else curseur
+        for depart in range(curseur, max(fin, curseur)):
+            if [m[0] for m in mots[depart:depart + n]] == jetons:
+                trouve = depart
+                break
+        if trouve is None:
+            resultat.append({})
+            continue
+        maj = {i for i in range(n) if mots[trouve + i][1]}
+        pc = {i for i in range(n) if mots[trouve + i][2]}
+        resultat.append({'majuscules': maj, 'petites_capitales': pc})
+        curseur = trouve + n
+    return resultat
+
+
+def _tenter_noms(texte, paragraphe=None, base_noms=None, noms_biblio=None):
+    """None si la ligne n'introduit pas de nom(s) (§4.1). Sinon (entrees, infos) :
+    `entrees` — une par nom reconnu — porte prenom/nom/ordre_confiance/ordre_motif/
+    ordre_conflit (prêts pour _nouvel_auteur()) PLUS jetons/indices (consommés par
+    l'appelant pour, le cas échéant, rejuger l'ordre après un e-mail tardif, §4.2 : « à
+    rejuger si sa confiance était defaut ou propagee ») — jamais exposés au-delà, à retirer
+    avant d'écrire la fiche définitive. `infos` — les segments non-nom de LA MÊME ligne
+    (institution, e-mail…), non encore rattachés : c'est l'appelant qui les rattache,
+    seulement s'il y a exactement un nom sur la ligne (§4.1 : « le ambigu_courant déjà en
+    place s'applique » sinon).
+
+    mn.trancher_groupe() est appelé UNE SEULE FOIS pour toute la ligne (§4.2 : « _tenter_
+    noms() cesse d'appeler dm.decouper_prenom_nom() segment par segment ») — c'est ce qui
+    permet la propagation (§3.5 du contrat de lot A) entre plusieurs noms d'une même byline."""
+    resultat = _segments_plausibles(texte)
+    if resultat is None:
         return None
-    return [dict(zip(('prenom', 'nom'), dm.decouper_prenom_nom(s))) for s in segments]
+    noms, infos = resultat
+    segments_jetons = [n.split() for n in noms if len(n.split()) >= 1]
+    cartes_casse = _indices_casse_segments(paragraphe, segments_jetons)
+
+    # L'e-mail de la MÊME ligne (§4.2) : seulement si la ligne porte exactement UN nom et
+    # UNE info d'e-mail — sinon, comme pour le rattachement plus bas, on ne devine pas à qui
+    # il appartient (plusieurs noms déclarés ensemble, ou plusieurs infos ambiguës).
+    email_ligne = None
+    if len(noms) == 1:
+        emails = [dm.RE_EMAIL.search(info) for info in infos]
+        emails = [m for m in emails if m]
+        if len(emails) == 1:
+            email_ligne = emails[0].group(1)
+
+    segments_mn = []
+    for jetons, carte in zip(segments_jetons, cartes_casse):
+        indices = dict(carte)
+        if noms_biblio:
+            indices['noms_biblio'] = noms_biblio
+        if email_ligne:
+            indices['email'] = email_ligne
+        segments_mn.append({'jetons': jetons, 'indices': indices})
+
+    decisions = mn.trancher_groupe(segments_mn, base_noms)
+    entrees = []
+    for jetons, seg_mn, decision in zip(segments_jetons, segments_mn, decisions):
+        prenom, nom = mn.repartir(jetons, decision['ordre'])
+        entrees.append({'prenom': prenom, 'nom': nom,
+                         'ordre_confiance': decision['confiance'],
+                         'ordre_motif': decision['motif'],
+                         'ordre_conflit': decision['conflit'],
+                         'jetons': jetons, 'indices': seg_mn['indices']})
+    return entrees, infos
 
 
 def _est_ligne_auteur(texte):
@@ -336,13 +547,23 @@ def _est_marqueur_connu(texte):
                 or dm.RE_JOURNAL.match(texte))
 
 
-def extraire_entete(document, langue):
+def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
     """(EnTete, indices_consommes, trace).
 
     `langue` : 'fr'|'de', la langue du PRODUIT déjà tranchée par la CLI (§8 du contrat) —
     jamais `document.langue`. Sert à décider si un marqueur de résumé alimente le résumé
     PRINCIPAL ou `resumes_autres` (un « Abstract » anglais sous un article français, par
     exemple), et à remplir `EnTete.langue_produit`.
+
+    `base_noms` : une manuscrit_noms.BaseNoms, ou None (§4.2 du contrat de lot). None ne
+    déclenche PAS mn.BaseNoms.charger() ici — c'est la CLI (lot D) qui décide quand la base
+    est chargée, un module PUR ne va jamais chercher un fichier de production tout seul (même
+    principe que manuscrit_noms.py lui-même, §3.2 de son contrat). Sans base, les signaux
+    locaux (casse, e-mail, biblio) jouent quand même — seul le signal lexique se tait.
+
+    `noms_biblio` : un set de jetons pliés certifiés noms de famille par la bibliographie du
+    manuscrit (§4.2), transmis TEL QUEL dans les indices de chaque segment — la CLI le
+    remplit (§6.1 de son contrat), ce module ne sait pas lire une bibliographie.
 
     `indices_consommes` : {indice dans document.blocs: rôle}, rôle parmi 'titre',
     'sous_titre', 'resume', 'resume_autre', 'mots_cles', 'doi', 'ligne_revue', 'auteurs'.
@@ -366,6 +587,32 @@ def extraire_entete(document, langue):
     n_paras_resume = 0         # paragraphes déjà absorbés par LA capture en cours
     cible_courante = None      # dict auteur en cours de complément, ou None
     ambigu_courant = False
+    # jetons/indices bruts de CHAQUE fiche encore rejugeable (confiance 'defaut' ou
+    # 'propagee'), le temps de cette fonction seulement — jamais exposé sur la fiche
+    # elle-même (§4.4 : seuls trois champs de plus, ordre_confiance/ordre_motif/
+    # ordre_conflit). Clé : id(auteur), l'objet reste vivant tant qu'il est dans
+    # entete.auteurs. Sert à _rejuger_apres_email_tardif() ci-dessous (§4.2 : « rejuger
+    # alors l'ordre de cette fiche seule si sa confiance était defaut ou propagee »).
+    etat_ordre = {}
+
+    def _rejuger_apres_email_tardif(auteur):
+        """Un e-mail qui arrive sur une ligne SUIVANTE (pas celle du nom) peut faire basculer
+        une fiche encore incertaine : le signal e-mail est de force CERTAINE (§3.3 du contrat
+        de lot A), il l'emporte sur une simple convention par défaut ou une propagation. Sans
+        état à rejuger (fiche déjà 'certaine'/'probable', ou jamais passée par mn.trancher())
+        : rien à faire, silencieusement."""
+        etat = etat_ordre.get(id(auteur))
+        if etat is None or auteur['ordre_confiance'] not in ('defaut', 'propagee'):
+            return
+        jetons, anciens_indices = etat
+        nouveaux_indices = dict(anciens_indices, email=auteur['email'])
+        decision = mn.trancher(jetons, nouveaux_indices, base_noms)
+        prenom, nom = mn.repartir(jetons, decision['ordre'])
+        auteur['prenom'], auteur['nom'] = prenom, nom
+        auteur['ordre_confiance'] = decision['confiance']
+        auteur['ordre_motif'] = decision['motif']
+        auteur['ordre_conflit'] = decision['conflit']
+        etat_ordre[id(auteur)] = (jetons, nouveaux_indices)
 
     def _longueur_resume_courant():
         if cible_resume == 'principal':
@@ -520,22 +767,48 @@ def extraire_entete(document, langue):
             i += 1
             continue
 
-        noms = _tenter_noms(texte)
-        if noms:
-            for a in noms:
-                entete.auteurs.append(_nouvel_auteur(a['prenom'], a['nom'], texte))
-            cible_courante = entete.auteurs[-1] if len(noms) == 1 else None
-            ambigu_courant = len(noms) > 1
+        resultat_noms = _tenter_noms(texte, bloc, base_noms, noms_biblio)
+        if resultat_noms:
+            entrees, infos_meme_ligne = resultat_noms
+            for a in entrees:
+                auteur = _nouvel_auteur(a['prenom'], a['nom'], texte, a['ordre_confiance'],
+                                         a['ordre_motif'], a['ordre_conflit'])
+                entete.auteurs.append(auteur)
+                etat_ordre[id(auteur)] = (a['jetons'], a['indices'])
+            # Les infos de la MÊME ligne (§4.1) ne sont rattachées que s'il y a EXACTEMENT un
+            # nom sur cette ligne — sinon on ne devine pas à qui elles appartiennent, tout
+            # comme une info sur une ligne suivante avec plusieurs noms ouverts ensemble.
+            if len(entrees) == 1:
+                cible_courante = entete.auteurs[-1]
+                ambigu_courant = False
+                # L'e-mail de CETTE ligne, s'il y en a un, a déjà joué comme signal dans
+                # _tenter_noms() (passé à mn.trancher_groupe() AVANT la décision, §4.2) —
+                # jamais besoin de le rejuger ici, seul un e-mail qui arrive plus tard
+                # (branche _est_ligne_auteur() ci-dessous) déclenche un nouveau jugement.
+                for info in infos_meme_ligne:
+                    _fusionner_info(cible_courante, info)
+            else:
+                cible_courante = None
+                ambigu_courant = True
             indices[i] = 'auteurs'
             trace.append({'source': bloc.source, 'decision': 'auteur',
-                          'motif': '%d nom(s) reconnu(s) sur cette ligne' % len(noms)})
+                          'motif': '%d nom(s) reconnu(s) sur cette ligne, ordre par '
+                                   'manuscrit_noms (%s)'
+                                   % (len(entrees),
+                                      ', '.join(a['ordre_confiance'] for a in entrees))})
             i += 1
             continue
 
         resultat_virgule = _tenter_nom_virgule_avec_info(texte)
         if resultat_virgule:
             prenom, nom, segments_info = resultat_virgule
-            auteur = _nouvel_auteur(prenom, nom, texte)
+            # Ordre CERTAIN par construction (la virgule le porte, jamais un signal de
+            # mn.trancher() à consulter) : cette fonction ne passe jamais par mn, l'ordre ne
+            # peut donc jamais être « rejugé » plus tard par un e-mail tardif (§4.2) — il n'y
+            # a rien à rejuger, la virgule ne ment pas.
+            auteur = _nouvel_auteur(prenom, nom, texte, 'certaine',
+                                     'ordre porté par la virgule « Nom, Prénom » (motif '
+                                     'structurel, pas un signal de manuscrit_noms)')
             n_telephones = 0
             for seg in segments_info:
                 if RE_TELEPHONE.match(seg):
@@ -563,7 +836,13 @@ def extraire_entete(document, langue):
                                        "plusieurs noms déclarés ensemble juste avant, ou "
                                        "aucun auteur connu pour la recevoir"})
             else:
+                email_avant = cible_courante['email']
                 _fusionner_info(cible_courante, texte)
+                if not email_avant and cible_courante['email']:
+                    # E-mail arrivé sur une ligne SUIVANTE (§4.2) : le signal e-mail (force
+                    # certaine, §3.3 du contrat de lot A) peut faire mieux qu'une convention
+                    # par défaut ou une propagation — rejugé une seule fois, ici.
+                    _rejuger_apres_email_tardif(cible_courante)
                 trace.append({'source': bloc.source, 'decision': 'auteur_info',
                               'motif': 'complément rattaché à %s %s'
                                        % (cible_courante['prenom'], cible_courante['nom'])})
@@ -596,22 +875,73 @@ def _cle_nom(texte):
     return re.sub(r'\s+', ' ', t).strip().casefold()
 
 
+def _ensemble_jetons_nom(auteur):
+    """Ensemble de jetons pliés (prénom + nom, casse/accents retirés par _cle_nom, chacun
+    éventuellement composé de plusieurs mots) — §4.3 du contrat de lot, deuxième correctif :
+    apparier « Guilley Edith » (tête, ordre inverse) et « Edith Guilley » (bloc final, ordre
+    direct) malgré l'ordre différent, là où la chaîne ordonnée échouait — défaut documenté au
+    §5.5 bis du contrat d'architecture, mesuré sur 2-fin-de-document_Article_RSPS.docx."""
+    mots = (auteur.get('prenom') or '').split() + (auteur.get('nom') or '').split()
+    return frozenset(_cle_nom(m) for m in mots if _cle_nom(m))
+
+
+# Rang de confiance (§4.3) : plus PETIT = meilleur (mn.CONFIANCE va du plus sûr au moins
+# sûr, dans cet ordre précisément — voir son commentaire dans manuscrit_noms.py).
+_RANG_CONFIANCE = {c: i for i, c in enumerate(mn.CONFIANCE)}
+
+
 def _fusionner_auteurs(entete, auteurs_nouveaux):
-    """Fusionne chaque auteur du bloc final dans `entete.auteurs` : MÊME NOM (prénom+nom,
-    comparaison insensible à la casse et aux accents) -> complète les champs VIDES de la
-    fiche déjà ouverte par la tête du manuscrit (jamais un champ déjà rempli écrasé, même
-    règle que _fusionner_info ci-dessus) ; nom absent ou inconnu -> nouvelle fiche, ajoutée à
-    la fin, jamais une fiche dupliquée pour la même personne. Rend (n_fusionnes, n_ajoutes)."""
+    """Fusionne chaque auteur du bloc final dans `entete.auteurs`. Deux correctifs du §4.3 du
+    contrat de lot (§5.5 bis du contrat d'architecture documentait ce défaut sans le
+    corriger — hors de son périmètre à l'époque) :
+
+    1. Apparier D'ABORD sur l'e-mail quand les deux fiches en portent un : identique -> même
+       personne, quels que soient les noms (l'e-mail ne ment jamais, contrairement à l'ordre
+       prénom/nom d'une byline).
+    2. À défaut, comparer l'ENSEMBLE des jetons pliés plutôt que la chaîne ordonnée
+       (_ensemble_jetons_nom ci-dessus) — en cas d'égalité d'ensembles avec un ORDRE
+       différent (même personne, tête et bloc final ne s'accordent pas sur qui est le
+       prénom), l'ordre de la fiche à la MEILLEURE confiance (mn.CONFIANCE) l'emporte, la
+       trace le dit.
+
+    Dans les deux cas -> complète les champs VIDES de la fiche déjà ouverte (jamais un champ
+    déjà rempli écrasé, même règle que _fusionner_info) ; aucune correspondance -> nouvelle
+    fiche, ajoutée à la fin, jamais une fiche dupliquée pour la même personne. Rend
+    (n_fusionnes, n_ajoutes, notes_ordre) — `notes_ordre` : une phrase française par ordre
+    repris du bloc final (§4.3 : « et le dire dans la trace »), pour que l'appelant les verse
+    dans la trace RENDUE (une liste de dicts, §5.5 bis du contrat d'architecture), jamais
+    cachées dans un champ de la fiche elle-même."""
     n_fusionnes = n_ajoutes = 0
+    notes_ordre = []
     for nouveau in auteurs_nouveaux:
-        cle_nouveau = (_cle_nom(nouveau['prenom']), _cle_nom(nouveau['nom']))
         cible = None
-        if cle_nouveau != ('', ''):
+        email_nouveau = (nouveau.get('email') or '').strip().lower()
+        if email_nouveau:
             for a in entete.auteurs:
-                if (_cle_nom(a['prenom']), _cle_nom(a['nom'])) == cle_nouveau:
+                if (a.get('email') or '').strip().lower() == email_nouveau:
                     cible = a
                     break
+        if cible is None:
+            ens_nouveau = _ensemble_jetons_nom(nouveau)
+            if ens_nouveau:
+                for a in entete.auteurs:
+                    if _ensemble_jetons_nom(a) == ens_nouveau:
+                        cible = a
+                        break
         if cible is not None:
+            if ((cible['prenom'], cible['nom']) != (nouveau['prenom'], nouveau['nom'])
+                    and _RANG_CONFIANCE.get(nouveau.get('ordre_confiance', 'defaut'), 99)
+                        < _RANG_CONFIANCE.get(cible.get('ordre_confiance', 'defaut'), 99)):
+                notes_ordre.append(
+                    'ordre repris du bloc final pour « %s » : « %s %s » (confiance %s) '
+                    'plutôt que « %s %s » (confiance %s), §4.3 du contrat de lot'
+                    % (email_nouveau or ' '.join(_ensemble_jetons_nom(nouveau)),
+                       nouveau['prenom'], nouveau['nom'], nouveau['ordre_confiance'],
+                       cible['prenom'], cible['nom'], cible.get('ordre_confiance', 'defaut')))
+                cible['prenom'], cible['nom'] = nouveau['prenom'], nouveau['nom']
+                cible['ordre_confiance'] = nouveau['ordre_confiance']
+                cible['ordre_motif'] = nouveau['ordre_motif']
+                cible['ordre_conflit'] = nouveau['ordre_conflit']
             for champ in ('fonction', 'institution', 'email', 'orcid'):
                 if not cible[champ] and nouveau[champ]:
                     cible[champ] = nouveau[champ]
@@ -619,10 +949,10 @@ def _fusionner_auteurs(entete, auteurs_nouveaux):
         else:
             entete.auteurs.append(nouveau)
             n_ajoutes += 1
-    return n_fusionnes, n_ajoutes
+    return n_fusionnes, n_ajoutes, notes_ordre
 
 
-def _analyser_bloc_auteurs(lignes):
+def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
     """`lignes` : [(source, texte), ...] — une ligne LOGIQUE, éventuellement une parmi
     plusieurs issues d'un même paragraphe scindé sur '\\n' (Word pose souvent tout le bloc
     « informations sur les autrices » en UN SEUL paragraphe, séparé par des sauts de ligne
@@ -631,7 +961,18 @@ def _analyser_bloc_auteurs(lignes):
     les mêmes reconnaissances que la zone d'en-tête (_tenter_noms / _tenter_nom_virgule_avec_
     info / _fusionner_info) : un nom, un « Nom, Prénom », une ligne d'info rattachée au
     dernier auteur ouvert. Un libellé allemand isolé (RE_LIBELLE_AUTEUR_FINAL_DE) n'est ni un
-    nom ni une info : ignoré, sans rompre l'attribution en cours."""
+    nom ni une info : ignoré, sans rompre l'attribution en cours.
+
+    `base_noms`/`noms_biblio` : mêmes paramètres qu'extraire_entete() (§4.2 du contrat de
+    lot), transmis à _tenter_noms() pour que le bloc final bénéficie des mêmes signaux que la
+    tête. Aucun Paragraphe du modèle riche n'est disponible ici (une ligne LOGIQUE peut
+    provenir d'un paragraphe éclaté sur '\\n') : _tenter_noms() reçoit `paragraphe=None`, la
+    casse MISE EN FORME (petites capitales) n'y joue donc jamais — la casse TAPÉE, elle,
+    continue de fonctionner (mn._signal_casse() la lit dans le texte des jetons lui-même).
+    Pas de rejugement après un e-mail tardif ici (§4.2) : ce raffinement, décrit pour la
+    tête du manuscrit, n'est pas repris pour ce bloc plus simple, généralement complet en
+    quelques lignes contiguës — signalé dans le rapport de livraison comme une portée
+    volontairement restreinte, jamais requise par les tests du contrat."""
     auteurs = []
     cible_courante = None
     ambigu_courant = False
@@ -639,17 +980,28 @@ def _analyser_bloc_auteurs(lignes):
         texte = (texte or '').strip()
         if not texte or RE_LIBELLE_AUTEUR_FINAL_DE.match(texte):
             continue
-        noms = _tenter_noms(texte)
-        if noms:
-            for a in noms:
-                auteurs.append(_nouvel_auteur(a['prenom'], a['nom'], texte))
-            cible_courante = auteurs[-1] if len(noms) == 1 else None
-            ambigu_courant = len(noms) > 1
+        resultat_noms = _tenter_noms(texte, None, base_noms, noms_biblio)
+        if resultat_noms:
+            entrees, infos_meme_ligne = resultat_noms
+            for a in entrees:
+                auteurs.append(_nouvel_auteur(a['prenom'], a['nom'], texte,
+                                               a['ordre_confiance'], a['ordre_motif'],
+                                               a['ordre_conflit']))
+            if len(entrees) == 1:
+                cible_courante = auteurs[-1]
+                ambigu_courant = False
+                for info in infos_meme_ligne:
+                    _fusionner_info(cible_courante, info)
+            else:
+                cible_courante = None
+                ambigu_courant = True
             continue
         resultat_virgule = _tenter_nom_virgule_avec_info(texte)
         if resultat_virgule:
             prenom, nom, segments_info = resultat_virgule
-            auteur = _nouvel_auteur(prenom, nom, texte)
+            auteur = _nouvel_auteur(prenom, nom, texte, 'certaine',
+                                     'ordre porté par la virgule « Nom, Prénom » (motif '
+                                     'structurel, pas un signal de manuscrit_noms)')
             for seg in segments_info:
                 if not RE_TELEPHONE.match(seg):
                     _fusionner_info(auteur, seg)
@@ -680,10 +1032,43 @@ def _est_titre_biblio_pour_repli(texte, lexique):
     return False
 
 
-def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
+# Silhouette d'une ENTRÉE bibliographique (pas son intitulé, reconnu ci-dessus) : deuxième
+# garde du repli, symétrique à _est_titre_biblio_pour_repli — une année de publication, entre
+# parenthèses (« Walton, E. (2025). ») ou non (« UNESCO, 2017. » — autrice institutionnelle
+# sans initiale ; « Marques, M.M., Valente-Rosa, M.J., Martins, J.L., 2007. » — plusieurs
+# autrices), immédiatement encadrée par la ponctuation d'une référence : une parenthèse
+# fermante juste après les 4 chiffres, ou un point juste après (avec au plus une lettre de
+# désambiguïsation APA, « 2020a. », entre les deux). Les quatre formes réelles mesurées sur
+# 1408_Alves.docx (voir le commentaire de SEUIL_LIGNE_AUTEUR_FINAL) passent toutes ce motif.
+#
+# Volontairement PAS une simple recherche de « 4 chiffres 19xx/20xx n'importe où dans le
+# texte » : une ligne d'info d'autrice pourrait en théorie mentionner une date en prose
+# (« depuis 2018 »), jamais accolée à une virgule AVANT et un point (ou une parenthèse fermante)
+# JUSTE APRÈS — c'est la forme d'une référence, jamais celle d'une phrase ; aucune des lignes
+# de nom/fonction/institution/e-mail/ORCID/téléphone du corpus mesuré ne porte une année de
+# publication, ce qui rend cette garde négative sûre (voir le contrat, §5.5 bis). Ni DOI ni
+# URL ici : aucune des quatre occurrences mesurées n'en porte, et rien dans le corpus ne
+# permet encore de juger le risque de faux positif sur une ligne d'info — à réévaluer si un
+# manuscrit réel l'exige (ne pas ajouter cette extension sans un cas mesuré, §1 du contrat).
+RE_ANNEE_REFERENCE_BIBLIO = re.compile(r'\((?:19|20)\d{2}[a-z]?\)|,\s*(?:19|20)\d{2}[a-z]?\.')
+
+
+def _ressemble_reference_biblio_pour_repli(texte):
+    """Silhouette d'une entrée bibliographique (jamais son intitulé, voir la fonction
+    précédente) : rencontrée pendant le repli, elle marque la FIN du bloc d'autrices/auteurs
+    — ce n'est pas un trou à sauter, l'appelant doit s'arrêter net (`break`), jamais continuer
+    la marche arrière au-delà en se contentant de l'exclure elle."""
+    return bool(RE_ANNEE_REFERENCE_BIBLIO.search(texte))
+
+
+def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None,
+                                 base_noms=None, noms_biblio=None):
     """(indices_consommes, trace) — même convention que extraire_entete() : l'appelant retire
     ces indices de `document.blocs`. Appelée APRÈS extraire_entete(), sur le document encore
     COMPLET (les indices sont donc dans le même espace que ceux d'extraire_entete()).
+
+    `base_noms`/`noms_biblio` : mêmes paramètres qu'extraire_entete() (§4.2 du contrat de
+    lot), transmis tels quels à _analyser_bloc_auteurs().
 
     `indices_entete` : les indices déjà consommés par extraire_entete() (la ZONE D'EN-TÊTE,
     §5.5) — jamais revisités ici, ni comme marqueur ni comme repli. Sans cette frontière, un
@@ -698,8 +1083,11 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
        bloc ;
     2. à défaut, un repli : le plus long groupe de paragraphes COURTS (< SEUIL_LIGNE_AUTEUR_
        FINAL signes) en fin de document, en s'arrêtant net sur un intitulé de bibliographie
-       reconnu (jamais avalé) — consommé SEULEMENT s'il porte au moins un nom plausible
-       (sinon rien, §1 du contrat : « en cas de doute, rien, et on le dit »)."""
+       reconnu (jamais avalé) OU sur la SILHOUETTE d'une entrée de bibliographie (une année de
+       publication, _ressemble_reference_biblio_pour_repli — une référence courte n'est pas un
+       trou à sauter, c'est la fin du bloc, même sous SEUIL_LIGNE_AUTEUR_FINAL) — consommé
+       SEULEMENT s'il porte au moins un nom plausible (sinon rien, §1 du contrat : « en cas de
+       doute, rien, et on le dit »)."""
     blocs = document.blocs
     n = len(blocs)
     indices_entete = indices_entete or {}
@@ -725,13 +1113,15 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
                 continue
             for ligne in bloc.texte().strip().split('\n'):
                 lignes.append((bloc.source, ligne))
-        auteurs = _analyser_bloc_auteurs(lignes)
-        n_fusionnes, n_ajoutes = _fusionner_auteurs(entete, auteurs)
+        auteurs = _analyser_bloc_auteurs(lignes, base_noms, noms_biblio)
+        n_fusionnes, n_ajoutes, notes_ordre = _fusionner_auteurs(entete, auteurs)
         trace = [{'source': blocs[indice_marqueur].source,
                   'decision': 'bloc_auteurs_final_marqueur',
                   'motif': "intertitre « %s » reconnu : %d fiche(s) fusionnée(s), %d "
                            "ajoutée(s)" % (blocs[indice_marqueur].texte().strip(),
                                            n_fusionnes, n_ajoutes)}]
+        trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_repris_bloc_final',
+                   'motif': note} for note in notes_ordre]
         return indices, trace
 
     i = n - 1
@@ -746,6 +1136,8 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
         if texte:
             if _est_titre_biblio_pour_repli(texte, lexique_biblio):
                 break
+            if _ressemble_reference_biblio_pour_repli(texte):
+                break
             if len(texte) >= SEUIL_LIGNE_AUTEUR_FINAL:
                 break
         indices_candidats.append(i)
@@ -758,19 +1150,21 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None):
         if texte:
             for ligne in texte.split('\n'):
                 lignes.append((blocs[idx].source, ligne))
-    auteurs = _analyser_bloc_auteurs(lignes)
+    auteurs = _analyser_bloc_auteurs(lignes, base_noms, noms_biblio)
     if not auteurs:
         return {}, [{'portee': 'document', 'source': None,
                      'decision': 'bloc_auteurs_final_absent',
                      'motif': "aucun bloc d'informations sur les autrices et auteurs reconnu "
                               "en fin de document"}]
-    n_fusionnes, n_ajoutes = _fusionner_auteurs(entete, auteurs)
+    n_fusionnes, n_ajoutes, notes_ordre = _fusionner_auteurs(entete, auteurs)
     trace = [{'source': blocs[indices_candidats[0]].source,
               'decision': 'bloc_auteurs_final_heuristique',
               'motif': "%d paragraphe(s) court(s) en fin de document reconnus comme "
                        "informations d'autrices/auteurs (aucun intertitre) : %d fiche(s) "
                        "fusionnée(s), %d ajoutée(s)"
                        % (len(indices_candidats), n_fusionnes, n_ajoutes)}]
+    trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_repris_bloc_final',
+               'motif': note} for note in notes_ordre]
     return {i: 'auteurs' for i in indices_candidats}, trace
 
 

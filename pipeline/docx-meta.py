@@ -462,6 +462,9 @@ def _sans_titres_academiques(t):
     return ' '.join(jetons).strip().strip(',;').strip()
 
 
+sans_titres_academiques = _sans_titres_academiques   # alias public (manuscrit_noms.py)
+
+
 # Lignes-préfixes de rôle dans les cellules du tableau des auteurs (« Article rédigé
 # par », « En collaboration avec », « Entretien réalisé par »…) : elles précèdent le nom
 # sur leur propre ligne et sont sautées, le schéma d'auteur n'ayant pas de champ rôle.

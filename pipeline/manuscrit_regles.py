@@ -66,7 +66,14 @@
 #     ],
 #     "images": [ {"alt": "…", "source": 3}, ... ],
 #     "tableaux": [ {"fusion": true, "source": 5}, ... ],
-#     "avertissements_typo": [ "[typo-avertissement] eszett | article « … » | … | [de] …", ... ]
+#     "avertissements_typo": [ "[typo-avertissement] eszett | article « … » | … | [de] …", ... ],
+#     "auteurs": [
+#       {"prenom": "Edith", "nom": "Guilley", "ordre_confiance": "defaut",
+#        "ordre_motif": "signaux contradictoires à poids égal (casse, email) : convention "
+#                        "prénom-nom appliquée par défaut",
+#        "ordre_conflit": true, "texte_source": "Guilley Edith"},
+#       ...
+#     ]
 #   }
 #
 # `langue` : la CLI passera des codes courts (fr/de) après le lot en cours, mais ce module
@@ -83,6 +90,22 @@
 # `niveau_retenu` reprend tel quel le champ de même nom rempli par
 # manuscrit_modele.classer_titres() (0 = corps, 1..3 = titre). `bibliographie[i].texte` sert
 # UNIQUEMENT à repérer une troncature déjà posée (« … » ou « ... ») — jamais à autre chose.
+#
+# `auteurs` (§6.2 du contrat de lot D, CONTRAT-noms.md — §4.4 étendu par le superviseur le
+# 22.09.2026) : une fiche par auteur·e reconnu·e par manuscrit_entete.py — en cas B
+# seulement ; cas A (aucune en-tête reconnue) : liste vide, jamais devinée. `ordre_confiance`
+# reprend telle quelle une valeur de manuscrit_noms.CONFIANCE
+# ('certaine'|'probable'|'propagee'|'defaut') ; `ordre_motif`, la phrase française du motif
+# produit par manuscrit_noms.trancher() — JAMAIS réécrite, jamais analysée non plus (voir
+# `ordre_conflit` ci-dessous) ; `ordre_conflit`, un booléen qui reprend TEL QUEL le `conflit`
+# de manuscrit_noms.trancher() : True seulement quand deux signaux de même poids se
+# contredisent, toujours False sinon (y compris quand `ordre_confiance == 'defaut'` faute
+# d'indice — les deux cas ne se confondent QUE via ce champ, jamais via le texte du motif) ;
+# `texte_source`, le segment de byline tel que tapé (« Guilley Edith »), déjà présent sur
+# toute fiche d'auteur depuis l'origine du module en-tête. Ce champ voyage comme une DONNÉE,
+# jamais reconstruit en inspectant `ordre_motif` (une reformulation du motif, fréquente dans
+# ce dépôt, romprait alors la distinction en silence, sans qu'aucun test ne rougisse) — voir
+# _auteur_en_conflit() plus bas.
 #
 # ── La sortie d'une alerte (§7 du contrat, champs INCHANGÉS) ───────────────────────────────
 #
@@ -172,6 +195,10 @@ def _images(contexte):
 
 def _tableaux(contexte):
     return contexte.get('tableaux') or []
+
+
+def _auteurs(contexte):
+    return contexte.get('auteurs') or []
 
 
 def _role(paragraphe):
@@ -415,6 +442,64 @@ def _detecter_style_nominal_de(contexte):
 
 
 # ---------------------------------------------------------------------------------
+# Entête — ordre prénom/nom (§6.3 du contrat de lot D, CONTRAT-noms.md). Aucune des deux
+# règles ci-dessous ne vient d'un chapitre des deux Redaktionsrichtlinien (c'est un contrôle
+# TECHNIQUE sur l'attribution automatique, pas éditorial) — voir le `chapitre` posé au
+# catalogue, au même principe que A11y.TexteAlternatif.ZeitschriftHeritee.
+#
+# Volume d'alertes (§7 du contrat d'architecture, « le volume d'alertes est un défaut ») :
+# une fiche `certaine`/`probable`/`propagee` ne lève RIEN — seule `defaut` (l'ordre a été
+# posé par pure convention, faute de mieux) est concernée, scindée en DEUX cas :
+#   - `defaut` PAR CONFLIT (deux signaux contraires de même poids) -> Entete.OrdreNomIncertain,
+#     UNE alerte PAR FICHE : un vrai doute mérite d'être vu individuellement ;
+#   - `defaut` FAUTE D'INDICE (rien à trancher) -> Entete.OrdreNomParDefaut, UNE SEULE alerte
+#     pour tout le document (§7 : cent alertes identiques rendraient l'outil détestable,
+#     alors qu'une phrase qui nomme les N fiches concernées suffit à la rédaction).
+
+def _auteur_en_conflit(auteur):
+    """Un ordre `defaut` PAR CONFLIT se lit sur le champ `ordre_conflit` — une DONNÉE que
+    manuscrit_entete.py recopie telle quelle depuis le `conflit` de manuscrit_noms.
+    trancher() (voir la note sur `auteurs` en tête de fichier), jamais une inspection du
+    texte de `ordre_motif` : un motif reformulé ne doit jamais faire taire cette règle en
+    silence. `ordre_confiance == 'defaut'` reste vérifié en plus, par prudence défensive
+    (un Contexte mal formé qui poserait `ordre_conflit: true` sur une fiche par ailleurs
+    tranchée ne doit jamais lever cette alerte — §2 de la maison : « en cas de doute,
+    rien »)."""
+    return auteur.get('ordre_confiance') == 'defaut' and bool(auteur.get('ordre_conflit'))
+
+
+def _nom_lisible_auteur(auteur):
+    """`texte_source` (le segment tel que tapé, « Guilley Edith ») quand il est fourni —
+    c'est lui que la rédaction reconnaît dans son manuscrit, pas la fiche déjà découpée.
+    Repli sur prénom+nom si `texte_source` manque (Contexte incomplet, jamais une
+    exception)."""
+    texte_source = (auteur.get('texte_source') or '').strip()
+    if texte_source:
+        return texte_source
+    return ('%s %s' % (auteur.get('prenom') or '', auteur.get('nom') or '')).strip()
+
+
+def _detecter_ordre_nom_incertain(contexte):
+    constats = []
+    for a in _auteurs(contexte):
+        if _auteur_en_conflit(a):
+            constats.append({'para': None, 'span': None,
+                              'found': _nom_lisible_auteur(a), 'suggested': None})
+    return constats
+
+
+def _detecter_ordre_nom_par_defaut(contexte):
+    # Agrégée (voir la note plus haut) : une seule entrée de `found`, jamais une par fiche.
+    noms = [_nom_lisible_auteur(a) for a in _auteurs(contexte)
+            if a.get('ordre_confiance') == 'defaut' and not _auteur_en_conflit(a)]
+    noms = [n for n in noms if n]
+    if not noms:
+        return []
+    return [{'para': None, 'span': None, 'n_fiches': len(noms),
+              'found': '; '.join(noms), 'suggested': None}]
+
+
+# ---------------------------------------------------------------------------------
 # LE CATALOGUE. Chaque `chapitre` recopie la colonne du fichier d'extraction (elle-même
 # recopiée des PDF) — c'est la référence qui permet à la rédaction de contester une alerte.
 # Les familles lexicales (Epicene, Vocabulaire, Casse, la liaison et/& et la citation
@@ -488,6 +573,22 @@ CATALOGUE = [
           'comment', 'Zeitschrift: Sprachliche Richtlinien / Nominalstil vermeiden',
           _detecter_style_nominal_de,
           '', 'Möglicher Nominalstil: %(found)s in einem Absatz.'),
+
+    Regle('Entete.OrdreNomIncertain', 'Entete', '', '', 'warning', 'report',
+          "Aucune source normative : contrôle technique interne (attribution automatique "
+          "de l'ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
+          _detecter_ordre_nom_incertain,
+          '« %(found)s » : lu Prénom Nom, mais les indices se contredisent — vérifier.',
+          '« %(found)s » : als Vorname Nachname gelesen, aber die Hinweise widersprechen '
+          'sich — bitte prüfen.'),
+    Regle('Entete.OrdreNomParDefaut', 'Entete', '', '', 'suggestion', 'report',
+          "Aucune source normative : contrôle technique interne (attribution automatique "
+          "de l'ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
+          _detecter_ordre_nom_par_defaut,
+          "Ordre prénom/nom établi par convention faute d'indice, pour %(n_fiches)d "
+          'fiche(s) : %(found)s.',
+          'Reihenfolge Vorname/Nachname mangels Hinweis nach Konvention festgelegt, für '
+          '%(n_fiches)d Eintrag/Einträge: %(found)s.'),
 ]
 
 CATALOGUE_PAR_ID = {r.id: r for r in CATALOGUE}
@@ -535,7 +636,14 @@ def evaluer(contexte):
         for constat in (regle.detecter(contexte) or []):
             gabarit_message = regle.message_de if (langue_courte == 'de' and regle.message_de) \
                 else regle.message_fr
-            champs = {'found': constat.get('found'), 'suggested': constat.get('suggested')}
+            # dict(constat) plutôt que les deux seules clés found/suggested (comme avant ce
+            # lot) : toutes les règles existantes ne posent QUE para/span/found/suggested
+            # dans leur constat (inchangé, donc aucune régression), mais
+            # Entete.OrdreNomParDefaut a besoin d'un %(n_fiches)d en plus de %(found)s pour
+            # dire COMBIEN de fiches sans jamais lever une alerte par fiche (§7 : « le volume
+            # d'alertes est un défaut ») — une clé de gabarit non utilisée par une autre
+            # règle ne la gêne jamais, le % de Python ignore les clés surnuméraires du dict.
+            champs = dict(constat)
             try:
                 message = gabarit_message % champs
             except (KeyError, ValueError, TypeError):

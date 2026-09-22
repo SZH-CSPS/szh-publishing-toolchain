@@ -279,3 +279,120 @@ test('APA.OrdreAlphabetiqueBiblio ne réapparaît jamais dans le catalogue (reco
       'cette règle est un doublon de manuscrit_biblio.py (APA.OrdreBiblio) : elle ne doit '
       + 'jamais revenir dans le catalogue structurel');
   });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°9 — Entete.OrdreNomIncertain (§6.3 du contrat de lot D, CONTRAT-noms.md ; §4.4
+// étendu par le superviseur le 22.09.2026) : une alerte PAR FICHE dont l'ordre prénom/nom
+// est resté en confiance 'defaut' ET porte `ordre_conflit: true` — un champ booléen qui
+// voyage comme une DONNÉE (recopié tel quel depuis manuscrit_noms.trancher()), jamais une
+// inspection du texte de `ordre_motif` : un motif reformulé ne doit jamais faire taire cette
+// règle en silence. Une fiche 'certaine' ne lève rien ; `found` cite `texte_source` tel quel
+// (le segment de byline tapé), pas la fiche déjà découpée en prénom/nom. Une fiche 'defaut'
+// SANS conflit (`ordre_conflit: false`) ne lève JAMAIS cette règle-ci — seulement (en
+// parallèle) Entete.OrdreNomParDefaut : c'est la distinction que le champ existe pour rendre
+// possible.
+//
+// Sabotage minimal : dans _auteur_en_conflit() (pipeline/manuscrit_regles.py), remplacer
+// `bool(auteur.get('ordre_conflit'))` par `auteur.get('ordre_confiance') == 'defaut'` (donc
+// toute fiche 'defaut' compterait comme en conflit) — la fiche « Jean Martin » (defaut, sans
+// conflit) se mettrait alors À TORT à lever Entete.OrdreNomIncertain, la dernière assertion
+// rougit (2 alertes au lieu de 1, « Jean Martin » retrouvé dans les deux règles à la fois).
+
+test('Entete.OrdreNomIncertain : une alerte par fiche à ordre_conflit=true, jamais pour une fiche defaut sans conflit',
+  { skip: sansPython }, () => {
+    const { sortie } = diagnostiquer({
+      produit: 'revue', langue: 'fr', paragraphes: [],
+      auteurs: [
+        { prenom: 'Guilley', nom: 'Edith', ordre_confiance: 'defaut', ordre_conflit: true,
+          ordre_motif: 'signaux contradictoires à poids égal (casse, email) : convention '
+            + 'prénom-nom appliquée par défaut', texte_source: 'Guilley Edith' },
+        { prenom: 'Isabel', nom: 'Valarino', ordre_confiance: 'certaine', ordre_conflit: false,
+          ordre_motif: 'nom marqué par les capitales (VALARINO)',
+          texte_source: 'Isabel VALARINO' },
+        // Fiche 'defaut' SANS conflit : la distinction que le champ `ordre_conflit` rend
+        // possible. Doit rester muette ici, et apparaître seule dans OrdreNomParDefaut.
+        { prenom: 'Jean', nom: 'Martin', ordre_confiance: 'defaut', ordre_conflit: false,
+          ordre_motif: 'aucun indice, convention prénom-nom appliquée',
+          texte_source: 'Jean Martin' },
+      ]
+    });
+    const alertesConflit = sortie.alertes.filter((a) => a.rule === 'Entete.OrdreNomIncertain');
+    assert.strictEqual(alertesConflit.length, 1,
+      'seule la fiche à ordre_conflit=true doit lever cette règle : '
+      + JSON.stringify(sortie.alertes));
+    assert.strictEqual(alertesConflit[0].severity, 'warning');
+    assert.strictEqual(alertesConflit[0].action, 'report');
+    assert.strictEqual(alertesConflit[0].found, 'Guilley Edith');
+    assert.ok(alertesConflit[0].message.includes('Guilley Edith'),
+      'le message doit nommer le segment litigieux : ' + alertesConflit[0].message);
+
+    const alertesParDefaut = sortie.alertes.filter((a) => a.rule === 'Entete.OrdreNomParDefaut');
+    assert.strictEqual(alertesParDefaut.length, 1);
+    assert.ok(alertesParDefaut[0].found.includes('Jean Martin'),
+      'la fiche defaut SANS conflit doit être comptée dans l\'agrégat : '
+      + alertesParDefaut[0].found);
+    assert.ok(!alertesParDefaut[0].found.includes('Guilley Edith'),
+      'la fiche EN CONFLIT ne doit jamais apparaître dans l\'agrégat (elle a déjà sa propre '
+      + 'alerte, individuelle) : ' + alertesParDefaut[0].found);
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°10 — Entete.OrdreNomParDefaut (§6.3 du contrat de lot D, §7 du contrat
+// d'architecture : « le volume d'alertes est un défaut ») : UNE SEULE alerte pour tout le
+// document quand au moins une fiche est en confiance 'defaut' SANS conflit — jamais une
+// alerte par fiche. `found` liste les noms concernés séparés par « ; ». Silence total quand
+// aucune fiche n'est en 'defaut' (certaine/probable/propagee ne lèvent rien).
+//
+// Sabotage minimal : dans _detecter_ordre_nom_par_defaut() (pipeline/manuscrit_regles.py),
+// remplacer le `return [{...}]` unique par un constat PAR fiche (une boucle qui `append`
+// dans la boucle plutôt qu'une seule fois après) — la première assertion (une seule alerte)
+// rougirait (3 au lieu de 1), contredisant le principe anti-bruit du §7.
+
+test('Entete.OrdreNomParDefaut : une seule alerte agrégée pour trois fiches en defaut, silence si tout est tranché',
+  { skip: sansPython }, () => {
+    const { sortie: avecDefaut } = diagnostiquer({
+      produit: 'revue', langue: 'fr', paragraphes: [],
+      auteurs: [
+        { prenom: '', nom: 'Dupont', ordre_confiance: 'defaut', ordre_conflit: false,
+          ordre_motif: 'un seul jeton, aucun ordre à trancher', texte_source: 'Dupont' },
+        { prenom: 'Jean', nom: 'Martin', ordre_confiance: 'defaut', ordre_conflit: false,
+          ordre_motif: 'aucun indice, convention prénom-nom appliquée',
+          texte_source: 'Jean Martin' },
+        { prenom: 'Anne', nom: 'Muller', ordre_confiance: 'defaut', ordre_conflit: false,
+          ordre_motif: 'aucun indice, convention prénom-nom appliquée',
+          texte_source: 'Anne Muller' },
+      ]
+    });
+    const alertesDefaut = avecDefaut.alertes.filter((a) => a.rule === 'Entete.OrdreNomParDefaut');
+    assert.strictEqual(alertesDefaut.length, 1,
+      'trois fiches en defaut ne doivent lever QU\'UNE SEULE alerte agrégée : '
+      + JSON.stringify(avecDefaut.alertes));
+    assert.strictEqual(alertesDefaut[0].severity, 'suggestion');
+    assert.ok(alertesDefaut[0].found.includes('Dupont')
+      && alertesDefaut[0].found.includes('Jean Martin')
+      && alertesDefaut[0].found.includes('Anne Muller'),
+      '`found` doit nommer les trois fiches concernées, séparées par « ; » : '
+      + alertesDefaut[0].found);
+    assert.ok(alertesDefaut[0].message.includes('3'),
+      'le message doit compter les fiches concernées : ' + alertesDefaut[0].message);
+    // Les trois fiches portent ordre_conflit: false (donnée, jamais déduite d'un motif) :
+    // Entete.OrdreNomIncertain ne doit rien lever en parallèle.
+    assert.deepStrictEqual(
+      avecDefaut.alertes.filter((a) => a.rule === 'Entete.OrdreNomIncertain'), []);
+
+    const { sortie: toutTranche } = diagnostiquer({
+      produit: 'revue', langue: 'fr', paragraphes: [],
+      auteurs: [
+        { prenom: 'Isabel', nom: 'Valarino', ordre_confiance: 'certaine',
+          ordre_motif: 'nom marqué par les capitales (VALARINO)',
+          texte_source: 'Isabel VALARINO' },
+        { prenom: 'Edith', nom: 'Guilley', ordre_confiance: 'propagee',
+          ordre_motif: 'ordre propagé depuis « Isabel VALARINO » (nom marqué par les '
+            + 'capitales)', texte_source: 'Edith Guilley' },
+      ]
+    });
+    assert.deepStrictEqual(
+      toutTranche.alertes.filter((a) => a.rule.startsWith('Entete.OrdreNom')), [],
+      'aucune fiche en defaut (certaine + propagee) : silence total sur les deux règles '
+      + 'Entete.OrdreNom*');
+  });

@@ -13,6 +13,14 @@
 // institution/e-mail, ORCID) ; résumé après marqueur (jusqu'aux mots-clés) ; résumé absent
 // (rien inventé) ; mots-clés ; DOI ; en-tête vide (document qui commence par un intertitre) ;
 // et un test de bout en bout (fabriquerDocx -> manuscrit-nettoyer.py -> pronto-lire.py).
+//
+// §11 (lot B, CONTRAT-noms.md, 22.09.2026, non committé) : le branchement de
+// pipeline/manuscrit_noms.py (§4 du contrat de lot) — les quatre défauts du §0 (institution
+// prise pour un nom, titres académiques, emoji), la propagation d'ordre sur une byline, la
+// fusion tête/bloc final par e-mail et par ensemble de jetons (§4.3), la présence
+// d'ordre_confiance/ordre_motif/ordre_conflit sur chaque fiche (§4.4, ce dernier champ ajouté
+// par le superviseur en cours de lot pour distinguer un ordre "defaut" par CONFLIT de
+// signaux d'un ordre "defaut" faute d'indice).
 'use strict';
 
 const test = require('node:test');
@@ -634,4 +642,322 @@ test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà cons
     assert.strictEqual(out.entete.auteurs[0].fonction, '',
       'l’intertitre de tête ne doit jamais être réattribué comme fonction par le repli');
     assert.deepStrictEqual(out.indices_consommes, { 0: 'titre', 1: 'auteurs', 2: 'auteurs' });
+  });
+
+// Silhouette d'une ENTRÉE de bibliographie (correctif du 22.09.2026) : une référence courte
+// (bien SOUS SEUIL_LIGNE_AUTEUR_FINAL, 120 signes) en fin de bibliographie doit arrêter net le
+// repli, jamais se faire avaler avec le bloc de coordonnées qui la suit — mesuré sur
+// tmp/docx-cleaner-error/1408_Alves.docx : « Walton, E. (2025). The knowledge of inclusive
+// education: An ecological approach. Routledge. » (91 signes) disparaissait du document
+// nettoyé SANS TRACE (ni réémise, ni proposée en suppression suivie).
+//
+// Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(), retirer
+// l'appel à _ressemble_reference_biblio_pour_repli() du repli — Walton se fait alors avaler
+// avec le bloc de coordonnées (aucun nom n'y est reconnu, donc aucune fiche parasite non plus :
+// c'est bien la DISPARITION SILENCIEUSE que ce test détecte, via indices_consommes et
+// document.blocs, jamais via entete.auteurs.length seul).
+
+test('extraire_bloc_auteurs_final : le repli s\'arrête net sur la silhouette d\'une référence courte, même juste avant le bloc de coordonnées (Walton, 91 signes)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire, assez long pour ne '
+        + 'jamais être pris pour une ligne d’information d’autrice ou auteur.'),
+      para('Bibliographie'),
+      para('Walton, E. (2025). The knowledge of inclusive education: An ecological approach. '
+        + 'Routledge.'),
+      para(''),
+      para(''),
+      para('Ines Alves\nProfesseure associée'),
+      para('University of Glasgow'),
+      para('ines.alves@glasgow.ac.uk'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      'aucune fiche parasite pour la référence Walton : une seule autrice reconnue');
+    assert.strictEqual(out.indices_consommes[4], undefined,
+      'la référence Walton (index 4, sous le bloc Bibliographie) ne doit jamais être '
+      + 'consommée par le repli');
+    const walton = out.document.blocs.some(
+      b => (b.fragments || []).some(f => (f.texte || '').includes('Walton')));
+    assert.ok(walton, 'le texte de la référence Walton doit rester dans document.blocs, '
+      + 'jamais disparaître sans trace');
+  });
+
+// Même défaut, référence la plus courte du lot (78 signes) et en toute DERNIÈRE position de
+// la bibliographie : aucune entrée longue derrière elle pour faire mur autrement — seule la
+// silhouette de référence (année entre parenthèses) peut arrêter le repli avant qu'il ne
+// l'avale, le seuil de longueur n'y jouant ici aucun rôle.
+//
+// Sabotage minimal (vérifié pendant ce chantier) : même sabotage que le test précédent — sans
+// _ressemble_reference_biblio_pour_repli(), le repli descend jusqu'à l'intitulé
+// « Bibliographie » (qui, lui, reste protégé par _est_titre_biblio_pour_repli) et avale Morin
+// juste avant de s'arrêter dessus.
+
+test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence courte en toute dernière position, sans entrée longue pour faire mur (Morin, 78 signes)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire, assez long pour ne '
+        + 'jamais être pris pour une ligne d’information d’autrice ou auteur.'),
+      para('Bibliographie'),
+      para('Morin, E. (2005). Introduction à la pensée complexe. Points éditions du Seuil.'),
+      para(''),
+      para('Ines Alves\nProfesseure associée'),
+      para('University of Glasgow'),
+      para('ines.alves@glasgow.ac.uk'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.indices_consommes[4], undefined,
+      'la référence Morin (index 4) ne doit jamais être consommée par le repli');
+    const morin = out.document.blocs.some(
+      b => (b.fragments || []).some(f => (f.texte || '').includes('Morin')));
+    assert.ok(morin, 'le texte de la référence Morin doit rester dans document.blocs');
+  });
+
+// Année SANS parenthèses et autrice institutionnelle sans initiale (« UNESCO, 2017. » plutôt
+// que « Nom, I. (20xx) ») : le piège principal de ce lot — un motif du seul type
+// « Nom, I. (20xx) » aurait laissé passer cette forme, pourtant réelle
+// (tmp/docx-cleaner-error/1408_Alves.docx), et aurait laissé le seuil de longueur seul face à
+// une référence de 83 signes.
+//
+// Sabotage minimal (vérifié pendant ce chantier) : rétrécir RE_ANNEE_REFERENCE_BIBLIO à la
+// seule forme parenthésée (année entre parenthèses), sans l'alternative « virgule + année +
+// point » — UNESCO, 2017 n'est alors plus reconnue et se fait avaler avec le bloc de
+// coordonnées.
+
+test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence à année sans '
+  + 'parenthèses et autrice institutionnelle sans initiale (UNESCO, 83 signes)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire, assez long pour ne '
+        + 'jamais être pris pour une ligne d’information d’autrice ou auteur.'),
+      para('Bibliographie'),
+      para('UNESCO, 2017. A Guide for Ensuring Inclusion and Equity in Education. UNESCO, '
+        + 'Paris'),
+      para(''),
+      para('Ines Alves\nProfesseure associée'),
+      para('University of Glasgow'),
+      para('ines.alves@glasgow.ac.uk'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.indices_consommes[4], undefined,
+      'la référence UNESCO (index 4) ne doit jamais être consommée par le repli');
+    const unesco = out.document.blocs.some(
+      b => (b.fragments || []).some(f => (f.texte || '').includes('UNESCO')));
+    assert.ok(unesco, 'le texte de la référence UNESCO doit rester dans document.blocs');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 11. Le branchement de manuscrit_noms.py (§4 du contrat de lot B) — les quatre défauts
+// du §0 du contrat, reproduits tels quels puis vérifiés corrigés.
+
+// Défaut 1 (§0 du contrat) : une institution prise pour un second auteur. Correction du
+// superviseur (22.09.2026) : _segments_plausibles() PARTITIONNE (noms, infos) au lieu de
+// rejeter la ligne entière au premier segment d'institution.
+test('extraire_entete : « Marie Dupont, Université de Genève » -> une fiche, institution remplie, jamais un second auteur fantôme (§4.1)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Marie Dupont, Université de Genève'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      '« Université de Genève » ne doit jamais devenir un second auteur');
+    assert.strictEqual(out.entete.auteurs[0].prenom, 'Marie');
+    assert.strictEqual(out.entete.auteurs[0].nom, 'Dupont');
+    assert.strictEqual(out.entete.auteurs[0].institution, 'Université de Genève');
+  });
+
+test('extraire_entete : « Université de Genève » seule après « Marie Dupont » -> rattachée à la fiche déjà ouverte, jamais un auteur fantôme (§4.1)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Marie Dupont'),
+      para('Université de Genève'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.entete.auteurs[0].nom, 'Dupont');
+    assert.strictEqual(out.entete.auteurs[0].institution, 'Université de Genève');
+  });
+
+// Défaut 2 (§0 du contrat) : « Dr. phil. Romain Lanners » ne rendait aucun auteur —
+// _segments_plausibles() n'appelait pas dm.sans_titres_academiques(), contrairement à
+// dm.auteurs_depuis_byline().
+test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Romain Lanners » -> un auteur, jamais zéro (§4.1)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Dr. phil. Romain Lanners'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.entete.auteurs[0].prenom, 'Romain');
+    assert.strictEqual(out.entete.auteurs[0].nom, 'Lanners');
+  });
+
+// Défaut 3 (§0 du contrat) : un jeton emoji (aucune lettre) disqualifiait toute la ligne
+// dans dm.nom_plausible() — retiré du segment AVANT le test de plausibilité, dans
+// _segments_plausibles(), jamais dans docx-meta.nom_plausible() (fichier d'un autre lot).
+test('extraire_entete : un jeton emoji ne disqualifie plus la ligne, « Marie Dupont 🎓 » -> un auteur, jamais zéro (§4.1)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Marie Dupont \u{1F393}'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.entete.auteurs[0].prenom, 'Marie');
+    assert.strictEqual(out.entete.auteurs[0].nom, 'Dupont');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 12. Propagation de l'ordre sur une byline (§3.5 du contrat de lot A, branchée par
+// _tenter_noms() via mn.trancher_groupe(), §4.2) : un segment tranché par la casse TAPÉE
+// (force certaine, aucun besoin de base ni de modèle riche) propage son ordre au second
+// segment, resté sans indice propre.
+test('extraire_entete : propagation de l\'ordre sur une byline (un segment tranché par la casse, l\'autre "propagee") (§3.5/§4.2)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('GUILLEY Edith, Valarino Isabel'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 2);
+    assert.strictEqual(out.entete.auteurs[0].prenom, 'Edith');
+    assert.strictEqual(out.entete.auteurs[0].nom, 'GUILLEY');
+    assert.strictEqual(out.entete.auteurs[0].ordre_confiance, 'certaine');
+    assert.strictEqual(out.entete.auteurs[1].prenom, 'Isabel');
+    assert.strictEqual(out.entete.auteurs[1].nom, 'Valarino');
+    assert.strictEqual(out.entete.auteurs[1].ordre_confiance, 'propagee',
+      'le second segment, sans indice propre, doit adopter l\'ordre du premier');
+    assert.strictEqual(out.entete.auteurs[1].ordre_conflit, false);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 13. La fusion tête/bloc final (§4.3 du contrat de lot, deux correctifs sur _fusionner_
+// auteurs(), défaut documenté au §5.5 bis du contrat d'architecture).
+
+// Correctif 1 : apparier D'ABORD sur l'e-mail, même quand les jetons du nom ne coïncident
+// pas (« Pierre » en tête, « P. » au bloc final) — la comparaison par ENSEMBLE de jetons
+// (correctif 2) échouerait seule ici : {pierre, martin} != {p., martin}.
+test('extraire_bloc_auteurs_final : fusionne via l\'e-mail quand les jetons du nom ne coïncident pas (§4.3, correctif 1)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Pierre Martin'),
+      para('pierre.martin@example.com'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire.'),
+      para('Informations sur les autrices et auteurs :'),
+      para('P. Martin\npierre.martin@example.com\nInstitut de recherche'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      'même e-mail -> même personne, malgré des jetons de nom différents ("Pierre" vs "P.")');
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.prenom, 'Pierre');
+    assert.strictEqual(a.nom, 'Martin');
+    assert.strictEqual(a.institution, 'Institut de recherche');
+  });
+
+// Correctif 2 : à défaut d'e-mail, comparer l'ENSEMBLE des jetons pliés plutôt que la
+// chaîne ordonnée — « Guilley Edith » (tête, sans indice, ordre par défaut ERRONÉ) et
+// « Edith GUILLEY » (bloc final, casse certaine) partagent le même ensemble {edith,
+// guilley} malgré l'ordre différent : UNE seule fiche, et l'ordre de meilleure confiance
+// (le bloc final, certaine) l'emporte sur celui, par défaut, de la tête.
+test('extraire_bloc_auteurs_final : fusionne par ENSEMBLE de jetons (ordres différents), garde l\'ordre de meilleure confiance (§4.3, correctif 2)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Guilley Edith'),
+      para('Introduction'),
+      para('Un premier paragraphe de corps tout à fait ordinaire.'),
+      para('Informations sur les autrices et auteurs :'),
+      para('Edith GUILLEY'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      'même personne (ensemble de jetons identique), jamais deux fiches');
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.prenom, 'Edith');
+    assert.strictEqual(a.nom, 'GUILLEY');
+    assert.strictEqual(a.ordre_confiance, 'certaine',
+      'l\'ordre de meilleure confiance (bloc final, casse certaine) doit l\'emporter sur '
+      + 'celui, par défaut, de la tête');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 14. ordre_confiance/ordre_motif/ordre_conflit (§4.4 du contrat de lot ; ordre_conflit
+// ajouté par le superviseur le 22.09.2026, en cours de lot) sur CHAQUE fiche.
+
+test('extraire_entete : chaque fiche porte ordre_confiance (valeur de CONFIANCE), ordre_motif (texte) et ordre_conflit (booléen) (§4.4)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Jean Dupont, Marie Martin'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 2);
+    for (const a of out.entete.auteurs) {
+      assert.ok(['certaine', 'probable', 'propagee', 'defaut'].includes(a.ordre_confiance),
+        'ordre_confiance doit être une valeur de mn.CONFIANCE : ' + a.ordre_confiance);
+      assert.strictEqual(typeof a.ordre_motif, 'string');
+      assert.strictEqual(typeof a.ordre_conflit, 'boolean');
+    }
+  });
+
+// ordre_conflit distingue un ordre "defaut" PAR CONFLIT de signaux (deux signaux de force
+// égale et contraires) d'un ordre "defaut"/tranché SANS conflit — le superviseur a demandé
+// ce champ pour que le lot D n'ait plus à chercher un préfixe de phrase dans ordre_motif
+// (fragile : un texte reformulé ne ferait rougir aucun test).
+test('extraire_entete : ordre_conflit distingue un ordre "defaut" par CONFLIT de signaux d\'une fiche tranchée sans conflit (superviseur, 22.09.2026)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      // Casse (certaine, ordre inverse : GUILLEY = nom, en tête) contredite par un e-mail
+      // fabriqué exprès pour ce test (certaine, ordre direct : "edith", seul, retrouvé dans
+      // la partie locale) — deux signaux de force ÉGALE (3) et CONTRAIRES : conflict=True
+      // (§3.4, étape 4 du contrat de lot A).
+      para('GUILLEY Edith, edith@example.com'),
+      // Une seconde fiche, tranchée par la casse SEULE, sans aucune contradiction.
+      para('MARTIN Paul'),
+      para('Introduction'),
+    ]);
+    assert.strictEqual(out.entete.auteurs.length, 2);
+    assert.strictEqual(out.entete.auteurs[0].ordre_conflit, true,
+      'deux signaux de force égale et contraires -> ordre_conflit=true');
+    assert.strictEqual(out.entete.auteurs[0].ordre_confiance, 'defaut');
+    assert.strictEqual(out.entete.auteurs[1].ordre_conflit, false,
+      'aucune contradiction -> ordre_conflit=false');
+  });
+
+// Croisement des DEUX modules sur une initiale intermédiaire — le trou que ni ce fichier ni
+// manuscrit-noms.test.js ne couvrait. Ce fichier a porté un temps sa propre copie de la
+// répartition prénom/nom ; mesuré le 22.09.2026, elle avait déjà divergé de
+// manuscrit_noms._repartir() : elle ignorait les initiales pointées et renversait naïvement
+// la liste en ordre inverse (« Burkhardt Susan C. A. » -> prénom « A. »), les deux suites
+// restant vertes. La copie est supprimée (mn.repartir() est publique depuis) et ce test
+// ferme le trou : il vérifie la répartition à travers extraire_entete(), pas dans le module
+// de décision isolé.
+test('extraire_entete : une initiale intermédiaire reste au prénom, dans les deux ordres (superviseur, 22.09.2026)',
+  { skip: sansPython }, () => {
+    const direct = diagnostiquer([
+      para('Un titre'), para('Bernard N. Schumacher'), para('Introduction'),
+    ]);
+    assert.strictEqual(direct.entete.auteurs.length, 1);
+    assert.strictEqual(direct.entete.auteurs[0].prenom, 'Bernard N.',
+      "l'initiale intermédiaire appartient au prénom, jamais au nom de famille");
+    assert.strictEqual(direct.entete.auteurs[0].nom, 'Schumacher');
+
+    // Ordre inverse levé par la casse (signal certain) : la remontée depuis la fin doit
+    // ancrer sur « Susan », jamais sur la dernière initiale rencontrée.
+    const inverse = diagnostiquer([
+      para('Un titre'), para('BURKHARDT Susan C. A.'), para('Introduction'),
+    ]);
+    assert.strictEqual(inverse.entete.auteurs.length, 1);
+    assert.strictEqual(inverse.entete.auteurs[0].prenom, 'Susan C. A.');
+    assert.strictEqual(inverse.entete.auteurs[0].nom, 'BURKHARDT');
   });

@@ -183,6 +183,72 @@ if ((-not $codium) -and (-not $script:SzhSimule)) {
   exit 1
 }
 
+# ---- Moisson des auteur·e·s publiés (C:\ProgramData\SZH\auteurs.json) : construite au ----
+# ---- lancement de l'application si elle manque encore, jamais attendue -------------------
+#
+# lib/auteurs-ojs.js (rafraichir) et lib/auteurs-corpus.js (rafraichirCorpus) ne tournaient
+# jusqu'ici qu'à l'activation du cockpit (extension.js -> rafraichirAuteursPubliesEnFond(),
+# lib/metadonnees-hote.js) -- donc seulement quand VSCodium a démarré au moins une fois. Or
+# ce lanceur (les raccourcis du menu Démarrer, Set-SzhRaccourcisMenu dans szh-shell.ps1)
+# s'ouvre directement, sans jamais passer par VSCodium : on peut nettoyer un manuscrit depuis
+# l'onglet « Preprocessing » sans base d'auteur·e·s connus. outils/auteurs-cli.js est le même
+# moissonneur, appelé d'un second endroit -- zéro logique de moissonnage propre côté
+# PowerShell ni côté Node.
+#
+# Le script Node du moissonnage des auteur·e·s publiés (outils/auteurs-cli.js, livré dans
+# l'extension du cockpit -- jamais dans ce dépôt). Même résolution que Get-SzhOutilSecretariat
+# (Get-SzhDossierCockpit, szh-common.ps1) mais SANS lever : contrairement au secrétariat, cet
+# appel n'est pas un geste demandé par la personne -- une extension pas encore posée (poste
+# tout neuf, ou VSCodium jamais ouvert une seule fois) ne doit produire ni message ni rapport
+# d'erreur, seulement une base qui se construira au prochain lancement une fois l'extension en
+# place. Rend '' quand l'outil est introuvable, jamais une exception.
+function Get-SzhOutilAuteurs {
+  $dossierCockpit = Get-SzhDossierCockpit
+  if ($dossierCockpit) {
+    $scriptCandidat = Join-Path $dossierCockpit 'outils\auteurs-cli.js'
+    if (Test-Path -LiteralPath $scriptCandidat) { return $scriptCandidat }
+  }
+  return ''
+}
+
+# Lance le moissonnage en tâche de fond, SANS jamais attendre son issue : décision du
+# superviseur -- l'ouverture du lanceur ne doit jamais patienter pour un millier de notices
+# OAI-PMH ni pour un balayage du corpus OneDrive, alors que l'absence de base ne coûte qu'un
+# signal sur quatre au nettoyeur de manuscrit (Forme.Lexique, pipeline/manuscrit_noms.py).
+# Même mécanisme que Invoke-SzhSecretariat et Get-SzhCourriel (VSCodium-en-Node,
+# ELECTRON_RUN_AS_NODE=1, un seul argument entre guillemets -- repris tel quel, voir
+# Get-SzhCourriel dans szh-common.ps1), mais un Process lancé sans être suivi : personne ne
+# lit sa sortie, personne n'attend sa fin -- outils/auteurs-cli.js décide lui-même quand
+# moissonner (JOURS_FRAICHEUR = 30, cacheFrais(), lib/auteurs-ojs.js) et ne lève jamais.
+#
+# Ne lève JAMAIS et n'affiche JAMAIS rien : hors ligne est un état normal du poste (même
+# politique que le moissonneur lui-même) -- une ligne de journal suffit, dans un sens comme
+# dans l'autre. Rien n'est lancé si VSCodium est absent du poste (Get-SzhOutilAuteurs rend ''
+# sans lever) : ce lanceur passe alors simplement son tour, sur le même repli que
+# Get-SzhCourriel. Rien non plus en simulation (SZH_LANCEUR_SIMULE=1) : un test ne doit jamais
+# lancer un vrai processus VSCodium-en-Node de son côté.
+function Start-SzhMoissonAuteurs {
+  if ($script:SzhSimule) { return }
+  if (-not $codium) { return }
+  try {
+    $cheminOutilAuteurs = Get-SzhOutilAuteurs
+    if (-not $cheminOutilAuteurs) { return }
+    $psiAuteurs = New-Object System.Diagnostics.ProcessStartInfo
+    $psiAuteurs.FileName = $codium
+    # Un seul argument, un chemin de fichier : même garde qu'un espace dans "Robin Morand"
+    # que Get-SzhCourriel, un simple entourage de guillemets suffit.
+    $psiAuteurs.Arguments = '"' + $cheminOutilAuteurs + '"'
+    $psiAuteurs.UseShellExecute = $false
+    $psiAuteurs.CreateNoWindow = $true
+    $psiAuteurs.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+    [void][System.Diagnostics.Process]::Start($psiAuteurs)
+    Write-SzhLog 'open-produit : moisson des auteurs publies lancee en tache de fond (non bloquant)'
+  } catch {
+    Write-SzhLog ('open-produit : moisson des auteurs publies non lancee (' + $_.Exception.Message + ')')
+  }
+}
+Start-SzhMoissonAuteurs
+
 # ---- Ancrage SharePoint : resolu (et, au besoin, demande) UNE SEULE FOIS ici ----
 # Initialize-SzhAncrage (szh-ancrage.ps1) est la seule fonction habilitee a ouvrir le
 # selecteur de dossier (amendement du 09.09.2026, garde-fou anti-harcelement compris) ;
