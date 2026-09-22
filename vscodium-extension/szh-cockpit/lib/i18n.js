@@ -1411,9 +1411,9 @@ const TEXTES_COCKPIT = {
     // s'annonce comme un succès, et la croix de la carte permet de le faire taire.
     'defaut.biblio-detachee': 'Bibliographie correctement récupérée',
     'defaut.biblio-incomplete': 'Bibliographie récupérée, sauf quelques paragraphes',
-    'detail.biblio-incomplete': 'Ils sont {0} et suivent la liste dans le texte ; rien n’est perdu. Si ce sont des références, donnez-leur le style de bibliographie dans le Word et réimportez.',
+    'detail.biblio-incomplete': 'Ils sont {0} et suivent la liste dans le texte ; rien n’est perdu. Si ce sont des références, donnez-leur le style de bibliographie dans le Word et réimportez.',
     'defaut.biblio-bornes-perdues': 'Bibliographie laissée dans le texte',
-    'detail.biblio-bornes-perdues': 'Elle a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion. L’article s’imprime normalement ; signalez ce cas, il n’est pas censé arriver.',
+    'detail.biblio-bornes-perdues': 'Elle a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion. L’article s’imprime normalement ; signalez ce cas, il n’est pas censé arriver.',
     'defaut.biblio-fichier-refuse': 'Bibliographie non enregistrée à part',
     'detail.biblio-fichier-refuse': 'Elle reste dans le texte de l’article. Vérifiez que le dossier du numéro est accessible en écriture.',
     'defaut.liminaire-introuvable': 'Pièce liminaire introuvable',
@@ -1509,8 +1509,8 @@ const TEXTES_COCKPIT = {
     // aussi en notification, où il n'y a pas de tête de carte pour nommer l'article.
     'ctl.import.biblio-detachee': 'La bibliographie de cet article a été correctement récupérée.',
     'ctl.import.biblio-incomplete': 'La bibliographie a été récupérée, sauf {0} paragraphe(s) restés dans le texte, juste après la liste.',
-    'ctl.import.biblio-bornes-perdues': 'La bibliographie a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion : elle reste dans le texte.',
-    'ctl.import.biblio-fichier-refuse': 'La bibliographie n’a pas pu être enregistrée à part : elle reste dans le texte de l’article.',
+    'ctl.import.biblio-bornes-perdues': 'La bibliographie a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion : elle reste dans le texte.',
+    'ctl.import.biblio-fichier-refuse': 'La bibliographie n’a pas pu être enregistrée à part : elle reste dans le texte de l’article.',
     // ---- Le réimport d'un article corrigé ----
     //
     // Les libellés des codes que le réimport rend. La table qui les associe à leur code
