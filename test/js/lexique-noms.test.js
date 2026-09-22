@@ -336,9 +336,11 @@ test('generer-noms.py : corpus absent -> pas de plantage, noms-famille.txt vide 
 // 4. Le VRAI corpus tmp/docx-dev (77 galleys, hors dépôt) — sauté s'il est absent.
 
 test('generer-noms.py sur le corpus réel tmp/docx-dev : ne plante pas, produit un lexique '
-  + 'substantiel, tous les jetons sont valides', (t) => {
+  // Python absent : le saut passe par l'option `skip` du test, la forme que la maison emploie
+  // partout ailleurs (docx-titres.test.js et consorts) — un `t.skip()` écrit à la main est
+  // refusé par la porte rapide de pré-push, qui veut un motif reconnaissable.
+  + 'substantiel, tous les jetons sont valides', { skip: sansPython }, (t) => {
   if (!fs.existsSync(CORPUS_REEL)) { return sauter.corpus(t, CORPUS_REEL); }
-  if (sansPython) { return t.skip(sansPython); }
   const sortie = dossierJetable('szh-lexique-noms-sortie-reel-');
   const r = lancerGenerer(['--corpus', CORPUS_REEL, '--sortie', sortie]);
   assert.strictEqual(r.status, 0, 'generer-noms.py a échoué sur le corpus réel : ' + r.stderr);
