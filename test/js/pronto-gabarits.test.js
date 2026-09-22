@@ -55,7 +55,9 @@ function dossierJetable() {
 }
 
 // Lance pronto-lire.py sur `chemin` (le .docx ou le .odt du dépôt), rend { fiche,
-// instructions, avertissements (codes seuls, triés) }.
+// instructions, avertissements (codes seuls, triés), bloquant }. Un gabarit tapé juste ne
+// devrait jamais bloquer (voir plus bas) : le statut de sortie reste donc vérifié strict ici,
+// contrairement à importer() de pronto-lire.test.js qui doit, lui, laisser passer le code 1.
 function lire(chemin, slug) {
   const base = dossierJetable();
   try {
@@ -67,10 +69,12 @@ function lire(chemin, slug) {
       .filter((l) => l.indexOf('[import-avertissement]') === 0)
       .map((l) => l.split(' | ')[0].replace('[import-avertissement] ', ''))
       .sort();
+    const stats = JSON.parse(String(r.stdout).trim().split(/\r?\n/).pop());
     return {
       fiche: fs.existsSync(cheminFiche) ? fs.readFileSync(cheminFiche, 'utf8') : null,
       instructions: fs.existsSync(instr) ? fs.readFileSync(instr, 'utf8') : '',
-      avertissements: codes
+      avertissements: codes,
+      bloquant: !!stats.bloquant
     };
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
@@ -104,6 +108,28 @@ test('pronto-lire.py : le même gabarit en .docx et en .odt donne la même fiche
   assert.deepStrictEqual(vuDocx.avertissements, vuOdt.avertissements,
     'les avertissements (codes) diffèrent entre le .docx et le .odt : docx=['
     + vuDocx.avertissements.join(', ') + '] odt=[' + vuOdt.avertissements.join(', ') + ']');
+
+  // Les deux gabarits livrés sont tapés juste (c'est même le fait qui rend ce fichier utile) :
+  // aucune de leurs étiquettes ne doit jamais déclencher les clés tolérantes — ni approximée,
+  // ni ambiguë. Un gabarit qui en déclencherait une serait lui-même fautif (ou le mécanisme
+  // trop sensible), les deux à corriger avant tout autre chantier.
+  assert.deepStrictEqual(vuDocx.avertissements.filter((c) => c.indexOf('cle-approximee') !== -1
+    || c.indexOf('cle-ambigue') !== -1), [],
+    'le gabarit réel (tapé juste) déclenche pourtant une clé tolérante : '
+    + vuDocx.avertissements.join(', '));
+
+  // Décision de Robin (22.09.2026) : les gabarits livrés n'ont, PAR NATURE, aucune clé remplie
+  // — chaque champ y est donc « attendu mais absent », une simple information
+  // (cle-attendue-absente), jamais un blocage. Ni etiquette-*-inconnue ni cle-ambigue (les
+  // codes BLOQUANTS, voir GRAVITE_CODES dans pronto_modele.py) ne devraient jamais y figurer.
+  assert.strictEqual(vuDocx.bloquant, false,
+    'le gabarit .docx (tapé juste, vide par nature) a pourtant bloqué l’import');
+  assert.strictEqual(vuOdt.bloquant, false,
+    'le gabarit .odt (tapé juste, vide par nature) a pourtant bloqué l’import');
+  const codesBloquants = ['etiquette-metadonnees-inconnue', 'auteur-etiquette-inconnue',
+    'bloc-etiquette-inconnue', 'cle-ambigue'];
+  assert.deepStrictEqual(vuDocx.avertissements.filter((c) => codesBloquants.includes(c)), [],
+    'le gabarit .docx déclenche pourtant un code bloquant : ' + vuDocx.avertissements.join(', '));
 });
 
 // ---- Parité de STRUCTURE ------------------------------------------------------------------

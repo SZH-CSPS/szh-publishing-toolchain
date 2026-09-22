@@ -76,6 +76,16 @@ def principal(argv):
         return 0
 
     stats = pronto_modele.principal(blocs, chemin, slug, dossier)
+    if stats.get('bloquant'):
+        # Décision de Robin (22.09.2026) : une clé PRÉSENTE (valeur non vide) que le lecteur
+        # n'a pas su ranger ne doit jamais s'importer en silence — principal() n'a rien écrit
+        # (ni meta.yaml, ni $SZH_META/$SZH_PHOTOS). Le message liste chaque clé, son texte et
+        # son emplacement, en plus des avertissements [import-avertissement] déjà émis.
+        for entree in stats.get('cles_non_reconnues', []):
+            print('[pronto-lire] clé non reconnue : « %s » (%s)'
+                  % (entree.get('texte', ''), entree.get('lieu', '')), file=sys.stderr)
+        print(json.dumps(stats, ensure_ascii=False))
+        return 1
     print(json.dumps(stats, ensure_ascii=False))
     return 0
 

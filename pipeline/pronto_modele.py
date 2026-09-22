@@ -61,6 +61,7 @@
 #
 # stdlib uniquement : pas de PyYAML dans la WSL de la flotte.
 
+import difflib
 import os
 import re
 import sys
@@ -397,16 +398,12 @@ def etendue_biblio(blocs, type_article, slug):
 
 
 # ---------------------------------------------------------------------------------
-# Étiquettes du gabarit — comparées via aplatir() : accents, espaces et casse n'y font
-# aucune différence.
+# Étiquettes du gabarit — reconnues avec un SCORE de proximité (voir « clés tolérantes »
+# ci-dessous), jamais en comparant seulement leur forme aplatie : aplatir() (plus haut) retire
+# TOUS les accents, donc « Resumé » et « Résumé » lui donnent déjà la MÊME clé, sans le moindre
+# écart mesurable — exactement le silence qu'un score doit remplacer par un avertissement.
 
 RE_SUFFIXE_LANGUE = re.compile(r'\s*\((fr|de|it)\)\s*$', re.I)
-
-CLE_CHAMP_TYPE = aplatir("Type d'article")
-CLE_CHAMP_LANGUE = aplatir("Langue de l'article")
-CLE_CHAMP_TITRE = aplatir('Titre')
-CLE_CHAMP_SOUSTITRE = aplatir('Sous-titre')
-CLE_CHAMP_RESUME = aplatir('Résumé')
 
 VALEURS_TYPE = {
     aplatir('dossier thématique'): 'article',
@@ -424,38 +421,250 @@ VALEURS_LANGUE = {
     aplatir('italiano'): 'it',
 }
 
-LABELS_AUTEUR = {
-    aplatir('Prénom'): 'prenom',
-    aplatir('Nom'): 'nom',
-    aplatir('Fonction'): 'fonction',
-    aplatir('Institution'): 'affiliation',
-    aplatir('ROR'): 'ror',
-    aplatir('ORCID'): 'orcid',
-    aplatir('Email'): 'email',
+
+# ---------------------------------------------------------------------------------
+# Clés tolérantes : une étiquette mal tapée (accent oublié, espace changée, variante de mot,
+# casse, deux-points en trop, pluriel) est reconnue avec un score de proximité contre les
+# clés attendues de CANON_METADONNEES / CANON_AUTEUR / CANON_FIGURE — jamais en silence quand
+# il a fallu tolérer quelque chose (voir identifier_cle()). La VALEUR d'une clé n'est JAMAIS
+# comparée ici — seule l'étiquette l'est.
+
+SEUIL_CLE = 0.80
+# Mesuré (script jetable, voir le rapport de ce chantier) : à 0,85 — la valeur d'abord
+# envisagée — « Resumé » (accent oublié, score 0,833 contre Résumé) et « Prenom » (0,833
+# contre Prénom), les deux premiers cas visés par la demande, restaient sous le seuil et
+# valaient donc « clé inconnue » : l'inverse de ce qui est demandé. 0,80 les admet avec une
+# marge confortable, tout en laissant loin en dessous les deux négatifs mesurés : « Résultats »
+# (0,571 contre Résumé) et « Nom de la revue » (0,400 contre Nom).
+ECART_CLE = 0.08
+LONGUEUR_ETIQUETTE_SCORE = 40  # au-delà, ce n'est plus une étiquette : jamais scoré (garde-fou).
+
+
+def normaliser_cle(texte):
+    """Étiquette prête à comparer à une clé attendue : espaces (déjà uniformisées par
+    normaliser()) et ponctuation de repli retirées, minuscules, pluriel final toléré — les
+    ACCENTS SONT CONSERVÉS (contrairement à aplatir()) : c'est justement l'écart d'accent que
+    le score doit mesurer, pas l'effacer avant de mesurer."""
+    t = normaliser(texte or '').lower()
+    t = re.sub(r"[\s:./_'’-]+", '', t)
+    if len(t) > 1 and t.endswith('s'):
+        t = t[:-1]
+    return t
+
+
+def _score_forme(candidat_norm, forme_brute):
+    """1.0 si `forme_brute`, une fois normalisée, est identique à `candidat_norm` ; sinon le
+    ratio de difflib.SequenceMatcher entre les deux formes normalisées."""
+    forme_norm = normaliser_cle(forme_brute)
+    if forme_norm == candidat_norm:
+        return 1.0
+    return difflib.SequenceMatcher(None, candidat_norm, forme_norm, autojunk=False).ratio()
+
+
+def _sans_fioritures(t):
+    """Pour le test D'EXACTITUDE UNIQUEMENT (jamais pour le score) : espaces uniformisées par
+    normaliser(), apostrophe courbe assimilée à l'apostrophe droite (les deux sortent du même
+    clavier selon le correcteur automatique de l'autrice ou de l'auteur, jamais une faute à
+    signaler — le gabarit réel écrit « d'article » à l'apostrophe courbe), casse ignorée."""
+    return normaliser(t or '').replace('’', "'").casefold()
+
+
+def identifier_cle(etiquette, table):
+    """Résout `etiquette` (déjà débarrassée d'un éventuel suffixe de langue) contre les clés
+    canoniques de `table` — un dict jeton -> (forme canonique affichée, alias...), la forme
+    canonique étant toujours en position 0. Rend :
+      - None si `etiquette` est vide, trop longue pour être une clé (LONGUEUR_ETIQUETTE_SCORE
+        — la VALEUR d'un champ ne doit jamais être scorée), ou si aucune clé n'atteint
+        SEUIL_CLE (clé inconnue, comme avant ce mécanisme) ;
+      - ('__ambigu__', jeton1, jeton2, score1, score2) si les deux meilleures clés sont à moins
+        de ECART_CLE l'une de l'autre : aucune n'est retenue ;
+      - (jeton, score, exact) sinon. `exact` ne vaut vrai que si `etiquette` est égale à LA
+        FORME CANONIQUE elle-même (espaces et casse ignorées) — un alias reconnu à 100 %
+        (« E-mail » pour Email) n'est pas « le gabarit tapé juste », il doit donc avertir
+        aussi."""
+    etiquette = (etiquette or '').strip()
+    if not etiquette or len(etiquette) > LONGUEUR_ETIQUETTE_SCORE:
+        return None
+    candidat_norm = normaliser_cle(etiquette)
+    scores = sorted(
+        ((max(_score_forme(candidat_norm, forme) for forme in formes), jeton)
+         for jeton, formes in table.items()),
+        key=lambda p: p[0], reverse=True)
+    meilleur_score, meilleur_jeton = scores[0]
+    if meilleur_score < SEUIL_CLE:
+        return None
+    if len(scores) > 1 and (meilleur_score - scores[1][0]) < ECART_CLE:
+        return ('__ambigu__', meilleur_jeton, scores[1][1], meilleur_score, scores[1][0])
+    exact = _sans_fioritures(etiquette) == _sans_fioritures(table[meilleur_jeton][0])
+    return (meilleur_jeton, meilleur_score, exact)
+
+
+def _avertir_cle_approximee(brute, table, jeton, score, slug, lieu):
+    canonique = table[jeton][0]
+    avertir(
+        'cle-approximee',
+        ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % brute,
+         'reconnue « %s »' % canonique, 'proximite %.2f' % score],
+        'Clé « %s » lue comme « %s » (proximité %.2f). Corrigez l\'étiquette dans le document '
+        'si ce n\'était pas voulu.' % (brute, canonique, score),
+        'Schlüssel « %s » als « %s » gelesen (Ähnlichkeit %.2f). Korrigieren Sie die '
+        'Bezeichnung im Dokument, falls das nicht beabsichtigt war.' % (brute, canonique, score))
+
+
+def _avertir_cle_ambigue(brute, table, jeton1, jeton2, slug, lieu):
+    c1, c2 = table[jeton1][0], table[jeton2][0]
+    avertir(
+        'cle-ambigue',
+        ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % brute],
+        'La clé « %s » est ambiguë : elle ressemble presque autant à « %s » qu\'à « %s ». '
+        'Aucune des deux n\'a été retenue automatiquement ; corrigez l\'étiquette dans le '
+        'document.' % (brute, c1, c2),
+        'Der Schlüssel « %s » ist mehrdeutig: er ähnelt « %s » fast ebenso stark wie « %s ». '
+        'Keiner von beiden wurde automatisch übernommen; korrigieren Sie die Bezeichnung im '
+        'Dokument.' % (brute, c1, c2))
+
+
+def resoudre_cle(etiquette, table, slug, lieu, bloquants=None):
+    """identifier_cle() + les avertissements qui vont avec : rend le jeton reconnu, ou None
+    (clé inconnue OU ambiguë — dans les deux cas, rien n'est retenu, à l'appelant de se
+    comporter comme si l'étiquette n'était reconnue par rien).
+
+    N'est appelé par les trois lieux QUE lorsque la valeur associée n'est PAS vide (voir le
+    garde-fou posé chez chaque appelant : une clé présente mais vide est traitée comme absente,
+    jamais comme une clé « non reconnue » — § cle-attendue-absente). Une clé introuvable ou
+    ambiguë est donc, par construction, une clé PRÉSENTE avec un contenu réel qu'on ne saurait
+    pas où ranger : si `bloquants` est fourni (list), une entrée {'texte', 'lieu'} y est
+    ajoutée — c'est ce qui fait échouer tout l'import, voir principal() et GRAVITE_CODES."""
+    resultat = identifier_cle(etiquette, table)
+    if resultat is None:
+        if bloquants is not None:
+            bloquants.append({'texte': etiquette, 'lieu': lieu})
+        return None
+    if resultat[0] == '__ambigu__':
+        _, jeton1, jeton2, _, _ = resultat
+        _avertir_cle_ambigue(etiquette, table, jeton1, jeton2, slug, lieu)
+        if bloquants is not None:
+            bloquants.append({'texte': etiquette, 'lieu': lieu})
+        return None
+    jeton, score, exact = resultat
+    if not exact:
+        _avertir_cle_approximee(etiquette, table, jeton, score, slug, lieu)
+    return jeton
+
+
+# ---------------------------------------------------------------------------------
+# Gravité des codes émis par CE lecteur — indépendante de tout ce que le cockpit décidera plus
+# tard (TONS_IMPORT de lib/journal.js : hors de portée ici, le cockpit n'est branché nulle
+# part). Sert uniquement à pronto-lire.py pour décider si l'import doit échouer.
+#
+# GRAVITE_BLOQUANT : une clé PRÉSENTE (valeur non vide) n'a pu être rangée nulle part — son
+# contenu serait perdu si l'import continuait. « etiquette-metadonnees-inconnue »,
+# « auteur-etiquette-inconnue », « bloc-etiquette-inconnue » et « cle-ambigue » en sont : un
+# document qui en déclenche un ne s'importe pas — principal() n'écrit alors ni meta.yaml, ni
+# les instructions $SZH_META/$SZH_PHOTOS ; pronto-lire.py sort en échec (voir stats['bloquant']
+# / stats['cles_non_reconnues'], alimentées par resoudre_cle() ci-dessus, ainsi que par
+# extraire_table_metadonnees() pour le seul cas qu'il ne couvre pas — une clé RECONNUE mais
+# sans destination, motscles ou langue manquante).
+# GRAVITE_INFO : une clé attendue n'a rien à ranger (absente ou vide) — jamais bloquant.
+# GRAVITE_AVERT : tout le reste, y compris « cle-approximee » — un avertissement ordinaire,
+# comme avant ce mécanisme.
+GRAVITE_BLOQUANT = 'bloquant'
+GRAVITE_INFO = 'info'
+GRAVITE_AVERT = 'avert'
+
+GRAVITE_CODES = {
+    'etiquette-metadonnees-inconnue': GRAVITE_BLOQUANT,
+    'auteur-etiquette-inconnue': GRAVITE_BLOQUANT,
+    'bloc-etiquette-inconnue': GRAVITE_BLOQUANT,
+    'cle-ambigue': GRAVITE_BLOQUANT,
+    'cle-attendue-absente': GRAVITE_INFO,
+    'cle-approximee': GRAVITE_AVERT,
 }
 
-LABELS_FIGURE = {
-    aplatir('Légende'): 'legende',
-    aplatir('Texte alternatif'): 'alt',
-    aplatir('Crédit'): 'credit',
-    aplatir('Source'): 'source',
+
+def _avertir_cle_attendue_absente(canonique, slug, lieu):
+    avertir(
+        'cle-attendue-absente',
+        ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % canonique],
+        'Le champ « %s » attendu par le gabarit n\'a pas été trouvé, ou a été laissé vide : '
+        'rien n\'est perdu, mais rien n\'a été rempli non plus.' % canonique,
+        'Das von der Vorlage erwartete Feld « %s » wurde nicht gefunden oder leer gelassen: '
+        'es geht nichts verloren, aber es wurde auch nichts ausgefüllt.' % canonique)
+
+
+def _avertir_cles_attendues_absentes(table, jetons_attendus, cles_vues, slug, lieu):
+    """Une info `cle-attendue-absente` par clé de `jetons_attendus` qui n'a jamais reçu de
+    valeur (`cles_vues`) — une clé présente mais laissée vide compte comme absente ici : les
+    trois appelants n'ajoutent JAMAIS à `cles_vues` une clé dont la valeur était vide."""
+    for jeton in jetons_attendus:
+        if jeton not in cles_vues:
+            _avertir_cle_attendue_absente(table[jeton][0], slug, lieu)
+
+
+CLES_METADONNEES_ATTENDUES = ('type', 'langue', 'titre', 'soustitre', 'resume')  # PAS motscles
+
+
+CANON_METADONNEES = {
+    'type': ("Type d'article", 'type', 'artikeltyp'),
+    'langue': ("Langue de l'article", 'langue', 'sprache', 'language'),
+    'titre': ('Titre', 'title', 'titel'),
+    'soustitre': ('Sous-titre', 'sous titre', 'subtitle', 'untertitel'),
+    'resume': ('Résumé', 'abstract', 'zusammenfassung'),
+    # Décision prise seul (Robin absent) : le gabarit ne définit AUCUN champ « Mots-clés » —
+    # voir serialiser_meta(), les mots-clés sont choisis dans le cockpit, jamais lus dans le
+    # document, et ÇA NE CHANGE PAS ICI. Gardée quand même reconnaissable (la demande la cite
+    # explicitement, et la rédaction tape parfois ce champ par réflexe, venu d'un autre
+    # gabarit) : reconnue -> avertit « cle-approximee » (dit qu'on a compris l'intention), mais
+    # ne rejoint aucune branche de dispatch dans extraire_table_metadonnees() -> avertit AUSSI
+    # 'etiquette-metadonnees-inconnue', comme n'importe quelle étiquette sans destination. Les
+    # deux avertissements ensemble disent exactement ce qui s'est passé : compris, mais gardé
+    # nulle part.
+    'motscles': ('Mots-clés', 'mots cles', 'mots clefs', 'keywords', 'schlagworter',
+                 'schlusselworter', 'schlagwörter', 'schlüsselwörter'),
 }
 
-LABELS_FIGURE_LEGENDE = aplatir('Légende')
+CANON_AUTEUR = {
+    'prenom': ('Prénom', 'first name', 'firstname', 'vorname'),
+    'nom': ('Nom', 'name', 'nachname', 'last name', 'lastname', 'surname'),
+    'fonction': ('Fonction', 'position', 'funktion'),
+    'affiliation': ('Institution', 'affiliation'),
+    'ror': ('ROR',),
+    'orcid': ('ORCID',),
+    'email': ('Email', 'e-mail', 'courriel', 'mail'),
+}
+
+CANON_FIGURE = {
+    'legende': ('Légende', 'caption', 'bildunterschrift', 'abbildung'),
+    'alt': ('Texte alternatif', 'alt', 'alternativtext', 'alt text'),
+    'credit': ('Crédit', 'credit', 'photo credit', 'bildnachweis'),
+    'source': ('Source', 'quelle'),
+}
 
 
 # ---------------------------------------------------------------------------------
 # Tableau 1 — métadonnées de l'article.
 
 def _etiquette_szh_cle(cellule):
-    """Texte des paragraphes SZH Cle d'une cellule, paragraphes SZH Aide ignorés, joints par
-    un espace (il n'y en a normalement qu'un). Ne regarde que les Par directs de la cellule —
-    un bloc n'a jamais de tableau imbriqué dans une cellule d'étiquette."""
+    """Texte des paragraphes de style SZH Cle d'une cellule, joints par un espace (il n'y en a
+    normalement qu'un). Ne regarde que les Par directs de la cellule — un bloc n'a jamais de
+    tableau imbriqué dans une cellule d'étiquette.
+
+    Correction du 22.09.2026 : ne retient que le style SZH Cle — la version précédente
+    acceptait n'importe quel paragraphe pourvu qu'il ne soit pas SZH Aide, ce qui faisait
+    lire comme une « étiquette » la première colonne d'un tableau de contenu ORDINAIRE pris
+    pour le tableau des métadonnées par la seule coïncidence de sa position en tête de
+    document (piège déjà documenté dans TODO-BRANCHEMENT-PARSER-V2.md, « Les deux premiers
+    tableaux sont pris PAR POSITION »). Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits
+    réels, aucun au gabarit) : 3 documents sur 11 voyaient leur véritable tableau de données
+    pris pour celui des métadonnées ; depuis qu'une clé présente mais non reconnue bloque tout
+    l'import (§ clés bloquantes), ce piège serait devenu bien plus grave qu'un simple
+    avertissement — d'où cette correction, au même endroit que le mécanisme qui la rendait
+    dangereuse."""
     morceaux = []
     for b in cellule.blocs:
         if not isinstance(b, Par):
             continue
-        if _style_par(b) == NOM_STYLE_AIDE:
+        if _style_par(b) != NOM_STYLE_CLE:
             continue
         if b.texte:
             morceaux.append(b.texte)
@@ -474,11 +683,14 @@ def _valeur_cellule(cellule):
     return ' '.join(morceaux)
 
 
-def extraire_table_metadonnees(tableau, slug):
+def extraire_table_metadonnees(tableau, slug, bloquants=None):
     """(valeurs, consommee). `valeurs` = {'type', 'langue', 'titre', 'soustitre', 'resume'}
-    — les trois derniers étant des dict langue -> texte."""
+    — les trois derniers étant des dict langue -> texte. `bloquants`, si fourni (list), reçoit
+    une entrée {'texte', 'lieu'} pour chaque clé PRÉSENTE (valeur non vide) mais non reconnue,
+    ou reconnue sans destination — voir resoudre_cle() et principal()."""
     valeurs = {'type': '', 'langue': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
     consommee = True
+    cles_vues = set()
     for i, rangee in enumerate(tableau.rangees):
         if i == 0:
             continue                      # en-tête « Champ » / « Valeur », sautée
@@ -492,13 +704,17 @@ def extraire_table_metadonnees(tableau, slug):
         m = RE_SUFFIXE_LANGUE.search(etiquette)
         base = RE_SUFFIXE_LANGUE.sub('', etiquette).strip()
         langue_champ = m.group(1).lower() if m else None
-        cle = aplatir(base)
+        if not valeur.strip():
+            continue                      # clé présente mais vide : traitée comme absente
+        jeton = resoudre_cle(base, CANON_METADONNEES, slug, 'tableau metadonnees', bloquants)
 
-        if cle == CLE_CHAMP_TYPE:
-            jeton = VALEURS_TYPE.get(aplatir(valeur)) or VALEURS_TYPE_CANONIQUES.get(aplatir(valeur))
-            if jeton:
-                valeurs['type'] = jeton
-            elif valeur:
+        if jeton == 'type':
+            cles_vues.add('type')
+            jeton_type = (VALEURS_TYPE.get(aplatir(valeur))
+                          or VALEURS_TYPE_CANONIQUES.get(aplatir(valeur)))
+            if jeton_type:
+                valeurs['type'] = jeton_type
+            else:
                 avertir(
                     'type-article-non-reconnu',
                     ['article « %s »' % slug, 'valeur « %s »' % valeur],
@@ -510,15 +726,19 @@ def extraire_table_metadonnees(tableau, slug):
                     'der Vorlage nicht erkannten Wert: « %s ». Der Typ wurde in den '
                     'Metadaten nicht gesetzt; wählen Sie ihn unter «Metadaten der '
                     'Artikel».' % valeur)
-        elif cle == CLE_CHAMP_LANGUE:
+        elif jeton == 'langue':
+            cles_vues.add('langue')
             code = VALEURS_LANGUE.get(aplatir(valeur))
             if code:
                 valeurs['langue'] = code
-        elif cle == CLE_CHAMP_TITRE and langue_champ:
+        elif jeton == 'titre' and langue_champ:
+            cles_vues.add('titre')
             valeurs['titre'][langue_champ] = valeur
-        elif cle == CLE_CHAMP_SOUSTITRE and langue_champ:
+        elif jeton == 'soustitre' and langue_champ:
+            cles_vues.add('soustitre')
             valeurs['soustitre'][langue_champ] = valeur
-        elif cle == CLE_CHAMP_RESUME and langue_champ:
+        elif jeton == 'resume' and langue_champ:
+            cles_vues.add('resume')
             valeurs['resume'][langue_champ] = valeur
         else:
             consommee = False
@@ -538,6 +758,14 @@ def extraire_table_metadonnees(tableau, slug):
                 'die Metadaten übernommen. Korrigieren Sie die Bezeichnung im Dokument '
                 'und importieren Sie den Artikel neu, oder ergänzen Sie «Metadaten der '
                 'Artikel» von Hand.' % (etiquette, valeur))
+            if jeton is not None and bloquants is not None:
+                # Résolu (motscles, ou langue manquante pour titre/sous-titre/résumé) mais
+                # sans branche de dispatch : resoudre_cle() n'a rien ajouté à bloquants pour
+                # ce cas précis (il n'a rien trouvé d'anormal), c'est ici qu'il faut le faire —
+                # le contenu réel de cette rangée serait perdu si l'import continuait.
+                bloquants.append({'texte': etiquette, 'lieu': 'tableau metadonnees'})
+    _avertir_cles_attendues_absentes(CANON_METADONNEES, CLES_METADONNEES_ATTENDUES, cles_vues,
+                                      slug, 'tableau metadonnees')
     return valeurs, consommee
 
 
@@ -583,8 +811,10 @@ def _photo_appariee(nom_image, prenom, nom, bases_vues, fichiers_vus, slug):
     return 'portraits/%s.original.%s' % (base, ext), base
 
 
-def extraire_table_auteurs(tableau, slug):
-    """(auteurs, consommee, photos_connues, photos_appariees)."""
+def extraire_table_auteurs(tableau, slug, bloquants=None):
+    """(auteurs, consommee, photos_connues, photos_appariees). `bloquants`, si fourni (list),
+    reçoit une entrée par clé PRÉSENTE (valeur non vide) mais non reconnue — voir
+    resoudre_cle()."""
     auteurs = []
     consommee = True
     photos_connues = set()
@@ -599,10 +829,16 @@ def extraire_table_auteurs(tableau, slug):
         champs = {}
         ligne_ok = True
         lignes_inconnues = []
+        cles_vues = set()
         for p in tc_champs.blocs:
             if not isinstance(p, Par):
                 continue
-            if _style_par(p) == NOM_STYLE_AIDE:
+            # Correction du 22.09.2026 (même raison qu'_etiquette_szh_cle()) : seul le style
+            # SZH Cle est un candidat « Étiquette : valeur » — sinon le second tableau d'un
+            # document ORDINAIRE (jamais au gabarit), pris pour celui des auteurs par sa seule
+            # position, verrait n'importe laquelle de ses lignes à deux-points comparée à une
+            # clé, avec le risque de bloquer tout l'import pour un faux positif.
+            if _style_par(p) != NOM_STYLE_CLE:
                 continue
             texte = p.texte
             if not texte:
@@ -612,14 +848,17 @@ def extraire_table_auteurs(tableau, slug):
                 lignes_inconnues.append(texte)
                 continue
             etiquette, _, valeur = texte.partition(':')
-            champ = LABELS_AUTEUR.get(aplatir(etiquette))
+            etiquette = etiquette.strip()
             valeur = valeur.strip()
+            if not valeur:
+                continue                  # clé présente mais vide : traitée comme absente
+            champ = resoudre_cle(etiquette, CANON_AUTEUR, slug, 'auteur', bloquants)
             if champ is None:
                 ligne_ok = False
                 lignes_inconnues.append(texte)
                 continue
-            if valeur:
-                champs[champ] = valeur
+            champs[champ] = valeur
+            cles_vues.add(champ)
 
         nom_image = None
         if a_image_cellule(tc_photo):
@@ -652,6 +891,10 @@ def extraire_table_auteurs(tableau, slug):
             if chemin_photo:
                 auteur['photo'] = chemin_photo
                 photos_appariees.append((base, nom_image))
+        lieu_auteur = 'auteur %d (%s %s)' % (len(auteurs) + 1, auteur['prenom'] or '?',
+                                              auteur['nom'] or '?')
+        _avertir_cles_attendues_absentes(CANON_AUTEUR, CANON_AUTEUR.keys(), cles_vues, slug,
+                                          lieu_auteur)
         auteurs.append(auteur)
     return auteurs, consommee, photos_connues, photos_appariees
 
@@ -699,9 +942,18 @@ def n_blocs_meta(tableau):
         if not row_meta or not row_contenu:
             return 0
         etiquette = _premiere_etiquette_szh_cle(row_meta)
-        if etiquette is None or aplatir(etiquette) != LABELS_FIGURE_LEGENDE:
+        if etiquette is None or not _ressemble_a_legende(etiquette):
             return 0
     return n // 2
+
+
+def _ressemble_a_legende(etiquette):
+    """`etiquette` se reconnaît-elle comme « Légende », exactement ou approximativement
+    (accent oublié, casse...) ? Vérification structurelle PURE, sans avertir : la
+    reconnaissance (et son avertissement éventuel) a lieu plus tard, quand _champs_bloc_meta()
+    relira ce MÊME paragraphe pour de vrai — l'avertir ici aussi ferait un doublon."""
+    resultat = identifier_cle(etiquette, CANON_FIGURE)
+    return bool(resultat) and resultat[0] == 'legende'
 
 
 def est_bloc_meta(tableau):
@@ -735,8 +987,9 @@ def _premier_par_etiquette_bloc(tableau):
                     continue
                 if not p.texte or ':' not in p.texte:
                     continue
-                etiquette = p.texte.partition(':')[0]
-                if aplatir(etiquette) in LABELS_FIGURE:
+                etiquette = p.texte.partition(':')[0].strip()
+                resultat = identifier_cle(etiquette, CANON_FIGURE)
+                if resultat and resultat[0] != '__ambigu__':
                     return p
     return None
 
@@ -887,64 +1140,76 @@ def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
         % (etiquette, valeur))
 
 
-def _lire_champ_bloc(texte):
-    """(champ, etiquette, valeur) | (None, etiquette, valeur) | None — découpe UN paragraphe
-    « Étiquette : valeur » ; None si `texte` ne porte pas de ':' du tout (paragraphe qui n'a
-    simplement rien à dire — jamais un avertissement, voir les deux appelants)."""
+def _decouper_champ_bloc(texte):
+    """(etiquette, valeur) après le premier ':' d'UN paragraphe « Étiquette : valeur » ; None
+    si `texte` ne porte pas de ':' du tout (paragraphe qui n'a simplement rien à dire — jamais
+    un avertissement, voir les deux appelants). La RECONNAISSANCE de l'étiquette (exacte ou
+    approximée) se fait chez l'appelant, qui seul connaît le `slug` à citer dans un
+    avertissement."""
     if not texte or ':' not in texte:
         return None
     etiquette, _, valeur = texte.partition(':')
-    return LABELS_FIGURE.get(aplatir(etiquette)), etiquette, valeur.strip()
+    return etiquette.strip(), valeur.strip()
 
 
-def _champs_bloc_meta(row0, slug):
-    """(champs, consommee) — légende / texte alternatif / crédit / source lus sur TOUTES
-    les cellules de la rangée 0, dans l'ordre. Ancienne forme (tableau enveloppe) ; voir
+def _champs_bloc_meta(row0, slug, bloquants=None):
+    """(champs, consommee, cles_vues) — légende / texte alternatif / crédit / source lus sur
+    TOUTES les cellules de la rangée 0, dans l'ordre. Ancienne forme (tableau enveloppe) ; voir
     _champs_bloc_meta_paragraphes() pour la nouvelle."""
     champs = {}
     consommee = True
+    cles_vues = set()
     for tc in row0:
         for p in tc.blocs:
             if not isinstance(p, Par):
                 continue
-            if _style_par(p) == NOM_STYLE_AIDE:
+            # Correction du 22.09.2026 (même raison qu'_etiquette_szh_cle()) : seul SZH Cle
+            # est un candidat « Étiquette : valeur ».
+            if _style_par(p) != NOM_STYLE_CLE:
                 continue
-            lu = _lire_champ_bloc(p.texte)
+            lu = _decouper_champ_bloc(p.texte)
             if lu is None:
                 if p.texte:
                     consommee = False
                 continue
-            champ, etiquette, valeur = lu
+            etiquette, valeur = lu
+            if not valeur:
+                continue               # clé présente mais vide : traitée comme absente
+            champ = resoudre_cle(etiquette, CANON_FIGURE, slug, 'bloc', bloquants)
             if champ is None:
                 consommee = False
                 _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug)
                 continue
-            if valeur:
-                champs[champ] = valeur
-    return champs, consommee
+            champs[champ] = valeur
+            cles_vues.add(champ)
+    return champs, consommee, cles_vues
 
 
-def _champs_bloc_meta_paragraphes(paragraphes, slug):
-    """(champs, consommee) — même lecture que _champs_bloc_meta(), sur une liste de
+def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
+    """(champs, consommee, cles_vues) — même lecture que _champs_bloc_meta(), sur une liste de
     paragraphes SZH Cle Abb/Tab consécutifs (nouvelle forme, révision du 21.09.2026) au lieu
     d'une rangée de cellules : plus de tableau autour, mais la même règle « Étiquette : valeur »
     et le même avertissement en cas d'étiquette inconnue."""
     champs = {}
     consommee = True
+    cles_vues = set()
     for p in paragraphes:
-        lu = _lire_champ_bloc(p.texte)
+        lu = _decouper_champ_bloc(p.texte)
         if lu is None:
             if p.texte:
                 consommee = False
             continue
-        champ, etiquette, valeur = lu
+        etiquette, valeur = lu
+        if not valeur:
+            continue                   # clé présente mais vide : traitée comme absente
+        champ = resoudre_cle(etiquette, CANON_FIGURE, slug, 'bloc', bloquants)
         if champ is None:
             consommee = False
             _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug)
             continue
-        if valeur:
-            champs[champ] = valeur
-    return champs, consommee
+        champs[champ] = valeur
+        cles_vues.add(champ)
+    return champs, consommee, cles_vues
 
 
 def _contenu_bloc(row1):
@@ -961,7 +1226,7 @@ def _contenu_bloc(row1):
     return None, None
 
 
-def extraire_bloc(tableau, slug, indice=0):
+def extraire_bloc(tableau, slug, indice=0, bloquants=None):
     """(nature, champs, consommee, tbl_interne) pour LA PAIRE de rangées n° `indice` (0 pour
     le premier bloc, 1 pour le second si deux blocs sont collés dans le même tableau, etc.)
     d'un tableau reconnu par est_bloc_meta()/n_blocs_meta() — l'ANCIENNE forme (tableau
@@ -970,7 +1235,7 @@ def extraire_bloc(tableau, slug, indice=0):
     documents déjà remplis à l'ancienne forme, jamais retirée — voir principal(), qui pose
     l'avertissement 'bloc-ancienne-forme' quand ce chemin est emprunté."""
     row0, row1 = tableau.rangees[indice * 2], tableau.rangees[indice * 2 + 1]
-    champs, consommee = _champs_bloc_meta(row0, slug)
+    champs, consommee, cles_vues = _champs_bloc_meta(row0, slug, bloquants)
     nature, tbl_interne = _contenu_bloc(row1)
     if nature is None:
         avertir(
@@ -983,6 +1248,9 @@ def extraire_bloc(tableau, slug, indice=0):
             'Inhaltszeile trägt weder Bild noch Tabelle: die Ablage ist leer geblieben. '
             'Ergänzen Sie sie im Dokument und importieren Sie den Artikel neu.'
             % champs.get('legende', ''))
+    else:
+        _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
+                                          'bloc')
     return nature, champs, consommee, tbl_interne
 
 
@@ -1037,7 +1305,7 @@ def _avertir_cles_sans_contenu(champs, slug):
         'Prüfen Sie ihre Position gegenüber dem Bild oder der Tabelle im Dokument.')
 
 
-def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug):
+def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloquants=None):
     """Liste de dicts {'pos', 'nature', 'champs', 'consommee', 'tbl_interne'} — un par bloc
     figure/tableau à la NOUVELLE forme trouvé dans `blocs` (hors table1_elem/table2_elem, qui
     ne sont de toute façon jamais des Par et ne peuvent donc jamais démarrer un groupe de clés).
@@ -1057,12 +1325,15 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug):
         fin = depart
         while fin < n and fin - depart < 4 and _est_cle_bloc(blocs[fin]):
             fin += 1
-        champs, consommee = _champs_bloc_meta_paragraphes(blocs[depart:fin], slug)
+        champs, consommee, cles_vues = _champs_bloc_meta_paragraphes(blocs[depart:fin], slug,
+                                                                       bloquants)
         idx_contenu, nature = _cherche_contenu_bloc_nouvelle_forme(blocs, fin)
         if nature is None:
             _avertir_cles_sans_contenu(champs, slug)
             i = fin                       # les paragraphes de clé restent tels quels
             continue
+        _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
+                                          'bloc')
         resultat.append({'pos': depart, 'nature': nature, 'champs': champs,
                          'consommee': consommee, 'tbl_interne': nature == 'table'})
         i = idx_contenu + 1
@@ -1143,6 +1414,11 @@ def serialiser_meta(meta):
 
 def principal(blocs, chemin_source, slug, dossier):
     stats = {'slug': slug, 'avertissements': []}
+    # Une clé PRÉSENTE (valeur non vide) mais non reconnue est bloquante (décision de Robin,
+    # 22.09.2026) : {'texte', 'lieu'} par occurrence, alimentée par resoudre_cle() et par le
+    # seul cas qu'il ne couvre pas lui-même (métadonnées reconnues sans destination). Non vide
+    # à la fin -> l'import échoue entièrement, voir plus bas.
+    bloquants = []
 
     tables = [(idx, e) for idx, e in enumerate(blocs) if isinstance(e, Tableau)]
 
@@ -1152,7 +1428,7 @@ def principal(blocs, chemin_source, slug, dossier):
     valeurs = {'type': '', 'langue': '', 'titre': {}, 'soustitre': {}, 'resume': {}}
     table1_consommee = False
     if table1_elem is not None:
-        valeurs, table1_consommee = extraire_table_metadonnees(table1_elem, slug)
+        valeurs, table1_consommee = extraire_table_metadonnees(table1_elem, slug, bloquants)
     else:
         avertir(
             'structure-inattendue',
@@ -1170,7 +1446,7 @@ def principal(blocs, chemin_source, slug, dossier):
     photos_appariees = []
     if table2_elem is not None:
         auteurs, table2_consommee, photos_connues, photos_appariees = \
-            extraire_table_auteurs(table2_elem, slug)
+            extraire_table_auteurs(table2_elem, slug, bloquants)
     else:
         avertir(
             'structure-inattendue',
@@ -1226,7 +1502,7 @@ def principal(blocs, chemin_source, slug, dossier):
                 % (n_paires, n_paires * 2, n_paires))
         sous_consommees = []
         for p in range(n_paires):
-            nature, champs, consommee, tbl_interne = extraire_bloc(tbl, slug, p)
+            nature, champs, consommee, tbl_interne = extraire_bloc(tbl, slug, p, bloquants)
             blocs_figtab.append({'pos': idx_bloc, 'k': k, 'nature': nature, 'champs': champs,
                                  'consommee': consommee,
                                  'tbl_interne': tbl_interne is not None})
@@ -1240,7 +1516,8 @@ def principal(blocs, chemin_source, slug, dossier):
     # sauter : il doit se rendre comme n'importe quel tableau de contenu ordinaire. C'est une
     # différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md, révision du
     # 21.09.2026) — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
-    blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug)
+    blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug,
+                                                            bloquants)
     blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
 
     tables_consommees = []
@@ -1251,6 +1528,15 @@ def principal(blocs, chemin_source, slug, dossier):
             tables_consommees.append(k + 1)
         elif k_pleinement_consomme.get(k):
             tables_consommees.append(k + 1)
+
+    # Verdict : une clé PRÉSENTE non reconnue bloque tout l'import (décision de Robin,
+    # 22.09.2026) — rien n'est écrit (ni meta.yaml, ni $SZH_META/$SZH_PHOTOS), le document ne
+    # s'importe pas. pronto-lire.py lit stats['bloquant'] pour sortir en échec, et
+    # stats['cles_non_reconnues'] pour lister chaque clé (texte, emplacement) dans son message.
+    if bloquants:
+        stats['bloquant'] = True
+        stats['cles_non_reconnues'] = bloquants
+        return stats
 
     type_article = valeurs['type'] if valeurs['type'] in TYPES_VALIDES else ''
     langue = valeurs['langue'] if valeurs['langue'] in LANGUES_META else ''
@@ -1313,6 +1599,7 @@ def principal(blocs, chemin_source, slug, dossier):
                 f.write('B\t%s\n' % t)
 
     stats.update({
+        'bloquant': False,
         'type': type_article,
         'langue': meta['lang'], 'langue_deduite': langue_deduite,
         'titre_langues': sorted(valeurs['titre']),

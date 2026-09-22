@@ -28,6 +28,54 @@ Le lecteur produit **exactement le contrat de `docx-meta.py`** : `<slug>.meta.y
 remplacement possible sans toucher aux maillons suivants — sauf sur un point, le premier
 ci-dessous.
 
+**Ajout du 22.09.2026 — clés tolérantes.** Les trois lieux où le lecteur reconnaît une étiquette
+(tableau des métadonnées, tableau des autrices et auteurs, clés de bloc figure/tableau) passent
+désormais par un score de proximité (`identifier_cle()`, `CANON_METADONNEES` / `CANON_AUTEUR` /
+`CANON_FIGURE` dans `pronto_modele.py`) plutôt que par une comparaison aplatie exacte : une
+étiquette mal tapée (accent oublié, variante de mot en fr/de/en, casse, pluriel) est reconnue
+avec un avertissement `cle-approximee`, jamais en silence — l'ancienne comparaison par
+`aplatir()` était en réalité DÉJÀ silencieusement tolérante aux accents (elle les retire tous),
+ce qui masquait exactement ce que la demande visait à révéler. Mesuré : `SEUIL_CLE` a dû
+descendre de 0,85 (valeur d'abord envisagée) à **0,80** pour admettre les cas réels les plus
+demandés (« Resumé », « Prenom », score 0,833 chacun) — voir le commentaire au-dessus de la
+constante pour le détail des scores mesurés, positifs et négatifs. Décision prise seule (Robin
+absent) : « Mots-clés » (et ses variantes fr/de/en) est reconnaissable bien qu'aucun champ du
+gabarit ne le porte — il tombe ensuite, comme avant, dans `etiquette-metadonnees-inconnue`. Les
+deux nouveaux codes (`cle-approximee`, `cle-ambigue`) rejoignent donc la liste de l'étape 2
+ci-dessous, à déclarer au même titre que les autres avant le branchement.
+
+**Précision du 22.09.2026 (même jour, arrivée en cours de chantier) — clés bloquantes,
+attendues absentes, vides.** Trois cas, à ne pas confondre :
+
+- **une clé PRÉSENTE (valeur non vide) mais NON reconnue** (score sous `SEUIL_CLE`, ou
+  ambiguë) **bloque tout l'import** : `principal()` n'écrit alors ni `meta.yaml`, ni les
+  instructions `$SZH_META`/`$SZH_PHOTOS`, et rend `stats['bloquant'] = True` avec
+  `stats['cles_non_reconnues']` (liste de `{texte, lieu}`) ; `pronto-lire.py` sort avec le code
+  **1** (au lieu de 0) et imprime une ligne par clé non lue sur stderr, en plus des
+  `[import-avertissement]` habituels. `etiquette-metadonnees-inconnue`,
+  `auteur-etiquette-inconnue`, `bloc-etiquette-inconnue` et `cle-ambigue` sont les codes
+  concernés (table `GRAVITE_CODES` dans `pronto_modele.py`, gravité `GRAVITE_BLOQUANT`) — mais
+  SEULEMENT quand la valeur associée est réellement remplie : un champ non reconnu et vide ne
+  bloque jamais (voir le point suivant).
+- **une clé ATTENDUE mais ABSENTE du document, ou présente avec une valeur vide** (rien, ou
+  seulement des espaces, après le deux-points) compte comme absente : une simple information
+  (`cle-attendue-absente`, gravité `GRAVITE_INFO`), jamais bloquante, sa valeur n'est jamais
+  écrite.
+- **Correction connexe, mesurée sur `tmp/corpus-relecture/lot-A`** (11 manuscrits réels, aucun
+  au gabarit) : `_etiquette_szh_cle()` (tableau des métadonnées), la boucle d'
+  `extraire_table_auteurs()` et celle de `_champs_bloc_meta()` (ancienne forme) acceptaient
+  n'importe quel paragraphe pourvu qu'il ne soit pas « SZH Aide » — un tableau de contenu
+  ORDINAIRE pris pour celui des métadonnées ou des auteurs par la seule position (piège déjà
+  documenté plus bas, « Les deux premiers tableaux sont pris PAR POSITION ») voyait alors
+  chacune de ses rangées comparée comme une étiquette. Inoffensif tant que le pire était un
+  avertissement ; devenu dangereux le jour où « non reconnue » bloque l'import : 3 documents sur
+  11 du corpus auraient bloqué sans la correction (elle n'exige plus désormais que le style SZH
+  Cle comme candidat). Mesuré avant/après la correction, voir le rapport de ce chantier.
+
+Ce mécanisme (bloquant / info / clé tolérée) n'est PAS câblé dans le cockpit — comme le reste de
+ce fichier, il attend le branchement (étape 4 ci-dessous). `pronto-lire.py` sort déjà en échec
+dès aujourd'hui pour qui l'appelle directement en ligne de commande.
+
 ---
 
 ## Les étapes, dans l'ordre
@@ -84,6 +132,11 @@ Les codes relevés dans le lecteur : `etiquette-metadonnees-inconnue`, `auteur-
 21.09.2026 (nouvelle forme des blocs) : `bloc-ancienne-forme` (le document lu emploie encore
 l'ancien tableau enveloppe : lu normalement, mais à convertir) et `bloc-cles-sans-contenu` (des
 paragraphes de clé existent, mais aucune image ni tableau ne les suit dans la fenêtre attendue).
+Depuis le 22.09.2026 (clés tolérantes, voir plus bas) : `cle-approximee` (l'étiquette d'un champ
+n'était pas tapée exactement comme le gabarit, mais reconnue avec un score de proximité — le
+message porte déjà la clé fautive, la clé reconnue et le score, donc suffit tel quel en repli) et
+`cle-ambigue` (deux clés attendues sont trop proches l'une de l'autre pour trancher : aucune
+n'est retenue).
 
 ⚠ Relire la liste dans le code avant de la recopier : elle a bougé plusieurs fois.
 

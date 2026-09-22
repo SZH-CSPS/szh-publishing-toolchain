@@ -259,7 +259,19 @@ function marqueursPage(n) {
 }
 
 // Lance docx-pronto.py sur un .docx fabriqué depuis `spec`, et rend { statut, stats, fiche,
-// instructions, avertissements }.
+// instructions, avertissements, info, bloquant }.
+//
+// « cle-attendue-absente » (clé attendue non trouvée, ou laissée vide — jamais bloquant, voir
+// pronto_modele.py) est mise à part dans `info` plutôt que mélangée à `avertissements` : la
+// plupart des fixtures ci-dessus ne renseignent qu'un sous-ensemble des champs du gabarit (par
+// construction, pour isoler ce qu'elles testent), ce qui en produirait sinon systématiquement —
+// et casserait les assertions plus anciennes qui vérifient qu'AUCUN AUTRE avertissement n'est
+// apparu. `avertissementsTous` garde tout, pour qui en a besoin (ex. le test de parité des
+// gabarits réels).
+//
+// Le statut de sortie n'est plus systématiquement 0 depuis les clés bloquantes (22.09.2026) :
+// 1 signale un import refusé (voir stats.bloquant / stats.cles_non_reconnues), toute autre
+// valeur reste un vrai échec de script.
 function importer(slug, spec) {
   const base = dossierJetable();
   try {
@@ -267,15 +279,21 @@ function importer(slug, spec) {
     fabriquerDocx(docx, spec);
     const instr = path.join(base, 'instructions.txt');
     const r = python([DOCX_PRONTO, docx, slug, base], { SZH_META: instr });
-    assert.strictEqual(r.status, 0, 'docx-pronto.py a échoué : ' + r.stderr);
+    assert.ok(r.status === 0 || r.status === 1,
+      'docx-pronto.py a échoué de façon inattendue (code ' + r.status + ') : ' + r.stderr);
     const lignes = String(r.stdout).trim().split(/\r?\n/);
     const cheminFiche = path.join(base, slug + '.meta.yaml');
+    const tous = String(r.stderr).split(/\r?\n/)
+      .filter((l) => l.indexOf('[import-avertissement]') === 0);
+    const stats = JSON.parse(lignes[lignes.length - 1]);
     return {
-      stats: JSON.parse(lignes[lignes.length - 1]),
+      stats,
+      bloquant: !!stats.bloquant,
       fiche: fs.existsSync(cheminFiche) ? fs.readFileSync(cheminFiche, 'utf8') : null,
       instructions: fs.existsSync(instr) ? fs.readFileSync(instr, 'utf8') : '',
-      avertissements: String(r.stderr).split(/\r?\n/)
-        .filter((l) => l.indexOf('[import-avertissement]') === 0)
+      avertissements: tous.filter((l) => l.indexOf('cle-attendue-absente') === -1),
+      info: tous.filter((l) => l.indexOf('cle-attendue-absente') !== -1),
+      avertissementsTous: tous
     };
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
@@ -397,7 +415,7 @@ test('docx-pronto.py : une rangée d’auteur entièrement vide ne crée pas d�
 
 // ---- 4. Étiquette inconnue dans le tableau des métadonnées -----------------------------
 
-test('docx-pronto.py : une étiquette inconnue ne perd pas sa valeur, et avertit', () => {
+test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) bloque tout l’import (décision de Robin, 22.09.2026)', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
   const vu = importer('04-inconnue', {
     styles: STYLES_BASE,
@@ -411,19 +429,22 @@ test('docx-pronto.py : une étiquette inconnue ne perd pas sa valeur, et avertit
     ]
   });
 
+  // « Mots-clés » est reconnue (score 1,0 — elle est écrite exactement) mais n'a aucune
+  // destination : un contenu réel (« inclusion, école ») serait perdu si l'import continuait —
+  // c'est exactement ce qui doit bloquer, avant même de regarder si le titre, lui, est bon.
+  assert.strictEqual(vu.bloquant, true, 'une étiquette sans destination et à valeur réelle aurait dû bloquer l’import');
+  assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit — le document ne s’importe pas : ' + vu.fiche);
+  assert.strictEqual(vu.instructions, '', 'aucune instruction n’aurait dû être écrite non plus');
+
+  const cles = vu.stats.cles_non_reconnues || [];
+  assert.strictEqual(cles.length, 1, 'une seule clé non reconnue attendue : ' + JSON.stringify(cles));
+  assert.strictEqual(cles[0].texte, 'Mots-clés', 'le texte de la clé bloquante n’est pas cité : ' + JSON.stringify(cles));
+  assert.match(cles[0].lieu, /tableau metadonnees/, 'l’emplacement de la clé bloquante n’est pas cité : ' + JSON.stringify(cles));
+
   const ligne = vu.avertissements.find((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
   assert.ok(ligne, 'aucun avertissement pour l’étiquette inconnue : ' + vu.avertissements.join(' / '));
   assert.ok(ligne.indexOf('Mots-clés') !== -1, 'l’étiquette inconnue n’est pas citée : ' + ligne);
   assert.ok(ligne.indexOf('inclusion, école') !== -1, 'la valeur perdue n’apparaît pas dans l’avertissement : ' + ligne);
-
-  // La valeur ne devient PAS un mot-clé — aucune rangée « Mots-clés » n’est jamais lue
-  // comme telle, quel que soit son contenu.
-  assert.ok(!/keyword/i.test(vu.fiche), 'un mot-clé est apparu : ' + vu.fiche);
-  // Le champ compris (titre) reste écrit malgré la rangée fautive du même tableau.
-  assert.match(vu.fiche, /fr: "Titre malgré tout"/, 'le titre a été perdu à cause d’une autre rangée : ' + vu.fiche);
-  // Le tableau, lui, n’est pas marqué consommé : il reste visible dans le corps compilé.
-  assert.ok(!/^T\t1$/m.test(vu.instructions), 'le tableau des métadonnées a été marqué consommé malgré l’étiquette inconnue');
-  assert.strictEqual(vu.stats.tableau1_consomme, false);
 });
 
 // ---- 5. Type d'article : les quatre libellés du gabarit, et un mot hors liste ----------
@@ -585,7 +606,12 @@ test('docx-pronto.py : une fiche déjà là n’est jamais réécrite', () => {
       'la fiche existante a été modifiée');
     const stats = JSON.parse(String(r.stdout).trim().split(/\r?\n/).pop());
     assert.strictEqual(stats.meta_ecrit, false, 'meta_ecrit aurait dû rester faux');
-    const avert = String(r.stderr).split(/\r?\n/).filter((l) => l.indexOf('[import-avertissement]') === 0);
+    // « cle-attendue-absente » est mise à part : SPEC_COMPLET ne renseigne pas ROR/ORCID pour
+    // le second auteur (délibérément, voir ce fixture) — une information, jamais un
+    // avertissement propre.
+    const avert = String(r.stderr).split(/\r?\n/)
+      .filter((l) => l.indexOf('[import-avertissement]') === 0)
+      .filter((l) => l.indexOf('cle-attendue-absente') === -1);
     assert.deepStrictEqual(avert, [], 'une fiche conservée ne doit pas émettre d’avertissement propre');
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
@@ -1137,5 +1163,404 @@ test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais blo
   assert.deepStrictEqual(
     vu.avertissements.filter((l) => l.indexOf('bloc-mal-forme') !== -1), [],
     'un bloc bien formé ne devrait jamais déclencher bloc-mal-forme : '
+    + vu.avertissements.join(' / '));
+});
+
+// ---- 29. Clés tolérantes : une étiquette mal tapée est reconnue avec un score de proximité,
+//          jamais en silence -----------------------------------------------------------------
+//
+// aplatir() (déjà dans ce module, utilisé pour les VALEURS) retire tous les accents : avant ce
+// mécanisme, « Resumé » et « Résumé » lui donnaient déjà la même clé, sans avertissement — le
+// silence que la demande vise à remplacer par un avertissement `cle-approximee` (ou
+// `cle-ambigue` en cas d'égalité entre deux clés). Voir identifier_cle()/CANON_* dans
+// pronto_modele.py.
+
+function cleApproximee(vu) {
+  return vu.avertissements.filter((l) => l.indexOf('cle-approximee') !== -1);
+}
+function cleAmbigue(vu) {
+  return vu.avertissements.filter((l) => l.indexOf('cle-ambigue') !== -1);
+}
+
+test('pronto-lire.py : « Resumé (FR) » (accent oublié) est reconnu comme Résumé, avec un avertissement de proximité', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('30-resume-accent', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([
+        ligneMeta('Langue de l’article', 'français'),
+        ligneMeta('Resumé (FR)', 'Un résumé de test suffisamment long.')
+      ]),
+      tableAuteurs([])
+    ]
+  });
+  assert.match(vu.fiche, /resume:\n {2}fr: "Un résumé de test suffisamment long\."/,
+    'le résumé mal accentué n’a pas été repris dans la fiche : ' + vu.fiche);
+  const lignes = cleApproximee(vu);
+  assert.strictEqual(lignes.length, 1, 'un seul avertissement cle-approximee attendu : '
+    + vu.avertissements.join(' / '));
+  assert.ok(lignes[0].indexOf('Resumé') !== -1 && lignes[0].indexOf('Résumé') !== -1,
+    'la clé fautive et la clé reconnue ne sont pas toutes deux citées : ' + lignes[0]);
+});
+
+test('pronto-lire.py : « résumé (fr) : » (minuscules, sans espace avant les deux-points) est exact — aucun avertissement', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('30b-resume-minuscule', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([
+        ligneMeta('Langue de l’article', 'français'),
+        ligneMeta('résumé (fr)', 'Un résumé de test suffisamment long.')
+      ]),
+      tableAuteurs([])
+    ]
+  });
+  assert.match(vu.fiche, /resume:\n {2}fr: "Un résumé de test suffisamment long\."/);
+  assert.deepStrictEqual(cleApproximee(vu), [],
+    'la casse seule est déjà tolérée par ailleurs, elle ne doit jamais avertir : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom, avec un avertissement de proximité', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('31-prenom-accent', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([ligneAuteur(['Prenom : Jeanne', 'Nom : Dupont', 'Email : j@ex.ch'])])
+    ]
+  });
+  assert.match(vu.fiche, /- prenom: "Jeanne"/, 'le prénom mal accentué n’a pas été repris : ' + vu.fiche);
+  const lignes = cleApproximee(vu);
+  assert.strictEqual(lignes.length, 1, 'un seul avertissement cle-approximee attendu : '
+    + vu.avertissements.join(' / '));
+  assert.ok(lignes[0].indexOf('Prenom') !== -1 && lignes[0].indexOf('Prénom') !== -1, lignes[0]);
+});
+
+test('pronto-lire.py : « E-mail : » (variante avec trait d’union) est reconnu comme Email, avec un avertissement', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('32-e-mail', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([ligneAuteur(['Prénom : Ana', 'Nom : Rossi', 'E-mail : ana.rossi@ex.ch'])])
+    ]
+  });
+  assert.match(vu.fiche, /email: "ana\.rossi@ex\.ch"/, 'l’email n’a pas été repris : ' + vu.fiche);
+  const lignes = cleApproximee(vu);
+  assert.strictEqual(lignes.length, 1, 'un seul avertissement cle-approximee attendu : '
+    + vu.avertissements.join(' / '));
+  assert.ok(lignes[0].indexOf('E-mail') !== -1 && lignes[0].indexOf('Email') !== -1, lignes[0]);
+});
+
+test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » sont reconnus comme Mots-clés — champ sans destination, mais compris', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  for (const [i, libelle] of ['Mots clefs', 'Keywords', 'Motsclés', 'Schlagwörter'].entries()) {
+    const vu = importer('33-' + i + '-motscles', {
+      styles: STYLES_BASE,
+      body: [
+        tableMeta([
+          ligneMeta('Langue de l’article', 'français'),
+          ligneMeta(libelle, 'inclusion, école')
+        ]),
+        tableAuteurs([])
+      ]
+    });
+    const approx = cleApproximee(vu);
+    assert.strictEqual(approx.length, 1,
+      '« ' + libelle + ' » : un avertissement cle-approximee attendu (reconnu comme Mots-clés) : '
+      + vu.avertissements.join(' / '));
+    assert.ok(approx[0].indexOf('Mots-clés') !== -1,
+      '« ' + libelle + ' » : la clé reconnue « Mots-clés » n’est pas citée : ' + approx[0]);
+    // Mots-clés reste un champ SANS destination (voir CANON_METADONNEES) : la ligne reste
+    // signalée comme inconnue, exactement comme aujourd'hui — et surtout n'écrit JAMAIS de
+    // mot-clé dans la fiche (contrat existant, inchangé).
+    const inconnue = vu.avertissements.filter((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
+    assert.strictEqual(inconnue.length, 1,
+      '« ' + libelle + ' » devrait aussi rester une étiquette sans destination : '
+      + vu.avertissements.join(' / '));
+    // Reconnue (score 1,0) mais sans destination + une valeur réelle ("inclusion, école") :
+    // c'est justement le contenu qui serait perdu si l'import continuait — ça bloque tout.
+    assert.strictEqual(vu.bloquant, true, '« ' + libelle + ' », à valeur réelle, aurait dû bloquer l’import');
+    assert.strictEqual(vu.fiche, null, '« ' + libelle + ' » : rien n’aurait dû être écrit : ' + vu.fiche);
+  }
+});
+
+test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score mesuré 0,571, sous le seuil', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('34-resultats', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([
+        ligneMeta('Langue de l’article', 'français'),
+        ligneMeta('Résultats', 'Un contenu qui ne doit jamais devenir un résumé.')
+      ]),
+      tableAuteurs([])
+    ]
+  });
+  assert.deepStrictEqual(cleApproximee(vu), [], '« Résultats » n’aurait dû reconnaître aucune clé : '
+    + vu.avertissements.join(' / '));
+  assert.deepStrictEqual(cleAmbigue(vu), []);
+  const inconnue = vu.avertissements.find((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1);
+  assert.ok(inconnue, '« Résultats » devrait rester une étiquette inconnue : '
+    + vu.avertissements.join(' / '));
+  // Non reconnue, ET porteuse d'un contenu réel : bloque tout l'import (rien n'est écrit —
+  // « Résultats » ne devient donc, entre autres, jamais un résumé).
+  assert.strictEqual(vu.bloquant, true, '« Résultats », à valeur réelle, aurait dû bloquer l’import');
+  assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
+  const cles = vu.stats.cles_non_reconnues || [];
+  assert.ok(cles.some((c) => c.texte === 'Résultats'),
+    '« Résultats » n’apparaît pas dans les clés non reconnues : ' + JSON.stringify(cles));
+});
+
+test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, portant un contenu réel, bloque tout l’import', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('35-nom-revue', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([ligneAuteur(['Nom de la revue : Revue suisse', 'Prénom : Ida', 'Nom : Keller'])])
+    ]
+  });
+  assert.deepStrictEqual(cleApproximee(vu), [], '« Nom de la revue » n’aurait dû reconnaître aucune clé : '
+    + vu.avertissements.join(' / '));
+  // Une clé présente avec un contenu réel (« Revue suisse ») qu'on ne saurait où ranger bloque
+  // tout l'import — même la ligne d'à côté, parfaitement renseignée (Ida Keller), n'est donc
+  // PAS écrite : rien n'est importé à moitié.
+  assert.strictEqual(vu.bloquant, true, '« Nom de la revue », à valeur réelle, aurait dû bloquer l’import');
+  assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
+  const cles = vu.stats.cles_non_reconnues || [];
+  assert.ok(cles.some((c) => c.texte === 'Nom de la revue'),
+    '« Nom de la revue » n’apparaît pas dans les clés non reconnues : ' + JSON.stringify(cles));
+});
+
+test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (double espace) sont déjà exacts au passage par normaliser() — aucun avertissement', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  // L'insécable et le double espace sont déjà écrasés par pm.normaliser(), appliqué par
+  // pronto_docx.py à CHAQUE paragraphe avant que ce module ne le voie (voir l'en-tête de
+  // pronto_modele.py) : du point de vue des clés tolérantes, ces deux étiquettes arrivent
+  // donc déjà identiques au gabarit — les « sauf pour l'exact » de la demande.
+  const champs = ['Légende : Une figure de test', 'Texte  alternatif : Un texte alternatif',
+    'Crédit : Photographe X', 'Source : Archives Y'];
+  const vu = importer('36-legende-nbsp', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(champs),
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.stats.blocs.length, 1, 'le bloc n’a pas été reconnu : '
+    + JSON.stringify(vu.stats.blocs));
+  assert.strictEqual(vu.stats.blocs[0].legende, 'Une figure de test');
+  assert.deepStrictEqual(cleApproximee(vu), [],
+    'insécable et double espace sont déjà lissés en amont, ils ne devraient jamais avertir : '
+    + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux-points) reste une étiquette de bloc inconnue', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const etiquetteLongue = 'Ceci est une étiquette beaucoup trop longue pour être une vraie clé';
+  assert.ok(etiquetteLongue.length > 40, 'l’étiquette de test doit dépasser 40 signes');
+  const vu = importer('37-cle-trop-longue', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab([etiquetteLongue + ' : une valeur quelconque']),
+      pImage()
+    ]
+  });
+  assert.deepStrictEqual(cleApproximee(vu), [],
+    'une étiquette trop longue n’aurait jamais dû être scorée : ' + vu.avertissements.join(' / '));
+  assert.deepStrictEqual(cleAmbigue(vu), []);
+  const ligne = vu.avertissements.find((l) => l.indexOf('bloc-etiquette-inconnue') !== -1);
+  assert.ok(ligne, 'l’étiquette trop longue devrait rester une étiquette de bloc inconnue : '
+    + vu.avertissements.join(' / '));
+  // Non reconnue, avec une valeur réelle (« une valeur quelconque ») : bloque tout l'import.
+  assert.strictEqual(vu.bloquant, true, 'une clé trop longue à valeur réelle aurait dû bloquer l’import');
+  assert.strictEqual(vu.fiche, null, 'rien n’aurait dû être écrit : ' + vu.fiche);
+});
+
+// Le test ci-dessus passe déjà SANS le garde-fou de longueur : une phrase de corps aussi
+// longue n'atteint de toute façon jamais SEUIL_CLE contre une clé attendue courte (mesuré :
+// le ratio de SequenceMatcher est plafonné par 2*min(longueurs)/(somme des longueurs), qui ne
+// peut pas dépasser ~0,45 dès que le candidat fait deux fois la longueur de la clé la plus
+// longue du vocabulaire réel). Le garde-fou de LONGUEUR_ETIQUETTE_SCORE est donc une défense
+// en profondeur pour le jour où un alias plus long serait ajouté — il faut l'éprouver seul,
+// avec une table jetable, pour prouver qu'il coupe AVANT le score et pas seulement grâce à
+// lui (patron identique au test d'ambiguïté ci-dessous).
+test('identifier_cle() : une étiquette de plus de 40 signes est jamais scorée, même contre une clé qui lui ressemblerait', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const script = [
+    'import sys',
+    'sys.path.insert(0, "' + path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\') + '")',
+    'import pronto_modele as pm',
+    'table = {"x": ("A" * 50,)}',
+    '# 45 signes, quasi identique à la forme canonique (50 A) — un score écrasant sans le',
+    '# garde-fou de longueur (45 > pm.LONGUEUR_ETIQUETTE_SCORE == 40).',
+    'candidat = "A" * 45',
+    'assert len(candidat) > pm.LONGUEUR_ETIQUETTE_SCORE, "le candidat de test doit dépasser le seuil"',
+    'r = pm.identifier_cle(candidat, table)',
+    'assert r is None, "une étiquette trop longue a quand même été scorée : " + repr(r)',
+    'print("OK")'
+  ].join('\n');
+  const r = python(['-c', script]);
+  assert.strictEqual(r.status, 0, 'identifier_cle() a échoué : ' + r.stderr);
+  assert.strictEqual(r.stdout.trim(), 'OK');
+});
+
+test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’est jamais scoré', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('38-sans-deux-points', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(['Ceci n’a pas la forme Étiquette deux-points valeur']),
+      pImage()
+    ]
+  });
+  assert.deepStrictEqual(cleApproximee(vu), []);
+  assert.deepStrictEqual(cleAmbigue(vu), []);
+});
+
+// La clé ambiguë n'a pas de paire naturelle dans le vocabulaire réel du gabarit au-dessus de
+// SEUIL_CLE (mesuré : les deux meilleures clés restent toujours loin l'une de l'autre — voir
+// le rapport) ; ce test appelle donc identifier_cle() directement, sur une table jetable, pour
+// prouver le MÉCANISME général d'ambiguïté (le même qui protège CANON_METADONNEES /
+// CANON_AUTEUR / CANON_FIGURE) — c'est le même patron que le test decoder_nom_style() plus haut.
+test('identifier_cle() : deux clés à égale distance ne sont jamais retenues — ambiguïté', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const script = [
+    'import sys',
+    'sys.path.insert(0, "' + path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\') + '")',
+    'import pronto_modele as pm',
+    'table = {"un": ("Bonjour",), "deux": ("Bonjeur",)}',
+    'r = pm.identifier_cle("Bonjur", table)',
+    'assert r is not None, "aucune clé retenue du tout : " + repr(r)',
+    'assert r[0] == "__ambigu__", "aurait dû être ambigu : " + repr(r)',
+    'assert set(r[1:3]) == {"un", "deux"}, repr(r)',
+    'print("OK")'
+  ].join('\n');
+  const r = python(['-c', script]);
+  assert.strictEqual(r.status, 0, 'identifier_cle() a échoué : ' + r.stderr);
+  assert.strictEqual(r.stdout.trim(), 'OK');
+});
+
+// ---- 30. Clé attendue absente / clé présente mais vide — informations, jamais bloquant -----
+//
+// Précision de Robin (22.09.2026), en plus des clés tolérantes : une clé PRÉSENTE mais NON
+// reconnue (score sous le seuil, ou ambiguë) bloque tout l'import (voir les tests plus haut qui
+// vérifient déjà vu.bloquant). Une clé ATTENDUE mais ABSENTE du document, ou présente mais VIDE
+// (rien ou seulement des espaces après le deux-points), est une simple information
+// (`cle-attendue-absente`) : jamais bloquante, sa valeur n'est jamais écrite. Ces informations
+// sont mises à part dans vu.info par importer() (voir sa définition), pour ne pas casser les
+// tests plus anciens qui ne les attendaient pas.
+
+test('pronto-lire.py : une clé attendue absente du document est une simple information, jamais bloquante', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('40-absente', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),   // type/titre/soustitre/résumé : jamais posés
+      tableAuteurs([])
+    ]
+  });
+  assert.strictEqual(vu.bloquant, false, 'une clé simplement absente n’aurait jamais dû bloquer l’import');
+  for (const canon of ["Type d'article", 'Titre', 'Sous-titre', 'Résumé']) {
+    const ligne = vu.info.find((l) => l.indexOf('clé « ' + canon + ' »') !== -1);
+    assert.ok(ligne, '« ' + canon + ' » absent aurait dû produire une information : '
+      + vu.info.join(' / '));
+  }
+  // « Langue de l'article », elle, a été renseignée : elle ne doit PAS apparaître comme absente.
+  assert.ok(!vu.info.some((l) => l.indexOf('Langue') !== -1),
+    '« Langue de l\'article », pourtant renseignée, apparaît comme absente : ' + vu.info.join(' / '));
+});
+
+test('pronto-lire.py : une clé présente mais vide (espaces seuls) est traitée comme absente — jamais approximée, jamais bloquante', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('41-vide', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([
+        ligneMeta('Langue de l’article', 'français'),
+        ligneMeta('Resumé (FR)', '   ')            // clé mal tapée EN PLUS vide : ne compte que comme absente
+      ]),
+      tableAuteurs([])
+    ]
+  });
+  assert.strictEqual(vu.bloquant, false, 'une clé vide n’aurait jamais dû bloquer l’import');
+  assert.deepStrictEqual(vu.avertissements.filter((l) => l.indexOf('cle-approximee') !== -1), [],
+    'une clé vide, même mal tapée, ne doit jamais être approximée : ' + vu.avertissements.join(' / '));
+  assert.ok(!/resume:/.test(vu.fiche || ''), 'un résumé vide a quand même été écrit : ' + vu.fiche);
+  const ligne = vu.info.find((l) => l.indexOf('clé « Résumé »') !== -1);
+  assert.ok(ligne, 'le résumé laissé vide aurait dû apparaître comme absent : ' + vu.info.join(' / '));
+});
+
+test('pronto-lire.py : un auteur — un champ facultatif laissé vide est une information, jamais bloquant', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('42-auteur-vide', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([ligneAuteur(['Prénom : Ida', 'Nom : Keller', 'ROR : ', 'Email : ida@ex.ch'])])
+    ]
+  });
+  assert.strictEqual(vu.bloquant, false, 'un champ auteur vide n’aurait jamais dû bloquer l’import');
+  assert.match(vu.fiche, /- prenom: "Ida"/, 'l’auteur bien renseigné n’a pas été écrit : ' + vu.fiche);
+  const ligne = vu.info.find((l) => l.indexOf('clé « ROR »') !== -1);
+  assert.ok(ligne, 'le ROR laissé vide aurait dû apparaître comme absent : ' + vu.info.join(' / '));
+  assert.ok(!/ror:/.test(vu.fiche), 'un ROR vide a quand même été écrit : ' + vu.fiche);
+});
+
+test('pronto-lire.py : un bloc — un champ laissé vide est une information, jamais bloquant', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('43-bloc-vide', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([ligneMeta('Langue de l’article', 'français')]),
+      tableAuteurs([]),
+      ...clesAbbTab(['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
+        'Crédit : Photographe X', 'Source :   ']),
+      pImage()
+    ]
+  });
+  assert.strictEqual(vu.bloquant, false, 'un champ de bloc vide n’aurait jamais dû bloquer l’import');
+  assert.strictEqual(vu.stats.blocs.length, 1, 'le bloc n’a pas été reconnu : '
+    + JSON.stringify(vu.stats.blocs));
+  const ligne = vu.info.find((l) => l.indexOf('clé « Source »') !== -1);
+  assert.ok(ligne, 'la source laissée vide aurait dû apparaître comme absente : ' + vu.info.join(' / '));
+});
+
+// ---- 31. Garde-fou mesuré sur le corpus réel : un tableau de contenu ORDINAIRE (style
+//          Normal, jamais au gabarit) pris pour celui des métadonnées par la seule position ---
+//
+// Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits réels, aucun au gabarit) : 3 documents
+// sur 11 ont un tableau de données comme PREMIER tableau du document (ex. « Enregistrement des
+// cours | 49 ») — pris pour le tableau des métadonnées par la seule position (piège déjà
+// documenté dans TODO-BRANCHEMENT-PARSER-V2.md). Avant la correction de _etiquette_szh_cle()
+// (22.09.2026), chaque rangée de ce tableau ORDINAIRE était comparée comme une étiquette — et,
+// portant un contenu réel non reconnu, bloquait tout l'import. _etiquette_szh_cle() (et les
+// mêmes lieux dans extraire_table_auteurs()/_champs_bloc_meta()) n'acceptent plus qu'un
+// paragraphe de style SZH Cle comme candidat.
+
+test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gabarit) pris pour celui des métadonnées ne bloque jamais l’import', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const tableOrdinaire = {
+    tbl: [
+      [[['Normal', 'Mesure']], [['Normal', 'Valeur']]],
+      [[['Normal', 'Enregistrement des cours']], [['Normal', '49']]],
+      [[['Normal', 'Allègement des horaires']], [['Normal', '38']]]
+    ]
+  };
+  const vu = importer('44-table-ordinaire', { styles: STYLES_BASE, body: [tableOrdinaire] });
+  assert.strictEqual(vu.bloquant, false,
+    'un tableau de contenu ordinaire, pris par position pour celui des métadonnées, a '
+    + 'pourtant bloqué l’import : ' + JSON.stringify(vu.stats.cles_non_reconnues || []));
+  assert.deepStrictEqual(
+    vu.avertissements.filter((l) => l.indexOf('etiquette-metadonnees-inconnue') !== -1), [],
+    'un tableau de contenu ordinaire ne devrait même pas produire d’étiquette inconnue : '
     + vu.avertissements.join(' / '));
 });
