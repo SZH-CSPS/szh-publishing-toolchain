@@ -961,3 +961,98 @@ test('extraire_entete : une initiale intermédiaire reste au prénom, dans les d
     assert.strictEqual(inverse.entete.auteurs[0].prenom, 'Susan C. A.');
     assert.strictEqual(inverse.entete.auteurs[0].nom, 'BURKHARDT');
   });
+
+// ---------------------------------------------------------------------------------------
+// 16. La portée de la propagation : LE DOCUMENT, pas la ligne (§3 bis du brief
+// outils-dev/BRIEF-lexique-noms-elargi.md, principe posé par Robin le 22.09.2026 — « un
+// article est écrit dans UN seul ordre prénom/nom, du début à la fin »).
+//
+// Ce que le bloc 12 ci-dessus prouvait déjà : deux noms de LA MÊME LIGNE se votent l'un
+// l'autre, parce que _tenter_noms() les passe ensemble à mn.trancher_groupe(). Ce qui ne
+// marchait PAS avant ce lot, et que ces tests-ci gardent : la byline et le bloc final
+// d'informations sur les autrices et auteurs sont analysés par deux fonctions différentes,
+// à deux moments différents, et rien ne portait l'ordre de l'une à l'autre — sauf pour une
+// personne présente dans les deux endroits, appariée par _fusionner_auteurs(). Une autrice
+// citée seulement dans la byline n'apprenait donc rien de ce que le bloc final avait tranché.
+// Corrigé par _propager_ordre_document(), appelé après la fusion.
+
+test('extraire_entete : l\'ordre tranché dans le BLOC FINAL retourne un nom resté en defaut '
+  + 'dans la byline (§3 bis — portée = le document)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      // Aucun indice propre : ni casse, ni e-mail, ni bibliographie. Seul, ce segment
+      // retombe sur la convention « premier jeton = prénom » et sort « Valarino Isabel ».
+      para('Valarino Isabel'),
+      para('Introduction'),
+      para('Un paragraphe de corps assez long pour ne ressembler en rien à une ligne '
+        + 'd\'auteur, afin que le repli heuristique de fin de document ne l\'avale pas.'),
+      para('Informations sur les autrices et auteurs'),
+      // Casse TAPÉE : force certaine, ordre inverse. C'est lui le donneur.
+      para('GUILLEY Edith'),
+    ]);
+    const parNom = {};
+    for (const a of out.entete.auteurs) { parNom[a.nom.toLowerCase()] = a; }
+
+    assert.ok(parNom.guilley, 'le bloc final doit avoir produit une fiche Guilley');
+    assert.strictEqual(parNom.guilley.ordre_confiance, 'certaine');
+
+    assert.ok(parNom.valarino,
+      'la byline « Valarino Isabel » doit avoir été retournée en « Isabel Valarino » : '
+      + JSON.stringify(out.entete.auteurs.map((a) => a.prenom + ' / ' + a.nom)));
+    assert.strictEqual(parNom.valarino.prenom, 'Isabel');
+    assert.strictEqual(parNom.valarino.nom, 'Valarino');
+    assert.strictEqual(parNom.valarino.ordre_confiance, 'propagee');
+    assert.match(parNom.valarino.ordre_motif, /document/,
+      'le motif doit dire que l\'ordre vient du document, et nommer son donneur');
+
+    // La décision est tracée à la portée « document », jamais cachée dans la fiche seule.
+    const notes = out.trace.filter((t) => t.decision === 'ordre_propage_document');
+    assert.strictEqual(notes.length, 1, 'une note de trace par fiche retournée');
+    assert.match(notes[0].motif, /Valarino/);
+  });
+
+test('extraire_entete : deux fiches tranchées qui se contredisent -> AUCUNE propagation de '
+  + 'document (sans consensus, rien)', { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      // Casse tapée sur le PREMIER jeton -> ordre inverse, certaine.
+      para('GUILLEY Edith'),
+      // Casse tapée sur le SECOND jeton -> ordre direct, certaine. Les deux se contredisent.
+      para('Rachel SERMIER'),
+      para('Un troisième nom sans le moindre indice : Valarino Isabel'),
+      para('Introduction'),
+      para('Un paragraphe de corps assez long pour ne ressembler en rien à une ligne '
+        + 'd\'auteur, afin que le repli heuristique de fin de document ne l\'avale pas.'),
+    ]);
+    const valarino = out.entete.auteurs.find((a) => /valarino/i.test(a.prenom + a.nom));
+    if (valarino) {
+      assert.notStrictEqual(valarino.ordre_confiance, 'propagee',
+        'deux ordres tranchés contraires dans le document : rien ne doit se propager');
+    }
+    assert.strictEqual(
+      out.trace.filter((t) => t.decision === 'ordre_propage_document').length, 0,
+      'aucune note de propagation de document quand les fiches tranchées se contredisent');
+  });
+
+test('extraire_entete : la forme « Nom, Prénom » ne vote PAS pour l\'ordre du document '
+  + '(la virgule dit un segment, pas une convention)', { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      // Ordre certain par construction (la virgule), mais `ordre` reste None : cette fiche
+      // ne doit pas imposer l'ordre inverse au reste du document.
+      para('Guilley, Edith — Haute école pédagogique'),
+      para('Valarino Isabel'),
+      para('Introduction'),
+      para('Un paragraphe de corps assez long pour ne ressembler en rien à une ligne '
+        + 'd\'auteur, afin que le repli heuristique de fin de document ne l\'avale pas.'),
+    ]);
+    assert.strictEqual(
+      out.trace.filter((t) => t.decision === 'ordre_propage_document').length, 0,
+      'la virgule « Nom, Prénom » est une ponctuation locale : elle ne doit retourner aucun '
+      + 'autre nom du document');
+    const valarino = out.entete.auteurs.find((a) => /valarino/i.test(a.prenom + a.nom));
+    assert.ok(valarino);
+    assert.strictEqual(valarino.ordre_confiance, 'defaut',
+      'sans autre indice, « Valarino Isabel » reste sur la convention par défaut');
+  });

@@ -205,11 +205,35 @@ def _charger_fichier_lexique(dossier_fourni, nom_fichier, cible):
         ligne = ligne.split('#', 1)[0].strip()
         if not ligne:
             continue
-        jeton = _plier(ligne)
+        # Chemin rapide : ces fichiers sont DÉJÀ pliés (leur en-tête le dit), et replier un
+        # jeton plié est l'identité. Une ligne purement ASCII et déjà en minuscules n'a donc
+        # ni accent à retirer ni casse à ramener ; il ne resterait que la ponctuation de bord,
+        # qu'un fichier plié ne porte plus non plus. Mesuré le 22.09.2026 sur les 38 000 jetons
+        # des deux index publics : 110 ms de chargement par _plier() sur chaque ligne, 29 ms
+        # par ce test — la normalisation NFD est à elle seule l'essentiel du coût. Le test est
+        # CONSERVATEUR : tout ce qu'il ne reconnaît pas repasse par _plier(), un fichier mal
+        # plié (édité à la main, contre la consigne) reste donc lu correctement, seulement
+        # plus lentement.
+        if ligne.isascii() and ligne.islower():
+            jeton = ligne
+        else:
+            jeton = _plier(ligne)
         if jeton:
             cible[jeton] = cible.get(jeton, 0) + 1
             n += 1
     return n
+
+
+# Les fichiers de lexique du dépôt, dans l'ordre de chargement (§5.5 quater du contrat) :
+# (nom du fichier, côté qu'il alimente, libellé pour la trace des sources). Constante de
+# MODULE plutôt que liste écrite dans charger() : outils-dev/lexique/banc-noms.py la lit pour
+# mesurer exactement ce que la production charge. Sans elle, le banc recopierait la liste, et
+# un quatrième fichier ajouté ici le ferait mesurer en silence autre chose que ce qui tourne.
+FICHIERS_LEXIQUE = (
+    ('noms-famille.txt', 'noms', 'noms de famille des bibliographies du corpus'),
+    ('noms-frequents.txt', 'noms', 'noms de famille fréquents, sources publiques'),
+    ('prenoms-frequents.txt', 'prenoms', 'prénoms fréquents, sources publiques'),
+)
 
 
 class BaseNoms:
@@ -237,18 +261,34 @@ class BaseNoms:
         c'est l'appelant (la CLI, §6.1 du contrat) qui décide quand la base est chargée — un
         module PUR ne va jamais chercher un fichier de production tout seul.
 
-        ⚠ Décision de Robin, 22.09.2026 : le lexique du dépôt ne porte plus que
-        `noms-famille.txt` — `prenoms.txt` a été retiré de `pipeline/lexique/` (dérivé de la
-        base OJS du poste, il n'apportait rien de plus qu'elle et son seul rôle, servir de
-        repli quand elle est absente, est désormais couvert par le moissonnage déclenché au
-        lancement de l'application). Conséquence honnête : côté PRÉNOM, le signal lexique ne
-        vient donc plus que de la base OJS elle-même (`_charger_base_auteurs` ci-dessus) —
-        sans elle (poste neuf, runner CI), `poids_prenom()` est toujours 0 et
-        `score_direct`/`score_inverse` (`_signal_lexique`, plus bas) ne peuvent plus valoir
-        que 0 ou 1, jamais 2. Le signal s'affaiblit (il peut trancher sur un seul jeton
-        connu au lieu de deux) mais ne devient jamais FAUX pour autant : MARGE_LEXIQUE reste
-        à 1 (inchangée), un score de 1 tranchait déjà avant cette suppression, et les trois
-        autres signaux (casse, e-mail, biblio) n'en dépendent pas et restent intacts."""
+        TROIS fichiers de lexique, dans cet ordre (§5.5 quater du contrat) — deux alimentent
+        les noms, un les prénoms :
+          noms-famille.txt      les noms certifiés par les bibliographies du corpus local
+                                (outils-dev/lexique/generer-noms.py) ;
+          noms-frequents.txt    les noms de famille les plus portés, et
+          prenoms-frequents.txt les prénoms les plus portés — moissonnés sur des sources
+                                PUBLIQUES (OFS, INSEE) par
+                                outils-dev/lexique/moissonner-noms-publics.py.
+
+        ⚠ `prenoms-frequents.txt` n'est PAS la réapparition de `prenoms.txt`, retiré le
+        22.09.2026 au matin. Celui-là était le champ `prenom` de la base OJS de la maison,
+        c'est-à-dire une dérivée de données d'auteurs dans un dépôt appelé à devenir public,
+        et c'est sa PROVENANCE qui l'a fait supprimer, jamais son existence. Celui-ci ne
+        connaît pas `auteurs.json` et n'a aucun moyen de la lire : il vient des registres de
+        population de l'OFS et de l'INSEE. Les deux index restent d'ailleurs SÉPARÉS l'un de
+        l'autre, ce qui est la garantie de fond : deux listes de jetons nus ne reconstituent
+        aucune personne, un couple prénom↔nom oui.
+
+        Pourquoi l'index de prénoms est nécessaire et pas seulement souhaitable : le signal
+        (`_signal_lexique`, plus bas) COMPARE deux hypothèses. Ne nourrir que les noms de
+        famille ne renforce qu'un plateau de la balance. Mesuré en leave-one-out le
+        22.09.2026 (banc : outils-dev/lexique/banc-noms.py) sur 1152 fiches : 30 000 noms
+        publics SEULS laissent 130 fiches muettes (11,3 %) ; les mêmes plus 8 000 prénoms
+        n'en laissent que 22 (1,9 %) et font passer les décisions justes de 987 à 1086 — et
+        les deux index complets, tels qu'ils sont livrés, à 1110 (96,4 %) pour 7 muettes. Sans
+        base OJS sur le poste (poste neuf, runner CI), c'est désormais ce fichier-là qui tient
+        le côté prénom — là où, entre la suppression du 22.09 au matin et ce lot,
+        `poids_prenom()` valait toujours 0."""
         base = cls()
         prenoms, noms = {}, {}
         n_retenues, n_ecartees = _charger_base_auteurs(chemin_base_auteurs, prenoms, noms)
@@ -256,9 +296,12 @@ class BaseNoms:
             base.sources.append(
                 'base auteurs OJS (%d fiche(s) retenue(s), %d écartée(s) comme bruit)'
                 % (n_retenues, n_ecartees))
-        n = _charger_fichier_lexique(chemin_lexique, 'noms-famille.txt', noms)
-        if n:
-            base.sources.append('lexique du dépôt : noms-famille.txt (%d jeton(s))' % n)
+        for nom_fichier, cote, libelle in FICHIERS_LEXIQUE:
+            n = _charger_fichier_lexique(chemin_lexique, nom_fichier,
+                                         noms if cote == 'noms' else prenoms)
+            if n:
+                base.sources.append('lexique du dépôt : %s — %s (%d jeton(s))'
+                                    % (nom_fichier, libelle, n))
         base._prenoms, base._noms = prenoms, noms
         base.disponible = bool(base.sources)
         return base

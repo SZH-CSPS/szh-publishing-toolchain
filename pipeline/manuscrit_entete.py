@@ -194,16 +194,33 @@ class EnTete:
 # cette ligne) ne lit QUE les champs d'une liste blanche fermée (_CHAMPS_AUTEUR_GABARIT :
 # prenom/nom/fonction/institution/orcid/email) — ces trois champs de plus dans le dict ne le
 # perturbent en rien, ils sont simplement ignorés par ce lecteur-là.
+# `ordre` : un QUATRIÈME champ, ajouté à la fin comme les trois précédents et pour la même
+# raison de compatibilité — mn.ORDRE_DIRECT, mn.ORDRE_INVERSE, ou None. Ajouté le 22.09.2026
+# par le lot « lexique élargi » (§3 bis de son brief) : sans lui, `ordre_confiance` dit à quel
+# point on est sûr SANS dire de quoi, et la propagation à l'échelle du DOCUMENT
+# (_propager_ordre_document() plus bas) ne peut ni lire l'ordre d'une fiche déjà tranchée ni
+# reconstituer les jetons d'origine d'une fiche à rejuger — mn.repartir() n'est inversible
+# qu'une fois l'ordre connu. Même précaution que pour les trois autres : un état voyage comme
+# une donnée, jamais comme une sous-chaîne de prose.
+#
+# `ordre` vaut None — et la fiche ne vote alors JAMAIS pour l'ordre du document — quand
+# l'ordre a été établi autrement que par un signal de manuscrit_noms : c'est le cas de la
+# forme « Nom, Prénom » (_tenter_nom_virgule_avec_info), où la virgule dit l'ordre DE CE
+# SEGMENT sans rien dire de la convention du document. Un document peut parfaitement écrire
+# sa byline « Guilley, Edith » et sa prose « Edith Guilley » : laisser cette virgule voter
+# retournerait tout l'article sur la foi d'une ponctuation locale, exactement l'accident que
+# la propagation doit éviter. Choix du lot, pas du brief — signalé comme tel au rapport.
 CHAMPS_AUTEUR_ENTETE = ('prenom', 'nom', 'fonction', 'institution', 'email', 'orcid',
-                         'texte_source', 'ordre_confiance', 'ordre_motif', 'ordre_conflit')
+                         'texte_source', 'ordre_confiance', 'ordre_motif', 'ordre_conflit',
+                         'ordre')
 
 
 def _nouvel_auteur(prenom, nom, texte_source, ordre_confiance='defaut', ordre_motif='',
-                    ordre_conflit=False):
+                    ordre_conflit=False, ordre=None):
     return {'prenom': prenom, 'nom': nom, 'fonction': '', 'institution': '',
             'email': '', 'orcid': '', 'texte_source': texte_source,
             'ordre_confiance': ordre_confiance, 'ordre_motif': ordre_motif,
-            'ordre_conflit': bool(ordre_conflit)}
+            'ordre_conflit': bool(ordre_conflit), 'ordre': ordre}
 
 
 # ---------------------------------------------------------------------------------
@@ -467,6 +484,7 @@ def _tenter_noms(texte, paragraphe=None, base_noms=None, noms_biblio=None):
                          'ordre_confiance': decision['confiance'],
                          'ordre_motif': decision['motif'],
                          'ordre_conflit': decision['conflit'],
+                         'ordre': decision['ordre'],
                          'jetons': jetons, 'indices': seg_mn['indices']})
     return entrees, infos
 
@@ -612,6 +630,7 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
         auteur['ordre_confiance'] = decision['confiance']
         auteur['ordre_motif'] = decision['motif']
         auteur['ordre_conflit'] = decision['conflit']
+        auteur['ordre'] = decision['ordre']
         etat_ordre[id(auteur)] = (jetons, nouveaux_indices)
 
     def _longueur_resume_courant():
@@ -772,7 +791,7 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
             entrees, infos_meme_ligne = resultat_noms
             for a in entrees:
                 auteur = _nouvel_auteur(a['prenom'], a['nom'], texte, a['ordre_confiance'],
-                                         a['ordre_motif'], a['ordre_conflit'])
+                                         a['ordre_motif'], a['ordre_conflit'], a['ordre'])
                 entete.auteurs.append(auteur)
                 etat_ordre[id(auteur)] = (a['jetons'], a['indices'])
             # Les infos de la MÊME ligne (§4.1) ne sont rattachées que s'il y a EXACTEMENT un
@@ -942,6 +961,7 @@ def _fusionner_auteurs(entete, auteurs_nouveaux):
                 cible['ordre_confiance'] = nouveau['ordre_confiance']
                 cible['ordre_motif'] = nouveau['ordre_motif']
                 cible['ordre_conflit'] = nouveau['ordre_conflit']
+                cible['ordre'] = nouveau.get('ordre')
             for champ in ('fonction', 'institution', 'email', 'orcid'):
                 if not cible[champ] and nouveau[champ]:
                     cible[champ] = nouveau[champ]
@@ -950,6 +970,79 @@ def _fusionner_auteurs(entete, auteurs_nouveaux):
             entete.auteurs.append(nouveau)
             n_ajoutes += 1
     return n_fusionnes, n_ajoutes, notes_ordre
+
+
+def _propager_ordre_document(entete):
+    """Propagation à l'échelle du DOCUMENT — §3 bis du brief « lexique élargi », principe posé
+    par Robin le 22.09.2026 : **un article est écrit dans UN seul ordre prénom/nom, du début à
+    la fin**. Une autrice ne signe pas « Edith Guilley » dans la byline pour redevenir
+    « Sermier Dessemontet Rachel » dans le bloc final.
+
+    Ce qui existait avant ce lot, et ne suffisait pas : mn.trancher_groupe() propage déjà,
+    mais seulement au sein d'UN groupe de segments passé ensemble — et _tenter_noms() l'appelle
+    UNE FOIS PAR LIGNE. La portée réelle était donc la LIGNE, pas le document : deux noms sur
+    la même ligne de byline se votaient l'un l'autre, la byline et le bloc final non. Le seul
+    pont entre les deux zones était _fusionner_auteurs(), qui ne rapproche que les fiches
+    reconnues comme LA MÊME PERSONNE (e-mail identique, ou même ensemble de jetons) : une
+    autrice présente dans les deux endroits pouvait donc y corriger son propre ordre, mais
+    n'apprenait rien à ses coautrices. Défaut mesuré et corrigé ici (test
+    `propagation.document.byline.et.bloc.final`).
+
+    Appelée APRÈS _fusionner_auteurs(), quand `entete.auteurs` porte enfin les deux zones :
+    c'est le seul moment du traitement où « le document » existe comme un tout.
+
+    La règle est celle de mn.trancher_groupe(), transposée : les fiches TRANCHÉES ('certaine'
+    ou 'probable') qui portent un `ordre` votent ; si elles votent toutes le même, chaque fiche
+    restée en 'defaut' SANS CONFLIT adopte cet ordre en 'propagee'. Deux fiches tranchées qui
+    se contredisent -> AUCUNE propagation, rien n'est touché : sans consensus, le document ne
+    dit rien, et « en cas de doute, rien » (§2 de la maison).
+
+    Rend [note, ...] — une phrase française par fiche retournée, pour la trace. Jamais une
+    exception, jamais une fiche perdue."""
+    tranchees = [a for a in entete.auteurs
+                 if a.get('ordre_confiance') in ('certaine', 'probable') and a.get('ordre')]
+    ordres = {a['ordre'] for a in tranchees}
+    if len(ordres) != 1:
+        return []
+    ordre = ordres.pop()
+    donneur = tranchees[0]
+    libelle_donneur = ' '.join(x for x in (donneur.get('prenom'), donneur.get('nom')) if x)
+
+    notes = []
+    for a in entete.auteurs:
+        if a.get('ordre_confiance') != 'defaut' or a.get('ordre_conflit'):
+            continue
+        # Les jetons d'origine, reconstitués. mn.repartir() PARTITIONNE la liste sans jamais
+        # en changer l'ordre : en ordre direct le prénom est la tête et le nom la queue, en
+        # ordre inverse l'inverse — recoller les deux champs dans le bon sens rend donc
+        # exactement la liste reçue à l'époque. Une fiche en 'defaut' a toujours été répartie
+        # par la CONVENTION, c'est-à-dire en ordre direct (mn.trancher() rend ORDRE_DIRECT
+        # dans toutes ses branches par défaut) ; le `ordre` stocké le confirme quand il est là.
+        if a.get('ordre') == mn.ORDRE_INVERSE:
+            jetons = (a.get('nom') or '').split() + (a.get('prenom') or '').split()
+        else:
+            jetons = (a.get('prenom') or '').split() + (a.get('nom') or '').split()
+        if len(jetons) < 2:
+            continue          # un seul jeton : aucun ordre à propager, comme dans mn.
+        prenom, nom = mn.repartir(jetons, ordre)
+        if (prenom, nom) == (a.get('prenom'), a.get('nom')):
+            # L'ordre du document confirme la convention déjà appliquée : on note la
+            # confiance gagnée, sans prétendre avoir corrigé quoi que ce soit.
+            a['ordre_confiance'] = 'propagee'
+            a['ordre'] = ordre
+            a['ordre_motif'] = ('ordre confirmé par le reste du document, depuis « %s » (%s)'
+                                % (libelle_donneur, donneur.get('ordre_motif') or ''))
+            continue
+        ancien = '%s %s' % (a.get('prenom') or '', a.get('nom') or '')
+        a['prenom'], a['nom'] = prenom, nom
+        a['ordre_confiance'] = 'propagee'
+        a['ordre'] = ordre
+        a['ordre_motif'] = ('ordre propagé à l\'échelle du document depuis « %s » (%s)'
+                            % (libelle_donneur, donneur.get('ordre_motif') or ''))
+        notes.append('ordre repris du document pour « %s » : « %s %s » plutôt que « %s » '
+                     '(le document écrit ses noms dans l\'ordre « %s », d\'après « %s »)'
+                     % (ancien.strip(), prenom, nom, ancien.strip(), ordre, libelle_donneur))
+    return notes
 
 
 def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
@@ -986,7 +1079,7 @@ def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
             for a in entrees:
                 auteurs.append(_nouvel_auteur(a['prenom'], a['nom'], texte,
                                                a['ordre_confiance'], a['ordre_motif'],
-                                               a['ordre_conflit']))
+                                               a['ordre_conflit'], a['ordre']))
             if len(entrees) == 1:
                 cible_courante = auteurs[-1]
                 ambigu_courant = False
@@ -1122,6 +1215,8 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None,
                                            n_fusionnes, n_ajoutes)}]
         trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_repris_bloc_final',
                    'motif': note} for note in notes_ordre]
+        trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_propage_document',
+                   'motif': note} for note in _propager_ordre_document(entete)]
         return indices, trace
 
     i = n - 1
@@ -1152,10 +1247,16 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None,
                 lignes.append((blocs[idx].source, ligne))
     auteurs = _analyser_bloc_auteurs(lignes, base_noms, noms_biblio)
     if not auteurs:
-        return {}, [{'portee': 'document', 'source': None,
-                     'decision': 'bloc_auteurs_final_absent',
-                     'motif': "aucun bloc d'informations sur les autrices et auteurs reconnu "
-                              "en fin de document"}]
+        # Aucun bloc final : la byline reste à elle seule « le document », et ses lignes ont
+        # été jugées SÉPARÉMENT (un appel à mn.trancher_groupe() par ligne). Une byline sur
+        # deux lignes a donc encore besoin de cette passe.
+        trace = [{'portee': 'document', 'source': None,
+                  'decision': 'bloc_auteurs_final_absent',
+                  'motif': "aucun bloc d'informations sur les autrices et auteurs reconnu "
+                           "en fin de document"}]
+        trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_propage_document',
+                   'motif': note} for note in _propager_ordre_document(entete)]
+        return {}, trace
     n_fusionnes, n_ajoutes, notes_ordre = _fusionner_auteurs(entete, auteurs)
     trace = [{'source': blocs[indices_candidats[0]].source,
               'decision': 'bloc_auteurs_final_heuristique',
@@ -1165,6 +1266,8 @@ def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None,
                        % (len(indices_candidats), n_fusionnes, n_ajoutes)}]
     trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_repris_bloc_final',
                'motif': note} for note in notes_ordre]
+    trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_propage_document',
+               'motif': note} for note in _propager_ordre_document(entete)]
     return {i: 'auteurs' for i in indices_candidats}, trace
 
 

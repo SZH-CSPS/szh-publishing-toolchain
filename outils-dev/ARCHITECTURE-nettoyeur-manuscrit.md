@@ -80,7 +80,7 @@ importable porte un tiret bas, une CLI porte un tiret**.
 | `pipeline/manuscrit_odt.py` | `.odt` → modèle riche (reste à écrire, voir `ETAT-REPRISE`) | les décisions |
 | `pipeline/manuscrit_typo.py` | le pont typographique (§6) | les décisions |
 | `pipeline/manuscrit_entete.py` | l'en-tête et le bloc final d'autrices/auteurs (§5.5) | Word, OpenDocument |
-| `pipeline/manuscrit_noms.py` | l'ordre prénom/nom et sa répartition (§5.5 ter) | Word, OpenDocument, le modèle riche |
+| `pipeline/manuscrit_noms.py` | l'ordre prénom/nom et sa répartition dans UN groupe de segments qu'on lui donne (§5.5 ter) | Word, OpenDocument, le modèle riche, et la PORTÉE de la propagation — c'est l'appelant qui la choisit |
 | `pipeline/manuscrit_gabarit.py` | modèle riche → `.docx` au gabarit (§5.3, §5.4) | les décisions |
 | `pipeline/manuscrit_regles.py` | le catalogue structurel et le moteur d'alertes (§7) | les formats |
 | `pipeline/manuscrit_vale.py` | le pont Vale (§7) | les décisions |
@@ -541,34 +541,79 @@ les jetons et les indices.
 **Combinaison** : un signal de poids 3 qu'aucun autre poids 3 ne contredit donne
 `confiance='certaine'` ; sinon la somme la plus forte donne `'probable'` ; des signaux qui se
 contredisent à poids égal donnent `conflit=True` et la convention par défaut ; aucun signal donne
-`'defaut'`. Puis **propagation** (`trancher_groupe()`) : une byline est écrite dans UN ordre —
-dès qu'un segment est tranché et qu'aucun autre tranché ne le contredit, les segments restés en
-`defaut` adoptent cet ordre en `'propagee'`.
+`'defaut'`. Puis **propagation**, à DEUX portées — un article est écrit dans UN seul ordre
+prénom/nom, du début à la fin (principe posé par Robin le 22.09.2026) :
+
+1. **la ligne**, par `trancher_groupe()` : dès qu'un segment est tranché et qu'aucun autre
+   tranché ne le contredit, les segments restés en `defaut` de la même ligne adoptent cet ordre
+   en `'propagee'` ;
+2. **le document entier**, par `manuscrit_entete._propager_ordre_document()`, appelé après la
+   fusion du bloc final — c'est le seul moment où `entete.auteurs` porte les deux zones à la
+   fois. Même règle : les fiches tranchées qui portent un `ordre` votent, l'unanimité est
+   requise, et seules les fiches en `'defaut'` sans conflit basculent. Sans cette seconde
+   portée, la byline et le bloc final ne se votaient l'un l'autre que pour une personne
+   présente dans les deux endroits (appariée par `_fusionner_auteurs()`) : une autrice citée
+   dans la seule byline n'apprenait rien de ce que le bloc final avait tranché. Défaut mesuré
+   et corrigé le 22.09.2026, gardé par trois tests de `test/js/manuscrit-entete.test.js`.
+
+Une fiche porte donc un **quatrième** champ, `ordre` (`mn.ORDRE_DIRECT`, `mn.ORDRE_INVERSE` ou
+`None`) : `ordre_confiance` seul dit à quel point on est sûr sans dire de quoi, et
+`mn.repartir()` n'est inversible qu'une fois l'ordre connu. `ordre` vaut `None` — et la fiche ne
+vote alors jamais — quand l'ordre vient d'ailleurs que d'un signal de `manuscrit_noms` : c'est le
+cas de la forme « Nom, Prénom », où la virgule dit l'ordre DE CE SEGMENT sans rien dire de la
+convention du document (une byline « Guilley, Edith » n'interdit pas une prose « Edith
+Guilley »). Choix du lot du 22.09.2026, pas du brief.
 
 **Le lexique n'est jamais un filtre** : un auteur absent de la base n'est jamais rejeté ni
 signalé comme douteux, il ne sert qu'à départager un ordre. La base est **facultative** —
 absente ou illisible, les trois autres signaux jouent seuls et rien ne casse (aucun runner CI ne
 possède `C:\ProgramData\SZH`).
 
-**Marge du signal lexique = 1** (tout écart tranche). Mesuré en *leave-one-out* sur les
-1155 fiches de la base réelle, 22.09.2026 — chaque auteur retiré de la base avant d'être jugé,
-donc inconnu d'elle :
+**Marge du signal lexique = 1** (tout écart tranche). Mesuré en *leave-one-out* sur la base
+réelle — chaque auteur retiré de la base avant d'être jugé, donc inconnu d'elle. Le banc est
+`outils-dev/lexique/banc-noms.py` (rejouable : `python3 outils-dev/lexique/banc-noms.py`).
 
-| marge | tranché juste | à l'envers | indécis | muet |
+⚠ **Le dénominateur a changé le 22.09.2026, à la mise au propre du banc** : 1152 fiches, et non
+1155. Le script ad hoc qui avait produit la première table jugeait aussi les 3 fiches
+d'institution (« SZH/CSPS » / « Edition ») que `_charger_base_auteurs()` écarte comme bruit — il
+mesurait donc une population qui n'alimente pas la base. Le banc juge désormais EXACTEMENT les
+fiches retenues. Les colonnes « tranché juste » et « muet » sont inchangées au chiffre près (792
+et 320, 834 et 280) ; « à l'envers » perd les 2 inversions qui étaient ces institutions, « indécis »
+la troisième. C'est aussi ce qui fait disparaître l'« unique inversion à tort » de la propriété de
+sûreté ci-dessous : elle n'était pas une personne, elle n'est plus comptée.
+
+| | tranché juste | à l'envers | indécis | muet |
 |---|---|---|---|---|
-| **1 (retenue)** | 792 (68,6 %) | 9 (0,8 %) | 34 (2,9 %) | 320 (27,7 %) |
-| 2 (écartée) | 139 (12,0 %) | 3 (0,3 %) | 693 (60,0 %) | 320 (27,7 %) |
-| 1, avec `noms-famille.txt` | 834 (72,2 %) | 12 (1,0 %) | 29 (2,5 %) | 280 (24,2 %) |
+| marge 1, base OJS seule (témoin) | 792 (68,8 %) | 7 (0,6 %) | 33 (2,9 %) | 320 (27,8 %) |
+| marge 2, base OJS seule (écartée) | 139 (12,1 %) | 3 (0,3 %) | 690 (59,9 %) | 320 (27,8 %) |
+| marge 1, + `noms-famille.txt` (état du 22.09 au matin) | 834 (72,4 %) | 10 (0,9 %) | 28 (2,4 %) | 280 (24,3 %) |
+| **marge 1, + les trois fichiers du §5.5 quater (état livré)** | **1110 (96,4 %)** | **7 (0,6 %)** | **28 (2,4 %)** | **7 (0,6 %)** |
+
+⚠ **Limite du banc, à citer partout où sa table est citée** : il juge des fiches ISOLÉES, une par
+une, et ne voit donc rien de la propagation ci-dessus — ni le gain (il suffit qu'UN segment d'un
+article soit tranché pour que tout l'article bascule), ni le coût (une inversion tranchée à tort
+se propage et retourne l'article entier). Ce n'est pas une mesure de ce que vit un manuscrit,
+c'est un banc de comparaison entre paliers de lexique. C'est cette asymétrie qui justifie le
+critère d'acceptation : un palier ne s'adopte que s'il ne fait pas monter « à l'envers », même
+quand il fait gagner beaucoup de « tranché juste ».
 
 Pourquoi 1 plutôt que 2 : quand le lexique se tait, le repli n'est **pas** « aucune décision »,
 c'est la convention prénom-nom — fausse sur tout manuscrit écrit à l'envers, le cas même que ce
 module existe pour corriger. Un signal à 0,8 % d'erreur bat donc la convention partout où il
 parle ; et comme il pèse 2, la casse et l'e-mail le recouvrent.
 
-**Propriété de sûreté mesurée** (même base, 22.09.2026) : sur les 1155 noms réels écrits dans
-l'ordre DIRECT, l'ordre n'est retourné à tort **qu'une seule fois** (0,09 %), et cette unique
-fiche est « SZH/CSPS Edition », qui n'est pas une personne. Les signaux ne fabriquent pas
-d'inversions.
+**Propriété de sûreté mesurée** (même base, 22.09.2026, après élargissement du lexique) : sur
+les 1152 noms réels écrits dans l'ordre DIRECT, le seul signal `lexique` en retourne **7
+(0,6 %)** — **trois de moins** qu'avec le seul `noms-famille.txt`, et autant que le témoin sans
+aucun lexique, pour 276 décisions justes de plus. L'élargissement n'a donc pas acheté des
+décisions au prix d'inversions : il a fait baisser les deux.
+
+Sur ces 7, au moins **trois sont des saisies OJS déjà inversées**, où le signal a raison contre
+la base : « Monney Corinne » (prénom Monney, nom Corinne) et « Steinegger Barbara » sont des
+personnes réelles saisies à l'envers, et le couple « Hanny Urban » / « Urban Hanny » est la même
+personne entrée deux fois dans les deux sens — l'une des deux fiches est fausse par construction.
+Le taux réel d'inversions fabriquées est donc **au plus 4/1152 (0,35 %)**. Les signaux ne
+fabriquent pas d'inversions.
 
 **Répartition** : `repartir(jetons, ordre)` — publique, **un seul propriétaire**. Le prénom est
 l'ancre, prolongée à travers un tiret isolé ou une chaîne d'initiales pointées (« Susan C. A.
@@ -590,29 +635,106 @@ pas un défaut de ce module : en APA, « Uwe H. Bittlingmayer » se cite « Bitt
 
 ### 5.5 quater Le lexique du dépôt — `pipeline/lexique/`
 
-**Un seul fichier** : `noms-famille.txt`, 1282 jetons pliés, un par ligne, trié, fabriqué par
-`outils-dev/lexique/generer-noms.py` et **jamais édité à la main**. Source : les bibliographies
-de 56 des 77 galleys publiées du corpus local, au format APA « Nom, P. », où le nom de famille
-est certifié par la forme. C'est lui qui porte le gain mesuré du §5.5 ter (muet 27,7 → 24,2 %).
+**Trois fichiers**, un jeton plié par ligne, triés, `#` en commentaire, **jamais édités à la
+main** — chacun avec son producteur, sa provenance et sa licence dans son propre en-tête, parce
+que c'est le FICHIER qui voyage, pas le script (le dépôt a vocation à devenir public).
 
-Il ne porte que des **jetons de noms nus** : aucun e-mail, aucune affiliation, aucun ORCID, aucun
-couple prénom↔nom reconstituable. Le dépôt a vocation à devenir public.
+| fichier | jetons | alimente | producteur | source |
+|---|---|---|---|---|
+| `noms-famille.txt` | 1282 | noms | `outils-dev/lexique/generer-noms.py` | bibliographies de 56 des 77 galleys du corpus local, forme APA « Nom, P. » |
+| `noms-frequents.txt` | 227 687 | noms | `outils-dev/lexique/moissonner-noms-publics.py` | OFS + INSEE (ci-dessous) |
+| `prenoms-frequents.txt` | 55 525 | prénoms | idem | OFS + INSEE (ci-dessous) |
 
-**Décision de Robin, 22.09.2026 — `prenoms.txt` a été retiré.** Ce second fichier (599 prénoms)
-était le champ `prenom` de la base OJS de la maison : une dérivée de la base d'auteurs, dans un
-dépôt destiné à devenir public. Mesuré, il ne coûte **rien** : le gain du tableau du §5.5 ter est
-identique avec et sans lui, parce qu'il n'était que la copie figée de ce que `auteurs.json`
-apporte déjà quand elle est là. Son seul rôle était de servir de repli quand elle ne l'est pas —
-rôle désormais couvert à la source par le moissonnage au lancement (§5.5 quinquies).
+**Pourquoi trois fichiers et non un seul** (décision du lot du 22.09.2026, option (A) du brief) :
+les provenances ne se mélangent pas — c'est une condition des licences — les régénérations sont
+indépendantes, et surtout `generer-noms.py` lancé sans corpus valide réécrit SON fichier vide
+sans s'arrêter ; avec trois fichiers cet accident ne peut plus emporter que le sien.
+`moissonner-noms-publics.py`, lui, **refuse de s'exécuter** quand une famille de sources manque,
+plutôt que d'écrire du vide (test : `test/js/lexique-noms-publics.test.js`).
 
-Conséquence assumée et documentée dans `BaseNoms.charger()` : sans base OJS sur le poste, le
-signal `lexique` ne connaît plus que des noms de famille, donc `score_direct`/`score_inverse` ne
-peuvent plus valoir que 0 ou 1, jamais 2 — le signal s'affaiblit, il ne devient jamais faux, et
-les trois autres (casse, e-mail, bibliographie du manuscrit) sont intacts.
+**Sources publiques, et la citation qu'elles exigent** (vérifiées sur pièce le 22.09.2026) :
 
-`--base-auteurs` reste un argument du générateur, pour un **autre** usage qu'il faut ne pas
-casser par mégarde : l'immunité au seuil de bruit (« ne jamais écarter un jeton présent dans la
-base OJS »).
+- OFS, *Noms de famille de la population résidante permanente par région linguistique*, état 2025
+  (publié le 21.08.2026) — 238 962 noms distincts, 8 557 230 personnes ;
+- OFS, *Prénoms féminins / masculins de la population selon l'année de naissance*, état 2025 —
+  68 633 prénoms distincts. Les trois sous licence opendata.swiss, **utilisation libre avec
+  obligation d'indiquer la source** ;
+- INSEE / data.gouv.fr, *Liste de prénoms et patronymes* extraite de la base SIRENE, 2018 —
+  879 421 patronymes et 209 309 prénoms avec leurs occurrences, **Licence Ouverte 2.0 (Etalab)**.
+  Source bruitée (l'éditeur prévient qu'« aucune vérification du contenu n'est faite ») : seuil
+  de 50 occurrences, mesuré.
+
+Le **seuil de suppression des rares est 3 chez l'OFS**, mesuré sur le fichier (aucune ligne en
+dessous) : la queue que l'on craignait est déjà coupée à la source.
+
+**Le filtre de discrimination prénom/nom fait la qualité du lot, pas le palier.** Les deux
+sources de l'OFS décrivent la MÊME population : pour un jeton donné on connaît donc son poids
+comme nom ET comme prénom, sur la même échelle. 14 750 jetons pliés apparaissent des deux côtés,
+et parmi le top 30 000 des noms de famille, 1 383 (4,6 %) pèsent plus lourd comme prénom que
+comme nom — *martin, peter, michel, walter, simon, werner, richard, gabriel, ernst, rosa*, tout
+en haut du classement. Un jeton n'entre dans un index que si son poids de ce côté vaut au moins
+**2 fois** (`--rapport`) son poids de l'autre ; sinon il n'entre nulle part (4 097 jetons en
+« zone neutre » — « en cas de doute, rien », appliqué au filtre lui-même). Les deux index sont
+donc **disjoints**, ce qu'un test garde : un jeton connu des deux annulerait sa propre
+contribution au signal (`score_direct == score_inverse`).
+
+⚠ **`prenoms-frequents.txt` n'est PAS la réapparition de `prenoms.txt`**, retiré le 22.09.2026 au
+matin. Celui-là était le champ `prenom` de la base OJS de la maison, c'est-à-dire une dérivée de
+données d'auteurs dans un dépôt appelé à devenir public : c'est sa **provenance** qui l'a fait
+supprimer, jamais son existence. Celui-ci vient des registres de population de l'OFS et de
+l'INSEE, et `moissonner-noms-publics.py` n'a aucun moyen de lire `auteurs.json` — un test le
+vérifie sur le script, pas seulement sur le fichier. Les deux index restent en outre **séparés
+l'un de l'autre** : deux listes de jetons nus ne reconstituent aucune personne, un couple
+prénom↔nom oui.
+
+**Pourquoi un index de prénoms était nécessaire, et pas seulement souhaitable.** Le signal
+COMPARE deux hypothèses ; ne nourrir que les noms ne charge qu'un plateau de la balance. Mesuré
+au banc (leave-one-out, 1152 fiches) :
+
+| | tranché juste | à l'envers | indécis | muet |
+|---|---|---|---|---|
+| témoin, base OJS seule | 792 (68,8 %) | 7 (0,6 %) | 33 (2,9 %) | 320 (27,8 %) |
+| + `noms-famille.txt` seul | 834 (72,4 %) | 10 (0,9 %) | 28 (2,4 %) | 280 (24,3 %) |
+| + 30 000 noms publics, **sans filtre, sans prénoms** | 864 (75,0 %) | **44 (3,8 %)** | 152 (13,2 %) | 92 (8,0 %) |
+| + 30 000 noms publics filtrés, sans prénoms | 987 (85,7 %) | 10 (0,9 %) | 25 (2,2 %) | 130 (11,3 %) |
+| + 30 000 noms + 8 000 prénoms, filtrés | 1086 (94,3 %) | 10 (0,9 %) | 31 (2,7 %) | 25 (2,2 %) |
+| + 30 000 noms + TOUS les prénoms, filtrés | 1095 (95,1 %) | 9 (0,8 %) | 32 (2,8 %) | 16 (1,4 %) |
+| + 100 000 noms + 30 000 prénoms, filtrés | 1101 (95,6 %) | 9 (0,8 %) | 29 (2,5 %) | 13 (1,1 %) |
+| **+ tout (227 687 / 55 525), filtrés — LIVRÉ** | **1110 (96,4 %)** | **7 (0,6 %)** | **28 (2,4 %)** | **7 (0,6 %)** |
+
+La troisième ligne est l'avertissement du brief, mesuré : élargir naïvement **quadruple** la
+colonne qui ment. La quatrième montre que c'est le **filtre**, et non l'index de prénoms, qui
+neutralise ce danger ; la cinquième, que l'index de prénoms est ce qui fait ensuite tomber le
+silence de 11,3 % à 2,2 %.
+
+**Aucun palier intermédiaire n'a été retenu, et la mesure dit pourquoi** : la courbe est
+monotone, sur les DEUX colonnes qui comptent à la fois. Le palier complet corrige **trois
+inversions réelles** que les paliers tronqués laissent passer — « Ayala Borghini », « Kolja
+Ernst », « Simoni Symeonidou », des prénoms et des noms rares en Suisse, absents des têtes de
+classement — et n'en introduit **aucune** (comparaison fiche à fiche, 22.09.2026). C'est
+exactement le critère d'acceptation du §6 du brief : le plus grand palier qui ne fait pas monter
+« à l'envers » et fait baisser « muet ». Tronquer reste possible
+(`--palier-noms 30000 --palier-prenoms 8000`), mais ce n'est pas le défaut, pour qu'une
+régénération ne rétrécisse jamais le lexique sans qu'on l'ait demandé.
+
+**Coût mesuré** : 2,3 Mo sur disque pour les deux index, **818 Ko compressés dans git**, et
+**115 ms** pour charger toute la base (base OJS comprise, 283 852 jetons). Le poids en dépôt est
+le seul vrai coût, et il ne se paie qu'une fois l'an (l'OFS publie une édition par an) ; le temps,
+lui, ne se voit pas — 115 ms sur un nettoyage de manuscrit qui en prend 2300, soit 5 %, et
+seulement grâce au chemin rapide de `_charger_fichier_lexique()` : un fichier déjà plié saute la
+normalisation NFD, et replier un jeton plié est l'identité. Le repli complet reste branché pour
+toute ligne non reconnue. Sans ce chemin rapide, le même chargement coûterait environ 450 ms.
+
+| palier | juste | à l'envers | muet | disque | git (gz) | chargement |
+|---|---|---|---|---|---|---|
+| 30 000 / 8 000 | 94,3 % | 10 | 25 | 283 Ko | 105 Ko | 19 ms |
+| 30 000 / tous | 95,1 % | 9 | 16 | 648 Ko | 227 Ko | 35 ms |
+| 100 000 / 30 000 | 95,6 % | 9 | 13 | 1,0 Mo | 359 Ko | 55 ms |
+| **tout (livré)** | **96,4 %** | **7** | **7** | **2,3 Mo** | **818 Ko** | **115 ms** |
+
+`--base-auteurs` reste un argument de `generer-noms.py`, pour un **autre** usage qu'il faut ne
+pas casser par mégarde : l'immunité au seuil de bruit (« ne jamais écarter un jeton présent dans
+la base OJS »).
 
 ### 5.5 quinquies D'où vient la base d'auteurs, et pourquoi elle arrive toute seule
 
@@ -1412,7 +1534,8 @@ fixtures `.docx` **fabriquées dans le test** et non figées en binaire — patr
 | `manuscrit-parite-lecteur.test.js` | `projeter_pronto()` et `pronto_docx.lire()` s'accordent sur les deux gabarits livrés. Ce fichier disparaît avec la dette du §3. |
 | `manuscrit-entete.test.js` | Titre + sous-titre, auteurs (byline groupée, lignes séparées, « Nom, Prénom », téléphone écarté), résumé plafonné, mots-clés, DOI, en-tête vide. Le bloc final d'autrices/auteurs (§5.5 bis) : intertitre connu, repli heuristique, fusion sans duplication, frontière avec la zone d'en-tête. Un test de bout en bout compare la sortie relue par `pronto-lire.py` aux valeurs attendues. Depuis le 22.09 : les quatre défauts de partition (institution en virgule, institution seule, titres académiques, emoji), la propagation d'ordre sur une byline, la fusion par e-mail puis par ensemble de jetons, les trois champs `ordre_*`, et **une initiale intermédiaire à travers les deux modules** — ce dernier ferme le trou qui avait laissé diverger une copie de la répartition. |
 | `manuscrit-noms.test.js` | Le module de décision seul (§5.5 ter), par son mode `--diagnostic`, base toujours fournie **en ligne** — aucun test ne lit `C:\ProgramData\SZH`, absent des runners CI. Les quatre signaux un à un, le conflit, la propagation et sa non-propagation, les titres académiques, les particules dans les deux ordres, les initiales pointées, et un test qui **constate** la limite du prénom composé à l'espace au lieu de prétendre la corriger. |
-| `lexique-noms.test.js` | Le générateur (§5.5 quater) sur un corpus fabriqué, et les deux fichiers livrés : triés, sans doublon, sans `@`, sans chiffre, sans espace. Le corpus réel hors dépôt absent → `sauter.corpus(t, chemin)`. |
+| `lexique-noms.test.js` | `generer-noms.py` (§5.5 quater) sur un corpus fabriqué, et `noms-famille.txt` livré : trié, sans doublon, sans `@`, sans chiffre, sans espace. Le corpus réel hors dépôt absent → `sauter.corpus(t, chemin)`. |
+| `lexique-noms-publics.test.js` | `moissonner-noms-publics.py` (§5.5 quater) : la forme des deux index livrés, leur **disjonction**, la citation de licence dans chaque en-tête, le filtre de discrimination sur des compteurs fabriqués, et le refus d'écrire sans sources. Deux gardes de **provenance** portent sur le SCRIPT et non sur le fichier — un fichier propre produit par un script qui relirait `auteurs.json` est exactement ce qu'on empêche. Le banc `banc-noms.py` y rejoue le critère d'acceptation quand la base OJS du poste est là ; sautés sans elle. |
 | `manuscrit-rapport.test.js` | La vue du rapport HTML (`construireVueRapportManuscrit`) : groupement par famille/règle, plafond d'occurrences, verdict d'image délégué à `qualite-image.js`, mention « (dans un tableau) » sur un paragraphe de cellule signalé. |
 
 **Le contrôle qui compte plus que tous les autres** n'est pas dans cette table, parce qu'il
