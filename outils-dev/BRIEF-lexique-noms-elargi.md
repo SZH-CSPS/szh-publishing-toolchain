@@ -4,9 +4,17 @@
 > assisté à la session où il a été cadré. Tu connais peut-être le dépôt ; tu ne connais pas ce
 > lot-ci, qui date du jour même.
 
-**La demande en une phrase :** `pipeline/lexique/noms-famille.txt` ne porte aujourd'hui que les
-1 282 noms tirés des bibliographies du corpus local ; il faut l'élargir aux noms de famille les
-plus fréquents **en Suisse d'abord, en Europe ensuite**.
+**La demande, en trois points.** Ils viennent de Robin, ils ne se négocient pas :
+
+1. **Élargir le lexique des noms de famille.** `pipeline/lexique/noms-famille.txt` ne porte
+   aujourd'hui que les 1 282 noms tirés des bibliographies du corpus local ; il doit couvrir les
+   noms les plus fréquents **en Suisse d'abord, en Europe ensuite**.
+2. **Créer aussi un index des prénoms** (§5.4) — il en a existé un, supprimé le 22.09.2026 pour
+   une raison de **provenance** qui tient toujours : source publique uniquement, jamais une
+   dérivée de la base maison.
+3. **La détection part du principe que l'ordre prénom/nom est constant dans un même document**
+   (§3 bis) — la byline et le bloc final des autrices et auteurs se votent l'un l'autre, ils ne se
+   décident pas chacun dans son coin.
 
 **Le piège central, à comprendre avant d'écrire une ligne :** ce n'est pas un problème de volume.
 Le disque et la RAM sont négligeables à toutes les tailles envisagées (§4). Élargir naïvement
@@ -79,7 +87,13 @@ doivent pas être touchés.
 Le fichier ne porte **que des noms nus** : aucun e-mail, aucune affiliation, aucun ORCID, aucun
 couple prénom↔nom reconstituable. **Le dépôt a vocation à devenir public** — cette contrainte a
 déjà fait retirer `prenoms.txt` le 22.09.2026 (§5.5 quater). Elle s'applique à tout ce que tu
-ajoutes.
+ajoutes, **l'index des prénoms compris** : deux listes séparées ne reconstituent aucune personne,
+une paire prénom↔nom oui.
+
+`_charger_fichier_lexique(dossier, nom_fichier, cible)` prend déjà le nom du fichier **et** le
+dictionnaire cible en paramètres : lire un second fichier dans `_prenoms` au lieu de `_noms` est un
+appel de plus dans `BaseNoms.charger()`, pas une refonte. Le mécanisme d'accueil de l'index de
+prénoms existe donc déjà — il a servi jusqu'au 22.09.2026 au matin.
 
 ---
 
@@ -118,6 +132,36 @@ La collision est aujourd'hui de **12 noms sur 1 282** (0,9 %) : *fabian, frank, 
 michel, peter, robert, simon, simoni, urban, walter*. Elle va monter beaucoup sur un top-N suisse,
 parce que Peter, Simon, Martin, Walter, Robert sont justement des noms de famille **fréquents** en
 Suisse : ils arriveront tout en haut du classement.
+
+### 3 bis. L'ordre est constant dans un même document — principe posé par Robin
+
+**Un article est écrit dans UN seul ordre prénom/nom, du début à la fin.** Une autrice ne signe pas
+« Edith Guilley » dans la byline pour redevenir « Sermier Dessemontet Rachel » dans le bloc final.
+La détection doit partir de ce principe, et pas seulement à l'intérieur d'une byline.
+
+Ce que le code fait **déjà** : `trancher_groupe()` propage l'ordre au sein d'**un groupe de
+segments reçus ensemble** — dès qu'un segment est tranché et qu'aucun autre tranché ne le
+contredit, les segments restés en `defaut` adoptent cet ordre avec la confiance `'propagee'`
+(§5.5 ter du contrat).
+
+Ce qu'il faut **vérifier, et corriger si ce n'est pas le cas** : que la portée de cette propagation
+soit bien **le document entier**, et non chaque bloc pris séparément. Un manuscrit porte au moins
+deux endroits où des noms apparaissent — la **byline** et le **bloc final d'informations sur les
+autrices et auteurs** (§5.5 bis du contrat) — et ils doivent se voter l'un l'autre. C'est
+`manuscrit-nettoyer.py`, la CLI, qui décide de ce qui est passé ensemble à `trancher_groupe()` :
+c'est là qu'il faut regarder, pas dans `manuscrit_noms.py`, qui ne connaît que le groupe qu'on lui
+donne.
+
+**Deux conséquences à garder en tête pendant tout le lot :**
+
+- **C'est le meilleur allié de l'élargissement.** Un lexique plus large ne tranchera pas forcément
+  *tous* les segments d'un document — mais il suffit qu'il en tranche **un seul** pour que tout le
+  document bascule dans le bon ordre. Le gain d'un palier ne se lit donc pas segment par segment.
+- **C'est aussi ce qui amplifie le danger du §3 (b).** Une inversion tranchée à tort ne reste pas
+  locale : elle se propage à tous les segments restés en `defaut`. **Une seule erreur peut retourner
+  un article entier.** D'où un critère d'acceptation (§6) beaucoup plus dur sur la colonne « à
+  l'envers » que sur la colonne « muet » : un silence ne coûte qu'une convention par défaut, une
+  inversion coûte un document.
 
 ---
 
@@ -169,12 +213,21 @@ ci-dessous, et il n'est **recommandé, pas décidé** : c'est la mesure du §6 q
 3. **Un filtre de discrimination, qui compte plus que la taille** — écarter tout jeton dont la
    fréquence comme **prénom** domine sa fréquence comme **nom**. C'est ce filtre qui décide de la
    qualité du lot, pas le palier retenu.
-4. **Moissonner les prénoms symétriquement** — sinon tu casses la comparaison du §3 en n'en
-   nourrissant qu'un côté. Sources **publiques** (l'OFS publie les prénoms par année de naissance ;
-   l'INSEE aussi) : ça lève l'objection de confidentialité qui avait tué `prenoms.txt` le
-   22.09.2026, car une liste OFS n'est pas une dérivée de la base maison. **C'est une décision de
-   Robin, pas la tienne** (§9) : `prenoms.txt` a été retiré il y a quelques heures, le remettre
-   sous une autre provenance doit être demandé explicitement.
+4. **Un index de prénoms, au même titre que celui des noms — demandé explicitement par Robin le
+   22.09.2026.** Ce n'est pas une option et ce n'est pas à toi d'en débattre : sans lui, tu ne
+   nourris qu'un côté de la comparaison du §3 et tu dégrades le signal au lieu de l'améliorer.
+
+   ⚠ **Attention à la provenance, c'est tout l'objet de la demande.** Un fichier `prenoms.txt` a
+   existé et **a été supprimé le matin même du 22.09.2026** : il était dérivé de
+   `auteurs.json`, la base maison, dans un dépôt appelé à devenir public. Ce que Robin demande de
+   recréer est un index de prénoms **de source publique** (l'OFS publie les prénoms par année de
+   naissance ; l'INSEE aussi) — pas une réapparition de l'ancien fichier sous un autre nom. Si tu
+   te retrouves à relire `auteurs.json` pour produire ce fichier, tu es en train de refaire
+   exactement ce qui a été supprimé : arrête-toi et remonte la question.
+
+   Taille : les prénoms distincts sont **beaucoup moins nombreux** que les noms de famille et leur
+   distribution est bien plus concentrée. Vise l'ordre de **5 000 à 10 000**, à confirmer sur le
+   fichier ; n'aligne pas mécaniquement cette taille sur celle des noms.
 5. **Garder la provenance dans l'en-tête du fichier** — les données de l'OFS sont libres
    **sous condition de citer la source**. L'en-tête généré doit porter la source, l'année et la
    licence de chaque apport.
@@ -214,7 +267,17 @@ echo '{"segments":[{"texte":"Guilley Edith","indices":{}}],"base":{"prenoms":["e
 **Le critère d'acceptation** : retenir le plus grand palier qui **n'augmente pas** la colonne
 « à l'envers » au-delà de 12/1155 (1,0 %), et qui fait baisser « muet ». Un palier qui gagne du
 « tranché juste » en payant des inversions **ne s'adopte pas en silence** : il remonte à Robin avec
-ses chiffres.
+ses chiffres. L'asymétrie est voulue, et le §3 bis en donne la raison : dans un document, un
+silence ne coûte qu'une convention par défaut, une inversion se propage et retourne l'article.
+
+⚠ **Limite de ce banc, à écrire noir sur blanc dans ton rapport** : il juge des fiches
+**isolées**, une par une. Il ne voit donc **rien** de la propagation du §3 bis, qui est précisément
+ce qui fait la valeur d'un lexique élargi en conditions réelles. Il **sous-estime** le gain d'un
+palier et **sous-estime** aussi le coût d'une inversion. Ne le présente jamais comme une mesure de
+ce que vit un manuscrit : c'est un banc de comparaison entre paliers, rien de plus. Si tu vois
+comment ajouter un second banc **par document** (plusieurs segments du même article jugés
+ensemble, propagation comprise), propose-le — mais il demande un corpus de manuscrits que tu n'as
+pas, donc ne t'y engage pas sans en parler d'abord.
 
 ---
 
@@ -258,10 +321,12 @@ Le reste du travail :
 - **Aucune dépendance tierce.** Ni dans le pipeline, ni dans `outils-dev/`. stdlib seule, partout,
   y compris pour lire un CSV ou un ZIP.
 - **Ne touche pas aux trois autres signaux** (casse, e-mail, biblio), ni à `MARGE_LEXIQUE`, ni à la
-  combinaison de `trancher()`. Le périmètre est la base lexicale, et elle seule.
-- **Ne remets pas `prenoms.txt` sous son ancienne forme** (dérivé de `auteurs.json`) : c'est une
-  décision du 22.09.2026, motivée par la publication du dépôt. Une liste de prénoms de source
-  **publique** est une autre question, et elle appartient à Robin (§9).
+  combinaison de `trancher()`. Le périmètre est la base lexicale et la portée de la propagation
+  (§3 bis) — rien d'autre.
+- **Ne recrée pas l'ancien `prenoms.txt`, dérivé de `auteurs.json`.** L'index de prénoms est
+  demandé (§5.4), mais c'est sa **provenance** qui avait motivé la suppression du 22.09.2026, pas
+  son existence : le dépôt devient public, il ne porte pas de dérivée de la base maison. Source
+  publique, et rien d'autre.
 - **Aucune donnée personnelle** dans ce qui est committé : des jetons de noms nus, rien d'autre.
 - **Ne « corrige » pas la base OJS** en passant. Ses défauts de saisie sont documentés au §5.5 ter
   et hors périmètre.
@@ -270,25 +335,35 @@ Le reste du travail :
 
 ## 9. Ce qui appartient à Robin, pas à toi
 
-Remonte ces quatre points avec des chiffres, ne les tranche pas seul :
+Remonte ces points avec des chiffres, ne les tranche pas seul :
 
 1. **Le palier final** — ta mesure du §6 propose, Robin dispose.
-2. **Un ou deux fichiers** (§7, A ou B).
-3. **Une liste de prénoms de source publique**, oui ou non (§5.4). Sans elle, l'élargissement des
-   noms seuls est déséquilibré et peut ne rien rapporter du tout — dis-le clairement si ta mesure
-   le montre.
-4. **Tout palier qui gagne des décisions justes en payant des inversions** (§6).
+2. **Un ou deux fichiers pour les noms** (§7, A ou B).
+3. **Tout palier qui gagne des décisions justes en payant des inversions** (§6).
+4. **Toute extension de la portée de la propagation au-delà de la byline + le bloc final**
+   (§3 bis) — la constance de l'ordre dans un document est un principe posé par Robin, sa mise en
+   œuvre exacte ne l'est pas.
+
+**Déjà tranché par Robin le 22.09.2026, ne rouvre pas le débat** : l'index de prénoms **se fait**
+(§5.4), de source publique et de source publique seulement.
 
 ---
 
 ## 10. Livrables
 
-- [ ] `outils-dev/lexique/banc-noms.py` — le banc leave-one-out, réutilisable, stdlib seule.
+- [ ] `outils-dev/lexique/banc-noms.py` — le banc leave-one-out, réutilisable, stdlib seule, avec
+      sa limite (§6) écrite dans son en-tête.
 - [ ] La table du §6 remplie pour chaque palier, datée, dans le rapport de livraison **et** dans le
       contrat.
 - [ ] `outils-dev/lexique/moissonner-noms-publics.py` — le moissonnage et le filtre.
-- [ ] Le(s) fichier(s) de lexique régénéré(s), avec la provenance et la licence en en-tête.
-- [ ] `ARCHITECTURE-nettoyeur-manuscrit.md` §5.5 quater à jour.
+- [ ] Le lexique des **noms** régénéré, avec la provenance et la licence en en-tête.
+- [ ] **L'index des prénoms** (§5.4), de source publique, avec la même rigueur de provenance — et
+      la démonstration, dans le rapport, qu'il ne dérive **pas** de `auteurs.json`.
+- [ ] **La portée de la propagation vérifiée** (§3 bis) : byline et bloc final jugés ensemble, avec
+      le test qui le prouve. Si c'était déjà le cas, dis-le et montre où ; si ça ne l'était pas,
+      c'est une correction à part entière, pas un effet de bord du lexique.
+- [ ] `ARCHITECTURE-nettoyeur-manuscrit.md` §5.5 ter (la propagation) **et** §5.5 quater (le
+      lexique, désormais deux index) à jour.
 - [ ] `node --test "test/js/*.test.js"` vert.
 - [ ] Un rapport de livraison qui dit **ce qui n'a pas marché** autant que ce qui a marché, et qui
       liste les écarts au présent brief plutôt que de les corriger en silence.
