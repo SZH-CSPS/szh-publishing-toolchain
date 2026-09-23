@@ -5,14 +5,15 @@
 // données factices réalistes et un shim `acquireVsCodeApi()` qui répond localement au lieu
 // d'un vrai hôte VSCodium — jamais de vscode-resource:, un simple fichier à ouvrir.
 //
-// Sert à juger le rendu des trois onglets (Traductions à faire, Réservoir, Documentation du
-// numéro) sans ouvrir VSCodium — voir docs/notes de session « aperçu d'une webview hors de
-// l'éditeur » (WSL/Edge headless, capture PNG avant/après).
+// Sert à juger le rendu des quatre onglets (Traductions à faire, Réservoir, Documentation du
+// numéro, Archive) sans ouvrir VSCodium — voir docs/notes de session « aperçu d'une webview
+// hors de l'éditeur » (WSL/Edge headless, capture PNG avant/après).
 //
 // Usage :
 //   node outils-dev/apercu-documentation.js
 //   node outils-dev/apercu-documentation.js reservoir   (ouvre directement cet onglet)
 //   node outils-dev/apercu-documentation.js traductions
+//   node outils-dev/apercu-documentation.js archive     (bibliothèque de production factice)
 //
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>"
@@ -64,7 +65,24 @@ function textesDocumentation() {
     reservoirToutSelectionner: T('doc.reservoir.toutSelectionner'),
     reservoirAnnuler: T('doc.reservoir.annuler'), reservoirAnnulerTip: T('doc.reservoir.annuler.tip'),
     orphelinesTitre: T('doc.orphelines.titre'), orphelinesVide: T('doc.orphelines.vide'),
-    tirerDansNumero: T('doc.orphelines.tirer'), tirerDansNumeroTip: T('doc.orphelines.tirer.tip')
+    tirerDansNumero: T('doc.orphelines.tirer'), tirerDansNumeroTip: T('doc.orphelines.tirer.tip'),
+    ongletArchive: T('doc.onglet.archive'),
+    archiveChargement: T('doc.archive.chargement'),
+    archiveActualiser: T('doc.archive.actualiser'), archiveActualiserTip: T('doc.archive.actualiser.tip'),
+    archiveAncrageIntrouvable: T('doc.archive.ancrageIntrouvable'),
+    archiveVide: T('doc.archive.vide'),
+    archiveRechercheIndice: T('doc.archive.rechercheIndice'),
+    archiveFiltreType: T('doc.archive.filtre.type'), archiveFiltreTypeTous: T('doc.archive.filtre.typeTous'),
+    archiveFiltreRevue: T('doc.archive.filtre.revue'), archiveFiltreRevueToutes: T('doc.archive.filtre.revueToutes'),
+    archiveFiltreNumero: T('doc.archive.filtre.numero'), archiveFiltreNumeroTous: T('doc.archive.filtre.numeroTous'),
+    archiveFiltreAnnee: T('doc.archive.filtre.annee'), archiveFiltreAnneeToutes: T('doc.archive.filtre.anneeToutes'),
+    archiveAucunResultat: T('doc.archive.aucunResultat'),
+    archiveSansNumero: T('doc.archive.sansNumero'),
+    archiveReprendre: T('doc.archive.reprendre'), archiveReprendreTip: T('doc.archive.reprendre.tip'),
+    archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
+    archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
+    archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
+    archiveCompteur: T('doc.archive.compteur')
   };
 }
 
@@ -194,6 +212,74 @@ const orphelines = [
     titre: 'Une reprise jamais rattachée' }
 ];
 
+// Onglet Archive : une vingtaine de fiches de la bibliothèque de PRODUCTION (docs/FORMAT-
+// DOCUMENTATION-KIRBY.md), toutes langues et tous numéros confondus — même forme que
+// ligneArchive() dans lib/documentation-hote.js. Quelques-unes bilingues (les deux langues
+// présentes), certaines sans numéro de rattachement (orphelines côté production), pour que
+// l'aperçu montre chaque cas de la liste et des filtres.
+function ficheArchiveDemo(n) {
+  const base = {
+    r1: { type: 'livre', titreFr: 'Grandir avec un handicap', titreDe: 'Mit Behinderung aufwachsen',
+      champs: { categorie: 'manuel', auteurs: 'A. Dupont, B. Martin', annee: '2024', editeur: 'Editions SZH',
+        descriptif: 'Un manuel de référence pour les professionnel·le·s.' },
+      numero: { id: 'arch-r-2024-02', label: 'Revue 2024/2', revue: 'revue', annee: '2024' } },
+    r2: { type: 'livre', titreFr: '', titreDe: 'Vielfalt leben', langues: ['de'],
+      champs: { categorie: 'recit', auteurs: 'S. Keller', annee: '2023', editeur: 'Beltz',
+        descriptif: 'Ein Erfahrungsbericht aus dem Familienalltag.' },
+      numero: { id: 'arch-z-2023-04', label: 'Zeitschrift 2023/4', revue: 'zeitschrift', annee: '2023' } },
+    r3: { type: 'film', titreFr: 'Autrement capable', titreDe: '', langues: ['fr'],
+      champs: { categorie: 'documentaire', realisateur: 'C. Perret', annee: '2025', distributeur: 'Trigon-Film',
+        descriptif: 'Portrait de trois jeunes en situation de handicap.' },
+      numero: { id: 'arch-r-2025-01', label: 'Revue 2025/1', revue: 'revue', annee: '2025' } },
+    r4: { type: 'intervention', titreFr: 'Pour un renforcement de la pédagogie spécialisée', titreDe: '', langues: ['fr'],
+      champs: { canton: 'ZH', categorie: 'motion', numero: '24.3456', date: '2024-03-12',
+        etat: 'adopte', source: 'curia', descriptif: 'Demande une meilleure dotation des cantons.' },
+      numero: { id: 'arch-r-2024-04', label: 'Revue 2024/4', revue: 'revue', annee: '2024' } },
+    r5: { type: 'horizon', titreFr: 'Nouvelle stratégie nationale sur le handicap',
+      titreDe: 'Neue Behindertenstrategie des Bundes',
+      champs: { portee: 'national', descriptif: 'Le Conseil fédéral publie sa stratégie.' },
+      numero: { id: 'arch-r-2023-01', label: 'Revue 2023/1', revue: 'revue', annee: '2023' } },
+    r6: { type: 'agenda', titreFr: 'Journée romande de la pédagogie spécialisée', titreDe: '', langues: ['fr'],
+      champs: { evenement: 'colloque', debut: '2023-11-05', fin: '2023-11-05', lieu: 'Lausanne', organisateur: 'CSPS',
+        descriptif: 'Une journée de conférences et d’ateliers.' },
+      numero: { id: 'arch-r-2023-05', label: 'Revue 2023/5', revue: 'revue', annee: '2023' } },
+    r7: { type: 'recherche', titreFr: 'La détection précoce dans le canton de Berne', titreDe: '', langues: ['fr'],
+      champs: { institutions: 'Université de Berne', debut: '2022', fin: '2026',
+        descriptif: 'Un projet longitudinal sur le dépistage précoce.' },
+      // Orpheline côté production : jamais rattachée à un numéro.
+      numero: null },
+    r8: { type: 'reprise', titreFr: 'D’une revue à l’autre : un article marquant', titreDe: '', langues: ['fr'],
+      champs: { revue: 'zeitschrift', auteurs: 'M. Weber', reference: 'Vol. 40, no 2, p. 14–22',
+        descriptif: 'Un article à faire connaître aussi côté francophone.' },
+      numero: { id: 'arch-r-2022-03', label: 'Revue 2022/3', revue: 'revue', annee: '2022' } }
+  }[n.cle];
+  const langues = base.langues || ['fr', 'de'];
+  const valeurs = {};
+  const titres = { fr: langues.includes('fr') ? base.titreFr : '', de: langues.includes('de') ? base.titreDe : '' };
+  for (const l of langues) {
+    valeurs[l] = Object.assign({ title: l === 'fr' ? base.titreFr : base.titreDe }, base.champs);
+  }
+  for (const l of ['fr', 'de']) { if (!langues.includes(l)) { valeurs[l] = null; } }
+  const numeros = [];
+  if (base.numero) { for (const l of langues) { numeros.push(Object.assign({ langue: l }, base.numero)); } }
+  const recherche = langues.map((l) => Object.values(valeurs[l]).join(' ')).join(' ').toLowerCase();
+  return { type: base.type, slug: n.slug, langues: langues, titres: titres, valeurs: valeurs, numeros: numeros, recherche: recherche };
+}
+const archive = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'].map((cle, i) =>
+  ficheArchiveDemo({ cle: cle, slug: 'demo-arch-' + (i + 1) }));
+// Complète à une vingtaine de fiches (Robin : « une vingtaine ») en variant le millésime des
+// huit fiches ci-dessus — assez pour juger la liste, la recherche et les quatre filtres sans
+// recopier vingt fiches à la main.
+for (let i = 0; i < 12; i++) {
+  const modele = archive[i % 8];
+  const annee = String(2018 + (i % 6));
+  archive.push(Object.assign({}, modele, {
+    slug: modele.slug + '-var' + i,
+    numeros: modele.numeros.map((n) => Object.assign({}, n, { id: n.id + '-var' + i, annee: annee,
+      label: n.label.replace(/\d{4}/, annee) }))
+  }));
+}
+
 const txt = textesDocumentation();
 const messageCharger = {
   type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -223,6 +309,7 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '(function () {\n' +
   '  var CHARGER = ' + JSON.stringify(messageCharger) + ';\n' +
   '  var RESERVOIR = { actives: ' + JSON.stringify(reservoirActives) + ', ignorees: ' + JSON.stringify(reservoirIgnorees) + ' };\n' +
+  '  var ARCHIVE = ' + JSON.stringify(archive) + ';\n' +
   '  var vraiApi = null;\n' +
   '  window.acquireVsCodeApi = function () {\n' +
   '    if (vraiApi) { return vraiApi; }\n' +
@@ -234,6 +321,12 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '        } else if (msg.type === "reservoirFiltre") {\n' +
   '          var entrees = msg.avecIgnorees ? RESERVOIR.ignorees : RESERVOIR.actives;\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "reservoir", avecIgnorees: !!msg.avecIgnorees, entrees: entrees } }));\n' +
+  '        } else if (msg.type === "archiveCharger" || msg.type === "archiveActualiser") {\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveDonnees", ok: true, fiches: ARCHIVE } }));\n' +
+  '        } else if (msg.type === "archiveImage") {\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveImageDonnee", ficheType: msg.ficheType, slug: msg.slug, apercu: null } }));\n' +
+  '        } else if (msg.type === "archiveReprendre") {\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveReprise", ok: true } }));\n' +
   '        }\n' +
   '      },\n' +
   '      setState: function () {}, getState: function () { return null; }\n' +
@@ -243,7 +336,7 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '  window.addEventListener("load", function () {\n' +
   '    var params = new URLSearchParams(location.search);\n' +
   '    var onglet = params.get("onglet");\n' +
-  '    var index = { traductions: 0, reservoir: 1, numero: 2 }[onglet];\n' +
+  '    var index = { traductions: 0, reservoir: 1, numero: 2, archive: 3 }[onglet];\n' +
   '    if (index === undefined) { return; }\n' +
   '    var boutons = document.querySelectorAll("#onglets .doc-onglet");\n' +
   '    if (boutons[index]) { boutons[index].click(); }\n' +
@@ -278,4 +371,6 @@ console.log('URL onglet Traductions à faire : file:///' + cible.replace(/\\/g, 
 console.log('URL onglet Réservoir (+ Mes orphelines), sélection multiple déjà démontrée (2 lignes cochées) : '
   + 'file:///' + cible.replace(/\\/g, '/') + '?onglet=reservoir');
 console.log('  … la même sans rien cocher : file:///' + cible.replace(/\\/g, '/') + '?onglet=reservoir&selection=0');
+console.log('URL onglet Archive (bibliothèque de production, ~20 fiches factices) : '
+  + 'file:///' + cible.replace(/\\/g, '/') + '?onglet=archive');
 if (ongletDemande) { console.log('Onglet demandé sur la ligne de commande : ' + url); }

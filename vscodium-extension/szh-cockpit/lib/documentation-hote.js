@@ -32,9 +32,16 @@ const { construireHtml } = require('./webviews/util');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
-const { langueRevue, ecrireAtomique, serialiserMeta, assurerIdNumero } = require('./yaml');
+const { langueRevue, ecrireAtomique, serialiserMeta, assurerIdNumero, libelleCourtNumero } = require('./yaml');
 const { apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, TAILLE_MAX_IMAGE_IMPORT } = require('./medias');
 const kirby = require('./kirby-contenu');
+// Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
+// PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
+// Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
+// qui porte le nom du dossier de l'application (lib/rapport-erreur.js) ; racineProduction()
+// ci-dessous en dérive de la même façon que resoudreDossierRapports(), sans le segment
+// `_Systeme\rapports` propre aux rapports d'erreur.
+const rapportErreur = require('./rapport-erreur');
 
 // Doivent rester alignées avec les constantes du même nom dans extension.js (le type de
 // fiche de la page de Documentation, et le slug qu'elle prend par défaut).
@@ -175,8 +182,119 @@ function textesDocumentation() {
     reservoirToutSelectionner: T('doc.reservoir.toutSelectionner'),
     reservoirAnnuler: T('doc.reservoir.annuler'), reservoirAnnulerTip: T('doc.reservoir.annuler.tip'),
     orphelinesTitre: T('doc.orphelines.titre'), orphelinesVide: T('doc.orphelines.vide'),
-    tirerDansNumero: T('doc.orphelines.tirer'), tirerDansNumeroTip: T('doc.orphelines.tirer.tip')
+    tirerDansNumero: T('doc.orphelines.tirer'), tirerDansNumeroTip: T('doc.orphelines.tirer.tip'),
+    // Onglet Archive : toute la bibliothèque de production, lecture seule.
+    ongletArchive: T('doc.onglet.archive'),
+    archiveChargement: T('doc.archive.chargement'),
+    archiveActualiser: T('doc.archive.actualiser'), archiveActualiserTip: T('doc.archive.actualiser.tip'),
+    archiveAncrageIntrouvable: T('doc.archive.ancrageIntrouvable'),
+    archiveVide: T('doc.archive.vide'),
+    archiveRechercheIndice: T('doc.archive.rechercheIndice'),
+    archiveFiltreType: T('doc.archive.filtre.type'), archiveFiltreTypeTous: T('doc.archive.filtre.typeTous'),
+    archiveFiltreRevue: T('doc.archive.filtre.revue'), archiveFiltreRevueToutes: T('doc.archive.filtre.revueToutes'),
+    archiveFiltreNumero: T('doc.archive.filtre.numero'), archiveFiltreNumeroTous: T('doc.archive.filtre.numeroTous'),
+    archiveFiltreAnnee: T('doc.archive.filtre.annee'), archiveFiltreAnneeToutes: T('doc.archive.filtre.anneeToutes'),
+    archiveAucunResultat: T('doc.archive.aucunResultat'),
+    archiveSansNumero: T('doc.archive.sansNumero'),
+    archiveReprendre: T('doc.archive.reprendre'), archiveReprendreTip: T('doc.archive.reprendre.tip'),
+    archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
+    archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
+    archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
+    archiveCompteur: T('doc.archive.compteur')
   };
+}
+
+// ---- L'onglet Archive : bibliothèque de PRODUCTION, toujours — même en mode test ------
+//
+// racineProduction() : dérivée de l'ancrage SharePoint résolu (rapport-erreur.js#resoudreAncrage,
+// LE SEUL module qui sait le trouver sans jamais balayer le disque ni ouvrir de fenêtre —
+// exactement ce qu'il faut ici, un panneau webview n'a pas de quoi montrer un sélecteur de
+// dossier). `null` si l'ancrage n'est pas résolu : l'appelant journalise dans l’onglet, rien
+// d'autre (docs/EMPLACEMENTS.md, §1 et §8). AUCUN segment de chemin en dur ici :
+// rapportErreur.SEGMENT_APPLICATION est le seul endroit JavaScript qui porte le nom du
+// dossier de production.
+function racineProduction() {
+  const ancrage = rapportErreur.resoudreAncrage();
+  if (!ancrage || !ancrage.trouve) { return null; }
+  return path.join(ancrage.chemin, '2_Produkte', rapportErreur.SEGMENT_APPLICATION);
+}
+
+// indexNumerosProduction(racineProductionVal) -> { <id>: { label, revue, annee } } — résout
+// l'id Ausgabe d'une fiche en un libellé lisible (« Revue 2025/1 »), en lisant les
+// ausgabe.yaml des numéros en cours ET archivés de la racine de PRODUCTION (kirby.listerNumeros
+// couvre déjà les deux). `annee` extraite du libellé (premier groupe de 4 chiffres), pour le
+// filtre par année de l'onglet Archive.
+function indexNumerosProduction(racineProductionVal) {
+  const index = {};
+  for (const n of kirby.listerNumeros(racineProductionVal)) {
+    if (!n.id) { continue; }
+    const label = libelleCourtNumero(n.chemin) || n.nom;
+    const annee = (label.match(/\d{4}/) || [''])[0];
+    index[n.id] = { label: label, revue: n.revue, annee: annee };
+  }
+  return index;
+}
+
+// Un id inconnu de l'index (numéro renommé, déplacé hors de l'arbre, ou dossier copié à la
+// main sans id retrouvé) s'affiche par son id tel quel — jamais masqué, jamais une ligne
+// vide (docs/FORMAT-DOCUMENTATION-KIRBY.md, esprit des avertissements de kirby-contenu.js).
+function libelleNumeroIndexe(index, id) {
+  const e = index[id];
+  return e ? Object.assign({ id: id }, e) : { id: id, label: id, revue: '', annee: '' };
+}
+
+// Le texte plein cherché par la recherche de l'onglet Archive : titre, descriptif et les
+// quelques champs « auteur/lieu » qui existent selon le type — jamais les champs système, ni
+// les listes fermées (canton, catégorie…), qui ont leur propre filtre.
+const CHAMPS_RECHERCHE_ARCHIVE = ['title', 'descriptif', 'auteurs', 'institutions', 'realisateur', 'organisateur', 'lieu', 'editeur', 'distributeur'];
+function texteRechercheArchive(valeursParLangue) {
+  const morceaux = [];
+  for (const l of Object.keys(valeursParLangue)) {
+    const v = valeursParLangue[l];
+    if (!v) { continue; }
+    for (const cle of CHAMPS_RECHERCHE_ARCHIVE) { if (v[cle]) { morceaux.push(String(v[cle])); } }
+  }
+  return morceaux.join(' ').toLowerCase();
+}
+
+// Un enregistrement de kirby.listerBibliothequeComplete() -> une ligne pour l'onglet Archive :
+// titre dans chaque langue présente, valeurs complètes de chaque langue (texte seulement —
+// l'image, plus lourde, est demandée à part au clic, voir ARCHIVE_IMAGE plus bas), et les
+// numéros de rattachement lisibles, un par langue rattachée.
+function ligneArchive(enregistrement, index) {
+  const langues = kirby.languesDuContrat();
+  const titres = {}, valeurs = {}, numeros = [];
+  const presentes = [];
+  for (const l of langues) {
+    const f = enregistrement.parLangue[l];
+    if (f) {
+      presentes.push(l);
+      titres[l] = f.valeurs.title || '';
+      valeurs[l] = f.valeurs;
+      if (f.ausgabe) { numeros.push(Object.assign({ langue: l }, libelleNumeroIndexe(index, f.ausgabe))); }
+    } else {
+      titres[l] = '';
+      valeurs[l] = null;
+    }
+  }
+  return {
+    type: enregistrement.type, slug: enregistrement.slug,
+    langues: presentes, titres: titres, valeurs: valeurs, numeros: numeros,
+    recherche: texteRechercheArchive(valeurs)
+  };
+}
+
+// construireReponseArchive() -> le message ARCHIVE_DONNEES envoyé sur demande (jamais à
+// l'ouverture du panneau) — lit la bibliothèque de production UNE fois, ici, et rien d'autre
+// ne la relit tant que la page ne redemande pas ARCHIVE_CHARGER/ARCHIVE_ACTUALISER.
+function construireReponseArchive() {
+  const racineProductionVal = racineProduction();
+  if (!racineProductionVal) {
+    return { type: MSG.ARCHIVE_DONNEES, ok: false, message: T('doc.archive.ancrageIntrouvable') };
+  }
+  const index = indexNumerosProduction(racineProductionVal);
+  const fiches = kirby.listerBibliothequeComplete(racineProductionVal).map((e) => ligneArchive(e, index));
+  return { type: MSG.ARCHIVE_DONNEES, ok: true, fiches: fiches };
 }
 
 function htmlDocumentation(nonce) {
@@ -536,6 +654,68 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
         type: 'reservoir', avecIgnorees: !!msg.avecIgnorees,
         entrees: listerReservoirEntrees(!!msg.avecIgnorees)
       });
+      return;
+    }
+    // Onglet Archive : lu à la demande seulement (ARCHIVE_CHARGER — première ouverture de
+    // l'onglet — ou ARCHIVE_ACTUALISER — bouton « Actualiser »), jamais à charger(). Pas de
+    // garde de verrou : c'est une LECTURE de la bibliothèque de production, jamais du numéro
+    // ouvert.
+    if (msg.type === MSG.ARCHIVE_CHARGER || msg.type === MSG.ARCHIVE_ACTUALISER) {
+      repondrePanneau(panneau, construireReponseArchive());
+      return;
+    }
+    // L'image d'une fiche archivée, demandée à part (au clic sur l'aperçu) : jamais en bloc
+    // avec ARCHIVE_DONNEES, qui porterait alors une image par fiche pour des centaines de
+    // fiches à chaque ouverture de l'onglet.
+    if (msg.type === MSG.ARCHIVE_IMAGE) {
+      const ficheType = String(msg.ficheType || '');
+      const slugCible = String(msg.slug || '');
+      if (ficheType === '' || slugCible === '') { return; }
+      const racineProductionVal = racineProduction();
+      let apercu = null;
+      if (racineProductionVal) {
+        const cleFichier = kirby.champFichierDuType(ficheType);
+        let nomImage = '';
+        if (cleFichier) {
+          for (const l of kirby.languesDuContrat()) {
+            const f = kirby.lireFicheSlugLangue(racineProductionVal, slugCible, l, ficheType);
+            if (f && f.valeurs[cleFichier]) { nomImage = f.valeurs[cleFichier]; break; }
+          }
+        }
+        if (nomImage) {
+          const cheminImage = path.join(kirby.cheminFiche(racineProductionVal, ficheType, slugCible), nomImage);
+          apercu = apercuMedia(cheminImage, { reste: BUDGET_APERCUS_MEDIA });
+        }
+      }
+      repondrePanneau(panneau, { type: MSG.ARCHIVE_IMAGE_DONNEE, ficheType: ficheType, slug: slugCible, apercu: apercu });
+      return;
+    }
+    // « Reprendre dans ce numéro » : crée une fiche NEUVE (nouvel Uuid, nouveau dossier)
+    // dans la bibliothèque ACTIVE (racineArbreVal — celle du numéro ouvert, test ou
+    // production), rattachée à CE numéro, avec `origine` = Uuid de la fiche archivée. La
+    // fiche archivée (bibliothèque de production) n'est jamais modifiée.
+    if (msg.type === MSG.ARCHIVE_REPRENDRE) {
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('verrou.refuse') });
+        return;
+      }
+      const ficheType = String(msg.ficheType || '');
+      const slugSource = String(msg.slug || '');
+      if (ficheType === '' || slugSource === '') { return; }
+      const racineProductionVal = racineProduction();
+      if (!racineProductionVal) {
+        repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('doc.archive.ancrageIntrouvable') });
+        return;
+      }
+      const r = kirby.reprendreDansNumero(racineProductionVal, racineArbreVal, langue, ficheType, slugSource, ausgabeId);
+      if (r.ok) {
+        kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId);
+        await charger(panneau);
+        repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: true });
+        if (rafraichirTout) { rafraichirTout(); }
+      } else {
+        repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('doc.archive.reprise.echec') });
+      }
       return;
     }
     if (msg.type === MSG.RETOUR_ARTICLE) {

@@ -16,6 +16,12 @@ fields:
     label:
       fr: "Ordre"
       de: "Reihenfolge"
+  origine:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Origine"
+      de: "Herkunft"
   evenement:
     type: "select"
     options:

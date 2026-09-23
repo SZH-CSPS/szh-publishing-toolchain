@@ -71,7 +71,9 @@ rubriques restent dans le numéro ; un réservoir remplace l'envoi à l'autre re
   communs, le libellé de chaque ligne est propre à la langue (appariement par rang).
 - Champs système (`champsSysteme`), propres à chaque fichier de langue, jamais saisis :
   `Ausgabe` = id du numéro de cette langue, vide = orpheline ; `Ordre` = rang d'impression
-  dans ce numéro (entier, 1..N), recalculé à chaque enregistrement d'une fiche du numéro.
+  dans ce numéro (entier, 1..N), recalculé à chaque enregistrement d'une fiche du numéro ;
+  `Origine` = Uuid d'une fiche archivée, posé UNE fois par le geste « Reprendre dans ce
+  numéro » de l'onglet Archive (voir plus bas), vide pour une fiche née autrement.
 - Retirer une fiche d'un numéro = vider `Ausgabe` (elle devient orpheline). Supprimer n'est
   possible que pour une orpheline : on ôte le fichier de SA langue ; s'il n'en reste aucun,
   le dossier entier part (image comprise).
@@ -103,6 +105,14 @@ fiche est traduite et son statut ne compte plus.
   traduire » / « ignorer » ; interrupteur « afficher les ignorées » pour revenir sur une
   décision ; (b) mes orphelines (fichier L, `Ausgabe` vide) — geste « Tirer dans ce numéro ».
 - **La Documentation du numéro** : rubriques + fiches dont `Ausgabe` = N.
+- **Archive** : TOUTE la bibliothèque, lecture seule, lue depuis la racine de PRODUCTION —
+  toujours celle-ci, même quand le poste travaille en mode test (l'ancrage SharePoint résolu
+  par `lib/rapport-erreur.js#resoudreAncrage`, jamais la racine active). Liste compacte
+  (type, titre(s), langues, numéro(s) de rattachement lisibles), recherche plein texte,
+  filtres type/revue/numéro/année, aperçu au clic. Geste « Reprendre dans ce numéro » : crée
+  une fiche NEUVE dans la bibliothèque ACTIVE (nouvel Uuid, nouveau dossier), langue du
+  numéro courant, préremplie depuis la fiche archivée (sa langue si elle existe, sinon
+  l'autre), `Origine` = Uuid de la fiche archivée — celle-ci n'est jamais modifiée.
 
 ## Syntaxe d'un fichier .txt Kirby
 

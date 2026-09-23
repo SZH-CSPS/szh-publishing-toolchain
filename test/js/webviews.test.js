@@ -1848,12 +1848,13 @@ function pageDocumentationAvecOnglets() {
 function boutonsOnglets(page) { return page.parId.onglets.querySelectorAll('.doc-onglet'); }
 function panneau(page, cle) { return page.parId['panel-' + cle]; }
 
-test('onglets : trois onglets, dans l’ordre Traductions à faire, Réservoir, Documentation du numéro', () => {
+test('onglets : quatre onglets, dans l’ordre Traductions à faire, Réservoir, Documentation du numéro, Archive', () => {
   const { page, txt } = pageDocumentationAvecOnglets();
   const boutons = boutonsOnglets(page);
-  assert.strictEqual(boutons.length, 3, 'trois onglets, pas quatre : « Mes orphelines » n’en est pas un');
+  assert.strictEqual(boutons.length, 4,
+    'quatre onglets (23.09.2026 : Archive s’ajoute) — « Mes orphelines » n’en est toujours pas un');
   assert.deepStrictEqual(boutons.map((b) => b.querySelector('.doc-onglet-libelle').textContent),
-    [txt.ongletTraductions, txt.ongletReservoir, txt.ongletNumero]);
+    [txt.ongletTraductions, txt.ongletReservoir, txt.ongletNumero, txt.ongletArchive]);
 });
 
 test('onglets : « Documentation du numéro » est ouvert par défaut, les deux autres portent un compteur', () => {
@@ -1904,6 +1905,155 @@ test('onglets : l’onglet choisi survit à un rechargement complet (mémorisé 
   assert.strictEqual(panneau(page, 'numero').hidden, true);
   const [boutonTradApres] = boutonsOnglets(page);
   assert.ok(boutonTradApres.classes.has('doc-onglet--actif'));
+});
+
+// ---- Onglet Archive : bibliothèque de PRODUCTION, lue à la demande (23.09.2026) -------
+//
+// Le protocole (media/documentation.js) : ARCHIVE_CHARGER au premier clic (une seule fois
+// par session de panneau), ARCHIVE_DONNEES en réponse, ARCHIVE_IMAGE à part au clic sur un
+// aperçu, ARCHIVE_REPRENDRE désigné par (ficheType, slug) — jamais par un Uuid, la fiche
+// archivée n'en garde la trace que côté hôte (origine). Les intégrations avec
+// lib/kirby-contenu.js (production réelle, reprise, origine) vivent dans
+// test/js/documentation-archive.test.js ; ici, uniquement le rendu et les interactions DOM.
+function ficheArchive(over) {
+  return Object.assign({
+    type: 'livre', slug: 's-arch-1',
+    langues: ['fr'], titres: { fr: 'Un livre archivé', de: '' },
+    valeurs: {
+      fr: { categorie: 'manuel', title: 'Un livre archivé', auteurs: 'A. Dupont', annee: '2020',
+            editeur: 'SZH', descriptif: 'Un descriptif.' },
+      de: null
+    },
+    numeros: [{ langue: 'fr', id: 'num-fr-1', label: 'Revue 2020/3', revue: 'revue', annee: '2020' }],
+    recherche: 'un livre archivé a. dupont un descriptif.'
+  }, over || {});
+}
+function panneauArchive(page) { return panneau(page, 'archive'); }
+
+test('Archive : le premier clic sur l’onglet demande ARCHIVE_CHARGER, une seule fois par session', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  const boutonArchive = boutons[3];
+  page.messages.length = 0;
+  boutonArchive.dispatchEvent({ type: 'click' });
+  assert.strictEqual(panneauArchive(page).hidden, false);
+  assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_CHARGER).length, 1,
+    'l’ouverture de l’onglet doit demander la lecture de la bibliothèque de production');
+  assert.ok(panneauArchive(page).textContent.indexOf(txt.archiveChargement) !== -1,
+    'un indicateur de chargement doit apparaître pendant l’attente');
+
+  // Changer d'onglet puis revenir, avant toute réponse, ne redemande rien : la première
+  // lecture est toujours en cours (archiveEtat.chargement).
+  page.messages.length = 0;
+  boutons[2].dispatchEvent({ type: 'click' });
+  boutonArchive.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_CHARGER).length, 0);
+});
+
+test('Archive : ARCHIVE_DONNEES affiche les fiches, met à jour le compteur de l’onglet, et filtre', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  boutons[3].dispatchEvent({ type: 'click' });
+  const livre = ficheArchive();
+  const film = ficheArchive({
+    type: 'film', slug: 's-arch-2', titres: { fr: 'Un film archivé', de: '' },
+    valeurs: { fr: { title: 'Un film archivé', realisateur: 'X', annee: '2019', descriptif: 'Autre.' }, de: null },
+    numeros: [{ langue: 'fr', id: 'num-fr-2', label: 'Revue 2019/1', revue: 'revue', annee: '2019' }],
+    recherche: 'un film archivé x autre.'
+  });
+  page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [livre, film] });
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 2);
+  assert.strictEqual(boutons[3].querySelector('.doc-onglet-compte').textContent, '2',
+    'le compteur de l’onglet Archive doit dire le nombre TOTAL de fiches');
+
+  const champRecherche = panneauArchive(page).querySelector('.doc-archive-recherche');
+  champRecherche.value = 'film';
+  champRecherche.dispatchEvent({ type: 'input' });
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 1,
+    'la recherche doit filtrer sur le texte plein envoyé par l’hôte');
+  champRecherche.value = '';
+  champRecherche.dispatchEvent({ type: 'input' });
+
+  // Ordre des sélecteurs posés par rendreArchive() : type, revue, numéro, année.
+  const [selType, , selNumero, selAnnee] = panneauArchive(page).querySelectorAll('select');
+  selType.value = 'film';
+  selType.dispatchEvent({ type: 'change' });
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 1,
+    'filtre par type');
+  selType.value = '';
+  selType.dispatchEvent({ type: 'change' });
+
+  selNumero.value = 'num-fr-1';
+  selNumero.dispatchEvent({ type: 'change' });
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 1,
+    'filtre par numéro de rattachement');
+  selNumero.value = '';
+  selNumero.dispatchEvent({ type: 'change' });
+
+  selAnnee.value = '2019';
+  selAnnee.dispatchEvent({ type: 'change' });
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 1,
+    'filtre par année');
+});
+
+test('Archive : ancrage SharePoint introuvable — le message de l’hôte s’affiche, aucune fiche', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  boutons[3].dispatchEvent({ type: 'click' });
+  page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: false, message: txt.archiveAncrageIntrouvable });
+  assert.ok(panneauArchive(page).textContent.indexOf(txt.archiveAncrageIntrouvable) !== -1);
+  assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 0);
+  assert.strictEqual(boutons[3].querySelector('.doc-onglet-compte'), null,
+    'aucune fiche lue : pas de compteur');
+});
+
+test('Archive : l’aperçu se déplie au clic, un seul ouvert à la fois, l’image n’est demandée qu’une fois', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  boutons[3].dispatchEvent({ type: 'click' });
+  page.envoyer({
+    type: MSG.ARCHIVE_DONNEES, ok: true,
+    fiches: [ficheArchive(), ficheArchive({ slug: 's-arch-2', titres: { fr: 'Deuxième', de: '' } })]
+  });
+  page.messages.length = 0;
+  const items = panneauArchive(page).querySelectorAll('.doc-archive-item');
+  const boutonApercu1 = items[0].querySelector('.doc-vue-bouton');
+  const boutonApercu2 = items[1].querySelector('.doc-vue-bouton');
+  boutonApercu1.dispatchEvent({ type: 'click' });
+  const corps1 = items[0].querySelector('.doc-archive-corps');
+  assert.strictEqual(corps1.hidden, false);
+  assert.ok(corps1.textContent.indexOf('A. Dupont') !== -1, 'les champs de la fiche doivent apparaître, labellisés');
+  assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_IMAGE).length, 1);
+
+  // Ouvrir le second aperçu referme le premier — un seul accordéon ouvert à la fois.
+  boutonApercu2.dispatchEvent({ type: 'click' });
+  assert.strictEqual(corps1.hidden, true);
+  assert.strictEqual(items[1].querySelector('.doc-archive-corps').hidden, false);
+
+  // Rouvrir le premier ne redemande pas son image : déjà construite (corps.dataset.rempli).
+  page.messages.length = 0;
+  boutonApercu1.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_IMAGE).length, 0);
+});
+
+test('Archive : « Reprendre dans ce numéro » envoie (ficheType, slug), se désactive puis se réactive', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  boutons[3].dispatchEvent({ type: 'click' });
+  page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [ficheArchive()] });
+  page.messages.length = 0;
+  const boutonReprendre = panneauArchive(page).querySelector('.doc-archive-reprendre');
+  assert.ok(boutonReprendre, 'le bouton « Reprendre dans ce numéro » doit exister sur la ligne');
+  boutonReprendre.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.length, 1);
+  assert.strictEqual(page.messages[0].type, MSG.ARCHIVE_REPRENDRE);
+  assert.strictEqual(page.messages[0].ficheType, 'livre');
+  assert.strictEqual(page.messages[0].slug, 's-arch-1');
+  assert.strictEqual(boutonReprendre.disabled, true, 'désactivé le temps de l’aller-retour hôte');
+
+  page.envoyer({ type: MSG.ARCHIVE_REPRISE, ok: true });
+  assert.strictEqual(panneauArchive(page).querySelector('.doc-archive-reprendre').disabled, false,
+    'réactivé après la réponse');
 });
 
 // ---- Réservoir : sélection multiple (23.09.2026, deuxième relecture) ------------------

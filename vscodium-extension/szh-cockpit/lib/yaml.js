@@ -992,15 +992,19 @@ function serialiserMeta(valeurs) {
   return lignes.length > 0 ? lignes.join('\n') + '\n' : '';
 }
 
-// Titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} | {title} ». « Revue » et
-// « Zeitschrift » sont les noms des deux publications, identiques dans les deux langues de
-// l'interface : ce sont des littéraux, pas des libellés traduits (ce module ne charge pas
-// i18n.js). Le nom vient du jeton `revue:` (normaliserRevue) ; s'il manque ou est inconnu,
-// repli sur la langue par défaut, pour qu'un ausgabe.yaml ancien sans cette clé garde un
-// titre. Année et numéro se joignent par une barre oblique ; chaque morceau manquant est
-// omis, le préfixe seul ne comptant pas ; à défaut, le nom du dossier sert de titre, qui
-// n'est donc jamais vide.
-function titreNumero(racine) {
+// Le premier morceau du titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} », SANS le
+// titre du dossier thématique — « Revue » et « Zeitschrift » sont les noms des deux
+// publications, identiques dans les deux langues de l'interface : ce sont des littéraux, pas
+// des libellés traduits (ce module ne charge pas i18n.js). Le nom vient du jeton `revue:`
+// (normaliserRevue) ; s'il manque ou est inconnu, repli sur la langue par défaut, pour qu'un
+// ausgabe.yaml ancien sans cette clé garde un nom. Année et numéro se joignent par une barre
+// oblique ; chaque morceau manquant est omis ; chaîne vide si aucun des deux n'est connu (pas
+// de repli sur le nom du dossier ici — c'est titreNumero(), plus bas, qui le fait).
+//
+// Réutilisé par titreNumero() ci-dessous ET par l'onglet Archive de la Documentation
+// (documentation-hote.js) pour composer le libellé lisible d'un numéro de rattachement
+// (« Revue 2025/1 ») — la même formule doit valoir aux deux endroits.
+function libelleCourtNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
   catch (e) { /* illisible : replis ci-dessous */ }
@@ -1016,9 +1020,21 @@ function titreNumero(racine) {
     annee = (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
   }
   const numero = String(valeurs.numero || '').trim();
+  if (!annee && !numero) { return ''; }
+  return nom + ' ' + (annee && numero ? annee + '/' + numero : annee || numero);
+}
+
+// Titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} | {title} ». Chaque morceau
+// manquant est omis, le préfixe seul ne comptant pas ; à défaut, le nom du dossier sert de
+// titre, qui n'est donc jamais vide.
+function titreNumero(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
+  catch (e) { /* illisible : replis ci-dessous */ }
+  const court = libelleCourtNumero(racine);
   const titre = String(valeurs.title || '').trim();
   const morceaux = [];
-  if (annee || numero) { morceaux.push(nom + ' ' + (annee && numero ? annee + '/' + numero : annee || numero)); }
+  if (court) { morceaux.push(court); }
   if (titre) { morceaux.push(titre); }
   if (morceaux.length === 0) { return path.basename(racine); }
   return morceaux.join(' | ');
@@ -1259,7 +1275,7 @@ module.exports = {
   LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle, estHorsSommaire,
   decouperValeurYaml, decouperFlowYaml, listeYamlEnLigne, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
-  langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,
+  langueDefaut, langueRevue, analyserMeta, serialiserMeta, libelleCourtNumero, titreNumero,
   formaterValeurYaml, serialiserAusgabe, ecrireAtomique,
   cheminConfigDetecte, genererIdNumero, idNumero, assurerIdNumero
 };

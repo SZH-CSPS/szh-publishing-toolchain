@@ -359,14 +359,21 @@ function champsPourEcriture(type, valeurs) {
   return sortie;
 }
 
-// Les champs SYSTÈME (Ausgabe, Ordre — pipeline/kirby/champs-documentation.json,
+// Les champs SYSTÈME (Ausgabe, Ordre, Origine — pipeline/kirby/champs-documentation.json,
 // champsSysteme) : jamais saisis, écrits juste après Uuid et avant les champs du type.
-// Ausgabe s'écrit TOUJOURS, même vide (c'est ce qui marque une orpheline) ; Ordre
-// n'existe que pour une fiche rattachée à un numéro.
-function champsSystemePourEcriture(ausgabeId, ordre) {
+// Ausgabe s'écrit TOUJOURS, même vide (c'est ce qui marque une orpheline) ; Ordre n'existe
+// que pour une fiche rattachée à un numéro ; Origine (Uuid de la fiche archivée dont celle-ci
+// reprend les valeurs, posé une fois par le geste « Reprendre dans ce numéro » de l'onglet
+// Archive) n'existe que pour une fiche qui en porte une — l'appelant doit la RETRANSMETTRE à
+// chaque écriture suivante (voir enregistrerFicheLangue, detacherFiche…) pour qu'elle survive :
+// ce module ne la relit jamais tout seul depuis le disque.
+function champsSystemePourEcriture(ausgabeId, ordre, origine) {
   const sortie = [{ cle: 'ausgabe', valeurBrute: String(ausgabeId === undefined || ausgabeId === null ? '' : ausgabeId), forcerMultiligne: false }];
   if (ordre !== undefined && ordre !== null && String(ordre).trim() !== '') {
     sortie.push({ cle: 'ordre', valeurBrute: String(ordre), forcerMultiligne: false });
+  }
+  if (origine !== undefined && origine !== null && String(origine).trim() !== '') {
+    sortie.push({ cle: 'origine', valeurBrute: String(origine), forcerMultiligne: false });
   }
   return sortie;
 }
@@ -700,9 +707,11 @@ function lireFicheSlugLangue(racineArbreVal, slug, langue, type) {
     const ausgabe = String(champs.ausgabe || '');
     const ordreBrut = champs.ordre;
     const ordre = (ordreBrut !== undefined && String(ordreBrut).trim() !== '') ? parseInt(ordreBrut, 10) : null;
+    const origine = String(champs.origine || '');
     trouvees.push({
       slug: slug, uuid: uuid, type: t, ausgabe: ausgabe,
-      ordre: (Number.isFinite(ordre) ? ordre : null), valeurs: valeursDepuisChamps(t, title, champs)
+      ordre: (Number.isFinite(ordre) ? ordre : null), origine: origine,
+      valeurs: valeursDepuisChamps(t, title, champs)
     });
   }
   if (trouvees.length > 1) {
@@ -738,7 +747,7 @@ function installerImage(cheminDossier, cheminSource) {
 // ecrireFicheSlugLangue : écrit (ou réécrit) le fichier <type>.<langue>.txt d'un slug —
 // jamais de renommage de dossier, jamais de renommage de fichier hors changement de type
 // (qui ne devrait jamais arriver en pratique : le type d'une fiche est fixé à sa création).
-function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, ordre, imageSource) {
+function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, ordre, imageSource, origine) {
   const cheminSlug = cheminFiche(racineArbreVal, type, slug);
   fs.mkdirSync(cheminSlug, { recursive: true });
   const v = Object.assign({}, valeurs);
@@ -755,20 +764,22 @@ function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs
       try { fs.unlinkSync(path.join(cheminSlug, nom)); } catch (e) { /* déjà parti */ }
     }
   }
-  const champs = champsSystemePourEcriture(ausgabeId, ordre).concat(champsPourEcriture(type, v));
+  const champs = champsSystemePourEcriture(ausgabeId, ordre, origine).concat(champsPourEcriture(type, v));
   const texte = ecrireTxt({ title: String(v.title || ''), uuid: uuid, champs: champs });
   ecrireAtomique(path.join(cheminSlug, nomVoulu), texte);
 }
 
-// creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource?) -> { uuid, slug }
-// Une fiche neuve : Uuid et slug posés ici, une fois pour toutes.
-function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource) {
+// creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource?, origine?) ->
+// { uuid, slug } — Une fiche neuve : Uuid et slug posés ici, une fois pour toutes. `origine`
+// (optionnel) : Uuid de la fiche archivée dont celle-ci reprend les valeurs — voir le geste
+// « Reprendre dans ce numéro » de l'onglet Archive (documentation-hote.js#reprendreDepuisArchive).
+function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource, origine) {
   if (!typeConnu(type)) { throw new Error('creerFiche : type de fiche inconnu « ' + type + ' ».'); }
   const uuid = genererUuid();
   // Collision gérée DANS LE DOSSIER DE CE TYPE seulement (docs/FORMAT-DOCUMENTATION-KIRBY.md) :
   // deux types différents peuvent partager le même slug, chacun dans son propre dossier.
   const slug = slugFicheUnique((valeurs || {}).title || '', ensembleSlugsExistantsPourType(racineArbreVal, type));
-  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, null, imageSource);
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, null, imageSource, origine);
   return { uuid: uuid, slug: slug };
 }
 
@@ -790,12 +801,12 @@ function enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, ima
     }
     return { ok: false };
   }
-  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, existante.uuid, valeurs, existante.ausgabe, existante.ordre, imageSource);
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, existante.uuid, valeurs, existante.ausgabe, existante.ordre, imageSource, existante.origine);
   for (const autre of autresLangues(langue)) {
     const ficheAutre = lireFicheSlugLangue(racineArbreVal, slug, autre, type);
     if (!ficheAutre) { continue; }
     const fusion = fusionnerChampsCommuns(type, valeurs, ficheAutre.valeurs);
-    ecrireFicheSlugLangue(racineArbreVal, slug, autre, type, ficheAutre.uuid, fusion, ficheAutre.ausgabe, ficheAutre.ordre, null);
+    ecrireFicheSlugLangue(racineArbreVal, slug, autre, type, ficheAutre.uuid, fusion, ficheAutre.ausgabe, ficheAutre.ordre, null, ficheAutre.origine);
   }
   return { ok: true, uuid: existante.uuid };
 }
@@ -806,7 +817,7 @@ function enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, ima
 function detacherFiche(racineArbreVal, slug, langue) {
   const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
   if (!f) { return { ok: false }; }
-  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, '', null, null);
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, '', null, null, f.origine);
   return { ok: true, ausgabeAvant: f.ausgabe };
 }
 
@@ -815,8 +826,45 @@ function detacherFiche(racineArbreVal, slug, langue) {
 function tirerDansNumero(racineArbreVal, slug, langue, ausgabeIdCible) {
   const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
   if (!f) { return { ok: false }; }
-  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, ausgabeIdCible, null, null);
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, ausgabeIdCible, null, null, f.origine);
   return { ok: true };
+}
+
+// reprendreDansNumero(racineSourceVal, racineCibleVal, langueCible, type, slugSource,
+// ausgabeIdCible) -> { ok, uuid, slug, raison? } : le geste « Reprendre dans ce numéro » de
+// l'onglet Archive (documentation-hote.js). racineSourceVal est la bibliothèque de
+// PRODUCTION (toujours, même en mode test — jamais celle qu'écrit ce module) ; racineCibleVal
+// est la bibliothèque ACTIVE, celle du numéro ouvert (test ou production selon le poste). À
+// la différence de traduireDansNumero (même Uuid, même fiche traduite dans une AUTRE langue),
+// ceci crée une fiche ENTIÈREMENT NEUVE (nouvel Uuid, nouveau dossier de son type, via
+// creerFiche) : la fiche archivée n'est ni modifiée ni référencée par son propre Uuid dans la
+// nouvelle — seul son Uuid survit dans le champ système `origine` de la fiche neuve, pour la
+// traçabilité (« reprise depuis »). Préremplie depuis la langue cible de la fiche source si
+// elle existe, sinon depuis l'autre langue — même règle que traduireDansNumero. L'image de
+// couverture, si le type en porte une, est copiée elle aussi (installerImage, via creerFiche) ;
+// un nom de fichier référencé mais introuvable sur disque (bibliothèque de production
+// partiellement synchronisée) est abandonné plutôt que recopié tel quel, pour ne jamais créer
+// une fiche neuve qui pointe vers une image absente de son propre dossier.
+function reprendreDansNumero(racineSourceVal, racineCibleVal, langueCible, type, slugSource, ausgabeIdCible) {
+  if (!typeConnu(type)) { return { ok: false, raison: 'type-inconnu' }; }
+  let source = lireFicheSlugLangue(racineSourceVal, slugSource, langueCible, type);
+  if (!source) {
+    for (const l of autresLangues(langueCible)) {
+      source = lireFicheSlugLangue(racineSourceVal, slugSource, l, type);
+      if (source) { break; }
+    }
+  }
+  if (!source) { return { ok: false, raison: 'source-absente' }; }
+  const valeurs = Object.assign({}, source.valeurs);
+  let imageSource = null;
+  const cleFichier = champFichierDuType(type);
+  if (cleFichier && valeurs[cleFichier]) {
+    const cheminSource = path.join(cheminFiche(racineSourceVal, type, slugSource), valeurs[cleFichier]);
+    if (fs.existsSync(cheminSource)) { imageSource = cheminSource; }
+    else { delete valeurs[cleFichier]; }
+  }
+  const cree = creerFiche(racineCibleVal, langueCible, type, valeurs, ausgabeIdCible, imageSource, source.uuid);
+  return { ok: true, uuid: cree.uuid, slug: cree.slug };
 }
 
 // traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) -> { ok, uuid } :
@@ -832,7 +880,7 @@ function traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) {
   }
   if (!source) { return { ok: false, raison: 'source-absente' }; }
   ecrireFicheSlugLangue(racineArbreVal, slug, langueCible, source.type, source.uuid,
-    Object.assign({}, source.valeurs), ausgabeIdCible, null, null);
+    Object.assign({}, source.valeurs), ausgabeIdCible, null, null, source.origine);
   effacerStatutFiche(racineArbreVal, langueCible, source.uuid);
   return { ok: true, uuid: source.uuid };
 }
@@ -869,7 +917,7 @@ function reordonnerNumero(racineArbreVal, langue, ausgabeId) {
   ordonnees.forEach((f, i) => {
     const rang = i + 1;
     if (f.ordre !== rang) {
-      ecrireFicheSlugLangue(racineArbreVal, f.slug, langue, f.type, f.uuid, f.valeurs, f.ausgabe, rang, null);
+      ecrireFicheSlugLangue(racineArbreVal, f.slug, langue, f.type, f.uuid, f.valeurs, f.ausgabe, rang, null, f.origine);
       total++;
     }
   });
@@ -893,6 +941,25 @@ function listerOrphelines(racineArbreVal, langue) {
   return listerSlugsBibliotheque(racineArbreVal)
     .map(({ type, slug }) => lireFicheSlugLangue(racineArbreVal, slug, langue, type))
     .filter((f) => f && !f.ausgabe);
+}
+
+// ---- L'onglet Archive : TOUTE la bibliothèque, des deux langues, tous numéros ---------
+//
+// listerBibliothequeComplete(racineArbreVal) -> [{ type, slug, parLangue: { fr: fiche|null,
+// de: fiche|null } }, …] — un ENREGISTREMENT par (type, slug), jamais un par fichier de
+// langue : c'est ce que l'onglet Archive affiche (« titre dans la langue de la fiche ; les
+// deux si bilingue »). `fiche` est ce que rend lireFicheSlugLangue (uuid, ausgabe, ordre,
+// origine, valeurs) ou null si cette langue n'existe pas pour ce slug. Coûteux à dessein
+// (parcourt toute la bibliothèque, des centaines de fiches sur OneDrive) : réservé à un
+// chargement explicite (bouton, ouverture d'onglet), jamais à charger()/rendre() du
+// formulaire — voir documentation-hote.js.
+function listerBibliothequeComplete(racineArbreVal) {
+  const langues = languesDuContrat();
+  return listerSlugsBibliotheque(racineArbreVal).map(({ type, slug }) => {
+    const parLangue = {};
+    for (const l of langues) { parLangue[l] = lireFicheSlugLangue(racineArbreVal, slug, l, type); }
+    return { type: type, slug: slug, parLangue: parLangue };
+  });
 }
 
 // ---- Statuts de traduction : _NewsUndActu\_Statuts\<langue>\<uuid>.txt ----------------
@@ -1070,7 +1137,9 @@ module.exports = {
   // La bibliothèque : une fiche par (type, slug) + langue
   listerSlugsBibliotheque, lireFicheSlugLangue, trouverSlugParUuid,
   creerFiche, enregistrerFicheLangue, detacherFiche, tirerDansNumero, traduireDansNumero,
+  reprendreDansNumero,
   supprimerFicheOrpheline, reordonnerNumero, listerFichesNumero, listerOrphelines,
+  listerBibliothequeComplete,
   installerImage,
   // Statuts de traduction
   ecrireStatutFiche, lireStatutFiche, effacerStatutFiche,

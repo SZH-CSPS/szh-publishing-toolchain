@@ -51,6 +51,7 @@ var zoneOnglets = document.getElementById('onglets');
 var panelTraductions = document.getElementById('panel-traductions');
 var panelReservoir = document.getElementById('panel-reservoir');
 var panelNumero = document.getElementById('panel-numero');
+var panelArchive = document.getElementById('panel-archive');
 var zoneSections = document.getElementById('sections');
 var zoneSommaire = document.getElementById('sommaire');
 var compteurId = 0;
@@ -58,6 +59,17 @@ var compteurIndex = 0;
 // L'onglet ouvert : mémorisé pour la session du panneau (jamais réinitialisé par rendre(),
 // rejoué à chaque charger()) — « Documentation du numéro » par défaut, comme demandé.
 var ongletActif = 'numero';
+// L'onglet Archive : toute la bibliothèque de PRODUCTION, lue à la demande seulement — voir
+// assurerChargementArchive(). `images` met en cache l'aperçu d'une fiche par « type|slug »,
+// demandé une seule fois (ARCHIVE_IMAGE) même si l'aperçu se rouvre plusieurs fois dans la
+// session. `repriseEnCours` désactive les boutons « Reprendre » le temps d'un aller-retour.
+var archiveEtat = {
+  charge: false, chargement: false, erreur: null, fiches: [], images: {},
+  filtreTexte: '', filtreType: '', filtreRevue: '', filtreNumero: '', filtreAnnee: '',
+  repriseEnCours: false
+};
+var corpsArchiveOuvert = null;   // un seul aperçu ouvert à la fois, comme le reste de la page
+var cleImageArchiveActive = null, zoneImageArchiveActive = null;
 
 function nouvelId() {
   compteurId += 1;
@@ -976,7 +988,10 @@ function construireOnglets(msg) {
   var defs = [
     { cle: 'traductions', libelle: TXT.ongletTraductions || '', compte: nTraductions },
     { cle: 'reservoir', libelle: TXT.ongletReservoir || '', compte: nReservoir },
-    { cle: 'numero', libelle: TXT.ongletNumero || '', compte: 0 }
+    { cle: 'numero', libelle: TXT.ongletNumero || '', compte: 0 },
+    // Le compteur dit le nombre TOTAL de fiches (pas « en attente » comme les deux
+    // précédents) — 0 tant que la bibliothèque de production n'a pas encore été lue.
+    { cle: 'archive', libelle: TXT.ongletArchive || '', compte: archiveEtat.fiches.length }
   ];
   ctl.onglets = {};
   defs.forEach(function (d) {
@@ -992,14 +1007,16 @@ function construireOnglets(msg) {
   });
   appliquerOnglet();
 }
-// Bascule la visibilité des trois panneaux et l'état visuel des onglets, sans rien
-// reconstruire — appelée après chaque rendre() et à chaque clic d'onglet.
+// Bascule la visibilité des quatre panneaux et l'état visuel des onglets, sans rien
+// reconstruire — appelée après chaque rendre() et à chaque clic d'onglet. Déclenche aussi la
+// lecture (une fois) de la bibliothèque de production dès qu'on arrive sur Archive.
 function appliquerOnglet() {
   panelTraductions.hidden = ongletActif !== 'traductions';
   panelReservoir.hidden = ongletActif !== 'reservoir';
   panelNumero.hidden = ongletActif !== 'numero';
+  panelArchive.hidden = ongletActif !== 'archive';
   // Le sommaire ne décrit que « Documentation du numéro » (rubriques + fiches) : il n'a rien
-  // à dire sur les deux autres onglets.
+  // à dire sur les trois autres onglets.
   zoneSommaire.hidden = ongletActif !== 'numero';
   for (var cle in ctl.onglets) {
     if (!Object.prototype.hasOwnProperty.call(ctl.onglets, cle)) { continue; }
@@ -1007,6 +1024,256 @@ function appliquerOnglet() {
     ctl.onglets[cle].classList.toggle('doc-onglet--actif', actif);
     ctl.onglets[cle].setAttribute('aria-selected', actif ? 'true' : 'false');
   }
+  if (ongletActif === 'archive') { assurerChargementArchive(); }
+}
+
+// ---- Onglet Archive : toute la bibliothèque de PRODUCTION, lecture seule --------------
+//
+// Lue une seule fois par session de panneau (assurerChargementArchive), jamais à charger() —
+// des centaines de fiches sur OneDrive ne doivent pas ralentir l'ouverture ordinaire du
+// formulaire. Le bouton « Actualiser » (actualiserArchive) force une relecture. L'image
+// d'une fiche est demandée à part, au clic sur son aperçu (demanderImageArchive) : la envoyer
+// en bloc avec la liste en referait une par fiche à chaque lecture.
+function assurerChargementArchive() {
+  if (archiveEtat.charge || archiveEtat.chargement) { return; }
+  archiveEtat.chargement = true;
+  rendreArchive();
+  api.postMessage({ type: SZH.MSG.ARCHIVE_CHARGER });
+}
+function actualiserArchive() {
+  archiveEtat.chargement = true;
+  archiveEtat.erreur = null;
+  corpsArchiveOuvert = null;
+  rendreArchive();
+  api.postMessage({ type: SZH.MSG.ARCHIVE_ACTUALISER });
+}
+function cleFicheArchive(f) { return f.type + '|' + f.slug; }
+function libelleTypeArchive(type) {
+  for (var i = 0; i < TYPES.length; i++) { if (TYPES[i].valeur === type) { return TYPES[i].libelleSection || type; } }
+  return type;
+}
+function champsTypeArchive(type) {
+  for (var i = 0; i < TYPES.length; i++) { if (TYPES[i].valeur === type) { return TYPES[i].champs || []; } }
+  return [];
+}
+function titreLigneArchive(f) {
+  var parts = [];
+  f.langues.forEach(function (l) { if (f.titres[l]) { parts.push(f.titres[l]); } });
+  return parts.length > 0 ? parts.join(' / ') : (TXT.sansTitre || '');
+}
+function numerosLigneArchive(f) {
+  if (!f.numeros || f.numeros.length === 0) { return TXT.archiveSansNumero || ''; }
+  return f.numeros.map(function (n) { return n.label; }).join(', ');
+}
+// « Les deux revues » / littéraux, jamais traduits — même convention que lib/yaml.js#titreNumero
+// (les noms des deux publications sont identiques dans les deux langues de l'interface).
+var NOMS_REVUE_ARCHIVE = { revue: 'Revue', zeitschrift: 'Zeitschrift' };
+
+function optionsDistinctesArchive(extraire) {
+  var vues = {}, options = [];
+  archiveEtat.fiches.forEach(function (f) {
+    (f.numeros || []).forEach(function (n) {
+      var v = extraire(n);
+      if (!v || Object.prototype.hasOwnProperty.call(vues, v.valeur)) { return; }
+      vues[v.valeur] = true;
+      options.push(v);
+    });
+  });
+  return options;
+}
+function optionsNumerosArchive() {
+  return optionsDistinctesArchive(function (n) { return n.id ? { valeur: n.id, libelle: n.label } : null; })
+    .sort(function (a, b) { return b.libelle.localeCompare(a.libelle, undefined, { numeric: true }); });
+}
+function optionsAnneesArchive() {
+  return optionsDistinctesArchive(function (n) { return n.annee ? { valeur: n.annee, libelle: n.annee } : null; })
+    .sort(function (a, b) { return b.valeur.localeCompare(a.valeur); });
+}
+function optionsRevuesArchive() {
+  var vues = {}, options = [];
+  archiveEtat.fiches.forEach(function (f) {
+    (f.numeros || []).forEach(function (n) {
+      if (!n.revue || vues[n.revue]) { return; }
+      vues[n.revue] = true;
+      options.push({ valeur: n.revue, libelle: NOMS_REVUE_ARCHIVE[n.revue] || n.revue });
+    });
+  });
+  return options;
+}
+function optionsTypesArchive() {
+  var vus = {};
+  archiveEtat.fiches.forEach(function (f) { vus[f.type] = true; });
+  return TYPES.filter(function (t) { return vus[t.valeur]; })
+    .map(function (t) { return { valeur: t.valeur, libelle: t.libelleSection || t.valeur }; });
+}
+
+function champSelectArchive(parent, libelleChamp, libelleTous, options, valeurCourante, surChangement) {
+  var d = texte(parent, 'div', 'doc-archive-filtre-champ');
+  texte(d, 'span', 'doc-archive-filtre-label', libelleChamp || '');
+  var sel = document.createElement('select');
+  var opVide = document.createElement('option');
+  opVide.value = '';
+  opVide.textContent = libelleTous || '';
+  sel.appendChild(opVide);
+  options.forEach(function (o) {
+    var op = document.createElement('option');
+    op.value = o.valeur;
+    op.textContent = o.libelle;
+    sel.appendChild(op);
+  });
+  sel.value = valeurCourante || '';
+  sel.addEventListener('change', function () { surChangement(sel.value); });
+  d.appendChild(sel);
+  return d;
+}
+
+function ficheCorrespondFiltresArchive(f) {
+  if (archiveEtat.filtreType && f.type !== archiveEtat.filtreType) { return false; }
+  if (archiveEtat.filtreRevue && !(f.numeros || []).some(function (n) { return n.revue === archiveEtat.filtreRevue; })) { return false; }
+  if (archiveEtat.filtreNumero && !(f.numeros || []).some(function (n) { return n.id === archiveEtat.filtreNumero; })) { return false; }
+  if (archiveEtat.filtreAnnee && !(f.numeros || []).some(function (n) { return n.annee === archiveEtat.filtreAnnee; })) { return false; }
+  var q = String(archiveEtat.filtreTexte || '').trim().toLowerCase();
+  if (q && String(f.recherche || '').indexOf(q) === -1) { return false; }
+  return true;
+}
+
+function demanderImageArchive(f, zoneImg) {
+  var cle = cleFicheArchive(f);
+  if (Object.prototype.hasOwnProperty.call(archiveEtat.images, cle)) {
+    afficherImageArchive(zoneImg, archiveEtat.images[cle]);
+    return;
+  }
+  zoneImg.textContent = '';
+  texte(zoneImg, 'p', 'absent', TXT.archiveApercuImageChargement || '');
+  api.postMessage({ type: SZH.MSG.ARCHIVE_IMAGE, ficheType: f.type, slug: f.slug });
+}
+function afficherImageArchive(zoneImg, apercu) {
+  zoneImg.textContent = '';
+  if (!apercu) { texte(zoneImg, 'p', 'absent', TXT.imageAbsente || ''); return; }
+  var img = document.createElement('img');
+  img.src = apercu;
+  img.alt = '';
+  zoneImg.appendChild(img);
+}
+
+function remplirApercuArchive(f, corps) {
+  corps.textContent = '';
+  var champsType = champsTypeArchive(f.type);
+  f.langues.forEach(function (l) {
+    var v = f.valeurs[l];
+    if (!v) { return; }
+    var bloc = texte(corps, 'div', 'doc-archive-apercu-langue');
+    texte(bloc, 'p', 'doc-archive-apercu-langue-nom', l.toUpperCase());
+    champsType.forEach(function (cfg) {
+      if (cfg.saisie === 'fichier') { return; }
+      var val = v[cfg.cle];
+      var texteValeur = '';
+      if (cfg.saisie === 'structure') {
+        if (Array.isArray(val) && val.length > 0) {
+          texteValeur = val.map(function (ligneStruct) {
+            return (cfg.structureChamps || []).map(function (sc) { return ligneStruct[sc.cle]; })
+              .filter(function (x) { return x; }).join(' · ');
+          }).join(' ; ');
+        }
+      } else {
+        texteValeur = val === undefined || val === null ? '' : String(val);
+      }
+      if (!texteValeur) { return; }
+      var champDiv = texte(bloc, 'div', 'doc-archive-apercu-champ');
+      texte(champDiv, 'span', 'doc-archive-apercu-cle', cfg.libelle || cfg.cle);
+      texte(champDiv, 'span', 'doc-archive-apercu-valeur', texteValeur);
+    });
+  });
+  var zoneImg = texte(corps, 'div', 'doc-vignette doc-archive-apercu-image');
+  cleImageArchiveActive = cleFicheArchive(f);
+  zoneImageArchiveActive = zoneImg;
+  demanderImageArchive(f, zoneImg);
+}
+
+function basculerApercuArchive(f, corps) {
+  var ouvrir = corps.hidden;
+  if (corpsArchiveOuvert && corpsArchiveOuvert !== corps) { corpsArchiveOuvert.hidden = true; }
+  corps.hidden = !ouvrir;
+  corpsArchiveOuvert = corps.hidden ? null : corps;
+  if (!corps.hidden && !corps.dataset.rempli) {
+    remplirApercuArchive(f, corps);
+    corps.dataset.rempli = '1';
+  }
+  if (corps.hidden) { cleImageArchiveActive = null; zoneImageArchiveActive = null; }
+}
+
+function reprendreArchive(f, boutonReprendre) {
+  if (archiveEtat.repriseEnCours) { return; }
+  archiveEtat.repriseEnCours = true;
+  if (boutonReprendre) { boutonReprendre.disabled = true; }
+  etat('');
+  api.postMessage({ type: SZH.MSG.ARCHIVE_REPRENDRE, ficheType: f.type, slug: f.slug });
+}
+
+function rendreListeArchive(zoneListe) {
+  zoneListe.textContent = '';
+  var visibles = archiveEtat.fiches.filter(ficheCorrespondFiltresArchive);
+  if (visibles.length === 0) { texte(zoneListe, 'p', 'doc-vue-vide', TXT.archiveAucunResultat || ''); return; }
+  visibles.forEach(function (f) {
+    var item = texte(zoneListe, 'div', 'doc-archive-item');
+    var ligneEl = ligneVue(item, libelleTypeArchive(f.type), titreLigneArchive(f));
+    texte(ligneEl, 'span', 'doc-vue-origine', numerosLigneArchive(f));
+    var corps = texte(item, 'div', 'doc-corps doc-archive-corps');
+    corps.hidden = true;
+    var boutonApercu = bouton(TXT.archiveApercuTitre || '', function () { basculerApercuArchive(f, corps); }, 'doc-vue-bouton', '');
+    ligneEl.appendChild(boutonApercu);
+    var boutonReprendre = bouton(TXT.archiveReprendre || '', function () { reprendreArchive(f, boutonReprendre); },
+      'doc-vue-bouton doc-archive-reprendre', TXT.archiveReprendreTip || '');
+    boutonReprendre.disabled = archiveEtat.repriseEnCours;
+    ligneEl.appendChild(boutonReprendre);
+    item.appendChild(corps);
+  });
+}
+
+function rendreArchive() {
+  panelArchive.textContent = '';
+  var barreHaut = texte(panelArchive, 'div', 'doc-archive-barre');
+  barreHaut.appendChild(bouton(TXT.archiveActualiser || '', actualiserArchive,
+    'doc-archive-actualiser', TXT.archiveActualiserTip || ''));
+  if (archiveEtat.charge) {
+    texte(barreHaut, 'span', 'doc-archive-compteur', remplir('archiveCompteur', [String(archiveEtat.fiches.length)]));
+  }
+
+  if (archiveEtat.chargement) {
+    texte(panelArchive, 'p', 'doc-vue-vide', TXT.archiveChargement || '');
+    return;
+  }
+  if (!archiveEtat.charge) {
+    texte(panelArchive, 'p', 'doc-archive-erreur', archiveEtat.erreur || TXT.archiveAncrageIntrouvable || '');
+    return;
+  }
+  if (archiveEtat.fiches.length === 0) {
+    texte(panelArchive, 'p', 'doc-vue-vide', TXT.archiveVide || '');
+    return;
+  }
+
+  var barreFiltres = texte(panelArchive, 'div', 'doc-archive-filtres');
+  var champRecherche = document.createElement('input');
+  champRecherche.type = 'search';
+  champRecherche.className = 'doc-archive-recherche';
+  champRecherche.placeholder = TXT.archiveRechercheIndice || '';
+  champRecherche.value = archiveEtat.filtreTexte;
+  champRecherche.addEventListener('input', function () {
+    archiveEtat.filtreTexte = champRecherche.value;
+    rendreListeArchive(zoneListe);
+  });
+  barreFiltres.appendChild(champRecherche);
+  champSelectArchive(barreFiltres, TXT.archiveFiltreType, TXT.archiveFiltreTypeTous,
+    optionsTypesArchive(), archiveEtat.filtreType, function (v) { archiveEtat.filtreType = v; rendreListeArchive(zoneListe); });
+  champSelectArchive(barreFiltres, TXT.archiveFiltreRevue, TXT.archiveFiltreRevueToutes,
+    optionsRevuesArchive(), archiveEtat.filtreRevue, function (v) { archiveEtat.filtreRevue = v; rendreListeArchive(zoneListe); });
+  champSelectArchive(barreFiltres, TXT.archiveFiltreNumero, TXT.archiveFiltreNumeroTous,
+    optionsNumerosArchive(), archiveEtat.filtreNumero, function (v) { archiveEtat.filtreNumero = v; rendreListeArchive(zoneListe); });
+  champSelectArchive(barreFiltres, TXT.archiveFiltreAnnee, TXT.archiveFiltreAnneeToutes,
+    optionsAnneesArchive(), archiveEtat.filtreAnnee, function (v) { archiveEtat.filtreAnnee = v; rendreListeArchive(zoneListe); });
+
+  var zoneListe = texte(panelArchive, 'div', 'doc-vue-liste doc-archive-liste');
+  rendreListeArchive(zoneListe);
 }
 
 function rendre(msg) {
@@ -1120,6 +1387,41 @@ window.addEventListener('message', function (ev) {
   // reconstruit que la liste du réservoir, jamais tout le formulaire.
   if (msg.type === 'reservoir') {
     if (ctl.reservoirMaj) { ctl.reservoirMaj(!!msg.avecIgnorees, Array.isArray(msg.entrees) ? msg.entrees : []); }
+    return;
+  }
+  // Onglet Archive : la lecture (première ouverture ou « Actualiser »), l'image demandée à
+  // part au clic sur un aperçu, et la réponse au geste « Reprendre dans ce numéro ».
+  if (msg.type === SZH.MSG.ARCHIVE_DONNEES) {
+    archiveEtat.chargement = false;
+    archiveEtat.charge = !!msg.ok;
+    archiveEtat.erreur = msg.ok ? null : (msg.message || '');
+    archiveEtat.fiches = Array.isArray(msg.fiches) ? msg.fiches : [];
+    corpsArchiveOuvert = null;
+    if (ctl.onglets && ctl.onglets.archive) {
+      var compte = ctl.onglets.archive.querySelector('.doc-onglet-compte');
+      if (archiveEtat.fiches.length > 0) {
+        if (!compte) { compte = texte(ctl.onglets.archive, 'span', 'doc-onglet-compte'); }
+        compte.textContent = String(archiveEtat.fiches.length);
+      } else if (compte) { compte.remove(); }
+    }
+    rendreArchive();
+    return;
+  }
+  if (msg.type === SZH.MSG.ARCHIVE_IMAGE_DONNEE) {
+    var cleRecue = (msg.ficheType || '') + '|' + (msg.slug || '');
+    archiveEtat.images[cleRecue] = msg.apercu || null;
+    if (cleImageArchiveActive === cleRecue && zoneImageArchiveActive) {
+      afficherImageArchive(zoneImageArchiveActive, msg.apercu || null);
+    }
+    return;
+  }
+  if (msg.type === SZH.MSG.ARCHIVE_REPRISE) {
+    archiveEtat.repriseEnCours = false;
+    // Un nouvel enregistrement (msg.ok) a déjà déclenché un « charger » séparé côté hôte, qui
+    // reconstruit « Documentation du numéro » — ici, on ne fait que réactiver les boutons de
+    // la liste Archive (restés désactivés le temps de l'aller-retour) et donner le mot final.
+    rendreArchive();
+    etat(msg.ok ? (TXT.archiveRepriseOk || '') : ('⚠ ' + (msg.message || '')));
     return;
   }
   console.warn('documentation : type de message inconnu', msg.type);

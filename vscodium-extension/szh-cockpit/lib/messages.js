@@ -44,6 +44,16 @@ const MSG = Object.freeze({
   TRADUIRE_DANS_NUMERO: 'traduireDansNumero', TIRER_DANS_NUMERO: 'tirerDansNumero',
   MARQUER_A_TRADUIRE: 'marquerATraduire', IGNORER_TRADUCTION: 'ignorerTraduction',
   ANNULER_DECISION: 'annulerDecisionTraduction', RESERVOIR_FILTRE: 'reservoirFiltre',
+  // Onglet Archive : TOUTE la bibliothèque de production, lue à la demande (jamais à
+  // l'ouverture du panneau — des centaines de fiches sur OneDrive). ARCHIVE_CHARGER : la
+  // page le demande la première fois qu'on ouvre l'onglet ; ARCHIVE_ACTUALISER : le bouton
+  // « Actualiser » force une relecture. ARCHIVE_IMAGE : l'aperçu d'une fiche cliquée demande
+  // son image à part (jamais en bloc avec la liste). ARCHIVE_REPRENDRE : « Reprendre dans ce
+  // numéro », désignée par (type, slug) dans la bibliothèque de PRODUCTION.
+  ARCHIVE_CHARGER: 'archiveCharger', ARCHIVE_ACTUALISER: 'archiveActualiser',
+  ARCHIVE_DONNEES: 'archiveDonnees',
+  ARCHIVE_IMAGE: 'archiveImage', ARCHIVE_IMAGE_DONNEE: 'archiveImageDonnee',
+  ARCHIVE_REPRENDRE: 'archiveReprendre', ARCHIVE_REPRISE: 'archiveReprise',
 
   // Gestionnaire des médias
   AUTEUR_ENREGISTRER: 'auteur-enregistrer', AUTEUR_ENREGISTRE: 'auteur-enregistre',

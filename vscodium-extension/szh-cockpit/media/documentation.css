@@ -221,3 +221,34 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e2); }
 .doc-vue-titre-section { margin: 0; font-size: var(--t-section); font-weight: 700;
   letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2); }
+
+/* ---- Onglet Archive : toute la bibliothèque de production, lecture seule ------------- */
+.doc-archive-barre { display: flex; align-items: center; gap: var(--e2); margin-bottom: var(--e2); }
+.doc-archive-compteur { font-size: var(--t-mini); color: var(--encre-2); }
+.doc-archive-erreur { margin: 0; font-size: var(--t-libelle);
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+/* Une ligne de filtres qui se replie proprement sur une fenêtre étroite : recherche pleine
+   largeur en premier, puis les quatre sélecteurs côte à côte, chacun aligné sur sa base
+   (label au-dessus, champ en dessous) — jamais deux hauteurs de ligne différentes. */
+.doc-archive-filtres { display: flex; align-items: flex-end; gap: var(--e3); flex-wrap: wrap;
+  margin-bottom: var(--e2); }
+.doc-archive-recherche { flex: 1 1 14rem; min-width: 10rem; box-sizing: border-box;
+  padding: .3em .5em; font-family: inherit; }
+.doc-archive-filtre-champ { display: flex; flex-direction: column; gap: .2em; }
+.doc-archive-filtre-label { font-size: var(--t-mini); color: var(--encre-2); }
+.doc-archive-liste { max-height: 60vh; overflow: auto; }
+/* Une ligne (doc-vue-ligne) plus son aperçu repliable, comme l'accordéon des fiches du
+   numéro : un seul aperçu ouvert à la fois dans toute la page (basculerApercuArchive). */
+.doc-archive-item { border-bottom: 1px solid var(--filet); }
+.doc-archive-item:last-child { border-bottom: 0; }
+.doc-archive-item .doc-vue-ligne { border-bottom: 0; padding-bottom: 0; }
+.doc-archive-corps { padding: 0 0 var(--e2) var(--e3); display: flex; flex-direction: column; gap: var(--e2); }
+.doc-archive-apercu-langue { display: flex; flex-direction: column; gap: .2em;
+  padding: var(--e1) 0; border-top: 1px solid var(--filet); }
+.doc-archive-apercu-langue:first-child { border-top: 0; }
+.doc-archive-apercu-langue-nom { margin: 0; font-size: var(--t-mini); font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--encre-2); }
+.doc-archive-apercu-champ { display: flex; gap: var(--e2); font-size: var(--t-libelle); }
+.doc-archive-apercu-cle { flex: 0 0 10rem; color: var(--encre-2); }
+.doc-archive-apercu-valeur { flex: 1 1 auto; min-width: 0; white-space: pre-wrap; }
+.doc-archive-apercu-image { margin-top: var(--e1); }

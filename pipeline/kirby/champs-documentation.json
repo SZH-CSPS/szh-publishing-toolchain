@@ -221,9 +221,10 @@
   },
 
   "champsSysteme": {
-    "_lisezmoi": "Écrits par Pronto dans chaque fichier de langue d’une fiche, jamais saisis. ausgabe : l’id du numéro (ausgabe.yaml) auquel CE fichier de langue est rattaché, vide = orpheline. ordre : rang d’impression dans ce numéro, calculé par les règles de tri du type.",
+    "_lisezmoi": "Écrits par Pronto dans chaque fichier de langue d’une fiche, jamais saisis. ausgabe : l’id du numéro (ausgabe.yaml) auquel CE fichier de langue est rattaché, vide = orpheline. ordre : rang d’impression dans ce numéro, calculé par les règles de tri du type. origine : posé UNE fois par le geste « Reprendre dans ce numéro » de l’onglet Archive (Uuid de la fiche archivée dont celle-ci reprend les valeurs) ; vide pour une fiche née autrement.",
     "ausgabe": { "libelle": { "fr": "Numéro", "de": "Ausgabe" } },
-    "ordre": { "libelle": { "fr": "Ordre", "de": "Reihenfolge" } }
+    "ordre": { "libelle": { "fr": "Ordre", "de": "Reihenfolge" } },
+    "origine": { "libelle": { "fr": "Origine", "de": "Herkunft" } }
   },
 
   "ordreTypes": ["horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
