@@ -561,10 +561,13 @@ function lirePdfUa(reste, courant) {
   m = reste.match(/^\s*•\s*(.+)$/);
   if (m) {
     return { source: 'pdfua', code: 'regle', ton: 'danger', slug: courant.pdf,
-             cle: '', args: [], champs: {}, brut: m[1] };
+             cle: '', args: [], champs: { regle: m[1], explication: '' }, brut: m[1] };
   }
   // Cause et geste d'une règle : accrochés au constat qu'on vient de poser.
   if (/^\s{4,}\S/.test(reste)) { return { suite: reste.trim() }; }
+  // Son repère ISO, qui dit où la corriger (lib/constats.js, CIBLES_REGLE_PDFUA).
+  m = reste.match(/^\s*ISO 14289-1 (\S+)$/);
+  if (m) { return { repere: m[1] }; }
   if (reste.indexOf('✗') === 0) {
     return { source: 'pdfua', code: 'outillage', ton: 'danger', slug: '',
              cle: '', args: [], champs: {}, brut: reste.replace(/^✗\s*/, '') };
@@ -576,9 +579,11 @@ function slugDuPdf(nom) {
   return String(nom).replace(/\.pdf$/i, '');
 }
 
-// verdictsPdfUa(texte) -> [{ fichier, verdict: 'conforme'|'non-conforme', regles }], avec
-// une propriété `outillage: true` posée sur le tableau rendu si une ligne « [pdf-ua] ✗ »
-// est présente. Français seulement (la moitié « [de] » double la même information).
+// verdictsPdfUa(texte) -> [{ fichier, verdict: 'conforme'|'non-conforme', regles,
+// details: { fr: [{ regle, explication, repere }], de: [...] } }], avec une propriété
+// `outillage: true` posée sur le tableau rendu si une ligne « [pdf-ua] ✗ » est présente.
+// `details` garde chaque règle en échec dans les deux langues : sans lui, le cockpit ne
+// savait dire que « 1 règle(s) ne sont pas respectées », jamais laquelle.
 //
 // Indépendant de lirePdfUa/analyserJournal ci-dessus : ceux-là relisent .szh-journal.log
 // après coup et jettent le cas conforme (rien à en dire à l'écran) ; ceci relit la sortie
@@ -587,17 +592,46 @@ function slugDuPdf(nom) {
 // est bon à publier.
 function verdictsPdfUa(texte) {
   const verdicts = [];
+  const parFichier = new Map();
+  // Le verdict, puis la règle, dont on lit la suite : rapport-ua.py écrit un bloc entier
+  // par langue, le français d'abord.
+  const verdictDe = (fichier, verdict, regles) => {
+    let v = parFichier.get(fichier);
+    if (!v) {
+      v = { fichier: fichier, verdict: verdict, regles: regles, details: { fr: [], de: [] } };
+      parFichier.set(fichier, v);
+      verdicts.push(v);
+    }
+    return v;
+  };
   let outillage = false;
+  let fiche = null;
+  let regle = null;
   for (const brute of String(texte === undefined || texte === null ? '' : texte).split(/\r?\n/)) {
     const ligne = brute.replace(/\s+$/, '');
     if (ligne === '') { continue; }
     const coupe = decouper(ligne);
-    if (!coupe || coupe.prefixe !== 'pdf-ua' || coupe.allemand) { continue; }
-    let m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+NON conforme, (\d+)/);
-    if (m) { verdicts.push({ fichier: m[1], verdict: 'non-conforme', regles: Number(m[2]) }); continue; }
-    m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+conforme\.$/);
-    if (m) { verdicts.push({ fichier: m[1], verdict: 'conforme', regles: 0 }); continue; }
-    if (coupe.reste.indexOf('✗') === 0) { outillage = true; }
+    if (!coupe || coupe.prefixe !== 'pdf-ua') { regle = null; continue; }
+    const langue = coupe.allemand ? 'de' : 'fr';
+    let m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+(?:NON conforme|NICHT konform), (\d+)/);
+    if (m) { fiche = verdictDe(m[1], 'non-conforme', Number(m[2])); regle = null; continue; }
+    m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+(?:conforme|konform)\.$/);
+    if (m) { verdictDe(m[1], 'conforme', 0); fiche = null; regle = null; continue; }
+    m = coupe.reste.match(/^\s*•\s*(.+)$/);
+    if (m && fiche) {
+      regle = { regle: m[1], explication: '' };
+      fiche.details[langue].push(regle);
+      continue;
+    }
+    // Cause et geste, repliés sous leur en-tête ; le repère ISO (deux espaces) n'en est pas.
+    if (regle && /^\s{4,}\S/.test(coupe.reste)) {
+      regle.explication = (regle.explication + ' ' + coupe.reste).replace(/\s+/g, ' ').trim();
+      continue;
+    }
+    m = coupe.reste.match(/^\s*ISO 14289-1 (\S+)$/);
+    if (m && regle) { regle.repere = m[1]; regle = null; continue; }
+    regle = null;
+    if (!coupe.allemand && coupe.reste.indexOf('✗') === 0) { outillage = true; }
   }
   if (outillage) { verdicts.outillage = true; }
   return verdicts;
@@ -653,10 +687,23 @@ function analyserJournal(texte, langue) {
     else if (coupe.prefixe === 'pdf-ua') {
       constat = lirePdfUa(coupe.reste, courant);
       if (constat && constat.code === 'non-conforme') { courant.pdf = constat.slug; }
+      if (constat && constat.repere) {
+        if (dernier && dernier.moitie === moitie && dernier.code === 'regle') {
+          dernier.champs.repere = constat.repere;
+        }
+        dernier = null;
+        continue;
+      }
       if (constat && constat.suite) {
         // Cause ou geste d'une règle : la phrase se poursuit sur le constat précédent, et
         // seulement s'il vient de la même moitié de langue.
-        if (dernier && dernier.moitie === moitie) { dernier.brut = dernier.brut + ' ' + constat.suite; }
+        if (dernier && dernier.moitie === moitie) {
+          dernier.brut = dernier.brut + ' ' + constat.suite;
+          if (dernier.champs.explication !== undefined) {
+            dernier.champs.explication = (dernier.champs.explication + ' ' + constat.suite)
+              .replace(/\s+/g, ' ').trim();
+          }
+        }
         continue;
       }
     }

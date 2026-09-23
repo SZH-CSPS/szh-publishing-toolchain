@@ -85,9 +85,25 @@ const LIEUX = Object.freeze({
 //   focusFixe  la même chose, quand l'objet est toujours le même.
 //   defaut     la clé de l'intitulé court.
 //   detail     la clé d'une seconde ligne, là où une seule ne suffit pas.
+//   ciblesRepere  une cible par repère ISO (champ `repere` du constat), quand le lieu
+//              dépend de la règle en cause et non du code.
 const D = 'defaut';      // abrégés de lecture : la colonne `nature` se lit en diagonale
 const A = 'attente';
 const F = 'fait';
+
+// Où se corrige une règle PDF/UA, par son repère ISO 14289-1 (la ligne « ISO 14289-1
+// 7.1-9 » de pipeline/rapport-ua.py). Seules les règles qu'un rédacteur peut corriger ont
+// une cible : les autres sont des défauts de la chaîne (« signalez-le »), et une flèche
+// qui mènerait quelque part serait un mensonge. Les tableaux s'éditent depuis l'article.
+const CIBLES_REGLE_PDFUA = Object.freeze({
+  '7.1-9': Object.freeze({ lieu: 'fiche', focus: 'title' }),
+  '7.2-29': Object.freeze({ lieu: 'fiche', focus: 'lang' }),
+  '7.2-34': Object.freeze({ lieu: 'fiche', focus: 'lang' }),
+  '7.3-1': Object.freeze({ lieu: 'medias', focus: '' }),
+  '7.4.2-1': Object.freeze({ lieu: 'article', focus: '' }),
+  '7.5-1': Object.freeze({ lieu: 'article', focus: '' }),
+  '7.5-2': Object.freeze({ lieu: 'article', focus: '' })
+});
 
 const TABLE = Object.freeze({
   // ---- La compilation ------------------------------------------------------------
@@ -162,7 +178,10 @@ const TABLE = Object.freeze({
   'pdfua/aucun-pdf': { barrage: null, nature: A, lieu: '', defaut: 'defaut.aucun-pdf' },
   'pdfua/non-conforme': { barrage: 'pdfua', nature: D, lieu: '',
     defaut: 'defaut.pdfua-non-conforme', detail: 'detail.pdfua-non-conforme' },
-  'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', defaut: 'defaut.pdfua-regle' },
+  // La règle se nomme dans la phrase, sa cause et son geste en seconde ligne : sans eux, la
+  // carte disait « Règle PDF/UA non respectée » sans jamais dire laquelle.
+  'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', objetChamp: 'regle',
+    detailChamp: 'explication', ciblesRepere: CIBLES_REGLE_PDFUA, defaut: 'defaut.pdfua-regle' },
   'pdfua/outillage': { barrage: null, nature: D, lieu: '', defaut: 'defaut.pdfua-outillage' },
   // ---- Les citations -------------------------------------------------------------
   'citations/appel-sans-reference': { barrage: null, nature: D, lieu: 'article',
@@ -446,6 +465,10 @@ function valeurChamp(nomChamp, valeur) {
 function cible(constat) {
   const e = entree(constat);
   if (!e) { return null; }
+  if (e.ciblesRepere) {
+    const c = e.ciblesRepere[((constat && constat.champs) || {}).repere];
+    return c ? { lieu: c.lieu, slug: String((constat && constat.slug) || ''), focus: c.focus } : null;
+  }
   // Un constat peut nommer sa cible quand la table ne peut pas la deviner : les raisons
   // d'un refus d'export ne menent pas toutes au meme endroit.
   const lieu = (constat && constat.lieu) || e.lieu;
@@ -502,10 +525,16 @@ function phrase(constat, langue) {
 // Vide partout ailleurs, et c'est la règle : le gabarit ne doit pas redevenir un paragraphe.
 function detail(constat, langue) {
   const e = entree(constat);
+  // detailChamp : un texte déjà rédigé par la chaîne, dans la langue du cockpit (la cause
+  // et le geste d'une règle PDF/UA, écrits par pipeline/rapport-ua.py).
+  if (e && e.detailChamp) {
+    const v = ((constat && constat.champs) || {})[e.detailChamp];
+    return v === undefined || v === null ? '' : String(v);
+  }
   // Les arguments du constat lui sont passés : c'est la seule ligne des deux qui peut
   // porter un compte, et le compte des règles PDF/UA en échec est ce qui dit s'il reste
   // une correction ou vingt.
   return e && e.detail ? TL(langue, e.detail, (constat && constat.args) || []) : '';
 }
 
-module.exports = { LIEUX, TABLE, gravite, ton, fermable, cible, bouton, phrase, detail, objet };
+module.exports = { LIEUX, TABLE, CIBLES_REGLE_PDFUA, gravite, ton, fermable, cible, bouton, phrase, detail, objet };

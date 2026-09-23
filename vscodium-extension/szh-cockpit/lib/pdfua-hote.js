@@ -16,7 +16,8 @@
 //
 // ── Le cache, par racine ────────────────────────────────────────────────────────────
 // <racine>/.szh-pdfua.json : { version: 1, verdicts: { <cle>: { empreinte, verdict,
-// regles, date } } }, `cle` = slug de l'article pour une revue, 'livre' pour l'ouvrage
+// regles, details, date } } } (`details` : les règles en échec, voir
+// journal.js#verdictsPdfUa), `cle` = slug de l'article pour une revue, 'livre' pour l'ouvrage
 // entier. Chargé au premier accès à une racine donnée, réécrit après chaque travail de
 // validation. Un fichier illisible ou absent repart vide — jamais une raison de bloquer.
 //
@@ -180,7 +181,10 @@ async function unTravail(racine, st) {
     const emp = coedition.empreinte(chemin);
     if (!emp) { continue; }                          // PDF absent : rien à valider
     const enCache = st.verdicts[cle];
-    if (enCache && enCache.empreinte === emp) { continue; }   // déjà jugé, rien n'a changé
+    // Déjà jugé, rien n'a changé. Un verdict non conforme d'avant `details` ne sait pas
+    // nommer ses règles : on le rejuge une fois plutôt que de le garder muet.
+    if (enCache && enCache.empreinte === emp
+        && (enCache.verdict !== 'non-conforme' || enCache.details)) { continue; }
     items.push({ cle: cle, chemin: chemin, empreinte: emp });
   }
   if (items.length === 0) { return; }
@@ -207,7 +211,7 @@ async function unTravail(racine, st) {
     if (!trouve) { st.transitoire.set(it.cle, { verdict: 'outillage', regles: 0, date: '' }); continue; }
     st.verdicts[it.cle] = {
       empreinte: it.empreinte, verdict: trouve.verdict, regles: trouve.regles || 0,
-      date: new Date().toISOString()
+      details: trouve.details || { fr: [], de: [] }, date: new Date().toISOString()
     };
   }
   sauvegarderVerdicts(racine, st.verdicts);
@@ -259,7 +263,11 @@ function etat(cle) {
 // même raison que etat() ci-dessus, un verdict d'avant qu'on ne vérifie plus ne doit pas
 // continuer à compter comme bloquant. L'export garde son propre contrôle (verifier-ua),
 // indépendant de ce réglage.
-function constats(racine) {
+//
+// Chaque règle en échec suit son verdict, en constat « pdfua/regle » dans la langue du
+// cockpit (repli sur le français) : c'est ce que promet la phrase « Les points ci-dessous
+// les nomment un par un ».
+function constats(racine, langue) {
   if (!racine || !reglageActif()) { return []; }
   const st = etatRacine(racine);
   // Le PDF actuel de chaque clé, pour écarter un verdict que le fichier a dépassé depuis
@@ -272,9 +280,17 @@ function constats(racine) {
     const v = st.verdicts[cle];
     if (v.verdict !== 'non-conforme') { continue; }
     if (actuels[cle] !== undefined && coedition.empreinte(actuels[cle]) !== v.empreinte) { continue; }
-    out.push({ source: 'pdfua', code: 'non-conforme', ton: 'danger',
-               slug: cle === 'livre' ? '' : cle,
+    const slug = cle === 'livre' ? '' : cle;
+    out.push({ source: 'pdfua', code: 'non-conforme', ton: 'danger', slug: slug,
                cle: 'ctl.pdfua.nonconforme', args: [String(v.regles || 0)], brut: '' });
+    const details = v.details || {};
+    const liste = (langue === 'de' && (details.de || []).length) ? details.de : (details.fr || []);
+    for (const r of liste) {
+      out.push({ source: 'pdfua', code: 'regle', ton: 'danger', slug: slug, cle: '', args: [],
+                 champs: { regle: String(r.regle || ''), explication: String(r.explication || ''),
+                           repere: String(r.repere || '') },
+                 brut: String(r.regle || '') });
+    }
   }
   for (const cle of st.transitoire.keys()) {
     const v = st.transitoire.get(cle);

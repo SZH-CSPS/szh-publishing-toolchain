@@ -3064,7 +3064,7 @@ function constatsCourants(racine) {
   const base = dernierJournal.racine !== racine
     ? lireJournalTache(racine)
     : dernierJournal.export.concat(dernierJournal.reimport, dernierJournal.constats);
-  return base.concat(pdfuaHote.constats(racine));
+  return base.concat(pdfuaHote.constats(racine, langueCockpit()));
 }
 
 // Les points qui ont fait refuser le dernier export, un par carte. Ils partaient
@@ -3330,7 +3330,7 @@ function majBarreControles() {
   // comme à l'export — c'est la même règle, elle arrive juste une minute après le Ctrl+S
   // au lieu du jour de l'export.
   const constats = dernierJournal.reimport.concat(dernierJournal.constats)
-    .concat(pdfuaHote.constats(dernierJournal.racine));
+    .concat(pdfuaHote.constats(dernierJournal.racine, langueCockpit()));
   const r = resumeJournal(constats);
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
   else if (r.avertissements > 0) { barreControles.text = T('ctl.barre.avert', [r.avertissements]); }

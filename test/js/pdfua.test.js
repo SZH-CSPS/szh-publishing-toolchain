@@ -58,9 +58,26 @@ function reponseConforme(fichier) {
   return { lignes: ['[pdf-ua] PDF/UA-1 : ' + fichier + ' — conforme.'], code: 0, erreur: null };
 }
 
+// Le format de pipeline/rapport-ua.py : un bloc par langue, chaque règle suivie de sa
+// cause, de son geste (repliés sur deux lignes ici) et de son repère ISO.
 function reponseNonConforme(fichier, n) {
   return {
-    lignes: ['[pdf-ua] PDF/UA-1 : ' + fichier + ' — NON conforme, ' + n + ' règle(s) en échec.'],
+    lignes: [
+      '[pdf-ua] PDF/UA-1 : ' + fichier + ' — NON conforme, ' + n + ' règle(s) en échec.',
+      '[pdf-ua]   • Le document n’a pas de titre (1 fois, page(s) 3)',
+      '[pdf-ua]       En cause : le champ title de la fiche',
+      '[pdf-ua]                  est vide.',
+      '[pdf-ua]       À faire  : remplir le titre.',
+      '[pdf-ua]   ISO 14289-1 7.1-9',
+      '[pdf-ua]   • Police non incorporée (2 fois)',
+      '[pdf-ua]       À faire  : signalez-le.',
+      '[pdf-ua]   ISO 14289-1 7.21.4.1-1',
+      '[pdf-ua] 1 fichier(s) sur 1 ne sont pas conformes : l’export est arrêté.',
+      '[pdf-ua] [de] PDF/UA-1: ' + fichier + ' — NICHT konform, ' + n + ' Regel(n) nicht erfüllt.',
+      '[pdf-ua] [de]   • Das Dokument hat keinen Titel (1 Mal, Seite(n) 3)',
+      '[pdf-ua] [de]       Ursache: das Feld title ist leer.',
+      '[pdf-ua] [de]   ISO 14289-1 7.1-9'
+    ],
     code: 1, erreur: null
   };
 }
@@ -153,6 +170,43 @@ test('un PDF modifié et non conforme est compté bloquant et montré dans les C
   // Une carte par article, plusieurs défauts dessous : la phrase est dans l'un d'eux.
   const phrases = (carte.messages || []).map((m) => m.texte).join(' | ');
   assert.match(phrases, /3 règle/, 'le nombre de règles en échec n’est pas dans la phrase : ' + phrases);
+  // Le compte seul ne se corrige pas : la règle, sa cause et son geste doivent suivre.
+  assert.match(phrases, /Règle PDF\/UA non respectée\s:\sLe document n’a pas de titre \(1 fois, page\(s\) 3\)/,
+    'la règle en échec n’est pas nommée : ' + phrases);
+  assert.match(phrases, /En cause\s:\sle champ title de la fiche est vide\. À faire\s:\sremplir le titre\./,
+    'la cause et le geste de la règle ne suivent pas : ' + phrases);
+  assert.doesNotMatch(phrases, /ISO 14289|Titel/, 'le repère ou la moitié allemande a fui : ' + phrases);
+  // La flèche de la règle mène à la fiche, sur le champ du titre ; un défaut de la chaîne
+  // (police non incorporée) n'en a pas : rien à corriger dans l'article.
+  const titre = carte.messages.find((m) => /pas de titre/.test(m.texte));
+  assert.ok(titre && titre.action, 'la règle du titre n’a pas de flèche : ' + JSON.stringify(titre));
+  assert.strictEqual(titre.action.id, 'fiche:title');
+  const police = carte.messages.find((m) => /Police non incorporée/.test(m.texte));
+  assert.ok(police && police.action === null, 'un défaut de la chaîne a reçu une flèche');
+  assert.ok(lireCache().verdicts['01-essai'].details.de.length === 1,
+    'la moitié allemande n’est pas gardée en cache');
+});
+
+test('un verdict non conforme mis en cache sans ses règles est rejugé', async () => {
+  const cache = lireCache();
+  delete cache.verdicts['01-essai'].details;
+  fs.writeFileSync(CACHE, JSON.stringify(cache));
+  // Le cache se relit au premier accès à une racine : on repart d'un état mémoire neuf,
+  // dans un second exemplaire du module, sans toucher à celui de l'hôte.
+  const cleModule = require.resolve(path.join(COCKPIT, 'lib', 'pdfua-hote.js'));
+  const original = require.cache[cleModule];
+  delete require.cache[cleModule];
+  const frais = require(cleModule);
+  require.cache[cleModule] = original;
+  let appels = 0;
+  frais.configurer({
+    lancerValidateur: () => { appels++; return Promise.resolve(reponseNonConforme('01-essai.pdf', 3)); },
+    listerArticles: () => ['01-essai'], racine: () => REVUE
+  });
+  await frais.planifier(REVUE);
+  assert.strictEqual(appels, 1, 'un verdict sans règles a été gardé tel quel');
+  const regles = frais.constats(REVUE, 'de').filter((c) => c.code === 'regle');
+  assert.deepStrictEqual(regles.map((c) => c.champs.regle), ['Das Dokument hat keinen Titel (1 Mal, Seite(n) 3)']);
 });
 
 // ---- 4. Une panne d'outillage n'est ni un verdict ni un blocage ---------------------
