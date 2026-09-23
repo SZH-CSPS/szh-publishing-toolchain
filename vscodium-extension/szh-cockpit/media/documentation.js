@@ -190,8 +190,9 @@ function valeurChamp(c, champCfg) {
   // texte) : sa valeur vit à part, dans c.image — voir champFichier() plus bas.
   if (champCfg.saisie === 'fichier') { return c.image || ''; }
   var ctlChamp = c.ctl[champCfg.cle];
-  if (!ctlChamp) { return champCfg.saisie === 'structure' ? [] : ''; }
+  if (!ctlChamp) { return (champCfg.saisie === 'structure' || champCfg.saisie === 'liste_multiple') ? [] : ''; }
   if (champCfg.saisie === 'structure') { return lireStructure(ctlChamp); }
+  if (champCfg.saisie === 'liste_multiple') { return ctlChamp.valeurs.slice(); }
   if (champCfg.saisie === 'derive') { return ctlChamp.valeur || ''; }
   return ligne(ctlChamp.value);
 }
@@ -218,7 +219,8 @@ function champsManquants(c) {
     if (!cfg.requis) { continue; }
     if (cfg.quand && !quandSatisfait(cfg.quand, v)) { continue; }
     var val = v[cfg.cle];
-    var vide = cfg.saisie === 'structure' ? !(Array.isArray(val) && val.length > 0) : String(val || '').trim() === '';
+    var vide = (cfg.saisie === 'structure' || cfg.saisie === 'liste_multiple')
+      ? !(Array.isArray(val) && val.length > 0) : String(val || '').trim() === '';
     if (vide) { manque.push(cfg.cle); }
   }
   return manque;
@@ -480,18 +482,135 @@ function champOrdinaire(parent, c, champCfg) {
   return d;
 }
 
+// ---- Champ `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste
+//      (docs/FORMAT-DOCUMENTATION-KIRBY.md, saisie liste_multiple) --------------------------
+//
+// Deux rendus, choisis par le nombre d'options — jamais par le nom du champ (le contrat peut
+// gagner d'autres champs `liste_multiple` demain) : une petite liste (genre, neuf jetons) se
+// coche directement ; une grande (pays, 250) se cherche et se pose en étiquettes retirables,
+// triées par nom dans la langue de l'interface (typesRessourceConfig, documentation-hote.js).
+var SEUIL_LISTE_MULTIPLE_RECHERCHE = 15;
+
+function champListeMultipleCases(parent, c, champCfg, valeursInitiales) {
+  var d = texte(parent, 'div', 'szh-champ doc-champ-liste-multiple');
+  texte(d, 'span', 'doc-liste-multiple-label', champCfg.libelle || '');
+  var zoneCases = texte(d, 'div', 'doc-liste-multiple-cases');
+  var ctlChamp = { conteneur: d, valeurs: (valeursInitiales || []).slice() };
+  c.ctl[champCfg.cle] = ctlChamp;
+  function surChangement() { c.touchee = true; etat(''); majEtatCarte(c); majModifie(); }
+  (champCfg.options || []).forEach(function (o) {
+    var lab = texte(zoneCases, 'label', 'doc-liste-multiple-case');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = o.valeur;
+    cb.checked = ctlChamp.valeurs.indexOf(o.valeur) !== -1;
+    cb.addEventListener('change', function () {
+      var i = ctlChamp.valeurs.indexOf(o.valeur);
+      if (cb.checked && i === -1) { ctlChamp.valeurs.push(o.valeur); }
+      else if (!cb.checked && i !== -1) { ctlChamp.valeurs.splice(i, 1); }
+      surChangement();
+    });
+    lab.appendChild(cb);
+    texte(lab, 'span', null, o.libelle || o.valeur);
+  });
+  return d;
+}
+
+function champListeMultipleRecherche(parent, c, champCfg, valeursInitiales) {
+  var d = texte(parent, 'div', 'szh-champ doc-champ-liste-multiple');
+  texte(d, 'span', 'doc-liste-multiple-label', champCfg.libelle || '');
+  var ctlChamp = { conteneur: d, valeurs: (valeursInitiales || []).slice() };
+  c.ctl[champCfg.cle] = ctlChamp;
+  var zoneChips = texte(d, 'div', 'doc-liste-multiple-chips');
+  var zoneRecherche = texte(d, 'div', 'doc-liste-multiple-recherche');
+  var champTexte = document.createElement('input');
+  champTexte.type = 'text';
+  champTexte.placeholder = TXT.listeMultipleRecherche || '';
+  champTexte.className = 'doc-liste-multiple-champ-recherche';
+  zoneRecherche.appendChild(champTexte);
+  var listeResultats = texte(zoneRecherche, 'div', 'doc-liste-multiple-resultats');
+  listeResultats.hidden = true;
+
+  function libelleDe(valeur) {
+    var o = (champCfg.options || []).filter(function (x) { return x.valeur === valeur; })[0];
+    return o ? o.libelle : valeur;
+  }
+  function surChangement() { c.touchee = true; etat(''); majEtatCarte(c); majModifie(); }
+  function rendreChips() {
+    zoneChips.textContent = '';
+    ctlChamp.valeurs.forEach(function (v) {
+      var chip = texte(zoneChips, 'span', 'doc-liste-multiple-chip');
+      texte(chip, 'span', null, libelleDe(v));
+      chip.appendChild(boutonIcone('poubelle', TXT.listeMultipleRetirerTip || '', function () { retirer(v); }, 'szh-ico--danger'));
+    });
+  }
+  function retirer(valeur) {
+    var i = ctlChamp.valeurs.indexOf(valeur);
+    if (i !== -1) { ctlChamp.valeurs.splice(i, 1); }
+    rendreChips();
+    surChangement();
+  }
+  function ajouter(valeur) {
+    if (ctlChamp.valeurs.indexOf(valeur) === -1) { ctlChamp.valeurs.push(valeur); }
+    champTexte.value = '';
+    rendreResultats('');
+    rendreChips();
+    surChangement();
+    try { champTexte.focus(); } catch (e) { /* environnement sans focus (tests) */ }
+  }
+  function rendreResultats(requete) {
+    listeResultats.textContent = '';
+    var q = String(requete || '').trim().toLowerCase();
+    if (q === '') { listeResultats.hidden = true; return; }
+    var options = (champCfg.options || []).filter(function (o) {
+      return ctlChamp.valeurs.indexOf(o.valeur) === -1 && o.libelle.toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 30);
+    if (options.length === 0) {
+      texte(listeResultats, 'p', 'doc-vue-vide', TXT.listeMultipleAucunResultat || '');
+      listeResultats.hidden = false;
+      return;
+    }
+    options.forEach(function (o) {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'doc-liste-multiple-resultat';
+      item.textContent = o.libelle;
+      // mousedown, pas click : précède le blur du champ texte, sinon la liste se cache
+      // avant que le clic ne l'atteigne.
+      item.addEventListener('mousedown', function (ev) { ev.preventDefault(); ajouter(o.valeur); });
+      listeResultats.appendChild(item);
+    });
+    listeResultats.hidden = false;
+  }
+  champTexte.addEventListener('input', function () { rendreResultats(champTexte.value); });
+  champTexte.addEventListener('focus', function () { if (champTexte.value.trim() !== '') { rendreResultats(champTexte.value); } });
+  champTexte.addEventListener('blur', function () {
+    try { setTimeout(function () { listeResultats.hidden = true; }, 120); }
+    catch (e) { listeResultats.hidden = true; }
+  });
+  rendreChips();
+  return d;
+}
+
+function champListeMultiple(parent, c, champCfg, valeursInitiales) {
+  var options = champCfg.options || [];
+  if (options.length > SEUIL_LISTE_MULTIPLE_RECHERCHE) { return champListeMultipleRecherche(parent, c, champCfg, valeursInitiales); }
+  return champListeMultipleCases(parent, c, champCfg, valeursInitiales);
+}
+
 // Un champ visible seulement si `quand` est satisfait : la carte suit dès la construction,
 // et à chaque changement (majConditionnels ci-dessus).
 function champ(parent, c, champCfg, valeursInitiales) {
   var conteneur;
   if (champCfg.saisie === 'structure') { conteneur = champStructure(parent, c, champCfg, valeursInitiales && valeursInitiales[champCfg.cle]); }
+  else if (champCfg.saisie === 'liste_multiple') { conteneur = champListeMultiple(parent, c, champCfg, valeursInitiales && valeursInitiales[champCfg.cle]); }
   else if (champCfg.saisie === 'derive') { conteneur = champDerive(parent, c, champCfg); }
   else if (champCfg.saisie === 'fichier') { conteneur = champFichier(parent, c, champCfg); }
   else { conteneur = champOrdinaire(parent, c, champCfg); }
   if (champCfg.saisie !== 'fichier' && valeursInitiales) {
     var v0 = valeursInitiales[champCfg.cle];
     if (champCfg.saisie === 'liste') { poserOptions(c.ctl[champCfg.cle], champCfg.options || [], String(v0 || '')); }
-    else if (champCfg.saisie === 'structure' || champCfg.saisie === 'derive') { /* déjà posées */ }
+    else if (champCfg.saisie === 'structure' || champCfg.saisie === 'derive' || champCfg.saisie === 'liste_multiple') { /* déjà posées */ }
     else { c.ctl[champCfg.cle].value = String(v0 || ''); }
   }
   if (champCfg.quand) {
@@ -1174,6 +1293,15 @@ function remplirApercuArchive(f, corps) {
             return (cfg.structureChamps || []).map(function (sc) { return ligneStruct[sc.cle]; })
               .filter(function (x) { return x; }).join(' · ');
           }).join(' ; ');
+        }
+      } else if (cfg.saisie === 'liste_multiple') {
+        // Le jeton seul (« FR ») n'est pas lisible : on l'habille du libellé du contrat
+        // (cfg.options, posé par typesRessourceConfig() même pour un aperçu Archive).
+        if (Array.isArray(val) && val.length > 0) {
+          texteValeur = val.map(function (jeton) {
+            var o = (cfg.options || []).filter(function (x) { return x.valeur === jeton; })[0];
+            return o ? o.libelle : jeton;
+          }).join(', ');
         }
       } else {
         texteValeur = val === undefined || val === null ? '' : String(val);

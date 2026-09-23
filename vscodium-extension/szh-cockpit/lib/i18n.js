@@ -1130,6 +1130,11 @@ const TEXTES_COCKPIT = {
     'doc.suivi.ajouter': 'Ajouter une ligne',
     'doc.suivi.ajouter.tip': 'Ajouter une ligne de suivi',
     'doc.suivi.retirer.tip': 'Retirer cette ligne de suivi',
+    // Champ `liste_multiple` (genre et pays d'un film) : case à cocher pour une petite
+    // liste (genre), recherche + étiquettes retirables pour une grande (pays).
+    'doc.listeMultiple.recherche': 'Rechercher…',
+    'doc.listeMultiple.aucunResultat': 'Aucun résultat.',
+    'doc.listeMultiple.retirer.tip': 'Retirer',
     'rubrique.vider.tip': 'Vider ce bloc : la rubrique ne s’imprimera plus',
 
     // ── Traductions à faire / Réservoir / Mes orphelines (bibliotheque partagee) ──
@@ -2673,6 +2678,11 @@ const TEXTES_COCKPIT = {
     'doc.suivi.ajouter': 'Zeile hinzufügen',
     'doc.suivi.ajouter.tip': 'Eine Verlaufszeile hinzufügen',
     'doc.suivi.retirer.tip': 'Diese Verlaufszeile entfernen',
+    // Feld `liste_multiple` (Genre und Land eines Films): Checkbox für eine kleine
+    // Liste (Genre), Suche + entfernbare Chips für eine grosse Liste (Land).
+    'doc.listeMultiple.recherche': 'Suchen…',
+    'doc.listeMultiple.aucunResultat': 'Kein Ergebnis.',
+    'doc.listeMultiple.retirer.tip': 'Entfernen',
     'rubrique.vider.tip': 'Diesen Block leeren: die Rubrik wird nicht mehr gedruckt',
 
     // ── Zu übersetzen / Reserve / Meine herrenlosen Einträge (gemeinsame Bibliothek) ──

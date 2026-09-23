@@ -1515,6 +1515,11 @@ function configChamp(champ, langue) {
     c.options = optionsListe(champ.liste, langue);
     if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
   }
+  if (champ.saisie === 'liste_multiple') {
+    // Même tri que documentation-hote.js#configChamp : par nom, jamais l'ordre du JSON.
+    c.options = optionsListe(champ.liste, langue)
+      .sort((a, b) => a.libelle.localeCompare(b.libelle, langue, { sensitivity: 'base', numeric: true }));
+  }
   if (champ.saisie === 'structure') { c.structureChamps = champ.champs.map((sc) => configChamp(sc, langue)); }
   if (champ.saisie === 'fichier') { c.extensions = champ.extensions || []; }
   if (champ.saisie === 'derive') {
@@ -1706,6 +1711,90 @@ test('documentation : le champ curia s’affiche en lecture seule, recalculé de
   categorie.value = 'postulat';
   categorie.dispatchEvent({ type: 'change' });
   assert.strictEqual(derive.textContent, '6', 'curia doit suivre la catégorie choisie');
+});
+
+// ---- Champ `liste_multiple` (genre et pays d'un film, 23.09.2026) ---------------------
+//
+// Deux rendus selon le nombre d'options (media/documentation.js#champListeMultiple) : genre
+// (9 jetons) se coche, pays (250 jetons) se cherche et se pose en étiquettes retirables.
+function ouvrirCarteFilmNeuve(page) {
+  const rangFilm = configFiches().findIndex((t) => t.valeur === 'film');
+  const section = page.conteneur().querySelectorAll('.doc-section')[rangFilm];
+  section.querySelectorAll('.doc-ajouter')[0].dispatchEvent({ type: 'click' });
+  const cartes = page.conteneur().querySelectorAll('.doc-fiche');
+  return cartes[cartes.length - 1];
+}
+
+test('documentation : genre (film) se coche parmi 9 cases, chacune reflète le contrat', () => {
+  const { page } = pageDocumentation();
+  const carte = ouvrirCarteFilmNeuve(page);
+  const blocGenre = carte.querySelectorAll('.doc-champ-liste-multiple')[0];
+  assert.ok(blocGenre, 'un bloc liste_multiple doit se rendre pour le premier champ (genre)');
+  const genreListe = kirby.valeursListe('genre_film');
+  const cases = blocGenre.querySelectorAll('.doc-liste-multiple-case input[type="checkbox"]');
+  assert.strictEqual(cases.length, genreListe.length, 'une case par genre du contrat (9 attendues)');
+  assert.strictEqual(cases.length, 9);
+  assert.ok(cases.every((c) => !c.checked), 'aucune case cochée à la création');
+});
+
+test('documentation : pays (film) se cherche, une sélection pose une étiquette retirable', () => {
+  const { page } = pageDocumentation();
+  const carte = ouvrirCarteFilmNeuve(page);
+  const blocs = carte.querySelectorAll('.doc-champ-liste-multiple');
+  const blocPays = blocs[1];
+  assert.ok(blocPays, 'un second bloc liste_multiple doit se rendre (pays)');
+  const champRecherche = blocPays.querySelector('.doc-liste-multiple-champ-recherche');
+  assert.ok(champRecherche, 'une longue liste (250 pays) doit offrir un champ de recherche, pas des cases');
+  assert.strictEqual(blocPays.querySelectorAll('.doc-liste-multiple-case').length, 0,
+    'pays ne doit PAS se rendre en cases : trop d’options');
+
+  champRecherche.value = 'suisse';
+  champRecherche.dispatchEvent({ type: 'input' });
+  const resultats = blocPays.querySelectorAll('.doc-liste-multiple-resultat');
+  assert.ok(resultats.length >= 1, 'la recherche doit trouver au moins la Suisse');
+  const suisse = resultats.find((r) => r.textContent.toLowerCase().indexOf('suisse') !== -1);
+  assert.ok(suisse, 'un résultat « Suisse » attendu, libellés : ' + resultats.map((r) => r.textContent).join(', '));
+  suisse.dispatchEvent({ type: 'mousedown' });
+
+  const chips = blocPays.querySelectorAll('.doc-liste-multiple-chip');
+  assert.strictEqual(chips.length, 1, 'la sélection doit poser une étiquette');
+  assert.match(chips[0].textContent, /Suisse/);
+  // Le champ de recherche se vide et la sélection disparaît de ses propres résultats.
+  assert.strictEqual(champRecherche.value, '');
+
+  // Retirer l'étiquette la fait disparaître (le bouton lui-même porte la classe szh-ico).
+  chips[0].querySelectorAll('.szh-ico')[0].dispatchEvent({ type: 'click' });
+  assert.strictEqual(blocPays.querySelectorAll('.doc-liste-multiple-chip').length, 0);
+});
+
+test('documentation : genre et pays repartent comme des tableaux de jetons à l’enregistrement', () => {
+  const { page } = pageDocumentation();
+  const carte = ouvrirCarteFilmNeuve(page);
+  const blocs = carte.querySelectorAll('.doc-champ-liste-multiple');
+  const casesGenre = blocs[0].querySelectorAll('.doc-liste-multiple-case input[type="checkbox"]');
+  casesGenre[0].checked = true;
+  casesGenre[0].dispatchEvent({ type: 'change' });
+  casesGenre[2].checked = true;
+  casesGenre[2].dispatchEvent({ type: 'change' });
+  const champRecherche = blocs[1].querySelector('.doc-liste-multiple-champ-recherche');
+  champRecherche.value = 'france';
+  champRecherche.dispatchEvent({ type: 'input' });
+  const france = blocs[1].querySelectorAll('.doc-liste-multiple-resultat')
+    .find((r) => r.textContent.toLowerCase().indexOf('france') !== -1);
+  assert.ok(france);
+  france.dispatchEvent({ type: 'mousedown' });
+
+  page.messages.length = 0;
+  const bouton = page.parId.barre.querySelectorAll('button')[0];
+  bouton.dispatchEvent({ type: 'click' });
+  const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
+  const filmEnvoye = envoi.ressources.find((r) => r.type === 'film');
+  assert.ok(filmEnvoye, 'la carte film neuve doit partir avec les autres');
+  assert.ok(Array.isArray(filmEnvoye.valeurs.genre) && filmEnvoye.valeurs.genre.length === 2,
+    'genre doit repartir comme un tableau de deux jetons : ' + JSON.stringify(filmEnvoye.valeurs.genre));
+  // Array.from() : le tableau vient du royaume vm de la page, pas celui du test (même piège
+  // que le réservoir en lot, plus haut).
+  assert.deepStrictEqual(Array.from(filmEnvoye.valeurs.pays), ['FR']);
 });
 
 test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubriques', () => {
@@ -2034,6 +2123,33 @@ test('Archive : l’aperçu se déplie au clic, un seul ouvert à la fois, l’i
   page.messages.length = 0;
   boutonApercu1.dispatchEvent({ type: 'click' });
   assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_IMAGE).length, 0);
+});
+
+test('Archive : un champ `liste_multiple` (genre, pays) s’affiche par ses LIBELLÉS, jamais les jetons bruts', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  boutons[3].dispatchEvent({ type: 'click' });
+  const filmArchive = ficheArchive({
+    type: 'film', slug: 's-arch-film', titres: { fr: 'Un film archivé', de: '' },
+    valeurs: {
+      fr: { title: 'Un film archivé', categorie: 'documentaire', genre: ['drame', 'comedie'],
+        pays: ['FR', 'CH'], realisateur: 'X', annee: '2020', descriptif: 'D' },
+      de: null
+    },
+    recherche: 'un film archivé'
+  });
+  page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [filmArchive] });
+  const boutonApercu = panneauArchive(page).querySelector('.doc-vue-bouton');
+  boutonApercu.dispatchEvent({ type: 'click' });
+  const corps = panneauArchive(page).querySelector('.doc-archive-corps');
+  // « FR » seul apparaît légitimement (l’en-tête de langue « FR », majuscule) : ce qu’on
+  // exclut, c’est le JOINT de jetons bruts que produirait un aperçu non labellisé.
+  assert.strictEqual(corps.textContent.indexOf('FR, CH'), -1,
+    'jamais les jetons ISO bruts joints tels quels dans l’aperçu : ' + corps.textContent);
+  assert.match(corps.textContent, /France/);
+  assert.match(corps.textContent, /Suisse/);
+  const genreListe = kirby.valeursListe('genre_film');
+  assert.match(corps.textContent, new RegExp(genreListe.find((g) => g.jeton === 'drame').fr));
 });
 
 test('Archive : « Reprendre dans ce numéro » envoie (ficheType, slug), se désactive puis se réactive', () => {

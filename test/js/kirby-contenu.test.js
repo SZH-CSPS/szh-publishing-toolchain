@@ -147,6 +147,61 @@ test('ecrireFichierUnique / lireFichierUnique : un seul nom de fichier', () => {
   assert.strictEqual(kc.lireFichierUnique(''), '');
 });
 
+// ---- `liste_multiple` (genre et pays d'un film) : « jeton1, jeton2 », dédoublonné -------
+
+test('ecrireListeMultiple / lireListeMultiple : aller-retour, virgule + espace, dédoublonné', () => {
+  assert.strictEqual(kc.ecrireListeMultiple(['drame', 'comedie', 'drame']), 'drame, comedie');
+  assert.deepStrictEqual(kc.lireListeMultiple('drame, comedie'), ['drame', 'comedie']);
+  assert.deepStrictEqual(kc.lireListeMultiple('drame,  comedie ,drame'), ['drame', 'comedie'],
+    'espaces irréguliers et doublon tolérés à la lecture');
+});
+
+test('ecrireListeMultiple : un tableau vide, absent ou non-tableau rend une chaîne vide', () => {
+  assert.strictEqual(kc.ecrireListeMultiple([]), '');
+  assert.strictEqual(kc.ecrireListeMultiple(undefined), '');
+  assert.strictEqual(kc.ecrireListeMultiple('drame'), '', 'une chaîne seule n’est pas un tableau : rien à écrire');
+});
+
+test('lireListeMultiple : chaîne vide -> tableau vide, jamais [""]', () => {
+  assert.deepStrictEqual(kc.lireListeMultiple(''), []);
+  assert.deepStrictEqual(kc.lireListeMultiple('  '), []);
+});
+
+test('liste_multiple sur une vraie fiche film : round-trip, champ commun aux deux langues, complétude', () => {
+  const { racine } = arbreJetable();
+  const film = { title: 'Un film', categorie: 'documentaire', genre: ['drame', 'comedie'],
+    pays: ['FR', 'CH'], realisateur: 'X', annee: '2024', descriptif: 'D' };
+  const { slug } = kc.creerFiche(racine, 'fr', 'film', film, '');
+
+  const relu = kc.lireFicheSlugLangue(racine, slug, 'fr', 'film');
+  assert.deepStrictEqual(relu.valeurs.genre, ['drame', 'comedie']);
+  assert.deepStrictEqual(relu.valeurs.pays, ['FR', 'CH']);
+
+  const brut = fs.readFileSync(path.join(kc.cheminFiche(racine, 'film', slug), 'film.fr.txt'), 'utf8');
+  assert.match(brut, /^Genre: drame, comedie$/m, 'écrit « jeton1, jeton2 », comme un multiselect Kirby');
+  assert.match(brut, /^Pays: FR, CH$/m);
+
+  // Champ commun (pas de `traduire: true` sur genre/pays dans le contrat) : recopié dans
+  // l'autre langue dès qu'elle existe, comme n'importe quel autre champ commun
+  // (fusionnerChampsCommuns, appelée par enregistrerFicheLangue).
+  kc.traduireDansNumero(racine, slug, 'de', '');
+  kc.enregistrerFicheLangue(racine, slug, 'fr', 'film', Object.assign({}, relu.valeurs, { genre: ['animation'] }));
+  const reluDe = kc.lireFicheSlugLangue(racine, slug, 'de', 'film');
+  assert.deepStrictEqual(reluDe.valeurs.genre, ['animation'], 'le genre doit être recopié dans le fichier allemand');
+
+  // Complétude : un tableau vide compte comme vide (même règle qu'une `structure`), un
+  // seul champ liste_multiple rempli suffit à rendre une fiche « écrivable ».
+  assert.deepStrictEqual(kc.champsManquants('film', { genre: [] }).indexOf('genre') !== -1, false,
+    'genre n’est pas `requis` dans le contrat : jamais listé comme manquant');
+  assert.ok(kc.ficheEcrivable('film', { pays: ['FR'] }));
+  assert.ok(!kc.ficheEcrivable('film', { pays: [] }));
+
+  // Une fois vidé, le champ disparaît du fichier (comme un champ ordinaire vide).
+  kc.enregistrerFicheLangue(racine, slug, 'fr', 'film', Object.assign({}, relu.valeurs, { genre: [] }));
+  const brutVide = fs.readFileSync(path.join(kc.cheminFiche(racine, 'film', slug), 'film.fr.txt'), 'utf8');
+  assert.ok(!/^Genre:/m.test(brutVide), 'un genre vidé ne laisse aucune ligne Genre:');
+});
+
 // ---- Validation des dates ---------------------------------------------------------------
 
 test('dateValide / datePartielleValide / anneeValide', () => {

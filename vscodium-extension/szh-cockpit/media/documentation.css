@@ -166,6 +166,32 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-structure-souschamp label { font-size: var(--t-mini); color: var(--encre-2); }
 .doc-structure-ajouter { align-self: flex-start; }
 
+/* ---- Champ `liste_multiple` (genre et pays d'un film) --------------------------------- */
+.doc-champ-liste-multiple { display: flex; flex-direction: column; gap: var(--e1); }
+.doc-liste-multiple-label { font-size: var(--t-libelle); font-weight: 600; }
+/* Petite liste (genre) : cases côte à côte, comme une liste d'étiquettes. */
+.doc-liste-multiple-cases { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); }
+.doc-liste-multiple-case { display: flex; align-items: center; gap: .3em; font-size: var(--t-libelle); }
+/* Grande liste (pays) : étiquettes retirables au-dessus, recherche en dessous — la liste de
+   résultats flotte par-dessus le reste du formulaire (position: absolute), jamais en
+   poussant le contenu qui suit. */
+.doc-liste-multiple-chips { display: flex; flex-wrap: wrap; gap: var(--e1); }
+.doc-liste-multiple-chip { display: inline-flex; align-items: center; gap: .3em;
+  padding: .15em .5em; border-radius: 999px; font-size: var(--t-mini);
+  background: var(--surface); border: 1px solid var(--filet); }
+.doc-liste-multiple-chip .szh-ico { width: 1em; height: 1em; }
+.doc-liste-multiple-recherche { position: relative; }
+.doc-liste-multiple-champ-recherche { width: 100%; box-sizing: border-box; padding: .3em .5em; font-family: inherit; }
+.doc-liste-multiple-resultats { position: absolute; z-index: 5; top: 100%; left: 0; right: 0;
+  margin-top: 2px; max-height: 14rem; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .15); }
+.doc-liste-multiple-resultat { display: block; width: 100%; box-sizing: border-box;
+  padding: .3em .6em; border: 0; background: none; text-align: left; cursor: pointer;
+  font-family: inherit; font-size: var(--t-libelle); color: var(--encre); }
+.doc-liste-multiple-resultat:hover { background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
+.doc-liste-multiple-resultats .doc-vue-vide { margin: 0; padding: .3em .6em; }
+
 /* ---- Champ `derive` (le type Curia) : lecture seule, jamais saisi --------------------- */
 .doc-champ-derive { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--t-libelle); }
 .doc-derive-valeur { color: var(--encre-2); }

@@ -167,7 +167,7 @@ function champsManquants(type, valeurs) {
     if (!c.requis) { continue; }
     if (c.quand && !quandSatisfait(c.quand, v)) { continue; }
     const val = v[c.cle];
-    const vide = c.saisie === 'structure'
+    const vide = (c.saisie === 'structure' || c.saisie === 'liste_multiple')
       ? !(Array.isArray(val) && val.length > 0)
       : String(val === undefined || val === null ? '' : val).trim() === '';
     if (vide) { manquants.push(c.cle); }
@@ -182,7 +182,7 @@ function ficheEcrivable(type, valeurs) {
   return champsDuType(type).some((c) => {
     if (c.saisie === 'derive') { return false; }
     const val = v[c.cle];
-    if (c.saisie === 'structure') { return Array.isArray(val) && val.length > 0; }
+    if (c.saisie === 'structure' || c.saisie === 'liste_multiple') { return Array.isArray(val) && val.length > 0; }
     return String(val === undefined || val === null ? '' : val).trim() !== '';
   });
 }
@@ -327,6 +327,35 @@ function lireListeStructure(brut) {
   return entrees.filter((e) => CLES_SUIVI.some((c) => e[c] !== ''));
 }
 
+// ---- `liste_multiple` (genre et pays d'un film) : plusieurs jetons, « jeton1, jeton2 » ---
+//
+// docs/FORMAT-DOCUMENTATION-KIRBY.md : virgule et espace (convention du champ multiselect de
+// Kirby, separator: ', '), dans l'ordre de saisie, sans doublon. Champ COMMUN aux deux
+// langues (pas de `traduire: true` sur genre/pays dans le contrat) : fusionnerChampsCommuns()
+// le recopie déjà tel quel, comme n'importe quel champ non-structure.
+function ecrireListeMultiple(jetons) {
+  const vus = new Set();
+  const utiles = [];
+  for (const j of (Array.isArray(jetons) ? jetons : [])) {
+    const v = String(j === undefined || j === null ? '' : j).trim();
+    if (v === '' || vus.has(v)) { continue; }
+    vus.add(v);
+    utiles.push(v);
+  }
+  return utiles.join(', ');
+}
+function lireListeMultiple(brut) {
+  const vus = new Set();
+  const utiles = [];
+  for (const j of String(brut === undefined || brut === null ? '' : brut).split(',')) {
+    const v = j.trim();
+    if (v === '' || vus.has(v)) { continue; }
+    vus.add(v);
+    utiles.push(v);
+  }
+  return utiles;
+}
+
 function ecrireFichierUnique(nom) {
   const n = String(nom === undefined || nom === null ? '' : nom).trim();
   return n === '' ? '' : '- ' + n;
@@ -352,6 +381,7 @@ function champsPourEcriture(type, valeurs) {
     if (c.saisie === 'derive') { brute = valeurDerive(c, v); }
     else if (c.saisie === 'structure') { brute = ecrireListeStructure(v[c.cle]); forcerMultiligne = brute !== ''; }
     else if (c.saisie === 'fichier') { brute = ecrireFichierUnique(v[c.cle]); forcerMultiligne = brute !== ''; }
+    else if (c.saisie === 'liste_multiple') { brute = ecrireListeMultiple(v[c.cle]); }
     else { brute = String(v[c.cle] === undefined || v[c.cle] === null ? '' : v[c.cle]).trim(); }
     if (brute === '') { continue; }
     sortie.push({ cle: c.cle, valeurBrute: brute, forcerMultiligne: forcerMultiligne });
@@ -388,6 +418,7 @@ function valeursDepuisChamps(type, title, champsBruts) {
     if (c.cle === 'title' || c.saisie === 'derive') { continue; }
     if (c.saisie === 'structure') { v[c.cle] = lireListeStructure(bruts[c.cle] || ''); }
     else if (c.saisie === 'fichier') { v[c.cle] = lireFichierUnique(bruts[c.cle] || ''); }
+    else if (c.saisie === 'liste_multiple') { v[c.cle] = lireListeMultiple(bruts[c.cle] || ''); }
     else { v[c.cle] = bruts[c.cle] !== undefined ? bruts[c.cle] : ''; }
   }
   for (const c of champsDuType(type)) {
@@ -1124,6 +1155,7 @@ module.exports = {
   // Fichier .txt Kirby (bas niveau, pour les tests d'aller-retour)
   lireTxt, ecrireTxt, separateur,
   ecrireListeStructure, lireListeStructure, ecrireFichierUnique, lireFichierUnique,
+  ecrireListeMultiple, lireListeMultiple,
   champsPourEcriture, valeursDepuisChamps, fusionnerChampsCommuns,
   // Ordre
   calculerOrdreFiches, slugifierFiche, slugFicheUnique,

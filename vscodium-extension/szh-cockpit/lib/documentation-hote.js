@@ -100,6 +100,13 @@ function configChamp(champ, langue) {
     c.options = optionsListe(champ.liste, langue);
     if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
   }
+  if (champ.saisie === 'liste_multiple') {
+    // Triées par nom (Robin) — jamais l'ordre du JSON, qui pour `pays` n'a aucun sens
+    // éditorial (250 codes ISO). Locale-aware : « Ile-de-France » et « Île-de-France »
+    // voisinent, comme partout ailleurs dans ce formulaire (calculerOrdreFiches).
+    c.options = optionsListe(champ.liste, langue)
+      .sort((a, b) => a.libelle.localeCompare(b.libelle, langue, { sensitivity: 'base', numeric: true }));
+  }
   if (champ.saisie === 'structure') {
     c.structureChamps = champ.champs.map((sc) => configChamp(sc, langue));
   }
@@ -165,6 +172,9 @@ function textesDocumentation() {
     liste: T('rubrique.liste'), listeTip: T('rubrique.liste.tip'),
     ajouterLigne: T('doc.suivi.ajouter'), ajouterLigneTip: T('doc.suivi.ajouter.tip'),
     retirerLigneTip: T('doc.suivi.retirer.tip'),
+    listeMultipleRecherche: T('doc.listeMultiple.recherche'),
+    listeMultipleAucunResultat: T('doc.listeMultiple.aucunResultat'),
+    listeMultipleRetirerTip: T('doc.listeMultiple.retirer.tip'),
     enregistrer: T('img.enregistrer'), enregistrerTip: T('doc.enregistrer.tip'),
     enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'),
     rienAEcrire: T('doc.rienAEcrire'),

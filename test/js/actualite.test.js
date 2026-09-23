@@ -349,6 +349,11 @@ assert.deepStrictEqual([...CANTONS_IDENTIQUES].sort(),
   ['Jura', 'Tessin', 'Uri'].sort(),
   'la liste des cantons au nom identique dans les deux langues a changé : ' + [...CANTONS_IDENTIQUES].sort().join(', '));
 for (const libelle of CANTONS_IDENTIQUES) { IDENTIQUES_ADMISES.add(libelle); }
+// Idem pour les pays (liste_multiple `pays` d'un film, ISO 3166-1, 250 jetons, 23.09.2026) :
+// beaucoup de noms sont identiques en français et en allemand (« Monaco », « Pakistan »…),
+// un fait linguistique et non une traduction manquante — pas de liste figée ici (250 entrées,
+// contrairement aux 26 cantons) : on l'accepte pour toute la liste, robuste à son évolution.
+for (const p of kirby.valeursListe('pays')) { if (p.fr === p.de) { IDENTIQUES_ADMISES.add(p.fr); } }
 
 function libellesActualite(langue) {
   const doc = require(COCKPIT_DOC);
