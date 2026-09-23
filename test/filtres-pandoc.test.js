@@ -11,7 +11,7 @@
 // neutralise tout seul ne protège rien.
 //
 // ⚠ ILS TOURNENT AVEC LE PANDOC DU PATH, ET CE N'EST PAS FORCÉMENT CELUI QUI COMPILE.
-// La CI installe le 3.5 épinglé (ci.yml, PANDOC_VERSION), comme image/Containerfile et comme
+// La CI installe le 3.7.0.2 épinglé (ci.yml, PANDOC_VERSION), comme image/Containerfile et comme
 // la WSL d'un poste de rédaction. Un poste de développement Windows, lui, peut avoir tout
 // autre chose dans son PATH — 3.9 sur celui d'origine. Les deux versions ne rendent pas le
 // même HTML pour les mêmes documents : sous 3.5 un Div « wrapper » de commonmark+sourcepos
@@ -40,7 +40,12 @@ function pandoc(entree, options) {
   // métadonnées YAML — nécessaire pour lire resumes[].motscles en sortie.
   if (o.standalone) { args.push('--standalone'); }
   for (const f of (o.filtres || [])) { args.push('--lua-filter=' + path.join(FILTRES, f)); }
-  const r = spawnSync('pandoc', args, { input: entree, encoding: 'utf8' });
+  // env : hérité du process par défaut (spawnSync sans `env`) ; szh-qr.lua lit
+  // SZH_LIENS_COURTS, d'où ce point d'entrée optionnel — fusionné, pas remplacé, pour que
+  // le PATH (et donc pandoc lui-même) reste trouvable.
+  const opts = { input: entree, encoding: 'utf8' };
+  if (o.env) { opts.env = Object.assign({}, process.env, o.env); }
+  const r = spawnSync('pandoc', args, opts);
   if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
   if (r.status !== 0) { throw new Error('pandoc a échoué : ' + r.stderr); }
   return r.stdout;
@@ -391,8 +396,11 @@ function pandocDansDossier(fichiers, principal, filtre, opts) {
     for (const nom of Object.keys(fichiers)) {
       fs.writeFileSync(path.join(dossier, nom), fichiers[nom], 'utf8');
     }
+    // `filtre` : une chaîne (un seul filtre, forme historique) ou un tableau (plusieurs,
+    // dans l'ordre — ex. szh-livre-entete-image.lua avant szh-livre-entete.lua).
+    const filtresListe = Array.isArray(filtre) ? filtre : [filtre];
     const args = ['--from=' + (o.from || 'markdown'), '--to=markdown', '--wrap=none', '--standalone',
-      '--lua-filter=' + path.join(FILTRES, filtre), principal];
+      ...filtresListe.map((f) => '--lua-filter=' + path.join(FILTRES, f)), principal];
     const env = Object.assign({}, process.env, o.env || {});
     const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
     if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
@@ -1287,4 +1295,420 @@ test('rubrique : un bloc sans titre intérieur sort exactement comme avant', () 
   assert.match(html, /<h2 class="szh-rubrique-titre"/);
   assert.ok(!/<h3|<h4/.test(html), 'aucun titre ne doit apparaître de nulle part');
   assert.match(html, /Du texte seul\./);
+});
+
+// ── QR code vectoriel cliquable (szh-qr.lua / szh-qr-commun.lua) ──────────────────────
+// Deux syntaxes : le bloc `qr-link` (référence du cahier des charges, réutilisable partout
+// — y compris embarqué dans un falc-header, voir plus bas) et la forme courte `.qr`, garde
+// pour compatibilité. Un lien `.qr`/qr-link devient un <a class="szh-qr"> VIDE — pas
+// l'image PNG floue importée du Word. Le SVG du QR va en background-image (data URI
+// base64), PAS en enfant du <a> : un <svg> enfant casse le balisage PDF/UA du lien (mesuré
+// au veraPDF, voir szh-qr.lua en tête — une zone cliquable par boîte interne, au lieu d'une
+// seule). D'où ce décodeur : la preuve porte sur le SVG réellement encodé, pas sur sa seule
+// présence dans le HTML.
+const LIEN_QR = '[Die Geschichte anhören](https://exemple.ch/x){.qr taille="30mm"}';
+// Nom accessible par défaut (aucun `title=`) : « Lien vers\u{202F}: <url> » en français
+// (lang absente du document -> repli fr), la narrow no-break space étant écrite en dur par
+// szh-qr-commun.lua (même convention que le reste de la chaîne) — jamais par le rédacteur.
+const TITRE_DEFAUT_FR = 'Lien vers\u{202F}: https://exemple.ch/x';
+
+function echapperRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function svgDuLienQr(html) {
+  const a = (html.match(/<a class="szh-qr[^"]*"[^>]*>/) || [])[0] || '';
+  const m = a.match(/background-image:url\(data:image\/svg\+xml;base64,([^)'"]+)\)/);
+  if (!m) { return { a, svg: null }; }
+  return { a, svg: Buffer.from(m[1], 'base64').toString('utf8') };
+}
+
+// Comme pandoc(), mais rend aussi le code de sortie et stderr (pour prouver les
+// avertissements « [qr-avertissement] ») — pandocDansDossier() existe déjà pour ça mais
+// fige `--to=markdown`, inutile ici où c'est le HTML qui porte le contraste/la couleur.
+function pandocQr(entree, options) {
+  const o = options || {};
+  const args = ['--from=' + (o.de || 'markdown'), '--to=' + (o.vers || 'html'), '--wrap=none'];
+  for (const f of (o.filtres || ['szh-qr.lua'])) { args.push('--lua-filter=' + path.join(FILTRES, f)); }
+  const opts = { input: entree, encoding: 'utf8' };
+  if (o.env) { opts.env = Object.assign({}, process.env, o.env); }
+  const r = spawnSync('pandoc', args, opts);
+  if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
+  return { stdout: (r.stdout || '').replace(/\r\n/g, '\n'), stderr: r.stderr || '', status: r.status };
+}
+
+test('qr (préparation) : sans le filtre, un lien `.qr` reste un lien ordinaire', () => {
+  const html = pandoc(LIEN_QR, { de: 'markdown', vers: 'html' });
+  assert.match(html, /<a href="https:\/\/exemple\.ch\/x" class="qr"[^>]*>Die Geschichte anhören<\/a>/,
+    'le défaut a changé de forme, revoir le test avant le filtre — ' + html);
+  assert.ok(!/background-image/.test(html), 'un fond apparaît sans le filtre : le test ne prouverait rien');
+});
+
+test('qr : le lien devient un <a class="szh-qr"> VIDE, le SVG en fond (un seul <path>), fond transparent par défaut', () => {
+  const html = pandoc(LIEN_QR, { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/x"[^>]*><\/a>/,
+    'le <a> doit rester VIDE (aucun enfant) — sans quoi WeasyPrint pose plusieurs zones cliquables : ' + html);
+  const a = (html.match(/<a class="szh-qr"[^>]*>/) || [''])[0];
+  assert.match(a, new RegExp('title="' + echapperRegex(TITRE_DEFAUT_FR) + '"'),
+    'title par défaut (« Lien vers : url ») absent ou mal formé sur le <a> : ' + a);
+  assert.match(a, new RegExp('aria-label="' + echapperRegex(TITRE_DEFAUT_FR) + '"'),
+    'aria-label par défaut absent ou mal formé sur le <a> : ' + a);
+
+  const { svg } = svgDuLienQr(html);
+  assert.ok(svg, 'aucun SVG en base64 dans le style du <a> : ' + a);
+  const chemins = svg.match(/<path/g) || [];
+  assert.strictEqual(chemins.length, 1, 'un seul <path> pour tous les modules, cahier des charges : ' + svg);
+  assert.ok(!/<a\b|href=/.test(svg), 'le SVG ne doit porter aucun lien : ce serait à nouveau un enfant cliquable');
+  assert.ok(!/<rect/.test(svg), 'fond transparent par défaut : aucun <rect> attendu dans le SVG : ' + svg);
+  assert.match(svg, /fill="#000000"/, 'la couleur par défaut des modules doit rester noire : ' + svg);
+  assert.match(svg, /viewBox="0 0 \d+ \d+"/, 'viewBox absent : ' + svg);
+  assert.match(svg, /shape-rendering="crispEdges"/, 'shape-rendering absent : ' + svg);
+});
+
+test('qr : `taille` (repli silencieux de `size`) devient la variable CSS --qr-taille sur le <a>', () => {
+  const html = pandoc(LIEN_QR, { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  const a = (html.match(/<a class="szh-qr"[^>]*>/) || [''])[0];
+  assert.match(a, /;--qr-taille:30mm"/, 'la taille demandée n’est pas passée au <a> : ' + a);
+});
+
+test('qr : `size` (nouveau nom anglais) fait la même chose que `taille`', () => {
+  const html = pandoc('[Écouter](https://exemple.ch/y){.qr size="30mm"}', { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  const a = (html.match(/<a class="szh-qr"[^>]*>/) || [''])[0];
+  assert.match(a, /;--qr-taille:30mm"/, '`size` ne fait pas la même chose que `taille` : ' + a);
+});
+
+test('qr : sans taille, aucune variable --qr-taille (la règle CSS retombe sur son défaut 25mm)', () => {
+  const html = pandoc('[Écouter](https://exemple.ch/y){.qr}', { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  const a = (html.match(/<a class="szh-qr"[^>]*>/) || [''])[0];
+  assert.ok(!/--qr-taille/.test(a), 'une taille traîne alors qu’aucune n’a été demandée : ' + a);
+});
+
+test('qr : un lien sans la classe `.qr` n’est jamais touché', () => {
+  const html = pandoc('[Un lien ordinaire](https://exemple.ch/z)', { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /<a href="https:\/\/exemple\.ch\/z">Un lien ordinaire<\/a>/, 'le filtre a touché un lien qu’il ne devait pas voir : ' + html);
+});
+
+test('qr : `title=` explicite remplace le défaut « Lien vers : url » (le texte du lien ne compte plus)', () => {
+  const html = pandoc('[Die Geschichte anhören](https://exemple.ch/x){.qr title="Écouter cette histoire"}',
+    { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  const a = (html.match(/<a class="szh-qr"[^>]*>/) || [''])[0];
+  assert.match(a, /title="Écouter cette histoire"/, 'le title explicite n’a pas été repris : ' + a);
+  assert.ok(!/Die Geschichte anhören/.test(a), 'le texte du lien apparaît alors qu’il ne devrait plus servir de nom accessible : ' + a);
+});
+
+test('qr : `tracked=false` garde l’URL d’origine même si le cache Shlink la connaît', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-qr-cache-'));
+  const cache = path.join(dossier, 'liens-courts.yaml');
+  fs.writeFileSync(cache, '"https://exemple.ch/x": "https://link.szh-csps.ch/BuchLS_01_click"\n', 'utf8');
+  try {
+    const html = pandoc('[X](https://exemple.ch/x){.qr tracked=false}',
+      { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'], env: { SZH_LIENS_COURTS: cache } });
+    assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/x"/,
+      'tracked=false doit ignorer le cache Shlink : ' + html);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('qr : `color`/`background` sont peints DANS le SVG (pas des variables CSS)', () => {
+  const html = pandoc('[X](https://exemple.ch/x){.qr color=#26613B background=#FFFFFF}',
+    { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  const { svg } = svgDuLienQr(html);
+  assert.match(svg, /fill="#26613B"/i, 'la couleur demandée n’est pas dans le <path> : ' + svg);
+  assert.match(svg, /<rect[^>]*fill="#FFFFFF"/i, 'le fond demandé n’a pas posé de <rect> : ' + svg);
+});
+
+test('qr : contraste couleur/fond sous 3:1 (WCAG 1.4.11) -> avertissement', () => {
+  const r = pandocQr('[X](https://exemple.ch/x){.qr color=#EEEEEE background=#FFFFFF}');
+  assert.strictEqual(r.status, 0, 'le filtre ne doit jamais faire planter pandoc : ' + r.stderr);
+  assert.match(r.stderr, /\[qr-avertissement\] qr-contraste-insuffisant/, 'aucun avertissement de contraste émis : ' + r.stderr);
+});
+
+test('qr : couleur non noire -> avertissement repérage quadri (PDF imprimeur)', () => {
+  const r = pandocQr('[X](https://exemple.ch/x){.qr color=#26613B}');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /\[qr-avertissement\] qr-couleur-non-noire-imprimeur/, 'aucun avertissement de quadri émis : ' + r.stderr);
+});
+
+test('qr : couleur noire par défaut -> aucun avertissement de quadri', () => {
+  const r = pandocQr(LIEN_QR);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/qr-couleur-non-noire-imprimeur/.test(r.stderr), 'un avertissement de quadri apparaît alors que la couleur est noire : ' + r.stderr);
+});
+
+test('qr : le lecteur commonmark_x+sourcepos de l’aperçu produit le même balisage', () => {
+  // Le Link `.qr` n'est PAS enveloppé dans un Span « wrapper=1 » par ce lecteur (vérifié
+  // par ailleurs) — seuls ses inlines enfants le sont. szh-qr.lua vise le type Link, pas
+  // des Str voisins : il n'a donc pas besoin de szh-sourcepos.lua en tête pour fonctionner.
+  const html = pandoc(LIEN_QR, { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/x"[^>]*><\/a>/, 'le filtre n’a rien produit (ou a laissé un enfant) sous sourcepos : ' + html);
+  const { svg } = svgDuLienQr(html);
+  const chemins = svg ? (svg.match(/<path/g) || []) : [];
+  assert.strictEqual(chemins.length, 1, 'sous sourcepos, le SVG n’est plus compact (un seul <path> attendu) : ' + svg);
+});
+
+test('qr : un cache de liens courts (SZH_LIENS_COURTS) devient le href ET le contenu encodé', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-qr-cache-'));
+  const cache = path.join(dossier, 'liens-courts.yaml');
+  fs.writeFileSync(cache, '"https://exemple.ch/x": "https://link.szh-csps.ch/BuchLS_01_click"\n', 'utf8');
+  try {
+    const html = pandoc(LIEN_QR, {
+      de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'],
+      env: { SZH_LIENS_COURTS: cache },
+    });
+    assert.match(html, /<a class="szh-qr" href="https:\/\/link\.szh-csps\.ch\/BuchLS_01_click"/,
+      'le href n’a pas suivi le lien court du cache : ' + html);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+// ── Bloc qr-link autonome (szh-qr.lua, Div) ────────────────────────────────────────────
+// Forme de référence du cahier des charges : réutilisable n'importe où dans un chapitre,
+// seul (ici) ou embarqué dans un falc-header (voir plus bas, szh-livre-entete.lua le
+// consomme lui-même avant que ce filtre ne s'exécute).
+function blocQrLien(attrs, url) {
+  return '::: {.qr-link' + (attrs ? ' ' + attrs : '') + '}\n' + url + '\n:::\n';
+}
+
+test('qr-link : bloc autonome -> même patron qu’un lien `.qr` (fond transparent, noir par défaut)', () => {
+  const html = pandoc(blocQrLien('', 'https://exemple.ch/bloc'), { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/bloc"[^>]*><\/a>/, 'le bloc n’a pas produit le <a> attendu : ' + html);
+  const { svg } = svgDuLienQr(html);
+  assert.ok(!/<rect/.test(svg), 'fond transparent par défaut attendu : ' + svg);
+});
+
+test('qr-link : `title=` explicite devient le nom accessible', () => {
+  const html = pandoc(blocQrLien('title="Écouter"', 'https://exemple.ch/bloc'), { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /title="Écouter"/, 'title explicite absent : ' + html);
+});
+
+test('qr-link : `size="30mm"` -> --qr-taille:30mm', () => {
+  const html = pandoc(blocQrLien('size="30mm"', 'https://exemple.ch/bloc'), { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /;--qr-taille:30mm"/, 'la taille demandée n’est pas passée au <a> : ' + html);
+});
+
+test('qr-link : le nom accessible par défaut suit `lang:` du document (allemand)', () => {
+  const html = pandoc('---\nlang: de\n---\n\n' + blocQrLien('', 'https://exemple.ch/bloc'),
+    { de: 'markdown', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /title="Link zu: https:\/\/exemple\.ch\/bloc"/, 'le défaut allemand n’apparaît pas : ' + html);
+});
+
+test('qr-link : bloc vide -> avertissement, rien d’imprimé (pas de plantage)', () => {
+  const r = pandocQr('::: {.qr-link}\n:::\n');
+  assert.strictEqual(r.status, 0, 'le filtre ne doit jamais faire planter pandoc : ' + r.stderr);
+  assert.ok(!/szh-qr/.test(r.stdout), 'un <a> apparaît malgré un qr-link vide : ' + r.stdout);
+  assert.match(r.stderr, /\[qr-avertissement\] qr-link-vide/, 'aucun avertissement émis : ' + r.stderr);
+});
+
+test('qr-link : sous sourcepos (aperçu), le Div reste reconnu malgré l’enveloppe de ses enfants', () => {
+  const html = pandoc(blocQrLien('', 'https://exemple.ch/bloc'), { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-qr.lua'] });
+  assert.match(html, /<a class="szh-qr" href="https:\/\/exemple\.ch\/bloc"[^>]*><\/a>/,
+    'le qr-link n’a pas été reconnu sous sourcepos : ' + html);
+});
+
+// ── falc-header (szh-livre-entete.lua) : encadré « écouter cette histoire » ────────────
+// Livre seulement (SZH_LIVRE) : un bloc `:::: falc-header … ::::` écrit dans le .md du
+// chapitre pose un encadré juste après son titre (et son bloc auteurs) — voir l'en-tête du
+// filtre pour la syntaxe complète. Remplace, depuis le 23.09.2026, la clé YAML `ecouter:`
+// (disparue, aucun livre réel ne l'utilisait).
+function docEntete(blocFalcHeader, corps, apresCorps) {
+  return '# Titre du chapitre\n\n' + (corps || 'Corps.') +
+    (blocFalcHeader ? '\n\n' + blocFalcHeader : '') + (apresCorps || '') + '\n';
+}
+
+function rendreEntete(blocFalcHeader, opts) {
+  const o = opts || {};
+  const env = Object.assign({ SZH_LIVRE: '1' }, o.env || {});
+  const meta = o.meta ? '---\n' + o.meta + '---\n\n' : '';
+  return pandoc(meta + docEntete(blocFalcHeader, o.corps),
+    // szh-livre-entete-image.lua AVANT szh-livre-entete.lua : même ordre que livre.mk
+    // (juste après szh-typographie.lua, bien avant szh-livre-auteurs.lua) — protège
+    // l'image du falc-header de la numérotation de figures avant même la fiche auteurs,
+    // voir l'en-tête des deux filtres.
+    { de: 'markdown', vers: 'html',
+      filtres: ['szh-livre-entete-image.lua', 'szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: env });
+}
+
+const ENTETE_TEXTE_IMAGE_QR = [
+  ':::: falc-header',
+  'Diese Geschichte gibt es auch zum Hören.',
+  'Scannen Sie den QR-Code.',
+  '',
+  '![Ein weisses Schnecken-Haus](media/escargot.jpg)',
+  '',
+  '::: qr-link',
+  'https://link.szh-csps.ch/BuchLS_03_audio',
+  ':::',
+  '::::',
+].join('\n');
+
+test('falc-header (préparation) : sans le filtre, aucun encadré n’apparaît', () => {
+  const html = pandoc(docEntete(ENTETE_TEXTE_IMAGE_QR),
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
+  assert.ok(!/szh-falc-header/.test(html), 'un encadré existe déjà sans le filtre : ' + html);
+});
+
+test('falc-header : sans SZH_LIVRE, le filtre ne fait rien (garde livre)', () => {
+  const html = pandoc(docEntete(ENTETE_TEXTE_IMAGE_QR),
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-entete.lua'] });
+  assert.ok(!/szh-falc-header/.test(html), 'l’encadré apparaît hors mode livre : ' + html);
+});
+
+test('falc-header : texte (<br> entre les lignes) + image (+ alt) + qr-link, data-image="oui"', () => {
+  const html = rendreEntete(ENTETE_TEXTE_IMAGE_QR);
+  assert.match(html, /<div class="szh-falc-header" data-image="oui">/, 'data-image="oui" absent : ' + html);
+  assert.match(html, /<p>Diese Geschichte gibt es auch zum Hören\.<br>Scannen Sie den QR-Code\.<\/p>/,
+    'les deux lignes écrites ne sont pas jointes par un <br> unique : ' + html);
+  assert.match(html, /<img class="szh-falc-header-image" src="media\/escargot\.jpg" alt="Ein weisses Schnecken-Haus">/,
+    'l’<img> n’a pas le bon src/alt : ' + html);
+  assert.match(html, /<a class="szh-qr szh-falc-header-qr" href="https:\/\/link\.szh-csps\.ch\/BuchLS_03_audio"[^>]*><\/a>/,
+    'le lien QR n’est pas au patron attendu (un <a> VIDE) : ' + html);
+});
+
+test('falc-header : l’image ne se fait PAS numéroter comme une figure du corps (chaîne complète)', () => {
+  // Régression réelle (23.09.2026, corpus) : sans szh-livre-entete-image.lua avant
+  // szh-figure.lua/szh-numerotation.lua, l'image du falc-header ressortait numérotée
+  // « Abbildung 1 — … », sa légende s'imprimant en toutes lettres DANS le texte de
+  // l'encadré. Chaîne proche de FILTRES_CHAPITRE (livre.mk) pour le prouver de bout en bout.
+  const r = pandocDansDossier(
+    { 'essai.md': docEntete(ENTETE_TEXTE_IMAGE_QR) },
+    'essai.md',
+    ['szh-typographie.lua', 'szh-livre-entete-image.lua', 'szh-metafichier.lua', 'szh-grille.lua',
+      'szh-figure.lua', 'szh-numerotation.lua', 'szh-tableau-boite.lua', 'szh-legende-avant.lua',
+      'szh-sections.lua', 'szh-livre-auteurs.lua', 'szh-livre-entete.lua'],
+    { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/Abbildung/.test(r.stdout), 'l’image du falc-header a été numérotée comme une figure du corps : ' + r.stdout);
+  assert.match(r.stdout, /data-image="oui"/, 'l’image a disparu au lieu d’être seulement protégée de la numérotation : ' + r.stdout);
+  assert.match(r.stdout, /szh-falc-header-image/, 'l’<img> attendu n’est pas là : ' + r.stdout);
+});
+
+test('falc-header : sans image, data-image="non" et aucun <img>', () => {
+  const html = rendreEntete([
+    ':::: falc-header',
+    'Texte seul, sans image.',
+    '::::',
+  ].join('\n'));
+  assert.match(html, /<div class="szh-falc-header" data-image="non">/, 'data-image="non" absent : ' + html);
+  assert.ok(!/<img class="szh-falc-header-image"/.test(html), 'un <img> apparaît sans image dans le bloc : ' + html);
+});
+
+test('falc-header : accepte aussi `{.falc-header}`', () => {
+  const html = rendreEntete([
+    '::: {.falc-header}',
+    'Texte seul.',
+    ':::',
+  ].join('\n'));
+  assert.match(html, /class="szh-falc-header"/, 'la forme `{.falc-header}` n’est pas reconnue : ' + html);
+});
+
+test('falc-header : image sans alt -> avertissement, image omise, encadré conservé', () => {
+  const r = pandocDansDossier({
+    'essai.md': docEntete([
+      ':::: falc-header',
+      'Texte.',
+      '',
+      '![](media/x.jpg)',
+      '::::',
+    ].join('\n')),
+  }, 'essai.md', ['szh-livre-entete-image.lua', 'szh-livre-entete.lua'], { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /szh-falc-header/, 'l’encadré a disparu entièrement au lieu de perdre seulement l’image : ' + r.stdout);
+  assert.ok(!/<img class="szh-falc-header-image"/.test(r.stdout), 'un <img> sans alt a été imprimé : ' + r.stdout);
+  assert.match(r.stderr, /\[livre-entete-avertissement\] image-sans-alt/, 'aucun avertissement émis : ' + r.stderr);
+});
+
+test('falc-header : plus d’une image -> avertissement, seule la première est imprimée', () => {
+  const r = pandocDansDossier({
+    'essai.md': docEntete([
+      ':::: falc-header',
+      'Texte.',
+      '',
+      '![Premiere](media/a.jpg)',
+      '',
+      '![Deuxieme](media/b.jpg)',
+      '::::',
+    ].join('\n')),
+  }, 'essai.md', ['szh-livre-entete-image.lua', 'szh-livre-entete.lua'], { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /media\/a\.jpg/, 'la première image a disparu : ' + r.stdout);
+  assert.ok(!/media\/b\.jpg/.test(r.stdout), 'la deuxième image a été imprimée quand même : ' + r.stdout);
+  assert.match(r.stderr, /\[livre-entete-avertissement\] plusieurs-images/, 'aucun avertissement émis : ' + r.stderr);
+});
+
+test('falc-header : bloc entièrement vide -> avertissement, rien d’imprimé (pas de plantage)', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docEntete('::: falc-header\n:::') },
+    'essai.md', ['szh-livre-entete-image.lua', 'szh-livre-entete.lua'], { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, 'le filtre ne doit jamais faire planter pandoc : ' + r.stderr);
+  assert.ok(!/szh-falc-header/.test(r.stdout), 'un encadré apparaît pour un bloc vide : ' + r.stdout);
+  assert.match(r.stderr, /\[livre-entete-avertissement\] bloc-vide/, 'aucun avertissement émis : ' + r.stderr);
+});
+
+test('falc-header : deux blocs dans le même chapitre -> avertissement, seul le premier est imprimé', () => {
+  const r = pandocDansDossier({
+    'essai.md': docEntete(':::: falc-header\nPremier.\n::::', 'Corps.', '\n\n:::: falc-header\nSecond.\n::::'),
+  }, 'essai.md', ['szh-livre-entete-image.lua', 'szh-livre-entete.lua'], { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Premier\./, 'le premier bloc a disparu : ' + r.stdout);
+  assert.ok(!/Second\./.test(r.stdout), 'le second bloc a été imprimé alors qu’un seul est attendu : ' + r.stdout);
+  const occurrences = (r.stdout.match(/class="szh-falc-header"/g) || []).length;
+  assert.strictEqual(occurrences, 1, 'plus d’un encadré s’est imprimé : ' + r.stdout);
+  assert.match(r.stderr, /\[livre-entete-avertissement\] plusieurs-falc-header/, 'aucun avertissement émis : ' + r.stderr);
+});
+
+test('falc-header : le nom accessible du qr-link embarqué est la première ligne du texte, pas une formule générique', () => {
+  const html = rendreEntete(ENTETE_TEXTE_IMAGE_QR);
+  const a = (html.match(/<a class="szh-qr szh-falc-header-qr"[^>]*>/) || [''])[0];
+  assert.match(a, /title="Diese Geschichte gibt es auch zum Hören\."/, 'title n’est pas la première ligne : ' + a);
+  assert.match(a, /aria-label="Diese Geschichte gibt es auch zum Hören\."/, 'aria-label n’est pas la première ligne : ' + a);
+});
+
+test('falc-header : placé N’IMPORTE OÙ dans le chapitre, imprimé après le titre ET le bloc auteurs (collectif)', () => {
+  const html = pandoc(
+    '---\nouvrage: collectif\nlang: fr\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n---\n\n' +
+    '# Titre du chapitre\n\nCorps réel du chapitre.\n\n' +
+    ':::: falc-header\nÉcrit tout à la fin du fichier.\n::::\n',
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: { SZH_LIVRE: '1' } });
+  const iTitre = html.indexOf('<h1');
+  const iAuteurs = html.indexOf('class="szh-auteurs"');
+  const iEntete = html.indexOf('class="szh-falc-header"');
+  assert.ok(iTitre >= 0 && iAuteurs > iTitre && iEntete > iAuteurs,
+    'l’ordre titre -> auteurs -> encadré n’est pas respecté (bloc écrit en fin de chapitre) : ' + html);
+});
+
+test('falc-header : monographie -> une fiche de chapitre n’ajoute PAS de bloc auteurs (isolation)', () => {
+  const html = pandoc(
+    '---\nouvrage: monographie\nlang: fr\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n---\n\n' +
+    '# Titre du chapitre\n\nCorps.\n\n:::: falc-header\nTexte.\n::::\n',
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: { SZH_LIVRE: '1' } });
+  assert.ok(!/szh-auteurs/.test(html), 'un bloc auteurs est apparu en monographie : ' + html);
+  assert.match(html, /class="szh-falc-header"/, 'l’encadré, lui, doit rester : ' + html);
+});
+
+// ── Bloc auteurs venu de l'import (style Word « Auhors », docx-styles-corps.py) ────────
+// À la compilation, ce bloc est déjà un Div `.szh-auteurs` dans le .md — pas un RawBlock
+// écrit par szh-livre-auteurs.lua. Les deux filtres doivent le traiter pareil.
+
+test('falc-header : reconnaît aussi le bloc auteurs importé (Div .szh-auteurs), pas seulement le RawBlock du collectif', () => {
+  const html = rendreEntete(':::: falc-header\nTexte.\n::::', {
+    corps: '::: {.szh-auteurs}\nBarbara Egloff & Cornelia Müller Bösch\n:::\n\nCorps réel.',
+  });
+  const iTitre = html.indexOf('<h1');
+  const iAuteurs = html.indexOf('class="szh-auteurs"');
+  const iEntete = html.indexOf('class="szh-falc-header"');
+  assert.ok(iTitre >= 0 && iAuteurs > iTitre && iEntete > iAuteurs,
+    'l’ordre titre -> auteurs (import) -> encadré n’est pas respecté : ' + html);
+});
+
+test('collectif : un bloc auteurs déjà importé (Div) empêche le doublon de la fiche', () => {
+  const html = pandoc(
+    '---\nouvrage: collectif\nlang: fr\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n---\n\n' +
+    '# Titre du chapitre\n\n::: {.szh-auteurs}\nNom réel du Word\n:::\n\nCorps.\n',
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
+  const occurrences = (html.match(/class="szh-auteurs"/g) || []).length;
+  assert.strictEqual(occurrences, 1, 'un doublon de bloc auteurs est apparu : ' + html);
+  assert.match(html, /Nom réel du Word/, 'le bloc importé doit être conservé : ' + html);
+  assert.ok(!/Ana Nym|>Ana</.test(html), 'la ligne de la fiche s’est ajoutée par-dessus celle du Word : ' + html);
 });

@@ -58,6 +58,12 @@ input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor
 .case-doi { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e1); }
 .case-doi input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
+/* Case « hors sommaire » (livre seulement, media/_fiches.js) : meme gabarit que .case-doi
+   ci-dessus, et sa ligne d'aide juste dessous, sur le modele discret de .doi-note. */
+.case-sommaire { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e4); display: block; }
+.case-sommaire input { width: auto; margin-right: .35em; accent-color: var(--accent); }
+.case-sommaire-aide { margin: var(--e1) 0 0; font-size: var(--t-mini); color: var(--encre-2); }
+
 /* boutons nus : le socle de _design.css (§9, portee a .carte). */
 
 /* ---- Autocomplétion des mots-clés (media/_fiches.js) : le vocabulaire edudoc.ch. La

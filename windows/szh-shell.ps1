@@ -12,11 +12,22 @@
 # distincts et corrects : une redéfinition locale de Start-SzhCodium occulterait celle-ci en
 # silence.
 #
+# ---- Secrets Shlink/OJS ----
+# Set-SzhEnvironnementSecrets et Set-SzhWslEnvSecrets ont déménagé dans szh-common.ps1 (à
+# côté des Get/Set-SzhShlinkUrl/Cle, Get/Set-SzhOjsCle qu'elles lisent) : open-md.ps1 ne
+# dot-source QUE szh-common.ps1, jamais szh-shell.ps1, et Start-SzhCodiumFichier (son propre
+# lanceur VSCodium, voir plus haut) en a besoin autant que Start-SzhCodium ci-dessous -- un
+# article ouvert par double-clic doit compiler avec les mêmes variables qu'une revue ouverte
+# depuis le lanceur.
+
 # $env:SZH_CODIUM_PROFIL, posé par outils-dev/pronto-dev.ps1, fait ouvrir un profil de
 # développement au lieu du profil de production -- vide ou absent, la ligne de commande ne
 # bouge pas d'un caractère. $env:SZH_LANCEUR_SIMULE=1 journalise la ligne calculée sans rien
 # lancer, comme ailleurs dans ce dépôt (szh-ancrage.ps1, szh-rapport.ps1).
 function Start-SzhCodium([string]$Dossier) {
+  # Avant même de vérifier que VSCodium existe : orthogonal à sa présence, et la trace qui en
+  # sort ne doit pas dépendre d'un éditeur installé ou non sur ce poste.
+  Set-SzhEnvironnementSecrets
   $codium = Get-VSCodiumExe
   if (-not $codium) {
     Write-SzhLog ('codium : introuvable, impossible d''ouvrir ' + $Dossier)

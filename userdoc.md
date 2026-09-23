@@ -1636,6 +1636,25 @@ seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et
 plus bas « Où vivent vos numéros ») ; les listes et le titre de la fenêtre ne le suivent qu’à la
 prochaine ouverture du lanceur.
 
+L’onglet **Paramètres** porte aussi trois champs liés à Shlink et à OJS, pour votre compte
+seulement comme les trois premiers réglages ci-dessus :
+
+- **« Adresse du raccourcisseur de liens (Shlink) »** – l’adresse de l’instance Shlink qui
+  raccourcit les liens des QR codes. Doit commencer par `https://` ; une adresse mal formée
+  n’est pas enregistrée, et le champ vous le dit.
+- **« Clé d’API Shlink »** – masquée à l’écran (une case **« Afficher »** la montre en clair au
+  besoin). Un champ laissé vide efface la clé enregistrée.
+- **« Clé d’API OJS »** – même principe que la clé Shlink. Rien ne la lit encore aujourd’hui :
+  elle est posée en réserve pour un usage à venir.
+
+Les deux clés ne sont **jamais** écrites en clair sur le disque : elles sont chiffrées (DPAPI,
+liée à votre compte Windows sur ce poste) dans le même fichier que les trois premiers
+réglages. Une copie de ce fichier sur un autre poste, ou lue par un autre compte, rend ces deux
+champs illisibles plutôt que de révéler la clé. Ces trois réglages sont transmis à
+l’environnement de fabrication (dans WSL) au moment où vous ouvrez une revue dans l’éditeur :
+**un éditeur déjà ouvert ne voit pas un changement fait ici** – fermez-le et rouvrez une revue
+pour qu’il en tienne compte.
+
 Menu Démarrer → **Pronto** → l’onglet du produit voulu → bouton
 **« Nouvelle revue… »** (en bas à gauche).
 La boîte demande deux choses, et deux seulement :

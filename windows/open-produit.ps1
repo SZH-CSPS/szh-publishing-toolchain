@@ -2845,6 +2845,11 @@ $pageReglages = New-Object System.Windows.Forms.TabPage
 $pageReglages.Text = (T 'lanceur.reglages')
 $pageReglages.Tag = ''          # pas un produit : « Ouvrir » n'a rien a ouvrir ici
 $pageReglages.UseVisualStyleBackColor = $true
+# AutoScroll : cette page a grandi (Shlink, OJS) au-dela de la hauteur que lui impose le
+# TabControl sur un petit ecran (hOnglets, calculee sur les listes des onglets de produit) --
+# une barre de defilement plutot que des controles tronques, sans rien changer a la taille
+# de la fenetre ni des trois autres onglets.
+$pageReglages.AutoScroll = $true
 $onglets.TabPages.Add($pageReglages)
 
 # Un reglage = une etiquette, une liste deroulante, une note grise. Quatre fois la meme
@@ -2874,6 +2879,76 @@ function Add-SzhReglage($Page, [int]$Y, [string]$Etiquette, [string[]]$Choix, [i
   # bien que $note EST le parametre $Note. Lui affecter un Label le convertissait en chaine
   # (le parametre est type [string]), et la ligne suivante cherchait .Text sur une chaine --
   # « The property 'Text' cannot be found on this object », sans console pour le dire.
+  if ($Note) {
+    $etiqNote = New-Object System.Windows.Forms.Label
+    $etiqNote.Text = $Note
+    $etiqNote.AutoSize = $false
+    $etiqNote.Location = New-Object System.Drawing.Point($xPage, ($Y + 50))
+    $etiqNote.Size = New-Object System.Drawing.Size($largeurPage, 32)
+    $etiqNote.ForeColor = [System.Drawing.Color]::DimGray
+    $Page.Controls.Add($etiqNote)
+  }
+  return ($Y + 90)
+}
+
+# Meme forme qu'Add-SzhReglage, mais un champ de texte libre plutot qu'une liste deroulante --
+# l'adresse Shlink, en clair, n'est pas un choix parmi quelques valeurs connues. $SurLeave
+# s'execute quand le champ perd le focus ($this y designe le TextBox, meme convention
+# qu'Add-SzhReglage avec $this.SelectedIndex) : ni Validating ni CausesValidation, qui
+# retiendraient le focus sur un champ que le compte veut quitter meme invalide.
+function Add-SzhReglageTexte($Page, [int]$Y, [string]$Etiquette, [string]$Valeur, [string]$Note, $SurLeave) {
+  $etiq = New-Object System.Windows.Forms.Label
+  $etiq.Text = $Etiquette
+  $etiq.Location = New-Object System.Drawing.Point($xPage, $Y)
+  $etiq.AutoSize = $true
+  $Page.Controls.Add($etiq)
+
+  $champ = New-Object System.Windows.Forms.TextBox
+  $champ.Text = $Valeur
+  $champ.Location = New-Object System.Drawing.Point($xPage, ($Y + 22))
+  $champ.Size = New-Object System.Drawing.Size(400, 24)
+  $champ.Add_Leave($SurLeave)
+  $Page.Controls.Add($champ)
+
+  if ($Note) {
+    $etiqNote = New-Object System.Windows.Forms.Label
+    $etiqNote.Text = $Note
+    $etiqNote.AutoSize = $false
+    $etiqNote.Location = New-Object System.Drawing.Point($xPage, ($Y + 50))
+    $etiqNote.Size = New-Object System.Drawing.Size($largeurPage, 32)
+    $etiqNote.ForeColor = [System.Drawing.Color]::DimGray
+    $Page.Controls.Add($etiqNote)
+  }
+  return ($Y + 90)
+}
+
+# Un champ de clé : masqué (UseSystemPasswordChar), avec une case « Afficher » facultative --
+# $case referme sur $champ, defini juste au-dessus dans CETTE fonction (une fermeture
+# PowerShell ordinaire, pas besoin de $using: -- on reste dans le meme runspace). Champ vide
+# a la sauvegarde = clé effacée (voir $SurLeave, pose par l'appelant). Jamais une seule ligne
+# ici n'écrit .Text dans un journal : c'est justement ce que $SurLeave doit éviter de son côté.
+function Add-SzhReglageSecret($Page, [int]$Y, [string]$Etiquette, [string]$Valeur, [string]$TexteAfficher, [string]$Note, $SurLeave) {
+  $etiq = New-Object System.Windows.Forms.Label
+  $etiq.Text = $Etiquette
+  $etiq.Location = New-Object System.Drawing.Point($xPage, $Y)
+  $etiq.AutoSize = $true
+  $Page.Controls.Add($etiq)
+
+  $champ = New-Object System.Windows.Forms.TextBox
+  $champ.Text = $Valeur
+  $champ.UseSystemPasswordChar = $true
+  $champ.Location = New-Object System.Drawing.Point($xPage, ($Y + 22))
+  $champ.Size = New-Object System.Drawing.Size(400, 24)
+  $champ.Add_Leave($SurLeave)
+  $Page.Controls.Add($champ)
+
+  $case = New-Object System.Windows.Forms.CheckBox
+  $case.Text = $TexteAfficher
+  $case.AutoSize = $true
+  $case.Location = New-Object System.Drawing.Point(($xPage + 410), ($Y + 25))
+  $case.Add_CheckedChanged({ $champ.UseSystemPasswordChar = (-not $this.Checked) })
+  $Page.Controls.Add($case)
+
   if ($Note) {
     $etiqNote = New-Object System.Windows.Forms.Label
     $etiqNote.Text = $Note
@@ -2957,6 +3032,53 @@ $yR = Add-SzhReglage $pageReglages $yR (T 'lanceur.reglages.dev') `
     [void](Set-SzhEmplacementRevues $voulu)
     Write-SzhLog ('open-produit : emplacement des revues -> ' + $voulu)
   }
+
+# 5. Shlink (raccourcisseur de liens, pour les QR codes) : adresse en clair, clé d'API
+# chiffrée (Get/Set-SzhShlinkUrl, Get/Set-SzhShlinkCle -- szh-common.ps1). Les deux sont
+# posées dans l'environnement du processus enfant au lancement de VSCodium (Start-SzhCodium,
+# szh-shell.ps1) et lues côté WSL par pipeline/liens-courts.py. Validation douce de
+# l'adresse : un « https:// » manquant refuse d'enregistrer plutôt que d'enregistrer une
+# adresse qui ne marchera jamais, mais ne bloque ni le focus ni la fermeture de l'onglet.
+$yR = Add-SzhReglageTexte $pageReglages $yR (T 'lanceur.reglages.shlink.url') (Get-SzhShlinkUrl) `
+  (T 'lanceur.reglages.shlink.url.note') {
+    $texte = $this.Text.Trim()
+    if ($texte -and ($texte -notmatch '^https://')) {
+      [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.reglages.shlink.url.invalide'), $titreFenetre)
+      return
+    }
+    [void](Set-SzhShlinkUrl $texte)
+    Write-SzhLog ('open-produit : adresse Shlink -> ' + $(if ($texte) { 'definie' } else { 'effacee' }))
+  }
+
+$yR = Add-SzhReglageSecret $pageReglages $yR (T 'lanceur.reglages.shlink.cle') (Get-SzhShlinkCle) `
+  (T 'lanceur.reglages.afficher') (T 'lanceur.reglages.shlink.cle.note') {
+    $texte = $this.Text.Trim()
+    [void](Set-SzhShlinkCle $texte)
+    # JAMAIS $texte dans cette ligne : la clé elle-même ne doit jamais atteindre un journal,
+    # même partiellement -- seul l'état (posée ou effacée) s'y écrit.
+    Write-SzhLog ('open-produit : cle Shlink -> ' + $(if ($texte) { 'definie' } else { 'effacee' }))
+  }
+
+# 6. OJS : même mécanique que la clé Shlink ci-dessus, rien ne la lit encore côté WSL --
+# $env:SZH_OJS_CLE est déjà posé par Start-SzhCodium, pour le jour où un filtre ou un export
+# en aura besoin.
+$yR = Add-SzhReglageSecret $pageReglages $yR (T 'lanceur.reglages.ojs.cle') (Get-SzhOjsCle) `
+  (T 'lanceur.reglages.afficher') (T 'lanceur.reglages.ojs.cle.note') {
+    $texte = $this.Text.Trim()
+    [void](Set-SzhOjsCle $texte)
+    Write-SzhLog ('open-produit : cle OJS -> ' + $(if ($texte) { 'definie' } else { 'effacee' }))
+  }
+
+# Un seul rappel pour les trois champs qui precedent : VSCodium ne relit pas l'environnement
+# d'un processus deja lance.
+$etiqSecretsNote = New-Object System.Windows.Forms.Label
+$etiqSecretsNote.Text = (T 'lanceur.reglages.secrets.note')
+$etiqSecretsNote.AutoSize = $false
+$etiqSecretsNote.Location = New-Object System.Drawing.Point($xPage, $yR)
+$etiqSecretsNote.Size = New-Object System.Drawing.Size($largeurPage, 32)
+$etiqSecretsNote.ForeColor = [System.Drawing.Color]::DimGray
+$pageReglages.Controls.Add($etiqSecretsNote)
+$yR += 40
 
 # ---- Les boutons, hors du TabControl : ils valent pour l'onglet au premier plan ----
 $boutonVersions = New-Object System.Windows.Forms.Button

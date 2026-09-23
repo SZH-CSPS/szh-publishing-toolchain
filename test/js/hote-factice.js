@@ -257,6 +257,9 @@ function activerHote(revue) {
       }
     },
     Selection: class { constructor(a, b) { this.start = a; this.end = b; this.active = b; } },
+    // szh.fmt.falcHeader/szh.fmt.qrLink (lib/formatting.js) : le texte du snippet, tel quel
+    // — le vrai éditeur en fait les tabulations ${1:…}, hors de propos ici.
+    SnippetString: class { constructor(v) { this.value = v; } },
     WorkspaceEdit: class { replace() {} insert() {} },
     TreeItem: class { constructor(l, c) { this.label = l; this.collapsibleState = c; } },
     ThemeIcon: class { constructor(i, couleur) { this.id = i; this.color = couleur; } },

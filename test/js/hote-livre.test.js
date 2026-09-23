@@ -160,6 +160,63 @@ test('livre : descendre un chapitre écrit ordre-chapitres dans buch.yaml', asyn
     'un ausgabe.yaml parasite a été créé dans un livre');
 });
 
+// Un chapitre n'a pas de DOI (pas d'OJS, pas de numéro de revue) : ni le calcul, ni le
+// fichier dérivé que szh-maquette.lua lit pour le bandeau DOI d'une revue.
+test('livre : doisCalculesArticles ne calcule rien, ecrireDoisCalcules n’écrit rien', () => {
+  const fs = require('fs');
+  const ext = require(path.join(COCKPIT, 'extension.js'));
+  const fournisseur = { racine: LIVRE, listerArticles: () => ['01-ouverture', '02-suite'] };
+
+  assert.deepStrictEqual(ext._pur.doisCalculesArticles(fournisseur), {},
+    'doisCalculesArticles calcule des DOI pour un livre');
+
+  const chemin = path.join(LIVRE, 'dois-calcules.yaml');
+  ext._pur.ecrireDoisCalcules(fournisseur);
+  assert.ok(!fs.existsSync(chemin), 'dois-calcules.yaml a été écrit pour un livre');
+});
+
+// Le formulaire des fiches ne construit plus type/licence/doi/keywords pour un chapitre
+// (media/_fiches.js) : la webview les renvoie donc toujours vides, comme une fiche neuve.
+// Si la fiche porte malgré tout ces clés — héritée d'un article, ou posée à la main —
+// l'enregistrement ne doit ni les vider, ni les effacer (lib/metadonnees-hote.js,
+// ecrireCartesArticles). Même contrôle que sommaire-chapitre.test.js, mais depuis ce
+// fichier-ci : « un seul activerHote() par processus » (hote-factice.js) l'interdisait là.
+test('livre : sauvegarder une fiche de chapitre ne vide ni n’efface type/licence/doi/keywords hérités', async () => {
+  const fs = require('fs');
+  const fichierMeta = path.join(LIVRE, 'chapitres', '02-suite', '02-suite.meta.yaml');
+  fs.writeFileSync(fichierMeta, [
+    'type: article', 'lang: fr', 'licence: droits-reserves', 'doi: "10.57161/heritee"',
+    'title:', '  fr: "Suite"', 'keywords:', '  fr:', '  - "inclusion"', ''
+  ].join('\n'));
+
+  await HOTE.arbre().getChildren();
+  await HOTE.executer('szh.apercuMetadonnees');
+  const p = HOTE.panneauDeType('szhApercuMetadonnees');
+  await p._recepteur({ type: 'pret' });
+
+  // Exactement ce que collecter() renvoie pour une carte de chapitre : les quatre champs
+  // cachés à leur valeur par défaut, jamais celle de la fiche — ils n'ont pas de champ
+  // dans le DOM pour la lire (sommaire-chapitre.test.js le prouve côté formulaire).
+  await p._recepteur({
+    type: 'enregistrer', auto: true,
+    articles: {
+      '02-suite': {
+        type: '', lang: 'fr', licence: '', doi: '', horsSommaire: false,
+        title: { fr: 'Suite modifiée' }, subtitle: {}, resume: {}, keywords: {}, author: []
+      }
+    }
+  });
+
+  const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+  const apres = yaml.analyserMeta(fs.readFileSync(fichierMeta, 'utf8'));
+  assert.strictEqual(apres.type, 'article', 'le type hérité a été effacé par l’enregistrement');
+  assert.strictEqual(apres.licence, 'droits-reserves', 'la licence héritée a été effacée');
+  assert.strictEqual(apres.doi, '10.57161/heritee', 'le DOI hérité a été effacé');
+  assert.deepStrictEqual(apres.keywords, { fr: ['inclusion'] }, 'les mots-clés hérités ont été effacés');
+  // Le reste de l'enregistrement a bien eu lieu : ce n'est pas un enregistrement ignoré.
+  assert.strictEqual(apres.title.fr, 'Suite modifiée', 'le titre modifié n’a pas été écrit');
+});
+
 // cheminBiblio() codait « articles » en dur : sur un livre, le fichier était cherché sous
 // articles/<slug>/ au lieu de chapitres/<slug>/, et l'entrée n'apparaissait jamais — le
 // même contrôle que côté revue (biblio.test.js), rejoué ici sur un chapitre.
@@ -273,6 +330,56 @@ test('livre : la commande « imprimeur » lance la tâche du bon nom', async () 
   }
 });
 
+// ---- Réglages : quatre blocs propres à une revue/Zeitschrift, absents pour un livre ---
+//
+// Pas d'OJS pour un livre : ni auteur·e·s publiés, ni bibliographie par revue, ni tâches
+// par article, ni export OJS. ouvrirReglages() (extension.js, messageValeursReglages) ne
+// doit même plus envoyer ces quatre clés — settings.js (montrerBloc) ne les affiche que
+// si elles arrivent, et une clé omise laisse le bloc masqué, titre compris.
+test('livre : le panneau Réglages n’envoie ni ojs, ni biblio, ni taches, ni auteursOjs', async () => {
+  await HOTE.executer('szh.reglages');
+  const p = HOTE.panneauDeType('szhReglages');
+  assert.ok(p, 'panneau des réglages absent pour un livre');
+  await p._recepteur({ type: 'pret' });
+  const valeurs = p.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.ok(valeurs, 'aucun message de valeurs envoyé au panneau des réglages');
+  assert.strictEqual(valeurs.ojs, undefined, 'le bloc export OJS est envoyé pour un livre');
+  assert.strictEqual(valeurs.biblio, undefined, 'le bloc bibliographie est envoyé pour un livre');
+  assert.strictEqual(valeurs.taches, undefined, 'le bloc tâches par article est envoyé pour un livre');
+  assert.strictEqual(valeurs.auteursOjs, undefined, 'le bloc auteur·e·s publiés est envoyé pour un livre');
+  // Les réglages génériques restent envoyés : ce n'est pas un panneau vide.
+  assert.ok(valeurs.valeurs, 'les réglages génériques ont disparu pour un livre');
+  assert.ok(valeurs.proteges, 'l’état des réglages protégés a disparu pour un livre');
+});
+
+// ---- Le walkthrough de démarrage : aucun tutoriel pour un livre (point 6) -----------
+//
+// Le `when: "!szh.estLivre"` du walkthrough (package.json) ne suffit pas seul : vérifié
+// dans le workbench VSCodium installé sur ce poste, `workbench.action.openWalkthrough`
+// ouvre l'éditeur par son id sans jamais lire de contexte — le `when` ne filtre que ce qui
+// apparaît dans la page d'accueil « Get Started ». proposerTutoriel() (extension.js) porte
+// donc sa propre garde de profil.
+test('livre : proposerTutoriel n’invite jamais (le tutoriel n’a pas de sens pour un livre)', async () => {
+  const ext = require(path.join(COCKPIT, 'extension.js'));
+  let invitations = 0;
+  const original = HOTE.stub.window.showInformationMessage;
+  HOTE.stub.window.showInformationMessage = () => { invitations++; return Promise.resolve(undefined); };
+  let consomme = false;
+  const contexte = { globalState: {
+    get: () => undefined, update: () => { consomme = true; return Promise.resolve(); }
+  } };
+  try {
+    await ext._pur.proposerTutoriel(contexte);
+    assert.strictEqual(invitations, 0, 'l’invitation au tutoriel s’est affichée pour un livre');
+    // Le drapeau « vu » ne doit pas être consommé : une revue ouverte plus tard par la
+    // même personne doit encore recevoir l’invitation, une fois.
+    assert.strictEqual(consomme, false,
+      'le drapeau « tutoriel vu » a été posé pour un livre : une revue ouverte ensuite ne serait plus invitée');
+  } finally {
+    HOTE.stub.window.showInformationMessage = original;
+  }
+});
+
 // ---- Cycle de vie (archiver/verrouiller/désarchiver) exposé pour un livre -----------
 //
 // windows/archive-revue.ps1 sait archiver un livre depuis un moment ($estLivre, les textes
@@ -344,4 +451,44 @@ test('livre : archiverVerrouiller écrit locked et archived dans buch.yaml', asy
     assert.strictEqual(restaure.verrouillee, false, 'le nettoyage du test n’a pas déverrouillé le livre');
     assert.strictEqual(restaure.archivee, false, 'le nettoyage du test n’a pas désarchivé le livre');
   }
+});
+
+// « Changer l'ordre » / « Terminer » passe par un tout autre chemin que « Monter » /
+// « Descendre » (test plus haut) : alignerDossiersSurOrdre() (extension.js) appelle
+// lib/renumerotation-fs.js, qui RENOMME les dossiers et écrivait l'ordre en dur dans
+// ausgabe.yaml — un module pur, sans profilCourant(). Rejoue donc le même risque, sur le
+// chemin qui renomme vraiment les dossiers.
+//
+// ⚠ Dernier test du fichier, volontairement : lui seul renomme les dossiers du livre
+// d'essai (01-ouverture/02-suite -> 00-.../01-...), ce que tous les tests précédents
+// supposent ne pas arriver.
+test('livre : « Terminer » renomme les dossiers et écrit ordre-chapitres dans buch.yaml', async () => {
+  const fs = require('fs');
+  const derniereCharge = (p) => p.messages.filter((m) => m.type === 'valeurs').pop();
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const avant = derniereCharge(p).lignes.map((l) => l.cle);
+  assert.ok(avant.length >= 2, 'le livre d’essai n’a pas deux chapitres à échanger');
+
+  await p._recepteur({ type: 'commande', id: 'ordre' });
+  await p._recepteur({ type: 'action', cle: avant[1], id: 'monter' });
+  await p._recepteur({ type: 'commande', id: 'ordre-terminer' });
+
+  // Les dossiers portent, après « Terminer », le rang qu'ils affichaient — même contrôle
+  // que côté revue (articles.test.js, « Terminer » aligne les dossiers sur les rangs
+  // affichés), rejoué ici parce que le chemin d'écriture est différent sur un livre.
+  const apres = derniereCharge(p).lignes.map((l) => l.cle);
+  assert.deepStrictEqual(fs.readdirSync(path.join(LIVRE, 'chapitres')).sort(), apres.slice().sort(),
+    'le disque et l’écran ne disent pas la même chose après « Terminer »');
+
+  const buch = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  const ligne = buch.split(/\r?\n/).find((l) => l.indexOf('ordre-chapitres:') === 0);
+  assert.ok(ligne, 'ordre-chapitres a disparu de buch.yaml après « Terminer »');
+  apres.forEach((slug) => assert.ok(ligne.indexOf(slug) !== -1,
+    'le chapitre « ' + slug + '» manque dans ordre-chapitres : ' + ligne));
+  // Le défaut à prévenir : ecrireOrdre() (lib/renumerotation-fs.js) retombant sur son
+  // défaut de revue, qui aurait créé ce fichier au lieu d'écrire dans buch.yaml.
+  assert.ok(!fs.existsSync(path.join(LIVRE, 'ausgabe.yaml')),
+    'un ausgabe.yaml parasite a été créé par « Terminer » dans un livre');
 });

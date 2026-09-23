@@ -43,7 +43,8 @@ sortie, corps = sys.argv[1], open(sys.argv[2], encoding='utf-8').read()
 W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 styles = ''.join('<w:style w:type="paragraph" w:styleId="%s"><w:name w:val="%s"/></w:style>' % s
                  for s in [('Normal', 'Normal'), ('EncadreX', 'SZH Important'),
-                           ('MiseX', 'SZH Hervorhebung'), ('QuestionX', 'SZH Question (interview)')])
+                           ('MiseX', 'SZH Hervorhebung'), ('QuestionX', 'SZH Question (interview)'),
+                           ('AuhorsX', 'Auhors')])
 with zipfile.ZipFile(sortie, 'w') as z:
     z.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')
     z.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
@@ -136,6 +137,61 @@ test('un document sans ces styles ressort identique à l\'octet',
         + 'print(all(a.read(n)==b.read(n) for n in a.namelist()) and a.namelist()==b.namelist())',
       docx, marque]);
       assert.strictEqual(lire.stdout.trim(), 'True', lire.stderr);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+// ── Livre : la ligne d'auteur·e·s d'un chapitre (style Word « Auhors ») ────────────────
+// Même mécanisme que ci-dessus (marqueur -> bloc), mais une classe et une règle de fusion
+// différentes : voir docx-styles-corps.py (STYLES_AUTEURS_CHAPITRE) et szh-styles-corps.lua
+// (FUSIONNABLES).
+
+test('le style Word « Auhors » devient ::: {.szh-auteurs}, au même titre que les blocs du cockpit',
+  { skip: sansPython || sansPandoc }, () => {
+    const d = jetable();
+    try {
+      const docx = fabriquer(d, [
+        p('Normal', 'Avant le titre.'),
+        p('AuhorsX', 'Barbara Egloff &amp; Cornelia Müller Bösch'),
+        p('Normal', 'Corps du chapitre.')
+      ].join(''));
+      const marque = path.join(d, 'marque.docx');
+      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.deepStrictEqual(JSON.parse(r.stdout).blocs, { 'szh-auteurs': 1 });
+
+      const md = versMarkdown(marque);
+      assert.ok(!/[]/.test(md), 'un marqueur a fui dans le .md :\n' + md);
+      assert.match(md, /^::: szh-auteurs\nBarbara Egloff & Cornelia Müller Bösch\n:::$/m,
+        'le bloc szh-auteurs n’est pas au format attendu :\n' + md);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+test('deux paragraphes « Auhors » consécutifs NE fusionnent PAS (contrairement aux blocs du cockpit)',
+  { skip: sansPython || sansPandoc }, () => {
+    // Constaté sur redf_Lerngeschichten_clean.docx : un chapitre gardait par mégarde le
+    // style « Auhors » sur son premier paragraphe de corps. Fusionner l'aurait avalé dans
+    // la ligne d'auteur·e·s, en silence. Deux blocs distincts, eux, se voient — et se
+    // corrigent — à la relecture du .md.
+    const d = jetable();
+    try {
+      const docx = fabriquer(d, [
+        p('Normal', 'Avant le titre.'),
+        p('AuhorsX', 'Anna Farner &amp; Eva Bär'),
+        p('AuhorsX', 'Paragraphe de récit resté au mauvais style.'),
+        p('Normal', 'Suite normale.')
+      ].join(''));
+      const marque = path.join(d, 'marque.docx');
+      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.deepStrictEqual(JSON.parse(r.stdout).blocs, { 'szh-auteurs': 2 });
+
+      const md = versMarkdown(marque);
+      const blocs = (md.match(/^::: szh-auteurs$/gm) || []).length;
+      assert.strictEqual(blocs, 2, 'les deux paragraphes ont fusionné en un seul bloc :\n' + md);
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }

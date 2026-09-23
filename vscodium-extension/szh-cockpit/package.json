@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH – Revue (cockpit)",
   "description": "Barre latérale « Pronto » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.64.0",
+  "version": "0.65.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": {
@@ -21,6 +21,7 @@
         "id": "szhDemarrage",
         "title": "%tuto.titre%",
         "description": "%tuto.intro%",
+        "when": "!szh.estLivre",
         "steps": [
           {
             "id": "szh.tuto.ouvrir",
@@ -652,6 +653,16 @@
         "category": "SZH/CSPS"
       },
       {
+        "command": "szh.fmt.falcHeader",
+        "title": "%cmd.fmt.falcHeader%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.qrLink",
+        "title": "%cmd.fmt.qrLink%",
+        "category": "SZH/CSPS"
+      },
+      {
         "command": "szh.lierReference",
         "title": "%cmd.lierReference%",
         "category": "SZH/CSPS",
@@ -822,7 +833,7 @@
         },
         {
           "command": "szh.envoyerAuteur",
-          "when": "szh.estRevue || szh.estLivre"
+          "when": "szh.estRevue"
         },
         {
           "command": "szh.monterUnite",
@@ -939,6 +950,14 @@
         {
           "command": "szh.fmt.sautPage",
           "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.falcHeader",
+          "when": "szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.qrLink",
+          "when": "szh.estLivre"
         },
         {
           "command": "szh.lierReference",
@@ -1063,12 +1082,12 @@
         },
         {
           "command": "szh.voirPdfArticle",
-          "when": "view == szhCockpitVue && viewItem == article",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.estLivre",
           "group": "navigation@3"
         },
         {
           "command": "szh.envoyerAuteur",
-          "when": "view == szhCockpitVue && viewItem == article",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.estLivre",
           "group": "navigation@4"
         },
         {

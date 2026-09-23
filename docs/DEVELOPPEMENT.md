@@ -105,14 +105,19 @@ jonction —, le script refuse bruyamment plutôt que d'écraser un contenu rée
 `pipeline/filters/szh-citations.lua` lit le chemin des configurations en dur,
 `/mnt/c/ProgramData/SZH/config.json` — c'est le fichier qui porte, entre autres, le
 titre de la bibliographie à composer. `wsl.exe` ne transmet pas l'environnement de
-Windows à la distribution sans passer par `WSLENV`, une variable que le cockpit ne
-pose pas ; il n'y a donc aucun moyen de faire lire un autre fichier au filtre par une
-simple variable d'environnement Windows. `pronto-dev.ps1` réécrit à la place chaque
-commande `bash -c` de `tasks.json` pour lui préfixer `SZH_CONFIG=<chemin WSL du
-config.json de dev> `, que le filtre relit via `os.getenv('SZH_CONFIG')` avant de
+Windows à la distribution sans passer par `WSLENV` ; au moment où ce piège a été
+noté, rien ne posait cette variable, donc aucun moyen de faire lire un autre fichier
+au filtre par une simple variable d'environnement Windows. `pronto-dev.ps1` réécrit à
+la place chaque commande `bash -c` de `tasks.json` pour lui préfixer `SZH_CONFIG=<chemin
+WSL du config.json de dev> `, que le filtre relit via `os.getenv('SZH_CONFIG')` avant de
 retomber sur son chemin en dur. Sans ce préfixe, une compilation lancée depuis
 l'instance de dev lirait silencieusement les titres de bibliographie de la
 production — le commentaire en tête de `szh-citations.lua` détaille ce choix.
+
+Depuis, `Start-SzhCodium` (`windows/szh-shell.ps1`) pose bien `WSLENV` — mais
+seulement pour trois noms précis (`SZH_SHLINK_URL`, `SZH_SHLINK_CLE`, `SZH_OJS_CLE`,
+réglages Shlink/OJS de l'onglet « Paramètres »), jamais pour `SZH_CONFIG` : le piège
+ci-dessus reste entier pour ce fichier-là.
 
 ### Jamais de `setx`
 

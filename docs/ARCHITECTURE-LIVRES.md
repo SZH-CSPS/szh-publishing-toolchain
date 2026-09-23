@@ -150,6 +150,70 @@ chapitres n'ont pas de bloc auteurs. En ouvrage collectif, chaque `<slug>.meta.y
 ses auteur·e·s, imprimés sous le titre du chapitre — c'est exactement le schéma d'auteur à
 sept champs déjà utilisé par les articles, `szh-auteurs.lua` compris.
 
+**Un bloc écrit directement dans le `.md` du chapitre** (remplace depuis le 23.09.2026 la
+clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
+
+* `falc-header` — un encadré « cette histoire existe aussi en audio » sur la première page
+  du chapitre, sous le titre (et sous le bloc auteurs s'il y en a un), où qu'il soit écrit
+  dans le fichier :
+
+  ```
+  :::: falc-header
+  Diese Geschichte gibt es auch zum Hören.
+  Scannen Sie den QR-Code.
+
+  ![Ein weisses Schnecken-Haus](media/escargot.jpg)
+
+  ::: qr-link
+  https://link.szh-csps.ch/BuchLS_03_audio
+  :::
+  ::::
+  ```
+
+  Texte (facultatif, un ou plusieurs paragraphes — chaque ligne écrite devient une ligne
+  imprimée), image (facultative, texte alternatif `![alt](…)` obligatoire — sans lui,
+  l'image est omise, avertissement, jamais un `<img>` muet), bloc `qr-link` (facultatif —
+  voir ci-dessous). Filtre : `filters/szh-livre-entete.lua`. Un bloc entièrement vide
+  n'imprime rien (avertissement) ; deux `falc-header` dans le même chapitre : seul le
+  premier compte (avertissement).
+
+* `qr-link` — un QR cliquable réutilisable n'importe où dans un chapitre, seul ou embarqué
+  dans un `falc-header` (même bloc, mêmes options) :
+
+  ```
+  ::: {.qr-link tracked=false background=transparent color=#000000 size=25mm title="…"}
+  https://exemple.ch/page
+  :::
+  ```
+
+  Options, toutes en anglais : `tracked` (défaut `true` : lien court Shlink via le cache
+  `liens-courts.yaml`, si `SZH_SHLINK_URL`/`SZH_SHLINK_CLE` sont posées dans l'environnement
+  — `pipeline/liens-courts.py`, résolu automatiquement avant la compilation par
+  `pipeline/profils/livre.mk` ; sans ces variables, l'URL d'origine traverse telle quelle,
+  un seul avertissement par livre ; `false` : lien d'origine, jamais raccourci),
+  `background` (défaut `transparent`), `color` (défaut `#000000`), `size`
+  (défaut `25mm`), `title` (nom accessible ; défaut « Lien vers : url » selon `lang` du
+  livre). La forme courte `[texte](url){.qr}` reste acceptée, mêmes options (`taille=` en
+  repli silencieux pour `size=`) ; son nom accessible par défaut est aussi « Lien vers :
+  url », plus le texte du lien lui-même (sauf `title=` explicite). Avertissements : `color`
+  pas nettement plus foncée que `background` (contraste WCAG < 3:1) ; dans le PDF
+  imprimeur, `color` non noire (repérage quadri). Filtre : `filters/szh-qr.lua`,
+  construction partagée dans `filters/szh-qr-commun.lua` (`M.construire_qr`).
+
+* `picto-entete: ecouter` — un petit picto (10 mm, un cercle et un triangle — la lecture
+  audio) au coin extérieur de CHAQUE page du chapitre, en en-tête. Écrit dans le gabarit
+  (`templates/szh-livre-chapitre.html`) et posé en CSS (`styles/livre/base.css`, § picto
+  d'en-tête) par le même mécanisme de running element que l'onglet de tranche FALC — un
+  picto ne déborde jamais sur le chapitre suivant, chacun promeut le sien, vide ou non.
+* `sommaire: non` (ou `false`) — retire le chapitre de la table des matières : ni pastille
+  numérotée, ni marque de tranche (maquette FALC), ni repère au sommaire. Il compile quand
+  même à sa place (pagination, compteurs de figures/tableaux continus, SZH_CHAPITRE :
+  rien de tout cela ne bouge) ; il disparaît seulement de ce que le lecteur feuillette pour
+  s'orienter. Par défaut (clé absente, ou toute autre valeur) : présent. Les chapitres
+  restants se numérotent quand même 1, 2, 3… sans trou, et l'index à pouce (les cases de
+  l'onglet FALC) se repartage entre eux à parts égales — voir `pipeline/profils/livre.mk`,
+  § « Index à pouce », pour le calcul.
+
 ### Le calcul du dos
 
 ```

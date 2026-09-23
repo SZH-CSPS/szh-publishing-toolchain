@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.1": {
+    "fr": {
+      "titre": "Les livres FALC se lisent et s’écoutent mieux",
+      "points": [
+        "Un bloc « En-tête de chapitre (FALC) » s’insère depuis Ctrl+Alt+S : texte, image et code QR s’impriment sous le titre et les auteurs du chapitre.",
+        "Les codes QR sont nets et cliquables dans le PDF ; vous choisissez leur taille et leur couleur, et ils peuvent passer par le raccourcisseur de liens de la maison.",
+        "Une case de la fiche du chapitre le retire de la table des matières : les autres chapitres se renumérotent et les marques de tranche se partagent la hauteur.",
+        "Le numéro du chapitre figure en haut de chaque page, et les marques de tranche débordent comme il faut dans le fond perdu du PDF imprimeur.",
+        "Les Paramètres du lanceur accueillent l’adresse et la clé du raccourcisseur de liens ; un livre n’affiche plus les réglages propres aux revues."
+      ]
+    },
+    "de": {
+      "titre": "FALC-Bücher lesen und hören sich besser",
+      "points": [
+        "Ein Block «Kapitelkopf (FALC)» lässt sich mit Ctrl+Alt+S einfügen: Text, Bild und QR-Code erscheinen unter Titel und Autorenzeile des Kapitels.",
+        "QR-Codes sind scharf und im PDF anklickbar; Sie wählen Grösse und Farbe, und sie können über den hauseigenen Linkverkürzer laufen.",
+        "Ein Kästchen im Kapitelformular nimmt das Kapitel aus dem Inhaltsverzeichnis: die übrigen Kapitel werden neu nummeriert, die Registermarken teilen sich die Höhe.",
+        "Die Kapitelnummer steht oben auf jeder Seite, und die Registermarken reichen im Druck-PDF richtig in den Beschnitt.",
+        "Die Einstellungen des Startprogramms nehmen Adresse und Schlüssel des Linkverkürzers auf; ein Buch zeigt die Einstellungen der Zeitschriften nicht mehr."
+      ]
+    }
+  },
   "2.0": {
     "fr": {
       "titre": "Les messages de contrôle mènent à l’endroit exact, et les citations en cachaient",

@@ -282,6 +282,9 @@
     // page de vérification d'import, qui ne l'envoie pas : reste null, et la note de forme
     // ne s'affiche jamais là.
     var FORME_DOI_ACTUELLE = null;
+    // Livre ou revue/Zeitschrift (message valeurs, msg.estLivre) : décide de la case
+    // « hors sommaire » d'une carte — jamais construite pour un article.
+    var ESTLIVRE = false;
     // ---- Le vérificateur de traduction ----
     //
     // Un mode, posé par l'hôte dans le message « valeurs » (réglage du poste, voir
@@ -788,12 +791,13 @@
 
     // ---- Construction des cartes ----
 
-    function rendre(articles, types, langueDefaut, licences, licenceDefaut, formeDoi) {
+    function rendre(articles, types, langueDefaut, licences, licenceDefaut, formeDoi, estLivre) {
       if (types) { TYPES = types; }
       if (langueDefaut) { LANGUE_DEFAUT = langueDefaut; }
       if (licences) { LICENCES = licences; }
       if (licenceDefaut) { LICENCE_DEFAUT = licenceDefaut; }
       FORME_DOI_ACTUELLE = formeDoi || null;
+      ESTLIVRE = !!estLivre;
       ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
@@ -865,36 +869,42 @@
           !!(v.keywords && v.keywords[lg] && v.keywords[lg].length > 0);
       });
 
-      var lType = document.createElement('label');
-      lType.textContent = TXT.type;
-      appeler('champ', lType, 'type');
-      carte.appendChild(lType);
-      var selection = document.createElement('select');
-      selection.dataset.cle = 'type';
-      var optVide = document.createElement('option');
-      optVide.value = '';
-      optVide.textContent = TXT.typeAucun;
-      selection.appendChild(optVide);
-      var cible = selection, groupeCourant = null;
-      for (var t = 0; t < TYPES.length; t++) {
-        var type = TYPES[t];
-        if (type.groupe) {
-          if (type.groupe !== groupeCourant) {
-            groupeCourant = type.groupe;
-            cible = document.createElement('optgroup');
-            cible.label = type.groupe;
-            selection.appendChild(cible);
-          }
-        } else { cible = selection; groupeCourant = null; }
-        var opt = document.createElement('option');
-        opt.value = type.valeur;
-        opt.textContent = type.libelle;
-        cible.appendChild(opt);
+      // Type : n'a de sens que pour un article (éditorial, documentation…), jamais pour
+      // un chapitre — un livre n'en a pas de taxonomie. Absente du DOM pour ESTLIVRE, la
+      // clé reste préservée telle quelle à l'enregistrement : voir nettoyerCarte()
+      // (lib/metadonnees-hote.js), qui ne l'efface que si la fiche est celle d'un article.
+      if (!ESTLIVRE) {
+        var lType = document.createElement('label');
+        lType.textContent = TXT.type;
+        appeler('champ', lType, 'type');
+        carte.appendChild(lType);
+        var selection = document.createElement('select');
+        selection.dataset.cle = 'type';
+        var optVide = document.createElement('option');
+        optVide.value = '';
+        optVide.textContent = TXT.typeAucun;
+        selection.appendChild(optVide);
+        var cible = selection, groupeCourant = null;
+        for (var t = 0; t < TYPES.length; t++) {
+          var type = TYPES[t];
+          if (type.groupe) {
+            if (type.groupe !== groupeCourant) {
+              groupeCourant = type.groupe;
+              cible = document.createElement('optgroup');
+              cible.label = type.groupe;
+              selection.appendChild(cible);
+            }
+          } else { cible = selection; groupeCourant = null; }
+          var opt = document.createElement('option');
+          opt.value = type.valeur;
+          opt.textContent = type.libelle;
+          cible.appendChild(opt);
+        }
+        selection.value = v.type || '';
+        if (selection.value !== (v.type || '')) { selection.value = ''; }
+        selection.addEventListener('input', function () { marquer(carte, slug); });
+        carte.appendChild(selection);
       }
-      selection.value = v.type || '';
-      if (selection.value !== (v.type || '')) { selection.value = ''; }
-      selection.addEventListener('input', function () { marquer(carte, slug); });
-      carte.appendChild(selection);
 
       // Langue de l'article : elle prime au rendu sur celle du numéro. Le <select> vient
       // de SZH.choixLangue (_commun.js), une seule description pour les deux formulaires.
@@ -911,15 +921,42 @@
 
       // Licence de l'article : CC-BY 4.0 sauf mention contraire, et c'est ici qu'une
       // reprise sous droits se déclare. Même composant que la langue, à liste et libellés
-      // près, qui viennent de l'hôte.
-      var licence = SZH.choixFerme({
-        cle: 'licence', libelle: TXT.licence, options: LICENCES,
-        valeur: v.licence, defaut: LICENCE_DEFAUT,
-        onChange: function () { marquer(carte, slug); }
-      });
-      appeler('champ', licence.label, 'licence');
-      carte.appendChild(licence.label);
-      carte.appendChild(licence.select);
+      // près, qui viennent de l'hôte. Sans objet pour un chapitre — la licence d'un livre
+      // se décide pour l'ouvrage entier, pas chapitre par chapitre — donc absente pour
+      // ESTLIVRE, avec la même préservation que le type ci-dessus.
+      if (!ESTLIVRE) {
+        var licence = SZH.choixFerme({
+          cle: 'licence', libelle: TXT.licence, options: LICENCES,
+          valeur: v.licence, defaut: LICENCE_DEFAUT,
+          onChange: function () { marquer(carte, slug); }
+        });
+        appeler('champ', licence.label, 'licence');
+        carte.appendChild(licence.label);
+        carte.appendChild(licence.select);
+      }
+
+      // Hors sommaire : livre seulement, jamais construite pour un article — la clé
+      // `sommaire:` n'existe même pas côté fiche d'article (voir lib/yaml.js). Cochée : le
+      // chapitre perd numéro, pastille et marque de tranche, et les autres se renumérotent
+      // — c'est pipeline/profils/livre.mk (CHAPITRES_HORS_SOMMAIRE) qui fait ce travail à
+      // la compilation, cette case ne fait qu'écrire la clé.
+      if (ESTLIVRE) {
+        var caseSommaire = document.createElement('label');
+        caseSommaire.className = 'case-sommaire';
+        var cocheSommaire = document.createElement('input');
+        cocheSommaire.type = 'checkbox';
+        cocheSommaire.dataset.cle = 'sommaire';
+        cocheSommaire.checked = !!v.horsSommaire;
+        cocheSommaire.addEventListener('change', function () { marquer(carte, slug); });
+        caseSommaire.appendChild(cocheSommaire);
+        caseSommaire.appendChild(document.createTextNode(TXT.sommaireCase || ''));
+        appeler('champ', caseSommaire, 'sommaire');
+        carte.appendChild(caseSommaire);
+        var aideSommaire = document.createElement('p');
+        aideSommaire.className = 'case-sommaire-aide';
+        aideSommaire.textContent = TXT.sommaireAide || '';
+        carte.appendChild(aideSommaire);
+      }
 
       // Les champs multilingues vivent dans leur propre zone, reconstruite au changement
       // de langue : la langue de l'article vient en premier, les autres en dessous.
@@ -1004,59 +1041,73 @@
       apercusParCarte.set(carte, (article.apercusAuteurs || []).slice());
       rendreAuteurs(carte, slug);
 
-      champDoi(carte, slug, article);
+      // Le DOI (calculé ou manuel) : sans objet pour un chapitre — point 2, un livre n'a
+      // pas d'export OJS et doisCalculesArticles() ne calcule plus rien pour lui, donc
+      // article.doiCalcule arriverait de toute façon vide. `champDoi` inscrit ses
+      // contrôles dans doiParCarte ; tous ses lecteurs (doiEffectifCarte,
+      // verifierDoublonsDoi, collecter) tolèrent déjà son absence.
+      if (!ESTLIVRE) { champDoi(carte, slug, article); }
 
-      // Mots-clés : on ajoute et on retire une rangée entière, jamais un mot dans une
-      // seule langue, la position seule appariant « diagnostic » et « Diagnose ».
-      var lMots = document.createElement('label');
-      lMots.textContent = TXT.motsClesTitre || '';
-      appeler('motsCles', lMots, ordreAffichage(), noms);
-      carte.appendChild(lMots);
-      var colonnes = function () {
-        return languesVisibles().map(function (l) { return { code: l, libelle: noms[l] }; });
-      };
-      // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE — l'appeler sans le
-      // préfixe lève une ReferenceError à chaque carte, sur les deux formulaires.
-      var motsClesOpts = {
-        langues: colonnes(),
-        listes: v.keywords || {},
-        edition: true,
-        textes: {
-          motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
-          retirer: TXT.motCleRetirer, aTraduire: TXT.motCleATraduire
-        },
-        // Un mot-clé ajouté, retiré ou vidé peut faire changer de palier (voir
-        // seuilResume plus haut) : les compteurs des résumés doivent le suivre en direct,
-        // dans les deux sens — un cinquième mot-clé qui disparaît redonne 750.
-        onChange: function () { marquer(carte, slug); majTousCompteursResume(); }
-        // surRendu est posé par attacherAutocompletionMotsCles, juste en dessous : c'est
-        // elle qui sait reposer la pastille « hors thésaurus » après chaque reconstruction.
-      };
-      var editeurMots = SZH.motsCles(motsClesOpts);
-      motsClesParCarte.set(carte, editeurMots);
-      // Pas de champ unique à focaliser (une grille) : la clé permet quand même à
-      // focaliserChamp() de retrouver le bloc par [data-cle], comme les autres champs.
-      editeurMots.element.dataset.cle = 'keywords';
-      carte.appendChild(editeurMots.element);
-      attacherAutocompletionMotsCles(editeurMots, motsClesOpts);
-      // Une pastille PAR LANGUE et non par mot : le champ traduisible est la liste
-      // entière, et c'est elle qu'on propose autrement — une pastille par case en
-      // donnerait quinze sur une carte à cinq mots-clés. Posées pour les trois langues et
-      // cachées par la classe champ-<lang>, comme les intitulés (_fiches.css) : la colonne
-      // d'une langue qu'on coche apporte ainsi sa pastille sans re-rendu. Pas de
-      // champ-trad ici — les mots-clés ne se cachent pas avec les traductions.
-      // La valeur part jointe par des retours à la ligne, un mot-clé par ligne.
-      ordreAffichage().forEach(function (lg) {
-        var p = pastilleTraduction(lMots, slug, 'keywords', lg, function () {
-          return (editeurMots.collecterBrut()[lg] || [])
-            .filter(function (m) { return String(m).trim() !== ''; }).join('\n');
+      // Mots-clés edudoc/thésaurus : sans objet pour un chapitre, même raison que le type
+      // et la licence ci-dessus — pas de classification par sujet pour un livre. `var
+      // editeurMots` reste déclarée (hissage de `var`) pour que compterMotsClesLangue()
+      // plus haut et changerLangue() plus bas, qui la lisent toutes deux, continuent de
+      // fonctionner : elles savent déjà tolérer son absence (`if (!editeurMots) …`, voir
+      // ci-dessus) ou sont gardées ici pour la même raison.
+      var editeurMots;
+      if (!ESTLIVRE) {
+        // On ajoute et on retire une rangée entière, jamais un mot dans une seule langue,
+        // la position seule appariant « diagnostic » et « Diagnose ».
+        var lMots = document.createElement('label');
+        lMots.textContent = TXT.motsClesTitre || '';
+        appeler('motsCles', lMots, ordreAffichage(), noms);
+        carte.appendChild(lMots);
+        var colonnes = function () {
+          return languesVisibles().map(function (l) { return { code: l, libelle: noms[l] }; });
+        };
+        // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE — l'appeler sans le
+        // préfixe lève une ReferenceError à chaque carte, sur les deux formulaires.
+        var motsClesOpts = {
+          langues: colonnes(),
+          listes: v.keywords || {},
+          edition: true,
+          textes: {
+            motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
+            retirer: TXT.motCleRetirer, aTraduire: TXT.motCleATraduire
+          },
+          // Un mot-clé ajouté, retiré ou vidé peut faire changer de palier (voir
+          // seuilResume plus haut) : les compteurs des résumés doivent le suivre en direct,
+          // dans les deux sens — un cinquième mot-clé qui disparaît redonne 750.
+          onChange: function () { marquer(carte, slug); majTousCompteursResume(); }
+          // surRendu est posé par attacherAutocompletionMotsCles, juste en dessous : c'est
+          // elle qui sait reposer la pastille « hors thésaurus » après chaque reconstruction.
+        };
+        editeurMots = SZH.motsCles(motsClesOpts);
+        motsClesParCarte.set(carte, editeurMots);
+        // Pas de champ unique à focaliser (une grille) : la clé permet quand même à
+        // focaliserChamp() de retrouver le bloc par [data-cle], comme les autres champs.
+        editeurMots.element.dataset.cle = 'keywords';
+        carte.appendChild(editeurMots.element);
+        attacherAutocompletionMotsCles(editeurMots, motsClesOpts);
+        // Une pastille PAR LANGUE et non par mot : le champ traduisible est la liste
+        // entière, et c'est elle qu'on propose autrement — une pastille par case en
+        // donnerait quinze sur une carte à cinq mots-clés. Posées pour les trois langues et
+        // cachées par la classe champ-<lang>, comme les intitulés (_fiches.css) : la colonne
+        // d'une langue qu'on coche apporte ainsi sa pastille sans re-rendu. Pas de
+        // champ-trad ici — les mots-clés ne se cachent pas avec les traductions.
+        // La valeur part jointe par des retours à la ligne, un mot-clé par ligne.
+        ordreAffichage().forEach(function (lg) {
+          var p = pastilleTraduction(lMots, slug, 'keywords', lg, function () {
+            return (editeurMots.collecterBrut()[lg] || [])
+              .filter(function (m) { return String(m).trim() !== ''; }).join('\n');
+          });
+          if (p) { p.classList.add('champ-' + lg); }
         });
-        if (p) { p.classList.add('champ-' + lg); }
-      });
-      // `editeurMots` n'existait pas encore au premier rendreChampsTextes() : ses
-      // compteurs y ont ouvert sur zéro mot-clé. On les corrige ici, avant que la carte ne
-      // quitte construireCarte() — rien de faux ne s'est donc affiché.
-      majTousCompteursResume();
+        // `editeurMots` n'existait pas encore au premier rendreChampsTextes() : ses
+        // compteurs y ont ouvert sur zéro mot-clé. On les corrige ici, avant que la carte ne
+        // quitte construireCarte() — rien de faux ne s'est donc affiché.
+        majTousCompteursResume();
+      }
 
       // Une case par langue manquante : « + Allemand (champs DE) » pour un article IT de
       // la Revue, « + Français » et « + Italien » pour un article DE de la Zeitschrift.
@@ -1080,8 +1131,9 @@
             cochees[lg] = coche.checked;
             poserClasses();
             // La colonne apparaît ou disparaît ; le fragment garde ses valeurs, qui
-            // vivent dans son modèle et non dans le DOM.
-            editeurMots.reconstruire(colonnes());
+            // vivent dans son modèle et non dans le DOM. Pas de grille pour un chapitre
+            // (ESTLIVRE) : rien à reconstruire.
+            if (editeurMots) { editeurMots.reconstruire(colonnes()); }
             appeler('carteChangee', carte);
           });
           zoneCases.appendChild(caseLangue);
@@ -1117,13 +1169,15 @@
           map[ancienne] = map[nouvelle] || '';
           map[nouvelle] = t;
         }
-        editeurMots.permuter(ancienne, nouvelle);
+        // editeurMots n'existe pas pour un chapitre (ESTLIVRE) : rien à permuter ni à
+        // reconstruire côté mots-clés, seulement à défaut de grille.
+        if (editeurMots) { editeurMots.permuter(ancienne, nouvelle); }
         langueArticle = nouvelle;
         // Les cases se recalculent : l'ancienne langue devient « manquante », cochée si
         // elle porte (encore) des contenus ; une case cochée à la main le reste.
         var anciennes = cochees;
         cochees = {};
-        var brut = editeurMots.collecterBrut();
+        var brut = editeurMots ? editeurMots.collecterBrut() : {};
         languesManquantes().forEach(function (lg) {
           var contenu = champsMultilingues.some(function (cle) { return !!valeurs[cle][lg]; }) ||
             (brut[lg] || []).some(function (m) { return String(m).trim() !== ''; });
@@ -1132,7 +1186,7 @@
         poserClasses();
         rendreChampsTextes(valeurs);
         rendreCases();
-        editeurMots.reconstruire(colonnes());
+        if (editeurMots) { editeurMots.reconstruire(colonnes()); }
         appeler('carteChangee', carte);
         marquer(carte, slug);
       }
@@ -1184,13 +1238,17 @@
     }
 
     function collecter(carte) {
-      var resultat = { type: '', lang: '', licence: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+      var resultat = { type: '', lang: '', licence: '', doi: '', horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
       var sel = carte.querySelector('select[data-cle=type]');
       if (sel) { resultat.type = sel.value; }
       var selLangue = carte.querySelector('select[data-cle=lang]');
       if (selLangue) { resultat.lang = selLangue.value; }
       var selLicence = carte.querySelector('select[data-cle=licence]');
       if (selLicence) { resultat.licence = selLicence.value; }
+      // Absente pour un article (ESTLIVRE faux) : la case n'existe alors pas dans le DOM,
+      // et resultat.horsSommaire reste à false — jamais de `sommaire: non` écrit à sa place.
+      var cocheSommaire = carte.querySelector('input[data-cle=sommaire]');
+      if (cocheSommaire) { resultat.horsSommaire = !!cocheSommaire.checked; }
       // Le doi n'est collecté qu'en mode manuel : case décochée, la fiche repart sans
       // doi, et le calculé — que le champ affiche — ne s'écrit jamais nulle part.
       var cocheDoi = carte.querySelector('[data-cle="doi-manuel"]');
@@ -1271,7 +1329,7 @@
         // Posé avant rendre() : les cartes construisent leurs pastilles au passage.
         VERIF_TRAD = msg.verifTrad === true;
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
-          msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null);
+          msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null, msg.estLivre === true);
         surValeurs(msg);
         if (msg.focus) { focaliserChamp(msg.filtre, msg.focus); }
         return true;

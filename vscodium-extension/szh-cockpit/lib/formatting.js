@@ -25,7 +25,8 @@ const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF
+  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF,
+  langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
 } = formattingPur;
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
@@ -41,7 +42,10 @@ let revue = {
   // Refus visible, injecté par extension.js : message et bouton « Déverrouiller ».
   refuser: () => { vscode.window.setStatusBarMessage(T('verrou.refuse'), 4000); },
   // Conversion des JPEG CMJN, injectée : elle passe par la WSL, que ce module ignore.
-  convertirCmyk: () => Promise.resolve(0)
+  convertirCmyk: () => Promise.resolve(0),
+  // Le profil actif ('revue' ou 'livre') : le groupe « Livre » de la palette (falc-header,
+  // qr-link) ne s'ajoute que pour un livre — même repli que lib/panneaux.js.
+  profil: () => 'revue'
 };
 
 // ---- Mise en forme au clic droit et aux raccourcis ----
@@ -284,6 +288,41 @@ async function fmtSautPage() {
   await editeur.edit((b) => { b.replace(editeur.selection, texte); });
 }
 
+// ---- Styles « Livre » : en-tête de chapitre FALC, code QR ----
+//
+// Deux fenced div insérés en SnippetString (champs modifiables au Tab), jamais proposés
+// hors du profil livre (voir PALETTE_MEF_LIVRE, lib/formatting-pur.js). Une sélection
+// existante n'est JAMAIS détruite : insertSnippet ne touche qu'au point d'insertion — la
+// fin de la sélection (son début si elle est vide, comme un simple curseur) — et laisse le
+// texte sélectionné intact, où qu'il soit. Les lignes vides posées autour reprennent la
+// règle des blocs ::: (blocSautPage/blocReferenceTable ci-dessus) : un fenced div doit être
+// séparé de ses voisins.
+function enroberLignesVides(bloc, avant, apres) {
+  return (String(avant).trim() === '' ? '' : '\n\n') + bloc + (String(apres).trim() === '' ? '' : '\n\n');
+}
+
+async function fmtFalcHeader() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const point = editeur.selection.end;
+  const ligne = doc.lineAt(point.line).text;
+  const langue = langueLivre(revue.racine());
+  const corps = texteFalcHeader(langue, T('fmt.falcHeader.alt'));
+  const texte = enroberLignesVides(corps, ligne.slice(0, point.character), ligne.slice(point.character));
+  await editeur.insertSnippet(new vscode.SnippetString(texte), point);
+}
+
+async function fmtQrLink() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const point = editeur.selection.end;
+  const ligne = doc.lineAt(point.line).text;
+  const texte = enroberLignesVides(TEXTE_QR_LINK, ligne.slice(0, point.character), ligne.slice(point.character));
+  await editeur.insertSnippet(new vscode.SnippetString(texte), point);
+}
+
 // Insère l'appel [^n] à la fin de la sélection (ou au curseur) et pose sa définition
 // [^n]:  en fin de document — voir noteBasPage (lib/formatting-pur.js) pour le choix de
 // cette forme plutôt que la note inline ^[…]. Même mécanique qu'appliquerBlocClasse : les
@@ -429,9 +468,18 @@ async function ouvrirMiseEnForme() {
     vscode.window.setStatusBarMessage(T('palette.horsmd'), 3000);
     return;
   }
-  const items = PALETTE_MEF.map((e) => (e[0] === '--'
+  // Groupe « Livre » (falc-header, qr-link) : ajouté seulement pour un livre — jamais une
+  // revue ni une Zeitschrift. Même condition que pourProfil (lib/panneaux.js) pour le
+  // panneau d'édition, qui propose la même palette.
+  const entrees = PALETTE_MEF.concat(revue.profil() === 'livre' ? PALETTE_MEF_LIVRE : []);
+  const items = entrees.map((e) => (e[0] === '--'
     ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
-    : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: '[' + e[2] + ']', commande: e[1] }));
+    : {
+        label: (e[3] ? e[3] + ' ' : '') + T(e[0]),
+        description: e[2] ? '[' + e[2] + ']' : undefined,
+        detail: e[4] ? T(e[4]) : undefined,
+        commande: e[1]
+      }));
   const choix = await sousGarde(() =>
     vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') }));
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
@@ -460,6 +508,10 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.tableau', () => fmtTableau());
   c('szh.fmt.collerTableau', () => fmtCollerTableau());
   c('szh.fmt.sautPage', () => fmtSautPage());
+  // Livre seulement : la commande existe toujours (comme les autres szh.fmt.*), mais
+  // n'apparaît dans aucun menu hors profil livre (PALETTE_MEF_LIVRE, package.json).
+  c('szh.fmt.falcHeader', () => fmtFalcHeader());
+  c('szh.fmt.qrLink', () => fmtQrLink());
   c('szh.lierReference', () => fmtLierReference());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
 }

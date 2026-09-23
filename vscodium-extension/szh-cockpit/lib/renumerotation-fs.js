@@ -203,12 +203,19 @@ function retirerOut(racine, slug) {
   try { fs.rmSync(out, { recursive: true, force: true }); } catch (e) { /* rien à retirer */ }
 }
 
-function ecrireOrdre(racine, slugs) {
-  const chemin = path.join(racine, 'ausgabe.yaml');
+// `options.config` nomme le fichier (ausgabe.yaml par défaut, buch.yaml pour un livre) et
+// `options.cle` la clé qui y porte l'ordre (CLE_ORDRE par défaut, `ordre-chapitres` pour un
+// livre) — mêmes noms que la table de profils (lib/profil.js), que ce module ne peut pas
+// importer sans dépendre de vscode par transitivité. L'appelant (extension.js) les tire de
+// profilCourant() ; à défaut, le comportement d'une revue reste inchangé.
+function ecrireOrdre(racine, slugs, options) {
+  const nomFichier = (options && options.config) || 'ausgabe.yaml';
+  const cle = (options && options.cle) || CLE_ORDRE;
+  const chemin = path.join(racine, nomFichier);
   let contenu = '';
   try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
   const modifies = {};
-  modifies[CLE_ORDRE] = slugs.join(', ');
+  modifies[cle] = slugs.join(', ');
   ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
 }
 
@@ -255,7 +262,7 @@ function renumeroter(racine, ordreVoulu, options) {
       : ordreVoulu.map((slug, i) => {
         const r = plan.renommages.find((x) => x.de === slug);
         return r ? r.vers : slug;
-      }));
+      }), options);
     return { erreur: null, renommes: renommes };
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };
@@ -280,7 +287,7 @@ function reprendre(racine, options) {
     for (const etape of plan.passes[0]) { alignerFichiers(base, etape.vers); }
     // L'ordre, reconstruit depuis les dossiers eux-mêmes : leur préfixe EST le rang, c'est
     // tout l'intérêt de l'avoir écrit dans leur nom temporaire.
-    ecrireOrdre(racine, sousDossiers(base).sort());
+    ecrireOrdre(racine, sousDossiers(base).sort(), options);
     return { erreur: null, renommes: renommes };
   } catch (e) {
     return { erreur: String((e && e.message) || e), renommes: 0 };

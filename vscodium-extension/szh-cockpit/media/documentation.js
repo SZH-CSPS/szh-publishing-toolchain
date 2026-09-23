@@ -897,7 +897,7 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
-  console.warn('documentation : type de message inconnu', msg.type);
+  console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

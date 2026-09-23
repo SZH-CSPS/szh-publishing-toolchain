@@ -20,6 +20,23 @@
     zoneMessage.textContent = String(message || '');
     zoneMessage.hidden = false;
   }
+
+  // Les quatre blocs propres à une revue/Zeitschrift (auteur·e·s publiés OJS,
+  // bibliographie, tâches par article, export OJS) : leur <section> (settings.html) reste
+  // masquée tant que l'hôte n'envoie pas la donnée correspondante — et il ne l'envoie plus
+  // du tout pour un livre (extension.js, ouvrirReglages). Un seul point pour les révéler,
+  // plutôt que de répéter le même `.hidden = false` à chacun des quatre rendus.
+  function montrerBloc(id) {
+    const section = document.getElementById(id);
+    if (section) { section.hidden = false; }
+  }
+  // Masqués dès l'ouverture — settings.html les pose déjà `hidden`, répété ici pour ne
+  // pas dépendre de cet attribut statique : c'est cet état, et lui seul, que montrerBloc()
+  // défait quand la donnée arrive.
+  for (const id of ['bloc-auteurs-ojs', 'bloc-biblio', 'bloc-taches', 'bloc-ojs']) {
+    const section = document.getElementById(id);
+    if (section) { section.hidden = true; }
+  }
   const GROUPES = [
     { cle: 'theme', legende: TXT.theme, options: [['systeme', TXT.themeSysteme], ['clair', TXT.themeClair], ['sombre', TXT.themeSombre]] },
     { cle: 'zoom', legende: TXT.zoom, options: [['0', TXT.zoomNormal], ['1', TXT.zoomGrand], ['2', TXT.zoomTresGrand]] },
@@ -709,7 +726,7 @@
     cocher(msg.valeurs || {});
     afficherDiscordanceLangue(msg.avertLangue);
     if (msg.proteges) { protegesEtat = msg.proteges; }
-    if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
+    if (msg.auteursOjs) { montrerBloc('bloc-auteurs-ojs'); rendreAuteursOjs(msg.auteursOjs); }
     // Le compte des suggestions d'interface : recompté par l'hôte à chaque envoi de
     // valeurs, jamais tenu ici — il change quand on clique ailleurs.
     afficherSuggInterface(msg.suggInterface);
@@ -717,15 +734,18 @@
     // reste tel quel, l'enregistrement automatique s'en occupe.
     if (msg.ojs && !ojsModifie) {
       ojs = msg.ojs;
+      montrerBloc('bloc-ojs');
       rendreOjs();
     }
     if (msg.biblio && !biblioModifie) {
       biblio = msg.biblio;
+      montrerBloc('bloc-biblio');
       rendreBiblio();
       appliquerVerrou();
     }
     if (msg.taches && !tachesModifie) {
       taches = msg.taches;
+      montrerBloc('bloc-taches');
       rendreTaches();
     }
   });

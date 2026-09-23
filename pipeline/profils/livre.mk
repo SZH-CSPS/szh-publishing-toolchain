@@ -32,6 +32,11 @@
 # Ce que le dossier contient
 # --------------------------------------------------------------------------------------
 CONFIG_LIVRE := buch.yaml
+# Cache Shlink (pipeline/liens-courts.py), à côté de buch.yaml : URL longue -> URL courte,
+# lu par szh-qr.lua (SZH_LIENS_COURTS, posé ci-dessous comme SZH_AUSGABE) pour qu'un QR
+# encode le lien court une fois résolu. Ni généré ni lu ici s'il n'existe pas — un livre
+# sans Shlink configuré compile exactement comme avant (voir l'en-tête de liens-courts.py).
+LIENS_COURTS_CACHE := liens-courts.yaml
 CH_DIR       := chapitres
 LIM_DIR      := liminaires
 COUV_DIR     := couverture
@@ -80,6 +85,29 @@ CHAPITRES := $(CHAPITRES_ORDONNES)
 # relecture du Makefile changerait la date du fichier et recompilerait tous les chapitres.
 ORDRE_CHAPITRES_FICHIER := $(OUT)/.szh-ordre-chapitres
 $(shell mkdir -p "$(OUT)" 2>/dev/null; printf '%s\n' $(CHAPITRES) | cmp -s - "$(ORDRE_CHAPITRES_FICHIER)" 2>/dev/null || printf '%s\n' $(CHAPITRES) > "$(ORDRE_CHAPITRES_FICHIER)")
+
+# Chapitres retirés de la table des matières : clé `sommaire: non` (ou `false`) du
+# <slug>.meta.yaml, lue ligne à ligne comme `maquette:` plus haut — l'image WSL n'a pas
+# PyYAML. Le motif ne retient que les lettres qui suivent le « : », donc « sommaire:
+# "non"  # provisoire » vaut « non » comme une ligne nue ; un chapitre sans meta.yaml, ou
+# dont le meta.yaml ne porte pas cette clé, reste au sommaire (défaut : présent).
+# ⚠ Un chapitre retiré du sommaire compile quand même, à sa place : il garde son rang dans
+#   $(CHAPITRES) (couleur, SZH_CHAPITRE, compteurs de figures/tableaux continus — rien de
+#   tout cela ne change). Seul $(CHAPITRES_SOMMAIRE), calculé ici, sert à numéroter la
+#   pastille et à partager l'index à pouce — voir plus bas.
+CHAPITRES_HORS_SOMMAIRE := $(strip $(foreach c,$(CHAPITRES),\
+  $(if $(filter non false,$(strip $(shell sed -n "s/^[[:space:]]*sommaire:[[:space:]]*[\"']*\([a-zA-Z]*\).*/\1/p" \
+       $(CH_DIR)/$(c)/$(c).meta.yaml 2>/dev/null | head -1))),$(c))))
+CHAPITRES_SOMMAIRE    := $(filter-out $(CHAPITRES_HORS_SOMMAIRE),$(CHAPITRES))
+NB_CHAPITRES_SOMMAIRE := $(words $(CHAPITRES_SOMMAIRE))
+
+# Même mécanique que $(ORDRE_CHAPITRES_FICHIER) ci-dessus, et pour la même raison : retirer
+# un chapitre du sommaire au milieu du livre redistribue la hauteur de TOUTES les cases de
+# l'index à pouce (--onglet-haut / --onglet-hauteur, posés par rang parmi
+# $(CHAPITRES_SOMMAIRE) — voir plus bas) ; sans ce fichier écrit sur disque, make n'aurait
+# aucune raison de recompiler les chapitres dont seule la case a changé de hauteur.
+SOMMAIRE_CHAPITRES_FICHIER := $(OUT)/.szh-sommaire-chapitres
+$(shell mkdir -p "$(OUT)" 2>/dev/null; printf '%s\n' $(CHAPITRES_SOMMAIRE) | cmp -s - "$(SOMMAIRE_CHAPITRES_FICHIER)" 2>/dev/null || printf '%s\n' $(CHAPITRES_SOMMAIRE) > "$(SOMMAIRE_CHAPITRES_FICHIER)")
 
 # Un chapitre = chapitres/<slug>/<slug>.md, comme un article. L'ordre est celui du tri des
 # noms de dossier — et du tri alphabétique après ceux ordonnés par « ordre-chapitres ».
@@ -175,9 +203,18 @@ LECTEUR := $(if $(filter falc,$(MAQUETTE)),markdown+hard_line_breaks,markdown)
 LECTEUR_APERCU := commonmark_x$(if $(filter falc,$(MAQUETTE)),+hard_line_breaks,)+sourcepos
 
 # Couleur d'un chapitre : elle peint la pastille du numéro, l'onglet de tranche et le
-# repère du sommaire (maquette FALC). Les six sont les couleurs de charte de la maison
-# (styles/couleurs.css) prises au cran 800, le seul qui porte du texte blanc à Lc −90 ou
-# mieux — la pastille en contient.
+# repère du sommaire (maquette FALC). Chaque teinte de styles/couleurs.css est prise au cran
+# le plus CLAIR qui tient encore 3:1 contre le blanc de la page (WCAG 1.4.11, seuil d'un
+# élément d'interface) : le cran 800 d'avant était plus sombre que nécessaire, et six teintes
+# sombres se distinguent mal. Rouge, moutarde et mountbatten au 500 ; bleu acier et poireau
+# au 600 (leur 500 tombe à 2,93 et 2,99:1). Le chiffre blanc de la pastille (13 pt demi-gras)
+# reste à |Lc| ≥ 62 partout (pipeline/apca.py).
+# ⚠ Capucine au 700, pas au 500 : au même cran, rouge et capucine sont presque la même
+#   couleur (ΔE2000 = 4,4). Au 700, l'écart passe à 16,3, et c'est l'écart minimal de toute
+#   la palette, toutes paires confondues — pas seulement entre voisins, car un livre de dix
+#   chapitres fait revenir le cycle.
+# Ordre : rouge · bleu acier · capucine · moutarde · mountbatten · poireau, qui écarte le plus
+# les deux teintes chaudes l'une de l'autre dans le cycle.
 # ⚠ Elle est posée ici, par rang, et non en CSS avec `:nth-of-type`. Le sélecteur compte
 #   les <section> frères, liminaires comprises : sur un livre à quatre liminaires, le
 #   chapitre 1 recevait la couleur du sixième. Un décalage silencieux, invisible tant
@@ -185,14 +222,45 @@ LECTEUR_APERCU := commonmark_x$(if $(filter falc,$(MAQUETTE)),+hard_line_breaks,
 # ⚠ Sans le croisillon : dans une recette, un « # » non protégé ouvre un commentaire de
 #   shell, et tout ce qui suit sur la ligne — la parenthèse fermante comprise — disparaît.
 #   La recette le remet, entre guillemets.
-PALETTE_CHAPITRE := 9F001F 2E5A6D 555900 26613B 8E2E27 624C58
+PALETTE_CHAPITRE := E95D5F 4D869F AE3E35 949A00 A98899 43905D
 
-# Position verticale de l'onglet de tranche (maquette FALC) : six crans, un par couleur de
-# la palette ci-dessus, échelonnés sur la hauteur utile de la page — c'est ce décalage,
-# et lui seul, qui fait l'index à pouce. Posé ici par rang, exactement comme la couleur et
-# pour la même raison : un `:nth-of-type` CSS compte les <section> frères, liminaires
-# comprises, et décale l'onglet d'autant de pièces liminaires que le livre en a.
-ONGLET_HAUT_CHAPITRE := 30mm 58mm 86mm 114mm 142mm 170mm
+# Position ET hauteur de l'onglet de tranche (maquette FALC) : l'index à pouce. Calculées
+# ICI, une seule fois, puis lues telles quelles à deux endroits — la page (--onglet-haut/
+# --onglet-hauteur, en métadonnée pandoc sur la section du chapitre) et le sommaire
+# (livre-assembler.py relit ces mêmes valeurs dans le fragment déjà compilé, il ne les
+# recalcule jamais : voir sa note de tête). C'est ce qui garantit que le repère du
+# sommaire tombe à la même hauteur que la marque, chapitre par chapitre.
+#
+# Avant ce correctif : six crans fixes (30/58/86/114/142/170mm), un par couleur de la
+# palette — pensés pour un livre à six chapitres pile, sans rapport avec leur nombre réel.
+# Un chapitre retiré du sommaire (`sommaire: non`) y aurait laissé un cran vide au milieu
+# de la pile plutôt que de resserrer les autres.
+#
+# Maintenant : la plage utile ONGLET_Y0..ONGLET_Y1 (mm, ⚠ à tenir synchronisée avec
+# --onglet-y0 de falc.css — même piège que --fond-perdu dans imprimeur.css) est partagée à
+# parts égales entre les $(NB_CHAPITRES_SOMMAIRE) chapitres du sommaire. Chapitre de rang k
+# PARMI CES CHAPITRES (1-indexé, PAS le rang dans $(CHAPITRES) qui sert à la couleur) :
+#   hauteur = (ONGLET_Y1 - ONGLET_Y0) / NB_CHAPITRES_SOMMAIRE
+#   haut    = ONGLET_Y0 + (k - 1) * hauteur
+# Un chapitre hors sommaire ne reçoit ni l'un ni l'autre : sa section ne porte pas ces deux
+# métadonnées, et falc.css efface sa marque (règle `[data-sommaire="non"] > .szh-onglet`).
+#
+# Ce même k devient aussi --metadata numero-chapitre : le chiffre de la pastille ronde
+# (falc.css, § pastille), désormais un running element affiché sur CHAQUE page du
+# chapitre (coin extérieur), pas seulement sur l'ouverture. Écrit en dur dans le gabarit
+# plutôt que confié à un compteur CSS `counter()` : la valeur qui compte est CELLE DU
+# SOMMAIRE (k, ci-dessus), pas le rang de la section dans le document — les deux
+# divergent dès qu'un chapitre est hors sommaire — et un `counter()` lu depuis une boîte
+# de marge dépend de l'état de la pagination à cet endroit précis, un terrain plus fragile
+# qu'une valeur déjà connue au moment de la compilation du chapitre. Un chapitre hors
+# sommaire ne reçoit pas cette métadonnée : sa pastille reste vide (falc.css, même garde
+# que pour l'onglet).
+#
+# La COULEUR, elle, garde son cycle de 6 (PALETTE_CHAPITRE ci-dessus), et par le rang dans
+# $(CHAPITRES) — inchangé : un chapitre hors sommaire compte toujours pour ce cycle-là,
+# exactement comme pour SZH_CHAPITRE et les compteurs de figures/tableaux continus.
+ONGLET_Y0 := 30
+ONGLET_Y1 := 190
 
 STYLE_LIVRE_BASE  := $(PIPELINE_DIR)/styles/livre/base.css
 STYLE_LIVRE_CHART := $(PIPELINE_DIR)/styles/livre/$(MAQUETTE).css
@@ -239,6 +307,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete-image.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
@@ -247,9 +316,11 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-auteurs.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-qr.lua"
 
 # La même suite, moins szh-notes.lua : la variante EPUB. Sur une liseuse, le `float:
 # footnote` de print.css qui descend la note en pied de page n'existe pas, et son texte se
@@ -257,9 +328,14 @@ FILTRES_CHAPITRE := \
 # epub3 de pandoc en fait de vraies notes de fin, liées et navigables.
 FILTRES_CHAPITRE_EPUB := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua",$(FILTRES_CHAPITRE))
 
+# szh-qr.lua (QR vectoriel cliquable, lien `.qr`) est en tout dernier dans les deux suites :
+# une fois le Link changé en RawInline (<a><svg>…), aucun filtre suivant n'a de raison d'y
+# toucher — le poser plus tôt exposerait ce balisage aux passes de typographie/coupure de
+# mots, qui walkent Str/Link du document entier. Voir l'en-tête de szh-qr.lua.
+
 .PHONY: livre livre-pdf livre-imprimeur livre-couverture livre-html livre-html-web \
         livre-epub \
-        verifie-livre verifie-couverture
+        verifie-livre verifie-couverture liens-courts
 # Une recette qui échoue ne doit pas laisser une cible à moitié écrite et plus récente que ses prérequis.
 .DELETE_ON_ERROR:
 # livre-couverture liste verifie-livre et verifie-couverture comme deux prérequis frères —
@@ -269,6 +345,42 @@ FILTRES_CHAPITRE_EPUB := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-
 .NOTPARALLEL:
 
 livre: livre-pdf $(APERCUS_CHAPITRES)
+
+# Lien court Shlink : résolu AUTOMATIQUEMENT, en tout premier, par livre-pdf/livre-imprimeur/
+# livre-epub/livre-html-web (ci-dessous, LIENS_COURTS_PREALABLE) MAIS SEULEMENT quand
+# SZH_SHLINK_URL est posée dans l'environnement — un livre doit continuer à compiler
+# exactement comme avant tant que personne ne l'a posée, pas seulement retomber sur un
+# cache vide. Le lanceur Windows pose SZH_SHLINK_URL/SZH_SHLINK_CLE (et les relaie à la WSL
+# par WSLENV) ; sans lui, seule une invocation manuelle les fournit :
+#   SZH_SHLINK_URL=https://link.szh-csps.ch SZH_SHLINK_CLE=... make -f livre.mk liens-courts
+# Sans SZH_SHLINK_URL : ne fait rien (ni appel réseau, ni écriture du cache) — voir
+# pipeline/liens-courts.py, qui referait de toute façon ce même constat par URL s'il était
+# appelé sans configuration ; s'arrêter ici évite un avertissement par lien pour rien dire
+# de plus que « pas configuré ».
+#
+# --lecteur "$(LECTEUR)" : le même lecteur pandoc que la compilation des chapitres (markdown
+# ou markdown+hard_line_breaks selon la maquette) — voir liens-courts.py, scanner_liens_qr().
+liens-courts:
+ifdef SZH_SHLINK_URL
+	@python3 "$(PIPELINE_DIR)/liens-courts.py" "$(LIENS_COURTS_CACHE)" --scan "$(CH_DIR)" --lecteur "$(LECTEUR)"
+else
+	@echo "[livre] SZH_SHLINK_URL n'est pas posé : rien à résoudre (voir l'en-tête de cette cible)."
+	@echo "[livre] [de] SZH_SHLINK_URL ist nicht gesetzt: nichts aufzulösen (siehe Kopf dieses Ziels)."
+endif
+
+# Prérequis conditionnel des quatre cibles qui compilent réellement un livre (pas
+# `verifie-livre` seule, pas `livre-couverture` : la couverture ne porte pas de QR). Une
+# variable plutôt qu'un `ifdef` répété quatre fois — et make ne construit un phony qu'une
+# fois par exécution, quel que soit le nombre de cibles qui le citent en prérequis.
+# Listée EN PREMIER prérequis de chacune : sous `.NOTPARALLEL:` (déjà posé plus haut), make
+# exécute les prérequis d'une cible dans l'ordre où ils sont écrits — même convention que
+# `livre-couverture: verifie-livre verifie-couverture …` plus bas. Le cache doit être écrit
+# AVANT que le premier chapitre ne compile : c'est lui qui lit SZH_LIENS_COURTS pour
+# résoudre le QR au fil de la compilation du fragment.
+LIENS_COURTS_PREALABLE :=
+ifdef SZH_SHLINK_URL
+LIENS_COURTS_PREALABLE := liens-courts
+endif
 
 # --------------------------------------------------------------------------------------
 # Garde-fous. Ils disent ce qui manque et ce qu'il faut faire, dans les deux langues du
@@ -318,26 +430,35 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
                               $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
                               $$(wildcard $(CH_DIR)/$$*/media/*) \
                               $$(wildcard $(CH_DIR)/$$*/$$*.meta.yaml) \
-                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER)
+                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER) \
+                              $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
 	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
 	index=$$(( (rang - 1) % 6 + 1 )); \
 	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	onglet=$$(printf '%s\n' $(ONGLET_HAUT_CHAPITRE) | sed -n "$${index}p"); \
+	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
+	  onglet_meta="--metadata hors-sommaire=1"; \
+	else \
+	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
+	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
+	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
+	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
+	fi; \
 	meta=""; \
 	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/$$rang.txt" \
-	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" \
+	  SZH_LIENS_COURTS="$(abspath $(LIENS_COURTS_CACHE))" $(PANDOC) "$$slug.md" \
 	  --from=$(LECTEUR) --to=html5 \
 	  --id-prefix="$$slug-" \
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
 	  --metadata rang-chapitre="$$rang" \
-	  --metadata onglet-haut="$$onglet" \
+	  $$onglet_meta \
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  $(FILTRES_CHAPITRE) \
@@ -351,26 +472,35 @@ $(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARI
                               $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
                               $$(wildcard $(CH_DIR)/$$*/media/*) \
                               $$(wildcard $(CH_DIR)/$$*/$$*.meta.yaml) \
-                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER)
+                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER) \
+                              $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
 	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
 	index=$$(( (rang - 1) % 6 + 1 )); \
 	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	onglet=$$(printf '%s\n' $(ONGLET_HAUT_CHAPITRE) | sed -n "$${index}p"); \
+	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
+	  onglet_meta="--metadata hors-sommaire=1"; \
+	else \
+	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
+	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
+	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
+	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
+	fi; \
 	meta=""; \
 	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, variante EPUB)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/epub/$$rang.txt" \
-	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" \
+	  SZH_LIENS_COURTS="$(abspath $(LIENS_COURTS_CACHE))" $(PANDOC) "$$slug.md" \
 	  --from=$(LECTEUR) --to=html5 \
 	  --id-prefix="$$slug-" \
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
 	  --metadata rang-chapitre="$$rang" \
-	  --metadata onglet-haut="$$onglet" \
+	  $$onglet_meta \
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  $(FILTRES_CHAPITRE_EPUB) \
@@ -393,26 +523,35 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
                               $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
                               $$(wildcard $(CH_DIR)/$$*/media/*) \
                               $$(wildcard $(CH_DIR)/$$*/$$*.meta.yaml) \
-                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER)
+                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md) $(ORDRE_CHAPITRES_FICHIER) \
+                              $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
 	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
 	index=$$(( (rang - 1) % 6 + 1 )); \
 	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	onglet=$$(printf '%s\n' $(ONGLET_HAUT_CHAPITRE) | sed -n "$${index}p"); \
+	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
+	  onglet_meta="--metadata hors-sommaire=1"; \
+	else \
+	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
+	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
+	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
+	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
+	fi; \
 	meta=""; \
 	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, aperçu sourcepos)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_APERCU=1 SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/apercu/$$rang.txt" \
-	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" \
+	  SZH_LIENS_COURTS="$(abspath $(LIENS_COURTS_CACHE))" $(PANDOC) "$$slug.md" \
 	  --from=$(LECTEUR_APERCU) --to=html5 \
 	  --id-prefix="$$slug-" \
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
 	  --metadata rang-chapitre="$$rang" \
-	  --metadata onglet-haut="$$onglet" \
+	  $$onglet_meta \
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sourcepos.lua" \
@@ -472,7 +611,7 @@ $(LIVRE_PDF): $(LIVRE_HTML)
 	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
 	mv -f "$$tmp" "$@"
 
-livre-pdf: verifie-livre $(LIVRE_PDF)
+livre-pdf: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_PDF)
 	@echo "[livre] $(LIVRE_PDF)"
 
 # --------------------------------------------------------------------------------------
@@ -608,7 +747,7 @@ CMJN_PY := $(PIPELINE_DIR)/cmjn.py
 # cmjn.py importe pypdf, qui n'est installé que dans le venv WeasyPrint de l'image (image/requirements.txt), pas dans le python3 du système.
 CMJN_PYTHON ?= /opt/weasyprint/bin/python
 
-livre-imprimeur: verifie-livre $(LIVRE_IMPRIMEUR_PDF)
+livre-imprimeur: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_IMPRIMEUR_PDF)
 ifeq ($(PROFIL_CMJN),)
 	@echo "[livre] $(LIVRE_IMPRIMEUR_PDF) (RVB — aucun profil dans impression.profil-cmjn)"
 else
@@ -641,7 +780,7 @@ $(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GA
 	  $(CSS_LIVRE_WEB) \
 	  $(FRAGMENTS)
 
-livre-html-web: verifie-livre $(LIVRE_WEB_HTML)
+livre-html-web: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_WEB_HTML)
 	@echo "[livre] $(LIVRE_WEB_HTML)"
 # Garde-fou spécifique, à part de verifie-livre : livre-pdf et livre-html n'ont pas besoin
 # d'un texte de 4e de couverture, seule cette cible en dépend. Il doit s'exécuter avant la
@@ -696,5 +835,5 @@ $(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR
 $(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB)
 	@$(PANDOC) "$(LIVRE_EPUB_HTML)" 	  --from=html --to=epub3 	  --split-level=1 	  --metadata-file="$(LIVRE_EPUB_META)" 	  --css="$(abspath $(STYLE_LIVRE_EPUB))" 	  --output="$@"
 
-livre-epub: verifie-livre $(LIVRE_EPUB)
+livre-epub: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_EPUB)
 	@echo "[livre] $(LIVRE_EPUB)"

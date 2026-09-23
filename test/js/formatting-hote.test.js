@@ -201,6 +201,45 @@ test('szh.miseEnForme : la palette pilotée par QuickPick choisit et applique sz
     assert.strictEqual(ed._info.remplacements[0], '**mot**');
   });
 
+// ---- Groupe « Livre » (falc-header, qr-link) : absent d'une revue -------------------
+//
+// REVUE est une Revue (lang: fr) au sens de lib/yaml.js#REVUES, mais la condition qui
+// filtre ces deux styles est hote.profil()/revue.profil() === 'livre' — indifférente à la
+// langue. Une Zeitschrift (même profil 'revue', lang: de) est donc couverte par ce même
+// contrôle ; voir test/js/hote-livre.test.js pour la présence côté livre.
+test('szh.miseEnForme : le groupe « Livre » n’apparaît jamais pour une revue', async () => {
+  const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  ed._lignes = ['mot'];
+  HOTE.stub.window.activeTextEditor = ed;
+  let propose = null;
+  HOTE.stub.window.showQuickPick = (items) => { propose = items; return Promise.resolve(undefined); };
+  try {
+    await HOTE.executer('szh.miseEnForme');
+  } finally {
+    HOTE.stub.window.showQuickPick = (items) => Promise.resolve(undefined);
+  }
+  assert.ok(propose, 'aucun QuickPick proposé');
+  assert.ok(!propose.some((i) => i.commande === 'szh.fmt.falcHeader'),
+    'szh.fmt.falcHeader apparaît au clic droit d’une revue');
+  assert.ok(!propose.some((i) => i.commande === 'szh.fmt.qrLink'),
+    'szh.fmt.qrLink apparaît au clic droit d’une revue');
+});
+
+test('szh.panneauEdition : le groupe « Livre » n’apparaît jamais pour une revue', async () => {
+  let propose = null;
+  HOTE.stub.window.showQuickPick = (items) => { propose = items; return Promise.resolve(undefined); };
+  try {
+    await HOTE.executer('szh.panneauEdition');
+  } finally {
+    HOTE.stub.window.showQuickPick = (items) => Promise.resolve(undefined);
+  }
+  assert.ok(propose, 'aucun QuickPick proposé');
+  assert.ok(!propose.some((i) => i.commande === 'szh.fmt.falcHeader'),
+    'szh.fmt.falcHeader apparaît au panneau d’édition d’une revue');
+  assert.ok(!propose.some((i) => i.commande === 'szh.fmt.qrLink'),
+    'szh.fmt.qrLink apparaît au panneau d’édition d’une revue');
+});
+
 // ---- lireHtmlPressePapiers, directement : HTML rendu, délai dépassé, PowerShell absent ----
 
 test('lireHtmlPressePapiers : le flux stdout est rendu tel quel', async () => {

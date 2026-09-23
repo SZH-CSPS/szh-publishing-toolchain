@@ -401,3 +401,47 @@ test('reparerMarqueursOrphelins : un marqueur déjà juste n’est pas réécrit
   assert.strictEqual(fs.statSync(md).mtimeMs, avant, 'le .md a été réécrit pour rien');
   fs.rmSync(racine, { recursive: true, force: true });
 });
+
+// ---- options.config / options.cle : le profil livre --------------------------------
+//
+// ecrireOrdre() (dans hote, ci-dessus) écrivait ausgabe.yaml/ordre-articles en dur : un
+// livre passé par ce même chemin (« Terminer », extension.js) aurait créé un ausgabe.yaml
+// parasite au lieu d'écrire dans son buch.yaml. Fixture minimale, à la forme d'un livre
+// (chapitres/, buch.yaml, ordre-chapitres) plutôt que numero() ci-dessus, qui est câblée
+// sur celle d'une revue.
+function livre(slugs) {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-renum-livre-'));
+  fs.writeFileSync(path.join(racine, 'buch.yaml'),
+    ['titre: "Essai"',
+     'ordre-chapitres: [' + slugs.map((s) => '"' + s + '"').join(', ') + ']'].join(LF) + LF);
+  for (const slug of slugs) {
+    const d = path.join(racine, 'chapitres', slug);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, slug + '.md'), '# ' + slug + LF);
+  }
+  return racine;
+}
+
+const optionsLivre = { dossier: 'chapitres', config: 'buch.yaml', cle: 'ordre-chapitres' };
+
+test('options.config/cle : un échange de rangs écrit ordre-chapitres dans buch.yaml, pas ausgabe.yaml', () => {
+  const racine = livre(['00-ouverture', '01-suite']);
+  const r = hote.renumeroter(racine, ['01-suite', '00-ouverture'], optionsLivre);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.deepStrictEqual(fs.readdirSync(path.join(racine, 'chapitres')).sort(),
+    ['00-suite', '01-ouverture']);
+  const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+  assert.match(buch, /ordre-chapitres:\s*\["00-suite",\s*"01-ouverture"\]/,
+    'ordre-chapitres n’a pas été réécrit dans l’ordre voulu : ' + buch);
+  assert.ok(!fs.existsSync(path.join(racine, 'ausgabe.yaml')),
+    'un ausgabe.yaml parasite a été créé par renumeroter() sur un livre');
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+test('options.config/cle : sans eux, ecrireOrdre() garde son défaut de revue (non-régression)', () => {
+  const racine = numero(['00-edito', '01-inclusion']);
+  const r = hote.renumeroter(racine, ['01-inclusion', '00-edito']);
+  assert.strictEqual(r.erreur, null);
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-inclusion', '01-edito']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # docx-styles-corps.py — pré-pass d'import : les styles de corps du gabarit Pronto
-# (« SZH Important », « SZH Hervorhebung », « SZH Question (interview) ») survivent à pandoc.
+# (« SZH Important », « SZH Hervorhebung », « SZH Question (interview) ») survivent à pandoc,
+# et de même pour la ligne d'auteur·e·s d'un chapitre de livre (STYLES_AUTEURS_CHAPITRE).
 #
 #   python3 docx-styles-corps.py <entree.docx> <sortie.docx>
 #
@@ -32,6 +33,25 @@ STYLES_BLOCS = {
     'SZH Question (interview)': 'question',
 }
 
+# Livre seulement : la ligne d'auteur·e·s d'un chapitre, juste sous son titre — style Word
+# hérité d'un gabarit antérieur à Modele-chapitre-SZH.docx (constaté sur
+# redf_Lerngeschichten_clean.docx : styleId ET w:name valent bien « Auhors », coquille
+# comprise — vérifié dans styles.xml, pas supposé). Liste COURTE de variantes plausibles ;
+# une variante s'ajoute ici après CONSTAT sur un .docx réel, jamais par anticipation. Rendu
+# identique au bloc auteurs d'un ouvrage collectif (szh-livre-auteurs.lua, `.szh-auteurs`) :
+# même classe, styles/livre/falc.css n'a qu'un seul sélecteur pour les deux origines.
+STYLES_AUTEURS_CHAPITRE = {
+    'Auhors': 'szh-auteurs',
+    'Authors': 'szh-auteurs',
+    'Auteurs': 'szh-auteurs',
+    'Autor·innen': 'szh-auteurs',
+}
+
+# Un seul dict à parcourir (voir ids_par_classe()). Les deux constantes restent séparées :
+# pas le même métier — bloc du cockpit contre ligne de titre de chapitre — même si le
+# marquage est rigoureusement le même mécanisme.
+TOUS_LES_STYLES = {**STYLES_BLOCS, **STYLES_AUTEURS_CHAPITRE}
+
 DEBUT, FIN = '', ''
 
 
@@ -40,7 +60,7 @@ def marqueur(classe):
 
 
 def ids_par_classe(styles_xml):
-    """{identifiant de style: classe} pour les styles de paragraphe de STYLES_BLOCS."""
+    """{identifiant de style: classe} pour les styles de paragraphe de TOUS_LES_STYLES."""
     ids = {}
     for m in re.finditer(r'<w:style\b[^>]*>.*?</w:style>', styles_xml, re.S):
         bloc = m.group()
@@ -48,8 +68,8 @@ def ids_par_classe(styles_xml):
             continue
         sid = re.search(r'w:styleId="([^"]+)"', bloc)
         nom = re.search(r'<w:name w:val="([^"]+)"', bloc)
-        if sid and nom and nom.group(1) in STYLES_BLOCS:
-            ids[sid.group(1)] = STYLES_BLOCS[nom.group(1)]
+        if sid and nom and nom.group(1) in TOUS_LES_STYLES:
+            ids[sid.group(1)] = TOUS_LES_STYLES[nom.group(1)]
     return ids
 
 
@@ -99,6 +119,10 @@ def principal(entree, sortie):
 
 
 if __name__ == '__main__':
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(sys.argv) != 3:
         sys.exit('usage : docx-styles-corps.py <entree.docx> <sortie.docx>')
     principal(sys.argv[1], sys.argv[2])

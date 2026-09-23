@@ -110,6 +110,11 @@ function Test-SzhArticle([System.IO.FileInfo]$Md, [string]$Racine) {
 # respecter le mode simulation sont les deux besoins d'open-md.ps1, ni l'un ni l'autre
 # n'existant côté socle.
 function Start-SzhCodiumFichier([string]$Codium, [string[]]$Chemins) {
+  # Avant tout le reste, même geste que le Start-SzhCodium du lanceur principal : un article
+  # ouvert par double-clic doit compiler avec les mêmes variables SZH_SHLINK_URL/CLE,
+  # SZH_OJS_CLE qu'une revue ouverte depuis le lanceur -- Set-SzhEnvironnementSecrets vit dans
+  # le socle commun (seul fichier que ce script dot-source).
+  Set-SzhEnvironnementSecrets
   $arguments = (($Chemins | ForEach-Object { '"{0}"' -f $_ }) -join ' ')
   Write-SzhTrace ('ouverture -> {0} {1}' -f $Codium, $arguments)
   if ($script:SzhSimule) {

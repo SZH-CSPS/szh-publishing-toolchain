@@ -26,6 +26,10 @@ const ext = require(path.join(COCKPIT, 'extension.js'));
 // lib/medias-hote.js, lib/documentation-hote.js, lib/apercu.js et lib/import-hote.js.
 // Ne pas ajouter ni retirer un nom ici sans avoir vérifié qu'il s'agit d'un vrai
 // changement de contrat, et non d'un effet de bord du découpage.
+//
+// +1 (119e nom) : proposerTutoriel, exposée pour prouver sans activation complète que
+// l'invitation au tutoriel ne s'affiche jamais sur un livre (chantier profil livre,
+// point 6 — voir son commentaire dans extension.js).
 const NOMS_ATTENDUS = [
   'SCHEME_CONFLIT', 'TEXTES_COCKPIT', 'adressesAuteurs', 'ajouterColonne', 'ajouterLigne',
   'alignerCellules', 'analyserAusgabe', 'analyserFrontmatter', 'analyserMeta',
@@ -45,8 +49,9 @@ const NOMS_ATTENDUS = [
   'nettoyerContenuCellule', 'nettoyerHtmlBureautique', 'nomCouverture', 'nomTableLibre',
   'normaliserModele', 'noterLectureCoedition', 'numerosOrdreEnAttente', 'ordonnerArticles',
   'oublierCopiesSignalees', 'permuterStatutsTraduction', 'plagePos', 'poidsLisible',
-  'positionMot', 'prefixeOrdre', 'rafraichirConflitsScm', 'rafraichirEmpreinteCoedition',
-  'refusCoedition', 'refusCoeditionNumero', 'rejouerCompilationsDifferees',
+  'positionMot', 'prefixeOrdre', 'proposerTutoriel', 'rafraichirConflitsScm',
+  'rafraichirEmpreinteCoedition', 'refusCoedition', 'refusCoeditionNumero',
+  'rejouerCompilationsDifferees',
   'relancerCompilation', 'relancerCompilationCartes', 'relatifImageValide',
   'resoudreBlocConflit', 'resoudreNumeroOrdre', 'resumeTaches', 'resumeTraduction',
   'retirerImage', 'retirerTable', 'scinder', 'separerFrontmatter', 'serialiserAusgabe',
@@ -58,10 +63,10 @@ const NOMS_ATTENDUS = [
   'versionsDivergent', 'viderCellules'
 ].sort();
 
-test('module.exports._pur d’extension.js expose exactement les 118 noms figés, avant tout découpage', () => {
+test('module.exports._pur d’extension.js expose exactement les 119 noms figés, avant tout découpage', () => {
   assert.ok(ext && ext._pur, 'extension.js ne rend pas de module.exports._pur');
   const obtenus = Object.keys(ext._pur).sort();
-  // La taille figée (118) n'a pas besoin d'un test à part : tout désaccord de compte se
+  // La taille figée (119) n'a pas besoin d'un test à part : tout désaccord de compte se
   // lit déjà dans le deepStrictEqual ci-dessous, avec le détail des noms en trop ou
   // manquants — un simple compte n'y ajoutait rien.
   assert.deepStrictEqual(obtenus, NOMS_ATTENDUS,

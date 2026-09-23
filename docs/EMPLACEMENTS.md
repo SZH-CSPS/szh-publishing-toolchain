@@ -105,7 +105,7 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 |---|---|
 | Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
 | État du **poste** (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
-| État de **ce compte** (environnement WSL, extensions posées, onglet et langue du lanceur, mise à jour silencieuse — clés `ongletDefaut`, `langueInterface` et `majSilencieuse`, absente/vide = automatique ou fenêtre visible) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
+| État de **ce compte** (environnement WSL, extensions posées, onglet et langue du lanceur, mise à jour silencieuse — clés `ongletDefaut`, `langueInterface` et `majSilencieuse`, absente/vide = automatique ou fenêtre visible ; adresse Shlink et clés d'API Shlink/OJS — `shlinkUrl` en clair, `shlinkCle`/`ojsCle` chiffrées DPAPI, jamais en clair sur le disque, voir l'onglet **Paramètres**) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
 | Cadence de la vérification hebdomadaire, par compte | `C:\Users\robin\AppData\Local\SZH\maj-auto.json` |
 | Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
 | Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |

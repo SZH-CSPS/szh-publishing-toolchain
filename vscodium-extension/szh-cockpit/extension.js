@@ -3117,7 +3117,11 @@ const renumerotation = require('./lib/renumerotation-fs');
 // suppression d'un article, qui donne ce qui reste.
 // -> { erreur, renommes }, tel que lib/renumerotation-fs.js le rend.
 function alignerDossiersSurOrdre(racine, voulu) {
-  const r = renumerotation.renumeroter(racine, voulu, { dossier: dossierUnites() });
+  // config/cle : le fichier et la clé où « Terminer » écrit l'ordre — ausgabe.yaml pour une
+  // revue, buch.yaml pour un livre. Sans eux, ecrireOrdre() (lib/renumerotation-fs.js)
+  // retombe sur son défaut de revue et créerait un ausgabe.yaml parasite dans un livre.
+  const r = renumerotation.renumeroter(racine, voulu,
+    { dossier: dossierUnites(), config: profilCourant().config, cle: cleOrdre() });
   // Les constats nomment les anciens slugs : ils sont périmés pour les articles renommés,
   // et la prochaine compilation les reposera sous leur nouveau nom.
   if (r.renommes > 0 && dernierJournal.racine === racine) {
@@ -5852,14 +5856,30 @@ function lireReglagesActuels() {
 
 let panneauReglages = null;
 
+// Les quatre blocs « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par
+// article » et « Export OJS » n'ont de sens que pour une revue/Zeitschrift : pas
+// d'export OJS pour un livre, donc rien de tout cela à régler. On ne les envoie même
+// pas — settings.js (montrerBloc) ne révèle leur <section> que si la donnée arrive, et
+// une donnée absente la laisse masquée, titre compris.
+function messageValeursReglages() {
+  const msg = {
+    type: 'valeurs', valeurs: lireReglagesActuels(),
+    suggInterface: compterSuggestionsInterface(),
+    avertLangue: avertissementLangue(), proteges: etatProteges()
+  };
+  if (profilCourant().cle !== 'livre') {
+    msg.ojs = donneesOjs();
+    msg.biblio = donneesBiblio();
+    msg.taches = donneesTaches();
+    msg.auteursOjs = resumeAuteursPublies();
+  }
+  return msg;
+}
+
 function ouvrirReglages(rafraichirTout) {
   if (panneauReglages) {
     panneauReglages.reveal(vscode.ViewColumn.One);
-    panneauReglages.webview.postMessage(
-      { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), taches: donneesTaches(), auteursOjs: resumeAuteursPublies(),
-        suggInterface: compterSuggestionsInterface(),
-        avertLangue: avertissementLangue(), proteges: etatProteges() });
+    panneauReglages.webview.postMessage(messageValeursReglages());
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -5871,11 +5891,7 @@ function ouvrirReglages(rafraichirTout) {
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === MSG.PRET) {
-      panneau.webview.postMessage(
-        { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), taches: donneesTaches(), auteursOjs: resumeAuteursPublies(),
-        suggInterface: compterSuggestionsInterface(),
-        avertLangue: avertissementLangue(), proteges: etatProteges() });
+      panneau.webview.postMessage(messageValeursReglages());
       return;
     }
     // ---- Les réglages protégés ----
@@ -7088,7 +7104,10 @@ function activate(context) {
     convertirCmyk: (chemins) => convertirCmykSiBesoin(chemins),
     // Toute la mise en forme écrit dans le texte : refusée sur un numéro gelé.
     verrouillee: () => etatCourant().verrouillee,
-    refuser: () => { refuserSiVerrouille(); }
+    refuser: () => { refuserSiVerrouille(); },
+    // Le groupe « Livre » de la palette (en-tête FALC, code QR) ne s'ajoute que pour un
+    // livre — même source que enregistrerPanneaux ci-dessous.
+    profil: () => profilCourant().cle
   });
 
   // Les trois panneaux de la barre ; celui d'export s'adapte à l'état du numéro.
@@ -7143,8 +7162,17 @@ function activate(context) {
 // Une seule fois, et seulement sur un numéro ouvert : la page d'accueil de l'éditeur est
 // désactivée par nos réglages, et la barre d'activités masquée — sans cette invitation,
 // le tutoriel n'existerait que pour qui pense à le chercher.
+//
+// ⚠ Aucun tutoriel pour un livre (le `when` du walkthrough dans package.json ne suffit
+// pas ici : il ne filtre que ce qui apparaît dans la page d'accueil « Get Started »,
+// jamais un `workbench.action.openWalkthrough` appelé par son id, comme le fait
+// szh.tutoriel juste en dessous — vérifié dans le workbench installé, sa commande ouvre
+// l'éditeur sans lire aucun contexte). Sans cette garde ici, la seule invitation
+// ouvrirait quand même les neuf pas d'une revue sur un livre qui n'a ni articles-word/
+// ni traductions.
 async function proposerTutoriel(context) {
   try {
+    if (profilCourant().cle === 'livre') { return; }
     if (context.globalState.get(CLE_TUTORIEL_VU)) { return; }
     await context.globalState.update(CLE_TUTORIEL_VU, true);
     const ouvrir = T('tuto.invite.bouton');
@@ -7281,6 +7309,10 @@ module.exports = {
     // « original », et les deux sens de résolution.
     SCHEME_CONFLIT, fournisseurDiffConflit, cheminDepuisUriConflit,
     resoudreBlocConflit, comparerConflit, supprimerCopieConflit, rafraichirConflitsScm,
-    TEXTES_COCKPIT
+    TEXTES_COCKPIT,
+    // Pas pure (montre une modale, lit/écrit context.globalState) — exposée pour prouver
+    // que l'invitation ne s'affiche jamais sur un livre, sans rejouer une activation
+    // complète (voir son commentaire : le `when` du walkthrough ne suffit pas seul).
+    proposerTutoriel
   }
 };

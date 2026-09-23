@@ -57,6 +57,9 @@ h4, h5, h6 { font-size: 1em; }
 
 /* L'onglet de tranche n'existe qu'en pagination : caché en EPUB. */
 .szh-onglet { display: none; }
+/* Même raison : la pastille de numéro (livre/falc.css) est un running element promu en
+   coin de page, sans équivalent sur une liseuse. */
+.szh-pastille { display: none; }
 
 /* ═══ 4. Liminaires ════════════════════════════════════════════════════════════ */
 .szh-liminaire {
@@ -167,3 +170,26 @@ th { font-weight: 700; }
 a { color: var(--c-nuit); text-decoration: underline; }
 a:visited { color: var(--c-nuit); }
 .szh-sommaire a { color: inherit; text-decoration: none; }
+
+/* ═══ 12. Encadré falc-header « écouter cette histoire » ══════════════════════
+   partage-filtres.css (.szh-qr) n'est pas chargée en EPUB non plus (voir livre.mk, la
+   cible epub ne passe que cette feuille) : même repli qu'en web.css. Ce qui compte sur une
+   liseuse, exactement comme à l'écran : le lien reste navigable (href + aria-label déjà
+   sur le <a>) même si le QR ne s'y scanne pas depuis le même appareil. Renommé depuis
+   .szh-ecouter* (23.09.2026, voir base.css). */
+.szh-falc-header {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1em;
+  background: var(--c-rule);
+  padding: 1em;
+  margin: 1em 0;
+}
+.szh-falc-header-texte { flex: 1 1 10em; }
+.szh-falc-header-texte p { margin: 0 0 0.5em 0; }
+.szh-qr, .szh-falc-header-qr {
+  display: block;
+  width: var(--qr-taille, 6em); height: var(--qr-taille, 6em);
+  background-repeat: no-repeat; background-size: contain;
+}
+.szh-falc-header-image { flex: 0 0 auto; width: 7em; height: 7em; object-fit: cover; }
+/* Running element de pagination : sans objet en EPUB, comme .szh-onglet ci-dessus. */
+.szh-picto-entete { display: none; }

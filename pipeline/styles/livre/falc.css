@@ -31,6 +31,19 @@
      gagnée toutes les neuf. Le folio tient dans 15 mm (11 pt posés à 6 mm du bord). */
   --marge-haut: 15mm; --marge-bas: 15mm;
   --marge-int:  15mm; --marge-ext: 15mm;
+  /* Largeur VISIBLE de la marque de tranche (et du repère du sommaire) sur la page
+     rognée — le jeton explicite, celui qu'on change pour redimensionner la marque. La
+     gouttière (le vide entre la marque et le bloc de texte, côté texte) s'en déduit :
+     ni l'un ni l'autre ne touche le texte. 10 mm, pas 15 : Robin la voulait un tiers
+     moins large que le premier jet (15 mm, --onglet-gouttiere alors posée à 7 mm en
+     valeur primaire — la largeur n'était qu'une soustraction). */
+  --onglet-largeur: 10mm;
+  --onglet-gouttiere: calc(var(--marge-ext) - var(--onglet-largeur));
+  /* Haut de la première case de l'index à pouce, sous le titre « Sommaire » (voir la
+     section Sommaire plus bas) — DOIT rester synchronisée avec ONGLET_Y0 de livre.mk :
+     c'est le seul endroit qui la calcule différemment (le sommaire, en position de flux ;
+     la page, en margin-top d'un running element), même valeur des deux côtés. */
+  --onglet-y0: 30mm;
 
   /* ── Texte ────────────────────────────────────────────────────────────────
      13 pt Light sur 21,3 pt (1,64) — l'air entre les lignes est un outil de lecture,
@@ -114,23 +127,62 @@ h3 { font-size: 14pt; font-weight: 600; color: var(--c-falc-titre); margin: 8mm 
 h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 0 2mm 0; }
 .szh-num-section { display: none; }   /* szh-sections.lua numérote ; FALC ne l'affiche pas */
 
-/* Les auteur·e·s d'un chapitre, sous son titre : « De Barbara Fontana-Lana, … ». */
-.szh-chapitre > .szh-auteurs { font-size: 13pt; font-weight: 300; margin-bottom: 10mm; }
+/* Les auteur·e·s d'un chapitre, sous son titre : « De Barbara Fontana-Lana, … » (ouvrage
+   collectif, szh-livre-auteurs.lua, <p>) ou un nom brut venu du Word (style « Auhors »,
+   docx-styles-corps.py, <div>) — même classe, même règle, quel que soit le tag posé.
+   Sélecteur sur `h1 + .szh-auteurs`, jamais nu : cette ligne n'existe qu'accolée à son
+   titre, jamais ailleurs dans un chapitre.
+   Gris foncé, pas noir : distingue la ligne du titre sans la faire disparaître. Contraste
+   web #4A4A4A sur blanc ≈ 8,9:1 (calcul WCAG), au-delà du 7:1 AAA demandé en FALC.
+   margin-top négatif : les marges du h1 (6mm, bas) et de cette ligne (ici) se COLLAPSENT
+   comme deux marges de siblings de signe opposé -> somme algébrique 6 + (-4) = 2mm net
+   entre le titre et la ligne d'auteur·e·s — mesuré au rendu, pas un calcul en l'air. */
+.szh-chapitre > h1 + .szh-auteurs {
+  font-size: 12pt; font-weight: 400; color: #4A4A4A;
+  margin-top: -4mm; margin-bottom: 10mm;
+}
 
 /* ═══ La pastille de chapitre ═════════════════════════════════════════════════
-   Un disque à la couleur du chapitre, en haut à l'extérieur de la page d'ouverture, avec
-   le numéro du chapitre en blanc. La couleur vient de --c-chapitre, que le gabarit pose
-   sur la section à partir de la palette (voir couleurs.css).
-   Positionnée dans la marge, donc en `position: absolute` par rapport à la page : une
-   boîte de marge @top-right ne peut pas déborder de sa bande. */
-.szh-chapitre > h1::before {
-  content: counter(chapitre);
-  position: absolute; top: -8mm; right: 0;
+   Un disque à la couleur du chapitre, le numéro DU SOMMAIRE en blanc dedans — au coin
+   HAUT-EXTÉRIEUR de CHAQUE page du chapitre (top-right en recto, top-left en verso), pas
+   seulement sa page d'ouverture. La couleur vient de --c-chapitre, le chiffre de
+   --numero-chapitre (contenu TEXTE du <div>, pas un `counter()` : voir livre.mk, § Index
+   à pouce, pour le pourquoi), tous deux posés par le Makefile sur la section.
+
+   Même mécanique de running element que .szh-onglet ci-dessous : un <div> vide-ou-pas,
+   premier enfant de la section (templates/szh-livre-chapitre.html), promu hors du flux
+   par `position: running(pastille)`, rappelé par `content: element(pastille)` dans une
+   boîte de marge du gabarit de page. Un chapitre hors sommaire promeut une pastille SANS
+   chiffre (interpolation vide) ET sans fond (règle plus bas) : exactement le traitement
+   déjà appliqué à l'onglet.
+
+   ⚠ Avant ce correctif, la pastille était un pseudo-élément `.szh-chapitre > h1::before`
+   en `position: absolute`, numéroté par `counter(chapitre)`, visible SEULEMENT sur la
+   première page du chapitre (la boîte d'un pseudo-élément d'une <section> qui court sur
+   plusieurs pages n'existe qu'une fois — le même défaut déjà documenté et corrigé pour
+   l'onglet). Elle collait aussi au bloc de texte (`right: 0`, aucune marge) : Robin la
+   voyait déborder vers le texte, chiffre mal centré. */
+.szh-pastille {
+  position: running(pastille);
   width: 11mm; height: 11mm; border-radius: 50%;
   background: var(--c-chapitre, var(--c-falc-accent-defaut)); color: #fff;
-  font-size: 13pt; font-weight: 600; line-height: 11mm; text-align: center;
+  font-size: 13pt; font-weight: 600;
+  /* Centrage optique du chiffre, 1 ou 2 caractères (« 10 ») : flex plutôt que
+     line-height — mesuré au pymupdf, la boîte du texte tombe au centre géométrique du
+     disque dans les deux cas, ce qu'un line-height égal au diamètre n'assure pas de la
+     même façon selon le nombre de glyphes. */
+  display: flex; align-items: center; justify-content: center;
 }
-.szh-chapitre { counter-increment: chapitre; position: relative; }
+/* Chapitre hors sommaire (`sommaire: non`) : aucune pastille sur ses propres pages, même
+   raison et même remède que pour l'onglet (voir plus bas) — la section ne porte pas
+   --numero-chapitre, le <div> reste un texte vide ; sans ce transparent, il resterait
+   peint dans la couleur de repli de l'ouvrage, un disque vide mais visible. */
+.szh-chapitre[data-sommaire="non"] > .szh-pastille { background: transparent; }
+/* Sans pastille, le picto d'en-tête prend sa place : même coin, même centre. */
+.szh-chapitre[data-sommaire="non"][data-picto="ecouter"] > .szh-pastille {
+  background: url("../../media/picto-ecouter.svg") no-repeat center / 10mm 10mm;
+}
+.szh-chapitre[data-sommaire="non"][data-picto="ecouter"] > .szh-picto-entete { background: none; }
 
 /* ═══ L'onglet de couleur ═════════════════════════════════════════════════════
    Un rectangle plein en bord extérieur, un par chapitre, qui descend de chapitre en
@@ -157,34 +209,109 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
    ouverture, page courante du même chapitre (même couleur, même position), page d'un
    autre chapitre (couleur et position différentes).
 
-   Couleur et position verticale restent celles que livre.mk calcule par rang de
-   chapitre (PALETTE_CHAPITRE / ONGLET_HAUT_CHAPITRE) et pose en variables CSS sur la
-   section (--c-chapitre, --onglet-haut), pas ici : un `:nth-of-type` compterait les
-   <section> frères, liminaires comprises, et décalerait tout d'autant de pièces
-   liminaires que le livre en a — le défaut déjà évité pour la couleur, évité ici aussi. */
+   Couleur et position verticale restent celles que livre.mk calcule (PALETTE_CHAPITRE par
+   rang dans $(CHAPITRES), position/hauteur par rang parmi les seuls chapitres du sommaire
+   — ONGLET_Y0/ONGLET_Y1) et pose en variables CSS sur la section (--c-chapitre,
+   --onglet-haut, --onglet-hauteur), pas ici : un `:nth-of-type` compterait les <section>
+   frères, liminaires comprises, et décalerait tout d'autant de pièces liminaires que le
+   livre en a — le défaut déjà évité pour la couleur, évité ici aussi.
+
+   ⚠ La largeur ne remplit plus toute la marge extérieure. `width: var(--marge-ext)`
+   collait l'onglet au bloc de texte. --onglet-gouttiere creuse ce vide côté texte ;
+   l'onglet reste collé au bord rogné côté extérieur — sa largeur est directement
+   --onglet-largeur (10 mm), le jeton explicite posé plus haut ; --onglet-gouttiere n'en
+   est plus que la valeur déduite, pour le texte qui en a besoin.
+   ⚠ Essayé et rejeté : `display: inline-block` sur .szh-onglet + `text-align` sur la
+   boîte de marge, pour aligner l'onglet à l'un ou l'autre bord selon la boîte qui
+   l'accueille. Mesuré sur banc (WeasyPrint 69) : l'`inline-block` casse aussi la hauteur
+   fixe de l'élément couru — `height: 25mm` cesse d'être respecté, et l'onglet s'étire sur
+   la quasi-totalité de la bande de marge (~180 mm), 17 pages de plus sur le livre réel
+   (241 contre 224). Solution retenue plus bas : `direction: rtl` sur la seule boîte
+   @right-top, qui laisse .szh-onglet inchangé (toujours un bloc ordinaire).
+
+   Hauteur : --onglet-hauteur, posée par livre.mk (ONGLET_Y0/ONGLET_Y1 partagés à parts
+   égales entre les chapitres du sommaire — voir sa note de tête). Le repli 25mm ne sert
+   qu'à un fragment isolé qui n'aurait pas encore cette métadonnée (aperçu hors chaîne). */
 .szh-onglet {
   position: running(onglet);
-  width: var(--marge-ext); height: 25mm;
+  width: var(--onglet-largeur); height: var(--onglet-hauteur, 25mm);
   margin-top: var(--onglet-haut, 30mm);
   background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
+/* Chapitre hors sommaire (`sommaire: non`) : aucune marque sur ses propres pages. La
+   section ne porte alors ni --onglet-haut ni --onglet-hauteur (le Makefile ne les pose
+   pas), donc `.szh-onglet` hériterait sinon du repli 25mm/30mm — sans lien avec les cases
+   réelles du livre — peint dans la couleur de repli de l'ouvrage : visible, et faux. Le
+   transparent est le seul état correct : le chapitre suivant qui EST au sommaire promeut
+   sa propre marque dès sa première page, exactement comme au changement de couleur. */
+.szh-chapitre[data-sommaire="non"] > .szh-onglet { background: transparent; }
 /* Pages en vis-à-vis (base.css) : l'onglet doit toujours tomber du côté extérieur — à
    droite sur une page recto, à gauche sur une verso — jamais du côté de la couture, d'où
    les deux boîtes de marge. `height` couvre toute la zone de contenu (page moins marge
    haute et basse) : sans elle, les trois bandes @*-top/-middle/-bottom se partageraient
    l'espace vertical et `margin-top` ne vaudrait plus une position absolue depuis le haut.
-   Le débordement dans le fond perdu, lui, est l'affaire du seul profil imprimeur — voir
-   livre/imprimeur.css. */
+   Un bloc ordinaire sans marge automatique colle à l'arête de DÉPART de son conteneur —
+   la gauche, en direction normale (ltr). C'est exactement ce que veut @left-top (la
+   gauche d'une page verso EST son bord extérieur) : rien à faire, le vide tombe déjà côté
+   texte. @right-top, lui, doit coller à sa DROITE (l'extérieur d'une page recto) ; d'où le
+   seul ajout, `direction: rtl` sur cette boîte : l'arête de départ y devient la droite,
+   sans toucher à .szh-onglet ni à son `height`. Le débordement dans le fond perdu, lui,
+   reste l'affaire du seul profil imprimeur — voir livre/imprimeur.css. */
 @page :right { @right-top {
   content: element(onglet);
   height: calc(var(--page-h) - var(--marge-haut) - var(--marge-bas));
   margin: 0; padding: 0;
+  direction: rtl;
 } }
 @page :left { @left-top {
   content: element(onglet);
   height: calc(var(--page-h) - var(--marge-haut) - var(--marge-bas));
   margin: 0; padding: 0;
 } }
+
+/* ═══ Pastille et picto : coin haut-extérieur, partagé ════════════════════════
+   Les deux occupent la bande TOP du gabarit de page, côté extérieur — la pastille dans
+   la boîte de COIN (@top-*-corner), le picto juste à côté, dans la boîte adjacente
+   (@top-right/@top-left). Ces règles REMPLACENT celles de base.css §10, qui mettent le
+   picto dans le coin : ce coin est pris ici par la pastille (voir le commentaire de
+   base.css §10 pour la maquette « normal », qui n'a pas ce conflit et garde l'original).
+
+   Géométrie du disque : centré dans sa boîte de coin par un padding UNIFORME. La boîte
+   de coin fait marge-haut × marge-ext, un CARRÉ dans cette charte (les deux marges sont
+   toujours égales, format standard comme A4) : un padding identique sur les quatre côtés
+   centre donc le disque à égale distance du bord HAUT et du bord EXTÉRIEUR rognés SANS
+   calcul séparé pour chacun — c'est la forme carrée qui fait le travail, pas une
+   coordonnée choisie à l'œil. Mesuré au pymupdf (recto et verso, numérique et
+   imprimeur — TrimBox côté imprimeur, pas MediaBox) : écart < 0,3 mm entre les deux
+   distances. Avant ce correctif (pastille en `position: absolute; top: -8mm; right: 0`
+   dans le flux du h1), le disque débordait côté texte, sans marge d'aucun côté.
+
+   Le picto (10 mm, base.css) se centre verticalement dans la même bande (padding-top,
+   même logique), et se cale contre la boîte de coin SANS padding de son côté : l'inset
+   du disque (padding de la boîte de coin, calculé ci-dessous) suffit à lui seul à ouvrir
+   un écart net — ⚠ jamais < 2 mm entre les deux formes, sans quoi elles se toucheraient
+   visuellement à la frontière commune des deux boîtes de marge. Avec l'inset du disque
+   seul (format standard : (15mm − 11mm) / 2 = 2 mm), l'écart net atteint déjà 2 mm pile ;
+   1 mm de padding côté picto porte l'écart réel à 3 mm, une marge de sécurité au lieu du
+   minimum tout juste tenu.
+   ⚠ `height: var(--marge-haut)` sur @top-right/@top-left, explicite : sans elle, mesuré
+   au pymupdf, le centre du picto tombait 1,25 mm plus bas que celui de la pastille — ces
+   deux boîtes NE PARTAGENT PAS la même hauteur par défaut, à la différence de ce que
+   suggère le modèle en grille de CSS Paged Media (une bande TOP, une seule hauteur pour
+   toutes ses boîtes). Avec la hauteur posée en dur, les deux centres tombent au même
+   niveau, écart mesuré à 0,00 mm. */
+@page :right {
+  @top-right-corner { content: element(pastille);
+    padding: calc((var(--marge-ext) - 11mm) / 2); }
+  @top-right { content: element(picto-entete); height: var(--marge-haut);
+    padding-top: calc((var(--marge-haut) - 10mm) / 2); padding-right: 1mm; }
+}
+@page :left {
+  @top-left-corner { content: element(pastille);
+    padding: calc((var(--marge-ext) - 11mm) / 2); }
+  @top-left { content: element(picto-entete); height: var(--marge-haut);
+    padding-top: calc((var(--marge-haut) - 10mm) / 2); padding-left: 1mm; }
+}
 
 /* ═══ Blocs FALC ══════════════════════════════════════════════════════════════ */
 
@@ -234,15 +361,59 @@ li { margin-bottom: 0; line-height: 1.48; }
 
 /* ═══ Sommaire ════════════════════════════════════════════════════════════════
    Une entrée par chapitre, un filet entre deux entrées, la pastille de couleur du
-   chapitre en regard — la maquette du livre publié. */
-.szh-sommaire h1 { font-size: 18pt; font-weight: 600; color: var(--c-falc-titre); margin-bottom: 6mm; }
+   chapitre en regard — la maquette du livre publié.
+
+   Index à pouce : chaque entrée fait exactement --onglet-hauteur de haut (la même case
+   que la marque de tranche du chapitre, voir .szh-onglet plus haut), et la liste démarre
+   à --onglet-y0 SOUS LE HAUT DE LA PAGE — la même origine que --onglet-haut sur la page
+   (livre.mk, note de tête « Index à pouce »), pas sous le bas du titre « Sommaire ». La
+   k-ième entrée tombe donc à --onglet-y0 + (k-1) × --onglet-hauteur, RIGOUREUSEMENT la
+   même formule et les mêmes valeurs des deux côtés.
+   ⚠ Essayé et rejeté : `<ol>` en flux normal avec `margin-top: var(--onglet-y0)` juste
+   après le `<h1>`. Ça place le HAUT DE LA LISTE à --onglet-y0 sous le BAS DU TITRE, donc à
+   --onglet-y0 + (hauteur naturelle du h1) depuis le haut de la page — pas --onglet-y0 :
+   mesuré sur banc, le sommaire d'un livre à deux chapitres débordait alors sur une
+   deuxième page (30 mm de trop). D'où `<ol>` en `position: absolute`, `top:
+   var(--onglet-y0)`, ancré sur `.szh-sommaire` (`position: relative`) : le titre reste en
+   flux normal au-dessus (purement visuel, « sous le titre » au sens où Y0 lui laisse la
+   place), la liste, elle, part de la même origine que la page.
+   ⚠ Limite connue : un `<ol>` absolument positionné ne se fragmente pas sur une page
+   suivante si son contenu déborde. Sans risque tant que --onglet-y0 + N × --onglet-hauteur
+   reste sous la hauteur utile de la page (vérifié : 190 mm pour 195 mm de zone de contenu
+   au format standard, marge de 5 mm) ; au-delà, à revoir si un livre en a besoin.
+   --onglet-hauteur est celle du LIVRE ENTIER (identique pour chaque chapitre du sommaire)
+   et vient en style inline sur <section class="szh-sommaire"> — livre-assembler.py la
+   relit dans un fragment déjà compilé, il ne la recalcule pas (voir sa note de tête).
+   --onglet-y0, elle, est une CONSTANTE de charte (ci-dessus, :root) : elle doit rester
+   synchronisée avec ONGLET_Y0 dans livre.mk — même piège déjà payé pour --fond-perdu
+   dans imprimeur.css. */
+.szh-sommaire { position: relative; }
+/* ⚠ `margin: 0 0 6mm 0`, jamais `margin-bottom: 6mm` seul : la feuille UA de WeasyPrint
+   pose ~0,67 em de margin-top par défaut sur un h1 (≈ 4,25 mm à 18 pt), jamais annulée
+   ailleurs pour CE h1. Laissée telle quelle, elle s'ajoute au-dessus de la boîte de
+   .szh-sommaire (parent sans bordure ni padding : la marge du premier enfant collapse à
+   travers lui) et décalait tout l'index à pouce du sommaire de 4,25 mm par rapport aux
+   marques des pages — mesuré au pymupdf, l'écart exact du défaut. */
+.szh-sommaire h1 { font-size: 18pt; font-weight: 600; color: var(--c-falc-titre); margin: 0 0 6mm 0; }
+.szh-sommaire ol { position: absolute; top: var(--onglet-y0); left: 0; right: 0; margin: 0; }
 .szh-sommaire li {
   border-top: 0.75pt solid var(--c-falc-encadre-filet);
-  padding: 4mm 0; position: relative;
+  padding: 0 0; position: relative; box-sizing: border-box;
+  height: var(--onglet-hauteur, 25mm);
+  /* Le texte au milieu de la case, donc au milieu de la marque en regard. */
+  display: flex; align-items: center;
 }
+.szh-sommaire li > a { flex: 1; }
 .szh-sommaire li:first-child { border-top: 0; }
+/* La marque déborde dans la marge extérieure de la page (le sommaire n'est pas paginé en
+   recto/verso comme les chapitres, une seule règle suffit), flush au bord rogné, même
+   largeur visible que l'onglet de tranche ci-dessus (--onglet-largeur) — cohérent avec
+   lui : les deux quittent le bloc de texte à la même distance. Stretch top:0/bottom:0 sur
+   le LI positionné : sa hauteur fixée juste au-dessus fait la hauteur de la marque. */
 .szh-sommaire li::after {
-  content: ""; position: absolute; right: -15mm; top: 0; bottom: 0; width: 8mm;
+  content: ""; position: absolute; top: 0; bottom: 0;
+  right: calc(-1 * var(--marge-ext));
+  width: var(--onglet-largeur);
   background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
 .szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { display: none; }  /* un seul niveau */

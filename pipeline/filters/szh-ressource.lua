@@ -148,7 +148,7 @@ local BIBLIO_CHAMPS = {
 -- mentions distinctes.
 local PLAGE = { agenda = { debut = 'debut', fin = 'fin' } }
 
-local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
+local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
 
 local function champ_def(type_, cle)
   return CHAMPS_PAR_CLE[type_] and CHAMPS_PAR_CLE[type_][cle]

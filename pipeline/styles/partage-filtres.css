@@ -230,3 +230,26 @@ a.szh-orcid::after { content: none; }
    s'entendre. Le filtre n'entre pas dans les tableaux (ce sont des RawBlock à son passage),
    ce qui laisse le cas le plus étroit tranquille. */
 .szh-sans-cesure { hyphens: var(--cesure-nom-propre, manual); }
+
+/* ── QR code vectoriel cliquable ───────────────────────────────────────────────
+   Posé par filters/szh-qr.lua et filters/szh-livre-entete.lua (bloc qr-link, ou forme
+   courte `.qr` — voir leur en-tête) : un <a class="szh-qr" href="…"> VIDE, le SVG du QR
+   posé en background-image (data URI base64) plutôt qu'en enfant — un <svg> enfant du <a>
+   casse le balisage PDF/UA du lien (mesuré au veraPDF le 23.09.2026 : une zone cliquable
+   par boîte interne, au lieu d'une seule). --qr-taille, posée en style= sur le <a> par le
+   filtre quand `size=`/`taille=` diffère du défaut, prime sur ce défaut (25mm ~ la taille
+   d'un encart de livre) ; omise, ce défaut s'applique. `background-size: contain` respecte
+   le rapport largeur/hauteur du SVG (toujours carré) sans qu'il faille le redire.
+   `color`/`background` (défaut noir sur transparent) sont peints DANS le SVG lui-même
+   (filters/szh-qr-commun.lua, M.construire_qr) — pas des propriétés CSS de ce <a> : le
+   profil imprimeur (styles/livre/imprimeur.css) retire `color`/`text-decoration` des <a>
+   pour le texte de labeur, sans effet sur ces pixels déjà fixés dans l'image. Un QR
+   imprimeur qui n'est pas noir reçoit son propre avertissement (repérage quadri) à la
+   compilation, pas une règle CSS ici. */
+.szh-qr {
+  display: block;
+  width: var(--qr-taille, 25mm);
+  height: var(--qr-taille, 25mm);
+  background-repeat: no-repeat;
+  background-size: contain;
+}

@@ -26,10 +26,12 @@
 #   3. docx-titres.py : titres déduits -> $SZH_TITRES.
 #   3bis. docx-styles-corps.py : copie du .docx, lue par pandoc seul, où les paragraphes
 #      « SZH Important », « SZH Hervorhebung » et « SZH Question (interview) » portent un
-#      marqueur (pandoc perd les styles de paragraphe).
+#      marqueur (pandoc perd les styles de paragraphe) — et de même, livre seulement, pour
+#      la ligne d'auteur·e·s d'un chapitre (style Word « Auhors » et ses variantes).
 #   4. pandoc + filtres Lua dans cet ordre :
 #        szh-styles-corps (en premier : marqueur -> bloc du cockpit, ::: {.important},
-#                      {.highlight}, {.question} ; les suivants voient le texte d'avant)
+#                      {.highlight}, {.question}, {.szh-auteurs} ; les suivants voient le
+#                      texte d'avant)
 #        szh-meta      (retire les blocs consommés avant tout raisonnement aval)
 #        szh-legendes  (légendes -> alt d'image ; purge des paragraphes bakés ; et les
 #                      champs d'un bloc figure du gabarit -> légende, alt, crédit et source
@@ -162,10 +164,11 @@ python3 "$PIPE/docx-titres.py" "$DOCX_ABS" "$TITRES" || true
 export SZH_TITRES="$TITRES"
 
 # Styles de corps : pandoc lit une copie où chaque paragraphe d'un style du gabarit
-# (encadré, mise en évidence, question) commence par un marqueur, que szh-styles-corps.lua
-# change en bloc. Pas `docx+styles` : mesuré sur 16 documents réels, cette lecture change
-# aussi le gras, les cellules et les légendes. Non bloquant : sans copie, pandoc lit
-# l'original et les blocs arrivent en paragraphes, comme avant.
+# (encadré, mise en évidence, question — et, livre seulement, la ligne d'auteur·e·s d'un
+# chapitre) commence par un marqueur, que szh-styles-corps.lua change en bloc. Pas
+# `docx+styles` : mesuré sur 16 documents réels, cette lecture change aussi le gras, les
+# cellules et les légendes. Non bloquant : sans copie, pandoc lit l'original et les blocs
+# arrivent en paragraphes, comme avant.
 MARQUE="$(mktemp --suffix=.docx)"
 if STYLES="$(python3 "$PIPE/docx-styles-corps.py" "$DOCX_ABS" "$MARQUE")"; then
   SOURCE_PANDOC="$MARQUE"
@@ -194,8 +197,10 @@ pandoc "$SOURCE_PANDOC" \
   --wrap=none \
   -o "$SLUG.md" || exit 1
 
-# pandoc écrit « ::: highlight » ; le cockpit pose et relit « ::: {.highlight} ».
-sed -i -E 's/^(:::+) (important|highlight|question)$/\1 {.\2}/' "$SLUG.md"
+# pandoc écrit « ::: highlight » ; le cockpit pose et relit « ::: {.highlight} ». Même
+# normalisation pour szh-auteurs (livre), qui n'est pas un bloc du cockpit mais suit le
+# même écrit de pandoc pour un Div à une seule classe.
+sed -i -E 's/^(:::+) (important|highlight|question|szh-auteurs)$/\1 {.\2}/' "$SLUG.md"
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true

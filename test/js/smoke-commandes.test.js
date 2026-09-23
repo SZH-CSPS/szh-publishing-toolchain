@@ -95,6 +95,12 @@ const COMPILENT_VIA_TACHE = new Set([
   'szh.traduction'                          // ouvrirTraduction -> ouvrirArticle -> lancerTache
 ]);
 
+// Même trou de harnais pour la pagination : elle lit l'état du numéro par la WSL
+// (lib/pagination-hote.js). Sur un runner sans WSL, réel ou simulé, elle affiche son échec
+// de lecture, ce qui est la bonne réponse de la commande.
+const ERREUR_SANS_WSL = 'La pagination n’a pas pu être rafraîchie';
+const LISENT_PAR_WSL = new Set(['szh.rafraichirPagination']);
+
 test('smoke S2 : chaque commande du manifeste s’exécute sans lever', async () => {
   const revue = revueDEssai();
   const hote = activerHote(revue);
@@ -143,7 +149,9 @@ test('smoke S2 : chaque commande du manifeste s’exécute sans lever', async ()
     if (hote.erreurs.length > 0) {
       const inattendues = COMPILENT_VIA_TACHE.has(id)
         ? hote.erreurs.filter((m) => m.indexOf(ERREUR_TACHE_ABSENTE) === -1)
-        : hote.erreurs.slice();
+        : LISENT_PAR_WSL.has(id)
+          ? hote.erreurs.filter((m) => m.indexOf(ERREUR_SANS_WSL) === -1)
+          : hote.erreurs.slice();
       if (inattendues.length > 0) {
         echecs.push(id + ' a laissé une erreur affichée : ' + inattendues.join(' | '));
       }

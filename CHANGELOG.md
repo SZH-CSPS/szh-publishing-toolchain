@@ -11,6 +11,43 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.1.0
+
+**Livres FALC : un en-tête de chapitre « à écouter », écrit dans le texte.** Le bloc
+`:::: falc-header` (texte, image facultative, `::: qr-link`) s'écrit dans le `.md` du chapitre
+et s'imprime toujours sous le titre et les auteurs, quel que soit l'endroit où il est écrit. Il
+remplace la clé `ecouter:` des fiches `.meta.yaml`, retirée. Le panneau Ctrl+Alt+S gagne un
+groupe « Livre » (en-tête FALC, code QR), absent des revues. La ligne d'auteurs d'un chapitre
+devient un bloc `.szh-auteurs` (l'import reconnaît le style Word « Auhors »), rapprochée du titre.
+
+**QR codes vectoriels et cliquables.** `::: qr-link` et la forme courte `[texte](url){.qr}` :
+encodeur Lua vendoré (speedata/luaqrcode, BSD-3), un `<a>` vide avec le SVG en fond — un SVG
+dans un lien fait tomber PDF/UA. Options `tracked`, `background`, `color`, `size`, `title`. Avec
+`tracked`, le lien passe par Shlink (`pipeline/liens-courts.py`, cache `liens-courts.yaml` du
+livre), résolu en tête de compilation quand `SZH_SHLINK_URL` est posée.
+
+**Maquette FALC.** Palette de chapitre au cran le plus clair qui tient 3:1 contre le blanc,
+capucine au 700. Pastille numérotée sur chaque page, au coin extérieur (centre à 7,5 mm des deux
+bords rognés) ; le picto play prend sa place quand le chapitre n'a pas de pastille. Marques de
+tranche à 10 mm visibles, 5 mm du texte, débordant du fond perdu dans le PDF imprimeur ; les
+fausses corrections de décalage dues au fond perdu sont retirées (`bleed` ne décale pas les
+boîtes de marge). Folio sur la page d'ouverture. Clé `sommaire: non` (et case de la fiche du
+chapitre) : hors table des matières, sans numéro, et la hauteur de l'index à pouce se partage
+entre les chapitres restants, alignée sur les repères du sommaire.
+
+**Lanceur : réglages Shlink et OJS.** Adresse et clé Shlink, clé OJS (pas encore lue), par
+compte, clés chiffrées DPAPI, posées dans l'environnement de VSCodium et `WSLENV` au lancement.
+
+**Un livre n'affiche plus ce qui n'est qu'aux revues.** L'ordre des chapitres s'écrit dans
+`buch.yaml` (`ordre-chapitres`), plus jamais dans un `ausgabe.yaml` ; pas de `dois-calcules.yaml` ;
+fiche de chapitre sans DOI calculé, type, licence ni mots-clés ; boutons d'envoi et de PDF
+d'article, blocs OJS des réglages et tutoriel masqués. Rien ne change pour la Revue ni la
+Zeitschrift.
+
+Aussi dans cette version : la Documentation passe à une arborescence Kirby, la montée
+WeasyPrint 70 / pandoc 3.7.0.2 de l'image, la pagination continue d'un numéro et l'export OJS
+(commits antérieurs).
+
 ## 2.0.0
 
 **Un numéro déjà compilé sort différent : une citation narrative devient un lien.** Jusqu'ici,

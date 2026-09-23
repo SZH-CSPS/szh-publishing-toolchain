@@ -183,6 +183,18 @@ $script:SzhTextes = @{
     'lanceur.reglages.dev.oui'      = 'Activé'
     'lanceur.reglages.dev.non'      = 'Désactivé'
     'lanceur.reglages.dev.note'     = 'Les listes suivent à la prochaine ouverture.'
+    # Shlink (raccourcisseur de liens, pour les QR codes) et OJS : deux clés d’’API, jamais
+    # écrites en clair sur le disque (chiffrement DPAPI, portée du compte). La clé OJS n’’est
+    # lue par rien pour l’’instant -- posée pour le jour où quelque chose la lira.
+    'lanceur.reglages.shlink.url'          = 'Adresse du raccourcisseur de liens (Shlink)'
+    'lanceur.reglages.shlink.url.note'     = 'Sert à raccourcir les liens des QR codes. Laisser vide si aucune instance n’’est disponible.'
+    'lanceur.reglages.shlink.url.invalide' = 'L’’adresse doit commencer par « https:// ». Rien n’’a été enregistré.'
+    'lanceur.reglages.shlink.cle'          = 'Clé d’’API Shlink'
+    'lanceur.reglages.shlink.cle.note'     = 'Jamais affichée en clair dans un journal ni un rapport d’’erreur. Champ vide = clé effacée.'
+    'lanceur.reglages.ojs.cle'             = 'Clé d’’API OJS'
+    'lanceur.reglages.ojs.cle.note'        = 'Pas encore utilisée par la chaîne de fabrication ; conservée pour un usage à venir. Champ vide = clé effacée.'
+    'lanceur.reglages.afficher'            = 'Afficher'
+    'lanceur.reglages.secrets.note'        = 'Un éditeur déjà ouvert ne voit pas ce changement : fermez-le et rouvrez une revue pour qu’’il en tienne compte.'
     # Onglet « Journal » : les dix dernières mises à jour et leur verdict.
     'lanceur.journal'                  = 'Journal'
     'lanceur.journal.liste'            = 'Dix dernières mises à jour :'
@@ -458,6 +470,18 @@ $script:SzhTextes = @{
     'lanceur.reglages.dev.oui'      = 'Ein'
     'lanceur.reglages.dev.non'      = 'Aus'
     'lanceur.reglages.dev.note'     = 'Listen folgen beim nächsten Öffnen.'
+    # Shlink (Link-Kürzer, für die QR-Codes) und OJS: zwei API-Schlüssel, nie im Klartext auf
+    # der Festplatte gespeichert (DPAPI-Verschlüsselung, Geltungsbereich Benutzerkonto). Der
+    # OJS-Schlüssel wird derzeit von nichts gelesen -- vorsorglich angelegt.
+    'lanceur.reglages.shlink.url'          = 'Adresse des Link-Kürzers (Shlink)'
+    'lanceur.reglages.shlink.url.note'     = 'Dient zum Kürzen der Links in den QR-Codes. Leer lassen, wenn keine Instanz verfügbar ist.'
+    'lanceur.reglages.shlink.url.invalide' = 'Die Adresse muss mit «https://» beginnen. Es wurde nichts gespeichert.'
+    'lanceur.reglages.shlink.cle'          = 'Shlink-API-Schlüssel'
+    'lanceur.reglages.shlink.cle.note'     = 'Nie im Klartext in einem Protokoll oder Fehlerbericht sichtbar. Leeres Feld = Schlüssel gelöscht.'
+    'lanceur.reglages.ojs.cle'             = 'OJS-API-Schlüssel'
+    'lanceur.reglages.ojs.cle.note'        = 'Wird von der Fertigungskette noch nicht verwendet; für eine spätere Nutzung vorgesehen. Leeres Feld = Schlüssel gelöscht.'
+    'lanceur.reglages.afficher'            = 'Anzeigen'
+    'lanceur.reglages.secrets.note'        = 'Ein bereits geöffneter Editor sieht diese Änderung nicht: schliessen Sie ihn und öffnen Sie eine Revue neu, damit sie wirkt.'
     # Registerkarte «Protokoll»: die letzten zehn Aktualisierungen und ihr Ausgang.
     'lanceur.journal'                  = 'Protokoll'
     'lanceur.journal.liste'            = 'Letzte zehn Aktualisierungen:'
@@ -731,6 +755,18 @@ $script:SzhTextes = @{
     'lanceur.reglages.dev.oui'      = 'On'
     'lanceur.reglages.dev.non'      = 'Off'
     'lanceur.reglages.dev.note'     = 'Lists follow the next time it opens.'
+    # Shlink (link shortener, for the QR codes) and OJS: two API keys, never written in
+    # clear text to disk (DPAPI encryption, account scope). Nothing reads the OJS key yet --
+    # kept in reserve for the day something does.
+    'lanceur.reglages.shlink.url'          = 'Link shortener address (Shlink)'
+    'lanceur.reglages.shlink.url.note'     = 'Used to shorten the links in the QR codes. Leave empty if no instance is available.'
+    'lanceur.reglages.shlink.url.invalide' = 'The address must start with “https://”. Nothing was saved.'
+    'lanceur.reglages.shlink.cle'          = 'Shlink API key'
+    'lanceur.reglages.shlink.cle.note'     = 'Never shown in clear text in a log or an error report. Empty field = key erased.'
+    'lanceur.reglages.ojs.cle'             = 'OJS API key'
+    'lanceur.reglages.ojs.cle.note'        = 'Not used by the build chain yet; kept for a future use. Empty field = key erased.'
+    'lanceur.reglages.afficher'            = 'Show'
+    'lanceur.reglages.secrets.note'        = 'An already open editor does not see this change: close it and reopen a journal for it to take effect.'
     # “Log” tab: the last ten updates and their outcome.
     'lanceur.journal'                  = 'Log'
     'lanceur.journal.liste'            = 'Last ten updates:'

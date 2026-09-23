@@ -58,6 +58,8 @@
   "cmd.fmt.tableau": "Insérer un tableau",
   "cmd.fmt.collerTableau": "Coller un tableau depuis Excel/Word",
   "cmd.fmt.sautPage": "Insérer un saut de page",
+  "cmd.fmt.falcHeader": "En-tête de chapitre (FALC)",
+  "cmd.fmt.qrLink": "Code QR",
   "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
   "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf.",
   "config.convertirCmyk": "Convertir automatiquement en RVB les images JPEG livrées en CMJN (couleurs d’imprimerie, que les navigateurs et le PDF ne savent pas afficher).",

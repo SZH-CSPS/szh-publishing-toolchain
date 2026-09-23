@@ -942,3 +942,71 @@ test('« Voir le PDF (Explorateur) » sans compilation ne montre jamais un chemi
   assert.match(infos[0], /pas encore .*compil/i,
     'la notification ne dit pas que l’article n’a pas encore été compilé : ' + infos[0]);
 });
+
+// Non-régression du chantier livre (point 3) : côté revue, un champ vidé à l'écran (le
+// rédacteur choisit « (aucun) » dans le <select> type) doit toujours effacer le type dans
+// la fiche — la préservation ajoutée pour un chapitre (test/js/hote-livre.test.js) ne doit
+// jouer que pour le profil livre, jamais ici.
+test('revue : un type remis à vide EST bien effacé (non-régression)', async () => {
+  const [slug] = HOTE.arbre().listerArticles();
+  const fichierMeta = path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant = fs.readFileSync(fichierMeta, 'utf8');
+  try {
+    fs.writeFileSync(fichierMeta, ['type: editorial', 'lang: fr', 'title:', '  fr: "T"', ''].join('\n'));
+    await HOTE.executer('szh.apercuMetadonnees');
+    const p = HOTE.panneauDeType('szhApercuMetadonnees');
+    await p._recepteur({ type: 'pret' });
+    await p._recepteur({
+      type: 'enregistrer', auto: true,
+      articles: {
+        [slug]: { type: '', lang: 'fr', licence: '', doi: '', horsSommaire: false,
+          title: { fr: 'T' }, subtitle: {}, resume: {}, keywords: {}, author: [] }
+      }
+    });
+    const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+    const apres = yaml.analyserMeta(fs.readFileSync(fichierMeta, 'utf8'));
+    assert.strictEqual(apres.type, '', 'un type remis à vide côté revue n’a pas été effacé');
+  } finally {
+    fs.writeFileSync(fichierMeta, avant);
+  }
+});
+
+// Non-régression du chantier livre (point 5) : côté revue, les quatre blocs (auteur·e·s
+// publiés OJS, bibliographie, tâches par article, export OJS) continuent d'arriver au
+// panneau Réglages — seul un livre les fait omettre (test/js/hote-livre.test.js).
+test('revue : le panneau Réglages envoie toujours ojs, biblio, taches et auteursOjs', async () => {
+  await HOTE.executer('szh.reglages');
+  const p = HOTE.panneauDeType('szhReglages');
+  assert.ok(p, 'panneau des réglages absent');
+  await p._recepteur({ type: 'pret' });
+  const valeurs = p.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.ok(valeurs, 'aucun message de valeurs envoyé au panneau des réglages');
+  assert.ok(valeurs.ojs, 'le bloc export OJS n’est plus envoyé pour une revue');
+  assert.ok(valeurs.biblio, 'le bloc bibliographie n’est plus envoyé pour une revue');
+  assert.ok(valeurs.taches, 'le bloc tâches par article n’est plus envoyé pour une revue');
+  assert.ok(valeurs.auteursOjs, 'le bloc auteur·e·s publiés n’est plus envoyé pour une revue');
+});
+
+// Non-régression du chantier livre (point 6) : côté revue, l'invitation au tutoriel
+// s'affiche toujours, une fois par personne (context.globalState).
+test('revue : proposerTutoriel invite une fois, puis plus jamais avec le même contexte (non-régression)', async () => {
+  const ext = require(path.join(COCKPIT, 'extension.js'));
+  let invitations = 0;
+  const original = HOTE.stub.window.showInformationMessage;
+  HOTE.stub.window.showInformationMessage = () => { invitations++; return Promise.resolve(undefined); };
+  const memoire = {};
+  const contexte = {
+    globalState: {
+      get: (cle) => memoire[cle],
+      update: (cle, v) => { memoire[cle] = v; return Promise.resolve(); }
+    }
+  };
+  try {
+    await ext._pur.proposerTutoriel(contexte);
+    assert.strictEqual(invitations, 1, 'l’invitation au tutoriel ne s’est pas affichée pour une revue');
+    await ext._pur.proposerTutoriel(contexte);
+    assert.strictEqual(invitations, 1, 'l’invitation s’est affichée deux fois avec le même contexte');
+  } finally {
+    HOTE.stub.window.showInformationMessage = original;
+  }
+});

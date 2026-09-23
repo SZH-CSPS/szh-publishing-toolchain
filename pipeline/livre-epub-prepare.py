@@ -26,15 +26,18 @@
 #    la correction doit donc rester dans les bornes de la <section> pour ne pas
 #    apparier la règle d'un chapitre à l'image décorative d'un autre.
 #
-# 3. retire le <div class="szh-onglet"> que le gabarit de chapitre pose en tout premier
-#    enfant, avant $body$ — donc avant le <h1> une fois la <section> retirée. epub.css le
-#    met déjà en display:none (l'onglet de tranche n'existe qu'en pagination) : mort pour
-#    l'EPUB. Mesuré : laissé en place, ce <div> vide traîne AVANT le <h1> du chapitre
-#    suivant, et pandoc --split-level=1 le range dans le fichier du chapitre PRÉCÉDENT
-#    (tout ce qui précède un <h1> appartient au split d'avant) — un fichier XHTML
-#    quasi-vide s'intercale entre les liminaires et le premier chapitre, et le <div> du
-#    dernier chapitre traîne à la fin de l'avant-dernier. Rien n'est perdu (le <div> est
-#    vide et aria-hidden), mais un fichier fantôme dans le spine n'a aucune raison d'être.
+# 3. retire le <div class="szh-onglet"> et le <div class="szh-pastille"> que le gabarit
+#    de chapitre pose en tout premier (et troisième) enfant, avant $body$ — donc avant le
+#    <h1> une fois la <section> retirée. epub.css les met déjà en display:none (onglet de
+#    tranche et pastille de numéro n'existent qu'en pagination) : morts pour l'EPUB.
+#    Mesuré (pour l'onglet, le premier des deux) : laissé en place, ce <div> traîne AVANT
+#    le <h1> du chapitre suivant, et pandoc --split-level=1 le range dans le fichier du
+#    chapitre PRÉCÉDENT (tout ce qui précède un <h1> appartient au split d'avant) — un
+#    fichier XHTML quasi-vide s'intercale entre les liminaires et le premier chapitre, et
+#    le <div> du dernier chapitre traîne à la fin de l'avant-dernier. Le <div> de l'onglet
+#    est vide et aria-hidden, rien n'y est perdu ; celui de la pastille porte un chiffre en
+#    texte (le numéro de sommaire) — laissé en place, il traînerait, lui, lisible, dans le
+#    mauvais chapitre. Même retrait pour les deux, même raison.
 #
 # 4. retire les <section class="szh-chapitre"> enveloppes et leurs </section>
 #    correspondants, de sorte que les <h1> soient au niveau racine et que pandoc puisse
@@ -131,23 +134,32 @@ def inliner_decors(html):
     return ''.join(traiter(e, s, t) for e, s, t in _segments(html))
 
 
-# Le <div> que GABARIT_CHAPITRE écrit en tout premier enfant de la section, avant $body$
-# (voir templates/szh-livre-chapitre.html). Toujours cette forme exacte, sans autre
-# attribut : id="ch-…" et la couleur/l'onglet vivent sur la <section> elle-même, pas ici.
+# Les deux <div> que GABARIT_CHAPITRE écrit en premiers enfants de la section, avant
+# $body$ (voir templates/szh-livre-chapitre.html). Toujours cette forme exacte pour
+# l'onglet, sans autre attribut ; la pastille porte un chiffre ou rien entre ses balises
+# (--numero-chapitre, vide pour un chapitre hors sommaire) — [^<]* l'attrape dans les deux
+# cas. La couleur/l'onglet/la pastille vivent en variables CSS sur la <section> elle-même,
+# jamais sur ces <div>.
 RE_ONGLET = re.compile(r'<div class="szh-onglet" aria-hidden="true"></div>\s*')
+RE_PASTILLE = re.compile(r'<div class="szh-pastille" aria-hidden="true">[^<]*</div>\s*')
+# Le picto d'en-tête : même défaut, data-picto vide ou non.
+RE_PICTO = re.compile(r'<div class="szh-picto-entete" data-picto="[^"]*" aria-hidden="true"></div>\s*')
 
 
 def retirer_onglets(html):
-    """Voir le point 3 de l'en-tête : mort pour l'EPUB (epub.css : display:none), et sa
-    seule présence avant chaque <h1> de chapitre fait sortir un fichier XHTML fantôme
-    au découpage pandoc."""
-    return RE_ONGLET.sub('', html)
+    """Voir le point 3 de l'en-tête : morts pour l'EPUB (epub.css : display:none), et leur
+    seule présence avant chaque <h1> de chapitre fait sortir un fichier XHTML fantôme (ou,
+    pour la pastille, un chiffre égaré dans le mauvais chapitre) au découpage pandoc."""
+    html = RE_ONGLET.sub('', html)
+    html = RE_PASTILLE.sub('', html)
+    html = RE_PICTO.sub('', html)
+    return html
 
 
 def prepare_for_epub(html_content):
     """Dédoublonne les descriptions de tableau, inline les images décoratives, retire les
-    onglets de tranche morts, puis retire les <section class="szh-chapitre"> enveloppes
-    (voir les points 1 à 4 de l'en-tête du fichier)."""
+    onglets de tranche et pastilles morts, puis retire les <section class="szh-chapitre">
+    enveloppes (voir les points 1 à 4 de l'en-tête du fichier)."""
     html_content = dedoublonner_desc_tableaux(html_content)
     html_content = inliner_decors(html_content)
     html_content = retirer_onglets(html_content)

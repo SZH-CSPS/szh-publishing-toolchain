@@ -16,11 +16,18 @@ $-- du chapitre, et un gabarit pandoc ne sait rien intercaler — il écrit ce q
 $-- `$body$`. C'est szh-livre-auteurs.lua qui l'insère, exactement comme szh-auteurs.lua le
 $-- fait pour un article. Même raison, même remède.
 $--
-$-- La couleur du chapitre et la hauteur de son onglet sont POSÉES ICI, par le Makefile
-$-- (PALETTE_CHAPITRE, ONGLET_HAUT_CHAPITRE), et non choisies en CSS avec `:nth-of-type` :
-$-- ce sélecteur compte les <section> frères, LIMINAIRES COMPRISES, et décalait toute la
-$-- suite d'autant de pièces liminaires que le livre en a — le sommaire disait une couleur,
-$-- le chapitre une autre.
+$-- La couleur du chapitre et la position/hauteur de son onglet sont POSÉES ICI, par le
+$-- Makefile (PALETTE_CHAPITRE, ONGLET_Y0/ONGLET_Y1), et non choisies en CSS avec
+$-- `:nth-of-type` : ce sélecteur compte les <section> frères, LIMINAIRES COMPRISES, et
+$-- décalait toute la suite d'autant de pièces liminaires que le livre en a — le sommaire
+$-- disait une couleur, le chapitre une autre.
+$--
+$-- `sommaire: non` (<slug>.meta.yaml) retire un chapitre de la table des matières : ni
+$-- pastille numérotée, ni marque de tranche, ni repère au sommaire (voir falc.css, règles
+$-- `[data-sommaire="non"]`). Le Makefile le sait déjà — il ne passe alors ni --onglet-haut,
+$-- ni --onglet-hauteur, ni --numero-chapitre (les `$if(...)$` ci-dessous restent muets),
+$-- et pose `hors-sommaire=1`, d'où l'attribut `data-sommaire="non"` qui déclenche ces
+$-- règles.
 $--
 $-- Le <div class="szh-onglet"> : l'onglet de tranche de la charte FALC (un par chapitre,
 $-- voir livre/falc.css). Il DOIT être le tout premier enfant de la section, avant $body$ :
@@ -29,7 +36,24 @@ $-- elle-même (mesuré : sinon l'onglet n'apparaîtrait qu'à partir de la deux
 $-- Sans effet en maquette « normal » : falc.css est seul à lui donner une largeur et une
 $-- couleur, l'élément reste un <div> vide de hauteur nulle. `aria-hidden` : décoratif, un
 $-- repère de tranche n'a aucun texte à annoncer.
-<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$; --onglet-haut: $onglet-haut$"$endif$ data-rang="$rang-chapitre$">
+$--
+$-- Le <div class="szh-pastille"> : même mécanique de running element, pour le numéro de
+$-- chapitre en pastille ronde — sur CHAQUE page du chapitre désormais, pas seulement son
+$-- ouverture (falc.css, § pastille). `$numero-chapitre$` est le CHIFFRE DÉJÀ CALCULÉ par
+$-- livre.mk (rang parmi les chapitres du sommaire) : écrit en dur ici, jamais recalculé
+$-- par un `counter()` CSS — voir la note de tête de livre.mk, § Index à pouce, pour le
+$-- pourquoi. Couleur reprise de --c-chapitre, comme l'onglet.
+$--
+$-- Le <div class="szh-picto-entete"> : même mécanique de running element (voir livre/
+$-- base.css), pour le picto d'en-tête (clé `picto-entete` du <slug>.meta.yaml, ex.
+$-- `picto-entete: ecouter`). TOUJOURS écrit, même sans clé : un chapitre sans picto doit
+$-- promouvoir un élément VIDE, sans quoi le picto du chapitre précédent resterait affiché
+$-- sur toutes ses pages — exactement le piège déjà documenté pour l'onglet ci-dessus.
+$-- `$picto-entete$` rend une chaîne vide quand la clé est absente (syntaxe pandoc : seule
+$-- `$if(...)$` teste la présence, l'interpolation nue ne plante jamais sur une clé absente).
+<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$;$if(onglet-haut)$ --onglet-haut: $onglet-haut$;$endif$$if(onglet-hauteur)$ --onglet-hauteur: $onglet-hauteur$;$endif$"$endif$$if(hors-sommaire)$ data-sommaire="non"$endif$$if(picto-entete)$ data-picto="$picto-entete$"$endif$ data-rang="$rang-chapitre$">
 <div class="szh-onglet" aria-hidden="true"></div>
+<div class="szh-pastille" aria-hidden="true">$numero-chapitre$</div>
+<div class="szh-picto-entete" data-picto="$picto-entete$" aria-hidden="true"></div>
 $body$
 </section>

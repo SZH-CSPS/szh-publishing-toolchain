@@ -45,8 +45,9 @@
 
 /* Thème sombre : peu coûteux, donc fait. Seuls ces jetons locaux changent — pas les
    jetons partagés de socle.css, qui restent la vérité du papier. Les couleurs de chapitre
-   (--c-chapitre) sont déjà choisies à Lc −90 ou mieux sur fond blanc (PALETTE_CHAPITRE,
-   livre.mk) : non re-vérifiées ici sur fond sombre, seul écart honnête de cette section. */
+   (--c-chapitre) sont déjà choisies à ≥ 3:1 contre le blanc (WCAG 1.4.11) et Lc ≥ 60 pour
+   le blanc qu'elles portent (PALETTE_CHAPITRE, livre.mk) : non re-vérifiées ici sur fond
+   sombre, seul écart honnête de cette section. */
 @media (prefers-color-scheme: dark) {
   :root {
     --web-fond:        #15151b;
@@ -104,6 +105,9 @@ h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
    running()`, un mécanisme de pagination que la sortie web n'a pas — il resterait un
    <div> vide sans lui, mais autant le dire explicitement plutôt que compter dessus. */
 .szh-onglet { display: none; }
+/* Même raison : la pastille de numéro (livre/falc.css) est elle aussi un running
+   element, promu une fois par chapitre — sans objet dans une page qui défile. */
+.szh-pastille { display: none; }
 
 /* ═══ 4. Liminaires ════════════════════════════════════════════════════════════
    Demi-titre, page de titre, impressum : plus de mise en page à la main (padding-top en
@@ -213,6 +217,37 @@ a:hover, a:focus-visible { text-decoration-thickness: 0.08em; }
 .szh-sommaire a, a.footnote-ref, a.footnote-back, a[href^="#"].szh-appel {
   color: inherit; text-decoration: none;
 }
+
+/* ═══ 11b. Encadré falc-header « écouter cette histoire » ═════════════════════
+   partage-filtres.css (où vit .szh-qr) n'est PAS chargée ici — voir l'en-tête de ce
+   fichier, "cette feuille... refait déjà... tout ce qu'il faut à leur médium" — d'où sa
+   propre règle .szh-qr, sinon le QR (un <a> vide, sans dimension propre) resterait un
+   lien de largeur nulle, invisible. En web comme en EPUB, ce qui doit rester vrai est
+   plus modeste qu'à l'impression : « le QR peut rester, le lien texte doit exister » — le
+   <a> porte déjà un href et un aria-label utilisables au clavier/lecteur d'écran, sans
+   dépendre de cette mise en forme. Renommé depuis .szh-ecouter* (23.09.2026, voir base.css). */
+.szh-falc-header {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 1rem;
+  background: var(--web-fond-encart);
+  border-radius: 0.25rem;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1.5rem;
+}
+.szh-falc-header-texte { flex: 1 1 12rem; min-width: 0; }
+.szh-falc-header-texte p { margin: 0 0 0.75rem; }
+.szh-qr, .szh-falc-header-qr {
+  display: block;
+  width: var(--qr-taille, 6rem); height: var(--qr-taille, 6rem);
+  background-repeat: no-repeat; background-size: contain;
+}
+.szh-falc-header-image {
+  flex: 0 0 auto; width: 8rem; height: 8rem;
+  object-fit: cover; border-radius: 0.25rem;
+}
+/* L'onglet de tranche et le picto d'en-tête n'existent qu'en pagination (running
+   element) : sans effet ici, mais dits explicitement plutôt que comptés dessus — même
+   traitement que .szh-onglet ci-dessus (§3). */
+.szh-picto-entete { display: none; }
 
 /* ═══ 12. Petits écrans ═══════════════════════════════════════════════════════
    La colonne de lecture (62ch) dépasse déjà la largeur d'un téléphone : `max-width: 100%`

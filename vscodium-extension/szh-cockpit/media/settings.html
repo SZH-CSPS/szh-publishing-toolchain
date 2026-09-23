@@ -1,14 +1,26 @@
 <h1>%%SZH:regl.titre%%</h1>
 <div id="zones"></div>
+<!-- Les quatre blocs ci-dessous n'ont de sens que pour une revue/Zeitschrift : pas d'OJS,
+     pas de bibliographie par revue, pas de tâches par article, pas d'export OJS pour un
+     livre. Chaque <section> reste masquée tant que l'hôte n'a pas envoyé sa donnée — et il
+     ne l'envoie plus du tout quand un livre est ouvert (settings.js, ouvrirReglages). -->
+<section id="bloc-auteurs-ojs" hidden>
 <h2>%%SZH:regl.auteurs.titre%%</h2>
 <p id="auteursojs" class="szh-notif szh-notif--info szh-notif--discret" hidden></p>
+</section>
 <div id="proteges"></div>
+<section id="bloc-biblio" hidden>
 <h2>%%SZH:biblio.titre%%</h2>
 <p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:biblio.intro%%</p>
 <div id="biblio"></div>
+</section>
+<section id="bloc-taches" hidden>
 <h2>%%SZH:art.taches.titre%%</h2>
 <p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:art.taches.aide%%</p>
 <div id="taches"></div>
+</section>
+<section id="bloc-ojs" hidden>
 <h2>%%SZH:ojs.titre%%</h2>
 <p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:ojs.intro%%</p>
 <div id="ojs"></div>
+</section>

@@ -696,6 +696,16 @@ function normaliserLicence(valeur) {
   return '';
 }
 
+// Chapitre retiré de la table des matières (case du formulaire des fiches, livre
+// seulement) : clé `sommaire: non` du <slug>.meta.yaml — `false` est aussi accepté à la
+// lecture, miroir de CHAPITRES_HORS_SOMMAIRE (pipeline/profils/livre.mk). L'absence de la
+// clé EST le « au sommaire » par défaut ; serialiserMeta n'écrit donc jamais de
+// `sommaire: oui`, seulement `sommaire: non` ou rien.
+function estHorsSommaire(valeur) {
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
+  return v === 'non' || v === 'false';
+}
+
 // L'entrée à appliquer : celle de la fiche, ou celle par défaut quand la clé est absente
 // ou illisible. Point de passage unique de tout ce qui, côté cockpit, dit une licence.
 function licenceArticle(valeur) {
@@ -722,9 +732,13 @@ function langueRevue(racine) {
   return langueDefaut(valeurs);
 }
 
-// analyserMeta(texte) -> { type, lang, source, licence, doi, title:{}, subtitle:{},
-// resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les maps par
-// langue et les listes en bloc comme en ligne.
+// analyserMeta(texte) -> { type, lang, source, licence, doi, horsSommaire, title:{},
+// subtitle:{}, resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les
+// maps par langue et les listes en bloc comme en ligne.
+//
+// `horsSommaire` (clé `sommaire:` du fichier, voir estHorsSommaire ci-dessus) ne concerne
+// que les chapitres de livre ; une fiche d'article n'a jamais cette clé, et la lit donc à
+// false comme n'importe quel .meta.yaml d'avant ce champ.
 //
 // `source` (le nom du .docx d'origine, posé par l'import) et `licence` sont des clés de
 // première classe : le formulaire des métadonnées reconstruit sa carte depuis la webview,
@@ -732,10 +746,10 @@ function langueRevue(racine) {
 // Les cinq clés scalaires d'une fiche, lues sur une seule ligne physique : les seules que
 // analyserMeta puisse juger infidèles (title/subtitle/resume/keywords/author gèrent déjà
 // leur propre lecture sur plusieurs lignes, ce n'est pas une infidélité).
-const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi'];
+const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi', 'sommaire'];
 
 function analyserMeta(texte) {
-  const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
+  const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
   if (!texte) { return valeurs; }
   const brut = String(texte);
   const lignes = (brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut).split(/\r?\n/);
@@ -765,6 +779,7 @@ function analyserMeta(texte) {
     // mieux vaut la licence de la revue qu'un jeton inventé imprimé sur la couverture.
     if (cle === 'licence') { valeurs.licence = normaliserLicence(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
+    if (cle === 'sommaire') { valeurs.horsSommaire = estHorsSommaire(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'title' || cle === 'subtitle' || cle === 'resume') {
       const map = {};
       const net = reste.trim();
@@ -850,10 +865,11 @@ function analyserMeta(texte) {
 }
 
 // serialiserMeta(valeurs) -> YAML régénéré dans l'ordre type, lang, source, licence, doi,
-// title, subtitle, resume, keywords, author, puis les clés inconnues. Valeurs vides, langues sans
-// contenu et auteurs vides sont omis. Le même ordre que serialiser_meta() de
-// pipeline/docx-meta.py, qui écrit la fiche à l'import : une fiche enregistrée par le
-// formulaire ne doit pas différer de celle que l'import vient de poser.
+// sommaire, title, subtitle, resume, keywords, author, puis les clés inconnues. Valeurs
+// vides, langues sans contenu et auteurs vides sont omis. Le même ordre que
+// serialiser_meta() de pipeline/docx-meta.py, qui écrit la fiche à l'import : une fiche
+// enregistrée par le formulaire ne doit pas différer de celle que l'import vient de poser
+// — `sommaire` (livre seulement) n'a pas de pendant côté import DOCX.
 function serialiserMeta(valeurs) {
   const v = valeurs || {};
   // serialiserMeta régénère la fiche entière depuis `v` : une clé infidèle (voir
@@ -880,6 +896,9 @@ function serialiserMeta(valeurs) {
   if (licence !== '') { lignes.push('licence: ' + licence); }
   const doi = String(v.doi || '').trim();
   if (doi !== '') { lignes.push('doi: ' + citerFrontmatter(doi)); }
+  // Chapitre hors sommaire : seul le « non » s'écrit, jamais un « sommaire: oui » —
+  // l'absence de la clé vaut déjà « oui » (voir analyserMeta / estHorsSommaire).
+  if (v.horsSommaire === true) { lignes.push('sommaire: non'); }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = v[cle] || {};
     const sous = [];
@@ -1191,7 +1210,7 @@ module.exports = {
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   LANGUES_ARTICLE, normaliserLangueArticle,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle,
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle, estHorsSommaire,
   decouperValeurYaml, decouperFlowYaml, listeYamlEnLigne, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,

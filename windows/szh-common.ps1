@@ -373,6 +373,159 @@ function Get-SzhEtatUtilisateurChamp($Etat, [string]$Nom) {
   return ''
 }
 
+# Écrit un champ d'etat-utilisateur.json, en le créant s'il n'existe pas déjà -- même geste
+# que Set-SzhLangueInterface / Set-SzhOngletChoisi / Set-SzhMajSilencieuse ci-dessus,
+# factorisé ici parce que les réglages Shlink/OJS plus bas en ont besoin à trois reprises.
+# Ne lève jamais, même raison que ces trois fonctions : un état non écrit se represente à la
+# prochaine ouverture, une exception ici fermerait le lanceur.
+function Set-SzhEtatUtilisateurChamp([string]$Nom, $Valeur) {
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    if (-not $pref) { $pref = New-Object psobject }
+    if ($pref.PSObject.Properties[$Nom]) { $pref.$Nom = $Valeur }
+    else { $pref | Add-Member -MemberType NoteProperty -Name $Nom -Value $Valeur }
+    return (Save-SzhEtatUtilisateur $pref)
+  } catch { return $false }
+}
+
+# ---- Secrets par compte : Shlink (raccourcisseur de liens) et OJS ----
+#
+# Trois réglages de l'onglet « Paramètres » (open-produit.ps1) : l'adresse de l'instance
+# Shlink (en clair, ce n'est pas un secret), sa clé d'API, et la clé d'API OJS -- posée pour
+# le jour où quelque chose la lira, rien ne la lit encore. Rangés par COMPTE, comme le reste
+# de etat-utilisateur.json, jamais dans config.json (par poste) : une clé d'API n'est pas un
+# réglage de rédaction à partager entre tous les comptes d'un même poste.
+#
+# Les deux clés ne sont JAMAIS écrites en clair sur le disque. ConvertFrom-SecureString sans
+# -Key chiffre par DPAPI, portée CurrentUser : seul CE compte, sur CE poste, peut relire la
+# valeur -- une copie de etat-utilisateur.json ailleurs (sauvegarde, autre poste, autre
+# compte) rend le champ illisible plutôt que de rendre la clé. C'est aussi pourquoi la copie
+# de secours d'un etat-utilisateur.json ne redonne jamais accès aux clés : c'est le prix de
+# ne jamais les stocker en clair, pas une négligence.
+function ConvertTo-SzhSecretChiffre([string]$Clair) {
+  # '' est le signal qui efface le champ, jamais une chaîne chiffrée représentant « rien » --
+  # Set-SzhShlinkCle/Set-SzhOjsCle s'appuient là-dessus pour qu'un champ vidé dans l'interface
+  # efface vraiment la clé au lieu d'en chiffrer une chaîne vide.
+  if (-not $Clair) { return '' }
+  try {
+    $sec = ConvertTo-SecureString -String $Clair -AsPlainText -Force
+    return (ConvertFrom-SecureString -SecureString $sec)
+  } catch { return '' }
+}
+
+# Rend '' pour un champ vide, absent, ou que ce compte/poste ne peut pas déchiffrer (DPAPI
+# d'un autre compte, fichier copié d'un autre poste) -- jamais une exception : une clé
+# illisible doit se comporter comme une clé absente, pas arrêter le lanceur.
+function ConvertFrom-SzhSecretChiffre([string]$Chiffre) {
+  if (-not $Chiffre) { return '' }
+  $bstr = [IntPtr]::Zero
+  try {
+    $sec = ConvertTo-SecureString -String $Chiffre
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
+    return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+  } catch { return '' }
+  finally { if ($bstr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) } }
+}
+
+# Adresse de l'instance Shlink : en clair, ce n'est pas un secret (c'est une URL publique).
+function Get-SzhShlinkUrl {
+  return (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkUrl')
+}
+function Set-SzhShlinkUrl([string]$Url) {
+  $v = ([string]$Url).Trim()
+  [void](Set-SzhEtatUtilisateurChamp 'shlinkUrl' $v)
+  return $v
+}
+
+# Clé d'API Shlink : chiffrée, voir l'en-tête de section. Get- rend la clé en CLAIR -- à
+# n'employer que pour la poser dans l'environnement du processus enfant (Start-SzhCodium,
+# szh-shell.ps1) ou pour la présenter dans le champ de l'interface, jamais pour un journal.
+function Get-SzhShlinkCle {
+  return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkCle'))
+}
+function Set-SzhShlinkCle([string]$Cle) {
+  [void](Set-SzhEtatUtilisateurChamp 'shlinkCle' (ConvertTo-SzhSecretChiffre $Cle))
+}
+
+# Clé d'API OJS : posée de la même façon que la clé Shlink, pour le jour où quelque chose la
+# lira -- $env:SZH_OJS_CLE est déjà posé par Set-SzhEnvironnementSecrets ci-dessous, rien ne
+# la lit encore côté WSL.
+function Get-SzhOjsCle {
+  return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'ojsCle'))
+}
+function Set-SzhOjsCle([string]$Cle) {
+  [void](Set-SzhEtatUtilisateurChamp 'ojsCle' (ConvertTo-SzhSecretChiffre $Cle))
+}
+
+# ---- Secrets Shlink/OJS dans l'environnement : posés dans le PROCESSUS ENFANT seulement ----
+#
+# Trois variables, lues côté WSL par la chaîne de fabrication (pipeline/liens-courts.py pour
+# SZH_SHLINK_URL et SZH_SHLINK_CLE ; SZH_OJS_CLE n'a encore aucun lecteur, posée pour le jour
+# où elle en aura un). Jamais setx, jamais une variable machine ou utilisateur : $env:… ici ne
+# touche que ce processus PowerShell, et Start-Process (Start-SzhCodium dans szh-shell.ps1,
+# Start-SzhCodiumFichier dans open-md.ps1) le transmet à VSCodium comme n'importe quel autre
+# enfant -- exactement le même principe que $env:SZH_CODIUM_PROFIL. wsl.exe, lui, ne recopie
+# rien de l'environnement Windows sans WSLENV (voir docs/DEVELOPPEMENT.md, « SZH_CONFIG dans
+# tasks.json ») : les tâches du cockpit (vscodium-user/tasks.json,
+# `wsl.exe -d SZH-Publishing -- bash -c '… make …'`) sont des petits-enfants de VSCodium et
+# n'en voient donc les trois variables que par ce pont.
+#
+# Rangées ici (szh-common.ps1) et non dans szh-shell.ps1 : open-md.ps1 -- l'ouverture d'un
+# .md par double-clic, avec son propre lanceur Start-SzhCodiumFichier -- ne dot-source QUE
+# szh-common.ps1, jamais szh-shell.ps1 (voir l'en-tête de szh-shell.ps1, « Ouverture d'un
+# dossier dans VSCodium »). Un article ouvert par double-clic doit compiler avec les mêmes
+# variables qu'une revue ouverte depuis le lanceur.
+$script:SzhNomsSecretsWsl = @('SZH_SHLINK_URL', 'SZH_SHLINK_CLE', 'SZH_OJS_CLE')
+
+# Ajoute nos trois noms à WSLENV, chacun avec /u (« partagé seulement de Win32 vers WSL » --
+# doc Microsoft de WSLENV : aucun de ces trois secrets n'a de raison de refaire le chemin
+# inverse). Préserve une valeur WSLENV déjà posée par ailleurs (aucune n'existe dans ce dépôt
+# aujourd'hui, mais rien n'empêche un compte d'en porter une) : nos trois noms en sont
+# d'abord retirés, avec ou sans suffixe, puis reposés pour ceux effectivement demandés --
+# idempotent, donc sans jamais doubler une entrée si Start-SzhCodium/Start-SzhCodiumFichier
+# est appelée deux fois dans la même session. $NomsAPoser vide retire nos trois noms sans en
+# reposer aucun.
+function Set-SzhWslEnvSecrets([string[]]$NomsAPoser = @()) {
+  $existant = [string]$env:WSLENV
+  $parties = @()
+  if ($existant) { $parties = @($existant -split ':' | Where-Object { $_ }) }
+  $gardes = @($parties | Where-Object {
+      $nom = ($_ -split '/')[0]
+      -not ($script:SzhNomsSecretsWsl -contains $nom)
+    })
+  foreach ($n in $NomsAPoser) { $gardes += ($n + '/u') }
+  if ($gardes.Count -gt 0) { $env:WSLENV = ($gardes -join ':') }
+  else { Remove-Item Env:WSLENV -ErrorAction SilentlyContinue }
+}
+
+# Pose SZH_SHLINK_URL / SZH_SHLINK_CLE / SZH_OJS_CLE dans l'environnement de ce processus --
+# seulement pour ceux dont le compte a réglé une valeur (Get-SzhShlinkUrl/Cle, Get-SzhOjsCle
+# ci-dessus) -- et met WSLENV à jour en conséquence. Une valeur vide : la variable n'est ni
+# posée ni ajoutée à WSLENV, plutôt qu'une variable posée à vide -- une variable Windows vide
+# se transmettrait quand même à WSL comme une chaîne vide, et un filtre qui teste sa seule
+# présence (au lieu de son contenu) s'y tromperait. Trace UNIQUEMENT les NOMS : ni la clé
+# Shlink ni la clé OJS ne doivent pouvoir atterrir dans un journal, même partiellement -- voir
+# l'en-tête de section pour le pourquoi de ce pont.
+function Set-SzhEnvironnementSecrets {
+  $poses = New-Object System.Collections.ArrayList
+  $url = Get-SzhShlinkUrl
+  if ($url) { $env:SZH_SHLINK_URL = $url; [void]$poses.Add('SZH_SHLINK_URL') }
+  else { Remove-Item Env:SZH_SHLINK_URL -ErrorAction SilentlyContinue }
+
+  $shlinkCle = Get-SzhShlinkCle
+  if ($shlinkCle) { $env:SZH_SHLINK_CLE = $shlinkCle; [void]$poses.Add('SZH_SHLINK_CLE') }
+  else { Remove-Item Env:SZH_SHLINK_CLE -ErrorAction SilentlyContinue }
+
+  $ojsCle = Get-SzhOjsCle
+  if ($ojsCle) { $env:SZH_OJS_CLE = $ojsCle; [void]$poses.Add('SZH_OJS_CLE') }
+  else { Remove-Item Env:SZH_OJS_CLE -ErrorAction SilentlyContinue }
+
+  Set-SzhWslEnvSecrets @($poses)
+  if ($poses.Count -gt 0) {
+    Write-SzhLog ('codium : variables WSL posées pour ce lancement -> ' + ($poses -join ', ') + ' (WSLENV=' + $env:WSLENV + ')')
+  }
+}
+
 # ---- Version du logiciel installée ----
 # Le fichier VERSION du toolkit d'abord, state.json en repli, chaîne vide sinon. Ne doit
 # jamais lever : le lanceur l'appelle sans console, et une exception l'empêcherait de

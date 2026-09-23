@@ -52,6 +52,7 @@ RE_TITRE = re.compile(
     r'<h(?P<n>[1-3])\b[^>]*\bid="(?P<id>[^"]+)"[^>]*>(?P<txt>.*?)</h(?P=n)>',
     re.S | re.I)
 RE_BALISE = re.compile(r'<[^>]+>')
+RE_NUM_SECTION = re.compile(r'<span class="szh-num-section">.*?</span>', re.S)
 
 # La couleur d'un chapitre est déjà dans son fragment : livre.mk (PALETTE_CHAPITRE) l'a
 # posée en --c-chapitre sur la <section class="szh-chapitre"> qui l'enveloppe (voir
@@ -64,6 +65,26 @@ RE_COULEUR_CHAPITRE = re.compile(
     r'<section\b[^>]*\bclass="[^"]*\bszh-chapitre\b[^"]*"[^>]*\bstyle="[^"]*--c-chapitre:\s*'
     r'([^;"]+)', re.S | re.I)
 
+# Même lecture que la couleur, mais pour --onglet-hauteur : la hauteur de case de l'index
+# à pouce, calculée une seule fois par livre.mk (ONGLET_Y0/ONGLET_Y1, voir sa note de
+# tête) et posée en métadonnée sur CHAQUE chapitre du sommaire — identique pour tous, donc
+# n'importe lequel suffit à la retrouver ici, une seule fois, pour tout le livre.
+RE_ONGLET_HAUTEUR = re.compile(r'--onglet-hauteur:\s*([^;"]+)')
+
+# Un chapitre retiré du sommaire (`sommaire: non` dans son <slug>.meta.yaml) porte
+# `data-sommaire="non"` sur sa section — posé par livre.mk/szh-livre-chapitre.html, jamais
+# recalculé ici. Ses titres (h1 d'ouverture comme ses h2/h3 internes) n'entrent dans
+# AUCUNE entrée de sommaire : le chapitre entier est invisible à la table des matières.
+RE_HORS_SOMMAIRE = re.compile(
+    r'<section\b[^>]*\bclass="[^"]*\bszh-chapitre\b[^"]*"[^>]*\bdata-sommaire="non"',
+    re.S | re.I)
+
+# Le numéro DU SOMMAIRE (rang parmi les chapitres du sommaire, voir livre.mk § Index à
+# pouce) : le même texte que celui écrit en dur dans la pastille (templates/szh-livre-
+# chapitre.html, <div class="szh-pastille">). On le relit ici pour la même raison que la
+# couleur et --onglet-hauteur : une seule fois calculé, jamais recalculé.
+RE_NUMERO_CHAPITRE = re.compile(r'<div class="szh-pastille" aria-hidden="true">(\d+)</div>')
+
 
 def couleur_du_fragment(fragment):
     """Rend la couleur du chapitre (« #RRGGBB ») si le fragment en porte une, sinon None."""
@@ -71,21 +92,123 @@ def couleur_du_fragment(fragment):
     return m.group(1).strip() if m else None
 
 
+def onglet_hauteur_du_fragment(fragment):
+    """Rend la hauteur de case de l'index à pouce (« 22.857mm ») si le fragment en porte
+    une, sinon None — absente pour un chapitre hors sommaire, ou hors maquette FALC."""
+    m = RE_ONGLET_HAUTEUR.search(fragment)
+    return m.group(1).strip() if m else None
+
+
+def numero_chapitre_du_fragment(fragment):
+    """Rend le numéro DU SOMMAIRE (« 3 »), tel qu'écrit dans la pastille, si le fragment
+    en porte un — absent pour un chapitre hors sommaire (sa pastille est vide)."""
+    m = RE_NUMERO_CHAPITRE.search(fragment)
+    return m.group(1) if m else None
+
+
+def hors_sommaire(fragment):
+    """Vrai si CE fragment est un chapitre retiré de la table des matières."""
+    return RE_HORS_SOMMAIRE.search(fragment) is not None
+
+
 def titres_du_fragment(fragment):
-    """Rend [(niveau, ancre, texte, couleur)] pour h1..h3. Le texte est dépouillé de ses
-    balises : « <span class="szh-num-section">2</span> Teilhabe » donne « 2 Teilhabe ».
-    `couleur` est celle du CHAPITRE ENTIER (couleur_du_fragment) : un fragment est un seul
-    chapitre, donc tous ses titres — le h1 d'ouverture comme ses h2/h3 internes — en
-    partagent la même, exactement comme l'onglet de tranche les accompagne du premier au
-    dernier paragraphe du chapitre."""
+    """Rend [(niveau, ancre, texte, couleur, onglet_hauteur)] pour h1..h3. Le texte est
+    dépouillé de ses balises : « <span class="szh-num-section">2</span> Teilhabe » donne
+    « 2 Teilhabe » — SAUF pour le h1 d'un chapitre QUI A UN NUMÉRO DE SOMMAIRE (voir
+    ci-dessous), où ce numéro-là remplace celui de la balise. `couleur` et
+    `onglet_hauteur` sont ceux du CHAPITRE ENTIER : un fragment est un seul chapitre, donc
+    tous ses titres — le h1 d'ouverture comme ses h2/h3 internes — les partagent,
+    exactement comme l'onglet de tranche les accompagne du premier au dernier paragraphe
+    du chapitre.
+
+    ⚠ Le h1 d'un chapitre porte un `<span class="szh-num-section">` posé par
+    szh-sections.lua à partir de SZH_CHAPITRE — le RANG dans $(CHAPITRES), pas le numéro
+    du sommaire (voir livre.mk, § Index à pouce : les deux divergent dès qu'un chapitre
+    est hors sommaire). Un chapitre 4 devenu 1er du sommaire y gardait donc écrit « 4 » —
+    la pastille disait 1, le sommaire disait 4, en contradiction avec la charte FALC (le
+    numéro imprimé sur la page ouvrante), et FALC masque de toute façon cette balise par
+    CSS (`.szh-num-section { display: none }`), donc son contenu n'a de sens QUE relu ici.
+    Pour un h1 qui porte --numero-chapitre (voir numero_chapitre_du_fragment), on retire
+    donc CETTE balise avec son contenu (pas seulement la balise) et on préfixe le numéro
+    du sommaire à sa place — pastille et sommaire disent alors, toujours, le même nombre.
+    Les h2/h3 (numérotation de section, pas de chapitre) ne sont pas concernés : leur
+    balise `szh-num-section` reste lue comme avant.
+
+    Un chapitre hors sommaire (`sommaire: non`) ne rend AUCUNE entrée : il est absent de
+    la table des matières dans son entier, pas seulement de son propre h1."""
+    if hors_sommaire(fragment):
+        return []
     couleur = couleur_du_fragment(fragment)
+    onglet_h = onglet_hauteur_du_fragment(fragment)
+    numero = numero_chapitre_du_fragment(fragment)
     trouves = []
     for m in RE_TITRE.finditer(fragment):
-        txt = RE_BALISE.sub('', m.group('txt'))
+        niveau = int(m.group('n'))
+        brut = m.group('txt')
+        if niveau == 1 and numero:
+            brut = RE_NUM_SECTION.sub('', brut)
+        txt = RE_BALISE.sub('', brut)
         txt = re.sub(r'\s+', ' ', html.unescape(txt).strip())
+        if niveau == 1 and numero and txt:
+            txt = numero + ' ' + txt
         if txt:
-            trouves.append((int(m.group('n')), m.group('id'), txt, couleur))
+            trouves.append((niveau, m.group('id'), txt, couleur, onglet_h))
     return trouves
+
+
+# --------------------------------------------------------------------------------------
+# Avertissement : une case de l'index à pouce trop basse pour son titre.
+#
+# Estimation grossière, pas une mesure de glyphes (fontTools serait le bon outil, mais un
+# avertissement de mise en page n'a pas besoin de cette précision) : à 13 pt Light sur la
+# colonne FALC standard (125 mm de texte utile), une ligne tient environ 52 caractères —
+# ~0,52 em par caractère, moyenne d'usage pour un sans-serif proportionnel. Une entrée qui
+# dépasse 85 % de cette capacité (⁓44 caractères) risque de passer sur deux lignes : le
+# dernier mot, s'il est long, ne trouve pas sa place et bascule en entier (aucune césure
+# en FALC — voir --cesure ci-dessus), ce qui déclenche le repli avant d'atteindre 100 %.
+CAR_PAR_LIGNE = 52
+SEUIL_RISQUE_DEUX_LIGNES = int(CAR_PAR_LIGNE * 0.85)
+# Hauteur de case minimale pour UNE ligne de titre (padding 4+4 mm, filet ~0,3 mm, une
+# ligne à 13 pt / interligne 1,64 ≈ 7,5 mm) et pour DEUX (la même plus une ligne) — les
+# deux mesures qui bornent l'avertissement ci-dessous.
+ONGLET_H_MIN_1_LIGNE = 16.0
+ONGLET_H_MIN_2_LIGNES = 24.0
+
+
+def verifier_hauteur_sommaire(entrees):
+    """Émet un [livre-avertissement] pour chaque entrée de CHAPITRE (niveau 1) dont la
+    case de l'index à pouce risque d'être trop basse pour son titre. N'arrête rien : c'est
+    un avertissement, pas une porte — le sommaire se compose quand même, au pire un peu
+    à l'étroit, et c'est cette étroitesse que le message signale."""
+    for niveau, ancre, txt, couleur, onglet_h in entrees:
+        if niveau != 1 or not onglet_h:
+            continue
+        try:
+            h = float(re.sub(r'[a-zA-Z%]+$', '', onglet_h.strip()))
+        except ValueError:
+            continue
+        risque_deux_lignes = len(txt) > SEUIL_RISQUE_DEUX_LIGNES
+        if h < ONGLET_H_MIN_1_LIGNE:
+            print('[livre-avertissement] onglet-case-etroite | chapitre « %s » | '
+                  'La case de l\'index à pouce pour ce chapitre ne fait que %.1f mm de '
+                  "haut : même un titre d'une ligne y tient à l'étroit. Repli : réduire "
+                  'le nombre de chapitres au sommaire, élargir la plage --onglet-y0/'
+                  '--onglet-y1 (livre.mk/falc.css), ou réduire le remplissage vertical '
+                  "d'une entrée. | [de] Das Feld im Inhaltsverzeichnis-Register für "
+                  'dieses Kapitel ist nur %.1f mm hoch: selbst ein einzeiliger Titel hat '
+                  'darin wenig Platz.' % (txt, h, h), file=sys.stderr)
+        elif h < ONGLET_H_MIN_2_LIGNES and risque_deux_lignes:
+            print('[livre-avertissement] onglet-case-etroite | chapitre « %s » | '
+                  'La case de l\'index à pouce pour ce chapitre fait %.1f mm de haut, et '
+                  'son titre (%d caractères) risque de tenir sur deux lignes : il lui '
+                  'faudrait environ %.1f mm. Repli : réduire le remplissage vertical de '
+                  "l'entrée, élargir la plage --onglet-y0/--onglet-y1 (livre.mk/"
+                  'falc.css), ou raccourcir le titre. | [de] Das Feld im '
+                  'Inhaltsverzeichnis-Register für dieses Kapitel ist %.1f mm hoch, sein '
+                  'Titel (%d Zeichen) könnte zwei Zeilen brauchen — dafür wären etwa '
+                  '%.1f mm nötig.'
+                  % (txt, h, len(txt), ONGLET_H_MIN_2_LIGNES, h, len(txt),
+                     ONGLET_H_MIN_2_LIGNES), file=sys.stderr)
 
 
 def sommaire_html(entrees, titre):
@@ -98,10 +221,20 @@ def sommaire_html(entrees, titre):
     <section> du chapitre. C'est ce qui permet à livre/falc.css de peindre le repère de
     sommaire avec la règle qu'il porte déjà (`.szh-sommaire li::after { background:
     var(--c-chapitre, …) }`) : elle attendait cette variable, jamais posée avant ce
-    correctif — d'où des repères tous à la couleur de repli, --c-falc-accent-defaut."""
-    lignes = ['<section class="szh-sommaire" id="szh-sommaire">',
+    correctif — d'où des repères tous à la couleur de repli, --c-falc-accent-defaut.
+
+    --onglet-hauteur (la hauteur de case de l'index à pouce, IDENTIQUE pour tout le livre)
+    est posée UNE FOIS, en style inline sur la <section> elle-même — elle est héritée par
+    chaque <li>, comme toute propriété personnalisée CSS non redéfinie. C'est la même
+    valeur que celle que livre.mk a posée sur chaque chapitre (voir onglet_hauteur_du_
+    fragment ci-dessus) : le sommaire ne la recalcule jamais, il la relit."""
+    verifier_hauteur_sommaire(entrees)
+    onglet_hauteur = next((h for *_, h in entrees if h), None)
+    style_section = (' style="--onglet-hauteur: %s"' % html.escape(onglet_hauteur, quote=True)
+                      if onglet_hauteur else '')
+    lignes = ['<section class="szh-sommaire" id="szh-sommaire"%s>' % style_section,
               '<h1>' + html.escape(titre) + '</h1>', '<ol>']
-    for niveau, ancre, txt, couleur in entrees:
+    for niveau, ancre, txt, couleur, _onglet_h in entrees:
         style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
                  if couleur else '')
         lignes.append('<li class="niveau-%d"%s><a href="#%s">%s</a></li>'

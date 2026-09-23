@@ -104,6 +104,16 @@ local function ligne_auteurs(meta)
   return (AMORCE[lang] or AMORCE.fr) .. liste
 end
 
+-- Un bloc auteurs déjà posé par l'import (style Word « Auhors » et ses variantes, voir
+-- docx-styles-corps.py) : un Div `.szh-auteurs` venu tel quel du .md, avant même que ce
+-- filtre s'exécute. Le reconnaître évite le doublon d'un chapitre collectif dont le Word
+-- portait AUSSI cette ligne — la fiche du chapitre (<slug>.meta.yaml) ne dit rien de ce cas
+-- et l'écrirait sinon une seconde fois. Le bloc de l'import gagne : c'est le texte réel du
+-- chapitre, la fiche peut être restée un gabarit vide.
+local function deja_bloc_auteurs(b)
+  return b ~= nil and b.t == 'Div' and b.classes ~= nil and b.classes:includes('szh-auteurs')
+end
+
 function Pandoc(doc)
   if not LIVRE then return doc end
   if texte(doc.meta.ouvrage) ~= "collectif" then return doc end
@@ -119,6 +129,8 @@ function Pandoc(doc)
     if b.t == 'Header' then i = rang; break end
   end
   if not i then return doc end
+
+  if deja_bloc_auteurs(doc.blocks[i + 1]) then return doc end
 
   doc.blocks:insert(i + 1,
     pandoc.RawBlock('html', '<p class="szh-auteurs">' .. ligne .. '</p>'))

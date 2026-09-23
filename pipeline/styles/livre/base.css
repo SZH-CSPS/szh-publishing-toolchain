@@ -11,9 +11,10 @@
    * La feuille est lue par un seul document de deux cents pages, pas par un article. Une
      règle qui coûte cher au rendu se paie deux cents fois.
    * `break-before: recto` n'est honoré que si le document a un sens de pages en
-     vis-à-vis. WeasyPrint le tient (mesuré, v69), mais une page nommée sans folio doit
-     annuler les deux boîtes de marge, gauche et droite : la page d'ouverture peut tomber
-     à droite comme à gauche selon la parité du chapitre précédent.
+     vis-à-vis. WeasyPrint le tient (mesuré, v69) — et une page nommée qui garde ses
+     boîtes de folio (l'ouverture de chapitre, depuis ce correctif) doit les garder
+     déclarées séparément sur :left ET :right, jamais fusionnées : la page d'ouverture
+     peut tomber à droite comme à gauche selon la parité du chapitre précédent.
    * Les images arrivent en data: URI (--embed-resources sur chaque chapitre). Un plafond
      de hauteur reste indispensable — sans lui, une image en portrait déborde la page et
      WeasyPrint lâche le `break-inside: avoid` de la figure, détachant la légende. C'est
@@ -53,9 +54,10 @@
 @page romain:right { @bottom-right { content: counter(page, lower-roman);
                        font: var(--folio-font); color: var(--c-ink2);
                        margin-bottom: var(--folio-fond); } }
-/* Ouverture de chapitre : pas de folio. Les deux boîtes s'annulent — voir le piège en
-   tête de fichier. */
-@page ouverture { @bottom-left { content: none } @bottom-right { content: none } }
+/* Ouverture de chapitre : le folio y figure aussi, comme sur toute page de texte — la
+   page d'ouverture n'a plus de règle ici, elle retombe simplement sur les boîtes de
+   :left/:right posées plus haut (§ folio en pied). Rien à annuler ni à redéclarer : un
+   nom de page sans règle à lui ne casse pas la cascade. */
 
 /* Une page blanche de passage au recto ne porte rien, folio compris. C'est l'usage, et
    c'est aussi ce qui la donne à lire pour ce qu'elle est : une page laissée vide exprès, et
@@ -165,3 +167,76 @@ th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
 @media screen {
   .szh-note { float: none; display: block; margin: 0.5em 0 0.5em 2em; }
 }
+
+/* ═══ 9. Encadré falc-header « écouter cette histoire » ═══════════════════════
+   Posé par filters/szh-livre-entete.lua, juste après le titre du chapitre (et après son
+   bloc auteurs s'il y en a un) : bloc `:::: falc-header … ::::` écrit dans le .md du
+   chapitre, où qu'il soit — voir l'en-tête du filtre pour la syntaxe complète. Renommé
+   depuis .szh-ecouter* (23.09.2026), la clé YAML `ecouter:` ayant disparu. Aplat pleine
+   largeur du bloc de texte, texte + QR à gauche, image carrée facultative à droite
+   (`data-image` dit si elle existe, pour que le texte seul prenne toute la largeur quand
+   elle n'y est pas).
+
+   Géométrie commune aux deux maquettes, ici et non dans falc.css : c'est la « maquette
+   normal » qui a besoin du repli neutre (le second terme de chaque var()) puisqu'elle ne
+   déclare pas --c-falc-resume-fond ; la charte FALC, qui le déclare déjà pour ses propres
+   encadrés (.falc-resume), habille donc celui-ci sans une ligne de CSS de plus — c'est le
+   même token, à dessein (le falc-header et l'InfoBox du résumé sont la même famille
+   visuelle dans les livres FALC publiés).
+
+   ⚠ Jamais coupé entre deux pages (`break-inside: avoid`) : couper le QR de son texte, ou
+     l'image du texte qui l'explique, rendrait l'encadré illisible d'une page à l'autre. */
+.szh-falc-header {
+  display: flex; align-items: flex-start; gap: 5mm;
+  background: var(--c-falc-resume-fond, #ececec);
+  padding: 5mm; margin: 0 0 10mm 0;
+  break-inside: avoid;
+}
+.szh-falc-header-texte { flex: 1 1 auto; min-width: 0; }
+.szh-falc-header-texte p { margin: 0 0 3mm 0; }
+/* Pas d'image : le texte prend toute la largeur, pas de colonne vide à droite. */
+.szh-falc-header[data-image="non"] { gap: 0; }
+/* Le QR sous le texte (classe partagée avec le bloc qr-link/le lien `.qr` du rédacteur,
+   partage-filtres.css : 25 mm par défaut, background-image en data URI — voir szh-qr.lua). */
+.szh-falc-header-qr { margin-top: 3mm; }
+.szh-falc-header-image {
+  flex: 0 0 auto; width: 45mm; height: 45mm;
+  object-fit: cover;
+  /* Pas de box-shadow : WeasyPrint 69 ne connaît pas la propriété (mesuré — ignorée avec
+     un avertissement, jamais appliquée). Le fond de l'encadré (padding compris) suffit à
+     détacher l'image du texte, sans dépendre d'une propriété qui n'existe pas ici. */
+}
+
+/* ═══ 10. Picto d'en-tête, coin extérieur de page ══════════════════════════════
+   Clé `picto-entete:` du <slug>.meta.yaml (une seule valeur aujourd'hui : `ecouter`) : un
+   picto de 10 mm au coin EXTÉRIEUR de la page — top-right en recto, top-left en verso —
+   sur CHAQUE page du chapitre qui le porte.
+
+   Même mécanique que .szh-onglet plus haut : un running element (CSS GCPM), un <div> vide
+   écrit par CHAQUE chapitre (templates/szh-livre-chapitre.html), qui REMPLACE celui du
+   chapitre précédent — sans quoi le picto d'un chapitre resterait affiché sur toutes les
+   pages des chapitres suivants. Voir le commentaire de .szh-onglet pour le détail du
+   procédé et son piège (`position: absolute` sur un pseudo-élément ne marche pas : la
+   boîte d'une <section> qui court sur plusieurs pages n'existe qu'une fois).
+
+   ⚠ Boîte de COIN (@top-*-corner) par défaut ici, jamais de côté (@*-top, réservée à
+     l'onglet) : les boîtes de marge de CSS Paged Media sont géométriquement DISJOINTES
+     les unes des autres et de la zone de contenu — @top-right-corner/@top-left-corner
+     couvrent le rectangle marge-haut × marge-ext au coin de la page, @right-top/@left-top
+     commencent seulement à marge-haut (la hauteur de la zone de contenu). Sans
+     chevauchement possible avec l'onglet tant que ce picto reste dans sa boîte de coin.
+     ⚠ En maquette FALC, la pastille ronde de numéro de chapitre (falc.css, § pastille)
+     occupe elle aussi ce coin, en running element : falc.css REDÉCLARE alors la même
+     règle `@top-right-corner`/`@top-left-corner` avec `content: element(pastille)`, et
+     déplace CE picto dans la boîte adjacente, `@top-right`/`@top-left` — la déclaration
+     par défaut ci-dessous reste donc celle de la maquette « normal », qui n'a pas de
+     pastille et garde le picto dans le vrai coin. */
+.szh-picto-entete {
+  position: running(picto-entete);
+  width: 10mm; height: 10mm;
+}
+.szh-picto-entete[data-picto="ecouter"] {
+  background: url("../../media/picto-ecouter.svg") no-repeat center / contain;
+}
+@page :right { @top-right-corner { content: element(picto-entete); padding: 3mm 3mm 0 0; } }
+@page :left  { @top-left-corner  { content: element(picto-entete); padding: 3mm 0 0 3mm; } }

@@ -432,6 +432,10 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.oui': 'Revenir au DOI calculé',
     'fiches.doi.forme': 'Forme attendue : {0}',
     'fiches.doi.double': 'Déjà porté par {0}',
+    // Case « hors sommaire », livre seulement (jamais pour un article) : voir
+    // construireCarte() dans media/_fiches.js et estLivre dans metadonnees-hote.js.
+    'fiches.sommaire': 'Ne pas afficher ce chapitre dans la table des matières',
+    'fiches.sommaire.aide': 'Le chapitre n’a alors ni numéro, ni pastille, ni marque de tranche ; les autres chapitres sont renumérotés.',
     'vue.ouvrir': 'Ouvrir',
     'vue.rien': 'Rien dans cette section pour l’instant.',
     'vue.confirmer': 'Appliquer',
@@ -714,6 +718,10 @@ const TEXTES_COCKPIT = {
     'fmt.coller.pastableau': 'Le presse-papiers ne contient pas de tableau : copiez d’abord des cellules dans Excel ou Word.',
     'fmt.coller.horsarticle': 'Ouvrez d’abord le texte d’un article : un tableau se colle dans un article, pas dans un autre document.',
     'fmt.coller.creee': 'Tableau « {0} » créé et référencé dans l’article.',
+    // Texte alternatif par défaut de l’image de l’en-tête FALC (szh.fmt.falcHeader) :
+    // dans la langue de l’INTERFACE, jamais celle du livre (texteFalcHeader la reçoit en
+    // argument plutôt que de la choisir elle-même).
+    'fmt.falcHeader.alt': 'Texte alternatif de l’image',
     'palette.placeholder': 'Mise en forme – choisir une action',
     'palette.horsmd': 'Ouvrez un article (.md) pour la mise en forme.',
     'palette.g.style': 'Style',
@@ -735,6 +743,12 @@ const TEXTES_COCKPIT = {
     'palette.tableau': 'Insérer un tableau',
     'palette.collerTableau': 'Coller un tableau depuis Excel/Word',
     'palette.sautPage': 'Insérer un saut de page (PDF seulement)',
+    // Groupe « Livre » (PALETTE_MEF_LIVRE, lib/formatting-pur.js) : deux styles-snippets
+    // réservés aux livres, jamais montrés pour une revue ni une Zeitschrift.
+    'palette.g.livre': 'Livre',
+    'palette.falcHeader': 'En-tête de chapitre (FALC)',
+    'palette.qrLink': 'Code QR',
+    'palette.qrLink.detail': 'D’autres options s’ajoutent à la main entre accolades : background=, color=, title=.',
     'panneau.commande.placeholder': 'Pronto – choisir une action',
     'panneau.edition.placeholder': 'Édition – choisir une action',
     'panneau.export.placeholder': 'Export – choisir une action',
@@ -1093,11 +1107,11 @@ const TEXTES_COCKPIT = {
     'ressource.retirer.tip': 'Retirer cette fiche du texte de l’article',
     // Libellé d'un accordéon dont la fiche n'a pas encore de titre : « 3 · (sans titre) ».
     'ressource.sansTitre': '(sans titre)',
-    'ressource.manque': 'Il manque encore : {0}.',
+    'ressource.manque': 'Il manque encore : {0}.',
     'ressource.option.vide': '–',
 
     // ---- Le formulaire de Documentation : les deux familles réunies ----
-    'doc.titre': 'Documentation – {0}',
+    'doc.titre': 'Documentation – {0}',
     'doc.titre.page': 'Actualité et ressources',
     'doc.sommaire': 'Sommaire',
     'doc.groupe.rubriques': 'Rubriques',
@@ -1109,14 +1123,14 @@ const TEXTES_COCKPIT = {
     'doc.rienAEcrire': 'Rien à enregistrer pour l’instant.',
     'doc.retour.tip': 'Enregistrer d’abord, puis refermer',
     'doc.statut.enregistres': '{0} bloc(s) enregistré(s).',
-    'doc.quitter.page': 'Quitter la Documentation du numéro ?',
-    'doc.quitter.question': 'Quitter les ressources de « {0} » ?',
+    'doc.quitter.page': 'Quitter la Documentation du numéro ?',
+    'doc.quitter.question': 'Quitter les ressources de « {0} » ?',
     'doc.creee': '✓ Page de Documentation créée',
     // Les lignes répétables du suivi d'une intervention (champ `structure`).
     'doc.suivi.ajouter': 'Ajouter une ligne',
     'doc.suivi.ajouter.tip': 'Ajouter une ligne de suivi',
     'doc.suivi.retirer.tip': 'Retirer cette ligne de suivi',
-    'rubrique.vider.tip': 'Vider ce bloc : la rubrique ne s’imprimera plus',
+    'rubrique.vider.tip': 'Vider ce bloc : la rubrique ne s’imprimera plus',
     'ressource.detacher.tip': 'Retirer cette fiche de l’article et la mettre en réserve',
     'ressource.envoyer.tip': 'Envoyer une copie de cette fiche à traduire vers {0}',
     'ressource.detache': '✓ Fiche mise en réserve',
@@ -1976,6 +1990,9 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.oui': 'Zum berechneten DOI zurück',
     'fiches.doi.forme': 'Erwartete Form: {0}',
     'fiches.doi.double': 'Bereits vergeben an {0}',
+    // Kontrollkästchen «hors sommaire», nur für Bücher (nie für Artikel).
+    'fiches.sommaire': 'Dieses Kapitel nicht im Inhaltsverzeichnis anzeigen',
+    'fiches.sommaire.aide': 'Das Kapitel hat dann weder Nummer noch Kapitelsymbol noch Registermarke; die übrigen Kapitel werden neu nummeriert.',
     'vue.ouvrir': 'Öffnen',
     'vue.rien': 'In diesem Bereich ist derzeit nichts.',
     'vue.confirmer': 'Anwenden',
@@ -2228,6 +2245,10 @@ const TEXTES_COCKPIT = {
     'fmt.coller.pastableau': 'In der Zwischenablage ist keine Tabelle: kopieren Sie zuerst Zellen in Excel oder Word.',
     'fmt.coller.horsarticle': 'Öffnen Sie zuerst den Text eines Artikels: eine Tabelle wird in einen Artikel eingefügt, nicht in ein anderes Dokument.',
     'fmt.coller.creee': 'Tabelle «{0}» erstellt und im Artikel referenziert.',
+    // Alternativtext des Bildes im FALC-Kapitelkopf (szh.fmt.falcHeader): in der Sprache
+    // der OBERFLÄCHE, nie jener des Buchs (texteFalcHeader erhält ihn als Argument, statt
+    // ihn selbst zu wählen).
+    'fmt.falcHeader.alt': 'Alternativtext des Bildes',
     'palette.placeholder': 'Formatierung – Aktion wählen',
     'palette.horsmd': 'Öffnen Sie einen Artikel (.md) für die Formatierung.',
     'palette.g.style': 'Stil',
@@ -2249,6 +2270,12 @@ const TEXTES_COCKPIT = {
     'palette.tableau': 'Tabelle einfügen',
     'palette.collerTableau': 'Tabelle aus Excel/Word einfügen',
     'palette.sautPage': 'Seitenumbruch einfügen (nur PDF)',
+    // Gruppe «Buch» (PALETTE_MEF_LIVRE, lib/formatting-pur.js): zwei Snippet-Stile nur
+    // für Bücher, nie sichtbar für eine Zeitschrift oder Revue.
+    'palette.g.livre': 'Buch',
+    'palette.falcHeader': 'Kapitelkopf (FALC)',
+    'palette.qrLink': 'QR-Code',
+    'palette.qrLink.detail': 'Weitere Optionen lassen sich von Hand in die geschweiften Klammern setzen: background=, color=, title=.',
     'panneau.commande.placeholder': 'Pronto – Aktion wählen',
     'panneau.edition.placeholder': 'Bearbeitung – Aktion wählen',
     'panneau.export.placeholder': 'Export – Aktion wählen',

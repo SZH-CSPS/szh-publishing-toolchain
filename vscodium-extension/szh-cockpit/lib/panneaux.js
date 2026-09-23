@@ -8,7 +8,7 @@
 
 const vscode = require('vscode');
 const { T } = require('./i18n');
-const { PALETTE_MEF } = require('./formatting-pur');
+const { PALETTE_MEF, PALETTE_MEF_LIVRE } = require('./formatting-pur');
 // Un QuickPick se ferme dès que le focus bouge : la garde retient, tant qu'un panneau est
 // ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin de compilation).
 const { sousGarde } = require('./interaction');
@@ -30,6 +30,9 @@ function itemsDepuisEntrees(entrees) {
     : {
         label: (e[3] ? e[3] + ' ' : '') + T(e[0]),
         description: e[2] ? '[' + e[2] + ']' : undefined,
+        // Second niveau du QuickPickItem, facultatif (5e élément de l'entrée) : les options
+        // d'un style qui n'en pose qu'une partie dans le snippet (palette.qrLink.detail).
+        detail: e[4] ? T(e[4]) : undefined,
         commande: e[1]
       }));
 }
@@ -70,7 +73,11 @@ async function ouvrirPanneauEdition() {
     ['panneau.mediasArticle', 'szh.mediasArticle', '', '$(file-media)'],
     ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
-  ]).concat(PALETTE_MEF);
+  ]).concat(PALETTE_MEF)
+    // Groupe « Livre » (falc-header, qr-link) : jamais montré pour une revue ni une
+    // Zeitschrift — mêmes deux commandes que celles ajoutées au clic droit
+    // (ouvrirMiseEnForme, lib/formatting.js).
+    .concat(hote.profil() === 'livre' ? PALETTE_MEF_LIVRE : []);
   const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(pourProfil(entrees)), {
     placeHolder: T('panneau.edition.placeholder')
   }));

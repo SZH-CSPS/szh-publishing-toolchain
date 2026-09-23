@@ -1,7 +1,14 @@
-# Fiche du chapitre. Elle ne sert aujourd'hui qu'en OUVRAGE COLLECTIF (`type: collectif`
-# dans buch.yaml), pour porter les auteur·e·s propres à ce chapitre — une monographie n'a
-# pas besoin de ce fichier, ses auteur·e·s sont dans buch.yaml. Le TITRE qui s'imprime reste
-# celui du titre de niveau 1 (`#`) du fichier .md ; celui-ci n'a qu'à lui correspondre.
+# Fiche du chapitre. En OUVRAGE COLLECTIF (`ouvrage: collectif` dans buch.yaml), elle porte
+# les auteur·e·s propres à ce chapitre — une monographie n'a pas besoin de ce bloc `author:`,
+# ses auteur·e·s sont dans buch.yaml. Le TITRE qui s'imprime reste celui du titre de niveau 1
+# (`#`) du fichier .md ; celui-ci n'a qu'à lui correspondre.
+#
+# Deux autres clés, valables même en monographie (voir docs/ARCHITECTURE-LIVRES.md) :
+#   picto-entete: ecouter         # picto en en-tête de CHAQUE page du chapitre
+#   sommaire: non                 # retire le chapitre de la table des matières (défaut : présent)
+# L'encadré « écouter » ne se règle plus ici : c'est un bloc `:::: falc-header ... ::::`
+# écrit directement dans le .md du chapitre (voir 01-exemple.md et
+# docs/ARCHITECTURE-LIVRES.md, § falc-header) — filtre szh-livre-entete.lua.
 lang: fr
 title:
   fr: "Chapitre d'exemple"

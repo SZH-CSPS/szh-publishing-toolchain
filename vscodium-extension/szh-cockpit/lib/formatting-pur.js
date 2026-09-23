@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { finaliserModele, PRESETS_TABLE } = require('./table-model');
 const { RE_DIV_OUVERTURE, RE_DIV_FERMETURE, fermetureDeDiv } = require('./references');
+const { analyserAusgabe } = require('./yaml');
 
 // ---- Mise en forme au clic droit et aux raccourcis ----
 
@@ -330,8 +331,75 @@ function noteBasPage(lignes, sel) {
   };
 }
 
+// ---- Styles « Livre » : en-tête de chapitre FALC, code QR (docs/ARCHITECTURE-LIVRES.md) ----
+//
+// Deux snippets réservés au profil livre (jamais une revue ni une Zeitschrift) : un
+// encadré « cette histoire existe aussi en audio » et un QR cliquable réutilisable. Posés
+// en vscode.SnippetString (tabulations sur les champs) par fmtFalcHeader/fmtQrLink,
+// lib/formatting.js — ce qui suit ne fabrique que leur texte, sans toucher à l'éditeur.
+
+// Texte par défaut de l'en-tête FALC, dans la langue du LIVRE (buch.yaml `lang`), jamais
+// celle de l'interface. it/en par analogie avec fr/de : aucun livre it/en composé à ce
+// jour, mais le formulaire buch.yaml (media/_numero.js, CHAMPS_LIVRE) accepte déjà les
+// quatre langues.
+const FALC_HEADER_TEXTES = {
+  fr: { audio: 'Cette histoire existe aussi en audio.', scan: 'Scannez le code QR.' },
+  de: { audio: 'Diese Geschichte gibt es auch zum Hören.', scan: 'Scannen Sie den QR-Code.' },
+  it: { audio: 'Questa storia esiste anche in versione audio.', scan: 'Scansiona il codice QR.' },
+  en: { audio: 'This story is also available as audio.', scan: 'Scan the QR code.' }
+};
+
+// La langue du LIVRE — pas celle de l'interface, ni yaml.langueRevue() qui la borne à
+// fr/de/it (LANGUES_META) : buch.yaml accepte aussi 'en', et l'en-tête FALC doit pouvoir
+// s'y écrire. Lecture directe, brute, avec repli sur 'fr' — un buch.yaml illisible ou une
+// langue hors table ne doivent jamais faire échouer l'insertion du snippet.
+function langueLivre(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(String(racine || ''), 'buch.yaml'), 'utf8')); }
+  catch (e) { /* illisible ou absent : repli fr */ }
+  const brut = String(valeurs.lang || '').toLowerCase().slice(0, 2);
+  return FALC_HEADER_TEXTES[brut] ? brut : 'fr';
+}
+
+// Le corps (SnippetString.value) de l'en-tête FALC : deux lignes de texte modifiables
+// (${1}/${2}, par défaut celui de la langue du livre), une image avec son texte alternatif
+// (${3}/${4}, alt par défaut dans la langue de l'INTERFACE — altDefaut, fourni par
+// l'appelant), un bloc qr-link (${5}). Pur : aucune ligne vide autour, c'est l'appelant qui
+// les ajoute selon ce qui entoure le point d'insertion (comme blocSautPage ci-dessus).
+function texteFalcHeader(langue, altDefaut) {
+  const t = FALC_HEADER_TEXTES[langue] || FALC_HEADER_TEXTES.fr;
+  return [
+    ':::: falc-header',
+    '${1:' + t.audio + '}',
+    '${2:' + t.scan + '}',
+    '',
+    '![${3:' + String(altDefaut || '') + '}](${4:media/image.jpg})',
+    '',
+    '::: qr-link',
+    '${5:https://}',
+    ':::',
+    '::::'
+  ].join('\n');
+}
+
+// Le corps du QR cliquable seul : tracked/size explicites (les deux réglages qu'on retouche
+// le plus souvent), les autres options (background, color, title — voir
+// docs/ARCHITECTURE-LIVRES.md) s'ajoutent à la main, dites par palette.qrLink.detail.
+const TEXTE_QR_LINK = '::: {.qr-link tracked=true size=25mm}\n${1:https://}\n:::';
+
+// Groupe « Livre » du panneau d'édition et du clic droit (PALETTE_MEF ci-dessous) : les
+// appelants (lib/panneaux.js, lib/formatting.js) ne le concatènent que pour le profil
+// livre — jamais filtré ici, ce module ignore tout profil.
+const PALETTE_MEF_LIVRE = [
+  ['--', 'palette.g.livre'],
+  ['palette.falcHeader', 'szh.fmt.falcHeader', '', ''],
+  ['palette.qrLink', 'szh.fmt.qrLink', '', '', 'palette.qrLink.detail']
+];
+
 // Palette du menu contextuel, bâtie sur les commandes szh.fmt.*. Format d'une entrée :
-// ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
+// ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône,
+// cléDétail?] — cléDétail (facultative) nomme un texte T() affiché en second niveau du
+// QuickPickItem (voir itemsDepuisEntrees, lib/panneaux.js et ouvrirMiseEnForme).
 const PALETTE_MEF = [
   ['--', 'palette.g.style'],
   ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
@@ -358,5 +426,6 @@ module.exports = {
   estEnrobe, basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF
+  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF,
+  FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
 };

@@ -502,7 +502,10 @@ function textesCarteArticle() {
     doiForme: T('fiches.doi.forme'), doiDouble: T('fiches.doi.double'),
     // Vérificateur de traduction : l'infobulle de la pastille posée à côté de chaque
     // intitulé traduisible. Le mode lui-même arrive dans le message « valeurs ».
-    suggPastille: T('sugg.pastille')
+    suggPastille: T('sugg.pastille'),
+    // Case « hors sommaire » : livre seulement (msg.estLivre décide côté webview), jamais
+    // construite pour un article. Voir construireCarte() dans media/_fiches.js.
+    sommaireCase: T('fiches.sommaire'), sommaireAide: T('fiches.sommaire.aide')
   }, textesAuteur());
 }
 
@@ -577,6 +580,17 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
         const ancien = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'));
         carte._inconnues = ancien._inconnues;
         if (carte.source === '') { carte.source = ancien.source; }
+        // Le formulaire d'un chapitre ne construit ni type, ni licence, ni DOI, ni
+        // mots-clés (point 3) : la webview les renvoie donc toujours vides, comme une
+        // fiche neuve. Sans ceci, la moindre sauvegarde EFFACERAIT une valeur héritée —
+        // une fiche migrée depuis un article, ou posée à la main — au lieu de ne pas y
+        // toucher. Même garde que carte.source ci-dessus, sur les quatre champs cachés.
+        if (profilCourant().cle === 'livre') {
+          if (carte.type === '') { carte.type = ancien.type; }
+          if (carte.licence === '') { carte.licence = ancien.licence; }
+          if (carte.doi === '') { carte.doi = ancien.doi; }
+          if (Object.keys(carte.keywords).length === 0) { carte.keywords = ancien.keywords; }
+        }
         langAvant = ancien.lang || langueNumero;
       } catch (e) { /* pas de fiche existante */ }
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
@@ -665,6 +679,9 @@ function anneeNumero(racine, valeurs) {
 // et rang parmi les porteurs. Rendu slug -> DOI, '' quand il est incalculable ou que
 // l'article n'en reçoit pas.
 function doisCalculesArticles(fournisseur) {
+  // Un chapitre de livre n'a pas de DOI (pas d'OJS, pas de numéro de revue à y rattacher) :
+  // le calcul lui-même n'a pas de sens, pas seulement son affichage.
+  if (profilCourant().cle === 'livre') { return {}; }
   const racine = fournisseur.racine;
   const slugs = fournisseur.listerArticles();
   let valeurs = {};
@@ -686,6 +703,9 @@ const NOM_DOIS_CALCULES = 'dois-calcules.yaml';
 function ecrireDoisCalcules(fournisseur) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
+  // Un livre n'a pas de DOI : rien à dériver, et surtout pas dois-calcules.yaml à côté de
+  // buch.yaml — szh-maquette.lua (pipeline) ne le lit que pour le bandeau DOI d'une revue.
+  if (profilCourant().cle === 'livre') { return; }
   if (etatRevue(racine).archivee) { return; }
   const dois = doisCalculesArticles(fournisseur);
   const lignes = [
@@ -736,12 +756,15 @@ function nettoyerCarte(brut) {
   // passer une valeur qui a l'air juste et ne l'est pas — la forme attendue est ancrée
   // (^...$) et un espace de trop la rend fausse.
   const doiPropre = (v) => String(v === undefined || v === null ? '' : v).trim().replace(/[\r\n]+/g, ' ').slice(0, 200);
-  const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+  const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), horsSommaire: false, title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
   const type = texteCourt(brut && brut.type, 40);
   if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
   carte.lang = normaliserLangueArticle(brut && brut.lang);
   carte.source = texteCourt(brut && brut.source, 300);
   carte.licence = normaliserLicence(brut && brut.licence);
+  // Case « hors sommaire » : livre seulement, même hors panne d'affichage côté webview —
+  // un article n'écrit jamais cette clé, quoi que la carte porte.
+  if (profilCourant().cle === 'livre') { carte.horsSommaire = (brut && brut.horsSommaire) === true; }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = (brut && brut[cle]) || {};
     const max = cle === 'resume' ? 2000 : 500;
@@ -1143,6 +1166,9 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
       articles: lireMetadonneesArticles(fournisseur, filtreArticles),
       filtre: filtreArticles,
       langue: langue,
+      // Décide, côté webview, de construire ou non la case « hors sommaire » — jamais pour
+      // un article de revue/Zeitschrift (voir construireCarte(), media/_fiches.js).
+      estLivre: profilCourant().cle === 'livre',
       accent: ctx.lireCouleurAccent(fournisseur.racine),
       types: typesTraduits(langue),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,

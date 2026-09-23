@@ -28,21 +28,19 @@
 }
 
 /* ═══ L'onglet de tranche FALC dans le fond perdu ═════════════════════════════
-   livre/falc.css pose déjà l'onglet flush au bord rogné (var(--marge-ext), la largeur
-   exacte de la marge extérieure) — vérifié sur banc dans le PDF numérique, sans fond
-   perdu, sur les trois pages qui comptent (ouverture, page courante, autre chapitre).
-
-   Une fois `bleed` déclaré ici, une asymétrie de WeasyPrint 69 apparaît, mesurée sur
-   banc (rendu PNG page par page, pymupdf) :
-     * la boîte @right-top touche déjà le bord du fond perdu sans rien ajouter — le
-       décalage global qu'introduit `bleed` avantage ce côté par construction (son bord
-       nominal coïncide avec le bord rogné, et le décalage global l'amène pile au bord du
-       fond perdu) ;
-     * la boîte @left-top, elle, reste flush au bord rogné, pas au fond perdu : il lui
-       manque exactement deux fois le fond perdu, et sans ce correctif une page de gauche
-       laisse un liséré blanc de 3 mm avant le bord — vu au premier rendu.
-   D'où cette seule ligne, qui ne touche que le côté qui en a besoin. */
-@page :left { @left-top { margin-left: calc(-2 * var(--fond-perdu)); } }
+   `bleed` ne décale pas les boîtes de marge : elles restent calées sur le bord rogné, et
+   la pastille comme l'onglet tombent déjà juste. Il ne reste qu'à prolonger l'onglet du
+   fond perdu côté extérieur. Une seule règle pour les deux côtés : dans @left-top (ltr),
+   seule la marge gauche compte ; dans @right-top (direction: rtl, falc.css), seule la
+   droite — l'autre est recalculée, la boîte étant surcontrainte.
+   ⚠ Mesurer contre le TrimBox en coordonnées PDF brutes : pymupdf rend les tracés depuis
+   le coin du MediaBox, soit 3 mm de décalage qui ont déjà fait « corriger » ce qui était
+   bon. */
+.szh-onglet {
+  width: calc(var(--onglet-largeur) + var(--fond-perdu));
+  margin-left: calc(-1 * var(--fond-perdu));
+  margin-right: calc(-1 * var(--fond-perdu));
+}
 
 /* ═══ Liens hypertexte : décision ═════════════════════════════════════════════
    Un lien vivant n'a aucun sens sur du papier : personne ne clique une page imprimée.
@@ -53,3 +51,10 @@
    annoncent « ceci est cliquable » — pour qu'un renvoi interne ou une URL s'imprime
    comme le reste du texte de labeur, ainsi qu'il se lit dans un livre relié. */
 a, a:link, a:visited { color: inherit; text-decoration: none; }
+
+/* Le repère du sommaire déborde comme la marque de chapitre : même largeur visible, plus le
+   fond perdu. Le sommaire tombe toujours sur un recto (base.css), le repère est à droite. */
+.szh-sommaire li::after {
+  width: calc(var(--onglet-largeur) + var(--fond-perdu));
+  right: calc(-1 * (var(--marge-ext) + var(--fond-perdu)));
+}
