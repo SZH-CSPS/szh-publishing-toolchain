@@ -1,5 +1,5 @@
 // Éprouve kirby/generer-blueprints.js : les blueprints committés dans
-// kirby/site/blueprints/pages/ égalent la génération depuis le contrat unique
+// kirby/site/blueprints/{pages,files}/ égalent la génération depuis le contrat unique
 // pipeline/kirby/champs-documentation.json, et trois garanties structurelles tenues par le
 // générateur (chaque liste a ses deux langues, aucun nom de champ hors a-z0-9_, aucun champ
 // nommé `image` — méthode réservée de Kirby, voir TODO_KirbyCMS.md §10).
@@ -24,7 +24,7 @@ test('blueprints committés : identiques octet pour octet à la génération', (
   const noms = Object.keys(attendus);
   assert.ok(noms.length > 0, 'aucun blueprint généré');
   for (const nom of noms) {
-    const chemin = path.join(gen.DOSSIER_PAGES, nom);
+    const chemin = path.join(gen.DOSSIER_BLUEPRINTS, nom);
     assert.ok(fs.existsSync(chemin), 'blueprint absent du dépôt : ' + nom
       + ' (lancer node kirby/generer-blueprints.js)');
     const surDisque = fs.readFileSync(chemin, 'utf8');
@@ -33,9 +33,18 @@ test('blueprints committés : identiques octet pour octet à la génération', (
   }
 });
 
-test('blueprints committés : aucun fichier en trop dans le dossier', () => {
+// Les deux sous-dossiers connus (pages/, files/) — pas de troisième famille de blueprint
+// aujourd'hui, mais on ne va pas chercher plus loin que ce que construireTous() peut produire.
+function fichiersYamlSurDisque(sousDossier) {
+  const dossier = path.join(gen.DOSSIER_BLUEPRINTS, sousDossier);
+  if (!fs.existsSync(dossier)) return [];
+  return fs.readdirSync(dossier).filter((f) => f.endsWith('.yml')).map((f) => sousDossier + '/' + f);
+}
+
+test('blueprints committés : aucun fichier en trop dans pages/ ou files/', () => {
   const attendus = new Set(Object.keys(gen.genererContenus(contrat)));
-  const surDisque = fs.readdirSync(gen.DOSSIER_PAGES).filter((f) => f.endsWith('.yml'));
+  const surDisque = [...fichiersYamlSurDisque('pages'), ...fichiersYamlSurDisque('files')];
+  assert.ok(surDisque.length > 0, 'aucun .yml trouvé sur le disque');
   for (const f of surDisque) {
     assert.ok(attendus.has(f), f + ' n’a plus de source dans le JSON — à retirer');
   }
@@ -80,6 +89,29 @@ test('blueprints générés : les options select ont toutes fr et de', () => {
     }
   };
   for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
+});
+
+// ---- Champs `files` : uploads pointe vers un gabarit de fichier réellement généré,
+// décoratif (pas de champ `alt`) -----------------------------------------------------------
+
+test('champs files : `uploads` a son gabarit files/<cle>.yml, sans champ alt (décoratif)', () => {
+  const docs = gen.construireTous(contrat);
+  let vus = 0;
+  const walker = (fields) => {
+    for (const config of Object.values(fields)) {
+      if (config.type === 'files') {
+        vus++;
+        assert.ok(config.uploads, 'champ files sans `uploads`');
+        const cheminGabarit = 'files/' + config.uploads + '.yml';
+        assert.ok(docs[cheminGabarit], 'gabarit ' + cheminGabarit + ' non généré pour uploads: ' + config.uploads);
+        assert.ok(!('accept' in config), 'accept ne doit plus vivre sur le champ files lui-même : ' + JSON.stringify(config));
+        assert.ok(!docs[cheminGabarit].fields, cheminGabarit + ' ne doit pas avoir de champ (donc pas de `alt`) : image décorative');
+      }
+      if (config.type === 'structure') { walker(config.fields); }
+    }
+  };
+  for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
+  assert.ok(vus > 0, 'aucun champ files trouvé dans les blueprints générés');
 });
 
 // ---- Aucun nom de champ hors [a-z0-9_], aucun champ nommé `image` -----------------------

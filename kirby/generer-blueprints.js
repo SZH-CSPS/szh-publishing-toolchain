@@ -1,5 +1,5 @@
-// Génère les blueprints Kirby (kirby/site/blueprints/pages/*.yml) depuis le contrat unique
-// pipeline/kirby/champs-documentation.json. Zéro dépendance. Voir kirby/LISEZMOI.md.
+// Génère les blueprints Kirby (kirby/site/blueprints/{pages,files}/*.yml) depuis le contrat
+// unique pipeline/kirby/champs-documentation.json. Zéro dépendance. Voir kirby/LISEZMOI.md.
 //
 //   node kirby/generer-blueprints.js             régénère et écrit les fichiers
 //   node kirby/generer-blueprints.js --verifier   n'écrit rien ; code 1 si un fichier committé
@@ -11,7 +11,11 @@ const path = require('path');
 
 const RACINE = path.resolve(__dirname, '..');
 const CHEMIN_CONTRAT = path.join(RACINE, 'pipeline', 'kirby', 'champs-documentation.json');
-const DOSSIER_PAGES = path.join(__dirname, 'site', 'blueprints', 'pages');
+// Racine des deux familles de blueprint : kirby/site/blueprints/pages/ (une page par type de
+// fiche + documentation.yml) et kirby/site/blueprints/files/ (un gabarit de fichier par champ
+// `fichier`, référencé depuis un champ `files` via `uploads:`). Les clés de construireTous()
+// portent le sous-dossier ('pages/…', 'files/…').
+const DOSSIER_BLUEPRINTS = path.join(__dirname, 'site', 'blueprints');
 
 const ENTETE =
   '# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json' +
@@ -164,16 +168,16 @@ function champVersYaml(contrat, champ) {
       // le fichier par son nom relatif au dossier de la fiche (docs/FORMAT-DOCUMENTATION-
       // KIRBY.md, saisie `fichier`), pas par un UUID Kirby.
       c.store = 'id';
-      // INCERTITUDE (vérifiée, pas juste supposée) : la liste complète des options du champ
-      // `files` (getkirby.com/docs/reference/panel/fields/files, 23.09.2026 — default,
-      // disabled, empty, help, image, info, label, layout, link, max, min, multiple, query,
-      // required, search, size, store, text, translate, uploads, when, width) ne contient
-      // PAS `accept`. La restriction par extension documentée passe par un gabarit de
-      // fichier séparé référencé via `uploads:`, dont le `accept:` vit dans
-      // kirby/site/blueprints/files/. On écrit quand même `accept` ci-dessous, comme demandé
-      // pour la tâche : à vérifier sur l'instance réelle (TODO_KirbyCMS.md §6), et à
-      // remplacer par un `uploads:` + gabarit de fichier si le Panel l'ignore.
-      c.accept = { extension: champ.extensions.slice() };
+      // Le champ `files` n'a pas d'option `accept` (liste complète vérifiée sur
+      // getkirby.com/docs/reference/panel/fields/files, 23.09.2026 : default, disabled,
+      // empty, help, image, info, label, layout, link, max, min, multiple, query, required,
+      // search, size, store, text, translate, uploads, when, width — `accept` n'y est pas).
+      // La restriction par extension passe par un gabarit de fichier séparé, référencé ici
+      // via `uploads:` (confirmé dans cette même liste) ; le gabarit lui-même — avec son
+      // `accept: extension: […]`, syntaxe vérifiée sur
+      // getkirby.com/docs/reference/panel/blueprints/file — est construit par
+      // blueprintFichier() plus bas et écrit dans kirby/site/blueprints/files/.
+      c.uploads = champ.cle;
       break;
     default:
       throw new Error('saisie inconnue dans le JSON : ' + champ.saisie);
@@ -256,16 +260,57 @@ function blueprintDocumentation(contrat) {
   return doc;
 }
 
+// ---- Gabarits de fichier (champs `fichier`) -----------------------------------------------
+//
+// Un gabarit par CLÉ de champ (pas par type) : `couverture` est la même clé pour `livre` et
+// `film`, donc le même gabarit de fichier — pas de doublon. Si deux types utilisaient un jour
+// la même clé avec des extensions différentes, ce serait une incohérence du contrat JSON
+// lui-même : on la fait échouer bruyamment plutôt que de choisir un des deux en silence.
+function collecterChampsFichier(champs, acc) {
+  for (const champ of champs) {
+    if (champ.saisie === 'fichier') {
+      const extensions = champ.extensions.slice();
+      const existant = acc.get(champ.cle);
+      if (existant && JSON.stringify(existant) !== JSON.stringify(extensions)) {
+        throw new Error('extensions incohérentes pour le champ fichier "' + champ.cle +
+          '" selon le type : ' + JSON.stringify(existant) + ' vs ' + JSON.stringify(extensions));
+      }
+      acc.set(champ.cle, extensions);
+    } else if (champ.saisie === 'structure') {
+      collecterChampsFichier(champ.champs, acc);
+    }
+  }
+}
+
+function collecterFichiers(contrat) {
+  const acc = new Map();
+  for (const type of Object.values(contrat.types)) {
+    collecterChampsFichier(type.champs, acc);
+  }
+  return acc;
+}
+
+// Décorative (TODO_KirbyCMS.md §10 : couverture d'un livre, affiche d'un film — l'image
+// double le titre, déjà lu par un lecteur d'écran ; parti du PDF, PDF/UA). Donc pas de champ
+// `alt` ici : rien à saisir, le site doit rendre `alt=""` de lui-même.
+function blueprintFichier(extensions) {
+  return { accept: { extension: extensions } };
+}
+
 // ---- Assemblage de tous les fichiers cibles ----------------------------------------------
 
-// Retourne { 'horizon.yml': arbre, …, 'documentation.yml': arbre } — un arbre par fichier,
-// avant sérialisation (utilisé tel quel par le test pour parcourir les noms de champs).
+// Retourne { 'pages/horizon.yml': arbre, …, 'pages/documentation.yml': arbre,
+// 'files/couverture.yml': arbre, … } — un arbre par fichier, avant sérialisation (utilisé tel
+// quel par le test pour parcourir les noms de champs).
 function construireTous(contrat) {
   const docs = {};
   for (const cleType of Object.keys(contrat.types)) {
-    docs[cleType + '.yml'] = blueprintType(contrat, cleType);
+    docs['pages/' + cleType + '.yml'] = blueprintType(contrat, cleType);
   }
-  docs['documentation.yml'] = blueprintDocumentation(contrat);
+  docs['pages/documentation.yml'] = blueprintDocumentation(contrat);
+  for (const [cle, extensions] of collecterFichiers(contrat)) {
+    docs['files/' + cle + '.yml'] = blueprintFichier(extensions);
+  }
   return docs;
 }
 
@@ -286,21 +331,22 @@ function main() {
   const contenus = genererContenus(contrat);
 
   if (!verifier) {
-    fs.mkdirSync(DOSSIER_PAGES, { recursive: true });
-    for (const [nomFichier, contenu] of Object.entries(contenus)) {
-      fs.writeFileSync(path.join(DOSSIER_PAGES, nomFichier), contenu, 'utf8');
+    for (const [nomRelatif, contenu] of Object.entries(contenus)) {
+      const chemin = path.join(DOSSIER_BLUEPRINTS, nomRelatif);
+      fs.mkdirSync(path.dirname(chemin), { recursive: true });
+      fs.writeFileSync(chemin, contenu, 'utf8');
     }
     console.log(Object.keys(contenus).length + ' blueprint(s) écrit(s) dans ' +
-      path.relative(RACINE, DOSSIER_PAGES));
+      path.relative(RACINE, DOSSIER_BLUEPRINTS));
     return;
   }
 
   const divergents = [];
-  for (const [nomFichier, attendu] of Object.entries(contenus)) {
-    const chemin = path.join(DOSSIER_PAGES, nomFichier);
+  for (const [nomRelatif, attendu] of Object.entries(contenus)) {
+    const chemin = path.join(DOSSIER_BLUEPRINTS, nomRelatif);
     let surDisque = null;
     try { surDisque = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent */ }
-    if (surDisque !== attendu) divergents.push(nomFichier);
+    if (surDisque !== attendu) divergents.push(nomRelatif);
   }
   if (divergents.length) {
     console.error('Blueprints à régénérer (node kirby/generer-blueprints.js) : ' +
@@ -315,7 +361,7 @@ if (require.main === module) main();
 
 module.exports = {
   CHEMIN_CONTRAT,
-  DOSSIER_PAGES,
+  DOSSIER_BLUEPRINTS,
   chargerContrat,
   construireTous,
   genererContenus,

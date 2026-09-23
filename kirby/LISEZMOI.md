@@ -13,6 +13,11 @@ doit encore reprendre — les deux font foi, pas ce fichier.
   recherche, intervention, livre, film, reprise, agenda).
 - `site/blueprints/pages/documentation.yml` — la page Documentation elle-même : les rubriques
   en champs, une section `pages` par type de fiche.
+- `site/blueprints/files/<cle>.yml` — un gabarit de fichier par CLÉ de champ `fichier` du JSON
+  (aujourd'hui : `couverture`, partagé par `livre` et `film`). Porte le `accept: extension:
+  […]` ; le champ `files` correspondant le référence via `uploads: <cle>`. Pas de champ
+  `alt` : l'image est décorative (couverture, affiche — TODO_KirbyCMS.md §10), le site doit
+  rendre `alt=""` de lui-même.
 
 **Ces `.yml` sont générés : ne jamais les éditer à la main.** Toute retouche se fait dans
 `pipeline/kirby/champs-documentation.json`, puis on régénère. Une modification manuelle serait
@@ -48,7 +53,10 @@ getkirby.com consultées le 23.09.2026 ; résumé :
   racine du blueprint) est redéclaré dans `fields.title.label` sans `type:`. C'est la
   pratique Kirby usuelle pour ce champ précis, mais pas trouvée noir sur blanc dans la doc
   récupérée — à confirmer.
-- Le champ `files` n'a pas d'option `accept` documentée (vérifié) ; la restriction par
-  extension qu'on lui écrit quand même risque d'être ignorée par le Panel. La voie confirmée
-  passe par un gabarit de fichier séparé référencé via `uploads:` — pas fait ici, à trancher
-  avec `TODO_KirbyCMS.md` §6.
+- Le champ `files` n'a pas d'option `accept` documentée (vérifié via la liste complète de ses
+  options) : la restriction par extension passe par un gabarit de fichier séparé, référencé
+  via `uploads: <cle>` — c'est ce que fait ce générateur (`site/blueprints/files/<cle>.yml`).
+  Syntaxe de `accept.extension` sur un gabarit de fichier également vérifiée sur
+  getkirby.com. Reste à confirmer sur une vraie instance (`TODO_KirbyCMS.md` §6) : la
+  version de Kirby retenue applique bien cette restriction au moment de l'upload dans le
+  Panel.

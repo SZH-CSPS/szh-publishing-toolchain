@@ -1,0 +1,9 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+accept:
+  extension:
+    - "png"
+    - "jpg"
+    - "jpeg"
+    - "gif"
+    - "svg"

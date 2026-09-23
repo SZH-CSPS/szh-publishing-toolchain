@@ -63,13 +63,7 @@ fields:
     type: "files"
     max: 1
     store: "id"
-    accept:
-      extension:
-        - "png"
-        - "jpg"
-        - "jpeg"
-        - "gif"
-        - "svg"
+    uploads: "couverture"
     label:
       fr: "Affiche"
       de: "Filmplakat"
