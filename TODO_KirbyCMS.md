@@ -23,6 +23,18 @@ aucune rétrocompatibilité avec l'ancien format des blocs `:::`.
 
 ## 1. Page sans fichier de la langue par défaut
 
+**Mesuré le 23.09.2026** sur Kirby 5.6.0 (dépôt local `szh-kirby-demo-news`, fr par défaut) :
+- fiche en `.de.txt` seulement : s'affiche normalement sous `/de/…` et dans son numéro
+  allemand ; sous `/fr/…` la page répond 200 avec des champs vides (aucun repli) ;
+- fiche en `.fr.txt` seulement : sous `/de/…` Kirby affiche le texte FRANÇAIS tel quel,
+  sans avertissement (repli sur la langue par défaut). Elle n'entre pas dans un numéro
+  allemand (son `Ausgabe` de repli est l'id d'un numéro de la Revue), mais une page
+  bibliothèque qui liste toutes les fiches la montrerait en français sous `/de/` ;
+- `$page->translation('fr')->exists()` répond vrai même sans fichier : tester la présence
+  du fichier sur le disque.
+Il reste à décider si les pages de la bibliothèque doivent masquer une fiche sans fichier
+dans la langue affichée (recommandé).
+
 **Attendu.** Vérifier sur une vraie instance Kirby qu'une fiche de la Zeitschrift, qui
 n'existe qu'en `livre.de.txt`, s'affiche et se liste correctement quand la langue par
 défaut du site est le français.
