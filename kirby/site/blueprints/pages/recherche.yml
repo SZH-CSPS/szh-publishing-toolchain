@@ -4,6 +4,18 @@ title:
   fr: "Recherches en cours"
   de: "Laufende Forschungsprojekte"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   title:
     label:
       fr: "Titre"
@@ -11,6 +23,7 @@ fields:
     required: true
   institutions:
     type: "text"
+    translate: false
     label:
       fr: "Institution(s) de recherche"
       de: "Forschende Institution(en)"
@@ -18,6 +31,7 @@ fields:
   debut:
     type: "text"
     pattern: "^\\d{4}(-\\d{2}(-\\d{2})?)?$"
+    translate: false
     label:
       fr: "Début"
       de: "Beginn"
@@ -25,12 +39,14 @@ fields:
   fin:
     type: "text"
     pattern: "^\\d{4}(-\\d{2}(-\\d{2})?)?$"
+    translate: false
     label:
       fr: "Fin"
       de: "Ende"
     required: true
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"

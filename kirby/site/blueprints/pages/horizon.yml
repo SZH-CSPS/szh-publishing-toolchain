@@ -4,6 +4,18 @@ title:
   fr: "Tour d’horizon"
   de: "Rundschau"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   portee:
     type: "select"
     options:
@@ -19,6 +31,7 @@ fields:
       varia:
         fr: "Varia"
         de: "Varia"
+    translate: false
     label:
       fr: "Portée"
       de: "Reichweite"
@@ -107,6 +120,7 @@ fields:
       ZH:
         fr: "Zurich"
         de: "Zürich"
+    translate: false
     label:
       fr: "Canton"
       de: "Kanton"
@@ -125,6 +139,7 @@ fields:
     required: true
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"

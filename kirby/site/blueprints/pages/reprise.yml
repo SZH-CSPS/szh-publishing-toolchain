@@ -4,6 +4,18 @@ title:
   fr: "D’une revue à l’autre"
   de: "Blick in die Revue"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   revue:
     type: "select"
     options:
@@ -13,6 +25,7 @@ fields:
       zeitschrift:
         fr: "Schweizerische Zeitschrift für Heilpädagogik"
         de: "Schweizerische Zeitschrift für Heilpädagogik"
+    translate: false
     label:
       fr: "Revue"
       de: "Zeitschrift"
@@ -24,23 +37,27 @@ fields:
     required: true
   auteurs:
     type: "text"
+    translate: false
     label:
       fr: "Auteur(s)"
       de: "Autor(en)"
     required: true
   reference:
     type: "text"
+    translate: false
     label:
       fr: "Référence (volume, numéro, pages)"
       de: "Fundstelle (Band, Nummer, Seiten)"
     required: true
   doi:
     type: "text"
+    translate: false
     label:
       fr: "DOI"
       de: "DOI"
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"

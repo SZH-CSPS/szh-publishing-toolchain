@@ -182,6 +182,25 @@ function champVersYaml(contrat, champ) {
     default:
       throw new Error('saisie inconnue dans le JSON : ' + champ.saisie);
   }
+  // Traductibilité (docs/FORMAT-DOCUMENTATION-KIRBY.md : « Champs traduisibles (traduire:true
+  // du JSON) … propres à chaque fichier de langue. Tous les autres champs … sont COMMUNS » —
+  // Pronto les recopie dans les deux fichiers de langue à l'enregistrement). `translate`
+  // (vérifié sur getkirby.com/docs/reference/panel/fields/text, 23.09.2026 : propriété de
+  // base de tout champ, défaut true, false « disables the field in non-default languages »)
+  // verrouille dans le Panel ce que Pronto tient déjà : un champ commun ne s'édite que dans
+  // la langue par défaut du site, jamais divergent entre les deux fichiers.
+  //
+  // Exception : un champ `structure` lui-même n'a pas de `translate` ici — sa traductibilité
+  // se règle sous-champ par sous-champ (récursion dans `fields`, juste au-dessus). INCERTITUDE
+  // : la doc du champ structure ne documente `translate` qu'au niveau du champ ENTIER
+  // (« the field will be disabled in non-default languages ») ; qu'il soit aussi lu par
+  // Kirby sur un sous-champ de `fields` n'est confirmé nulle part noir sur blanc — on part du
+  // principe que oui, puisque `translate` est une propriété de base commune à tout champ, à
+  // vérifier sur une vraie instance (cas réel : `suivi` d'une intervention, où seul le
+  // sous-champ `libelle` est traduisible, voir champsSysteme plus loin pour un autre biais).
+  if (champ.saisie !== 'structure' && !champ.traduire) {
+    c.translate = false;
+  }
   c.label = { fr: champ.libelle.fr, de: champ.libelle.de };
   if (champ.requis) c.required = true;
   if (champ.quand) c.when = champ.quand;
@@ -200,6 +219,9 @@ function champsVersMap(contrat, champs) {
       // Title lui-même. Pour changer ce libellé sans changer le champ natif, on le redéclare
       // dans `fields.title` SANS `type:` (pratique Kirby usuelle pour ce champ précis ; pas
       // trouvée noir sur blanc dans la doc récupérée — à confirmer sur une vraie instance).
+      // Pas de `translate` ici : `title` porte toujours `traduire: true` dans le JSON (c'est
+      // un champ traduisible par construction, voir champVersYaml), donc la valeur par
+      // défaut de Kirby (true) est déjà la bonne.
       const entree = { label: { fr: champ.libelle.fr, de: champ.libelle.de } };
       if (champ.requis) entree.required = true;
       if (champ.quand) entree.when = champ.quand;
@@ -207,6 +229,29 @@ function champsVersMap(contrat, champs) {
     } else {
       map[champ.cle] = champVersYaml(contrat, champ);
     }
+  }
+  return map;
+}
+
+// ---- Champs système (ausgabe, ordre) --------------------------------------------------
+//
+// docs/FORMAT-DOCUMENTATION-KIRBY.md : « Champs système (champsSysteme), propres à chaque
+// fichier de langue, jamais saisis : Ausgabe = id du numéro de cette langue … ; Ordre = rang
+// d'impression … ». C'est l'INVERSE du sort par défaut de champVersYaml() ci-dessus : ces deux
+// champs ne sont PAS recopiés d'une langue à l'autre par Pronto (une fiche appartient à un
+// numéro par langue, donc à un rang par langue) — `translate` reste donc à sa valeur par
+// défaut Kirby (true), explicitée ici pour ne pas dépendre d'un défaut qu'on ne lirait pas au
+// même endroit que la règle inverse. `hidden` (même raisonnement que `derive` plus haut) :
+// jamais saisi dans le Panel, Pronto seul les écrit et les recalcule.
+function champsSystemeVersMap(contrat) {
+  const map = {};
+  for (const [cle, def] of Object.entries(contrat.champsSysteme)) {
+    if (cle.startsWith('_')) continue; // _lisezmoi : une note, pas un champ
+    map[cle] = {
+      type: 'hidden',
+      translate: true,
+      label: { fr: def.libelle.fr, de: def.libelle.de }
+    };
   }
   return map;
 }
@@ -219,27 +264,30 @@ function blueprintType(contrat, cleType) {
   // Nom du gabarit dans le Panel (voir la note ci-dessus sur `title` à la racine) — pas le
   // libellé du champ Title, réglé séparément dans fields.title.label.
   doc.title = { fr: type.libelle.fr, de: type.libelle.de };
-  doc.fields = champsVersMap(contrat, type.champs);
+  // Ordre d'écriture d'un fichier .txt (docs/FORMAT-DOCUMENTATION-KIRBY.md) : Title, Uuid,
+  // Ausgabe, Ordre, puis les champs du JSON — Uuid est le mécanisme natif de Kirby (pas un
+  // champ de blueprint, voir kirby/LISEZMOI.md) ; Ausgabe et Ordre sont donc placés avant les
+  // champs propres au type.
+  doc.fields = Object.assign({}, champsSystemeVersMap(contrat), champsVersMap(contrat, type.champs));
   return doc;
 }
 
-// ---- La page Documentation ---------------------------------------------------------------
-
-function blueprintDocumentation(contrat) {
+// ---- La page Actualités (parent de la bibliothèque _NewsUndActu\Fiches\) -----------------
+//
+// Avant la bibliothèque partagée, cette page était la Documentation d'UN numéro, et portait
+// aussi les rubriques de texte libre. Ce n'est plus le cas (docs/FORMAT-DOCUMENTATION-
+// KIRBY.md, section « Le numéro ») : « Les rubriques ne partent jamais sur Kirby » — elles
+// restent dans documentation.<lang>.txt DU NUMÉRO (hors de tout blueprint généré ici), et les
+// fiches ne sont plus des enfants d'une page par numéro mais de cette bibliothèque UNIQUE,
+// partagée par les deux revues. D'où : pas de blueprint de rubriques (rien à générer pour
+// elles côté Kirby), et cette page n'a plus de `fields` du tout — seulement des sections
+// `pages`, une par type de fiche.
+function blueprintActualites(contrat) {
   const doc = {};
-  // Pas de libellé dans le JSON pour la page Documentation elle-même (le contrat ne parle
-  // que des rubriques et des types de fiche) : nom repris de l'intitulé de la fonctionnalité
-  // dans TODO_KirbyCMS.md (« Actualité et ressources » / « News & Ressourcen »). À ajuster si
-  // ce nom change côté site.
+  // Pas de libellé dans le JSON pour cette page elle-même : nom repris de l'intitulé de la
+  // fonctionnalité dans TODO_KirbyCMS.md (« Actualité et ressources » / « News & Ressourcen »,
+  // §5 : « content/actualites/ »). À ajuster si ce nom change côté site.
   doc.title = { fr: 'Actualité et ressources', de: 'News & Ressourcen' };
-
-  const fields = {};
-  for (const rubrique of contrat.rubriques) {
-    // Markdown libre (sous-ensemble commun pandoc/KirbyText, voir docs/FORMAT-DOCUMENTATION-
-    // KIRBY.md) : une simple textarea, sans champ de choix de style.
-    fields[rubrique.cle] = { type: 'textarea', label: { fr: rubrique.titre.fr, de: rubrique.titre.de } };
-  }
-  doc.fields = fields;
 
   const sections = {};
   for (const cleType of contrat.ordreTypes) {
@@ -250,9 +298,12 @@ function blueprintDocumentation(contrat) {
       template: cleType,
       // Confirmé (getkirby.com/docs/reference/panel/sections/pages, 23.09.2026) :
       // `sortable: bool, default: true` désactive le glisser-déposer manuel dans le Panel.
-      // Indispensable ici : Pronto calcule déjà l'ordre d'impression et l'écrit dans le
-      // préfixe numérique du dossier (TODO_KirbyCMS.md §3) ; un tri manuel dans le Panel
-      // romprait ce contrat au prochain aller-retour.
+      // Indispensable ici : Pronto calcule déjà l'ordre d'impression et l'écrit dans le champ
+      // `Ordre` de chaque fichier de langue (TODO_KirbyCMS.md §3) ; un tri manuel dans le
+      // Panel romprait ce contrat au prochain aller-retour. Ouvert, pas traité ici : ce même
+      // §3 signale que les dossiers de fiche n'ont plus de préfixe numérique (pages « non
+      // listées » au sens de Kirby) — une section `pages` par défaut ne montre-t-elle que les
+      // pages « listed » ? Pas vérifié ; si c'est le cas il faudra un `status:` ici.
       sortable: false
     };
   }
@@ -299,7 +350,7 @@ function blueprintFichier(extensions) {
 
 // ---- Assemblage de tous les fichiers cibles ----------------------------------------------
 
-// Retourne { 'pages/horizon.yml': arbre, …, 'pages/documentation.yml': arbre,
+// Retourne { 'pages/horizon.yml': arbre, …, 'pages/actualites.yml': arbre,
 // 'files/couverture.yml': arbre, … } — un arbre par fichier, avant sérialisation (utilisé tel
 // quel par le test pour parcourir les noms de champs).
 function construireTous(contrat) {
@@ -307,7 +358,7 @@ function construireTous(contrat) {
   for (const cleType of Object.keys(contrat.types)) {
     docs['pages/' + cleType + '.yml'] = blueprintType(contrat, cleType);
   }
-  docs['pages/documentation.yml'] = blueprintDocumentation(contrat);
+  docs['pages/actualites.yml'] = blueprintActualites(contrat);
   for (const [cle, extensions] of collecterFichiers(contrat)) {
     docs['files/' + cle + '.yml'] = blueprintFichier(extensions);
   }

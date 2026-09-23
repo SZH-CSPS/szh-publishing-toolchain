@@ -4,6 +4,18 @@ title:
   fr: "Interventions parlementaires"
   de: "Parlamentarische Vorstösse"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   canton:
     type: "select"
     options:
@@ -88,6 +100,7 @@ fields:
       ZH:
         fr: "Zurich"
         de: "Zürich"
+    translate: false
     label:
       fr: "Canton"
       de: "Kanton"
@@ -155,17 +168,20 @@ fields:
       auftrag:
         fr: "Mandat (GR)"
         de: "Auftrag (GR)"
+    translate: false
     label:
       fr: "Type d’intervention"
       de: "Art des Vorstosses"
     required: true
   curia:
     type: "hidden"
+    translate: false
     label:
       fr: "Type Curia"
       de: "Curia-Typ"
   numero:
     type: "text"
+    translate: false
     label:
       fr: "Numéro"
       de: "Nummer"
@@ -174,6 +190,7 @@ fields:
     type: "date"
     display: "DD.MM.YYYY"
     format: "Y-m-d"
+    translate: false
     label:
       fr: "Date"
       de: "Datum"
@@ -185,6 +202,7 @@ fields:
     required: true
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"
@@ -218,6 +236,7 @@ fields:
       liquide:
         fr: "Liquidé"
         de: "Erledigt"
+    translate: false
     label:
       fr: "État"
       de: "Stand"
@@ -225,6 +244,7 @@ fields:
     type: "date"
     display: "DD.MM.YYYY"
     format: "Y-m-d"
+    translate: false
     label:
       fr: "Date de l’état"
       de: "Datum des Stands"
@@ -235,6 +255,7 @@ fields:
         type: "date"
         display: "DD.MM.YYYY"
         format: "Y-m-d"
+        translate: false
         label:
           fr: "Date"
           de: "Datum"
@@ -254,6 +275,7 @@ fields:
           autre:
             fr: "Autre"
             de: "Weiteres"
+        translate: false
         label:
           fr: "Genre"
           de: "Art"
@@ -265,6 +287,7 @@ fields:
           de: "Bezeichnung"
       lien:
         type: "url"
+        translate: false
         label:
           fr: "Lien"
           de: "Link"
@@ -283,6 +306,7 @@ fields:
       manuel:
         fr: "Saisie manuelle"
         de: "Manuell erfasst"
+    translate: false
     label:
       fr: "Source"
       de: "Quelle"

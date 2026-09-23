@@ -4,6 +4,18 @@ title:
   fr: "Livres"
   de: "Bücher"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   categorie:
     type: "select"
     options:
@@ -22,6 +34,7 @@ fields:
       autobiographie:
         fr: "Autobiographie"
         de: "Autobiografie"
+    translate: false
     label:
       fr: "Catégorie"
       de: "Kategorie"
@@ -33,6 +46,7 @@ fields:
     required: true
   auteurs:
     type: "text"
+    translate: false
     label:
       fr: "Auteur(s)"
       de: "Autor(en)"
@@ -40,18 +54,21 @@ fields:
   annee:
     type: "text"
     pattern: "^\\d{4}$"
+    translate: false
     label:
       fr: "Année"
       de: "Jahr"
     required: true
   editeur:
     type: "text"
+    translate: false
     label:
       fr: "Éditeur"
       de: "Verlag"
     required: true
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"
@@ -71,6 +88,7 @@ fields:
     max: 1
     store: "id"
     uploads: "couverture"
+    translate: false
     label:
       fr: "Couverture"
       de: "Umschlag"

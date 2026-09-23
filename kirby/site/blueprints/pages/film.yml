@@ -4,6 +4,18 @@ title:
   fr: "Films"
   de: "Filme"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   title:
     label:
       fr: "Titre"
@@ -21,12 +33,14 @@ fields:
       long-metrage:
         fr: "Long métrage"
         de: "Spielfilm"
+    translate: false
     label:
       fr: "Catégorie"
       de: "Kategorie"
     required: true
   realisateur:
     type: "text"
+    translate: false
     label:
       fr: "Réalisation"
       de: "Regie"
@@ -34,17 +48,20 @@ fields:
   annee:
     type: "text"
     pattern: "^\\d{4}$"
+    translate: false
     label:
       fr: "Année"
       de: "Jahr"
     required: true
   distributeur:
     type: "text"
+    translate: false
     label:
       fr: "Distributeur"
       de: "Verleih"
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"
@@ -64,6 +81,7 @@ fields:
     max: 1
     store: "id"
     uploads: "couverture"
+    translate: false
     label:
       fr: "Affiche"
       de: "Filmplakat"

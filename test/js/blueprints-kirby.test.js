@@ -1,8 +1,12 @@
 // Éprouve kirby/generer-blueprints.js : les blueprints committés dans
 // kirby/site/blueprints/{pages,files}/ égalent la génération depuis le contrat unique
-// pipeline/kirby/champs-documentation.json, et trois garanties structurelles tenues par le
-// générateur (chaque liste a ses deux langues, aucun nom de champ hors a-z0-9_, aucun champ
-// nommé `image` — méthode réservée de Kirby, voir TODO_KirbyCMS.md §10).
+// pipeline/kirby/champs-documentation.json, et les garanties structurelles tenues par le
+// générateur : chaque liste a ses deux langues ; aucun nom de champ hors a-z0-9_, aucun champ
+// nommé `image` (TODO_KirbyCMS.md §10) ; un champ `files` référence un gabarit files/<cle>.yml
+// réel, sans `alt` (décoratif) ; translate:false pour tout champ commun (pas traduire:true
+// dans le JSON), rien pour les traduisibles, et par sous-champ dans le structure `suivi` ;
+// ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
+// rubriques (elles restent dans le numéro, jamais sur Kirby).
 //
 //   node --test test/js/blueprints-kirby.test.js
 'use strict';
@@ -112,6 +116,76 @@ test('champs files : `uploads` a son gabarit files/<cle>.yml, sans champ alt (d�
   };
   for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
   assert.ok(vus > 0, 'aucun champ files trouvé dans les blueprints générés');
+});
+
+// ---- Traductibilité : translate:false pour tout champ commun, rien pour les traduisibles --
+//
+// docs/FORMAT-DOCUMENTATION-KIRBY.md : « Champs traduisibles (traduire:true du JSON) …
+// propres à chaque fichier de langue. Tous les autres champs … sont COMMUNS ». Un champ
+// `structure` lui-même (ex. `suivi`) n'a pas de translate propre : sa traductibilité se règle
+// sous-champ par sous-champ, donc on descend récursivement au lieu de le contrôler lui-même.
+
+function verifierTraduction(champsJson, fieldsYaml, origine) {
+  for (const champ of champsJson) {
+    const config = fieldsYaml[champ.cle];
+    assert.ok(config, origine + '.' + champ.cle + ' absent du blueprint généré');
+    if (champ.cle === 'title') {
+      assert.ok(!('translate' in config),
+        origine + '.title : traduisible par défaut, ne doit pas porter `translate`');
+    } else if (champ.saisie === 'structure') {
+      assert.ok(!('translate' in config),
+        origine + '.' + champ.cle + ' (structure) : pas de `translate` au niveau du champ lui-même');
+      verifierTraduction(champ.champs, config.fields, origine + '.' + champ.cle);
+    } else if (champ.traduire) {
+      assert.ok(!('translate' in config),
+        origine + '.' + champ.cle + ' : traduire:true dans le JSON, ne doit pas porter `translate`');
+    } else {
+      assert.strictEqual(config.translate, false,
+        origine + '.' + champ.cle + ' : commun (pas traduire:true dans le JSON), doit porter translate: false');
+    }
+  }
+}
+
+test('translate : tout champ non traduisible reçoit translate:false, les traduisibles n’en portent pas', () => {
+  const docs = gen.construireTous(contrat);
+  for (const cleType of Object.keys(contrat.types)) {
+    verifierTraduction(contrat.types[cleType].champs, docs['pages/' + cleType + '.yml'].fields, cleType);
+  }
+});
+
+// ---- Champs système (ausgabe, ordre) : hidden, traduisibles, sur chaque fiche -----------
+
+test('champs système : ausgabe et ordre en hidden, translate:true, sur chaque blueprint de fiche', () => {
+  const docs = gen.construireTous(contrat);
+  for (const cleType of Object.keys(contrat.types)) {
+    const fields = docs['pages/' + cleType + '.yml'].fields;
+    for (const cle of ['ausgabe', 'ordre']) {
+      assert.ok(fields[cle], cleType + '.' + cle + ' absent');
+      assert.strictEqual(fields[cle].type, 'hidden', cleType + '.' + cle + ' devrait être hidden');
+      assert.strictEqual(fields[cle].translate, true,
+        cleType + '.' + cle + ' devrait être traduisible (translate: true), propre à chaque fichier de langue');
+    }
+  }
+});
+
+// ---- Plus de blueprint pour les rubriques : elles restent dans le numéro -----------------
+
+test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro), sections par type', () => {
+  const docs = gen.construireTous(contrat);
+  const actualites = docs['pages/actualites.yml'];
+  assert.ok(actualites, 'pages/actualites.yml non généré');
+  assert.ok(!actualites.fields, 'actualites.yml ne devrait plus avoir de champ (rubriques hors Kirby)');
+  assert.ok(!docs['pages/documentation.yml'], 'pages/documentation.yml ne devrait plus être généré');
+  for (const rubrique of contrat.rubriques) {
+    for (const [nomFichier, arbre] of Object.entries(docs)) {
+      if (arbre.fields) {
+        assert.ok(!(rubrique.cle in arbre.fields),
+          nomFichier + ' porte encore un champ de rubrique ' + rubrique.cle);
+      }
+    }
+  }
+  assert.deepStrictEqual(Object.keys(actualites.sections), contrat.ordreTypes,
+    'sections de actualites.yml : pas dans l’ordre ordreTypes');
 });
 
 // ---- Aucun nom de champ hors [a-z0-9_], aucun champ nommé `image` -----------------------

@@ -3,27 +3,6 @@
 title:
   fr: "Actualité et ressources"
   de: "News & Ressourcen"
-fields:
-  dossier_references:
-    type: "textarea"
-    label:
-      fr: "Références du dossier"
-      de: "Literatur zum Schwerpunkt"
-  dossier_liens:
-    type: "textarea"
-    label:
-      fr: "Sites en lien avec le dossier"
-      de: "Linksammlung zum Schwerpunkt"
-  ressources:
-    type: "textarea"
-    label:
-      fr: "Ressources"
-      de: "Ressourcen"
-  podcasts:
-    type: "textarea"
-    label:
-      fr: "Documentaires et podcasts"
-      de: "Dokumentarfilme und Podcasts"
 sections:
   horizon:
     type: "pages"

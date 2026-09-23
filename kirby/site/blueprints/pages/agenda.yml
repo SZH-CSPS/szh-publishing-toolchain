@@ -4,6 +4,18 @@ title:
   fr: "Agenda et formation continue"
   de: "Weiterbildung"
 fields:
+  ausgabe:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Numéro"
+      de: "Ausgabe"
+  ordre:
+    type: "hidden"
+    translate: true
+    label:
+      fr: "Ordre"
+      de: "Reihenfolge"
   evenement:
     type: "select"
     options:
@@ -25,6 +37,7 @@ fields:
       formation:
         fr: "Formation continue"
         de: "Weiterbildung"
+    translate: false
     label:
       fr: "Type d’événement"
       de: "Art der Veranstaltung"
@@ -38,6 +51,7 @@ fields:
     type: "date"
     display: "DD.MM.YYYY"
     format: "Y-m-d"
+    translate: false
     label:
       fr: "Début"
       de: "Beginn"
@@ -46,24 +60,28 @@ fields:
     type: "date"
     display: "DD.MM.YYYY"
     format: "Y-m-d"
+    translate: false
     label:
       fr: "Fin"
       de: "Ende"
     required: true
   lieu:
     type: "text"
+    translate: false
     label:
       fr: "Lieu"
       de: "Ort"
     required: true
   organisateur:
     type: "text"
+    translate: false
     label:
       fr: "Organisation"
       de: "Veranstalter:in"
     required: true
   lien:
     type: "url"
+    translate: false
     label:
       fr: "Lien"
       de: "Link"
