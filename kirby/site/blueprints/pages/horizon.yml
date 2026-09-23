@@ -1,0 +1,135 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Tour d’horizon"
+  de: "Rundschau"
+fields:
+  portee:
+    type: "select"
+    options:
+      international:
+        fr: "International"
+        de: "International"
+      national:
+        fr: "National"
+        de: "National"
+      regional:
+        fr: "Régional"
+        de: "Kantonal"
+      varia:
+        fr: "Varia"
+        de: "Varia"
+    label:
+      fr: "Portée"
+      de: "Reichweite"
+    required: true
+  canton:
+    type: "select"
+    options:
+      CH:
+        fr: "Confédération"
+        de: "Bund"
+      AG:
+        fr: "Argovie"
+        de: "Aargau"
+      AI:
+        fr: "Appenzell Rhodes-Intérieures"
+        de: "Appenzell Innerrhoden"
+      AR:
+        fr: "Appenzell Rhodes-Extérieures"
+        de: "Appenzell Ausserrhoden"
+      BE:
+        fr: "Berne"
+        de: "Bern"
+      BL:
+        fr: "Bâle-Campagne"
+        de: "Basel-Landschaft"
+      BS:
+        fr: "Bâle-Ville"
+        de: "Basel-Stadt"
+      FR:
+        fr: "Fribourg"
+        de: "Freiburg"
+      GE:
+        fr: "Genève"
+        de: "Genf"
+      GL:
+        fr: "Glaris"
+        de: "Glarus"
+      GR:
+        fr: "Grisons"
+        de: "Graubünden"
+      JU:
+        fr: "Jura"
+        de: "Jura"
+      LU:
+        fr: "Lucerne"
+        de: "Luzern"
+      NE:
+        fr: "Neuchâtel"
+        de: "Neuenburg"
+      NW:
+        fr: "Nidwald"
+        de: "Nidwalden"
+      OW:
+        fr: "Obwald"
+        de: "Obwalden"
+      SG:
+        fr: "Saint-Gall"
+        de: "St. Gallen"
+      SH:
+        fr: "Schaffhouse"
+        de: "Schaffhausen"
+      SO:
+        fr: "Soleure"
+        de: "Solothurn"
+      SZ:
+        fr: "Schwytz"
+        de: "Schwyz"
+      TG:
+        fr: "Thurgovie"
+        de: "Thurgau"
+      TI:
+        fr: "Tessin"
+        de: "Tessin"
+      UR:
+        fr: "Uri"
+        de: "Uri"
+      VD:
+        fr: "Vaud"
+        de: "Waadt"
+      VS:
+        fr: "Valais"
+        de: "Wallis"
+      ZG:
+        fr: "Zoug"
+        de: "Zug"
+      ZH:
+        fr: "Zurich"
+        de: "Zürich"
+    label:
+      fr: "Canton"
+      de: "Kanton"
+    when:
+      portee: "regional"
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  lien_libelle:
+    type: "text"
+    label:
+      fr: "Texte du lien"
+      de: "Linktext"

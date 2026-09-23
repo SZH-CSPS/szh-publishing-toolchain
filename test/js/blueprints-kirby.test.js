@@ -1,0 +1,133 @@
+// Éprouve kirby/generer-blueprints.js : les blueprints committés dans
+// kirby/site/blueprints/{pages,files}/ égalent la génération depuis le contrat unique
+// pipeline/kirby/champs-documentation.json, et trois garanties structurelles tenues par le
+// générateur (chaque liste a ses deux langues, aucun nom de champ hors a-z0-9_, aucun champ
+// nommé `image` — méthode réservée de Kirby, voir TODO_KirbyCMS.md §10).
+//
+//   node --test test/js/blueprints-kirby.test.js
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
+
+const RACINE = path.resolve(__dirname, '..', '..');
+const gen = require(path.join(RACINE, 'kirby', 'generer-blueprints.js'));
+
+const contrat = gen.chargerContrat();
+
+// ---- Les blueprints committés égalent la génération -------------------------------------
+
+test('blueprints committés : identiques octet pour octet à la génération', () => {
+  const attendus = gen.genererContenus(contrat);
+  const noms = Object.keys(attendus);
+  assert.ok(noms.length > 0, 'aucun blueprint généré');
+  for (const nom of noms) {
+    const chemin = path.join(gen.DOSSIER_BLUEPRINTS, nom);
+    assert.ok(fs.existsSync(chemin), 'blueprint absent du dépôt : ' + nom
+      + ' (lancer node kirby/generer-blueprints.js)');
+    const surDisque = fs.readFileSync(chemin, 'utf8');
+    assert.strictEqual(surDisque, attendus[nom],
+      nom + ' diffère de la génération — relancer node kirby/generer-blueprints.js');
+  }
+});
+
+// Les deux sous-dossiers connus (pages/, files/) — pas de troisième famille de blueprint
+// aujourd'hui, mais on ne va pas chercher plus loin que ce que construireTous() peut produire.
+function fichiersYamlSurDisque(sousDossier) {
+  const dossier = path.join(gen.DOSSIER_BLUEPRINTS, sousDossier);
+  if (!fs.existsSync(dossier)) return [];
+  return fs.readdirSync(dossier).filter((f) => f.endsWith('.yml')).map((f) => sousDossier + '/' + f);
+}
+
+test('blueprints committés : aucun fichier en trop dans pages/ ou files/', () => {
+  const attendus = new Set(Object.keys(gen.genererContenus(contrat)));
+  const surDisque = [...fichiersYamlSurDisque('pages'), ...fichiersYamlSurDisque('files')];
+  assert.ok(surDisque.length > 0, 'aucun .yml trouvé sur le disque');
+  for (const f of surDisque) {
+    assert.ok(attendus.has(f), f + ' n’a plus de source dans le JSON — à retirer');
+  }
+});
+
+test('--verifier : sort en code 0 quand le dépôt est à jour', () => {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync(process.execPath,
+    [path.join(RACINE, 'kirby', 'generer-blueprints.js'), '--verifier'],
+    { encoding: 'utf8', cwd: RACINE });
+  assert.strictEqual(r.status, 0, 'sortie : ' + r.stdout + r.stderr);
+});
+
+// ---- Chaque liste du JSON a toutes ses options en fr et en de ---------------------------
+
+test('listes : chaque jeton a un libellé fr et de non vides', () => {
+  for (const [nomListe, items] of Object.entries(contrat.listes)) {
+    assert.ok(Array.isArray(items) && items.length > 0, 'liste vide : ' + nomListe);
+    for (const it of items) {
+      assert.ok(it.jeton, 'jeton manquant dans la liste ' + nomListe);
+      assert.strictEqual(typeof it.fr, 'string', nomListe + '.' + it.jeton + ' sans fr');
+      assert.notStrictEqual(it.fr.trim(), '', nomListe + '.' + it.jeton + ' : fr vide');
+      assert.strictEqual(typeof it.de, 'string', nomListe + '.' + it.jeton + ' sans de');
+      assert.notStrictEqual(it.de.trim(), '', nomListe + '.' + it.jeton + ' : de vide');
+    }
+  }
+});
+
+// Corollaire côté blueprint généré : les options select portent aussi les deux langues (même
+// après le suffixe canton ajouté pour les instruments `local: true`).
+test('blueprints générés : les options select ont toutes fr et de', () => {
+  const docs = gen.construireTous(contrat);
+  const walker = (fields) => {
+    for (const [nomChamp, config] of Object.entries(fields)) {
+      if (config.type === 'select') {
+        for (const [jeton, libelles] of Object.entries(config.options)) {
+          assert.ok(libelles.fr, nomChamp + '.' + jeton + ' : fr manquant');
+          assert.ok(libelles.de, nomChamp + '.' + jeton + ' : de manquant');
+        }
+      }
+      if (config.type === 'structure') { walker(config.fields); }
+    }
+  };
+  for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
+});
+
+// ---- Champs `files` : uploads pointe vers un gabarit de fichier réellement généré,
+// décoratif (pas de champ `alt`) -----------------------------------------------------------
+
+test('champs files : `uploads` a son gabarit files/<cle>.yml, sans champ alt (décoratif)', () => {
+  const docs = gen.construireTous(contrat);
+  let vus = 0;
+  const walker = (fields) => {
+    for (const config of Object.values(fields)) {
+      if (config.type === 'files') {
+        vus++;
+        assert.ok(config.uploads, 'champ files sans `uploads`');
+        const cheminGabarit = 'files/' + config.uploads + '.yml';
+        assert.ok(docs[cheminGabarit], 'gabarit ' + cheminGabarit + ' non généré pour uploads: ' + config.uploads);
+        assert.ok(!('accept' in config), 'accept ne doit plus vivre sur le champ files lui-même : ' + JSON.stringify(config));
+        assert.ok(!docs[cheminGabarit].fields, cheminGabarit + ' ne doit pas avoir de champ (donc pas de `alt`) : image décorative');
+      }
+      if (config.type === 'structure') { walker(config.fields); }
+    }
+  };
+  for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
+  assert.ok(vus > 0, 'aucun champ files trouvé dans les blueprints générés');
+});
+
+// ---- Aucun nom de champ hors [a-z0-9_], aucun champ nommé `image` -----------------------
+
+test('blueprints générés : noms de champ en a-z0-9_ uniquement, jamais `image`', () => {
+  const docs = gen.construireTous(contrat);
+  const CLE_SIMPLE = /^[a-z0-9_]+$/;
+  const walker = (fields, origine) => {
+    for (const [nomChamp, config] of Object.entries(fields)) {
+      assert.match(nomChamp, CLE_SIMPLE, origine + ' : nom de champ hors a-z0-9_ : ' + nomChamp);
+      assert.notStrictEqual(nomChamp, 'image',
+        origine + ' : champ nommé `image` — méthode réservée de Kirby (TODO_KirbyCMS.md §10)');
+      if (config && config.type === 'structure') { walker(config.fields, origine + '.' + nomChamp); }
+    }
+  };
+  for (const [nomFichier, arbre] of Object.entries(docs)) {
+    if (arbre.fields) { walker(arbre.fields, nomFichier); }
+  }
+});

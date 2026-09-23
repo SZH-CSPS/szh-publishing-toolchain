@@ -1,0 +1,70 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Films"
+  de: "Filme"
+fields:
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  categorie:
+    type: "select"
+    options:
+      documentaire:
+        fr: "Documentaire"
+        de: "Dokumentarfilm"
+      court-metrage:
+        fr: "Court métrage"
+        de: "Kurzfilm"
+      long-metrage:
+        fr: "Long métrage"
+        de: "Spielfilm"
+    label:
+      fr: "Catégorie"
+      de: "Kategorie"
+    required: true
+  realisateur:
+    type: "text"
+    label:
+      fr: "Réalisation"
+      de: "Regie"
+    required: true
+  annee:
+    type: "text"
+    pattern: "^\\d{4}$"
+    label:
+      fr: "Année"
+      de: "Jahr"
+    required: true
+  distributeur:
+    type: "text"
+    label:
+      fr: "Distributeur"
+      de: "Verleih"
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  lien_libelle:
+    type: "text"
+    label:
+      fr: "Texte du lien"
+      de: "Linktext"
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true
+  couverture:
+    type: "files"
+    max: 1
+    store: "id"
+    uploads: "couverture"
+    label:
+      fr: "Affiche"
+      de: "Filmplakat"
+    required: true

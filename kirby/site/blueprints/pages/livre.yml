@@ -1,0 +1,77 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Livres"
+  de: "Bücher"
+fields:
+  categorie:
+    type: "select"
+    options:
+      manuel:
+        fr: "Manuel"
+        de: "Fachbuch"
+      recit:
+        fr: "Récit"
+        de: "Erzählung"
+      jeunesse:
+        fr: "Jeunesse"
+        de: "Kinder- und Jugendbuch"
+      biographie:
+        fr: "Biographie"
+        de: "Biografie"
+      autobiographie:
+        fr: "Autobiographie"
+        de: "Autobiografie"
+    label:
+      fr: "Catégorie"
+      de: "Kategorie"
+    required: true
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  auteurs:
+    type: "text"
+    label:
+      fr: "Auteur(s)"
+      de: "Autor(en)"
+    required: true
+  annee:
+    type: "text"
+    pattern: "^\\d{4}$"
+    label:
+      fr: "Année"
+      de: "Jahr"
+    required: true
+  editeur:
+    type: "text"
+    label:
+      fr: "Éditeur"
+      de: "Verlag"
+    required: true
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  lien_libelle:
+    type: "text"
+    label:
+      fr: "Texte du lien"
+      de: "Linktext"
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true
+  couverture:
+    type: "files"
+    max: 1
+    store: "id"
+    uploads: "couverture"
+    label:
+      fr: "Couverture"
+      de: "Umschlag"
+    required: true

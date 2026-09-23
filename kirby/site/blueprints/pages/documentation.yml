@@ -1,0 +1,76 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Actualité et ressources"
+  de: "News & Ressourcen"
+fields:
+  dossier_references:
+    type: "textarea"
+    label:
+      fr: "Références du dossier"
+      de: "Literatur zum Schwerpunkt"
+  dossier_liens:
+    type: "textarea"
+    label:
+      fr: "Sites en lien avec le dossier"
+      de: "Linksammlung zum Schwerpunkt"
+  ressources:
+    type: "textarea"
+    label:
+      fr: "Ressources"
+      de: "Ressourcen"
+  podcasts:
+    type: "textarea"
+    label:
+      fr: "Documentaires et podcasts"
+      de: "Dokumentarfilme und Podcasts"
+sections:
+  horizon:
+    type: "pages"
+    label:
+      fr: "Tour d’horizon"
+      de: "Rundschau"
+    template: "horizon"
+    sortable: false
+  recherche:
+    type: "pages"
+    label:
+      fr: "Recherches en cours"
+      de: "Laufende Forschungsprojekte"
+    template: "recherche"
+    sortable: false
+  intervention:
+    type: "pages"
+    label:
+      fr: "Interventions parlementaires"
+      de: "Parlamentarische Vorstösse"
+    template: "intervention"
+    sortable: false
+  livre:
+    type: "pages"
+    label:
+      fr: "Livres"
+      de: "Bücher"
+    template: "livre"
+    sortable: false
+  film:
+    type: "pages"
+    label:
+      fr: "Films"
+      de: "Filme"
+    template: "film"
+    sortable: false
+  reprise:
+    type: "pages"
+    label:
+      fr: "D’une revue à l’autre"
+      de: "Blick in die Revue"
+    template: "reprise"
+    sortable: false
+  agenda:
+    type: "pages"
+    label:
+      fr: "Agenda et formation continue"
+      de: "Weiterbildung"
+    template: "agenda"
+    sortable: false
