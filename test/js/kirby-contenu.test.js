@@ -389,21 +389,21 @@ test('creerFiche puis lireFicheSlugLangue : Ausgabe posé, Ordre absent avant re
     assert.strictEqual(f.ordre, null);
     assert.strictEqual(f.valeurs.title, 'Un livre');
     assert.ok(fs.existsSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'livre.fr.txt')));
-    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), 'Buecher', slug, 'livre.fr.txt')),
-      'le dossier du type (Buecher, types[].dossier du contrat) doit porter la fiche');
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), 'buecher', slug, 'livre.fr.txt')),
+      'le dossier du type (buecher, types[].dossier du contrat) doit porter la fiche');
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
 // ---- Un dossier par type (types[].dossier du contrat) ----------------------------------
 
 test('dossierDuType / cheminDossierType / cheminFiche : dérivés du contrat, jamais écrits en dur', () => {
-  assert.strictEqual(kc.dossierDuType('livre'), 'Buecher');
-  assert.strictEqual(kc.dossierDuType('intervention'), 'Vorstoesse');
+  assert.strictEqual(kc.dossierDuType('livre'), 'buecher');
+  assert.strictEqual(kc.dossierDuType('intervention'), 'vorstoesse');
   assert.strictEqual(kc.dossierDuType('zorglub'), null);
   const racine = path.resolve(os.tmpdir(), 'x', 'Revues-TESTING');
-  assert.strictEqual(kc.cheminDossierType(racine, 'livre'), path.join(kc.cheminBibliotheque(racine), 'Buecher'));
+  assert.strictEqual(kc.cheminDossierType(racine, 'livre'), path.join(kc.cheminBibliotheque(racine), 'buecher'));
   assert.strictEqual(kc.cheminFiche(racine, 'livre', 'mon-livre'),
-    path.join(kc.cheminBibliotheque(racine), 'Buecher', 'mon-livre'));
+    path.join(kc.cheminBibliotheque(racine), 'buecher', 'mon-livre'));
   assert.strictEqual(kc.cheminDossierType(racine, 'zorglub'), null);
 });
 
@@ -450,7 +450,7 @@ test('un fichier <type>.<lang>.txt rangé sous le dossier d’un AUTRE type est 
   console.error = (msg) => erreurs.push(String(msg));
   try {
     const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Livre égaré'), idRevue);
-    // Un fichier de type « film » posé à la main sous le dossier Buecher\<slug>\ : rangement
+    // Un fichier de type « film » posé à la main sous le dossier buecher\<slug>\ : rangement
     // fautif (déplacement manuel, script tiers…), jamais produit par ce module lui-même.
     fs.writeFileSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'film.fr.txt'),
       'Title: Intrus\n\n----\n\nUuid: intrus\n', 'utf8');

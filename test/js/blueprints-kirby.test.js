@@ -7,7 +7,7 @@
 // dans le JSON), rien pour les traduisibles, et par sous-champ dans le structure `suivi` ;
 // ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
 // rubriques (elles restent dans le numéro, jamais sur Kirby) ; chaque type a sa page parente
-// (le dossier types[].dossier, ex. Buecher\ — depuis 8e89548), en ASCII [A-Za-z]+, et
+// (le dossier types[].dossier, ex. buecher\ — depuis 8e89548), en minuscules ASCII [a-z]+, et
 // actualites.yml liste désormais ces sept pages dossier au lieu des fiches directement.
 //
 //   node --test test/js/blueprints-kirby.test.js
@@ -196,17 +196,17 @@ test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro
   assert.ok(!('template' in section), 'actualites.yml : plusieurs gabarits -> `templates` (pluriel), pas `template`');
 });
 
-// ---- Chaque type a sa page parente (le dossier types[].dossier, ex. Buecher\) ------------
+// ---- Chaque type a sa page parente (le dossier types[].dossier, ex. buecher\) ------------
 //
 // docs/FORMAT-DOCUMENTATION-KIRBY.md (8e89548) : une fiche vit sous
 // `_NewsUndActu\Fiches\<dossier du type>\<slug>\`. Ce dossier est une page Kirby à part, entre
 // la bibliothèque (actualites.yml) et les fiches : elle doit exister pour chaque type, avec le
 // libellé du type et une section listant les fiches de ce type.
 
-test('types[].dossier : ASCII [A-Za-z]+ pour chaque type (segment d’adresse du site)', () => {
+test('types[].dossier : minuscules ASCII [a-z]+ pour chaque type (segment d’adresse du site)', () => {
   for (const [cleType, type] of Object.entries(contrat.types)) {
     assert.ok(type.dossier, cleType + ' : types[].dossier manquant');
-    assert.match(type.dossier, /^[A-Za-z]+$/, cleType + '.dossier hors ASCII [A-Za-z]+ : ' + type.dossier);
+    assert.match(type.dossier, /^[a-z]+$/, cleType + '.dossier hors minuscules ASCII [a-z]+ : ' + type.dossier);
   }
 });
 

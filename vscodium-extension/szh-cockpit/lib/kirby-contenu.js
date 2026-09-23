@@ -5,8 +5,8 @@
 //      articles/NN-<slug>/) : Title, Uuid, et les quatre rubriques de prose libre
 //      (dossier_references…). Ne contient plus aucune fiche — voir lirePage/ecrirePage.
 //   2. La BIBLIOTHÈQUE partagée (<racine-arbre>\_NewsUndActu\Fiches\<dossier-du-type>\<slug>\) :
-//      un dossier par TYPE (`types[].dossier` du contrat — Rundschau, Forschung, Vorstoesse,
-//      Buecher, Filme, Revueblick, Weiterbildung), puis un dossier par fiche, un fichier
+//      un dossier par TYPE (`types[].dossier` du contrat — rundschau, forschung, vorstoesse,
+//      buecher, filme, revueblick, weiterbildung), puis un dossier par fiche, un fichier
 //      <type>.<lang>.txt par langue qui l'a écrite, jamais renommé. Le slug n'est unique qu'À
 //      L'INTÉRIEUR du dossier de son type — deux types peuvent partager le même slug. Le
 //      rattachement à un numéro se fait par le champ système Ausgabe (l'id du numéro,

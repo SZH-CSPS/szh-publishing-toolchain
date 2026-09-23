@@ -78,8 +78,8 @@ de préfixe numérique (pages non listées au sens de Kirby) : ne pas les filtre
 
 Depuis `docs(kirby): un dossier par type sous Fiches` (23.09.2026), une fiche n'est plus un
 enfant direct de la bibliothèque : `content/actualites/` porte maintenant sept pages dossier,
-une par `types[].dossier` (`Rundschau`, `Forschung`, `Vorstoesse`, `Buecher`, `Filme`,
-`Revueblick`, `Weiterbildung` — gabarit = nom du dossier en minuscules, voir
+une par `types[].dossier` (`rundschau`, `forschung`, `vorstoesse`, `buecher`, `filme`,
+`revueblick`, `weiterbildung` — gabarit = nom du dossier, voir
 `kirby/LISEZMOI.md`), et les fiches sont leurs enfants. Une page de numéro qui veut TOUTES ses
 fiches, tous types confondus, doit donc descendre un niveau de plus qu'avant (les petits-
 enfants de la page dossier), par exemple `$actualites->children()->children()`, plutôt que de
@@ -109,8 +109,8 @@ comprises. Jamais `_NewsUndActu\_Statuts\` (décisions de traduction, données d
 les rubriques des numéros. Une fiche orpheline (`Ausgabe` vide) est copiée mais n'apparaît
 dans aucun numéro.
 
-Chaque dossier de type (`Rundschau\`, `Forschung\`, `Vorstoesse\`, `Buecher\`, `Filme\`,
-`Revueblick\`, `Weiterbildung\`) devient lui-même une page Kirby sous `content/actualites/`,
+Chaque dossier de type (`rundschau\`, `forschung\`, `vorstoesse\`, `buecher\`, `filme\`,
+`revueblick\`, `weiterbildung\`) devient lui-même une page Kirby sous `content/actualites/`,
 PARENTE des fiches qu'il contient (`kirby/LISEZMOI.md`, blueprints `pages/<dossier en
 minuscules>.yml`). Pronto n'écrit que des fiches dans `Fiches\<dossier>\<slug>\` : il n'a
 aucune raison d'écrire le fichier de contenu de la page dossier elle-même. C'est donc à la

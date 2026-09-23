@@ -164,7 +164,7 @@ class ConversionBoutEnBout(unittest.TestCase):
         self._ecrire('articles/essai/documentation.fr.txt', 'Title: Essai\n')
         racine = os.path.join(self.dossier, 'racine')
         self._ecrire(
-            os.path.relpath(os.path.join(racine, '_NewsUndActu', 'Fiches', 'Buecher',
+            os.path.relpath(os.path.join(racine, '_NewsUndActu', 'Fiches', 'buecher',
                                           'un-livre', 'livre.fr.txt'), self.dossier),
             'Title: Un livre\n\n----\n\nAusgabe: sansuuidtest01\n\n----\n\nOrdre: 1\n\n'
             '----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n'
@@ -399,11 +399,11 @@ class BibliothequeFiches(unittest.TestCase):
 
     def test_fichier_range_sous_le_mauvais_dossier_de_type_est_signale_et_non_lu(self):
         article = self._article('numeroa00000001', 'de')
-        # livre.de.txt (type livre, dossier Buecher) rangé sous Filme (dossier du type film).
+        # livre.de.txt (type livre, dossier buecher) rangé sous filme (dossier du type film).
         self._fiche('livre-egare', 'livre.de.txt',
                      'Title: Livre égaré\n\n----\n\nAusgabe: numeroa00000001\n\n'
                      '----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n'
-                     '----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n', dossier_surcharge='Filme')
+                     '----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n', dossier_surcharge='filme')
         racine = dk.trouver_racine_news(self.numero, self.racine)
         with contextlib.redirect_stderr(io.StringIO()) as capture:
             fiches = dk.lire_fiches_bibliotheque(racine, 'de', 'numeroa00000001', self.champs)

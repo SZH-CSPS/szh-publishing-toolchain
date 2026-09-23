@@ -272,11 +272,11 @@ function blueprintType(contrat, cleType) {
   return doc;
 }
 
-// ---- Le dossier d'un type (types[].dossier, ex. Buecher\) : page parente des fiches --------
+// ---- Le dossier d'un type (types[].dossier, ex. buecher\) : page parente des fiches --------
 //
 // Depuis 8e89548 (docs/FORMAT-DOCUMENTATION-KIRBY.md, « Une fiche ») : une fiche vit sous
 // `_NewsUndActu\Fiches\<dossier du type>\<slug>\`, un sous-dossier PAR TYPE
-// (Rundschau/Forschung/Vorstoesse/Buecher/Filme/Revueblick/Weiterbildung). Ce sous-dossier est
+// (rundschau/forschung/vorstoesse/buecher/filme/revueblick/weiterbildung). Ce sous-dossier est
 // lui-même une page Kirby, entre la bibliothèque (actualites.yml) et les fiches : elle a donc
 // son propre blueprint, une section `pages` listant les fiches de CE type.
 //
@@ -288,8 +288,8 @@ function blueprintType(contrat, cleType) {
 // un mot allemand en ASCII posé pour être un segment d'adresse (JSON, `_dossiers`) : la
 // minuscule est la seule transformation nécessaire pour en faire un nom de gabarit valide.
 function nomGabaritDossier(type) {
-  if (!/^[A-Za-z]+$/.test(type.dossier)) {
-    throw new Error('types[].dossier hors ASCII [A-Za-z]+ : ' + JSON.stringify(type.dossier));
+  if (!/^[a-z]+$/.test(type.dossier)) {
+    throw new Error('types[].dossier hors minuscules ASCII [a-z]+ : ' + JSON.stringify(type.dossier));
   }
   return type.dossier.toLowerCase();
 }

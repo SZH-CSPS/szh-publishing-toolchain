@@ -305,7 +305,7 @@ function numeroEtRacineJetables(id, lang) {
 
 // Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier du contrat, docs/FORMAT-
 // DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026) : le dossier de type se déduit du type
-// porté par le nom du fichier (« livre.de.txt » -> type livre -> dossier Buecher), sauf
+// porté par le nom du fichier (« livre.de.txt » -> type livre -> dossier buecher), sauf
 // `dossierSurcharge` — utilisé par les tests qui rangent volontairement un fichier sous le
 // mauvais dossier ou sous un sous-dossier inconnu du contrat.
 function ecrireFiche(racineFiches, slug, fichier, contenu, dossierSurcharge) {
@@ -391,10 +391,10 @@ test('convertisseur : un fichier de langue rangé sous le dossier d’un autre t
   const id = 'szhdocdossierx02';
   const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
   try {
-    // livre.de.txt (type livre, dossier Buecher) rangé sous Filme (le dossier du type film).
+    // livre.de.txt (type livre, dossier buecher) rangé sous filme (le dossier du type film).
     ecrireFiche(racineFiches, 'un-livre-egare', 'livre.de.txt',
       `Title: Livre égaré\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n`,
-      'Filme');
+      'filme');
     const c = convertir(article, null, racineFiches);
     assert.strictEqual(c.status, 0, c.stderr);
     assert.match(c.stderr, /rangé sous le dossier/, 'aucun signalement pour un fichier dans le mauvais dossier de type : ' + c.stderr);
