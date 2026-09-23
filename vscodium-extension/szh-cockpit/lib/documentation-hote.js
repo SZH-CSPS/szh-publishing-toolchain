@@ -239,7 +239,10 @@ function textesDocumentation() {
 function racineProduction() {
   const ancrage = rapportErreur.resoudreAncrage();
   if (!ancrage || !ancrage.trouve) { return null; }
-  return path.join(ancrage.chemin, '2_Produkte', rapportErreur.SEGMENT_APPLICATION);
+  // resoudreAncrage rend des séparateurs Windows (normaliserSeparateursAncrage) : hors de
+  // Windows (runner Linux de la CI), les remettre en « / » avant d'y joindre quoi que ce soit.
+  const base = process.platform === 'win32' ? ancrage.chemin : String(ancrage.chemin).replace(/\\/g, '/');
+  return path.join(base, '2_Produkte', rapportErreur.SEGMENT_APPLICATION);
 }
 
 // indexNumerosProduction(racineProductionVal) -> { <id>: { label, revue, annee } } — résout
