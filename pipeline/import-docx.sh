@@ -24,7 +24,12 @@
 #                       sur celle de szh-tabelle-reference.lua — et en posant sur le tableau
 #                       d'un bloc du gabarit sa légende et ses crédits (lignes FT).
 #   3. docx-titres.py : titres déduits -> $SZH_TITRES.
+#   3bis. docx-styles-corps.py : copie du .docx, lue par pandoc seul, où les paragraphes
+#      « SZH Important », « SZH Hervorhebung » et « SZH Question (interview) » portent un
+#      marqueur (pandoc perd les styles de paragraphe).
 #   4. pandoc + filtres Lua dans cet ordre :
+#        szh-styles-corps (en premier : marqueur -> bloc du cockpit, ::: {.important},
+#                      {.highlight}, {.question} ; les suivants voient le texte d'avant)
 #        szh-meta      (retire les blocs consommés avant tout raisonnement aval)
 #        szh-legendes  (légendes -> alt d'image ; purge des paragraphes bakés ; et les
 #                      champs d'un bloc figure du gabarit -> légende, alt, crédit et source
@@ -72,13 +77,13 @@ export SZH_SLUG="$SLUG"
 SZH_PRODUIT="$(pandoc lua "$PIPE/filters/szh-lire-config.lua" ausgabe.yaml revue 2>/dev/null || true)"
 export SZH_PRODUIT
 
-# Les quatre fichiers temporaires de la chaîne (métadonnées, appariement photo, légendes de
-# tableaux, titres déduits), nettoyés par un seul trap plutôt que par des rm épars à chaque
+# Les cinq fichiers temporaires de la chaîne (métadonnées, appariement photo, légendes de
+# tableaux, titres déduits, copie marquée du .docx), nettoyés par un seul trap plutôt que par des rm épars à chaque
 # sortie possible — succès, `exit 1` d'une pré-passe, ou un futur point de sortie qu'on
 # oublierait de couvrir à la main. Déclarées vides ici : `set -u` ferait échouer le trap
 # lui-même s'il se déclenchait avant qu'un mktemp les remplisse.
-META=""; PHOTOS=""; LEGT=""; TITRES=""
-trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES"' EXIT
+META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""
+trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE"' EXIT
 
 # Un message destiné au rédacteur : sur stderr, et dans articles-word/.import.log quand la
 # cible `import` du Makefile en a passé le chemin absolu. Le journal nourrit la vue
@@ -156,16 +161,30 @@ TITRES="$(mktemp)"
 python3 "$PIPE/docx-titres.py" "$DOCX_ABS" "$TITRES" || true
 export SZH_TITRES="$TITRES"
 
+# Styles de corps : pandoc lit une copie où chaque paragraphe d'un style du gabarit
+# (encadré, mise en évidence, question) commence par un marqueur, que szh-styles-corps.lua
+# change en bloc. Pas `docx+styles` : mesuré sur 16 documents réels, cette lecture change
+# aussi le gras, les cellules et les légendes. Non bloquant : sans copie, pandoc lit
+# l'original et les blocs arrivent en paragraphes, comme avant.
+MARQUE="$(mktemp --suffix=.docx)"
+if STYLES="$(python3 "$PIPE/docx-styles-corps.py" "$DOCX_ABS" "$MARQUE")"; then
+  SOURCE_PANDOC="$MARQUE"
+  echo "[import-styles] $STYLES"
+else
+  SOURCE_PANDOC="$DOCX_ABS"
+fi
+
 # --extract-media=. : images extraites sous media/, en chemins relatifs au .md,
 #   corrects parce que le build HTML tourne dans le dossier de l'article. ⚠ écrire
 #   =media doublerait le chemin en media/media/.
 # -simple_tables-multiline_tables-grid_tables : sans objet ici (les tableaux sont
 #   remplacés par des références), conservé par cohérence avec le writer du pipeline.
-pandoc "$DOCX_ABS" \
+pandoc "$SOURCE_PANDOC" \
   --from=docx \
   --to=markdown-simple_tables-multiline_tables-grid_tables \
   --track-changes=accept \
   --extract-media=. \
+  --lua-filter="$PIPE/filters/szh-styles-corps.lua" \
   --lua-filter="$PIPE/filters/szh-meta.lua" \
   --lua-filter="$PIPE/filters/szh-legendes.lua" \
   --lua-filter="$PIPE/filters/szh-titres.lua" \
@@ -174,6 +193,9 @@ pandoc "$DOCX_ABS" \
   --lua-filter="$PIPE/filters/szh-attributs-sains.lua" \
   --wrap=none \
   -o "$SLUG.md" || exit 1
+
+# pandoc écrit « ::: highlight » ; le cockpit pose et relit « ::: {.highlight} ».
+sed -i -E 's/^(:::+) (important|highlight|question)$/\1 {.\2}/' "$SLUG.md"
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true

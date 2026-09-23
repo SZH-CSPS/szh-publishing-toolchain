@@ -314,12 +314,9 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   assert.strictEqual(structDocx.blocs_ancienne_forme.length, 0);
   assert.strictEqual(structDocx.blocs_nouvelle_forme.length, 2);
   assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 4);
-  // Le second bloc (l'exemple de bloc TABLEAU) n'en porte que trois depuis la v3 du gabarit :
-  // « Source : » n'y figure pas. Sans conséquence — une clé attendue absente est une simple
-  // information, jamais un blocage — mais la ligne d'aide juste en dessous dit encore
-  // « Copiez ces quatre paragraphes ». À trancher : rétablir la quatrième clé, ou corriger
-  // l'aide.
-  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 3);
+  // « Source : » manquait au second bloc depuis la v3 du gabarit, alors que l'aide dit
+  // « Copiez ces quatre paragraphes » : rétablie le 23.09.2026.
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 4);
 });
 
 // Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),

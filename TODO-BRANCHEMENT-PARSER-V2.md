@@ -216,11 +216,13 @@ paragraphe dans un `Div` portant le nom du style Word ; pour l'OpenDocument, pa
 « The extension styles is not supported for odt ». Ne pas bâtir la conservation des styles de
 corps là-dessus : cela ferait deux chaînes différentes selon le format.
 
-**Les styles de corps du gabarit sont perdus par pandoc, dans les deux formats.** `SZH Important`,
-`SZH Hervorhebung`, `SZH Question (interview)` et `Quote` sortent en `Para` nu — la chaîne
-n'emploie pas `+styles`. Un auteur qui pose un encadré le perd aujourd'hui en silence. Si l'on
-veut les garder, ce sera au **lecteur** de les signaler (il voit les styles dans le XML), pas à
-pandoc.
+**Les styles de corps : `+styles` n'est pas la voie** (mesuré le 23.09.2026, pandoc 3.5, 16
+documents réels). Cette lecture change aussi le reste de l'arbre : le gras du style de caractère
+« Strong » devient un Span, une cellule passe de Plain à Para, une figure perd sa légende.
+L'import passe donc par une copie marquée (`docx-styles-corps.py`, puis `szh-styles-corps.lua`
+en premier filtre) : 15 documents sur 16 ressortent identiques à l'octet, le seizième (le
+gabarit) ne diffère que par ses trois blocs. `Quote` n'était pas perdu : pandoc en fait déjà
+un `BlockQuote`. Côté `.odt`, rien de fait : la chaîne ne lit pas encore l'ODT.
 
 **LibreOffice fusionne deux tableaux qui se touchent.** Mesuré sur le gabarit réel avec son bloc
 figure dupliqué : 4 tableaux côté `.docx`, 3 côté `.odt`. Le lecteur **répare** (un tableau de
@@ -270,25 +272,29 @@ vaut aussi pour les articles hérités.
 
 ## Décisions en attente
 
-- [ ] **« Riferimenti »** pour l'italien : absent de `TITRES_BIB`, qui ne porte que
-  `bibliografia`. À ajouter ?
-- [ ] **Les styles de corps** (`SZH Important` et consorts) : les conserver à la compilation, ou
-  accepter qu'ils se posent dans le cockpit après l'import ?
+- [x] ~~**« Riferimenti »** pour l'italien~~ — ajouté à `TITRES_BIB` avec
+  « Riferimenti bibliografici » (Robin, 23.09.2026).
+- [x] ~~**Les styles de corps**~~ — conservés à l'import (Robin, 23.09.2026) : SZH Important
+  → `::: {.important}`, SZH Hervorhebung → `::: {.highlight}`, SZH Question (interview) →
+  `::: {.question}`, les blocs de la palette du cockpit ; Citation reste `>`.
+- [x] ~~**La mise en évidence muette pour un lecteur d'écran**~~ — faite dans le HTML publié
+  (`szh-exergue.lua` : `aria-hidden`, liens en `tabindex="-1"` ; pas dans l'aperçu, qui sert
+  à relire). Abandonnée dans le PDF (Robin, 23.09.2026) : l'exergue y reste lue, ce n'est
+  pas grave. Mesuré : WeasyPrint 70
+  balise tout texte, `aria-hidden`, `role="presentation"` et contenu généré `::before`
+  compris ; seul un lanceur qui retoucherait son balisage interne en ferait un artefact.
 - [ ] **Les deux gabarits dans `revue-template/`** partent désormais dans chaque nouveau numéro,
   à sa racine — comme `livre-template/Modele-chapitre-SZH.docx`. Voulu, ou à déplacer ?
 - [x] ~~**Le style `heading 2` sur la ligne « Titre niveau 3 »**~~ — corrigé par la v3 du
   gabarit (22.09.2026) : la ligne porte bien `Titre3`.
 - [ ] **`Fichier d'origine`** a disparu du bloc figure entre la v1 et la v2 du gabarit.
   Volontaire ?
-- [ ] **Le second bloc du gabarit v3 n'a que trois clés** (pas de « Source : »), alors que la
-  ligne d'aide juste dessous dit « Copiez ces quatre paragraphes ». Rétablir la clé, ou
-  corriger l'aide ? Sans conséquence technique (une clé attendue absente est une information),
-  mais le gabarit se contredit.
-- [ ] **La ligne « Titre niveau 3 (pas de niveau 4 !) »** du gabarit v3 se contredit elle
-  aussi, maintenant qu'un rang 4 existe.
-- [ ] **Un titre de rang 4 est visuellement identique à un rang 3** : tous deux à la taille du
-  corps et en gras (`print.css`, `h4, h5, h6`), le rang 3 portant seul un numéro de section.
-  Mesuré sur le document mis en page. Voulu, ou faut-il les distinguer ?
+- [x] ~~**Le second bloc du gabarit v3 n'a que trois clés**~~ — « Source : » rétablie dans
+  le `.docx` et le `.odt` (Robin, 23.09.2026).
+- [x] ~~**La ligne « Titre niveau 3 (pas de niveau 4 !) »**~~ — devenue « Titre niveau 3 »,
+  et la ligne suivante « Titre niveau 4 (non numéroté) » (Robin, 23.09.2026).
+- [x] ~~**Un titre de rang 4 est visuellement identique à un rang 3**~~ — voulu : le numéro
+  seul les distingue (Robin, 23.09.2026).
 
 ---
 

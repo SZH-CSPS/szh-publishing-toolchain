@@ -12,7 +12,7 @@
 #   szh-tabelle-scope -> szh-typographie -> szh-titre-lignes -> szh-metafichier ->
 #   szh-grille -> szh-ressource -> szh-figure -> szh-numerotation ->
 #   szh-tableau-boite -> szh-legende-avant -> szh-sections -> szh-auteurs ->
-#   szh-citations -> szh-rubrique -> szh-cesure -> szh-notes
+#   szh-citations -> szh-rubrique -> szh-cesure -> szh-exergue -> szh-notes
 #   * szh-titre-lignes juste après szh-typographie : il MESURE le titre pour le couper en
 #     escalier (première ligne plus courte que la deuxième), et doit donc voir le titre
 #     tel qu'il s'imprimera — insécables et mots outils soudés compris, ce que
@@ -64,7 +64,10 @@
 #     bibliographie, et une bibliographie ne porte pas de numéro de section. szh-sections
 #     ayant fini de numéroter, ce titre-là n'en reçoit pas. L'ordre inverse — celui d'avant
 #     que la bibliographie devienne un fichier — imprimait « 6 Références ».
-# La chaîne d'aperçu reprend la même suite, sans szh-maquette.
+#   * szh-exergue tard, pour qu'aucun filtre ne rebâtisse après lui le bloc dont il
+#     masque la mise en évidence au lecteur d'écran ; place indifférente sinon ;
+# La chaîne d'aperçu reprend la même suite, sans szh-maquette ni szh-exergue : l'aperçu
+# sert à relire son article, exergue comprise.
 #
 # Aucun chemin /mnt/c codé en dur ici (portabilité macOS). Conserver l'indentation
 # par tabulations et les fins de ligne LF.
@@ -391,6 +394,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-rubrique.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-exergue.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
 	  --output="$(abspath $@)"
 	$(call reordonner_appels_de_note,$@)

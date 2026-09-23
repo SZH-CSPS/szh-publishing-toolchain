@@ -291,7 +291,7 @@ local TITRES_BIB = {
   'bibliografie', 'bibliografia', 'bibliographie', 'bibliography',
   'reference', 'references', 'referenzen', 'quellen', 'quellenverzeichnis',
   'ouvragescites', 'zitierteliteratur', 'verwendeteliteratur', 'weiterfuhrendeliteratur',
-  'referencesbibliographiques',
+  'referencesbibliographiques', 'riferimenti', 'riferimentibibliografici',
 }
 
 -- Le titre que la compilation pose au-dessus de la bibliographie détachée, par revue et par
