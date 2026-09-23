@@ -77,6 +77,10 @@ jobs:
       # --test-timeout=2000 sur un test bloqué : pass 1 / fail 0 / cancelled 1, process
       # en code 1 malgré tout : rien n'avale ce code ici, `set -o pipefail` le garde).
       # Reporter TAP explicite : la porte qui suit doit lire un total fiable.
+      # pypdf : pipeline/pagination.py compte les pages avec lui (test/js/pagination.test.js),
+      # même version que image/requirements.txt.
+      - name: Installer pypdf
+        run: python3 -m pip install --quiet --user --break-system-packages pypdf==6.19.0
       - name: Vérifier les contrats du cockpit
         env:
           SZH_PYTHON_OBLIGATOIRE: "1"
@@ -150,6 +154,8 @@ jobs:
       # gardait l'ancien plancher `# pass >= 950` — voir plus bas). --test-timeout=120000 :
       # même raison que côté ubuntu, `contrats` (job précédent) — un blocage sort en
       # `# cancelled`, pas en `# fail`.
+      - name: Installer pypdf
+        run: python -m pip install --quiet pypdf==6.19.0
       - name: Vérifier les contrats du cockpit (Windows)
         shell: bash
         env:
