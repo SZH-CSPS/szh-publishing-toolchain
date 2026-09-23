@@ -11,6 +11,19 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.2.1
+
+**Un dossier par type dans la bibliothèque de fiches.** `_NewsUndActu\Fiches\` range les fiches
+par type, sous un nom allemand en minuscules tiré du contrat (`types[].dossier`) : `rundschau`,
+`forschung`, `vorstoesse`, `buecher`, `filme`, `revueblick`, `weiterbildung`. Un type se
+sauvegarde, se migre ou se délègue d'un bloc, et chaque dossier devient une page parente du
+site Kirby (blueprint généré, adresse en minuscules). Un sous-dossier inconnu est ignoré avec un
+avertissement ; une fiche rangée sous le dossier d'un autre type est signalée, jamais lue.
+
+**Tests.** Les numéros d'essai du cockpit vivent sous une racine jetable (`Revue\<num>`) : la
+bibliothèque ne s'écrit plus dans le dossier temporaire commun du poste, où elle s'accumulait
+d'un passage à l'autre.
+
 ## 2.2.0
 
 **Actualité : une bibliothèque de fiches partagée, compatible Kirby.** Les fiches de la
