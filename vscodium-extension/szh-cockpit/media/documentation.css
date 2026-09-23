@@ -267,7 +267,9 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
    numéro : un seul aperçu ouvert à la fois dans toute la page (basculerApercuArchive). */
 .doc-archive-item { border-bottom: 1px solid var(--filet); }
 .doc-archive-item:last-child { border-bottom: 0; }
-.doc-archive-item .doc-vue-ligne { border-bottom: 0; padding-bottom: 0; }
+.doc-archive-item .doc-vue-ligne { border-bottom: 0; padding-bottom: 0; flex-wrap: nowrap; }
+/* Un titre long passe à la ligne, les boutons restent alignés à droite. */
+.doc-archive-item .doc-vue-titre { flex: 1 1 0; min-width: 0; }
 .doc-archive-corps { padding: 0 0 var(--e2) var(--e3); display: flex; flex-direction: column; gap: var(--e2); }
 .doc-archive-apercu-langue { display: flex; flex-direction: column; gap: .2em;
   padding: var(--e1) 0; border-top: 1px solid var(--filet); }
