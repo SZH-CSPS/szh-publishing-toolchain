@@ -416,6 +416,19 @@ function Resolve-SzhAncrage {
 # ecrit plutot que de rendre indefiniment "absent" pour le reste du lancement.
 function Initialize-SzhAncrage {
   $passif = Resolve-SzhAncrage
+  # Une detection automatique se memorise dans etat-utilisateur.json : le cockpit (JS,
+  # lib/rapport-erreur.js#resoudreAncrage) ne refait pas cette recherche et ne lit que
+  # config puis cache. Sans cela, l'onglet Archive et les rapports d'erreur du cockpit ne
+  # trouvaient jamais SharePoint sur un poste ou l'ancrage n'est que detecte.
+  if ($passif.chemin -and $passif.origine -eq 'auto' -and $env:SZH_LANCEUR_SIMULE -ne '1') {
+    try {
+      $etat = Get-SzhEtatUtilisateur
+      if (-not $etat) { $etat = New-Object psobject }
+      if ($etat.PSObject.Properties['ancrageSharePoint']) { $etat.ancrageSharePoint = $passif.chemin }
+      else { $etat | Add-Member -MemberType NoteProperty -Name 'ancrageSharePoint' -Value $passif.chemin }
+      Save-SzhEtatUtilisateur $etat
+    } catch { }
+  }
   if ($passif.chemin) { return $passif }
 
   if ($env:SZH_LANCEUR_SIMULE -eq '1') { return [pscustomobject]@{ chemin = ''; origine = 'defaut' } }
