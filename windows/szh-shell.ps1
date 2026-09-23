@@ -519,21 +519,71 @@ function Set-SzhRaccourcisMenu {
 }
 
 # ---- Raccourci « Ouvrir la revue » (ou « Ouvrir le livre ») ----
-# Le raccourci vit dans le dossier de revue et porte son chemin absolu : à réécrire à
-# chaque déplacement, sinon il rouvre un chemin disparu. Ne lève pas si VSCodium manque,
-# c'est un confort et non la condition du déplacement.
+# Ce raccourci vit DANS le dossier du numéro : OneDrive le recopie donc sur l'autre poste,
+# où rien de ce qu'il portait n'était vrai. Il visait l'exécutable de l'éditeur — installé
+# sous le profil de l'utilisateur, donc à un chemin qui contient le nom du compte — et lui
+# passait en argument le chemin absolu du numéro, qui contient le nom du compte lui aussi.
+# Deux chemins faux sur deux, et un double-clic qui ne fait rien.
+#
+# D'où sa forme d'aujourd'hui, où plus aucun chemin ne dépend du poste ni du compte :
+#
+#   cible      %WINDIR%\System32\wscript.exe
+#   arguments  //B "<toolkit>\windows\hidden.vbs" "<toolkit>\windows\open-revue.ps1" "szh://ouvrir/<produit>/<numero>"
+#   icône      "<toolkit>\windows\<icône du produit>",0
+#
+# <toolkit> est $SzhToolkit, sous C:\ProgramData : une racine MACHINE, identique sur tous
+# les postes. La composition est celle du gestionnaire de protocole (Set-SzhProtocoleSzh,
+# update.ps1), volontairement — hidden.vbs pour qu'aucune console n'apparaisse devant un
+# lanceur graphique, open-revue.ps1 parce que c'est le point d'entrée du lanceur. Et le
+# numéro n'est plus désigné par son chemin mais par un lien szh://, que le lanceur revalide
+# puis résout dans les racines connues du poste (Find-SzhProduitOuvrir) : le dossier peut
+# donc avoir été archivé, déplacé, ou vivre ailleurs sur l'autre poste, le raccourci le
+# retrouve. C'est aussi pourquoi aucun WorkingDirectory n'est posé : il réintroduirait le
+# chemin du poste d'origine, exactement ce dont on sort.
+#
+# Ne lève jamais et rend $false en cas de manque : c'est un confort, pas la condition d'une
+# création ni d'un déplacement.
+#
 # `$NomLien`/`$Description` par défaut : ceux de la revue, pour que new-revue.ps1 n'ait rien
-# à changer ; new-livre.ps1 passe les siens.
-function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la revue', [string]$Description = 'Ouvrir cette revue dans l''éditeur') {
-  $codium = Get-VSCodiumExe
-  if (-not $codium) { return $false }
-  $chemin = (Resolve-Path -LiteralPath $Dossier).Path
-  $shell = New-Object -ComObject WScript.Shell
-  $lnk = $shell.CreateShortcut((Join-Path $chemin ($NomLien + '.lnk')))
-  $lnk.TargetPath = $codium
-  $lnk.Arguments = ('"{0}"' -f $chemin)
-  $lnk.IconLocation = $codium
-  $lnk.Description = $Description
-  $lnk.Save()
-  return $true
+# à changer ; new-livre.ps1 passe les siens. `$Produit` est le seul paramètre ajouté, et il
+# est facultatif : vide, il se lit sur le disque (Get-SzhJetonDossier), ce qui suffit à
+# archive-revue.ps1 comme au script de migration. Le lien porte l'ID du manifeste (`id:`),
+# jamais le nom du dossier -- posé s'il manque encore (Set-SzhAusgabeIdSiAbsent, jamais
+# recalculé s'il existe déjà), pour qu'un numéro plus ancien reçoive lui aussi un raccourci
+# valable dès qu'on repasse par ici (migration, archivage).
+function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la revue', [string]$Description = 'Ouvrir cette revue dans l''éditeur', [string]$Produit = '') {
+  try {
+    $chemin = (Resolve-Path -LiteralPath $Dossier -ErrorAction Stop).Path
+    $jeton = ([string]$Produit).Trim().ToLower()
+    if (-not $SzhProduits.ContainsKey($jeton)) { $jeton = Get-SzhJetonDossier $chemin }
+    if (-not $jeton) { return $false }
+    $manifeste = [string](Get-SzhProduitInfo $jeton).manifeste
+    [void](Set-SzhAusgabeIdSiAbsent $chemin $manifeste)
+    $valeurs = Get-SzhAusgabe (Join-Path $chemin $manifeste)
+    $id = ''
+    if ($valeurs.ContainsKey('id')) { $id = $valeurs['id'] }
+    # Un id absent ou hors grammaire (manifeste illisible, écriture ratée) ne donne aucun
+    # lien : mieux vaut pas de raccourci qu'un raccourci mort-né.
+    $lien = New-SzhLienOuvrir $jeton $id
+    if (-not $lien) { return $false }
+
+    $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+    $vbs     = Join-Path $SzhToolkit 'windows\hidden.vbs'
+    $lanceur = Join-Path $SzhToolkit 'windows\open-revue.ps1'
+    $icone   = Join-Path $SzhToolkit ('windows\' + (Get-SzhProduitInfo $jeton).icone)
+
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut((Join-Path $chemin ($NomLien + '.lnk')))
+    $lnk.TargetPath = $wscript
+    $lnk.Arguments = ('//B "{0}" "{1}" "{2}"' -f $vbs, $lanceur, $lien)
+    # Sans IconLocation, l'explorateur affiche celle de wscript.exe, qui ne dit rien à
+    # personne ; un .ico absent donnerait un carré blanc, on préfère alors ne rien poser.
+    if (Test-Path $icone) { $lnk.IconLocation = ('{0},0' -f $icone) }
+    $lnk.Description = $Description
+    $lnk.Save()
+    return $true
+  } catch {
+    try { Write-SzhLog ('raccourci du numero : ' + $_.Exception.Message) } catch { }
+    return $false
+  }
 }

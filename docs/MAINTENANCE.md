@@ -350,6 +350,43 @@ signée : une autre installation (ou l'utilisateur) a repris l'association.
 **Manœuvre.** Relancer `update.ps1` ; le geste « Toujours utiliser cette application »
 reste à faire par l'utilisateur, une fois.
 
+### Les liens `szh://` : deux verbes, une seule grammaire
+
+| Lien | Qui l'émet | Ce qu'il fait |
+|---|---|---|
+| `szh://traduction/<produit>/<numéro>[/<article>]` | « Envoyer pour traduction » (cockpit) | ouvre le numéro **sur le suivi de traduction** (`revue`, `zeitschrift`) |
+| `szh://ouvrir/<produit>/<numéro>` | le raccourci posé à la racine de chaque numéro | ouvre le dossier, rien de plus (`revue`, `zeitschrift`, `livre`) |
+
+La grammaire est écrite **deux fois**, et volontairement : `$SzhLienMotif` /
+`$SzhLienMotifOuvrir` dans `windows/szh-produits.ps1`, `MOTIF_TRADUCTION` / `MOTIF_OUVRIR`
+dans `vscodium-extension/szh-cockpit/lib/liens.js`. Les quatre littéraux sont comparés
+caractère par caractère par `test/js/raccourcis-portables.test.js` : modifier un côté sans
+l'autre fait échouer la suite. Un lien vient toujours d'une source non fiable (un e-mail,
+un `.lnk` recopié par OneDrive) — il ne porte jamais de chemin, et le dossier est cherché
+dans les seules racines connues du poste.
+
+La résolution diffère d'un verbe à l'autre : `traduction` cherche dans la racine **active**,
+`ouvrir` dans la racine active **puis** dans celle de **production** (`Find-SzhProduitOuvrir`).
+Un numéro introuvable donne une boîte de dialogue, jamais un silence.
+
+### Le raccourci « Ouvrir la revue » d'un numéro ne fait rien
+
+**Symptôme.** Double-clic sans effet sur un numéro arrivé par OneDrive depuis l'autre poste.
+
+**Cause.** Un raccourci d'avant le 15.09.2026 : il visait l'exécutable de l'éditeur (installé
+sous le profil de l'utilisateur) et lui passait le chemin absolu du numéro. Les deux chemins
+contiennent le nom du compte Windows, et aucun des deux n'existe sur l'autre poste.
+
+**Manœuvre.** Rouvrir le numéro depuis le menu Démarrer puis l'archiver/désarchiver, ou le
+recréer : `Set-SzhRaccourciRevue` réécrit alors le raccourci dans sa forme portable. Pour un
+lot entier de numéros dans le dossier de test, une mise à jour de l'outil les refait tous
+à la fois (`windows/szh-migration.ps1`, `Invoke-SzhMigrationArborescence`, appelée par
+`update.ps1` — voir docs/EMPLACEMENTS.md §8).
+
+**À observer.** Propriétés du `.lnk` : la cible doit être `wscript.exe` et les arguments
+doivent se terminer par un lien `szh://ouvrir/…`. S'il y figure un `C:\Users\…`, le raccourci
+est périmé.
+
 ### Les liens `szh://` ne font rien depuis un e-mail
 
 **Deux causes possibles**, toutes deux déjà rencontrées.
@@ -719,7 +756,8 @@ lanceur regarde ailleurs.
 
 **À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active — un seul titre,
 quel que soit l'onglet ouvert — `Pronto – dossier de test (Revues-TESTING)` ou
-`… – dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
+`… – dossier de production (54_Pronto)`, le jeton entre parenthèses étant la
+feuille de la racine active. Le journal du mois porte la même chose :
 `revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
 information sans redémarrer le lanceur : le badge « Dossier de test » de sa barre d'état.
 

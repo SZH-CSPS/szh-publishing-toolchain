@@ -26,7 +26,7 @@ function cheminConfigDetecte(racine) {
 //   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
   'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
-  'ordre-chapitres', 'articles-sans-doi',
+  'ordre-chapitres', 'articles-sans-doi', 'id',
   // ---- buch.yaml : formulaire « Métadonnées du livre » (media/metadata-book.*) ----
   // `lang` et `couleur`, juste au-dessus, sont déjà communs aux deux profils — un livre les
   // porte au même niveau qu'un numéro, sous le même nom. Le reste n'existe que dans

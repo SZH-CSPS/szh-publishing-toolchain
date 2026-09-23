@@ -297,9 +297,28 @@ if ($ancrageResolu.origine -eq 'absent') {
 # retenter les rapports ecrits hors ligne depuis le dernier lancement.
 try { Clear-SzhRapportsEnAttente } catch { }
 
+# ---- Check-in mensuel du poste ----
+# Une ligne par mois et par compte dans <racine>\_Systeme\inventaire\<POSTE>.csv, creee si
+# elle manque et rafraichie sinon (windows\szh-checkin.ps1). Ici, et pas ailleurs : c'est le
+# seul passage par lequel TOUT lancement passe, lien `szh://` compris -- un poste qui ne
+# sert qu'a ouvrir des liens ne doit pas manquer son rendez-vous. Et juste apres la
+# resolution de l'ancrage, dont le check-in consigne l'origine et sans lequel il n'aurait
+# aucune racine ou ecrire.
+#
+# Jamais bloquant, jamais fatal (D5) : Invoke-SzhCheckin ne leve pas, et le try d'ici n'est
+# qu'une ceinture de plus. Un dossier partage injoignable laisse une ligne de journal, le
+# lanceur s'ouvre quand meme -- l'inventaire est un confort, pas une condition d'ouverture.
+try { [void](Invoke-SzhCheckin -OrigineAncrage $ancrageResolu.origine) } catch { }
+
 # ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
-# Seuls revue et zeitschrift ont une grammaire de lien (Get-SzhLien) ; le livre n'y figure
-# jamais, $Lien restant vide pour lui (open-livre.ps1 ne le transmet pas).
+# Deux verbes arrivent ici (Get-SzhLien, szh-produits.ps1), et par deux portes differentes :
+#   * "traduction" vient d'un courriel, par le gestionnaire de protocole. Revue et
+#     Zeitschrift seulement, et une intention deposee pour que le cockpit ouvre le suivi de
+#     traduction en arrivant.
+#   * "ouvrir" vient du raccourci pose a la racine du numero (Set-SzhRaccourciRevue). Le
+#     livre en est, puisqu'il porte le meme raccourci. Aucune intention : il n'y a aucun
+#     panneau a viser, le dossier s'ouvre et c'est tout.
+# $Lien reste vide quand le lanceur est ouvert par le menu Demarrer.
 #
 # Ce chemin n'ouvre aucune fenetre de lanceur et ne touche plus a la langue du poste. Il le
 # faisait : un clic sur un lien Zeitschrift depuis Outlook basculait tout l'outil en
@@ -315,20 +334,33 @@ if ($Lien) {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lien.invalide' @($Lien)), $titreFenetre)
     exit 1
   }
-  $dossierLien = Find-SzhRevue $cible.produit $cible.numero
+  # Deux verbes, deux resolutions. "traduction" garde EXACTEMENT ce qu'il faisait : la
+  # racine ACTIVE du poste, en cours puis archives. "ouvrir" balaie la racine active puis
+  # celle de PRODUCTION, et connait le livre (Find-SzhProduitOuvrir, szh-produits.ps1).
+  $dossierLien = ''
+  if ($cible.vue -eq 'ouvrir') { $dossierLien = Find-SzhProduitOuvrir $cible.produit $cible.id }
+  else { $dossierLien = Find-SzhRevue $cible.produit $cible.id }
   if (-not $dossierLien) {
     if ($script:SzhSimule) {
-      Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; erreur = 'introuvable' })
+      Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; vue = $cible.vue; erreur = 'introuvable' })
       exit 1
     }
+    # Un echec muet serait le pire : le raccourci ne fait rien, et personne ne sait
+    # pourquoi. Le livre a sa variante du message, "le numero" ne voulant rien dire pour lui.
+    $cleIntrouvable = 'lien.introuvable'
+    if ($cible.produit -eq 'livre') { $cleIntrouvable = 'lien.introuvable.livre' }
     [void][System.Windows.Forms.MessageBox]::Show(
-      (T 'lien.introuvable' @($cible.numero, $cible.produit)), $titreFenetre)
+      (T $cleIntrouvable @($cible.id, $cible.produit)), $titreFenetre)
     exit 1
   }
-  # A usage unique, jamais bloquante : sans elle, la revue s'ouvre sans aller droit au panneau.
-  try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
+  # A usage unique, jamais bloquante : sans elle, la revue s'ouvre sans aller droit au
+  # panneau. Rien a deposer pour "ouvrir", qui ne vise aucun panneau -- et surtout rien a
+  # laisser trainer dans %LOCALAPPDATA% pour la prochaine fenetre.
+  if ($cible.vue -ne 'ouvrir') {
+    try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
+  }
   if ($script:SzhSimule) {
-    Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; dossier = $dossierLien })
+    Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; vue = $cible.vue; dossier = $dossierLien })
     exit 0
   }
   [void](Start-SzhCodium $dossierLien)
@@ -356,6 +388,15 @@ function Get-SzhInventaireProduit([string]$Jeton) {
   $encoursProduit = Get-SzhEmplacementRevue $info.jeton 'encours'
   $archiveProduit = Get-SzhEmplacementRevue $info.jeton 'archive'
   $racines = @($encoursProduit, $archiveProduit)
+  # « Ce numero est archive » se decide sur l'EGALITE du dossier parent avec la racine
+  # d'archives du produit, jamais sur un « le chemin contient _Archive ». La distinction est
+  # devenue essentielle depuis que les archives des trois produits se regroupent sous un
+  # « _Archive\ » commun (szh-produits.ps1, $SzhSousDossiers) :
+  #   * en cours -> <base>\Revue                 <- parent d'un numero en cours
+  #   * archive  -> <base>\_Archive\Revue        <- parent d'un numero archive
+  # Les deux chaines se terminent par « \Revue ». Une comparaison par sous-chaine ou par
+  # suffixe rangerait donc l'un pour l'autre ; l'egalite, elle, ne peut pas se tromper, et
+  # elle ne coute rien puisque le balayage part deja de ces deux racines-la.
   $racinesArchives = @{}
   $racinesArchives[$archiveProduit.ToLower()] = $true
 
@@ -442,14 +483,15 @@ function Get-SzhInventaireProduit([string]$Jeton) {
   $lignesInfo += (T $info.texteTest @($emplacements.base))
   # Ancrage SharePoint absent : dit pourquoi la liste ci-dessus est vide, sans rouvrir la
   # moindre fenetre -- Initialize-SzhAncrage, plus haut, a deja fait tout ce qu'il pouvait
-  # faire pour cette fois (D5). Seulement en emplacement "production", et seulement si
-  # basesRevues.prod n'est pas configure a la main : dans ces deux autres cas, l'ancrage
-  # n'entre pour rien dans la racine effectivement utilisee (szh-produits.ps1,
-  # Get-SzhBaseRevuesPour), et le dire serait une fausse alerte.
+  # faire pour cette fois (D5). Seulement en emplacement "production" : en test, l'ancrage
+  # n'entre pour rien dans la racine utilisee (szh-produits.ps1, Get-SzhBaseRevuesPour), et
+  # le dire serait une fausse alerte.
+  #
+  # La deuxieme condition d'avant -- "sauf si une racine de production est configuree a la
+  # main" -- a disparu avec la cle de configuration qui la portait (15.09.2026) : sans
+  # ancrage, en production, la liste EST vide, sans exception.
   if ((-not $modeTest) -and (-not $ancrageResolu.chemin)) {
-    $cfgAncrageInfo = Get-SzhConfig
-    $baseProdConfiguree = ($cfgAncrageInfo -and $cfgAncrageInfo.basesRevues -and $cfgAncrageInfo.basesRevues.prod)
-    if (-not $baseProdConfiguree) { $lignesInfo += (T 'lanceur.ancrage.absent') }
+    $lignesInfo += (T 'lanceur.ancrage.absent')
   }
   $avertissementHors = ''
   if ($info.racinesHeritees -and ($horsArborescence -gt 0)) {

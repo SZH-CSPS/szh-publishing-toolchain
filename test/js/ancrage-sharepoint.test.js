@@ -20,10 +20,13 @@
 //   * La résolution passive est mémoïsée en portée script (Clear-SzhAncrageMemo la vide) :
 //     sans ça, Get-SzhEmplacements + Get-SzhEmplacementRevue balayaient le disque deux à
 //     trois fois par ouverture de lanceur.
-// Une deuxième chose que ce fichier garde explicitement, parce qu'elle se « corrige » avec la
-// meilleure volonté du monde si on ne la voit pas venir : le dossier des rapports s'appelle
-// RÉELLEMENT « _AutoReportToolboxZeitscrhiften » (faute de frappe SharePoint authentique, pas
-// une coquille du dépôt) -- un correctif orthographique un jour futur casserait le chemin réel.
+// Une deuxième chose que ce fichier garde explicitement : le nom du dossier de l'application
+// (« 54_Pronto ») ne vit qu'à UN endroit du PowerShell,
+// $script:SzhSegmentApplication -- tout l'arbre de production en dérive, et le contrat du lot
+// est qu'une seule chaîne soit à corriger si ce dossier changeait de nom. Le jumeau JavaScript,
+// SEGMENT_APPLICATION (lib/rapport-erreur.js), est gardé de même par
+// test/js/rapport-erreur.test.js, et test/js/rapport-erreur-ps.test.js compare les deux
+// dérivations sur un même ancrage.
 //
 // Technique reprise telle quelle de test/js/courriel-support.test.js et
 // test/js/orphelins-toolkit.test.js : les VRAIS .ps1 du dépôt sont dot-sourcés (jamais
@@ -57,6 +60,15 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 
 const ANCRAGE_SOURCE = fs.readFileSync(ANCRAGE_PS1, 'utf8');
 const PRODUITS_SOURCE = fs.readFileSync(PRODUITS_PS1, 'utf8');
+
+// Le nom du dossier de l'application vit à UN seul endroit côté PowerShell, et ce fichier le
+// LIT plutôt que de le recopier — un futur renommage ne doit pas casser un test sans avoir
+// rien cassé de réel.
+const SEGMENT_APPLICATION = (function () {
+  const m = ANCRAGE_SOURCE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
+  assert.ok(m, 'szh-ancrage.ps1 ne déclare plus $script:SzhSegmentApplication');
+  return m[1];
+})();
 
 // ---- PowerShell, comme dans les autres fichiers du dépôt ----
 
@@ -105,12 +117,35 @@ function executerPilote(prefixe, dossierTravail, contenuPs1, args) {
 // ---- Contrôles statiques (aucun PowerShell requis) : source réelle des .ps1 -----------
 // =====================================================================================
 
-test('la faute de frappe réelle du dossier des rapports est présente au caractère près, jamais « corrigée »', () => {
-  assert.ok(ANCRAGE_SOURCE.indexOf('_AutoReportToolboxZeitscrhiften') !== -1,
-    'szh-ancrage.ps1 ne porte plus le nom réel du dossier SharePoint (faute de frappe comprise)');
-  // Et surtout PAS la version orthographiquement correcte, qui trahirait une « correction ».
-  assert.ok(ANCRAGE_SOURCE.indexOf('_AutoReportToolboxZeitschriften') === -1,
-    'le nom du dossier a été "corrigé" -- il doit rester la faute de frappe réelle du SharePoint');
+test('le nom du dossier de l’application ne vit qu’à UN seul endroit du PowerShell', () => {
+  // Tout l'arbre de production pend sous ce segment, et le contrat est qu'UNE SEULE chaîne
+  // soit à corriger si le dossier de l'application changeait de nom.
+  const declarations = ANCRAGE_SOURCE.match(/\$script:SzhSegmentApplication\s*=\s*'[^']+'/g) || [];
+  assert.strictEqual(declarations.length, 1,
+    'szh-ancrage.ps1 doit déclarer $script:SzhSegmentApplication exactement une fois');
+  const segment = declarations[0].match(/'([^']+)'/)[1];
+  // Les deux dérivés en descendent, et ne réécrivent donc jamais le segment en dur.
+  assert.ok(ANCRAGE_SOURCE.indexOf("$script:SzhDeriveBaseProduits = Join-Path '2_Produkte' $SzhSegmentApplication") !== -1,
+    'la base des produits ne dérive plus du segment de l’application');
+  assert.ok(ANCRAGE_SOURCE.indexOf('$script:SzhDeriveDossierRapports = Join-Path $SzhDeriveBaseProduits') !== -1,
+    'le dossier des rapports ne dérive plus de la base des produits');
+  // Une seule occurrence du littéral dans tout le fichier : celle de la déclaration.
+  const occurrences = ANCRAGE_SOURCE.split(segment).length - 1;
+  assert.strictEqual(occurrences, 1,
+    'le nom du dossier de l’application est recopié ' + occurrences + ' fois dans szh-ancrage.ps1');
+});
+
+test('le dossier des rapports a déménagé dans notre arbre : plus aucune trace du dossier étranger', () => {
+  // Il vivait sous « Edition SZH CSPS allgemein\_AutoReportToolbox… », un dossier appartenant
+  // à une autre équipe, dont on reproduisait jusqu'à la faute de frappe SharePoint. Depuis le
+  // 15.09.2026 il est sous `_Systeme\rapports`, chez nous, et l'ancien chemin n'est plus lu.
+  assert.ok(ANCRAGE_SOURCE.indexOf("Join-Path $SzhDeriveBaseProduits '_Systeme\\rapports'") !== -1,
+    'le dossier des rapports ne pend plus sous _Systeme\\rapports');
+  // Le nom complet du dossier étranger ne doit plus apparaître NULLE PART dans le fichier —
+  // ni en littéral, ni en commentaire : c'est le repère le plus sûr, la faute de frappe
+  // « Zeitscrhiften » ne pouvant venir que de l'ancien chemin.
+  assert.ok(ANCRAGE_SOURCE.indexOf('_AutoReportToolboxZeitscrhiften') === -1,
+    'l’ancien dossier des rapports est encore nommé en entier dans szh-ancrage.ps1');
 });
 
 test('Find-SzhAncrageParDescente : les plafonds par défaut sont bien 3 niveaux et 2000 dossiers', () => {
@@ -481,11 +516,11 @@ test('échec propre : aucun ancrage nulle part rend un résultat vide, jamais un
   assert.ok(!e.obtenu, 'un ancrage a été trouvé là où il ne devrait rien y avoir : ' + e.obtenu);
 });
 
-test('dérivés : base des produits et dossier des rapports, avec le nom réel (faute de frappe comprise)', { skip: sansPowerShell }, () => {
+test('dérivés : base des produits et dossier des rapports, tous deux sous le dossier de l’application', { skip: sansPowerShell }, () => {
   const d = decisions.lu.derives;
-  assert.strictEqual(d.base, 'C:\\Ancrage\\2_Produkte');
+  assert.strictEqual(d.base, 'C:\\Ancrage\\2_Produkte\\' + SEGMENT_APPLICATION);
   assert.strictEqual(d.rapports,
-    'C:\\Ancrage\\2_Produkte\\Edition SZH CSPS allgemein\\_AutoReportToolboxZeitscrhiften');
+    'C:\\Ancrage\\2_Produkte\\' + SEGMENT_APPLICATION + '\\_Systeme\\rapports');
   assert.strictEqual(d.baseVide, '');
   assert.strictEqual(d.rapportsVide, '');
 });
@@ -609,14 +644,16 @@ function piloteGroupe2() {
   p('ND (Join-Path $ancParallele \'2_Produkte\') | Out-Null');
   p('$env:SZH_ANCRAGE = $ancParallele');
   p('$configPersonnalisee = \'Z:\\Ailleurs\\Revues\'');
+  p('# La clé de configuration qui primait ici a été SUPPRIMÉE le 15.09.2026 : si elle traîne');
+  p('# encore dans un config.json, elle doit être IGNORÉE, et c\'est l\'ancrage qui gagne.');
   p('Set-SzhJson $SzhConfigFile ([ordered]@{ basesRevues = [ordered]@{ prod = $configPersonnalisee } })');
   p('Clear-SzhAncrageMemo');
   p('$baseA = Get-SzhBaseRevuesPour \'production\'');
   p('Remove-Item Env:SZH_ANCRAGE -ErrorAction SilentlyContinue');
   p('');
-  p('# LE POINT LE PLUS IMPORTANT : sans basesRevues.prod, un poste où');
+  p('# LE POINT LE PLUS IMPORTANT : un poste où');
   p('# %USERPROFILE%\\SZH CSPS\\Daten_Allgemein - General existe doit rendre EXACTEMENT la');
-  p('# même chaîne que le défaut codé en dur d\'avant cette modification.');
+  p('# même chaîne que le défaut codé en dur.');
   p('Set-SzhJson $SzhConfigFile ([ordered]@{})');
   p('$profilB = ND (Join-Path $Travail \'regression\\posteB\')');
   p('$env:USERPROFILE = $profilB');
@@ -633,8 +670,8 @@ function piloteGroupe2() {
   p('$attenduDev = [Environment]::ExpandEnvironmentVariables($SzhBasesDefaut.dev)');
   p('');
   p('$resultats[\'base_revues_pour\'] = [ordered]@{');
-  p('  configPrioritaire = [ordered]@{ obtenu = $baseA; attendu = $configPersonnalisee }');
-  p('  nonRegression = [ordered]@{ obtenu = $baseB; attenduDerive = (Join-Path $ancB \'2_Produkte\'); attenduAncienDefaut = $ancienDefautB }');
+  p('  configIgnoree = [ordered]@{ obtenu = $baseA; refuse = $configPersonnalisee; attendu = (Get-SzhBaseProduitsDepuisAncrage $ancParallele) }');
+  p('  nonRegression = [ordered]@{ obtenu = $baseB; attenduDerive = (Get-SzhBaseProduitsDepuisAncrage $ancB); attenduAncienDefaut = $ancienDefautB }');
   p('  dev = [ordered]@{ obtenu = $baseDev; attendu = $attenduDev }');
   p('}');
   p('');
@@ -716,15 +753,21 @@ test('cache : une valeur qui ne pointe plus sur un dossier existant est ignorée
   assert.strictEqual(c.hit.origine, 'cache');
 });
 
-test('Get-SzhBaseRevuesPour : basesRevues.prod garde la priorité absolue sur l’ancrage', { skip: sansPowerShell }, () => {
-  const b = orchestration.lu.base_revues_pour.configPrioritaire;
+test('Get-SzhBaseRevuesPour : une racine écrite dans config.json ne prime PLUS — l’ancrage gagne', { skip: sansPowerShell }, () => {
+  // Le propriétaire l'a demandé en clair le 15.09.2026 : un chemin recopié à la main dans un
+  // fichier de configuration survivait à un déménagement de la bibliothèque et rendait le
+  // poste muet sans un mot. La racine de production vient maintenant du dossier trouvé sur le
+  // disque, et d'aucun réglage.
+  const b = orchestration.lu.base_revues_pour.configIgnoree;
   assert.strictEqual(b.obtenu, b.attendu);
+  assert.notStrictEqual(b.obtenu, b.refuse,
+    'la clé de configuration supprimée prime encore sur l’ancrage SharePoint');
 });
 
 test('Get-SzhBaseRevuesPour : NON-RÉGRESSION -- même chaîne qu’avant cette modification, quand l’ancrage se détecte au même endroit que le défaut codé en dur', { skip: sansPowerShell }, () => {
   const n = orchestration.lu.base_revues_pour.nonRegression;
   assert.strictEqual(n.obtenu, n.attenduDerive,
-    'la base dérivée de l’ancrage ne correspond plus à <profil>\\SZH CSPS\\Daten_Allgemein - General\\2_Produkte');
+    'la base dérivée de l’ancrage ne correspond plus à <profil>\\SZH CSPS\\Daten_Allgemein - General\\2_Produkte\\<application>');
   assert.strictEqual(n.obtenu, n.attenduAncienDefaut,
     'RÉGRESSION : la nouvelle résolution ne rend plus exactement ce que rendait l’ancien défaut codé en dur -- des revues disparaîtraient pour un rédacteur');
 });

@@ -4897,10 +4897,16 @@ async function envoyerPourTraduction(fournisseur, cible) {
   const vise = cibleTraduction(fournisseur, cible);   // sinon le lien vise le numéro
   const slug = (vise.slug && fournisseur.listerArticles().indexOf(vise.slug) !== -1) ? vise.slug : '';
   let produit = '';
+  let id = '';
   try {
-    produit = normaliserRevue(analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')).revue);
+    const ausgabe = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'));
+    produit = normaliserRevue(ausgabe.revue);
+    id = String(ausgabe.id || '');
   } catch (e) { produit = ''; }
-  const lien = construireLienTraduction(produit, path.basename(racine), slug);
+  // Le lien porte l'id, pas le nom du dossier (depuis le 23.09.2026) : un numéro sans `id:`
+  // (créé avant cette date, jamais rouvert dans le cockpit depuis) n'a encore aucun lien
+  // valable -- le cockpit le pose à l'ouverture (voir ailleurs), pas ici.
+  const lien = construireLienTraduction(produit, id, slug);
   if (lien === '') {
     vscode.window.showWarningMessage(T('trad.lien.impossible'));
     return;

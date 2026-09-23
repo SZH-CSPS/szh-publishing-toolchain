@@ -635,19 +635,37 @@ function ConvertTo-SzhRapportCheminAvecRepli {
 # script de tri) ne voit jamais un fichier a moitie ecrit. Rend $true/$false, ne leve jamais
 # -- c'est l'appelant (Write-SzhRapport) qui decide quoi faire d'un echec (repli sur la file
 # d'attente, puis abandon silencieux).
+#
+# DEUX corrections du 15.09.2026, sur le meme temporaire :
+#   * il s'appelait "<cible>.tmp-..." -- SANS le prefixe "~$" que tout le reste du depot
+#     emploie precisement parce que OneDrive l'IGNORE (ecrireAtomique de lib/yaml.js,
+#     Write-SzhCheckinCsv de szh-checkin.ps1). Ce dossier-ci est le dossier PARTAGE : un
+#     fichier de plus n'y coute pas une ecriture locale, il coute une replication vers
+#     tous les postes ;
+#   * l'exception etait avalee SANS supprimer le temporaire, qui restait donc sur place
+#     pour toujours. D'ou le bloc finally ci-dessous ; sa suppression est silencieuse,
+#     puisque apres un renommage reussi le temporaire n'existe plus -- le cas normal.
+# Le nom compose ne finit jamais par ".json", ce qui le tient hors de
+# Get-SzhRapportsEnAttenteListe (-Filter '*.json') comme de son homologue JavaScript.
 function Write-SzhRapportSurDisque {
   param([string]$Dossier, [string]$Id, $Rapport)
 
+  $tmp = ''
   try {
     New-Item -ItemType Directory -Force -Path $Dossier -ErrorAction Stop | Out-Null
     $texteJson = ConvertTo-SzhRapportJsonTexte -Objet $Rapport
     $cible = Join-Path $Dossier ($Id + '.json')
-    $tmp = $cible + ('.tmp-{0}-{1}' -f $PID, ([guid]::NewGuid().ToString('N')))
+    $tmp = Join-Path $Dossier ('~$' + $Id + '.json.' + $PID + '.' +
+      ([guid]::NewGuid().ToString('N').Substring(0, 8)))
     [System.IO.File]::WriteAllText($tmp, $texteJson, (New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $tmp -Destination $cible -Force -ErrorAction Stop
     return $true
   } catch {
     return $false
+  } finally {
+    if ($tmp) {
+      try { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } } catch { }
+    }
   }
 }
 

@@ -99,6 +99,11 @@ try {
     Write-SzhOk (T ('arch.ok' + $suffixeLivre) @($cible))
     $deplace = $false
   } else {
+    # -Force crée la chaîne ENTIÈRE, et c'est ce qui rend l'archivage indifférent à la forme
+    # de la cible : depuis le 15.09.2026 la racine d'archives d'un produit est à DEUX niveaux
+    # sous la base (« _Archive\Revue ») alors que celle des numéros en cours n'en a plus
+    # qu'un (« Revue »). Les deux sens du geste — archiver, désarchiver — passent par la même
+    # ligne, qui n'a donc pas à savoir lequel des deux elle sert.
     New-Item -ItemType Directory -Force -Path $racineCible | Out-Null
 
     # ---- Les documents produits, à l'archivage seulement ----
@@ -137,12 +142,16 @@ try {
   }
 
   # ---- Le raccourci du dossier voyage avec lui ----
-  # Le raccourci porte un chemin absolu et doit être mis à jour pour suivre le déplacement.
+  # Il ne porte plus aucun chemin (Set-SzhRaccourciRevue) : le lien « szh:// » qu'il
+  # transporte est le même en cours et aux archives, les deux racines étant balayées à
+  # l'ouverture. Il est donc réécrit par principe et non par nécessité — le dossier vient
+  # de bouger, autant repartir d'un raccourci frais, et rien ici ne peut plus se périmer.
+  # $jeton est déjà résolu plus haut, on le passe plutôt que de le faire relire du disque.
   try {
     if ($estLivre) {
-      Set-SzhRaccourciRevue $cible 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' | Out-Null
+      Set-SzhRaccourciRevue $cible 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' 'livre' | Out-Null
     } else {
-      Set-SzhRaccourciRevue $cible | Out-Null
+      Set-SzhRaccourciRevue $cible 'Ouvrir la revue' 'Ouvrir cette revue dans l''éditeur' $jeton | Out-Null
     }
   } catch { }
 

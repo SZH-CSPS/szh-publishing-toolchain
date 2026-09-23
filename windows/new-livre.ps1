@@ -107,10 +107,17 @@ if (-not $existait) {
   }
 }
 
+# Identifiant fixe du livre (`id:`) : posé UNE FOIS ici, jamais recalculé ensuite — c'est lui
+# que porteront le raccourci et tout lien szh:// envoyé pour ce livre (docs/EMPLACEMENTS.md).
+if (-not $existait) {
+  [void](Set-SzhAusgabeIdSiAbsent $chemin 'buch.yaml')
+}
+
 # Raccourci dans le dossier : il voyage avec le livre sur OneDrive, sur le modèle de
-# « Ouvrir la revue.lnk », mais nommé et décrit pour un livre.
+# « Ouvrir la revue.lnk », mais nommé et décrit pour un livre — et, comme lui, sans aucun
+# chemin de poste depuis le 15.09.2026 (voir Set-SzhRaccourciRevue).
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
-Set-SzhRaccourciRevue $chemin 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' | Out-Null
+Set-SzhRaccourciRevue $chemin 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' 'livre' | Out-Null
 
 Write-SzhOk ('Livre créé : {0}' -f $chemin)
 Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'

@@ -24,9 +24,10 @@ d'ergonomie, les relectures de libellés et les arbitrages esthétiques ont ét�
 - [ ] Ce qui reste après l'archivage : `out/` a disparu et rien d'autre — `articles/`,
   `articles-word/`, `media/`, `tables/`, `portraits/`, les `.meta.yaml`, les `.traduction.yaml`
   et `BIENVENUE.md` sont tous là. `ausgabe.yaml` porte `locked: true`, `archived: true` et une
-  `version-toolkit`. Le raccourci « Ouvrir la revue.lnk » du dossier archivé pointe sur le
-  nouveau chemin. Une Zeitschrift part dans les archives de la Zeitschrift, pas dans celles de la
-  Revue.
+  `version-toolkit`. Le raccourci « Ouvrir la revue.lnk » du dossier archivé rouvre bien le
+  numéro : il ne porte plus aucun chemin, seulement un lien qui vaut aussi depuis les archives —
+  et il doit fonctionner tel quel sur l’AUTRE poste, une fois OneDrive synchronisé. Une
+  Zeitschrift part dans les archives de la Zeitschrift, pas dans celles de la Revue.
 - [ ] Échec et collision à provoquer. Ouvrir le PDF dans SumatraPDF puis archiver : une boîte de
   dialogue doit annoncer que les documents produits n'ont pas pu être supprimés — la console
   étant cachée, c'est le seul canal — et le numéro doit rester exactement dans son état de
@@ -46,14 +47,25 @@ d'ergonomie, les relectures de libellés et les arbitrages esthétiques ont ét�
 - [ ] Archiver une fois en mode production, sur un numéro de test copié dans le dossier de
   rédaction réel, pour confirmer que les vrais chemins fonctionnent. Confirmer aussi
   l'arborescence de production sur un poste de la rédaction : si un poste synchronise la
-  bibliothèque sous un autre nom, corriger `basesRevues.prod` dans `config.json`.
-- [ ] Dérouler la procédure d'installation complète sur une machine vierge : celle de
-  développement ne l'est plus.
-- [ ] Un numéro qui porte un `styles/print.css` local hérité peut encore contenir les compteurs
-  CSS retirés, d'où une double numérotation (« 2.1 2.1 Introduction »). Aucun numéro du dépôt
-  n'est concerné ; à vérifier au déploiement sur les numéros réels. Ce qu'il faut chercher dans
-  un `styles/print.css` local : `counter-increment: sec`, `counter(sec1` et
-  `body { counter-reset: sec`. Aucun de ces trois motifs ne doit subsister.
+  bibliothèque sous un autre nom, rattacher l'**ancrage SharePoint** (clé `ancrageSharePoint`
+  de `config.json`, ou le sélecteur de dossier du lanceur) — il n'existe plus de clé pour
+  forcer la racine elle-même. Vérifier au passage la FORME de l'arbre (`docs/EMPLACEMENTS.md`
+  §1) : les numéros en cours directement sous `Revue\`, `Zeitschrift\` et `Books\`, et les
+  archives des trois regroupées sous un `_Archive\` unique. Sur SharePoint, RIEN ne déplace
+  les numéros existants automatiquement — la migration automatique du 23.09.2026
+  (`windows/szh-migration.ps1`) ne touche QUE le dossier de test ; un passage en production
+  sur une bibliothèque encore à l'ancienne forme se déplace à la main.
+- [ ] Vérifier sur le vrai SharePoint (jamais éprouvé hors banc jetable) : la migration
+  automatique tourne à chaque mise à jour dans le dossier de test
+  (`Invoke-SzhMigrationArborescence`, `windows/szh-migration.ps1`, appelée par `update.ps1`)
+  — confirmer qu'elle ne s'exécute jamais quand `emplacementRevues` vaut `production`, et
+  que `_Systeme\` (rapports, journaux, suggestions, inventaire) reste bien ancré sur
+  SharePoint même en mode test (`Get-SzhDossierSysteme`).
+- [ ] La bibliothèque `_NewsUndActu\` a changé de forme le 23.09.2026 : `Fiches\` et
+  `_Statuts\fr\`/`_Statuts\de\` remplacent l'ancien magasin par revue
+  (`_NewsUndActu\Revue\`, `_NewsUndActu\Zeitschrift\`, posé le 15.09.2026 puis jamais
+  déployé). Vérifier qu'aucun poste ne porte encore l'ancienne forme avant de considérer ce
+  point clos.
 
 ## Contenu publié
 

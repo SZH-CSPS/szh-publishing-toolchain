@@ -606,6 +606,16 @@ try {
   }
   Write-SzhOk (T 'maj.e5.ok')
 
+  # ---- Migration de l'arborescence (dossier de TEST seulement) ----
+  # Automatique et idempotente (windows/szh-migration.ps1) : si l'ancienne arborescence
+  # (52_Revue\RV02_Redaction…) traîne encore dans le dossier de test, elle est déplacée vers
+  # la nouvelle -- jamais sur SharePoint/production, où l'arborescence est celle de la
+  # bibliothèque partagée. Ne fait jamais échouer la mise à jour : un problème ici se
+  # journalise et attend le prochain passage, sur le modèle du check-in (szh-checkin.ps1).
+  try { Invoke-SzhMigrationArborescence } catch {
+    try { Write-SzhLog ('update : migration arborescence impossible -> ' + $_.Exception.Message) } catch { }
+  }
+
   # ---- État final ----
   # Deux états, parce qu'il y a deux vérités. Le poste : la version du toolkit, commune à
   # tous les comptes. Le compte : l'environnement de fabrication et les extensions, qui sont

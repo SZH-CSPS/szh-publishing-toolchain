@@ -47,10 +47,15 @@ const TITRE_SUITE = new RegExp('^' + echapperRegex(NOM_APPLICATION));
 // ---- L'arborescence jetable : deux numeros de revue, une Zeitschrift, un livre ----
 //
 // PROGRAMDATA tient lieu de C:\ProgramData\SZH (config.json, state.json, logs, toolkit) --
-// c'est ce que redirige $env:SZH_BASE (szh-common.ps1). BASE est un dossier distinct : celui
-// que config.json (`basesRevues.dev`) designe comme racine des revues, Zeitschriften et
-// livres -- separe de PROGRAMDATA, comme sur un vrai poste (2_Produkte n'est pas sous
-// C:\ProgramData\SZH).
+// c'est ce que redirige $env:SZH_BASE (szh-common.ps1). BASE est un dossier distinct : la
+// racine des revues, Zeitschriften et livres -- separee de PROGRAMDATA, comme sur un vrai
+// poste (l'arbre de production n'est pas sous C:\ProgramData\SZH).
+//
+// Cette racine-la est posee par $env:SZH_RACINE_TEST, et c'est desormais le SEUL moyen de la
+// detourner vers un dossier jetable : la cle de config.json qui le permettait a ete
+// supprimee le 15.09.2026 (elle primait sur tout, y compris sur l'ancrage SharePoint). La
+// variable suit le modele de $env:SZH_ANCRAGE et $env:SZH_RAPPORTS -- reservee aux essais,
+// jamais ecrite nulle part. Voir Get-SzhBaseRevuesPour (windows/szh-produits.ps1).
 const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-'));
 const PROGRAMDATA = path.join(TRAVAIL, 'ProgramData');
 const BASE = path.join(TRAVAIL, 'Base');
@@ -67,37 +72,42 @@ function ecrireYaml(dossier, nomFichier, lignes) {
 fs.mkdirSync(PROGRAMDATA, { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA, 'config.json'), JSON.stringify({
   emplacementRevues: 'test',
-  basesRevues: { dev: BASE },
 }), 'utf8');
 // La version installee : Get-SzhVersionInstallee lit d'abord <toolkit>\VERSION.
 const VERSION_INSTALLEE = '2026.09.1-test';
 fs.mkdirSync(path.join(PROGRAMDATA, 'toolkit'), { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA, 'toolkit', 'VERSION'), VERSION_INSTALLEE + '\n', 'utf8');
 
+// L'arborescence, dans sa forme arretee le 15.09.2026 : un numero EN COURS directement sous
+// son dossier produit, un numero ARCHIVE sous « _Archive\<Produit> ». Les deux etats n'ont
+// donc pas la meme profondeur, et c'est volontaire -- ce banc est le seul a les exercer tous
+// les deux par un vrai processus PowerShell.
+//
 // Revue : un numero en cours, un numero archive.
-const REVUE_ENCOURS = creerDossier('52_Revue', 'RV02_Redaction', '2026-01');
+const REVUE_ENCOURS = creerDossier('Revue', '2026-01');
 ecrireYaml(REVUE_ENCOURS, 'ausgabe.yaml', ['title: "Numero en cours"', 'revue: "revue"']);
-const REVUE_ARCHIVE = creerDossier('52_Revue', 'RV99_Archives', '2020-05');
+const REVUE_ARCHIVE = creerDossier('_Archive', 'Revue', '2020-05');
 ecrireYaml(REVUE_ARCHIVE, 'ausgabe.yaml', ['title: "Numero archive"', 'revue: "revue"']);
 
 // Zeitschrift : une seule, en cours -- jamais dans les listes de la revue, ni l'inverse.
-const ZS_ENCOURS = creerDossier('53_Zeitschrift', 'ZS02_Redaktion', '2026-03');
+const ZS_ENCOURS = creerDossier('Zeitschrift', '2026-03');
 ecrireYaml(ZS_ENCOURS, 'ausgabe.yaml', ['title: "Ausgabe Test"', 'revue: "zeitschrift"']);
 
 // Livre : un seul, en cours -- affiche par son TITRE (buch.yaml), pas par le nom du dossier.
-const LIVRE_ENCOURS = creerDossier('54_Buch', 'BU02_Redaktion', '2026-B300-MonLivre');
+const LIVRE_ENCOURS = creerDossier('Books', '2026-B300-MonLivre');
 ecrireYaml(LIVRE_ENCOURS, 'buch.yaml', ['titre: "Mon Livre Test"', 'lang: "fr"']);
 
 // ---- Deuxieme arborescence jetable, en emplacement "production" cette fois : de quoi
-// verifier que `emplacement` et `modeTest` suivent config.json (basesRevues.prod) plutot
-// que le defaut "test" -- Resolve-SzhEmplacementRevues, Get-SzhBaseRevuesPour (szh-produits.ps1).
+// verifier que `emplacement` et `modeTest` suivent config.json plutot que le defaut "test"
+// -- Resolve-SzhEmplacementRevues, Get-SzhBaseRevuesPour (szh-produits.ps1). La racine de
+// production vient de $env:SZH_RACINE_PROD : sans elle, Get-SzhBaseRevuesPour irait chercher
+// un ancrage SharePoint sur le vrai disque du poste qui fait tourner ces tests.
 const TRAVAIL_PROD = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-prod-'));
 const PROGRAMDATA_PROD = path.join(TRAVAIL_PROD, 'ProgramData');
 const BASE_PROD = path.join(TRAVAIL_PROD, 'Base');
 fs.mkdirSync(PROGRAMDATA_PROD, { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA_PROD, 'config.json'), JSON.stringify({
   emplacementRevues: 'production',
-  basesRevues: { prod: BASE_PROD },
 }), 'utf8');
 fs.mkdirSync(path.join(PROGRAMDATA_PROD, 'toolkit'), { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA_PROD, 'toolkit', 'VERSION'), VERSION_INSTALLEE + '\n', 'utf8');
@@ -107,6 +117,11 @@ function executer(scriptPath, args, programData) {
   const env = Object.assign({}, process.env, {
     SZH_BASE: programData || PROGRAMDATA,
     SZH_LANCEUR_SIMULE: '1',
+    // Les deux racines, toujours posees toutes les deux : celle qui ne sert pas au scenario
+    // doit quand meme etre detournee, sinon un comptage de numeros (Measure-SzhNumeros, appele
+    // par Initialize-SzhEmplacementRevues) irait lire le vrai OneDrive du poste.
+    SZH_RACINE_TEST: BASE,
+    SZH_RACINE_PROD: BASE_PROD,
   });
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
@@ -127,6 +142,49 @@ const livre = (function () { return executer(OUVRIR_LIVRE, []); })();
 // "production" dans son config.json, et non plus le defaut "test".
 const production = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue'], PROGRAMDATA_PROD); })();
 
+// ---- L'arbre que le lanceur a CREE dans la racine d'essai ----
+// Initialize-SzhEmplacementsTest ne tourne qu'en mode test, et il est la seule chose du
+// produit qui ecrive une arborescence : c'est donc ici, et nulle part ailleurs, qu'on peut
+// verifier la FORME de l'arbre plutot que la seule capacite a y retrouver un numero. Releve
+// AVANT la suppression du dossier jetable, puisque c'est lui qu'on inspecte.
+const ARBRE_CREE = (function () {
+  const vus = {};
+  for (const relatif of [
+    'Revue', 'Zeitschrift', 'Books',
+    path.join('_Archive', 'Revue'), path.join('_Archive', 'Zeitschrift'), path.join('_Archive', 'Books'),
+    path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
+    path.join('_NewsUndActu', '_Statuts', 'de'),
+    'Secrétariat und Export',
+    // Ce qui ne doit PLUS exister : les niveaux supprimes le 15.09.2026.
+    path.join('Revue', '01_Redaction'), path.join('Zeitschrift', '01_Redaktion'),
+    path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
+    path.join('Zeitschrift', '99_Archiv'), path.join('Books', '99_Archiv'),
+    // Ce qui ne doit JAMAIS etre cree sous la racine de test : _Systeme vit TOUJOURS sur
+    // SharePoint (Get-SzhDossierSysteme, depuis le 23.09.2026), et l'ancien magasin par
+    // revue, remplace par la bibliotheque ci-dessus.
+    path.join('_Systeme', 'rapports'), path.join('_Systeme', 'journaux'),
+    path.join('_Systeme', 'suggestions'), path.join('_Systeme', 'inventaire'),
+    path.join('_NewsUndActu', 'Revue'), path.join('_NewsUndActu', 'Zeitschrift')
+  ]) {
+    let la = false;
+    try { la = fs.statSync(path.join(BASE, relatif)).isDirectory(); } catch (e) { la = false; }
+    vus[relatif] = la;
+  }
+  return vus;
+})();
+
+// La GRAPHIE reellement ecrite sur le disque, releve a part et par lecture de repertoire.
+// Windows ne distingue pas la casse : ARBRE_CREE ci-dessus repondrait vrai pour
+// `_NewsUndActu\Revue` alors meme que le lanceur aurait cree `_newsundactu\revue`. Seul
+// readdirSync rend le nom tel qu'il a ete ecrit, et c'est lui qui prouve que le produit
+// cree des dossiers faits pour etre lus, et non ses jetons internes.
+const NOMS_REELS = (function () {
+  function lire(relatif) {
+    try { return fs.readdirSync(path.join(BASE, relatif)).sort(); } catch (e) { return null; }
+  }
+  return { racine: lire('.'), magasin: lire('_NewsUndActu'), statuts: lire(path.join('_NewsUndActu', '_Statuts')) };
+})();
+
 // L'arborescence jetable n'est plus lue une fois les resultats captures ci-dessus : rien ne
 // doit rester sous le dossier temporaire du systeme apres coup.
 try { fs.rmSync(TRAVAIL, { recursive: true, force: true }); } catch (e) { /* best effort */ }
@@ -137,6 +195,58 @@ function verifierExecution(r, nom) {
   assert.strictEqual(r.status, 0, nom + ' : le lanceur a echoue -- ' + r.stderr);
   assert.ok(r.sortie, nom + ' : sortie non JSON -- ' + r.stdout + ' / ' + r.stderr);
 }
+
+// ---- L'arborescence d'essai : la forme, pas seulement le contenu ----
+
+test('le lanceur cree l\'arbre d\'essai dans sa forme du 15.09.2026, et rien de l\'ancienne',
+  { skip: sansPowerShell }, () => {
+    // Les trois produits a la RACINE : un numero en cours n'a plus de niveau de redaction
+    // au-dessus de lui.
+    for (const d of ['Revue', 'Zeitschrift', 'Books']) {
+      assert.strictEqual(ARBRE_CREE[d], true, 'dossier produit manquant a la racine : ' + d);
+    }
+    // Les archives REGROUPEES, un sous-dossier par produit, avec la capitale du dossier
+    // produit : ces trois-la se lisent a l'Explorateur, ce ne sont pas des jetons de code.
+    for (const d of ['Revue', 'Zeitschrift', 'Books']) {
+      assert.strictEqual(ARBRE_CREE[path.join('_Archive', d)], true,
+        'archives manquantes sous _Archive : ' + d);
+    }
+    // Le reste de l'arbre, qui suit la racine active : la bibliotheque de fiches, sous sa
+    // forme du 23.09.2026 (Fiches\, _Statuts\fr\, _Statuts\de\ -- plus l'ancien magasin par
+    // revue), et Secretariat und Export.
+    for (const d of [path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
+      path.join('_NewsUndActu', '_Statuts', 'de'), 'Secrétariat und Export']) {
+      assert.strictEqual(ARBRE_CREE[d], true, 'dossier commun manquant : ' + d);
+    }
+    // Et l'ancienne forme a bien disparu : sans ce controle, une table oubliee a moitie
+    // creerait les deux arborescences cote a cote, et personne ne verrait laquelle sert.
+    // _Systeme\, lui, n'a JAMAIS ete cree ici : il vit toujours sur SharePoint
+    // (Get-SzhDossierSysteme), meme quand le lanceur tourne en mode test.
+    for (const d of [path.join('Revue', '01_Redaction'), path.join('Zeitschrift', '01_Redaktion'),
+      path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
+      path.join('Zeitschrift', '99_Archiv'), path.join('Books', '99_Archiv'),
+      path.join('_NewsUndActu', 'Revue'), path.join('_NewsUndActu', 'Zeitschrift'),
+      path.join('_Systeme', 'rapports'), path.join('_Systeme', 'journaux'),
+      path.join('_Systeme', 'suggestions'), path.join('_Systeme', 'inventaire')]) {
+      assert.strictEqual(ARBRE_CREE[d], false, 'ne devrait pas etre cree sous la racine de test : ' + d);
+    }
+  });
+
+test('la bibliotheque partagee et ses sous-dossiers sont CREES avec leur capitale',
+  { skip: sansPowerShell }, () => {
+    assert.ok(NOMS_REELS.racine, 'la racine d\'essai n\'a pas pu etre lue');
+    assert.ok(NOMS_REELS.racine.indexOf('_NewsUndActu') !== -1,
+      'la bibliotheque creee ne s\'appelle pas _NewsUndActu : ' + NOMS_REELS.racine.join(', '));
+    assert.strictEqual(NOMS_REELS.racine.indexOf('_newsundactu'), -1,
+      'la bibliotheque a ete creee en minuscules');
+
+    assert.deepStrictEqual(NOMS_REELS.magasin, ['Fiches', '_Statuts'],
+      'les sous-dossiers de la bibliotheque ne portent pas leur forme du 23.09.2026 : '
+      + String(NOMS_REELS.magasin));
+    assert.deepStrictEqual(NOMS_REELS.statuts, ['de', 'fr'],
+      '_NewsUndActu\\_Statuts ne porte pas ses deux sous-dossiers de langue : '
+      + String(NOMS_REELS.statuts));
+  });
 
 // ---- Revue : titre, liste, archive, version ----
 
@@ -155,8 +265,12 @@ test('open-revue.ps1 -Produit revue : titre, liste, archive, version, en mode si
     assert.strictEqual(r.enCours[0].nom, '2026-01');
     assert.strictEqual(r.archives.length, 1, 'le numero archive doit apparaitre, et un seul');
     assert.strictEqual(r.archives[0].nom, '2020-05');
-    assert.strictEqual(r.archives[0].archivee, true, 'un numero sous RV99_Archives doit se dire archive');
-    assert.strictEqual(r.enCours[0].archivee, false);
+    assert.strictEqual(r.archives[0].archivee, true, 'un numero sous _Archive doit se dire archive');
+    // Et l'inverse, qui est le vrai piege du regroupement des archives : « _Archive\Revue »
+    // et « Revue » se terminent par le meme segment. Un numero EN COURS ne doit jamais
+    // basculer du cote archive -- c'est ce que garantit la comparaison par EGALITE des
+    // racines dans Get-SzhInventaireProduit (open-produit.ps1).
+    assert.strictEqual(r.enCours[0].archivee, false, 'un numero en cours ne doit jamais se dire archive');
     assert.strictEqual(r.versionInstallee, VERSION_INSTALLEE);
     // Poste de test : l'emplacement actif le dit en clair, modeTest en decoule, et
     // l'etiquette de racine (jointe au titre par le jeton {racine}) n'est jamais vide.
@@ -202,7 +316,7 @@ test('open-livre.ps1 : le livre ne voit que les livres, etiquete par son titre',
 
 // ---- Emplacement "production" dans config.json : emplacement et modeTest en decoulent ----
 
-test('emplacementRevues "production" (basesRevues.prod) : emplacement et modeTest suivent, jamais le defaut test',
+test('emplacementRevues "production" : emplacement et modeTest suivent, jamais le defaut test',
   { skip: sansPowerShell }, () => {
     verifierExecution(production, 'production');
     const r = production.sortie;

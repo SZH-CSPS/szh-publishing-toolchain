@@ -25,8 +25,8 @@
 // l'ancrage.
 //
 // Aucun test ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH ni le vrai
-// SharePoint du poste (C:\Users\<compte>\SZH CSPS\...\_AutoReportToolboxZeitscrhiften, un
-// dossier partage reel de l'entreprise) : SZH_BASE, USERPROFILE et LOCALAPPDATA sont
+// SharePoint du poste (C:\Users\<compte>\SZH CSPS\Daten_Allgemein - General\..., une
+// bibliotheque partagee reelle de l'entreprise) : SZH_BASE, USERPROFILE et LOCALAPPDATA sont
 // systematiquement rediriges vers des dossiers jetables (fs.mkdtempSync) AVANT tout appel,
 // OneDrive/OneDriveCommercial sont retires de l'environnement transmis, et
 // SZH_LANCEUR_SIMULE=1 est pose partout -- aucune fenetre ne doit jamais s'ouvrir pendant ces
@@ -47,6 +47,17 @@ const OUVRIR_PRODUIT_PS1 = path.join(RACINE, 'windows', 'open-produit.ps1');
 const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
+
+// Le nom du dossier de l'application vit a UN seul endroit cote PowerShell,
+// $script:SzhSegmentApplication (windows/szh-ancrage.ps1), et ce fichier le LIT plutot que
+// de le recopier -- sans quoi un futur renommage casserait ce test sans avoir rien casse de
+// reel. Meme motif que NOM_APPLICATION dans test/js/lanceur.test.js.
+const SOURCE_ANCRAGE = fs.readFileSync(path.join(RACINE, 'windows', 'szh-ancrage.ps1'), 'utf8');
+const mSegment = SOURCE_ANCRAGE.match(/\$script:SzhSegmentApplication\s*=\s*'([^']+)'/);
+assert.ok(mSegment, 'szh-ancrage.ps1 ne declare plus $script:SzhSegmentApplication');
+const SEGMENT_APPLICATION = mSegment[1];
+// La base des produits derive de l'ancrage : <ancrage>\2_Produkte\<application>.
+const SEGMENTS_BASE = ['2_Produkte', SEGMENT_APPLICATION];
 
 // ---- Execution isolee : USERPROFILE, LOCALAPPDATA et OneDrive* toujours neutralises -------
 //
@@ -97,8 +108,9 @@ const PROFIL_1 = path.join(TRAVAIL_1, 'profil-neutre');
 const LOCALAPPDATA_1 = path.join(TRAVAIL_1, 'localappdata');
 fs.mkdirSync(PROGRAMDATA_1, { recursive: true });
 fs.mkdirSync(PROFIL_1, { recursive: true });
-// "emplacementRevues" fige explicitement : sans basesRevues.prod, pour que
-// Get-SzhBaseRevuesPour retombe sur l'ancrage plutot que sur le defaut code en dur.
+// "emplacementRevues" fige explicitement, et rien d'autre : c'est l'ancrage seul qui doit
+// donner la racine de production (Get-SzhBaseRevuesPour), le defaut code en dur restant le
+// tout dernier recours.
 fs.writeFileSync(path.join(PROGRAMDATA_1, 'config.json'), JSON.stringify({
   emplacementRevues: 'production',
 }), 'utf8');
@@ -106,10 +118,12 @@ const ANCRAGE_1 = creerAncrage(TRAVAIL_1);
 // Un numero et un livre, tous deux sous CET ancrage : de quoi prouver que la resolution ne
 // beneficie pas qu'a la revue, mais bien aux trois produits (Revue, Zeitschrift, Books)
 // qu'open-produit.ps1 sert d'un seul cablage.
-const BASE_1 = path.join(ANCRAGE_1, '2_Produkte');
-ecrireYaml(path.join(BASE_1, '52_Revue', 'RV02_Redaction', '2026-04'), 'ausgabe.yaml',
+const BASE_1 = path.join.apply(path, [ANCRAGE_1].concat(SEGMENTS_BASE));
+// Numeros DIRECTEMENT sous leur dossier produit : depuis le 15.09.2026 le niveau de
+// redaction a disparu, seules les archives gagnent un etage (« _Archive\<Produit> »).
+ecrireYaml(path.join(BASE_1, 'Revue', '2026-04'), 'ausgabe.yaml',
   ['title: "Via ancrage"', 'revue: "revue"']);
-ecrireYaml(path.join(BASE_1, '54_Buch', 'BU02_Redaktion', '2026-B900-LivreViaAncrage'), 'buch.yaml',
+ecrireYaml(path.join(BASE_1, 'Books', '2026-B900-LivreViaAncrage'), 'buch.yaml',
   ['titre: "Livre via ancrage"', 'lang: "fr"']);
 
 const envEssai = { SZH_BASE: PROGRAMDATA_1, USERPROFILE: PROFIL_1, LOCALAPPDATA: LOCALAPPDATA_1, SZH_ANCRAGE: ANCRAGE_1 };
@@ -147,7 +161,7 @@ test('SZH_ANCRAGE est retenu (origine "essai") et son chemin figure dans le JSON
     assert.strictEqual(r.ancrage.origine, 'essai');
   });
 
-test('la base des produits DECOULE de l\'ancrage retenu : racineBase = <ancrage>\\2_Produkte, et la liste reelle en sort',
+test('la base des produits DECOULE de l\'ancrage retenu : racineBase = <ancrage>\\2_Produkte\\<application>, et la liste reelle en sort',
   { skip: sansPowerShell }, () => {
     verifierExecution(essaiRevue, 'essai-revue');
     const r = essaiRevue.sortie;

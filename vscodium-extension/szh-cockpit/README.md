@@ -58,7 +58,10 @@ lib/
                         test/js/constats.test.js
   copies-conflit.js     détection des copies en conflit déposées par OneDrive/SharePoint, et
                         application bloc par bloc des divergences que l'éditeur calcule
-                        (« Prendre cette version » / « Garder la mienne »)
+                        (« Prendre cette version » / « Garder la mienne »). Deux portes :
+                        chercherCopies() pour le dossier d'un numéro (profond),
+                        chercherCopiesPlat() pour le dossier partagé de l'outil
+                        (_Systeme), plat et balayé en quelques readdir
   courriel.js           sujet et corps de « Envoyer à l'auteur » et « Envoyer pour
                         traduction », rendus depuis mail-templates/*.twig par gabarits.js
   cycle-vie.js          verrouillage, archivage, désarchivage, avertissement de version

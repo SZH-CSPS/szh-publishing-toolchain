@@ -98,6 +98,7 @@ $script:SzhTextes = @{
     'lanceur.vide.archives.zs'  = 'Aucune Zeitschrift archivée.'
     'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
     'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Pronto »."
+    'lien.introuvable.livre'    = "Ce lien renvoie au livre « {0} », introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le livre à la main depuis le menu Démarrer."
     'lanceur.hors'              = '{0} revue(s) hors arborescence dans {1} – à déplacer.'
     'lanceur.encours'           = 'En cours :'
     'lanceur.archives'          = 'Archivées :'
@@ -106,7 +107,8 @@ $script:SzhTextes = @{
     'lanceur.version.inconnue'  = 'Version : inconnue'
     # Où vivent les numéros, dit dans les deux racines et non plus en test seulement : avec
     # le titre de la fenêtre, c'est le seul endroit qui rende la racine active visible, et le
-    # chemin complet suffit à la reconnaître (« Revues-TESTING » ou « 2_Produkte »).
+    # chemin complet suffit à la reconnaître (« Revues-TESTING » d'un côté, le dossier de
+    # l'application sous la bibliothèque SharePoint de l'autre).
     'lanceur.test'              = 'Revue dans : {0}'
     'lanceur.test.zs'           = 'Zeitschrift dans : {0}'
     'racine.test'               = 'dossier de test'
@@ -395,6 +397,7 @@ $script:SzhTextes = @{
     'lanceur.vide.archives.zs'  = 'Keine archivierte Zeitschrift.'
     'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
     'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Pronto » öffnen."
+    'lien.introuvable.livre'    = "Dieser Link verweist auf das Buch « {0} », das auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können das Buch auch von Hand über das Startmenü öffnen."
     'lanceur.hors'              = '{0} Zeitschrift(en) ausserhalb der Ablage in {1} – zu verschieben.'
     'lanceur.encours'           = 'In Arbeit:'
     'lanceur.archives'          = 'Archiviert:'
@@ -680,6 +683,7 @@ $script:SzhTextes = @{
     'lanceur.vide.archives.zs'  = 'No archived Zeitschrift.'
     'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
     'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Pronto launcher."
+    'lien.introuvable.livre'    = "This link points to book {0}, which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the book by hand from the Start menu."
     'lanceur.hors'              = '{0} journal(s) outside the official tree in {1} — to be moved.'
     'lanceur.encours'           = 'In progress:'
     'lanceur.archives'          = 'Archived:'

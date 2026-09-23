@@ -52,8 +52,11 @@ par personne et par poste.
 
 Les deux autres entrées restent disponibles et font exactement la même chose :
 
-- **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue ;
-- **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
+- **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue. Il ne
+  contient aucun chemin de votre ordinateur : il passe par l’outil installé sur le poste et lui
+  indique simplement quel numéro ouvrir. C’est pourquoi il fonctionne aussi bien sur l’autre
+  poste, une fois le dossier synchronisé, et même si le numéro a été archivé ;
+- **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
   onglet par onglet).
 
 ## La barre « Revue » (tout gérer sans l’explorateur)
@@ -1390,7 +1393,7 @@ Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place 
    **supprimés**. Vos **sources** – textes, images, tableaux, métadonnées, traductions –
    sont intégralement conservées : c’est ce qui permet de tout régénérer plus tard ;
 3. le **dossier de la revue est déplacé** dans l’arborescence d’archives
-   (`RV99_Archives` pour la Revue, `ZS99_Archives` pour la Zeitschrift) ;
+   (`_Archive\Revue` pour la Revue, `_Archive\Zeitschrift` pour la Zeitschrift) ;
 4. la fenêtre se ferme, puis **la revue se rouvre** depuis les archives, verrouillée.
 
 Une fois le numéro archivé, **la compilation automatique s’arrête** : enregistrer ne
@@ -1699,15 +1702,34 @@ où la parution est décidée (voir « La date de publication du numéro »).
 
 Le lanceur cherche les revues aux emplacements officiels :
 
-| | Revue (FR) | Zeitschrift (DE) |
-|---|---|---|
-| En cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
-| Archivées | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
+| | Revue (FR) | Zeitschrift (DE) | Book |
+|---|---|---|---|
+| En cours | `Revue` | `Zeitschrift` | `Books` |
+| Archivées | `_Archive\Revue` | `_Archive\Zeitschrift` | `_Archive\Books` |
 
-Le lanceur **ne montre que ces quatre dossiers**. Si une revue est restée ailleurs (un ancien
+Un numéro **en cours** est donc directement dans le dossier de son produit : vous l’ouvrez
+sans traverser de sous-dossier. Tout ce qui est **archivé** se regroupe dans un seul dossier
+`_Archive`, à part, que vous pouvez replier une fois pour toutes.
+
+Le lanceur **ne montre que ces dossiers-là**. Si une revue est restée ailleurs (un ancien
 dossier `OneDrive\Revues`, par exemple), elle n’apparaît pas dans les listes mais le lanceur le
 dit en bas : « N revue(s) hors arborescence dans … – à déplacer ». Déplacez le dossier de la revue
-dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
+dans `Revue` (ou `Zeitschrift`) et il apparaîtra.
+
+À côté de ces six dossiers, la même racine en porte trois autres, que vous verrez dans
+l’explorateur :
+
+- **`_NewsUndActu`** – le magasin partagé par les deux rédactions. C’est là qu’atterrit une
+  fiche « mise de côté », et c’est par là qu’une fiche envoyée à l’autre revue pour
+  traduction arrive chez la collègue. Il est posé à la racine, et non dans un numéro, pour
+  deux raisons : il survit à l’archivage d’un numéro, et **les deux rédactions y lisent la
+  même chose**.
+- **`Secrétariat und Export`** – pour les sorties du secrétariat, déposées à la main.
+- **`_Systeme`** – ce que l’outil écrit pour lui-même (rapports de panne, journaux,
+  inventaire des postes). Rien à y faire. À la différence des deux dossiers précédents, il
+  n’est **jamais** dans le dossier d’essai décrit ci-dessous : il vit toujours dans le
+  dossier partagé SharePoint de la production, même quand vous travaillez en mode test –
+  c’est le seul point de rendez-vous entre tous les postes.
 
 **Où vivent vos numéros.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
 d’essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence que la
@@ -1872,7 +1894,7 @@ jour interrompue en cours de route, une extension du cockpit qui plante – l�
 seul, en silence, un petit fichier technique dans le dossier partagé SharePoint :
 
 ```
-2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolboxZeitscrhiften
+2_Produkte\54_Pronto\_Systeme\rapports
 ```
 
 Rien ne s’affiche à l’écran pour ça : ce n’est ni une action à faire, ni un message à traiter.

@@ -15,12 +15,37 @@
 # l'acces disque avec de vraies arborescences jetables (fs.mkdtempSync cote Node).
 
 # ---- 2.1 Definition et derives ----
-# L'ancrage porte ce nom, comparaison insensible a la casse. "_AutoReportToolboxZeitscrhiften"
-# reproduit la faute de frappe REELLE du dossier existant sur SharePoint -- ne jamais la
-# corriger, elle designe un vrai dossier.
+# L'ancrage porte ce nom, comparaison insensible a la casse.
 $script:SzhNomAncrage = 'Daten_Allgemein - General'
-$script:SzhDeriveBaseProduits = '2_Produkte'
-$script:SzhDeriveDossierRapports = '2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolboxZeitscrhiften'
+
+# ============================================================================================
+# ⚠ LE SEUL ENDROIT POWERSHELL QUI PORTE LE NOM DU DOSSIER DE L'APPLICATION ⚠
+# ============================================================================================
+# L'outil s'appelle Pronto, et la ligne ci-dessous nomme son dossier de production (voir
+# aussi $script:SzhNomApplication dans szh-shell.ps1, qui nomme la FENETRE et les raccourcis
+# -- celui-ci nomme le DOSSIER).
+# Tout notre arbre de production pend sous ce segment : les numeros, les archives, le magasin
+# de fiches, les rapports d'erreur, les journaux. Il est ecrit ICI et NULLE PART AILLEURS
+# cote PowerShell -- si le dossier devait un jour etre renomme, c'est la seule chaine a
+# corriger, dans ce fichier, et szh-produits.ps1 ($SzhBasesDefaut.prod) comme le dossier des
+# rapports ci-dessous suivent d'eux-memes.
+# Son jumeau JavaScript porte le meme role et le meme avertissement : SEGMENT_APPLICATION,
+# dans vscodium-extension/szh-cockpit/lib/rapport-erreur.js. Les deux se changent ENSEMBLE.
+$script:SzhSegmentApplication = '54_Pronto'
+# ============================================================================================
+
+# La racine de notre arbre a nous, sous la bibliotheque SharePoint : c'est d'elle que
+# derivent les six sous-dossiers de produits (szh-produits.ps1, $SzhSousDossiers).
+$script:SzhDeriveBaseProduits = Join-Path '2_Produkte' $SzhSegmentApplication
+
+# Le dossier des rapports d'erreur automatiques. Il a DEMENAGE dans notre propre arbre, sous
+# "_Systeme\rapports" : il vivait jusque-la sous un dossier etranger a l'outil
+# ("2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolbox...", dont on reproduisait
+# jusqu'a la faute de frappe SharePoint). Aucune periode de transition et aucune relecture de
+# l'ancien chemin : il n'y a que deux postes, mis a jour ensemble, et un rapport d'erreur
+# n'a pas d'historique a preserver -- ce qui reste dans l'ancien dossier y reste, lisible a
+# la main. Jumeau litteral : SEGMENTS_DOSSIER_RAPPORTS (lib/rapport-erreur.js).
+$script:SzhDeriveDossierRapports = Join-Path $SzhDeriveBaseProduits '_Systeme\rapports'
 
 # Nom de dossier -> est-ce l'ancrage ? Pure, aucun acces disque : c'est ce qui rend la
 # remontee "gratuite" (2.4) et rend ce controle testable sans la moindre arborescence.
@@ -50,6 +75,17 @@ function Get-SzhBaseProduitsDepuisAncrage([string]$Ancrage) {
 function Get-SzhDossierRapportsDepuisAncrage([string]$Ancrage) {
   if (-not $Ancrage) { return '' }
   return (Join-Path $Ancrage $SzhDeriveDossierRapports)
+}
+
+# Le reste de "_Systeme\" -- journaux, suggestions, inventaire des postes. Meme principe que
+# les rapports ci-dessus (TOUJOURS sur SharePoint, jamais sur la racine active), derive a
+# part pour ne pas toucher au mecanisme des rapports deja en place. $SousDossier : 'journaux'
+# | 'suggestions' | 'inventaire'.
+$script:SzhDeriveDossierSysteme = Join-Path $SzhDeriveBaseProduits '_Systeme'
+
+function Get-SzhDossierSystemeDepuisAncrage([string]$Ancrage, [string]$SousDossier) {
+  if (-not $Ancrage) { return '' }
+  return (Join-Path (Join-Path $Ancrage $SzhDeriveDossierSysteme) $SousDossier)
 }
 
 # ---- 2.4 Normalisation d'un chemin donne a la main -- le coeur du sujet ----

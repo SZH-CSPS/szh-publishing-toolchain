@@ -211,3 +211,166 @@ test('chercherCopies : limite la profondeur à 6 niveaux', () => {
     fs.rmSync(racine, { recursive: true });
   }
 });
+
+// ---- Le dossier PARTAGÉ de l'outil : l'autre terrain de collision -------------------
+//
+// Le balayage ne regardait que le dossier du numéro ouvert. Or une copie en conflit déposée
+// par le synchroniseur dans « _Systeme » (rapports d'erreur, journaux, suggestions de
+// traduction, inventaire des postes) n'appartient à aucun numéro : elle n'était vue de
+// personne, et ce dossier ne s'ouvre jamais à la main.
+
+const { chercherCopiesPlat } = require(
+  path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'copies-conflit.js')
+);
+
+// Un « _Systeme » jetable, tel qu'il existe sous la racine active : plat, un seul niveau de
+// sous-dossiers, plus un piège au niveau du dessous.
+function dossierSystemeJetable() {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'copies-systeme-'));
+  const systeme = path.join(racine, '_Systeme');
+  fs.mkdirSync(path.join(systeme, 'rapports'), { recursive: true });
+  fs.mkdirSync(path.join(systeme, 'inventaire'), { recursive: true });
+  fs.mkdirSync(path.join(systeme, 'journaux', 'trop-profond'), { recursive: true });
+  // Le cas réel : deux postes écrivent le même rapport, OneDrive tranche en déposant la
+  // version perdante à côté.
+  fs.writeFileSync(path.join(systeme, 'rapports', '20260915-0800-PC-aaa.json'), '{}');
+  fs.writeFileSync(path.join(systeme, 'rapports',
+    '20260915-0800-PC-aaa-copie en conflit (RMO-DESK).json'), '{}');
+  // À la racine du dossier partagé, et dans un deuxième sous-dossier.
+  fs.writeFileSync(path.join(systeme, 'index.json'), '{}');
+  fs.writeFileSync(path.join(systeme, 'index (copie en conflit).json'), '{}');
+  fs.writeFileSync(path.join(systeme, 'inventaire', 'notes-Konfliktkopie.md'), '');
+  // Un niveau de trop : hors de portée d'un balayage plat, et c'est voulu.
+  fs.writeFileSync(path.join(systeme, 'journaux', 'trop-profond', 'a-copie en conflit.json'), '{}');
+  // Le temporaire d'une écriture atomique n'est JAMAIS une copie en conflit.
+  fs.writeFileSync(path.join(systeme, 'rapports', '~$20260915-0800-PC-bbb.json.123.ab'), '{}');
+  return { racine, systeme };
+}
+
+test('chercherCopiesPlat : le dossier partagé et ses sous-dossiers directs, pas un niveau de plus', () => {
+  const { racine, systeme } = dossierSystemeJetable();
+  try {
+    const copies = chercherCopiesPlat(systeme);
+    const noms = copies.map((c) => c.nom).sort();
+    assert.deepStrictEqual(noms, [
+      '20260915-0800-PC-aaa-copie en conflit (RMO-DESK).json',
+      'index (copie en conflit).json',
+      'notes-Konfliktkopie.md'
+    ], 'le balayage plat n’a pas vu ce qu’il fallait : ' + noms.join(' | '));
+    assert.ok(!copies.some((c) => c.chemin.includes('trop-profond')),
+      'le balayage plat est descendu trop bas : il doit rester bon marché');
+    assert.ok(!copies.some((c) => c.nom.startsWith('~$')),
+      'un temporaire d’écriture atomique a été pris pour une copie en conflit');
+    // Le fichier d'origine est nommé, pour que le comparateur puisse s'ouvrir dessus.
+    const rapport = copies.find((c) => c.nom.endsWith('(RMO-DESK).json'));
+    assert.strictEqual(rapport.original, '20260915-0800-PC-aaa.json');
+    assert.ok(fs.existsSync(rapport.cheminOriginal), 'le chemin de l’original ne mène nulle part');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('chercherCopiesPlat : zéro niveau ne regarde que le dossier lui-même', () => {
+  const { racine, systeme } = dossierSystemeJetable();
+  try {
+    const noms = chercherCopiesPlat(systeme, 0).map((c) => c.nom);
+    assert.deepStrictEqual(noms, ['index (copie en conflit).json']);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('chercherCopiesPlat : une racine absente ou vide ne lève pas', () => {
+  assert.deepStrictEqual(chercherCopiesPlat(path.join(os.tmpdir(), 'nexiste-pas-du-tout')), []);
+  assert.deepStrictEqual(chercherCopiesPlat(''), []);
+  assert.deepStrictEqual(chercherCopiesPlat(null), []);
+});
+
+// ---- Le branchement réel : lib/cycle-vie.js ----------------------------------------
+//
+// C'est là qu'était le trou : chercherCopies n'était appelée qu'avec la racine d'un numéro.
+// lib/cycle-vie.js demande « vscode », que ce banc n'a pas ; une doublure minimale suffit —
+// rien de ce qui est éprouvé ici ne touche à l'interface.
+function chargerCycleVie() {
+  const Module = require('module');
+  const orig = Module._load;
+  const rien = { dispose() {} };
+  const faux = {
+    EventEmitter: class { constructor() { this.event = () => rien; } fire() {} dispose() {} },
+    Uri: { file: (p) => ({ fsPath: p, with: () => ({}) }) },
+    window: { showWarningMessage: () => Promise.resolve(undefined), setStatusBarMessage: () => {} },
+    workspace: { getConfiguration: () => ({ get: () => '' }) },
+    scm: { createSourceControl: () => ({ createResourceGroup: () => ({}) }) },
+    env: { language: 'fr' },
+    commands: { executeCommand: () => Promise.resolve() }
+  };
+  Module._load = function (r, pp, i) {
+    if (r === 'vscode') { return faux; }
+    return orig(r, pp, i);
+  };
+  try {
+    return require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'cycle-vie.js'));
+  } finally { Module._load = orig; }
+}
+
+test('cycle-vie : le dossier partagé est DÉRIVÉ de celui des rapports, et il est bien balayé', () => {
+  const cycleVie = chargerCycleVie();
+  const { racine, systeme } = dossierSystemeJetable();
+  const avant = process.env.SZH_RAPPORTS;
+  try {
+    // SZH_RAPPORTS nomme directement le dossier des rapports (lib/rapport-erreur.js) : le
+    // dossier partagé est son PARENT, jamais recomposé à la main — le segment du nom de
+    // l'application ne vit qu'à un seul endroit du JavaScript.
+    process.env.SZH_RAPPORTS = path.join(systeme, 'rapports');
+    assert.strictEqual(cycleVie.dossierPartageOutil(), systeme,
+      'le dossier partagé n’est pas le parent du dossier des rapports');
+
+    const noms = cycleVie.copiesDuDossierPartage().map((c) => c.nom).sort();
+    assert.deepStrictEqual(noms, [
+      '20260915-0800-PC-aaa-copie en conflit (RMO-DESK).json',
+      'index (copie en conflit).json',
+      'notes-Konfliktkopie.md'
+    ], 'le dossier partagé n’est pas balayé : ' + noms.join(' | '));
+  } finally {
+    if (avant === undefined) { delete process.env.SZH_RAPPORTS; } else { process.env.SZH_RAPPORTS = avant; }
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('cycle-vie : sans ancrage ni surcharge, le balayage du dossier partagé ne coûte rien', () => {
+  const cycleVie = chargerCycleVie();
+  const avant = { SZH_RAPPORTS: process.env.SZH_RAPPORTS, SZH_ANCRAGE: process.env.SZH_ANCRAGE };
+  const base = process.env.SZH_BASE;
+  const local = process.env.LOCALAPPDATA;
+  try {
+    // Ni surcharge, ni ancrage, ni config lisible : rien à balayer, et surtout aucune
+    // exception qui remonterait jusqu'au rafraîchissement de l'éditeur.
+    delete process.env.SZH_RAPPORTS;
+    delete process.env.SZH_ANCRAGE;
+    process.env.SZH_BASE = path.join(os.tmpdir(), 'szh-base-qui-nexiste-pas');
+    process.env.LOCALAPPDATA = path.join(os.tmpdir(), 'szh-local-qui-nexiste-pas');
+    assert.strictEqual(cycleVie.dossierPartageOutil(), null);
+    assert.deepStrictEqual(cycleVie.copiesDuDossierPartage(), []);
+  } finally {
+    for (const cle of Object.keys(avant)) {
+      if (avant[cle] === undefined) { delete process.env[cle]; } else { process.env[cle] = avant[cle]; }
+    }
+    if (base === undefined) { delete process.env.SZH_BASE; } else { process.env.SZH_BASE = base; }
+    if (local === undefined) { delete process.env.LOCALAPPDATA; } else { process.env.LOCALAPPDATA = local; }
+  }
+});
+
+test('cycle-vie : les deux appelants ajoutent le dossier partagé à ce qu’ils trouvent', () => {
+  // Contrôle de source : les deux seuls chemins qui alimentent la barre du contrôle de
+  // source (avertirCopiesConflit et rafraichirConflitsScm) doivent tous deux y passer —
+  // sans quoi une copie du dossier partagé disparaîtrait de la liste au premier
+  // rafraîchissement.
+  const source = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'cycle-vie.js'), 'utf8');
+  const appels = source.match(/copiesDuDossierPartage()/g) || [];
+  assert.ok(appels.length >= 3,
+    'lib/cycle-vie.js n’appelle copiesDuDossierPartage() que ' + appels.length + ' fois '
+    + '(sa définition, plus les deux balayages)');
+  assert.ok(source.indexOf('majConflitsScm(racine, copies.concat(copiesDuDossierPartage()))') !== -1,
+    'rafraichirConflitsScm oublie le dossier partagé');
+});

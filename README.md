@@ -76,6 +76,8 @@ szh-publishing-toolchain/
 │   ├── szh-textes.ps1              table des textes fr/de/en de tous les scripts
 │   ├── szh-produits.ps1            table des produits, emplacements, identité d'un
 │   │                               numéro ou d'un livre
+│   ├── szh-checkin.ps1             check-in mensuel du poste : un CSV par machine dans
+│   │                               le dossier partagé, une ligne par mois et par compte
 │   ├── szh-shell.ps1               identité de barre des tâches, raccourcis, lancement
 │   │                               de VSCodium
 │   ├── szh-taches.ps1              tâche planifiée, cadence hebdomadaire, choix du moment
@@ -257,18 +259,38 @@ Cartographie complète, chemins réels et manœuvre de reprise :
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md).
 
 Un seul endroit du code connaît les chemins : `Get-SzhEmplacements`, dans
-`windows/szh-common.ps1`. Base de production
-`%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test
-`%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING` — les deux surchargeables par la clé
-`basesRevues` de `C:\ProgramData\SZH\config.json`. Depuis le 09.09.2026, la base de
-production ne dépend plus **que** de ce chemin codé en dur : sans `basesRevues.prod`, elle
-vient de l'**ancrage SharePoint**, *cherché* plutôt que déduit (§ suivante). Mêmes
-sous-dossiers dans les deux cas :
+`windows/szh-common.ps1`. Racine de production `<ancrage SharePoint>\2_Produkte\54_Pronto`,
+racine de test `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING`.
 
-| | Revue (fr) | Zeitschrift (de) |
-|---|---|---|
-| en cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
-| archives | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
+La racine de production vient de l'**ancrage SharePoint**, *cherché* plutôt que déduit
+(§ suivante) ; le défaut codé en dur n'est que le dernier recours. Depuis le 15.09.2026,
+plus aucune clé de `config.json` ne peut la forcer : `basesRevues` a été supprimée, parce
+qu'un chemin recopié à la main survivait à un déménagement de la bibliothèque et rendait le
+poste muet. Pour un essai seulement, `SZH_RACINE_TEST` et `SZH_RACINE_PROD` remplacent une
+racine telle quelle (même modèle que `SZH_ANCRAGE`).
+
+> `54_Pronto` est le dossier de production de l'outil, qui s'appelle **Pronto**. Le segment
+> ne vit qu'à deux endroits — `$script:SzhSegmentApplication` (`windows/szh-ancrage.ps1`) et
+> `SEGMENT_APPLICATION` (`szh-cockpit/lib/rapport-erreur.js`) — et se change des deux côtés à
+> la fois.
+
+Même arborescence sous les deux racines — une seule table, seule la racine change :
+
+```
+<racine>\
+├── Revue\                 les numéros en cours, directement
+├── Zeitschrift\           idem
+├── Books\                 idem
+├── _Archive\              Revue\  Zeitschrift\  Books\   (ce qui est bouclé)
+├── _NewsUndActu\          Revue\  Zeitschrift\           (magasin de fiches, partagé)
+├── Secrétariat und Export\
+└── _Systeme\              rapports\  journaux\  suggestions\  inventaire\
+```
+
+Un numéro en cours est donc à **un** cran sous la racine, un numéro archivé à **deux** : ce
+qu'on ouvre tous les jours est au plus court, et tout ce qui dort se replie d'un seul
+dossier. Corollaire pour le code : on ne remonte jamais vers la racine en comptant des
+crans, on reconnaît des noms (`racineArbre`, `szh-cockpit/lib/reserve.js`).
 
 La clé **`emplacementRevues`** de `config.json` choisit la base : `"test"` ou
 `"production"`. Elle remplace `devMode`, qui reste lu (`true` = test) et que la bascule
@@ -306,13 +328,28 @@ Un numéro verrouillé ou archivé ne se recompile plus tout seul : l'export se 
 explicitement. L'archivage supprime `out/` — le gain de place est chiffré dans la confirmation —
 puis déplace le dossier et rouvre l'éditeur dessus.
 
-### Liens de traduction
+### Liens `szh://` : deux verbes
 
-« Envoyer pour traduction » copie un lien `szh://traduction/<produit>/<numéro>[/<article>]` et
-ouvre un brouillon d'e-mail. Le schéma `szh:` est enregistré dans HKCU par `update.ps1`. Le lien
-ne contient aucun chemin : le lanceur revalide sa grammaire, retrouve le dossier dans les seuls
-emplacements connus du poste, dépose une intention à usage unique périmée en cinq minutes, et
-ouvre la revue ; le cockpit consomme l'intention et ouvre le panneau.
+```
+szh://traduction/<produit>/<numéro>[/<article>]   produit : revue | zeitschrift
+szh://ouvrir/<produit>/<numéro>                   produit : revue | zeitschrift | livre
+```
+
+Le schéma `szh:` est enregistré dans HKCU par `update.ps1`. Aucun des deux liens ne contient de
+chemin : le lanceur revalide la grammaire et retrouve le dossier dans les seuls emplacements
+connus du poste. La grammaire vit en double — `$SzhLienMotif` / `$SzhLienMotifOuvrir`
+(`windows/szh-produits.ps1`) et `MOTIF_TRADUCTION` / `MOTIF_OUVRIR` (`lib/liens.js`) — et
+`test/js/raccourcis-portables.test.js` compare les quatre littéraux.
+
+« Envoyer pour traduction » copie un lien `traduction` et ouvre un brouillon d'e-mail : le
+lanceur dépose une intention à usage unique périmée en cinq minutes puis ouvre la revue ; le
+cockpit consomme l'intention et ouvre le panneau. La résolution se fait dans la racine active.
+
+Le lien `ouvrir` est celui que porte le raccourci « Ouvrir la revue » (« Ouvrir le livre ») posé
+à la racine de chaque numéro : il ne dépose aucune intention et ne vise aucun panneau, et il se
+résout dans la racine active **puis** dans celle de production, en cours puis archives. Le
+raccourci lui-même ne porte aucun chemin du poste — il vise `wscript.exe` et les scripts du
+toolkit, sous `C:\ProgramData` (voir `Set-SzhRaccourciRevue`, `windows/szh-shell.ps1`).
 
 Le brouillon part par `mailto:`, et seulement par là : le lien y arrive en texte brut, le corps
 explique comment le coller, et le lien est aussi mis dans le presse-papiers. Un brouillon à vrai
@@ -675,9 +712,11 @@ compris un sidecar qu'une version future ajouterait.
   seulement sur un numéro verrouillé. Il est écrit par `fs`, jamais par l'API de configuration :
   le verrou couvrant son propre fichier, l'API se voyait refuser l'écriture au déverrouillage et
   la clé survivait.
-- **Un lien `szh://` vient de l'extérieur.** Il ne porte aucun chemin, sa grammaire est revalidée
-  côté lanceur, et le dossier n'est cherché que dans les emplacements connus. Ne jamais construire
-  un chemin sur un segment reçu sans repasser par `Get-SzhLien` et `Find-SzhRevue`.
+- **Un lien `szh://` vient de l'extérieur** — d'un e-mail, ou d'un `.lnk` recopié par OneDrive.
+  Il ne porte aucun chemin, sa grammaire est revalidée côté lanceur, et le dossier n'est cherché
+  que dans les emplacements connus. Ne jamais construire un chemin sur un segment reçu sans
+  repasser par `Get-SzhLien` puis `Find-SzhRevue` (verbe `traduction`) ou `Find-SzhProduitOuvrir`
+  (verbe `ouvrir`).
 - **`inotify` ne traverse pas `/mnt/c`.** Aucune fonction ne peut reposer sur un watcher Linux
   lisant les fichiers Windows.
 - **Les scripts `.ps1` doivent tourner sous Windows PowerShell 5.1** : pas de `?.`, `??`, `?:`,

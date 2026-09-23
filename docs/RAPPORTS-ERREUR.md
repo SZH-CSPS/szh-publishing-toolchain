@@ -25,13 +25,23 @@ Un **rapport d'erreur** est un second exemplaire, ciblé, écrit à côté du jo
 JSON par erreur — dans un dossier SharePoint que l'équipe surveille :
 
 ```
-C:\Users\robin\SZH CSPS\Daten_Allgemein - General\2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolboxZeitscrhiften
+C:\Users\robin\SZH CSPS\Daten_Allgemein - General\2_Produkte\54_Pronto\_Systeme\rapports
 ```
 
-La faute de frappe **« Zeitscrhiften » est le vrai nom du dossier** : elle se reproduit à
-l'identique, elle ne se corrige pas. Le chemin ci-dessus est **dérivé** de l'ancrage
-SharePoint (le dossier `Daten_Allgemein - General`, cherché comme `2_Produkte` l'est déjà
-pour les revues — voir `docs/EMPLACEMENTS.md`) : rien ne le code en dur.
+Le chemin ci-dessus est **dérivé** de l'ancrage SharePoint (le dossier
+`Daten_Allgemein - General`, cherché comme la racine des revues l'est déjà — voir
+`docs/EMPLACEMENTS.md`) : rien ne le code en dur. Le segment `54_Pronto` — le dossier de
+production de l'outil, qui s'appelle Pronto — ne vit qu'à deux endroits du dépôt :
+`$script:SzhSegmentApplication` (`windows/szh-ancrage.ps1`) et `SEGMENT_APPLICATION`
+(`lib/rapport-erreur.js`), qui se changent ensemble.
+
+**Déménagement du 15.09.2026.** Les rapports vivaient jusque-là sous
+`2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolbox…`, un dossier appartenant à une
+autre équipe, dont on reproduisait jusqu'à la faute de frappe SharePoint. Ils sont maintenant
+dans notre propre arbre, sous `_Systeme\rapports`. **Aucune période de transition et aucune
+relecture de l'ancien chemin** : il n'y a que deux postes, mis à jour ensemble, et un rapport
+d'erreur n'a pas d'historique à préserver — ce qui reste dans l'ancien dossier y reste,
+lisible à la main.
 
 Un seul dossier pour les trois produits (revue, Zeitschrift, livre) : le produit concerné est
 un champ du JSON (`produit.type`), pas un sous-dossier.
@@ -75,21 +85,32 @@ ne doit jamais ralentir »).
 | `SZH_RAPPORTS` | Nomme **directement** le dossier de rapports ; l'emporte sans condition sur toute dérivation depuis l'ancrage | `Write-SzhRapport` / `Clear-SzhRapportsEnAttente` (PS) et `resoudreDossierRapports()` / `viderFileAttente()` (JS) |
 
 Les deux ne se combinent pas : poser `SZH_RAPPORTS` sur un dossier de rapports **ne le fait
-pas** dériver davantage (pas de `2_Produkte\…` ajouté dessous) — c'est la surcharge la plus
+pas** dériver davantage (pas de `2_Produkte\…\_Systeme\rapports` ajouté dessous) — c'est la surcharge la plus
 spécifique, « le dossier, tel quel ». Le champ `ancrage` du JSON garde son sens propre : il
 reste résolu séparément et continue de dire d'où vient l'ancrage, même quand `SZH_RAPPORTS`
 décide seul de la destination d'écriture.
 
 Piège vécu en éprouvant le module (Robin) : avant cet amendement, `SZH_RAPPORTS` désignait
-l'ancrage, et un dossier de rapports qu'on lui passait directement héritait d'un
-`2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolboxZeitscrhiften` de trop en dessous de
-lui. Bénéfice concret pour les tests : pointer `SZH_RAPPORTS` sur un dossier jetable suffit,
+l'ancrage, et un dossier de rapports qu'on lui passait directement héritait d'une dérivation
+complète de trop en dessous de lui. Bénéfice concret pour les tests : pointer `SZH_RAPPORTS` sur un dossier jetable suffit,
 sans fabriquer une fausse arborescence SharePoint complète.
 
 **Écriture silencieuse.** Rien à l'écran, jamais de fenêtre, jamais de blocage : une ligne
 dans le journal du poste suffit à dire qu'un rapport est parti (ou n'a pas pu partir). Un
 rapport ne doit **jamais** faire échouer, ralentir ni bruiter l'action qui l'a déclenché —
 son écriture est toujours sous garde, un échec de plus reste local (§7, `RAPPORT-ECHEC-ECRITURE`).
+
+**Écriture atomique, et son fichier temporaire.** Les deux écrivains écrivent d'abord un
+fichier temporaire dans **le même dossier** que la cible, puis renomment : une lecture
+concurrente ne voit jamais un fichier à moitié écrit. Ce temporaire s'appelle
+`~$<id>.json.<jeton>` — le préfixe `~$` est **celui que OneDrive ignore**, comme partout
+ailleurs dans le dépôt (`ecrireAtomique`, `lib/yaml.js`). Il est supprimé par un bloc
+`finally`, **y compris quand l'écriture échoue**.
+
+> **Corrigé le 15.09.2026.** Les deux écrivains nommaient leur temporaire `<cible>.tmp-…`,
+> sans ce préfixe, et aucun des deux ne le supprimait en cas d'échec. Chaque écriture faisait
+> donc voyager un fichier de plus vers tous les postes, et chaque écriture ratée abandonnait
+> dans le dossier partagé un orphelin qui s'y répliquait ensuite indéfiniment.
 
 ---
 
@@ -129,7 +150,7 @@ clés de premier niveau **dans l'ordre ci-dessous** — c'est ce que `ORDRE_CLES
     "chemin": "C:\\Users\\robin\\SZH CSPS\\Daten_Allgemein - General"
   },
   "fichiers": [
-    { "chemin": "2_Produkte\\52_Revue\\RV02_Redaction\\2027-02\\articles\\03-x\\03-x.md",
+    { "chemin": "2_Produkte\\54_Pronto\\Revue\\2027-02\\articles\\03-x\\03-x.md",
       "relatifA": "ancrage", "role": "article" }
   ],
   "journal": {
@@ -211,7 +232,7 @@ lignes réelles de la chaîne et masquait exactement ce que D3 demande de garder
 
 | Ligne réelle | Ce que l'ancienne règle 5 en faisait |
 |---|---|
-| `2_Produkte/52_Revue/RV02_Redaction/2027-02/articles/03-inclusion/03-inclusion.md` | `***.md` |
+| `2_Produkte/54_Pronto/Revue/2027-02/articles/03-inclusion/03-inclusion.md` | `***.md` |
 | `make: *** [Makefile:142: out/2027-02/articles/03-inclusion-scolaire.pdf] Error 1` | `***.pdf` |
 | `WeasyPrint: figure sans alt dans articles/07-ressources-documentaires/image-01.png` | `***.png` |
 | `https://www.szh-csps.ch/revue/2027-02/inclusion-scolaire-participation-sociale` | `https://www.szh-csps.***` |
@@ -257,6 +278,31 @@ regroupement (§4).
 - **L'article lui-même.** Ni son fichier, ni un extrait de Word, ni son texte intégral ne
   sont jamais joints à un rapport. Un rapport cite des **chemins** de fichiers et, via
   `constats`, des **codes** de contrôle de publication (`lib/journal.js`).
+
+### L'inventaire des postes n'est pas un rapport d'erreur
+
+Depuis le 15.09.2026, le lanceur dépose un **check-in mensuel** dans le dossier partagé
+(`_Systeme\inventaire\<POSTE>.csv`, `windows/szh-checkin.ps1`), et ce fichier-là **porte
+l'adresse de connexion de la personne**. Ce n'est pas une contradiction avec la règle
+ci-dessus, et il n'y a rien à rattraper : ce sont deux artefacts différents, qui ne se
+mélangent à aucun moment.
+
+| | Rapport d'erreur | Check-in d'inventaire |
+|---|---|---|
+| Ce que c'est | la trace d'un **incident**, écrite sans qu'on la demande | l'état d'un **poste**, écrit à chaque ouverture du lanceur |
+| Qui l'écrit | `Write-SzhRapport` (PS) / `emettreRapport` (JS) | `Invoke-SzhCheckin` (`windows/szh-checkin.ps1`) |
+| Où | `_Systeme\rapports\<id>.json` | `_Systeme\inventaire\<POSTE>.csv` |
+| Adresse de connexion | **jamais** — et masquée par la règle 6 si elle se glissait dans un message | **une colonne**, délibérément |
+| Pourquoi | un rapport voyage, se cite dans un ticket, se relit hors contexte : il ne doit rien porter qui désigne une personne à contacter | un inventaire sert précisément à savoir **qui** est derrière quel poste, et c'est sa seule raison d'être |
+
+**Ce qui n'a pas changé d'un iota :** le masquage (`lib/codes-erreur.js`, règle 6) et le
+contenu des rapports. Aucune règle n'a été assouplie, aucune adresse n'a été ajoutée à un
+rapport, et `robin.morand@szh.ch` reste la seule adresse qui survit au masquage. Une adresse
+dans un rapport d'erreur reste un défaut.
+
+**Et le nom du fichier de check-in ne porte que le nom de la machine.** L'identité vit
+*dans* le fichier, jamais dans son nom : un nom de fichier s'affiche à tout le monde dans un
+dossier synchronisé, y compris à qui n'a aucune raison de l'ouvrir.
 
 **Limite honnête, à ne pas maquiller.** `journal.extrait` (§2, jusqu'à 200 lignes) est la
 sortie **brute** de `make`, Pandoc et WeasyPrint — `Get-SzhRapportExtraitJournal` (PS) et

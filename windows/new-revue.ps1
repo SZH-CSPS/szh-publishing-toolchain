@@ -131,7 +131,18 @@ if (-not $existait) {
   }
 }
 
-# Raccourci dans le dossier : il voyage avec la revue sur OneDrive.
+# Identifiant fixe du numéro (`id:`) : posé UNE FOIS ici, jamais recalculé ensuite — c'est
+# lui que porteront le raccourci et tout lien szh:// envoyé pour ce numéro (docs/EMPLACEMENTS.md).
+if (-not $existait) {
+  [void](Set-SzhAusgabeIdSiAbsent $chemin)
+}
+
+# Raccourci dans le dossier : il voyage avec la revue sur OneDrive, et depuis le 15.09.2026
+# il survit au voyage — il vise le lanceur commun de C:\ProgramData et porte un lien
+# « szh:// », non plus deux chemins truffés du nom du compte Windows.
+# Aucun produit à faire remonter : le jeton vient d'être écrit dans ausgabe.yaml juste
+# au-dessus, et Set-SzhRaccourciRevue l'y relit (Get-SzhJetonDossier). Le repasser ici
+# serait une seconde vérité à tenir à jour.
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
 Set-SzhRaccourciRevue $chemin | Out-Null
 

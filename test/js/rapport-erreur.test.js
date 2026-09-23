@@ -97,7 +97,10 @@ function sandbox() {
 }
 function varsSandbox(s) { return { SZH_ANCRAGE: s.ancrage, SZH_BASE: s.base, LOCALAPPDATA: s.local }; }
 function dossierRapportsDe(s) {
-  return path.join(s.ancrage, '2_Produkte', 'Edition SZH CSPS allgemein', '_AutoReportToolboxZeitscrhiften');
+  // Les segments viennent du module, PAS d'une recopie : le nom du dossier de l'application
+  // vit à un seul endroit (SEGMENT_APPLICATION), et ce banc ne doit pas casser le jour où
+  // il changerait. Le test dédié plus bas, lui, compare bien à une chaîne tapée à la main.
+  return path.join.apply(path, [s.ancrage].concat(rapportErreur.SEGMENTS_DOSSIER_RAPPORTS));
 }
 function dossierAttenteDe(s) { return path.join(s.local, 'SZH', 'rapports-en-attente'); }
 
@@ -161,15 +164,31 @@ test('construireRapport() : message/pile/extrait passent par le masquage (§4.1)
   assert.match(rapport.journal.extrait[0], /secret: \*\*\*/, 'l’extrait du journal doit lui aussi passer par le masquage');
 });
 
-test('dossierRapportsDepuisAncrage() : la faute de frappe est reproduite à l’identique, jamais corrigée', { skip: HORS_WINDOWS }, () => {
+test('dossierRapportsDepuisAncrage() : dans NOTRE arbre, sous _Systeme\\rapports', { skip: HORS_WINDOWS }, () => {
   const derive = rapportErreur.dossierRapportsDepuisAncrage('C:\\un\\ancrage');
-  // Comparé à une chaîne tapée en dur ICI, indépendamment de la constante du module : si
-  // quelqu'un « corrige » un jour la faute de frappe dans rapport-erreur.js, ce test doit
-  // continuer à réclamer l'orthographe fautive et donc échouer.
-  assert.ok(derive.endsWith('2_Produkte\\Edition SZH CSPS allgemein\\_AutoReportToolboxZeitscrhiften'),
+  // Les trois invariants, comparés à des chaînes tapées en dur ICI — sauf le nom de
+  // l'application, qui vit à un seul endroit (SEGMENT_APPLICATION).
+  assert.ok(derive.startsWith('C:\\un\\ancrage\\2_Produkte\\'),
+    'la dérivation ne part plus de <ancrage>\\2_Produkte : ' + derive);
+  assert.ok(derive.endsWith('\\' + rapportErreur.SEGMENT_APPLICATION + '\\_Systeme\\rapports'),
     'dérivation inattendue : ' + derive);
-  assert.ok(derive.indexOf('_AutoReportToolboxZeitschriften') === -1,
-    'la faute de frappe a été « corrigée » — c’est le vrai nom du dossier, à ne jamais toucher');
+  // Le dossier d'une AUTRE équipe, où les rapports vivaient avant le 15.09.2026, n'est plus
+  // visé : il n'y a pas eu de période de transition, et rien ne doit y retomber par mégarde.
+  assert.ok(derive.indexOf('_AutoReportToolbox') === -1,
+    'les rapports repartent dans le dossier étranger d’avant le déménagement : ' + derive);
+});
+
+test('le nom du dossier de l’application ne vit qu’à UN seul endroit du JavaScript', () => {
+  // Contrat explicite du lot : une seule constante à corriger si le dossier de l'application
+  // changeait de nom, de chaque côté (celle-ci, et $script:SzhSegmentApplication dans
+  // windows/szh-ancrage.ps1).
+  const source = fs.readFileSync(path.join(COCKPIT, 'lib', 'rapport-erreur.js'), 'utf8');
+  const declarations = source.match(/const SEGMENT_APPLICATION\s*=\s*'[^']+';/g) || [];
+  assert.equal(declarations.length, 1,
+    'rapport-erreur.js doit déclarer SEGMENT_APPLICATION exactement une fois');
+  const occurrences = source.split(rapportErreur.SEGMENT_APPLICATION).length - 1;
+  assert.equal(occurrences, 1,
+    'le nom du dossier de l’application est recopié ' + occurrences + ' fois dans rapport-erreur.js');
 });
 
 test('résolution passive : SZH_ANCRAGE (essai) l’emporte sur config.json et sur le cache', { skip: HORS_WINDOWS }, () => {
@@ -505,7 +524,7 @@ test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien 
 //
 // Amendement du 09.09.2026 (Robin, en éprouvant ce module) : avant D10, SZH_RAPPORTS ÉTAIT
 // la surcharge d'ancrage, et un dossier de rapports qu'on lui passait directement héritait
-// d'un `2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolboxZeitscrhiften` de trop en
+// d'un `2_Produkte\<application>\_Systeme\rapports` de trop en
 // dessous de lui. Les trois tests ci-dessous couvrent chaque variable séparément, puis leur
 // combinaison — exactement le piège qui a été trouvé.
 
@@ -515,7 +534,7 @@ test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\�
     const resultat = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
     assert.equal(resultat.ecrit, true, 'motif : ' + resultat.motif);
     assert.deepEqual(fs.readdirSync(dossierRapportsDe(s)), [resultat.id + '.json']);
-    // Rien d'écrit directement DANS l'ancrage : tout est sous 2_Produkte\Edition SZH…
+    // Rien d'écrit directement DANS l'ancrage : tout est sous 2_Produkte\<application>\…
     assert.deepEqual(fs.readdirSync(s.ancrage), ['2_Produkte']);
   });
 });

@@ -313,8 +313,11 @@ test('Get-SzhRapportId (PowerShell) et codesErreur.calculerId (JS) rendent le m�
   });
 
 // =========================================================================================
-// 4. La faute de frappe du dossier -- reproduite à l'identique, dérivée de l'ancrage des
-//    deux côtés (jamais un chemin absolu en dur).
+// 4. Le dossier des rapports -- dérivé de l'ancrage des deux côtés, au caractère près
+//    (jamais un chemin absolu en dur). C'est CE test qui garde le contrat des deux jumeaux :
+//    $script:SzhSegmentApplication (szh-ancrage.ps1) et SEGMENT_APPLICATION
+//    (lib/rapport-erreur.js) doivent changer ensemble, sinon les deux dérivations divergent
+//    et un rapport écrit par le lanceur n'atterrit plus là où le cockpit écrit les siens.
 // =========================================================================================
 
 test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossierRapportsDepuisAncrage (JS) pour le même ancrage',
@@ -323,7 +326,7 @@ test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossi
     try {
       const ancrage = 'C:\\Un\\Faux\\Ancrage\\Daten_Allgemein - General';
       const attendu = rapportErreurJs.dossierRapportsDepuisAncrage(ancrage);
-      assert.match(attendu, /_AutoReportToolboxZeitscrhiften$/, 'la faute de frappe a disparu côté JS !');
+      assert.match(attendu, /\\_Systeme\\rapports$/, 'le dossier des rapports a bougé côté JS !');
 
       // Dot-source du VRAI szh-ancrage.ps1 (pas une extraction de fonction) : cette fonction
       // dérive son résultat de $script:SzhDeriveDossierRapports, une CONSTANTE définie au
@@ -347,7 +350,7 @@ test('Get-SzhDossierRapportsDepuisAncrage (PowerShell, szh-ancrage.ps1) == dossi
       assert.ok(run.status === 0 && fs.existsSync(pSortie), run.stderr);
       const resultat = JSON.parse(fs.readFileSync(pSortie, 'utf8'));
       assert.equal(resultat.ok, true, resultat.erreur);
-      assert.match(resultat.resultat, /_AutoReportToolboxZeitscrhiften$/, 'la faute de frappe a disparu côté PowerShell !');
+      assert.match(resultat.resultat, /\\_Systeme\\rapports$/, 'le dossier des rapports a bougé côté PowerShell !');
       assert.equal(resultat.resultat, attendu, 'le dossier de rapports dérivé diverge entre PowerShell et JS');
     } finally {
       fs.rmSync(travail, { recursive: true, force: true });
@@ -483,7 +486,7 @@ test('D10 : SZH_RAPPORTS seul -- le rapport atterrit directement dedans, ancrage
     }
   });
 
-test('D10 : SZH_ANCRAGE seul (pas de SZH_RAPPORTS) -- dérivation habituelle sous <ancrage>\\2_Produkte\\...',
+test('D10 : SZH_ANCRAGE seul (pas de SZH_RAPPORTS) -- dérivation habituelle sous <ancrage>\\2_Produkte\\<application>\\...',
   { skip: sansPowerShell }, () => {
     const travail = dossierJetable('szh-rapport-d10-ancrage-');
     try {

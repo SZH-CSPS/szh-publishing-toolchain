@@ -84,17 +84,20 @@ function estCopieConflit(nom, existe) {
   return null;
 }
 
-// Parcourt récursivement un dossier et rend un tableau de copies en conflit.
-// Retour : [{ chemin, dossier, nom, original, cheminOriginal, marqueur }]
+// Le parcours, borné à `profondeurMax` niveaux SOUS la racine. Rend un tableau de copies en
+// conflit :
 // - chemin : chemin absolu du fichier suspect
 // - dossier : chemin absolu de son dossier parent
 // - nom : nom du fichier
 // - original : nom du fichier d'origine reconstitué (peut ne pas exister)
 // - cheminOriginal : chemin absolu du fichier d'origine (pour vérifier son existence)
 // - marqueur : le marqueur ou 'doublon' qui l'a identifié
-function chercherCopies(racine) {
-  if (!racine || typeof racine !== 'string') { return []; }
-
+//
+// La profondeur est un paramètre depuis qu'il y a DEUX arborescences à surveiller, et
+// qu'elles n'ont rien de comparable : le dossier d'un numéro est profond et large (d'où le
+// 6 de chercherCopies, un garde-fou), le dossier partagé de l'outil est plat et se balaie
+// en un readdir (chercherCopiesPlat).
+function balayer(racine, profondeurMax) {
   const resultats = [];
   const dossierAIgnorer = new Set([
     'out', '.szh-avant-reimport', '.szh-edition', '.vscode', '.git', 'node_modules'
@@ -104,7 +107,7 @@ function chercherCopies(racine) {
   // numéro tient des centaines de fichiers sur OneDrive, et ce parcours est refait à chaque
   // balayage ; un stat par fichier sur des fichiers « à la demande » se paierait à l'écran.
   function parcourir(dossierCourant, profondeur) {
-    if (profondeur > 6) { return; }                // garde-fou : arborescence inattendue
+    if (profondeur > profondeurMax) { return; }    // garde-fou : arborescence inattendue
     let entrees;
     try { entrees = fs.readdirSync(dossierCourant, { withFileTypes: true }); }
     catch (e) { return; }                          // dossier illisible : sauté sans un mot
@@ -139,6 +142,28 @@ function chercherCopies(racine) {
   resultats.sort((a, b) => a.chemin < b.chemin ? -1 : a.chemin > b.chemin ? 1 : 0);
 
   return resultats;
+}
+
+// Le dossier d'un numéro, en profondeur : des centaines de fichiers, plusieurs niveaux.
+function chercherCopies(racine) {
+  if (!racine || typeof racine !== 'string') { return []; }
+  return balayer(racine, 6);
+}
+
+// Le dossier PARTAGÉ de l'outil (`_Systeme` : rapports d'erreur, journaux, suggestions de
+// traduction, inventaire des postes). Il est plat — un niveau de sous-dossiers, aucun
+// au-delà — et c'est pour ça qu'il a sa propre porte d'entrée plutôt qu'un appel à
+// chercherCopies : relancer un balayage profond sur lui à chaque rafraîchissement du cockpit
+// coûterait plus cher que le service rendu, sur un dossier synchronisé de surcroît.
+//
+// Pourquoi le surveiller du tout : une copie en conflit déposée là par le synchroniseur
+// n'appartient à aucun numéro, donc personne ne la voyait — ni l'avertissement du cockpit
+// (borné au numéro ouvert), ni un humain, puisque ce dossier ne s'ouvre jamais à la main.
+// `niveaux` vaut 1 par défaut : le dossier partagé lui-même, plus ses sous-dossiers directs.
+function chercherCopiesPlat(racine, niveaux) {
+  if (!racine || typeof racine !== 'string') { return []; }
+  const profondeur = (typeof niveaux === 'number' && niveaux >= 0) ? Math.floor(niveaux) : 1;
+  return balayer(racine, profondeur);
 }
 
 // La copie en conflit d'un fichier donné, ou null. Un seul readdir, sur le dossier du
@@ -235,6 +260,6 @@ function appliquerBlocs(texteOriginal, texteModifie, blocs) {
 }
 
 module.exports = {
-  MARQUEURS, EXTENSIONS, estCopieConflit, chercherCopies, copieConflitPour,
+  MARQUEURS, EXTENSIONS, estCopieConflit, chercherCopies, chercherCopiesPlat, copieConflitPour,
   decouperLignes, assemblerLignes, inverserBloc, appliquerBlocs
 };

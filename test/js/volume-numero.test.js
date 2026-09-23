@@ -163,9 +163,13 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 // Les quatre dossiers du poste, sous une racine jetable, avec les numéros demandés.
 // `Get-SzhBaseRevuesPour` est remplacée dans le pilote : rien n'est lu de config.json et
 // aucune racine réelle n'est touchée.
+// Mêmes quatre chemins que $SzhSousDossiers (windows/szh-produits.ps1) : recopiés ici faute
+// de pouvoir les lire depuis un fichier PowerShell, mais c'est bien l'arborescence réelle
+// depuis la restructuration du 15.09.2026 — un numéro en cours DIRECTEMENT sous son dossier
+// produit, les archives des trois produits regroupées sous un « _Archive\ » unique.
 const SOUS = {
-  revue: { encours: '52_Revue\\RV02_Redaction', archive: '52_Revue\\RV99_Archives' },
-  zeitschrift: { encours: '53_Zeitschrift\\ZS02_Redaktion', archive: '53_Zeitschrift\\ZS99_Archives' }
+  revue: { encours: 'Revue', archive: '_Archive\\Revue' },
+  zeitschrift: { encours: 'Zeitschrift', archive: '_Archive\\Zeitschrift' }
 };
 
 function poserArbre(numeros) {
@@ -270,7 +274,10 @@ test('doublon : le couple volume + numéro est cherché en cours ET dans les arc
         // Le message doit pouvoir dire OÙ : le chemin complet nomme le dossier ET son état.
         assert.ok(cheminLong.indexOf(nom) !== -1 && cheminLong.indexOf(baseLongue) === 0,
           'le chemin rendu ne mène pas au numéro trouvé : ' + chemin);
-        assert.strictEqual(/RV99_Archives|ZS99_Archives/.test(cheminLong), CAS[i].archive,
+        // Le segment `_Archive` et LUI SEUL distingue les deux états : les deux racines se
+        // terminent maintenant par le même nom de produit (« Revue » / « _Archive\Revue »),
+        // c'est donc au segment de tête qu'on reconnaît une archive, jamais à la feuille.
+        assert.strictEqual(/[\\/]_Archive[\\/]/.test(cheminLong), CAS[i].archive,
           'le chemin ne dit pas si le numéro est archivé : ' + chemin);
       }
     }

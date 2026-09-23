@@ -532,9 +532,12 @@ les deux tables divergent.
 
 Besoin : détacher une fiche structurée du numéro courant sans la perdre, et en envoyer une
 copie vers l'autre revue pour traduction. `lib/reserve.js` pose le magasin à
-`<parent du numéro>/_reserve/<revue|zeitschrift>/` — hors du numéro (survit à son archivage),
-au niveau où vivent les dossiers de numéro voisins dans l'arborescence OneDrive/SharePoint
-commune aux deux rédactions (donc déjà partagée entre collègues, sans geste de plus). Deux
+`<racine de l'arbre>/_NewsUndActu/<Revue|Zeitschrift>/` — hors du numéro (survit à son
+archivage), et à la **racine** : le seul niveau que les deux rédactions ouvrent toutes les
+deux, `Revue\`, `Zeitschrift\` et `Books\` en étant les enfants. Posé plus bas — dans le
+parent du numéro, comme jusqu'au 15.09.2026 — le magasin de la Zeitschrift écrit depuis la
+Revue vivait sous `Revue\`, que la collègue germanophone n'ouvrait jamais :
+« Envoyer vers l'autre revue » écrivait sans erreur un fichier que personne ne lisait. Deux
 gestes sur une seule mécanique d'écriture :
 
 - **Détacher** : le bloc quitte le `.md` de l'article, atterrit dans la réserve de la revue

@@ -72,10 +72,27 @@ function cheminVersionToolkit() { return path.join(racineProgramData(), 'toolkit
 function cheminEtatUtilisateur() { return path.join(racineUtilisateur(), 'SZH', 'etat-utilisateur.json'); }
 function cheminDossierAttente() { return path.join(racineUtilisateur(), 'SZH', 'rapports-en-attente'); }
 
-// Le dossier des rapports, DÉRIVÉ de l'ancrage — jamais un chemin absolu en dur (D4). La
-// faute de frappe « Zeitscrhiften » est le VRAI nom du dossier existant sur SharePoint :
-// elle est reproduite à l'identique, elle ne se corrige jamais (test dédié dans le banc).
-const SEGMENTS_DOSSIER_RAPPORTS = ['2_Produkte', 'Edition SZH CSPS allgemein', '_AutoReportToolboxZeitscrhiften'];
+// =======================================================================================
+// ⚠ LE SEUL ENDROIT JAVASCRIPT QUI PORTE LE NOM DU DOSSIER DE L'APPLICATION ⚠
+// =======================================================================================
+// L'outil s'appelle Pronto, et la ligne ci-dessous nomme son dossier de production. Tout
+// notre arbre de production pend sous ce segment : numéros, archives, magasin de fiches,
+// rapports, journaux. Il est écrit ICI et NULLE PART AILLEURS côté JavaScript — si le
+// dossier devait un jour être renommé, c'est la seule chaîne à corriger dans ce fichier.
+// Son jumeau PowerShell porte le même rôle et le même avertissement :
+// $script:SzhSegmentApplication, dans windows/szh-ancrage.ps1. Les deux se changent
+// ENSEMBLE — test/js/rapport-erreur-ps.test.js compare les deux dérivations.
+const SEGMENT_APPLICATION = '54_Pronto';
+// =======================================================================================
+
+// Le dossier des rapports, DÉRIVÉ de l'ancrage — jamais un chemin absolu en dur (D4).
+// Il a DÉMÉNAGÉ le 15.09.2026 dans notre propre arbre, sous `_Systeme\rapports` : il vivait
+// jusque-là dans un dossier appartenant à une autre équipe (« Edition SZH CSPS allgemein\
+// _AutoReportToolbox… », dont on reproduisait jusqu'à la faute de frappe SharePoint).
+// Aucune période de transition, aucune relecture de l'ancien chemin : deux postes, mis à
+// jour ensemble, et un rapport d'erreur n'a pas d'historique à préserver.
+// Jumeau littéral : $script:SzhDeriveDossierRapports (windows/szh-ancrage.ps1).
+const SEGMENTS_DOSSIER_RAPPORTS = ['2_Produkte', SEGMENT_APPLICATION, '_Systeme', 'rapports'];
 
 function dossierRapportsDepuisAncrage(ancrage) {
   if (!ancrage) { return null; }
@@ -115,14 +132,38 @@ function lireJsonTolerant(chemin) {
   } catch (e) { return {}; }
 }
 
+// Le nom du fichier temporaire d'une écriture atomique, dans LE MÊME dossier que la cible
+// (un renommage n'est atomique qu'à l'intérieur d'un volume).
+//
+// ⚠ Le préfixe « ~$ » n'est pas décoratif : c'est le motif que OneDrive IGNORE, et c'est
+// pour cette raison précise que tout le reste du dépôt l'emploie (ecrireAtomique de
+// lib/yaml.js, Write-SzhCheckinCsv de windows/szh-checkin.ps1). Les deux écrivains de ce
+// fichier nommaient leur temporaire « <cible>.tmp-… » : chaque écriture faisait donc voyager
+// un fichier de plus vers tous les postes, et chaque écriture ratée y abandonnait un
+// orphelin qui s'y répliquait ensuite indéfiniment.
+function cheminTemporaire(cible) {
+  const jeton = process.pid + '.' + Date.now().toString(36) + '.' + Math.random().toString(36).slice(2, 8);
+  return path.join(path.dirname(cible), '~$' + path.basename(cible) + '.' + jeton);
+}
+
 // Écrit un JSON UTF-8 SANS BOM, indenté 2 espaces (§4, en-tête du schéma — appliqué ici
 // aussi à etat-utilisateur.json par cohérence). Écrit dans un fichier temporaire puis
 // renomme : une lecture concurrente ne voit jamais un fichier à moitié écrit.
+//
+// Le `finally` manquait, et c'est exactement le défaut qu'ecrireAtomique (lib/yaml.js) avait
+// déjà corrigé de son côté : un renommage qui échoue (cible verrouillée par le
+// synchroniseur, disque plein, dossier disparu) laissait le temporaire sur place pour
+// toujours. Le nettoyage est silencieux — après un renommage réussi le temporaire n'existe
+// plus, ce qui n'est pas une erreur mais le cas normal.
 function ecrireJsonAtomique(chemin, valeur) {
   fs.mkdirSync(path.dirname(chemin), { recursive: true });
-  const tmp = chemin + '.tmp-' + process.pid + '-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-  fs.writeFileSync(tmp, JSON.stringify(valeur, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, chemin);
+  const tmp = cheminTemporaire(chemin);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(valeur, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmp, chemin);
+  } finally {
+    try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+  }
 }
 
 function lireEtatUtilisateur() { return lireJsonTolerant(cheminEtatUtilisateur()); }
@@ -530,12 +571,22 @@ function decisionAntiInondation(rapports, signature, maintenant) {
 // indenté 2 espaces (§4). Crée le dossier au besoin ; lève si l'écriture échoue — c'est
 // l'appelant (emettreRapport) qui décide quoi faire d'un échec (repli sur la file, puis
 // abandon silencieux), jamais cette fonction-ci.
+//
+// Temporaire préfixé « ~$ » et nettoyé par un `finally` (cheminTemporaire, plus haut) : ce
+// dossier-ci est le DOSSIER PARTAGÉ, celui que tous les postes synchronisent — un orphelin
+// laissé ici ne gêne pas un poste, il se réplique sur tous. Le nom composé ne finit jamais
+// par « .json », ce qui le tient hors de listerFileAttente() et de son homologue PowerShell,
+// qui ne listent que cette extension.
 function ecrireRapportSurDisque(dossier, rapport) {
   fs.mkdirSync(dossier, { recursive: true });
   const cible = path.join(dossier, rapport.id + '.json');
-  const tmp = cible + '.tmp-' + process.pid + '-' + Date.now() + '-' + Math.random().toString(16).slice(2);
-  fs.writeFileSync(tmp, JSON.stringify(rapport, null, 2) + '\n', 'utf8');
-  fs.renameSync(tmp, cible);
+  const tmp = cheminTemporaire(cible);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(rapport, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmp, cible);
+  } finally {
+    try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+  }
 }
 
 // Les fichiers .json de la file d'attente, du plus ancien au plus récent (mtime) — pour
@@ -756,12 +807,12 @@ function emettreRapport(champs) {
 
 module.exports = {
   // Constantes.
-  SEGMENTS_DOSSIER_RAPPORTS,
+  SEGMENT_APPLICATION, SEGMENTS_DOSSIER_RAPPORTS,
   PLAFONDS_ATTENTE,
   // Racines et chemins (impurs : environnement + disque).
   racineProgramData, racineUtilisateur,
   cheminConfigPoste, cheminStatePoste, cheminVersionToolkit,
-  cheminEtatUtilisateur, cheminDossierAttente,
+  cheminEtatUtilisateur, cheminDossierAttente, cheminTemporaire,
   // Ancrage.
   resoudreAncrage, dossierRapportsDepuisAncrage, resoudreDossierRapports,
   normaliserSeparateursAncrage,

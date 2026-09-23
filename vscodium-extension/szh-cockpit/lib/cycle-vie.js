@@ -16,7 +16,14 @@ const { etatRevue, titreNumero, ecrireAtomique } = require('./yaml');
 const {
   versionInstallee, versionsDivergent, lancerArchivage, lancerChoixVersion, tailleDossier
 } = require('./archivage');
-const { chercherCopies, copieConflitPour, inverserBloc, appliquerBlocs } = require('./copies-conflit');
+const {
+  chercherCopies, chercherCopiesPlat, copieConflitPour, inverserBloc, appliquerBlocs
+} = require('./copies-conflit');
+// Uniquement pour SITUER le dossier partagé de l'outil (voir copiesDuDossierPartage plus
+// bas) : ce module-ci n'écrit aucun rapport. lib/rapport-erreur.js ne dépend que de
+// fs/path/os — le requérir ici n'alourdit rien et, surtout, évite de réécrire le segment du
+// nom de l'application, qui ne vit qu'à un seul endroit du JavaScript.
+const { resoudreAncrage, resoudreDossierRapports } = require('./rapport-erreur');
 
 // Le profil du dossier ouvert, tel que extension.js l'a posé dans session (même source que
 // lib/apercu.js, lib/import-hote.js…) : jamais relu ici par un accès disque à soi. Verrou
@@ -359,6 +366,36 @@ const DELAI_BALAYAGE_COPIES = 15000;
 
 function oublierCopiesSignalees() { copiesSignalees = new Set(); dernierBalayageCopies = 0; }
 
+// ---- Le dossier partagé de l'outil, deuxième terrain de collision -------------------
+//
+// Le balayage ne regardait que le dossier du numéro ouvert. Or le synchroniseur dépose ses
+// copies en conflit là où DEUX postes écrivent le même fichier — et c'est aussi, et même
+// surtout, le cas du dossier que l'outil s'écrit à lui-même (`_Systeme` : rapports d'erreur,
+// journaux, suggestions de traduction, inventaire des postes). Une copie en conflit y restait
+// invisible pour tout le monde : elle n'appartient à aucun numéro, et personne n'ouvre ce
+// dossier à la main.
+//
+// Le dossier est DÉRIVÉ de celui des rapports (son parent), jamais recomposé ici : le segment
+// du nom de l'application ne vit qu'à un seul endroit du JavaScript (SEGMENT_APPLICATION,
+// lib/rapport-erreur.js). Résolution PASSIVE de l'ancrage : aucun balayage de disque, aucune
+// fenêtre — exactement ce que fait déjà l'écrivain de rapports.
+function dossierPartageOutil() {
+  try {
+    const rapports = resoudreDossierRapports(resoudreAncrage());
+    if (!rapports) { return null; }
+    return path.dirname(rapports);
+  } catch (e) { return null; }
+}
+
+// Plat (chercherCopiesPlat) : le dossier partagé et ses sous-dossiers directs, pas un niveau
+// de plus. Quelques readdir, au même rythme que le balayage du numéro — jamais un parcours
+// profond, et jamais une exception qui remonterait jusqu'au rafraîchissement de l'éditeur.
+function copiesDuDossierPartage() {
+  const partage = dossierPartageOutil();
+  if (!partage) { return []; }
+  try { return chercherCopiesPlat(partage, 1); } catch (e) { return []; }
+}
+
 function avertirCopiesConflit(racine) {
   if (!racine) { majConflitsScm(null, []); return; }
   const maintenant = Date.now();
@@ -366,6 +403,10 @@ function avertirCopiesConflit(racine) {
   dernierBalayageCopies = maintenant;
   let copies = [];
   try { copies = chercherCopies(racine); } catch (e) { return; }   // jamais bloquant
+  // Le numéro d'abord, le dossier partagé ensuite : chaque liste est triée pour elle-même,
+  // et c'est ce qui compte ici — une copie dans le numéro ouvert passe avant une copie dans
+  // un dossier de service, que l'on signale surtout pour qu'elle cesse d'être invisible.
+  copies = copies.concat(copiesDuDossierPartage());
   // La barre du contrôle de source suit à chaque balayage, avertissement ou pas : c'est elle
   // qui garde la liste sous la main quand la fenêtre a été fermée d'un revers.
   majConflitsScm(racine, copies);
@@ -631,7 +672,7 @@ function rafraichirConflitsScm() {
   if (!racine) { majConflitsScm(null, []); return; }
   let copies = [];
   try { copies = chercherCopies(racine); } catch (e) { copies = []; }
-  majConflitsScm(racine, copies);
+  majConflitsScm(racine, copies.concat(copiesDuDossierPartage()));
 }
 
 module.exports = {
@@ -642,6 +683,7 @@ module.exports = {
   verrouillerSeulement, archiverEtVerrouiller, desarchiver, deverrouiller,
   fermerFenetreApresArchivage,
   oublierCopiesSignalees, avertirCopiesConflit, comparerConflit,
+  dossierPartageOutil, copiesDuDossierPartage,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
   cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
   rafraichirConflitsScm, majConflitsScm

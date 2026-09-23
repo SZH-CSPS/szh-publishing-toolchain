@@ -72,7 +72,7 @@ Les trois pièces :
 |---|---|
 | Word source (styles) | `tmp/book/FALC/2025-ProspectrumFalc_FR_VF.docx` |
 | PDF d'origine (référence visuelle) | `tmp/book/FALC/2025-Prospectrum_FALC_FR_ebook (1).pdf` |
-| PDF produit par la chaîne | `…/BU02_Redaktion/2025-B329-CSPS_ProspectrumFALC_FR/out/2025-B329-CSPS_ProspectrumFALC_FR.pdf` |
+| PDF produit par la chaîne | `…/Books/2025-B329-CSPS_ProspectrumFALC_FR/out/2025-B329-CSPS_ProspectrumFALC_FR.pdf` |
 
 La feuille à régler est `pipeline/styles/livre/falc.css` (le socle géométrique commun est
 dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
@@ -205,8 +205,9 @@ décrivait déjà le lot B de [ARCHITECTURE-LIVRES.md §6](ARCHITECTURE-LIVRES.m
 ### 2.4 Livres à produire
 
 - Le **deuxième livre FALC**, l'allemand, dans
-  `C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING\54_Buch\BU02_Redaktion`, par le
-  lanceur et l'interface, pas à la main.
+  `C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING\Books`, par le
+  lanceur et l'interface, pas à la main. (Chemin mis à jour le 15.09.2026 : les livres
+  vivent désormais dans notre propre arbre, `docs/EMPLACEMENTS.md` §1.)
 
   ⚠ **Cette exigence n'est pas tenable en l'état, constaté le 31.08** :
   `pipeline/livre-scinder.py` **n'est branché à rien** — ni `pipeline/Makefile`, ni

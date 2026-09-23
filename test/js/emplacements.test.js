@@ -60,7 +60,7 @@ test('emplacement des revues : chaque configuration donne la racine attendue', (
 test('un poste qui ne dit rien garde la racine qu’il avait', () => {
   // La règle d'avant : clé absente -> mode développeur -> arborescence de test. Elle ne
   // doit pas bouger, c'est la seule qui ne fasse disparaître aucune revue.
-  for (const cfg of [null, undefined, {}, { repo: 'x' }, { basesRevues: { prod: 'P', dev: 'D' } }]) {
+  for (const cfg of [null, undefined, {}, { repo: 'x' }, { revuesRoots: [] }]) {
     assert.strictEqual(archivage.resoudreEmplacementRevues(cfg), archivage.EMPLACEMENT_TEST);
   }
 });
@@ -173,7 +173,7 @@ test('l’écriture de l’emplacement ne touche pas un config.json absent', () 
   const debut = ps.indexOf('function Initialize-SzhEmplacementRevues');
   assert.ok(debut !== -1, 'Initialize-SzhEmplacementRevues a disparu');
   const corps = ps.slice(debut, ps.indexOf('\r\n# Emplacement actif', debut));
-  // bootstrap.ps1 crée config.json et n'y écrit `repo` et `basesRevues` que si le fichier
+  // bootstrap.ps1 crée config.json et n'y écrit `repo` et `revuesRoots` que si le fichier
   // manque : un fichier posé ici avant lui le priverait des deux.
   assert.ok(corps.indexOf('if (-not (Test-Path $SzhConfigFile)) { return \'\' }') !== -1,
     'la migration doit renoncer quand config.json n’existe pas');

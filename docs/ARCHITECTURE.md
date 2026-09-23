@@ -13,7 +13,18 @@ OneDrive.
 |---|---|---|---|
 | Dépôt outillage | GitHub | pipeline, maquette, extensions, scripts de déploiement, image WSL | le mainteneur |
 | Poste rédacteur (×10) | Windows | VSCodium + distro `SZH-Publishing` + toolkit dans `C:\ProgramData\SZH` | mise à jour automatique |
-| Revues | OneDrive / SharePoint | uniquement le contenu : articles, métadonnées, PDF | les rédacteurs |
+| Revues, Zeitschriften et livres | OneDrive / SharePoint, sous **une seule racine** (`docs/EMPLACEMENTS.md`) | uniquement le contenu : articles, métadonnées, PDF | les rédacteurs |
+
+Cette racine unique porte les trois produits (`Revue\`, `Zeitschrift\`, `Books\`, dont les
+numéros en cours sont les enfants DIRECTS), les archives des trois regroupées sous un
+`_Archive\` unique, le magasin de fiches partagé par les deux rédactions (`_NewsUndActu\`),
+le dossier du secrétariat et ce que l'outil écrit pour lui-même (`_Systeme\`). Un numéro en
+cours est donc à un cran de la racine, un numéro archivé à deux — d'où la règle que suit
+`racineArbre()` (`szh-cockpit/lib/reserve.js`) : on remonte vers la racine en reconnaissant
+des **noms** de dossiers, jamais en comptant des crans. **La même arborescence sous les deux racines** — production et
+essai —, seule la racine change : un essai exerce donc exactement les chemins de la
+production. Détail, chemins réels et manœuvre de reprise :
+[`docs/EMPLACEMENTS.md`](EMPLACEMENTS.md).
 
 Le principe central est qu'il n'y a **qu'une source de vérité, et aucune copie par revue**. Le
 pipeline et la configuration vivent dans le toolkit du poste. Corriger un style ou un bug, c'est

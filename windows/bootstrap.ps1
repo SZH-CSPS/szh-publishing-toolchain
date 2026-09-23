@@ -80,20 +80,19 @@ if ($LASTEXITCODE -ne 0) {
 if (-not (Test-Path $SzhConfigFile)) {
   $cfg = [ordered]@{
     repo        = $Repo
-    # Le lanceur ne liste que l'arborescence officielle (basesRevues ci-dessous). Cette
-    # clé ne sert plus qu'à signaler des revues restées ailleurs : vide sur un poste
-    # neuf, à remplir à la main pour surveiller un dossier historique.
+    # Le lanceur ne liste que l'arborescence officielle. Cette clé ne sert plus qu'à
+    # signaler des revues restées ailleurs : vide sur un poste neuf, à remplir à la main
+    # pour surveiller un dossier historique.
     revuesRoots = @()
-    # Mode développeur : les revues sont cherchées, créées et archivées sous
-    # basesRevues.dev. Bascule depuis « Réglages SZH » du cockpit, ou ici.
+    # Mode développeur : les revues sont cherchées, créées et archivées sous la racine
+    # d'essai. Bascule depuis l'onglet « Paramètres » du lanceur, ou ici.
+    #
+    # ⚠ Aucune racine n'est écrite ici, et c'est voulu (15.09.2026) : la clé qui les portait
+    #   primait sur tout et rendait muet un poste dont la bibliothèque avait déménagé. La
+    #   racine de production vient maintenant de l'ancrage SharePoint trouvé sur le disque,
+    #   la racine d'essai d'un défaut codé en dur — voir Get-SzhBaseRevuesPour et
+    #   docs/EMPLACEMENTS.md.
     devMode     = $true
-    # Emplacements « en cours » et archives. Seule la base change entre test et
-    # production, les sous-dossiers étant figés dans szh-common.ps1. À corriger ici si
-    # la bibliothèque SharePoint est synchronisée sous un autre nom.
-    basesRevues = [ordered]@{
-      prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
-      dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
-    }
   }
   Set-SzhJson $SzhConfigFile $cfg
 }
