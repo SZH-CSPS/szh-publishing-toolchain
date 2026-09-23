@@ -1,0 +1,54 @@
+type: varia
+lang: fr
+source: "2025-03_martin.docx"
+doi: "10.57161/r2025-03-08"
+licence: cc-by-4.0
+title:
+  fr: "Vers un enseignement supérieur inclusif"
+subtitle:
+  fr: "Explorer les perceptions, pratiques et besoins des enseignantes et enseignants en matière de pédagogie inclusive"
+resume:
+  fr: "L’article examine les pratiques pédagogiques dites inclusives dans un contexte d’enseignement supérieur du point de vue des enseignantes et enseignants. Fondé sur une enquête auprès du corps enseignant de la Haute école spécialisée de Suisse occidentale (HES-SO), il met en évidence l’importance accordée à ces pratiques de même que leur fréquence de mise en œuvre lors de la planification des enseignements, de l’animation des cours et de l’évaluation des apprentissages. Sont également exposés les principaux freins rencontrés et les besoins formulés afin de pouvoir les implémenter."
+  de: "In diesem Artikel werden sogenannte inklusive Lehrmethoden in der Hochschulbildung aus der Sicht der Lehrkräfte untersucht. Auf der Grundlage einer Umfrage unter den Lehrkräften der Fachhochschule Westschweiz (HES-SO) wird aufgezeigt, welche Bedeutung diesen Lehrmethoden beigemessen wird und wie häufig sie bei der Planung des Unterrichts, der Durchführung von Kursen und der Bewertung der Lernenden angewendet werden. Darüber hinaus werden die wichtigsten Hindernisse sowie der Bedarf für die Umsetzung dieser Lehrmethoden dargelegt."
+keywords:
+  fr:
+  - "besoins éducatifs particuliers"
+  - "corps enseignant"
+  - "enseignement inclusif"
+  - "enseignement supérieur"
+  - "hétérogénéité"
+  - "inclusion"
+  - "pratiques pédagogiques"
+  de:
+  - "besonderer Bildungsbedarf"
+  - "Heterogenität"
+  - "Hochschulen"
+  - "Inklusion"
+  - "inklusiver Unterricht"
+  - "Lehrkörper"
+  - "Unterrichtspraxis"
+author:
+- prenom: "Murielle"
+  nom: "Martin"
+  fonction: "Maitresse d’enseignement et de recherche"
+  affiliation: "Haute École de travail social et de la santé (HETSL I HES-SO)"
+  email: ""
+  photo: ""
+- prenom: "Sophie"
+  nom: "Serry"
+  fonction: "Conseillère pédagogique et responsable d’équipe conseil-formation-évaluation"
+  affiliation: "Centre de soutien à l’enseignement, Université de Lausanne"
+  email: ""
+  photo: ""
+- prenom: "Sylvie"
+  nom: "Ray-Kaeser"
+  fonction: "Professeure associée"
+  affiliation: "Haute École de travail social et de la santé (HETSL I HES-SO)"
+  email: ""
+  photo: ""
+- prenom: "Nevena"
+  nom: "Dimitrova"
+  fonction: "Professeure associée"
+  affiliation: "Haute École de travail social et de la santé (HETSL I HES-SO)"
+  email: ""
+  photo: ""

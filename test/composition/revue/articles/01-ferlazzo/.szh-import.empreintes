@@ -1,0 +1,9 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	2024-01_ferlazzo.docx
+date	2026-09-23T09:14:01
+corps	a957dd7db141c9eb1d5f6f23af26483c6e0a2be15ce38c13d6a0c4504a857447	01-ferlazzo.md
+biblio	c6bb24686b03b806e593946592443828bc89e4f0bb6fddfbeedcebe33af226b0	01-ferlazzo.biblio.md

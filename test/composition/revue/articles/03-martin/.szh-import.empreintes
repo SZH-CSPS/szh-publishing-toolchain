@@ -1,0 +1,19 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	2025-03_martin.docx
+date	2026-09-23T09:14:10
+corps	e819ff972de17e3488b20e568e976311a8024c679f4caaee766aa1c3d5020156	03-martin.md
+biblio	a084a8fcc5de88db9b4fe010022cb10de0af92b90ee3ea1657a4e58c19036847	03-martin.biblio.md
+tableau	cd37262462523759b7813bb3e767537c740020d33422e216de4703fc9fe511c1	tables/table-01.html
+tableau	38d02b484fdbc3a7cdc59f8253654f57c3a5679969de8e0e011dd134a69aa259	tables/table-02.html
+tableau	afa6a2b295bed4a3eb94942e9001ee0cb5e336b163e69a5fb7a6cdb063acd34e	tables/table-03.html
+tableau	3c69954a7659aa7debd8006b05c7cd7e3897c895217fc696891fd28a24e3a312	tables/table-04.html
+tableau	0ffc8a6159ef5ee868647e6ebbb1fb233e26b74041a9aae6ecda8fec8dacc56c	tables/table-05.html
+tableau	3ef76a75fbd981cccea7a06218fc5c699245401acb8b52119a0547dd0cb223ce	tables/table-06.html
+tableau	6b50b0ac5945e116374b305f42e97f9fa72b12bf8a0cf7a3eff118f44e9ff9f2	tables/table-07.html
+tableau	82036d53fcc9e529e4e8d82e7c8aa06d2d2a42a7f6c7dea6dfca9007aa0e2fc2	tables/table-08.html
+tableau	98a8ec9511816d3a815ff60a8be3ff3d8f1f87ec0df5c0e75a12847300e7699c	tables/table-09.html
+image	7252ef5af71d40c5b2bfed348aacf4c7c370c935e62dd05d256589f4962f3a6c	media/03-martin-fig-01.png

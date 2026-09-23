@@ -1,0 +1,16 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	2025-02_duret.docx
+date	2026-09-23T09:14:04
+corps	794a38fa613765738c13283dea5d7e96e0ed58dc5eb13fdb93e87b45b14693eb	02-duret.md
+biblio	7ece17516e8dbf72b9cfb8819a31db78d730c35466dc104f01fe7be804fe525a	02-duret.biblio.md
+tableau	8c16e3054db5b21e5b816de6bdf85288efc8b53fb874f2374a67f284232cfdfb	tables/table-01.html
+tableau	56d0bfa686125599a3fa0fdaf81a4fee4cedceb9d0b6b5979561eb6e42345a16	tables/table-02.html
+tableau	d99225cab08cbd7d6ec58face9353d583877b2bfd2ac2f11283de5c4608d6716	tables/table-03.html
+tableau	d7d9c0c5803bb1373b0e11858f7c2041895972845428cf78df1dc476fb40f562	tables/table-04.html
+tableau	1fb563bd5e48c6722af72862b9f75636e20e7a17a8a7225f87d4aac94a99fc8a	tables/table-05.html
+tableau	4018cd8ea5528f05e40bca6465368aba122e5ed94ecca73848a3d72018abdb4d	tables/table-06.html
+image	af1944996d9f0fa0f43b5c18cd5ef8a3e3e89329b769385b931af731b0620dc0	media/02-duret-fig-01.svg

@@ -1,0 +1,32 @@
+type: article
+lang: de
+source: "2024-09_lanners.docx"
+doi: "10.57161/z2024-09-01"
+licence: cc-by-4.0
+title:
+  de: "Integration vor Separation im Spiegel unserer Statistik"
+resume:
+  fr: "Les chiffres de l'Office fédéral de la statistique (OFS) montrent que l'école inclusive a gagné du terrain depuis l'apogée de la séparation scolaire en Suisse en 2004/05. La Suisse progresse vers une école pour tous les élèves. La statistique modernisée de la pédagogie spécialisée donne une image différenciée et en grande partie positive de cette évolution, même si, malheureusement, le nombre d’élèves dans les écoles spécialisées ne cesse d'augmenter dans toute la Suisse depuis les quatre dernières décennies. Les nouveaux chiffres montrent que l'école inclusive n'a pas échoué chez nous. Nous avons en revanche une belle marge de progression en comparaison internationale."
+  de: "Die Zahlen des Bundesamts für Statistik (BFS) zeigen, dass die integrative Schule seit dem Höhepunkt der schulischen Separation in der Schweiz im Schuljahr 2004/05 an Popularität gewonnen hat. Die Schweiz befindet sich auf dem Weg hin zu einer Schule für alle Lernende. Die modernisierte Statistik der Sonderpädagogik zeigt ein differenziertes und zum grossen Teil positives Bild der Schulentwicklung, auch wenn leider die Anzahl der Lernenden in Sonderschulen in den letzten vier Jahrzehnten schweizweit stetig gestiegen ist. Die neuen Zahlen zeigen, dass die integrative Schule bei uns nicht gescheitert ist. Wir haben jedoch viel Luft nach oben im internationalen Vergleich."
+keywords:
+  fr:
+  - "statistique"
+  - "pédagogie spécialisée"
+  - "besoins éducatifs particuliers"
+  - "intégration scolaire"
+  - "école spécialisée"
+  - "changement de paradigme"
+  de:
+  - "Statistik"
+  - "Sonderpädagogik"
+  - "besonderer Bildungsbedarf"
+  - "schulische Integration"
+  - "Sonderschule"
+  - "Paradigmenwechsel"
+author:
+- prenom: "Romain"
+  nom: "Lanners"
+  fonction: "Direktor"
+  affiliation: "SZH/CSPS"
+  email: ""
+  photo: ""

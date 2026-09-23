@@ -1,0 +1,25 @@
+# Corpus de COMPOSITION — numéro de test SÉPARÉ du banc de maquette (test/articles/) et
+# du corpus d'accessibilité (test/accessibilite/).
+#
+# À quoi ça sert : mesurer la composition — césures, suites de lignes coupées, blancs de
+# justification, pagination — sur du VRAI texte publié (huit galleys DOCX, CC BY 4.0,
+# licence vérifiée article par article, voir LISEZMOI.md), plutôt que sur les articles
+# courts et fabriqués du banc rapide. Un texte réel a la longueur, les mots composés, les
+# noms propres et les listes qui font apparaître un problème de composition qu'un article
+# de test de trois paragraphes ne produit jamais. Sert quand on change de version de
+# WeasyPrint ou de pandoc, ou de réglage de pipeline/styles/print.css : on recompile, on
+# mesure avec test/composition-check.py, on compare au JSON de référence.
+#
+# Ce numéro ne se compile PAS dans le banc rapide (test/build-render.sh, test/ausgabe.yaml,
+# test/accessibilite/ausgabe.yaml) : il est plus lourd (quatre articles réels, dizaines de
+# pages) et sa porte PDF/UA prend le numéro entier — le mélanger au banc rapide y ferait
+# perdre du temps à chaque exécution sans rien y éprouver de plus.
+title: "Corpus de composition — Revue"
+revue: revue
+volume: "44"
+numero: "9"
+date: "2026-09-23"
+lang: fr
+couleur: "#5F9FBC"
+locked: false
+archived: false

@@ -1,0 +1,20 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	2024-09_lanners.docx
+date	2026-09-23T09:14:12
+corps	55c094a59810eee46f398ebed08316f756876ecfe3aa3cd94fd7edb3553081de	09-lanners.md
+biblio	af848c448f9d7c595ea56f33144d45fa9ce296dbe44829935caf849d237a6f6a	09-lanners.biblio.md
+tableau	5f874dec8ec4bf3ac8d9d4d47808df50eaea8cafa9ec210b95acc21edc5565e2	tables/table-01.html
+image	f3cab6c71978c975c239b203c042cd913a49707177dabeb08b764c95974b9c49	media/09-lanners-fig-01.png
+image	f11f84aba48f887b1bcb20b7271b3d0729069bec674b27dd6139271c1ff9a9a0	media/09-lanners-fig-02.png
+image	57a38a63a6b372dfcb8c60df8acf7bed59e60ae74e89af4f7980af9d2c86a341	media/09-lanners-fig-03.png
+image	a9234f6a02ea12b57b98df67805c13df0cb1b8ea8eb190452353ca2e63fc86e1	media/09-lanners-fig-04.png
+image	f6399809c2866add3ebab65125e3145b1448e04ec0f7f4c601fbbe1c3117144d	media/09-lanners-fig-05.png
+image	7a6254ed9db9e40bff73e992b946d5602c4ac315744443b6811996dd5f69c633	media/09-lanners-fig-06.png
+image	3d8cd05207e159eb9194aa30a4351318069f938da8e4524b36fdf468a88616cc	media/09-lanners-fig-07.png
+image	bb316a3caed70f09e05dfbd87037bfab1b4d1108c21a0b68de40380069c8f1d3	media/09-lanners-fig-08.png
+image	32ef4c224e0665977469bc8bf3450af91d7a7d68952d0f9cb479a15ef71b4c23	media/09-lanners-fig-09.png
+image	c2e23e77b8ec0294d17f6038cc506e93f8f1d2bcf7f18eff17620982f0b91c3c	media/09-lanners-fig-10.png

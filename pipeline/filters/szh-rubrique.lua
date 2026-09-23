@@ -44,6 +44,9 @@
 --   n'a besoin de la classe-marqueur "section" ci-dessus pour se déclencher : un header de
 --   tête à identifiant vide suffit, marqueur ou pas. D'où titre_id() plus bas : le Header
 --   posé ici reçoit toujours un identifiant non vide.
+--   ⚠ Cela ne suffit plus à partir de pandoc 3.10 : la classe du Header passe sur la
+--   <section> même quand il a un identifiant (mesuré le 23.09.2026). print.css vise donc
+--   `h2.szh-rubrique-titre`, jamais la classe seule.
 --
 -- Le titre imprimé n'est jamais écrit dans le .md (voir SPEC-actualite.md §1) : il se
 -- déduit ici du type et de la langue de l'article, exactement comme le libellé de lien

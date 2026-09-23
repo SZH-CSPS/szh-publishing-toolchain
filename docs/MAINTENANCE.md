@@ -198,8 +198,10 @@ Versions actuellement épinglées, à lire dans les fichiers :
 | Élément | Où | Valeur |
 |---|---|---|
 | Base Debian | `image/Containerfile` (`DEBIAN_TAG`) | `13-slim` |
-| Pandoc | `image/Containerfile` (`PANDOC_VERSION`) | 3.5 |
-| WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 69.0, 12 pins transitifs |
+| Pandoc | `image/Containerfile` (`PANDOC_VERSION`, `PANDOC_SHA256`) | 3.7.0.2, `.deb` vérifié par sha256 |
+| WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 70.0, 12 pins transitifs, et pypdf |
+| Venv des portraits | `image/requirements-portraits.txt` | rembg 2.0.85, onnxruntime 1.30.0, 30 pins en tout |
+| Vale, le vérificateur du nettoyeur | `image/Containerfile` (`VALE_VERSION`, `VALE_SHA256`) | 3.22.0 |
 | Modèles de détourage des portraits | `image/Containerfile` | deux `.onnx` vérifiés par sha256 |
 | veraPDF, le validateur PDF/UA | `image/Containerfile` (`VERAPDF_VERSION`, `VERAPDF_URL`, `VERAPDF_SHA256`) | 1.30.2, installeur vérifié par sha256 |
 
@@ -652,7 +654,7 @@ job (`controles`, `uses: ./.github/workflows/ci.yml`) avant de publier quoi que 
 une régression qui n'aurait dû se voir qu'au prochain push sur `main` arrête la release
 elle-même.
 
-`ci.yml` installe lui-même pandoc 3.5, WeasyPrint depuis `image/requirements.txt` et
+`ci.yml` installe lui-même pandoc 3.7.0.2, WeasyPrint depuis `image/requirements.txt` et
 veraPDF 1.30.2, tous épinglés et vérifiés par sha256 — sans quoi son verdict ne serait
 pas celui de la flotte. Il n'installe pas `requirements-portraits.txt` : la chaîne PDF
 ne s'en sert pas. `test/out/` n'étant pas versionné, tout est recompilé, rien n'est
@@ -817,7 +819,9 @@ auteur·e·s ». Un texte alternatif qui répète ce nom est du bruit ; un qui s
 appariée à la mauvaise personne, logo, photo de groupe — affirme une identité fausse à un
 lecteur d'écran.
 
-**Pourquoi ce n'est pas un `<img>`.** WeasyPrint 69 balise **tout** `<img>` en `/Figure`,
+**Pourquoi ce n'est pas un `<img>`.** WeasyPrint 69 balise **tout** `<img>` en `/Figure`
+(et 70 fait de même pour tout `<svg>` inline, dont il ne lit l'alternative que dans un
+`<title>` : c'est pourquoi le filigrane et les flèches du hero sont eux aussi des fonds),
 même avec `role="presentation"`, même avec `aria-hidden="true"` — mesuré par cas minimal. Et
 une `/Figure` sans `/Alt` viole PDF/UA-1 §7.3, donc la porte `verifier-ua` la refuserait. Le
 portrait est donc un `<span>` vide à fond CSS, dont l'URL passe par un `<style>` du `<head>`
@@ -1029,7 +1033,8 @@ et le PDF n'en garde rien. Mesuré sur `test/out/figures/figures.pdf` : `/Lang` 
 document = `fr`, et **aucun** élément de l'arbre de structure ne porte de `/Lang`. Un
 lecteur d'écran lira donc le résumé allemand avec une voix française.
 
-**Cause, en amont.** WeasyPrint 69 n'écrit `/Lang` qu'à un seul endroit, le catalogue du
+**Cause, en amont.** WeasyPrint 69 — et 70, vérifié le 23.09.2026 — n'écrit `/Lang` qu'à
+un seul endroit, le catalogue du
 document (`weasyprint/pdf/__init__.py`) ; `weasyprint/pdf/tags.py`, qui construit les
 éléments de structure, n'en pose aucun. Trois occurrences de `Lang` dans tout le paquet,
 toutes sur le catalogue. **Rien côté HTML ne peut donc corriger ce défaut** : l'attribut

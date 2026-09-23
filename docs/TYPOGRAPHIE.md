@@ -310,9 +310,26 @@ renvoie pas moins de trois lettres » – là où le défaut de WeasyPrint 69 
 retirer des points de coupure élargirait les blancs d’une ligne justifiée au lieu de les
 resserrer. Le défaut y reste en vigueur.
 
-Deux règles du Guide restent **inatteignables**, et autant le savoir : « pas plus de trois
-coupures consécutives » (`hyphenate-limit-lines` n’existe pas dans WeasyPrint) et « pas de
-coupure sur la dernière ligne d’une page » (aucune propriété CSS ne l’exprime).
+Deux règles du Guide restent **hors de portée d’une propriété CSS**, et autant le savoir :
+« pas plus de trois coupures consécutives » (`hyphenate-limit-lines` n’existe pas dans
+WeasyPrint) et « pas de coupure sur la dernière ligne d’une page » (aucune propriété CSS ne
+l’exprime).
+
+Les deux se tiennent **indirectement** depuis le 23.09.2026, toutes langues confondues :
+
+```css
+p, li { hyphenate-limit-zone: 10%; }
+```
+
+`hyphenate-limit-chars` dit **où** un mot peut se couper ; `hyphenate-limit-zone` dit
+**quand** : une ligne ne coupe que si le blanc laissé en bout de ligne dépasse 10 % de sa
+largeur, sinon les espaces s’étirent un peu. WeasyPrint 70 coupe bien plus que 69. Mesuré sur
+les huit articles publiés de `test/composition/` (81 pages) : sans zone, 497 césures,
+neuf suites de quatre lignes coupées ou plus et huit coupures en bas de page ; à 10 %,
+176 césures, aucune suite de plus de trois, aucune coupure en bas de page, et un blanc
+ajouté par espace de 1,32 px en médiane contre 1,40 px sous 69. C’est une mesure, pas
+une garantie : un article assez long peut encore sortir des deux règles, et
+`test/composition-check.py` le dira.
 
 ### L’interface du cockpit – `test/typo-check.py`
 

@@ -7,7 +7,7 @@ name: ci
 #   pdf-ua     le banc test/ recompilé de zéro (test/out/ n'est pas versionné), puis
 #              `make verifier-ua` : veraPDF rend un verdict PDF/UA-1 sur chaque PDF
 #
-# La toolchain est épinglée comme dans image/Containerfile (pandoc 3.5, WeasyPrint 69 via
+# La toolchain est épinglée comme dans image/Containerfile (pandoc 3.7.0.2, WeasyPrint 70 via
 # image/requirements.txt) : sans cela, le verdict de la CI ne serait pas celui de la flotte.
 # Ce workflow ne publie rien.
 
@@ -35,7 +35,7 @@ jobs:
   contrats:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # Vale épinglé, mêmes ARG que image/Containerfile (VALE_VERSION/VALE_SHA256) : sans
       # lui test/js/manuscrit-vale.test.js sauterait au lieu de s'exécuter réellement — ce
@@ -44,7 +44,7 @@ jobs:
       # retélécharger le même binaire à chaque run.
       - name: Mettre en cache vale
         id: cache-vale
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /usr/local/bin/vale
           key: vale-3.22.0-linux64
@@ -126,10 +126,10 @@ jobs:
     permissions:
       contents: read          # lecture seule, comme le reste du workflow
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Installer Node LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: lts/*
 
@@ -181,20 +181,20 @@ jobs:
     # qu'une ligne du dépôt ait changé.
     runs-on: ubuntu-24.04
     env:
-      PANDOC_VERSION: "3.5"
+      PANDOC_VERSION: "3.7.0.2"
       # Empreinte du .deb, calculée depuis cette même URL. Elle garde le cache honnête :
       # un fichier restauré tronqué se retélécharge au lieu de casser dpkg.
-      PANDOC_DEB_SHA256: "4f41d817d262ef3d17953a3e6e0fefddb971aa4f2f121544a9a86db449d945e1"
+      PANDOC_DEB_SHA256: "4db8bad3d9f8451a3d52171664f3c58b08af6450fbd54a28dd05f6b00b0bbb04"
       VERAPDF_VERSION: "1.30.2"
       VERAPDF_ZIP_SHA256: "6cc6341cb1af644044054b81f00a6590a7918abb18f762243de115258bcad838"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # veraPDF est un outil Java. L'image WSL embarque un runtime taillé au jlink ; ici
       # on prend un JDK complet : veraPDF a besoin des modules java.desktop et
       # java.management, qu'un JRE amputé n'aurait pas.
       - name: Installer le JDK (veraPDF)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -209,20 +209,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             make python3 python3-venv \
-            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi8 fontconfig \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 libffi8 fontconfig \
             fonts-dejavu-core
 
       # Les deux archives épinglées sont vérifiées par sha256 après restauration : un cache
       # douteux se retélécharge, il ne fait pas échouer le build.
       - name: Cache des archives épinglées
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/szh-ci
           key: outils-pandoc${{ env.PANDOC_VERSION }}-verapdf${{ env.VERAPDF_VERSION }}
 
       - name: Installer pandoc ${{ env.PANDOC_VERSION }}
         run: |
-          # Le pandoc d'apt n'est pas en 3.5 : on prend le .deb des releases GitHub, même
+          # Le pandoc d'apt n'est pas en 3.7.0.2 : on prend le .deb des releases GitHub, même
           # URL que image/Containerfile. Les filtres Lua du pipeline sont écrits pour
           # cette version.
           mkdir -p ~/.cache/szh-ci
@@ -235,7 +235,7 @@ jobs:
           sudo dpkg -i "$deb"
 
       - name: Cache des roues pip
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('image/requirements.txt') }}
@@ -417,7 +417,7 @@ jobs:
       # le rapport XML de veraPDF, que rapport-ua.py a traduit.
       - name: Récupérer les PDF et le rapport veraPDF
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pdf-ua-diagnostic
           path: |

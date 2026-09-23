@@ -395,6 +395,9 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     'export/refus',
     'pdfua/regle', 'cockpit/doi-double', 'cockpit/sans-fiche', 'cockpit/image-sans-alt',
     'cockpit/image-sans-legende',
+    // pipeline/pagination.py écrit « [pagination-avertissement] perimee », préfixe
+    // générique lui aussi : codesDeJournal() ne le voit pas, et le journal le produit.
+    'pagination/perimee',
     // typo (szh-typographie.lua), metafichier (szh-metafichier.lua) et scission
     // (livre-scinder.py) passent par le préfixe générique « <source>-<ton> » que
     // familleCode() de lib/journal.js reconnaît sans code ni table CLES_* dédiée (même

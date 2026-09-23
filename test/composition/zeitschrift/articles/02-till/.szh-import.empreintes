@@ -1,0 +1,13 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	zeitschrift-1500_2025-02_till.docx
+date	2026-09-23T09:14:18
+corps	54b4779b68d313de50fcca54add0657e3850604a7c7132ada5ce1cd1de6fd7d2	02-till.md
+biblio	ad31b9ddc47fb879201263a4b04e0445e54e326f9523687fc2fe18db9c946650	02-till.biblio.md
+tableau	4fdd3e1b3580f123c8ba9be1c462e069fc4e16ead8d5db32e7d3e3745c17d4a9	tables/table-01.html
+tableau	4348ea8ddf3cc6748c48c54902c8f7cac25546953621bfd51a5c85f75dde820c	tables/table-02.html
+tableau	901d60924267bc67586fe01ad7c8ef5c8433fe9672a128259ce12f22dd26016a	tables/table-03.html
+image	9eaf48a1b47a6e37f7ac0d318f5e177f35dc63c210f0578d0873d30445e6fb3b	media/02-till-fig-01.jpeg

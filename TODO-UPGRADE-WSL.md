@@ -9,6 +9,9 @@ bout d'un certain temps. Rien de ce qui suit n'est urgent ; rien de ce qui suit 
 facultatif non plus si l'on veut que la flotte reçoive les correctifs Debian sans qu'une
 personne y pense.
 
+**Montée du 23.09.2026 :** les étapes 1 et 4 sont faites, une fois, à la main — voir « Ce qui a
+été mesuré le 23.09.2026 » en fin de fichier. La cadence, elle, reste à poser (étapes 2 et 3).
+
 ---
 
 ## Ce qui est déjà en place, et pourquoi il ne faut pas y toucher
@@ -72,7 +75,7 @@ celui qui est gelé le plus durement.
 
 ## Les étapes, dans l'ordre
 
-### 1. `apt-get upgrade` au build
+### 1. `apt-get upgrade` au build — fait le 23.09.2026
 
 Deux lignes, dans les deux étapes de `image/Containerfile` :
 `apt-get update && apt-get upgrade -y && apt-get install …`. Aucun risque propre — cela ne
@@ -115,7 +118,7 @@ Trois issues, à trancher :
 
 La troisième est la moins ambitieuse et la plus sûre ; la première est la bonne à terme.
 
-### 4. Revoir les épinglages pip au même rythme
+### 4. Revoir les épinglages pip au même rythme — fait une fois le 23.09.2026
 
 Refaire le `pip freeze` décrit en tête de `image/requirements.txt` et de
 `image/requirements-portraits.txt`, vérifier le rendu, committer. C'est là que vivent les
@@ -173,4 +176,47 @@ republiera l'ancien.
 
 ---
 
-*Dernière mise à jour : 18.09.2026, après la revue du modèle de mise à jour de la WSL. À reprendre chaque fois qu'une de ces lignes bouge.*
+---
+
+## Ce qui a été mesuré le 23.09.2026
+
+Banc complet (`test/build-render.sh`) rejoué dans la distro sous chaque combinaison d'outils,
+PNG comparés pixel à pixel, onze Word réels du lot A réimportés sous chaque pandoc.
+
+- **WeasyPrint 69.0 → 70.0.** Correctif de sécurité (CVE-2026-55073 : rendu EPS et filtrage
+  des URL). Deux conséquences.
+  - Il balise tout `<svg>` inline en `/Figure` et exige un `<title>` : le filigrane et les
+    flèches du hero faisaient tomber PDF/UA-1 sur **chaque** article. Ils sont devenus des
+    fonds CSS (`print.css`, `.szh-book` et `.szh-arrow`), identiques au pixel près sous 69.
+  - **Il coupe les mots quatre fois plus souvent** : 25 → 104 césures sur le banc, aucune
+    page de plus ou de moins, règle L4 du français respectée partout. C'est son moteur de
+    coupure de ligne (#2614, #2803), pas pyphen, mesuré en isolant les deux. Un numéro
+    recompilé change donc de composition ; le dictionnaire allemand de pyphen propose aussi
+    des coupures fausses que 69 n'atteignait presque jamais (« Seite-numbrüche »).
+  - Réglé par `p, li { hyphenate-limit-zone: 10% }` dans `print.css`, mesuré sur les huit
+    articles publiés de `test/composition/` : sans lui, neuf suites de quatre lignes coupées
+    ou plus et huit coupures en bas de page ; avec, aucune, et le texte reste un peu plus
+    serré que sous 69. Le banc rapide, trop court, donnait 5 % pour suffisant.
+  - Les tableaux à cellules fusionnées (`rowspan`, `colspan`) échouaient à PDF/UA sous 69
+    (deux articles publiés du corpus) ; ils passent sous 70.
+- **libharfbuzz-subset0** ajouté : WeasyPrint 70 découpe les polices avec lui. Pixel pour
+  pixel identique au découpage fontTools, sans les avertissements.
+- **pandoc 3.5 → 3.7.0.2, et pas plus loin.** 3.7.0.2 lit les onze Word exactement comme 3.5
+  (seul change l'espacement des puces, `-   ` → `- `). À partir de 3.8, le contenu d'une
+  zone de texte passe avant le paragraphe qui l'ancre : deux paragraphes s'inversent et le
+  style de titre du paragraphe d'ancrage se perd (`2-dense`, `2-grappes`) ; les formes
+  dessinées deviennent des images (`1bis`, `4_La méthode Flip Flap`). 19 manuscrits réels sur
+  58 ont des zones de texte. Côté compilation, 3.11 est déjà prête : `print.css` pose
+  lui-même le `code { white-space: pre-wrap }` que pandoc ne fournit plus depuis 3.9, et vise
+  `h2.szh-rubrique-titre` depuis que 3.10 recopie la classe du titre sur la `<section>`.
+  Restent quatre tests de `test/filtres-pandoc.test.js` écrits sur la forme exacte du HTML
+  des rubriques, qui tombent sous 3.11 (mesuré) et donc dès 3.10.
+- **Venvs** : `pip freeze` refait pour les deux. Portraits : sortie identique au pixel près sur
+  deux photos (avec et sans visage).
+- **Inchangés, déjà à jour** : Vale 3.22.0, veraPDF 1.30.2, Debian `13-slim`. **Gardés
+  volontairement** : les modèles ONNX et le profil ICC.
+- **Actions GitHub** montées de majeure (checkout 7, cache 6, setup-node 7, setup-java 6,
+  upload-artifact 7). Leurs ruptures ne portent que sur les runners auto-hébergés et sur le
+  cache automatique de setup-node, que ce dépôt n'active pas (aucun `packageManager`).
+
+*Dernière mise à jour : 23.09.2026, après la montée de WeasyPrint 70 et de pandoc 3.7.0.2. À reprendre chaque fois qu'une de ces lignes bouge.*

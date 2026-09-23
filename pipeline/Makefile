@@ -175,6 +175,29 @@ DOCXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).docx)
 ACCENT_CSS := $(OUT)/.szh-accent.css
 ACCENT_ABS := $(abspath $(ACCENT_CSS))
 
+# Pagination continue du numéro. `.szh-pagination.json` vit dans le dossier du numéro et
+# NON dans out/ : il porte un état éditorial — le départ et le nombre de pages de chaque
+# article — et doit survivre à `make clean` comme à l'archivage. Les feuilles de folio, elles,
+# en découlent : le jalon ci-dessous les régénère en un seul appel dès que cet état change.
+# Sans cet aller-retour, un `clean` suivi d'une recompilation rendrait tous les folios à 1 —
+# et EN SILENCE, car la péremption se détecte en comparant des nombres de pages, or un article
+# recompilé en a exactement autant qu'avant. Mesuré.
+PAGINATION      := $(PIPELINE_DIR)/pagination.py
+PAGINATION_ETAT := $(wildcard .szh-pagination.json)
+# L'interprète de pagination.py pour ce qui compte des pages : celui du venv WeasyPrint, le
+# seul de l'image qui porte pypdf. Lu sur la première ligne du script `weasyprint` lui-même,
+# pour suivre toute réinstallation. python3 en repli : pagination.py sait alors retrouver pypdf
+# seul, mais sept fois plus lentement — mesuré sur un numéro de dix articles, 840 ms contre
+# 114 ms par appel, et ce contrôle tourne après chaque compilation d'un numéro bouclé.
+# `weasyprint` en toutes lettres, et non la variable qui le surcharge : on ne l'appelle pas,
+# on cherche seulement un python qui porte pypdf. Surchargé ailleurs, le repli sur python3
+# reste juste ; et le garde-fou de contrats.test.js ne prend pas cette lecture pour un appel
+# dont personne ne lirait le code de sortie.
+PYTHON_PAGINATION := $(or $(shell sed -n '1s/^\#!//p' "$$(command -v weasyprint 2>/dev/null)" 2>/dev/null),python3)
+# Vide tant que le numéro n'a jamais été paginé : la compilation d'un numéro ordinaire ne
+# dépend alors de rien de tout ceci.
+FOLIOS          := $(if $(PAGINATION_ETAT),$(OUT)/.szh-folios)
+
 # Sans ceci, make considérerait les .html comme intermédiaires et les supprimerait.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
@@ -197,7 +220,7 @@ endif
 UNITES_DIR := articles
 WORD_DIR   := articles-word
 
-.PHONY: all pdf docx import reimporter annuler-reimport clean verifie-dossier \
+.PHONY: all pdf docx import reimporter annuler-reimport clean verifie-dossier rafraichir-pagination etat-pagination \
         tout-exporter verifier-ua verifier-numerotation profil-rien \
         profil-book-sans-fichier \
         profil-inconnu
@@ -357,6 +380,17 @@ $(ACCENT_CSS): $(CONFIG_COULEUR) $(PIPELINE_DIR)/styles/couleurs.css \
 	@mkdir -p "$(OUT)"
 	@python3 "$(PIPELINE_DIR)/accent-css.py" $(CONFIG_COULEUR) > "$@"
 
+# Les feuilles de folio, engendrées depuis l'état de pagination et lui seul : `feuilles` ne
+# regarde aucun PDF, donc rien ne boucle. C'est `rafraichir-pagination` — et, en production,
+# le bouton du cockpit — qui MESURE les PDF et met l'état à jour ; la compilation ordinaire ne
+# fait qu'en dériver les feuilles.
+# Un seul appel écrit toutes les feuilles, d'où le jalon : une règle de motif par feuille
+# rappellerait le script une fois par article pour le même travail.
+$(OUT)/.szh-folios: .szh-pagination.json $(PAGINATION)
+	@mkdir -p "$(OUT)"
+	@python3 "$(PAGINATION)" feuilles --dossier . >/dev/null
+	@touch $@
+
 # .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
 # dossier de l'article, pour que media/ et tables/ soient relatifs au .md. Les tableaux
 # extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
@@ -470,15 +504,45 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 # Temporaire « ~$… » dans le même dossier : rename local, ignoré par la synchro
 # OneDrive, donc pas de PDF partiel.
 # Quotes simples : $0 et $notdir ne doivent pas être substitués par make.
-$(OUT)/%.pdf: $(OUT)/%.html
-	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
+#
+# Folio de départ de l'article dans le numéro : out/<slug>/.szh-folio.css, une ligne
+# `@page :first { counter-reset: page N; }` écrite par pipeline/pagination.py et passée à
+# WeasyPrint en feuille UTILISATEUR (-s). Trois raisons à cette forme :
+#   * en -s plutôt que dans le HTML : le folio ne regarde que le PDF, alors que le HTML
+#     autonome sert aussi au galley DOCX et à l'aperçu. Un article qui change de place dans
+#     le numéro ne repasse donc pas par pandoc et ses vingt filtres, seulement par WeasyPrint ;
+#   * `@page :first` et non `@page` : sans le `:first`, le compteur est remis à N à CHAQUE
+#     page et tout le document affiche N (mesuré, WeasyPrint 69). Et `counter-reset: page 11`
+#     affiche 11 sur la première page, puis 12, 13 : la valeur écrite est le départ lui-même,
+#     pas départ - 1. Mesuré aussi sur le patron réel de la maquette, pied courant en
+#     `position: running()` et folio en `::after { content: counter(page) }`, où le décalage
+#     aurait pu se perdre ;
+#   * prérequis en $(wildcard ...) et non cible : la feuille se calcule à partir du nombre de
+#     pages des PDF déjà compilés, donc en faire une cible fermerait un cycle. C'est
+#     `rafraichir-pagination` — et, en production, le bouton du cockpit — qui la produit ; la
+#     compilation ordinaire ne fait que la consommer, et se refait si elle a changé.
+# Le jalon $(FOLIOS) est un prérequis d'ORDRE SEUL (après la barre) : les feuilles doivent
+# exister avant qu'une recette ne tourne, mais un état de pagination plus récent que les PDF ne
+# doit pas tous les refaire — seule la feuille réellement modifiée le doit.
+# Deux chemins, et il en faut deux : sur un arbre neuf la feuille n'existe pas encore quand
+# make évalue le $(wildcard), et c'est le test `[ -f ]` de la recette, fait au dernier moment,
+# qui la ramasse ; sur un arbre déjà compilé c'est le $(wildcard) qui force la recompilation
+# quand elle change.
+# ⚠ RETIRER une feuille ne ramène pas le PDF au folio 1 : plus aucun prérequis n'a bougé, le
+# PDF reste plus récent que son HTML, et il garde le folio de la dernière compilation (mesuré).
+# C'est pourquoi pagination.py écrit une feuille pour TOUS les articles, y compris celui dont
+# le départ vaut 1.
+$(OUT)/%.pdf: $(OUT)/%.html $$(wildcard $(OUT)/$$(dir $$*).szh-folio.css) | $(FOLIOS)
+	@folio='$(dir $@).szh-folio.css'; sfolio=""; \
+	if [ -f "$$folio" ]; then sfolio="-s $$folio"; fi; \
+	tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
 	: > "$$jrnl"; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+	if $(WEASYPRINT) $$sfolio --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) $$sfolio --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
 	  echo "[pipeline] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 	else \
 	  echo "[pipeline] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
+	  $(WEASYPRINT) $$sfolio $< "$$tmp" 2>>"$$jrnl" || { \
 	    echo "[pipeline] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
 	    sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
 	    echo "[pipeline]   Journal conservé : $$jrnl"; \
@@ -491,6 +555,37 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	  rm -f "$$tmp"; \
 	  echo "[pipeline-blocage] pdf-verrouille | fichier « $@ » | Le PDF est ouvert dans une autre application. | [de] Das PDF ist in einer anderen Anwendung geöffnet."; \
 	  exit 1; }
+
+# Rafraîchir la pagination continue du numéro : compiler ce qui manque, relire le nombre de
+# pages de chaque PDF, recalculer les folios de départ, puis ne recompiler que les articles
+# dont le départ a bougé.
+# Deux passes, et c'est voulu : le départ d'un article ne se connaît qu'une fois les
+# précédents compilés. Deux suffisent, il n'y a pas de point fixe à chercher — le nombre de
+# pages d'un article ne dépend PAS de son folio de départ, le folio vivant dans le pied
+# courant, hors du flux. En régime stationnaire la seconde passe ne fait rien : pagination.py
+# n'écrit une feuille que si sa valeur change, donc aucun mtime ne bouge et make n'a rien à
+# refaire.
+# ORDRE=slug1,slug2 est OBLIGATOIRE : c'est l'ordre de lecture, et seul le cockpit le connaît.
+# Il ne se déduit pas d'ausgabe.yaml : le cockpit trie le disque par collation française et
+# ramène en fin de numéro les articles sans DOI — ceux de la clé `articles-sans-doi`, mais
+# aussi ceux dont le type n'en reçoit pas selon la configuration OJS. Le reproduire ici, ce
+# serait garantir qu'un jour le folio ne suive plus le DOI.
+rafraichir-pagination:
+	@test -n "$(ORDRE)" || { \
+	  echo "[pipeline] ✖ ORDRE manquant : seul le cockpit connaît l'ordre de lecture du numéro. Rafraîchissez la pagination depuis le cockpit, ou passez ORDRE=a,b,c."; \
+	  echo "[pipeline] [de] ✖ ORDRE fehlt: nur das Cockpit kennt die Reihenfolge der Ausgabe."; \
+	  exit 2; }
+	@$(MAKE) --no-print-directory -f $(THIS) pdf
+	@$(PYTHON_PAGINATION) "$(PAGINATION)" rafraichir --dossier . --ordre "$(ORDRE)"
+	@$(MAKE) --no-print-directory -f $(THIS) pdf
+
+# L'état de la pagination, en JSON sur une seule ligne : ce que le cockpit lit après chaque
+# compilation d'un numéro déjà paginé (pour poser l'avertissement sur les articles
+# décalés) et juste avant l'export OJS (pour la porte et le champ <pages>). Ne compile
+# rien, n'écrit rien. ORDRE est celui du cockpit ; sans lui, pagination.py relit l'ordre de
+# la dernière pagination, ce qui suffit au diagnostic mais ne voit pas un article déplacé.
+etat-pagination:
+	@$(PYTHON_PAGINATION) "$(PAGINATION)" etat --dossier . $(if $(ORDRE),--ordre "$(ORDRE)")
 
 # HTML autonome -> DOCX : galley Word de l'export OJS, régénéré depuis le HTML final
 # et non depuis le .md — le reader html de pandoc comprend les tableaux réinjectés en

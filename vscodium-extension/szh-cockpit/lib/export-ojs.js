@@ -236,6 +236,32 @@ function urlOjs(url) {
   return String(url || '').replace(/\/+$/, '');
 }
 
+// slug -> "12" ou "12-17", pour chaque article que pagination.articles porte avec un
+// départ et un compte de pages exploitables. Rend {} si la pagination est absente, ou si
+// le numéro n'a jamais été paginé — le cas d'un numéro déjà publié à l'ancienne, qui ne
+// doit voir apparaître aucun <pages>. Ne vérifie pas `perimes` : c'est collecter() qui
+// arrête l'export avant d'arriver ici quand la pagination est périmée, cette fonction n'a
+// donc jamais à le refaire.
+function intervallesPages(pagination) {
+  const carte = {};
+  if (!pagination || !pagination.enregistre) { return carte; }
+  for (const a of (pagination.articles || [])) {
+    const depart = a && a.depart;
+    const pages = a && a.pages;
+    if (depart === null || depart === undefined || pages === null || pages === undefined) { continue; }
+    const debut = Number(depart);
+    const n = Number(pages);
+    if (!Number.isFinite(debut) || !Number.isFinite(n) || n < 1) { continue; }
+    const fin = debut + n - 1;
+    // Trait d'union ASCII (U+002D), jamais un tiret demi-cadratin : OJS range <pages>
+    // comme une chaîne, et c'est cette chaîne que son export Crossref et les balises
+    // citation_firstpage / citation_lastpage de Google Scholar découpent — un tiret
+    // demi-cadratin y serait un choix d'affichage, pas un format de données.
+    carte[a.slug] = fin > debut ? (debut + '-' + fin) : String(debut);
+  }
+  return carte;
+}
+
 function localesNonVides(map) {
   return Object.keys(map || {})
     .filter((l) => String(map[l] || '').trim() !== '')
@@ -434,7 +460,7 @@ function lecteurReferences(racine, avertissements) {
   };
 }
 
-function collecter(racine, cfg, avertissements) {
+function collecter(racine, cfg, avertissements, pagination) {
   let brut;
   try { brut = fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'); }
   catch (e) { throw new Error(T('ojs.err.ausgabe', [racine])); }
@@ -452,6 +478,17 @@ function collecter(racine, cfg, avertissements) {
 
   const bloquants = [];
   const bloquantsConfig = [];      // ce qui se corrige dans les réglages, pas dans le numéro
+
+  // La porte de la pagination : un numéro jamais paginé (`enregistre` faux, ou l'option
+  // absente) part comme avant, sans qu'aucun garde-fou ne se déclenche — un numéro déjà
+  // publié à l'ancienne ne doit pas se mettre à refuser d'exporter. Un numéro paginé dont
+  // des folios ne suivent plus le sommaire (article allongé, inséré, déplacé…) est en
+  // revanche refusé : le <pages> qu'on enverrait à OJS mentirait à Crossref et à Google
+  // Scholar. Ce n'est pas un manque de configuration, donc il rejoint `bloquants`.
+  if (pagination && pagination.enregistre &&
+      Array.isArray(pagination.perimes) && pagination.perimes.length > 0) {
+    bloquants.push(T('ojs.err.pagination.perimee', [pagination.perimes.join(', ')]));
+  }
 
   // La configuration de la revue visée : sans elle, rien de ce qui suit n'a de sens.
   // Une locale hors des deux revues (un numéro marqué `lang: it`, par exemple) n'a pas
@@ -803,10 +840,13 @@ function genererExportOjs(racine, options) {
   const aujourdHui = formaterDateIso(maintenant);
   const avertissements = [];
   const cfg = options.config ? normaliserConfigOjs({ ojs: options.config }) : configOjs();
-  const collecte = collecter(racine, cfg, avertissements);
+  const collecte = collecter(racine, cfg, avertissements, options.pagination || null);
   const numero = collecte.numero;
   const articles = collecte.articles;
   const revue = collecte.revue;
+  // slug -> intervalle de pages : {} si le numéro n'a jamais été paginé, calculé une seule
+  // fois avant la boucle d'écriture qui s'en sert.
+  const cartePages = intervallesPages(options.pagination || null);
 
   // Un seul compteur global, donc des id uniques dans tout le fichier. OJS les
   // ré-attribue tous à l'import ; seuls comptent les renvois internes, qui pointent vers
@@ -1025,15 +1065,23 @@ function genererExportOjs(racine, options) {
         w('          <submission_file_ref id="' + g.refSubmission + '"/>\n');
         w('        </article_galley>\n');
       }
-      // <citations> vient après les galleys : le schéma en fait le dernier élément d'une
-      // publication. Une référence par <citation>, en texte brut — OJS concatène le
-      // contenu des enfants ligne par ligne dans citationsRaw.
+      // <citations> vient après les galleys, mais n'est pas le dernier élément d'une
+      // publication : <pages>, écrit juste après, appartient à la séquence que native.xsd
+      // ajoute à la suite de celle du type de base pkp:pkppublication. Une référence par
+      // <citation>, en texte brut — OJS concatène le contenu des enfants ligne par ligne
+      // dans citationsRaw.
       if (a.references.length > 0) {
         w('        <citations>\n');
         for (const reference of a.references) { ligne(10, 'citation', '', reference); }
         w('        </citations>\n');
       }
-      // <pages> omis : aucun article n'est paginé dans la chaîne.
+      // <pages> : APRÈS </citations> (ou après le dernier </article_galley> si l'article
+      // n'a pas de références) et juste avant </publication>. pkp-native.xsd fait finir la
+      // séquence du type de base par authors -> article_galley -> citations ; native.xsd
+      // ÉTEND ce type avec sa propre séquence (issue_identification -> pages -> covers ->
+      // issueId), qui se place donc après celle du type de base — jamais avant. Omis si le
+      // numéro n'a jamais été paginé, ou si cet article n'a pas d'intervalle exploitable.
+      if (cartePages[a.slug]) { ligne(8, 'pages', '', cartePages[a.slug]); }
       w('      </publication>\n');
       w('    </article>\n');
     }

@@ -63,7 +63,7 @@ jobs:
     steps:
       # Le SHA du commit que `ci` a réellement validé — jamais `main` HEAD par défaut, qui
       # a pu avancer entre la fin de `ci` et le déclenchement de CE workflow.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
@@ -147,7 +147,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0        # tags + historique : nécessaires au diff image/
           ref: refs/tags/v${{ needs.tag.outputs.version }}

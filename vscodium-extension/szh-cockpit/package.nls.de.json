@@ -8,6 +8,7 @@
   "cmd.annulerReimport": "Beim Artikel zum vorherigen Text zurück",
   "cmd.toutExporter": "Alles exportieren (vollständiger Rebuild)",
   "cmd.exporterXml": "Zeitschrift als XML exportieren (OJS)",
+  "cmd.rafraichirPagination": "Paginierung aktualisieren",
   "cmd.exporterArticle": "Diesen Artikel exportieren",
   "cmd.livreImprimeur": "Buch: Druck-PDF",
   "cmd.livreCouverture": "Buch: Umschlag",

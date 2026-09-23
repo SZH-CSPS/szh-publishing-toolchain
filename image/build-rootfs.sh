@@ -6,7 +6,7 @@ set -euo pipefail
 
 DISTRO_VERSION="${1:-${DISTRO_VERSION:-2026.06.1}}"
 ENGINE="${ENGINE:-podman}"
-PANDOC_VERSION="${PANDOC_VERSION:-3.5}"
+PANDOC_VERSION="${PANDOC_VERSION:-3.7.0.2}"
 FONTS="${FONTS:-fonts-noto fonts-dejavu}"      # filet pour les caractères rares ; la maquette embarque les siennes
 IMAGE="szh-publishing:${DISTRO_VERSION}"
 OUT="szh-publishing-rootfs-${DISTRO_VERSION}.tar.gz"

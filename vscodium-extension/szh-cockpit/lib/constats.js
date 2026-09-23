@@ -65,7 +65,11 @@ const LIEUX = Object.freeze({
   // rien y changer (cibleTraduction lit cible.slug) : c'est lui qui doit recevoir la flèche
   // de pipeline/pdf-verrouille (revue F03, 22.09.2026).
   pdf: Object.freeze({ commande: 'szh.voirPdfArticle', icone: 'oeil',
-    libelle: 'action.pdf', tip: 'action.pdf.tip' })
+    libelle: 'action.pdf', tip: 'action.pdf.tip' }),
+  // Le remède EST le bouton : on corrige depuis là où on a lu l'avertissement, sans aller
+  // chercher le panneau d'export.
+  pagination: Object.freeze({ commande: 'szh.rafraichirPagination', icone: 'imprimante',
+    libelle: 'action.pagination', tip: 'action.pagination.tip' })
 });
 
 // ---------------------------------------------------------------------------------------
@@ -380,6 +384,15 @@ const TABLE = Object.freeze({
     focusFixe: 'title', defaut: 'defaut.sans-fiche' },
   'cockpit/doi-double': { barrage: 'export', nature: D, lieu: 'fiche', focusFixe: 'doi',
     defaut: 'defaut.doi-double' },
+  // Pagination continue du numéro (pipeline/pagination.py, émis par `make pdf` dès qu'un
+  // numéro a été paginé). Un défaut — les folios imprimés sont faux — mais sans barrage,
+  // donc orange : on continue d'écrire et de compiler. La porte existe bien, et elle est à
+  // l'export : lib/export-ojs.js refuse un numéro à la pagination périmée, et ce refus
+  // arrive en rouge sous export/refus au moment où l'on exporte. Avec barrage: 'export' ici,
+  // chaque article décalé passerait au rouge pendant toute la rédaction. Posé sur l'article
+  // dont la longueur ou la place a changé, et sur tous ceux qui le suivent.
+  'pagination/perimee': { barrage: null, nature: D, lieu: 'pagination',
+    defaut: 'defaut.pagination-perimee', detail: 'detail.pagination-perimee' },
   'cockpit/image-sans-alt': { barrage: 'pdfua', nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-sans-alt' },
   // L'export refuse, et chaque raison devient une carte. Le lieu n'est pas dans la table :

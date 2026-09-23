@@ -245,14 +245,14 @@ a[href^="#"], a.szh-appel {
 }
 a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
 /* Flèche du hero en blanc franc. Le blanc, dans les deux médias, vient de l'attribut
-   stroke="#ffffff" posé sur les <svg> du hero dans templates/szh-article.html : la cascade
-   CSS ne descend pas dans un <svg> inline sous WeasyPrint, et dans un navigateur elle y
-   redirait la même valeur. Un `stroke: #ffffff` a longtemps traîné ici : WeasyPrint le
-   rejetait à chaque article (« Ignored `stroke: #ffffff`, unknown property ») et il ne
-   changeait rien nulle part.
-   ⚠ `opacity: 1`, en revanche, porte : il neutralise le 0.9 de `.szh-arrow` (§5), et une
-   opacité < 1 ferait dessiner la flèche dans un calque de transparence — contenu hors de
-   l'arbre de structure, PDF/UA-1 7.1-3 en échec. Ne pas le retirer. */
+   stroke='#ffffff' du SVG que `.szh-arrow` porte en fond (§5, plus bas) : la cascade CSS
+   ne descend pas dans une image de fond. Un `stroke: #ffffff` a longtemps traîné ici :
+   WeasyPrint le rejetait à chaque article (« Ignored `stroke: #ffffff`, unknown
+   property ») et il ne changeait rien nulle part.
+   ⚠ `opacity: 1`, en revanche, porte : il neutralise le 0.9 de `.szh-arrow` (§5). Une
+   opacité < 1 ferait dessiner la flèche dans un calque de transparence ; c'était fatal
+   tant qu'elle était un <svg> balisé (PDF/UA-1 7.1-3), et rien ne garantit qu'un fond
+   d'artefact y échappe toujours. Ne pas le retirer. */
 .szh-hero .szh-arrow { color: #ffffff; opacity: 1; }
 /* Notes de bas de page : l'appel de note et le renvoi ↩ ne se soulignent pas — ce sont
    des repères de navigation, pas des liens sortants à signaler comme tels. (Avant le
@@ -361,6 +361,22 @@ p, li, blockquote p { orphans: 3; widows: 3; }
    les resserrer. Le défaut (5, 2, 2) y reste donc en vigueur.
    La propriété s'hérite : posée sur <html>, elle descend dans tout le document. */
 html:lang(fr) { hyphenate-limit-chars: 6 3 3; }
+/* Zone de césure, TOUTES LANGUES (23.09.2026). La règle ci-dessus dit OÙ un mot peut se
+   couper ; celle-ci dit QUAND : une ligne ne coupe que si le blanc laissé en bout de ligne
+   dépasse 10 % de sa largeur, sinon les espaces s'étirent un peu. Posée pour WeasyPrint 70,
+   qui coupe beaucoup plus que 69 : le Guide tolère trois lignes coupées de suite et aucune
+   en bas de page, et WeasyPrint n'a ni `hyphenate-limit-lines` ni rien pour le bas de page.
+   Mesuré sur test/composition/ (huit articles publiés, 81 pages, fr et de) :
+     zone    césures  suites de 4+  bas de page  blanc par espace (médiane / 95 %)
+     69           117             0            0    1,40 / 4,89 px
+     0 %          497             9            8    0,83 / 2,58
+     5 %          422             5            8    0,96 / 2,65
+     8 %          279             0            6    1,17 / 3,51
+     10 %         176             0            0    1,32 / 4,30
+   10 % est la plus petite valeur qui tient les deux règles du Guide, et le texte reste un
+   peu plus serré que sous 69. ⚠ Ne pas régler ce chiffre sur le banc test/articles/ : ses
+   articles courts y donnaient 5 % pour suffisant, le texte réel en a démenti. */
+p, li { hyphenate-limit-zone: 10%; }
 h2, h3, h4, h5, h6 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
@@ -379,6 +395,10 @@ li { break-inside: avoid; }
 strong, b { font-weight: 700; }
 em, i { font-style: italic; }
 code, pre, kbd, samp { font-family: var(--font-mono); }
+/* Écrit ici plutôt qu'hérité de `$styles.html()$`, qui le porte jusqu'à pandoc 3.8 et plus
+   à partir de 3.9. Sans lui, un `code` en ligne ne se coupe plus comme avant et le
+   paragraphe qui le porte se recompose (mesuré sur test/articles/figures, 23.09.2026). */
+code { white-space: pre-wrap; }
 
 /* Le bloc-titre par défaut de pandoc est masqué : la couverture vient du template de
    la maquette. Sans template, cela évite un titre parasite. */
@@ -549,16 +569,23 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-arrow {
   width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block;
   margin-bottom: 2px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 L17 7'/%3E%3Cpath d='M8 7 H17 V16'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
 }
 /* Filigrane de couverture. ⚠ Même règle que le point médian ci-dessus : pas d'`opacity`
    < 1, sinon WeasyPrint dessine le filigrane dans un calque de transparence et son
    contenu sort de l'arbre de structure (PDF/UA-1 7.1-3). Les 7 % sont pré-mélangés dans
-   l'attribut fill="#343A53" du <svg class="szh-book"> de templates/szh-article.html :
-   c'est exactement du blanc à 7 % sur le bleu nuit #252B46, et `overflow: hidden` du hero
-   garantit que le filigrane ne déborde jamais sur un autre fond. La cascade CSS ne
-   descend pas dans un <svg> inline sous WeasyPrint, d'où la couleur en attribut. */
+   l'attribut fill='#343A53' du SVG de fond ci-dessous : c'est exactement du blanc à 7 %
+   sur le bleu nuit #252B46, et `overflow: hidden` du hero garantit que le filigrane ne
+   déborde jamais sur un autre fond.
+   Filigrane et flèche sont des FONDS, posés sur un <span> vide, et non des <svg> inline
+   (23.09.2026) : WeasyPrint 70 balise tout <svg> inline en /Figure et lui exige un texte
+   de remplacement, qu'il ne lit que dans un <title> — `aria-hidden` n'y fait rien. Les
+   deux décors faisaient tomber PDF/UA-1 sur chaque article. Un fond est un artefact :
+   hors de l'arbre de structure, sous 69 comme sous 70, et le rendu est inchangé au pixel
+   près (écart maximal de 2/255 sur l'anticrénelage du filigrane). */
 .szh-book { position: absolute; right: -30px; bottom: -56px; width: 300px; height: 300px;
-  opacity: 1; }
+  opacity: 1;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 141.73 141.73'%3E%3Cpath fill='%23343A53' d='M125.77,59.41v27.71l8.59-5.74V25.78s-26.5,15-29.13,16.21c-1.71.79-8.1,2.68-14.59.59-3.37-1.07-5.75-3.7-6.16-5.42-.6-2.46.97-4.7,3.33-6.37,1.71-1.23,37.86-21.85,37.86-21.85v5.17s-32.86,18.71-34.04,19.41c-2.75,1.68-3.65,3.4.2,4.9,4.37,1.72,10.76-.23,12.25-.78,1.49-.55,34.92-19.84,34.92-19.84.01,21.86,0,44.85,0,67.05l-13.33,9.03v32.95l-4.72-1.91v-62.73l-40.52-17.38c-3.6-1.47-8.66-1.01-11.01,1.94-1.72,2.14-.57,3.61,1.15,4.84l37.68,16.79v70.26s-41.09-21.85-42.98-22.84c-1.9-1-2.05-3.64-2.05-3.64v-5.31l-42.85,25.14V61.78c17.55-9.83,36.2-20.82,37.83-21.67,3.29-1.69,1.78-3.73-.46-4.88-3.18-1.59-7.08-1.8-9.99-.67-3.07.94-40.64,22.05-40.64,22.05v65.05l-4.73,2.6V53.73s28.89-15.87,28.89-15.87V12.76s39.1,16.63,41.61,17.28c2.51.64,4.99.23,6.86-1.49,1.14-1.3,1.9-2.77.5-4.38-1.57-1.83-34.18-15.51-34.18-15.51v-4.43s28,12.15,34.04,15.08c1.72.92,4.82,2.86,5.26,5.95.35,2.48-1.31,5.47-3.52,7.05-2.51,1.78-6.26,2.28-8.38,2-3.02-.39-10.05-3.36-37.45-14.8v16.19c4.7-2.4,9.24-6.36,17.52-5.88,4.87.44,11.07,3.32,11.75,7.58.34,2.15-.27,3.96-2.88,5.78l-37.29,21.37v58.88l38.12-22.4v-49.46s-.08-3.09.26-4.16c2.14-6.75,11.58-9.09,16.95-7.15,3.85,1.26,45.34,19.13,45.34,19.13ZM67.94,56.04v55.6l35.58,18.9v-59.01c-11.89-5.17-23.55-10.61-35.58-15.49Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
 
 /* ── Option « condenser l'en-tête » ────────────────────────────────────────────
    Réglage du numéro (`entete-condensee` dans ausgabe.yaml), posé en classe sur <body> par
@@ -906,7 +933,10 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    liste de trente références doit pouvoir se couper entre deux pages, à la différence
    d'une fiche de ressource. */
 .szh-rubrique { margin: 2.6em 0 0; }
-.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
+/* `h2.` et non la classe seule : à partir de pandoc 3.10, la <section> qui englobe le
+   titre reçoit aussi sa classe (voir szh-rubrique.lua), et le filet se dessinait deux
+   fois, au-dessus de la section et au-dessus du titre. */
+h2.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: var(--corps-tableau); margin: 1.4em 0; width: 100%; }

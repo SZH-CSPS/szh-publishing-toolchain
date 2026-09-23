@@ -1652,7 +1652,25 @@ async function exporterXml(fournisseur, rafraichirTout) {
       vscode.window.showErrorMessage(T('exportOjs.erreurDocx'));
       return;
     }
-    const resultat = genererExportOjs(racine);     // synchrone, quelques secondes
+    // Pagination continue : si le numéro a déjà été paginé, on relit l'état avant
+    // d'exporter — jamais l'ancien, potentiellement dépassé par la compilation qui vient
+    // de tourner. Un numéro jamais paginé exporte comme avant, sans option. Si l'état ne
+    // peut pas être vérifié (distro endormie, make en échec), on n'exporte PAS : on
+    // n'envoie jamais à OJS une pagination qu'on n'a pas pu vérifier — le refus pour
+    // pagination PÉRIMÉE, lui, arrive tout seul plus bas par le `catch` existant
+    // (e.szhBloquants -> poserConstatsExport), lib/export-ojs.js portant déjà cette porte.
+    let optionsPagination = {};
+    if (paginationHote.estPagine(racine)) {
+      let etatPagination;
+      try {
+        etatPagination = await paginationHote.lireEtat(racine, fournisseur.listerArticles());
+      } catch (e) {
+        vscode.window.showErrorMessage(T('pagination.echec'));
+        return;
+      }
+      optionsPagination = { pagination: etatPagination };
+    }
+    const resultat = genererExportOjs(racine, optionsPagination);     // synchrone, quelques secondes
     const message = T('exportOjs.fini', [path.basename(resultat.chemin)]);
     if (resultat.avertissements.length > 0) {
       const bouton = T('exportOjs.voirAvertissements');
@@ -1684,6 +1702,67 @@ async function exporterXml(fournisseur, rafraichirTout) {
     }
   } finally {
     statut.dispose();
+    session.poserBuildEnCours(false);
+  }
+}
+
+// ---- Pagination continue du numéro (lib/pagination-hote.js) ---------------------
+// On ne pagine QU'AU BOUCLAGE, par ce bouton manuel : jamais automatiquement. L'ordre
+// passé à la chaîne est TOUJOURS fournisseur.listerArticles() — voir l'en-tête de
+// pipeline/Makefile sur ORDRE, et pourquoi la chaîne ne peut pas le reconstituer seule.
+async function rafraichirPagination(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (session.buildEnCours() || session.importEnCours()) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  // Un numéro gelé garde les folios déjà publiés : son sommaire est clos, rien à recalculer.
+  if (session.etatNumero().verrouillee || session.etatNumero().archivee) {
+    vscode.window.showWarningMessage(T('pagination.gele'));
+    return;
+  }
+  const ordre = fournisseur.listerArticles();
+  let etat;
+  try {
+    etat = await paginationHote.lireEtat(racine, ordre);
+  } catch (e) {
+    vscode.window.showErrorMessage(T('pagination.echec'));
+    return;
+  }
+  if (Array.isArray(etat.inconnus) && etat.inconnus.length > 0) {
+    vscode.window.showWarningMessage(T('pagination.trous', [etat.inconnus.join(', ')]));
+    return;
+  }
+  const nARecompiler = paginationHote.aRecompiler(etat, paginationHote.lireRegistre(racine));
+  if (etat.enregistre && (!Array.isArray(etat.perimes) || etat.perimes.length === 0) && nARecompiler === 0) {
+    vscode.window.showInformationMessage(T('pagination.dejaajour', [etat.total]));
+    return;
+  }
+  const bouton = T('pagination.confirmer.bouton');
+  // Modale : l'action recompile des PDF, une notification dans un coin se manque.
+  const choix = await vscode.window.showWarningMessage(
+    T('pagination.confirmer', [etat.articles.length, etat.total, nARecompiler]),
+    { modal: true }, bouton);
+  if (choix !== bouton) { return; }
+
+  session.poserBuildEnCours(true);
+  try {
+    const resultat = await paginationHote.rafraichir(racine, ordre);
+    // Relecture exactement comme la fin d'une compilation ordinaire : rafraichir-pagination
+    // en est une vraie, journalisée dans .szh-journal.log comme tasks.json.
+    await relireJournal(fournisseur, resultat.code === null ? 1 : resultat.code);
+    rafraichirTout();
+    // Les constats de pagination retrouvés ici remplacent ceux que relireJournal() vient de
+    // relire en arrière-plan : normalement vides, puisqu'on sort d'un rafraîchissement.
+    poserConstatsPagination(racine, paginationHote.constatsPagination(resultat.etat));
+    if (resultat.code === 0) {
+      const total = resultat.etat ? resultat.etat.total : etat.total;
+      vscode.window.showInformationMessage(T('pagination.fait', [total]));
+    } else {
+      vscode.window.showErrorMessage(T('pagination.echec'));
+    }
+  } finally {
     session.poserBuildEnCours(false);
   }
 }
@@ -3014,6 +3093,10 @@ function lireRapportImport(racine) {
 // ne passe pas par une tâche — mais son état rejoint les mêmes compteur et vue : voir
 // pdfuaHote.constats() plus bas, et le badge posé par article (majBadgePdfUa).
 const pdfuaHote = require('./lib/pdfua-hote');
+// Pagination continue du numéro (lib/pagination-hote.js) : lecture de l'état après chaque
+// compilation d'un numéro déjà paginé, et rafraîchissement manuel au bouclage (bouton de
+// chaque carte, commande szh.rafraichirPagination).
+const paginationHote = require('./lib/pagination-hote');
 // La table des constats : ce qu'un defaut ferme, ou on va le corriger, comment il s'ecrit.
 const tableConstats = require('./lib/constats');
 // L'alignement des dossiers d'article sur leur rang affiché : le plan et son exécution.
@@ -3043,7 +3126,7 @@ const JOURNAL_TACHE = '.szh-journal.log';
 // constats ne sont donc pas dans .szh-journal.log, et la recompilation qui le suit
 // aussitôt les effacerait s'ils étaient mêlés à ceux de la chaîne. Ils passent devant —
 // c'est le geste que le rédacteur vient de faire.
-let dernierJournal = { racine: null, constats: [], code: 0, reimport: [], export: [] };
+let dernierJournal = { racine: null, constats: [], code: 0, reimport: [], export: [], pagination: [] };
 
 // Le mode « Changer l'ordre » : { racine, slugs } pendant qu'on réordonne, null sinon.
 //
@@ -3063,7 +3146,7 @@ function ordreEnCours(racine) {
 function constatsCourants(racine) {
   const base = dernierJournal.racine !== racine
     ? lireJournalTache(racine)
-    : dernierJournal.export.concat(dernierJournal.reimport, dernierJournal.constats);
+    : dernierJournal.export.concat(dernierJournal.reimport, dernierJournal.pagination, dernierJournal.constats);
   return base.concat(pdfuaHote.constats(racine, langueCockpit()));
 }
 
@@ -3090,7 +3173,7 @@ function constatsExport(liste, nConfig) {
 function poserConstatsExport(racine, liste, nConfig) {
   if (dernierJournal.racine !== racine) {
     dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
-                       reimport: [], export: [] };
+                       reimport: [], export: [], pagination: [] };
   }
   dernierJournal.export = constatsExport(liste, nConfig || 0);
   majBarreControles();
@@ -3101,9 +3184,23 @@ function poserConstatsExport(racine, liste, nConfig) {
 function poserConstatsReimport(racine, constats) {
   if (dernierJournal.racine !== racine) {
     dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
-                       reimport: [], export: [] };
+                       reimport: [], export: [], pagination: [] };
   }
   dernierJournal.reimport = constats || [];
+  majBarreControles();
+}
+
+// Les constats de pagination (lib/pagination-hote.js), posés en arrière-plan après chaque
+// compilation d'un numéro déjà paginé (relireJournal()) ou à l'ouverture d'un tel numéro
+// (majContexte()) — jamais posés directement par un geste de rédaction. Sur le même modèle
+// que poserConstatsExport()/poserConstatsReimport() ci-dessus : un canal à part, remplacé
+// en bloc à chaque relecture.
+function poserConstatsPagination(racine, constats) {
+  if (dernierJournal.racine !== racine) {
+    dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
+                       reimport: [], export: [], pagination: [] };
+  }
+  dernierJournal.pagination = constats || [];
   majBarreControles();
 }
 
@@ -3168,7 +3265,10 @@ const SOURCES_CONSTAT = {
   scission: 'ctl.source.scission',
   // szh-numerotation.lua : la seule image sans texte alternatif ni légende (« figure-sans-
   // alt »), déjà montrée dans l'encadré « lecteur d'écran » de l'aperçu.
-  numerotation: 'ctl.source.numerotation'
+  numerotation: 'ctl.source.numerotation',
+  // pipeline/pagination.py, lancé par `make pdf` sur un numéro déjà paginé : ses lignes
+  // « [pagination-avertissement] » passent par le même préfixe générique que « scission ».
+  pagination: 'ctl.source.pagination'
 };
 
 // Une carte par constat : l'article concerné en tête, la nature du contrôle en mesure, la
@@ -3329,7 +3429,7 @@ function majBarreControles() {
   // pdfuaHote.constats() s'ajoute : un PDF non conforme compte comme un bloquant, ici
   // comme à l'export — c'est la même règle, elle arrive juste une minute après le Ctrl+S
   // au lieu du jour de l'export.
-  const constats = dernierJournal.reimport.concat(dernierJournal.constats)
+  const constats = dernierJournal.reimport.concat(dernierJournal.pagination, dernierJournal.constats)
     .concat(pdfuaHote.constats(dernierJournal.racine, langueCockpit()));
   const r = resumeJournal(constats);
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
@@ -3404,8 +3504,11 @@ async function relireJournal(fournisseur, code) {
   // Les refus du dernier export survivent à la compilation : ils restent vrais tant que
   // l'export n'a pas été relancé, et la chaîne ne les connaît pas.
   const refusExport = dernierJournal.racine === racine ? dernierJournal.export : [];
+  // La pagination survit elle aussi : le contrôle en arrière-plan plus bas la remplacera
+  // une fois l'état WSL relu, mais rien ne doit l'effacer entre-temps.
+  const pagination = dernierJournal.racine === racine ? dernierJournal.pagination : [];
   dernierJournal = { racine: racine, constats: fusionnerConstats(racine, constats),
-                     code: code, reimport: reimport, export: refusExport };
+                     code: code, reimport: reimport, export: refusExport, pagination: pagination };
   // Rapport automatique (lib/rapport-erreur.js) : une compilation qui s'arrête avec un code
   // de sortie non nul est une panne de la chaîne (COMPIL-ECHEC), pas un simple constat de
   // contenu — les constats (tableau-sans-entête, figure-sans-alt…) ne déclenchent JAMAIS de
@@ -3428,6 +3531,19 @@ async function relireJournal(fournisseur, code) {
   majBarreControles();
   const ouverte = panneauxVue.get('controles');
   if (ouverte) { envoyerVue(ouverte, fournisseur, 'controles'); }
+
+  // Pagination continue (lib/pagination-hote.js) : contrôle en arrière-plan, seulement si
+  // le numéro a déjà été paginé une fois — sinon AUCUN appel WSL, le contrôle ne doit rien
+  // coûter pendant la rédaction, avant le bouclage du numéro. Ne bloque jamais la relecture
+  // du journal (pas d'await) : une panne (distro endormie, make en échec) laisse le canal
+  // tel quel et se trace en sourdine, jamais comme un échec de compilation.
+  if (paginationHote.estPagine(racine)) {
+    paginationHote.lireEtat(racine, fournisseur.listerArticles())
+      .then((etat) => { poserConstatsPagination(racine, paginationHote.constatsPagination(etat)); })
+      .catch((e) => { console.warn('pagination : lecture de l’état après compilation : '
+        + ((e && e.message) || e)); });
+  }
+
   const r = resumeJournal(constats);
   if (r.bloquants === 0 && r.avertissements === 0) { return; }
   const notifier = async () => {
@@ -6691,10 +6807,21 @@ function activate(context) {
     // du nouveau numéro sans rien annoncer : ce que la dernière compilation avait relevé
     // est encore vrai à l'ouverture, mais ce n'est pas une nouvelle.
     if (dernierJournal.racine !== racine) {
-      // `reimport` compris : les cinq autres affectations le posent, et lireControles le
-      // concatène sans le tester. L'oublier ici suffisait à faire taire tous les constats.
+      // `reimport` et `pagination` compris : les cinq autres affectations les posent, et
+      // constatsCourants()/majBarreControles() les concatènent sans les tester. Oublier
+      // l'un d'eux ici suffirait à faire taire tous les constats du cockpit.
       dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
-                         reimport: [], export: [] };
+                         reimport: [], export: [], pagination: [] };
+      // Pagination continue : même contrôle en arrière-plan qu'après une compilation
+      // (relireJournal()), pour que l'avertissement soit là dès l'ouverture du numéro et
+      // pas seulement après le premier Ctrl+S. Aucun appel WSL sur un numéro jamais
+      // paginé — voir lib/pagination-hote.js, estPagine().
+      if (paginationHote.estPagine(racine)) {
+        paginationHote.lireEtat(racine, fournisseur.listerArticles())
+          .then((etat) => { poserConstatsPagination(racine, paginationHote.constatsPagination(etat)); })
+          .catch((e) => { console.warn('pagination : lecture de l’état à l’ouverture du numéro : '
+            + ((e && e.message) || e)); });
+      }
     }
     majBarreControles();
     majBarreModeTest();
@@ -6834,6 +6961,7 @@ function activate(context) {
     // Les exports restent ouverts sur un numéro gelé, dont l'archivage a supprimé out/.
     cmd('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
     cmd('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
+    cmd('szh.rafraichirPagination', () => rafraichirPagination(fournisseur, rafraichirTout)),
     cmd('szh.exporterArticle', (item) => exporterArticle(fournisseur, rafraichirTout, item)),
     // Les quatre sorties du livre : sans objet sur une revue, la commande palette les
     // garde hors du when szh.estLivre (package.json).

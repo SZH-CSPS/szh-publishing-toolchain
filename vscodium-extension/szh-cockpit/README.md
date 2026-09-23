@@ -114,6 +114,11 @@ lib/
                         mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT
                         y bloque tout appel réel en test, pour les deux moissonneurs
+  pagination-hote.js    pagination continue du numéro (make etat-pagination /
+                        rafraichir-pagination) : un constat par article périmé, et
+                        aucun appel WSL tant que le numéro n'a pas été paginé une
+                        première fois. Rappelle l'hôte par configurer(), jamais par
+                        import
   panneaux.js           les trois panneaux QuickPick
   pdfua-hote.js         validation PDF/UA en arrière-plan après une compilation réussie ;
                         badge par article (conforme/non conforme/en cours/outillage),

@@ -8,6 +8,7 @@
   "cmd.annulerReimport": "Revenir au texte d’avant de cet article",
   "cmd.toutExporter": "Tout exporter (rebuild complet)",
   "cmd.exporterXml": "Exporter la revue en XML (OJS)",
+  "cmd.rafraichirPagination": "Rafraîchir la pagination",
   "cmd.exporterArticle": "Exporter cet article",
   "cmd.livreImprimeur": "Livre : PDF imprimeur",
   "cmd.livreCouverture": "Livre : couverture",

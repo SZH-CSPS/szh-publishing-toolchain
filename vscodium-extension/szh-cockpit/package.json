@@ -362,6 +362,12 @@
         "icon": "$(file-code)"
       },
       {
+        "command": "szh.rafraichirPagination",
+        "title": "%cmd.rafraichirPagination%",
+        "category": "SZH/CSPS",
+        "icon": "$(list-ordered)"
+      },
+      {
         "command": "szh.exporterArticle",
         "title": "%cmd.exporterArticle%",
         "category": "SZH/CSPS",
@@ -742,6 +748,10 @@
         },
         {
           "command": "szh.exporterXml",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.rafraichirPagination",
           "when": "szh.estRevue"
         },
         {

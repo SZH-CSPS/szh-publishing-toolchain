@@ -145,6 +145,17 @@ ayant perdu son accessibilité. Voir `pipeline/filters/szh-tableau-boite.lua`.
 avec un profil CMJN posé, puis lance `cmjn-check.py` (texte K seul, couleurs de la maison,
 aucun RVB résiduel) — sauté si Ghostscript ou le profil ICC de l'image manquent.
 
+## Corpus de composition
+
+`test/composition/` : huit articles réellement publiés (quatre Revue, quatre Zeitschrift, CC BY
+4.0), en deux dossiers de numéro. Il ne sert pas à la maquette mais à la **mesure** : césures,
+suites de lignes coupées, coupures en bas de page, blancs de justification, pages.
+`test/composition-check.py` les compte et se compare à `test/composition/reference.json`.
+Hors du banc rapide et de la CI : il se lance à chaque montée de WeasyPrint ou de pandoc, et
+avant de toucher aux réglages de césure de `print.css` — le banc, trop court, avait donné un
+réglage que le texte réel a démenti. Mode d'emploi et attributions :
+`test/composition/LISEZMOI.md`.
+
 ## Corpus d'accessibilité
 
 Un second dossier de numéro, `test/accessibilite/`, séparé du banc de maquette ci-dessus :

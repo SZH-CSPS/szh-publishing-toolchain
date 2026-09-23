@@ -1,0 +1,20 @@
+# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par
+# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou
+# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le
+# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,
+# et nomme comme ambigu ce qu'il ne peut plus trancher.
+word	2025-03_schindler.docx
+date	2026-09-23T09:14:13
+corps	8cf80bbe78874c3587fa98adda99681096699839872f35be8be1fe1b85c84eea	03-schindler.md
+biblio	1c04e516b3fc8d8bc986611fc6c95551a5069c8b673ad94314997ffba54d7ecc	03-schindler.biblio.md
+tableau	13479dd01bd91deb8c02725e5c1cc820f1cdd4732aa481b389df00e80c7bd5ab	tables/table-01.html
+tableau	a3887bbb1cb28e7a6ff8c605d97fe90efa539d7d0566cf2fc56c957854160f21	tables/table-02.html
+tableau	e1c6d8e40ea7b03534408618a224fd2a610c41f58478678a1a53d87ab790cc07	tables/table-03.html
+tableau	4119c1a4df9588bc9ad02fcc341b1672a5f02743bdcb5446d640d4d6d748f6b4	tables/table-04.html
+tableau	4d2f483a6cde5912b637f0454d6892753e459ea7cdc027330a541d0180beb578	tables/table-05.html
+image	4caa038312776f0b12206539f5b9c929c40aa0be5f26b1658862be522412807e	media/03-schindler-fig-01.png
+image	9f517ebb7024a5e02979456ad3ba7464672302e7a65650d9f2d8681c8e0ceb49	media/03-schindler-fig-02.png
+image	5cfd67d42c9b0df103fb2afac081aae4baa02189076bc368a9ddc1912bfb614a	media/03-schindler-fig-03.png
+image	85576dcc2546ecac0fffec7314f7a2723e133c67cbce3605e851693f403d37dd	media/03-schindler-fig-04.png
+image	9b1cc8f24ff0c1ebe0f16a872cebebbb40886ceaee3e9c9ca24b087e495125ed	media/03-schindler-fig-05.png
+image	7baf576ceccc324ea150ad6b7189c622d9b9aad814d9bca936a44318fbf09b62	media/03-schindler-fig-06.png

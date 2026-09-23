@@ -173,16 +173,20 @@ function monter(opts) {
 
 // L'XML produit, base64 des pièces jointes retiré : ce qui est comparé, c'est la
 // structure et les valeurs, pas le contenu des fichiers.
-function exporter(racine, config) {
-  const resultat = ojs.genererExportOjs(racine, { maintenant: MAINTENANT, config: config });
+//
+// `pagination` est facultatif (undefined équivaut à l'option absente, voir
+// intervallesPages()) : les contrôles déjà en place, écrits avant que l'option existe,
+// continuent de l'appeler sur deux arguments sans rien changer à leur comportement.
+function exporter(racine, config, pagination) {
+  const resultat = ojs.genererExportOjs(racine, { maintenant: MAINTENANT, config: config, pagination: pagination });
   const xml = fs.readFileSync(resultat.chemin, 'utf8')
     .replace(/(<embed encoding="base64">)[^<]*/g, '$1');
   return { xml: xml, chemin: resultat.chemin, avertissements: resultat.avertissements };
 }
 
-function refuse(racine, config) {
+function refuse(racine, config, pagination) {
   try {
-    ojs.genererExportOjs(racine, { maintenant: MAINTENANT, config: config });
+    ojs.genererExportOjs(racine, { maintenant: MAINTENANT, config: config, pagination: pagination });
   } catch (e) {
     return e;
   }
@@ -1207,6 +1211,119 @@ test('langue de l’article : une langue autre que celle de la revue est signal�
   assert.ok(sortie.xml.indexOf('<article xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" locale="fr"') !== -1);
   assert.ok(sortie.avertissements.some((a) => a.indexOf('(DE)') !== -1 && a.indexOf('(FR)') !== -1),
     'divergence de langue non signalée : ' + sortie.avertissements.join(' | '));
+});
+
+// ---- Pagination continue d'un numéro -------------------------------------------------
+//
+// options.pagination est le JSON déjà analysé de `pipeline/pagination.py etat` (voir
+// pipeline/pagination.py) : ce module ne le lit jamais lui-même, il le reçoit tout fait.
+
+function paginationEssai(articles, opts) {
+  opts = opts || {};
+  return {
+    schema: 'szh-pagination/1',
+    articles: articles,
+    total: articles.reduce((s, a) => s + (a.pages || 0), 0),
+    perimes: opts.perimes || [],
+    inconnus: opts.inconnus || [],
+    enregistre: opts.enregistre !== undefined ? opts.enregistre : true
+  };
+}
+
+test('pagination : sans options.pagination, l’export part comme avant, aucun <pages>', () => {
+  // Le cas qui protège les numéros déjà publiés à l’ancienne : l’option absente ne doit
+  // changer ni l’écriture ni le refus.
+  const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
+  assert.strictEqual(sortie.xml.indexOf('<pages>'), -1,
+    '<pages> écrit alors qu’aucune pagination n’a été fournie');
+});
+
+test('pagination : à jour, chaque article porte son propre intervalle', () => {
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  const pagination = paginationEssai([
+    { slug: '01-edito', depart: 4, pages: 1, pdf: true },
+    { slug: '02-observation', depart: 1, pages: 3, pdf: true }
+  ]);
+  const sortie = exporter(racine, configComplete(), pagination);
+  const idxArt2 = sortie.xml.indexOf('<article ', sortie.xml.indexOf('<article ') + 1);
+  const blocEdito = sortie.xml.slice(0, idxArt2);
+  const blocObservation = sortie.xml.slice(idxArt2);
+  // Une seule page : le nombre nu, sans tiret.
+  assert.ok(blocEdito.indexOf('<pages>4</pages>') !== -1,
+    'intervalle d’une page absent de 01-edito : ' + blocEdito);
+  assert.strictEqual(blocEdito.indexOf('<pages>1-3</pages>'), -1,
+    'l’intervalle du voisin s’est glissé dans 01-edito');
+  // Trois pages : trait d'union ASCII (U+002D), jamais un tiret demi-cadratin.
+  assert.ok(blocObservation.indexOf('<pages>1-3</pages>') !== -1,
+    'intervalle de trois pages absent de 02-observation : ' + blocObservation);
+  assert.strictEqual(blocObservation.indexOf('<pages>4</pages>'), -1,
+    'l’intervalle du voisin s’est glissé dans 02-observation');
+});
+
+test('pagination : la position de <pages> suit le schéma étendu d’OJS 3.5, pas la citation la plus proche',
+  () => {
+    // 02-observation (fiche par défaut) porte des références ; 01-edito (éditorial) n’en
+    // porte aucune : les deux cas de position tiennent dans le même numéro.
+    const racine = monter({ ausgabe: { date: '2026-09-08' } });
+    const pagination = paginationEssai([
+      { slug: '01-edito', depart: 4, pages: 1, pdf: true },
+      { slug: '02-observation', depart: 1, pages: 3, pdf: true }
+    ]);
+    const sortie = exporter(racine, configComplete(), pagination);
+    const idxArt2 = sortie.xml.indexOf('<article ', sortie.xml.indexOf('<article ') + 1);
+    const blocEdito = sortie.xml.slice(0, idxArt2);
+    const blocObservation = sortie.xml.slice(idxArt2);
+
+    // Avec références : </citations> < <pages> < </publication>.
+    const idxCitations = blocObservation.indexOf('</citations>');
+    const idxPagesObs = blocObservation.indexOf('<pages>');
+    const idxPubObs = blocObservation.indexOf('</publication>');
+    assert.ok(idxCitations !== -1 && idxPagesObs !== -1 && idxPubObs !== -1,
+      'un des trois repères manque dans 02-observation');
+    assert.ok(idxCitations < idxPagesObs && idxPagesObs < idxPubObs,
+      'ordre incorrect (citations=' + idxCitations + ', pages=' + idxPagesObs +
+      ', publication=' + idxPubObs + ')');
+
+    // Sans référence : pas de <citations>, <pages> suit le dernier </article_galley>.
+    assert.strictEqual(blocEdito.indexOf('<citations>'), -1,
+      '01-edito ne devrait porter aucune référence');
+    const idxDernierGalley = blocEdito.lastIndexOf('</article_galley>');
+    const idxPagesEdito = blocEdito.indexOf('<pages>');
+    const idxPubEdito = blocEdito.indexOf('</publication>');
+    assert.ok(idxDernierGalley !== -1 && idxPagesEdito !== -1 && idxPubEdito !== -1,
+      'un des trois repères manque dans 01-edito');
+    assert.ok(idxDernierGalley < idxPagesEdito && idxPagesEdito < idxPubEdito,
+      'ordre incorrect (galley=' + idxDernierGalley + ', pages=' + idxPagesEdito +
+      ', publication=' + idxPubEdito + ')');
+  });
+
+test('pagination : périmée, l’export refuse et n’écrit aucun fichier', () => {
+  // La porte : un folio qui ne suit plus le sommaire (article allongé, inséré, déplacé…)
+  // enverrait à OJS un <pages> qui ne concorde plus avec le PDF réellement publié.
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  const pagination = paginationEssai([
+    { slug: '01-edito', depart: 1, pages: 1, pdf: true },
+    { slug: '02-observation', depart: 2, pages: 3, pdf: true }
+  ], { perimes: ['02-observation'] });
+  const e = refuse(racine, configComplete(), pagination);
+  assert.ok(Array.isArray(e.szhBloquants), 'l’erreur ne porte pas la liste des bloquants');
+  assert.ok(e.szhBloquants.some((p) => p.indexOf('02-observation') !== -1),
+    'le point bloquant ne nomme pas l’article périmé : ' + e.szhBloquants.join(' | '));
+  assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), [],
+    'un fichier est parti malgré la pagination périmée');
+});
+
+test('pagination : enregistre à faux, même avec perimes vide, n’écrit ni <pages> ni ne refuse', () => {
+  // `enregistre: false` dit que le numéro n’a jamais été paginé : un tel numéro part
+  // exactement comme avant, quel que soit le contenu de `perimes`.
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  const pagination = paginationEssai([
+    { slug: '01-edito', depart: 1, pages: 1, pdf: true },
+    { slug: '02-observation', depart: 2, pages: 3, pdf: true }
+  ], { enregistre: false, perimes: [] });
+  const sortie = exporter(racine, configComplete(), pagination);
+  assert.strictEqual(sortie.xml.indexOf('<pages>'), -1,
+    '<pages> écrit alors que le numéro n’a jamais été paginé (enregistre: false)');
 });
 
 // ---- Les libellés du panneau --------------------------------------------------------

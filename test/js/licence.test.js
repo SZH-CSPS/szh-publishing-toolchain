@@ -471,9 +471,10 @@ test('export OJS : en droits réservés, le crédit de figure ne se plaint plus'
 
 // ── La flèche « lien sortant » du DOI et de la licence ─────────────────────────────────
 //
-// Les deux mentions du hero sont des liens, et chacune porte un <svg class="szh-arrow">
-// inline. Sa position verticale ne tient qu'à une marge basse, dont le rôle n'a rien
-// d'évident à la lecture : .szh-doi / .szh-licence sont des `inline-flex` en
+// Les deux mentions du hero sont des liens, et chacune porte un <span class="szh-arrow">
+// vide, dont print.css fait une image de fond. Sa position verticale ne tient qu'à une
+// marge basse, dont le rôle n'a rien d'évident à la lecture : .szh-doi / .szh-licence
+// sont des `inline-flex` en
 // `align-items: center`, qui centrent la boîte de MARGE de leur enfant — une marge basse
 // de N remonte donc l'encre de N/2. Retirer cette marge en la prenant pour du blanc
 // superflu redescendrait les deux flèches à mi-hauteur du texte, ce qui est précisément le
@@ -488,7 +489,23 @@ test('flèche du hero : les deux mentions du gabarit la portent', () => {
   assert.strictEqual(avecLien.length, 2,
     'le DOI et la licence liés sont les deux seules mentions à flèche');
   for (const s of avecLien) {
-    assert.match(s, /<svg class="szh-arrow"/, 'mention sans flèche : ' + s.slice(0, 60));
+    assert.match(s, /<span class="szh-arrow" aria-hidden="true"><\/span>/,
+      'mention sans flèche : ' + s.slice(0, 60));
+  }
+});
+
+// WeasyPrint 70 balise tout <svg> inline en /Figure et n'en lit le texte de remplacement que
+// dans un <title> : un décor en <svg> fait tomber PDF/UA-1 sur chaque article (mesuré le
+// 23.09.2026). Filigrane et flèches sont donc des fonds CSS.
+test('gabarit d’article : aucun <svg> inline, les décors du hero sont des fonds', () => {
+  const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(!/<svg\b/.test(gabarit), 'un <svg> inline est revenu dans szh-article.html');
+  const css = lireFichier('pipeline', 'styles', 'print.css');
+  for (const sel of ['szh-book', 'szh-arrow']) {
+    const regle = css.match(new RegExp('^\\.' + sel + '\\s*\\{[^}]*\\}', 'm'));
+    assert.ok(regle && /background:\s*url\("data:image\/svg\+xml,/.test(regle[0]),
+      '.' + sel + ' ne porte plus son image de fond');
   }
 });
 
