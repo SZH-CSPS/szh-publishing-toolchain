@@ -87,21 +87,42 @@ publication.
   tableaux (description longue, puis ni description ni en-tête). À regarder dans
   l'aperçu, pas dans le PDF.
 - `articles/documentation/` — la page de Documentation (« News & Ressourcen »), le seul
-  article du banc dont le contenu n'est pas de la prose suivie : deux rubriques de texte
-  riche (`szh-rubrique.lua`) et quatre fiches structurées (`szh-ressource.lua`, un type
-  par cas). **En allemand à dessein** : les titres de rubrique et les libellés de lien se
-  déduisent de la langue de l'article, et la moitié allemande de ces tables n'était rendue
-  nulle part ailleurs. Ce qu'il garde, et qui a tout cassé une fois :
-  - une fiche livre **plus haute qu'une page**. Avec le corps de fiche en `display: flex`,
-    WeasyPrint 69 ne savait pas la couper : elle laissait une page entière de fond de
-    carte, titre seul, avant de reprendre à la suivante. La page 2 du PDF doit montrer la
-    fiche qui commence et se poursuit page 3, sans page blanche entre les deux.
-  - une rubrique dont le contenu porte des titres. Ils ne doivent **pas** être numérotés,
-    et doivent descendre sous le `h2` de la rubrique ; la section « Eine echte
-    Abschnittsüberschrift », hors rubrique, doit l'être (« 1 »). C'est la contre-épreuve.
-  - un descriptif qui commence par « 13\. » : il doit s'imprimer « 13. » en paragraphe et
-    non « 1. » en liste (WeasyPrint 69 n'honore pas l'attribut `start` d'un `<ol>`).
-  - une fiche d'intervention **sans descriptif** et une fiche d'agenda à plage de dates.
+  article du banc dont le contenu n'est pas de la prose suivie. Depuis le passage à
+  l'arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md), ce n'est plus un
+  `documentation.md` à blocs `:::` mais une vraie arborescence de contenu écrite par
+  Pronto : `documentation.de.txt` (deux rubriques de texte riche) et dix dossiers `N_<slug>`
+  (une fiche structurée chacun, un type par cas — `documentation-kirby.py` les convertit
+  en markdown intermédiaire, que `szh-rubrique.lua` et `szh-ressource.lua` composent
+  ensuite, exactement comme avant). **En allemand à dessein** : les titres de rubrique et
+  les libellés de lien se déduisent de la langue de l'article, et la moitié allemande de
+  ces tables n'était rendue nulle part ailleurs. Ce qu'il garde, et qui a tout cassé une
+  fois :
+  - une fiche livre (`7_buch/`) **plus haute qu'une page**. Avec le corps de fiche en
+    `display: flex`, WeasyPrint 69 ne savait pas la couper : elle laissait une page
+    entière de fond de carte, titre seul, avant de reprendre à la suivante. La page qui la
+    porte doit montrer la fiche qui commence et se poursuit à la page suivante, sans page
+    blanche entre les deux.
+  - une rubrique (`Dossier_references`) dont le contenu porte des titres. Ils ne doivent
+    **pas** être numérotés, et doivent descendre sous le `h2` de la rubrique.
+    Il n'y a plus de section numérotée « hors rubrique » dans ce banc : dans
+    l'arborescence Kirby, TOUT le contenu d'un article Documentation vient de
+    documentation-kirby.py sous forme de rubriques ou de fiches — il n'existe plus de
+    champ pour du markdown libre hors de ces deux régimes. La contre-épreuve (un `h2`
+    numéroté par `szh-sections.lua`) reste couverte, mais par n'importe quel autre article
+    du banc, pas par celui-ci.
+  - un descriptif d'agenda (`10_tagung/`) qui commence par « 13\. » : il doit s'imprimer
+    « 13. » en paragraphe et non « 1. » en liste (WeasyPrint 69 n'honore pas l'attribut
+    `start` d'un `<ol>`).
+  - deux fiches d'intervention du même canton (ZH), une troisième de la Confédération
+    (`triPremier`, elle doit sortir en premier) ; l'une des deux ZH porte un suivi à deux
+    lignes (une avec lien et libellé, l'autre sans les deux) et l'autre aucun descriptif.
+  - deux fiches de tour d'horizon : portée internationale (pas de canton affiché) et
+    portée régionale (canton BE affiché, en code) — la contre-épreuve du champ `canton`,
+    affiché seulement si `portee = regional`.
+  - une date partielle sur la fiche de recherche (`2020`, puis `2026-03` → « 03.2026 »).
+  - `lien_libelle` rempli sur une fiche (le tour d'horizon régional) et vide sur une autre
+    (le tour d'horizon international, qui retombe donc sur le gabarit `libelleLien` du
+    type).
 
 ## Les deux livres
 

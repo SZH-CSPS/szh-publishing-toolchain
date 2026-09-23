@@ -918,6 +918,27 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 .szh-ressource-sans-image { padding: 8px 16px; margin: 0.5em 0; }
 .szh-ressource-sans-image .szh-ressource-titre p { margin-bottom: 0.25em; }
 
+/* Pastille de catégorie (livre, film) : posée par szh-ressource.lua juste sous la
+   bibliographie courte (champ `pastille` du contrat — champs-documentation.json). Un
+   jeton court, pas une phrase : un badge discret plutôt qu'une ligne de texte de plus. */
+.szh-ressource-pastille p {
+  display: inline-block; margin: 0 0 0.5em; padding: 0.1em 0.55em;
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--c-ink); background: #e7e7ea; border-radius: 3px;
+}
+
+/* État + date d'état d'une intervention parlementaire : une ligne courte, dans le
+   prolongement visuel de la biblio mais distinguée par la couleur, pour rester lisible
+   d'un coup d'œil dans une liste dense d'une dizaine d'entrées. */
+.szh-ressource-etat p { margin: 0 0 0.5em; font-size: 0.85em; color: #555; }
+
+/* Suivi d'une intervention (prise de position, décision, document…) : une ligne par
+   entrée, aussi resserrée que la biblio — c'est une liste de faits, pas de la prose. La
+   ligne entière est un lien quand le suivi en porte un (szh-ressource.lua). */
+.szh-ressource-suivi { margin: 0.3em 0 0.6em; }
+.szh-ressource-suivi p { margin: 0 0 0.2em; font-size: 0.85em; color: #444; }
+.szh-ressource-suivi a { color: inherit; }
+
 /* Rubrique de texte riche de la Documentation (liste bibliographique, liste de liens,
    brève d'actualité) : filters/szh-rubrique.lua pose une <section>, un titre déduit du
    type et de la langue, puis le contenu inchangé. Un chapitre de la Documentation, pas

@@ -1,0 +1,24 @@
+Title: News & Ressourcen
+
+----
+
+Uuid: seite0000dokumen
+
+----
+
+Dossier_references: ## International
+
+### Eine Meldung mit einem Titel
+
+Ein Absatz Fliesstext, der zeigt, dass der Inhalt einer Rubrik unverändert durchgeht: *kursiv*, **fett** und ein [Link](https://www.szh.ch/).
+
+## National
+
+Eine Rubrik darf auch mit Fliesstext beginnen, ohne Zwischentitel.
+
+----
+
+Dossier_liens: Eine einfache Linkliste, ohne Zwischentitel:
+
+- [szh.ch](https://www.szh.ch/)
+- [edudoc.ch](https://www.edudoc.ch/)

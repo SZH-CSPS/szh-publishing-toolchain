@@ -113,6 +113,11 @@ MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
 # Tous les filtres Lua sont prerequis des rendus : en modifier un doit recompiler.
 FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
 
+# Convertisseur de la Documentation Kirby (arborescence -> markdown intermédiaire) et le
+# contrat qu'il lit avec szh-ressource.lua et szh-rubrique.lua — voir DOC_SLUGS plus bas.
+DOC_CONVERTISSEUR := $(PIPELINE_DIR)/documentation-kirby.py
+DOC_CHAMPS_JSON   := $(PIPELINE_DIR)/kirby/champs-documentation.json
+
 # ---------------------------------------------------------------------------
 # Profil de compilation du dossier, lu dans ausgabe.yaml par szh-lire-config.lua (pandoc
 # lua, sans dépendance) : l'image WSL n'embarque pas PyYAML, et cette lecture — un seul
@@ -156,7 +161,14 @@ endif
 # ---------------------------------------------------------------------------
 
 # Articles : un dossier par article, articles/<slug>/<slug>.md.
-SLUGS      := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+SLUGS_MD   := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+# Article Documentation : arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md), reconnue
+# à la présence de documentation.fr.txt ou documentation.de.txt dans le dossier — jamais à
+# la clé `type: documentation` de la fiche, plus coûteuse à lire ici (elle demanderait un
+# appel à szh-lire-config.lua par dossier, avant même de savoir si ce dossier en a besoin) et
+# c'est exactement le marqueur que le format donne comme identité de l'arborescence.
+DOC_SLUGS  := $(sort $(foreach d,$(wildcard articles/*),$(if $(or $(wildcard $(d)/documentation.fr.txt),$(wildcard $(d)/documentation.de.txt)),$(notdir $(d)))))
+SLUGS      := $(sort $(SLUGS_MD) $(DOC_SLUGS))
 OUT        := out
 PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
 HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
@@ -398,12 +410,30 @@ $(OUT)/.szh-folios: .szh-pagination.json $(PAGINATION)
 # (<slug>.biblio.md, prérequis lui aussi), lui pose son titre, ancre chaque référence et
 # transforme les appels du corps en liens internes. Le texte des références n'est jamais
 # réécrit.
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+# $$* varie selon l'article : ordinaire (articles/<slug>/<slug>.md, prérequis dur devenu
+# $$(wildcard) plus bas) ou Documentation Kirby (articles/<slug>/documentation.<lang>.txt +
+# ses fiches N_<slug-fiche>/, prérequis eux aussi en $$(wildcard) — voir DOC_SLUGS). Les deux
+# routes partagent CETTE règle et CETTE chaîne de filtres — une seule, jamais deux copies —
+# et se distinguent au dernier moment, dans la recette : si <slug>.md existe, c'est la
+# source ; sinon documentation-kirby.py engendre out/<slug>/<slug>.md (jamais écrit dans
+# articles/, qui reste la propriété de Pronto) et c'est LUI qui nourrit pandoc. Un test de
+# contrat (test/js/ressources.test.js, « branché avant szh-numerotation ») compte les
+# occurrences de chaque filtre dans ce Makefile : les dupliquer en une seconde règle
+# statique par type d'article l'aurait fait mentir sans qu'il ait tort.
+$(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
+	if [ -f "articles/$$slug/$$slug.md" ]; then \
+	  entree="$$slug.md"; \
+	else \
+	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
+	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
+	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
+	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; \
+	fi; \
 	echo "pandoc articles/$$slug/$$slug.md -> $@"; \
-	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$slug.md" \
+	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$entree" \
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" --metadata-file="$$slug.meta.yaml" \
 	  --standalone --embed-resources \
@@ -454,19 +484,32 @@ endef
 # enveloppe aussi chaque mot dans un Span et découpe les mots à chaque signe, ce qui
 # rendait szh-typographie.lua et le liage de szh-citations.lua entièrement inertes ici,
 # sans rien dire. Les mesures sont en tête de ce filtre.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+# Même route à deux entrées que la règle .html ci-dessus (voir son commentaire) : un
+# article Documentation n'a pas de sourcepos (documentation-kirby.py ne pose aucune
+# position source), donc son aperçu perd le clic-vers-le-texte — dégradation propre, le
+# reader passe alors de commonmark_x+sourcepos à markdown ordinaire pour cette seule route,
+# szh-sourcepos.lua et szh-ancres.lua n'ayant plus rien à faire sur un texte qu'ils n'ont
+# pas engendré à partir du .md du rédacteur.
+$(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	meta=""; \
 	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
-	echo "pandoc articles/$$slug/$$slug.md -> $@ (aperçu sourcepos)"; \
-	cd "articles/$$slug" && SZH_APERCU=1 $(PANDOC) "$$slug.md" \
-	  --from=commonmark_x+sourcepos --to=html5 \
+	if [ -f "articles/$$slug/$$slug.md" ]; then \
+	  entree="$$slug.md"; lecteur="commonmark_x+sourcepos"; \
+	  sourcepos="--lua-filter=$(PIPELINE_DIR)/filters/szh-sourcepos.lua --lua-filter=$(PIPELINE_DIR)/filters/szh-ancres.lua"; \
+	else \
+	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
+	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
+	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
+	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; lecteur="markdown"; sourcepos=""; \
+	fi; \
+	echo "pandoc articles/$$slug/$$slug.md -> $@ (aperçu)"; \
+	cd "articles/$$slug" && SZH_APERCU=1 $(PANDOC) "$$entree" \
+	  --from=$$lecteur --to=html5 $$sourcepos \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
 	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(PARTAGE_ABS)" --css="$(ACCENT_ABS)" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sourcepos.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ancres.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \

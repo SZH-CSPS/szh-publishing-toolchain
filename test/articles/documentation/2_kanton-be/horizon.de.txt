@@ -1,0 +1,25 @@
+Title: Frühförderung im Kanton Bern
+
+----
+
+Uuid: horizon002bern00
+
+----
+
+Portee: regional
+
+----
+
+Canton: BE
+
+----
+
+Descriptif: Eine regionale Meldung — die Portee ist « regional », der Kanton BE muss also erscheinen.
+
+----
+
+Lien: https://www.be.ch/
+
+----
+
+Lien_libelle: Zur Medienmitteilung des Kantons Bern

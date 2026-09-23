@@ -1,0 +1,35 @@
+Title: Die zärtliche Revolution
+
+----
+
+Uuid: film0008zaertl00
+
+----
+
+Categorie: documentaire
+
+----
+
+Realisateur: Boros, A.
+
+----
+
+Annee: 2025
+
+----
+
+Distributeur: W-Film
+
+----
+
+Lien: https://www.szh.ch/
+
+----
+
+Descriptif: Eine kurze Inhaltsangabe, kürzer als das Bild hoch ist: die Karte darf dadurch nicht schmaler oder höher werden als nötig.
+
+----
+
+Couverture:
+
+- affiche.png

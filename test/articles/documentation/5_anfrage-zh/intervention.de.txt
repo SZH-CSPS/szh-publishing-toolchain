@@ -1,0 +1,58 @@
+Title: Anfrage betreffend Sonderschulplätze
+
+----
+
+Uuid: intervent05zha000
+
+----
+
+Canton: ZH
+
+----
+
+Categorie: interpellation
+
+----
+
+Curia: 8
+
+----
+
+Numero: 26.226
+
+----
+
+Date: 2026-06-08
+
+----
+
+Lien: https://www.zh.ch/
+
+----
+
+Etat: adopte
+
+----
+
+Etat_date: 2026-08-01
+
+----
+
+Suivi:
+
+-
+  date: "2026-08-20"
+  genre: "prise-position"
+  libelle: "Antwort des Regierungsrates"
+  lien: "https://www.zh.ch/antwort"
+-
+  date: "2026-08-25"
+  genre: "decision"
+
+----
+
+Source: manuel
+
+----
+
+Descriptif: Eine Anfrage mit einem zweizeiligen Verlauf — zuerst eine Stellungnahme mit Link, dann ein Entscheid ohne Bezeichnung und ohne Link.
