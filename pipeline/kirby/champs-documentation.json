@@ -724,6 +724,10 @@
     "agenda": {
       "dossier": "weiterbildung",
       "libelle": {
+        "fr": "Agenda et formation continue",
+        "de": "Weiterbildung"
+      },
+      "libelleCourt": {
         "fr": "Agenda",
         "de": "Weiterbildung"
       },
@@ -2789,5 +2793,6 @@
     "champUuid": "uuid"
   },
   "_saisies": "liste_multiple : plusieurs jetons de la même liste, écrits « jeton1, jeton2 » (virgule et espace, convention du champ multiselect de Kirby), dans l’ordre de saisie.",
-  "_pays": "listes.pays : ISO 3166-1 alpha-2 (249 codes) plus XK (Kosovo), libellés CLDR fr/de. Jeton = code, jamais un nom."
+  "_pays": "listes.pays : ISO 3166-1 alpha-2 (249 codes) plus XK (Kosovo), libellés CLDR fr/de. Jeton = code, jamais un nom.",
+  "_libelleCourt": "types[].libelleCourt : libellé réservé au cockpit (arbre, formulaire), quand le titre imprimé est trop long. Absent : le cockpit prend libelle. Jamais imprimé ni publié."
 }
