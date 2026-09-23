@@ -208,36 +208,16 @@ test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, a
     assert.ok(it.tooltip, 'info-bulle absente : ' + it.label);
     assert.ok(it.iconPath && it.iconPath.id, 'icône absente : ' + it.label);
   }
-  // « Documentation du numéro » est la seule entrée dépliable.
-  assert.strictEqual(entrees[0].collapsibleState, 1, 'Documentation du numéro doit être dépliable (Collapsed)');
-  for (const it of entrees.slice(1)) { assert.strictEqual(it.collapsibleState, 0, it.label + ' ne doit pas être dépliable'); }
+  // Aucune entrée ne se déplie : les catégories sont dans la barre du formulaire.
+  for (const it of entrees) { assert.strictEqual(it.collapsibleState, 0, it.label + ' ne doit pas être dépliable'); }
 });
 
-// ---- « Documentation du numéro », elle-même dépliable (23.09.2026) --------------------
-test('arbre : « Documentation du numéro » se déplie sur Rubriques puis un type par fiche, avec leurs comptes', async () => {
-  const enfants = await enfantsDe('section-actualite');
-  const numero = enfants[0];
-  assert.strictEqual(numero.categorie, 'actualite-numero');
-  const sousEntrees = await HOTE.arbre().getChildren(numero);
-  const typesAttendus = kirby.typesConnus();
-  assert.strictEqual(sousEntrees.length, 1 + typesAttendus.length);
-  assert.strictEqual(sousEntrees[0].label, T('doc.groupe.rubriques'));
-  assert.deepStrictEqual(sousEntrees[0].command.arguments, ['numero', 'rubriques']);
-  assert.strictEqual(sousEntrees[0].description, undefined, 'Rubriques ne porte pas de compte (seuls les types en portent un)');
-  assert.deepStrictEqual(sousEntrees.slice(1).map((it) => it.command.arguments[1]), typesAttendus,
-    'un type par entrée, dans l’ordre ordreTypes du contrat');
-  const livre = sousEntrees.find((it) => it.command.arguments[1] === 'livre');
-  assert.strictEqual(livre.label, kirby.libelleCockpitType('livre', 'fr'));
-  assert.strictEqual(livre.description, '(1)', 'la fiche « Un livre » écrite plus haut doit compter ici');
-  const film = sousEntrees.find((it) => it.command.arguments[1] === 'film');
-  assert.strictEqual(film.description, undefined, 'aucun film rattaché : pas de badge');
-  // Le libellé COURT du contrat (types[].libelleCourt), jamais le long ni un mot en dur —
-  // Robin, 23.09.2026 : « Agenda » dans le cockpit, « Agenda et formation continue » resté
-  // le titre imprimé côté site.
-  const agenda = sousEntrees.find((it) => it.command.arguments[1] === 'agenda');
-  assert.strictEqual(agenda.label, 'Agenda');
-  assert.notStrictEqual(agenda.label, kirby.libelleType('agenda', 'fr'),
-    'le contrat porte bien un libelleCourt distinct pour ce type : ce test ne prouverait rien sinon');
+// ---- « Documentation du numéro » ne se déplie plus (24.09.2026) ------------------------
+// Les catégories vivent dans la barre du formulaire (media/documentation.js) ; l'arbre n'en
+// garde qu'un raccourci. Le libellé court du cockpit reste celui du contrat.
+test('libellé court du cockpit : « Agenda », distinct du titre imprimé', () => {
+  assert.strictEqual(kirby.libelleCockpitType('agenda', 'fr'), 'Agenda');
+  assert.notStrictEqual(kirby.libelleCockpitType('agenda', 'fr'), kirby.libelleType('agenda', 'fr'));
 });
 
 test('la page de Documentation déplie ACTUALITÉ, un article ordinaire déplie ARTICLES', () => {

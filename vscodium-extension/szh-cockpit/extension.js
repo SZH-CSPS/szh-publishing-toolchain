@@ -937,7 +937,6 @@ class FournisseurRevue {
     }
     if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
     if (element.categorie === 'actualite') { return this._itemsActualite(); }
-    if (element.categorie === 'actualite-numero') { return this._itemsDocumentationNumero(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
     if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
@@ -1048,8 +1047,8 @@ class FournisseurRevue {
   // vivent toutes dans la bibliothèque partagée (_NewsUndActu\Fiches\), plus dans une réserve
   // accrochée à l'arbre du numéro — mais des raccourcis vers ses vues (Robin, 23.09.2026,
   // révisé le même jour : toute la navigation passe désormais par l'arbre, la page n'a plus
-  // sa propre barre d'onglets). Ordre : « Documentation du numéro » (elle-même dépliable, voir
-  // _itemsDocumentationNumero), « Traductions à faire », « Réservoir », « Archive », puis
+  // de barre d'onglets de vues ; les catégories de la Documentation du numéro sont une barre
+  // du formulaire, 24.09.2026). Ordre : « Documentation du numéro », « Traductions à faire », « Réservoir », « Archive », puis
   // « Publier sur le site web » grisée (pas encore livré — sans commande, donc jamais
   // cliquable). Cliquer une entrée ouvre le formulaire DIRECTEMENT sur cette vue
   // (ouvrirPageDocumentation, qui crée la page au besoin) ; si le panneau est déjà ouvert, il
@@ -1072,7 +1071,7 @@ class FournisseurRevue {
     const nArchive = documentationHote.compteArchiveConnu();
     const entrees = [
       { cle: 'numero', libelle: T('doc.onglet.numero'), icone: 'book', compte: nBlocs,
-        tip: T('arbre.actualite.numero.tip'), enfants: 'actualite-numero' },
+        tip: T('arbre.actualite.numero.tip') },
       { cle: 'traductions', libelle: T('doc.onglet.traductions'), icone: 'globe',
         compte: nTraductions, tip: T('arbre.actualite.traductions.tip') },
       { cle: 'reservoir', libelle: T('doc.onglet.reservoir'), icone: 'inbox',
@@ -1103,39 +1102,6 @@ class FournisseurRevue {
     publier.tooltip = T('arbre.actualite.publier.tip');
     items.push(publier);
     return items;
-  }
-
-  // Les enfants de « Documentation du numéro » : « Rubriques » (les 4 champs de texte long
-  // du numéro — Ressources n'y figure que pour la Revue, rubriquesPourRevue() le filtre déjà)
-  // puis une entrée par type de fiche du contrat, dans l'ordre ordreTypes, avec le compte de
-  // fiches de CE type rattachées à ce numéro. Cliquer une catégorie ouvre le formulaire sur
-  // « Documentation du numéro » en n'affichant QUE elle (media/documentation.js#vueCategorie).
-  _itemsDocumentationNumero() {
-    if (!this.racine) { return []; }
-    const racineArbreVal = kirbyLib.racineArbre(this.racine);
-    const langue = langueRevue(this.racine);
-    const ausgabeIdVal = idNumero(this.racine);
-    const fiches = ausgabeIdVal ? kirbyLib.listerFichesNumero(racineArbreVal, langue, ausgabeIdVal) : [];
-    const entrees = [
-      { categorie: 'rubriques', libelle: T('doc.groupe.rubriques'), icone: 'checklist' }
-    ];
-    for (const type of kirbyLib.typesConnus()) {
-      entrees.push({
-        // Le libellé COURT réservé au cockpit s'il existe (contrat, types[].libelleCourt —
-        // « Agenda », Robin), jamais libelleType (le long, imprimé) en dur ici.
-        categorie: type, libelle: kirbyLib.libelleCockpitType(type, langue), icone: 'file',
-        compte: fiches.filter((f) => f.type === type).length
-      });
-    }
-    return entrees.map((e) => {
-      const it = new vscode.TreeItem(e.libelle, vscode.TreeItemCollapsibleState.None);
-      it.id = 'actualite:numero:' + e.categorie;
-      it.contextValue = 'actualite-numero-entree';
-      it.iconPath = new vscode.ThemeIcon(e.icone);
-      if (typeof e.compte === 'number' && e.compte > 0) { it.description = '(' + e.compte + ')'; }
-      it.command = { command: 'szh.ouvrirActualite', title: e.libelle, arguments: ['numero', e.categorie] };
-      return it;
-    });
   }
 
   // Le slug de la page de Documentation du numéro : la première unité de type
@@ -7073,7 +7039,7 @@ function activate(context) {
     // (voir ouvrirPageDocumentation).
     // Comme « reglages » : aucun constat ne vise « documentation » avec un focus utile.
     cmd('szh.documentation', (item) => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
-    // Les raccourcis de la section ACTUALITÉ (_itemsActualite / _itemsDocumentationNumero) :
+    // Les raccourcis de la section ACTUALITÉ (_itemsActualite) :
     // même formulaire, ouvert directement sur la vue visée — jamais une commande de palette,
     // elle ne porte pas d'entrée package.json (comme szh.ouvrirSection, dont elle est la
     // variante ciblée). `categorie` ne compte que pour l'onglet 'numero'.
