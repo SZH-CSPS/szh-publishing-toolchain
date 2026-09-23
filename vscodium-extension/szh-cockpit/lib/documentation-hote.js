@@ -56,7 +56,14 @@ let ctx = {
   revueCourante: () => 'revue',
   nomRevueAffiche: (revue) => String(revue || ''),
   convertirCmykSiBesoin: async () => 0,
-  repondreModeTrad: () => false
+  repondreModeTrad: () => false,
+  // Le bouton « Aperçu du PDF » (extension.js#apercuOuvertPourSlug/
+  // basculerApercuDocumentation/rafraichirApercuDocumentationSiOuvert). Un module non
+  // configuré (contrôle isolé) répond « jamais ouvert, rien ne bascule » — sans effet, pas
+  // d'exception.
+  apercuOuvert: () => false,
+  basculerApercu: async () => {},
+  rafraichirApercuSiOuvert: async () => {}
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -133,7 +140,10 @@ function typesRessourceConfig(langue) {
     const champFichier = kirby.champFichierDuType(type);
     return {
       valeur: type,
-      libelleSection: kirby.libelleType(type, langue),
+      // libelleCockpitType : le libellé COURT réservé au cockpit s'il existe (contrat,
+      // types[].libelleCourt — « Agenda » plutôt que « Agenda et formation continue » —,
+      // Robin), jamais libelleType (le long, imprimé) en dur ici.
+      libelleSection: kirby.libelleCockpitType(type, langue),
       libelleAjouter: T('ressource.ajouter.' + type),
       libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
       avecImage: !!champFichier,
@@ -157,6 +167,7 @@ function textesDocumentation() {
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     retirerTip: T('ressource.retirer.tip'),
     supprimerTip: T('ressource.supprimer.tip'),
+    supprimerNumeroTip: T('ressource.supprimerNumero.tip'),
     sansTitre: T('ressource.sansTitre'),
     manque: T('ressource.manque'),
     optionVide: T('ressource.option.vide'),
@@ -179,6 +190,7 @@ function textesDocumentation() {
     enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'),
     rienAEcrire: T('doc.rienAEcrire'),
     retour: T('img.retour'), retourTip: T('doc.retour.tip'),
+    apercu: T('doc.apercu'), apercuTip: T('doc.apercu.tip'),
     // Traductions à faire / Réservoir / Mes orphelines
     ongletTraductions: T('doc.onglet.traductions'), ongletReservoir: T('doc.onglet.reservoir'),
     ongletNumero: T('doc.onglet.numero'),
@@ -207,6 +219,7 @@ function textesDocumentation() {
     archiveAucunResultat: T('doc.archive.aucunResultat'),
     archiveSansNumero: T('doc.archive.sansNumero'),
     archiveReprendre: T('doc.archive.reprendre'), archiveReprendreTip: T('doc.archive.reprendre.tip'),
+    archiveEditerTip: T('doc.archive.editer.tip'),
     archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
     archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
     archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
@@ -384,7 +397,14 @@ function creerPageDocumentation(fournisseur) {
   return slug;
 }
 
-async function ouvrirPageDocumentation(fournisseur, rafraichirTout) {
+// `onglet` : posé par les entrées de l'arbre (extension.js#_itemsActualite /
+// _itemsDocumentationNumero, commande szh.ouvrirActualite) — l'un de 'numero'/'traductions'/
+// 'reservoir'/'archive'. `categorie` n'a de sens que pour 'numero' : 'rubriques' ou l'un des
+// types de fiche du contrat (ordreTypes) — une seule catégorie affichée à la fois, jamais un
+// sommaire. Les deux sont absents (undefined) pour l'en-tête « ACTUALITÉ » et la commande
+// szh.documentation : le formulaire s'ouvre alors sur sa vue par défaut (webview) / celle
+// déjà affichée si le panneau vit déjà.
+async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, categorie) {
   if (!fournisseur.racine) { return; }
   const profil = session.profilOuvrage() || profils.profilPour('revue');
   if (profil.cle !== 'revue') { return; }      // un livre n'a pas de Documentation
@@ -395,10 +415,18 @@ async function ouvrirPageDocumentation(fournisseur, rafraichirTout) {
     if (!slug) { return; }
     if (rafraichirTout) { rafraichirTout(); }
   }
-  await ouvrirDocumentation(fournisseur, rafraichirTout, slug);
+  await ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, categorie);
 }
 
 let panneauxDocumentation = new Map();   // slug -> WebviewPanel (un formulaire par unité)
+
+// Le compte de l'entrée Archive dans l'arbre (extension.js#_itemsActualite) : jamais une
+// lecture à part de la bibliothèque de production pour l'arbre — repris du dernier
+// ARCHIVE_CHARGER/ARCHIVE_ACTUALISER servi à un panneau, quel qu'il soit. `undefined` tant
+// qu'aucun panneau n'a encore chargé cet onglet : l'arbre n'affiche alors aucun badge. Une
+// seule variable de module : un numéro ouvert par fenêtre VSCodium, pas de table par racine.
+let dernierCompteArchive;
+function compteArchiveConnu() { return dernierCompteArchive; }
 
 function fermerPanneauxDocumentationDe(racine, slug) {
   const tout = !racine || !slug;
@@ -409,7 +437,7 @@ function fermerPanneauxDocumentationDe(racine, slug) {
   }
 }
 
-async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
+async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, categorie) {
   if (!fournisseur.racine || !slug) { return; }
   const racine = fournisseur.racine;
   if (!new Set(fournisseur.listerArticles()).has(slug)) {
@@ -427,7 +455,14 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
   const ausgabeId = assurerIdNumero(racine);
 
   const existant = panneauxDocumentation.get(slug);
-  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
+  if (existant) {
+    existant.reveal(vscode.ViewColumn.One);
+    // Le panneau vit déjà : le premier chargement (charger.vueInitiale) est passé depuis
+    // longtemps, la bascule passe donc par ce message dédié — jamais en reconstruisant
+    // « charger », qui rejouerait un rechargement complet pour un simple changement de vue.
+    if (onglet) { repondrePanneau(existant, { type: MSG.ONGLET_ACTIVER, cle: onglet, categorie: categorie }); }
+    return;
+  }
   await fermerTousLesApercus();
   const titrePanneau = T('doc.titre.page');
   const panneau = vscode.window.createWebviewPanel(
@@ -444,11 +479,26 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
     for (const id of idsImagesEnAttente) { kirby.nettoyerImageProvisoire(id); }
     idsImagesEnAttente.clear();
   });
+  // Le bouton « Aperçu du PDF » peut se désynchroniser si l'aperçu se ferme à la croix
+  // pendant que ce panneau est en arrière-plan (un aperçu fermé ne le dit à personne
+  // d'autre que lui-même) : à chaque fois que ce panneau redevient actif, l'état réel est
+  // renvoyé — sans ça, rien d'autre ne préviendrait la page.
+  panneau.onDidChangeViewState((e) => {
+    if (e && e.webviewPanel && e.webviewPanel.active) {
+      repondrePanneau(panneau, { type: MSG.APERCU_ETAT, ouvert: ctx.apercuOuvert(racine, slug) });
+    }
+  });
 
   // uuid -> slug, pour les fiches DE CE NUMÉRO — reconstruit à chaque charger() : c'est ce
   // qui permet à enregistrer()/retirer() de retrouver le dossier d'une fiche existante sans
   // parcourir toute la bibliothèque à chaque frappe.
   let slugParUuid = new Map();
+  // onglet/categorie ne doivent atteindre la page QU'à son tout premier chargement (charger.
+  // vueInitiale, lu une fois par media/documentation.js) : un rechargement complet plus
+  // tard (RETIRER, TRADUIRE_DANS_NUMERO…) ne doit jamais reposer l'utilisateur sur cette vue,
+  // sans quoi « la vue choisie survit à un rechargement complet » (media/documentation.js)
+  // ne serait plus vrai pour cette toute première vue.
+  let premierPret = true;
 
   function listerRessources(budget) {
     const fiches = kirby.listerFichesNumero(racineArbreVal, langue, ausgabeId);
@@ -504,7 +554,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
       orphelines: listerMesOrphelines(),
       accent: ctx.lireCouleurAccent(racine),
       i18n: textesDocumentation(),
-      limites: ctx.limitesMedias()
+      limites: ctx.limitesMedias(),
+      // L'état du bouton « Aperçu du PDF » : recalculé à CHAQUE chargement (jamais mémorisé
+      // ici), pour rester vrai même si l'aperçu a été fermé à la croix entre-temps.
+      apercuOuvert: ctx.apercuOuvert(racine, slug)
     }, extra || {}));
   }
 
@@ -562,7 +615,13 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) { await charger(panneau, { requete: msg.requete }); return; }
+    if (msg.type === MSG.PRET) {
+      const extra = { requete: msg.requete };
+      if (premierPret && onglet) { extra.vueInitiale = { onglet: onglet, categorie: categorie }; }
+      premierPret = false;
+      await charger(panneau, extra);
+      return;
+    }
     if (msg.type === MSG.MODIFIE) {
       panneau.title = (msg.modifie ? '● ' : '') + titrePanneau;
       return;
@@ -571,6 +630,19 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
       const resultat = await enregistrer(msg.ressources, msg.rubriques);
       repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto, correspondances: resultat.correspondances });
       if (resultat.total > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [resultat.total]), 5000); }
+      // L'aperçu ouvert (bouton « Aperçu du PDF ») se rafraîchit tout seul — jamais attendu :
+      // une compilation ne doit pas retarder la confirmation d'enregistrement. Rien à faire
+      // si rien n'a changé (résultat.total === 0), ni si aucun aperçu de CE slug n'est ouvert
+      // (ctx.rafraichirApercuSiOuvert le vérifie lui-même).
+      if (resultat.total > 0) { ctx.rafraichirApercuSiOuvert(fournisseur, slug).catch(() => { /* signalé côté build */ }); }
+      return;
+    }
+    // Le bouton « Aperçu du PDF » : bascule (ouvre en compilant toujours, ou ferme), puis
+    // l'état réel est renvoyé — jamais optimiste côté page, l'ouverture peut échouer
+    // (verrou, numéro gelé) sans qu'aucune exception ne remonte ici.
+    if (msg.type === MSG.APERCU_BASCULER) {
+      await ctx.basculerApercu(fournisseur, slug);
+      repondrePanneau(panneau, { type: MSG.APERCU_ETAT, ouvert: ctx.apercuOuvert(racine, slug) });
       return;
     }
     // Retirer une fiche du numéro = la rendre orpheline (Ausgabe vidé) — jamais une
@@ -603,6 +675,32 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
       if (r.ok) {
         vscode.window.setStatusBarMessage(T('ressource.supprimee'), 5000);
         await charger(panneau);
+      }
+      return;
+    }
+    // Supprimer pour de bon une carte de « Documentation du numéro », rattachée ou non —
+    // geste DISTINCT de RETIRER (qui ne fait que la détacher). N'ôte que le fichier de la
+    // langue du numéro ; si l'autre langue existe, elle reste (la confirmation le dit). Une
+    // carte jamais enregistrée n'atteint jamais l'hôte (voir supprimerFicheCarte, media/
+    // documentation.js) : id est ici toujours un Uuid Kirby réel.
+    if (msg.type === MSG.SUPPRIMER_FICHE_NUMERO) {
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
+        return;
+      }
+      const id = String(msg.id || '');
+      if (id === '') { return; }
+      const slugCible = slugParUuid.get(id);
+      if (!slugCible) { return; }               // déjà partie : rien à faire
+      const reponse = await vscode.window.showWarningMessage(
+        T('ressource.supprimerNumero.question'), { modal: true }, T('modale.supprimer.bouton'));
+      if (reponse !== T('modale.supprimer.bouton')) { return; }
+      const r = kirby.supprimerFicheLangue(racineArbreVal, slugCible, langue);
+      if (r.ok) {
+        kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId);
+        vscode.window.setStatusBarMessage(T('ressource.supprimee'), 5000);
+        await charger(panneau);
+        if (rafraichirTout) { rafraichirTout(); }
       }
       return;
     }
@@ -669,9 +767,16 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
     // Onglet Archive : lu à la demande seulement (ARCHIVE_CHARGER — première ouverture de
     // l'onglet — ou ARCHIVE_ACTUALISER — bouton « Actualiser »), jamais à charger(). Pas de
     // garde de verrou : c'est une LECTURE de la bibliothèque de production, jamais du numéro
-    // ouvert.
+    // ouvert. Le compte obtenu ici alimente aussi le badge de l'entrée Archive dans l'arbre
+    // (compteArchiveConnu, plus bas) — jamais une lecture à part pour l'arbre.
     if (msg.type === MSG.ARCHIVE_CHARGER || msg.type === MSG.ARCHIVE_ACTUALISER) {
-      repondrePanneau(panneau, construireReponseArchive());
+      const reponse = construireReponseArchive();
+      repondrePanneau(panneau, reponse);
+      if (reponse.ok) {
+        const change = dernierCompteArchive !== reponse.fiches.length;
+        dernierCompteArchive = reponse.fiches.length;
+        if (change && rafraichirTout) { rafraichirTout(); }
+      }
       return;
     }
     // L'image d'une fiche archivée, demandée à part (au clic sur l'aperçu) : jamais en bloc
@@ -748,7 +853,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
 module.exports = {
   configurer,
   ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe,
-  dossierArticleDoc,
+  dossierArticleDoc, compteArchiveConnu,
   // Les fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne sont pas
   // pures — elles lisent la langue et le contrat — et c'est précisément ce qu'il faut
   // éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige que

@@ -5,19 +5,24 @@
 // données factices réalistes et un shim `acquireVsCodeApi()` qui répond localement au lieu
 // d'un vrai hôte VSCodium — jamais de vscode-resource:, un simple fichier à ouvrir.
 //
-// Sert à juger le rendu des quatre onglets (Traductions à faire, Réservoir, Documentation du
-// numéro, Archive) sans ouvrir VSCodium — voir docs/notes de session « aperçu d'une webview
-// hors de l'éditeur » (WSL/Edge headless, capture PNG avant/après).
+// Sert à juger le rendu des vues (Documentation du numéro — par catégorie, Traductions à
+// faire, Réservoir, Archive) sans ouvrir VSCodium — voir docs/notes de session « aperçu
+// d'une webview hors de l'éditeur » (WSL/Edge headless, capture PNG avant/après). Depuis le
+// 23.09.2026, la page n'a plus de barre d'onglets ni de sommaire : la navigation est
+// simulée ici comme le ferait l'arbre (message ongletActiver), pas par un clic sur un bouton
+// qui n'existe plus.
 //
 // Usage :
 //   node outils-dev/apercu-documentation.js
-//   node outils-dev/apercu-documentation.js reservoir   (ouvre directement cet onglet)
+//   node outils-dev/apercu-documentation.js reservoir   (ouvre directement cette vue)
 //   node outils-dev/apercu-documentation.js traductions
-//   node outils-dev/apercu-documentation.js archive     (bibliothèque de production factice)
+//   node outils-dev/apercu-documentation.js archive     (bibliothèque de production factice, boutons en icônes)
+//   node outils-dev/apercu-documentation.js numero livre   (Documentation du numéro, catégorie « Livres » seule)
 //
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>"
 //   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>?onglet=reservoir"
+//   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>?onglet=numero&categorie=livre"
 'use strict';
 
 const fs = require('fs');
@@ -39,6 +44,7 @@ function textesDocumentation() {
     imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     retirerTip: T('ressource.retirer.tip'), supprimerTip: T('ressource.supprimer.tip'),
+    supprimerNumeroTip: T('ressource.supprimerNumero.tip'),
     sansTitre: T('ressource.sansTitre'), manque: T('ressource.manque'), optionVide: T('ressource.option.vide'),
     badgeIncomplet: T('doc.badge.incomplet'), badgeVide: T('doc.badge.vide'),
     sommaire: T('doc.sommaire'), groupeRubriques: T('doc.groupe.rubriques'), groupeFiches: T('doc.groupe.fiches'),
@@ -53,6 +59,7 @@ function textesDocumentation() {
     enregistrer: T('img.enregistrer'), enregistrerTip: T('doc.enregistrer.tip'),
     enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'), rienAEcrire: T('doc.rienAEcrire'),
     retour: T('img.retour'), retourTip: T('doc.retour.tip'),
+    apercu: T('doc.apercu'), apercuTip: T('doc.apercu.tip'),
     ongletTraductions: T('doc.onglet.traductions'), ongletReservoir: T('doc.onglet.reservoir'),
     ongletNumero: T('doc.onglet.numero'),
     traductionsVide: T('doc.traductions.vide'),
@@ -79,6 +86,7 @@ function textesDocumentation() {
     archiveAucunResultat: T('doc.archive.aucunResultat'),
     archiveSansNumero: T('doc.archive.sansNumero'),
     archiveReprendre: T('doc.archive.reprendre'), archiveReprendreTip: T('doc.archive.reprendre.tip'),
+    archiveEditerTip: T('doc.archive.editer.tip'),
     archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
     archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
     archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
@@ -131,7 +139,7 @@ function typesRessourceConfig(langue) {
   return kirby.typesConnus().map((type) => {
     const champFichier = kirby.champFichierDuType(type);
     return {
-      valeur: type, libelleSection: kirby.libelleType(type, langue),
+      valeur: type, libelleSection: kirby.libelleCockpitType(type, langue),
       libelleAjouter: T('ressource.ajouter.' + type), libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
       avecImage: !!champFichier, champFichier: champFichier,
       champs: kirby.champsDuType(type).map((c) => configChamp(c, langue))
@@ -336,10 +344,12 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '  window.addEventListener("load", function () {\n' +
   '    var params = new URLSearchParams(location.search);\n' +
   '    var onglet = params.get("onglet");\n' +
-  '    var index = { traductions: 0, reservoir: 1, numero: 2, archive: 3 }[onglet];\n' +
-  '    if (index === undefined) { return; }\n' +
-  '    var boutons = document.querySelectorAll("#onglets .doc-onglet");\n' +
-  '    if (boutons[index]) { boutons[index].click(); }\n' +
+  '    // Plus de barre d\'onglets à cliquer (23.09.2026) : la même bascule que l\'arbre\n' +
+  '    // enverrait à un panneau déjà ouvert (documentation-hote.js, MSG.ONGLET_ACTIVER).\n' +
+  '    if (onglet) {\n' +
+  '      window.dispatchEvent(new MessageEvent("message",\n' +
+  '        { data: { type: "ongletActiver", cle: onglet, categorie: params.get("categorie") || undefined } }));\n' +
+  '    }\n' +
   '    // ?onglet=reservoir&selection=1 : coche les deux premières lignes ACTIVES du\n' +
   '    // réservoir (jamais « Mes orphelines », qui a sa propre liste plus bas) pour montrer\n' +
   '    // la barre d\'actions en lot déjà active — sans quoi une capture d\'écran de l\'onglet\n' +
@@ -364,13 +374,19 @@ const cible = path.join(dossier, 'documentation.html');
 fs.writeFileSync(cible, htmlAutonome, 'utf8');
 
 const ongletDemande = process.argv[2] || '';
-const url = 'file:///' + cible.replace(/\\/g, '/') + (ongletDemande ? '?onglet=' + encodeURIComponent(ongletDemande) : '');
+const categorieDemandee = process.argv[3] || '';
+const paramsUrl = ongletDemande
+  ? '?onglet=' + encodeURIComponent(ongletDemande) + (categorieDemandee ? '&categorie=' + encodeURIComponent(categorieDemandee) : '')
+  : '';
+const url = 'file:///' + cible.replace(/\\/g, '/') + paramsUrl;
 console.log('Aperçu autonome écrit : ' + cible);
-console.log('URL (onglet par défaut « Documentation du numéro ») : file:///' + cible.replace(/\\/g, '/'));
-console.log('URL onglet Traductions à faire : file:///' + cible.replace(/\\/g, '/') + '?onglet=traductions');
-console.log('URL onglet Réservoir (+ Mes orphelines), sélection multiple déjà démontrée (2 lignes cochées) : '
+console.log('URL (vue par défaut « Documentation du numéro » sur « Rubriques ») : file:///' + cible.replace(/\\/g, '/'));
+console.log('URL vue Traductions à faire : file:///' + cible.replace(/\\/g, '/') + '?onglet=traductions');
+console.log('URL vue Réservoir (+ Mes orphelines), sélection multiple déjà démontrée (2 lignes cochées) : '
   + 'file:///' + cible.replace(/\\/g, '/') + '?onglet=reservoir');
 console.log('  … la même sans rien cocher : file:///' + cible.replace(/\\/g, '/') + '?onglet=reservoir&selection=0');
-console.log('URL onglet Archive (bibliothèque de production, ~20 fiches factices) : '
+console.log('URL Documentation du numéro, UNE catégorie de fiches (ex. Livres) : '
+  + 'file:///' + cible.replace(/\\/g, '/') + '?onglet=numero&categorie=livre');
+console.log('URL vue Archive (bibliothèque de production, ~20 fiches factices, boutons en icônes Reprendre/Aperçu/Éditer) : '
   + 'file:///' + cible.replace(/\\/g, '/') + '?onglet=archive');
-if (ongletDemande) { console.log('Onglet demandé sur la ligne de commande : ' + url); }
+if (ongletDemande) { console.log('Vue demandée sur la ligne de commande : ' + url); }

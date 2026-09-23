@@ -47,18 +47,21 @@ var TXT = {}, ctl = {}, cartes = [], sections = [], TYPES = [], TYPES_RUBRIQUE =
 var etatJeton = { jeton: null };
 var dernierModifie = false;
 var barre = document.getElementById('barre');
-var zoneOnglets = document.getElementById('onglets');
+var titreVue = document.getElementById('titreVue');
 var panelTraductions = document.getElementById('panel-traductions');
 var panelReservoir = document.getElementById('panel-reservoir');
 var panelNumero = document.getElementById('panel-numero');
 var panelArchive = document.getElementById('panel-archive');
 var zoneSections = document.getElementById('sections');
-var zoneSommaire = document.getElementById('sommaire');
 var compteurId = 0;
 var compteurIndex = 0;
-// L'onglet ouvert : mémorisé pour la session du panneau (jamais réinitialisé par rendre(),
-// rejoué à chaque charger()) — « Documentation du numéro » par défaut, comme demandé.
-var ongletActif = 'numero';
+// La navigation entière vit dans l'arbre (Robin, 23.09.2026) : plus de barre d'onglets dans
+// la page, plus de sommaire latéral — un seul panneau à la fois, choisi par l'hôte
+// (charger.vueInitiale au premier chargement, ongletActiver ensuite). « Documentation du
+// numéro » ouvre par défaut sur « Rubriques ». Mémorisé pour la session du panneau : jamais
+// réinitialisé par rendre(), rejoué à chaque charger().
+var vueOnglet = 'numero';
+var vueCategorie = 'rubriques';
 // L'onglet Archive : toute la bibliothèque de PRODUCTION, lue à la demande seulement — voir
 // assurerChargementArchive(). `images` met en cache l'aperçu d'une fiche par « type|slug »,
 // demandé une seule fois (ARCHIVE_IMAGE) même si l'aperçu se rouvre plusieurs fois dans la
@@ -285,7 +288,7 @@ function majEtatCarte(c) {
       c.ctl.badge.title = '';
     }
   }
-  majSommaire();
+  majCompteursSection();
 }
 
 // ---- Visibilité conditionnelle (`quand`) et champs dépendants (instruments) ------------
@@ -720,6 +723,13 @@ function construireFiche(section, ressource, persistee) {
   // jamais enregistrée, se retire simplement du DOM (voir retirerFiche).
   c.ctl.retirer = boutonIcone('bas', TXT.retirerTip || '', function () { retirerFiche(c); });
   tete.appendChild(c.ctl.retirer);
+  // Supprimer = effacement définitif, geste DISTINCT du précédent (icône et tooltip à part) —
+  // demandé sur « Documentation du numéro » (23.09.2026). L'hôte demande confirmation
+  // (modale native) avant d'agir ; une carte jamais enregistrée n'a rien à effacer, un
+  // simple retrait du DOM suffit (voir supprimerFicheCarte).
+  c.ctl.supprimer = boutonIcone('poubelle', TXT.supprimerNumeroTip || '',
+    function () { supprimerFicheCarte(c); }, 'szh-ico--danger');
+  tete.appendChild(c.ctl.supprimer);
 
   var corps = texte(s, 'div', 'doc-corps');
   corps.hidden = true;
@@ -747,8 +757,15 @@ function retirerFiche(c) {
     api.postMessage({ type: SZH.MSG.RETIRER, famille: 'fiche', id: c.id });
   }
   majPositions();
-  majSommaire();
+  majCompteursSection();
   majModifie();
+}
+// Supprimer une carte pour de bon : rien à optimiser côté DOM avant la réponse de l'hôte —
+// la confirmation est une modale NATIVE (côté hôte), le rédacteur peut annuler. Le panneau se
+// recharge entièrement sur la confirmation (documentation-hote.js), comme SUPPRIMER (orphelines).
+function supprimerFicheCarte(c) {
+  if (!c.persistee) { retirerFiche(c); return; }
+  api.postMessage({ type: SZH.MSG.SUPPRIMER_FICHE_NUMERO, id: c.id });
 }
 
 // ---- Une rubrique : un bloc, un seul, toujours là -------------------------------------
@@ -831,69 +848,25 @@ function construireSectionFiches(type) {
     var c = construireFiche(s, { id: nouvelId(), type: s.type, valeurs: {}, apercu: null }, false);
     conteneur.insertBefore(c.element, s.ajouter);
     ouvrirCarte(c, true);
-    majSommaire();
+    majCompteursSection();
     try { if (c.ctl.title) { c.ctl.title.focus(); } } catch (e) { /* pas focalisable */ }
   }, 'szh-bouton--principal doc-ajouter', type.libelleAjouterTip || '');
   conteneur.appendChild(s.ajouter);
   return s;
 }
 
-// ---- Le sommaire collant --------------------------------------------------------------
+// ---- Compteurs de section ---------------------------------------------------------------
+//
+// Le sommaire latéral a disparu (23.09.2026) : la navigation entre catégories vit dans
+// l'arbre, qui affiche déjà les mêmes comptes en face de chaque entrée — le répéter ici
+// aurait fait doublon (Robin). Seul le compteur posé sur l'en-tête de la section restante
+// (« Livres (2) », visible pendant qu'elle est affichée) survit.
 function compteCartes(famille, type) {
   var n = 0;
   for (var i = 0; i < cartes.length; i++) { if (cartes[i].famille === famille && cartes[i].type === type) { n++; } }
   return n;
 }
-function carteRubrique(type) {
-  for (var i = 0; i < cartes.length; i++) { if (cartes[i].famille === 'rubrique' && cartes[i].type === type) { return cartes[i]; } }
-  return null;
-}
-function construireSommaire() {
-  zoneSommaire.textContent = '';
-  var titre = texte(zoneSommaire, 'p', 'doc-sommaire-titre', TXT.sommaire || '');
-  titre.id = 'doc-sommaire-titre';
-  zoneSommaire.setAttribute('aria-labelledby', titre.id);
-  ctl.sommaireEntrees = [];
-  var liste = texte(zoneSommaire, 'ul', 'doc-sommaire-liste');
-  var groupe = function (libelle) { if (libelle) { texte(liste, 'li', 'doc-sommaire-groupe', libelle); } };
-  var entree = function (famille, type, libelle) {
-    var li = texte(liste, 'li', 'doc-sommaire-item');
-    var b = texte(li, 'button', 'doc-sommaire-lien');
-    b.type = 'button';
-    texte(b, 'span', 'doc-sommaire-nom', libelle);
-    var marque = texte(b, 'span', 'doc-sommaire-marque');
-    b.addEventListener('click', function () {
-      var cible = document.getElementById((famille === 'rubrique' ? 'sec-r-' : 'sec-f-') + type);
-      if (famille === 'rubrique') { var c = carteRubrique(type); if (c) { ouvrirCarte(c, true); } }
-      allerA(cible);
-    });
-    ctl.sommaireEntrees.push({ famille: famille, type: type, marque: marque });
-  };
-  if (TYPES_RUBRIQUE.length > 0) {
-    groupe(TXT.groupeRubriques);
-    for (var i = 0; i < TYPES_RUBRIQUE.length; i++) {
-      entree('rubrique', TYPES_RUBRIQUE[i].valeur, TYPES_RUBRIQUE[i].libelleSection || TYPES_RUBRIQUE[i].valeur);
-    }
-  }
-  if (TYPES.length > 0) {
-    groupe(TXT.groupeFiches);
-    for (var j = 0; j < TYPES.length; j++) { entree('fiche', TYPES[j].valeur, TYPES[j].libelleSection || TYPES[j].valeur); }
-  }
-}
-function majSommaire() {
-  for (var i = 0; i < (ctl.sommaireEntrees || []).length; i++) {
-    var e = ctl.sommaireEntrees[i];
-    if (e.famille === 'rubrique') {
-      var c = carteRubrique(e.type);
-      var vide = !c || champsManquants(c).length > 0;
-      e.marque.textContent = vide ? (TXT.badgeVide || '') : '';
-      e.marque.className = 'doc-sommaire-marque' + (vide ? ' doc-sommaire-marque--vide' : '');
-    } else {
-      var n = compteCartes('fiche', e.type);
-      e.marque.textContent = n > 0 ? String(n) : '';
-      e.marque.className = 'doc-sommaire-marque' + (n > 0 ? ' doc-sommaire-marque--compte' : '');
-    }
-  }
+function majCompteursSection() {
   for (var k = 0; k < sections.length; k++) {
     var s = sections[k];
     if (!s.compteur) { continue; }
@@ -902,11 +875,18 @@ function majSommaire() {
   }
 }
 
-// ---- Barre d'en-tête ------------------------------------------------------------------
+// ---- Barre d'en-tête, avec son bouton bascule « Aperçu du PDF » -----------------------
+//
+// Ouvre/ferme l'aperçu de CETTE page à côté (colonne voisine) — même mécanisme que celui
+// d'un article (documentation-hote.js#basculerApercuDocumentation). L'état affiché suit
+// TOUJOURS la réponse de l'hôte (apercuEtat, ou le champ apercuOuvert de charger()), jamais
+// une supposition côté page : l'aperçu peut se fermer à la croix, sans qu'aucun clic ici ne
+// le sache — c'est l'hôte qui le redit alors (onDidChangeViewState du panneau).
 function construireBarre() {
   ctl = SZH.construireBarre(barre, {
     txt: TXT,
     onEnregistrer: function () { enregistrer(false); },
+    onApercu: function () { api.postMessage({ type: SZH.MSG.APERCU_BASCULER }); },
     onRetour: function () {
       api.postMessage({
         type: SZH.MSG.RETOUR_ARTICLE, modifie: estModifie(),
@@ -914,6 +894,12 @@ function construireBarre() {
       });
     }
   });
+}
+// aria-pressed suffit : _design.css donne déjà le fond plein à .szh-bouton[aria-pressed="true"]
+// (même règle que les autres interrupteurs de la maison, media/_fiches.js#traductionsVisibles).
+function majApercuBascule(ouvert) {
+  if (!ctl.apercu) { return; }
+  ctl.apercu.setAttribute('aria-pressed', ouvert ? 'true' : 'false');
 }
 function trouverFiche(id) {
   for (var i = 0; i < cartes.length; i++) { if (cartes[i].famille === 'fiche' && cartes[i].id === id) { return cartes[i]; } }
@@ -1097,53 +1083,50 @@ function construireReservoir(parent, msg) {
   construireOrphelines(parent, Array.isArray(msg.orphelines) ? msg.orphelines : []);
 }
 
-// La barre d'onglets, avec un compteur sur les deux onglets qui ne sont pas ouverts par
-// défaut — le nombre d'éléments en attente de décision sur chacun.
-function construireOnglets(msg) {
-  zoneOnglets.textContent = '';
-  var nTraductions = Array.isArray(msg.traductions) ? msg.traductions.length : 0;
-  var nReservoir = (Array.isArray(msg.reservoir) ? msg.reservoir.length : 0)
-    + (Array.isArray(msg.orphelines) ? msg.orphelines.length : 0);
-  var defs = [
-    { cle: 'traductions', libelle: TXT.ongletTraductions || '', compte: nTraductions },
-    { cle: 'reservoir', libelle: TXT.ongletReservoir || '', compte: nReservoir },
-    { cle: 'numero', libelle: TXT.ongletNumero || '', compte: 0 },
-    // Le compteur dit le nombre TOTAL de fiches (pas « en attente » comme les deux
-    // précédents) — 0 tant que la bibliothèque de production n'a pas encore été lue.
-    { cle: 'archive', libelle: TXT.ongletArchive || '', compte: archiveEtat.fiches.length }
-  ];
-  ctl.onglets = {};
-  defs.forEach(function (d) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'doc-onglet';
-    b.setAttribute('role', 'tab');
-    texte(b, 'span', 'doc-onglet-libelle', d.libelle);
-    if (d.compte > 0) { texte(b, 'span', 'doc-onglet-compte', String(d.compte)); }
-    b.addEventListener('click', function () { ongletActif = d.cle; appliquerOnglet(); });
-    zoneOnglets.appendChild(b);
-    ctl.onglets[d.cle] = b;
-  });
-  appliquerOnglet();
+// Le libellé de la catégorie affichée dans « Documentation du numéro » : « Rubriques » ou
+// le libelleSection du type de fiche visé (typesConfig, transmis par charger()).
+function libelleCategorieNumero() {
+  if (vueCategorie === 'rubriques') { return TXT.groupeRubriques || ''; }
+  var t = TYPES.filter(function (x) { return x.valeur === vueCategorie; })[0];
+  return t ? (t.libelleSection || t.valeur) : '';
 }
-// Bascule la visibilité des quatre panneaux et l'état visuel des onglets, sans rien
-// reconstruire — appelée après chaque rendre() et à chaque clic d'onglet. Déclenche aussi la
-// lecture (une fois) de la bibliothèque de production dès qu'on arrive sur Archive.
-function appliquerOnglet() {
-  panelTraductions.hidden = ongletActif !== 'traductions';
-  panelReservoir.hidden = ongletActif !== 'reservoir';
-  panelNumero.hidden = ongletActif !== 'numero';
-  panelArchive.hidden = ongletActif !== 'archive';
-  // Le sommaire ne décrit que « Documentation du numéro » (rubriques + fiches) : il n'a rien
-  // à dire sur les trois autres onglets.
-  zoneSommaire.hidden = ongletActif !== 'numero';
-  for (var cle in ctl.onglets) {
-    if (!Object.prototype.hasOwnProperty.call(ctl.onglets, cle)) { continue; }
-    var actif = cle === ongletActif;
-    ctl.onglets[cle].classList.toggle('doc-onglet--actif', actif);
-    ctl.onglets[cle].setAttribute('aria-selected', actif ? 'true' : 'false');
+// Dans « Documentation du numéro », UNE SEULE catégorie à la fois (Robin, 23.09.2026) :
+// toutes les cartes de rubrique se cachent sauf en catégorie 'rubriques', toutes les
+// sections de fiches se cachent sauf celle dont le type est visé — jamais une reconstruction,
+// juste un .hidden, comme le reste de la page.
+function appliquerFiltreNumero() {
+  for (var i = 0; i < cartes.length; i++) {
+    var c = cartes[i];
+    if (c.famille === 'rubrique') { c.element.hidden = vueCategorie !== 'rubriques'; }
   }
-  if (ongletActif === 'archive') { assurerChargementArchive(); }
+  for (var k = 0; k < sections.length; k++) {
+    var s = sections[k];
+    var visible = vueCategorie === s.type;
+    s.element.hidden = !visible;
+    s.corps.hidden = !visible;
+  }
+}
+// Bascule la visibilité des quatre panneaux et pose le titre de la vue choisie — appelée
+// après chaque rendre() et à chaque message ongletActiver (l'arbre, panneau déjà ouvert).
+// Toute la navigation vit désormais dans l'arbre : la page n'a plus de barre d'onglets ni de
+// sommaire latéral (l'un faisait doublon avec l'autre). Déclenche aussi la lecture (une
+// fois) de la bibliothèque de production dès qu'on arrive sur Archive.
+function appliquerVue() {
+  panelTraductions.hidden = vueOnglet !== 'traductions';
+  panelReservoir.hidden = vueOnglet !== 'reservoir';
+  panelNumero.hidden = vueOnglet !== 'numero';
+  panelArchive.hidden = vueOnglet !== 'archive';
+  if (vueOnglet === 'numero') { appliquerFiltreNumero(); }
+  var titre;
+  if (vueOnglet === 'traductions') { titre = TXT.ongletTraductions || ''; }
+  else if (vueOnglet === 'reservoir') { titre = TXT.ongletReservoir || ''; }
+  else if (vueOnglet === 'archive') { titre = TXT.ongletArchive || ''; }
+  else {
+    var categorieLibelle = libelleCategorieNumero();
+    titre = (TXT.ongletNumero || '') + (categorieLibelle ? ' — ' + categorieLibelle : '');
+  }
+  titreVue.textContent = titre;
+  if (vueOnglet === 'archive') { assurerChargementArchive(); }
 }
 
 // ---- Onglet Archive : toute la bibliothèque de PRODUCTION, lecture seule --------------
@@ -1338,6 +1321,9 @@ function reprendreArchive(f, boutonReprendre) {
   api.postMessage({ type: SZH.MSG.ARCHIVE_REPRENDRE, ficheType: f.type, slug: f.slug });
 }
 
+// Trois icônes, dans cet ordre (Robin, 23.09.2026) — plus de boutons texte : Reprendre
+// (flèche, agit), Aperçu (oeil, agit), Éditer (crayon, grisé « à venir » — rien ne branche
+// encore l'édition d'une fiche archivée).
 function rendreListeArchive(zoneListe) {
   zoneListe.textContent = '';
   var visibles = archiveEtat.fiches.filter(ficheCorrespondFiltresArchive);
@@ -1348,12 +1334,16 @@ function rendreListeArchive(zoneListe) {
     texte(ligneEl, 'span', 'doc-vue-origine', numerosLigneArchive(f));
     var corps = texte(item, 'div', 'doc-corps doc-archive-corps');
     corps.hidden = true;
-    var boutonApercu = bouton(TXT.archiveApercuTitre || '', function () { basculerApercuArchive(f, corps); }, 'doc-vue-bouton', '');
-    ligneEl.appendChild(boutonApercu);
-    var boutonReprendre = bouton(TXT.archiveReprendre || '', function () { reprendreArchive(f, boutonReprendre); },
-      'doc-vue-bouton doc-archive-reprendre', TXT.archiveReprendreTip || '');
+    var boutonReprendre = boutonIcone('fleche', TXT.archiveReprendreTip || '',
+      function () { reprendreArchive(f, boutonReprendre); }, 'doc-archive-reprendre');
     boutonReprendre.disabled = archiveEtat.repriseEnCours;
     ligneEl.appendChild(boutonReprendre);
+    var boutonApercu = boutonIcone('oeil', TXT.archiveApercuTitre || '',
+      function () { basculerApercuArchive(f, corps); }, 'doc-archive-apercu');
+    ligneEl.appendChild(boutonApercu);
+    var boutonEditer = boutonIcone('crayon', TXT.archiveEditerTip || '', function () {}, 'doc-archive-editer');
+    boutonEditer.disabled = true;
+    ligneEl.appendChild(boutonEditer);
     item.appendChild(corps);
   });
 }
@@ -1408,12 +1398,10 @@ function rendre(msg) {
   zoneSections.textContent = '';
   cartes = [];
   sections = [];
-  construireOnglets(msg);
   construireTraductions(panelTraductions, Array.isArray(msg.traductions) ? msg.traductions : []);
   construireReservoir(panelReservoir, msg);
   TYPES = Array.isArray(msg.typesConfig) ? msg.typesConfig : [];
   TYPES_RUBRIQUE = Array.isArray(msg.typesRubrique) ? msg.typesRubrique : [];
-  construireSommaire();
 
   var rubriques = Array.isArray(msg.rubriques) ? msg.rubriques : [];
   for (var i = 0; i < TYPES_RUBRIQUE.length; i++) {
@@ -1434,7 +1422,8 @@ function rendre(msg) {
   }
   dernierModifie = false;
   etat('');
-  majSommaire();
+  majCompteursSection();
+  appliquerVue();
   majModifie();
 }
 
@@ -1472,7 +1461,31 @@ window.addEventListener('message', function (ev) {
     SZH.appliquerLimites(msg.limites);
     IMAGE = imageDepot();
     if (msg.i18n) { TXT = msg.i18n; construireBarre(); }
+    // La vue demandée par une entrée de l'arbre (extension.js#_itemsActualite /
+    // _itemsDocumentationNumero), portée par l'hôte SEULEMENT sur ce tout premier « charger »
+    // (documentation-hote.js#ouvrirDocumentation ne la pose qu'au premier « pret »). Absente
+    // sur tout rechargement suivant — vueOnglet/vueCategorie restent alors ce qui était
+    // affiché, comme le veut le commentaire au-dessus de ces variables.
+    if (msg.vueInitiale && msg.vueInitiale.onglet) {
+      vueOnglet = String(msg.vueInitiale.onglet);
+      vueCategorie = String(msg.vueInitiale.categorie || 'rubriques');
+    }
     rendre(msg);
+    majApercuBascule(!!msg.apercuOuvert);
+    return;
+  }
+  // Un panneau DÉJÀ OUVERT qu'une entrée de l'arbre rappelle sur une autre vue — jamais un
+  // rechargement, juste la bascule (documentation-hote.js#ouvrirDocumentation).
+  if (msg.type === SZH.MSG.ONGLET_ACTIVER) {
+    vueOnglet = String(msg.cle || 'numero');
+    vueCategorie = String(msg.categorie || 'rubriques');
+    appliquerVue();
+    return;
+  }
+  // L'état réel du bouton « Aperçu du PDF » — réponse à APERCU_BASCULER, ou poussé tout seul
+  // quand ce panneau redevient actif (l'aperçu peut s'être fermé à la croix entre-temps).
+  if (msg.type === SZH.MSG.APERCU_ETAT) {
+    majApercuBascule(!!msg.ouvert);
     return;
   }
   if (msg.type === SZH.MSG.ENREGISTRE) {

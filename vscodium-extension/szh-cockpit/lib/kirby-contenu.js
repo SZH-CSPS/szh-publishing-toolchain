@@ -89,6 +89,15 @@ function libelleType(type, langue) {
   if (!def) { return type; }
   return def.libelle[langue] || def.libelle.fr || type;
 }
+// libelleCockpitType() : le libellé COURT réservé au cockpit (arbre, formulaire) quand le
+// contrat en porte un (types[].libelleCourt — « Agenda », p. ex., là où libelle imprime
+// « Agenda et formation continue ») ; repli sur libelleType() sinon. Jamais un libellé en
+// dur : l'arbre et le formulaire passent tous deux par cette fonction.
+function libelleCockpitType(type, langue) {
+  const def = definitionType(type);
+  if (def && def.libelleCourt) { return def.libelleCourt[langue] || def.libelleCourt.fr || libelleType(type, langue); }
+  return libelleType(type, langue);
+}
 function libelleLienType(type, langue, titre) {
   const def = definitionType(type);
   if (!def || !def.libelleLien) { return String(titre || ''); }
@@ -916,13 +925,16 @@ function traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) {
   return { ok: true, uuid: source.uuid };
 }
 
-// supprimerFicheOrpheline(racineArbreVal, slug, langue) -> { ok } : ôte le fichier de SA
-// langue ; le dossier entier (image comprise) s'il n'en reste aucun. Refuse sur une fiche
-// encore rattachée — la suppression n'est possible que pour une orpheline.
-function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
+// supprimerFicheLangue(racineArbreVal, slug, langue) -> { ok, autreLangueRestante } : ôte le
+// fichier de SA langue ; le dossier entier (image comprise) s'il n'en reste aucune. AUCUNE
+// condition d'attache ici — c'est à l'appelant de décider quand ce geste est permis :
+// supprimerFicheOrpheline() (ci-dessous) le restreint aux orphelines ; le message
+// SUPPRIMER_FICHE_NUMERO (documentation-hote.js) l'autorise explicitement sur une carte de
+// « Documentation du numéro », rattachée ou non — geste distinct de detacherFiche(), qui ne
+// fait que vider l'Ausgabe.
+function supprimerFicheLangue(racineArbreVal, slug, langue) {
   const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
   if (!f) { return { ok: false }; }
-  if (f.ausgabe) { return { ok: false, raison: 'rattachee' }; }
   const cheminSlug = cheminFiche(racineArbreVal, f.type, slug);
   const nomFichier = nomFichierContenu(f.type, langue);
   try { fs.unlinkSync(path.join(cheminSlug, nomFichier)); } catch (e) { return { ok: false }; }
@@ -932,7 +944,17 @@ function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
   if (!autreLangueRestante) {
     try { fs.rmSync(cheminSlug, { recursive: true, force: true }); } catch (e) { /* déjà parti */ }
   }
-  return { ok: true };
+  return { ok: true, autreLangueRestante: autreLangueRestante };
+}
+
+// supprimerFicheOrpheline(racineArbreVal, slug, langue) -> { ok } : le même geste, mais
+// refuse sur une fiche encore rattachée — la suppression depuis « Mes orphelines » n'est
+// possible que pour une orpheline (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
+  const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  if (!f) { return { ok: false }; }
+  if (f.ausgabe) { return { ok: false, raison: 'rattachee' }; }
+  return supprimerFicheLangue(racineArbreVal, slug, langue);
 }
 
 // reordonnerNumero(racineArbreVal, langue, ausgabeId) -> { total } : recalcule le champ
@@ -1141,7 +1163,7 @@ function lireDocumentation(dossierArticle, racineArbreVal, langue, ausgabeId) {
 module.exports = {
   // Contrat
   chargerContrat, oublierContrat, cheminDuContrat, contrat,
-  typeConnu, typesConnus, definitionType, champsDuType, champDuType, libelleType, libelleLienType,
+  typeConnu, typesConnus, definitionType, champsDuType, champDuType, libelleType, libelleCockpitType, libelleLienType,
   champFichierDuType, rubriquesDuContrat, rubriquesPourRevue, valeursListe,
   languesDuContrat, autresLangues,
   // Validation
@@ -1170,7 +1192,7 @@ module.exports = {
   listerSlugsBibliotheque, lireFicheSlugLangue, trouverSlugParUuid,
   creerFiche, enregistrerFicheLangue, detacherFiche, tirerDansNumero, traduireDansNumero,
   reprendreDansNumero,
-  supprimerFicheOrpheline, reordonnerNumero, listerFichesNumero, listerOrphelines,
+  supprimerFicheOrpheline, supprimerFicheLangue, reordonnerNumero, listerFichesNumero, listerOrphelines,
   listerBibliothequeComplete,
   installerImage,
   // Statuts de traduction

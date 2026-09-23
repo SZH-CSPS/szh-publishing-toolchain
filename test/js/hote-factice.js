@@ -242,7 +242,11 @@ function activerHote(revue) {
       },
       reveal() {}, dispose() { if (p.onDispose) { p.onDispose(); } },
       onDidDispose(f) { p.onDispose = f; return { dispose() {} }; },
-      onDidChangeViewState: evenement()
+      // Un vrai émetteur, pas evenement() (qui jette le gestionnaire) : le bouton « Aperçu
+      // du PDF » de la Documentation (documentation-hote.js) s'en sert pour redire son état
+      // quand ce panneau redevient actif — un test doit pouvoir simuler ce réveil
+      // (p.onDidChangeViewState.emettre({ webviewPanel: { active: true } })).
+      onDidChangeViewState: emetteur()
     };
     panneaux.push(p);
     return p;

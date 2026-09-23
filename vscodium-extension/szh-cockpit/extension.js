@@ -301,6 +301,12 @@ documentationHote.configurer({
   revueCourante: (racine) => revueCourante(racine),
   nomRevueAffiche: (revue) => nomRevueAffiche(revue),
   convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
+  // Le bouton « Aperçu du PDF » de son formulaire (23.09.2026) : bascule, état, et
+  // rafraîchissement après « Enregistrer » — voir apercuOuvertPourSlug/
+  // basculerApercuDocumentation/rafraichirApercuDocumentationSiOuvert plus bas.
+  apercuOuvert: (racine, slug) => apercuOuvertPourSlug(racine, slug),
+  basculerApercu: (fournisseur, slug) => basculerApercuDocumentation(fournisseur, slug),
+  rafraichirApercuSiOuvert: (fournisseur, slug) => rafraichirApercuDocumentationSiOuvert(fournisseur, slug),
   repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- Co-édition d'un même numéro -> lib/coedition.js, lib/copies-conflit.js -------
@@ -931,6 +937,7 @@ class FournisseurRevue {
     }
     if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
     if (element.categorie === 'actualite') { return this._itemsActualite(); }
+    if (element.categorie === 'actualite-numero') { return this._itemsDocumentationNumero(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
     if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
@@ -1037,12 +1044,98 @@ class FournisseurRevue {
       'arbre.vide.' + profilCourant().unites.dossier);
   }
 
-  // La section « Actualité » n'a plus d'enfant à lister : la page de Documentation ne s'y
-  // liste plus (cliquer l'en-tête ouvre directement son formulaire, qui se crée au besoin —
-  // ouvrirPageDocumentation), et les fiches vivent toutes dans la bibliothèque partagée
-  // (_NewsUndActu\Fiches\), plus dans une réserve accrochée à l'arbre du numéro.
+  // La section « Actualité » ne liste plus la page de Documentation elle-même — les fiches
+  // vivent toutes dans la bibliothèque partagée (_NewsUndActu\Fiches\), plus dans une réserve
+  // accrochée à l'arbre du numéro — mais des raccourcis vers ses vues (Robin, 23.09.2026,
+  // révisé le même jour : toute la navigation passe désormais par l'arbre, la page n'a plus
+  // sa propre barre d'onglets). Ordre : « Documentation du numéro » (elle-même dépliable, voir
+  // _itemsDocumentationNumero), « Traductions à faire », « Réservoir », « Archive », puis
+  // « Publier sur le site web » grisée (pas encore livré — sans commande, donc jamais
+  // cliquable). Cliquer une entrée ouvre le formulaire DIRECTEMENT sur cette vue
+  // (ouvrirPageDocumentation, qui crée la page au besoin) ; si le panneau est déjà ouvert, il
+  // se met au premier plan et bascule dessus — voir documentation-hote.js#ouvrirDocumentation.
+  //
+  // Les compteurs reprennent EXACTEMENT les fonctions des badges d'onglet du formulaire
+  // (kirby-contenu.js : listerTraductionsATraire, listerReservoir + listerOrphelines) —
+  // calcul léger, sur l'arbre local. L'Archive n'a PAS de compteur tant qu'aucun panneau n'a
+  // encore lu la bibliothèque de PRODUCTION (documentation-hote.js#compteArchiveConnu) :
+  // l'arbre ne doit jamais payer cet aller-retour OneDrive lui-même, seulement reprendre le
+  // dernier chiffre connu.
   _itemsActualite() {
-    return [];
+    if (!this.racine) { return []; }
+    const racineArbreVal = kirbyLib.racineArbre(this.racine);
+    const langue = langueRevue(this.racine);
+    const nTraductions = kirbyLib.listerTraductionsATraire(racineArbreVal, langue).length;
+    const nReservoir = kirbyLib.listerReservoir(racineArbreVal, langue, { avecIgnorees: false }).length
+      + kirbyLib.listerOrphelines(racineArbreVal, langue).length;
+    const nBlocs = compterBlocsDocumentation(this.racine, this.slugDocumentation());
+    const nArchive = documentationHote.compteArchiveConnu();
+    const entrees = [
+      { cle: 'numero', libelle: T('doc.onglet.numero'), icone: 'book', compte: nBlocs,
+        tip: T('arbre.actualite.numero.tip'), enfants: 'actualite-numero' },
+      { cle: 'traductions', libelle: T('doc.onglet.traductions'), icone: 'globe',
+        compte: nTraductions, tip: T('arbre.actualite.traductions.tip') },
+      { cle: 'reservoir', libelle: T('doc.onglet.reservoir'), icone: 'inbox',
+        compte: nReservoir, tip: T('arbre.actualite.reservoir.tip') },
+      { cle: 'archive', libelle: T('doc.onglet.archive'), icone: 'archive',
+        compte: nArchive, tip: T('arbre.actualite.archive.tip') }
+    ];
+    const items = entrees.map((e) => {
+      const it = new vscode.TreeItem(e.libelle, e.enfants
+        ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+      it.id = 'actualite:' + e.cle;
+      if (e.enfants) { it.categorie = e.enfants; }
+      it.contextValue = 'actualite-entree';
+      it.iconPath = new vscode.ThemeIcon(e.icone);
+      if (typeof e.compte === 'number' && e.compte > 0) { it.description = '(' + e.compte + ')'; }
+      it.tooltip = e.tip;
+      it.command = { command: 'szh.ouvrirActualite', title: e.libelle,
+        arguments: e.cle === 'numero' ? ['numero', 'rubriques'] : [e.cle] };
+      return it;
+    });
+    // « Publier sur le site web » : grisée, pas cliquable — pas encore livré. Aucune
+    // .command posée : un TreeItem sans commande ne réagit à aucun clic, exactement le
+    // contrat de « désactivé » ici (VS Code n'a pas d'état disabled sur un TreeItem).
+    const publier = new vscode.TreeItem(T('arbre.actualite.publier'), vscode.TreeItemCollapsibleState.None);
+    publier.id = 'actualite:publier';
+    publier.contextValue = 'actualite-entree-desactivee';
+    publier.iconPath = new vscode.ThemeIcon('circle-large-outline');
+    publier.tooltip = T('arbre.actualite.publier.tip');
+    items.push(publier);
+    return items;
+  }
+
+  // Les enfants de « Documentation du numéro » : « Rubriques » (les 4 champs de texte long
+  // du numéro — Ressources n'y figure que pour la Revue, rubriquesPourRevue() le filtre déjà)
+  // puis une entrée par type de fiche du contrat, dans l'ordre ordreTypes, avec le compte de
+  // fiches de CE type rattachées à ce numéro. Cliquer une catégorie ouvre le formulaire sur
+  // « Documentation du numéro » en n'affichant QUE elle (media/documentation.js#vueCategorie).
+  _itemsDocumentationNumero() {
+    if (!this.racine) { return []; }
+    const racineArbreVal = kirbyLib.racineArbre(this.racine);
+    const langue = langueRevue(this.racine);
+    const ausgabeIdVal = idNumero(this.racine);
+    const fiches = ausgabeIdVal ? kirbyLib.listerFichesNumero(racineArbreVal, langue, ausgabeIdVal) : [];
+    const entrees = [
+      { categorie: 'rubriques', libelle: T('doc.groupe.rubriques'), icone: 'checklist' }
+    ];
+    for (const type of kirbyLib.typesConnus()) {
+      entrees.push({
+        // Le libellé COURT réservé au cockpit s'il existe (contrat, types[].libelleCourt —
+        // « Agenda », Robin), jamais libelleType (le long, imprimé) en dur ici.
+        categorie: type, libelle: kirbyLib.libelleCockpitType(type, langue), icone: 'file',
+        compte: fiches.filter((f) => f.type === type).length
+      });
+    }
+    return entrees.map((e) => {
+      const it = new vscode.TreeItem(e.libelle, vscode.TreeItemCollapsibleState.None);
+      it.id = 'actualite:numero:' + e.categorie;
+      it.contextValue = 'actualite-numero-entree';
+      it.iconPath = new vscode.ThemeIcon(e.icone);
+      if (typeof e.compte === 'number' && e.compte > 0) { it.description = '(' + e.compte + ')'; }
+      it.command = { command: 'szh.ouvrirActualite', title: e.libelle, arguments: ['numero', e.categorie] };
+      return it;
+    });
   }
 
   // Le slug de la page de Documentation du numéro : la première unité de type
@@ -2197,6 +2290,99 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   await fermerApercuCourant(pdf);
   await ouvrirApercuPdf(pdf);
   session.poserApercuCourantUri(pdf);
+}
+
+// ---- Aperçu de la page de Documentation (bouton dédié « Aperçu du PDF » de son formulaire,
+// documentation-hote.js/media/documentation.js, 23.09.2026) --------------------------------
+//
+// Même mécanisme que celui d'un article (ouvrirApercuHtml/ouvrirApercuPdf/compilerPuisAfficher,
+// session.apercuCourantSlug) — mais la Documentation n'a pas de .md source à comparer à un
+// aperçu existant : elle dépend de toute la bibliothèque de fiches partagée, un graphe trop
+// large à surveiller ici. Plutôt que deviner une obsolescence, ouvrir recompile TOUJOURS
+// (compilerPuisAfficher, la même garde session.buildEnCours()/importEnCours() qu'ailleurs) —
+// son slug est déjà celui de toute unité Documentation (SLUG_DOCUMENTATION, kirby-contenu.js
+// et le Makefile la compilent comme n'importe quel article, via out/<slug>/…).
+//
+// « Ouvert pour CE slug » : une question posée à l'état RÉEL (session.panneauApercuHtml()/
+// apercuCourantSlug() en HTML — déjà tenus à jour par le onDidDispose de ouvrirApercuHtml ;
+// ongletOuvert() sur le tabGroups réel en PDF) plutôt qu'une variable à soi : un aperçu se
+// ferme aussi à la croix, et documentation-hote.js n'a pas d'autre moyen de le savoir.
+function apercuOuvertPourSlug(racine, slug) {
+  if (!racine || !slug) { return false; }
+  if (modeApercu() === 'html') {
+    return !!session.panneauApercuHtml() && session.apercuCourantSlug() === slug;
+  }
+  const pdf = path.join(racine, 'out', slug, slug + '.pdf').toLowerCase();
+  return ongletOuvert((e) => e && e.uri && String(e.uri.fsPath || '').toLowerCase() === pdf);
+}
+
+// L'ouverture recompile elle-même (lancerBuild), comme la branche « obsolète » de
+// ouvrirArticle — PAS via compilerPuisAfficher : cette dernière n'affiche que si un panneau
+// existe DÉJÀ (elle sert à rafraîchir un aperçu déjà ouvert, jamais à en ouvrir un premier),
+// ce qui serait toujours faux ici au premier clic.
+async function basculerApercuDocumentation(fournisseur, slug) {
+  const racine = fournisseur.racine;
+  if (!racine || !slug) { return; }
+  if (apercuOuvertPourSlug(racine, slug)) {
+    if (modeApercu() === 'html') {
+      fermerApercuHtml();
+      if (session.apercuCourantSlug() === slug) { session.poserApercuCourantSlug(null); }
+    } else {
+      await fermerApercuCourant(null);
+    }
+    return;
+  }
+  session.poserApercuCourantSlug(slug);
+  if (session.buildEnCours() || session.importEnCours()) {
+    // Une compilation tourne déjà pour autre chose : montrer ce qui existe en attendant,
+    // comme ouvrirArticle sur ce même cas.
+    if (modeApercu() === 'html') {
+      if (session.apercuCourantUri()) { await fermerApercuCourant(null); }
+      ouvrirApercuHtml(fournisseur, slug, true);
+    }
+    return;
+  }
+  if (compilationAutoCoupee()) {
+    // Numéro gelé : rien ne se compile, on montre ce qui existe déjà — comme ouvrirArticle.
+    if (modeApercu() === 'html') { ouvrirApercuHtml(fournisseur, slug); }
+    else {
+      const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
+      if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); session.poserApercuCourantUri(pdf); }
+    }
+    return;
+  }
+  session.poserBuildEnCours(true);
+  const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+  let code = null;
+  try {
+    code = await lancerBuild(racine);
+  } finally {
+    statut.dispose();
+    session.poserBuildEnCours(false);
+  }
+  if (code === null) { return; }                 // tâche introuvable, déjà signalé
+  if (code !== 0) { avertirEchecCompilation('err.build'); return; }
+  if (session.apercuCourantSlug() !== slug) { return; }   // fermé/changé pendant la compilation
+  if (modeApercu() === 'html') {
+    if (session.apercuCourantUri()) { await fermerApercuCourant(null); }
+    ouvrirApercuHtml(fournisseur, slug);
+    return;
+  }
+  const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
+  if (!fs.existsSync(pdf.fsPath)) { return; }
+  fermerApercuHtml();
+  await fermerApercuCourant(pdf);
+  await ouvrirApercuPdf(pdf);
+  session.poserApercuCourantUri(pdf);
+}
+
+// Après « Enregistrer » sur la Documentation : si son aperçu est déjà ouvert, il se
+// rafraîchit tout seul — même chemin que ci-dessus à l'ouverture, via le garde-fou déjà posé
+// dans compilerPuisAfficher (n'affiche que si session.apercuCourantSlug() vaut encore ce slug
+// à la fin de la compilation : un aperçu fermé ou changé entre-temps ne rouvre pas tout seul).
+async function rafraichirApercuDocumentationSiOuvert(fournisseur, slug) {
+  if (!apercuOuvertPourSlug(fournisseur.racine, slug)) { return; }
+  await compilerPuisAfficher(fournisseur, slug);
 }
 
 // ---- Import guidé ----------------------------------------------------------------
@@ -6887,6 +7073,12 @@ function activate(context) {
     // (voir ouvrirPageDocumentation).
     // Comme « reglages » : aucun constat ne vise « documentation » avec un focus utile.
     cmd('szh.documentation', (item) => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
+    // Les raccourcis de la section ACTUALITÉ (_itemsActualite / _itemsDocumentationNumero) :
+    // même formulaire, ouvert directement sur la vue visée — jamais une commande de palette,
+    // elle ne porte pas d'entrée package.json (comme szh.ouvrirSection, dont elle est la
+    // variante ciblée). `categorie` ne compte que pour l'onglet 'numero'.
+    cmd('szh.ouvrirActualite', (onglet, categorie) => ouvrirPageDocumentation(
+      fournisseur, rafraichirTout, String(onglet || ''), categorie ? String(categorie) : undefined)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

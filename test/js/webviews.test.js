@@ -1536,7 +1536,7 @@ function configFiches() {
   return kirby.typesConnus().map((type) => {
     const champFichier = kirby.champFichierDuType(type);
     return {
-      valeur: type, libelleSection: kirby.libelleType(type, 'fr'),
+      valeur: type, libelleSection: kirby.libelleCockpitType(type, 'fr'),
       libelleAjouter: T('ressource.ajouter.' + type), libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
       avecImage: !!champFichier, champFichier: champFichier,
       champs: kirby.champsDuType(type).map((c) => configChamp(c, 'fr'))
@@ -1602,6 +1602,16 @@ test('documentation : les rubriques d’abord, les catégories de fiches ensuite
   assert.ok(page.textes().some((t) => t === titrePodcasts),
     'le titre de la rubrique devrait être son en-tête : ' + page.textes().join(' | '));
   assert.ok(txt.badgeVide && txt.badgeIncomplet, 'les deux pastilles doivent être fournies');
+});
+
+// Le contrat porte un libellé COURT pour certains types (types[].libelleCourt) — « Agenda »,
+// jamais « Agenda et formation continue » (le titre imprimé) dans le cockpit (Robin, 23.09.2026).
+test('documentation : la section « agenda » affiche le libellé COURT du contrat, pas le titre imprimé', () => {
+  const rangAgenda = configFiches().findIndex((t) => t.valeur === 'agenda');
+  assert.ok(rangAgenda !== -1, 'le type agenda doit exister dans le contrat');
+  const libelleAgenda = configFiches()[rangAgenda].libelleSection;
+  assert.strictEqual(libelleAgenda, 'Agenda');
+  assert.notStrictEqual(libelleAgenda, kirby.libelleType('agenda', 'fr'));
 });
 
 test('documentation : rien ne dépasse d’une carte repliée — lien et image compris', () => {
@@ -1817,24 +1827,17 @@ test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubri
     'le markdown de la rubrique doit repartir au caractère près');
 });
 
-test('documentation : le sommaire dit la structure, et compte ce qu’il y a', () => {
-  const { page, txt } = pageDocumentation();
-  const nbRubriques = configRubriques().length;
-  const nbTypes = configFiches().length;
-  const sommaire = page.parId.sommaire;
-  const entrees = sommaire.querySelectorAll('.doc-sommaire-lien');
-  assert.strictEqual(entrees.length, nbRubriques + nbTypes, 'une entrée par rubrique et par catégorie de fiches');
-  const groupes = sommaire.querySelectorAll('.doc-sommaire-groupe');
-  assert.strictEqual(groupes.map((g) => g.textContent).join('|'),
-    [txt.groupeRubriques, txt.groupeFiches].join('|'));
-  // Les marques : le nombre de fiches d'une catégorie, « vide » pour une rubrique à écrire.
-  const marques = sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
-  assert.strictEqual(marques.filter((m) => m === txt.badgeVide).length, nbRubriques - 1,
-    'les rubriques vides doivent se voir depuis le sommaire : ' + marques.join(', '));
-  assert.strictEqual(marques.filter((m) => m === '2').length, 1, 'deux livres');
-  assert.strictEqual(marques.filter((m) => m === '1').length, 1, 'une intervention');
-  // Le <nav> tire son nom du titre affiché, sans le répéter dans un aria-label.
-  assert.strictEqual(sommaire.getAttribute('aria-labelledby'), 'doc-sommaire-titre');
+// Le sommaire latéral a disparu (23.09.2026) : la navigation entre catégories vit dans
+// l'arbre (test/js/actualite.test.js), qui affiche déjà les mêmes comptes. Seul le compteur
+// posé sur l'en-tête de CHAQUE section de fiches survit — à jour dès le chargement, que la
+// catégorie soit la vue affichée ou non (une seule l'est à la fois, appliquerFiltreNumero).
+test('documentation : le compteur de chaque section de fiches est à jour dès le chargement', () => {
+  const { page } = pageDocumentation();
+  const rangLivre = configFiches().findIndex((t) => t.valeur === 'livre');
+  const rangIntervention = configFiches().findIndex((t) => t.valeur === 'intervention');
+  const titres = page.conteneur().querySelectorAll('.doc-titre-fiches');
+  assert.strictEqual(titres[rangLivre].querySelector('.doc-compte-section').textContent, '(2)', 'deux livres');
+  assert.strictEqual(titres[rangIntervention].querySelector('.doc-compte-section').textContent, '(1)', 'une intervention');
 });
 
 test('documentation : ouvrir une carte referme les autres, et une seule reste ouverte', () => {
@@ -1857,6 +1860,48 @@ test('documentation : ouvrir une carte referme les autres, et une seule reste ou
   assert.strictEqual(corps.filter((c) => c.hidden === false).length, 0);
 });
 
+// « Retirer du numéro » (rendre orpheline) et « Supprimer » (effacer pour de bon) sont deux
+// gestes DISTINCTS sur une carte de « Documentation du numéro » (23.09.2026) — deux icônes,
+// deux messages, jamais confondus.
+test('documentation : une carte de fiche porte « Retirer » ET « Supprimer », deux gestes distincts', () => {
+  const { page } = pageDocumentation();
+  const cartes = page.conteneur().querySelectorAll('.doc-fiche');
+  const icones0 = cartes[0].querySelector('.doc-tete').querySelectorAll('.szh-ico');
+  assert.strictEqual(icones0.length, 2, 'retirer puis supprimer, dans cet ordre');
+
+  page.messages.length = 0;
+  icones0[1].dispatchEvent({ type: 'click' });   // Supprimer
+  assert.strictEqual(page.messages.length, 1);
+  assert.strictEqual(page.messages[0].type, MSG.SUPPRIMER_FICHE_NUMERO);
+  assert.ok(['r1', 'r2', 'r3'].indexOf(page.messages[0].id) !== -1, 'id inattendu : ' + page.messages[0].id);
+  const idSupprime = page.messages[0].id;
+  // Supprimer attend la confirmation de l’hôte (modale native) : la carte ne doit pas
+  // disparaître toute seule — elle reste dans la liste tenue par la page.
+  assert.strictEqual(page.compter('.doc-fiche'), 3, 'aucune carte ne doit disparaître avant la réponse de l’hôte');
+
+  const icones1 = cartes[1].querySelector('.doc-tete').querySelectorAll('.szh-ico');
+  page.messages.length = 0;
+  icones1[0].dispatchEvent({ type: 'click' });   // Retirer du numéro
+  assert.strictEqual(page.messages.length, 1);
+  assert.strictEqual(page.messages[0].type, MSG.RETIRER);
+  assert.ok(['r1', 'r2', 'r3'].indexOf(page.messages[0].id) !== -1, 'id inattendu : ' + page.messages[0].id);
+  assert.notStrictEqual(page.messages[0].id, idSupprime, 'les deux gestes visent des cartes différentes ici');
+});
+
+test('documentation : « Supprimer » une carte JAMAIS enregistrée ne demande rien à l’hôte — un simple retrait suffit', () => {
+  const { page } = pageDocumentation();
+  const rangLivre = configFiches().findIndex((t) => t.valeur === 'livre');
+  const section = page.conteneur().querySelectorAll('.doc-section')[rangLivre];
+  section.querySelectorAll('.doc-ajouter')[0].dispatchEvent({ type: 'click' });
+  const avant = page.compter('.doc-fiche');
+
+  const neuve = page.conteneur().querySelectorAll('.doc-fiche')[page.compter('.doc-fiche') - 1];
+  page.messages.length = 0;
+  neuve.querySelector('.doc-tete').querySelectorAll('.szh-ico')[1].dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.length, 0, 'rien sur le disque : aucun message ne doit partir');
+  assert.strictEqual(page.compter('.doc-fiche'), avant - 1, 'la carte doit quitter le DOM');
+});
+
 test('documentation : vider une rubrique ne demande rien à l’hôte, et garde son bloc de saisie', () => {
   const { page } = pageDocumentation();
   const nbRubriques = configRubriques().length;
@@ -1873,7 +1918,7 @@ test('documentation : vider une rubrique ne demande rien à l’hôte, et garde 
     'la carte doit RESTER : une rubrique a toujours son bloc, vide ou non');
 });
 
-test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit', () => {
+test('documentation : une fiche neuve s’ouvre aussitôt, et le compteur de sa section suit', () => {
   const { page } = pageDocumentation();
   const avant = page.compter('.doc-fiche');
   // Le bouton « Ajouter un livre » : celui de la section « livre », pas forcément le
@@ -1886,25 +1931,28 @@ test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit',
   assert.strictEqual(page.compter('.doc-fiche'), avant + 1);
   const ouvertes = page.conteneur().querySelectorAll('.doc-corps').filter((c) => c.hidden === false);
   assert.strictEqual(ouvertes.length, 1, 'la fiche neuve doit s’ouvrir seule, pour la saisie en série');
-  const marques = page.parId.sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
-  assert.strictEqual(marques.filter((m) => m === '3').length, 1,
-    'le sommaire doit compter la fiche neuve : ' + marques.join(', '));
+  const titre = page.conteneur().querySelectorAll('.doc-titre-fiches')[rangLivre];
+  assert.strictEqual(titre.querySelector('.doc-compte-section').textContent, '(3)',
+    'le compteur de la section « livre » doit suivre la fiche neuve');
 });
 
-// ---- Onglets : Traductions à faire | Réservoir | Documentation du numéro (23.09.2026) ----
+// ---- Navigation : Documentation du numéro | Traductions à faire | Réservoir | Archive -----
 //
-// Demande de Robin : des onglets, pas des sections empilées. « Documentation du numéro »
-// (rubriques + fiches rattachées — l'ancien contenu de cette page) ouvert par défaut ;
-// « Mes orphelines » est une PARTIE de l'onglet Réservoir, jamais un onglet à part ; les deux
-// autres onglets portent un compteur ; l'onglet choisi survit à un rechargement complet
-// (rendre() rejoué, comme après une action côté hôte).
-function pageDocumentationAvecOnglets() {
+// Demande de Robin (23.09.2026), révisée le même jour : toute la navigation vit dans
+// l'arbre — la page n'a plus de barre d'onglets ni de sommaire latéral. « Documentation du
+// numéro » (rubriques + UNE catégorie de fiches à la fois — jamais toutes en même temps),
+// ouvert par défaut sur « Rubriques » ; « Mes orphelines » est une PARTIE de la vue Réservoir.
+// La vue choisie survit à un rechargement complet (rendre() rejoué, comme après une action
+// côté hôte). `extra` : des champs supplémentaires fusionnés dans le premier « charger »
+// envoyé — sert à éprouver vueInitiale (l'arbre, ouverture directe sur une vue) sans
+// dupliquer tout ce message.
+function pageDocumentationAvecOnglets(extra) {
   const txt = DOC_TXT();
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
     jsPartage: ['_messages.js'], txt: txt
   });
-  const message = {
+  const message = Object.assign({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
     typesConfig: configFiches(), typesRubrique: configRubriques(),
     rubriques: [{ id: 'podcasts', type: 'podcasts', contenu: 'Une brève.' }],
@@ -1930,50 +1978,59 @@ function pageDocumentationAvecOnglets() {
       { slug: 's-orph-1', uuid: 'u5', type: 'livre', typeLibelle: 'Livres', titre: 'Orpheline un' },
       { slug: 's-orph-2', uuid: 'u6', type: 'film', typeLibelle: 'Films', titre: 'Orpheline deux' }
     ]
-  };
+  }, extra || {});
   page.envoyer(message);
   return { page: page, txt: txt, message: message };
 }
-function boutonsOnglets(page) { return page.parId.onglets.querySelectorAll('.doc-onglet'); }
 function panneau(page, cle) { return page.parId['panel-' + cle]; }
+// La bascule d'un panneau déjà ouvert (documentation-hote.js#ouvrirDocumentation,
+// MSG.ONGLET_ACTIVER) — remplace le clic sur un onglet, qui n'existe plus : toute la
+// navigation vient de l'arbre.
+function allerVue(page, onglet, categorie) {
+  page.envoyer({ type: MSG.ONGLET_ACTIVER, cle: onglet, categorie: categorie });
+}
 
-test('onglets : quatre onglets, dans l’ordre Traductions à faire, Réservoir, Documentation du numéro, Archive', () => {
-  const { page, txt } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  assert.strictEqual(boutons.length, 4,
-    'quatre onglets (23.09.2026 : Archive s’ajoute) — « Mes orphelines » n’en est toujours pas un');
-  assert.deepStrictEqual(boutons.map((b) => b.querySelector('.doc-onglet-libelle').textContent),
-    [txt.ongletTraductions, txt.ongletReservoir, txt.ongletNumero, txt.ongletArchive]);
+test('la page n’a plus de barre d’onglets ni de sommaire latéral : la navigation vient de l’arbre', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  assert.strictEqual(page.parId.onglets, undefined, '#onglets a disparu');
+  assert.strictEqual(page.parId.sommaire, undefined, '#sommaire a disparu');
+  assert.strictEqual(page.compter('.doc-onglet'), 0, 'aucun bouton d’onglet dans le DOM');
 });
 
-test('onglets : « Documentation du numéro » est ouvert par défaut, les deux autres portent un compteur', () => {
-  const { page } = pageDocumentationAvecOnglets();
-  assert.strictEqual(panneau(page, 'numero').hidden, false, 'le numéro doit être l’onglet par défaut');
+test('vue par défaut : « Documentation du numéro » sur « Rubriques », son titre le dit', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  assert.strictEqual(panneau(page, 'numero').hidden, false, 'le numéro doit être la vue par défaut');
   assert.strictEqual(panneau(page, 'traductions').hidden, true);
   assert.strictEqual(panneau(page, 'reservoir').hidden, true);
-  assert.strictEqual(page.parId.sommaire.hidden, false, 'le sommaire ne décrit que l’onglet du numéro');
-  const [boutonTrad, boutonRes, boutonNum] = boutonsOnglets(page);
-  assert.strictEqual(boutonTrad.querySelector('.doc-onglet-compte').textContent, '2',
-    '2 traductions à faire');
-  // Réservoir + Mes orphelines réunis : 2 entrées de réservoir + 2 orphelines.
-  assert.strictEqual(boutonRes.querySelector('.doc-onglet-compte').textContent, '4');
-  assert.strictEqual(boutonNum.querySelector('.doc-onglet-compte'), null,
-    'l’onglet ouvert par défaut ne porte pas de compteur');
-  assert.ok(boutonNum.classes.has('doc-onglet--actif'));
-  assert.strictEqual(boutonNum.getAttribute('aria-selected'), 'true');
+  assert.strictEqual(panneau(page, 'archive').hidden, true);
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + txt.groupeRubriques);
+  // Sur « Rubriques » : les cartes de rubrique sont visibles, les sections de fiches non.
+  assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, false);
+  assert.strictEqual(page.conteneur().querySelector('.doc-titre-fiches').hidden, true);
 });
 
-test('onglets : cliquer « Réservoir » bascule les panneaux et affiche mes orphelines dedans', () => {
+test('« Documentation du numéro » sur une catégorie de fiche : SEULE cette section est visible', () => {
   const { page, txt } = pageDocumentationAvecOnglets();
-  const [, boutonRes] = boutonsOnglets(page);
-  boutonRes.dispatchEvent({ type: 'click' });
+  allerVue(page, 'numero', 'livre');
+  assert.strictEqual(panneau(page, 'numero').hidden, false);
+  const libelleLivre = configFiches().find((t) => t.valeur === 'livre').libelleSection;
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + libelleLivre);
+  assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, true, 'les rubriques se cachent');
+  const sectionsFiches = page.conteneur().querySelectorAll('.doc-titre-fiches');
+  sectionsFiches.forEach((s) => {
+    const estLivre = s.id === 'sec-f-livre';
+    assert.strictEqual(s.hidden, !estLivre, s.id + ' devrait être ' + (estLivre ? 'visible' : 'cachée'));
+  });
+});
+
+test('vue Réservoir : titre, panneaux, et « Mes orphelines » qui en fait partie', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  allerVue(page, 'reservoir');
   assert.strictEqual(panneau(page, 'reservoir').hidden, false);
   assert.strictEqual(panneau(page, 'numero').hidden, true);
   assert.strictEqual(panneau(page, 'traductions').hidden, true);
-  assert.strictEqual(page.parId.sommaire.hidden, true, 'le sommaire ne concerne pas cet onglet');
-  assert.ok(boutonRes.classes.has('doc-onglet--actif'));
-  assert.strictEqual(boutonRes.getAttribute('aria-selected'), 'true');
-  // « Mes orphelines » vit DANS l’onglet Réservoir.
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletReservoir);
+  // « Mes orphelines » vit DANS la vue Réservoir.
   const orph = panneau(page, 'reservoir').querySelector('.doc-vue-orphelines');
   assert.ok(orph, 'la partie « Mes orphelines » doit être dans le panneau Réservoir');
   assert.ok(orph.textContent.indexOf(txt.orphelinesTitre) !== -1);
@@ -1981,19 +2038,64 @@ test('onglets : cliquer « Réservoir » bascule les panneaux et affiche mes orp
   assert.ok(panneau(page, 'reservoir').textContent.indexOf('Reserviert eins') !== -1);
 });
 
-test('onglets : l’onglet choisi survit à un rechargement complet (mémorisé pour la session du panneau)', () => {
-  const { page, message } = pageDocumentationAvecOnglets();
-  const [boutonTrad] = boutonsOnglets(page);
-  boutonTrad.dispatchEvent({ type: 'click' });
+test('la vue choisie survit à un rechargement complet (mémorisée pour la session du panneau)', () => {
+  const { page, message, txt } = pageDocumentationAvecOnglets();
+  allerVue(page, 'traductions');
   assert.strictEqual(panneau(page, 'traductions').hidden, false);
   // Un rechargement complet — exactement ce qu’envoie l’hôte après « traduire dans ce
   // numéro », « tirer dans ce numéro » ou « supprimer » (documentation-hote.js, charger()).
   page.envoyer(message);
   assert.strictEqual(panneau(page, 'traductions').hidden, false,
-    'l’onglet Traductions à faire doit rester ouvert après le rechargement');
+    'la vue Traductions à faire doit rester ouverte après le rechargement');
   assert.strictEqual(panneau(page, 'numero').hidden, true);
-  const [boutonTradApres] = boutonsOnglets(page);
-  assert.ok(boutonTradApres.classes.has('doc-onglet--actif'));
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletTraductions);
+});
+
+// ---- vueInitiale / ongletActiver : les raccourcis de l'arbre (23.09.2026) -------------
+//
+// Deux protocoles distincts (documentation-hote.js#ouvrirDocumentation) : vueInitiale ne
+// voyage QUE dans le tout premier « charger » d'un panneau qui vient de naître ; ongletActiver
+// bascule un panneau qui vit déjà, sans rien recharger. Le fournisseur d'arbre et l'hôte sont
+// éprouvés côté hôte (test/js/actualite.test.js) ; ici, uniquement ce que la page en fait.
+
+test('vueInitiale : le premier « charger » ouvre directement la vue demandée par l’arbre', () => {
+  const { page } = pageDocumentationAvecOnglets({ vueInitiale: { onglet: 'reservoir' } });
+  assert.strictEqual(panneau(page, 'reservoir').hidden, false,
+    'la vue demandée doit être active dès le tout premier rendu, sans clic');
+  assert.strictEqual(panneau(page, 'numero').hidden, true);
+});
+
+test('vueInitiale : absente d’un rechargement suivant, elle ne reprend jamais la main sur le choix du rédacteur', () => {
+  const { page, message } = pageDocumentationAvecOnglets({ vueInitiale: { onglet: 'reservoir' } });
+  // Le rédacteur quitte la vue que l’arbre avait demandée…
+  allerVue(page, 'traductions');
+  assert.strictEqual(panneau(page, 'traductions').hidden, false);
+  // … un rechargement complet SANS vueInitiale (l'hôte ne la pose plus après le tout
+  // premier « pret ») doit laisser ce choix intact, pas revenir sur « reservoir ».
+  const rechargement = Object.assign({}, message);
+  delete rechargement.vueInitiale;
+  page.envoyer(rechargement);
+  assert.strictEqual(panneau(page, 'traductions').hidden, false,
+    'vueInitiale ne doit jouer qu’une seule fois, jamais à chaque rechargement');
+  assert.strictEqual(panneau(page, 'reservoir').hidden, true);
+});
+
+test('ongletActiver : bascule un panneau déjà ouvert directement, sans passer par un clic ni un rechargement', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  assert.strictEqual(panneau(page, 'numero').hidden, false, 'numéro est la vue par défaut');
+  allerVue(page, 'traductions');
+  assert.strictEqual(panneau(page, 'traductions').hidden, false);
+  assert.strictEqual(panneau(page, 'numero').hidden, true);
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletTraductions);
+});
+
+test('ongletActiver : porte aussi la catégorie — bascule « Documentation du numéro » sur un type précis', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  allerVue(page, 'numero', 'livre');
+  assert.strictEqual(panneau(page, 'numero').hidden, false);
+  const libelleLivre = configFiches().find((t) => t.valeur === 'livre').libelleSection;
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + libelleLivre);
+  assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, true);
 });
 
 // ---- Onglet Archive : bibliothèque de PRODUCTION, lue à la demande (23.09.2026) -------
@@ -2019,30 +2121,27 @@ function ficheArchive(over) {
 }
 function panneauArchive(page) { return panneau(page, 'archive'); }
 
-test('Archive : le premier clic sur l’onglet demande ARCHIVE_CHARGER, une seule fois par session', () => {
+test('Archive : le premier passage à la vue demande ARCHIVE_CHARGER, une seule fois par session', () => {
   const { page, txt } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  const boutonArchive = boutons[3];
   page.messages.length = 0;
-  boutonArchive.dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   assert.strictEqual(panneauArchive(page).hidden, false);
   assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_CHARGER).length, 1,
-    'l’ouverture de l’onglet doit demander la lecture de la bibliothèque de production');
+    'l’arrivée sur la vue doit demander la lecture de la bibliothèque de production');
   assert.ok(panneauArchive(page).textContent.indexOf(txt.archiveChargement) !== -1,
     'un indicateur de chargement doit apparaître pendant l’attente');
 
-  // Changer d'onglet puis revenir, avant toute réponse, ne redemande rien : la première
+  // Changer de vue puis revenir, avant toute réponse, ne redemande rien : la première
   // lecture est toujours en cours (archiveEtat.chargement).
   page.messages.length = 0;
-  boutons[2].dispatchEvent({ type: 'click' });
-  boutonArchive.dispatchEvent({ type: 'click' });
+  allerVue(page, 'reservoir');
+  allerVue(page, 'archive');
   assert.strictEqual(page.messages.filter((m) => m.type === MSG.ARCHIVE_CHARGER).length, 0);
 });
 
-test('Archive : ARCHIVE_DONNEES affiche les fiches, met à jour le compteur de l’onglet, et filtre', () => {
+test('Archive : ARCHIVE_DONNEES affiche les fiches, met à jour le compteur du panneau, et filtre', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  boutons[3].dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   const livre = ficheArchive();
   const film = ficheArchive({
     type: 'film', slug: 's-arch-2', titres: { fr: 'Un film archivé', de: '' },
@@ -2052,8 +2151,8 @@ test('Archive : ARCHIVE_DONNEES affiche les fiches, met à jour le compteur de l
   });
   page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [livre, film] });
   assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 2);
-  assert.strictEqual(boutons[3].querySelector('.doc-onglet-compte').textContent, '2',
-    'le compteur de l’onglet Archive doit dire le nombre TOTAL de fiches');
+  assert.match(panneauArchive(page).querySelector('.doc-archive-compteur').textContent, /2/,
+    'le compteur du panneau Archive doit dire le nombre TOTAL de fiches');
 
   const champRecherche = panneauArchive(page).querySelector('.doc-archive-recherche');
   champRecherche.value = 'film';
@@ -2087,27 +2186,25 @@ test('Archive : ARCHIVE_DONNEES affiche les fiches, met à jour le compteur de l
 
 test('Archive : ancrage SharePoint introuvable — le message de l’hôte s’affiche, aucune fiche', () => {
   const { page, txt } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  boutons[3].dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: false, message: txt.archiveAncrageIntrouvable });
   assert.ok(panneauArchive(page).textContent.indexOf(txt.archiveAncrageIntrouvable) !== -1);
   assert.strictEqual(panneauArchive(page).querySelectorAll('.doc-archive-item').length, 0);
-  assert.strictEqual(boutons[3].querySelector('.doc-onglet-compte'), null,
+  assert.strictEqual(panneauArchive(page).querySelector('.doc-archive-compteur'), null,
     'aucune fiche lue : pas de compteur');
 });
 
 test('Archive : l’aperçu se déplie au clic, un seul ouvert à la fois, l’image n’est demandée qu’une fois', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  boutons[3].dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   page.envoyer({
     type: MSG.ARCHIVE_DONNEES, ok: true,
     fiches: [ficheArchive(), ficheArchive({ slug: 's-arch-2', titres: { fr: 'Deuxième', de: '' } })]
   });
   page.messages.length = 0;
   const items = panneauArchive(page).querySelectorAll('.doc-archive-item');
-  const boutonApercu1 = items[0].querySelector('.doc-vue-bouton');
-  const boutonApercu2 = items[1].querySelector('.doc-vue-bouton');
+  const boutonApercu1 = items[0].querySelector('.doc-archive-apercu');
+  const boutonApercu2 = items[1].querySelector('.doc-archive-apercu');
   boutonApercu1.dispatchEvent({ type: 'click' });
   const corps1 = items[0].querySelector('.doc-archive-corps');
   assert.strictEqual(corps1.hidden, false);
@@ -2127,8 +2224,7 @@ test('Archive : l’aperçu se déplie au clic, un seul ouvert à la fois, l’i
 
 test('Archive : un champ `liste_multiple` (genre, pays) s’affiche par ses LIBELLÉS, jamais les jetons bruts', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  boutons[3].dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   const filmArchive = ficheArchive({
     type: 'film', slug: 's-arch-film', titres: { fr: 'Un film archivé', de: '' },
     valeurs: {
@@ -2139,7 +2235,7 @@ test('Archive : un champ `liste_multiple` (genre, pays) s’affiche par ses LIBE
     recherche: 'un film archivé'
   });
   page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [filmArchive] });
-  const boutonApercu = panneauArchive(page).querySelector('.doc-vue-bouton');
+  const boutonApercu = panneauArchive(page).querySelector('.doc-archive-apercu');
   boutonApercu.dispatchEvent({ type: 'click' });
   const corps = panneauArchive(page).querySelector('.doc-archive-corps');
   // « FR » seul apparaît légitimement (l’en-tête de langue « FR », majuscule) : ce qu’on
@@ -2154,8 +2250,7 @@ test('Archive : un champ `liste_multiple` (genre, pays) s’affiche par ses LIBE
 
 test('Archive : « Reprendre dans ce numéro » envoie (ficheType, slug), se désactive puis se réactive', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const boutons = boutonsOnglets(page);
-  boutons[3].dispatchEvent({ type: 'click' });
+  allerVue(page, 'archive');
   page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [ficheArchive()] });
   page.messages.length = 0;
   const boutonReprendre = panneauArchive(page).querySelector('.doc-archive-reprendre');
@@ -2170,6 +2265,23 @@ test('Archive : « Reprendre dans ce numéro » envoie (ficheType, slug), se dé
   page.envoyer({ type: MSG.ARCHIVE_REPRISE, ok: true });
   assert.strictEqual(panneauArchive(page).querySelector('.doc-archive-reprendre').disabled, false,
     'réactivé après la réponse');
+});
+
+// Trois icônes par ligne (23.09.2026) : Reprendre, Aperçu, Éditer — cette dernière grisée,
+// « à venir », rien de branché derrière.
+test('Archive : trois icônes par ligne — Reprendre, Aperçu, Éditer (grisée, à venir)', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  allerVue(page, 'archive');
+  page.envoyer({ type: MSG.ARCHIVE_DONNEES, ok: true, fiches: [ficheArchive()] });
+  const item = panneauArchive(page).querySelector('.doc-archive-item');
+  assert.ok(item.querySelector('.doc-archive-reprendre'));
+  assert.ok(item.querySelector('.doc-archive-apercu'));
+  const boutonEditer = item.querySelector('.doc-archive-editer');
+  assert.ok(boutonEditer, 'l’icône Éditer doit exister sur chaque ligne');
+  assert.strictEqual(boutonEditer.disabled, true, 'Éditer est grisée : rien n’est encore branché');
+  page.messages.length = 0;
+  boutonEditer.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.length, 0, 'un clic sur Éditer ne doit rien envoyer à l’hôte');
 });
 
 // ---- Réservoir : sélection multiple (23.09.2026, deuxième relecture) ------------------
@@ -2188,8 +2300,7 @@ function barreLotBoutons(page) {
 
 test('réservoir : une case par ligne, la sélection alimente la barre en lot, un seul message avec tous les uuid', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const [, boutonRes] = boutonsOnglets(page);
-  boutonRes.dispatchEvent({ type: 'click' });
+  allerVue(page, 'reservoir');
 
   const lignes = listeReservoirSeule(page).querySelectorAll('.doc-vue-ligne');
   assert.strictEqual(lignes.length, 2, 'les deux entrées du réservoir (« Mes orphelines » exclue)');
@@ -2227,8 +2338,7 @@ test('réservoir : une case par ligne, la sélection alimente la barre en lot, u
 
 test('réservoir : « Tout sélectionner » coche les lignes visibles, se recalcule si une ligne sort de la sélection', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const [, boutonRes] = boutonsOnglets(page);
-  boutonRes.dispatchEvent({ type: 'click' });
+  allerVue(page, 'reservoir');
 
   const caseTout = panneau(page, 'reservoir').querySelector('.doc-reservoir-case-tout');
   assert.ok(caseTout, '« Tout sélectionner » doit exister');
@@ -2250,8 +2360,7 @@ test('réservoir : « Tout sélectionner » coche les lignes visibles, se recalc
 
 test('réservoir : la vue « ignorées » porte aussi une case par ligne, et « Annuler la décision » en lot', () => {
   const { page } = pageDocumentationAvecOnglets();
-  const [, boutonRes] = boutonsOnglets(page);
-  boutonRes.dispatchEvent({ type: 'click' });
+  allerVue(page, 'reservoir');
   const toggle = panneau(page, 'reservoir').querySelector('.doc-reservoir-toggle input');
   assert.ok(toggle, 'l’interrupteur « Afficher les ignorées » doit exister');
   toggle.checked = true;

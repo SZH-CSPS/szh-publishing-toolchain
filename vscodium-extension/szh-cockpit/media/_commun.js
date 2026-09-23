@@ -100,6 +100,12 @@ var SZH = (function () {
     imprimante: [
       ['rect', Object.assign({ x: '2', y: '6', width: '12', height: '6', rx: '1' }, CONTOUR)],
       ['rect', Object.assign({ x: '5', y: '2', width: '6', height: '4.5' }, CONTOUR)]
+    ],
+    // Éditer : un crayon, en contour — l'onglet Archive (« Éditer », grisé, à venir).
+    crayon: [
+      ['path', { d: 'M11.3 1.7a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L6 13l-3.3.7L3.4 10.4 11.3 1.7z',
+        fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round' }],
+      ['path', { d: 'M9.7 3.3 12.7 6.3', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4' }]
     ]
   };
 
@@ -1343,8 +1349,12 @@ var SZH = (function () {
   // compteur supplémentaire pour le gestionnaire des médias. Les deux voyagent par
   // `opts.onRetour` et `opts.avecCompte`.
   //
-  // opts = { txt, onEnregistrer(), onRetour(), avecCompte }
-  // Rend { enregistrer, indic, etat, compte? } : les éléments que la page doit garder.
+  // opts = { txt, onEnregistrer(), onRetour(), avecCompte, onApercu() }
+  // Rend { enregistrer, indic, etat, compte?, apercu? } : les éléments que la page doit
+  // garder. `onApercu` est optionnel (documentation.js seul, pour l'instant) : un bouton
+  // bascule (« Aperçu du PDF ») s'ajoute entre Enregistrer et Retour, aria-pressed suivant
+  // l'état que la page lui pose elle-même (majApercuBascule) — jamais tenu ici, un aperçu se
+  // ferme aussi à la croix, hors de portée de ce bouton.
   function construireBarre(conteneur, opts) {
     var o = opts || {};
     var txt = o.txt || {};
@@ -1354,6 +1364,11 @@ var SZH = (function () {
     ctl.enregistrer = bouton(txt.enregistrer, function () { if (o.onEnregistrer) { o.onEnregistrer(); } },
       'szh-bouton--principal', txt.enregistrerTip);
     conteneur.appendChild(ctl.enregistrer);
+    if (o.onApercu) {
+      ctl.apercu = bouton(txt.apercu, function () { o.onApercu(); }, 'szh-bouton--bascule', txt.apercuTip);
+      ctl.apercu.setAttribute('aria-pressed', 'false');
+      conteneur.appendChild(ctl.apercu);
+    }
     conteneur.appendChild(bouton(txt.retour, function () { if (o.onRetour) { o.onRetour(); } }, '', txt.retourTip));
     ctl.indic = poser(conteneur, 'span', 'szh-barre-indic');
     ctl.indic.setAttribute('aria-live', 'polite');

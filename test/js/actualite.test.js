@@ -5,11 +5,21 @@
 // Ce que ce fichier fixe :
 //   - la page de Documentation ne se liste PLUS dans l'arbre. Cliquer l'en-tête
 //     « ACTUALITÉ » ouvre son formulaire, et la crée si le numéro n'en a pas encore ;
-//   - la section n'a plus d'enfant (plus de réserve accrochée à l'arbre) ;
+//   - la section a cinq enfants FIXES (23.09.2026, révisé le même jour — toute la navigation
+//     passe par l'arbre, la page n'a plus de barre d'onglets) : « Documentation du numéro »
+//     (elle-même dépliable), « Traductions à faire », « Réservoir », « Archive », puis
+//     « Publier sur le site web » grisée (pas de commande, jamais cliquable) ;
 //   - le badge de l'en-tête compte les fiches rattachées au numéro et les rubriques non
-//     vides ;
+//     vides ; les compteurs de Documentation du numéro/Traductions/Réservoir reprennent les
+//     mêmes fonctions que les anciens badges d'onglet du formulaire, l'Archive reprend le
+//     dernier compte connu d'un panneau qui a chargé cet onglet (rien tant qu'aucun ne l'a
+//     fait — jamais une lecture de la bibliothèque de PRODUCTION depuis l'arbre) ;
+//   - « Documentation du numéro » se déplie sur « Rubriques » (les 4 champs de texte long)
+//     puis une entrée par type de fiche du contrat, avec son compte ;
+//   - cliquer une entrée ouvre le formulaire de Documentation DIRECTEMENT sur cette vue
+//     (szh.ouvrirActualite), et bascule un panneau déjà ouvert plutôt que d'en rouvrir un ;
 //   - un seul formulaire porte rubriques, fiches, traductions à faire, réservoir et
-//     orphelines (media/documentation.js).
+//     orphelines (media/documentation.js), une seule catégorie affichée à la fois.
 //
 // kirby-contenu.js écrit par fs direct, sans passer par vscode.workspace/WorkspaceEdit (faux
 // sans effet dans ce harnais, voir hote-factice.js) — les mutations d'« enregistrer » sont
@@ -29,6 +39,7 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 const COCKPIT_DOC = path.join(COCKPIT, 'lib', 'documentation-hote.js');
 const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
@@ -95,14 +106,15 @@ test('id du numéro : posé à l’ouverture du numéro, sans jamais ouvrir la D
     'l’id doit exister dès l’activation du cockpit sur ce numéro');
 });
 
-// Avant toute création de la page de Documentation : la section existe déjà, sans enfant et
-// sans badge (l'id posé au test précédent n'y change rien : aucune fiche n'est encore
-// rattachée à ce numéro).
-test('sans page de Documentation, la section ACTUALITÉ n’a ni enfant ni badge', async () => {
+// Avant toute création de la page de Documentation : l'en-tête n'a pas de badge (l'id posé
+// au test précédent n'y change rien : aucune fiche n'est encore rattachée à ce numéro), mais
+// ses cinq entrées sont déjà là — elles ne dépendent pas de l'existence de la page.
+test('sans page de Documentation, l’en-tête ACTUALITÉ n’a pas de badge, ses cinq entrées oui', async () => {
   const e = await entete();
   assert.strictEqual(e.description, undefined, 'aucun bloc à compter : pas de badge — ' + e.description);
   const enfants = await enfantsDe('section-actualite');
-  assert.deepStrictEqual(enfants, [], 'plus de réserve accrochée à l’arbre');
+  assert.strictEqual(enfants.length, 5, 'les cinq entrées doivent exister même sans page de Documentation');
+  for (const it of enfants) { assert.strictEqual(it.description, undefined, 'rien à compter encore : ' + it.label); }
 });
 
 test('cliquer l’en-tête ACTUALITÉ crée la page de Documentation (arborescence Kirby) et ouvre son formulaire', async () => {
@@ -126,14 +138,15 @@ test('cliquer l’en-tête ACTUALITÉ crée la page de Documentation (arborescen
   assert.ok(HOTE.panneauDeType('szhDocumentation'), 'le formulaire ne s’est pas ouvert');
 });
 
-test('la page créée n’apparaît NI dans ARTICLES, NI dans ACTUALITÉ', async () => {
+test('la page créée n’apparaît NI dans ARTICLES, NI dans ACTUALITÉ (qui garde ses cinq entrées)', async () => {
   const arbre = HOTE.arbre();
   assert.ok(arbre.listerArticles().includes(SLUG_DOC), 'la page doit rester une unité du numéro : c’est elle que la chaîne compile');
   const articles = await enfantsDe('section-articles');
   assert.ok(!articles.some((it) => it.slug === SLUG_DOC), 'la page de Documentation ne doit pas retomber dans ARTICLES');
   assert.ok(articles.some((it) => it.slug === '01-essai'), 'un article ordinaire a disparu de ARTICLES');
   const actualite = await enfantsDe('section-actualite');
-  assert.deepStrictEqual(actualite, [], 'ACTUALITÉ ne liste plus la page elle-même, ni rien d’autre');
+  assert.ok(!actualite.some((it) => it.slug === SLUG_DOC), 'ACTUALITÉ ne liste jamais la page elle-même');
+  assert.strictEqual(actualite.length, 5, 'toujours les cinq entrées, rien d’autre');
 });
 
 test('le badge de l’en-tête compte les fiches et les rubriques non vides', async () => {
@@ -152,6 +165,79 @@ test('le badge de l’en-tête compte les fiches et les rubriques non vides', as
   kirby.reordonnerNumero(RACINE_ARBRE, 'fr', ausgabeId());
   assert.strictEqual(String((await entete()).description), '(2)',
     'le badge devrait compter la rubrique ET la fiche');
+});
+
+// ---- Les cinq entrées de ACTUALITÉ (23.09.2026, révisé le même jour) -------------------
+test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, avec leurs commandes et leurs compteurs', async () => {
+  // Rien n'a encore été écrit côté traductions/réservoir à ce point du fichier : leurs
+  // compteurs sont donc à 0 — recalculés ici plutôt qu'écrits en dur, pour ne pas dépendre de
+  // l'ordre des tests. « Documentation du numéro » reprend l'état posé par le test précédent
+  // (une rubrique, une fiche). L'Archive n'a encore jamais été lue par aucun panneau : pas de
+  // badge du tout (compteArchiveConnu() rend undefined).
+  const nTraductions = kirby.listerTraductionsATraire(RACINE_ARBRE, 'fr').length;
+  const nReservoir = kirby.listerReservoir(RACINE_ARBRE, 'fr', { avecIgnorees: false }).length
+    + kirby.listerOrphelines(RACINE_ARBRE, 'fr').length;
+  const page = kirby.lirePage(DOSSIER_DOC, 'fr');
+  const nRubriques = Object.keys(page.rubriques).filter((c) => String(page.rubriques[c] || '').trim() !== '').length;
+  const nFiches = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).length;
+  const nBlocs = nRubriques + nFiches;
+  assert.strictEqual(nTraductions, 0);
+  assert.strictEqual(nReservoir, 0);
+  assert.strictEqual(nBlocs, 2, 'fixture attendue à ce point du fichier : une rubrique et une fiche');
+
+  const entrees = await enfantsDe('section-actualite');
+  assert.strictEqual(entrees.length, 5);
+  assert.deepStrictEqual(entrees.map((it) => it.command && it.command.command),
+    ['szh.ouvrirActualite', 'szh.ouvrirActualite', 'szh.ouvrirActualite', 'szh.ouvrirActualite', undefined],
+    '« Publier sur le site web » ne porte AUCUNE commande : jamais cliquable');
+  assert.deepStrictEqual(entrees.slice(0, 4).map((it) => it.command.arguments),
+    [['numero', 'rubriques'], ['traductions'], ['reservoir'], ['archive']],
+    '« Documentation du numéro » ouvre sur « Rubriques » par défaut');
+  assert.deepStrictEqual(entrees.map((it) => it.label),
+    [T('doc.onglet.numero'), T('doc.onglet.traductions'), T('doc.onglet.reservoir'), T('doc.onglet.archive'),
+      T('arbre.actualite.publier')],
+    'les quatre premiers libellés reprennent ceux des anciens onglets, mot pour mot');
+  assert.strictEqual(entrees[0].description, '(' + nBlocs + ')', 'Documentation du numéro');
+  assert.strictEqual(entrees[1].description, undefined, 'aucune traduction à faire : pas de badge');
+  assert.strictEqual(entrees[2].description, undefined, 'réservoir vide : pas de badge');
+  assert.strictEqual(entrees[3].description, undefined,
+    'l’Archive n’a pas encore été lue par un panneau : aucun badge, jamais une lecture depuis l’arbre');
+  assert.strictEqual(entrees[4].description, undefined, 'Publier sur le site web : rien à compter');
+  assert.strictEqual(entrees[4].contextValue, 'actualite-entree-desactivee');
+  for (const it of entrees) {
+    assert.ok(it.tooltip, 'info-bulle absente : ' + it.label);
+    assert.ok(it.iconPath && it.iconPath.id, 'icône absente : ' + it.label);
+  }
+  // « Documentation du numéro » est la seule entrée dépliable.
+  assert.strictEqual(entrees[0].collapsibleState, 1, 'Documentation du numéro doit être dépliable (Collapsed)');
+  for (const it of entrees.slice(1)) { assert.strictEqual(it.collapsibleState, 0, it.label + ' ne doit pas être dépliable'); }
+});
+
+// ---- « Documentation du numéro », elle-même dépliable (23.09.2026) --------------------
+test('arbre : « Documentation du numéro » se déplie sur Rubriques puis un type par fiche, avec leurs comptes', async () => {
+  const enfants = await enfantsDe('section-actualite');
+  const numero = enfants[0];
+  assert.strictEqual(numero.categorie, 'actualite-numero');
+  const sousEntrees = await HOTE.arbre().getChildren(numero);
+  const typesAttendus = kirby.typesConnus();
+  assert.strictEqual(sousEntrees.length, 1 + typesAttendus.length);
+  assert.strictEqual(sousEntrees[0].label, T('doc.groupe.rubriques'));
+  assert.deepStrictEqual(sousEntrees[0].command.arguments, ['numero', 'rubriques']);
+  assert.strictEqual(sousEntrees[0].description, undefined, 'Rubriques ne porte pas de compte (seuls les types en portent un)');
+  assert.deepStrictEqual(sousEntrees.slice(1).map((it) => it.command.arguments[1]), typesAttendus,
+    'un type par entrée, dans l’ordre ordreTypes du contrat');
+  const livre = sousEntrees.find((it) => it.command.arguments[1] === 'livre');
+  assert.strictEqual(livre.label, kirby.libelleCockpitType('livre', 'fr'));
+  assert.strictEqual(livre.description, '(1)', 'la fiche « Un livre » écrite plus haut doit compter ici');
+  const film = sousEntrees.find((it) => it.command.arguments[1] === 'film');
+  assert.strictEqual(film.description, undefined, 'aucun film rattaché : pas de badge');
+  // Le libellé COURT du contrat (types[].libelleCourt), jamais le long ni un mot en dur —
+  // Robin, 23.09.2026 : « Agenda » dans le cockpit, « Agenda et formation continue » resté
+  // le titre imprimé côté site.
+  const agenda = sousEntrees.find((it) => it.command.arguments[1] === 'agenda');
+  assert.strictEqual(agenda.label, 'Agenda');
+  assert.notStrictEqual(agenda.label, kirby.libelleType('agenda', 'fr'),
+    'le contrat porte bien un libelleCourt distinct pour ce type : ce test ne prouverait rien sinon');
 });
 
 test('la page de Documentation déplie ACTUALITÉ, un article ordinaire déplie ARTICLES', () => {
@@ -276,6 +362,57 @@ test('enregistrer : une carte de fiche jamais remplie ne s’écrit pas', async 
     'un clic sur « Ajouter » suivi de rien ne doit rien écrire');
 });
 
+// ---- supprimerFicheNumero : effacement définitif depuis une carte du numéro (23.09.2026) --
+//
+// Geste DISTINCT de RETIRER (qui ne fait que détacher) : confirmation modale native, puis
+// effacement réel. Si l'autre langue existe, elle survit ; sinon le dossier entier part.
+test('supprimerFicheNumero : sans réponse la fiche reste ; confirmé, seule la langue du numéro part si l’autre existe', async () => {
+  const { uuid, slug } = kirby.creerFiche(RACINE_ARBRE, 'fr', 'film',
+    { title: 'Fiche bilingue', realisateur: 'X', annee: '2026', descriptif: 'D' }, ausgabeId());
+  kirby.traduireDansNumero(RACINE_ARBRE, slug, 'de', '');   // même slug, autre langue, orpheline
+  const p = await panneau();
+  const avant = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).length;
+
+  // Aucune réponse en file -> Annuler (hote-factice.js) : rien ne doit disparaître.
+  await p._recepteur({ type: 'supprimerFicheNumero', id: uuid });
+  assert.ok(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'fr'), 'annulé : la fiche doit rester');
+
+  HOTE.repondreModale(T('modale.supprimer.bouton'));
+  await p._recepteur({ type: 'supprimerFicheNumero', id: uuid });
+  assert.strictEqual(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'fr'), null,
+    'confirmé : la version française doit disparaître');
+  assert.ok(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'de'), 'la version allemande doit rester');
+  assert.strictEqual(kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).length, avant - 1);
+});
+
+test('supprimerFicheNumero : sans version dans l’autre langue, le dossier entier part et l’ordre du numéro se recalcule', async () => {
+  kirby.creerFiche(RACINE_ARBRE, 'fr', 'film',
+    { title: 'Une autre fiche', realisateur: 'Y', annee: '2026', descriptif: 'D' }, ausgabeId());
+  const { uuid, slug } = kirby.creerFiche(RACINE_ARBRE, 'fr', 'film',
+    { title: 'Fiche seule', realisateur: 'X', annee: '2026', descriptif: 'D' }, ausgabeId());
+  const p = await panneau();
+  HOTE.repondreModale(T('modale.supprimer.bouton'));
+  await p._recepteur({ type: 'supprimerFicheNumero', id: uuid });
+  assert.strictEqual(kirby.lireFicheSlugLangue(RACINE_ARBRE, slug, 'fr'), null);
+  assert.ok(!fs.existsSync(kirby.cheminFiche(RACINE_ARBRE, 'film', slug)), 'le dossier entier doit disparaître');
+  // reordonnerNumero() a été rejoué : la fiche restante a un rang, la fiche effacée n'y
+  // figure plus (ce numéro porte déjà d'autres fiches, posées par les tests précédents —
+  // pas d'hypothèse sur le rang absolu, seulement sur la présence/absence).
+  const restantes = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId());
+  const restante = restantes.filter((f) => f.valeurs.title === 'Une autre fiche');
+  assert.strictEqual(restante.length, 1);
+  assert.strictEqual(typeof restante[0].ordre, 'number');
+  assert.ok(!restantes.some((f) => f.valeurs.title === 'Fiche seule'), 'la fiche effacée ne doit plus figurer dans le numéro');
+});
+
+test('supprimerFicheNumero : un id inconnu ne fait rien et ne lève pas', async () => {
+  const p = await panneau();
+  const avantModales = HOTE.modales.length;
+  await p._recepteur({ type: 'supprimerFicheNumero', id: 'jamais-vu' });
+  // Aucune exception, aucune modale (rien à confirmer sur une carte introuvable).
+  assert.strictEqual(HOTE.modales.length, avantModales);
+});
+
 test('retour : la page de Documentation se referme et libère son slug', async () => {
   const p = await panneau();
   const avant = HOTE.panneaux.length;
@@ -326,6 +463,51 @@ test('le dépôt provisoire d’image est vidé quand le formulaire se ferme san
 
   assert.strictEqual(kirby.imageProvisoire('carte-jamais-enregistree'), null,
     'le dépôt provisoire aurait dû être vidé à la fermeture du formulaire');
+});
+
+// ---- szh.ouvrirActualite : ouverture sur un onglet, bascule d'un panneau déjà ouvert ----
+//
+// Le panneau est fermé à ce point du fichier (le test précédent l'a refermé par
+// retourArticle) : un terrain propre pour vérifier l'ouverture initiale, PUIS la bascule
+// d'un panneau qui reste ouvert d'un test à l'autre.
+test('szh.ouvrirActualite : ouvre le formulaire directement sur l’onglet demandé', async () => {
+  // panneaux n'oublie jamais un panneau (même disposé) : ce que prouve « un panneau neuf »,
+  // c'est que la longueur grandit — exactement le contrat du test « retour » plus haut.
+  const avant = HOTE.panneaux.length;
+
+  await HOTE.executer('szh.ouvrirActualite', 'reservoir');
+  assert.strictEqual(HOTE.panneaux.length, avant + 1, 'un panneau neuf doit s’ouvrir');
+
+  const p = await panneau();   // envoie « pret », lit la réponse « charger »
+  const m = charge(p);
+  assert.deepStrictEqual(m.vueInitiale, { onglet: 'reservoir', categorie: undefined },
+    'le tout premier chargement doit porter la vue demandée (media/documentation.js la lit une fois)');
+});
+
+test('szh.ouvrirActualite : un panneau déjà ouvert se met au premier plan et bascule, sans se recharger', async () => {
+  const p = dernierPanneauDoc();
+  p.messages.length = 0;
+  const avant = HOTE.panneaux.length;
+
+  await HOTE.executer('szh.ouvrirActualite', 'numero', 'livre');
+
+  assert.strictEqual(HOTE.panneaux.length, avant, 'aucun panneau neuf : celui déjà ouvert est réutilisé');
+  assert.ok(p.messages.some((msg) => msg.type === 'ongletActiver' && msg.cle === 'numero' && msg.categorie === 'livre'),
+    'le panneau déjà ouvert doit recevoir le message de bascule, onglet ET catégorie');
+  assert.ok(!p.messages.some((msg) => msg.type === 'charger'),
+    'basculer de vue sur un panneau déjà ouvert ne doit jamais redéclencher un chargement complet');
+});
+
+test('szh.documentation (en-tête « ACTUALITÉ ») n’impose aucune vue : pas de bascule sur un panneau déjà ouvert', async () => {
+  const p = dernierPanneauDoc();
+  p.messages.length = 0;
+  const avant = HOTE.panneaux.length;
+
+  await HOTE.executer('szh.documentation');
+
+  assert.strictEqual(HOTE.panneaux.length, avant, 'le panneau déjà ouvert est réutilisé, pas recréé');
+  assert.ok(!p.messages.some((msg) => msg.type === 'ongletActiver'),
+    'sans vue demandée, aucune bascule ne doit partir');
 });
 
 // ---- Aucun libellé français ne traîne dans le formulaire allemand ----
@@ -413,7 +595,6 @@ test('ACTUALITÉ : les libellés suivent la langue du cockpit, pas celle du num�
 //
 // Ce numéro (REVUE) est en français. Une fiche écrite directement en allemand, hors de ce
 // numéro, joue le rôle d'une fiche reçue de la Zeitschrift.
-const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 
 test('traduire dans ce numéro : crée le fichier français, pré-rempli, rattaché à ce numéro', async () => {
   const { uuid, slug } = kirby.creerFiche(RACINE_ARBRE, 'de', 'livre',
@@ -523,4 +704,124 @@ test('charger() porte les traductions à faire, le réservoir et mes orphelines'
   // test/js/kirby-contenu.test.js (« listerNumeros »).
   assert.ok(Array.isArray(m.reservoirNumeros));
   void uuidReservoir;
+});
+
+// ---- Bouton « Aperçu du PDF » (23.09.2026) ---------------------------------------------
+//
+// Même mécanisme que l'aperçu d'un article (extension.js#compilerPuisAfficher, lancerBuild,
+// la tâche « Aperçu / Export PDF ») — mais la Documentation n'a pas de .md source à comparer
+// à un aperçu existant : un clic recompile TOUJOURS avant d'afficher (jamais une supposition
+// d'obsolescence). L'état du bouton n'est jamais tenu par la page : il vient de l'hôte, qui
+// le lit sur l'état RÉEL (session.panneauApercuHtml()/apercuCourantSlug()) à chaque geste.
+const NOM_BUILD_APERCU = 'Aperçu / Export PDF';
+const tickApercu = () => new Promise((r) => setImmediate(r));
+
+test('Aperçu du PDF : un clic recompile puis ouvre le panneau HTML, l’état revient « ouvert »', async () => {
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_BUILD_APERCU }]);
+  try {
+    const p = await panneau();
+    p.messages.length = 0;
+    const promesse = p._recepteur({ type: 'apercuBasculer' });
+    await tickApercu();
+    await HOTE.finirTache(NOM_BUILD_APERCU, 0);
+    await promesse;
+
+    assert.ok(HOTE.panneauDeType('szhApercuHtml'), 'le panneau d’aperçu HTML aurait dû s’ouvrir');
+    const etat = p.messages.filter((m) => m.type === 'apercuEtat').pop();
+    assert.ok(etat, 'aucun « apercuEtat » renvoyé après la bascule');
+    assert.strictEqual(etat.ouvert, true);
+  } finally {
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+  }
+});
+
+test('Aperçu du PDF : un second clic ferme l’aperçu, sans recompiler (aucune tâche demandée)', async () => {
+  const p = dernierPanneauDoc();
+  p.messages.length = 0;
+  const avantTaches = HOTE.commandesJouees().length;
+  await p._recepteur({ type: 'apercuBasculer' });   // fermeture : synchrone, aucune tâche
+  const etat = p.messages.filter((m) => m.type === 'apercuEtat').pop();
+  assert.ok(etat);
+  assert.strictEqual(etat.ouvert, false);
+  void avantTaches;
+});
+
+test('Aperçu du PDF : « charger() » (au premier « pret ») reflète l’état réel, ouvert ou fermé', async () => {
+  // Fermé à ce point (test précédent) : un nouveau « pret » doit le redire.
+  const p = dernierPanneauDoc();
+  await p._recepteur({ type: 'pret' });
+  assert.strictEqual(charge(p).apercuOuvert, false);
+
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_BUILD_APERCU }]);
+  try {
+    const promesse = p._recepteur({ type: 'apercuBasculer' });
+    await tickApercu();
+    await HOTE.finirTache(NOM_BUILD_APERCU, 0);
+    await promesse;
+    await p._recepteur({ type: 'pret' });
+    assert.strictEqual(charge(p).apercuOuvert, true, 'apercuOuvert doit suivre l’aperçu réellement ouvert');
+  } finally {
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+  }
+});
+
+test('Aperçu du PDF : « Enregistrer » relance une compilation quand l’aperçu est ouvert, jamais sinon', async () => {
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_BUILD_APERCU }]);
+  const origExecute = HOTE.stub.tasks.executeTask;
+  let appels = 0;
+  HOTE.stub.tasks.executeTask = (t) => { appels++; return origExecute(t); };
+  try {
+    const p = dernierPanneauDoc();
+    // L'aperçu est déjà ouvert (test précédent) : enregistrer quelque chose doit relancer
+    // une compilation, sans qu'on l'attende (fire-and-forget côté hôte).
+    p.messages.length = 0;
+    await p._recepteur({
+      type: 'enregistrer', auto: false,
+      ressources: [{ id: 'r-apercu', type: 'film', valeurs: { title: 'Pour l’aperçu' } }], rubriques: []
+    });
+    await tickApercu();
+    assert.strictEqual(appels, 1, 'enregistrer avec l’aperçu ouvert doit relancer UNE compilation');
+    await HOTE.finirTache(NOM_BUILD_APERCU, 0);
+    await tickApercu();
+
+    // Fermer l'aperçu, puis enregistrer à nouveau : plus aucune compilation ne doit partir.
+    await p._recepteur({ type: 'apercuBasculer' });
+    appels = 0;
+    await p._recepteur({
+      type: 'enregistrer', auto: false,
+      ressources: [{ id: 'r-apercu-2', type: 'film', valeurs: { title: 'Sans aperçu' } }], rubriques: []
+    });
+    await tickApercu();
+    assert.strictEqual(appels, 0, 'enregistrer sans aperçu ouvert ne doit relancer aucune compilation');
+  } finally {
+    HOTE.stub.tasks.executeTask = origExecute;
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+  }
+});
+
+test('Aperçu du PDF : fermé « à la croix », le panneau redevenu actif redit l’état à jour', async () => {
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_BUILD_APERCU }]);
+  try {
+    const p = dernierPanneauDoc();
+    p.messages.length = 0;
+    const promesse = p._recepteur({ type: 'apercuBasculer' });   // rouvre
+    await tickApercu();
+    await HOTE.finirTache(NOM_BUILD_APERCU, 0);
+    await promesse;
+    assert.strictEqual(p.messages.filter((m) => m.type === 'apercuEtat').pop().ouvert, true);
+
+    // L'utilisateur ferme l'aperçu lui-même (la croix de SON panneau) : rien ne le dit à
+    // la Documentation tant que son propre panneau ne redevient pas actif.
+    const panneauApercu = HOTE.panneauDeType('szhApercuHtml');
+    assert.ok(panneauApercu, 'témoin manquant : le panneau d’aperçu aurait dû être ouvert');
+    panneauApercu.dispose();
+
+    p.messages.length = 0;
+    p.onDidChangeViewState.emettre({ webviewPanel: { active: true } });
+    const etat = p.messages.filter((m) => m.type === 'apercuEtat').pop();
+    assert.ok(etat, 'le panneau Documentation redevenu actif doit recevoir l’état à jour');
+    assert.strictEqual(etat.ouvert, false, 'l’aperçu fermé à la croix doit se refléter sans qu’on ait cliqué le bouton');
+  } finally {
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+  }
 });

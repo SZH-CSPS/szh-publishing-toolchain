@@ -43,6 +43,10 @@ const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
+// documentation-hote.js require('vscode') à son sommet : ne le charger directement
+// qu'APRÈS activerHote(), qui pose le crochet Module._load vers le faux « vscode » — même
+// détour que actualite.test.js#libellesActualite pour la même raison.
+const documentationHote = require(path.join(COCKPIT, 'lib', 'documentation-hote.js'));
 // La bibliothèque ACTIVE (celle du numéro ouvert) — un dossier jetable qui n'a RIEN à voir
 // avec la racine « production » posée ci-dessous : c'est précisément ce que « lecture de la
 // production en mode test » doit prouver.
@@ -107,6 +111,45 @@ test('lecture de la production en mode test : une fiche écrite hors de la racin
   assert.deepStrictEqual(trouvee.langues, ['fr']);
   assert.strictEqual(trouvee.titres.fr, 'Archivé au loin');
   void uuid;
+});
+
+// ---- Le compte de l'Archive dans l'arbre (23.09.2026) ----------------------------------
+//
+// L'arbre (extension.js#_itemsActualite) n'a pas le droit de lire la bibliothèque de
+// production lui-même — il reprend le dernier compte que documentation-hote.js a obtenu
+// pour n'IMPORTE QUEL panneau (compteArchiveConnu). Avant tout ARCHIVE_CHARGER/ACTUALISER,
+// aucun badge.
+test('le compte connu de l’Archive alimente le badge de l’arbre, jamais une lecture à part', async () => {
+  const racineProd = nouvelleRacineProduction();
+  kirby.creerFiche(racineProd, 'fr', 'livre', livre('Un premier'), '');
+  kirby.creerFiche(racineProd, 'fr', 'film', { title: 'Un second', realisateur: 'X', annee: '2022', descriptif: 'D' }, '');
+
+  const p = await panneau();
+  await p._recepteur({ type: MSG.ARCHIVE_CHARGER });
+  assert.strictEqual(documentationHote.compteArchiveConnu(), 2);
+
+  const actualite = await HOTE.arbre().getChildren(
+    (await HOTE.arbre().getChildren()).find((it) => it.contextValue === 'section-actualite'));
+  const archive = actualite.find((it) => it.command && it.command.arguments[0] === 'archive');
+  assert.ok(archive, 'entrée Archive introuvable dans l’arbre');
+  assert.strictEqual(archive.description, '(2)');
+
+  // Une fiche ajoutée après coup : le badge de l'arbre ne bouge PAS tant qu'aucun panneau ne
+  // redemande la lecture — c'est bien le dernier compte CONNU, pas une lecture à la volée.
+  kirby.creerFiche(racineProd, 'fr', 'livre', livre('Ajoutée après'), '');
+  const actualiteAvantRelecture = await HOTE.arbre().getChildren(
+    (await HOTE.arbre().getChildren()).find((it) => it.contextValue === 'section-actualite'));
+  assert.strictEqual(
+    actualiteAvantRelecture.find((it) => it.command && it.command.arguments[0] === 'archive').description,
+    '(2)', 'le badge ne doit pas anticiper une lecture qu’aucun panneau n’a encore faite');
+
+  await p._recepteur({ type: MSG.ARCHIVE_ACTUALISER });
+  assert.strictEqual(documentationHote.compteArchiveConnu(), 3);
+  const actualiteApres = await HOTE.arbre().getChildren(
+    (await HOTE.arbre().getChildren()).find((it) => it.contextValue === 'section-actualite'));
+  assert.strictEqual(
+    actualiteApres.find((it) => it.command && it.command.arguments[0] === 'archive').description,
+    '(3)', 'après ARCHIVE_ACTUALISER, le badge doit suivre le nouveau compte');
 });
 
 test('ARCHIVE_ACTUALISER relit la bibliothèque de production (une fiche ajoutée entre-temps apparaît)', async () => {

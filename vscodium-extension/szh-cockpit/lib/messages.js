@@ -37,7 +37,11 @@ const MSG = Object.freeze({
   DEPOSER_IMAGE: 'deposer-image', IMAGE_DEPOSEE: 'image-deposee',
   // RETIRER : rend une fiche du numéro orpheline (Ausgabe vidé) — ne l'efface plus.
   // SUPPRIMER : efface pour de bon une fiche déjà orpheline (confirmation côté hôte).
-  RETIRER: 'retirer', SUPPRIMER: 'supprimer',
+  // SUPPRIMER_FICHE_NUMERO : efface pour de bon une fiche RATTACHÉE, depuis sa carte dans
+  // « Documentation du numéro » (23.09.2026) — geste distinct de RETIRER, qui ne fait que la
+  // détacher. N'ôte que le fichier de la langue du numéro ; l'autre langue, si elle existe,
+  // reste (confirmation côté hôte, kirby.supprimerFicheLangue).
+  RETIRER: 'retirer', SUPPRIMER: 'supprimer', SUPPRIMER_FICHE_NUMERO: 'supprimerFicheNumero',
   // Traductions à faire / Réservoir (docs/FORMAT-DOCUMENTATION-KIRBY.md) : gestes posés sur
   // une fiche de l'AUTRE langue, désignée par son Uuid — celui du fichier source, partagé
   // avec le fichier traduit une fois qu'il existe.
@@ -54,6 +58,13 @@ const MSG = Object.freeze({
   ARCHIVE_DONNEES: 'archiveDonnees',
   ARCHIVE_IMAGE: 'archiveImage', ARCHIVE_IMAGE_DONNEE: 'archiveImageDonnee',
   ARCHIVE_REPRENDRE: 'archiveReprendre', ARCHIVE_REPRISE: 'archiveReprise',
+  // ONGLET_ACTIVER : l'arbre (les entrées de la section ACTUALITÉ) demande de basculer un
+  // panneau DÉJÀ OUVERT sur une autre vue — le premier chargement, lui, porte la vue visée
+  // directement dans « charger » (vueInitiale), jamais par ce message.
+  ONGLET_ACTIVER: 'ongletActiver',
+  // Le bouton « Aperçu du PDF » de la barre (23.09.2026) : la page demande la bascule
+  // (ouvrir/fermer), l'hôte répond par le même type l'état OBTENU — comme MODE_TRAD.
+  APERCU_BASCULER: 'apercuBasculer', APERCU_ETAT: 'apercuEtat',
 
   // Gestionnaire des médias
   AUTEUR_ENREGISTRER: 'auteur-enregistrer', AUTEUR_ENREGISTRE: 'auteur-enregistre',

@@ -50,6 +50,15 @@ const TEXTES_COCKPIT = {
     'arbre.controles.rien': 'Rien à signaler',
     'arbre.traductions': 'TRADUCTIONS',
     'arbre.actualite': 'ACTUALITÉ',
+    // Les entrées de la section ACTUALITÉ (extension.js#_itemsActualite) : chacune ouvre le
+    // formulaire de Documentation directement sur cette vue. « Publier sur le site web » est
+    // grisée (pas encore livré, 23.09.2026).
+    'arbre.actualite.traductions.tip': 'Fiches de l’autre revue marquées « à traduire » – clic = ouvrir cette vue',
+    'arbre.actualite.reservoir.tip': 'Fiches de l’autre revue en attente d’une décision, et mes fiches orphelines – clic = ouvrir cette vue',
+    'arbre.actualite.numero.tip': 'Rubriques et fiches rattachées à ce numéro – clic = ouvrir cette vue',
+    'arbre.actualite.archive.tip': 'Toute la bibliothèque de production, en lecture seule – clic = ouvrir cette vue',
+    'arbre.actualite.publier': 'Publier sur le site web',
+    'arbre.actualite.publier.tip': 'À venir',
     'arbre.vide.articles': 'Aucun article pour l’instant',
     'arbre.vide.chapitres': 'Aucun chapitre pour l’instant',
 
@@ -1104,6 +1113,10 @@ const TEXTES_COCKPIT = {
     'ressource.retirer.tip': 'Retirer cette fiche du numéro : elle redevient orpheline, disponible depuis « Mes orphelines »',
     'ressource.supprimer.tip': 'Supprimer définitivement cette fiche orpheline',
     'ressource.supprimer.question': 'Supprimer définitivement cette fiche ?',
+    // Depuis une carte de « Documentation du numéro » (23.09.2026) — distinct de « Retirer
+    // du numéro », qui ne fait que la détacher : ce geste-ci efface pour de bon.
+    'ressource.supprimerNumero.tip': 'Supprimer définitivement cette fiche',
+    'ressource.supprimerNumero.question': 'Supprimer définitivement cette fiche ? Si une version existe dans l’autre langue, elle sera conservée.',
     'ressource.supprimee': '✓ Fiche supprimée',
     // Libellé d'un accordéon dont la fiche n'a pas encore de titre : « 3 · (sans titre) ».
     'ressource.sansTitre': '(sans titre)',
@@ -1122,6 +1135,10 @@ const TEXTES_COCKPIT = {
     'doc.enregistre': '✓ Documentation enregistrée',
     'doc.rienAEcrire': 'Rien à enregistrer pour l’instant.',
     'doc.retour.tip': 'Enregistrer d’abord, puis refermer',
+    // Le bouton « Aperçu du PDF », à côté de « Enregistrer » (23.09.2026) : ouvre/ferme
+    // l'aperçu de cette page dans la colonne voisine, même mécanisme que celui d'un article.
+    'doc.apercu': 'Aperçu du PDF',
+    'doc.apercu.tip': 'Afficher ou masquer l’aperçu de cette page, dans la colonne voisine',
     'doc.statut.enregistres': '{0} bloc(s) enregistré(s).',
     'doc.quitter.page': 'Quitter la Documentation du numéro ?',
     'doc.quitter.question': 'Quitter les ressources de « {0} » ?',
@@ -1183,6 +1200,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.sansNumero': 'Aucun numéro',
     'doc.archive.reprendre': 'Reprendre dans ce numéro',
     'doc.archive.reprendre.tip': 'Créer une nouvelle fiche dans ce numéro, pré-remplie depuis cette fiche archivée',
+    'doc.archive.editer.tip': 'À venir',
     'doc.archive.reprise.ok': '✓ Fiche reprise dans ce numéro',
     'doc.archive.reprise.echec': 'Impossible de reprendre cette fiche : elle a peut-être été retirée de la bibliothèque de production entre-temps.',
     'doc.archive.apercu.titre': 'Aperçu',
@@ -1690,6 +1708,12 @@ const TEXTES_COCKPIT = {
     'arbre.controles.rien': 'Nichts zu melden',
     'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.actualite': 'NEWS',
+    'arbre.actualite.traductions.tip': 'Karten der anderen Zeitschrift, als «zu übersetzen» markiert – Klick = diese Ansicht öffnen',
+    'arbre.actualite.reservoir.tip': 'Karten der anderen Zeitschrift ohne Entscheid, und meine herrenlosen Karten – Klick = diese Ansicht öffnen',
+    'arbre.actualite.numero.tip': 'Rubriken und Karten dieser Ausgabe – Klick = diese Ansicht öffnen',
+    'arbre.actualite.archive.tip': 'Die gesamte Produktionsbibliothek, nur lesbar – Klick = diese Ansicht öffnen',
+    'arbre.actualite.publier': 'Auf der Website veröffentlichen',
+    'arbre.actualite.publier.tip': 'Folgt',
     'arbre.vide.articles': 'Noch keine Artikel',
     'arbre.vide.chapitres': 'Noch keine Kapitel',
     'arbre.vide.word': 'Kein Word in Warteschlange',
@@ -2654,6 +2678,8 @@ const TEXTES_COCKPIT = {
     'ressource.retirer.tip': 'Diesen Eintrag aus der Ausgabe nehmen: er wird wieder herrenlos und erscheint unter «Meine herrenlosen Einträge»',
     'ressource.supprimer.tip': 'Diesen herrenlosen Eintrag endgültig löschen',
     'ressource.supprimer.question': 'Diesen Eintrag endgültig löschen?',
+    'ressource.supprimerNumero.tip': 'Diesen Eintrag endgültig löschen',
+    'ressource.supprimerNumero.question': 'Diesen Eintrag endgültig löschen? Eine Version in der anderen Sprache bleibt erhalten, falls vorhanden.',
     'ressource.supprimee': '✓ Eintrag gelöscht',
     'ressource.sansTitre': '(ohne Titel)',
     'ressource.manque': 'Es fehlt noch: {0}.',
@@ -2671,6 +2697,8 @@ const TEXTES_COCKPIT = {
     'doc.enregistre': '✓ Dokumentation gespeichert',
     'doc.rienAEcrire': 'Im Moment gibt es nichts zu speichern.',
     'doc.retour.tip': 'Zuerst speichern, dann schliessen',
+    'doc.apercu': 'PDF-Vorschau',
+    'doc.apercu.tip': 'Vorschau dieser Seite in der Nachbarspalte ein- oder ausblenden',
     'doc.statut.enregistres': '{0} Block/Blöcke gespeichert.',
     'doc.quitter.page': 'Dokumentation der Ausgabe verlassen?',
     'doc.quitter.question': 'Ressourcen von «{0}» verlassen?',
@@ -2731,6 +2759,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.sansNumero': 'Keine Ausgabe',
     'doc.archive.reprendre': 'In diese Ausgabe übernehmen',
     'doc.archive.reprendre.tip': 'Einen neuen Eintrag in dieser Ausgabe erstellen, vorausgefüllt aus diesem archivierten Eintrag',
+    'doc.archive.editer.tip': 'Folgt',
     'doc.archive.reprise.ok': '✓ Eintrag in diese Ausgabe übernommen',
     'doc.archive.reprise.echec': 'Dieser Eintrag kann nicht übernommen werden: er wurde möglicherweise inzwischen aus der Produktionsbibliothek entfernt.',
     'doc.archive.apercu.titre': 'Vorschau',

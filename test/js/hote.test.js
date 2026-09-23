@@ -42,7 +42,7 @@ test('l’extension s’active et enregistre ses commandes', () => {
   // (TreeItem.command d'un article, clic sur un en-tête d'accordéon), jamais par la palette.
   // Si cette liste devait grandir, c'est un signal à vérifier à la main, pas à faire
   // échouer aveuglément ici.
-  const registreesHorsMenu = ['szh.ouvrirArticle', 'szh.ouvrirSection'];
+  const registreesHorsMenu = ['szh.ouvrirArticle', 'szh.ouvrirSection', 'szh.ouvrirActualite'];
   const inattendues = ids.filter((id) => id.indexOf('szh.') === 0
     && manifeste.indexOf(id) === -1 && registreesHorsMenu.indexOf(id) === -1);
   assert.deepStrictEqual(inattendues, [],

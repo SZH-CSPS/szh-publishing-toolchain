@@ -37,7 +37,7 @@ SZH.MSG = Object.freeze({
   DEPOSER_IMAGE: 'deposer-image', IMAGE_DEPOSEE: 'image-deposee',
   // RETIRER : rend une fiche du numéro orpheline (Ausgabe vidé) — ne l'efface plus.
   // SUPPRIMER : efface pour de bon une fiche déjà orpheline (confirmation côté hôte).
-  RETIRER: 'retirer', SUPPRIMER: 'supprimer',
+  RETIRER: 'retirer', SUPPRIMER: 'supprimer', SUPPRIMER_FICHE_NUMERO: 'supprimerFicheNumero',
   // Traductions à faire / Réservoir (docs/FORMAT-DOCUMENTATION-KIRBY.md) : gestes posés sur
   // une fiche de l'AUTRE langue, désignée par son Uuid — celui du fichier source, partagé
   // avec le fichier traduit une fois qu'il existe.
@@ -49,6 +49,9 @@ SZH.MSG = Object.freeze({
   ARCHIVE_DONNEES: 'archiveDonnees',
   ARCHIVE_IMAGE: 'archiveImage', ARCHIVE_IMAGE_DONNEE: 'archiveImageDonnee',
   ARCHIVE_REPRENDRE: 'archiveReprendre', ARCHIVE_REPRISE: 'archiveReprise',
+  // ONGLET_ACTIVER : l'arbre demande de basculer un panneau DÉJÀ OUVERT sur une autre vue.
+  ONGLET_ACTIVER: 'ongletActiver',
+  APERCU_BASCULER: 'apercuBasculer', APERCU_ETAT: 'apercuEtat',
 
   // Gestionnaire des médias
   AUTEUR_ENREGISTRER: 'auteur-enregistrer', AUTEUR_ENREGISTRE: 'auteur-enregistre',
