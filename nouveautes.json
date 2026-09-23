@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.2": {
+    "fr": {
+      "titre": "L’actualité se partage entre la Revue et la Zeitschrift",
+      "points": [
+        "Les fiches de l’actualité (livres, films, interventions, agenda…) vivent désormais dans une bibliothèque commune aux deux revues : chaque numéro n’affiche que les siennes.",
+        "L’onglet « Réservoir » montre ce que l’autre revue a publié : cochez une ou plusieurs fiches pour les marquer « à traduire » ou « ignorer ».",
+        "L’onglet « Traductions à faire » reprend les fiches marquées : « Traduire dans ce numéro » ouvre la fiche déjà remplie, il ne reste que le texte à traduire.",
+        "Retirer une fiche d’un numéro la garde de côté dans « Mes orphelines », d’où vous pouvez la reprendre plus tard.",
+        "Les dossiers partagés adoptent une arborescence plus simple ; vos numéros de test y sont déplacés automatiquement à la mise à jour, sans rien perdre."
+      ]
+    },
+    "de": {
+      "titre": "Die News werden zwischen Revue und Zeitschrift geteilt",
+      "points": [
+        "Die Einträge der News (Bücher, Filme, Vorstösse, Weiterbildung…) liegen jetzt in einer gemeinsamen Bibliothek beider Zeitschriften: jede Ausgabe zeigt nur ihre eigenen.",
+        "Der Reiter «Reservoir» zeigt, was die andere Zeitschrift veröffentlicht hat: wählen Sie einen oder mehrere Einträge aus und markieren Sie sie als «zu übersetzen» oder «ignorieren».",
+        "Der Reiter «Zu übersetzen» sammelt die markierten Einträge: «In diese Ausgabe übersetzen» öffnet den bereits ausgefüllten Eintrag, nur der Text bleibt zu übersetzen.",
+        "Ein aus einer Ausgabe entfernter Eintrag bleibt unter «Meine verwaisten Einträge» erhalten und lässt sich später wieder übernehmen.",
+        "Die geteilten Ordner erhalten eine einfachere Struktur; Ihre Testausgaben werden beim Update automatisch verschoben, ohne dass etwas verloren geht."
+      ]
+    }
+  },
   "2.1": {
     "fr": {
       "titre": "Les livres FALC se lisent et s’écoutent mieux",

@@ -52,11 +52,11 @@ par personne et par poste.
 
 Les deux autres entrées restent disponibles et font exactement la même chose :
 
-- **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue. Il ne
-  contient aucun chemin de votre ordinateur : il passe par l’outil installé sur le poste et lui
+- **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue. Il ne
+  contient aucun chemin de votre ordinateur : il passe par l’outil installé sur le poste et lui
   indique simplement quel numéro ouvrir. C’est pourquoi il fonctionne aussi bien sur l’autre
-  poste, une fois le dossier synchronisé, et même si le numéro a été archivé ;
-- **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
+  poste, une fois le dossier synchronisé, et même si le numéro a été archivé ;
+- **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
   onglet par onglet).
 
 ## La barre « Revue » (tout gérer sans l’explorateur)
@@ -1717,17 +1717,17 @@ dit en bas : « N revue(s) hors arborescence dans … – à déplacer ». D
 dans `Revue` (ou `Zeitschrift`) et il apparaîtra.
 
 À côté de ces six dossiers, la même racine en porte trois autres, que vous verrez dans
-l’explorateur :
+l’explorateur :
 
-- **`_NewsUndActu`** – le magasin partagé par les deux rédactions. C’est là qu’atterrit une
-  fiche « mise de côté », et c’est par là qu’une fiche envoyée à l’autre revue pour
+- **`_NewsUndActu`** – le magasin partagé par les deux rédactions. C’est là qu’atterrit une
+  fiche « mise de côté », et c’est par là qu’une fiche envoyée à l’autre revue pour
   traduction arrive chez la collègue. Il est posé à la racine, et non dans un numéro, pour
-  deux raisons : il survit à l’archivage d’un numéro, et **les deux rédactions y lisent la
+  deux raisons : il survit à l’archivage d’un numéro, et **les deux rédactions y lisent la
   même chose**.
-- **`Secrétariat und Export`** – pour les sorties du secrétariat, déposées à la main.
-- **`_Systeme`** – ce que l’outil écrit pour lui-même (rapports de panne, journaux,
+- **`Secrétariat und Export`** – pour les sorties du secrétariat, déposées à la main.
+- **`_Systeme`** – ce que l’outil écrit pour lui-même (rapports de panne, journaux,
   inventaire des postes). Rien à y faire. À la différence des deux dossiers précédents, il
-  n’est **jamais** dans le dossier d’essai décrit ci-dessous : il vit toujours dans le
+  n’est **jamais** dans le dossier d’essai décrit ci-dessous : il vit toujours dans le
   dossier partagé SharePoint de la production, même quand vous travaillez en mode test –
   c’est le seul point de rendez-vous entre tous les postes.
 

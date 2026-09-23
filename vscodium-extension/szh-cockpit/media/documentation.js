@@ -1122,7 +1122,7 @@ window.addEventListener('message', function (ev) {
     if (ctl.reservoirMaj) { ctl.reservoirMaj(!!msg.avecIgnorees, Array.isArray(msg.entrees) ? msg.entrees : []); }
     return;
   }
-  console.warn('documentation : type de message inconnu', msg.type);
+  console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

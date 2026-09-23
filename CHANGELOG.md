@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.2.0
+
+**Actualité : une bibliothèque de fiches partagée, compatible Kirby.** Les fiches de la
+Documentation vivent dans `_NewsUndActu\Fiches\<slug>\<type>.<langue>.txt` (format de contenu
+Kirby, un fichier par langue : une traduction n'est pas une copie), rattachées au numéro par
+`Ausgabe:` = l'`id` de son `ausgabe.yaml`, rangées par `Ordre:`. Un contrat unique
+(`pipeline/kirby/champs-documentation.json`) pilote le formulaire, le convertisseur, les filtres
+Lua et les blueprints Kirby générés (`kirby/`). Les rubriques restent dans le numéro. Format :
+`docs/FORMAT-DOCUMENTATION-KIRBY.md` ; ce que le site devra reprendre : `TODO_KirbyCMS.md`.
+Aucune rétrocompatibilité avec les blocs `:::` de l'ancien `documentation.md`.
+
+**Réservoir et traductions.** Onglets « Traductions à faire » | « Réservoir » | « Documentation
+du numéro ». Le réservoir liste ce que l'autre langue a publié (filtre par numéro, sélection
+multiple, à traduire / ignorer, annuler la décision) et les orphelines (tirer dans ce numéro).
+Statuts dans `_NewsUndActu\_Statuts\<langue>\<uuid>.txt`. La réserve et « Envoyer à l'autre
+revue » des fiches disparaissent ; « Envoyer pour traduction » des articles reste.
+
+**Arborescence 54_Pronto.** `Revue\`, `Zeitschrift\`, `Books\`, `_Archive\`, `_NewsUndActu\`,
+`Secrétariat und Export\` et `_Systeme\`, identiques sous la racine de test et sous
+`2_Produkte\54_Pronto`. Migration automatique à la mise à jour, racine de test OneDrive
+seulement, sans jamais écraser (`windows/szh-migration.ps1`). `_Systeme\` (rapports, journaux,
+suggestions, inventaire des postes) toujours sur SharePoint, même en mode test.
+
+**Identifiant fixe et liens.** `id:` (16 caractères) dans `ausgabe.yaml` et `buch.yaml`, posé à
+la création, à l'ouverture et par la migration, jamais recalculé. Les liens `szh://` portent
+l'id et retrouvent le numéro en cours comme archivé.
+
 ## 2.1.0
 
 **Livres FALC : un en-tête de chapitre « à écouter », écrit dans le texte.** Le bloc
