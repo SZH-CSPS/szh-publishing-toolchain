@@ -1,0 +1,75 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Agenda et formation continue"
+  de: "Weiterbildung"
+fields:
+  evenement:
+    type: "select"
+    options:
+      colloque:
+        fr: "Colloque"
+        de: "Tagung"
+      congres:
+        fr: "Congrès"
+        de: "Kongress"
+      journee:
+        fr: "Journée d’étude"
+        de: "Fachtagung"
+      cours:
+        fr: "Cours"
+        de: "Kurs"
+      webinaire:
+        fr: "Webinaire"
+        de: "Webinar"
+      formation:
+        fr: "Formation continue"
+        de: "Weiterbildung"
+    label:
+      fr: "Type d’événement"
+      de: "Art der Veranstaltung"
+    required: true
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  debut:
+    type: "date"
+    display: "DD.MM.YYYY"
+    format: "Y-m-d"
+    label:
+      fr: "Début"
+      de: "Beginn"
+    required: true
+  fin:
+    type: "date"
+    display: "DD.MM.YYYY"
+    format: "Y-m-d"
+    label:
+      fr: "Fin"
+      de: "Ende"
+    required: true
+  lieu:
+    type: "text"
+    label:
+      fr: "Lieu"
+      de: "Ort"
+    required: true
+  organisateur:
+    type: "text"
+    label:
+      fr: "Organisation"
+      de: "Veranstalter:in"
+    required: true
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true

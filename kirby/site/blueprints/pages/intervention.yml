@@ -1,0 +1,294 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Interventions parlementaires"
+  de: "Parlamentarische Vorstösse"
+fields:
+  canton:
+    type: "select"
+    options:
+      CH:
+        fr: "Confédération"
+        de: "Bund"
+      AG:
+        fr: "Argovie"
+        de: "Aargau"
+      AI:
+        fr: "Appenzell Rhodes-Intérieures"
+        de: "Appenzell Innerrhoden"
+      AR:
+        fr: "Appenzell Rhodes-Extérieures"
+        de: "Appenzell Ausserrhoden"
+      BE:
+        fr: "Berne"
+        de: "Bern"
+      BL:
+        fr: "Bâle-Campagne"
+        de: "Basel-Landschaft"
+      BS:
+        fr: "Bâle-Ville"
+        de: "Basel-Stadt"
+      FR:
+        fr: "Fribourg"
+        de: "Freiburg"
+      GE:
+        fr: "Genève"
+        de: "Genf"
+      GL:
+        fr: "Glaris"
+        de: "Glarus"
+      GR:
+        fr: "Grisons"
+        de: "Graubünden"
+      JU:
+        fr: "Jura"
+        de: "Jura"
+      LU:
+        fr: "Lucerne"
+        de: "Luzern"
+      NE:
+        fr: "Neuchâtel"
+        de: "Neuenburg"
+      NW:
+        fr: "Nidwald"
+        de: "Nidwalden"
+      OW:
+        fr: "Obwald"
+        de: "Obwalden"
+      SG:
+        fr: "Saint-Gall"
+        de: "St. Gallen"
+      SH:
+        fr: "Schaffhouse"
+        de: "Schaffhausen"
+      SO:
+        fr: "Soleure"
+        de: "Solothurn"
+      SZ:
+        fr: "Schwytz"
+        de: "Schwyz"
+      TG:
+        fr: "Thurgovie"
+        de: "Thurgau"
+      TI:
+        fr: "Tessin"
+        de: "Tessin"
+      UR:
+        fr: "Uri"
+        de: "Uri"
+      VD:
+        fr: "Vaud"
+        de: "Waadt"
+      VS:
+        fr: "Valais"
+        de: "Wallis"
+      ZG:
+        fr: "Zoug"
+        de: "Zug"
+      ZH:
+        fr: "Zurich"
+        de: "Zürich"
+    label:
+      fr: "Canton"
+      de: "Kanton"
+    required: true
+  categorie:
+    type: "select"
+    options:
+      motion:
+        fr: "Motion"
+        de: "Motion"
+      postulat:
+        fr: "Postulat"
+        de: "Postulat"
+      interpellation:
+        fr: "Interpellation"
+        de: "Interpellation"
+      interpellation-urgente:
+        fr: "Interpellation urgente (VS)"
+        de: "Dringliche Interpellation (VS)"
+      question:
+        fr: "Question"
+        de: "Anfrage"
+      question-urgente:
+        fr: "Question urgente"
+        de: "Dringliche Anfrage"
+      question-ordinaire:
+        fr: "Question ordinaire (SG)"
+        de: "Einfache Anfrage (SG)"
+      question-ordinaire-urgente:
+        fr: "Question ordinaire urgente"
+        de: "Dringliche einfache Anfrage"
+      question-heure:
+        fr: "Heure des questions"
+        de: "Fragestunde"
+      initiative-parlementaire:
+        fr: "Initiative parlementaire"
+        de: "Parlamentarische Initiative"
+      initiative-cantonale:
+        fr: "Initiative cantonale"
+        de: "Standesinitiative"
+      recommandation:
+        fr: "Recommandation"
+        de: "Empfehlung"
+      petition:
+        fr: "Pétition"
+        de: "Petition"
+      objet-gouvernement:
+        fr: "Objet du gouvernement"
+        de: "Geschäft der Regierung"
+      objet-parlement:
+        fr: "Objet du parlement"
+        de: "Geschäft des Parlaments"
+      anzug:
+        fr: "Anzug (BS)"
+        de: "Anzug (BS)"
+      schriftliche-anfrage:
+        fr: "Question écrite (AR, BS)"
+        de: "Schriftliche Anfrage (AR, BS)"
+      kleine-anfrage:
+        fr: "Petite question (SH)"
+        de: "Kleine Anfrage (SH)"
+      auskunftsbegehren:
+        fr: "Demande de renseignements (NW)"
+        de: "Auskunftsbegehren (NW)"
+      auftrag:
+        fr: "Mandat (GR)"
+        de: "Auftrag (GR)"
+    label:
+      fr: "Type d’intervention"
+      de: "Art des Vorstosses"
+    required: true
+  curia:
+    type: "hidden"
+    label:
+      fr: "Type Curia"
+      de: "Curia-Typ"
+  numero:
+    type: "text"
+    label:
+      fr: "Numéro"
+      de: "Nummer"
+    required: true
+  date:
+    type: "date"
+    display: "DD.MM.YYYY"
+    format: "Y-m-d"
+    label:
+      fr: "Date"
+      de: "Datum"
+    required: true
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  etat:
+    type: "select"
+    options:
+      depose:
+        fr: "Déposé"
+        de: "Eingereicht"
+      avis-disponible:
+        fr: "Avis du gouvernement disponible"
+        de: "Stellungnahme der Regierung liegt vor"
+      en-traitement:
+        fr: "En traitement"
+        de: "In Beratung"
+      traite-un-conseil:
+        fr: "Traité par un conseil"
+        de: "Von einem Rat behandelt"
+      traite-deux-conseils:
+        fr: "Traité par les deux conseils"
+        de: "Von beiden Räten behandelt"
+      adopte:
+        fr: "Adopté"
+        de: "Angenommen"
+      transmis-gouvernement:
+        fr: "Transmis au gouvernement"
+        de: "An die Regierung überwiesen"
+      rapport-ou-classement:
+        fr: "Rapport ou classement"
+        de: "Bericht oder Abschreibung"
+      liquide:
+        fr: "Liquidé"
+        de: "Erledigt"
+    label:
+      fr: "État"
+      de: "Stand"
+  etat_date:
+    type: "date"
+    display: "DD.MM.YYYY"
+    format: "Y-m-d"
+    label:
+      fr: "Date de l’état"
+      de: "Datum des Stands"
+  suivi:
+    type: "structure"
+    fields:
+      date:
+        type: "date"
+        display: "DD.MM.YYYY"
+        format: "Y-m-d"
+        label:
+          fr: "Date"
+          de: "Datum"
+        required: true
+      genre:
+        type: "select"
+        options:
+          prise-position:
+            fr: "Prise de position"
+            de: "Stellungnahme"
+          decision:
+            fr: "Décision"
+            de: "Entscheid"
+          document:
+            fr: "Document"
+            de: "Dokument"
+          autre:
+            fr: "Autre"
+            de: "Weiteres"
+        label:
+          fr: "Genre"
+          de: "Art"
+        required: true
+      libelle:
+        type: "text"
+        label:
+          fr: "Libellé"
+          de: "Bezeichnung"
+      lien:
+        type: "url"
+        label:
+          fr: "Lien"
+          de: "Link"
+    label:
+      fr: "Suivi"
+      de: "Verlauf"
+  source:
+    type: "select"
+    options:
+      curia:
+        fr: "Curia Vista"
+        de: "Curia Vista"
+      ides:
+        fr: "IDES"
+        de: "IDES"
+      manuel:
+        fr: "Saisie manuelle"
+        de: "Manuell erfasst"
+    label:
+      fr: "Source"
+      de: "Quelle"
+    required: true
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"

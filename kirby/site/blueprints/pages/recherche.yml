@@ -1,0 +1,47 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Recherches en cours"
+  de: "Laufende Forschungsprojekte"
+fields:
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  institutions:
+    type: "text"
+    label:
+      fr: "Institution(s) de recherche"
+      de: "Forschende Institution(en)"
+    required: true
+  debut:
+    type: "text"
+    pattern: "^\\d{4}(-\\d{2}(-\\d{2})?)?$"
+    label:
+      fr: "Début"
+      de: "Beginn"
+    required: true
+  fin:
+    type: "text"
+    pattern: "^\\d{4}(-\\d{2}(-\\d{2})?)?$"
+    label:
+      fr: "Fin"
+      de: "Ende"
+    required: true
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  lien_libelle:
+    type: "text"
+    label:
+      fr: "Texte du lien"
+      de: "Linktext"
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true

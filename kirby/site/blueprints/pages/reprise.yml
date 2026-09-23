@@ -1,0 +1,52 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "D’une revue à l’autre"
+  de: "Blick in die Revue"
+fields:
+  revue:
+    type: "select"
+    options:
+      revue:
+        fr: "Revue suisse de pédagogie spécialisée"
+        de: "Revue suisse de pédagogie spécialisée"
+      zeitschrift:
+        fr: "Schweizerische Zeitschrift für Heilpädagogik"
+        de: "Schweizerische Zeitschrift für Heilpädagogik"
+    label:
+      fr: "Revue"
+      de: "Zeitschrift"
+    required: true
+  title:
+    label:
+      fr: "Titre"
+      de: "Titel"
+    required: true
+  auteurs:
+    type: "text"
+    label:
+      fr: "Auteur(s)"
+      de: "Autor(en)"
+    required: true
+  reference:
+    type: "text"
+    label:
+      fr: "Référence (volume, numéro, pages)"
+      de: "Fundstelle (Band, Nummer, Seiten)"
+    required: true
+  doi:
+    type: "text"
+    label:
+      fr: "DOI"
+      de: "DOI"
+  lien:
+    type: "url"
+    label:
+      fr: "Lien"
+      de: "Link"
+  descriptif:
+    type: "textarea"
+    label:
+      fr: "Descriptif"
+      de: "Beschreibung"
+    required: true
