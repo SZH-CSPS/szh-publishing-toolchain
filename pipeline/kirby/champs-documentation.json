@@ -8,369 +8,2786 @@
   ],
   "version": 1,
   "_dossiers": "types[].dossier : nom du sous-dossier de _NewsUndActu/Fiches/ qui range ce type. Un mot allemand en minuscules ASCII (ü devient ue, ö devient oe) : c'est aussi le segment d'adresse du site Kirby. Ne se renomme jamais une fois des fiches écrites.",
-  "langues": ["fr", "de"],
-  "revues": { "revue": "fr", "zeitschrift": "de" },
-
-  "rubriques": [
-    { "cle": "dossier_references", "revues": ["revue", "zeitschrift"],
-      "titre": { "fr": "Références du dossier", "de": "Literatur zum Schwerpunkt" } },
-    { "cle": "dossier_liens", "revues": ["revue", "zeitschrift"],
-      "titre": { "fr": "Sites en lien avec le dossier", "de": "Linksammlung zum Schwerpunkt" } },
-    { "cle": "ressources", "revues": ["revue"],
-      "titre": { "fr": "Ressources", "de": "Ressourcen" } },
-    { "cle": "podcasts", "revues": ["revue", "zeitschrift"],
-      "titre": { "fr": "Documentaires et podcasts", "de": "Dokumentarfilme und Podcasts" } }
+  "langues": [
+    "fr",
+    "de"
   ],
-
+  "revues": {
+    "revue": "fr",
+    "zeitschrift": "de"
+  },
+  "rubriques": [
+    {
+      "cle": "dossier_references",
+      "revues": [
+        "revue",
+        "zeitschrift"
+      ],
+      "titre": {
+        "fr": "Références du dossier",
+        "de": "Literatur zum Schwerpunkt"
+      }
+    },
+    {
+      "cle": "dossier_liens",
+      "revues": [
+        "revue",
+        "zeitschrift"
+      ],
+      "titre": {
+        "fr": "Sites en lien avec le dossier",
+        "de": "Linksammlung zum Schwerpunkt"
+      }
+    },
+    {
+      "cle": "ressources",
+      "revues": [
+        "revue"
+      ],
+      "titre": {
+        "fr": "Ressources",
+        "de": "Ressourcen"
+      }
+    },
+    {
+      "cle": "podcasts",
+      "revues": [
+        "revue",
+        "zeitschrift"
+      ],
+      "titre": {
+        "fr": "Documentaires et podcasts",
+        "de": "Dokumentarfilme und Podcasts"
+      }
+    }
+  ],
   "types": {
     "horizon": {
       "dossier": "rundschau",
-      "libelle": { "fr": "Tour d’horizon", "de": "Rundschau" },
-      "libelleLien": { "fr": "En savoir plus : {titre}", "de": "Mehr erfahren: {titre}" },
-      "tri": ["portee", "canton", "title"],
+      "libelle": {
+        "fr": "Tour d’horizon",
+        "de": "Rundschau"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus : {titre}",
+        "de": "Mehr erfahren: {titre}"
+      },
+      "tri": [
+        "portee",
+        "canton",
+        "title"
+      ],
       "champs": [
-        { "cle": "portee", "saisie": "liste", "liste": "portee", "requis": true,
-          "libelle": { "fr": "Portée", "de": "Reichweite" } },
-        { "cle": "canton", "saisie": "liste", "liste": "canton", "requis": false,
-          "quand": { "portee": "regional" },
-          "libelle": { "fr": "Canton", "de": "Kanton" } },
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
-          "libelle": { "fr": "Texte du lien", "de": "Linktext" } }
+        {
+          "cle": "portee",
+          "saisie": "liste",
+          "liste": "portee",
+          "requis": true,
+          "libelle": {
+            "fr": "Portée",
+            "de": "Reichweite"
+          }
+        },
+        {
+          "cle": "canton",
+          "saisie": "liste",
+          "liste": "canton",
+          "requis": false,
+          "quand": {
+            "portee": "regional"
+          },
+          "libelle": {
+            "fr": "Canton",
+            "de": "Kanton"
+          }
+        },
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "lien_libelle",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "Texte du lien",
+            "de": "Linktext"
+          }
+        }
       ]
     },
-
     "recherche": {
       "dossier": "forschung",
-      "libelle": { "fr": "Recherches en cours", "de": "Laufende Forschungsprojekte" },
-      "libelleLien": { "fr": "En savoir plus sur la recherche {titre}", "de": "Mehr zum Forschungsprojekt {titre}" },
-      "tri": ["title"],
+      "libelle": {
+        "fr": "Recherches en cours",
+        "de": "Laufende Forschungsprojekte"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus sur la recherche {titre}",
+        "de": "Mehr zum Forschungsprojekt {titre}"
+      },
+      "tri": [
+        "title"
+      ],
       "champs": [
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "institutions", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Institution(s) de recherche", "de": "Forschende Institution(en)" } },
-        { "cle": "debut", "saisie": "date_partielle", "requis": true,
-          "libelle": { "fr": "Début", "de": "Beginn" } },
-        { "cle": "fin", "saisie": "date_partielle", "requis": true,
-          "libelle": { "fr": "Fin", "de": "Ende" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
-          "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "institutions",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Institution(s) de recherche",
+            "de": "Forschende Institution(en)"
+          }
+        },
+        {
+          "cle": "debut",
+          "saisie": "date_partielle",
+          "requis": true,
+          "libelle": {
+            "fr": "Début",
+            "de": "Beginn"
+          }
+        },
+        {
+          "cle": "fin",
+          "saisie": "date_partielle",
+          "requis": true,
+          "libelle": {
+            "fr": "Fin",
+            "de": "Ende"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "lien_libelle",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "Texte du lien",
+            "de": "Linktext"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        }
       ]
     },
-
     "intervention": {
       "dossier": "vorstoesse",
-      "libelle": { "fr": "Interventions parlementaires", "de": "Parlamentarische Vorstösse" },
-      "libelleLien": { "fr": "En savoir plus sur l’intervention {titre}", "de": "Mehr zum Vorstoss {titre}" },
-      "tri": ["canton", "title"],
-      "triPremier": { "canton": "CH" },
+      "libelle": {
+        "fr": "Interventions parlementaires",
+        "de": "Parlamentarische Vorstösse"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus sur l’intervention {titre}",
+        "de": "Mehr zum Vorstoss {titre}"
+      },
+      "tri": [
+        "canton",
+        "title"
+      ],
+      "triPremier": {
+        "canton": "CH"
+      },
       "champs": [
-        { "cle": "canton", "saisie": "liste", "liste": "canton", "requis": true,
-          "libelle": { "fr": "Canton", "de": "Kanton" } },
-        { "cle": "categorie", "saisie": "liste", "liste": "instrument", "requis": true,
-          "libelle": { "fr": "Type d’intervention", "de": "Art des Vorstosses" } },
-        { "cle": "curia", "saisie": "derive", "depuis": "categorie", "table": "instruments",
-          "libelle": { "fr": "Type Curia", "de": "Curia-Typ" } },
-        { "cle": "numero", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Numéro", "de": "Nummer" } },
-        { "cle": "date", "saisie": "date", "requis": true,
-          "libelle": { "fr": "Date", "de": "Datum" } },
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "etat", "saisie": "liste", "liste": "etat", "requis": false,
-          "libelle": { "fr": "État", "de": "Stand" } },
-        { "cle": "etat_date", "saisie": "date", "requis": false,
-          "libelle": { "fr": "Date de l’état", "de": "Datum des Stands" } },
-        { "cle": "suivi", "saisie": "structure", "requis": false,
-          "libelle": { "fr": "Suivi", "de": "Verlauf" },
+        {
+          "cle": "canton",
+          "saisie": "liste",
+          "liste": "canton",
+          "requis": true,
+          "libelle": {
+            "fr": "Canton",
+            "de": "Kanton"
+          }
+        },
+        {
+          "cle": "categorie",
+          "saisie": "liste",
+          "liste": "instrument",
+          "requis": true,
+          "libelle": {
+            "fr": "Type d’intervention",
+            "de": "Art des Vorstosses"
+          }
+        },
+        {
+          "cle": "curia",
+          "saisie": "derive",
+          "depuis": "categorie",
+          "table": "instruments",
+          "libelle": {
+            "fr": "Type Curia",
+            "de": "Curia-Typ"
+          }
+        },
+        {
+          "cle": "numero",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Numéro",
+            "de": "Nummer"
+          }
+        },
+        {
+          "cle": "date",
+          "saisie": "date",
+          "requis": true,
+          "libelle": {
+            "fr": "Date",
+            "de": "Datum"
+          }
+        },
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "etat",
+          "saisie": "liste",
+          "liste": "etat",
+          "requis": false,
+          "libelle": {
+            "fr": "État",
+            "de": "Stand"
+          }
+        },
+        {
+          "cle": "etat_date",
+          "saisie": "date",
+          "requis": false,
+          "libelle": {
+            "fr": "Date de l’état",
+            "de": "Datum des Stands"
+          }
+        },
+        {
+          "cle": "suivi",
+          "saisie": "structure",
+          "requis": false,
+          "libelle": {
+            "fr": "Suivi",
+            "de": "Verlauf"
+          },
           "champs": [
-            { "cle": "date", "saisie": "date", "requis": true,
-              "libelle": { "fr": "Date", "de": "Datum" } },
-            { "cle": "genre", "saisie": "liste", "liste": "genre_suivi", "requis": true,
-              "libelle": { "fr": "Genre", "de": "Art" } },
-            { "cle": "libelle", "traduire": true, "saisie": "texte", "requis": false,
-              "libelle": { "fr": "Libellé", "de": "Bezeichnung" } },
-            { "cle": "lien", "saisie": "url", "requis": false,
-              "libelle": { "fr": "Lien", "de": "Link" } }
-          ] },
-        { "cle": "source", "saisie": "liste", "liste": "source", "requis": true,
-          "libelle": { "fr": "Source", "de": "Quelle" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": false,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
+            {
+              "cle": "date",
+              "saisie": "date",
+              "requis": true,
+              "libelle": {
+                "fr": "Date",
+                "de": "Datum"
+              }
+            },
+            {
+              "cle": "genre",
+              "saisie": "liste",
+              "liste": "genre_suivi",
+              "requis": true,
+              "libelle": {
+                "fr": "Genre",
+                "de": "Art"
+              }
+            },
+            {
+              "cle": "libelle",
+              "traduire": true,
+              "saisie": "texte",
+              "requis": false,
+              "libelle": {
+                "fr": "Libellé",
+                "de": "Bezeichnung"
+              }
+            },
+            {
+              "cle": "lien",
+              "saisie": "url",
+              "requis": false,
+              "libelle": {
+                "fr": "Lien",
+                "de": "Link"
+              }
+            }
+          ]
+        },
+        {
+          "cle": "source",
+          "saisie": "liste",
+          "liste": "source",
+          "requis": true,
+          "libelle": {
+            "fr": "Source",
+            "de": "Quelle"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": false,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        }
       ]
     },
-
     "livre": {
       "dossier": "buecher",
-      "libelle": { "fr": "Livres", "de": "Bücher" },
-      "libelleLien": { "fr": "En savoir plus sur le livre {titre}", "de": "Mehr zum Buch {titre}" },
-      "tri": ["title"],
+      "libelle": {
+        "fr": "Livres",
+        "de": "Bücher"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus sur le livre {titre}",
+        "de": "Mehr zum Buch {titre}"
+      },
+      "tri": [
+        "title"
+      ],
       "pastille": "categorie",
       "champs": [
-        { "cle": "categorie", "saisie": "liste", "liste": "categorie_livre", "requis": true,
-          "libelle": { "fr": "Catégorie", "de": "Kategorie" } },
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "auteurs", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Auteur(s)", "de": "Autor(en)" } },
-        { "cle": "annee", "saisie": "annee", "requis": true,
-          "libelle": { "fr": "Année", "de": "Jahr" } },
-        { "cle": "editeur", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Éditeur", "de": "Verlag" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
-          "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
-        { "cle": "couverture", "saisie": "fichier", "requis": true, "decorative": true,
-          "extensions": ["png", "jpg", "jpeg", "gif", "svg"],
-          "libelle": { "fr": "Couverture", "de": "Umschlag" } }
+        {
+          "cle": "categorie",
+          "saisie": "liste",
+          "liste": "categorie_livre",
+          "requis": true,
+          "libelle": {
+            "fr": "Catégorie",
+            "de": "Kategorie"
+          }
+        },
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "auteurs",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Auteur(s)",
+            "de": "Autor(en)"
+          }
+        },
+        {
+          "cle": "annee",
+          "saisie": "annee",
+          "requis": true,
+          "libelle": {
+            "fr": "Année",
+            "de": "Jahr"
+          }
+        },
+        {
+          "cle": "editeur",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Éditeur",
+            "de": "Verlag"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "lien_libelle",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "Texte du lien",
+            "de": "Linktext"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        },
+        {
+          "cle": "couverture",
+          "saisie": "fichier",
+          "requis": true,
+          "decorative": true,
+          "extensions": [
+            "png",
+            "jpg",
+            "jpeg",
+            "gif",
+            "svg"
+          ],
+          "libelle": {
+            "fr": "Couverture",
+            "de": "Umschlag"
+          }
+        }
       ]
     },
-
     "film": {
       "dossier": "filme",
-      "libelle": { "fr": "Films", "de": "Filme" },
-      "libelleLien": { "fr": "En savoir plus sur le film {titre}", "de": "Mehr zum Film {titre}" },
-      "tri": ["title"],
+      "libelle": {
+        "fr": "Films",
+        "de": "Filme"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus sur le film {titre}",
+        "de": "Mehr zum Film {titre}"
+      },
+      "tri": [
+        "title"
+      ],
       "pastille": "categorie",
       "champs": [
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "categorie", "saisie": "liste", "liste": "categorie_film", "requis": true,
-          "libelle": { "fr": "Catégorie", "de": "Kategorie" } },
-        { "cle": "realisateur", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Réalisation", "de": "Regie" } },
-        { "cle": "annee", "saisie": "annee", "requis": true,
-          "libelle": { "fr": "Année", "de": "Jahr" } },
-        { "cle": "distributeur", "saisie": "texte", "requis": false,
-          "libelle": { "fr": "Distributeur", "de": "Verleih" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
-          "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
-        { "cle": "couverture", "saisie": "fichier", "requis": true, "decorative": true,
-          "extensions": ["png", "jpg", "jpeg", "gif", "svg"],
-          "libelle": { "fr": "Affiche", "de": "Filmplakat" } }
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "categorie",
+          "saisie": "liste",
+          "liste": "categorie_film",
+          "requis": true,
+          "libelle": {
+            "fr": "Catégorie",
+            "de": "Kategorie"
+          }
+        },
+        {
+          "cle": "genre",
+          "saisie": "liste_multiple",
+          "liste": "genre_film",
+          "requis": false,
+          "libelle": {
+            "fr": "Genre",
+            "de": "Genre"
+          }
+        },
+        {
+          "cle": "pays",
+          "saisie": "liste_multiple",
+          "liste": "pays",
+          "requis": false,
+          "libelle": {
+            "fr": "Pays",
+            "de": "Land"
+          }
+        },
+        {
+          "cle": "realisateur",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Réalisation",
+            "de": "Regie"
+          }
+        },
+        {
+          "cle": "annee",
+          "saisie": "annee",
+          "requis": true,
+          "libelle": {
+            "fr": "Année",
+            "de": "Jahr"
+          }
+        },
+        {
+          "cle": "distributeur",
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "Distributeur",
+            "de": "Verleih"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "lien_libelle",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "Texte du lien",
+            "de": "Linktext"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        },
+        {
+          "cle": "couverture",
+          "saisie": "fichier",
+          "requis": true,
+          "decorative": true,
+          "extensions": [
+            "png",
+            "jpg",
+            "jpeg",
+            "gif",
+            "svg"
+          ],
+          "libelle": {
+            "fr": "Affiche",
+            "de": "Filmplakat"
+          }
+        }
       ]
     },
-
     "reprise": {
       "dossier": "revueblick",
-      "libelle": { "fr": "D’une revue à l’autre", "de": "Blick in die Revue" },
-      "libelleLien": { "fr": "Lire l’article {titre}", "de": "Zum Artikel {titre}" },
-      "tri": ["title"],
+      "libelle": {
+        "fr": "D’une revue à l’autre",
+        "de": "Blick in die Revue"
+      },
+      "libelleLien": {
+        "fr": "Lire l’article {titre}",
+        "de": "Zum Artikel {titre}"
+      },
+      "tri": [
+        "title"
+      ],
       "champs": [
-        { "cle": "revue", "saisie": "liste", "liste": "revue", "requis": true,
-          "libelle": { "fr": "Revue", "de": "Zeitschrift" } },
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "auteurs", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Auteur(s)", "de": "Autor(en)" } },
-        { "cle": "reference", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Référence (volume, numéro, pages)", "de": "Fundstelle (Band, Nummer, Seiten)" } },
-        { "cle": "doi", "saisie": "texte", "requis": false,
-          "libelle": { "fr": "DOI", "de": "DOI" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
+        {
+          "cle": "revue",
+          "saisie": "liste",
+          "liste": "revue",
+          "requis": true,
+          "libelle": {
+            "fr": "Revue",
+            "de": "Zeitschrift"
+          }
+        },
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "auteurs",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Auteur(s)",
+            "de": "Autor(en)"
+          }
+        },
+        {
+          "cle": "reference",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Référence (volume, numéro, pages)",
+            "de": "Fundstelle (Band, Nummer, Seiten)"
+          }
+        },
+        {
+          "cle": "doi",
+          "saisie": "texte",
+          "requis": false,
+          "libelle": {
+            "fr": "DOI",
+            "de": "DOI"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        }
       ]
     },
-
     "agenda": {
       "dossier": "weiterbildung",
-      "libelle": { "fr": "Agenda et formation continue", "de": "Weiterbildung" },
-      "libelleLien": { "fr": "En savoir plus sur la manifestation {titre}", "de": "Mehr zur Veranstaltung {titre}" },
-      "tri": ["debut", "title"],
-      "plage": ["debut", "fin"],
+      "libelle": {
+        "fr": "Agenda et formation continue",
+        "de": "Weiterbildung"
+      },
+      "libelleLien": {
+        "fr": "En savoir plus sur la manifestation {titre}",
+        "de": "Mehr zur Veranstaltung {titre}"
+      },
+      "tri": [
+        "debut",
+        "title"
+      ],
+      "plage": [
+        "debut",
+        "fin"
+      ],
       "champs": [
-        { "cle": "evenement", "saisie": "liste", "liste": "evenement", "requis": true,
-          "libelle": { "fr": "Type d’événement", "de": "Art der Veranstaltung" } },
-        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "debut", "saisie": "date", "requis": true,
-          "libelle": { "fr": "Début", "de": "Beginn" } },
-        { "cle": "fin", "saisie": "date", "requis": true,
-          "libelle": { "fr": "Fin", "de": "Ende" } },
-        { "cle": "lieu", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Lieu", "de": "Ort" } },
-        { "cle": "organisateur", "saisie": "texte", "requis": true,
-          "libelle": { "fr": "Organisation", "de": "Veranstalter:in" } },
-        { "cle": "lien", "saisie": "url", "requis": false,
-          "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
-          "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
+        {
+          "cle": "evenement",
+          "saisie": "liste",
+          "liste": "evenement",
+          "requis": true,
+          "libelle": {
+            "fr": "Type d’événement",
+            "de": "Art der Veranstaltung"
+          }
+        },
+        {
+          "cle": "title",
+          "traduire": true,
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Titre",
+            "de": "Titel"
+          }
+        },
+        {
+          "cle": "debut",
+          "saisie": "date",
+          "requis": true,
+          "libelle": {
+            "fr": "Début",
+            "de": "Beginn"
+          }
+        },
+        {
+          "cle": "fin",
+          "saisie": "date",
+          "requis": true,
+          "libelle": {
+            "fr": "Fin",
+            "de": "Ende"
+          }
+        },
+        {
+          "cle": "lieu",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Lieu",
+            "de": "Ort"
+          }
+        },
+        {
+          "cle": "organisateur",
+          "saisie": "texte",
+          "requis": true,
+          "libelle": {
+            "fr": "Organisation",
+            "de": "Veranstalter:in"
+          }
+        },
+        {
+          "cle": "lien",
+          "saisie": "url",
+          "requis": false,
+          "libelle": {
+            "fr": "Lien",
+            "de": "Link"
+          }
+        },
+        {
+          "cle": "descriptif",
+          "traduire": true,
+          "saisie": "texte_long",
+          "requis": true,
+          "libelle": {
+            "fr": "Descriptif",
+            "de": "Beschreibung"
+          }
+        }
       ]
     }
   },
-
   "champsSysteme": {
     "_lisezmoi": "Écrits par Pronto dans chaque fichier de langue d’une fiche, jamais saisis. ausgabe : l’id du numéro (ausgabe.yaml) auquel CE fichier de langue est rattaché, vide = orpheline. ordre : rang d’impression dans ce numéro, calculé par les règles de tri du type. origine : posé UNE fois par le geste « Reprendre dans ce numéro » de l’onglet Archive (Uuid de la fiche archivée dont celle-ci reprend les valeurs) ; vide pour une fiche née autrement.",
-    "ausgabe": { "libelle": { "fr": "Numéro", "de": "Ausgabe" } },
-    "ordre": { "libelle": { "fr": "Ordre", "de": "Reihenfolge" } },
-    "origine": { "libelle": { "fr": "Origine", "de": "Herkunft" } }
+    "ausgabe": {
+      "libelle": {
+        "fr": "Numéro",
+        "de": "Ausgabe"
+      }
+    },
+    "ordre": {
+      "libelle": {
+        "fr": "Ordre",
+        "de": "Reihenfolge"
+      }
+    },
+    "origine": {
+      "libelle": {
+        "fr": "Origine",
+        "de": "Herkunft"
+      }
+    }
   },
-
-  "ordreTypes": ["horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
-  "ordreSections": ["dossier_references", "dossier_liens", "ressources", "podcasts", "horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
-
+  "ordreTypes": [
+    "horizon",
+    "recherche",
+    "intervention",
+    "livre",
+    "film",
+    "reprise",
+    "agenda"
+  ],
+  "ordreSections": [
+    "dossier_references",
+    "dossier_liens",
+    "ressources",
+    "podcasts",
+    "horizon",
+    "recherche",
+    "intervention",
+    "livre",
+    "film",
+    "reprise",
+    "agenda"
+  ],
   "listes": {
     "portee": [
-      { "jeton": "international", "fr": "International", "de": "International" },
-      { "jeton": "national", "fr": "National", "de": "National" },
-      { "jeton": "regional", "fr": "Régional", "de": "Kantonal" },
-      { "jeton": "varia", "fr": "Varia", "de": "Varia" }
+      {
+        "jeton": "international",
+        "fr": "International",
+        "de": "International"
+      },
+      {
+        "jeton": "national",
+        "fr": "National",
+        "de": "National"
+      },
+      {
+        "jeton": "intercantonal",
+        "fr": "Intercantonal",
+        "de": "Interkantonal"
+      },
+      {
+        "jeton": "regional",
+        "fr": "Régional",
+        "de": "Kantonal"
+      },
+      {
+        "jeton": "varia",
+        "fr": "Varia",
+        "de": "Varia"
+      }
     ],
     "canton": [
-      { "jeton": "CH", "fr": "Confédération", "de": "Bund" },
-      { "jeton": "AG", "fr": "Argovie", "de": "Aargau" },
-      { "jeton": "AI", "fr": "Appenzell Rhodes-Intérieures", "de": "Appenzell Innerrhoden" },
-      { "jeton": "AR", "fr": "Appenzell Rhodes-Extérieures", "de": "Appenzell Ausserrhoden" },
-      { "jeton": "BE", "fr": "Berne", "de": "Bern" },
-      { "jeton": "BL", "fr": "Bâle-Campagne", "de": "Basel-Landschaft" },
-      { "jeton": "BS", "fr": "Bâle-Ville", "de": "Basel-Stadt" },
-      { "jeton": "FR", "fr": "Fribourg", "de": "Freiburg" },
-      { "jeton": "GE", "fr": "Genève", "de": "Genf" },
-      { "jeton": "GL", "fr": "Glaris", "de": "Glarus" },
-      { "jeton": "GR", "fr": "Grisons", "de": "Graubünden" },
-      { "jeton": "JU", "fr": "Jura", "de": "Jura" },
-      { "jeton": "LU", "fr": "Lucerne", "de": "Luzern" },
-      { "jeton": "NE", "fr": "Neuchâtel", "de": "Neuenburg" },
-      { "jeton": "NW", "fr": "Nidwald", "de": "Nidwalden" },
-      { "jeton": "OW", "fr": "Obwald", "de": "Obwalden" },
-      { "jeton": "SG", "fr": "Saint-Gall", "de": "St. Gallen" },
-      { "jeton": "SH", "fr": "Schaffhouse", "de": "Schaffhausen" },
-      { "jeton": "SO", "fr": "Soleure", "de": "Solothurn" },
-      { "jeton": "SZ", "fr": "Schwytz", "de": "Schwyz" },
-      { "jeton": "TG", "fr": "Thurgovie", "de": "Thurgau" },
-      { "jeton": "TI", "fr": "Tessin", "de": "Tessin" },
-      { "jeton": "UR", "fr": "Uri", "de": "Uri" },
-      { "jeton": "VD", "fr": "Vaud", "de": "Waadt" },
-      { "jeton": "VS", "fr": "Valais", "de": "Wallis" },
-      { "jeton": "ZG", "fr": "Zoug", "de": "Zug" },
-      { "jeton": "ZH", "fr": "Zurich", "de": "Zürich" }
+      {
+        "jeton": "CH",
+        "fr": "Confédération",
+        "de": "Bund"
+      },
+      {
+        "jeton": "AG",
+        "fr": "Argovie",
+        "de": "Aargau"
+      },
+      {
+        "jeton": "AI",
+        "fr": "Appenzell Rhodes-Intérieures",
+        "de": "Appenzell Innerrhoden"
+      },
+      {
+        "jeton": "AR",
+        "fr": "Appenzell Rhodes-Extérieures",
+        "de": "Appenzell Ausserrhoden"
+      },
+      {
+        "jeton": "BE",
+        "fr": "Berne",
+        "de": "Bern"
+      },
+      {
+        "jeton": "BL",
+        "fr": "Bâle-Campagne",
+        "de": "Basel-Landschaft"
+      },
+      {
+        "jeton": "BS",
+        "fr": "Bâle-Ville",
+        "de": "Basel-Stadt"
+      },
+      {
+        "jeton": "FR",
+        "fr": "Fribourg",
+        "de": "Freiburg"
+      },
+      {
+        "jeton": "GE",
+        "fr": "Genève",
+        "de": "Genf"
+      },
+      {
+        "jeton": "GL",
+        "fr": "Glaris",
+        "de": "Glarus"
+      },
+      {
+        "jeton": "GR",
+        "fr": "Grisons",
+        "de": "Graubünden"
+      },
+      {
+        "jeton": "JU",
+        "fr": "Jura",
+        "de": "Jura"
+      },
+      {
+        "jeton": "LU",
+        "fr": "Lucerne",
+        "de": "Luzern"
+      },
+      {
+        "jeton": "NE",
+        "fr": "Neuchâtel",
+        "de": "Neuenburg"
+      },
+      {
+        "jeton": "NW",
+        "fr": "Nidwald",
+        "de": "Nidwalden"
+      },
+      {
+        "jeton": "OW",
+        "fr": "Obwald",
+        "de": "Obwalden"
+      },
+      {
+        "jeton": "SG",
+        "fr": "Saint-Gall",
+        "de": "St. Gallen"
+      },
+      {
+        "jeton": "SH",
+        "fr": "Schaffhouse",
+        "de": "Schaffhausen"
+      },
+      {
+        "jeton": "SO",
+        "fr": "Soleure",
+        "de": "Solothurn"
+      },
+      {
+        "jeton": "SZ",
+        "fr": "Schwytz",
+        "de": "Schwyz"
+      },
+      {
+        "jeton": "TG",
+        "fr": "Thurgovie",
+        "de": "Thurgau"
+      },
+      {
+        "jeton": "TI",
+        "fr": "Tessin",
+        "de": "Tessin"
+      },
+      {
+        "jeton": "UR",
+        "fr": "Uri",
+        "de": "Uri"
+      },
+      {
+        "jeton": "VD",
+        "fr": "Vaud",
+        "de": "Waadt"
+      },
+      {
+        "jeton": "VS",
+        "fr": "Valais",
+        "de": "Wallis"
+      },
+      {
+        "jeton": "ZG",
+        "fr": "Zoug",
+        "de": "Zug"
+      },
+      {
+        "jeton": "ZH",
+        "fr": "Zurich",
+        "de": "Zürich"
+      }
     ],
     "instrument": [
-      { "jeton": "motion", "fr": "Motion", "de": "Motion" },
-      { "jeton": "postulat", "fr": "Postulat", "de": "Postulat" },
-      { "jeton": "interpellation", "fr": "Interpellation", "de": "Interpellation" },
-      { "jeton": "interpellation-urgente", "fr": "Interpellation urgente", "de": "Dringliche Interpellation" },
-      { "jeton": "question", "fr": "Question", "de": "Anfrage" },
-      { "jeton": "question-urgente", "fr": "Question urgente", "de": "Dringliche Anfrage" },
-      { "jeton": "question-ordinaire", "fr": "Question ordinaire", "de": "Einfache Anfrage" },
-      { "jeton": "question-ordinaire-urgente", "fr": "Question ordinaire urgente", "de": "Dringliche einfache Anfrage" },
-      { "jeton": "question-heure", "fr": "Heure des questions", "de": "Fragestunde" },
-      { "jeton": "initiative-parlementaire", "fr": "Initiative parlementaire", "de": "Parlamentarische Initiative" },
-      { "jeton": "initiative-cantonale", "fr": "Initiative cantonale", "de": "Standesinitiative" },
-      { "jeton": "recommandation", "fr": "Recommandation", "de": "Empfehlung" },
-      { "jeton": "petition", "fr": "Pétition", "de": "Petition" },
-      { "jeton": "objet-gouvernement", "fr": "Objet du gouvernement", "de": "Geschäft der Regierung" },
-      { "jeton": "objet-parlement", "fr": "Objet du parlement", "de": "Geschäft des Parlaments" },
-      { "jeton": "anzug", "fr": "Anzug", "de": "Anzug" },
-      { "jeton": "schriftliche-anfrage", "fr": "Question écrite", "de": "Schriftliche Anfrage" },
-      { "jeton": "kleine-anfrage", "fr": "Petite question", "de": "Kleine Anfrage" },
-      { "jeton": "auskunftsbegehren", "fr": "Demande de renseignements", "de": "Auskunftsbegehren" },
-      { "jeton": "auftrag", "fr": "Mandat", "de": "Auftrag" }
+      {
+        "jeton": "motion",
+        "fr": "Motion",
+        "de": "Motion"
+      },
+      {
+        "jeton": "postulat",
+        "fr": "Postulat",
+        "de": "Postulat"
+      },
+      {
+        "jeton": "interpellation",
+        "fr": "Interpellation",
+        "de": "Interpellation"
+      },
+      {
+        "jeton": "interpellation-urgente",
+        "fr": "Interpellation urgente",
+        "de": "Dringliche Interpellation"
+      },
+      {
+        "jeton": "question",
+        "fr": "Question",
+        "de": "Anfrage"
+      },
+      {
+        "jeton": "question-urgente",
+        "fr": "Question urgente",
+        "de": "Dringliche Anfrage"
+      },
+      {
+        "jeton": "question-ordinaire",
+        "fr": "Question ordinaire",
+        "de": "Einfache Anfrage"
+      },
+      {
+        "jeton": "question-ordinaire-urgente",
+        "fr": "Question ordinaire urgente",
+        "de": "Dringliche einfache Anfrage"
+      },
+      {
+        "jeton": "question-heure",
+        "fr": "Heure des questions",
+        "de": "Fragestunde"
+      },
+      {
+        "jeton": "initiative-parlementaire",
+        "fr": "Initiative parlementaire",
+        "de": "Parlamentarische Initiative"
+      },
+      {
+        "jeton": "initiative-cantonale",
+        "fr": "Initiative cantonale",
+        "de": "Standesinitiative"
+      },
+      {
+        "jeton": "recommandation",
+        "fr": "Recommandation",
+        "de": "Empfehlung"
+      },
+      {
+        "jeton": "petition",
+        "fr": "Pétition",
+        "de": "Petition"
+      },
+      {
+        "jeton": "objet-gouvernement",
+        "fr": "Objet du gouvernement",
+        "de": "Geschäft der Regierung"
+      },
+      {
+        "jeton": "objet-parlement",
+        "fr": "Objet du parlement",
+        "de": "Geschäft des Parlaments"
+      },
+      {
+        "jeton": "anzug",
+        "fr": "Anzug",
+        "de": "Anzug"
+      },
+      {
+        "jeton": "schriftliche-anfrage",
+        "fr": "Question écrite",
+        "de": "Schriftliche Anfrage"
+      },
+      {
+        "jeton": "kleine-anfrage",
+        "fr": "Petite question",
+        "de": "Kleine Anfrage"
+      },
+      {
+        "jeton": "auskunftsbegehren",
+        "fr": "Demande de renseignements",
+        "de": "Auskunftsbegehren"
+      },
+      {
+        "jeton": "auftrag",
+        "fr": "Mandat",
+        "de": "Auftrag"
+      }
     ],
     "etat": [
-      { "jeton": "depose", "fr": "Déposé", "de": "Eingereicht" },
-      { "jeton": "avis-disponible", "fr": "Avis du gouvernement disponible", "de": "Stellungnahme der Regierung liegt vor" },
-      { "jeton": "en-traitement", "fr": "En traitement", "de": "In Beratung" },
-      { "jeton": "traite-un-conseil", "fr": "Traité par un conseil", "de": "Von einem Rat behandelt" },
-      { "jeton": "traite-deux-conseils", "fr": "Traité par les deux conseils", "de": "Von beiden Räten behandelt" },
-      { "jeton": "adopte", "fr": "Adopté", "de": "Angenommen" },
-      { "jeton": "transmis-gouvernement", "fr": "Transmis au gouvernement", "de": "An die Regierung überwiesen" },
-      { "jeton": "rapport-ou-classement", "fr": "Rapport ou classement", "de": "Bericht oder Abschreibung" },
-      { "jeton": "liquide", "fr": "Liquidé", "de": "Erledigt" }
+      {
+        "jeton": "depose",
+        "fr": "Déposé",
+        "de": "Eingereicht"
+      },
+      {
+        "jeton": "avis-disponible",
+        "fr": "Avis du gouvernement disponible",
+        "de": "Stellungnahme der Regierung liegt vor"
+      },
+      {
+        "jeton": "en-traitement",
+        "fr": "En traitement",
+        "de": "In Beratung"
+      },
+      {
+        "jeton": "traite-un-conseil",
+        "fr": "Traité par un conseil",
+        "de": "Von einem Rat behandelt"
+      },
+      {
+        "jeton": "traite-deux-conseils",
+        "fr": "Traité par les deux conseils",
+        "de": "Von beiden Räten behandelt"
+      },
+      {
+        "jeton": "adopte",
+        "fr": "Adopté",
+        "de": "Angenommen"
+      },
+      {
+        "jeton": "transmis-gouvernement",
+        "fr": "Transmis au gouvernement",
+        "de": "An die Regierung überwiesen"
+      },
+      {
+        "jeton": "rapport-ou-classement",
+        "fr": "Rapport ou classement",
+        "de": "Bericht oder Abschreibung"
+      },
+      {
+        "jeton": "liquide",
+        "fr": "Liquidé",
+        "de": "Erledigt"
+      }
     ],
     "genre_suivi": [
-      { "jeton": "prise-position", "fr": "Prise de position", "de": "Stellungnahme" },
-      { "jeton": "decision", "fr": "Décision", "de": "Entscheid" },
-      { "jeton": "document", "fr": "Document", "de": "Dokument" },
-      { "jeton": "autre", "fr": "Autre", "de": "Weiteres" }
+      {
+        "jeton": "prise-position",
+        "fr": "Prise de position",
+        "de": "Stellungnahme"
+      },
+      {
+        "jeton": "decision",
+        "fr": "Décision",
+        "de": "Entscheid"
+      },
+      {
+        "jeton": "document",
+        "fr": "Document",
+        "de": "Dokument"
+      },
+      {
+        "jeton": "autre",
+        "fr": "Autre",
+        "de": "Weiteres"
+      }
     ],
     "source": [
-      { "jeton": "curia", "fr": "Curia Vista", "de": "Curia Vista" },
-      { "jeton": "ides", "fr": "IDES", "de": "IDES" },
-      { "jeton": "manuel", "fr": "Saisie manuelle", "de": "Manuell erfasst" }
+      {
+        "jeton": "curia",
+        "fr": "Curia Vista",
+        "de": "Curia Vista"
+      },
+      {
+        "jeton": "ides",
+        "fr": "IDES",
+        "de": "IDES"
+      },
+      {
+        "jeton": "manuel",
+        "fr": "Saisie manuelle",
+        "de": "Manuell erfasst"
+      }
     ],
     "categorie_livre": [
-      { "jeton": "manuel", "fr": "Manuel", "de": "Fachbuch" },
-      { "jeton": "recit", "fr": "Récit", "de": "Erzählung" },
-      { "jeton": "jeunesse", "fr": "Jeunesse", "de": "Kinder- und Jugendbuch" },
-      { "jeton": "biographie", "fr": "Biographie", "de": "Biografie" },
-      { "jeton": "autobiographie", "fr": "Autobiographie", "de": "Autobiografie" }
+      {
+        "jeton": "manuel",
+        "fr": "Manuel",
+        "de": "Fachbuch"
+      },
+      {
+        "jeton": "recit",
+        "fr": "Récit",
+        "de": "Erzählung"
+      },
+      {
+        "jeton": "jeunesse",
+        "fr": "Jeunesse",
+        "de": "Kinder- und Jugendbuch"
+      },
+      {
+        "jeton": "biographie",
+        "fr": "Biographie",
+        "de": "Biografie"
+      },
+      {
+        "jeton": "autobiographie",
+        "fr": "Autobiographie",
+        "de": "Autobiografie"
+      },
+      {
+        "jeton": "essai",
+        "fr": "Essai",
+        "de": "Essay"
+      },
+      {
+        "jeton": "temoignage",
+        "fr": "Témoignage",
+        "de": "Erfahrungsbericht"
+      }
     ],
     "categorie_film": [
-      { "jeton": "documentaire", "fr": "Documentaire", "de": "Dokumentarfilm" },
-      { "jeton": "court-metrage", "fr": "Court métrage", "de": "Kurzfilm" },
-      { "jeton": "long-metrage", "fr": "Long métrage", "de": "Spielfilm" }
+      {
+        "jeton": "documentaire",
+        "fr": "Documentaire",
+        "de": "Dokumentarfilm"
+      },
+      {
+        "jeton": "court-metrage",
+        "fr": "Court métrage",
+        "de": "Kurzfilm"
+      },
+      {
+        "jeton": "long-metrage",
+        "fr": "Long métrage",
+        "de": "Spielfilm"
+      }
     ],
     "revue": [
-      { "jeton": "revue", "fr": "Revue suisse de pédagogie spécialisée", "de": "Revue suisse de pédagogie spécialisée" },
-      { "jeton": "zeitschrift", "fr": "Schweizerische Zeitschrift für Heilpädagogik", "de": "Schweizerische Zeitschrift für Heilpädagogik" }
+      {
+        "jeton": "revue",
+        "fr": "Revue suisse de pédagogie spécialisée",
+        "de": "Revue suisse de pédagogie spécialisée"
+      },
+      {
+        "jeton": "zeitschrift",
+        "fr": "Schweizerische Zeitschrift für Heilpädagogik",
+        "de": "Schweizerische Zeitschrift für Heilpädagogik"
+      }
     ],
     "evenement": [
-      { "jeton": "colloque", "fr": "Colloque", "de": "Tagung" },
-      { "jeton": "congres", "fr": "Congrès", "de": "Kongress" },
-      { "jeton": "journee", "fr": "Journée d’étude", "de": "Fachtagung" },
-      { "jeton": "cours", "fr": "Cours", "de": "Kurs" },
-      { "jeton": "webinaire", "fr": "Webinaire", "de": "Webinar" },
-      { "jeton": "formation", "fr": "Formation continue", "de": "Weiterbildung" }
+      {
+        "jeton": "colloque",
+        "fr": "Colloque",
+        "de": "Tagung"
+      },
+      {
+        "jeton": "congres",
+        "fr": "Congrès",
+        "de": "Kongress"
+      },
+      {
+        "jeton": "journee",
+        "fr": "Journée d’étude",
+        "de": "Fachtagung"
+      },
+      {
+        "jeton": "cours",
+        "fr": "Cours",
+        "de": "Kurs"
+      },
+      {
+        "jeton": "webinaire",
+        "fr": "Webinaire",
+        "de": "Webinar"
+      },
+      {
+        "jeton": "formation",
+        "fr": "Formation continue",
+        "de": "Weiterbildung"
+      }
+    ],
+    "genre_film": [
+      {
+        "jeton": "drame",
+        "fr": "Drame",
+        "de": "Drama"
+      },
+      {
+        "jeton": "comedie",
+        "fr": "Comédie",
+        "de": "Komödie"
+      },
+      {
+        "jeton": "comedie-dramatique",
+        "fr": "Comédie dramatique",
+        "de": "Tragikomödie"
+      },
+      {
+        "jeton": "biographique",
+        "fr": "Film biographique",
+        "de": "Filmbiografie"
+      },
+      {
+        "jeton": "historique",
+        "fr": "Film historique",
+        "de": "Historienfilm"
+      },
+      {
+        "jeton": "romance",
+        "fr": "Romance",
+        "de": "Liebesfilm"
+      },
+      {
+        "jeton": "familial",
+        "fr": "Film familial",
+        "de": "Familienfilm"
+      },
+      {
+        "jeton": "jeunesse",
+        "fr": "Jeunesse",
+        "de": "Kinder- und Jugendfilm"
+      },
+      {
+        "jeton": "animation",
+        "fr": "Animation",
+        "de": "Animationsfilm"
+      }
+    ],
+    "pays": [
+      {
+        "jeton": "AD",
+        "fr": "Andorre",
+        "de": "Andorra"
+      },
+      {
+        "jeton": "AE",
+        "fr": "Émirats arabes unis",
+        "de": "Vereinigte Arabische Emirate"
+      },
+      {
+        "jeton": "AF",
+        "fr": "Afghanistan",
+        "de": "Afghanistan"
+      },
+      {
+        "jeton": "AG",
+        "fr": "Antigua-et-Barbuda",
+        "de": "Antigua und Barbuda"
+      },
+      {
+        "jeton": "AI",
+        "fr": "Anguilla",
+        "de": "Anguilla"
+      },
+      {
+        "jeton": "AL",
+        "fr": "Albanie",
+        "de": "Albanien"
+      },
+      {
+        "jeton": "AM",
+        "fr": "Arménie",
+        "de": "Armenien"
+      },
+      {
+        "jeton": "AO",
+        "fr": "Angola",
+        "de": "Angola"
+      },
+      {
+        "jeton": "AQ",
+        "fr": "Antarctique",
+        "de": "Antarktis"
+      },
+      {
+        "jeton": "AR",
+        "fr": "Argentine",
+        "de": "Argentinien"
+      },
+      {
+        "jeton": "AS",
+        "fr": "Samoa américaines",
+        "de": "Amerikanisch-Samoa"
+      },
+      {
+        "jeton": "AT",
+        "fr": "Autriche",
+        "de": "Österreich"
+      },
+      {
+        "jeton": "AU",
+        "fr": "Australie",
+        "de": "Australien"
+      },
+      {
+        "jeton": "AW",
+        "fr": "Aruba",
+        "de": "Aruba"
+      },
+      {
+        "jeton": "AX",
+        "fr": "Îles Åland",
+        "de": "Ålandinseln"
+      },
+      {
+        "jeton": "AZ",
+        "fr": "Azerbaïdjan",
+        "de": "Aserbaidschan"
+      },
+      {
+        "jeton": "BA",
+        "fr": "Bosnie-Herzégovine",
+        "de": "Bosnien und Herzegowina"
+      },
+      {
+        "jeton": "BB",
+        "fr": "Barbade",
+        "de": "Barbados"
+      },
+      {
+        "jeton": "BD",
+        "fr": "Bangladesh",
+        "de": "Bangladesch"
+      },
+      {
+        "jeton": "BE",
+        "fr": "Belgique",
+        "de": "Belgien"
+      },
+      {
+        "jeton": "BF",
+        "fr": "Burkina Faso",
+        "de": "Burkina Faso"
+      },
+      {
+        "jeton": "BG",
+        "fr": "Bulgarie",
+        "de": "Bulgarien"
+      },
+      {
+        "jeton": "BH",
+        "fr": "Bahreïn",
+        "de": "Bahrain"
+      },
+      {
+        "jeton": "BI",
+        "fr": "Burundi",
+        "de": "Burundi"
+      },
+      {
+        "jeton": "BJ",
+        "fr": "Bénin",
+        "de": "Benin"
+      },
+      {
+        "jeton": "BL",
+        "fr": "Saint-Barthélemy",
+        "de": "St. Barthélemy"
+      },
+      {
+        "jeton": "BM",
+        "fr": "Bermudes",
+        "de": "Bermuda"
+      },
+      {
+        "jeton": "BN",
+        "fr": "Brunei",
+        "de": "Brunei Darussalam"
+      },
+      {
+        "jeton": "BO",
+        "fr": "Bolivie",
+        "de": "Bolivien"
+      },
+      {
+        "jeton": "BQ",
+        "fr": "Pays-Bas caribéens",
+        "de": "Karibische Niederlande"
+      },
+      {
+        "jeton": "BR",
+        "fr": "Brésil",
+        "de": "Brasilien"
+      },
+      {
+        "jeton": "BS",
+        "fr": "Bahamas",
+        "de": "Bahamas"
+      },
+      {
+        "jeton": "BT",
+        "fr": "Bhoutan",
+        "de": "Bhutan"
+      },
+      {
+        "jeton": "BV",
+        "fr": "Île Bouvet",
+        "de": "Bouvetinsel"
+      },
+      {
+        "jeton": "BW",
+        "fr": "Botswana",
+        "de": "Botsuana"
+      },
+      {
+        "jeton": "BY",
+        "fr": "Biélorussie",
+        "de": "Belarus"
+      },
+      {
+        "jeton": "BZ",
+        "fr": "Belize",
+        "de": "Belize"
+      },
+      {
+        "jeton": "CA",
+        "fr": "Canada",
+        "de": "Kanada"
+      },
+      {
+        "jeton": "CC",
+        "fr": "Îles Cocos",
+        "de": "Kokosinseln"
+      },
+      {
+        "jeton": "CD",
+        "fr": "Congo-Kinshasa",
+        "de": "Kongo-Kinshasa"
+      },
+      {
+        "jeton": "CF",
+        "fr": "République centrafricaine",
+        "de": "Zentralafrikanische Republik"
+      },
+      {
+        "jeton": "CG",
+        "fr": "Congo-Brazzaville",
+        "de": "Kongo-Brazzaville"
+      },
+      {
+        "jeton": "CH",
+        "fr": "Suisse",
+        "de": "Schweiz"
+      },
+      {
+        "jeton": "CI",
+        "fr": "Côte d’Ivoire",
+        "de": "Côte d’Ivoire"
+      },
+      {
+        "jeton": "CK",
+        "fr": "Îles Cook",
+        "de": "Cookinseln"
+      },
+      {
+        "jeton": "CL",
+        "fr": "Chili",
+        "de": "Chile"
+      },
+      {
+        "jeton": "CM",
+        "fr": "Cameroun",
+        "de": "Kamerun"
+      },
+      {
+        "jeton": "CN",
+        "fr": "Chine",
+        "de": "China"
+      },
+      {
+        "jeton": "CO",
+        "fr": "Colombie",
+        "de": "Kolumbien"
+      },
+      {
+        "jeton": "CR",
+        "fr": "Costa Rica",
+        "de": "Costa Rica"
+      },
+      {
+        "jeton": "CU",
+        "fr": "Cuba",
+        "de": "Kuba"
+      },
+      {
+        "jeton": "CV",
+        "fr": "Cap-Vert",
+        "de": "Cabo Verde"
+      },
+      {
+        "jeton": "CW",
+        "fr": "Curaçao",
+        "de": "Curaçao"
+      },
+      {
+        "jeton": "CX",
+        "fr": "Île Christmas",
+        "de": "Weihnachtsinsel"
+      },
+      {
+        "jeton": "CY",
+        "fr": "Chypre",
+        "de": "Zypern"
+      },
+      {
+        "jeton": "CZ",
+        "fr": "Tchéquie",
+        "de": "Tschechien"
+      },
+      {
+        "jeton": "DE",
+        "fr": "Allemagne",
+        "de": "Deutschland"
+      },
+      {
+        "jeton": "DJ",
+        "fr": "Djibouti",
+        "de": "Dschibuti"
+      },
+      {
+        "jeton": "DK",
+        "fr": "Danemark",
+        "de": "Dänemark"
+      },
+      {
+        "jeton": "DM",
+        "fr": "Dominique",
+        "de": "Dominica"
+      },
+      {
+        "jeton": "DO",
+        "fr": "République dominicaine",
+        "de": "Dominikanische Republik"
+      },
+      {
+        "jeton": "DZ",
+        "fr": "Algérie",
+        "de": "Algerien"
+      },
+      {
+        "jeton": "EC",
+        "fr": "Équateur",
+        "de": "Ecuador"
+      },
+      {
+        "jeton": "EE",
+        "fr": "Estonie",
+        "de": "Estland"
+      },
+      {
+        "jeton": "EG",
+        "fr": "Égypte",
+        "de": "Ägypten"
+      },
+      {
+        "jeton": "EH",
+        "fr": "Sahara occidental",
+        "de": "Westsahara"
+      },
+      {
+        "jeton": "ER",
+        "fr": "Érythrée",
+        "de": "Eritrea"
+      },
+      {
+        "jeton": "ES",
+        "fr": "Espagne",
+        "de": "Spanien"
+      },
+      {
+        "jeton": "ET",
+        "fr": "Éthiopie",
+        "de": "Äthiopien"
+      },
+      {
+        "jeton": "FI",
+        "fr": "Finlande",
+        "de": "Finnland"
+      },
+      {
+        "jeton": "FJ",
+        "fr": "Fidji",
+        "de": "Fidschi"
+      },
+      {
+        "jeton": "FK",
+        "fr": "Îles Malouines",
+        "de": "Falklandinseln"
+      },
+      {
+        "jeton": "FM",
+        "fr": "Micronésie",
+        "de": "Mikronesien"
+      },
+      {
+        "jeton": "FO",
+        "fr": "Îles Féroé",
+        "de": "Färöer"
+      },
+      {
+        "jeton": "FR",
+        "fr": "France",
+        "de": "Frankreich"
+      },
+      {
+        "jeton": "GA",
+        "fr": "Gabon",
+        "de": "Gabun"
+      },
+      {
+        "jeton": "GB",
+        "fr": "Royaume-Uni",
+        "de": "Vereinigtes Königreich"
+      },
+      {
+        "jeton": "GD",
+        "fr": "Grenade",
+        "de": "Grenada"
+      },
+      {
+        "jeton": "GE",
+        "fr": "Géorgie",
+        "de": "Georgien"
+      },
+      {
+        "jeton": "GF",
+        "fr": "Guyane française",
+        "de": "Französisch-Guayana"
+      },
+      {
+        "jeton": "GG",
+        "fr": "Guernesey",
+        "de": "Guernsey"
+      },
+      {
+        "jeton": "GH",
+        "fr": "Ghana",
+        "de": "Ghana"
+      },
+      {
+        "jeton": "GI",
+        "fr": "Gibraltar",
+        "de": "Gibraltar"
+      },
+      {
+        "jeton": "GL",
+        "fr": "Groenland",
+        "de": "Grönland"
+      },
+      {
+        "jeton": "GM",
+        "fr": "Gambie",
+        "de": "Gambia"
+      },
+      {
+        "jeton": "GN",
+        "fr": "Guinée",
+        "de": "Guinea"
+      },
+      {
+        "jeton": "GP",
+        "fr": "Guadeloupe",
+        "de": "Guadeloupe"
+      },
+      {
+        "jeton": "GQ",
+        "fr": "Guinée équatoriale",
+        "de": "Äquatorialguinea"
+      },
+      {
+        "jeton": "GR",
+        "fr": "Grèce",
+        "de": "Griechenland"
+      },
+      {
+        "jeton": "GS",
+        "fr": "Géorgie du Sud-et-les Îles Sandwich du Sud",
+        "de": "Südgeorgien und die Südlichen Sandwichinseln"
+      },
+      {
+        "jeton": "GT",
+        "fr": "Guatemala",
+        "de": "Guatemala"
+      },
+      {
+        "jeton": "GU",
+        "fr": "Guam",
+        "de": "Guam"
+      },
+      {
+        "jeton": "GW",
+        "fr": "Guinée-Bissau",
+        "de": "Guinea-Bissau"
+      },
+      {
+        "jeton": "GY",
+        "fr": "Guyana",
+        "de": "Guyana"
+      },
+      {
+        "jeton": "HK",
+        "fr": "R.A.S. chinoise de Hong Kong",
+        "de": "Sonderverwaltungsregion Hongkong"
+      },
+      {
+        "jeton": "HM",
+        "fr": "Îles Heard-et-MacDonald",
+        "de": "Heard und McDonaldinseln"
+      },
+      {
+        "jeton": "HN",
+        "fr": "Honduras",
+        "de": "Honduras"
+      },
+      {
+        "jeton": "HR",
+        "fr": "Croatie",
+        "de": "Kroatien"
+      },
+      {
+        "jeton": "HT",
+        "fr": "Haïti",
+        "de": "Haiti"
+      },
+      {
+        "jeton": "HU",
+        "fr": "Hongrie",
+        "de": "Ungarn"
+      },
+      {
+        "jeton": "ID",
+        "fr": "Indonésie",
+        "de": "Indonesien"
+      },
+      {
+        "jeton": "IE",
+        "fr": "Irlande",
+        "de": "Irland"
+      },
+      {
+        "jeton": "IL",
+        "fr": "Israël",
+        "de": "Israel"
+      },
+      {
+        "jeton": "IM",
+        "fr": "Île de Man",
+        "de": "Isle of Man"
+      },
+      {
+        "jeton": "IN",
+        "fr": "Inde",
+        "de": "Indien"
+      },
+      {
+        "jeton": "IO",
+        "fr": "Territoire britannique de l’océan Indien",
+        "de": "Britisches Territorium im Indischen Ozean"
+      },
+      {
+        "jeton": "IQ",
+        "fr": "Irak",
+        "de": "Irak"
+      },
+      {
+        "jeton": "IR",
+        "fr": "Iran",
+        "de": "Iran"
+      },
+      {
+        "jeton": "IS",
+        "fr": "Islande",
+        "de": "Island"
+      },
+      {
+        "jeton": "IT",
+        "fr": "Italie",
+        "de": "Italien"
+      },
+      {
+        "jeton": "JE",
+        "fr": "Jersey",
+        "de": "Jersey"
+      },
+      {
+        "jeton": "JM",
+        "fr": "Jamaïque",
+        "de": "Jamaika"
+      },
+      {
+        "jeton": "JO",
+        "fr": "Jordanie",
+        "de": "Jordanien"
+      },
+      {
+        "jeton": "JP",
+        "fr": "Japon",
+        "de": "Japan"
+      },
+      {
+        "jeton": "KE",
+        "fr": "Kenya",
+        "de": "Kenia"
+      },
+      {
+        "jeton": "KG",
+        "fr": "Kirghizstan",
+        "de": "Kirgisistan"
+      },
+      {
+        "jeton": "KH",
+        "fr": "Cambodge",
+        "de": "Kambodscha"
+      },
+      {
+        "jeton": "KI",
+        "fr": "Kiribati",
+        "de": "Kiribati"
+      },
+      {
+        "jeton": "KM",
+        "fr": "Comores",
+        "de": "Komoren"
+      },
+      {
+        "jeton": "KN",
+        "fr": "Saint-Christophe-et-Niévès",
+        "de": "St. Kitts und Nevis"
+      },
+      {
+        "jeton": "KP",
+        "fr": "Corée du Nord",
+        "de": "Nordkorea"
+      },
+      {
+        "jeton": "KR",
+        "fr": "Corée du Sud",
+        "de": "Südkorea"
+      },
+      {
+        "jeton": "KW",
+        "fr": "Koweït",
+        "de": "Kuwait"
+      },
+      {
+        "jeton": "KY",
+        "fr": "Îles Caïmans",
+        "de": "Kaimaninseln"
+      },
+      {
+        "jeton": "KZ",
+        "fr": "Kazakhstan",
+        "de": "Kasachstan"
+      },
+      {
+        "jeton": "LA",
+        "fr": "Laos",
+        "de": "Laos"
+      },
+      {
+        "jeton": "LB",
+        "fr": "Liban",
+        "de": "Libanon"
+      },
+      {
+        "jeton": "LC",
+        "fr": "Sainte-Lucie",
+        "de": "St. Lucia"
+      },
+      {
+        "jeton": "LI",
+        "fr": "Liechtenstein",
+        "de": "Liechtenstein"
+      },
+      {
+        "jeton": "LK",
+        "fr": "Sri Lanka",
+        "de": "Sri Lanka"
+      },
+      {
+        "jeton": "LR",
+        "fr": "Liberia",
+        "de": "Liberia"
+      },
+      {
+        "jeton": "LS",
+        "fr": "Lesotho",
+        "de": "Lesotho"
+      },
+      {
+        "jeton": "LT",
+        "fr": "Lituanie",
+        "de": "Litauen"
+      },
+      {
+        "jeton": "LU",
+        "fr": "Luxembourg",
+        "de": "Luxemburg"
+      },
+      {
+        "jeton": "LV",
+        "fr": "Lettonie",
+        "de": "Lettland"
+      },
+      {
+        "jeton": "LY",
+        "fr": "Libye",
+        "de": "Libyen"
+      },
+      {
+        "jeton": "MA",
+        "fr": "Maroc",
+        "de": "Marokko"
+      },
+      {
+        "jeton": "MC",
+        "fr": "Monaco",
+        "de": "Monaco"
+      },
+      {
+        "jeton": "MD",
+        "fr": "Moldavie",
+        "de": "Republik Moldau"
+      },
+      {
+        "jeton": "ME",
+        "fr": "Monténégro",
+        "de": "Montenegro"
+      },
+      {
+        "jeton": "MF",
+        "fr": "Saint-Martin",
+        "de": "St. Martin"
+      },
+      {
+        "jeton": "MG",
+        "fr": "Madagascar",
+        "de": "Madagaskar"
+      },
+      {
+        "jeton": "MH",
+        "fr": "Îles Marshall",
+        "de": "Marshallinseln"
+      },
+      {
+        "jeton": "MK",
+        "fr": "Macédoine du Nord",
+        "de": "Nordmazedonien"
+      },
+      {
+        "jeton": "ML",
+        "fr": "Mali",
+        "de": "Mali"
+      },
+      {
+        "jeton": "MM",
+        "fr": "Myanmar (Birmanie)",
+        "de": "Myanmar"
+      },
+      {
+        "jeton": "MN",
+        "fr": "Mongolie",
+        "de": "Mongolei"
+      },
+      {
+        "jeton": "MO",
+        "fr": "R.A.S. chinoise de Macao",
+        "de": "Sonderverwaltungsregion Macau"
+      },
+      {
+        "jeton": "MP",
+        "fr": "Îles Mariannes du Nord",
+        "de": "Nördliche Marianen"
+      },
+      {
+        "jeton": "MQ",
+        "fr": "Martinique",
+        "de": "Martinique"
+      },
+      {
+        "jeton": "MR",
+        "fr": "Mauritanie",
+        "de": "Mauretanien"
+      },
+      {
+        "jeton": "MS",
+        "fr": "Montserrat",
+        "de": "Montserrat"
+      },
+      {
+        "jeton": "MT",
+        "fr": "Malte",
+        "de": "Malta"
+      },
+      {
+        "jeton": "MU",
+        "fr": "Maurice",
+        "de": "Mauritius"
+      },
+      {
+        "jeton": "MV",
+        "fr": "Maldives",
+        "de": "Malediven"
+      },
+      {
+        "jeton": "MW",
+        "fr": "Malawi",
+        "de": "Malawi"
+      },
+      {
+        "jeton": "MX",
+        "fr": "Mexique",
+        "de": "Mexiko"
+      },
+      {
+        "jeton": "MY",
+        "fr": "Malaisie",
+        "de": "Malaysia"
+      },
+      {
+        "jeton": "MZ",
+        "fr": "Mozambique",
+        "de": "Mosambik"
+      },
+      {
+        "jeton": "NA",
+        "fr": "Namibie",
+        "de": "Namibia"
+      },
+      {
+        "jeton": "NC",
+        "fr": "Nouvelle-Calédonie",
+        "de": "Neukaledonien"
+      },
+      {
+        "jeton": "NE",
+        "fr": "Niger",
+        "de": "Niger"
+      },
+      {
+        "jeton": "NF",
+        "fr": "Île Norfolk",
+        "de": "Norfolkinsel"
+      },
+      {
+        "jeton": "NG",
+        "fr": "Nigeria",
+        "de": "Nigeria"
+      },
+      {
+        "jeton": "NI",
+        "fr": "Nicaragua",
+        "de": "Nicaragua"
+      },
+      {
+        "jeton": "NL",
+        "fr": "Pays-Bas",
+        "de": "Niederlande"
+      },
+      {
+        "jeton": "NO",
+        "fr": "Norvège",
+        "de": "Norwegen"
+      },
+      {
+        "jeton": "NP",
+        "fr": "Népal",
+        "de": "Nepal"
+      },
+      {
+        "jeton": "NR",
+        "fr": "Nauru",
+        "de": "Nauru"
+      },
+      {
+        "jeton": "NU",
+        "fr": "Niue",
+        "de": "Niue"
+      },
+      {
+        "jeton": "NZ",
+        "fr": "Nouvelle-Zélande",
+        "de": "Neuseeland"
+      },
+      {
+        "jeton": "OM",
+        "fr": "Oman",
+        "de": "Oman"
+      },
+      {
+        "jeton": "PA",
+        "fr": "Panama",
+        "de": "Panama"
+      },
+      {
+        "jeton": "PE",
+        "fr": "Pérou",
+        "de": "Peru"
+      },
+      {
+        "jeton": "PF",
+        "fr": "Polynésie française",
+        "de": "Französisch-Polynesien"
+      },
+      {
+        "jeton": "PG",
+        "fr": "Papouasie-Nouvelle-Guinée",
+        "de": "Papua-Neuguinea"
+      },
+      {
+        "jeton": "PH",
+        "fr": "Philippines",
+        "de": "Philippinen"
+      },
+      {
+        "jeton": "PK",
+        "fr": "Pakistan",
+        "de": "Pakistan"
+      },
+      {
+        "jeton": "PL",
+        "fr": "Pologne",
+        "de": "Polen"
+      },
+      {
+        "jeton": "PM",
+        "fr": "Saint-Pierre-et-Miquelon",
+        "de": "St. Pierre und Miquelon"
+      },
+      {
+        "jeton": "PN",
+        "fr": "Îles Pitcairn",
+        "de": "Pitcairninseln"
+      },
+      {
+        "jeton": "PR",
+        "fr": "Porto Rico",
+        "de": "Puerto Rico"
+      },
+      {
+        "jeton": "PS",
+        "fr": "Territoires palestiniens",
+        "de": "Palästinensische Autonomiegebiete"
+      },
+      {
+        "jeton": "PT",
+        "fr": "Portugal",
+        "de": "Portugal"
+      },
+      {
+        "jeton": "PW",
+        "fr": "Palaos",
+        "de": "Palau"
+      },
+      {
+        "jeton": "PY",
+        "fr": "Paraguay",
+        "de": "Paraguay"
+      },
+      {
+        "jeton": "QA",
+        "fr": "Qatar",
+        "de": "Katar"
+      },
+      {
+        "jeton": "RE",
+        "fr": "La Réunion",
+        "de": "Réunion"
+      },
+      {
+        "jeton": "RO",
+        "fr": "Roumanie",
+        "de": "Rumänien"
+      },
+      {
+        "jeton": "RS",
+        "fr": "Serbie",
+        "de": "Serbien"
+      },
+      {
+        "jeton": "RU",
+        "fr": "Russie",
+        "de": "Russland"
+      },
+      {
+        "jeton": "RW",
+        "fr": "Rwanda",
+        "de": "Ruanda"
+      },
+      {
+        "jeton": "SA",
+        "fr": "Arabie saoudite",
+        "de": "Saudi-Arabien"
+      },
+      {
+        "jeton": "SB",
+        "fr": "Îles Salomon",
+        "de": "Salomonen"
+      },
+      {
+        "jeton": "SC",
+        "fr": "Seychelles",
+        "de": "Seychellen"
+      },
+      {
+        "jeton": "SD",
+        "fr": "Soudan",
+        "de": "Sudan"
+      },
+      {
+        "jeton": "SE",
+        "fr": "Suède",
+        "de": "Schweden"
+      },
+      {
+        "jeton": "SG",
+        "fr": "Singapour",
+        "de": "Singapur"
+      },
+      {
+        "jeton": "SH",
+        "fr": "Sainte-Hélène",
+        "de": "St. Helena"
+      },
+      {
+        "jeton": "SI",
+        "fr": "Slovénie",
+        "de": "Slowenien"
+      },
+      {
+        "jeton": "SJ",
+        "fr": "Svalbard et Jan Mayen",
+        "de": "Spitzbergen und Jan Mayen"
+      },
+      {
+        "jeton": "SK",
+        "fr": "Slovaquie",
+        "de": "Slowakei"
+      },
+      {
+        "jeton": "SL",
+        "fr": "Sierra Leone",
+        "de": "Sierra Leone"
+      },
+      {
+        "jeton": "SM",
+        "fr": "Saint-Marin",
+        "de": "San Marino"
+      },
+      {
+        "jeton": "SN",
+        "fr": "Sénégal",
+        "de": "Senegal"
+      },
+      {
+        "jeton": "SO",
+        "fr": "Somalie",
+        "de": "Somalia"
+      },
+      {
+        "jeton": "SR",
+        "fr": "Suriname",
+        "de": "Suriname"
+      },
+      {
+        "jeton": "SS",
+        "fr": "Soudan du Sud",
+        "de": "Südsudan"
+      },
+      {
+        "jeton": "ST",
+        "fr": "Sao Tomé-et-Principe",
+        "de": "São Tomé und Príncipe"
+      },
+      {
+        "jeton": "SV",
+        "fr": "Salvador",
+        "de": "El Salvador"
+      },
+      {
+        "jeton": "SX",
+        "fr": "Saint-Martin (partie néerlandaise)",
+        "de": "Sint Maarten"
+      },
+      {
+        "jeton": "SY",
+        "fr": "Syrie",
+        "de": "Syrien"
+      },
+      {
+        "jeton": "SZ",
+        "fr": "Eswatini",
+        "de": "Eswatini"
+      },
+      {
+        "jeton": "TC",
+        "fr": "Îles Turques-et-Caïques",
+        "de": "Turks- und Caicosinseln"
+      },
+      {
+        "jeton": "TD",
+        "fr": "Tchad",
+        "de": "Tschad"
+      },
+      {
+        "jeton": "TF",
+        "fr": "Terres australes françaises",
+        "de": "Französische Süd- und Antarktisgebiete"
+      },
+      {
+        "jeton": "TG",
+        "fr": "Togo",
+        "de": "Togo"
+      },
+      {
+        "jeton": "TH",
+        "fr": "Thaïlande",
+        "de": "Thailand"
+      },
+      {
+        "jeton": "TJ",
+        "fr": "Tadjikistan",
+        "de": "Tadschikistan"
+      },
+      {
+        "jeton": "TK",
+        "fr": "Tokelau",
+        "de": "Tokelau"
+      },
+      {
+        "jeton": "TL",
+        "fr": "Timor oriental",
+        "de": "Timor-Leste"
+      },
+      {
+        "jeton": "TM",
+        "fr": "Turkménistan",
+        "de": "Turkmenistan"
+      },
+      {
+        "jeton": "TN",
+        "fr": "Tunisie",
+        "de": "Tunesien"
+      },
+      {
+        "jeton": "TO",
+        "fr": "Tonga",
+        "de": "Tonga"
+      },
+      {
+        "jeton": "TR",
+        "fr": "Turquie",
+        "de": "Türkei"
+      },
+      {
+        "jeton": "TT",
+        "fr": "Trinité-et-Tobago",
+        "de": "Trinidad und Tobago"
+      },
+      {
+        "jeton": "TV",
+        "fr": "Tuvalu",
+        "de": "Tuvalu"
+      },
+      {
+        "jeton": "TW",
+        "fr": "Taïwan",
+        "de": "Taiwan"
+      },
+      {
+        "jeton": "TZ",
+        "fr": "Tanzanie",
+        "de": "Tansania"
+      },
+      {
+        "jeton": "UA",
+        "fr": "Ukraine",
+        "de": "Ukraine"
+      },
+      {
+        "jeton": "UG",
+        "fr": "Ouganda",
+        "de": "Uganda"
+      },
+      {
+        "jeton": "UM",
+        "fr": "Îles mineures éloignées des États-Unis",
+        "de": "Amerikanische Überseeinseln"
+      },
+      {
+        "jeton": "US",
+        "fr": "États-Unis",
+        "de": "Vereinigte Staaten"
+      },
+      {
+        "jeton": "UY",
+        "fr": "Uruguay",
+        "de": "Uruguay"
+      },
+      {
+        "jeton": "UZ",
+        "fr": "Ouzbékistan",
+        "de": "Usbekistan"
+      },
+      {
+        "jeton": "VA",
+        "fr": "État de la Cité du Vatican",
+        "de": "Vatikanstadt"
+      },
+      {
+        "jeton": "VC",
+        "fr": "Saint-Vincent-et-les Grenadines",
+        "de": "St. Vincent und die Grenadinen"
+      },
+      {
+        "jeton": "VE",
+        "fr": "Venezuela",
+        "de": "Venezuela"
+      },
+      {
+        "jeton": "VG",
+        "fr": "Îles Vierges britanniques",
+        "de": "Britische Jungferninseln"
+      },
+      {
+        "jeton": "VI",
+        "fr": "Îles Vierges des États-Unis",
+        "de": "Amerikanische Jungferninseln"
+      },
+      {
+        "jeton": "VN",
+        "fr": "Viêt Nam",
+        "de": "Vietnam"
+      },
+      {
+        "jeton": "VU",
+        "fr": "Vanuatu",
+        "de": "Vanuatu"
+      },
+      {
+        "jeton": "WF",
+        "fr": "Wallis-et-Futuna",
+        "de": "Wallis und Futuna"
+      },
+      {
+        "jeton": "WS",
+        "fr": "Samoa",
+        "de": "Samoa"
+      },
+      {
+        "jeton": "XK",
+        "fr": "Kosovo",
+        "de": "Kosovo"
+      },
+      {
+        "jeton": "YE",
+        "fr": "Yémen",
+        "de": "Jemen"
+      },
+      {
+        "jeton": "YT",
+        "fr": "Mayotte",
+        "de": "Mayotte"
+      },
+      {
+        "jeton": "ZA",
+        "fr": "Afrique du Sud",
+        "de": "Südafrika"
+      },
+      {
+        "jeton": "ZM",
+        "fr": "Zambie",
+        "de": "Sambia"
+      },
+      {
+        "jeton": "ZW",
+        "fr": "Zimbabwe",
+        "de": "Simbabwe"
+      }
     ]
   },
-
   "instruments": {
     "_lisezmoi": "curia : type Curia (1-19), écrit par Pronto, jamais saisi. cantons : où l'instrument est observé (2025-2026) ; ils passent en tête du menu quand ce canton est choisi. local : le libellé de saisie porte les cantons entre parenthèses (« Anzug (BS) »), jamais la valeur stockée.",
-    "motion":                     { "curia": 5,  "cantons": ["CH", "AG", "BE", "BS", "GL", "LU", "ZH"], "local": false },
-    "postulat":                   { "curia": 6,  "cantons": ["CH", "AG", "BL", "LU", "NW", "SG", "SZ", "VD", "ZH"], "local": false },
-    "interpellation":             { "curia": 8,  "cantons": ["CH", "AG", "BE", "BL", "BS", "SG", "TG", "UR", "VS"], "local": false },
-    "interpellation-urgente":     { "curia": 9,  "cantons": ["VS"], "local": true },
-    "question":                   { "curia": 18, "cantons": ["CH", "FR", "LU", "ZH"], "local": false },
-    "question-urgente":           { "curia": 19, "cantons": [], "local": false },
-    "question-ordinaire":         { "curia": 12, "cantons": ["SG"], "local": true },
-    "question-ordinaire-urgente": { "curia": 13, "cantons": [], "local": false },
-    "question-heure":             { "curia": 14, "cantons": ["CH"], "local": false },
-    "initiative-parlementaire":   { "curia": 4,  "cantons": ["CH"], "local": false },
-    "initiative-cantonale":       { "curia": 3,  "cantons": [], "local": false },
-    "recommandation":             { "curia": 7,  "cantons": [], "local": false },
-    "petition":                   { "curia": 10, "cantons": ["BL"], "local": false },
-    "objet-gouvernement":         { "curia": 1,  "cantons": ["CH", "AG", "BE", "BS", "SG", "ZH"], "local": false },
-    "objet-parlement":            { "curia": 2,  "cantons": [], "local": false },
-    "anzug":                      { "curia": 6,  "cantons": ["BS"], "local": true },
-    "schriftliche-anfrage":       { "curia": 12, "cantons": ["AR", "BS"], "local": true },
-    "kleine-anfrage":             { "curia": 12, "cantons": ["SH"], "local": true },
-    "auskunftsbegehren":          { "curia": 12, "cantons": ["NW"], "local": true },
-    "auftrag":                    { "curia": 5,  "cantons": ["GR"], "local": true }
+    "motion": {
+      "curia": 5,
+      "cantons": [
+        "CH",
+        "AG",
+        "BE",
+        "BS",
+        "GL",
+        "LU",
+        "ZH"
+      ],
+      "local": false
+    },
+    "postulat": {
+      "curia": 6,
+      "cantons": [
+        "CH",
+        "AG",
+        "BL",
+        "LU",
+        "NW",
+        "SG",
+        "SZ",
+        "VD",
+        "ZH"
+      ],
+      "local": false
+    },
+    "interpellation": {
+      "curia": 8,
+      "cantons": [
+        "CH",
+        "AG",
+        "BE",
+        "BL",
+        "BS",
+        "SG",
+        "TG",
+        "UR",
+        "VS"
+      ],
+      "local": false
+    },
+    "interpellation-urgente": {
+      "curia": 9,
+      "cantons": [
+        "VS"
+      ],
+      "local": true
+    },
+    "question": {
+      "curia": 18,
+      "cantons": [
+        "CH",
+        "FR",
+        "LU",
+        "ZH"
+      ],
+      "local": false
+    },
+    "question-urgente": {
+      "curia": 19,
+      "cantons": [],
+      "local": false
+    },
+    "question-ordinaire": {
+      "curia": 12,
+      "cantons": [
+        "SG"
+      ],
+      "local": true
+    },
+    "question-ordinaire-urgente": {
+      "curia": 13,
+      "cantons": [],
+      "local": false
+    },
+    "question-heure": {
+      "curia": 14,
+      "cantons": [
+        "CH"
+      ],
+      "local": false
+    },
+    "initiative-parlementaire": {
+      "curia": 4,
+      "cantons": [
+        "CH"
+      ],
+      "local": false
+    },
+    "initiative-cantonale": {
+      "curia": 3,
+      "cantons": [],
+      "local": false
+    },
+    "recommandation": {
+      "curia": 7,
+      "cantons": [],
+      "local": false
+    },
+    "petition": {
+      "curia": 10,
+      "cantons": [
+        "BL"
+      ],
+      "local": false
+    },
+    "objet-gouvernement": {
+      "curia": 1,
+      "cantons": [
+        "CH",
+        "AG",
+        "BE",
+        "BS",
+        "SG",
+        "ZH"
+      ],
+      "local": false
+    },
+    "objet-parlement": {
+      "curia": 2,
+      "cantons": [],
+      "local": false
+    },
+    "anzug": {
+      "curia": 6,
+      "cantons": [
+        "BS"
+      ],
+      "local": true
+    },
+    "schriftliche-anfrage": {
+      "curia": 12,
+      "cantons": [
+        "AR",
+        "BS"
+      ],
+      "local": true
+    },
+    "kleine-anfrage": {
+      "curia": 12,
+      "cantons": [
+        "SH"
+      ],
+      "local": true
+    },
+    "auskunftsbegehren": {
+      "curia": 12,
+      "cantons": [
+        "NW"
+      ],
+      "local": true
+    },
+    "auftrag": {
+      "curia": 5,
+      "cantons": [
+        "GR"
+      ],
+      "local": true
+    }
   },
-
   "suiviImprime": {
     "_lisezmoi": "Une ligne de suivi imprimée. {genre} = libellé de la liste genre_suivi, {date} en forme suisse ; « : {libelle} » disparaît si le libellé est vide, et le tout devient lien si `lien` est rempli.",
     "fr": "{genre} du {date} : {libelle}",
     "de": "{genre} vom {date}: {libelle}"
   },
-
   "kirby": {
     "_lisezmoi": "Conventions de l'arborescence écrite par Pronto. Voir TODO_KirbyCMS.md §1 : le suffixe de langue est à confirmer sur une vraie instance.",
     "pageDocumentation": "documentation",
     "fichierContenu": "{template}.{langue}.txt",
     "separateur": "----",
     "champUuid": "uuid"
-  }
+  },
+  "_saisies": "liste_multiple : plusieurs jetons de la même liste, écrits « jeton1, jeton2 » (virgule et espace, convention du champ multiselect de Kirby), dans l’ordre de saisie.",
+  "_pays": "listes.pays : ISO 3166-1 alpha-2 (249 codes) plus XK (Kosovo), libellés CLDR fr/de. Jeton = code, jamais un nom."
 }

@@ -40,6 +40,12 @@ fields:
       autobiographie:
         fr: "Autobiographie"
         de: "Autobiografie"
+      essai:
+        fr: "Essai"
+        de: "Essay"
+      temoignage:
+        fr: "Témoignage"
+        de: "Erfahrungsbericht"
     translate: false
     label:
       fr: "Catégorie"

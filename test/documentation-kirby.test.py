@@ -410,6 +410,27 @@ class BibliothequeFiches(unittest.TestCase):
         self.assertEqual(fiches, [])
         self.assertIn('rangé sous le dossier', capture.getvalue())
 
+    def test_liste_multiple_transportee_telle_quelle_en_attribut(self):
+        # documentation-kirby.py ne connaît pas les listes du contrat (genre_film, pays) :
+        # il transporte la valeur brute « jeton1, jeton2 » telle quelle en attribut, jamais
+        # éclatée ni validée — la traduction et le rejet d'un jeton inconnu (aucun rejet :
+        # imprimé tel quel) vivent dans szh-ressource.lua, couvert par
+        # test/documentation-kirby.test.js. Ce test couvre le seul rôle de ce script : ne
+        # rien perdre, ne rien modifier, y compris un jeton absent de la liste (« jeton-
+        # inconnu-xyz », « ZZ-inconnu ») — un jeton fautif n'est pas du ressort du
+        # convertisseur.
+        article = self._article('numeroa00000001', 'de')
+        self._fiche('un-film', 'film.de.txt',
+                     'Title: Film de test\n\n----\n\nAusgabe: numeroa00000001\n\n'
+                     '----\n\nOrdre: 1\n\n----\n\nCategorie: documentaire\n\n'
+                     '----\n\nGenre: drame, jeton-inconnu-xyz\n\n'
+                     '----\n\nPays: DE, CH, ZZ-inconnu\n\n'
+                     '----\n\nRealisateur: X\n\n----\n\nAnnee: 2026\n\n'
+                     '----\n\nDescriptif: Z\n')
+        sortie = dk.convertir(article, CHAMPS_JSON, racine_news=self.racine)
+        self.assertIn('genre="drame, jeton-inconnu-xyz"', sortie)
+        self.assertIn('pays="DE, CH, ZZ-inconnu"', sortie)
+
     def test_ordre_en_double_avertit(self):
         article = self._article('numeroa00000001', 'de')
         for slug in ('a', 'b'):

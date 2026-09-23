@@ -145,6 +145,19 @@ function champVersYaml(contrat, champ) {
       c.type = 'select';
       c.options = optionsPourListe(contrat, champ.liste);
       break;
+    case 'liste_multiple':
+      // Vérifié sur getkirby.com/docs/reference/panel/fields/multiselect (23.09.2026) :
+      // mêmes options traduites qu'un champ select (un objet par jeton, une clé par
+      // langue) ; stocke les jetons choisis en liste séparée par `separator` (par défaut
+      // ','). On fixe explicitement ', ' (virgule + espace) pour ne pas dépendre du défaut
+      // Kirby et matcher exactement la convention « jeton1, jeton2 » du contrat JSON
+      // (champs-documentation.json, `_saisies`) que lisent documentation-kirby.py (valeur
+      // transportée telle quelle en attribut) et szh-ressource.lua (jetons éclatés sur la
+      // virgule).
+      c.type = 'multiselect';
+      c.options = optionsPourListe(contrat, champ.liste);
+      c.separator = ', ';
+      break;
     case 'derive':
       // Champ `hidden` : vérifié sur getkirby.com/docs/reference/panel/fields/hidden
       // (23.09.2026) — stocké dans le fichier de contenu, jamais affiché ni modifiable

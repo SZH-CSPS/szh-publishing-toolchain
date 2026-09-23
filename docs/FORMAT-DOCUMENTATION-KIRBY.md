@@ -135,6 +135,10 @@ fiche est traduite et son statut ne compte plus.
   Écriture : chaque valeur en chaîne JSON, clé vide omise. Lecture : accepter aussi les
   scalaires sans guillemets et entre apostrophes (ce qu'écrit le Panel de Kirby).
 - dates `date` : AAAA-MM-JJ ; `date_partielle` : ^\d{4}(-\d{2}(-\d{2})?)?$ ; `annee` : ^\d{4}$.
+- saisie `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste sur
+  une ligne, `Genre: drame, comedie` (virgule et espace, convention du champ multiselect de
+  Kirby), dans l'ordre de saisie, sans doublon. Champ commun aux deux langues. Pays : codes
+  ISO 3166-1 alpha-2 (`FR`, `US`, `CH`…), jamais un nom ; le libellé fr/de vient du contrat.
 
 ## Rubriques (documentation.<lang>.txt du numéro)
 

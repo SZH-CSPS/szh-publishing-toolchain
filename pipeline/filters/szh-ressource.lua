@@ -138,7 +138,12 @@ local BIBLIO_CHAMPS = {
   recherche    = { 'institutions', 'debut', 'fin' },
   intervention = { 'canton', 'categorie', 'numero', 'date' },
   livre        = { 'auteurs', 'annee', 'editeur' },
-  film         = { 'realisateur', 'annee', 'distributeur' },
+  -- réalisateur · année · genre · pays · distributeur : genre et pays (liste_multiple,
+  -- decision de Robin du 23.09.2026) s'intercalent entre l'année et le distributeur —
+  -- avant le distributeur, qui est le champ le moins identifiant du film (souvent absent),
+  -- et après année, dans l'ordre où le formulaire du cockpit les présente déjà (JSON,
+  -- type film : title, categorie, genre, pays, realisateur, annee, distributeur…).
+  film         = { 'realisateur', 'annee', 'genre', 'pays', 'distributeur' },
   reprise      = { 'auteurs', 'revue', 'reference', 'doi' },
   agenda       = { 'evenement', 'debut', 'fin', 'lieu', 'organisateur' },
 }
@@ -209,9 +214,28 @@ local function plage_date(v1, v2)
   return d1.j .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a
 end
 
+-- Plusieurs jetons de la même liste (saisie `liste_multiple`, valeur « jeton1, jeton2 » —
+-- convention posée par documentation-kirby.py, qui transporte cette chaîne telle quelle en
+-- attribut, jamais éclatée) : chaque jeton traduit dans la langue de l'article, joints par
+-- « , ». Un jeton absent de la liste du contrat (saisie manuelle fautive, liste modifiée
+-- depuis) sort tel quel plutôt que de disparaître ou de faire échouer la compilation — même
+-- principe que le repli de `formater_champ` pour une liste simple.
+local function formater_liste_multiple(def, v, lang)
+  local morceaux = {}
+  for jeton in (v or ''):gmatch('[^,]+') do
+    jeton = jeton:match('^%s*(.-)%s*$')
+    if jeton ~= '' then
+      local item = LISTES[def.liste] and LISTES[def.liste][jeton]
+      morceaux[#morceaux + 1] = (item and item[lang]) or jeton
+    end
+  end
+  return table.concat(morceaux, ', ')
+end
+
 -- La valeur d'un champ, mise en forme selon sa saisie (JSON) : un jeton de liste devient son
--- libellé traduit (sauf `canton`, toujours affiché en code — cahier des charges), une date
--- ou une date partielle passe en forme suisse, tout le reste sort tel quel.
+-- libellé traduit (sauf `canton`, toujours affiché en code — cahier des charges), plusieurs
+-- jetons (liste_multiple) sont chacun traduits puis joints par « , », une date ou une date
+-- partielle passe en forme suisse, tout le reste sort tel quel.
 local function formater_champ(type_, cle, v, lang)
   local def = champ_def(type_, cle)
   local saisie = def and def.saisie
@@ -219,6 +243,8 @@ local function formater_champ(type_, cle, v, lang)
     if def.liste == 'canton' then return v end
     local item = LISTES[def.liste] and LISTES[def.liste][v]
     return (item and item[lang]) or v
+  elseif saisie == 'liste_multiple' then
+    return formater_liste_multiple(def, v, lang)
   elseif saisie == 'date' then
     return date_suisse(v)
   elseif saisie == 'date_partielle' then

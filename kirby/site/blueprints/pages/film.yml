@@ -44,6 +44,799 @@ fields:
       fr: "Catégorie"
       de: "Kategorie"
     required: true
+  genre:
+    type: "multiselect"
+    options:
+      drame:
+        fr: "Drame"
+        de: "Drama"
+      comedie:
+        fr: "Comédie"
+        de: "Komödie"
+      comedie-dramatique:
+        fr: "Comédie dramatique"
+        de: "Tragikomödie"
+      biographique:
+        fr: "Film biographique"
+        de: "Filmbiografie"
+      historique:
+        fr: "Film historique"
+        de: "Historienfilm"
+      romance:
+        fr: "Romance"
+        de: "Liebesfilm"
+      familial:
+        fr: "Film familial"
+        de: "Familienfilm"
+      jeunesse:
+        fr: "Jeunesse"
+        de: "Kinder- und Jugendfilm"
+      animation:
+        fr: "Animation"
+        de: "Animationsfilm"
+    separator: ", "
+    translate: false
+    label:
+      fr: "Genre"
+      de: "Genre"
+  pays:
+    type: "multiselect"
+    options:
+      AD:
+        fr: "Andorre"
+        de: "Andorra"
+      AE:
+        fr: "Émirats arabes unis"
+        de: "Vereinigte Arabische Emirate"
+      AF:
+        fr: "Afghanistan"
+        de: "Afghanistan"
+      AG:
+        fr: "Antigua-et-Barbuda"
+        de: "Antigua und Barbuda"
+      AI:
+        fr: "Anguilla"
+        de: "Anguilla"
+      AL:
+        fr: "Albanie"
+        de: "Albanien"
+      AM:
+        fr: "Arménie"
+        de: "Armenien"
+      AO:
+        fr: "Angola"
+        de: "Angola"
+      AQ:
+        fr: "Antarctique"
+        de: "Antarktis"
+      AR:
+        fr: "Argentine"
+        de: "Argentinien"
+      AS:
+        fr: "Samoa américaines"
+        de: "Amerikanisch-Samoa"
+      AT:
+        fr: "Autriche"
+        de: "Österreich"
+      AU:
+        fr: "Australie"
+        de: "Australien"
+      AW:
+        fr: "Aruba"
+        de: "Aruba"
+      AX:
+        fr: "Îles Åland"
+        de: "Ålandinseln"
+      AZ:
+        fr: "Azerbaïdjan"
+        de: "Aserbaidschan"
+      BA:
+        fr: "Bosnie-Herzégovine"
+        de: "Bosnien und Herzegowina"
+      BB:
+        fr: "Barbade"
+        de: "Barbados"
+      BD:
+        fr: "Bangladesh"
+        de: "Bangladesch"
+      BE:
+        fr: "Belgique"
+        de: "Belgien"
+      BF:
+        fr: "Burkina Faso"
+        de: "Burkina Faso"
+      BG:
+        fr: "Bulgarie"
+        de: "Bulgarien"
+      BH:
+        fr: "Bahreïn"
+        de: "Bahrain"
+      BI:
+        fr: "Burundi"
+        de: "Burundi"
+      BJ:
+        fr: "Bénin"
+        de: "Benin"
+      BL:
+        fr: "Saint-Barthélemy"
+        de: "St. Barthélemy"
+      BM:
+        fr: "Bermudes"
+        de: "Bermuda"
+      BN:
+        fr: "Brunei"
+        de: "Brunei Darussalam"
+      BO:
+        fr: "Bolivie"
+        de: "Bolivien"
+      BQ:
+        fr: "Pays-Bas caribéens"
+        de: "Karibische Niederlande"
+      BR:
+        fr: "Brésil"
+        de: "Brasilien"
+      BS:
+        fr: "Bahamas"
+        de: "Bahamas"
+      BT:
+        fr: "Bhoutan"
+        de: "Bhutan"
+      BV:
+        fr: "Île Bouvet"
+        de: "Bouvetinsel"
+      BW:
+        fr: "Botswana"
+        de: "Botsuana"
+      BY:
+        fr: "Biélorussie"
+        de: "Belarus"
+      BZ:
+        fr: "Belize"
+        de: "Belize"
+      CA:
+        fr: "Canada"
+        de: "Kanada"
+      CC:
+        fr: "Îles Cocos"
+        de: "Kokosinseln"
+      CD:
+        fr: "Congo-Kinshasa"
+        de: "Kongo-Kinshasa"
+      CF:
+        fr: "République centrafricaine"
+        de: "Zentralafrikanische Republik"
+      CG:
+        fr: "Congo-Brazzaville"
+        de: "Kongo-Brazzaville"
+      CH:
+        fr: "Suisse"
+        de: "Schweiz"
+      CI:
+        fr: "Côte d’Ivoire"
+        de: "Côte d’Ivoire"
+      CK:
+        fr: "Îles Cook"
+        de: "Cookinseln"
+      CL:
+        fr: "Chili"
+        de: "Chile"
+      CM:
+        fr: "Cameroun"
+        de: "Kamerun"
+      CN:
+        fr: "Chine"
+        de: "China"
+      CO:
+        fr: "Colombie"
+        de: "Kolumbien"
+      CR:
+        fr: "Costa Rica"
+        de: "Costa Rica"
+      CU:
+        fr: "Cuba"
+        de: "Kuba"
+      CV:
+        fr: "Cap-Vert"
+        de: "Cabo Verde"
+      CW:
+        fr: "Curaçao"
+        de: "Curaçao"
+      CX:
+        fr: "Île Christmas"
+        de: "Weihnachtsinsel"
+      CY:
+        fr: "Chypre"
+        de: "Zypern"
+      CZ:
+        fr: "Tchéquie"
+        de: "Tschechien"
+      DE:
+        fr: "Allemagne"
+        de: "Deutschland"
+      DJ:
+        fr: "Djibouti"
+        de: "Dschibuti"
+      DK:
+        fr: "Danemark"
+        de: "Dänemark"
+      DM:
+        fr: "Dominique"
+        de: "Dominica"
+      DO:
+        fr: "République dominicaine"
+        de: "Dominikanische Republik"
+      DZ:
+        fr: "Algérie"
+        de: "Algerien"
+      EC:
+        fr: "Équateur"
+        de: "Ecuador"
+      EE:
+        fr: "Estonie"
+        de: "Estland"
+      EG:
+        fr: "Égypte"
+        de: "Ägypten"
+      EH:
+        fr: "Sahara occidental"
+        de: "Westsahara"
+      ER:
+        fr: "Érythrée"
+        de: "Eritrea"
+      ES:
+        fr: "Espagne"
+        de: "Spanien"
+      ET:
+        fr: "Éthiopie"
+        de: "Äthiopien"
+      FI:
+        fr: "Finlande"
+        de: "Finnland"
+      FJ:
+        fr: "Fidji"
+        de: "Fidschi"
+      FK:
+        fr: "Îles Malouines"
+        de: "Falklandinseln"
+      FM:
+        fr: "Micronésie"
+        de: "Mikronesien"
+      FO:
+        fr: "Îles Féroé"
+        de: "Färöer"
+      FR:
+        fr: "France"
+        de: "Frankreich"
+      GA:
+        fr: "Gabon"
+        de: "Gabun"
+      GB:
+        fr: "Royaume-Uni"
+        de: "Vereinigtes Königreich"
+      GD:
+        fr: "Grenade"
+        de: "Grenada"
+      GE:
+        fr: "Géorgie"
+        de: "Georgien"
+      GF:
+        fr: "Guyane française"
+        de: "Französisch-Guayana"
+      GG:
+        fr: "Guernesey"
+        de: "Guernsey"
+      GH:
+        fr: "Ghana"
+        de: "Ghana"
+      GI:
+        fr: "Gibraltar"
+        de: "Gibraltar"
+      GL:
+        fr: "Groenland"
+        de: "Grönland"
+      GM:
+        fr: "Gambie"
+        de: "Gambia"
+      GN:
+        fr: "Guinée"
+        de: "Guinea"
+      GP:
+        fr: "Guadeloupe"
+        de: "Guadeloupe"
+      GQ:
+        fr: "Guinée équatoriale"
+        de: "Äquatorialguinea"
+      GR:
+        fr: "Grèce"
+        de: "Griechenland"
+      GS:
+        fr: "Géorgie du Sud-et-les Îles Sandwich du Sud"
+        de: "Südgeorgien und die Südlichen Sandwichinseln"
+      GT:
+        fr: "Guatemala"
+        de: "Guatemala"
+      GU:
+        fr: "Guam"
+        de: "Guam"
+      GW:
+        fr: "Guinée-Bissau"
+        de: "Guinea-Bissau"
+      GY:
+        fr: "Guyana"
+        de: "Guyana"
+      HK:
+        fr: "R.A.S. chinoise de Hong Kong"
+        de: "Sonderverwaltungsregion Hongkong"
+      HM:
+        fr: "Îles Heard-et-MacDonald"
+        de: "Heard und McDonaldinseln"
+      HN:
+        fr: "Honduras"
+        de: "Honduras"
+      HR:
+        fr: "Croatie"
+        de: "Kroatien"
+      HT:
+        fr: "Haïti"
+        de: "Haiti"
+      HU:
+        fr: "Hongrie"
+        de: "Ungarn"
+      ID:
+        fr: "Indonésie"
+        de: "Indonesien"
+      IE:
+        fr: "Irlande"
+        de: "Irland"
+      IL:
+        fr: "Israël"
+        de: "Israel"
+      IM:
+        fr: "Île de Man"
+        de: "Isle of Man"
+      IN:
+        fr: "Inde"
+        de: "Indien"
+      IO:
+        fr: "Territoire britannique de l’océan Indien"
+        de: "Britisches Territorium im Indischen Ozean"
+      IQ:
+        fr: "Irak"
+        de: "Irak"
+      IR:
+        fr: "Iran"
+        de: "Iran"
+      IS:
+        fr: "Islande"
+        de: "Island"
+      IT:
+        fr: "Italie"
+        de: "Italien"
+      JE:
+        fr: "Jersey"
+        de: "Jersey"
+      JM:
+        fr: "Jamaïque"
+        de: "Jamaika"
+      JO:
+        fr: "Jordanie"
+        de: "Jordanien"
+      JP:
+        fr: "Japon"
+        de: "Japan"
+      KE:
+        fr: "Kenya"
+        de: "Kenia"
+      KG:
+        fr: "Kirghizstan"
+        de: "Kirgisistan"
+      KH:
+        fr: "Cambodge"
+        de: "Kambodscha"
+      KI:
+        fr: "Kiribati"
+        de: "Kiribati"
+      KM:
+        fr: "Comores"
+        de: "Komoren"
+      KN:
+        fr: "Saint-Christophe-et-Niévès"
+        de: "St. Kitts und Nevis"
+      KP:
+        fr: "Corée du Nord"
+        de: "Nordkorea"
+      KR:
+        fr: "Corée du Sud"
+        de: "Südkorea"
+      KW:
+        fr: "Koweït"
+        de: "Kuwait"
+      KY:
+        fr: "Îles Caïmans"
+        de: "Kaimaninseln"
+      KZ:
+        fr: "Kazakhstan"
+        de: "Kasachstan"
+      LA:
+        fr: "Laos"
+        de: "Laos"
+      LB:
+        fr: "Liban"
+        de: "Libanon"
+      LC:
+        fr: "Sainte-Lucie"
+        de: "St. Lucia"
+      LI:
+        fr: "Liechtenstein"
+        de: "Liechtenstein"
+      LK:
+        fr: "Sri Lanka"
+        de: "Sri Lanka"
+      LR:
+        fr: "Liberia"
+        de: "Liberia"
+      LS:
+        fr: "Lesotho"
+        de: "Lesotho"
+      LT:
+        fr: "Lituanie"
+        de: "Litauen"
+      LU:
+        fr: "Luxembourg"
+        de: "Luxemburg"
+      LV:
+        fr: "Lettonie"
+        de: "Lettland"
+      LY:
+        fr: "Libye"
+        de: "Libyen"
+      MA:
+        fr: "Maroc"
+        de: "Marokko"
+      MC:
+        fr: "Monaco"
+        de: "Monaco"
+      MD:
+        fr: "Moldavie"
+        de: "Republik Moldau"
+      ME:
+        fr: "Monténégro"
+        de: "Montenegro"
+      MF:
+        fr: "Saint-Martin"
+        de: "St. Martin"
+      MG:
+        fr: "Madagascar"
+        de: "Madagaskar"
+      MH:
+        fr: "Îles Marshall"
+        de: "Marshallinseln"
+      MK:
+        fr: "Macédoine du Nord"
+        de: "Nordmazedonien"
+      ML:
+        fr: "Mali"
+        de: "Mali"
+      MM:
+        fr: "Myanmar (Birmanie)"
+        de: "Myanmar"
+      MN:
+        fr: "Mongolie"
+        de: "Mongolei"
+      MO:
+        fr: "R.A.S. chinoise de Macao"
+        de: "Sonderverwaltungsregion Macau"
+      MP:
+        fr: "Îles Mariannes du Nord"
+        de: "Nördliche Marianen"
+      MQ:
+        fr: "Martinique"
+        de: "Martinique"
+      MR:
+        fr: "Mauritanie"
+        de: "Mauretanien"
+      MS:
+        fr: "Montserrat"
+        de: "Montserrat"
+      MT:
+        fr: "Malte"
+        de: "Malta"
+      MU:
+        fr: "Maurice"
+        de: "Mauritius"
+      MV:
+        fr: "Maldives"
+        de: "Malediven"
+      MW:
+        fr: "Malawi"
+        de: "Malawi"
+      MX:
+        fr: "Mexique"
+        de: "Mexiko"
+      MY:
+        fr: "Malaisie"
+        de: "Malaysia"
+      MZ:
+        fr: "Mozambique"
+        de: "Mosambik"
+      NA:
+        fr: "Namibie"
+        de: "Namibia"
+      NC:
+        fr: "Nouvelle-Calédonie"
+        de: "Neukaledonien"
+      NE:
+        fr: "Niger"
+        de: "Niger"
+      NF:
+        fr: "Île Norfolk"
+        de: "Norfolkinsel"
+      NG:
+        fr: "Nigeria"
+        de: "Nigeria"
+      NI:
+        fr: "Nicaragua"
+        de: "Nicaragua"
+      NL:
+        fr: "Pays-Bas"
+        de: "Niederlande"
+      NO:
+        fr: "Norvège"
+        de: "Norwegen"
+      NP:
+        fr: "Népal"
+        de: "Nepal"
+      NR:
+        fr: "Nauru"
+        de: "Nauru"
+      NU:
+        fr: "Niue"
+        de: "Niue"
+      NZ:
+        fr: "Nouvelle-Zélande"
+        de: "Neuseeland"
+      OM:
+        fr: "Oman"
+        de: "Oman"
+      PA:
+        fr: "Panama"
+        de: "Panama"
+      PE:
+        fr: "Pérou"
+        de: "Peru"
+      PF:
+        fr: "Polynésie française"
+        de: "Französisch-Polynesien"
+      PG:
+        fr: "Papouasie-Nouvelle-Guinée"
+        de: "Papua-Neuguinea"
+      PH:
+        fr: "Philippines"
+        de: "Philippinen"
+      PK:
+        fr: "Pakistan"
+        de: "Pakistan"
+      PL:
+        fr: "Pologne"
+        de: "Polen"
+      PM:
+        fr: "Saint-Pierre-et-Miquelon"
+        de: "St. Pierre und Miquelon"
+      PN:
+        fr: "Îles Pitcairn"
+        de: "Pitcairninseln"
+      PR:
+        fr: "Porto Rico"
+        de: "Puerto Rico"
+      PS:
+        fr: "Territoires palestiniens"
+        de: "Palästinensische Autonomiegebiete"
+      PT:
+        fr: "Portugal"
+        de: "Portugal"
+      PW:
+        fr: "Palaos"
+        de: "Palau"
+      PY:
+        fr: "Paraguay"
+        de: "Paraguay"
+      QA:
+        fr: "Qatar"
+        de: "Katar"
+      RE:
+        fr: "La Réunion"
+        de: "Réunion"
+      RO:
+        fr: "Roumanie"
+        de: "Rumänien"
+      RS:
+        fr: "Serbie"
+        de: "Serbien"
+      RU:
+        fr: "Russie"
+        de: "Russland"
+      RW:
+        fr: "Rwanda"
+        de: "Ruanda"
+      SA:
+        fr: "Arabie saoudite"
+        de: "Saudi-Arabien"
+      SB:
+        fr: "Îles Salomon"
+        de: "Salomonen"
+      SC:
+        fr: "Seychelles"
+        de: "Seychellen"
+      SD:
+        fr: "Soudan"
+        de: "Sudan"
+      SE:
+        fr: "Suède"
+        de: "Schweden"
+      SG:
+        fr: "Singapour"
+        de: "Singapur"
+      SH:
+        fr: "Sainte-Hélène"
+        de: "St. Helena"
+      SI:
+        fr: "Slovénie"
+        de: "Slowenien"
+      SJ:
+        fr: "Svalbard et Jan Mayen"
+        de: "Spitzbergen und Jan Mayen"
+      SK:
+        fr: "Slovaquie"
+        de: "Slowakei"
+      SL:
+        fr: "Sierra Leone"
+        de: "Sierra Leone"
+      SM:
+        fr: "Saint-Marin"
+        de: "San Marino"
+      SN:
+        fr: "Sénégal"
+        de: "Senegal"
+      SO:
+        fr: "Somalie"
+        de: "Somalia"
+      SR:
+        fr: "Suriname"
+        de: "Suriname"
+      SS:
+        fr: "Soudan du Sud"
+        de: "Südsudan"
+      ST:
+        fr: "Sao Tomé-et-Principe"
+        de: "São Tomé und Príncipe"
+      SV:
+        fr: "Salvador"
+        de: "El Salvador"
+      SX:
+        fr: "Saint-Martin (partie néerlandaise)"
+        de: "Sint Maarten"
+      SY:
+        fr: "Syrie"
+        de: "Syrien"
+      SZ:
+        fr: "Eswatini"
+        de: "Eswatini"
+      TC:
+        fr: "Îles Turques-et-Caïques"
+        de: "Turks- und Caicosinseln"
+      TD:
+        fr: "Tchad"
+        de: "Tschad"
+      TF:
+        fr: "Terres australes françaises"
+        de: "Französische Süd- und Antarktisgebiete"
+      TG:
+        fr: "Togo"
+        de: "Togo"
+      TH:
+        fr: "Thaïlande"
+        de: "Thailand"
+      TJ:
+        fr: "Tadjikistan"
+        de: "Tadschikistan"
+      TK:
+        fr: "Tokelau"
+        de: "Tokelau"
+      TL:
+        fr: "Timor oriental"
+        de: "Timor-Leste"
+      TM:
+        fr: "Turkménistan"
+        de: "Turkmenistan"
+      TN:
+        fr: "Tunisie"
+        de: "Tunesien"
+      TO:
+        fr: "Tonga"
+        de: "Tonga"
+      TR:
+        fr: "Turquie"
+        de: "Türkei"
+      TT:
+        fr: "Trinité-et-Tobago"
+        de: "Trinidad und Tobago"
+      TV:
+        fr: "Tuvalu"
+        de: "Tuvalu"
+      TW:
+        fr: "Taïwan"
+        de: "Taiwan"
+      TZ:
+        fr: "Tanzanie"
+        de: "Tansania"
+      UA:
+        fr: "Ukraine"
+        de: "Ukraine"
+      UG:
+        fr: "Ouganda"
+        de: "Uganda"
+      UM:
+        fr: "Îles mineures éloignées des États-Unis"
+        de: "Amerikanische Überseeinseln"
+      US:
+        fr: "États-Unis"
+        de: "Vereinigte Staaten"
+      UY:
+        fr: "Uruguay"
+        de: "Uruguay"
+      UZ:
+        fr: "Ouzbékistan"
+        de: "Usbekistan"
+      VA:
+        fr: "État de la Cité du Vatican"
+        de: "Vatikanstadt"
+      VC:
+        fr: "Saint-Vincent-et-les Grenadines"
+        de: "St. Vincent und die Grenadinen"
+      VE:
+        fr: "Venezuela"
+        de: "Venezuela"
+      VG:
+        fr: "Îles Vierges britanniques"
+        de: "Britische Jungferninseln"
+      VI:
+        fr: "Îles Vierges des États-Unis"
+        de: "Amerikanische Jungferninseln"
+      VN:
+        fr: "Viêt Nam"
+        de: "Vietnam"
+      VU:
+        fr: "Vanuatu"
+        de: "Vanuatu"
+      WF:
+        fr: "Wallis-et-Futuna"
+        de: "Wallis und Futuna"
+      WS:
+        fr: "Samoa"
+        de: "Samoa"
+      XK:
+        fr: "Kosovo"
+        de: "Kosovo"
+      YE:
+        fr: "Yémen"
+        de: "Jemen"
+      YT:
+        fr: "Mayotte"
+        de: "Mayotte"
+      ZA:
+        fr: "Afrique du Sud"
+        de: "Südafrika"
+      ZM:
+        fr: "Zambie"
+        de: "Sambia"
+      ZW:
+        fr: "Zimbabwe"
+        de: "Simbabwe"
+    separator: ", "
+    translate: false
+    label:
+      fr: "Pays"
+      de: "Land"
   realisateur:
     type: "text"
     translate: false
