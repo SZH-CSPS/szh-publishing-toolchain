@@ -211,6 +211,22 @@ function nomDossierFiche(n, slug) {
   return gabarit.replace('{n}', String(n)).replace('{slug}', slug);
 }
 
+// Le nom du fichier de page, quelle que soit sa langue (« documentation.fr.txt »,
+// « documentation.de.txt ») — celui qu'écrit ecrirePage(). Sert à ceux qui doivent
+// reconnaître ce fichier sans connaître la langue de l'article, en particulier
+// lib/renumerotation-fs.js : le fichier de page porte un nom FIXE, jamais celui du
+// dossier — à la différence d'une fiche de métadonnées (<slug>.meta.yaml), qui suit
+// toujours le nom de son dossier. Une renumérotation qui traiterait « documentation.fr.txt »
+// comme un sidecar du dossier (coïncidence : le dossier par défaut s'appelle aussi
+// « documentation », voir SLUG_DOCUMENTATION côté cockpit) le renommerait en
+// « 02-documentation.fr.txt » — un fichier que plus rien ne sait relire.
+function estFichierPageDocumentation(nomFichier) {
+  const c = contrat();
+  const template = (c.kirby || {}).pageDocumentation || 'documentation';
+  const langues = (c.langues && c.langues.length > 0) ? c.langues : ['fr', 'de'];
+  return langues.some((langue) => nomFichierContenu(template, langue) === String(nomFichier || ''));
+}
+
 // Une ligne de valeur qui vaut exactement le séparateur s'échappe d'un antislash — et
 // seulement celle-là, jamais une ligne qui le contiendrait au milieu d'autre chose.
 function echapperSeparateur(valeur, sep) {
@@ -573,6 +589,17 @@ function imageProvisoire(dossierArticle, id) {
   const trouve = noms.find((n) => n.indexOf(prefixe) === 0);
   return trouve ? path.join(dossier, trouve) : null;
 }
+// Vide entièrement le dépôt provisoire d'un article : tout ce qui y reste au moment où le
+// formulaire se ferme appartient à une carte jamais enregistrée (créée puis retirée avant
+// sauvegarde, ou formulaire fermé sans enregistrer) — jamais à une fiche déjà écrite, dont
+// l'image a rejoint son propre dossier (installerImage(), appelé depuis
+// ecrireFicheDansDossier()) et a donc déjà quitté ce dépôt. À appeler à la fermeture du
+// formulaire : un .txt (ou une image) en trop dans une arborescence Kirby serait lu comme
+// contenu par le site.
+function viderDepotImages(dossierArticle) {
+  try { fs.rmSync(dossierDepot(dossierArticle), { recursive: true, force: true }); }
+  catch (e) { /* absent : rien à vider */ }
+}
 // Copie `cheminSource` dans `cheminDossier` sous un nom libre (jamais un remplacement —
 // même parti que l'ancien lib/ressources.js). Rend le nom écrit.
 function installerImage(cheminDossier, cheminSource) {
@@ -721,11 +748,12 @@ module.exports = {
   champsPourEcriture, valeursDepuisChamps,
   // Ordre et nom de dossier
   calculerOrdreFiches, calculerNoms, slugifierFiche, slugFicheUnique, nomDossierFiche,
+  nomFichierContenu, estFichierPageDocumentation,
   // Arborescence sur le disque
   listerFiches, lireFicheAutonome, trouverDossierParUuid,
   ajouterFiche, ecrireFiche, retirerFiche, reordonnerFiches,
   lirePage, ecrirePage, lireDocumentation,
   // Image d'une fiche
-  deposerImageProvisoire, imageProvisoire, nettoyerImageProvisoire, installerImage,
+  deposerImageProvisoire, imageProvisoire, nettoyerImageProvisoire, viderDepotImages, installerImage,
   PREFIXE_TEMPO, PREFIXE_NOUVEAU, NOM_DEPOT_IMAGES
 };

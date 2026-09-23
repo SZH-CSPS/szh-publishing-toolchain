@@ -282,7 +282,7 @@ test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', asy
     ['szh.vueArticles', undefined, 'valeurs'],
     ['szh.vueWord', undefined, 'valeurs'],
     ['szh.mediasArticle', { slug: '01-essai' }, 'charger'],
-    ['szh.ressourcesArticle', { slug: '01-essai' }, 'charger'],
+    ['szh.documentation', undefined, 'charger'],
     ['szh.traduction', { slug: '01-essai' }, 'valeurs'],
     ['szh.editerTable', {
       slug: '01-essai',
@@ -678,7 +678,7 @@ test('lancerTache : une tâche qui ne notifie que sa fin (onDidEndTask) libère 
 test('documentation : un retrait refusé (numéro verrouillé) est signalé au panneau', async () => {
   const ausgabe = path.join(REVUE, 'ausgabe.yaml');
   const avantYaml = fs.readFileSync(ausgabe, 'utf8');
-  await HOTE.executer('szh.ressourcesArticle', { slug: '01-essai' });
+  await HOTE.executer('szh.documentation');
   const p = HOTE.panneauDeType('szhDocumentation');
   assert.ok(p, 'aucun panneau de documentation');
   p.messages.length = 0;

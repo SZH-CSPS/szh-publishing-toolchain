@@ -61,7 +61,7 @@ const PACKAGE = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', '
 // au-dessus.
 const AVEC_SLUG = new Set([
   'szh.metadonneesArticle', 'szh.traduction', 'szh.envoyerTraduction',
-  'szh.mediasArticle', 'szh.ressourcesArticle', 'szh.apercuBiblio', 'szh.voirPdfArticle',
+  'szh.mediasArticle', 'szh.apercuBiblio', 'szh.voirPdfArticle',
   'szh.monterUnite', 'szh.descendreUnite',
   'szh.supprimerArticle', 'szh.reimporterArticle', 'szh.annulerReimport'
 ]);

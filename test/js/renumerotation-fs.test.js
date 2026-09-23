@@ -46,6 +46,24 @@ const ordreEcrit = (racine) => ((fs.readFileSync(path.join(racine, 'ausgabe.yaml
   .match(/^ordre-articles:\s*\[(.*)\]/m) || [null, ''])[1])
   .split(',').map((x) => x.trim().replace(/^"|"$/g, '')).filter((x) => x !== '');
 
+// Ajoute au numéro un article de Documentation Kirby (lib/kirby-contenu.js) : pas de
+// <slug>.md du tout, seulement sa fiche, sa page (documentation.<lang>.txt) et un dossier
+// de fiche par entrée de `fichesDossiers` — la même forme qu'écrit le cockpit
+// (<n>_<slug-fiche>/<type>.<lang>.txt). ausgabe.yaml doit déjà exister (numero() l'écrit).
+function ajouterDocumentation(racine, slug, fichesDossiers) {
+  const d = path.join(racine, 'articles', slug);
+  fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(d, slug + '.meta.yaml'), 'type: documentation' + LF + 'lang: fr' + LF);
+  fs.writeFileSync(path.join(d, 'documentation.fr.txt'),
+    'Title: Actualité et ressources' + LF + LF + '----' + LF + LF + 'Uuid: pageuuid0000001' + LF);
+  for (const nomDossierFiche of (fichesDossiers || [])) {
+    const df = path.join(d, nomDossierFiche);
+    fs.mkdirSync(df, { recursive: true });
+    fs.writeFileSync(path.join(df, 'livre.fr.txt'),
+      'Title: Une fiche' + LF + LF + '----' + LF + LF + 'Uuid: ficheuuid00000001' + LF);
+  }
+}
+
 // Pose une bibliographie détachée sur un article déjà écrit par numero() : le fichier à
 // part, et le marqueur qui l'y renvoie dans le .md — la forme exacte que laisse l'import
 // (pipeline/filters/szh-biblio-detacher.lua). `phraseCorps`, si fournie, s'ajoute dans le
@@ -313,6 +331,63 @@ test('reparerMarqueursOrphelins : plusieurs candidats, on ne devine pas non plus
   const n = hote.reparerMarqueursOrphelins(racine);
   assert.strictEqual(n, 0);
   assert.strictEqual(marqueurSrc(racine, '00-edito'), 'ancien-nom.biblio.md');
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+// ---- Un numéro qui porte une Documentation Kirby -------------------------------------
+//
+// Un dossier de Documentation n'a plus de <slug>.md (lib/kirby-contenu.js) : son fichier de
+// page (documentation.<lang>.txt) porte un nom FIXE, pas celui du dossier — à la différence
+// de <slug>.meta.yaml, qui le suit toujours. Défaut réel, reproduit avant correctif : quand
+// ce dossier s'appelle « documentation » (le nom par défaut, SLUG_DOCUMENTATION côté
+// cockpit), la tige de son nom de dossier ET le nom du fichier de page coïncident
+// (« documentation ») — la règle générale d'alignement des sidecars (alignerFichiers)
+// prenait alors le fichier de page pour un sidecar du dossier et le renommait en
+// « 0X-documentation.fr.txt », un nom que plus rien ne sait relire.
+test('exécution : une Documentation Kirby présente — son fichier de page n’est jamais pris pour un sidecar', () => {
+  const racine = numero(['00-edito']);
+  ajouterDocumentation(racine, '01-documentation', ['1_un-livre', '2_un-film']);
+
+  const r = hote.renumeroter(racine, ['01-documentation', '00-edito']);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.deepStrictEqual(dossiers(racine), ['00-documentation', '01-edito']);
+
+  const docApres = path.join(racine, 'articles', '00-documentation');
+  // Le fichier de page garde son nom fixe — jamais « 00-documentation.fr.txt ».
+  assert.ok(fs.existsSync(path.join(docApres, 'documentation.fr.txt')),
+    'le fichier de page a disparu ou a été renommé');
+  assert.ok(!fs.existsSync(path.join(docApres, '00-documentation.fr.txt')),
+    'le fichier de page a été pris pour un sidecar du dossier');
+  assert.strictEqual(
+    fs.readFileSync(path.join(docApres, 'documentation.fr.txt'), 'utf8').indexOf('Uuid: pageuuid0000001') !== -1,
+    true, 'le contenu de la page a été touché');
+  // La fiche de métadonnées, elle, suit bien le dossier — c'est la règle normale.
+  assert.ok(fs.existsSync(path.join(docApres, '00-documentation.meta.yaml')),
+    'la fiche de métadonnées n’a pas suivi le renommage du dossier');
+  // Les dossiers de fiches ne sont pas des articles : ni renommés, ni vidés.
+  assert.deepStrictEqual(
+    fs.readdirSync(docApres, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort(),
+    ['1_un-livre', '2_un-film']);
+  assert.ok(fs.existsSync(path.join(docApres, '1_un-livre', 'livre.fr.txt')),
+    'le contenu d’un dossier de fiche a disparu');
+  assert.strictEqual(
+    fs.readFileSync(path.join(docApres, '1_un-livre', 'livre.fr.txt'), 'utf8').indexOf('Uuid: ficheuuid00000001') !== -1,
+    true, 'le contenu d’une fiche a été touché');
+
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-documentation', '01-edito']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+// Le même défaut, vu depuis reparerMarqueursOrphelins : un balayage qui lirait le fichier de
+// page comme un .md d'article planterait sur un dossier de Documentation. Il ne doit ni
+// lever, ni y toucher.
+test('reparerMarqueursOrphelins : une Documentation Kirby dans le lot ne le fait pas lever, et n’y touche pas', () => {
+  const racine = numero(['00-edito']);
+  ajouterDocumentation(racine, '01-documentation', ['1_un-livre']);
+  const avant = fs.readFileSync(path.join(racine, 'articles', '01-documentation', 'documentation.fr.txt'), 'utf8');
+  assert.doesNotThrow(() => hote.reparerMarqueursOrphelins(racine));
+  const apres = fs.readFileSync(path.join(racine, 'articles', '01-documentation', 'documentation.fr.txt'), 'utf8');
+  assert.strictEqual(apres, avant, 'le fichier de page a été modifié par le balayage des marqueurs');
   fs.rmSync(racine, { recursive: true, force: true });
 });
 

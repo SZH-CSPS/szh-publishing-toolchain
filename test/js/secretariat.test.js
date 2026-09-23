@@ -389,6 +389,47 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
   }
 });
 
+// La Documentation est désormais une arborescence Kirby (lib/kirby-contenu.js) : son
+// dossier n'a plus de <slug>.md du tout (seulement <slug>.meta.yaml,
+// documentation.<lang>.txt et les dossiers de ses fiches — hors du périmètre de ce test).
+// ecrireNumeroEssai() ci-dessus lui en écrit toujours un, ce qui ne prouve donc rien de la
+// nouvelle réalité : ce contrôle-ci construit son propre numéro, sans <slug>.md pour la
+// Documentation, et vérifie qu'elle est quand même reconnue et publiée — comme avant.
+test('commandeNewsletter : la Documentation Kirby (sans .md) est quand même reconnue et publiée', async () => {
+  const avant = process.env.SZH_RESEAU_INTERDIT;
+  process.env.SZH_RESEAU_INTERDIT = '1';
+  try {
+    const racine = dossierTemp('szh-secr-numero-kirby-');
+    fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), [
+      'revue: "Revue suisse de pedagogie specialisee"',
+      'title: "Édition d\'essai"',
+      'lang: fr',
+      'volume: "16"',
+      'numero: "03"',
+      'date: "2026-09-01"',
+      'articles-sans-doi: ["07-documentation"]',
+      ''
+    ].join('\n'));
+    const dossier = path.join(racine, 'articles', '07-documentation');
+    fs.mkdirSync(dossier, { recursive: true });
+    // Pas de 07-documentation.md : seule la fiche existe, comme une vraie Documentation Kirby.
+    fs.writeFileSync(path.join(dossier, '07-documentation.meta.yaml'), [
+      'type: documentation', 'lang: fr', 'title:', '  fr: "Actualité et ressources"',
+      'author:', '- prenom: ""', '  nom: "La rédaction"', ''
+    ].join('\n'));
+    fs.writeFileSync(path.join(dossier, 'documentation.fr.txt'), 'Title: Actualité et ressources\n');
+
+    const dossierSortie = dossierTemp('szh-secr-sortie-kirby-');
+    const resultat = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierSortie });
+    assert.strictEqual(resultat.ok, true);
+    const documentation = fs.readFileSync(path.join(dossierSortie, 'documentation.txt'), 'utf8');
+    assert.ok(documentation.indexOf('Actualité et ressources') !== -1,
+      'la Documentation sans .md a disparu de la newsletter : ' + documentation);
+  } finally {
+    if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
+  }
+});
+
 // ---- Sans --gabarits : lecture directe d'export-templates/, rien écrit hors de la sortie --
 //
 // Il n'existe plus de dossier « installé » sur le poste : un gabarit se modifie dans le

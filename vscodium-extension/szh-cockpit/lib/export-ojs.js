@@ -273,8 +273,11 @@ function morceauNomFichier(valeur) {
     .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || '0';
 }
 
-// Les articles que le disque porte, même filtre que la variable SLUGS du Makefile : un
-// dossier qui contient le .md du même nom.
+// Les articles que le disque porte : un dossier qui contient le .md du même nom — même
+// filtre que la variable SLUGS du Makefile — ou, depuis que la Documentation est une
+// arborescence Kirby (lib/kirby-contenu.js), un dossier sans .md dont la fiche porte
+// `type: documentation`. Le Makefile, lui, reconnaît ce second cas par un test moins
+// coûteux à sa portée (documentation.<lang>.txt) : voir DOC_SLUGS, pipeline/Makefile.
 //
 // Ce n'est pas l'ordre du numéro, et le nom des dossiers ne le donne plus : l'ordre est
 // devenu modifiable et vit dans les métadonnées du numéro, sans renommer quoi que ce soit —
@@ -289,7 +292,14 @@ function listerSlugs(racine) {
   try { entrees = fs.readdirSync(dossier, { withFileTypes: true }); }
   catch (e) { return []; }
   return entrees
-    .filter((e) => e.isDirectory() && fs.existsSync(path.join(dossier, e.name, e.name + '.md')))
+    .filter((e) => {
+      if (!e.isDirectory()) { return false; }
+      if (fs.existsSync(path.join(dossier, e.name, e.name + '.md'))) { return true; }
+      let type = '';
+      try { type = analyserMeta(fs.readFileSync(path.join(dossier, e.name, e.name + '.meta.yaml'), 'utf8')).type; }
+      catch (err) { return false; }
+      return type === 'documentation';
+    })
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b, 'fr'));
 }

@@ -83,16 +83,25 @@ function auteurComplet(a) {
   };
 }
 
-// Les articles que le disque porte : un dossier articles/<slug>/ contenant <slug>.md.
-// Recopie de la fonction privée (non exportée) listerSlugs de lib/export-ojs.js — ce
-// module n'a pas le droit de modifier ce fichier pour l'exporter.
+// Les articles que le disque porte : un dossier articles/<slug>/ contenant <slug>.md, ou —
+// depuis que la Documentation est une arborescence Kirby, sans .md — dont la fiche porte
+// `type: documentation`. Recopie de la fonction privée (non exportée) listerSlugs de
+// lib/export-ojs.js — ce module n'a pas le droit de modifier ce fichier pour l'exporter ;
+// les deux copies doivent donc rester identiques.
 function listerSlugsLocaux(racine) {
   const dossier = path.join(racine, 'articles');
   let entrees = [];
   try { entrees = fs.readdirSync(dossier, { withFileTypes: true }); }
   catch (e) { return []; }
   return entrees
-    .filter((e) => e.isDirectory() && fs.existsSync(path.join(dossier, e.name, e.name + '.md')))
+    .filter((e) => {
+      if (!e.isDirectory()) { return false; }
+      if (fs.existsSync(path.join(dossier, e.name, e.name + '.md'))) { return true; }
+      let type = '';
+      try { type = yaml.analyserMeta(fs.readFileSync(path.join(dossier, e.name, e.name + '.meta.yaml'), 'utf8')).type; }
+      catch (err) { return false; }
+      return type === 'documentation';
+    })
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b, 'fr'));
 }

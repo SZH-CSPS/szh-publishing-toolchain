@@ -294,8 +294,6 @@ const documentationHote = require('./lib/documentation-hote');
 const { ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe } = documentationHote;
 documentationHote.configurer({
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
-  slugDepuisChemin: (racine, chemin) => slugDepuisChemin(racine, chemin),
-  ouvrirArticle: (fournisseur, slug) => ouvrirArticle(fournisseur, slug),
   lireCouleurAccent: (racine) => lireCouleurAccent(racine),
   limitesMedias: () => limitesMedias(),
   // Partagés avec la réserve de fiches, restée dans ce fichier (hors magasin, dans le
@@ -1269,7 +1267,7 @@ class FournisseurRevue {
   // Un article par ligne, dépliable sur ses champs bilingues ; « 💬 » signale une
   // question posée à l'équipe de traduction.
   _itemsTraductions() {
-    const slugs = this.listerArticles();
+    const slugs = this.slugsTraduisibles();
     if (slugs.length === 0) { return [this._vide(T('arbre.vide.traductions'))]; }
     const source = langueRevue(this.racine);
     return slugs.map((slug) => {
@@ -1336,12 +1334,21 @@ class FournisseurRevue {
     if (!this.racine) { return { total: 0, finalises: 0 }; }
     const source = langueRevue(this.racine);
     let total = 0, finalises = 0;
-    for (const slug of this._sousDossiersAvecMd(path.join(this.racine, dossierUnites()))) {
+    for (const slug of this.slugsTraduisibles()) {
       const r = etatTraduction(this.racine, slug, source).resume;
       total += r.total;
       finalises += r.finalises;
     }
     return { total: total, finalises: finalises };
+  }
+
+  // Les articles bilingues suivis champ par champ dans « Traductions » — jamais la page de
+  // Documentation, qui n'en fait pas partie : chaque revue l'écrit dans sa propre langue
+  // par sa propre arborescence Kirby (Pronto), il n'y a pas de champ à synchroniser entre
+  // deux `lang:`. `listerArticles()` la compte pourtant comme une unité du numéro depuis
+  // qu'elle n'a plus de <slug>.md (_estUniteValide) : il faut donc l'exclure ici à part.
+  slugsTraduisibles() {
+    return this.listerArticles().filter((slug) => !this.estActualite(slug));
   }
 
   // L'ordre du numéro, réparé de ce que le disque dit : un article ajouté à la main
@@ -2944,7 +2951,8 @@ function vueTraductions(fournisseur) {
   const racine = fournisseur.racine;
   const source = langueRevue(racine);
   const lignes = [];
-  const slugs = fournisseur.listerArticles();
+  // Jamais la page de Documentation : voir slugsTraduisibles().
+  const slugs = fournisseur.slugsTraduisibles();
   for (const slug of slugs) {
     const etat = etatTraduction(racine, slug, source);
     // Le titre de l'article, et son slug juste à côté : le même nom que partout ailleurs —
@@ -6990,10 +6998,6 @@ function activate(context) {
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
     cmdEcriture('szh.mediasArticle', (item) => ouvrirGestionMedias(fournisseur, rafraichirTout, item)),
-    // La Documentation : les fiches de l'article (livres, films, interventions, agenda) et,
-    // sur une page de Documentation seulement, ses rubriques de texte riche. Un seul
-    // formulaire — d'où une seule commande, celle qui existait déjà.
-    cmdEcriture('szh.ressourcesArticle', (item) => ouvrirDocumentation(fournisseur, rafraichirTout, item)),
     // La page de Documentation du numéro, créée au besoin. Volontairement hors cmdEcriture :
     // la relire sur un numéro verrouillé doit rester possible, seule sa création est refusée
     // (voir ouvrirPageDocumentation).

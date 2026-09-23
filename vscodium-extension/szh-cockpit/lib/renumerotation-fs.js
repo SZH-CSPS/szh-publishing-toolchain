@@ -24,6 +24,16 @@ const { planRenumerotation, planReprise, PREFIXE_TEMPO, tige } = require('./renu
 const { serialiserAusgabe, ecrireAtomique } = require('./yaml');
 const { CLE_ORDRE } = require('./articles');
 const { nomFichierBiblio } = require('./citations');
+const kirby = require('./kirby-contenu');
+
+// Un numéro sans Documentation n'a pas forcément le contrat déployé (poste pas encore mis
+// à jour, dépôt de test sans pipeline/kirby/) : une exception à son chargement ne doit pas
+// empêcher de renuméroter un numéro qui n'en a pas besoin — voir estFichierPage ci-dessous,
+// seul appelant.
+function estFichierPage(nomFichier) {
+  try { return kirby.estFichierPageDocumentation(nomFichier); }
+  catch (e) { return false; }
+}
 
 function dossierUnites(racine, options) {
   return path.join(racine, (options && options.dossier) || 'articles');
@@ -67,6 +77,15 @@ function partSlug(nom) {
 // si sa part « slug » a la même tige que le dossier mais pas le même préfixe. Un fichier
 // étranger (une note, un Word déposé à la main) n'a pas cette tige et reste tranquille.
 //
+// ⚠ Le fichier de page d'une Documentation Kirby (documentation.<lang>.txt,
+// lib/kirby-contenu.js) échappe à cette règle et doit être exclu EXPLICITEMENT : son nom
+// est fixe, jamais celui du dossier — mais quand ce dossier s'appelle lui-même
+// « documentation » (le nom par défaut, SLUG_DOCUMENTATION côté cockpit), sa tige coïncide
+// avec celle du fichier de page, et la règle générale le prendrait pour un sidecar. Vérifié
+// par un renommage réel qui le transformait en « 02-documentation.fr.txt » — un fichier que
+// plus personne ne sait relire. Les dossiers de fiches (<n>_<slug>/) ne courent pas ce
+// risque : ce sont des DOSSIERS, et la boucle ci-dessous ne touche qu'aux FICHIERS.
+//
 // Une fois les FICHIERS alignés, reste le marqueur — voir reecrireMarqueurBiblio()
 // ci-dessous et le commentaire d'en-tête de lib/renumerotation.js (« CE QUI NE BOUGE
 // PAS ») : lui seul désigne un sidecar par son nom, à l'intérieur du .md.
@@ -75,6 +94,7 @@ function alignerFichiers(base, nom) {
   const dossier = path.join(base, nom);
   for (const entree of fs.readdirSync(dossier, { withFileTypes: true })) {
     if (!entree.isFile()) { continue; }
+    if (estFichierPage(entree.name)) { continue; }
     const part = partSlug(entree.name);
     if (part === nom || tige(part) !== tige(nom)) { continue; }
     fs.renameSync(path.join(dossier, entree.name),

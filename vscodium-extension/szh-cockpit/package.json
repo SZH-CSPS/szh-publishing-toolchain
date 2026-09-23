@@ -452,12 +452,6 @@
         "icon": "$(file-pdf)"
       },
       {
-        "command": "szh.ressourcesArticle",
-        "title": "%cmd.ressourcesArticle%",
-        "category": "SZH/CSPS",
-        "icon": "$(library)"
-      },
-      {
         "command": "szh.documentation",
         "title": "%cmd.documentation%",
         "category": "SZH/CSPS",
@@ -804,10 +798,6 @@
         },
         {
           "command": "szh.mediasArticle",
-          "when": "szh.estRevue || szh.estLivre"
-        },
-        {
-          "command": "szh.ressourcesArticle",
           "when": "szh.estRevue || szh.estLivre"
         },
         {

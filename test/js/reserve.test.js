@@ -264,3 +264,50 @@ test('retirer : un dossier déjà absent rend false sans lever', () => {
     assert.strictEqual(reserve.retirer(chemin), false);
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
+
+// ---- Le sidecar de la réserve ne doit jamais entrer dans une arborescence Kirby --------
+//
+// _origine.txt (NOM_SIDECAR) vit à côté du <type>.<langue>.txt d'une fiche EN RÉSERVE : un
+// dossier de fiche là-bas en porte donc trois fichiers possibles (contenu, image,
+// _origine.txt). Une fois la fiche reprise dans un article, ce sidecar n'a plus lieu
+// d'être : un .txt en trop dans une arborescence Kirby serait lu comme contenu par le
+// site. Ce test rejoue exactement ce que lib/extension.js#insererFicheDeReserve() fait —
+// lireFicheAutonome() puis ajouterFiche(), jamais une copie de dossier — pour prouver que
+// le sidecar ne peut pas s'y glisser par construction.
+test('le sidecar _origine.txt d’une fiche de réserve ne se retrouve jamais dans le dossier de destination', () => {
+  const { parent, racineNumero } = nouveauNumero();
+  try {
+    const dossierArticleSource = fs.mkdtempSync(path.join(parent, 'article-source-'));
+    const sourceImage = path.join(parent, 'couverture.jpg');
+    fs.writeFileSync(sourceImage, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const { dossier } = kirby.ajouterFiche(dossierArticleSource, 'fr', 'livre', {
+      categorie: 'manuel', title: 'Reprise', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D'
+    }, sourceImage);
+    const dossierSource = path.join(dossierArticleSource, dossier);
+
+    const { chemin } = reserve.deposer(racineNumero, 'revue', {
+      type: 'livre', titre: 'Reprise', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01'
+    });
+    // Vérifie la prémisse : le sidecar est bien LÀ, dans la réserve.
+    assert.ok(fs.existsSync(path.join(chemin, reserve.NOM_SIDECAR)), 'le sidecar devrait exister en réserve');
+
+    // La reprise dans un article, comme insererFicheDeReserve() : lecture autonome de la
+    // fiche de réserve, puis écriture d'une fiche NEUVE — jamais une copie du dossier de
+    // réserve.
+    const entree = reserve.lister(racineNumero, 'revue')[0];
+    const ficheReprise = kirby.lireFicheAutonome(entree.chemin, entree.fiche.langue);
+    const cleFichier = kirby.champFichierDuType(ficheReprise.type);
+    const imageSource = cleFichier && ficheReprise.valeurs[cleFichier]
+      ? path.join(entree.chemin, ficheReprise.valeurs[cleFichier]) : null;
+    const dossierArticleDest = fs.mkdtempSync(path.join(parent, 'article-dest-'));
+    const { dossier: dossierDest } = kirby.ajouterFiche(
+      dossierArticleDest, 'fr', ficheReprise.type, ficheReprise.valeurs, imageSource);
+
+    const fichiers = fs.readdirSync(path.join(dossierArticleDest, dossierDest));
+    assert.ok(!fichiers.includes(reserve.NOM_SIDECAR),
+      'le sidecar de la réserve a été copié dans l’article : ' + fichiers.join(', '));
+    assert.deepStrictEqual(fichiers.sort(), ['couverture.jpg', 'livre.fr.txt'].sort(),
+      'seuls le contenu et l’image de la fiche doivent se trouver dans son dossier : ' + fichiers.join(', '));
+  } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+});

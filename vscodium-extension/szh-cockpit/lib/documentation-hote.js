@@ -49,8 +49,6 @@ const SLUG_DOCUMENTATION = 'documentation';
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
   focaliserUnite: () => {},
-  slugDepuisChemin: () => null,
-  ouvrirArticle: async () => {},
   lireCouleurAccent: () => '',
   limitesMedias: () => ({}),
   // Partagés avec la réserve de fiches (lib/reserve.js), qui reste dans extension.js —
@@ -301,22 +299,16 @@ function fermerPanneauxDocumentationDe(racine, slug) {
   }
 }
 
-// `cible` est soit un item de l'arbre ({ slug }), soit un slug tout court.
-async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
-  if (!fournisseur.racine) { return; }
+// Les fiches et les rubriques n'existent plus que sur LA page de Documentation du numéro
+// (décision de Robin) : `slug` est toujours le sien, fourni par ouvrirPageDocumentation —
+// ce formulaire n'a plus de second usage sur un article ordinaire.
+async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
+  if (!fournisseur.racine || !slug) { return; }
   const racine = fournisseur.racine;
-  let slug = (typeof cible === 'string' && cible) ? cible
-    : ((cible && cible.slug) ? String(cible.slug) : null);
-  if (!slug) {
-    const ed = vscode.window.activeTextEditor;
-    slug = ed ? ctx.slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
-  }
-  if (!slug) { slug = session.apercuCourantSlug(); }
-  if (!slug || !new Set(fournisseur.listerArticles()).has(slug)) {
+  if (!new Set(fournisseur.listerArticles()).has(slug)) {
     vscode.window.setStatusBarMessage(T('ressource.horsarticle'), 4000);
     return;
   }
-  const pageDoc = fournisseur.estActualite(slug);
   ctx.focaliserUnite(fournisseur, slug);
   const dossierArticle = dossierArticleDoc(racine, slug);
   const langue = langueRevue(racine);
@@ -324,13 +316,20 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
   const existant = panneauxDocumentation.get(slug);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   await fermerTousLesApercus();
-  const titrePanneau = pageDoc ? T('doc.titre.page') : T('doc.titre', [slug]);
+  const titrePanneau = T('doc.titre.page');
   const panneau = vscode.window.createWebviewPanel(
     'szhDocumentation', titrePanneau, vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
   );
   panneauxDocumentation.set(slug, panneau);
-  panneau.onDidDispose(() => { if (panneauxDocumentation.get(slug) === panneau) { panneauxDocumentation.delete(slug); } });
+  panneau.onDidDispose(() => {
+    if (panneauxDocumentation.get(slug) === panneau) { panneauxDocumentation.delete(slug); }
+    // Tout ce qui reste dans le dépôt provisoire d'images à la fermeture appartient à une
+    // fiche jamais enregistrée (créée puis retirée avant sauvegarde, panneau fermé sans
+    // enregistrer) : un .txt ou une image en trop dans l'arborescence serait lu comme
+    // contenu par le site Kirby.
+    kirby.viderDepotImages(dossierArticle);
+  });
 
   // Un descripteur par fiche d'un type que ce cockpit connaît (kirby.typesConnus()). Une
   // fiche d'un type encore inconnu ici reste sur le disque, invisible à ce panneau.
@@ -354,9 +353,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
     repondrePanneau(vers, Object.assign({
       type: 'charger', slug: slug,
       ressources: listerRessources(budget),
-      rubriques: pageDoc ? listerRubriques() : [],
+      rubriques: listerRubriques(),
       typesConfig: typesRessourceConfig(langue),
-      typesRubrique: pageDoc ? typesRubriqueConfig(revueJeton, langue) : [],
+      typesRubrique: typesRubriqueConfig(revueJeton, langue),
       accent: ctx.lireCouleurAccent(racine),
       i18n: textesDocumentation(ctx.nomRevueAffiche(reserveLib.autreRevue(revueJeton))),
       limites: ctx.limitesMedias()
@@ -394,9 +393,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
     // un calcul du contrat (kirby.calculerOrdreFiches), jamais l'ordre de saisie.
     if (total > 0) { kirby.reordonnerFiches(dossierArticle, langue); }
 
-    // Les rubriques ensuite : la page de Documentation seulement (pageDoc), et sans tri
-    // d'aucune sorte — leur ordre est un choix éditorial.
-    if (pageDoc && Array.isArray(listeRubriques) && listeRubriques.length > 0) {
+    // Les rubriques ensuite, sans tri d'aucune sorte — leur ordre est un choix éditorial.
+    if (Array.isArray(listeRubriques) && listeRubriques.length > 0) {
       const pageActuelle = kirby.lirePage(dossierArticle, langue);
       const rubriques = Object.assign({}, pageActuelle.rubriques);
       let touche = false;
@@ -484,16 +482,15 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
     }
     if (msg.type === MSG.RETOUR_ARTICLE) {
       if (msg.modifie) {
-        const choix = await confirmerAbandon(
-          pageDoc ? T('doc.quitter.page') : T('doc.quitter.question', [slug]));
+        const choix = await confirmerAbandon(T('doc.quitter.page'));
         if (choix === 'annuler') { return; }          // Annuler : on reste
         if (choix === 'enregistrer') { await enregistrer(msg.ressources, msg.rubriques); }
       }
-      // Une page de Documentation n'a pas de texte à relire : son arborescence n'est qu'un
-      // magasin de fiches, jamais ouverte à la main.
-      if (!pageDoc) { await ctx.ouvrirArticle(fournisseur, slug); }
+      // La page de Documentation n'a pas de texte à relire : son arborescence n'est qu'un
+      // magasin de fiches et de rubriques, jamais ouverte à la main — le panneau se ferme
+      // sur l'arbre.
       panneau.dispose();
-      if (pageDoc && rafraichirTout) { rafraichirTout(); }
+      if (rafraichirTout) { rafraichirTout(); }
       return;
     }
     console.warn('documentation : type de message inconnu', msg.type);

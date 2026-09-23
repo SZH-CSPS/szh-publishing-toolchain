@@ -256,6 +256,20 @@ test('calculerNoms : dossier « <n>_<slug> », numérotation continue sur tous l
   assert.strictEqual(film.dossierVoulu, '2_le-film');
 });
 
+// Le nom du fichier de page est fixe, jamais celui du dossier — à la différence d'une
+// fiche de métadonnées (<slug>.meta.yaml). lib/renumerotation-fs.js s'appuie dessus pour ne
+// jamais prendre « documentation.fr.txt » pour un sidecar du dossier « 01-documentation »
+// (leur tige coïncide quand le dossier porte le nom par défaut, voir son test dédié).
+test('estFichierPageDocumentation : reconnaît le fichier de page dans les deux langues, rien d’autre', () => {
+  assert.strictEqual(kc.estFichierPageDocumentation('documentation.fr.txt'), true);
+  assert.strictEqual(kc.estFichierPageDocumentation('documentation.de.txt'), true);
+  assert.strictEqual(kc.estFichierPageDocumentation('documentation.it.txt'), false);
+  assert.strictEqual(kc.estFichierPageDocumentation('livre.fr.txt'), false);
+  assert.strictEqual(kc.estFichierPageDocumentation('01-documentation.fr.txt'), false);
+  assert.strictEqual(kc.estFichierPageDocumentation(''), false);
+  assert.strictEqual(kc.estFichierPageDocumentation(undefined), false);
+});
+
 test('slugFicheUnique : deux fiches de même titre reçoivent -2, -3', () => {
   const pris = new Set();
   const s1 = kc.slugFicheUnique('Même titre', pris); pris.add(s1);

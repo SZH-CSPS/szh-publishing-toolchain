@@ -156,7 +156,9 @@ function monter(opts) {
   for (const a of articles) {
     const dossier = path.join(racine, 'articles', a.slug);
     fs.mkdirSync(dossier, { recursive: true });
-    fs.writeFileSync(path.join(dossier, a.slug + '.md'), a.texte);
+    // `sansMd` : la Documentation Kirby (lib/kirby-contenu.js) n'a plus de <slug>.md du
+    // tout — voir le contrôle « la Documentation Kirby (sans .md) participe… » plus bas.
+    if (!a.sansMd) { fs.writeFileSync(path.join(dossier, a.slug + '.md'), a.texte); }
     if (a.fiche !== null) { fs.writeFileSync(path.join(dossier, a.slug + '.meta.yaml'), a.fiche); }
     // La bibliographie détachée à l'import : c'est elle qui fait foi pour <citations>.
     if (a.biblio) { fs.writeFileSync(path.join(dossier, a.slug + '.biblio.md'), a.biblio); }
@@ -871,6 +873,29 @@ test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n
   assert.ok(sortie.xml.indexOf('section_ref="DC"') !== -1);
   assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1, 'un DOI a été inventé');
   assert.ok(sortie.avertissements.some((a) => a.indexOf('normal pour cette rubrique') !== -1));
+});
+
+// La Documentation est désormais une arborescence Kirby (lib/kirby-contenu.js) : son
+// dossier n'a PLUS de <slug>.md du tout (seulement <slug>.meta.yaml, documentation.<lang>.txt
+// et les dossiers de ses fiches — hors du périmètre de ce test, qui n'exerce que la
+// reconnaissance de l'article). listerSlugs() de lib/export-ojs.js doit donc la reconnaître
+// à sa fiche (`type: documentation`) plutôt qu'à un fichier qui n'existe plus, sans quoi
+// elle disparaîtrait purement et simplement de l'export : pas de section DC, pas de
+// galleys, pas d'avertissement — un silence qui a l'air d'un numéro sans Documentation.
+test('Documentation Kirby (sans .md) : reconnue par sa fiche, participe à l’export comme avant', () => {
+  const doc = ['type: documentation', 'lang: fr', 'title:', '  fr: "Actualité et ressources"',
+    'author:', '- nom: "SZH/CSPS"'];
+  const sortie = exporter(monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '07-documentation', fiche: fiche(doc), sansMd: true }]
+  }), configComplete());
+  assert.ok(sortie.xml.indexOf('section_ref="DC"') !== -1,
+    'la Documentation devrait entrer dans la rubrique DC, comme quand elle portait un .md');
+  assert.ok(sortie.xml.indexOf('Actualité et ressources') !== -1, 'le titre de la page n’est pas parti');
+  assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1, 'un DOI a été inventé pour la Documentation');
+  // Les galleys (out/<slug>/<slug>.pdf…) sont bien exigés et embarqués : la reconnaissance
+  // par la fiche ne dispense pas des mêmes contrôles qu'un article ordinaire.
+  assert.ok(sortie.xml.indexOf('07-documentation.pdf') !== -1, 'le galley PDF n’est pas parti');
 });
 
 test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le saisir', () => {

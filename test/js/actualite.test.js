@@ -48,13 +48,16 @@ async function entete() {
   assert.ok(e, 'en-tête ACTUALITÉ absent');
   return e;
 }
-function panneauDont(predicat) {
-  const p = HOTE.panneaux.filter((x) => x.type === 'szhDocumentation' && predicat(String(x.title || ''))).pop();
+// Un seul panneau de Documentation possible désormais (les fiches et les rubriques
+// n'existent plus que sur cette page) : plus besoin de le distinguer d'un panneau ouvert
+// sur un article ordinaire, qui n'existe plus.
+function dernierPanneauDoc() {
+  const p = HOTE.panneaux.filter((x) => x.type === 'szhDocumentation').pop();
   assert.ok(p, 'panneau de Documentation absent');
   return p;
 }
 async function panneau() {
-  const p = panneauDont((t) => t.indexOf('01-essai') === -1);
+  const p = dernierPanneauDoc();
   await p._recepteur({ type: 'pret' });
   return p;
 }
@@ -65,11 +68,15 @@ function charge(p) {
 }
 
 test('les commandes du lot sont enregistrées', () => {
-  for (const cmd of ['szh.documentation', 'szh.reserve', 'szh.ressourcesArticle']) {
+  for (const cmd of ['szh.documentation', 'szh.reserve']) {
     assert.ok(HOTE.commandes().includes(cmd), 'commande non enregistrée : ' + cmd);
   }
+  // Les fiches et les rubriques n'existent plus que sur la page de Documentation
+  // (décision de Robin) : les deux anciennes commandes par article ont disparu.
   assert.ok(!HOTE.commandes().includes('szh.rubriquesArticle'),
     'szh.rubriquesArticle devrait avoir disparu avec le formulaire séparé');
+  assert.ok(!HOTE.commandes().includes('szh.ressourcesArticle'),
+    'szh.ressourcesArticle devrait avoir disparu : les fiches ne vivent plus que sur la Documentation');
 });
 
 // Avant toute création : la section existe déjà, et ne porte que la réserve.
@@ -262,14 +269,48 @@ test('retour : la page de Documentation se referme et libère son slug', async (
     'rouvrir après un retour n’a pas créé un panneau neuf : la table des panneaux n’a pas été libérée à la fermeture');
 });
 
-test('un article ordinaire reçoit les fiches, mais aucune rubrique', async () => {
-  await HOTE.executer('szh.ressourcesArticle', { slug: '01-essai' });
-  const p = panneauDont((t) => t.indexOf('01-essai') !== -1);
-  await p._recepteur({ type: 'pret' });
-  const m = p.messages.filter((x) => x.type === 'charger').pop();
-  assert.deepStrictEqual(m.typesRubrique, [], 'un article ordinaire ne tient pas le « Tour d’horizon » du numéro');
-  assert.deepStrictEqual(m.rubriques, []);
-  assert.strictEqual(m.typesConfig.length, kirby.typesConnus().length, 'il garde en revanche tous les types de fiche');
+// Le pendant du test suivant : quand la fiche EST enregistrée, l'image déposée doit
+// rejoindre le dossier de la fiche et quitter .depot-images/, pas y traîner à côté.
+test('.depot-images/ est vidé pour une carte dont la fiche vient d’être enregistrée', async () => {
+  const p = await panneau();
+  await p._recepteur({
+    type: 'deposer-image', id: 'carte-avec-image', nomFichier: 'couverture.png',
+    donneesBase64: Buffer.from('png').toString('base64')
+  });
+  assert.ok(kirby.imageProvisoire(DOSSIER_DOC, 'carte-avec-image'), 'l’image n’a pas été mise de côté');
+  await p._recepteur({
+    type: 'enregistrer', auto: false,
+    ressources: [{ id: 'carte-avec-image', type: 'livre', valeurs: {
+      categorie: 'manuel', title: 'Avec image', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D'
+    } }]
+  });
+  assert.strictEqual(kirby.imageProvisoire(DOSSIER_DOC, 'carte-avec-image'), null,
+    'l’image déposée traîne encore dans .depot-images/ après l’enregistrement de sa fiche');
+  const fiche = kirby.listerFiches(DOSSIER_DOC, 'fr').find((f) => f.valeurs.title === 'Avec image');
+  assert.ok(fiche, 'la fiche n’a pas été écrite');
+  assert.strictEqual(fiche.valeurs.couverture, 'couverture.png');
+});
+
+// Une image déposée pour une fiche encore neuve (jamais enregistrée) se met de côté dans
+// .depot-images/ — voir lib/kirby-contenu.js. Si la carte est retirée avant sauvegarde, ou
+// si le formulaire se ferme sans enregistrer, ce dépôt doit être vidé : un .txt ou une
+// image orpheline dans l'arborescence serait lu comme contenu par le site Kirby.
+test('.depot-images/ est vidé quand le formulaire se ferme sans avoir enregistré la fiche', async () => {
+  const p = await panneau();
+  await p._recepteur({
+    type: 'deposer-image', id: 'carte-jamais-enregistree', nomFichier: 'couverture.png',
+    donneesBase64: Buffer.from('png').toString('base64')
+  });
+  const depotAvantFermeture = kirby.imageProvisoire(DOSSIER_DOC, 'carte-jamais-enregistree');
+  assert.ok(depotAvantFermeture, 'l’image n’a pas été mise de côté : rien à vider ne prouverait rien');
+  assert.ok(fs.existsSync(path.join(DOSSIER_DOC, kirby.NOM_DEPOT_IMAGES)));
+
+  // Fermeture sans enregistrer : la fiche jamais sauvegardée n'a donc jamais réclamé son image.
+  await p._recepteur({ type: 'retourArticle', modifie: false, ressources: [], rubriques: [] });
+
+  assert.ok(!fs.existsSync(path.join(DOSSIER_DOC, kirby.NOM_DEPOT_IMAGES)),
+    '.depot-images/ aurait dû être vidé à la fermeture du formulaire');
+  assert.strictEqual(kirby.imageProvisoire(DOSSIER_DOC, 'carte-jamais-enregistree'), null);
 });
 
 // ---- Aucun libellé français ne traîne dans le formulaire allemand ----
