@@ -32,13 +32,13 @@
         { "cle": "canton", "saisie": "liste", "liste": "canton", "requis": false,
           "quand": { "portee": "regional" },
           "libelle": { "fr": "Canton", "de": "Kanton" } },
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "saisie": "texte", "requis": false,
+        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
           "libelle": { "fr": "Texte du lien", "de": "Linktext" } }
       ]
     },
@@ -48,7 +48,7 @@
       "libelleLien": { "fr": "En savoir plus sur la recherche {titre}", "de": "Mehr zum Forschungsprojekt {titre}" },
       "tri": ["title"],
       "champs": [
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "institutions", "saisie": "texte", "requis": true,
           "libelle": { "fr": "Institution(s) de recherche", "de": "Forschende Institution(en)" } },
@@ -58,9 +58,9 @@
           "libelle": { "fr": "Fin", "de": "Ende" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "saisie": "texte", "requis": false,
+        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
           "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
       ]
     },
@@ -81,7 +81,7 @@
           "libelle": { "fr": "Numéro", "de": "Nummer" } },
         { "cle": "date", "saisie": "date", "requis": true,
           "libelle": { "fr": "Date", "de": "Datum" } },
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
@@ -96,14 +96,14 @@
               "libelle": { "fr": "Date", "de": "Datum" } },
             { "cle": "genre", "saisie": "liste", "liste": "genre_suivi", "requis": true,
               "libelle": { "fr": "Genre", "de": "Art" } },
-            { "cle": "libelle", "saisie": "texte", "requis": false,
+            { "cle": "libelle", "traduire": true, "saisie": "texte", "requis": false,
               "libelle": { "fr": "Libellé", "de": "Bezeichnung" } },
             { "cle": "lien", "saisie": "url", "requis": false,
               "libelle": { "fr": "Lien", "de": "Link" } }
           ] },
         { "cle": "source", "saisie": "liste", "liste": "source", "requis": true,
           "libelle": { "fr": "Source", "de": "Quelle" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": false,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": false,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
       ]
     },
@@ -116,7 +116,7 @@
       "champs": [
         { "cle": "categorie", "saisie": "liste", "liste": "categorie_livre", "requis": true,
           "libelle": { "fr": "Catégorie", "de": "Kategorie" } },
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "auteurs", "saisie": "texte", "requis": true,
           "libelle": { "fr": "Auteur(s)", "de": "Autor(en)" } },
@@ -126,9 +126,9 @@
           "libelle": { "fr": "Éditeur", "de": "Verlag" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "saisie": "texte", "requis": false,
+        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
           "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
         { "cle": "couverture", "saisie": "fichier", "requis": true, "decorative": true,
           "extensions": ["png", "jpg", "jpeg", "gif", "svg"],
@@ -142,7 +142,7 @@
       "tri": ["title"],
       "pastille": "categorie",
       "champs": [
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "categorie", "saisie": "liste", "liste": "categorie_film", "requis": true,
           "libelle": { "fr": "Catégorie", "de": "Kategorie" } },
@@ -154,9 +154,9 @@
           "libelle": { "fr": "Distributeur", "de": "Verleih" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "lien_libelle", "saisie": "texte", "requis": false,
+        { "cle": "lien_libelle", "traduire": true, "saisie": "texte", "requis": false,
           "libelle": { "fr": "Texte du lien", "de": "Linktext" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } },
         { "cle": "couverture", "saisie": "fichier", "requis": true, "decorative": true,
           "extensions": ["png", "jpg", "jpeg", "gif", "svg"],
@@ -171,7 +171,7 @@
       "champs": [
         { "cle": "revue", "saisie": "liste", "liste": "revue", "requis": true,
           "libelle": { "fr": "Revue", "de": "Zeitschrift" } },
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "auteurs", "saisie": "texte", "requis": true,
           "libelle": { "fr": "Auteur(s)", "de": "Autor(en)" } },
@@ -181,7 +181,7 @@
           "libelle": { "fr": "DOI", "de": "DOI" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
       ]
     },
@@ -194,7 +194,7 @@
       "champs": [
         { "cle": "evenement", "saisie": "liste", "liste": "evenement", "requis": true,
           "libelle": { "fr": "Type d’événement", "de": "Art der Veranstaltung" } },
-        { "cle": "title", "saisie": "texte", "requis": true,
+        { "cle": "title", "traduire": true, "saisie": "texte", "requis": true,
           "libelle": { "fr": "Titre", "de": "Titel" } },
         { "cle": "debut", "saisie": "date", "requis": true,
           "libelle": { "fr": "Début", "de": "Beginn" } },
@@ -206,10 +206,16 @@
           "libelle": { "fr": "Organisation", "de": "Veranstalter:in" } },
         { "cle": "lien", "saisie": "url", "requis": false,
           "libelle": { "fr": "Lien", "de": "Link" } },
-        { "cle": "descriptif", "saisie": "texte_long", "requis": true,
+        { "cle": "descriptif", "traduire": true, "saisie": "texte_long", "requis": true,
           "libelle": { "fr": "Descriptif", "de": "Beschreibung" } }
       ]
     }
+  },
+
+  "champsSysteme": {
+    "_lisezmoi": "Écrits par Pronto dans chaque fichier de langue d’une fiche, jamais saisis. ausgabe : l’id du numéro (ausgabe.yaml) auquel CE fichier de langue est rattaché, vide = orpheline. ordre : rang d’impression dans ce numéro, calculé par les règles de tri du type.",
+    "ausgabe": { "libelle": { "fr": "Numéro", "de": "Ausgabe" } },
+    "ordre": { "libelle": { "fr": "Ordre", "de": "Reihenfolge" } }
   },
 
   "ordreTypes": ["horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
