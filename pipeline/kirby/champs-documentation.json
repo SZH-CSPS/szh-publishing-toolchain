@@ -362,7 +362,6 @@
     "pageDocumentation": "documentation",
     "fichierContenu": "{template}.{langue}.txt",
     "separateur": "----",
-    "prefixeOrdre": "{n}_{slug}",
     "champUuid": "uuid"
   }
 }
