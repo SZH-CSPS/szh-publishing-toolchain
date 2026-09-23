@@ -187,6 +187,10 @@ jobs:
     # qu'une ligne du dépôt ait changé.
     runs-on: ubuntu-24.04
     env:
+      # Le banc n'est pas rangé sous Revue<num> : sa bibliothèque de fiches se désigne
+      # explicitement (test/README.md, « La bibliothèque de fiches »). Au niveau du job :
+      # toute cible qui recompile la Documentation (pdf, verifier-ua…) en a besoin.
+      SZH_NEWS_RACINE: ${{ github.workspace }}/test/news-racine
       PANDOC_VERSION: "3.7.0.2"
       # Empreinte du .deb, calculée depuis cette même URL. Elle garde le cache honnête :
       # un fichier restauré tronqué se retélécharge au lieu de casser dpkg.

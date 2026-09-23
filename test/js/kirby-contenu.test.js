@@ -307,16 +307,18 @@ test('instrumentEstLocal / cantonsInstrument', () => {
 // ---- Racine de l'arbre ------------------------------------------------------------------
 
 test('racineArbre : un numéro en cours remonte d’un cran', () => {
-  const racine = path.join('C:', 'x', 'Revues-TESTING');
+  // Racine absolue sur tout système : sur Linux, path.join('C:', …) est relatif.
+  const racine = path.resolve(os.tmpdir(), 'x', 'Revues-TESTING');
   assert.strictEqual(kc.racineArbre(path.join(racine, 'Revue', '2026-01')), racine);
 });
 test('racineArbre : un numéro archivé remonte de deux crans (à travers _Archive)', () => {
-  const racine = path.join('C:', 'x', 'Revues-TESTING');
+  // Racine absolue sur tout système : sur Linux, path.join('C:', …) est relatif.
+  const racine = path.resolve(os.tmpdir(), 'x', 'Revues-TESTING');
   assert.strictEqual(kc.racineArbre(path.join(racine, '_Archive', 'Revue', '2020-05')), racine);
 });
 test('racineArbre : un dossier hors arborescence retombe sur son simple parent', () => {
-  const p = path.join('C:', 'ailleurs', 'un-dossier');
-  assert.strictEqual(kc.racineArbre(p), path.join('C:', 'ailleurs'));
+  const p = path.resolve(os.tmpdir(), 'ailleurs', 'un-dossier');
+  assert.strictEqual(kc.racineArbre(p), path.resolve(os.tmpdir(), 'ailleurs'));
 });
 test('autreRevue / dossierRevue', () => {
   assert.strictEqual(kc.autreRevue('revue'), 'zeitschrift');
