@@ -70,10 +70,23 @@
 -- lu aussi par le formulaire du cockpit et par documentation-kirby.py. Un type absent du
 -- JSON (faute de frappe, bloc mal formé) sort sans titre, contenu intact — la dégradation
 -- propre du cas « type inconnu » plus bas.
+--
+-- Second régime traité ici, et pas dans szh-ressource.lua : la SECTION qui regroupe les
+-- fiches d'un même type (horizon, recherche, intervention…), posée par
+-- documentation-kirby.py en ::: {.szh-ressources-section type="…"} autour des fiches de
+-- ce type. Son titre vient de types[].libelle (au lieu de rubriques[].titre) et suit le
+-- même traitement — <section>, <h2> non numéroté, même habillage visuel que le titre d'une
+-- rubrique (print.css). Elle DOIT être composée ici, après szh-sections.lua, et non dans
+-- szh-ressource.lua : ce dernier tourne AVANT szh-sections.lua dans la chaîne (il doit
+-- laisser une image nue à szh-numerotation.lua, qui suit) — un <h2> posé là serait donc
+-- vu et numéroté par szh-sections.lua, comme « 1 Rundschau ». Constaté le 23.09.2026 :
+-- les sections de fiches restaient sans titre imprimé, seules les rubriques en avaient un
+-- — les fiches horizon/recherche se rangeaient visuellement sous la dernière rubrique.
 
 local utils = pandoc.utils
 
 local CLASSE = 'szh-rubrique'
+local CLASSE_SECTION = 'szh-ressources-section'
 
 -- Chargement du contrat JSON, chemin résolu depuis le dossier de CE fichier (même
 -- mécanisme que szh-ressource.lua, largement commenté là-bas). Un chargement raté arrête
@@ -101,6 +114,14 @@ do
   TITRES = {}
   for _, r in ipairs(data.rubriques or {}) do
     TITRES[r.cle] = r.titre
+  end
+  -- Titres des sections de fiches (types[].libelle) : même table TITRES, même clé — les
+  -- deux espaces de noms (rubriques[].cle et types[].cle) ne se recouvrent jamais dans le
+  -- contrat (dossier_references/dossier_liens/ressources/podcasts d'un côté, horizon/
+  -- recherche/intervention/livre/film/reprise/agenda de l'autre), donc les fusionner ici
+  -- ne peut pas faire gagner un type sur l'autre.
+  for cle, t in pairs(data.types or {}) do
+    TITRES[cle] = t.libelle
   end
 end
 
@@ -188,45 +209,51 @@ local function abaisser_titres(contenu)
   })
 end
 
+-- Compose la <section> titrée : commun aux rubriques et aux sections de fiches, seuls
+-- diffèrent la classe de base (`classe`), le rabattement des rangs (rubrique seulement —
+-- une fiche n'a pas de titres internes à rebattre) et la table d'où sort le libellé
+-- (TITRES sert aux deux, voir son chargement plus haut).
+local function section_titree(div, classe, lang, rabattre)
+  local type_ = div.attributes['type']
+  local classes = { classe, 'section' }
+  if type_sain(type_) then classes[#classes + 1] = classe .. '-' .. type_ end
+
+  -- Un type absent ou inconnu : pas de titre (on ne fabrique rien depuis le jeton), mais
+  -- le bloc sort quand même, avec son contenu intact — dégradation propre.
+  local titres_type = type_ and TITRES[type_]
+  local titre = titres_type and titres_type[lang]
+
+  local blocs = pandoc.Blocks({})
+  if titre then
+    blocs:insert(pandoc.Header(2, pandoc.Inlines({ pandoc.Str(titre) }),
+      pandoc.Attr(titre_id(div), { classe .. '-titre' }, {})))
+  end
+  local contenu = rabattre and abaisser_titres(div.content) or div.content
+  -- ⚠ L'identifiant de ce Div n'est pas décoratif : c'est le même piège du writer html5
+  --   que celui décrit dans l'en-tête pour le titre de la rubrique. Un Div d'identifiant
+  --   VIDE dont le premier enfant est un Header sort en <section>, et pandoc lui déplace
+  --   l'identifiant de ce Header — une rubrique qui commence par « ## International »
+  --   donnait <section id="international" class="szh-rubrique-corps"> et un <h3> nu,
+  --   privé de son ancre. Un identifiant non vide suffit à l'empêcher : le bloc reste un
+  --   <div> et chaque titre garde le sien. Constaté après le rabattement des rangs
+  --   ci-dessus, qui a rendu ce cas courant (avant, une rubrique commençait par du texte).
+  blocs:insert(pandoc.Div(contenu, pandoc.Attr(corps_id(div), { classe .. '-corps' }, {})))
+
+  return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
+end
+
 function Pandoc(doc)
   local lang = langue_de(doc.meta)
 
   doc.blocks = doc.blocks:walk({
     Div = function(div)
-      if not a_classe(div, CLASSE) then return nil end
-      local type_ = div.attributes['type']
-
-      -- "section" est la classe-marqueur consommée par le writer html5 (voir l'en-tête) :
-      -- elle n'apparaîtra pas dans le HTML, seules CLASSE et son éventuel modificateur y
-      -- survivent.
-      local classes = { CLASSE, 'section' }
-      if type_sain(type_) then classes[#classes + 1] = CLASSE .. '-' .. type_ end
-
-      -- Un type absent ou inconnu : pas de titre (on ne fabrique rien depuis le jeton),
-      -- mais le bloc sort quand même, avec son contenu intact — dégradation propre.
-      local titres_type = type_ and TITRES[type_]
-      local titre = titres_type and titres_type[lang]
-
-      local blocs = pandoc.Blocks({})
-      if titre then
-        blocs:insert(pandoc.Header(2, pandoc.Inlines({ pandoc.Str(titre) }),
-          pandoc.Attr(titre_id(div), { CLASSE .. '-titre' }, {})))
-      end
       -- Le contenu du bloc, enveloppé — seuls les rangs de ses titres sont rabattus sous
-      -- le <h2> ci-dessus (abaisser_titres, et rien d'autre).
-      --
-      -- ⚠ L'identifiant de ce Div n'est pas décoratif : c'est le même piège du writer html5
-      --   que celui décrit dans l'en-tête pour le titre de la rubrique. Un Div d'identifiant
-      --   VIDE dont le premier enfant est un Header sort en <section>, et pandoc lui déplace
-      --   l'identifiant de ce Header — une rubrique qui commence par « ## International »
-      --   donnait <section id="international" class="szh-rubrique-corps"> et un <h3> nu,
-      --   privé de son ancre. Un identifiant non vide suffit à l'empêcher : le bloc reste un
-      --   <div> et chaque titre garde le sien. Constaté après le rabattement des rangs
-      --   ci-dessus, qui a rendu ce cas courant (avant, une rubrique commençait par du texte).
-      blocs:insert(pandoc.Div(abaisser_titres(div.content),
-        pandoc.Attr(corps_id(div), { CLASSE .. '-corps' }, {})))
-
-      return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
+      -- le <h2> ci-dessus (abaisser_titres, et rien d'autre) : une rubrique est du texte
+      -- riche qui peut porter ses propres intertitres, une fiche ne le peut pas — son
+      -- « titre » est un Para (szh-ressource-titre), jamais un Header, rien à rebattre.
+      if a_classe(div, CLASSE) then return section_titree(div, CLASSE, lang, true) end
+      if a_classe(div, CLASSE_SECTION) then return section_titree(div, CLASSE_SECTION, lang, false) end
+      return nil
     end,
   })
 

@@ -148,6 +148,27 @@ test('rendu : rubrique sans intertitre (dossier_liens) sort une liste ordinaire'
   assert.match(html, /<li><a href="https:\/\/www\.szh\.ch\/">szh\.ch<\/a><\/li>/);
 });
 
+// Régression du 23.09.2026 : les sections de FICHES (horizon, recherche, intervention…)
+// n'avaient aucun titre imprimé — seules les rubriques en portaient un — et les fiches se
+// rangeaient visuellement sous le titre de la dernière rubrique. Un titre par section NON
+// VIDE, jamais numéroté : c'est ce que compte ce test, sur le compte réel de sections du
+// banc (deux rubriques + sept sections de fiches — le banc n'a pas de section de fiches
+// vide, voir « une rubrique sans contenu » plus haut pour ce cas côté rubriques).
+test('rendu : chaque section non vide (rubrique ou groupe de fiches d’un type) porte un titre imprimé, jamais numéroté', SAUT, () => {
+  const { html } = rendreLeBanc();
+  const titres = html.match(
+    /<h2 class="(?:szh-rubrique-titre|szh-ressources-section-titre)"[^>]*>[\s\S]*?<\/h2>/g) || [];
+  const textes = titres.map((t) => t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+  assert.deepStrictEqual(textes, [
+    'Literatur zum Schwerpunkt', 'Linksammlung zum Schwerpunkt',
+    'Rundschau', 'Laufende Forschungsprojekte', 'Parlamentarische Vorstösse',
+    'Bücher', 'Filme', 'Blick in die Revue', 'Weiterbildung',
+  ], 'un titre de section manque, est en trop, ou dans le mauvais ordre : ' + JSON.stringify(textes));
+  for (const t of titres) {
+    assert.ok(!/szh-num-section/.test(t), 'un titre de section porte un numéro : ' + t);
+  }
+});
+
 test('rendu : tour d’horizon international — pas de canton, lien par défaut', SAUT, () => {
   const { html } = rendreLeBanc();
   const bloc = html.slice(html.indexOf('id="horizon001intl00"'), html.indexOf('id="horizon002bern00"'));

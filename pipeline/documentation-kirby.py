@@ -352,8 +352,24 @@ def convertir(dossier_article, champs_path):
                 lignes.extend(emettre_rubrique(section, texte))
         elif section in champs['types']:
             groupe = [f for f in fiches if f['type'] == section]
+            if not groupe:
+                continue
+            # Enveloppe de section, composée par szh-rubrique.lua (pas szh-ressource.lua,
+            # qui tourne trop tôt dans la chaîne pour poser un titre non numéroté — voir
+            # son commentaire de tête) : un <h2> non numéroté, dans l'esprit d'une rubrique,
+            # tiré de types[].libelle. Sans elle, une section de fiches n'avait aucun titre
+            # imprimé — constaté le 23.09.2026 sur le banc réel.
+            # Identifiant non vide obligatoire (#doc-section-<type>) : un Div SANS
+            # identifiant dont le premier enfant est un Header voit le writer html5 de
+            # pandoc lui voler cet identifiant en le promouvant en <section> — même piège
+            # que documenté en tête de szh-rubrique.lua pour les rubriques, qui posent
+            # toujours le leur (#doc-<cle>) pour la même raison.
+            lignes.append(f'::: {{#doc-section-{section} .szh-ressources-section type="{section}"}}')
+            lignes.append('')
             for fiche in groupe:
                 lignes.extend(emettre_fiche(champs, section, fiche))
+            lignes.append(':::')
+            lignes.append('')
         # Une clé d'ordreSections qui ne serait ni une rubrique ni un type n'a rien à
         # produire : le contrat serait fautif, pas ce script — rien n'est écrit.
 

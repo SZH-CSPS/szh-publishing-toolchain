@@ -959,6 +959,15 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    fois, au-dessus de la section et au-dessus du titre. */
 h2.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
 
+/* Section qui regroupe les fiches d'un même type (horizon, recherche, intervention…) :
+   même filet, même habillage que le titre d'une rubrique ci-dessus — une section de
+   fiches est une coupure de la Documentation au même titre qu'une rubrique de texte riche,
+   posée par le même filtre (szh-rubrique.lua, voir son commentaire de tête pour pourquoi
+   ce n'est pas szh-ressource.lua qui la compose). Règle commune plutôt que dupliquée :
+   un futur ajustement du filet ou de l'espacement doit valoir pour les deux à la fois. */
+.szh-ressources-section { margin: 2.6em 0 0; }
+h2.szh-ressources-section-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
+
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: var(--corps-tableau); margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }

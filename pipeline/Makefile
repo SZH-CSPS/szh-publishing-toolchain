@@ -425,14 +425,14 @@ $(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcar
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
 	if [ -f "articles/$$slug/$$slug.md" ]; then \
-	  entree="$$slug.md"; \
+	  entree="$$slug.md"; source_aff="articles/$$slug/$$slug.md"; \
 	else \
 	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
 	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
 	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
-	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; \
+	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; source_aff="$(OUT)/$$slug/$$slug.md"; \
 	fi; \
-	echo "pandoc articles/$$slug/$$slug.md -> $@"; \
+	echo "pandoc $$source_aff -> $@"; \
 	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$entree" \
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" --metadata-file="$$slug.meta.yaml" \
@@ -496,15 +496,15 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 	meta=""; \
 	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	if [ -f "articles/$$slug/$$slug.md" ]; then \
-	  entree="$$slug.md"; lecteur="commonmark_x+sourcepos"; \
+	  entree="$$slug.md"; source_aff="articles/$$slug/$$slug.md"; lecteur="commonmark_x+sourcepos"; \
 	  sourcepos="--lua-filter=$(PIPELINE_DIR)/filters/szh-sourcepos.lua --lua-filter=$(PIPELINE_DIR)/filters/szh-ancres.lua"; \
 	else \
 	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
 	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
 	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
-	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; lecteur="markdown"; sourcepos=""; \
+	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; source_aff="$(OUT)/$$slug/$$slug.md"; lecteur="markdown"; sourcepos=""; \
 	fi; \
-	echo "pandoc articles/$$slug/$$slug.md -> $@ (aperçu)"; \
+	echo "pandoc $$source_aff -> $@ (aperçu)"; \
 	cd "articles/$$slug" && SZH_APERCU=1 $(PANDOC) "$$entree" \
 	  --from=$$lecteur --to=html5 $$sourcepos \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
