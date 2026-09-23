@@ -1,7 +1,7 @@
 # Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
 
 title:
-  fr: "Agenda et formation continue"
+  fr: "Agenda"
   de: "Weiterbildung"
 fields:
   ausgabe:

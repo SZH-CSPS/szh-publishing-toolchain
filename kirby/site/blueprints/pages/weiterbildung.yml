@@ -1,13 +1,13 @@
 # Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
 
 title:
-  fr: "Agenda et formation continue"
+  fr: "Agenda"
   de: "Weiterbildung"
 sections:
   fiches:
     type: "pages"
     label:
-      fr: "Agenda et formation continue"
+      fr: "Agenda"
       de: "Weiterbildung"
     template: "agenda"
     sortable: false
