@@ -39,17 +39,9 @@ const SOURCE_RAPPORT_PS = fs.readFileSync(RAPPORT_PS1, 'utf8');
 const rapportErreur = require(path.join(COCKPIT, 'lib', 'rapport-erreur'));
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml'));
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+// Détection partagée (gardes.js) : sous un runner simulé sans PowerShell, elle rend
+// « indisponible » au lieu d'appeler le vrai powershell.exe.
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 function jetable(prefixe) { return fs.mkdtempSync(path.join(os.tmpdir(), prefixe)); }
 

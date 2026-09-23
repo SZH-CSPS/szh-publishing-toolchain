@@ -53,17 +53,9 @@ const BASE_REELLE = (COMMUN_PS1.match(/\$script:SzhBase\s*=\s*'([^']+)'/) || [])
 assert.ok(BASE_REELLE, 'szh-common.ps1 ne déclare plus $script:SzhBase');
 const TOOLKIT_REEL = path.join(BASE_REELLE, 'toolkit');
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+// Détection partagée (gardes.js) : sous un runner simulé sans PowerShell, elle rend
+// « indisponible » au lieu d'appeler le vrai powershell.exe.
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // ---- Les identifiants du corpus : 16 caractères [A-Za-z0-9], la forme exacte de `id:` ----
 const ID_NUM = 'Ab12Cd34Ef56Gh78';       // revue, en cours (« 2026-01 »)
