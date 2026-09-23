@@ -1997,13 +1997,17 @@ test('la page n’a plus de barre d’onglets ni de sommaire latéral : la navig
   assert.strictEqual(page.compter('.doc-onglet'), 0, 'aucun bouton d’onglet dans le DOM');
 });
 
+// Séparateur du titre de vue : espace insécable, demi-cadratin, espace (typographie maison,
+// le cadratin est proscrit ; test/typo-check.py le corrige dans media/documentation.js).
+const SEP_TITRE_VUE = ' – ';
+
 test('vue par défaut : « Documentation du numéro » sur « Rubriques », son titre le dit', () => {
   const { page, txt } = pageDocumentationAvecOnglets();
   assert.strictEqual(panneau(page, 'numero').hidden, false, 'le numéro doit être la vue par défaut');
   assert.strictEqual(panneau(page, 'traductions').hidden, true);
   assert.strictEqual(panneau(page, 'reservoir').hidden, true);
   assert.strictEqual(panneau(page, 'archive').hidden, true);
-  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + txt.groupeRubriques);
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + SEP_TITRE_VUE + txt.groupeRubriques);
   // Sur « Rubriques » : les cartes de rubrique sont visibles, les sections de fiches non.
   assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, false);
   assert.strictEqual(page.conteneur().querySelector('.doc-titre-fiches').hidden, true);
@@ -2014,7 +2018,7 @@ test('« Documentation du numéro » sur une catégorie de fiche : SEULE cette s
   allerVue(page, 'numero', 'livre');
   assert.strictEqual(panneau(page, 'numero').hidden, false);
   const libelleLivre = configFiches().find((t) => t.valeur === 'livre').libelleSection;
-  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + libelleLivre);
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + SEP_TITRE_VUE + libelleLivre);
   assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, true, 'les rubriques se cachent');
   const sectionsFiches = page.conteneur().querySelectorAll('.doc-titre-fiches');
   sectionsFiches.forEach((s) => {
@@ -2094,7 +2098,7 @@ test('ongletActiver : porte aussi la catégorie — bascule « Documentation du 
   allerVue(page, 'numero', 'livre');
   assert.strictEqual(panneau(page, 'numero').hidden, false);
   const libelleLivre = configFiches().find((t) => t.valeur === 'livre').libelleSection;
-  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + ' — ' + libelleLivre);
+  assert.strictEqual(page.parId.titreVue.textContent, txt.ongletNumero + SEP_TITRE_VUE + libelleLivre);
   assert.strictEqual(page.conteneur().querySelector('.doc-rubrique').hidden, true);
 });
 

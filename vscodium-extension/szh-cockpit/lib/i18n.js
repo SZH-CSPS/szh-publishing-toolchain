@@ -53,10 +53,10 @@ const TEXTES_COCKPIT = {
     // Les entrées de la section ACTUALITÉ (extension.js#_itemsActualite) : chacune ouvre le
     // formulaire de Documentation directement sur cette vue. « Publier sur le site web » est
     // grisée (pas encore livré, 23.09.2026).
-    'arbre.actualite.traductions.tip': 'Fiches de l’autre revue marquées « à traduire » – clic = ouvrir cette vue',
-    'arbre.actualite.reservoir.tip': 'Fiches de l’autre revue en attente d’une décision, et mes fiches orphelines – clic = ouvrir cette vue',
-    'arbre.actualite.numero.tip': 'Rubriques et fiches rattachées à ce numéro – clic = ouvrir cette vue',
-    'arbre.actualite.archive.tip': 'Toute la bibliothèque de production, en lecture seule – clic = ouvrir cette vue',
+    'arbre.actualite.traductions.tip': 'Fiches de l’autre revue marquées « à traduire » – clic = ouvrir cette vue',
+    'arbre.actualite.reservoir.tip': 'Fiches de l’autre revue en attente d’une décision, et mes fiches orphelines – clic = ouvrir cette vue',
+    'arbre.actualite.numero.tip': 'Rubriques et fiches rattachées à ce numéro – clic = ouvrir cette vue',
+    'arbre.actualite.archive.tip': 'Toute la bibliothèque de production, en lecture seule – clic = ouvrir cette vue',
     'arbre.actualite.publier': 'Publier sur le site web',
     'arbre.actualite.publier.tip': 'À venir',
     'arbre.vide.articles': 'Aucun article pour l’instant',
@@ -1185,7 +1185,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.chargement': 'Lecture de la bibliothèque de production…',
     'doc.archive.actualiser': 'Actualiser',
     'doc.archive.actualiser.tip': 'Relire la bibliothèque de production',
-    'doc.archive.ancrageIntrouvable': 'Dossier partagé SharePoint introuvable : l’archive ne peut pas être lue pour l’instant.',
+    'doc.archive.ancrageIntrouvable': 'Dossier partagé SharePoint introuvable : l’archive ne peut pas être lue pour l’instant.',
     'doc.archive.vide': 'La bibliothèque de production ne porte encore aucune fiche.',
     'doc.archive.rechercheIndice': 'Rechercher (titre, descriptif, auteurs…)',
     'doc.archive.filtre.type': 'Type',
@@ -1202,7 +1202,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.reprendre.tip': 'Créer une nouvelle fiche dans ce numéro, pré-remplie depuis cette fiche archivée',
     'doc.archive.editer.tip': 'À venir',
     'doc.archive.reprise.ok': '✓ Fiche reprise dans ce numéro',
-    'doc.archive.reprise.echec': 'Impossible de reprendre cette fiche : elle a peut-être été retirée de la bibliothèque de production entre-temps.',
+    'doc.archive.reprise.echec': 'Impossible de reprendre cette fiche : elle a peut-être été retirée de la bibliothèque de production entre-temps.',
     'doc.archive.apercu.titre': 'Aperçu',
     'doc.archive.apercu.fermer': 'Fermer',
     'doc.archive.apercu.imageChargement': 'Chargement de l’image…',

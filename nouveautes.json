@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.3": {
+    "fr": {
+      "titre": "Toute l’actualité des deux revues, archive comprise",
+      "points": [
+        "La section Actualité de l’arbre mène directement à la Documentation du numéro, aux traductions à faire, au réservoir et à l’archive ; une barre d’onglets affiche une catégorie à la fois.",
+        "L’archive montre toutes les fiches déjà parues dans les deux revues, avec recherche et filtres ; « Reprendre dans ce numéro » en fait une nouvelle fiche à partir de l’ancienne.",
+        "Les fiches de 2025 de la Revue et de la Zeitschrift y sont déjà.",
+        "Les films ont un genre et un ou plusieurs pays, les livres les catégories « Essai » et « Témoignage », le Tour d’horizon la portée « Intercantonal ».",
+        "Le bouton « Aperçu du PDF » affiche la Documentation du numéro à côté du formulaire, et une poubelle supprime une fiche."
+      ]
+    },
+    "de": {
+      "titre": "Alle News beider Zeitschriften, samt Archiv",
+      "points": [
+        "Der Bereich «News» im Baum führt direkt zur Dokumentation der Ausgabe, zu den offenen Übersetzungen, zum Reservoir und zum Archiv; eine Reiterleiste zeigt jeweils eine Kategorie.",
+        "Das Archiv zeigt alle bereits erschienenen Einträge beider Zeitschriften, mit Suche und Filtern; «In diese Ausgabe übernehmen» macht daraus einen neuen Eintrag.",
+        "Die Einträge 2025 der Revue und der Zeitschrift sind bereits darin.",
+        "Filme haben ein Genre und ein oder mehrere Länder, Bücher die Kategorien «Essay» und «Erfahrungsbericht», die Rundschau die Reichweite «Interkantonal».",
+        "Die Schaltfläche «PDF-Vorschau» zeigt die Dokumentation der Ausgabe neben dem Formular, und ein Papierkorb löscht einen Eintrag."
+      ]
+    }
+  },
   "2.2": {
     "fr": {
       "titre": "L’actualité se partage entre la Revue et la Zeitschrift",

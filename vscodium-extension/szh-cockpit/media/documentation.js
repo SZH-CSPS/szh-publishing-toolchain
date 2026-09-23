@@ -1158,7 +1158,7 @@ function appliquerVue() {
   else if (vueOnglet === 'archive') { titre = TXT.ongletArchive || ''; }
   else {
     var categorieLibelle = libelleCategorieNumero();
-    titre = (TXT.ongletNumero || '') + (categorieLibelle ? ' — ' + categorieLibelle : '');
+    titre = (TXT.ongletNumero || '') + (categorieLibelle ? ' – ' + categorieLibelle : '');
   }
   titreVue.textContent = titre;
   if (vueOnglet === 'archive') { assurerChargementArchive(); }
@@ -1310,7 +1310,7 @@ function remplirApercuArchive(f, corps) {
           texteValeur = val.map(function (ligneStruct) {
             return (cfg.structureChamps || []).map(function (sc) { return ligneStruct[sc.cle]; })
               .filter(function (x) { return x; }).join(' · ');
-          }).join(' ; ');
+          }).join(' ; ');
         }
       } else if (cfg.saisie === 'liste_multiple') {
         // Le jeton seul (« FR ») n'est pas lisible : on l'habille du libellé du contrat

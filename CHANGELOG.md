@@ -11,6 +11,31 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.3.0
+
+**Actualité : navigation par l'arbre.** La section ACTUALITÉ de l'arbre liste « Documentation
+du numéro », « Traductions à faire », « Réservoir », « Archive » et « Publier sur le site web »
+(grisée, à venir). Le formulaire n'a plus de barre de vues ; « Documentation du numéro » porte
+une barre de catégories (Rubriques, puis un onglet par type de fiche, avec son compte) et
+n'affiche qu'une catégorie à la fois. Chaque fiche a « Retirer du numéro » et « Supprimer ».
+Libellé court propre au cockpit (`types[].libelleCourt` : « Agenda »). Bouton « Aperçu du PDF »
+qui bascule l'aperçu de la Documentation.
+
+**Onglet Archive.** Toute la bibliothèque de production (`54_Pronto\_NewsUndActu\Fiches`), lue
+en lecture seule même en mode test : recherche, filtres type / revue / numéro / année,
+aperçu, « Reprendre dans ce numéro » (fiche neuve reliée par le champ système `origine`),
+édition annoncée (grisée). Import des fiches 2025 des deux revues (365 fiches, 11 numéros
+d'archive minimaux).
+
+**Contrat.** Livres : catégories essai et témoignage. Tour d'horizon : portée intercantonal.
+Films : genre (neuf genres) et pays (ISO 3166-1), saisie `liste_multiple` (cases à cocher,
+recherche à étiquettes), imprimés traduits dans la ligne sous le titre et en `multiselect`
+dans Kirby.
+
+**Corrections.** Un ancrage SharePoint détecté par le lanceur se mémorise dans
+`etat-utilisateur.json` : le cockpit, qui ne sait pas le détecter, le retrouve (onglet
+Archive, rapports d'erreur). Titre long de l'Archive qui repoussait les boutons.
+
 ## 2.2.1
 
 **Un dossier par type dans la bibliothèque de fiches.** `_NewsUndActu\Fiches\` range les fiches
