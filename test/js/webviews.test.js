@@ -1482,34 +1482,63 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
 // incomplète s'enregistre quand même, et un sommaire dit la structure.
 const DOC_TXT = () => libellesHote(RACINE, ['textesDocumentation']);
 
-// Les deux configurations que l'hôte envoie, construites comme lui : depuis les modules
-// purs, jamais recopiées ici — une liste recopiée finirait par mentir.
-const { typesConnus: typesFiche, champsBiblio, typeAvecImage, saisieChamp, listeChamp,
-  valeursListe } = require(path.join(COCKPIT, 'lib', 'ressources.js'));
-const { typesConnus: typesRubrique } = require(path.join(COCKPIT, 'lib', 'rubriques.js'));
-const { optionsCanton } = require(path.join(COCKPIT, 'lib', 'cantons.js'));
-
+// La configuration que l'hôte envoie, recomposée ici depuis le module pur
+// lib/kirby-contenu.js — comme configChamp()/typesRessourceConfig() de
+// lib/documentation-hote.js, dont ce fichier ne peut pas charger le require('vscode')
+// transitif (cycle-vie.js, apercu.js…) dans ce DOM minimal. Toute divergence entre les
+// deux est ce que test/js/actualite.test.js (hôte réellement activé) attraperait.
+const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
+function optionsInstrument(canton, langue) {
+  return kirby.ordreInstruments(canton).map((jeton) => {
+    const libelle = ((kirby.valeursListe('instrument').find((x) => x.jeton === jeton) || {})[langue]) || jeton;
+    const suffixe = kirby.instrumentEstLocal(jeton) ? ' (' + kirby.cantonsInstrument(jeton).join(', ') + ')' : '';
+    return { valeur: jeton, libelle: libelle + suffixe };
+  });
+}
+function tableInstrumentsParCanton(langue) {
+  const table = { '': optionsInstrument('', langue) };
+  for (const c of kirby.valeursListe('canton')) { table[c.jeton] = optionsInstrument(c.jeton, langue); }
+  return table;
+}
+function optionsListe(nom, langue) {
+  return kirby.valeursListe(nom).map((v) => ({ valeur: v.jeton, libelle: v[langue] || v.fr }));
+}
+function champDuTypeParCle(cle) {
+  for (const type of kirby.typesConnus()) { const c = kirby.champDuType(type, cle); if (c) { return c; } }
+  return null;
+}
+function configChamp(champ, langue) {
+  const c = { cle: champ.cle, libelle: champ.libelle[langue] || champ.libelle.fr, saisie: champ.saisie, requis: !!champ.requis };
+  if (champ.quand) { c.quand = champ.quand; }
+  if (champ.saisie === 'liste') {
+    c.options = optionsListe(champ.liste, langue);
+    if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
+  }
+  if (champ.saisie === 'structure') { c.structureChamps = champ.champs.map((sc) => configChamp(sc, langue)); }
+  if (champ.saisie === 'fichier') { c.extensions = champ.extensions || []; }
+  if (champ.saisie === 'derive') {
+    c.depuis = champ.depuis;
+    c.table = {};
+    const source = champDuTypeParCle(champ.depuis);
+    if (source && source.saisie === 'liste') {
+      for (const opt of optionsListe(source.liste, langue)) { c.table[opt.valeur] = kirby.valeurDerive(champ, { [champ.depuis]: opt.valeur }); }
+    }
+  }
+  return c;
+}
 function configFiches() {
-  return typesFiche().map((type) => ({
-    valeur: type,
-    libelleSection: T('ressource.section.' + type),
-    libelleAjouter: T('ressource.ajouter.' + type),
-    libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
-    avecImage: typeAvecImage(type),
-    champs: champsBiblio(type).map((cle) => {
-      const champ = { cle: cle, libelle: cle };
-      if (listeChamp(type, cle) === 'canton') { champ.options = optionsCanton('fr'); }
-      if (listeChamp(type, cle) === 'evenement') {
-        champ.options = valeursListe('evenement')
-          .map((v) => ({ valeur: v, libelle: T('ressource.option.evenement.' + v) }));
-      }
-      if (saisieChamp(type, cle)) { champ.saisie = saisieChamp(type, cle); }
-      return champ;
-    })
-  }));
+  return kirby.typesConnus().map((type) => {
+    const champFichier = kirby.champFichierDuType(type);
+    return {
+      valeur: type, libelleSection: kirby.libelleType(type, 'fr'),
+      libelleAjouter: T('ressource.ajouter.' + type), libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
+      avecImage: !!champFichier, champFichier: champFichier,
+      champs: kirby.champsDuType(type).map((c) => configChamp(c, 'fr'))
+    };
+  });
 }
 function configRubriques() {
-  return typesRubrique().map((t) => ({ valeur: t, libelleSection: T('rubrique.section.' + t) }));
+  return kirby.rubriquesPourRevue('revue').map((r) => ({ valeur: r.cle, libelleSection: r.titre.fr || r.titre.de }));
 }
 
 // Une page chargée : une rubrique remplie, une fiche complète, une fiche incomplète, et une
@@ -1523,17 +1552,19 @@ function pageDocumentation() {
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
     typesConfig: configFiches(), typesRubrique: configRubriques(),
-    rubriques: [{ id: 'b1', type: 'tour-horizon', contenu: 'Une brève **importante**.' }],
+    rubriques: [{ id: 'podcasts', type: 'podcasts', contenu: 'Une brève **importante**.' }],
     ressources: [
       { id: 'r1', type: 'livre', apercu: null,
-        valeurs: { titre: 'Un livre', auteurs: 'A. Dupont', annee: '2024', editeur: 'SZH',
-                   lien: 'https://exemple.org/l', descriptif: 'Un descriptif.', image: 'c.png' } },
+        valeurs: { categorie: 'manuel', title: 'Un livre', auteurs: 'A. Dupont', annee: '2024',
+                   editeur: 'SZH', lien: 'https://exemple.org/l', descriptif: 'Un descriptif.',
+                   couverture: 'c.png' } },
       { id: 'r2', type: 'livre', apercu: null,
-        valeurs: { titre: 'Sans descriptif', auteurs: '', annee: '', editeur: '',
-                   lien: '', descriptif: '', image: '' } },
+        valeurs: { categorie: '', title: 'Sans descriptif', auteurs: '', annee: '', editeur: '',
+                   lien: '', descriptif: '', couverture: '' } },
       { id: 'r3', type: 'intervention', apercu: null,
-        valeurs: { titre: 'Une motion', canton: 'ZH', categorie: 'Motion', numero: '24.3456',
-                   date: '12.06.2024', lien: '', descriptif: 'Le Conseil fédéral…', image: '' } }
+        valeurs: { canton: 'ZH', categorie: 'motion', curia: '5', numero: '24.3456',
+                   date: '2024-06-12', title: 'Une motion', lien: '', etat: '', etat_date: '',
+                   suivi: [], source: 'curia', descriptif: 'Le Conseil fédéral…' } }
     ]
   });
   return { page: page, txt: txt };
@@ -1541,25 +1572,28 @@ function pageDocumentation() {
 
 test('documentation : les rubriques d’abord, les catégories de fiches ensuite, tout replié', () => {
   const { page, txt } = pageDocumentation();
-  // Cinq rubriques : une carte chacune, présente qu'elle soit remplie ou vide — c'est la
-  // règle « toujours un bloc actif, et pas de bouton pour en ajouter un second ».
-  assert.strictEqual(page.compter('.doc-rubrique'), typesRubrique().length);
-  assert.strictEqual(page.compter('.doc-ajouter'), typesFiche().length,
+  const nbRubriques = configRubriques().length;
+  const nbTypes = configFiches().length;
+  // Une rubrique par entrée du contrat : une carte chacune, présente qu'elle soit remplie ou
+  // vide — c'est la règle « toujours un bloc actif, et pas de bouton pour en ajouter un second ».
+  assert.strictEqual(page.compter('.doc-rubrique'), nbRubriques);
+  assert.strictEqual(page.compter('.doc-ajouter'), nbTypes,
     'un bouton d’ajout par catégorie de fiches, et AUCUN pour les rubriques');
   // Une carte par fiche reçue, plus les intertitres de catégorie.
   assert.strictEqual(page.compter('.doc-fiche'), 3);
-  assert.strictEqual(page.compter('.doc-titre-fiches'), typesFiche().length);
+  assert.strictEqual(page.compter('.doc-titre-fiches'), nbTypes);
   // Tout est replié à l'ouverture : c'est ce qui fait qu'on lit la structure d'abord.
   const corps = page.conteneur().querySelectorAll('.doc-corps');
-  assert.strictEqual(corps.length, typesRubrique().length + 3);
+  assert.strictEqual(corps.length, nbRubriques + 3);
   assert.ok(corps.every((c) => c.hidden === true), 'une carte ne doit pas s’ouvrir d’elle-même');
   // Chaque en-tête est un vrai bouton, annoncé avec son état.
   const bascules = page.conteneur().querySelectorAll('.doc-bascule');
   assert.strictEqual(bascules.length, corps.length);
   assert.ok(bascules.every((b) => b.balise === 'button' && b.getAttribute('aria-expanded') === 'false'),
     'l’en-tête doit être un <button> qui dit son état');
-  // La rubrique porte le titre imprimé, jamais saisi.
-  assert.ok(page.textes().some((t) => t === T('rubrique.section.tour-horizon')),
+  // La rubrique porte le titre imprimé (contrat), jamais saisi.
+  const titrePodcasts = kirby.rubriquesDuContrat().find((r) => r.cle === 'podcasts').titre.fr;
+  assert.ok(page.textes().some((t) => t === titrePodcasts),
     'le titre de la rubrique devrait être son en-tête : ' + page.textes().join(' | '));
   assert.ok(txt.badgeVide && txt.badgeIncomplet, 'les deux pastilles doivent être fournies');
 });
@@ -1568,7 +1602,10 @@ test('documentation : rien ne dépasse d’une carte repliée — lien et image 
   const { page } = pageDocumentation();
   // Le défaut signalé le 02.09.2026 : le lien, la zone d'image et l'état de la fiche
   // vivaient HORS du corps pliable, et restaient donc visibles sous un en-tête replié.
-  const fiche = page.conteneur().querySelectorAll('.doc-fiche')[0];
+  // Une carte qui porte une zone d'image : « intervention » (sans image) précède « livre »
+  // dans l'ordre des types du contrat, .doc-fiche[0] ne désigne donc plus forcément un livre.
+  const fiche = page.conteneur().querySelectorAll('.doc-fiche').find((f) => f.querySelectorAll('.doc-image').length > 0);
+  assert.ok(fiche, 'aucune carte avec zone d’image trouvée');
   const corps = fiche.querySelectorAll('.doc-corps')[0];
   assert.ok(corps, 'la carte devrait avoir un corps pliable');
   for (const classe of ['.doc-image', '.szh-depot', '.szh-champ']) {
@@ -1584,17 +1621,18 @@ test('documentation : rien ne dépasse d’une carte repliée — lien et image 
 
 test('documentation : la pastille « non complet » remplace le pavé « à compléter »', () => {
   const { page, txt } = pageDocumentation();
+  const nbRubriques = configRubriques().length;
   const badges = page.conteneur().querySelectorAll('.doc-badge');
   // Un badge par carte, montré ou caché selon l'état.
-  assert.strictEqual(badges.length, typesRubrique().length + 3);
+  assert.strictEqual(badges.length, nbRubriques + 3);
   const visibles = badges.filter((b) => b.hidden === false);
-  // Quatre rubriques vides (la cinquième est remplie), la fiche sans descriptif, et
-  // l'intervention qui n'a pas d'image… mais qui n'en demande pas : elle est complète.
-  const attendus = (typesRubrique().length - 1) + 1;
+  // Toutes les rubriques sauf « podcasts » (remplie), la fiche r2 (categorie/auteurs/…
+  // vides), et r1/r3 complètes ne portent pas de pastille.
+  const attendus = (nbRubriques - 1) + 1;
   assert.strictEqual(visibles.length, attendus,
     'pastilles visibles : ' + visibles.map((b) => b.textContent).join(', '));
   assert.ok(visibles.some((b) => b.textContent === txt.badgeIncomplet),
-    'la fiche sans descriptif doit porter « non complet »');
+    'la fiche incomplète doit porter « non complet »');
   assert.ok(visibles.some((b) => b.textContent === txt.badgeVide),
     'une rubrique vide doit porter « vide »');
   // L'infobulle dit ce qui manque : le détail n'est pas perdu, il est rangé.
@@ -1603,18 +1641,20 @@ test('documentation : la pastille « non complet » remplace le pavé « à comp
     'l’infobulle devrait nommer le champ manquant : ' + incomplet.title);
 });
 
+// Un select est identifié par le préfixe de son id (champ(), media/documentation.js :
+// « ch-<cle>-<index> ») — jamais par sa position, puisque chaque type porte désormais
+// plusieurs listes fermées (categorie, etat, source…), pas seulement le canton.
+function selectDuChamp(page, cle) {
+  return page.conteneur().querySelectorAll('select').find((s) => s.id.indexOf('ch-' + cle + '-') === 0);
+}
+
 test('documentation : le canton est une liste déroulante qui garde sa valeur', () => {
   const { page } = pageDocumentation();
-  const selects = page.conteneur().querySelectorAll('select');
-  // Deux listes fermées dans cette page : le canton de l'intervention, et le type
-  // d'événement — mais l'agenda n'a ici aucune fiche, donc un seul <select> rendu.
-  assert.strictEqual(selects.length, 1, 'un seul <select> : le canton de l’intervention');
-  const canton = selects[0];
-  assert.strictEqual(canton.options.length, optionsCanton('fr').length + 1,
-    'les cantons, plus l’option vide de tête');
+  const cantons = kirby.valeursListe('canton');
+  const canton = selectDuChamp(page, 'canton');
+  assert.ok(canton, 'le select du canton ne s’est pas rendu');
+  assert.strictEqual(canton.options.length, cantons.length + 1, 'les cantons, plus l’option vide de tête');
   assert.strictEqual(canton.value, 'ZH', 'la valeur stockée doit être choisie à l’ouverture');
-  assert.ok(canton.options.some((o) => o.textContent.indexOf('(ZH)') !== -1),
-    'le libellé doit porter le nom complet et l’abréviation');
 });
 
 test('documentation : une valeur hors liste n’est pas perdue au chargement', () => {
@@ -1626,20 +1666,50 @@ test('documentation : une valeur hors liste n’est pas perdue au chargement', (
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
     typesConfig: configFiches(), typesRubrique: [], rubriques: [],
-    // Un bloc écrit à la main, avant la liste fermée : « Berne » n'est pas un code.
+    // Une fiche écrite à la main, avant la liste fermée : « Berne » n'est pas un code.
     ressources: [{ id: 'r9', type: 'intervention', apercu: null,
-      valeurs: { titre: 'Ancienne', canton: 'Berne', categorie: '', numero: '', date: '',
-                 lien: '', descriptif: 'd', image: '' } }]
+      valeurs: { title: 'Ancienne', canton: 'Berne', categorie: '', numero: '', date: '',
+                 lien: '', descriptif: 'd' } }]
   });
-  const canton = page.conteneur().querySelectorAll('select')[0];
+  const canton = selectDuChamp(page, 'canton');
   assert.strictEqual(canton.value, 'Berne',
     'une valeur inconnue de la liste doit être conservée, pas remise à vide');
   assert.ok(canton.options.some((o) => o.value === 'Berne'),
     'elle doit être ajoutée à la liste pour rester choisie');
 });
 
+test('documentation : le menu des instruments se recompose quand le canton change', () => {
+  const { page } = pageDocumentation();
+  const canton = selectDuChamp(page, 'canton');
+  const categorie = selectDuChamp(page, 'categorie');
+  assert.ok(canton && categorie, 'canton et categorie doivent tous deux se rendre');
+  const optionsAvant = categorie.options.map((o) => o.value);
+  canton.value = 'BS';
+  canton.dispatchEvent({ type: 'change' });
+  const optionsApres = categorie.options.map((o) => o.value);
+  // « anzug » (local, propre à BS) doit passer devant un instrument qu'on n'y observe pas,
+  // une fois BS choisi — ce n'était pas forcément le cas avant (canton initial : ZH).
+  assert.notDeepStrictEqual(optionsAvant, optionsApres,
+    'le menu des instruments n’a pas bougé quand le canton a changé');
+  assert.ok(optionsApres.indexOf('anzug') !== -1 &&
+    optionsApres.indexOf('anzug') < optionsApres.indexOf('initiative-cantonale'));
+});
+
+test('documentation : le champ curia s’affiche en lecture seule, recalculé depuis la catégorie', () => {
+  const { page } = pageDocumentation();
+  const categorie = selectDuChamp(page, 'categorie');
+  const carte = categorie.closest('.doc-fiche');
+  const derive = carte.querySelectorAll('.doc-derive-valeur')[0];
+  assert.ok(derive, 'le champ curia (derive) ne s’est pas rendu en lecture seule');
+  assert.strictEqual(derive.textContent, '5', 'curia devrait déjà valoir 5 (motion) à l’ouverture');
+  categorie.value = 'postulat';
+  categorie.dispatchEvent({ type: 'change' });
+  assert.strictEqual(derive.textContent, '6', 'curia doit suivre la catégorie choisie');
+});
+
 test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubriques', () => {
   const { page } = pageDocumentation();
+  const nbRubriques = configRubriques().length;
   page.messages.length = 0;
   // Le raccourci de la barre : le bouton « Enregistrer » est le premier de #barre, hors du
   // conteneur — on passe donc par le même chemin que Ctrl+S, celui de l'autoenregistrement.
@@ -1649,26 +1719,27 @@ test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubri
   assert.ok(envoi, 'aucun message d’enregistrement : ' + JSON.stringify(page.messages));
   // Les trois fiches partent, l'incomplète comprise : c'est l'hôte qui tranche désormais.
   assert.strictEqual(envoi.ressources.map((r) => r.id).sort().join(','), 'r1,r2,r3');
-  // Les cinq rubriques partent, les vides comprises : c'est ainsi que l'hôte apprend qu'un
-  // bloc doit SORTIR du .md.
-  assert.strictEqual(envoi.rubriques.length, typesRubrique().length);
-  const remplie = envoi.rubriques.filter((r) => r.type === 'tour-horizon')[0];
+  // Toutes les rubriques partent, les vides comprises : c'est ainsi que l'hôte apprend qu'un
+  // bloc doit SORTIR du fichier de page.
+  assert.strictEqual(envoi.rubriques.length, nbRubriques);
+  const remplie = envoi.rubriques.filter((r) => r.type === 'podcasts')[0];
   assert.strictEqual(remplie.contenu, 'Une brève **importante**.',
     'le markdown de la rubrique doit repartir au caractère près');
 });
 
 test('documentation : le sommaire dit la structure, et compte ce qu’il y a', () => {
   const { page, txt } = pageDocumentation();
+  const nbRubriques = configRubriques().length;
+  const nbTypes = configFiches().length;
   const sommaire = page.parId.sommaire;
   const entrees = sommaire.querySelectorAll('.doc-sommaire-lien');
-  assert.strictEqual(entrees.length, typesRubrique().length + typesFiche().length,
-    'une entrée par rubrique et par catégorie de fiches');
+  assert.strictEqual(entrees.length, nbRubriques + nbTypes, 'une entrée par rubrique et par catégorie de fiches');
   const groupes = sommaire.querySelectorAll('.doc-sommaire-groupe');
   assert.strictEqual(groupes.map((g) => g.textContent).join('|'),
     [txt.groupeRubriques, txt.groupeFiches].join('|'));
   // Les marques : le nombre de fiches d'une catégorie, « vide » pour une rubrique à écrire.
   const marques = sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
-  assert.strictEqual(marques.filter((m) => m === txt.badgeVide).length, typesRubrique().length - 1,
+  assert.strictEqual(marques.filter((m) => m === txt.badgeVide).length, nbRubriques - 1,
     'les rubriques vides doivent se voir depuis le sommaire : ' + marques.join(', '));
   assert.strictEqual(marques.filter((m) => m === '2').length, 1, 'deux livres');
   assert.strictEqual(marques.filter((m) => m === '1').length, 1, 'une intervention');
@@ -1696,28 +1767,32 @@ test('documentation : ouvrir une carte referme les autres, et une seule reste ou
   assert.strictEqual(corps.filter((c) => c.hidden === false).length, 0);
 });
 
-test('documentation : vider une rubrique la retire du magasin sans ôter son bloc de saisie', () => {
+test('documentation : vider une rubrique ne demande rien à l’hôte, et garde son bloc de saisie', () => {
   const { page } = pageDocumentation();
+  const nbRubriques = configRubriques().length;
   page.messages.length = 0;
-  // La corbeille d'une rubrique : le premier bouton-icône de sa carte.
+  // La corbeille d'une rubrique : le premier bouton-icône de sa carte. Vider une rubrique ne
+  // passe plus par un message dédié — c'est « enregistrer » qui la sort du fichier de page
+  // (voir le test « enregistrer… TOUTES les rubriques » plus haut).
   const remplie = page.conteneur().querySelectorAll('.doc-rubrique')
     .filter((c) => c.querySelectorAll('textarea')[0].value !== '')[0];
   assert.ok(remplie, 'la rubrique remplie devrait être trouvable');
   remplie.querySelectorAll('.szh-ico')[0].dispatchEvent({ type: 'click' });
-  const retrait = page.messages.filter((m) => m.type === 'retirer').pop();
-  assert.ok(retrait, 'aucun retrait demandé à l’hôte');
-  assert.strictEqual(retrait.famille, 'rubrique', 'l’hôte doit savoir dans quelle famille chercher');
-  assert.strictEqual(retrait.id, 'b1');
   assert.strictEqual(remplie.querySelectorAll('textarea')[0].value, '', 'le texte doit être vidé');
-  assert.strictEqual(page.compter('.doc-rubrique'), typesRubrique().length,
+  assert.strictEqual(page.compter('.doc-rubrique'), nbRubriques,
     'la carte doit RESTER : une rubrique a toujours son bloc, vide ou non');
 });
 
 test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit', () => {
   const { page } = pageDocumentation();
   const avant = page.compter('.doc-fiche');
-  // Le bouton « Ajouter un livre » : le premier des boutons d'ajout.
-  page.conteneur().querySelectorAll('.doc-ajouter')[0].dispatchEvent({ type: 'click' });
+  // Le bouton « Ajouter un livre » : celui de la section « livre », pas forcément le
+  // premier — l'ordre des types suit désormais ordreTypes du contrat (horizon d'abord). Les
+  // sections se construisent dans cet ordre : même rang côté <h2> et côté conteneur.
+  const rangLivre = configFiches().findIndex((t) => t.valeur === 'livre');
+  const section = page.conteneur().querySelectorAll('.doc-section')[rangLivre];
+  assert.ok(section, 'le conteneur de la section « livre » est introuvable');
+  section.querySelectorAll('.doc-ajouter')[0].dispatchEvent({ type: 'click' });
   assert.strictEqual(page.compter('.doc-fiche'), avant + 1);
   const ouvertes = page.conteneur().querySelectorAll('.doc-corps').filter((c) => c.hidden === false);
   assert.strictEqual(ouvertes.length, 1, 'la fiche neuve doit s’ouvrir seule, pour la saisie en série');

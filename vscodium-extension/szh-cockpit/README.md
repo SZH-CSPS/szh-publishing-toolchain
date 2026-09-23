@@ -90,6 +90,13 @@ lib/
   interaction.js        garde d'interaction : retient ce qui volerait le focus (aperçu,
                         notifications) tant qu'un QuickPick est ouvert
   journal.js            journal de compilation -> constats de la vue « Contrôles »
+  kirby-contenu.js      arborescence Kirby de la Documentation d’un numéro : lecture et
+                        écriture de documentation.<lang>.txt et des dossiers <n>_<slug>/ de
+                        ses fiches, calcul de l’ordre d’impression et du nom de dossier,
+                        renommage/renumérotation sûr (deux passes par un nom temporaire, la
+                        reprise après interruption est idempotente). Tout vient du contrat
+                        (pipeline/kirby/champs-documentation.json), remplace ressources.js
+                        et rubriques.js. Pur, sans vscode
   liens.js              liens szh:// et intention déposée par le lanceur
   medias.js             médias d'un article, sans vscode ni profil actif à connaître :
                         dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,
@@ -165,14 +172,6 @@ lib/
                         surligner le bouton « Vers l'article »
   reserve.js            réserve de fiches hors numéro (dossier parent, _reserve/<revue>/) :
                         mettre de côté, et envoyer une copie à traduire dans la revue sœur
-  ressources.js         fiches de « ressources » d'un article (livre, film, intervention
-                        parlementaire, agenda, …) : un moteur générique, décliné par une
-                        table de champs par type (TYPES, recopiée dans
-                        pipeline/filters/szh-ressource.lua), plus les listes fermées et les
-                        champs de date de chaque type
-  rubriques.js          rubriques de texte riche d'un article de Documentation (références
-                        du dossier, tour d'horizon, podcasts) : un bloc de prose titré, le
-                        titre étant déduit du type par pipeline/filters/szh-rubrique.lua
   secretariat.js        les quatre exports du secrétariat : newsletter (local), edudoc et
                         caractères (moisson OAI-PMH oai_dc propre au secrétariat — ni
                         auteurs-ojs.js ni mots-cles-edudoc.js n'exposent le titre, le résumé

@@ -1,7 +1,7 @@
-// lib/reserve.js : la réserve de fiches hors numéro (cahier des charges, §4) — l'aller-
-// retour du frontmatter, le dépôt (avec ou sans image), la liste et le retrait. Module PUR
-// (fs, path, lib/slug.js), exercé ici sans hôte VSCode, dans un dossier temporaire nettoyé
-// à la fin de chaque test.
+// lib/reserve.js : la réserve de fiches hors numéro (cahier des charges, §4), depuis que
+// la Documentation est une arborescence Kirby — une fiche est un DOSSIER, pas un bloc de
+// texte. Module PUR (fs, path, lib/slug.js, lib/kirby-contenu.js), exercé ici sans hôte
+// VSCode, dans un dossier temporaire nettoyé à la fin de chaque test.
 //
 //   node --test "test/js/reserve.test.js"
 //   node --test "test/js/*.test.js"
@@ -16,6 +16,7 @@ const path = require('path');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const reserve = require(path.join(COCKPIT, 'lib', 'reserve.js'));
+const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 
 // Un dossier de numéro factice, sous un dossier temporaire : reserve.js range la réserve
 // dans le PARENT du numéro (voir cheminReserve), donc `racineNumero` doit être un
@@ -25,6 +26,17 @@ function nouveauNumero() {
   const racineNumero = path.join(parent, '2026-02');
   fs.mkdirSync(racineNumero, { recursive: true });
   return { parent, racineNumero };
+}
+
+// Une fiche « livre », dans un dossier isolé (comme le dossier d'une fiche dans un
+// article) : c'est ce que kirby-contenu.js ajouterFiche() produirait.
+function ficheLivre(parent, titre, langue) {
+  const dossierArticle = fs.mkdtempSync(path.join(parent, 'article-'));
+  const { uuid, dossier } = kirby.ajouterFiche(dossierArticle, langue || 'fr', 'livre', {
+    categorie: 'manuel', title: titre || 'Un ouvrage', auteurs: 'A', annee: '2026',
+    editeur: 'E', descriptif: 'D', couverture: ''
+  });
+  return { dossierSource: path.join(dossierArticle, dossier), uuid: uuid };
 }
 
 // ---- autreRevue ---------------------------------------------------------------------
@@ -44,141 +56,48 @@ test('cheminReserve : dans le PARENT du numéro, sous _reserve/<revue>', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
     assert.strictEqual(reserve.NOM_DOSSIER, '_reserve');
-    assert.strictEqual(
-      reserve.cheminReserve(racineNumero, 'revue'),
-      path.join(parent, '_reserve', 'revue')
-    );
-    assert.strictEqual(
-      reserve.cheminReserve(racineNumero, 'zeitschrift'),
-      path.join(parent, '_reserve', 'zeitschrift')
-    );
+    assert.strictEqual(reserve.cheminReserve(racineNumero, 'revue'), path.join(parent, '_reserve', 'revue'));
+    assert.strictEqual(reserve.cheminReserve(racineNumero, 'zeitschrift'), path.join(parent, '_reserve', 'zeitschrift'));
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-// ---- Frontmatter : aller-retour ---------------------------------------------------
+// ---- Sidecar d'origine : aller-retour ---------------------------------------------
 
-test('frontmatter : aller-retour fidèle, cas simple', () => {
-  const fiche = {
-    origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: true, deposeLe: '2026-09-01',
-    bloc: '::: {#r1a2b3c4 .szh-ressource type="livre" titre="Un titre"}\nDescriptif.\n:::'
-  };
-  const texte = reserve.serialiserFiche(fiche);
-  // Forme attendue par le §4 du cahier des charges : les quatre clés dans cet ordre.
-  const lignes = texte.split('\n');
-  assert.strictEqual(lignes[0], '---');
-  assert.strictEqual(lignes[1], 'origine: revue');
-  assert.strictEqual(lignes[2], 'numero-origine: "R2026-2"');
-  assert.strictEqual(lignes[3], 'a-traduire: true');
-  assert.strictEqual(lignes[4], 'depose-le: "2026-09-01"');
-  assert.strictEqual(lignes[5], '---');
-  assert.deepStrictEqual(reserve.analyserFiche(texte), fiche);
+test('sidecar d’origine : aller-retour fidèle', () => {
+  const o = { origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: true, deposeLe: '2026-09-01' };
+  assert.deepStrictEqual(reserve.analyserOrigine(reserve.serialiserOrigine(o)), o);
 });
 
-test('frontmatter : aller-retour fidèle avec a-traduire à false et origine zeitschrift', () => {
-  const fiche = {
-    origine: 'zeitschrift', numeroOrigine: 'Z2026-1', aTraduire: false, deposeLe: '2026-01-15',
-    bloc: '::: {#z1 .szh-ressource type="film" titre="Un film"}\n:::'
-  };
-  assert.deepStrictEqual(reserve.analyserFiche(reserve.serialiserFiche(fiche)), fiche);
+test('sidecar d’origine : a-traduire à false, origine zeitschrift', () => {
+  const o = { origine: 'zeitschrift', numeroOrigine: 'Z2026-1', aTraduire: false, deposeLe: '2026-01-15' };
+  assert.deepStrictEqual(reserve.analyserOrigine(reserve.serialiserOrigine(o)), o);
 });
 
-test('frontmatter : le bloc contient lui-même une ligne « --- » — l’aller-retour reste fidèle', () => {
-  const fiche = {
-    origine: 'revue', numeroOrigine: 'R2026-3', aTraduire: true, deposeLe: '2026-09-01',
-    bloc: '::: {#r9 .szh-ressource type="livre" titre="X"}\nAvant.\n\n---\n\nAprès le filet.\n:::'
-  };
-  const texte = reserve.serialiserFiche(fiche);
-  const relu = reserve.analyserFiche(texte);
-  assert.deepStrictEqual(relu, fiche);
-  // Et le filet du bloc n'a pas été pris pour la fermeture du frontmatter : il n'y a
-  // qu'une seule paire de bornes « --- » avant le bloc, une deuxième les suivrait sinon.
-  assert.ok(relu.bloc.indexOf('---') !== -1, 'le filet doit survivre dans le bloc relu');
+test('sidecar d’origine : texte vide ou trafiqué -> replis, jamais une levée', () => {
+  assert.deepStrictEqual(reserve.analyserOrigine(''),
+    { origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '' });
+  assert.deepStrictEqual(reserve.analyserOrigine('n’importe quoi\nsans les bonnes clés'),
+    { origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '' });
 });
 
-test('frontmatter : le bloc contient des « ::: » (bloc pandoc imbriqué) — aucune confusion', () => {
-  const fiche = {
-    origine: 'revue', numeroOrigine: 'R2026-4', aTraduire: false, deposeLe: '2026-02-02',
-    bloc: '::: {#r1 .szh-ressource type="film" titre="Y"}\n::: aparte\nnote\n:::\n:::'
-  };
-  assert.deepStrictEqual(reserve.analyserFiche(reserve.serialiserFiche(fiche)), fiche);
-});
+// ---- nomDossierFiche ------------------------------------------------------------------
 
-test('frontmatter : absent — tout le texte devient le bloc, valeurs de repli sinon', () => {
-  const texte = '::: {#r1 .szh-ressource type="livre" titre="Sans frontmatter"}\nDescriptif.\n:::';
-  assert.deepStrictEqual(reserve.analyserFiche(texte), {
-    origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '', bloc: texte
-  });
-});
-
-test('frontmatter : texte vide — repli sans lever', () => {
-  assert.deepStrictEqual(reserve.analyserFiche(''), {
-    origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '', bloc: ''
-  });
-  assert.deepStrictEqual(reserve.analyserFiche(undefined), {
-    origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '', bloc: ''
-  });
-});
-
-test('frontmatter : jamais refermé — repli sur tout le texte, comme une absence de frontmatter', () => {
-  const texte = '---\norigine: revue\nnumero-origine: "R1"\n(oubli du deuxième ---)\n::: bloc\n:::';
-  assert.deepStrictEqual(reserve.analyserFiche(texte), {
-    origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '', bloc: texte
-  });
-});
-
-test('frontmatter : fichier trafiqué à la main, clés inconnues mêlées aux quatre attendues', () => {
-  const texte = [
-    '---',
-    'origine: revue',
-    'note-personnelle: à revoir avant envoi',
-    'a-traduire: true',
-    '---',
-    '::: {#r1 .szh-ressource type="livre" titre="Z"}',
-    ':::'
-  ].join('\n') + '\n';
-  const relu = reserve.analyserFiche(texte);
-  assert.strictEqual(relu.origine, 'revue');
-  assert.strictEqual(relu.aTraduire, true);
-  // Les deux clés absentes retombent sur leur valeur de repli plutôt que de lever.
-  assert.strictEqual(relu.numeroOrigine, '');
-  assert.strictEqual(relu.deposeLe, '');
-  assert.strictEqual(relu.bloc, '::: {#r1 .szh-ressource type="livre" titre="Z"}\n:::');
-});
-
-// ---- nomFichierFiche ------------------------------------------------------------------
-
-test('nomFichierFiche : sûr, ordonnable, unique dans le temps', () => {
+test('nomDossierFiche : sûr, ordonnable, unique dans le temps', () => {
   const t1 = new Date(2026, 8, 1, 10, 0, 0, 0);
-  const t2 = new Date(2026, 8, 1, 10, 0, 0, 1);   // une milliseconde plus tard
-  const nomA = reserve.nomFichierFiche('livre', 'Le silence des bêtes', t1);
-  const nomB = reserve.nomFichierFiche('livre', 'Le silence des bêtes', t2);
-  assert.notStrictEqual(nomA, nomB, 'deux dépôts du même livre ne doivent pas porter le même nom');
-  assert.ok(nomA.endsWith('.md'));
-  assert.ok(/^[a-z0-9-]+\.md$/.test(nomA), 'nom pas sûr pour un système de fichiers : ' + nomA);
-  // Le tri alphabétique doit suivre l'ordre chronologique de dépôt.
+  const t2 = new Date(2026, 8, 1, 10, 0, 0, 1);
+  const nomA = reserve.nomDossierFiche('livre', 'Le silence des bêtes', t1);
+  const nomB = reserve.nomDossierFiche('livre', 'Le silence des bêtes', t2);
+  assert.notStrictEqual(nomA, nomB);
+  assert.ok(/^[a-z0-9-]+$/.test(nomA), 'nom pas sûr pour un système de fichiers : ' + nomA);
   assert.ok(nomA < nomB, 'le tri du dossier doit être chronologique : ' + nomA + ' >= ' + nomB);
 });
 
-test('nomFichierFiche : un titre vide ou entièrement non-alphanumérique reste un nom valide', () => {
+test('nomDossierFiche : un titre vide ou entièrement non-alphanumérique reste un nom valide', () => {
   const quand = new Date(2026, 0, 1);
   for (const titre of ['', '   ', '!!!', '???...', null, undefined]) {
-    const nom = reserve.nomFichierFiche('livre', titre, quand);
-    assert.ok(/^[a-z0-9-]+\.md$/.test(nom), 'nom invalide pour le titre ' + JSON.stringify(titre) + ' : ' + nom);
-    assert.ok(nom.length > '.md'.length);
+    const nom = reserve.nomDossierFiche('livre', titre, quand);
+    assert.ok(/^[a-z0-9-]+$/.test(nom), 'nom invalide pour ' + JSON.stringify(titre) + ' : ' + nom);
   }
-});
-
-test('nomFichierFiche : un type vide reste aussi un nom valide', () => {
-  const nom = reserve.nomFichierFiche('', 'Un titre', new Date(2026, 0, 1));
-  assert.ok(/^[a-z0-9-]+\.md$/.test(nom));
-});
-
-test('nomFichierFiche : les diacritiques et la ponctuation d’un titre ne cassent rien', () => {
-  const nom = reserve.nomFichierFiche('film', 'Dr. Strangelove : où l’École rêvait...', new Date(2026, 0, 1));
-  assert.ok(/^[a-z0-9-]+\.md$/.test(nom), nom);
-  // Le point de « Dr. » ne doit pas être pris pour une extension et amputer le titre :
-  // il doit rester quelque chose du titre après le segment de type.
-  assert.ok(nom.indexOf('strangelove') !== -1 || nom.indexOf('ecole') !== -1, nom);
 });
 
 // ---- lister sur un dossier absent -------------------------------------------------
@@ -187,172 +106,161 @@ test('lister : dossier de réserve absent -> liste vide, pas une erreur', () => 
   const { parent, racineNumero } = nouveauNumero();
   try {
     assert.deepStrictEqual(reserve.lister(racineNumero, 'revue'), []);
-    assert.ok(!fs.existsSync(reserve.cheminReserve(racineNumero, 'revue')),
-      'lister() ne doit JAMAIS créer le dossier');
+    assert.ok(!fs.existsSync(reserve.cheminReserve(racineNumero, 'revue')), 'lister() ne doit JAMAIS créer le dossier');
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-// ---- deposer, sans image -----------------------------------------------------------
+// ---- deposer --------------------------------------------------------------------------
 
-test('deposer : écrit le fichier, crée l’arborescence, et lister() le retrouve', () => {
+test('deposer : copie le dossier, crée l’arborescence, et lister() le retrouve', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    const fiche = {
-      type: 'livre', titre: 'Un ouvrage',
-      origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: false, deposeLe: '2026-09-01',
-      bloc: '::: {#r1 .szh-ressource type="livre" titre="Un ouvrage"}\nDescriptif.\n:::'
-    };
-    const { chemin } = reserve.deposer(racineNumero, 'revue', fiche);
+    const { dossierSource, uuid } = ficheLivre(parent, 'Un ouvrage', 'fr');
+    const { chemin } = reserve.deposer(racineNumero, 'revue', {
+      type: 'livre', titre: 'Un ouvrage', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: false, deposeLe: '2026-09-01'
+    });
     assert.ok(fs.existsSync(chemin));
+    assert.ok(fs.statSync(chemin).isDirectory());
     assert.strictEqual(path.dirname(chemin), reserve.cheminReserve(racineNumero, 'revue'));
+    assert.ok(fs.existsSync(path.join(chemin, 'livre.fr.txt')));
 
     const trouvees = reserve.lister(racineNumero, 'revue');
     assert.strictEqual(trouvees.length, 1);
     assert.strictEqual(trouvees[0].chemin, chemin);
     assert.strictEqual(trouvees[0].fiche.origine, 'revue');
     assert.strictEqual(trouvees[0].fiche.aTraduire, false);
-    assert.strictEqual(trouvees[0].fiche.bloc, fiche.bloc);
+    assert.strictEqual(trouvees[0].fiche.titre, 'Un ouvrage');
+    assert.strictEqual(trouvees[0].fiche.type, 'livre');
+    assert.strictEqual(trouvees[0].fiche.langue, 'fr');
+    // Un Uuid neuf, jamais celui de l'article d'origine.
+    assert.notStrictEqual(trouvees[0].fiche.uuid, uuid);
+    assert.match(trouvees[0].fiche.uuid, /^[A-Za-z0-9]{16}$/);
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
 test('deposer : plusieurs fiches -> lister() les rend du plus récent au plus ancien', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    const base = { origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01' };
-    reserve.deposer(racineNumero, 'revue', Object.assign({}, base,
-      { type: 'livre', titre: 'Premier', bloc: ':::a:::', quand: new Date(2026, 0, 1, 10, 0, 0, 0) }));
-    reserve.deposer(racineNumero, 'revue', Object.assign({}, base,
-      { type: 'livre', titre: 'Second', bloc: ':::b:::', quand: new Date(2026, 0, 1, 10, 0, 0, 1) }));
-    reserve.deposer(racineNumero, 'revue', Object.assign({}, base,
-      { type: 'livre', titre: 'Troisième', bloc: ':::c:::', quand: new Date(2026, 0, 1, 10, 0, 0, 2) }));
+    const base = { origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01', langueSource: 'fr', type: 'livre' };
+    const f1 = ficheLivre(parent, 'Premier', 'fr');
+    reserve.deposer(racineNumero, 'revue', Object.assign({}, base, { titre: 'Premier', dossierSource: f1.dossierSource, quand: new Date(2026, 0, 1, 10, 0, 0, 0) }));
+    const f2 = ficheLivre(parent, 'Second', 'fr');
+    reserve.deposer(racineNumero, 'revue', Object.assign({}, base, { titre: 'Second', dossierSource: f2.dossierSource, quand: new Date(2026, 0, 1, 10, 0, 0, 1) }));
+    const f3 = ficheLivre(parent, 'Troisième', 'fr');
+    reserve.deposer(racineNumero, 'revue', Object.assign({}, base, { titre: 'Troisième', dossierSource: f3.dossierSource, quand: new Date(2026, 0, 1, 10, 0, 0, 2) }));
 
     const trouvees = reserve.lister(racineNumero, 'revue');
     assert.strictEqual(trouvees.length, 3);
-    assert.deepStrictEqual(trouvees.map((t) => t.fiche.bloc), [':::c:::', ':::b:::', ':::a:::']);
+    assert.deepStrictEqual(trouvees.map((t) => t.fiche.titre), ['Troisième', 'Second', 'Premier']);
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-test('deposer : deux dépôts du même livre le même jour, à des instants différents, ne s’écrasent pas', () => {
+test('deposer : deux dépôts le même jour, à des instants différents, ne s’écrasent pas', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    const fiche = (quand) => ({
-      type: 'livre', titre: 'Même livre',
-      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01',
-      bloc: '::: {#r1}\n:::', quand
-    });
-    const r1 = reserve.deposer(racineNumero, 'revue', fiche(new Date(2026, 0, 1, 8, 0, 0, 0)));
-    const r2 = reserve.deposer(racineNumero, 'revue', fiche(new Date(2026, 0, 1, 8, 0, 0, 1)));
+    const f1 = ficheLivre(parent, 'Même livre', 'fr');
+    const f2 = ficheLivre(parent, 'Même livre', 'fr');
+    const base = { type: 'livre', titre: 'Même livre', langueSource: 'fr', origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01' };
+    const r1 = reserve.deposer(racineNumero, 'revue', Object.assign({}, base, { dossierSource: f1.dossierSource, quand: new Date(2026, 0, 1, 8, 0, 0, 0) }));
+    const r2 = reserve.deposer(racineNumero, 'revue', Object.assign({}, base, { dossierSource: f2.dossierSource, quand: new Date(2026, 0, 1, 8, 0, 0, 1) }));
     assert.notStrictEqual(r1.chemin, r2.chemin);
     assert.ok(fs.existsSync(r1.chemin) && fs.existsSync(r2.chemin));
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-// nomImageVoulu() écrivait le nom brut, espaces et accents compris — sans passer par le
-// même assainissement que medias.nomImageAssaini(), qui slugifie le corps, borne à 60
-// caractères et ne reconnaît que les extensions d'image (jpeg -> jpg).
-test('nomImageVoulu : assaini comme medias.nomImageAssaini (accents, espaces, extension)', () => {
-  assert.strictEqual(reserve.nomImageVoulu({ nom: 'Été à Genève.JPEG' }), 'ete-a-geneve.jpg');
-  assert.strictEqual(reserve.nomImageVoulu({ nom: 'C:\\dossier\\photo enfant.png' }), 'photo-enfant.png');
-  // Extension hors liste : repli sur celle de la source, comme un nom vide.
-  assert.strictEqual(reserve.nomImageVoulu({ nom: 'document.pdf', source: '/tmp/x.jpg' }), 'image.jpg');
-  assert.strictEqual(reserve.nomImageVoulu({ nom: '', source: '/tmp/x.png' }), 'image.png');
-  assert.strictEqual(reserve.nomImageVoulu({}), 'image.jpg');
-  // Plus de 60 caractères : tronqué, comme nomImageAssaini.
-  const long = 'a'.repeat(80) + '.png';
-  assert.strictEqual(reserve.nomImageVoulu({ nom: long }), 'a'.repeat(60) + '.png');
-});
-
-// ---- deposer, avec image ------------------------------------------------------------
-
-// ⚠ L'image va dans un SOUS-DOSSIER media/ à côté du .md, et le bloc garde son préfixe
-//    `media/`. Ce n'est pas une préférence de rangement : lireRessources()
-//    (lib/ressources.js) ne reconnaît une image que si sa cible commence par `media/`, et
-//    une réserve à plat rendait donc ses propres blocs illisibles — la fiche revenait de la
-//    réserve sans son image, avec une ligne `![](…)` collée dans son descriptif. Constaté
-//    sur un aller-retour réel dépôt -> lecture -> insertion.
-test('deposer : avec image — le fichier est copié dans media/ et le bloc garde son préfixe', () => {
+test('deposer : la source n’est jamais touchée — une copie, jamais un déplacement', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    // La source de l'image : hors de la réserve, comme le serait media/couverture-x.jpg
-    // dans l'article d'origine.
-    const sourceImage = path.join(parent, 'couverture-x.jpg');
-    fs.writeFileSync(sourceImage, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));  // JPEG minimal
-
-    const fiche = {
-      type: 'livre', titre: 'Livre illustré',
-      origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: true, deposeLe: '2026-09-01',
-      bloc: '::: {#r1 .szh-ressource type="livre" titre="Livre illustré"}\nDescriptif.\n\n' +
-        '![](media/couverture-x.jpg){alt=""}\n:::',
-      image: { source: sourceImage, nom: 'couverture-x.jpg' }
-    };
-    const { chemin } = reserve.deposer(racineNumero, 'revue', fiche);
-    const dossier = path.dirname(chemin);
-    const nomImageAttendu = 'couverture-x.jpg';
-    const cheminImage = path.join(dossier, 'media', nomImageAttendu);
-
-    assert.ok(fs.existsSync(cheminImage), 'l’image n’a pas été copiée dans media/');
-    assert.deepStrictEqual(fs.readFileSync(cheminImage), fs.readFileSync(sourceImage));
-    // La source ne doit pas avoir disparu : deposer() COPIE, ne déplace jamais.
-    assert.ok(fs.existsSync(sourceImage), 'la source ne doit pas être déplacée');
-
-    const relue = reserve.lister(racineNumero, 'revue')[0].fiche;
-    assert.ok(relue.bloc.indexOf('](media/' + nomImageAttendu + ')') !== -1,
-      'le bloc doit garder son préfixe media/ : ' + relue.bloc);
-    assert.ok(relue.bloc.indexOf('alt=""') !== -1, 'le reste du bloc doit survivre intact');
-    // La preuve qui compte : le bloc de la réserve se relit comme un bloc d'article.
-    const ressources = require(path.join(__dirname, '..', '..', 'vscodium-extension',
-      'szh-cockpit', 'lib', 'ressources.js'));
-    const fiches = ressources.lireRessources(relue.bloc);
-    assert.strictEqual(fiches.length, 1, 'le bloc de réserve n’est plus une fiche lisible');
-    assert.strictEqual(fiches[0].valeurs.image, nomImageAttendu,
-      'lireRessources() ne retrouve pas l’image du bloc mis en réserve');
-    assert.strictEqual(fiches[0].valeurs.descriptif, 'Descriptif.',
-      'la ligne d’image a fui dans le descriptif');
+    const { dossierSource } = ficheLivre(parent, 'Toujours là', 'fr');
+    reserve.deposer(racineNumero, 'revue', {
+      type: 'livre', titre: 'Toujours là', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01'
+    });
+    assert.ok(fs.existsSync(dossierSource), 'la source ne doit pas être déplacée');
+    assert.ok(fs.existsSync(path.join(dossierSource, 'livre.fr.txt')));
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-test('deposer : avec image — un nom déjà pris dans la réserve est désambiguïsé', () => {
+// ---- Envoyer à l'autre revue : Uuid neuf, fichier renommé -------------------------
+
+test('deposer avec langueCible différente : le fichier de contenu est renommé, le texte inchangé', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    const sourceImage = path.join(parent, 'source.jpg');
-    fs.writeFileSync(sourceImage, Buffer.from('un'));
-    const dossierMedia = path.join(reserve.cheminReserve(racineNumero, 'revue'), 'media');
-    fs.mkdirSync(dossierMedia, { recursive: true });
-    // Un fichier occupe déjà le nom voulu, déposé par une autre fiche.
-    fs.writeFileSync(path.join(dossierMedia, 'couverture.jpg'), Buffer.from('déjà là'));
+    const { dossierSource } = ficheLivre(parent, 'À traduire', 'fr');
+    const { chemin } = reserve.deposer(racineNumero, 'zeitschrift', {
+      type: 'livre', titre: 'À traduire', dossierSource: dossierSource,
+      langueSource: 'fr', langueCible: 'de',
+      origine: 'revue', numeroOrigine: 'R1', aTraduire: true, deposeLe: '2026-01-01'
+    });
+    assert.ok(!fs.existsSync(path.join(chemin, 'livre.fr.txt')), 'l’ancien nom ne doit plus exister');
+    assert.ok(fs.existsSync(path.join(chemin, 'livre.de.txt')));
+    const relu = kirby.lireTxt(fs.readFileSync(path.join(chemin, 'livre.de.txt'), 'utf8'));
+    // Les jetons ne se traduisent pas : le contenu (hors Uuid) reste identique au caractère
+    // près, y compris les libellés en français.
+    assert.strictEqual(relu.title, 'À traduire');
+    assert.strictEqual(relu.champs.auteurs, 'A');
+    const trouvee = reserve.lister(racineNumero, 'zeitschrift')[0];
+    assert.strictEqual(trouvee.fiche.langue, 'de');
+    assert.strictEqual(trouvee.fiche.aTraduire, true);
+  } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+});
 
-    const fiche = {
-      type: 'livre', titre: 'Autre livre',
-      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01',
-      bloc: '::: {#r2}\n![](media/couverture.jpg){alt=""}\n:::',
-      image: { source: sourceImage, nom: 'couverture.jpg' }
-    };
-    reserve.deposer(racineNumero, 'revue', fiche);
-    // Le fichier déjà présent ne doit pas avoir été écrasé.
-    assert.strictEqual(fs.readFileSync(path.join(dossierMedia, 'couverture.jpg'), 'utf8'), 'déjà là');
-    assert.ok(fs.existsSync(path.join(dossierMedia, 'couverture-1.jpg')));
+test('deposer sans langueCible : garde la langue source, même geste que « Détacher »', () => {
+  const { parent, racineNumero } = nouveauNumero();
+  try {
+    const { dossierSource } = ficheLivre(parent, 'Mis de côté', 'fr');
+    const { chemin } = reserve.deposer(racineNumero, 'revue', {
+      type: 'livre', titre: 'Mis de côté', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01'
+    });
+    assert.ok(fs.existsSync(path.join(chemin, 'livre.fr.txt')));
+  } finally { fs.rmSync(parent, { recursive: true, force: true }); }
+});
+
+// ---- Avec image ----------------------------------------------------------------------
+
+test('deposer : l’image de la fiche voyage avec son dossier', () => {
+  const { parent, racineNumero } = nouveauNumero();
+  try {
+    const dossierArticle = fs.mkdtempSync(path.join(parent, 'article-'));
+    const source = path.join(parent, 'couverture-x.jpg');
+    fs.writeFileSync(source, Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    const { dossier } = kirby.ajouterFiche(dossierArticle, 'fr', 'livre', {
+      categorie: 'manuel', title: 'Livre illustré', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D'
+    }, source);
+    const dossierSource = path.join(dossierArticle, dossier);
+
+    const { chemin } = reserve.deposer(racineNumero, 'revue', {
+      type: 'livre', titre: 'Livre illustré', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R2026-2', aTraduire: true, deposeLe: '2026-09-01'
+    });
+    assert.ok(fs.existsSync(path.join(chemin, 'couverture-x.jpg')));
+    assert.deepStrictEqual(fs.readFileSync(path.join(chemin, 'couverture-x.jpg')), fs.readFileSync(source));
+    const relu = kirby.lireTxt(fs.readFileSync(path.join(chemin, 'livre.fr.txt'), 'utf8'));
+    assert.strictEqual(kirby.lireFichierUnique(relu.champs.couverture), 'couverture-x.jpg');
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
 // ---- retirer ------------------------------------------------------------------------
 
-test('retirer : supprime le fichier de réserve et rend true', () => {
+test('retirer : supprime le dossier de réserve et rend true', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
+    const { dossierSource } = ficheLivre(parent, 'À retirer', 'fr');
     const { chemin } = reserve.deposer(racineNumero, 'revue', {
-      type: 'livre', titre: 'À retirer',
-      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01',
-      bloc: '::: {#r1}\n:::'
+      type: 'livre', titre: 'À retirer', dossierSource: dossierSource, langueSource: 'fr',
+      origine: 'revue', numeroOrigine: 'R1', aTraduire: false, deposeLe: '2026-01-01'
     });
     assert.strictEqual(reserve.retirer(chemin), true);
     assert.ok(!fs.existsSync(chemin));
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
-test('retirer : un fichier déjà absent rend false sans lever', () => {
+test('retirer : un dossier déjà absent rend false sans lever', () => {
   const { parent, racineNumero } = nouveauNumero();
   try {
-    const chemin = path.join(reserve.cheminReserve(racineNumero, 'revue'), 'inexistant.md');
+    const chemin = path.join(reserve.cheminReserve(racineNumero, 'revue'), 'inexistant');
     assert.strictEqual(reserve.retirer(chemin), false);
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });

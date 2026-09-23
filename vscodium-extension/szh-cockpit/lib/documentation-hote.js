@@ -1,21 +1,22 @@
-// La Documentation d'un numéro : fiches et rubriques dans un seul formulaire, qui écrit les
-// blocs ::: {.szh-ressource type="…"} … et ::: {.szh-rubrique type="…"} …, lus par
-// pipeline/filters/szh-ressource.lua et szh-rubrique.lua. Moteur générique — une section par
-// type de ressourcesLib.typesConnus() et de rubriquesLib.typesConnus(), plutôt qu'un
-// formulaire par type : les tables de champs vivent dans lib/ressources.js et
-// lib/rubriques.js, ce fichier ne fait que les lire. Les rubriques ne s'affichent que sur
-// une page de Documentation — un article ordinaire peut porter des fiches, jamais un
-// « Tour d'horizon ».
+// La Documentation d'un numéro : fiches et rubriques dans un seul formulaire, qui écrit
+// désormais une arborescence Kirby (lib/kirby-contenu.js) — documentation.<lang>.txt pour
+// les rubriques, un dossier <n>_<slug>/ par fiche. Il n'y a plus de <slug>.md pour cette
+// page : voir docs/FORMAT-DOCUMENTATION-KIRBY.md.
 //
-// Ce que la webview fait seule : ajouter une fiche, la retirer, taper dans ses champs,
-// plier et déplier. Ce qui touche le disque : enregistrer (par lot, comme le gestionnaire
-// des médias), retirer un bloc déjà écrit, déposer une image de couverture, et les deux
-// gestes de réserve.
+// Moteur générique — une section par type de kirby.typesConnus() et une rubrique par
+// kirby.rubriquesPourRevue() — plutôt qu'un formulaire par type : les champs viennent du
+// contrat (pipeline/kirby/champs-documentation.json), ce fichier ne fait que les lire et
+// composer leurs libellés dans la langue de l'interface. Aucun nom de champ n'est écrit en
+// dur ici, hormis `title` et `canton` (le seul champ dont dépend l'ordre d'un autre menu —
+// voir configChamp).
 //
-// Une fiche incomplète s'enregistre (lib/ressources.js, ressourceEcrivable) : c'est le
-// formulaire qui signale ce qui manque, par une pastille, et non plus l'hôte qui refuse
-// d'écrire. Une rubrique vidée, en revanche, sort du .md — un titre de rubrique sans rien
-// dessous ne veut rien dire dans le PDF.
+// Ce que la webview fait seule : ajouter une fiche, la retirer du DOM, taper dans ses
+// champs, plier et déplier. Ce qui touche le disque : enregistrer (par lot), retirer une
+// fiche déjà écrite, déposer une image de couverture, et les deux gestes de réserve.
+//
+// Une fiche incomplète s'enregistre (kirby.ficheEcrivable) : c'est le formulaire qui
+// signale ce qui manque, par une pastille. Une rubrique vidée sort du fichier de page — un
+// titre de rubrique sans rien dessous ne veut rien dire dans le PDF.
 //
 // ⚠ compterBlocsDocumentation() reste dans extension.js : le fournisseur d'arbre (classe
 // FournisseurRevue) l'appelle pour le badge de la section « ACTUALITÉ », et rien ici n'en a
@@ -27,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const { T, TL, langueCockpit } = require('./i18n');
+const { T } = require('./i18n');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
@@ -35,14 +36,9 @@ const { construireHtml } = require('./webviews/util');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
-const { langueRevue, serialiserMeta, ecrireAtomique } = require('./yaml');
-const {
-  relatifImageValide, apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, nomMediaLibre,
-  TAILLE_MAX_IMAGE_IMPORT
-} = require('./medias');
-const cantonsLib = require('./cantons');
-const ressourcesLib = require('./ressources');
-const rubriquesLib = require('./rubriques');
+const { langueRevue, ecrireAtomique, serialiserMeta } = require('./yaml');
+const { apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, TAILLE_MAX_IMAGE_IMPORT } = require('./medias');
+const kirby = require('./kirby-contenu');
 const reserveLib = require('./reserve');
 
 // Doivent rester alignées avec les constantes du même nom dans extension.js (le type de
@@ -71,128 +67,133 @@ let ctx = {
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 // Le dossier des unités de texte du profil actif — même calcul que dossierUnites() dans
-// extension.js, mais tiré directement de session.profilOuvrage() : ce module n'a pas à le
-// recevoir en rappel, lib/profil.js suffit (comme lib/apercu.js et lib/medias-hote.js).
+// extension.js.
 function dossierUnites() {
   return (session.profilOuvrage() || profils.profilPour('revue')).unites.dossier;
 }
-
 function cheminMeta(racine, slug) {
   return path.join(racine, dossierUnites(), slug, slug + '.meta.yaml');
 }
+function dossierArticleDoc(racine, slug) { return path.join(racine, dossierUnites(), slug); }
 
 // postMessage tolérant : le panneau peut être fermé pendant le traitement WSL.
 function repondrePanneau(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
 }
 
-// Les libellés des champs bibliographiques, communs aux types qui les partagent (« annee »
-// sert à livre ET film) : une seule clé i18n par champ, jamais une par type.
-const LIBELLES_CHAMP_RESSOURCE = {
-  auteurs: 'ressource.champ.auteurs', annee: 'ressource.champ.annee',
-  editeur: 'ressource.champ.editeur', realisateur: 'ressource.champ.realisateur',
-  genre: 'ressource.champ.genre', pays: 'ressource.champ.pays',
-  distributeur: 'ressource.champ.distributeur',
-  canton: 'ressource.champ.canton', categorie: 'ressource.champ.categorie',
-  numero: 'ressource.champ.numero', date: 'ressource.champ.date',
-  institutions: 'ressource.champ.institutions', debut: 'ressource.champ.debut',
-  fin: 'ressource.champ.fin',
-  // Champs de la fiche « reprise » (D'une revue à l'autre / Blick in die Revue). `auteurs`
-  // est déjà là, partagé avec le livre : une seule clé par champ, jamais une par type.
-  revue: 'ressource.champ.revue', reference: 'ressource.champ.reference',
-  doi: 'ressource.champ.doi',
-  // Champs de la fiche « agenda » (manifestations et formation continue). `debut` et `fin`
-  // sont déjà là, partagés avec la recherche en cours — « Début » et « Fin » disent la même
-  // chose d'une plage d'années et d'une plage de dates, et la règle du fichier reste une
-  // seule clé par nom de champ, jamais une par type.
-  evenement: 'ressource.champ.evenement', lieu: 'ressource.champ.lieu',
-  organisateur: 'ressource.champ.organisateur'
-};
+// ---- Libellés composés depuis le contrat -------------------------------------------
 
-// Les listes fermées offertes à la saisie, par nom. C'est la jonction que lib/ressources.js
-// ne fait pas exprès : sa table CHOIX dit quelle liste porte un champ, jamais où cette liste
-// vit. Les deux d'aujourd'hui viennent d'endroits différents — les cantons d'un module à
-// eux (lib/cantons.js, 26 cantons et la Confédération), les types d'événement d'une liste de
-// jetons de lib/ressources.js dont les libellés sont ici traduits — et c'est précisément ce
-// que cette indirection permet.
-const LISTES_RESSOURCE = {
-  canton: () => cantonsLib.optionsCanton(langueCockpit()),
-  evenement: () => ressourcesLib.valeursListe('evenement')
-    .map((v) => ({ valeur: v, libelle: T('ressource.option.evenement.' + v) }))
-};
-function optionsChamp(type, cle) {
-  const nom = ressourcesLib.listeChamp(type, cle);
-  const fabrique = nom ? LISTES_RESSOURCE[nom] : null;
-  return fabrique ? fabrique() : null;
+// Les instruments d'une intervention parlementaire, triés pour un canton donné (celui déjà
+// choisi sur la même fiche) : ceux qui l'observent en tête, dans l'ordre du contrat, les
+// autres ensuite. Le libellé d'un instrument `local` porte ses cantons entre parenthèses
+// (jamais dans la valeur écrite) — kirby.instrumentEstLocal/cantonsInstrument le disent.
+function optionsInstrument(canton, langue) {
+  return kirby.ordreInstruments(canton).map((jeton) => {
+    const libelle = ((kirby.valeursListe('instrument').find((x) => x.jeton === jeton) || {})[langue]) || jeton;
+    const suffixe = kirby.instrumentEstLocal(jeton) ? ' (' + kirby.cantonsInstrument(jeton).join(', ') + ')' : '';
+    return { valeur: jeton, libelle: libelle + suffixe };
+  });
+}
+// Une table complète, un jeu d'options par canton possible (dont '' = aucun canton choisi) :
+// la webview n'a ainsi jamais à rappeler l'hôte pour recomposer ce menu quand on choisit un
+// canton — voir media/documentation.js.
+function tableInstrumentsParCanton(langue) {
+  const table = { '': optionsInstrument('', langue) };
+  for (const c of kirby.valeursListe('canton')) { table[c.jeton] = optionsInstrument(c.jeton, langue); }
+  return table;
 }
 
-// La configuration envoyée à la webview : un type par entrée, ses champs bibliographiques
-// dans l'ordre de lib/ressources.js (source unique — jamais recopiés ici), chacun avec son
-// libellé traduit. C'est ce qui rend le formulaire générique : ajouter un type à
-// ressourcesLib.TYPES lui donne une section sans qu'une ligne de ce fichier ne change,
-// pourvu que LIBELLES_CHAMP_RESSOURCE connaisse ses champs. `avecImage` (lib/ressources.js,
-// typeAvecImage()) dit à la webview si ce type affiche une zone de dépôt — intervention et
-// recherche n'en ont pas.
-function typesRessourceConfig() {
-  return ressourcesLib.typesConnus().map((type) => ({
-    valeur: type,
-    libelleSection: T('ressource.section.' + type),
-    libelleAjouter: T('ressource.ajouter.' + type),
-    libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
-    avecImage: ressourcesLib.typeAvecImage(type),
-    champs: ressourcesLib.champsBiblio(type).map((cle) => {
-      // `options` et `saisie` n'accompagnent le champ que s'il en a : une liste fermée
-      // (canton, type d'événement) ou une date ISO. La webview ne connaît donc aucun nom de
-      // champ pour décider de rendre un <select> ou un <input type="date">.
-      const champ = { cle: cle, libelle: T(LIBELLES_CHAMP_RESSOURCE[cle] || '') };
-      const options = optionsChamp(type, cle);
-      if (options) { champ.options = options; }
-      const saisie = ressourcesLib.saisieChamp(type, cle);
-      if (saisie) { champ.saisie = saisie; }
-      return champ;
-    })
-  }));
+// Les options d'une liste fermée du contrat, dans la langue de l'interface — dans l'ordre
+// du contrat (jamais alphabétique : c'est cet ordre qui range aussi les fiches, voir
+// kirby.calculerOrdreFiches).
+function optionsListe(nomListe, langue) {
+  return kirby.valeursListe(nomListe).map((v) => ({ valeur: v.jeton, libelle: v[langue] || v.fr }));
 }
 
-// Les rubriques, pour le même formulaire : un type, un titre. Ni bouton d'ajout ni compteur
-// — chaque type a UN bloc, toujours présent (media/documentation.js). Le titre imprimé,
-// lui, ne se saisit jamais : il se déduit du type et de la langue au rendu
-// (pipeline/filters/szh-rubrique.lua), et c'est le même titre qui sert ici d'en-tête.
-function typesRubriqueConfig() {
-  return rubriquesLib.typesConnus().map((type) => ({
-    valeur: type,
-    libelleSection: T('rubrique.section.' + type)
-  }));
+// La configuration d'un champ, telle qu'envoyée à la webview : rien n'y est un nom de champ
+// en dur, tout vient de sa définition dans le contrat.
+function configChamp(champ, langue) {
+  const c = {
+    cle: champ.cle, libelle: champ.libelle[langue] || champ.libelle.fr, saisie: champ.saisie,
+    requis: !!champ.requis
+  };
+  if (champ.quand) { c.quand = champ.quand; }
+  if (champ.saisie === 'liste') {
+    c.options = optionsListe(champ.liste, langue);
+    // Seul le menu des instruments dépend d'un autre champ de la même fiche (le canton) —
+    // voir l'en-tête du fichier.
+    if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
+  }
+  if (champ.saisie === 'structure') {
+    c.structureChamps = champ.champs.map((sc) => configChamp(sc, langue));
+  }
+  if (champ.saisie === 'fichier') { c.extensions = champ.extensions || []; }
+  if (champ.saisie === 'derive') {
+    // La table complète depuis->valeur, pour que la webview affiche la valeur dérivée sans
+    // repasser par l'hôte à chaque choix (curia, par exemple, suit la catégorie choisie).
+    c.depuis = champ.depuis;
+    c.table = {};
+    const source = champDuTypeParCle(langue, champ.depuis);
+    if (source && source.saisie === 'liste') {
+      for (const opt of optionsListe(source.liste, langue)) { c.table[opt.valeur] = kirby.valeurDerive(champ, { [champ.depuis]: opt.valeur }); }
+    }
+  }
+  return c;
 }
 
-// Tous les libellés du formulaire de Documentation, les deux familles ensemble.
-//
-// `revueCible` est le nom affiché de la revue vers laquelle « Envoyer » dépose une copie —
-// la revue sœur de celle du numéro ouvert. Il vient de l'appelant, seul à connaître la
-// racine, et il est composé ici plutôt que dans la webview : la page ne connaît ni les
-// jetons de revue ni la table qui les nomme.
+// Le champ `depuis` d'un `derive` peut appartenir à n'importe quel type — configChamp() ne
+// sait pas duquel il est appelé. On le cherche dans tous les types plutôt que de faire
+// porter le type courant en paramètre : un seul champ `derive` existe aujourd'hui (curia),
+// et cette recherche reste bon marché (sept types, une poignée de champs chacun).
+function champDuTypeParCle(langue, cle) {
+  for (const type of kirby.typesConnus()) {
+    const c = kirby.champDuType(type, cle);
+    if (c) { return c; }
+  }
+  return null;
+}
+
+// typesRessourceConfig() : une entrée par type de fiche connu du contrat, ses champs dans
+// l'ordre du contrat (title compris — c'est un champ comme un autre, à sa place déclarée).
+function typesRessourceConfig(langue) {
+  return kirby.typesConnus().map((type) => {
+    const champFichier = kirby.champFichierDuType(type);
+    return {
+      valeur: type,
+      libelleSection: kirby.libelleType(type, langue),
+      libelleAjouter: T('ressource.ajouter.' + type),
+      libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
+      avecImage: !!champFichier,
+      champFichier: champFichier,
+      champs: kirby.champsDuType(type).map((c) => configChamp(c, langue))
+    };
+  });
+}
+
+// Les rubriques, pour le même formulaire : un type (= une clé du contrat), un titre pris
+// dans le contrat — jamais saisi, il se déduit de la langue au rendu. `revues` filtre déjà
+// « ressources », propre à la Revue (kirby.rubriquesPourRevue).
+function typesRubriqueConfig(revueJeton, langue) {
+  return kirby.rubriquesPourRevue(revueJeton).map((r) => ({ valeur: r.cle, libelleSection: r.titre[langue] || r.titre.fr }));
+}
+
+// Tous les libellés du formulaire de Documentation qui ne sont pas des noms de champ — ceux-
+// là viennent du contrat (configChamp ci-dessus). `revueCible` est le nom affiché de la
+// revue vers laquelle « Envoyer » dépose une copie.
 //
 // ⚠ Une clé oubliée ici ne casse rien : la page affiche « undefined » à sa place. C'est
-//   test/js/contrats.test.js qui l'attrape, en relevant tous les TXT.xxx de
-//   media/documentation.js et en exigeant que cette fonction les fournisse.
+//   test/js/contrats.test.js qui l'attrape.
 function textesDocumentation(revueCible) {
   return {
     detacherTip: T('ressource.detacher.tip'),
     envoyerTip: T('ressource.envoyer.tip', [revueCible || '']),
-    champTitre: T('ressource.champ.titre'), champTitreIndice: T('ressource.champ.titre.indice'),
-    champDescriptif: T('ressource.champ.descriptif'),
-    champDescriptifIndice: T('ressource.champ.descriptif.indice'),
-    champLien: T('ressource.champ.lien'), champLienIndice: T('ressource.champ.lien.indice'),
-    champImage: T('ressource.champ.image'),
-    imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
     choisirFichier: T('medias.choisirFichier'),
+    imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     retirerTip: T('ressource.retirer.tip'),
     sansTitre: T('ressource.sansTitre'),
     manque: T('ressource.manque'),
     optionVide: T('ressource.option.vide'),
-    // Les deux pastilles d'en-tête, qui ont remplacé le pavé « À compléter avant
-    // l'enregistrement » : une fiche s'écrit incomplète, une rubrique vide ne s'imprime pas.
     badgeIncomplet: T('doc.badge.incomplet'), badgeVide: T('doc.badge.vide'),
     sommaire: T('doc.sommaire'),
     groupeRubriques: T('doc.groupe.rubriques'), groupeFiches: T('doc.groupe.fiches'),
@@ -203,6 +204,8 @@ function textesDocumentation(revueCible) {
     italique: T('rubrique.italique'), italiqueTip: T('rubrique.italique.tip'),
     lien: T('rubrique.lien'), lienTip: T('rubrique.lien.tip'),
     liste: T('rubrique.liste'), listeTip: T('rubrique.liste.tip'),
+    ajouterLigne: T('doc.suivi.ajouter'), ajouterLigneTip: T('doc.suivi.ajouter.tip'),
+    retirerLigneTip: T('doc.suivi.retirer.tip'),
     enregistrer: T('img.enregistrer'), enregistrerTip: T('doc.enregistrer.tip'),
     enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'),
     rienAEcrire: T('doc.rienAEcrire'),
@@ -218,12 +221,10 @@ function htmlDocumentation(nonce) {
   });
 }
 
-// Dépose l'image de couverture d'une fiche : toujours un fichier neuf dans media/, jamais
-// un remplacement — une fiche n'a rien à écraser, à la différence d'une image déjà
-// insérée dans le texte de l'article. Redéposer une image sur une fiche qui en portait
-// déjà une laisse l'ancien fichier orphelin dans media/, comme « Retirer de la figure »
-// ailleurs dans ce fichier (lib/references.js, retirerDeGrille) : le texte se nettoie, pas
-// le disque, et rien n'empêche de reprendre ce fichier plus tard.
+// Dépose l'image d'une fiche AVANT qu'elle n'ait de dossier (elle n'existe encore que dans
+// la webview) : mise de côté dans .depot-images/ de l'article, installée dans le dossier de
+// la fiche au moment où enregistrer() l'écrit (kirby.ajouterFiche/ecrireFiche, paramètre
+// imageSource).
 async function deposerImageRessource(fournisseur, panneau, slug, msg) {
   const id = String(msg.id || '');
   const echec = (message) => repondrePanneau(panneau, { type: 'image-erreur', id: id, message: message });
@@ -234,59 +235,39 @@ async function deposerImageRessource(fournisseur, panneau, slug, msg) {
   const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
   if (donnees.length === 0) { echec(T('importv.err.format')); return; }
   if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { echec(T('importv.err.tropvolumineux')); return; }
-  const dossier = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
-  try { fs.mkdirSync(dossier, { recursive: true }); } catch (e) { /* existe déjà */ }
-  const nomLibre = nomMediaLibre(dossier, nom);
-  const cible = path.join(dossier, nomLibre);
-  try {
-    // Temporaire « ~$… » puis rename, comme tout dépôt d'image de ce fichier : une
-    // écriture interrompue ne doit pas laisser un demi-fichier que la compilation lirait.
-    const tmp = path.join(dossier, '~$' + nomLibre);
-    try {
-      fs.writeFileSync(tmp, donnees);
-      fs.renameSync(tmp, cible);
-    } finally {
-      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
-    }
-  } catch (e) {
-    echec(T('err.copie', [nomLibre, e.message]));
-    return;
-  }
+  let cible;
+  try { cible = kirby.deposerImageProvisoire(dossierArticleDoc(fournisseur.racine, slug), id, nom, donnees); }
+  catch (e) { echec(T('err.copie', [nom, e.message])); return; }
   await ctx.convertirCmykSiBesoin([cible]);       // un JPEG d'imprimerie ne s'affiche pas
   repondrePanneau(panneau, {
-    type: 'image-deposee', id: id, image: nomLibre,
+    type: 'image-deposee', id: id, image: path.basename(cible).replace(/^[^_]*__/, ''),
     apercu: apercuMedia(cible, { reste: BUDGET_APERCUS_MEDIA })
   });
 }
 
-// Crée la page de Documentation du numéro : son dossier, son .md vide et sa fiche de
-// métadonnées de type « documentation ». Rend le slug, ou null si l'écriture a échoué.
-//
-// Le .md naît vide et le reste : ce n'est plus un texte à écrire, seulement le magasin où
-// les blocs de fiches et de rubriques s'accumulent. Il faut bien qu'il existe — c'est lui
-// que la chaîne compile, et l'ordre du numéro se lit sur les dossiers d'articles — mais
-// personne n'a plus à l'ouvrir.
+// Crée la page de Documentation du numéro : son dossier, sa fiche de métadonnées de type
+// « documentation » et son documentation.<lang>.txt (les rubriques naissent vides). Rend
+// le slug, ou null si l'écriture a échoué.
 function creerPageDocumentation(fournisseur) {
   const racine = fournisseur.racine;
   const base = path.join(racine, dossierUnites());
-  // Un dossier « documentation » déjà pris par autre chose (page importée d'un Word sous ce
-  // nom, essai laissé là) ne doit pas être écrasé : on prend le nom libre suivant.
+  // Un dossier « documentation » déjà pris par autre chose ne doit pas être écrasé : on
+  // prend le nom libre suivant.
   let slug = SLUG_DOCUMENTATION;
   let n = 2;
   while (fs.existsSync(path.join(base, slug))) { slug = SLUG_DOCUMENTATION + '-' + n; n++; }
   const langue = langueRevue(racine);
   const titre = {};
-  titre[langue] = TL(langue, 'doc.titre.page');
+  titre[langue] = T('doc.titre.page');
   try {
     fs.mkdirSync(path.join(base, slug), { recursive: true });
-    ecrireAtomique(path.join(base, slug, slug + '.md'), '');
     ecrireAtomique(cheminMeta(racine, slug), serialiserMeta({
       type: TYPE_ACTUALITE, lang: langue, doi: '',
       title: titre, subtitle: {}, keywords: {}, author: []
     }));
+    kirby.ecrirePage(path.join(base, slug), langue, { title: titre[langue], rubriques: {} });
   } catch (e) {
-    // La page n'existe pas : ce n'est pas un avertissement, la fonction rend null juste après.
-    vscode.window.showErrorMessage(T('err.ecriture', [slug + '.md', e.message]));
+    vscode.window.showErrorMessage(T('err.ecriture', [slug, e.message]));
     return null;
   }
   vscode.window.setStatusBarMessage(T('doc.creee'), 5000);
@@ -295,16 +276,10 @@ function creerPageDocumentation(fournisseur) {
 
 // L'en-tête « ACTUALITÉ » cliqué, ou la commande appelée depuis la palette : le formulaire
 // de la page de Documentation s'ouvre, et la page se crée si le numéro n'en a pas encore.
-//
-// La création seule est refusée sur un numéro verrouillé — la consultation, non : on doit
-// pouvoir relire la Documentation d'un numéro déjà bouclé.
 async function ouvrirPageDocumentation(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
-  // ⚠ Un livre n'a pas de Documentation, comme il n'a pas de traductions : la section
-  //   n'existe pas dans son arbre, et la commande ne doit pas en fabriquer une par la
-  //   palette.
   const profil = session.profilOuvrage() || profils.profilPour('revue');
-  if (profil.cle !== 'revue') { return; }
+  if (profil.cle !== 'revue') { return; }      // un livre n'a pas de Documentation
   let slug = fournisseur.slugDocumentation();
   if (!slug) {
     if (refuserSiVerrouille()) { return; }
@@ -317,7 +292,6 @@ async function ouvrirPageDocumentation(fournisseur, rafraichirTout) {
 
 let panneauxDocumentation = new Map();   // slug -> WebviewPanel (un formulaire par unité)
 
-// Rappel donné à lib/cycle-vie.js (fermerFormulairesEcriture).
 function fermerPanneauxDocumentationDe(racine, slug) {
   const tout = !racine || !slug;
   for (const [cle, panneau] of Array.from(panneauxDocumentation.entries())) {
@@ -327,13 +301,10 @@ function fermerPanneauxDocumentationDe(racine, slug) {
   }
 }
 
-// `cible` est soit un item de l'arbre ({ slug }), soit un slug tout court — c'est par là que
-// l'en-tête « ACTUALITÉ » ouvre la page de Documentation du numéro, sans passer par un item.
+// `cible` est soit un item de l'arbre ({ slug }), soit un slug tout court.
 async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
   if (!fournisseur.racine) { return; }
   const racine = fournisseur.racine;
-  // Même cascade que les autres formulaires d'article : le slug reçu, l'item de l'arbre,
-  // l'éditeur actif, puis l'aperçu courant.
   let slug = (typeof cible === 'string' && cible) ? cible
     : ((cible && cible.slug) ? String(cible.slug) : null);
   if (!slug) {
@@ -345,178 +316,109 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
     vscode.window.setStatusBarMessage(T('ressource.horsarticle'), 4000);
     return;
   }
-  // Les rubriques n'ont de sens que sur une page de Documentation : un article ordinaire
-  // peut relever un livre, jamais tenir le « Tour d'horizon » du numéro. C'est aussi ce qui
-  // décide du titre du panneau et de ce que fait le bouton « Retour ».
   const pageDoc = fournisseur.estActualite(slug);
   ctx.focaliserUnite(fournisseur, slug);
-  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
+  const dossierArticle = dossierArticleDoc(racine, slug);
+  const langue = langueRevue(racine);
+  const revueJeton = ctx.revueCourante(racine);
   const existant = panneauxDocumentation.get(slug);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   await fermerTousLesApercus();
   const titrePanneau = pageDoc ? T('doc.titre.page') : T('doc.titre', [slug]);
   const panneau = vscode.window.createWebviewPanel(
     'szhDocumentation', titrePanneau, vscode.ViewColumn.One,
-    // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
     { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
   );
   panneauxDocumentation.set(slug, panneau);
   panneau.onDidDispose(() => { if (panneauxDocumentation.get(slug) === panneau) { panneauxDocumentation.delete(slug); } });
 
-  async function texteArticle() {
-    try {
-      const doc = await vscode.workspace.openTextDocument(md);
-      return doc.getText();
-    } catch (e) { return ''; }
+  // Un descripteur par fiche d'un type que ce cockpit connaît (kirby.typesConnus()). Une
+  // fiche d'un type encore inconnu ici reste sur le disque, invisible à ce panneau.
+  function listerRessources(budget) {
+    return kirby.listerFiches(dossierArticle, langue).map((f) => {
+      const cle = kirby.champFichierDuType(f.type);
+      const nomImage = cle ? f.valeurs[cle] : '';
+      const apercu = nomImage
+        ? apercuMedia(path.join(dossierArticle, f.dossier, nomImage), budget) : null;
+      return { id: f.uuid, type: f.type, valeurs: f.valeurs, apercu: apercu };
+    });
+  }
+  function listerRubriques() {
+    const page = kirby.lirePage(dossierArticle, langue);
+    return kirby.rubriquesPourRevue(revueJeton).map((r) =>
+      ({ id: r.cle, type: r.cle, contenu: page.rubriques[r.cle] || '' }));
   }
 
-  // Un descripteur par fiche d'un type que ce cockpit connaît (ressourcesLib.typesConnus()).
-  // Une fiche d'un type encore inconnu ici (un .md plus récent que l'extension installée,
-  // ou un type ajouté côté rendu avant de l'être côté formulaire) reste dans le texte,
-  // invisible à ce panneau, et n'est jamais réécrite : enregistrer() ne touche que les
-  // identifiants que la webview lui rend, jamais tout le fichier d'un coup.
-  function listerRessources(texteMd, budget) {
-    const connus = new Set(ressourcesLib.typesConnus());
-    const base = path.join(racine, dossierUnites(), slug, 'media');
-    return ressourcesLib.lireRessources(texteMd)
-      .filter((r) => connus.has(r.type))
-      .map((r) => ({
-        id: r.id, type: r.type, valeurs: r.valeurs,
-        apercu: (r.valeurs.image && relatifImageValide(r.valeurs.image))
-          ? apercuMedia(path.join(base, r.valeurs.image), budget) : null
-      }));
-  }
-
-  // Une rubrique d'un type que ce cockpit ne connaît pas encore (un .md plus récent que
-  // l'extension installée, ou l'ancien bloc `agenda` devenu une fiche) reste dans le texte,
-  // invisible à ce panneau, et n'est jamais réécrite : enregistrer() ne touche que les
-  // identifiants que la webview lui rend.
-  function listerRubriques(texteMd) {
-    const connus = new Set(rubriquesLib.typesConnus());
-    return rubriquesLib.lireRubriques(texteMd)
-      .filter((r) => connus.has(r.type))
-      .map((r) => ({ id: r.id, type: r.type, contenu: r.contenu }));
-  }
-
-  // `extra` porte le jeton de la course pret/charger : `{ requete }` en réponse
-  // à « pret ».
   async function charger(vers, extra) {
-    const texteMd = await texteArticle();
     const budget = { reste: BUDGET_APERCUS_MEDIA };
     repondrePanneau(vers, Object.assign({
       type: 'charger', slug: slug,
-      ressources: listerRessources(texteMd, budget),
-      rubriques: pageDoc ? listerRubriques(texteMd) : [],
-      typesConfig: typesRessourceConfig(),
-      typesRubrique: pageDoc ? typesRubriqueConfig() : [],
+      ressources: listerRessources(budget),
+      rubriques: pageDoc ? listerRubriques() : [],
+      typesConfig: typesRessourceConfig(langue),
+      typesRubrique: pageDoc ? typesRubriqueConfig(revueJeton, langue) : [],
       accent: ctx.lireCouleurAccent(racine),
-      i18n: textesDocumentation(ctx.nomRevueAffiche(reserveLib.autreRevue(ctx.revueCourante(racine)))),
-      // Plafond des images déposées sur une fiche : plus de littéral côté webview.
+      i18n: textesDocumentation(ctx.nomRevueAffiche(reserveLib.autreRevue(revueJeton))),
       limites: ctx.limitesMedias()
     }, extra || {}));
   }
 
-  const ecrireTexteArticle = async (texte) => {
-    let doc;
-    try { doc = await vscode.workspace.openTextDocument(md); }
-    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) }); return false; }
-    if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
-    try {
-      const edition = new vscode.WorkspaceEdit();
-      const fin = doc.lineAt(doc.lineCount - 1).range.end;
-      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
-      if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), md]) });
-        return false;
-      }
-      await doc.save();                              // déclenche la recompilation
-    } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
-      return false;
-    }
-    return true;
-  };
-
-  // Écrit ce que la webview envoie : les fiches, puis les rubriques. Un bloc dont
-  // l'identifiant existe déjà dans le .md est réécrit en place, un autre est ajouté à la
-  // suite des blocs de sa famille. Rend le nombre de blocs écrits, ou -1 en cas d'échec
-  // déjà signalé.
-  //
-  // Deux règles distinctes, et la différence est voulue :
-  //   - une fiche incomplète s'écrit (ressourceEcrivable), c'est la pastille du formulaire
-  //     qui dit ce qui manque. Seule une carte entièrement vide — celle que « Ajouter »
-  //     vient de créer — est ignorée ;
-  //   - une rubrique vidée sort du .md. Un titre de rubrique sans rien dessous ne veut rien
-  //     dire dans le PDF, et c'est ainsi que la corbeille du formulaire opère : elle vide le
-  //     texte, elle ne supprime pas un bloc qui doit rester présent à l'écran.
+  // Écrit ce que la webview envoie : les fiches, puis les rubriques (si la page en porte).
+  // Rend { total, correspondances } — correspondances = les uuid neufs des fiches créées
+  // dans ce lot, pour que la webview mette à jour l'identifiant de ses cartes ; ou null en
+  // cas d'échec déjà signalé.
   const enregistrer = async (liste, listeRubriques) => {
-    const texte = await texteArticle();
-    let travail = texte;
     let total = 0;
+    const correspondances = [];
     for (const r of (Array.isArray(liste) ? liste : [])) {
       const id = String((r && r.id) || '');
       const type = String((r && r.type) || '');
-      if (id === '' || !ressourcesLib.typeValide(type)) { continue; }
-      const valeurs = (r && r.valeurs) || {};
-      // Une image reçue doit rester un chemin sûr sous media/ ; sinon traitée comme
-      // absente plutôt que d'écrire une référence qui casserait le rendu.
-      const propre = Object.assign({}, valeurs, {
-        image: (valeurs.image && relatifImageValide(valeurs.image)) ? valeurs.image : ''
-      });
-      const dejaLa = ressourcesLib.lireRessources(travail).some((x) => x.id === id);
-      if (!dejaLa && !ressourcesLib.ressourceEcrivable(type, propre)) { continue; }
-      const resultat = dejaLa
-        ? ressourcesLib.ecrireRessource(travail, id, type, propre)
-        : { texte: ressourcesLib.ajouterRessource(travail, id, type, propre), ok: true };
-      if (!resultat.ok) { continue; }                // disparue entre-temps : ignorée
-      travail = resultat.texte;
-      total++;
-    }
-    // Les fiches se rangent d'elles-mêmes — livres, films et recherches par titre,
-    // interventions par canton (lib/ressources.js). Une seule fois, après la boucle : trier
-    // à chaque écriture permuterait les blocs entre deux fiches d'un même enregistrement,
-    // pour le même résultat. Le tri porte sur le .md et pas sur le seul affichage, parce que
-    // le formulaire montre la position de chaque fiche : une position que le document ne
-    // respecterait pas mentirait sur l'ordre du PDF.
-    // langueRevue() suit désormais le profil (lib/profil.js) : plus besoin du détour par
-    // cheminConfig() pour qu'un livre trie dans sa propre langue.
-    if (total > 0) {
-      const langue = langueRevue(racine);
-      travail = ressourcesLib.reordonnerRessources(travail, langue);
-    }
-    // Les rubriques ensuite, et sans tri d'aucune sorte : leur ordre est un choix éditorial
-    // (le Tour d'horizon avant les Références, ou l'inverse, selon le numéro) et non un
-    // classement mécanique. Les réordonner dans le dos du rédacteur changerait l'ordre du
-    // PDF sans qu'il l'ait demandé.
-    for (const r of (Array.isArray(listeRubriques) ? listeRubriques : [])) {
-      const id = String((r && r.id) || '');
-      const type = String((r && r.type) || '');
-      if (id === '' || !rubriquesLib.typeValide(type)) { continue; }
-      const contenu = String((r && r.contenu) !== undefined && r.contenu !== null ? r.contenu : '');
-      const dejaLa = rubriquesLib.lireRubriques(travail).some((x) => x.id === id);
-      if (contenu.trim() === '') {
-        if (!dejaLa) { continue; }                   // vide et absente : rien à faire
-        const ote = rubriquesLib.retirerRubrique(travail, id);
-        if (ote.ok) { travail = ote.texte; total++; }
-        continue;
+      if (id === '' || !kirby.typeConnu(type)) { continue; }
+      const valeurs = Object.assign({}, (r && r.valeurs) || {});
+      const dejaLa = kirby.trouverDossierParUuid(dossierArticle, langue, id) !== null;
+      if (!dejaLa && !kirby.ficheEcrivable(type, valeurs)) { continue; }
+      const imageSource = kirby.imageProvisoire(dossierArticle, id);
+      try {
+        if (dejaLa) {
+          kirby.ecrireFiche(dossierArticle, langue, id, type, valeurs, imageSource);
+        } else {
+          const cree = kirby.ajouterFiche(dossierArticle, langue, type, valeurs, imageSource);
+          correspondances.push({ avant: id, apres: cree.uuid });
+        }
+      } finally {
+        if (imageSource) { kirby.nettoyerImageProvisoire(dossierArticle, id); }
       }
-      const resultat = dejaLa
-        ? rubriquesLib.ecrireRubrique(travail, id, type, contenu)
-        : { texte: rubriquesLib.ajouterRubrique(travail, id, type, contenu), ok: true };
-      if (!resultat.ok) { continue; }                // disparue entre-temps : ignorée
-      travail = resultat.texte;
       total++;
     }
-    if (travail === texte) { return total; }
-    if (!(await ecrireTexteArticle(travail))) { return -1; }
-    if (rafraichirTout) { rafraichirTout(); }
-    return total;
+    // Les fiches se rangent d'elles-mêmes — une seule fois, après la boucle : leur ordre est
+    // un calcul du contrat (kirby.calculerOrdreFiches), jamais l'ordre de saisie.
+    if (total > 0) { kirby.reordonnerFiches(dossierArticle, langue); }
+
+    // Les rubriques ensuite : la page de Documentation seulement (pageDoc), et sans tri
+    // d'aucune sorte — leur ordre est un choix éditorial.
+    if (pageDoc && Array.isArray(listeRubriques) && listeRubriques.length > 0) {
+      const pageActuelle = kirby.lirePage(dossierArticle, langue);
+      const rubriques = Object.assign({}, pageActuelle.rubriques);
+      let touche = false;
+      for (const r of listeRubriques) {
+        const cle = String((r && r.id) || (r && r.type) || '');
+        if (cle === '' || !kirby.rubriquesDuContrat().some((x) => x.cle === cle)) { continue; }
+        const contenu = String((r && r.contenu) !== undefined && r.contenu !== null ? r.contenu : '');
+        if (rubriques[cle] !== contenu) { touche = true; }
+        rubriques[cle] = contenu;
+      }
+      if (touche) {
+        kirby.ecrirePage(dossierArticle, langue,
+          { title: pageActuelle.title, uuid: pageActuelle.uuid, rubriques: rubriques });
+        total++;
+      }
+    }
+    if (total > 0 && rafraichirTout) { rafraichirTout(); }
+    return { total: total, correspondances: correspondances };
   };
 
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
     if (ctx.repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { await charger(panneau, { requete: msg.requete }); return; }
     if (msg.type === MSG.MODIFIE) {
@@ -524,30 +426,24 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
       return;
     }
     if (msg.type === MSG.ENREGISTRER) {
-      const n = await enregistrer(msg.ressources, msg.rubriques);
-      if (n < 0) { return; }
-      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
-      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [n]), 5000); }
+      const resultat = await enregistrer(msg.ressources, msg.rubriques);
+      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto, correspondances: resultat.correspondances });
+      if (resultat.total > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [resultat.total]), 5000); }
       return;
     }
-    // Une fiche retirée sort du .md ; une rubrique aussi, mais son bloc de saisie reste à
-    // l'écran (voir le formulaire) : c'est bien le même geste côté disque.
+    // Une fiche retirée sort de l'arborescence (son dossier entier, image comprise) ; une
+    // rubrique vidée reste dans le fichier de page — c'est enregistrer() qui la vide, pas
+    // ce message (voir le formulaire).
     if (msg.type === MSG.RETIRER) {
       if (refuserSiVerrouille()) {
-        // La carte est déjà retirée du DOM côté webview (retrait optimiste) : sans ce
-        // message, plus rien ne dit à la page que rien n'a été écrit, et la carte reste
-        // disparue pour de bon.
         repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
         return;
       }
       const id = String(msg.id || '');
-      if (id === '') { return; }
-      const texte = await texteArticle();
-      const resultat = msg.famille === 'rubrique'
-        ? rubriquesLib.retirerRubrique(texte, id)
-        : ressourcesLib.retirerRessource(texte, id);
+      if (id === '' || msg.famille !== 'fiche') { return; }
+      const resultat = kirby.retirerFiche(dossierArticle, langue, id);
       if (!resultat.ok) { return; }                  // déjà partie : rien à faire
-      if (!(await ecrireTexteArticle(resultat.texte))) { return; }
+      kirby.reordonnerFiches(dossierArticle, langue);
       if (rafraichirTout) { rafraichirTout(); }
       return;
     }
@@ -560,46 +456,41 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
       return;
     }
     // « Mettre en réserve » : la fiche sort de l'article. « Envoyer à l'autre revue » : elle
-    // y reste, et c'est une copie qui part. Les deux passent par le même dépôt, la
-    // différence tient aux deux derniers arguments (revue visée, à traduire) et au retrait.
+    // y reste, et c'est une copie qui part.
     if (msg.type === MSG.DETACHER || msg.type === MSG.ENVOYER) {
       if (refuserSiVerrouille()) { return; }
       const id = String(msg.id || '');
       if (id === '') { return; }
-      const texte = await texteArticle();
-      const fiche = ressourcesLib.lireRessources(texte).find((f) => f.id === id);
-      if (!fiche) { return; }                        // déjà partie du .md : rien à déposer
+      const entree = kirby.trouverDossierParUuid(dossierArticle, langue, id);
+      if (!entree) { return; }                        // déjà partie : rien à déposer
       const versAutre = msg.type === MSG.ENVOYER;
-      const vers = versAutre ? reserveLib.autreRevue(ctx.revueCourante(racine)) : ctx.revueCourante(racine);
+      const vers = versAutre ? reserveLib.autreRevue(revueJeton) : revueJeton;
       if (!vers) { return; }
-      if (!ctx.deposerFicheEnReserve(racine, slug, fiche, vers, versAutre)) { return; }
+      const ok = ctx.deposerFicheEnReserve(racine, slug, {
+        type: entree.type, dossier: path.join(dossierArticle, entree.dossier), langue: langue
+      }, vers, versAutre);
+      if (!ok) { return; }
       if (versAutre) {
         vscode.window.setStatusBarMessage(T('ressource.envoye'), 5000);
-        await charger(panneau);                      // rien n'a bougé dans le .md : on recharge tel quel
+        await charger(panneau);                      // rien n'a bougé sur ce disque : on recharge tel quel
         return;
       }
-      const resultat = ressourcesLib.retirerRessource(texte, id);
-      if (resultat.ok && !(await ecrireTexteArticle(resultat.texte))) { return; }
+      kirby.retirerFiche(dossierArticle, langue, id);
+      kirby.reordonnerFiches(dossierArticle, langue);
       vscode.window.setStatusBarMessage(T('ressource.detache'), 5000);
       await charger(panneau);
       if (rafraichirTout) { rafraichirTout(); }
       return;
     }
     if (msg.type === MSG.RETOUR_ARTICLE) {
-      // Garde « non enregistré », comme dans le gestionnaire des médias.
       if (msg.modifie) {
         const choix = await confirmerAbandon(
           pageDoc ? T('doc.quitter.page') : T('doc.quitter.question', [slug]));
         if (choix === 'annuler') { return; }          // Annuler : on reste
-        if (choix === 'enregistrer') {
-          const n = await enregistrer(msg.ressources, msg.rubriques);
-          if (n < 0) { return; }                      // échec d'écriture : on reste
-          if (n > 0) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [n]), 5000); }
-        }
+        if (choix === 'enregistrer') { await enregistrer(msg.ressources, msg.rubriques); }
       }
-      // Une page de Documentation n'a pas de texte à relire : son .md n'est plus qu'un
-      // magasin de blocs, jamais ouvert à la main. Le panneau se ferme donc sur l'arbre,
-      // et non sur un éditeur de markdown.
+      // Une page de Documentation n'a pas de texte à relire : son arborescence n'est qu'un
+      // magasin de fiches, jamais ouverte à la main.
       if (!pageDoc) { await ctx.ouvrirArticle(fournisseur, slug); }
       panneau.dispose();
       if (pageDoc && rafraichirTout) { rafraichirTout(); }
@@ -613,11 +504,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
 module.exports = {
   configurer,
   ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe,
-  // Les trois fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne
-  // sont pas pures — elles lisent la langue du cockpit — et c'est précisément ce qu'il
-  // faut éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige
-  // que tout diffère. Un libellé écrit en dur ici, ou resté français dans la table
-  // allemande, ne se voit d'aucune autre façon : la parité des clés (contrats.test.js) ne
-  // regarde pas les valeurs, et le formulaire, lui, n'est lu que par la rédaction.
-  _libelles: { textesDocumentation, typesRessourceConfig, typesRubriqueConfig }
+  dossierArticleDoc,
+  // Les fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne sont pas
+  // pures — elles lisent la langue et le contrat — et c'est précisément ce qu'il faut
+  // éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige que
+  // tout diffère.
+  _libelles: { textesDocumentation, typesRessourceConfig, typesRubriqueConfig, optionsInstrument }
 };

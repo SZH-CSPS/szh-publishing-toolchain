@@ -1,46 +1,60 @@
-// La réserve de fiches : le magasin hors numéro où l'on met de côté une fiche structurée
-// (livre, film, intervention, recherche, revue-soeur — lib/ressources.js) et le canal par
-// lequel une fiche part vers l'autre revue pour traduction (cahier des charges, §4).
+// La réserve de fiches : le magasin hors numéro où l'on met de côté une fiche de la
+// Documentation (livre, film, intervention, recherche… — pipeline/kirby/champs-
+// documentation.json) et le canal par lequel une fiche part vers l'autre revue pour
+// traduction (cahier des charges, §4).
 //
-// Deux gestes, une seule mécanique d'écriture :
-//   « Détacher »            -> le bloc quitte l'article, atterrit dans la réserve de la
-//                               revue courante, a-traduire: false (rien à traduire : la
-//                               fiche reste dans sa langue d'origine, simplement rangée).
-//   « Envoyer à l'autre revue » -> le bloc reste dans l'article, une copie atterrit dans la
-//                               réserve de l'autre revue, a-traduire: true.
-// Ce module ne sait pas lequel des deux gestes est en cours : il ne fait qu'écrire, lister
-// et retirer un fichier de réserve. La différence entre les deux (a-traduire, quelle
-// réserve) est un choix de l'appelant, posé dans le `fiche` qu'il passe à deposer().
+// Depuis que la Documentation est une arborescence Kirby (lib/kirby-contenu.js), une fiche
+// est un DOSSIER — son <type>.<langue>.txt et son image éventuelle, ensemble — et non plus
+// un seul bloc de texte. La réserve range donc des dossiers, un par fiche déposée, sous
+// _reserve/<revue>/<horodatage>-<type>-<slug>/ :
+//   - le contenu de la fiche, copié tel quel (voir deposer()) ;
+//   - un sidecar `_origine.txt` qui porte les quatre clés du §4 (origine, numéro-origine,
+//     à-traduire, déposé-le) — la fiche elle-même n'en sait rien, ce sidecar est propre à
+//     la réserve.
 //
-// ⚠ Frontière : ce module ne modifie jamais le .md d'un article. Retirer le bloc de
-// l'article (le geste « détacher ») est le travail de lib/ressources.js
-// (retirerRessource), appelé ailleurs, avant ou après l'appel à deposer() selon ce que
-// l'appelant a décidé. Séparer les deux garde chaque module à une seule responsabilité :
-// celui-ci ignore tout du format d'un article, l'autre ignore tout de la réserve.
+// Deux gestes, une seule mécanique de dépôt :
+//   « Détacher »                -> le dossier quitte l'article, atterrit dans la réserve de
+//                                   la revue courante, a-traduire: false, même langue.
+//   « Envoyer à l'autre revue » -> le dossier reste dans l'article, une COPIE atterrit dans
+//                                   la réserve de l'autre revue, a-traduire: true, avec un
+//                                   Uuid neuf et son fichier de contenu renommé
+//                                   <type>.<autre-langue>.txt — le texte n'est PAS traduit
+//                                   (ni les jetons de liste, ni la prose), seul le fichier
+//                                   qui le porte change de nom pour se ranger dans l'arbre
+//                                   de l'autre revue.
+// Ce module ne sait pas lequel des deux gestes est en cours : il ne fait que copier,
+// lister et retirer un dossier de réserve. La différence entre les deux (langue cible,
+// à-traduire) est un choix de l'appelant.
 //
-// ⚠ Pur, comme lib/profil.js et lib/slug.js : aucun require('vscode'). Seuls fs et path
-// portent ses écritures, et lib/slug.js son assainisseur de noms de fichier (voir
-// nomFichierFiche) — c'est ce qui rend le tout exerçable par `node --test` sans hôte.
+// ⚠ Frontière : ce module ne modifie jamais l'arborescence d'un article. Retirer la fiche
+// de l'article (le geste « détacher ») est le travail de lib/kirby-contenu.js
+// (retirerFiche), appelé ailleurs, avant ou après l'appel à deposer() selon ce que
+// l'appelant a décidé.
+//
+// ⚠ Pur, comme lib/kirby-contenu.js et lib/profil.js : aucun require('vscode').
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const { slugifier } = require('./slug');
+const kirby = require('./kirby-contenu');
 
 // Le dossier qui porte toutes les réserves, à la racine du parent du numéro (voir
 // cheminReserve). Un seul nom, jamais recopié en dur ailleurs dans ce fichier.
 const NOM_DOSSIER = '_reserve';
 
+// Le sidecar d'origine, à l'intérieur du dossier de chaque fiche déposée — propre à la
+// réserve, jamais copié dans un article.
+const NOM_SIDECAR = '_origine.txt';
+
 // Les deux seuls jetons de revue que le cockpit connaît (lib/liens.js: PRODUITS,
 // lib/yaml.js: REVUES, lib/archivage.js: MAILS_TRADUCTION portent déjà ces deux mots).
-// Redéclarés ici plutôt qu'importés : ce module n'a que fs et path en dépendance, et ces
-// deux chaînes ne bougent pas assez souvent pour valoir une dépendance croisée de plus.
 const REVUES = ['revue', 'zeitschrift'];
+const LANGUE_DE_REVUE = { revue: 'fr', zeitschrift: 'de' };
 
 // L'autre revue, pour « Envoyer vers l'autre revue » : une Zeitschrift envoie vers la
-// Revue et réciproquement. Une valeur qui n'est ni l'une ni l'autre — jeton corrompu,
-// numéro sans revue déclarée — rend null : à l'appelant de refuser le geste plutôt que
-// d'écrire dans un dossier au nom inventé.
+// Revue et réciproquement. Une valeur qui n'est ni l'une ni l'autre rend null : à
+// l'appelant de refuser le geste plutôt que d'écrire dans un dossier au nom inventé.
 function autreRevue(revue) {
   const r = String(revue === undefined || revue === null ? '' : revue).toLowerCase();
   if (r === 'revue') { return 'zeitschrift'; }
@@ -49,61 +63,31 @@ function autreRevue(revue) {
 }
 
 // cheminReserve(racineNumero, revue) -> chemin absolu du dossier de réserve de cette revue.
-//
-// Posée au niveau du parent du numéro, jamais dans le numéro lui-même : un numéro est
-// archivé, renommé, voire supprimé en fin de cycle (lib/archivage.js), alors qu'une fiche
-// mise de côté doit lui survivre. Le parent est aussi le niveau où vivent les dossiers de
-// numéro voisins dans l'arborescence SharePoint/OneDrive commune aux deux rédactions :
-// une fiche déposée ici est donc déjà partagée entre collègues, sans geste de plus.
-//
-// N'existe pas forcément sur le disque : voir deposer() (qui la crée) et lister() (qui ne
-// la crée jamais).
+// Posée au niveau du parent du numéro — voir l'en-tête de lib/documentation-hote.js pour
+// pourquoi : un numéro est archivé, renommé, voire supprimé en fin de cycle, alors qu'une
+// fiche mise de côté doit lui survivre.
 function cheminReserve(racineNumero, revue) {
   const parent = path.dirname(path.resolve(String(racineNumero === undefined || racineNumero === null ? '' : racineNumero)));
   return path.join(parent, NOM_DOSSIER, String(revue === undefined || revue === null ? '' : revue));
 }
 
-// ---- Frontmatter d'une fiche de réserve -------------------------------------------
+// ---- Sidecar d'origine ------------------------------------------------------------
 //
-// Les quatre clés du §4, dans cet ordre — origine, numero-origine, a-traduire, depose-le
-// — devant le bloc tel qu'il vivait dans l'article. `origine` et `a-traduire` s'écrivent
-// nus (un jeton, un booléen : rien à échapper) ; `numero-origine` et `depose-le` entre
-// guillemets, comme le reste du dépôt écrit ses valeurs de chaîne (voir citerValeur dans
-// lib/ressources.js) — un numéro de type « R2026-2 » ou une date ISO n'ont besoin de rien
-// de plus qu'un antislash et un guillemet échappés.
+// Même forme clé:valeur que serialiserFiche() portait autrefois en frontmatter d'un bloc
+// unique — sans le bloc, puisque le contenu de la fiche vit maintenant dans son propre
+// <type>.<langue>.txt, à côté.
 function citerYaml(v) {
   return '"' + String(v === undefined || v === null ? '' : v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
-
-// serialiserFiche({ origine, numeroOrigine, aTraduire, deposeLe, bloc }) -> texte
-//
-// ⚠ Le texte produit se termine par exactement un retour à la ligne après le bloc, quel
-// que soit son propre contenu (qu'il se termine déjà par un retour à la ligne ou non).
-// C'est ce qui rend l'aller-retour avec analyserFiche fidèle au caractère près : celle-ci
-// n'a qu'à ôter le dernier retour à la ligne du texte pour retrouver le bloc tel qu'il
-// a été donné ici, sans jamais avoir à deviner s'il en portait déjà un.
-function serialiserFiche(fiche) {
-  const f = fiche || {};
-  const origine = String(f.origine === undefined || f.origine === null ? '' : f.origine);
-  const aTraduire = !!f.aTraduire;
-  const numeroOrigine = String(f.numeroOrigine === undefined || f.numeroOrigine === null ? '' : f.numeroOrigine);
-  const deposeLe = String(f.deposeLe === undefined || f.deposeLe === null ? '' : f.deposeLe);
-  const bloc = String(f.bloc === undefined || f.bloc === null ? '' : f.bloc);
-  const entete = [
-    '---',
-    'origine: ' + origine,
-    'numero-origine: ' + citerYaml(numeroOrigine),
-    'a-traduire: ' + (aTraduire ? 'true' : 'false'),
-    'depose-le: ' + citerYaml(deposeLe),
-    '---'
-  ].join('\n');
-  return entete + '\n' + bloc + '\n';
+function serialiserOrigine(o) {
+  const f = o || {};
+  return [
+    'origine: ' + String(f.origine === undefined || f.origine === null ? '' : f.origine),
+    'numero-origine: ' + citerYaml(f.numeroOrigine),
+    'a-traduire: ' + (f.aTraduire ? 'true' : 'false'),
+    'depose-le: ' + citerYaml(f.deposeLe)
+  ].join('\n') + '\n';
 }
-
-// Une valeur de frontmatter -> chaîne nue : ôte les guillemets d'une valeur citée (et
-// dé-échappe \" et \\, symétrique de citerYaml), sinon rend le jeton tel quel (cas
-// `origine: revue`, jamais cité). Absente -> chaîne vide, jamais undefined : une fiche de
-// réserve n'a rien à deviner de plus que ce que le formulaire lui demandera.
 function devaleurYaml(brut) {
   const t = String(brut === undefined || brut === null ? '' : brut).trim();
   if (t.length >= 2 && t.charAt(0) === '"' && t.charAt(t.length - 1) === '"') {
@@ -111,265 +95,151 @@ function devaleurYaml(brut) {
   }
   return t;
 }
-function devaleurBooleenne(brut) { return devaleurYaml(brut).toLowerCase() === 'true'; }
-
-// analyserFiche(texte) -> { origine, numeroOrigine, aTraduire, deposeLe, bloc }
-//
-// Tolérant, à dessein : une réserve n'est pas un format d'échange machine, c'est un
-// dossier qu'un collègue peut ouvrir, corriger ou vider à la main. Trois dégradations
-// couvertes, chacune rendant quand même un objet exploitable :
-//   * pas de frontmatter du tout (fichier composé à la main) -> les quatre clés
-//     retombent sur leur valeur de repli, `bloc` reçoit alors tout le texte ;
-//   * frontmatter jamais refermé (un « --- » de tête oublié de sa paire) -> même repli,
-//     par prudence : mieux vaut montrer tout le texte que d'en perdre un bout en
-//     devinant une fermeture qui n'existe pas ;
-//   * clés inconnues ou en trop dans le frontmatter -> ignorées, les quatre attendues
-//     sont lues où qu'elles soient parmi les lignes.
-//
-// ⚠ Le bloc peut lui-même contenir une ligne qui vaut exactement « --- » (un bloc de
-// ressource écrit à la main avec une note bibliographique en trois tirets, par exemple) :
-// ça ne perturbe pas la lecture, puisqu'on s'arrête à la première ligne « --- » rencontrée
-// après l'ouverture — nécessairement la fermeture posée par serialiserFiche, jamais une
-// occurrence plus loin dans le bloc, qu'on n'a pas encore atteinte à ce moment du scan.
-function analyserFiche(texte) {
+function analyserOrigine(texte) {
+  const repli = { origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '' };
   const src = String(texte === undefined || texte === null ? '' : texte);
-  const repli = { origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '', bloc: src };
-
-  const finLigne1 = src.indexOf('\n');
-  if (finLigne1 === -1) { return repli; }
-  let ligne1 = src.slice(0, finLigne1);
-  if (ligne1.charAt(ligne1.length - 1) === '\r') { ligne1 = ligne1.slice(0, -1); }
-  if (ligne1.trim() !== '---') { return repli; }
-
   const paires = {};
-  let position = finLigne1 + 1;
-  while (position <= src.length) {
-    const finLigne = src.indexOf('\n', position);
-    const brute = finLigne === -1 ? src.length : finLigne;
-    let ligne = src.slice(position, brute);
-    if (ligne.charAt(ligne.length - 1) === '\r') { ligne = ligne.slice(0, -1); }
-    if (ligne.trim() === '---') {
-      let reste = finLigne === -1 ? '' : src.slice(finLigne + 1);
-      // Le seul retour à la ligne que serialiserFiche ajoute après le bloc : on l'ôte
-      // pour retrouver le bloc au caractère près (voir le commentaire de serialiserFiche).
-      if (reste.charAt(reste.length - 1) === '\n') { reste = reste.slice(0, -1); }
-      return {
-        origine: devaleurYaml(paires['origine']),
-        numeroOrigine: devaleurYaml(paires['numero-origine']),
-        aTraduire: devaleurBooleenne(paires['a-traduire']),
-        deposeLe: devaleurYaml(paires['depose-le']),
-        bloc: reste
-      };
-    }
-    const cle = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (cle) { paires[cle[1]] = cle[2]; }
-    if (finLigne === -1) { break; }              // jamais refermé : on retombe sur repli
-    position = finLigne + 1;
+  for (const ligne of src.split('\n')) {
+    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (m) { paires[m[1]] = m[2]; }
   }
-  return repli;
+  return {
+    origine: devaleurYaml(paires['origine']) || repli.origine,
+    numeroOrigine: devaleurYaml(paires['numero-origine']) || repli.numeroOrigine,
+    aTraduire: devaleurYaml(paires['a-traduire']).toLowerCase() === 'true',
+    deposeLe: devaleurYaml(paires['depose-le']) || repli.deposeLe
+  };
 }
 
-// ---- Nom de fichier d'une fiche déposée -------------------------------------------
-
-// Un segment de nom de fichier sûr et non vide, à partir d'un texte quelconque (type ou
-// titre) : réutilise l'assainisseur de lib/slug.js — translittération, minuscules,
-// non-alphanumérique -> tiret — plutôt que d'en écrire un second dans ce module.
-//
-// ⚠ slugifier() est taillée pour un nom de fichier : elle ampute tout ce qui suit le
-// dernier point, croyant lire une extension (« Titre.docx » -> « Titre »). Un titre de
-// fiche n'en a pas, et un point qu'il porterait légitimement (« Dr. Strangelove », des
-// points de suspension) serait pris à tort pour une extension et perdu. On neutralise
-// donc les points en amont — ils deviennent un tiret comme n'importe quel autre séparateur,
-// au lieu de déclencher l'amputation.
+// ---- Nom du dossier d'une fiche déposée -------------------------------------------
 function segmentAssaini(valeur) {
   return slugifier(String(valeur === undefined || valeur === null ? '' : valeur).replace(/\./g, ' '));
 }
-
 function pad(n, largeur) { return String(n).padStart(largeur, '0'); }
-
 // Horodatage compact, à la milliseconde, dont l'ordre alphabétique est l'ordre
-// chronologique (largeurs fixes, du plus au moins significatif) : c'est lui qui porte
-// toute l'unicité du nom de fichier (voir nomFichierFiche) et tout le tri de lister().
+// chronologique : c'est lui qui porte toute l'unicité du nom de dossier et tout le tri de
+// lister().
 function horodatage(quand) {
   const d = (quand instanceof Date && !isNaN(quand.getTime())) ? quand : new Date();
   return pad(d.getFullYear(), 4) + pad(d.getMonth() + 1, 2) + pad(d.getDate(), 2) + '-' +
     pad(d.getHours(), 2) + pad(d.getMinutes(), 2) + pad(d.getSeconds(), 2) + pad(d.getMilliseconds(), 3);
 }
-
-// nomFichierFiche(type, titre, quand) -> nom de fichier .md
-//
-// Horodatage de tête (tri = chronologie, voir horodatage()), puis type et titre assainis :
-// deux dépôts du même livre le même jour ne s'écrasent pas tant qu'ils n'arrivent pas à la
-// même milliseconde — en pratique jamais pour un geste humain (« Détacher », « Envoyer »),
-// chacun un clic distinct. deposer() n'écrit de toute façon jamais par-dessus un fichier
-// existant (voir son commentaire) : une collision, aussi improbable soit-elle, lève plutôt
-// que d'effacer une fiche déjà en réserve.
-function nomFichierFiche(type, titre, quand) {
-  return horodatage(quand) + '-' + segmentAssaini(type) + '-' + segmentAssaini(titre) + '.md';
-}
-
-// ---- Image d'une fiche déposée -----------------------------------------------------
-
-// Mêmes extensions d'image que EXTENSIONS_IMAGE_IMPORT de lib/medias.js — dupliquées ici
-// plutôt qu'importées, pour la même raison que nomLibre() ci-dessous (voir son en-tête).
-const EXTENSIONS_IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
-
-// Le nom voulu pour la copie, assaini comme medias.nomImageAssaini() : ramené à un simple
-// nom de fichier — jamais un chemin, une image dont le nom voulu porterait des séparateurs
-// (chemin recopié tel quel par mégarde par l'appelant) ne doit pas pouvoir viser un dossier
-// hors de la réserve —, son corps passé à slugifier() (accents, espaces, ponctuation) et
-// borné à 60 caractères, son extension reconnue et normalisée (jpeg -> jpg).
-// Vide, ou extension non reconnue -> repli sur l'extension de la source, pour ne jamais
-// écrire un fichier sans nom ni une extension que la chaîne de composition refuserait.
-function nomImageVoulu(image) {
-  const brut = path.basename(String((image && image.nom) || '').replace(/\\/g, '/')).trim();
-  const ext = (brut.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  if (brut !== '' && EXTENSIONS_IMAGE.indexOf(ext) !== -1) {
-    const corps = slugifier(brut.slice(0, brut.length - ext.length - 1));
-    return corps.slice(0, 60) + '.' + (ext === 'jpeg' ? 'jpg' : ext);
-  }
-  const extSource = path.extname(String((image && image.source) || '')) || '.jpg';
-  return 'image' + extSource;
-}
-
-// Le premier nom libre dans `dossier`, en partant de `nom` : même règle que
-// nomMediaLibre() de lib/medias.js, dupliquée ici plutôt qu'importée — ce module n'a que
-// fs, path et lib/slug.js en dépendance (voir l'en-tête), et ces cinq lignes ne valent pas
-// une dépendance de plus vers un module que rien d'autre ici n'utilise.
-function nomLibre(dossier, nom) {
-  const point = nom.lastIndexOf('.');
-  const base = point === -1 ? nom : nom.slice(0, point);
-  const ext = point === -1 ? '' : nom.slice(point);
-  let candidat = nom;
-  let i = 1;
-  while (fs.existsSync(path.join(dossier, candidat))) {
-    if (i > 1000) {
-      throw new Error('nomLibre : aucun nom libre pour « ' + nom + ' » dans ' + dossier
-        + ' après 1000 essais.');
-    }
-    candidat = base + '-' + i + ext;
-    i++;
-  }
-  return candidat;
-}
-
-// Le bloc d'une fiche écrit son image en `media/xxx.jpg` (lib/ressources.js,
-// blocRessource) parce que dans un article, l'image vit dans le sous-dossier media/ à
-// côté du .md. La réserve reproduit ce sous-dossier — `_reserve/<revue>/media/` — et le
-// bloc garde donc son préfixe `media/`.
-//
-// ⚠ Ce n'est pas un détail d'esthétique, c'est une condition de relecture. lireRessources()
-//   (lib/ressources.js) ne reconnaît une image que si sa cible commence par `media/` :
-//   toute autre forme retombe dans le descriptif. Une réserve qui aurait posé l'image à
-//   plat, à côté du .md, aurait donc rendu ses propres blocs illisibles par le module même
-//   qui les a écrits — la fiche revenait sans son image et avec une ligne `![](…)` collée
-//   dans son texte. Constaté sur un aller-retour réel, pas déduit.
-//   Seul le nom de fichier est donc réécrit ici, et seulement s'il a changé (nomLibre).
-const RE_IMAGE_MEDIA = /(!\[[^\]]*\]\()media\/([^()\s]+)((?:\s+"[^"]*")?\)(?:\{[^}]*\})?)/;
-function reecrireImageDuBloc(bloc, nomImageFinal) {
-  const src = String(bloc === undefined || bloc === null ? '' : bloc);
-  if (!RE_IMAGE_MEDIA.test(src)) { return src; }
-  return src.replace(RE_IMAGE_MEDIA, '$1media/' + nomImageFinal + '$3');
+// nomDossierFiche(type, titre, quand) -> nom de dossier, sans extension (une fiche est un
+// dossier, plus un fichier .md).
+function nomDossierFiche(type, titre, quand) {
+  return horodatage(quand) + '-' + segmentAssaini(type) + '-' + segmentAssaini(titre);
 }
 
 // ---- Écrire, lister, retirer --------------------------------------------------------
 
 // deposer(racineNumero, revue, fiche) -> { chemin }
 //
-// `fiche` porte les quatre champs de serialiserFiche (origine, numeroOrigine, aTraduire,
-// deposeLe, bloc), plus `type` et `titre` (pour nommer le fichier — voir
-// nomFichierFiche), plus deux champs optionnels :
-//   * `quand` : Date de l'horodatage du nom de fichier ; à défaut, l'instant présent ;
-//   * `image` : { source, nom } — voir plus bas.
+// `fiche` porte :
+//   * `dossierSource` : le dossier réel de la fiche dans l'article (kirby-contenu.js,
+//     entrée `.dossier` de listerFiches()) — copié tel quel (contenu ET image) ;
+//   * `type`, `titre` : pour nommer le dossier de réserve (voir nomDossierFiche) ;
+//   * `langueSource` : la langue du fichier <type>.<langue>.txt à l'intérieur de
+//     `dossierSource` ;
+//   * `langueCible` (facultative, = langueSource par défaut) : si elle diffère, le fichier
+//     de contenu copié est renommé <type>.<langueCible>.txt — c'est tout ce que
+//     « Envoyer à l'autre revue » change au contenu lui-même ;
+//   * `origine`, `numeroOrigine`, `aTraduire`, `deposeLe` : le sidecar (voir plus haut) ;
+//   * `quand` (facultative) : Date de l'horodatage du nom de dossier.
 //
-// Crée l'arborescence de la réserve à la demande (mkdirSync récursif) : c'est la seule
-// des deux fonctions qui touchent le disque à le faire, lister() ne la crée jamais (voir
-// son commentaire) — sans quoi consulter une réserve vide en créerait une.
+// Un Uuid neuf est toujours posé dans la copie — une fiche de réserve n'est jamais le même
+// enregistrement Kirby que celui resté (ou non) dans l'article d'origine, même quand le
+// geste est « Détacher » et qu'aucune fiche ne reste en place : reprise en réserve, puis
+// réinsertion, doit pouvoir se faire sans jamais risquer deux pages du même Uuid.
 //
-// N'écrase jamais un fichier existant (drapeau 'wx') : une collision de nom, aussi
-// improbable soit-elle (voir nomFichierFiche), doit lever plutôt qu'effacer une fiche déjà
-// déposée par quelqu'un d'autre — cette réserve est un dossier OneDrive partagé.
-//
-// Pourquoi une copie de l'image, jamais un déplacement : ce module ne sait pas, et n'a
-// pas à savoir, si l'appelant est en train de « détacher » (le bloc quitte l'article :
-// l'image d'origine pourrait, ou non, être nettoyée par l'appelant) ou d'« envoyer vers
-// l'autre revue » (le bloc reste dans l'article, avec sa propre image intacte dans
-// articles/<slug>/media/ — la lui retirer casserait l'article resté en place). Le seul
-// choix qui marche dans les deux cas sans que ce module ait à les distinguer est de ne
-// jamais toucher au fichier source. Même parti que retirerRessource() dans
-// lib/ressources.js : le texte peut changer, le disque ne perd rien tout seul.
+// Crée l'arborescence de la réserve à la demande (mkdirSync récursif) : c'est la seule des
+// trois fonctions qui touchent le disque à le faire, lister() ne la crée jamais.
 function deposer(racineNumero, revue, fiche) {
   const f = fiche || {};
-  const dossier = cheminReserve(racineNumero, revue);
-  fs.mkdirSync(dossier, { recursive: true });
+  const racineReserve = cheminReserve(racineNumero, revue);
+  fs.mkdirSync(racineReserve, { recursive: true });
 
   const quand = (f.quand instanceof Date && !isNaN(f.quand.getTime())) ? f.quand : new Date();
-  const nom = nomFichierFiche(f.type, f.titre, quand);
-  const chemin = path.join(dossier, nom);
+  const nom = nomDossierFiche(f.type, f.titre, quand);
+  const chemin = path.join(racineReserve, nom);
+  if (fs.existsSync(chemin)) {
+    throw new Error('deposer : « ' + nom + ' » existe déjà dans la réserve.');
+  }
+  fs.cpSync(f.dossierSource, chemin, { recursive: true });
 
-  let bloc = f.bloc;
-  if (f.image && f.image.source) {
-    // media/ à côté du .md, comme dans un article : voir reecrireImageDuBloc().
-    const dossierMedia = path.join(dossier, 'media');
-    fs.mkdirSync(dossierMedia, { recursive: true });
-    const voulu = nomImageVoulu(f.image);
-    const nomImageFinal = nomLibre(dossierMedia, voulu);
-    fs.copyFileSync(f.image.source, path.join(dossierMedia, nomImageFinal));
-    bloc = reecrireImageDuBloc(bloc, nomImageFinal);
+  const langueSource = f.langueSource;
+  const langueCible = f.langueCible || langueSource;
+  const nomAncien = f.type + '.' + langueSource + '.txt';
+  const nomNeuf = f.type + '.' + langueCible + '.txt';
+  const cheminTxt = path.join(chemin, nomAncien);
+  let brut = '';
+  try { brut = fs.readFileSync(cheminTxt, 'utf8'); } catch (e) { /* copie incomplète : rien à réécrire */ }
+  if (brut !== '') {
+    const relu = kirby.lireTxt(brut);
+    const texteNeuf = kirby.ecrireTxt({
+      title: relu.title, uuid: kirby.genererUuid(),
+      champs: Object.keys(relu.champs).map((cle) => ({ cle: cle, valeurBrute: relu.champs[cle], forcerMultiligne: relu.champs[cle].indexOf('\n') !== -1 }))
+    });
+    if (nomNeuf !== nomAncien) { try { fs.unlinkSync(cheminTxt); } catch (e) { /* absent */ } }
+    fs.writeFileSync(path.join(chemin, nomNeuf), texteNeuf, 'utf8');
   }
 
-  fs.writeFileSync(chemin, serialiserFiche(Object.assign({}, f, { bloc })),
-    { encoding: 'utf8', flag: 'wx' });
-  return { chemin };
+  fs.writeFileSync(path.join(chemin, NOM_SIDECAR), serialiserOrigine({
+    origine: f.origine, numeroOrigine: f.numeroOrigine, aTraduire: f.aTraduire, deposeLe: f.deposeLe
+  }), 'utf8');
+
+  return { chemin: chemin };
 }
 
 // lister(racineNumero, revue) -> [{ chemin, nom, fiche }], du plus récent au plus ancien.
+// `fiche` = { origine, numeroOrigine, aTraduire, deposeLe, type, titre, langue, uuid,
+// dossier }, lu depuis le sidecar et le <type>.<langue>.txt qu'il contient.
 //
 // Un dossier absent rend [] : ce n'est pas une erreur — une réserve qui n'a encore jamais
-// reçu de dépôt n'existe simplement pas encore sur le disque (voir deposer(), seule à la
-// créer). Un dossier illisible pour toute autre raison se comporte de même : la réserve
-// est un outil de confort, jamais un chemin qui doit pouvoir faire échouer l'ouverture
-// du numéro.
-//
-// Le tri se fait sur le nom de fichier, pas sur `fiche.deposeLe` : nomFichierFiche()
-// commence par un horodatage à la milliseconde (voir son commentaire), donc l'ordre
-// alphabétique déjà descendant du nom est l'ordre chronologique inverse voulu — nul besoin
-// de reparser une date, y compris pour un fichier dont le frontmatter aurait été trafiqué.
+// reçu de dépôt n'existe simplement pas encore sur le disque.
 function lister(racineNumero, revue) {
-  const dossier = cheminReserve(racineNumero, revue);
+  const racineReserve = cheminReserve(racineNumero, revue);
   let entrees;
-  try { entrees = fs.readdirSync(dossier, { withFileTypes: true }); }
+  try { entrees = fs.readdirSync(racineReserve, { withFileTypes: true }); }
   catch (e) { return []; }
 
   const res = entrees
-    .filter((e) => e.isFile() && /\.md$/i.test(e.name))
+    .filter((e) => e.isDirectory())
     .map((e) => {
-      const chemin = path.join(dossier, e.name);
-      let texte = '';
-      try { texte = fs.readFileSync(chemin, 'utf8'); } catch (err) { /* disparu entre-temps */ }
-      return { chemin: chemin, nom: e.name, fiche: analyserFiche(texte) };
+      const chemin = path.join(racineReserve, e.name);
+      let origine = { origine: '', numeroOrigine: '', aTraduire: false, deposeLe: '' };
+      try { origine = analyserOrigine(fs.readFileSync(path.join(chemin, NOM_SIDECAR), 'utf8')); }
+      catch (err) { /* sidecar absent : replis */ }
+      let type = '', langue = '', titre = '', uuid = '';
+      try {
+        const fichiers = fs.readdirSync(chemin);
+        const txt = fichiers.find((n) => /\.[a-z]{2}\.txt$/.test(n));
+        if (txt) {
+          const m = txt.match(/^(.+)\.([a-z]{2})\.txt$/);
+          type = m[1]; langue = m[2];
+          const relu = kirby.lireTxt(fs.readFileSync(path.join(chemin, txt), 'utf8'));
+          titre = relu.title; uuid = relu.uuid;
+        }
+      } catch (err) { /* dossier trafiqué : les champs restent vides */ }
+      return { chemin: chemin, nom: e.name, fiche: Object.assign({}, origine, { type, langue, titre, uuid }) };
     });
   res.sort((a, b) => (a.nom < b.nom ? 1 : a.nom > b.nom ? -1 : 0));
   return res;
 }
 
-// retirer(chemin) -> booléen
-//
-// Ôte le seul fichier .md donné — jamais une image voisine qu'il référencerait : même
-// parti que retirerRessource() dans lib/ressources.js, qui ne supprime pas non plus le
-// fichier de couverture d'une fiche qu'elle retire du texte. `retirer` ne reçoit d'ailleurs
-// qu'un chemin, pas une fiche : il ne pourrait pas deviner le nom de l'image même s'il le
-// voulait. Faux si le fichier n'existe déjà plus (ou jamais existé) : un second clic sur
-// « Retirer » ne doit pas lever.
+// retirer(chemin) -> booléen. Ôte le dossier entier — contenu et image. Faux si le dossier
+// n'existe déjà plus : un second clic sur « Retirer » ne doit pas lever.
 function retirer(chemin) {
-  try { fs.unlinkSync(chemin); return true; }
-  catch (e) { return false; }
+  try {
+    if (!fs.existsSync(chemin)) { return false; }
+    fs.rmSync(chemin, { recursive: true, force: true });
+    return true;
+  } catch (e) { return false; }
 }
 
 module.exports = {
-  NOM_DOSSIER, REVUES,
+  NOM_DOSSIER, NOM_SIDECAR, REVUES, LANGUE_DE_REVUE,
   autreRevue, cheminReserve,
-  serialiserFiche, analyserFiche,
-  nomFichierFiche, nomLibre, nomImageVoulu,
+  serialiserOrigine, analyserOrigine,
+  nomDossierFiche,
   deposer, lister, retirer
 };

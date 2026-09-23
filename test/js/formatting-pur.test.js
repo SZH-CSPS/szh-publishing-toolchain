@@ -79,15 +79,6 @@ test('medias.js (nomMediaLibre) est désormais nomMediaUnique de formatting-pur,
   assert.throws(() => medias.nomMediaLibre(dossier, 'a.png'), /1000/);
 });
 
-test('reserve.js (nomLibre) reçoit la même borne, à 1000 essais', () => {
-  const reserve = require(path.join(COCKPIT, 'lib', 'reserve.js'));
-  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-nom-reserve-'));
-  fs.writeFileSync(path.join(dossier, 'a.jpg'), '');
-  for (let i = 1; i <= 1000; i++) { fs.writeFileSync(path.join(dossier, 'a-' + i + '.jpg'), ''); }
-  assert.throws(() => reserve.nomLibre(dossier, 'a.jpg'), /1000/,
-    'aucune erreur au-delà de 1000 essais : la boucle n’est pas bornée');
-});
-
 test('panneaux.js importe PALETTE_MEF de formatting-pur.js, pas de formatting.js', () => {
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'panneaux.js'), 'utf8');
   assert.match(src, /require\(['"]\.\/formatting-pur['"]\)/,

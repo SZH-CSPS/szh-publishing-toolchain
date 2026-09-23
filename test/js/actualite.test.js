@@ -1,21 +1,18 @@
-// La section « Actualité » de l'arbre, et la page de Documentation du numéro.
+// La section « Actualité » de l'arbre, et la page de Documentation du numéro — devenue une
+// arborescence Kirby (lib/kirby-contenu.js) : documentation.<lang>.txt pour les rubriques,
+// un dossier <n>_<slug>/ par fiche. Il n'y a plus de <slug>.md pour cette page.
 //
-// Ce que le lot du 02.09.2026 a changé, et que ces tests fixent :
+// Ce que ce fichier fixe encore, inchangé depuis le lot du 02.09.2026 :
 //   - la page de Documentation ne se liste PLUS dans l'arbre. Cliquer l'en-tête
-//     « ACTUALITÉ » ouvre son formulaire, et la crée si le numéro n'en a pas encore :
-//     « Supprime le fichier .md de la documentation, il n'est pas nécessaire. Lorsque l'on
-//     clique sur "Actualité" affiche directement la liste des rubriques » ;
+//     « ACTUALITÉ » ouvre son formulaire, et la crée si le numéro n'en a pas encore ;
 //   - la section ne contient donc que l'entrée « Réserve » ;
-//   - le badge de l'en-tête compte les BLOCS de la page (fiches et rubriques), et non plus
-//     les articles — il n'y en a qu'un ;
+//   - le badge de l'en-tête compte les blocs de la page (fiches et rubriques non vides) ;
 //   - un seul formulaire porte les deux familles (media/documentation.js).
 //
-// La fixture n'a AUCUNE page de Documentation au départ : le premier test la fait créer, et
-// tous les suivants travaillent sur celle-là. C'est le seul moyen d'éprouver la création
-// dans ce harnais, où l'hôte ne s'active qu'une fois par processus.
-//
-// Pourquoi un fichier à part de hote.test.js : celui-ci contrôle l'arbre d'un numéro
-// ORDINAIRE et son jeu d'assertions positionnelles est déjà dense.
+// Ce qui change avec l'arborescence Kirby : kirby-contenu.js écrit par fs direct, sans
+// passer par vscode.workspace/WorkspaceEdit (faux sans effet dans ce harnais, voir
+// hote-factice.js) — les mutations d'« enregistrer » sont donc RÉELLES ici, à la différence
+// de l'ancien harnais bloc-dans-un-.md.
 //
 //   node --test test/js/actualite.test.js
 'use strict';
@@ -27,15 +24,16 @@ const path = require('path');
 const { revueDEssai, activerHote } = require('./hote-factice');
 
 const LF = '\n';
-const COCKPIT_DOC = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit',
-  'lib', 'documentation-hote.js');
+const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
+const COCKPIT_DOC = path.join(COCKPIT, 'lib', 'documentation-hote.js');
+const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
 // Le nom de dossier que le cockpit donne à la page qu'il crée (SLUG_DOCUMENTATION).
 const SLUG_DOC = 'documentation';
 const DOSSIER_DOC = path.join(REVUE, 'articles', SLUG_DOC);
-const MD_DOC = path.join(DOSSIER_DOC, SLUG_DOC + '.md');
+const TXT_DOC = path.join(DOSSIER_DOC, 'documentation.fr.txt');
 
 async function sections() {
   return await HOTE.arbre().getChildren();
@@ -50,10 +48,6 @@ async function entete() {
   assert.ok(e, 'en-tête ACTUALITÉ absent');
   return e;
 }
-// Le panneau fusionné, chargé. Deux panneaux du même type peuvent coexister — celui de la
-// page de Documentation et celui d'un article ordinaire — et panneauDeType() rendrait le
-// dernier créé : on les distingue donc par leur titre, qui porte le slug pour un article
-// et le titre imprimé de la page pour la Documentation.
 function panneauDont(predicat) {
   const p = HOTE.panneaux.filter((x) => x.type === 'szhDocumentation' && predicat(String(x.title || ''))).pop();
   assert.ok(p, 'panneau de Documentation absent');
@@ -74,7 +68,6 @@ test('les commandes du lot sont enregistrées', () => {
   for (const cmd of ['szh.documentation', 'szh.reserve', 'szh.ressourcesArticle']) {
     assert.ok(HOTE.commandes().includes(cmd), 'commande non enregistrée : ' + cmd);
   }
-  // Le formulaire des rubriques n'existe plus séparément : sa commande a disparu avec lui.
   assert.ok(!HOTE.commandes().includes('szh.rubriquesArticle'),
     'szh.rubriquesArticle devrait avoir disparu avec le formulaire séparé');
 });
@@ -82,70 +75,62 @@ test('les commandes du lot sont enregistrées', () => {
 // Avant toute création : la section existe déjà, et ne porte que la réserve.
 test('sans page de Documentation, la section porte la réserve et aucun badge', async () => {
   const e = await entete();
-  assert.strictEqual(e.description, undefined,
-    'aucun bloc à compter : pas de badge — ' + e.description);
+  assert.strictEqual(e.description, undefined, 'aucun bloc à compter : pas de badge — ' + e.description);
   const enfants = await enfantsDe('section-actualite');
   assert.deepStrictEqual(enfants.map((it) => it.contextValue), ['reserve'],
     'la section ne doit contenir que la réserve');
   assert.ok(enfants[0].command && enfants[0].command.command === 'szh.reserve',
     'l’entrée de réserve doit ouvrir la réserve au clic');
-  assert.strictEqual(enfants[0].description, undefined,
-    'une réserve vide ne doit pas porter de compteur');
+  assert.strictEqual(enfants[0].description, undefined, 'une réserve vide ne doit pas porter de compteur');
 });
 
-// L'en-tête de section ouvre un FORMULAIRE, et non une vue d'ensemble : c'est le seul
-// en-tête dans ce cas, et c'est ce que « affiche directement la liste des rubriques » veut
-// dire — il n'y a qu'une page de Documentation par numéro.
-test('cliquer l’en-tête ACTUALITÉ crée la page de Documentation et ouvre son formulaire', async () => {
+test('cliquer l’en-tête ACTUALITÉ crée la page de Documentation (arborescence Kirby) et ouvre son formulaire', async () => {
   const e = await entete();
-  assert.ok(e.command && e.command.command === 'szh.ouvrirSection',
-    'l’en-tête doit passer par szh.ouvrirSection');
+  assert.ok(e.command && e.command.command === 'szh.ouvrirSection', 'l’en-tête doit passer par szh.ouvrirSection');
   assert.ok(!fs.existsSync(DOSSIER_DOC), 'la fixture ne devrait pas déjà porter la page');
 
   await HOTE.executer('szh.ouvrirSection', 'actualite');
 
-  assert.ok(fs.existsSync(MD_DOC), 'le .md de la page n’a pas été créé');
-  assert.strictEqual(fs.readFileSync(MD_DOC, 'utf8'), '',
-    'le .md naît VIDE : ce n’est plus un texte à écrire, seulement un magasin de blocs');
+  assert.ok(fs.existsSync(TXT_DOC), 'documentation.fr.txt n’a pas été créé');
+  const page = kirby.lirePage(DOSSIER_DOC, 'fr');
+  assert.match(page.title, /Actualité et ressources/, 'la page doit naître avec son titre imprimé');
+  assert.match(page.uuid, /^[A-Za-z0-9]{16}$/, 'la page doit porter un Uuid Kirby');
+  for (const cle of Object.keys(page.rubriques)) {
+    assert.strictEqual(page.rubriques[cle], '', 'rubrique non vide dès la création : ' + cle);
+  }
   const meta = fs.readFileSync(path.join(DOSSIER_DOC, SLUG_DOC + '.meta.yaml'), 'utf8');
   assert.match(meta, /^type: documentation$/m, 'la fiche doit porter le type documentation');
-  assert.match(meta, /Actualité et ressources/,
-    'la page doit naître avec son titre imprimé, dans la langue du numéro');
-  assert.ok(HOTE.statutsDits('Documentation créée').length > 0,
-    'la création doit se dire dans la barre d’état');
+  assert.match(meta, /Actualité et ressources/, 'la page doit naître avec son titre imprimé, dans la langue du numéro');
+  assert.ok(HOTE.statutsDits('Documentation créée').length > 0, 'la création doit se dire dans la barre d’état');
   assert.ok(HOTE.panneauDeType('szhDocumentation'), 'le formulaire ne s’est pas ouvert');
 });
 
 test('la page créée n’apparaît NI dans ARTICLES, NI dans ACTUALITÉ', async () => {
   const arbre = HOTE.arbre();
-  assert.ok(arbre.listerArticles().includes(SLUG_DOC),
-    'la page doit rester une unité du numéro : c’est elle que la chaîne compile');
+  assert.ok(arbre.listerArticles().includes(SLUG_DOC), 'la page doit rester une unité du numéro : c’est elle que la chaîne compile');
   const articles = await enfantsDe('section-articles');
-  assert.ok(!articles.some((it) => it.slug === SLUG_DOC),
-    'la page de Documentation ne doit pas retomber dans ARTICLES');
-  assert.ok(articles.some((it) => it.slug === '01-essai'),
-    'un article ordinaire a disparu de ARTICLES');
+  assert.ok(!articles.some((it) => it.slug === SLUG_DOC), 'la page de Documentation ne doit pas retomber dans ARTICLES');
+  assert.ok(articles.some((it) => it.slug === '01-essai'), 'un article ordinaire a disparu de ARTICLES');
   const actualite = await enfantsDe('section-actualite');
-  assert.deepStrictEqual(actualite.map((it) => it.contextValue), ['reserve'],
-    'ACTUALITÉ ne liste plus la page elle-même');
+  assert.deepStrictEqual(actualite.map((it) => it.contextValue), ['reserve'], 'ACTUALITÉ ne liste plus la page elle-même');
 });
 
-test('le badge de l’en-tête compte les blocs de la page, pas les articles', async () => {
-  // Le .md est vide : rien à compter, donc pas de badge.
-  assert.strictEqual((await entete()).description, undefined);
-  // Deux blocs écrits à la main dans le magasin : le badge doit les voir tous les deux,
-  // qu'ils soient fiche ou rubrique.
-  fs.writeFileSync(MD_DOC, [
-    '::: {#b1 .szh-rubrique type="tour-horizon"}', 'Une brève.', ':::', '',
-    '::: {#r1 .szh-ressource type="livre" titre="Un livre"}', 'Un descriptif.', ':::', ''
-  ].join(LF));
+test('le badge de l’en-tête compte les fiches et les rubriques non vides', async () => {
+  assert.strictEqual((await entete()).description, undefined, 'rien encore écrit : pas de badge');
+  // Une fiche et une rubrique, écrites directement par le module pur — c'est ce que le
+  // formulaire ferait, sans passer par le faux WorkspaceEdit de ce harnais.
+  kirby.ecrirePage(DOSSIER_DOC, 'fr', {
+    title: 'Actualité et ressources',
+    rubriques: { podcasts: 'Un podcast.' }
+  });
+  kirby.ajouterFiche(DOSSIER_DOC, 'fr', 'livre', {
+    categorie: 'manuel', title: 'Un livre', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D'
+  });
+  kirby.reordonnerFiches(DOSSIER_DOC, 'fr');
   assert.strictEqual(String((await entete()).description), '(2)',
     'le badge devrait compter la rubrique ET la fiche');
 });
 
-// reveal() remonte d'un article vers l'en-tête de SA section. La page de Documentation n'a
-// plus d'item, mais categorieDeSlug reste utile : ouvrir son formulaire déplie ACTUALITÉ, et
-// non ARTICLES — l'accordéon n'ouvre qu'une section à la fois.
 test('la page de Documentation déplie ACTUALITÉ, un article ordinaire déplie ARTICLES', () => {
   const arbre = HOTE.arbre();
   assert.strictEqual(arbre.categorieDeSlug(SLUG_DOC), 'actualite');
@@ -153,9 +138,6 @@ test('la page de Documentation déplie ACTUALITÉ, un article ordinaire déplie 
   assert.strictEqual(arbre.slugDocumentation(), SLUG_DOC);
 });
 
-// elementArticle() sert à resélectionner un article après reconstruction de l'arbre : sans
-// item, il n'y a rien à resélectionner, et c'est sans conséquence — mais il ne doit pas
-// lever pour autant.
 test('elementArticle ignore la page de Documentation sans lever', () => {
   const arbre = HOTE.arbre();
   assert.strictEqual(arbre.elementArticle(SLUG_DOC), null);
@@ -165,192 +147,153 @@ test('elementArticle ignore la page de Documentation sans lever', () => {
 
 // ---- Le formulaire fusionné -----------------------------------------------------------
 
-test('le formulaire porte les cinq rubriques ET les six catégories de fiches', async () => {
+test('le formulaire porte les quatre rubriques ET les sept types de fiches du contrat', async () => {
   const p = await panneau();
   const m = charge(p);
   assert.deepStrictEqual(m.typesRubrique.map((t) => t.valeur),
-    ['dossier-references', 'dossier-liens', 'tour-horizon', 'ressources', 'podcasts'],
-    'les cinq rubriques de prose, dans l’ordre d’affichage');
-  assert.deepStrictEqual(m.typesConfig.map((t) => t.valeur),
-    ['livre', 'film', 'intervention', 'recherche', 'reprise', 'agenda'],
-    'les six catégories de fiches, dans l’ordre de lib/ressources.js');
+    kirby.rubriquesPourRevue('revue').map((r) => r.cle),
+    'les rubriques de la Revue, dans l’ordre du contrat');
+  assert.deepStrictEqual(m.typesConfig.map((t) => t.valeur), kirby.typesConnus(),
+    'les sept types de fiche, dans l’ordre ordreTypes du contrat');
   for (const t of m.typesRubrique) {
     assert.ok(t.libelleSection, 'rubrique sans titre : ' + t.valeur);
-    // Une rubrique n'a plus de bouton « Ajouter » : elle n'a qu'un bloc, toujours présent.
     assert.strictEqual(t.libelleAjouter, undefined,
       'une rubrique ne doit plus porter de libellé d’ajout : ' + t.valeur);
   }
-  // Le bloc déjà présent dans le magasin est relu, et la fiche aussi.
-  assert.deepStrictEqual(m.rubriques.map((r) => r.type), ['tour-horizon']);
-  assert.strictEqual(m.rubriques[0].contenu, 'Une brève.');
+  // Le bloc déjà présent sur le disque (écrit par le test précédent) est relu, et la fiche aussi.
+  assert.deepStrictEqual(m.rubriques.filter((r) => r.contenu !== '').map((r) => r.type), ['podcasts']);
   assert.deepStrictEqual(m.ressources.map((r) => r.type), ['livre']);
 });
 
-test('le canton se choisit dans une liste, l’agenda se saisit en dates', async () => {
+test('le canton et les instruments sont des listes fermées du contrat, l’agenda se saisit en dates', async () => {
   const m = charge(await panneau());
   const parType = {};
   for (const t of m.typesConfig) { parType[t.valeur] = t; }
   const canton = parType.intervention.champs.find((c) => c.cle === 'canton');
-  assert.ok(canton.options && canton.options.length === 27,
-    '26 cantons et la Confédération : ' + (canton.options || []).length);
-  assert.match(canton.options[0].libelle, /\([A-Z]{2}\)$/,
-    'le libellé doit porter le nom complet et l’abréviation entre parenthèses');
-  // Ordre alphabétique du NOM, et non du code — c'est la consigne de saisie.
-  const noms = canton.options.map((o) => o.libelle);
-  assert.deepStrictEqual(noms, noms.slice().sort((a, b) => a.localeCompare(b, 'fr')),
-    'la liste déroulante doit être rangée par ordre alphabétique');
-  assert.ok(canton.options.some((o) => o.valeur === 'ZH'),
-    'la valeur stockée doit être le code, c’est lui qui s’imprime');
+  assert.strictEqual(canton.options.length, 27, '26 cantons et la Confédération : ' + canton.options.length);
+  assert.ok(canton.options.some((o) => o.valeur === 'CH' && /Conf|Bund/.test(o.libelle)));
+  assert.ok(canton.options.some((o) => o.valeur === 'ZH'), 'la valeur stockée doit être le code');
+
+  const categorie = parType.intervention.champs.find((c) => c.cle === 'categorie');
+  assert.ok(categorie.dependDe === 'canton', 'le menu des instruments doit dépendre du canton choisi');
+  assert.ok(categorie.optionsParCanton && categorie.optionsParCanton.BS,
+    'une table d’options par canton doit accompagner ce champ');
+  // À Bâle-Ville, « Anzug » (local, propre à BS) doit passer avant un instrument qu’on n’y
+  // observe pas (l’initiative cantonale, cantons: []).
+  const jetonsBS = categorie.optionsParCanton.BS.map((o) => o.valeur);
+  assert.ok(jetonsBS.indexOf('anzug') < jetonsBS.indexOf('initiative-cantonale'));
+  assert.match(categorie.optionsParCanton.BS.find((o) => o.valeur === 'anzug').libelle, /\(BS\)$/,
+    'un instrument local doit porter ses cantons entre parenthèses dans son libellé');
+
+  const curia = parType.intervention.champs.find((c) => c.cle === 'curia');
+  assert.strictEqual(curia.saisie, 'derive');
+  assert.strictEqual(curia.table.motion, '5');
 
   const agenda = parType.agenda.champs;
-  assert.deepStrictEqual(agenda.map((c) => c.cle),
-    ['evenement', 'debut', 'fin', 'lieu', 'organisateur']);
   assert.strictEqual(agenda.find((c) => c.cle === 'debut').saisie, 'date');
   assert.strictEqual(agenda.find((c) => c.cle === 'fin').saisie, 'date');
   const evenement = agenda.find((c) => c.cle === 'evenement');
-  assert.ok(evenement.options && evenement.options.length === 6,
-    'les six types d’événement du corpus');
+  assert.strictEqual(evenement.options.length, 6, 'les six types d’événement du contrat');
   for (const o of evenement.options) {
-    assert.ok(o.libelle && o.libelle !== o.valeur,
-      'le jeton ' + o.valeur + ' doit être traduit pour la saisie');
+    assert.ok(o.libelle && o.libelle !== o.valeur, 'le jeton ' + o.valeur + ' doit être traduit pour la saisie');
   }
-  // Une année de recherche n'est PAS une date : le mode de saisie suit le type, pas le nom.
-  assert.strictEqual(parType.recherche.champs.find((c) => c.cle === 'debut').saisie, undefined);
+  // Une date_partielle (recherche) n'est PAS une date ISO stricte : le mode de saisie suit
+  // le contrat, pas le nom du champ.
+  assert.strictEqual(parType.recherche.champs.find((c) => c.cle === 'debut').saisie, 'date_partielle');
 });
 
-// ⚠ Ce que ce harnais ne peut pas vérifier : la MUTATION RÉELLE du .md. WorkspaceEdit est un
-// faux sans effet dans hote-factice.js. L'exactitude de ce qui est ÉCRIT est prouvée
-// directement dans ressources.test.js et rubriques.test.js ; ce qui suit prouve le CÂBLAGE,
-// par le seul canal qui traverse le faux : la barre d'état et les messages postés.
-test('enregistrer : une rubrique remplie et une fiche incomplète comptent toutes deux', async () => {
+test('la rubrique « ressources » n’est proposée qu’à la Revue', async () => {
+  const m = charge(await panneau());
+  assert.ok(m.typesRubrique.some((t) => t.valeur === 'ressources'));
+});
+
+// Les mutations passent maintenant par kirby-contenu.js, en fs direct : contrairement à
+// l'ancien harnais bloc-dans-un-.md (WorkspaceEdit, faux sans effet ici), le résultat sur
+// le disque est réel et peut être contrôlé directement.
+test('enregistrer : une rubrique remplie et une fiche incomplète comptent toutes deux, et s’écrivent réellement', async () => {
   const p = await panneau();
   p.messages.length = 0;
-  const avant = HOTE.statutsDits('bloc').length;
   await p._recepteur({
     type: 'enregistrer', auto: false,
-    ressources: [{ id: 'r-neuf', type: 'livre', valeurs: { titre: 'Titre seul' } }],
-    rubriques: [{ id: 'b-neuf', type: 'podcasts', contenu: 'Un podcast.' }]
+    ressources: [{ id: 'r-neuf', type: 'film', valeurs: { title: 'Titre seul' } }],
+    rubriques: [{ id: 'dossier_liens', type: 'dossier_liens', contenu: 'Un lien.' }]
   });
   assert.ok(p.messages.some((m) => m.type === 'enregistre'), 'aucune confirmation reçue');
-  assert.strictEqual(HOTE.statutsDits('bloc').length, avant + 1,
-    'une fiche sans descriptif ni image doit désormais s’enregistrer, avec la rubrique');
+  const enr = p.messages.find((m) => m.type === 'enregistre');
+  assert.strictEqual(enr.correspondances.length, 1, 'la fiche neuve doit recevoir un Uuid');
+  const fiches = kirby.listerFiches(DOSSIER_DOC, 'fr').filter((f) => f.type === 'film');
+  assert.strictEqual(fiches.length, 1, 'la fiche sans descriptif ni image doit s’écrire quand même');
+  assert.strictEqual(fiches[0].valeurs.title, 'Titre seul');
+  const page = kirby.lirePage(DOSSIER_DOC, 'fr');
+  assert.strictEqual(page.rubriques.dossier_liens, 'Un lien.');
 });
 
-test('enregistrer : une rubrique vidée est retirée du magasin', async () => {
+test('enregistrer : une rubrique vidée sort du fichier de page', async () => {
   const p = await panneau();
   p.messages.length = 0;
-  const avant = HOTE.statutsDits('bloc').length;
-  // b1 existe dans le .md (écrit plus haut) : vidée, elle doit en sortir.
   await p._recepteur({
     type: 'enregistrer', auto: false, ressources: [],
-    rubriques: [{ id: 'b1', type: 'tour-horizon', contenu: '   ' }]
+    rubriques: [{ id: 'podcasts', type: 'podcasts', contenu: '   ' }]
   });
-  assert.strictEqual(HOTE.statutsDits('bloc').length, avant + 1,
-    'le retrait d’une rubrique vidée est un bloc traité, et doit se dire');
+  const page = kirby.lirePage(DOSSIER_DOC, 'fr');
+  assert.strictEqual(page.rubriques.podcasts, '', 'une rubrique vidée doit sortir du fichier de page');
 });
 
-test('enregistrer : une carte de fiche jamais remplie ne compte pas', async () => {
+test('enregistrer : une carte de fiche jamais remplie ne s’écrit pas', async () => {
   const p = await panneau();
   p.messages.length = 0;
-  const avant = HOTE.statutsDits('bloc').length;
+  const avant = kirby.listerFiches(DOSSIER_DOC, 'fr').length;
   await p._recepteur({
     type: 'enregistrer', auto: false,
-    ressources: [{ id: 'r-vide', type: 'livre', valeurs: { titre: '', descriptif: '', image: '' } }],
+    ressources: [{ id: 'r-vide', type: 'livre', valeurs: { title: '', descriptif: '' } }],
     rubriques: []
   });
   assert.ok(p.messages.some((m) => m.type === 'enregistre'), 'la confirmation part quand même');
-  assert.strictEqual(HOTE.statutsDits('bloc').length, avant,
+  assert.strictEqual(kirby.listerFiches(DOSSIER_DOC, 'fr').length, avant,
     'un clic sur « Ajouter » suivi de rien ne doit rien écrire');
 });
 
-// Sur la page de Documentation, « Retour » ne rouvre AUCUN .md : son texte n'est plus une
-// pièce à relire (« Supprime le fichier .md de la documentation »). Observable comme dans
-// ressources-hote.test.js, sans dépendre de WorkspaceEdit : le panneau se ferme et libère
-// son slug, donc rouvrir en crée un NEUF.
 test('retour : la page de Documentation se referme et libère son slug', async () => {
   const p = await panneau();
   const avant = HOTE.panneaux.length;
   await p._recepteur({ type: 'retourArticle', modifie: false, ressources: [], rubriques: [] });
   await HOTE.executer('szh.documentation');
   assert.strictEqual(HOTE.panneaux.length, avant + 1,
-    'rouvrir après un retour n’a pas créé un panneau neuf : la table des panneaux n’a pas ' +
-    'été libérée à la fermeture');
+    'rouvrir après un retour n’a pas créé un panneau neuf : la table des panneaux n’a pas été libérée à la fermeture');
 });
 
-// Le même panneau sert un article ordinaire, sans ses rubriques : un article peut relever un
-// livre, il ne tient pas le « Tour d'horizon » du numéro. Ce test vient en dernier parce
-// qu'il ouvre un SECOND panneau du même type, ce qui brouillerait la sélection des tests
-// précédents.
 test('un article ordinaire reçoit les fiches, mais aucune rubrique', async () => {
   await HOTE.executer('szh.ressourcesArticle', { slug: '01-essai' });
   const p = panneauDont((t) => t.indexOf('01-essai') !== -1);
   await p._recepteur({ type: 'pret' });
   const m = p.messages.filter((x) => x.type === 'charger').pop();
-  assert.deepStrictEqual(m.typesRubrique, [],
-    'un article ordinaire ne tient pas le « Tour d’horizon » du numéro');
+  assert.deepStrictEqual(m.typesRubrique, [], 'un article ordinaire ne tient pas le « Tour d’horizon » du numéro');
   assert.deepStrictEqual(m.rubriques, []);
-  assert.strictEqual(m.typesConfig.length, 6,
-    'il garde en revanche toutes ses catégories de fiches');
+  assert.strictEqual(m.typesConfig.length, kirby.typesConnus().length, 'il garde en revanche tous les types de fiche');
 });
 
 // ---- Aucun libellé français ne traîne dans le formulaire allemand ----
-//
-// Le symptôme rapporté le 08.09.2026 : sur un poste dont l'interface était en allemand, les
-// champs d'ACTUALITÉ restaient en français. Deux causes possibles, et il faut les séparer,
-// car elles ne se réparent pas au même endroit.
-//
-//   1. Le cockpit parlait français alors que les menus parlaient allemand. Ce n'est pas une
-//      traduction manquante : les menus viennent de package.nls*.json (langue d'affichage de
-//      l'éditeur) et les formulaires de lib/i18n.js (cascade de sourceLangue). Cette cause-là
-//      est gardée par test/js/langue-interface.test.js, et se lit sur un poste par
-//      windows/diagnostic.ps1.
-//
-//   2. Un libellé écrit en dur, ou traduit en français dans la table allemande. La parité des
-//      clés (contrats.test.js) ne l'attrape pas : une clé PRÉSENTE en allemand mais dont la
-//      valeur est restée française passe, et un littéral français dans
-//      lib/documentation-hote.js passe aussi. C'est ce que ce contrôle-ci attrape, en
-//      construisant les libellés du formulaire dans les DEUX langues et en exigeant qu'ils
-//      diffèrent.
-//
-// Les seuls libellés autorisés à être identiques : ce qui n'est pas un mot de langue. La
-// liste est courte et explicite — l'allonger doit être un geste réfléchi, pas un réflexe pour
-// faire passer le contrôle.
 const IDENTIQUES_ADMISES = new Set([
-  'https://…',   // le gabarit d'une adresse Internet
-  '–',           // le tiret de l'option vide d'une liste déroulante
-  'DOI',         // sigle
-  'Genre',       // s'écrit ainsi dans les deux langues
-  'Liste'        // idem
+  'https://…', '–', 'DOI', 'Genre', 'Liste',
+  // Termes fédéraux et sigles, identiques dans les deux langues par nature — le contrat
+  // (pipeline/kirby/champs-documentation.json) les porte tels quels.
+  'International', 'National', 'Varia', 'Motion', 'Postulat', 'Interpellation', 'Anzug',
+  'Curia Vista', 'IDES',
+  // Les deux titres de revue : mêmes noms officiels des deux côtés de la langue.
+  'Revue suisse de pédagogie spécialisée', 'Schweizerische Zeitschrift für Heilpädagogik'
 ]);
-
-// Les cantons, eux, ne s'inscrivent pas à la main sur cette liste : quatre d'entre eux
-// portent le même nom dans les deux langues (Jura, Neuchâtel, Tessin, Uri) et la table de
-// lib/cantons.js le dit déjà. On la relit plutôt que de recopier les quatre noms, qui
-// deviendraient faux le jour où la table changerait d'avis — sans cesser de faire passer
-// le contrôle, ce qui est le pire des deux mondes.
-//
-// ⚠ Mais relire la table pour REMPLIR le repli, sans jamais vérifier ce qu'elle y verse,
-//   rend ce repli capable de s'auto-admettre n'importe quel résidu : un cinquième canton qui
-//   recevrait PAR ERREUR le même texte dans les deux langues (ex. « Bâle-Campagne » recopié
-//   en allemand) s'ajouterait ici comme les quatre légitimes, et le test « ne garde aucun
-//   libellé français » ne le verrait jamais — repêché, si on a de la chance, par le test
-//   voisin, pour une tout autre raison. D'où ce contrôle : la liste tirée des cantons ne doit
-//   contenir QUE les quatre cas documentés, AVANT de servir de repli.
 const CANTONS_IDENTIQUES = new Set();
-for (const c of require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit',
-  'lib', 'cantons.js')).CANTONS) {
-  if (c.fr === c.de) { CANTONS_IDENTIQUES.add(c.fr + ' (' + c.code + ')'); }
+for (const c of kirby.valeursListe('canton')) {
+  if (c.fr === c.de) { CANTONS_IDENTIQUES.add(c.fr); }
 }
+// Le contrat écrit « Neuenburg » côté allemand (JSON.listes.canton) là où lib/cantons.js
+// portait « Neuchâtel » des deux côtés : les deux tables ne sont plus tenues à jour
+// ensemble, et c'est le contrat qui fait foi ici — NE n'est donc plus de la liste.
 assert.deepStrictEqual([...CANTONS_IDENTIQUES].sort(),
-  ['Jura (JU)', 'Neuchâtel (NE)', 'Tessin (TI)', 'Uri (UR)'].sort(),
-  'la liste des cantons au nom identique dans les deux langues a changé : un résidu ' +
-    'accidentel s’ajouterait au repli sans que rien ne le signale — ' + [...CANTONS_IDENTIQUES].sort().join(', '));
+  ['Jura', 'Tessin', 'Uri'].sort(),
+  'la liste des cantons au nom identique dans les deux langues a changé : ' + [...CANTONS_IDENTIQUES].sort().join(', '));
 for (const libelle of CANTONS_IDENTIQUES) { IDENTIQUES_ADMISES.add(libelle); }
 
-// Tous les libellés du formulaire d'ACTUALITÉ dans une langue donnée, mis à plat : les
-// textes de la page, les sections et les champs de chaque type de fiche, et les titres des
-// rubriques. On passe par la vraie fonction de l'hôte, pas par la table de traduction : un
-// libellé écrit en dur dans lib/documentation-hote.js doit tomber ici.
 function libellesActualite(langue) {
   const doc = require(COCKPIT_DOC);
   process.env.SZH_LANGUE = langue;
@@ -358,18 +301,18 @@ function libellesActualite(langue) {
     const plat = {};
     const textes = doc._libelles.textesDocumentation('Zeitschrift');
     for (const cle of Object.keys(textes)) { plat['texte.' + cle] = String(textes[cle]); }
-    for (const type of doc._libelles.typesRessourceConfig()) {
+    for (const type of doc._libelles.typesRessourceConfig(langue)) {
       plat['fiche.' + type.valeur + '.section'] = String(type.libelleSection);
       plat['fiche.' + type.valeur + '.ajouter'] = String(type.libelleAjouter);
       plat['fiche.' + type.valeur + '.ajouter.tip'] = String(type.libelleAjouterTip);
       for (const champ of type.champs) {
-        plat['champ.' + champ.cle] = String(champ.libelle);
+        plat['champ.' + type.valeur + '.' + champ.cle] = String(champ.libelle);
         for (const option of (champ.options || [])) {
           plat['option.' + champ.cle + '.' + option.valeur] = String(option.libelle);
         }
       }
     }
-    for (const type of doc._libelles.typesRubriqueConfig()) {
+    for (const type of doc._libelles.typesRubriqueConfig('revue', langue)) {
       plat['rubrique.' + type.valeur] = String(type.libelleSection);
     }
     return plat;
@@ -379,45 +322,28 @@ function libellesActualite(langue) {
 test('ACTUALITÉ : le formulaire allemand ne garde aucun libellé français', () => {
   const fr = libellesActualite('fr');
   const de = libellesActualite('de');
-  assert.ok(Object.keys(fr).length > 60,
-    'trop peu de libellés relevés (' + Object.keys(fr).length + ') : le relevé ne prouve rien');
-  // Triés : les listes déroulantes se rangent par ordre alphabétique DANS leur langue —
-  // « Bâle-Campagne » avant « Berne », « Basel-Landschaft » après « Bern » — et l'ordre des
-  // clés diffère donc légitimement d'une langue à l'autre. Ce sont les champs offerts qui
-  // doivent être les mêmes, pas leur rang.
-  assert.deepStrictEqual(Object.keys(de).sort(), Object.keys(fr).sort(),
-    'les deux langues ne proposent pas les mêmes champs');
+  assert.ok(Object.keys(fr).length > 60, 'trop peu de libellés relevés (' + Object.keys(fr).length + ') : le relevé ne prouve rien');
+  assert.deepStrictEqual(Object.keys(de).sort(), Object.keys(fr).sort(), 'les deux langues ne proposent pas les mêmes champs');
   const suspects = [];
   for (const cle of Object.keys(fr)) {
     assert.notStrictEqual(fr[cle], '', 'libellé vide : ' + cle);
     assert.notStrictEqual(fr[cle], 'undefined', 'libellé non fourni par l’hôte : ' + cle);
-    if (fr[cle] === de[cle] && !IDENTIQUES_ADMISES.has(fr[cle])) {
-      suspects.push(cle + ' = ' + JSON.stringify(fr[cle]));
-    }
+    if (fr[cle] === de[cle] && !IDENTIQUES_ADMISES.has(fr[cle])) { suspects.push(cle + ' = ' + JSON.stringify(fr[cle])); }
   }
   assert.deepStrictEqual(suspects, [],
-    'libellés identiques dans les deux langues — écrits en dur, ou non traduits :' + LF
-      + suspects.join(LF));
-  // Et l'allemand de la maison s'écrit en « ss ».
+    'libellés identiques dans les deux langues — écrits en dur, ou non traduits :' + LF + suspects.join(LF));
   for (const cle of Object.keys(de)) {
     assert.strictEqual(de[cle].indexOf('ß'), -1, 'eszett dans le libellé allemand : ' + cle);
   }
 });
 
 test('ACTUALITÉ : les libellés suivent la langue du cockpit, pas celle du numéro', () => {
-  // La règle en vigueur, écrite noir sur blanc pour qu'un changement d'avis soit un geste
-  // délibéré : ce formulaire est une interface, il parle donc la langue de la personne qui
-  // s'en sert. La fixture est une Revue française ; les libellés doivent pourtant sortir en
-  // allemand dès que le cockpit est en allemand.
   const de = libellesActualite('de');
   assert.strictEqual(de['fiche.livre.section'], 'Bücher');
-  assert.strictEqual(de['champ.canton'], 'Kanton');
-  assert.strictEqual(de['rubrique.tour-horizon'], 'Rundschau');
-  // Les cantons aussi, jusque dans les options de la liste déroulante.
+  assert.strictEqual(de['champ.intervention.canton'], 'Kanton');
+  assert.strictEqual(de['rubrique.podcasts'], 'Dokumentarfilme und Podcasts');
   const cantons = Object.keys(de).filter((c) => c.indexOf('option.canton.') === 0);
   assert.ok(cantons.length >= 27, 'la liste des cantons est incomplète : ' + cantons.length);
-  // Le code suit le nom : c'est lui qui s'écrit dans la fiche (canton="BL"), et le voir à
-  // la saisie évite d'avoir à deviner lequel des vingt-six a été retenu.
-  assert.strictEqual(de['option.canton.BL'], 'Basel-Landschaft (BL)');
-  assert.strictEqual(libellesActualite('fr')['option.canton.BL'], 'Bâle-Campagne (BL)');
+  assert.strictEqual(de['option.canton.BL'], 'Basel-Landschaft');
+  assert.strictEqual(libellesActualite('fr')['option.canton.BL'], 'Bâle-Campagne');
 });

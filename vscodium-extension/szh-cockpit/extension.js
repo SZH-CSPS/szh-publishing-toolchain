@@ -332,21 +332,15 @@ const {
   dispositionAutomatique, poserDansGrille, retirerDeGrille, ecrireDispositionGrille,
   normaliserGrilles
 } = require('./lib/references');
-// ---- Fiches de « ressources » d'un article (livre, film, …) -> lib/ressources.js -------
-const ressourcesLib = require('./lib/ressources');
+// ---- Arborescence Kirby de la Documentation (fiches et rubriques) -> lib/kirby-contenu.js
+// Un seul module pour les deux familles de blocs — une fiche à champs (livre, film,
+// intervention…) et une rubrique de prose (références du dossier, tour d'horizon…) — qui
+// vivent toutes deux dans documentation.<lang>.txt et les dossiers de fiches. Remplace
+// lib/ressources.js et lib/rubriques.js.
+const kirbyLib = require('./lib/kirby-contenu');
 
 // ---- Réserve de fiches, et échanges entre les deux revues -> lib/reserve.js -----------
 const reserveLib = require('./lib/reserve');
-
-// ---- Rubriques de texte riche d'un article de Documentation -> lib/rubriques.js --------
-// L'autre moitié de la Documentation : là où une « ressource » est une fiche à champs, une
-// « rubrique » est un bloc de prose titré (liste bibliographique, liste de liens, brève).
-// Deux familles de blocs, deux modules, mais un seul formulaire (media/documentation.js)
-// qui les affiche ensemble.
-const rubriquesLib = require('./lib/rubriques');
-
-// ---- Les cantons, liste fermée du champ `canton` d'une intervention -> lib/cantons.js --
-const cantonsLib = require('./lib/cantons');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -361,7 +355,7 @@ const { qualiteImage } = require('./lib/qualite-image');
 const {
   EXTENSIONS_IMAGE_IMPORT, TAILLE_MAX_IMAGE_IMPORT,
   lireDimensionsImage, decrireImage, formatImage,
-  nomImageAssaini, nomMediaLibre, relatifImageValide,
+  nomImageAssaini, relatifImageValide,
   assainirCheminPhoto, decomposerPhoto, baseAuteurValide,
   dataUriImage, trouverOriginal, versionsPhoto,
   BUDGET_APERCUS_MEDIA, apercuMedia,
@@ -1384,11 +1378,19 @@ class FournisseurRevue {
     return entrees
       .filter((e) => e.isDirectory())
       .map((e) => e.name)
-      .filter((slug) => {
-        try { return fs.statSync(path.join(base, slug, slug + '.md')).isFile(); }
-        catch (e) { return false; }
-      })
+      .filter((slug) => this._estUniteValide(base, slug))
       .sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  // Une unité du numéro : un article ordinaire, dont le .md existe — ou la page de
+  // Documentation, qui n'en a plus (arborescence Kirby, lib/kirby-contenu.js) et se
+  // reconnaît à sa fiche de métadonnées (type: documentation). Sans ce second cas, la page
+  // disparaîtrait de listerArticles() dès sa création, et avec elle tout ce qui en dépend :
+  // le badge, slugDocumentation(), l'export, le secrétariat…
+  _estUniteValide(base, slug) {
+    try { if (fs.statSync(path.join(base, slug, slug + '.md')).isFile()) { return true; } }
+    catch (e) { /* pas de .md : peut-être la Documentation */ }
+    return lireMetaArticle(this.racine, slug).type === TYPE_ACTUALITE;
   }
 
   _docxEnAttente(base) {
@@ -6347,15 +6349,18 @@ async function ouvrirEditeurTable(fournisseur, item) {
   panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
 }
 
-// Le nombre de blocs de la page de Documentation : ses fiches et ses rubriques réunies —
-// ce que le badge de l'en-tête « ACTUALITÉ » annonce. Une lecture de fichier par
-// reconstruction de l'arbre, comme la fiche de métadonnées de chaque article l'est déjà.
+// Le nombre de blocs de la page de Documentation : ses fiches et ses rubriques non vides
+// réunies — ce que le badge de l'en-tête « ACTUALITÉ » annonce. Une lecture de
+// l'arborescence Kirby (lib/kirby-contenu.js), comme la fiche de métadonnées de chaque
+// article l'est déjà.
 function compterBlocsDocumentation(racine, slug) {
   if (!racine || !slug) { return 0; }
-  let texte;
-  try { texte = fs.readFileSync(path.join(racine, dossierUnites(), slug, slug + '.md'), 'utf8'); }
-  catch (e) { return 0; }                          // page absente ou illisible : rien à dire
-  return ressourcesLib.lireRessources(texte).length + rubriquesLib.lireRubriques(texte).length;
+  const dossierArticle = path.join(racine, dossierUnites(), slug);
+  const langue = langueRevue(racine);
+  const fiches = kirbyLib.listerFiches(dossierArticle, langue).length;
+  const page = kirbyLib.lirePage(dossierArticle, langue);
+  const rubriques = Object.keys(page.rubriques || {}).filter((cle) => String(page.rubriques[cle] || '').trim() !== '').length;
+  return fiches + rubriques;
 }
 
 // ---- Réserve de fiches : mettre de côté, et échanger entre les deux revues -------
@@ -6394,33 +6399,26 @@ function compterReserve(racine) {
   catch (e) { return 0; }
 }
 
-// Le texte exact du bloc d'une fiche, tel qu'il est écrit dans le .md. Régénéré par
-// blocRessource() plutôt que découpé dans le fichier : la fiche part alors dans la réserve
-// sous la forme normalisée que le formulaire aurait écrite, et non avec les espaces d'une
-// saisie à la main — c'est cette même forme que lireRessources() saura relire à l'insertion.
-function blocDeFiche(fiche) {
-  return ressourcesLib.blocRessource(fiche.id, fiche.type, fiche.valeurs);
-}
-
-// Dépose une fiche de l'article `slug` dans une réserve. `vers` est le jeton de revue visée,
-// `aTraduire` dit si la copie attend une traduction. Rend true si le dépôt a eu lieu.
+// Dépose une fiche de l'article `slug` dans une réserve. `fiche` = { type, dossier (chemin
+// absolu du dossier de la fiche), langue } — voir lib/documentation-hote.js, qui l'appelle.
+// `vers` est le jeton de revue visée, `aTraduire` dit si la copie attend une traduction.
+// Rend true si le dépôt a eu lieu.
 function deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire) {
-  const media = path.join(racine, dossierUnites(), slug, 'media');
-  const image = (fiche.valeurs.image && relatifImageValide(fiche.valeurs.image))
-    ? { source: path.join(media, fiche.valeurs.image), nom: path.basename(fiche.valeurs.image) }
-    : null;
-  const charge = {
-    origine: revueCourante(racine),
-    numeroOrigine: titreNumero(racine) || '',
-    aTraduire: !!aTraduire,
-    deposeLe: new Date().toISOString().slice(0, 10),
-    type: fiche.type,
-    titre: fiche.valeurs.titre || '',
-    bloc: blocDeFiche(fiche)
-  };
-  if (image && fs.existsSync(image.source)) { charge.image = image; }
+  let titre = '';
   try {
-    reserveLib.deposer(racine, vers, charge);
+    const cheminTxt = path.join(fiche.dossier, fiche.type + '.' + fiche.langue + '.txt');
+    titre = kirbyLib.lireTxt(fs.readFileSync(cheminTxt, 'utf8')).title;
+  } catch (e) { /* dossier trafiqué : la réserve nommera son dossier sans titre */ }
+  // « Envoyer à l'autre revue » vise la langue de CETTE revue-là ; « Détacher » garde la
+  // langue d'origine (voir l'en-tête de lib/reserve.js).
+  const langueCible = aTraduire ? (reserveLib.LANGUE_DE_REVUE[vers] || fiche.langue) : fiche.langue;
+  try {
+    reserveLib.deposer(racine, vers, {
+      type: fiche.type, titre: titre, dossierSource: fiche.dossier,
+      langueSource: fiche.langue, langueCible: langueCible,
+      origine: revueCourante(racine), numeroOrigine: titreNumero(racine) || '',
+      aTraduire: !!aTraduire, deposeLe: new Date().toISOString().slice(0, 10)
+    });
     return true;
   } catch (e) {
     vscode.window.showErrorMessage(T('reserve.err.ecriture', [e.message]));
@@ -6428,10 +6426,9 @@ function deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire) {
   }
 }
 
-// Insère une fiche prise en réserve dans un article ouvert. L'image, si la fiche en porte
-// une, est copiée de la réserve vers articles/<slug>/media/ sous un nom libre, et le chemin
-// est réécrit en conséquence : une fiche insérée doit être une fiche autonome de l'article,
-// pas un renvoi vers un dossier partagé qu'un collègue peut vider.
+// Insère une fiche prise en réserve dans un article ouvert : son dossier entier (contenu et
+// image) est recréé sous l'arborescence Kirby de l'article — une fiche insérée doit être
+// autonome, pas un renvoi vers un dossier partagé qu'un collègue peut vider.
 async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -6442,40 +6439,24 @@ async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
     vscode.window.setStatusBarMessage(T('reserve.inserer.horsarticle'), 5000);
     return;
   }
-  const fiches = ressourcesLib.lireRessources(entree.fiche.bloc);
-  if (fiches.length === 0) { return; }              // fichier trafiqué : rien d'exploitable
-  const fiche = fiches[0];
-  const valeurs = Object.assign({}, fiche.valeurs);
+  const fiche = kirbyLib.lireFicheAutonome(entree.chemin, entree.fiche.langue);
+  if (!fiche) { return; }                           // dossier trafiqué : rien d'exploitable
 
-  if (valeurs.image) {
-    // La réserve range l'image dans un media/ à côté du .md, comme un article (voir
-    // lib/reserve.js) : c'est ce qui fait que lireRessources() a su la relire ci-dessus.
-    const source = path.join(path.dirname(entree.chemin), 'media', path.basename(valeurs.image));
-    const dossier = path.join(racine, dossierUnites(), slug, 'media');
-    try {
-      fs.mkdirSync(dossier, { recursive: true });
-      const nom = nomMediaLibre(dossier, path.basename(valeurs.image));
-      fs.copyFileSync(source, path.join(dossier, nom));
-      valeurs.image = nom;
-    } catch (e) {
-      // L'image manque ou n'a pas pu être copiée : la fiche s'insère sans elle plutôt que
-      // pas du tout, et le rendu s'en accommode (szh-ressource.lua ne présume aucune image).
-      valeurs.image = '';
-    }
+  let imageSource = null;
+  const cleFichier = kirbyLib.champFichierDuType(fiche.type);
+  if (cleFichier && fiche.valeurs[cleFichier]) {
+    const source = path.join(entree.chemin, fiche.valeurs[cleFichier]);
+    if (fs.existsSync(source)) { imageSource = source; }
   }
-
-  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
-  let doc;
-  try { doc = await vscode.workspace.openTextDocument(md); }
-  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message])); return; }
-  const texte = ressourcesLib.ajouterRessource(doc.getText(), fiche.id, fiche.type, valeurs);
+  const dossierArticle = path.join(racine, dossierUnites(), slug);
+  const langue = langueRevue(racine);
   try {
-    const edition = new vscode.WorkspaceEdit();
-    const fin = doc.lineAt(doc.lineCount - 1).range.end;
-    edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
-    if (!(await vscode.workspace.applyEdit(edition))) { return; }
-    await doc.save();
-  } catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message])); return; }
+    kirbyLib.ajouterFiche(dossierArticle, langue, fiche.type, fiche.valeurs, imageSource);
+    kirbyLib.reordonnerFiches(dossierArticle, langue);
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [fiche.type, e.message]));
+    return;
+  }
 
   reserveLib.retirer(entree.chemin);                // prise en réserve = sortie de réserve
   vscode.window.setStatusBarMessage(T('reserve.insere'), 5000);
@@ -6496,8 +6477,7 @@ async function ouvrirReserve(fournisseur, rafraichirTout) {
   }
   const items = entrees.map((e) => {
     const f = e.fiche;
-    const fiches = ressourcesLib.lireRessources(f.bloc);
-    const titre = (fiches.length > 0 && fiches[0].valeurs.titre) || e.nom;
+    const titre = f.titre || e.nom;
     const detail = [
       f.aTraduire ? T('reserve.atraduire') : null,
       f.origine ? T('reserve.origine', [nomRevueAffiche(f.origine), f.numeroOrigine || '?']) : null,
@@ -6505,7 +6485,7 @@ async function ouvrirReserve(fournisseur, rafraichirTout) {
     ].filter(Boolean).join(' · ');
     return {
       label: (f.aTraduire ? '$(globe) ' : '$(archive) ') + titre,
-      description: fiches.length > 0 ? fiches[0].type : '',
+      description: f.type || '',
       detail: detail,
       entree: e
     };
