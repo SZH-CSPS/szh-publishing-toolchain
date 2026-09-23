@@ -689,7 +689,7 @@ test('typographie : un « | » venu du texte, dans le mot fautif, ne coupe pas l
 // détectée — « En savoir plus sur le livre… » / « Mehr zum Buch… ».
 function docRessource(entete) {
   return '---\n' + entete + '---\n\n'
-    + '::: {#r1 .szh-ressource type="livre" titre="Mon Titre" lien="https://exemple.org"}\n'
+    + '::: {#r1 .szh-ressource type="livre" title="Mon Titre" lien="https://exemple.org"}\n'
     + 'Descriptif.\n:::\n';
 }
 
@@ -1224,7 +1224,7 @@ function rendreRubrique(md) {
 // `##` dans le bloc et `##` hors du bloc : les deux entrent en h2 dans l'AST, et c'est
 // bien le contexte — et lui seul — qui doit les séparer.
 const MD_RUBRIQUE = [
-  '::: {#b1 .szh-rubrique type="tour-horizon"}',
+  '::: {#b1 .szh-rubrique type="dossier_references"}',
   '## International',
   '',
   '### Une brève',
@@ -1251,7 +1251,7 @@ test('rubrique : les titres du bloc ne sont pas numérotés, ceux de l’article
 
 test('rubrique : le titre du bloc est un h2, son contenu commence à h3, sans saut de rang', () => {
   const html = rendreRubrique(MD_RUBRIQUE);
-  assert.match(html, /<h2 class="szh-rubrique-titre"[^>]*>Tour d/,
+  assert.match(html, /<h2 class="szh-rubrique-titre"[^>]*>Références du dossier/,
     'le titre de la rubrique doit rester un h2 posé par le filtre');
   const corps = html.slice(html.indexOf('szh-rubrique-corps'), html.indexOf('</div>'));
   const rangs = (corps.match(/<h(\d)/g) || []).map((t) => Number(t.slice(2)));
