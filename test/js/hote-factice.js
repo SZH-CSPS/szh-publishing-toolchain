@@ -19,6 +19,22 @@ const Module = require('module');
 
 const LF = String.fromCharCode(10);
 
+// Nettoyage d'une racine jetable (revueDEssai/livreDEssai) à la fin du PROCESSUS — jamais
+// via test.after() : appelé depuis l'INTÉRIEUR d'un test (plusieurs fichiers mettent la
+// fixture en cache au premier test qui la demande, p. ex. hoteBiblio() dans biblio.test.js),
+// test.after() n'attache le nettoyage qu'à CE test précis et le rejoue avant les suivants —
+// la fixture partagée disparaissait alors sous les tests qui la réutilisaient. `node --test`
+// donne un processus par fichier (voir plus bas), et l'évènement 'exit' n'arrive qu'une fois
+// la boucle d'évènements vidée — après la tâche de fond non attendue que pose activerHote()
+// (rafraîchissement du cache auteur·e·s), qui sinon recréait un fichier après un rmSync trop
+// précoce.
+function nettoyerEnFinDeProcessus(racineJetable) {
+  process.on('exit', () => {
+    try { fs.rmSync(racineJetable, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+    catch (e) { /* débris de test, tant pis */ }
+  });
+}
+
 // Garde-fou anti-réseau. Posée dès que ce fichier est chargé — avant tout require de
 // extension.js — pour couvrir le crochet Module._load ci-dessous autant que les caches
 // écrits plus bas. lib/auteurs-ojs.js (recupererHttps) est le SEUL endroit de tout le
@@ -52,7 +68,16 @@ for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POS
 // trois versions désigné par la fiche, une image insérée dans le texte, un Word en attente
 // et le rapport de la dernière conversion.
 function revueDEssai() {
-  const revue = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-hote-'));
+  // Le numéro vit sous <racine jetable>\Revue\<nom> — jamais posé à plat dans os.tmpdir().
+  // kirby-contenu.js#racineArbre ne reconnaît la racine de l'arbre (celle qui porte
+  // _NewsUndActu\) qu'à cette forme précise (<racine>\Revue\<numero>) ; un numéro posé à
+  // plat lui fait rendre le PARENT du numéro — ici os.tmpdir() lui-même — et la
+  // bibliothèque partagée de fiches finissait écrite dans le dossier temporaire commun à
+  // tout le poste et à tous les tests (304 dossiers relevés sous _NewsUndActu\Fiches).
+  const racineJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-hote-'));
+  nettoyerEnFinDeProcessus(racineJetable);
+  const revue = path.join(racineJetable, 'Revue', 'essai-01');
+  fs.mkdirSync(revue, { recursive: true });
   fs.writeFileSync(path.join(revue, 'ausgabe.yaml'),
     ['revue: "Revue suisse de pedagogie specialisee"', 'title: "Essai"', 'lang: fr',
      'volume: "16"', 'numero: "1"', 'couleur: bleuacier', ''].join(LF));
@@ -632,7 +657,13 @@ function activerHote(revue) {
 // mécanique (médias, tableaux, verrous) est indifférent au profil, et ses tests le disent
 // déjà pour la revue.
 function livreDEssai() {
-  const livre = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-livre-'));
+  // Même précaution que revueDEssai() ci-dessus : le livre vit sous
+  // <racine jetable>\Books\<nom>, jamais posé à plat dans os.tmpdir() — sans quoi
+  // racineArbre() se rabattrait sur os.tmpdir() lui-même comme racine de l'arbre.
+  const racineJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-livre-'));
+  nettoyerEnFinDeProcessus(racineJetable);
+  const livre = path.join(racineJetable, 'Books', 'essai-livre');
+  fs.mkdirSync(livre, { recursive: true });
   fs.writeFileSync(path.join(livre, 'buch.yaml'),
     ['titre: "Essai de livre"', 'ouvrage: monographie', 'lang: fr', 'maquette: normal',
      'format: standard', 'annee: 2026', 'ordre-chapitres: []', ''].join(LF));
