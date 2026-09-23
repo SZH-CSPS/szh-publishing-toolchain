@@ -25,6 +25,9 @@ fields:
       national:
         fr: "National"
         de: "National"
+      intercantonal:
+        fr: "Intercantonal"
+        de: "Interkantonal"
       regional:
         fr: "Régional"
         de: "Kantonal"

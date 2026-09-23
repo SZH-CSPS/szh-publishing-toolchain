@@ -8,7 +8,9 @@
 // ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
 // rubriques (elles restent dans le numéro, jamais sur Kirby) ; chaque type a sa page parente
 // (le dossier types[].dossier, ex. buecher\ — depuis 8e89548), en minuscules ASCII [a-z]+, et
-// actualites.yml liste désormais ces sept pages dossier au lieu des fiches directement.
+// actualites.yml liste désormais ces sept pages dossier au lieu des fiches directement ; la
+// saisie `liste_multiple` (genre/pays du film, 23.09.2026) génère un champ `multiselect`,
+// mêmes options traduites qu'un select, séparateur ", " fixé explicitement.
 //
 //   node --test test/js/blueprints-kirby.test.js
 'use strict';
@@ -79,13 +81,13 @@ test('listes : chaque jeton a un libellé fr et de non vides', () => {
   }
 });
 
-// Corollaire côté blueprint généré : les options select portent aussi les deux langues (même
-// après le suffixe canton ajouté pour les instruments `local: true`).
-test('blueprints générés : les options select ont toutes fr et de', () => {
+// Corollaire côté blueprint généré : les options select ET multiselect portent aussi les
+// deux langues (même après le suffixe canton ajouté pour les instruments `local: true`).
+test('blueprints générés : les options select et multiselect ont toutes fr et de', () => {
   const docs = gen.construireTous(contrat);
   const walker = (fields) => {
     for (const [nomChamp, config] of Object.entries(fields)) {
-      if (config.type === 'select') {
+      if (config.type === 'select' || config.type === 'multiselect') {
         for (const [jeton, libelles] of Object.entries(config.options)) {
           assert.ok(libelles.fr, nomChamp + '.' + jeton + ' : fr manquant');
           assert.ok(libelles.de, nomChamp + '.' + jeton + ' : de manquant');
@@ -95,6 +97,41 @@ test('blueprints générés : les options select ont toutes fr et de', () => {
     }
   };
   for (const arbre of Object.values(docs)) { if (arbre.fields) { walker(arbre.fields); } }
+});
+
+// ---- saisie `liste_multiple` -> champ Kirby `multiselect` --------------------------------
+//
+// Vérifié sur getkirby.com/docs/reference/panel/fields/multiselect (23.09.2026) : mêmes
+// options traduites qu'un select (un objet par jeton, une clé par langue), stockage en
+// liste séparée par `separator` (fixé ici à ', ' — virgule + espace — pour matcher la
+// convention « jeton1, jeton2 » du contrat, jamais le défaut Kirby ','). `genre` et `pays`
+// (type film) sont les deux seuls champs `liste_multiple` du contrat (23.09.2026) ; `pays`
+// est la liste ISO 3166-1 complète (250 jetons), chacun avec fr et de.
+test('liste_multiple : genre et pays (film) génèrent un champ multiselect, séparateur ", ", translate:false', () => {
+  const docs = gen.construireTous(contrat);
+  const champsFilm = docs['pages/film.yml'].fields;
+  for (const cle of ['genre', 'pays']) {
+    const champJson = contrat.types.film.champs.find((c) => c.cle === cle);
+    assert.strictEqual(champJson.saisie, 'liste_multiple', 'précondition : ' + cle + ' doit rester liste_multiple dans le JSON');
+    const config = champsFilm[cle];
+    assert.ok(config, 'film.' + cle + ' absent du blueprint généré');
+    assert.strictEqual(config.type, 'multiselect', 'film.' + cle + ' doit être un champ multiselect');
+    assert.strictEqual(config.separator, ', ', 'film.' + cle + ' : séparateur attendu ", " (convention du contrat)');
+    assert.strictEqual(config.translate, false, 'film.' + cle + ' : champ commun, doit porter translate:false');
+    const options = config.options;
+    const attendues = contrat.listes[champJson.liste];
+    assert.strictEqual(Object.keys(options).length, attendues.length,
+      'film.' + cle + ' : ' + attendues.length + ' options attendues, ' + Object.keys(options).length + ' générées');
+    for (const it of attendues) {
+      assert.ok(options[it.jeton], 'film.' + cle + '.' + it.jeton + ' absent des options générées');
+      assert.strictEqual(options[it.jeton].fr, it.fr, 'film.' + cle + '.' + it.jeton + ' : fr divergent');
+      assert.strictEqual(options[it.jeton].de, it.de, 'film.' + cle + '.' + it.jeton + ' : de divergent');
+    }
+  }
+  // pays : la liste ISO 3166-1 complète (plus Kosovo), 250 jetons — un décompte fixe pour
+  // détecter tout de suite une liste tronquée ou dupliquée à la génération.
+  assert.strictEqual(Object.keys(champsFilm.pays.options).length, 250,
+    '250 options pays attendues (ISO 3166-1 + Kosovo)');
 });
 
 // ---- Champs `files` : uploads pointe vers un gabarit de fichier réellement généré,

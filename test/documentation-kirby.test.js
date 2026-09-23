@@ -244,6 +244,17 @@ test('rendu : film — pastille de catégorie traduite', SAUT, () => {
   assert.match(bloc, /<div class="szh-ressource-pastille">\s*<p>Dokumentarfilm<\/p>/);
 });
 
+// Genre et pays (saisie liste_multiple) : chaque jeton traduit dans la langue de l'article
+// (allemand, banc réel) puis joints par « , », intercalés entre année et distributeur —
+// ordre réalisateur · année · genre · pays · distributeur (justifié dans szh-ressource.lua).
+test('rendu : film — genre et pays (liste_multiple) traduits en allemand, dans l’ordre réalisateur · année · genre · pays · distributeur', SAUT, () => {
+  const { html } = rendreLeBanc();
+  const bloc = html.slice(html.indexOf('id="film0008zaertl00"'), html.indexOf('id="reprise09revue00"'));
+  assert.match(bloc,
+    /<div class="szh-ressource-biblio">\s*<p>Boros, A\. · 2025 · Drama, Familienfilm · Deutschland, Schweiz · W-Film<\/p>/,
+    'biblio du film attendue (genre et pays traduits en allemand, dans l’ordre attendu) : ' + bloc);
+});
+
 test('rendu : reprise — le jeton de revue est développé dans la biblio', SAUT, () => {
   const { html } = rendreLeBanc();
   const bloc = html.slice(html.indexOf('id="reprise09revue00"'), html.indexOf('id="agenda0010tagung0"'));
@@ -316,6 +327,60 @@ function ecrireFiche(racineFiches, slug, fichier, contenu, dossierSurcharge) {
   fs.mkdirSync(dossier, { recursive: true });
   fs.writeFileSync(path.join(dossier, fichier), contenu);
 }
+
+// ── Film : genre et pays (liste_multiple) — l'autre langue, et un jeton inconnu ─────────
+//
+// Le banc réel (rendreLeBanc, plus haut) n'existe qu'en allemand : ces deux tests exercent
+// le français, hors du banc, avec un numéro et une bibliothèque jetables (comme la section
+// suivante) — et le cas d'un jeton hors de la liste genre_film/pays du contrat, qui ne doit
+// jamais disparaître ni faire échouer la compilation (documentation-kirby.py transporte la
+// valeur brute sans la valider ; szh-ressource.lua imprime tel quel ce qu'il ne reconnaît
+// pas — même principe que le repli d'un jeton de liste simple inconnu).
+function ficheFilm(id, genre, pays) {
+  return `Title: Film de test\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n` +
+    `----\n\nCategorie: documentaire\n\n----\n\nGenre: ${genre}\n\n----\n\nPays: ${pays}\n\n` +
+    `----\n\nRealisateur: X\n\n----\n\nAnnee: 2026\n\n----\n\nDescriptif: Z\n`;
+}
+
+// pandoc() (plus bas dans ce fichier) prend un metadataFile ; pour ces deux tests, un bloc
+// front-matter YAML directement dans le markdown suffit (pandoc le lit tout aussi bien) et
+// évite d'écrire un fichier .yaml jetable de plus.
+function pandocAvecLang(md, lang) {
+  return pandoc(`---\nlang: ${lang}\n---\n\n${md}`, { filtres: CHAINE_DOCUMENTATION });
+}
+
+test('rendu : film — genre et pays traduits en français dans un numéro français', SAUT, () => {
+  const id = 'szhdocfilmfr00001';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'fr');
+  try {
+    ecrireFiche(racineFiches, 'un-film', 'film.fr.txt', ficheFilm(id, 'drame, familial', 'DE, CH'));
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    const html = pandocAvecLang(c.stdout, 'fr');
+    assert.match(html, /<p>X · 2026 · Drame, Film familial · Allemagne, Suisse<\/p>/,
+      'genre et pays doivent être traduits en français, dans le même ordre qu’en allemand : ' + html);
+  } finally {
+    nettoyer();
+  }
+});
+
+test('rendu : film — un jeton de genre ou de pays absent de la liste du contrat s’imprime tel quel', SAUT, () => {
+  const id = 'szhdocfilminc0001';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'fr');
+  try {
+    ecrireFiche(racineFiches, 'un-film', 'film.fr.txt',
+      ficheFilm(id, 'drame, jeton-inconnu-xyz', 'CH, ZZ-inconnu'));
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    const html = pandocAvecLang(c.stdout, 'fr');
+    assert.match(html, /Drame, jeton-inconnu-xyz/,
+      'un jeton de genre inconnu doit sortir tel quel, jamais disparaître : ' + html);
+    assert.match(html, /Suisse, ZZ-inconnu/,
+      'un jeton de pays inconnu doit sortir tel quel, jamais disparaître : ' + html);
+  } finally {
+    nettoyer();
+  }
+});
 
 // ── L'ordre des fiches : contrôlé, jamais retrié en silence ────────────────────────────
 
