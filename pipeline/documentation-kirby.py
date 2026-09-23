@@ -272,40 +272,64 @@ def trouver_racine_news(dossier_numero, racine_news=None):
 
 
 def lire_fiches_bibliotheque(racine, lang, id_numero, champs):
-    """Fiches de <racine>\\_NewsUndActu\\Fiches\\<slug>\\<type>.<lang>.txt rattachées à CE
-    numéro (Ausgabe == id_numero) dans SA langue. `_Statuts` est un voisin de Fiches, jamais
-    dedans — un slug préfixé `_` est quand même écarté par prudence, le format l'interdisant
-    de toute façon."""
+    """Fiches de <racine>\\_NewsUndActu\\Fiches\\<dossier du type>\\<slug>\\<type>.<lang>.txt
+    rattachées à CE numéro (Ausgabe == id_numero) dans SA langue (types[].dossier, docs/
+    FORMAT-DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026). Aucune rétrocompatibilité avec
+    l'ancien rangement à plat Fiches\\<slug>\\. Un sous-dossier de Fiches qui n'est le
+    `dossier` d'aucun type du contrat est ignoré (avertissement) : pourrait être un dossier
+    système ou un type retiré du contrat, pas une erreur en soi. Un fichier de langue dont le
+    type (déduit de son nom) ne correspond pas au dossier qui le contient est signalé sur
+    stderr et JAMAIS lu — un classement à la main qui contredirait le contrat ne doit jamais
+    entrer en silence dans un document. `_Statuts` est un voisin de Fiches, jamais dedans —
+    un nom préfixé `_` est quand même écarté par prudence, le format l'interdisant de toute
+    façon."""
     dossier_fiches = os.path.join(racine, '_NewsUndActu', 'Fiches')
     fiches = []
     if not os.path.isdir(dossier_fiches):
         return fiches
     suffixe = f'.{lang}.txt'
-    for slug in sorted(os.listdir(dossier_fiches)):
-        if slug.startswith('_'):
+    dossier_vers_type = {t_def['dossier']: t for t, t_def in champs['types'].items()}
+    for nom_dossier in sorted(os.listdir(dossier_fiches)):
+        if nom_dossier.startswith('_'):
             continue
-        chemin_slug = os.path.join(dossier_fiches, slug)
-        if not os.path.isdir(chemin_slug):
+        chemin_dossier_type = os.path.join(dossier_fiches, nom_dossier)
+        if not os.path.isdir(chemin_dossier_type):
             continue
-        candidats = [f for f in os.listdir(chemin_slug) if f.endswith(suffixe)]
-        if len(candidats) != 1:
-            if len(candidats) > 1:
-                print(f"{PREFIXE_MSG} ⚠ {slug} : {len(candidats)} fichiers *{suffixe} "
-                      f"(1 attendu) — fiche ignorée.", file=sys.stderr)
+        type_attendu = dossier_vers_type.get(nom_dossier)
+        if type_attendu is None:
+            print(f"{PREFIXE_MSG} ⚠ Fiches/{nom_dossier} : sous-dossier inconnu (le dossier "
+                  f"d'aucun type du contrat) — ignoré.", file=sys.stderr)
             continue
-        type_ = candidats[0][:-len(suffixe)]
-        if type_ not in champs['types']:
-            print(f"{PREFIXE_MSG} ⚠ {slug} : type « {type_} » absent du contrat — "
-                  f"fiche ignorée.", file=sys.stderr)
-            continue
-        with open(os.path.join(chemin_slug, candidats[0]), encoding='utf-8') as f:
-            fields = parse_kirby_txt(f.read())
-        if (fields.get('Ausgabe') or '').strip() != id_numero:
-            continue  # orpheline, ou rattachée à un autre numéro : pas la nôtre.
-        ordre_brut = (fields.get('Ordre') or '').strip()
-        ordre = int(ordre_brut) if re.fullmatch(r'\d+', ordre_brut) else None
-        fiches.append({'dossier': slug, 'chemin': chemin_slug, 'type': type_,
-                        'champs': fields, 'ordre': ordre})
+        for slug in sorted(os.listdir(chemin_dossier_type)):
+            if slug.startswith('_'):
+                continue
+            chemin_slug = os.path.join(chemin_dossier_type, slug)
+            if not os.path.isdir(chemin_slug):
+                continue
+            candidats = [f for f in os.listdir(chemin_slug) if f.endswith(suffixe)]
+            if len(candidats) != 1:
+                if len(candidats) > 1:
+                    print(f"{PREFIXE_MSG} ⚠ {nom_dossier}/{slug} : {len(candidats)} fichiers "
+                          f"*{suffixe} (1 attendu) — fiche ignorée.", file=sys.stderr)
+                continue
+            type_ = candidats[0][:-len(suffixe)]
+            if type_ not in champs['types']:
+                print(f"{PREFIXE_MSG} ⚠ {nom_dossier}/{slug} : type « {type_} » absent du "
+                      f"contrat — fiche ignorée.", file=sys.stderr)
+                continue
+            if type_ != type_attendu:
+                print(f"{PREFIXE_MSG} ✖ Fiches/{nom_dossier}/{slug}/{candidats[0]} : fichier "
+                      f"de type « {type_} » rangé sous le dossier « {nom_dossier} », qui "
+                      f"appartient au type « {type_attendu} » — non lu.", file=sys.stderr)
+                continue
+            with open(os.path.join(chemin_slug, candidats[0]), encoding='utf-8') as f:
+                fields = parse_kirby_txt(f.read())
+            if (fields.get('Ausgabe') or '').strip() != id_numero:
+                continue  # orpheline, ou rattachée à un autre numéro : pas la nôtre.
+            ordre_brut = (fields.get('Ordre') or '').strip()
+            ordre = int(ordre_brut) if re.fullmatch(r'\d+', ordre_brut) else None
+            fiches.append({'dossier': slug, 'chemin': chemin_slug, 'type': type_,
+                            'champs': fields, 'ordre': ordre})
     return fiches
 
 

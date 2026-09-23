@@ -132,8 +132,10 @@ DOC_CHAMPS_JSON   := $(PIPELINE_DIR)/kirby/champs-documentation.json
 # rien. Racine indécouvrable (numéro hors Revue/Zeitschrift/_Archive, ni SZH_NEWS_RACINE) :
 # le $(shell) rend une chaîne vide, DOC_FICHES est vide, et il faudra alors forcer la
 # recompilation à la main (toucher l'article, ou `make clean`) après une fiche éditée.
+# Fiches\<dossier du type>\<slug>\… (types[].dossier, docs/FORMAT-DOCUMENTATION-KIRBY.md,
+# §Une fiche, 23.09.2026) : un cran de plus qu'avant — DOC_FICHES suit cette profondeur.
 NEWS_RACINE := $(strip $(or $(SZH_NEWS_RACINE),$(shell python3 "$(DOC_CONVERTISSEUR)" --imprimer-racine-news 2>/dev/null)))
-DOC_FICHES  := $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.txt) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.png) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.jpg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.jpeg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.gif) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.svg)
+DOC_FICHES  := $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.txt) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.png) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.jpg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.jpeg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.gif) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*/*.svg)
 
 # ---------------------------------------------------------------------------
 # Profil de compilation du dossier, lu dans ausgabe.yaml par szh-lire-config.lua (pandoc

@@ -91,8 +91,9 @@ publication.
   quitté le numéro pour la bibliothèque partagée `_NewsUndActu\Fiches\`
   (docs/FORMAT-DOCUMENTATION-KIRBY.md, 23.09.2026), l'article ne porte plus que
   `documentation.de.txt` (deux rubriques de texte riche) et `documentation.meta.yaml`. Les
-  dix fiches vivent dans `test/news-racine/_NewsUndActu/Fiches/` (une par sous-dossier, un
-  type par cas), toutes rattachées au numéro de test via `Ausgabe: wj7f0dcw97qk3p2s`
+  dix fiches vivent dans `test/news-racine/_NewsUndActu/Fiches/<dossier du type>/<slug>/`
+  (un dossier de type par cas, `types[].dossier` du contrat), toutes rattachées au numéro de
+  test via `Ausgabe: wj7f0dcw97qk3p2s`
   (l'`id` de `test/ausgabe.yaml`) — `documentation-kirby.py` les y retrouve, les convertit
   en markdown intermédiaire, que `szh-rubrique.lua` et `szh-ressource.lua` composent
   ensuite, exactement comme avant. **`test/` n'est pas sous `Revue\` ni `Zeitschrift\`**, donc

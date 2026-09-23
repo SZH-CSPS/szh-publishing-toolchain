@@ -31,6 +31,7 @@ const BANC = path.join(RACINE, 'test', 'articles', 'documentation');
 // l'environnement du poste qui lance les tests).
 const BANC_RACINE = path.join(RACINE, 'test', 'news-racine');
 const ID_BANC = 'wj7f0dcw97qk3p2s'; // test/ausgabe.yaml : id
+const CHAMPS = JSON.parse(fs.readFileSync(CHAMPS_JSON, 'utf8'));
 
 const SAUT = { skip: sansPandoc || sansPython };
 
@@ -302,8 +303,16 @@ function numeroEtRacineJetables(id, lang) {
   };
 }
 
-function ecrireFiche(racineFiches, slug, fichier, contenu) {
-  const dossier = path.join(racineFiches, '_NewsUndActu', 'Fiches', slug);
+// Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier du contrat, docs/FORMAT-
+// DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026) : le dossier de type se déduit du type
+// porté par le nom du fichier (« livre.de.txt » -> type livre -> dossier Buecher), sauf
+// `dossierSurcharge` — utilisé par les tests qui rangent volontairement un fichier sous le
+// mauvais dossier ou sous un sous-dossier inconnu du contrat.
+function ecrireFiche(racineFiches, slug, fichier, contenu, dossierSurcharge) {
+  const type = fichier.split('.', 1)[0];
+  const dossierType = dossierSurcharge || (CHAMPS.types[type] && CHAMPS.types[type].dossier);
+  if (!dossierType) { throw new Error(`ecrireFiche : type « ${type} » absent du contrat et aucun dossierSurcharge fourni`); }
+  const dossier = path.join(racineFiches, '_NewsUndActu', 'Fiches', dossierType, slug);
   fs.mkdirSync(dossier, { recursive: true });
   fs.writeFileSync(path.join(dossier, fichier), contenu);
 }
@@ -355,6 +364,41 @@ test('convertisseur : deux fiches au même Ordre — avertissement de doublon', 
     const c = convertir(article, null, racineFiches);
     assert.strictEqual(c.status, 0, c.stderr);
     assert.match(c.stderr, /Ordre en double/, 'aucun avertissement pour deux fiches au même Ordre : ' + c.stderr);
+  } finally {
+    nettoyer();
+  }
+});
+
+// ── Fiches\<dossier du type>\ : sous-dossier inconnu, fichier dans le mauvais dossier ──────
+
+test('convertisseur : un sous-dossier de Fiches inconnu du contrat est ignoré, avec un avertissement', SAUT, () => {
+  const id = 'szhdocdossierx01';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
+  try {
+    ecrireFiche(racineFiches, 'une-fiche', 'agenda.de.txt',
+      `Title: Perdue\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nEvenement: cours\n\n----\n\nDebut: 2026-01-01\n\n----\n\nFin: 2026-01-02\n\n----\n\nLieu: X\n\n----\n\nOrganisateur: Y\n\n----\n\nDescriptif: Z\n`,
+      'DossierInconnu');
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    assert.match(c.stderr, /sous-dossier inconnu/, 'aucun avertissement pour Fiches/DossierInconnu : ' + c.stderr);
+    assert.ok(!/Perdue/.test(c.stdout), 'la fiche d’un sous-dossier inconnu ne doit pas sortir : ' + c.stdout);
+  } finally {
+    nettoyer();
+  }
+});
+
+test('convertisseur : un fichier de langue rangé sous le dossier d’un autre type est signalé et jamais lu', SAUT, () => {
+  const id = 'szhdocdossierx02';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
+  try {
+    // livre.de.txt (type livre, dossier Buecher) rangé sous Filme (le dossier du type film).
+    ecrireFiche(racineFiches, 'un-livre-egare', 'livre.de.txt',
+      `Title: Livre égaré\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n`,
+      'Filme');
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    assert.match(c.stderr, /rangé sous le dossier/, 'aucun signalement pour un fichier dans le mauvais dossier de type : ' + c.stderr);
+    assert.ok(!/Livre égaré/.test(c.stdout), 'un fichier rangé sous le mauvais dossier de type ne doit jamais être lu : ' + c.stdout);
   } finally {
     nettoyer();
   }

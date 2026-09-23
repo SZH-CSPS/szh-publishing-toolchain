@@ -164,8 +164,8 @@ class ConversionBoutEnBout(unittest.TestCase):
         self._ecrire('articles/essai/documentation.fr.txt', 'Title: Essai\n')
         racine = os.path.join(self.dossier, 'racine')
         self._ecrire(
-            os.path.relpath(os.path.join(racine, '_NewsUndActu', 'Fiches', 'un-livre',
-                                          'livre.fr.txt'), self.dossier),
+            os.path.relpath(os.path.join(racine, '_NewsUndActu', 'Fiches', 'Buecher',
+                                          'un-livre', 'livre.fr.txt'), self.dossier),
             'Title: Un livre\n\n----\n\nAusgabe: sansuuidtest01\n\n----\n\nOrdre: 1\n\n'
             '----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n'
             '----\n\nDescriptif: Z\n')
@@ -270,8 +270,14 @@ class BibliothequeFiches(unittest.TestCase):
         import shutil
         shutil.rmtree(self.dossier, ignore_errors=True)
 
-    def _fiche(self, slug, fichier, contenu):
-        chemin = os.path.join(self.racine, '_NewsUndActu', 'Fiches', slug)
+    def _fiche(self, slug, fichier, contenu, dossier_surcharge=None):
+        # Fiches\<dossier du type>\<slug>\<fichier> (types[].dossier du contrat, docs/FORMAT-
+        # DOCUMENTATION-KIRBY.md, §Une fiche, 23.09.2026) : le dossier de type se déduit du
+        # type porté par le nom du fichier, sauf dossier_surcharge — utilisé par les tests qui
+        # rangent volontairement un fichier au mauvais endroit.
+        type_ = fichier.split('.', 1)[0]
+        dossier_type = dossier_surcharge or self.champs['types'][type_]['dossier']
+        chemin = os.path.join(self.racine, '_NewsUndActu', 'Fiches', dossier_type, slug)
         os.makedirs(chemin, exist_ok=True)
         with open(os.path.join(chemin, fichier), 'w', encoding='utf-8') as f:
             f.write(contenu)
@@ -377,6 +383,32 @@ class BibliothequeFiches(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()) as capture:
             dk.trier_fiches_numero(self.champs, fiches)
         self.assertIn('Ordre absent', capture.getvalue())
+
+    def test_sous_dossier_inconnu_ignore_avec_avertissement(self):
+        article = self._article('numeroa00000001', 'de')
+        self._fiche('perdue', 'agenda.de.txt',
+                     'Title: Perdue\n\n----\n\nAusgabe: numeroa00000001\n\n----\n\nOrdre: 1\n\n'
+                     '----\n\nEvenement: cours\n\n----\n\nDebut: 2026-01-01\n\n'
+                     '----\n\nFin: 2026-01-02\n\n----\n\nLieu: X\n\n----\n\nOrganisateur: Y\n\n'
+                     '----\n\nDescriptif: Z\n', dossier_surcharge='DossierInconnu')
+        racine = dk.trouver_racine_news(self.numero, self.racine)
+        with contextlib.redirect_stderr(io.StringIO()) as capture:
+            fiches = dk.lire_fiches_bibliotheque(racine, 'de', 'numeroa00000001', self.champs)
+        self.assertEqual(fiches, [])
+        self.assertIn('sous-dossier inconnu', capture.getvalue())
+
+    def test_fichier_range_sous_le_mauvais_dossier_de_type_est_signale_et_non_lu(self):
+        article = self._article('numeroa00000001', 'de')
+        # livre.de.txt (type livre, dossier Buecher) rangé sous Filme (dossier du type film).
+        self._fiche('livre-egare', 'livre.de.txt',
+                     'Title: Livre égaré\n\n----\n\nAusgabe: numeroa00000001\n\n'
+                     '----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n'
+                     '----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n', dossier_surcharge='Filme')
+        racine = dk.trouver_racine_news(self.numero, self.racine)
+        with contextlib.redirect_stderr(io.StringIO()) as capture:
+            fiches = dk.lire_fiches_bibliotheque(racine, 'de', 'numeroa00000001', self.champs)
+        self.assertEqual(fiches, [])
+        self.assertIn('rangé sous le dossier', capture.getvalue())
 
     def test_ordre_en_double_avertit(self):
         article = self._article('numeroa00000001', 'de')
