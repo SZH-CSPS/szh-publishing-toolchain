@@ -1,0 +1,25 @@
+Title: Rencontre partagée entre les deux revues
+
+----
+
+Uuid: horizon011bilin00
+
+----
+
+Ausgabe: autrenumfr000001
+
+----
+
+Ordre: 1
+
+----
+
+Portee: national
+
+----
+
+Descriptif: Fiche bilingue : ce fichier français est rattaché à un autre numéro que le fichier allemand du même dossier — chaque fichier de langue dit à quel numéro il appartient (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+
+----
+
+Lien: https://www.szh.ch/

@@ -1,0 +1,25 @@
+Title: Gemeinsamer Austausch zwischen den Zeitschriften
+
+----
+
+Uuid: horizon011bilin00
+
+----
+
+Ausgabe: autrenumde000002
+
+----
+
+Ordre: 1
+
+----
+
+Portee: national
+
+----
+
+Descriptif: Zweisprachige Fiche: diese deutsche Datei ist an eine andere Ausgabe angehängt als die französische Datei desselben Ordners — jede Sprachdatei sagt selbst, zu welcher Ausgabe sie gehört (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+
+----
+
+Lien: https://www.szh.ch/

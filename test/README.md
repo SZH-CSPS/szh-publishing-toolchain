@@ -87,21 +87,25 @@ publication.
   tableaux (description longue, puis ni description ni en-tête). À regarder dans
   l'aperçu, pas dans le PDF.
 - `articles/documentation/` — la page de Documentation (« News & Ressourcen »), le seul
-  article du banc dont le contenu n'est pas de la prose suivie. Depuis le passage à
-  l'arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md), ce n'est plus un
-  `documentation.md` à blocs `:::` mais une vraie arborescence de contenu écrite par
-  Pronto : `documentation.de.txt` (deux rubriques de texte riche) et dix dossiers `N_<slug>`
-  (une fiche structurée chacun, un type par cas — `documentation-kirby.py` les convertit
+  article du banc dont le contenu n'est pas de la prose suivie. Depuis que les fiches ont
+  quitté le numéro pour la bibliothèque partagée `_NewsUndActu\Fiches\`
+  (docs/FORMAT-DOCUMENTATION-KIRBY.md, 23.09.2026), l'article ne porte plus que
+  `documentation.de.txt` (deux rubriques de texte riche) et `documentation.meta.yaml`. Les
+  dix fiches vivent dans `test/news-racine/_NewsUndActu/Fiches/` (une par sous-dossier, un
+  type par cas), toutes rattachées au numéro de test via `Ausgabe: wj7f0dcw97qk3p2s`
+  (l'`id` de `test/ausgabe.yaml`) — `documentation-kirby.py` les y retrouve, les convertit
   en markdown intermédiaire, que `szh-rubrique.lua` et `szh-ressource.lua` composent
-  ensuite, exactement comme avant). **En allemand à dessein** : les titres de rubrique et
-  les libellés de lien se déduisent de la langue de l'article, et la moitié allemande de
-  ces tables n'était rendue nulle part ailleurs. Ce qu'il garde, et qui a tout cassé une
-  fois :
-  - une fiche livre (`7_buch/`) **plus haute qu'une page**. Avec le corps de fiche en
-    `display: flex`, WeasyPrint 69 ne savait pas la couper : elle laissait une page
-    entière de fond de carte, titre seul, avant de reprendre à la suivante. La page qui la
-    porte doit montrer la fiche qui commence et se poursuit à la page suivante, sans page
-    blanche entre les deux.
+  ensuite, exactement comme avant. **`test/` n'est pas sous `Revue\` ni `Zeitschrift\`**, donc
+  sa racine ne se découvre pas toute seule : compiler depuis `test/` exige
+  `SZH_NEWS_RACINE` (choix documenté plus bas, « Compiler la mini-revue »). **En allemand à
+  dessein** : les titres de rubrique et les libellés de lien se déduisent de la langue de
+  l'article, et la moitié allemande de ces tables n'était rendue nulle part ailleurs. Ce
+  qu'il garde, et qui a tout cassé une fois :
+  - une fiche livre (`soziale-emotionale-entwicklung/`) **plus haute qu'une page**. Avec le
+    corps de fiche en `display: flex`, WeasyPrint 69 ne savait pas la couper : elle laissait
+    une page entière de fond de carte, titre seul, avant de reprendre à la suivante. La page
+    qui la porte doit montrer la fiche qui commence et se poursuit à la page suivante, sans
+    page blanche entre les deux.
   - une rubrique (`Dossier_references`) dont le contenu porte des titres. Ils ne doivent
     **pas** être numérotés, et doivent descendre sous le `h2` de la rubrique.
     Il n'y a plus de section numérotée « hors rubrique » dans ce banc : dans
@@ -110,9 +114,9 @@ publication.
     champ pour du markdown libre hors de ces deux régimes. La contre-épreuve (un `h2`
     numéroté par `szh-sections.lua`) reste couverte, mais par n'importe quel autre article
     du banc, pas par celui-ci.
-  - un descriptif d'agenda (`10_tagung/`) qui commence par « 13\. » : il doit s'imprimer
-    « 13. » en paragraphe et non « 1. » en liste (WeasyPrint 69 n'honore pas l'attribut
-    `start` d'un `<ol>`).
+  - un descriptif d'agenda (`fulle-und-grenzen/`) qui commence par « 13\. » : il doit
+    s'imprimer « 13. » en paragraphe et non « 1. » en liste (WeasyPrint 69 n'honore pas
+    l'attribut `start` d'un `<ol>`).
   - deux fiches d'intervention du même canton (ZH), une troisième de la Confédération
     (`triPremier`, elle doit sortir en premier) ; l'une des deux ZH porte un suivi à deux
     lignes (une avec lien et libellé, l'autre sans les deux) et l'autre aucun descriptif.
@@ -123,6 +127,35 @@ publication.
   - `lien_libelle` rempli sur une fiche (le tour d'horizon régional) et vide sur une autre
     (le tour d'horizon international, qui retombe donc sur le gabarit `libelleLien` du
     type).
+
+### La bibliothèque de fiches (`news-racine/`)
+
+`test/news-racine/_NewsUndActu/` simule la racine `<racine>\_NewsUndActu\` partagée par les
+deux revues (docs/FORMAT-DOCUMENTATION-KIRBY.md). `Fiches/` y porte les dix fiches ci-dessus
+(chacune `Ausgabe: wj7f0dcw97qk3p2s`, l'`id` de `test/ausgabe.yaml`, et un `Ordre` 1..10),
+plus trois cas que le banc de la mini-revue ne montre PAS (ils ne sont rattachés à aucun de
+ses numéros, donc absents de son PDF — c'est `test/documentation-kirby.test.py` et
+`.test.js` qui les interrogent, avec leur propre `--racine-news`) : une fiche bilingue
+(`rencontre-partagee/`, `horizon.fr.txt` et `horizon.de.txt` rattachés chacun à un numéro
+différent — Ausgabe diffère par langue), une orpheline (`orpheline-sans-numero/`, `Ausgabe:`
+vide) et un fichier de statut (`_Statuts/de/<uuid>.txt`) qui ne doit jamais être lu comme une
+fiche.
+
+**Choix de racine pour ce banc** : `test/` n'est pas rangé sous `Revue\<num>` ni
+`Zeitschrift\<num>` (c'est un dossier de test, pas un vrai numéro), donc
+`trouver_racine_news()` ne la découvre pas toute seule — surcharge obligatoire par
+`SZH_NEWS_RACINE`, préférée à `--racine-news` ici parce qu'elle traverse `make` sans toucher
+au Makefile générique (une variable d'environnement exportée avant `make` est héritée par la
+recette, y compris par le `python3 documentation-kirby.py` qu'elle lance) :
+
+```sh
+export SZH_NEWS_RACINE="$(pwd)/news-racine"   # depuis test/
+make -f ../pipeline/Makefile out/documentation/documentation.pdf
+```
+
+`test/build-render.sh` l'exporte déjà pour toute la mini-revue (voir sa tête de fichier) ;
+les tests JS/Python passent `--racine-news` explicitement à chaque appel du convertisseur
+(déterministe, indépendant de l'environnement du poste qui lance les tests).
 
 ## Les deux livres
 

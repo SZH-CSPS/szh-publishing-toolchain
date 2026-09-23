@@ -118,6 +118,23 @@ FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
 DOC_CONVERTISSEUR := $(PIPELINE_DIR)/documentation-kirby.py
 DOC_CHAMPS_JSON   := $(PIPELINE_DIR)/kirby/champs-documentation.json
 
+# Bibliothèque partagée _NewsUndActu\Fiches (docs/FORMAT-DOCUMENTATION-KIRBY.md) : les
+# fiches d'une Documentation vivent hors du numéro, donc hors de tout $(wildcard articles/…)
+# — il faut la racine pour les mettre en dépendance make (voir DOC_FICHES, prérequis de la
+# cible Documentation plus bas). SZH_NEWS_RACINE (surcharge explicite : banc, tests — make
+# importe déjà les variables d'environnement) sinon la racine que documentation-kirby.py
+# découvre lui-même depuis le répertoire courant (numéro réel, sous Revue/, Zeitschrift/ ou
+# _Archive/…/<num>) ; --imprimer-racine-news ne convertit rien, ne sert qu'à ce $(shell).
+# ⚠ Make NE SAIT PAS quelles fiches de la bibliothèque sont rattachées à CE numéro (seul
+# documentation-kirby.py lit leur champ Ausgabe) : DOC_FICHES prend donc TOUTE la
+# bibliothèque en prérequis de la Documentation — une fiche éditée ailleurs recompile cette
+# page même si elle ne la concerne pas, plus sûr qu'un oubli silencieux qui ne recompile
+# rien. Racine indécouvrable (numéro hors Revue/Zeitschrift/_Archive, ni SZH_NEWS_RACINE) :
+# le $(shell) rend une chaîne vide, DOC_FICHES est vide, et il faudra alors forcer la
+# recompilation à la main (toucher l'article, ou `make clean`) après une fiche éditée.
+NEWS_RACINE := $(strip $(or $(SZH_NEWS_RACINE),$(shell python3 "$(DOC_CONVERTISSEUR)" --imprimer-racine-news 2>/dev/null)))
+DOC_FICHES  := $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.txt) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.png) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.jpg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.jpeg) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.gif) $(wildcard $(NEWS_RACINE)/_NewsUndActu/Fiches/*/*.svg)
+
 # ---------------------------------------------------------------------------
 # Profil de compilation du dossier, lu dans ausgabe.yaml par szh-lire-config.lua (pandoc
 # lua, sans dépendance) : l'image WSL n'embarque pas PyYAML, et cette lecture — un seul
@@ -411,16 +428,14 @@ $(OUT)/.szh-folios: .szh-pagination.json $(PAGINATION)
 # transforme les appels du corps en liens internes. Le texte des références n'est jamais
 # réécrit.
 # $$* varie selon l'article : ordinaire (articles/<slug>/<slug>.md, prérequis dur devenu
-# $$(wildcard) plus bas) ou Documentation Kirby (articles/<slug>/documentation.<lang>.txt +
-# ses fiches N_<slug-fiche>/, prérequis eux aussi en $$(wildcard) — voir DOC_SLUGS). Les deux
-# routes partagent CETTE règle et CETTE chaîne de filtres — une seule, jamais deux copies —
-# et se distinguent au dernier moment, dans la recette : si <slug>.md existe, c'est la
-# source ; sinon documentation-kirby.py engendre out/<slug>/<slug>.md (jamais écrit dans
-# articles/, qui reste la propriété de Pronto) et c'est LUI qui nourrit pandoc. Un test de
-# contrat (test/js/ressources.test.js, « branché avant szh-numerotation ») compte les
-# occurrences de chaque filtre dans ce Makefile : les dupliquer en une seconde règle
-# statique par type d'article l'aurait fait mentir sans qu'il ait tort.
-$(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+# $$(wildcard) plus bas) ou Documentation Kirby (articles/<slug>/documentation.<lang>.txt,
+# ses fiches venant désormais de la bibliothèque partagée _NewsUndActu\Fiches — DOC_FICHES,
+# posé plus haut, gardée en dépendance faute de savoir laquelle est la nôtre sans les lire).
+# Les deux routes partagent CETTE règle et CETTE chaîne de filtres — une seule, jamais deux
+# copies — et se distinguent au dernier moment, dans la recette : si <slug>.md existe, c'est
+# la source ; sinon documentation-kirby.py engendre out/<slug>/<slug>.md (jamais écrit dans
+# articles/, qui reste la propriété de Pronto) et c'est LUI qui nourrit pandoc.
+$(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(if $$(wildcard articles/$$(notdir $$*)/documentation.*.txt),$(DOC_FICHES)) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
@@ -429,7 +444,7 @@ $(OUT)/%.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcar
 	else \
 	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
 	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
-	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
+	    --racine-news "$(NEWS_RACINE)" --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
 	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; source_aff="$(OUT)/$$slug/$$slug.md"; \
 	fi; \
 	echo "pandoc $$source_aff -> $@"; \
@@ -490,7 +505,7 @@ endef
 # reader passe alors de commonmark_x+sourcepos à markdown ordinaire pour cette seule route,
 # szh-sourcepos.lua et szh-ancres.lua n'ayant plus rien à faire sur un texte qu'ils n'ont
 # pas engendré à partir du .md du rédacteur.
-$(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+$(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(wildcard articles/$$(notdir $$*)/documentation.*.txt) $$(wildcard articles/$$(notdir $$*)/*/*) ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $(DOC_CHAMPS_JSON) $(DOC_CONVERTISSEUR) $$(if $$(wildcard articles/$$(notdir $$*)/documentation.*.txt),$(DOC_FICHES)) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	meta=""; \
@@ -501,7 +516,7 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 	else \
 	  echo "documentation-kirby.py articles/$$slug -> $(abspath $(OUT))/$$slug/$$slug.md"; \
 	  python3 "$(DOC_CONVERTISSEUR)" --article "articles/$$slug" --champs "$(DOC_CHAMPS_JSON)" \
-	    --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
+	    --racine-news "$(NEWS_RACINE)" --sortie "$(abspath $(OUT))/$$slug/$$slug.md" || exit 1; \
 	  entree="$(abspath $(OUT))/$$slug/$$slug.md"; source_aff="$(OUT)/$$slug/$$slug.md"; lecteur="markdown"; sourcepos=""; \
 	fi; \
 	echo "pandoc $$source_aff -> $@ (aperçu)"; \

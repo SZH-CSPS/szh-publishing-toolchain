@@ -20,6 +20,10 @@ RENDER="${SZH_RENDER:-$HOME/pdfvenv/bin/python}"
 FONTPY="${SZH_FONTTOOLS:-/opt/weasyprint/bin/python}"
 VERAPDF="${VERAPDF:-/opt/verapdf-cli/verapdf}"
 VERAPDF_JAVA="${VERAPDF_JAVA:-/opt/jre-min}"
+# La bibliothèque de fiches Kirby du banc (docs/FORMAT-DOCUMENTATION-KIRBY.md) : test/ n'est
+# pas sous Revue\ ni Zeitschrift\, sa racine _NewsUndActu ne se découvre donc pas toute
+# seule — exportée ici pour que `make` (ligne ~35) et son documentation-kirby.py la voient.
+export SZH_NEWS_RACINE="$REPO/test/news-racine"
 cd "$REPO/test" || exit 1
 only="${1:-}"
 echec=0

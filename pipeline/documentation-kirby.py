@@ -14,9 +14,20 @@ suivi imprimé…) : ce script ne fait que transcrire les champs Kirby en attrib
 dans les noms du JSON. La présentation vit dans szh-ressource.lua et szh-rubrique.lua, qui
 lisent le même JSON — un seul endroit où changer un libellé.
 
+Les fiches ne vivent plus dans le numéro (docs/FORMAT-DOCUMENTATION-KIRBY.md, 23.09.2026) :
+elles viennent de la bibliothèque partagée <racine>\\_NewsUndActu\\Fiches\\, retrouvée en
+remontant les parents depuis --article (trouver_dossier_numero, trouver_racine_news), sauf
+surcharge explicite (--racine-news ou SZH_NEWS_RACINE, pour les tests et le banc). Seules
+les fiches dont le fichier de LA langue du numéro porte Ausgabe: <id de ausgabe.yaml>
+entrent dans le document ; l'ordre suit leur champ Ordre (système, jamais saisi), avec
+avertissement sur stderr — jamais un retri silencieux — s'il manque, est dupliqué, ou
+contredit le tri du contrat.
+
 Usage :
     python3 documentation-kirby.py --article articles/07-documentation \
-        --champs pipeline/kirby/champs-documentation.json [--sortie out/.../doc.md]
+        --champs pipeline/kirby/champs-documentation.json [--sortie out/.../doc.md] \
+        [--racine-news <racine>]
+    python3 documentation-kirby.py --imprimer-racine-news [--article articles/07-documentation]
 """
 
 import argparse
@@ -185,7 +196,12 @@ def ordre_attendu(champs, fiches):
 
 # ── Lecture de l'arborescence ────────────────────────────────────────────────────────────
 
-def deduire_langue(dossier_article, slug, champs):
+def deduire_langue(dossier_article, slug, champs, dossier_numero=None):
+    """La langue de CET article (et donc celle de sa bibliothèque de fiches Kirby) :
+    lang: du .meta.yaml, puis le seul documentation.<lang>.txt présent, puis — repli aligné
+    sur la cascade des autres filtres (szh-commun.lua, langue_de() : fiche -> jeton de revue
+    -> ausgabe.yaml) — le jeton `revue:` de ausgabe.yaml traduit par champs['revues']. Rien
+    de silencieux : aucun repli qui ne trouve rien sort en erreur."""
     langues = champs.get('langues', ['fr', 'de'])
     meta = os.path.join(dossier_article, slug + '.meta.yaml')
     brut = lire_scalaire_yaml(meta, 'lang')
@@ -203,52 +219,141 @@ def deduire_langue(dossier_article, slug, champs):
         print(f"{PREFIXE_MSG} ⚠ lang absente ou invalide dans {meta} — déduite de "
               f"documentation.{candidats[0]}.txt", file=sys.stderr)
         return candidats[0]
+    if len(candidats) == 0 and dossier_numero:
+        revue = lire_scalaire_yaml(os.path.join(dossier_numero, 'ausgabe.yaml'), 'revue')
+        lang = (champs.get('revues') or {}).get((revue or '').strip().lower())
+        if lang in langues:
+            print(f"{PREFIXE_MSG} ⚠ lang absente ou invalide dans {meta}, et aucun "
+                  f"documentation.<lang>.txt présent — déduite de ausgabe.yaml (revue: "
+                  f"{revue})", file=sys.stderr)
+            return lang
     sys.exit(f"{PREFIXE_MSG} ✖ langue de l'article introuvable ({meta}), et "
               f"{len(candidats)} documentation.<lang>.txt trouvé(s) : impossible de choisir.")
 
 
-def lire_fiches(dossier_article, lang, champs):
-    entrees = []
-    for nom in os.listdir(dossier_article):
-        chemin = os.path.join(dossier_article, nom)
-        if not os.path.isdir(chemin):
-            continue
-        m = re.match(r'^(\d+)_(.+)$', nom)
-        if not m:
-            continue
-        entrees.append((int(m.group(1)), nom, chemin))
-    entrees.sort(key=lambda t: t[0])
+# ── Racine de la bibliothèque _NewsUndActu ──────────────────────────────────────────────
 
+def trouver_dossier_numero(dossier_article):
+    """Remonte les parents depuis le dossier de l'article jusqu'au premier qui porte
+    ausgabe.yaml : LE dossier du numéro. None si aucun (banc réduit d'un test unitaire qui
+    n'en a pas) — pas une erreur en soi, seulement l'absence de bibliothèque de fiches."""
+    d = os.path.abspath(dossier_article)
+    while True:
+        if os.path.isfile(os.path.join(d, 'ausgabe.yaml')):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+
+
+def trouver_racine_news(dossier_numero, racine_news=None):
+    """<racine> de _NewsUndActu depuis le dossier du numéro (celui qui porte ausgabe.yaml) :
+    argument explicite, puis SZH_NEWS_RACINE (tests, banc), puis découverte par les NOMS de
+    dossiers (docs/FORMAT-DOCUMENTATION-KIRBY.md, §Arborescence) — jamais en comptant des
+    crans : un numéro archivé est un cran plus bas qu'un numéro en cours
+    (<racine>\\_Archive\\Revue\\<num> contre <racine>\\Revue\\<num>)."""
+    if racine_news and racine_news.strip():
+        return os.path.abspath(racine_news.strip())
+    env = os.environ.get('SZH_NEWS_RACINE')
+    if env and env.strip():
+        return os.path.abspath(env.strip())
+    d = os.path.abspath(dossier_numero)
+    parent = os.path.dirname(d)
+    nom_parent = os.path.basename(parent)
+    if nom_parent in ('Revue', 'Zeitschrift'):
+        grand_parent = os.path.dirname(parent)
+        if os.path.basename(grand_parent) == '_Archive':
+            return os.path.dirname(grand_parent)
+        return grand_parent
+    sys.exit(f"{PREFIXE_MSG} ✖ racine _NewsUndActu introuvable depuis {d} (attendu sous "
+              f"Revue\\<num>, Zeitschrift\\<num> ou _Archive\\Revue\\<num>) — passer "
+              f"--racine-news ou définir SZH_NEWS_RACINE.")
+
+
+def lire_fiches_bibliotheque(racine, lang, id_numero, champs):
+    """Fiches de <racine>\\_NewsUndActu\\Fiches\\<slug>\\<type>.<lang>.txt rattachées à CE
+    numéro (Ausgabe == id_numero) dans SA langue. `_Statuts` est un voisin de Fiches, jamais
+    dedans — un slug préfixé `_` est quand même écarté par prudence, le format l'interdisant
+    de toute façon."""
+    dossier_fiches = os.path.join(racine, '_NewsUndActu', 'Fiches')
     fiches = []
-    for prefixe, nom, chemin in entrees:
-        suffixe = f'.{lang}.txt'
-        candidats = [f for f in os.listdir(chemin) if f.endswith(suffixe)]
+    if not os.path.isdir(dossier_fiches):
+        return fiches
+    suffixe = f'.{lang}.txt'
+    for slug in sorted(os.listdir(dossier_fiches)):
+        if slug.startswith('_'):
+            continue
+        chemin_slug = os.path.join(dossier_fiches, slug)
+        if not os.path.isdir(chemin_slug):
+            continue
+        candidats = [f for f in os.listdir(chemin_slug) if f.endswith(suffixe)]
         if len(candidats) != 1:
-            print(f"{PREFIXE_MSG} ⚠ {nom} : {len(candidats)} fichier(s) *{suffixe} "
-                  f"(1 attendu) — fiche ignorée.", file=sys.stderr)
+            if len(candidats) > 1:
+                print(f"{PREFIXE_MSG} ⚠ {slug} : {len(candidats)} fichiers *{suffixe} "
+                      f"(1 attendu) — fiche ignorée.", file=sys.stderr)
             continue
         type_ = candidats[0][:-len(suffixe)]
         if type_ not in champs['types']:
-            print(f"{PREFIXE_MSG} ⚠ {nom} : type « {type_} » absent du contrat — "
+            print(f"{PREFIXE_MSG} ⚠ {slug} : type « {type_} » absent du contrat — "
                   f"fiche ignorée.", file=sys.stderr)
             continue
-        with open(os.path.join(chemin, candidats[0]), encoding='utf-8') as f:
+        with open(os.path.join(chemin_slug, candidats[0]), encoding='utf-8') as f:
             fields = parse_kirby_txt(f.read())
-        fiches.append({'prefixe': prefixe, 'dossier': nom, 'type': type_, 'champs': fields})
-
-    ordre_disque = [f['dossier'] for f in fiches]
-    attendu = ordre_attendu(champs, fiches)
-    if ordre_disque != attendu:
-        print(f"{PREFIXE_MSG} ⚠ l'ordre des fiches sur le disque ({', '.join(ordre_disque)}) "
-              f"ne suit pas le tri du contrat ({', '.join(attendu)}) — le préfixe du dossier "
-              f"fait foi, rien n'est retrié.", file=sys.stderr)
+        if (fields.get('Ausgabe') or '').strip() != id_numero:
+            continue  # orpheline, ou rattachée à un autre numéro : pas la nôtre.
+        ordre_brut = (fields.get('Ordre') or '').strip()
+        ordre = int(ordre_brut) if re.fullmatch(r'\d+', ordre_brut) else None
+        fiches.append({'dossier': slug, 'chemin': chemin_slug, 'type': type_,
+                        'champs': fields, 'ordre': ordre})
     return fiches
+
+
+def trier_fiches_numero(champs, fiches):
+    """Trie par le champ système Ordre (recalculé par Pronto à chaque enregistrement d'une
+    fiche du numéro) ; avertit sur stderr sans jamais retrier en silence un cas anormal :
+    Ordre absent, en double, ou qui contredit le tri du contrat (ordre_attendu, calculé
+    depuis ordreTypes + le tri de chaque type — la même fonction qui faisait foi avant que
+    les fiches ne quittent le numéro)."""
+    attendu = ordre_attendu(champs, fiches)
+    sans_ordre = [f['dossier'] for f in fiches if f['ordre'] is None]
+    if sans_ordre:
+        print(f"{PREFIXE_MSG} ⚠ Ordre absent pour : {', '.join(sans_ordre)} — tri du "
+              f"contrat utilisé en repli pour ces fiches.", file=sys.stderr)
+    comptes = {}
+    for f in fiches:
+        if f['ordre'] is not None:
+            comptes[f['ordre']] = comptes.get(f['ordre'], 0) + 1
+    doublons = sorted(o for o, n in comptes.items() if n > 1)
+    if doublons:
+        print(f"{PREFIXE_MSG} ⚠ Ordre en double : {', '.join(str(o) for o in doublons)}.",
+              file=sys.stderr)
+    index_attendu = {d: i for i, d in enumerate(attendu)}
+    fiches_triees = sorted(
+        fiches,
+        key=lambda f: (f['ordre'] if f['ordre'] is not None else float('inf'),
+                        index_attendu.get(f['dossier'], len(attendu)))
+    )
+    ordre_disque = [f['dossier'] for f in fiches_triees]
+    if ordre_disque != attendu:
+        print(f"{PREFIXE_MSG} ⚠ l'ordre des fiches (Ordre : {', '.join(ordre_disque)}) ne "
+              f"suit pas le tri du contrat ({', '.join(attendu)}) — le champ Ordre fait foi, "
+              f"rien n'est retrié.", file=sys.stderr)
+    return fiches_triees
 
 
 # ── Émission du markdown ────────────────────────────────────────────────────────────────
 
 def echapper_attribut(v):
     return v.replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ').strip()
+
+
+def formater_dest_markdown(chemin):
+    """Un chemin d'image entre `< >` s'il porte un espace (p. ex. « OneDrive - SZH CSPS » du
+    chemin de la bibliothèque partagée) : la syntaxe markdown ![](dest) coupe dest au premier
+    espace (place réservée au titre), CommonMark demande alors <dest> pour un chemin qui en
+    contient un."""
+    return f'<{chemin}>' if ' ' in chemin else chemin
 
 
 def identifiant_fiche(fiche):
@@ -304,8 +409,15 @@ def emettre_fiche(champs, type_, fiche):
         lignes.append(descriptif)
         lignes.append('')
     if image:
-        chemin_image = fiche['dossier'] + '/' + image
-        lignes.append(f'![]({chemin_image}){{alt=""}}')
+        # Chemin ABSOLU, jamais relatif au dossier de l'article : la fiche vit dans la
+        # bibliothèque partagée _NewsUndActu\Fiches\<slug>\, hors du numéro (donc à une
+        # distance qui varie — numéro en cours ou archivé — et parfois hors de son arbre),
+        # aucune distance relative fixe n'existe. `fiche['chemin']` (posé par
+        # lire_fiches_bibliotheque) et le dossier de l'article viennent du même processus
+        # Python, donc de la même vue du système de fichiers (Windows ou /mnt/c sous WSL) —
+        # pas de conversion à faire ici.
+        chemin_image = os.path.join(fiche['chemin'], image).replace('\\', '/')
+        lignes.append(f'![]({formater_dest_markdown(chemin_image)}){{alt=""}}')
         lignes.append('')
     lignes.append(':::')
     lignes.append('')
@@ -323,12 +435,29 @@ def emettre_rubrique(cle, texte):
     ]
 
 
-def convertir(dossier_article, champs_path):
+def convertir(dossier_article, champs_path, racine_news=None):
     with open(champs_path, encoding='utf-8') as f:
         champs = json.load(f)
 
     slug = os.path.basename(os.path.normpath(dossier_article))
-    lang = deduire_langue(dossier_article, slug, champs)
+
+    # Le numéro : ausgabe.yaml, retrouvé en remontant les parents. Absent (banc réduit d'un
+    # test unitaire) : pas d'erreur en soi, seulement aucune fiche Kirby à rattacher. Présent
+    # mais sans id : erreur nette, jamais un repli silencieux (docs/FORMAT-DOCUMENTATION-
+    # KIRBY.md, §Le numéro).
+    dossier_numero = trouver_dossier_numero(dossier_article)
+    id_numero = None
+    if dossier_numero:
+        id_numero = lire_scalaire_yaml(os.path.join(dossier_numero, 'ausgabe.yaml'), 'id')
+        if not id_numero or not id_numero.strip():
+            sys.exit(f"{PREFIXE_MSG} ✖ {os.path.join(dossier_numero, 'ausgabe.yaml')} n'a pas "
+                      f"de clé « id: » — un numéro sans id ne peut pas rattacher de fiche.")
+        id_numero = id_numero.strip()
+    else:
+        print(f"{PREFIXE_MSG} ⚠ aucun ausgabe.yaml trouvé en remontant depuis "
+              f"{dossier_article} — aucune fiche Kirby ne sera récupérée.", file=sys.stderr)
+
+    lang = deduire_langue(dossier_article, slug, champs, dossier_numero)
 
     doc_path = os.path.join(dossier_article, f'documentation.{lang}.txt')
     if not os.path.isfile(doc_path):
@@ -341,7 +470,11 @@ def convertir(dossier_article, champs_path):
     with open(doc_path, encoding='utf-8') as f:
         doc_fields = parse_kirby_txt(f.read())
 
-    fiches = lire_fiches(dossier_article, lang, champs)
+    fiches = []
+    if id_numero:
+        racine = trouver_racine_news(dossier_numero, racine_news)
+        fiches = lire_fiches_bibliotheque(racine, lang, id_numero, champs)
+        fiches = trier_fiches_numero(champs, fiches)
     rubriques_index = {r['cle']: r for r in champs['rubriques']}
 
     lignes = []
@@ -385,12 +518,28 @@ def main():
     except Exception:
         pass
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--article', required=True, help='dossier de l\'article Documentation')
-    p.add_argument('--champs', required=True, help='pipeline/kirby/champs-documentation.json')
+    p.add_argument('--article', help='dossier de l\'article Documentation')
+    p.add_argument('--champs', help='pipeline/kirby/champs-documentation.json')
     p.add_argument('--sortie', help='fichier de sortie (stdout si omis)')
+    p.add_argument('--racine-news', help='surcharge la racine de _NewsUndActu (sinon '
+                   'SZH_NEWS_RACINE, sinon découverte par les noms de dossiers — voir '
+                   'trouver_racine_news)')
+    p.add_argument('--imprimer-racine-news', action='store_true', help='imprime sur stdout '
+                   'la racine découverte depuis --article (ou le répertoire courant) et '
+                   'quitte, sans convertir ; pour $(shell) du Makefile (dépendances make).')
     args = p.parse_args()
 
-    sortie = convertir(args.article, args.champs)
+    if args.imprimer_racine_news:
+        dossier_numero = trouver_dossier_numero(args.article or '.')
+        if not dossier_numero:
+            sys.exit(1)  # rien sur stdout : le $(wildcard) du Makefile qui la consomme reste vide.
+        print(trouver_racine_news(dossier_numero, args.racine_news))
+        return
+
+    if not args.article or not args.champs:
+        p.error('--article et --champs sont requis (sauf avec --imprimer-racine-news)')
+
+    sortie = convertir(args.article, args.champs, args.racine_news)
 
     if args.sortie:
         os.makedirs(os.path.dirname(args.sortie) or '.', exist_ok=True)

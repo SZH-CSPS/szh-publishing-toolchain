@@ -6,6 +6,14 @@ Uuid: livre0007buch000
 
 ----
 
+Ausgabe: wj7f0dcw97qk3p2s
+
+----
+
+Ordre: 7
+
+----
+
 Categorie: manuel
 
 ----
@@ -27,8 +35,6 @@ Lien: https://www.szh.ch/
 ----
 
 Descriptif: Wie entwickeln sich soziale und emotionale Kompetenzen in der Kindheit? Welche Bedeutung haben Familie, Kita und Schule für die Entwicklungsprozesse, und wie lässt sich die emotionale und soziale Entwicklung wirksam fördern? Diesen Fragen gehen die Buchbeiträge nach und geben dadurch einen Einblick in aktuelle Forschungserkenntnisse, die hier über mehrere Absätze entfaltet werden.
-
-Wie entwickeln sich soziale und emotionale Kompetenzen in der Kindheit? Welche Bedeutung haben Familie, Kita und Schule für die Entwicklungsprozesse, und wie lässt sich die emotionale und soziale Entwicklung wirksam fördern? Diesen Fragen gehen die Buchbeiträge nach und geben dadurch einen Einblick in aktuelle Forschungserkenntnisse, die hier über mehrere Absätze entfaltet werden.
 
 Wie entwickeln sich soziale und emotionale Kompetenzen in der Kindheit? Welche Bedeutung haben Familie, Kita und Schule für die Entwicklungsprozesse, und wie lässt sich die emotionale und soziale Entwicklung wirksam fördern? Diesen Fragen gehen die Buchbeiträge nach und geben dadurch einen Einblick in aktuelle Forschungserkenntnisse, die hier über mehrere Absätze entfaltet werden.
 

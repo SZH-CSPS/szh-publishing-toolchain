@@ -6,6 +6,14 @@ Uuid: recherche01date00
 
 ----
 
+Ausgabe: wj7f0dcw97qk3p2s
+
+----
+
+Ordre: 3
+
+----
+
 Institutions: Universität Bern, HfH Zürich
 
 ----

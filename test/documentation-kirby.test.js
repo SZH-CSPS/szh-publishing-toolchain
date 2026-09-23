@@ -25,6 +25,12 @@ const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 const CONVERTISSEUR = path.join(RACINE, 'pipeline', 'documentation-kirby.py');
 const CHAMPS_JSON = path.join(RACINE, 'pipeline', 'kirby', 'champs-documentation.json');
 const BANC = path.join(RACINE, 'test', 'articles', 'documentation');
+// Bibliothèque partagée du banc (test/README.md, §La bibliothèque de fiches) : test/ n'est
+// pas sous Revue\ ni Zeitschrift\, sa racine ne se découvre donc pas seule — passée
+// explicitement à chaque appel, jamais via SZH_NEWS_RACINE (déterministe, indépendant de
+// l'environnement du poste qui lance les tests).
+const BANC_RACINE = path.join(RACINE, 'test', 'news-racine');
+const ID_BANC = 'wj7f0dcw97qk3p2s'; // test/ausgabe.yaml : id
 
 const SAUT = { skip: sansPandoc || sansPython };
 
@@ -41,11 +47,12 @@ function dossierJetable(prefixe) {
 // caractères accentués du stdout capturé par spawnSync ressortaient en mojibake — mesuré.
 // stderr n'a pas ce problème : jamais lu ici pour son CONTENU accentué, seulement grep-é
 // sur des motifs ASCII.
-function convertir(dossierArticle, sortieDemandee) {
+function convertir(dossierArticle, sortieDemandee, racineNews) {
   const dossierTmp = sortieDemandee ? null : fs.mkdtempSync(path.join(os.tmpdir(), 'szh-doc-conv-'));
   const sortie = sortieDemandee || path.join(dossierTmp, 'sortie.md');
   try {
     const args = [CONVERTISSEUR, '--article', dossierArticle, '--champs', CHAMPS_JSON, '--sortie', sortie];
+    if (racineNews !== null) { args.push('--racine-news', racineNews === undefined ? BANC_RACINE : racineNews); }
     const r = spawnSync(PYTHON, args, { encoding: 'utf8' });
     if (r.error) { throw new Error('python introuvable : ' + r.error.message); }
     const stdout = (r.status === 0 && fs.existsSync(sortie)) ? fs.readFileSync(sortie, 'utf8') : '';
@@ -263,27 +270,93 @@ test('rendu : curia et source ne s’impriment jamais, nulle part dans le docume
   assert.ok(!/Curia Vista|Manuell erfasst/.test(html), 'un libellé de la liste « source » apparaît imprimé : ' + html);
 });
 
+// ── Un numéro et sa bibliothèque, jetables ──────────────────────────────────────────────
+// Pour les cas qui doivent exercer une VRAIE bibliothèque de fiches (Ordre, Ausgabe,
+// orpheline, statut…) sans dépendre du banc réel : un dossier de numéro (ausgabe.yaml +
+// article Documentation minimal) et un dossier de racine _NewsUndActu, jetables l'un et
+// l'autre, jamais confondus avec le banc (BANC_RACINE), qu'aucun de ces tests ne modifie.
+
+// Numéro jetable seul (ausgabe.yaml + article Documentation minimal), sans bibliothèque —
+// pour les cas qui pointent --racine-news sur une bibliothèque existante (BANC_RACINE).
+function numeroJetable(id, lang) {
+  const dossierNumero = dossierJetable('szh-doc-numero-');
+  fs.writeFileSync(path.join(dossierNumero, 'ausgabe.yaml'), `id: ${id}\n`);
+  const article = path.join(dossierNumero, 'articles', 'essai');
+  fs.mkdirSync(article, { recursive: true });
+  fs.writeFileSync(path.join(article, 'essai.meta.yaml'), `type: documentation\nlang: ${lang}\n`);
+  fs.writeFileSync(path.join(article, `documentation.${lang}.txt`), 'Title: Essai\n');
+  return { article, nettoyer: () => fs.rmSync(dossierNumero, { recursive: true, force: true }) };
+}
+
+// Numéro + bibliothèque, jetables l'un et l'autre — pour les cas qui doivent ÉCRIRE des
+// fiches (Ordre, Ausgabe…) sans toucher à BANC_RACINE (partagée, jamais modifiée ici).
+function numeroEtRacineJetables(id, lang) {
+  const { article, nettoyer: nettoyerNumero } = numeroJetable(id, lang);
+  const racineFiches = dossierJetable('szh-doc-racine-');
+  return {
+    article, racineFiches,
+    nettoyer() {
+      nettoyerNumero();
+      fs.rmSync(racineFiches, { recursive: true, force: true });
+    },
+  };
+}
+
+function ecrireFiche(racineFiches, slug, fichier, contenu) {
+  const dossier = path.join(racineFiches, '_NewsUndActu', 'Fiches', slug);
+  fs.mkdirSync(dossier, { recursive: true });
+  fs.writeFileSync(path.join(dossier, fichier), contenu);
+}
+
 // ── L'ordre des fiches : contrôlé, jamais retrié en silence ────────────────────────────
 
-test('convertisseur : un préfixe qui contredit le tri du contrat avertit sur stderr', SAUT, () => {
-  const dossier = dossierJetable('szh-doc-ordre-');
+test('convertisseur : un Ordre qui contredit le tri du contrat avertit sur stderr', SAUT, () => {
+  const id = 'szhdocordretest1';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
   try {
-    fs.writeFileSync(path.join(dossier, 'documentation.meta.yaml'), 'type: documentation\nlang: de\n');
-    fs.writeFileSync(path.join(dossier, 'documentation.de.txt'), 'Title: Test\n');
-    // livre (ordreTypes: après intervention) placé en 1_, une intervention en 2_ : contredit
-    // ordreTypes (intervention doit précéder livre).
-    fs.mkdirSync(path.join(dossier, '1_un-livre'));
-    fs.writeFileSync(path.join(dossier, '1_un-livre', 'livre.de.txt'),
-      'Title: Un livre\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n');
-    fs.mkdirSync(path.join(dossier, '2_une-intervention'));
-    fs.writeFileSync(path.join(dossier, '2_une-intervention', 'intervention.de.txt'),
-      'Title: Une intervention\n\n----\n\nCanton: ZH\n\n----\n\nCategorie: motion\n\n----\n\nNumero: 1\n\n----\n\nDate: 2026-01-01\n');
-    const c = convertir(dossier);
+    // livre (ordreTypes : après intervention) posé en Ordre 1, une intervention en Ordre 2 :
+    // contredit ordreTypes (intervention doit précéder livre).
+    ecrireFiche(racineFiches, 'un-livre', 'livre.de.txt',
+      `Title: Un livre\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nAuteurs: X\n\n----\n\nAnnee: 2026\n\n----\n\nEditeur: Y\n\n----\n\nDescriptif: Z\n`);
+    ecrireFiche(racineFiches, 'une-intervention', 'intervention.de.txt',
+      `Title: Une intervention\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 2\n\n----\n\nCanton: ZH\n\n----\n\nCategorie: motion\n\n----\n\nNumero: 1\n\n----\n\nDate: 2026-01-01\n`);
+    const c = convertir(article, null, racineFiches);
     assert.strictEqual(c.status, 0, c.stderr);
     assert.match(c.stderr, /ne suit pas le tri du contrat/,
-      'aucun avertissement alors que l’ordre disque contredit ordreTypes : ' + c.stderr);
+      'aucun avertissement alors que Ordre contredit ordreTypes : ' + c.stderr);
   } finally {
-    fs.rmSync(dossier, { recursive: true, force: true });
+    nettoyer();
+  }
+});
+
+test('convertisseur : Ordre absent sur une fiche — avertissement, repli sur le tri du contrat', SAUT, () => {
+  const id = 'szhdocordretest2';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
+  try {
+    ecrireFiche(racineFiches, 'sans-ordre', 'agenda.de.txt',
+      `Title: Sans ordre\n\n----\n\nAusgabe: ${id}\n\n----\n\nEvenement: cours\n\n----\n\nDebut: 2026-01-01\n\n----\n\nFin: 2026-01-02\n\n----\n\nLieu: X\n\n----\n\nOrganisateur: Y\n\n----\n\nDescriptif: Z\n`);
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    assert.match(c.stderr, /Ordre absent/, 'aucun avertissement pour une fiche sans Ordre : ' + c.stderr);
+    assert.match(c.stdout, /Sans ordre/, 'la fiche doit quand même sortir : ' + c.stdout);
+  } finally {
+    nettoyer();
+  }
+});
+
+test('convertisseur : deux fiches au même Ordre — avertissement de doublon', SAUT, () => {
+  const id = 'szhdocordretest3';
+  const { article, racineFiches, nettoyer } = numeroEtRacineJetables(id, 'de');
+  try {
+    ecrireFiche(racineFiches, 'agenda-a', 'agenda.de.txt',
+      `Title: A\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nEvenement: cours\n\n----\n\nDebut: 2026-01-01\n\n----\n\nFin: 2026-01-02\n\n----\n\nLieu: X\n\n----\n\nOrganisateur: Y\n\n----\n\nDescriptif: Z\n`);
+    ecrireFiche(racineFiches, 'agenda-b', 'agenda.de.txt',
+      `Title: B\n\n----\n\nAusgabe: ${id}\n\n----\n\nOrdre: 1\n\n----\n\nEvenement: cours\n\n----\n\nDebut: 2026-01-01\n\n----\n\nFin: 2026-01-02\n\n----\n\nLieu: X\n\n----\n\nOrganisateur: Y\n\n----\n\nDescriptif: Z\n`);
+    const c = convertir(article, null, racineFiches);
+    assert.strictEqual(c.status, 0, c.stderr);
+    assert.match(c.stderr, /Ordre en double/, 'aucun avertissement pour deux fiches au même Ordre : ' + c.stderr);
+  } finally {
+    nettoyer();
   }
 });
 
@@ -291,10 +364,87 @@ test('convertisseur : documentation.<lang>.txt absent — échec net, message cl
   const dossier = dossierJetable('szh-doc-absent-');
   try {
     fs.writeFileSync(path.join(dossier, 'documentation.meta.yaml'), 'type: documentation\nlang: fr\n');
-    const c = convertir(dossier);
+    const c = convertir(dossier, null, null);
     assert.notStrictEqual(c.status, 0, 'le convertisseur doit échouer sans documentation.fr.txt');
     assert.match(c.stderr, /introuvable/);
   } finally {
     fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('convertisseur : ausgabe.yaml sans id — échec net, message clair', SAUT, () => {
+  const dossier = dossierJetable('szh-doc-sansid-');
+  try {
+    fs.writeFileSync(path.join(dossier, 'ausgabe.yaml'), 'title: "sans id"\n');
+    const article = path.join(dossier, 'articles', 'essai');
+    fs.mkdirSync(article, { recursive: true });
+    fs.writeFileSync(path.join(article, 'essai.meta.yaml'), 'type: documentation\nlang: fr\n');
+    fs.writeFileSync(path.join(article, 'documentation.fr.txt'), 'Title: X\n');
+    const c = convertir(article, null, null);
+    assert.notStrictEqual(c.status, 0, 'le convertisseur doit échouer sans id dans ausgabe.yaml');
+    assert.match(c.stderr, /id/i);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+// ── La bibliothèque partagée : orpheline, fiche bilingue, statut, numéro archivé ───────
+
+test('convertisseur : une orpheline (Ausgabe vide) n’apparaît dans aucun numéro', SAUT, () => {
+  const c = convertir(BANC); // le banc réel : Ausgabe = ID_BANC
+  assert.strictEqual(c.status, 0, c.stderr);
+  assert.ok(!/orpheline-sans-numero|Fiche orpheline/.test(c.stdout),
+    'la fiche orpheline de test/news-racine apparaît alors que son Ausgabe est vide : ' + c.stdout);
+});
+
+test('convertisseur : une fiche bilingue est vue dans sa seule langue, par le seul numéro auquel son fichier de langue est rattaché', SAUT, () => {
+  const fr = numeroJetable('autrenumfr000001', 'fr');
+  const de = numeroJetable('autrenumde000002', 'de');
+  try {
+    const cFr = convertir(fr.article, null, BANC_RACINE);
+    assert.strictEqual(cFr.status, 0, cFr.stderr);
+    assert.match(cFr.stdout, /Rencontre partagée entre les deux revues/);
+    assert.ok(!/Gemeinsamer Austausch/.test(cFr.stdout), 'le texte allemand fuite dans la sortie française : ' + cFr.stdout);
+
+    const cDe = convertir(de.article, null, BANC_RACINE);
+    assert.strictEqual(cDe.status, 0, cDe.stderr);
+    assert.match(cDe.stdout, /Gemeinsamer Austausch zwischen den Zeitschriften/);
+    assert.ok(!/Rencontre partagée/.test(cDe.stdout), 'le texte français fuite dans la sortie allemande : ' + cDe.stdout);
+  } finally {
+    fr.nettoyer(); de.nettoyer();
+  }
+});
+
+test('convertisseur : un fichier sous _Statuts n’est jamais lu comme une fiche', SAUT, () => {
+  // _Statuts est un voisin de Fiches, jamais scruté : le confirmer en pointant --racine-news
+  // sur le banc réel (qui porte les deux) et en vérifiant que le contenu du statut
+  // (« a-traduire ») ne fuite nulle part dans un document qui n'a pourtant aucune raison de
+  // le lire.
+  const c = convertir(BANC);
+  assert.strictEqual(c.status, 0, c.stderr);
+  assert.ok(!/a-traduire/.test(c.stdout), 'le contenu d’un fichier de statut apparaît dans le markdown : ' + c.stdout);
+});
+
+test('racine _NewsUndActu : découverte automatique sous Revue\\<num> et sous _Archive\\Revue\\<num>, un cran plus bas', SAUT, () => {
+  const racine = dossierJetable('szh-doc-racine-nommee-');
+  try {
+    const numeroEnCours = path.join(racine, 'Revue', '2026-02');
+    const numeroArchive = path.join(racine, '_Archive', 'Revue', '2025-09');
+    fs.mkdirSync(numeroEnCours, { recursive: true });
+    fs.mkdirSync(numeroArchive, { recursive: true });
+    fs.writeFileSync(path.join(numeroEnCours, 'ausgabe.yaml'), 'id: numeroencours0001\n');
+    fs.writeFileSync(path.join(numeroArchive, 'ausgabe.yaml'), 'id: numeroarchive0002\n');
+    for (const dossierNumero of [numeroEnCours, numeroArchive]) {
+      const article = path.join(dossierNumero, 'articles', 'essai');
+      fs.mkdirSync(article, { recursive: true });
+      fs.writeFileSync(path.join(article, 'essai.meta.yaml'), 'type: documentation\nlang: fr\n');
+      fs.writeFileSync(path.join(article, 'documentation.fr.txt'), 'Title: X\n');
+      // Sans --racine-news ni SZH_NEWS_RACINE : la découverte par les noms de dossiers
+      // doit suffire, dans les deux cas (numéro en cours et archivé).
+      const c = convertir(article, null, null);
+      assert.strictEqual(c.status, 0, `${dossierNumero} : ${c.stderr}`);
+    }
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
   }
 });

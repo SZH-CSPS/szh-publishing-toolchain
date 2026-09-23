@@ -1,0 +1,21 @@
+Title: Fiche orpheline
+
+----
+
+Uuid: horizon012orph00
+
+----
+
+Ausgabe:
+
+----
+
+Portee: varia
+
+----
+
+Descriptif: Fiche retirée d'un numéro (Ausgabe vidée, docs/FORMAT-DOCUMENTATION-KIRBY.md, §Une fiche) — elle ne doit apparaître dans AUCUN document, quel que soit l'id demandé.
+
+----
+
+Lien: https://www.szh.ch/

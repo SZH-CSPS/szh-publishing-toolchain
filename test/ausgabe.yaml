@@ -1,5 +1,9 @@
 # Numéro de TEST (mini-revue pour éprouver la maquette : couverture, coupures de
 # page, styles, tableaux). Non destiné à la publication.
+# id : posé une fois pour toutes (docs/FORMAT-DOCUMENTATION-KIRBY.md, §Le numéro) — sert à
+# rattacher les fiches Kirby de test/news-racine/_NewsUndActu/Fiches (Ausgabe: wj7f0dcw97qk3p2s).
+# Jamais recalculé, ne pas changer.
+id: wj7f0dcw97qk3p2s
 title: "Santé psychique"
 revue: revue
 volume: "44"
