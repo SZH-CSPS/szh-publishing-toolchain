@@ -48,6 +48,7 @@ var etatJeton = { jeton: null };
 var dernierModifie = false;
 var barre = document.getElementById('barre');
 var titreVue = document.getElementById('titreVue');
+var barreCategories = document.getElementById('barreCategories');
 var panelTraductions = document.getElementById('panel-traductions');
 var panelReservoir = document.getElementById('panel-reservoir');
 var panelNumero = document.getElementById('panel-numero');
@@ -743,6 +744,7 @@ function construireFiche(section, ressource, persistee) {
   c.enregistree = c.persistee ? valeurs(c) : null;
 
   cartes.push(c);
+  if (vueOnglet === 'numero' && barreCategories && !barreCategories.hidden) { construireBarreCategories(); }
   if (c.ctl.title) { c.ctl.title.addEventListener('input', function () { majTitreBascule(c); }); }
   majEtatCarte(c);
   majPositions();
@@ -752,6 +754,7 @@ var retraitsFicheEnAttente = 0;
 function retirerFiche(c) {
   c.element.remove();
   cartes = cartes.filter(function (x) { return x !== c; });
+  if (vueOnglet === 'numero') { construireBarreCategories(); }
   if (c.persistee) {
     retraitsFicheEnAttente++;
     api.postMessage({ type: SZH.MSG.RETIRER, famille: 'fiche', id: c.id });
@@ -1106,6 +1109,36 @@ function appliquerFiltreNumero() {
     s.corps.hidden = !visible;
   }
 }
+// La barre des catégories de « Documentation du numéro » (Robin, 24.09.2026) : Rubriques
+// puis un type de fiche par onglet, dans l'ordre du contrat, chacun avec son compte. Un clic
+// ne recharge rien : il change la catégorie visée et réapplique le filtre.
+function construireBarreCategories() {
+  barreCategories.textContent = '';
+  var entrees = [{ cle: 'rubriques', libelle: TXT.groupeRubriques || '', compte: null }];
+  for (var i = 0; i < TYPES.length; i++) {
+    var t = TYPES[i];
+    var n = cartes.filter(function (c) { return c.famille === 'fiche' && c.type === t.valeur; }).length;
+    entrees.push({ cle: t.valeur, libelle: t.libelleSection || t.valeur, compte: n });
+  }
+  entrees.forEach(function (e) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'doc-onglet' + (e.cle === vueCategorie ? ' doc-onglet--actif' : '');
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', e.cle === vueCategorie ? 'true' : 'false');
+    var l = document.createElement('span');
+    l.textContent = e.libelle;
+    b.appendChild(l);
+    if (e.compte) {
+      var k = document.createElement('span');
+      k.className = 'doc-onglet-compte';
+      k.textContent = String(e.compte);
+      b.appendChild(k);
+    }
+    b.addEventListener('click', function () { vueCategorie = e.cle; appliquerVue(); });
+    barreCategories.appendChild(b);
+  });
+}
 // Bascule la visibilité des quatre panneaux et pose le titre de la vue choisie — appelée
 // après chaque rendre() et à chaque message ongletActiver (l'arbre, panneau déjà ouvert).
 // Toute la navigation vit désormais dans l'arbre : la page n'a plus de barre d'onglets ni de
@@ -1117,6 +1150,8 @@ function appliquerVue() {
   panelNumero.hidden = vueOnglet !== 'numero';
   panelArchive.hidden = vueOnglet !== 'archive';
   if (vueOnglet === 'numero') { appliquerFiltreNumero(); }
+  barreCategories.hidden = vueOnglet !== 'numero';
+  if (vueOnglet === 'numero') { construireBarreCategories(); }
   var titre;
   if (vueOnglet === 'traductions') { titre = TXT.ongletTraductions || ''; }
   else if (vueOnglet === 'reservoir') { titre = TXT.ongletReservoir || ''; }
