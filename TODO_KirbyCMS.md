@@ -1,9 +1,11 @@
 # TODO Kirby CMS : ce qui reste à faire côté site
 
 La Documentation d'un numéro (« Actualité et ressources » / « News & Ressourcen ») est écrite
-par Pronto directement sous forme d'arborescence de contenu Kirby : une page par fiche, les
-rubriques en champs de la page Documentation, les listes en jetons. Publier doit revenir à
-copier ce dossier dans `content/` du site. Ce fichier rassemble ce que Pronto ne fait pas
+par Pronto directement sous forme de contenu Kirby : une bibliothèque unique
+`_NewsUndActu\Fiches\` (voir docs/FORMAT-DOCUMENTATION-KIRBY.md), une page par fiche, un
+fichier par langue, les listes en jetons. Publier doit revenir à copier ce dossier dans
+`content/` du site. Les rubriques de texte libre restent dans le numéro et ne partent jamais
+sur le site. Ce fichier rassemble ce que Pronto ne fait pas
 et que le site Kirby devra reprendre, avec la raison de chaque point.
 
 Décisions de départ (Robin, 23.09.2026) : un seul site Kirby **bilingue** (fr = Revue,
@@ -54,16 +56,19 @@ fiches, en reproduisant ce que le PDF imprime :
 à la main en PHP finira par diverger de celle des filtres Lua : c'est pour cela que libellés
 et formules vivent dans le JSON, que le site doit lire tel quel.
 
-## 3. Ordre des fiches : ne pas le laisser trier dans le Panel
+## 3. Rattachement et ordre : les champs `Ausgabe` et `Ordre`
 
-**Attendu.** Désactiver le tri manuel des fiches dans le Panel (`sortable: false` sur les
-sections de pages, à vérifier selon la version de Kirby), et afficher les enfants dans
-l'ordre de leur préfixe numérique.
+**Attendu.** Une page de numéro liste les fiches dont le fichier de SA langue porte
+`Ausgabe: <id du numéro>` (l'id de son `ausgabe.yaml`, 16 caractères, réutilisable comme Uuid
+de la future page de numéro), triées par le champ `Ordre`. Les dossiers de fiches n'ont pas
+de préfixe numérique (pages non listées au sens de Kirby) : ne pas les filtrer par
+`listed()`. Désactiver le tri manuel dans le Panel.
 
 **Pourquoi.** Pronto calcule l'ordre d'impression (interventions : Confédération d'abord,
 puis cantons par ordre alphabétique, puis titre ; autres types : titre ; agenda : date de
-début) et l'écrit dans le préfixe des dossiers (`1_`, `2_`…). C'est ce qui permet au site
-d'avoir l'ordre du PDF sans réimplémenter le tri. Un glisser-déposer dans le Panel casserait
+début) et l'écrit dans le champ `Ordre` de chaque fichier de langue. C'est ce qui permet au
+site d'avoir l'ordre du PDF sans réimplémenter le tri ; un même dossier a deux ordres, un par
+langue, puisqu'il appartient à un numéro de chaque revue. Un glisser-déposer dans le Panel casserait
 cette garantie, et la synchronisation suivante le défairait sans prévenir.
 
 ## 4. Recalculer `curia` quand on édite dans le Panel
@@ -77,9 +82,10 @@ l'enregistrement ; une catégorie changée dans le Panel laisserait sinon une va
 ## 5. Bouton « Synchroniser » / « Publier maintenant »
 
 **Attendu.** Le transport Pronto → Kirby, déclenché à la main depuis Pronto. Au minimum :
-copier le dossier Documentation du numéro à sa place dans `content/`, renommer la racine
-selon la convention Kirby (`07-documentation` → `7_documentation`), et copier les images
-avec leurs fichiers de métadonnées.
+copier `_NewsUndActu\Fiches\` dans `content/` (par exemple `content/actualites/`), images
+comprises. Jamais `_NewsUndActu\_Statuts\` (décisions de traduction, données de travail) ni
+les rubriques des numéros. Une fiche orpheline (`Ausgabe` vide) est copiée mais n'apparaît
+dans aucun numéro.
 
 **Pourquoi et points à trancher.**
 - **Sens unique ou aller-retour ?** Si le Panel sert aussi à corriger une fiche, une
@@ -87,8 +93,7 @@ avec leurs fichiers de métadonnées.
   ces pages, soit détecter la modification (date de modification, empreinte) et refuser
   d'écraser.
 - **UUID.** Pronto écrit le `Uuid` de chaque page et le garde : c'est l'identité de la
-  fiche. Une fiche « envoyée à l'autre revue » est une copie, elle doit recevoir un UUID
-  neuf, sinon Kirby verrait deux pages avec le même.
+  fiche, la même dans ses deux fichiers de langue (une traduction n'est pas une copie).
 - **Cache d'UUID de Kirby.** À vérifier : un dossier copié hors du Panel est-il pris en
   compte sans vider le cache ?
 
