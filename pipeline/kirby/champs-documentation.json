@@ -1,7 +1,7 @@
 {
   "_lisezmoi": [
     "Contrat unique des champs de la Documentation (Actualité et ressources / News & Ressourcen).",
-    "Lu par le formulaire du cockpit, le convertisseur Kirby -> pandoc et les filtres Lua ; les blueprints de kirby/site/blueprints/ en sont générés et ne s'éditent jamais à la main.",
+    "Lu par le formulaire du cockpit, le convertisseur Kirby -> pandoc et les filtres Lua ; il vit dans pipeline/ pour partir avec le toolkit (le cockpit le cherche dans le dépôt puis dans toolkit/pipeline/, comme lib/citations.js) ; les blueprints de kirby/site/blueprints/ en sont générés et ne s'éditent jamais à la main.",
     "Noms de champs : a-z, 0-9 et _ seulement (règle Kirby). `title` est le titre natif d'une page Kirby. Les valeurs de liste sont des jetons, jamais des libellés.",
     "saisie : texte | texte_long | url | date (AAAA-MM-JJ) | date_partielle (AAAA, AAAA-MM ou AAAA-MM-JJ) | annee | liste | derive | structure | fichier.",
     "Voir TODO_KirbyCMS.md pour ce que le site Kirby doit reprendre."
@@ -213,6 +213,7 @@
   },
 
   "ordreTypes": ["horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
+  "ordreSections": ["dossier_references", "dossier_liens", "ressources", "podcasts", "horizon", "recherche", "intervention", "livre", "film", "reprise", "agenda"],
 
   "listes": {
     "portee": [

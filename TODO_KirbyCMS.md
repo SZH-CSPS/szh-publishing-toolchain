@@ -13,7 +13,7 @@ aucune rétrocompatibilité avec l'ancien format des blocs `:::`.
 
 > ⚠ **Avant de reprendre un point, vérifier les champs actuels.** Les noms de champs, les
 > listes et leurs jetons cités ici datent du 23.09.2026. La seule source qui fait foi est
-> `kirby/champs-documentation.json`, et les blueprints générés à partir de lui dans
+> `pipeline/kirby/champs-documentation.json`, et les blueprints générés à partir de lui dans
 > `kirby/site/blueprints/`. Un champ ajouté, renommé ou retiré depuis n'est pas reporté ici :
 > comparer chaque point au JSON avant de coder quoi que ce soit côté site.
 
@@ -95,7 +95,7 @@ avec leurs fichiers de métadonnées.
 ## 6. Blueprints : générés, jamais édités sur le site
 
 **Attendu.** Déployer `kirby/site/blueprints/` tel quel. Toute modification d'un champ se
-fait dans `kirby/champs-documentation.json`, puis on régénère.
+fait dans `pipeline/kirby/champs-documentation.json`, puis on régénère.
 
 **Pourquoi.** Le JSON alimente aussi le formulaire de Pronto, le convertisseur et les filtres
 du PDF. Un blueprint retouché à la main sur le site divergerait des trois en silence.
