@@ -20,9 +20,10 @@ rubriques restent dans le numéro ; un réservoir remplace l'envoi à l'autre re
 ├── _Archive\Revue\ Zeitschrift\ Books\
 ├── _NewsUndActu\
 │   ├── Fiches\                    bibliothèque Kirby : copiée TELLE QUELLE vers le site
-│   │   └── <slug>\
-│   │       ├── <type>.fr.txt      fichier de la Revue (facultatif)
-│   │       ├── <type>.de.txt      fichier de la Zeitschrift (facultatif)
+│   │   ├── Rundschau\  Forschung\  Vorstoesse\  Buecher\  Filme\  Revueblick\  Weiterbildung\
+│   │   └── Buecher\<slug>\        un dossier par type (`types[].dossier`), puis par fiche
+│   │       ├── livre.fr.txt       fichier de la Revue (facultatif)
+│   │       ├── livre.de.txt       fichier de la Zeitschrift (facultatif)
 │   │       └── <image>            couverture/affiche, commune aux deux langues
 │   └── _Statuts\
 │       ├── fr\<uuid>.txt          décision de la Revue sur une fiche allemande
@@ -49,9 +50,17 @@ rubriques restent dans le numéro ; un réservoir remplace l'envoi à l'autre re
 
 ## Une fiche
 
-- Dossier `_NewsUndActu\Fiches\<slug>\`, slug tiré du titre à la création (lib/slug.js),
-  suffixe -2, -3 si collision, JAMAIS renommé ensuite (ni préfixe d'ordre : un numéro ne peut
-  pas imposer son rang à un dossier que l'autre langue partage).
+- Dossier `_NewsUndActu\Fiches\<dossier du type>\<slug>\` : `types[].dossier` du contrat,
+  un mot allemand en ASCII (Rundschau, Forschung, Vorstoesse, Buecher, Filme, Revueblick,
+  Weiterbildung), jamais renommé. Un sous-dossier inconnu de `Fiches\` est ignoré avec un
+  avertissement ; un fichier `<type>.<lang>.txt` rangé sous le dossier d'un autre type est
+  une erreur signalée, jamais lue en silence. Changer le type d'une fiche la déplace.
+  Pourquoi : un type se sauvegarde, se migre ou se délègue d'un bloc (le moissonneur des
+  interventions n'écrit que dans `Vorstoesse\`), et c'est la structure naturelle de Kirby
+  (une page parente par type, une section du Panel, une adresse lisible).
+- Slug tiré du titre à la création (lib/slug.js), suffixe -2, -3 si collision dans le dossier
+  du type, JAMAIS renommé ensuite (ni préfixe d'ordre : un numéro ne peut pas imposer son
+  rang à un dossier que l'autre langue partage).
 - Un fichier par langue, `<type>.<lang>.txt`, même type pour les deux.
 - `Uuid` : identique dans les deux fichiers, posé à la création, jamais recalculé.
 - Champs traduisibles (`"traduire": true` du JSON : title, descriptif, lien_libelle, et

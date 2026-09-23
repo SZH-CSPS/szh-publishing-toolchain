@@ -7,6 +7,7 @@
     "Voir TODO_KirbyCMS.md pour ce que le site Kirby doit reprendre."
   ],
   "version": 1,
+  "_dossiers": "types[].dossier : nom du sous-dossier de _NewsUndActu/Fiches/ qui range ce type. Un mot allemand en ASCII (ü devient ue, ö devient oe) : c'est aussi le segment d'adresse du site Kirby. Ne se renomme jamais une fois des fiches écrites.",
   "langues": ["fr", "de"],
   "revues": { "revue": "fr", "zeitschrift": "de" },
 
@@ -23,6 +24,7 @@
 
   "types": {
     "horizon": {
+      "dossier": "Rundschau",
       "libelle": { "fr": "Tour d’horizon", "de": "Rundschau" },
       "libelleLien": { "fr": "En savoir plus : {titre}", "de": "Mehr erfahren: {titre}" },
       "tri": ["portee", "canton", "title"],
@@ -44,6 +46,7 @@
     },
 
     "recherche": {
+      "dossier": "Forschung",
       "libelle": { "fr": "Recherches en cours", "de": "Laufende Forschungsprojekte" },
       "libelleLien": { "fr": "En savoir plus sur la recherche {titre}", "de": "Mehr zum Forschungsprojekt {titre}" },
       "tri": ["title"],
@@ -66,6 +69,7 @@
     },
 
     "intervention": {
+      "dossier": "Vorstoesse",
       "libelle": { "fr": "Interventions parlementaires", "de": "Parlamentarische Vorstösse" },
       "libelleLien": { "fr": "En savoir plus sur l’intervention {titre}", "de": "Mehr zum Vorstoss {titre}" },
       "tri": ["canton", "title"],
@@ -109,6 +113,7 @@
     },
 
     "livre": {
+      "dossier": "Buecher",
       "libelle": { "fr": "Livres", "de": "Bücher" },
       "libelleLien": { "fr": "En savoir plus sur le livre {titre}", "de": "Mehr zum Buch {titre}" },
       "tri": ["title"],
@@ -137,6 +142,7 @@
     },
 
     "film": {
+      "dossier": "Filme",
       "libelle": { "fr": "Films", "de": "Filme" },
       "libelleLien": { "fr": "En savoir plus sur le film {titre}", "de": "Mehr zum Film {titre}" },
       "tri": ["title"],
@@ -165,6 +171,7 @@
     },
 
     "reprise": {
+      "dossier": "Revueblick",
       "libelle": { "fr": "D’une revue à l’autre", "de": "Blick in die Revue" },
       "libelleLien": { "fr": "Lire l’article {titre}", "de": "Zum Artikel {titre}" },
       "tri": ["title"],
@@ -187,6 +194,7 @@
     },
 
     "agenda": {
+      "dossier": "Weiterbildung",
       "libelle": { "fr": "Agenda et formation continue", "de": "Weiterbildung" },
       "libelleLien": { "fr": "En savoir plus sur la manifestation {titre}", "de": "Mehr zur Veranstaltung {titre}" },
       "tri": ["debut", "title"],
