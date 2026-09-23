@@ -1,5 +1,6 @@
 // lib/kirby-contenu.js : le module pur qui lit et écrit la Documentation — la page du
-// numéro (rubriques) et la bibliothèque partagée de fiches (_NewsUndActu\Fiches\<slug>\).
+// numéro (rubriques) et la bibliothèque partagée de fiches
+// (_NewsUndActu\Fiches\<dossier-du-type>\<slug>\, un dossier par type — types[].dossier).
 //
 // Quatre familles : l'aller-retour du fichier .txt (lireTxt/ecrireTxt, listes YAML), les
 // calculs purs (curia, ordre des fiches, racine de l'arbre), la bibliothèque sur disque
@@ -387,7 +388,102 @@ test('creerFiche puis lireFicheSlugLangue : Ausgabe posé, Ordre absent avant re
     assert.strictEqual(f.ausgabe, idRevue);
     assert.strictEqual(f.ordre, null);
     assert.strictEqual(f.valeurs.title, 'Un livre');
-    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'livre.fr.txt')));
+    assert.ok(fs.existsSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'livre.fr.txt')));
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), 'Buecher', slug, 'livre.fr.txt')),
+      'le dossier du type (Buecher, types[].dossier du contrat) doit porter la fiche');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Un dossier par type (types[].dossier du contrat) ----------------------------------
+
+test('dossierDuType / cheminDossierType / cheminFiche : dérivés du contrat, jamais écrits en dur', () => {
+  assert.strictEqual(kc.dossierDuType('livre'), 'Buecher');
+  assert.strictEqual(kc.dossierDuType('intervention'), 'Vorstoesse');
+  assert.strictEqual(kc.dossierDuType('zorglub'), null);
+  const racine = path.resolve(os.tmpdir(), 'x', 'Revues-TESTING');
+  assert.strictEqual(kc.cheminDossierType(racine, 'livre'), path.join(kc.cheminBibliotheque(racine), 'Buecher'));
+  assert.strictEqual(kc.cheminFiche(racine, 'livre', 'mon-livre'),
+    path.join(kc.cheminBibliotheque(racine), 'Buecher', 'mon-livre'));
+  assert.strictEqual(kc.cheminDossierType(racine, 'zorglub'), null);
+});
+
+// La collision de slug (même titre, ou titres qui slugifient pareil) se gère DANS LE DOSSIER
+// DE SON TYPE, jamais à travers toute la bibliothèque : un livre et un film peuvent porter le
+// même slug, chacun sous son propre dossier (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+test('creerFiche : deux types différents peuvent porter le même slug, chacun dans son dossier', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    const livreCree = kc.creerFiche(racine, 'fr', 'livre', livre('Même titre'), idRevue);
+    const filmCree = kc.creerFiche(racine, 'fr', 'film',
+      { title: 'Même titre', realisateur: 'X', annee: '2026', descriptif: 'D' }, idRevue);
+    assert.strictEqual(livreCree.slug, filmCree.slug, 'le même slug de base est repris par les deux types');
+    assert.ok(kc.lireFicheSlugLangue(racine, livreCree.slug, 'fr', 'livre'));
+    assert.ok(kc.lireFicheSlugLangue(racine, filmCree.slug, 'fr', 'film'));
+    // Une seconde fiche du MÊME type reçoit -2 : la collision, elle, se gère dans ce dossier.
+    const livreCree2 = kc.creerFiche(racine, 'fr', 'livre', livre('Même titre'), idRevue);
+    assert.strictEqual(livreCree2.slug, livreCree.slug + '-2');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Lecture par dossier de type : sous-dossier inconnu, fichier au mauvais endroit -----
+
+test('listerSlugsBibliotheque : un sous-dossier de Fiches\\ inconnu du contrat est ignoré, avec un avertissement', () => {
+  const { racine, idRevue } = arbreJetable();
+  const avertissements = [];
+  const original = console.warn;
+  console.warn = (msg) => avertissements.push(String(msg));
+  try {
+    kc.creerFiche(racine, 'fr', 'livre', livre('Connu'), idRevue);
+    fs.mkdirSync(path.join(kc.cheminBibliotheque(racine), 'DossierMystere', 'un-slug'), { recursive: true });
+    fs.writeFileSync(path.join(kc.cheminBibliotheque(racine), 'DossierMystere', 'un-slug', 'livre.fr.txt'),
+      'Title: X\n\n----\n\nUuid: u\n', 'utf8');
+    const fiches = kc.listerSlugsBibliotheque(racine);
+    assert.strictEqual(fiches.length, 1, 'seule la fiche du dossier connu doit être listée');
+    assert.ok(avertissements.some((m) => /DossierMystere/.test(m)), 'l’avertissement doit nommer le dossier inconnu');
+  } finally { console.warn = original; fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('un fichier <type>.<lang>.txt rangé sous le dossier d’un AUTRE type est signalé en erreur, jamais lu', () => {
+  const { racine, idRevue } = arbreJetable();
+  const erreurs = [];
+  const original = console.error;
+  console.error = (msg) => erreurs.push(String(msg));
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Livre égaré'), idRevue);
+    // Un fichier de type « film » posé à la main sous le dossier Buecher\<slug>\ : rangement
+    // fautif (déplacement manuel, script tiers…), jamais produit par ce module lui-même.
+    fs.writeFileSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'film.fr.txt'),
+      'Title: Intrus\n\n----\n\nUuid: intrus\n', 'utf8');
+    const f = kc.lireFicheSlugLangue(racine, slug, 'fr', 'livre');
+    assert.ok(f, 'la fiche du bon type doit toujours se lire');
+    assert.strictEqual(f.valeurs.title, 'Livre égaré', 'le fichier égaré ne doit pas être lu à sa place');
+    assert.ok(erreurs.some((m) => /film\.fr\.txt/.test(m) && /livre/.test(m)), 'l’erreur doit nommer le fichier et le type attendu');
+  } finally { console.error = original; fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Changer le type d'une fiche existante : interdit, explicitement -------------------
+
+test('enregistrerFicheLangue refuse explicitement un changement de type, sans le confondre avec « fiche introuvable »', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    const r = kc.enregistrerFicheLangue(racine, slug, 'fr', 'film',
+      { title: 'X', realisateur: 'Y', annee: '2026', descriptif: 'D' });
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.raison, 'changement-de-type-refuse');
+    // La fiche d'origine (type livre) doit être intacte.
+    const f = kc.lireFicheSlugLangue(racine, slug, 'fr', 'livre');
+    assert.ok(f, 'la fiche d’origine doit survivre au refus');
+    assert.strictEqual(f.type, 'livre');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('enregistrerFicheLangue : une fiche réellement introuvable ne porte pas la raison « changement de type »', () => {
+  const { racine } = arbreJetable();
+  try {
+    const r = kc.enregistrerFicheLangue(racine, 'jamais-cree', 'fr', 'livre', livre('X'));
+    assert.strictEqual(r.ok, false);
+    assert.strictEqual(r.raison, undefined);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
@@ -397,7 +493,7 @@ test('le dossier de la fiche n’est JAMAIS renommé — le slug tient malgré u
     const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Titre initial'), idRevue);
     kc.reordonnerNumero(racine, 'fr', idRevue);
     kc.enregistrerFicheLangue(racine, slug, 'fr', 'livre', livre('Titre complètement différent'));
-    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'livre.fr.txt')),
+    assert.ok(fs.existsSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'livre.fr.txt')),
       'le dossier doit garder son slug d’origine');
     const f = kc.lireFicheSlugLangue(racine, slug, 'fr');
     assert.strictEqual(f.valeurs.title, 'Titre complètement différent');
@@ -515,7 +611,7 @@ test('supprimerFicheOrpheline : refuse sur une fiche rattachée, efface sinon (d
     kc.detacherFiche(racine, slug, 'fr');
     r = kc.supprimerFicheOrpheline(racine, slug, 'fr');
     assert.strictEqual(r.ok, true);
-    assert.ok(!fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug)), 'plus aucune langue : le dossier part');
+    assert.ok(!fs.existsSync(kc.cheminFiche(racine, 'livre', slug)), 'plus aucune langue : le dossier part');
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
@@ -527,7 +623,7 @@ test('supprimerFicheOrpheline : une seule langue part si l’autre existe encore
     kc.detacherFiche(racine, slug, 'fr');
     const r = kc.supprimerFicheOrpheline(racine, slug, 'fr');
     assert.strictEqual(r.ok, true);
-    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug)), 'le dossier doit survivre');
+    assert.ok(fs.existsSync(kc.cheminFiche(racine, 'livre', slug)), 'le dossier doit survivre');
     assert.ok(kc.lireFicheSlugLangue(racine, slug, 'de'), 'l’allemand doit survivre');
     assert.strictEqual(kc.lireFicheSlugLangue(racine, slug, 'fr'), null);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
@@ -649,7 +745,7 @@ test('image provisoire : déposée avant la fiche, installée à la création, j
     const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue, source);
     const f = kc.lireFicheSlugLangue(racine, slug, 'fr');
     assert.strictEqual(f.valeurs.couverture, 'couverture.png');
-    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'couverture.png')));
+    assert.ok(fs.existsSync(path.join(kc.cheminFiche(racine, 'livre', slug), 'couverture.png')));
     kc.nettoyerImageProvisoire('carte-1');
     assert.strictEqual(kc.imageProvisoire('carte-1'), null);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }

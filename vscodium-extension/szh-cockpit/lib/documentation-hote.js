@@ -329,7 +329,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug) {
       const cle = kirby.champFichierDuType(f.type);
       const nomImage = cle ? f.valeurs[cle] : '';
       const apercu = nomImage
-        ? apercuMedia(path.join(kirby.cheminBibliotheque(racineArbreVal), f.slug, nomImage), budget) : null;
+        ? apercuMedia(path.join(kirby.cheminFiche(racineArbreVal, f.type, f.slug), nomImage), budget) : null;
       return { id: f.uuid, type: f.type, valeurs: f.valeurs, apercu: apercu };
     });
   }

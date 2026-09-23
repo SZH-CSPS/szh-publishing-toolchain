@@ -4,9 +4,12 @@
 //   1. La PAGE du numéro (documentation.<lang>.txt, à la racine de l'article
 //      articles/NN-<slug>/) : Title, Uuid, et les quatre rubriques de prose libre
 //      (dossier_references…). Ne contient plus aucune fiche — voir lirePage/ecrirePage.
-//   2. La BIBLIOTHÈQUE partagée (<racine-arbre>\_NewsUndActu\Fiches\<slug>\) : un dossier
-//      par fiche, un fichier <type>.<lang>.txt par langue qui l'a écrite, jamais renommé.
-//      Le rattachement à un numéro se fait par le champ système Ausgabe (l'id du numéro,
+//   2. La BIBLIOTHÈQUE partagée (<racine-arbre>\_NewsUndActu\Fiches\<dossier-du-type>\<slug>\) :
+//      un dossier par TYPE (`types[].dossier` du contrat — Rundschau, Forschung, Vorstoesse,
+//      Buecher, Filme, Revueblick, Weiterbildung), puis un dossier par fiche, un fichier
+//      <type>.<lang>.txt par langue qui l'a écrite, jamais renommé. Le slug n'est unique qu'À
+//      L'INTÉRIEUR du dossier de son type — deux types peuvent partager le même slug. Le
+//      rattachement à un numéro se fait par le champ système Ausgabe (l'id du numéro,
 //      ausgabe.yaml) et l'ordre d'impression par le champ système Ordre, recalculé à
 //      chaque enregistrement — voir docs/FORMAT-DOCUMENTATION-KIRBY.md, la seule source de
 //      vérité du format.
@@ -15,8 +18,9 @@
 // jamais recopié). Aucune table de types, de listes ou de libellés ne vit dans ce fichier.
 //
 // Aucune rétrocompatibilité : l'ancien rangement (une fiche par dossier <n>_<slug>/ SOUS
-// l'article, renommé à chaque réordonnancement) et la réserve hors numéro (lib/reserve.js,
-// supprimé) ne sont plus lus ni écrits nulle part.
+// l'article, renommé à chaque réordonnancement ; puis une fiche à plat sous Fiches\<slug>\,
+// sans dossier de type) et la réserve hors numéro (lib/reserve.js, supprimé) ne sont plus lus
+// ni écrits nulle part.
 //
 // ⚠ Pur, comme lib/citations.js : aucun require('vscode'). L'hôte (lib/documentation-hote.js)
 // fait les allers-retours avec la webview et refuse un numéro verrouillé ; ce module ne fait
@@ -531,6 +535,43 @@ function dossierRevue(revue) {
 function cheminBibliotheque(racineArbreVal) { return path.join(racineArbreVal, NOM_BIBLIOTHEQUE, 'Fiches'); }
 function cheminStatutsRacine(racineArbreVal) { return path.join(racineArbreVal, NOM_BIBLIOTHEQUE, '_Statuts'); }
 
+// ---- Un dossier par type sous Fiches\ (types[].dossier du contrat) -------------------
+//
+// Jamais écrit en dur ailleurs que dans le contrat (pipeline/kirby/champs-documentation.json,
+// _dossiers) : ce module est le seul à en dériver un chemin.
+function dossierDuType(type) {
+  const def = definitionType(type);
+  return def ? def.dossier : null;
+}
+// L'ensemble des noms de dossier attendus directement sous Fiches\, dérivé du contrat.
+function dossiersAttendus() {
+  const set = new Set();
+  for (const t of typesConnus()) {
+    const d = dossierDuType(t);
+    if (d) { set.add(d); }
+  }
+  return set;
+}
+function cheminDossierType(racineArbreVal, type) {
+  const d = dossierDuType(type);
+  return d ? path.join(cheminBibliotheque(racineArbreVal), d) : null;
+}
+function cheminFiche(racineArbreVal, type, slug) {
+  const dt = cheminDossierType(racineArbreVal, type);
+  return dt ? path.join(dt, slug) : null;
+}
+
+// Avertissement (sous-dossier de Fiches\ inconnu du contrat) et erreur (fichier de fiche
+// rangé sous le dossier d'un AUTRE type) : jamais une exception, toujours le journal de
+// l'hôte — comme lib/citations.js, dont ce module reprend le même filet try/catch pour un
+// hôte sans console (tests, outils-dev).
+function avertir(message) {
+  try { console.warn('[kirby-contenu] ' + message); } catch (e) { /* hôte sans console */ }
+}
+function signalerErreur(message) {
+  try { console.error('[kirby-contenu] ' + message); } catch (e) { /* hôte sans console */ }
+}
+
 // listerNumeros(racineArbreVal) -> [{ id, revue, nom, chemin, archive }], pour les deux
 // revues, en cours et archivés. `id` vaut '' pour un numéro sans ausgabe.yaml lisible ou
 // sans id encore posé.
@@ -565,51 +606,117 @@ function idsEnDouble(racineArbreVal) {
   return Object.keys(parId).map((id) => parId[id]).filter((l) => l.length > 1);
 }
 
-// ---- La bibliothèque : lire, écrire, lister une fiche par slug + langue --------------
+// ---- La bibliothèque : lire, écrire, lister une fiche par (type, slug) + langue -------
 
-// Un dossier de la bibliothèque porte un fichier de langue s'il contient exactement un
-// <type>.<langue>.txt dont le type est connu du contrat.
-function ficheDeDossierSlug(cheminSlug, langue) {
+// Un dossier de fiche porte un fichier de langue s'il contient un <typeAttendu>.<langue>.txt.
+// Un <autreType>.<langue>.txt, où autreType est CONNU du contrat mais différent de celui du
+// dossier qui le contient (Fiches\<dossier-du-type>\<slug>\) : rangé sous le mauvais type,
+// signalé en erreur et jamais lu — voir docs/FORMAT-DOCUMENTATION-KIRBY.md, « Une fiche ».
+// Un type non reconnu du tout dans le nom du fichier : ignoré en silence (pas une fiche
+// Kirby).
+function ficheDeDossierSlug(cheminSlug, langue, typeAttendu) {
   let fichiers;
   try { fichiers = fs.readdirSync(cheminSlug); } catch (e) { return null; }
   const suffixe = '.' + langue + '.txt';
+  let trouve = null;
   for (const nom of fichiers) {
     if (nom.slice(-suffixe.length) !== suffixe) { continue; }
     const type = nom.slice(0, nom.length - suffixe.length).toLowerCase();
     if (!typeConnu(type)) { continue; }
-    return { type: type, nomFichier: nom };
+    if (type !== typeAttendu) {
+      signalerErreur('fichier ' + nom + ' rangé sous le dossier du type « ' + typeAttendu
+        + ' » (' + cheminSlug + ') : ignoré, jamais lu.');
+      continue;
+    }
+    trouve = { type: type, nomFichier: nom };
   }
-  return null;
+  return trouve;
 }
-function listerSlugsBibliotheque(racineArbreVal) {
-  let entrees;
-  try { entrees = fs.readdirSync(cheminBibliotheque(racineArbreVal), { withFileTypes: true }); }
-  catch (e) { return []; }
-  return entrees.filter((e) => e.isDirectory()).map((e) => e.name);
-}
-function ensembleSlugsExistants(racineArbreVal) { return new Set(listerSlugsBibliotheque(racineArbreVal)); }
 
-// lireFicheSlugLangue(racineArbreVal, slug, langue) -> { slug, uuid, type, ausgabe, ordre,
-// valeurs } | null. `ordre` est un entier ou null (fiche orpheline, ou jamais ordonnée).
-function lireFicheSlugLangue(racineArbreVal, slug, langue) {
-  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
-  const info = ficheDeDossierSlug(cheminSlug, langue);
-  if (!info) { return null; }
-  let brut;
-  try { brut = fs.readFileSync(path.join(cheminSlug, info.nomFichier), 'utf8'); }
-  catch (e) { return null; }
-  const { title, uuid, champs } = lireTxt(brut);
-  const ausgabe = String(champs.ausgabe || '');
-  const ordreBrut = champs.ordre;
-  const ordre = (ordreBrut !== undefined && String(ordreBrut).trim() !== '') ? parseInt(ordreBrut, 10) : null;
-  return { slug: slug, uuid: uuid, type: info.type, ausgabe: ausgabe, ordre: (Number.isFinite(ordre) ? ordre : null), valeurs: valeursDepuisChamps(info.type, title, champs) };
+// listerSlugsBibliotheque(racineArbreVal) -> [{ type, slug }, …] : parcourt Fiches\<dossier>\*
+// pour chaque type connu du contrat. Un sous-dossier de Fiches\ qui ne correspond au dossier
+// d'AUCUN type connu : ignoré avec un avertissement (journal) — jamais lu, jamais supposé être
+// l'ancien rangement à plat.
+function listerSlugsBibliotheque(racineArbreVal) {
+  const racineFiches = cheminBibliotheque(racineArbreVal);
+  let entreesRacine;
+  try { entreesRacine = fs.readdirSync(racineFiches, { withFileTypes: true }); }
+  catch (e) { return []; }
+  const attendus = dossiersAttendus();
+  const typeDuDossier = new Map();
+  for (const t of typesConnus()) {
+    const d = dossierDuType(t);
+    if (d) { typeDuDossier.set(d, t); }
+  }
+  const res = [];
+  for (const e of entreesRacine) {
+    if (!e.isDirectory()) { continue; }
+    if (!attendus.has(e.name)) {
+      avertir('sous-dossier inconnu du contrat sous Fiches\\ : « ' + e.name + ' » — ignoré.');
+      continue;
+    }
+    const type = typeDuDossier.get(e.name);
+    let sousEntrees;
+    try { sousEntrees = fs.readdirSync(path.join(racineFiches, e.name), { withFileTypes: true }); }
+    catch (err) { continue; }
+    for (const se of sousEntrees) {
+      if (se.isDirectory()) { res.push({ type: type, slug: se.name }); }
+    }
+  }
+  return res;
 }
-// lireFicheParUuid(racineArbreVal, langue, uuid) -> comme lireFicheSlugLangue, en
+// L'ensemble des slugs déjà pris DANS LE DOSSIER D'UN SEUL TYPE — la collision de slug à la
+// création (creerFiche) se gère dans ce dossier, jamais à travers toute la bibliothèque : deux
+// types différents peuvent partager le même slug (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+function ensembleSlugsExistantsPourType(racineArbreVal, type) {
+  const chemin = cheminDossierType(racineArbreVal, type);
+  if (!chemin) { return new Set(); }
+  let entrees;
+  try { entrees = fs.readdirSync(chemin, { withFileTypes: true }); } catch (e) { return new Set(); }
+  return new Set(entrees.filter((e) => e.isDirectory()).map((e) => e.name));
+}
+
+// lireFicheSlugLangue(racineArbreVal, slug, langue, type?) -> { slug, uuid, type, ausgabe,
+// ordre, valeurs } | null. `ordre` est un entier ou null (fiche orpheline, ou jamais
+// ordonnée). `type`, s'il est connu de l'appelant, cible directement son dossier
+// (Fiches\<dossier-du-type>\<slug>\) — le cas courant, tous les appels internes qui tiennent
+// déjà le type d'une fiche le passent. Omis, la fonction cherche le slug dans CHAQUE dossier
+// de type connu (un geste ponctuel, jamais un rendu de liste — comme trouverSlugParUuid
+// ci-dessous) et prévient si plus d'un type porte ce même slug pour cette langue : l'unicité
+// du slug n'est garantie qu'à l'intérieur d'un même dossier, jamais à travers toute la
+// bibliothèque.
+function lireFicheSlugLangue(racineArbreVal, slug, langue, type) {
+  const typesACherche = type ? [type] : typesConnus();
+  const trouvees = [];
+  for (const t of typesACherche) {
+    const cheminSlug = cheminFiche(racineArbreVal, t, slug);
+    if (!cheminSlug) { continue; }
+    const info = ficheDeDossierSlug(cheminSlug, langue, t);
+    if (!info) { continue; }
+    let brut;
+    try { brut = fs.readFileSync(path.join(cheminSlug, info.nomFichier), 'utf8'); }
+    catch (e) { continue; }
+    const { title, uuid, champs } = lireTxt(brut);
+    const ausgabe = String(champs.ausgabe || '');
+    const ordreBrut = champs.ordre;
+    const ordre = (ordreBrut !== undefined && String(ordreBrut).trim() !== '') ? parseInt(ordreBrut, 10) : null;
+    trouvees.push({
+      slug: slug, uuid: uuid, type: t, ausgabe: ausgabe,
+      ordre: (Number.isFinite(ordre) ? ordre : null), valeurs: valeursDepuisChamps(t, title, champs)
+    });
+  }
+  if (trouvees.length > 1) {
+    avertir('le slug « ' + slug + '.' + langue + ' » existe dans plusieurs dossiers de type ('
+      + trouvees.map((f) => f.type).join(', ') + ') : le premier est retenu.');
+  }
+  return trouvees[0] || null;
+}
+// trouverSlugParUuid(racineArbreVal, langue, uuid) -> comme lireFicheSlugLangue, en
 // cherchant le slug par Uuid. Coûteux (parcourt toute la bibliothèque) : réservé aux gestes
 // ponctuels (statuts, réservoir), jamais à un rendu de liste.
 function trouverSlugParUuid(racineArbreVal, langue, uuid) {
-  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
-    const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  for (const { type, slug } of listerSlugsBibliotheque(racineArbreVal)) {
+    const f = lireFicheSlugLangue(racineArbreVal, slug, langue, type);
     if (f && f.uuid === uuid) { return slug; }
   }
   return null;
@@ -632,7 +739,7 @@ function installerImage(cheminDossier, cheminSource) {
 // jamais de renommage de dossier, jamais de renommage de fichier hors changement de type
 // (qui ne devrait jamais arriver en pratique : le type d'une fiche est fixé à sa création).
 function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, ordre, imageSource) {
-  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
+  const cheminSlug = cheminFiche(racineArbreVal, type, slug);
   fs.mkdirSync(cheminSlug, { recursive: true });
   const v = Object.assign({}, valeurs);
   if (imageSource) {
@@ -658,21 +765,34 @@ function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs
 function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource) {
   if (!typeConnu(type)) { throw new Error('creerFiche : type de fiche inconnu « ' + type + ' ».'); }
   const uuid = genererUuid();
-  const slug = slugFicheUnique((valeurs || {}).title || '', ensembleSlugsExistants(racineArbreVal));
+  // Collision gérée DANS LE DOSSIER DE CE TYPE seulement (docs/FORMAT-DOCUMENTATION-KIRBY.md) :
+  // deux types différents peuvent partager le même slug, chacun dans son propre dossier.
+  const slug = slugFicheUnique((valeurs || {}).title || '', ensembleSlugsExistantsPourType(racineArbreVal, type));
   ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, null, imageSource);
   return { uuid: uuid, slug: slug };
 }
 
 // enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, imageSource?) ->
-// { ok, uuid }. Réécrit le fichier de SA langue (Ausgabe et Ordre préservés — c'est
+// { ok, uuid, raison? }. Réécrit le fichier de SA langue (Ausgabe et Ordre préservés — c'est
 // reordonnerNumero() qui les change), puis recopie les champs communs dans le fichier de
-// l'autre langue s'il existe déjà.
+// l'autre langue s'il existe déjà. Le type d'une fiche existante ne change JAMAIS ici : si le
+// slug donné existe mais sous le dossier d'un AUTRE type, le formulaire ne permettant pas de
+// changer le type d'une fiche, c'est refusé explicitement (raison: 'changement-de-type-refuse'),
+// jamais confondu avec « fiche introuvable ».
 function enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, imageSource) {
-  const existante = lireFicheSlugLangue(racineArbreVal, slug, langue);
-  if (!existante) { return { ok: false }; }
+  const existante = lireFicheSlugLangue(racineArbreVal, slug, langue, type);
+  if (!existante) {
+    const ailleurs = lireFicheSlugLangue(racineArbreVal, slug, langue);
+    if (ailleurs && ailleurs.type !== type) {
+      signalerErreur('enregistrerFicheLangue : changement de type refusé pour « ' + slug
+        + ' » (' + ailleurs.type + ' -> ' + type + ').');
+      return { ok: false, raison: 'changement-de-type-refuse' };
+    }
+    return { ok: false };
+  }
   ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, existante.uuid, valeurs, existante.ausgabe, existante.ordre, imageSource);
   for (const autre of autresLangues(langue)) {
-    const ficheAutre = lireFicheSlugLangue(racineArbreVal, slug, autre);
+    const ficheAutre = lireFicheSlugLangue(racineArbreVal, slug, autre, type);
     if (!ficheAutre) { continue; }
     const fusion = fusionnerChampsCommuns(type, valeurs, ficheAutre.valeurs);
     ecrireFicheSlugLangue(racineArbreVal, slug, autre, type, ficheAutre.uuid, fusion, ficheAutre.ausgabe, ficheAutre.ordre, null);
@@ -721,12 +841,12 @@ function traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) {
 // langue ; le dossier entier (image comprise) s'il n'en reste aucun. Refuse sur une fiche
 // encore rattachée — la suppression n'est possible que pour une orpheline.
 function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
-  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
-  const info = ficheDeDossierSlug(cheminSlug, langue);
-  if (!info) { return { ok: false }; }
   const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
-  if (f && f.ausgabe) { return { ok: false, raison: 'rattachee' }; }
-  try { fs.unlinkSync(path.join(cheminSlug, info.nomFichier)); } catch (e) { return { ok: false }; }
+  if (!f) { return { ok: false }; }
+  if (f.ausgabe) { return { ok: false, raison: 'rattachee' }; }
+  const cheminSlug = cheminFiche(racineArbreVal, f.type, slug);
+  const nomFichier = nomFichierContenu(f.type, langue);
+  try { fs.unlinkSync(path.join(cheminSlug, nomFichier)); } catch (e) { return { ok: false }; }
   let reste;
   try { reste = fs.readdirSync(cheminSlug); } catch (e) { reste = []; }
   const autreLangueRestante = reste.some((n) => /\.[a-z]{2}\.txt$/i.test(n));
@@ -742,7 +862,7 @@ function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
 function reordonnerNumero(racineArbreVal, langue, ausgabeId) {
   if (!ausgabeId) { return { total: 0 }; }
   const fiches = listerSlugsBibliotheque(racineArbreVal)
-    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .map(({ type, slug }) => lireFicheSlugLangue(racineArbreVal, slug, langue, type))
     .filter((f) => f && f.ausgabe === ausgabeId);
   const ordonnees = calculerOrdreFiches(fiches, langue);
   let total = 0;
@@ -762,7 +882,7 @@ function reordonnerNumero(racineArbreVal, langue, ausgabeId) {
 function listerFichesNumero(racineArbreVal, langue, ausgabeId) {
   if (!ausgabeId) { return []; }
   const fiches = listerSlugsBibliotheque(racineArbreVal)
-    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .map(({ type, slug }) => lireFicheSlugLangue(racineArbreVal, slug, langue, type))
     .filter((f) => f && f.ausgabe === ausgabeId);
   fiches.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
   return fiches;
@@ -771,7 +891,7 @@ function listerFichesNumero(racineArbreVal, langue, ausgabeId) {
 // listerOrphelines(racineArbreVal, langue) -> mes fiches (cette langue) sans numéro.
 function listerOrphelines(racineArbreVal, langue) {
   return listerSlugsBibliotheque(racineArbreVal)
-    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .map(({ type, slug }) => lireFicheSlugLangue(racineArbreVal, slug, langue, type))
     .filter((f) => f && !f.ausgabe);
 }
 
@@ -811,10 +931,10 @@ function effacerStatutFiche(racineArbreVal, langueCible, uuid) {
 // rattachées ou non, sans fichier de MA langue, statut = a-traduire.
 function listerTraductionsATraire(racineArbreVal, langueCible) {
   const res = [];
-  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
-    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible)) { continue; }
+  for (const { type, slug } of listerSlugsBibliotheque(racineArbreVal)) {
+    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible, type)) { continue; }
     for (const l of autresLangues(langueCible)) {
-      const source = lireFicheSlugLangue(racineArbreVal, slug, l);
+      const source = lireFicheSlugLangue(racineArbreVal, slug, l, type);
       if (!source) { continue; }
       const statut = lireStatutFiche(racineArbreVal, langueCible, source.uuid);
       if (statut && statut.statut === 'a-traduire') {
@@ -836,10 +956,10 @@ function listerTraductionsATraire(racineArbreVal, langueCible) {
 function listerReservoir(racineArbreVal, langueCible, options) {
   const avecIgnorees = !!(options && options.avecIgnorees);
   const res = [];
-  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
-    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible)) { continue; }
+  for (const { type, slug } of listerSlugsBibliotheque(racineArbreVal)) {
+    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible, type)) { continue; }
     for (const l of autresLangues(langueCible)) {
-      const source = lireFicheSlugLangue(racineArbreVal, slug, l);
+      const source = lireFicheSlugLangue(racineArbreVal, slug, l, type);
       if (!source || !source.ausgabe) { continue; }
       const statut = lireStatutFiche(racineArbreVal, langueCible, source.uuid);
       const estATraire = !!(statut && statut.statut === 'a-traduire');
@@ -945,7 +1065,9 @@ module.exports = {
   DOSSIERS_REVUE, DOSSIERS_PRODUIT, DOSSIER_ARCHIVE, REVUES, NOM_BIBLIOTHEQUE,
   racineArbre, autreRevue, dossierRevue, cheminBibliotheque, cheminStatutsRacine,
   listerNumeros, idsEnDouble,
-  // La bibliothèque : une fiche par slug + langue
+  // Un dossier par type sous Fiches\ (types[].dossier du contrat)
+  dossierDuType, cheminDossierType, cheminFiche,
+  // La bibliothèque : une fiche par (type, slug) + langue
   listerSlugsBibliotheque, lireFicheSlugLangue, trouverSlugParUuid,
   creerFiche, enregistrerFicheLangue, detacherFiche, tirerDansNumero, traduireDansNumero,
   supprimerFicheOrpheline, reordonnerNumero, listerFichesNumero, listerOrphelines,
