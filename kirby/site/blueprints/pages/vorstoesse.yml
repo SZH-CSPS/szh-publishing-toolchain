@@ -1,0 +1,13 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Interventions parlementaires"
+  de: "Parlamentarische Vorstösse"
+sections:
+  fiches:
+    type: "pages"
+    label:
+      fr: "Interventions parlementaires"
+      de: "Parlamentarische Vorstösse"
+    template: "intervention"
+    sortable: false

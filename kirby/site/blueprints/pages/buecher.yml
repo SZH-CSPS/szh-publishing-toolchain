@@ -1,0 +1,13 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Livres"
+  de: "Bücher"
+sections:
+  fiches:
+    type: "pages"
+    label:
+      fr: "Livres"
+      de: "Bücher"
+    template: "livre"
+    sortable: false

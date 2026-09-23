@@ -1,0 +1,13 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "D’une revue à l’autre"
+  de: "Blick in die Revue"
+sections:
+  fiches:
+    type: "pages"
+    label:
+      fr: "D’une revue à l’autre"
+      de: "Blick in die Revue"
+    template: "reprise"
+    sortable: false

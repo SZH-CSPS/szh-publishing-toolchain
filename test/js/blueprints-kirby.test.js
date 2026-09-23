@@ -6,7 +6,9 @@
 // réel, sans `alt` (décoratif) ; translate:false pour tout champ commun (pas traduire:true
 // dans le JSON), rien pour les traduisibles, et par sous-champ dans le structure `suivi` ;
 // ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
-// rubriques (elles restent dans le numéro, jamais sur Kirby).
+// rubriques (elles restent dans le numéro, jamais sur Kirby) ; chaque type a sa page parente
+// (le dossier types[].dossier, ex. Buecher\ — depuis 8e89548), en ASCII [A-Za-z]+, et
+// actualites.yml liste désormais ces sept pages dossier au lieu des fiches directement.
 //
 //   node --test test/js/blueprints-kirby.test.js
 'use strict';
@@ -170,7 +172,7 @@ test('champs système : ausgabe et ordre en hidden, translate:true, sur chaque b
 
 // ---- Plus de blueprint pour les rubriques : elles restent dans le numéro -----------------
 
-test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro), sections par type', () => {
+test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro), une section listant les sept dossiers de type', () => {
   const docs = gen.construireTous(contrat);
   const actualites = docs['pages/actualites.yml'];
   assert.ok(actualites, 'pages/actualites.yml non généré');
@@ -184,8 +186,54 @@ test('actualites.yml : pas de champ `fields` (rubriques restées dans le numéro
       }
     }
   }
-  assert.deepStrictEqual(Object.keys(actualites.sections), contrat.ordreTypes,
-    'sections de actualites.yml : pas dans l’ordre ordreTypes');
+  const dossiers = Object.keys(actualites.sections);
+  assert.deepStrictEqual(dossiers, ['dossiers'], 'actualites.yml : une seule section, listant les pages dossier');
+  const section = actualites.sections.dossiers;
+  assert.strictEqual(section.sortable, false);
+  const attendus = contrat.ordreTypes.map((cleType) => contrat.types[cleType].dossier.toLowerCase());
+  assert.deepStrictEqual(section.templates, attendus,
+    'actualites.yml : `templates` doit lister les sept dossiers de type, dans l’ordre ordreTypes');
+  assert.ok(!('template' in section), 'actualites.yml : plusieurs gabarits -> `templates` (pluriel), pas `template`');
+});
+
+// ---- Chaque type a sa page parente (le dossier types[].dossier, ex. Buecher\) ------------
+//
+// docs/FORMAT-DOCUMENTATION-KIRBY.md (8e89548) : une fiche vit sous
+// `_NewsUndActu\Fiches\<dossier du type>\<slug>\`. Ce dossier est une page Kirby à part, entre
+// la bibliothèque (actualites.yml) et les fiches : elle doit exister pour chaque type, avec le
+// libellé du type et une section listant les fiches de ce type.
+
+test('types[].dossier : ASCII [A-Za-z]+ pour chaque type (segment d’adresse du site)', () => {
+  for (const [cleType, type] of Object.entries(contrat.types)) {
+    assert.ok(type.dossier, cleType + ' : types[].dossier manquant');
+    assert.match(type.dossier, /^[A-Za-z]+$/, cleType + '.dossier hors ASCII [A-Za-z]+ : ' + type.dossier);
+  }
+});
+
+test('chaque type a sa page parente (dossier en minuscules) : titre du type, une section pages sur le gabarit de la fiche', () => {
+  const docs = gen.construireTous(contrat);
+  for (const [cleType, type] of Object.entries(contrat.types)) {
+    const nomFichier = 'pages/' + type.dossier.toLowerCase() + '.yml';
+    const doc = docs[nomFichier];
+    assert.ok(doc, cleType + ' : page parente ' + nomFichier + ' non générée');
+    assert.ok(!doc.fields, nomFichier + ' : une page dossier n’a pas de champ, seulement des fiches enfants');
+    assert.deepStrictEqual(doc.title, { fr: type.libelle.fr, de: type.libelle.de },
+      nomFichier + ' : titre attendu = types[].libelle');
+    const noms = Object.keys(doc.sections);
+    assert.strictEqual(noms.length, 1, nomFichier + ' : une seule section attendue');
+    const section = doc.sections[noms[0]];
+    assert.strictEqual(section.type, 'pages');
+    assert.strictEqual(section.template, cleType,
+      nomFichier + ' : la section doit lister les enfants du gabarit de fiche ' + cleType);
+    assert.strictEqual(section.sortable, false);
+  }
+  // Pas de collision entre le nom de gabarit d’un dossier et celui d’une fiche : deux pages
+  // différentes (parent/enfant) doivent avoir deux gabarits différents.
+  const nomsDossier = new Set(Object.values(contrat.types).map((t) => t.dossier.toLowerCase()));
+  for (const cleType of Object.keys(contrat.types)) {
+    assert.ok(!nomsDossier.has(cleType),
+      'collision : le dossier d’un type ne doit pas porter le même nom que la clé d’un type (' + cleType + ')');
+  }
 });
 
 // ---- Aucun nom de champ hors [a-z0-9_], aucun champ nommé `image` -----------------------

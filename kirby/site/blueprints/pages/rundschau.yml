@@ -1,0 +1,13 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Tour d’horizon"
+  de: "Rundschau"
+sections:
+  fiches:
+    type: "pages"
+    label:
+      fr: "Tour d’horizon"
+      de: "Rundschau"
+    template: "horizon"
+    sortable: false

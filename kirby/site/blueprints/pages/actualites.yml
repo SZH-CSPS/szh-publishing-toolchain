@@ -4,52 +4,17 @@ title:
   fr: "Actualité et ressources"
   de: "News & Ressourcen"
 sections:
-  horizon:
+  dossiers:
     type: "pages"
     label:
-      fr: "Tour d’horizon"
-      de: "Rundschau"
-    template: "horizon"
-    sortable: false
-  recherche:
-    type: "pages"
-    label:
-      fr: "Recherches en cours"
-      de: "Laufende Forschungsprojekte"
-    template: "recherche"
-    sortable: false
-  intervention:
-    type: "pages"
-    label:
-      fr: "Interventions parlementaires"
-      de: "Parlamentarische Vorstösse"
-    template: "intervention"
-    sortable: false
-  livre:
-    type: "pages"
-    label:
-      fr: "Livres"
-      de: "Bücher"
-    template: "livre"
-    sortable: false
-  film:
-    type: "pages"
-    label:
-      fr: "Films"
-      de: "Filme"
-    template: "film"
-    sortable: false
-  reprise:
-    type: "pages"
-    label:
-      fr: "D’une revue à l’autre"
-      de: "Blick in die Revue"
-    template: "reprise"
-    sortable: false
-  agenda:
-    type: "pages"
-    label:
-      fr: "Agenda et formation continue"
-      de: "Weiterbildung"
-    template: "agenda"
+      fr: "Actualité et ressources"
+      de: "News & Ressourcen"
+    templates:
+      - "rundschau"
+      - "forschung"
+      - "vorstoesse"
+      - "buecher"
+      - "filme"
+      - "revueblick"
+      - "weiterbildung"
     sortable: false

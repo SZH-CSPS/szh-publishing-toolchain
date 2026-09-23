@@ -76,6 +76,16 @@ de la future page de numéro), triées par le champ `Ordre`. Les dossiers de fic
 de préfixe numérique (pages non listées au sens de Kirby) : ne pas les filtrer par
 `listed()`. Désactiver le tri manuel dans le Panel.
 
+Depuis `docs(kirby): un dossier par type sous Fiches` (23.09.2026), une fiche n'est plus un
+enfant direct de la bibliothèque : `content/actualites/` porte maintenant sept pages dossier,
+une par `types[].dossier` (`Rundschau`, `Forschung`, `Vorstoesse`, `Buecher`, `Filme`,
+`Revueblick`, `Weiterbildung` — gabarit = nom du dossier en minuscules, voir
+`kirby/LISEZMOI.md`), et les fiches sont leurs enfants. Une page de numéro qui veut TOUTES ses
+fiches, tous types confondus, doit donc descendre un niveau de plus qu'avant (les petits-
+enfants de la page dossier), par exemple `$actualites->children()->children()`, plutôt que de
+lire `$actualites->children()` directement. Le filtre `Ausgabe: <id>` et le tri par `Ordre`
+restent inchangés, ils s'appliquent toujours à la fiche elle-même.
+
 **Pourquoi.** Pronto calcule l'ordre d'impression (interventions : Confédération d'abord,
 puis cantons par ordre alphabétique, puis titre ; autres types : titre ; agenda : date de
 début) et l'écrit dans le champ `Ordre` de chaque fichier de langue. C'est ce qui permet au
@@ -98,6 +108,16 @@ copier `_NewsUndActu\Fiches\` dans `content/` (par exemple `content/actualites/`
 comprises. Jamais `_NewsUndActu\_Statuts\` (décisions de traduction, données de travail) ni
 les rubriques des numéros. Une fiche orpheline (`Ausgabe` vide) est copiée mais n'apparaît
 dans aucun numéro.
+
+Chaque dossier de type (`Rundschau\`, `Forschung\`, `Vorstoesse\`, `Buecher\`, `Filme\`,
+`Revueblick\`, `Weiterbildung\`) devient lui-même une page Kirby sous `content/actualites/`,
+PARENTE des fiches qu'il contient (`kirby/LISEZMOI.md`, blueprints `pages/<dossier en
+minuscules>.yml`). Pronto n'écrit que des fiches dans `Fiches\<dossier>\<slug>\` : il n'a
+aucune raison d'écrire le fichier de contenu de la page dossier elle-même. C'est donc à la
+synchronisation, pas à Pronto, de créer — si absent — le fichier de contenu de chaque page
+dossier, `<gabarit>.fr.txt` et `<gabarit>.de.txt` (`<gabarit>` = le dossier en minuscules,
+ex. `buecher.fr.txt`), avec pour seul contenu utile `Title: <types[].libelle de la langue>`.
+Une fois créé, ce fichier n'a plus besoin d'être réécrit (le libellé du type ne change pas).
 
 **Pourquoi et points à trancher.**
 - **Sens unique ou aller-retour ?** Si le Panel sert aussi à corriger une fiche, une

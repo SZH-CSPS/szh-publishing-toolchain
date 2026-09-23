@@ -272,16 +272,57 @@ function blueprintType(contrat, cleType) {
   return doc;
 }
 
+// ---- Le dossier d'un type (types[].dossier, ex. Buecher\) : page parente des fiches --------
+//
+// Depuis 8e89548 (docs/FORMAT-DOCUMENTATION-KIRBY.md, « Une fiche ») : une fiche vit sous
+// `_NewsUndActu\Fiches\<dossier du type>\<slug>\`, un sous-dossier PAR TYPE
+// (Rundschau/Forschung/Vorstoesse/Buecher/Filme/Revueblick/Weiterbildung). Ce sous-dossier est
+// lui-même une page Kirby, entre la bibliothèque (actualites.yml) et les fiches : elle a donc
+// son propre blueprint, une section `pages` listant les fiches de CE type.
+//
+// Nom de gabarit / de fichier : le dossier en minuscules (« buecher », jamais « livre »).
+// Deux noms distincts sont nécessaires — le dossier ET les fiches qu'il contient sont deux
+// pages Kirby différentes (parent/enfant), donc deux gabarits différents ; réutiliser la clé
+// de type (« livre ») pour le dossier aurait fait porter le même nom de gabarit aux deux
+// niveaux, ambigu pour Kirby comme pour quiconque lit `content/`. `types[].dossier` est déjà
+// un mot allemand en ASCII posé pour être un segment d'adresse (JSON, `_dossiers`) : la
+// minuscule est la seule transformation nécessaire pour en faire un nom de gabarit valide.
+function nomGabaritDossier(type) {
+  if (!/^[A-Za-z]+$/.test(type.dossier)) {
+    throw new Error('types[].dossier hors ASCII [A-Za-z]+ : ' + JSON.stringify(type.dossier));
+  }
+  return type.dossier.toLowerCase();
+}
+
+function blueprintDossierType(contrat, cleType) {
+  const type = contrat.types[cleType];
+  const doc = {};
+  doc.title = { fr: type.libelle.fr, de: type.libelle.de };
+  doc.sections = {
+    fiches: {
+      type: 'pages',
+      label: { fr: type.libelle.fr, de: type.libelle.de },
+      template: cleType,
+      // Même raisonnement que pour actualites.yml plus bas : Pronto calcule déjà l'ordre
+      // d'impression dans le champ `Ordre` de chaque fiche (TODO_KirbyCMS.md §3), un tri
+      // manuel dans le Panel le romprait au prochain aller-retour.
+      sortable: false
+    }
+  };
+  return doc;
+}
+
 // ---- La page Actualités (parent de la bibliothèque _NewsUndActu\Fiches\) -----------------
 //
 // Avant la bibliothèque partagée, cette page était la Documentation d'UN numéro, et portait
 // aussi les rubriques de texte libre. Ce n'est plus le cas (docs/FORMAT-DOCUMENTATION-
 // KIRBY.md, section « Le numéro ») : « Les rubriques ne partent jamais sur Kirby » — elles
-// restent dans documentation.<lang>.txt DU NUMÉRO (hors de tout blueprint généré ici), et les
-// fiches ne sont plus des enfants d'une page par numéro mais de cette bibliothèque UNIQUE,
-// partagée par les deux revues. D'où : pas de blueprint de rubriques (rien à générer pour
-// elles côté Kirby), et cette page n'a plus de `fields` du tout — seulement des sections
-// `pages`, une par type de fiche.
+// restent dans documentation.<lang>.txt DU NUMÉRO (hors de tout blueprint généré ici). Et
+// depuis 8e89548, les fiches ne sont plus des enfants directs de cette bibliothèque : un
+// niveau intermédiaire s'est ajouté, le dossier de chaque type (blueprintDossierType
+// ci-dessus). D'où : pas de blueprint de rubriques (rien à générer pour elles côté Kirby),
+// cette page n'a toujours pas de `fields`, et sa section unique liste maintenant les SEPT
+// PAGES DOSSIER (une par type) au lieu des fiches directement comme avant 8e89548.
 function blueprintActualites(contrat) {
   const doc = {};
   // Pas de libellé dans le JSON pour cette page elle-même : nom repris de l'intitulé de la
@@ -289,25 +330,21 @@ function blueprintActualites(contrat) {
   // §5 : « content/actualites/ »). À ajuster si ce nom change côté site.
   doc.title = { fr: 'Actualité et ressources', de: 'News & Ressourcen' };
 
-  const sections = {};
-  for (const cleType of contrat.ordreTypes) {
-    const type = contrat.types[cleType];
-    sections[cleType] = {
+  // `templates:` (pluriel) plutôt que `template:` : une section `pages` accepte une liste de
+  // gabarits (getkirby.com/docs/reference/panel/sections/pages, 23.09.2026 — « template » au
+  // singulier pour un seul, « templates » au pluriel pour plusieurs) ; il en faut sept ici,
+  // un par dossier de type, dans l'ordre `ordreTypes`.
+  doc.sections = {
+    dossiers: {
       type: 'pages',
-      label: { fr: type.libelle.fr, de: type.libelle.de },
-      template: cleType,
-      // Confirmé (getkirby.com/docs/reference/panel/sections/pages, 23.09.2026) :
-      // `sortable: bool, default: true` désactive le glisser-déposer manuel dans le Panel.
-      // Indispensable ici : Pronto calcule déjà l'ordre d'impression et l'écrit dans le champ
-      // `Ordre` de chaque fichier de langue (TODO_KirbyCMS.md §3) ; un tri manuel dans le
-      // Panel romprait ce contrat au prochain aller-retour. Ouvert, pas traité ici : ce même
-      // §3 signale que les dossiers de fiche n'ont plus de préfixe numérique (pages « non
-      // listées » au sens de Kirby) — une section `pages` par défaut ne montre-t-elle que les
-      // pages « listed » ? Pas vérifié ; si c'est le cas il faudra un `status:` ici.
+      label: { fr: 'Actualité et ressources', de: 'News & Ressourcen' },
+      templates: contrat.ordreTypes.map((cleType) => nomGabaritDossier(contrat.types[cleType])),
+      // Même raison qu'avant 8e89548 (Pronto calcule l'ordre, TODO_KirbyCMS.md §3) ; les
+      // pages dossier elles-mêmes n'ont de toute façon pas d'ordre à respecter entre elles
+      // (l'ordre d'impression est celui d'`ordreTypes`, pas un tri du Panel).
       sortable: false
-    };
-  }
-  doc.sections = sections;
+    }
+  };
   return doc;
 }
 
@@ -357,6 +394,8 @@ function construireTous(contrat) {
   const docs = {};
   for (const cleType of Object.keys(contrat.types)) {
     docs['pages/' + cleType + '.yml'] = blueprintType(contrat, cleType);
+    const nomDossier = nomGabaritDossier(contrat.types[cleType]);
+    docs['pages/' + nomDossier + '.yml'] = blueprintDossierType(contrat, cleType);
   }
   docs['pages/actualites.yml'] = blueprintActualites(contrat);
   for (const [cle, extensions] of collecterFichiers(contrat)) {

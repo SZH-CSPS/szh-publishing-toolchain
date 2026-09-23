@@ -1,0 +1,13 @@
+# Généré par kirby/generer-blueprints.js depuis pipeline/kirby/champs-documentation.json — ne pas éditer
+
+title:
+  fr: "Recherches en cours"
+  de: "Laufende Forschungsprojekte"
+sections:
+  fiches:
+    type: "pages"
+    label:
+      fr: "Recherches en cours"
+      de: "Laufende Forschungsprojekte"
+    template: "recherche"
+    sortable: false

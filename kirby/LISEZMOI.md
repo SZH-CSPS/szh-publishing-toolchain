@@ -13,11 +13,21 @@ doit encore reprendre — les deux font foi, pas ce fichier.
   recherche, intervention, livre, film, reprise, agenda) : une FICHE de la bibliothèque
   partagée `_NewsUndActu\Fiches\` (docs/FORMAT-DOCUMENTATION-KIRBY.md). Chaque blueprint porte
   en plus deux champs système `ausgabe`/`ordre` (`hidden`, traduisibles — voir plus bas).
-- `site/blueprints/pages/actualites.yml` — la page PARENTE de cette bibliothèque : plus de
+- `site/blueprints/pages/<dossier en minuscules>.yml` (`rundschau`, `forschung`, `vorstoesse`,
+  `buecher`, `filme`, `revueblick`, `weiterbildung`) — depuis 8e89548, un blueprint par
+  sous-dossier `types[].dossier` de `Fiches\` : la page PARENTE des fiches d'UN type. Titre =
+  `types[].libelle`, une seule section `pages` (`template: <clé de type>`, `sortable: false`)
+  listant les fiches de ce type. Nom en minuscules du dossier plutôt que la clé de type
+  elle-même (ex. `buecher`, pas `livre`) : la page dossier et les fiches qu'elle contient sont
+  deux pages Kirby différentes (parent/enfant), donc deux gabarits différents — voir le
+  commentaire de `blueprintDossierType()`.
+- `site/blueprints/pages/actualites.yml` — la page PARENTE de la bibliothèque entière : plus de
   champ `fields` du tout (les rubriques de texte libre restent dans le numéro, elles ne
-  partent jamais sur Kirby), seulement une section `pages` par type de fiche. Avant la
-  bibliothèque partagée, cette page était la Documentation d'UN numéro et portait aussi les
-  rubriques ; ce n'est plus le cas (voir le commentaire de `blueprintActualites()`).
+  partent jamais sur Kirby), seulement une section `pages` unique dont `templates:` (pluriel)
+  liste les sept pages dossier ci-dessus, dans l'ordre `ordreTypes`. Avant la bibliothèque
+  partagée, cette page était la Documentation d'UN numéro et portait aussi les rubriques ;
+  avant 8e89548, sa section listait les fiches de chaque type directement (une section par
+  type). Ce n'est plus le cas (voir le commentaire de `blueprintActualites()`).
 - `site/blueprints/files/<cle>.yml` — un gabarit de fichier par CLÉ de champ `fichier` du JSON
   (aujourd'hui : `couverture`, partagé par `livre` et `film`). Porte le `accept: extension:
   […]` ; le champ `files` correspondant le référence via `uploads: <cle>`. Pas de champ
@@ -66,7 +76,11 @@ Contrôle que les blueprints committés égalent la génération, que chaque lis
 ses deux langues, qu'aucun champ généré n'a un nom hors `[a-z0-9_]` ou ne s'appelle `image`
 (méthode réservée de Kirby, voir `TODO_KirbyCMS.md` §10), que `translate` suit la règle
 ci-dessus champ par champ (y compris dans `suivi`), qu'`ausgabe`/`ordre` sont bien présents en
-`hidden` traduisibles sur chaque fiche, et qu'il n'y a plus de blueprint de rubriques.
+`hidden` traduisibles sur chaque fiche, qu'il n'y a plus de blueprint de rubriques, que chaque
+`types[].dossier` est bien en ASCII `[A-Za-z]+`, que chaque type a sa page parente (titre =
+`types[].libelle`, section `pages` sur le gabarit de sa fiche, sans collision de nom entre les
+deux), et qu'`actualites.yml` liste bien les sept pages dossier (`templates:`, pas de champ
+`fields`).
 
 ## Incertitudes Kirby restant à vérifier sur une vraie instance
 
