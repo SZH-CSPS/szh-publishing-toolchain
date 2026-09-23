@@ -1,43 +1,37 @@
-// Lecture et écriture de l'arborescence Kirby de la Documentation d'un numéro
-// (« Actualité et ressources » / « News & Ressourcen ») : documentation.<lang>.txt à la
-// racine de l'article, un dossier <n>_<slug>/ par fiche, chacun avec son <type>.<lang>.txt
-// et son image éventuelle. Remplace lib/ressources.js et lib/rubriques.js — l'ancien format
-// (blocs ::: dans le .md) n'est plus lu ni écrit nulle part.
+// Lecture et écriture de la Documentation (« Actualité et ressources » / « News &
+// Ressourcen ») : deux familles de contenu bien séparées.
 //
-// Source de vérité des champs : pipeline/kirby/champs-documentation.json (chargé ici,
-// jamais recopié). Aucune table de types, de listes ou de libellés ne vit dans ce fichier :
-// tout vient du contrat, comme docs/FORMAT-DOCUMENTATION-KIRBY.md le décrit.
+//   1. La PAGE du numéro (documentation.<lang>.txt, à la racine de l'article
+//      articles/NN-<slug>/) : Title, Uuid, et les quatre rubriques de prose libre
+//      (dossier_references…). Ne contient plus aucune fiche — voir lirePage/ecrirePage.
+//   2. La BIBLIOTHÈQUE partagée (<racine-arbre>\_NewsUndActu\Fiches\<slug>\) : un dossier
+//      par fiche, un fichier <type>.<lang>.txt par langue qui l'a écrite, jamais renommé.
+//      Le rattachement à un numéro se fait par le champ système Ausgabe (l'id du numéro,
+//      ausgabe.yaml) et l'ordre d'impression par le champ système Ordre, recalculé à
+//      chaque enregistrement — voir docs/FORMAT-DOCUMENTATION-KIRBY.md, la seule source de
+//      vérité du format.
 //
-// ⚠ Pur, comme lib/citations.js et lib/reserve.js : aucun require('vscode'). L'hôte
-// (lib/documentation-hote.js) fait les allers-retours avec la webview et refuse un numéro
-// verrouillé ; ce module ne fait que lire et écrire des fichiers.
+// Source de vérité des CHAMPS : pipeline/kirby/champs-documentation.json (chargé ici,
+// jamais recopié). Aucune table de types, de listes ou de libellés ne vit dans ce fichier.
 //
-// ---- Le fichier .txt d'une fiche ou de la page --------------------------------------
+// Aucune rétrocompatibilité : l'ancien rangement (une fiche par dossier <n>_<slug>/ SOUS
+// l'article, renommé à chaque réordonnancement) et la réserve hors numéro (lib/reserve.js,
+// supprimé) ne sont plus lus ni écrits nulle part.
 //
-// Écrit Title puis Uuid puis les champs du type dans l'ordre du JSON, séparés par une
-// ligne « ---- » isolée par un blanc de chaque côté (lireTxt/ecrireTxt, symétriques au
-// caractère près pour un aller-retour). Un champ vide ne s'écrit pas.
-//
-// ---- Sécurité du renommage des dossiers de fiches ------------------------------------
-//
-// Même parti que lib/renumerotation.js pour les dossiers d'article : un dossier qui doit
-// changer de nom passe par un temporaire qui PORTE sa destination
-// (« ~kirby-tmp-<destination> ») avant de la rejoindre. reordonnerFiches() est donc
-// idempotente — la rappeler après une interruption termine le lot là où il s'est arrêté,
-// sans qu'il faille une fonction de reprise séparée : les fiches se relisent par leur
-// contenu (le nom du dossier ne compte pour rien), et le plan recalculé est le même.
+// ⚠ Pur, comme lib/citations.js : aucun require('vscode'). L'hôte (lib/documentation-hote.js)
+// fait les allers-retours avec la webview et refuse un numéro verrouillé ; ce module ne fait
+// que lire et écrire des fichiers.
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { slugifier } = require('./slug');
-const { ecrireAtomique } = require('./yaml');
+const { ecrireAtomique, idNumero } = require('./yaml');
 const { basePoste } = require('./chemins-poste');
 
 // ---- Chargement du contrat : dépôt d'abord, puis toolkit/ -------------------------
-// Même disposition que lib/citations.js (FILTRES, emplacements()) : le dépôt pour le
-// développement et les tests, le toolkit installé pour un poste de rédaction.
 const EMPLACEMENTS = [
   path.resolve(__dirname, '..', '..', '..', 'pipeline', 'kirby', 'champs-documentation.json'),
   path.join(basePoste(), 'toolkit', 'pipeline', 'kirby', 'champs-documentation.json')
@@ -67,7 +61,6 @@ function chargerContrat() {
   return cache;
 }
 
-// Relâche le contrat mémoïsé : un test change d'emplacement en cours de processus.
 function oublierContrat() { cache = null; }
 function cheminDuContrat() { return chargerContrat().chemin; }
 function contrat() { return chargerContrat().json; }
@@ -107,6 +100,13 @@ function rubriquesPourRevue(revue) {
   return rubriquesDuContrat().filter((r) => (r.revues || []).indexOf(revue) !== -1);
 }
 function valeursListe(nom) { return ((contrat().listes || {})[nom] || []).slice(); }
+function languesDuContrat() {
+  const l = contrat().langues;
+  return (Array.isArray(l) && l.length > 0) ? l.slice() : ['fr', 'de'];
+}
+// L'autre (ou les autres) langue(s) que celle donnée — aujourd'hui toujours une seule,
+// mais rien ici ne suppose qu'il n'y en ait que deux.
+function autresLangues(langue) { return languesDuContrat().filter((l) => l !== langue); }
 
 // ---- Validation des dates -------------------------------------------------------------
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -137,10 +137,6 @@ function curiaDepuis(categorie) {
 }
 
 // ---- Instruments : ordre du menu, canton d'abord --------------------------------------
-// Les instruments dont `cantons` porte le canton choisi viennent en tête, dans l'ordre du
-// JSON ; les autres suivent, même ordre. Le libellé (canton entre parenthèses pour un
-// instrument `local`) est composé par l'appelant, qui seul connaît la langue et
-// lib/cantons.js — ce module ne rend que l'ordre des jetons.
 function ordreInstruments(canton) {
   const instruments = contrat().instruments || {};
   const jetons = Object.keys(instruments);
@@ -176,13 +172,11 @@ function champsManquants(type, valeurs) {
 }
 function ficheComplete(type, valeurs) { return champsManquants(type, valeurs).length === 0; }
 
-// Ce qui suffit pour écrire une fiche : au moins un champ non vide (même incomplète —
-// c'est la pastille du formulaire qui dit ce qui manque, pas un refus d'écrire).
 function ficheEcrivable(type, valeurs) {
   if (!typeConnu(type)) { return false; }
   const v = valeurs || {};
   return champsDuType(type).some((c) => {
-    if (c.saisie === 'derive') { return false; }          // jamais saisi
+    if (c.saisie === 'derive') { return false; }
     const val = v[c.cle];
     if (c.saisie === 'structure') { return Array.isArray(val) && val.length > 0; }
     return String(val === undefined || val === null ? '' : val).trim() !== '';
@@ -206,29 +200,18 @@ function nomFichierContenu(template, langue) {
   const gabarit = (contrat().kirby || {}).fichierContenu || '{template}.{langue}.txt';
   return gabarit.replace('{template}', template).replace('{langue}', langue);
 }
-function nomDossierFiche(n, slug) {
-  const gabarit = (contrat().kirby || {}).prefixeOrdre || '{n}_{slug}';
-  return gabarit.replace('{n}', String(n)).replace('{slug}', slug);
-}
 
-// Le nom du fichier de page, quelle que soit sa langue (« documentation.fr.txt »,
-// « documentation.de.txt ») — celui qu'écrit ecrirePage(). Sert à ceux qui doivent
-// reconnaître ce fichier sans connaître la langue de l'article, en particulier
-// lib/renumerotation-fs.js : le fichier de page porte un nom FIXE, jamais celui du
-// dossier — à la différence d'une fiche de métadonnées (<slug>.meta.yaml), qui suit
-// toujours le nom de son dossier. Une renumérotation qui traiterait « documentation.fr.txt »
-// comme un sidecar du dossier (coïncidence : le dossier par défaut s'appelle aussi
-// « documentation », voir SLUG_DOCUMENTATION côté cockpit) le renommerait en
-// « 02-documentation.fr.txt » — un fichier que plus rien ne sait relire.
+// Le nom du fichier de page, quelle que soit sa langue. Sert à ceux qui doivent le
+// reconnaître sans connaître la langue de l'article (lib/renumerotation-fs.js) : ce fichier
+// porte un nom FIXE, jamais celui du dossier — à la différence d'une fiche de métadonnées
+// (<slug>.meta.yaml), qui suit toujours le nom de son dossier.
 function estFichierPageDocumentation(nomFichier) {
   const c = contrat();
   const template = (c.kirby || {}).pageDocumentation || 'documentation';
-  const langues = (c.langues && c.langues.length > 0) ? c.langues : ['fr', 'de'];
+  const langues = languesDuContrat();
   return langues.some((langue) => nomFichierContenu(template, langue) === String(nomFichier || ''));
 }
 
-// Une ligne de valeur qui vaut exactement le séparateur s'échappe d'un antislash — et
-// seulement celle-là, jamais une ligne qui le contiendrait au milieu d'autre chose.
 function echapperSeparateur(valeur, sep) {
   return String(valeur).split('\n').map((l) => (l === sep ? '\\' + sep : l)).join('\n');
 }
@@ -242,9 +225,6 @@ function capitaliserNomKirby(cle) {
 }
 
 // lireTxt(texteBrut) -> { title, uuid, champs: { cle-minuscule: valeur } }
-// `champs` ne porte ni title ni uuid, extraits à part comme le veut le format (toujours en
-// tête du fichier). Une ligne d'ouverture illisible (hors a-z0-9_ suivi de ':') est
-// ignorée : mieux vaut perdre un champ trafiqué que faire échouer toute la lecture.
 function lireTxt(texteBrut) {
   const sep = separateur();
   let texte = String(texteBrut === undefined || texteBrut === null ? '' : texteBrut).replace(/\r\n/g, '\n');
@@ -279,8 +259,6 @@ function lireTxt(texteBrut) {
 }
 
 // ecrireTxt({ title, uuid, champs: [{ cle, valeurBrute, forcerMultiligne }] }) -> texte
-// `champs` doit déjà être dans l'ordre voulu, sans title ni uuid — voir champsPourEcriture
-// plus bas, qui les prépare depuis le contrat.
 function ecrireTxt(donnees) {
   const sep = separateur();
   const d = donnees || {};
@@ -304,8 +282,6 @@ function ligneChamp(nomAffiche, valeur, sep, forcerMultiligne) {
 function citerYaml(v) {
   return '"' + String(v === undefined || v === null ? '' : v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
-// Dévalorise un scalaire YAML tel que le Panel de Kirby peut l'écrire : entre guillemets
-// doubles (échappés), entre apostrophes (doublées), ou nu.
 function devaleurYaml(brut) {
   const t = String(brut === undefined || brut === null ? '' : brut).trim();
   if (t.length >= 2 && t.charAt(0) === '"' && t.charAt(t.length - 1) === '"') {
@@ -362,8 +338,7 @@ function lireFichierUnique(brut) {
 
 // ---- Une fiche : valeurs <-> champs bruts, selon le type ------------------------------
 
-// Prépare les champs d'un type pour ecrireTxt() : dans l'ordre du JSON, `title` excepté
-// (déjà écrit à part), un champ vide non écrit, `derive` toujours recalculé.
+// Prépare les champs d'un type pour ecrireTxt() : dans l'ordre du JSON, `title` excepté.
 function champsPourEcriture(type, valeurs) {
   const v = valeurs || {};
   const sortie = [];
@@ -380,7 +355,21 @@ function champsPourEcriture(type, valeurs) {
   return sortie;
 }
 
+// Les champs SYSTÈME (Ausgabe, Ordre — pipeline/kirby/champs-documentation.json,
+// champsSysteme) : jamais saisis, écrits juste après Uuid et avant les champs du type.
+// Ausgabe s'écrit TOUJOURS, même vide (c'est ce qui marque une orpheline) ; Ordre
+// n'existe que pour une fiche rattachée à un numéro.
+function champsSystemePourEcriture(ausgabeId, ordre) {
+  const sortie = [{ cle: 'ausgabe', valeurBrute: String(ausgabeId === undefined || ausgabeId === null ? '' : ausgabeId), forcerMultiligne: false }];
+  if (ordre !== undefined && ordre !== null && String(ordre).trim() !== '') {
+    sortie.push({ cle: 'ordre', valeurBrute: String(ordre), forcerMultiligne: false });
+  }
+  return sortie;
+}
+
 // Les valeurs d'une fiche depuis ce que lireTxt() a rendu (title à part, `champs` bruts).
+// Les champs système (ausgabe, ordre) ne figurent jamais dans les valeurs d'une fiche :
+// extraisChampsSysteme() les prend à part avant d'appeler cette fonction.
 function valeursDepuisChamps(type, title, champsBruts) {
   const v = { title: String(title || '') };
   const bruts = champsBruts || {};
@@ -396,13 +385,36 @@ function valeursDepuisChamps(type, title, champsBruts) {
   return v;
 }
 
-// ---- Ordre d'impression des fiches, et nom de leur dossier ---------------------------
+// Champs communs recopiés d'une langue à l'autre à l'enregistrement (docs/FORMAT-
+// DOCUMENTATION-KIRBY.md) : tout ce qui n'est pas `traduire` dans le contrat, `title`
+// excepté (déjà `traduire`) et `derive` excepté (recalculé, jamais copié). Pour `suivi`
+// (structure) : les sous-champs communs (date, genre, lien) se recopient par RANG, le
+// libellé (`traduire`) de la cible reste le sien.
+function fusionnerChampsCommuns(type, valeursSource, valeursCibleExistantes) {
+  const src = valeursSource || {};
+  const cible = Object.assign({}, valeursCibleExistantes || {});
+  for (const c of champsDuType(type)) {
+    if (c.cle === 'title' || c.traduire || c.saisie === 'derive') { continue; }
+    if (c.saisie === 'structure') {
+      const lignesSrc = Array.isArray(src[c.cle]) ? src[c.cle] : [];
+      const lignesCible = Array.isArray(cible[c.cle]) ? cible[c.cle] : [];
+      const clesCommunes = (c.champs || []).filter((sc) => !sc.traduire).map((sc) => sc.cle);
+      cible[c.cle] = lignesSrc.map((ligne, i) => {
+        const ligneCible = Object.assign({}, lignesCible[i] || {});
+        for (const cleSC of clesCommunes) { ligneCible[cleSC] = ligne[cleSC]; }
+        return ligneCible;
+      });
+      continue;
+    }
+    cible[c.cle] = src[c.cle];
+  }
+  return cible;
+}
+
+// ---- Ordre d'impression des fiches -----------------------------------------------------
 //
-// Une seule suite 1..N : types dans l'ordre `ordreTypes`, puis à l'intérieur d'un type
-// selon `tri` — `triPremier` fait passer une valeur donnée en tête sans égard à l'ordre
-// alphabétique, un champ `liste` se compare par la position de son jeton dans la liste
-// (ce qui donne « portée » dans l'ordre déclaré, pas alphabétique), tout le reste se
-// compare en toutes lettres dans la langue de l'article.
+// Une seule suite 1..N par numéro et par langue : types dans l'ordre `ordreTypes`, puis à
+// l'intérieur d'un type selon `tri`.
 function valeurTri(fiche, cle) {
   if (cle === 'title') { return String((fiche.valeurs || {}).title || ''); }
   return String((fiche.valeurs || {})[cle] || '');
@@ -430,13 +442,14 @@ function comparerFichesMemeType(a, b, type, langue) {
   }
   return 0;
 }
-// calculerOrdreFiches([{ type, valeurs }], langue) -> les mêmes fiches, dans l'ordre voulu.
+// calculerOrdreFiches([{ type, valeurs, … }], langue) -> les mêmes fiches (mêmes objets),
+// dans l'ordre voulu — tout champ supplémentaire porté par une fiche (slug, uuid…) survit.
 function calculerOrdreFiches(fiches, langue) {
   const ordreTypes = typesConnus();
   const parType = new Map();
   for (const t of ordreTypes) { parType.set(t, []); }
   for (const f of (fiches || [])) {
-    if (!parType.has(f.type)) { parType.set(f.type, []); }   // type inconnu : groupé à part, en fin
+    if (!parType.has(f.type)) { parType.set(f.type, []); }
     parType.get(f.type).push(f);
   }
   const cles = ordreTypes.concat(Array.from(parType.keys()).filter((t) => ordreTypes.indexOf(t) === -1));
@@ -449,9 +462,7 @@ function calculerOrdreFiches(fiches, langue) {
   return resultat;
 }
 
-// Slug d'une fiche : translittération + minuscules + tirets (lib/slug.js), les points
-// neutralisés en amont — slugifier() les prend pour une extension de fichier, ce qu'un
-// titre de fiche n'a jamais (voir lib/reserve.js, segmentAssaini, même piège).
+// ---- Slug d'une fiche : posé UNE fois à la création, jamais renommé ensuite -----------
 const LONGUEUR_MAX_SLUG_FICHE = 48;
 function bornerSlugFiche(s) {
   if (s.length <= LONGUEUR_MAX_SLUG_FICHE) { return s; }
@@ -463,7 +474,6 @@ function slugifierFiche(titre) {
   const s = bornerSlugFiche(slugifier(String(titre || '').replace(/\./g, ' ')));
   return s || 'fiche';
 }
-// Suffixe -2, -3… pour deux fiches de même titre, dans le même lot de dossiers.
 function slugFicheUnique(titre, pris) {
   const jeu = pris || new Set();
   const base = slugifierFiche(titre);
@@ -480,33 +490,88 @@ function slugFicheUnique(titre, pris) {
   return base + '-' + Date.now();
 }
 
-// calculerNoms(fiches, langue) -> fiches ordonnées, chacune avec `position` (1..N) et
-// `dossierVoulu` (« <n>_<slug> »). Pur — ne touche à rien, comme planRenumerotation().
-function calculerNoms(fiches, langue) {
-  const ordonnees = calculerOrdreFiches(fiches, langue);
-  const pris = new Set();
-  return ordonnees.map((f, i) => {
-    const n = i + 1;
-    const slug = slugFicheUnique((f.valeurs || {}).title || '', pris);
-    pris.add(slug);
-    return Object.assign({}, f, { position: n, dossierVoulu: nomDossierFiche(n, slug) });
-  });
+// ---- Racine de l'arbre, et jeton de revue -> nom de dossier ---------------------------
+//
+// Repris de l'esprit de l'ancien lib/reserve.js (racineArbre, DOSSIERS_REVUE), pour la même
+// raison : la bibliothèque partagée vit à la racine de l'arbre (`Revue`, `Zeitschrift`,
+// `_Archive`, `_NewsUndActu` comme voisins), jamais dans le numéro lui-même, qui est
+// archivé, renommé, voire supprimé en fin de cycle.
+const DOSSIERS_REVUE = { revue: 'Revue', zeitschrift: 'Zeitschrift' };
+const DOSSIERS_PRODUIT = ['revue', 'zeitschrift', 'books'];
+const DOSSIER_ARCHIVE = '_archive';
+const REVUES = Object.keys(DOSSIERS_REVUE);
+const NOM_BIBLIOTHEQUE = '_NewsUndActu';
+
+function nomDe(chemin) { return path.basename(chemin).trim().toLowerCase(); }
+
+// Deux formes reconnues par NOM (jamais un compte de crans) :
+//   <racine>\Revue\2026-01            -> racine = son parent
+//   <racine>\_Archive\Revue\2020-05   -> racine = le parent de `_Archive`
+//   n'importe quoi d'autre             -> le parent du numéro, dégradé
+function racineArbre(racineNumero) {
+  const numero = path.resolve(String(racineNumero === undefined || racineNumero === null ? '' : racineNumero));
+  const produit = path.dirname(numero);
+  if (produit === numero) { return numero; }
+  if (DOSSIERS_PRODUIT.indexOf(nomDe(produit)) === -1) { return produit; }
+  const dessus = path.dirname(produit);
+  if (dessus === produit) { return produit; }
+  if (nomDe(dessus) === DOSSIER_ARCHIVE) { return path.dirname(dessus); }
+  return dessus;
+}
+function autreRevue(revue) {
+  const r = String(revue === undefined || revue === null ? '' : revue).toLowerCase();
+  if (r === 'revue') { return 'zeitschrift'; }
+  if (r === 'zeitschrift') { return 'revue'; }
+  return null;
+}
+function dossierRevue(revue) {
+  const r = String(revue === undefined || revue === null ? '' : revue).trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(DOSSIERS_REVUE, r) ? DOSSIERS_REVUE[r] : '';
+}
+function cheminBibliotheque(racineArbreVal) { return path.join(racineArbreVal, NOM_BIBLIOTHEQUE, 'Fiches'); }
+function cheminStatutsRacine(racineArbreVal) { return path.join(racineArbreVal, NOM_BIBLIOTHEQUE, '_Statuts'); }
+
+// listerNumeros(racineArbreVal) -> [{ id, revue, nom, chemin, archive }], pour les deux
+// revues, en cours et archivés. `id` vaut '' pour un numéro sans ausgabe.yaml lisible ou
+// sans id encore posé.
+function listerNumeros(racineArbreVal) {
+  const res = [];
+  for (const revue of REVUES) {
+    const nomDossier = DOSSIERS_REVUE[revue];
+    for (const archive of [false, true]) {
+      const base = archive
+        ? path.join(racineArbreVal, '_Archive', nomDossier)
+        : path.join(racineArbreVal, nomDossier);
+      let entrees;
+      try { entrees = fs.readdirSync(base, { withFileTypes: true }); } catch (e) { continue; }
+      for (const e of entrees) {
+        if (!e.isDirectory()) { continue; }
+        const chemin = path.join(base, e.name);
+        res.push({ id: idNumero(chemin), revue: revue, nom: e.name, chemin: chemin, archive: archive });
+      }
+    }
+  }
+  return res;
+}
+// idsEnDouble(racineArbreVal) -> [[{ id, revue, nom, chemin, archive }, …], …] — un tableau
+// par id porté par plus d'un numéro. Sert à l'avertissement (jamais un refus) posé à
+// l'ouverture d'un numéro dont l'id se retrouve ailleurs sur l'arbre.
+function idsEnDouble(racineArbreVal) {
+  const parId = {};
+  for (const n of listerNumeros(racineArbreVal)) {
+    if (!n.id) { continue; }
+    (parId[n.id] = parId[n.id] || []).push(n);
+  }
+  return Object.keys(parId).map((id) => parId[id]).filter((l) => l.length > 1);
 }
 
-// ---- Lecture de l'arborescence sur le disque ------------------------------------------
+// ---- La bibliothèque : lire, écrire, lister une fiche par slug + langue --------------
 
-const NOM_DEPOT_IMAGES = '.depot-images';   // images déposées avant qu'une fiche neuve existe
-const PREFIXE_TEMPO = '~kirby-tmp-';
-const PREFIXE_NOUVEAU = '~kirby-nouveau-';
-
-// Un dossier porte une fiche s'il contient exactement un fichier <type>.<langue>.txt dont
-// le type est connu du contrat. Tout le reste (dossier étranger, fiche d'une autre langue —
-// qui n'existe jamais dans cette arborescence, voir l'en-tête du fichier) est ignoré.
-function ficheDeDossier(dossierArticle, nomDossier, langue) {
-  const chemin = path.join(dossierArticle, nomDossier);
-  let stat; try { stat = fs.statSync(chemin); } catch (e) { return null; }
-  if (!stat.isDirectory()) { return null; }
-  let fichiers; try { fichiers = fs.readdirSync(chemin); } catch (e) { return null; }
+// Un dossier de la bibliothèque porte un fichier de langue s'il contient exactement un
+// <type>.<langue>.txt dont le type est connu du contrat.
+function ficheDeDossierSlug(cheminSlug, langue) {
+  let fichiers;
+  try { fichiers = fs.readdirSync(cheminSlug); } catch (e) { return null; }
   const suffixe = '.' + langue + '.txt';
   for (const nom of fichiers) {
     if (nom.slice(-suffixe.length) !== suffixe) { continue; }
@@ -516,92 +581,41 @@ function ficheDeDossier(dossierArticle, nomDossier, langue) {
   }
   return null;
 }
-function listerDossiersFiches(dossierArticle, langue) {
-  let entrees; try { entrees = fs.readdirSync(dossierArticle, { withFileTypes: true }); } catch (e) { return []; }
-  const res = [];
-  for (const e of entrees) {
-    if (!e.isDirectory() || e.name === NOM_DEPOT_IMAGES) { continue; }
-    const info = ficheDeDossier(dossierArticle, e.name, langue);
-    if (info) { res.push({ dossier: e.name, type: info.type, nomFichier: info.nomFichier }); }
-  }
-  return res;
+function listerSlugsBibliotheque(racineArbreVal) {
+  let entrees;
+  try { entrees = fs.readdirSync(cheminBibliotheque(racineArbreVal), { withFileTypes: true }); }
+  catch (e) { return []; }
+  return entrees.filter((e) => e.isDirectory()).map((e) => e.name);
 }
-function lireFicheDepuisDossier(dossierArticle, entree) {
+function ensembleSlugsExistants(racineArbreVal) { return new Set(listerSlugsBibliotheque(racineArbreVal)); }
+
+// lireFicheSlugLangue(racineArbreVal, slug, langue) -> { slug, uuid, type, ausgabe, ordre,
+// valeurs } | null. `ordre` est un entier ou null (fiche orpheline, ou jamais ordonnée).
+function lireFicheSlugLangue(racineArbreVal, slug, langue) {
+  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
+  const info = ficheDeDossierSlug(cheminSlug, langue);
+  if (!info) { return null; }
   let brut;
-  try { brut = fs.readFileSync(path.join(dossierArticle, entree.dossier, entree.nomFichier), 'utf8'); }
+  try { brut = fs.readFileSync(path.join(cheminSlug, info.nomFichier), 'utf8'); }
   catch (e) { return null; }
   const { title, uuid, champs } = lireTxt(brut);
-  return { uuid: uuid, type: entree.type, dossier: entree.dossier, valeurs: valeursDepuisChamps(entree.type, title, champs) };
+  const ausgabe = String(champs.ausgabe || '');
+  const ordreBrut = champs.ordre;
+  const ordre = (ordreBrut !== undefined && String(ordreBrut).trim() !== '') ? parseInt(ordreBrut, 10) : null;
+  return { slug: slug, uuid: uuid, type: info.type, ausgabe: ausgabe, ordre: (Number.isFinite(ordre) ? ordre : null), valeurs: valeursDepuisChamps(info.type, title, champs) };
+}
+// lireFicheParUuid(racineArbreVal, langue, uuid) -> comme lireFicheSlugLangue, en
+// cherchant le slug par Uuid. Coûteux (parcourt toute la bibliothèque) : réservé aux gestes
+// ponctuels (statuts, réservoir), jamais à un rendu de liste.
+function trouverSlugParUuid(racineArbreVal, langue, uuid) {
+  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
+    const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+    if (f && f.uuid === uuid) { return slug; }
+  }
+  return null;
 }
 
-// listerFiches(dossierArticle, langue) -> [{ uuid, type, dossier, valeurs }], dans l'ordre
-// actuel des dossiers sur le disque (celui du dernier reordonnerFiches).
-function listerFiches(dossierArticle, langue) {
-  return listerDossiersFiches(dossierArticle, langue)
-    .map((e) => lireFicheDepuisDossier(dossierArticle, e))
-    .filter(Boolean)
-    .sort((a, b) => a.dossier.localeCompare(b.dossier, 'fr', { numeric: true }));
-}
-// lireFicheAutonome(cheminDossier, langue) -> { uuid, type, dossier, valeurs } | null
-// Comme listerFiches(), mais pour un seul dossier de fiche désigné par son chemin absolu —
-// une fiche de réserve (lib/reserve.js), hors de toute Documentation d'article.
-function lireFicheAutonome(cheminDossier, langue) {
-  const parent = path.dirname(cheminDossier);
-  const nom = path.basename(cheminDossier);
-  const info = ficheDeDossier(parent, nom, langue);
-  if (!info) { return null; }
-  return lireFicheDepuisDossier(parent, { dossier: nom, type: info.type, nomFichier: info.nomFichier });
-}
-function trouverDossierParUuid(dossierArticle, langue, uuid) {
-  return listerDossiersFiches(dossierArticle, langue).find((e) => {
-    let brut;
-    try { brut = fs.readFileSync(path.join(dossierArticle, e.dossier, e.nomFichier), 'utf8'); }
-    catch (err) { return false; }
-    return lireTxt(brut).uuid === uuid;
-  }) || null;
-}
-
-// ---- Image d'une fiche : dépôt provisoire avant qu'elle existe, installation ---------
-//
-// Une image peut être déposée dans le formulaire avant que la fiche n'ait de dossier (elle
-// n'existe encore que dans la webview). `id` est l'identifiant que la webview donne à sa
-// carte, propre à cette session de formulaire — jamais l'uuid Kirby, que la fiche neuve
-// n'a pas encore au moment du dépôt.
-function dossierDepot(dossierArticle) { return path.join(dossierArticle, NOM_DEPOT_IMAGES); }
-function nettoyerImageProvisoire(dossierArticle, id) {
-  const dossier = dossierDepot(dossierArticle);
-  let noms; try { noms = fs.readdirSync(dossier); } catch (e) { return; }
-  const prefixe = String(id) + '__';
-  for (const n of noms) { if (n.indexOf(prefixe) === 0) { try { fs.unlinkSync(path.join(dossier, n)); } catch (e) { /* déjà parti */ } } }
-}
-function deposerImageProvisoire(dossierArticle, id, nomFichier, donnees) {
-  const dossier = dossierDepot(dossierArticle);
-  fs.mkdirSync(dossier, { recursive: true });
-  nettoyerImageProvisoire(dossierArticle, id);
-  const cible = path.join(dossier, String(id) + '__' + nomFichier);
-  fs.writeFileSync(cible, donnees);
-  return cible;
-}
-function imageProvisoire(dossierArticle, id) {
-  const dossier = dossierDepot(dossierArticle);
-  let noms; try { noms = fs.readdirSync(dossier); } catch (e) { return null; }
-  const prefixe = String(id) + '__';
-  const trouve = noms.find((n) => n.indexOf(prefixe) === 0);
-  return trouve ? path.join(dossier, trouve) : null;
-}
-// Vide entièrement le dépôt provisoire d'un article : tout ce qui y reste au moment où le
-// formulaire se ferme appartient à une carte jamais enregistrée (créée puis retirée avant
-// sauvegarde, ou formulaire fermé sans enregistrer) — jamais à une fiche déjà écrite, dont
-// l'image a rejoint son propre dossier (installerImage(), appelé depuis
-// ecrireFicheDansDossier()) et a donc déjà quitté ce dépôt. À appeler à la fermeture du
-// formulaire : un .txt (ou une image) en trop dans une arborescence Kirby serait lu comme
-// contenu par le site.
-function viderDepotImages(dossierArticle) {
-  try { fs.rmSync(dossierDepot(dossierArticle), { recursive: true, force: true }); }
-  catch (e) { /* absent : rien à vider */ }
-}
-// Copie `cheminSource` dans `cheminDossier` sous un nom libre (jamais un remplacement —
-// même parti que l'ancien lib/ressources.js). Rend le nom écrit.
+// installerImage(cheminDossier, cheminSource) -> le nom écrit, jamais un remplacement.
 function installerImage(cheminDossier, cheminSource) {
   fs.mkdirSync(cheminDossier, { recursive: true });
   const brut = path.basename(cheminSource).replace(/^[^_]*__/, '');
@@ -614,91 +628,267 @@ function installerImage(cheminDossier, cheminSource) {
   return nom;
 }
 
-// ---- Écriture d'une fiche --------------------------------------------------------------
-
-function ecrireFicheDansDossier(cheminDossier, langue, type, uuid, valeurs, imageSource) {
-  fs.mkdirSync(cheminDossier, { recursive: true });
+// ecrireFicheSlugLangue : écrit (ou réécrit) le fichier <type>.<langue>.txt d'un slug —
+// jamais de renommage de dossier, jamais de renommage de fichier hors changement de type
+// (qui ne devrait jamais arriver en pratique : le type d'une fiche est fixé à sa création).
+function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, ordre, imageSource) {
+  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
+  fs.mkdirSync(cheminSlug, { recursive: true });
   const v = Object.assign({}, valeurs);
   if (imageSource) {
     const cle = champFichierDuType(type);
-    if (cle) { v[cle] = installerImage(cheminDossier, imageSource); }
+    if (cle) { v[cle] = installerImage(cheminSlug, imageSource); }
   }
-  const texte = ecrireTxt({ title: String(v.title || ''), uuid: uuid, champs: champsPourEcriture(type, v) });
-  ecrireAtomique(path.join(cheminDossier, nomFichierContenu(type, langue)), texte);
+  const nomVoulu = nomFichierContenu(type, langue);
+  let fichiers;
+  try { fichiers = fs.readdirSync(cheminSlug); } catch (e) { fichiers = []; }
+  const suffixe = '.' + langue + '.txt';
+  for (const nom of fichiers) {
+    if (nom.slice(-suffixe.length) === suffixe && nom !== nomVoulu) {
+      try { fs.unlinkSync(path.join(cheminSlug, nom)); } catch (e) { /* déjà parti */ }
+    }
+  }
+  const champs = champsSystemePourEcriture(ausgabeId, ordre).concat(champsPourEcriture(type, v));
+  const texte = ecrireTxt({ title: String(v.title || ''), uuid: uuid, champs: champs });
+  ecrireAtomique(path.join(cheminSlug, nomVoulu), texte);
 }
 
-// ajouterFiche(dossierArticle, langue, type, valeurs, imageSource?) -> { uuid, dossier }
-// Le dossier prend un nom provisoire (« ~kirby-nouveau-<uuid> ») : c'est
-// reordonnerFiches() qui lui donnera son nom définitif, dans le même geste que toutes les
-// autres fiches — une seule fonction qui sait calculer un nom de dossier de fiche.
-function ajouterFiche(dossierArticle, langue, type, valeurs, imageSource) {
-  if (!typeConnu(type)) { throw new Error('ajouterFiche : type de fiche inconnu « ' + type + ' ».'); }
+// creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource?) -> { uuid, slug }
+// Une fiche neuve : Uuid et slug posés ici, une fois pour toutes.
+function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource) {
+  if (!typeConnu(type)) { throw new Error('creerFiche : type de fiche inconnu « ' + type + ' ».'); }
   const uuid = genererUuid();
-  const dossier = PREFIXE_NOUVEAU + uuid;
-  ecrireFicheDansDossier(path.join(dossierArticle, dossier), langue, type, uuid, valeurs, imageSource);
-  return { uuid: uuid, dossier: dossier };
+  const slug = slugFicheUnique((valeurs || {}).title || '', ensembleSlugsExistants(racineArbreVal));
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs, ausgabeId, null, imageSource);
+  return { uuid: uuid, slug: slug };
 }
 
-// ecrireFiche(dossierArticle, langue, uuid, type, valeurs, imageSource?) -> { ok }
-// Réécrit en place, sans renommer le dossier — un titre changé déplace la fiche dans
-// l'ordre d'impression, mais c'est reordonnerFiches() qui le traduit en renommage, une
-// seule fois pour tout le lot.
-function ecrireFiche(dossierArticle, langue, uuid, type, valeurs, imageSource) {
-  const entree = trouverDossierParUuid(dossierArticle, langue, uuid);
-  if (!entree) { return { ok: false }; }
-  const cheminDossier = path.join(dossierArticle, entree.dossier);
-  if (entree.type !== type) {
-    try { fs.unlinkSync(path.join(cheminDossier, entree.nomFichier)); } catch (e) { /* absent */ }
+// enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, imageSource?) ->
+// { ok, uuid }. Réécrit le fichier de SA langue (Ausgabe et Ordre préservés — c'est
+// reordonnerNumero() qui les change), puis recopie les champs communs dans le fichier de
+// l'autre langue s'il existe déjà.
+function enregistrerFicheLangue(racineArbreVal, slug, langue, type, valeurs, imageSource) {
+  const existante = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  if (!existante) { return { ok: false }; }
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, existante.uuid, valeurs, existante.ausgabe, existante.ordre, imageSource);
+  for (const autre of autresLangues(langue)) {
+    const ficheAutre = lireFicheSlugLangue(racineArbreVal, slug, autre);
+    if (!ficheAutre) { continue; }
+    const fusion = fusionnerChampsCommuns(type, valeurs, ficheAutre.valeurs);
+    ecrireFicheSlugLangue(racineArbreVal, slug, autre, type, ficheAutre.uuid, fusion, ficheAutre.ausgabe, ficheAutre.ordre, null);
   }
-  ecrireFicheDansDossier(cheminDossier, langue, type, uuid, valeurs, imageSource);
+  return { ok: true, uuid: existante.uuid };
+}
+
+// detacherFiche(racineArbreVal, slug, langue) -> { ok } : rend la fiche orpheline (Ausgabe
+// vidé). Ne touche jamais à l'autre langue — l'attachement est propre à chaque fichier de
+// langue (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+function detacherFiche(racineArbreVal, slug, langue) {
+  const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  if (!f) { return { ok: false }; }
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, '', null, null);
+  return { ok: true, ausgabeAvant: f.ausgabe };
+}
+
+// tirerDansNumero(racineArbreVal, slug, langue, ausgabeIdCible) -> { ok } : rattache une
+// orpheline de MA langue au numéro courant.
+function tirerDansNumero(racineArbreVal, slug, langue, ausgabeIdCible) {
+  const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  if (!f) { return { ok: false }; }
+  ecrireFicheSlugLangue(racineArbreVal, slug, langue, f.type, f.uuid, f.valeurs, ausgabeIdCible, null, null);
   return { ok: true };
 }
 
-// retirerFiche(dossierArticle, langue, uuid) -> { ok }
-// Ôte le dossier entier, image comprise — à la différence de l'ancien retirerRessource()
-// (lib/ressources.js), qui laissait l'image orpheline dans un media/ partagé : ici l'image
-// n'appartient qu'à cette fiche, rien d'autre n'en dépend.
-function retirerFiche(dossierArticle, langue, uuid) {
-  const entree = trouverDossierParUuid(dossierArticle, langue, uuid);
-  if (!entree) { return { ok: false }; }
-  try { fs.rmSync(path.join(dossierArticle, entree.dossier), { recursive: true, force: true }); }
-  catch (e) { return { ok: false }; }
+// traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) -> { ok, uuid } :
+// crée le fichier de la langue cible, pré-rempli depuis l'autre langue (champs communs
+// recopiés, champs `traduire` repris tels quels — un point de départ, pas une traduction),
+// même Uuid, Ausgabe = le numéro cible. Refuse si la langue cible existe déjà.
+function traduireDansNumero(racineArbreVal, slug, langueCible, ausgabeIdCible) {
+  if (lireFicheSlugLangue(racineArbreVal, slug, langueCible)) { return { ok: false, raison: 'existe-deja' }; }
+  let source = null;
+  for (const l of autresLangues(langueCible)) {
+    source = lireFicheSlugLangue(racineArbreVal, slug, l);
+    if (source) { break; }
+  }
+  if (!source) { return { ok: false, raison: 'source-absente' }; }
+  ecrireFicheSlugLangue(racineArbreVal, slug, langueCible, source.type, source.uuid,
+    Object.assign({}, source.valeurs), ausgabeIdCible, null, null);
+  effacerStatutFiche(racineArbreVal, langueCible, source.uuid);
+  return { ok: true, uuid: source.uuid };
+}
+
+// supprimerFicheOrpheline(racineArbreVal, slug, langue) -> { ok } : ôte le fichier de SA
+// langue ; le dossier entier (image comprise) s'il n'en reste aucun. Refuse sur une fiche
+// encore rattachée — la suppression n'est possible que pour une orpheline.
+function supprimerFicheOrpheline(racineArbreVal, slug, langue) {
+  const cheminSlug = path.join(cheminBibliotheque(racineArbreVal), slug);
+  const info = ficheDeDossierSlug(cheminSlug, langue);
+  if (!info) { return { ok: false }; }
+  const f = lireFicheSlugLangue(racineArbreVal, slug, langue);
+  if (f && f.ausgabe) { return { ok: false, raison: 'rattachee' }; }
+  try { fs.unlinkSync(path.join(cheminSlug, info.nomFichier)); } catch (e) { return { ok: false }; }
+  let reste;
+  try { reste = fs.readdirSync(cheminSlug); } catch (e) { reste = []; }
+  const autreLangueRestante = reste.some((n) => /\.[a-z]{2}\.txt$/i.test(n));
+  if (!autreLangueRestante) {
+    try { fs.rmSync(cheminSlug, { recursive: true, force: true }); } catch (e) { /* déjà parti */ }
+  }
   return { ok: true };
 }
 
-// reordonnerFiches(dossierArticle, langue) -> { renommes }
-// Idempotente (voir l'en-tête du fichier) : un dossier déjà à son nom voulu, ou déjà passé
-// par le temporaire, n'est pas retouché.
-function reordonnerFiches(dossierArticle, langue) {
-  const existantes = listerFiches(dossierArticle, langue);
-  if (existantes.length === 0) { return { renommes: 0 }; }
-  const voulues = calculerNoms(existantes, langue);
-  const aRenommer = voulues.filter((f) => f.dossier !== f.dossierVoulu);
-  let renommes = 0;
+// reordonnerNumero(racineArbreVal, langue, ausgabeId) -> { total } : recalcule le champ
+// Ordre de toutes les fiches de ce numéro et cette langue, écrit seulement celles dont le
+// rang a changé.
+function reordonnerNumero(racineArbreVal, langue, ausgabeId) {
+  if (!ausgabeId) { return { total: 0 }; }
+  const fiches = listerSlugsBibliotheque(racineArbreVal)
+    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .filter((f) => f && f.ausgabe === ausgabeId);
+  const ordonnees = calculerOrdreFiches(fiches, langue);
+  let total = 0;
+  ordonnees.forEach((f, i) => {
+    const rang = i + 1;
+    if (f.ordre !== rang) {
+      ecrireFicheSlugLangue(racineArbreVal, f.slug, langue, f.type, f.uuid, f.valeurs, f.ausgabe, rang, null);
+      total++;
+    }
+  });
+  return { total: total };
+}
 
-  // Passe 1 : chaque dossier qui doit bouger part vers un temporaire qui porte sa
-  // destination — sauf s'il y est déjà (reprise après interruption).
-  for (const f of aRenommer) {
-    const nomTempo = PREFIXE_TEMPO + f.dossierVoulu;
-    if (f.dossier === nomTempo) { continue; }              // déjà à l'étape intermédiaire
-    const de = path.join(dossierArticle, f.dossier);
-    const tempo = path.join(dossierArticle, nomTempo);
-    if (!fs.existsSync(de) || fs.existsSync(tempo)) { continue; }
-    fs.renameSync(de, tempo);
-    renommes++;
+// listerFichesNumero(racineArbreVal, langue, ausgabeId) -> les fiches rattachées à ce
+// numéro dans cette langue, triées par leur champ Ordre (déjà à jour si reordonnerNumero()
+// a été appelée après le dernier enregistrement, ce qu'impose ce module à chaque écriture).
+function listerFichesNumero(racineArbreVal, langue, ausgabeId) {
+  if (!ausgabeId) { return []; }
+  const fiches = listerSlugsBibliotheque(racineArbreVal)
+    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .filter((f) => f && f.ausgabe === ausgabeId);
+  fiches.sort((a, b) => (a.ordre || 0) - (b.ordre || 0));
+  return fiches;
+}
+
+// listerOrphelines(racineArbreVal, langue) -> mes fiches (cette langue) sans numéro.
+function listerOrphelines(racineArbreVal, langue) {
+  return listerSlugsBibliotheque(racineArbreVal)
+    .map((slug) => lireFicheSlugLangue(racineArbreVal, slug, langue))
+    .filter((f) => f && !f.ausgabe);
+}
+
+// ---- Statuts de traduction : _NewsUndActu\_Statuts\<langue>\<uuid>.txt ----------------
+//
+// Format minimal, DIFFÉRENT de celui d'une fiche (pas de Title/Uuid en tête) :
+//   Statut: a-traduire        (ou : ignore)
+//   ----
+//   Date: 2026-09-23
+function cheminStatutFichier(racineArbreVal, langueCible, uuid) {
+  return path.join(cheminStatutsRacine(racineArbreVal), langueCible, uuid + '.txt');
+}
+function ecrireStatutFiche(racineArbreVal, langueCible, uuid, statut) {
+  const chemin = cheminStatutFichier(racineArbreVal, langueCible, uuid);
+  fs.mkdirSync(path.dirname(chemin), { recursive: true });
+  const texte = 'Statut: ' + String(statut) + '\n\n----\n\nDate: ' + new Date().toISOString().slice(0, 10) + '\n';
+  ecrireAtomique(chemin, texte);
+}
+function lireStatutFiche(racineArbreVal, langueCible, uuid) {
+  let brut;
+  try { brut = fs.readFileSync(cheminStatutFichier(racineArbreVal, langueCible, uuid), 'utf8'); }
+  catch (e) { return null; }
+  const mStatut = brut.match(/^Statut:\s?(.*)$/mi);
+  const mDate = brut.match(/^Date:\s?(.*)$/mi);
+  const statut = mStatut ? mStatut[1].trim() : '';
+  if (!statut) { return null; }
+  return { statut: statut, date: mDate ? mDate[1].trim() : '' };
+}
+function effacerStatutFiche(racineArbreVal, langueCible, uuid) {
+  try { fs.unlinkSync(cheminStatutFichier(racineArbreVal, langueCible, uuid)); return true; }
+  catch (e) { return false; }
+}
+
+// ---- Les deux vues du réservoir ---------------------------------------------------------
+
+// listerTraductionsATraire(racineArbreVal, langueCible) -> fiches de l'autre langue,
+// rattachées ou non, sans fichier de MA langue, statut = a-traduire.
+function listerTraductionsATraire(racineArbreVal, langueCible) {
+  const res = [];
+  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
+    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible)) { continue; }
+    for (const l of autresLangues(langueCible)) {
+      const source = lireFicheSlugLangue(racineArbreVal, slug, l);
+      if (!source) { continue; }
+      const statut = lireStatutFiche(racineArbreVal, langueCible, source.uuid);
+      if (statut && statut.statut === 'a-traduire') {
+        res.push({
+          slug: slug, uuid: source.uuid, type: source.type, titreSource: source.valeurs.title,
+          langueSource: l, ausgabeSource: source.ausgabe
+        });
+      }
+      break;
+    }
   }
-  // Passe 2 : chaque temporaire rejoint son nom définitif.
-  for (const f of aRenommer) {
-    const tempo = path.join(dossierArticle, PREFIXE_TEMPO + f.dossierVoulu);
-    const vers = path.join(dossierArticle, f.dossierVoulu);
-    if (!fs.existsSync(tempo) || fs.existsSync(vers)) { continue; }
-    fs.renameSync(tempo, vers);
-    renommes++;
+  return res;
+}
+
+// listerReservoir(racineArbreVal, langueCible, { avecIgnorees }) -> fiches de l'autre
+// langue rattachées à un numéro, sans fichier de MA langue, sans décision (ou, si
+// avecIgnorees, celles qu'on a ignorées — jamais les deux en même temps : c'est
+// l'interrupteur « afficher les ignorées » qui bascule).
+function listerReservoir(racineArbreVal, langueCible, options) {
+  const avecIgnorees = !!(options && options.avecIgnorees);
+  const res = [];
+  for (const slug of listerSlugsBibliotheque(racineArbreVal)) {
+    if (lireFicheSlugLangue(racineArbreVal, slug, langueCible)) { continue; }
+    for (const l of autresLangues(langueCible)) {
+      const source = lireFicheSlugLangue(racineArbreVal, slug, l);
+      if (!source || !source.ausgabe) { continue; }
+      const statut = lireStatutFiche(racineArbreVal, langueCible, source.uuid);
+      const estATraire = !!(statut && statut.statut === 'a-traduire');
+      const estIgnoree = !!(statut && statut.statut === 'ignore');
+      if (estATraire) { continue; }
+      if (avecIgnorees !== estIgnoree) { continue; }
+      res.push({
+        slug: slug, uuid: source.uuid, type: source.type, titreSource: source.valeurs.title,
+        langueSource: l, ausgabeSource: source.ausgabe, ignoree: estIgnoree
+      });
+      break;
+    }
   }
-  return { renommes: renommes };
+  return res;
+}
+
+// ---- Dépôt provisoire d'une image, AVANT que la fiche n'existe -----------------------
+//
+// Hors de la bibliothèque partagée (docs/FORMAT-DOCUMENTATION-KIRBY.md : « pas de dossier
+// temporaire qui traîne dans Fiches\ ») : os.tmpdir(), propre au poste, jamais synchronisé.
+// `id` est l'identifiant que la webview donne à sa carte pour cette session de formulaire —
+// jamais l'Uuid Kirby, que la fiche neuve n'a pas encore au moment du dépôt.
+function dossierDepotImages() { return path.join(os.tmpdir(), 'szh-cockpit-depot-fiches'); }
+function nettoyerImageProvisoire(id) {
+  const dossier = dossierDepotImages();
+  let noms;
+  try { noms = fs.readdirSync(dossier); } catch (e) { return; }
+  const prefixe = String(id) + '__';
+  for (const n of noms) { if (n.indexOf(prefixe) === 0) { try { fs.unlinkSync(path.join(dossier, n)); } catch (e) { /* déjà parti */ } } }
+}
+function deposerImageProvisoire(id, nomFichier, donnees) {
+  const dossier = dossierDepotImages();
+  fs.mkdirSync(dossier, { recursive: true });
+  nettoyerImageProvisoire(id);
+  const cible = path.join(dossier, String(id) + '__' + nomFichier);
+  fs.writeFileSync(cible, donnees);
+  return cible;
+}
+function imageProvisoire(id) {
+  const dossier = dossierDepotImages();
+  let noms;
+  try { noms = fs.readdirSync(dossier); } catch (e) { return null; }
+  const prefixe = String(id) + '__';
+  const trouve = noms.find((n) => n.indexOf(prefixe) === 0);
+  return trouve ? path.join(dossier, trouve) : null;
 }
 
 // ---- La page (documentation.<lang>.txt) : titre, uuid, rubriques ---------------------
+// Inchangée : reste dans l'article du numéro (dossierArticle), jamais dans la bibliothèque.
 
 function lirePage(dossierArticle, langue) {
   const nomFichier = nomFichierContenu((contrat().kirby || {}).pageDocumentation || 'documentation', langue);
@@ -724,9 +914,10 @@ function ecrirePage(dossierArticle, langue, donnees) {
   return { uuid: uuid };
 }
 
-// ---- Toute la Documentation d'un coup, pour l'ouverture du formulaire ------------------
-function lireDocumentation(dossierArticle, langue) {
-  return { page: lirePage(dossierArticle, langue), fiches: listerFiches(dossierArticle, langue) };
+// lireDocumentation : la page du numéro (rubriques) et ses fiches rattachées (bibliothèque),
+// pour l'ouverture du formulaire en un seul appel.
+function lireDocumentation(dossierArticle, racineArbreVal, langue, ausgabeId) {
+  return { page: lirePage(dossierArticle, langue), fiches: listerFichesNumero(racineArbreVal, langue, ausgabeId) };
 }
 
 module.exports = {
@@ -734,6 +925,7 @@ module.exports = {
   chargerContrat, oublierContrat, cheminDuContrat, contrat,
   typeConnu, typesConnus, definitionType, champsDuType, champDuType, libelleType, libelleLienType,
   champFichierDuType, rubriquesDuContrat, rubriquesPourRevue, valeursListe,
+  languesDuContrat, autresLangues,
   // Validation
   dateValide, datePartielleValide, anneeValide, quandSatisfait,
   // Dérivés
@@ -745,15 +937,24 @@ module.exports = {
   // Fichier .txt Kirby (bas niveau, pour les tests d'aller-retour)
   lireTxt, ecrireTxt, separateur,
   ecrireListeStructure, lireListeStructure, ecrireFichierUnique, lireFichierUnique,
-  champsPourEcriture, valeursDepuisChamps,
-  // Ordre et nom de dossier
-  calculerOrdreFiches, calculerNoms, slugifierFiche, slugFicheUnique, nomDossierFiche,
+  champsPourEcriture, valeursDepuisChamps, fusionnerChampsCommuns,
+  // Ordre
+  calculerOrdreFiches, slugifierFiche, slugFicheUnique,
   nomFichierContenu, estFichierPageDocumentation,
-  // Arborescence sur le disque
-  listerFiches, lireFicheAutonome, trouverDossierParUuid,
-  ajouterFiche, ecrireFiche, retirerFiche, reordonnerFiches,
-  lirePage, ecrirePage, lireDocumentation,
-  // Image d'une fiche
-  deposerImageProvisoire, imageProvisoire, nettoyerImageProvisoire, viderDepotImages, installerImage,
-  PREFIXE_TEMPO, PREFIXE_NOUVEAU, NOM_DEPOT_IMAGES
+  // Racine de l'arbre, revues, numéros
+  DOSSIERS_REVUE, DOSSIERS_PRODUIT, DOSSIER_ARCHIVE, REVUES, NOM_BIBLIOTHEQUE,
+  racineArbre, autreRevue, dossierRevue, cheminBibliotheque, cheminStatutsRacine,
+  listerNumeros, idsEnDouble,
+  // La bibliothèque : une fiche par slug + langue
+  listerSlugsBibliotheque, lireFicheSlugLangue, trouverSlugParUuid,
+  creerFiche, enregistrerFicheLangue, detacherFiche, tirerDansNumero, traduireDansNumero,
+  supprimerFicheOrpheline, reordonnerNumero, listerFichesNumero, listerOrphelines,
+  installerImage,
+  // Statuts de traduction
+  ecrireStatutFiche, lireStatutFiche, effacerStatutFiche,
+  listerTraductionsATraire, listerReservoir,
+  // Image d'une fiche : dépôt provisoire avant qu'elle existe (hors bibliothèque)
+  deposerImageProvisoire, imageProvisoire, nettoyerImageProvisoire, dossierDepotImages,
+  // La page (rubriques du numéro)
+  lirePage, ecrirePage, lireDocumentation
 };

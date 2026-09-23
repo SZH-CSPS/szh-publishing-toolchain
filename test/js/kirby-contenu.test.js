@@ -1,9 +1,10 @@
-// lib/kirby-contenu.js : le module pur qui lit et écrit l'arborescence Kirby de la
-// Documentation. Remplace test/js/ressources.test.js et test/js/rubriques.test.js.
+// lib/kirby-contenu.js : le module pur qui lit et écrit la Documentation — la page du
+// numéro (rubriques) et la bibliothèque partagée de fiches (_NewsUndActu\Fiches\<slug>\).
 //
-// Trois familles : l'aller-retour du fichier .txt (lireTxt/ecrireTxt, listes YAML), les
-// calculs purs (curia, ordre des fiches, nom de dossier), et l'arborescence réelle sur
-// disque (arborescences jetables sous un dossier temporaire, jamais dans le dépôt).
+// Quatre familles : l'aller-retour du fichier .txt (lireTxt/ecrireTxt, listes YAML), les
+// calculs purs (curia, ordre des fiches, racine de l'arbre), la bibliothèque sur disque
+// (arborescences jetables sous un dossier temporaire, jamais dans le dépôt), et les statuts
+// de traduction / vues du réservoir.
 'use strict';
 
 const test = require('node:test');
@@ -14,9 +15,30 @@ const path = require('path');
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 const kc = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
+const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-kirby-'));
+}
+
+// Une arborescence jetable minimale : <racine>\Revue\<numero>\ausgabe.yaml et
+// <racine>\Zeitschrift\<numero>\ausgabe.yaml, chacun avec un id posé. Sert de base à tous
+// les tests de bibliothèque, qui ont besoin d'une vraie racine d'arbre (racineArbre).
+function arbreJetable() {
+  const racine = dossierJetable();
+  const numeroRevue = path.join(racine, 'Revue', '2026-01');
+  const numeroZeitschrift = path.join(racine, 'Zeitschrift', '2026-01');
+  fs.mkdirSync(numeroRevue, { recursive: true });
+  fs.mkdirSync(numeroZeitschrift, { recursive: true });
+  fs.writeFileSync(path.join(numeroRevue, 'ausgabe.yaml'), 'title: Numéro\nrevue: revue\nlang: fr\n', 'utf8');
+  fs.writeFileSync(path.join(numeroZeitschrift, 'ausgabe.yaml'), 'title: Nummer\nrevue: zeitschrift\nlang: de\n', 'utf8');
+  const idRevue = yaml.assurerIdNumero(numeroRevue);
+  const idZeitschrift = yaml.assurerIdNumero(numeroZeitschrift);
+  return { racine, numeroRevue, numeroZeitschrift, idRevue, idZeitschrift };
+}
+
+function livre(titre, extra) {
+  return Object.assign({ categorie: 'manuel', title: titre, auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D' }, extra || {});
 }
 
 // ---- Le contrat se charge -------------------------------------------------------------
@@ -169,8 +191,6 @@ test('champsPourEcriture : curia est recalculé, jamais lu depuis la valeur four
 // ---- Complétude -------------------------------------------------------------------------
 
 test('champsManquants : un champ requis mais masqué par `quand` ne compte pas', () => {
-  // horizon.canton : requis=false, quand={portee:'regional'} — jamais listé comme manquant,
-  // portée nationale ou régionale, puisque requis est déjà faux.
   const manque = kc.champsManquants('horizon', { portee: 'national', title: 'T', descriptif: 'D' });
   assert.ok(manque.indexOf('canton') === -1);
 });
@@ -208,7 +228,7 @@ test('calculerOrdreFiches : les types suivent ordreTypes, jamais l’ordre de sa
     { type: 'horizon', valeurs: { title: 'A', portee: 'national' } }
   ];
   const ordre = kc.calculerOrdreFiches(fiches, 'fr');
-  assert.strictEqual(ordre[0].type, 'horizon');   // horizon avant film dans ordreTypes
+  assert.strictEqual(ordre[0].type, 'horizon');
   assert.strictEqual(ordre[1].type, 'film');
 });
 
@@ -229,7 +249,6 @@ test('calculerOrdreFiches : horizon — la portée suit l’ordre de la liste, p
     { type: 'horizon', valeurs: { title: 'c', portee: 'national' } }
   ];
   const ordre = kc.calculerOrdreFiches(fiches, 'fr').map((f) => f.valeurs.portee);
-  // Ordre de la liste `portee` du JSON : international, national, regional, varia.
   assert.deepStrictEqual(ordre, ['international', 'national', 'varia']);
 });
 
@@ -242,24 +261,15 @@ test('calculerOrdreFiches : agenda — la date de début, puis le titre', () => 
   assert.deepStrictEqual(ordre, ['A', 'B']);
 });
 
-test('calculerNoms : dossier « <n>_<slug> », numérotation continue sur tous les types', () => {
+test('calculerOrdreFiches : les propriétés supplémentaires (slug, uuid…) survivent au tri', () => {
   const fiches = [
-    { type: 'film', valeurs: { title: 'Le film' } },
-    { type: 'livre', valeurs: { title: 'Le livre' } }
+    { type: 'film', valeurs: { title: 'Z' }, slug: 's-film' },
+    { type: 'livre', valeurs: { title: 'A' }, slug: 's-livre' }
   ];
-  const noms = kc.calculerNoms(fiches, 'fr');
-  const livre = noms.find((f) => f.type === 'livre');
-  const film = noms.find((f) => f.type === 'film');
-  assert.strictEqual(livre.position, 1);          // livre avant film dans ordreTypes
-  assert.strictEqual(livre.dossierVoulu, '1_le-livre');
-  assert.strictEqual(film.position, 2);
-  assert.strictEqual(film.dossierVoulu, '2_le-film');
+  const ordre = kc.calculerOrdreFiches(fiches, 'fr');
+  assert.deepStrictEqual(ordre.map((f) => f.slug), ['s-livre', 's-film']);
 });
 
-// Le nom du fichier de page est fixe, jamais celui du dossier — à la différence d'une
-// fiche de métadonnées (<slug>.meta.yaml). lib/renumerotation-fs.js s'appuie dessus pour ne
-// jamais prendre « documentation.fr.txt » pour un sidecar du dossier « 01-documentation »
-// (leur tige coïncide quand le dossier porte le nom par défaut, voir son test dédié).
 test('estFichierPageDocumentation : reconnaît le fichier de page dans les deux langues, rien d’autre', () => {
   assert.strictEqual(kc.estFichierPageDocumentation('documentation.fr.txt'), true);
   assert.strictEqual(kc.estFichierPageDocumentation('documentation.de.txt'), true);
@@ -282,9 +292,9 @@ test('slugFicheUnique : deux fiches de même titre reçoivent -2, -3', () => {
 
 test('ordreInstruments : les instruments observés dans le canton choisi viennent en tête', () => {
   const ordre = kc.ordreInstruments('BS');
-  const anzugPos = ordre.indexOf('anzug');       // local, cantons: ["BS"]
-  const motionPos = ordre.indexOf('motion');     // cantons: [... "BS" ...]
-  const initCantonalePos = ordre.indexOf('initiative-cantonale');  // cantons: []
+  const anzugPos = ordre.indexOf('anzug');
+  const motionPos = ordre.indexOf('motion');
+  const initCantonalePos = ordre.indexOf('initiative-cantonale');
   assert.ok(anzugPos < initCantonalePos);
   assert.ok(motionPos < initCantonalePos);
 });
@@ -294,102 +304,352 @@ test('instrumentEstLocal / cantonsInstrument', () => {
   assert.deepStrictEqual(kc.cantonsInstrument('anzug'), ['BS']);
 });
 
-// ---- L'arborescence sur le disque ------------------------------------------------------
+// ---- Racine de l'arbre ------------------------------------------------------------------
 
-test('ajouterFiche puis reordonnerFiches : le dossier prend son nom définitif', () => {
+test('racineArbre : un numéro en cours remonte d’un cran', () => {
+  const racine = path.join('C:', 'x', 'Revues-TESTING');
+  assert.strictEqual(kc.racineArbre(path.join(racine, 'Revue', '2026-01')), racine);
+});
+test('racineArbre : un numéro archivé remonte de deux crans (à travers _Archive)', () => {
+  const racine = path.join('C:', 'x', 'Revues-TESTING');
+  assert.strictEqual(kc.racineArbre(path.join(racine, '_Archive', 'Revue', '2020-05')), racine);
+});
+test('racineArbre : un dossier hors arborescence retombe sur son simple parent', () => {
+  const p = path.join('C:', 'ailleurs', 'un-dossier');
+  assert.strictEqual(kc.racineArbre(p), path.join('C:', 'ailleurs'));
+});
+test('autreRevue / dossierRevue', () => {
+  assert.strictEqual(kc.autreRevue('revue'), 'zeitschrift');
+  assert.strictEqual(kc.autreRevue('zeitschrift'), 'revue');
+  assert.strictEqual(kc.autreRevue('livre'), null);
+  assert.strictEqual(kc.dossierRevue('revue'), 'Revue');
+  assert.strictEqual(kc.dossierRevue('zeitschrift'), 'Zeitschrift');
+  assert.strictEqual(kc.dossierRevue('inconnu'), '');
+});
+
+// ---- id du numéro (ausgabe.yaml) — posé à la première ouverture -----------------------
+
+test('assurerIdNumero : pose un id à la première ouverture, jamais recalculé ensuite', () => {
   const racine = dossierJetable();
   try {
-    const { uuid } = kc.ajouterFiche(racine, 'fr', 'livre', {
-      title: 'Un livre', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: ''
-    });
-    kc.reordonnerFiches(racine, 'fr');
-    const fiches = kc.listerFiches(racine, 'fr');
-    assert.strictEqual(fiches.length, 1);
-    assert.strictEqual(fiches[0].uuid, uuid);
-    assert.strictEqual(fiches[0].dossier, '1_un-livre');
-    assert.ok(fs.existsSync(path.join(racine, '1_un-livre', 'livre.fr.txt')));
+    const chemin = path.join(racine, 'ausgabe.yaml');
+    fs.writeFileSync(chemin, 'title: Mon numéro\nrevue: revue\n', 'utf8');
+    assert.strictEqual(yaml.idNumero(racine), '', 'pas encore d’id');
+    const id1 = yaml.assurerIdNumero(racine);
+    assert.match(id1, /^[A-Za-z0-9]{16}$/);
+    const brut = fs.readFileSync(chemin, 'utf8');
+    assert.match(brut, /title: Mon numéro/, 'le reste du fichier doit survivre');
+    const id2 = yaml.assurerIdNumero(racine);
+    assert.strictEqual(id2, id1, 'un second appel ne recalcule pas l’id');
+    assert.strictEqual(yaml.idNumero(racine), id1);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('deux fiches qui échangent leur rang se renomment sans collision', () => {
-  const racine = dossierJetable();
+test('idsEnDouble : deux numéros qui partagent le même id sont signalés', () => {
+  const { racine, numeroRevue, idRevue } = arbreJetable();
   try {
-    kc.ajouterFiche(racine, 'fr', 'film', { title: 'B film', realisateur: 'X', annee: '2026', descriptif: 'D', couverture: '' });
-    kc.ajouterFiche(racine, 'fr', 'livre', { title: 'A livre', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: '' });
-    kc.reordonnerFiches(racine, 'fr');
-    let fiches = kc.listerFiches(racine, 'fr');
-    const livre1 = fiches.find((f) => f.type === 'livre');
-    assert.strictEqual(livre1.dossier, '1_a-livre');   // livre avant film
-
-    // On renomme le titre du livre pour Z : il doit désormais suivre le film.
-    kc.ecrireFiche(racine, 'fr', livre1.uuid, 'livre',
-      Object.assign({}, livre1.valeurs, { title: 'Z livre' }));
-    kc.reordonnerFiches(racine, 'fr');
-    fiches = kc.listerFiches(racine, 'fr');
-    const parType = {};
-    fiches.forEach((f) => { parType[f.type] = f; });
-    // Livre reste avant film dans ordreTypes malgré le titre : seul le rang à l'intérieur
-    // du type bougerait s'il y avait plusieurs livres — ici l'ordre des TYPES ne change pas.
-    assert.strictEqual(parType.livre.dossier, '1_z-livre');
-    assert.strictEqual(parType.film.dossier, '2_b-film');
+    const copie = path.join(racine, 'Revue', '2026-02');
+    fs.mkdirSync(copie, { recursive: true });
+    fs.writeFileSync(path.join(copie, 'ausgabe.yaml'), 'id: ' + idRevue + '\nrevue: revue\n', 'utf8');
+    const doubles = kc.idsEnDouble(racine);
+    assert.strictEqual(doubles.length, 1);
+    assert.strictEqual(doubles[0].length, 2);
+    assert.ok(doubles[0].every((n) => n.id === idRevue));
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('reordonnerFiches est idempotente : rejouée après une interruption simulée, elle termine le lot', () => {
-  const racine = dossierJetable();
+test('listerNumeros : les deux revues, en cours et archivées', () => {
+  const { racine, idRevue } = arbreJetable();
   try {
-    kc.ajouterFiche(racine, 'fr', 'livre', { title: 'Alpha', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: '' });
-    kc.ajouterFiche(racine, 'fr', 'livre', { title: 'Beta', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: '' });
-    kc.reordonnerFiches(racine, 'fr');
-    let fiches = kc.listerFiches(racine, 'fr');
-    const alpha = fiches.find((f) => f.valeurs.title === 'Alpha');
-    const beta = fiches.find((f) => f.valeurs.title === 'Beta');
-    // On inverse les titres pour forcer un double renommage, puis on interrompt la passe 1
-    // à la main : un seul des deux dossiers part au temporaire.
-    kc.ecrireFiche(racine, 'fr', alpha.uuid, 'livre', Object.assign({}, alpha.valeurs, { title: 'Zeta' }));
-    kc.ecrireFiche(racine, 'fr', beta.uuid, 'livre', Object.assign({}, beta.valeurs, { title: 'Aaa' }));
-    fs.renameSync(path.join(racine, alpha.dossier), path.join(racine, '~kirby-tmp-2_zeta'));
-    // La reprise (un second appel, comme si le premier avait été interrompu ici) doit
-    // terminer le lot sans rien perdre.
-    kc.reordonnerFiches(racine, 'fr');
-    fiches = kc.listerFiches(racine, 'fr');
-    assert.strictEqual(fiches.length, 2);
-    const parTitre = {}; fiches.forEach((f) => { parTitre[f.valeurs.title] = f.dossier; });
-    assert.strictEqual(parTitre.Aaa, '1_aaa');
-    assert.strictEqual(parTitre.Zeta, '2_zeta');
+    const archive = path.join(racine, '_Archive', 'Zeitschrift', '2020-01');
+    fs.mkdirSync(archive, { recursive: true });
+    fs.writeFileSync(path.join(archive, 'ausgabe.yaml'), 'revue: zeitschrift\n', 'utf8');
+    const idArchive = yaml.assurerIdNumero(archive);
+    const nums = kc.listerNumeros(racine);
+    const revueEnCours = nums.find((n) => n.id === idRevue);
+    assert.ok(revueEnCours && !revueEnCours.archive && revueEnCours.revue === 'revue');
+    const zeitschriftArchivee = nums.find((n) => n.id === idArchive);
+    assert.ok(zeitschriftArchivee && zeitschriftArchivee.archive && zeitschriftArchivee.revue === 'zeitschrift');
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('retirerFiche ôte le dossier entier, y compris son image', () => {
-  const racine = dossierJetable();
+// ---- La bibliothèque : une fiche par slug + langue -------------------------------------
+
+test('creerFiche puis lireFicheSlugLangue : Ausgabe posé, Ordre absent avant reordonnerNumero', () => {
+  const { racine, idRevue } = arbreJetable();
   try {
-    const { uuid, dossier } = kc.ajouterFiche(racine, 'fr', 'livre',
-      { title: 'X', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: '' });
-    assert.ok(fs.existsSync(path.join(racine, dossier)));
-    const r = kc.retirerFiche(racine, 'fr', uuid);
-    assert.ok(r.ok);
-    assert.ok(!fs.existsSync(path.join(racine, dossier)));
+    const { uuid, slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Un livre'), idRevue);
+    const f = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    assert.strictEqual(f.uuid, uuid);
+    assert.strictEqual(f.type, 'livre');
+    assert.strictEqual(f.ausgabe, idRevue);
+    assert.strictEqual(f.ordre, null);
+    assert.strictEqual(f.valeurs.title, 'Un livre');
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'livre.fr.txt')));
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('retirerFiche sur un uuid absent : ok=false, ne lève pas', () => {
-  const racine = dossierJetable();
-  try { assert.deepStrictEqual(kc.retirerFiche(racine, 'fr', 'inconnu'), { ok: false }); }
-  finally { fs.rmSync(racine, { recursive: true, force: true }); }
+test('le dossier de la fiche n’est JAMAIS renommé — le slug tient malgré un changement de titre', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('Titre initial'), idRevue);
+    kc.reordonnerNumero(racine, 'fr', idRevue);
+    kc.enregistrerFicheLangue(racine, slug, 'fr', 'livre', livre('Titre complètement différent'));
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'livre.fr.txt')),
+      'le dossier doit garder son slug d’origine');
+    const f = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    assert.strictEqual(f.valeurs.title, 'Titre complètement différent');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('image provisoire : déposée avant la fiche, installée à la création', () => {
+test('reordonnerNumero : Ordre 1..N suit calculerOrdreFiches, par numéro et par langue', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    kc.creerFiche(racine, 'fr', 'film', livre('Z film', { realisateur: 'X' }), idRevue);
+    kc.creerFiche(racine, 'fr', 'livre', livre('A livre'), idRevue);
+    kc.reordonnerNumero(racine, 'fr', idRevue);
+    const fiches = kc.listerFichesNumero(racine, 'fr', idRevue);
+    assert.strictEqual(fiches[0].type, 'livre');   // livre avant film dans ordreTypes
+    assert.strictEqual(fiches[0].ordre, 1);
+    assert.strictEqual(fiches[1].type, 'film');
+    assert.strictEqual(fiches[1].ordre, 2);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('aller-retour bilingue : champs communs recopiés dans l’autre langue, champs traduire propres', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const { uuid, slug } = kc.creerFiche(racine, 'fr', 'livre',
+      livre('Titre français', { editeur: 'Éditions X' }), idRevue);
+    kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    // La version allemande, encore un point de départ : mêmes valeurs que la source.
+    let de = kc.lireFicheSlugLangue(racine, slug, 'de');
+    assert.strictEqual(de.uuid, uuid, 'même Uuid dans les deux langues');
+    assert.strictEqual(de.valeurs.editeur, 'Éditions X');
+
+    // On réécrit le TITRE allemand (traduire) et l'ÉDITEUR (commun) côté allemand.
+    kc.enregistrerFicheLangue(racine, slug, 'de', 'livre',
+      Object.assign({}, de.valeurs, { title: 'Titre allemand', editeur: 'Verlag Y' }));
+
+    de = kc.lireFicheSlugLangue(racine, slug, 'de');
+    const fr = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    assert.strictEqual(de.valeurs.title, 'Titre allemand');
+    assert.strictEqual(fr.valeurs.title, 'Titre français', 'le titre français ne doit PAS bouger');
+    assert.strictEqual(fr.valeurs.editeur, 'Verlag Y', 'l’éditeur, commun, doit être recopié vers le français');
+    assert.strictEqual(de.valeurs.editeur, 'Verlag Y');
+    // Ausgabe et Ordre restent propres à chaque langue.
+    assert.strictEqual(fr.ausgabe, idRevue);
+    assert.strictEqual(de.ausgabe, idZeitschrift);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('suivi (structure) : date/genre/lien communs par rang, libellé propre à la langue', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const suivi = [{ date: '2026-08-20', genre: 'decision', libelle: 'Décision FR', lien: 'https://x' }];
+    const { slug } = kc.creerFiche(racine, 'fr', 'intervention', {
+      canton: 'ZH', categorie: 'motion', numero: '1', date: '2026-01-01', title: 'T', source: 'manuel', suivi: suivi
+    }, idRevue);
+    kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    let de = kc.lireFicheSlugLangue(racine, slug, 'de');
+    // Repris tel quel par traduireDansNumero (point de départ).
+    assert.strictEqual(de.valeurs.suivi[0].libelle, 'Décision FR');
+
+    // Le libellé allemand est réécrit ; date/genre/lien restent, côté allemand, ce qu'ils
+    // étaient au départ (recopiés depuis le français à l'enregistrement français, plus bas).
+    kc.enregistrerFicheLangue(racine, slug, 'de', 'intervention',
+      Object.assign({}, de.valeurs, {
+        suivi: [{ date: '2026-08-20', genre: 'decision', libelle: 'Entscheid DE', lien: 'https://x' }]
+      }));
+
+    // On modifie ensuite la date côté français : elle doit se propager côté allemand, sans
+    // toucher au libellé allemand déjà propre.
+    const fr1 = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    kc.enregistrerFicheLangue(racine, slug, 'fr', 'intervention',
+      Object.assign({}, fr1.valeurs, {
+        suivi: [{ date: '2026-09-01', genre: 'prise-position', libelle: 'Décision FR modifiée', lien: 'https://y' }]
+      }));
+
+    de = kc.lireFicheSlugLangue(racine, slug, 'de');
+    assert.strictEqual(de.valeurs.suivi[0].date, '2026-09-01', 'la date doit se recopier vers l’allemand');
+    assert.strictEqual(de.valeurs.suivi[0].genre, 'prise-position');
+    assert.strictEqual(de.valeurs.suivi[0].lien, 'https://y');
+    assert.strictEqual(de.valeurs.suivi[0].libelle, 'Entscheid DE', 'le libellé allemand reste le sien');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('detacherFiche : Ausgabe vidé, l’autre langue n’est pas touchée', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    kc.detacherFiche(racine, slug, 'fr');
+    const fr = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    const de = kc.lireFicheSlugLangue(racine, slug, 'de');
+    assert.strictEqual(fr.ausgabe, '', 'orpheline en français');
+    assert.strictEqual(de.ausgabe, idZeitschrift, 'l’allemand reste rattaché');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('tirerDansNumero : rattache une orpheline au numéro courant', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), '');
+    let f = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    assert.strictEqual(f.ausgabe, '');
+    kc.tirerDansNumero(racine, slug, 'fr', idRevue);
+    f = kc.lireFicheSlugLangue(racine, slug, 'fr');
+    assert.strictEqual(f.ausgabe, idRevue);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('supprimerFicheOrpheline : refuse sur une fiche rattachée, efface sinon (dossier entier si plus rien)', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    let r = kc.supprimerFicheOrpheline(racine, slug, 'fr');
+    assert.strictEqual(r.ok, false, 'rattachée : refusé');
+
+    kc.detacherFiche(racine, slug, 'fr');
+    r = kc.supprimerFicheOrpheline(racine, slug, 'fr');
+    assert.strictEqual(r.ok, true);
+    assert.ok(!fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug)), 'plus aucune langue : le dossier part');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('supprimerFicheOrpheline : une seule langue part si l’autre existe encore', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    kc.detacherFiche(racine, slug, 'fr');
+    const r = kc.supprimerFicheOrpheline(racine, slug, 'fr');
+    assert.strictEqual(r.ok, true);
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug)), 'le dossier doit survivre');
+    assert.ok(kc.lireFicheSlugLangue(racine, slug, 'de'), 'l’allemand doit survivre');
+    assert.strictEqual(kc.lireFicheSlugLangue(racine, slug, 'fr'), null);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('un numéro archivé garde ses fiches : listerFichesNumero les retrouve par id', () => {
   const racine = dossierJetable();
   try {
-    kc.deposerImageProvisoire(racine, 'carte-1', 'couverture.png', Buffer.from('PNG'));
-    const source = kc.imageProvisoire(racine, 'carte-1');
+    const numero = path.join(racine, '_Archive', 'Revue', '2020-05');
+    fs.mkdirSync(numero, { recursive: true });
+    fs.writeFileSync(path.join(numero, 'ausgabe.yaml'), 'revue: revue\n', 'utf8');
+    const id = yaml.assurerIdNumero(numero);
+    const racineArbreVal = kc.racineArbre(numero);
+    kc.creerFiche(racineArbreVal, 'fr', 'livre', livre('X'), id);
+    kc.reordonnerNumero(racineArbreVal, 'fr', id);
+    assert.strictEqual(kc.listerFichesNumero(racineArbreVal, 'fr', id).length, 1);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('listerOrphelines : mes fiches sans numéro, dans ma langue seulement', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    kc.creerFiche(racine, 'fr', 'livre', livre('Rattachée'), idRevue);
+    kc.creerFiche(racine, 'fr', 'livre', livre('Orpheline'), '');
+    const orph = kc.listerOrphelines(racine, 'fr');
+    assert.strictEqual(orph.length, 1);
+    assert.strictEqual(orph[0].valeurs.title, 'Orpheline');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Statuts de traduction --------------------------------------------------------------
+
+test('statuts : écrire, lire, effacer — un fichier par décision', () => {
+  const racine = dossierJetable();
+  try {
+    const uuid = kc.genererUuid();
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', uuid), null);
+    kc.ecrireStatutFiche(racine, 'de', uuid, 'a-traduire');
+    let s = kc.lireStatutFiche(racine, 'de', uuid);
+    assert.strictEqual(s.statut, 'a-traduire');
+    assert.match(s.date, /^\d{4}-\d{2}-\d{2}$/);
+    kc.ecrireStatutFiche(racine, 'de', uuid, 'ignore');
+    s = kc.lireStatutFiche(racine, 'de', uuid);
+    assert.strictEqual(s.statut, 'ignore');
+    assert.ok(kc.effacerStatutFiche(racine, 'de', uuid));
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', uuid), null);
+    assert.strictEqual(kc.effacerStatutFiche(racine, 'de', uuid), false, 'un second effacement ne lève pas');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Les deux vues du réservoir -----------------------------------------------------
+
+test('listerTraductionsATraire : seulement les fiches marquées a-traduire pour MA langue', () => {
+  const { racine, idZeitschrift } = arbreJetable();
+  try {
+    const { uuid: uuidA, slug: slugA } = kc.creerFiche(racine, 'de', 'livre', livre('A'), idZeitschrift);
+    kc.creerFiche(racine, 'de', 'livre', livre('B'), idZeitschrift);
+    kc.ecrireStatutFiche(racine, 'fr', uuidA, 'a-traduire');
+    const liste = kc.listerTraductionsATraire(racine, 'fr');
+    assert.strictEqual(liste.length, 1);
+    assert.strictEqual(liste[0].slug, slugA);
+    assert.strictEqual(liste[0].langueSource, 'de');
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('listerReservoir : rattachées, sans fichier ma langue, sans décision — puis ignorées seules avec le drapeau', () => {
+  const { racine, idZeitschrift } = arbreJetable();
+  try {
+    const { uuid: uuidA, slug: slugA } = kc.creerFiche(racine, 'de', 'livre', livre('A'), idZeitschrift);
+    const { slug: slugB } = kc.creerFiche(racine, 'de', 'livre', livre('B'), idZeitschrift);
+    kc.creerFiche(racine, 'de', 'livre', livre('Orpheline'), '');   // pas rattachée : jamais dans le réservoir
+
+    let res = kc.listerReservoir(racine, 'fr', { avecIgnorees: false });
+    assert.deepStrictEqual(res.map((r) => r.slug).sort(), [slugA, slugB].sort());
+
+    kc.ecrireStatutFiche(racine, 'fr', uuidA, 'ignore');
+    res = kc.listerReservoir(racine, 'fr', { avecIgnorees: false });
+    assert.deepStrictEqual(res.map((r) => r.slug), [slugB]);
+
+    const ignorees = kc.listerReservoir(racine, 'fr', { avecIgnorees: true });
+    assert.deepStrictEqual(ignorees.map((r) => r.slug), [slugA]);
+    assert.strictEqual(ignorees[0].ignoree, true);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('traduireDansNumero puis annulation du statut : « annuler la décision » = effacer le statut', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const { uuid, slug } = kc.creerFiche(racine, 'de', 'livre', livre('X'), idZeitschrift);
+    kc.ecrireStatutFiche(racine, 'fr', uuid, 'a-traduire');
+    const r = kc.traduireDansNumero(racine, slug, 'fr', idRevue);
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.uuid, uuid);
+    // Le fichier français existe désormais : le statut ne doit plus compter (effacé).
+    assert.strictEqual(kc.lireStatutFiche(racine, 'fr', uuid), null);
+    assert.strictEqual(kc.listerTraductionsATraire(racine, 'fr').length, 0);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('traduireDansNumero refuse si la langue cible existe déjà', () => {
+  const { racine, idRevue, idZeitschrift } = arbreJetable();
+  try {
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    const r = kc.traduireDansNumero(racine, slug, 'de', idZeitschrift);
+    assert.strictEqual(r.ok, false);
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// ---- Image d'une fiche : dépôt provisoire hors bibliothèque ---------------------------
+
+test('image provisoire : déposée avant la fiche, installée à la création, jamais dans Fiches\\', () => {
+  const { racine, idRevue } = arbreJetable();
+  try {
+    kc.deposerImageProvisoire('carte-1', 'couverture.png', Buffer.from('PNG'));
+    const source = kc.imageProvisoire('carte-1');
     assert.ok(source);
-    const { uuid, dossier } = kc.ajouterFiche(racine, 'fr', 'livre',
-      { title: 'X', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D' }, source);
-    const fiches = kc.listerFiches(racine, 'fr');
-    const f = fiches.find((x) => x.uuid === uuid);
+    assert.ok(!source.startsWith(kc.cheminBibliotheque(racine)), 'le dépôt doit être hors bibliothèque');
+    const { slug } = kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue, source);
+    const f = kc.lireFicheSlugLangue(racine, slug, 'fr');
     assert.strictEqual(f.valeurs.couverture, 'couverture.png');
-    assert.ok(fs.existsSync(path.join(racine, dossier, 'couverture.png')));
+    assert.ok(fs.existsSync(path.join(kc.cheminBibliotheque(racine), slug, 'couverture.png')));
+    kc.nettoyerImageProvisoire('carte-1');
+    assert.strictEqual(kc.imageProvisoire('carte-1'), null);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
@@ -418,13 +678,14 @@ test('rubriquesPourRevue : « ressources » n’existe que pour la Revue', () =>
   assert.ok(pourZeitschrift.indexOf('ressources') === -1);
 });
 
-test('lireDocumentation : page et fiches ensemble', () => {
-  const racine = dossierJetable();
+test('lireDocumentation : la page (dossierArticle) et les fiches de la bibliothèque, ensemble', () => {
+  const { racine, idRevue } = arbreJetable();
+  const dossierArticle = fs.mkdtempSync(path.join(racine, 'article-'));
   try {
-    kc.ecrirePage(racine, 'fr', { title: 'T', rubriques: { dossier_references: 'Réf.' } });
-    kc.ajouterFiche(racine, 'fr', 'livre', { title: 'X', auteurs: 'A', annee: '2026', editeur: 'E', descriptif: 'D', couverture: '' });
-    kc.reordonnerFiches(racine, 'fr');
-    const doc = kc.lireDocumentation(racine, 'fr');
+    kc.ecrirePage(dossierArticle, 'fr', { title: 'T', rubriques: { dossier_references: 'Réf.' } });
+    kc.creerFiche(racine, 'fr', 'livre', livre('X'), idRevue);
+    kc.reordonnerNumero(racine, 'fr', idRevue);
+    const doc = kc.lireDocumentation(dossierArticle, racine, 'fr', idRevue);
     assert.strictEqual(doc.page.rubriques.dossier_references, 'Réf.');
     assert.strictEqual(doc.fiches.length, 1);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }

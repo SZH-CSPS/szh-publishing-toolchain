@@ -33,9 +33,17 @@ const MSG = Object.freeze({
   PHOTO_CHOISIR: 'photo-choisir', PHOTO_VERSIONS: 'photo-versions',
   PHOTO_VALEUR: 'photo-valeur', PHOTO_ERREUR: 'photo-erreur',
 
-  // Documentation (rubriques et fiches)
+  // Documentation (rubriques et fiches de la bibliothèque partagée)
   DEPOSER_IMAGE: 'deposer-image', IMAGE_DEPOSEE: 'image-deposee',
-  DETACHER: 'detacher', ENVOYER: 'envoyer', RETIRER: 'retirer',
+  // RETIRER : rend une fiche du numéro orpheline (Ausgabe vidé) — ne l'efface plus.
+  // SUPPRIMER : efface pour de bon une fiche déjà orpheline (confirmation côté hôte).
+  RETIRER: 'retirer', SUPPRIMER: 'supprimer',
+  // Traductions à faire / Réservoir (docs/FORMAT-DOCUMENTATION-KIRBY.md) : gestes posés sur
+  // une fiche de l'AUTRE langue, désignée par son Uuid — celui du fichier source, partagé
+  // avec le fichier traduit une fois qu'il existe.
+  TRADUIRE_DANS_NUMERO: 'traduireDansNumero', TIRER_DANS_NUMERO: 'tirerDansNumero',
+  MARQUER_A_TRADUIRE: 'marquerATraduire', IGNORER_TRADUCTION: 'ignorerTraduction',
+  ANNULER_DECISION: 'annulerDecisionTraduction', RESERVOIR_FILTRE: 'reservoirFiltre',
 
   // Gestionnaire des médias
   AUTEUR_ENREGISTRER: 'auteur-enregistrer', AUTEUR_ENREGISTRE: 'auteur-enregistre',

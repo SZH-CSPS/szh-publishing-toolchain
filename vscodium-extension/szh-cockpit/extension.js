@@ -60,7 +60,7 @@ const {
   analyserAusgabe, serialiserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, langueDefaut, titreNumero, etatRevue, normaliserLangueArticle,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, REVUES
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, REVUES, idNumero, assurerIdNumero
 } = require('./lib/yaml');
 // ---- Bibliographie et appels de citation -> lib/citations.js ---------------------
 const {
@@ -296,12 +296,10 @@ documentationHote.configurer({
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
   lireCouleurAccent: (racine) => lireCouleurAccent(racine),
   limitesMedias: () => limitesMedias(),
-  // Partagés avec la réserve de fiches, restée dans ce fichier (hors magasin, dans le
-  // dossier parent, commune aux deux revues).
+  // Le jeton de revue du numéro ouvert, et son nom affiché — pour les libellés du
+  // réservoir (« numéro de l'autre revue »).
   revueCourante: (racine) => revueCourante(racine),
   nomRevueAffiche: (revue) => nomRevueAffiche(revue),
-  deposerFicheEnReserve: (racine, slug, fiche, vers, aTraduire) =>
-    deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire),
   convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
   repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
@@ -336,9 +334,6 @@ const {
 // vivent toutes deux dans documentation.<lang>.txt et les dossiers de fiches. Remplace
 // lib/ressources.js et lib/rubriques.js.
 const kirbyLib = require('./lib/kirby-contenu');
-
-// ---- Réserve de fiches, et échanges entre les deux revues -> lib/reserve.js -----------
-const reserveLib = require('./lib/reserve');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -1042,17 +1037,12 @@ class FournisseurRevue {
       'arbre.vide.' + profilCourant().unites.dossier);
   }
 
-  // La section « Actualité » : la réserve, et rien d'autre.
-  //
-  // La page de Documentation ne s'y liste plus : cliquer l'en-tête ouvre directement le
-  // formulaire de la page, qui se crée au besoin (ouvrirPageDocumentation). Un article de
-  // plus dans l'arbre, dont le .md ne s'ouvre jamais à la main, n'aurait donné qu'un détour.
-  //
-  // La réserve, elle, reste : c'est le magasin de fiches partagé entre les numéros et entre
-  // les deux revues, et il faut pouvoir l'ouvrir avant même que la page qui recevra ses
-  // fiches n'existe.
+  // La section « Actualité » n'a plus d'enfant à lister : la page de Documentation ne s'y
+  // liste plus (cliquer l'en-tête ouvre directement son formulaire, qui se crée au besoin —
+  // ouvrirPageDocumentation), et les fiches vivent toutes dans la bibliothèque partagée
+  // (_NewsUndActu\Fiches\), plus dans une réserve accrochée à l'arbre du numéro.
   _itemsActualite() {
-    return [this._itemReserve()];
+    return [];
   }
 
   // Le slug de la page de Documentation du numéro : la première unité de type
@@ -1083,18 +1073,6 @@ class FournisseurRevue {
     }
     it.tooltip = T('arbre.controles.tooltip');
     it.command = { command: 'szh.vueControles', title: T('arbre.controles'), arguments: [] };
-    return it;
-  }
-
-  _itemReserve() {
-    const n = compterReserve(this.racine);
-    const it = new vscode.TreeItem(T('arbre.reserve'), vscode.TreeItemCollapsibleState.None);
-    it.id = 'reserve';
-    it.contextValue = 'reserve';
-    it.iconPath = new vscode.ThemeIcon('archive');
-    if (n > 0) { it.description = '(' + n + ')'; }
-    it.tooltip = T('arbre.reserve.tooltip');
-    it.command = { command: 'szh.reserve', title: T('arbre.reserve'), arguments: [] };
     return it;
   }
 
@@ -6379,175 +6357,54 @@ async function ouvrirEditeurTable(fournisseur, item) {
   panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
 }
 
-// Le nombre de blocs de la page de Documentation : ses fiches et ses rubriques non vides
-// réunies — ce que le badge de l'en-tête « ACTUALITÉ » annonce. Une lecture de
-// l'arborescence Kirby (lib/kirby-contenu.js), comme la fiche de métadonnées de chaque
-// article l'est déjà.
+// Le nombre de blocs de la page de Documentation : ses fiches rattachées (bibliothèque
+// partagée) et ses rubriques non vides réunies — ce que le badge de l'en-tête « ACTUALITÉ »
+// annonce. Lecture seule : l'id du numéro se pose à l'ouverture du numéro (majContexte,
+// poserIdNumeroEtAvertirDoublon), jamais ici — un numéro dont ausgabe.yaml serait illisible
+// compte simplement 0 fiche plutôt que de lever.
 function compterBlocsDocumentation(racine, slug) {
   if (!racine || !slug) { return 0; }
   const dossierArticle = path.join(racine, dossierUnites(), slug);
   const langue = langueRevue(racine);
-  const fiches = kirbyLib.listerFiches(dossierArticle, langue).length;
+  const ausgabeId = idNumero(racine);
+  const fiches = ausgabeId
+    ? kirbyLib.listerFichesNumero(kirbyLib.racineArbre(racine), langue, ausgabeId).length : 0;
   const page = kirbyLib.lirePage(dossierArticle, langue);
   const rubriques = Object.keys(page.rubriques || {}).filter((cle) => String(page.rubriques[cle] || '').trim() !== '').length;
   return fiches + rubriques;
 }
 
-// ---- Réserve de fiches : mettre de côté, et échanger entre les deux revues -------
+// ---- Revue courante, pour les libellés du réservoir de la Documentation ----------
 //
-// Deux besoins qui n'en font qu'un magasin. « Mettre en réserve » sort une fiche du numéro
-// courant sans la perdre — elle attend un numéro qui aura la place, ou le bon dossier
-// thématique. « Envoyer à l'autre revue » en dépose une copie dans la réserve de la revue
-// sœur, marquée à traduire : c'est le canal par lequel un livre relevé côté français arrive
-// côté allemand, et réciproquement.
-//
-// La réserve vit hors du numéro (lib/reserve.js, cheminReserve) : dans le dossier parent,
-// donc dans OneDrive, donc partagée par l'équipe et survivant au bouclage d'un numéro.
-//
-// Pourquoi une liste à choisir (QuickPick) et pas un formulaire de plus : on ne saisit rien
-// dans une réserve, on y prend ou on y jette. Un panneau webview aurait ajouté trois
-// fichiers de media/ pour reproduire une liste que l'éditeur sait déjà afficher, avec sa
-// recherche incrémentale par-dessus le marché.
+// « Traductions à faire » / « Réservoir » (lib/documentation-hote.js) ont besoin de savoir
+// quelle revue est ouverte pour nommer l'AUTRE (kirby.autreRevue) et filtrer ses numéros.
 
-// Le jeton de revue du numéro ouvert. Repli sur 'revue' plutôt que sur rien : la réserve
-// doit rester utilisable même sur un numéro dont ausgabe.yaml n'a pas encore de `revue:`.
+// Le jeton de revue du numéro ouvert. Repli sur 'revue' plutôt que sur rien.
 function revueCourante(racine) {
   const jeton = revueNumero(racine);
-  return reserveLib.REVUES.indexOf(jeton) !== -1 ? jeton : 'revue';
+  return kirbyLib.REVUES.indexOf(jeton) !== -1 ? jeton : 'revue';
 }
 
 function nomRevueAffiche(revue) {
-  return T('reserve.nom.' + (reserveLib.REVUES.indexOf(revue) !== -1 ? revue : 'revue'));
+  return kirbyLib.dossierRevue(revue) || kirbyLib.DOSSIERS_REVUE.revue;
 }
 
-// Le compte affiché sur l'entrée « Réserve » de l'arbre : celui de la revue ouverte, la
-// seule dans laquelle on puisse insérer. Jamais une exception : une réserve illisible se
-// compte zéro, elle ne doit pas empêcher l'arbre de s'afficher.
-function compterReserve(racine) {
-  if (!racine) { return 0; }
-  try { return reserveLib.lister(racine, revueCourante(racine)).length; }
-  catch (e) { return 0; }
-}
-
-// Dépose une fiche de l'article `slug` dans une réserve. `fiche` = { type, dossier (chemin
-// absolu du dossier de la fiche), langue } — voir lib/documentation-hote.js, qui l'appelle.
-// `vers` est le jeton de revue visée, `aTraduire` dit si la copie attend une traduction.
-// Rend true si le dépôt a eu lieu.
-function deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire) {
-  let titre = '';
-  try {
-    const cheminTxt = path.join(fiche.dossier, fiche.type + '.' + fiche.langue + '.txt');
-    titre = kirbyLib.lireTxt(fs.readFileSync(cheminTxt, 'utf8')).title;
-  } catch (e) { /* dossier trafiqué : la réserve nommera son dossier sans titre */ }
-  // « Envoyer à l'autre revue » vise la langue de CETTE revue-là ; « Détacher » garde la
-  // langue d'origine (voir l'en-tête de lib/reserve.js).
-  const langueCible = aTraduire ? (reserveLib.LANGUE_DE_REVUE[vers] || fiche.langue) : fiche.langue;
-  try {
-    reserveLib.deposer(racine, vers, {
-      type: fiche.type, titre: titre, dossierSource: fiche.dossier,
-      langueSource: fiche.langue, langueCible: langueCible,
-      origine: revueCourante(racine), numeroOrigine: titreNumero(racine) || '',
-      aTraduire: !!aTraduire, deposeLe: new Date().toISOString().slice(0, 10)
-    });
-    return true;
-  } catch (e) {
-    vscode.window.showErrorMessage(T('reserve.err.ecriture', [e.message]));
-    return false;
-  }
-}
-
-// Insère une fiche prise en réserve dans un article ouvert : son dossier entier (contenu et
-// image) est recréé sous l'arborescence Kirby de l'article — une fiche insérée doit être
-// autonome, pas un renvoi vers un dossier partagé qu'un collègue peut vider.
-async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
-  const racine = fournisseur.racine;
-  if (!racine) { return; }
-  const ed = vscode.window.activeTextEditor;
-  let slug = ed ? slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
-  if (!slug) { slug = session.apercuCourantSlug(); }
-  if (!slug || !new Set(fournisseur.listerArticles()).has(slug)) {
-    vscode.window.setStatusBarMessage(T('reserve.inserer.horsarticle'), 5000);
-    return;
-  }
-  const fiche = kirbyLib.lireFicheAutonome(entree.chemin, entree.fiche.langue);
-  if (!fiche) { return; }                           // dossier trafiqué : rien d'exploitable
-
-  let imageSource = null;
-  const cleFichier = kirbyLib.champFichierDuType(fiche.type);
-  if (cleFichier && fiche.valeurs[cleFichier]) {
-    const source = path.join(entree.chemin, fiche.valeurs[cleFichier]);
-    if (fs.existsSync(source)) { imageSource = source; }
-  }
-  const dossierArticle = path.join(racine, dossierUnites(), slug);
-  const langue = langueRevue(racine);
-  try {
-    kirbyLib.ajouterFiche(dossierArticle, langue, fiche.type, fiche.valeurs, imageSource);
-    kirbyLib.reordonnerFiches(dossierArticle, langue);
-  } catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [fiche.type, e.message]));
-    return;
-  }
-
-  reserveLib.retirer(entree.chemin);                // prise en réserve = sortie de réserve
-  vscode.window.setStatusBarMessage(T('reserve.insere'), 5000);
-  if (rafraichirTout) { rafraichirTout(); }
-}
-
-// La réserve de la revue ouverte, à choisir puis à traiter. Deux temps, et non des boutons
-// par ligne : le second QuickPick nomme l'action en toutes lettres, ce qui évite de
-// supprimer une fiche d'un clic mal placé.
-async function ouvrirReserve(fournisseur, rafraichirTout) {
-  const racine = fournisseur.racine;
-  if (!racine) { return; }
-  const revue = revueCourante(racine);
-  const entrees = reserveLib.lister(racine, revue);
-  if (entrees.length === 0) {
-    vscode.window.showInformationMessage(T('reserve.vide'));
-    return;
-  }
-  const items = entrees.map((e) => {
-    const f = e.fiche;
-    const titre = f.titre || e.nom;
-    const detail = [
-      f.aTraduire ? T('reserve.atraduire') : null,
-      f.origine ? T('reserve.origine', [nomRevueAffiche(f.origine), f.numeroOrigine || '?']) : null,
-      f.deposeLe ? T('reserve.depose.le', [f.deposeLe]) : null
-    ].filter(Boolean).join(' · ');
-    return {
-      label: (f.aTraduire ? '$(globe) ' : '$(archive) ') + titre,
-      description: f.type || '',
-      detail: detail,
-      entree: e
-    };
-  });
-  // ⚠ sousGarde, comme tout choix de ce fichier : sans elle, la fin d'une compilation
-  //   (l'aperçu qui se recharge, l'avis de journal) referme le QuickPick sous les doigts du
-  //   rédacteur. Contrat vérifié à la lecture de la source par test/js/interaction.test.js.
-  const choix = await sousGarde(() => vscode.window.showQuickPick(items, {
-    title: T('reserve.titre'),
-    placeHolder: T('reserve.compte', [entrees.length]),
-    matchOnDetail: true
-  }));
-  if (!choix) { return; }
-  const ACTION_INSERER = T('reserve.inserer');
-  const ACTION_SUPPRIMER = T('reserve.supprimer');
-  const action = await sousGarde(() => vscode.window.showQuickPick(
-    [{ label: ACTION_INSERER, detail: T('reserve.inserer.tip') },
-     { label: ACTION_SUPPRIMER, detail: T('reserve.supprimer.tip') }],
-    { title: choix.label, placeHolder: T('reserve.titre') }));
-  if (!action) { return; }
-  if (action.label === ACTION_INSERER) {
-    if (refuserSiVerrouille()) { return; }
-    await insererFicheDeReserve(fournisseur, rafraichirTout, choix.entree);
-    return;
-  }
-  const sur = await vscode.window.showWarningMessage(
-    T('reserve.supprimer.question'), { modal: true, detail: choix.label },
-    T('reserve.supprimer'));
-  if (sur !== T('reserve.supprimer')) { return; }
-  reserveLib.retirer(choix.entree.chemin);
-  vscode.window.setStatusBarMessage(T('reserve.supprime'), 5000);
-  if (rafraichirTout) { rafraichirTout(); }
+// Pose l'id du numéro (ausgabe.yaml#id) s'il n'en a pas encore, et avertit (jamais un refus)
+// si cet id se retrouve sur un autre dossier de l'arbre — un id posé une fois, jamais
+// recalculé, ne devrait normalement jamais se répéter, sauf un dossier de numéro copié à la
+// main. Appelée à l'ouverture du numéro (majContexte) : le pipeline refuse de compiler une
+// Documentation sans id, l'id doit donc exister avant le premier Ctrl+S, pas seulement à
+// l'ouverture du formulaire.
+function poserIdNumeroEtAvertirDoublon(racine) {
+  const id = assurerIdNumero(racine);
+  if (!id) { return; }
+  const racineArbreVal = kirbyLib.racineArbre(racine);
+  const groupe = kirbyLib.idsEnDouble(racineArbreVal).find((g) => g.some((n) => n.id === id));
+  if (!groupe) { return; }
+  const racineAbs = path.resolve(racine);
+  const autres = groupe.filter((n) => path.resolve(n.chemin) !== racineAbs).map((n) => n.nom);
+  if (autres.length === 0) { return; }
+  vscode.window.showWarningMessage(T('doc.id.double', [autres.join(', ')]));
 }
 
 // ---- Les réglages de la maison, posés sans écraser ceux du rédacteur -------------
@@ -6836,6 +6693,11 @@ function activate(context) {
     majBarreControles();
     majBarreModeTest();
     session.poserProfilRevue(lireProfil(racine));            // pilote le mode d'aperçu
+    // L'id du numéro (ausgabe.yaml#id) : posé ici, à l'ouverture du numéro — pas seulement à
+    // l'ouverture du formulaire de Documentation — parce que le pipeline refuse désormais de
+    // compiler une Documentation sans id. Un livre n'a pas de Documentation (buch.yaml n'a
+    // pas besoin de cette clé) : on ne la pose que sur une revue.
+    if (racine && profilCourant().cle === 'revue') { poserIdNumeroEtAvertirDoublon(racine); }
     // Les deux clés se posent à chaque rafraîchissement, celle du profil actif à vrai et
     // l'autre à faux. Ne poser que la première laisserait szh.estRevue vrai après le
     // passage à un livre, et les deux vues latérales s'afficheraient ensemble.
@@ -7025,9 +6887,6 @@ function activate(context) {
     // (voir ouvrirPageDocumentation).
     // Comme « reglages » : aucun constat ne vise « documentation » avec un focus utile.
     cmd('szh.documentation', (item) => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
-    // La réserve : le magasin de fiches hors numéro, et le canal d'échange avec la revue
-    // sœur (lib/reserve.js). Commande d'écriture : insérer et supprimer y touchent au disque.
-    cmdEcriture('szh.reserve', () => ouvrirReserve(fournisseur, rafraichirTout)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

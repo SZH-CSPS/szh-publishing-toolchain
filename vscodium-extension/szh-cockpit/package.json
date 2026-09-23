@@ -459,12 +459,6 @@
         "icon": "$(megaphone)"
       },
       {
-        "command": "szh.reserve",
-        "title": "%cmd.reserve%",
-        "category": "SZH/CSPS",
-        "icon": "$(archive)"
-      },
-      {
         "command": "szh.traduction",
         "title": "%cmd.traduction%",
         "category": "SZH/CSPS",
@@ -810,10 +804,6 @@
         {
           "command": "szh.mediasArticle",
           "when": "szh.estRevue || szh.estLivre"
-        },
-        {
-          "command": "szh.reserve",
-          "when": "szh.estRevue"
         },
         {
           "command": "szh.traduction",

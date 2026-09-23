@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const profil = require('./profil');
 
 // Le fichier de configuration du dossier, selon son profil : ausgabe.yaml pour une revue,
@@ -25,8 +26,13 @@ function cheminConfigDetecte(racine) {
 //   n'y figure pas. Une clé oubliée ici ne provoque aucune erreur — elle est simplement
 //   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
+  // `id` : identifiant du numéro (docs/FORMAT-DOCUMENTATION-KIRBY.md), 16 caractères
+  // [A-Za-z0-9], posé une seule fois à la première ouverture (voir assurerIdNumero) et
+  // jamais recalculé — c'est lui que les fiches de la bibliothèque partagée portent dans
+  // leur champ Ausgabe pour se rattacher à ce numéro.
+  'id',
   'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
-  'ordre-chapitres', 'articles-sans-doi', 'id',
+  'ordre-chapitres', 'articles-sans-doi',
   // ---- buch.yaml : formulaire « Métadonnées du livre » (media/metadata-book.*) ----
   // `lang` et `couleur`, juste au-dessus, sont déjà communs aux deux profils — un livre les
   // porte au même niveau qu'un numéro, sous le même nom. Le reste n'existe que dans
@@ -732,6 +738,46 @@ function langueRevue(racine) {
   return langueDefaut(valeurs);
 }
 
+// ---- Identifiant du numéro (id) --------------------------------------------------------
+//
+// 16 caractères [A-Za-z0-9], même alphabet que kirby-contenu.js#genererUuid (une fiche et
+// un numéro partagent la même forme d'identifiant, jamais la même valeur). Posé une seule
+// fois, à la première ouverture d'un numéro qui n'en a pas encore — jamais recalculé, jamais
+// changé par un renommage ou un archivage (docs/FORMAT-DOCUMENTATION-KIRBY.md).
+const ALPHABET_ID_NUMERO = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+function genererIdNumero() {
+  const octets = crypto.randomBytes(16);
+  let s = '';
+  for (let i = 0; i < 16; i++) { s += ALPHABET_ID_NUMERO[octets[i] % ALPHABET_ID_NUMERO.length]; }
+  return s;
+}
+
+// idNumero(racine) -> l'id du numéro, ou '' s'il n'en a pas encore (ou fichier illisible —
+// jamais une levée : un numéro sans configuration lisible n'a simplement pas d'id).
+function idNumero(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
+  catch (e) { return ''; }
+  return String(valeurs.id || '');
+}
+
+// assurerIdNumero(racine) -> l'id du numéro, le posant s'il n'en a pas encore (écriture qui
+// préserve tout le reste du fichier, via serialiserAusgabe). '' si le fichier de
+// configuration n'existe pas ou n'est pas lisible : rien à poser, aucune écriture tentée —
+// un livre (buch.yaml, hors de ce champ) ou un dossier hors arborescence ne doit jamais se
+// voir écrire un ausgabe.yaml qu'il n'a pas.
+function assurerIdNumero(racine) {
+  const chemin = cheminConfigDetecte(racine);
+  let brut;
+  try { brut = fs.readFileSync(chemin, 'utf8'); }
+  catch (e) { return ''; }
+  const valeurs = analyserAusgabe(brut);
+  if (valeurs.id) { return String(valeurs.id); }
+  const id = genererIdNumero();
+  ecrireAtomique(chemin, serialiserAusgabe(brut, { id: id }));
+  return id;
+}
+
 // analyserMeta(texte) -> { type, lang, source, licence, doi, horsSommaire, title:{},
 // subtitle:{}, resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les
 // maps par langue et les listes en bloc comme en ligne.
@@ -1214,5 +1260,6 @@ module.exports = {
   decouperValeurYaml, decouperFlowYaml, listeYamlEnLigne, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,
-  formaterValeurYaml, serialiserAusgabe, ecrireAtomique
+  formaterValeurYaml, serialiserAusgabe, ecrireAtomique,
+  cheminConfigDetecte, genererIdNumero, idNumero, assurerIdNumero
 };

@@ -47,10 +47,17 @@ var TXT = {}, ctl = {}, cartes = [], sections = [], TYPES = [], TYPES_RUBRIQUE =
 var etatJeton = { jeton: null };
 var dernierModifie = false;
 var barre = document.getElementById('barre');
+var zoneOnglets = document.getElementById('onglets');
+var panelTraductions = document.getElementById('panel-traductions');
+var panelReservoir = document.getElementById('panel-reservoir');
+var panelNumero = document.getElementById('panel-numero');
 var zoneSections = document.getElementById('sections');
 var zoneSommaire = document.getElementById('sommaire');
 var compteurId = 0;
 var compteurIndex = 0;
+// L'onglet ouvert : mémorisé pour la session du panneau (jamais réinitialisé par rendre(),
+// rejoué à chaque charger()) — « Documentation du numéro » par défaut, comme demandé.
+var ongletActif = 'numero';
 
 function nouvelId() {
   compteurId += 1;
@@ -577,16 +584,11 @@ function construireFiche(section, ressource, persistee) {
   c.element = s;
 
   var tete = construireTete(c, s, 'doc-tete');
-  c.ctl.detacher = boutonIcone('bas', TXT.detacherTip || '', function () {
-    api.postMessage({ type: SZH.MSG.DETACHER, id: c.id });
-  });
-  c.ctl.envoyer = boutonIcone('traduction', TXT.envoyerTip || '', function () {
-    api.postMessage({ type: SZH.MSG.ENVOYER, id: c.id });
-  });
-  tete.appendChild(c.ctl.detacher);
-  tete.appendChild(c.ctl.envoyer);
-  majGestesReserve(c);
-  tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () { retirerFiche(c); }, 'szh-ico--danger'));
+  // Retirer du numéro = rendre orpheline (l'hôte vide Ausgabe, jamais un effacement) : la
+  // fiche reste dans la bibliothèque, disponible depuis « Mes orphelines ». Une carte neuve,
+  // jamais enregistrée, se retire simplement du DOM (voir retirerFiche).
+  c.ctl.retirer = boutonIcone('bas', TXT.retirerTip || '', function () { retirerFiche(c); });
+  tete.appendChild(c.ctl.retirer);
 
   var corps = texte(s, 'div', 'doc-corps');
   corps.hidden = true;
@@ -604,10 +606,6 @@ function construireFiche(section, ressource, persistee) {
   majEtatCarte(c);
   majPositions();
   return c;
-}
-function majGestesReserve(c) {
-  if (c.ctl.detacher) { c.ctl.detacher.hidden = !c.persistee; }
-  if (c.ctl.envoyer) { c.ctl.envoyer.hidden = !c.persistee; }
 }
 var retraitsFicheEnAttente = 0;
 function retirerFiche(c) {
@@ -791,11 +789,233 @@ function trouverFiche(id) {
   return null;
 }
 
-// ---- Rendu ----------------------------------------------------------------------------
+// ---- Onglets : Traductions à faire | Réservoir | Documentation du numéro --------------
+//
+// Trois onglets, dans cet ordre — Robin a demandé des onglets, pas des sections empilées
+// (23.09.2026). « Mes orphelines » est une PARTIE de l'onglet Réservoir, pas un onglet à
+// part. « Documentation du numéro » (rubriques + fiches rattachées, l'ancien contenu de
+// cette page) est ouvert par défaut ; les deux autres portent un compteur du nombre
+// d'éléments en attente. L'onglet choisi est mémorisé pour la session du panneau — rien ne
+// réinitialise `ongletActif`, y compris un rechargement complet (rendre() le relit sans le
+// changer).
+//
+// Chaque ligne d'une liste montre le type et le titre (tels qu'écrits dans l'AUTRE langue —
+// jamais traduits ici) et un ou deux gestes, envoyés à l'hôte par leur `slug` (fiche) ou
+// leur `uuid` (décision de statut, indépendante du numéro).
+function ligneVue(parent, libelleType, titre) {
+  var l = texte(parent, 'div', 'doc-vue-ligne');
+  texte(l, 'span', 'doc-vue-type', libelleType || '');
+  texte(l, 'span', 'doc-vue-titre', titre || TXT.sansTitre || '');
+  return l;
+}
+function construireTraductions(parent, traductions) {
+  parent.textContent = '';
+  var liste = texte(parent, 'div', 'doc-vue-liste');
+  if (traductions.length === 0) { texte(liste, 'p', 'doc-vue-vide', TXT.traductionsVide || ''); return; }
+  traductions.forEach(function (t) {
+    var l = ligneVue(liste, t.typeLibelle, t.titre);
+    if (t.origine) { texte(l, 'span', 'doc-vue-origine', t.origine); }
+    l.appendChild(bouton(TXT.traduireDansNumero || '', function () {
+      api.postMessage({ type: SZH.MSG.TRADUIRE_DANS_NUMERO, slug: t.slug });
+    }, 'doc-vue-bouton', TXT.traduireDansNumeroTip || ''));
+  });
+}
+function construireOrphelines(parent, orphelines) {
+  var s = texte(parent, 'section', 'doc-vue-orphelines');
+  texte(s, 'h3', 'doc-vue-titre-section', TXT.orphelinesTitre || '');
+  var liste = texte(s, 'div', 'doc-vue-liste');
+  if (orphelines.length === 0) { texte(liste, 'p', 'doc-vue-vide', TXT.orphelinesVide || ''); return; }
+  orphelines.forEach(function (o) {
+    var l = ligneVue(liste, o.typeLibelle, o.titre);
+    l.appendChild(bouton(TXT.tirerDansNumero || '', function () {
+      api.postMessage({ type: SZH.MSG.TIRER_DANS_NUMERO, slug: o.slug });
+    }, 'doc-vue-bouton', TXT.tirerDansNumeroTip || ''));
+    l.appendChild(boutonIcone('poubelle', TXT.supprimerTip || '', function () {
+      api.postMessage({ type: SZH.MSG.SUPPRIMER, slug: o.slug });
+    }, 'szh-ico--danger'));
+  });
+}
+function construireReservoir(parent, msg) {
+  parent.textContent = '';
+  var numeros = Array.isArray(msg.reservoirNumeros) ? msg.reservoirNumeros : [];
+  var actifs = {};
+  if (numeros.length > 0) {
+    var filtre = texte(parent, 'div', 'doc-reservoir-filtre');
+    texte(filtre, 'span', 'doc-reservoir-filtre-label', TXT.reservoirFiltre || '');
+    numeros.forEach(function (n) {
+      var lab = texte(filtre, 'label', 'doc-reservoir-case');
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.addEventListener('change', function () { actifs[n.id] = cb.checked; rendreListe(); });
+      lab.appendChild(cb);
+      texte(lab, 'span', null, n.nom);
+    });
+  }
+  var toggle = texte(parent, 'label', 'doc-reservoir-case doc-reservoir-toggle');
+  var toggleCb = document.createElement('input');
+  toggleCb.type = 'checkbox';
+  toggle.appendChild(toggleCb);
+  texte(toggle, 'span', null, TXT.reservoirAfficherIgnorees || '');
+
+  // ---- Sélection multiple : une case par ligne, « Tout sélectionner » (sur les lignes
+  // visibles après filtre), une barre d'actions en lot — À traduire / Ignorer d'un côté,
+  // Annuler la décision de l'autre (même bascule que les boutons par ligne, jamais les deux
+  // jeux en même temps). Un seul message par geste en lot, un tableau d'uuid.
+  var selectionnes = new Set();
+  var visiblesCourantes = [];
+
+  var barreLot = texte(parent, 'div', 'doc-reservoir-lot');
+  var labelTout = texte(barreLot, 'label', 'doc-reservoir-case');
+  var caseTout = document.createElement('input');
+  caseTout.type = 'checkbox';
+  caseTout.className = 'doc-reservoir-case-tout';
+  labelTout.appendChild(caseTout);
+  texte(labelTout, 'span', null, TXT.reservoirToutSelectionner || '');
+  var boutonsLot = texte(barreLot, 'div', 'doc-reservoir-lot-boutons');
+  var boutonLotATraduire = bouton(TXT.reservoirATraduire || '', function () {
+    api.postMessage({ type: SZH.MSG.MARQUER_A_TRADUIRE, uuids: Array.from(selectionnes) });
+  }, 'doc-vue-bouton', TXT.reservoirATraduireTip || '');
+  var boutonLotIgnorer = bouton(TXT.reservoirIgnorer || '', function () {
+    api.postMessage({ type: SZH.MSG.IGNORER_TRADUCTION, uuids: Array.from(selectionnes) });
+  }, 'doc-vue-bouton', TXT.reservoirIgnorerTip || '');
+  var boutonLotAnnuler = bouton(TXT.reservoirAnnuler || '', function () {
+    api.postMessage({ type: SZH.MSG.ANNULER_DECISION, uuids: Array.from(selectionnes) });
+  }, 'doc-vue-bouton', TXT.reservoirAnnulerTip || '');
+  boutonsLot.appendChild(boutonLotATraduire);
+  boutonsLot.appendChild(boutonLotIgnorer);
+  boutonsLot.appendChild(boutonLotAnnuler);
+
+  function libelleCompte(base, n) { return (base || '') + ' (' + n + ')'; }
+  function majBarreLot() {
+    var n = selectionnes.size;
+    boutonLotATraduire.hidden = toggleCb.checked;
+    boutonLotIgnorer.hidden = toggleCb.checked;
+    boutonLotAnnuler.hidden = !toggleCb.checked;
+    boutonLotATraduire.disabled = n === 0;
+    boutonLotIgnorer.disabled = n === 0;
+    boutonLotAnnuler.disabled = n === 0;
+    boutonLotATraduire.textContent = libelleCompte(TXT.reservoirATraduire, n);
+    boutonLotIgnorer.textContent = libelleCompte(TXT.reservoirIgnorer, n);
+    boutonLotAnnuler.textContent = libelleCompte(TXT.reservoirAnnuler, n);
+    var visiblesAvecUuid = visiblesCourantes.filter(function (r) { return !!r.uuid; });
+    caseTout.checked = visiblesAvecUuid.length > 0
+      && visiblesAvecUuid.every(function (r) { return selectionnes.has(r.uuid); });
+    caseTout.disabled = visiblesAvecUuid.length === 0;
+  }
+  caseTout.addEventListener('change', function () {
+    visiblesCourantes.forEach(function (r) {
+      if (!r.uuid) { return; }
+      if (caseTout.checked) { selectionnes.add(r.uuid); } else { selectionnes.delete(r.uuid); }
+    });
+    rendreListe();
+  });
+
+  var liste = texte(parent, 'div', 'doc-vue-liste');
+  var entrees = Array.isArray(msg.reservoir) ? msg.reservoir : [];
+
+  function rendreListe() {
+    liste.textContent = '';
+    var choisis = Object.keys(actifs).filter(function (id) { return actifs[id]; });
+    var visibles = entrees.filter(function (r) { return choisis.length === 0 || choisis.indexOf(r.ausgabeSource) !== -1; });
+    visiblesCourantes = visibles;
+    // Une ligne qui sort du filtre ne doit pas rester sélectionnée en silence.
+    var visiblesUuid = new Set(visibles.map(function (r) { return r.uuid; }));
+    selectionnes.forEach(function (u) { if (!visiblesUuid.has(u)) { selectionnes.delete(u); } });
+    if (visibles.length === 0) { texte(liste, 'p', 'doc-vue-vide', TXT.reservoirVide || ''); majBarreLot(); return; }
+    visibles.forEach(function (r) {
+      var l = ligneVue(liste, r.typeLibelle, r.titre);
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'doc-vue-case';
+      cb.checked = selectionnes.has(r.uuid);
+      cb.addEventListener('change', function () {
+        if (cb.checked) { selectionnes.add(r.uuid); } else { selectionnes.delete(r.uuid); }
+        majBarreLot();
+      });
+      l.insertBefore(cb, l.firstChild);
+      if (toggleCb.checked) {
+        l.appendChild(bouton(TXT.reservoirAnnuler || '', function () {
+          api.postMessage({ type: SZH.MSG.ANNULER_DECISION, uuid: r.uuid });
+        }, 'doc-vue-bouton', TXT.reservoirAnnulerTip || ''));
+      } else {
+        l.appendChild(bouton(TXT.reservoirATraduire || '', function () {
+          api.postMessage({ type: SZH.MSG.MARQUER_A_TRADUIRE, uuid: r.uuid });
+        }, 'doc-vue-bouton', TXT.reservoirATraduireTip || ''));
+        l.appendChild(bouton(TXT.reservoirIgnorer || '', function () {
+          api.postMessage({ type: SZH.MSG.IGNORER_TRADUCTION, uuid: r.uuid });
+        }, 'doc-vue-bouton', TXT.reservoirIgnorerTip || ''));
+      }
+    });
+    majBarreLot();
+  }
+  toggleCb.addEventListener('change', function () {
+    selectionnes.clear();
+    api.postMessage({ type: SZH.MSG.RESERVOIR_FILTRE, avecIgnorees: toggleCb.checked });
+  });
+  rendreListe();
+
+  // Réponse ciblée de l'hôte à RESERVOIR_FILTRE (voir le message « reservoir » plus bas) :
+  // seule cette liste se remet à jour, jamais tout le formulaire.
+  ctl.reservoirMaj = function (avecIgnorees, nouvellesEntrees) {
+    toggleCb.checked = avecIgnorees;
+    entrees = nouvellesEntrees;
+    rendreListe();
+  };
+
+  // « Mes orphelines » est une PARTIE de l'onglet Réservoir, pas un onglet à part.
+  construireOrphelines(parent, Array.isArray(msg.orphelines) ? msg.orphelines : []);
+}
+
+// La barre d'onglets, avec un compteur sur les deux onglets qui ne sont pas ouverts par
+// défaut — le nombre d'éléments en attente de décision sur chacun.
+function construireOnglets(msg) {
+  zoneOnglets.textContent = '';
+  var nTraductions = Array.isArray(msg.traductions) ? msg.traductions.length : 0;
+  var nReservoir = (Array.isArray(msg.reservoir) ? msg.reservoir.length : 0)
+    + (Array.isArray(msg.orphelines) ? msg.orphelines.length : 0);
+  var defs = [
+    { cle: 'traductions', libelle: TXT.ongletTraductions || '', compte: nTraductions },
+    { cle: 'reservoir', libelle: TXT.ongletReservoir || '', compte: nReservoir },
+    { cle: 'numero', libelle: TXT.ongletNumero || '', compte: 0 }
+  ];
+  ctl.onglets = {};
+  defs.forEach(function (d) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'doc-onglet';
+    b.setAttribute('role', 'tab');
+    texte(b, 'span', 'doc-onglet-libelle', d.libelle);
+    if (d.compte > 0) { texte(b, 'span', 'doc-onglet-compte', String(d.compte)); }
+    b.addEventListener('click', function () { ongletActif = d.cle; appliquerOnglet(); });
+    zoneOnglets.appendChild(b);
+    ctl.onglets[d.cle] = b;
+  });
+  appliquerOnglet();
+}
+// Bascule la visibilité des trois panneaux et l'état visuel des onglets, sans rien
+// reconstruire — appelée après chaque rendre() et à chaque clic d'onglet.
+function appliquerOnglet() {
+  panelTraductions.hidden = ongletActif !== 'traductions';
+  panelReservoir.hidden = ongletActif !== 'reservoir';
+  panelNumero.hidden = ongletActif !== 'numero';
+  // Le sommaire ne décrit que « Documentation du numéro » (rubriques + fiches) : il n'a rien
+  // à dire sur les deux autres onglets.
+  zoneSommaire.hidden = ongletActif !== 'numero';
+  for (var cle in ctl.onglets) {
+    if (!Object.prototype.hasOwnProperty.call(ctl.onglets, cle)) { continue; }
+    var actif = cle === ongletActif;
+    ctl.onglets[cle].classList.toggle('doc-onglet--actif', actif);
+    ctl.onglets[cle].setAttribute('aria-selected', actif ? 'true' : 'false');
+  }
+}
+
 function rendre(msg) {
   zoneSections.textContent = '';
   cartes = [];
   sections = [];
+  construireOnglets(msg);
+  construireTraductions(panelTraductions, Array.isArray(msg.traductions) ? msg.traductions : []);
+  construireReservoir(panelReservoir, msg);
   TYPES = Array.isArray(msg.typesConfig) ? msg.typesConfig : [];
   TYPES_RUBRIQUE = Array.isArray(msg.typesRubrique) ? msg.typesRubrique : [];
   construireSommaire();
@@ -869,7 +1089,6 @@ window.addEventListener('message', function (ev) {
       c.persistee = retenue;
       c.enregistree = retenue ? valeurs(c) : null;
       if (!retenue) { c.touchee = false; }
-      if (c.famille === 'fiche') { majGestesReserve(c); }
     }
     etat(msg.auto ? '' : (TXT.enregistre || ''));
     majModifie();
@@ -897,7 +1116,13 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
-  console.warn('documentation : type de message inconnu', msg.type);
+  // Réponse ciblée à RESERVOIR_FILTRE (l'interrupteur « afficher les ignorées ») : ne
+  // reconstruit que la liste du réservoir, jamais tout le formulaire.
+  if (msg.type === 'reservoir') {
+    if (ctl.reservoirMaj) { ctl.reservoirMaj(!!msg.avecIgnorees, Array.isArray(msg.entrees) ? msg.entrees : []); }
+    return;
+  }
+  console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

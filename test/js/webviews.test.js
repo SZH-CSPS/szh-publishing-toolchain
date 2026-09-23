@@ -25,6 +25,7 @@ const {
   analyserMeta, LICENCES_ARTICLE, LICENCE_DEFAUT
 } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'yaml.js'));
 const { T } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
+const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 
 // Les licences offertes, exactement comme licencesTraduites() de l'hôte les envoie : la
 // liste vient de lib/yaml.js, les libellés de lib/i18n.js. Sans elle, le sélecteur de
@@ -1799,6 +1800,226 @@ test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit',
   const marques = page.parId.sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
   assert.strictEqual(marques.filter((m) => m === '3').length, 1,
     'le sommaire doit compter la fiche neuve : ' + marques.join(', '));
+});
+
+// ---- Onglets : Traductions à faire | Réservoir | Documentation du numéro (23.09.2026) ----
+//
+// Demande de Robin : des onglets, pas des sections empilées. « Documentation du numéro »
+// (rubriques + fiches rattachées — l'ancien contenu de cette page) ouvert par défaut ;
+// « Mes orphelines » est une PARTIE de l'onglet Réservoir, jamais un onglet à part ; les deux
+// autres onglets portent un compteur ; l'onglet choisi survit à un rechargement complet
+// (rendre() rejoué, comme après une action côté hôte).
+function pageDocumentationAvecOnglets() {
+  const txt = DOC_TXT();
+  const page = ouvrir({
+    racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
+    jsPartage: ['_messages.js'], txt: txt
+  });
+  const message = {
+    type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
+    typesConfig: configFiches(), typesRubrique: configRubriques(),
+    rubriques: [{ id: 'podcasts', type: 'podcasts', contenu: 'Une brève.' }],
+    ressources: [
+      { id: 'r1', type: 'livre', apercu: null,
+        valeurs: { categorie: 'manuel', title: 'Un livre', auteurs: 'A', annee: '2024',
+                   editeur: 'SZH', lien: '', descriptif: 'D', couverture: '' } }
+    ],
+    traductions: [
+      { slug: 's-trad-1', type: 'livre', typeLibelle: 'Livres', titre: 'Buch eins',
+        origine: 'Zeitschrift, numéro 2026-01' },
+      { slug: 's-trad-2', type: 'film', typeLibelle: 'Films', titre: 'Film zwei',
+        origine: 'Zeitschrift, numéro 2026-01' }
+    ],
+    reservoirNumeros: [{ id: 'num-1', nom: '2026-01' }],
+    reservoir: [
+      { slug: 's-res-1', uuid: 'u1', type: 'livre', typeLibelle: 'Livres', titre: 'Reserviert eins',
+        ausgabeSource: 'num-1', ignoree: false },
+      { slug: 's-res-2', uuid: 'u2', type: 'film', typeLibelle: 'Films', titre: 'Reserviert zwei',
+        ausgabeSource: 'num-1', ignoree: false }
+    ],
+    orphelines: [
+      { slug: 's-orph-1', uuid: 'u5', type: 'livre', typeLibelle: 'Livres', titre: 'Orpheline un' },
+      { slug: 's-orph-2', uuid: 'u6', type: 'film', typeLibelle: 'Films', titre: 'Orpheline deux' }
+    ]
+  };
+  page.envoyer(message);
+  return { page: page, txt: txt, message: message };
+}
+function boutonsOnglets(page) { return page.parId.onglets.querySelectorAll('.doc-onglet'); }
+function panneau(page, cle) { return page.parId['panel-' + cle]; }
+
+test('onglets : trois onglets, dans l’ordre Traductions à faire, Réservoir, Documentation du numéro', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  const boutons = boutonsOnglets(page);
+  assert.strictEqual(boutons.length, 3, 'trois onglets, pas quatre : « Mes orphelines » n’en est pas un');
+  assert.deepStrictEqual(boutons.map((b) => b.querySelector('.doc-onglet-libelle').textContent),
+    [txt.ongletTraductions, txt.ongletReservoir, txt.ongletNumero]);
+});
+
+test('onglets : « Documentation du numéro » est ouvert par défaut, les deux autres portent un compteur', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  assert.strictEqual(panneau(page, 'numero').hidden, false, 'le numéro doit être l’onglet par défaut');
+  assert.strictEqual(panneau(page, 'traductions').hidden, true);
+  assert.strictEqual(panneau(page, 'reservoir').hidden, true);
+  assert.strictEqual(page.parId.sommaire.hidden, false, 'le sommaire ne décrit que l’onglet du numéro');
+  const [boutonTrad, boutonRes, boutonNum] = boutonsOnglets(page);
+  assert.strictEqual(boutonTrad.querySelector('.doc-onglet-compte').textContent, '2',
+    '2 traductions à faire');
+  // Réservoir + Mes orphelines réunis : 2 entrées de réservoir + 2 orphelines.
+  assert.strictEqual(boutonRes.querySelector('.doc-onglet-compte').textContent, '4');
+  assert.strictEqual(boutonNum.querySelector('.doc-onglet-compte'), null,
+    'l’onglet ouvert par défaut ne porte pas de compteur');
+  assert.ok(boutonNum.classes.has('doc-onglet--actif'));
+  assert.strictEqual(boutonNum.getAttribute('aria-selected'), 'true');
+});
+
+test('onglets : cliquer « Réservoir » bascule les panneaux et affiche mes orphelines dedans', () => {
+  const { page, txt } = pageDocumentationAvecOnglets();
+  const [, boutonRes] = boutonsOnglets(page);
+  boutonRes.dispatchEvent({ type: 'click' });
+  assert.strictEqual(panneau(page, 'reservoir').hidden, false);
+  assert.strictEqual(panneau(page, 'numero').hidden, true);
+  assert.strictEqual(panneau(page, 'traductions').hidden, true);
+  assert.strictEqual(page.parId.sommaire.hidden, true, 'le sommaire ne concerne pas cet onglet');
+  assert.ok(boutonRes.classes.has('doc-onglet--actif'));
+  assert.strictEqual(boutonRes.getAttribute('aria-selected'), 'true');
+  // « Mes orphelines » vit DANS l’onglet Réservoir.
+  const orph = panneau(page, 'reservoir').querySelector('.doc-vue-orphelines');
+  assert.ok(orph, 'la partie « Mes orphelines » doit être dans le panneau Réservoir');
+  assert.ok(orph.textContent.indexOf(txt.orphelinesTitre) !== -1);
+  assert.ok(orph.textContent.indexOf('Orpheline un') !== -1);
+  assert.ok(panneau(page, 'reservoir').textContent.indexOf('Reserviert eins') !== -1);
+});
+
+test('onglets : l’onglet choisi survit à un rechargement complet (mémorisé pour la session du panneau)', () => {
+  const { page, message } = pageDocumentationAvecOnglets();
+  const [boutonTrad] = boutonsOnglets(page);
+  boutonTrad.dispatchEvent({ type: 'click' });
+  assert.strictEqual(panneau(page, 'traductions').hidden, false);
+  // Un rechargement complet — exactement ce qu’envoie l’hôte après « traduire dans ce
+  // numéro », « tirer dans ce numéro » ou « supprimer » (documentation-hote.js, charger()).
+  page.envoyer(message);
+  assert.strictEqual(panneau(page, 'traductions').hidden, false,
+    'l’onglet Traductions à faire doit rester ouvert après le rechargement');
+  assert.strictEqual(panneau(page, 'numero').hidden, true);
+  const [boutonTradApres] = boutonsOnglets(page);
+  assert.ok(boutonTradApres.classes.has('doc-onglet--actif'));
+});
+
+// ---- Réservoir : sélection multiple (23.09.2026, deuxième relecture) ------------------
+//
+// Une case par ligne, une case « Tout sélectionner » (sur les lignes VISIBLES après filtre),
+// une barre d'actions en lot active seulement si au moins une ligne est cochée, et les
+// boutons par ligne restent. Un seul message par geste en lot, un tableau d'uuid.
+function listeReservoirSeule(page) {
+  // Le PREMIER .doc-vue-liste de l'onglet Réservoir : celui du réservoir lui-même, avant
+  // celui — distinct — de « Mes orphelines » niché plus bas dans le même panneau.
+  return panneau(page, 'reservoir').querySelector('.doc-vue-liste');
+}
+function barreLotBoutons(page) {
+  return panneau(page, 'reservoir').querySelector('.doc-reservoir-lot-boutons').querySelectorAll('button');
+}
+
+test('réservoir : une case par ligne, la sélection alimente la barre en lot, un seul message avec tous les uuid', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const [, boutonRes] = boutonsOnglets(page);
+  boutonRes.dispatchEvent({ type: 'click' });
+
+  const lignes = listeReservoirSeule(page).querySelectorAll('.doc-vue-ligne');
+  assert.strictEqual(lignes.length, 2, 'les deux entrées du réservoir (« Mes orphelines » exclue)');
+  const cases = lignes.map((l) => l.querySelector('.doc-vue-case'));
+  assert.ok(cases.every(Boolean), 'chaque ligne doit porter une case à cocher');
+  // Les boutons par ligne restent : deux boutons, en plus de la case, sur chaque ligne.
+  lignes.forEach((l) => {
+    assert.strictEqual(l.querySelectorAll('.doc-vue-bouton').length, 2,
+      'À traduire et Ignorer doivent rester sur chaque ligne');
+  });
+
+  const [boutonATraduire, boutonIgnorer, boutonAnnuler] = barreLotBoutons(page);
+  assert.strictEqual(boutonATraduire.disabled, true, 'rien de coché : désactivé');
+  assert.strictEqual(boutonIgnorer.disabled, true);
+  assert.strictEqual(boutonAnnuler.hidden, true, 'vue des actives : pas de bouton Annuler la décision');
+  assert.strictEqual(boutonATraduire.hidden, false);
+
+  cases[0].checked = true; cases[0].dispatchEvent({ type: 'change' });
+  cases[1].checked = true; cases[1].dispatchEvent({ type: 'change' });
+  assert.strictEqual(boutonATraduire.disabled, false, 'deux lignes cochées : actif');
+  assert.ok(boutonATraduire.textContent.indexOf('(2)') !== -1,
+    'le libellé doit porter le compte : ' + boutonATraduire.textContent);
+  assert.ok(boutonIgnorer.textContent.indexOf('(2)') !== -1);
+
+  page.messages.length = 0;
+  boutonATraduire.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.length, 1, 'un seul message pour tout le lot');
+  assert.strictEqual(page.messages[0].type, MSG.MARQUER_A_TRADUIRE);
+  // Array.from() (celui du test, pas celui du contexte vm de la page) pour comparer des
+  // tableaux d'un même « univers » — sans quoi deepStrictEqual les refuse en silence, deux
+  // Array cross-royaume aux mêmes éléments n'étant pas de la même classe pour lui.
+  assert.deepStrictEqual(Array.from(page.messages[0].uuids).sort(), ['u1', 'u2']);
+  assert.strictEqual(page.messages[0].uuid, undefined, 'un geste en lot ne porte pas `uuid`, seulement `uuids`');
+});
+
+test('réservoir : « Tout sélectionner » coche les lignes visibles, se recalcule si une ligne sort de la sélection', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const [, boutonRes] = boutonsOnglets(page);
+  boutonRes.dispatchEvent({ type: 'click' });
+
+  const caseTout = panneau(page, 'reservoir').querySelector('.doc-reservoir-case-tout');
+  assert.ok(caseTout, '« Tout sélectionner » doit exister');
+  assert.strictEqual(caseTout.checked, false);
+
+  caseTout.checked = true;
+  caseTout.dispatchEvent({ type: 'change' });
+  const cases = listeReservoirSeule(page).querySelectorAll('.doc-vue-case');
+  assert.ok(cases.every((c) => c.checked), 'toutes les lignes visibles doivent être cochées');
+  const [boutonATraduire] = barreLotBoutons(page);
+  assert.ok(boutonATraduire.textContent.indexOf('(2)') !== -1);
+
+  // Décocher UNE ligne doit décocher « Tout sélectionner », sans toucher à l’autre ligne.
+  cases[0].checked = false;
+  cases[0].dispatchEvent({ type: 'change' });
+  assert.strictEqual(panneau(page, 'reservoir').querySelector('.doc-reservoir-case-tout').checked, false);
+  assert.ok(boutonATraduire.textContent.indexOf('(1)') !== -1);
+});
+
+test('réservoir : la vue « ignorées » porte aussi une case par ligne, et « Annuler la décision » en lot', () => {
+  const { page } = pageDocumentationAvecOnglets();
+  const [, boutonRes] = boutonsOnglets(page);
+  boutonRes.dispatchEvent({ type: 'click' });
+  const toggle = panneau(page, 'reservoir').querySelector('.doc-reservoir-toggle input');
+  assert.ok(toggle, 'l’interrupteur « Afficher les ignorées » doit exister');
+  toggle.checked = true;
+  toggle.dispatchEvent({ type: 'change' });
+  // Réponse ciblée que l'hôte enverrait à RESERVOIR_FILTRE (documentation-hote.js) : ce
+  // test-ci ne porte pas d'hôte, on la simule.
+  page.envoyer({
+    type: 'reservoir', avecIgnorees: true,
+    entrees: [{ slug: 'demo-ign', uuid: 'u9', type: 'agenda', typeLibelle: 'Agenda',
+      titre: 'Une fiche ignorée', ausgabeSource: 'num-1', ignoree: true }]
+  });
+
+  const lignes = listeReservoirSeule(page).querySelectorAll('.doc-vue-ligne');
+  assert.strictEqual(lignes.length, 1);
+  assert.ok(lignes[0].querySelector('.doc-vue-case'), 'une ligne ignorée porte aussi une case à cocher');
+  assert.strictEqual(lignes[0].querySelectorAll('.doc-vue-bouton').length, 1,
+    'un seul bouton par ligne ici : Annuler la décision');
+
+  const [boutonATraduire, boutonIgnorer, boutonAnnuler] = barreLotBoutons(page);
+  assert.strictEqual(boutonATraduire.hidden, true, 'vue des ignorées : pas de À traduire/Ignorer en lot');
+  assert.strictEqual(boutonIgnorer.hidden, true);
+  assert.strictEqual(boutonAnnuler.hidden, false);
+  assert.strictEqual(boutonAnnuler.disabled, true, 'rien de coché encore');
+
+  const caseLigne = lignes[0].querySelector('.doc-vue-case');
+  caseLigne.checked = true;
+  caseLigne.dispatchEvent({ type: 'change' });
+  assert.strictEqual(boutonAnnuler.disabled, false);
+  assert.ok(boutonAnnuler.textContent.indexOf('(1)') !== -1);
+
+  page.messages.length = 0;
+  boutonAnnuler.dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.messages.length, 1);
+  assert.deepStrictEqual(Array.from(page.messages[0].uuids), ['u9']);
 });
 
 test('traduction : le placeholder d’un mot-clé vide est dans la langue de l’interface, jamais l’anglais figé', () => {
