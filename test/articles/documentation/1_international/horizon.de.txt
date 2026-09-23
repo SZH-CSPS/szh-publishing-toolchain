@@ -1,0 +1,17 @@
+Title: Weltweite Inklusionsstrategie
+
+----
+
+Uuid: horizon001intl00
+
+----
+
+Portee: international
+
+----
+
+Descriptif: Ein internationaler Überblick, ohne Kanton — die Portee ist nicht « regional », der Kanton darf also nicht erscheinen, auch wenn er gesetzt wäre.
+
+----
+
+Lien: https://www.szh.ch/

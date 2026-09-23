@@ -1,0 +1,29 @@
+Title: L'intégration professionnelle des personnes avec un TSA
+
+----
+
+Uuid: reprise09revue00
+
+----
+
+Revue: revue
+
+----
+
+Auteurs: Dupont, J.
+
+----
+
+Reference: 2026, 1, 12-18
+
+----
+
+Doi: 10.1234/exemple
+
+----
+
+Lien: https://www.szh.ch/
+
+----
+
+Descriptif: Aus der Revue übernommen: ein Artikel zur beruflichen Eingliederung von Menschen mit ASS, hier auf Deutsch zusammengefasst.

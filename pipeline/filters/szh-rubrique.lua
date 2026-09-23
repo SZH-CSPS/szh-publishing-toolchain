@@ -1,23 +1,22 @@
 -- Rubriques de texte riche de la Documentation d'un article : listes bibliographiques,
--- listes de liens, brèves d'actualité — le second régime de contenu de la Documentation
--- (voir SPEC-actualite.md §0.b), à côté des fiches structurées de szh-ressource.lua.
--- Aucun champ n'y est isolable : un seul champ de texte riche par bloc, du markdown
--- ordinaire déjà parsé par pandoc — ce filtre se contente de l'envelopper, il ne le
--- retouche pas (pas de retype, pas de reformatage : l'italique, le gras, les liens, les
--- listes du .md sortent inchangés).
+-- listes de liens, brèves d'actualité — le second régime de contenu de la Documentation,
+-- à côté des fiches structurées de szh-ressource.lua. Aucun champ n'y est isolable : un
+-- seul champ de texte riche par bloc, du markdown ordinaire déjà parsé par pandoc — ce
+-- filtre se contente de l'envelopper, il ne le retouche pas (pas de retype, pas de
+-- reformatage : l'italique, le gras, les liens, les listes du .md sortent inchangés).
 --
 -- Une seule exception, et elle ne touche à aucun texte : le RANG des titres écrits dans le
 -- bloc est rabattu sous le <h2> de titre que ce filtre pose (abaisser_titres, plus bas).
 -- Sans cela, « ## International » dans une Rundschau ressortait au rang du titre de la
 -- rubrique, et szh-sections.lua le numérotait — « 1 International », « 1.1 la brève ».
 --
---   ::: {#b1a2b3c4 .szh-rubrique type="dossier-references"}
+--   ::: {#b1a2b3c4 .szh-rubrique type="dossier_references"}
 --   Barreyre, J. (2019). *Les personnes en situation de handicap complexe*. Alter,
 --   13-3, 207-217.
 --   :::
 --
 -- Ce qui sort :
---   <section id="b1a2b3c4" class="szh-rubrique szh-rubrique-dossier-references">
+--   <section id="b1a2b3c4" class="szh-rubrique szh-rubrique-dossier_references">
 --     <h2 class="szh-rubrique-titre">Références du dossier</h2>
 --     <div class="szh-rubrique-corps">
 --       <p>Barreyre, J. (2019). <em>Les personnes…</em></p>
@@ -48,15 +47,15 @@
 --   <section> même quand il a un identifiant (mesuré le 23.09.2026). print.css vise donc
 --   `h2.szh-rubrique-titre`, jamais la classe seule.
 --
--- Le titre imprimé n'est jamais écrit dans le .md (voir SPEC-actualite.md §1) : il se
--- déduit ici du type et de la langue de l'article, exactement comme le libellé de lien
--- d'une fiche de ressource (szh-ressource.lua) — même raison : explicite et non
--- modifiable par mégarde (donc utilisable hors contexte par un lecteur d'écran), et un
--- titre corrigé plus tard suit sans ressaisie.
+-- Le titre imprimé n'est jamais écrit dans le .md : il se déduit ici du type et de la
+-- langue de l'article, exactement comme le libellé de lien d'une fiche de ressource
+-- (szh-ressource.lua) — même raison : explicite et non modifiable par mégarde (donc
+-- utilisable hors contexte par un lecteur d'écran), et un titre corrigé plus tard suit
+-- sans ressaisie.
 --
--- Place dans la chaîne — non négociable (SPEC-actualite.md §1, pipeline/Makefile) : juste
--- après szh-citations.lua, avant szh-notes.lua — donc après szh-sections.lua, déjà passé
--- plus haut dans la chaîne. Deux pièges, tous deux évités par cet ordre :
+-- Place dans la chaîne — non négociable (pipeline/Makefile, en-tête) : juste après
+-- szh-citations.lua, avant szh-notes.lua — donc après szh-sections.lua, déjà passé plus
+-- haut dans la chaîne. Deux pièges, tous deux évités par cet ordre :
 --   1. szh-sections.lua numérote les <h2> du corps dans le texte (« 1 », « 1.1 ») en une
 --      seule passe, déjà faite quand ce filtre s'exécute : le <h2> qu'il pose ici n'existe
 --      pas encore à ce moment-là et ne sera donc jamais vu ni numéroté. Inversé, le titre
@@ -66,28 +65,65 @@
 --      dossier » ou « Literatur zum Schwerpunkt » présent avant son passage aurait pu être
 --      pris pour la bibliographie.
 --
--- ⚠ Table TITRES recopiée depuis lib/rubriques.js (côté cockpit) : un test doit
---   contrôler qu'elles restent identiques, comme test/js/ressources.test.js le fait pour
---   TYPES entre lib/ressources.js et szh-ressource.lua.
+-- Le titre imprimé de chaque rubrique vient de pipeline/kirby/champs-documentation.json
+-- (rubriques[].titre), jamais d'une table recopiée ici : un seul endroit où le changer,
+-- lu aussi par le formulaire du cockpit et par documentation-kirby.py. Un type absent du
+-- JSON (faute de frappe, bloc mal formé) sort sans titre, contenu intact — la dégradation
+-- propre du cas « type inconnu » plus bas.
+--
+-- Second régime traité ici, et pas dans szh-ressource.lua : la SECTION qui regroupe les
+-- fiches d'un même type (horizon, recherche, intervention…), posée par
+-- documentation-kirby.py en ::: {.szh-ressources-section type="…"} autour des fiches de
+-- ce type. Son titre vient de types[].libelle (au lieu de rubriques[].titre) et suit le
+-- même traitement — <section>, <h2> non numéroté, même habillage visuel que le titre d'une
+-- rubrique (print.css). Elle DOIT être composée ici, après szh-sections.lua, et non dans
+-- szh-ressource.lua : ce dernier tourne AVANT szh-sections.lua dans la chaîne (il doit
+-- laisser une image nue à szh-numerotation.lua, qui suit) — un <h2> posé là serait donc
+-- vu et numéroté par szh-sections.lua, comme « 1 Rundschau ». Constaté le 23.09.2026 :
+-- les sections de fiches restaient sans titre imprimé, seules les rubriques en avaient un
+-- — les fiches horizon/recherche se rangeaient visuellement sous la dernière rubrique.
 
 local utils = pandoc.utils
 
 local CLASSE = 'szh-rubrique'
+local CLASSE_SECTION = 'szh-ressources-section'
 
--- Le titre imprimé, par type et par langue, dans l'ordre d'affichage du formulaire.
--- ⚠ Recopiée depuis lib/rubriques.js (table TITRES) — SPEC-actualite.md §1.
-local TITRES = {
-  ['dossier-references'] = { fr = 'Références du dossier', de = 'Literatur zum Schwerpunkt' },
-  ['dossier-liens']      = { fr = 'Sites en lien avec le dossier', de = 'Linksammlung zum Schwerpunkt' },
-  ['tour-horizon']       = { fr = 'Tour d’horizon', de = 'Rundschau' },
-  ['ressources']         = { fr = 'Ressources', de = 'Ressourcen' },
-  ['podcasts']           = { fr = 'Documentaires et podcasts', de = 'Dokumentarfilme und Podcasts' },
-}
--- ⚠ Pas d'entrée ['agenda'] ici, et ce n'est pas un oubli : l'agenda a quitté les
---   rubriques pour devenir un type de fiche (szh-ressource.lua, TYPES.agenda), avec sa
---   date de début, sa date de fin, son lieu et son organisateur. Un ancien bloc
---   ::: {.szh-rubrique type="agenda"} laissé dans un .md sort donc sans titre, mais avec
---   son contenu intact — la dégradation propre du cas « type inconnu » plus bas.
+-- Chargement du contrat JSON, chemin résolu depuis le dossier de CE fichier (même
+-- mécanisme que szh-ressource.lua, largement commenté là-bas). Un chargement raté arrête
+-- la compilation : ce filtre ne peut pas composer un titre de rubrique sans lui.
+local TITRES
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local chemin = dossier_ce_fichier() .. '../kirby/champs-documentation.json'
+  local fh = io.open(chemin, 'r')
+  if not fh then
+    io.stderr:write('[rubrique] ' .. chemin .. ' introuvable : ce filtre ne peut pas composer sans lui, arret.\n')
+    os.exit(1, true)
+  end
+  local contenu = fh:read('a')
+  fh:close()
+  local ok, data = pcall(pandoc.json.decode, contenu)
+  if not ok or type(data) ~= 'table' then
+    io.stderr:write('[rubrique] ' .. chemin .. ' illisible (' .. tostring(data) .. ') : arret.\n')
+    os.exit(1, true)
+  end
+  TITRES = {}
+  for _, r in ipairs(data.rubriques or {}) do
+    TITRES[r.cle] = r.titre
+  end
+  -- Titres des sections de fiches (types[].libelle) : même table TITRES, même clé — les
+  -- deux espaces de noms (rubriques[].cle et types[].cle) ne se recouvrent jamais dans le
+  -- contrat (dossier_references/dossier_liens/ressources/podcasts d'un côté, horizon/
+  -- recherche/intervention/livre/film/reprise/agenda de l'autre), donc les fusionner ici
+  -- ne peut pas faire gagner un type sur l'autre.
+  for cle, t in pairs(data.types or {}) do
+    TITRES[cle] = t.libelle
+  end
+end
 
 -- Langue de composition : même idiome que langue_de() de szh-ressource.lua, recopié tel
 -- quel (voir son commentaire pour le pourquoi de la simplification par rapport à la
@@ -109,8 +145,9 @@ local function a_classe(el, nom)
 end
 
 -- Un type dont le nom ne peut pas casser la liste de classes HTML (espace, accolade…) —
--- même contrôle que type_sain() de szh-ressource.lua.
-local function type_sain(t) return t ~= nil and t:match('^%a[%w%-]*$') ~= nil end
+-- même contrôle que type_sain() de szh-ressource.lua. Les clés du JSON portent un
+-- soulignement (dossier_references) : admis ici, comme dans une classe CSS.
+local function type_sain(t) return t ~= nil and t:match('^%a[%w_%-]*$') ~= nil end
 
 -- Secours pour titre_id() ci-dessous : un bloc sans identifiant ne devrait jamais
 -- apparaître (le formulaire en pose toujours un, voir l'en-tête), mais si un .md écrit à
@@ -172,45 +209,51 @@ local function abaisser_titres(contenu)
   })
 end
 
+-- Compose la <section> titrée : commun aux rubriques et aux sections de fiches, seuls
+-- diffèrent la classe de base (`classe`), le rabattement des rangs (rubrique seulement —
+-- une fiche n'a pas de titres internes à rebattre) et la table d'où sort le libellé
+-- (TITRES sert aux deux, voir son chargement plus haut).
+local function section_titree(div, classe, lang, rabattre)
+  local type_ = div.attributes['type']
+  local classes = { classe, 'section' }
+  if type_sain(type_) then classes[#classes + 1] = classe .. '-' .. type_ end
+
+  -- Un type absent ou inconnu : pas de titre (on ne fabrique rien depuis le jeton), mais
+  -- le bloc sort quand même, avec son contenu intact — dégradation propre.
+  local titres_type = type_ and TITRES[type_]
+  local titre = titres_type and titres_type[lang]
+
+  local blocs = pandoc.Blocks({})
+  if titre then
+    blocs:insert(pandoc.Header(2, pandoc.Inlines({ pandoc.Str(titre) }),
+      pandoc.Attr(titre_id(div), { classe .. '-titre' }, {})))
+  end
+  local contenu = rabattre and abaisser_titres(div.content) or div.content
+  -- ⚠ L'identifiant de ce Div n'est pas décoratif : c'est le même piège du writer html5
+  --   que celui décrit dans l'en-tête pour le titre de la rubrique. Un Div d'identifiant
+  --   VIDE dont le premier enfant est un Header sort en <section>, et pandoc lui déplace
+  --   l'identifiant de ce Header — une rubrique qui commence par « ## International »
+  --   donnait <section id="international" class="szh-rubrique-corps"> et un <h3> nu,
+  --   privé de son ancre. Un identifiant non vide suffit à l'empêcher : le bloc reste un
+  --   <div> et chaque titre garde le sien. Constaté après le rabattement des rangs
+  --   ci-dessus, qui a rendu ce cas courant (avant, une rubrique commençait par du texte).
+  blocs:insert(pandoc.Div(contenu, pandoc.Attr(corps_id(div), { classe .. '-corps' }, {})))
+
+  return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
+end
+
 function Pandoc(doc)
   local lang = langue_de(doc.meta)
 
   doc.blocks = doc.blocks:walk({
     Div = function(div)
-      if not a_classe(div, CLASSE) then return nil end
-      local type_ = div.attributes['type']
-
-      -- "section" est la classe-marqueur consommée par le writer html5 (voir l'en-tête) :
-      -- elle n'apparaîtra pas dans le HTML, seules CLASSE et son éventuel modificateur y
-      -- survivent.
-      local classes = { CLASSE, 'section' }
-      if type_sain(type_) then classes[#classes + 1] = CLASSE .. '-' .. type_ end
-
-      -- Un type absent ou inconnu : pas de titre (on ne fabrique rien depuis le jeton),
-      -- mais le bloc sort quand même, avec son contenu intact — dégradation propre.
-      local titres_type = type_ and TITRES[type_]
-      local titre = titres_type and titres_type[lang]
-
-      local blocs = pandoc.Blocks({})
-      if titre then
-        blocs:insert(pandoc.Header(2, pandoc.Inlines({ pandoc.Str(titre) }),
-          pandoc.Attr(titre_id(div), { CLASSE .. '-titre' }, {})))
-      end
       -- Le contenu du bloc, enveloppé — seuls les rangs de ses titres sont rabattus sous
-      -- le <h2> ci-dessus (abaisser_titres, et rien d'autre).
-      --
-      -- ⚠ L'identifiant de ce Div n'est pas décoratif : c'est le même piège du writer html5
-      --   que celui décrit dans l'en-tête pour le titre de la rubrique. Un Div d'identifiant
-      --   VIDE dont le premier enfant est un Header sort en <section>, et pandoc lui déplace
-      --   l'identifiant de ce Header — une rubrique qui commence par « ## International »
-      --   donnait <section id="international" class="szh-rubrique-corps"> et un <h3> nu,
-      --   privé de son ancre. Un identifiant non vide suffit à l'empêcher : le bloc reste un
-      --   <div> et chaque titre garde le sien. Constaté après le rabattement des rangs
-      --   ci-dessus, qui a rendu ce cas courant (avant, une rubrique commençait par du texte).
-      blocs:insert(pandoc.Div(abaisser_titres(div.content),
-        pandoc.Attr(corps_id(div), { CLASSE .. '-corps' }, {})))
-
-      return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
+      -- le <h2> ci-dessus (abaisser_titres, et rien d'autre) : une rubrique est du texte
+      -- riche qui peut porter ses propres intertitres, une fiche ne le peut pas — son
+      -- « titre » est un Para (szh-ressource-titre), jamais un Header, rien à rebattre.
+      if a_classe(div, CLASSE) then return section_titree(div, CLASSE, lang, true) end
+      if a_classe(div, CLASSE_SECTION) then return section_titree(div, CLASSE_SECTION, lang, false) end
+      return nil
     end,
   })
 

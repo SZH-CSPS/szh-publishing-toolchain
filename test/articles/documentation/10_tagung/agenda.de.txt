@@ -1,0 +1,33 @@
+Title: Fülle und Grenzen
+
+----
+
+Uuid: agenda0010tagung0
+
+----
+
+Evenement: congres
+
+----
+
+Debut: 2026-10-02
+
+----
+
+Fin: 2026-10-06
+
+----
+
+Lieu: Dornach
+
+----
+
+Organisateur: Goetheanum
+
+----
+
+Lien: https://www.szh.ch/
+
+----
+
+Descriptif: 13\. Internationale Tagung — le point est échappé : cette ligne doit rester un paragraphe et garder son nombre, et non devenir une liste numérotée rendue « 1. » (WeasyPrint 69 n'honore pas `start`).

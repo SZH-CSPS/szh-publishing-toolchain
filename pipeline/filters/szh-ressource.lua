@@ -1,28 +1,28 @@
 -- Fiches de « ressources » d'un article : un livre, un film, une intervention parlementaire,
--- une recherche en cours, la reprise d'un article de la revue sœur, une manifestation de
--- l'agenda — ce qui remplit la
--- Documentation d'un numéro (« Actualité et ressources » / « News & Ressourcen »). Le
--- pendant, côté rendu, de lib/ressources.js côté cockpit : même moteur générique, décliné
--- par une table de champs par type, pas un filtre
--- par type. Intervention, recherche et reprise n'ont pas d'image (voir lib/ressources.js,
--- SANS_IMAGE) : ce filtre n'a besoin de rien savoir de plus pour s'en accommoder, puisqu'il
--- ne fait déjà que chercher une image dans le contenu du bloc plutôt que la présumer selon
--- le type — voir plus bas « Absente du tout si la fiche n'a pas d'image ».
+-- une recherche en cours, un tour d'horizon, la reprise d'un article de la revue sœur, une
+-- manifestation de l'agenda — ce qui remplit la Documentation d'un numéro (« Actualité et
+-- ressources » / « News & Ressourcen »), écrite par documentation-kirby.py depuis
+-- l'arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md). Un seul moteur générique, décliné
+-- par le contrat pipeline/kirby/champs-documentation.json — jamais un filtre par type, jamais
+-- une table recopiée ici : ce filtre LIT le JSON (types, listes, suiviImprime), il ne le
+-- redit pas. Le même JSON alimente le formulaire du cockpit et le convertisseur : un seul
+-- endroit où changer un libellé, une liste ou un gabarit de lien.
 --
---   ::: {#r1a2b3c4 .szh-ressource type="livre" titre="Le silence des bêtes"
+--   ::: {#r1a2b3c4 .szh-ressource type="livre" title="Le silence des bêtes"
 --        auteurs="Jean Dupont, Marie Martin" annee="2019" editeur="Éditions XYZ"
---        lien="https://exemple.org/livre"}
+--        lien="https://exemple.org/livre" categorie="manuel"}
 --   Descriptif en prose libre, sur une ou plusieurs lignes.
 --
 --   ![](media/couverture-x.jpg){alt=""}
 --   :::
 --
--- Ce qui sort :
+-- Ce qui sort (livre) :
 --   <div class="szh-ressource szh-ressource-livre">
 --     <div class="szh-ressource-titre"><p>Le silence des bêtes</p></div>
 --     <div class="szh-ressource-corps">
 --       <div class="szh-ressource-texte">
 --         <div class="szh-ressource-biblio"><p>Jean Dupont, Marie Martin · 2019 · Éditions XYZ</p></div>
+--         <div class="szh-ressource-pastille"><p>Manuel</p></div>
 --         <p>Descriptif…</p>
 --         <div class="szh-ressource-lien"><p><a href="…">En savoir plus sur le livre …</a></p></div>
 --       </div>
@@ -33,7 +33,7 @@
 -- print.css met le titre au-dessus de tout, et dans .szh-ressource-corps le texte à gauche,
 -- l'image au quart de la largeur alignée à droite (cahier des charges).
 --
--- L'image est toujours décorative (cahier des charges) : le formulaire l'écrit avec un
+-- L'image est toujours décorative (cahier des charges) : le convertisseur l'écrit avec un
 -- alt="" et sans légende, et ce filtre la laisse exactement ainsi — un pandoc.Image nu, sans
 -- description — à szh-numerotation.lua, branché plus loin dans le Makefile (après
 -- szh-figure.lua). C'est lui qui,
@@ -46,19 +46,18 @@
 -- « .szh-ressource-image .szh-decor ».
 --
 -- Le texte du lien — « En savoir plus sur le livre {titre} » — n'est jamais écrit dans le
--- .md (voir lib/ressources.js) : il se déduit ici du titre, du type et de la langue de
--- l'article. C'est ce qui le rend explicite et non modifiable par mégarde — donc utilisable
--- hors contexte par un lecteur d'écran — et ce qui lui permet de suivre un titre corrigé
--- après coup sans qu'on doive retaper le lien.
+-- .md : soit c'est `lien_libelle`, saisi tel quel par la fiche, soit il se déduit du gabarit
+-- `libelleLien` du type et de la langue de l'article (JSON). C'est ce qui le rend explicite
+-- et non modifiable par mégarde — donc utilisable hors contexte par un lecteur d'écran — et
+-- ce qui lui permet de suivre un titre corrigé après coup sans qu'on doive retaper le lien.
 --
 -- Place dans la chaîne : après szh-typographie.lua (le descriptif profite des mêmes
 -- guillemets et espaces insécables que le reste de l'article) et avant szh-numerotation.lua,
 -- qui doit encore trouver un pandoc.Image nu pour le rendre décoratif.
 --
--- ⚠ Table TYPES et table LIBELLE_LIEN recopiées depuis lib/ressources.js (côté cockpit).
---   La première doit rester identique aux deux tables JS (TYPES, et son usage dans le
---   formulaire) — test/js/ressources.test.js le contrôle, comme szh-grille.lua pour les
---   grilles (lib/references.js).
+-- `curia` et `source` (intervention) sont des données de travail : posées en attribut par le
+-- convertisseur, elles ne sont JAMAIS imprimées par ce filtre — voir l'absence des deux dans
+-- BIBLIO_CHAMPS plus bas, volontaire.
 
 local utils = pandoc.utils
 
@@ -77,7 +76,7 @@ do
   local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
   if not ok or type(module) ~= 'table' then
     io.stderr:write('[ressource] szh-commun.lua introuvable ou fautif (' ..
-      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arret.\n')
     os.exit(1, true)
     error('szh-commun.lua manquant', 0)
   end
@@ -86,60 +85,88 @@ end
 
 local CLASSE = 'szh-ressource'
 
--- Les champs bibliographiques propres à chaque type, dans l'ordre où la ligne sous le titre
--- les affiche.
--- ⚠ Recopiée depuis lib/ressources.js (table TYPES).
-local TYPES = {
-  livre = { 'auteurs', 'annee', 'editeur' },
-  film = { 'realisateur', 'annee', 'genre', 'pays', 'distributeur' },
+-- Chargement du contrat JSON : TYPES (libellés, libellé de lien, pastille, champs — d'où
+-- l'on tire, par fiche, la définition d'un champ donné), LISTES (jeton -> libellé fr/de) et
+-- SUIVI_IMPRIME (gabarit de la ligne de suivi). Chemin résolu depuis le dossier de CE
+-- fichier, comme szh-commun.lua ci-dessus. Un chargement raté arrête la compilation : sans
+-- lui, ce filtre ne saurait plus nommer un seul libellé.
+local TYPES, LISTES, SUIVI_IMPRIME, CHAMPS_PAR_CLE
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local chemin = dossier_ce_fichier() .. '../kirby/champs-documentation.json'
+  local fh = io.open(chemin, 'r')
+  if not fh then
+    io.stderr:write('[ressource] ' .. chemin .. ' introuvable : ce filtre ne peut pas composer sans lui, arret.\n')
+    os.exit(1, true)
+  end
+  local contenu = fh:read('a')
+  fh:close()
+  local ok, data = pcall(pandoc.json.decode, contenu)
+  if not ok or type(data) ~= 'table' then
+    io.stderr:write('[ressource] ' .. chemin .. ' illisible (' .. tostring(data) .. ') : arret.\n')
+    os.exit(1, true)
+  end
+  TYPES = data.types
+  SUIVI_IMPRIME = data.suiviImprime or {}
+  LISTES = {}
+  for nom, arr in pairs(data.listes or {}) do
+    LISTES[nom] = {}
+    for _, item in ipairs(arr) do
+      LISTES[nom][item.jeton] = { fr = item.fr, de = item.de }
+    end
+  end
+  CHAMPS_PAR_CLE = {}
+  for type_, def in pairs(TYPES) do
+    CHAMPS_PAR_CLE[type_] = {}
+    for _, c in ipairs(def.champs or {}) do
+      CHAMPS_PAR_CLE[type_][c.cle] = c
+    end
+  end
+end
+
+-- Les champs qui composent la ligne sous le titre, par type et dans l'ordre d'affichage —
+-- seule table encore écrite à la main : le JSON liste tous les champs d'une fiche (y
+-- compris title, descriptif, lien, lien_libelle, la pastille, l'état, le suivi, curia et
+-- source), pas seulement ceux de cette ligne-là. horizon est vide à dessein : sa seule
+-- mention est le canton, et seulement si régional (voir plus bas, hors de ce mécanisme).
+local BIBLIO_CHAMPS = {
+  horizon      = {},
+  recherche    = { 'institutions', 'debut', 'fin' },
   intervention = { 'canton', 'categorie', 'numero', 'date' },
-  recherche = { 'institutions', 'debut', 'fin' },
-  reprise = { 'auteurs', 'revue', 'reference', 'doi' },
-  agenda = { 'evenement', 'debut', 'fin', 'lieu', 'organisateur' },
+  livre        = { 'auteurs', 'annee', 'editeur' },
+  film         = { 'realisateur', 'annee', 'distributeur' },
+  reprise      = { 'auteurs', 'revue', 'reference', 'doi' },
+  agenda       = { 'evenement', 'debut', 'fin', 'lieu', 'organisateur' },
 }
 
--- Le texte du lien, par type et par langue ; %s reçoit le titre. Un type absent de la table
--- retombe sur un texte neutre plutôt que sur un lien sans intitulé.
-local LIBELLE_LIEN = {
-  livre = { fr = 'En savoir plus sur le livre %s', de = 'Mehr zum Buch %s' },
-  film = { fr = 'En savoir plus sur le film %s', de = 'Mehr zum Film %s' },
-  intervention = { fr = 'En savoir plus sur l’intervention %s', de = 'Mehr zum Vorstoss %s' },
-  recherche = { fr = 'En savoir plus sur la recherche %s', de = 'Mehr zum Forschungsprojekt %s' },
-  reprise = { fr = 'Lire l’article %s', de = 'Zum Artikel %s' },
-  agenda = { fr = 'En savoir plus sur la manifestation %s', de = 'Mehr zur Veranstaltung %s' },
-}
-local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
-
--- Les libellés imprimés de la liste fermée `evenement` d'une fiche d'agenda, par jeton et
--- par langue. Le .md ne porte que le jeton (agenda type d'événement) : c'est ce qui permet
--- à un « Colloque » français de sortir « Tagung » côté allemand sans qu'on ait rien à
--- ressaisir, exactement comme le libellé de lien de LIBELLE_LIEN.
--- ⚠ Recopiée depuis lib/ressources.js (table LISTES.evenement, qui n'en porte que les
---   jetons, les libellés de SAISIE vivant eux dans lib/i18n.js) : un test refuse que les
---   deux divergent. Un jeton absent d'ici s'imprime tel quel plutôt que de disparaître.
-local EVENEMENTS = {
-  colloque  = { fr = 'Colloque',           de = 'Tagung' },
-  congres   = { fr = 'Congrès',            de = 'Kongress' },
-  journee   = { fr = 'Journée d’étude',    de = 'Fachtagung' },
-  cours     = { fr = 'Cours',              de = 'Kurs' },
-  webinaire = { fr = 'Webinaire',          de = 'Webinar' },
-  formation = { fr = 'Formation continue', de = 'Weiterbildung' },
-}
-
--- Les champs dont la valeur est un jeton à traduire, par type puis par champ.
-local JETONS = { agenda = { evenement = EVENEMENTS } }
-
--- La paire de dates qui se fond en une seule mention à l'impression, par type. « 2026-01-05
--- · 2026-01-06 » dans la ligne d'une fiche ne se lit pas ; le corpus, lui, écrit
--- « 05.–06.01.2026 » (relevé du 02.09.2026 sur les pages « Congrès, colloques » et « Kurse »
--- de szh.ch, celles-là mêmes que la rubrique du numéro donne en lien).
+-- La paire de dates qui se fond en une seule mention à l'impression, par type — seulement
+-- l'agenda (cahier des charges) : les dates de la recherche sont partielles et restent deux
+-- mentions distinctes.
 local PLAGE = { agenda = { debut = 'debut', fin = 'fin' } }
 
+local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
+
+local function champ_def(type_, cle)
+  return CHAMPS_PAR_CLE[type_] and CHAMPS_PAR_CLE[type_][cle]
+end
+
+-- Une valeur en chaîne pour affichage %n littéral (gsub interprète % dans le motif de
+-- remplacement) : doubler les % de la valeur avant de la passer en second argument de gsub.
+-- ⚠ Le double jeu de parenthèses n'est pas cosmétique : `s:gsub(...)` rend DEUX valeurs
+--   (la chaîne, le nombre de remplacements), et un `return` nu les propagerait toutes les
+--   deux. Un appelant qui glisse ensuite ce résultat en dernier argument d'un AUTRE gsub
+--   (comme plus bas) verrait ce compte se glisser en troisième argument — le nombre MAXIMAL
+--   de remplacements — et un compte de 0 (aucun « % » à doubler) annulerait alors tout
+--   remplacement. Mesuré : {genre}/{date}/{titre} restaient littéraux dans la sortie.
+local function echapper_pourcent(s) return ((s or ''):gsub('%%', '%%%%')) end
+
 -- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme stockée, parce
--- que c'est la seule qui se trie (lib/ressources.js, SAISIE et CLE_TRI) ; elle ne sort
--- jamais telle quelle dans le PDF. Toute autre forme — un .md écrit à la main, une valeur
--- d'avant la saisie ISO — sort inchangée : mieux vaut une date au format d'origine qu'une
--- date perdue.
+-- que c'est la seule qui se trie ; elle ne sort jamais telle quelle dans le PDF. Toute autre
+-- forme sort inchangée : mieux vaut une date au format d'origine qu'une date perdue.
 local function jour_mois_an(v)
   if not v then return nil end
   local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
@@ -150,6 +177,18 @@ local function date_suisse(v)
   local d = jour_mois_an(v)
   if not d then return v end
   return d.j .. '.' .. d.m .. '.' .. d.a
+end
+
+-- Date partielle (saisie `date_partielle` : AAAA, AAAA-MM ou AAAA-MM-JJ), en forme suisse
+-- compacte : « 2026 », « 03.2026 », « 05.03.2026 ».
+local function date_partielle_suisse(v)
+  if not v then return v end
+  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
+  if a then return j .. '.' .. m .. '.' .. a end
+  local a2, m2 = v:match('^(%d%d%d%d)%-(%d%d)$')
+  if a2 then return m2 .. '.' .. a2 end
+  if v:match('^%d%d%d%d$') then return v end
+  return v
 end
 
 -- La plage de dates, aussi compacte que le corpus l'écrit :
@@ -168,6 +207,24 @@ local function plage_date(v1, v2)
   if not d1 or not d2 or d1.a ~= d2.a then return date_suisse(v1) .. '–' .. date_suisse(v2) end
   if d1.m ~= d2.m then return d1.j .. '.' .. d1.m .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a end
   return d1.j .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a
+end
+
+-- La valeur d'un champ, mise en forme selon sa saisie (JSON) : un jeton de liste devient son
+-- libellé traduit (sauf `canton`, toujours affiché en code — cahier des charges), une date
+-- ou une date partielle passe en forme suisse, tout le reste sort tel quel.
+local function formater_champ(type_, cle, v, lang)
+  local def = champ_def(type_, cle)
+  local saisie = def and def.saisie
+  if saisie == 'liste' then
+    if def.liste == 'canton' then return v end
+    local item = LISTES[def.liste] and LISTES[def.liste][v]
+    return (item and item[lang]) or v
+  elseif saisie == 'date' then
+    return date_suisse(v)
+  elseif saisie == 'date_partielle' then
+    return date_partielle_suisse(v)
+  end
+  return v
 end
 
 -- Langue de composition, simplifiée par rapport à langue_de() de szh-numerotation.lua (qui
@@ -209,28 +266,78 @@ local function image_seule_de(b)
   return img
 end
 
--- La bibliographie courte, sous le titre : les champs du type qui portent une valeur, dans
--- l'ordre de TYPES, séparés par un point médian — même séparateur que la légende d'une
--- grille de plusieurs membres (media/medias-article.js, grilleMembres).
-local function ligne_biblio(div, champs, type_, lang)
-  local morceaux = {}
+-- La bibliographie courte, sous le titre : les champs de BIBLIO_CHAMPS[type_] qui portent
+-- une valeur, mis en forme (formater_champ) et séparés par un point médian — même séparateur
+-- que la légende d'une grille de plusieurs membres (media/medias-article.js, grilleMembres).
+local function ligne_biblio(attrs, type_, lang)
+  local champs = BIBLIO_CHAMPS[type_] or {}
   local plage = PLAGE[type_]
-  local jetons = JETONS[type_] or {}
+  local morceaux = {}
   for _, cle in ipairs(champs) do
-    local v = div.attributes[cle]
     if plage and cle == plage.fin then
       -- déjà imprimée avec la date de début, dans la même mention
     elseif plage and cle == plage.debut then
-      local p = plage_date(div.attributes[plage.debut], div.attributes[plage.fin])
+      local p = plage_date(attrs[plage.debut], attrs[plage.fin])
       if p and p:match('%S') then morceaux[#morceaux + 1] = p end
-    elseif v and v:match('%S') then
-      local table_jeton = jetons[cle]
-      local libelle = table_jeton and table_jeton[v] and table_jeton[v][lang]
-      morceaux[#morceaux + 1] = libelle or v
+    else
+      local v = attrs[cle]
+      if v and v:match('%S') then
+        morceaux[#morceaux + 1] = formater_champ(type_, cle, v, lang)
+      end
     end
+  end
+  -- Le tour d'horizon n'a pas de BIBLIO_CHAMPS : sa seule mention est le canton, seulement
+  -- si la portée est régionale (cahier des charges) — écrit en code, jamais traduit.
+  if type_ == 'horizon' and attrs['portee'] == 'regional' then
+    local canton = attrs['canton']
+    if canton and canton:match('%S') then morceaux[#morceaux + 1] = canton end
   end
   if #morceaux == 0 then return nil end
   return table.concat(morceaux, ' · ')
+end
+
+-- État + date d'état d'une intervention (seul type qui porte ces deux champs).
+local function ligne_etat(attrs, type_, lang)
+  local etat = attrs['etat']
+  if not (etat and etat:match('%S')) then return nil end
+  local libelle = formater_champ(type_, 'etat', etat, lang)
+  local date = attrs['etat_date']
+  if date and date:match('%S') then
+    return libelle .. ' (' .. date_suisse(date) .. ')'
+  end
+  return libelle
+end
+
+-- La pastille de catégorie (livre, film) : le champ nommé par TYPES[type_].pastille,
+-- traduit comme un champ de liste ordinaire.
+local function texte_pastille(attrs, type_, lang)
+  local champ = TYPES[type_] and TYPES[type_].pastille
+  if not champ then return nil end
+  local v = attrs[champ]
+  if not (v and v:match('%S')) then return nil end
+  return formater_champ(type_, champ, v, lang)
+end
+
+-- Une entrée de suivi (date, genre, libelle, lien) mise en forme selon suiviImprime[lang] :
+-- « {genre} du {date} : {libelle} » (fr) / « {genre} vom {date}: {libelle} » (de). Le
+-- segment « : {libelle} » disparaît si le libellé est vide (motif générique : deux-points
+-- entouré d'espaces optionnelles, valable des deux côtés de la langue).
+local function ligne_suivi(entree, lang)
+  local gabarit = SUIVI_IMPRIME[lang] or SUIVI_IMPRIME.fr or '{genre} — {date}{libelle}'
+  local genre_lbl = (LISTES['genre_suivi'] and LISTES['genre_suivi'][entree.genre]
+    and LISTES['genre_suivi'][entree.genre][lang]) or entree.genre or ''
+  local date_lbl = date_suisse(entree.date)
+  local vide = not (entree.libelle and entree.libelle:match('%S'))
+  local texte = gabarit
+  if vide then
+    texte = texte:gsub('%s*:%s*{libelle}', '')
+  end
+  texte = texte:gsub('{genre}', echapper_pourcent(genre_lbl))
+  texte = texte:gsub('{date}', echapper_pourcent(date_lbl))
+  if not vide then
+    texte = texte:gsub('{libelle}', echapper_pourcent(entree.libelle))
+  end
+  return texte
 end
 
 -- Un bloc porté par une classe, seul moyen de donner un style à un Para ou un Plain : ni
@@ -243,7 +350,9 @@ end
 
 -- Un type dont le nom ne peut pas casser la liste de classes HTML (espace, accolade…) —
 -- un contrôle bon marché contre un .md écrit à la main avec type="deux mots".
-local function type_sain(t) return t ~= nil and t:match('^%a[%w%-]*$') ~= nil end
+local function type_sain(t) return t ~= nil and t:match('^%a[%w_%-]*$') ~= nil end
+
+local CLASSE_SUIVI_ENTREE = 'szh-suivi-entree'
 
 function Pandoc(doc)
   local lang = langue_de(doc.meta)
@@ -252,32 +361,68 @@ function Pandoc(doc)
     Div = function(div)
       if not a_classe(div, CLASSE) then return nil end
       local type_ = div.attributes['type'] or ''
-      local champs = TYPES[type_] or {}
-      local titre = div.attributes['titre'] or ''
+      local titre = div.attributes['title'] or ''
 
-      -- Le contenu du bloc : une image au plus (la première rencontrée), le reste est le
-      -- descriptif — même lecture que lireRessources() de lib/ressources.js.
-      local image, descriptif = nil, pandoc.Blocks({})
+      -- Le contenu du bloc : les divs imbriquées .szh-suivi-entree (une par entrée de
+      -- suivi, posées par documentation-kirby.py — voir sa tête), une image au plus (la
+      -- première rencontrée), le reste est le descriptif.
+      local image, descriptif, suivi = nil, pandoc.Blocks({}), {}
       for _, b in ipairs(div.content) do
         local traite = false
-        if not image then
+        if b.t == 'Div' and a_classe(b, CLASSE_SUIVI_ENTREE) then
+          suivi[#suivi + 1] = {
+            date = b.attributes['date'], genre = b.attributes['genre'],
+            libelle = b.attributes['libelle'], lien = b.attributes['lien'],
+          }
+          traite = true
+        end
+        if not traite and not image then
           local img = image_seule_de(b)
           if img then image = img; traite = true end
         end
         if not traite then descriptif:insert(b) end
       end
 
-      -- Colonne de texte : bibliographie courte, descriptif, lien — dans cet ordre, celui
-      -- d'une notule de lecture.
+      -- Colonne de texte : bibliographie courte, pastille, état, suivi, descriptif, lien —
+      -- dans cet ordre, celui d'une notule de lecture augmentée des champs d'intervention.
       local texte = pandoc.Blocks({})
-      local biblio = ligne_biblio(div, champs, type_, lang)
+      local biblio = ligne_biblio(div.attributes, type_, lang)
       if biblio then texte:insert(bloc_classe('szh-ressource-biblio', { pandoc.Para({ pandoc.Str(biblio) }) })) end
+
+      local pastille = texte_pastille(div.attributes, type_, lang)
+      if pastille then texte:insert(bloc_classe('szh-ressource-pastille', { pandoc.Para({ pandoc.Str(pastille) }) })) end
+
+      local etat = ligne_etat(div.attributes, type_, lang)
+      if etat then texte:insert(bloc_classe('szh-ressource-etat', { pandoc.Para({ pandoc.Str(etat) }) })) end
+
+      if #suivi > 0 then
+        local paras = {}
+        for _, entree in ipairs(suivi) do
+          local phrase = ligne_suivi(entree, lang)
+          local inline
+          if entree.lien and entree.lien:match('%S') then
+            inline = pandoc.Link({ pandoc.Str(phrase) }, entree.lien, '', pandoc.Attr('', {}, {}))
+          else
+            inline = pandoc.Str(phrase)
+          end
+          paras[#paras + 1] = pandoc.Para({ inline })
+        end
+        texte:insert(bloc_classe('szh-ressource-suivi', paras))
+      end
+
       texte:extend(descriptif)
+
       local lien = div.attributes['lien']
       if lien and lien:match('%S') then
-        local gabarit = (LIBELLE_LIEN[type_] and LIBELLE_LIEN[type_][lang])
-          or LIBELLE_LIEN_DEFAUT[lang] or LIBELLE_LIEN_DEFAUT.fr
-        local intitule = gabarit:format(titre)
+        local lien_libelle = div.attributes['lien_libelle']
+        local intitule
+        if lien_libelle and lien_libelle:match('%S') then
+          intitule = lien_libelle
+        else
+          local gabarit = (TYPES[type_] and TYPES[type_].libelleLien and TYPES[type_].libelleLien[lang])
+            or LIBELLE_LIEN_DEFAUT[lang] or LIBELLE_LIEN_DEFAUT.fr
+          intitule = gabarit:gsub('{titre}', echapper_pourcent(titre))
+        end
         texte:insert(bloc_classe('szh-ressource-lien', {
           pandoc.Para({ pandoc.Link({ pandoc.Str(intitule) }, lien, '', pandoc.Attr('', {}, {})) })
         }))

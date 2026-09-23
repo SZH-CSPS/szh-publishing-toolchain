@@ -1,0 +1,33 @@
+Title: Motion zur Frühförderung
+
+----
+
+Uuid: intervent06zhb000
+
+----
+
+Canton: ZH
+
+----
+
+Categorie: motion
+
+----
+
+Curia: 5
+
+----
+
+Numero: 26.230
+
+----
+
+Date: 2026-07-01
+
+----
+
+Lien: https://www.zh.ch/
+
+----
+
+Source: manuel

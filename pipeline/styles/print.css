@@ -918,6 +918,27 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 .szh-ressource-sans-image { padding: 8px 16px; margin: 0.5em 0; }
 .szh-ressource-sans-image .szh-ressource-titre p { margin-bottom: 0.25em; }
 
+/* Pastille de catégorie (livre, film) : posée par szh-ressource.lua juste sous la
+   bibliographie courte (champ `pastille` du contrat — champs-documentation.json). Un
+   jeton court, pas une phrase : un badge discret plutôt qu'une ligne de texte de plus. */
+.szh-ressource-pastille p {
+  display: inline-block; margin: 0 0 0.5em; padding: 0.1em 0.55em;
+  font-size: 0.72em; font-weight: 700; letter-spacing: 0.02em;
+  color: var(--c-ink); background: #e7e7ea; border-radius: 3px;
+}
+
+/* État + date d'état d'une intervention parlementaire : une ligne courte, dans le
+   prolongement visuel de la biblio mais distinguée par la couleur, pour rester lisible
+   d'un coup d'œil dans une liste dense d'une dizaine d'entrées. */
+.szh-ressource-etat p { margin: 0 0 0.5em; font-size: 0.85em; color: #555; }
+
+/* Suivi d'une intervention (prise de position, décision, document…) : une ligne par
+   entrée, aussi resserrée que la biblio — c'est une liste de faits, pas de la prose. La
+   ligne entière est un lien quand le suivi en porte un (szh-ressource.lua). */
+.szh-ressource-suivi { margin: 0.3em 0 0.6em; }
+.szh-ressource-suivi p { margin: 0 0 0.2em; font-size: 0.85em; color: #444; }
+.szh-ressource-suivi a { color: inherit; }
+
 /* Rubrique de texte riche de la Documentation (liste bibliographique, liste de liens,
    brève d'actualité) : filters/szh-rubrique.lua pose une <section>, un titre déduit du
    type et de la langue, puis le contenu inchangé. Un chapitre de la Documentation, pas
@@ -937,6 +958,15 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    titre reçoit aussi sa classe (voir szh-rubrique.lua), et le filet se dessinait deux
    fois, au-dessus de la section et au-dessus du titre. */
 h2.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
+
+/* Section qui regroupe les fiches d'un même type (horizon, recherche, intervention…) :
+   même filet, même habillage que le titre d'une rubrique ci-dessus — une section de
+   fiches est une coupure de la Documentation au même titre qu'une rubrique de texte riche,
+   posée par le même filtre (szh-rubrique.lua, voir son commentaire de tête pour pourquoi
+   ce n'est pas szh-ressource.lua qui la compose). Règle commune plutôt que dupliquée :
+   un futur ajustement du filet ou de l'espacement doit valoir pour les deux à la fois. */
+.szh-ressources-section { margin: 2.6em 0 0; }
+h2.szh-ressources-section-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: var(--corps-tableau); margin: 1.4em 0; width: 100%; }
