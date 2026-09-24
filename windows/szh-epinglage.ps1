@@ -132,12 +132,15 @@ function Test-SzhDossierEpingle([string]$Chemin) {
 function Start-SzhEpinglageProcessus([string]$Dossier) {
   $attribExe = Join-Path $env:SystemRoot 'System32\attrib.exe'
   if (-not (Test-Path -LiteralPath $attribExe)) { $attribExe = 'attrib.exe' }
-  # +P -U : épingle et retire « en ligne seulement » ; /S /D : sous-dossiers et dossiers
-  # compris, pour que le contenu déjà présent hérite tout de suite, pas seulement ce qui
-  # arrivera après. Jamais -Wait : un dossier qui n'est pas encore synchronisé ne doit pas
-  # faire attendre le lanceur.
+  # +P -U : épingle et retire « en ligne seulement ». Deux appels, mesurés le 24.09.2026 :
+  # « attrib <dossier> /S /D » ne descend PAS dans le dossier -- il cherche, dans l'arbre
+  # PARENT, tout dossier du même nom. D'où : le dossier lui-même (ce que teste
+  # Test-SzhDossierEpingle, et dont héritent les fichiers à venir), puis son contenu avec
+  # « <dossier>\* /S /D ». Jamais -Wait : le lanceur n'attend aucun téléchargement.
   Start-Process -FilePath $attribExe -WindowStyle Hidden -ArgumentList @(
-    '+P', '-U', ('"{0}"' -f $Dossier), '/S', '/D')
+    '+P', '-U', ('"{0}"' -f $Dossier))
+  Start-Process -FilePath $attribExe -WindowStyle Hidden -ArgumentList @(
+    '+P', '-U', ('"{0}"' -f (Join-Path $Dossier '*')), '/S', '/D')
 }
 
 # ---- Orchestration ----

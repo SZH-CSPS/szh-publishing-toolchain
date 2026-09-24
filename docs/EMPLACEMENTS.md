@@ -469,8 +469,11 @@ par un balayage de `_NewsUndActu\` entier — `_Import-*` n'est donc jamais conc
 .NET `ReparsePoint` (`0x400`) ; « Toujours conserver sur cet appareil » pose en plus
 `FILE_ATTRIBUTE_PINNED` (`0x80000`), « Libérer de l'espace » pose `FILE_ATTRIBUTE_UNPINNED`
 (`0x100000`) — deux valeurs que `[System.IO.FileAttributes]` ne nomme pas. Pour chaque
-dossier cible dont l'attribut ne porte pas déjà `0x80000` : `attrib.exe +P -U "<dossier>" /S
-/D` (`%SystemRoot%\System32\attrib.exe`), lancé en processus **caché et non attendu**
+dossier cible dont l'attribut ne porte pas déjà `0x80000`, deux appels de
+`%SystemRoot%\System32\attrib.exe` : `+P -U "<dossier>"` (le dossier lui-même), puis
+`+P -U "<dossier>\*" /S /D` (tout son contenu). Mesuré le 24.09.2026 : `attrib "<dossier>" /S
+/D` ne descend PAS dans le dossier, il cherche dans l'arbre parent tout dossier du même nom.
+Chaque appel part en processus **caché et non attendu**
 (`Start-Process -WindowStyle Hidden`, sans `-Wait`) — le lanceur ne doit jamais attendre un
 téléchargement OneDrive. Un dossier déjà épinglé ne demande rien : ce qu'on y ajoutera
 ensuite hérite de l'épinglage de son dossier. Un dossier hors OneDrive (pas de
