@@ -1716,8 +1716,8 @@ dossier `OneDrive\Revues`, par exemple), elle n’apparaît pas dans les listes 
 dit en bas : « N revue(s) hors arborescence dans … – à déplacer ». Déplacez le dossier de la revue
 dans `Revue` (ou `Zeitschrift`) et il apparaîtra.
 
-À chaque ouverture, le lanceur marque « Toujours conserver sur cet appareil » le numéro en
-cours de chaque revue ainsi que la bibliothèque `_NewsUndActu`, sans rien vous demander : tout
+À chaque ouverture, le lanceur marque « Toujours conserver sur cet appareil » les numéros en
+cours de chaque revue, les livres en cours ainsi que la bibliothèque `_NewsUndActu`, sans rien vous demander : tout
 le monde les a hors connexion, même après une coupure ou un long trajet sans réseau.
 
 À côté de ces six dossiers, la même racine en porte trois autres, que vous verrez dans

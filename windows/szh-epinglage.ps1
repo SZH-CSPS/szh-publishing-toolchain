@@ -9,10 +9,8 @@
 # CE QUI EST ÉPINGLÉ.
 #   * Chaque numéro EN COURS des revues -- un dossier directement sous `Revue\` ou
 #     `Zeitschrift\` de la racine ACTIVE (test ou production, selon emplacementRevues),
-#     reconnu à son `ausgabe.yaml` comme partout ailleurs dans ce dépôt. Jamais `_Archive\`,
-#     jamais `Books\` : $SzhEpinglageProduits ci-dessous ne porte que 'revue' et
-#     'zeitschrift' -- Robin n'a pas demandé le livre, et y ajouter 'livre' suffirait
-#     ($SzhSousDossiers.livre.encours vaut déjà 'Books').
+#     reconnu à son `ausgabe.yaml` comme partout ailleurs dans ce dépôt. Jamais `_Archive\`.
+#   * Chaque livre EN COURS, sous `Books\` de la racine active, reconnu à son `buch.yaml`.
 #   * La bibliothèque `_NewsUndActu\Fiches` et `_NewsUndActu\_Statuts`, toujours celle de
 #     PRODUCTION (`<ancrage>\2_Produkte\54_Pronto\_NewsUndActu`, que l'onglet Archive du
 #     cockpit lit toujours -- voir docs/EMPLACEMENTS.md, §1bis), PLUS celle de la racine
@@ -38,10 +36,11 @@
 
 # ---- Constantes ----
 
-# Les jetons de $SzhSousDossiers (szh-produits.ps1) à épingler. 'livre' (Books) n'est PAS
-# demandé -- l'ajouter à cette liste suffirait à l'inclure, sans toucher au reste de ce
-# fichier.
-$script:SzhEpinglageProduits = @('revue', 'zeitschrift')
+# Les jetons de $SzhSousDossiers (szh-produits.ps1) à épingler, et le manifeste qui fait
+# d'un dossier un numéro ou un livre (sans lui, ce n'est pas une unité de travail). Livres
+# ajoutés le 24.09.2026 (Robin).
+$script:SzhEpinglageProduits = @('revue', 'zeitschrift', 'livre')
+$script:SzhEpinglageManifeste = @{ revue = 'ausgabe.yaml'; zeitschrift = 'ausgabe.yaml'; livre = 'buch.yaml' }
 
 # Les deux sous-dossiers de la bibliothèque à épingler, PAR NOM -- voir l'en-tête ci-dessus
 # pour pourquoi jamais un balayage de `_NewsUndActu\` entier.
@@ -78,9 +77,10 @@ function Get-SzhDossiersAEpingler {
       $enfants = @()
       try { $enfants = @(Get-ChildItem -LiteralPath $racineProduit -Directory -Force -ErrorAction Stop) } catch { $enfants = @() }
       foreach ($e in $enfants) {
-        # Même définition d'un « numéro » que le reste du dépôt (docs/EMPLACEMENTS.md, §1) :
-        # un dossier sans ausgabe.yaml n'en est pas un, épinglé ou non n'a pas de sens.
-        if (Test-Path -LiteralPath (Join-Path $e.FullName 'ausgabe.yaml')) { [void]$dossiers.Add($e.FullName) }
+        # Même définition d'un numéro ou d'un livre que le reste du dépôt (docs/EMPLACEMENTS.md,
+        # §1) : un dossier sans son manifeste n'en est pas un, l'épingler n'a pas de sens.
+        $manifeste = $script:SzhEpinglageManifeste[$produit]
+        if (Test-Path -LiteralPath (Join-Path $e.FullName $manifeste)) { [void]$dossiers.Add($e.FullName) }
       }
     }
   }

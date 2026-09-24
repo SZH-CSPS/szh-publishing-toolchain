@@ -456,13 +456,13 @@ de trajet.
 
 | Quoi | Où | Jamais |
 |---|---|---|
-| Chaque numéro **en cours** des revues | `Revue\`, `Zeitschrift\` de la racine **ACTIVE** (test ou production, selon `emplacementRevues`) | `_Archive\`, `Books\` (voir plus bas) |
+| Chaque numéro **en cours** des revues, chaque livre **en cours** | `Revue\`, `Zeitschrift\`, `Books\` de la racine **ACTIVE** (test ou production, selon `emplacementRevues`) | `_Archive\` |
 | `_NewsUndActu\Fiches`, `_NewsUndActu\_Statuts` | racine de **PRODUCTION** (`<ancrage>\2_Produkte\54_Pronto`, que l'onglet Archive du cockpit lit toujours), **et** racine active si elle en diffère (mode test) | `_NewsUndActu\_Import-*` |
 
-Un numéro se reconnaît à son `ausgabe.yaml`, même définition que partout ailleurs dans ce
-document. `Books\` n'est **pas** demandé : `$script:SzhEpinglageProduits`
-(`windows\szh-epinglage.ps1`) ne porte que `'revue'` et `'zeitschrift'` ; y ajouter `'livre'`
-suffirait à l'inclure. La bibliothèque est ciblée **par nom** (`Fiches`, `_Statuts`), jamais
+Un numéro se reconnaît à son `ausgabe.yaml`, un livre à son `buch.yaml`, même définition que
+partout ailleurs dans ce document : les livres en cours de `Books\` sont épinglés comme les
+numéros depuis le 24.09.2026 (`$script:SzhEpinglageProduits` et `$script:SzhEpinglageManifeste`,
+`windows\szh-epinglage.ps1`). La bibliothèque est ciblée **par nom** (`Fiches`, `_Statuts`), jamais
 par un balayage de `_NewsUndActu\` entier — `_Import-*` n'est donc jamais concerné.
 
 **La mécanique, mesurée sur ce poste.** Un dossier synchronisé par OneDrive porte l'attribut

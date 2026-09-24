@@ -8,7 +8,7 @@
 // Ce que ce banc prouve, sur des arborescences jetables (jamais le vrai OneDrive, jamais le
 // vrai C:\ProgramData) :
 //   1. le plan (Get-SzhDossiersAEpingler) retient chaque numéro EN COURS des deux revues
-//      (reconnu à son ausgabe.yaml), jamais _Archive, jamais Books, et la bibliothèque
+//      (reconnus à leur ausgabe.yaml ou buch.yaml), jamais _Archive, et la bibliothèque
 //      _NewsUndActu\Fiches + _NewsUndActu\_Statuts PAR NOM — jamais _Import-*, même présent
 //      à côté ;
 //   2. racine de production et racine active distinctes (mode test) : la bibliothèque des
@@ -83,7 +83,7 @@ function lireJournal(f) {
   return logs.map((n) => fs.readFileSync(path.join(dossierLogs, n), 'utf8')).join('\n');
 }
 
-test('le plan retient les numéros en cours des deux revues, jamais _Archive ni Books, et la bibliothèque par nom (jamais _Import-*)',
+test('le plan retient les numéros et les livres en cours, jamais _Archive, et la bibliothèque par nom (jamais _Import-*)',
   { skip: sansPowerShell }, () => {
     const f = monterArborescence('plan-simple');
     try {
@@ -93,9 +93,13 @@ test('le plan retient les numéros en cours des deux revues, jamais _Archive ni 
       fs.mkdirSync(path.join(racine, 'Revue', '2027-99'), { recursive: true });
       ecrireAusgabe(path.join(racine, '_Archive', 'Revue', '2020-01'), 'titre: "Archive"\n');
       ecrireAusgabe(path.join(racine, 'Zeitschrift', '2027-05'), 'titre: "Zeitschrift"\n');
-      // Un livre : jamais retenu, 'livre' n'est pas dans $SzhEpinglageProduits.
+      // Un livre en cours (buch.yaml) : retenu. Un dossier de Books sans buch.yaml, ou un
+      // livre archivé : jamais.
       fs.mkdirSync(path.join(racine, 'Books', '2025-B1-Test'), { recursive: true });
       fs.writeFileSync(path.join(racine, 'Books', '2025-B1-Test', 'buch.yaml'), 'titre: "Livre"\n', 'utf8');
+      fs.mkdirSync(path.join(racine, 'Books', 'pas-un-livre'), { recursive: true });
+      fs.mkdirSync(path.join(racine, '_Archive', 'Books', '2020-B1-Ancien'), { recursive: true });
+      fs.writeFileSync(path.join(racine, '_Archive', 'Books', '2020-B1-Ancien', 'buch.yaml'), 'titre: "Ancien"\n', 'utf8');
       fs.mkdirSync(path.join(racine, '_NewsUndActu', 'Fiches'), { recursive: true });
       fs.mkdirSync(path.join(racine, '_NewsUndActu', '_Statuts'), { recursive: true });
       // Jamais épinglé, même présent juste à côté de Fiches/_Statuts.
@@ -113,6 +117,7 @@ test('le plan retient les numéros en cours des deux revues, jamais _Archive ni 
       const attendu = [
         path.join(racine, 'Revue', '2027-01'),
         path.join(racine, 'Zeitschrift', '2027-05'),
+        path.join(racine, 'Books', '2025-B1-Test'),
         path.join(racine, '_NewsUndActu', 'Fiches'),
         path.join(racine, '_NewsUndActu', '_Statuts')
       ].sort();
