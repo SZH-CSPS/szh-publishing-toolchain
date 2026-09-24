@@ -285,6 +285,7 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `windows\szh-produits.ps1` · `$script:SzhSousDossiers`, `$script:SzhDossiersCommuns` | **Les six chemins de produit et les dossiers hors produit qui suivent la racine active.** Une seule table pour les deux racines : il n'existe aucun chemin qui dépende de l'emplacement actif. Les trois dossiers de la bibliothèque en dérivent, par `$SzhNomDossierReserve` et `$SzhDossiersBibliotheque`. `_Systeme\` n'y figure PAS : voir `Get-SzhDossierSysteme` plus haut. | `Get-SzhEmplacements`, `Initialize-SzhEmplacementsTest` |
 | `windows\szh-migration.ps1` · `Invoke-SzhMigrationArborescence` | La migration AUTOMATIQUE, dans le dossier de **test** seulement (jamais SharePoint), appelée par `update.ps1` à chaque mise à jour. Déplace enfant par enfant (jamais tout un dossier d'un coup, pour qu'un conflit sur un nom n'empêche pas les autres) ; un conflit laisse la source en place et se journalise. Pose aussi un `id:` manquant sur chaque numéro/livre trouvé (`Update-SzhIdsManquants`, jamais un recalcul) et refait le raccourci de chaque numéro déplacé. Idempotente : rien à faire une fois les six dossiers sources vidés. | `update.ps1`, une fois par mise à jour |
 | *(le côté cockpit de la bibliothèque `_NewsUndActu\Fiches\` / `_Statuts\` est hors du périmètre de ce document : il vit dans `vscodium-extension\szh-cockpit`, et n'est pas le fichier `lib\reserve.js` — remplacé, pas ce dépôt PowerShell.)* | | |
+| `windows\szh-epinglage.ps1` · `Invoke-SzhEpinglageHorsLigne` | Marque « Toujours conserver sur cet appareil » (OneDrive Files On-Demand) le numéro en cours de chaque revue et la bibliothèque `_NewsUndActu`, sans geste manuel (§8bis). Jamais bloquant, jamais en simulation. | `open-produit.ps1`, juste après le check-in |
 | `windows\szh-ancrage.ps1` · `Resolve-SzhAncrage` / `Initialize-SzhAncrage` | L'ancrage SharePoint : le dossier `Daten_Allgemein - General`, dont `2_Produkte` **dérive** — cherché (4 niveaux passifs, jamais de fenêtre), pas déduit d'une variable d'environnement. `Initialize-SzhAncrage` seule peut ouvrir un sélecteur de dossier, une fois par lancement. Détail complet : `docs/RAPPORTS-ERREUR.md`, §1. | `Get-SzhBaseRevuesPour`, `windows\open-produit.ps1` |
 | `windows\szh-produits.ps1` · `Measure-SzhNumeros` | Compte les dossiers portant un manifeste (`ausgabe.yaml` pour une revue ou une zeitschrift, `buch.yaml` pour un livre), en cours et aux archives, dans une racine. Un livre compte donc lui aussi dans la bascule automatique `test`/`production`. | `Initialize-SzhEmplacementRevues` |
 | `windows\szh-produits.ps1` · `Get-SzhEmplacements` | Les quatre dossiers de revue du poste (plus les deux du livre), plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-produit.ps1`, `new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` |
@@ -441,6 +442,73 @@ Sens inverse — passer un poste de rédaction en production : poser
 `…\2_Produkte\54_Pronto\Revue` à la main (l'outil ne les suit pas tout seul, et la migration
 automatique de `windows\szh-migration.ps1` ne touche JAMAIS SharePoint), et vérifier
 au passage que la bibliothèque SharePoint est bien synchronisée sous ce nom-là.
+
+---
+
+## 8bis. Épinglage hors ligne (OneDrive Files On-Demand)
+
+Demande de Robin, 24.09.2026 : que tout le monde ait, hors connexion et sans le moindre
+geste, le numéro en cours de chaque revue et la bibliothèque `_NewsUndActu` — sans attendre
+qu'un OneDrive « en ligne seulement » les télécharge au premier clic, un jour de coupure ou
+de trajet.
+
+**Ce qui est marqué « Toujours conserver sur cet appareil ».**
+
+| Quoi | Où | Jamais |
+|---|---|---|
+| Chaque numéro **en cours** des revues | `Revue\`, `Zeitschrift\` de la racine **ACTIVE** (test ou production, selon `emplacementRevues`) | `_Archive\`, `Books\` (voir plus bas) |
+| `_NewsUndActu\Fiches`, `_NewsUndActu\_Statuts` | racine de **PRODUCTION** (`<ancrage>\2_Produkte\54_Pronto`, que l'onglet Archive du cockpit lit toujours), **et** racine active si elle en diffère (mode test) | `_NewsUndActu\_Import-*` |
+
+Un numéro se reconnaît à son `ausgabe.yaml`, même définition que partout ailleurs dans ce
+document. `Books\` n'est **pas** demandé : `$script:SzhEpinglageProduits`
+(`windows\szh-epinglage.ps1`) ne porte que `'revue'` et `'zeitschrift'` ; y ajouter `'livre'`
+suffirait à l'inclure. La bibliothèque est ciblée **par nom** (`Fiches`, `_Statuts`), jamais
+par un balayage de `_NewsUndActu\` entier — `_Import-*` n'est donc jamais concerné.
+
+**La mécanique, mesurée sur ce poste.** Un dossier synchronisé par OneDrive porte l'attribut
+.NET `ReparsePoint` (`0x400`) ; « Toujours conserver sur cet appareil » pose en plus
+`FILE_ATTRIBUTE_PINNED` (`0x80000`), « Libérer de l'espace » pose `FILE_ATTRIBUTE_UNPINNED`
+(`0x100000`) — deux valeurs que `[System.IO.FileAttributes]` ne nomme pas. Pour chaque
+dossier cible dont l'attribut ne porte pas déjà `0x80000` : `attrib.exe +P -U "<dossier>" /S
+/D` (`%SystemRoot%\System32\attrib.exe`), lancé en processus **caché et non attendu**
+(`Start-Process -WindowStyle Hidden`, sans `-Wait`) — le lanceur ne doit jamais attendre un
+téléchargement OneDrive. Un dossier déjà épinglé ne demande rien : ce qu'on y ajoutera
+ensuite hérite de l'épinglage de son dossier. Un dossier hors OneDrive (pas de
+`ReparsePoint`) est ignoré, jamais une erreur.
+
+**Où.** `windows\szh-epinglage.ps1`, dot-sourcé par `windows\szh-common.ps1` (le huitième
+fil, après la migration) :
+
+| Fonction | Rôle |
+|---|---|
+| `Get-SzhDossiersAEpingler` | Pure : racine active + racine de production → la liste des dossiers à examiner. |
+| `Test-SzhDossierEpingle` | L'attribut d'UN dossier → `'epingle'` \| `'aepingler'` \| `'horsonedrive'` \| `'absent'`. |
+| `Start-SzhEpinglageProcessus` | Lance `attrib.exe` pour de vrai, caché et non attendu. |
+| `Invoke-SzhEpinglageHorsLigne` | Orchestration : construit le plan (sauf s'il est fourni), applique la vérification et le lancement à chaque dossier, rend `{ examines; lances; deja; ignores }`. |
+
+Appelée par `windows\open-produit.ps1`, juste après `Invoke-SzhCheckin`, dans un `try` —
+jamais bloquant, jamais une fenêtre (D5) : un `attrib.exe` introuvable ou un dossier hors
+OneDrive ne doit pas empêcher le lanceur de s'ouvrir. Une ligne de journal récapitulative
+**seulement** quand quelque chose a vraiment été lancé — cette passe tourne à chaque
+ouverture, la plupart du temps sans rien à faire.
+
+**Réglage de désactivation**, dans `config.json` (comme les autres booléens, lus par
+`Resolve-SzhBooleenConfig`) :
+
+```json
+{ "epinglageHorsLigne": false }
+```
+
+Absent = actif. Réglé à `false`, rien n'est examiné ni lancé.
+
+**Jamais en simulation** (`SZH_LANCEUR_SIMULE=1`, comme `szh-ancrage.ps1` et
+`szh-rapport.ps1`) : le plan est calculé comme d'habitude, mais aucun `attrib.exe` ne part
+pour de vrai.
+
+`test\js\epinglage-hors-ligne.test.js` éprouve le plan (numéros en cours seulement, jamais
+`_Archive` ni `Books` ni `_Import-*`), la distinction production/racine active, le réglage
+désactivé, la simulation, et les deux issues « lancé »/« déjà épinglé » — vérification
+d'attribut et lancement de processus injectés, jamais un vrai `attrib.exe` dans un test.
 
 ---
 

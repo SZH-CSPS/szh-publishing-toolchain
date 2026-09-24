@@ -3,14 +3,17 @@
 
 $ErrorActionPreference = 'Stop'
 
-# Les sept fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
+# Les huit fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
 # s'en serve, l'ancrage SharePoint avant szh-produits.ps1 qui s'en sert
 # (Get-SzhBaseRevuesPour -> Resolve-SzhAncrage) et avant szh-rapport.ps1 qui réutilise cette
 # même résolution passive pour le dossier des rapports d'erreur, les produits après les
 # fonctions de config qu'ils appellent (résolues à l'appel, jamais à la lecture), le check-in
 # après les produits dont il tire la racine active (Get-SzhBaseRevuesPour), le shell après le
 # check-in car il se sert des précédents, la migration EN DERNIER car
-# Invoke-SzhMigrationArborescence réutilise Set-SzhRaccourciRevue (szh-shell.ps1).
+# Invoke-SzhMigrationArborescence réutilise Set-SzhRaccourciRevue (szh-shell.ps1), et
+# l'épinglage hors ligne tout à la fin : Get-SzhDossiersAEpingler ne se sert que des produits
+# (Get-SzhBaseRevuesPour, $SzhSousDossiers, $SzhNomDossierReserve), mais n'a de sens qu'une
+# fois l'arborescence de test migrée dans sa forme neuve.
 # $SzhBaseUtilisateur (plus bas) est calculé après ce dot-source et n'en dépend pas, mais
 # szh-taches.ps1 et szh-rapport.ps1 (file d'attente hors ligne), dot-sourcés ensuite ou juste
 # ici, le lisent dès leur premier appel, jamais à leur chargement.
@@ -21,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\szh-checkin.ps1"
 . "$PSScriptRoot\szh-shell.ps1"
 . "$PSScriptRoot\szh-migration.ps1"
+. "$PSScriptRoot\szh-epinglage.ps1"
 # Affectation, pas -bor : un -bor sur la valeur en place garde SSL3/TLS 1.0 si le poste les
 # avait déjà, aux côtés de TLS 1.2. Tls13 en plus quand l'énumération de ce .NET la connaît
 # -- absente sur des postes plus anciens, d'où le try/catch plutôt qu'une casse à l'ouverture

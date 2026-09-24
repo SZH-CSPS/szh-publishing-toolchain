@@ -310,6 +310,15 @@ try { Clear-SzhRapportsEnAttente } catch { }
 # lanceur s'ouvre quand meme -- l'inventaire est un confort, pas une condition d'ouverture.
 try { [void](Invoke-SzhCheckin -OrigineAncrage $ancrageResolu.origine) } catch { }
 
+# ---- Epinglage hors ligne (OneDrive Files On-Demand) ----
+# Le numero EN COURS de chaque revue et la bibliotheque _NewsUndActu doivent etre disponibles
+# hors connexion sans geste manuel (Robin, 24.09.2026) -- voir windows/szh-epinglage.ps1. Juste
+# apres le check-in : l'ancrage SharePoint vient d'etre resolu et memorise (Resolve-SzhAncrage
+# est memoise en portee script), Get-SzhDossiersAEpingler le retrouve donc sans nouveau
+# balayage du disque. Jamais bloquant, jamais une fenetre (D5) : un attrib.exe introuvable ou
+# un dossier hors OneDrive ne doit pas empecher le lanceur de s'ouvrir.
+try { [void](Invoke-SzhEpinglageHorsLigne) } catch { }
+
 # ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
 # Deux verbes arrivent ici (Get-SzhLien, szh-produits.ps1), et par deux portes differentes :
 #   * "traduction" vient d'un courriel, par le gestionnaire de protocole. Revue et
