@@ -11,6 +11,16 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.3.1
+
+**Hors ligne par défaut.** À chaque lancement, le lanceur marque « Toujours conserver sur cet
+appareil » (OneDrive) les numéros en cours de `Revue\` et `Zeitschrift\` de la racine active,
+et `_NewsUndActu\Fiches` et `_NewsUndActu\_Statuts` (production, et racine de test en mode
+test) — seulement ceux qui ne le sont pas encore, en arrière-plan, jamais attendu
+(`windows/szh-epinglage.ps1`). Désactivable par `"epinglageHorsLigne": false` dans
+`config.json`. Mesuré sur un dossier OneDrive jetable : le dossier, son contenu et les fichiers
+créés ensuite sont épinglés.
+
 ## 2.3.0
 
 **Actualité : navigation par l'arbre.** La section ACTUALITÉ de l'arbre liste « Documentation
