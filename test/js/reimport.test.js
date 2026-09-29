@@ -24,7 +24,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { sauter, sansPandoc } = require('./gardes');
+const { sauter, sansPandoc, bashDuPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -313,20 +313,9 @@ function interpretePython() {
 // échouerait pour une raison de chemin, non de contrat.
 function bashCompatible() {
   // On mesure l'opération réelle, pas une approximation : Python lancera
-  // « bash <chemin>/import-docx.sh » avec un chemin de cette forme-là.
-  let dossier = null;
-  try {
-    dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-sonde-'));
-    const script = path.join(dossier, 'sonde.sh');
-    const LF = String.fromCharCode(10);
-    fs.writeFileSync(script, '#!/bin/bash' + LF + 'exit 7' + LF);
-    const r = cp.spawnSync('bash', [script], { encoding: 'utf8' });
-    return !r.error && r.status === 7;
-  } catch (e) {
-    return false;
-  } finally {
-    if (dossier) { fs.rmSync(dossier, { recursive: true, force: true }); }
-  }
+  // « bash <chemin>/import-docx.sh » avec un chemin de cette forme-là — et c'est depuis
+  // Python qu'on sonde, Node ne trouvant pas le même bash (bashDuPython, test/js/gardes.js).
+  return bashDuPython(PYTHON);
 }
 
 // Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas

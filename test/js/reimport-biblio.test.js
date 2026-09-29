@@ -27,7 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { sauter, sansPandoc } = require('./gardes');
+const { sauter, sansPandoc, bashDuPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -162,20 +162,10 @@ function interpretePython() {
 }
 
 // Un bash qui comprend les chemins que Python lui passera : sous Windows, `bash` est
-// souvent la passerelle WSL, qui ne sait rien d'un chemin « C:\… ».
+// souvent la passerelle WSL, qui ne sait rien d'un chemin « C:\… ». Sondé depuis Python,
+// jamais depuis Node, qui ne trouve pas le même bash (voir bashDuPython, test/js/gardes.js).
 function bashCompatible() {
-  let dossier = null;
-  try {
-    dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-sonde-'));
-    const script = path.join(dossier, 'sonde.sh');
-    fs.writeFileSync(script, '#!/bin/bash' + LF + 'exit 7' + LF);
-    const r = cp.spawnSync('bash', [script], { encoding: 'utf8' });
-    return !r.error && r.status === 7;
-  } catch (e) {
-    return false;
-  } finally {
-    if (dossier) { fs.rmSync(dossier, { recursive: true, force: true }); }
-  }
+  return bashDuPython(PYTHON);
 }
 
 // Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas

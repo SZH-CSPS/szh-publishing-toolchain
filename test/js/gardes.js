@@ -381,9 +381,35 @@ if (SIMULER) {
   }
 }
 
+// ---- Le bash que PYTHON lancera ---------------------------------------------------------
+// reimporter.py lance `bash <chemin Windows>/import-docx.sh` par subprocess. Sous Windows,
+// Python et Node ne trouvent pas le même `bash` : CreateProcess cherche dans System32 AVANT
+// le PATH et tombe sur la passerelle WSL, qui ne sait rien d'un chemin « C:\… », là où Node
+// (libuv, PATH seul) trouve celui de Git. Sonder depuis Node validait donc un bash que le
+// script n'utilise jamais : la conversion échouait pour une raison de chemin, non de contrat
+// (sortie 1, « /bin/bash: C:Users…import-docx.sh: No such file or directory »). La sonde passe
+// donc par l'interprète même que le test lancera, pour mesurer l'opération réelle.
+function bashDuPython(python) {
+  if (!python) { return false; }
+  let dossier = null;
+  try {
+    dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-sonde-'));
+    const script = path.join(dossier, 'sonde.sh');
+    fs.writeFileSync(script, '#!/bin/bash' + String.fromCharCode(10) + 'exit 7' + String.fromCharCode(10));
+    const r = spawnSync(python, ['-c',
+      'import subprocess, sys; sys.exit(subprocess.call(["bash", sys.argv[1]]))', script],
+    { encoding: 'utf8', timeout: 20000, windowsHide: true });
+    return !r.error && r.status === 7;
+  } catch (e) {
+    return false;
+  } finally {
+    if (dossier) { fs.rmSync(dossier, { recursive: true, force: true }); }
+  }
+}
+
 module.exports = {
   POWERSHELL, sansPowerShell, PYTHON, sansPython, sansPandocWsl, sansPandoc,
-  sansVale, sansVSCodium, sansProduction, exiger, sauter,
+  sansVale, sansVSCodium, sansProduction, exiger, sauter, bashDuPython,
   // Fonction, pas une valeur : le pliage n'est vérifié qu'à la demande (un seul appel
   // pandoc, jamais fait pour un fichier qui ne s'en sert pas). Appeler sansPliage() rend
   // `null` si ce pandoc est sain, sinon la raison.

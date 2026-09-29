@@ -38,8 +38,6 @@ const NETTOYEUR = path.join(RACINE, 'pipeline', 'manuscrit-nettoyer.py');
 const GENERER_ORTHOGRAPHE = path.join(RACINE, 'outils-dev', 'lexique', 'generer-orthographe.py');
 const CSV_ORTHOGRAPHE = path.join(RACINE, 'pipeline', 'vale', 'lexique', 'orthographe-rectifiee.csv');
 const STYLES_ORTHOGRAPHE = path.join(RACINE, 'pipeline', 'vale', 'styles', 'CSPS', 'Orthographe');
-const CORPUS_3VF = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A',
-  '3_VF_Chanier-Delorme_Article CSPS_290626.docx');
 const DISTRO = 'SZH-Publishing';
 
 function python(args, entree) {
@@ -412,8 +410,10 @@ function ligneUniqueJson(stdout) {
 test('chaîne complète (DANS la WSL) : TraitUnion et Orthographe apparaissent dans '
   + "alertes.liste avec dans_docx: 'revision'",
   { skip: sansPython || sansPandocWsl }, () => {
-    assert.ok(fs.existsSync(CORPUS_3VF), 'le manuscrit du corpus doit exister : ' + CORPUS_3VF);
-
+    // Pas d'exigence sur le fichier du corpus (tmp/corpus-relecture/lot-A) : ce contrôle
+    // n'en lit rien, son paragraphe est recopié ci-dessus (PARAGRAPHE_REEL_3VF). tmp/ est
+    // hors git et s'efface sans prévenir ; exiger qu'il existe faisait échouer le test pour
+    // un fichier dont il ne dépend pas.
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-orthographe-chaine-'));
     try {
       const entree = path.join(base, 'article.docx');
