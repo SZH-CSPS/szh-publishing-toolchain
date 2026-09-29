@@ -11,6 +11,13 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.4.1
+
+**La roue « Analyse en cours… » tourne sur tous les postes.** Quand Windows a coupé ses
+animations (« Afficher les animations dans Windows »), Chromium signale le mouvement réduit et
+la roue était remplacée par une pulsation invisible : elle passait pour figée. Elle tourne
+désormais toujours, deux fois plus lentement en mouvement réduit.
+
 ## 2.4.0
 
 **« À corriger » lisible et à jour.** Chaque message : un titre court, les objets en cause
