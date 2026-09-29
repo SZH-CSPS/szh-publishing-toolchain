@@ -218,7 +218,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            make python3 python3-venv \
+            make patch python3 python3-venv \
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 libffi8 fontconfig \
             fonts-dejavu-core
 
@@ -258,6 +258,10 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/weasyprint"
           "$RUNNER_TEMP/weasyprint/bin/pip" install --quiet -r image/requirements.txt
+          # Le correctif SZH, exactement comme image/Containerfile (en-têtes fusionnés,
+          # images décoratives) : sans lui, la porte PDF/UA jugerait un autre WeasyPrint
+          # que celui de la flotte. Échoue si le patch ne s'applique plus.
+          sh image/patch-weasyprint.sh "$RUNNER_TEMP/weasyprint/bin/python" image/patches
           # Le Makefile appelle `weasyprint` par son nom : il lui faut le PATH.
           echo "$RUNNER_TEMP/weasyprint/bin" >> "$GITHUB_PATH"
 
@@ -392,6 +396,13 @@ jobs:
       # système suffit, pas besoin du venv WeasyPrint.
       - name: Vérifier la table de métriques du titre
         run: python3 test/metriques-titre.py --verifier
+
+      # Le correctif SZH de WeasyPrint (image/patches/, posé à l'installation plus haut),
+      # jugé sur le résultat : veraPDF avant tout, puis l'arbre de structure. Le banc ne
+      # contient ni th fusionné ni image décorative dans un tableau : sans ce contrôle,
+      # un patch perdu ne ferait tomber aucune porte.
+      - name: Vérifier le correctif WeasyPrint (en-têtes fusionnés, images décoratives)
+        run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" test/weasyprint-patch-check.py
 
       # Les deux LIVRES du banc. Ils gardent ce qu'un article ne peut pas garder : la
       # numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de

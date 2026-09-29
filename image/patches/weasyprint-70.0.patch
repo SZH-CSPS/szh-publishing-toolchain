@@ -1,0 +1,158 @@
+Correctif SZH de WeasyPrint 70.0 — balisage PDF/UA des tableaux et des images décoratives.
+
+Appliqué par image/patch-weasyprint.sh à la construction de l'image (image/Containerfile)
+et par la CI (.github/workflows/ci.yml), sur le site-packages du venv WeasyPrint :
+  patch -d <site-packages> -p1 --forward --batch --fuzz=0 < weasyprint-70.0.patch
+Le nom du fichier porte la version : une montée de WeasyPrint sans patch de même version
+fait échouer la construction, un patch qui ne s'applique plus au caractère près aussi.
+
+1. weasyprint/pdf/tags.py, « Link table cells to related headers » : un th n'était
+   inscrit qu'à sa colonne de départ, sans parcourir colspan (ni rowspan pour un en-tête
+   de ligne), et le compteur de colonnes perdait le fil sous un rowspan. Un th colspan=2
+   laissait donc sa seconde colonne en /Headers [] — PDF/UA-1 7.5-1. Mesuré sur massie
+   2025-02, tables/table-01.html (« Punkte », colspan=2). Le correctif reprend la
+   position de grille déjà calculée par formatting_structure/build.py (cell.grid_x),
+   inscrit le th sur toutes les colonnes ou lignes qu'il couvre et, quand une cellule
+   porte l'attribut HTML `headers` qui désigne des th du tableau, s'en sert en priorité.
+
+2. weasyprint/pdf/stream.py + tags.py : une <img> déclarée décorative — alt="" ET
+   role="presentation" (ou "none"), les DEUX — est peinte en artefact (/Artifact BMC) et
+   sort de l'arbre de structure, au lieu d'une /Figure sans /Alt (PDF/UA-1 7.3-1). Le
+   rendu ne bouge pas d'un pixel. alt="" seul reste une /Figure signalée comme avant :
+   l'import l'écrit pour toute image sans description, ce n'est pas une décision.
+
+--- a/weasyprint/pdf/stream.py
++++ b/weasyprint/pdf/stream.py
+@@ -11,6 +11,23 @@
+ from .fonts import Font
+ 
+ 
++def is_decorative_image(box):
++    """SZH : image décorative déclarée, à sortir en artefact et non en /Figure.
++
++    Les DEUX marques sont exigées : alt="" (présent et vide) ET role="presentation" (ou
++    son synonyme ARIA "none"). alt="" seul reste ambigu — l'import l'écrit pour toute
++    image sans description — et continue d'être signalé comme avant.
++
++    """
++    element = getattr(box, 'element', None)
++    if element is None or getattr(box, 'element_tag', None) != 'img':
++        return False
++    role = (element.attrib.get('role') or '').strip().lower().split()
++    return (
++        element.attrib.get('alt') == '' and bool(role) and
++        role[0] in ('presentation', 'none'))
++
++
+ class Stream(pydyf.Stream):
+     """PDF stream object with extra features."""
+     def __init__(self, fonts, page_rectangle, resources, images, tags, color_profiles,
+@@ -281,6 +298,11 @@
+ 
+     @contextmanager
+     def marked(self, box, tag):
++        if tag == 'Figure' and is_decorative_image(box):
++            # SZH : décor déclaré, hors de l'arbre de structure (voir tags.py).
++            with self.artifact():
++                yield
++            return
+         if self._tags is not None:
+             property_list = None
+             mcid = len(self._tags)
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -7,6 +7,7 @@
+ from ..formatting_structure import boxes
+ from ..layout.absolute import AbsolutePlaceholder
+ from ..logger import LOGGER
++from .stream import is_decorative_image
+ 
+ 
+ def add_tags(pdf, document, pdf_version, page_streams):
+@@ -130,6 +131,11 @@
+     if isinstance(box, AbsolutePlaceholder):
+         box = box._box
+ 
++    # SZH : une image décorative déclarée est peinte en artefact (Stream.marked) et n'a
++    # donc ni MCID ni place dans l'arbre : pas de /Figure sans /Alt (PDF/UA 7.3-1).
++    if isinstance(box, boxes.ReplacedBox) and is_decorative_image(box):
++        return
++
+     element_tag = None if box.element is None else box.element_tag
+     tag = _get_pdf_tag(element_tag)
+ 
+@@ -326,42 +332,49 @@
+         rows = tuple(_get_rows(box))
+ 
+         # Find column and row headers.
+-        colspans = defaultdict(int)
++        # SZH : un en-tête est inscrit sur TOUTES les colonnes (colspan) ou lignes
++        # (rowspan) qu'il couvre, à la position de grille déjà calculée par
++        # formatting_structure/build.py (cell.grid_x), et non plus à sa seule colonne de
++        # départ : un th colspan=2 laissait sa seconde colonne sans /Headers (PDF/UA
++        # 7.5-1). Les th qui portent un id HTML sont retenus pour l'attribut `headers`.
++        header_ids = {}
+         for i, row in enumerate(rows):
+-            j = 0
+             for cell in row.children:
+                 if cell.element is not None and cell.element_tag == 'th':
++                    j = cell.grid_x
+                     key = pydyf.String(f'{element.number}-{i}-{j}')
+                     cell.mark['ID'] = key
+-                    if cell.element.attrib.get('scope') == 'row':
+-                        row_headers[i].append(key)
++                    if html_id := cell.element.attrib.get('id'):
++                        header_ids[html_id] = key
++                    if cell.element.attrib.get('scope') in ('row', 'rowgroup'):
++                        for span in range(cell.rowspan):
++                            row_headers[i + span].append(key)
+                     else:
+-                        column_headers[j].append(key)
+-                for _ in range(cell.colspan):
+-                    colspans[j] = cell.rowspan - 1
+-                    j += 1
+-                if colspans[j]:
+-                    j += 1
+-                    colspans[j] -= 1
++                        for span in range(cell.colspan):
++                            column_headers[j + span].append(key)
+ 
+         # Map headers to cells.
+-        colspans = defaultdict(int)
++        # SZH : l'attribut HTML `headers` de la cellule, quand il désigne des th de ce
++        # tableau, l'emporte sur la déduction par position ; sinon, repli positionnel.
+         for i, row in enumerate(rows):
+-            j = 0
+             for cell in row.children:
+                 if cell.element is not None and cell.element_tag == 'td':
+                     headers = [
+-                        header for span in range(cell.rowspan)
+-                        for header in row_headers[i+span]]
+-                    headers += [
+-                        header for span in range(cell.colspan)
+-                        for header in column_headers[j+span]]
+-                    cell.mark['A']['Headers'] = pydyf.Array(headers)
+-                for _ in range(cell.colspan):
+-                    colspans[j] = cell.rowspan - 1
+-                    j += 1
+-                if colspans[j]:
+-                    j += 1
+-                    colspans[j] -= 1
++                        header_ids[token]
++                        for token in cell.element.attrib.get('headers', '').split()
++                        if token in header_ids]
++                    if not headers:
++                        j = cell.grid_x
++                        headers = [
++                            header for span in range(cell.rowspan)
++                            for header in row_headers[i + span]]
++                        headers += [
++                            header for span in range(cell.colspan)
++                            for header in column_headers[j + span]]
++                    unique_headers = []
++                    for header in headers:
++                        if not any(header is seen for seen in unique_headers):
++                            unique_headers.append(header)
++                    cell.mark['A']['Headers'] = pydyf.Array(unique_headers)
+ 
+     yield element
