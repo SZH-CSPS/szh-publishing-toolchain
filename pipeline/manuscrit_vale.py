@@ -249,10 +249,21 @@ def _dans_une_parenthese(ligne_texte, position):
     return any(m.start() <= position < m.end() for m in _RE_PARENTHESE.finditer(ligne_texte))
 
 
+# Silhouette d'une ENTRÉE de bibliographie : « Nom, I., [Nom, I. &] … (2021) » en tête de
+# ligne. Le « & » y est la norme APA, jamais du texte courant — même quand la CLI n'a pas su
+# reconnaître l'intitulé de la bibliographie (29.09.2026 : « 3 Literatur (gemäss
+# Redaktionsrichtlinien) », où « Baumann, M., Bolz, T. & Albers, V. (2021) » recevait « und »).
+_RE_LIGNE_REFERENCE = re.compile(
+    r"^\s*[A-ZÀ-ÞŒ][\w'’\- ]{0,40},\s*(?:[A-ZÀ-ÞŒ]\.[\s\-]*)+.{0,300}?"
+    r"\((?:19|20)\d{2}[a-z]?[^()]*\)")
+
+
 def _raffiner_esperluette_hors_parentheses(constat, ligne_texte):
     debut = constat['_span0'][0]
     if _dans_une_parenthese(ligne_texte, debut):
         return None  # "&" correctement entre parenthèses : ce n'est pas cette règle-là
+    if _RE_LIGNE_REFERENCE.match(ligne_texte):
+        return None  # une référence, pas du texte courant
     return {'found': '&', 'suggested': 'et', 'action': 'fix'}
 
 
@@ -292,6 +303,8 @@ def _raffiner_kaufmannsund_ausserhalb_klammern(constat, ligne_texte):
     debut = constat['_span0'][0]
     if _dans_une_parenthese(ligne_texte, debut):
         return None  # "&" correctement entre parenthèses : ce n'est pas cette règle-là
+    if _RE_LIGNE_REFERENCE.match(ligne_texte):
+        return None  # eine Literaturangabe, kein Lauftext (voir _RE_LIGNE_REFERENCE)
     return {'found': '&', 'suggested': 'und', 'action': 'fix'}
 
 

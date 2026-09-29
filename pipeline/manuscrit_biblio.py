@@ -704,8 +704,17 @@ RE_NARRATIF = re.compile(
 # « cf. », l'allemand « vgl. »/« siehe ») — un sous-ensemble minimal d'OUVREURS de
 # szh-citations.lua, suffisant pour ne pas prendre un nombre en prose (« voir tableau 2020 »)
 # pour une citation : le nom qui suit doit de toute façon commencer par une majuscule.
-_OUVREURS_LOCAUX = ('voir', 'cf', 'vgl', 'siehe', 'selon', 'nach', 'gemäss')
-RE_OUVREUR = re.compile(r'^\s*(?:' + '|'.join(_OUVREURS_LOCAUX) + r')\.?\s+', re.IGNORECASE)
+# Des FRAGMENTS de regex, pas des mots littéraux : les abréviations à point interne (« z. B. »,
+# « e. g. », « p. ex. ») s'écrivent avec ou sans espace. Plusieurs ouvreurs peuvent se suivre
+# (« vgl. z. B. », « voir aussi ») : RE_OUVREUR les consomme tous. Mesuré sur gzdf_Huttner :
+# « (z. B. Kristen, 2005; …) » laissait « z. B. Kristen » en tête de zone, sans majuscule
+# initiale, et la citation disparaissait — Kristen 2005 était alors déclarée non citée.
+_OUVREURS_LOCAUX = ('voir', 'cf', 'vgl', 'siehe', 'selon', 'nach', 'gemäss', 'see',
+                    'auch', 'aussi', 'also', 'notamment', 'insbesondere', 'etwa',
+                    'beispielsweise', 'bspw', r'z\.\s?B', 'zB', r'zum\s+Beispiel',
+                    r'e\.\s?g', r'p\.\s?ex', r'par\s+ex(?:emple)?', r'i\.\s?e', r'u\.\s?a')
+RE_OUVREUR = re.compile(r'^\s*(?:(?:' + '|'.join(_OUVREURS_LOCAUX) + r')\.?,?\s+)+',
+                        re.IGNORECASE)
 
 
 def _premier_auteur(zone):
@@ -829,12 +838,21 @@ def croiser(citations, references):
                 if correspondances:
                     cle = cle_large
         if not correspondances:
+            message = ('Cette citation ne correspond à aucune référence de la '
+                       'bibliographie : « %s ».' % c.get('texte'))
+            # Même nom, autre année : c'est presque toujours une coquille d'année, pas une
+            # référence manquante — le dire (mesuré sur gzdf_Huttner : « Beukelman &
+            # Mirenda, 1993 » dans le texte, 2013 dans la bibliographie).
+            annees_meme_nom = sorted({a for (n, a) in refs_par_cle if n == cle[0]})
+            if annees_meme_nom:
+                message += (' La bibliographie porte « %s » avec l\'année %s : vérifier '
+                            'l\'année.' % (c['nom_premier_auteur'],
+                                            ', '.join(str(a) for a in annees_meme_nom)))
             alertes.append({
                 'rule': 'APA.CitationAbsente', 'severity': 'error', 'action': 'comment',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': None,
-                'message': 'Cette citation ne correspond à aucune référence de la '
-                           'bibliographie : « %s ».' % c.get('texte'),
+                'message': message,
             })
             continue
         citees.add(cle)

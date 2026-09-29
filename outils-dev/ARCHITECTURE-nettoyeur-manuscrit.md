@@ -354,6 +354,11 @@ documents déjà remplis à l'ancienne forme — avec un avertissement invitant 
   retirée du corps, **avec sa mise en forme** (italique, exposant…), jamais aplatie en texte
   plat. Une légende répartie sur deux paragraphes (un titre bref qui matche `RE_LEGENDE` à lui
   seul, suivi du texte proprement dit) est reconnue comme UNE seule légende.
+  **Révision du 29.09.2026** : une légende séparée de son bloc par un ou deux paragraphes VIDES
+  (« Abbildung 1: Schatzkarte… », ¶ vide, image) est retrouvée par un second passage
+  (`_legende_apres_vides()`, pour les seuls blocs restés sans légende). Sauter les vides rend
+  une légende atteignable depuis deux blocs : c'est la convention du document, au-dessus ou
+  au-dessous à la majorité, qui décide du sens essayé d'abord (à égalité : au-dessous).
 - Une image flottante ou dans une zone de texte est extraite si possible, **signalée toujours**.
 - Une image DANS UNE CELLULE de tableau reste en ligne dans son paragraphe, jamais extraite en
   bloc figure séparé (aucun cas mesuré sur le corpus réel ni sur le gabarit livré).
@@ -519,6 +524,31 @@ ce qui répare l'ancienne limite du 21.09 (« le même auteur écrit sous les de
 deux fiches », mesurée sur `2-fin-de-document_Article_RSPS.docx`). Égalité d'ensembles avec un
 ordre différent → l'ordre de la fiche à la **meilleure confiance** l'emporte, et la trace porte
 une entrée `ordre_repris_bloc_final`.
+
+**Troisième voie — la fiche en tableau (29.09.2026, `tmp/docx-cleaner-exemple/gzdf_Huttner`).**
+Une autrice peut poser sa fiche dans un TABLEAU (photo dans une cellule ; nom, fonctions,
+institution, e-mail dans l'autre), et pas forcément en fin de document : chez Huttner, le
+tableau précède « Literatur ». Les deux voies ci-dessus s'arrêtent sur tout Tableau, par
+construction : rien n'était reconnu (`bloc_auteurs_final_absent`). `_tableaux_auteurs()` passe
+désormais EN PREMIER (avant les deux voies, pour que la propagation d'ordre voie tout le
+document) et ne retient un tableau situé après la zone d'en-tête que s'il est **ancré** :
+
+- il nomme une personne DÉJÀ présente dans la byline (même e-mail, ou même ensemble de jetons) —
+  sans byline, aucun tableau n'est jamais retenu ;
+- il porte au moins un e-mail, un ORCID ou une institution ;
+- toutes ses lignes font moins de `SEUIL_LIGNE_AUTEUR_FINAL`, et il en compte au plus
+  `MAX_LIGNES_TABLEAU_AUTEURS` (30).
+
+Dans ce tableau, une ligne n'ouvre une fiche que si elle nomme une personne de la byline
+(`noms_attendus` de `_analyser_bloc_auteurs()`) : sans cette restriction, « Fachkraft
+Unterstützte Kommunikation » (deux mots capitalisés) devenait une personne. Le tableau retenu
+est consommé en entier, photo comprise (trace `bloc_auteurs_final_tableau`).
+
+`_fusionner_info()` corrige au passage une supposition : quand une ligne sans mot d'institution
+avait été rangée en institution (deuxième ligne d'info) et qu'une vraie institution arrive
+ensuite, la supposition rejoint la fonction. `RE_INSTITUTION` reconnaît aussi `Stiftung`,
+`Verein`, `Association` et les formes juridiques `AG`/`GmbH`/`SA`/`Sàrl`/`e. V.`, sensibles à
+la casse (« sa fonction » n'est pas une société).
 
 ---
 
@@ -1071,6 +1101,35 @@ Trois défauts indépendants, mesurés sur `tmp/docx-cleaner-error/1408_Alves.do
    (`editeurs_ouvrage` non vide) — sinon la clause s'écrit directement `In *Conteneur*…`, sans
    marqueur creux ni virgule orpheline. Mesuré : `Alves, I., & Fernandes, D. (2022)…`, entrée par
    ailleurs bien formée et légitimement en confiance haute, rendait `In (Ed.), *Conteneur*…`.
+
+### Révision du 29.09.2026 — préfixes d'exemple, citations en note, année divergente
+
+Mesuré sur `tmp/docx-cleaner-exemple/gzdf_Huttner` (5 `APA.ReferenceNonCitee`, dont 4 fausses) :
+
+1. **Préfixes d'exemple** : « (z. B. Kristen, 2005; …) » laissait la zone d'auteurs commencer
+   par une minuscule, `_premier_auteur()` la rejetait, la citation disparaissait. `RE_OUVREUR`
+   écarte maintenant, en série (« vgl. z. B. », « voir aussi »), `z. B.`/`zB`/`zum Beispiel`,
+   `e. g.`, `i. e.`, `p. ex.`/`par exemple`, `u. a.`, `bspw.`/`beispielsweise`, `etwa`,
+   `insbesondere`, `notamment`, `auch`/`aussi`/`also`, `see`, en plus des ouvreurs d'origine.
+2. **Citations en note et en cellule** : la CLI ne passait à `analyser_bibliographie()` que les
+   paragraphes de premier niveau. Elle lui passe désormais les mêmes paragraphes que Vale (notes
+   et cellules comprises), et les alertes de note reçoivent `note_id`/`note_numero` par
+   `_marquer_notes_dans_alertes()`. Hedderich, Kaiser-Mantel et Nonn, cités seulement dans la
+   note 1, n'étaient plus « jamais cités ».
+3. **Année divergente** : `APA.CitationAbsente` garde sa règle et sa sévérité, mais son message
+   dit maintenant quand la bibliographie porte le même premier auteur avec une autre année
+   (« Beukelman & Mirenda, 1993 » contre 2013). Le « & » n'y était pour rien.
+4. **Intitulé à complément** : « 3 Literatur (gemäss Redaktionsrichtlinien) » n'était pas un
+   titre de bibliographie (comparaison exacte sur le texte aplati). Toute la bibliographie
+   passait alors pour du Lauftext, et `SZH.APA.KaufmannsUndAusserhalbKlammern` remplaçait le
+   « & » APA par « und ». Les trois copies de la comparaison propres au nettoyeur retirent
+   désormais un complément final entre parenthèses ou crochets
+   (`pronto_modele.sans_complement_titre()`). La chaîne de compilation (`szh-citations.lua`,
+   `pronto_modele._titre_est_biblio()`) garde sa comparaison exacte. En renfort, les
+   raffineurs des deux règles « & hors parenthèses » (fr et de) ignorent toute ligne qui a la
+   silhouette d'une référence (`_RE_LIGNE_REFERENCE` de `manuscrit_vale.py`).
+5. **`Forme.StyleNominal.Zeitschrift` retirée du catalogue** (décision de Robin) : un indice de
+   style jugé inutile, qui commentait presque chaque paragraphe allemand.
 
 ### Ce qui n'a pas pu être fait ici
 

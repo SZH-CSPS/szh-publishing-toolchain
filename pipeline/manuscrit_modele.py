@@ -588,6 +588,7 @@ def _est_titre_biblio(texte, lexique):
     cette fonction-là est privée à son propre module (convention du tiret bas du dépôt), donc
     non importable — seule la comparaison, minuscule, est réécrite ici sur les briques
     PUBLIQUES (lire_titres_bib, RE_NUM_TITRE_BIBLIO, PREFIXES_TITRE_BIBLIO, aplatir)."""
+    texte = pronto_modele.sans_complement_titre(texte)
     plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
     if plat in lexique:
         return True

@@ -286,6 +286,24 @@ for (const cas of CAS) {
     });
 }
 
+// 29.09.2026 — « 3 Literatur (gemäss Redaktionsrichtlinien) » n'était pas reconnu comme
+// intitulé de bibliographie : ses références passaient pour du Lauftext, et le « & » APA de
+// « Baumann, M., Bolz, T. & Albers, V. (2021) » recevait « und ». Même si l'intitulé échappe
+// encore au lexique, une ligne à silhouette de référence ne doit JAMAIS recevoir la règle.
+test('« & » d’une ligne à silhouette de référence, lue comme corps : aucune alerte (de et fr)',
+  { skip: sansVale }, () => {
+    const { sortie: de } = analyserCorps(
+      'Baumann, M., Bolz, T. & Albers, V. (2021). Verstehende Diagnostik in der Pädagogik.', 'de');
+    assert.deepStrictEqual(
+      de.alertes.filter((a) => a.rule === 'SZH.APA.KaufmannsUndAusserhalbKlammern'), [],
+      JSON.stringify(de.alertes));
+    const { sortie: fr } = analyserCorps(
+      'Dupont, M., & Martin, P. (2020). Une étude de cas. Éditions X.', 'fr');
+    assert.deepStrictEqual(
+      fr.alertes.filter((a) => a.rule === 'CSPS.APA.EsperluetteHorsParentheses'), [],
+      JSON.stringify(fr.alertes));
+  });
+
 // ---------------------------------------------------------------------------------
 // Audit des ancrages (demande du coordinateur, 22.09.2026) — défaut RÉEL mesuré sur le
 // corpus : _raffiner_et_dans_parentheses()/_raffiner_und_in_klammern() NARROWENT `found` à

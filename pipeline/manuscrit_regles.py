@@ -152,11 +152,9 @@ TITRE_CHAPITRE_MAX_ZEITSCHRIFT = 80
 # la règle « signal » côté zeitschrift, qui ne peut que renvoyer à une décision humaine.
 NB_AUTEURS_TRONCATURE = 20
 
-# Forme.StyleNominal (allemand, indice) : nombre d'occurrences de suffixes de nominalisation
-# (-ung/-heit/-keit) DANS UN MÊME PARAGRAPHE à partir duquel on juge le style trop nominal.
-# Un seul mot en -ung est une langue allemande normale ; ce seuil borne le bruit — voir le
-# principe anti-bruit du §7 (« deux cents signalements rendent l'outil détestable »).
-SEUIL_STYLE_NOMINAL = 3
+# Forme.StyleNominal.Zeitschrift (nominalisations -ung/-heit/-keit par paragraphe) : RETIRÉE
+# le 29.09.2026, sur décision de Robin — un indice de style jugé inutile par la rédaction, qui
+# commentait presque chaque paragraphe allemand. Ne pas la réintroduire sans sa demande.
 
 
 # ---------------------------------------------------------------------------------
@@ -422,26 +420,6 @@ def _detecter_tableau_fusionne(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Forme.StyleNominal (allemand, indice) : nominalisations concentrées dans un même paragraphe.
-
-RE_NOMINALISATION = re.compile(r'\b\w+(?:ung|heit|keit)\b', re.IGNORECASE)
-
-
-def _detecter_style_nominal_de(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        occurrences = list(RE_NOMINALISATION.finditer(texte))
-        if len(occurrences) >= SEUIL_STYLE_NOMINAL:
-            constats.append({'para': p.get('source'),
-                              'span': [occurrences[0].start(), occurrences[-1].end()],
-                              'found': '%d nominalisations (-ung/-heit/-keit)'
-                                       % len(occurrences),
-                              'suggested': 'reformuler avec des verbes ou adjectifs'})
-    return constats
-
-
-# ---------------------------------------------------------------------------------
 # Entête — ordre prénom/nom (§6.3 du contrat de lot D, CONTRAT-noms.md). Aucune des deux
 # règles ci-dessous ne vient d'un chapitre des deux Redaktionsrichtlinien (c'est un contrôle
 # TECHNIQUE sur l'attribution automatique, pas éditorial) — voir le `chapitre` posé au
@@ -568,11 +546,6 @@ CATALOGUE = [
           'Revue: 2.4.3 (hérité — aucun chapitre équivalent dans le document allemand)',
           _detecter_tableau_fusionne,
           '', 'Tabelle mit verschmolzenen Zellen (aus der Revue übernommen).'),
-
-    Regle('Forme.StyleNominal.Zeitschrift', 'Forme', 'de', 'zeitschrift', 'suggestion',
-          'comment', 'Zeitschrift: Sprachliche Richtlinien / Nominalstil vermeiden',
-          _detecter_style_nominal_de,
-          '', 'Möglicher Nominalstil: %(found)s in einem Absatz.'),
 
     Regle('Entete.OrdreNomIncertain', 'Entete', '', '', 'warning', 'report',
           "Aucune source normative : contrôle technique interne (attribution automatique "

@@ -504,8 +504,60 @@ test('citations_du_corps + croiser : une citation répétée deux fois dans le m
   }
 });
 
+// 29.09.2026, gzdf_Huttner : « (z. B. Kristen, 2005; Tetzchner & Martinsen, 2000) » — le
+// préfixe « z. B. » laissait la zone commencer par une minuscule, Kristen disparaissait et sa
+// référence était déclarée non citée. Même chose pour les autres abréviations d'exemple.
+test('citations_du_corps : les préfixes « z. B. », « vgl. z. B. », « e.g. », « p. ex. » sont '
+  + 'écartés', { skip: sansPython }, () => {
+  const programme = [
+    "paras = [",
+    "  {'source': 1, 'texte': 'Versuche (z. B. Kristen, 2005; Tetzchner & Martinsen, 2000).'},",
+    "  {'source': 2, 'texte': 'Siehe (vgl. z.B. Boenisch, 2009) und (zB Lüke & Vock, 2019).'},",
+    "  {'source': 3, 'texte': 'Studies (e.g., Beukelman & Mirenda, 2013) show it.'},",
+    "  {'source': 4, 'texte': 'Des travaux (p. ex. Eicher, 2009 ; voir aussi Burgio, 2020).'},",
+    "]",
+    'print(json.dumps(sorted(c["nom_premier_auteur"] for c in mb.citations_du_corps(paras))))',
+  ].join('\n');
+  assert.deepStrictEqual(executer(programme),
+    ['Beukelman', 'Boenisch', 'Burgio', 'Eicher', 'Kristen', 'Lüke', 'Tetzchner']);
+});
+
 // ---------------------------------------------------------------------------------
 // 3. croiser() — absente/non citée/suffixe/et al.
+
+// 29.09.2026 — un intitulé de bibliographie suivi d'un complément entre parenthèses
+// (« 3 Literatur (gemäss Redaktionsrichtlinien) ») est reconnu par le nettoyeur ; un titre qui
+// ne fait que COMMENCER par un mot du lexique ne l'est toujours pas.
+test('nettoyeur : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de bibliographie',
+  { skip: sansPython }, () => {
+  const programme = [
+    'import pronto_modele, manuscrit_modele as mm, manuscrit_entete as me',
+    'lex = pronto_modele.lire_titres_bib()',
+    "cas = ['3 Literatur (gemäss Redaktionsrichtlinien)', 'Références [sélection]', "
+      + "'Literatur', 'Literaturhinweise für die Praxis', 'Literatur und Praxis']",
+    'print(json.dumps([[mm._est_titre_biblio(t, lex), me._est_titre_biblio_pour_repli(t, lex)] '
+      + 'for t in cas]))',
+  ].join('\n');
+  assert.deepStrictEqual(executer(programme),
+    [[true, true], [true, true], [true, true], [false, false], [false, false]]);
+});
+
+// 29.09.2026, gzdf_Huttner : « Beukelman & Mirenda, 1993 » dans le texte, 2013 dans la
+// bibliographie — c'est l'année qui cloche, pas le « & ». Le message doit le dire.
+test('croiser : même nom, autre année -> le message pointe l\'année de la bibliographie',
+  { skip: sansPython }, () => {
+  const programme = [
+    "citations = [{'nom_premier_auteur': 'Beukelman', 'annee': 1993, 'suffixe': '', "
+      + "'para': 1, 'span': [0, 5], 'et_al': False, 'texte': 'Beukelman & Mirenda, 1993'}]",
+    "references = [mb.analyser_reference('Beukelman, D. & Mirenda, P. (2013). Augmentative "
+      + "and alternative communication. Brookes.', 'de')]",
+    'print(json.dumps(mb.croiser(citations, references)))',
+  ].join('\n');
+  const alertes = executer(programme);
+  const absente = alertes.find((a) => a.rule === 'APA.CitationAbsente');
+  assert.ok(absente, JSON.stringify(alertes));
+  assert.match(absente.message, /l'année 2013/);
+});
 
 test('croiser : citation absente de la bibliographie -> error', { skip: sansPython }, () => {
   const programme = [

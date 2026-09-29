@@ -546,6 +546,9 @@ def _noms_de_bibliographie(document):
 # pronto_modele.etendue_biblio(), jamais une seconde liste de titres.
 
 def _est_titre_biblio(texte, lexique):
+    # « 3 Literatur (gemäss Redaktionsrichtlinien) » (29.09.2026) : sans ce retrait, la
+    # bibliographie passait pour du Lauftext et « & » y était remplacé par « und ».
+    texte = pronto_modele.sans_complement_titre(texte)
     plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
     if plat in lexique:
         return True
@@ -911,10 +914,14 @@ def principal(argv):
     progres('contrôle de la bibliographie...')
     paragraphes_biblio_module = [{'texte': e['texte'], 'source': e['source']}
                                   for e in entrees_biblio]
+    # Les citations des notes et des cellules comptent aussi (mêmes paragraphes que Vale) :
+    # sans elles, une référence citée seulement en note était déclarée « jamais citée »
+    # (mesuré sur gzdf_Huttner : Hedderich, Kaiser-Mantel et Nonn, cités dans la note 1).
     paragraphes_corps_module = [{'texte': p['texte'], 'source': p['source']}
-                                 for p in paragraphes_corps_biblio if p['role'] != 'bibliographie']
+                                 for p in paragraphes_vale_corps]
     alertes_biblio, stats_biblio = mb.analyser_bibliographie(
         paragraphes_corps_module, paragraphes_biblio_module, langue, reseau=not args['sans_reseau'])
+    _marquer_notes_dans_alertes(alertes_biblio, correspondance_notes_vale)
 
     alertes = _trier_alertes(alertes_regles + alertes_vale + alertes_biblio
                               + alertes_typo_reprises + alertes_manuelles)

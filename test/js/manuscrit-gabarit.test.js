@@ -1425,6 +1425,53 @@ test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux para
   });
 
 // ---------------------------------------------------------------------------------
+// 29.09.2026 — légende allemande séparée de son image par un paragraphe VIDE (« Abbildung 1:
+// Schatzkarte… », ¶ vide, image). Le premier passage ne regarde que le voisin immédiat : la
+// légende restait dans le corps. Deux figures, légendes AU-DESSUS : sauter les vides rend
+// « Abbildung 2 » atteignable aussi depuis la première image (au-dessous) — c'est la
+// convention du document qui doit trancher, chaque légende revenant à SA figure.
+
+test('manuscrit_gabarit.ecrire : légende séparée de son image par un paragraphe vide, convention « au-dessus »',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const b64 = Buffer.from('IMAGE-LEGENDE-VIDE').toString('base64');
+      const spec = specDocument([
+        paragraphe([fragment('Ein Absatz davor.')]),
+        paragraphe([fragment('Abbildung 1: Schatzkarte der Entwicklungskapazitäten', { italique: true })]),
+        paragraphe([fragment('')]),
+        paragraphe([fragment('', {}, { image: image('fig1.png', b64) })]),
+        paragraphe([fragment('')]),
+        paragraphe([fragment('Abbildung 2: Zweite Karte', { italique: true })]),
+        paragraphe([fragment('')]),
+        paragraphe([fragment('', {}, { image: image('fig2.png', b64) })]),
+        paragraphe([fragment('Konkrete Anwendung in der Praxis')]),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.blocs_figure, 2);
+
+      const dossierPronto = path.join(base, 'article');
+      fs.mkdirSync(dossierPronto);
+      const stats = prontoLire(sortie, 'essai', dossierPronto);
+      const figures = stats.blocs.filter((b) => b.nature !== 'table');
+      assert.strictEqual(figures.length, 2, JSON.stringify(stats.blocs));
+      assert.ok((figures[0].legende || '').includes('Schatzkarte'),
+        'figure 1 : ' + JSON.stringify(figures[0].legende));
+      assert.ok((figures[1].legende || '').includes('Zweite Karte'),
+        'figure 2 : ' + JSON.stringify(figures[1].legende));
+
+      const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+      const reste = document.blocs.some((b) => b.type !== 'tableau'
+        && b.style !== 'szh cle abb/tab'
+        && b.fragments.some((f) => f.texte.includes('Abbildung')));
+      assert.strictEqual(reste, false, 'aucune légende ne doit rester dans le corps');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
 // Défaut n°10 — paragraphes vides consécutifs autour d'un bloc : plusieurs paragraphes vides
 // du manuscrit, collés à un bloc, s'ajoutaient au séparateur injecté au lieu de s'y
 // substituer (jusqu'à trois <w:p> vides entre deux tableaux).

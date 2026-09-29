@@ -1056,3 +1056,58 @@ test('extraire_entete : la forme « Nom, Prénom » ne vote PAS pour l\'ordre du
     assert.strictEqual(valarino.ordre_confiance, 'defaut',
       'sans autre indice, « Valarino Isabel » reste sur la convention par défaut');
   });
+
+// ---------------------------------------------------------------------------------------
+// Troisième voie du bloc final (29.09.2026, gzdf_Huttner.docx) : la fiche d'autrice posée dans
+// un TABLEAU (photo à gauche, nom/fonctions/institution/e-mail à droite), AVANT la
+// bibliographie. Les deux voies en paragraphes s'arrêtent sur tout tableau : rien n'était
+// reconnu. Un tableau n'est retenu que s'il nomme une personne DÉJÀ dans la byline.
+
+function tableau(cellules) {
+  return {
+    type: 'tableau', page: null,
+    rangees: [cellules.map((textes) => ({
+      colspan: 1, rowspan: 1, entete: false, blocs: textes.map((t) => para(t)),
+    }))],
+  };
+}
+
+test('extraire_bloc_auteurs_final : fiche d’autrice en tableau, ancrée sur la byline (Huttner)',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('KI-generierte Wort- und Aussagenvorhersagen'),
+      para('Hannah Huttner'),
+      para('Einleitung'),
+      para('Ein erster, ganz gewöhnlicher Absatz des Beitrags.'),
+      tableau([[''], ['Hannah Huttner', 'Leiterin Versorgungen Unterstützte Kommunikation',
+        'Sonderpädagogin (MA)', 'Fachkraft Unterstützte Kommunikation',
+        'Active Communication AG\nhuttner@activecommunication.ch']]),
+      para('Literatur'),
+      para('Kristen, U. (2005). Praxis Unterstützte Kommunikation. Eine Einführung. selbstbestimmtes leben.'),
+    ], 'de');
+    assert.strictEqual(out.entete.auteurs.length, 1,
+      'les lignes de fonction ne doivent jamais devenir des personnes');
+    const a = out.entete.auteurs[0];
+    assert.strictEqual(a.nom, 'Huttner');
+    assert.strictEqual(a.fonction, 'Leiterin Versorgungen Unterstützte Kommunikation, '
+      + 'Sonderpädagogin (MA), Fachkraft Unterstützte Kommunikation');
+    assert.strictEqual(a.institution, 'Active Communication AG');
+    assert.strictEqual(a.email, 'huttner@activecommunication.ch');
+    assert.strictEqual(out.indices_consommes[4], 'auteurs', 'le tableau-fiche quitte le corps');
+    assert.strictEqual(out.indices_consommes[5], undefined, '« Literatur » reste');
+    assert.ok(!out.trace.some((t) => t.decision === 'bloc_auteurs_final_absent'));
+  });
+
+test('extraire_bloc_auteurs_final : un tableau de données qui ne nomme pas la byline reste en place',
+  { skip: sansPython }, () => {
+    const out = diagnostiquer([
+      para('Un titre'),
+      para('Hannah Huttner'),
+      para('Einleitung'),
+      para('Ein erster, ganz gewöhnlicher Absatz des Beitrags.'),
+      tableau([['Peter Muster', 'Universität Zürich'], ['Anna Beispiel', 'PH Bern']]),
+    ], 'de');
+    assert.strictEqual(out.entete.auteurs.length, 1);
+    assert.strictEqual(out.entete.auteurs[0].institution, '');
+    assert.strictEqual(out.indices_consommes[4], undefined, 'tableau non ancré : jamais avalé');
+  });

@@ -959,6 +959,7 @@ def _associer_legendes(blocs):
     l'image) double le texte de la légende dans le .docx produit."""
     consommes = set()
     legendes = {}          # indice du bloc image/tableau -> liste de Fragment
+    sans_legende = []
     for idx, bloc in enumerate(blocs):
         est_image = isinstance(bloc, mm.Paragraphe) and any(f.image is not None
                                                              for f in bloc.fragments)
@@ -969,7 +970,77 @@ def _associer_legendes(blocs):
         if fragments is not None:
             consommes.update(indices)
             legendes[idx] = fragments
+        else:
+            sans_legende.append(idx)
+
+    # Second passage (29.09.2026) : une légende séparée de son bloc par un paragraphe VIDE
+    # (« Abbildung 1: Schatzkarte… », ¶ vide, puis l'image) n'était jamais voisine, donc
+    # jamais trouvée. On saute alors jusqu'à MAX_VIDES_LEGENDE vides — mais dans quel sens
+    # d'abord ? Sauter les vides rend une légende atteignable depuis DEUX blocs (celui qu'elle
+    # suit, celui qu'elle précède) : c'est la convention du document (légendes au-dessus ou
+    # au-dessous, à la majorité ; à égalité, au-dessous comme le premier passage) qui tranche.
+    if sans_legende:
+        dessus = dessous = 0
+        for idx in legendes:
+            dessus += (idx - 1) in consommes
+            dessous += (idx + 1) in consommes
+        for idx in sans_legende:
+            dessus += _legende_apres_vides(blocs, idx, -1, consommes) is not None
+            dessous += _legende_apres_vides(blocs, idx, +1, consommes) is not None
+        sens = (-1, +1) if dessus > dessous else (+1, -1)
+        for idx in sans_legende:
+            for pas in sens:
+                trouve = _legende_apres_vides(blocs, idx, pas, consommes)
+                if trouve is not None:
+                    indices, fragments = trouve
+                    consommes.update(indices)
+                    legendes[idx] = fragments
+                    break
     return legendes, consommes
+
+
+MAX_VIDES_LEGENDE = 2
+
+
+def _est_paragraphe_texte(bloc):
+    return isinstance(bloc, mm.Paragraphe) and not any(f.image is not None
+                                                        for f in bloc.fragments)
+
+
+def _legende_apres_vides(blocs, idx, pas, consommes):
+    """([indices], fragments) de la légende du bloc `idx` dans le sens `pas` (-1 au-dessus,
+    +1 au-dessous), en sautant 1 à MAX_VIDES_LEGENDE paragraphes vides — None sinon. Mêmes
+    deux formes que _cherche_legende() : un paragraphe qui matche RE_LEGENDE, ou le titre bref
+    (« Abbildung 1 ») suivi de son texte sur le paragraphe d'après."""
+    j, vides = idx + pas, 0
+    while (0 <= j < len(blocs) and vides < MAX_VIDES_LEGENDE and _est_paragraphe_texte(blocs[j])
+           and not _texte_paragraphe(blocs[j])):
+        j += pas
+        vides += 1
+    if vides == 0 or not (0 <= j < len(blocs)) or j in consommes:
+        return None
+    if not _est_paragraphe_texte(blocs[j]):
+        return None
+    texte = _texte_paragraphe(blocs[j])
+
+    def _titre_bref(t):
+        return (RE_LEGENDE.match(t) and len(t) <= 20
+                and not t.rstrip().endswith((':', '.', '!', '?')))
+
+    # Forme à deux paragraphes : titre bref PUIS texte, dans l'ordre du document.
+    i_titre, i_texte = (j - 1, j) if pas < 0 else (j, j + 1)
+    if (0 <= i_titre and i_texte < len(blocs) and i_titre not in consommes
+            and i_texte not in consommes
+            and _est_paragraphe_texte(blocs[i_titre]) and _est_paragraphe_texte(blocs[i_texte])):
+        t_titre, t_texte = _texte_paragraphe(blocs[i_titre]), _texte_paragraphe(blocs[i_texte])
+        if t_titre and _titre_bref(t_titre) and t_texte and not RE_LEGENDE.match(t_texte):
+            fragments = (list(blocs[i_titre].fragments)
+                         + [mm.Fragment(texte=' ', image=None, forme={}, lien=None, source=None)]
+                         + list(blocs[i_texte].fragments))
+            return [i_titre, i_texte], fragments
+    if texte and RE_LEGENDE.match(texte):
+        return [j], list(blocs[j].fragments)
+    return None
 
 
 def _texte_legende_trace(fragments):

@@ -348,6 +348,16 @@ def lire_titres_bib():
 RE_NUM_TITRE_BIBLIO = re.compile(r'^\d+')
 PREFIXES_TITRE_BIBLIO = ('listedes', 'listede', 'liste')
 
+# Un complément entre parenthèses ou crochets en FIN de titre (« Literatur (gemäss
+# Redaktionsrichtlinien) », « Références [sélection] »). Utilisé par le seul nettoyeur de
+# manuscrit, qui lit des titres d'autrices ; la chaîne de compilation garde sa comparaison
+# exacte (szh-citations.lua) et ne l'appelle pas.
+RE_COMPLEMENT_TITRE_BIBLIO = re.compile(r'\s*[(\[][^()\[\]]*[)\]]\s*$')
+
+
+def sans_complement_titre(texte):
+    return RE_COMPLEMENT_TITRE_BIBLIO.sub('', texte or '')
+
 
 def _titre_est_biblio(texte, lexique):
     """Ce titre (niveau 1 à 3) se reconnaît-il comme celui d'une bibliographie ? Comparé au

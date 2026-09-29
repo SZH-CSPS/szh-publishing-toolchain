@@ -81,7 +81,10 @@ RE_INTERTITRE_CONNU = re.compile(
 # institution seule sur sa propre ligne, sous le nom de l'autrice ou l'auteur).
 RE_INSTITUTION = re.compile(
     r'\b(HEP|Universit[ée]|Haute\s+[ée]cole|Hochschule|Universit[äa]t|Institut|Centre|'
-    r'Fondation|PH\b)', re.I)
+    r'Fondation|Stiftung|Verein|Association|PH\b'
+    # Formes juridiques, sensibles à la casse : « SA » ne doit pas prendre le possessif
+    # « sa » (« sa fonction ») pour une société (Active Communication AG, Huttner).
+    r'|(?-i:\b(?:AG|GmbH|SA|Sàrl|e\.\s?V\.)(?!\w)))', re.I)
 
 RE_PONCTUATION_FINALE = re.compile(r'[.!?:;]\s*$')
 
@@ -523,6 +526,13 @@ def _fusionner_info(auteur, texte):
     if not reste:
         return
     if RE_INSTITUTION.search(reste) and not auteur['institution']:
+        auteur['institution'] = reste
+    elif (RE_INSTITUTION.search(reste) and auteur['fonction']
+          and not RE_INSTITUTION.search(auteur['institution'])):
+        # L'institution n'était qu'une supposition (une 2e ligne sans mot d'institution) :
+        # la vraie arrive, la supposition était une fonction de plus. Mesuré sur Huttner :
+        # trois lignes de fonction avant « Active Communication AG ».
+        auteur['fonction'] = auteur['fonction'] + ', ' + auteur['institution']
         auteur['institution'] = reste
     elif not auteur['fonction']:
         auteur['fonction'] = reste
@@ -1045,7 +1055,7 @@ def _propager_ordre_document(entete):
     return notes
 
 
-def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
+def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None, noms_attendus=None):
     """`lignes` : [(source, texte), ...] — une ligne LOGIQUE, éventuellement une parmi
     plusieurs issues d'un même paragraphe scindé sur '\\n' (Word pose souvent tout le bloc
     « informations sur les autrices » en UN SEUL paragraphe, séparé par des sauts de ligne
@@ -1065,7 +1075,16 @@ def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
     Pas de rejugement après un e-mail tardif ici (§4.2) : ce raffinement, décrit pour la
     tête du manuscrit, n'est pas repris pour ce bloc plus simple, généralement complet en
     quelques lignes contiguës — signalé dans le rapport de livraison comme une portée
-    volontairement restreinte, jamais requise par les tests du contrat."""
+    volontairement restreinte, jamais requise par les tests du contrat.
+
+    `noms_attendus` (voie des tableaux, _tableaux_auteurs) : un ensemble de
+    _ensemble_jetons_nom() — une ligne n'ouvre alors une fiche que si elle nomme l'une de ces
+    personnes ; toute autre ligne est une information de la fiche ouverte. Sans cela,
+    « Fachkraft Unterstützte Kommunikation » (deux mots capitalisés) devenait une personne."""
+    def _attendu(prenom, nom):
+        return (noms_attendus is None
+                or _ensemble_jetons_nom({'prenom': prenom, 'nom': nom}) in noms_attendus)
+
     auteurs = []
     cible_courante = None
     ambigu_courant = False
@@ -1074,6 +1093,8 @@ def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
         if not texte or RE_LIBELLE_AUTEUR_FINAL_DE.match(texte):
             continue
         resultat_noms = _tenter_noms(texte, None, base_noms, noms_biblio)
+        if resultat_noms and not any(_attendu(a['prenom'], a['nom']) for a in resultat_noms[0]):
+            resultat_noms = None
         if resultat_noms:
             entrees, infos_meme_ligne = resultat_noms
             for a in entrees:
@@ -1090,6 +1111,8 @@ def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None):
                 ambigu_courant = True
             continue
         resultat_virgule = _tenter_nom_virgule_avec_info(texte)
+        if resultat_virgule and not _attendu(resultat_virgule[0], resultat_virgule[1]):
+            resultat_virgule = None
         if resultat_virgule:
             prenom, nom, segments_info = resultat_virgule
             auteur = _nouvel_auteur(prenom, nom, texte, 'certaine',
@@ -1116,6 +1139,7 @@ def _est_titre_biblio_pour_repli(texte, lexique):
     une seconde liste de titres, seule la petite comparaison est réécrite ici (ce module ne
     peut pas importer un fichier qui porte un tiret dans son nom sans le charger par chemin,
     et la CLI, elle, ne peut pas être importée du tout : convention du dépôt, §3 du contrat)."""
+    texte = pronto_modele.sans_complement_titre(texte)
     plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
     if plat in lexique:
         return True
@@ -1154,8 +1178,104 @@ def _ressemble_reference_biblio_pour_repli(texte):
     return bool(RE_ANNEE_REFERENCE_BIBLIO.search(texte))
 
 
+def _lignes_du_tableau(tableau):
+    """Les lignes LOGIQUES d'un tableau, cellule par cellule dans l'ordre de lecture, chaque
+    paragraphe éclaté sur '\\n' (même convention que les deux autres voies), imbrication
+    comprise. Une image n'y laisse aucune ligne : Paragraphe.texte() ne porte pas son alt."""
+    lignes = []
+    for rangee in tableau.rangees:
+        for cellule in rangee:
+            for sous in cellule.blocs:
+                if isinstance(sous, mm.Tableau):
+                    lignes.extend(_lignes_du_tableau(sous))
+                elif isinstance(sous, mm.Paragraphe):
+                    for ligne in sous.texte().split('\n'):
+                        if ligne.strip():
+                            lignes.append(ligne.strip())
+    return lignes
+
+
+# Au-delà, un tableau n'est plus une fiche d'autrices : c'est un tableau de données.
+MAX_LIGNES_TABLEAU_AUTEURS = 30
+
+
+def _tableaux_auteurs(document, entete, indices_entete, base_noms=None, noms_biblio=None):
+    """Troisième voie (mesurée sur gzdf_Huttner.docx, 29.09.2026) : la fiche d'autrice posée
+    dans un TABLEAU (photo dans une cellule, nom/fonctions/institution/e-mail dans l'autre),
+    et pas forcément en fin de document — chez Huttner, elle précède la bibliographie. Les
+    deux autres voies s'arrêtent sur tout Tableau, par construction.
+
+    Un tableau n'est retenu que s'il est ANCRÉ : il nomme une personne déjà reconnue dans la
+    byline (même e-mail, ou même ensemble de jetons de nom, _ensemble_jetons_nom) ET porte au
+    moins une information structurée (e-mail, ORCID ou institution). Sans byline, rien : un
+    tableau de données qui cite un nom (« Tabelle 1: Müller, 2020 ») ne doit jamais être
+    avalé — « en cas de doute, rien ». Toutes ses lignes doivent en outre être courtes
+    (SEUIL_LIGNE_AUTEUR_FINAL) et peu nombreuses (MAX_LIGNES_TABLEAU_AUTEURS).
+
+    Rend (indices, auteurs, trace) ; le tableau retenu est consommé en entier (photo
+    comprise), les fiches sont fusionnées par l'appelant."""
+    if not entete.auteurs:
+        return {}, [], []
+    cles_tete = {_ensemble_jetons_nom(a) for a in entete.auteurs}
+    emails_tete = {(a.get('email') or '').strip().lower() for a in entete.auteurs} - {''}
+    fin_entete = max(indices_entete) if indices_entete else -1
+    indices, auteurs, trace = {}, [], []
+    for i, bloc in enumerate(document.blocs):
+        if i <= fin_entete or not isinstance(bloc, mm.Tableau):
+            continue
+        lignes = _lignes_du_tableau(bloc)
+        if (not lignes or len(lignes) > MAX_LIGNES_TABLEAU_AUTEURS
+                or any(len(l) >= SEUIL_LIGNE_AUTEUR_FINAL for l in lignes)):
+            continue
+        if not any(dm.RE_EMAIL.search(l) or dm.RE_ORCID.search(l) or RE_INSTITUTION.search(l)
+                   for l in lignes):
+            continue
+        trouves = _analyser_bloc_auteurs([(bloc.source, l) for l in lignes],
+                                         base_noms, noms_biblio, noms_attendus=cles_tete)
+        ancre = any(_ensemble_jetons_nom(a) in cles_tete
+                    or (a.get('email') or '').strip().lower() in emails_tete
+                    for a in trouves)
+        if not ancre:
+            continue
+        indices[i] = 'auteurs'
+        auteurs.extend(trouves)
+        trace.append({'source': bloc.source, 'decision': 'bloc_auteurs_final_tableau',
+                      'motif': "tableau reconnu comme fiche d'autrices/auteurs (%s) : nom "
+                               "déjà présent dans la byline, %d ligne(s)"
+                               % (', '.join(' '.join(x for x in (a['prenom'], a['nom']) if x)
+                                            for a in trouves), len(lignes))})
+    return indices, auteurs, trace
+
+
 def extraire_bloc_auteurs_final(document, entete, langue, indices_entete=None,
                                  base_noms=None, noms_biblio=None):
+    """Enveloppe des trois voies : d'abord les tableaux-fiches (_tableaux_auteurs), fusionnés
+    dans l'en-tête AVANT les deux voies en paragraphes (_bloc_auteurs_final_paragraphes), pour
+    que la propagation d'ordre de celles-ci voie le document entier. Même contrat de retour
+    que _bloc_auteurs_final_paragraphes() ; « bloc_auteurs_final_absent » n'est plus tracé
+    quand un tableau a été retenu."""
+    indices_tab, auteurs_tab, trace_tab = _tableaux_auteurs(
+        document, entete, indices_entete or {}, base_noms, noms_biblio)
+    if auteurs_tab:
+        n_fusionnes, n_ajoutes, notes_ordre = _fusionner_auteurs(entete, auteurs_tab)
+        trace_tab[-1]['motif'] += ' — %d fiche(s) fusionnée(s), %d ajoutée(s)' % (
+            n_fusionnes, n_ajoutes)
+        trace_tab += [{'portee': 'document', 'source': None,
+                       'decision': 'ordre_repris_bloc_final', 'motif': note}
+                      for note in notes_ordre]
+    exclus = dict(indices_entete or {})
+    exclus.update(indices_tab)
+    indices, trace = _bloc_auteurs_final_paragraphes(
+        document, entete, langue, exclus, base_noms, noms_biblio)
+    if indices_tab:
+        trace = [t for t in trace if t.get('decision') != 'bloc_auteurs_final_absent']
+    indices = dict(indices)
+    indices.update(indices_tab)
+    return indices, trace_tab + trace
+
+
+def _bloc_auteurs_final_paragraphes(document, entete, langue, indices_entete=None,
+                                    base_noms=None, noms_biblio=None):
     """(indices_consommes, trace) — même convention que extraire_entete() : l'appelant retire
     ces indices de `document.blocs`. Appelée APRÈS extraire_entete(), sur le document encore
     COMPLET (les indices sont donc dans le même espace que ceux d'extraire_entete()).
