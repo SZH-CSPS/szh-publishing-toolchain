@@ -226,6 +226,61 @@ CAS = [
      "un lien et l’emphase : ici"),
     ("--", "fr", "**gras** : la suite", "gras : la suite"),
     ("--", "de", "**fett** : der Rest", "fett: der Rest"),
+
+    # ---- E9 · l'ordinal en tête de cellule, absent des paragraphes ------------------------
+    # La même suite de caractères, hors tableau : E9 ne vaut que dans une cellule, jamais
+    # ici. « 3. Suite » au milieu de la phrase n'est de toute façon pas en tête de cellule.
+    ("E9", "fr", "En 2021. Puis 3. Suite", "En 2021. Puis 3. Suite"),
+]
+
+
+# (code, langue, fragment HTML brut, fragment attendu)
+#
+# E9 s'applique au HTML des tableaux, posé en RawBlock par szh-tabelle-inclure — un texte
+# que pandoc ne relit jamais, et que seul normaliser_html() (szh-typographie.lua) traverse.
+# Ces cas-ci passent donc par un bloc ```{=html}``` et non par du Markdown : la table CAS
+# ci-dessus ne peut pas les exercer, --to=plain n'y montrerait même pas les balises.
+CAS_TABLEAU = [
+    # 1 · le cas qui a motivé la règle : l'étiquette en première colonne
+    ("E9", "de", "<table><tr><td>1. Hilfe</td></tr></table>",
+     "<table><tr><td>1." + NB + "Hilfe</td></tr></table>"),
+    # 2 · <th>, l'espace de fin de cellule n'est pas concernée
+    ("E9", "de", '<table><tr><th scope="row">2. Hilfe </th></tr></table>',
+     '<table><tr><th scope="row">2.' + NB + "Hilfe </th></tr></table>"),
+    # 3 · une balise en ligne entre l'ouverture de cellule et le texte est transparente
+    ("E9", "de", "<table><tr><td><strong>3. Hilfe</strong></td></tr></table>",
+     "<table><tr><td><strong>3." + NB + "Hilfe</strong></td></tr></table>"),
+    # 4 · de même pour le <p> d'un paragraphe de cellule, et le blanc qui le précède
+    ("E9", "de", "<table><tr><td>\n<p>4. Schritt</p></td></tr></table>",
+     "<table><tr><td>\n<p>4." + NB + "Schritt</p></td></tr></table>"),
+    # 5 · deux chiffres, en français
+    ("E9", "fr", "<table><tr><td>12. Semaine</td></tr></table>",
+     "<table><tr><td>12." + NB + "Semaine</td></tr></table>"),
+    # 6 · la lettre qui suit peut être accentuée (LETTRE, pas %a)
+    ("E9", "fr", "<table><tr><td>1. Évaluer</td></tr></table>",
+     "<table><tr><td>1." + NB + "Évaluer</td></tr></table>"),
+    # 7 · un point de phrase ordinaire, au milieu de la cellule : jamais en tête
+    ("E9", "de", "<table><tr><td>Im Jahr 2021. Danach</td></tr></table>",
+     "<table><tr><td>Im Jahr 2021. Danach</td></tr></table>"),
+    # 8 · quatre chiffres : ce n'est pas un ordinal de tableau
+    ("E9", "de", "<table><tr><td>2021. Danach</td></tr></table>",
+     "<table><tr><td>2021. Danach</td></tr></table>"),
+    # 9 · pas d'espace après le point : une décimale, pas un ordinal
+    ("E9", "de", "<table><tr><td>1.5 Punkte</td></tr></table>",
+     "<table><tr><td>1.5 Punkte</td></tr></table>"),
+    # 10 · un chiffre suit l'espace, pas une lettre
+    ("E9", "de", "<table><tr><td>1. 2. 3.</td></tr></table>",
+     "<table><tr><td>1. 2. 3.</td></tr></table>"),
+    # 11 · une seule application par cellule : le second ordinal n'est pas en tête
+    ("E9", "de", "<table><tr><td>1. Hilfe und 2. Hilfe</td></tr></table>",
+     "<table><tr><td>1." + NB + "Hilfe und 2. Hilfe</td></tr></table>"),
+    # 12 · une <caption> n'est pas une cellule
+    ("E9", "de", "<table><caption>1. Teil</caption></table>",
+     "<table><caption>1. Teil</caption></table>"),
+    # 14 (13 est dans CAS, en Markdown) · non-régression E6 : la fine insécable du
+    # groupement des nombres survit à l'ajout de E9 dans la même fonction.
+    ("E6", "de", "<table><tr><td>12 345</td></tr></table>",
+     "<table><tr><td>12" + FIN + "345</td></tr></table>"),
 ]
 
 
@@ -317,6 +372,23 @@ def rendre_titre(titre, langue, cle):
         return sortie, r.stderr.decode("utf-8", "replace").strip()
 
 
+def rendre_tableau(html, langue):
+    """Compile un fragment de tableau HTML brut, comme le fait szh-tabelle-inclure : un
+    bloc ```{=html}``` traverse pandoc SANS relecture, en RawBlock — seul normaliser_html()
+    (szh-typographie.lua) y touche, et c'est ce chemin que E9 exige."""
+    md = "```{=html}\n" + html + "\n```\n"
+    with tempfile.TemporaryDirectory() as dossier:
+        with open(os.path.join(dossier, "essai.md"), "w", encoding="utf-8") as f:
+            f.write(md)
+        r = subprocess.run(
+            ["pandoc", "essai.md", "--from=markdown", "--to=html", "--wrap=none",
+             "--metadata=lang=" + langue, "--lua-filter=" + FILTRE],
+            cwd=dossier, capture_output=True)
+        if r.returncode != 0:
+            return None, r.stderr.decode("utf-8", "replace").strip()
+        return r.stdout.decode("utf-8").strip(), r.stderr.decode("utf-8", "replace").strip()
+
+
 def main(argv):
     bavard = "-v" in argv
     if shutil.which("pandoc") is None:
@@ -326,6 +398,16 @@ def main(argv):
     echecs = []
     for code, langue, entree, attendu in CAS:
         obtenu, err = rendre(entree, langue)
+        if obtenu is None:
+            echecs.append((code, langue, entree, attendu, "pandoc en échec : " + err))
+            continue
+        if obtenu != attendu:
+            echecs.append((code, langue, entree, attendu, obtenu))
+        elif bavard:
+            print("  ok   %-4s %-3s %s" % (code, langue, montrer(obtenu)))
+
+    for code, langue, entree, attendu in CAS_TABLEAU:
+        obtenu, err = rendre_tableau(entree, langue)
         if obtenu is None:
             echecs.append((code, langue, entree, attendu, "pandoc en échec : " + err))
             continue
@@ -344,7 +426,7 @@ def main(argv):
         elif bavard:
             print("  ok   %-4s %-3s %s" % (code, langue, montrer(obtenu)))
 
-    total = len(CAS) + len(CAS_TITRE)
+    total = len(CAS) + len(CAS_TABLEAU) + len(CAS_TITRE)
     print()
     if echecs:
         for code, langue, entree, attendu, obtenu in echecs:

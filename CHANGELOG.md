@@ -11,6 +11,25 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.4.3
+
+**La colonne d'étiquettes d'un tableau n'est plus écrasée.** Un tableau dont la première
+colonne porte des étiquettes courtes (« 1. Hilfe », « 2. Hilfe »…) à côté d'une colonne de
+longues phrases réduisait cette colonne au minimum : « 1. » et « Hilfe » sur deux lignes,
+« Punk-te » coupé dans l'en-tête. Trois changements :
+
+- dans les cellules, un mot ne se coupe plus que s'il a 6 lettres au moins, avec 3 lettres de
+  chaque côté de la coupure (`hyphenate-limit-chars: 6 3 3`) ; les longs mots composés restent
+  coupables, sans quoi un tableau de 9 colonnes allemandes sortait de la page ;
+- nouvelle règle typographique **E9** : un ordinal en tête de cellule reste soudé au mot qui
+  suit (espace insécable) ; jamais dans le corps du texte ;
+- les tableaux de l'éditeur ne coupent plus un mot sans trait d'union au milieu (« Pun|kte »).
+
+À l'écran (aperçu, HTML exporté), un tableau trop large défile dans sa boîte au lieu
+d'élargir la page. Mesuré sur 8 tableaux réels de la Revue et de la Zeitschrift : les autres
+colonnes bougent de 3 px au plus. Un numéro déjà compilé qui contient un tableau à étiquettes
+sortira un peu plus court à la recompilation ; version mineure assumée malgré tout.
+
 ## 2.4.2
 
 **Un gabarit Pronto par langue.** `revue-template/` porte désormais `Pronto - modele

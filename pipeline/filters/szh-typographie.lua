@@ -1006,6 +1006,33 @@ local function sort_de_l_espace(avant, apres)
   return verdict_jetons(jeton_gauche(ta), jeton_droite(ts))
 end
 
+-- E9 · dans un tableau, l'ordinal en tête de cellule ne se coupe pas de son mot
+--
+-- « 1. Hilfe » en première colonne d'un tableau se coupait à l'espace après le point : le
+-- numéro seul sur une ligne, le mot sur l'autre, et la colonne d'étiquettes s'en trouvait
+-- écrasée. La règle ne vaut que pour le PREMIER texte d'une cellule <td>/<th> — jamais
+-- dans un paragraphe, où « im Jahr 2021. Danach » ne doit surtout pas se souder.
+local function e9_ordinal_tete(t)
+  return (t:gsub('^(%s*%d%d?%d?%.) (' .. LETTRE .. ')', '%1' .. NBSP .. '%2'))
+end
+
+-- Balises transparentes entre l'ouverture de cellule et son texte : ce qu'un traitement de
+-- texte y met couramment (gras, italique, lien, exposant, paragraphe), jamais rien qui
+-- doive clore l'occasion.
+local TRANSPARENTE_E9 = {
+  strong = true, b = true, em = true, i = true, span = true, p = true,
+  a = true, sup = true,
+}
+
+-- Nom de balise en bas de casse, sans le « / » de fermeture ni les attributs : de
+-- « <TD class="x"> » ou « </th> » on ne garde que « td » ou « th ».
+local function nom_balise(tag)
+  local nom = tag:match('^<%s*/?%s*([%a][%w]*)')
+  return nom and bas_de_casse(nom) or nil
+end
+
+local function fermante(tag) return tag:sub(1, 2) == '</' end
+
 -- --------------------------------------------------------------------- le HTML réinjecté
 --
 -- szh-tabelle-inclure pose les tableaux en RawBlock html : leur texte n'est plus un Str et
@@ -1014,13 +1041,19 @@ end
 local function normaliser_html(html)
   local sortie = {}
   local i = 1
+  local attente_e9 = false  -- une cellule vient de s'ouvrir, son premier mot est attendu
   while true do
     local d = html:find('<', i, true)
-    if not d then
-      sortie[#sortie + 1] = normaliser_texte(html:sub(i))
-      break
+    local morceau = d and html:sub(i, d - 1) or html:sub(i)
+    -- E9 : seul le premier morceau non blanc suivant l'ouverture de cellule est concerné,
+    -- et une seule fois — un morceau fait uniquement de blancs/sauts de ligne (indentation
+    -- du tableau) laisse l'occasion ouverte, cf. <td>\n<p>…</p></td>.
+    if attente_e9 and morceau:match('%S') then
+      morceau = e9_ordinal_tete(morceau)
+      attente_e9 = false
     end
-    sortie[#sortie + 1] = normaliser_texte(html:sub(i, d - 1))
+    sortie[#sortie + 1] = normaliser_texte(morceau)
+    if not d then break end
     -- Un commentaire HTML n'est pas une balise : son premier « > » ne le ferme pas, et le
     -- traiter comme tel rendait normalisable le texte qui suit — les commentaires du banc
     -- d'essai, qui expliquent des défauts voulus, s'en trouvaient réécrits.
@@ -1035,7 +1068,17 @@ local function normaliser_html(html)
       sortie[#sortie + 1] = html:sub(d)
       break
     end
-    sortie[#sortie + 1] = html:sub(d, f)
+    local balise = html:sub(d, f)
+    -- E9 : <caption> n'est pas une cellule et n'ouvre donc jamais l'occasion. Une balise
+    -- transparente (TRANSPARENTE_E9) la laisse ouverte ; toute autre — <tr>, <table>, un
+    -- commentaire, ou la fermeture de la cellule elle-même — la referme.
+    local nom = nom_balise(balise)
+    if nom == 'td' or nom == 'th' then
+      attente_e9 = not fermante(balise)
+    elseif attente_e9 and not TRANSPARENTE_E9[nom or ''] then
+      attente_e9 = false
+    end
+    sortie[#sortie + 1] = balise
     i = f + 1
   end
   return table.concat(sortie)

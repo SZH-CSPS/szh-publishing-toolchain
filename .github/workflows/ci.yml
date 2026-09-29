@@ -404,6 +404,11 @@ jobs:
       - name: Vérifier le correctif WeasyPrint (en-têtes fusionnés, images décoratives)
         run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" test/weasyprint-patch-check.py
 
+      # Une étiquette courte ne se coupe pas (« Punk-te »), et un tableau de 9 colonnes
+      # allemandes tient encore dans la page : les deux bords du réglage de césure.
+      - name: Vérifier la largeur des colonnes de tableau
+        run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" test/tableaux-largeurs-check.py
+
       # Les deux LIVRES du banc. Ils gardent ce qu'un article ne peut pas garder : la
       # numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de
       # page sont posés à la pagination, et surtout la conformité PDF/UA d'un document de

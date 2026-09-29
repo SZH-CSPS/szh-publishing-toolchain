@@ -69,6 +69,7 @@ ne se lient pas.
 | **E6** | `22 255 725 francs` | 22 255 725&nbsp;francs, d’un seul bloc |
 | **E7** | `( ci-joint )` | (ci-joint) |
 | **E8** | `le mot , puis la suite .` | le mot, puis la suite. |
+| **E9** | `1. Étape` (cellule d’un tableau) | 1.&nbsp;Étape |
 
 C’est la famille qui distingue le plus le français de l’allemand : **le français sépare, à
 l’espace insécable ; l’allemand colle.** Une espace insécable retient les deux mots
@@ -91,6 +92,11 @@ décision de rédaction ; nous ne faisons que le protéger.
 
 **E7 et E8** ramassent les espaces en trop : rien à l’intérieur des parenthèses et des
 crochets, rien devant une virgule ou un point.
+
+**E9** – dans un tableau, une étiquette ne se coupe plus entre l’ordinal et le mot qui
+suit : `1. Étape` reste sur une seule ligne, au lieu d’écraser la colonne. La règle ne vaut
+que pour le **premier mot d’une cellule** ; dans le corps du texte, une phrase comme « en
+2021. Ensuite » n’est jamais soudée.
 
 ### T – Tirets
 

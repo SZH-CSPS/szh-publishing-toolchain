@@ -971,7 +971,17 @@ h2.szh-ressources-section-titre { padding-top: 10px; border-top: 2px solid var(-
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: var(--corps-tableau); margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+/* Césure des cellules : 6 lettres au moins, 3 de chaque côté (défaut WeasyPrint : 5 2 2).
+   Le tableau répartit sa largeur selon le mot le plus long de chaque colonne ; une coupure
+   « Punk-te » ou « Hil-fe » abaisse ce minimum et la colonne d'étiquettes s'écrase.
+   Mesuré le 29.09.2026 sur 8 tableaux réels : les autres colonnes bougent de 2 px au
+   plus. Les mots composés allemands restent coupables, sans quoi un tableau de 9 colonnes
+   courtes déborde de la page (841 px pour 649 de large en `hyphens: manual`). */
+th, td { hyphenate-limit-chars: 6 3 3; }
 th { background: #eee; }
+/* À l'écran (aperçu, HTML exporté), un tableau trop large défile dans sa boîte au lieu
+   d'élargir la page. WeasyPrint n'applique pas @media screen. */
+@media screen { .szh-tableau-boite { overflow-x: auto; } }
 table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: #444; margin-bottom: 0.4em; }
 /* .szh-tableau réintroduit sa propre grille : la bordure générique ne doit pas s'y appliquer. */
 .szh-tableau th, .szh-tableau td { border: 0; }
@@ -1001,7 +1011,10 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
    Balisage accessible : en-têtes de colonnes en th[scope="col"|"colgroup"], en-têtes de
    lignes en th[scope="row"|"rowgroup"], total = dernière rangée du <tbody>. */
 .szh-tableau { border-collapse: collapse; width: 100%; table-layout: auto; }
-.szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+/* `break-word` et non `anywhere` : les deux coupent un mot qui déborde, mais `anywhere`
+   compte chaque lettre comme point de coupure dans le calcul des largeurs, et la colonne
+   d'étiquettes tombait à une lettre près (« Pun|kte », sans trait). */
+.szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; overflow-wrap: break-word; }
 .szh-tableau th { background: transparent; font-weight: 400; }
 
 /* Alignement horizontal par cellule ; défaut « left » via la règle ci-dessus. */

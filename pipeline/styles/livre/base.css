@@ -160,6 +160,8 @@ figcaption { font-size: var(--legende); line-height: 1.35; color: var(--c-ink2);
 table { border-collapse: collapse; width: 100%; font-size: var(--tableau); }
 caption { text-align: left; font-size: var(--legende); color: var(--c-ink2); }
 th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
+/* Pas de « Punk-te » ni de « Hil-fe » : même réglage et même raison que dans print.css (tableaux importés bruts). */
+th, td { hyphenate-limit-chars: 6 3 3; }
 
 /* ═══ 8. Écran ════════════════════════════════════════════════════════════════
    `float: footnote` n'existe dans aucun navigateur : sans ce repli, les notes

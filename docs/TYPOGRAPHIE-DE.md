@@ -49,6 +49,7 @@ Anführungszeichen `„ “` sind in der Schweiz **nicht** üblich.
 | **E6** | `22 255 725 Franken` | 22 255 725&nbsp;Franken, in einem Block |
 | **E7** | `( siehe oben )` | (siehe oben) |
 | **E8** | `das Wort , dann der Rest .` | das Wort, dann der Rest. |
+| **E9** | `1. Hilfe` (Tabellenzelle) | 1.&nbsp;Hilfe |
 
 Das ist die Familie, in der sich Deutsch und Französisch am stärksten unterscheiden: **Das
 Deutsche schliesst an, das Französische trennt durch ein geschütztes Leerzeichen.** Ein
@@ -74,6 +75,11 @@ Schreibung mit Hochkomma – `35'000` bricht ohnehin nicht.
 
 **E7 und E8** räumen überzählige Leerschläge auf: nichts innerhalb der Klammern, nichts vor
 einem Komma oder einem Punkt.
+
+**E9** – in einer Tabelle wird eine Zelle nicht mehr zwischen der Ordnungszahl und dem
+folgenden Wort getrennt: `1. Hilfe` bleibt in einer Zeile, statt die Spalte
+zusammenzudrücken. Die Regel gilt nur für das **erste Wort einer Zelle**; im Fliesstext
+wird ein Satz wie «im Jahr 2021. Danach» nie zusammengezogen.
 
 ### T – Striche
 
