@@ -1237,5 +1237,12 @@ test('page : le voile suit le thème et respecte le mouvement réduit', () => {
   assert.match(css, /pointer-events:\s*none/, 'on peut encore cliquer sous le voile');
   assert.match(css, /filter:\s*blur\(1\.5px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.szh-analyse-roue/,
-    'la roue tourne même quand le mouvement réduit est demandé');
+    'le mouvement réduit ne règle plus la roue');
+  // Mouvement réduit (Windows sans animations) : la roue ralentit, elle ne s'arrête pas et
+  // n'est pas remplacée par une pulsation — une roue figée ne dit plus que l'analyse tourne.
+  const reduit = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+  const regleRoue = /\.szh-analyse-roue\s*\{([^}]*)\}/.exec(reduit)[1];
+  assert.doesNotMatch(regleRoue, /animation(-name)?\s*:\s*(none|szh-analyse-pulse)/,
+    'en mouvement réduit, la roue ne tourne plus');
+  assert.match(regleRoue, /animation-duration/, 'la roue n’est pas seulement ralentie');
 });

@@ -46,10 +46,14 @@ body { --page-max: 60rem; }
   animation: szh-analyse-tourne .8s linear infinite;
 }
 @keyframes szh-analyse-tourne { to { transform: rotate(360deg); } }
-/* Mouvement réduit : la roue ne tourne plus, elle pulse doucement — l'attente reste
-   visible sans rien qui défile à l'écran. */
+/* Mouvement réduit : la roue tourne quand même, deux fois plus lentement. La pulsation
+   d'abord posée à sa place (opacité à .4) ne se voyait pas : sur un poste où Windows a
+   coupé ses animations (« Afficher les animations dans Windows », MinAnimate = 0, que
+   Chromium lit comme prefers-reduced-motion), la roue passait pour figée et la rédaction
+   ne savait plus si l'analyse tournait (constaté le 29.09.2026). Une roue d'un rem est
+   l'indicateur d'attente lui-même, pas un décor qui défile : on la ralentit, on ne
+   l'arrête pas. Seules les transitions du voile, elles, disparaissent. */
 @media (prefers-reduced-motion: reduce) {
-  .szh-analyse-roue { animation: szh-analyse-pulse 2s ease-in-out infinite; }
+  .szh-analyse-roue { animation-duration: 1.6s; }
   .szh-analyse-cible > :not(.szh-analyse-voile) { transition: none; }
 }
-@keyframes szh-analyse-pulse { 50% { opacity: .4; } }
