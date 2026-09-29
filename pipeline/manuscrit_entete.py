@@ -858,13 +858,20 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
             continue
 
         if _est_ligne_auteur(texte):
-            indices[i] = 'auteurs'
             if ambigu_courant or cible_courante is None:
+                # Garantie « rien ne se perd » (29.09.2026) : une ligne qu'aucune fiche ne
+                # reçoit n'est plus retirée du corps — elle y RESTE, visible. Retirée, elle
+                # n'allait nulle part : mesuré sur tmp/docx-dev (9_Mehr Bewegung…), sept
+                # paragraphes de corps en Leichte Sprache partaient ainsi sans un mot, parce
+                # que la byline déclarait quatre noms ensemble. Mieux vaut une institution de
+                # trop en tête d'article qu'un paragraphe du texte perdu.
                 trace.append({'source': bloc.source, 'decision': 'auteur_info_non_attribuee',
                               'motif': "ligne de la zone auteurs, mais non attribuée : "
                                        "plusieurs noms déclarés ensemble juste avant, ou "
-                                       "aucun auteur connu pour la recevoir"})
+                                       "aucun auteur connu pour la recevoir — conservée "
+                                       "telle quelle dans le texte"})
             else:
+                indices[i] = 'auteurs'
                 email_avant = cible_courante['email']
                 _fusionner_info(cible_courante, texte)
                 if not email_avant and cible_courante['email']:
@@ -1178,6 +1185,22 @@ def _ressemble_reference_biblio_pour_repli(texte):
     return bool(RE_ANNEE_REFERENCE_BIBLIO.search(texte))
 
 
+def _est_cle_de_figure(paragraphe):
+    """« Légende : … », « Crédit : © … », « Source : … » — une clé de figure ou de tableau
+    (même reconnaissance que l'import, pronto_modele.identifier_cle contre CANON_FIGURE), ou
+    un paragraphe au style « SZH Cle Abb/Tab ». Jamais une ligne d'information sur une
+    autrice, même quand elle porte un nom (« Crédit : © Jeanne Test »)."""
+    if (pronto_modele.normaliser_nom_style(paragraphe.style)
+            == pronto_modele.NOM_STYLE_CLE_BLOC):
+        return True
+    texte = paragraphe.texte().strip()
+    if ':' not in texte:
+        return False
+    resultat = pronto_modele.identifier_cle(texte.partition(':')[0].strip(),
+                                            pronto_modele.CANON_FIGURE)
+    return resultat is not None and resultat[0] != '__ambigu__'
+
+
 def _lignes_du_tableau(tableau):
     """Les lignes LOGIQUES d'un tableau, cellule par cellule dans l'ordre de lecture, chaque
     paragraphe éclaté sur '\\n' (même convention que les deux autres voies), imbrication
@@ -1341,23 +1364,55 @@ def _bloc_auteurs_final_paragraphes(document, entete, langue, indices_entete=Non
 
     i = n - 1
     indices_candidats = []
+    arret_sur_contenu = False
     while i >= 0:
         if i in indices_entete:
             break
         bloc = blocs[i]
         if isinstance(bloc, mm.Tableau):
+            arret_sur_contenu = True
+            break
+        # Incident du 29.09.2026 (« tout le corps supprimé ») : sur un manuscrit court sans
+        # bibliographie, TOUS les paragraphes du corps faisaient moins de SEUIL_LIGNE_AUTEUR_
+        # FINAL signes — la marche arrière traversait l'intertitre, les clés de figure et le
+        # paragraphe d'IMAGES jusqu'à l'en-tête, « Crédit : © Jeanne Test » y apportait un
+        # nom plausible, et le corps entier partait comme « bloc d'autrices », images
+        # comprises (images.total: 0, code 0, aucune alerte). Trois arrêts nets, qui ne
+        # sont jamais des lignes d'information sur une autrice : un intertitre déclaré, un
+        # paragraphe qui porte une image, une clé de figure ou de tableau.
+        if (bloc.niveau_declare or bloc.niveau_retenu
+                or any(f.image is not None for f in bloc.fragments)
+                or _est_cle_de_figure(bloc)):
+            arret_sur_contenu = True
             break
         texte = bloc.texte().strip()
         if texte:
             if _est_titre_biblio_pour_repli(texte, lexique_biblio):
+                arret_sur_contenu = True
                 break
             if _ressemble_reference_biblio_pour_repli(texte):
+                arret_sur_contenu = True
                 break
             if len(texte) >= SEUIL_LIGNE_AUTEUR_FINAL:
+                arret_sur_contenu = True
                 break
         indices_candidats.append(i)
         i -= 1
     indices_candidats.reverse()
+    # Même incident, seconde garde : un « bloc final » qui remonte jusqu'à l'en-tête (ou au
+    # début du document) sans qu'aucun contenu ne l'ait arrêté n'est pas un bloc FINAL — c'est
+    # le corps tout entier. Un bloc d'informations sur les autrices suit toujours un article ;
+    # sans rien devant lui, en cas de doute, rien (§1 du contrat).
+    if indices_candidats and not arret_sur_contenu:
+        trace = [{'portee': 'document', 'source': None,
+                  'decision': 'bloc_auteurs_final_refuse',
+                  'motif': "les %d paragraphe(s) courts de fin de document remontent jusqu'à "
+                           "l'en-tête sans aucun contenu devant eux : c'est le corps de "
+                           "l'article, pas un bloc d'autrices et auteurs — rien n'est retiré"
+                           % len(indices_candidats)}]
+        trace += [{'portee': 'document', 'source': None, 'decision': 'ordre_propage_document',
+                   'motif': note} for note in _propager_ordre_document(entete)]
+        return {}, trace
 
     lignes = []
     for idx in indices_candidats:

@@ -227,6 +227,178 @@ test('legendes : une ligne FI l\'emporte sur un voisin en gras, qui ne vole plus
   } finally { instr.nettoyer(); }
 });
 
+// ── szh-legendes.lua : les groupes d'images (décision de Robin, 29.09.2026) ─────────────
+// Un en-tête de figure suivi de PLUSIEURS images est UNE figure — le groupe `.szh-grille`
+// que crée « Ajouter une image à côté » dans le formulaire Médias. Trois formes dans le Word :
+// (a) deux images dans le même paragraphe, (b) plusieurs paragraphes d'images à la suite,
+// (c) un tableau de mise en page qui ne porte que des images (ligne FG, szh-meta.lua puis
+// szh-legendes.lua). Et la garantie qui va avec : les clés ne quittent le corps qu'au moment
+// où leurs valeurs sont posées ; sinon elles restent, et c'est dit.
+
+const refsCockpit = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib',
+  'references.js'));
+
+function pandocAvecErreurs(entree, options) {
+  const o = options || {};
+  const args = ['--from=' + (o.de || 'native'), '--to=markdown', '--wrap=none'];
+  for (const f of (o.filtres || [])) { args.push('--lua-filter=' + path.join(FILTRES, f)); }
+  const r = spawnSync('pandoc', args, { input: entree, encoding: 'utf8',
+    env: Object.assign({}, process.env, o.env || {}) });
+  if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
+  if (r.status !== 0) { throw new Error('pandoc a échoué : ' + r.stderr); }
+  return { md: r.stdout, err: r.stderr };
+}
+
+const CLES_NATIVES = ', Para [Str "Legende",Space,Str ":",Space,Str "Deux",Space,Str "vues"]\n'
+  + ', Para [Str "Texte",Space,Str "alternatif",Space,Str ":",Space,Str "Vue",Space,Str "nord"]\n'
+  + ', Para [Str "Credit",Space,Str ":",Space,Str "(c)",Space,Str "X"]\n';
+const IMG_A = 'Image ("",[],[]) [Str "descr",Space,Str "A"] ("media/image1.png","")';
+const IMG_B = 'Image ("",[],[]) [Str "descr",Space,Str "B"] ("media/image2.png","")';
+const QUEUE_CLES = '\tLegende : Deux vues\tTexte alternatif : Vue nord\tCredit : (c) X';
+const FI_GROUPE = 'FI\timage1.png;image2.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n';
+
+// Les membres de la grille tels que le formulaire Médias les relit : c'est LA preuve que le
+// groupe écrit par l'import s'édite ensuite comme un groupe créé dans le cockpit.
+function grillesDuCockpit(md) {
+  return refsCockpit.lireGrilles(md.replace(/\r\n/g, '\n'));
+}
+
+test('legendes (a) : deux images dans un paragraphe -> UN groupe, légende, alt et crédit posés, clés retirées', () => {
+  const doc = '[ Para [Str "Avant."]\n' + CLES_NATIVES
+    + ', Para [' + IMG_A + ',Space,' + IMG_B + ']\n, Para [Str "Apres."]\n]\n';
+  const instr = instructionsTemporaires(FI_GROUPE);
+  try {
+    const { md, err } = pandocAvecErreurs(doc, { filtres: ['szh-legendes.lua'],
+      env: { SZH_META: instr.chemin } });
+    const grilles = grillesDuCockpit(md);
+    assert.strictEqual(grilles.length, 1, 'aucun groupe, ou plusieurs : ' + md);
+    assert.deepStrictEqual(grilles[0].membres.map((m) => m.relatif), ['image1.png', 'image2.png'],
+      'le formulaire Médias ne relirait pas les deux images du groupe : ' + md);
+    assert.strictEqual(grilles[0].disposition, '2', 'deux images côte à côte dans le Word : ' + md);
+    const lignes = md.split(/\r?\n/).filter((l) => /!\[/.test(l));
+    assert.strictEqual(lignes.length, 2, 'une image par ligne, sans ligne vide : ' + md);
+    assert.match(lignes[0], /^\s*!\[Deux vues\]\(media\/image1\.png\)\{[^}]*alt="Vue nord"/, md);
+    assert.match(lignes[1], /^\s*!\[\]\(media\/image2\.png\)\{[^}]*alt="descr B"/,
+      'la seconde image garde la description Word, sans légende propre : ' + md);
+    assert.strictEqual((md.match(/copyright="\(c\) X"/g) || []).length, 2,
+      'le crédit doit suivre chaque image du groupe : ' + md);
+    assert.ok(!/Legende :|Texte alternatif :|Credit :/.test(md), 'une clé est restée : ' + md);
+    assert.match(md, /Avant\./, md);
+    assert.match(md, /Apres\./, md);
+    assert.ok(!/bloc-valeur-non-reprise/.test(err), 'un bloc posé ne doit pas avertir : ' + err);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes (b) : deux paragraphes d’images à la suite -> UN groupe, côte à côte (« 2 », jamais « 1-1 »)', () => {
+  const doc = '[' + CLES_NATIVES.slice(1) + ', Para [' + IMG_A + ']\n, Para [' + IMG_B + ']\n]\n';
+  const instr = instructionsTemporaires(FI_GROUPE);
+  try {
+    const { md } = pandocAvecErreurs(doc, { filtres: ['szh-legendes.lua'],
+      env: { SZH_META: instr.chemin } });
+    const grilles = grillesDuCockpit(md);
+    assert.strictEqual(grilles.length, 1, md);
+    assert.strictEqual(grilles[0].membres.length, 2, md);
+    assert.strictEqual(grilles[0].disposition, '2',
+      'décision de Robin : deux images côte à côte, une seule rangée : ' + md);
+    assert.strictEqual((md.match(/!\[Deux vues\]/g) || []).length, 1,
+      'une seule légende pour le groupe : ' + md);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes (b) : trois paragraphes d’une image -> « 3 » ; deux paragraphes de deux images gardent leurs rangées (« 2-2 »)', () => {
+  const IMG = (n) => 'Image ("",[],[]) [] ("media/image' + n + '.png","")';
+  const trois = '[' + CLES_NATIVES.slice(1) + [1, 2, 3].map((n) => ', Para [' + IMG(n) + ']\n').join('') + ']\n';
+  const i3 = instructionsTemporaires('FI\timage1.png;image2.png;image3.png\tDeux vues\t\t\t\t' + QUEUE_CLES + '\n');
+  try {
+    const { md } = pandocAvecErreurs(trois, { filtres: ['szh-legendes.lua'], env: { SZH_META: i3.chemin } });
+    assert.strictEqual(grillesDuCockpit(md)[0].disposition, '3', md);
+  } finally { i3.nettoyer(); }
+  const deuxDeux = '[' + CLES_NATIVES.slice(1) + ', Para [' + IMG(1) + ',Space,' + IMG(2) + ']\n'
+    + ', Para [' + IMG(3) + ',Space,' + IMG(4) + ']\n]\n';
+  const i4 = instructionsTemporaires('FI\timage1.png;image2.png;image3.png;image4.png\tDeux vues\t\t\t\t' + QUEUE_CLES + '\n');
+  try {
+    const { md } = pandocAvecErreurs(deuxDeux, { filtres: ['szh-legendes.lua'], env: { SZH_META: i4.chemin } });
+    assert.strictEqual(grillesDuCockpit(md)[0].disposition, '2-2', md);
+  } finally { i4.nettoyer(); }
+});
+
+test('legendes (c) : un tableau de mise en page d’images (FG) devient un groupe, jamais un « Tableau N »', () => {
+  const cellule = (img) => '(Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1) [Plain [' + img + ']])';
+  const table = 'Table ("",[],[]) (Caption Nothing []) [(AlignDefault,ColWidthDefault),'
+    + '(AlignDefault,ColWidthDefault)] (TableHead ("",[],[]) []) '
+    + '[TableBody ("",[],[]) (RowHeadColumns 0) [] [Row ("",[],[]) [' + cellule(IMG_A) + ','
+    + cellule(IMG_B) + ']]] (TableFoot ("",[],[]) [])';
+  const doc = '[' + CLES_NATIVES.slice(1) + ', ' + table + '\n, Para [Str "Apres."]\n]\n';
+  const instr = instructionsTemporaires('FG\t1\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n');
+  try {
+    const { md } = pandocAvecErreurs(doc, { filtres: ['szh-meta.lua', 'szh-legendes.lua'],
+      env: { SZH_META: instr.chemin } });
+    assert.ok(!/^\|/m.test(md) && !/szh-tableau/.test(md), 'le tableau a survécu : ' + md);
+    const grilles = grillesDuCockpit(md);
+    assert.strictEqual(grilles.length, 1, md);
+    assert.deepStrictEqual(grilles[0].membres.map((m) => m.relatif), ['image1.png', 'image2.png'], md);
+    assert.strictEqual(grilles[0].disposition, '2', 'un tableau 1×2 = côte à côte : ' + md);
+    assert.match(md, /!\[Deux vues\]\(media\/image1\.png\)\{[^}]*alt="Vue nord"/, md);
+    assert.ok(!/Legende :/.test(md), 'la clé est restée : ' + md);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes : un bloc qu’on ne sait pas poser GARDE ses clés dans le texte, et le dit', () => {
+  // Cas volontairement inattendu : l'image du bloc est dans une phrase. Aucune place pour la
+  // poser — avant le 29.09.2026, les clés étaient retirées d'avance par szh-meta.lua et
+  // légende, texte alternatif et crédit disparaissaient sans un mot.
+  const doc = '[' + CLES_NATIVES.slice(1)
+    + ', Para [Str "Voir",Space,' + IMG_A + ',Space,Str "ci-contre."]\n]\n';
+  const instr = instructionsTemporaires('FI\timage1.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n');
+  try {
+    const { md, err } = pandocAvecErreurs(doc, { filtres: ['szh-meta.lua', 'szh-legendes.lua'],
+      env: { SZH_META: instr.chemin, SZH_SLUG: 'essai' } });
+    assert.match(md, /Legende : Deux vues/, 'la légende a disparu : ' + md);
+    assert.match(md, /Texte alternatif : Vue nord/, 'le texte alternatif a disparu : ' + md);
+    assert.match(md, /Credit : \(c\) X/, 'le crédit a disparu : ' + md);
+    assert.match(err, /\[import-avertissement\] bloc-valeur-non-reprise \| article « essai » \| valeur « Deux vues »/,
+      'la perte évitée doit être dite, sous un code que le cockpit reconnaît : ' + err);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes : deux blocs aux clés identiques (« Source : » vide) retirent chacun LES LEURS', () => {
+  // Mesuré le 29.09.2026 sur le gabarit : les clés d'un bloc tableau partaient en lignes P,
+  // que szh-meta.lua applique à la PREMIÈRE occurrence du texte — le « Source : » vide de la
+  // figure qui précède. Celui du tableau restait imprimé. Les clés sont désormais retirées
+  // juste devant leur propre contenu, image ou tableau.
+  const source = ', Para [Str "Source",Space,Str ":"]\n';
+  const cellule = '(Cell ("",[],[]) AlignDefault (RowSpan 1) (ColSpan 1) [Plain [Str "A1"]])';
+  const table = 'Table ("",[],[]) (Caption Nothing []) [(AlignDefault,ColWidthDefault)] '
+    + '(TableHead ("",[],[]) []) [TableBody ("",[],[]) (RowHeadColumns 0) [] [Row ("",[],[]) ['
+    + cellule + ']]] (TableFoot ("",[],[]) [])';
+  const doc = '[' + CLES_NATIVES.slice(1) + source + ', Para [' + IMG_A + ']\n'
+    + ', Para [Str "Legende",Space,Str ":",Space,Str "Un",Space,Str "tableau"]\n' + source
+    + ', ' + table + '\n, Para [Str "Fin."]\n]\n';
+  const instr = instructionsTemporaires(
+    'FI\timage1.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\tSource :\n'
+    + 'FT\t1\tUn tableau\t\t\t\tLegende : Un tableau\tSource :\n');
+  try {
+    const { md, err } = pandocAvecErreurs(doc, { filtres: ['szh-meta.lua', 'szh-legendes.lua'],
+      env: { SZH_META: instr.chemin } });
+    assert.ok(!/Source :/.test(md), 'un « Source : » est resté imprimé : ' + md);
+    assert.ok(!/Legende :/.test(md), 'une clé est restée : ' + md);
+    assert.match(md, /A1/, 'le tableau a disparu : ' + md);
+    assert.match(md, /Fin\./, md);
+    assert.ok(!/bloc-valeur-non-reprise/.test(err), err);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes : la table des dispositions recopiée reste celle du cockpit', () => {
+  const src = fs.readFileSync(path.join(FILTRES, 'szh-legendes.lua'), 'utf8');
+  const bloc = src.slice(src.indexOf('local DISPOSITIONS = {'), src.indexOf('}\n\n', src.indexOf('local DISPOSITIONS = {')));
+  const lu = {};
+  for (const m of bloc.matchAll(/\[(\d)\]\s*=\s*\{([^}]*)\}/g)) {
+    lu[m[1]] = [...m[2].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  }
+  assert.deepStrictEqual(lu, Object.fromEntries(Object.entries(refsCockpit.DISPOSITIONS)
+    .map(([k, v]) => [k, v.slice()])), 'szh-legendes.lua et lib/references.js divergent');
+});
+
 // ── szh-titres.lua : import DOCX, promeut un paragraphe en Header ──────────────────────
 // pipeline/import-docx.sh, juste après szh-legendes. SZH_TITRES pointe un fichier
 // « niveau<TAB>texte » écrit par docx-titres.py (tailles de police perdues par pandoc).

@@ -154,11 +154,13 @@ test('extraire_entete : trois auteurs sur une seule byline, ORCID sur la ligne s
     assert.strictEqual(out.entete.auteurs.length, 3);
     assert.deepStrictEqual(out.entete.auteurs.map((a) => a.nom), ['Dupont', 'Martin', 'Durand']);
     // Trois noms déclarés ENSEMBLE : la ligne d'ORCID qui suit ne peut être attribuée à
-    // l'un d'eux sans deviner — elle est consommée (elle ne doit pas rester dans le corps)
-    // mais aucun champ n'est rempli.
+    // l'un d'eux sans deviner — aucun champ n'est rempli. Révision du 29.09.2026 (garantie
+    // « rien ne se perd », décision de Robin) : elle n'est plus consommée non plus — retirée,
+    // elle n'allait nulle part. Elle RESTE dans le corps, visible, à ranger à la main.
     assert.ok(out.entete.auteurs.every((a) => a.orcid === ''),
       'aucun ORCID ne doit être deviné quand trois noms sont déclarés ensemble');
-    assert.strictEqual(out.indices_consommes[2], 'auteurs');
+    assert.strictEqual(out.indices_consommes[2], undefined,
+      'une ligne qu’aucune fiche ne reçoit ne doit plus quitter le corps');
   });
 
 test('extraire_entete : ORCID rattaché au bon auteur quand les noms sont sur des lignes séparées',

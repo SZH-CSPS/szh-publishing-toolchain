@@ -221,36 +221,193 @@ local function charger_legendes_figures()
 end
 
 -- ─── Blocs figure du gabarit « Pronto » ──────────────────────────────────────
--- Le lecteur du gabarit (pipeline/pronto-lire.py) écrit une ligne FI par bloc figure :
---   FI<TAB>nom1|nom2<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source
+-- Le lecteur du gabarit (pipeline/pronto-lire.py) écrit une ligne par bloc figure :
+--   FI<TAB>images<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
+--   FG<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
+--   FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
+--   (FT : les champs vont au tableau par docx-tables.py ; ici, seules ses clés partent.)
 -- Les quatre valeurs sont celles que l'autrice ou l'auteur a TAPÉES dans le document, sous
--- les étiquettes « Légende : », « Texte alternatif : », « Crédit : », « Source : » ; les
--- paragraphes qui les portaient ont déjà quitté le corps (lignes P, szh-meta.lua, qui tourne
--- avant ce filtre). Sans cette reprise, ils s'imprimeraient tels quels au milieu de l'article
--- et le texte alternatif serait perdu — mesuré sur le gabarit réel avant le branchement.
+-- les étiquettes « Légende : », « Texte alternatif : », « Crédit : », « Source : ». Sans
+-- cette reprise, elles s'imprimeraient telles quelles au milieu de l'article et le texte
+-- alternatif serait perdu — mesuré sur le gabarit réel avant le branchement.
 --
--- PLUSIEURS noms de fichier par bloc, et non un rang : Word range une image vectorielle
--- derrière un aperçu PNG, le lecteur voit le PNG et pandoc écrit le SVG (voir
--- images_de_paragraphe() de pronto_docx.py). On apparie donc sur le nom, en acceptant toutes
--- les variantes — un rang se décalerait au premier paragraphe d'image de plus.
+-- `images` (FI) : une entrée par image, séparées par « ; », chacune donnant TOUS les noms de
+-- fichier que cette image peut porter, séparés par « | ». Plusieurs noms parce que Word range
+-- une image vectorielle derrière un aperçu PNG, le lecteur voit le PNG et pandoc écrit le SVG
+-- (voir images_de_paragraphe() de pronto_docx.py) : on apparie sur le nom, en acceptant
+-- toutes les variantes — un rang se décalerait au premier paragraphe d'image de plus.
+-- Plusieurs entrées (29.09.2026, décision de Robin) : le bloc porte plusieurs images, deux
+-- dans un même paragraphe ou plusieurs paragraphes à la suite, et il devient UN groupe
+-- d'images (voir poser_groupe()). FG : le contenu du bloc est le k-ième tableau, un tableau de
+-- mise en page d'images que szh-meta.lua a déjà remplacé par un bloc `.szh-grille`.
+--
+-- Les `clé…` sont les textes des paragraphes d'étiquette du bloc. ⚠ Ce filtre, et lui seul,
+-- les retire du corps — AU MOMENT où il pose leurs valeurs sur l'image, jamais avant, jamais
+-- autrement (garantie « rien ne disparaît », décision de Robin du 29.09.2026). Jusque-là,
+-- szh-meta.lua les retirait d'avance (lignes P) : le jour où l'image ne se laissait pas
+-- trouver ici — deux images dans un paragraphe, mesuré —, légende, texte alternatif et crédit
+-- disparaissaient sans un mot. Un bloc qu'on n'a pas su poser garde donc ses paragraphes
+-- tels quels dans le texte, et l'avertissement « bloc-valeur-non-reprise » le dit.
+local function lire_champs(reste)
+  local champs = {}
+  for champ in (reste .. '\t'):gmatch('([^\t]*)\t') do champs[#champs + 1] = champ end
+  local bloc = { legende = trim(champs[2] or ''), alt = trim(champs[3] or ''),
+                 credit = trim(champs[4] or ''), source = trim(champs[5] or ''),
+                 cles = {}, images = {}, pose = false }
+  for i = 6, #champs do
+    if trim(champs[i]) ~= '' then bloc.cles[#bloc.cles + 1] = champs[i] end
+  end
+  return champs[1] or '', bloc
+end
+
+-- FT<TAB>k<TAB>… (bloc TABLEAU) : docx-tables.py pose les quatre champs sur tables/table-NN
+-- .html ; ici, on ne fait que retirer les clés, juste devant le k-ième tableau, quand on le
+-- rencontre. `sautes` : les ordinaux que szh-meta.lua a déjà ôtés du corps (T) ou changés en
+-- groupe (FG) — la numérotation des Table restants saute les mêmes, comme docx-tables.py.
 local function charger_blocs_pronto()
-  local par_nom = {}
+  local par_nom, grilles, tous, tableaux, sautes = {}, {}, {}, {}, {}
   local chemin = os.getenv('SZH_META')
-  if not chemin or chemin == '' then return par_nom end
+  if not chemin or chemin == '' then return par_nom, grilles, tous, tableaux, sautes end
   local f = io.open(chemin, 'r')
-  if not f then return par_nom end
+  if not f then return par_nom, grilles, tous, tableaux, sautes end
   for ligne in f:lines() do
-    local reste = ligne:match('^FI\t(.*)$')
-    if reste then
-      local champs = {}
-      for champ in (reste .. '\t'):gmatch('([^\t]*)\t') do champs[#champs + 1] = champ end
-      local bloc = { legende = trim(champs[2] or ''), alt = trim(champs[3] or ''),
-                     credit = trim(champs[4] or ''), source = trim(champs[5] or '') }
-      for nom in (champs[1] or ''):gmatch('[^|]+') do par_nom[nom] = bloc end
+    local k_saute = ligne:match('^T\t(%d+)%s*$') or ligne:match('^FG\t(%d+)')
+    if k_saute then sautes[tonumber(k_saute)] = true end
+    local lettre, reste = ligne:match('^(F[IGT])\t(.*)$')
+    if lettre then
+      local cible, bloc = lire_champs(reste)
+      bloc.lettre = lettre
+      if lettre == 'FI' then
+        for entree in cible:gmatch('[^;]+') do
+          local rang = #bloc.images + 1
+          local noms = {}
+          for nom in entree:gmatch('[^|]+') do
+            noms[#noms + 1] = nom
+            if not par_nom[nom] then par_nom[nom] = { bloc = bloc, rang = rang } end
+          end
+          bloc.images[rang] = noms
+        end
+      else
+        bloc.tableau = tonumber(cible)
+        if bloc.tableau then
+          if lettre == 'FG' then grilles[bloc.tableau] = bloc else tableaux[bloc.tableau] = bloc end
+        end
+      end
+      tous[#tous + 1] = bloc
     end
   end
   f:close()
-  return par_nom
+  return par_nom, grilles, tous, tableaux, sautes
+end
+
+-- ─── Avertissement au rédacteur ──────────────────────────────────────────────
+-- Même format que szh_commun.avertir() côté Python — « [import-avertissement] code | champs
+-- | phrase FR | [de] phrase DE » —, pour que lib/journal.js n'ait qu'une forme à lire, sur
+-- stderr ET dans le journal d'import ($SZH_IMPORT_LOG), que pandoc n'écrit pas pour nous.
+-- « | » sépare les champs : il est remplacé dans les valeurs, comme sans_barre() ailleurs.
+local function sans_barre(t) return (tostring(t or ''):gsub('|', '/')) end
+
+local function avertir(code, champs, fr, de)
+  local morceaux = { '[import-avertissement] ' .. code,
+                     'article « ' .. sans_barre(os.getenv('SZH_SLUG') or '') .. ' »' }
+  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = sans_barre(c) end
+  morceaux[#morceaux + 1] = sans_barre(fr)
+  morceaux[#morceaux + 1] = '[de] ' .. sans_barre(de)
+  local ligne = table.concat(morceaux, ' | ')
+  io.stderr:write(ligne .. '\n')
+  local journal = os.getenv('SZH_IMPORT_LOG')
+  if journal and journal ~= '' then
+    local j = io.open(journal, 'a')
+    if j then j:write(ligne .. '\n'); j:close() end
+  end
+end
+
+-- Un bloc dont aucune image n'a été retrouvée : ses valeurs restent dans le texte, dans les
+-- paragraphes que l'autrice ou l'auteur a tapés (jamais retirés, voir plus haut).
+local function avertir_bloc_non_repris(bloc)
+  local valeurs, premiere = {}, nil
+  for _, c in ipairs({ { 'legende', 'légende', 'Legende' }, { 'alt', 'texte alternatif',
+      'Alternativtext' }, { 'credit', 'crédit', 'Bildnachweis' }, { 'source', 'source',
+      'Quelle' } }) do
+    local v = bloc[c[1]]
+    if v ~= '' then
+      valeurs[#valeurs + 1] = { c[2], c[3], v }
+      premiere = premiere or v
+    end
+  end
+  if not premiere then return end                -- rien de tapé : rien ne peut manquer
+  local fr, de = {}, {}
+  for _, v in ipairs(valeurs) do
+    fr[#fr + 1] = v[1] .. ' « ' .. v[3] .. ' »'
+    de[#de + 1] = v[2] .. ' «' .. v[3] .. '»'
+  end
+  avertir('bloc-valeur-non-reprise', { 'valeur « ' .. premiere .. ' »' },
+    'Une figure de cet article (' .. table.concat(fr, ', ') .. ') n’a pas pu être posée sur '
+      .. 'son image : ses valeurs restent visibles dans le texte, telles que tapées. '
+      .. 'Reportez-les dans « Médias de l’article », puis retirez ces paragraphes du texte.',
+    'Eine Abbildung dieses Artikels (' .. table.concat(de, ', ') .. ') konnte nicht auf '
+      .. 'ihr Bild gesetzt werden: ihre Werte bleiben so, wie sie getippt wurden, im Text '
+      .. 'sichtbar. Übertragen Sie sie unter «Medien des Artikels» und entfernen Sie diese '
+      .. 'Absätze danach aus dem Text.')
+end
+
+-- Retire du corps DÉJÀ ÉMIS (`sortie`) les paragraphes d'étiquette d'un bloc qu'on vient de
+-- poser. Ils précèdent directement son contenu (pandoc ne rend pas les paragraphes vides que
+-- le gabarit tolère entre les deux) : on remonte depuis la fin tant que le dernier bloc émis
+-- est l'une de ces clés, une clé ne retirant qu'une occurrence. Ce qui ne se trouve pas là
+-- reste imprimé — une clé en double vaut mieux qu'une clé perdue.
+local function retirer_cles(sortie, bloc)
+  local reste = {}
+  for _, c in ipairs(bloc.cles) do
+    local k = normaliser(c)
+    if k ~= '' then reste[k] = (reste[k] or 0) + 1 end
+  end
+  while #sortie > 0 do
+    local dernier = sortie[#sortie]
+    if dernier.t ~= 'Para' and dernier.t ~= 'Plain' then break end
+    local k = normaliser(s(dernier))
+    if not (reste[k] and reste[k] > 0) then break end
+    reste[k] = reste[k] - 1
+    sortie:remove(#sortie)
+  end
+end
+
+-- ⚠ Table recopiée depuis pipeline/filters/szh-grille.lua et lib/references.js
+--   (DISPOSITIONS) : test/filtres-import.test.js vérifie qu'elle reste identique à celle du
+--   cockpit. Elle ne sert ici qu'à décider si la forme lue dans le Word est une disposition
+--   que le formulaire Médias sait afficher ; sinon « auto », que les deux savent lire.
+local DISPOSITIONS = {
+  [2] = { '2', '1-1' },
+  [3] = { '3', '2-1', '1-2', '1-1-1' },
+  [4] = { '2-2', '4', '3-1', '1-3' },
+  [5] = { '3-2', '2-3', '5' },
+  [6] = { '3-3', '2-2-2', '6' },
+}
+
+-- La disposition que dessinait le Word : une rangée de paragraphe ou de tableau par nombre
+-- d'images, « 2 » pour deux images côte à côte, « 1-1 » pour l'une sous l'autre, « 2-2 »
+-- pour un tableau 2×2. Inconnue du menu -> « auto », comme le cockpit à la création.
+local function disposition_de(rangees, n)
+  local bouts = {}
+  for _, r in ipairs(rangees) do bouts[#bouts + 1] = tostring(r) end
+  local code = table.concat(bouts, '-')
+  for _, c in ipairs(DISPOSITIONS[n] or {}) do
+    if c == code then return code end
+  end
+  return 'auto'
+end
+
+-- Un Para/Plain qui ne porte que des images (et des blancs) -> la liste de ses images ;
+-- nil sinon.
+local function images_seules(b)
+  if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
+  local lot = {}
+  for _, x in ipairs(b.content) do
+    if x.t == 'Image' then lot[#lot + 1] = x
+    elseif x.t ~= 'Space' and x.t ~= 'SoftBreak' and x.t ~= 'LineBreak' then return nil end
+  end
+  if #lot == 0 then return nil end
+  return lot
 end
 
 -- Nom de fichier seul d'un src d'image : les chemins du .md sont relatifs (media/…, ./media/…)
@@ -283,11 +440,77 @@ local function poser_bloc_pronto(img, bloc)
   return nfig, nalt
 end
 
+-- Une ligne d'image de groupe, telle que pandoc l'écrit : c'est pandoc lui-même qui échappe
+-- la légende et cite les attributs, comme partout ailleurs dans le .md.
+local function ligne_image(img)
+  local md = pandoc.write(pandoc.Pandoc({ pandoc.Plain({ img }) }), 'markdown',
+                          { wrap_text = 'none' })
+  return trim(md)
+end
+
+-- Un groupe d'images (décision de Robin, 29.09.2026) : UNE figure, un numéro, une légende,
+-- écrite EXACTEMENT comme l'écrit « Ajouter une image à côté » du formulaire Médias
+-- (poserDansGrille() de lib/references.js), pour que ce formulaire la relise et l'édite :
+--
+--   ::: {.szh-grille disposition="2"}
+--     ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
+--     ![](media/b.png){alt="…" copyright="© A"}
+--   :::
+--
+--   * une image par ligne, sans ligne vide entre elles — sans quoi lireGrilles() (cockpit)
+--     ne verrait pas ses membres, et la lecture markdown ferait une figure de chacune. C'est
+--     pour tenir cette forme que le bloc sort en markdown brut : écrit comme un Div, pandoc
+--     (--wrap=none) mettait les deux images sur UNE ligne, séparées d'une espace (mesuré) ;
+--   * la légende sur la première image seulement, les suivantes entre crochets vides ;
+--   * le texte alternatif TAPÉ va sur la première image ; les suivantes gardent la
+--     description que Word leur donnait (descr), si elle existe et n'est pas automatique.
+--     Une image restée sans alt est nommée après l'import (figure-alt-a-completer,
+--     docx-controle-import.py), jamais laissée muette en silence ;
+--   * crédit et source sur CHAQUE image : le cockpit tient les droits image par image, et
+--     szh-numerotation.lua ne répète pas un crédit identique sous la figure. Posés sur la
+--     première seulement, ils se perdraient le jour où elle quitte le groupe.
+-- `autres` : ce qu'un tableau de mise en page portait d'autre que des images (FG) — gardé,
+-- à la suite, dans le bloc ; szh-grille.lua l'imprime sous les images.
+local function poser_groupe(imgs, rangees, bloc, autres)
+  local nfig, nalt = 0, 0
+  local legende = trim(nettoyer_figure(bloc.legende or ''))
+  for i, img in ipairs(imgs) do
+    if i == 1 and (bloc.alt or '') ~= '' then
+      img.caption = pandoc.Inlines({})
+      img.attributes['alt'] = bloc.alt
+      nalt = nalt + 1
+    else
+      nalt = nalt + alt_depuis_word(img, i == 1 and legende or nil)
+    end
+    if (bloc.credit or '') ~= '' then img.attributes['copyright'] = bloc.credit end
+    if (bloc.source or '') ~= '' then img.attributes['source'] = bloc.source end
+  end
+  if legende ~= '' then
+    imgs[1].caption = pandoc.Inlines({ pandoc.Str(legende) })
+    nfig = 1
+  end
+  local lignes = { '::: {.szh-grille disposition="' .. disposition_de(rangees, #imgs) .. '"}' }
+  for _, img in ipairs(imgs) do lignes[#lignes + 1] = '  ' .. ligne_image(img) end
+  for _, b in ipairs(autres or {}) do
+    lignes[#lignes + 1] = ''
+    lignes[#lignes + 1] = trim(pandoc.write(pandoc.Pandoc({ b }), 'markdown',
+                                            { wrap_text = 'none' }))
+  end
+  lignes[#lignes + 1] = ':::'
+  return pandoc.RawBlock('markdown', table.concat(lignes, '\n')), nfig, nalt
+end
+
 function Pandoc(doc)
   local legT = charger_legendes_table()
   local legF = charger_legendes_figures()
-  local blocsP = charger_blocs_pronto()
+  local blocsP, grillesP, tousP, tableauxP, sautesP = charger_blocs_pronto()
   local nfig, ntab, nalt = 0, 0, 0
+  -- Ordinal (au sens des lignes T/FT) du prochain Table rencontré dans le corps.
+  local ordinal_table = 0
+  local function ordinal_suivant()
+    repeat ordinal_table = ordinal_table + 1 until not sautesP[ordinal_table]
+    return ordinal_table
+  end
 
   -- 1) retirer les paragraphes déjà bakés en <caption> de tableau (appariement au
   --    texte exact du sidecar, gras non requis)
@@ -322,6 +545,101 @@ function Pandoc(doc)
         b = pandoc.Para({ imgf })
       end
     end
+    -- Bloc tableau du gabarit (ligne FT) : ses champs sont déjà dans tables/table-NN.html
+    -- (docx-tables.py) ; ses clés quittent le corps ici, juste devant LUI.
+    if b.t == 'Table' then
+      local bloc = tableauxP[ordinal_suivant()]
+      if bloc and not bloc.pose then
+        retirer_cles(sortie, bloc)
+        bloc.pose = true
+      end
+      sortie:insert(b)
+      goto continue
+    end
+    -- Tableau de mise en page d'images (ligne FG) : szh-meta.lua l'a déjà remplacé par un
+    -- bloc `.szh-grille` marqué `szh-tableau`, une rangée du tableau par paragraphe.
+    if b.t == 'Div' and b.attributes['szh-tableau'] then
+      local bloc = grillesP[tonumber(b.attributes['szh-tableau'])]
+                   or { legende = '', alt = '', credit = '', source = '', cles = {} }
+      local imgs, rangees, autres = {}, {}, {}
+      for _, dedans in ipairs(b.content) do
+        local lot = images_seules(dedans)
+        if lot then
+          for _, im in ipairs(lot) do imgs[#imgs + 1] = im end
+          rangees[#rangees + 1] = #lot
+        else
+          autres[#autres + 1] = dedans
+        end
+      end
+      if #imgs > 0 then
+        local raw, dfig, dalt = poser_groupe(imgs, rangees, bloc, autres)
+        retirer_cles(sortie, bloc)
+        bloc.pose = true
+        nfig, nalt = nfig + dfig, nalt + dalt
+        sortie:insert(raw)
+      else
+        -- Plus une seule image lisible : le contenu reste, tel quel, hors du bloc.
+        b.attributes['szh-tableau'] = nil
+        for _, dedans in ipairs(b.content) do sortie:insert(dedans) end
+      end
+      goto continue
+    end
+    -- Bloc du gabarit : tout est écrit, il n'y a rien à deviner. La règle du voisinage est
+    -- court-circuitée EXPRÈS — un paragraphe de corps tout en gras juste au-dessus de la
+    -- figure lui volerait sa légende alors que l'autrice ou l'auteur en a tapé une.
+    do
+      local lot = images_seules(b)
+      local entree = lot and blocsP[base_fichier(lot[1].src)]
+      if entree and not entree.bloc.pose then
+        local bloc = entree.bloc
+        -- Les images de CE paragraphe, puis des paragraphes d'images qui suivent, tant
+        -- qu'elles appartiennent toutes au même bloc : (a) deux images dans un paragraphe,
+        -- (b) plusieurs paragraphes à la suite. Une image étrangère au bloc arrête la
+        -- collecte ; si c'est dans le tout premier paragraphe, rien n'est posé (voir plus
+        -- bas : le bloc reste alors visible, et averti).
+        local imgs, rangees, j = {}, {}, idx
+        while j <= #blocs and #imgs < #bloc.images do
+          local l = images_seules(blocs[j])
+          if not l then break end
+          local tous = true
+          for _, im in ipairs(l) do
+            local e = blocsP[base_fichier(im.src)]
+            if not e or e.bloc ~= bloc then tous = false end
+          end
+          if not tous then break end
+          for _, im in ipairs(l) do imgs[#imgs + 1] = im end
+          rangees[#rangees + 1] = #l
+          if j > idx then consommes[j] = true end
+          j = j + 1
+        end
+        -- Décision de Robin (29.09.2026) : des paragraphes d'UNE image chacun, à la suite sous
+        -- le même en-tête (cas b), sont des images CÔTE À CÔTE — une seule rangée (« 2 »,
+        -- « 3 »… jusqu'à « 6 », toutes dans la table ; au-delà, « auto »), jamais « 1-1 ».
+        -- Des paragraphes qui portent chacun PLUSIEURS images dessinent, eux, des rangées
+        -- voulues (un tableau de mise en page que le nettoyeur a posé à plat, par exemple) :
+        -- leur forme est gardée.
+        local une_par_paragraphe = #rangees > 1
+        for _, r in ipairs(rangees) do
+          if r ~= 1 then une_par_paragraphe = false end
+        end
+        if une_par_paragraphe then rangees = { #imgs } end
+        if #imgs >= 2 then
+          local raw, dfig, dalt = poser_groupe(imgs, rangees, bloc, nil)
+          retirer_cles(sortie, bloc)
+          bloc.pose = true
+          nfig, nalt = nfig + dfig, nalt + dalt
+          sortie:insert(raw)
+          goto continue
+        elseif #imgs == 1 then
+          local dfig, dalt = poser_bloc_pronto(imgs[1], bloc)
+          retirer_cles(sortie, bloc)
+          bloc.pose = true
+          nfig, nalt = nfig + dfig, nalt + dalt
+          sortie:insert(pandoc.Para({ imgs[1] }))
+          goto continue
+        end
+      end
+    end
     -- cas soudé : « Légende : … [image] » dans un seul paragraphe
     local cap_soude, img_soude = para_legende_et_image(b)
     if cap_soude then
@@ -335,15 +653,6 @@ function Pandoc(doc)
       end
     end
     local img = para_image(b)
-    -- Bloc du gabarit : tout est écrit, il n'y a rien à deviner. La règle du voisinage est
-    -- court-circuitée EXPRÈS — un paragraphe de corps tout en gras juste au-dessus de la
-    -- figure lui volerait sa légende alors que l'autrice ou l'auteur en a tapé une.
-    if img and blocsP[base_fichier(img.src)] then
-      local dfig, dalt = poser_bloc_pronto(img, blocsP[base_fichier(img.src)])
-      nfig, nalt = nfig + dfig, nalt + dalt
-      sortie:insert(pandoc.Para({ img }))
-      goto continue
-    end
     if img then
       local cap, capidx = nil, nil
       for _, j in ipairs({ idx - 1, idx + 1 }) do
@@ -394,6 +703,11 @@ function Pandoc(doc)
       return nil
     end,
   })
+  -- Garantie « rien ne disparaît » : un bloc du gabarit qu'on n'a pas su poser a gardé ses
+  -- paragraphes d'étiquette dans le texte (ils ne sont retirés qu'à la pose) — on le dit.
+  for _, bloc in ipairs(tousP) do
+    if not bloc.pose then avertir_bloc_non_repris(bloc) end
+  end
   io.stderr:write(string.format(
     '[import] %d figure(s) légendée(s), %d tableau(x) légendé(s), '
     .. '%d texte(s) alternatif(s) repris de Word\n', nfig, ntab, nalt))

@@ -1172,12 +1172,16 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
   assert.deepStrictEqual(vuNouvelle.stats.tableaux_consommes, [1, 2]);
 
   // Ce qui, lui, diverge toujours et doit diverger : la nouvelle forme fait retirer du corps
-  // ses quatre paragraphes de clé (lignes P) et pose ses champs sur le contenu (ligne FT),
-  // quand l'ancienne laisse son tableau enveloppe s'imprimer tel quel.
-  assert.match(vuNouvelle.instructions, /^FT\t3\t/m,
-    'la nouvelle forme doit poser ses champs sur son tableau');
-  assert.strictEqual((vuNouvelle.instructions.match(/^P\t/gm) || []).length, 4,
-    'les quatre paragraphes de clé doivent quitter le corps');
+  // ses quatre paragraphes de clé et pose ses champs sur le contenu (ligne FT), quand
+  // l'ancienne laisse son tableau enveloppe s'imprimer tel quel. Depuis le 29.09.2026, les
+  // clés voyagent en queue de la ligne FT (szh-legendes.lua les retire juste devant le
+  // tableau), plus en lignes P : voir le contrôle 33.
+  const ft = (vuNouvelle.instructions.match(/^FT\t3\t.*$/m) || [''])[0];
+  assert.ok(ft, 'la nouvelle forme doit poser ses champs sur son tableau');
+  assert.strictEqual(ft.split('\t').length, 6 + 4,
+    'les quatre paragraphes de clé doivent voyager avec la ligne FT : ' + ft);
+  assert.strictEqual((vuNouvelle.instructions.match(/^P\t/gm) || []).length, 0,
+    'plus aucune clé retirée d’avance par szh-meta.lua');
   assert.doesNotMatch(vuAncienne.instructions, /^(P|FT|FI)\t/m,
     'l’ancienne forme ne fait rien retirer et ne pose rien');
 });
@@ -1666,22 +1670,27 @@ test('pronto-lire.py : un champ « Langue de l’article » resté dans le docum
 // alternatif est perdu — mesuré sur le gabarit réel, chaîne complète, avant le branchement.
 // FI (figure) est consommée par szh-legendes.lua, FT (tableau) par docx-tables.py.
 
-test('pronto-lire.py : un bloc figure fait retirer ses clés du corps et pose ses champs sur l’image', () => {
+// Contrat révisé le 29.09.2026 (garantie « rien ne disparaît », décision de Robin) : les clés
+// d'un bloc FIGURE ne partent plus en lignes P, que szh-meta.lua retirait d'avance — le jour
+// où szh-legendes.lua ne trouvait pas l'image, légende, texte alternatif et crédit
+// disparaissaient sans un mot. Elles voyagent en queue de la ligne FI, et c'est
+// szh-legendes.lua qui les retire, au moment où il pose les valeurs, et seulement alors.
+test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose ses champs sur l’image', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
   const vu = importer('48-bloc-figure-instructions', {
     styles: STYLES_BASE,
     body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST), pImage('figure.png')]
   });
   const pLignes = (vu.instructions.match(/^P\t.*$/gm) || []);
-  assert.deepStrictEqual(pLignes.sort(), CHAMPS_TEST.map((c) => 'P\t' + c).sort(),
-    'les quatre paragraphes de clé doivent quitter le corps, et eux seuls : '
+  assert.deepStrictEqual(pLignes, [],
+    'aucune clé de bloc figure ne doit être retirée d’avance par szh-meta.lua : '
     + vu.instructions);
   const fi = (vu.instructions.match(/^FI\t.*$/m) || [])[0];
   assert.ok(fi, 'aucune ligne FI : les champs du bloc n’atteindraient pas l’image');
   assert.deepStrictEqual(fi.split('\t'),
     ['FI', 'figure.png', 'Une figure de test', 'Un texte alternatif', 'Photographe X',
-      'Archives Y'],
-    'la ligne FI ne porte pas les quatre champs dans l’ordre du contrat');
+      'Archives Y'].concat(CHAMPS_TEST),
+    'la ligne FI ne porte pas les quatre champs puis les quatre clés, dans l’ordre du contrat');
 });
 
 test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', () => {

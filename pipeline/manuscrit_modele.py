@@ -1514,6 +1514,14 @@ def _paragraphe_vide(paragraphe):
     return True
 
 
+def _images_seules(bloc):
+    """Un paragraphe qui ne porte que des images (voir nettoyer_mise_en_forme, fusion des
+    vides) — même définition que manuscrit_gabarit._images_seules()."""
+    return (isinstance(bloc, Paragraphe)
+            and any(f.image is not None for f in bloc.fragments)
+            and not any(f.texte.strip() for f in bloc.fragments if f.image is None))
+
+
 def _nettoyer_fragments(paragraphe, est_corps):
     """Mute chaque Fragment.forme en place ; rend l'ensemble des clés effectivement retirées
     (pour le motif) et les deux signalements (gras intégral / majuscules intégrales),
@@ -1657,10 +1665,22 @@ def nettoyer_mise_en_forme(document):
         if isinstance(bloc, Paragraphe) and _paragraphe_vide(bloc):
             nouveaux_blocs.append(bloc)
             j = i + 1
-            sources_retirees = []
-            while (j < n and isinstance(blocs[j], Paragraphe) and _paragraphe_vide(blocs[j])):
-                sources_retirees.append(blocs[j].source)
+            while j < n and isinstance(blocs[j], Paragraphe) and _paragraphe_vide(blocs[j]):
                 j += 1
+            # Entre deux paragraphes d'images, le NOMBRE de vides est une information
+            # (décision de Robin, 29.09.2026) : jusqu'à pronto_modele.MAX_VIDES_ENTRE_IMAGES,
+            # les deux images sont la même figure ; au-delà, deux figures. Fondus en un seul
+            # vide, trois vides en disaient autant qu'un, et deux figures devenaient un
+            # groupe. On en garde donc un de plus que le plafond — assez pour que l'écriture
+            # (manuscrit_gabarit._regrouper_blocs) voie la coupure —, jamais davantage ;
+            # l'écriture ramène de toute façon les vides consécutifs à un seul en sortie.
+            garder = 1
+            if (j - i > pronto_modele.MAX_VIDES_ENTRE_IMAGES and nouveaux_blocs[:-1]
+                    and _images_seules(nouveaux_blocs[-2]) and j < n
+                    and _images_seules(blocs[j])):
+                garder = pronto_modele.MAX_VIDES_ENTRE_IMAGES + 1
+            nouveaux_blocs.extend(blocs[i + 1:i + garder])
+            sources_retirees = [b.source for b in blocs[i + garder:j]]
             if sources_retirees:
                 n_vides_retires += len(sources_retirees)
                 trace.append({'portee': 'document', 'source': bloc.source,

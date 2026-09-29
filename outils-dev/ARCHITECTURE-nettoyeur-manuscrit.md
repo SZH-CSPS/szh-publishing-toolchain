@@ -361,7 +361,45 @@ documents déjà remplis à l'ancienne forme — avec un avertissement invitant 
   au-dessous à la majorité, qui décide du sens essayé d'abord (à égalité : au-dessous).
 - Une image flottante ou dans une zone de texte est extraite si possible, **signalée toujours**.
 - Une image DANS UNE CELLULE de tableau reste en ligne dans son paragraphe, jamais extraite en
-  bloc figure séparé (aucun cas mesuré sur le corpus réel ni sur le gabarit livré).
+  bloc figure séparé (aucun cas mesuré sur le corpus réel ni sur le gabarit livré) — sauf dans
+  un tableau de mise en page d'images (ci-dessous).
+
+**Révision du 29.09.2026 (décision de Robin) — figures à plusieurs images, clés tapées, cas A.**
+Tout se décide avant l'écriture, dans `_regrouper_blocs()` (`manuscrit_gabarit.py`), qui fait de
+chaque contenu de figure ou de tableau UN `_Bloc` emportant les clés qui le précèdent :
+
+- **Clés tapées à la main** : un paragraphe « Étiquette : valeur » juste avant une image ou un
+  tableau (un paragraphe vide toléré entre les deux), dont l'étiquette est reconnue par
+  `pronto_modele.identifier_cle(…, CANON_FIGURE)` — la MÊME reconnaissance que l'import,
+  tolérance aux fautes et alias compris —, est consommé : sa valeur passe dans la clé du bloc
+  (la légende avec sa mise en forme), il ne reste pas en corps de texte, et le bloc ne reçoit
+  pas un second jeu de clés vides. Une étiquette reconnue par rien n'est jamais consommée. Une
+  légende TAPÉE l'emporte sur un « Figure 1 : … » voisin, qui reste alors dans le texte.
+- **Plusieurs images, une figure** : deux images (ou plus) dans un même paragraphe, plusieurs
+  paragraphes d'images à la suite (un vide intercalé toléré), ou un tableau de MISE EN PAGE —
+  chaque cellule ne porte que des images ou rien — donnent UN bloc figure, écrit une rangée par
+  paragraphe (images côte à côte, séparées d'une espace). L'import le relit comme un groupe
+  d'images `::: {.szh-grille}` (un numéro, une légende), la disposition suivant les rangées.
+  Une cellule qui porte une image ET un texte (« a) avant ») fait un vrai tableau : un groupe
+  n'a qu'une légende, il n'y a nulle part où poser une sous-légende par image. Un paragraphe de
+  texte qui porte plusieurs images garde son texte, suivi d'UN bloc pour toutes ses images.
+- **Texte alternatif** : la clé « Texte alternatif : » tapée va à la première image (c'est elle
+  que le moteur de règles juge, voir `_collecter_images()` de la CLI) ; les suivantes gardent
+  leur description Word.
+- **Cas A, document déjà au gabarit** : ses deux tableaux fixes (les deux premiers tableaux,
+  s'ils portent des paragraphes « SZH Cle ») remplacent ceux, vides, du gabarit — jamais
+  recopiés dans le corps (`_tableaux_fixes_du_document()`) ; ses clés « SZH Cle Abb/Tab »
+  restent des clés (reconnues, ou recopiées telles quelles quand l'une porte une étiquette
+  inconnue — `cles_brutes`) ; ses paragraphes de style maison (SZH Important, SZH Hervorhebung,
+  SZH Question, SZH Cle, SZH Aide) gardent leur style (`STYLES_MAISON`).
+
+**Garde-fou « rien ne se perd » (même date)** : la CLI compte les mots et les images du
+manuscrit avant tout traitement et les recompte dans le `.docx` écrit, relu par
+`manuscrit_docx.lire()` (`_controler_perte()`). Au-delà de 10 mots et 5 % manquants, ou dès
+qu'une image manque : alerte `Nettoyage.ContenuPerdu` (error) ; à partir de la moitié des mots,
+la sortie n'est pas livrée (code 2, `code_refus: "perte-de-contenu"`), le rapport le dit
+(`controles.perte_de_contenu`). Il a été posé après l'incident du bloc d'autrices final qui
+avalait le corps entier d'un manuscrit court (§5.5 bis, même date).
 
 `Fragment.note`/`Document.notes` (§4) : l'écrivain reporte chaque note APPELÉE (jamais les
 orphelines) dans `word/footnotes.xml`, renumérotées à partir de 1 — style de renvoi et de
@@ -486,7 +524,15 @@ cet ordre :
      repli()` : une année de publication — 19xx/20xx — entre parenthèses ou non, immédiatement
      encadrée par la ponctuation d'une référence, indépendamment de sa longueur). Une référence
      courte n'est pas un trou à sauter : la marche arrière s'arrête NET dessus (`break`), elle
-     n'est ni exclue seule ni traversée.
+     n'est ni exclue seule ni traversée ;
+   - **révision du 29.09.2026 (incident « tout le corps supprimé »)** : sur un intertitre
+     déclaré, sur un paragraphe qui porte une image, sur une clé de figure ou de tableau
+     (`_est_cle_de_figure()`). Et un repli qui remonte jusqu'à l'en-tête (ou au début du
+     document) sans qu'AUCUN contenu ne l'ait arrêté est refusé (`bloc_auteurs_final_refuse`) :
+     ce n'est pas un bloc final, c'est le corps. Mesuré : sur un manuscrit de neuf paragraphes
+     sans bibliographie, tous sous 120 signes, « Crédit : © Jeanne Test » apportait un nom
+     plausible et le corps entier partait, images comprises (`images.total: 0`, code 0, aucune
+     alerte).
 
    Consommé SEULEMENT s'il porte au moins un nom plausible (sinon rien, §5.1 : « en cas de
    doute, rien, et on le dit »).

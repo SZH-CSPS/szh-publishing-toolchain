@@ -72,6 +72,7 @@ import re
 import zipfile
 
 import manuscrit_modele as mm
+import pronto_modele
 
 # ---------------------------------------------------------------------------------
 # Styles du gabarit — styleId réels, mesurés dans word/styles.xml de
@@ -90,6 +91,19 @@ STYLE_CLE = 'SZHCle'
 # un seul cadre : Word fusionne les bordures de paragraphes adjacents identiques — c'est cette
 # propriété du format qui rend inutile toute table enveloppe ici.
 STYLE_CLE_ABB_TAB = 'SZHCleAbbTab'
+
+# Les styles MAISON du gabarit (styleId mesurés dans word/styles.xml, 29.09.2026), par nom
+# normalisé (pronto_modele.normaliser_nom_style). Un paragraphe qui porte déjà l'un d'eux —
+# document déjà au gabarit (cas A), ou manuscrit écrit dans une copie du gabarit — le GARDE :
+# réécrit en Corps de texte, un encadré « SZH Important » perdait son cadre, et un bloc
+# « SZH Cle Abb/Tab » ses étiquettes de figure (mesuré : un document déjà au gabarit sortait
+# du nettoyeur avec ses clés en Corpsdetexte, suivies d'un second jeu de clés vides).
+STYLES_MAISON = {
+    pronto_modele.normaliser_nom_style(nom): style_id for nom, style_id in (
+        ('SZH Important', 'SZHImportant'), ('SZH Hervorhebung', 'SZHHervorhebung'),
+        ('SZH Question (interview)', 'SZHQuestioninterview'), ('SZH Cle', STYLE_CLE),
+        ('SZH Cle Abb/Tab', STYLE_CLE_ABB_TAB), ('SZH Aide', 'SZHAide'))
+}
 
 # docx-titres.py, RE_LEGENDE : reconnaît une légende déjà écrite dans le manuscrit (« Figure
 # 1 », « Abbildung 2 », « Tableau 3 »…) — copié tel quel, voir l'en-tête pour la raison (nom
@@ -732,7 +746,9 @@ def _paragraphe_xml(paragraphe, style_id, registre, espace='document'):
 
 
 def _style_pour_paragraphe(paragraphe):
-    return STYLE_TITRE.get(paragraphe.niveau_retenu, STYLE_CORPS)
+    if paragraphe.niveau_retenu in STYLE_TITRE:
+        return STYLE_TITRE[paragraphe.niveau_retenu]
+    return STYLES_MAISON.get(pronto_modele.normaliser_nom_style(paragraphe.style), STYLE_CORPS)
 
 
 # ---------------------------------------------------------------------------------
@@ -799,11 +815,15 @@ def _contenu_cellule_xml(blocs, registre, espace='document'):
             morceaux.append(_tableau_xml(bloc, registre, espace))
         else:
             # Décision n°3 de l'en-tête : une image dans une cellule reste EN PLACE, en ligne
-            # — jamais extraite dans un bloc figure imbriqué. Pas de restyle (style_id='') :
-            # le contenu d'un tableau du manuscrit n'est pas retouché par §5.1/§5.2, qui ne
-            # portent que sur les paragraphes de PREMIER NIVEAU (voir manuscrit_modele.py,
-            # _paragraphes_premier_niveau).
-            morceaux.append(_paragraphe_xml(bloc, '', registre, espace))
+            # — jamais extraite dans un bloc figure imbriqué. Pas de restyle : le contenu d'un
+            # tableau du manuscrit n'est pas retouché par §5.1/§5.2, qui ne portent que sur les
+            # paragraphes de PREMIER NIVEAU (voir manuscrit_modele.py,
+            # _paragraphes_premier_niveau) — SAUF un style maison déjà posé (SZH Cle, SZH
+            # Aide…), gardé tel quel : c'est lui que le lecteur du gabarit reconnaît, et un
+            # tableau fixe recopié sans lui ne se relirait plus (voir _tableaux_fixes_du_
+            # document).
+            style_id = STYLES_MAISON.get(pronto_modele.normaliser_nom_style(bloc.style), '')
+            morceaux.append(_paragraphe_xml(bloc, style_id, registre, espace))
     if not morceaux:
         return PARAGRAPHE_VIDE
     return _fermer_sur_paragraphe(''.join(morceaux))
@@ -964,7 +984,11 @@ def _associer_legendes(blocs):
         est_image = isinstance(bloc, mm.Paragraphe) and any(f.image is not None
                                                              for f in bloc.fragments)
         est_tableau = isinstance(bloc, mm.Tableau)
-        if not (est_image or est_tableau):
+        # Un bloc reconnu (voir _regrouper_blocs) cherche sa légende comme les autres — sauf
+        # si l'autrice ou l'auteur en a TAPÉ une sous « Légende : » : on n'en prend alors
+        # aucune autre, et un paragraphe « Figure 1 : … » voisin reste dans le texte, visible.
+        est_bloc = isinstance(bloc, _Bloc) and not bloc.legende_saisie()
+        if not (est_image or est_tableau or est_bloc):
             continue
         indices, fragments = _cherche_legende(blocs, idx, consommes)
         if fragments is not None:
@@ -1047,6 +1071,293 @@ def _texte_legende_trace(fragments):
     return ''.join(f.texte for f in fragments) if fragments else ''
 
 
+# ---------------------------------------------------------------------------------
+# Figures et tableaux reconnus AVANT l'écriture (décision de Robin, 29.09.2026).
+#
+# Trois défauts mesurés sur le nettoyeur, que ce passage corrige ensemble :
+#   1. les clés TAPÉES à la main juste avant une image (« Légende : … », « Crédit : … » en
+#      style Normal, sans le style du gabarit) n'étaient pas reconnues : elles restaient en
+#      corps de texte, et l'image recevait un second jeu de clés, vides ;
+#   2. deux images dans un même paragraphe, ou plusieurs paragraphes d'images à la suite, ou
+#      un tableau de mise en page qui ne porte que des images, donnaient DEUX blocs figure
+#      vides (ou un bloc tableau vide) — là où l'autrice ou l'auteur montrait UNE figure ;
+#   3. un document déjà au gabarit voyait ses clés « SZH Cle Abb/Tab » réécrites en corps de
+#      texte, suivies d'un nouveau jeu de clés vides.
+# Chaque contenu de figure (images) ou de tableau devient donc UN `_Bloc`, qui emporte les
+# clés qui le précèdent. L'import (pronto_modele.py) relit ensuite un bloc à plusieurs images
+# comme un groupe d'images (`::: {.szh-grille}`), un numéro, une légende.
+#
+# ⚠ Rien n'est jamais jeté ici : une clé reconnue part DANS le bloc (sa valeur y est écrite),
+#   une clé dont l'étiquette n'est reconnue par rien reste un paragraphe du texte (cas B), ou
+#   garde tel quel le jeu de clés du document (cas A, `cles_brutes`), que l'import dira.
+
+class _Bloc:
+    """Un bloc figure ou tableau à écrire d'un seul tenant. `rangees` : liste de listes
+    d'Image (figure) — une rangée par paragraphe ou par rangée de tableau du manuscrit ;
+    `tableau` : le Tableau du manuscrit (bloc tableau). `champs` : ce que les clés saisies
+    disaient ('legende' en fragments, les autres en texte), '' pour une clé absente ou vide.
+    `cles` : les paragraphes de clé consommés. `cles_brutes` : vrai quand une clé stylée du
+    gabarit porte une étiquette que personne ne connaît — le jeu de clés est alors recopié tel
+    quel, jamais « normalisé » en perdant cette ligne. `source` : celle du premier contenu."""
+
+    __slots__ = ('nature', 'rangees', 'tableau', 'champs', 'cles', 'cles_brutes', 'source')
+
+    def __init__(self, nature, rangees=None, tableau=None, champs=None, cles=None,
+                 cles_brutes=False, source=None):
+        self.nature = nature
+        self.rangees = rangees or []
+        self.tableau = tableau
+        self.champs = champs or {}
+        self.cles = cles or []
+        self.cles_brutes = cles_brutes
+        self.source = source
+
+    def images(self):
+        return [img for rangee in self.rangees for img in rangee]
+
+    def legende_saisie(self):
+        return bool(self.champs.get('legende'))
+
+
+MAX_VIDES_ENTRE_IMAGES = pronto_modele.MAX_VIDES_ENTRE_IMAGES
+
+
+def _images_du_paragraphe(paragraphe):
+    return [f.image for f in paragraphe.fragments if f.image is not None]
+
+
+def _images_seules(bloc):
+    """Un paragraphe qui ne porte que des images (ni texte, ni note, ni puce)."""
+    return (isinstance(bloc, mm.Paragraphe) and bloc.liste is None
+            and any(f.image is not None for f in bloc.fragments)
+            and not any(f.texte.strip() or getattr(f, 'note', None) is not None
+                        for f in bloc.fragments if f.image is None))
+
+
+def _est_vide(bloc):
+    return (isinstance(bloc, mm.Paragraphe) and bloc.liste is None
+            and not any(f.image is not None or f.texte.strip()
+                        or getattr(f, 'note', None) is not None for f in bloc.fragments))
+
+
+def _rangees_tableau_images(tableau):
+    """Les rangées d'images d'un tableau de MISE EN PAGE — chaque cellule ne porte que des
+    images ou rien, au moins une image en tout — ou None pour tout autre tableau. Même
+    décision que pronto_modele.est_tableau_images() : une cellule qui porte AUSSI un texte
+    (« a) avant ») fait un vrai tableau, parce qu'un groupe d'images n'a nulle part où poser
+    une sous-légende par image — voir sa docstring."""
+    rangees = []
+    for rangee in tableau.rangees:
+        images = []
+        for cellule in rangee:
+            for b in cellule.blocs:
+                if not isinstance(b, mm.Paragraphe):
+                    return None
+                if not (_images_seules(b) or _est_vide(b)):
+                    return None
+                images.extend(_images_du_paragraphe(b))
+        if images:
+            rangees.append(images)
+    return rangees or None
+
+
+def _fragments_apres_deux_points(paragraphe):
+    """Les fragments de la VALEUR d'une clé « Étiquette : valeur », mise en forme comprise
+    (une légende garde ses italiques), sans l'étiquette ni les blancs qui la suivent."""
+    res, vu = [], False
+    for f in paragraphe.fragments:
+        if f.image is not None:
+            continue
+        texte = f.texte
+        if not vu:
+            k = texte.find(':')
+            if k == -1:
+                continue
+            vu = True
+            texte = texte[k + 1:]
+        if not res:
+            texte = texte.lstrip()
+            if not texte:
+                continue
+        res.append(mm.Fragment(texte=texte, image=None, forme=f.forme, lien=f.lien,
+                               source=f.source, note=getattr(f, 'note', None),
+                               effectif=getattr(f, 'effectif', None)))
+    return res
+
+
+def _lire_cle(paragraphe):
+    """(champ, paragraphe) pour un paragraphe de clé de figure/tableau : « Étiquette :
+    valeur », l'étiquette reconnue par pronto_modele.identifier_cle() contre CANON_FIGURE —
+    la MÊME reconnaissance que l'import, tolérance aux fautes comprise. Un paragraphe au style
+    « SZH Cle Abb/Tab » dont l'étiquette n'est reconnue par rien rend ('?', paragraphe) : c'est
+    une clé du gabarit, que le document porte telle quelle. None pour tout le reste."""
+    if not isinstance(paragraphe, mm.Paragraphe) or paragraphe.liste is not None:
+        return None
+    if any(f.image is not None for f in paragraphe.fragments):
+        return None
+    texte = paragraphe.texte().strip()
+    stylee = (pronto_modele.normaliser_nom_style(paragraphe.style)
+              == pronto_modele.NOM_STYLE_CLE_BLOC)
+    # « Abbildung 1: Schatzkarte » est une LÉGENDE déjà écrite, pas une clé : « abbildung »
+    # est un alias de Légende dans CANON_FIGURE, et « Abbildung 1 » s'en approche assez pour
+    # passer — la légende perdait alors son « Abbildung 1 » (mesuré sur tmp/docx-dev : un mot
+    # de moins par figure). Elle suit la voie des légendes (_associer_legendes), entière.
+    if not stylee and RE_LEGENDE.match(texte):
+        return None
+    if ':' in texte:
+        etiquette = texte.partition(':')[0].strip()
+        resultat = pronto_modele.identifier_cle(etiquette, pronto_modele.CANON_FIGURE)
+        if resultat is not None and resultat[0] != '__ambigu__':
+            return resultat[0], paragraphe
+    if stylee and texte:
+        return '?', paragraphe
+    return None
+
+
+def _cles_avant(blocs, idx, pris):
+    """Les indices (ordre du document) des paragraphes de clé qui précèdent directement le
+    contenu à `idx` : un paragraphe vide toléré juste avant le contenu (même fausse
+    manipulation que l'import tolère), puis une suite de clés, chaque champ une seule fois,
+    jamais un paragraphe déjà pris par un autre bloc."""
+    j = idx - 1
+    if j >= 0 and j not in pris and _est_vide(blocs[j]):
+        j -= 1
+    indices, vus = [], set()
+    while j >= 0 and j not in pris and len(indices) < 6:
+        lu = _lire_cle(blocs[j])
+        if lu is None:
+            break
+        champ = lu[0]
+        if champ != '?' and champ in vus:
+            break
+        vus.add(champ)
+        indices.append(j)
+        j -= 1
+    return sorted(indices)
+
+
+def _champs_des_cles(paragraphes):
+    """({'legende': fragments, 'alt', 'credit', 'source': texte}, brutes)."""
+    champs = {'legende': [], 'alt': '', 'credit': '', 'source': ''}
+    brutes = False
+    for p in paragraphes:
+        champ, _ = _lire_cle(p)
+        if champ == '?':
+            brutes = True
+            continue
+        fragments = _fragments_apres_deux_points(p)
+        if champ == 'legende':
+            champs['legende'] = fragments
+        else:
+            champs[champ] = ''.join(f.texte for f in fragments).strip()
+    return champs, brutes
+
+
+def _regrouper_blocs(blocs):
+    """La liste « virtuelle » que _convertir_niveau_racine() écrit : chaque contenu de figure
+    (images seules, groupe, tableau de mise en page) ou de tableau PRÉCÉDÉ DE CLÉS devient un
+    `_Bloc` à la place de son premier contenu, ses clés et ses autres contenus en sont
+    retirés. Une image seule sans clé, un tableau sans clé restent tels quels (voie de
+    toujours) ; un paragraphe mêlant texte et images aussi, sauf qu'il n'y porte qu'UN bloc
+    pour toutes ses images (voir _convertir_niveau_racine)."""
+    n = len(blocs)
+    pris = set()
+    blocs_par_debut = {}
+    i = 0
+    while i < n:
+        bloc = blocs[i]
+        rangees, tableau, fin = None, None, i
+        if isinstance(bloc, mm.Tableau):
+            rangees = _rangees_tableau_images(bloc)
+            if rangees is None:
+                tableau = bloc
+        elif _images_seules(bloc):
+            # Décision de Robin (29.09.2026), la même qu'à l'import (pronto_modele.
+            # MAX_VIDES_ENTRE_IMAGES) : les images qui se suivent, séparées de 0, 1 ou 2
+            # paragraphes VIDES au plus, sont UNE figure ; un texte, une nouvelle série de
+            # clés (un texte aussi) ou un troisième vide l'arrêtent. Les vides sautés sont
+            # consommés avec le groupe — ils ne portent rien, rien ne se perd.
+            rangees = [_images_du_paragraphe(bloc)]
+            j = i + 1
+            while j < n:
+                k = j
+                while k < n and k - j < MAX_VIDES_ENTRE_IMAGES and _est_vide(blocs[k]):
+                    k += 1
+                if k < n and _images_seules(blocs[k]):
+                    rangees.append(_images_du_paragraphe(blocs[k]))
+                    fin = k
+                    j = k + 1
+                else:
+                    break
+        if rangees is None and tableau is None:
+            i += 1
+            continue
+        cles = _cles_avant(blocs, i, pris)
+        groupe = rangees is not None and (len(rangees) > 1 or len(rangees[0]) > 1
+                                           or isinstance(bloc, mm.Tableau))
+        if not cles and not groupe:
+            i = fin + 1                   # image seule ou tableau sans clé : voie de toujours
+            continue
+        champs, brutes = _champs_des_cles([blocs[k] for k in cles])
+        blocs_par_debut[i] = _Bloc('figure' if rangees is not None else 'tableau',
+                                   rangees=rangees, tableau=tableau, champs=champs,
+                                   cles=[blocs[k] for k in cles], cles_brutes=brutes,
+                                   source=bloc.source)
+        pris.update(cles)
+        pris.update(range(i + 1, fin + 1))
+        i = fin + 1
+    virtuels = []
+    for k, bloc in enumerate(blocs):
+        if k in blocs_par_debut:
+            virtuels.append(blocs_par_debut[k])
+        elif k not in pris:
+            virtuels.append(bloc)
+    return virtuels
+
+
+def blocs_figure(document):
+    """Les `_Bloc` que l'écriture posera, vus AVANT elle — pour que le nettoyeur juge les
+    images comme elles sortiront (texte alternatif saisi sous « Texte alternatif : » compris),
+    sans refaire la reconnaissance ailleurs."""
+    return [b for b in _regrouper_blocs(document.blocs) if isinstance(b, _Bloc)]
+
+
+def _rangee_images_xml(images, registre):
+    """Un paragraphe portant les images d'une rangée, en ligne, séparées d'une espace : c'est
+    ce que l'import relit comme une rangée de groupe (deux images côte à côte = « 2 »)."""
+    runs = []
+    for k, image in enumerate(images):
+        if k:
+            runs.append('<w:r><w:t xml:space="preserve"> </w:t></w:r>')
+        rid = registre.enregistrer_image(image)
+        docpr_id = registre.nouveau_docpr_id()
+        runs.append('<w:r>%s</w:r>' % _drawing_xml(rid, image, docpr_id,
+                                                   registre.largeur_max_dxa))
+    return '<w:p>%s</w:p>' % ''.join(runs)
+
+
+def _bloc_xml(bloc, fragments_legende, registre):
+    """(xml, n_wp, indice de la clé « Texte alternatif : » parmi les <w:p> du bloc)."""
+    champs = dict(bloc.champs)
+    if not champs.get('legende'):
+        champs['legende'] = fragments_legende or ''
+    if bloc.nature == 'figure' and not champs.get('alt'):
+        # Rien de tapé : le texte alternatif de la première image, comme un bloc ordinaire.
+        champs['alt'] = bloc.rangees[0][0].alt
+    if bloc.cles_brutes:
+        meta = ''.join(_paragraphe_xml(p, STYLE_CLE_ABB_TAB, registre) for p in bloc.cles)
+        n_cles = len(bloc.cles)
+        indice_alt = next((k for k, p in enumerate(bloc.cles) if _lire_cle(p)[0] == 'alt'), 0)
+    else:
+        meta = _meta_paragraphes_xml(champs, registre)
+        n_cles = len(CHAMPS_BLOC)
+        indice_alt = _INDICE_CLE_ALT
+    if bloc.nature == 'figure':
+        contenu = ''.join(_rangee_images_xml(r, registre) for r in bloc.rangees)
+        return meta + contenu, n_cles + len(bloc.rangees), indice_alt
+    return meta + _tableau_xml(bloc.tableau, registre), n_cles, indice_alt
+
+
 def _convertir_niveau_racine(blocs, registre, trace):
     """Rend (xml_du_corps, correspondance) — xml_du_corps hors les deux tableaux fixes.
 
@@ -1074,6 +1385,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
     texte et une image) : la RÉSOLUTION entre les deux revient à l'appelant (manuscrit_annoter.
     py), pas à cette fonction, qui se contente de rendre les deux, honnêtement.
     """
+    blocs = _regrouper_blocs(blocs)
     n = len(blocs)
     legendes, consommes = _associer_legendes(blocs)
     segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide, n_wp, type_bloc)
@@ -1101,7 +1413,29 @@ def _convertir_niveau_racine(blocs, registre, trace):
             continue
         bloc = blocs[idx]
 
-        if isinstance(bloc, mm.Tableau):
+        if isinstance(bloc, _Bloc):
+            fragments_legende = legendes.get(idx)
+            xml, n_wp, indice_alt = _bloc_xml(bloc, fragments_legende, registre)
+            segments.append((True, xml, bloc.source, False, n_wp, bloc.nature, indice_alt))
+            saisies = [label for cle, label in CHAMPS_BLOC
+                       if bloc.champs.get(cle)] if not bloc.cles_brutes else ['recopiées telles quelles']
+            if bloc.nature == 'figure':
+                images = bloc.images()
+                motif = ('%s posée(s) dans UN bloc figure (%s) ; clés saisies reprises : %s'
+                         % (', '.join('« %s »' % im.nom for im in images),
+                            'groupe de %d image(s) en %d rangée(s)' % (len(images),
+                                                                        len(bloc.rangees))
+                            if len(images) > 1 else 'image seule',
+                            ', '.join(saisies) or 'aucune'))
+                trace.append({'portee': 'bloc', 'source': bloc.source, 'decision': 'bloc_figure',
+                              'images': len(images), 'motif': motif})
+            else:
+                trace.append({'portee': 'bloc', 'source': bloc.source,
+                              'decision': 'bloc_tableau',
+                              'motif': 'tableau posé dans un bloc tableau ; clés saisies '
+                                       'reprises : %s' % (', '.join(saisies) or 'aucune')})
+
+        elif isinstance(bloc, mm.Tableau):
             fragments_legende = legendes.get(idx)
             champs = {'legende': fragments_legende or '', 'alt': '', 'credit': '', 'source': ''}
             xml = _meta_et_contenu_xml(champs, _tableau_xml(bloc, registre), registre)
@@ -1123,10 +1457,21 @@ def _convertir_niveau_racine(blocs, registre, trace):
                     style_id = _style_pour_paragraphe(p_texte)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
                                       bloc.source, False, 1, None))
-                # La légende éventuellement trouvée pour ce paragraphe ne va QUE sur la
-                # première image : un paragraphe portant plusieurs images est rare, et le
-                # contrat n'envisage pas d'en répartir une seule légende entre plusieurs blocs.
+                # Plusieurs images dans une phrase (29.09.2026) : UN bloc pour toutes, comme
+                # pour un paragraphe d'images seules — deux blocs vides pour une figure qu'on
+                # montrait d'un tenant, c'était le défaut mesuré. Le texte reste au-dessus.
                 fragments_legende = legendes.get(idx)
+                if len(images) > 1:
+                    groupe = _Bloc('figure', rangees=[images], source=bloc.source)
+                    xml, n_wp, indice_alt = _bloc_xml(groupe, fragments_legende, registre)
+                    segments.append((True, xml, bloc.source, False, n_wp, 'figure', indice_alt))
+                    trace.append({'portee': 'bloc', 'source': bloc.source,
+                                  'decision': 'bloc_figure', 'images': len(images),
+                                  'motif': '%s posée(s) dans UN bloc figure (groupe de %d '
+                                           'image(s), tirées d\'un paragraphe de texte)'
+                                           % (', '.join('« %s »' % im.nom for im in images),
+                                              len(images))})
+                    images = []
                 for k, image in enumerate(images):
                     champs = {'legende': (fragments_legende if k == 0 else None) or '',
                               'alt': image.alt, 'credit': '', 'source': ''}
@@ -1178,7 +1523,11 @@ def _convertir_niveau_racine(blocs, registre, trace):
     compteur_wp = 0
     precedent_est_bloc = False
     precedent_est_vide = False
-    for i, (est_bloc, xml, idx_source, est_vide, n_wp, type_bloc) in enumerate(segments_reduits):
+    for i, seg in enumerate(segments_reduits):
+        est_bloc, xml, idx_source, est_vide, n_wp, type_bloc = seg[:6]
+        # Position de la clé « Texte alternatif : » dans le bloc : la deuxième des quatre,
+        # sauf pour un jeu de clés recopié tel quel (`_Bloc.cles_brutes`), qui la donne.
+        indice_alt = seg[6] if len(seg) > 6 else _INDICE_CLE_ALT
         if (i > 0 and _separateur_requis(est_bloc, precedent_est_bloc)
                 and not precedent_est_vide and not est_vide):
             morceaux.append(PARAGRAPHE_VIDE)
@@ -1191,7 +1540,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
             # (CHAMPS_BLOC : légende, alt, crédit, source) — `compteur_wp` vise ici le premier
             # <w:p> du bloc (« Légende : »), +1 pour atteindre celui-ci. Vrai pour un bloc
             # figure ET un bloc tableau : les deux partagent _meta_paragraphes_xml().
-            correspondance.append({'source': idx_source, 'sortie': compteur_wp + _INDICE_CLE_ALT,
+            correspondance.append({'source': idx_source, 'sortie': compteur_wp + indice_alt,
                                     'bloc': type_bloc})
         compteur_wp += n_wp
         precedent_est_bloc = est_bloc
@@ -1407,6 +1756,31 @@ def _remplir_table_auteurs(table_xml, entete):
     return table_xml.replace(ancien_bloc, nouveau_bloc, 1), trace
 
 
+def _porte_szh_cle(tableau):
+    for rangee in tableau.rangees:
+        for cellule in rangee:
+            for b in cellule.blocs:
+                if (isinstance(b, mm.Paragraphe) and pronto_modele.normaliser_nom_style(b.style)
+                        == pronto_modele.NOM_STYLE_CLE):
+                    return True
+    return False
+
+
+def _tableaux_fixes_du_document(blocs):
+    """{rang (0 = métadonnées, 1 = autrices et auteurs) : indice dans `blocs`} des tableaux
+    fixes que le DOCUMENT porte déjà — cas A, document déjà au gabarit. Même règle que le
+    lecteur du gabarit (pronto_modele.principal : les deux premiers tableaux, par position),
+    plus une garde : le tableau doit porter des paragraphes « SZH Cle », sans quoi ce n'est
+    pas un tableau fixe mais un tableau de contenu qui se trouve en tête.
+
+    Défaut mesuré (29.09.2026) : un document déjà au gabarit ressortait du nettoyeur avec
+    QUATRE tableaux de tête — les deux du gabarit, vides, puis les siens, remplis, recopiés
+    dans le corps. À la réimportation, le lecteur prenait les deux vides comme tableaux fixes
+    et imprimait les deux remplis au milieu de l'article."""
+    tables = [i for i, b in enumerate(blocs) if isinstance(b, mm.Tableau)]
+    return {rang: i for rang, i in enumerate(tables[:2]) if _porte_szh_cle(blocs[i])}
+
+
 # ---------------------------------------------------------------------------------
 # Point d'entrée.
 
@@ -1469,7 +1843,22 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None)
     registre.notes = _RegistreNotes(document.notes, styles_xml_gabarit, footnotes_xml_gabarit)
 
     trace = []
-    corps_xml, correspondance_relative = _convertir_niveau_racine(document.blocs, registre, trace)
+    # Cas A : les tableaux fixes du DOCUMENT remplacent ceux, vides, du gabarit — recopiés avec
+    # leurs styles maison (SZH Cle, SZH Aide) et leurs photos, jamais dupliqués dans le corps.
+    fixes = _tableaux_fixes_du_document(document.blocs) if entete is None else {}
+    for rang, i in sorted(fixes.items()):
+        xml_fixe = _tableau_xml(document.blocs[i], registre)
+        if rang == 0:
+            table1_xml = xml_fixe
+        else:
+            table2_xml = xml_fixe
+        trace.append({'portee': 'document', 'source': document.blocs[i].source,
+                      'decision': 'tableau_fixe_repris',
+                      'motif': "tableau %s déjà au gabarit : repris à sa place, jamais recopié "
+                               "dans le corps" % ('des métadonnées' if rang == 0
+                                                  else 'des autrices et auteurs')})
+    blocs_corps = [b for i, b in enumerate(document.blocs) if i not in fixes.values()]
+    corps_xml, correspondance_relative = _convertir_niveau_racine(blocs_corps, registre, trace)
     trace.extend(trace_entete)
 
     # §5.5 : le gabarit livré ne porte AUCUN champ mots-clés (mesuré, revue-template/Pronto -

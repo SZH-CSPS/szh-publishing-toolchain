@@ -26,7 +26,9 @@
 # Les tableaux consommés par docx-meta.py (lignes « T<TAB>k » de $SZH_META : le tableau des
 # auteurs) sont sautés ici et les autres numérotés séquentiellement. La numérotation doit
 # rester alignée sur szh-tabelle-reference.lua, ce qui tient parce que szh-meta.lua retire
-# les mêmes blocs Table avant que le filtre ne compte les siens.
+# les mêmes blocs Table avant que le filtre ne compte les siens. Même saut, même raison, pour
+# un tableau de mise en page d'images (lignes « FG<TAB>k » de pronto-lire.py, 29.09.2026) :
+# szh-meta.lua le remplace par un groupe d'images, il n'a pas de table-NN.html.
 #
 # Légendes : un paragraphe voisin est une légende s'il est tout en gras, s'il est stylé
 # « légende » (Tabelle Beschriftung, Caption… — style invisible pour pandoc, lu ici dans
@@ -541,13 +543,29 @@ def tables_consommees_par_meta():
     chemin = os.getenv('SZH_META')
     if not chemin:
         return set()
+    return _ordinaux_par_lettre(chemin, 'T\t')
+
+
+def tables_grilles_par_meta():
+    """Ordinaux (1-based, même numérotation que les lignes T) des tableaux de MISE EN PAGE
+    d'images que pronto-lire.py a reconnus comme un groupe d'images (lignes
+    « FG<TAB>k<TAB>… ») : ce ne sont plus des tableaux, szh-meta.lua les remplace dans le
+    corps par un bloc `::: {.szh-grille}` qui porte leurs images. Sautés ici exactement comme
+    un tableau consommé, sans quoi tables/table-NN.html et szh-tabelle-reference.lua ne
+    compteraient plus les mêmes tableaux."""
+    return _ordinaux_par_lettre(os.getenv('SZH_META'), 'FG\t')
+
+
+def _ordinaux_par_lettre(chemin, prefixe):
+    if not chemin:
+        return set()
     ordinaux = set()
     try:
         with open(chemin, encoding='utf-8') as f:
             for ligne in f:
-                if ligne.startswith('T\t'):
+                if ligne.startswith(prefixe):
                     try:
-                        ordinaux.add(int(ligne[2:].strip()))
+                        ordinaux.add(int(ligne[len(prefixe):].split('\t')[0].strip()))
                     except ValueError:
                         pass
     except OSError:
@@ -612,6 +630,8 @@ def principal(argv):
     # Tableau des auteurs : sauté ici et retiré du corps par szh-meta.lua, les tableaux
     # restants étant renumérotés en séquence des deux côtés.
     sautes = tables_consommees_par_meta()
+    grilles = tables_grilles_par_meta() - sautes
+    sautes = sautes | grilles
     blocs_pronto = blocs_pronto_par_meta()
     consommes = set()
     legendes = []                             # textes normalisés des légendes prises
@@ -684,10 +704,12 @@ def principal(argv):
             'deklarieren Sie sie: ein Screenreader kann dann jede Zelle ihrer Kopfzeile '
             'zuordnen. Hat die Tabelle wirklich keine Kopfzeile, ist nichts zu tun.')
 
-    nb_sautes = sum(1 for o in sautes if 1 <= o <= len(tableaux))
-    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s%s'
+    nb_grilles = sum(1 for o in grilles if 1 <= o <= len(tableaux))
+    nb_sautes = sum(1 for o in sautes if 1 <= o <= len(tableaux)) - nb_grilles
+    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s%s%s'
           % (n, len(legendes),
              ', %d consommé(s) (auteurs)' % nb_sautes if nb_sautes else '',
+             ', %d devenu(s) groupe(s) d\'images' % nb_grilles if nb_grilles else '',
              ', %d sans en-tête' % len(plats) if plats else ''))
     return 0
 

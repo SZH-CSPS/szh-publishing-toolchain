@@ -34,10 +34,15 @@
 #   (`contexte['bibliographie']`) : dénombrer les auteurs d'une référence APA a son propre
 #   harnais ailleurs dans ce dépôt, pas réinventé ici en trois lignes de regex.
 #   `manuscrit_biblio.py`, lui, compte les auteurs pour de vrai et n'a jamais eu ce défaut.
-# - Cas A : `manuscrit_gabarit.ecrire()` insère toujours ses deux tableaux fixes, vides, AVANT
-#   le corps — un document de cas A porte pourtant déjà ces tableaux, remplis, comme les deux
-#   premiers blocs de `document.blocs`. Risque connu (double tableau de métadonnées), non
-#   corrigé faute d'un document réel pour valider la correction (§1 du contrat).
+# - Cas A : `manuscrit_gabarit.ecrire()` insérait toujours ses deux tableaux fixes, vides,
+#   AVANT le corps — et recopiait dans le corps ceux, remplis, du document. Corrigé le
+#   29.09.2026 (mesuré sur un document déjà au gabarit) : les tableaux fixes du document
+#   prennent la place de ceux du gabarit (_tableaux_fixes_du_document), et ses clés « SZH Cle
+#   Abb/Tab » restent des clés (_regrouper_blocs), au lieu de devenir du corps de texte.
+# - Garde-fou « rien ne se perd » (29.09.2026) : les mots et les images du manuscrit sont
+#   comptés avant tout traitement et recomptés dans le .docx écrit (_controler_perte). Une
+#   perte au-delà de PERTE_ALERTE lève `Nettoyage.ContenuPerdu` (error) ; au-delà de
+#   PERTE_REFUS, la sortie n'est pas livrée (code 2, code_refus « perte-de-contenu »).
 # - La langue de traitement ('fr'/'de', pour le filtre, les règles et le rapport) vient
 #   TOUJOURS du produit (`--produit revue` -> fr), jamais de `document.langue` : un article
 #   français déclaré `de-CH` recevait sinon la typographie allemande. La langue déclarée ne
@@ -64,6 +69,7 @@
 #   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
 #   de livrer un .docx corrompu.
 
+import io
 import json
 import os
 import re
@@ -355,8 +361,195 @@ def _collecter_images(document):
                 img = f.image
                 source = img.source if img.source is not None else bloc.source
                 images.append({'nom': img.nom, 'source': source, 'alt': img.alt,
-                                'largeur_px': img.largeur_px, 'hauteur_px': img.hauteur_px})
+                                'largeur_px': img.largeur_px, 'hauteur_px': img.hauteur_px,
+                                'objet': id(img)})
+    # Le texte alternatif TAPÉ sous « Texte alternatif : » (clés saisies à la main, ou bloc
+    # déjà au gabarit) va sur la première image de sa figure — c'est ainsi que l'écriture le
+    # posera (manuscrit_gabarit.blocs_figure) et que l'import le relira. Sans cette reprise,
+    # l'image était jugée « sans texte alternatif » alors que l'autrice en avait écrit un.
+    saisis = {}
+    for bloc in mg.blocs_figure(document):
+        alt = (bloc.champs.get('alt') or '').strip()
+        if bloc.nature == 'figure' and alt and bloc.rangees:
+            saisis[id(bloc.rangees[0][0])] = alt
+    for i in images:
+        if not (i['alt'] or '').strip() and i['objet'] in saisis:
+            i['alt'] = saisis[i['objet']]
     return images
+
+
+# ---------------------------------------------------------------------------------
+# Garde-fou « rien ne se perd » (décision de Robin, 29.09.2026). L'incident qui l'a fait
+# poser : un manuscrit court sans bibliographie ressortait du nettoyeur SANS SON CORPS — le
+# repli du bloc d'autrices final l'avait avalé en entier, images comprises — avec un code 0 et
+# aucune alerte. La cause est corrigée (manuscrit_entete._bloc_auteurs_final_paragraphes) ;
+# ce contrôle est là pour la SUIVANTE, celle qu'on n'a pas vue venir : il compare les mots et
+# les images du manuscrit à ceux du .docx écrit, relu comme n'importe quel manuscrit.
+#
+# Les mots, pas les signes : la typographie change des espaces et des guillemets, jamais un
+# mot. L'en-tête reconnu part dans les tableaux fixes, qui sont relus aussi (cellules
+# comprises) — seuls sortent vraiment du document ce que l'en-tête jette exprès (ligne de
+# revue, DOI, étiquettes « Résumé », « Mots-clés »…), quelques mots. D'où les deux seuils :
+# PERTE_ALERTE donne une alerte `error` (le document est écrit, à vérifier avant usage),
+# PERTE_REFUS refuse la sortie — un document qui a perdu la moitié de ses mots ne doit pas
+# pouvoir être importé par mégarde.
+
+RE_MOT = re.compile(r'\w{2,}', re.UNICODE)
+PERTE_MOTS_MIN = 10          # en deçà, ce sont les étiquettes d’en-tête qu’on a quittées
+PERTE_ALERTE = 0.05          # 5 % des mots du manuscrit
+PERTE_REFUS = 0.5            # la moitié
+
+
+def _mots_et_images(document):
+    """(Counter des mots en minuscules, nombre d'images) du document entier : corps et
+    cellules à toute profondeur, notes comprises."""
+    from collections import Counter
+    mots = Counter()
+    n_images = 0
+
+    def creuser(blocs):
+        nonlocal n_images
+        for bloc in _parcourir_blocs(blocs):
+            if isinstance(bloc, mm.Paragraphe):
+                mots.update(RE_MOT.findall(unicodedata.normalize('NFC', bloc.texte()).casefold()))
+                n_images += sum(1 for f in bloc.fragments if f.image is not None)
+
+    creuser(document.blocs)
+    for blocs_note in (document.notes or {}).values():
+        creuser(blocs_note)
+    return mots, n_images
+
+
+def _ecartes_par_entete(document, entete, indices_entete):
+    """Ce que la reconnaissance de l'en-tête met de côté SANS que le gabarit ait où l'écrire :
+    le DOI, la ligne de citation de la revue, les résumés dans une autre langue que celle du
+    produit, et les photos des blocs d'autrices consommés (le tableau des autrices du gabarit
+    n'en reçoit pas). Mesuré sur les 72 manuscrits lisibles de tmp/docx-dev (29.09.2026) : le
+    résumé français d'un article allemand (4 à 7 % des mots) et la photo de l'autrice, dans
+    presque tous — une perte RÉELLE, mais connue, et antérieure au garde-fou. Elle n'est donc
+    pas comptée comme une perte inexpliquée (qui crierait sur chaque manuscrit, et qu'on
+    apprendrait vite à ne plus lire) : elle est DITE à part, par `Nettoyage.ContenuEcarte`.
+    Rend {'mots': Counter, 'images': int, 'elements': [(fr, de), ...]}."""
+    from collections import Counter
+    mots = Counter()
+    elements = []
+    if entete is not None:
+        def ajouter(texte, fr, de):
+            texte = (texte or '').strip()
+            if texte:
+                mots.update(RE_MOT.findall(unicodedata.normalize('NFC', texte).casefold()))
+                elements.append((fr, de))
+        ajouter(entete.doi, 'le DOI', 'die DOI')
+        ajouter(entete.ligne_revue, 'la ligne de citation de la revue', 'die Zitierzeile der Zeitschrift')
+        for langue, texte in sorted((entete.resumes_autres or {}).items()):
+            ajouter(texte, 'le résumé (%s)' % langue, 'die Zusammenfassung (%s)' % langue)
+    # Les photos : seulement celles d'une FICHE en tableau consommée (la voie des tableaux
+    # d'autrices, _tableaux_auteurs). Une image d'un PARAGRAPHE consommé n'est jamais « une
+    # photo mise de côté » : c'est exactement ce que l'incident du 29.09.2026 avalait — le
+    # corps d'un manuscrit court, images comprises —, et elle doit compter comme perdue.
+    images = 0
+    for idx in indices_entete or {}:
+        if 0 <= idx < len(document.blocs) and isinstance(document.blocs[idx], mm.Tableau):
+            for bloc in _parcourir_blocs([document.blocs[idx]]):
+                if isinstance(bloc, mm.Paragraphe):
+                    images += sum(1 for f in bloc.fragments if f.image is not None)
+    if images:
+        elements.append(('%d photo(s) des autrices et auteurs' % images,
+                         '%d Foto(s) der Autorinnen und Autoren' % images))
+    return {'mots': mots, 'images': images, 'elements': elements}
+
+
+def _alerte_ecartes(ecartes, langue):
+    """L'avertissement qui dit ce que l'en-tête a mis de côté (voir _ecartes_par_entete)."""
+    if not ecartes or not ecartes['elements']:
+        return None
+    if langue == 'fr':
+        message = ("Le document nettoyé ne porte pas : %s. Le gabarit n'a pas de place pour "
+                   "ces éléments de l'en-tête ; reportez-les à la main si l'article en a besoin."
+                   % ', '.join(fr for fr, _ in ecartes['elements']))
+    else:
+        message = ("Das bereinigte Dokument enthält nicht: %s. Die Vorlage hat für diese Teile "
+                   "des Kopfbereichs keinen Platz; übertragen Sie sie von Hand, falls der Artikel "
+                   "sie braucht." % ', '.join(de for _, de in ecartes['elements']))
+    return {'rule': 'Nettoyage.ContenuEcarte', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
+
+
+def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
+    """(alerte ou None, mesure) — la comparaison du manuscrit lu (`entree` : le résultat de
+    _mots_et_images() pris AVANT tout traitement) avec le .docx écrit, relu par le lecteur du
+    nettoyeur lui-même. `ecartes` (_ecartes_par_entete) : ce qui est mis de côté sciemment,
+    retiré de l'étalon et dit ailleurs."""
+    mots_in, images_in = entree
+    if ecartes:
+        mots_in = mots_in - ecartes['mots']
+        images_in = max(images_in - ecartes['images'], 0)
+    # La relecture refait les constats du lecteur (en-têtes et pieds non lus…) sur NOTRE
+    # sortie : ils ont déjà été dits sur le manuscrit, on les tait ici.
+    stderr, journal = sys.stderr, os.environ.pop('SZH_IMPORT_LOG', None)
+    try:
+        sys.stderr = io.StringIO()
+        relu = md.lire(chemin_sortie)
+    except Exception as e:
+        relu = e
+    finally:
+        sys.stderr = stderr
+        if journal is not None:
+            os.environ['SZH_IMPORT_LOG'] = journal
+    try:
+        if isinstance(relu, Exception):
+            raise relu
+        mots_out, images_out = _mots_et_images(relu)
+    except Exception as e:                         # relecture impossible : on le dit
+        return ({'rule': 'Nettoyage.ControleImpossible', 'severity': 'warning',
+                 'action': 'report', 'para': None, 'span': None, 'found': None,
+                 'suggested': None,
+                 'message': ("Le document écrit n'a pas pu être relu pour vérifier qu'aucun "
+                             "contenu ne s'est perdu (%s)." % e) if langue == 'fr' else
+                            ("Das geschriebene Dokument konnte nicht erneut gelesen werden, um "
+                             "zu prüfen, dass kein Inhalt verloren ging (%s)." % e)},
+                {'controle': 'impossible'})
+    total = sum(mots_in.values())
+    manquants = {m: n - mots_out.get(m, 0) for m, n in mots_in.items() if n > mots_out.get(m, 0)}
+    n_manquants = sum(manquants.values())
+    taux = (n_manquants / total) if total else 0.0
+    mesure = {'mots_entree': total, 'mots_sortie': sum(mots_out.values()),
+              'mots_manquants': n_manquants, 'taux_perte': round(taux, 4),
+              'images_entree': images_in, 'images_sortie': images_out,
+              'exemples_manquants': sorted(manquants, key=lambda m: -manquants[m])[:15],
+              'ecartes_par_entete': ({'mots': sum(ecartes['mots'].values()),
+                                      'images': ecartes['images'],
+                                      'elements': [fr for fr, _ in ecartes['elements']]}
+                                     if ecartes else None)}
+    perte_mots = n_manquants >= PERTE_MOTS_MIN and taux >= PERTE_ALERTE
+    perte_images = images_out < images_in
+    if not (perte_mots or perte_images):
+        return None, mesure
+    mesure['refus'] = taux >= PERTE_REFUS
+    exemples = ', '.join(mesure['exemples_manquants'][:8])
+    if langue == 'fr':
+        message = ("Le document nettoyé a perdu du contenu du manuscrit : %d mot(s) sur %d "
+                   "(%.0f %%)%s, %d image(s) sur %d retrouvée(s). %s"
+                   % (n_manquants, total, taux * 100,
+                      (' — par exemple : %s' % exemples) if exemples else '',
+                      images_out, images_in,
+                      "Il n'a pas été livré : signalez ce manuscrit à la maintenance."
+                      if mesure['refus'] else
+                      "Comparez-le au manuscrit avant de l'utiliser, et signalez ce "
+                      "manuscrit à la maintenance."))
+    else:
+        message = ("Das bereinigte Dokument hat Inhalt des Manuskripts verloren: %d von %d "
+                   "Wörtern (%.0f %%)%s, %d von %d Bildern wiedergefunden. %s"
+                   % (n_manquants, total, taux * 100,
+                      (' — zum Beispiel: %s' % exemples) if exemples else '',
+                      images_out, images_in,
+                      'Es wurde nicht ausgeliefert: melden Sie dieses Manuskript der Wartung.'
+                      if mesure['refus'] else
+                      'Vergleichen Sie es vor der Verwendung mit dem Manuskript und melden '
+                      'Sie dieses Manuskript der Wartung.'))
+    return ({'rule': 'Nettoyage.ContenuPerdu', 'severity': 'error', 'action': 'report',
+             'para': None, 'span': None, 'found': None, 'suggested': None,
+             'message': message}, mesure)
 
 
 def _collecter_tableaux(document):
@@ -747,6 +940,11 @@ def principal(argv):
                        'message': str(e), 'code_sortie': CODE_ECHEC_INTERNE})
         return CODE_ECHEC_INTERNE
 
+    # Ce que le manuscrit porte AVANT tout traitement — l'étalon du garde-fou « rien ne se
+    # perd » (voir _controler_perte), pris ici parce que l'en-tête et le bloc d'autrices vont
+    # retirer des blocs de document.blocs.
+    empreinte_entree = _mots_et_images(document)
+
     # Refus, avant tout travail, sans rien écrire sur le disque (§8) : suivi de
     # modifications — un texte avec des w:ins/w:del n'a pas de contenu univoque.
     if document.revisions > 0:
@@ -788,6 +986,7 @@ def principal(argv):
     # déjà rempli »). Retire le titre/sous-titre/auteurs/résumé/mots-clés/DOI/ligne de revue
     # du corps AVANT le classement des titres de section, qui ne doit juger que ce qui reste.
     entete = None
+    ecartes_entete = None
     trace_entete = []
     indices_entete = {}
     paragraphes_entete_ctx = []
@@ -820,6 +1019,9 @@ def principal(argv):
                          'ordre_conflit': bool(a.get('ordre_conflit')),
                          'texte_source': a.get('texte_source') or ''}
                         for a in entete.auteurs]
+        # Ce que l'en-tête met de côté sans que le gabarit ait où l'écrire — mesuré AVANT le
+        # retrait des blocs, sur les indices du document complet (garde-fou « rien ne se perd »).
+        ecartes_entete = _ecartes_par_entete(document, entete, indices_entete)
         document.blocs = [b for idx, b in enumerate(document.blocs)
                            if idx not in indices_entete]
         progres('en-tête : titre=%r, %d auteur(s), résumé=%d signe(s), %d mot(s)-clé(s)'
@@ -933,6 +1135,7 @@ def principal(argv):
     sortie_docx = None
     resultat_ecriture = None
     stats_annotation = None
+    mesure_perte = None
     if args['analyse_seule']:
         progres('analyse seule (--analyse-seule) : aucun .docx écrit')
     else:
@@ -943,7 +1146,28 @@ def principal(argv):
         resultat_ecriture = mg.ecrire(document, CHEMIN_GABARIT, sortie_docx,
                                        decisions=decisions, entete=entete)
 
-        if args['sans_annotation']:
+        # Garde-fou « rien ne se perd », sur le .docx tel qu'écrit, AVANT l'annotation (qui
+        # ajoute des révisions dont le texte barré fausserait le compte).
+        alerte_perte, mesure_perte = _controler_perte(empreinte_entree, sortie_docx, langue,
+                                                      ecartes_entete)
+        for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue)):
+            if alerte is not None:
+                alertes.append(alerte)
+                progres(alerte['message'])
+        _trier_alertes(alertes)
+        if mesure_perte.get('refus'):
+            # La moitié du manuscrit ou plus manque : le fichier n'est pas livré, pour qu'il ne
+            # puisse pas être importé par mégarde. Le rapport, lui, est écrit et le dit.
+            try:
+                os.remove(sortie_docx)
+            except OSError:
+                pass
+            progres('sortie refusée : %s supprimé' % sortie_docx)
+            sortie_docx = None
+
+        if sortie_docx is None:
+            pass
+        elif args['sans_annotation']:
             progres('annotation désactivée (--sans-annotation)')
         else:
             progres('annotation du document...')
@@ -1021,7 +1245,10 @@ def principal(argv):
         'analyse_seule': args['analyse_seule'], 'sans_typo': args['sans_typo'],
         'sans_annotation': args['sans_annotation'], 'sans_reseau': args['sans_reseau'],
         'sortie_docx': sortie_docx,
-        'controles': {'vale': 'indisponible' if vale_indisponible else 'effectue'},
+        'controles': {'vale': 'indisponible' if vale_indisponible else 'effectue',
+                      # Garde-fou « rien ne se perd » : mots et images du manuscrit
+                      # retrouvés dans le .docx écrit (None en --analyse-seule).
+                      'perte_de_contenu': mesure_perte},
         'compteurs': {
             'signes_total': signes_total, 'signes_bibliographie': signes_biblio,
             'nb_references': len(entrees_biblio), 'commentaires': document.commentaires,
@@ -1062,6 +1289,14 @@ def principal(argv):
         json.dump(rapport, f, ensure_ascii=False, indent=2)
 
     duree_ms = (time.perf_counter() - debut) * 1000
+    if mesure_perte and mesure_perte.get('refus'):
+        # Même forme que les refus d'entrée (refuser(), plus haut), le rapport en plus : il
+        # dit ce qui manquait.
+        progres('terminé en %.0f ms (refus : perte de contenu)' % duree_ms)
+        _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'perte-de-contenu',
+                       'message': alerte_perte['message'], 'sortie_rapport': sortie_rapport,
+                       'code_sortie': CODE_REFUS})
+        return CODE_REFUS
     progres('terminé en %.0f ms (code de sortie %d)' % (duree_ms, code_sortie))
 
     _ligne_stdout({'entree': entree, 'produit': args['produit'], 'gabarit': gabarit,

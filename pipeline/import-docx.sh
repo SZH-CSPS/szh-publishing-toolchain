@@ -48,6 +48,10 @@
 #                      une parenthèse dans un nom de classe : le bloc d'attributs entier
 #                      s'imprimerait alors dans le livre)
 #   4bis. garde-fou : aucun bloc HTML brut ne doit rester dans le .md (voir plus bas).
+#   4ter. docx-controle-import.py --avant-medias : filet de sécurité — toute valeur de bloc
+#      lue dans le Word et toute image du Word se retrouvent dans l'article, sinon elles y
+#      sont remises, visibles, et c'est dit. Seconde passe (--apres-medias) après l'étape 5,
+#      sur les noms définitifs : images remises et images de groupe sans texte alternatif.
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
 #      citent sont supprimées (Word livre aussi les logos et filigranes du document).
@@ -84,8 +88,8 @@ export SZH_PRODUIT
 # sortie possible — succès, `exit 1` d'une pré-passe, ou un futur point de sortie qu'on
 # oublierait de couvrir à la main. Déclarées vides ici : `set -u` ferait échouer le trap
 # lui-même s'il se déclenchait avant qu'un mktemp les remplisse.
-META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""
-trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE"' EXIT
+META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""; CONTROLE=""; RETRAITS=""
+trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE" "$CONTROLE" "$RETRAITS"' EXIT
 
 # Un message destiné au rédacteur : sur stderr, et dans articles-word/.import.log quand la
 # cible `import` du Makefile en a passé le chemin absolu. Le journal nourrit la vue
@@ -177,6 +181,11 @@ else
   SOURCE_PANDOC="$DOCX_ABS"
 fi
 
+# Les images que szh-meta.lua retire EXPRÈS (logo de licence de tête) y sont notées : le filet
+# de sécurité de fin d'import ne doit ni les croire perdues, ni les remettre dans le texte.
+RETRAITS="$(mktemp)"
+export SZH_RETRAITS="$RETRAITS"
+
 # --extract-media=. : images extraites sous media/, en chemins relatifs au .md,
 #   corrects parce que le build HTML tourne dans le dossier de l'article. ⚠ écrire
 #   =media doublerait le chemin en media/media/.
@@ -228,10 +237,23 @@ if [ -d media/media ]; then
   sed -i 's|media/media/|media/|g' "$SLUG.md"
 fi
 
+# Filet de sécurité, première passe (décision de Robin, 29.09.2026 : « jamais rien ne doit
+# pouvoir disparaître ») : chaque légende, texte alternatif, crédit et source lus dans le Word
+# doivent se retrouver dans l'article, et chaque image du Word doit y être citée. Ce qui
+# manque est REMIS dans le texte, visible, et dit — AVANT import-medias.py, qui supprime tout
+# fichier d'image que le texte ne cite pas : une image oubliée par la conversion serait
+# sinon effacée pour de bon. Non bloquant, comme tout ce qui suit la conversion.
+CONTROLE="$(mktemp)"
+python3 "$PIPE/docx-controle-import.py" --avant-medias "$DOCX_ABS" "$SLUG" . "$CONTROLE" || true
+
 # Photos d'auteur·e·s rangées et détourées, images inutilisées supprimées. Non bloquant :
 # un échec laisse le dossier tel quel, l'article est déjà converti.
 MEDIAS="$(python3 "$PIPE/import-medias.py" "$SLUG" . "$PHOTOS" || true)"
 [ -n "$MEDIAS" ] && echo "[import-medias] $MEDIAS"
+
+# Seconde passe, sur les noms définitifs (<slug>-fig-NN) : les images remises sont nommées,
+# et toute image d'un groupe sans texte alternatif aussi.
+python3 "$PIPE/docx-controle-import.py" --apres-medias "$SLUG" . "$CONTROLE" "$MEDIAS" || true
 
 # Empreintes de ce que cette conversion a livré : c'est ce qui permettra à « Réimporter cet
 # article » de distinguer un tableau retravaillé dans l'éditeur d'un tableau tel que le Word

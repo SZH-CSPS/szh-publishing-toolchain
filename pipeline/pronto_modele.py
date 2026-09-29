@@ -1391,7 +1391,8 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
     « Étiquette : valeur » et le même avertissement en cas d'étiquette inconnue.
 
     `textes_pris` est la liste des paragraphes dont l'étiquette a été RECONNUE — les seuls que
-    la chaîne d'import a le droit de retirer du corps (lignes P, voir principal()). Un
+    la chaîne d'import a le droit de retirer du corps (en queue des lignes FI/FG/FT depuis le
+    29.09.2026, retirés par szh-legendes.lua au moment de la pose — voir principal()). Un
     paragraphe laissé vide par l'autrice ou l'auteur (« Crédit : » tout seul, comme dans le
     gabarit livré) en fait partie : il n'apporte rien, mais il s'imprimerait. Un paragraphe
     dont l'étiquette n'est reconnue par rien n'en fait JAMAIS partie : on ne retire pas du
@@ -1502,6 +1503,127 @@ def _cherche_contenu_bloc_nouvelle_forme(blocs, depart):
     return None, None
 
 
+# ---------------------------------------------------------------------------------
+# Groupes d'images (décision de Robin, 29.09.2026). Un en-tête de figure suivi de PLUSIEURS
+# images — deux images dans le même paragraphe, plusieurs paragraphes d'images à la suite, ou
+# un tableau de mise en page qui ne porte que des images — est UNE figure : un numéro, une
+# légende, un crédit, c'est le groupe d'images (`::: {.szh-grille}`) que crée « Ajouter une
+# image à côté » dans le formulaire Médias. Avant, les trois formes perdaient quelque chose :
+# deux images dans un paragraphe -> légende, texte alternatif et crédit retirés du corps sans
+# être posés nulle part (szh-legendes.lua refusait un paragraphe à deux images) ; deux
+# paragraphes -> la seconde image sans légende ni crédit ; un tableau 1×2 -> « Tableau N ».
+
+def _par_images_seules(bloc):
+    """Un paragraphe qui porte au moins une image et AUCUN texte — la seule forme qui entre
+    dans un groupe. Un paragraphe mêlant texte et image n'en est jamais : son texte n'aurait
+    pas de place dans une grille (voir szh-grille.lua, qui le garderait à part, sous les
+    images), et c'est à la personne de décider où il va."""
+    return isinstance(bloc, Par) and bool(bloc.images) and not bloc.texte
+
+
+# Décision de Robin (29.09.2026) : entre deux images d'une même figure, 0, 1 ou 2 paragraphes
+# VIDES au plus. Au-delà, ou dès qu'un texte ou une nouvelle série de clés s'intercale, la
+# figure s'arrête. Même règle au nettoyeur (manuscrit_gabarit.MAX_VIDES_ENTRE_IMAGES).
+MAX_VIDES_ENTRE_IMAGES = 2
+
+
+def _par_vide(bloc):
+    return isinstance(bloc, Par) and not bloc.texte and not bloc.images
+
+
+def _etendue_images(blocs, idx):
+    """Les indices des paragraphes d'images qui forment le contenu d'un bloc, à partir de
+    `idx` (le premier, rendu par _cherche_contenu_bloc_nouvelle_forme) : lui, puis chaque
+    paragraphe d'images SEULES qui le suit, séparé du précédent par au plus
+    MAX_VIDES_ENTRE_IMAGES paragraphes vides — jamais un texte, jamais une clé (une clé est
+    un texte : une nouvelle série de clés ouvre une nouvelle figure). Les vides sautés
+    n'apportent rien et ne portent rien : ils ne peuvent rien faire perdre. Le premier
+    paragraphe porte-t-il aussi du texte ? Alors il reste seul : on ne colle pas à une image
+    légendée dans sa propre phrase les images qui la suivent."""
+    indices = [idx]
+    if not _par_images_seules(blocs[idx]):
+        return indices
+    j = idx + 1
+    n = len(blocs)
+    while j < n:
+        k = j
+        while k < n and k - j < MAX_VIDES_ENTRE_IMAGES and _par_vide(blocs[k]):
+            k += 1                        # 0, 1 ou 2 vides entre deux paragraphes d'images
+        if k < n and _par_images_seules(blocs[k]):
+            indices.append(k)
+            j = k + 1
+            continue
+        break
+    return indices
+
+
+def _paragraphes_de_tableau(tableau):
+    """Tous les blocs des cellules d'un tableau, dans l'ordre de lecture, et None dès qu'une
+    cellule porte un tableau imbriqué (ce n'est plus une mise en page d'images)."""
+    tous = []
+    for rangee in tableau.rangees:
+        for cellule in rangee:
+            for b in cellule.blocs:
+                if not isinstance(b, Par):
+                    return None
+                tous.append(b)
+    return tous
+
+
+def est_tableau_images(tableau):
+    """Vrai pour un tableau de MISE EN PAGE : chaque cellule ne porte que des images ou rien
+    (cellules vides admises), et il y a au moins une image. Un tableau de données qui
+    contient une image dans une cellule garde du texte ailleurs : il reste un tableau.
+
+    ⚠ DÉCISION (29.09.2026) : une cellule qui porte une image ET un texte court (« a) avant »,
+    « b) après ») n'est PAS admise — le tableau reste un tableau. Un groupe d'images n'a
+    qu'une légende, pour la figure entière (contrat de lib/references.js) : il n'y a nulle
+    part où poser une sous-légende par image. L'absorber, ce serait soit la perdre, soit la
+    ranger dans un champ qui n'est pas le sien (le texte alternatif) sans que personne le
+    sache. Le tableau reste donc imprimé tel quel, rien n'est perdu, et
+    `tableau-images-et-texte` dit comment en faire une figure (voir
+    _avertir_tableau_images_et_texte)."""
+    pars = _paragraphes_de_tableau(tableau)
+    if not pars:
+        return False
+    return any(p.images for p in pars) and all(not p.texte for p in pars)
+
+
+def _tableau_images_et_texte(tableau):
+    """Vrai quand chaque cellule non vide porte au moins une image, mais qu'une cellule au
+    moins porte aussi du texte : l'allure d'une planche d'images sous-titrées, que
+    est_tableau_images() refuse (voir sa docstring). Sert seulement à le dire."""
+    vues = 0
+    texte = False
+    for rangee in tableau.rangees:
+        for cellule in rangee:
+            pars = [b for b in cellule.blocs if isinstance(b, Par)]
+            if len(pars) != len(cellule.blocs):
+                return False
+            if not any(p.images or p.texte for p in pars):
+                continue
+            if not any(p.images for p in pars):
+                return False
+            vues += 1
+            texte = texte or any(p.texte for p in pars)
+    return vues > 0 and texte
+
+
+def _avertir_tableau_images_et_texte(rang, slug):
+    avertir(
+        'tableau-images-et-texte',
+        ['article « %s »' % slug, 'tableau %d' % rang],
+        'Le tableau %d de cet article range des images avec des textes dans ses cases : il a '
+        'été importé comme un tableau, rien n\'est perdu. Si c\'est une planche d\'images, '
+        'retirez les textes des cases (reportez-les dans la légende) et réimportez : il '
+        'deviendra une figure à plusieurs images.' % rang,
+        'Die Tabelle %d dieses Artikels ordnet Bilder zusammen mit Texten in ihren Zellen an: '
+        'sie wurde als Tabelle importiert, es geht nichts verloren. Falls es sich um eine '
+        'Bildtafel handelt, entfernen Sie die Texte aus den Zellen (übernehmen Sie sie in die '
+        'Legende) und importieren Sie neu: sie wird dann eine Abbildung mit mehreren '
+        'Bildern.' % rang)
+
+
 def _avertir_cles_sans_contenu(champs, slug):
     legende = champs.get('legende', '')
     avertir(
@@ -1557,13 +1679,44 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
             continue
         _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
                                           'bloc')
+        fin_contenu = idx_contenu
+        if nature == 'image':
+            # (a) plusieurs images dans le paragraphe, (b) plusieurs paragraphes d'images :
+            # tout le contenu part dans UNE ligne FI, que szh-legendes.lua compose en groupe.
+            indices_images = _etendue_images(blocs, idx_contenu)
+            fin_contenu = indices_images[-1]
+            contenu = _images_du_groupe([blocs[j] for j in indices_images], variantes)
+        else:
+            contenu = rang_table.get(idx_contenu)
+            if est_tableau_images(blocs[idx_contenu]):
+                nature = 'grille'         # (c) tableau de mise en page d'images : ligne FG
+            elif _tableau_images_et_texte(blocs[idx_contenu]):
+                _avertir_tableau_images_et_texte(contenu, slug)
         resultat.append({'pos': depart, 'nature': nature, 'champs': champs,
                          'consommee': consommee, 'tbl_interne': nature == 'table',
-                         'cles': textes_pris,
-                         'contenu': (rang_table.get(idx_contenu) if nature == 'table'
-                                     else _images_du_bloc(blocs[idx_contenu], variantes))})
-        i = idx_contenu + 1
+                         'cles': textes_pris, 'contenu': contenu})
+        i = fin_contenu + 1
     return resultat
+
+
+def _images_du_groupe(pars, variantes=None):
+    """La cible d'une ligne FI : `_images_du_bloc()` inchangé quand le bloc ne porte qu'UNE
+    image (le cas de toujours : « nom|variante »), sinon une entrée par image, dans l'ordre du
+    document, séparées par « ; » — chacune avec ses variantes séparées par « | ». « ; » ne
+    peut pas apparaître dans un nom sous media/ : Word nomme ses médias imageN.ext, et
+    pronto_docx/pronto_odt ne rendent que ce nom-là."""
+    images = [(nom, surface) for p in pars for nom, surface in p.images if nom]
+    if len(images) <= 1:
+        return _images_du_bloc(pars[0], variantes) if pars else ''
+    variantes = variantes or {}
+    entrees = []
+    for nom, _ in images:
+        noms = []
+        for candidat in [nom] + list(variantes.get(nom, [])):
+            if candidat not in noms:
+                noms.append(candidat)
+        entrees.append('|'.join(noms))
+    return ';'.join(entrees)
 
 
 def _images_du_bloc(par, variantes=None):
@@ -1777,6 +1930,21 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
                                                             bloquants, variantes)
     blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
 
+    # (c) sans en-tête : un tableau de mise en page qui ne porte que des images est un groupe
+    # d'images, même quand personne n'a tapé de légende au-dessus — imprimé en « tableau »,
+    # ses photos sortaient dans une grille de cellules à bordures, sans texte alternatif lu.
+    # Jamais un des deux tableaux fixes, jamais le contenu d'un bloc (déjà traité), jamais
+    # une enveloppe à l'ancienne forme (ses clés sont du texte : est_tableau_images() la
+    # refuse de toute façon).
+    rangs_blocs = {b['contenu'] for b in blocs_nouvelle_forme
+                   if b['nature'] in ('table', 'grille')}
+    grilles_libres = []
+    for k, (idx_bloc, tbl) in enumerate(tables):
+        if tbl is table1_elem or tbl is table2_elem or (k + 1) in rangs_blocs:
+            continue
+        if est_tableau_images(tbl):
+            grilles_libres.append(k + 1)
+
     # Un tableau « consommé » (ligne T) est un tableau que la chaîne d'import doit faire
     # DISPARAÎTRE du corps — docx-tables.py ne le rend pas, szh-meta.lua le retire de l'AST. Il
     # n'y en a que deux, et ce sont les deux tableaux fixes de la tête : métadonnées et
@@ -1872,23 +2040,38 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
             f.write('L\t%s\n' % meta['lang'])
             for k in tables_consommees:
                 f.write('T\t%d\n' % k)
-            # Les quatre paragraphes de clé d'un bloc quittent le corps (szh-meta.lua les
-            # apparie sur leur texte, une ligne P retirant une occurrence), et leurs valeurs
-            # vont se poser sur l'image (FI, szh-legendes.lua) ou sur le tableau (FT,
-            # docx-tables.py). Sans ces lignes, « Légende : », « Texte alternatif : »,
-            # « Crédit : » et « Source : » s'impriment tels quels au milieu de l'article et le
-            # texte alternatif est perdu — mesuré sur le gabarit réel avant ce branchement.
-            for b in blocs_figtab:
-                for texte in b['cles']:
-                    f.write('P\t%s\n' % texte)
+            # Les paragraphes de clé d'un bloc quittent le corps, et leurs valeurs vont se
+            # poser sur l'image (FI, szh-legendes.lua), sur le groupe d'images (FI à plusieurs
+            # images, FG pour un tableau d'images) ou sur le tableau (FT, docx-tables.py). Sans
+            # ces lignes, « Légende : », « Texte alternatif : », « Crédit : » et « Source : »
+            # s'impriment tels quels au milieu de l'article et le texte alternatif est perdu —
+            # mesuré sur le gabarit réel avant ce branchement.
+            #
+            # ⚠ AUCUNE LIGNE P pour un bloc (garantie « rien ne disparaît », décision de Robin
+            # du 29.09.2026). Les textes des clés voyagent en queue de la ligne FI/FG/FT, et
+            # c'est szh-legendes.lua qui les retire du corps, AU MOMENT où il pose leurs
+            # valeurs sur l'image, le groupe ou le tableau — et seulement alors, juste devant
+            # SON contenu. Les lignes P de szh-meta.lua retiraient d'avance, par le texte, la
+            # PREMIÈRE occurrence du document : c'était perdre légende, texte alternatif et
+            # crédit sans un mot le jour où l'image ne se laissait pas trouver (mesuré : deux
+            # images dans un paragraphe), et c'était, entre deux blocs, retirer la clé
+            # « Source : » vide de l'un à la place de celle de l'autre (mesuré : un « Source : »
+            # restait imprimé au-dessus du tableau d'exemple du gabarit). Une valeur que la
+            # chaîne ne sait pas où attacher reste donc VISIBLE dans le texte, et
+            # szh-legendes.lua le dit (bloc-valeur-non-reprise).
             for b in blocs_figtab:
                 if b['contenu'] is None:
                     continue
                 champs = b['champs']
                 queue = '\t'.join([champs.get('legende', ''), champs.get('alt', ''),
                                    champs.get('credit', ''), champs.get('source', '')])
-                f.write('%s\t%s\t%s\n' % ('FT' if b['nature'] == 'table' else 'FI',
-                                          b['contenu'], queue))
+                lettre = {'table': 'FT', 'grille': 'FG'}.get(b['nature'], 'FI')
+                f.write('%s\t%s\t%s%s\n' % (lettre, b['contenu'], queue,
+                                            ''.join('\t' + t for t in b['cles'])))
+            # Tableaux d'images sans en-tête (voir grilles_libres plus haut) : un groupe
+            # d'images sans légende, ni clé à retirer.
+            for k in grilles_libres:
+                f.write('FG\t%d\t\t\t\t\n' % k)
             if ligne_bt:
                 f.write('BT\t%s\n' % ligne_bt)
             for t in lignes_b:
@@ -1911,6 +2094,7 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         'blocs': [{'nature': b['nature'], 'legende': b['champs'].get('legende', ''),
                   'tbl_interne': b['tbl_interne'], 'consommee': b['consommee']}
                  for b in blocs_figtab],
+        'grilles_tableau': grilles_libres,
         'biblio': biblio,
         'meta_ecrit': meta_ecrit,
     })

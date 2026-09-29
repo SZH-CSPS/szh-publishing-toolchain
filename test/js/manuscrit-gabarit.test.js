@@ -531,16 +531,19 @@ test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont quatre paragr
 // `return est_bloc_courant or est_bloc_precedent` par `return False` — le paragraphe vide entre
 // les deux blocs figure disparaît.
 
-test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs figure qui se touchent',
+// Révisé le 29.09.2026 : deux paragraphes d'images À LA SUITE ne font plus deux blocs figure
+// mais UN groupe d'images (décision de Robin, voir le test « deux paragraphes d'images à la
+// suite » plus bas). Deux blocs qui se touchent, c'est désormais une figure suivie d'un
+// tableau : le séparateur qu'on garde ici est le même.
+test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se touchent (figure puis tableau)',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const sortie = path.join(base, 'sortie.docx');
       const octets1 = Buffer.from('IMAGE-UN-0123456789');
-      const octets2 = Buffer.from('IMAGE-DEUX-0123456789');
       const spec = specDocument([
         paragraphe([fragment('', {}, { image: image('un.png', octets1.toString('base64')) })]),
-        paragraphe([fragment('', {}, { image: image('deux.png', octets2.toString('base64')) })]),
+        tableau([[cellule('A1'), cellule('B1')]]),
       ]);
       ecrireDepuisSpec(spec, sortie);
 
@@ -548,7 +551,7 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs figure qu
       const indicesLegende = [];
       textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
       assert.strictEqual(indicesLegende.length, 2,
-        'deux blocs figure (deux groupes de quatre clés) attendus : ' + JSON.stringify(textes));
+        'deux blocs (deux groupes de quatre clés) attendus : ' + JSON.stringify(textes));
       const [i1, i2] = indicesLegende;
       // Entre les deux « Légende : » : les trois autres clés du premier bloc, son image, PUIS
       // le paragraphe séparateur — 6 <w:p> d'écart. Un écart de 5 signalerait un paragraphe vide
@@ -562,11 +565,11 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs figure qu
       assert.strictEqual(textes[i2 - 2], '',
         'le <w:p> juste avant le séparateur doit être l\'image du premier bloc (texte vide)');
 
-      // Positif : aucun <w:tbl> nulle part — un bloc figure n'en écrit plus (contrairement à
-      // l'ancienne forme).
+      // Positif : un seul <w:tbl> de plus que les deux tableaux FIXES — celui du bloc
+      // tableau. Le bloc figure n'en écrit pas (contrairement à l'ancienne forme).
       const xml = lireDocumentXml(sortie);
-      assert.strictEqual((xml.match(/<w:tbl\b/g) || []).length, 2,
-        'seuls les deux tableaux FIXES du gabarit (métadonnées, auteurs) doivent rester : un '
+      assert.strictEqual((xml.match(/<w:tbl\b/g) || []).length, 3,
+        'les deux tableaux FIXES du gabarit et le tableau du bloc, rien d\'autre : un '
         + 'bloc figure n\'écrit plus de <w:tbl>');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
