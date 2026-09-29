@@ -19,7 +19,7 @@ cette distinction, un validateur manquant se lirait comme un PDF conforme.
 Deux publics, deux lignes — et c'est pourquoi la référence de norme n'est plus dans la
 phrase. Chaque règle en échec sort ainsi :
 
-    [pdf-ua]   • Le document n'a pas de titre (1 fois, page(s) 3)
+    [pdf-ua]   • Titre du document manquant (1 fois, page(s) 3)
     [pdf-ua]         En cause : …
     [pdf-ua]         À faire  : …
     [pdf-ua]   ISO 14289-1 7.1-9
@@ -47,163 +47,185 @@ PREFIXE = '[pdf-ua]'
 # veraPDF (github.com/veraPDF/veraPDF-validation-profiles/wiki/PDFUA-Part-1-rules).
 # Les neuf règles réellement rencontrées sur le corpus sont toutes ici.
 REGLES = {
+  # Même gabarit que la liste « À corriger » du cockpit (lib/constats.js, SECOND_ETAGE) :
+  #   titre  un groupe nominal court et concret — ce qui ne va pas, pas la règle ;
+  #   cause  tout ce qui explique : pourquoi c'est un défaut, d'où il vient, les cas
+  #          connus. Le cockpit le range dans l'infobulle, avec le repère ISO ;
+  #   geste  UNE phrase, qui commence par le verbe. Un défaut de la chaîne n'a qu'un geste,
+  #          toujours le même : le signaler — le détail technique est dans la cause.
   ('5', '1'): (
     ("Le PDF ne s'annonce pas PDF/UA",
-     "Les métadonnées XMP du fichier ne portent pas l'identification PDF/UA.",
-     "Relancez la compilation : le PDF a probablement été produit sans la variante "
-     "PDF/UA-1 (voir le journal de compilation, ligne « balisage PDF indisponible »)."),
+     "Les métadonnées XMP du fichier ne portent pas l'identification PDF/UA : le PDF a "
+     "probablement été produit sans la variante PDF/UA-1 (voir le journal de "
+     "compilation, ligne « balisage PDF indisponible »).",
+     "Recompilez ; si le défaut revient, signalez-le."),
     ("Das PDF weist sich nicht als PDF/UA aus",
-     "Die XMP-Metadaten enthalten die PDF/UA-Kennung nicht.",
-     "Kompilieren Sie neu: das PDF wurde wahrscheinlich ohne die Variante PDF/UA-1 "
-     "erzeugt (siehe Kompilierprotokoll, Zeile « balisage PDF indisponible »).")),
+     "Die XMP-Metadaten enthalten die PDF/UA-Kennung nicht: das PDF wurde "
+     "wahrscheinlich ohne die Variante PDF/UA-1 erzeugt (siehe Kompilierprotokoll, "
+     "Zeile « balisage PDF indisponible »).",
+     "Kompilieren Sie neu; kehrt der Fehler zurück, melden Sie ihn.")),
   ('6.2', '1'): (
-    ("Le PDF n'est pas balisé",
-     "Le fichier ne déclare pas de balisage (MarkInfo/Marked).",
-     "Même cause que ci-dessus : le PDF est sorti par le repli non balisé. Regardez la "
-     "sortie d'erreur de la compilation."),
-    ("Das PDF ist nicht getaggt",
-     "Die Datei deklariert kein Tagging (MarkInfo/Marked).",
-     "Gleiche Ursache wie oben: das PDF stammt aus dem untaggten Rückfall. Prüfen Sie "
-     "die Fehlerausgabe der Kompilierung.")),
+    ("PDF non balisé",
+     "Le fichier ne déclare pas de balisage (MarkInfo/Marked) : le PDF est sorti par le "
+     "repli non balisé. La sortie d'erreur de la compilation dit pourquoi.",
+     "Recompilez ; si le défaut revient, signalez-le."),
+    ("PDF nicht getaggt",
+     "Die Datei deklariert kein Tagging (MarkInfo/Marked): das PDF stammt aus dem "
+     "untaggten Rückfall. Die Fehlerausgabe der Kompilierung sagt, warum.",
+     "Kompilieren Sie neu; kehrt der Fehler zurück, melden Sie ihn.")),
   ('7.1', '3'): (
-    ("Du contenu n'est ni balisé ni marqué décoratif",
-     "Un texte ou un dessin est dessiné dans un calque de transparence, où il perd son "
-     "rattachement à la structure du document. Cause connue : une propriété CSS "
-     "opacity inférieure à 1 dans la feuille de style.",
-     "Ne réglez pas la transparence par opacity : composez la couleur sur son fond "
-     "et laissez-la à 1. Le filigrane de couverture et le point médian entre "
-     "auteur·e·s sont déjà traités ainsi dans pipeline/styles/print.css — s'il en "
-     "réapparaît un, c'est une opacity qui vient d'être ajoutée."),
-    ("Inhalt ist weder getaggt noch als dekorativ markiert",
-     "Ein Text oder eine Zeichnung wird in einer Transparenzebene gezeichnet und "
-     "verliert dort ihre Verbindung zur Dokumentstruktur. Bekannte Ursache: eine "
-     "CSS-Eigenschaft opacity kleiner als 1 im Stylesheet.",
-     "Regeln Sie Transparenz nicht über opacity: mischen Sie die Farbe auf ihrem "
-     "Hintergrund und lassen Sie opacity auf 1. Wasserzeichen und Mittelpunkt zwischen "
-     "den Autorinnen und Autoren sind in pipeline/styles/print.css schon so gelöst — "
-     "taucht der Fehler wieder auf, wurde eine neue opacity eingeführt.")),
-  ('7.1', '9'): (
-    ("Le document n'a pas de titre",
-     "Les métadonnées du PDF ne portent aucun titre.",
-     "Ouvrez « Métadonnées des articles » dans le cockpit, saisissez le titre de "
-     "l'article, enregistrez, puis recompilez."),
-    ("Das Dokument hat keinen Titel",
-     "Die PDF-Metadaten enthalten keinen Titel.",
-     "Öffnen Sie « Metadaten der Artikel » im Cockpit, geben Sie den Titel ein, "
-     "speichern Sie und kompilieren Sie neu.")),
-  ('7.1', '10'): (
-    ("Le lecteur PDF affichera le nom de fichier au lieu du titre",
-     "La préférence d'affichage « DisplayDocTitle » manque.",
+    ("Contenu hors de la structure du document",
+     "Un texte ou un dessin n'est ni balisé ni marqué décoratif : il est dessiné dans un "
+     "calque de transparence, où il perd son rattachement à la structure. Cause connue : "
+     "une propriété CSS opacity inférieure à 1 dans la feuille de style. La transparence "
+     "ne se règle pas par opacity : la couleur se compose sur son fond et opacity reste à "
+     "1. Le filigrane de couverture et le point médian entre auteur·e·s sont déjà traités "
+     "ainsi dans pipeline/styles/print.css — s'il en réapparaît un, c'est une opacity qui "
+     "vient d'être ajoutée.",
      "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
-    ("Der PDF-Betrachter zeigt den Dateinamen statt des Titels",
-     "Die Anzeigeeinstellung « DisplayDocTitle » fehlt.",
+    ("Inhalt ausserhalb der Dokumentstruktur",
+     "Ein Text oder eine Zeichnung ist weder getaggt noch als dekorativ markiert: er wird "
+     "in einer Transparenzebene gezeichnet und verliert dort seine Verbindung zur "
+     "Struktur. Bekannte Ursache: eine CSS-Eigenschaft opacity kleiner als 1 im "
+     "Stylesheet. Transparenz wird nicht über opacity geregelt: die Farbe wird auf ihrem "
+     "Hintergrund gemischt und opacity bleibt auf 1. Wasserzeichen und Mittelpunkt "
+     "zwischen den Autorinnen und Autoren sind in pipeline/styles/print.css schon so "
+     "gelöst — taucht der Fehler wieder auf, wurde eine neue opacity eingeführt.",
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
+  ('7.1', '9'): (
+    ("Titre du document manquant",
+     "Les métadonnées du PDF ne portent aucun titre : un lecteur d'écran n'a rien à "
+     "annoncer à l'ouverture du fichier.",
+     "Saisissez le titre dans la fiche de l'article, puis recompilez."),
+    ("Dokumenttitel fehlt",
+     "Die PDF-Metadaten enthalten keinen Titel: ein Screenreader hat beim Öffnen der "
+     "Datei nichts anzusagen.",
+     "Geben Sie den Titel im Datenblatt des Artikels ein und kompilieren Sie neu.")),
+  ('7.1', '10'): (
+    ("Titre du document non affiché",
+     "La préférence d'affichage « DisplayDocTitle » manque : le lecteur PDF affichera le "
+     "nom de fichier au lieu du titre.",
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
+    ("Dokumenttitel nicht angezeigt",
+     "Die Anzeigeeinstellung « DisplayDocTitle » fehlt: der PDF-Betrachter zeigt den "
+     "Dateinamen statt des Titels.",
      "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.1', '11'): (
-    ("Le PDF n'a pas d'arbre de structure",
-     "Le fichier ne porte aucune structure de document : rien n'y dit ce qui est un "
-     "titre, un paragraphe ou un tableau, ni dans quel ordre le lire. Un lecteur "
-     "d'écran n'a rien à annoncer que la suite des caractères dessinés.",
-     "Même cause que « Le PDF n'est pas balisé » : le document est sorti par le repli "
-     "non balisé. Relancez la compilation et regardez le journal, ligne « balisage PDF "
-     "indisponible » ; si elle revient, c'est un défaut de la chaîne, signalez-le."),
-    ("Das PDF hat keinen Strukturbaum",
-     "Die Datei enthält keine Dokumentstruktur: nichts sagt, was Titel, Absatz oder "
+    ("PDF sans structure",
+     "Le fichier ne porte aucun arbre de structure : rien n'y dit ce qui est un titre, un "
+     "paragraphe ou un tableau, ni dans quel ordre le lire. Un lecteur d'écran n'a rien à "
+     "annoncer que la suite des caractères dessinés. Même cause que « PDF non balisé » : "
+     "le document est sorti par le repli non balisé (journal de compilation, ligne "
+     "« balisage PDF indisponible »).",
+     "Recompilez ; si le défaut revient, signalez-le."),
+    ("PDF ohne Struktur",
+     "Die Datei enthält keinen Strukturbaum: nichts sagt, was Titel, Absatz oder "
      "Tabelle ist, und in welcher Reihenfolge gelesen wird. Ein Screenreader hat nur "
-     "die Folge der gezeichneten Zeichen anzusagen.",
-     "Gleiche Ursache wie bei « Das PDF ist nicht getaggt »: das Dokument stammt aus "
-     "dem untaggten Rückfall. Kompilieren Sie neu und prüfen Sie das Protokoll, Zeile "
-     "« balisage PDF indisponible »; kehrt sie zurück, ist es ein Fehler der Kette — "
-     "melden Sie ihn.")),
+     "die Folge der gezeichneten Zeichen anzusagen. Gleiche Ursache wie bei « PDF nicht "
+     "getaggt »: das Dokument stammt aus dem untaggten Rückfall (Kompilierprotokoll, "
+     "Zeile « balisage PDF indisponible »).",
+     "Kompilieren Sie neu; kehrt der Fehler zurück, melden Sie ihn.")),
   ('7.2', '29'): (
-    ("Étiquette de langue invalide",
-     "Une langue est déclarée dans une forme que la norme ne reconnaît pas.",
-     "Dans la fiche de l'article, la clé « lang: » doit valoir fr, de ou it."),
-    ("Ungültige Sprachkennung",
-     "Eine Sprache ist in einer Form angegeben, die die Norm nicht kennt.",
-     "Im Datenblatt des Artikels muss der Schlüssel « lang: » fr, de oder it lauten.")),
+    ("Langue invalide",
+     "Une langue est déclarée dans une forme que la norme ne reconnaît pas ; la fiche de "
+     "l'article doit dire fr, de ou it.",
+     "Choisissez fr, de ou it comme langue dans la fiche de l'article."),
+    ("Ungültige Sprache",
+     "Eine Sprache ist in einer Form angegeben, die die Norm nicht kennt; das Datenblatt "
+     "des Artikels muss fr, de oder it angeben.",
+     "Wählen Sie im Datenblatt des Artikels fr, de oder it als Sprache.")),
   ('7.2', '34'): (
-    ("La langue du texte n'est pas déterminable",
-     "Le document ne déclare aucune langue par défaut.",
-     "Renseignez « lang: » dans la fiche de l'article (fr, de ou it), enregistrez et "
-     "recompilez."),
-    ("Die Sprache des Textes ist nicht bestimmbar",
-     "Das Dokument gibt keine Standardsprache an.",
-     "Setzen Sie « lang: » im Datenblatt des Artikels (fr, de oder it), speichern Sie "
-     "und kompilieren Sie neu.")),
+    ("Langue du document non déclarée",
+     "Le document ne déclare aucune langue par défaut : un lecteur d'écran ne sait pas "
+     "dans quelle langue lire le texte.",
+     "Choisissez la langue dans la fiche de l'article, puis recompilez."),
+    ("Sprache des Dokuments nicht angegeben",
+     "Das Dokument gibt keine Standardsprache an: ein Screenreader weiss nicht, in "
+     "welcher Sprache er den Text lesen soll.",
+     "Wählen Sie die Sprache im Datenblatt des Artikels und kompilieren Sie neu.")),
   ('7.3', '1'): (
     ("Image sans description",
-     "Une image balisée « figure » n'a pas de texte de remplacement : un lecteur "
-     "d'écran annoncerait « image » sans rien pouvoir en dire.",
-     "Ouvrez « Médias de l'article » dans le cockpit et renseignez la description de "
-     "l'image ; si elle est purement décorative, cochez-la comme telle (description "
-     "vide) — le rendu la sortira alors en décor, hors de la structure."),
+     "Une image balisée « figure » n'a pas de texte de remplacement : un lecteur d'écran "
+     "annoncerait « image » sans rien pouvoir en dire. Une image purement décorative, "
+     "déclarée comme telle, sort en décor, hors de la structure. Une image posée dans un "
+     "tableau (le bloc des autrices et auteurs, par exemple) est relevée elle aussi.",
+     "Ajoutez une description dans « Médias de l'article », ou cochez « Image purement "
+     "décorative »."),
     ("Bild ohne Beschreibung",
      "Ein als « Abbildung » getaggtes Bild hat keinen Alternativtext: ein Screenreader "
-     "würde « Bild » ansagen, ohne mehr sagen zu können.",
-     "Öffnen Sie « Medien des Artikels » im Cockpit und erfassen Sie die "
-     "Bildbeschreibung; ist das Bild rein dekorativ, kennzeichnen Sie es als solches "
-     "(leere Beschreibung) — die Ausgabe stellt es dann als Dekor dar.")),
+     "würde « Bild » ansagen, ohne mehr sagen zu können. Ein als rein dekorativ "
+     "gekennzeichnetes Bild wird als Dekor ausserhalb der Struktur ausgegeben. Auch ein "
+     "Bild in einer Tabelle (etwa im Block der Autorinnen und Autoren) wird gemeldet.",
+     "Ergänzen Sie eine Beschreibung unter « Medien des Artikels » oder kreuzen Sie "
+     "« Rein dekoratives Bild » an.")),
   ('7.4.2', '1'): (
-    ("Un niveau de titre est sauté",
+    ("Niveau de titre sauté",
      "La suite des titres descend de plus d'un cran (par exemple un titre de niveau 3 "
-     "juste après un niveau 1).",
-     "Dans l'article, rétablissez la marche des titres : pas de saut de niveau."),
-    ("Eine Überschriftenebene wird übersprungen",
+     "juste après un niveau 1) : un lecteur d'écran qui parcourt les titres croit qu'une "
+     "section manque.",
+     "Rétablissez la marche des titres dans l'article, sans sauter de niveau."),
+    ("Übersprungene Überschriftenebene",
      "Die Überschriften springen um mehr als eine Ebene (etwa Ebene 3 direkt nach "
-     "Ebene 1).",
-     "Stellen Sie im Artikel die Abfolge der Überschriften wieder her: keine "
-     "übersprungene Ebene.")),
+     "Ebene 1): ein Screenreader, der die Überschriften durchgeht, meint, ein Abschnitt "
+     "fehle.",
+     "Stellen Sie im Artikel die Abfolge der Überschriften ohne übersprungene Ebene her.")),
   ('7.5', '1'): (
-    ("Cellule de tableau sans en-tête rattachable",
-     "Une cellule n'est reliée à aucun en-tête : la structure du tableau ne se déduit "
-     "pas toute seule.",
-     "Ouvrez l'éditeur de tableaux du cockpit et déclarez la ligne (et, s'il y en a, la "
-     "colonne) d'en-tête."),
-    ("Tabellenzelle ohne zuordenbare Kopfzelle",
-     "Eine Zelle ist mit keiner Kopfzelle verbunden: die Tabellenstruktur ergibt sich "
-     "nicht von selbst.",
-     "Öffnen Sie den Tabelleneditor im Cockpit und deklarieren Sie die Kopfzeile (und "
-     "gegebenenfalls die Kopfspalte).")),
+    ("Tableau aux en-têtes incomplets",
+     "Une cellule n'est reliée à aucun en-tête : un lecteur d'écran ne peut pas dire à "
+     "quelle colonne elle appartient. Deux causes connues : le tableau ne déclare pas sa "
+     "ligne d'en-tête, ou une cellule d'en-tête est fusionnée sur plusieurs colonnes — le "
+     "moteur de rendu ne la rattache alors qu'à la première, et les colonnes suivantes "
+     "restent sans en-tête.",
+     "Ouvrez le tableau, déclarez sa ligne d'en-tête et évitez d'y fusionner des cellules."),
+    ("Tabelle mit unvollständigen Kopfzellen",
+     "Eine Zelle ist mit keiner Kopfzelle verbunden: ein Screenreader kann nicht sagen, "
+     "zu welcher Spalte sie gehört. Zwei bekannte Ursachen: die Tabelle legt ihre "
+     "Kopfzeile nicht fest, oder eine Kopfzelle ist über mehrere Spalten verbunden — die "
+     "Rendering-Engine ordnet sie dann nur der ersten zu, und die folgenden Spalten "
+     "bleiben ohne Kopfzelle.",
+     "Öffnen Sie die Tabelle, legen Sie die Kopfzeile fest und verbinden Sie darin keine "
+     "Zellen.")),
   ('7.5', '2'): (
-    ("Cellule de tableau qui renvoie à un en-tête inexistant",
-     "Une cellule référence un en-tête qui n'est pas dans le tableau.",
-     "Ouvrez l'éditeur de tableaux du cockpit et vérifiez les en-têtes déclarés."),
-    ("Tabellenzelle verweist auf eine fehlende Kopfzelle",
-     "Eine Zelle verweist auf eine Kopfzelle, die es in der Tabelle nicht gibt.",
-     "Öffnen Sie den Tabelleneditor im Cockpit und prüfen Sie die deklarierten "
-     "Kopfzellen.")),
+    ("En-tête de tableau introuvable",
+     "Une cellule renvoie à un en-tête qui n'est pas dans le tableau : les en-têtes "
+     "déclarés ne correspondent plus aux cellules.",
+     "Ouvrez le tableau et déclarez de nouveau sa ligne d'en-tête."),
+    ("Kopfzelle der Tabelle nicht gefunden",
+     "Eine Zelle verweist auf eine Kopfzelle, die es in der Tabelle nicht gibt: die "
+     "festgelegten Kopfzellen passen nicht mehr zu den Zellen.",
+     "Öffnen Sie die Tabelle und legen Sie ihre Kopfzeile erneut fest.")),
   ('7.18.3', '1'): (
-    ("L'ordre de tabulation d'une page n'est pas déclaré",
+    ("Ordre de tabulation non déclaré",
      "Une page porte des liens, mais ne dit pas que la touche de tabulation doit les "
      "parcourir dans l'ordre du document. Qui lit au clavier les reçoit alors dans "
-     "l'ordre où ils ont été écrits dans le fichier, qui n'est pas celui de la lecture.",
-     "Défaut de la chaîne de compilation, pas de l'article : le moteur de rendu "
-     "n'écrit pas cette clé. Signalez-le."),
-    ("Die Tabulatorreihenfolge einer Seite ist nicht angegeben",
+     "l'ordre où ils ont été écrits dans le fichier, qui n'est pas celui de la lecture. "
+     "Le moteur de rendu n'écrit pas cette clé.",
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
+    ("Tabulatorreihenfolge nicht angegeben",
      "Eine Seite enthält Verknüpfungen, sagt aber nicht, dass die Tabulatortaste sie in "
      "der Reihenfolge des Dokuments durchlaufen soll. Wer mit der Tastatur liest, "
-     "erhält sie sonst in der Reihenfolge, in der sie in die Datei geschrieben wurden.",
-     "Fehler der Kompilierkette, nicht des Artikels: die Rendering-Engine schreibt "
-     "diesen Schlüssel nicht. Melden Sie ihn.")),
+     "erhält sie sonst in der Reihenfolge, in der sie in die Datei geschrieben wurden. "
+     "Die Rendering-Engine schreibt diesen Schlüssel nicht.",
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.18.5', '1'): (
     ("Lien mal balisé",
-     "Des zones cliquables ne sont pas rattachées à un élément « lien » de la "
-     "structure. Cause connue : un « a » du gabarit ou de la chaîne contient une balise "
-     "interne (span, svg, sup) ; le moteur de rendu produit alors une zone cliquable "
-     "par boîte, et une seule est correcte.",
-     "Un « a » ne doit contenir que du texte. Dans "
+     "Des zones cliquables ne sont pas rattachées à un élément « lien » de la structure. "
+     "Cause connue : un « a » du gabarit ou de la chaîne contient une balise interne "
+     "(span, svg, sup) ; le moteur de rendu produit alors une zone cliquable par boîte, "
+     "et une seule est correcte. Un « a » ne doit contenir que du texte : dans "
      "pipeline/templates/szh-article.html, la flèche et le logo sont volontairement à "
-     "l'extérieur du lien, et le Makefile réordonne les appels de note en "
-     "« sup > a » : si l'erreur revient, c'est qu'un élément a été remis dans un lien."),
+     "l'extérieur du lien, et la chaîne réordonne les appels de note en « sup > a » — si "
+     "l'erreur revient, c'est qu'un élément a été remis dans un lien.",
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
     ("Link falsch getaggt",
      "Klickbare Bereiche sind nicht mit einem « Link »-Element der Struktur verbunden. "
      "Bekannte Ursache: ein « a » in der Vorlage oder in der Kette enthält ein inneres "
      "Tag (span, svg, sup); die Rendering-Engine erzeugt dann einen klickbaren Bereich "
-     "pro Box, und nur einer davon ist korrekt.",
-     "Ein « a » darf nur Text enthalten. In pipeline/templates/szh-article.html liegen "
-     "Pfeil und Logo bewusst ausserhalb des Links, und das Makefile ordnet die "
-     "Fussnotenzeichen zu « sup > a » um: kehrt der Fehler zurück, wurde wieder ein "
-     "Element in einen Link gesetzt.")),
+     "pro Box, und nur einer davon ist korrekt. Ein « a » darf nur Text enthalten: in "
+     "pipeline/templates/szh-article.html liegen Pfeil und Logo bewusst ausserhalb des "
+     "Links, und die Kette ordnet die Fussnotenzeichen zu « sup > a » um — kehrt der "
+     "Fehler zurück, wurde wieder ein Element in einen Link gesetzt.",
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.18.5', '2'): (
     ("Lien sans description",
      "Une zone cliquable n'a pas de description : rien à annoncer à sa place.",
@@ -219,54 +241,58 @@ REGLES = {
      "Eine PDF-Anmerkung hat keinen Alternativtext.",
      "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.20', '2'): (
-    ("Un calque de dessin est réutilisé et perd sa structure",
+    ("Calque de dessin réutilisé",
      "Un même calque (Form XObject) porte du contenu balisé et est référencé plusieurs "
-     "fois. Cause connue : une propriété CSS opacity ou un filtre de transparence.",
-     "Même geste que pour « du contenu n'est ni balisé ni marqué décoratif » : "
-     "supprimez l'opacity de la feuille de style et pré-mélangez la couleur."),
-    ("Eine Zeichenebene wird mehrfach genutzt und verliert ihre Struktur",
+     "fois : il perd sa structure. Cause connue : une propriété CSS opacity ou un filtre "
+     "de transparence. Même remède que pour « Contenu hors de la structure du "
+     "document » : supprimer l'opacity de la feuille de style et pré-mélanger la couleur.",
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
+    ("Zeichenebene mehrfach genutzt",
      "Dieselbe Ebene (Form XObject) trägt getaggten Inhalt und wird mehrfach "
-     "referenziert. Bekannte Ursache: eine CSS-Eigenschaft opacity oder ein "
-     "Transparenzfilter.",
-     "Gleicher Griff wie bei « Inhalt ist weder getaggt noch als dekorativ markiert »: "
-     "entfernen Sie die opacity im Stylesheet und mischen Sie die Farbe vor.")),
+     "referenziert: sie verliert ihre Struktur. Bekannte Ursache: eine CSS-Eigenschaft "
+     "opacity oder ein Transparenzfilter. Gleiche Abhilfe wie bei « Inhalt ausserhalb "
+     "der Dokumentstruktur »: die opacity im Stylesheet entfernen und die Farbe "
+     "vormischen.",
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.21.4.1', '1'): (
     ("Police non incorporée",
      "Une police utilisée n'est pas embarquée dans le fichier : le texte s'affichera "
-     "avec une autre police, ou pas du tout.",
-     "Défaut de la chaîne de compilation (polices de l'image WSL) : signalez-le."),
+     "avec une autre police, ou pas du tout. Ce sont les polices du poste de "
+     "compilation qui manquent.",
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
     ("Schrift nicht eingebettet",
      "Eine verwendete Schrift steckt nicht in der Datei: der Text erscheint mit einer "
-     "anderen Schrift oder gar nicht.",
-     "Fehler der Kompilierkette (Schriften des WSL-Abbilds): melden Sie ihn.")),
+     "anderen Schrift oder gar nicht. Es fehlen Schriften auf dem Kompilier-Rechner.",
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.21.4.1', '2'): (
     ("Glyphe manquant dans une police",
      "Un caractère du texte n'existe pas dans la police incorporée. Cas connus : "
      "l'espace fine insécable (U+202F) et le triangle de puce (U+25B8).",
-     "Défaut de la chaîne de compilation (polices de l'image WSL) : signalez-le."),
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
     ("Fehlende Glyphe in einer Schrift",
      "Ein Zeichen des Textes fehlt in der eingebetteten Schrift. Bekannte Fälle: das "
      "schmale geschützte Leerzeichen (U+202F) und das Aufzählungsdreieck (U+25B8).",
-     "Fehler der Kompilierkette (Schriften des WSL-Abbilds): melden Sie ihn.")),
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.21.7', '1'): (
     ("Texte non extractible",
      "Une police ne dit pas à quels caractères ses dessins correspondent : le texte "
      "n'est ni lisible par un lecteur d'écran ni copiable.",
-     "Défaut de la chaîne de compilation (polices de l'image WSL) : signalez-le."),
+     "Défaut de la chaîne de compilation, pas de l'article : signalez-le."),
     ("Text nicht extrahierbar",
      "Eine Schrift gibt nicht an, welchen Zeichen ihre Zeichnungen entsprechen: der "
      "Text ist weder für Screenreader lesbar noch kopierbar.",
-     "Fehler der Kompilierkette (Schriften des WSL-Abbilds): melden Sie ihn.")),
+     "Fehler der Kompilierkette, nicht des Artikels: melden Sie ihn.")),
   ('7.21.8', '1'): (
     ("Caractère absent de la police",
-     "Le texte appelle un dessin que la police n'a pas (glyphe « .notdef »).",
-     "Cherchez dans l'article un caractère exotique (symbole, alphabet non latin) et "
-     "remplacez-le ; sinon, c'est un défaut de la chaîne, signalez-le."),
+     "Le texte appelle un dessin que la police n'a pas (glyphe « .notdef ») : un "
+     "caractère exotique (symbole, alphabet non latin), le plus souvent. S'il n'y en a "
+     "aucun dans l'article, c'est un défaut de la chaîne.",
+     "Remplacez le caractère exotique de l'article ; s'il n'y en a aucun, signalez-le."),
     ("Zeichen fehlt in der Schrift",
-     "Der Text ruft eine Zeichnung ab, die die Schrift nicht hat (Glyphe « .notdef »).",
-     "Suchen Sie im Artikel ein exotisches Zeichen (Symbol, nichtlateinisches "
-     "Alphabet) und ersetzen Sie es; sonst ist es ein Fehler der Kette, melden Sie "
-     "ihn.")),
+     "Der Text ruft eine Zeichnung ab, die die Schrift nicht hat (Glyphe « .notdef »): "
+     "meist ein exotisches Zeichen (Symbol, nichtlateinisches Alphabet). Gibt es im "
+     "Artikel keines, ist es ein Fehler der Kette.",
+     "Ersetzen Sie das exotische Zeichen im Artikel; gibt es keines, melden Sie es.")),
 }
 
 # ── Gabarits de phrases ────────────────────────────────────────────────────────

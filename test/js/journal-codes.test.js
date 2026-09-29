@@ -432,3 +432,33 @@ test('filtres : un appel de citation boiteux nomme son article de lui-même', (t
   assert.match(journal.phraseConstat(orphelin, 'fr'), /Ajoutez la référence/);
   assert.match(journal.phraseConstat(orphelin, 'de'), /^Der Zitatverweis/);
 });
+
+// Le journal d'un export qui a validé ses PDF : le verdict « NON conforme, N règle(s) »
+// puis les règles une par une. Le résumé redisait en chiffre ce que les règles nomment, et
+// comptait une fois de plus dans la barre d'état ; il ne survit que seul.
+test('journal : le résumé PDF/UA ne double pas les règles qui le suivent', () => {
+  const bloc = [
+    '[pdf-ua] PDF/UA-1 : 01-inclusion.pdf — NON conforme, 1 règle(s) en échec.',
+    '[pdf-ua]   • Le document n’a pas de titre (1 fois)',
+    '[pdf-ua]   ISO 14289-1 7.1-9',
+    '[pdf-ua] [de] PDF/UA-1: 01-inclusion.pdf — NICHT konform, 1 Regel(n) nicht erfüllt.',
+    '[pdf-ua] [de]   • Das Dokument hat keinen Titel (1 Mal)',
+    '[pdf-ua] [de]   ISO 14289-1 7.1-9'
+  ];
+  for (const langue of ['fr', 'de']) {
+    const codes = journal.analyserJournal(bloc.join('\n') + '\n', langue)
+      .filter((c) => c.source === 'pdfua').map((c) => c.code);
+    assert.deepStrictEqual(codes, ['regle'], langue + ' : le résumé est resté à côté de sa règle');
+  }
+  // Seul (bloc tronqué) : il reste, sinon l'article non conforme disparaîtrait de la liste.
+  const seul = journal.analyserJournal(bloc[0] + '\n', 'fr').filter((c) => c.source === 'pdfua');
+  assert.deepStrictEqual(seul.map((c) => c.code), ['non-conforme']);
+  // Les deux sources réunies (journal d'export + cache PDF/UA) : même règle, par article.
+  const reunis = journal.sansResumePdfUaRedondant([
+    { source: 'pdfua', code: 'non-conforme', slug: '01-a' },
+    { source: 'pdfua', code: 'non-conforme', slug: '02-b' },
+    { source: 'pdfua', code: 'regle', slug: '01-a' }
+  ]);
+  assert.deepStrictEqual(reunis.map((c) => c.code + ':' + c.slug), ['non-conforme:02-b', 'regle:01-a'],
+    'le résumé d’un autre article, sans règle, a été emporté');
+});

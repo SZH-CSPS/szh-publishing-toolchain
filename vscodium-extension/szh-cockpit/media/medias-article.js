@@ -261,6 +261,22 @@ function majPastilles(c) {
     var ton = tonImage(c);
     if (ton) { c.ctl.vignetteImage.classList.add('vignette-image--' + ton); }
   }
+  majAlerteVignette(c);
+}
+
+// Le triangle rouge posé sur le coin de l'aperçu : ce qui bloque l'export se repère d'un
+// coup d'œil dans une liste de vingt images, sans lire les pastilles. Il ne suit que le
+// rouge de tonImage — l'image muette, seul défaut bloquant que les données d'une image
+// portent (le fichier existe par construction : la liste est lue sur le disque ; un JPEG
+// CMJN est converti à l'import ; basse résolution, doublon et « jamais insérée » partent
+// tels quels). L'infobulle est courte ; le message complet est dans le formulaire, et la
+// pastille « image muette » le redit en texte pour le lecteur d'écran — d'où aria-hidden.
+function majAlerteVignette(c) {
+  var a = c.ctl.alerteVignette;
+  if (!a) { return; }
+  var bloque = tonImage(c) === 'danger';
+  a.hidden = !bloque;
+  a.title = bloque ? (TXT.alerteDescription || '') : '';
 }
 
 // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu. Le nom du
@@ -686,6 +702,11 @@ function construireVignette(parent, c) {
   b.title = remplir('formOuvrir', [c.relatif]);
   c.ctl.vignetteImage = texte(b, 'span', 'vignette-image');
   poserVignetteImage(c.ctl.vignetteImage, c.apercu);
+  // Hors de .vignette-image, que poserVignetteImage vide à chaque remplacement de fichier.
+  c.ctl.alerteVignette = texte(b, 'span', 'vignette-alerte');
+  c.ctl.alerteVignette.setAttribute('aria-hidden', 'true');
+  c.ctl.alerteVignette.appendChild(SZH.icone('attention'));
+  c.ctl.alerteVignette.hidden = true;
   var nomLigne = texte(b, 'div', 'vignette-nom-ligne');
   c.ctl.vignetteNom = texte(nomLigne, 'span', 'vignette-nom', c.relatif);
   nomLigne.appendChild(SZH.icone('chevron'));

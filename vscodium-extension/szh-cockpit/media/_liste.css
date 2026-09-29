@@ -39,6 +39,33 @@
   vertical-align: -.35em; color: inherit;
 }
 
+/* Un défaut en quatre étages (SZH.listeCartes, messageEnEtages) : le titre et son (i), les
+   objets en cause, la phrase d'action, le bouton. Chaque étage sur sa ligne — c'est ce qui
+   fait lire le titre d'abord et le geste en dernier, dans l'ordre où on les fait. */
+.szh-notif--etages > span { display: flex; flex-direction: column; align-items: flex-start;
+  gap: var(--e1); min-width: 0; }
+.szh-msg-titre { font-weight: 700; }
+.szh-msg-pourquoi { opacity: .7; }
+.szh-msg-pourquoi:hover, .szh-msg-pourquoi:focus-visible,
+.szh-msg-pourquoi[aria-expanded="true"] { opacity: 1; }
+/* L'explication dépliée : plus petite, en retrait de couleur — une note, pas une phrase de
+   plus à faire. [hidden] doit gagner sur le display de l'étage. */
+.szh-msg-infobulle { font-size: var(--t-mini); color: var(--encre-2); line-height: 1.45; }
+.szh-msg-infobulle[hidden] { display: none; }
+/* Un objet en cause : un lien, pas un bouton de barre — souligné, à la couleur des liens
+   du thème, et sa flèche le suit. Le survol et le focus clavier restent ceux d'un lien. */
+.szh-lien-objet {
+  display: inline-flex; align-items: center; gap: .2em;
+  padding: 0; border: 0; background: none; font: inherit; cursor: pointer;
+  color: var(--vscode-textLink-foreground, var(--accent));
+  text-decoration: underline; text-underline-offset: .15em;
+}
+.szh-lien-objet:hover { color: var(--vscode-textLink-activeForeground, var(--accent)); }
+.szh-lien-objet:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--accent));
+  outline-offset: 2px; }
+.szh-lien-objet svg { flex: 0 0 auto; }
+.szh-msg-geste .szh-bouton { gap: .35em; }
+
 /* La croix d'un message « Pour information », contre le bord droit de sa boîte. Elle est
    discrète tant qu'on ne la vise pas : ce message n'a rien à faire faire, et sa croix ne
    doit pas peser plus que sa phrase. margin-left: auto — .szh-notif est un flex, et c'est

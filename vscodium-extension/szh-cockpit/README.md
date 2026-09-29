@@ -143,6 +143,12 @@ lib/
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
                         sans le modifier ; l'écrivain PowerShell (windows/*.ps1) est un
                         autre jalon (docs/RAPPORTS-ERREUR.md)
+  relance-compilation.js  recompilation d'un article après un enregistrement fait hors de
+                        l'éditeur de texte (formulaire des médias, éditeur de tableaux) :
+                        anti-rebond de 2,5 s par article, départ immédiat à la fermeture du
+                        panneau, rien quand une compilation démarrée depuis l'enregistrement
+                        le couvre déjà (Ctrl+S relayé par triggerTaskOnSave) ni sur un numéro
+                        gelé. Sans vscode : la compilation reste celle de l'hôte
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
   renumerotation.js     aligner le numéro du dossier d'un article sur son rang à l'écran :
@@ -192,6 +198,8 @@ lib/
   suggestion-traduction.js  dossier traduction/ du numéro : une SUGGESTION de traduction par
                         fichier JSON, jamais un fichier commun (OneDrive), et leur lecture.
                         Rien n'y est publié et aucun texte n'y est modifié. Sans vscode
+  table-images.js       images des cellules de tableau : aperçu en data: pour l'éditeur,
+                        copie d'une image choisie dans media/ de l'article. Sans vscode
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
   verrou.js             lecture seule du dossier quand le numéro est gelé

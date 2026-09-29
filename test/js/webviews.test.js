@@ -965,6 +965,49 @@ test('médias : le cadre de l’image porte la gravité, et la pastille son pict
   }
 });
 
+// Le triangle rouge du coin de l'aperçu : il suit le seul défaut bloquant d'une image, et
+// il suit la saisie. Ce qui se casse en silence : un triangle qui reste après la
+// correction (on n'ose plus exporter), un triangle qui s'allume sur l'ambre (le rouge cesse
+// de vouloir dire « bloque »), ou un triangle posé dans .vignette-image, que le
+// remplacement d'un fichier vide sans le reposer.
+test('médias : un triangle rouge sur l’aperçu d’une image sans description, en direct', () => {
+  const txt = MEDIAS_TXT();
+  const page = pageMedias(txt);
+  const alerte = (r) => vignetteDe(page, r).querySelectorAll('.vignette-alerte')[0];
+  assert.ok(String(txt.alerteDescription || '').length > 0, 'infobulle « Description manquante » absente de l’hôte');
+  assert.ok(page.conteneur().querySelectorAll('.vignette').every((v) => v.querySelectorAll('.vignette-alerte').length === 1),
+    'une vignette sans emplacement de triangle');
+  // fig-03 : ni alternatif ni légende. Triangle visible, infobulle courte, picto non vide.
+  const a = alerte('fig-03.png');
+  assert.strictEqual(a.hidden, false, 'l’image muette ne porte pas de triangle');
+  assert.strictEqual(a.title, txt.alerteDescription);
+  assert.ok(a.querySelectorAll('path').length > 0, 'triangle vide : nom d’icône inconnu');
+  assert.ok(a.closest('.vignette-image') === null, 'le triangle vit dans la zone que le remplacement vide');
+  // fig-09 : ambre (basse résolution, doublon, jamais insérée) — pas de triangle rouge.
+  assert.strictEqual(alerte('fig-09.png').hidden, true, 'un défaut non bloquant allume le triangle rouge');
+  assert.strictEqual(alerte('fig-01.png').hidden, true, 'une image décrite porte le triangle');
+  // La description saisie l'éteint ; effacée, il revient.
+  const alt = formDe(page, 'fig-03.png').querySelectorAll('input').filter((e) => e.id === 'ch-alt-2')[0];
+  alt.value = 'Un graphique en barres';
+  alt.dispatchEvent({ type: 'input' });
+  assert.strictEqual(alerte('fig-03.png').hidden, true, 'le triangle survit à la saisie de la description');
+  alt.value = '';
+  alt.dispatchEvent({ type: 'input' });
+  assert.strictEqual(alerte('fig-03.png').hidden, false, 'le triangle ne revient pas quand la description est effacée');
+  // Cochée décorative : plus rien ne bloque, le triangle s'éteint.
+  const radios = formDe(page, 'fig-03.png').querySelectorAll('input').filter((e) => e.type === 'radio');
+  radios[1].checked = true; radios[0].checked = false;
+  radios[1].dispatchEvent({ type: 'change' });
+  assert.strictEqual(alerte('fig-03.png').hidden, true, 'le triangle survit au choix « décorative »');
+  // Un remplacement de fichier refait l'aperçu : le triangle doit y survivre.
+  radios[0].checked = true; radios[1].checked = false;
+  radios[0].dispatchEvent({ type: 'change' });
+  page.envoyer({ type: 'media-remplace', relatif: 'fig-03.png', description: '2400 × 1600 · 900 Ko',
+    apercu: 'data:image/png;base64,AAAA',
+    qualite: { famille: 'figure', niveau: 'ok', mesure: 2400, min: 1000, conseille: 2000 } });
+  assert.strictEqual(alerte('fig-03.png').hidden, false, 'le triangle disparaît au remplacement du fichier');
+});
+
 // Ctrl+Alt+F insère une image puis ouvre le formulaire SUR elle. Replié par défaut, le
 // formulaire doit s'ouvrir : sinon le geste dépose le rédacteur devant une carte fermée,
 // avec la légende à écrire cachée derrière un clic qu'il ne sait pas devoir faire.

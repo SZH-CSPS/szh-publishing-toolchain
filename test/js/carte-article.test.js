@@ -683,7 +683,9 @@ test('carte : les images ne reprochent que ce qui manque, en toutes lettres et u
   // seule image informative sans texte alternatif — la décorative n'est pas comptée —
   // et une seule légende vide ; si les portraits entraient dans le compte, ces deux
   // constats en annonceraient quatre.
-  assert.match(dits, /Figure sans texte alternatif \(1\)/);
+  // Le même intitulé que la liste « À corriger » (defaut.figure-sans-alt, renommé le
+  // 29.09.2026) : on reconnaît le même défaut d'un écran à l'autre.
+  assert.match(dits, /Image sans description \(1\)/);
   assert.match(dits, /Image sans légende \(1\)/);
   // Plus de pastille dans le pied : le compteur « 1 image(s) » y redisait, en abrégé et
   // sans dire quoi, le reproche que l'encadré « À faire » écrit juste au-dessus.

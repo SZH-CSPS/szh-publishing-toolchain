@@ -2,3 +2,54 @@
    liste et ses cartes viennent du fragment partagé _liste.css, le reste du socle
    (_design.css : body/h1 §0, largeur par défaut 52rem) ; il ne reste ici que la largeur. */
 body { --page-max: 60rem; }
+
+/* Le voile « Analyse en cours… » (media/vue-ensemble.js, poserVoile) : ce qui est dessous
+   va peut-être changer. Grisé et flouté pour qu'on ne s'y fie pas, sans clic possible
+   pour qu'on n'agisse pas dessus ; la bulle au centre dit pourquoi. Posé soit sur la carte
+   de l'article compilé, soit sur toute la liste (#lignes). Les couleurs sont celles du
+   socle (_design.css) : le voile suit le thème clair ou sombre sans rien redéclarer. */
+.szh-analyse-cible { position: relative; }
+.szh-analyse-cible > :not(.szh-analyse-voile) {
+  opacity: .45; filter: blur(1.5px); pointer-events: none; user-select: none;
+  transition: opacity .15s ease, filter .15s ease;
+}
+.szh-analyse-voile {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center; gap: var(--e2);
+  pointer-events: none;
+}
+/* La liste entière peut dépasser l'écran : la bulle reste en vue en haut de la zone
+   plutôt que perdue au milieu d'une liste qu'on a fait défiler. */
+.szh-liste.szh-analyse-cible > .szh-analyse-voile {
+  align-items: flex-start; padding-top: var(--e7);
+}
+.szh-analyse-texte { font-weight: 600; }
+/* Le texte sur un fond plein, pour qu'il se lise sur le flou. */
+.szh-analyse-voile:not(.szh-analyse-voile--bandeau) > .szh-analyse-texte {
+  padding: var(--e2) var(--e3); border-radius: var(--rayon);
+  background: var(--fond); color: var(--encre);
+  border: 1px solid var(--filet);
+  box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18));
+}
+/* Le bandeau : l'article compilé n'a pas (encore) de carte, rien n'est assombri. */
+.szh-analyse-voile--bandeau {
+  position: static; justify-content: flex-start;
+  padding: var(--e2) var(--e3); border-radius: var(--rayon);
+  background: var(--surface); color: var(--encre-2);
+  border: 1px dashed var(--filet);
+}
+/* La roue : un cercle dont un quart prend l'accent, qui tourne. */
+.szh-analyse-roue {
+  flex: 0 0 auto; width: 1.1rem; height: 1.1rem; box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--filet); border-top-color: var(--accent);
+  animation: szh-analyse-tourne .8s linear infinite;
+}
+@keyframes szh-analyse-tourne { to { transform: rotate(360deg); } }
+/* Mouvement réduit : la roue ne tourne plus, elle pulse doucement — l'attente reste
+   visible sans rien qui défile à l'écran. */
+@media (prefers-reduced-motion: reduce) {
+  .szh-analyse-roue { animation: szh-analyse-pulse 2s ease-in-out infinite; }
+  .szh-analyse-cible > :not(.szh-analyse-voile) { transition: none; }
+}
+@keyframes szh-analyse-pulse { 50% { opacity: .4; } }

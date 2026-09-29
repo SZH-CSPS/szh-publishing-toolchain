@@ -51,7 +51,12 @@ let ctx = {
   convertirCmykSiBesoin: async () => 0,
   // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
   // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
-  repondreModeTrad: () => false
+  repondreModeTrad: () => false,
+  // Un enregistrement a changé ce que la compilation de l'article lit : l'hôte la relance
+  // en tâche de fond, après un anti-rebond (relanceDifferee, lib/relance-compilation.js).
+  // Appelé seulement quand quelque chose a réellement été écrit.
+  demanderCompilation: () => {},
+  viderCompilation: () => {}
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -115,6 +120,7 @@ function textesMedias() {
     etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
     etatOrphelin: T('medias.etat.orphelin'),
     etatBasse: T('medias.etat.basse'), etatMuette: T('medias.etat.muette'),
+    alerteDescription: T('medias.alerte.description'),
     formOuvrir: T('medias.form.ouvrir'), formFermer: T('medias.form.fermer'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
     auteurEnregistre: T('medias.auteur.enregistre'),
@@ -401,7 +407,8 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
   if (!fournisseur.racine || !new Set(fournisseur.listerArticles()).has(slug)) { return null; }
   const chemin = cheminMeta(fournisseur.racine, slug);
   let meta;
-  try { meta = analyserMeta(fs.readFileSync(chemin, 'utf8')); } catch (e) { return null; }
+  let avant;
+  try { avant = fs.readFileSync(chemin, 'utf8'); meta = analyserMeta(avant); } catch (e) { return null; }
   if (!Array.isArray(meta.author)) { meta.author = []; }
   const rang = Number(index);
   // Un rang existant, jamais un ajout : créer quelqu'un passe par la carte de l'article,
@@ -418,7 +425,11 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
   const propre = ctx.nettoyerCarte({ author: [brut] }).author[0];
   if (!propre || (propre.prenom === '' && propre.nom === '')) { return null; }
   meta.author[rang] = propre;
-  try { ecrireAtomique(chemin, serialiserMeta(meta)); } catch (e) { return null; }
+  const texte = serialiserMeta(meta);
+  try { ecrireAtomique(chemin, texte); } catch (e) { return null; }
+  // Le PDF porte le nom, l'affiliation et la photo : une fiche qui a changé recompile,
+  // comme dans le formulaire des métadonnées. Réécrite à l'identique : rien.
+  if (texte !== avant) { ctx.demanderCompilation(fournisseur, slug); }
   return propre;
 }
 
@@ -432,6 +443,24 @@ function fermerPanneauxMediasDe(racine, slug) {
     try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
     panneauxMedias.delete(cle);
   }
+}
+
+// L'image que vise un bouton de constat, telle que le formulaire la nomme. Le constat ne
+// porte que le NOM du fichier, parfois en minuscules (lib/constats.js rogne le chemin,
+// imagesSansAlternative abaisse la casse) ; la carte du formulaire, elle, se retrouve par
+// son chemin relatif exact sous media/ (« sous-dossier/Fig-01.png ») : sans cette
+// correspondance, le formulaire s'ouvrait sans rien déplier. Aucune image ne correspond :
+// le focus reste tel quel, et la page n'en fait rien — jamais d'erreur pour si peu.
+function relatifDuFocus(fournisseur, slug, focus) {
+  if (focus === '' || typeof fournisseur._imagesArticle !== 'function') { return focus; }
+  let images = [];
+  try { images = fournisseur._imagesArticle(slug) || []; } catch (e) { return focus; }
+  if (images.indexOf(focus) !== -1) { return focus; }
+  const bas = focus.replace(/\\/g, '/').toLowerCase();
+  const nom = bas.slice(bas.lastIndexOf('/') + 1);
+  return images.find((r) => r.toLowerCase() === bas)
+    || images.find((r) => { const b = r.toLowerCase(); return b.slice(b.lastIndexOf('/') + 1) === nom; })
+    || focus;
 }
 
 async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
@@ -451,7 +480,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   }
   ctx.focaliserUnite(fournisseur, slug);   // le focus suit le clic, aperçu fermé plus bas
   // Mis à jour à chaque ouverture : le gestionnaire d'un panneau déjà ouvert le lit.
-  let focus = String((item && item.focus) || '');
+  let focus = relatifDuFocus(fournisseur, slug, String((item && item.focus) || ''));
   const md = path.join(racine, dossierUnites(), slug, slug + '.md');
   const existant = panneauxMedias.get(slug);
   if (existant) {
@@ -469,7 +498,16 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
   );
   panneauxMedias.set(slug, panneau);
-  panneau.onDidDispose(() => { if (panneauxMedias.get(slug) === panneau) { panneauxMedias.delete(slug); } });
+  panneau.onDidDispose(() => {
+    if (panneauxMedias.get(slug) === panneau) { panneauxMedias.delete(slug); }
+    ctx.viderCompilation(slug);   // une recompilation encore sous l'anti-rebond part maintenant
+  });
+  // Chaque geste qui a écrit le .md, media/ ou la fiche le dit ici, et seulement s'il a
+  // réellement écrit : la compilation de l'article repart en tâche de fond, sans affichage.
+  // Un .md enregistré par doc.save() est aussi vu par triggerTaskOnSave : la relance
+  // différée le sait (une compilation démarrée depuis la demande la couvre), rien ne tourne
+  // deux fois.
+  const compilerArticle = () => ctx.demanderCompilation(fournisseur, slug);
 
   // openTextDocument lit le tampon : l'écriture repart d'une frappe non enregistrée.
   async function texteArticle() {
@@ -523,6 +561,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
       return false;
     }
+    compilerArticle();
     return true;
   };
 
@@ -566,6 +605,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
       return -1;
     }
+    compilerArticle();                               // texte alternatif, légende, crédit, rôle
     return total;
   };
 
@@ -626,6 +666,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
             repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
             return;
           }
+          // Même nom, même lien : seul le fichier a changé dans media/, et aucun
+          // enregistrement du .md ne le signalera à triggerTaskOnSave.
+          compilerArticle();
           const chemin = path.join(racine, dossierUnites(), slug, 'media', relatif);
           repondrePanneau(panneau, {
             type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
@@ -694,6 +737,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return;
       }
+      compilerArticle();
       // Dire où elle est allée : au curseur, ou en fin d'article quand le curseur était
       // dans une liste, un tableau, un bloc de code ou un bloc pandoc.
       vscode.window.setStatusBarMessage(
@@ -771,6 +815,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const retire = await ctx.supprimerAsset(fournisseur, rafraichirTout,
         { slug: slug, cheminAsset: cheminAsset }, false);
       if (!retire) { return; }
+      compilerArticle();                             // l'image et sa référence sont parties
       if (dansGrille) { focus = ''; await charger(panneau); return; }
       repondrePanneau(panneau, { type: 'media-retire', relatif: relatif });
       return;

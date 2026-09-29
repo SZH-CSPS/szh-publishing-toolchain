@@ -206,9 +206,10 @@ function tableauVierge(colonne) {
 // par erreur sur le même nom).
 const BORNE_NOM_LIBRE = 1000;
 
-// Premier nom libre dans `dossier`, en partant de `nom` — accents, espaces et casse du nom
-// d'origine préservés, comme « Insérer une figure » le veut : ce qui est réduit ici, c'est
-// seulement le suffixe qui évite d'écraser un fichier déjà là.
+// Premier nom libre dans `dossier`, en partant de `nom`, gardé tel quel : ce qui est ajouté
+// ici, c'est seulement le suffixe qui évite d'écraser un fichier déjà là. Assainir le nom
+// (espaces, accents, que make coupe ou mal lit) est l'affaire de l'appelant, avant : tous
+// ceux qui copient dans media/ passent d'abord par nomImageAssaini (lib/medias.js).
 function nomMediaUnique(dossier, nom) {
   const ext = path.extname(nom);
   const base = path.basename(nom, ext);
@@ -331,7 +332,6 @@ function noteBasPage(lignes, sel) {
   };
 }
 
-// ---- Styles « Livre » : en-tête de chapitre FALC, code QR (docs/ARCHITECTURE-LIVRES.md) ----
 // ---- Insérer un lien ----
 //
 // normaliserUrl(brut) -> adresse prête à poser entre parenthèses, ou null si ce qui a été
@@ -363,6 +363,7 @@ function lienMarkdown(texte, url) {
   return '[' + t + '](' + url + ')';
 }
 
+// ---- Styles « Livre » : en-tête de chapitre FALC, code QR (docs/ARCHITECTURE-LIVRES.md) ----
 //
 // Deux snippets réservés au profil livre (jamais une revue ni une Zeitschrift) : un
 // encadré « cette histoire existe aussi en audio » et un QR cliquable réutilisable. Posés
@@ -448,8 +449,8 @@ const PALETTE_MEF = [
   ['--', 'palette.g.inserer'],
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
   ['palette.noteBasPage', 'szh.fmt.noteBasPage', 'Ctrl+Alt+N', ''],
-  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
   ['palette.lien', 'szh.fmt.lien', 'Ctrl+Alt+K', ''],
+  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
   ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', ''],
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];

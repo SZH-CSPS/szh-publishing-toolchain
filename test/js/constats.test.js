@@ -301,21 +301,33 @@ test('import : le crédit de photo non repris est une information, sans geste po
   assert.strictEqual(constats.gravite(c, { pdfua: true }), 'info');
 });
 
-test('import : tableau sans en-tête — la flèche vise l’extrait, la phrase continue de nommer le tableau', () => {
+// Un en-tête se déclare dans l'éditeur du tableau, jamais dans le .md (29.09.2026) : la
+// flèche mène à CE tableau, le fichier que docx-tables.py a écrit pour son numéro.
+test('import : tableau sans en-tête — la flèche ouvre l’éditeur de CE tableau, la phrase le nomme', () => {
   const c = constat('import', 'tableau-sans-entete', { tableau: '2', debut: 'Nom de la colonne' });
-  assert.strictEqual(constats.cible(c).focus, 'Nom de la colonne',
-    'la flèche doit viser l’extrait repérable, pas le numéro nu');
+  assert.deepStrictEqual(constats.cible(c), { lieu: 'table', slug: '01-essai', focus: 'table-02.html' },
+    'la flèche doit ouvrir l’éditeur du tableau, pas le texte de l’article');
+  assert.strictEqual(constats.LIEUX.table.commande, 'szh.editerTable');
   assert.strictEqual(constats.objet(c, 'fr'), '2',
     'la phrase doit continuer de nommer le tableau par son numéro');
   assert.match(constats.phrase(c, 'fr'), /^Tableau sans en-tête : 2$/);
 });
 
-test('import : tableau sans en-tête — sans « debut » pas encore écrit, la phrase garde son objet', () => {
-  // L’autre chantier n’a pas encore ajouté ce champ à docx-tables.py : la flèche se
-  // dégrade sur focus vide, mais objetChamp continue de nommer le tableau.
-  const c = constat('import', 'tableau-sans-entete', { tableau: '2' });
-  assert.strictEqual(constats.cible(c).focus, '');
-  assert.strictEqual(constats.objet(c, 'fr'), '2');
+test('import : tableau sans en-tête — sans « debut », le numéro suffit à désigner le fichier', () => {
+  const c = constat('import', 'tableau-sans-entete', { tableau: '12' });
+  assert.strictEqual(constats.cible(c).focus, 'table-12.html');
+  assert.strictEqual(constats.objet(c, 'fr'), '12');
+  // Sans numéro lisible : le lieu reste l'éditeur de tableaux, sans tableau nommé — c'est
+  // ouvrirEditeurTable qui retombe alors sur la liste des tableaux de l'article.
+  assert.deepStrictEqual(constats.cible(constat('import', 'tableau-sans-entete', {})),
+    { lieu: 'table', slug: '01-essai', focus: '' });
+});
+
+test('pdfua : les règles de tableau 7.5-1 et 7.5-2 mènent à l’éditeur de tableaux', () => {
+  for (const repere of ['7.5-1', '7.5-2']) {
+    const c = constat('pdfua', 'regle', { regle: 'Cellule de tableau…', explication: '', repere: repere });
+    assert.strictEqual(constats.cible(c).lieu, 'table', repere);
+  }
 });
 
 // ---- 3. La phrase : un gabarit, pas un paragraphe ----------------------------------
@@ -323,7 +335,7 @@ test('import : tableau sans en-tête — sans « debut » pas encore écrit, la 
 test('phrase : « {défaut} : {objet} », et rien de plus', () => {
   const c = constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' });
   const dit = constats.phrase(c, 'fr');
-  assert.match(dit, /^Figure sans texte alternatif : fig-01\.png$/,
+  assert.match(dit, /^Image sans description : fig-01\.png$/,
     'la phrase ne suit pas le gabarit : ' + dit);
   // Le geste n'est plus dans le texte : c'est le bouton qui le porte.
   assert.ok(!/Ouvrez|Cliquez|formulaire/.test(dit), 'la phrase explique encore où cliquer');
@@ -334,11 +346,158 @@ test('phrase : un défaut sans objet se dit seul, sans deux-points en l’air', 
   assert.match(dit, /^Titre manquant$/, 'un deux-points traîne sans objet : ' + dit);
 });
 
-test('phrase : le détail facultatif n’existe que là où une seule ligne ne suffit pas', () => {
-  // Réservé aux constats qui doivent dire ce qui a été gardé et ce qui a été perdu.
-  const avec = constats.detail(constat('import', 'tableau-conflit'), 'fr');
-  assert.ok(avec && avec.length > 0, 'le conflit de tableau doit garder son détail');
-  assert.strictEqual(constats.detail(constat('pipeline', 'titre-manquant'), 'fr'), '');
+// La seconde ligne est devenue UNE phrase d'action (29.09.2026) ; ce qu'elle disait de
+// ce qui a été gardé ou perdu n'a pas disparu, il est dans l'infobulle.
+test('phrase : la seconde ligne est une consigne, l’explication part en infobulle', () => {
+  const conflit = constat('import', 'tableau-conflit');
+  conflit.cle = 'ctl.reimport.tableau-conflit';
+  const geste = constats.detail(conflit, 'fr');
+  assert.ok(geste && /^Ouvrez /.test(geste), 'la consigne ne commence pas par le geste : ' + geste);
+  assert.strictEqual(constats.consigne(conflit, 'fr'), geste, 'detail() n’est plus la consigne');
+  const pourquoi = constats.infobulle(conflit, 'fr');
+  assert.ok(/sauvegarde/.test(pourquoi),
+    'ce qui a été gardé (la sauvegarde) a été perdu en route : ' + pourquoi);
+  assert.match(constats.detail(constat('pipeline', 'titre-manquant'), 'fr'), /^Saisissez le titre/);
+});
+
+test('consigne : une seule phrase, dans les deux langues, pour tout défaut à corriger', () => {
+  const vides = [];
+  for (const cle of Object.keys(constats.TABLE)) {
+    const e = constats.TABLE[cle];
+    if (e.nature === 'fait' || e.detailChamp) { continue; }
+    const s = constats.SECOND_ETAGE[cle];
+    // Une entrée vide, posée exprès : le geste a été refusé et il n'y a rien à faire.
+    if (s && !s.consigne) { continue; }
+    if (!s) { vides.push(cle); continue; }
+    for (const langue of ['fr', 'de']) {
+      const dit = i18n.TL(langue, s.consigne, ['3']);
+      assert.ok(dit && dit !== s.consigne, 'consigne sans texte ' + langue + ' : ' + cle);
+      assert.ok(dit.length <= 140, 'ce n’est plus une phrase mais un paragraphe (' + cle + ') : ' + dit);
+      assert.strictEqual((dit.match(/[.!?](\s|$)/g) || []).length, 1,
+        'plus d’une phrase (' + cle + ', ' + langue + ') : ' + dit);
+      if (langue === 'de') { assert.ok(dit.indexOf('ß') === -1, 'orthographe suisse : ' + cle); }
+    }
+  }
+  assert.deepStrictEqual(vides, [], 'défauts sans phrase d’action : ' + vides.join(', '));
+});
+
+test('règle PDF/UA : le geste en consigne, la cause et le repère en infobulle, rien de perdu', () => {
+  const c = constat('pdfua', 'regle', {
+    regle: 'Le document n’a pas de titre (1 fois, page(s) 3)',
+    explication: 'En cause : le champ title de la fiche est vide. À faire : remplir le titre.',
+    repere: '7.1-9' });
+  // Le titre de la carte est la règle elle-même : la source de la carte dit déjà PDF/UA.
+  assert.strictEqual(constats.phrase(c, 'fr'), 'Le document n’a pas de titre (1 fois, page(s) 3)');
+  assert.strictEqual(constats.consigne(c, 'fr'), 'remplir le titre.');
+  const pourquoi = constats.infobulle(c, 'fr');
+  assert.match(pourquoi, /le champ title de la fiche est vide\./);
+  assert.match(pourquoi, /ISO 14289-1 7\.1-9/);
+  // Une règle sans geste (défaut de la chaîne) n'invente pas de consigne.
+  const sansGeste = constat('pdfua', 'regle', { regle: 'X', explication: 'En cause : y.', repere: '7.1-10' });
+  assert.strictEqual(constats.consigne(sansGeste, 'fr'), '');
+  assert.match(constats.infobulle(sansGeste, 'fr'), /^y\./);
+});
+
+test('infobulle : le message complet de la maison, ou la phrase de la chaîne, jamais rien', () => {
+  const c = constat('citations', 'appel-sans-reference', { appel: '(Shaw, 2023)' });
+  c.cle = 'ctl.cit.sansref'; c.args = ['(Shaw, 2023)'];
+  assert.match(constats.infobulle(c, 'fr'), /ne mène à aucune référence/);
+  const typo = constat('typo', 'eszett', { mot: 'Straße' });
+  typo.brut = 'Un « ß » dans le texte.';
+  // La typographie n'a pas de message ctl.* : c'est l'ancienne seconde ligne qui explique.
+  assert.match(constats.infobulle(typo, 'fr'), /usage suisse/);
+});
+
+// ---- 3 bis. Une carte par défaut, et non une par voie d'arrivée -------------------
+
+function regle(repere, slug) {
+  return { source: 'pdfua', code: 'regle', slug: slug || '01-essai', args: [], cle: '',
+           champs: { regle: 'R (1 fois, page(s) 2)', explication: 'En cause : c. À faire : g.', repere: repere } };
+}
+
+test('regrouper : la règle 7.3-1 et les images de la chaîne font UNE carte, nommée par le disque', () => {
+  const liste = [
+    constat('citations', 'appel-ambigu', { appel: '(Sen, 2001)' }),
+    regle('7.3-1'),
+    constat('numerotation', 'figure-sans-alt', { image: 'media/fig-01.png' }),
+    constat('numerotation', 'figure-sans-alt', { image: 'media/fig-02.png' })
+  ];
+  const lire = () => ({ images: [
+    { nom: 'fig-01.png', lieu: 'medias', focus: 'fig-01.png' },
+    { nom: 'portrait.jpeg', lieu: 'table', focus: 'table-02.html',
+      precision: { cle: 'objet.image.tableau', args: ['table-02.html'] } }
+  ], tableaux: [], tousTableaux: [] });
+  const r = constats.regrouper(liste, lire);
+  assert.strictEqual(r.length, 2, 'la même image fait encore plusieurs cartes');
+  assert.strictEqual(r[0].code, 'appel-ambigu', 'l’ordre de la liste n’est pas gardé');
+  const carte = r[1];
+  assert.strictEqual(carte.source + '/' + carte.code, 'cockpit/images-sans-description');
+  assert.strictEqual(constats.phrase(carte, 'fr'), '2 images sans description');
+  assert.strictEqual(constats.phrase(carte, 'de'), '2 Bilder ohne Beschreibung');
+  assert.deepStrictEqual(constats.elements(carte, 'fr').map((e) => [e.libelle, e.lieu + ':' + e.focus]),
+    [['fig-01.png', 'medias:fig-01.png'], ['portrait.jpeg (dans table-02.html)', 'table:table-02.html']]);
+  assert.match(constats.consigne(carte, 'fr'), /«.Image purement décorative.»/,
+    'la consigne ne nomme pas la case telle que le formulaire l’écrit');
+  // Plusieurs objets : le bouton ouvre le formulaire, sans en choisir un.
+  assert.deepStrictEqual(constats.cible(carte), { lieu: 'medias', slug: '01-essai', focus: '' });
+  // Rouge tant que la validation PDF/UA tourne, comme les constats qu'elle remplace.
+  assert.strictEqual(constats.gravite(carte, { pdfua: true }), 'bloquant');
+  assert.strictEqual(carte.membres.length, 3, 'les constats remplacés sont perdus');
+});
+
+test('regrouper : une seule image — le singulier, et le bouton va droit sur elle', () => {
+  const r = constats.regrouper([constat('numerotation', 'figure-sans-alt', { image: 'media/fig-1.png' })],
+    () => ({ images: [], tableaux: [] }));
+  assert.strictEqual(constats.phrase(r[0], 'fr'), '1 image sans description');
+  assert.deepStrictEqual(constats.cible(r[0]), { lieu: 'medias', slug: '01-essai', focus: 'fig-1.png' },
+    'sans rien sur le disque, les noms de la chaîne servent de repli');
+});
+
+test('regrouper : les tableaux de la règle 7.5-1, avec la raison de chacun', () => {
+  // table-02 : un tableau de mise en page sans en-tête (le bloc des auteurs de l'article
+  // massie) — le validateur ne le refuse pas, c'est l'en-tête fusionné de table-01 qu'il
+  // relève. Il n'est donc pas nommé tant qu'une fusion explique la règle.
+  const lire = () => ({ images: [], tousTableaux: ['table-01.html', 'table-02.html'],
+    tableaux: [{ nom: 'table-01.html', raison: 'fusion' }, { nom: 'table-02.html', raison: 'sans-entete' }] });
+  const r = constats.regrouper([regle('7.5-1'), regle('7.5-2')], lire);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(constats.phrase(r[0], 'fr'), '1 tableau aux en-têtes incomplets');
+  assert.deepStrictEqual(constats.elements(r[0], 'fr').map((e) => e.libelle), ['table-01.html (en-tête fusionné)']);
+  assert.deepStrictEqual(constats.cible(r[0]), { lieu: 'table', slug: '01-essai', focus: 'table-01.html' });
+  assert.strictEqual(constats.gravite(r[0], { pdfua: true }), 'bloquant');
+  assert.match(constats.consigne(r[0], 'fr'), /fusionner/);
+  // Aucun tableau identifié : un titre sans compte, et le bouton retombe sur la liste.
+  const rien = constats.regrouper([regle('7.5-1')], () => ({ images: [], tableaux: [], tousTableaux: [] }));
+  assert.strictEqual(constats.phrase(rien[0], 'fr'), 'Tableaux aux en-têtes incomplets');
+  assert.deepStrictEqual(constats.cible(rien[0]), { lieu: 'table', slug: '01-essai', focus: '' });
+});
+
+test('regrouper : l’import seul reste ambre, et un tableau corrigé depuis ne se nomme plus', () => {
+  const lire = () => ({ images: [], tousTableaux: ['table-01.html', 'table-02.html'],
+    tableaux: [{ nom: 'table-02.html', raison: 'sans-entete' }] });
+  const r = constats.regrouper([
+    constat('import', 'tableau-sans-entete', { tableau: '1' }),
+    constat('import', 'tableau-sans-entete', { tableau: '2' })
+  ], lire);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].code, 'tableaux-sans-entete');
+  assert.strictEqual(constats.gravite(r[0], { pdfua: true }), 'avert');
+  assert.deepStrictEqual(constats.elements(r[0], 'fr').map((e) => e.focus), ['table-02.html']);
+});
+
+test('regrouper : rien à regrouper sans article, ni hors des deux familles', () => {
+  const numero = Object.assign(constat('numerotation', 'figure-sans-alt', { image: 'a.png' }), { slug: '' });
+  const autre = regle('7.1-9');
+  assert.deepStrictEqual(constats.regrouper([numero, autre], () => null), [numero, autre]);
+});
+
+test('cible : un focus calculé par l’hôte sert de repli vers le texte, jamais d’objet', () => {
+  const c = constat('rendu', 'niveaux-ecrases', { focusCalcule: '###### Annexe' });
+  assert.strictEqual(constats.cible(c).focus, '###### Annexe');
+  assert.strictEqual(constats.phrase(c, 'fr'), 'Titres trop profonds');
+  // Le focus que le constat porte lui-même passe avant.
+  const appel = constat('citations', 'appel-ambigu', { appel: '(Sen, 2001)', focusCalcule: 'autre' });
+  assert.strictEqual(constats.cible(appel).focus, '(Sen, 2001)');
 });
 
 test('phrase : les deux langues, pour tout code connu', () => {
@@ -395,6 +554,8 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     'export/refus',
     'pdfua/regle', 'cockpit/doi-double', 'cockpit/sans-fiche', 'cockpit/image-sans-alt',
     'cockpit/image-sans-legende',
+    // Les cartes regroupées : regrouper() les fabrique à partir des constats ci-dessus.
+    'cockpit/images-sans-description', 'cockpit/tableaux-entete', 'cockpit/tableaux-sans-entete',
     // pipeline/pagination.py écrit « [pagination-avertissement] perimee », préfixe
     // générique lui aussi : codesDeJournal() ne le voit pas, et le journal le produit.
     'pagination/perimee',
@@ -412,7 +573,14 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     // Quatre codes de docx-meta.py qui passent par « [import-avertissement] » sans entrée
     // dans CLES_IMPORT (revue F03, 22.09.2026) : même raison, même repli.
     'import/tableau-auteurs-non-lu', 'import/biblio-references-restees',
-    'import/biblio-non-detachee', 'import/credit-photo-non-repris'];
+    'import/biblio-non-detachee', 'import/credit-photo-non-repris',
+    // La garantie « rien ne disparaît » de l'import (29.09.2026) : szh-legendes.lua,
+    // docx-controle-import.py et pronto_modele.py les émettent par le même préfixe, sans
+    // entrée CLES_IMPORT — même repli que les quatre ci-dessus.
+    'import/bloc-valeur-non-reprise', 'import/image-absente-import',
+    'import/figure-alt-a-completer', 'import/tableau-images-et-texte',
+    // Vu par le cockpit en lisant les tableaux de l'article (constatEnteteVide).
+    'cockpit/entete-vide'];
   const mortes = Object.keys(constats.TABLE)
     .filter((cle) => !connus.has(cle) && propres.indexOf(cle) === -1);
   assert.deepStrictEqual(mortes, [], 'entrées sans émetteur : ' + mortes.join(', '));

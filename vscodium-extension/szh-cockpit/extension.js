@@ -68,7 +68,7 @@ const {
   REVUES_BIBLIO, LANGUES_BIBLIO
 } = require('./lib/citations');
 // Retrouver dans un .md le passage qu'un focus de constat désigne (bouton « Vers l'article »).
-const { trouverPlageFocus } = require('./lib/reperage-focus');
+const { trouverPlageFocus, focusDeRepli } = require('./lib/reperage-focus');
 // ---- Poste et traduction -> lib/archivage.js ; cycle de vie -> lib/cycle-vie.js --
 const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
@@ -134,6 +134,11 @@ const {
   fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique,
   PRESETS_ORDRE
 } = require('./lib/table-model');
+// Images des cellules (aperçu, copie dans media/) -> lib/table-images.js
+const tableImages = require('./lib/table-images');
+// Recompilation après un enregistrement fait hors de l'éditeur de texte (médias, tableaux)
+// -> lib/relance-compilation.js
+const relanceCompilation = require('./lib/relance-compilation');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml } = require('./lib/webviews/util');
 // ---- « Quoi de neuf » -> lib/nouveautes.js ---------------------------------------
@@ -287,6 +292,9 @@ mediasHote.configurer({
   ouvrirVersionsPhoto: (fournisseur, panneau, msg) => ouvrirVersionsPhoto(fournisseur, panneau, msg),
   choisirPhotoAuteur: (fournisseur, panneau, msg) => choisirPhotoAuteur(fournisseur, panneau, msg),
   convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
+  // Un enregistrement a changé ce que la compilation de l'article lit (voir relanceDifferee).
+  demanderCompilation: (fournisseur, slug) => relanceDifferee.demander(fournisseur, slug),
+  viderCompilation: (slug) => relanceDifferee.vider(slug),
   repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- La Documentation d'un numéro -> lib/documentation-hote.js -------------------
@@ -344,7 +352,7 @@ const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
   analyserJournal, phraseConstat, resumeJournal, slugsCompiles, citationsParArticle,
-  constatsReimport, tonResultatReimport
+  constatsReimport, tonResultatReimport, sansResumePdfUaRedondant
 } = require('./lib/journal');
 // ---- JPEG CMJN -> RVB -> lib/cmyk.js ---------------------------------------------
 const { convertirCmykEnRgb, estJpegCmyk } = require('./lib/cmyk');
@@ -2060,17 +2068,54 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 // Combien de temps le surlignage reste visible avant de s'effacer de lui-même.
 const DUREE_SURLIGNAGE_FOCUS = 3000;
 
-// Retrouve le passage désigné par `focus` dans le .md qu'on vient d'ouvrir, l'amène à
-// l'écran et le surligne quelques secondes. La recherche (lib/reperage-focus.js) absorbe la
-// normalisation que le filtre Lua a fait subir au texte du constat — pas trouvé, rien ne se
-// passe : jamais de faux surlignage, jamais de message d'erreur pour si peu.
-function surlignerFocus(md, focus) {
+// Deux chemins pour le même fichier : la casse de la lettre de lecteur et des dossiers
+// varie selon qui a construit le chemin (Uri.fsPath la baisse, path.join la garde).
+function memeFichier(a, b) {
+  return path.normalize(String(a || '')).toLowerCase() === path.normalize(String(b || '')).toLowerCase();
+}
+
+// L'éditeur de `chemin`, ouvert et au premier plan en colonne 1. showTextDocument, et non
+// visibleTextEditors : c'est la seule API qui RENDE l'éditeur. `vscode.open` rend la main
+// avant que l'hôte d'extension ait appris l'existence du nouvel éditeur — visibleTextEditors
+// et activeTextEditor décrivaient encore l'écran d'avant (la vue « À corriger » au premier
+// plan, sans aucun éditeur de texte), surlignerFocus ne trouvait rien et se taisait : c'est
+// pourquoi la flèche ouvrait l'article sans jamais rien sélectionner. Le .md déjà ouvert
+// dans un AUTRE groupe tombait dans le même trou : la sélection partait sur l'éditeur de la
+// colonne 2, celui qu'on ne regardait pas.
+async function editeurDe(chemin) {
   try {
-    const editeur = vscode.window.visibleTextEditors.find((e) => e.document.uri.fsPath === md)
-      || vscode.window.activeTextEditor;
-    if (!editeur || editeur.document.uri.fsPath !== md) { return; }
-    const plage = trouverPlageFocus(editeur.document.getText(), focus);
-    if (!plage) { return; }
+    const ed = await vscode.window.showTextDocument(vscode.Uri.file(chemin),
+      { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
+    if (ed && ed.document && ed.document.uri && memeFichier(ed.document.uri.fsPath, chemin)
+        && typeof ed.document.getText === 'function') { return ed; }
+  } catch (e) { /* fichier disparu : on retombe sur ce qui est à l'écran */ }
+  const vus = [vscode.window.activeTextEditor].concat(vscode.window.visibleTextEditors || []);
+  return vus.find((e) => e && e.document && e.document.uri
+    && memeFichier(e.document.uri.fsPath, chemin)) || null;
+}
+
+// Retrouve le passage désigné par `focus` dans le .md qu'on vient d'ouvrir, le SÉLECTIONNE,
+// l'amène à l'écran et le surligne quelques secondes. La recherche (lib/reperage-focus.js)
+// absorbe la normalisation que le filtre Lua a fait subir au texte du constat, l'emphase
+// Markdown qu'il a aplatie et l'ellipse d'une troncature. Pas trouvé dans le texte, on
+// cherche dans la bibliographie détachée (<slug>.biblio.md, voisine du .md) : une
+// « référence jamais citée » n'est plus dans le texte depuis que l'import la met à part.
+// Pas trouvé du tout, rien ne se passe : jamais de faux surlignage, jamais de message
+// d'erreur pour si peu. -> true quand un passage a été sélectionné.
+async function surlignerFocus(md, focus) {
+  try {
+    let editeur = await editeurDe(md);
+    let plage = editeur ? trouverPlageFocus(editeur.document.getText(), focus) : null;
+    if (!plage) {
+      const biblio = md.replace(/\.md$/i, '.biblio.md');
+      let texte = '';
+      try { texte = fs.readFileSync(biblio, 'utf8'); } catch (e) { texte = ''; }
+      if (texte !== '' && trouverPlageFocus(texte, focus)) {
+        editeur = await editeurDe(biblio);
+        plage = editeur ? trouverPlageFocus(editeur.document.getText(), focus) : null;
+      }
+    }
+    if (!editeur || !plage) { return false; }
     const debut = editeur.document.positionAt(plage.debut);
     const fin = editeur.document.positionAt(plage.fin);
     const zone = new vscode.Range(debut, fin);
@@ -2086,7 +2131,8 @@ function surlignerFocus(md, focus) {
     editeur.setDecorations(decoration, [zone]);
     setTimeout(() => { try { decoration.dispose(); } catch (e) { /* éditeur déjà fermé */ } },
       DUREE_SURLIGNAGE_FOCUS);
-  } catch (e) { /* un focus qui échoue n'empêche pas d'avoir ouvert l'article */ }
+    return true;
+  } catch (e) { return false; /* un focus qui échoue n'empêche pas d'avoir ouvert l'article */ }
 }
 
 // .md en colonne 1 ; compilation incrémentale si l'aperçu du mode courant est absent ou
@@ -2121,8 +2167,9 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
     // Le bouton « Vers l'article » d'un constat vise un passage précis (lib/constats.js,
     // focusChamp) : le retrouver et le montrer, sinon le rédacteur ouvre le bon fichier sans
-    // savoir où regarder.
-    if (opts && opts.focus) { surlignerFocus(md, opts.focus); }
+    // savoir où regarder. Attendu : l'aperçu qui s'ouvre ensuite en colonne 2 ne doit pas
+    // passer devant l'éditeur avant que la sélection soit posée.
+    if (opts && opts.focus) { await surlignerFocus(md, opts.focus); }
   }
 
   // Depuis la vue d'ensemble Articles, on vient lire ou corriger le texte, pas mettre en
@@ -2168,6 +2215,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   if (obsolete) {
     session.poserBuildEnCours(true);
     const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+    annoncerAnalyse(slug);                         // voir compilerPuisAfficher
     try {
       const code = await lancerBuild(racine);
       if (code === null) { return; }               // tâche introuvable, déjà signalé
@@ -2176,6 +2224,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
         return;
       }
     } finally {
+      annoncerAnalyse(null);
       statut.dispose();
       session.poserBuildEnCours(false);
     }
@@ -2210,6 +2259,26 @@ function relancerCompilation(fournisseur, slug, opts) {
   compilerPuisAfficher(fournisseur, slug, opts).catch(() => { /* signalé côté build */ });
 }
 
+// Les démarrages de la tâche qui recompile l'article (build, ou export complet), comptés
+// dans onDidStartTask — Ctrl+S et triggerTaskOnSave compris, puisqu'ils ne passent par
+// aucune fonction du cockpit. La relance différée ci-dessous s'en sert pour savoir si une
+// compilation partie depuis un enregistrement l'a déjà couvert (lib/relance-compilation.js).
+let demarragesBuild = 0;
+
+// Les enregistrements du formulaire « Médias de l'article » (lib/medias-hote.js) et de
+// l'éditeur de tableaux (ouvrirEditeurTable) : ils écrivent hors de l'éditeur de texte, et
+// relancent donc eux-mêmes la compilation de l'article — même chemin, même garde et même
+// discrétion (sansAffichage) que l'enregistrement des métadonnées, mais après un anti-rebond
+// de 2,5 s : l'éditeur de tableaux enregistre à chaque modification. Numéro verrouillé ou
+// archivé : rien (compilationAutoCoupee). Un livre suit le même chemin que ses métadonnées :
+// le slug est celui du chapitre, lancerBuild compile le volume.
+const relanceDifferee = relanceCompilation.creerRelanceDifferee({
+  relancer: (fournisseur, slug) => relancerCompilation(fournisseur, slug, { sansAffichage: true }),
+  coupee: () => compilationAutoCoupee(),
+  occupe: () => session.buildEnCours(),
+  demarrages: () => demarragesBuild
+});
+
 // L'aperçu manque encore : une seule passe est relancée en tâche de fond, sans boucler.
 // Chemin unique de compilation d'un article : ouvrirArticle (aperçu périmé ou manquant) et
 // l'enregistrement des métadonnées passent tous deux par ici, sous la même garde
@@ -2230,9 +2299,14 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   session.poserBuildEnCours(true);
   const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
   let code = null;
+  // L'article compilé, pour que le voile de « À corriger » ne couvre que sa carte : c'est
+  // le démarrage de la tâche (onDidStartTask) qui le pose. Retiré dans tous les cas — une
+  // tâche introuvable ne démarre jamais, et l'annonce ne doit pas échoir au Ctrl+S suivant.
+  annoncerAnalyse(slug);
   try {
     code = await lancerBuild(fournisseur.racine);
   } finally {
+    annoncerAnalyse(null);
     statut.dispose();
     session.poserBuildEnCours(false);
   }
@@ -2793,6 +2867,9 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   // Le laisser à l'écran ferait réécrire un tableau qui vient d'être supprimé. Le
   // gestionnaire des médias, lui, n'est pas lié à un fichier : il retire sa carte.
   const ouvert = estTable ? panneauxTable.get(cible) : null;
+  // Sa fermeture ferait partir la recompilation encore en attente (relanceDifferee.vider)
+  // pendant que le fichier s'efface : elle tombe, l'enregistrement du .md plus bas relance.
+  if (ouvert) { relanceDifferee.abandonner(slug); }
   if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
   await fermerOngletDuFichier(cible);
   const echec = await supprimerAvecReprises(cible);
@@ -3247,6 +3324,9 @@ const renumerotation = require('./lib/renumerotation-fs');
 // suppression d'un article, qui donne ce qui reste.
 // -> { erreur, renommes }, tel que lib/renumerotation-fs.js le rend.
 function alignerDossiersSurOrdre(racine, voulu) {
+  // Les dossiers d'avant : ce qui aura disparu après le renommage est retenu comme retiré
+  // (retenirSlugsRetires), pour que plus rien ne s'affiche sous ces noms-là.
+  const avant = slugsUnitesPresents(racine);
   // config/cle : le fichier et la clé où « Terminer » écrit l'ordre — ausgabe.yaml pour une
   // revue, buch.yaml pour un livre. Sans eux, ecrireOrdre() (lib/renumerotation-fs.js)
   // retombe sur son défaut de revue et créerait un ausgabe.yaml parasite dans un livre.
@@ -3256,9 +3336,79 @@ function alignerDossiersSurOrdre(racine, voulu) {
   // et la prochaine compilation les reposera sous leur nouveau nom.
   if (r.renommes > 0 && dernierJournal.racine === racine) {
     dernierJournal.constats = [];
-    majBarreControles();
   }
+  // Ce qui n'est plus sur le disque : les anciens noms d'un renommage, et — la suppression
+  // passant aussi par ici, son dossier déjà effacé — tout slug qu'un constat ou le journal
+  // nomme encore sans qu'aucun dossier ne le porte. Retenus d'une session à l'autre :
+  // .szh-journal.log n'est pas réécrit (ce qu'il dit des articles restés en place reste
+  // vrai au redémarrage), c'est à la lecture que constatsAffichables() écarte le reste.
+  const apres = slugsUnitesPresents(racine);
+  if (apres !== null) {
+    const nommes = new Set(avant || []);
+    const sources = [lireJournalTache(racine)];
+    if (dernierJournal.racine === racine) {
+      sources.push(dernierJournal.constats, dernierJournal.reimport, dernierJournal.export,
+        dernierJournal.pagination);
+    }
+    for (const liste of sources) { for (const c of liste) { if (c && c.slug) { nommes.add(c.slug); } } }
+    retenirSlugsRetires(racine, Array.from(nommes).filter((s) => !apres.has(s)));
+    // Les canaux à part (réimport, refus d'export, pagination) ne se reposent pas à la
+    // compilation suivante : on les nettoie ici plutôt que de compter sur le seul filtre.
+    if (dernierJournal.racine === racine) {
+      const vivant = (c) => !c || !c.slug || apres.has(c.slug);
+      dernierJournal.reimport = dernierJournal.reimport.filter(vivant);
+      dernierJournal.export = dernierJournal.export.filter(vivant);
+      dernierJournal.pagination = dernierJournal.pagination.filter(vivant);
+    }
+  }
+  // Les verdicts PDF/UA en cache (.szh-pdfua.json) : migrés sous le nouveau nom si le PDF
+  // est encore le même, oubliés sinon. Aussi après une suppression sans renommage — le
+  // dernier article retiré ne décale personne, mais son verdict doit partir avec lui.
+  pdfuaHote.purgerAbsents(racine);
+  if (dernierJournal.racine === racine) { majBarreControles(); }
   return r;
+}
+
+// ---- Les slugs retirés : les noms qu'un article a quittés -------------------------
+//
+// { <racine>: [slug…] } dans globalState, borné comme les constats fermés. Un nom retiré
+// qui revient sur le disque (un nouvel article, un renommage inverse) redevient visible de
+// lui-même : le filtre exige à la fois « retiré » ET « absent du disque ».
+//
+// Pourquoi une liste explicite, et non « tout slug sans dossier » : un constat peut nommer
+// ce qui n'a jamais été un dossier de ce numéro (un Word pas encore converti, les corpus de
+// test), et le taire sous prétexte qu'il n'existe pas cacherait justement ce qu'il dit. Ce
+// qu'on écarte, c'est ce qu'on a vu partir.
+const CLE_SLUGS_RETIRES = 'szh.slugs.retires';
+const MAX_SLUGS_RETIRES = 200;
+// Sans globalState (avant activate) : la même table, en mémoire seulement.
+const slugsRetiresMemoire = new Map();
+
+function slugsRetires(racine) {
+  if (!racine) { return new Set(); }
+  if (etatPoste) {
+    const table = etatPoste.globalState.get(CLE_SLUGS_RETIRES) || {};
+    const liste = table && Array.isArray(table[racine]) ? table[racine] : [];
+    return new Set(liste.map(String));
+  }
+  return new Set(slugsRetiresMemoire.get(racine) || []);
+}
+
+function retenirSlugsRetires(racine, slugs) {
+  if (!racine || !slugs || slugs.length === 0) { return; }
+  const deja = slugsRetires(racine);
+  const neufs = slugs.map(String).filter((s) => s !== '' && !deja.has(s));
+  if (neufs.length === 0) { return; }
+  const liste = Array.from(deja).concat(neufs);
+  const borne = liste.slice(Math.max(0, liste.length - MAX_SLUGS_RETIRES));
+  slugsRetiresMemoire.set(racine, borne);
+  if (etatPoste) {
+    const table = Object.assign({}, etatPoste.globalState.get(CLE_SLUGS_RETIRES) || {});
+    table[racine] = borne;
+    // Sans attendre : la mémoire ci-dessus répond déjà, et un échec d'écriture ne fait que
+    // laisser revenir, au redémarrage, un constat que la prochaine compilation effacera.
+    Promise.resolve(etatPoste.globalState.update(CLE_SLUGS_RETIRES, table)).catch(() => {});
+  }
 }
 
 const JOURNAL_TACHE = '.szh-journal.log';
@@ -3291,7 +3441,51 @@ function constatsCourants(racine) {
   const base = dernierJournal.racine !== racine
     ? lireJournalTache(racine)
     : dernierJournal.export.concat(dernierJournal.reimport, dernierJournal.pagination, dernierJournal.constats);
-  return base.concat(pdfuaHote.constats(racine, langueCockpit()));
+  return constatsAffichables(racine, base.concat(pdfuaHote.constats(racine, langueCockpit())));
+}
+
+// Les dossiers d'unité présents sur le disque, ou null quand on ne doit rien filtrer.
+//
+// null d'abord pour un livre : ses constats nomment volontiers ce qui n'est pas un dossier
+// — le manuscrit que livre-scinder.py vient de découper (« slug_original », disparu par
+// construction), le TITRE d'un chapitre dans livre-assembler.py (onglet-case-etroite) —, et
+// les écarter parce qu'aucun dossier ne porte ce nom cacherait justement ce qu'ils disent.
+// null aussi quand le dossier ne se lit pas (OneDrive hors ligne, droits) : ne rien savoir
+// n'est pas une raison de tout taire.
+//
+// Les sous-dossiers bruts, et non listerArticles() : un dossier encore sans .md (import en
+// cours, page de Documentation) garde ses constats — le filtre ne doit écarter que ce qui a
+// réellement quitté le disque.
+function slugsUnitesPresents(racine) {
+  if (!racine || profilCourant().cle === 'livre') { return null; }
+  try {
+    return new Set(fs.readdirSync(path.join(racine, dossierUnites()), { withFileTypes: true })
+      .filter((e) => e.isDirectory()).map((e) => e.name));
+  } catch (e) { return null; }
+}
+
+// Ce que « À corriger » et la barre d'état peuvent montrer d'une liste de constats. Deux
+// règles, appliquées au dernier moment — là où toutes les sources se rejoignent :
+//
+//   * aucun constat d'un article qui n'existe plus. Un article renommé (« 01-x » devenu
+//     « 03-x » par « Terminer ») ou supprimé laissait ses anciens défauts sous son ancien
+//     nom : relus de .szh-journal.log au redémarrage, gardés en mémoire par un réimport ou
+//     un export. Chaque source a son propre nettoyage (alignerDossiersSurOrdre,
+//     pdfuaHote.purgerAbsents), ce filtre en est la garantie de fond : il vaut pour toutes,
+//     y compris celles qu'on ajoutera. Est écarté ce qui porte un nom qu'un article a
+//     quitté (slugsRetires) et qu'aucun dossier ne porte aujourd'hui ; un constat du numéro
+//     entier (slug vide) n'est jamais concerné, un livre non plus (slugsUnitesPresents).
+//     Les verdicts PDF/UA, eux, sont déjà confrontés à la liste réelle des articles dans
+//     pdfuaHote.constats() : une clé fantôme n'en sort plus, retirée ou non.
+//   * pas de résumé PDF/UA quand ses règles suivent (journal.sansResumePdfUaRedondant) : le
+//     cache et le journal d'un export parlent souvent du même PDF, c'est donc sur la liste
+//     réunie qu'il faut en juger.
+function constatsAffichables(racine, constats) {
+  const presents = slugsUnitesPresents(racine);
+  const retires = presents === null ? null : slugsRetires(racine);
+  const vivants = (retires === null || retires.size === 0) ? constats
+    : constats.filter((c) => !c || !c.slug || presents.has(c.slug) || !retires.has(c.slug));
+  return sansResumePdfUaRedondant(vivants);
 }
 
 // Les points qui ont fait refuser le dernier export, un par carte. Ils partaient
@@ -3431,7 +3625,9 @@ function contexteConstats() {
 // raison de plus : voirPdfArticle passe par cibleTraduction, qui retombe sur l'article
 // ACTIF ou en aperçu quand le slug reçu est vide — un bouton sans garde ouvrirait alors le
 // PDF d'un AUTRE article plutôt que rien, ce qui est pire qu'un bouton absent.
-const LIEUX_ARTICLE = new Set(['article', 'fiche', 'medias', 'pdf']);
+// « table » (szh.editerTable) aussi : l'éditeur ne s'ouvre que sur un tableau d'un article
+// qui existe.
+const LIEUX_ARTICLE = new Set(['article', 'fiche', 'medias', 'pdf', 'table']);
 
 // Le bouton d'un constat, ou aucun. L'identifiant porte la destination ET l'objet à
 // atteindre — « medias:fig-01.png » — parce que la page renvoie l'identifiant tel quel :
@@ -3446,6 +3642,159 @@ function actionsConstat(constat, connus) {
   const lieu = tableConstats.LIEUX[cible.lieu];
   return [{ id: cible.lieu + (cible.focus === '' ? '' : ':' + cible.focus),
             libelle: T(lieu.libelle), icone: lieu.icone, tip: T(lieu.tip) }];
+}
+
+// Le second étage d'un message de la vue « À corriger » (lib/constats.js, SECOND_ETAGE) :
+// le titre seul, les objets en cause — un lien chacun, à la même forme d'identifiant que le
+// bouton (« medias:fig-01.png », « table:table-02.html ») —, la phrase d'action, et
+// l'explication qui passe en infobulle. `pourquoi` est le libellé du bouton qui la déplie :
+// porté par le message, la page n'a pas de texte de plus à attendre de l'hôte.
+// -> { titre, elements, consigne, infobulle, pourquoi }, à fusionner dans le message.
+function habillageConstat(constat, connus, langue) {
+  const slug = String((constat && constat.slug) || '');
+  const elements = tableConstats.elements(constat, langue)
+    .filter((el) => tableConstats.LIEUX[el.lieu]
+      && !(LIEUX_ARTICLE.has(el.lieu) && !(slug !== '' && connus.has(slug))))
+    .map((el) => ({ libelle: el.libelle, id: el.lieu + (el.focus === '' ? '' : ':' + el.focus),
+                    tip: TL(langue, tableConstats.LIEUX[el.lieu].tip) }));
+  return {
+    titre: tableConstats.phrase(constat, langue),
+    elements: elements,
+    consigne: tableConstats.consigne(constat, langue),
+    infobulle: tableConstats.infobulle(constat, langue),
+    pourquoi: TL(langue, 'ctl.pourquoi')
+  };
+}
+
+// Ce qu'un tableau de l'article a d'illisible pour un lecteur d'écran, ou '' s'il va bien.
+// « sans-entete » : aucune ligne ni colonne d'en-tête déclarée. « fusion » : une cellule
+// d'en-tête couvre plusieurs colonnes ou rangées — WeasyPrint ne l'inscrit qu'à sa première
+// colonne et ignore l'attribut headers, si bien que les colonnes suivantes sortent sans
+// en-tête (7.5-1) alors même que le tableau en déclare un (mesuré sur 2025-02, article
+// massie, table-01.html, 29.09.2026).
+function defautTableau(html) {
+  let m;
+  try { m = analyserTable(html); } catch (e) { return ''; }
+  const a = (m && m.attrs) || {};
+  if (!(a.enteteLignes > 0) && !(a.enteteColonnes > 0)) { return 'sans-entete'; }
+  for (const l of (m.lignes || [])) {
+    for (const c of (l.cellules || [])) {
+      if (c.th && ((c.colspan || 1) > 1 || (c.rowspan || 1) > 1)) { return 'fusion'; }
+    }
+  }
+  return '';
+}
+
+// Une case d'en-tête (th) sans intitulé : ni texte, ni image. Le coin en haut à gauche d'un
+// tableau croisé en est le cas le plus fréquent. Le contenu est celui qu'analyserTable
+// canonise (HTML en ligne) : on en retire les balises et les espaces, insécables compris.
+function aUneCaseEnteteVide(html) {
+  let m;
+  try { m = analyserTable(html); } catch (e) { return false; }
+  for (const l of ((m && m.lignes) || [])) {
+    for (const c of (l.cellules || [])) {
+      if (!c.th) { continue; }
+      const contenu = String(c.contenu || '');
+      if (/<img\b/i.test(contenu)) { continue; }
+      const nu = contenu.replace(/<[^>]*>/g, '').replace(/&nbsp;|&#160;|&#xa0;/gi, '')
+        .replace(/[\s   ]+/g, '');
+      if (nu === '') { return true; }
+    }
+  }
+  return false;
+}
+
+// Les images sans nom accessible posées DANS un tableau HTML de l'article : le .md ne les
+// voit pas (imagesSansAlternative ne lit que lui), et c'est pourtant elles que le validateur
+// relève — le bloc des autrices et auteurs, par exemple, est un tableau qui porte un
+// portrait en alt="". -> [{ image, table }]
+function imagesMuettesDesTableaux(tables) {
+  const res = [];
+  for (const t of tables) {
+    const re = /<img\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(String(t.html || ''))) !== null) {
+      const alt = m[1].match(/\balt\s*=\s*("([^"]*)"|'([^']*)')/i);
+      const valeur = alt ? (alt[2] !== undefined ? alt[2] : alt[3]) : null;
+      if (valeur !== null && valeur.trim() !== '') { continue; }
+      const src = m[1].match(/\bsrc\s*=\s*("([^"]*)"|'([^']*)')/i);
+      const chemin = src ? (src[2] !== undefined ? src[2] : src[3]) : '';
+      res.push({ image: path.basename(chemin.replace(/\\/g, '/')) || '?', table: t.nom });
+    }
+  }
+  return res;
+}
+
+// Le lecteur que tableConstats.regrouper() attend, et le .md et les tableaux de chaque
+// article, lus une seule fois par affichage. -> (slug) => { images, tableaux, tousTableaux,
+// texteMd, tables } | null
+function lecteurObjetsArticles(fournisseur) {
+  const memo = new Map();
+  return (slug) => {
+    if (memo.has(slug)) { return memo.get(slug); }
+    let lu = null;
+    try {
+      const dossier = path.join(fournisseur.racine, dossierUnites(), slug);
+      let texteMd = '';
+      try { texteMd = fs.readFileSync(path.join(dossier, slug + '.md'), 'utf8'); } catch (e) { texteMd = ''; }
+      const tables = fournisseur._tablesArticle(slug).map((nom) => {
+        let html = '';
+        try { html = fs.readFileSync(path.join(dossier, 'tables', nom), 'utf8'); } catch (e) { html = ''; }
+        return { nom: nom, html: html };
+      });
+      // Les noms tels qu'ils sont sur le disque : imagesSansAlternative les rend en
+      // minuscules, le formulaire des médias les connaît avec leur casse.
+      const surDisque = fournisseur._imagesArticle(slug);
+      const vrai = (relatif) => surDisque.find((r) => r.toLowerCase() === String(relatif).toLowerCase()) || relatif;
+      const images = imagesSansAlternative(texteMd)
+        .filter((i) => i.relatif)
+        .map((i) => { const n = vrai(i.relatif); return { nom: n, lieu: 'medias', focus: n }; })
+        // Une image d'un tableau se règle dans l'éditeur de CE tableau : le focus porte le
+        // fichier du tableau, puis celui de l'image après « | » (tableDuConstat le défait
+        // en item.focusImage). « | » n'entre dans aucun nom de fichier sous Windows.
+        .concat(imagesMuettesDesTableaux(tables).map((x) => ({
+          nom: x.image, lieu: 'table', focus: x.table + '|' + x.image,
+          precision: { cle: 'objet.image.tableau', args: [x.table] } })));
+      const tableaux = [];
+      const entetesVides = [];
+      for (const t of tables) {
+        const raison = t.html === '' ? '' : defautTableau(t.html);
+        if (raison) { tableaux.push({ nom: t.nom, raison: raison }); }
+        if (t.html !== '' && aUneCaseEnteteVide(t.html)) { entetesVides.push(t.nom); }
+      }
+      lu = { images: images, tableaux: tableaux, tousTableaux: tables.map((t) => t.nom),
+             entetesVides: entetesVides, texteMd: texteMd, tables: tables };
+    } catch (e) { lu = null; }
+    memo.set(slug, lu);
+    return lu;
+  };
+}
+
+// Les constats tels que la vue « À corriger » les montre : les voies multiples d'un même
+// défaut réunies en une carte (tableConstats.regrouper), et un endroit retrouvé dans le .md
+// pour ceux qui n'en citent aucun (focusDeRepli) — sans quoi leur flèche ouvrait l'article
+// en haut. Aucune écriture : les constats d'origine restent tels quels dans le journal.
+//
+// S'y ajoutent les défauts que le cockpit voit seul, en lisant les tableaux de chaque
+// article : une case d'en-tête vide (ambre, jamais bloquante).
+function constatsPourControles(fournisseur, constats) {
+  if (!fournisseur.racine) { return constats; }
+  const lire = lecteurObjetsArticles(fournisseur);
+  const vus = [];
+  for (const slug of fournisseur.listerArticles()) {
+    const lu = lire(slug);
+    const c = lu ? tableConstats.constatEnteteVide(slug, lu.entetesVides) : null;
+    if (c) { vus.push(c); }
+  }
+  return tableConstats.regrouper(constats, lire).concat(vus).map((c) => {
+    if (!c || !c.slug) { return c; }
+    const cible = tableConstats.cible(c);
+    if (!cible || cible.lieu !== 'article' || cible.focus !== '') { return c; }
+    const lu = lire(c.slug);
+    const focus = lu ? focusDeRepli(c.source + '/' + c.code, c.args, lu.texteMd, lu.tables) : '';
+    return focus === '' ? c : Object.assign({}, c, {
+      champs: Object.assign({}, c.champs || {}, { focusCalcule: focus }) });
+  });
 }
 
 // ---- Les constats « Pour information » qu'on a fermés d'un clic -------------------
@@ -3507,7 +3856,8 @@ async function fermerConstat(empreinte) {
 // est désormais au bout de sa phrase (media/_commun.js, `messages`).
 function vueControles(fournisseur) {
   const racine = fournisseur.racine;
-  const constats = constatsCourants(racine);
+  // Une carte par défaut, et non une par voie d'arrivée (constatsPourControles).
+  const constats = constatsPourControles(fournisseur, constatsCourants(racine));
   const langue = langueCockpit();
   const connus = new Set(fournisseur.listerArticles());
   const contexte = contexteConstats();
@@ -3524,7 +3874,7 @@ function vueControles(fournisseur) {
       const fermable = tableConstats.fermable(c, contexte);
       const empreinte = fermable ? empreinteConstat(racine, c, texte) : '';
       if (fermable && fermes.has(empreinte)) { continue; }
-      const source = T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline');
+      const source = T(SOURCES_CONSTAT[c.origine || c.source] || 'ctl.source.pipeline');
       let carte = cartes.get(c.slug);
       if (!carte) {
         carte = {
@@ -3543,7 +3893,7 @@ function vueControles(fournisseur) {
       // Le sous-titre ne tient que si toute la carte vient du même contrôle : deux sources
       // dessous, et il mentirait sur la moitié des phrases.
       if (carte.meta !== source) { carte.meta = ''; }
-      carte.messages.push({
+      carte.messages.push(Object.assign({
         ton: tableConstats.ton(c, contexte),
         texte: texte,
         // Un seul geste par défaut, ou aucun : actionsConstat rend au plus une entrée.
@@ -3551,7 +3901,7 @@ function vueControles(fournisseur) {
         // La croix, et de quoi la retenir. Vide partout ailleurs : la page ne pose pas de
         // croix sans empreinte, et n'a donc rien à décider.
         fermable: fermable, empreinte: empreinte
-      });
+      }, habillageConstat(c, connus, langue)));   // titre, objets, consigne, infobulle
     }
   }
   return {
@@ -3560,21 +3910,36 @@ function vueControles(fournisseur) {
       { id: 'recompiler', libelle: T('ctl.recompiler'), icone: 'fleche', principal: true,
         tip: T('ctl.recompiler.tip') }
     ],
-    lignes: lignes
+    lignes: lignes,
+    // Le voile d'une compilation en cours : un panneau ouvert (ou rafraîchi) en pleine
+    // analyse doit le montrer d'emblée, sans attendre le prochain message ANALYSE.
+    analyse: etatAnalyse()
   };
 }
 
 // La barre d'état : le seul endroit qui reste visible quand la notification a disparu.
 // Rien à afficher quand rien n'a été relevé — un compteur à zéro est du bruit.
 let barreControles = null;
+// Le fournisseur de l'arbre, retenu à l'activation : la barre compte les constats tels que
+// la vue les montre (constatsPourControles : regroupés, cases d'en-tête vides comprises),
+// et ce regroupement a besoin de lire les articles.
+let fournisseurBarre = null;
 
 function majBarreControles() {
   if (!barreControles) { return; }
   // pdfuaHote.constats() s'ajoute : un PDF non conforme compte comme un bloquant, ici
   // comme à l'export — c'est la même règle, elle arrive juste une minute après le Ctrl+S
   // au lieu du jour de l'export.
-  const constats = dernierJournal.reimport.concat(dernierJournal.pagination, dernierJournal.constats)
-    .concat(pdfuaHote.constats(dernierJournal.racine, langueCockpit()));
+  // Même tri que la vue (constatsAffichables) : la barre ne doit pas compter ce que la
+  // liste ne montre plus, ni le résumé PDF/UA en plus de ses règles.
+  let constats = constatsAffichables(dernierJournal.racine,
+    dernierJournal.reimport.concat(dernierJournal.pagination, dernierJournal.constats)
+      .concat(pdfuaHote.constats(dernierJournal.racine, langueCockpit())));
+  // Regroupés comme dans la vue : trois voies pour les mêmes images muettes font UNE carte,
+  // donc un seul bloquant — la barre ne doit pas annoncer plus que la liste n'en montre.
+  if (fournisseurBarre && fournisseurBarre.racine && fournisseurBarre.racine === dernierJournal.racine) {
+    constats = constatsPourControles(fournisseurBarre, constats);
+  }
   const r = resumeJournal(constats);
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
   else if (r.avertissements > 0) { barreControles.text = T('ctl.barre.avert', [r.avertissements]); }
@@ -3630,8 +3995,118 @@ function majBadgePdfUa(fournisseur) {
 function rafraichirPdfUa(fournisseur) {
   majBadgePdfUa(fournisseur);
   majBarreControles();
+  // Une validation qui se termine peut être la dernière chose que le voile attendait. Avant
+  // la vue : la « valeurs » qui suit porte ainsi l'état levé, pas l'ancien.
+  verifierFinAnalyse(fournisseur);
   const ouverte = panneauxVue.get('controles');
   if (ouverte) { envoyerVue(ouverte, fournisseur, 'controles'); }
+}
+
+// ---- Le voile « Analyse en cours… » de la vue « À corriger » ----------------------
+//
+// Pendant une compilation, ce que la liste montre est sur le point de changer : un défaut
+// corrigé est encore là, un nouveau n'y est pas encore, et un clic sur la flèche d'un
+// message peut viser un endroit que la chaîne est en train de réécrire. La page voile donc
+// les messages (media/vue-ensemble.js) — la carte de l'article compilé si on le connaît,
+// toute la liste sinon — jusqu'à ce que DEUX choses soient faites : le journal relu
+// (relireJournal) ET la validation PDF/UA de cet article terminée (pdfuaHote.enCours), qui
+// n'arrive qu'après.
+//
+// Seules les cartes des articles qui se recompilent sont voilées, jamais toute la liste
+// (demande de Robin, 29.09.2026) : le reste de la liste reste lisible et cliquable. Le slug
+// vient des chemins du cockpit (compilerPuisAfficher, ouvrirArticle), qui l'annoncent
+// (annoncerAnalyse) juste avant de lancer la tâche, et pour Ctrl+S (triggerTaskOnSave, qui
+// ne passe par aucune fonction du cockpit) du dernier fichier d'article enregistré
+// (retenirEnregistrement) — le .md, sa bibliographie ou un de ses tableaux. Deux
+// compilations d'articles différents voilent les deux. Un article inconnu (ausgabe.yaml
+// enregistré, tâche lancée à la main) ne voile rien : seul le bandeau « Analyse en cours… »
+// s'affiche en tête de liste.
+//
+// Ne jamais rester coincé : une tâche interrompue avant son processus (onDidEndTask sans
+// onDidEndTaskProcess) lève le voile, et un délai de sécurité le lève de toute façon.
+const DELAI_SECURITE_ANALYSE = 180000;   // 3 min, réarmé à chaque étape
+// Un enregistrement plus vieux que ça n'explique plus la tâche qui démarre.
+const DELAI_ENREGISTREMENT_ANALYSE = 15000;
+let analyse = { actif: false, cles: [], journalRelu: false, processFini: false, minuteur: null };
+let slugAnalyseAnnonce = null;
+let dernierEnregistre = { slug: null, quand: 0 };
+
+function annoncerAnalyse(slug) { slugAnalyseAnnonce = slug ? String(slug) : null; }
+
+function retenirEnregistrement(fournisseur, chemin) {
+  const slug = slugArticleContenant(fournisseur.racine, chemin);
+  dernierEnregistre = { slug: slug, quand: Date.now() };
+}
+
+// L'article que la tâche qui démarre recompile : annoncé par le cockpit, sinon celui du
+// Ctrl+S qui vient d'avoir lieu, sinon null.
+function slugDeLaTache() {
+  if (slugAnalyseAnnonce) { return slugAnalyseAnnonce; }
+  if (dernierEnregistre.slug && Date.now() - dernierEnregistre.quand < DELAI_ENREGISTREMENT_ANALYSE) {
+    return dernierEnregistre.slug;
+  }
+  return null;
+}
+
+// Ce que la page reçoit, dans « valeurs » comme dans le message ANALYSE. `cle` (le premier
+// article) reste pour les lecteurs qui ne connaissent pas encore `cles`.
+function etatAnalyse() {
+  const cles = analyse.actif ? analyse.cles.slice() : [];
+  return { actif: analyse.actif, cle: cles[0] || '', cles: cles,
+           texte: T('ctl.analyse.encours') };
+}
+
+function armerSecuriteAnalyse(fournisseur) {
+  if (analyse.minuteur) { clearTimeout(analyse.minuteur); }
+  analyse.minuteur = setTimeout(() => {
+    analyse.minuteur = null;
+    terminerAnalyse(fournisseur);
+  }, DELAI_SECURITE_ANALYSE);
+  // Le minuteur ne doit jamais retenir le processus de l'hôte (ni celui des tests).
+  if (analyse.minuteur && typeof analyse.minuteur.unref === 'function') { analyse.minuteur.unref(); }
+}
+
+function pousserAnalyse() {
+  const ouverte = panneauxVue.get('controles');
+  if (ouverte) { repondrePanneau(ouverte, Object.assign({ type: MSG.ANALYSE }, etatAnalyse())); }
+}
+
+function debuterAnalyse(fournisseur, slug) {
+  if (!analyse.actif) { analyse.cles = []; }
+  // Déjà voilé : l'article s'ajoute à ceux qui attendent, aucun n'en sort avant la fin.
+  if (slug && analyse.cles.indexOf(String(slug)) === -1) { analyse.cles.push(String(slug)); }
+  analyse.actif = true;
+  analyse.journalRelu = false;
+  analyse.processFini = false;
+  armerSecuriteAnalyse(fournisseur);
+  pousserAnalyse();
+}
+
+function terminerAnalyse(fournisseur) {
+  if (analyse.minuteur) { clearTimeout(analyse.minuteur); analyse.minuteur = null; }
+  if (!analyse.actif) { return; }
+  analyse = { actif: false, cles: [], journalRelu: false, processFini: false, minuteur: null };
+  pousserAnalyse();
+}
+
+// Le journal est relu : le voile tombe, sauf si la validation PDF/UA de l'article tourne
+// encore — c'est alors elle (rafraichirPdfUa) qui le lèvera.
+function marquerJournalRelu(fournisseur) {
+  if (!analyse.actif) { return; }
+  analyse.journalRelu = true;
+  armerSecuriteAnalyse(fournisseur);
+  verifierFinAnalyse(fournisseur);
+}
+
+function verifierFinAnalyse(fournisseur) {
+  if (!analyse.actif || !analyse.journalRelu) { return; }
+  const racine = fournisseur && fournisseur.racine;
+  // Un livre se valide d'un bloc (clé 'livre') ; une revue, article par article. Article
+  // inconnu : '' attend n'importe quelle validation en cours (pdfuaHote.enCours).
+  const clesPdfUa = profilCourant().cle === 'livre' ? ['livre']
+    : (analyse.cles.length > 0 ? analyse.cles : ['']);
+  if (racine && clesPdfUa.some((c) => pdfuaHote.enCours(racine, c))) { return; }
+  terminerAnalyse(fournisseur);
 }
 
 // Fin d'une tâche de la chaîne : on relit le journal, on met le compteur à jour, et on le
@@ -6339,10 +6814,16 @@ function textesTable() {
     'table.ctx.alignGauche', 'table.ctx.alignCentre', 'table.ctx.alignDroite',
     'table.plusLigne', 'table.plusColonne', 'table.tirerReordonner', 'table.deplacementImpossible',
     'table.suppr.question', 'table.suppr.detail', 'table.suppr.bouton',
-    'table.tip.entete', 'table.tip.enteteRetirer'
+    'table.tip.entete', 'table.tip.enteteRetirer',
+    'table.image.menuAlt', 'table.image.menuRemplacer', 'table.image.menuInserer',
+    'table.image.introuvable', 'table.image.indisponible', 'table.image.altManquant',
+    'table.image.saisieTitre', 'table.image.valider', 'table.image.annuler'
   ];
   const o = {};
   for (const c of cles) { o[c.slice('table.'.length)] = T(c); }
+  // La saisie du texte alternatif d'une image de cellule parle comme le gestionnaire des
+  // médias : mêmes clés, gardées sous leur nom entier (« img.role.deco »…).
+  for (const c of ['img.role.titre', 'img.role.decrit', 'img.role.deco', 'img.alt', 'img.alt.indice']) { o[c] = T(c); }
   return o;
 }
 
@@ -6350,8 +6831,11 @@ function textesTable() {
 // postMessage et la grille est construite en DOM, sans innerHTML.
 function htmlEditeurTable(nonce) {
   // media/table-editor.{html,css,js} ; les libellés arrivent par postMessage.
+  // img-src data: : les aperçus des images de cellule arrivent en data: (lib/table-images.js),
+  // comme partout dans le cockpit — la webview n'a aucune racine locale autorisée.
   return construireHtml('table-editor', nonce, {
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('table.titre', [''])
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('table.titre', ['']),
+    csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
 
@@ -6370,19 +6854,68 @@ function fermerPanneauxTableDe(racine, slug) {
   }
 }
 
+// Le tableau que vise un bouton de constat (lib/constats.js, lieu « table ») : il arrive
+// en { slug, focus }, focus nommant le fichier (table-02.html) — ou rien, quand veraPDF n'a
+// dit que des numéros de page. Le seul tableau de l'article s'ouvre alors directement ;
+// plusieurs, on demande lequel ; aucun, l'article s'ouvre à la place, où le rédacteur voit
+// au moins de quoi il retourne. -> un item { cheminAsset, slug } ou null.
+async function tableDuConstat(fournisseur, item) {
+  const slug = String((item && item.slug) || '');
+  if (slug === '' || !new Set(fournisseur.listerArticles()).has(slug)) { return null; }
+  const tables = fournisseur._tablesArticle(slug);
+  const dossier = path.join(fournisseur.racine, dossierUnites(), slug, 'tables');
+  // « table-02.html|portrait.jpeg » : le tableau, puis l'image qu'il faut y décrire
+  // (constatsPourControles). L'éditeur lit item.focusImage pour amener cette image à
+  // l'écran ; sans elle, il s'ouvre comme d'habitude.
+  const [focusTable, focusImage] = String((item && item.focus) || '').split('|');
+  const focus = path.basename(focusTable || '');
+  const vise = focus === '' ? null : tables.find((n) => n.toLowerCase() === focus.toLowerCase());
+  if (vise) {
+    return { cheminAsset: path.join(dossier, vise), slug: slug, focusImage: focusImage || '' };
+  }
+  if (tables.length === 1) { return { cheminAsset: path.join(dossier, tables[0]), slug: slug }; }
+  if (tables.length === 0) {
+    await vscode.commands.executeCommand('szh.ouvrirArticle', { slug: slug, focus: '' });
+    return null;
+  }
+  // Sous garde : la fin d'une compilation (aperçu rafraîchi, voile levé) fermerait le choix.
+  const choix = await sousGarde(() =>
+    vscode.window.showQuickPick(tables, { placeHolder: T('table.choisir', [slug]) }));
+  return choix ? { cheminAsset: path.join(dossier, choix), slug: slug } : null;
+}
+
+// `item.focusImage` (facultatif) : le NOM DE FICHIER d'une image de cellule
+// (« origf-massie-fig-01.jpeg », un chemin est ramené à son nom). L'éditeur sélectionne la
+// cellule qui la contient, l'amène à l'écran et, si l'image n'a ni texte alternatif ni rôle
+// décoratif, ouvre aussitôt sa saisie (media/table-editor.js, focaliserImage).
 async function ouvrirEditeurTable(fournisseur, item) {
-  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+  if (!fournisseur.racine || !item) { return; }
+  const focusImage = path.basename(String(item.focusImage || '').replace(/\\/g, '/'));
+  if (!item.cheminAsset) {
+    item = await tableDuConstat(fournisseur, item);
+    if (!item) { return; }
+  }
   const chemin = item.cheminAsset;
   const nom = path.basename(chemin);
   const slugArticle = item.slug || session.apercuCourantSlug();
+  // Les images des cellules sont relatives au dossier de l'article, pas à tables/.
+  const dossierArticle = tableImages.dossierArticleDeTable(chemin);
+  // L'article que l'enregistrement recompile : celui du dossier qui contient le tableau
+  // (<unités>/<slug>/tables/), jamais l'aperçu courant, qui peut montrer un autre article.
+  const slugCompile = (() => {
+    const s = item.slug ? String(item.slug) : path.basename(dossierArticle);
+    return new Set(fournisseur.listerArticles()).has(s) ? s : null;
+  })();
   // L'éditeur a besoin de largeur ; « Voir dans l'aperçu » le rouvre à la demande.
   await fermerTousLesApercus();
   const existant = panneauxTable.get(chemin);
   if (existant) {
     existant.reveal(vscode.ViewColumn.One);
     annoncerMain(existant, fournisseur.racine, chemin);
+    if (focusImage) { existant.webview.postMessage({ type: MSG.FOCALISER, focusImage: focusImage }); }
     return;
   }
+  let focusEnAttente = focusImage;   // servi au premier chargement seulement
   const panneau = vscode.window.createWebviewPanel(
     'szhEditeurTable', T('table.titre', [nom]), vscode.ViewColumn.One,
     // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
@@ -6392,6 +6925,8 @@ async function ouvrirEditeurTable(fournisseur, item) {
   panneau.onDidDispose(() => {
     libererCoedition(panneau);
     if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); }
+    // Un enregistrement encore sous l'anti-rebond part à la fermeture, sans attendre.
+    if (slugCompile) { relanceDifferee.vider(slugCompile); }
   });
   const charger = () => {
     let html = '';
@@ -6402,7 +6937,41 @@ async function ouvrirEditeurTable(fournisseur, item) {
       type: 'charger', modele: modele, disposition: disposition(modele),
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE,
-      i18n: textesTable()
+      i18n: textesTable(),
+      apercus: tableImages.apercusImagesTable(dossierArticle, modele),
+      focusImage: focusEnAttente || undefined
+    });
+    focusEnAttente = '';
+  };
+  // « Insérer une image… » / « Remplacer l'image… » : le sélecteur de fichier, puis la copie
+  // dans media/ (nom libre, conversion CMJN — comme fmtFigure). La réponse ne porte que le
+  // src et son aperçu : l'opération part de la webview, pour entrer dans son historique.
+  const choisirImage = async (msg) => {
+    const filtres = {};
+    filtres[T('fmt.figure.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+    const remplacer = msg.action === 'remplacer';
+    const choix = await vscode.window.showOpenDialog({
+      canSelectMany: false, filters: filtres,
+      openLabel: T(remplacer ? 'table.image.boutonRemplacer' : 'fmt.figure.bouton'),
+      title: T(remplacer ? 'table.image.titreRemplacer' : 'fmt.figure.titre')
+    });
+    if (!choix || choix.length === 0) { return; }      // dialogue annulé : rien ne change
+    const source = choix[0].fsPath;
+    let copie;
+    try { copie = await tableImages.copierImageDansArticle(dossierArticle, source, convertirCmykSiBesoin); }
+    catch (e) {
+      const message = e && e.code === 'format'
+        ? T('table.image.format', [path.basename(source)])
+        : T('err.copie', [path.basename(source), String((e && e.message) || e)]);
+      vscode.window.showErrorMessage(message);
+      panneau.webview.postMessage({ type: 'erreur', message: message });
+      return;
+    }
+    vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [copie.nom]), 4000);
+    panneau.webview.postMessage({
+      type: MSG.TABLE_IMAGE_CHOISIE, action: remplacer ? 'remplacer' : 'inserer',
+      li: msg.li, ci: msg.ci, n: msg.n, src: copie.src,
+      apercu: tableImages.apercuImageTable(dossierArticle, copie.src, { reste: BUDGET_APERCUS_MEDIA })
     });
   };
   // La webview ne demande confirmation que pour supprimer une ligne ou colonne non vide.
@@ -6420,12 +6989,23 @@ async function ouvrirEditeurTable(fournisseur, item) {
   };
   // -> null quand le tableau est écrit, sinon { code, message } : le bail de co-édition
   //    tenu par un autre poste, une saisie périmée, ou l'échec de l'écriture elle-même.
+  // Un tableau écrit à l'identique (l'enregistrement automatique repart à chaque sortie de
+  // champ) ne recompile rien : seul un fichier qui a changé relance la compilation.
   const enregistrer = (modele, auto) => {
+    let change = false;
     const refus = ecrireSousMain(panneau, fournisseur.racine, chemin, () => {
-      try { ecrireAtomique(chemin, serialiserTable(normaliserModele(modele))); return null; }
+      try {
+        const texte = serialiserTable(normaliserModele(modele));
+        let avant = null;
+        try { avant = fs.readFileSync(chemin, 'utf8'); } catch (e) { avant = null; }
+        ecrireAtomique(chemin, texte);
+        change = avant !== texte;
+        return null;
+      }
       catch (e) { return String((e && e.message) || e); }
     });
     if (refus) { return refus; }
+    if (change && slugCompile) { relanceDifferee.demander(fournisseur, slugCompile); }
     // L'enregistrement automatique reste silencieux.
     if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }
     return null;
@@ -6442,6 +7022,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       return;
     }
     if (msg.type === MSG.OPERATION) { await appliquer(msg); return; }
+    if (msg.type === MSG.TABLE_IMAGE_CHOISIR) { await choisirImage(msg); return; }
     if (msg.type === MSG.RESTAURER) {
       // La pile d'annulation vit dans la webview ; l'hôte calcule la disposition.
       const m = normaliserModele(msg.modele);
@@ -6720,6 +7301,7 @@ function activate(context) {
   barreControles = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 40);
   barreControles.command = 'szh.vueControles';
   context.subscriptions.push(barreControles);
+  fournisseurBarre = fournisseur;
 
   // Le badge PDF/UA de l'article ouvert : entre le compteur des contrôles et la bascule
   // d'aperçu. Masqué tant qu'aucun article n'est ouvert ou que rien n'est connu (majBadgePdfUa).
@@ -7046,6 +7628,11 @@ function activate(context) {
     cmd('szh.ouvrirActualite', (onglet, categorie) => ouvrirPageDocumentation(
       fournisseur, rafraichirTout, String(onglet || ''), categorie ? String(categorie) : undefined)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
+    // L'article d'un Ctrl+S, retenu pour le voile de « À corriger » : la tâche que
+    // triggerTaskOnSave lance juste après ne dit pas ce qu'elle recompile.
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (doc && doc.uri && doc.uri.fsPath) { retenirEnregistrement(fournisseur, doc.uri.fsPath); }
+    }),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.
     vscode.tasks.onDidStartTask((e) => {
@@ -7060,9 +7647,15 @@ function activate(context) {
       // inopérantes sur ce chemin, pourtant le plus fréquent.
       session.poserTachesSuiviesEnVol(session.tachesSuiviesEnVol() + 1);
       session.poserBuildEnCours(true);
+      // Une compilation de tout le numéro part : elle couvre les enregistrements déjà faits
+      // (relanceDifferee). Pas l'export d'UN article (tacheMakeArticle) : il ne compile que lui.
+      if (tache.name === NOM_TACHE_BUILD || tache.name === NOM_TACHE_EXPORT) { demarragesBuild++; }
       // Une compilation démarre : un travail de validation PDF/UA déjà en vol juge peut-être
       // un PDF sur le point de changer — pdfuaHote jettera son résultat à son retour.
       pdfuaHote.signalerDebutBuild();
+      // Le voile de « À corriger » : l'article annoncé par le cockpit ou tout juste
+      // enregistré — jamais toute la liste.
+      debuterAnalyse(fournisseur, slugDeLaTache());
       avertirVersionSiDivergente();
     }),
     // Et à la fin : ce que la chaîne a relevé. Même raison de passer par l'événement
@@ -7079,12 +7672,18 @@ function activate(context) {
       const estNotre = (tache.definition && tache.definition.type === 'szh');
       if (nomsSuivis.indexOf(tache.name) === -1 && !estNotre) { return; }
       const code = e.exitCode === undefined ? 0 : e.exitCode;
+      // Le processus a rendu son code : c'est à ce chemin-ci, et non à onDidEndTask, de
+      // lever le voile — il attend le journal, puis la validation PDF/UA.
+      analyse.processFini = true;
       relireJournal(fournisseur, code)
         // Seulement si la compilation a réussi : un PDF sorti d'une compilation en échec
         // n'est pas forcément celui qu'on croit — voir pipeline/Makefile, verifier-ua n'est
         // d'ailleurs jamais appelée par `all`.
+        // planifier() pose ses clés « en cours » avant sa première attente : le voile, levé
+        // juste après, sait donc déjà s'il doit encore attendre la validation.
         .then(() => { if (code === 0) { pdfuaHote.planifier(fournisseur.racine); } })
-        .catch(() => { /* un avis raté ne casse pas la compilation */ });
+        .catch(() => { /* un avis raté ne casse pas la compilation */ })
+        .then(() => { marquerJournalRelu(fournisseur); });
     }),
     // Se déclenche pour toute fin de tâche, avec ou sans processus : c'est ici, et
     // seulement ici, que le compteur redescend, pour couvrir aussi la tâche interrompue
@@ -7099,6 +7698,9 @@ function activate(context) {
       if (nomsSuivis.indexOf(tache.name) === -1 && !estNotre) { return; }
       session.poserTachesSuiviesEnVol(Math.max(0, session.tachesSuiviesEnVol() - 1));
       if (session.tachesSuiviesEnVol() === 0) { session.poserBuildEnCours(false); }
+      // Une tâche finie sans processus (annulée, wsl.exe absent) : aucun journal ne sera
+      // relu, rien n'a changé sous le voile — il tombe tout de suite.
+      if (session.tachesSuiviesEnVol() === 0 && !analyse.processFini) { terminerAnalyse(fournisseur); }
     }),
     // Éditeur -> aperçu ; ignoré si l'événement vient de notre révélation de ligne.
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {

@@ -44,8 +44,21 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .vignette .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
 .vignette-nom-ligne { display: flex; align-items: center; justify-content: space-between; gap: var(--e1); }
 .vignette-nom { font-size: var(--t-mini); overflow-wrap: anywhere; }
-.vignette svg { flex: 0 0 auto; transition: transform .15s ease; }
-.vignette[aria-expanded="true"] svg { transform: rotate(180deg); }
+/* Le pivot est celui du seul chevron : « .vignette svg » ferait aussi tourner le triangle
+   d'alerte et les pictogrammes des pastilles quand la vignette s'ouvre. */
+.vignette-nom-ligne svg { flex: 0 0 auto; transition: transform .15s ease; }
+.vignette[aria-expanded="true"] .vignette-nom-ligne svg { transform: rotate(180deg); }
+/* Le triangle rouge des défauts bloquants, sur le coin de l'aperçu. Une pastille au fond du
+   thème le détache de n'importe quelle photo — claire, sombre ou rouge elle-même —, la
+   couleur vient de --danger (errorForeground du thème), lisible en clair comme en sombre. */
+.vignette { position: relative; }
+.vignette-alerte { position: absolute; top: var(--e1); right: var(--e1);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--fond); color: var(--danger); border: 2px solid var(--danger);
+  box-shadow: 0 0 0 1px var(--fond); pointer-events: auto; }
+.vignette-alerte[hidden] { display: none; }
+.vignette-alerte svg { width: 1rem; height: 1rem; }
 .vignette-etat { display: flex; flex-wrap: wrap; gap: var(--e1); }
 
 /* ── Accordéon du groupe : les réglages de la grille, et elle seule ──────────── */

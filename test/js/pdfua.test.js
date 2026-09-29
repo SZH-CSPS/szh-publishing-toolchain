@@ -169,12 +169,22 @@ test('un PDF modifié et non conforme est compté bloquant et montré dans les C
     + JSON.stringify(charge.lignes.map((l) => l.meta)));
   // Une carte par article, plusieurs défauts dessous : la phrase est dans l'un d'eux.
   const phrases = (carte.messages || []).map((m) => m.texte).join(' | ');
-  assert.match(phrases, /3 règle/, 'le nombre de règles en échec n’est pas dans la phrase : ' + phrases);
-  // Le compte seul ne se corrige pas : la règle, sa cause et son geste doivent suivre.
-  assert.match(phrases, /Règle PDF\/UA non respectée\s:\sLe document n’a pas de titre \(1 fois, page\(s\) 3\)/,
-    'la règle en échec n’est pas nommée : ' + phrases);
-  assert.match(phrases, /En cause\s:\sle champ title de la fiche est vide\. À faire\s:\sremplir le titre\./,
-    'la cause et le geste de la règle ne suivent pas : ' + phrases);
+  // Le résumé « 3 règle(s) ne sont pas respectées » ne double plus les règles qui suivent :
+  // la carte les nomme une par une, le chiffre n'y ajoutait rien.
+  assert.doesNotMatch(phrases, /règle\(s\) ne sont pas respectées|PDF non conforme PDF\/UA/,
+    'le résumé PDF/UA double les règles détaillées : ' + phrases);
+  assert.strictEqual(carte.messages.length, 2, 'une phrase par règle, et rien d’autre : ' + phrases);
+  // Le compte seul ne se corrige pas : la règle, sa cause et son geste doivent suivre. La
+  // règle est le titre du message (la carte dit déjà « Accessibilité du PDF ») ; le geste
+  // est sa consigne ; la cause et le repère ISO sont passés dans l'infobulle (29.09.2026).
+  const regleTitre = (carte.messages || []).find((m) => /pas de titre/.test(m.titre || ''));
+  assert.ok(regleTitre, 'la règle en échec n’est pas nommée : ' + phrases);
+  assert.strictEqual(regleTitre.titre, 'Le document n’a pas de titre (1 fois, page(s) 3)');
+  assert.strictEqual(regleTitre.consigne, 'remplir le titre.',
+    'le geste de la règle ne suit pas : ' + JSON.stringify(regleTitre));
+  assert.match(regleTitre.infobulle, /le champ title de la fiche est vide\./,
+    'la cause de la règle s’est perdue : ' + regleTitre.infobulle);
+  assert.match(regleTitre.infobulle, /ISO 14289-1 7\.1-9/, 'le repère ISO s’est perdu');
   assert.doesNotMatch(phrases, /ISO 14289|Titel/, 'le repère ou la moitié allemande a fui : ' + phrases);
   // La flèche de la règle mène à la fiche, sur le champ du titre ; un défaut de la chaîne
   // (police non incorporée) n'en a pas : rien à corriger dans l'article.
@@ -298,4 +308,204 @@ test('réglage désactivé : le validateur n’est pas appelé et le badge se ca
 
   assert.strictEqual(HOTE.barreQuiDit('PDF/UA'), null,
     'le badge reste visible alors que le réglage PDF/UA est désactivé');
+});
+
+// ---- 8. Le résumé ne sort que s'il est seul -----------------------------------------
+//
+// Un verdict non conforme sans règle lisible (bloc tronqué, cache d'avant `details`) doit
+// garder l'article dans « À corriger » : c'est le seul cas où le résumé reste.
+
+// Un second exemplaire du module, état mémoire neuf, sans toucher à celui de l'hôte.
+function moduleFrais() {
+  const cleModule = require.resolve(path.join(COCKPIT, 'lib', 'pdfua-hote.js'));
+  const original = require.cache[cleModule];
+  delete require.cache[cleModule];
+  const frais = require(cleModule);
+  require.cache[cleModule] = original;
+  return frais;
+}
+
+test('le résumé PDF/UA ne sort que si aucune règle détaillée ne suit', async () => {
+  await HOTE.stub.workspace.getConfiguration('szh').update('controlePdfUa', true);
+  const emp = empreinteFichier(PDF);
+  const sauve = fs.readFileSync(CACHE, 'utf8');
+  try {
+    fs.writeFileSync(CACHE, JSON.stringify({ version: 1, verdicts: {
+      '01-essai': { empreinte: emp, verdict: 'non-conforme', regles: 2,
+                    details: { fr: [], de: [] }, date: '' } } }));
+    const frais = moduleFrais();
+    frais.configurer({ listerArticles: () => ['01-essai'], racine: () => REVUE });
+    assert.deepStrictEqual(frais.constats(REVUE, 'fr').map((c) => c.code), ['non-conforme'],
+      'sans règle détaillée, l’article non conforme disparaît du panneau');
+
+    fs.writeFileSync(CACHE, JSON.stringify({ version: 1, verdicts: {
+      '01-essai': { empreinte: emp, verdict: 'non-conforme', regles: 1,
+                    details: { fr: [{ regle: 'Titre absent', explication: '', repere: '7.1-9' }], de: [] },
+                    date: '' } } }));
+    const frais2 = moduleFrais();
+    frais2.configurer({ listerArticles: () => ['01-essai'], racine: () => REVUE });
+    assert.deepStrictEqual(frais2.constats(REVUE, 'fr').map((c) => c.code), ['regle'],
+      'le résumé double encore la règle qu’il annonce');
+  } finally {
+    fs.writeFileSync(CACHE, sauve);
+  }
+});
+
+// ---- 9. Un verdict sous un nom que plus aucun article ne porte ----------------------
+//
+// Mesuré sur 2025-02 (29.09.2026) : .szh-pdfua.json gardait 4 clés fantômes après une
+// renumérotation (00-origf-massie, 02-origf-hug-schnyder…), comptées bloquantes dans la vue
+// ET dans la barre d'état : le test `actuels[cle] !== undefined && …` de constats() laissait
+// passer toute clé absente de listerCles().
+
+test('un verdict de l’ancien slug n’apparaît plus, et quitte le cache', async () => {
+  const sauve = fs.readFileSync(CACHE, 'utf8');
+  try {
+    // Le PDF de l'article renommé est encore là sous son nouveau nom : même empreinte.
+    const emp = empreinteFichier(PDF);
+    fs.writeFileSync(CACHE, JSON.stringify({ version: 1, verdicts: {
+      '00-ancien': { empreinte: 'ffff', verdict: 'non-conforme', regles: 1,
+                     details: { fr: [{ regle: 'Fantôme', explication: '' }], de: [] }, date: '' },
+      '03-renomme': { empreinte: emp, verdict: 'conforme', regles: 0,
+                      details: { fr: [], de: [] }, date: 'x' }
+    } }));
+    const frais = moduleFrais();
+    frais.configurer({ listerArticles: () => ['01-essai'], racine: () => REVUE });
+    assert.deepStrictEqual(frais.constats(REVUE, 'fr'), [],
+      'le verdict d’un slug disparu est encore montré');
+    assert.strictEqual(frais.purgerAbsents(REVUE), true, 'rien n’a été purgé');
+    const cache = lireCache();
+    assert.deepStrictEqual(Object.keys(cache.verdicts), ['01-essai'],
+      'des clés fantômes restent dans .szh-pdfua.json : ' + Object.keys(cache.verdicts));
+    // Même PDF, nouveau nom : le verdict suit au lieu d'être rejugé.
+    assert.strictEqual(cache.verdicts['01-essai'].date, 'x', 'le verdict au même PDF n’a pas migré');
+    // Une liste vide (fournisseur pas encore chargé) ne purge rien.
+    frais.configurer({ listerArticles: () => [] });
+    assert.strictEqual(frais.purgerAbsents(REVUE), false);
+  } finally {
+    fs.writeFileSync(CACHE, sauve);
+  }
+});
+
+// ---- 10. Le voile « Analyse en cours… » de la vue « À corriger » --------------------
+
+function derniereAnalyse(p) {
+  return p.messages.filter((m) => m.type === 'analyse').pop() || null;
+}
+
+test('voile : posé au démarrage, levé seulement après le journal ET la validation PDF/UA', async () => {
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+
+  fs.writeFileSync(PDF, 'VOILE-1');
+  let resoudre = null;
+  prochaineReponse = () => new Promise((r) => { resoudre = r; });
+
+  HOTE.demarrerTache(NOM_TACHE_BUILD);                // Ctrl+S : article inconnu
+  const pose = derniereAnalyse(p);
+  assert.ok(pose && pose.actif === true, 'aucun voile au démarrage de la compilation');
+  // Aucun enregistrement ne l'a précédée : article inconnu, aucune carte voilée (la page
+  // n'affiche que le bandeau), jamais toute la liste.
+  assert.strictEqual(pose.cle, '', 'slug inconnu : aucune carte ne doit être visée');
+  assert.deepStrictEqual(pose.cles, []);
+  assert.strictEqual(pose.texte, 'Analyse en cours…');
+
+  HOTE.finirTache(NOM_TACHE_BUILD, 0);
+  await laisserDecanter();
+  await laisserDecanter();
+  assert.strictEqual(pdfuaHote.etat('01-essai').verdict, 'en-cours', 'décor : la validation doit tourner');
+  assert.strictEqual(derniereAnalyse(p).actif, true,
+    'le voile tombe avant la fin de la validation PDF/UA');
+  // Un panneau rafraîchi pendant l'analyse la montre d'emblée.
+  await p._recepteur({ type: 'pret' });
+  const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.ok(charge.analyse && charge.analyse.actif, '« valeurs » ne porte pas le voile en cours');
+
+  resoudre(reponseConforme('01-essai.pdf'));
+  await laisserDecanter();
+  await laisserDecanter();
+  assert.strictEqual(derniereAnalyse(p).actif, false, 'le voile reste après la validation');
+  const apres = p.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.strictEqual(apres.analyse.actif, false, '« valeurs » porte encore le voile');
+});
+
+test('voile : une tâche interrompue ou en échec ne le laisse pas coincé', async () => {
+  const p = HOTE.panneauDeType('szhVueControles');
+  HOTE.demarrerTache(NOM_TACHE_BUILD);
+  assert.strictEqual(derniereAnalyse(p).actif, true);
+  HOTE.finirTacheSansProcessus(NOM_TACHE_BUILD);
+  assert.strictEqual(derniereAnalyse(p).actif, false, 'le voile reste après une tâche annulée');
+  // Une compilation en échec : pas de validation, le voile tombe avec le journal.
+  HOTE.demarrerTache(NOM_TACHE_BUILD);
+  HOTE.finirTache(NOM_TACHE_BUILD, 2);
+  await laisserDecanter();
+  await laisserDecanter();
+  assert.strictEqual(derniereAnalyse(p).actif, false, 'le voile reste après une compilation en échec');
+});
+
+test('voile : Ctrl+S sur un article ne voile que cet article', async () => {
+  const p = HOTE.panneauDeType('szhVueControles');
+  HOTE.enregistrerDocument(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  HOTE.demarrerTache(NOM_TACHE_BUILD);
+  const pose = derniereAnalyse(p);
+  assert.ok(pose && pose.actif, 'aucun voile au démarrage');
+  assert.deepStrictEqual(pose.cles, ['01-essai'], 'le voile ne vise pas l’article enregistré');
+  HOTE.finirTacheSansProcessus(NOM_TACHE_BUILD);
+  assert.strictEqual(derniereAnalyse(p).actif, false);
+});
+
+// ---- 11. Renommer des dossiers : plus rien sous l'ancien nom ------------------------
+
+test('après une renumérotation, aucun constat ni verdict sous un ancien slug', async () => {
+  const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+  const JOURNAL = path.join(REVUE, '.szh-journal.log');
+  // Un troisième article, non conforme, avec un défaut de citation au journal.
+  const dossier = path.join(REVUE, 'articles', '03-trois');
+  fs.mkdirSync(dossier, { recursive: true });
+  fs.writeFileSync(path.join(dossier, '03-trois.md'), 'Texte.');
+  const pdf3 = path.join(REVUE, 'out', '03-trois', '03-trois.pdf');
+  fs.mkdirSync(path.dirname(pdf3), { recursive: true });
+  fs.writeFileSync(pdf3, 'TROIS');
+  fs.writeFileSync(JOURNAL, '[citations-avertissement] appel-sans-reference | article « 03-trois » '
+    + '| appel « (Shaw, 2023) » | Appel sans référence : (Shaw, 2023). '
+    + '| [de] Zitatverweis ohne Eintrag: (Shaw, 2023).');
+  await HOTE.executer('szh.cockpit.rafraichir');
+  const conforme = reponseConforme('01-essai.pdf');
+  const non = reponseNonConforme('03-trois.pdf', 1);
+  prochaineReponse = { lignes: conforme.lignes.concat(non.lignes), code: 1, erreur: null };
+  HOTE.finirTache(NOM_TACHE_BUILD, 0);
+  await laisserDecanter();
+  await laisserDecanter();
+  assert.ok(lireCache().verdicts['03-trois'], 'décor : le verdict de 03-trois doit être en cache');
+
+  const p = HOTE.panneauDeType('szhVueControles');
+  const titres = () => p.messages.filter((m) => m.type === 'valeurs').pop()
+    .lignes.map((l) => l.titre).join(' | ');
+  await p._recepteur({ type: 'pret' });
+  assert.match(titres(), /03-trois/, 'décor : 03-trois doit avoir ses cartes');
+
+  // Supprimer 02-sans-fiche renumérote : 01-essai -> 00-essai, 03-trois -> 01-trois.
+  HOTE.repondreModale(T('modale.supprimer.bouton'));
+  await HOTE.executer('szh.supprimerArticle', { slug: '02-sans-fiche' });
+  await laisserDecanter();
+  assert.ok(fs.existsSync(path.join(REVUE, 'articles', '01-trois')), 'décor : le renommage n’a pas eu lieu');
+
+  await p._recepteur({ type: 'pret' });
+  assert.doesNotMatch(titres(), /03-trois|01-essai|02-sans-fiche/,
+    'le panneau montre encore un article sous un nom disparu : ' + titres());
+  const cles = Object.keys(lireCache().verdicts);
+  assert.ok(cles.indexOf('03-trois') === -1 && cles.indexOf('01-essai') === -1,
+    'des verdicts restent sous les anciens slugs : ' + cles);
+  assert.strictEqual(HOTE.barreQuiDit('à corriger'), null,
+    'la barre d’état compte encore les défauts d’un ancien slug');
+  // Le journal, lui, nomme toujours 03-trois : relu tel quel à la fin d'une tâche (même
+  // lecture qu'au redémarrage), il ne doit rien réinjecter.
+  prochaineReponse = { lignes: [], code: 0, erreur: null };
+  HOTE.finirTache(NOM_TACHE_BUILD, 1);
+  await laisserDecanter();
+  await p._recepteur({ type: 'pret' });
+  assert.doesNotMatch(titres(), /03-trois/, 'le journal réinjecte l’ancien slug : ' + titres());
+  assert.strictEqual(HOTE.barreQuiDit('à corriger'), null,
+    'la barre d’état compte l’ancien slug relu au journal');
 });

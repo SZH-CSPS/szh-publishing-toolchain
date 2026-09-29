@@ -176,6 +176,10 @@ function cheminRelatif(racine, chemin) {
 
 // ---- Un travail de validation : les fichiers dont l'empreinte a changé -------------
 async function unTravail(racine, st) {
+  // Les clés fantômes d'un numéro renommé avant que purgerAbsents() n'existe (ou renommé
+  // hors du cockpit, dans l'Explorateur) : élaguées à chaque passage, pour que le fichier
+  // finisse par dire la même chose que le disque.
+  if (elaguerAbsents(racine, st)) { sauvegarderVerdicts(racine, st.verdicts); }
   const items = [];
   for (const { cle, chemin } of listerCles(racine)) {
     const emp = coedition.empreinte(chemin);
@@ -273,18 +277,30 @@ function constats(racine, langue) {
   // Le PDF actuel de chaque clé, pour écarter un verdict que le fichier a dépassé depuis
   // (une panne d'outillage ou une compilation plus récente n'a pas encore pu le remplacer
   // en cache) : mieux vaut ne rien dire qu'accuser un PDF qui n'est plus celui sur le disque.
+  //
+  // Une clé absente de listerCles() ne parle plus d'aucun article : renommé (« 01-x » devenu
+  // « 03-x »), supprimé, ou un livre rouvert en revue. Le test laissait passer ce cas
+  // (`actuels[cle] !== undefined && …`), et l'ancien verdict s'affichait sous un nom que
+  // plus rien ne porte. purgerAbsents() l'efface du disque ; ici on ne le montre plus, même
+  // si le nettoyage n'a pas encore eu lieu.
   const actuels = {};
   for (const item of listerCles(racine)) { actuels[item.cle] = item.chemin; }
   const out = [];
   for (const cle of Object.keys(st.verdicts)) {
     const v = st.verdicts[cle];
     if (v.verdict !== 'non-conforme') { continue; }
-    if (actuels[cle] !== undefined && coedition.empreinte(actuels[cle]) !== v.empreinte) { continue; }
+    if (actuels[cle] === undefined) { continue; }
+    if (coedition.empreinte(actuels[cle]) !== v.empreinte) { continue; }
     const slug = cle === 'livre' ? '' : cle;
-    out.push({ source: 'pdfua', code: 'non-conforme', ton: 'danger', slug: slug,
-               cle: 'ctl.pdfua.nonconforme', args: [String(v.regles || 0)], brut: '' });
     const details = v.details || {};
     const liste = (langue === 'de' && (details.de || []).length) ? details.de : (details.fr || []);
+    // Le résumé « N règle(s) ne sont pas respectées » ne sort que si aucune règle ne suit :
+    // sinon il redisait en chiffre ce que la carte détaille juste dessous (voir aussi
+    // journal.js#sansResumePdfUaRedondant). Seul, il garde l'article dans « À corriger ».
+    if (liste.length === 0) {
+      out.push({ source: 'pdfua', code: 'non-conforme', ton: 'danger', slug: slug,
+                 cle: 'ctl.pdfua.nonconforme', args: [String(v.regles || 0)], brut: '' });
+    }
     for (const r of liste) {
       out.push({ source: 'pdfua', code: 'regle', ton: 'danger', slug: slug, cle: '', args: [],
                  champs: { regle: String(r.regle || ''), explication: String(r.explication || ''),
@@ -295,10 +311,81 @@ function constats(racine, langue) {
   for (const cle of st.transitoire.keys()) {
     const v = st.transitoire.get(cle);
     if (v.verdict !== 'outillage') { continue; }
+    if (actuels[cle] === undefined) { continue; }    // même raison que plus haut
     out.push({ source: 'pdfua', code: 'outillage', ton: 'attention', slug: '',
                cle: 'ctl.pdfua.outillage', args: [], brut: '' });
   }
   return out;
 }
 
-module.exports = { configurer, planifier, etat, constats, signalerDebutBuild, reglageActif };
+// purgerAbsents(racine) -> true si le cache a changé. À appeler après un renommage ou une
+// suppression de dossiers (extension.js, alignerDossiersSurOrdre) : les verdicts, pannes et
+// validations en cours d'une clé que listerCles() ne connaît plus sont retirés.
+//
+// Migrer plutôt que perdre, quand c'est sûr : un verdict dont l'empreinte est celle du PDF
+// d'un article actuel qui n'a pas encore de verdict à jour passe sous ce nom-là — c'est le
+// même fichier, il a seulement changé de dossier. Sinon il est oublié : la prochaine
+// compilation réussie jugera le nouveau PDF. (renumeroter() retire out/<ancien>, le PDF
+// n'existe donc souvent plus sous aucun nom, et l'oubli est le cas ordinaire.)
+//
+// Une liste vide ne purge rien : c'est l'état d'un fournisseur pas encore chargé bien plus
+// souvent que celui d'un numéro sans article, et tout effacer sur un faux vide coûterait
+// une revalidation complète.
+function purgerAbsents(racine) {
+  if (!racine) { return false; }
+  const change = elaguerAbsents(racine, etatRacine(racine));
+  if (change) {
+    sauvegarderVerdicts(racine, etatRacine(racine).verdicts);
+    avertirChangement();
+  }
+  return change;
+}
+
+// Le travail de purgerAbsents(), sans écriture ni avertissement : unTravail() l'appelle
+// aussi, et écrit lui-même. -> true si quelque chose a été retiré (ou migré).
+function elaguerAbsents(racine, st) {
+  const cles = listerCles(racine);
+  if (cles.length === 0) { return false; }
+  const actuels = new Map(cles.map((it) => [it.cle, it.chemin]));
+  const empreintes = new Map();
+  const empreinteDe = (cle) => {
+    if (!empreintes.has(cle)) { empreintes.set(cle, coedition.empreinte(actuels.get(cle))); }
+    return empreintes.get(cle);
+  };
+  let change = false;
+  for (const cle of Object.keys(st.verdicts)) {
+    if (actuels.has(cle)) { continue; }
+    const v = st.verdicts[cle];
+    delete st.verdicts[cle];
+    change = true;
+    if (!v || !v.empreinte) { continue; }
+    for (const cible of actuels.keys()) {
+      const deja = st.verdicts[cible];
+      const emp = empreinteDe(cible);
+      if (!emp || emp !== v.empreinte) { continue; }
+      if (deja && deja.empreinte === emp) { continue; }     // déjà jugé sous son nom
+      st.verdicts[cible] = v;
+      break;
+    }
+  }
+  for (const cle of Array.from(st.transitoire.keys())) {
+    if (!actuels.has(cle)) { st.transitoire.delete(cle); change = true; }
+  }
+  for (const cle of Array.from(st.enCours)) {
+    if (!actuels.has(cle)) { st.enCours.delete(cle); change = true; }
+  }
+  return change;
+}
+
+// enCours(racine, cle) -> true tant qu'une validation tourne pour cette clé (un slug, ou
+// 'livre'), ou pour n'importe laquelle quand `cle` est vide. Lu par l'hôte pour savoir
+// quand lever le voile « Analyse en cours… » de la vue « À corriger » : le journal relu ne
+// suffit pas, le verdict PDF/UA arrive après.
+function enCours(racine, cle) {
+  if (!racine || !etatsParRacine.has(racine)) { return false; }
+  const st = etatsParRacine.get(racine);
+  return cle ? st.enCours.has(cle) : st.enCours.size > 0;
+}
+
+module.exports = { configurer, planifier, etat, constats, signalerDebutBuild, reglageActif,
+                   purgerAbsents, enCours };

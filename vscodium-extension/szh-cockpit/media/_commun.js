@@ -69,6 +69,12 @@ var SZH = (function () {
     // Déplacer un article dans le numéro : la même flèche, debout.
     haut: [['path', { d: 'M8 2.5 12.5 7l-1.06 1.06L8.75 5.35V13h-1.5V5.35L4.56 8.06 3.5 7 8 2.5z' }]],
     bas: [['path', { d: 'M8 13.5 3.5 9l1.06-1.06L7.25 10.65V3h1.5v7.65l2.69-2.71L12.5 9 8 13.5z' }]],
+    // Un tableau : le cadre et ses deux filets, en contour comme l'imprimante — l'éditeur
+    // de tableaux, destination d'un bouton de constat (lib/constats.js, lieu « table »).
+    tableau: [
+      ['rect', Object.assign({ x: '2', y: '2.75', width: '12', height: '10.5', rx: '1' }, CONTOUR)],
+      ['path', Object.assign({ d: 'M2 6.25h12M6.5 6.25v7' }, CONTOUR)]
+    ],
     // Déplier : un chevron, sans hampe — une flèche se lirait « télécharger ».
     chevron: [['path', { d: 'M8 10.6 3.3 5.9l1.06-1.06L8 8.48l3.64-3.64L12.7 5.9 8 10.6z' }]],
     oeil: [
@@ -1052,7 +1058,8 @@ var SZH = (function () {
   // attente », « Articles » — et pour celles qui viendront. Une ligne vaut :
   //
   //   { cle, groupe, titre, meta, notif: { ton, texte },
-  //     messages: [{ ton, texte, action }],
+  //     messages: [{ ton, texte, action,
+  //                  titre, elements: [{ libelle, id, tip }], consigne, infobulle, pourquoi }],
   //     pastilles: [{ texte, ton, icone }], ouvrir,
   //     actions: [{ id, libelle, icone, tip, desactive, danger }],
   //     taches: [{ id, libelle, faite }],
@@ -1062,6 +1069,8 @@ var SZH = (function () {
   // chacun au bout de sa phrase. C'est ce qui permet à la vue Contrôles de tenir un article
   // par carte au lieu d'une carte par défaut. `action` vaut une entrée de `actions` — ou
   // null quand rien n'est à faire ailleurs — et part par le même opts.onAction(cle, id).
+  // Avec `titre`, le message se pose en quatre étages (messageEnEtages) ; sans lui, la
+  // phrase `texte` et sa flèche, comme avant — les autres vues n'ont rien à changer.
   //
   // opts.conteneur   élément qui reçoit les cartes
   // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
@@ -1153,6 +1162,7 @@ var SZH = (function () {
     // et se replie avec le texte, au lieu de s'ancrer dans un coin que l'œil ne relie plus
     // à la phrase.
     function messageAvecGeste(ligne, msg) {
+      if (msg.titre) { return messageEnEtages(ligne, msg); }
       var contenu = [document.createTextNode(msg.texte || '')];
       var action = msg.action;
       if (action && action.id) {
@@ -1163,7 +1173,104 @@ var SZH = (function () {
           }(String(ligne.cle || ''), String(action.id || ''))),
           'szh-ico--enligne'));
       }
+      return avecCroix(notif(msg.ton || 'info', contenu), msg);
+    }
+
+    // Un défaut de la vue « À corriger », en quatre étages (lib/constats.js, SECOND_ETAGE) :
+    //
+    //   2 images sans description  (i)          le titre, et le bouton qui explique
+    //   fig-01.png →, fig-02.png →              un lien par objet en cause
+    //   Ajoutez une description dans …          UNE phrase d'action
+    //   [Ouvrir Médias de l'article →]          le bouton
+    //
+    // L'explication — pourquoi c'est un défaut, ce qui a été gardé, le repère ISO — n'est
+    // plus dans la phrase : elle est l'infobulle du bouton (i) et de toute la boîte au
+    // survol, et le même bouton la déplie sous le titre au clic ou au clavier (Entrée,
+    // Espace) : une infobulle seule ne s'atteint pas sans souris. Le message garde `texte`
+    // (titre et consigne) : c'est lui que l'hôte retient pour une croix fermée.
+    var numeroPourquoi = 0;
+    function messageEnEtages(ligne, msg) {
+      var cle = String(ligne.cle || '');
+      var agir = function (id) {
+        return function () { if (opts.onAction) { opts.onAction(cle, String(id || '')); } };
+      };
+      var contenu = [];
+      var tete = document.createElement('span');
+      tete.className = 'szh-msg-titre';
+      tete.appendChild(document.createTextNode(msg.titre));
+      contenu.push(tete);
+      var explication = null;
+      if (msg.infobulle) {
+        numeroPourquoi += 1;
+        explication = document.createElement('span');
+        explication.className = 'szh-msg-infobulle';
+        explication.id = 'szh-pourquoi-' + numeroPourquoi;
+        explication.hidden = true;
+        explication.textContent = msg.infobulle;
+        var pourquoi = document.createElement('button');
+        pourquoi.type = 'button';
+        pourquoi.className = 'szh-ico szh-ico--enligne szh-msg-pourquoi';
+        pourquoi.title = msg.infobulle;
+        pourquoi.setAttribute('aria-label', msg.pourquoi || '');
+        pourquoi.setAttribute('aria-expanded', 'false');
+        pourquoi.setAttribute('aria-controls', explication.id);
+        pourquoi.appendChild(icone('info'));
+        pourquoi.addEventListener('click', (function (bouton, zone) {
+          return function () {
+            var ouvrir = zone.hidden;
+            zone.hidden = !ouvrir;
+            bouton.setAttribute('aria-expanded', ouvrir ? 'true' : 'false');
+          };
+        }(pourquoi, explication)));
+        tete.appendChild(pourquoi);
+        contenu.push(explication);
+      }
+      var elements = msg.elements || [];
+      if (elements.length > 0) {
+        var objets = document.createElement('span');
+        objets.className = 'szh-msg-objets';
+        for (var i = 0; i < elements.length; i++) {
+          if (i > 0) { objets.appendChild(document.createTextNode(', ')); }
+          var lien = document.createElement('button');
+          lien.type = 'button';
+          lien.className = 'szh-lien-objet';
+          if (elements[i].tip) { lien.title = elements[i].tip; }
+          lien.dataset.id = String(elements[i].id || '');
+          lien.appendChild(document.createTextNode(elements[i].libelle || ''));
+          lien.appendChild(icone('fleche'));
+          lien.addEventListener('click', agir(elements[i].id));
+          objets.appendChild(lien);
+        }
+        contenu.push(objets);
+      }
+      if (msg.consigne) {
+        var phrase = document.createElement('span');
+        phrase.className = 'szh-msg-consigne';
+        phrase.textContent = msg.consigne;
+        contenu.push(phrase);
+      }
+      var action = msg.action;
+      if (action && action.id) {
+        var geste = document.createElement('span');
+        geste.className = 'szh-msg-geste';
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'szh-bouton';
+        if (action.tip) { b.title = action.tip; }
+        b.dataset.id = String(action.id);
+        b.appendChild(document.createTextNode(action.libelle || action.tip || ''));
+        b.appendChild(icone('fleche'));
+        b.addEventListener('click', agir(action.id));
+        geste.appendChild(b);
+        contenu.push(geste);
+      }
       var boite = notif(msg.ton || 'info', contenu);
+      boite.classList.add('szh-notif--etages');
+      if (msg.infobulle) { boite.title = msg.infobulle; }
+      return avecCroix(boite, msg);
+    }
+
+    function avecCroix(boite, msg) {
       // La croix, seulement là où l'hôte l'autorise — c'est lui qui sait qu'un message est
       // gris (lib/constats.js, fermable), et la page ne le redevine pas. Elle est posée
       // hors du corps, contre le bord droit : le geste du défaut suit la phrase, celui-ci

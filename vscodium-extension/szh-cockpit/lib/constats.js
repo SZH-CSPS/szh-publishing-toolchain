@@ -23,9 +23,10 @@
 //  3. LA PHRASE. « {défaut} : {objet} », et rien de plus. L'intitulé est un groupe nominal
 //     court ; l'objet vient des champs que le constat porte déjà ; le geste est dans le
 //     bouton, plus dans le texte. Les explications de la version précédente disaient trois
-//     fois la même chose et se traduisaient mal. Un détail facultatif reste possible, et
-//     n'existe que là où une ligne ne suffit pas : les conflits de réimport doivent dire
-//     ce qui a été gardé et ce qui a été perdu.
+//     fois la même chose et se traduisaient mal. Depuis le 29.09.2026, une carte a un
+//     second étage (SECOND_ETAGE) : UNE phrase qui commence par le geste, et le pourquoi —
+//     ce qui a été gardé ou perdu, la cause, le repère ISO — dans une infobulle. Rien n'est
+//     retiré des explications d'avant ; elles ont seulement quitté la ligne.
 //
 // Règle de tenue : tout code que lib/journal.js sait produire a sa ligne dans TABLE.
 // test/js/constats.test.js lit la source de journal.js et tombe si un code y apparaît sans
@@ -48,6 +49,12 @@ const LIEUX = Object.freeze({
     libelle: 'action.fiche', tip: 'action.fiche.tip' }),
   medias: Object.freeze({ commande: 'szh.mediasArticle', icone: 'camera',
     libelle: 'action.medias', tip: 'action.medias.tip' }),
+  // L'éditeur HTML d'un tableau de l'article. `focus` y nomme le FICHIER (table-01.html) ;
+  // vide, ouvrirEditeurTable (extension.js) retombe sur le seul tableau de l'article, sur
+  // une liste quand il y en a plusieurs, et sur l'article quand il n'y en a aucun. C'est là,
+  // et nulle part ailleurs, qu'un en-tête se déclare : le .md ne porte que la référence.
+  table: Object.freeze({ commande: 'szh.editerTable', icone: 'tableau',
+    libelle: 'action.table', tip: 'action.table.tip' }),
   numero: Object.freeze({ commande: 'szh.metadonnees', icone: 'gear',
     libelle: 'action.numero', tip: 'action.numero.tip' }),
   reglages: Object.freeze({ commande: 'szh.reglages', icone: 'gear',
@@ -98,15 +105,17 @@ const F = 'fait';
 // Où se corrige une règle PDF/UA, par son repère ISO 14289-1 (la ligne « ISO 14289-1
 // 7.1-9 » de pipeline/rapport-ua.py). Seules les règles qu'un rédacteur peut corriger ont
 // une cible : les autres sont des défauts de la chaîne (« signalez-le »), et une flèche
-// qui mènerait quelque part serait un mensonge. Les tableaux s'éditent depuis l'article.
+// qui mènerait quelque part serait un mensonge. Les tableaux s'éditent dans leur éditeur :
+// veraPDF ne nomme que des pages, jamais le tableau — c'est regrouper() plus bas qui
+// retrouve lesquels, et une carte sans tableau identifié retombe sur la liste des tableaux.
 const CIBLES_REGLE_PDFUA = Object.freeze({
   '7.1-9': Object.freeze({ lieu: 'fiche', focus: 'title' }),
   '7.2-29': Object.freeze({ lieu: 'fiche', focus: 'lang' }),
   '7.2-34': Object.freeze({ lieu: 'fiche', focus: 'lang' }),
   '7.3-1': Object.freeze({ lieu: 'medias', focus: '' }),
   '7.4.2-1': Object.freeze({ lieu: 'article', focus: '' }),
-  '7.5-1': Object.freeze({ lieu: 'article', focus: '' }),
-  '7.5-2': Object.freeze({ lieu: 'article', focus: '' })
+  '7.5-1': Object.freeze({ lieu: 'table', focus: '' }),
+  '7.5-2': Object.freeze({ lieu: 'table', focus: '' })
 });
 
 const TABLE = Object.freeze({
@@ -184,7 +193,10 @@ const TABLE = Object.freeze({
     defaut: 'defaut.pdfua-non-conforme', detail: 'detail.pdfua-non-conforme' },
   // La règle se nomme dans la phrase, sa cause et son geste en seconde ligne : sans eux, la
   // carte disait « Règle PDF/UA non respectée » sans jamais dire laquelle.
-  'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', objetChamp: 'regle',
+  // objetSeul : le titre de la carte EST la règle (« Le document n'a pas de titre (1 fois,
+  // page 3) ») — le préfixe « Règle PDF/UA non respectée » que la source de la carte dit
+  // déjà. Le geste et la cause viennent du champ `explication` (consigne(), infobulle()).
+  'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', objetChamp: 'regle', objetSeul: true,
     detailChamp: 'explication', ciblesRepere: CIBLES_REGLE_PDFUA, defaut: 'defaut.pdfua-regle' },
   'pdfua/outillage': { barrage: null, nature: D, lieu: '', defaut: 'defaut.pdfua-outillage' },
   // ---- Les citations -------------------------------------------------------------
@@ -207,8 +219,11 @@ const TABLE = Object.freeze({
   // chantier ajoute à docx-tables.py) ; la phrase continue de nommer le tableau
   // (« tableau », déjà écrit) — objetChamp passe désormais avant focusChamp dans objet(),
   // pour ce cas précis où cible et objet ne doivent plus être le même champ.
-  'import/tableau-sans-entete': { barrage: null, nature: D, lieu: 'article',
-    focusChamp: 'debut', objetChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
+  // Un en-tête se déclare dans l'éditeur du tableau, pas dans le texte : la flèche y mène,
+  // sur le fichier que docx-tables.py a écrit pour ce numéro (table-02.html pour
+  // « tableau 2 » — focusTable). `debut` reste lu par la carte regroupée.
+  'import/tableau-sans-entete': { barrage: null, nature: D, lieu: 'table',
+    focusTable: 'tableau', objetChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
   'import/langue-deduite': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'lang',
     defaut: 'defaut.langue-deduite' },
   // Titre et sous-titre sont voisins dans le formulaire : la carte ouvre le premier, et
@@ -257,6 +272,21 @@ const TABLE = Object.freeze({
   // qu'on lit plus tard ne ferait pas rouvrir le Word, et c'est pourtant ce qu'il faut faire.
   'import/bloc-mal-forme': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.pronto-bloc-mal-forme' },
+  // La garantie « rien ne disparaît » de l'import (29.09.2026) : ce qui n'a pas trouvé sa
+  // place est resté VISIBLE dans le texte — la flèche y mène (valeur, image), le geste est
+  // de le ranger. szh-legendes.lua et docx-controle-import.py les émettent sans entrée dans
+  // CLES_IMPORT : la phrase de la chaîne s'affiche en repli, comme bloc-mal-forme.
+  'import/bloc-valeur-non-reprise': { barrage: null, nature: D, lieu: 'article',
+    focusChamp: 'valeur', defaut: 'defaut.bloc-valeur-non-reprise' },
+  'import/image-absente-import': { barrage: null, nature: D, lieu: 'article',
+    focusChamp: 'image', defaut: 'defaut.image-absente-import' },
+  // Une image d'un groupe sans texte alternatif : même couleur et même geste que la figure
+  // sans description de la compilation, mais dit dès l'import.
+  'import/figure-alt-a-completer': { barrage: null, nature: D, lieu: 'medias',
+    focusChamp: 'image', defaut: 'defaut.figure-alt-a-completer' },
+  // Tableau d'images sous-titrées gardé en tableau : rien n'est perdu, une information.
+  'import/tableau-images-et-texte': { barrage: null, nature: F, lieu: 'word',
+    defaut: 'defaut.tableau-images-et-texte' },
   'import/biblio-tableau-apres-titre': { barrage: null, nature: D, lieu: 'word',
     focusChamp: 'fichier', defaut: 'defaut.pronto-biblio-tableau' },
   // Le type se choisit dans la fiche, pas dans le Word : c'est là qu'on l'y remet.
@@ -310,7 +340,8 @@ const TABLE = Object.freeze({
     defaut: 'defaut.annuler-sans-etat' },
   'import/fiche-du-word-differente': { barrage: null, nature: D, lieu: 'fiche',
     defaut: 'defaut.fiche-differente', detail: 'detail.fiche-differente' },
-  'import/tableau-conflit': { barrage: null, nature: D, lieu: 'article',
+  // Les tableaux se refont dans leur éditeur : sans tableau nommé, la liste des tableaux.
+  'import/tableau-conflit': { barrage: null, nature: D, lieu: 'table',
     defaut: 'defaut.tableau-conflit', detail: 'detail.tableau-conflit' },
   'import/tableaux-origine-inconnue': { barrage: null, nature: F, lieu: '',
     defaut: 'defaut.tableaux-inconnus' },
@@ -401,7 +432,148 @@ const TABLE = Object.freeze({
   'export/refus': { barrage: 'export', nature: D, lieu: '',
     defaut: 'defaut.export-refus', objetChamp: 'raison' },
   'cockpit/image-sans-legende': { barrage: null, nature: D, lieu: 'medias',
-    focusChamp: 'image', defaut: 'defaut.image-sans-legende' }
+    focusChamp: 'image', defaut: 'defaut.image-sans-legende' },
+  // ---- Les cartes regroupées (regrouper(), plus bas) --------------------------------
+  // Un même défaut arrivait par deux ou trois voies — la règle PDF/UA 7.3-1 du validateur,
+  // une ligne par image de szh-numerotation.lua — et faisait autant de cartes pour les
+  // mêmes images. Il n'en reste qu'une : le compte dans le titre (`compte`), un lien par
+  // objet (champs.elements), une phrase, un bouton.
+  'cockpit/images-sans-description': { barrage: 'pdfua', nature: D, lieu: 'medias', compte: true,
+    defaut: 'defaut.images-sans-description' },
+  // Deux gravités pour les tableaux : rouge quand le validateur PDF/UA a refusé (7.5-1,
+  // 7.5-2), ambre quand seul l'import a douté — un tableau sans en-tête est légitime.
+  'cockpit/tableaux-entete': { barrage: 'pdfua', nature: D, lieu: 'table', compte: true,
+    defaut: 'defaut.tableaux-entete' },
+  'cockpit/tableaux-sans-entete': { barrage: null, nature: D, lieu: 'table', compte: true,
+    defaut: 'defaut.tableaux-sans-entete' },
+  // Une case d'en-tête (th) sans intitulé : un lecteur d'écran annonce une colonne sans nom.
+  // Le cockpit la voit en lisant les tableaux de l'article (constatEnteteVide). Ambre, et
+  // jamais plus : la validation PDF/UA ne la refuse pas, l'export non plus — décision de
+  // Robin, 29.09.2026 (article massie, table-01.html, la case du coin en haut à gauche).
+  'cockpit/entete-vide': { barrage: null, nature: D, lieu: 'table', compte: true,
+    defaut: 'defaut.entete-vide' }
+});
+
+// ---------------------------------------------------------------------------------------
+// 2 bis. Le second étage d'une carte : une phrase d'action, et le pourquoi en infobulle
+// ---------------------------------------------------------------------------------------
+//
+// Une carte « À corriger » se lit en quatre temps : un titre court et concret (defaut.* et
+// son objet), l'objet en cause (un lien par objet quand il y en a plusieurs), UNE phrase
+// qui commence par le geste (consigne), un bouton. Tout ce qui explique — pourquoi c'est un
+// défaut, ce qui a été gardé ou perdu, le repère ISO — passe dans l'infobulle : rien n'est
+// retiré, tout est déplacé.
+//
+// `consigne` : la clé de la phrase d'action. Ses arguments sont ceux du constat.
+// `infobulle` : la clé d'une explication, quand ni le message ctl.* du constat ni la
+// phrase de la chaîne n'en portent une (voir infobulle() pour l'ordre des repli).
+// Une information (nature 'fait') peut n'avoir aucune consigne : elle ne demande rien.
+const SECOND_ETAGE = Object.freeze({
+  'pipeline/titre-manquant': { consigne: 'consigne.titre-manquant' },
+  'pipeline/dossier-espaces': { consigne: 'consigne.dossier-espaces' },
+  'pipeline/aucun-article': { consigne: 'consigne.aucun-article' },
+  'pipeline/pas-une-revue': { consigne: 'consigne.pas-une-revue' },
+  'pipeline/profil-rien': { consigne: 'consigne.profil-rien' },
+  'pipeline/profil-differe': { consigne: 'consigne.profil' },
+  'pipeline/profil-inconnu': { consigne: 'consigne.profil' },
+  'pipeline/pdf-verrouille': { consigne: 'detail.pdf-verrouille' },
+  'pipeline/balisage-simple': { consigne: 'consigne.signaler' },
+  'pipeline/balisage-aucun': { consigne: 'consigne.signaler' },
+  'rendu/image-manquante': { consigne: 'consigne.image-manquante' },
+  'rendu/niveaux-ecrases': { consigne: 'consigne.niveaux-ecrases' },
+  'rendu/police-manquante': { consigne: 'consigne.signaler' },
+  'typo/eszett': { consigne: 'consigne.typo-eszett' },
+  'typo/guillemets-droits': { consigne: 'consigne.typo-guillemets-droits' },
+  'typo/majuscule-accentuee': { consigne: 'consigne.typo-majuscule-accentuee' },
+  'metafichier/image-native-word': { consigne: 'consigne.metafichier-image-native' },
+  'metafichier/placeholder-introuvable': { consigne: 'consigne.signaler' },
+  'meta/champ-vide': { consigne: 'consigne.champ-vide' },
+  'meta/marque-champ': { consigne: 'consigne.marque-champ' },
+  'meta/marque-motcle': { consigne: 'consigne.marque-motcle' },
+  'meta/sans-langue': { consigne: 'consigne.sans-langue' },
+  'meta/langue-inconnue': { consigne: 'consigne.langue-inconnue' },
+  'numerotation/figure-sans-alt': { consigne: 'consigne.images-sans-description',
+    infobulle: 'infobulle.images-sans-description' },
+  'pdfua/aucun-pdf': { consigne: 'consigne.aucun-pdf' },
+  'pdfua/non-conforme': { consigne: 'consigne.pdfua-non-conforme' },
+  'pdfua/outillage': { consigne: 'consigne.signaler' },
+  'citations/appel-sans-reference': { consigne: 'consigne.appel-sans-reference' },
+  'citations/appel-ambigu': { consigne: 'consigne.appel-ambigu' },
+  'citations/reference-orpheline': { consigne: 'consigne.reference-orpheline' },
+  'citations/ancrage-inconnu': { consigne: 'consigne.ancrage-inconnu' },
+  'import/echec': { consigne: 'consigne.import-echec' },
+  'import/restes': { consigne: 'consigne.import-restes' },
+  'import/tableau-sans-entete': { consigne: 'consigne.tableau-sans-entete' },
+  'import/langue-deduite': { consigne: 'consigne.langue-deduite' },
+  'import/sous-titre-deduit': { consigne: 'consigne.sous-titre-deduit' },
+  'import/word-redepose': { consigne: 'consigne.word-redepose' },
+  'import/origine-inconnue': { consigne: 'consigne.origine-inconnue' },
+  'import/etiquette-metadonnees-inconnue': { consigne: 'consigne.pronto-etiquette' },
+  'import/auteur-etiquette-inconnue': { consigne: 'consigne.pronto-etiquette' },
+  'import/auteur-champ-hors-gabarit': { consigne: 'consigne.pronto-champ-hors-gabarit' },
+  'import/bloc-etiquette-inconnue': { consigne: 'consigne.pronto-etiquette' },
+  'import/cle-ambigue': { consigne: 'consigne.pronto-cle-ambigue' },
+  'import/cle-approximee': { consigne: 'consigne.pronto-cle-approximee' },
+  'import/structure-inattendue': { consigne: 'consigne.pronto-structure' },
+  'import/bloc-ancienne-forme': { consigne: 'consigne.pronto-bloc-ancien' },
+  'import/bloc-contenu-absent': { consigne: 'consigne.pronto-bloc-vide' },
+  'import/bloc-cles-sans-contenu': { consigne: 'consigne.pronto-cles-sans-contenu' },
+  'import/bloc-mal-forme': { consigne: 'consigne.pronto-bloc-mal-forme' },
+  'import/bloc-valeur-non-reprise': { consigne: 'consigne.bloc-valeur-non-reprise' },
+  'import/image-absente-import': { consigne: 'consigne.image-absente-import' },
+  'import/figure-alt-a-completer': { consigne: 'consigne.figure-alt-a-completer' },
+  'import/biblio-tableau-apres-titre': { consigne: 'consigne.pronto-biblio-tableau' },
+  'import/type-article-non-reconnu': { consigne: 'consigne.pronto-type-inconnu' },
+  'import/cle-attendue-absente': { consigne: 'consigne.pronto-cle-absente' },
+  'import/langue-du-document-ignoree': { consigne: 'consigne.pronto-langue-ignoree' },
+  'import/tableau-auteurs-non-lu': { consigne: 'consigne.tableau-auteurs-non-lu' },
+  'import/biblio-references-restees': { consigne: 'consigne.biblio-style' },
+  'import/biblio-non-detachee': { consigne: 'consigne.biblio-style' },
+  'import/credit-photo-non-repris': { consigne: 'consigne.credit-photo-non-repris' },
+  'import/reimport-sans-article': { consigne: 'consigne.reimport-sans-article' },
+  'import/reimport-sans-word': { consigne: 'consigne.reimport-sans-word' },
+  'import/reimport-fiche-sans-source': { consigne: 'consigne.reimport-fiche-sans-source' },
+  'import/reimport-plusieurs-articles': { consigne: 'consigne.reimport-plusieurs-articles' },
+  'import/reimport-echec': { consigne: 'consigne.reimport-echec' },
+  'import/reimport-panne': { consigne: 'consigne.reimport-panne' },
+  'import/reimport-interrompu': { consigne: 'consigne.reimport-interrompu' },
+  'import/reimport-reprise-impossible': { consigne: 'consigne.reimport-reprise-impossible' },
+  // Rien n'a été touché, et il n'y a rien à faire : l'infobulle (ctl.*) le dit.
+  'import/annuler-sans-etat': {},
+  'import/fiche-du-word-differente': { consigne: 'consigne.fiche-differente' },
+  'import/tableau-conflit': { consigne: 'consigne.tableau-conflit' },
+  'import/image-non-reimportee': { consigne: 'consigne.image-perdue' },
+  'import/corps-retravaille': { consigne: 'consigne.corps-retravaille' },
+  'import/biblio-conflit': { consigne: 'consigne.biblio-conflit' },
+  'import/biblio-incomplete': { consigne: 'consigne.biblio-style' },
+  'import/biblio-bornes-perdues': { consigne: 'consigne.signaler-cas' },
+  'import/biblio-fichier-refuse': { consigne: 'consigne.biblio-fichier-refuse' },
+  'scission/aucun-titre-niveau-1': { consigne: 'consigne.scission-aucun-titre' },
+  'scission/chapitre-cible-existe': { consigne: 'consigne.scission-chapitre-existe' },
+  'scission/image-introuvable': { consigne: 'consigne.image-manquante' },
+  'scission/tableau-introuvable': { consigne: 'consigne.scission-tableau-introuvable' },
+  'scission/liminaire-texte-non-repris': { consigne: 'consigne.scission-liminaire-texte-non-repris' },
+  'scission/liminaire-texte-media-introuvable': { consigne: 'consigne.image-manquante' },
+  'scission/liminaire-media-introuvable': { consigne: 'consigne.image-manquante' },
+  'scission/source-non-supprimee': { consigne: 'consigne.scission-source-non-supprimee' },
+  'livre/liminaire-introuvable': { consigne: 'consigne.liminaire-introuvable' },
+  'livre/chapitre-ecarte': { consigne: 'consigne.chapitre-ecarte' },
+  'livre/chapitre-introuvable': { consigne: 'consigne.chapitre-introuvable' },
+  'cockpit/sans-fiche': { consigne: 'consigne.sans-fiche', infobulle: 'infobulle.sans-fiche' },
+  'cockpit/doi-double': { consigne: 'consigne.doi-double', infobulle: 'infobulle.doi-double' },
+  'pagination/perimee': { consigne: 'consigne.pagination-perimee' },
+  'cockpit/image-sans-alt': { consigne: 'consigne.images-sans-description',
+    infobulle: 'infobulle.images-sans-description' },
+  'export/refus': { consigne: 'consigne.export-refus' },
+  'cockpit/image-sans-legende': { consigne: 'consigne.image-sans-legende',
+    infobulle: 'infobulle.image-sans-legende' },
+  'cockpit/images-sans-description': { consigne: 'consigne.images-sans-description',
+    infobulle: 'infobulle.images-sans-description' },
+  'cockpit/tableaux-entete': { consigne: 'consigne.tableaux-entete',
+    infobulle: 'infobulle.tableaux-entete' },
+  'cockpit/tableaux-sans-entete': { consigne: 'consigne.tableau-sans-entete',
+    infobulle: 'infobulle.tableau-sans-entete' },
+  'cockpit/entete-vide': { consigne: 'consigne.entete-vide', infobulle: 'infobulle.entete-vide' }
 });
 
 // ---------------------------------------------------------------------------------------
@@ -474,23 +646,47 @@ function valeurChamp(nomChamp, valeur) {
   return String(valeur === undefined || valeur === null ? '' : valeur);
 }
 
+// Le fichier qu'écrit docx-tables.py pour le n-ième tableau d'un article (table-%02d.html).
+function fichierTable(numero) {
+  const n = parseInt(numero, 10);
+  if (!(n > 0)) { return ''; }
+  return 'table-' + (n < 10 ? '0' : '') + n + '.html';
+}
+
 // -> { lieu, slug, focus } ou null quand aucun geste n'existe pour ce défaut.
+//
+// `champs.focusCalcule` : l'extrait que l'hôte a retrouvé dans le .md pour un constat qui
+// n'en citait aucun (lib/reperage-focus.js, focusDeRepli) — il ne sert que de repli, un
+// focus que le constat porte lui-même passe toujours avant.
+// `champs.elements` (cartes regroupées) : un seul objet, et le bouton y mène tout droit.
 function cible(constat) {
   const e = entree(constat);
   if (!e) { return null; }
+  const champs = (constat && constat.champs) || {};
+  const slug = String((constat && constat.slug) || '');
+  if (e.compte) {
+    const els = Array.isArray(champs.elements) ? champs.elements : [];
+    if (els.length === 1 && els[0].lieu) {
+      return { lieu: els[0].lieu, slug: slug, focus: String(els[0].focus || '') };
+    }
+    return { lieu: e.lieu, slug: slug, focus: '' };
+  }
   if (e.ciblesRepere) {
-    const c = e.ciblesRepere[((constat && constat.champs) || {}).repere];
-    return c ? { lieu: c.lieu, slug: String((constat && constat.slug) || ''), focus: c.focus } : null;
+    const c = e.ciblesRepere[champs.repere];
+    if (!c) { return null; }
+    return { lieu: c.lieu, slug: slug,
+             focus: c.focus || (c.lieu === 'article' ? String(champs.focusCalcule || '') : '') };
   }
   // Un constat peut nommer sa cible quand la table ne peut pas la deviner : les raisons
   // d'un refus d'export ne menent pas toutes au meme endroit.
   const lieu = (constat && constat.lieu) || e.lieu;
   if (!lieu) { return null; }
-  const champs = (constat && constat.champs) || {};
   let focus = '';
   if (e.focusFixe) { focus = e.focusFixe; }
+  else if (e.focusTable) { focus = fichierTable(champs[e.focusTable]); }
   else if (e.focusChamp) { focus = valeurChamp(e.focusChamp, champs[e.focusChamp]); }
-  return { lieu: lieu, slug: String((constat && constat.slug) || ''), focus: focus };
+  if (focus === '' && lieu === 'article' && champs.focusCalcule) { focus = String(champs.focusCalcule); }
+  return { lieu: lieu, slug: slug, focus: focus };
 }
 
 // Le bouton à poser sur la carte, ou null. Les libellés vivent dans le dictionnaire : huit
@@ -525,29 +721,232 @@ function objet(constat, langue) {
 const DEUX_POINTS = { fr: ' : ', de: ': ' };
 
 // « {défaut} : {objet} », ou le seul intitulé quand il n'y a pas d'objet à nommer. Jamais
-// un deux-points en l'air, jamais le geste — il est dans le bouton.
+// un deux-points en l'air, jamais le geste — il est dans le bouton et dans la consigne.
+// Une carte regroupée (`compte`) dit son nombre d'objets : « 2 images sans description ».
 function phrase(constat, langue) {
   const e = entree(constat);
   if (!e) { return String((constat && constat.brut) || ''); }
-  const tete = TL(langue, e.defaut);
+  if (e.compte) {
+    const n = (((constat && constat.champs) || {}).elements || []).length;
+    return n > 0 ? TL(langue, e.defaut + (n === 1 ? '.1' : '.n'), [n]) : TL(langue, e.defaut);
+  }
   const o = objet(constat, langue);
+  if (e.objetSeul && o) { return o; }
+  const tete = TL(langue, e.defaut);
   return o ? (tete + (DEUX_POINTS[langue] || DEUX_POINTS.fr) + o) : tete;
 }
 
-// La seconde ligne, là où une seule ne suffit pas — ce qui a été gardé, ce qui a été perdu.
-// Vide partout ailleurs, et c'est la règle : le gabarit ne doit pas redevenir un paragraphe.
-function detail(constat, langue) {
-  const e = entree(constat);
-  // detailChamp : un texte déjà rédigé par la chaîne, dans la langue du cockpit (la cause
-  // et le geste d'une règle PDF/UA, écrits par pipeline/rapport-ua.py).
-  if (e && e.detailChamp) {
-    const v = ((constat && constat.champs) || {})[e.detailChamp];
-    return v === undefined || v === null ? '' : String(v);
-  }
-  // Les arguments du constat lui sont passés : c'est la seule ligne des deux qui peut
-  // porter un compte, et le compte des règles PDF/UA en échec est ce qui dit s'il reste
-  // une correction ou vingt.
-  return e && e.detail ? TL(langue, e.detail, (constat && constat.args) || []) : '';
+// Les deux moitiés d'une explication de pipeline/rapport-ua.py : « En cause : … » (le
+// pourquoi) puis « À faire : … » (le geste), recollées par lib/journal.js en une ligne.
+const MARQUE_CAUSE = /^\s*(?:En cause|Ursache)\s*:\s*/;
+const MARQUE_GESTE = /\s*(?:À faire|Zu tun)\s*:\s*/;
+
+function decouperExplication(texte) {
+  const t = String(texte === undefined || texte === null ? '' : texte).trim();
+  const i = t.search(MARQUE_GESTE);
+  const avant = i === -1 ? t : t.slice(0, i);
+  const apres = i === -1 ? '' : t.slice(i).replace(MARQUE_GESTE, '');
+  return { cause: avant.replace(MARQUE_CAUSE, '').trim(), geste: apres.trim() };
 }
 
-module.exports = { LIEUX, TABLE, CIBLES_REGLE_PDFUA, gravite, ton, fermable, cible, bouton, phrase, detail, objet };
+// La phrase d'action : une seule, qui commence par le geste. Vide pour une information qui
+// ne demande rien. Les arguments du constat lui sont passés — c'est ainsi qu'elle porte un
+// compte (« 3 règle(s) en échec : recompilez… »).
+function consigne(constat, langue) {
+  const e = entree(constat);
+  if (!e) { return ''; }
+  // detailChamp : un texte déjà rédigé par la chaîne, dans la langue du cockpit (la cause
+  // et le geste d'une règle PDF/UA, écrits par pipeline/rapport-ua.py) ; seul le geste
+  // est une consigne.
+  if (e.detailChamp) {
+    return decouperExplication(((constat && constat.champs) || {})[e.detailChamp]).geste;
+  }
+  const s = SECOND_ETAGE[cleDe(constat)];
+  return s && s.consigne ? TL(langue, s.consigne, (constat && constat.args) || []) : '';
+}
+
+// La seconde ligne de la carte : désormais la consigne. Le nom reste, parce que la vue et
+// l'empreinte d'un message fermé (extension.js) composent leur texte de phrase() et de
+// detail() ; ce qui s'y lisait d'explicatif est passé dans l'infobulle.
+function detail(constat, langue) { return consigne(constat, langue); }
+
+// Ce qui explique le défaut, pour l'infobulle — jamais perdu, seulement déplacé. Le
+// premier texte non vide, et différent de la consigne, de :
+//   1. l'explication que la table lui donne (SECOND_ETAGE.infobulle) ;
+//   2. la cause écrite par la chaîne (règle PDF/UA), suivie de son repère ISO ;
+//   3. le message complet de la maison (ctl.*, la clé que lib/journal.js a posée) ;
+//   4. l'ancienne seconde ligne de la table (`detail`) ;
+//   5. la phrase de la chaîne elle-même (`brut`), dans la langue du cockpit.
+function infobulle(constat, langue) {
+  const e = entree(constat);
+  const c = constat || {};
+  const args = c.args || [];
+  const dit = consigne(constat, langue);
+  const candidats = [];
+  const s = SECOND_ETAGE[cleDe(constat)];
+  if (s && s.infobulle) { candidats.push(TL(langue, s.infobulle, args)); }
+  if (e && e.detailChamp) {
+    const cause = decouperExplication((c.champs || {})[e.detailChamp]).cause;
+    const repere = (c.champs || {}).repere;
+    candidats.push([cause, repere ? TL(langue, 'infobulle.pdfua-repere', [repere]) : '']
+      .filter(Boolean).join(' '));
+  }
+  if (c.cle) {
+    const t = TL(langue, c.cle, args);
+    if (t !== c.cle) { candidats.push(t); }
+  }
+  if (e && e.detail) { candidats.push(TL(langue, e.detail, args)); }
+  if (c.brut) { candidats.push(String(c.brut)); }
+  for (const t of candidats) {
+    const v = String(t || '').trim();
+    if (v !== '' && v !== dit && v !== phrase(constat, langue)) { return v; }
+  }
+  return '';
+}
+
+// Les objets d'une carte regroupée, tels qu'un lien les nomme : le nom, et entre
+// parenthèses ce que le nom seul ne dit pas (« table-01.html (en-tête fusionné) »).
+// -> [{ libelle, lieu, focus }]
+function elements(constat, langue) {
+  const els = (((constat && constat.champs) || {}).elements) || [];
+  return els.map((el) => {
+    const p = el.precision;
+    const precis = p && p.cle ? TL(langue, p.cle, p.args || []) : '';
+    return { libelle: String(el.nom || '') + (precis ? ' (' + precis + ')' : ''),
+             lieu: String(el.lieu || ''), focus: String(el.focus || '') };
+  });
+}
+
+// ---------------------------------------------------------------------------------------
+// 4. Le regroupement : une carte par défaut, et non une par voie d'arrivée
+// ---------------------------------------------------------------------------------------
+//
+// Une image muette arrivait par trois voies — la règle 7.3-1 du validateur PDF/UA, qui ne
+// connaît que des pages, et une ligne par image de szh-numerotation.lua ou du cockpit — et
+// faisait autant de phrases pour les mêmes images. Un tableau sans en-tête, par deux (7.5-1
+// ou 7.5-2, et l'import). Chaque famille devient UNE carte par article, dont les objets
+// viennent du .md et des tableaux de l'article, lus par l'hôte au moment de l'affichage :
+// c'est l'état d'aujourd'hui, pas celui de la dernière compilation, et c'est lui qui dit où
+// cliquer. veraPDF ne dit jamais quelle image ni quel tableau.
+//
+// `lire(slug)` -> { images: [{ nom, lieu, focus, precision? }],
+//                   tableaux: [{ nom, raison: 'sans-entete'|'fusion' }],   les suspects
+//                   tousTableaux: [nom] } | null                           tous, lus
+// Pure : l'hôte lit le disque, ce module décide. Les constats sans slug (le numéro entier)
+// ne se regroupent pas, et l'ordre de la liste est gardé : la carte prend la place du
+// premier constat qu'elle remplace.
+const REPERES_IMAGES = new Set(['7.3-1']);
+const REPERES_TABLEAUX = new Set(['7.5-1', '7.5-2']);
+const CODES_IMAGES = new Set(['numerotation/figure-sans-alt', 'cockpit/image-sans-alt']);
+
+function familleDe(c) {
+  const cle = cleDe(c);
+  const repere = String(((c && c.champs) || {}).repere || '');
+  if (CODES_IMAGES.has(cle) || (cle === 'pdfua/regle' && REPERES_IMAGES.has(repere))) { return 'images'; }
+  if (cle === 'import/tableau-sans-entete'
+      || (cle === 'pdfua/regle' && REPERES_TABLEAUX.has(repere))) { return 'tableaux'; }
+  return '';
+}
+
+function sansDoublon(liste) {
+  const vus = new Set();
+  return liste.filter((el) => {
+    const k = String(el.lieu) + ':' + String(el.focus).toLowerCase();
+    if (vus.has(k)) { return false; }
+    vus.add(k);
+    return true;
+  });
+}
+
+function elementsImages(membres, lu) {
+  const disque = (lu && Array.isArray(lu.images)) ? lu.images : [];
+  if (disque.length > 0) { return sansDoublon(disque); }
+  // Rien d'identifié sur le disque : les noms que la chaîne a donnés, faute de mieux.
+  return sansDoublon(membres
+    .map((c) => valeurChamp('image', ((c.champs || {}).image)))
+    .filter((n) => n !== '')
+    .map((n) => ({ nom: n, lieu: 'medias', focus: n })));
+}
+
+function elementsTableaux(membres, lu, avecPdfUa) {
+  const suspects = (lu && Array.isArray(lu.tableaux)) ? lu.tableaux : null;
+  const precision = (t) => ({ cle: t.raison === 'fusion' ? 'objet.tableau.fusion' : 'objet.tableau.sans-entete' });
+  if (avecPdfUa && suspects) {
+    // Un en-tête fusionné est la cause que le validateur relève vraiment (mesuré sur
+    // l'article massie, 2025-02) : un tableau sans aucun en-tête, souvent un tableau de mise
+    // en page (le bloc des auteurs), ne lui fait pas refuser le PDF. Quand il y a des
+    // fusions, elles seules sont nommées ; sinon, les tableaux sans en-tête.
+    const fusions = suspects.filter((t) => t.raison === 'fusion');
+    return (fusions.length > 0 ? fusions : suspects)
+      .map((t) => ({ nom: t.nom, lieu: 'table', focus: t.nom, precision: precision(t) }));
+  }
+  // L'import seul a douté : les tableaux qu'il nomme, tant qu'ils sont encore sans en-tête
+  // (un tableau corrigé depuis ne se signale plus ; un tableau que l'hôte n'a pas pu lire
+  // reste nommé, dans le doute).
+  const bas = (n) => String(n).toLowerCase();
+  const suspect = new Set((suspects || []).map((t) => bas(t.nom)));
+  const lus = new Set(((lu && lu.tousTableaux) || []).map(bas));
+  return sansDoublon(membres
+    .map((c) => fichierTable((c.champs || {}).tableau))
+    .filter((nom) => nom !== '' && !(lus.has(bas(nom)) && !suspect.has(bas(nom))))
+    .map((nom) => ({ nom: nom, lieu: 'table', focus: nom,
+                     precision: { cle: 'objet.tableau.sans-entete' } })));
+}
+
+function regrouper(constats, lire) {
+  const liste = Array.isArray(constats) ? constats : [];
+  const groupes = new Map();          // slug + famille -> { membres, index }
+  const sortie = [];
+  for (const c of liste) {
+    const famille = c && c.slug ? familleDe(c) : '';
+    if (!famille) { sortie.push(c); continue; }
+    const cle = c.slug + '\u0001' + famille;
+    let g = groupes.get(cle);
+    if (!g) {
+      g = { slug: c.slug, famille: famille, membres: [], index: sortie.length };
+      groupes.set(cle, g);
+      sortie.push(null);              // la place de la carte, remplie plus bas
+    }
+    g.membres.push(c);
+  }
+  for (const g of groupes.values()) {
+    let lu = null;
+    try { lu = typeof lire === 'function' ? lire(g.slug) : null; } catch (e) { lu = null; }
+    let code;
+    let els;
+    if (g.famille === 'images') {
+      code = 'images-sans-description';
+      els = elementsImages(g.membres, lu);
+    } else {
+      const avecPdfUa = g.membres.some((c) => c.source === 'pdfua');
+      code = avecPdfUa ? 'tableaux-entete' : 'tableaux-sans-entete';
+      els = elementsTableaux(g.membres, lu, avecPdfUa);
+    }
+    sortie[g.index] = {
+      source: 'cockpit', code: code, ton: '', slug: g.slug, cle: '', args: [],
+      champs: { elements: els }, brut: '',
+      // La source du premier constat remplacé : c'est elle que le sous-titre de la carte
+      // nomme (« Figures », « Accessibilité du PDF »), « cockpit » ne disant rien à personne.
+      origine: g.membres[0].source,
+      // Ce que la carte remplace, pour qui voudrait encore le lire (rapport d'erreur,
+      // tests) : rien n'est jeté.
+      membres: g.membres
+    };
+  }
+  return sortie;
+}
+
+// Le constat « case d'en-tête vide » d'un article, un lien par tableau fautif, ou null.
+// `noms` : les fichiers de tables/ dont une case d'en-tête n'a pas d'intitulé, lus par
+// l'hôte. Il ne vient d'aucun journal : c'est l'état du disque au moment où l'on regarde.
+function constatEnteteVide(slug, noms) {
+  const liste = (noms || []).map(String).filter(Boolean);
+  if (!slug || liste.length === 0) { return null; }
+  return { source: 'cockpit', code: 'entete-vide', ton: '', slug: String(slug), cle: '', args: [],
+           champs: { elements: liste.map((n) => ({ nom: n, lieu: 'table', focus: n })) },
+           brut: '', origine: 'pdfua' };
+}
+
+module.exports = { LIEUX, TABLE, CIBLES_REGLE_PDFUA, SECOND_ETAGE, gravite, ton, fermable, cible,
+  bouton, phrase, detail, consigne, infobulle, elements, objet, regrouper, fichierTable,
+  decouperExplication, constatEnteteVide };

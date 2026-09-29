@@ -110,3 +110,32 @@ table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
   color: var(--vscode-menu-selectionForeground, var(--vscode-menu-foreground, var(--vscode-foreground))); }
 .ctxmenu .ctxsep { height: 1px; margin: .25em 0;
   background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, rgba(128,128,128,.4))); }
+
+/* ---- Images des cellules ----
+   Une vignette de taille bornée, quelle que soit la largeur que le fichier demande au PDF
+   (width="173" venu du Word) : la grille reste lisible. La pastille reprend celle des
+   vignettes du gestionnaire des médias (medias-article.css, .vignette-alerte). */
+.cimg { position: relative; display: inline-block; vertical-align: top; margin: .1em .15em;
+  user-select: none; cursor: context-menu; }
+.cimg img { display: block; max-width: 10rem; max-height: 10rem; width: auto; height: auto;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini); background: #fff; }
+.cimg-absente { display: inline-flex; align-items: center; gap: var(--e1);
+  max-width: 14rem; padding: var(--e2) var(--e3);
+  border: 1px dashed var(--danger); border-radius: var(--rayon-mini);
+  color: var(--danger); font-size: var(--t-libelle); line-height: 1.3; overflow-wrap: anywhere; }
+.cimg-absente svg { flex: 0 0 auto; width: 1rem; height: 1rem; }
+.cimg-alerte { position: absolute; top: var(--e1); right: var(--e1);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--fond); color: var(--danger); border: 2px solid var(--danger);
+  box-shadow: 0 0 0 1px var(--fond); }
+.cimg-alerte svg { width: 1rem; height: 1rem; }
+/* Saisie du texte alternatif : la modale du socle, avec une boîte de formulaire. */
+.saisie-alt .saisie-boite { display: flex; flex-direction: column; gap: var(--e3);
+  width: min(34rem, 100%); padding: var(--e4) var(--e5);
+  background: var(--vscode-editorWidget-background, var(--fond)); color: var(--encre);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon); }
+.saisie-alt .saisie-nom { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); overflow-wrap: anywhere; }
+.saisie-alt .szh-section { margin-top: 0; }
+.saisie-alt .saisie-alerte { margin: 0; }
+.saisie-alt .saisie-pied { display: flex; justify-content: flex-end; gap: var(--e2); }

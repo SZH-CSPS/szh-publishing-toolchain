@@ -180,6 +180,8 @@ function activerHote(revue) {
   // finTache quand le cockpit n'a pas lui-même lancé la tâche nommée.
   const debutTache = emetteur();
   const finTacheBrute = emetteur();
+  // Ctrl+S : le cockpit retient l'article enregistré pour le voile de « À corriger ».
+  const enregistrement = emetteur();
   // Les deux événements du défilement synchronisé aperçu HTML (pousserDefilementVersApercu,
   // pousserSurlignageVersApercu, extension.js) : réels et non jetés, pour qu'un test puisse
   // simuler un geste dans l'éditeur SANS ouvrir une vraie fenêtre.
@@ -459,7 +461,7 @@ function activerHote(revue) {
       },
       onDidChangeWorkspaceFolders: evenement(),
       onDidChangeConfiguration: evenement(),
-      onDidSaveTextDocument: evenement(),
+      onDidSaveTextDocument: enregistrement,
       openTextDocument: (p) => {
         const chemin = typeof p === 'string' ? p : p.fsPath;
         const texte = fs.readFileSync(chemin, 'utf8');
@@ -617,6 +619,8 @@ function activerHote(revue) {
     demarrerTache: (nom) => debutTache.emettre({
       execution: executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } }
     }),
+    // Un document enregistré (onDidSaveTextDocument), comme au Ctrl+S.
+    enregistrerDocument: (chemin) => enregistrement.emettre({ uri: { fsPath: chemin } }),
     // Fin d'une tâche sans notification de processus (onDidEndTask seul) : la tâche a été
     // interrompue, ou son exécutable n'a jamais démarré.
     finirTacheSansProcessus: (nom) => finTacheBrute.emettre({

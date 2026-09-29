@@ -61,6 +61,56 @@ test('trouverPlageFocus : focus vide ou document vide — rien', () => {
   assert.strictEqual(trouverPlageFocus('', ''), null);
 });
 
+// ---- Les cas réels où la flèche ouvrait l'article sans rien sélectionner (29.09.2026) ----
+
+test('trouverPlageFocus : une référence en italique dans le .md, aplatie dans le constat', () => {
+  // utils.stringify() retire l'emphase : le constat dit « Soi-même comme un autre », le
+  // .md écrit « *Soi-même comme un autre* ». La sélection couvre le texte réel, astérisques
+  // intérieurs compris.
+  const doc = 'Ricœur, P. (1990). *Soi-même comme un autre*. Seuil.\n';
+  assert.strictEqual(extrait(doc, 'Ricœur, P. (1990). Soi-même comme un autre. Seuil.'),
+    'Ricœur, P. (1990). *Soi-même comme un autre*. Seuil.');
+});
+
+test('trouverPlageFocus : l’ellipse et la lettre coupée en deux d’une troncature ne cassent rien', () => {
+  const doc = 'Ricœur, P. (1990). Soi-même comme un autre. Seuil.';
+  assert.strictEqual(extrait(doc, 'Ricœur, P. (1990). Soi-même comme un autre. Seuil.…'), doc);
+  // sub(1, 70) du filtre compte des octets : la dernière lettre accentuée devient U+FFFD.
+  assert.strictEqual(extrait(doc, 'Ricœur, P. (1990). Soi-m�'), 'Ricœur, P. (1990). Soi-m');
+});
+
+test('trouverPlageFocus : un lien aplati — le début suffit, jamais moins de trente caractères', () => {
+  const doc = 'Shaw, A. (2023). Titre de l’étude complète. [https://doi.org/10.1/x](https://doi.org/10.1/x)';
+  const plage = trouverPlageFocus(doc, 'Shaw, A. (2023). Titre de l’étude complète. https://doi.org/10.1/x');
+  assert.ok(plage, 'la référence au DOI en lien n’est pas retrouvée');
+  assert.strictEqual(plage.debut, 0);
+  // Un focus court ne se rabat pas sur un préfixe : « (Sen, 2001) » absent reste absent.
+  assert.strictEqual(trouverPlageFocus('Selon (Sen, 2002), rien.', '(Sen, 2001)'), null);
+});
+
+test('focusDeRepli : les constats qui ne citent aucun mot désignent quand même un endroit', () => {
+  const { focusDeRepli, premierTitreDeNiveau, titreBibliographie } =
+    require(path.join(COCKPIT, 'lib', 'reperage-focus.js'));
+  const md = ['# Einleitung', '', '###### Trop profond', '', '::: {.szh-biblio src="a.biblio.md"}',
+    ':::', '', 'Reste.', '', '::: {.szh-tabelle src="tables/table-02.html"}', ':::', '',
+    '# Literatur', ''].join('\n');
+  const tables = [{ nom: 'table-01.html', html: '<table><tr><td>1</td></tr></table>' },
+    { nom: 'table-02.html', html: '<table><tr><td>b.massie@hfh.ch</td></tr></table>' }];
+  assert.strictEqual(focusDeRepli('rendu/niveaux-ecrases', ['6, 7'], md, tables), '###### Trop profond');
+  assert.strictEqual(focusDeRepli('import/biblio-incomplete', [], md, tables), '{.szh-biblio');
+  assert.strictEqual(focusDeRepli('import/biblio-non-detachee', [], md, tables), '# Literatur');
+  assert.strictEqual(focusDeRepli('import/tableau-auteurs-non-lu', [], md, tables), 'tables/table-02.html');
+  assert.strictEqual(focusDeRepli('citations/bilan', [], md, tables), '');
+  // Chaque repli est un extrait que trouverPlageFocus sait sélectionner.
+  for (const f of ['###### Trop profond', '{.szh-biblio', '# Literatur', 'tables/table-02.html']) {
+    assert.strictEqual(extrait(md, f), f);
+  }
+  // Un niveau exact : « ## » ne désigne pas « ### ».
+  assert.strictEqual(premierTitreDeNiveau('### A\n## B\n', 2), '## B');
+  // Un titre de bibliographie se reconnaît entier, jamais par son début.
+  assert.strictEqual(titreBibliographie('## Literaturhinweise für die Praxis\n'), '');
+});
+
 test('trouverPlageFocus : combinaison insécable + tiret + espaces multiples', () => {
   const doc = 'Renvoi  (Shaw et al., 2023, –p. 12) ici.';
   const plage = trouverPlageFocus(doc, '(Shaw et al., 2023, -p. 12)');

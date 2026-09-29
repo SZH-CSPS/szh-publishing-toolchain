@@ -15,10 +15,14 @@ var boiteChamps=document.getElementById('champs'), champs={};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function dechap(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&#x27;/g,"'").replace(/&#39;/g,"'").replace(/&amp;/g,'&');}
 function echap(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function poserInline(el,contenu){el.textContent='';var re=/<\/?(?:strong|em)>|<br>/g,dernier=0,m,pile=[el];
+function echapAttr(s){return echap(s).replace(/"/g,'&quot;');}
+// `images` (facultatif) : ce que l'hôte a lu de chaque <img> du contenu, dans l'ordre
+// (disposition -> imagesPourAffichage) ; `c` : la cellule, pour le clic droit sur l'image.
+function poserInline(el,contenu,images,c){el.textContent='';var re=/<\/?(?:strong|em)>|<br>|<img\b[^>]*>/g,dernier=0,m,pile=[el],nImg=0;
   while((m=re.exec(contenu))!==null){var txt=contenu.slice(dernier,m.index);if(txt){pile[pile.length-1].appendChild(document.createTextNode(dechap(txt)));}
     dernier=re.lastIndex;var tg=m[0];
-    if(tg==='<br>'){pile[pile.length-1].appendChild(document.createElement('br'));}
+    if(tg.indexOf('<img')===0){pile[pile.length-1].appendChild(vignetteImage(tg,(images||[])[nImg],c,nImg));nImg++;}
+    else if(tg==='<br>'){pile[pile.length-1].appendChild(document.createElement('br'));}
     else if(tg==='<strong>'){var s=document.createElement('strong');pile[pile.length-1].appendChild(s);pile.push(s);}
     else if(tg==='<em>'){var e=document.createElement('em');pile[pile.length-1].appendChild(e);pile.push(e);}
     else if(pile.length>1){pile.pop();}}
@@ -26,7 +30,12 @@ function poserInline(el,contenu){el.textContent='';var re=/<\/?(?:strong|em)>|<b
 function inlineDeNoeud(n){var out='';n.childNodes.forEach(function(ch){
   if(ch.nodeType===3){out+=echap(ch.nodeValue);}
   else if(ch.nodeType===1){var tg=ch.tagName.toLowerCase();
-    if(tg==='br'){out+='<br>';}
+    // L'image rendue en vignette rend sa balise telle que l'hôte l'a écrite : ni l'aperçu
+    // (data:) ni la pastille n'entrent jamais dans le fichier.
+    if(ch.dataset&&ch.dataset.balise){out+=ch.dataset.balise;}
+    // Une <img> nue vient d'un collage natif dans la cellule : son src d'origine, tel quel.
+    else if(tg==='img'){var s0=ch.getAttribute('src')||'';if(s0&&!/^[a-z]+:/i.test(s0)){out+='<img src="'+echapAttr(s0)+'" alt="'+echapAttr(ch.getAttribute('alt')||'')+'">';}}
+    else if(tg==='br'){out+='<br>';}
     else if(tg==='strong'||tg==='b'){out+='<strong>'+inlineDeNoeud(ch)+'</strong>';}
     else if(tg==='em'||tg==='i'){out+='<em>'+inlineDeNoeud(ch)+'</em>';}
     else{out+=inlineDeNoeud(ch);}}});return out;}
@@ -95,7 +104,7 @@ function domDeCell(c){return zone.querySelector('.cell[data-li="'+c.li+'"][data-
 function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='cell';el.dataset.li=c.li;el.dataset.ci=c.ci;
   el.dataset.r0=c.r0;el.dataset.c0=c.c0;el.dataset.rs=c.rowspan;el.dataset.cs=c.colspan;
   if(c.colspan>1)el.colSpan=c.colspan;if(c.rowspan>1)el.rowSpan=c.rowspan;
-  poserInline(el,c.contenu);
+  poserInline(el,c.contenu,c.images,c);
   if(c.align&&c.align!=='left')el.style.textAlign=c.align;
   el.addEventListener('mousedown',function(ev){onCell(ev,c);});
   el.addEventListener('focus',function(){cellActive=c;if(!avantEdition&&modele)avantEdition=clone(modele);});
@@ -104,7 +113,11 @@ function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='
     var cr={rMin:c.r0,cMin:c.c0,rMax:c.r0+c.rowspan-1,cMax:c.c0+c.colspan-1};
     var dans=selection&&cr.rMin>=selection.rMin&&cr.rMax<=selection.rMax&&cr.cMin>=selection.cMin&&cr.cMax<=selection.cMax;
     if(!dans){ancre=c;cellActive=c;selection=etendre(cr);majEditable();marquer();}
-    ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1)});});
+    // Clic droit SUR une image : ses deux gestes en tête du menu ; ailleurs dans la
+    // cellule, « Insérer une image… ».
+    var vi=vignetteSous(ev.target);
+    ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1),
+      cellule:c,image:vi?+vi.dataset.n:null});});
   el.addEventListener('input',function(){etat('');majModifie();});
   return el;}
 function colLettre(n){var s='';n=n+1;while(n>0){var r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
@@ -185,6 +198,97 @@ document.addEventListener('mousemove',function(ev){if(dragP||glisse){masquerPlus
   if(pr){var rr=pr.getBoundingClientRect();var a2=ev.clientY<rr.top+rr.height/2;plusRow.dataset.idx=a2?+pr.dataset.prow:+pr.dataset.prow+1;plusRow.style.top=((a2?rr.top:rr.bottom)-9)+'px';plusRow.style.left=(rr.left-9)+'px';plusRow.style.display='block';plusCol.style.display='none';return;}
   masquerPlus();});
 
+// ---- Images des cellules ----
+//
+// Une <img> du contenu devient une vignette non éditable qui garde sa balise d'origine
+// (data-balise), relue telle quelle par inlineDeNoeud : l'aperçu n'entre jamais dans le
+// fichier. L'aperçu voyage en data: (l'hôte le lit, lib/table-images.js), la webview
+// n'ayant aucune racine locale autorisée ; faute de fichier, un cadre le dit en toutes
+// lettres, jamais une image cassée muette. La pastille rouge suit le verdict que l'hôte a
+// calculé (disposition -> images[].sansAlternative) : elle tombe au rechargement qui suit
+// la saisie du texte alternatif.
+var APERCUS={};        // src relatif à l'article -> { etat:'ok'|'introuvable'|'indisponible', uri }
+var saisieApres=null;  // { li, ci, n } : image tout juste insérée, dont la saisie s'ouvre au rechargement
+var saisie=null;       // la boîte « Texte alternatif » ouverte
+function vignetteSous(t){if(!t||!t.classList)return null;if(t.classList.contains('cimg'))return t;return t.closest?t.closest('.cimg'):null;}
+function cadreAbsent(w,etat,src){var f=document.createElement('span');f.className='cimg-absente';f.setAttribute('role','img');
+  var msg=fmt(TXT[etat==='indisponible'?'image.indisponible':'image.introuvable'],src||'?');f.setAttribute('aria-label',msg);
+  f.appendChild(SZH.icone('attention'));var t=document.createElement('span');t.textContent=msg;f.appendChild(t);w.appendChild(f);}
+function vignetteImage(balise,info,c,n){info=info||{};
+  var w=document.createElement('span');w.className='cimg';w.contentEditable='false';
+  w.dataset.balise=balise;w.dataset.n=n;w.dataset.src=info.src||'';w.title=info.src||'';
+  var ap=APERCUS[info.src||''];
+  if(ap&&ap.etat==='ok'&&ap.uri){var img=document.createElement('img');img.src=ap.uri;img.alt=info.alt||'';
+    // Un aperçu illisible (fichier tronqué, format mal nommé) : le même cadre explicite.
+    img.addEventListener('error',function(){retirerNoeud(img);cadreAbsent(w,'indisponible',info.src);});
+    w.appendChild(img);}
+  else{cadreAbsent(w,ap?ap.etat:'introuvable',info.src);}
+  if(info.sansAlternative){var a=document.createElement('span');a.className='cimg-alerte';
+    a.title=TXT['image.altManquant']||'';a.setAttribute('role','img');a.setAttribute('aria-label',TXT['image.altManquant']||'');
+    a.appendChild(SZH.icone('attention'));w.appendChild(a);}
+  return w;}
+function imageDe(li,ci,n){var lg=dispo&&dispo.lignes[li];var c=lg&&lg.cellules[ci];return c&&c.images?c.images[n]:null;}
+// Remplacer ou insérer : l'hôte ouvre le sélecteur de fichier, copie l'image dans media/
+// sous un nom libre et répond par son src (TABLE_IMAGE_CHOISIE) ; l'opération part alors
+// d'ici, pour entrer dans l'historique comme toute autre.
+function choisirImage(action,c,n){fermerMenu();recolter();
+  api.postMessage({type:SZH.MSG.TABLE_IMAGE_CHOISIR,action:action,li:c.li,ci:c.ci,n:n||0});}
+function imageChoisie(msg){if(!msg||!msg.src||!modele)return;
+  if(msg.apercu)APERCUS[msg.src]=msg.apercu;
+  var li=+msg.li,ci=+msg.ci;
+  if(msg.action==='inserer'){var cell=dispo&&dispo.lignes[li]&&dispo.lignes[li].cellules[ci];
+    saisieApres={li:li,ci:ci,n:cell&&cell.images?cell.images.length:0};
+    op('imageInserer',{li:li,ci:ci,src:msg.src});}
+  else{op('imageRemplacer',{li:li,ci:ci,n:+msg.n||0,src:msg.src});}}
+function retirerNoeud(n){if(!n)return;if(n.remove)n.remove();else if(n.parentNode)n.parentNode.removeChild(n);}
+function fermerSaisie(){retirerNoeud(saisie);saisie=null;}
+function radioSaisie(parent,libelle){var l=document.createElement('label');l.className='szh-opt';var i=document.createElement('input');i.type='radio';i.name='role-alt-cellule';
+  l.appendChild(i);var s=document.createElement('span');s.className='txt';s.textContent=libelle||'';l.appendChild(s);parent.appendChild(l);return i;}
+// La saisie reprend les mots du gestionnaire des médias (img.role.*, img.alt) : une image
+// se décrit de la même façon, qu'elle soit dans le texte ou dans une cellule.
+function ouvrirSaisieAlt(li,ci,n){fermerMenu();fermerSaisie();var info=imageDe(li,ci,n);if(!info)return;
+  var v=document.createElement('div');v.className='szh-modale visible saisie-alt';
+  v.setAttribute('role','dialog');v.setAttribute('aria-modal','true');v.setAttribute('aria-labelledby','saisie-alt-titre');
+  var b=document.createElement('div');b.className='saisie-boite';v.appendChild(b);
+  var h=document.createElement('p');h.className='szh-section';h.id='saisie-alt-titre';h.textContent=TXT['image.saisieTitre']||'';b.appendChild(h);
+  var nom=document.createElement('p');nom.className='saisie-nom';nom.textContent=info.src;b.appendChild(nom);
+  var fs=document.createElement('fieldset');fs.className='szh-groupe';var lg=document.createElement('legend');lg.textContent=TXT['img.role.titre']||'';fs.appendChild(lg);
+  var rDecrit=radioSaisie(fs,TXT['img.role.decrit']),rDeco=radioSaisie(fs,TXT['img.role.deco']);b.appendChild(fs);
+  var ch=document.createElement('div');ch.className='szh-champ';var l=document.createElement('label');l.textContent=TXT['img.alt']||'';l.setAttribute('for','saisie-alt');
+  var i=document.createElement('input');i.type='text';i.id='saisie-alt';i.maxLength=500;i.placeholder=TXT['img.alt.indice']||'';
+  ch.appendChild(l);ch.appendChild(i);b.appendChild(ch);
+  // Le verdict en direct, à la frappe : même règle que la pastille de la grille.
+  var al=document.createElement('p');al.className='szh-notif szh-notif--danger saisie-alerte';al.appendChild(SZH.icone('attention'));
+  var alt2=document.createElement('span');alt2.textContent=TXT['image.altManquant']||'';al.appendChild(alt2);b.appendChild(al);
+  function maj(){i.disabled=rDeco.checked;al.hidden=rDeco.checked||String(i.value||'').trim()!=='';}
+  rDeco.checked=!!info.decorative;rDecrit.checked=!info.decorative;i.value=info.decorative?'':String(info.alt||'');
+  rDecrit.addEventListener('change',maj);rDeco.addEventListener('change',maj);i.addEventListener('input',maj);maj();
+  function valider(){op('imageAlt',{li:li,ci:ci,n:n,alt:String(i.value||''),decoratif:rDeco.checked});fermerSaisie();}
+  var pied=document.createElement('div');pied.className='saisie-pied';
+  pied.appendChild(bouton(TXT['image.annuler']||'',fermerSaisie));
+  pied.appendChild(bouton(TXT['image.valider']||'',valider,'szh-bouton--principal'));b.appendChild(pied);
+  v.addEventListener('keydown',function(ev){if(ev.key==='Escape'){ev.preventDefault();fermerSaisie();}
+    else if(ev.key==='Enter'&&ev.target===i){ev.preventDefault();valider();}});
+  v.addEventListener('mousedown',function(ev){if(ev.target===v)fermerSaisie();});
+  document.body.appendChild(v);saisie=v;
+  saisie.valider=valider;   // pour les tests : le geste « Valider » sans chercher le bouton
+  if(rDeco.checked)rDeco.focus();else i.focus();}
+// Le point d'entrée « aller à cette image » (item.focusImage à l'ouverture, ou FOCALISER sur
+// un éditeur déjà ouvert) : nom de fichier seul, comparé sans casse au nom du src. La cellule
+// est sélectionnée et amenée à l'écran ; sans texte alternatif, la saisie s'ouvre d'office.
+function focaliserImage(nomVise){var nom=String(nomVise||'').replace(/\\/g,'/').split('/').pop().toLowerCase();if(!nom||!dispo)return false;
+  var trouve=null;
+  dispo.lignes.some(function(lg){return lg.cellules.some(function(c){return (c.images||[]).some(function(im,k){
+    if(String(im.src||'').split('/').pop().toLowerCase()===nom){trouve={c:c,n:k,im:im};return true;}return false;});});});
+  if(!trouve)return false;
+  var c=trouve.c;ancre=c;cellActive=c;selection=rectCell(c);majEditable();marquer();
+  // Recherche par comparaison numérique plutôt que par sélecteur d'attribut : le même
+  // chemin sert au DOM des tests, où dataset n'est pas converti en chaîne.
+  var el=Array.prototype.filter.call(zone.querySelectorAll('.cell'),function(e){return +e.dataset.li===c.li&&+e.dataset.ci===c.ci;})[0]||null;
+  if(el&&el.scrollIntoView){try{el.scrollIntoView({block:'center',inline:'nearest'});}catch(e){el.scrollIntoView();}}
+  if(trouve.im.sansAlternative)ouvrirSaisieAlt(c.li,c.ci,trouve.n);
+  return true;}
+
 // ---- Menu contextuel ----
 var menu=null;
 function fermerMenu(){if(!menu)return;if(menu.parentNode)menu.parentNode.removeChild(menu);menu=null;document.removeEventListener('mousedown',surMenuMousedown,true);document.removeEventListener('keydown',surMenuKey,true);window.removeEventListener('blur',fermerMenu);}
@@ -198,6 +302,14 @@ function texteDansPlage(rMin,cMin,rMax,cMax){recolter();if(!occ2)return false;va
 function supprimer(nom,args,rMin,cMin,rMax,cMax){op(nom,args,texteDansPlage(rMin,cMin,rMax,cMax)?{confirmer:true}:null);}
 function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.createElement('div');m.className='ctxmenu';m.setAttribute('role','menu');
   m.addEventListener('contextmenu',function(e){e.preventDefault();});
+  // Images : sur une image, décrire ou remplacer celle-là ; ailleurs dans une cellule
+  // seule, en insérer une (ajoutée en fin de cellule, saisie du texte alternatif aussitôt).
+  if(ctx.cellule){var ce=ctx.cellule;
+    if(ctx.image!==null&&ctx.image!==undefined){var nI=ctx.image;
+      m.appendChild(itemMenu(TXT['image.menuAlt'],function(){recolter();ouvrirSaisieAlt(ce.li,ce.ci,nI);}));
+      m.appendChild(itemMenu(TXT['image.menuRemplacer'],function(){choisirImage('remplacer',ce,nI);}));
+      sepMenu(m);}
+    else if(!plage()){m.appendChild(itemMenu(TXT['image.menuInserer'],function(){choisirImage('inserer',ce,0);}));sepMenu(m);}}
   if(ctx.lignes){m.appendChild(itemMenu(TXT['ctx.ligneAvant'],function(){op('ajouterLigne',{pos:ctx.rMin});}));
     m.appendChild(itemMenu(TXT['ctx.ligneApres'],function(){op('ajouterLigne',{pos:ctx.rMax+1});}));
     m.appendChild(itemMenu(TXT['ctx.ligneSuppr'],function(){supprimer('supprimerLigne',{rMin:ctx.rMin,rMax:ctx.rMax},ctx.rMin,0,ctx.rMax,dispo.nbColonnes-1);}));}
@@ -279,7 +391,7 @@ function construireBarre(){barre.textContent='';barre.className='szh-barre';
 //
 // La légende seule est de l'en-ligne dans le modèle : le champ en montre le texte à plat,
 // et le retoucher remet la légende à plat.
-function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<\/?(?:strong|em)>/g,''));}
+function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<img\b[^>]*>/g,'').replace(/<\/?(?:strong|em)>/g,''));}
 function champTexte(cle,large,parent){
   var d=document.createElement('div');d.className='szh-champ'+(large?' large':'');
   var l=document.createElement('label');l.textContent=TXT[cle]||'';l.setAttribute('for','champ-'+cle);
@@ -500,13 +612,20 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
   recu=true;
   if(msg.type===SZH.MSG.CHARGER){
     modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined){accent=msg.accent;SZH.poserAccent(accent);}if(msg.teintes)teintes=msg.teintes;if(msg.presets)PRESETS=msg.presets;
+    // Les aperçus n'arrivent qu'avec un chargement depuis le disque ; une opération ou une
+    // annulation ne ramène que des src déjà connus.
+    if(msg.apercus)APERCUS=msg.apercus;
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       construireBarre();}
     // Un « charger » sans i18n est le résultat d'une opération ou d'une annulation :
     // ⚠ ne pas réinitialiser l'historique ici, sans quoi « Annuler » reste sans effet.
     // Les piles ne sont touchées que par op et commitTexte.
-    selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();}
+    selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();
+    if(saisieApres){var sa=saisieApres;saisieApres=null;if(imageDe(sa.li,sa.ci,sa.n))ouvrirSaisieAlt(sa.li,sa.ci,sa.n);}
+    else if(msg.focusImage){focaliserImage(msg.focusImage);}}
+  else if(msg.type===SZH.MSG.TABLE_IMAGE_CHOISIE){imageChoisie(msg);}
+  else if(msg.type===SZH.MSG.FOCALISER){focaliserImage(msg.focusImage);}
   else if(msg.type===SZH.MSG.ENREGISTRE){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
     etat(msg.auto?'':(TXT.enregistre||''));majModifie();}
   else if(msg.type===SZH.MSG.ERREUR){autoEnr.confirme();etat('⚠ '+msg.message);}

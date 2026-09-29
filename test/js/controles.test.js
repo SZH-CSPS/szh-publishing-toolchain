@@ -541,9 +541,14 @@ test('hôte : une image sans texte alternatif ouvre le formulaire des médias de
   assert.ok(carte, 'la carte de l’image sans alt n’apparaît pas : '
     + JSON.stringify(charge.lignes.map((l) => l.titre)));
   assert.strictEqual(carte.meta, 'Figures', 'la source « numerotation » ne montre pas son libellé');
-  // Le gabarit : l'intitule du defaut, puis l'objet. Le geste est passe dans le bouton.
+  // Le gabarit en quatre étages (29.09.2026) : le compte dans le titre, l'image nommée et
+  // cliquable, une phrase d'action, le bouton — une seule image, il y mène tout droit.
   assert.strictEqual(carte.messages.length, 1);
-  assert.match(carte.messages[0].texte, /^Figure sans texte alternatif.*fig-1.png$/);
+  assert.strictEqual(carte.messages[0].titre, '1 image sans description');
+  assert.deepStrictEqual(carte.messages[0].elements.map((e) => [e.libelle, e.id]),
+    [['fig-1.png', 'medias:fig-1.png']], 'l’image en cause n’est pas nommée par son lien');
+  assert.match(carte.messages[0].consigne, /Image purement décorative/);
+  assert.ok(carte.messages[0].infobulle, 'l’explication s’est perdue au lieu de passer en infobulle');
   assert.ok(carte.messages[0].action && carte.messages[0].action.id === 'medias:fig-1.png',
     'le geste « Décrire les images » manque au bout de la phrase : '
       + JSON.stringify(carte.messages[0].action));
@@ -711,7 +716,7 @@ test('vue : chaque constat porte le bouton de sa destination, et l’endroit exa
   await p._recepteur({ type: 'pret' });
   const lignes = p.messages.filter((m) => m.type === 'valeurs').pop().lignes;
 
-  const muette = parTexte(lignes, /alternatif/);
+  const muette = parTexte(lignes, /sans description/);
   assert.ok(muette, 'l’image muette n’est pas dans la liste');
   assert.ok(muette.action, 'un geste, au bout de la phrase');
   // L'identifiant porte la destination ET l'objet : la page le renvoie tel quel, l'hôte n'a
@@ -743,7 +748,7 @@ test('vue : le bouton ouvre le formulaire sur l’image en cause', async () => {
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
   const defaut = parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes,
-    /alternatif/);
+    /sans description/);
 
   await p._recepteur({ type: 'action', cle: defaut.carte.cle, id: defaut.action.id });
   const medias = HOTE.panneauDeType('szhMedias');
@@ -926,7 +931,7 @@ test('vue : la couleur suit la barrière, et la barrière suit le réglage', asy
   await HOTE.finirTache('Aperçu / Export PDF', 2);
   const muette = () => {
     const p = HOTE.panneauDeType('szhVueControles');
-    return parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /alternatif/);
+    return parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /sans description/);
   };
   await HOTE.executer('szh.vueControles');
   const p = HOTE.panneauDeType('szhVueControles');
@@ -951,15 +956,21 @@ test('vue : la phrase nomme le défaut et son objet, et s’arrête là', async 
   await HOTE.executer('szh.vueControles');
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
-  const textes = defauts(p.messages.filter((m) => m.type === 'valeurs').pop().lignes)
-    .map((m) => m.texte);
+  const messages = defauts(p.messages.filter((m) => m.type === 'valeurs').pop().lignes);
+  const titres = messages.map((m) => m.titre);
 
-  assert.ok(textes.some((t) => /^Figure sans texte alternatif\b.*fig-01\.png$/.test(t)),
-    'le gabarit « {défaut} : {objet} » n’est pas appliqué : ' + textes.join(' | '));
-  // Le geste est dans le bouton : plus une phrase ne dit où cliquer.
-  for (const t of textes) {
-    assert.ok(!/Ouvrez « |Ouvrez le |puis recompilez|Cliquez/.test(t),
-      'une phrase explique encore où cliquer : ' + t);
+  assert.ok(titres.some((t) => /^Champ vide\b.*title$/.test(t)),
+    'le gabarit « {défaut} : {objet} » n’est pas appliqué : ' + titres.join(' | '));
+  // Une carte regroupée nomme ses objets par leurs liens, sous un titre qui les compte.
+  const image = messages.find((m) => /image sans description/.test(m.titre));
+  assert.ok(image && image.elements.some((e) => e.libelle === 'fig-01.png'),
+    'l’image en cause n’est pas nommée : ' + JSON.stringify(image));
+  // Le titre ne dit jamais où cliquer ; le geste tient en UNE phrase, la consigne.
+  for (const m of messages) {
+    assert.ok(!/Ouvrez « |Ouvrez le |puis recompilez|Cliquez/.test(m.titre),
+      'un titre explique encore où cliquer : ' + m.titre);
+    assert.ok((String(m.consigne || '').match(/[.!?](\s|$)/g) || []).length <= 1,
+      'la consigne fait plus d’une phrase : ' + m.consigne);
   }
 
   poserJournal(JOURNAL_CITATIONS);
@@ -1109,4 +1120,122 @@ test('page : la croix retire le message et prévient l’hôte, et elle seule', 
   const dernier = page.messages[page.messages.length - 1];
   assert.strictEqual(dernier.type, 'constat-fermer', 'l’hôte n’est pas prévenu');
   assert.strictEqual(dernier.empreinte, 'e-1', 'l’hôte ne sait pas quoi retenir');
+});
+
+// Le message en quatre étages (29.09.2026) : titre, objets cliquables, une phrase, un
+// bouton — et l'explication derrière un (i) qui se déplie au clavier comme à la souris.
+test('page : un défaut se lit en quatre étages, et son pourquoi se déplie', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'vue-ensemble', cssPartage: ['_design.css', '_liste.css'],
+    jsPartage: ['_messages.js']
+  });
+  page.envoyer({
+    type: 'valeurs', titre: 'À corriger', i18n: { ouvrir: 'Ouvrir', listeVide: 'Rien.' },
+    boutons: [],
+    lignes: [{ cle: '01-essai', groupe: 'Ce qui empêche de publier', titre: 'Article « 01-essai »',
+      meta: 'Figures', pastilles: [], ouvrir: false, actions: [],
+      messages: [{ ton: 'danger', texte: '2 images sans description Ajoutez…',
+        titre: '2 images sans description',
+        elements: [{ libelle: 'fig-01.png', id: 'medias:fig-01.png', tip: 't' },
+                   { libelle: 'fig-02.png', id: 'medias:fig-02.png', tip: 't' }],
+        consigne: 'Ajoutez une description dans Médias de l’article.',
+        infobulle: 'Un lecteur d’écran annoncerait « image » sans rien pouvoir en dire.',
+        pourquoi: 'Pourquoi ?',
+        action: { id: 'medias', libelle: 'Ouvrir Médias de l’article', icone: 'camera', tip: 'x' },
+        fermable: false, empreinte: '' }] }]
+  });
+  const textes = page.textes().join(' | ');
+  for (const attendu of ['2 images sans description', 'fig-01.png', 'fig-02.png',
+    'Ajoutez une description dans Médias de l’article.', 'Ouvrir Médias de l’article']) {
+    assert.ok(textes.indexOf(attendu) !== -1, 'étage manquant : ' + attendu + ' — ' + textes);
+  }
+  assert.strictEqual(page.compter('.szh-lien-objet'), 2, 'un lien par objet en cause');
+  const racine = page.conteneur();
+  const zone = racine.querySelectorAll('.szh-msg-infobulle')[0];
+  const pourquoi = racine.querySelectorAll('.szh-msg-pourquoi')[0];
+  assert.ok(zone && zone.hidden, 'l’explication est dans la phrase au lieu d’être repliée');
+  assert.strictEqual(pourquoi.getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(pourquoi.title, 'Un lecteur d’écran annoncerait « image » sans rien pouvoir en dire.',
+    'le survol ne montre pas l’explication');
+  pourquoi.dispatchEvent({ type: 'click' });
+  assert.ok(!zone.hidden, 'le (i) ne déplie pas l’explication');
+  assert.strictEqual(pourquoi.getAttribute('aria-expanded'), 'true');
+  // Le deuxième objet mène à SA carte du formulaire, le bouton au formulaire entier.
+  racine.querySelectorAll('.szh-lien-objet')[1].dispatchEvent({ type: 'click' });
+  let dernier = page.messages[page.messages.length - 1];
+  assert.deepStrictEqual([dernier.type, dernier.id, dernier.cle], ['action', 'medias:fig-02.png', '01-essai']);
+  racine.querySelectorAll('.szh-msg-geste button')[0].dispatchEvent({ type: 'click' });
+  dernier = page.messages[page.messages.length - 1];
+  assert.strictEqual(dernier.id, 'medias');
+});
+
+// Le voile d'une compilation en cours (extension.js, debuterAnalyse) : la carte de
+// l'article compilé si on le connaît, toute la liste sinon, un bandeau si l'article n'a
+// pas de carte — et plus rien une fois levé, même après un nouveau rendu.
+test('page : le voile « Analyse en cours… » se pose sur la bonne cible, puis s’en va', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'vue-ensemble', cssPartage: ['_design.css', '_liste.css'],
+    jsPartage: ['_messages.js']
+  });
+  const carte = (cle, groupe) => ({ cle: cle, groupe: groupe, titre: 'Article « ' + cle + ' »',
+    meta: '', messages: [{ ton: 'attention', texte: 'Un défaut.', action: null }],
+    pastilles: [], ouvrir: false, actions: [] });
+  const lignes = [carte('01-a', 'Ce qui empêche de publier'), carte('02-b', 'Ce qui empêche de publier'),
+    carte('01-a', 'À regarder avant de publier')];
+  const voile = (cle) => ({ actif: true, cle: cle, texte: 'Analyse en cours…' });
+  const liste = page.conteneur();
+  const cartesVoilees = () => liste.querySelectorAll('.szh-carte.szh-analyse-cible')
+    .map((c) => c.dataset.cle);
+
+  // Article connu : ses deux cartes, et elles seules.
+  page.envoyer({ type: 'valeurs', titre: 'À corriger', i18n: {}, boutons: [], lignes: lignes,
+                 analyse: voile('01-a') });
+  assert.deepStrictEqual(cartesVoilees(), ['01-a', '01-a'], 'le voile ne vise pas la carte compilée');
+  assert.strictEqual(page.compter('.szh-analyse-voile'), 2);
+  assert.strictEqual(page.compter('.szh-analyse-roue'), 2, 'pas d’animation d’attente');
+  assert.ok(page.textes().indexOf('Analyse en cours…') !== -1, 'le texte du voile manque');
+  assert.ok(!liste.classList.contains('szh-analyse-cible'), 'toute la liste est voilée à tort');
+
+  // Deux articles qui se recompilent (`cles`, par un message à part sans nouveau rendu) :
+  // leurs cartes, jamais la liste entière.
+  page.envoyer({ type: 'analyse', actif: true, cle: '01-a', cles: ['01-a', '02-b'], texte: 'Analyse läuft…' });
+  assert.deepStrictEqual(cartesVoilees().sort(), ['01-a', '01-a', '02-b']);
+  assert.ok(!liste.classList.contains('szh-analyse-cible'), 'toute la liste est voilée à tort');
+  assert.ok(page.textes().indexOf('Analyse läuft…') !== -1, 'le texte allemand ne passe pas');
+
+  // Article inconnu : rien d'assombri, le bandeau seul en tête (demande de Robin : jamais
+  // toute la liste figée).
+  page.envoyer({ type: 'analyse', actif: true, cle: '', cles: [], texte: 'Analyse en cours…' });
+  assert.ok(!liste.classList.contains('szh-analyse-cible'), 'la liste entière est voilée');
+  assert.deepStrictEqual(cartesVoilees(), [], 'un voile de carte est resté');
+  assert.strictEqual(page.compter('.szh-analyse-voile--bandeau'), 1, 'aucun bandeau sans article connu');
+
+  // Un article sans carte : un bandeau en tête, rien d'assombri.
+  page.envoyer({ type: 'analyse', actif: true, cle: '03-c', texte: 'Analyse en cours…' });
+  assert.ok(!liste.classList.contains('szh-analyse-cible'));
+  assert.strictEqual(page.compter('.szh-analyse-voile--bandeau'), 1, 'aucun bandeau pour l’article sans carte');
+  assert.ok(liste.firstChild.classList.contains('szh-analyse-voile--bandeau'), 'le bandeau n’est pas en tête');
+
+  // Levé : plus aucune trace, et un nouveau rendu ne le ressuscite pas.
+  page.envoyer({ type: 'analyse', actif: false, cle: '', texte: '' });
+  assert.strictEqual(page.compter('.szh-analyse-voile'), 0, 'le voile reste après sa levée');
+  assert.strictEqual(page.compter('.szh-analyse-cible'), 0);
+  page.envoyer({ type: 'valeurs', titre: 'À corriger', i18n: {}, boutons: [], lignes: lignes,
+                 analyse: { actif: false, cle: '', texte: '' } });
+  assert.strictEqual(page.compter('.szh-analyse-voile'), 0, 'un rendu ordinaire repose un voile');
+  // Les vues sans voile (« Word en attente ») n'envoient pas le champ.
+  page.envoyer({ type: 'valeurs', titre: 'Word', i18n: {}, boutons: [], lignes: lignes });
+  assert.strictEqual(page.compter('.szh-analyse-voile'), 0);
+  assert.ok(!page.messages.some((m) => /inconnu/.test(String(m.type))));
+});
+
+test('page : le voile suit le thème et respecte le mouvement réduit', () => {
+  const css = fs.readFileSync(path.join(COCKPIT, 'media', 'vue-ensemble.css'), 'utf8');
+  const bloc = css.slice(css.indexOf('.szh-analyse-cible'));
+  assert.doesNotMatch(bloc.replace(/var\([^)]*\)/g, ''), /#[0-9a-fA-F]{3,8}\b/,
+    'une couleur en dur ne suivrait pas le thème clair ou sombre');
+  assert.match(css, /pointer-events:\s*none/, 'on peut encore cliquer sous le voile');
+  assert.match(css, /filter:\s*blur\(1\.5px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.szh-analyse-roue/,
+    'la roue tourne même quand le mouvement réduit est demandé');
 });

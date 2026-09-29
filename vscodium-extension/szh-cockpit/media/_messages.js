@@ -69,6 +69,8 @@ SZH.MSG = Object.freeze({
   // du message, l'hôte la retient et ne le renvoie plus tant que sa phrase ne change pas.
   OUVRIR: 'ouvrir', ACTION: 'action', TACHE: 'tache', SANSDOI: 'sansdoi',
   CONSTAT_FERMER: 'constat-fermer',
+  // ANALYSE : le voile « Analyse en cours… » de « À corriger » ({ actif, cle, texte }).
+  ANALYSE: 'analyse',
   TACHES_ENREGISTRER: 'taches-enregistrer', TACHES: 'taches',
   COMMANDE: 'commande', AVANCEMENT: 'avancement',
 
@@ -97,6 +99,9 @@ SZH.MSG = Object.freeze({
   // Éditeur de tableau
   OPERATION: 'operation', APERCU_OUVRIR: 'apercu-ouvrir', APERCU_FERMER: 'apercu-fermer',
   RESTAURER: 'restaurer',
+  // Image d'une cellule : la page demande le sélecteur de fichier ({ action: 'inserer' |
+  // 'remplacer', li, ci, n }), l'hôte répond par le src écrit dans media/ et son aperçu.
+  TABLE_IMAGE_CHOISIR: 'table-image-choisir', TABLE_IMAGE_CHOISIE: 'table-image-choisie',
 
   // Aperçu HTML
   BASCULER: 'basculer', REVELE: 'revele', SCROLL_SOURCE: 'scrollSource',

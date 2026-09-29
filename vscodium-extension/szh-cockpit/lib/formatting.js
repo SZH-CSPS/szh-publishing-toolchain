@@ -21,6 +21,8 @@ const { sousGarde } = require('./interaction');
 // :::, squelettes de tableau, noms de fichiers sûrs, et la palette. Réexportée plus bas
 // pour qu'aucun appelant actuel (extension.js, les tests) n'ait à changer d'import.
 const formattingPur = require('./formatting-pur');
+// lib/medias.js ne référence pas vscode non plus ; il requiert formatting-pur, pas ce module.
+const { nomImageAssaini } = require('./medias');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
@@ -147,7 +149,14 @@ async function fmtFigure() {
   const source = choix[0].fsPath;
   const mediaDir = path.join(path.dirname(doc.uri.fsPath), 'media');
   try { fs.mkdirSync(mediaDir, { recursive: true }); } catch (e) { /* existe déjà */ }
-  const nom = nomMediaUnique(mediaDir, path.basename(source));
+  // Nom assaini (minuscules, sans espace ni accent) avant le suffixe de nom libre : le
+  // Makefile liste media/ par $(wildcard …) dans les prérequis du PDF, et make coupe aux
+  // espaces — « Mon image été.png » y devient deux fichiers inexistants, « No rule to make
+  // target », et l'article ne compile plus (mesuré le 29.09.2026 dans la WSL). Même
+  // assainissement que l'éditeur de tableau (lib/table-images.js) et l'import des médias.
+  const nomSur = nomImageAssaini(path.basename(source));
+  if (!nomSur) { vscode.window.showErrorMessage(T('importv.err.format')); return; }
+  const nom = nomMediaUnique(mediaDir, nomSur);
   try { fs.copyFileSync(source, path.join(mediaDir, nom)); }
   catch (e) { vscode.window.showErrorMessage(T('err.copie', [path.basename(source), e.message])); return; }
   // Avant l'insertion : la conversion réécrit le fichier sous le même nom.
@@ -346,15 +355,6 @@ async function fmtNoteBasPage() {
   editeur.selection = new vscode.Selection(pos, pos);
 }
 
-async function fmtCollerTableau() {
-  const editeur = vscode.window.activeTextEditor;
-  if (!editeur) { return; }
-  const doc = editeur.document;
-  const racine = revue.racine();
-  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
-  if (!slug) {
-    vscode.window.showInformationMessage(T('fmt.coller.horsarticle'));
-    return;
 // Demande l'adresse, puis fait de la sélection le texte du lien : [sélection](adresse).
 // Sans sélection, l'adresse telle qu'elle a été tapée sert de texte, et elle reste
 // sélectionnée après l'insertion — on peut la garder ou taper le texte voulu par-dessus.
@@ -394,6 +394,15 @@ async function fmtLien() {
     new vscode.Position(sel.start.line, col + lien.length - url.length - 4));
 }
 
+async function fmtCollerTableau() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const racine = revue.racine();
+  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
+  if (!slug) {
+    vscode.window.showInformationMessage(T('fmt.coller.horsarticle'));
+    return;
   }
   const brut = await lireHtmlPressePapiers();
   let modele = brut ? tableauDepuisHtmlBureautique(brut) : null;
@@ -544,6 +553,7 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
   c('szh.fmt.figure', () => fmtFigure());
   c('szh.fmt.noteBasPage', () => fmtNoteBasPage());
+  c('szh.fmt.lien', () => fmtLien());
   c('szh.fmt.tableau', () => fmtTableau());
   c('szh.fmt.collerTableau', () => fmtCollerTableau());
   c('szh.fmt.sautPage', () => fmtSautPage());
@@ -553,7 +563,6 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.qrLink', () => fmtQrLink());
   c('szh.lierReference', () => fmtLierReference());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
-  c('szh.fmt.lien', () => fmtLien());
 }
 
 module.exports = {

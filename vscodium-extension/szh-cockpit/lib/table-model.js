@@ -14,10 +14,78 @@ function lireAttributsHtml(source) {
   return attrs;
 }
 
+// ---- Images dans les cellules ----
+//
+// L'import Word (pipeline/docx-tables.py) pose <img src="media/…" alt="…" width="…"> dans
+// une cellule — une photo d'auteur·e dans un bloc de présentation, typiquement. Le src est
+// relatif au dossier de l'ARTICLE, pas à tables/ : szh-tabelle-inclure.lua réinjecte le
+// fichier dans l'article, avec ce dossier pour répertoire courant. Il n'est donc jamais
+// réécrit ici.
+//
+// L'image traverse le modèle sous la forme d'une balise canonique, dans le contenu de la
+// cellule : src d'abord, alt ensuite S'IL EXISTE — un alt absent et un alt vide ne sont
+// pas le même état —, puis les autres attributs dans l'ordre du fichier. Seuls les
+// gestionnaires d'événements (on*) et un src en javascript:/vbscript: sont retirés.
+// Idempotent, comme le reste de canoniserInline : un tableau relu puis réécrit sans
+// changement garde ses images à l'octet près.
+//
+// Image décorative : alt="" ET role="presentation". Un alt vide seul ne dit rien — l'import
+// l'écrit pour toute image dont le Word n'avait pas de description —, c'est le rôle qui
+// porte la décision, comme le choix « Image purement décorative » du gestionnaire des
+// médias.
+function srcImageSur(src) { return !/^\s*(?:javascript|vbscript)\s*:/i.test(String(src || '')); }
+
+// '<img …>' -> { attr: valeur décodée }, dans l'ordre du fichier.
+function lireImage(balise) {
+  const corps = String(balise || '').replace(/^<img\b/i, '').replace(/\/?\s*>$/, '');
+  const brut = lireAttributsHtml(corps);
+  const attrs = {};
+  Object.keys(brut).forEach((k) => { attrs[k] = decoderEntites(brut[k]); });
+  return attrs;
+}
+
+// { attr: valeur } -> balise canonique. Un nom d'attribut hors de la forme usuelle est
+// jeté plutôt que recopié : il ne sortirait pas intact de lireAttributsHtml au tour suivant.
+function baliseImage(attrs) {
+  const a = attrs || {};
+  const src = srcImageSur(a.src) ? String(a.src === undefined ? '' : a.src) : '';
+  let t = '<img src="' + echapAttribut(src) + '"';
+  if (a.alt !== undefined && a.alt !== null) { t += ' alt="' + echapAttribut(a.alt) + '"'; }
+  Object.keys(a).forEach((k) => {
+    if (k === 'src' || k === 'alt' || /^on/i.test(k) || !/^[a-z][-a-z0-9_:.]*$/.test(k)) { return; }
+    if (a[k] === undefined || a[k] === null) { return; }
+    t += ' ' + k + '="' + echapAttribut(a[k]) + '"';
+  });
+  return t + '>';
+}
+
+function estDecorative(attrs) {
+  return /^(presentation|none)$/i.test(String((attrs && attrs.role) || '').trim());
+}
+
+// Ni texte alternatif, ni décision « décorative » : l'image serait muette pour un lecteur
+// d'écran sans que personne l'ait voulu. Même règle que la pastille de media/table-editor.js.
+function imageSansAlternative(attrs) {
+  return !estDecorative(attrs) && String((attrs && attrs.alt) || '').trim() === '';
+}
+
+// Les images d'un contenu de cellule canonique, dans l'ordre : [{ debut, fin, attrs }].
+function imagesDuContenu(contenu) {
+  const s = String(contenu === undefined || contenu === null ? '' : contenu);
+  const res = [];
+  const re = /<img\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    res.push({ debut: m.index, fin: re.lastIndex, attrs: lireImage(m[0]) });
+  }
+  return res;
+}
+
 // Ne garde que <strong>, <em>, <br> et le texte déjà échappé ; <b> et <i> sont
 // normalisés, tout autre balisage retiré en conservant son texte. Idempotent, ce qui
-// rend l'aller-retour stable.
-function canoniserInline(contenu) {
+// rend l'aller-retour stable. `avecImages` : le contenu d'une cellule, où <img> est
+// gardée sous sa forme canonique (voir plus haut) ; la légende, elle, n'en admet pas.
+function canoniserInline(contenu, avecImages) {
   const s = String(contenu === undefined || contenu === null ? '' : contenu);
   let out = '';
   const re = /<[^>]*>/g;
@@ -26,7 +94,8 @@ function canoniserInline(contenu) {
     out += s.slice(dernier, m.index);
     dernier = re.lastIndex;
     const t = m[0].toLowerCase();
-    if (/^<br\b[^>]*\/?>$/.test(t)) { out += '<br>'; }
+    if (avecImages && /^<img\b/.test(t)) { out += baliseImage(lireImage(m[0])); }
+    else if (/^<br\b[^>]*\/?>$/.test(t)) { out += '<br>'; }
     else if (/^<(strong|b)\b[^>]*>$/.test(t)) { out += '<strong>'; }
     else if (/^<\/(strong|b)\s*>$/.test(t)) { out += '</strong>'; }
     else if (/^<(em|i)\b[^>]*>$/.test(t)) { out += '<em>'; }
@@ -50,7 +119,7 @@ function extraireCellules(interieur) {
         const th = courant.tag === 'th';
         const sc = courant.attrs.scope;
         cellules.push({
-          contenu: canoniserInline(String(interieur).slice(debut, m.index)),
+          contenu: canoniserInline(String(interieur).slice(debut, m.index), true),
           colspan: Math.max(1, parseInt(courant.attrs.colspan, 10) || 1),
           rowspan: Math.max(1, parseInt(courant.attrs.rowspan, 10) || 1),
           th: th,
@@ -303,7 +372,7 @@ function normaliserModele(modele) {
     cellules: ((lg && lg.cellules) || []).map((c) => {
       const th = !!(c && c.th);
       return {
-        contenu: canoniserInline(c && c.contenu),
+        contenu: canoniserInline(c && c.contenu, true),
         colspan: Math.max(1, parseInt(c && c.colspan, 10) || 1),
         rowspan: Math.max(1, parseInt(c && c.rowspan, 10) || 1),
         th: th,
@@ -569,7 +638,8 @@ function disposition(modele) {
         li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
         colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
         th: cell.th, scope: cell.scope, section: !!cell.section,
-        align: cell.align || 'left', contenu: cell.contenu
+        align: cell.align || 'left', contenu: cell.contenu,
+        images: imagesPourAffichage(cell.contenu)
       }))
     }))
   };
@@ -684,7 +754,7 @@ function viderCellules(modele, rMin, cMin, rMax, cMax, mode) {
       if (vus.has(clef)) { continue; }
       vus.add(clef);
       const cell = m.lignes[ref.li].cellules[ref.ci];
-      if (mode === 'forme') { cell.contenu = canoniserInline(String(cell.contenu).replace(/<\/?(strong|em)\b[^>]*>/gi, '')); }
+      if (mode === 'forme') { cell.contenu = canoniserInline(String(cell.contenu).replace(/<\/?(strong|em)\b[^>]*>/gi, ''), true); }
       else { cell.contenu = ''; }
     }
   }
@@ -832,6 +902,17 @@ function nettoyerHtmlBureautique(html) {
     if (!tete) { continue; }                                      // <! … > résiduel : jeté
     const nom = tete[2].toLowerCase();
     if (nom.indexOf(':') !== -1) { continue; }                    // <o:p>, <w:sdt>, <v:shape>
+    // Une image copiée d'une cellule de l'éditeur (src relatif à l'article, media/…)
+    // traverse le collage. Celle de Word ou d'Excel pointe un fichier temporaire du poste
+    // (file:///…/clip_image001.png) qui n'existera plus demain : jetée, comme avant.
+    if (nom === 'img' && tete[1] !== '/') {
+      const im = lireImage(m[0]);
+      const src = String(im.src || '');
+      if (src !== '' && !/[:\\]/.test(src) && src[0] !== '/' && src.split('/').indexOf('..') === -1) {
+        out += baliseImage(im);
+      }
+      continue;
+    }
     if (!BALISES_GARDEES[nom]) { continue; }
     if (tete[1] === '/') { out += '</' + nom + '>'; continue; }
     if (nom === 'td' || nom === 'th' || nom === 'table') {
@@ -1059,7 +1140,73 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     else if (bools.indexOf(a.champ) !== -1) { modele.attrs[a.champ] = vrai(a.valeur); }
     return finaliserModele(modele);
   }
+  // ---- Images d'une cellule ----
+  // li, ci : indices modèle de la cellule ; n : rang de l'image dans la cellule. Le fichier
+  // d'image, lui, est choisi et copié par l'hôte (lib/table-images.js) : l'opération ne
+  // reçoit que le src relatif à l'article qu'il a écrit.
+  if (nom === 'imageInserer' || nom === 'imageRemplacer' || nom === 'imageAlt') {
+    const lg = modele.lignes[n(a.li)];
+    const cell = lg && lg.cellules[n(a.ci)];
+    if (!cell) { return finaliserModele(modele); }
+    if (nom === 'imageInserer') {
+      const src = String(a.src || '');
+      if (src === '' || !srcImageSur(src)) { return finaliserModele(modele); }
+      // alt="" et pas de rôle : ni décrite ni décorative, donc signalée tant que la
+      // saisie, ouverte aussitôt par la webview, n'a pas tranché.
+      const balise = baliseImage({ src: src, alt: '' });
+      cell.contenu = cell.contenu === '' ? balise : cell.contenu + '<br>' + balise;
+      return finaliserModele(modele);
+    }
+    const img = imagesDuContenu(cell.contenu)[n(a.n)];
+    if (!img) { return finaliserModele(modele); }
+    const attrs = Object.assign({}, img.attrs);
+    if (nom === 'imageRemplacer') {
+      const src = String(a.src || '');
+      if (src === '' || !srcImageSur(src)) { return finaliserModele(modele); }
+      attrs.src = src;
+      // La largeur est un choix de mise en page (celle du Word) et reste ; une hauteur
+      // fixée déformerait une image d'autres proportions.
+      delete attrs.height;
+    } else if (vrai(a.decoratif)) {
+      attrs.alt = '';
+      attrs.role = 'presentation';
+    } else {
+      if (estDecorative(attrs)) { delete attrs.role; }
+      const texte = normaliserTexteAttribut(a.alt);
+      // Décrite sans texte : l'alt reste dans l'état où il était (vide ou absent) — la
+      // pastille continue de le signaler.
+      if (texte !== '' || attrs.alt !== undefined) { attrs.alt = texte; }
+    }
+    cell.contenu = cell.contenu.slice(0, img.debut) + baliseImage(attrs) + cell.contenu.slice(img.fin);
+    return finaliserModele(modele);
+  }
   return finaliserModele(modele);
+}
+
+// Ce que la webview affiche d'une image : son src (relatif à l'article), son texte
+// alternatif, son rôle, et le verdict de la pastille — calculé ici, une seule fois, pour
+// que la grille et le fichier ne divergent jamais.
+function imagesPourAffichage(contenu) {
+  return imagesDuContenu(contenu).map((im) => ({
+    src: String(im.attrs.src || ''),
+    alt: im.attrs.alt === undefined ? '' : String(im.attrs.alt),
+    altPresent: im.attrs.alt !== undefined,
+    decorative: estDecorative(im.attrs),
+    sansAlternative: imageSansAlternative(im.attrs)
+  }));
+}
+
+// Tous les src d'images d'un modèle, sans doublon, dans l'ordre de la grille.
+function srcImagesModele(modele) {
+  const vus = new Set();
+  const res = [];
+  ((modele && modele.lignes) || []).forEach((lg) => ((lg && lg.cellules) || []).forEach((c) => {
+    imagesDuContenu(c && c.contenu).forEach((im) => {
+      const src = String(im.attrs.src || '');
+      if (src !== '' && !vus.has(src)) { vus.add(src); res.push(src); }
+    });
+  }));
+  return res;
 }
 
 module.exports = {
@@ -1074,5 +1221,7 @@ module.exports = {
   tableauDepuisTsv, collerDans, appliquerOperationTable,
   fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule,
   ligneToutGras, hauteurEnteteGras, fusionFranchitEntete, tableauDepuisHtmlBureautique,
-  PRESETS_TABLE, PRESETS_ORDRE
+  PRESETS_TABLE, PRESETS_ORDRE,
+  lireImage, baliseImage, estDecorative, imageSansAlternative, imagesDuContenu,
+  imagesPourAffichage, srcImagesModele
 };

@@ -109,6 +109,34 @@ test('szh.fmt.figure : copie l’image choisie dans media/, insère le lien, ouv
     assert.deepStrictEqual(HOTE.erreurs, []);
   });
 
+// Un nom avec espaces et accents cassait le Makefile : les prérequis du PDF listent media/
+// par $(wildcard …), make coupe aux espaces, « No rule to make target » (mesuré le
+// 29.09.2026 dans la WSL). La copie prend donc le nom assaini de nomImageAssaini, puis le
+// suffixe de nom libre si ce nom est déjà pris.
+test('szh.fmt.figure : un nom avec espaces et accents est copié sous un nom assaini, sans écraser',
+  async () => {
+    HOTE.erreurs.length = 0;
+    const article = path.join(REVUE, 'articles', '01-essai', '01-essai.md');
+    const mediaDir = path.join(REVUE, 'articles', '01-essai', 'media');
+    const source = path.join(REVUE, 'Mon image été (2).PNG');
+    fs.writeFileSync(source, Buffer.from([1, 2, 3, 4]));
+
+    for (const attendu of ['mon-image-ete-2.png', 'mon-image-ete-2-1.png']) {
+      const ed = fauxEditeur(article);
+      HOTE.stub.window.activeTextEditor = ed;
+      HOTE.repondreOuverture([{ fsPath: source }]);
+      await HOTE.executer('szh.fmt.figure');
+      assert.ok(fs.existsSync(path.join(mediaDir, attendu)),
+        attendu + ' absent de media/ : ' + fs.readdirSync(mediaDir).join(', '));
+      assert.strictEqual(ed._info.remplacements[0],
+        '![' + T('fmt.figure.legende') + '](media/' + attendu + ')');
+    }
+    const noms = fs.readdirSync(mediaDir);
+    assert.deepStrictEqual(noms.filter((n) => /\s/.test(n)), [],
+      'un nom avec espace est entré dans media/ : ' + noms.join(', '));
+    assert.deepStrictEqual(HOTE.erreurs, []);
+  });
+
 test('szh.fmt.tableau : écrit un tableau vierge sous tables/, insère la référence, ouvre l’éditeur',
   async () => {
     HOTE.erreurs.length = 0;

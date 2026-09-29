@@ -148,9 +148,10 @@ function formatImage(nom) {
 // ---- Noms de fichiers sûrs, dans media/ --------------------------------------------
 
 // Nom de fichier tiré de ce qu'une webview annonce, donc de ce qu'un rédacteur a nommé :
-// accents, espaces, parenthèses, et parfois un chemin entier. On garde le nom d'origine,
-// comme « Insérer une figure » (lib/formatting.js) — il dit quelque chose au rédacteur —
-// mais réduit à ce qui traverse sans dommage un lien markdown, un Makefile et WSL.
+// accents, espaces, parenthèses, et parfois un chemin entier. On garde le nom d'origine
+// — il dit quelque chose au rédacteur — mais réduit à ce qui traverse sans dommage un lien
+// markdown, un Makefile et WSL. « Insérer une figure » (lib/formatting.js) y passe aussi
+// depuis le 29.09.2026 : un espace dans media/ arrête make (« No rule to make target »).
 // Le dossier n'est jamais lu depuis l'appelant : seul le dernier segment survit.
 function nomImageAssaini(nomFichier) {
   const brut = String(nomFichier || '').replace(/\\/g, '/');

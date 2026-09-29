@@ -637,6 +637,28 @@ function verdictsPdfUa(texte) {
   return verdicts;
 }
 
+// Le résumé « PDF non conforme PDF/UA — N règle(s) ne sont pas respectées » n'a plus sa
+// place dès que les règles elles-mêmes suivent : la carte disait deux fois la même chose,
+// d'abord en chiffre, puis règle par règle, et le compteur de la barre d'état comptait le
+// même défaut N + 1 fois. On l'écarte donc pour tout article (slug, '' = le livre) dont au
+// moins une règle « pdfua/regle » est dans la liste — quelle que soit la source de l'une
+// et de l'autre : le journal d'un export et le cache PDF/UA parlent souvent du même PDF.
+//
+// Il reste là où il est seul : un verdict sans règles lisibles (cache d'avant `details`,
+// bloc de règles tronqué) doit encore faire apparaître l'article dans « À corriger ».
+// Le badge de la barre d'état, lui, ne lit pas ces constats (pdfuaHote.etat) et garde son
+// compte de règles.
+function sansResumePdfUaRedondant(constats) {
+  const liste = Array.isArray(constats) ? constats : [];
+  const detailles = new Set();
+  for (const c of liste) {
+    if (c && c.source === 'pdfua' && c.code === 'regle') { detailles.add(String(c.slug || '')); }
+  }
+  if (detailles.size === 0) { return liste; }
+  return liste.filter((c) => !(c && c.source === 'pdfua' && c.code === 'non-conforme'
+    && detailles.has(String(c.slug || ''))));
+}
+
 // Certaines lignes portent leurs deux langues d'un seul tenant, l'allemande introduite par
 // « [de] » au milieu de la phrase : c'est le cas des lignes « [import] » du Makefile. On
 // coupe, et on ne garde que la moitié demandée.
@@ -720,7 +742,9 @@ function analyserJournal(texte, langue) {
     }
     dernier = null;
   }
-  return departager(constats, lang);
+  // Un export qui a validé ses PDF écrit le verdict ET ses règles : le résumé n'y survit
+  // que si aucune règle n'a pu être lue (sansResumePdfUaRedondant).
+  return sansResumePdfUaRedondant(departager(constats, lang));
 }
 
 function complet(constat, moitie) {
@@ -922,5 +946,5 @@ module.exports = {
   analyserJournal, phrasesBlocMalForme, phraseConstat, resumeJournal, slugsCompiles,
   CODES_CITATIONS_CARTE, citationsParArticle,
   constatsReimport, tonResultatReimport,
-  verdictsPdfUa
+  verdictsPdfUa, sansResumePdfUaRedondant
 };
