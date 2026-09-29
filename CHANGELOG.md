@@ -11,6 +11,43 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.4.0
+
+**« À corriger » lisible et à jour.** Chaque message : un titre court, les objets en cause
+cliquables, une phrase d'action, un bouton ; l'explication (cause, repère ISO) dans le bouton
+(i). « N images sans description » en une seule carte, chaque nom ouvrant l'image dans Médias
+ou dans l'éditeur de son tableau ; les défauts de tableau ouvrent l'éditeur du tableau ; une
+case d'en-tête vide est signalée en ambre. Le résumé « N règle(s) ne sont pas respectées » ne
+double plus les règles. Plus aucun constat sous un ancien slug après une renumérotation
+(`.szh-pdfua.json` élagué). La flèche sélectionne vraiment le passage dans le `.md`. Un voile
+« Analyse en cours… » grise les seules cartes de l'article qui recompile, Ctrl+S compris.
+
+**Médias et tableaux.** Triangle rouge sur une image sans description (Médias et éditeur de
+tableaux). L'éditeur de tableaux affiche les images des cellules et propose au clic droit
+« Texte alternatif… », « Remplacer l'image… », « Insérer une image… ». Une correction faite
+dans Médias ou dans l'éditeur de tableaux relance la compilation de l'article (anti-rebond,
+jamais deux compilations à la fois).
+
+**Édition.** « Insérer un lien » (Ctrl+Alt+K). « Insérer une figure » assainit le nom du
+fichier (un espace cassait le Makefile).
+
+**Import Word et nettoyeur.** Sous un en-tête de figure, plusieurs images (même paragraphe,
+paragraphes consécutifs séparés d'au plus deux vides, ou tableau de mise en page d'images)
+forment un groupe côte à côte (`szh-grille`) ; la légende, le texte alternatif et le crédit
+ne disparaissent plus. `docx-controle-import.py` remet visible et signale toute valeur
+d'en-tête ou image du Word absente de l'article. Nettoyeur : clés tapées à la main reconnues,
+document déjà au gabarit respecté, fiche d'autrices en tableau, corps d'un manuscrit court
+préservé, garde-fou de non-perte (alerte, refus au-delà de 50 %).
+
+**Composition et PDF/UA.** Correctif WeasyPrint 70.0 appliqué à l'image (`image/patches/`) :
+un en-tête fusionné est rattaché à toutes les cases qu'il couvre, l'attribut `headers` est
+respecté, une image décorative (`alt=""` + `role="presentation"`) sort en artefact. Un lien
+en italique ou en gras ne fait plus échouer 7.18.5-1. Deux images décoratives côte à côte
+passent en décor à leur largeur. Gras-italique et vraies petites capitales en Open Sans.
+
+**Tests.** La sonde bash du réimport passe par Python (sous Windows, Python et Node ne
+trouvent pas le même bash) ; le contrôle Vale n'exige plus un corpus hors git.
+
 ## 2.3.2
 
 **Les livres en cours aussi hors ligne.** L'épinglage du lancement couvre maintenant chaque

@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.4": {
+    "fr": {
+      "titre": "Des erreurs plus claires, des tableaux avec images",
+      "points": [
+        "L’onglet « À corriger » dit chaque problème en une ligne, nomme les images ou les tableaux en cause et ouvre directement le bon endroit ; le détail est dans le bouton (i).",
+        "Pendant une compilation, seul l’article qui se recompile est grisé, et une correction faite dans Médias ou dans l’éditeur de tableaux relance d’elle-même sa compilation.",
+        "L’éditeur de tableaux montre les images des cellules ; un clic droit permet d’en écrire le texte alternatif, de les remplacer ou d’en insérer une.",
+        "Ctrl+Alt+K insère un lien ; un lien peut contenir de l’italique ou du gras sans erreur, et le gras-italique et les petites capitales s’impriment enfin.",
+        "À l’import d’un Word, une légende suivie de plusieurs images donne une seule figure aux images côte à côte, et plus rien ne se perd en silence."
+      ]
+    },
+    "de": {
+      "titre": "Klarere Fehlermeldungen, Tabellen mit Bildern",
+      "points": [
+        "Der Reiter «Zu korrigieren» nennt jedes Problem in einer Zeile, zeigt die betroffenen Bilder oder Tabellen und öffnet direkt die richtige Stelle; die Einzelheiten stehen hinter der Schaltfläche (i).",
+        "Während einer Kompilierung wird nur der Artikel ausgegraut, der neu kompiliert wird, und eine Korrektur in «Medien» oder im Tabelleneditor startet seine Kompilierung von selbst.",
+        "Der Tabelleneditor zeigt die Bilder in den Zellen; per Rechtsklick lassen sich ihr Alternativtext schreiben, das Bild ersetzen oder ein neues einfügen.",
+        "Ctrl+Alt+K fügt einen Link ein; ein Link darf Kursiv oder Fett enthalten, ohne Fehler, und Fettkursiv sowie Kapitälchen werden endlich gedruckt.",
+        "Beim Import einer Word-Datei ergibt eine Legende mit mehreren Bildern eine einzige Abbildung mit nebeneinanderstehenden Bildern, und nichts geht mehr stillschweigend verloren."
+      ]
+    }
+  },
   "2.3": {
     "fr": {
       "titre": "Toute l’actualité des deux revues, archive comprise",
