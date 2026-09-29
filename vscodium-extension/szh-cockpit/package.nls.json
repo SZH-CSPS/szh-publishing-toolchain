@@ -54,6 +54,7 @@
   "cmd.fmt.citation": "Citation",
   "cmd.fmt.figure": "Insérer une figure",
   "cmd.fmt.noteBasPage": "Note de bas de page",
+  "cmd.fmt.lien": "Insérer un lien",
   "cmd.fmt.tableau": "Insérer un tableau",
   "cmd.fmt.collerTableau": "Coller un tableau depuis Excel/Word",
   "cmd.fmt.sautPage": "Insérer un saut de page",

@@ -1584,6 +1584,12 @@ plus la bascule d’aperçu). Le sous-menu propose (chaque raccourci y est rappe
   n’est ni coupé ni déplacé – puis ajoute la ligne de la note tout en bas de
   l’article et y amène le curseur : il ne reste qu’à taper son texte. Le numéro
   se choisit tout seul, au premier libre de l’article ;
+- **Insérer un lien** (`Ctrl+Alt+K`) : sélectionne les mots qui doivent devenir
+  cliquables, puis tape ou colle l’adresse (une adresse copiée juste avant est déjà
+  proposée). `www.csps.ch` suffit : le `https://` s’ajoute tout seul, et une adresse
+  de courriel devient un lien d’envoi de message. Sans sélection, c’est l’adresse
+  elle-même qui s’affiche ; elle reste sélectionnée pour que tu puisses taper
+  par-dessus le texte voulu ;
 - **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d’une
   nouvelle page **dans le PDF**. Rien ne change dans l’aperçu ni dans la version HTML :
   une page web n’a pas de pages, le saut n’y a donc aucun sens et n’y apparaît pas.

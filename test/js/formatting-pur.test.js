@@ -246,3 +246,36 @@ test('tableauVierge : la structure attendue par serialiserTable, en-tête + deux
   assert.match(html, /<table/);
   assert.match(html, /Colonne 1/);
 });
+
+// ---- Insérer un lien : normaliserUrl et lienMarkdown ----
+
+test('normaliserUrl ajoute le schéma qu’on ne tape pas, refuse ce qui n’est pas une adresse', () => {
+  const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
+  assert.strictEqual(pur.normaliserUrl('https://www.csps.ch/revue'), 'https://www.csps.ch/revue');
+  assert.strictEqual(pur.normaliserUrl('  www.csps.ch '), 'https://www.csps.ch');
+  assert.strictEqual(pur.normaliserUrl('csps.ch/a?b=1'), 'https://csps.ch/a?b=1');
+  assert.strictEqual(pur.normaliserUrl('nom@csps.ch'), 'mailto:nom@csps.ch');
+  assert.strictEqual(pur.normaliserUrl('mailto:nom@csps.ch'), 'mailto:nom@csps.ch');
+  assert.strictEqual(pur.normaliserUrl('doi:10.1000/182'), 'doi:10.1000/182');
+  // Parenthèses et espaces fermeraient la destination du lien Markdown.
+  assert.strictEqual(pur.normaliserUrl('https://fr.wikipedia.org/wiki/Un_(test) x'),
+    'https://fr.wikipedia.org/wiki/Un_%28test%29%20x');
+  for (const rien of ['', '   ', 'https://', 'mot', 'deux mots', null, undefined]) {
+    assert.strictEqual(pur.normaliserUrl(rien), null, JSON.stringify(rien));
+  }
+});
+
+test('lienMarkdown échappe les crochets du texte, garde son gras et son italique', () => {
+  const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
+  assert.strictEqual(pur.lienMarkdown('le site', 'https://www.csps.ch'), '[le site](https://www.csps.ch)');
+  assert.strictEqual(pur.lienMarkdown('voir [1]', 'https://a.ch'), '[voir \\[1\\]](https://a.ch)');
+  assert.strictEqual(pur.lienMarkdown('*Revue*', 'https://a.ch'), '[*Revue*](https://a.ch)');
+});
+
+test('« Insérer un lien » figure dans le groupe « Insérer » de la palette', () => {
+  const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
+  const i = pur.PALETTE_MEF.findIndex((e) => e[1] === 'szh.fmt.lien');
+  assert.notStrictEqual(i, -1, 'szh.fmt.lien absente de PALETTE_MEF');
+  const groupe = pur.PALETTE_MEF.slice(0, i).filter((e) => e[0] === '--').pop();
+  assert.strictEqual(groupe[1], 'palette.g.inserer');
+});

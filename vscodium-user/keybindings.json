@@ -42,6 +42,10 @@
   // une note en ligne noierait la phrase dans l'éditeur (lib/formatting-pur.js#noteBasPage).
   { "key": "ctrl+alt+n", "command": "szh.fmt.noteBasPage", "when": "editorTextFocus && editorLangId == markdown" },
 
+  // Insérer un lien : demande l'adresse et fait de la sélection le texte du lien
+  // [texte](adresse). Sans sélection, l'adresse sert de texte et reste sélectionnée.
+  { "key": "ctrl+alt+k", "command": "szh.fmt.lien", "when": "editorTextFocus && editorLangId == markdown" },
+
   // « Insérer un tableau » : dans un article, crée articles/<slug>/tables/table-NN.html,
   // insère sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de
   // tableau. Hors article, repli sur un squelette Markdown.

@@ -271,3 +271,42 @@ test('lireHtmlPressePapiers : PowerShell introuvable -> résout vide sans lever'
   const texte = await formatting.lireHtmlPressePapiers(200);
   assert.strictEqual(texte, '');
 });
+
+test('szh.fmt.lien : la sélection devient le texte du lien', async () => {
+  const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  ed._lignes = ['Voir le site de la fondation.'];
+  const debut = { line: 0, character: 'Voir '.length };
+  const fin = { line: 0, character: 'Voir le site'.length };
+  ed.selection = { isEmpty: false, start: debut, end: fin, active: fin };
+  HOTE.stub.window.activeTextEditor = ed;
+  HOTE.repondreInput('www.csps.ch');
+
+  await HOTE.executer('szh.fmt.lien');
+
+  assert.strictEqual(ed._info.remplacements[0], '[le site](https://www.csps.ch)');
+});
+
+test('szh.fmt.lien : sans sélection, l’adresse sert de texte et reste sélectionnée', async () => {
+  const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  ed._lignes = ['Voir '];
+  const point = { line: 0, character: 5 };
+  ed.selection = { isEmpty: true, start: point, end: point, active: point };
+  HOTE.stub.window.activeTextEditor = ed;
+  HOTE.repondreInput('nom@csps.ch');
+
+  await HOTE.executer('szh.fmt.lien');
+
+  assert.strictEqual(ed._info.remplacements[0], '[nom@csps.ch](mailto:nom@csps.ch)');
+  assert.strictEqual(ed.selection.start.character, 6);
+  assert.strictEqual(ed.selection.end.character, 6 + 'nom@csps.ch'.length);
+});
+
+test('szh.fmt.lien : saisie annulée, rien n’est inséré', async () => {
+  const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  HOTE.stub.window.activeTextEditor = ed;
+  HOTE.repondreInput(undefined);
+
+  await HOTE.executer('szh.fmt.lien');
+
+  assert.deepStrictEqual(ed._info.remplacements, []);
+});

@@ -332,6 +332,37 @@ function noteBasPage(lignes, sel) {
 }
 
 // ---- Styles « Livre » : en-tête de chapitre FALC, code QR (docs/ARCHITECTURE-LIVRES.md) ----
+// ---- Insérer un lien ----
+//
+// normaliserUrl(brut) -> adresse prête à poser entre parenthèses, ou null si ce qui a été
+// saisi n'a pas l'air d'une adresse. On tape rarement le schéma : « www.csps.ch » devient
+// https://www.csps.ch, « nom@csps.ch » un mailto:. Une adresse qui a déjà son schéma
+// (https:, mailto:, doi:…) est gardée telle quelle. Les espaces et les parenthèses sont
+// encodés : ils fermeraient la destination du lien Markdown au mauvais endroit.
+function normaliserUrl(brut) {
+  let u = String(brut === undefined || brut === null ? '' : brut).trim();
+  if (u === '') { return null; }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) {
+    // « https:// » seul, la valeur proposée d'office, n'est pas encore une adresse.
+    if (/^[a-z][a-z0-9+.-]*:\/*$/i.test(u)) { return null; }
+  } else if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(u)) {
+    u = 'mailto:' + u;
+  } else if (/^[^\s/]+\.[^\s/]+/.test(u)) {
+    u = 'https://' + u;
+  } else {
+    return null;
+  }
+  return u.replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29')
+    .replace(/</g, '%3C').replace(/>/g, '%3E');
+}
+
+// lienMarkdown(texte, url) -> [texte](url). Seuls les crochets du texte sont échappés :
+// l'italique ou le gras d'une sélection restent actifs à l'intérieur du lien.
+function lienMarkdown(texte, url) {
+  const t = String(texte === undefined || texte === null ? '' : texte).replace(/([[\]])/g, '\\$1');
+  return '[' + t + '](' + url + ')';
+}
+
 //
 // Deux snippets réservés au profil livre (jamais une revue ni une Zeitschrift) : un
 // encadré « cette histoire existe aussi en audio » et un QR cliquable réutilisable. Posés
@@ -418,6 +449,7 @@ const PALETTE_MEF = [
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
   ['palette.noteBasPage', 'szh.fmt.noteBasPage', 'Ctrl+Alt+N', ''],
   ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
+  ['palette.lien', 'szh.fmt.lien', 'Ctrl+Alt+K', ''],
   ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', ''],
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];
@@ -426,6 +458,6 @@ module.exports = {
   estEnrobe, basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF,
+  blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
   FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
 };

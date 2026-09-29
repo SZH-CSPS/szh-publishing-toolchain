@@ -25,7 +25,7 @@ const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF,
+  blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
   langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
 } = formattingPur;
 
@@ -355,6 +355,45 @@ async function fmtCollerTableau() {
   if (!slug) {
     vscode.window.showInformationMessage(T('fmt.coller.horsarticle'));
     return;
+// Demande l'adresse, puis fait de la sélection le texte du lien : [sélection](adresse).
+// Sans sélection, l'adresse telle qu'elle a été tapée sert de texte, et elle reste
+// sélectionnée après l'insertion — on peut la garder ou taper le texte voulu par-dessus.
+// La saisie est préremplie par la sélection si c'est déjà une adresse, sinon par le
+// presse-papiers s'il en contient une : c'est d'ordinaire de là que vient le lien.
+async function fmtLien() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const sel = editeur.selection;
+  const texteSel = sel.isEmpty ? '' : doc.getText(sel);
+  let propose = texteSel && normaliserUrl(texteSel) && !/\s/.test(texteSel.trim()) ? texteSel.trim() : '';
+  if (!propose) {
+    try {
+      const presse = String(await vscode.env.clipboard.readText() || '').trim();
+      if (presse && !/\s/.test(presse) && normaliserUrl(presse)) { propose = presse; }
+    } catch (e) { /* presse-papiers illisible : on propose le schéma seul */ }
+  }
+  const saisie = await sousGarde(() => vscode.window.showInputBox({
+    prompt: T('fmt.lien.prompt'),
+    value: propose || 'https://',
+    validateInput: (v) => (normaliserUrl(v) ? null : T('fmt.lien.invalide'))
+  }));
+  if (saisie === undefined) { return; }              // annulé : rien n'est inséré
+  const url = normaliserUrl(saisie);
+  if (!url) { return; }
+  // Une sélection qui n'était que l'adresse devient un lien sur elle-même, comme sans
+  // sélection : le texte reste l'adresse lisible, sans le https:// ajouté.
+  const texte = texteSel && texteSel.trim() !== propose ? texteSel : saisie.trim();
+  const lien = lienMarkdown(texte, url);
+  const ok = await editeur.edit((b) => { b.replace(sel, lien); });
+  if (!ok || texteSel) { return; }
+  // Sans sélection, le point d'insertion est sur une seule ligne : le texte du lien va du
+  // « [ » au « ](adresse) ».
+  const col = sel.start.character + 1;
+  editeur.selection = new vscode.Selection(new vscode.Position(sel.start.line, col),
+    new vscode.Position(sel.start.line, col + lien.length - url.length - 4));
+}
+
   }
   const brut = await lireHtmlPressePapiers();
   let modele = brut ? tableauDepuisHtmlBureautique(brut) : null;
@@ -514,6 +553,7 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.qrLink', () => fmtQrLink());
   c('szh.lierReference', () => fmtLierReference());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
+  c('szh.fmt.lien', () => fmtLien());
 }
 
 module.exports = {

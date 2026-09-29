@@ -632,6 +632,11 @@
         "category": "SZH/CSPS"
       },
       {
+        "command": "szh.fmt.lien",
+        "title": "%cmd.fmt.lien%",
+        "category": "SZH/CSPS"
+      },
+      {
         "command": "szh.fmt.tableau",
         "title": "%cmd.fmt.tableau%",
         "category": "SZH/CSPS"
@@ -927,6 +932,10 @@
         },
         {
           "command": "szh.fmt.noteBasPage",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.lien",
           "when": "szh.estRevue || szh.estLivre"
         },
         {
