@@ -221,11 +221,21 @@ end
 -- Remplace une image décorative par les deux <span> qui la rendent en fond CSS.
 -- Renvoie nil si l'image est illisible : l'appelant garde alors son <img>, un rendu ne
 -- doit pas échouer pour un décor. Le PDF sortira non conforme et le dira.
-local function en_decor(img)
+--
+-- `garder_largeur` : le décor reprend la largeur déclarée de l'image (width=, p. ex.
+-- « 2.85in » posé par l'import Word) au lieu de sa largeur naturelle. Réservé aux images au
+-- fil d'un paragraphe (decors_declares, plus bas) : deux photos côte à côte doivent le
+-- rester. Les décors d'avant gardent leur largeur naturelle — un numéro déjà compilé ne
+-- doit pas changer de mise en page.
+local function en_decor(img, garder_largeur)
   local largeur, hauteur = mesure_image(img.src)
   if not largeur then return nil end
   local classe = CLASSE_DECOR .. '-' .. (#decors + 1)
-  decors[#decors + 1] = { classe = classe, src = img.src,
+  local declaree = garder_largeur and img.attributes['width'] or nil
+  -- Seule une longueur CSS simple passe (chiffres, unité ou %) : la valeur finit dans un
+  -- <style>, rien d'autre n'y entre.
+  if declaree and not declaree:match('^%d+%.?%d*%a*%%?$') then declaree = nil end
+  decors[#decors + 1] = { classe = classe, src = img.src, largeur_css = declaree,
                           largeur = largeur, ratio = 100.0 * hauteur / largeur }
   return pandoc.RawInline('html', '<span class="' .. CLASSE_DECOR .. ' ' .. classe
     .. '" role="presentation"><span></span></span>')
@@ -264,10 +274,11 @@ local function style_decors()
   local regles = {}
   for _, d in ipairs(decors) do
     regles[#regles + 1] = string.format(
-      '.%s{width:%dpx;max-width:min(100%%,calc((var(--plafond-figure) - 12px)'
+      '.%s{width:%s;max-width:min(100%%,calc((var(--plafond-figure) - 12px)'
         .. ' / var(--szh-rangees, 1) / %.4f))}\n'
         .. '.%s>span{padding-top:%.4f%%;background-image:url("%s")}',
-      d.classe, d.largeur, d.ratio / 100.0, d.classe, d.ratio, echapper_url(d.src))
+      d.classe, d.largeur_css or string.format('%dpx', d.largeur), d.ratio / 100.0,
+      d.classe, d.ratio, echapper_url(d.src))
   end
   return pandoc.RawBlock('html', '<style>\n' .. table.concat(regles, '\n') .. '\n</style>')
 end
@@ -561,6 +572,32 @@ function Pandoc(doc)
   doc.blocks = doc.blocks:walk({
     Para = function(b) return hors_numerotation(b, lang) end,
     Plain = function(b) return hors_numerotation(b, lang) end,
+  })
+
+  -- Images au fil d'un paragraphe (deux photos côte à côte, « ![Bild 1](…){alt=""} ») que
+  -- la rédaction a déclarées décoratives : alt="" EXPLICITE, que le formulaire Médias écrit
+  -- pour « Image purement décorative ». Le texte entre crochets n'y est pas une légende —
+  -- une image au fil du texte n'a pas de <figcaption>, et l'alt explicite remplace ce
+  -- texte dans le HTML. La passe principale ci-dessous ne les rendait pas en décor (elle
+  -- ne regarde que les images sans ce texte) : WeasyPrint en faisait deux /Figure sans /Alt,
+  -- PDF/UA 7.3-1, alors que le cockpit, voyant « Bild 1 », n'en nommait aucune (mesuré sur
+  -- Zeitschrift 2025-02, article 02, 29.09.2026). Seuls les Para : une image seule dans son
+  -- paragraphe est déjà devenue une Figure, dont le contenu est un Plain.
+  doc.blocks = doc.blocks:walk({
+    Para = function(b)
+      local change = false
+      local contenu = b.content:map(function(x)
+        if x.t == 'Image' and #x.caption > 0 and x.attributes['alt'] == '' then
+          x.attributes['role'] = 'presentation'
+          local d = en_decor(x, true)
+          if d then change = true; return d end
+        end
+        return x
+      end)
+      if not change then return nil end
+      b.content = contenu
+      return b
+    end,
   })
 
   doc.blocks = doc.blocks:walk({

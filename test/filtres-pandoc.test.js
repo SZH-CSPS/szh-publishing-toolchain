@@ -568,6 +568,30 @@ test('langue : szh-numerotation.lua — fiche avec lang: de l’emporte sur revu
   assert.match(r.stdout, /Abbildung 1/, 'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
 });
 
+// ── szh-numerotation.lua : images décoratives au fil d'un paragraphe ─────────────────────
+// Cas réel (Zeitschrift 2025-02, article 02) : deux photos côte à côte, « Bild 1 » entre
+// crochets et alt="" posé par « Image purement décorative ». La passe principale ne les
+// rendait pas en décor (texte entre crochets), WeasyPrint en faisait deux /Figure sans
+// /Alt (PDF/UA 7.3-1). Elles doivent sortir en décor, à leur largeur déclarée ; une image
+// décrite, ou sans alt explicite (le texte entre crochets lui sert alors de nom), reste
+// une image.
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+test('décor : deux images décoratives côte à côte sortent en décor, à leur largeur', () => {
+  const md = 'Texte.\n\n'
+    + '![Bild 1](a.png){width="2.5in" alt=""} ![Bild 1](b.png){width="40%" alt=""}\n\n'
+    + '![Bild 2](c.png){alt="Une vraie description"} ![Bild 3](d.png)\n';
+  const r = pandocDansDossier({ 'essai.md': md, 'a.png': PNG_1PX, 'b.png': PNG_1PX,
+    'c.png': PNG_1PX, 'd.png': PNG_1PX }, 'essai.md', 'szh-numerotation.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual((r.stdout.match(/class="szh-decor szh-decor-\d+"/g) || []).length, 2,
+    'les deux images déclarées décoratives ne sont pas passées en décor : ' + r.stdout);
+  assert.match(r.stdout, /\.szh-decor-1\{width:2\.5in;/, 'la largeur déclarée de la 1re est perdue');
+  assert.match(r.stdout, /\.szh-decor-2\{width:40%;/, 'la largeur déclarée de la 2e est perdue');
+  assert.match(r.stdout, /!\[Bild 2\]\(c\.png\)/, 'l’image décrite n’est plus une image');
+  assert.match(r.stdout, /!\[Bild 3\]\(d\.png\)/, 'l’image sans alt explicite n’est plus une image');
+});
+
 test('langue : szh-numerotation.lua — meta.lang seul', () => {
   const r = pandocDansDossier({ 'essai.md': docNumerotation('lang: de\n') }, 'essai.md', 'szh-numerotation.lua');
   assert.strictEqual(r.status, 0, r.stderr);
@@ -876,6 +900,85 @@ test('césure : dans un lien, la classe va sur le <a> et JAMAIS un span dedans',
     'le lien ne porte pas la classe : ' + html);
   assert.ok(!/<a[\s\S]*?szh-sans-cesure[\s\S]*?<span/.test(html),
     'un span a été laissé à l’intérieur du lien (PDF/UA-1 7.18.5) : ' + html);
+});
+
+// ⚠ Même règle 7.18.5-1, pour la mise en forme de la rédaction. [*Texte du* lien](…)
+// donnait <a><em>Texte du</em> lien</a> : le <em> pose sa propre annotation de lien, que
+// WeasyPrint range sous /NonStruct, et la porte veraPDF tombait (mesuré le 29.09.2026 :
+// italique partiel, gras, souligné et lien entièrement italique échouent tous les quatre ;
+// conformes une fois la mise en forme sortie du lien). Robin : la mise en forme reste
+// permise dans un lien, et visible. Elle ENVELOPPE donc des liens de pur texte.
+// Contrôlé en allemand : la seconde passe ne dépend pas de la langue, la césure si.
+function liensDe(md, langue) {
+  return pandoc(docFr(md, langue || 'de'),
+    { de: 'markdown', vers: 'html', filtres: ['szh-cesure.lua'] });
+}
+// Le contenu de chaque <a> : il ne doit contenir aucune balise.
+function contenusDesLiens(html) {
+  return (html.match(/<a\b[^>]*>[\s\S]*?<\/a>/g) || [])
+    .map((a) => a.replace(/^<a\b[^>]*>/, '').replace(/<\/a>$/, ''));
+}
+function aucunElementDansUnLien(html) {
+  for (const c of contenusDesLiens(html)) {
+    assert.ok(!/</.test(c), 'un élément est resté dans un lien (PDF/UA-1 7.18.5) : ' + html);
+  }
+}
+
+test('liens : l’italique partiel sort du lien et reste italique', () => {
+  const html = liensDe('Voir [*Texte du* lien](https://exemple.com) ici.');
+  aucunElementDansUnLien(html);
+  assert.match(html, /<em><a href="https:\/\/exemple\.com">Texte du<\/a><\/em><a\s+href="https:\/\/exemple\.com"> lien<\/a>/,
+    'la forme attendue est <em><a>Texte du</a></em><a> lien</a> : ' + html);
+});
+
+test('liens : gras, souligné, barré, exposant — chacun enveloppe son lien', () => {
+  for (const [md, balise] of [['**gras**', 'strong'], ['[souligné]{.underline}', 'u'],
+    ['~~barré~~', 'del'], ['^2^', 'sup']]) {
+    const html = liensDe('Un [' + md + ' lien](https://exemple.com) ici.');
+    aucunElementDansUnLien(html);
+    assert.match(html, new RegExp('<' + balise + '><a\\s+href="https://exemple\\.com">'),
+      balise + ' n’enveloppe pas le lien : ' + html);
+  }
+});
+
+test('liens : un lien entièrement en italique reste UN lien', () => {
+  const html = liensDe('Voir [*Texte du lien*](https://exemple.com) ici.');
+  aucunElementDansUnLien(html);
+  assert.strictEqual(contenusDesLiens(html).length, 1, 'le lien a été scindé sans raison : ' + html);
+  assert.match(html, /<em><a href="https:\/\/exemple\.com">Texte du lien<\/a><\/em>/, html);
+});
+
+// L'espace entre deux mises en forme ne fait pas un lien à elle seule (un lecteur d'écran
+// annoncerait un lien vide), et ne reste pas nue non plus (le filet du lien se coupait,
+// mesuré en 300 dpi) : elle rejoint un lien voisin. L'identifiant ne va qu'au premier
+// segment — deux fois le même id, et l'ancre vise au hasard —, la classe à tous.
+test('liens : imbrication, espace entre deux mises en forme, id et classes', () => {
+  const html = liensDe('Un [***Texte*** *du* lien](https://exemple.com){#ici .k} là.');
+  aucunElementDansUnLien(html);
+  const contenus = contenusDesLiens(html);
+  assert.ok(contenus.every((c) => c.trim() !== ''), 'un lien ne porte qu’un blanc : ' + html);
+  assert.strictEqual(contenus.join(''), 'Texte du lien', 'du texte a quitté les liens : ' + html);
+  assert.match(html, /<strong><em><a\s[^>]*id="ici"/, 'la mise en forme imbriquée est perdue : ' + html);
+  assert.strictEqual((html.match(/id="ici"/g) || []).length, 1, 'identifiant dupliqué : ' + html);
+  assert.strictEqual((html.match(/class="k"/g) || []).length, contenus.length,
+    'un segment a perdu la classe du lien : ' + html);
+});
+
+test('liens : sans mise en forme, un lien ne bouge pas ; un lien .qr non plus', () => {
+  assert.match(liensDe('Voir [un lien simple](https://exemple.com) ici.'),
+    /<a href="https:\/\/exemple\.com">un lien simple<\/a>/);
+  const qr = liensDe('[*Écouter*](https://exemple.com){.qr}');
+  assert.strictEqual(contenusDesLiens(qr).length, 1, 'un lien .qr a été scindé : ' + qr);
+  assert.match(qr, /class="qr"><em>/, 'le lien .qr a été retouché : ' + qr);
+});
+
+test('liens : en français, césure et mise en forme se cumulent sur chaque segment', () => {
+  const html = liensDe('Voir la [Haute école de *Fribourg*](https://example.ch) pour cela.', 'fr');
+  aucunElementDansUnLien(html);
+  const liens = html.match(/<a\b[^>]*>/g) || [];
+  assert.strictEqual(liens.length, 2, html);
+  assert.ok(liens.every((a) => /szh-sans-cesure/.test(a)), 'un segment a perdu la classe de césure : ' + html);
+  assert.match(html, /<em><a[^>]*>Fribourg<\/a><\/em>/, html);
 });
 
 // ── szh-maquette.lua : les initiales de prénom de la couverture ────────────────────────

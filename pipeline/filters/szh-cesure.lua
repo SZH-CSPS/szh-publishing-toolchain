@@ -64,6 +64,11 @@
 -- posé avant lui casserait cet appariement. Avant szh-notes, pour que le texte des notes
 -- soit protégé lui aussi (à ce stade ce sont encore des Note pandoc, que la traversée
 -- visite).
+--
+-- ── Seconde passe, TOUTES LANGUES : la mise en forme sort des liens ──────────────────────
+-- Ce fichier porte déjà la règle « aucun élément dans un <a> » (voir Link plus bas) ; la
+-- seconde passe l'étend à la mise en forme de la rédaction — italique, gras, souligné,
+-- barré, petites capitales, exposant, indice, span. Voir hisser_hors_des_liens.
 
 local utils = pandoc.utils
 
@@ -242,7 +247,123 @@ local function proteger(noms)
   }
 end
 
-function Pandoc(doc)
+-- ── Seconde passe : la mise en forme hors des liens, toutes langues ─────────────────────
+-- `[*Texte du* lien](https://…)` donne à pandoc <a><em>Texte du</em> lien</a>, et le PDF
+-- tombe à la porte veraPDF sur la même règle 7.18.5-1 que les spans ci-dessus. Mesuré le
+-- 29.09.2026 sur WeasyPrint 70 : anchors.py hérite le lien sur toute boîte non-texte
+-- descendante du <a> (`link = box.link or parent_link`), le <em> pose donc sa propre
+-- annotation, et tags.py la range sous l'élément de structure de CETTE boîte — /NonStruct,
+-- em n'ayant pas d'équivalent PDF. veraPDF : « A Link annotation is … nested within
+-- NonStruct tag instead of Link ». Même échec pour <strong>, <u>, et pour un lien
+-- entièrement en italique.
+-- Pistes écartées, mesurées le même jour : `display: contents` sur le <em> — WeasyPrint 70
+-- ne le connaît pas, la boîte reste ; aucune propriété CSS ne met en forme une partie
+-- d'un texte sans élément pour la porter.
+-- Ce qui passe : la mise en forme ENVELOPPE des liens qui ne contiennent que du texte —
+--   <em><a>Texte du</a></em><a> lien</a>
+-- Même geste que le Makefile pour les appels de note (sup > a). Rendu identique au pixel
+-- (comparé en 300 dpi : italique, gras, filet du lien continu) ; veraPDF conforme. Un lien
+-- entièrement mis en forme reste UN lien (<em><a>…</a></em>). Un lien mis en forme en
+-- partie devient deux liens voisins vers la même cible : un lecteur d'écran en annonce
+-- deux. C'est ce que WeasyPrint fait déjà de tout lien coupé en fin de ligne (une
+-- annotation et un /Link par ligne, mesuré), le coût n'est donc pas nouveau.
+-- Un segment qui ne porte que des blancs ne devient pas un lien (il serait annoncé comme
+-- un lien vide) : il rejoint le lien voisin. L'identifiant du lien, s'il en a un, ne va
+-- qu'au premier segment ; classes, cible et titre vont à tous.
+-- Ce qui n'est PAS hissé, faute de pouvoir l'être : Code (son contenu est une chaîne, un
+-- lien ne peut pas y entrer), Image, Math, Note, RawInline — ils restent dans le lien,
+-- comme avant.
+local CONTENANTS = {
+  Emph = true, Strong = true, Underline = true, Strikeout = true, SmallCaps = true,
+  Superscript = true, Subscript = true, Span = true,
+}
+local BLANCS = { Space = true, SoftBreak = true, LineBreak = true }
+
+local function hisser_hors_des_liens(lien)
+  -- Un lien `.qr` n'est pas un lien de texte : szh-qr.lua (livres, après ce filtre) le
+  -- remplace entier par un QR. Scindé, il en imprimerait un par segment.
+  for _, c in ipairs(lien.classes) do
+    if c == 'qr' then return nil end
+  end
+  local a_hisser = false
+  for _, x in ipairs(lien.content) do
+    if CONTENANTS[x.t] then a_hisser = true; break end
+  end
+  if not a_hisser then return nil end
+
+  local premier = true
+  local function segment(contenu)
+    local attributs = {}
+    for k, v in pairs(lien.attributes) do attributs[k] = v end
+    local attr = pandoc.Attr(premier and lien.identifier or '', pandoc.List(lien.classes), attributs)
+    premier = false
+    return pandoc.Link(contenu, lien.target, lien.title, attr)
+  end
+  local function tout_blanc(contenu)
+    for _, x in ipairs(contenu) do
+      if not BLANCS[x.t] then return false end
+    end
+    return true
+  end
+  -- Le lien le plus profond au bout d'un contenant déjà hissé : c'est là qu'une espace
+  -- voisine se range.
+  local function lien_au_bout(x, depuis_la_fin)
+    while x do
+      if x.t == 'Link' then return x end
+      if not CONTENANTS[x.t] or #x.content == 0 then return nil end
+      x = x.content[depuis_la_fin and #x.content or 1]
+    end
+    return nil
+  end
+  local function hisser(inlines)
+    local sortie = pandoc.Inlines({})
+    local tampon = pandoc.Inlines({})
+    local en_attente = nil                   -- des blancs à glisser dans le lien suivant
+    -- Une espace seule entre deux mises en forme — « ***Texte*** *du* » — ne fait pas un
+    -- lien : elle rejoint le lien qui la précède, ou à défaut celui qui la suit. Laissée
+    -- nue, elle coupait le filet du lien (mesuré en 300 dpi) ; liée seule, elle serait
+    -- annoncée comme un lien vide.
+    local function vider()
+      if #tampon == 0 then return end
+      if tout_blanc(tampon) then
+        local prec = #sortie > 0 and lien_au_bout(sortie[#sortie], true) or nil
+        if prec then
+          local c = prec.content; c:extend(tampon); prec.content = c
+        else
+          en_attente = tampon
+        end
+      else
+        sortie:insert(segment(tampon))
+      end
+      tampon = pandoc.Inlines({})
+    end
+    for _, x in ipairs(inlines) do
+      if CONTENANTS[x.t] then
+        vider()
+        x.content = hisser(x.content)
+        if en_attente then
+          local suiv = lien_au_bout(x, false)
+          if suiv then
+            local c = pandoc.Inlines({}); c:extend(en_attente); c:extend(suiv.content)
+            suiv.content = c
+          else
+            sortie:extend(en_attente)
+          end
+          en_attente = nil
+        end
+        sortie:insert(x)
+      else
+        tampon:insert(x)
+      end
+    end
+    vider()
+    if en_attente then sortie:extend(en_attente) end
+    return sortie
+  end
+  return hisser(lien.content)
+end
+
+local function Pandoc(doc)
   local lang = utils.stringify(doc.meta.lang or ''):lower():sub(1, 2)
   if lang ~= 'fr' then return doc end
 
@@ -266,3 +387,12 @@ function Pandoc(doc)
   doc.blocks = doc.blocks:walk(proteger(noms))
   return doc
 end
+
+-- Deux passes, dans cet ordre : la césure d'abord (elle défait ses spans dans les liens et
+-- pose la classe sur le <a>), puis la mise en forme hors des liens — chaque segment hérite
+-- alors de la classe. La seconde tourne quelle que soit la langue : la règle PDF/UA, elle,
+-- ne dépend pas de la langue.
+return {
+  { Pandoc = Pandoc },
+  { Link = hisser_hors_des_liens },
+}
