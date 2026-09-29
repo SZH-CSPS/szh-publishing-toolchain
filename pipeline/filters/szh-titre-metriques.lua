@@ -3,7 +3,7 @@
 -- `python test/metriques-titre.py` (et `--verifier` pour contrôler qu’elle suit
 -- toujours la police livrée).
 --
--- Police  : pipeline/fonts/OpenSans-SemiCondensed-SemiBold.ttf (130608 octets)
+-- Police  : pipeline/fonts/OpenSans-SemiCondensed-SemiBold.ttf (177288 octets)
 -- Poids   : 600, celui de .szh-title — voir socle.css §1
 -- Lecteur : test/metriques-titre.py, qui dit aussi ce qui n’est pas modélisé
 --           (crénage, ligatures optionnelles).

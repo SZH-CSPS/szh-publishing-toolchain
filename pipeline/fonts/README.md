@@ -13,6 +13,8 @@ reproductible : `../styles/print.css` les charge par `@font-face` en chemins rel
 | `OpenSans-SemiCondensed-SemiBold.ttf` | Open Sans | 600 | googlefonts/opensans |
 | `OpenSans-SemiCondensed-Bold.ttf`     | Open Sans | 700 | googlefonts/opensans |
 | `OpenSans-SemiCondensed-Italic.ttf`   | Open Sans | 400 italique | googlefonts/opensans |
+| `OpenSans-SemiCondensed-SemiBoldItalic.ttf` | Open Sans | 600 italique | googlefonts/opensans |
+| `OpenSans-SemiCondensed-BoldItalic.ttf` | Open Sans | 700 italique | googlefonts/opensans |
 | `IBMPlexMono-Regular.ttf`             | IBM Plex Mono | 400 | IBM/plex |
 | `IBMPlexMono-Medium.ttf`              | IBM Plex Mono | 500 | IBM/plex |
 | `SourceSerif4-Regular.ttf`            | aucune — hors maquette | 400 | adobe-fonts/source-serif |
@@ -66,6 +68,23 @@ emploie** : → U+2192, ↑ U+2191, ▶ U+25B6 et les émojis. Aucun article de 
 fichier ne passe pas par la chaîne d'impression). `test/polices-check.py` les signalerait
 en nommant le PDF fautif.
 
+## Petites capitales ajoutées aux faces Open Sans
+
+Open Sans n'a pas de petites capitales, et WeasyPrint ne les simule pas : il traduit
+`font-variant: small-caps` en fonctionnalité OpenType `smcp` et s'arrête là. Sans `smcp`
+dans la face, `[Piaget]{.smallcaps}` sortait en bas de casse ordinaire, sans avertissement
+(mesuré le 29.09.2026, WeasyPrint 70, Pango 1.56). `petites-capitales.py` ajoute aux six
+faces Open Sans une petite capitale par minuscule (352 par face) : la capitale de la face
+**d'une graisse au-dessus**, réduite à 80 %, pour que le fût ne maigrisse pas. `ß` reste en
+bas de casse (sa capitale est « SS », deux caractères). La couche texte du PDF garde le
+bas de casse d'origine. La règle qui l'appelle est dans `../styles/socle.css`.
+
+```bash
+/opt/weasyprint/bin/python pipeline/fonts/petites-capitales.py   # après glyphes-manquants.py
+```
+
+Idempotent ; `--verifier` sort 1 si une face n'a pas ses petites capitales.
+
 ## Semi-condensé (largeur 87,5 %)
 
 Il n'y a pas de `font-stretch` dans `print.css` : les faces Open Sans sont **figées
@@ -83,5 +102,13 @@ f = TTFont("OpenSans[wdth,wght].ttf")          # master variable (googlefonts/op
 instancer.instantiateVariableFont(f, {"wght": 400, "wdth": 87.5}, inplace=True)
 f.save("OpenSans-SemiCondensed-Regular.ttf")
 ```
+
+Les italiques partent du master italique `OpenSans-Italic[wdth,wght].ttf`. Les deux faces
+italiques grasses (600 et 700) ont été instanciées ainsi le 29.09.2026, depuis
+`https://raw.githubusercontent.com/googlefonts/opensans/main/fonts/variable/OpenSans-Italic%5Bwdth,wght%5D.ttf`
+(Version 3.003, sha256 `fe269381e992f32e135801740998544d6235061e37c93ec067ad2be3edd5b17b`).
+Même master que les faces déjà livrées : l'italique 400 et le gras 700 réinstanciés de ces
+masters retombent au contour près sur les fichiers d'ici (seuls diffèrent les glyphes
+ajoutés par `glyphes-manquants.py`).
 
 IBM Plex Mono est distribuée en statique (Regular et Medium repris tels quels).

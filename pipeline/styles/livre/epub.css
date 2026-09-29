@@ -39,6 +39,11 @@ h1 { font-size: 1.5em; }
 h2 { font-size: 1.3em; }
 h3 { font-size: 1.1em; }
 h4, h5, h6 { font-size: 1em; }
+/* `[Piaget]{.smallcaps}`. L'EPUB n'empile pas le socle, qui porte la même règle pour les
+   autres sorties, et --css remplace la feuille par défaut de pandoc, qui la portait. La
+   liseuse compose dans sa police : elle simule les petites capitales si la police n'en a
+   pas, ce que WeasyPrint, lui, ne fait pas (voir socle.css). */
+span.smallcaps { font-variant: small-caps; }
 
 /* ═══ 3. Structure du livre ════════════════════════════════════════════════════ */
 /* Chaque chapitre reçoit une séparation visuelle légère. */

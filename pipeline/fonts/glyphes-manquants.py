@@ -48,6 +48,8 @@ CIBLES = {
     'OpenSans-SemiCondensed-Italic.ttf':   'IBMPlexMono-Regular.ttf',
     'OpenSans-SemiCondensed-SemiBold.ttf': 'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-Bold.ttf':     'IBMPlexMono-Medium.ttf',
+    'OpenSans-SemiCondensed-SemiBoldItalic.ttf': 'IBMPlexMono-Medium.ttf',
+    'OpenSans-SemiCondensed-BoldItalic.ttf':     'IBMPlexMono-Medium.ttf',
 }
 
 ATTENDUS = (0x202F, 0x2010, 0x2011, 0x25B8, 0x21A9, 0xFE0E)

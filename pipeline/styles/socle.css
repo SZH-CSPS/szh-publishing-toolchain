@@ -31,10 +31,30 @@
   src: url("../fonts/OpenSans-SemiCondensed-Bold.ttf") format('truetype'); }
 @font-face { font-family: 'Open Sans'; font-weight: 400; font-style: italic;
   src: url("../fonts/OpenSans-SemiCondensed-Italic.ttf") format('truetype'); }
+/* Les deux italiques grasses (29.09.2026). Sans elles, `***gras italique***` et un `**gras**`
+   dans une citation (italique) tombaient sur l'italique 400 : WeasyPrint ne simule pas la
+   graisse, le gras disparaissait sans un mot — mesuré (usWeightClass 400 dans le PDF). 700
+   pour strong, 600 pour un mot en italique dans un titre (.szh-title est en 600). */
+@font-face { font-family: 'Open Sans'; font-weight: 600; font-style: italic;
+  src: url("../fonts/OpenSans-SemiCondensed-SemiBoldItalic.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; font-style: italic;
+  src: url("../fonts/OpenSans-SemiCondensed-BoldItalic.ttf") format('truetype'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-style: normal;
   src: url("../fonts/IBMPlexMono-Regular.ttf") format('truetype'); }
 @font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-style: normal;
   src: url("../fonts/IBMPlexMono-Medium.ttf") format('truetype'); }
+
+/* Petites capitales : `[Piaget]{.smallcaps}`. Seule règle du socle qui ne soit ni une face
+   ni un jeton, et elle est ici parce qu'elle dépend des faces : Open Sans n'a pas de
+   petites capitales en amont, WeasyPrint ne les simule pas (il ne sait que demander 'smcp'
+   à la police), et ce sont nos faces qui les portent — ../fonts/petites-capitales.py. Toutes
+   les sorties empilent le socle ; la règle vaut donc pour le PDF, l'aperçu et le livre.
+   `span.smallcaps` et non `.smallcaps` : le `<style>` que pandoc écrit dans l'en-tête porte
+   `span.smallcaps{font-variant: small-caps;}`, dont le raccourci remet les ligatures à
+   `normal` ; à spécificité égale, la feuille liée, écrite après, l'emporte.
+   Ligatures coupées : fi et fl se forment avant 'smcp' et resteraient en bas de casse. */
+span.smallcaps { font-variant-caps: small-caps; font-variant-ligatures: no-common-ligatures;
+  letter-spacing: 0.03em; }
 
 /* ═══ 2. Jetons :root ═════════════════════════════════════════════════════════ */
 :root {
