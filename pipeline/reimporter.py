@@ -5,6 +5,9 @@
 #   python3 reimporter.py --article <slug>            # le Word est celui de `source:`
 #   python3 reimporter.py --word "<nom>.docx"         # l'article est celui de `source:`
 #   python3 reimporter.py --article <slug> --word "<nom>.docx"     # appariement forcé
+#                                                      # (.odt accepté comme .docx dans les
+#                                                      # trois formes ci-dessus : import-docx.sh
+#                                                      # le convertit à l'entrée de sa chaîne)
 #   python3 reimporter.py --annuler --article <slug>  # revenir à l'état d'avant
 #   python3 reimporter.py --reprise                   # remettre d'aplomb un réimport tué
 #   python3 reimporter.py --empreintes --dossier . --slug <slug> [--word <nom>]
@@ -440,8 +443,10 @@ def articles_de_la_revue(revue):
 
 
 def trouver_word(revue, nom):
-    """Le .docx en attente, désigné par un nom ou par un chemin. Comparaison insensible à
-    la casse, comme le nocaseglob de la cible `import`."""
+    """Le Word en attente (.docx ou .odt), désigné par un nom ou par un chemin. Comparaison
+    insensible à la casse, comme le nocaseglob de la cible `import`. Aucun filtre
+    d'extension ici : le nom vient de `source:` ou du choix de l'utilisateur, et
+    import-docx.sh saura convertir un .odt à son tour."""
     if os.sep in nom or '/' in nom:
         return nom if os.path.isfile(nom) else None
     direct = os.path.join(revue, DOSSIER_WORD, nom)
@@ -1161,7 +1166,7 @@ def annuler(revue, slug, voix, resultat):
 # ---------------------------------------------------------------------------------
 
 def usage():
-    print('usage : reimporter.py --article <slug> | --word <nom.docx> '
+    print('usage : reimporter.py --article <slug> | --word <nom.docx|.odt> '
           '[--revue <dossier>] [--pipeline <dossier>] [--journal <fichier>]\n'
           '        reimporter.py --annuler --article <slug>\n'
           '        reimporter.py --reprise            (remet d\'aplomb un réimport tué)\n'

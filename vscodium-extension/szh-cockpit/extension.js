@@ -1282,8 +1282,8 @@ class FournisseurRevue {
     return it;
   }
 
-  // articles-word/*.docx (chapitres-word/ pour un livre) à la racine du dossier, donc
-  // sans _convertis/ — le nom du dépôt suit le profil actif (lib/profil.js).
+  // articles-word/*.docx et *.odt (chapitres-word/ pour un livre) à la racine du dossier,
+  // donc sans _convertis/ — le nom du dépôt suit le profil actif (lib/profil.js).
   _itemsWord() {
     const noms = this._docxEnAttente(path.join(this.racine, profilCourant().depot));
     if (noms.length === 0) { return [this._vide(T('arbre.vide.word'))]; }
@@ -1450,7 +1450,8 @@ class FournisseurRevue {
     try { entrees = fs.readdirSync(base, { withFileTypes: true }); }
     catch (e) { return []; }
     return entrees
-      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.docx'))
+      .filter((e) => e.isFile()
+        && (e.name.toLowerCase().endsWith('.docx') || e.name.toLowerCase().endsWith('.odt')))
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
@@ -1852,7 +1853,7 @@ const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err
 // Sur un numéro gelé, seul ce geste régénère un document. Sur un numéro vivant, il refait
 // un article à la demande sans attendre un enregistrement ni lancer le numéro entier — le
 // panneau Export l'offre dans les deux cas (lib/panneaux.js). La tâche vise le PDF et
-// l'aperçu HTML, sans clean ni import, qui supprimerait le .docx source.
+// l'aperçu HTML, sans clean ni import, qui supprimerait le Word source (.docx ou .odt).
 // `-j2 -O` comme les tâches de vscodium-user/tasks.json, et ici même sur un seul article :
 // les deux cibles ne dépendent pas l'une de l'autre — le .pdf descend du .html, l'aperçu est
 // une passe pandoc séparée. Sans `-j`, la seconde attendait la fin de la première alors que
@@ -3286,9 +3287,10 @@ function lireRapportImport(racine) {
     else if (/d[ée]j[àa] converti|ignor/i.test(ligne)) { ton = 'attention'; icone = 'attention'; libelle = T('word.rapport.ignore'); }
     // Le nom du fichier en tête de ligne, la phrase en dessous : c'est par le fichier
     // qu'on cherche, et la phrase est ce qu'il faut lire quand ça a raté.
-    // Les .docx livrés portent presque toujours des espaces : on prend tout ce qui suit le
-    // deux-points jusqu'à l'extension, sans quoi le titre de la carte serait un fragment.
-    const m = ligne.match(/:\s*(.+?\.docx)/i);
+    // Les Word livrés portent presque toujours des espaces : on prend tout ce qui suit le
+    // deux-points jusqu'à l'extension (.docx ou .odt), sans quoi le titre de la carte
+    // serait un fragment.
+    const m = ligne.match(/:\s*(.+?\.(?:docx|odt))/i);
     entrees.push({ nom: m ? m[1] : ligne, ligne: m ? ligne : '', libelle: libelle, ton: ton, icone: icone });
   }
   return entrees;

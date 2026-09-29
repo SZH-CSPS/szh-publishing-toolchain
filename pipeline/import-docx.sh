@@ -60,6 +60,12 @@
 # Suivi de modifications accepté, commentaires Word ignorés.
 # La destination est articles/<slug>, ou $SZH_IMPORT_DIR : c'est ainsi que le réimport
 # convertit dans un chantier voisin et ne remplace l'article qu'une fois tout prêt.
+#
+# 0. .odt en entrée : un seul moteur (.docx, décision de Robin du 29.09.2026) — converti
+#    tout de suite par pipeline/conversion_odt.py (LibreOffice headless), avant même le
+#    LECTEUR ; toute la chaîne qui suit ne voit alors plus que le .docx converti. Le nom
+#    d'origine (x.odt) survit dans $SZH_SOURCE, lu par docx-meta.py et pronto_modele.py
+#    pour le champ `source:` de la fiche et par reimporter.py --empreintes --word.
 set -u
 
 F="$1"; SLUG="$2"; PIPE="$3"
@@ -68,6 +74,12 @@ F="$1"; SLUG="$2"; PIPE="$3"
 # seule chaîne d'import, pas deux à garder d'accord.
 DIR="${SZH_IMPORT_DIR:-articles/$SLUG}"
 DOCX_ABS="$(realpath "$F")"
+
+# Nom d'origine du Word déposé (.docx ou .odt), avant toute conversion : c'est lui que la
+# fiche doit afficher (source: du meta.yaml) et que reimporter.py --empreintes --word doit
+# recevoir, pour que la cible `import` du Makefile reconnaisse un redépôt sur ce même nom.
+SZH_SOURCE="$(basename "$DOCX_ABS")"
+export SZH_SOURCE
 
 # Le slug, pour que les pré-passes nomment l'article dans leurs messages.
 export SZH_SLUG="$SLUG"
@@ -88,8 +100,8 @@ export SZH_PRODUIT
 # sortie possible — succès, `exit 1` d'une pré-passe, ou un futur point de sortie qu'on
 # oublierait de couvrir à la main. Déclarées vides ici : `set -u` ferait échouer le trap
 # lui-même s'il se déclenchait avant qu'un mktemp les remplisse.
-META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""; CONTROLE=""; RETRAITS=""
-trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE" "$CONTROLE" "$RETRAITS"' EXIT
+META=""; PHOTOS=""; LEGT=""; TITRES=""; MARQUE=""; CONTROLE=""; RETRAITS=""; CONVDIR=""
+trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES" "$MARQUE" "$CONTROLE" "$RETRAITS"; rm -rf "$CONVDIR"' EXIT
 
 # Un message destiné au rédacteur : sur stderr, et dans articles-word/.import.log quand la
 # cible `import` du Makefile en a passé le chemin absolu. Le journal nourrit la vue
@@ -100,6 +112,20 @@ signaler() {
     printf '%s\n' "$*" >> "$SZH_IMPORT_LOG" 2>/dev/null || true
   fi
 }
+
+# .odt : conversion en .docx, avant de créer quoi que ce soit dans $DIR — un échec ici ne
+# doit laisser ni dossier ni fichier derrière lui, le Word reste en attente tel quel.
+# CONVDIR (nettoyé par le trap ci-dessus) reçoit le .docx converti ; DOCX_ABS pointe dessus
+# pour tout ce qui suit, $SZH_SOURCE seul garde le nom .odt d'origine.
+case "$DOCX_ABS" in
+  *.[oO][dD][tT])
+    CONVDIR="$(mktemp -d)"
+    if ! DOCX_ABS="$(python3 "$PIPE/conversion_odt.py" "$DOCX_ABS" docx "$CONVDIR")"; then
+      signaler "[import] ⚠ « $SLUG » : la conversion de « $SZH_SOURCE » (.odt) en .docx a échoué ; rien n'a été créé, le fichier reste en attente. [de] « $SLUG »: die Umwandlung von « $SZH_SOURCE » (.odt) in .docx ist fehlgeschlagen; es wurde nichts angelegt, die Datei bleibt in der Warteschlange."
+      exit 1
+    fi
+    ;;
+esac
 
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
@@ -260,6 +286,6 @@ python3 "$PIPE/docx-controle-import.py" --apres-medias "$SLUG" . "$CONTROLE" "$M
 # l'avait donné. Non bloquant : sans ce fichier, le réimport se montre prudent et nomme
 # comme ambigu ce qu'il ne peut plus trancher.
 python3 "$PIPE/reimporter.py" --empreintes --dossier . --slug "$SLUG" \
-  --word "$(basename "$DOCX_ABS")" || true
+  --word "$SZH_SOURCE" || true
 
 exit 0

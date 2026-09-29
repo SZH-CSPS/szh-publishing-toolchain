@@ -1274,20 +1274,57 @@ test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom
   assert.ok(lignes[0].indexOf('Prenom') !== -1 && lignes[0].indexOf('Prénom') !== -1, lignes[0]);
 });
 
-test('pronto-lire.py : « E-mail : » (variante avec trait d’union) est reconnu comme Email, avec un avertissement', () => {
+// « E-mail » n'est plus une variante depuis le 29.09.2026 : c'est la forme du gabarit
+// allemand (« E-Mail: »), donc lue sans avertissement. « Courriel » reste un alias.
+test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un avertissement', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
   const vu = importer('32-e-mail', {
     styles: STYLES_BASE,
     body: [
       tableMeta([]),
-      tableAuteurs([ligneAuteur(['Prénom : Ana', 'Nom : Rossi', 'E-mail : ana.rossi@ex.ch'])])
+      tableAuteurs([ligneAuteur(['Prénom : Ana', 'Nom : Rossi', 'Courriel : ana.rossi@ex.ch'])])
     ]
   });
   assert.match(vu.fiche, /email: "ana\.rossi@ex\.ch"/, 'l’email n’a pas été repris : ' + vu.fiche);
   const lignes = cleApproximee(vu);
   assert.strictEqual(lignes.length, 1, 'un seul avertissement cle-approximee attendu : '
     + vu.avertissements.join(' / '));
-  assert.ok(lignes[0].indexOf('E-mail') !== -1 && lignes[0].indexOf('Email') !== -1, lignes[0]);
+  assert.ok(lignes[0].indexOf('Courriel') !== -1 && lignes[0].indexOf('Email') !== -1, lignes[0]);
+});
+
+// Le gabarit allemand, rempli avec SES étiquettes : tout est lu, rien n'avertit. Sans la
+// forme allemande en position 1 des tables CANON_*, chaque étiquette partait en
+// cle-approximee ; sans ENTETES_TABLE_AUTEURS, « Autor:in » refusait l'import.
+test('pronto-lire.py : un document au gabarit allemand se lit sans un avertissement', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('32-de', {
+    styles: STYLES_BASE,
+    body: [
+      tableMeta([
+        ligneMeta('Artikeltyp', 'Themenschwerpunkt'),
+        ligneMeta('Titel (DE)', 'Inklusive Schule'),
+        ligneMeta('Untertitel (DE)', 'Eine Umfrage'),
+        ligneMeta('Zusammenfassung (DE)', 'Eine Zusammenfassung.')
+      ]),
+      tableAuteurs([
+        [[['SZHCle', 'Porträt']], [['SZHCle', 'Autor:in']]],
+        ligneAuteur(['Vorname: Anna', 'Name: Muster', 'Funktion: Dozentin',
+          'Institution: PH Bern', 'ROR: https://ror.org/01', 'ORCID: 0000-0001',
+          'E-Mail: anna@ex.ch'])
+      ]),
+      ...clesAbbTab(['Beschriftung: Ein Bild', 'Alternativtext: Beschreibung',
+        'Copyright: SZH', 'Quelle: Archiv']),
+      pImage('image1.png')
+    ]
+  }, 'zeitschrift');
+  assert.strictEqual(vu.bloquant, false, 'import refusé : ' + vu.avertissements.join(' / '));
+  assert.deepStrictEqual(vu.avertissements, [], 'aucun avertissement attendu');
+  for (const attendu of [/^type: article$/m, /Inklusive Schule/, /Eine Umfrage/, /prenom: "?Anna/,
+    /affiliation: "?PH Bern/, /email: "anna@ex\.ch"/, /^lang: de$/m]) {
+    assert.match(vu.fiche, attendu, 'fiche incomplète :\n' + vu.fiche);
+  }
+  assert.match(vu.instructions, /^FI\t.*Ein Bild.*Beschreibung.*SZH.*Archiv/m,
+    'le bloc figure allemand n’a pas été lu :\n' + vu.instructions);
 });
 
 test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » sont reconnus comme Mots-clés — champ sans destination, mais compris', () => {

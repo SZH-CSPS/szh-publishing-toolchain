@@ -83,11 +83,16 @@ ENV DEBIAN_FRONTEND=noninteractive
 # libharfbuzz-subset0 : WeasyPrint 70 découpe les polices avec lui et ne garde fontTools
 # qu'en repli, avec un avertissement par police et par PDF. Rendu identique au pixel près
 # sur le banc (mesuré le 23.09.2026).
+# libreoffice-writer-nogui : conversion .odt <-> .docx à la frontière de l'import Word
+# (pipeline/conversion_odt.py), décision de Robin du 29.09.2026 — un seul moteur, .docx,
+# LibreOffice fait le passage plutôt qu'un lecteur/écrivain ODT natif à tenir en double.
+# Mesuré (paquet Debian trixie) : ~311 Mio installés, 70 paquets.
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
         make curl ca-certificates patch \
         python3 python3-venv \
         libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 libffi8 fontconfig \
         ghostscript \
+        libreoffice-writer-nogui \
         ${FONTS} \
     && rm -rf /var/lib/apt/lists/*
 
@@ -252,4 +257,5 @@ RUN fc-cache -f
 RUN pandoc --version | grep -m1 "^pandoc" \
     && weasyprint --info | grep -m1 -i "weasyprint" \
     && verapdf --version | grep -m1 "^veraPDF" \
-    && vale --version | grep -m1 "^vale version"
+    && vale --version | grep -m1 "^vale version" \
+    && soffice --version | grep -m1 -i "office"

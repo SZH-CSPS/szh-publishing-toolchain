@@ -7,16 +7,15 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Les deux gabarits comparés ici sont ceux du dépôt (revue-template/), pas des fabrications
-// de test : `Pronto - modele d'article.docx` est la copie de
-// C:\Users\robin\Desktop\Pronto - modele d'article v2.docx (le « v2 » disparaît du nom : le
-// dépôt versionne, pas le nom de fichier), et `Pronto - modele d'article.odt` en est la
-// conversion LibreOffice, produite par :
+// Les gabarits comparés ici sont ceux du dépôt (revue-template/), pas des fabrications de
+// test : un par langue depuis le 29.09.2026 — `Pronto - modele d'article_FR.docx` (Revue) et
+// `_DE.docx` (Zeitschrift), versions V4 de Robin (le « V4 » disparaît du nom : le dépôt
+// versionne, pas le nom de fichier) — et leurs `.odt`, conversions LibreOffice produites par :
 //
 //   soffice --headless --convert-to odt --outdir <dossier> "<le .docx>"
 //
-// C'est cette commande qu'il faudra rejouer le jour où quelqu'un modifiera le .docx sans
-// toucher au .odt — ce qui arrivera, et c'est exactement ce que le second contrôle
+// C'est cette commande qu'il faudra rejouer le jour où quelqu'un modifiera un .docx sans
+// toucher à son .odt — ce qui arrivera, et c'est exactement ce que le second contrôle
 // (parité de STRUCTURE) est là pour détecter.
 'use strict';
 
@@ -29,8 +28,11 @@ const cp = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PRONTO_LIRE = path.join(RACINE, 'pipeline', 'pronto-lire.py');
-const REVUE_DOCX = path.join(RACINE, 'revue-template', "Pronto - modele d'article.docx");
-const REVUE_ODT = path.join(RACINE, 'revue-template', "Pronto - modele d'article.odt");
+const GABARITS = [['FR', 'revue', 'fr'], ['DE', 'zeitschrift', 'de']].map(([code, produit, langue]) => ({
+  code, produit, langue,
+  docx: path.join(RACINE, 'revue-template', "Pronto - modele d'article_" + code + '.docx'),
+  odt: path.join(RACINE, 'revue-template', "Pronto - modele d'article_" + code + '.odt')
+}));
 
 function interpretePython() {
   for (const commande of ['python3', 'python']) {
@@ -58,11 +60,11 @@ function dossierJetable() {
 // instructions, avertissements (codes seuls, triés), bloquant }. Un gabarit tapé juste ne
 // devrait jamais bloquer (voir plus bas) : le statut de sortie reste donc vérifié strict ici,
 // contrairement à importer() de pronto-lire.test.js qui doit, lui, laisser passer le code 1.
-function lire(chemin, slug) {
+function lire(chemin, slug, produit) {
   const base = dossierJetable();
   try {
     const instr = path.join(base, 'instructions.txt');
-    const r = python([PRONTO_LIRE, chemin, slug, base], { SZH_META: instr });
+    const r = python([PRONTO_LIRE, chemin, slug, base], { SZH_META: instr, SZH_PRODUIT: produit });
     assert.strictEqual(r.status, 0, 'pronto-lire.py a échoué sur ' + chemin + ' : ' + r.stderr);
     const cheminFiche = path.join(base, slug + '.meta.yaml');
     const codes = String(r.stderr).split(/\r?\n/)
@@ -98,13 +100,17 @@ function sansNomsImages(instructions) {
   return (instructions || '').replace(/^(FI\t)[^\t\n]*/gm, '$1<image>');
 }
 
-test('pronto-lire.py : le même gabarit en .docx et en .odt donne la même fiche', () => {
+for (const G of GABARITS) {
+test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt donne la même fiche', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
+  const REVUE_DOCX = G.docx, REVUE_ODT = G.odt;
   assert.ok(fs.existsSync(REVUE_DOCX), 'gabarit .docx manquant dans revue-template/ : ' + REVUE_DOCX);
   assert.ok(fs.existsSync(REVUE_ODT), 'gabarit .odt manquant dans revue-template/ : ' + REVUE_ODT);
 
-  const vuDocx = lire(REVUE_DOCX, 'gabarit-docx');
-  const vuOdt = lire(REVUE_ODT, 'gabarit-odt');
+  const vuDocx = lire(REVUE_DOCX, 'gabarit-docx', G.produit);
+  const vuOdt = lire(REVUE_ODT, 'gabarit-odt', G.produit);
+  assert.ok(new RegExp('^lang: ' + G.langue + '$', 'm').test(vuDocx.fiche),
+    'la fiche du gabarit ' + G.code + ' ne porte pas lang: ' + G.langue + ' :\n' + vuDocx.fiche);
 
   assert.ok(vuDocx.fiche, 'le lecteur .docx n’a rien écrit dans la fiche');
   assert.ok(vuOdt.fiche, 'le lecteur .odt n’a rien écrit dans la fiche');
@@ -142,6 +148,7 @@ test('pronto-lire.py : le même gabarit en .docx et en .odt donne la même fiche
   assert.deepStrictEqual(vuDocx.avertissements.filter((c) => codesBloquants.includes(c)), [],
     'le gabarit .docx déclenche pourtant un code bloquant : ' + vuDocx.avertissements.join(', '));
 });
+}
 
 // ---- Parité de STRUCTURE ------------------------------------------------------------------
 //
@@ -277,10 +284,11 @@ function structureDe(chemin) {
   return JSON.parse(r.stdout);
 }
 
-test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, mêmes blocs — .docx et .odt', () => {
+for (const G of GABARITS) {
+test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, mêmes blocs — ' + G.code + ' .docx et .odt', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
-  const structDocx = structureDe(REVUE_DOCX);
-  const structOdt = structureDe(REVUE_ODT);
+  const structDocx = structureDe(G.docx);
+  const structOdt = structureDe(G.odt);
 
   assert.strictEqual(structDocx.n_tables, structOdt.n_tables,
     'nombre de tableaux de premier niveau différent : docx=' + structDocx.n_tables
@@ -318,6 +326,7 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   // « Copiez ces quatre paragraphes » : rétablie le 23.09.2026.
   assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 4);
 });
+}
 
 // Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),
 // etc. Un style commun sans display-name doit quand même rendre un nom humain via decoder_nom_style().
@@ -377,10 +386,12 @@ test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un
   assert.ok(fs.existsSync(CHAPITRE_HERITE),
     'le Word hérité de référence manque : ' + CHAPITRE_HERITE);
 
-  assert.strictEqual(reconnait(REVUE_DOCX), true,
-    'le gabarit .docx livré n’est plus reconnu : tout document du gabarit repartirait chez '
-    + 'docx-meta.py, qui devine au lieu de lire');
-  assert.strictEqual(reconnait(REVUE_ODT), true, 'le gabarit .odt livré n’est plus reconnu');
+  for (const G of GABARITS) {
+    assert.strictEqual(reconnait(G.docx), true,
+      'le gabarit .docx ' + G.code + ' livré n’est plus reconnu : tout document du gabarit '
+      + 'repartirait chez docx-meta.py, qui devine au lieu de lire');
+    assert.strictEqual(reconnait(G.odt), true, 'le gabarit .odt ' + G.code + ' livré n’est plus reconnu');
+  }
   assert.strictEqual(reconnait(CHAPITRE_HERITE), false,
     'un Word hérité a été pris pour un document du gabarit : il serait lu par un lecteur qui '
     + 'refuse de deviner, et son import échouerait');

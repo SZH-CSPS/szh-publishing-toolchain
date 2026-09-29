@@ -22,7 +22,9 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
 const PREPASS = path.join(PIPE, 'docx-styles-corps.py');
 const FILTRE = path.join(PIPE, 'filters', 'szh-styles-corps.lua');
-const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article.docx");
+// SZH_PRODUIT=revue ci-dessous -> le gabarit FR (Zeitschrift utiliserait le DE, hors périmètre
+// de ce contrôle, indépendant de la langue des étiquettes du gabarit).
+const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 
 function jetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-styles-corps-'));

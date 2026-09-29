@@ -44,7 +44,12 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 const MANUSCRIT_DOCX = path.join(PIPELINE, 'manuscrit_docx.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
-const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article.docx");
+// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE, styleId « allemands » des deux côtés
+// (berschrift1/2/3/4, Textkrper, Zitat — enregistrés par un Word allemand) même si les w:name
+// restent 'heading N'/'Body Text'/'Quote'. GABARIT_LIVRE reste le nom historique (FR, la voie
+// la plus empruntée par ce fichier) ; GABARIT_DE pour les contrôles propres à l'allemand.
+const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article_FR.docx");
+const GABARIT_DE = path.join(RACINE, "revue-template", "Pronto - modele d'article_DE.docx");
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 
 // PYTHONIOENCODING=utf-8 : sans elle, l'interprète Python de ce poste écrit son stdout dans
@@ -107,8 +112,14 @@ function diagnostiquerManuscritDocx(mode, chemin) {
   return JSON.parse(r.stdout);
 }
 
-function prontoLire(chemin, slug, dossier) {
-  const r = python([PRONTO_LIRE, chemin, slug, dossier]);
+// `produit` (ajout 29.09.2026, gabarits FR/DE) : pose $SZH_PRODUIT ('revue'|'zeitschrift') —
+// c'est LUI qui décide la langue lue (pronto_modele.langue_du_produit()), pas un champ du
+// gabarit. Omis (comme avant ce chantier) : produit inconnu, repli 'fr' par l'avertissement
+// 'langue-deduite', voie déjà éprouvée par les contrôles FR existants de ce fichier.
+function prontoLire(chemin, slug, dossier, produit) {
+  const env = produit ? Object.assign({}, ENV_UTF8, { SZH_PRODUIT: produit }) : ENV_UTF8;
+  const r = cp.spawnSync(PYTHON, [PRONTO_LIRE, chemin, slug, dossier],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env });
   assert.strictEqual(r.status, 0, 'pronto-lire.py a échoué sur ' + chemin + ' : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -657,26 +668,28 @@ test('manuscrit_gabarit.ecrire : l\'italique survit',
 // ---------------------------------------------------------------------------------
 // Contrôle ajouté après revue adverse (18.09.2026) — le corps porte bien le STYLE « Corps de
 // texte » du gabarit, jamais « Normal » ni l'absence de w:pStyle, et un titre de niveau 1/2/3
-// porte bien Titre1/Titre2/Titre3. Défaut trouvé : un sabotage de STYLE_CORPS ('Corpsdetexte'
-// -> 'Normal') laissait les huit premiers contrôles VERTS — aucun d'eux n'inspectait le STYLE
-// réellement écrit dans le XML, seulement le TEXTE relu. Un « Normal » écrit à la place de
-// « Corps de texte » ne casse aucune reconstruction de texte ni de forme ; il casse la
-// composition en aval (la maquette est accrochée au style, pas au contenu) — exactement le
-// genre de défaut qu'un contrôle qui ne regarde que le texte ne peut jamais voir.
+// porte bien le style résolu correspondant. Défaut trouvé : un sabotage du repli du corps
+// laissait les huit premiers contrôles VERTS — aucun d'eux n'inspectait le STYLE réellement
+// écrit dans le XML, seulement le TEXTE relu. Un « Normal » écrit à la place de « Corps de
+// texte » ne casse aucune reconstruction de texte ni de forme ; il casse la composition en
+// aval (la maquette est accrochée au style, pas au contenu) — exactement le genre de défaut
+// qu'un contrôle qui ne regarde que le texte ne peut jamais voir.
 //
 // Le style effectivement écrit se lit sur `Paragraphe.style` du JSON --diagnostic de
 // manuscrit_docx.py : ce champ est le nom humain RÉSOLU par resoudre_style() depuis le
-// styles.xml du GABARIT lui-même (Corpsdetexte -> « body text », Titre1/2/3 -> « heading
-// 1/2/3 », Normal -> « normal », AUCUN w:pStyle -> '') — trois valeurs bien distinctes, ce
-// contrôle ne peut donc pas se tromper de style par coïncidence de nommage.
+// styles.xml du GABARIT lui-même (w:name « body text »/« heading 1/2/3 »/« normal », AUCUN
+// w:pStyle -> '') — quatre valeurs bien distinctes, insensibles au styleId réel (Corpsdetexte
+// côté FR d'avant les gabarits V4, Textkrper depuis) : ce contrôle ne peut donc pas se tromper
+// de style par coïncidence de nommage, et reste valable QUEL QUE SOIT le gabarit sous-jacent.
 //
 // Sabotages minimaux, dans les deux sens (§11 : « quelque chose doit rougir ») :
-//   - STYLE_CORPS = 'Corpsdetexte' -> 'Normal' : les paragraphes de corps ressortent avec le
-//     style 'normal' au lieu de 'body text' — ce contrôle-ci rougit (et lui seul : aucun des
-//     sept autres n'inspecte le style écrit, comme le pointe la revue).
-//   - STYLE_TITRE = {1: 'Titre1', ...} -> {1: 'Titre2', ...} (niveau 1 mappé sur Titre2) :
-//     le titre de niveau 1 ressort avec le style 'heading 2' au lieu de 'heading 1' — ce
-//     contrôle-ci rougit (assertion sur le titre de niveau 1).
+//   - dans _StylesResolus, faire résoudre le corps sur le repli 'Normal' plutôt que sur le
+//     styleId réellement trouvé par w:name : les paragraphes de corps ressortent avec le style
+//     'normal' au lieu de 'body text' — ce contrôle-ci rougit (et lui seul : aucun des sept
+//     autres n'inspecte le style écrit, comme le pointe la revue).
+//   - dans _StylesResolus.__init__, décaler `self.titre` d'un cran (niveau 1 -> styleId du
+//     niveau 2) : le titre de niveau 1 ressort avec le style 'heading 2' au lieu de
+//     'heading 1' — ce contrôle-ci rougit (assertion sur le titre de niveau 1).
 
 test('manuscrit_gabarit.ecrire : le corps porte le style « Corps de texte », les titres Titre1/2/3, jamais Normal ni l\'absence de style',
   { skip: sansPython }, () => {
@@ -713,6 +726,35 @@ test('manuscrit_gabarit.ecrire : le corps porte le style « Corps de texte », l
           'un paragraphe de corps ne doit JAMAIS ressortir avec le style Normal du gabarit');
         assert.notStrictEqual(style, '',
           'un paragraphe de corps ne doit JAMAIS ressortir sans aucun w:pStyle');
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Une citation du manuscrit sort en citation (style « Quote » du gabarit, que pandoc relit en
+// bloc de citation), dans les deux gabarits, quel que soit le nom qu'elle portait : jusqu'au
+// 29.09.2026 elle ressortait en corps de texte, sans retrait.
+test('manuscrit_gabarit.ecrire : une citation (Quote, Citation, Zitat) sort en citation, FR et DE',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      for (const gabarit of [GABARIT_LIVRE, GABARIT_DE]) {
+        const sortie = path.join(base, 'sortie.docx');
+        const spec = specDocument([
+          paragraphe([fragment('Une citation anglaise.')], { style: 'Quote' }),
+          paragraphe([fragment('Une citation française.')], { style: 'Citation' }),
+          paragraphe([fragment('Ein Zitat.')], { style: 'Zitat' }),
+          paragraphe([fragment('Du corps.')]),
+        ]);
+        ecrireDepuisSpec(spec, sortie, gabarit);
+        const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+        const style = (texte) => document.blocs.find((b) => b.type !== 'tableau'
+          && b.fragments.some((f) => f.texte === texte)).style;
+        for (const texte of ['Une citation anglaise.', 'Une citation française.', 'Ein Zitat.']) {
+          assert.strictEqual(style(texte), 'quote', texte + ' (' + path.basename(gabarit) + ')');
+        }
+        assert.strictEqual(style('Du corps.'), 'body text');
       }
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -1648,36 +1690,51 @@ test('manuscrit_gabarit.ecrire : un appel de note sans contenu correspondant éc
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°4 — le gabarit livré ne définit ni style d'appel de note ni style de texte de
-// note : le renvoi se pose en simple exposant (vertAlign), le paragraphe de note en
-// Corpsdetexte — jamais une exception, jamais un renvoi sans mise en forme du tout.
+// Contrôle n°4 — aucun des deux gabarits (FR/DE) ne définit de style d'appel de note ni de
+// style de texte de note : le renvoi se pose en simple exposant (vertAlign), le paragraphe de
+// note dans le style de CORPS RÉSOLU du gabarit — jamais une exception, jamais un renvoi sans
+// mise en forme du tout. Depuis les gabarits V4 (29.09.2026, enregistrés par un Word allemand),
+// ce style de corps s'appelle Textkrper (styleId), PAS Corpsdetexte — un ancien sabotage qui
+// codait 'Corpsdetexte' en dur dans _resoudre_styles_note() serait désormais invisible sur ce
+// SEUL contrôle FR (le repli documenté partage par coïncidence le même nom que l'ancien
+// gabarit) : d'où la boucle FR/DE, chacune avec le styleId RÉEL de son propre gabarit.
 
-test('manuscrit_gabarit.ecrire : sans style de note dans le gabarit, le renvoi est un simple exposant et la note est en Corps de texte',
-  { skip: sansPython }, () => {
-    const base = dossierJetable();
-    try {
-      const sortie = path.join(base, 'sortie.docx');
-      const spec = specDocument([
-        paragraphe([fragment('Texte'), fragment('', {}, { note: 1 })]),
-      ], { 1: [paragraphe([fragment('Contenu.')])] });
-      ecrireDepuisSpec(spec, sortie);
-      const xml = lireDocumentXml(sortie);
-      assert.ok(/<w:footnoteReference w:id="1"\/>/.test(xml));
-      const rIdxFootnoteRef = xml.indexOf('<w:footnoteReference');
-      const runAvant = xml.lastIndexOf('<w:r>', rIdxFootnoteRef);
-      assert.ok(xml.slice(runAvant, rIdxFootnoteRef).includes('vertAlign w:val="superscript"'),
-        'le run d\'appel doit porter un exposant (le gabarit livré n\'a pas de style dédié)');
+for (const { langue, gabarit, styleCorpsAttendu } of [
+  { langue: 'fr', gabarit: GABARIT_LIVRE, styleCorpsAttendu: 'Textkrper' },
+  { langue: 'de', gabarit: GABARIT_DE, styleCorpsAttendu: 'Textkrper' },
+]) {
+  test('manuscrit_gabarit.ecrire (' + langue + ') : sans style de note dans le gabarit, le '
+    + 'renvoi est un simple exposant et la note porte le style de corps RÉSOLU',
+    { skip: sansPython }, () => {
+      const base = dossierJetable();
+      try {
+        const sortie = path.join(base, 'sortie.docx');
+        const spec = specDocument([
+          paragraphe([fragment('Texte'), fragment('', {}, { note: 1 })]),
+        ], { 1: [paragraphe([fragment('Contenu.')])] });
+        ecrireDepuisSpec(spec, sortie, gabarit);
+        const xml = lireDocumentXml(sortie);
+        assert.ok(/<w:footnoteReference w:id="1"\/>/.test(xml));
+        const rIdxFootnoteRef = xml.indexOf('<w:footnoteReference');
+        const runAvant = xml.lastIndexOf('<w:r>', rIdxFootnoteRef);
+        assert.ok(xml.slice(runAvant, rIdxFootnoteRef).includes('vertAlign w:val="superscript"'),
+          'le run d\'appel doit porter un exposant (aucun gabarit n\'a de style dédié)');
 
-      const footnotes = cp.execFileSync(PYTHON, ['-c',
-        'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
-        + 'sys.stdout.write(z.read("word/footnotes.xml").decode("utf-8"))', sortie],
-        { encoding: 'utf8', env: ENV_UTF8 });
-      assert.ok(/<w:footnote w:id="1">.*?Corpsdetexte/s.test(footnotes),
-        'le paragraphe de la note doit porter le style Corpsdetexte, faute de style dédié');
-    } finally {
-      fs.rmSync(base, { recursive: true, force: true });
-    }
-  });
+        const footnotes = cp.execFileSync(PYTHON, ['-c',
+          'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+          + 'sys.stdout.write(z.read("word/footnotes.xml").decode("utf-8"))', sortie],
+          { encoding: 'utf8', env: ENV_UTF8 });
+        assert.ok(new RegExp('<w:footnote w:id="1">.*?' + styleCorpsAttendu, 's').test(footnotes),
+          'le paragraphe de la note doit porter le style de corps résolu (' + styleCorpsAttendu
+          + '), faute de style dédié — obtenu :\n' + footnotes);
+        assert.ok(!/Corpsdetexte/.test(footnotes),
+          'jamais le repli FR historique en dur : le gabarit ' + langue + ' ne définit pas ce '
+          + 'styleId');
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}
 
 // ---------------------------------------------------------------------------------
 // Contrôle n°5 (corpus) — chiffre mesuré le 19.09.2026 : 12 notes sur `2-fin-de-document`
@@ -2001,17 +2058,20 @@ const ECRIRE_DEPUIS_JSON_AVEC_ENTETE = [
   'import manuscrit_modele as mm',
   'import manuscrit_entete as me',
   'import manuscrit_gabarit as mg',
-  'chemin_gabarit, chemin_sortie, json_doc, json_entete = (sys.argv[2], sys.argv[3], '
-  + 'sys.argv[4], sys.argv[5])',
+  'chemin_gabarit, chemin_sortie, json_doc, json_entete, langue = (sys.argv[2], sys.argv[3], '
+  + 'sys.argv[4], sys.argv[5], sys.argv[6])',
   'document = mm.document_depuis_json(json.loads(json_doc))',
   'entete = me.EnTete(**json.loads(json_entete))',
-  'resultat = mg.ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=entete)',
+  'resultat = mg.ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=entete, '
+  + 'langue=langue)',
   'print(json.dumps(resultat, ensure_ascii=True))',
 ].join('\n');
 
-function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit) {
+// `langue` (ajout 29.09.2026, gabarits FR/DE) : 'fr' par défaut, compatibilité des appels
+// existants de ce fichier (tous écrits contre le seul gabarit FR d'alors).
+function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit, langue) {
   const r = python(['-c', ECRIRE_DEPUIS_JSON_AVEC_ENTETE, PIPELINE, cheminGabarit || GABARIT_LIVRE,
-    cheminSortie, JSON.stringify(spec), JSON.stringify(entete)]);
+    cheminSortie, JSON.stringify(spec), JSON.stringify(entete), langue || 'fr']);
   assert.strictEqual(r.status, 0, 'ecrire() avec entete a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -2120,3 +2180,279 @@ test('manuscrit_gabarit.ecrire : sans entete (None), les deux tableaux fixes res
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+// ===================================================================================
+// Chantier « gabarits Pronto FR/DE » (29.09.2026) — manuscrit_gabarit.ecrire() écrit
+// désormais dans DEUX gabarits (Revue = FR, Zeitschrift = DE, `langue='fr'|'de'`), dont les
+// styleId réels ne sont PLUS Titre1/Corpsdetexte (repli historique) mais berschrift1../
+// Textkrper (les deux gabarits ont été réenregistrés par un Word allemand — seuls les w:name
+// restent 'heading N'/'Body Text'), résolus depuis word/styles.xml de CHAQUE gabarit plutôt que
+// codés en dur. Les contrôles ci-dessous couvrent : la résolution de style par nom (et son
+// repli tracé), les étiquettes de bloc figure/tableau et la ligne mots-clés PAR LANGUE, le
+// retrait du commentaire d'aide du gabarit (sinon orphelin dans le .docx produit), et la
+// preuve de bout en bout demandée par le brief — un manuscrit RÉEL, écrit dans les deux
+// gabarits, relu par pronto-lire.py (le lecteur de PRODUCTION) sans « cle-approximee » ni
+// blocage.
+
+// ---- Résolution de style : styleId réel du gabarit, jamais le repli FR historique ------
+
+const STYLEIDS_PY = [
+  'import sys, zipfile, re, json',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'styles_xml = z.read("word/styles.xml").decode("utf-8")',
+  'noms = {}',
+  'for m in re.finditer(r\'<w:style\\b[^>]*w:styleId="([^"]*)"[^>]*>(.*?)</w:style>\', '
+  + 'styles_xml, re.S):',
+  '    sid, corps = m.group(1), m.group(2)',
+  '    nm = re.search(r\'<w:name\\s+w:val="([^"]*)"\', corps)',
+  '    if nm:',
+  '        noms[nm.group(1).lower()] = sid',
+  'print(json.dumps(noms))',
+].join('\n');
+
+function styleidsDuGabarit(chemin) {
+  const r = python(['-c', STYLEIDS_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'lecture des styleId du gabarit a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+const PSTYLES_ECRITS_PY = [
+  'import sys, zipfile, re, json',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'noms = z.namelist()',
+  'ecrits = set()',
+  'for nom in ("word/document.xml", "word/footnotes.xml"):',
+  '    if nom in noms:',
+  '        ecrits |= set(re.findall(r\'<w:pStyle w:val="([^"]+)"\', '
+  + 'z.read(nom).decode("utf-8")))',
+  'declares = set(re.findall(r\'w:styleId="([^"]+)"\', '
+  + 'z.read("word/styles.xml").decode("utf-8")))',
+  'print(json.dumps({"ecrits": sorted(ecrits), "manquants": sorted(ecrits - declares)}))',
+].join('\n');
+
+function pstylesEcrits(chemin) {
+  const r = python(['-c', PSTYLES_ECRITS_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'lecture des pStyle écrits a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
+                                    { langue: 'de', gabarit: GABARIT_DE }]) {
+  test('manuscrit_gabarit.ecrire (' + langue + ') : les styleId RÉELS du gabarit '
+    + '(berschrift1/Textkrper) sont écrits, jamais le repli FR historique (Titre1/'
+    + 'Corpsdetexte)',
+    { skip: sansPython }, () => {
+      const base = dossierJetable();
+      try {
+        const attendus = styleidsDuGabarit(gabarit);
+        assert.strictEqual(attendus['heading 1'], 'berschrift1',
+          'ce contrôle suppose un gabarit V4 (styleId allemand) — mesure invalidée sinon');
+        assert.strictEqual(attendus['body text'], 'Textkrper');
+
+        const sortie = path.join(base, 'sortie.docx');
+        const spec = specDocument([
+          paragraphe([fragment('Titre de niveau 1')], { niveau_declare: 1, niveau_retenu: 1 }),
+          paragraphe([fragment('Un paragraphe de corps.')]),
+        ]);
+        ecrireDepuisSpec(spec, sortie, gabarit);
+        const xml = lireDocumentXml(sortie);
+        assert.ok(xml.includes('<w:pStyle w:val="' + attendus['heading 1'] + '"/>'),
+          'le titre de niveau 1 doit porter le VRAI styleId résolu par nom (berschrift1)');
+        assert.ok(xml.includes('<w:pStyle w:val="' + attendus['body text'] + '"/>'),
+          'le corps doit porter le VRAI styleId résolu par nom (Textkrper)');
+        assert.ok(!xml.includes('w:val="Titre1"') && !xml.includes('w:val="Corpsdetexte"'),
+          'le repli FR historique (Titre1/Corpsdetexte) ne doit jamais apparaître : ces '
+          + 'styleId n\'existent pas dans les gabarits V4');
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}
+
+// Sabotage vérifié à la main (script jetable, hors dépôt) : `_styleid_par_nom` neutralisé
+// (retourne toujours None) force le repli sur TOUTES les résolutions ('Titre1'/'Corpsdetexte'/
+// 'SZHCle'/'SZHAide' apparaissent bien dans le XML produit) et pose une ligne de trace
+// 'style_introuvable' par résolution manquante — les deux contrôles ci-dessus, sans ce
+// sabotage, ne voient QUE le styleId réel (berschrift1/Textkrper) : ils rougiraient si la
+// résolution s'était mise à ignorer word/styles.xml.
+
+// ---- Étiquettes des blocs figure/tableau et ligne mots-clés, PAR LANGUE ----------------
+
+for (const { langue, gabarit, labels, mots } of [
+  { langue: 'fr', gabarit: GABARIT_LIVRE,
+    labels: ['Légende : ', 'Texte alternatif : ', 'Crédit : ', 'Source : '],
+    mots: 'Mots-clés : un, deux' },
+  { langue: 'de', gabarit: GABARIT_DE,
+    labels: ['Beschriftung: ', 'Alternativtext: ', 'Copyright: ', 'Quelle: '],
+    mots: 'Schlüsselwörter: un, deux' },
+]) {
+  test('manuscrit_gabarit.ecrire (' + langue + ') : les étiquettes des blocs figure/tableau '
+    + 'et la ligne mots-clés suivent `langue`, jamais celles de l\'autre langue',
+    { skip: sansPython }, () => {
+      const base = dossierJetable();
+      try {
+        const sortie = path.join(base, 'sortie.docx');
+        const octets = Buffer.from('IMAGE-ESSAI-LABELS-0123456789');
+        const spec = specDocument([
+          paragraphe([fragment('', {}, { image: image('fig.png', octets.toString('base64')) })]),
+        ]);
+        const e = entete({ mots_cles: ['un', 'deux'] });
+        ecrireAvecEntete(spec, e, sortie, gabarit, langue);
+        const xml = lireDocumentXml(sortie);
+        for (const label of labels) {
+          assert.ok(xml.includes(label),
+            'étiquette attendue absente (' + langue + ') : « ' + label + ' »');
+        }
+        const autresLabels = langue === 'fr'
+          ? ['Beschriftung', 'Alternativtext', 'Copyright', 'Quelle']
+          : ['Légende', 'Texte alternatif', 'Crédit', 'Source'];
+        for (const etrangere of autresLabels) {
+          assert.ok(!xml.includes(etrangere),
+            'étiquette de l\'AUTRE langue trouvée dans une sortie ' + langue + ' : « '
+            + etrangere + ' »');
+        }
+        assert.ok(xml.includes(mots), 'ligne mots-clés attendue absente : « ' + mots + ' »');
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}
+
+// Sabotage vérifié à la main : `ecrire(..., langue='de')` appelé sur le gabarit DE écrit bien
+// les étiquettes DE (Beschriftung/Alternativtext/Copyright/Quelle, aucune trace de Légende) ;
+// forcer `langue='fr'` sur ce MÊME gabarit DE écrit alors les étiquettes FR — la sortie suit
+// le paramètre `langue`, jamais un texte lu dans le fichier gabarit lui-même.
+
+// ---- Le commentaire d'aide du gabarit ne doit jamais se retrouver, orphelin, en sortie -
+
+for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
+                                    { langue: 'de', gabarit: GABARIT_DE }]) {
+  test('manuscrit_gabarit.ecrire (' + langue + ') : le commentaire Word d\'aide du gabarit '
+    + '(comments.xml et ses parties liées) ne se retrouve jamais, orphelin, dans le .docx '
+    + 'produit',
+    { skip: sansPython }, () => {
+      const base = dossierJetable();
+      try {
+        const sortie = path.join(base, 'sortie.docx');
+        ecrireDepuisSpec(DOC_UN_PARAGRAPHE, sortie, gabarit);
+        const r = cp.execFileSync(PYTHON, ['-c',
+          'import sys, zipfile, json; z = zipfile.ZipFile(sys.argv[1]); '
+          + 'print(json.dumps(z.namelist()))', sortie], { encoding: 'utf8', env: ENV_UTF8 });
+        const noms = JSON.parse(r);
+        for (const partie of ['word/comments.xml', 'word/commentsExtended.xml',
+          'word/commentsIds.xml', 'word/commentsExtensible.xml', 'word/people.xml']) {
+          assert.ok(!noms.includes(partie), partie + ' ne doit pas survivre dans la sortie');
+        }
+        const rels = cp.execFileSync(PYTHON, ['-c',
+          'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+          + 'sys.stdout.write(z.read("word/_rels/document.xml.rels").decode("utf-8"))', sortie],
+          { encoding: 'utf8', env: ENV_UTF8 });
+        assert.ok(!/comment/i.test(rels) && !/people\.xml/i.test(rels),
+          'aucune relation vers une partie commentaire ne doit rester : ' + rels);
+        const ct = cp.execFileSync(PYTHON, ['-c',
+          'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+          + 'sys.stdout.write(z.read("[Content_Types].xml").decode("utf-8"))', sortie],
+          { encoding: 'utf8', env: ENV_UTF8 });
+        assert.ok(!/comment/i.test(ct) && !/people\.xml/i.test(ct),
+          'aucun Override vers une partie commentaire ne doit rester : ' + ct);
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}
+
+// Sabotage vérifié à la main : neutraliser `_retirer_relations`/`_retirer_overrides` (les
+// rendre identité) fait réapparaître les cinq parties commentaire dans la sortie — exactement
+// le défaut que ce contrôle attrape.
+
+// ---- Preuve de bout en bout (§ brief, obligatoire) : manuscrit RÉEL, entete complet, FR/DE -
+
+const MANUSCRIT_REEL = path.join(RACINE, 'outils-dev',
+  "Le coenseignement développemental_revue Suisse_10082026.docx");
+
+const ECRIRE_DEPUIS_DOCX_AVEC_ENTETE = [
+  'import json, sys',
+  'sys.path.insert(0, sys.argv[1])',
+  'import manuscrit_docx as md',
+  'import manuscrit_entete as me',
+  'import manuscrit_gabarit as mg',
+  'chemin_manuscrit, chemin_gabarit, chemin_sortie, json_entete, langue = ('
+  + 'sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6])',
+  'document = md.lire(chemin_manuscrit)',
+  'entete = me.EnTete(**json.loads(json_entete))',
+  'resultat = mg.ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=entete, '
+  + 'langue=langue)',
+  'print(json.dumps(resultat, ensure_ascii=True))',
+].join('\n');
+
+function ecrireReelAvecEntete(chemin, gabarit, sortie, ent, langue) {
+  const r = python(['-c', ECRIRE_DEPUIS_DOCX_AVEC_ENTETE, PIPELINE, chemin, gabarit, sortie,
+    JSON.stringify(ent), langue]);
+  assert.strictEqual(r.status, 0, 'ecrire() (manuscrit réel + entete) a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+for (const { langue, gabarit, produit } of [
+  { langue: 'fr', gabarit: GABARIT_LIVRE, produit: 'revue' },
+  { langue: 'de', gabarit: GABARIT_DE, produit: 'zeitschrift' },
+]) {
+  test('manuscrit_gabarit.ecrire (bout en bout, ' + langue + ') : manuscrit réel écrit avec '
+    + 'un entete complet, relu par pronto-lire.py sans cle-approximee ni blocage',
+    { skip: sansPython }, (t) => {
+      if (!fs.existsSync(MANUSCRIT_REEL)) {
+        sauter.corpus(t, MANUSCRIT_REEL);
+        return;
+      }
+      const base = dossierJetable();
+      try {
+        const sortie = path.join(base, 'sortie.docx');
+        const e = entete({
+          titre: 'Titre bout en bout', sous_titre: 'Sous-titre bout en bout',
+          resume: 'Un résumé suffisamment long pour ce contrôle de bout en bout.',
+          langue_produit: langue, mots_cles: ['un', 'deux'],
+          auteurs: [
+            auteur({ prenom: 'Ana', nom: 'Muster', fonction: 'Chercheuse', institution: 'HfH',
+              email: 'a@b.ch', orcid: '0000-0000-0000-0001' }),
+            auteur({ prenom: 'Beat', nom: 'Meier', fonction: 'Chercheur', institution: 'HfH',
+              email: 'b@b.ch' }),
+          ],
+        });
+        const resultat = ecrireReelAvecEntete(MANUSCRIT_REEL, gabarit, sortie, e, langue);
+        assert.ok(resultat.stats, 'ecrire() doit rendre ses stats');
+
+        // Chaque partie XML de la sortie doit être bien formée...
+        assert.deepStrictEqual(validerPartiesXml(sortie), []);
+        // ...et chaque pStyle écrit doit exister dans styles.xml de CE gabarit.
+        const { manquants } = pstylesEcrits(sortie);
+        assert.deepStrictEqual(manquants, [],
+          'pStyle écrit(s) introuvable(s) dans styles.xml du gabarit : ' + manquants);
+
+        // Relu par pronto-lire.py, LE lecteur de production — $SZH_PRODUIT décide la langue
+        // lue (pas un champ du gabarit, voir prontoLire ci-dessus).
+        const dossierPronto = path.join(base, 'pronto');
+        fs.mkdirSync(dossierPronto);
+        const r = cp.spawnSync(PYTHON, [PRONTO_LIRE, sortie, 'essai', dossierPronto],
+          { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+            env: Object.assign({}, ENV_UTF8, { SZH_PRODUIT: produit }) });
+        assert.strictEqual(r.status, 0, 'pronto-lire.py doit rendre 0 : ' + r.stderr);
+        assert.ok(!/cle-approximee/.test(r.stderr),
+          'aucune clé approximée attendue sur un tableau bien rempli :\n' + r.stderr);
+        const stats = JSON.parse(r.stdout);
+        assert.ok(!stats.bloquant, 'aucun code bloquant attendu : ' + JSON.stringify(stats));
+
+        const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
+        assert.match(meta, new RegExp('lang: ' + langue));
+        assert.match(meta, new RegExp('title:\\s*\\n\\s*' + langue
+          + ': "Titre bout en bout"'));
+        assert.match(meta, new RegExp('subtitle:\\s*\\n\\s*' + langue
+          + ': "Sous-titre bout en bout"'));
+        assert.match(meta, new RegExp('resume:\\s*\\n\\s*' + langue
+          + ': "Un résumé suffisamment long pour ce contrôle de bout en bout\\."'));
+        assert.match(meta, /prenom: "Ana"/);
+        assert.match(meta, /prenom: "Beat"/);
+        assert.match(meta, /affiliation: "HfH"/);
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}

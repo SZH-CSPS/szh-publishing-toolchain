@@ -1306,7 +1306,10 @@ def principal(argv):
         'lang': langue if langue in LANGUES_META else '',
         # Le .docx vit encore dans articles-word/ à cet instant : son nom de fichier
         # est l'identité que la cible `import` du Makefile comparera au prochain dépôt.
-        'source': os.path.basename(chemin_docx),
+        # $SZH_SOURCE (posée par import-docx.sh) porte le nom D'ORIGINE quand ce .docx est
+        # en réalité un .odt converti à la volée — sinon repli sur le basename d'ici, comme
+        # avant l'acceptation de l'ODT.
+        'source': os.environ.get('SZH_SOURCE') or os.path.basename(chemin_docx),
         # Le DOI du Word n'est plus repris dans la fiche : le DOI est un calcul du cockpit
         # (place de l'article dans le numéro, lib/export-ojs.js), et seul un DOI défini à
         # la main dans le formulaire vit dans le meta.yaml — serialiser_meta sait toujours

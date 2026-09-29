@@ -75,35 +75,81 @@ import manuscrit_modele as mm
 import pronto_modele
 
 # ---------------------------------------------------------------------------------
-# Styles du gabarit — styleId réels, mesurés dans word/styles.xml de
-# "revue-template/Pronto - modele d'article.docx" (18.09.2026) : Titre1/2/3 (w:name "heading
-# 1/2/3"), Corpsdetexte (w:name "Body Text"), SZHCle (w:name "SZH Cle"). Le gabarit ne définit
-# QUE trois niveaux de titre ("Titre de troisième rang (pas de niveau 4 !)") — ce qui tombe
-# pile sur ce que `niveau_retenu` peut porter (1..3, jamais plus, voir manuscrit_modele.py).
-
-STYLE_TITRE = {1: 'Titre1', 2: 'Titre2', 3: 'Titre3'}
-STYLE_CORPS = 'Corpsdetexte'
-STYLE_CLE = 'SZHCle'
+# Styles du gabarit — JAMAIS un styleId codé en dur : résolus depuis word/styles.xml DU
+# GABARIT COURANT, par w:name, au début d'ecrire() (voir _StylesResolus plus bas). Depuis les
+# gabarits V4 (29.09.2026, deux fichiers FR/DE), les styleId réels ne sont PLUS Titre1/2/3,
+# Corpsdetexte : les deux gabarits ont été enregistrés par un Word allemand et portent
+# berschrift1/2/3/4 (w:name "heading 1/2/3/4"), Textkrper (w:name "Body Text") — alors que les
+# w:name, eux, restent les mêmes noms canoniques anglais des deux côtés. Coder un styleId en
+# dur romprait donc silencieusement le gabarit DE (styles introuvables -> repli permanent).
+#
+# Les constantes ci-dessous restent : elles ne sont plus QUE le REPLI documenté (mesuré sur le
+# gabarit FR tel que livré le 18.09.2026, avant la réédition en Word allemand) employé quand la
+# résolution par nom échoue — jamais une exception, toujours tracé (_StylesResolus.trace).
+_REPLI_STYLE_TITRE = {1: 'Titre1', 2: 'Titre2', 3: 'Titre3', 4: 'Titre4'}
+_REPLI_STYLE_CORPS = 'Corpsdetexte'
+_REPLI_STYLE_CLE = 'SZHCle'
 # Révision du 21.09.2026 (décision de Robin) : les métadonnées d'un bloc figure/tableau ne
 # vont plus dans un tableau enveloppe, mais dans des paragraphes de CE style, juste avant
 # l'image ou le tableau — clone de SZHCle avec une bordure ouverte (haut/gauche/droite, pas en
 # bas), ajoutée à word/styles.xml du gabarit. Les paragraphes consécutifs de ce style dessinent
 # un seul cadre : Word fusionne les bordures de paragraphes adjacents identiques — c'est cette
 # propriété du format qui rend inutile toute table enveloppe ici.
-STYLE_CLE_ABB_TAB = 'SZHCleAbbTab'
+_REPLI_STYLE_CLE_ABB_TAB = 'SZHCleAbbTab'
 
-# Les styles MAISON du gabarit (styleId mesurés dans word/styles.xml, 29.09.2026), par nom
-# normalisé (pronto_modele.normaliser_nom_style). Un paragraphe qui porte déjà l'un d'eux —
-# document déjà au gabarit (cas A), ou manuscrit écrit dans une copie du gabarit — le GARDE :
-# réécrit en Corps de texte, un encadré « SZH Important » perdait son cadre, et un bloc
-# « SZH Cle Abb/Tab » ses étiquettes de figure (mesuré : un document déjà au gabarit sortait
-# du nettoyeur avec ses clés en Corpsdetexte, suivies d'un second jeu de clés vides).
-STYLES_MAISON = {
-    pronto_modele.normaliser_nom_style(nom): style_id for nom, style_id in (
+# Les styles MAISON du gabarit : (nom w:name, styleId de repli), par nom normalisé
+# (pronto_modele.normaliser_nom_style) — les deux gabarits V4 gardent ces styleId identiques à
+# eux-mêmes (mesuré : SZHCle, SZHCleAbbTab... n'ont pas bougé avec la réédition allemande), mais
+# résolus par nom quand même, comme tout le reste (jamais deux façons de faire dans ce module).
+# Un paragraphe qui porte déjà l'un d'eux — document déjà au gabarit (cas A), ou manuscrit écrit
+# dans une copie du gabarit — le GARDE : réécrit en Corps de texte, un encadré « SZH Important »
+# perdait son cadre, et un bloc « SZH Cle Abb/Tab » ses étiquettes de figure (mesuré : un
+# document déjà au gabarit sortait du nettoyeur avec ses clés en Corpsdetexte, suivies d'un
+# second jeu de clés vides).
+_REPLI_STYLES_MAISON = {
+    pronto_modele.normaliser_nom_style(nom): (nom, style_id) for nom, style_id in (
         ('SZH Important', 'SZHImportant'), ('SZH Hervorhebung', 'SZHHervorhebung'),
-        ('SZH Question (interview)', 'SZHQuestioninterview'), ('SZH Cle', STYLE_CLE),
-        ('SZH Cle Abb/Tab', STYLE_CLE_ABB_TAB), ('SZH Aide', 'SZHAide'))
+        ('SZH Question (interview)', 'SZHQuestioninterview'), ('SZH Cle', _REPLI_STYLE_CLE),
+        ('SZH Cle Abb/Tab', _REPLI_STYLE_CLE_ABB_TAB), ('SZH Aide', 'SZHAide'))
 }
+
+
+class _StylesResolus:
+    """StyleId réels du gabarit COURANT, résolus UNE FOIS par ecrire() (voir son en-tête)
+    depuis word/styles.xml, par w:name — via `_styleid_par_nom()`, la même résolution déjà
+    employée pour les styles de note (_resoudre_styles_note). Une résolution manquante tombe
+    sur le repli historique (_REPLI_*) et c'est tracé dans `self.trace`, jamais une exception :
+    un style introuvable ne doit jamais interrompre l'écriture (§ en-tête du module)."""
+
+    def __init__(self, styles_xml):
+        self.trace = []
+        self.titre = {n: self._resoudre(styles_xml, ('heading %d' % n,), repli,
+                                         'titre de niveau %d' % n)
+                      for n, repli in _REPLI_STYLE_TITRE.items()}
+        self.corps = self._resoudre(styles_xml, ('Body Text',), _REPLI_STYLE_CORPS,
+                                     'corps de texte')
+        self.cle_abb_tab = self._resoudre(styles_xml, ('SZH Cle Abb/Tab',),
+                                           _REPLI_STYLE_CLE_ABB_TAB,
+                                           'clé de bloc figure/tableau')
+        self.maison = {
+            cle: self._resoudre(styles_xml, (nom,), repli, 'style maison « %s »' % nom)
+            for cle, (nom, repli) in _REPLI_STYLES_MAISON.items()
+        }
+        # Citation : le style « Quote » du gabarit (styleId Zitat dans les V4), que pandoc
+        # relit en bloc de citation à l'import. Sans lui, repli sur le corps de texte.
+        self.citation = self._resoudre(styles_xml, ('Quote',), self.corps, 'citation')
+
+    def _resoudre(self, styles_xml, noms, repli, motif):
+        style_id = _styleid_par_nom(styles_xml, noms)
+        if style_id is not None:
+            return style_id
+        self.trace.append({
+            'portee': 'document', 'source': None, 'decision': 'style_introuvable',
+            'motif': "style « %s » introuvable dans word/styles.xml du gabarit (w:name "
+                     "cherché : %s) : repli sur l'identifiant « %s »"
+                     % (motif, ' / '.join(noms), repli)})
+        return repli
+
 
 # docx-titres.py, RE_LEGENDE : reconnaît une légende déjà écrite dans le manuscrit (« Figure
 # 1 », « Abbildung 2 », « Tableau 3 »…) — copié tel quel, voir l'en-tête pour la raison (nom
@@ -112,19 +158,36 @@ RE_LEGENDE = re.compile(
     r'^(?:figure|fig\.?|abbildung|abb\.?|illustration|grafik|tableau|tabelle|table)\s+\d+',
     re.I)
 
-# Étiquettes des blocs figure/tableau — mêmes libellés que le gabarit lui-même (mesurés dans
-# document.xml : « Légende : », « Texte alternatif : », « Crédit : », « Source : »), dans
-# l'ORDRE où le gabarit les pose — LABELS_FIGURE de pronto_modele.py n'impose aucun ordre à la
-# lecture (aplatir() compare chaque étiquette indépendamment), mais reproduire l'ordre du
-# gabarit rend une sortie que Robin reconnaît à l'œil.
-CHAMPS_BLOC = (('legende', 'Légende'), ('alt', 'Texte alternatif'),
-               ('credit', 'Crédit'), ('source', 'Source'))
+# Étiquettes des blocs figure/tableau, PAR LANGUE — mêmes libellés que chaque gabarit lui-même
+# (mesurés dans document.xml : FR « Légende / Texte alternatif / Crédit / Source », DE
+# « Beschriftung / Alternativtext / Copyright / Quelle »), dans l'ORDRE où le gabarit les pose
+# — CANON_FIGURE de pronto_modele.py n'impose aucun ordre à la LECTURE (identifier_cle()
+# compare chaque étiquette indépendamment), mais reproduire l'ordre du gabarit rend une sortie
+# que Robin reconnaît à l'œil. `ecrire(..., langue=...)` choisit le jeu à écrire ; la
+# RECONNAISSANCE d'une clé déjà tapée par l'autrice ou l'auteur (_lire_cle plus bas), elle,
+# reste indépendante de la langue : identifier_cle() contre CANON_FIGURE reconnaît déjà les
+# deux jeux d'étiquettes à la fois.
+_ORDRE_CHAMPS_BLOC = ('legende', 'alt', 'credit', 'source')
+CHAMPS_BLOC = {
+    'fr': tuple(zip(_ORDRE_CHAMPS_BLOC,
+                    ('Légende', 'Texte alternatif', 'Crédit', 'Source'))),
+    'de': tuple(zip(_ORDRE_CHAMPS_BLOC,
+                    ('Beschriftung', 'Alternativtext', 'Copyright', 'Quelle'))),
+}
+
+# Séparateur entre l'étiquette et sa valeur, PAR LANGUE — mesuré dans document.xml des deux
+# gabarits (29.09.2026) : le FR garde l'espace simple déjà écrit par ce module avant ce
+# chantier (« Légende : », inchangé) ; le DE colle le deux-points à l'étiquette (« Beschriftung:
+# », jamais d'espace avant, un espace après) — c'est exactement ce que le gabarit DE écrit lui-
+# même dans ses paragraphes SZH Cle Abb/Tab.
+_SEPARATEUR_CLE = {'fr': ' : ', 'de': ': '}
 
 # Position de la clé « Texte alternatif : » parmi les quatre paragraphes de clé d'un bloc
 # (ajout du 22.09.2026, ancrage de A11y.TexteAlternatif.* dans `correspondance`, voir
-# _convertir_niveau_racine) — calculée depuis CHAMPS_BLOC, jamais un « 1 » écrit en dur : un
-# futur réordonnancement de CHAMPS_BLOC ne peut alors pas désaccorder les deux silencieusement.
-_INDICE_CLE_ALT = [cle for cle, _ in CHAMPS_BLOC].index('alt')
+# _convertir_niveau_racine) — calculée depuis _ORDRE_CHAMPS_BLOC (le même pour les deux
+# langues, seuls les LIBELLÉS changent), jamais un « 1 » écrit en dur : un futur
+# réordonnancement ne peut alors pas désaccorder les deux silencieusement.
+_INDICE_CLE_ALT = _ORDRE_CHAMPS_BLOC.index('alt')
 
 # Largeur par défaut d'un tableau de contenu d'un bloc tableau (le tableau du manuscrit
 # lui-même — depuis le 21.09.2026, posé directement au premier niveau, plus jamais imbriqué
@@ -508,13 +571,15 @@ def _styleid_par_nom(styles_xml, noms):
     return None
 
 
-def _resoudre_styles_note(styles_xml):
+def _resoudre_styles_note(styles_xml, style_corps_resolu):
     """(style_car, style_para) : styleId de caractère pour l'appel de note (None si le
     gabarit n'en définit aucun — repli : vertAlign exposant posé directement sur le run) et
-    styleId de paragraphe pour le corps de la note (STYLE_CORPS si le gabarit n'en définit
-    aucun)."""
+    styleId de paragraphe pour le corps de la note (`style_corps_resolu` — le corps DÉJÀ
+    résolu par _StylesResolus pour CE gabarit, jamais le repli FR en dur : sur le gabarit DE,
+    le style de corps s'appelle Textkrper, pas Corpsdetexte, et écrire ce dernier produirait
+    une référence à un styleId qui n'existe pas dans le gabarit DE)."""
     style_car = _styleid_par_nom(styles_xml, _NOMS_STYLE_APPEL_NOTE)
-    style_para = _styleid_par_nom(styles_xml, _NOMS_STYLE_TEXTE_NOTE) or STYLE_CORPS
+    style_para = _styleid_par_nom(styles_xml, _NOMS_STYLE_TEXTE_NOTE) or style_corps_resolu
     return style_car, style_para
 
 
@@ -527,12 +592,14 @@ class _RegistreNotes:
     connu reçoit un contenu vide — les deux cas sont tracés, jamais en silence (§5 : « aucune
     décision silencieuse, jamais »)."""
 
-    def __init__(self, document_notes, styles_xml_gabarit, footnotes_xml_gabarit):
+    def __init__(self, document_notes, styles_xml_gabarit, footnotes_xml_gabarit,
+                 style_corps_resolu):
         # Contrat partagé pas encore livré (Document.notes toujours une liste, ou absent) :
         # ce registre se comporte alors comme s'il n'y avait aucune note connue — jamais une
         # exception, voir l'en-tête du module.
         self._contenus = document_notes if isinstance(document_notes, dict) else {}
-        self._style_car, self._style_para = _resoudre_styles_note(styles_xml_gabarit)
+        self._style_car, self._style_para = _resoudre_styles_note(styles_xml_gabarit,
+                                                                    style_corps_resolu)
         ids_existants = [int(m) for m in
                           re.findall(r'<w:footnote\s+w:id="(-?\d+)"', footnotes_xml_gabarit or '')]
         self._depart = max([i for i in ids_existants if i > 0] or [0])
@@ -745,10 +812,15 @@ def _paragraphe_xml(paragraphe, style_id, registre, espace='document'):
     return '<w:p>%s%s</w:p>' % (pPr, runs)
 
 
-def _style_pour_paragraphe(paragraphe):
-    if paragraphe.niveau_retenu in STYLE_TITRE:
-        return STYLE_TITRE[paragraphe.niveau_retenu]
-    return STYLES_MAISON.get(pronto_modele.normaliser_nom_style(paragraphe.style), STYLE_CORPS)
+def _style_pour_paragraphe(paragraphe, registre):
+    styles = registre.styles
+    if paragraphe.niveau_retenu in styles.titre:
+        return styles.titre[paragraphe.niveau_retenu]
+    # Une citation du manuscrit (« Quote », « Citation », « Zitat », « Intense Quote »…) garde
+    # sa nature : réécrite en corps de texte, elle perdait son retrait et son bloc à l'import.
+    if mm._est_style_citation(paragraphe.style):
+        return styles.citation
+    return styles.maison.get(pronto_modele.normaliser_nom_style(paragraphe.style), styles.corps)
 
 
 # ---------------------------------------------------------------------------------
@@ -822,7 +894,8 @@ def _contenu_cellule_xml(blocs, registre, espace='document'):
             # Aide…), gardé tel quel : c'est lui que le lecteur du gabarit reconnaît, et un
             # tableau fixe recopié sans lui ne se relirait plus (voir _tableaux_fixes_du_
             # document).
-            style_id = STYLES_MAISON.get(pronto_modele.normaliser_nom_style(bloc.style), '')
+            style_id = registre.styles.maison.get(
+                pronto_modele.normaliser_nom_style(bloc.style), '')
             morceaux.append(_paragraphe_xml(bloc, style_id, registre, espace))
     if not morceaux:
         return PARAGRAPHE_VIDE
@@ -879,19 +952,24 @@ def _meta_paragraphes_xml(champs, registre):
     chaîne (Crédit/Source/Texte alternatif, ou Légende sans contenu retrouvé dans le manuscrit
     — jamais inventée), soit une LISTE DE FRAGMENTS (la légende déjà écrite dans le manuscrit,
     préservée avec sa mise en forme — voir _cherche_legende) : une légende aplatie en texte
-    plat perdrait ses exposants, d'où la distinction."""
+    plat perdrait ses exposants, d'où la distinction. `registre.champs_bloc`/`registre.
+    separateur_cle` : le jeu d'étiquettes et le séparateur de LA LANGUE demandée à ecrire()
+    (voir CHAMPS_BLOC/_SEPARATEUR_CLE) — jamais le module-level CHAMPS_BLOC directement, qui
+    est maintenant un dict PAR langue, pas une liste."""
     paras = []
-    for cle, label in CHAMPS_BLOC:
+    for cle, label in registre.champs_bloc:
         valeur = champs.get(cle)
         if isinstance(valeur, list) and valeur:
             runs = _runs_xml(valeur, registre)
             paras.append('<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr>'
-                         '<w:r><w:t xml:space="preserve">%s : </w:t></w:r>%s</w:p>'
-                          % (STYLE_CLE_ABB_TAB, _echapper(label), runs))
+                         '<w:r><w:t xml:space="preserve">%s%s</w:t></w:r>%s</w:p>'
+                          % (registre.styles.cle_abb_tab, _echapper(label),
+                             registre.separateur_cle, runs))
         else:
             texte_plat = valeur.strip() if isinstance(valeur, str) else ''
-            texte = '%s : %s' % (label, texte_plat) if texte_plat else '%s : ' % label
-            paras.append(_paragraphe_simple_xml(texte, STYLE_CLE_ABB_TAB))
+            texte = ('%s%s%s' % (label, registre.separateur_cle, texte_plat)) if texte_plat \
+                else '%s%s' % (label, registre.separateur_cle)
+            paras.append(_paragraphe_simple_xml(texte, registre.styles.cle_abb_tab))
     return ''.join(paras)
 
 
@@ -1345,12 +1423,13 @@ def _bloc_xml(bloc, fragments_legende, registre):
         # Rien de tapé : le texte alternatif de la première image, comme un bloc ordinaire.
         champs['alt'] = bloc.rangees[0][0].alt
     if bloc.cles_brutes:
-        meta = ''.join(_paragraphe_xml(p, STYLE_CLE_ABB_TAB, registre) for p in bloc.cles)
+        meta = ''.join(_paragraphe_xml(p, registre.styles.cle_abb_tab, registre)
+                        for p in bloc.cles)
         n_cles = len(bloc.cles)
         indice_alt = next((k for k, p in enumerate(bloc.cles) if _lire_cle(p)[0] == 'alt'), 0)
     else:
         meta = _meta_paragraphes_xml(champs, registre)
-        n_cles = len(CHAMPS_BLOC)
+        n_cles = len(registre.champs_bloc)
         indice_alt = _INDICE_CLE_ALT
     if bloc.nature == 'figure':
         contenu = ''.join(_rangee_images_xml(r, registre) for r in bloc.rangees)
@@ -1417,7 +1496,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
             fragments_legende = legendes.get(idx)
             xml, n_wp, indice_alt = _bloc_xml(bloc, fragments_legende, registre)
             segments.append((True, xml, bloc.source, False, n_wp, bloc.nature, indice_alt))
-            saisies = [label for cle, label in CHAMPS_BLOC
+            saisies = [label for cle, label in registre.champs_bloc
                        if bloc.champs.get(cle)] if not bloc.cles_brutes else ['recopiées telles quelles']
             if bloc.nature == 'figure':
                 images = bloc.images()
@@ -1454,7 +1533,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                     p_texte = mm.Paragraphe(style=bloc.style, niveau_declare=bloc.niveau_declare,
                                              niveau_retenu=bloc.niveau_retenu,
                                              fragments=fragments_texte, source=bloc.source)
-                    style_id = _style_pour_paragraphe(p_texte)
+                    style_id = _style_pour_paragraphe(p_texte, registre)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
                                       bloc.source, False, 1, None))
                 # Plusieurs images dans une phrase (29.09.2026) : UN bloc pour toutes, comme
@@ -1478,7 +1557,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
                     xml = _meta_et_contenu_xml(champs, _image_paragraphe_xml(image, registre),
                                                 registre)
                     segments.append((True, xml, bloc.source, False, 5, 'figure'))
-                    champs_vides = [label for cle, label in CHAMPS_BLOC if not champs.get(cle)]
+                    champs_vides = [label for cle, label in registre.champs_bloc
+                                     if not champs.get(cle)]
                     trace.append({'portee': 'bloc', 'source': bloc.source,
                                   'decision': 'bloc_figure',
                                   'motif': 'image « %s » posée dans un bloc figure ; champs '
@@ -1503,7 +1583,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                   'decision': 'liste_reportee', 'type': type_liste,
                                   'format_determine': format_lu in ('puce', 'numero'),
                                   'motif': motif})
-                style_id = _style_pour_paragraphe(bloc)
+                style_id = _style_pour_paragraphe(bloc, registre)
                 segments.append((False, _paragraphe_xml(bloc, style_id, registre),
                                   bloc.source, est_vide, 1, None))
         idx += 1
@@ -1591,39 +1671,69 @@ def _ajouter_types_contenu(ct_xml, extensions):
     return ct_xml.replace('</Types>', morceaux + '</Types>')
 
 
+# Seul retrait volontaire de ce module (voir ecrire()) : les parties du commentaire Word
+# d'aide du gabarit (ancré sur son propre bloc figure d'exemple, jamais recopié — le corps
+# écrit ici vient de `document.blocs`, pas du gabarit). Noms de fichier TELS QUE Word les
+# écrit (mesurés sur les deux gabarits V4, 29.09.2026).
+_NOMS_COMMENTAIRES_GABARIT = ('comments.xml', 'commentsExtended.xml', 'commentsIds.xml',
+                               'commentsExtensible.xml', 'people.xml')
+_PARTIES_COMMENTAIRES_GABARIT = tuple('word/' + n for n in _NOMS_COMMENTAIRES_GABARIT)
+
+
+def _retirer_relations(rels_xml, noms_cibles):
+    motif = re.compile(r'<Relationship\b[^>]*?\bTarget="(?:%s)"[^>]*/>'
+                        % '|'.join(re.escape(n) for n in noms_cibles))
+    return motif.sub('', rels_xml)
+
+
+def _retirer_overrides(ct_xml, noms_parties):
+    motif = re.compile(r'<Override\b[^>]*?PartName="/word/(?:%s)"[^>]*/>'
+                        % '|'.join(re.escape(n) for n in noms_parties))
+    return motif.sub('', ct_xml)
+
+
 # ---------------------------------------------------------------------------------
 # En-tête (§5.5 du contrat, ajouté le 19.09.2026) — remplissage des DEUX tableaux fixes
 # (métadonnées, autrices et auteurs) depuis l'EnTete que manuscrit_entete.extraire_entete()
 # a reconnue. Ce module reste un écrivain pur : `entete` arrive déjà TRANCHÉE, comme
 # `decisions` — aucune reconnaissance ici, seulement la traduction en XML, exactement à
 # l'endroit où pronto_docx.lire()/pronto_modele.extraire_table_metadonnees()/
-# extraire_table_auteurs() vont la relire (mesuré sur le gabarit livré, 19.09.2026 :
-# étiquettes « Titre (FR) », « Sous-titre (FR) », « Résumé (FR) » — une seule langue, quel
-# que soit le produit — et sept lignes « Étiquette : » par fiche d'autrice ou auteur).
+# extraire_table_auteurs() vont la relire.
+#
+# Gabarits V4 (29.09.2026, deux fichiers FR/DE) : les étiquettes ne sont plus une seule forme
+# figée (« Titre (FR) » quel que soit le produit) — le gabarit DE écrit « Titel (DE) »,
+# « Vorname: », « E-Mail: »… La reconnaissance d'étiquette ne repose donc plus sur une poignée
+# de regex françaises, mais sur `pronto_modele.identifier_cle()` contre CANON_METADONNEES /
+# CANON_AUTEUR — LA MÊME table et LA MÊME tolérance (accent oublié, alias) que le LECTEUR
+# (pronto_modele.extraire_table_metadonnees()/extraire_table_auteurs()) : un jeton reconnu à
+# l'écriture est GARANTI reconnu à la relecture, par construction, sur les deux gabarits à la
+# fois — jamais une deuxième table à tenir synchronisée avec la première.
 
 _RE_TR_XML = re.compile(r'<w:tr\b.*?</w:tr>', re.S)
 _RE_TC_XML = re.compile(r'<w:tc\b.*?</w:tc>', re.S)
 _RE_P_XML = re.compile(r'<w:p\b.*?</w:p>', re.S)
 _RE_T_XML = re.compile(r'<w:t\b[^>]*>(.*?)</w:t>', re.S)
 
-_RE_LABEL_TYPE = re.compile(r"^Type d.article", re.I)
-_RE_LABEL_LANGUE = re.compile(r"^Langue de l.article", re.I)
-_RE_LABEL_TITRE = re.compile(r"^Titre\s*\(", re.I)
-_RE_LABEL_SOUS_TITRE = re.compile(r"^Sous-titre\s*\(", re.I)
-_RE_LABEL_RESUME = re.compile(r"^R[ée]sum[ée]\s*\(", re.I)
+# jeton CANON_METADONNEES -> attribut d'EnTete à écrire. « type » et « motscles » n'y figurent
+# PAS : jamais déduits du texte du manuscrit (décision du brief de chantier — la relectrice les
+# choisit dans le cockpit) ; reconnus quand même par identifier_cle() (ils sont dans la table),
+# mais sans destination ici, comme avant ce chantier.
+_JETON_VERS_CHAMP_METADONNEES = {'titre': 'titre', 'soustitre': 'sous_titre', 'resume': 'resume'}
 
-# « Type d'article » et « ROR » ne figurent PAS ici : jamais déduits du texte du manuscrit
-# (décision du brief de chantier — la relectrice les choisit dans le cockpit).
-_CHAMPS_AUTEUR_GABARIT = (
-    (re.compile(r'^Pr[ée]nom\s*:', re.I), 'prenom'),
-    (re.compile(r'^Nom\s*:', re.I), 'nom'),
-    (re.compile(r'^Fonction\s*:', re.I), 'fonction'),
-    (re.compile(r'^Institution\s*:', re.I), 'institution'),
-    (re.compile(r'^ORCID\s*:', re.I), 'orcid'),
-    (re.compile(r'^Email\s*:', re.I), 'email'),
-)
+# jeton CANON_AUTEUR -> champ du dict `auteur` (manuscrit_entete.CHAMPS_AUTEUR_ENTETE). « ror »
+# (et les clés CLES_AUTEUR_SANS_DESTINATION : adresse/biographie/telephone/photo) n'y figurent
+# PAS : ROR jamais rempli (décision du brief), les autres n'ont pas de champ dans EnTete.auteurs.
+# 'affiliation' est le seul jeton dont le NOM diffère du champ EnTete (`institution`).
+_JETON_VERS_CHAMP_AUTEUR = {
+    'prenom': 'prenom', 'nom': 'nom', 'fonction': 'fonction',
+    'affiliation': 'institution', 'orcid': 'orcid', 'email': 'email',
+}
 
 LANGUE_PRODUIT_TEXTE = {'fr': 'français', 'de': 'deutsch'}
+
+# Préfixe de la ligne « Mots-clés » écrite en tête du corps (voir ecrire()), PAR LANGUE — même
+# convention de deux-points que _SEPARATEUR_CLE (FR : espace avant, DE : collé).
+_PREFIXE_MOTS_CLES = {'fr': 'Mots-clés : ', 'de': 'Schlüsselwörter: '}
 
 
 def _texte_xml_brut(fragment_xml):
@@ -1632,6 +1742,16 @@ def _texte_xml_brut(fragment_xml):
     texte = ''.join(_RE_T_XML.findall(fragment_xml))
     return (texte.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
             .replace('&apos;', "'").replace('&quot;', '"'))
+
+
+def _etiquette_premiere_ligne(cellule_xml):
+    """Le texte du PREMIER <w:p> d'une cellule — l'étiquette elle-même, jamais la ligne
+    d'aide qui peut la suivre dans la même cellule (« facultatif », « 400 à 600 signes… ») :
+    mesuré sur les deux gabarits, la cellule « Champ » du tableau de métadonnées porte deux
+    paragraphes pour Sous-titre/Résumé/Type d'article. Passer les DEUX à identifier_cle()
+    ferait exploser la longueur comparée (LONGUEUR_ETIQUETTE_SCORE) et effondrer le score."""
+    p = _RE_P_XML.search(cellule_xml)
+    return _texte_xml_brut(p.group(0)) if p else ''
 
 
 def _inserer_dans_paragraphe(p_xml, valeur):
@@ -1648,9 +1768,11 @@ def _inserer_dans_paragraphe(p_xml, valeur):
 
 def _remplir_table_metadonnees(table_xml, entete):
     """Remplit les cellules « valeur » du tableau de métadonnées : Titre, Sous-titre, Résumé
-    (dans la langue du PRODUIT — le gabarit livré ne porte qu'une ligne « (FR) » pour ces
-    trois champs, quel que soit le produit) et Langue de l'article (français/deutsch).
-    « Type d'article » reste toujours vide. Rend (xml, trace)."""
+    (dans la langue du PRODUIT — chaque gabarit ne porte qu'une ligne, « (FR) » ou « (DE) »
+    selon le fichier) et Langue de l'article (français/deutsch). « Type d'article » reste
+    toujours vide. L'étiquette est débarrassée d'un éventuel suffixe « (FR)/(DE)/(IT) »
+    (RE_SUFFIXE_LANGUE) avant d'être reconnue — « Titel (DE) » vise le même jeton `titre` que
+    « Titre (FR) ». Rend (xml, trace)."""
     trace = []
     lignes = _RE_TR_XML.findall(table_xml)
     if not lignes:
@@ -1660,19 +1782,18 @@ def _remplir_table_metadonnees(table_xml, entete):
         cellules = _RE_TC_XML.findall(ligne)
         if len(cellules) != 2:
             continue
-        etiquette = _texte_xml_brut(cellules[0])
-        if _RE_LABEL_LANGUE.match(etiquette):
-            champ, valeur = 'langue', LANGUE_PRODUIT_TEXTE.get(entete.langue_produit, '')
-        elif _RE_LABEL_TITRE.match(etiquette):
-            champ, valeur = 'titre', entete.titre
-        elif _RE_LABEL_SOUS_TITRE.match(etiquette):
-            champ, valeur = 'sous_titre', entete.sous_titre
-        elif _RE_LABEL_RESUME.match(etiquette):
-            champ, valeur = 'resume', entete.resume
-        elif _RE_LABEL_TYPE.match(etiquette):
-            continue                          # jamais rempli (décision du brief)
-        else:
+        etiquette_brute = _etiquette_premiere_ligne(cellules[0])
+        etiquette = pronto_modele.RE_SUFFIXE_LANGUE.sub('', etiquette_brute).strip()
+        resultat = pronto_modele.identifier_cle(etiquette, pronto_modele.CANON_METADONNEES)
+        if resultat is None or resultat[0] == '__ambigu__':
             continue
+        champ = resultat[0]
+        if champ == 'langue':
+            valeur = LANGUE_PRODUIT_TEXTE.get(entete.langue_produit, '')
+        elif champ in _JETON_VERS_CHAMP_METADONNEES:
+            valeur = getattr(entete, _JETON_VERS_CHAMP_METADONNEES[champ])
+        else:
+            continue                          # 'type'/'motscles' : jamais remplis (brief)
         if not valeur:
             continue
         nouvelle_cellule = _inserer_dans_paragraphe(cellules[1], valeur)
@@ -1685,22 +1806,30 @@ def _remplir_table_metadonnees(table_xml, entete):
 
 
 def _remplir_fiche_auteur(cellule_xml, auteur):
-    """(cellule remplie, nombre de champs remplis) — une ligne « Étiquette : » par champ,
-    ROR jamais rempli (décision du brief). Ne modifie QUE les paragraphes dont l'étiquette
-    est reconnue ; toute ligne inconnue du gabarit reste telle quelle."""
+    """(cellule remplie, nombre de champs remplis) — une ligne « Étiquette : » (FR) ou
+    « Étiquette: » (DE, collée) par champ, ROR jamais rempli (décision du brief). L'étiquette
+    reconnue contre CANON_AUTEUR — même mécanisme que _remplir_table_metadonnees, jamais de
+    suffixe de langue à retirer ici (« Vorname: », pas « Vorname (DE): »). Ne modifie QUE les
+    paragraphes dont l'étiquette est reconnue ; toute ligne inconnue du gabarit reste telle
+    quelle."""
     paragraphes = _RE_P_XML.findall(cellule_xml)
     nouvelle_cellule = cellule_xml
     rempli = 0
     for p_xml in paragraphes:
-        etiquette = _texte_xml_brut(p_xml)
-        for motif, champ in _CHAMPS_AUTEUR_GABARIT:
-            if motif.match(etiquette):
-                valeur = (auteur.get(champ) or '').strip()
-                if valeur:
-                    nouveau_p = _inserer_dans_paragraphe(p_xml, valeur)
-                    nouvelle_cellule = nouvelle_cellule.replace(p_xml, nouveau_p, 1)
-                    rempli += 1
-                break
+        texte = _texte_xml_brut(p_xml)
+        etiquette = texte.partition(':')[0].strip()
+        resultat = pronto_modele.identifier_cle(etiquette, pronto_modele.CANON_AUTEUR)
+        if resultat is None or resultat[0] == '__ambigu__':
+            continue
+        champ = _JETON_VERS_CHAMP_AUTEUR.get(resultat[0])
+        if champ is None:
+            continue
+        valeur = (auteur.get(champ) or '').strip()
+        if not valeur:
+            continue
+        nouveau_p = _inserer_dans_paragraphe(p_xml, valeur)
+        nouvelle_cellule = nouvelle_cellule.replace(p_xml, nouveau_p, 1)
+        rempli += 1
     return nouvelle_cellule, rempli
 
 
@@ -1784,7 +1913,7 @@ def _tableaux_fixes_du_document(blocs):
 # ---------------------------------------------------------------------------------
 # Point d'entrée.
 
-def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None):
+def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None, langue='fr'):
     """Écrit un .docx au gabarit Pronto depuis un Document du §4, en PARTANT d'une copie du
     gabarit livré (`chemin_gabarit`) — jamais un .docx fabriqué de zéro (§5.3). `decisions` :
     les (stats, trace) déjà produits par manuscrit_modele.classer_titres()/
@@ -1795,15 +1924,41 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None)
     extraire_entete() a reconnue (§5.5 du contrat), déjà tranchée elle aussi — None en cas A
     (§1 : le gabarit est déjà rempli, rien à écrire ici) ou si l'appelant ne la fournit pas ;
     remplit alors les DEUX tableaux fixes (titre/sous-titre/résumé/langue, fiches d'autrices
-    et auteurs) au lieu de les recopier vides. Rend un dict {'stats', 'trace', 'decisions',
+    et auteurs) au lieu de les recopier vides. `langue` : 'fr' (défaut, compatibilité des
+    appels existants) ou 'de' — choisit les LIBELLÉS écrits par ce module lui-même (étiquettes
+    des blocs figure/tableau, ligne « Mots-clés »), PAS la reconnaissance des étiquettes déjà
+    tapées par l'autrice ou l'auteur (identifier_cle() contre CANON_FIGURE/CANON_METADONNEES/
+    CANON_AUTEUR reconnaît les deux jeux à la fois, quelle que soit cette valeur) ; une valeur
+    inattendue retombe sur 'fr', tracé. Rend un dict {'stats', 'trace', 'decisions',
     'correspondance'} — voir la docstring de _convertir_niveau_racine pour ce dernier champ.
     """
+    trace_langue = []
+    if langue not in CHAMPS_BLOC:
+        trace_langue.append({'portee': 'document', 'source': None, 'decision': 'langue_repli',
+                              'motif': "langue %r inconnue de ecrire() : repli sur 'fr'"
+                                       % (langue,)})
+        langue = 'fr'
+
     with zipfile.ZipFile(chemin_gabarit) as zin:
         noms = zin.namelist()
         doc_xml = zin.read('word/document.xml').decode('utf-8')
         rels_xml = zin.read('word/_rels/document.xml.rels').decode('utf-8')
         ct_xml = zin.read('[Content_Types].xml').decode('utf-8')
         contenus = {nom: zin.read(nom) for nom in noms}
+
+    # Le gabarit porte un commentaire Word d'aide, ancré sur son propre bloc figure d'exemple
+    # (word/comments.xml + commentsExtended/Ids/Extensible.xml + people.xml, et leurs relations
+    # / Override) — jamais recopié : le corps qu'écrit ce module est RECONSTRUIT depuis
+    # `document.blocs` (voir plus bas), l'exemple du gabarit et son ancre disparaissent avec
+    # lui. Sans ce retrait, ces cinq parties restent dans l'archive de sortie, ORPHELINES (plus
+    # aucune commentRangeStart/End/commentReference nulle part dans le document produit) —
+    # `manuscrit_annoter.py` ne sait ajouter un commentaire QUE si aucun comments.xml n'existe
+    # déjà (sinon il tente d'ajouter à celui, périmé, du gabarit).
+    parties_orphelines = [n for n in _PARTIES_COMMENTAIRES_GABARIT if n in contenus]
+    for nom in parties_orphelines:
+        del contenus[nom]
+    rels_xml = _retirer_relations(rels_xml, _NOMS_COMMENTAIRES_GABARIT)
+    ct_xml = _retirer_overrides(ct_xml, _NOMS_COMMENTAIRES_GABARIT)
 
     numbering_xml_gabarit = (contenus['word/numbering.xml'].decode('utf-8')
                               if 'word/numbering.xml' in contenus else None)
@@ -1840,9 +1995,25 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None)
     rid_existants = [int(m) for m in re.findall(r'Id="rId(\d+)"', rels_xml)]
     registre = _Registre(max(rid_existants, default=0) + 1, numbering_xml_gabarit)
     registre.largeur_max_dxa = _largeur_utile_page_dxa(sect_xml)
-    registre.notes = _RegistreNotes(document.notes, styles_xml_gabarit, footnotes_xml_gabarit)
+    # Styles réels du gabarit COURANT (voir _StylesResolus) — résolus AVANT tout XML écrit :
+    # tout le reste de cette fonction, et tout ce qu'appelle _convertir_niveau_racine, lit
+    # registre.styles/registre.champs_bloc/registre.separateur_cle, jamais une constante
+    # module-level codée pour un seul gabarit.
+    registre.styles = _StylesResolus(styles_xml_gabarit)
+    registre.champs_bloc = CHAMPS_BLOC[langue]
+    registre.separateur_cle = _SEPARATEUR_CLE[langue]
+    registre.notes = _RegistreNotes(document.notes, styles_xml_gabarit, footnotes_xml_gabarit,
+                                     registre.styles.corps)
 
-    trace = []
+    trace = list(trace_langue)
+    if parties_orphelines:
+        trace.append({'portee': 'document', 'source': None, 'decision': 'commentaire_retire',
+                      'motif': "commentaire Word d'aide du gabarit retiré (%s) : son ancre "
+                               "disparaît avec le corps du gabarit, jamais recopié — sans ce "
+                               "retrait il resterait orphelin dans le document produit"
+                               % ', '.join(sorted(n.rsplit('/', 1)[-1]
+                                                   for n in parties_orphelines))})
+    trace.extend(registre.styles.trace)
     # Cas A : les tableaux fixes du DOCUMENT remplacent ceux, vides, du gabarit — recopiés avec
     # leurs styles maison (SZH Cle, SZH Aide) et leurs photos, jamais dupliqués dans le corps.
     fixes = _tableaux_fixes_du_document(document.blocs) if entete is None else {}
@@ -1861,15 +2032,16 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None)
     corps_xml, correspondance_relative = _convertir_niveau_racine(blocs_corps, registre, trace)
     trace.extend(trace_entete)
 
-    # §5.5 : le gabarit livré ne porte AUCUN champ mots-clés (mesuré, revue-template/Pronto -
-    # modele d'article.docx) — repli documenté par le brief de chantier : un paragraphe
-    # Corpsdetexte en tête du corps, jamais un champ inventé dans le tableau des métadonnées.
+    # §5.5 : aucun des deux gabarits ne porte de champ mots-clés — repli documenté par le brief
+    # de chantier : un paragraphe de Corps de texte en tête du corps, jamais un champ inventé
+    # dans le tableau des métadonnées. Préfixe PAR LANGUE (FR « Mots-clés : », DE
+    # « Schlüsselwörter: » — même convention de deux-points que les blocs figure/tableau).
     prefixe_mots_cles_xml = ''
     if entete is not None and entete.mots_cles:
-        ligne_mc = 'Mots-clés : ' + ', '.join(entete.mots_cles)
+        ligne_mc = _PREFIXE_MOTS_CLES[langue] + ', '.join(entete.mots_cles)
         prefixe_mots_cles_xml = (
             '<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr><w:r><w:t xml:space="preserve">%s'
-            '</w:t></w:r></w:p>') % (STYLE_CORPS, _echapper(ligne_mc))
+            '</w:t></w:r></w:p>') % (registre.styles.corps, _echapper(ligne_mc))
         trace.append({'portee': 'document', 'source': None,
                       'decision': 'entete_mots_cles_corps',
                       'motif': "aucun champ mots-clés dans le gabarit : écrits en premier "

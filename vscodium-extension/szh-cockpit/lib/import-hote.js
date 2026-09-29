@@ -1,4 +1,5 @@
-// Import guidé : conversion des .docx de articles-word/, écriture de l'ordre des
+// Import guidé : conversion des .docx et .odt de articles-word/ (un .odt est converti en
+// .docx par import-docx.sh, tout au début de sa chaîne), écriture de l'ordre des
 // nouveaux articles, et la compilation qui suit un import réussi. Impur (tâches, disque,
 // dialogues) ; les rappels vers l'hôte passent par configurer() plus bas, jamais par require.
 'use strict';
@@ -43,8 +44,9 @@ function dossierUnites() { return profilCourant().unites.dossier; }
 function cleOrdre() { return profilCourant().unites.ordre; }
 function cheminConfig(racine) { return path.join(racine, profilCourant().config); }
 
-// Le nombre de tête de chaque .docx en attente, avant que « make import » ne les supprime —
-// la seule fenêtre où ce nombre existe encore (slugifierArticle() ne le porte plus).
+// Le nombre de tête de chaque Word en attente (.docx ou .odt), avant que « make import » ne
+// les supprime — la seule fenêtre où ce nombre existe encore (slugifierArticle() ne le
+// porte plus).
 // Regroupés par slug de base (avant désambiguïsation d'homonyme, slugifierArticle()) : un
 // même titre tronqué à 39 caractères peut être partagé par deux Word différents
 // (« … Teil 1 », « … Teil 2 »), chacun avec son propre numéro. La file conserve l'ordre de
@@ -234,8 +236,9 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   const statut = vscode.window.setStatusBarMessage(T('statut.import'));
   try {
     const avant = new Set(fournisseur.listerArticles());
-    // Capté avant le lancement de la tâche : « make import » supprime les .docx convertis,
-    // et avec eux le seul endroit où vivait encore le numéro de tête du rédacteur.
+    // Capté avant le lancement de la tâche : « make import » supprime les Word convertis
+    // (.docx ou .odt), et avec eux le seul endroit où vivait encore le numéro de tête du
+    // rédacteur.
     const parBase = numerosOrdreEnAttente(fournisseur);
     const code = await ctx.lancerTache(NOM_TACHE_IMPORT);
     rafraichirTout();
@@ -325,7 +328,7 @@ async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
 async function importerWord(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
   const filtresImport = {};
-  filtresImport[T('dial.importer.filtre')] = ['docx'];
+  filtresImport[T('dial.importer.filtre')] = ['docx', 'odt'];
   const choix = await vscode.window.showOpenDialog({
     canSelectMany: true,
     filters: filtresImport,
@@ -336,8 +339,8 @@ async function importerWord(fournisseur, rafraichirTout) {
   await importerFichiersWord(fournisseur, rafraichirTout, choix);
 }
 
-// Les .docx déposés sur la vue passent par le circuit d'« Importer des Word ». Le format
-// `text/uri-list` donne une URI par ligne, lignes vides et « # » ignorés (RFC 2483).
+// Les .docx et .odt déposés sur la vue passent par le circuit d'« Importer des Word ». Le
+// format `text/uri-list` donne une URI par ligne, lignes vides et « # » ignorés (RFC 2483).
 function controleurDepotVue(fournisseur, rafraichirTout) {
   return {
     dropMimeTypes: ['text/uri-list'],
@@ -356,7 +359,7 @@ function controleurDepotVue(fournisseur, rafraichirTout) {
         try { uri = vscode.Uri.parse(nette); } catch (e) { continue; }
         if (!uri || uri.scheme !== 'file') { continue; }
         fichiers++;
-        if (/\.docx$/i.test(uri.fsPath)) { docx.push(uri); }
+        if (/\.(docx|odt)$/i.test(uri.fsPath)) { docx.push(uri); }
       }
       if (docx.length > 0) { await importerFichiersWord(fournisseur, rafraichirTout, docx); return; }
       if (fichiers > 0) { vscode.window.showInformationMessage(T('drop.seulement.docx')); }

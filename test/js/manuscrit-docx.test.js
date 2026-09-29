@@ -38,7 +38,9 @@ const { PYTHON, sansPython, sauter } = require('./gardes');
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_DOCX = path.join(RACINE, 'pipeline', 'manuscrit_docx.py');
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
-const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article.docx");
+// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — les contrôles de ce fichier (projection
+// pandoc, styles maison…) sont indépendants de la langue des étiquettes ; le FR suffit.
+const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article_FR.docx");
 
 function python(args) {
   return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

@@ -165,6 +165,47 @@ test('glisser un .docx sur l’arbre le copie dans le dépôt Word puis lance l�
   }
 });
 
+test('glisser un .odt sur l’arbre le copie dans le dépôt Word puis lance l’import', async () => {
+  // Un .odt suit le même circuit qu'un .docx (import-docx.sh le convertit à la volée,
+  // voir pipeline/conversion_odt.py) : le dépôt par glisser-déposer ne doit pas le trier.
+  const controleur = HOTE.controleurDepot();
+  const source = path.join(REVUE, 'Depose_a_la_main.odt');
+  fs.writeFileSync(source, Buffer.alloc(16));
+
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_IMPORT }]);
+  try {
+    const promesse = controleur.handleDrop(null, fauxDataTransferDocx([source]));
+    await tick(); await tick();
+
+    assert.ok(fs.existsSync(path.join(MOTS, 'Depose_a_la_main.odt')),
+      'le .odt glissé n’a pas été copié dans le dépôt Word (articles-word/)');
+
+    await HOTE.finirTache(NOM_IMPORT, 0);
+    await promesse;
+  } finally {
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+    fs.rmSync(source, { force: true });
+  }
+});
+
+test('un .odt en attente apparaît dans la liste « Word » de l’arbre', async () => {
+  // extension.js:_docxEnAttente() balaie articles-word/ : un .odt doit s'y voir comme un
+  // .docx, pas seulement passer par le glisser-déposer.
+  const source = path.join(MOTS, 'Depose-arbre.odt');
+  fs.writeFileSync(source, Buffer.alloc(16));
+  try {
+    const arbre = HOTE.arbre();
+    const racine = await arbre.getChildren();
+    const sectionWord = racine.find((it) => it.contextValue === 'section-word');
+    assert.ok(sectionWord, 'section Word introuvable dans l’arbre');
+    const items = await arbre.getChildren(sectionWord);
+    assert.ok(items.some((it) => it.label === 'Depose-arbre.odt'),
+      'le .odt déposé dans articles-word/ n’apparaît pas dans la liste « Word en attente »');
+  } finally {
+    fs.rmSync(source, { force: true });
+  }
+});
+
 test('glisser un fichier qui n’est pas un .docx ne déclenche aucun import', async () => {
   const controleur = HOTE.controleurDepot();
   const source = path.join(REVUE, 'notice.pdf');

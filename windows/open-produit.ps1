@@ -2447,6 +2447,7 @@ function Invoke-SzhManuscrit {
     [Parameter(Mandatory = $true)][string]$Produit,
     [Parameter(Mandatory = $true)]$Journal,
     [string]$NomExport = '',
+    [string]$Format = 'docx',
     $BarreProgression = $null,
     $BoutonInterrompre = $null,
     $EtatAnnulation = $null
@@ -2488,7 +2489,8 @@ function Invoke-SzhManuscrit {
     $psiPreproc.FileName = Get-SzhWslExePreproc
     $psiPreproc.Arguments = ConvertTo-SzhArguments @(
       '-d', (Get-SzhDistroPreproc), '-e', 'python3', $cliWslPreproc,
-      $manuscritWslPreproc, '--produit', $Produit, '--sortie', $sortieWslPreproc)
+      $manuscritWslPreproc, '--produit', $Produit, '--sortie', $sortieWslPreproc,
+      '--format', $Format)
     $psiPreproc.RedirectStandardOutput = $true
     $psiPreproc.RedirectStandardError = $true
     $psiPreproc.UseShellExecute = $false
@@ -2784,18 +2786,52 @@ $script:radioPreprocZeitschrift.Location = New-Object System.Drawing.Point(($xPa
 $script:radioPreprocZeitschrift.Size = New-Object System.Drawing.Size(120, 23)
 $pagePreproc.Controls.Add($script:radioPreprocZeitschrift)
 
+# Format de sortie : Word (.docx, coche par defaut, retrocompatible) ou OpenDocument (.odt) --
+# point 4 du chantier "gabarits Pronto FR/DE + ODT" (29.09.2026). Les deux boutons vivent dans
+# un Panel a eux, jamais directement sur $pagePreproc : WinForms groupe par CONTENEUR les
+# RadioButton qui n'ont pas de GroupBox explicite -- les poser a plat aupres de
+# radioPreprocRevue/Zeitschrift en ferait un seul groupe de quatre boutons mutuellement
+# exclusifs, cassant le choix du produit. Rangee a y=64 (celle du bouton Manuscript cleaner,
+# decale plus bas) ; noms de format non traduits (comme Revue/Zeitschrift), etiquette
+# traduite (lanceur.preproc.format).
+$script:panelPreprocFormat = New-Object System.Windows.Forms.Panel
+$script:panelPreprocFormat.Location = New-Object System.Drawing.Point($xPage, 64)
+$script:panelPreprocFormat.Size = New-Object System.Drawing.Size(($largeurPage), 26)
+$pagePreproc.Controls.Add($script:panelPreprocFormat)
+
+$etiqFormatPreproc = New-Object System.Windows.Forms.Label
+$etiqFormatPreproc.Text = (T 'lanceur.preproc.format')
+$etiqFormatPreproc.Location = New-Object System.Drawing.Point(0, 3)
+$etiqFormatPreproc.AutoSize = $true
+$script:panelPreprocFormat.Controls.Add($etiqFormatPreproc)
+
+$script:radioPreprocDocx = New-Object System.Windows.Forms.RadioButton
+$script:radioPreprocDocx.Text = 'Word (.docx)'
+$script:radioPreprocDocx.Location = New-Object System.Drawing.Point(120, 0)
+$script:radioPreprocDocx.Size = New-Object System.Drawing.Size(110, 23)
+$script:radioPreprocDocx.Checked = $true
+$script:panelPreprocFormat.Controls.Add($script:radioPreprocDocx)
+
+$script:radioPreprocOdt = New-Object System.Windows.Forms.RadioButton
+$script:radioPreprocOdt.Text = 'OpenDocument (.odt)'
+$script:radioPreprocOdt.Location = New-Object System.Drawing.Point(240, 0)
+$script:radioPreprocOdt.Size = New-Object System.Drawing.Size(160, 23)
+$script:panelPreprocFormat.Controls.Add($script:radioPreprocOdt)
+
 # Nom de produit fixe par Robin, JAMAIS traduit, dans les trois langues -- ne passe donc
-# pas par T (voir l'en-tete de szh-textes.ps1 pour cette meme regle).
+# pas par T (voir l'en-tete de szh-textes.ps1 pour cette meme regle). Decale a y=94 (etait
+# y=64) pour laisser la place a la rangee "Format de sortie" ci-dessus ; le journal (y=162)
+# garde de la marge.
 $script:boutonManuscritPreproc = New-Object System.Windows.Forms.Button
 $script:boutonManuscritPreproc.Text = 'Manuscript cleaner (Article)…'
-$script:boutonManuscritPreproc.Location = New-Object System.Drawing.Point($xPage, 64)
+$script:boutonManuscritPreproc.Location = New-Object System.Drawing.Point($xPage, 94)
 $script:boutonManuscritPreproc.Size = New-Object System.Drawing.Size(260, 30)
 $pagePreproc.Controls.Add($script:boutonManuscritPreproc)
 
 $script:etiqFichierPreproc = New-Object System.Windows.Forms.Label
 $script:etiqFichierPreproc.Text = (T 'lanceur.preproc.fichier.aucun')
 $script:etiqFichierPreproc.AutoSize = $false
-$script:etiqFichierPreproc.Location = New-Object System.Drawing.Point(($xPage + 270), 64)
+$script:etiqFichierPreproc.Location = New-Object System.Drawing.Point(($xPage + 270), 94)
 $script:etiqFichierPreproc.Size = New-Object System.Drawing.Size(($largeurPage - 270), 50)
 $script:etiqFichierPreproc.ForeColor = [System.Drawing.Color]::DimGray
 $pagePreproc.Controls.Add($script:etiqFichierPreproc)
@@ -2858,8 +2894,12 @@ $script:boutonManuscritPreproc.Add_Click({
   $produitChoisiPreproc = 'revue'
   if ($script:radioPreprocZeitschrift.Checked) { $produitChoisiPreproc = 'zeitschrift' }
 
+  $formatChoisiPreproc = 'docx'
+  if ($script:radioPreprocOdt.Checked) { $formatChoisiPreproc = 'odt' }
+
   try {
     $resultatPreproc = Invoke-SzhManuscrit -CheminManuscrit $script:cheminManuscritChoisi -Produit $produitChoisiPreproc `
+      -Format $formatChoisiPreproc `
       -Journal $script:journalPreproc -NomExport 'Manuscript cleaner (Article)' `
       -BarreProgression $script:barrePreproc -BoutonInterrompre $script:boutonInterromprePreproc `
       -EtatAnnulation $script:etatAnnulationPreproc

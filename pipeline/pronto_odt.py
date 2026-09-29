@@ -189,6 +189,11 @@ def _recueillir_texte(el, morceaux):
                 morceaux.append(' ' * n)
         elif tag in (TEXT + 'tab', TEXT + 'line-break'):
             morceaux.append(' ')
+        elif tag in (OFFICE + 'annotation', OFFICE + 'annotation-end', TEXT + 'note'):
+            # Un commentaire (auteur, date, texte) et une note de bas de page vivent DANS le
+            # paragraphe en ODT, à part en .docx : lus ici, ils devenaient du texte de clé
+            # (mesuré sur le gabarit V4, dont le bloc figure porte un commentaire d'aide).
+            pass
         else:
             _recueillir_texte(enfant, morceaux)
         if enfant.tail:

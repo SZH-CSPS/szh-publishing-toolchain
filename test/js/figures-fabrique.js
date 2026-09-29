@@ -22,7 +22,10 @@ const cp = require('child_process');
 const { PYTHON } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
-const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article.docx");
+// Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — la fabrique reste sur le FR (les tests
+// qu'elle sert ne portent pas sur la langue des étiquettes, seulement sur la reconnaissance
+// des blocs figure/tableau).
+const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 const FABRIQUE_PY = String.raw`

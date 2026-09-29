@@ -165,7 +165,7 @@ test('réimport : la reprise passe avant l’appariement, et la compilation l’
   // numéro se publierait sans lui, sortie 0.
   assert.match(MK, /reimporter\.py" --reprise \|\| true/,
     'la cible import ne remet plus d’aplomb un réimport interrompu');
-  assert.ok(MK.indexOf('--reprise') < MK.indexOf('files=("$(WORD_DIR)"/*.docx)'),
+  assert.ok(MK.indexOf('--reprise') < MK.indexOf('files=("$(WORD_DIR)"/*.docx "$(WORD_DIR)"/*.odt)'),
     'la reprise passe après la boucle d’import');
 });
 

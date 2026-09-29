@@ -11,7 +11,26 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
-## 2.4.1
+## 2.4.2
+
+**Un gabarit Pronto par langue.** `revue-template/` porte désormais `Pronto - modele
+d'article_FR` (Revue) et `_DE` (Zeitschrift), en `.docx` et en `.odt` ; l'ancien gabarit unique
+est retiré. Le lecteur du gabarit reconnaît les étiquettes allemandes (« Titel (DE) »,
+« Vorname: », « Beschriftung: », « Copyright: »…) sans avertissement ; l'en-tête « Autor:in »
+ne bloque plus l'import, et « Themenschwerpunkt » est un type d'article. Un commentaire posé dans
+un `.odt` n'est plus lu comme une étiquette.
+
+**Nettoyeur de manuscrit.** Il écrit dans le gabarit du produit (Zeitschrift -> gabarit
+allemand, libellés allemands), résout les styles par leur nom (les gabarits V4 ont des
+identifiants de style allemands), retire le commentaire d'aide du gabarit, et garde une
+citation en citation au lieu de la rendre en corps de texte. Il accepte un `.odt` en entrée et
+livre au choix un `.docx` ou un `.odt` (option `--format`, rangée « Format de sortie » du
+lanceur).
+
+**ODT dans l'import.** Un `.odt` déposé dans les Word en attente s'importe comme un `.docx` :
+il est converti par LibreOffice au début de `import-docx.sh` (`pipeline/conversion_odt.py`),
+et la fiche garde son nom d'origine. L'image WSL embarque désormais `libreoffice-writer-nogui` ;
+le rootfs est reconstruit par cette release.
 
 **La roue « Analyse en cours… » tourne sur tous les postes.** Quand Windows a coupé ses
 animations (« Afficher les animations dans Windows »), Chromium signale le mouvement réduit et

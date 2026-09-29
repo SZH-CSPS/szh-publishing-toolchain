@@ -380,8 +380,10 @@ test('docx-meta.py : la fiche reçoit la langue de l’article et son Word d’o
   // Écrits dans le dict de la fiche…
   assert.match(py, /'lang': langue if langue in LANGUES_META else '',/,
     'le champ lang ne part plus dans la fiche');
-  assert.match(py, /'source': os\.path\.basename\(chemin_docx\),/,
-    'le champ source ne part plus dans la fiche');
+  // $SZH_SOURCE (posée par import-docx.sh) porte le nom d'origine d'un .odt converti à la
+  // volée en .docx ; repli sur le basename comme avant l'acceptation de l'ODT.
+  assert.match(py, /'source': os\.environ\.get\('SZH_SOURCE'\) or os\.path\.basename\(chemin_docx\),/,
+    'le champ source ne part plus dans la fiche, ou a perdu le repli SZH_SOURCE (import .odt)');
   // …et sérialisés, dans l'ordre du cockpit : type, lang, source, doi.
   const ser = py.slice(py.indexOf('def serialiser_meta'), py.indexOf('# ---', py.indexOf('def serialiser_meta')));
   const rang = (t) => ser.indexOf(t);

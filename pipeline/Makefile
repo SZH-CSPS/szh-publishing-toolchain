@@ -4,7 +4,8 @@
 #   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f <toolkit>/pipeline/Makefile all
 #
 # Entrées : articles/<slug>/<slug>.md + media/ ; sorties : out/<slug>/<slug>.pdf et .html.
-# Import Word : articles-word/*.docx, converti par import-docx.sh (sa chaîne y est décrite).
+# Import Word : articles-word/*.docx et *.odt (converti en .docx à la volée), traités par
+# import-docx.sh (sa chaîne y est décrite).
 # Word corrigé d'un article déjà importé : cible `reimporter`, portée par reimporter.py.
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
@@ -663,10 +664,11 @@ $(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 # conforme ne doit pas partir dans OJS avec l'étiquette « accessible ».
 docx: verifie-dossier verifier-ua $(DOCXS)
 
-# Conversion des .docx déposés dans articles-word/. Les anciens articles « à plat » sont
-# migrés au passage vers articles/<slug>/ ; un article existant n'est jamais écrasé ; une
-# conversion réussie supprime le .docx source, un échec le laisse en place et déclenche le
-# rollback rm -rf articles/<slug> ci-dessous.
+# Conversion des .docx et .odt déposés dans articles-word/ (un .odt est converti en .docx
+# par import-docx.sh, tout au début de sa chaîne — voir conversion_odt.py). Les anciens
+# articles « à plat » sont migrés au passage vers articles/<slug>/ ; un article existant
+# n'est jamais écrasé ; une conversion réussie supprime le Word source (.docx ou .odt), un
+# échec le laisse en place et déclenche le rollback rm -rf articles/<slug> ci-dessous.
 # Un réimport tué en pleine bascule laisse le dossier de l'article sous
 # articles/.szh-bascule-<slug>, donc hors de SLUGS : le numéro se publierait sans lui et
 # sans un mot. `reimporter.py --reprise` le remet d'aplomb, d'abord, à chaque compilation.
@@ -706,7 +708,8 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 # Le redépôt a son propre compteur au bilan : caché dans « ignoré », il redeviendrait le
 # silence que cette recette corrige.
 # À garder aligné avec slugifierArticle() et slugifierArticleUnique() de
-# vscodium-extension/szh-cockpit/lib/slug.js : le cockpit devine le slug d'un .docx en
+# vscodium-extension/szh-cockpit/lib/slug.js : le cockpit devine le slug d'un Word (.docx
+# ou .odt, slugifier() retire l'extension sans distinguer) en
 # attente pour dire « déjà converti ».
 # Code de sortie : tout fichier Word resté sur le carreau fait échouer la recette. Sans
 # cela un article disparaissait du numéro avec une sortie 0, personne n'étant averti.
@@ -767,7 +770,7 @@ import:
 	  return 1; \
 	}; \
 	shopt -s nocaseglob; \
-	files=("$(WORD_DIR)"/*.docx); \
+	files=("$(WORD_DIR)"/*.docx "$(WORD_DIR)"/*.odt); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p $(UNITES_DIR); \

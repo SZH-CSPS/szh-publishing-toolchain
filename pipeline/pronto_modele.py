@@ -456,6 +456,9 @@ VALEURS_TYPE = {
     aplatir('entretien'): 'interview',
     aplatir('varia'): 'varia',
     aplatir('tribune libre'): 'tribune-libre',
+    # Les valeurs que propose le gabarit allemand (« Themenschwerpunkt – Editorial Interview –
+    # Varia – Tribune Libre ») : les autres sont déjà des jetons canoniques.
+    aplatir('themenschwerpunkt'): 'article',
 }
 VALEURS_TYPE_CANONIQUES = {aplatir(t): t for t in TYPES_VALIDES}
 # (Il n'y a plus de VALEURS_LANGUE : la valeur du champ « Langue de l'article » n'est plus
@@ -537,14 +540,16 @@ def _sans_fioritures(t):
 def identifier_cle(etiquette, table):
     """Résout `etiquette` (déjà débarrassée d'un éventuel suffixe de langue) contre les clés
     canoniques de `table` — un dict jeton -> (forme canonique affichée, alias...), la forme
-    canonique étant toujours en position 0. Rend :
+    du gabarit français étant toujours en position 0, celle du gabarit allemand en
+    position 1. Rend :
       - None si `etiquette` est vide, trop longue pour être une clé (LONGUEUR_ETIQUETTE_SCORE
         — la VALEUR d'un champ ne doit jamais être scorée), ou si aucune clé n'atteint
         SEUIL_CLE (clé inconnue, comme avant ce mécanisme) ;
       - ('__ambigu__', jeton1, jeton2, score1, score2) si les deux meilleures clés sont à moins
         de ECART_CLE l'une de l'autre : aucune n'est retenue ;
-      - (jeton, score, exact) sinon. `exact` ne vaut vrai que si `etiquette` est égale à LA
-        FORME CANONIQUE elle-même (espaces et casse ignorées) — un alias reconnu à 100 %
+      - (jeton, score, exact) sinon. `exact` ne vaut vrai que si `etiquette` est égale à
+        l'une des deux formes du gabarit, fr ou de (espaces et casse ignorées) — un alias
+        reconnu à 100 %
         (« E-mail » pour Email) n'est pas « le gabarit tapé juste », il doit donc avertir
         aussi."""
     etiquette = (etiquette or '').strip()
@@ -560,7 +565,8 @@ def identifier_cle(etiquette, table):
         return None
     if len(scores) > 1 and (meilleur_score - scores[1][0]) < ECART_CLE:
         return ('__ambigu__', meilleur_jeton, scores[1][1], meilleur_score, scores[1][0])
-    exact = _sans_fioritures(etiquette) == _sans_fioritures(table[meilleur_jeton][0])
+    exact = any(_sans_fioritures(etiquette) == _sans_fioritures(forme)
+                for forme in table[meilleur_jeton][:2])
     return (meilleur_jeton, meilleur_score, exact)
 
 
@@ -689,21 +695,22 @@ CANON_METADONNEES = {
     #     « Description », « Provenance », « Poste », « Adresse e-mail »…) ;
     #   * l'italien, aux côtés du français et de l'allemand déjà présents — la revue publie des
     #     articles italiens, même s'ils se corrigent à la main après l'import.
-    # Un alias reconnu n'est JAMAIS silencieux : `exact` ne compare qu'à la forme canonique
-    # (position 0), donc tout ce qui n'est pas tapé comme le gabarit avertit (cle-approximee).
+    # Un alias reconnu n'est JAMAIS silencieux : `exact` ne compare qu'aux formes des deux
+    # gabarits (position 0 : français, position 1 : allemand), donc tout ce qui n'est pas tapé
+    # comme l'un des deux avertit (cle-approximee).
     # ⚠ PAS d'alias « rubrique » ici, quoi qu'en dise l'intuition : dans la maison, une rubrique
     #   n'est pas un type d'article (voir szh-rubrique.lua). L'alias a été posé, mesuré — il
     #   faisait entrer « Rubrique » sur `type` avec un score de 1,000 — et retiré.
-    'type': ("Type d'article", 'type', 'artikeltyp', 'tipo di articolo'),
+    'type': ("Type d'article", 'Artikeltyp', 'type', 'tipo di articolo'),
     # Champ RETIRÉ du gabarit le 22.09.2026 : sa valeur n'est plus lue (la langue vient du
     # produit, voir langue_du_produit()), mais sa clé reste reconnue pour que le tableau d'un
     # document rempli avant ce jour ne bloque pas l'import — il avertit, voir la branche
     # 'langue' d'extraire_table_metadonnees().
-    'langue': ("Langue de l'article", 'langue', 'sprache', 'language'),
-    'titre': ('Titre', 'title', 'titel', 'titolo', 'titre de l\'article'),
-    'soustitre': ('Sous-titre', 'sous titre', 'soustitre', 'subtitle', 'untertitel',
+    'langue': ("Langue de l'article", 'Sprache', 'langue', 'language'),
+    'titre': ('Titre', 'Titel', 'title', 'titolo', 'titre de l\'article'),
+    'soustitre': ('Sous-titre', 'Untertitel', 'sous titre', 'soustitre', 'subtitle',
                   'sottotitolo'),
-    'resume': ('Résumé', 'resume', 'abstract', 'zusammenfassung', 'riassunto',
+    'resume': ('Résumé', 'Zusammenfassung', 'resume', 'abstract', 'riassunto',
                'résumé de l\'article'),
     # Décision prise seul (Robin absent) : le gabarit ne définit AUCUN champ « Mots-clés » —
     # voir serialiser_meta(), les mots-clés sont choisis dans le cockpit, jamais lus dans le
@@ -714,24 +721,25 @@ CANON_METADONNEES = {
     # 'etiquette-metadonnees-inconnue', comme n'importe quelle étiquette sans destination. Les
     # deux avertissements ensemble disent exactement ce qui s'est passé : compris, mais gardé
     # nulle part.
-    'motscles': ('Mots-clés', 'mots cles', 'mots clefs', 'keywords', 'schlagworter',
-                 'schlusselworter', 'schlagwörter', 'schlüsselwörter'),
+    'motscles': ('Mots-clés', 'Schlüsselwörter', 'mots cles', 'mots clefs', 'keywords',
+                 'schlagworter', 'schlusselworter', 'schlagwörter'),
 }
 
 CANON_AUTEUR = {
-    'prenom': ('Prénom', 'prenom', 'first name', 'firstname', 'vorname', 'nome'),
-    'nom': ('Nom', 'name', 'nachname', 'last name', 'lastname', 'surname',
+    'prenom': ('Prénom', 'Vorname', 'prenom', 'first name', 'firstname', 'nome'),
+    'nom': ('Nom', 'Name', 'nachname', 'last name', 'lastname', 'surname',
             'nom de famille', 'familienname', 'cognome'),
-    'fonction': ('Fonction', 'position', 'funktion', 'poste', 'rôle', 'role', 'funzione',
+    'fonction': ('Fonction', 'Funktion', 'position', 'poste', 'rôle', 'role', 'funzione',
                  'titre et fonction'),
-    'affiliation': ('Institution', 'affiliation', 'institution / organisation', 'organisation',
-                    'établissement', 'etablissement', 'einrichtung', 'istituzione'),
-    'ror': ('ROR', 'ror id', 'identifiant ror'),
-    'orcid': ('ORCID', 'orcid id', 'identifiant orcid'),
+    'affiliation': ('Institution', 'Institution', 'affiliation', 'institution / organisation',
+                    'organisation', 'établissement', 'etablissement', 'einrichtung',
+                    'istituzione'),
+    'ror': ('ROR', 'ROR', 'ror id', 'identifiant ror'),
+    'orcid': ('ORCID', 'ORCID', 'orcid id', 'identifiant orcid'),
     # ⚠ « adresse mail » a été posé, mesuré, puis retiré : il faisait entrer « Adresse » (une
     #   adresse postale) sur `email` avec 0,778. « adresse e-mail », plus long, laisse
     #   « Adresse » à 0,737 — sous le seuil, donc dehors, ce qui est le bon verdict.
-    'email': ('Email', 'e-mail', 'courriel', 'mail', 'adresse e-mail', 'e-mail-adresse'),
+    'email': ('Email', 'E-Mail', 'courriel', 'mail', 'adresse e-mail', 'e-mail-adresse'),
     # ── Champs que le gabarit NE PORTE PAS, déclarés exprès ────────────────────────────
     # Même procédé que « Mots-clés » dans CANON_METADONNEES : une clé qu'on sait que la
     # rédaction tape, reconnue pour qu'elle ne soit JAMAIS confondue avec un vrai champ, mais
@@ -742,10 +750,10 @@ CANON_AUTEUR = {
     # l'alias allemand « e-mail-adresse », soit 0,013 sous le seuil. Une adresse postale à
     # 0,013 de finir dans le champ e-mail, c'est un tirage au sort qui attend son tour.
     # Déclarée, elle se reconnaît elle-même à 1,000 et la question ne se pose plus.
-    'adresse': ('Adresse', 'adresse postale', 'anschrift'),
-    'biographie': ('Biographie', 'notice biographique', 'bio', 'kurzbiografie'),
-    'telephone': ('Téléphone', 'telephone', 'tél', 'tel', 'telefon'),
-    'photo': ('Photo', 'portrait', 'foto', 'bild'),
+    'adresse': ('Adresse', 'Anschrift', 'adresse postale'),
+    'biographie': ('Biographie', 'Kurzbiografie', 'notice biographique', 'bio'),
+    'telephone': ('Téléphone', 'Telefon', 'telephone', 'tél', 'tel'),
+    'photo': ('Photo', 'Porträt', 'portrait', 'foto', 'bild'),
 }
 
 # Les clés de CANON_AUTEUR qui n'ont pas de champ où aller. Tenue à part de la table plutôt
@@ -772,13 +780,13 @@ GESTE_HORS_GABARIT = {
 }
 
 CANON_FIGURE = {
-    'legende': ('Légende', 'legende', 'caption', 'bildunterschrift', 'abbildung',
-                'légende de la figure', 'didascalia'),
-    'alt': ('Texte alternatif', 'texte alternatif', 'alt', 'alternativtext', 'alt text',
+    'legende': ('Légende', 'Beschriftung', 'legende', 'caption', 'bildunterschrift',
+                'abbildung', 'légende de la figure', 'didascalia'),
+    'alt': ('Texte alternatif', 'Alternativtext', 'texte alternatif', 'alt', 'alt text',
             'description', 'texte de remplacement', 'testo alternativo'),
-    'credit': ('Crédit', 'credit', 'crédit photo', 'credit photo', 'photo credit', 'copyright',
+    'credit': ('Crédit', 'Copyright', 'credit', 'crédit photo', 'credit photo', 'photo credit',
                'droits', 'bildnachweis', 'credito'),
-    'source': ('Source', 'quelle', 'provenance', 'fonte'),
+    'source': ('Source', 'Quelle', 'provenance', 'fonte'),
 }
 
 
@@ -965,6 +973,13 @@ def _photo_appariee(nom_image, prenom, nom, bases_vues, fichiers_vus, slug):
     return 'portraits/%s.original.%s' % (base, ext), base
 
 
+# L'en-tête de la colonne des fiches, dans les deux gabarits. Le gabarit allemand écrit
+# « Autor:in » : lu comme une clé, son deux-points en faisait « Autor » de valeur « in », et
+# le gabarit vide refusait son propre import.
+ENTETES_TABLE_AUTEURS = frozenset(_sans_fioritures(t) for t in (
+    'Autrice ou auteur', 'Autor:in', 'Autorin oder Autor', 'Autor/in', 'Autorin/Autor'))
+
+
 def extraire_table_auteurs(tableau, slug, bloquants=None):
     """(auteurs, consommee, photos_connues, photos_appariees). `bloquants`, si fourni (list),
     reçoit une entrée par clé PRÉSENTE (valeur non vide) mais non reconnue — voir
@@ -997,6 +1012,8 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
             texte = p.texte
             if not texte:
                 continue
+            if _sans_fioritures(texte) in ENTETES_TABLE_AUTEURS:
+                continue                  # en-tête de colonne : « Autor:in » n'est pas une clé
             if ':' not in texte:
                 ligne_ok = False
                 lignes_inconnues.append(texte)
@@ -1990,7 +2007,10 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     meta = {
         'type': type_article,
         'lang': langue or 'fr',
-        'source': os.path.basename(chemin_source),
+        # $SZH_SOURCE (posée par import-docx.sh) porte le nom D'ORIGINE quand ce document
+        # est en réalité un .odt converti en .docx à la volée — sinon repli sur le basename
+        # de `chemin_source`, comme avant l'acceptation de l'ODT.
+        'source': os.environ.get('SZH_SOURCE') or os.path.basename(chemin_source),
         'doi': '',
         'title': valeurs['titre'],
         'subtitle': valeurs['soustitre'],

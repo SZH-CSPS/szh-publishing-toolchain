@@ -1326,20 +1326,36 @@ au-delà de l'ordre des étapes.
 
 ```
 manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
-                      [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]
-                      [--sans-annotation] [--sans-reseau] [--base-auteurs <fichier>]
+                      [--rapport <fichier.json>] [--format docx|odt] [--analyse-seule]
+                      [--sans-typo] [--sans-annotation] [--sans-reseau] [--base-auteurs <fichier>]
 ```
 
-Enchaînement : lire → reconnaître le cas → **récolter les noms de famille des références**
-(`_noms_de_bibliographie()`, une passe légère et indépendante : `_construire_bibliographie()`
-tourne bien plus tard, elle dépend du retrait préalable de l'en-tête) → reconnaître l'en-tête et
-le bloc final d'autrices/auteurs (§5.5, §5.5 bis, §5.5 ter, cas B seulement) → classer les
-titres → nettoyer la mise en forme →
+Enchaînement : lire (après conversion .odt → .docx d'entrée, si besoin) → reconnaître le cas →
+**récolter les noms de famille des références** (`_noms_de_bibliographie()`, une passe légère et
+indépendante : `_construire_bibliographie()` tourne bien plus tard, elle dépend du retrait
+préalable de l'en-tête) → reconnaître l'en-tête et le bloc final d'autrices/auteurs (§5.5, §5.5
+bis, §5.5 ter, cas B seulement) → classer les titres → nettoyer la mise en forme →
 normaliser la typographie → passer les règles (structurel + Vale + bibliographie) → écrire le
-gabarit → annoter le `.docx` écrit → écrire le rapport.
+gabarit **du produit** (revue = `_FR.docx`, zeitschrift = `_DE.docx`, `CHEMINS_GABARIT`) →
+annoter le `.docx` écrit → convertir en `.odt` si `--format odt` → écrire le rapport.
 
-- écrit `<dossier>/<nom>-nettoye.docx` et `<dossier>/<nom>-rapport.json` ;
-- `--analyse-seule` : aucun `.docx` écrit, seulement le rapport ;
+- écrit `<dossier>/<nom>-nettoye.docx` (ou `.odt` avec `--format odt`) et
+  `<dossier>/<nom>-rapport.json` ;
+- **entrée `.odt`** (décision de Robin, 29.09.2026 : un seul moteur, `.docx`) : convertie en
+  `.docx` par `conversion_odt.convertir()` dans un dossier temporaire, avant toute lecture — le
+  reste de la chaîne est inchangé. `entree` désigne toujours le chemin D'ORIGINE (rapport,
+  messages, refus) ; le nom de base de la sortie reste celui de cette entrée. Une conversion
+  impossible refuse proprement (`code_refus: 'conversion-impossible'`) ; le dossier temporaire
+  est nettoyé dans tous les cas ;
+- **`--format docx|odt`** (défaut `docx`, rétrocompatible) : le format de SORTIE, indépendant de
+  celui de l'entrée. En `odt`, l'écriture, le contrôle de perte, l'annotation et la validation
+  XML se font TOUJOURS en `.docx` d'abord ; le `.docx` final est ensuite converti en
+  `<nom>-nettoye.odt` et l'intermédiaire supprimé. Un échec de conversion garde le `.docx` livré
+  (jamais de perte), avec une alerte `Nettoyage.ConversionOdtImpossible` (`warning`). Le rapport
+  et la ligne JSON de stdout portent `sortie` (le chemin réellement livré, quel que soit le
+  format), `format_sortie`, et `sortie_docx` pour compat (le `.docx` s'il est livré, sinon
+  `None`) ;
+- `--analyse-seule` : aucun fichier écrit, seulement le rapport ;
 - `--base-auteurs <fichier>` : la base de noms du §5.5 ter. Absent, `BaseNoms.charger()` cherche
   `SZH_AUTEURS_CACHE`, puis `/mnt/c/ProgramData/SZH/auteurs.json`, puis le chemin Windows. Rien
   trouvé = cas normal, jamais une panne : les trois autres signaux jouent seuls. Le lanceur
@@ -1354,8 +1370,9 @@ gabarit → annoter le `.docx` écrit → écrire le rapport.
   (pandoc/WSL indisponible) lève en plus `Typo.ApplicationImpossible`.
 
 **Refus explicites**, jamais un devinement : le document porte des `w:ins`/`w:del` (texte non
-univoque) ; extension inconnue ou `.odt` (lecteur pas encore écrit) ; un fichier `~$*.docx`
-(verrou temporaire de Word) → `code_refus: 'fichier-verrou'`, avant toute tentative de lecture.
+univoque) ; extension inconnue (ni `.docx` ni `.odt`) ; une conversion `.odt → .docx` d'entrée
+impossible (`code_refus: 'conversion-impossible'`) ; un fichier `~$*.docx` (verrou temporaire de
+Word) → `code_refus: 'fichier-verrou'`, avant toute tentative de lecture.
 
 Un document porteur de **commentaires** n'est PAS refusé : comptés et signalés, ils ne survivent
 pas au nettoyage.
@@ -1400,10 +1417,12 @@ final), `alertes.origine`, `dans_docx` sur chaque alerte, `compteurs.notes`/`rev
 Onglet **« Préprocessing »** dans `windows/open-produit.ps1`, calqué sur l'onglet « Export et
 secrétariat » — même géométrie, mêmes marges, aucun onglet n'agrandit la fenêtre.
 
-Contenu : un groupe de boutons radio Revue / Zeitschrift, un bouton « Manuscript cleaner
-(Article)… » qui ouvre un sélecteur de fichier (`.docx`, `.odt`), un journal de progression
-(Consolas 9, lecture seule), une barre de progression Marquee, un bouton « Interrompre », un
-bouton « Ouvrir le dossier ».
+Contenu : un groupe de boutons radio Revue / Zeitschrift, une rangée « Format de sortie » (deux
+boutons radio, noms de format `Word (.docx)` / `OpenDocument (.odt)` non traduits, étiquette
+`lanceur.preproc.format` traduite, `.docx` coché par défaut) qui pilote `--format` sur la CLI, un
+bouton « Manuscript cleaner (Article)… » qui ouvre un sélecteur de fichier (`.docx`, `.odt`), un
+journal de progression (Consolas 9, lecture seule), une barre de progression Marquee, un bouton
+« Interrompre », un bouton « Ouvrir le dossier ».
 
 Le nom **« Manuscript cleaner (Article) »** reste tel quel dans les trois langues (nom de
 produit) ; `(Article)` parce qu'un nettoyeur dédié aux livres viendra. Tous les autres textes

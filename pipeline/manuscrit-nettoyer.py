@@ -7,8 +7,16 @@
 # (les pièges), §11 (les contrôles).
 #
 #   manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
-#                         [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]
-#                         [--sans-annotation] [--sans-reseau]
+#                         [--rapport <fichier.json>] [--format docx|odt] [--analyse-seule]
+#                         [--sans-typo] [--sans-annotation] [--sans-reseau]
+#
+# Entrée .odt (point 2 du chantier « gabarits Pronto FR/DE + ODT », 29.09.2026) : convertie en
+# .docx par conversion_odt.convertir() dans un dossier temporaire, AVANT md.lire() -- le reste
+# de la chaîne ne parle que .docx (décision de Robin : un seul moteur). `entree` continue de
+# désigner le chemin D'ORIGINE partout (rapport, messages, refus), jamais le .docx temporaire.
+# Sortie .odt (point 3) : tout se fait en .docx comme aujourd'hui, puis le .docx final est
+# converti en .odt et l'intermédiaire supprimé ; un échec de conversion garde le .docx, avec
+# une alerte, jamais une perte.
 #
 # Convention du tiret (§3 du contrat) : ce fichier PORTE un tiret dans son nom, c'est une
 # CLI, jamais un module importé par un autre fichier Python.
@@ -73,7 +81,9 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
@@ -81,6 +91,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele
+import conversion_odt
 import manuscrit_docx as md
 import manuscrit_modele as mm
 import manuscrit_noms as mn
@@ -93,7 +104,13 @@ import manuscrit_gabarit as mg
 import manuscrit_annoter as ma
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHEMIN_GABARIT = os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article.docx")
+# Un gabarit par produit (revue = FR, zeitschrift = DE, décision de Robin 29.09.2026) --
+# jamais un chemin unique codé en dur : voir le point 1 du chantier « gabarits Pronto FR/DE
+# + ODT ». `langue` (calculée plus bas depuis `--produit`) sélectionne la MÊME clé.
+CHEMINS_GABARIT = {
+    'revue': os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article_FR.docx"),
+    'zeitschrift': os.path.join(RACINE_DEPOT, 'revue-template', "Pronto - modele d'article_DE.docx"),
+}
 
 PREFIXE = '[manuscrit-nettoyer]'
 
@@ -134,7 +151,7 @@ def _ligne_stdout(objet):
 
 def _analyser_args(argv):
     args = {'entree': None, 'produit': None, 'sortie': None, 'rapport': None,
-            'base_auteurs': None, 'analyse_seule': False, 'sans_typo': False,
+            'base_auteurs': None, 'format': 'docx', 'analyse_seule': False, 'sans_typo': False,
             'sans_annotation': False, 'sans_reseau': False}
     positionnels = []
     reste = argv[1:]
@@ -158,6 +175,13 @@ def _analyser_args(argv):
             # PAS modifié, cette détection automatique le couvre déjà.
             i += 1
             args['base_auteurs'] = reste[i]
+        elif a == '--format' and i + 1 < len(reste):
+            # docx (défaut, rétrocompatible) ou odt -- voir le point 3 du chantier « gabarits
+            # Pronto FR/DE + ODT » (29.09.2026) : le format de SORTIE, indépendant de celui de
+            # l'entrée. Une valeur inconnue tombe dans le contrôle d'usage plus bas, comme
+            # --produit.
+            i += 1
+            args['format'] = reste[i]
         elif a == '--analyse-seule':
             args['analyse_seule'] = True
         elif a == '--sans-typo':
@@ -176,7 +200,8 @@ def _analyser_args(argv):
 
 USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift '
          '--sortie <dossier> [--rapport <fichier.json>] [--base-auteurs <fichier>] '
-         '[--analyse-seule] [--sans-typo] [--sans-annotation] [--sans-reseau]')
+         '[--format docx|odt] [--analyse-seule] [--sans-typo] [--sans-annotation] '
+         '[--sans-reseau]')
 
 
 # ---------------------------------------------------------------------------------
@@ -248,6 +273,20 @@ def _alerte_annotation_impossible():
             'para': None, 'span': None, 'found': None, 'suggested': None,
             'message': "Les corrections n'ont pas pu être posées dans le document : "
                        "consultez le rapport pour la liste complète des remarques."}
+
+
+def _alerte_conversion_odt_impossible(detail, langue):
+    """La sortie .odt demandée (point 3, --format odt) n'a pas pu être produite : le .docx
+    déjà écrit et annoté est gardé tel quel (jamais de perte), cette alerte dit pourquoi."""
+    if langue == 'fr':
+        message = ("Le document .odt demandé n'a pas pu être produit ; le fichier .docx est "
+                   "livré à la place (%s)." % detail)
+    else:
+        message = ("Das angeforderte .odt-Dokument konnte nicht erstellt werden; stattdessen "
+                   "wird die .docx-Datei geliefert (%s)." % detail)
+    return {'rule': 'Nettoyage.ConversionOdtImpossible', 'severity': 'warning',
+            'action': 'report', 'para': None, 'span': None, 'found': None, 'suggested': None,
+            'message': message}
 
 
 # ---------------------------------------------------------------------------------
@@ -895,7 +934,8 @@ def principal(argv):
     debut = time.perf_counter()
     args = _analyser_args(argv)
 
-    if not args['entree'] or args['produit'] not in ('revue', 'zeitschrift') or not args['sortie']:
+    if (not args['entree'] or args['produit'] not in ('revue', 'zeitschrift')
+            or not args['sortie'] or args['format'] not in ('docx', 'odt')):
         print(USAGE, file=sys.stderr)
         return 2
 
@@ -919,26 +959,43 @@ def principal(argv):
                         "Ce fichier est un verrou temporaire de Word, pas un manuscrit. "
                         "Ouvrez le document original.")
 
-    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : extension inconnue,
-    # ou .odt pour l'instant (pipeline/manuscrit_odt.py n'existe pas encore).
-    if extension == '.odt':
-        return refuser('format-odt-a-venir',
-                        "le format .odt n'est pas encore pris en charge par ce nettoyeur "
-                        "(pipeline/manuscrit_odt.py reste à écrire) ; réenregistrez ce "
-                        "manuscrit en .docx, ou patientez.")
-    if extension != '.docx':
+    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : extension inconnue.
+    if extension not in ('.docx', '.odt'):
         return refuser('extension-inconnue',
-                        "extension « %s » non reconnue : ce nettoyeur ne lit que .docx "
-                        "aujourd'hui (.odt refusé explicitement, en attente)." % extension)
+                        "extension « %s » non reconnue : ce nettoyeur ne lit que .docx et "
+                        ".odt aujourd'hui." % extension)
+
+    # Entrée .odt (point 2, décision de Robin 29.09.2026) : convertie en .docx dans un dossier
+    # temporaire par conversion_odt.convertir(), AVANT toute lecture -- le reste de la chaîne
+    # (md.lire(), l'écriture du gabarit, l'annotation) ne parle QUE .docx, un seul moteur.
+    # `nom` (calculé plus haut sur `entree`) et `entree` lui-même restent ceux de l'ORIGINE
+    # partout ailleurs (rapport, messages, refus) : la conversion ne change jamais ce que la
+    # rédaction reconnaît comme "son" fichier. `chemin_lecture` seul pointe le .docx temporaire.
+    format_entree = 'odt' if extension == '.odt' else 'docx'
+    chemin_lecture = entree
+    dossier_temp_odt = None
+    if extension == '.odt':
+        progres("conversion de l'entrée .odt en .docx...")
+        dossier_temp_odt = tempfile.mkdtemp(prefix='szh-manuscrit-odt-')
+        try:
+            chemin_lecture = conversion_odt.convertir(entree, 'docx', dossier_temp_odt)
+        except conversion_odt.ConversionImpossible as e:
+            shutil.rmtree(dossier_temp_odt, ignore_errors=True)
+            return refuser('conversion-impossible', str(e))
 
     progres('lecture du manuscrit...')
     try:
-        document = md.lire(entree)
+        document = md.lire(chemin_lecture)
     except Exception as e:
         progres('lecture impossible : %s' % e)
         _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'lecture-impossible',
                        'message': str(e), 'code_sortie': CODE_ECHEC_INTERNE})
         return CODE_ECHEC_INTERNE
+    finally:
+        # Le .docx temporaire (conversion .odt -> .docx, ci-dessus) n'est plus utile une fois
+        # le document en mémoire -- nettoyé dans tous les cas, succès ou échec de lecture.
+        if dossier_temp_odt is not None:
+            shutil.rmtree(dossier_temp_odt, ignore_errors=True)
 
     # Ce que le manuscrit porte AVANT tout traitement — l'étalon du garde-fou « rien ne se
     # perd » (voir _controler_perte), pris ici parce que l'en-tête et le bloc d'autrices vont
@@ -1143,8 +1200,8 @@ def principal(argv):
         progres('écriture du gabarit -> %s' % sortie_docx)
         decisions = {'titres': {'stats': stats_titres, 'trace': trace_titres},
                      'formatage': {'stats': stats_formatage, 'trace': trace_formatage}}
-        resultat_ecriture = mg.ecrire(document, CHEMIN_GABARIT, sortie_docx,
-                                       decisions=decisions, entete=entete)
+        resultat_ecriture = mg.ecrire(document, CHEMINS_GABARIT[args['produit']], sortie_docx,
+                                       decisions=decisions, entete=entete, langue=langue)
 
         # Garde-fou « rien ne se perd », sur le .docx tel qu'écrit, AVANT l'annotation (qui
         # ajoute des révisions dont le texte barré fausserait le compte).
@@ -1212,6 +1269,32 @@ def principal(argv):
                                      stats_annotation['commentaires'],
                                      len(stats_annotation['renvoyees_au_rapport'])))
 
+    # Sortie .odt (point 3, --format odt) : le .docx ci-dessus reste le seul moteur d'écriture
+    # -- écriture, contrôle de perte, annotation, validation XML s'y font TOUJOURS d'abord.
+    # Ce n'est qu'ICI, une fois le .docx définitif posé, qu'il est converti en .odt ; l'échec
+    # garde le .docx (jamais de perte), avec une alerte qui dit pourquoi. `sortie` porte le
+    # chemin réellement livré, quel que soit le format ; `sortie_docx` reste, pour compat, le
+    # .docx s'il est livré, sinon None.
+    sortie = sortie_docx
+    format_sortie = 'docx' if sortie_docx is not None else None
+    if sortie_docx is not None and args['format'] == 'odt':
+        progres('conversion du .docx écrit en .odt...')
+        try:
+            sortie_odt = conversion_odt.convertir(sortie_docx, 'odt', dossier,
+                                                   nom_sortie=nom + '-nettoye')
+        except conversion_odt.ConversionImpossible as e:
+            progres('conversion en .odt impossible, le .docx est conservé : %s' % e)
+            alertes.append(_alerte_conversion_odt_impossible(str(e), langue))
+            _trier_alertes(alertes)
+        else:
+            try:
+                os.remove(sortie_docx)
+            except OSError:
+                pass
+            sortie_docx = None
+            sortie = sortie_odt
+            format_sortie = 'odt'
+
     groupes = _grouper_toutes_alertes(alertes)
     # 'regles' accueille aussi les deux alertes propres à cette CLI qui ne viennent d'aucun
     # des trois moteurs externes : Langue.DesaccordProduit (§8) et, si l'annotation a échoué
@@ -1242,9 +1325,10 @@ def principal(argv):
 
     rapport = {
         'entree': entree, 'produit': args['produit'], 'langue': langue, 'gabarit': gabarit,
+        'format_entree': format_entree,
         'analyse_seule': args['analyse_seule'], 'sans_typo': args['sans_typo'],
         'sans_annotation': args['sans_annotation'], 'sans_reseau': args['sans_reseau'],
-        'sortie_docx': sortie_docx,
+        'sortie': sortie, 'format_sortie': format_sortie, 'sortie_docx': sortie_docx,
         'controles': {'vale': 'indisponible' if vale_indisponible else 'effectue',
                       # Garde-fou « rien ne se perd » : mots et images du manuscrit
                       # retrouvés dans le .docx écrit (None en --analyse-seule).
@@ -1300,7 +1384,8 @@ def principal(argv):
     progres('terminé en %.0f ms (code de sortie %d)' % (duree_ms, code_sortie))
 
     _ligne_stdout({'entree': entree, 'produit': args['produit'], 'gabarit': gabarit,
-                   'sortie_docx': sortie_docx, 'sortie_rapport': sortie_rapport,
+                   'sortie': sortie, 'format_sortie': format_sortie, 'sortie_docx': sortie_docx,
+                   'sortie_rapport': sortie_rapport,
                    'typographie': statut_typo,
                    'alertes_total': len(alertes), 'alertes_error': n_error,
                    'alertes_warning': n_warning, 'alertes_suggestion': n_suggestion,

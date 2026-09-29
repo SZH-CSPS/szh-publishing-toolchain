@@ -32,8 +32,9 @@
 > - **Étapes 2 et 3 : faites.** Les quinze codes du lecteur sont déclarés (`lib/journal.js`,
 >   `lib/constats.js`, `lib/i18n.js` dans les deux langues), et `bloc-mal-forme` lève une
 >   boîte de dialogue après l'import (`lib/import-hote.js`, `phrasesBlocMalForme()`).
-> - **Étape 5 (`.odt` dans toute la chaîne) : PAS FAITE**, et volontairement — voir « Ce qui
->   reste » à la fin de ce fichier.
+> - **Étape 5 (`.odt` dans toute la chaîne) : FAITE le 29.09.2026** — voir « Ce qui reste »,
+>   point 1, à la fin de ce fichier, pour ce qui a été mesuré et les deux jitters LibreOffice
+>   sans conséquence.
 
 **Pour qui :** la personne qui reprendra ce branchement. Elle connaît le dépôt mais n'a pas
 suivi la session où ce lecteur a été écrit.
@@ -200,7 +201,7 @@ Pronto** d'un Word hérité. Le plus sûr : la présence des styles du gabarit 
 dans `styles.xml`. Un réglage de poste serait un pis-aller — la rédaction recevra les deux sortes
 de documents pendant des mois.
 
-### 5. Accepter le `.odt` dans toute la chaîne — TOUJOURS À FAIRE
+### 5. Accepter le `.odt` dans toute la chaîne — FAITE le 29.09.2026, voir « Ce qui reste » point 1
 
 Le lecteur sait lire les deux formats ; la chaîne autour ne connaît que `.docx`. À reprendre :
 `pipeline/Makefile` (la cible `import`, le balayage de `$(WORD_DIR)`), le dépôt par
@@ -300,23 +301,53 @@ vaut aussi pour les articles hérités.
 
 ## Ce qui reste
 
-### 1. Le `.odt` dans toute la chaîne — pas fait, et pas par oubli
+### 1. Le `.odt` dans toute la chaîne — FAIT le 29.09.2026, mesuré sur un article illustré
 
-Le lecteur sait lire les deux formats, et la parité `.docx` / `.odt` est vérifiée à chaque
-exécution (`test/js/pronto-gabarits.test.js`). Mais la chaîne autour ne connaît que `.docx`, et
-**le contrat `$SZH_PHOTOS` avec `import-medias.py` n'a jamais été vérifié pour l'ODT** : rien ne
-dit que LibreOffice nomme les images comme Word. C'est une mesure à faire sur un article
-ILLUSTRÉ, pas une ligne de code à écrire — tant qu'elle manque, ouvrir la chaîne à l'ODT
-reviendrait à parier sur les portraits des autrices et auteurs.
+La mesure qui manquait (« le contrat `$SZH_PHOTOS` avec `import-medias.py` n'a jamais été
+vérifié pour l'ODT ») est faite : un gabarit FR rempli PAR SCRIPT (titre, un auteur avec
+photo PNG dans la cellule de gauche, un bloc figure avec ses quatre clés), converti en `.odt`
+par `conversion_odt.py`, puis importé par la chaîne RÉELLE (`bash import-docx.sh`, vrai
+pandoc, vrai LibreOffice — `SZH_SOFFICE` pointant `C:/Program Files/LibreOffice/program/
+soffice.exe` sur le poste de dev). Comparé à l'import du même contenu en `.docx` : fiche
+(hors `source:`), corps, bibliographie détachée, tableau et portrait identiques — voir
+`test/js/import-odt.test.js`, qui rejoue ce banc à chaque exécution (sauté proprement sans
+LibreOffice/pandoc/bash).
 
-À reprendre le jour où cette mesure existe : `pipeline/Makefile` (la cible `import`, le balayage
-de `$(WORD_DIR)`), le dépôt par glisser-déposer de `lib/import-hote.js` (message
-`drop.seulement.docx`), le sélecteur de fichiers d'`importerWord()`, et `windows/open-md.ps1`
-pour le double-clic.
+Deux jitters mesurés, propres à LibreOffice, aucun ne changeant le sens de l'article :
+largeur/hauteur de la figure (dérivées de l'EMU) divergeant de quelques dix-millièmes de
+pouce, et un paragraphe de TITRE VIDE (style « Titre niveau 3 », déjà présent tel quel dans
+le gabarit livré, sans aucun texte) qui ressort en `#`, `###` ou disparaît selon la PASSE de
+conversion — non déterministe d'une conversion à l'autre du même `.docx` (mesuré : trois
+conversions du même fichier, trois résultats). Sans conséquence connue : un titre vide ne
+porte aucune information, et un article rempli à la main n'en laisse normalement pas traîner
+un. `import-odt.test.js` neutralise les deux avant de comparer le reste au caractère près.
 
-Indice déjà relevé au passage : sur le même gabarit, la figure sort en `media/image1.png` +
-`media/image2.svg` côté Word (l'aperçu et le SVG qu'il cache) et en
-`1000038800000A0600000A067B9F4EE9.svg` côté LibreOffice. Les noms ne se ressemblent en rien.
+Ce qui a été touché pour porter l'acceptation, en plus du lecteur (déjà fait) :
+`pipeline/import-docx.sh` (conversion `.odt` -> `.docx` en tout début de chaîne, avant même
+le choix du lecteur ; `$SZH_SOURCE` porte le nom D'ORIGINE — lu par `docx-meta.py` et
+`pronto_modele.py` pour `source:`, et par `reimporter.py --empreintes --word`) ;
+`pipeline/Makefile` (cible `import`, balayage de `$(WORD_DIR)` étendu à `*.odt`) ;
+`pipeline/reimporter.py` (`trouver_word()` était déjà agnostique à l'extension — seuls les
+commentaires et l'usage ont été mis à jour) ; le cockpit (`lib/import-hote.js` : filtre du
+sélecteur de fichiers, glisser-déposer, message `drop.seulement.docx` reformulé « Word ou
+OpenDocument » ; `extension.js` : liste « Word en attente » et extraction du nom de fichier
+dans le rapport d'import) ; `image/Containerfile` (paquet `libreoffice-writer-nogui`, ~311 Mio,
+70 paquets, et un test de fumée `soffice --version`).
+
+`windows/open-md.ps1` : vérifié, RIEN À CHANGER. Ce script n'est associé qu'à l'extension
+`.md` (`update.ps1:Set-SzhProgIdMarkdown`, clé `.md\OpenWithProgids` seule) ; aucune
+association `.docx` ne le déclenche nulle part dans ce dépôt, et sa logique elle-même
+(`Find-SzhRacineRevue`, `Test-SzhArticle`, `Start-SzhCodiumFichier`) ne teste l'extension
+d'AUCUN fichier — un `.odt` y serait traité identiquement à un `.docx` le jour où une telle
+association existerait.
+
+Indice déjà relevé (et confirmé) : sur le même gabarit, la figure sort en `media/image1.png`
++ `media/image2.svg` côté Word (l'aperçu et le SVG qu'il cache) et sous un autre nom côté
+LibreOffice — le nom exact varie même d'une conversion à l'autre du même fichier (mesuré :
+`image1.png`/`image2.svg` une fois, `image3.svg` une autre). Sans conséquence : la chaîne
+(consommation dans `docx-controle-import.py`, renommage par `import-medias.py`) résout le
+mauvais nom au bon endroit dans les deux cas — c'est la RAISON D'ÊTRE de ce mécanisme, pas
+un accident.
 
 ### 2. Un vrai document rempli à la main
 

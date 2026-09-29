@@ -200,6 +200,91 @@ test('BeginErrorReadLine et ReadLine() synchrone sur la sortie standard sont abs
     'un appel .ReadLine() synchrone (sans Async) a ete trouve dans open-produit.ps1');
 });
 
+// ---- Controle n5 : --format atteint vraiment la CLI (point 4 du chantier "gabarits Pronto
+// FR/DE + ODT", 29.09.2026) -- pas seulement une chaine litterale dans le script, une preuve
+// bout en bout : le faux script Python ecrit sys.argv sur le disque, le test relit ce fichier.
+test('Invoke-SzhManuscrit passe --format <valeur> a la CLI, quel que soit le format choisi',
+  { skip: sansPowerShell || sansPython }, () => {
+    const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-format-'));
+    const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-format-'));
+    const manuscrit = path.join(manuscritsDir, 'brouillon.docx');
+    fs.writeFileSync(manuscrit, 'contenu jetable', 'utf8');
+    const argvPath = path.join(travailScript, 'argv.json');
+    const cli = fabriquerScriptPython(travailScript, [
+      'import sys, json',
+      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      '    json.dump(sys.argv[1:], f)',
+      "print(json.dumps({'alertes': 0, 'erreurs': 0}))",
+      'sys.exit(0)',
+    ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+      '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "zeitschrift" ' +
+        '-Format "odt" -Journal $journalFaux -NomExport "test"',
+      '$r = [ordered]@{ ok = $resultat.ok }',
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
+
+    // argv.json est lu AVANT de nettoyer travailScript (qui le contient) -- l'inverse a
+    // deja fait echouer une premiere version de ce test (fichier supprime avant lecture).
+    const argvExiste = fs.existsSync(argvPath);
+    const argv = argvExiste ? JSON.parse(fs.readFileSync(argvPath, 'utf8')) : null;
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r && r.r.ok, 'Invoke-SzhManuscrit a echoue - ' + JSON.stringify(r.r));
+    assert.ok(argvExiste, 'argv.json n\'a pas ete ecrit par le faux script - la CLI n\'a jamais tourne');
+    const iFormat = argv.indexOf('--format');
+    assert.ok(iFormat !== -1, '--format absent des arguments passes a la CLI : ' + JSON.stringify(argv));
+    assert.strictEqual(argv[iFormat + 1], 'odt',
+      'la valeur de --format n\'est pas "odt" : ' + JSON.stringify(argv));
+  });
+
+// Meme preuve, valeur par defaut (aucun -Format passe) : rétrocompatible, --format docx quand
+// meme transmis explicitement (jamais un simple silence qui laisserait la CLI deviner).
+test('Invoke-SzhManuscrit : sans -Format explicite, "docx" part quand meme sur la ligne de commande',
+  { skip: sansPowerShell || sansPython }, () => {
+    const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-format-defaut-'));
+    const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-format-defaut-'));
+    const manuscrit = path.join(manuscritsDir, 'brouillon.docx');
+    fs.writeFileSync(manuscrit, 'contenu jetable', 'utf8');
+    const argvPath = path.join(travailScript, 'argv.json');
+    const cli = fabriquerScriptPython(travailScript, [
+      'import sys, json',
+      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      '    json.dump(sys.argv[1:], f)',
+      "print(json.dumps({'alertes': 0, 'erreurs': 0}))",
+      'sys.exit(0)',
+    ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+      '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
+        '-Journal $journalFaux -NomExport "test"',
+      '$r = [ordered]@{ ok = $resultat.ok }',
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+    });
+
+    const argvExiste = fs.existsSync(argvPath);
+    const argv = argvExiste ? JSON.parse(fs.readFileSync(argvPath, 'utf8')) : null;
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r && r.r.ok, 'Invoke-SzhManuscrit a echoue - ' + JSON.stringify(r.r));
+    assert.ok(argvExiste, 'argv.json n\'a pas ete ecrit par le faux script - la CLI n\'a jamais tourne');
+    const iFormat = argv.indexOf('--format');
+    assert.ok(iFormat !== -1, '--format absent des arguments passes a la CLI : ' + JSON.stringify(argv));
+    assert.strictEqual(argv[iFormat + 1], 'docx',
+      'la valeur par defaut de --format n\'est pas "docx" : ' + JSON.stringify(argv));
+  });
+
 // ---- Bonus : Invoke-SzhManuscrit, pour de vrai, contre un faux manuscrit-nettoyer.py ---
 // Pas demande explicitement par les quatre controles ci-dessus, mais le brief insiste :
 // "fabrique un faux script Python jetable qui imite ce contrat" pour verifier l'assistant.
