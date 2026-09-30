@@ -194,8 +194,8 @@ ETAPES = (
 _ETAT = {'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '', 'debut': 0.0}
 
 _RE_MESURE = re.compile(r'^[a-z0-9_.:-]{1,96}$')
-_RE_ID_REGLE = re.compile(r'^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$')
-_RE_MESURE_REGLE = re.compile(r'^regle:(Autre|[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+):'
+_RE_ID_REGLE = re.compile(r'^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+$')
+_RE_MESURE_REGLE = re.compile(r'^regle:(Autre|[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+):'
                               r'(revision|commentaire|rapport)$')
 _RE_CODE_REFUS = re.compile(r'^[a-z][a-z0-9-]{1,40}$')
 MAX_ID_REGLE = 64

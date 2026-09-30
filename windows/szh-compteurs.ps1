@@ -90,7 +90,7 @@ function ConvertTo-SzhCompteursMesure([string]$Brut, [string]$Source) {
     if (@('revision', 'commentaire', 'rapport') -cnotcontains $devenir) { return $null }
     $id = $Brut.Substring(6, $i - 6)
     $sain = 'Autre'
-    if (($id.Length -le 64) -and ($id -cmatch '^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+\z')) { $sain = $id }
+    if (($id.Length -le 64) -and ($id -cmatch '^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+\z')) { $sain = $id }
     return ('regle:' + $sain + ':' + $devenir)
   }
   if ($Brut -cnotmatch '^[a-z0-9_.:-]{1,96}\z') { return $null }

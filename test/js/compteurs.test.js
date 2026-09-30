@@ -124,7 +124,7 @@ test('les mesures et les valeurs hors contrat sont écartées, l’Id inconnu de
   assert.strictEqual(rejetees, 10);
   for (const [nom, val] of lignes) {
     assert.match(String(val), /^\d+$/);
-    assert.ok(/^[a-z0-9_.:-]{1,96}$/.test(nom) || /^regle:(Autre|[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+):(revision|commentaire|rapport)$/.test(nom), nom);
+    assert.ok(/^[a-z0-9_.:-]{1,96}$/.test(nom) || /^regle:(Autre|[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+):(revision|commentaire|rapport)$/.test(nom), nom);
   }
 });
 
@@ -749,4 +749,13 @@ test('extension.js appelle les compteurs aux trois endroits prévus, et nulle pa
   assert.match(src, /try \{ compteurs\.enregistrerReimport\(r\.json\); \} catch/);
   // Le réimport annulé ne compte pas.
   assert.match(src, /if \(reussi && !annulation\) \{ try \{ compteurs\.enregistrerReimport/);
+});
+
+// Les Id Vale réels portent un tiret (« CSPS-Biblio.APA.DoiForme ») : ils ne tombent pas dans
+// « Autre ». Un Id en minuscules (forme d'un slug) y tombe toujours.
+test('compteurs : Id de règle à tiret gardé, Id en minuscules ramené à Autre', () => {
+  assert.equal(compteurs.normaliserMesure('regle:CSPS-Biblio.APA.DoiForme:revision', 'nettoyeur'),
+    'regle:CSPS-Biblio.APA.DoiForme:revision');
+  assert.equal(compteurs.normaliserMesure('regle:dupont-2021.x:revision', 'nettoyeur'),
+    'regle:Autre:revision');
 });

@@ -253,7 +253,7 @@ test('un fichier : nom, BOM, CRLF, en-tête exacte, neuf champs, date sans heure
         assert.strictEqual(l.source, 'nettoyeur');
         assert.strictEqual(l.passage, 'abcdef012345');
         assert.match(l.valeur, /^\d+$/);
-        assert.ok(/^[a-z0-9_.:-]{1,96}$/.test(l.mesure) || /^regle:(Autre|[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+):(revision|commentaire|rapport)$/.test(l.mesure), l.mesure);
+        assert.ok(/^[a-z0-9_.:-]{1,96}$/.test(l.mesure) || /^regle:(Autre|[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+):(revision|commentaire|rapport)$/.test(l.mesure), l.mesure);
       }
       const table = {};
       for (const l of lignes) { table[l.mesure] = l.valeur; }

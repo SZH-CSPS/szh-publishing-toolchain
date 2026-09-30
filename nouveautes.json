@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.8": {
+    "fr": {
+      "titre": "Un nettoyeur plus sobre, et qui dit quand il plante",
+      "points": [
+        "Le journal du nettoyeur de manuscrit ne montre plus que l’essentiel : le fichier traité, le résultat, le rapport et le nombre d’alertes. Tout le détail est dans le rapport.",
+        "Un refus tient en une phrase qui dit quoi faire. Si vous redonnez un fichier déjà nettoyé, il vous le dit.",
+        "Le fichier technique « -rapport.json » ne s’ajoute plus à côté du manuscrit.",
+        "Si le nettoyeur plante, un rapport d’erreur part automatiquement vers l’équipe, sans aucun texte du manuscrit.",
+        "Pour améliorer le logiciel, le nettoyeur et l’import comptent désormais leur fonctionnement : des nombres seulement, jamais le texte, les titres ni les noms. Ces compteurs sont gardés 24 mois et ne servent jamais à évaluer une personne."
+      ]
+    },
+    "de": {
+      "titre": "Ein schlankerer Bereiniger, der meldet, wenn er abstürzt",
+      "points": [
+        "Das Protokoll des Manuskript-Bereinigers zeigt nur noch das Wesentliche: die bearbeitete Datei, das Ergebnis, den Bericht und die Zahl der Warnungen. Alle Einzelheiten stehen im Bericht.",
+        "Eine Ablehnung passt in einen Satz, der sagt, was zu tun ist. Wenn Sie eine bereits bereinigte Datei erneut abgeben, sagt er es Ihnen.",
+        "Die technische Datei «-rapport.json» wird nicht mehr neben dem Manuskript abgelegt.",
+        "Stürzt der Bereiniger ab, geht automatisch ein Fehlerbericht an das Team, ohne jeden Text aus dem Manuskript.",
+        "Um die Software zu verbessern, zählen der Bereiniger und der Import neu ihre Funktionsweise: nur Zahlen, nie der Text, die Titel oder die Namen. Diese Zähler werden 24 Monate aufbewahrt und dienen nie dazu, eine Person zu beurteilen."
+      ]
+    }
+  },
   "2.7": {
     "fr": {
       "titre": "ROR et ORCID proposés, citations mieux reconnues",

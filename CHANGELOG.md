@@ -11,6 +11,28 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.8.0
+
+**Journal du nettoyeur réduit à l'essentiel.** L'onglet Preprocessing n'affiche plus que le
+manuscrit traité, le résultat, le rapport et le compte des alertes ; un refus tient en une
+phrase, et un fichier déjà nettoyé (`-nettoye`, ou révisions signées par le nettoyeur) est
+reconnu comme tel. La progression et les constats d'import partent dans le rapport. Le
+`-rapport.json` ne reste plus à côté du manuscrit : le lanceur l'écrit dans un temporaire,
+rend le HTML puis le supprime.
+
+**Plantages du nettoyeur signalés.** Un try global rend un objet assaini (type, fichier:ligne
+du dépôt, étape, jamais le message de l'exception) et le code de sortie 4. Le lanceur écrit
+un rapport d'erreur `NETTOYEUR-ECHEC` pour un plantage, un code inattendu, une lecture
+impossible, une perte de contenu, un rendu HTML en échec ou une WSL pas prête ; jamais pour
+un refus attendu.
+
+**Compteurs d'usage, sans texte.** Chaque passage du nettoyeur et chaque Word converti par
+l'import écrivent un petit CSV dans `_Systeme\compteurs` du SharePoint (un fichier par
+événement, entiers seulement, date sans heure, `prod` ou `dev`), jamais de nom de fichier, de
+titre ou de nom d'auteur. Hors ligne, ils attendent sur le poste. `outils/compteurs-synthese.js`
+les dépouille (page HTML et CSV, règles à examiner en tête) et purge au-delà de 24 mois sur
+demande. Documentation : `docs/RAPPORTS-ERREUR.md`, « Les compteurs ne sont pas des rapports ».
+
 ## 2.7.0
 
 **ROR et ORCID dans le nettoyeur.** Pour un manuscrit hors gabarit (cas B), le nettoyeur

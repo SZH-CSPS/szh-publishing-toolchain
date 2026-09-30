@@ -112,7 +112,7 @@ function ligneUnique(stdout) {
 // lib/compteurs.js dans compteurs-ps.test.js).
 const MESURES = [...(/MESURES_NETTOYEUR = \(([\s\S]*?)\)\n/.exec(SOURCE_CLI)[1]).matchAll(/'([^']*)'/g)].map((m) => m[1]);
 const MOTIFS_LIBRES = [/^issue\.refus:[a-z0-9_-]{1,48}$/, /^titres\.[a-z0-9_]{1,40}$/];
-const RE_REGLE = /^regle:(Autre|[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+):(revision|commentaire|rapport)$/;
+const RE_REGLE = /^regle:(Autre|[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+):(revision|commentaire|rapport)$/;
 
 function verifierCompteurs(c, passageAttendu) {
   assert.deepStrictEqual(Object.keys(c).sort(), ['mesures', 'passage']);

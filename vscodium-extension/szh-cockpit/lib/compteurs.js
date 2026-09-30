@@ -29,7 +29,7 @@ const SOUS_DOSSIER = 'compteurs';
 const NOM_JOURNAL = '.szh-journal.log';
 
 const RE_MESURE = /^[a-z0-9_.:-]{1,96}$/;
-const RE_ID_REGLE = /^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$/;
+const RE_ID_REGLE = /^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+$/;
 const RE_CODE_IMPORT = /^[a-z][a-z0-9-]{1,40}$/;
 const RE_PASSAGE = /^[0-9a-f]{12}$/;
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;

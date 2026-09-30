@@ -1453,7 +1453,7 @@ exception.
   la garde) plus `issue.refus:<code>` et `titres.<feuille>` (motifs étroits), des entiers
   positifs seulement, les zéros omis. Chaque alerte finale compte pour
   `regle:<Id>:<revision|commentaire|rapport>` (le devenir est `dans_docx`, recopié de
-  `stats_annotation['devenir']`) ; un `<Id>` qui ne suit pas `^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$`
+  `stats_annotation['devenir']`) ; un `<Id>` qui ne suit pas `^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+$`
   (64 signes au plus) devient `Autre`. Un passage qui n'a pas couru jusqu'au bout (refus, plantage)
   ne porte que `issue.*`, `produit.*`, `format.entree.odt` et `duree_ms`.
 - **Ce que le lanceur en fait.** Il recopie `compteurs` dans un CSV (`windows/szh-compteurs.ps1`, un
