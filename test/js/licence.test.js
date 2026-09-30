@@ -158,6 +158,10 @@ test('plus une seule adresse de licence en dur hors de la table', () => {
   // Le gabarit prend l'adresse de l'article, et sait s'en passer.
   assert.match(GABARIT, /\$if\(licence-url\)\$/, 'le gabarit ne teste pas l’absence d’adresse');
   assert.match(GABARIT, /<a href="\$licence-url\$">\$licence-texte\$<\/a>/);
+  // Un <a> enfant direct du conteneur inline-flex ne reçoit aucune annotation /Link sous
+  // WeasyPrint 70 : DOI et licence n'étaient plus cliquables (mesuré, 30.09.2026).
+  assert.ok(!/class="szh-(doi|licence)"><a /.test(GABARIT),
+    'le lien du DOI ou de la licence est redevenu l’enfant direct de son conteneur flex');
   // ⚠ PDF/UA-1 7.18.5 : le <a> ne contient que du texte, la flèche reste dehors. Et la
   // branche sans lien n'a ni <a> ni flèche.
   const sansLien = GABARIT.slice(GABARIT.indexOf('$else$', GABARIT.indexOf('$if(licence-url)$')),
@@ -484,7 +488,9 @@ const lireFichier = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 test('flèche du hero : les deux mentions du gabarit la portent', () => {
   const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
-  const spans = gabarit.match(/<span class="szh-(doi|licence)">[\s\S]*?<\/span>/g) || [];
+  // Jusqu'au bout de la ligne : le lien est dans un <span> intermédiaire, le premier
+  // </span> venu n'est plus celui de la mention.
+  const spans = gabarit.match(/<span class="szh-(doi|licence)">.*/g) || [];
   const avecLien = spans.filter((s) => /<a href=/.test(s));
   assert.strictEqual(avecLien.length, 2,
     'le DOI et la licence liés sont les deux seules mentions à flèche');
