@@ -4,7 +4,9 @@ Für die deutschsprachige Redaktion der *Schweizerischen Zeitschrift für Heilp�
 
 Sie müssen nichts Besonderes tippen. Schreiben Sie fortlaufend, mit dem Apostroph und den
 Anführungszeichen Ihrer Tastatur: Die Kette setzt beim Kompilieren die richtige Typografie,
-in der deklarierten Sprache des Artikels.
+in der deklarierten Sprache des Artikels. Eine als anderssprachig markierte Stelle – ein Wort
+`[Pédagogie spécialisée]{lang=fr}`, ein Zitat in `::: {lang=fr}` – folgt den Regeln IHRER
+Sprache; auf Englisch (`lang=en`) oder in einer anderen Sprache lässt die Kette sie unberührt.
 
 **Ihre Datei wird nie verändert.** Die Korrektur geschieht in dem Moment, in dem das PDF
 entsteht. Das Markdown bleibt genau das, was Sie geschrieben haben – lesbar, von Fassung zu

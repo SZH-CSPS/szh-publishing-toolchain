@@ -1546,25 +1546,120 @@ local function transformer_rawblock(rb)
   return pandoc.RawBlock('html', normaliser_html(rb.text))
 end
 
+-- ─────────────────────────────────────────────── passages dans une autre langue
+--
+-- Un Div ou un Span qui porte `lang` se compose dans SA langue, pas dans celle de l'article :
+-- une citation allemande d'un article français (`::: {lang=de}` autour d'un « > »), un mot
+-- `[Nachteilsausgleich]{lang=de}`, et l'inverse dans la Zeitschrift. Avant le 30.09.2026, le
+-- filtre y posait les insécables françaises (« Aufgabe[nb]» ») : une seule langue par
+-- document était forcément fausse pour l'autre.
+--   * fr, de, it : les règles de cette langue, telles quelles ;
+--   * toute autre langue (en…) : aucune règle — ni espacement français, ni chevrons, ni
+--     apostrophe. Le texte reste celui de la rédaction, et pandoc y pose ses guillemets ;
+--   * même langue que la région qui l'entoure : rien ne change.
+-- Les passages s'imbriquent : chacun est traité à part, dans sa langue, le plus intérieur
+-- d'abord, puis mis de côté pendant que la région qui l'entoure est traitée — sans quoi la
+-- passe de l'article repasserait dessus.
+--
+-- ⚠ Mis de côté, un Span garde en témoin le texte de son contenu : la région qui l'entoure
+-- décide de l'espace qui le borde en regardant ses voisins (sort_de_l_espace). Vidé,
+-- « [Wort]{lang=de} : suite » perdait l'insécable française devant le deux-points, qui
+-- appartient à la phrase française. Le témoin est jeté au retour.
+local ATTR_REGION = 'data-szh-typo-region'
+local LANGUES_REGLES = { fr = true, de = true, it = true }
+
+local FILTRE = {
+  Str = transformer_str,
+  Quoted = transformer_quoted,
+  Inlines = transformer_inlines,
+  Header = transformer_header,
+  RawBlock = transformer_rawblock,
+  Image = transformer_image,
+}
+
+-- Langue d'un passage qui change de langue, réduite à deux lettres ; nil sinon.
+local function langue_de_passage(el)
+  local l = el.attributes and el.attributes.lang
+  if l == nil or l == '' then return nil end
+  local court = tostring(l):lower():sub(1, 2)
+  if court == LANGUE then return nil end
+  return court
+end
+
+local function avec_langue(court, f)
+  local langue0, collee0 = LANGUE, COLLEE
+  LANGUE, COLLEE = court, (court ~= 'fr')
+  local ok, r = pcall(f)
+  LANGUE, COLLEE = langue0, collee0
+  if not ok then error(r, 0) end
+  return r
+end
+
+-- `elements` : les Blocks d'un document ou d'un Div, les Inlines d'un Span. Rend la liste
+-- transformée dans la langue courante (LANGUE), passages imbriqués compris.
+local function traiter_region(elements)
+  local reserve = {}
+  local function mettre_de_cote(el)
+    local court = langue_de_passage(el)
+    if not court then return nil end
+    local contenu = avec_langue(court, function() return traiter_region(el.content) end)
+    reserve[#reserve + 1] = contenu
+    el.attributes[ATTR_REGION] = tostring(#reserve)
+    if el.t == 'Span' then
+      el.content = pandoc.Inlines({ pandoc.Str(pandoc.utils.stringify(contenu)) })
+    else
+      el.content = pandoc.Blocks({})
+    end
+    return el, false
+  end
+  local function remettre(el)
+    local n = tonumber(el.attributes[ATTR_REGION] or '')
+    if not n then return nil end
+    el.content = reserve[n]
+    el.attributes[ATTR_REGION] = nil
+    return el, false
+  end
+  elements = elements:walk({ traverse = 'topdown', Div = mettre_de_cote, Span = mettre_de_cote })
+  if LANGUES_REGLES[LANGUE] then elements = elements:walk(FILTRE) end
+  if #reserve == 0 then return elements end
+  return elements:walk({ traverse = 'topdown', Div = remettre, Span = remettre })
+end
+
+local function transformer_document(doc)
+  doc.blocks = traiter_region(doc.blocks)
+  return doc
+end
+
 -- Les constats partent en fin de course, une ligne par code et non par occurrence. C3
 -- (majuscules non accentuées) se cherche ICI, sur le document déjà transformé : les titres
 -- y sont corrigés, et il ne reste donc que le corps, seul endroit où le filtre s'abstient.
+-- Un passage dans une autre langue se juge dans la sienne, comme il a été composé.
+local function signaler_region(elements)
+  local function passage(el)
+    local court = langue_de_passage(el)
+    if not court then return nil end
+    avec_langue(court, function() signaler_region(el.content) end)
+    return el, false
+  end
+  elements:walk({
+    traverse = 'topdown',
+    Str = function(s) a4_signaler(s.text) end,
+    Div = passage,
+    Span = passage,
+  })
+end
+
 local function vider_constats(doc)
-  doc:walk({ Str = function(s) a4_signaler(s.text) end })
+  signaler_region(doc.blocks)
   for _, ligne in ipairs(constats) do io.stderr:write(ligne .. '\n') end
   return nil
 end
 
+-- Quatre passes, dans cet ordre : la langue de l'article ; le corps, région par région ; les
+-- métadonnées (titres, résumés, auteurs) ; les constats, sur le document transformé.
 return {
   { Meta = poser_langue },
-  {
-    Str = transformer_str,
-    Quoted = transformer_quoted,
-    Inlines = transformer_inlines,
-    Header = transformer_header,
-    RawBlock = transformer_rawblock,
-    Image = transformer_image,
-    Meta = transformer_meta,
-    Pandoc = vider_constats,
-  },
+  { Pandoc = transformer_document },
+  { Meta = transformer_meta },
+  { Pandoc = vider_constats },
 }

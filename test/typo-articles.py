@@ -231,6 +231,33 @@ CAS = [
     # La même suite de caractères, hors tableau : E9 ne vaut que dans une cellule, jamais
     # ici. « 3. Suite » au milieu de la phrase n'est de toute façon pas en tête de cellule.
     ("E9", "fr", "En 2021. Puis 3. Suite", "En 2021. Puis 3. Suite"),
+
+    # ---- LG · un passage balisé dans une autre langue suit les règles de SA langue --------
+    # Constat de l'audit du 30.09.2026 : la citation allemande d'un article français
+    # recevait les insécables françaises. Les deux langues ont des règles opposées.
+    # de dans fr : un mot, puis une citation (Div autour d'un « > »). L'espace qui borde le
+    # passage appartient à la phrase française, et garde son insécable.
+    ("LG", "fr", "Le mot [Nachteilsausgleich : Hilfe]{lang=de} : suite.",
+     "Le mot Nachteilsausgleich: Hilfe" + NB + ": suite."),
+    ("LG", "fr", '::: {lang=de}\n> «Die Schule ist keine Utopie.» Warum ? "Darum" !\n:::',
+     "«Die Schule ist keine Utopie.» Warum? «Darum»!"),
+    ("LG", "fr", "Voir [Schulische Heilpädagogik]{lang=de-CH} ; fin.",
+     "Voir Schulische Heilpädagogik" + NB + "; fin."),
+    # fr dans de : l'inverse, dans la Zeitschrift.
+    ("LG", "de", "Ein [mot français : oui !]{lang=fr} im Satz : gut.",
+     "Ein mot français" + NB + ": oui" + NB + "! im Satz: gut."),
+    ("LG", "de", '::: {lang=fr}\nIl dit "bonjour" : voilà.\n:::',
+     "Il dit «" + NB + "bonjour" + NB + "»" + NB + ": voilà."),
+    # en dans fr : aucune règle française d'espacement, ni chevrons ; pandoc garde ses
+    # guillemets anglais.
+    ("LG", "fr", 'En anglais : [He said "yes" : really ?]{lang=en} fin.',
+     "En anglais" + NB + ": He said “yes” : really ? fin."),
+    # Imbrication : fr dans de dans fr, chacun dans sa langue.
+    ("LG", "fr", "::: {lang=de}\nDer Satz : [la phrase : oui]{lang=fr} ; gut.\n:::",
+     "Der Satz: la phrase" + NB + ": oui; gut."),
+    # Même langue que l'article : rien ne change.
+    ("LG", "fr", "Le [mot : ici]{lang=fr} : suite.",
+     "Le mot" + NB + ": ici" + NB + ": suite."),
 ]
 
 
