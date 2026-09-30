@@ -485,6 +485,27 @@ test('regrouper : l’import seul reste ambre, et un tableau corrigé depuis ne 
   assert.deepStrictEqual(constats.elements(r[0], 'fr').map((e) => e.focus), ['table-02.html']);
 });
 
+// Constaté par Robin (30.09.2026) : vingt cartes « Champ du gabarit laissé vide » pour un
+// article, sans le nom du champ, toutes à la même empreinte (fermer l'une les fermait
+// toutes), et un bouton vers les Word en attente, où le document n'était plus.
+test('regrouper : les champs du gabarit laissés vides font UNE carte, un lien par champ, dans la langue de qui lit', () => {
+  const vide = (cle, cleDe, lieu) => constat('import', 'cle-attendue-absente',
+    { 'clé': cle, 'clé-de': cleDe, lieu: lieu });
+  const r = constats.regrouper([
+    vide('Sous-titre', 'Untertitel', 'tableau metadonnees'),
+    vide('ORCID', 'ORCID', 'auteur'), vide('ORCID', 'ORCID', 'auteur'),
+    vide('Crédit', 'Copyright', 'bloc')
+  ], () => null);
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].source + '/' + r[0].code, 'cockpit/champs-gabarit-vides');
+  assert.strictEqual(constats.phrase(r[0], 'fr'), '3 champs du gabarit laissés vides');
+  assert.deepStrictEqual(constats.elements(r[0], 'de').map((e) => [e.libelle, e.lieu]),
+    [['Untertitel', 'fiche'], ['ORCID', 'fiche'], ['Copyright', 'medias']]);
+  assert.deepStrictEqual(constats.cible(r[0]), { lieu: 'fiche', slug: '01-essai', focus: '' },
+    'le bouton ne doit plus mener aux Word en attente');
+  assert.strictEqual(constats.gravite(r[0], {}), 'info');
+});
+
 test('regrouper : rien à regrouper sans article, ni hors des deux familles', () => {
   const numero = Object.assign(constat('numerotation', 'figure-sans-alt', { image: 'a.png' }), { slug: '' });
   const autre = regle('7.1-9');
@@ -556,6 +577,7 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     'cockpit/image-sans-legende',
     // Les cartes regroupées : regrouper() les fabrique à partir des constats ci-dessus.
     'cockpit/images-sans-description', 'cockpit/tableaux-entete', 'cockpit/tableaux-sans-entete',
+    'cockpit/champs-gabarit-vides',
     // pipeline/pagination.py écrit « [pagination-avertissement] perimee », préfixe
     // générique lui aussi : codesDeJournal() ne le voit pas, et le journal le produit.
     'pagination/perimee',

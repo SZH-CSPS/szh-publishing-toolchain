@@ -656,14 +656,18 @@ GRAVITE_CODES = {
 }
 
 
-def _avertir_cle_attendue_absente(canonique, slug, lieu):
+def _avertir_cle_attendue_absente(canonique, slug, lieu, canonique_de=None):
+    # `clé-de` : le nom du champ dans le gabarit allemand, pour que le cockpit d'une personne
+    # germanophone dise « Untertitel » et non « Sous-titre ».
+    canonique_de = canonique_de or canonique
     avertir(
         'cle-attendue-absente',
-        ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % canonique],
+        ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % canonique,
+         'clé-de « %s »' % canonique_de],
         'Le champ « %s » attendu par le gabarit n\'a pas été trouvé, ou a été laissé vide : '
         'rien n\'est perdu, mais rien n\'a été rempli non plus.' % canonique,
         'Das von der Vorlage erwartete Feld « %s » wurde nicht gefunden oder leer gelassen: '
-        'es geht nichts verloren, aber es wurde auch nichts ausgefüllt.' % canonique)
+        'es geht nichts verloren, aber es wurde auch nichts ausgefüllt.' % canonique_de)
 
 
 def _avertir_cles_attendues_absentes(table, jetons_attendus, cles_vues, slug, lieu):
@@ -672,7 +676,7 @@ def _avertir_cles_attendues_absentes(table, jetons_attendus, cles_vues, slug, li
     trois appelants n'ajoutent JAMAIS à `cles_vues` une clé dont la valeur était vide."""
     for jeton in jetons_attendus:
         if jeton not in cles_vues:
-            _avertir_cle_attendue_absente(table[jeton][0], slug, lieu)
+            _avertir_cle_attendue_absente(table[jeton][0], slug, lieu, table[jeton][1])
 
 
 # PAS motscles (voir CANON_METADONNEES), et PLUS langue depuis le 22.09.2026 : le champ a quitté

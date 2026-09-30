@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.5": {
+    "fr": {
+      "titre": "Un gabarit par langue, et l’OpenDocument partout",
+      "points": [
+        "Le gabarit d’article existe désormais en français (Revue) et en allemand (Zeitschrift), en Word et en OpenDocument ; les étiquettes allemandes sont lues comme les françaises.",
+        "Le nettoyeur de manuscrit écrit dans le gabarit de la revue choisie, accepte un .odt et livre au choix un .docx ou un .odt.",
+        "Un .odt déposé dans les Word en attente s’importe comme un .docx.",
+        "Le nettoyeur ajoute toujours le DOI retrouvé en suivi de modifications, garde le demi-cadratin des pages et laisse les citations en citation.",
+        "Un saut de page ou un tableau inséré depuis le menu d’édition est toujours séparé du texte par une ligne vide, et les champs du gabarit laissés vides tiennent en une seule carte dans « À corriger »."
+      ]
+    },
+    "de": {
+      "titre": "Eine Vorlage pro Sprache, und OpenDocument überall",
+      "points": [
+        "Die Artikelvorlage gibt es jetzt auf Französisch (Revue) und auf Deutsch (Zeitschrift), als Word- und als OpenDocument-Datei; die deutschen Bezeichnungen werden wie die französischen gelesen.",
+        "Die Manuskriptbereinigung schreibt in die Vorlage der gewählten Zeitschrift, nimmt eine .odt-Datei an und liefert wahlweise eine .docx- oder eine .odt-Datei.",
+        "Eine .odt-Datei in der Word-Warteschlange wird wie eine .docx-Datei importiert.",
+        "Die Bereinigung fügt eine gefundene DOI immer als Änderung ein, behält den Halbgeviertstrich in Seitenangaben und lässt Zitate Zitate bleiben.",
+        "Ein Seitenumbruch oder eine Tabelle aus dem Bearbeitungsmenü wird immer durch eine Leerzeile vom Text getrennt, und leer gelassene Vorlagenfelder erscheinen als eine einzige Karte unter «Zu korrigieren»."
+      ]
+    }
+  },
   "2.4": {
     "fr": {
       "titre": "Des erreurs plus claires, des tableaux avec images",

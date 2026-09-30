@@ -259,6 +259,45 @@ function blocSautPage(avant, apres) {
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
+// insererBlocIsole(lignes, point, bloc) -> { ligneDebut, ligneFin, texte, curseur }
+//
+// Pose un bloc ::: (saut de page, référence de tableau, en-tête FALC, QR) au point
+// d'insertion, isolé par UNE ligne vide de chaque voisin non vide. blocSautPage et
+// blocReferenceTable ne regardaient que la ligne du curseur : posé sur une ligne vide collée
+// à un paragraphe, le bloc s'y collait aussi, et pandoc le lisait comme la suite du
+// paragraphe (constaté par Robin, 30.09.2026). Ici, comme dans poserBloc, les lignes
+// voisines décident : les lignes vides qui touchent le point sont avalées puis réémises,
+// exactement une contre un voisin, aucune contre le bord du document. La ligne du curseur
+// coupée en deux garde ses deux moitiés, chacune séparée du bloc. `curseur` : le début du
+// bloc (sa ligne d'ouverture), pour qui voudrait y placer le curseur. Pur.
+function insererBlocIsole(lignes, point, bloc) {
+  const tab = Array.isArray(lignes) && lignes.length > 0
+    ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
+  const ligne = Math.max(0, Math.min(Number(point && point.ligne) || 0, tab.length - 1));
+  const col = Math.max(0, Math.min(Number(point && point.colonne) || 0, tab[ligne].length));
+  const avant = tab[ligne].slice(0, col).replace(/\s+$/, '');
+  const apres = tab[ligne].slice(col).replace(/^\s+/, '');
+  const corps = String(bloc).split('\n');
+  const morceaux = (avant ? [avant, ''] : []).concat(corps, apres ? ['', apres] : []);
+  let ligneDebut = ligne, ligneFin = ligne, debutBloc = avant ? 2 : 0;
+  if (!avant) {
+    while (ligneDebut > 0 && tab[ligneDebut - 1].trim() === '') { ligneDebut--; }
+    if (ligneDebut > 0) { morceaux.unshift(''); debutBloc++; }
+  }
+  if (!apres) {
+    while (ligneFin + 1 < tab.length && tab[ligneFin + 1].trim() === '') { ligneFin++; }
+    if (ligneFin + 1 < tab.length) { morceaux.push(''); }
+  }
+  return { ligneDebut: ligneDebut, ligneFin: ligneFin, texte: morceaux.join('\n'),
+    curseur: { ligne: ligneDebut + debutBloc, colonne: 0 } };
+}
+
+const BLOC_SAUT_PAGE = '::: {.szh-saut}\n:::';
+
+function blocTableSeul(nom) {
+  return '::: {.szh-tabelle src="tables/' + nom + '"}\n:::';
+}
+
 // ---- Insérer une note de bas de page ----
 //
 // Forme retenue, décidée le 09.09.2026 : la note en RÉFÉRENCE — [^n] au fil du texte, sa
@@ -460,5 +499,6 @@ module.exports = {
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
   blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
-  FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
+  FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE,
+  insererBlocIsole, BLOC_SAUT_PAGE, blocTableSeul
 };

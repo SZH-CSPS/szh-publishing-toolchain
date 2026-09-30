@@ -450,7 +450,13 @@ def _nettoyer_titre(t):
 
 
 def _nettoyer_pages(t):
-    return pronto_modele.normaliser(t or '').strip()
+    """Espaces compactés, mais le demi-cadratin GARDÉ : pronto_modele.normaliser() le rabat sur
+    le trait d'union, et la remise en forme APA réécrivait alors « 152–160 » en « 152-160 »
+    (mesuré, 30.09.2026) — faux en allemand, où la plage prend le Halbgeviertstrich. Le
+    cadratin et le tiret numérique, tapés à sa place, y sont ramenés."""
+    t = re.sub(r'[‒—]', '–', t or '').replace('‑', '-')
+    return ' '.join(t.replace(' ', ' ').replace(' ', ' ').replace(' ', ' ')
+                    .split())
 
 
 # Contrôle de PLAUSIBILITÉ d'un champ réécrit (titre, conteneur, éditeur) — révision du
@@ -502,7 +508,11 @@ def analyser_reference(texte, langue_doc='fr'):
     uniquement de REPLI à la détection de `langue_ref` (voir _detecter_langue_reference) quand
     le titre ne porte aucun mot-outil reconnu ; elle ne pilote rien d'autre ici."""
     brut = texte or ''
-    texte_n = pronto_modele.normaliser(brut)
+    # Le demi-cadratin survit à la normalisation (le cadratin et le tiret numérique y sont
+    # ramenés) : aplati en trait d'union, il ressortait de la remise en forme APA en « 152-160 »
+    # et en « titre - suite », une révision que personne n'avait demandée.
+    texte_n = pronto_modele.normaliser(
+        re.sub(r'[‒–—]', '\x00', brut)).replace('\x00', '–')
     champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
               'conteneur': '', 'volume': '', 'numero': '', 'pages': '', 'editeur': '',
               'genre': '', 'editeurs_ouvrage': '', 'nb_editeurs_ouvrage': 0, 'doi': '',
@@ -1327,10 +1337,14 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
         # italicisait les deux ensemble).
         volnum = ('*%s*' % volume if volume else '') + numero_paren
         conteneur = '*%s*' % ref['conteneur'] if ref.get('conteneur') else ''
-        # Un article APA ne préfixe jamais ses pages de « p./pp. » : le T2 du pont
-        # typographique ne s'applique donc jamais ici (voir _t2_plage_pages_chapitre) — les
-        # pages restent telles que l'entrée les porte, trait d'union compris.
-        queue = ', '.join(x for x in (conteneur, volnum, ref.get('pages') or '') if x)
+        # Un article APA ne préfixe jamais ses pages de « p./pp. » : en français elles restent
+        # telles que l'entrée les porte (le guide Revue montre les deux, « 1-35 » et
+        # « 119–141 »). En allemand, le guide Zeitschrift écrit « 27 (3), 56–78 » : le trait
+        # d'union entre deux nombres devient le demi-cadratin.
+        pages_article = ref.get('pages') or ''
+        if langue == 'de':
+            pages_article = _t2_plage_pages_chapitre(pages_article, 'de')
+        queue = ', '.join(x for x in (conteneur, volnum, pages_article) if x)
         corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
     elif t == 'chapitre':
         # Marqueur d'éditeur : vérifié dans les deux PDF Redaktionsrichtlinien (§7 bis, révision
@@ -1403,19 +1417,36 @@ def mise_en_forme_apa(ref, metadonnees_crossref=None):
 
 
 # Ancrage d'une INSERTION du DOI retrouvé (action='track', demande du 21.09.2026) : jamais
-# toute la référence, une pure addition en fin de ligne — le dernier segment localisable,
-# ses pages telles qu'écrites dans le texte d'origine (trait d'union ou demi-cadratin
-# tolérés) si elles s'y retrouvent, sinon le point final seul.
+# toute la référence, une pure addition EN FIN — le plus court suffixe de mots entiers qui
+# n'apparaît qu'une fois dans la référence. Jusqu'au 30.09.2026, l'ancre était les pages (le
+# DOI s'insérait alors AVANT leur point final : « 152–160 https://… . ») ou le point final
+# seul, qu'aucune localisation ne sait retrouver parmi tous les points de la référence : le
+# DOI partait en commentaire.
 def _segment_fin_reference(ref):
-    texte = ref.get('texte') or ''
-    pages = ref.get('pages') or ''
-    if pages:
-        for c in (pages, pages.replace('-', '–'), pages.replace('–', '-')):
-            if c and texte.count(c) == 1:
-                return c
-    if texte.endswith('.'):
-        return '.'
+    texte = (ref.get('texte') or '').rstrip()
+    mots = texte.split(' ')
+    for n in range(1, min(len(mots), 6) + 1):
+        segment = ' '.join(mots[-n:])
+        if len(segment) >= 4 and texte.count(segment) == 1:
+            return segment
     return None
+
+
+def _message_doi_retrouve(doi):
+    return ('Un DOI correspondant a été trouvé pour cette référence : %s '
+            '(à confirmer avant de l\'accepter).' % doi)
+
+
+def _alerte_insertion_doi(ref, doi):
+    """Insertion pure du DOI après le dernier segment sûr de la référence (§7 bis, demande du
+    21.09.2026) — jamais une réécriture. None si aucun segment n'est ancrable."""
+    segment = _segment_fin_reference(ref)
+    if not segment:
+        return None
+    return {'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
+            'para': ref.get('para'), 'span': None, 'found': segment,
+            'suggested': segment + (' ' if segment.endswith('.') else '. ') + doi,
+            'message': _message_doi_retrouve(doi)}
 
 
 # ---------------------------------------------------------------------------------
@@ -1522,7 +1553,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                     if doi_retrouve:
                         message += (' DOI ajouté : un DOI correspondant a été trouvé (%s), à '
                                      'confirmer avant d\'accepter cette révision.' % doi_retrouve)
-                    alertes.append({
+                    mef = {
                         'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
                         'para': r.get('para'), 'span': None, 'found': r.get('texte'),
                         'suggested': rendu,
@@ -1531,33 +1562,39 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                         # l'annotation Word, qui sait les traduire en italique réel.
                         'suggested_texte': _texte_suggere_sans_italique(rendu),
                         'message': message,
-                    })
+                    }
+                    alertes.append(mef)
                     mef_emise = True
+                    # Le DOI retrouvé part TOUJOURS en révision (demande de Robin, 30.09.2026).
+                    # La mise en forme couvre toute la référence : qu'une révision plus sévère
+                    # la chevauche, ou qu'elle touche un lien, et elle finissait en commentaire
+                    # en emportant le DOI. Son repli, une simple insertion du DOI en fin de
+                    # référence, prend alors sa place ; manuscrit_annoter.py l'efface quand la
+                    # mise en forme passe, puisqu'elle porte déjà le DOI.
+                    repli = _alerte_insertion_doi(r, doi_retrouve) if doi_retrouve else None
+                    if repli is not None:
+                        groupe = 'doi:%s' % (r.get('para'),)
+                        mef['groupe'] = groupe
+                        mef['role_groupe'] = 'principal'
+                        repli['groupe'] = groupe
+                        repli['role_groupe'] = 'repli'
+                        alertes.append(repli)
 
         if doi_retrouve and not mef_emise:
             # Aucune `APA.MiseEnForme` n'a été émise pour cette référence (confiance
             # insuffisante pour une chaîne canonique complète, ou — cas limite — le texte
             # rendu coïncidait déjà avec l'original malgré le DOI ajouté) : le DOI retrouvé
             # reste sa propre insertion `track`, seule, comme avant ce correctif.
-            message = ('Un DOI correspondant a été trouvé pour cette référence : %s '
-                        '(à confirmer avant de l\'ajouter).' % doi_retrouve)
-            segment = _segment_fin_reference(r)
-            if segment:
-                # Insertion pure (§7 bis, demande du 21.09.2026) : jamais une réécriture
-                # de la référence, seulement le DOI ajouté après son dernier segment sûr.
-                alertes.append({
-                    'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
-                    'para': r.get('para'), 'span': None, 'found': segment,
-                    'suggested': segment + ' ' + doi_retrouve, 'message': message,
-                })
+            insertion = _alerte_insertion_doi(r, doi_retrouve)
+            if insertion is not None:
+                alertes.append(insertion)
             else:
-                # Rien de fiable à ancrer (pages absentes/introuvables telles quelles, et
-                # la référence ne finit pas sur un point) : repli commentaire, jamais une
-                # insertion à l'aveugle.
+                # Rien de fiable à ancrer (aucun segment de fin de référence n'y figure une
+                # seule fois) : repli commentaire, jamais une insertion à l'aveugle.
                 alertes.append({
                     'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
                     'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi_retrouve,
-                    'message': message,
+                    'message': _message_doi_retrouve(doi_retrouve),
                 })
 
     return alertes, stats

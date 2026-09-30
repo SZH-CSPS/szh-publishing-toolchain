@@ -28,7 +28,8 @@ const {
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
   blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
-  langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE
+  langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE,
+  insererBlocIsole, BLOC_SAUT_PAGE, blocTableSeul
 } = formattingPur;
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
@@ -205,10 +206,7 @@ async function fmtTableau() {
     vscode.window.showErrorMessage(T('err.ecriture', [nom, e.message]));
     return;
   }
-  const sel = editeur.selection;
-  const avant = doc.lineAt(sel.start.line).text.slice(0, sel.start.character);
-  const apres = doc.lineAt(sel.end.line).text.slice(sel.end.character);
-  await editeur.edit((b) => { b.replace(sel, blocReferenceTable(nom, avant, apres)); });
+  await poserBlocIsole(editeur, blocTableSeul(nom));
   // Enregistrer avant de partir vers l'éditeur de tableau : sinon la référence reste dans
   // le tampon et l'aperçu se recompile sans le tableau. Le collage, lui, laisse la main
   // dans le texte et n'a pas besoin d'enregistrer.
@@ -288,13 +286,31 @@ function lireHtmlPressePapiers(timeoutMs) {
   });
 }
 
+// Pose un bloc ::: isolé (voir insererBlocIsole, lib/formatting-pur.js) à la FIN de la
+// sélection — son début si elle est vide, comme un simple curseur. Le texte sélectionné n'est
+// jamais détruit, comme pour l'en-tête FALC et le QR. `snippet` : le bloc porte des champs
+// ${n} à parcourir au Tab (insertSnippet) ; le texte qui l'entoure est alors échappé.
+async function poserBlocIsole(editeur, bloc, snippet) {
+  const doc = editeur.document;
+  const point = editeur.selection.end || editeur.selection.active;
+  const lignes = [];
+  for (let i = 0; i < doc.lineCount; i++) { lignes.push(doc.lineAt(i).text); }
+  const marque = '\u0000BLOC\u0000';
+  const r = insererBlocIsole(lignes, { ligne: point.line, colonne: point.character }, marque);
+  const plage = new vscode.Range(r.ligneDebut, 0, r.ligneFin, doc.lineAt(r.ligneFin).text.length);
+  const [avant, apres] = r.texte.split(marque);
+  if (snippet) {
+    const echapper = (t) => t.replace(/[$}\\]/g, '\\$&');
+    await editeur.insertSnippet(new vscode.SnippetString(echapper(avant) + bloc + echapper(apres)), plage);
+  } else {
+    await editeur.edit((b) => { b.replace(plage, avant + bloc + apres); });
+  }
+}
+
 async function fmtSautPage() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
-  const ligne = editeur.document.lineAt(editeur.selection.active.line).text;
-  const col = editeur.selection.active.character;
-  const texte = blocSautPage(ligne.slice(0, col), ligne.slice(col));
-  await editeur.edit((b) => { b.replace(editeur.selection, texte); });
+  await poserBlocIsole(editeur, BLOC_SAUT_PAGE);
 }
 
 // ---- Styles « Livre » : en-tête de chapitre FALC, code QR ----
@@ -303,33 +319,18 @@ async function fmtSautPage() {
 // hors du profil livre (voir PALETTE_MEF_LIVRE, lib/formatting-pur.js). Une sélection
 // existante n'est JAMAIS détruite : insertSnippet ne touche qu'au point d'insertion — la
 // fin de la sélection (son début si elle est vide, comme un simple curseur) — et laisse le
-// texte sélectionné intact, où qu'il soit. Les lignes vides posées autour reprennent la
-// règle des blocs ::: (blocSautPage/blocReferenceTable ci-dessus) : un fenced div doit être
-// séparé de ses voisins.
-function enroberLignesVides(bloc, avant, apres) {
-  return (String(avant).trim() === '' ? '' : '\n\n') + bloc + (String(apres).trim() === '' ? '' : '\n\n');
-}
-
+// texte sélectionné intact, où qu'il soit. Les lignes vides autour : poserBlocIsole.
 async function fmtFalcHeader() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
-  const doc = editeur.document;
-  const point = editeur.selection.end;
-  const ligne = doc.lineAt(point.line).text;
   const langue = langueLivre(revue.racine());
-  const corps = texteFalcHeader(langue, T('fmt.falcHeader.alt'));
-  const texte = enroberLignesVides(corps, ligne.slice(0, point.character), ligne.slice(point.character));
-  await editeur.insertSnippet(new vscode.SnippetString(texte), point);
+  await poserBlocIsole(editeur, texteFalcHeader(langue, T('fmt.falcHeader.alt')), true);
 }
 
 async function fmtQrLink() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
-  const doc = editeur.document;
-  const point = editeur.selection.end;
-  const ligne = doc.lineAt(point.line).text;
-  const texte = enroberLignesVides(TEXTE_QR_LINK, ligne.slice(0, point.character), ligne.slice(point.character));
-  await editeur.insertSnippet(new vscode.SnippetString(texte), point);
+  await poserBlocIsole(editeur, TEXTE_QR_LINK, true);
 }
 
 // Insère l'appel [^n] à la fin de la sélection (ou au curseur) et pose sa définition
@@ -423,10 +424,7 @@ async function fmtCollerTableau() {
     vscode.window.showErrorMessage(T('err.ecriture', [nom, e.message]));
     return;
   }
-  const sel = editeur.selection;
-  const avant = doc.lineAt(sel.start.line).text.slice(0, sel.start.character);
-  const apres = doc.lineAt(sel.end.line).text.slice(sel.end.character);
-  await editeur.edit((b) => { b.replace(sel, blocReferenceTable(nom, avant, apres)); });
+  await poserBlocIsole(editeur, blocTableSeul(nom));
   vscode.window.setStatusBarMessage(T('fmt.coller.creee', [nom]), 5000);
   revue.rafraichirTout();                            // le tableau apparaît sous l'article
 }

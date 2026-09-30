@@ -237,14 +237,13 @@ test('szh.fmt.falcHeader : une sélection non vide n’est jamais détruite, le 
     await HOTE.executer('szh.fmt.falcHeader');
 
     assert.strictEqual(ed._info.edits, 0, 'la sélection a été touchée par un edit()');
-    assert.strictEqual(ed._lignes[0], 'Un paragraphe sélectionné.',
-      'le texte sélectionné a changé : il ne devrait jamais l’être');
-    assert.deepStrictEqual(ed._info.snippets[0].position, fin,
-      'le snippet ne s’insère pas juste après la fin de la sélection');
-    // La ligne sélectionnée n'est pas vide : une ligne vide doit séparer le bloc de ce
-    // qui précède (même règle que les blocs ::: existants, blocSautPage/blocReferenceTable).
-    assert.ok(ed._info.snippets[0].valeur.startsWith('\n\n::::'),
-      'aucune ligne vide avant le bloc alors que la sélection touche du texte');
+    // La ligne est réécrite en entier (poserBlocIsole) : le texte sélectionné doit y revenir
+    // tel quel, en tête, puis une ligne vide, puis le bloc.
+    assert.ok(ed._info.snippets[0].valeur.startsWith('Un paragraphe sélectionné.\n\n::::'),
+      'le texte sélectionné n’est pas repris tel quel avant le bloc, séparé par une ligne vide : '
+      + JSON.stringify(ed._info.snippets[0].valeur.slice(0, 60)));
+    assert.strictEqual(ed._info.snippets[0].position.end.character, fin.character,
+      'la plage remplacée ne couvre pas exactement la ligne sélectionnée');
   });
 
 test('szh.fmt.qrLink : insère le QR seul, tracked/size posés, jamais de sélection détruite',

@@ -215,7 +215,8 @@ const FIXTURE_DE = [
     attendu: {
       nb_auteurs: 1, auteurs: [{ nom: 'Muster', initiales: 'E.' }], annee: 2010,
       conteneur: 'Zeitschrift für Umweltfragen', volume: '27', numero: '3',
-      pages: '56-78', type: 'article', confiance: 'haute',
+      // Le demi-cadratin du guide survit à la lecture (il était rabattu en trait d'union).
+      pages: '56–78', type: 'article', confiance: 'haute',
     },
   },
   {
@@ -359,6 +360,33 @@ test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rap
   assert.match(d.rendu, /\[Thèse de doctorat\]/,
     'le genre a disparu de la mise en forme : ' + d.rendu);
 });
+
+// Constaté par Robin (30.09.2026) : la remise en forme APA d'un article réécrivait
+// « 152–160 » en « 152-160 », en révision. En allemand, la plage d'un article prend le
+// Halbgeviertstrich (guide Zeitschrift : « 27 (3), 56–78 ») ; en français, elle reste telle
+// que l'entrée la porte.
+test('mise_en_forme_apa : pages d\'un article, demi-cadratin en allemand, gardé tel quel en français',
+  { skip: sansPython }, () => {
+    const programme = [
+      'out = {}',
+      'for langue in ("fr", "de"):',
+      '    for texte in sys.argv[1:]:',
+      '        r = mb.analyser_reference(texte)',
+      "        r['_langue'] = langue",
+      '        out.setdefault(langue, []).append(mb.mise_en_forme_apa(r))',
+      'print(json.dumps(out, ensure_ascii=False))',
+    ].join('\n');
+    const base = 'Skaalvik, E. M., & Skaalvik, S. (2017). Motivated for teaching. Teaching and '
+      + 'Teacher Education, 67, ';
+    const r = python(PREAMBULE + '\n' + programme,
+      [base + '152–160.', base + '152-160.']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const d = JSON.parse(r.stdout);
+    assert.match(d.fr[0], /152–160\./, 'fr, demi-cadratin écrit : ' + d.fr[0]);
+    assert.match(d.fr[1], /152-160\./, 'fr, trait d\'union écrit : ' + d.fr[1]);
+    assert.match(d.de[0], /152–160\./, 'de, demi-cadratin écrit : ' + d.de[0]);
+    assert.match(d.de[1], /152–160\./, 'de, trait d\'union écrit : ' + d.de[1]);
+  });
 
 // ---------------------------------------------------------------------------------
 // 1 bis. _calculer_confiance() : plausibilité des champs (révision du 22.09.2026).
@@ -1056,11 +1084,17 @@ test('analyser_bibliographie : un DOI retrouvé pour une référence à reformer
     'print(json.dumps({"alertes": alertes, "stats": stats}))',
   ].join('\n');
   const r = executer(programme);
+  // Depuis le 30.09.2026, une APA.DoiRetrouve accompagne la mise en forme, marquée comme son
+  // REPLI (même `groupe`) : manuscrit_annoter.py ne l'écrit que si la mise en forme perd sa
+  // place de révision — le DOI part toujours en suivi de modifications, jamais deux fois.
   const drs = r.alertes.filter((a) => a.rule === 'APA.DoiRetrouve');
-  assert.deepStrictEqual(drs, [],
-    'aucune APA.DoiRetrouve séparée ne doit apparaître quand APA.MiseEnForme porte déjà le '
-    + 'DOI : ' + JSON.stringify(drs));
+  assert.strictEqual(drs.length, 1, JSON.stringify(drs));
+  assert.strictEqual(drs[0].role_groupe, 'repli');
+  assert.strictEqual(drs[0].action, 'track');
+  assert.strictEqual(drs[0].suggested, '191-215. https://doi.org/10.1177/8756870514540836');
   const mef = r.alertes.find((a) => a.rule === 'APA.MiseEnForme');
+  assert.strictEqual(mef.groupe, drs[0].groupe);
+  assert.strictEqual(mef.role_groupe, 'principal');
   assert.ok(mef, 'APA.MiseEnForme absente : ' + JSON.stringify(r.alertes));
   assert.strictEqual(mef.action, 'track');
   assert.match(mef.suggested, /https:\/\/doi\.org\/10\.1177\/8756870514540836$/,
@@ -1092,14 +1126,18 @@ test('analyser_bibliographie : sans remise en forme possible, le DOI retrouvé r
   const dr = r.alertes.find((a) => a.rule === 'APA.DoiRetrouve');
   assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(r.alertes));
   assert.strictEqual(dr.action, 'track', 'doit être une révision, pas un commentaire');
-  assert.strictEqual(dr.found, '12-34', 'l\'ancrage doit être les pages, dernier segment sûr');
-  assert.strictEqual(dr.suggested, '12-34 https://doi.org/10.1/bon',
-    'insertion pure du DOI après les pages, jamais une réécriture de la référence');
+  // Ancre : le plus court suffixe unique, point final compris — le DOI se pose APRÈS lui
+  // (« 12-34. https://… »), plus avant lui comme lorsque l'ancre était les pages seules.
+  assert.strictEqual(dr.found, '12-34.', 'l\'ancrage doit être la fin de la référence');
+  assert.strictEqual(dr.suggested, '12-34. https://doi.org/10.1/bon',
+    'insertion pure du DOI en fin de référence, jamais une réécriture');
   assert.strictEqual(r.alertes.filter((a) => a.rule === 'APA.MiseEnForme').length, 0);
 });
 
-test('analyser_bibliographie : un DOI retrouvé sans pages localisables ni remise en forme '
-  + 'retombe sur un commentaire (rien de sûr à ancrer)', { skip: sansPython }, () => {
+// Jusqu'au 30.09.2026, ce cas finissait en commentaire. Le dernier mot, unique dans la
+// référence, suffit désormais d'ancre : le DOI y est inséré en révision.
+test('analyser_bibliographie : un DOI retrouvé sans pages ni point final ni remise en forme '
+  + 's\'insère quand même en révision, après le dernier mot', { skip: sansPython }, () => {
   const programme = [
     "def fausse_requete(url, delai):",
     "    return json.dumps({'message': {'items': [",
@@ -1109,9 +1147,7 @@ test('analyser_bibliographie : un DOI retrouvé sans pages localisables ni remis
     'mb._requete = fausse_requete',
     'mb.mise_en_forme_apa = lambda *a, **k: None',
     "corps = []",
-    // Un chapitre SANS pages ('In …' mais aucun marqueur de pages) ET SANS point final dans
-    // le texte d'origine -> aucun segment de fin sûr : ni les pages (absentes), ni le point
-    // final (absent). Le seul cas qui doit produire un repli commentaire.
+    // Un chapitre SANS pages ET SANS point final.
     "biblio = [{'source': 10, 'texte': 'Tremblay, A. (2023). Un chapitre presque identique "
       + "la. In G. Pelgrims (\\u00c9d.), Un ouvrage collectif'}]",
     "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=True)",
@@ -1120,8 +1156,9 @@ test('analyser_bibliographie : un DOI retrouvé sans pages localisables ni remis
   const alertes = executer(programme);
   const dr = alertes.find((a) => a.rule === 'APA.DoiRetrouve');
   assert.ok(dr, 'aucune alerte APA.DoiRetrouve : ' + JSON.stringify(alertes));
-  assert.strictEqual(dr.action, 'comment');
-  assert.strictEqual(dr.found, null);
+  assert.strictEqual(dr.action, 'track');
+  assert.strictEqual(dr.found, 'collectif');
+  assert.strictEqual(dr.suggested, 'collectif. https://doi.org/10.1/bon');
 });
 
 // ---------------------------------------------------------------------------------

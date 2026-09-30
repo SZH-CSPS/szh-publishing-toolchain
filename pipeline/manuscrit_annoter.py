@@ -1017,6 +1017,21 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                 devenir[idx] = 'revision'
         revisiones_por_salida[salida] = conservadas
 
+    # Un repli (l'insertion du seul DOI, manuscrit_biblio.py) resté en commentaire n'en fait
+    # pas un second : si son principal (la mise en forme APA) est passé en révision, le DOI y
+    # est déjà ; sinon le commentaire du principal le nomme. Il ne s'écrit que s'il a gagné
+    # sa place de révision, là où le principal l'a perdue.
+    principaux = {alertes[i].get('groupe'): i for i in range(len(alertes))
+                  if alertes[i].get('role_groupe') == 'principal'}
+    restants = []
+    for item in candidatos_comentario:
+        idx, alerta = item[0], item[1]
+        if alerta.get('role_groupe') == 'repli' and alerta.get('groupe') in principaux:
+            devenir[idx] = devenir[principaux[alerta.get('groupe')]] or 'commentaire'
+            continue
+        restants.append(item)
+    candidatos_comentario = restants
+
     # 2 ter. Notes : révisions DANS footnotes.xml (§7 ter du contrat, point 4 — préférence de
     # Robin : « reconnaître -> reconnaitre » dans une note doit s'accepter d'un clic, comme
     # dans le corps). Tentée ICI, une fois par note (jamais par alerte) : `found` est cherché

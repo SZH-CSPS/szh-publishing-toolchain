@@ -451,7 +451,14 @@ const TABLE = Object.freeze({
   // jamais plus : la validation PDF/UA ne la refuse pas, l'export non plus — décision de
   // Robin, 29.09.2026 (article massie, table-01.html, la case du coin en haut à gauche).
   'cockpit/entete-vide': { barrage: null, nature: D, lieu: 'table', compte: true,
-    defaut: 'defaut.entete-vide' }
+    defaut: 'defaut.entete-vide' },
+  // Les champs du gabarit « Pronto » laissés vides (import/cle-attendue-absente) : une carte
+  // par article, un lien par champ, là où il se remplit — la fiche pour l'en-tête et les
+  // autrices et auteurs, Médias pour les clés d'une figure. Une carte par champ, jusqu'au
+  // 30.09.2026 : vingt cartes identiques pour un article à trois auteurs sans ORCID, sans le
+  // nom du champ, et un bouton vers les Word en attente, où le document n'était plus.
+  'cockpit/champs-gabarit-vides': { barrage: null, nature: F, lieu: 'fiche', compte: true,
+    defaut: 'defaut.champs-gabarit-vides' }
 });
 
 // ---------------------------------------------------------------------------------------
@@ -573,7 +580,9 @@ const SECOND_ETAGE = Object.freeze({
     infobulle: 'infobulle.tableaux-entete' },
   'cockpit/tableaux-sans-entete': { consigne: 'consigne.tableau-sans-entete',
     infobulle: 'infobulle.tableau-sans-entete' },
-  'cockpit/entete-vide': { consigne: 'consigne.entete-vide', infobulle: 'infobulle.entete-vide' }
+  'cockpit/entete-vide': { consigne: 'consigne.entete-vide', infobulle: 'infobulle.entete-vide' },
+  'cockpit/champs-gabarit-vides': { consigne: 'consigne.champs-gabarit-vides',
+    infobulle: 'infobulle.champs-gabarit-vides' }
 });
 
 // ---------------------------------------------------------------------------------------
@@ -812,7 +821,8 @@ function elements(constat, langue) {
   return els.map((el) => {
     const p = el.precision;
     const precis = p && p.cle ? TL(langue, p.cle, p.args || []) : '';
-    return { libelle: String(el.nom || '') + (precis ? ' (' + precis + ')' : ''),
+    const nom = (el.noms && el.noms[langue]) || el.nom;
+    return { libelle: String(nom || '') + (precis ? ' (' + precis + ')' : ''),
              lieu: String(el.lieu || ''), focus: String(el.focus || '') };
   });
 }
@@ -845,7 +855,25 @@ function familleDe(c) {
   if (CODES_IMAGES.has(cle) || (cle === 'pdfua/regle' && REPERES_IMAGES.has(repere))) { return 'images'; }
   if (cle === 'import/tableau-sans-entete'
       || (cle === 'pdfua/regle' && REPERES_TABLEAUX.has(repere))) { return 'tableaux'; }
+  if (cle === 'import/cle-attendue-absente') { return 'champs-vides'; }
   return '';
+}
+
+// Un lien par champ, une seule fois même quand trois fiches d'auteur l'ont laissé vide, dans
+// l'ordre où l'import les a nommés. Le nom dans les deux langues du gabarit (`clé`, `clé-de`) :
+// elements() choisit celui de la personne qui lit.
+function elementsChampsVides(membres) {
+  const vus = new Set();
+  const els = [];
+  for (const c of membres) {
+    const champs = c.champs || {};
+    const fr = String(champs['clé'] || '');
+    if (fr === '' || vus.has(fr)) { continue; }
+    vus.add(fr);
+    els.push({ nom: fr, noms: { fr: fr, de: String(champs['clé-de'] || fr) },
+               lieu: champs.lieu === 'bloc' ? 'medias' : 'fiche', focus: '' });
+  }
+  return els;
 }
 
 function sansDoublon(liste) {
@@ -917,6 +945,9 @@ function regrouper(constats, lire) {
     if (g.famille === 'images') {
       code = 'images-sans-description';
       els = elementsImages(g.membres, lu);
+    } else if (g.famille === 'champs-vides') {
+      code = 'champs-gabarit-vides';
+      els = elementsChampsVides(g.membres);
     } else {
       const avecPdfUa = g.membres.some((c) => c.source === 'pdfua');
       code = avecPdfUa ? 'tableaux-entete' : 'tableaux-sans-entete';

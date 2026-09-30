@@ -170,8 +170,36 @@ test('szh.fmt.sautPage : pose le marqueur ::: {.szh-saut} ::: à la coupure', as
 
   await HOTE.executer('szh.fmt.sautPage');
 
-  assert.strictEqual(ed._info.remplacements[0], '\n\n::: {.szh-saut}\n:::\n\n');
+  // La ligne coupée est réécrite en entier : ses deux moitiés, chacune séparée du bloc.
+  assert.strictEqual(ed._info.remplacements[0],
+    'Un paragraphe avant la coupure\n\n::: {.szh-saut}\n:::\n\net sa suite.');
 });
+
+// Constaté par Robin (30.09.2026) : sur une ligne vide collée à un paragraphe, le bloc se
+// posait sans ligne vide, et pandoc le lisait comme la suite du paragraphe. Ce sont les
+// lignes VOISINES qui décident désormais, plus seulement celle du curseur.
+for (const [nom, commande, attendu] of [
+  ['saut de page', 'szh.fmt.sautPage', '::: {.szh-saut}\n:::'],
+  ['tableau', 'szh.fmt.tableau', '::: {.szh-tabelle src="tables/table-'],
+]) {
+  test('szh.fmt (' + nom + ') : entre deux paragraphes sans ligne vide, une ligne vide de chaque côté',
+    async () => {
+      // Le curseur sur la ligne vide qui sépare deux paragraphes : l'ancienne pose n'y
+      // voyait qu'une ligne vide, et collait le bloc au-dessus comme au-dessous.
+      const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+      ed._lignes = ['Paragraphe du dessus.', '', 'Paragraphe du dessous.'];
+      const p = { line: 1, character: 0 };
+      ed.selection = { isEmpty: true, start: p, end: p, active: p };
+      HOTE.stub.window.activeTextEditor = ed;
+      HOTE.stub.window.showInformationMessage = () => Promise.resolve(undefined);
+
+      await HOTE.executer(commande);
+
+      const texte = ed._info.remplacements[ed._info.remplacements.length - 1];
+      assert.ok(texte.startsWith('\n' + attendu), 'pas de ligne vide avant le bloc : ' + JSON.stringify(texte));
+      assert.ok(texte.endsWith(':::\n'), 'pas de ligne vide après le bloc : ' + JSON.stringify(texte));
+    });
+}
 
 test('szh.fmt.noteBasPage : pose [^1] au curseur, sa définition en fin de document', async () => {
   const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));

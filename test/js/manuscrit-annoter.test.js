@@ -368,6 +368,50 @@ test('chevauchement de révisions dans un même paragraphe : la plus sévère de
     assert.match(resultat.documentXml, /<w:t[^>]*>URL-CORRIGEE<\/w:t>/);
   });
 
+// Demande de Robin (30.09.2026) : le DOI retrouvé toujours en suivi de modifications. La mise
+// en forme APA (principal) le porte ; si elle perd un chevauchement, son repli (l'insertion du
+// seul DOI en fin de référence) devient la révision ; si elle passe, le repli ne s'écrit pas.
+const REF_DOI = 'Martin, A. (2020). Un titre. Revue X, 12(3), 45-67.';
+function alertesGroupeDoi(avecConcurrente) {
+  const alertes = [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0, span: null,
+      found: REF_DOI, suggested: 'Martin, A. (2020). Un titre. *Revue X*, *12*(3), 45-67. '
+        + 'https://doi.org/10.1/x', message: 'mise en forme', groupe: 'doi:0',
+      role_groupe: 'principal' },
+    { rule: 'APA.DoiRetrouve', severity: 'suggestion', action: 'track', para: 0, span: null,
+      found: '45-67.', suggested: '45-67. https://doi.org/10.1/x', message: 'DOI',
+      groupe: 'doi:0', role_groupe: 'repli' },
+  ];
+  if (avecConcurrente) {
+    alertes.push({ rule: 'Test.Erreur', severity: 'error', action: 'fix', para: 0, span: null,
+      found: 'Un titre', suggested: 'Un autre titre', message: 'plus sévère' });
+  }
+  return alertes;
+}
+
+test('DOI retrouvé : la mise en forme perd un chevauchement, le DOI part quand même en révision',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOI }], alertesGroupeDoi(true),
+      [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.par_regle['APA.DoiRetrouve'].revisions, 1,
+      'le DOI doit être une révision : ' + JSON.stringify(resultat.stats.par_regle));
+    assert.strictEqual(resultat.stats.par_regle['APA.MiseEnForme'].commentes, 1);
+    assert.match(resultat.documentXml, /<w:ins\b[\s\S]*?https:\/\/doi\.org\/10\.1\/x/);
+  });
+
+test('DOI retrouvé : la mise en forme passe, le repli ne s\'écrit ni en révision ni en commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOI }], alertesGroupeDoi(false),
+      [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.revisions, 1);
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'revision']);
+    assert.strictEqual((resultat.documentXml.match(/doi\.org\/10\.1\/x/g) || []).length, 1,
+      'le DOI ne doit figurer qu’une fois');
+  });
+
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
 // TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
 // contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).

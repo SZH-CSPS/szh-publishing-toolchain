@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.5.0
+
+Medium : annonce à la rédaction les gabarits FR/DE et l'OpenDocument, livrés en 2.4.2.
+
+**Bibliographie du nettoyeur.** Le DOI retrouvé part toujours en suivi de modifications. La
+mise en forme APA, qui couvre toute la référence, le perdait en commentaire dès qu'une
+révision plus sévère la chevauchait ou qu'elle touchait un lien : elle porte désormais un
+repli, l'insertion du seul DOI en fin de référence, que `manuscrit_annoter.py` n'écrit que si
+elle a perdu sa place. L'ancre est le plus court suffixe unique de la référence, point final
+compris (`152–160. https://…`, et non plus `152–160 https://… .`). Le demi-cadratin n'est plus
+rabattu en trait d'union à la lecture d'une référence ; en allemand, les pages d'un article
+le prennent, comme dans le guide Zeitschrift (`27 (3), 56–78`).
+
+**Éditeur.** Saut de page, insertion et collage de tableau, en-tête FALC et QR regardent les
+lignes voisines, plus seulement celle du curseur : une ligne vide sépare toujours le bloc
+`:::` d'un paragraphe (`insererBlocIsole`). Posé sur une ligne vide collée à un paragraphe,
+le bloc s'y collait, et pandoc le lisait comme la suite du paragraphe.
+
+**« À corriger ».** Les champs du gabarit laissés vides tiennent en une carte par article, un
+lien par champ vers la fiche ou Médias, dans la langue de qui lit (le lecteur transmet aussi
+le nom allemand, `clé-de`). Une carte par champ et par fiche d'auteur, sans le nom du champ,
+toutes à la même empreinte (en fermer une les fermait toutes), et un bouton vers les Word en
+attente où le document n'était plus.
+
+**Mise à jour.** `update.ps1` écrit au journal pourquoi il n'a pas remplacé l'environnement
+(éditeur ouvert ou compilation en cours).
+
 ## 2.4.3
 
 **La colonne d'étiquettes d'un tableau n'est plus écrasée.** Un tableau dont la première

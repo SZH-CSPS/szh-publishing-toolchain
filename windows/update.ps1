@@ -316,7 +316,12 @@ try {
       # -RemplaceEnvironnement -- sans quoi une mise à jour manuelle pouvait couper une
       # compilation en vol.
       $moment = Test-SzhMomentMaj -RemplaceEnvironnement
-      if (-not $moment.propice) { throw (T 'err.wsl') }
+      if (-not $moment.propice) {
+        # La raison au journal : le message à l'écran couvre l'éditeur ouvert ET la
+        # compilation en vol, et sans elle on ne savait plus, après coup, lequel avait joué.
+        Write-SzhLog ('update : environnement non remplacé, moment défavorable -> ' + $moment.raison)
+        throw (T 'err.wsl')
+      }
 
       Write-SzhInfo (T 'maj.install')
       if ($distroPresente) {
