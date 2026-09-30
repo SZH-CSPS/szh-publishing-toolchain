@@ -45,6 +45,8 @@
    vue.bibliographie                null tant que non branché, sinon {stats{...}}
    vue.typographie_abandons[]       {source, motif}
    vue.typographie_avertissements[] phrases déjà dans la langue du produit
+   vue.avertissements_import[]      constats de lecture (en-têtes et pieds non lus, zones de
+                                    texte...), phrases dans la langue du produit, sans doublon
 #}
 {% block contenu %}<!DOCTYPE html>
 <html lang="{% if produit == 'zeitschrift' %}de{% else %}fr{% endif %}">
@@ -250,9 +252,15 @@ mark { background: var(--erreur-clair); padding: 0 2px; }
 {% endif %}
 
 <h2>{% if produit == 'zeitschrift' %}Was das Werkzeug nicht konnte{% else %}Ce que l’outil n’a pas su faire{% endif %}</h2>
-{% if vue.typographie_abandons is empty and vue.typographie_avertissements is empty %}
+{% if vue.typographie_abandons is empty and vue.typographie_avertissements is empty and vue.avertissements_import is empty %}
 <p class="section-vide">{% if produit == 'zeitschrift' %}Nichts zu melden.{% else %}Rien à signaler.{% endif %}</p>
 {% else %}
+{% if vue.avertissements_import is not empty %}
+<h3>{% if produit == 'zeitschrift' %}Lesen des Manuskripts{% else %}Lecture du manuscrit{% endif %}</h3>
+<ul>
+{% for av in vue.avertissements_import %}<li>{{ av|e }}</li>{% endfor %}
+</ul>
+{% endif %}
 {% if vue.typographie_avertissements is not empty %}
 <h3>{% if produit == 'zeitschrift' %}Typografie{% else %}Typographie{% endif %}</h3>
 <ul>

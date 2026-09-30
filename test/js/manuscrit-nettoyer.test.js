@@ -316,6 +316,131 @@ test('manuscrit-nettoyer.py : refuse un .docx en suivi de modifications, sans ri
   });
 
 // ---------------------------------------------------------------------------------
+// Refus du suivi de modifications, phrases courtes : le nombre, quoi faire, dans la langue du
+// produit ; et le cas fréquent où le fichier renvoyé est la SORTIE du nettoyeur (son nom finit
+// par -nettoye, ou ses révisions portent l'auteur que le nettoyeur pose lui-même).
+//
+// Sabotage : dans _message_suivi_modifications(), retirer la branche `if sortie_nettoyeur` (ou
+// dans principal(), forcer `sortie_nettoyeur = False`) — les trois derniers cas échouent.
+
+function ecrireParties(chemin, remplacements, ajouts) {
+  const r = python(['-c', [
+    'import json, shutil, sys, zipfile',
+    'chemin, rempl, ajouts = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])',
+    'lu = zipfile.ZipFile(chemin)',
+    'parties = {n: lu.read(n) for n in lu.namelist()}',
+    'lu.close()',
+    'for a, b in rempl:',
+    '    parties["word/document.xml"] = parties["word/document.xml"].replace(a.encode(), b.encode())',
+    'for nom, contenu in ajouts:',
+    '    parties[nom] = contenu.encode()',
+    'with zipfile.ZipFile(chemin, "w") as z:',
+    '    for n, c in parties.items():',
+    '        z.writestr(n, c)',
+  ].join('\n'), chemin, JSON.stringify(remplacements || []), JSON.stringify(ajouts || [])]);
+  assert.strictEqual(r.status, 0, 'retouche du .docx impossible : ' + r.stderr);
+}
+
+function refusSuivi(nomFichier, produit, remplacements) {
+  const base = dossierJetable();
+  try {
+    const entree = path.join(base, nomFichier);
+    fabriquerDocx(entree, [
+      { texte: 'Titre' },
+      { texte: 'Un texte ajoute en suivi de modifications.', revision: true },
+    ]);
+    if (remplacements) { ecrireParties(entree, remplacements); }
+    const sortie = path.join(base, 'sortie');
+    fs.mkdirSync(sortie);
+    const r = nettoyer([entree, '--produit', produit, '--sortie', sortie, '--sans-reseau']);
+    return { obj: ligneUniqueJson(r.stdout), sortie: fs.readdirSync(sortie), stderr: r.stderr };
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+}
+
+test('manuscrit-nettoyer.py : refus du suivi de modifications en une phrase qui dit quoi faire (fr)',
+  { skip: sansPython }, () => {
+    const { obj, sortie } = refusSuivi('suivi.docx', 'revue');
+    assert.strictEqual(obj.code_refus, 'suivi-modifications');
+    assert.strictEqual(obj.revisions, 1);
+    assert.strictEqual(obj.sortie_nettoyeur, false);
+    assert.strictEqual(obj.message,
+      '1 modification(s) suivie(s) non acceptée(s). Acceptez-les ou refusez-les dans Word, puis relancez.');
+    assert.doesNotMatch(obj.message, /w:ins|w:del|nettoyeur|univoque/, 'plomberie dans le message : ' + obj.message);
+    assert.deepStrictEqual(sortie, []);
+  });
+
+test('manuscrit-nettoyer.py : refus du suivi de modifications, produit zeitschrift : phrase allemande',
+  { skip: sansPython }, () => {
+    const { obj } = refusSuivi('suivi.docx', 'zeitschrift');
+    assert.strictEqual(obj.code_refus, 'suivi-modifications');
+    assert.strictEqual(obj.message,
+      '1 nachverfolgte Änderung(en) nicht angenommen. Nehmen Sie sie in Word an oder lehnen Sie sie ab und starten Sie dann erneut.');
+  });
+
+test('manuscrit-nettoyer.py : un fichier -nettoye.docx refusé dit que c\'est déjà la sortie du nettoyeur',
+  { skip: sansPython }, () => {
+    const { obj } = refusSuivi('origine-nettoye.docx', 'revue');
+    assert.strictEqual(obj.code_refus, 'suivi-modifications', 'la règle de refus ne change pas');
+    assert.strictEqual(obj.sortie_nettoyeur, true);
+    assert.strictEqual(obj.message,
+      'Ce fichier est déjà la sortie du nettoyeur : ouvrez le manuscrit d’origine.');
+    assert.strictEqual(refusSuivi('origine-nettoye.docx', 'zeitschrift').obj.message,
+      'Diese Datei ist bereits das Ergebnis der Bereinigung: Öffnen Sie das ursprüngliche Manuskript.');
+  });
+
+test('manuscrit-nettoyer.py : des révisions signées par le nettoyeur suffisent, même sous un autre nom',
+  { skip: sansPython }, () => {
+    for (const auteur of ['Relecture automatique', 'Recherche ROR/ORCID — à vérifier', 'ROR/ORCID-Suche — bitte prüfen']) {
+      const { obj } = refusSuivi('renomme.docx', 'revue', [['w:author="essai"', 'w:author="' + auteur + '"']]);
+      assert.strictEqual(obj.sortie_nettoyeur, true, 'auteur non reconnu : ' + auteur);
+    }
+    const { obj } = refusSuivi('renomme.docx', 'revue', [['w:author="essai"', 'w:author="Marie Dupont"']]);
+    assert.strictEqual(obj.sortie_nettoyeur, false, 'un autre auteur ne doit pas passer pour le nettoyeur');
+    assert.match(obj.message, /^1 modification\(s\) suivie\(s\)/);
+  });
+
+// ---------------------------------------------------------------------------------
+// Les constats d'import (`[import-avertissement]`, émis par manuscrit_docx via szh_commun) ne
+// fuient plus sur stderr : la CLI les recueille dans le rapport JSON (avec leurs deux langues),
+// avec la progression. Un .docx porteur d'un en-tête de page déclenche entetes-pieds-non-lus.
+//
+// Sabotage : dans principal(), retirer `szh_commun.avertir = _avertir_capture` — le constat
+// repasse sur stderr et le rapport n'en porte plus.
+
+test('manuscrit-nettoyer.py : les avertissements d\'import vont dans le rapport JSON, pas sur stderr',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false));
+      ecrireParties(entree, [], [['word/header1.xml', '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p/></w:hdr>']]);
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau', '--sans-typo']);
+      assert.ok(r.status === 0 || r.status === 1, 'statut inattendu : ' + r.status + ' ' + r.stderr);
+      ligneUniqueJson(r.stdout);
+      assert.doesNotMatch(r.stderr, /import-avertissement/, 'le constat fuit encore sur stderr : ' + r.stderr);
+      const rapport = JSON.parse(fs.readFileSync(path.join(sortie, 'article-rapport.json'), 'utf8'));
+      const constat = rapport.avertissements_import.find((a) => a.code === 'entetes-pieds-non-lus');
+      assert.ok(constat, 'entetes-pieds-non-lus absent du rapport : ' + JSON.stringify(rapport.avertissements_import));
+      assert.match(constat.fr, /1 en-tête\(s\)\/pied\(s\) de page/);
+      assert.match(constat.de, /1 Kopf-\/Fußzeile\(n\)/);
+      assert.ok(Array.isArray(rapport.journal) && rapport.journal.length >= 5,
+        'la progression doit être gardée dans le rapport');
+      assert.ok(rapport.journal.every((l) => l.indexOf('[manuscrit-nettoyer]') === -1),
+        'le préfixe de la CLI ne doit pas être dans le rapport');
+      // Un seul constat : la relecture du .docx écrit (garde-fou « rien ne se perd ») refait
+      // la lecture sans le compter une seconde fois.
+      assert.strictEqual(rapport.avertissements_import.filter((a) => a.code === 'entetes-pieds-non-lus').length, 1,
+        JSON.stringify(rapport.avertissements_import));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
 // Contrôle n°2 — le code de sortie : non nul dès qu'une alerte `error` existe (ici
 // Forme.LongueurResume.Revue, déclenchée par un résumé trop court), nul sur un manuscrit
 // qui n'en déclenche aucune (aucun paragraphe de rôle 'resume' du tout).

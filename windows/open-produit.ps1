@@ -2439,8 +2439,31 @@ function Test-SzhManuscritPret {
   return $cliPreproc
 }
 
+# ---- Le JSON du rapport : un fichier temporaire, jamais a cote du manuscrit ----
+# La CLI ecrit son rapport complet (--rapport) ; le lanceur le relit une fois pour rendre la
+# page HTML, puis le supprime. Tout le cycle de vie -- creation du chemin, suppression -- tient
+# dans ces deux fonctions, et nulle part ailleurs : c'est ici qu'une remontee vers un dossier
+# commun viendrait se brancher. Le chemin part a la CLI en barres obliques (wsl.exe avale les
+# antislashs). Sous %TEMP% : GetTempPath suit les variables TEMP/TMP.
+function New-SzhRapportTemporaire {
+  return (Join-Path ([System.IO.Path]::GetTempPath()) ('szh-rapport-manuscrit-' + [guid]::NewGuid().ToString('N') + '.json'))
+}
+function Remove-SzhRapportTemporaire([string]$Chemin) {
+  if (-not $Chemin) { return }
+  try {
+    if (Test-Path -LiteralPath $Chemin) { Remove-Item -LiteralPath $Chemin -Force -ErrorAction Stop }
+  } catch {
+    Write-SzhLog ('open-produit : suppression du rapport temporaire echouee (' + $_.Exception.Message + ')')
+  }
+}
+
 # Le seul appelant de manuscrit-nettoyer.py. Voir l'en-tete de cette section pour
 # l'inversion stdout/stderr par rapport a Invoke-SzhSecretariat, et pourquoi.
+#
+# Le journal de l'onglet ne recoit QUE l'essentiel (le manuscrit traite ici, le resultat dans
+# Show-SzhResultatPreproc) : la progression ligne a ligne de la CLI n'y est plus recopiee, elle
+# vit dans le rapport (cle 'journal') et les dernieres lignes vont au journal technique du
+# lanceur en cas d'echec.
 function Invoke-SzhManuscrit {
   param(
     [Parameter(Mandatory = $true)][string]$CheminManuscrit,
@@ -2453,6 +2476,7 @@ function Invoke-SzhManuscrit {
     $EtatAnnulation = $null
   )
   Add-SzhEnteteJournal $Journal $NomExport
+  Add-SzhLigneJournal $Journal (T 'lanceur.preproc.fichier.choisi' @((Split-Path -Leaf $CheminManuscrit)))
   foreach ($boutonGrisePreproc in $script:preprocBoutons) { $boutonGrisePreproc.Enabled = $false }
   $script:form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
   if ($BarreProgression) {
@@ -2469,14 +2493,16 @@ function Invoke-SzhManuscrit {
   $dossierSortiePreproc = ''
   $processusPreproc = $null
   $tacheSortiePreproc = $null
+  $cheminRapportTemporairePreproc = New-SzhRapportTemporaire
   # Succes avec alertes bloquantes (code 1 du contrat CLI, CODE_ALERTE_ERROR) : le
-  # .docx et le rapport existent, seul le texte du journal change -- voir plus bas.
+  # .docx et le rapport existent, seule la ligne du journal change -- voir Show-SzhResultatPreproc.
   $alerteBloquantePreproc = $false
   # Les trois dernieres lignes de progression non vides vues sur stderr, hors la ligne
-  # finale qui porte le code de sortie (jamais montre a une relectrice) : le seul indice
-  # qui reste quand le processus s'arrete sans refus ni JSON exploitable (code 3 ou
-  # inattendu).
+  # finale qui porte le code de sortie : le seul indice qui reste quand le processus s'arrete
+  # sans refus ni JSON exploitable (code 3 ou inattendu). Jamais montrees a l'ecran : elles
+  # partent au journal technique du lanceur (Show-SzhResultatPreproc).
   $dernieresLignesErreurPreproc = New-Object System.Collections.ArrayList
+  $detailPreproc = ''
 
   try {
     $cliWindowsPreproc = Test-SzhManuscritPret
@@ -2484,13 +2510,14 @@ function Invoke-SzhManuscrit {
     $manuscritWslPreproc = ConvertTo-SzhCheminWsl $CheminManuscrit
     $dossierSortiePreproc = Split-Path -Parent $CheminManuscrit
     $sortieWslPreproc = ConvertTo-SzhCheminWsl $dossierSortiePreproc
+    $rapportWslPreproc = ConvertTo-SzhCheminWsl ($cheminRapportTemporairePreproc -replace '\\', '/')
 
     $psiPreproc = New-Object System.Diagnostics.ProcessStartInfo
     $psiPreproc.FileName = Get-SzhWslExePreproc
     $psiPreproc.Arguments = ConvertTo-SzhArguments @(
       '-d', (Get-SzhDistroPreproc), '-e', 'python3', $cliWslPreproc,
       $manuscritWslPreproc, '--produit', $Produit, '--sortie', $sortieWslPreproc,
-      '--format', $Format)
+      '--rapport', $rapportWslPreproc, '--format', $Format)
     $psiPreproc.RedirectStandardOutput = $true
     $psiPreproc.RedirectStandardError = $true
     $psiPreproc.UseShellExecute = $false
@@ -2528,7 +2555,6 @@ function Invoke-SzhManuscrit {
       if ($null -eq $lignePreproc) { break }
       $ligneVuePreproc = $lignePreproc.Trim()
       if ($ligneVuePreproc) {
-        Add-SzhLigneJournal $Journal $ligneVuePreproc
         # La toute derniere ligne de progression porte "(code de sortie N)" -- jamais
         # retenue ici, un code de sortie ne se montre pas a une relectrice.
         if ($ligneVuePreproc -notmatch 'code de sortie') {
@@ -2559,34 +2585,16 @@ function Invoke-SzhManuscrit {
       $alerteBloquantePreproc = [bool]($statsPreproc -and -not $refusePreprocInterne `
         -and ($processusPreproc.ExitCode -eq 1) -and ([int]$statsPreproc.alertes_error -gt 0))
       $okPreproc = ($processusPreproc.ExitCode -eq 0) -or $refusePreprocInterne -or $alerteBloquantePreproc
-      if ($alerteBloquantePreproc) {
-        # Revisions et commentaires poses ne sont PAS sur la ligne JSON de stdout (§8 du
-        # contrat : seuls les compteurs d'alertes y sont) -- ils vivent dans le rapport
-        # complet, deja ecrit sur le disque, dont stdout porte le chemin WSL.
-        $revisionsPreproc = 0
-        $commentairesPreproc = 0
-        try {
-          $cheminRapportDisquePreproc = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$statsPreproc.sortie_rapport)
-          $rapportCompletPreproc = Get-Content -LiteralPath $cheminRapportDisquePreproc -Raw -Encoding UTF8 | ConvertFrom-Json
-          if ($rapportCompletPreproc.compteurs) {
-            $revisionsPreproc = [int]$rapportCompletPreproc.compteurs.revisions
-            $commentairesPreproc = [int]$rapportCompletPreproc.compteurs.commentaires_poses
-          }
-        } catch { }
-        $textePreproc = (T 'lanceur.preproc.resultat.alertes' @(
-          [int]$statsPreproc.alertes_error, $revisionsPreproc, $commentairesPreproc))
-      } elseif (-not $okPreproc) {
-        if ($dernieresLignesErreurPreproc.Count -gt 0) {
-          $textePreproc = [string]::Join(' | ', $dernieresLignesErreurPreproc.ToArray())
-        } else {
-          $textePreproc = (T 'lanceur.preproc.echec.inconnu')
-        }
+      if ((-not $alerteBloquantePreproc) -and (-not $okPreproc)) {
+        # Une phrase qui dit quoi faire ; la cause technique (dernieres lignes de stderr)
+        # est gardee a part pour le journal technique.
+        $textePreproc = (T 'lanceur.preproc.echec.inconnu' @($SzhSupport))
+        $detailPreproc = [string]::Join(' | ', $dernieresLignesErreurPreproc.ToArray())
       }
     }
   } catch {
     $okPreproc = $false
     $textePreproc = $_.Exception.Message
-    Add-SzhLigneJournal $Journal $textePreproc
   } finally {
     try {
       if ($processusPreproc -and -not $processusPreproc.HasExited) { $processusPreproc.Kill() }
@@ -2608,6 +2616,9 @@ function Invoke-SzhManuscrit {
     dossier           = $dossierSortiePreproc
     produit           = $Produit
     alertesBloquantes = $alerteBloquantePreproc
+    manuscrit         = $CheminManuscrit
+    detail            = $detailPreproc
+    rapportTemporaire = $cheminRapportTemporairePreproc
   }
 }
 
@@ -2616,15 +2627,18 @@ function Invoke-SzhManuscrit {
 # VSCodium-en-Node, ELECTRON_RUN_AS_NODE=1, un aller-retour JSON sur stdin/stdout) et ecrit
 # la page a cote du manuscrit. Rend le chemin Windows du fichier ecrit.
 #
-# $Stats est soit le JSON complet du rapport (execution normale, relu depuis
-# sortie_rapport), soit l'enveloppe courte d'un refus -- aucun -rapport.json n'existe alors
-# sur le disque, tout est deja dans $Stats. Les deux portent 'entree', jamais 'produit' cote
-# refus (le nettoyeur ne le sait pas encore a ce stade, §8 du contrat) : $Produit, deja
-# choisi par la personne avant de lancer le nettoyage, comble ce trou.
+# $Stats est soit la ligne de statistiques d'une execution normale (le JSON complet est relu
+# depuis $CheminRapportJson, le fichier temporaire, ou a defaut depuis sortie_rapport), soit
+# l'enveloppe courte d'un refus -- tout est deja dans $Stats. $CheminManuscrit (Windows) donne
+# le dossier et le nom de la page ecrite ; sans lui, 'entree' de $Stats en tient lieu. $Produit,
+# deja choisi par la personne avant de lancer le nettoyage, comble ce que le nettoyeur ne sait
+# pas encore sur un refus (§8 du contrat).
 function New-SzhRapportManuscrit {
   param(
     [Parameter(Mandatory = $true)]$Stats,
-    [Parameter(Mandatory = $true)][string]$Produit
+    [Parameter(Mandatory = $true)][string]$Produit,
+    [string]$CheminManuscrit = '',
+    [string]$CheminRapportJson = ''
   )
   $dossierCockpitRapport = Get-SzhDossierCockpit
   if (-not $dossierCockpitRapport) { throw 'dossier de l''extension du cockpit introuvable' }
@@ -2639,21 +2653,25 @@ function New-SzhRapportManuscrit {
   $codiumRapport = Get-VSCodiumExe
   if (-not $codiumRapport) { throw 'VSCodium introuvable sur ce poste' }
 
+  $cheminManuscritWindowsRapport = $CheminManuscrit
+  if (-not $cheminManuscritWindowsRapport) {
+    $cheminManuscritWindowsRapport = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.entree)
+  }
+  $dossierSortieRapport = Split-Path -Parent $cheminManuscritWindowsRapport
+  $nomBaseRapport = [System.IO.Path]::GetFileNameWithoutExtension($cheminManuscritWindowsRapport)
   if ($Stats.refus) {
     $rapportJsonTexte = $Stats | ConvertTo-Json -Depth 6 -Compress
-    $cheminManuscritWindowsRapport = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.entree)
-    $dossierSortieRapport = Split-Path -Parent $cheminManuscritWindowsRapport
-    $nomBaseRapport = [System.IO.Path]::GetFileNameWithoutExtension($cheminManuscritWindowsRapport)
   } else {
-    if (-not $Stats.sortie_rapport) { throw 'sortie_rapport absent de la ligne de statistiques' }
-    $cheminRapportWindows = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.sortie_rapport)
+    $cheminRapportWindows = $CheminRapportJson
+    if (-not $cheminRapportWindows) {
+      if (-not $Stats.sortie_rapport) { throw 'sortie_rapport absent de la ligne de statistiques' }
+      $cheminRapportWindows = ConvertTo-SzhCheminWindowsDepuisWsl ([string]$Stats.sortie_rapport)
+    }
     # Lu tel quel, jamais reconverti par ConvertFrom-Json/ConvertTo-Json (profondeur du
     # rapport bien au-dela de ce que ConvertTo-Json accepte sans -Depth explicite, et un
     # second passage arrondirait ou tronquerait des valeurs sans avertir personne) :
     # l'enveloppe plus bas s'assemble par CONCATENATION de texte JSON deja valide.
     $rapportJsonTexte = Get-Content -LiteralPath $cheminRapportWindows -Raw -Encoding UTF8
-    $dossierSortieRapport = Split-Path -Parent $cheminRapportWindows
-    $nomBaseRapport = ([System.IO.Path]::GetFileNameWithoutExtension($cheminRapportWindows)) -replace '-rapport$', ''
   }
 
   $enveloppeRapport = '{"chemin":' + ($cheminGabaritRapport | ConvertTo-Json -Compress) +
@@ -2710,47 +2728,74 @@ function New-SzhRapportManuscrit {
   return $cheminHtmlRapport
 }
 
+# Le journal de l'onglet : l'essentiel, en quelques lignes -- le resultat, le document et le
+# rapport nommes (jamais un chemin), le compte des alertes ; en cas de refus ou d'echec, UNE
+# phrase qui dit quoi faire. Le detail est dans le rapport (HTML et JSON), la cause technique
+# dans le journal du lanceur.
 function Show-SzhResultatPreproc($Resultat) {
-  $refusePreproc = [bool]($Resultat.stats -and $Resultat.stats.refus)
-  if ($Resultat.ok -and -not $refusePreproc) {
-    if ($Resultat.alertesBloquantes -and $Resultat.texte) {
-      # Nettoyage reussi (§8 du contrat : code 1 = alerte error, pas un echec), mais des
-      # points restent a traiter -- le ton reste celui d'une attention, pas d'un succes
-      # silencieux ; le texte porte deja les trois nombres.
-      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($Resultat.texte))
-    } else {
-      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
-    }
-    # Ligne compacte gardee en plus du rapport HTML (ci-dessous) : un repli lisible si son
-    # rendu echoue pour une raison ou une autre, jamais la seule trace de ce qui s'est passe.
-    if ($Resultat.stats) {
-      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.stats' @(($Resultat.stats | ConvertTo-Json -Compress)))
-    }
-  } elseif ($refusePreproc) {
-    $texteRefusPreproc = [string]$Resultat.stats.message
-    if (-not $texteRefusPreproc) { $texteRefusPreproc = (T 'lanceur.preproc.echec.inconnu') }
-    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteRefusPreproc))
-  } else {
-    $texteEchecPreproc = $Resultat.texte
-    if (-not $texteEchecPreproc) { $texteEchecPreproc = (T 'lanceur.preproc.echec.inconnu') }
-    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteEchecPreproc))
-  }
-  # Le rapport HTML se rend dans les DEUX cas (refus compris, §8 : « page courte, le
-  # message et rien d'autre ») -- seul un vrai echec technique (WSL absente, CLI introuvable,
-  # processus tue) n'a rien a rendre : $Resultat.ok reste faux dans ce cas-la seulement.
-  if ($Resultat.ok -and $Resultat.stats) {
-    try {
-      $cheminHtmlPreproc = New-SzhRapportManuscrit -Stats $Resultat.stats -Produit $Resultat.produit
-      if ($cheminHtmlPreproc -and (Test-Path -LiteralPath $cheminHtmlPreproc)) {
-        Start-Process $cheminHtmlPreproc
+  try {
+    $refusePreproc = [bool]($Resultat.stats -and $Resultat.stats.refus)
+    # Le rapport HTML se rend dans les DEUX cas (refus compris, §8 : « page courte, le
+    # message et rien d'autre ») -- seul un vrai echec technique (WSL absente, CLI introuvable,
+    # processus tue) n'a rien a rendre : $Resultat.ok reste faux dans ce cas-la seulement. Rendu
+    # AVANT les lignes du journal, pour pouvoir nommer la page.
+    $cheminHtmlPreproc = ''
+    $erreurRapportPreproc = ''
+    if ($Resultat.ok -and $Resultat.stats) {
+      try {
+        $cheminHtmlPreproc = New-SzhRapportManuscrit -Stats $Resultat.stats -Produit $Resultat.produit -CheminManuscrit $Resultat.manuscrit -CheminRapportJson $Resultat.rapportTemporaire
+        if ($cheminHtmlPreproc -and (Test-Path -LiteralPath $cheminHtmlPreproc)) {
+          Start-Process $cheminHtmlPreproc
+        }
+      } catch {
+        $erreurRapportPreproc = $_.Exception.Message
       }
-    } catch {
-      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.erreur' @($_.Exception.Message))
     }
-  }
-  if ($Resultat.ok -and $Resultat.dossier) {
-    $script:preprocDossierCourant = $Resultat.dossier
-    $script:boutonPreprocDossier.Enabled = $true
+
+    if ($Resultat.ok -and -not $refusePreproc) {
+      $nomSortiePreproc = ''
+      if ($Resultat.stats -and $Resultat.stats.sortie) {
+        $nomSortiePreproc = [System.IO.Path]::GetFileName([string]$Resultat.stats.sortie)
+      }
+      if ($Resultat.alertesBloquantes -and $nomSortiePreproc) {
+        # Nettoyage reussi (§8 du contrat : code 1 = alerte error, pas un echec), mais des
+        # erreurs restent a traiter -- le ton reste celui d'une attention.
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @((T 'lanceur.preproc.resultat.document.alertes' @($nomSortiePreproc))))
+      } elseif ($Resultat.alertesBloquantes) {
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @((T 'lanceur.preproc.resultat.termine')))
+      } elseif ($nomSortiePreproc) {
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.document' @($nomSortiePreproc))))
+      } else {
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
+      }
+      if ($cheminHtmlPreproc) {
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.rapport' @((Split-Path -Leaf $cheminHtmlPreproc)))
+      }
+      if ($Resultat.stats) {
+        Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.compte' @(
+          [int]$Resultat.stats.alertes_error, [int]$Resultat.stats.alertes_warning, [int]$Resultat.stats.alertes_suggestion))
+      }
+    } elseif ($refusePreproc) {
+      $texteRefusPreproc = [string]$Resultat.stats.message
+      if (-not $texteRefusPreproc) { $texteRefusPreproc = (T 'lanceur.preproc.echec.inconnu' @($SzhSupport)) }
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.refus' @($texteRefusPreproc))
+    } else {
+      $texteEchecPreproc = $Resultat.texte
+      if (-not $texteEchecPreproc) { $texteEchecPreproc = (T 'lanceur.preproc.echec.inconnu' @($SzhSupport)) }
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteEchecPreproc))
+    }
+    if ($erreurRapportPreproc) {
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.erreur' @($erreurRapportPreproc))
+    }
+    if ($Resultat.detail) { Write-SzhLog ('open-produit : nettoyeur, derniere progression : ' + $Resultat.detail) }
+    if ($Resultat.stats -and $Resultat.stats.detail) { Write-SzhLog ('open-produit : nettoyeur, detail : ' + $Resultat.stats.detail) }
+    if ($Resultat.ok -and $Resultat.dossier) {
+      $script:preprocDossierCourant = $Resultat.dossier
+      $script:boutonPreprocDossier.Enabled = $true
+    }
+  } finally {
+    # Le JSON temporaire part dans TOUS les cas : succes, refus, echec, rendu en erreur.
+    Remove-SzhRapportTemporaire $Resultat.rapportTemporaire
   }
 }
 

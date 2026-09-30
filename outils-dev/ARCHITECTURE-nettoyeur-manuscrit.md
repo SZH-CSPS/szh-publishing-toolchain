@@ -1370,8 +1370,10 @@ normaliser la typographie → passer les règles (structurel + Vale + bibliograp
 gabarit **du produit** (revue = `_FR.docx`, zeitschrift = `_DE.docx`, `CHEMINS_GABARIT`) →
 annoter le `.docx` écrit → convertir en `.odt` si `--format odt` → écrire le rapport.
 
-- écrit `<dossier>/<nom>-nettoye.docx` (ou `.odt` avec `--format odt`) et
-  `<dossier>/<nom>-rapport.json` ;
+- écrit `<dossier>/<nom>-nettoye.docx` (ou `.odt` avec `--format odt`) et le rapport JSON :
+  `<dossier>/<nom>-rapport.json` par défaut, ou le chemin donné par `--rapport`. Le lanceur
+  passe toujours `--rapport` vers un fichier temporaire (§9) : à la main, le défaut ne change
+  pas ;
 - **entrée `.odt`** (décision de Robin, 29.09.2026 : un seul moteur, `.docx`) : convertie en
   `.docx` par `conversion_odt.convertir()` dans un dossier temporaire, avant toute lecture — le
   reste de la chaîne est inchangé. `entree` désigne toujours le chemin D'ORIGINE (rapport,
@@ -1404,6 +1406,23 @@ annoter le `.docx` écrit → convertir en `.odt` si `--format odt` → écrire 
 univoque) ; extension inconnue (ni `.docx` ni `.odt`) ; une conversion `.odt → .docx` d'entrée
 impossible (`code_refus: 'conversion-impossible'`) ; un fichier `~$*.docx` (verrou temporaire de
 Word) → `code_refus: 'fichier-verrou'`, avant toute tentative de lecture.
+
+Le `message` d'un refus est UNE phrase courte qui dit quoi faire, dans la langue du produit pour
+les deux refus qui arrivent le plus souvent (suivi de modifications, lecture impossible) ; le
+lanceur la montre telle quelle, précédée de « Refusé : ». Le refus pour suivi de modifications
+ajoute `revisions` (le nombre de `w:ins`/`w:del`) et `sortie_nettoyeur` : vrai si le nom du
+fichier finit par `-nettoye` ou si un auteur de révision est l'un de ceux que le nettoyeur pose
+lui-même (`AUTEURS_NETTOYEUR` : « Relecture automatique », « Recherche ROR/ORCID — à vérifier »,
+« ROR/ORCID-Suche — bitte prüfen »). Le message dit alors « Ce fichier est déjà la sortie du
+nettoyeur : ouvrez le manuscrit d'origine. » ; la règle de refus, elle, ne change pas. Une
+lecture impossible met la cause technique dans `detail`, jamais dans `message`.
+
+**Constats d'import.** Les lignes `[import-avertissement] …` (en-têtes et pieds non lus, zones de
+texte, champs Word…) sont émises par les modules de lecture via `szh_commun.avertir`. Pendant un
+nettoyage, la CLI remplace cette fonction par une version qui les recueille au lieu de les
+écrire sur stderr (`SZH_IMPORT_LOG`, s'il est posé, les reçoit toujours) ; la relecture du
+`.docx` écrit par le garde-fou « rien ne se perd » ne les compte pas une seconde fois. Elles
+vont dans `rapport['avertissements_import']`, une entrée `{code, champs, fr, de}` chacune.
 
 Un document porteur de **commentaires** n'est PAS refusé : comptés et signalés, ils ne survivent
 pas au nettoyage.
@@ -1439,7 +1458,10 @@ production, les tests le posent toujours (déterminisme).
 (les stats de `manuscrit_biblio.analyser_bibliographie()`), `identifiants` (§5.5 sexies), `annotation` (les stats de
 `manuscrit_annoter.annoter()`, ou `null`), `decisions.entete` (donnée fusionnée en-tête + bloc
 final), `alertes.origine`, `dans_docx` sur chaque alerte, `compteurs.notes`/`revisions`/
-`commentaires_poses`.
+`commentaires_poses`, `avertissements_import` (les constats de lecture, dans les deux langues) et
+`journal` (les lignes de progression, sans leur préfixe) : tout ce que le lanceur ne montre plus
+à l'écran se retrouve là, et la page HTML rend les constats de lecture dans la langue du produit
+(« Ce que l'outil n'a pas su faire »).
 
 ---
 
@@ -1469,10 +1491,28 @@ sinon le flux qu'on ne lit pas sature son tube et bloque l'enfant ; jamais
 `ReadLineAsync()` + `DoEvents` + `Sleep 25` pour pomper l'interface ; décodage de la sortie
 `wsl.exe` fait ici et nulle part ailleurs ; WSL absente ou distro éteinte → message clair.
 
+**Le journal de l'onglet ne dit que l'essentiel.** La progression de stderr n'y est plus recopiée
+(elle est dans le rapport, clé `journal` ; les trois dernières lignes vont au journal technique du
+lanceur quand le nettoyage échoue sans refus). Après le titre horodaté, le journal porte :
+`Manuscrit : <nom>`, puis `✓ Nettoyage terminé : <nom>-nettoye.docx` (ou `⚠ … (des erreurs restent
+à traiter)` après un code 1), `Rapport : <nom>-rapport.html` et `Alertes : N erreur(s), N
+avertissement(s), N suggestion(s).` ; un refus tient en UNE ligne, `⚠ Refusé : <message de la CLI>` ;
+un échec technique en une phrase qui dit de réessayer et à qui écrire. Jamais un chemin, jamais
+un préfixe technique, jamais la même phrase deux fois (`Show-SzhResultatPreproc` est le seul à
+écrire le résultat).
+
 Le rapport HTML est rendu **après** le retour de la CLI : le JSON part dans
 `outils/rendre-gabarit.js` avec le gabarit
 `vscodium-extension/szh-cockpit/export-templates/rapport-manuscrit.twig`. Le lanceur ne fabrique
 jamais d'HTML à la main.
+
+**Le JSON du rapport ne reste pas à côté du manuscrit.** Le lanceur passe `--rapport` vers un
+fichier temporaire sous `%TEMP%` (`New-SzhRapportTemporaire`, chemin en barres obliques : `wsl.exe`
+avale les antislashs), le relit pour rendre la page, puis le supprime dans un `finally`
+(`Remove-SzhRapportTemporaire`), succès, refus, échec ou rendu en panne. Ces deux fonctions sont
+le seul endroit qui connaît ce cycle de vie : une remontée future des rapports vers un dossier
+commun viendrait s'y brancher. Le dossier et le nom de la page HTML viennent du manuscrit
+(`<nom>-rapport.html` à côté de lui), plus du chemin du JSON.
 
 ---
 

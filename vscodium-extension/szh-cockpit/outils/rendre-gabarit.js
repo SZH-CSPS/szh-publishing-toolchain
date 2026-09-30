@@ -243,6 +243,19 @@ function construireAvertissementsTypo(avertissements, produit) {
   });
 }
 
+// Constats de lecture du manuscrit (`[import-avertissement]`, recueillis par la CLI) : une
+// entrée {code, champs, fr, de} chacune. Seule la phrase de la langue du produit est gardée,
+// sans doublon.
+function construireAvertissementsImport(liste, produit) {
+  const vues = new Set();
+  const phrases = [];
+  for (const a of (liste || [])) {
+    const phrase = String((produit === 'zeitschrift' ? a.de : a.fr) || '');
+    if (phrase && !vues.has(phrase)) { vues.add(phrase); phrases.push(phrase); }
+  }
+  return phrases;
+}
+
 // Bibliographie (pipeline/manuscrit_biblio.py, §7 bis) : pas encore branchée dans la CLI
 // (19.09.2026) -- `rapport.bibliographie` n'existe pas aujourd'hui sur aucun manuscrit
 // réel. Cette fonction lit la forme documentée par le brief (stats : references, citations,
@@ -308,7 +321,8 @@ function construireVueRapportManuscrit(rapport) {
     bibliographie: construireBibliographie(r),
 
     typographie_abandons: (typo.abandons || []).map((a) => ({ source: a.source, motif: a.motif || '' })),
-    typographie_avertissements: construireAvertissementsTypo(typo.avertissements, produit)
+    typographie_avertissements: construireAvertissementsTypo(typo.avertissements, produit),
+    avertissements_import: construireAvertissementsImport(r.avertissements_import, produit)
   };
 }
 

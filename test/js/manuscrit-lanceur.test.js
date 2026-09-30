@@ -313,7 +313,8 @@ function executerPiloteManuscrit(corpsSupplementaire, envSupplementaire) {
     'Set-SzhJson "' + sortie.replace(/\\/g, '\\\\') + '" $r'
   ]);
   fs.writeFileSync(pilote, lignes.join('\r\n') + '\r\n', 'utf8');
-  const env = Object.assign({}, process.env, { SZH_BASE: baseJetable }, envSupplementaire || {});
+  // SZH_LANGUE=fr : sans elle, T suit la langue du compte qui lance les tests.
+  const env = Object.assign({}, process.env, { SZH_BASE: baseJetable, SZH_LANGUE: 'fr' }, envSupplementaire || {});
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
   const resultat = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
@@ -348,6 +349,7 @@ const FONCTIONS_NECESSAIRES = [
   'Get-SzhDistroPreproc', 'Get-SzhCheminManuscritCli', 'Invoke-SzhWslBrut',
   'Get-SzhDistrosEnregistreesPreproc', 'ConvertTo-SzhCheminWsl',
   'ConvertTo-SzhCheminWindowsDepuisWsl', 'Test-SzhManuscritPret', 'Invoke-SzhManuscrit',
+  'New-SzhRapportTemporaire', 'Remove-SzhRapportTemporaire', 'Show-SzhResultatPreproc',
 ];
 const CORPS_FONCTIONS = extraireFonctions(TEXTE_PRODUIT, FONCTIONS_NECESSAIRES);
 
@@ -416,7 +418,9 @@ function fabriquerFauxWsl(dossier) {
   return cmd;
 }
 
-test('Invoke-SzhManuscrit : succes - JSON de stdout lu, lignes de stderr dans le journal, dossier propose',
+// Sabotage : dans Invoke-SzhManuscrit, remettre `Add-SzhLigneJournal $Journal $ligneVuePreproc`
+// dans la boucle de lecture de stderr -- les lignes de progression reviennent dans le journal.
+test('Invoke-SzhManuscrit : succes - JSON de stdout lu, progression NON recopiee dans le journal, dossier propose',
   { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-'));
@@ -449,13 +453,13 @@ test('Invoke-SzhManuscrit : succes - JSON de stdout lu, lignes de stderr dans le
     assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
     assert.strictEqual(r.r.ok, true, 'ok devrait etre vrai - ' + JSON.stringify(r.r));
     assert.ok(r.r.stats && r.r.stats.alertes === 2, 'stats.alertes non retrouve - ' + JSON.stringify(r.r.stats));
-    assert.match(r.r.journal, /etape 1\/3/, 'la ligne de progression 1 n\'est pas dans le journal');
-    assert.match(r.r.journal, /etape 3\/3/, 'la ligne de progression 3 n\'est pas dans le journal');
+    assert.doesNotMatch(r.r.journal, /etape \d\/3/, 'la progression de la CLI ne doit plus etre dans le journal : ' + r.r.journal);
+    assert.match(r.r.journal, /brouillon\.docx/, 'le manuscrit traite doit etre nomme dans le journal');
     assert.strictEqual(path.resolve(r.r.dossier), path.resolve(manuscritsDir),
       'le dossier propose n\'est pas celui du manuscrit');
   });
 
-test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive dans le journal',
+test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, une phrase courte, la cause dans `detail` et pas dans le journal',
   { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-echec-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-echec-'));
@@ -471,7 +475,7 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive 
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
       '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
         '-Journal $journalFaux -NomExport "test"',
-      '$r = [ordered]@{ ok = $resultat.ok; journal = $journalFaux.Text }',
+      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; detail = $resultat.detail; journal = $journalFaux.Text }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
       SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
@@ -483,8 +487,11 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive 
     assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
     assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
     assert.strictEqual(r.r.ok, false, 'ok devrait etre faux apres un code de sortie non nul');
-    assert.match(r.r.journal, /refus : document en suivi de modifications/,
-      'la raison du refus n\'apparait pas dans le journal');
+    assert.match(r.r.detail, /refus : document en suivi de modifications/,
+      'la cause doit rester disponible dans `detail`, pour le journal technique');
+    assert.doesNotMatch(r.r.texte + r.r.journal, /refus : document en suivi/,
+      'la progression de la CLI ne doit pas arriver a l\'ecran');
+    assert.match(r.r.texte, /^Le nettoyage a échoué\. Réessayez/, 'une phrase qui dit quoi faire : ' + r.r.texte);
   });
 
 // ---- Code 1 (CODE_ALERTE_ERROR, §8 du contrat) : un nettoyage REUSSI, pas un echec -----
@@ -494,7 +501,7 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, la raison arrive 
 // commentaires) sans jamais nommer le code de sortie -- ce dernier ne vit QUE dans les
 // revisions/commentaires releves sur le rapport ecrit sur le disque, jamais sur la ligne
 // JSON de stdout (§8 : elle ne porte que les compteurs d'alertes).
-test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a traiter, message avec les trois nombres',
+test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a traiter, drapeau alertesBloquantes',
   { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-alerte-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-alerte-'));
@@ -536,11 +543,11 @@ test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a tra
     assert.strictEqual(r.r.ok, true,
       'un code 1 avec alerte error doit rester un succes - ' + JSON.stringify(r.r));
     assert.strictEqual(r.r.alertesBloquantes, true);
-    assert.match(r.r.texte, /2/, 'le nombre d\'alertes error n\'est pas dans le message : ' + r.r.texte);
-    assert.match(r.r.texte, /4/, 'le nombre de revisions n\'est pas dans le message : ' + r.r.texte);
-    assert.match(r.r.texte, /3/, 'le nombre de commentaires n\'est pas dans le message : ' + r.r.texte);
     assert.ok(!/code de sortie|exit ?code/i.test(r.r.texte),
       'le code de sortie a fuite dans le message : ' + r.r.texte);
+    // Les compteurs d'alertes voyagent sur la ligne de stdout ; le journal les dit dans
+    // Show-SzhResultatPreproc (voir les tests de ce nom plus bas).
+    assert.strictEqual(r.r.stats.alertes_error, 2);
     // Le rapport est bien celui ecrit par la CLI (chemin porte par stdout, releve sur le
     // disque) : c'est de la que Show-SzhResultatPreproc le rend et l'ouvre, exactement
     // comme pour un code 0 -- $resultat.ok et $resultat.dossier suffisent a cet appelant.
@@ -550,7 +557,7 @@ test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a tra
   });
 
 // ---- Code 3 (CODE_ECHEC_INTERNE) et tout code inattendu : un vrai echec, mais utile -----
-test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, les dernieres lignes de stderr dans le message',
+test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, une phrase courte, les dernieres lignes de stderr dans `detail`',
   { skip: sansPowerShell || sansPython }, () => {
     const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-interne-'));
     const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-interne-'));
@@ -569,7 +576,7 @@ test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, les dernieres lig
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
       '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
         '-Journal $journalFaux -NomExport "test"',
-      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; alertesBloquantes = $resultat.alertesBloquantes }',
+      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; detail = $resultat.detail; alertesBloquantes = $resultat.alertesBloquantes }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
       SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
@@ -582,12 +589,12 @@ test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, les dernieres lig
     assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
     assert.strictEqual(r.r.ok, false, 'un code 3 reste un echec - ' + JSON.stringify(r.r));
     assert.strictEqual(r.r.alertesBloquantes, false);
-    assert.match(r.r.texte, /lecture impossible/, 'la derniere cause utile n\'est pas dans le message : ' + r.r.texte);
-    assert.match(r.r.texte, /document corrompu/, 'le detail de la cause n\'est pas dans le message : ' + r.r.texte);
-    assert.notStrictEqual(r.r.texte, 'Raison inconnue.',
-      '"Raison inconnue" est encore le message affiche alors que stderr avait une cause');
-    assert.ok(!/code de sortie|exit ?code/i.test(r.r.texte),
-      'le code de sortie a fuite dans le message : ' + r.r.texte);
+    // La cause technique reste disponible (journal du lanceur), jamais a l'ecran.
+    assert.match(r.r.detail, /lecture impossible/, 'la derniere cause utile n\'est pas dans `detail` : ' + r.r.detail);
+    assert.match(r.r.detail, /document corrompu/, 'le detail de la cause n\'est pas dans `detail` : ' + r.r.detail);
+    assert.doesNotMatch(r.r.detail, /code de sortie|exit ?code/i, 'le code de sortie a fuite dans `detail`');
+    assert.doesNotMatch(r.r.texte, /corrompu|lecture impossible/, 'la cause technique ne doit pas etre a l\'ecran : ' + r.r.texte);
+    assert.match(r.r.texte, /^Le nettoyage a échoué\. Réessayez/, 'une phrase qui dit quoi faire : ' + r.r.texte);
   });
 
 test('Invoke-SzhManuscrit : distribution WSL absente - message clair, jamais une trace brute',
@@ -599,7 +606,7 @@ test('Invoke-SzhManuscrit : distribution WSL absente - message clair, jamais une
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
       '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit + '" -Produit "revue" ' +
         '-Journal $journalFaux -NomExport "test"',
-      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte }',
+      '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; journal = $journalFaux.Text }',
     ]), { SZH_MANUSCRIT_DISTRO: 'SZH-Distro-Qui-N-Existe-Pas' });
 
     fs.rmSync(manuscritsDir, { recursive: true, force: true });
@@ -607,8 +614,230 @@ test('Invoke-SzhManuscrit : distribution WSL absente - message clair, jamais une
     assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
     assert.ok(r.r, 'aucun resultat JSON produit - stderr : ' + r.stderr);
     assert.strictEqual(r.r.ok, false);
+    // Le message est dit UNE fois, par Show-SzhResultatPreproc : Invoke ne le recopie pas dans
+    // le journal (sabotage : y remettre `Add-SzhLigneJournal $Journal $textePreproc` dans le catch).
+    assert.doesNotMatch(r.r.journal, /SZH-Distro-Qui-N-Existe-Pas/,
+      'le message d\'echec ne doit pas etre ecrit par Invoke-SzhManuscrit (doublon avec Show) : ' + r.r.journal);
     assert.ok(!/Exception|StackTrace|at System\./.test(r.r.texte),
       'le message ressemble a une trace d\'erreur brute : ' + r.r.texte);
     assert.match(r.r.texte, /SZH-Distro-Qui-N-Existe-Pas/,
       'le message ne nomme pas la distribution manquante : ' + r.r.texte);
   });
+
+// ---- Le journal de l'onglet : l'essentiel seulement ------------------------------------------
+// Show-SzhResultatPreproc est pilote avec une fausse page HTML (New-SzhRapportManuscrit est
+// remplacee : le rendu reel a ses propres tests, manuscrit-rapport.test.js). Les textes
+// attendus sont ceux de szh-textes.ps1, espaces insecables ramenees a des espaces.
+const sansNbsp = (s) => String(s).replace(/\u00a0/g, ' ');
+
+function lignesJournal(texte) {
+  return sansNbsp(texte).split(/\r?\n/).filter((l) => l.length > 0);
+}
+
+// Un journal par scenario ; chaque scenario recoit son propre fichier temporaire, dont le
+// pilote dit s'il existe encore apres Show-SzhResultatPreproc. ASCII seul dans le code du
+// pilote (il est ecrit sans BOM, PowerShell 5.1 le lirait en ANSI).
+function pilotePourShow(tempDir) {
+  const t = tempDir.replace(/\\/g, '/');
+  const scenario = (nom, corps) => [
+    '$script:journalPreproc = New-Object System.Windows.Forms.TextBox',
+    '$script:journalPreproc.Multiline = $true',
+    '$tmp = "' + t + '/rapport-' + nom + '.json"',
+    'Set-Content -LiteralPath $tmp -Value "{}"',
+    corps,
+    '$r["' + nom + '"] = $script:journalPreproc.Text',
+    '$r["' + nom + 'Temp"] = (Test-Path -LiteralPath $tmp)',
+  ].join('\r\n');
+  const stats = (extra) => '([pscustomobject]@{ entree = "/mnt/c/Users/robin/Downloads/DOCX a TEST/a.docx"; ' +
+    'sortie = "/mnt/c/Users/robin/Downloads/DOCX a TEST/a-nettoye.docx"; ' + extra + ' })';
+  const resultat = (ok, texte, st, bloquant) => '$res = [pscustomobject]@{ ok = $' + ok + '; texte = "' + texte + '"; ' +
+    'stats = ' + st + '; dossier = ""; produit = "revue"; alertesBloquantes = $' + bloquant + '; ' +
+    'manuscrit = "C:/Users/robin/Downloads/DOCX a TEST/a.docx"; detail = ""; rapportTemporaire = $tmp }';
+  return [
+    '$script:boutonPreprocDossier = New-Object System.Windows.Forms.Button',
+    '$script:preprocDossierCourant = ""',
+    '$script:stubRendu = "ok"',
+    'function New-SzhRapportManuscrit { param($Stats, $Produit, $CheminManuscrit, $CheminRapportJson)',
+    '  if ($script:stubRendu -eq "echec") { throw "rendre-gabarit.js : panne simulee" }',
+    '  return "C:/dossier/a-rapport.html" }',
+    '$r = [ordered]@{}',
+    scenario('succes', resultat('true', '', stats('alertes_error = 0; alertes_warning = 5; alertes_suggestion = 12'), 'false') + '\r\nShow-SzhResultatPreproc $res'),
+    scenario('bloquant', resultat('true', '', stats('alertes_error = 2; alertes_warning = 1; alertes_suggestion = 0'), 'true') + '\r\nShow-SzhResultatPreproc $res'),
+    scenario('refus', resultat('true', '', '([pscustomobject]@{ entree = "/mnt/c/x/a.docx"; refus = $true; code_refus = "suivi-modifications"; ' +
+      'message = "52 modification(s) suivie(s) non acceptee(s). Acceptez-les ou refusez-les dans Word, puis relancez." })', 'false') + '\r\nShow-SzhResultatPreproc $res'),
+    scenario('echec', resultat('false', 'Le nettoyage a echoue.', '$null', 'false') + '\r\nShow-SzhResultatPreproc $res'),
+    scenario('rendu', '$script:stubRendu = "echec"\r\n' + resultat('true', '', stats('alertes_error = 0; alertes_warning = 0; alertes_suggestion = 0'), 'false') + '\r\nShow-SzhResultatPreproc $res'),
+  ];
+}
+
+// Sabotage (trois, chacun remis ensuite) :
+//  1. dans Show-SzhResultatPreproc, retirer la ligne « Add-SzhLigneJournal ... resultat.compte » --
+//     le compteur d'alertes disparait (succes, bloquant, rendu).
+//  2. y retirer `Remove-SzhRapportTemporaire` du finally -- un fichier reste (les cinq scenarios).
+//  3. y remettre un second `Add-SzhLigneJournal` du message de refus -- le doublon reapparait.
+test('Show-SzhResultatPreproc : journal concis (succes, erreurs, refus, echec, rendu en panne), jamais un chemin, temporaire supprime',
+  { skip: sansPowerShell }, () => {
+    const tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-journal-temp-'));
+    let r;
+    try {
+      r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat(pilotePourShow(tempDir)), {});
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r, 'aucun resultat produit - stderr : ' + r.stderr);
+
+    assert.deepStrictEqual(lignesJournal(r.r.succes), [
+      '✓ Nettoyage terminé : a-nettoye.docx',
+      'Rapport : a-rapport.html',
+      'Alertes : 0 erreur(s), 5 avertissement(s), 12 suggestion(s).',
+    ]);
+    assert.deepStrictEqual(lignesJournal(r.r.bloquant), [
+      '⚠ Nettoyage terminé : a-nettoye.docx (des erreurs restent à traiter).',
+      'Rapport : a-rapport.html',
+      'Alertes : 2 erreur(s), 1 avertissement(s), 0 suggestion(s).',
+    ]);
+    // Un refus : UNE seule ligne, la phrase de la CLI, une fois.
+    assert.deepStrictEqual(lignesJournal(r.r.refus), [
+      '⚠ Refusé : 52 modification(s) suivie(s) non acceptee(s). Acceptez-les ou refusez-les dans Word, puis relancez.',
+    ]);
+    assert.deepStrictEqual(lignesJournal(r.r.echec), ['⚠ Le nettoyage a echoue.']);
+    // Rendu de la page en panne : le resultat reste dit, la panne en une ligne, pas de « Rapport : ».
+    assert.deepStrictEqual(lignesJournal(r.r.rendu), [
+      '✓ Nettoyage terminé : a-nettoye.docx',
+      'Alertes : 0 erreur(s), 0 avertissement(s), 0 suggestion(s).',
+      'Erreur : rendre-gabarit.js : panne simulee',
+    ]);
+    for (const nom of ['succes', 'bloquant', 'refus', 'echec', 'rendu']) {
+      assert.doesNotMatch(r.r[nom], /\/mnt\/|import-avertissement|manuscrit-nettoyer\]|C:\\|C:\//,
+        nom + ' : un chemin ou une etiquette technique a fuite : ' + r.r[nom]);
+      assert.strictEqual(r.r[nom + 'Temp'], false, nom + ' : le fichier temporaire n\'a pas ete supprime');
+    }
+  });
+
+// ---- Le JSON du rapport part dans un fichier temporaire, jamais a cote du manuscrit ---------
+// Fausse CLI : note son argv, ecrit le rapport ou on le lui dit (--rapport), comme la vraie.
+// TEMP/TMP sont dirigees vers un dossier du test, pour voir ce que le lanceur y depose.
+//
+// Sabotage : dans Invoke-SzhManuscrit, retirer '--rapport', $rapportWslPreproc des arguments --
+// `--rapport` n'arrive plus a la CLI, qui ecrit le JSON a cote du manuscrit.
+test('Invoke-SzhManuscrit : --rapport vise un fichier temporaire (barres obliques), rien ne reste a cote du manuscrit, Remove-SzhRapportTemporaire le supprime',
+  { skip: sansPowerShell || sansPython }, () => {
+    const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-cli-rapport-'));
+    const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-rapport-'));
+    const tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-temp-'));
+    const manuscrit = path.join(manuscritsDir, 'brouillon.docx');
+    fs.writeFileSync(manuscrit, 'contenu jetable', 'utf8');
+    const argvPath = path.join(travailScript, 'argv.json');
+    const cli = fabriquerScriptPython(travailScript, [
+      'import sys, json',
+      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      '    json.dump(sys.argv[1:], f)',
+      'args = sys.argv[1:]',
+      "chemin = args[args.index('--rapport') + 1] if '--rapport' in args else args[0] + '-rapport.json'",
+      "with open(chemin, 'w', encoding='utf-8') as f:",
+      "    json.dump({'produit': 'revue'}, f)",
+      "print(json.dumps({'sortie_rapport': chemin, 'alertes_error': 0}))",
+      'sys.exit(0)',
+    ]);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+      '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit.replace(/\\/g, '/') + '" -Produit "revue" ' +
+        '-Journal $journalFaux -NomExport "test"',
+      '$avant = Test-Path -LiteralPath $resultat.rapportTemporaire',
+      'Remove-SzhRapportTemporaire $resultat.rapportTemporaire',
+      '$apres = Test-Path -LiteralPath $resultat.rapportTemporaire',
+      '$r = [ordered]@{ ok = $resultat.ok; temporaire = $resultat.rapportTemporaire; avant = $avant; apres = $apres }',
+    ]), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      TEMP: tempDir, TMP: tempDir,
+    });
+
+    const argv = fs.existsSync(argvPath) ? JSON.parse(fs.readFileSync(argvPath, 'utf8')) : null;
+    const restes = fs.readdirSync(manuscritsDir);
+    const restesTemp = fs.readdirSync(tempDir);
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+    fs.rmSync(tempDir, { recursive: true, force: true });
+
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r && r.r.ok, 'Invoke-SzhManuscrit a echoue - ' + JSON.stringify(r && r.r));
+    assert.ok(argv, 'la CLI n\'a jamais tourne');
+    const iRapport = argv.indexOf('--rapport');
+    assert.ok(iRapport !== -1, '--rapport absent des arguments : ' + JSON.stringify(argv));
+    const cible = argv[iRapport + 1];
+    assert.ok(!cible.includes('\\'), 'le chemin passe a la CLI doit etre en barres obliques : ' + cible);
+    assert.strictEqual(path.dirname(path.resolve(cible)), path.resolve(tempDir), 'le JSON doit viser %TEMP%, pas ' + cible);
+    assert.match(path.basename(cible), /^szh-rapport-manuscrit-[0-9a-f]{32}\.json$/);
+    assert.deepStrictEqual(restes, ['brouillon.docx'], 'rien ne doit etre ecrit a cote du manuscrit : ' + restes);
+    assert.strictEqual(r.r.avant, true, 'la CLI devait avoir ecrit le JSON temporaire');
+    assert.strictEqual(r.r.apres, false, 'Remove-SzhRapportTemporaire n\'a pas supprime le fichier');
+    assert.deepStrictEqual(restesTemp, [], 'le dossier temporaire doit etre vide apres suppression');
+  });
+
+// ---- Bout en bout avec la VRAIE CLI : le journal d'un refus, le dossier du manuscrit --------
+// La vraie CLI (Python de ce poste, via le faux wsl.exe) sur un .docx en suivi de
+// modifications, puis Show-SzhResultatPreproc : une phrase, pas de doublon, pas de chemin ;
+// et rien d'autre que le manuscrit dans son dossier.
+function fabriquerDocxSuivi(chemin, auteur) {
+  const r = spawnSync(PYTHON, ['-c', [
+    'import sys, zipfile',
+    'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+    'corps = ("<w:p><w:r><w:t>Titre</w:t></w:r></w:p><w:p><w:ins w:id=\\"1\\" w:author=\\"%s\\" w:date=\\"2026-01-01T00:00:00Z\\">"',
+    '         "<w:r><w:t>Texte ajoute.</w:t></w:r></w:ins></w:p>") % sys.argv[2]',
+    'doc = \'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="%s"><w:body>%s</w:body></w:document>\' % (W, corps)',
+    'styles = \'<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="%s"/>\' % W',
+    'with zipfile.ZipFile(sys.argv[1], "w") as z:',
+    '    z.writestr("word/document.xml", doc.encode("utf-8"))',
+    '    z.writestr("word/styles.xml", styles.encode("utf-8"))',
+    '    z.writestr("[Content_Types].xml", \'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>\')',
+  ].join('\n'), chemin, auteur], { encoding: 'utf8', windowsHide: true });
+  assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
+}
+
+const NETTOYEUR_REEL = path.join(RACINE, 'pipeline', 'manuscrit-nettoyer.py');
+
+for (const [nomFichier, auteur, attendu] of [
+  ['suivi.docx', 'Marie Dupont', 'Refusé : 1 modification(s) suivie(s) non acceptée(s). Acceptez-les ou refusez-les dans Word, puis relancez.'],
+  ['origine-nettoye.docx', 'Relecture automatique', 'Refusé : Ce fichier est déjà la sortie du nettoyeur : ouvrez le manuscrit d’origine.'],
+]) {
+  test('journal d\'un refus (vraie CLI) : ' + nomFichier + ' -> une seule phrase, rien ne reste a cote du manuscrit',
+    { skip: sansPowerShell || sansPython }, () => {
+      const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-refus-reel-'));
+      const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-doc-refus-'));
+      const tempDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-manuscrit-temp-refus-'));
+      const manuscrit = path.join(manuscritsDir, nomFichier);
+      fabriquerDocxSuivi(manuscrit, auteur);
+      const fauxWsl = fabriquerFauxWsl(travailScript);
+      const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+        '$script:journalPreproc = $journalFaux',
+        '$script:boutonPreprocDossier = New-Object System.Windows.Forms.Button',
+        'function New-SzhRapportManuscrit { param($Stats, $Produit, $CheminManuscrit, $CheminRapportJson) return "" }',
+        '$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit.replace(/\\/g, '/') + '" -Produit "revue" ' +
+          '-Journal $journalFaux -NomExport "test"',
+        'Show-SzhResultatPreproc $resultat',
+        '$r = [ordered]@{ journal = $journalFaux.Text }',
+      ]), {
+        SZH_MANUSCRIT_CLI: NETTOYEUR_REEL, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+        SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+        TEMP: tempDir, TMP: tempDir,
+      });
+      const restes = fs.readdirSync(manuscritsDir);
+      const restesTemp = fs.readdirSync(tempDir);
+      fs.rmSync(travailScript, { recursive: true, force: true });
+      fs.rmSync(manuscritsDir, { recursive: true, force: true });
+      fs.rmSync(tempDir, { recursive: true, force: true });
+
+      assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+      assert.ok(r.r, 'aucun resultat produit - stderr : ' + r.stderr);
+      const lignes = lignesJournal(r.r.journal);
+      assert.strictEqual(lignes.length, 3, 'entete + manuscrit + UNE ligne de refus : ' + JSON.stringify(lignes));
+      assert.match(lignes[0], /^\[\d\d:\d\d\] test$/);
+      assert.strictEqual(lignes[1], 'Manuscrit : ' + nomFichier);
+      assert.strictEqual(lignes[2], '⚠ ' + sansNbsp(attendu));
+      assert.doesNotMatch(r.r.journal, /\/mnt\/|\[manuscrit-nettoyer\]|import-avertissement|w:ins/);
+      assert.deepStrictEqual(restes, [nomFichier], 'rien ne doit etre ecrit a cote du manuscrit : ' + restes);
+      assert.deepStrictEqual(restesTemp, [], 'le dossier temporaire doit etre vide : ' + restesTemp);
+    });
+}

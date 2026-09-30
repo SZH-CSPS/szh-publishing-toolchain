@@ -218,6 +218,33 @@ test('(a bis) un paragraphe de cellule (dans_tableau) affiche la mention à côt
     'un paragraphe de premier niveau ne doit jamais porter la mention « dans un tableau »');
 });
 
+// Les constats de lecture (`[import-avertissement]`, recueillis par la CLI) ne sont plus dits
+// dans le journal du lanceur : le rapport est le seul endroit où on les lit. Une seule langue
+// par page, celle du produit, et pas de doublon.
+test('(a ter) les avertissements d’import sont rendus dans la langue du produit, sans doublon', () => {
+  const rapport = JSON.parse(JSON.stringify(RAPPORT_MINIMAL));
+  const unConstat = {
+    code: 'entetes-pieds-non-lus', champs: ['article', 'fichiers 6'],
+    fr: 'Ce document porte 6 en-tête(s)/pied(s) de page : contenu non lu.',
+    de: 'Dieses Dokument enthält 6 Kopf-/Fußzeile(n): Inhalt nicht gelesen.'
+  };
+  rapport.avertissements_import = [unConstat, unConstat];
+  const htmlFr = rendre(rapport, 'revue');
+  assertBienForme(htmlFr, 'import/revue');
+  assert.equal(htmlFr.split('Ce document porte 6 en-tête(s)/pied(s) de page').length - 1, 1,
+    'revue : la phrase doit apparaître une seule fois');
+  assert.doesNotMatch(htmlFr, /Kopf-\/Fußzeile/, 'revue : la phrase allemande ne doit pas apparaître');
+  assert.doesNotMatch(htmlFr, /import-avertissement/, 'le préfixe technique ne doit pas fuir');
+  // La langue de la phrase suit `rapport.produit`, comme dans la vraie CLI.
+  const htmlDe = rendre(Object.assign({}, rapport, { produit: 'zeitschrift' }), 'zeitschrift');
+  assertBienForme(htmlDe, 'import/zeitschrift');
+  assert.match(htmlDe, /Kopf-\/Fußzeile\(n\): Inhalt nicht gelesen/, 'zeitschrift : phrase allemande absente');
+  assert.doesNotMatch(htmlDe, /en-tête\(s\)\/pied/, 'zeitschrift : la phrase française ne doit pas apparaître');
+  // Sans constat : la section « Rien à signaler » reste, et aucune liste de constats.
+  assert.doesNotMatch(rendre(RAPPORT_MINIMAL, 'revue'), /Lecture du manuscrit/,
+    'sans constat, la sous-section ne doit pas apparaître');
+});
+
 test('(b) un refus rend une page COURTE, jamais la page complète', () => {
   const html = rendre(RAPPORT_REFUS, 'revue');
   assertBienForme(html, 'refus');

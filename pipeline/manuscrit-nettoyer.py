@@ -103,6 +103,7 @@ import manuscrit_biblio as mb
 import manuscrit_identifiants as mi
 import manuscrit_gabarit as mg
 import manuscrit_annoter as ma
+import szh_commun
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Un gabarit par produit (revue = FR, zeitschrift = DE, décision de Robin 29.09.2026) --
@@ -134,10 +135,38 @@ def _forcer_utf8():
             pass
 
 
+AUTEUR_ANNOTATION = 'Relecture automatique'
+# Les auteurs de révision que le nettoyeur pose lui-même : annotation, puis recherche ROR/ORCID.
+AUTEURS_NETTOYEUR = {AUTEUR_ANNOTATION} | set(mg._AUTEUR_REVISION_IDENTIFIANTS.values())
+
+# Les lignes de progression, gardées pour le rapport JSON : le lanceur ne les montre plus,
+# elles n'existent plus que là (et sur stderr pour qui lance la CLI à la main).
+_JOURNAL_PROGRES = []
+
+
 def progres(message):
-    """Une ligne de progression, sur stderr, jamais sur stdout (§8 : l'onglet du lanceur les
-    affiche au fil de l'eau ; stdout ne porte QUE la ligne JSON finale)."""
+    """Une ligne de progression, sur stderr, jamais sur stdout (§8 : stdout ne porte QUE la
+    ligne JSON finale). Gardée aussi dans `_JOURNAL_PROGRES`, pour le rapport."""
+    _JOURNAL_PROGRES.append(str(message))
     print('%s %s' % (PREFIXE, message), file=sys.stderr, flush=True)
+
+
+# Les constats `[import-avertissement]` émis par les modules de lecture (manuscrit_docx,
+# manuscrit_modele...) passent par szh_commun.avertir, qui écrit sur stderr. Pendant un
+# nettoyage, on les recueille au lieu de les laisser fuir : ils vont dans le rapport (JSON et
+# HTML). SZH_IMPORT_LOG, s'il est posé, les reçoit toujours.
+_AVERTISSEMENTS_IMPORT = []
+_capture_suspendue = False
+_avertir_original = szh_commun.avertir
+
+
+def _avertir_capture(prefixe, code, champs, fr, de, journal=None, flush=False):
+    if _capture_suspendue:
+        return _avertir_original(prefixe, code, champs, fr, de, journal=journal, flush=flush)
+    ligne = szh_commun.formater_avertissement(prefixe, code, champs, fr, de)
+    _AVERTISSEMENTS_IMPORT.append({'code': code, 'champs': list(champs), 'fr': fr, 'de': de})
+    szh_commun.journaliser(ligne, journal if journal is not None else os.getenv('SZH_IMPORT_LOG'))
+    return ligne
 
 
 def _ligne_stdout(objet):
@@ -586,13 +615,16 @@ def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
         images_in = max(images_in - ecartes['images'], 0)
     # La relecture refait les constats du lecteur (en-têtes et pieds non lus…) sur NOTRE
     # sortie : ils ont déjà été dits sur le manuscrit, on les tait ici.
+    global _capture_suspendue
     stderr, journal = sys.stderr, os.environ.pop('SZH_IMPORT_LOG', None)
     try:
         sys.stderr = io.StringIO()
+        _capture_suspendue = True
         relu = md.lire(chemin_sortie)
     except Exception as e:
         relu = e
     finally:
+        _capture_suspendue = False
         sys.stderr = stderr
         if journal is not None:
             os.environ['SZH_IMPORT_LOG'] = journal
@@ -988,9 +1020,64 @@ def _classer_titres_selon_le_cas(document, gabarit):
 
 
 # ---------------------------------------------------------------------------------
+# Refus : des phrases courtes, dans la langue du produit, qui disent quoi faire. Le lanceur
+# les montre telles quelles (précédées de « Refusé : »).
+
+def _auteurs_revisions(chemin):
+    """Les w:author des w:ins/w:del du document (corps et notes) ; vide si illisible."""
+    auteurs = set()
+    try:
+        with zipfile.ZipFile(chemin) as z:
+            for partie in ('word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml'):
+                if partie not in z.namelist():
+                    continue
+                for el in ET.fromstring(z.read(partie)).iter():
+                    if el.tag in (md.W + 'ins', md.W + 'del'):
+                        auteurs.add(el.get(md.W + 'author') or '')
+    except Exception:
+        return set()
+    return auteurs
+
+
+def _message_suivi_modifications(n, sortie_nettoyeur, produit):
+    if sortie_nettoyeur:
+        if produit == 'zeitschrift':
+            return ('Diese Datei ist bereits das Ergebnis der Bereinigung: '
+                    'Öffnen Sie das ursprüngliche Manuskript.')
+        return ('Ce fichier est déjà la sortie du nettoyeur : '
+                'ouvrez le manuscrit d’origine.')
+    if produit == 'zeitschrift':
+        return ('%d nachverfolgte Änderung(en) nicht angenommen. Nehmen Sie sie in Word an '
+                'oder lehnen Sie sie ab und starten Sie dann erneut.' % n)
+    return ('%d modification(s) suivie(s) non acceptée(s). Acceptez-les ou refusez-les dans '
+            'Word, puis relancez.' % n)
+
+
+def _message_lecture_impossible(produit):
+    if produit == 'zeitschrift':
+        return ('Die Datei konnte nicht gelesen werden. Prüfen Sie, ob sie sich in Word '
+                'öffnen lässt, und starten Sie dann erneut.')
+    return ('Le fichier n’a pas pu être lu. Vérifiez qu’il s’ouvre dans Word, puis '
+            'relancez.')
+
+
+# ---------------------------------------------------------------------------------
 # Le programme.
 
 def principal(argv):
+    """`_principal` dans un cadre qui recueille les constats d'import (voir
+    `_avertir_capture`) et les lignes de progression pour le rapport ; l'état est remis à
+    zéro à chaque appel, et le branchement de szh_commun.avertir toujours défait."""
+    del _AVERTISSEMENTS_IMPORT[:]
+    del _JOURNAL_PROGRES[:]
+    szh_commun.avertir = _avertir_capture
+    try:
+        return _principal(argv)
+    finally:
+        szh_commun.avertir = _avertir_original
+
+
+def _principal(argv):
     _forcer_utf8()
     debut = time.perf_counter()
     args = _analyser_args(argv)
@@ -1004,10 +1091,15 @@ def principal(argv):
     nom = os.path.splitext(os.path.basename(entree))[0]
     extension = os.path.splitext(entree)[1].lower()
 
-    def refuser(code, message_fr):
+    def refuser(code, message_fr, **supplement):
+        # `message_fr` : le nom reste, mais le texte est dans la langue du produit quand
+        # l'appelant la connaît (suivi de modifications) ; `supplement` : champs en plus
+        # sur la ligne stdout.
         progres('refusé : %s' % message_fr)
-        _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': code,
-                       'message': message_fr, 'code_sortie': CODE_REFUS})
+        ligne = {'entree': entree, 'refus': True, 'code_refus': code,
+                 'message': message_fr, 'code_sortie': CODE_REFUS}
+        ligne.update(supplement)
+        _ligne_stdout(ligne)
         return CODE_REFUS
 
     progres('entrée : %s (produit=%s)' % (entree, args['produit']))
@@ -1050,7 +1142,8 @@ def principal(argv):
     except Exception as e:
         progres('lecture impossible : %s' % e)
         _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'lecture-impossible',
-                       'message': str(e), 'code_sortie': CODE_ECHEC_INTERNE})
+                       'message': _message_lecture_impossible(args['produit']),
+                       'detail': str(e), 'code_sortie': CODE_ECHEC_INTERNE})
         return CODE_ECHEC_INTERNE
     finally:
         # Le .docx temporaire (conversion .odt -> .docx, ci-dessus) n'est plus utile une fois
@@ -1066,11 +1159,12 @@ def principal(argv):
     # Refus, avant tout travail, sans rien écrire sur le disque (§8) : suivi de
     # modifications — un texte avec des w:ins/w:del n'a pas de contenu univoque.
     if document.revisions > 0:
+        sortie_nettoyeur = (nom.endswith('-nettoye')
+                            or bool(_auteurs_revisions(chemin_lecture) & AUTEURS_NETTOYEUR))
         return refuser('suivi-modifications',
-                        "ce document porte %d marque(s) de suivi de modifications "
-                        "(w:ins/w:del) : son contenu n'est pas univoque, acceptez ou "
-                        "refusez ces modifications dans Word avant de le soumettre au "
-                        "nettoyeur." % document.revisions)
+                        _message_suivi_modifications(document.revisions, sortie_nettoyeur,
+                                                     args['produit']),
+                        revisions=document.revisions, sortie_nettoyeur=sortie_nettoyeur)
 
     # Un document porteur de commentaires n'est PAS refusé (§8) : compté, signalé, et le
     # rapport dit qu'ils ne survivent pas au nettoyage.
@@ -1325,7 +1419,7 @@ def principal(argv):
             try:
                 stats_annotation = ma.annoter(
                     sortie_docx, sortie_docx, alertes, resultat_ecriture['correspondance'],
-                    langue=langue, auteur='Relecture automatique', plafond_commentaires=25)
+                    langue=langue, auteur=AUTEUR_ANNOTATION, plafond_commentaires=25)
                 # ⚠ Deuxième défaut RÉEL, PLUS SOURNOIS que le premier (voir ci-dessous) : une
                 # révision dont le span touche la frontière d'un <w:hyperlink> peut rendre un
                 # document.xml mal formé SANS lever d'exception (mesuré sur 3 fichiers du
@@ -1451,6 +1545,10 @@ def principal(argv):
         'bibliographie': stats_biblio,
         'identifiants': stats_identifiants,
         'annotation': stats_annotation,
+        # Ce que le lanceur ne montre plus : les constats de lecture (en-têtes et pieds non
+        # lus, zones de texte...) avec leurs deux langues, et les lignes de progression.
+        'avertissements_import': list(_AVERTISSEMENTS_IMPORT),
+        'journal': list(_JOURNAL_PROGRES),
         'alertes': {'total': len(alertes), 'error': n_error, 'warning': n_warning,
                     'suggestion': n_suggestion, 'liste': alertes, 'groupes': groupes,
                     'origine': alertes_origine},
