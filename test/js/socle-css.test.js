@@ -122,3 +122,29 @@ test('changer le socle recompile les articles', () => {
       'un rendu HTML n’a pas le socle en prérequis : le modifier ne recompilerait rien');
   }
 });
+
+// Marqueurs de liste : de vrais ::marker, que WeasyPrint balise en /Lbl (30.09.2026). Un
+// ::before laissait des /LI sans /Lbl. Le marqueur extérieur se colle au bord gauche du <li>
+// à sa largeur naturelle : le retrait se partage donc entre la liste (largeur du marqueur) et
+// l'élément (le reste), et la somme doit rester le retrait du texte d'avant.
+test('listes : marqueurs ::marker, et retraits qui se somment à 1,5 em et 1,7 em', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  assert.ok(!/(^|[\s,])(ul|ol)\s*>\s*li::before/m.test(css), 'un marqueur de liste en ::before est revenu');
+  assert.match(css, /ul > li::marker\s*\{/);
+  assert.match(css, /ol > li::marker\s*\{/);
+  const em = (sel, prop) => {
+    // Les règles dont le sélecteur est exactement `sel`, en début de ligne : la première qui
+    // déclare `prop` (li en a plusieurs).
+    const tete = '\n' + sel + ' {';
+    for (let i = css.indexOf(tete); i !== -1; i = css.indexOf(tete, i + 1)) {
+      const corps = css.slice(i + tete.length, css.indexOf('}', i));
+      const v = corps.match(new RegExp(prop + ':\\s*(-?[\\d.]+)em'));
+      if (v) return parseFloat(v[1]);
+    }
+    return assert.fail(prop + ' introuvable dans une règle « ' + sel + ' »');
+  };
+  const somme = (a, b) => Math.round((a + b) * 1e6) / 1e6;
+  assert.strictEqual(somme(em('ul', 'padding-left'), em('li', 'padding-left')), 1.5);
+  assert.strictEqual(somme(em('ol', 'padding-left'), em('ol > li', 'padding-left')), 1.7);
+  assert.strictEqual(somme(em('blockquote ol', 'padding-left'), em('blockquote ol > li', 'padding-left')), 1.7);
+});

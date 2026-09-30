@@ -707,41 +707,56 @@ h4, h5, h6 { font-size: var(--body-size); }
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
-/* Listes : puce = triangle ▸ noir (~1.2 em) ; numérotée « 1. » noire, via compteurs.
-   Texte justifié et césure hérités de `p` et `li`. */
-ul, ol { margin: 0.7em 0; padding: 0; list-style: none; }
-li { position: relative; padding-left: 1.5em; margin: 0.3em 0;
+/* Listes : puce = triangle ▸ noir (~1.2 em) ; numérotée « 1. » noire.
+   Texte justifié et césure hérités de `p` et `li`.
+   Les marqueurs sont de vrais ::marker (30.09.2026), et non plus des ::before : WeasyPrint
+   balise le ::marker en /Lbl et le reste de l'élément en /LBody (LI > Lbl + LBody). Un
+   ::before, lui, laissait des /LI sans /Lbl, le ▸ et le « 1. » lus comme des mots du texte
+   (mesuré sur l'arbre de structure).
+   ⚠ WeasyPrint place le marqueur extérieur CONTRE le bord gauche de la boîte du <li>, à sa
+   largeur naturelle : ni `left`, ni `width`, ni `margin`, ni `text-align` n'ont d'effet sur
+   un ::marker (mesuré). Pour garder le signe sur la marge du texte, c'est donc le <ul>/<ol>
+   qui porte, en retrait, EXACTEMENT la largeur du marqueur, et le <li> le reste du retrait
+   du texte (1,5 em et 1,7 em, comme avant). Les largeurs sont celles des glyphes d'Open Sans
+   SemiCondensed (hmtx, 2048 unités par em) :
+     ▸      1081 dans les six faces, dessiné à 1,05 em        -> 0,554224 em
+     « 1. » 1021 + 496 (romain 400 ; chiffres à chasse fixe)  -> 0,740723 em
+     « 1. » 959 + 459 (italique, citation)                    -> 0,692383 em
+     un chiffre de plus : 1021 (romain), 959 (italique)       -> 0,498535 / 0,468262 em
+   Le PDF est identique au pixel à celui des ::before (300 dpi, listes de 12, imbriquées,
+   lettrées, citées). Dans l'aperçu (Chromium), chaque élément à puce gagne 1 px : le
+   marqueur à 1,05 em y compte dans la hauteur de la première ligne. Changer de police ou de corps du
+   marqueur, c'est recalculer ces nombres — sinon le signe glisse de la marge, sans erreur. */
+@counter-style szh-puce { system: cyclic; symbols: "\25B8"; suffix: ""; }   /* ▸ (U+25B8) */
+@counter-style szh-numero { system: extends decimal; suffix: "."; }         /* « 1. » sans espace */
+ul, ol { margin: 0.7em 0; padding: 0; }
+ul { list-style: szh-puce outside; padding-left: 0.554224em; }
+ol { list-style: szh-numero outside; padding-left: 0.740723em; }
+li { position: relative; padding-left: 0.945776em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
-/* Le marqueur est une boîte positionnée : sa ligne de base ne se cale sur celle du
-   texte que si sa ligne a la même hauteur. `line-height: inherit` reprend donc
-   l'interligne du corps, comme le marqueur des listes numérotées ci-dessous ; avec
-   `line-height: 1`, le triangle remontait d'environ 3,5 px, visiblement décroché de son
-   texte. `top: 0` : plus rien à rattraper. */
-ul > li::before {
-  content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
-  position: absolute; left: 0; top: 0;    /* aligné sur la marge du texte (comme les numéros) */
-  color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: inherit;
-}
-/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré, et ce
-   compteur maison n'y est pour rien — un `<ol start="13">` rendu par le marqueur natif
-   (`list-style: decimal`, sans ::before) numérote « 1. » lui aussi. Les quatre variantes
-   ont été essayées : natif pur, ::marker, ::before + counter(list-item), et le compteur
-   maison ci-dessous. Toutes donnent « 1. ». Une liste qui doit commencer à un autre rang
-   ne peut donc pas s'obtenir en CSS ici ; ne pas remplacer ce compteur en croyant régler
-   la question. Conséquence côté saisie : un descriptif de fiche qui commence par « 13. »
-   perdrait son nombre en silence — lib/ressources.js (cockpit) échappe donc le point à
-   l'écriture, pour que ce texte reste un paragraphe. */
-ol { counter-reset: liste-ol; }
-ol > li { padding-left: 1.7em; }
-ol > li::before {
-  content: counter(liste-ol) ".";
-  counter-increment: liste-ol;
-  position: absolute; left: 0; top: 0;
-  /* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
-     mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
-     non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. */
-  color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums;
-}
+/* Le marqueur hérite l'interligne du <li> : sa ligne de base se cale sur celle du texte. */
+ul > li::marker { color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; }
+/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré — un
+   `<ol start="13">` numérote « 1. ». Les variantes ont été essayées : natif pur, ::marker,
+   ::before + counter(list-item), compteur maison. Toutes donnent « 1. ». Une liste qui doit
+   commencer à un autre rang ne peut donc pas s'obtenir en CSS ici. Conséquence côté saisie :
+   un descriptif de fiche qui commence par « 13. » perdrait son nombre en silence —
+   lib/ressources.js (cockpit) échappe donc le point à l'écriture, pour que ce texte reste un
+   paragraphe. L'attribut `type` (« a. », « i. ») est ignoré de même : szh-numero l'emporte. */
+ol > li { padding-left: 0.959277em; }
+/* À partir de 10, le numéro gagne un chiffre : le <li> s'écarte d'autant (marge), pour que le
+   numéro commence toujours sur la marge et le texte toujours à 1,7 em. Trois chiffres ne
+   tiennent plus dans 1,7 em (1,74 em) : sans objet pour une liste d'article. */
+ol > li:nth-child(n+10) { margin-left: 0.498535em; padding-left: 0.460742em; }
+/* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
+   mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
+   non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. Chiffres à
+   chasse fixe : déjà la valeur de ::marker dans la feuille par défaut de WeasyPrint. */
+ol > li::marker { color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* Citation (italique) : chiffres et point plus étroits. */
+blockquote ol { padding-left: 0.692383em; }
+blockquote ol > li { padding-left: 1.007617em; }
+blockquote ol > li:nth-child(n+10) { margin-left: 0.468262em; padding-left: 0.539355em; }
 /* Listes imbriquées : re-numérotation / re-puçage cohérents. */
 li > ul, li > ol { margin: 0.2em 0 0.1em; }
 
