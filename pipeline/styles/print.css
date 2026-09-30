@@ -325,7 +325,12 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
    l'œil entre les trois qui la disqualifierait.
    ⚠ Avantage collatéral du `rem` : si le corps de `.szh-note` change un jour, l'appel ne
    bougera pas avec lui — ce qui serait arrivé avec des `em`, puisqu'il en hérite. */
-::footnote-call   { font-size: 0.54rem; vertical-align: 0.24rem; line-height: 0; font-weight: 700; }
+/* Encre de l'appel : celle du corps (30.09.2026). Il héritait du gris des notes (--c-ink2,
+   #3d3d49), qui ne tient pas sur les fonds teintés à sa taille : Lc 87 sur le fond d'un
+   encadré, pour un seuil de 90 sous 14 px (mesuré dans le PDF, article 09 du 4/2017).
+   test/apca-check.py le mesure sur le papier, le zébrage et chaque fond d'encadré. */
+::footnote-call   { font-size: 0.54rem; vertical-align: 0.24rem; line-height: 0; font-weight: 700;
+  color: var(--c-ink); }
 ::footnote-marker { font-weight: 700; padding-right: 5px; color: var(--c-ink2); }
 
 /* Repli écran : `float: footnote` n'existe dans aucun navigateur, la note s'imprimerait
