@@ -148,3 +148,19 @@ test('listes : marqueurs ::marker, et retraits qui se somment à 1,5 em et 1,7 e
   assert.strictEqual(somme(em('ol', 'padding-left'), em('ol > li', 'padding-left')), 1.7);
   assert.strictEqual(somme(em('blockquote ol', 'padding-left'), em('blockquote ol > li', 'padding-left')), 1.7);
 });
+
+// Point médian entre auteur·e·s : un FOND, jamais un caractère (30.09.2026). Écrit en
+// `content`, il entrait dans l'arbre de structure et se lisait entre deux noms ; un fond est
+// un artefact. Le fill du SVG doit rester la couleur que test/apca-check.py mesure.
+test('point médian des auteur·e·s : un fond, et du même gris que celui que mesure apca-check', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  const regle = css.match(/\n\.szh-authors li \+ li::before \{([^}]*)\}/);
+  assert.ok(regle, 'règle .szh-authors li + li::before introuvable');
+  const contenu = regle[1].match(/content:\s*"([^"]*)"/);
+  assert.ok(contenu, 'content introuvable');
+  assert.ok(!/\\B7|·/i.test(contenu[1]), 'le point médian est redevenu un caractère : ' + contenu[1]);
+  const couleur = regle[1].match(/color:\s*(#[0-9A-Fa-f]{6})/);
+  const fill = regle[1].match(/fill='%23([0-9A-Fa-f]{6})'/);
+  assert.ok(couleur && fill, 'couleur ou fill introuvable');
+  assert.strictEqual('#' + fill[1].toUpperCase(), couleur[1].toUpperCase());
+});

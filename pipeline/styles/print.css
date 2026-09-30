@@ -520,26 +520,40 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-authors li { display: inline; padding: 0; margin: 0; text-align: left;
   hyphens: manual; }
 .szh-authors li::before { content: none; }
-/* ⚠ L'espace de largeur nulle qui suit le point médian n'est pas un ornement : c'est la
-   SEULE occasion de retour à la ligne de toute la liste. Le gabarit écrit les <li> sans
-   blanc entre eux (`</li><li>`), le point médian vient d'un ::before et ses 6 px sont
-   une marge — or ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
-   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit
-   où couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui
-   donnait « Vannot- / ti-Bourquin ». U+200B est de classe ZW, coupure permise ; il suit
-   le point médian, qui reste donc collé au nom qui précède. */
+/* ⚠ L'espace qui suit le point médian n'est pas un ornement : c'est la SEULE occasion de
+   retour à la ligne de toute la liste. Le gabarit écrit les <li> sans blanc entre eux
+   (`</li><li>`), et ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
+   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit où
+   couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui donnait
+   « Vannot- / ti-Bourquin ». Elle suit le point médian, qui reste donc collé au nom qui
+   précède.
+   Le point médian est un FOND, et plus un caractère (30.09.2026) : écrit en `content`, il
+   entrait dans l'arbre de structure et un lecteur d'écran le lisait entre deux noms. Un fond
+   est un artefact. Le SVG trace le glyphe · d'Open Sans SemiCondensed (glyf, 2048 unités
+   par em), dans une boîte de 496 unités (sa chasse, le `padding-left`) sur 1 em de haut :
+   la hauteur que WeasyPrint donne au fond d'une boîte en ligne, de 1818,5 unités au-dessus
+   de la ligne de base (l'ascendante 2189 moins la moitié de l'excédent 2189 + 600 − 2048).
+   Taille du fond en em et non en 100 % : la boîte de fond couvre aussi l'espace qui suit, et
+   le point s'y retrouvait décentré d'une demi-espace (mesuré).
+   Mesuré : le point se dessine aux mêmes coordonnées que le glyphe, à 0,001 pt près ; au
+   rendu, seul l'anticrénelage de ses bords diffère.
+   L'espace est une vraie espace (U+0020), et plus une espace de largeur nulle : le texte
+   extrait et copié garde « Guilley, E. Cecchini, A. » au lieu de coller les noms. Sa
+   chasse (456 unités) est reprise sur la marge droite, pour que l'écart reste de 6 px. */
 .szh-authors li + li::before {
-  content: "\B7\200B";                     /* · point médian + coupure permise (U+200B) */
+  content: " ";
   position: static; display: inline; left: auto; top: auto;
-  /* ⚠ Couleur pré-mélangée, et `opacity` laissée à 1 : ne pas revenir à
-     `#fff` + `opacity: 0.5`. Toute déclaration `opacity` < 1 fait dessiner l'élément par
-     WeasyPrint dans un Form XObject à groupe de transparence, où il ré-émet un /MCID sans
-     référence /Stm : le contenu devient orphelin de l'arbre de structure et le PDF n'est
-     plus conforme PDF/UA-1 (règle 7.1-3). #9295A2 est exactement le blanc à 50 % composé
-     sur le bleu nuit du hero (#252B46), fond que `overflow: hidden` garantit — l'œil ne
-     voit aucune différence, et test/apca-check.py mesure la même couleur qu'avant. */
+  padding-left: 0.2421875em;               /* chasse du · : 496 / 2048 */
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -1818.5 496 2048'%3E%3Cpath fill='%239295A2' transform='scale(1 -1)' d='M136 716Q136 781 166.5 812Q197 843 247 843Q297 843 328.5 813.5Q360 784 360 716Q360 649 328 618.5Q296 588 247 588Q198 588 167 619.5Q136 651 136 716Z'/%3E%3C/svg%3E") 0 0 / 0.2421875em 1em no-repeat;
+  /* ⚠ Couleur pré-mélangée (le fill du SVG, et `color`, que lit test/apca-check.py), et
+     `opacity` laissée à 1 : ne pas revenir à `#fff` + `opacity: 0.5`. Toute déclaration
+     `opacity` < 1 fait dessiner l'élément par WeasyPrint dans un Form XObject à groupe de
+     transparence, où il ré-émet un /MCID sans référence /Stm : le contenu devient orphelin
+     de l'arbre de structure et le PDF n'est plus conforme PDF/UA-1 (règle 7.1-3). #9295A2
+     est exactement le blanc à 50 % composé sur le bleu nuit du hero (#252B46), fond que
+     `overflow: hidden` garantit. */
   color: #9295A2; opacity: 1; font-weight: 400; font-size: inherit; line-height: inherit;
-  margin: 0 6px;
+  margin: 0 calc(6px - 0.22265625em) 0 6px;  /* chasse de l'espace : 456 / 2048 */
 }
 .szh-doi, .szh-licence {
   display: inline-flex; align-items: center; gap: 6px; color: var(--c-hero2);
