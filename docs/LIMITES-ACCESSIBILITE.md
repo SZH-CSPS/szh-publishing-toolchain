@@ -221,7 +221,8 @@ sans texte portent un `aria-label`) ; les passages en autre langue gardent leur 
 ### 2.2 Figure de données déclarée décorative
 
 Même constat qu'au §1.8 : la figure des articles 05 et 09 est un fond CSS, sans texte
-alternatif. Gravité majeure pour ce contenu ; à corriger.
+alternatif. Gravité majeure pour ce contenu ; à corriger (le galley Word, lui, la rend
+depuis le 30.09.2026, §3).
 
 ### 2.3 Non mesuré
 
@@ -238,43 +239,57 @@ La sortie `out/<slug>/<slug>.docx` (cible `docx`), tirée du HTML autonome par p
 `szh-galley-docx.lua`. Pronto ne produit pas de galley ODT : l'ODT n'est qu'un format
 d'entrée et de gabarit.
 
-**Ce qui tient, mesuré (XML des sept DOCX).** Langue sur les passages (`w:lang` fr, de, en) ;
-toutes les images ont une description (`descr`) ; titres en styles `Title` et `Heading 1-5` ;
-titre du document dans les propriétés ; liens actifs.
+**Ce qui tient, mesuré** (XML des huit DOCX du corpus d'audit et de l'article d'essai
+`galee-essai` : notes multiples, tableau importé à `colspan`/`rowspan`, figure légendée à
+`alt=""`, décor ; relus aussi convertis en PDF par LibreOffice). Langue sur les passages
+(`w:lang` fr, de, en) ; titres en styles `Title` et `Heading 1-5` ; titre du document dans
+les propriétés ; liens actifs ; toutes les images ont une description (`descr`).
 
-### 3.1 Les images décoratives disparaissent, figures de données comprises
+### Corrigé le 30.09.2026
 
-- **Constat.** Une image décorative est un fond CSS dans le HTML : pandoc ne la voit pas, et
-  le Word n'a pas d'image. Juste pour un vrai décor ; pour les figures de données des
-  articles 05 et 09 (§1.8), la légende « Figure 1 — … » reste seule, sans l'image.
-- **Norme.** WCAG 1.1.1 (et perte de contenu tout court).
-- **Gravité.** Majeure pour le contenu touché.
-- **Origine.** Contenu et chaîne (fond CSS invisible au lecteur HTML de pandoc).
-- **Statut.** À corriger avec la règle du §1.8.
-- **Preuve.** Articles 05 et 09 : 0 image dans le DOCX, légende présente.
+- **Notes.** Chaque note du HTML (`span.szh-note`, pour `float: footnote`) redevient une vraie
+  note de bas de page Word, à l'endroit de l'appel, italique et liens compris, y compris
+  dans une légende et dans une cellule de tableau. Notes Word : 0 → 23 sur le corpus, autant
+  que de notes dans les `.md`, texte identique ; plus aucun texte de note dans le corps
+  (23 → 0).
+- **Figures légendées.** Une figure qui a une légende n'est plus un décor dans le galley :
+  elle retrouve son image, décrite par sa légende (« Figure 1 — … », sans les notes qu'elle
+  porte). Articles 05, 09 et `galee-essai` : 0 → 1 image. Le PDF n'est pas concerné.
+- **En-têtes de tableau** — rien à corriger. Les 6 tableaux Word sans `w:tblHeader` ont été
+  recoupés un par un avec leur source : 5 sont des tableaux de mise en page que pandoc écrit
+  pour une figure (style `FigureTable` ; 2 ont disparu avec le point précédent), le 6ᵉ est
+  `lecteur-ecran/tables/table-02.html`, sans rangée d'en-tête dans la source, à dessein.
+  Tous les tableaux de données à `<thead>` ont leur ligne d'en-tête répétée ; un en-tête
+  importé sur deux rangées, avec `colspan` et `rowspan`, garde ses deux lignes d'en-tête et
+  ses fusions (`w:gridSpan`, `w:vMerge`).
 
-### 3.2 Les notes sont du texte courant
+### 3.1 Une note de plusieurs paragraphes arrive en un seul
 
-- **Constat.** Aucune note Word : le texte de chaque note est inséré dans le paragraphe.
+- **Constat.** `szh-notes.lua` joint les paragraphes d'une note par une espace dans le HTML
+  (la zone `@footnote` du PDF n'en compose qu'un) ; le galley ne peut pas retrouver une
+  coupure que le HTML ne porte plus.
 - **Norme.** WCAG 1.3.1.
-- **Gravité.** Majeure.
-- **Origine.** Chaîne (le HTML ne porte pas de notes, voir §2.1).
-- **Statut.** À corriger.
-- **Preuve.** `word/footnotes.xml` : 0 note dans les sept DOCX.
+- **Gravité.** Mineure.
+- **Origine.** Chaîne (le galley est tiré du HTML final, pas du `.md`).
+- **Statut.** Accepté.
+- **Preuve.** `galee-essai`, note 3 : deux paragraphes dans le `.md`, un dans le Word.
 
-### 3.3 Ligne d'en-tête des tableaux
+### 3.2 Les vrais décors restent absents
 
-- **Constat.** 6 tableaux sur 12 n'ont pas de ligne d'en-tête répétée (`w:tblHeader`) ; non
-  vérifié s'il s'agit de tableaux sans en-tête dans la source.
-- **Norme.** WCAG 1.3.1.
-- **Gravité.** Moyenne.
-- **Origine.** pandoc (lecteur HTML) ou contenu.
-- **Statut.** À vérifier.
-- **Preuve.** Comptage `w:tblHeader` ; non recoupé tableau par tableau.
+- **Constat.** Une image sans légende déclarée décorative (`alt=""`) n'est pas dans le Word.
+  pandoc ne sait pas écrire la marque « décorative » de Word (extension `adec:decorative`),
+  et une image insérée sans description serait signalée par le vérificateur de Word.
+- **Norme.** WCAG 1.1.1 (un décor n'a pas à être perçu).
+- **Gravité.** Mineure (aucune information perdue par construction).
+- **Origine.** pandoc.
+- **Statut.** Accepté.
+- **Preuve.** Les 3 décors sans légende du corpus (`figures`, `lecteur-ecran`,
+  `galee-essai`) : absents, un paragraphe vide à leur place.
 
-### 3.4 Non mesuré
+### 3.3 Non mesuré
 
-Vérificateur d'accessibilité de Word, ordre de lecture, texte alternatif des tableaux.
+Vérificateur d'accessibilité de Word, ordre de lecture dans Word, texte alternatif des
+tableaux.
 
 ---
 
