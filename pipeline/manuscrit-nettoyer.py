@@ -77,6 +77,7 @@
 #   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
 #   de livrer un .docx corrompu.
 
+import hashlib
 import io
 import json
 import os
@@ -84,6 +85,7 @@ import re
 import shutil
 import sys
 import tempfile
+import traceback
 import unicodedata
 import xml.etree.ElementTree as ET
 import zipfile
@@ -122,6 +124,9 @@ CODE_OK = 0
 CODE_ALERTE_ERROR = 1
 CODE_REFUS = 2
 CODE_ECHEC_INTERNE = 3
+# Une exception Python non rattrapée (défaut du logiciel) : rattrapée par principal(), jamais un
+# code 1 (alertes error) ni 3 (lecture impossible) — le lanceur les distingue sans JSON à deviner.
+CODE_PLANTAGE = 4
 
 
 def _forcer_utf8():
@@ -173,6 +178,184 @@ def _ligne_stdout(objet):
     """LA seule ligne que ce script écrit sur stdout, quel que soit le chemin de sortie
     (succès, refus, échec) — §8 : « rien d'autre sur ce flux »."""
     print(json.dumps(objet, ensure_ascii=True))
+
+
+# ---------------------------------------------------------------------------------
+# Compteurs d'usage et plantages (§8). Aucun texte du manuscrit n'y passe : ni nom de
+# fichier, ni titre, ni auteur, ni message d'exception -- des noms de mesure d'une liste
+# blanche, des entiers, un condensat du fichier d'entrée (`passage`). Le lanceur recopie
+# l'objet tel quel dans un CSV partagé sans rien analyser.
+
+ETAPES = (
+    'demarrage', 'controle-entree', 'conversion-odt', 'lecture', 'gabarit', 'noms', 'entete',
+    'identifiants', 'titres', 'formatage', 'typographie', 'regles', 'vale', 'bibliographie',
+    'ecriture', 'controle-perte', 'annotation', 'conversion-sortie', 'rapport', 'sortie',
+)
+_ETAT = {'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '', 'debut': 0.0}
+
+_RE_MESURE = re.compile(r'^[a-z0-9_.:-]{1,96}$')
+_RE_ID_REGLE = re.compile(r'^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$')
+_RE_MESURE_REGLE = re.compile(r'^regle:(Autre|[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+):'
+                              r'(revision|commentaire|rapport)$')
+_RE_CODE_REFUS = re.compile(r'^[a-z][a-z0-9-]{1,40}$')
+MAX_ID_REGLE = 64
+# La liste blanche du contrat : MESURES_NETTOYEUR de lib/compteurs.js (un test de parité la
+# compare), plus deux familles à suffixe libre au motif étroit. Une mesure qui n'y est pas est
+# écartée en silence, ici comme chez l'écrivain PowerShell et l'écrivain JS.
+MESURES_NETTOYEUR = (
+    'issue.ok', 'issue.alertes', 'issue.plantage', 'issue.interrompu', 'produit.revue',
+    'produit.zeitschrift', 'cas.a', 'cas.b', 'format.entree.odt', 'format.sortie.odt',
+    'langue.desaccord', 'signes', 'signes_biblio', 'paragraphes', 'references', 'notes', 'images',
+    'images_sans_alt', 'duree_ms', 'plafond_commentaires_atteint', 'perte_mots', 'ecartes',
+    'vale.indisponible', 'typo.repli', 'annotation.restauree', 'reseau.crossref.panne',
+    'reseau.ror.panne', 'reseau.orcid.panne', 'doi.proposes', 'ror.proposes', 'orcid.proposes',
+    'orcid.candidats', 'entete.auteurs', 'entete.champs_vides', 'entete.ordre_incertain')
+_MOTIFS_MESURE_LIBRE = (re.compile(r'^issue\.refus:[a-z0-9_-]{1,48}$'),
+                        re.compile(r'^titres\.[a-z0-9_]{1,40}$'))
+_RE_TYPE_EXCEPTION = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,63}$')
+_RE_LIEU = re.compile(r'^[A-Za-z0-9_.-]{1,80}\.py:\d{1,6}$')
+DEVENIRS = ('revision', 'commentaire', 'rapport')
+
+
+def _etape(nom):
+    """Pose l'étape en cours (un nom de la liste ETAPES) : c'est tout ce qu'un plantage dira
+    de l'endroit où il est survenu, avec le fichier et la ligne du dépôt."""
+    _ETAT['etape'] = nom if nom in ETAPES else 'inconnue'
+
+
+def _passage(chemin):
+    """Les 12 premiers hexadécimaux du SHA-256 du fichier d'entrée : le même fichier redonne le
+    même passage, sans que rien du fichier ne se lise dans le condensat."""
+    try:
+        h = hashlib.sha256()
+        with open(chemin, 'rb') as f:
+            for bloc in iter(lambda: f.read(1 << 20), b''):
+                h.update(bloc)
+        return h.hexdigest()[:12]
+    except Exception:
+        return '0' * 12
+
+
+def _mesure_regle(identifiant, devenir):
+    """`regle:<Id>:<devenir>` ; un identifiant qui ne suit pas le motif des règles du catalogue
+    devient `Autre`, un devenir inconnu devient `rapport`."""
+    ident = (identifiant if isinstance(identifiant, str) and len(identifiant) <= MAX_ID_REGLE
+             and _RE_ID_REGLE.fullmatch(identifiant) else 'Autre')
+    return 'regle:%s:%s' % (ident, devenir if devenir in DEVENIRS else 'rapport')
+
+
+def _compteurs(passage, mesures):
+    """L'objet `compteurs` de la ligne stdout : `{'passage': 12 hex, 'mesures': {nom: entier}}`.
+    Liste blanche par le NOM (motif du contrat) et par le TYPE : tout ce qui n'est pas un
+    entier positif ou nul, ou dont le nom sort du motif, est écarté ; les zéros sont omis."""
+    propres = {}
+    for nom, valeur in mesures.items():
+        if not isinstance(valeur, int) or isinstance(valeur, bool) or valeur <= 0:
+            continue
+        if not isinstance(nom, str):
+            continue
+        if nom.startswith('regle:'):
+            if not _RE_MESURE_REGLE.fullmatch(nom):
+                continue
+        elif not (_RE_MESURE.fullmatch(nom) and (
+                nom in MESURES_NETTOYEUR or any(m.fullmatch(nom) for m in _MOTIFS_MESURE_LIBRE))):
+            continue
+        propres[nom] = propres.get(nom, 0) + valeur
+    return {'passage': passage if re.fullmatch(r'[0-9a-f]{12}', passage or '') else '0' * 12,
+            'mesures': dict(sorted(propres.items()))}
+
+
+def _duree_ms(debut=None):
+    return int(round((time.perf_counter() - (debut if debut is not None else _ETAT['debut'])) * 1000))
+
+
+def _mesures_minimales(issue, duree_ms, produit='', format_entree=''):
+    """Les mesures d'un passage qui n'est pas allé au bout : l'issue, le produit et la durée."""
+    mesures = {'issue.' + issue: 1, 'duree_ms': duree_ms}
+    if produit in ('revue', 'zeitschrift'):
+        mesures['produit.' + produit] = 1
+    if format_entree == 'odt':
+        mesures['format.entree.odt'] = 1
+    return mesures
+
+
+def _mesures_passage(issue, duree_ms, args, gabarit, format_entree, format_sortie, alertes,
+                     alerte_langue, signes_total, signes_biblio, n_paragraphes, n_references,
+                     n_notes, images, images_sans_alt, stats_annotation, annotation_restauree,
+                     mesure_perte, ecartes_entete, vale_indisponible, statut_typo,
+                     stats_biblio, stats_identifiants, entete, stats_titres):
+    """Les mesures d'un passage qui a couru jusqu'au bout. Chaque valeur est un entier tiré d'un
+    compte ou d'un statut, jamais d'un texte du manuscrit."""
+    m = _mesures_minimales(issue, duree_ms, args['produit'], format_entree)
+    m['cas.' + gabarit.lower()] = 1
+    if format_sortie == 'odt':
+        m['format.sortie.odt'] = 1
+    if alerte_langue:
+        m['langue.desaccord'] = 1
+    m.update({'signes': signes_total, 'signes_biblio': signes_biblio,
+              'paragraphes': n_paragraphes, 'references': n_references, 'notes': n_notes,
+              'images': images, 'images_sans_alt': images_sans_alt})
+    for a in alertes:
+        nom = _mesure_regle(a.get('rule'), a.get('dans_docx') or 'rapport')
+        m[nom] = m.get(nom, 0) + 1
+    if stats_annotation:
+        ecrits = sum(1 for a in alertes if a.get('dans_docx') == 'commentaire')
+        if ecrits >= 25 and stats_annotation.get('renvoyees_au_rapport'):
+            m['plafond_commentaires_atteint'] = 1
+    if mesure_perte:
+        m['perte_mots'] = int(mesure_perte.get('mots_manquants') or 0)
+    if ecartes_entete:
+        m['ecartes'] = len(ecartes_entete.get('elements') or [])
+    if vale_indisponible:
+        m['vale.indisponible'] = 1
+    if statut_typo == 'repli' and not args['sans_typo']:
+        m['typo.repli'] = 1
+    if annotation_restauree:
+        m['annotation.restauree'] = 1
+    if stats_biblio:
+        # `_hors_service` : une vraie panne du réseau. stats['crossref']['indisponible'] devient
+        # vrai dès qu'un DOI ne répond pas (un 404 suffit) : mesuré le 01.10.2026 sur un manuscrit
+        # réel, 4 DOI consultés dont 2 confirmés, `indisponible` vrai, `_hors_service` faux.
+        if not args['sans_reseau'] and mb._hors_service:
+            m['reseau.crossref.panne'] = 1
+        m['doi.proposes'] = int(stats_biblio.get('doi_retrouves') or 0)
+    if stats_identifiants:
+        en_panne = stats_identifiants.get('en_panne') or []
+        for service in ('ror', 'orcid'):
+            if service in en_panne:
+                m['reseau.%s.panne' % service] = 1
+        m['ror.proposes'] = int(stats_identifiants.get('ror_trouves') or 0)
+        m['orcid.proposes'] = int(stats_identifiants.get('orcid_trouves') or 0)
+        m['orcid.candidats'] = int(stats_identifiants.get('orcid_candidats') or 0)
+    if entete is not None:
+        auteurs = entete.auteurs or []
+        m['entete.auteurs'] = len(auteurs)
+        m['entete.champs_vides'] = sum(
+            1 for v in (entete.titre, entete.resume, entete.mots_cles, auteurs) if not v)
+        m['entete.ordre_incertain'] = sum(
+            1 for a in auteurs if a.get('ordre_confiance') == 'defaut' or a.get('ordre_conflit'))
+    for feuille, valeur in (stats_titres or {}).items():
+        if (isinstance(valeur, int) and not isinstance(valeur, bool)
+                and re.fullmatch(r'[a-z0-9_]{1,40}', str(feuille))):
+            m['titres.' + feuille] = valeur
+    return m
+
+
+def _description_plantage(exc):
+    """`(type, lieu)` d'une exception : le nom de sa classe et le DERNIER cadre d'un fichier du
+    dépôt (`fichier.py:ligne`). Jamais son message, jamais un chemin : ils citent le
+    document. Une valeur qui sort du motif attendu est remplacée par une valeur neutre."""
+    dossier = os.path.dirname(os.path.abspath(__file__))
+    lieu = ''
+    try:
+        for cadre in traceback.extract_tb(exc.__traceback__):
+            if os.path.dirname(os.path.abspath(cadre.filename)) == dossier:
+                lieu = '%s:%d' % (os.path.basename(cadre.filename), cadre.lineno)
+    except Exception:
+        lieu = ''
+    nom = type(exc).__name__
+    return (nom if _RE_TYPE_EXCEPTION.fullmatch(nom) else 'Exception',
+            lieu if _RE_LIEU.fullmatch(lieu) else 'inconnu')
 
 
 # ---------------------------------------------------------------------------------
@@ -1071,10 +1254,35 @@ def principal(argv):
     del _AVERTISSEMENTS_IMPORT[:]
     del _JOURNAL_PROGRES[:]
     szh_commun.avertir = _avertir_capture
+    _ETAT.update({'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '',
+                  'debut': time.perf_counter()})
     try:
         return _principal(argv)
+    except Exception as e:
+        return _plantage(e)
     finally:
         szh_commun.avertir = _avertir_original
+
+
+def _plantage(exc):
+    """Une exception Python que rien n'a rattrapée : un défaut du logiciel, pas du manuscrit.
+    Une ligne JSON sur stdout qui dit seulement le type, le lieu dans le dépôt et l'étape --
+    JAMAIS le message de l'exception, qui cite le document -- et un code de sortie à part. La
+    trace complète n'est montrée que sur demande (SZH_NETTOYEUR_TRACE), sur stderr."""
+    type_exc, lieu = _description_plantage(exc)
+    etape = _ETAT['etape'] if _ETAT['etape'] in ETAPES else 'inconnue'
+    try:
+        progres('plantage : %s à %s (étape %s)' % (type_exc, lieu, etape))
+        if os.environ.get('SZH_NETTOYEUR_TRACE'):
+            traceback.print_exception(type(exc), exc, exc.__traceback__)
+        mesures = _mesures_minimales('plantage', _duree_ms(), _ETAT['produit'],
+                                     _ETAT['format_entree'])
+        _ligne_stdout({'plantage': True, 'type': type_exc, 'lieu': lieu, 'etape': etape,
+                       'code_sortie': CODE_PLANTAGE,
+                       'compteurs': _compteurs(_passage(_ETAT['entree']), mesures)})
+    except Exception:
+        pass
+    return CODE_PLANTAGE
 
 
 def _principal(argv):
@@ -1090,6 +1298,9 @@ def _principal(argv):
     entree = args['entree']
     nom = os.path.splitext(os.path.basename(entree))[0]
     extension = os.path.splitext(entree)[1].lower()
+    _ETAT.update({'entree': entree, 'produit': args['produit'],
+                  'format_entree': 'odt' if extension == '.odt' else 'docx'})
+    _etape('controle-entree')
 
     def refuser(code, message_fr, **supplement):
         # `message_fr` : le nom reste, mais le texte est dans la langue du produit quand
@@ -1099,6 +1310,8 @@ def _principal(argv):
         ligne = {'entree': entree, 'refus': True, 'code_refus': code,
                  'message': message_fr, 'code_sortie': CODE_REFUS}
         ligne.update(supplement)
+        ligne['compteurs'] = _compteurs(_passage(entree), _mesures_minimales(
+            'refus:' + code, _duree_ms(debut), args['produit'], _ETAT['format_entree']))
         _ligne_stdout(ligne)
         return CODE_REFUS
 
@@ -1128,6 +1341,7 @@ def _principal(argv):
     chemin_lecture = entree
     dossier_temp_odt = None
     if extension == '.odt':
+        _etape('conversion-odt')
         progres("conversion de l'entrée .odt en .docx...")
         dossier_temp_odt = tempfile.mkdtemp(prefix='szh-manuscrit-odt-')
         try:
@@ -1136,6 +1350,7 @@ def _principal(argv):
             shutil.rmtree(dossier_temp_odt, ignore_errors=True)
             return refuser('conversion-impossible', str(e))
 
+    _etape('lecture')
     progres('lecture du manuscrit...')
     try:
         document = md.lire(chemin_lecture)
@@ -1143,7 +1358,10 @@ def _principal(argv):
         progres('lecture impossible : %s' % e)
         _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'lecture-impossible',
                        'message': _message_lecture_impossible(args['produit']),
-                       'detail': str(e), 'code_sortie': CODE_ECHEC_INTERNE})
+                       'detail': str(e), 'code_sortie': CODE_ECHEC_INTERNE,
+                       'compteurs': _compteurs(_passage(entree), _mesures_minimales(
+                           'refus:lecture-impossible', _duree_ms(debut), args['produit'],
+                           format_entree))})
         return CODE_ECHEC_INTERNE
     finally:
         # Le .docx temporaire (conversion .odt -> .docx, ci-dessus) n'est plus utile une fois
@@ -1175,6 +1393,7 @@ def _principal(argv):
                               % document.commentaires)
         progres(note_commentaires)
 
+    _etape('gabarit')
     gabarit = mm.reconnaitre_gabarit(document)
     progres('gabarit reconnu : cas %s' % gabarit)
 
@@ -1187,6 +1406,7 @@ def _principal(argv):
     # me.extraire_entete() et me.extraire_bloc_auteurs_final() ci-dessous. --base-auteurs
     # absent -> mn.BaseNoms.charger() fait sa recherche automatique ; silencieuse de bout en
     # bout (aucune source trouvée = base indisponible, jamais une exception).
+    _etape('noms')
     progres('chargement de la base de noms...')
     base_noms = mn.BaseNoms.charger(chemin_base_auteurs=args['base_auteurs'])
     if base_noms.disponible:
@@ -1208,6 +1428,7 @@ def _principal(argv):
     if gabarit == 'B':
         # Noms de bibliographie (§6.1) — AVANT extraire_entete(), sur le document ENCORE
         # complet (voir _noms_de_bibliographie() plus haut pour le pourquoi).
+        _etape('entete')
         progres('repérage des noms de bibliographie...')
         noms_biblio = _noms_de_bibliographie(document)
         progres('%d jeton(s) de nom retenu(s) depuis la bibliographie' % len(noms_biblio))
@@ -1244,6 +1465,7 @@ def _principal(argv):
 
         # ROR et ORCID des autrices et auteurs : cherchés en réseau, écrits en révision
         # « à vérifier » par le gabarit, jamais sur la foi du seul nom (manuscrit_identifiants).
+        _etape('identifiants')
         progres('recherche des ROR et ORCID des autrices et auteurs...')
         alertes_identifiants, stats_identifiants = mi.enrichir_auteurs(
             entete.auteurs, langue, reseau=not args['sans_reseau'])
@@ -1253,9 +1475,11 @@ def _principal(argv):
                               stats_identifiants['orcid_candidats'],
                               stats_identifiants['indisponible']))
 
+    _etape('titres')
     progres('classement des titres...')
     stats_titres, trace_titres = _classer_titres_selon_le_cas(document, gabarit)
 
+    _etape('formatage')
     progres('nettoyage de la mise en forme...')
     stats_formatage, trace_formatage = mm.nettoyer_mise_en_forme(document)
 
@@ -1265,6 +1489,7 @@ def _principal(argv):
         alertes_manuelles.append(alerte_langue)
         progres(alerte_langue['message'])
 
+    _etape('typographie')
     if args['sans_typo']:
         progres('typographie désactivée (--sans-typo)')
         traces_typo = ['typographie désactivée (--sans-typo)']
@@ -1294,6 +1519,7 @@ def _principal(argv):
         if statut_typo == 'repli':
             alertes_manuelles.append(_alerte_repli_typo())
 
+    _etape('regles')
     progres('évaluation des règles éditoriales...')
     sources_biblio, entrees_biblio = _construire_bibliographie(document)
     paragraphes_corps_biblio = _construire_paragraphes_contexte(document, sources_biblio, gabarit)
@@ -1321,6 +1547,7 @@ def _principal(argv):
     # paragraphe de rôle 'bibliographie' (donc aussi ce titre). Les cellules de tableau et le
     # contenu des notes s'y ajoutent, à toute profondeur, jamais ancrables (voir
     # _paragraphes_cellules_pour_vale()/_paragraphe_source_appelant_note() plus haut).
+    _etape('vale')
     progres('contrôle du vocabulaire et du langage...')
     numeros_notes = _numeros_notes(document)
     paragraphes_vale_biblio = [{'texte': e['texte'], 'source': e['source'], 'role': 'bibliographie'}
@@ -1347,6 +1574,7 @@ def _principal(argv):
     # Bibliographie (point 2) — mêmes deux corpus, sans le rôle (manuscrit_biblio.py ne le lit
     # pas, il reçoit déjà deux listes séparées). --sans-reseau : choix explicite du lanceur
     # d'essai ou d'un test, jamais posé par le lanceur en production (point 2 de la consigne).
+    _etape('bibliographie')
     progres('contrôle de la bibliographie...')
     paragraphes_biblio_module = [{'texte': e['texte'], 'source': e['source']}
                                   for e in entrees_biblio]
@@ -1369,11 +1597,13 @@ def _principal(argv):
     progres('%d alerte(s) avant écriture' % len(alertes))
 
     # Sorties — toujours à côté du manuscrit d'entrée, jamais une boîte de dialogue (§8).
+    _etape('ecriture')
     dossier = args['sortie']
     os.makedirs(dossier, exist_ok=True)
     sortie_docx = None
     resultat_ecriture = None
     stats_annotation = None
+    annotation_restauree = False
     mesure_perte = None
     if args['analyse_seule']:
         progres('analyse seule (--analyse-seule) : aucun .docx écrit')
@@ -1387,6 +1617,7 @@ def _principal(argv):
 
         # Garde-fou « rien ne se perd », sur le .docx tel qu'écrit, AVANT l'annotation (qui
         # ajoute des révisions dont le texte barré fausserait le compte).
+        _etape('controle-perte')
         alerte_perte, mesure_perte = _controler_perte(empreinte_entree, sortie_docx, langue,
                                                       ecartes_entete)
         for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue),
@@ -1410,6 +1641,7 @@ def _principal(argv):
         elif args['sans_annotation']:
             progres('annotation désactivée (--sans-annotation)')
         else:
+            _etape('annotation')
             progres('annotation du document...')
             # Sauvegarde du .docx PRÉ-annotation (déjà écrit, déjà valide) en mémoire : si
             # l'annotation échoue — par exception OU en laissant un XML mal formé, voir plus
@@ -1442,6 +1674,7 @@ def _principal(argv):
                 with open(sortie_docx, 'wb') as _f:
                     _f.write(octets_avant_annotation)
                 stats_annotation = None
+                annotation_restauree = True
                 progres('annotation impossible : %s' % e)
                 alertes.append(_alerte_annotation_impossible())
                 _trier_alertes(alertes)
@@ -1461,6 +1694,7 @@ def _principal(argv):
     sortie = sortie_docx
     format_sortie = 'docx' if sortie_docx is not None else None
     if sortie_docx is not None and args['format'] == 'odt':
+        _etape('conversion-sortie')
         progres('conversion du .docx écrit en .odt...')
         try:
             sortie_odt = conversion_odt.convertir(sortie_docx, 'odt', dossier,
@@ -1556,19 +1790,30 @@ def _principal(argv):
 
     code_sortie = CODE_ALERTE_ERROR if n_error > 0 else CODE_OK
 
+    _etape('rapport')
     sortie_rapport = args['rapport'] or os.path.join(dossier, nom + '-rapport.json')
     progres('écriture du rapport -> %s' % sortie_rapport)
     with open(sortie_rapport, 'w', encoding='utf-8') as f:
         json.dump(rapport, f, ensure_ascii=False, indent=2)
 
     duree_ms = (time.perf_counter() - debut) * 1000
-    if mesure_perte and mesure_perte.get('refus'):
+    refus_perte = bool(mesure_perte and mesure_perte.get('refus'))
+    issue = ('refus:perte-de-contenu' if refus_perte
+             else 'alertes' if code_sortie == CODE_ALERTE_ERROR else 'ok')
+    compteurs = _compteurs(_passage(entree), _mesures_passage(
+        issue, int(round(duree_ms)), args, gabarit, format_entree, format_sortie, alertes,
+        alerte_langue, signes_total, signes_biblio,
+        sum(1 for p in paragraphes_ctx if p['role'] not in ROLES_ENTETE_POUR_REGLES),
+        len(entrees_biblio), len(document.notes or {}), len(images), images_sans_alt,
+        stats_annotation, annotation_restauree, mesure_perte, ecartes_entete,
+        vale_indisponible, statut_typo, stats_biblio, stats_identifiants, entete, stats_titres))
+    if refus_perte:
         # Même forme que les refus d'entrée (refuser(), plus haut), le rapport en plus : il
         # dit ce qui manquait.
         progres('terminé en %.0f ms (refus : perte de contenu)' % duree_ms)
         _ligne_stdout({'entree': entree, 'refus': True, 'code_refus': 'perte-de-contenu',
                        'message': alerte_perte['message'], 'sortie_rapport': sortie_rapport,
-                       'code_sortie': CODE_REFUS})
+                       'code_sortie': CODE_REFUS, 'compteurs': compteurs})
         return CODE_REFUS
     progres('terminé en %.0f ms (code de sortie %d)' % (duree_ms, code_sortie))
 
@@ -1578,7 +1823,8 @@ def _principal(argv):
                    'typographie': statut_typo,
                    'alertes_total': len(alertes), 'alertes_error': n_error,
                    'alertes_warning': n_warning, 'alertes_suggestion': n_suggestion,
-                   'duree_ms': round(duree_ms, 1), 'code_sortie': code_sortie})
+                   'duree_ms': round(duree_ms, 1), 'code_sortie': code_sortie,
+                   'compteurs': compteurs})
     return code_sortie
 
 

@@ -296,6 +296,8 @@ if ($ancrageResolu.origine -eq 'absent') {
 # silencieux, jamais bloquant -- l'ancrage vient d'etre resolu, c'est le bon moment pour
 # retenter les rapports ecrits hors ligne depuis le dernier lancement.
 try { Clear-SzhRapportsEnAttente } catch { }
+# Meme geste pour les compteurs d'usage (windows\szh-compteurs.ps1).
+try { Clear-SzhCompteursEnAttente } catch { }
 
 # ---- Check-in mensuel du poste ----
 # Une ligne par mois et par compte dans <racine>\_Systeme\inventaire\<POSTE>.csv, creee si
@@ -2457,6 +2459,110 @@ function Remove-SzhRapportTemporaire([string]$Chemin) {
   }
 }
 
+# ---- Ce que le nettoyeur laisse derriere lui : un rapport d'erreur, des compteurs ----
+# Le nettoyeur manipule des manuscrits : NI le texte, NI un nom de fichier, NI un chemin, NI un
+# message d'exception ne sort jamais d'ici. Le rapport d'erreur (NETTOYEUR-ECHEC) ne porte que
+# des valeurs d'une liste blanche -- le type de l'exception, le lieu dans le depot, l'etape, un
+# code de refus, un code de sortie -- revalidees ICI par motif meme quand la CLI les a deja
+# assainies ; les compteurs (windows\szh-compteurs.ps1) ne portent que des noms de mesure et des
+# entiers. Jamais $textePreproc, jamais le journal de l'onglet, jamais de fichiers joints.
+# Aucune de ces deux ecritures ne leve vers l'interface.
+
+# Le contenu assaini d'un rapport : un objet ordonne de valeurs a motif verifie, ou $null.
+#   plantage          -> type / lieu / etape de la CLI
+#   refus             -> code du refus et code de sortie
+#   sortie inattendue -> code de sortie seul
+#   echec             -> un mot (preparation, rendu-rapport) et, au plus, un nom de phase
+function ConvertTo-SzhNettoyeurContenu {
+  param($Stats = $null, $CodeSortie = $null, [string]$Echec = '', [string]$Phase = '', [string]$TypeException = '')
+  $contenu = [ordered]@{}
+  if ($Echec) {
+    $contenu['echec'] = $Echec
+    if ($Phase -cmatch '^[a-z]{1,20}\z') { $contenu['phase'] = $Phase }
+    if ($TypeException -cmatch '^[A-Za-z_][A-Za-z0-9_]{0,63}\z') { $contenu['type'] = $TypeException }
+    return $contenu
+  }
+  if ($Stats -and $Stats.PSObject.Properties['plantage'] -and $Stats.plantage) {
+    $type = [string]$Stats.type
+    $lieu = [string]$Stats.lieu
+    $etape = [string]$Stats.etape
+    $contenu['plantage'] = $true
+    $contenu['type'] = $(if ($type -cmatch '^[A-Za-z_][A-Za-z0-9_]{0,63}\z') { $type } else { 'Exception' })
+    $contenu['lieu'] = $(if (($lieu -cmatch '^[A-Za-z0-9_.-]{1,80}\.py:\d{1,6}\z') -or ($lieu -ceq 'inconnu')) { $lieu } else { 'inconnu' })
+    $contenu['etape'] = $(if ($etape -cmatch '^[a-z0-9-]{1,40}\z') { $etape } else { 'inconnue' })
+  } elseif ($Stats -and $Stats.PSObject.Properties['refus'] -and $Stats.refus) {
+    $code = [string]$Stats.code_refus
+    $contenu['refus'] = $(if ($code -cmatch '^[a-z][a-z0-9-]{1,40}\z') { $code } else { 'inconnu' })
+  }
+  if ($null -ne $CodeSortie) {
+    try { $contenu['code_sortie'] = [int]$CodeSortie } catch { }
+  }
+  return $contenu
+}
+
+# Ecrit un NETTOYEUR-ECHEC. L'etape est « nettoyeur : <etape> » ; le contenu part en message,
+# en JSON compact. L'anti-inondation et le masquage sont ceux de Write-SzhRapport.
+function Send-SzhRapportNettoyeur {
+  param([string]$Etape, $Contenu, [string]$Produit = '')
+  try {
+    if ($Etape -cnotmatch '^[a-z0-9-]{1,40}\z') { $Etape = 'inconnue' }
+    $produitRapport = $null
+    if (($Produit -ceq 'revue') -or ($Produit -ceq 'zeitschrift')) { $produitRapport = @{ type = $Produit } }
+    Write-SzhRapport -Code 'NETTOYEUR-ECHEC' -Source 'lanceur' -Etape ('nettoyeur : ' + $Etape) `
+      -Message ($Contenu | ConvertTo-Json -Compress) -Produit $produitRapport
+  } catch { }
+}
+
+# Apres un passage : les compteurs (toujours, des qu'il y en a) et, pour un defaut du logiciel
+# seulement, un rapport d'erreur. Les refus attendus (fichier-verrou, extension-inconnue,
+# suivi-modifications, conversion-impossible) ne font AUCUN rapport ; une interruption voulue
+# non plus.
+function Send-SzhConstatsNettoyeur {
+  param($Stats, $CodeSortie, [bool]$Interrompu, [string]$PhaseEchec, [string]$Produit,
+    [string]$CheminManuscrit, [bool]$Ok)
+  try {
+    $mesures = $null
+    $passage = ''
+    if ($Stats -and $Stats.PSObject.Properties['compteurs'] -and $Stats.compteurs) {
+      $mesures = $Stats.compteurs.mesures
+      $passage = [string]$Stats.compteurs.passage
+    }
+    if (($null -eq $mesures) -and ($Interrompu -or (-not $Ok))) {
+      # Rien n'est revenu de la CLI (interruption, sortie sans JSON, WSL pas prete) : un
+      # compteur minimal, pour que l'issue se compte quand meme.
+      $passage = Get-SzhCompteursPassage $CheminManuscrit
+      $issue = 'plantage'
+      if ($Interrompu) { $issue = 'interrompu' }
+      $mesures = [ordered]@{ ('issue.' + $issue) = 1 }
+      if (($Produit -ceq 'revue') -or ($Produit -ceq 'zeitschrift')) { $mesures['produit.' + $Produit] = 1 }
+    }
+    if ($null -ne $mesures) { Write-SzhCompteurs -Source 'nettoyeur' -Passage $passage -Mesures $mesures }
+  } catch { }
+
+  try {
+    if ($Interrompu) { return }
+    if ($PhaseEchec) {
+      Send-SzhRapportNettoyeur -Etape 'preparation' -Produit $Produit `
+        -Contenu (ConvertTo-SzhNettoyeurContenu -Echec 'preparation' -Phase $PhaseEchec)
+    } elseif ($Stats -and $Stats.PSObject.Properties['plantage'] -and $Stats.plantage) {
+      $contenu = ConvertTo-SzhNettoyeurContenu -Stats $Stats -CodeSortie $CodeSortie
+      Send-SzhRapportNettoyeur -Etape ([string]$contenu['etape']) -Contenu $contenu -Produit $Produit
+    } elseif ($Stats -and $Stats.PSObject.Properties['refus'] -and $Stats.refus) {
+      $code = [string]$Stats.code_refus
+      $etapeRefus = ''
+      if ($code -ceq 'lecture-impossible') { $etapeRefus = 'lecture' }
+      elseif ($code -ceq 'perte-de-contenu') { $etapeRefus = 'controle-perte' }
+      if ($etapeRefus) {
+        Send-SzhRapportNettoyeur -Etape $etapeRefus -Produit $Produit `
+          -Contenu (ConvertTo-SzhNettoyeurContenu -Stats $Stats -CodeSortie $CodeSortie)
+      }
+    } elseif (-not $Ok) {
+      Send-SzhRapportNettoyeur -Etape 'sortie-inattendue' -Produit $Produit `
+        -Contenu (ConvertTo-SzhNettoyeurContenu -CodeSortie $CodeSortie)
+    }
+  } catch { }
+}
+
 # Le seul appelant de manuscrit-nettoyer.py. Voir l'en-tete de cette section pour
 # l'inversion stdout/stderr par rapport a Invoke-SzhSecretariat, et pourquoi.
 #
@@ -2503,15 +2609,23 @@ function Invoke-SzhManuscrit {
   # partent au journal technique du lanceur (Show-SzhResultatPreproc).
   $dernieresLignesErreurPreproc = New-Object System.Collections.ArrayList
   $detailPreproc = ''
+  # Ou l'on en etait quand une exception a interrompu la preparation (pret, chemins,
+  # lancement) : un mot, jamais le message de l'exception -- il citerait le chemin du manuscrit.
+  $phasePreproc = 'pret'
+  $echecPhasePreproc = ''
+  $codeSortiePreproc = $null
+  $futAnnulePreproc = $false
 
   try {
     $cliWindowsPreproc = Test-SzhManuscritPret
+    $phasePreproc = 'chemins'
     $cliWslPreproc = ConvertTo-SzhCheminWsl $cliWindowsPreproc
     $manuscritWslPreproc = ConvertTo-SzhCheminWsl $CheminManuscrit
     $dossierSortiePreproc = Split-Path -Parent $CheminManuscrit
     $sortieWslPreproc = ConvertTo-SzhCheminWsl $dossierSortiePreproc
     $rapportWslPreproc = ConvertTo-SzhCheminWsl ($cheminRapportTemporairePreproc -replace '\\', '/')
 
+    $phasePreproc = 'lancement'
     $psiPreproc = New-Object System.Diagnostics.ProcessStartInfo
     $psiPreproc.FileName = Get-SzhWslExePreproc
     $psiPreproc.Arguments = ConvertTo-SzhArguments @(
@@ -2533,8 +2647,8 @@ function Invoke-SzhManuscrit {
     # cette CLI met la progression sur stderr et une seule ligne JSON, a la fin, sur
     # stdout.
     $tacheSortiePreproc = $processusPreproc.StandardOutput.ReadToEndAsync()
+    $phasePreproc = 'execution'
 
-    $futAnnulePreproc = $false
     while ($true) {
       $tacheLignePreproc = $processusPreproc.StandardError.ReadLineAsync()
       $annulePendantPreproc = $false
@@ -2568,6 +2682,7 @@ function Invoke-SzhManuscrit {
       try { [void]$processusPreproc.WaitForExit(3000) } catch { }
     } else {
       $processusPreproc.WaitForExit()
+      $codeSortiePreproc = $processusPreproc.ExitCode
       $sortieBrutePreproc = ''
       try { $sortieBrutePreproc = $tacheSortiePreproc.Result } catch { $sortieBrutePreproc = '' }
       $sortieVuePreproc = ([string]$sortieBrutePreproc).Trim()
@@ -2595,6 +2710,7 @@ function Invoke-SzhManuscrit {
   } catch {
     $okPreproc = $false
     $textePreproc = $_.Exception.Message
+    $echecPhasePreproc = $phasePreproc
   } finally {
     try {
       if ($processusPreproc -and -not $processusPreproc.HasExited) { $processusPreproc.Kill() }
@@ -2609,6 +2725,13 @@ function Invoke-SzhManuscrit {
     }
     if ($BoutonInterrompre) { $BoutonInterrompre.Enabled = $false }
   }
+  # Compteurs d'usage et, pour un defaut du logiciel, rapport d'erreur : jamais le texte du
+  # message ni le journal, voir Send-SzhConstatsNettoyeur.
+  try {
+    Send-SzhConstatsNettoyeur -Stats $statsPreproc -CodeSortie $codeSortiePreproc `
+      -Interrompu $futAnnulePreproc -PhaseEchec $echecPhasePreproc -Produit $Produit `
+      -CheminManuscrit $CheminManuscrit -Ok $okPreproc
+  } catch { }
   return [pscustomobject]@{
     ok                = $okPreproc
     texte             = $textePreproc
@@ -2749,6 +2872,10 @@ function Show-SzhResultatPreproc($Resultat) {
         }
       } catch {
         $erreurRapportPreproc = $_.Exception.Message
+        # Un defaut du logiciel, pas du manuscrit : rapport d'erreur, sans le message (il
+        # citerait un chemin), seulement le type de l'exception.
+        Send-SzhRapportNettoyeur -Etape 'rendu-rapport' -Produit ([string]$Resultat.produit) `
+          -Contenu (ConvertTo-SzhNettoyeurContenu -Echec 'rendu-rapport' -TypeException $_.Exception.GetType().Name)
       }
     }
 
@@ -2877,9 +3004,19 @@ $script:etiqFichierPreproc = New-Object System.Windows.Forms.Label
 $script:etiqFichierPreproc.Text = (T 'lanceur.preproc.fichier.aucun')
 $script:etiqFichierPreproc.AutoSize = $false
 $script:etiqFichierPreproc.Location = New-Object System.Drawing.Point(($xPage + 270), 94)
-$script:etiqFichierPreproc.Size = New-Object System.Drawing.Size(($largeurPage - 270), 50)
+$script:etiqFichierPreproc.Size = New-Object System.Drawing.Size(($largeurPage - 270), 32)
 $script:etiqFichierPreproc.ForeColor = [System.Drawing.Color]::DimGray
 $pagePreproc.Controls.Add($script:etiqFichierPreproc)
+
+# Ce que le nettoyeur compte, où, pourquoi et combien de temps : dit en clair, sous le bouton,
+# avant la premiere utilisation (phrase unique, lanceur.preproc.compteurs).
+$etiqCompteursPreproc = New-Object System.Windows.Forms.Label
+$etiqCompteursPreproc.Text = (T 'lanceur.preproc.compteurs')
+$etiqCompteursPreproc.AutoSize = $false
+$etiqCompteursPreproc.Location = New-Object System.Drawing.Point($xPage, 128)
+$etiqCompteursPreproc.Size = New-Object System.Drawing.Size($largeurPage, 56)
+$etiqCompteursPreproc.ForeColor = [System.Drawing.Color]::DimGray
+$pagePreproc.Controls.Add($etiqCompteursPreproc)
 
 # Le journal de progression -- meme gabarit, meme budget vertical que celui du secretariat
 # (Consolas 9, lecture seule, y=162 a $yNouveau, deja eprouve sur tous les paliers de
@@ -2890,8 +3027,8 @@ $script:journalPreproc.ReadOnly = $true
 $script:journalPreproc.ScrollBars = 'Vertical'
 $script:journalPreproc.Font = New-Object System.Drawing.Font('Consolas', 9)
 $script:journalPreproc.BackColor = [System.Drawing.Color]::White
-$script:journalPreproc.Location = New-Object System.Drawing.Point($xPage, 162)
-$script:journalPreproc.Size = New-Object System.Drawing.Size($largeurPage, ($yNouveau - 170))
+$script:journalPreproc.Location = New-Object System.Drawing.Point($xPage, 188)
+$script:journalPreproc.Size = New-Object System.Drawing.Size($largeurPage, ($yNouveau - 196))
 $pagePreproc.Controls.Add($script:journalPreproc)
 
 $script:preprocDossierCourant = ''

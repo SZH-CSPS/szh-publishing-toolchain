@@ -314,7 +314,15 @@ function executerPiloteManuscrit(corpsSupplementaire, envSupplementaire) {
   ]);
   fs.writeFileSync(pilote, lignes.join('\r\n') + '\r\n', 'utf8');
   // SZH_LANGUE=fr : sans elle, T suit la langue du compte qui lance les tests.
-  const env = Object.assign({}, process.env, { SZH_BASE: baseJetable, SZH_LANGUE: 'fr' }, envSupplementaire || {});
+  // Rapports, compteurs et etat par compte vers des dossiers jetables : un echec provoque ici
+  // ecrit un rapport d'erreur et un compteur, qui ne doivent JAMAIS atteindre le vrai
+  // dossier partage ni le vrai %LOCALAPPDATA%.
+  const env = Object.assign({}, process.env, {
+    SZH_BASE: baseJetable, SZH_LANGUE: 'fr',
+    SZH_RAPPORTS: path.join(travail, 'rapports'), SZH_COMPTEURS: path.join(travail, 'compteurs'),
+    LOCALAPPDATA: path.join(travail, 'localappdata'),
+  }, envSupplementaire || {});
+  fs.mkdirSync(env.LOCALAPPDATA, { recursive: true });
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
   const resultat = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
@@ -350,6 +358,7 @@ const FONCTIONS_NECESSAIRES = [
   'Get-SzhDistrosEnregistreesPreproc', 'ConvertTo-SzhCheminWsl',
   'ConvertTo-SzhCheminWindowsDepuisWsl', 'Test-SzhManuscritPret', 'Invoke-SzhManuscrit',
   'New-SzhRapportTemporaire', 'Remove-SzhRapportTemporaire', 'Show-SzhResultatPreproc',
+  'ConvertTo-SzhNettoyeurContenu', 'Send-SzhRapportNettoyeur', 'Send-SzhConstatsNettoyeur',
 ];
 const CORPS_FONCTIONS = extraireFonctions(TEXTE_PRODUIT, FONCTIONS_NECESSAIRES);
 
@@ -841,3 +850,292 @@ for (const [nomFichier, auteur, attendu] of [
       assert.deepStrictEqual(restesTemp, [], 'le dossier temporaire doit etre vide : ' + restesTemp);
     });
 }
+
+// ---- Ce que le lanceur laisse derriere un passage : compteurs et rapport d'erreur --------------
+// Le nettoyeur manipule des manuscrits : ni le texte, ni un nom de fichier, ni un chemin, ni un
+// message d'exception ne doit sortir par un rapport d'erreur ou un compteur. Chaque scenario lance
+// Invoke-SzhManuscrit contre une FAUSSE CLI dont la sortie est hostile -- des sentinelles partout
+// (nom du fichier, stderr, `detail`, `message`, `entree`, champs en trop) -- avec SZH_RAPPORTS et
+// SZH_COMPTEURS vers des dossiers jetables, puis relit ce qui y est tombe.
+//
+// Sabotages (chacun remis ensuite) :
+//  1. dans Send-SzhConstatsNettoyeur, retirer la branche `$Stats.plantage` -- le plantage ne fait plus
+//     de rapport ;  2. y passer `-Contenu $Stats` (la ligne de la CLI entiere) a la place du contenu
+//     assaini -- les sentinelles de `detail`/`message`/`entree` sortent ;  3. retirer `lecture-impossible`
+//     ou `perte-de-contenu` de la liste des refus qui font un rapport ;  4. y ajouter `suivi-modifications` --
+//     un refus attendu ferait un rapport ;  5. retirer `-not $Ok` -- le code 1 sans JSON ne fait plus de
+//     rapport ;  6. retirer la regle `-cmatch` sur `type` dans ConvertTo-SzhNettoyeurContenu -- le cas
+//     hostile sort un type libre ;  7. retirer l'appel a Send-SzhConstatsNettoyeur -- plus aucun compteur.
+const S_FICHIER = 'SENTINELLE-FICHIER-c3a9';
+const S_ERREUR = 'SENTINELLE-ERREUR-77d1';
+const S_DETAIL = 'SENTINELLE-DETAIL-2b60';
+const S_TITRE = 'SENTINELLE-TITRE-90fe';
+const SENTINELLES_LANCEUR = [S_FICHIER, S_ERREUR, S_DETAIL, S_TITRE];
+
+function sentinellesDans(texte) {
+  const bas = String(texte).toLowerCase();
+  return SENTINELLES_LANCEUR.filter((s) => bas.includes(s.toLowerCase()));
+}
+
+function lireDossier(dossier, extension) {
+  let noms = [];
+  try { noms = fs.readdirSync(dossier).filter((f) => f.endsWith(extension)).sort(); } catch (e) { noms = []; }
+  return noms.map((nom) => {
+    const texte = fs.readFileSync(path.join(dossier, nom), 'utf8');
+    return { nom, texte, json: extension === '.json' ? JSON.parse(texte) : null };
+  });
+}
+
+function mesuresDuCsv(fichier) {
+  const lignes = fichier.texte.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l).slice(1).map((l) => l.split(';'));
+  const table = {};
+  for (const c of lignes) { table[c[7]] = c[8]; }
+  return { table, passage: lignes.length ? lignes[0][6] : '', source: lignes.length ? lignes[0][5] : '', lignes };
+}
+
+const CONTENU_MANUSCRIT_ESSAI = 'contenu du manuscrit d\u2019essai ' + S_TITRE;
+const SHA12_ESSAI = require('crypto').createHash('sha256').update(CONTENU_MANUSCRIT_ESSAI).digest('hex').slice(0, 12);
+
+// Lance Invoke-SzhManuscrit (autant de fois que `appels`) et rend ce qui est tombe dans le
+// dossier des rapports et celui des compteurs. `lignesCli` : le faux manuscrit-nettoyer.py.
+function essaiConstats(lignesCli, options) {
+  const opt = options || {};
+  const travailScript = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-constats-cli-'));
+  const manuscritsDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-constats-doc-'));
+  const constats = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-constats-out-'));
+  try {
+    const manuscrit = path.join(manuscritsDir, S_FICHIER + '.docx');
+    fs.writeFileSync(manuscrit, CONTENU_MANUSCRIT_ESSAI, 'utf8');
+    const cli = opt.cliAbsente ? path.join(travailScript, S_FICHIER, 'absent.py')
+      : fabriquerScriptPython(travailScript, lignesCli);
+    const fauxWsl = fabriquerFauxWsl(travailScript);
+    const corps = [
+      '$script:journalPreproc = $journalFaux',
+      '$script:boutonPreprocDossier = New-Object System.Windows.Forms.Button',
+      'function New-SzhRapportManuscrit { param($Stats, $Produit, $CheminManuscrit, $CheminRapportJson) return "" }',
+    ];
+    if (opt.annulation) {
+      // annule = vrai des la premiere lecture, meme apres la remise a zero de Invoke-SzhManuscrit.
+      corps.push('$etat = [pscustomobject]@{}',
+        'Add-Member -InputObject $etat -MemberType ScriptProperty -Name annule -Value { $true } -SecondValue { }');
+    }
+    for (let i = 0; i < (opt.appels || 1); i++) {
+      corps.push('$resultat = Invoke-SzhManuscrit -CheminManuscrit "' + manuscrit.replace(/\\/g, '/') + '" -Produit "revue" ' +
+        '-Journal $journalFaux -NomExport "test"' + (opt.annulation ? ' -EtatAnnulation $etat' : ''));
+    }
+    corps.push('$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; journal = $journalFaux.Text }');
+    const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat(corps), {
+      SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_RAPPORTS: path.join(constats, 'rapports'), SZH_COMPTEURS: path.join(constats, 'compteurs'),
+      LOCALAPPDATA: path.join(constats, 'localappdata'),
+    });
+    assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+    assert.ok(r.r, 'aucun resultat produit - stderr : ' + r.stderr);
+    return {
+      r: r.r,
+      rapports: lireDossier(path.join(constats, 'rapports'), '.json'),
+      compteurs: lireDossier(path.join(constats, 'compteurs'), '.csv'),
+    };
+  } finally {
+    fs.rmSync(travailScript, { recursive: true, force: true });
+    fs.rmSync(manuscritsDir, { recursive: true, force: true });
+    fs.rmSync(constats, { recursive: true, force: true });
+  }
+}
+
+// Une fausse CLI hostile : stderr et stdout portent des sentinelles.
+function cliHostile(codeSortie, objetStdout, sansJson) {
+  const lignes = [
+    'import sys, json',
+    "print('entree : C:/docs/" + S_FICHIER + ".docx', file=sys.stderr)",
+    "print('titre=%r' % '" + S_TITRE + "', file=sys.stderr)",
+    "print('KeyError: " + S_ERREUR + "', file=sys.stderr)",
+  ];
+  if (!sansJson) { lignes.push('print(json.dumps(' + objetStdout + '))'); }
+  lignes.push('sys.exit(' + codeSortie + ')');
+  return lignes;
+}
+
+const COMPTEURS_CLI = "{'passage': 'abcdef012345', 'mesures': {'issue.plantage': 1, 'produit.revue': 1, 'duree_ms': 42}}";
+
+function unSeulRapport(essai, etape) {
+  assert.strictEqual(essai.rapports.length, 1, 'un seul rapport attendu : ' + JSON.stringify(essai.rapports.map((x) => x.json && x.json.etape)));
+  const j = essai.rapports[0].json;
+  assert.strictEqual(j.code, 'NETTOYEUR-ECHEC');
+  assert.strictEqual(j.source, 'lanceur');
+  assert.strictEqual(j.etape, 'nettoyeur : ' + etape);
+  assert.strictEqual(j.journal, null, 'jamais de journal joint');
+  assert.deepStrictEqual(j.fichiers, [], 'jamais de fichier joint');
+  assert.strictEqual(j.pile, null);
+  assert.ok(j.resume && j.resume.fr && j.resume.de, 'resume fr et de');
+  assert.deepStrictEqual(sentinellesDans(essai.rapports[0].texte), [], 'une sentinelle est sortie dans le rapport : ' + essai.rapports[0].texte);
+  return JSON.parse(j.message);
+}
+
+function verifierCsvSain(fichier) {
+  const m = mesuresDuCsv(fichier);
+  assert.strictEqual(m.source, 'nettoyeur');
+  assert.match(m.passage, /^[0-9a-f]{12}$/);
+  for (const c of m.lignes) {
+    assert.strictEqual(c.length, 9);
+    assert.match(c[8], /^\d+$/);
+  }
+  assert.deepStrictEqual(sentinellesDans(fichier.texte), [], 'une sentinelle est sortie dans le CSV : ' + fichier.texte);
+  return m;
+}
+
+test('plantage de la CLI (code 4) : UN NETTOYEUR-ECHEC au contenu assaini, le CSV de la CLI ecrit, aucune sentinelle',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(4, "{'plantage': True, 'type': 'KeyError', 'lieu': 'manuscrit_annoter.py:412', "
+      + "'etape': 'annotation', 'code_sortie': 4, 'entree': 'C:/docs/" + S_FICHIER + ".docx', 'detail': '" + S_DETAIL
+      + "', 'message': '" + S_ERREUR + "', 'compteurs': " + COMPTEURS_CLI + '}'));
+    assert.strictEqual(e.r.ok, false);
+    const contenu = unSeulRapport(e, 'annotation');
+    assert.deepStrictEqual(contenu, { plantage: true, type: 'KeyError', lieu: 'manuscrit_annoter.py:412', etape: 'annotation', code_sortie: 4 });
+    assert.strictEqual(e.compteurs.length, 1);
+    const m = verifierCsvSain(e.compteurs[0]);
+    assert.strictEqual(m.passage, 'abcdef012345');
+    assert.deepStrictEqual(m.table, { 'issue.plantage': '1', 'produit.revue': '1', 'duree_ms': '42' });
+    // A l'ecran, le nom du fichier choisi figure deja dans le journal (c'est voulu) ; ni le message
+    // de l'exception ni le detail n'y figurent.
+    assert.deepStrictEqual(sentinellesDans(e.r.journal + e.r.texte).filter((s) => s !== S_FICHIER), [],
+      'ni le message ni le detail a l\u2019ecran');
+  });
+
+test('plantage : le lanceur reassainit -- un type, un lieu ou une etape hors motif devient Exception / inconnu / inconnue',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(4, "{'plantage': True, 'type': 'KeyError " + S_ERREUR + "', "
+      + "'lieu': 'C:/docs/" + S_FICHIER + ".py:12', 'etape': '" + S_DETAIL + "', 'code_sortie': 4, 'compteurs': " + COMPTEURS_CLI + '}'));
+    const contenu = unSeulRapport(e, 'inconnue');
+    assert.deepStrictEqual(contenu, { plantage: true, type: 'Exception', lieu: 'inconnu', etape: 'inconnue', code_sortie: 4 });
+  });
+
+test('code 1 sans JSON (exception Python non rattrapee d\u2019une ancienne CLI) : un rapport sortie-inattendue, un compteur minimal, rien de stderr',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(1, null, true));
+    const contenu = unSeulRapport(e, 'sortie-inattendue');
+    assert.deepStrictEqual(contenu, { code_sortie: 1 });
+    assert.strictEqual(e.compteurs.length, 1);
+    const m = verifierCsvSain(e.compteurs[0]);
+    assert.strictEqual(m.passage, SHA12_ESSAI, 'le passage est le SHA-256 du fichier, calcule par le lanceur');
+    assert.deepStrictEqual(m.table, { 'issue.plantage': '1', 'produit.revue': '1' });
+  });
+
+test('code de sortie inattendu avec un JSON qui n\u2019est pas un refus : un rapport sortie-inattendue',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(9, "{'entree': 'C:/docs/" + S_FICHIER + ".docx', 'detail': '" + S_DETAIL + "'}"));
+    assert.deepStrictEqual(unSeulRapport(e, 'sortie-inattendue'), { code_sortie: 9 });
+  });
+
+test('lecture-impossible (code 3, refus) est un defaut du logiciel : un rapport {refus, code_sortie}, jamais le detail',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(3, "{'entree': 'C:/docs/" + S_FICHIER + ".docx', 'refus': True, 'code_refus': 'lecture-impossible', "
+      + "'message': 'Le fichier n a pas pu etre lu " + S_ERREUR + "', 'detail': '" + S_DETAIL + "', 'code_sortie': 3, "
+      + "'compteurs': {'passage': 'abcdef012345', 'mesures': {'issue.refus:lecture-impossible': 1, 'produit.revue': 1}}}"));
+    assert.deepStrictEqual(unSeulRapport(e, 'lecture'), { refus: 'lecture-impossible', code_sortie: 3 });
+    assert.deepStrictEqual(verifierCsvSain(e.compteurs[0]).table, { 'issue.refus:lecture-impossible': '1', 'produit.revue': '1' });
+  });
+
+test('perte-de-contenu (code 2, refus) est un defaut du logiciel : un rapport {refus, code_sortie}',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(2, "{'entree': 'C:/docs/" + S_FICHIER + ".docx', 'refus': True, 'code_refus': 'perte-de-contenu', "
+      + "'message': 'perdu " + S_TITRE + "', 'sortie_rapport': '/tmp/" + S_FICHIER + ".json', 'code_sortie': 2, "
+      + "'compteurs': {'passage': 'abcdef012345', 'mesures': {'issue.refus:perte-de-contenu': 1, 'perte_mots': 400}}}"));
+    assert.deepStrictEqual(unSeulRapport(e, 'controle-perte'), { refus: 'perte-de-contenu', code_sortie: 2 });
+    assert.deepStrictEqual(verifierCsvSain(e.compteurs[0]).table, { 'issue.refus:perte-de-contenu': '1', 'perte_mots': '400' });
+  });
+
+for (const code of ['suivi-modifications', 'fichier-verrou', 'extension-inconnue', 'conversion-impossible']) {
+  test('refus attendu ' + code + ' : AUCUN rapport d\u2019erreur, mais le compteur de la CLI est ecrit',
+    { skip: sansPowerShell || sansPython }, () => {
+      const e = essaiConstats(cliHostile(2, "{'entree': 'C:/docs/" + S_FICHIER + ".docx', 'refus': True, 'code_refus': '" + code + "', "
+        + "'message': 'phrase " + S_ERREUR + "', 'code_sortie': 2, "
+        + "'compteurs': {'passage': 'abcdef012345', 'mesures': {'issue.refus:" + code + "': 1, 'produit.revue': 1}}}"));
+      assert.strictEqual(e.r.ok, true, 'un refus est un resultat, pas un echec');
+      assert.deepStrictEqual(e.rapports, [], 'aucun rapport pour un refus attendu (' + code + ')');
+      assert.strictEqual(e.compteurs.length, 1);
+      assert.deepStrictEqual(verifierCsvSain(e.compteurs[0]).table, { ['issue.refus:' + code]: '1', 'produit.revue': '1' });
+    });
+}
+
+test('succes : aucun rapport, le compteur de la CLI est ecrit tel quel (issue.ok, regle:...)',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(0, "{'entree': 'C:/docs/" + S_FICHIER + ".docx', 'alertes_error': 0, 'alertes_warning': 1, "
+      + "'alertes_suggestion': 0, 'code_sortie': 0, 'compteurs': {'passage': 'abcdef012345', 'mesures': {'issue.ok': 1, "
+      + "'produit.revue': 1, 'regle:APA.CitationAbsente:revision': 2, 'regle:SENTINELLE texte libre:rapport': 1, 'signes': 5000}}}"));
+    assert.strictEqual(e.r.ok, true);
+    assert.deepStrictEqual(e.rapports, []);
+    const m = verifierCsvSain(e.compteurs[0]);
+    assert.deepStrictEqual(m.table, { 'issue.ok': '1', 'produit.revue': '1', 'regle:APA.CitationAbsente:revision': '2',
+      'regle:Autre:rapport': '1', 'signes': '5000' });
+  });
+
+test('environnement pas pret (la CLI est introuvable) : un rapport {echec: preparation, phase: pret}, un compteur minimal, jamais le message',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(null, { cliAbsente: true });
+    assert.strictEqual(e.r.ok, false);
+    assert.deepStrictEqual(unSeulRapport(e, 'preparation'), { echec: 'preparation', phase: 'pret' });
+    const m = verifierCsvSain(e.compteurs[0]);
+    assert.strictEqual(m.passage, SHA12_ESSAI);
+    assert.deepStrictEqual(m.table, { 'issue.plantage': '1', 'produit.revue': '1' });
+  });
+
+test('interruption voulue : aucun rapport, un compteur issue.interrompu',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(['import time', 'time.sleep(60)'], { annulation: true });
+    assert.deepStrictEqual(e.rapports, [], 'une interruption n\u2019est pas un defaut');
+    assert.strictEqual(e.compteurs.length, 1);
+    assert.deepStrictEqual(verifierCsvSain(e.compteurs[0]).table, { 'issue.interrompu': '1', 'produit.revue': '1' });
+  });
+
+test('deux plantages identiques : un seul rapport (anti-inondation de Write-SzhRapport), deux compteurs',
+  { skip: sansPowerShell || sansPython }, () => {
+    const e = essaiConstats(cliHostile(4, "{'plantage': True, 'type': 'KeyError', 'lieu': 'manuscrit_annoter.py:412', "
+      + "'etape': 'annotation', 'code_sortie': 4, 'compteurs': " + COMPTEURS_CLI + '}'), { appels: 2 });
+    assert.strictEqual(e.rapports.length, 1, 'le second rapport identique est etouffe');
+    assert.strictEqual(e.compteurs.length, 2, 'les compteurs, eux, s\u2019additionnent');
+  });
+
+test('echec du rendu de la page du rapport : un rapport {echec: rendu-rapport, type}, jamais le message de l\u2019exception',
+  { skip: sansPowerShell || sansPython }, () => {
+    const constats = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-constats-rendu-out-'));
+    try {
+      const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat([
+        '$script:journalPreproc = $journalFaux',
+        '$script:boutonPreprocDossier = New-Object System.Windows.Forms.Button',
+        'function New-SzhRapportManuscrit { param($Stats, $Produit, $CheminManuscrit, $CheminRapportJson) throw "' + S_ERREUR + ' dans C:/docs/' + S_FICHIER + '.docx" }',
+        '$res = [pscustomobject]@{ ok = $true; texte = ""; stats = ([pscustomobject]@{ entree = "/mnt/c/docs/' + S_FICHIER + '.docx"; sortie = "/mnt/c/docs/x-nettoye.docx"; alertes_error = 0; alertes_warning = 0; alertes_suggestion = 0 }); dossier = ""; produit = "revue"; alertesBloquantes = $false; manuscrit = "C:/docs/' + S_FICHIER + '.docx"; detail = ""; rapportTemporaire = "" }',
+        'Show-SzhResultatPreproc $res',
+        '$r = [ordered]@{ journal = $journalFaux.Text }',
+      ]), {
+        SZH_RAPPORTS: path.join(constats, 'rapports'), SZH_COMPTEURS: path.join(constats, 'compteurs'),
+        LOCALAPPDATA: path.join(constats, 'localappdata'),
+      });
+      assert.ok(r && r.status === 0, 'le pilote a echoue - ' + (r ? r.stderr : ''));
+      const rapports = lireDossier(path.join(constats, 'rapports'), '.json');
+      const contenu = unSeulRapport({ rapports }, 'rendu-rapport');
+      assert.deepStrictEqual(contenu, { echec: 'rendu-rapport', type: 'RuntimeException' });
+    } finally {
+      fs.rmSync(constats, { recursive: true, force: true });
+    }
+  });
+
+test('analyse statique : aucun appel qui ecrit un rapport, dans la zone Preprocessing, ne passe le texte de l\u2019onglet, le journal, un fichier ou un message d\u2019exception',
+  () => {
+    const debut = TEXTE_PRODUIT.indexOf('# ---- L\'onglet « Preprocessing »');
+    const fin = TEXTE_PRODUIT.indexOf('# ---- L\'onglet des reglages ----');
+    assert.ok(debut !== -1 && fin > debut, 'la zone Preprocessing se repere encore');
+    // Les commentaires retires, et chaque instruction ramenee sur une ligne (le backtick de fin de
+    // ligne continue l'instruction).
+    const zone = TEXTE_PRODUIT.slice(debut, fin).split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n')
+      .replace(/`\n\s*/g, ' ');
+    const appels = [...zone.matchAll(/^(?!function ).*\b(Write-SzhRapport|Send-SzhRapportNettoyeur)\b[^\n]*/gm)].map((m) => m[0]);
+    assert.ok(appels.length >= 6, 'au moins six appels reperes dans la zone (cinq envois et Write-SzhRapport) : ' + appels.length);
+    for (const a of appels) {
+      assert.ok(!/\$textePreproc|\$Resultat\.texte|\$detailPreproc|\$erreurRapportPreproc|\$dernieresLignesErreurPreproc|-Journal\b|-Fichiers\b|-Pile\b|\.Exception\.Message|\$_\.Exception\b(?!\.GetType)/.test(a),
+        'appel interdit : ' + a.trim());
+    }
+    // Le message d'un rapport est TOUJOURS le JSON compact d'un contenu assaini.
+    assert.match(zone, /-Message \(\$Contenu \| ConvertTo-Json -Compress\)/);
+  });

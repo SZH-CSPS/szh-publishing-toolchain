@@ -1393,7 +1393,11 @@ annoter le `.docx` écrit → convertir en `.odt` si `--format odt` → écrire 
   `SZH_AUTEURS_CACHE`, puis `/mnt/c/ProgramData/SZH/auteurs.json`, puis le chemin Windows. Rien
   trouvé = cas normal, jamais une panne : les trois autres signaux jouent seuls. Le lanceur
   PowerShell ne passe pas cet argument, la détection automatique le couvre ;
-- **code de sortie non nul s'il existe au moins une alerte `error`** ;
+- **codes de sortie** : `0` réussi, `1` réussi avec au moins une alerte `error`, `2` refus
+  (`refus: true`, hors lecture impossible), `3` lecture impossible (`code_refus:
+  'lecture-impossible'`, `refus: true`), **`4` plantage** (une exception Python que rien n'a
+  rattrapée : voir « Plantage et compteurs » plus bas). Un code `1` sans JSON sur stdout n'est
+  plus qu'une CLI d'avant le code `4` ;
 - une ligne JSON de statistiques sur stdout, rien d'autre sur ce flux. Les messages de
   progression vont sur stderr, une ligne par étape ;
 - **la CLI écrit explicitement en UTF-8** sur ses deux flux ;
@@ -1426,6 +1430,38 @@ vont dans `rapport['avertissements_import']`, une entrée `{code, champs, fr, de
 
 Un document porteur de **commentaires** n'est PAS refusé : comptés et signalés, ils ne survivent
 pas au nettoyage.
+
+**Plantage et compteurs.** Deux choses sortent de la CLI sans qu'un mot du manuscrit y passe :
+ni le titre, ni les auteurs, ni les courriels, ni le nom du fichier, ni le message d'une
+exception.
+
+- **Le try global.** `principal()` rattrape toute `Exception` (jamais `BaseException` : Ctrl+C et
+  `sys.exit` passent) et rend le code `4`. Sur stdout, une ligne JSON :
+  `{"plantage": true, "type": "KeyError", "lieu": "manuscrit_annoter.py:412", "etape":
+  "annotation", "code_sortie": 4, "compteurs": {…}}`. `type` est le nom de la classe ; `lieu`, le
+  DERNIER cadre de la pile qui est un fichier du dépôt (`fichier.py:ligne`, jamais un chemin) ;
+  `etape`, un nom de `ETAPES` posé par `_etape()` (`lecture`, `formatage`, `regles`, `annotation`…).
+  Une valeur qui sort du motif attendu devient `Exception` / `inconnu` / `inconnue`. **Le message de
+  l'exception n'y figure jamais**, pas plus que sur stderr : la trace complète n'y est écrite que
+  si `SZH_NETTOYEUR_TRACE` est posée, pour qui lance la CLI à la main. Les étapes déjà filets
+  (annotation restaurée, rendu HTML côté lanceur) ne sont pas des plantages.
+- **L'objet `compteurs`.** Toutes les lignes stdout (succès, alertes, refus, plantage) portent
+  `compteurs: {"passage": "<12 hex>", "mesures": {"<nom>": <entier>, …}}`. `passage` est le début
+  du SHA-256 du fichier d'entrée (le même fichier redonne le même passage, sans qu'on puisse en
+  lire quoi que ce soit). Les mesures suivent le contrat `_Systeme\compteurs` : des noms d'une
+  LISTE BLANCHE (`MESURES_NETTOYEUR`, identique à celle de `lib/compteurs.js` — un test de parité
+  la garde) plus `issue.refus:<code>` et `titres.<feuille>` (motifs étroits), des entiers
+  positifs seulement, les zéros omis. Chaque alerte finale compte pour
+  `regle:<Id>:<revision|commentaire|rapport>` (le devenir est `dans_docx`, recopié de
+  `stats_annotation['devenir']`) ; un `<Id>` qui ne suit pas `^[A-Z][A-Za-z0-9]*(\.[A-Z][A-Za-z0-9]*)+$`
+  (64 signes au plus) devient `Autre`. Un passage qui n'a pas couru jusqu'au bout (refus, plantage)
+  ne porte que `issue.*`, `produit.*`, `format.entree.odt` et `duree_ms`.
+- **Ce que le lanceur en fait.** Il recopie `compteurs` dans un CSV (`windows/szh-compteurs.ps1`, un
+  fichier par passage) et n'écrit un rapport d'erreur `NETTOYEUR-ECHEC` que pour un défaut du
+  logiciel : plantage, code de sortie inattendu, `lecture-impossible`, `perte-de-contenu`, échec du
+  rendu HTML, environnement pas prêt. Les refus attendus (`fichier-verrou`, `extension-inconnue`,
+  `suivi-modifications`, `conversion-impossible`) n'en font aucun. Le contenu du rapport est la
+  réduction de l'objet ci-dessus à des valeurs de motif vérifié, jamais stderr, jamais `detail`.
 
 **La langue de traitement** : `'fr'` pour `--produit revue`, `'de'` pour `--produit zeitschrift`
 — jamais `document.langue`. C'est cette langue qui part au filtre, aux règles et au rapport. La
@@ -1721,6 +1757,9 @@ fixtures `.docx` **fabriquées dans le test** et non figées en binaire — patr
 | `manuscrit-typo.test.js` | Sur un paragraphe dont les runs sont coupés au milieu d'un mot, le texte normalisé est réinjecté sans perdre un caractère, et un mot en italique reste en italique. Un paragraphe irreconstructible est abandonné et signalé. |
 | `manuscrit-gabarit.test.js` | La sortie relue par `pronto-lire.py` rend les champs attendus. Chaque image est dans un bloc figure, chaque tableau coiffé de sa rangée fusionnée, exactement un paragraphe vide sépare toujours deux blocs. Chaque partie XML de la sortie est bien formée. `correspondance.source` porte le vrai `Paragraphe.source` (pas une position de liste), y compris quand `blocs` est un sous-ensemble filtré — vérifié sur les onze manuscrits réels. |
 | `manuscrit-nettoyer.test.js` | Chaîne complète : refus explicites, code de sortie non nul dès une alerte `error`, langue du produit, repli typographique signalé, les quatre origines d'alertes branchées, `dans_docx` renseigné. |
+| `manuscrit-compteurs.test.js` | L'objet `compteurs` (liste blanche, entiers, `passage`) et le plantage rattrapé (code 4, `{type, lieu, etape}`), avec des sentinelles dans le titre, les auteurs, le courriel, le nom du fichier et le message de l'exception : aucune ne sort. |
+| `compteurs-ps.test.js` | L'écrivain PowerShell des compteurs : parité avec `lib/compteurs.js` (en-tête, listes blanches, normalisation), BOM/CRLF, `~$` puis renommage, deux écritures simultanées, file d'attente hors ligne, gardes de banc, ancrage passif. |
+| `manuscrit-lanceur.test.js` (fin) | Ce que le lanceur laisse derrière un passage : un `NETTOYEUR-ECHEC` par défaut du logiciel (plantage, `lecture-impossible`, `perte-de-contenu`, code inattendu, rendu, environnement), aucun pour un refus attendu, contenu réassaini, compteurs écrits, analyse statique des appels qui écrivent un rapport. |
 | `manuscrit-regles.test.js` | Le catalogue structurel seul : chaque règle porte sa référence de chapitre, un saut de niveau de titre est détecté, une bibliographie mal ordonnée l'est aussi, code de sortie non nul dès la première alerte `error`. |
 | `manuscrit-vale.test.js` | Le catalogue lexical et éditorial, porté par Vale : « personne en situation de handicap » ne lève aucune alerte, l'inversion épicène FR/DE, une URL ne déclenche jamais Epicene, `analyser()` rend `indisponible=True` proprement. |
 | `manuscrit-biblio.test.js` | `analyser_reference()`, croisement citations/références, ordre alphabétique/chronologique, DOI, Crossref (réseau toujours injecté dans les tests). |

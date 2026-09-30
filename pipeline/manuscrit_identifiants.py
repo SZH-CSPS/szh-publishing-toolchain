@@ -356,4 +356,6 @@ def enrichir_auteurs(auteurs, langue='fr', reseau=True, delai=DELAI_RESEAU_DEFAU
 
         if a_verifier:
             auteur['a_verifier'] = a_verifier
+    # Les services qui n'ont pas répondu (noms de service seulement), pour les compteurs d'usage.
+    stats['en_panne'] = sorted(en_panne)
     return alertes, stats

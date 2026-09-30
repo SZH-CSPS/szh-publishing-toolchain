@@ -95,6 +95,16 @@ const CODES = Object.freeze({
       de: 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.'
     })
   }),
+  // Le nettoyeur de manuscrit s'est arrêté sur un défaut du logiciel (plantage, lecture ou
+  // perte de contenu que rien du manuscrit n'explique, rendu du rapport, environnement
+  // inutilisable). Le rapport ne porte jamais de texte du manuscrit : type, lieu dans le dépôt,
+  // étape.
+  'NETTOYEUR-ECHEC': Object.freeze({
+    resume: Object.freeze({
+      fr: 'Le nettoyeur de manuscrit s’est arrêté sur un défaut du logiciel, sans rapport avec le contenu du manuscrit ; ce rapport n’en garde que la nature et l’endroit, jamais le texte.',
+      de: 'Der Manuskript-Bereiniger wurde durch einen Softwarefehler angehalten, der nichts mit dem Inhalt des Manuskripts zu tun hat; dieser Bericht hält nur Art und Ort fest, nie den Text.'
+    })
+  }),
 
   'RAPPORT-ECHEC-ECRITURE': Object.freeze({
     resume: Object.freeze({
