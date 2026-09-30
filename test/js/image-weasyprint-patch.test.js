@@ -1,12 +1,14 @@
-// Le correctif SZH de WeasyPrint (image/patches/weasyprint-<version>.patch) : qu'il existe
-// pour la version épinglée, et que l'image ET la CI l'appliquent au même moment — juste
-// après l'installation épinglée. Contrat de texte, sans outil : le comportement (veraPDF
-// avant/après) est éprouvé par test/weasyprint-patch.test.js dans le job pdf-ua.
+// Les correctifs SZH de WeasyPrint (image/patches/weasyprint-<version>/, un fichier par
+// sujet) : qu'ils existent pour la version épinglée, qu'ils restent indépendants les uns des
+// autres, et que l'image ET la CI les appliquent au même moment — juste après
+// l'installation épinglée. Contrat de texte, sans outil : le comportement (veraPDF
+// avant/après) est éprouvé par test/weasyprint-patch-check.py dans le job pdf-ua.
 //
-// Pourquoi ce contrat : sans le patch, un th colspan=2 laisse sa seconde colonne en
-// /Headers [] (PDF/UA-1 7.5-1) et une image alt="" + role="presentation" sort en /Figure
-// sans /Alt (7.3-1). Un Containerfile qui oublierait de l'appliquer produirait une flotte
-// non conforme sans qu'aucune ligne du pipeline ait bougé.
+// Pourquoi ce contrat : sans les patchs, un th colspan=2 laisse sa seconde colonne en
+// /Headers [] (PDF/UA-1 7.5-1), une image alt="" + role="presentation" sort en /Figure
+// sans /Alt (7.3-1), le copier-coller rend « ensei-gnants » et « lamarche », et l'en-tête
+// courant sort en MCID rattachés à rien. Un Containerfile qui oublierait de les appliquer
+// produirait une flotte non conforme sans qu'aucune ligne du pipeline ait bougé.
 'use strict';
 
 const test = require('node:test');
@@ -24,32 +26,104 @@ function versionEpinglee() {
   return m[1];
 }
 
-test('un patch existe pour la version de WeasyPrint épinglée', () => {
-  const v = versionEpinglee();
-  const fichier = path.join(IMAGE, 'patches', 'weasyprint-' + v + '.patch');
-  assert.ok(fs.existsSync(fichier),
-    'image/patches/weasyprint-' + v + '.patch absent : une montée de WeasyPrint oblige à '
-    + 'rejuger le correctif (voir l\'en-tête du patch précédent)');
+// nom du patch : fichiers visés, et une ligne que chacun introduit.
+const PATCHS = {
+  '10-tableaux-images': {
+    cibles: ['weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],
+    reperes: [/^\+def is_decorative_image\(box\):$/m, /^\+\s+j = cell\.grid_x$/m],
+  },
+  '20-cesure-fin-de-ligne': {
+    cibles: ['weasyprint/draw/text.py', 'weasyprint/layout/inline.py',
+      'weasyprint/text/ffi.py', 'weasyprint/text/line_break.py'],
+    reperes: [/^\+SOFT_HYPHEN_ACTUAL_TEXT = pydyf\.Dictionary\(\{'ActualText': pydyf\.String\('\\u00ad'\)\}\)$/m,
+      /^\+def _break_at_space\(box, skip_stack\):$/m],
+  },
+  '30-marges-artefact': {
+    cibles: ['weasyprint/draw/__init__.py', 'weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+def pagination_artifact\(self, box, page=None\):$/m,
+      /^\+\s+with stream\.pagination_artifact\(stacking_context\.box, stacking_context\.page\):$/m],
+  },
+};
+
+function dossierPatchs() {
+  return path.join(IMAGE, 'patches', 'weasyprint-' + versionEpinglee());
+}
+
+// Texte d'un patch, qu'il soit actif (.patch) ou désactivé (.patch.off).
+function lirePatch(nom) {
+  const base = path.join(dossierPatchs(), nom + '.patch');
+  const fichier = fs.existsSync(base) ? base : base + '.off';
+  return fs.readFileSync(fichier, 'utf8');
+}
+
+test('un dossier de patchs existe pour la version épinglée, sans fichier égaré', () => {
+  const d = dossierPatchs();
+  assert.ok(fs.existsSync(d), path.relative(RACINE, d) + ' absent : une montée de WeasyPrint '
+    + 'oblige à rejuger les correctifs (voir les en-têtes des patchs précédents)');
+  const fichiers = fs.readdirSync(d).sort();
+  for (const f of fichiers) {
+    assert.match(f, /\.patch(\.off)?$/, f + ' : ni .patch ni .patch.off, patch-weasyprint.sh le refuserait');
+  }
+  const noms = fichiers.map((f) => f.replace(/\.patch(\.off)?$/, ''));
+  assert.deepStrictEqual(noms, Object.keys(PATCHS));
 });
 
-test('le patch touche tags.py et stream.py, en LF, sans horodatage', () => {
-  const texte = lire('image', 'patches', 'weasyprint-' + versionEpinglee() + '.patch');
-  assert.ok(!texte.includes('\r'), 'CRLF dans le patch : patch --fuzz=0 le refuserait');
-  const cibles = [...texte.matchAll(/^\+\+\+ b\/(\S+)$/gm)].map((m) => m[1]).sort();
-  assert.deepStrictEqual(cibles, ['weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py']);
-  // Les deux corrections, repérées par ce qu'elles introduisent.
-  assert.match(texte, /^\+def is_decorative_image\(box\):$/m);
-  assert.match(texte, /^\+\s+j = cell\.grid_x$/m);
-  assert.match(texte, /^\+\s+for token in cell\.element\.attrib\.get\('headers', ''\)\.split\(\)$/m);
+test('chaque patch vise ses fichiers, en LF, sans horodatage', () => {
+  for (const [nom, attendu] of Object.entries(PATCHS)) {
+    const texte = lirePatch(nom);
+    assert.ok(!texte.includes('\r'), nom + ' : CRLF, patch --fuzz=0 le refuserait');
+    assert.ok(!/^(---|\+\+\+) \S+\t/m.test(texte), nom + ' : horodatage dans les en-têtes');
+    const cibles = [...texte.matchAll(/^\+\+\+ b\/(\S+)$/gm)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(cibles, [...attendu.cibles].sort(), nom);
+    for (const r of attendu.reperes) assert.match(texte, r, nom);
+  }
+});
+
+// Deux patchs qui touchent le même fichier ne doivent partager aucune ligne, contexte
+// compris : sans cela, l'un ne s'appliquerait plus au caractère près sans l'autre.
+test('les patchs sont indépendants : aucun hunk ne chevauche celui d\'un autre patch', () => {
+  const plages = {};  // fichier : [[début, fin, patch]] en lignes du fichier d'origine
+  for (const nom of Object.keys(PATCHS)) {
+    let fichier = null;
+    for (const ligne of lirePatch(nom).split('\n')) {
+      const m = ligne.match(/^--- a\/(\S+)$/);
+      if (m) fichier = m[1];
+      const h = ligne.match(/^@@ -(\d+)(?:,(\d+))? /);
+      if (h) {
+        const debut = Number(h[1]);
+        (plages[fichier] = plages[fichier] || []).push([debut, debut + Number(h[2] ?? 1), nom]);
+      }
+    }
+  }
+  for (const [fichier, liste] of Object.entries(plages)) {
+    liste.sort((x, y) => x[0] - y[0]);
+    for (let i = 1; i < liste.length; i++) {
+      const [a, b] = [liste[i - 1], liste[i]];
+      if (a[2] !== b[2]) {
+        assert.ok(b[0] > a[1], fichier + ' : ' + a[2] + ' (l. ' + a[0] + '-' + a[1] + ') et '
+          + b[2] + ' (l. ' + b[0] + '-' + b[1] + ') se chevauchent');
+      }
+    }
+  }
+});
+
+test('le contrôle connaît exactement les patchs du dossier', () => {
+  const c = lire('test', 'weasyprint-patch-check.py');
+  const connus = [...c.matchAll(/'(\d\d-[a-z-]+)\.patch'/g)].map((m) => m[1]).sort();
+  assert.deepStrictEqual(connus, Object.keys(PATCHS));
 });
 
 test('patch-weasyprint.sh refuse le flou, le double passage et le demi-patch', () => {
   const s = lire('image', 'patch-weasyprint.sh');
   assert.match(s, /^set -eu$/m);
-  assert.match(s, /patch --dry-run [^\n]*--forward --batch --fuzz=0/);
-  assert.match(s, /\npatch -d [^\n]*--forward --batch --fuzz=0/);
-  assert.ok(s.indexOf('--dry-run') < s.indexOf('\npatch -d'), 'le --dry-run doit précéder la pose');
-  assert.match(s, /weasyprint-\$VERSION\.patch/, 'le patch doit être choisi par la version INSTALLÉE');
+  assert.match(s, /PATCHES="\$DIR\/weasyprint-\$VERSION"/, 'les patchs doivent être choisis par la version INSTALLÉE');
+  // Passe à blanc sur une copie du paquet, tous les patchs, avant toute pose réelle.
+  const blanc = s.indexOf('patch --dry-run -d "$BANC" -p1 --forward --batch --fuzz=0');
+  const reel = s.indexOf('patch -s -d "$SITE" -p1 --forward --batch --fuzz=0');
+  assert.ok(blanc > 0 && reel > blanc, 'la passe à blanc sur la copie doit précéder la pose');
+  assert.match(s, /\*\.patch\.off\)/, 'un .patch.off doit être annoncé comme ignoré');
+  assert.match(s, /TEMOIN="\$SITE\/weasyprint\/szh-patchs\.txt"/);
+  assert.ok(s.indexOf('if [ -e "$TEMOIN" ]') < blanc, 'un témoin présent doit arrêter avant toute pose');
 });
 
 test('le Containerfile applique le patch juste après l\'installation épinglée', () => {

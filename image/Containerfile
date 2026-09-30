@@ -156,12 +156,14 @@ RUN mkdir -p /opt/icc \
        fi
 
 # ---- WeasyPrint : venv isolé, versions épinglées dans requirements.txt ----
-# Puis le correctif SZH de la version installée (patches/weasyprint-<version>.patch, voir
-# son en-tête) : en-têtes de tableau fusionnés (PDF/UA-1 7.5-1) et images décoratives
-# alt="" + role="presentation" en artefact (7.3-1). patch-weasyprint.sh fait échouer la
-# construction si le patch manque pour cette version ou ne s'applique plus au caractère
-# près — une montée de WeasyPrint oblige à le rejuger. `patch` vient de la liste apt
-# ci-dessus.
+# Puis les correctifs SZH de la version installée (patches/weasyprint-<version>/, un
+# fichier par sujet, voir leurs en-têtes) : 10 en-têtes de tableau fusionnés (PDF/UA-1
+# 7.5-1) et images décoratives en artefact (7.3-1), 20 couche texte des fins de ligne
+# (césure lue U+00AD, espace de fin de ligne gardée), 30 en-tête, pied et folio en
+# artefact de pagination. Un patch renommé en .patch.off est ignoré, et le journal le
+# dit. patch-weasyprint.sh fait échouer la construction si le dossier manque pour cette
+# version ou si un patch ne s'applique plus au caractère près — une montée de WeasyPrint
+# oblige à les rejuger. `patch` vient de la liste apt ci-dessus.
 COPY requirements.txt /tmp/requirements.txt
 COPY patch-weasyprint.sh /tmp/patch-weasyprint.sh
 COPY patches/ /tmp/patches/

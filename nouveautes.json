@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.6": {
+    "fr": {
+      "titre": "Des PDF qui se copient et se lisent correctement",
+      "points": [
+        "Un mot coupé en fin de ligne se copie désormais entier, sans son trait, et le dernier mot d’une ligne ne se colle plus au premier de la suivante.",
+        "Les lecteurs d’écran ne lisent plus l’en-tête, le pied de page et le numéro de page au milieu du texte.",
+        "La mise en page imprimée ne change pas d’un pixel.",
+        "Prévenez la personne qui administre la recherche plein texte d’OJS, qui doit désormais ôter les traits conditionnels en fin de ligne."
+      ]
+    },
+    "de": {
+      "titre": "PDF, die sich richtig kopieren und vorlesen lassen",
+      "points": [
+        "Ein am Zeilenende getrenntes Wort wird jetzt ganz und ohne Trennstrich kopiert, und das letzte Wort einer Zeile klebt nicht mehr am ersten der nächsten.",
+        "Screenreader lesen Kopfzeile, Fusszeile und Seitenzahl nicht mehr mitten im Text vor.",
+        "Das gedruckte Layout ändert sich um kein Pixel.",
+        "Die Volltextsuche von OJS muss bedingte Trennstriche am Zeilenende entfernen: Bitte informieren Sie die Person, die sie verwaltet."
+      ]
+    }
+  },
   "2.5": {
     "fr": {
       "titre": "Un gabarit par langue, et l’OpenDocument partout",

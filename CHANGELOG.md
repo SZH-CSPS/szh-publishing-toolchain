@@ -11,6 +11,37 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.6.0
+
+Medium : le texte des PDF se copie et se lit enfin correctement ; à dire à la rédaction et à
+qui tient l'index d'OJS.
+
+**Correctifs WeasyPrint en trois patchs séparés.** `image/patches/weasyprint-70.0.patch`
+devient le dossier `image/patches/weasyprint-70.0/`, un fichier par sujet, posés dans
+l'ordre de leur nom. Un patch renommé en `.patch.off` est ignoré, et le journal de
+`patch-weasyprint.sh` le dit. Le script fait une passe à blanc de tous les patchs sur une
+copie du paquet avant d'en poser un seul, et écrit la liste des patchs posés dans
+`weasyprint/szh-patchs.txt`, où `test/weasyprint-patch-check.py` la lit pour ne juger que
+ceux-là. Les 8 combinaisons ont été éprouvées une à une sur un WeasyPrint vierge : chacune
+se pose, s'importe, compile 4 articles réels au pixel près et passe veraPDF.
+
+- `10-tableaux-images` : les en-têtes de tableau fusionnés et les images décoratives, sans
+  changement.
+- `20-cesure-fin-de-ligne` : le trait ajouté par la césure est entouré d'un `/ActualText`
+  U+00AD (trait conditionnel), et une ligne coupée sur une espace garde cette espace dans la
+  couche texte. Le copier-coller rendait « ensei-gnants » et « lamarche » : seules 5 fins de
+  ligne sur 782 portaient leur espace, sur 4 articles. Le trait d'un vrai composé
+  (« Hess-Klein ») reste un trait. poppler et xpdf ne recollent plus d'eux-mêmes un mot
+  coupé en fin de ligne : un index plein texte qui passe par `pdftotext` (OJS) doit retirer
+  « U+00AD + saut de ligne » avant d'indexer.
+- `30-marges-artefact` : l'en-tête courant, le pied et le folio sortent en
+  `/Artifact /Pagination` (Header, Footer). Ils étaient du contenu marqué rattaché à aucun
+  élément de structure : 150 MCID orphelins sur 32 pages. Une boîte de marge qui porte un
+  lien reste du contenu balisé, désormais rattaché à l'arbre. Répare aussi le 7.1-3 d'une
+  boîte de marge à opacité réduite.
+
+Rendu identique au pixel. Seule la couche texte et le balisage des PDF changent.
+
 ## 2.5.0
 
 Medium : annonce à la rédaction les gabarits FR/DE et l'OpenDocument, livrés en 2.4.2.

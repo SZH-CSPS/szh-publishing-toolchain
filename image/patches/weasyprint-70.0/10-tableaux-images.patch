@@ -1,10 +1,8 @@
-Correctif SZH de WeasyPrint 70.0 — balisage PDF/UA des tableaux et des images décoratives.
+Correctif SZH de WeasyPrint 70.0, 1/3 — balisage PDF/UA des tableaux et des images décoratives.
 
-Appliqué par image/patch-weasyprint.sh à la construction de l'image (image/Containerfile)
-et par la CI (.github/workflows/ci.yml), sur le site-packages du venv WeasyPrint :
-  patch -d <site-packages> -p1 --forward --batch --fuzz=0 < weasyprint-70.0.patch
-Le nom du fichier porte la version : une montée de WeasyPrint sans patch de même version
-fait échouer la construction, un patch qui ne s'applique plus au caractère près aussi.
+Posé par image/patch-weasyprint.sh, dans l'ordre des noms, avec les autres patchs actifs de
+image/patches/weasyprint-70.0/ ; indépendant d'eux (aucune ligne de contexte commune). Pour
+le désactiver : le renommer en .patch.off.
 
 1. weasyprint/pdf/tags.py, « Link table cells to related headers » : un th n'était
    inscrit qu'à sa colonne de départ, sans parcourir colspan (ni rowspan pour un en-tête

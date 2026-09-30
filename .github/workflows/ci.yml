@@ -258,9 +258,10 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/weasyprint"
           "$RUNNER_TEMP/weasyprint/bin/pip" install --quiet -r image/requirements.txt
-          # Le correctif SZH, exactement comme image/Containerfile (en-têtes fusionnés,
-          # images décoratives) : sans lui, la porte PDF/UA jugerait un autre WeasyPrint
-          # que celui de la flotte. Échoue si le patch ne s'applique plus.
+          # Les correctifs SZH, exactement comme image/Containerfile (image/patches/
+          # weasyprint-<version>/, les .patch.off ignorés) : sans eux, la porte PDF/UA
+          # jugerait un autre WeasyPrint que celui de la flotte. Échoue si un patch ne
+          # s'applique plus.
           sh image/patch-weasyprint.sh "$RUNNER_TEMP/weasyprint/bin/python" image/patches
           # Le Makefile appelle `weasyprint` par son nom : il lui faut le PATH.
           echo "$RUNNER_TEMP/weasyprint/bin" >> "$GITHUB_PATH"
@@ -397,11 +398,13 @@ jobs:
       - name: Vérifier la table de métriques du titre
         run: python3 test/metriques-titre.py --verifier
 
-      # Le correctif SZH de WeasyPrint (image/patches/, posé à l'installation plus haut),
-      # jugé sur le résultat : veraPDF avant tout, puis l'arbre de structure. Le banc ne
-      # contient ni th fusionné ni image décorative dans un tableau : sans ce contrôle,
-      # un patch perdu ne ferait tomber aucune porte.
-      - name: Vérifier le correctif WeasyPrint (en-têtes fusionnés, images décoratives)
+      # Les correctifs SZH de WeasyPrint (image/patches/, posés à l'installation plus
+      # haut), jugés sur le résultat : veraPDF avant tout, puis l'arbre de structure et le
+      # flux. Seuls les patchs posés sont jugés (weasyprint/szh-patchs.txt). Le banc ne
+      # contient ni th fusionné ni image décorative dans un tableau, et veraPDF ne lit ni
+      # le texte des fins de ligne ni les MCID orphelins : sans ce contrôle, un patch perdu
+      # ne ferait tomber aucune porte.
+      - name: Vérifier les correctifs WeasyPrint (tableaux et images, fins de ligne, marges)
         run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" test/weasyprint-patch-check.py
 
       # Une étiquette courte ne se coupe pas (« Punk-te »), et un tableau de 9 colonnes

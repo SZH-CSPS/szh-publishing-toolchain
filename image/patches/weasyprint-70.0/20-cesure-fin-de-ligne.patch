@@ -1,0 +1,232 @@
+Correctif SZH de WeasyPrint 70.0, 2/3 — couche texte des fins de ligne.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (fichiers disjoints). Pour le désactiver : .patch.off.
+
+weasyprint/draw/text.py, layout/inline.py, text/line_break.py, text/ffi.py. Le copier-coller
+et l'extraction rendaient « ensei-gnants » (trait de césure écrit U+002D) et « lamarche »
+(l'espace de fin de ligne n'était pas dans le PDF : 5 fins de ligne sur 782 en portaient
+une, sur 4 articles de la Revue).
+- Le trait ajouté par la césure (hyphens: auto, ou &shy;) est entouré d'un
+  /Span <</ActualText (U+00AD)>> BDC … EMC, comme le veut ISO 32000-1 14.8.2.2.3 pour une
+  coupure de mot incidente. Le trait d'un vrai composé (« Hess-Klein ») coupé à son trait
+  n'est pas touché : WeasyPrint n'y ajoute rien, il reste U+002D.
+- Une ligne coupée sur une espace repliable reçoit, après son dernier glyphe, le glyphe
+  espace de sa police. Jamais après une césure, ni en fin de paragraphe, ni sur un <br>,
+  ni en white-space: pre*, ni de droite à gauche.
+Rendu identique au pixel, veraPDF PDF/UA-1 inchangé. poppler et xpdf ne recollent plus
+d'eux-mêmes un mot coupé en fin de ligne : ils ne le faisaient que pour U+002D (et ils
+recollaient aussi les vrais composés).
+
+--- a/weasyprint/draw/text.py
++++ b/weasyprint/draw/text.py
+@@ -3,17 +3,22 @@
+ from io import BytesIO
+ from xml.etree import ElementTree
+ 
++import pydyf
+ from PIL import Image
+ 
+ from ..images import RasterImage, SVGImage
+ from ..logger import LOGGER
+ from ..matrix import Matrix
+-from ..text.ffi import FROM_UNITS, TO_UNITS, ffi, pango
++from ..text.ffi import FROM_UNITS, TO_UNITS, ffi, harfbuzz, pango
+ from ..text.fonts import get_hb_object_data
+ from ..text.line_break import get_last_word_end
+ from .border import draw_line
+ from .color import get_color
+ 
++# SZH : coupure de mot incidente, ISO 32000-1 14.8.2.2.3 : le trait ajouté par la césure
++# se lit U+00AD (trait conditionnel), que les lecteurs retirent en recollant le mot.
++SOFT_HYPHEN_ACTUAL_TEXT = pydyf.Dictionary({'ActualText': pydyf.String('\u00ad')})
++
+ 
+ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
+     """Draw a textbox to a pydyf stream."""
+@@ -139,6 +144,17 @@
+     string = ''
+     x_advance = 0
+     emojis = []
++
++    # SZH : octet où commence le trait ajouté par la césure, None sinon.
++    truncated = text_overflow == 'ellipsis' or block_ellipsis != 'none'
++    hyphen_start = None
++    in_hyphen = False
++    hyphen = textbox.style['hyphenate_character']
++    if (getattr(textbox, 'hyphenated', False) and not truncated and hyphen and
++            textbox.pango_layout.text.endswith(hyphen)):
++        hyphen_start = (
++            len(textbox.pango_layout.text.encode()) - len(hyphen.encode()))
++
+     run = first_line.runs[0]
+     while run != ffi.NULL:
+         # Get Pango objects.
+@@ -171,6 +187,18 @@
+             glyph_id = glyph_info.glyph
+             width = glyph_info.geometry.width
+ 
++            # SZH : le trait de césure (fin de ligne, gauche à droite) est entouré d'un
++            # /Span /ActualText U+00AD jusqu'à la fin de la ligne. Rendu inchangé.
++            if (hyphen_start is not None and not in_hyphen and
++                    not glyph_item.item.analysis.level % 2 and
++                    glyph_item.item.offset + clusters[i] >= hyphen_start):
++                string = string[:-1] if string[-1] == '<' else string + '>'
++                if string:
++                    stream.show_text(string)
++                stream.begin_marked_content('Span', SOFT_HYPHEN_ACTUAL_TEXT)
++                in_hyphen = True
++                string = '<'
++
+             # Display zero-width empty glyph.
+             if glyph_id == pango.PANGO_GLYPH_EMPTY:
+                 string += f'>{-width / font_size}<'
+@@ -290,8 +318,29 @@
+         else:
+             string += '>'
+ 
++    # SZH : ligne coupée sur une espace (layout/inline.py) : l'espace retirée par la mise
++    # en ligne revient dans la couche texte, glyphe espace de la police de la dernière
++    # passe, après le dernier glyphe. Sans encre : aucun pixel ne bouge.
++    if (getattr(textbox, 'line_end_space', False) and hyphen_start is None and
++            not truncated and previous_pango_font is not None and
++            not textbox.pango_layout.first_line_direction % 2 and
++            not (font.bitmap or font.png or font.svg or font.colr)):
++        space = ffi.new('hb_codepoint_t *')
++        hb_font = pango.pango_font_get_hb_font(previous_pango_font)
++        if harfbuzz.hb_font_get_nominal_glyph(hb_font, 0x20, space) and space[0]:
++            space_id = space[0]
++            font.to_unicode.setdefault(space_id, ' ')
++            if space_id not in font.widths:
++                pango.pango_font_get_glyph_extents(
++                    previous_pango_font, space_id, stream.ink_rect, stream.logical_rect)
++                font.widths[space_id] = round(
++                    stream.logical_rect.width * 1000 * FROM_UNITS / font_size)
++            string += f'<{space_id:04x}>'
++
+     # Draw text.
+     stream.show_text(string)
++    if in_hyphen:
++        stream.end_marked_content()
+ 
+     return emojis
+ 
+--- a/weasyprint/layout/inline.py
++++ b/weasyprint/layout/inline.py
+@@ -195,9 +195,83 @@
+     if float_children:
+         line.children += tuple(float_children)
+ 
++    # SZH : la ligne est coupée sur une espace repliable, que le rendu retire. Le dessin
++    # la remet dans la couche texte (draw/text.py), sinon un copier-coller recolle le
++    # dernier mot de la ligne au premier de la suivante. Ni après une césure, ni en fin
++    # de paragraphe, ni sur un <br>.
++    if (resume_at is not None and not preserved_line_break and
++            _break_at_space(linebox, resume_at)):
++        textbox = _last_text_box(line)
++        if (textbox and not textbox.text[-1].isspace() and
++                textbox.style['white_space'] in ('normal', 'nowrap', 'pre-line')):
++            textbox.line_end_space = True
++
+     return line, resume_at
+ 
+ 
++def _edge_character(box, last):
++    """Dernier (ou premier) caractère d'une boîte en ligne.
++
++    '' si la boîte est vide ou hors flux, None si elle n'est pas du texte.
++
++    """
++    if isinstance(box, boxes.TextBox):
++        return box.text[-1:] if last else box.text[:1]
++    if isinstance(box, (boxes.LineBox, boxes.InlineBox)):
++        for child in (reversed(box.children) if last else box.children):
++            if (character := _edge_character(child, last)) != '':
++                return character
++        return ''
++    if not box.is_in_normal_flow():
++        return ''
++    return None
++
++
++def _break_at_space(box, skip_stack):
++    """La coupure ``skip_stack`` de ``box`` tombe-t-elle sur une espace ?"""
++    before = after = ''
++    befores, afters = [], []
++    while skip_stack and isinstance(box, (boxes.LineBox, boxes.InlineBox)):
++        (index, skip_stack), = skip_stack.items()
++        if index >= len(box.children):
++            return False
++        befores.append(box.children[:index])
++        afters.append(box.children[index + 1:])
++        box = box.children[index]
++    if isinstance(box, boxes.TextBox):
++        position = next(iter(skip_stack)) if skip_stack else 0
++        text = box.text.encode()
++        before = text[:position].decode()[-1:]
++        after = text[position:].decode()[:1]
++    else:
++        after = _edge_character(box, last=False)
++    for siblings in reversed(befores):
++        for child in reversed(siblings):
++            if before != '':
++                break
++            before = _edge_character(child, last=True)
++    for siblings in reversed(afters):
++        for child in siblings:
++            if after != '':
++                break
++            after = _edge_character(child, last=False)
++    return ' ' in (before, after)
++
++
++def _last_text_box(box):
++    """Dernière boîte de texte non vide d'une ligne, None si la ligne finit autrement."""
++    for child in reversed(box.children):
++        if isinstance(child, boxes.TextBox):
++            if child.text.strip():
++                return child
++        elif isinstance(child, (boxes.LineBox, boxes.InlineBox)):
++            if (textbox := _last_text_box(child)) is not False:
++                return textbox
++        elif child.is_in_normal_flow():
++            return None
++    return False
++
++
+ def skip_first_whitespace(box, skip_stack):
+     """Return ``skip_stack`` to start just after removable leading spaces.
+ 
+@@ -947,6 +1021,10 @@
+         box = box.copy_with_text(layout.text)
+         box.width = width
+         box.pango_layout = layout
++        if layout.hyphenated:
++            # SZH : trait ajouté par la césure, balisé au dessin (draw/text.py). Jamais
++            # remis à False : une copie de cette boîte garde son trait.
++            box.hyphenated = True
+         # "The height of the content area should be based on the font,
+         #  but this specification does not specify how."
+         # https://www.w3.org/TR/CSS21/visudet.html#inline-non-replaced
+--- a/weasyprint/text/ffi.py
++++ b/weasyprint/text/ffi.py
+@@ -22,6 +22,8 @@
+     hb_face_t * hb_face_reference (hb_face_t *face);
+     void hb_face_destroy (hb_face_t *face);
+     hb_face_t * hb_font_get_face (hb_font_t *font);
++    hb_bool_t hb_font_get_nominal_glyph (
++        hb_font_t *font, hb_codepoint_t unicode, hb_codepoint_t *glyph);
+     hb_blob_t * hb_face_reference_blob (hb_face_t *face);
+     unsigned int hb_face_get_index (const hb_face_t *face);
+     unsigned int hb_face_get_upem (const hb_face_t *face);
+--- a/weasyprint/text/line_break.py
++++ b/weasyprint/text/line_break.py
+@@ -50,6 +50,8 @@
+ 
+     width, height = line_size(first_line, style)
+     baseline = pango.pango_layout_get_baseline(layout.layout) * FROM_UNITS
++    # SZH : lu par split_text_box, pour baliser le trait de césure au dessin.
++    layout.hyphenated = hyphenated
+     layout.deactivate()
+     return layout, length, resume_at, width, height, baseline
+ 
