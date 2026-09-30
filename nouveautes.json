@@ -15,6 +15,30 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "2.7": {
+    "fr": {
+      "titre": "ROR et ORCID proposés, citations mieux reconnues",
+      "points": [
+        "Le nettoyeur de manuscrit cherche le ROR de l’institution et l’ORCID de chaque autrice et auteur. Ce qu’il trouve est inscrit dans la fiche en suivi de modifications, « à vérifier » : acceptez ou refusez comme toute autre révision.",
+        "Un ORCID n’est proposé que si le nom ET l’institution concordent. Un homonyme sans institution confirmée figure seulement dans le rapport, comme piste.",
+        "Les références coupées en plusieurs paragraphes par un copier-coller depuis un PDF sont relues d’un seul tenant : fini les « référence non vérifiée » et les fausses alertes d’ordre alphabétique qu’elles causaient.",
+        "Les noms composés (« Sahli Lozano ») et les textes de loi sans année entre parenthèses sont reconnus dans les citations.",
+        "Sans connexion, ou si un service de recherche ne répond pas, le nettoyage se fait quand même : le rapport signale simplement ce qui n’a pas pu être vérifié.",
+        "Une compilation qui échoue n’ouvre plus le terminal : la notification et la vue « Contrôles de la compilation » suffisent."
+      ]
+    },
+    "de": {
+      "titre": "ROR und ORCID vorgeschlagen, Zitate besser erkannt",
+      "points": [
+        "Der Manuskript-Bereiniger sucht den ROR der Institution und die ORCID jeder Autorin und jedes Autors. Was er findet, steht im Autorenblatt als nachverfolgte Änderung «bitte prüfen»: Nehmen Sie sie an oder lehnen Sie sie ab wie jede andere Änderung.",
+        "Eine ORCID wird nur vorgeschlagen, wenn Name UND Institution übereinstimmen. Ein Namensvetter ohne bestätigte Institution erscheint nur im Bericht, als Hinweis.",
+        "Literaturangaben, die ein Kopieren aus einem PDF auf mehrere Absätze verteilt hat, werden als Ganzes gelesen: keine «nicht überprüften» Einträge und keine falschen Warnungen zur alphabetischen Reihenfolge mehr.",
+        "Mehrteilige Namen («Sahli Lozano») und Gesetzestexte ohne Jahr in Klammern werden in Zitaten erkannt.",
+        "Ohne Verbindung, oder wenn ein Suchdienst nicht antwortet, wird trotzdem bereinigt: Der Bericht meldet nur, was nicht geprüft werden konnte.",
+        "Eine fehlgeschlagene Kompilierung öffnet das Terminal nicht mehr: die Benachrichtigung und die Ansicht «Kontrollen der Kompilierung» genügen."
+      ]
+    }
+  },
   "2.6": {
     "fr": {
       "titre": "Des PDF qui se copient et se lisent correctement",

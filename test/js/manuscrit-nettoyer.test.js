@@ -1275,3 +1275,29 @@ test('manuscrit-nettoyer.py : rapport.identifiants présent en cas B, aucune req
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+// Une recherche en ligne en panne ne bloque pas le nettoyage, mais elle doit se voir au
+// rapport : sans cela, « aucun DOI trouvé » passe pour un résultat.
+test('manuscrit-nettoyer.py : recherche en ligne en panne -> un avertissement au rapport, '
+  + 'rien sinon', { skip: sansPython }, () => {
+  const programme = [
+    'import importlib.util, json, sys',
+    'sys.path.insert(0, sys.argv[1])',
+    'spec = importlib.util.spec_from_file_location("nettoyeur_reseau", sys.argv[2])',
+    'mod = importlib.util.module_from_spec(spec)',
+    'spec.loader.exec_module(mod)',
+    'print(json.dumps({',
+    '  "rien": mod._alerte_recherche_impossible(False, False, "fr"),',
+    '  "doi": mod._alerte_recherche_impossible(True, False, "fr"),',
+    '  "tout_de": mod._alerte_recherche_impossible(True, True, "de")}))',
+  ].join('\n');
+  const r = python(['-c', programme, PIPELINE, NETTOYEUR]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const obj = JSON.parse(r.stdout);
+  assert.strictEqual(obj.rien, null);
+  assert.strictEqual(obj.doi.rule, 'Reseau.RechercheImpossible');
+  assert.strictEqual(obj.doi.action, 'report');
+  assert.ok(obj.doi.message.indexOf('DOI') !== -1 && obj.doi.message.indexOf('ORCID') === -1,
+    obj.doi.message);
+  assert.ok(obj.tout_de.message.indexOf('DOI sowie ROR und ORCID') !== -1, obj.tout_de.message);
+});

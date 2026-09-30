@@ -95,7 +95,7 @@ const TEXTES_COCKPIT = {
     // Repli : ce message ne sort que si le journal de compilation n'a rien à dire.
     // Quand il a quelque chose, c'est la vue « Contrôles de la compilation » qui parle,
     // et elle nomme la cause. L'ancien texte renvoyait au panneau du terminal, que
-    // `reveal: silent` n'ouvre jamais.
+    // `reveal: never` n'ouvre jamais.
     'err.build': 'La compilation n’a pas abouti, et la chaîne n’a rien dit de plus. Enregistrez à nouveau (Ctrl+S) pour réessayer ; si cela se reproduit, signalez-le. Vos textes n’ont pas été touchés.',
     'err.import': 'La conversion des documents Word n’a pas abouti. Les fichiers sont restés dans « articles-word » : rien n’est perdu. Réessayez ; si cela se reproduit, signalez-le avec le document en cause.',
     'err.export': 'La recompilation complète n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le. Vos textes, vos images et vos métadonnées n’ont pas été touchés.',

@@ -236,6 +236,27 @@ def _alerte_langue_produit(document_langue, langue):
             'message': message}
 
 
+def _alerte_recherche_impossible(crossref_en_panne, identifiants_en_panne, langue):
+    """Une recherche en ligne n'a pas abouti (pas de connexion, service muet) : le nettoyage
+    est fait, mais « aucun DOI/ROR/ORCID trouvé » ne veut alors rien dire. Rend None sinon."""
+    if not (crossref_en_panne or identifiants_en_panne):
+        return None
+    if langue == 'fr':
+        quoi = [q for q, panne in (('DOI', crossref_en_panne),
+                                   ('ROR et ORCID', identifiants_en_panne)) if panne]
+        message = ("La recherche en ligne des %s n’a pas abouti (pas de connexion ou service "
+                   "indisponible) : le manuscrit est nettoyé, mais ces identifiants n’ont "
+                   "pas été vérifiés. Relancez plus tard." % ' et des '.join(quoi))
+    else:
+        quoi = [q for q, panne in (('DOI', crossref_en_panne),
+                                   ('ROR und ORCID', identifiants_en_panne)) if panne]
+        message = ("Die Online-Suche nach %s ist fehlgeschlagen (keine Verbindung oder Dienst "
+                   "nicht erreichbar): Das Manuskript ist bereinigt, diese Kennungen wurden aber "
+                   "nicht geprüft. Versuchen Sie es später erneut." % ' sowie '.join(quoi))
+    return {'rule': 'Reseau.RechercheImpossible', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
+
+
 def _alerte_repli_typo():
     """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
     dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
@@ -1243,6 +1264,11 @@ def principal(argv):
     alertes_biblio, stats_biblio = mb.analyser_bibliographie(
         paragraphes_corps_module, paragraphes_biblio_module, langue, reseau=not args['sans_reseau'])
     _marquer_notes_dans_alertes(alertes_biblio, correspondance_notes_vale)
+    alerte_reseau = _alerte_recherche_impossible(
+        mb._hors_service, bool(stats_identifiants and stats_identifiants['indisponible']), langue)
+    if alerte_reseau:
+        alertes_manuelles.append(alerte_reseau)
+        progres(alerte_reseau['message'])
 
     alertes = _trier_alertes(alertes_regles + alertes_vale + alertes_biblio
                               + alertes_typo_reprises + alertes_manuelles)

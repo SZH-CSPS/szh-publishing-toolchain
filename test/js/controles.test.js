@@ -4,8 +4,8 @@
 //   node --test "test/js/*.test.js"
 //
 // Le défaut corrigé ici est un silence : la chaîne détectait une dizaine de choses et les
-// écrivait sur la sortie d'erreur d'un terminal que « reveal: silent » n'ouvre jamais. Un
-// silence ne se prouve pas en lisant le code, il se prouve en montrant la phrase à l'écran.
+// écrivait sur la sortie d'erreur d'un terminal resté fermé (« reveal: never » ; « silent »
+// l'ouvrait dès un échec). Un silence ne se prouve pas en lisant le code, il se prouve en montrant la phrase à l'écran.
 //
 // Trois familles de contrôle, du plus pur au plus complet :
 //
@@ -688,7 +688,10 @@ test('les tâches livrées écrivent bien le journal que le cockpit relit', () =
   // `tee` continuerait d'écrire dans un fichier effacé.
   assert.ok(src.indexOf('tee out/') === -1, 'le journal est sous out/, que le clean supprime');
   // Et le terminal reste fermé : c'est l'interface qui parle.
-  assert.ok(src.indexOf('"reveal": "silent"') !== -1, 'un terminal s’ouvre sous le nez du rédacteur');
+  // « silent » ne suffit pas : VSCodium ouvre alors le terminal dès que la tâche échoue.
+  assert.strictEqual((src.match(/"reveal": "never"/g) || []).length, taches.length,
+    'un terminal s’ouvre sous le nez du rédacteur');
+  assert.ok(!/"reveal": "(silent|always)"/.test(src), 'un terminal s’ouvre sous le nez du rédacteur');
 });
 
 // ---- La vue branchée sur lib/constats.js -------------------------------------------

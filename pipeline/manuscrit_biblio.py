@@ -1272,6 +1272,25 @@ def doi_normaliser(ref):
 #
 # `_requete` est le point d'injection : les tests le remplacent, jamais un vrai appel.
 
+# Crossref hors service (pas de connexion, délai dépassé) : plus aucune requête jusqu'à la fin
+# de l'analyse. Sans cela, un service muet coûte le délai à chaque référence. Un code HTTP
+# (404 d'un DOI inconnu) n'est pas une panne.
+_hors_service = False
+
+
+def _interroger(url, delai):
+    global _hors_service
+    if _hors_service:
+        return None
+    try:
+        return _requete(url, delai)
+    except urllib.error.HTTPError:
+        return None
+    except Exception:
+        _hors_service = True
+        return None
+
+
 def _requete(url, delai):
     req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'application/json'})
     with urllib.request.urlopen(req, timeout=delai) as reponse:
@@ -1304,9 +1323,8 @@ def resoudre_crossref(ref, delai=DELAI_RESEAU_DEFAUT):
         return None
     numero = re.sub(r'^https?://(?:dx\.)?doi\.org/', '', doi, flags=re.IGNORECASE)
     url = CROSSREF_BASE + '/works/' + urllib.parse.quote(numero, safe='/')
-    try:
-        brut = _requete(url, delai)
-    except Exception:
+    brut = _interroger(url, delai)
+    if brut is None:
         return None
     try:
         message = json.loads(brut)['message']
@@ -1347,9 +1365,8 @@ def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
     requete = '%s %s %s' % (ref['titre'], ref['auteurs'][0]['nom'], ref['annee'])
     url = CROSSREF_BASE + '/works?' + urllib.parse.urlencode(
         {'query.bibliographic': requete, 'rows': 3})
-    try:
-        brut = _requete(url, delai)
-    except Exception:
+    brut = _interroger(url, delai)
+    if brut is None:
         return None
     try:
         items = json.loads(brut)['message']['items']
@@ -1611,6 +1628,8 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
              'analysees_basse': 0, 'citations': 0, 'citees_absentes': 0, 'non_citees': 0,
              'doi_normalises': 0, 'doi_retrouves': 0, 'non_proposees': [],
              'crossref': {'consultes': 0, 'confirmes': 0, 'divergents': 0, 'indisponible': not reseau}}
+    global _hors_service
+    _hors_service = False
 
     # `references` : une entrée par RÉFÉRENCE (morceaux réunis) — croisement, appels non
     # vérifiés, ordre. `par_paragraphe` : une entrée par PARAGRAPHE, seule ancre possible d'une

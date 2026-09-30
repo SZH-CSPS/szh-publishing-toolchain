@@ -920,6 +920,39 @@ test('resoudre_crossref : confirme quand auteur/année/titre concordent, diverge
   assert.strictEqual(r.divergent.confirme, false);
 });
 
+test('Crossref muet : une seule tentative par analyse, un 404 n’éteint rien',
+  { skip: sansPython }, () => {
+  const programme = [
+    'import urllib.error',
+    'appels = []',
+    "def requete_morte(url, delai):",
+    "    appels.append(url)",
+    "    raise urllib.error.URLError('timed out')",
+    'mb._requete = requete_morte',
+    "refs = [{'doi': 'https://doi.org/10.1/x%d' % i, 'auteurs': [{'nom': 'X', 'initiales': 'A.'}],",
+    "         'annee': 2020, 'titre': 'T'} for i in range(3)]",
+    'resultats = [mb.resoudre_crossref(r) for r in refs]',
+    'n_mort = len(appels)',
+    "biblio = [{'source': 1, 'texte': 'X, A. (2020). T. Revue, 1(2), 3-4. https://doi.org/10.1/y'}]",
+    "mb.analyser_bibliographie([], biblio, 'fr', reseau=True)",
+    'n_apres_remise = len(appels) - n_mort',
+    'appels.clear()',
+    "def requete_404(url, delai):",
+    "    appels.append(url)",
+    "    raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)",
+    'mb._hors_service = False',
+    'mb._requete = requete_404',
+    'resultats_404 = [mb.resoudre_crossref(r) for r in refs]',
+    'print(json.dumps({"resultats": resultats, "n_mort": n_mort,',
+    '                  "n_apres_remise": n_apres_remise, "n_404": len(appels)}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.deepStrictEqual(r.resultats, [null, null, null]);
+  assert.strictEqual(r.n_mort, 1, 'un service muet coûte le délai à chaque référence');
+  assert.ok(r.n_apres_remise >= 1, 'une nouvelle analyse doit retenter Crossref');
+  assert.strictEqual(r.n_404, 3, 'un DOI inconnu (404) a éteint Crossref');
+});
+
 test('resoudre_crossref : sans DOI, ne consulte jamais le réseau (rend None)',
   { skip: sansPython }, () => {
   const programme = [

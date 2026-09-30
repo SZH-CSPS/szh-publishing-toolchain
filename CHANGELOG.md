@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.7.0
+
+**ROR et ORCID dans le nettoyeur.** Pour un manuscrit hors gabarit (cas B), le nettoyeur
+cherche le ROR de l'institution de chaque autrice et auteur (`api.ror.org`, seul le résultat
+`chosen` est retenu) et son ORCID (`pub.orcid.org`, nom identique ET institution
+concordante, un seul candidat). Les valeurs trouvées sont écrites dans la fiche en révision
+suivie, auteur « Recherche ROR/ORCID — à vérifier » (DE « ROR/ORCID-Suche — bitte prüfen »),
+et chacune a sa ligne au rapport. Un homonyme sans institution confirmée n'est jamais écrit :
+`Identifiants.OrcidCandidat` au rapport. Un ORCID du manuscrit est contrôlé (clé, nom), jamais
+remplacé. Seuls nom, prénom et institution partent sur le réseau ; `--sans-reseau` coupe tout.
+Nouveau module `pipeline/manuscrit_identifiants.py`.
+
+**Bibliographie : références coupées, noms composés, textes de loi.** Les paragraphes qui
+prolongent une référence (copier-coller depuis un PDF) sont réunis avant le croisement :
+sur un manuscrit réel, trois « référence non vérifiée » et neuf fausses alertes d'ordre
+disparaissent. Les noms composés (« Sahli Lozano et al. (2021) », « (Sahli Lozano & Crameri,
+2021) ») s'apparient. Une référence sans année entre parenthèses (texte de loi) donne un
+commentaire à vérifier au lieu d'une erreur « citation absente ».
+
+**Recherches en ligne en panne.** Sans connexion ou avec un service muet, le nettoyage se
+fait quand même : chaque service (Crossref, ROR, ORCID) n'est tenté qu'une fois par manuscrit
+puis laissé de côté (13 s au lieu de 37 s mesurés sur un manuscrit de 16 références), et
+l'avertissement `Reseau.RechercheImpossible` dit au rapport ce qui n'a pas été vérifié.
+
+**Plus de terminal à l'échec.** Les tâches passent de `reveal: silent` à `reveal: never` :
+`silent` ouvrait le terminal dès qu'une compilation échouait, par-dessus la notification.
+
 ## 2.6.1
 
 **Note des figures et des tableaux.** Une nouvelle clé « Note : » (DE « Notiz: ») dans

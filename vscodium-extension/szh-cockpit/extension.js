@@ -1867,7 +1867,7 @@ function tacheMakeArticle(racine, slug) {
     { type: 'szh', cible: 'article', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.exportArticle') + ' — ' + slug, 'SZH', execution, []);
   tache.presentationOptions = {
-    reveal: vscode.TaskRevealKind.Silent, showReuseMessage: false,
+    reveal: vscode.TaskRevealKind.Never, showReuseMessage: false,
     clear: true, panel: vscode.TaskPanelKind.Shared
   };
   return tache;
@@ -3299,9 +3299,9 @@ function lireRapportImport(racine) {
 // ---- Contrôles de la compilation ------------------------------------------------
 //
 // La chaîne repère une dizaine de choses à chaque compilation, et tout partait sur la
-// sortie d'erreur d'un terminal que `reveal: silent` n'ouvre jamais. Les tâches écrivent
-// désormais leur sortie dans <numéro>/.szh-journal.log (vscodium-user/tasks.json), et
-// lib/journal.js la traduit en constats. Ici : les relire à la fin de chaque tâche, les
+// sortie d'erreur d'un terminal. Les tâches sont en `reveal: never` (`silent` ouvrait le
+// terminal dès un échec) et écrivent leur sortie dans <numéro>/.szh-journal.log
+// (vscodium-user/tasks.json) ; lib/journal.js la traduit en constats. Ici : les relire à la fin de chaque tâche, les
 // dire une fois, et les garder à portée de clic.
 //
 // Rien de neuf à l'écran : la vue est la vue d'ensemble des autres sections
