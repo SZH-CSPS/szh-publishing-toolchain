@@ -693,3 +693,22 @@ test('galley-docx : un Div à deux classes dont szh-description disparaît enti�
   const md = pandoc(GALLEY_MIXTE, { de: 'html', vers: 'markdown', filtres: ['szh-galley-docx.lua'] });
   assert.ok(!/Cas mixte a retirer/.test(md), 'le Div mixte a survécu en partie ou en totalité : ' + md);
 });
+
+// Notes du galley : szh-notes.lua pose chaque note en <span class="szh-note"> a l'endroit
+// de l'appel (float: footnote). Lu tel quel, le texte de la note restait dans la phrase ;
+// le filtre en refait une Note, que le writer docx ecrit en note de bas de page Word.
+const GALLEY_NOTE = '<p>Texte<span class="szh-note">Note <em>en italique</em> et '
+  + '<a href="https://www.szh.ch">un lien</a>.</span> suite.</p>'
+  + '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>Cellule<span class="szh-note">'
+  + 'Note de cellule.</span></td></tr></tbody></table>';
+
+test('galley-docx : une note szh-note redevient une Note, a sa place, sans residu', () => {
+  const natif = pandoc(GALLEY_NOTE, { de: 'html', vers: 'native', filtres: ['szh-galley-docx.lua'] });
+  assert.strictEqual((natif.match(/\bNote\b\s*\[/g) || []).length, 2, natif);
+  assert.ok(!/szh-note/.test(natif), 'un Span szh-note a survecu : ' + natif);
+  assert.match(natif, /Emph/, 'l\'italique de la note est perdu : ' + natif);
+  assert.match(natif, /Link/, 'le lien de la note est perdu : ' + natif);
+  // Le texte de la phrase continue apres l'appel, et la note n'y est plus.
+  const md = pandoc(GALLEY_NOTE, { de: 'html', vers: 'markdown', filtres: ['szh-galley-docx.lua'] });
+  assert.match(md, /Texte\[\^1\] suite\./, md);
+});
