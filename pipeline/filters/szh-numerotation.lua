@@ -886,8 +886,9 @@ function Pandoc(doc)
       if numerote then n_tableau = n_tableau + 1 end
       if id_desc then
         -- Description longue : élément masqué visuellement — jamais display:none, sinon
-        -- les lecteurs d'écran l'ignoreraient — placé juste après le tableau. print.css le
-        -- retire en @media print, WeasyPrint ne transportant pas aria-describedby.
+        -- les lecteurs d'écran l'ignoreraient — placé juste après le tableau. Le même
+        -- masquage vaut pour le PDF (partage-filtres.css) : WeasyPrint ne transporte pas
+        -- aria-describedby, mais il balise le texte rogné juste après le /Table.
         -- <div> et non <p> : le lecteur html de pandoc ne conserve les classes que sur les
         -- <div> et <span>, et c'est cette classe qui permet à szh-galley-docx.lua de
         -- retirer le bloc du galley Word.

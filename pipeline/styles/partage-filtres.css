@@ -46,17 +46,20 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
 
 /* Description longue d'un tableau (aria-describedby), posée par szh-numerotation.lua.
    Masquée visuellement mais présente dans l'arbre d'accessibilité : display:none la
-   retirerait aussi des lecteurs d'écran. Le masquage est un dispositif d'écran, donc écrit
-   dans @media screen, que WeasyPrint n'applique pas. En @media print l'élément est retiré :
-   WeasyPrint ne transporte pas aria-describedby dans le PDF. */
-@media screen {
-  .szh-description {
-    position: absolute; width: 1px; height: 1px;
-    margin: -1px; padding: 0; border: 0; overflow: hidden;
-    clip-path: inset(50%); white-space: nowrap;
-  }
+   retirerait aussi des lecteurs d'écran. Le même masquage vaut pour le PDF (30.09.2026) :
+   WeasyPrint ne transporte pas aria-describedby, mais il compose le texte dans une boîte de
+   1 px à overflow:hidden, rogné à l'impression, et le balise en /Div > /Span juste après le
+   /Table, dans la même boîte. Mesuré : 0 px de différence au rendu, texte présent dans
+   l'arbre de structure, veraPDF PDF/UA-1 conforme. Avant, `display: none` en @media print
+   le retirait du PDF, et un lecteur d'écran n'en avait rien.
+   `clip-path` reste réservé à l'écran : WeasyPrint ne le connaît pas et l'écrirait en
+   avertissement dans le journal de chaque compilation. */
+.szh-description {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0; overflow: hidden;
+  white-space: nowrap;
 }
-@media print { .szh-description { display: none; } }
+@media screen { .szh-description { clip-path: inset(50%); } }
 
 /* ── Grille d'images ──────────────────────────────────────────────────────────
    Une figure, plusieurs images : filters/szh-grille.lua compose le bloc en rangées et
