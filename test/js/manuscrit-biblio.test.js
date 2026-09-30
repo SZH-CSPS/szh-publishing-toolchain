@@ -1322,3 +1322,171 @@ test('analyser_bibliographie : reseau=False ne tente jamais Crossref', { skip: s
   assert.strictEqual(r.stats.crossref.indisponible, true);
   assert.deepStrictEqual(r.appele, []);
 });
+
+// ---------------------------------------------------------------------------------
+// 8. Manuscrit Sahli Lozano et al. (tmp/origf_Sahli Lozano et al.docx) : noms composés,
+// références coupées sur plusieurs paragraphes, textes juridiques sans année entre parenthèses.
+
+// Les références telles que le manuscrit les porte (auteurs, année, titre : réels).
+const REFS_SAHLI = [
+  'Sahli Lozano, C. (2019). Haltung von Lehrpersonen gegenüber schulischer Inklusion. '
+    + 'Berner Schule, 152 (5), 26-30.',
+  'Sahli Lozano, C., Crameri, S. & Gosteli, D. A. (2021). Integrative und separative '
+    + 'schulische Massnahmen in der Schweiz (InSeMa). Edition SZH/CSPS.',
+  'Sahli Lozano, C., Wüthrich, S., Schneider, S., Frei, L., Setz, F. & Wicki, M. (2026). '
+    + 'Aktuelle Forschungsprojekte. Edition SZH/CSPS.',
+];
+
+function croiserTextes(textes, refsTexte) {
+  const programme = [
+    'textes = json.loads(' + JSON.stringify(JSON.stringify(textes)) + ')',
+    'refs_texte = json.loads(' + JSON.stringify(JSON.stringify(refsTexte)) + ')',
+    'references = []',
+    'for i, t in enumerate(refs_texte):',
+    "    r = mb.analyser_reference(t, 'de')",
+    "    r['para'] = 100 + i",
+    "    r['texte'] = t",
+    '    references.append(r)',
+    'sortie = []',
+    'for t in textes:',
+    "    citations = mb.citations_du_corps([{'source': 1, 'texte': t}])",
+    '    sortie.append({"texte": t, "citations": len(citations), '
+      + '"alertes": [a for a in mb.croiser(citations, references) '
+      + "if a['rule'] != 'APA.ReferenceNonCitee']})",
+    'print(json.dumps(sortie))',
+  ].join('\n');
+  return executer(programme);
+}
+
+test('croiser : un nom composé (« Sahli Lozano ») s\'apparie en narratif, en parenthèse, '
+  + 'avec « et al. » collé ou non à l\'année', { skip: sansPython }, () => {
+  const textes = [
+    'Sahli Lozano et al. (2021) zeigen, dass',
+    'Nach Sahli Lozano et al. (2021) gilt',
+    'Wie Sahli Lozano und Kollegen (2019) zeigen',
+    'Sahli Lozano (2019) schreibt',
+    'Dies erfolgt (Sahli Lozano et al., 2026).',
+    'Dies erfolgt (Sahli Lozano et al. 2021).',
+    'Dies erfolgt (Sahli Lozano et al. 2021).',
+    'Dies erfolgt (Sahli Lozano et al., 2026, S. 12).',
+  ];
+  for (const r of croiserTextes(textes, REFS_SAHLI)) {
+    assert.ok(r.citations >= 1, 'citation non lue : ' + r.texte);
+    assert.deepStrictEqual(r.alertes.filter((a) => a.rule === 'APA.CitationAbsente'), [],
+      'nom composé non apparié : ' + r.texte + ' -> ' + JSON.stringify(r.alertes));
+  }
+});
+
+test('croiser : nom composé suivi d\'un second auteur — appariée, et le « et al. » manquant '
+  + 'est suggéré avec le nom COMPLET', { skip: sansPython }, () => {
+  const [r] = croiserTextes(['Dies erfolgt (Sahli Lozano & Crameri, 2021).'], REFS_SAHLI);
+  assert.deepStrictEqual(r.alertes.map((a) => a.rule), ['APA.EtAl'], JSON.stringify(r.alertes));
+  assert.strictEqual(r.alertes[0].suggested, 'Sahli Lozano et al. (2021)');
+});
+
+test('croiser : un nom composé INCONNU de la bibliographie reste absent, et l\'indice d\'année '
+  + 'nomme le nom complet', { skip: sansPython }, () => {
+  const [inconnu, autre] = croiserTextes([
+    'Nach Muster Inconnu et al. (2021) gilt',
+    'Nach Sahli Lozano et al. (2022) gilt',
+  ], REFS_SAHLI);
+  assert.deepStrictEqual(inconnu.alertes.map((a) => a.rule), ['APA.CitationAbsente']);
+  assert.deepStrictEqual(autre.alertes.map((a) => a.rule), ['APA.CitationAbsente']);
+  assert.match(autre.alertes[0].message, /Sahli Lozano/);
+  assert.match(autre.alertes[0].message, /2019, 2021, 2026/);
+});
+
+// Les références coupées du manuscrit, telles que Word les porte : une ligne = un paragraphe,
+// la suite commence par une minuscule, un chiffre, ou après un tiret.
+const BIBLIO_COUPEE = [
+  { source: 70, texte: 'Brägger, M. (2024). Die Berufszufriedenheit der Deutschschweizer '
+    + 'Lehrerinnen und Lehrer. Büro Brägger.' },
+  { source: 72, texte: 'www.edudoc.ch' },
+  { source: 73, texte: 'Bundesgesetz über die Beseitigung von Benachteiligungen von Menschen '
+    + 'mit Behinderungen (Behindertengleichstellungsgesetz, BehiG) vom 13. Dezember 2002, '
+    + 'SR 151.3.' },
+  { source: 74, texte: 'Collie, R. J., Shapka, J. D. & Perry, N. E. (2012). School climate '
+    + 'and social–emotional learning: Predicting' },
+  { source: 75, texte: 'teacher stress, job satisfaction, and teaching efficacy. Journal of '
+    + 'Educational Psychology, 104 (4),1189-' },
+  { source: 76, texte: '1204. DOI: 10.1037/a0029356' },
+  { source: 80, texte: 'Keller-Schneider, M. & Schneider Boye, S. (2023). '
+    + 'Lehrpersonenmangel—Fakten, Mythen, Leerstellen. BzL –' },
+  { source: 81, texte: 'Beiträge zur Lehrerinnen- und Lehrerbildung, 41 (3), 355-368. '
+    + 'DOI: 10.36950/bzl.41.3.2023.10356' },
+  { source: 82, texte: 'Lepine, J. A., Podsakoff, N. P. & Lepine, M. A. (2005). A '
+    + 'Meta-Analytic Test of the Challenge Stressor–' },
+  { source: 83, texte: 'Hindrance Stressor Framework: An Explanation for Inconsistent '
+    + 'Relationships Among Stressors and' },
+  { source: 84, texte: 'Performance. Academy of Management Journal, 48 (5), 764-775. '
+    + 'DOI: 10.5465/amj.2005.18803921' },
+  { source: 93, texte: 'Übereinkommen vom 13. Dezember 2006 über die Rechte von Menschen mit '
+    + 'Behinderungen (UN-BRK) vom 13. Dezember 2006. https://www.fedlex.admin.ch/eli/cc/2014/245/de' },
+];
+
+test('_fusionner_continuations : les morceaux d\'une référence coupée se rejoignent, une '
+  + 'entrée sans année qui commence une référence reste seule', { skip: sansPython }, () => {
+  const programme = [
+    'biblio = json.loads(' + JSON.stringify(JSON.stringify(BIBLIO_COUPEE)) + ')',
+    'biblio.append({"source": 94, "texte": "de Chambrier, A.-F. (2020). Un titre. Revue X, 1(1), 1-2."})',
+    'biblio.append({"source": 95, "texte": "[Photo portrait en fichier attaché]"})',
+    'e = mb._fusionner_continuations(biblio)',
+    'print(json.dumps([[x["source"], [f["source"] for f in x["fragments"]], x["texte"]] for x in e]))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.deepStrictEqual(r.map((x) => [x[0], x[1]]), [
+    [70, [70, 72]], [73, [73]], [74, [74, 75, 76]], [80, [80, 81]], [82, [82, 83, 84]],
+    [93, [93]], [94, [94]], [95, [95]],
+  ]);
+  const collie = r.find((x) => x[0] === 74)[2];
+  assert.match(collie, /Predicting teacher stress/);
+  assert.match(collie, /104 \(4\),1189-1204\. DOI: 10\.1037\/a0029356$/,
+    'le tiret de plage de pages se colle au chiffre suivant : ' + collie);
+  assert.match(r.find((x) => x[0] === 82)[2], /Stressor–Hindrance Stressor Framework/);
+  assert.match(r.find((x) => x[0] === 80)[2], /BzL – Beiträge zur/);
+});
+
+test('analyser_bibliographie : une référence coupée sur trois paragraphes est analysée ENTIÈRE '
+  + '(pas de « format non reconnu », pas d\'ordre faussé, DOI ancré sur son paragraphe)',
+  { skip: sansPython }, () => {
+    const programme = [
+      'biblio = json.loads(' + JSON.stringify(JSON.stringify(BIBLIO_COUPEE)) + ')',
+      "corps = [{'source': 9, 'texte': 'Motivation (Lepine et al., 2005), "
+        + "(Keller-Schneider & Schneider Boye, 2023), (Brägger, 2024).'}]",
+      "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'de', reseau=False)",
+      'print(json.dumps({"alertes": alertes, "stats": stats}))',
+    ].join('\n');
+    const r = executer(programme);
+    const regles = (n) => r.alertes.filter((a) => a.rule === n);
+    assert.strictEqual(r.stats.references, 6);
+    assert.deepStrictEqual(regles('APA.ReferenceNonVerifiee'), [],
+      JSON.stringify(regles('APA.ReferenceNonVerifiee')));
+    assert.deepStrictEqual(regles('APA.OrdreBiblio'), []);
+    assert.deepStrictEqual(regles('APA.CitationAbsente'), []);
+    // Un DOI reste corrigé sur le paragraphe qui le porte, pas sur le premier morceau.
+    assert.deepStrictEqual(regles('APA.DoiForme').map((a) => a.para).sort(), [76, 81, 84]);
+    // Une référence jamais citée porte le texte de son PREMIER paragraphe.
+    const nonCitee = regles('APA.ReferenceNonCitee').find((a) => a.para === 74);
+    assert.ok(nonCitee, 'Collie n\'est pas citée : ' + JSON.stringify(r.alertes));
+    assert.strictEqual(nonCitee.found, BIBLIO_COUPEE[3].texte);
+  });
+
+test('croiser : un texte juridique cité par son sigle s\'apparie à sa référence sans année '
+  + 'entre parenthèses, et reçoit un commentaire « non vérifiée », jamais une erreur',
+  { skip: sansPython }, () => {
+    const programme = [
+      'biblio = json.loads(' + JSON.stringify(JSON.stringify(BIBLIO_COUPEE)) + ')',
+      "corps = [{'source': 9, 'texte': 'Gesetzlich verpflichtet (Behindertengleichstellungsgesetz "
+        + "[BehiG], 2002; Übereinkommen über die Rechte von Menschen mit Behinderungen "
+        + "[UN-BRK], 2006), aber auch (Gesetz [XY], 2010).'}]",
+      "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'de', reseau=False)",
+      'print(json.dumps({"alertes": alertes, "stats": stats}))',
+    ].join('\n');
+    const r = executer(programme);
+    const absentes = r.alertes.filter((a) => a.rule === 'APA.CitationAbsente');
+    assert.strictEqual(absentes.length, 1, JSON.stringify(absentes));
+    assert.match(absentes[0].found, /^Gesetz \[XY\], 2010$/);
+    const nv = r.alertes.filter((a) => a.rule === 'APA.ReferenceNonVerifiee');
+    assert.strictEqual(nv.length, 2, JSON.stringify(nv));
+    assert.ok(nv.every((a) => a.action === 'comment' && a.para === 9));
+  });

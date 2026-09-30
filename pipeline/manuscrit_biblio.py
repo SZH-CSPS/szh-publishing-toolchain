@@ -772,6 +772,20 @@ def _citations_du_fragment(frag, source, decalage_absolu):
     return out
 
 
+def _noms_a_gauche(avant):
+    """Les mots à majuscule collés juste AVANT un nom narratif, trois au plus, dans l'ordre du
+    texte. RE_NARRATIF ne capture qu'un seul mot de nom (« Lozano » dans « Sahli Lozano et al.
+    (2021) ») : croiser() se sert de ces mots pour retrouver un nom composé CONNU de la
+    bibliographie (« Sahli Lozano »), jamais pour en deviner un — « Nach Sahli » ne s'apparie
+    à rien, « Sahli Lozano » oui."""
+    mots = []
+    for mot in reversed(avant.split()):
+        if len(mots) == 3 or not re.match(r"^[A-ZÀ-ÞŒ][\w'’\-]*$", mot):
+            break
+        mots.append(mot)
+    return list(reversed(mots))
+
+
 def citations_du_corps(paragraphes):
     citations = []
     for p in paragraphes or []:
@@ -789,13 +803,15 @@ def citations_du_corps(paragraphes):
             # `found`/`texte` ci-dessous est TOUJOURS m.group(0) (nom narratif + parenthèse
             # d'année), même raison et même correctif que _citations_du_fragment() ci-dessus.
             span_texte = [m.start(), m.end()]
+            gauche = _noms_a_gauche(texte[:m.start(1)])
             for am in re.finditer(r'(?:19|20)\d{2}([a-z]?)', contenu):
                 trouve = True
                 citations.append({
                     'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
                     'suffixe': am.group(1) or '', 'para': source,
                     'span': span_texte,
-                    'et_al': et_al, 'texte': m.group(0), 'nom_brut': nom_brut})
+                    'et_al': et_al, 'texte': m.group(0), 'nom_brut': nom_brut,
+                    'noms_gauche': gauche})
             if trouve:
                 occupes.append((m.start(), m.end()))
         for m in re.finditer(r'\(([^()]*(?:19|20)\d{2}[^()]*)\)', texte):
@@ -822,6 +838,68 @@ def _cle(nom, annee):
 RE_ET_AL_MILIEU = re.compile(r'\bet\s*al\.?', re.IGNORECASE)
 
 
+RE_CONNECTEUR_AUTEURS = re.compile(r'\s*(?:[,;&]|\b(?:et|und|and)\b|\bu\.\s?a\.)\s*', re.IGNORECASE)
+
+
+def _noms_candidats(c):
+    """Les noms de premier auteur à essayer contre la bibliographie, du plus précis au plus
+    court. `nom_premier_auteur` est UN mot (« Sahli » pour « Sahli Lozano et al. », « Lozano »
+    pour la même forme narrative) : un nom composé ne s'apparie alors jamais à sa référence
+    (« Sahli Lozano, C. »). Les candidats, dans l'ordre : les mots à majuscule qui précèdent
+    un nom narratif, collés au premier segment (« Sahli » + « Lozano »), le premier segment
+    de la zone d'auteurs jusqu'au premier « , », « & », « et » ou « und » (« Sahli Lozano »
+    dans « Sahli Lozano & Crameri »), le premier mot, puis la zone entière sans « et al. »
+    (auteur institutionnel sans virgule). Seul un nom que la bibliographie CONNAÎT s'apparie :
+    un candidat fautif (« Nach Sahli ») ne produit rien."""
+    brut = RE_ET_AL_MILIEU.sub('', c.get('nom_brut') or '').strip(' ,;&')
+    premier = c['nom_premier_auteur']
+    segment = RE_CONNECTEUR_AUTEURS.split(brut, maxsplit=1)[0].strip() if brut else ''
+    candidats = []
+    gauche = c.get('noms_gauche') or []
+    for k in range(1, len(gauche) + 1):
+        candidats.append(' '.join(gauche[-k:] + [segment or premier]))
+    for nom in (segment, premier, brut):
+        if nom and nom not in candidats:
+            candidats.append(nom)
+    return candidats
+
+
+def _trouver_references(c, refs_par_cle):
+    """(cle, correspondances) : la première clé (nom, année) candidate que la bibliographie
+    porte ; sinon la clé du premier mot, sans correspondance."""
+    candidats = _noms_candidats(c)
+    for nom in candidats:
+        cle = _cle(nom, c['annee'])
+        if refs_par_cle.get(cle):
+            return cle, refs_par_cle[cle]
+    return _cle(c['nom_premier_auteur'], c['annee']), None
+
+
+def _indexer_sans_annee(references):
+    """Les références dont l'année n'a pas été lue (texte juridique, entrée non-APA : « Bundesgesetz
+    über … vom 13. Dezember 2002, SR 151.3 ») : (mots normalisés du texte, années écrites)."""
+    index = []
+    for r in references or []:
+        if r.get('annee') is not None or not r.get('texte'):
+            continue
+        texte = r['texte']
+        mots = {_normaliser_nom(m) for m in re.findall(r"[\w'’\-]+", texte)}
+        annees = {int(a) for a in re.findall(r'(?<!\d)(?:19|20)\d{2}(?!\d)', texte)}
+        index.append((mots, annees))
+    return index
+
+
+def _appariee_sans_annee(c, index):
+    """Une citation que rien n'apparie, retrouvée dans une référence SANS année lue : son
+    premier mot est un mot du texte de la référence ET son année y est écrite. Sert les textes
+    juridiques cités par leur sigle (« Behindertengleichstellungsgesetz [BehiG], 2002 » pour
+    une entrée « Bundesgesetz … (Behindertengleichstellungsgesetz, BehiG) vom 13. Dezember
+    2002 »). Jamais un appariement sûr : croiser() la signale à part (voir
+    signaler_references_non_verifiees())."""
+    nom = _normaliser_nom(c['nom_premier_auteur'])
+    return any(nom in mots and c['annee'] in annees for mots, annees in index)
+
+
 def croiser(citations, references):
     alertes = []
     refs_par_cle = {}
@@ -831,10 +909,10 @@ def croiser(citations, references):
         cle = _cle(r['auteurs'][0]['nom'], r['annee'])
         refs_par_cle.setdefault(cle, []).append(r)
 
+    sans_annee = _indexer_sans_annee(references)
     citees = set()
     for c in citations or []:
-        cle = _cle(c['nom_premier_auteur'], c['annee'])
-        correspondances = refs_par_cle.get(cle)
+        cle, correspondances = _trouver_references(c, refs_par_cle)
         if not correspondances and c.get('nom_brut'):
             # Repli pour un auteur institutionnel multi-mots (« Ministère de l'Éducation
             # nationale & DEPP ») : le premier mot seul ('Ministère') ne suffit pas à
@@ -847,16 +925,25 @@ def croiser(citations, references):
                 correspondances = refs_par_cle.get(cle_large)
                 if correspondances:
                     cle = cle_large
+        if not correspondances and _appariee_sans_annee(c, sans_annee):
+            c['appariee_sans_annee'] = True
+            continue
         if not correspondances:
             message = ('Cette citation ne correspond à aucune référence de la '
                        'bibliographie\u00a0: «\u00a0%s\u00a0».' % c.get('texte'))
             # Même nom, autre année : c'est presque toujours une coquille d'année, pas une
             # référence manquante — le dire (mesuré sur gzdf_Huttner : « Beukelman &
             # Mirenda, 1993 » dans le texte, 2013 dans la bibliographie).
-            annees_meme_nom = sorted({a for (n, a) in refs_par_cle if n == cle[0]})
+            nom_indice, annees_meme_nom = c['nom_premier_auteur'], []
+            for nom in _noms_candidats(c):
+                annees_meme_nom = sorted({a for (n, a) in refs_par_cle
+                                          if n == _normaliser_nom(nom)})
+                if annees_meme_nom:
+                    nom_indice = nom
+                    break
             if annees_meme_nom:
                 message += (' La bibliographie porte « %s » avec l\'année %s : vérifier '
-                            'l\'année.' % (c['nom_premier_auteur'],
+                            'l\'année.' % (nom_indice,
                                             ', '.join(str(a) for a in annees_meme_nom)))
             alertes.append({
                 'rule': 'APA.CitationAbsente', 'severity': 'error', 'action': 'comment',
@@ -880,8 +967,11 @@ def croiser(citations, references):
         # « et al. » : manquant dès trois auteurs, posé à tort pour un ou deux.
         ref = correspondances[0]
         nb = ref.get('nb_auteurs') or 0
+        # Le nom de la RÉFÉRENCE, pas le premier mot de la citation : « Sahli Lozano », pas
+        # « Sahli ».
+        nom_affiche = ref['auteurs'][0]['nom'] if ref.get('auteurs') else c['nom_premier_auteur']
         if nb >= 3 and not c.get('et_al'):
-            suggere = '%s et al. (%d%s)' % (c['nom_premier_auteur'], c['annee'],
+            suggere = '%s et al. (%d%s)' % (nom_affiche, c['annee'],
                                              c.get('suffixe') or '')
             alertes.append({
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
@@ -893,10 +983,10 @@ def croiser(citations, references):
         elif 1 <= nb <= 2 and c.get('et_al'):
             if nb == 2 and len(ref.get('auteurs') or []) == 2:
                 second = ref['auteurs'][1]['nom']
-                suggere = '%s & %s (%d%s)' % (c['nom_premier_auteur'], second, c['annee'],
+                suggere = '%s & %s (%d%s)' % (nom_affiche, second, c['annee'],
                                                c.get('suffixe') or '')
             else:
-                suggere = '%s (%d%s)' % (c['nom_premier_auteur'], c['annee'],
+                suggere = '%s (%d%s)' % (nom_affiche, c['annee'],
                                           c.get('suffixe') or '')
             alertes.append({
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
@@ -1035,6 +1125,7 @@ def signaler_references_non_verifiees(citations, references, langue):
       - jamais citée -> AUCUN commentaire ici : `APA.ReferenceNonCitee` (croiser(), ci-dessus)
         couvre déjà ce cas en se posant sur l'entrée — pas de doublon."""
     alertes = []
+    signales = set()
     premier_appel_par_cle = {}
     for c in _appels_en_ordre_texte(citations):
         cle = _cle(c['nom_premier_auteur'], c['annee'])
@@ -1049,11 +1140,27 @@ def signaler_references_non_verifiees(citations, references, langue):
         appel = premier_appel_par_cle.get(_cle(nom, annee))
         if appel is None:
             continue  # jamais citée : APA.ReferenceNonCitee s'en charge déjà, pas de doublon
+        signales.add(_cle(nom, annee))
         alertes.append({
             'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
             'para': appel.get('para'), 'span': appel.get('span'), 'found': appel.get('texte'),
             'suggested': None,
             'message': _message_reference_non_verifiee('%s, %d' % (nom, annee), langue),
+        })
+
+    # Un appel que croiser() n'a retrouvé que dans une référence SANS année lue (texte
+    # juridique cité par son sigle) : même commentaire, sur le premier appel de chaque clé.
+    for c in _appels_en_ordre_texte(citations):
+        cle = _cle(c['nom_premier_auteur'], c['annee'])
+        if not c.get('appariee_sans_annee') or cle in signales:
+            continue
+        signales.add(cle)
+        alertes.append({
+            'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
+            'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
+            'suggested': None,
+            'message': _message_reference_non_verifiee(
+                '%s, %d' % (c['nom_premier_auteur'], c['annee']), langue),
         })
     return alertes
 
@@ -1452,6 +1559,52 @@ def _alerte_insertion_doi(ref, doi):
 # ---------------------------------------------------------------------------------
 # 8. analyser_bibliographie() — enchaîne tout.
 
+# Une référence coupée sur plusieurs paragraphes (manuscrit issu d'un copier-coller de PDF : une
+# ligne = un paragraphe) : chaque morceau était lu comme une référence à part, le premier sans
+# conteneur (confiance non haute, donc « format non reconnu » sur l'appel), les suivants sans
+# auteur ni année (ordre alphabétique faussé). Un paragraphe en prolonge un autre quand il ne
+# PORTE PAS d'année entre parenthèses au début (toute référence APA en a une, même « (s. d.) »)
+# ET qu'il ne commence pas une entrée nouvelle : minuscule ou chiffre en tête, ou le précédent
+# finit sur un tiret, un deux-points, une virgule, une esperluette ou un mot minuscule nu (« and »).
+RE_DEBUT_ANNEE = re.compile(r'\(\s*(?:(?:19|20)\d{2}[a-z]?\b|s\.?\s?d\.?\)|n\.?d\.?\)|o\.?\s?J\.?\)|'
+                            r'en\s+pr[ée]paration|sous\s+presse|in\s+press|im\s+Erscheinen)',
+                            re.IGNORECASE)
+_FRAGMENT_LIAISON = '–—-:,;&'
+
+
+def _prolonge_la_precedente(texte, precedent):
+    t = texte.strip()
+    if not t or not precedent or RE_DEBUT_ANNEE.search(t[:250]):
+        return False
+    if t[0] in '[(':
+        return False
+    if not t[0].isupper():
+        return True
+    mots = precedent.split()
+    if not mots:
+        return False
+    return mots[-1][-1] in _FRAGMENT_LIAISON or (mots[-1].isalpha() and mots[-1].islower())
+
+
+def _fusionner_continuations(paragraphes_biblio):
+    """[{'source', 'texte', 'fragments': [paragraphe, ...]}] : les paragraphes de bibliographie,
+    réunis quand l'un prolonge l'autre. `source` est celui du PREMIER morceau ; `texte` joint les
+    morceaux (sans espace après un trait d'union ou un tiret collé au mot qui précède : « 1189-
+    » + « 1204 » -> « 1189-1204 »)."""
+    entrees = []
+    for p in paragraphes_biblio or []:
+        texte = p.get('texte') or ''
+        if entrees and _prolonge_la_precedente(texte, entrees[-1]['texte']):
+            precedent = entrees[-1]['texte'].rstrip()
+            colle = (precedent[-1:] in '-–—' and len(precedent) > 1
+                     and not precedent[-2].isspace())
+            entrees[-1]['texte'] = precedent + ('' if colle else ' ') + texte.strip()
+            entrees[-1]['fragments'].append(p)
+        else:
+            entrees.append({'source': p.get('source'), 'texte': texte, 'fragments': [p]})
+    return entrees
+
+
 def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau=True):
     alertes = []
     stats = {'references': 0, 'analysees_haute': 0, 'analysees_moyenne': 0,
@@ -1459,15 +1612,29 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
              'doi_normalises': 0, 'doi_retrouves': 0, 'non_proposees': [],
              'crossref': {'consultes': 0, 'confirmes': 0, 'divergents': 0, 'indisponible': not reseau}}
 
-    references = []
-    for p in paragraphes_biblio or []:
-        r = analyser_reference(p.get('texte') or '', langue_doc=langue)
-        r['para'] = p.get('source')
-        r['texte'] = (p.get('texte') or '').strip()
+    # `references` : une entrée par RÉFÉRENCE (morceaux réunis) — croisement, appels non
+    # vérifiés, ordre. `par_paragraphe` : une entrée par PARAGRAPHE, seule ancre possible d'une
+    # révision (DOI, mise en forme) — comme avant la fusion.
+    references, par_paragraphe = [], []
+    morceaux_de = {}
+    for e in _fusionner_continuations(paragraphes_biblio):
+        r = analyser_reference(e['texte'], langue_doc=langue)
+        r['para'] = e['source']
+        r['texte'] = e['texte'].strip()
         r['_langue'] = langue
         references.append(r)
         stats['references'] += 1
         stats['analysees_' + r['confiance']] += 1
+        if len(e['fragments']) == 1:
+            par_paragraphe.append(r)
+            continue
+        morceaux_de[r['texte']] = (e['fragments'][0].get('texte') or '').strip()
+        for p in e['fragments']:
+            m = analyser_reference(p.get('texte') or '', langue_doc=langue)
+            m['para'] = p.get('source')
+            m['texte'] = (p.get('texte') or '').strip()
+            m['_langue'] = langue
+            par_paragraphe.append(m)
 
     citations = citations_du_corps(paragraphes_corps or [])
     stats['citations'] = len(citations)
@@ -1483,7 +1650,13 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
 
     alertes.extend(verifier_ordre(references, langue))
 
-    for r in references:
+    # Une alerte posée sur une référence réunie porte le texte de son PREMIER morceau :
+    # `found` doit se retrouver dans le paragraphe que désigne `para`.
+    for a in alertes:
+        if a.get('found') in morceaux_de:
+            a['found'] = morceaux_de[a['found']]
+
+    for r in par_paragraphe:
         alertes_doi = doi_normaliser(r)
         alertes.extend(alertes_doi)
         stats['doi_normalises'] += len(alertes_doi)
