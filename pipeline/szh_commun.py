@@ -245,3 +245,29 @@ def ecrire_atomique(chemin, ecrire, binaire=True, encoding=None, newline=None,
         except OSError:
             pass
         raise
+
+
+# ---------------------------------------------------------------------------------------
+# Texte d'un run Word : les deux éléments qui portent un caractère sans passer par w:t.
+# Commun à pronto_docx.py et docx-meta.py ; manuscrit_docx.py a sa version, qui en plus
+# recense les polices de symboles. Sans eux, « Jean<w:noBreakHyphen/>Éric » devenait
+# « JeanÉric » dans la fiche (mesuré le 30.09.2026).
+# ---------------------------------------------------------------------------------------
+
+TRAIT_UNION_INSECABLE = '\u2011'
+_SYM_PUCES = {0xF0B7: '\u2022'}
+_POLICES_SYMBOLES = ('wingdings', 'wingdings2', 'wingdings3', 'symbol', 'webdings')
+
+
+def caractere_sym(code_hex, police=''):
+    """Le caractère d'un w:sym (w:char en hexadécimal, w:font). La puce U+F0B7 des polices
+    de symboles devient U+2022 ; le reste est rendu tel quel. Code illisible : ''."""
+    try:
+        point = int(code_hex or '', 16)
+    except ValueError:
+        return ''
+    if not (0 < point <= 0x10FFFF):
+        return ''
+    if (police or '').lower() in _POLICES_SYMBOLES and point in _SYM_PUCES:
+        return _SYM_PUCES[point]
+    return chr(point)

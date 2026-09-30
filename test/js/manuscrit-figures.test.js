@@ -95,14 +95,14 @@ for (const cas of ['a', 'b', 'c']) {
         assert.ok(obj.sortie_docx && fs.existsSync(obj.sortie_docx), 'aucune sortie : ' + r.stderr);
         const elements = corps(obj.sortie_docx);
         const cles = elements.filter((e) => e.style === 'SZHCleAbbTab');
-        assert.strictEqual(cles.length, 4, 'UN jeu de quatre clés, pas deux : '
+        assert.strictEqual(cles.length, 5, 'UN jeu de cinq clés, pas deux : '
           + JSON.stringify(cles.map((e) => e.texte)));
         assert.deepStrictEqual(cles.map((e) => e.texte),
-          ['Légende : ' + F.LEGENDE, 'Texte alternatif : ' + F.ALT, 'Crédit : ' + F.CREDIT, 'Source : '],
+          ['Légende : ' + F.LEGENDE, 'Texte alternatif : ' + F.ALT, 'Copyright : ' + F.CREDIT, 'Source : ', 'Note : '],
           'les valeurs tapées doivent passer dans les clés du bloc');
-        assert.ok(!elements.some((e) => e.style !== 'SZHCleAbbTab' && /Légende :|Crédit :/.test(e.texte)),
+        assert.ok(!elements.some((e) => e.style !== 'SZHCleAbbTab' && /Légende[  ]:|Copyright[  ]:/.test(e.texte)),
           'une clé tapée est restée en corps de texte : '
-          + JSON.stringify(elements.filter((e) => /Légende|Crédit/.test(e.texte))));
+          + JSON.stringify(elements.filter((e) => /Légende|Copyright/.test(e.texte))));
         const images = elements.reduce((n, e) => n + (e.t === 'p' ? e.images : 0), 0);
         assert.strictEqual(images, 2, 'les deux images, en paragraphes, hors de tout tableau');
         assert.strictEqual(elements.filter((e) => e.t === 'tbl').length, 2,
@@ -141,7 +141,7 @@ for (const cas of ENCHAINEMENTS) {
       const { r, obj } = nettoyer(entree, path.join(base, 'sortie'));
       assert.ok(obj.sortie_docx, r.stderr);
       const elements = corps(obj.sortie_docx);
-      const legendes = elements.filter((e) => e.style === 'SZHCleAbbTab' && /^Légende :/.test(e.texte));
+      const legendes = elements.filter((e) => e.style === 'SZHCleAbbTab' && /^Légende[  ]:/.test(e.texte));
       assert.strictEqual(legendes.length, cas.figures, 'nombre de figures : '
         + JSON.stringify(legendes.map((e) => e.texte)));
       const fi = lignesFI(instructionsImport(obj.sortie_docx, base));
@@ -256,8 +256,8 @@ test('nettoyeur : incident « tout le corps supprimé » — un manuscrit court 
         assert.match(texte, /Un paragraphe de corps après la figure/, 'le dernier paragraphe manque');
         assert.strictEqual(rapport.controles.perte_de_contenu.mots_manquants, 0,
           JSON.stringify(rapport.controles.perte_de_contenu));
-        assert.ok(rapport.decisions.entete.donnees.auteurs.every((a) => a.prenom !== 'Crédit'),
-          '« Crédit : © Jeanne Test » a été lu comme une autrice');
+        assert.ok(rapport.decisions.entete.donnees.auteurs.every((a) => a.prenom !== 'Copyright'),
+          '« Copyright : © Jeanne Test » a été lu comme une autrice');
       }
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -315,6 +315,90 @@ test('nettoyeur : garde-fou — une perte massive refuse la sortie, une perte pa
       const rap2 = JSON.parse(fs.readFileSync(o2.sortie_rapport, 'utf8'));
       assert.ok(rap2.alertes.liste.some((a) => a.rule === 'Nettoyage.ContenuPerdu'
         && a.severity === 'error'), 'perte partielle non dite : ' + JSON.stringify(rap2.controles));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---- La note d'une figure ou d'un tableau (30.09.2026) ------------------------------------
+//
+// Un manuscrit brut porte souvent la note sous le contenu : « Note : … » dans le paragraphe
+// qui SUIT immédiatement l'image ou le tableau. Le nettoyeur la reprend dans la clé Note du bloc
+// (sans l'étiquette), la retire du corps et le dit dans le rapport. Jamais un « Note : » ailleurs.
+
+const NOTE = 'Données recueillies en 2025, n = 48.';
+const DONNEES = { tbl: [[[{ p: [{ t: 'Mesure' }] }], [{ p: [{ t: 'Valeur' }] }]],
+  [[{ p: [{ t: 'Élèves' }] }], [{ p: [{ t: '48' }] }]]] };
+
+function alertesDuRapport(obj) {
+  return JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')).alertes.liste;
+}
+
+for (const { nom, apres, contenu } of [
+  { nom: 'figure', apres: [F.p('Note : ' + NOTE)] },
+  { nom: 'figure (Remarque)', apres: [F.p('Remarque : ' + NOTE)] },
+  { nom: 'tableau', apres: [F.p('Note : ' + NOTE)], contenu: [DONNEES] },
+  // La forme APA 7 (point, sans deux-points), mesurée sur RV02_Redaction : 45 paragraphes
+  // dans 19 fichiers, tous de vraies notes de tableau ou de figure.
+  { nom: 'tableau (Note. APA)', apres: [F.p('Note. ' + NOTE)], contenu: [DONNEES] },
+  { nom: 'figure (Anmerkung.)', apres: [F.p('Anmerkung. ' + NOTE)] },
+]) {
+  test('nettoyeur : la note qui suit un ' + nom + ' passe dans la clé Note, hors du corps, avec une alerte',
+    { skip: sansPython }, () => {
+      const base = F.dossierJetable();
+      try {
+        const entree = F.fabriquer(base, 'note', F.manuscritBrut('a', { cles: false, apres: apres,
+          contenu: contenu }));
+        const { r, obj } = nettoyer(entree, path.join(base, 'sortie'));
+        assert.ok(obj.sortie_docx && fs.existsSync(obj.sortie_docx), 'aucune sortie : ' + r.stderr);
+        const elements = corps(obj.sortie_docx);
+        const cles = elements.filter((e) => e.style === 'SZHCleAbbTab').map((e) => e.texte);
+        assert.strictEqual(cles.length, 5, JSON.stringify(cles));
+        assert.strictEqual(cles[4], 'Note : ' + NOTE, 'la note n’est pas dans la clé Note : '
+          + JSON.stringify(cles));
+        assert.ok(!elements.some((e) => e.style !== 'SZHCleAbbTab' && /^(Note|Remarque|Anmerkung)\s*[:.]/.test(e.texte)),
+          'le paragraphe « Note : » est resté dans le corps');
+        assert.ok(alertesDuRapport(obj).some((a) => a.rule === 'Nettoyage.NoteReprise'),
+          'aucune alerte Nettoyage.NoteReprise : ' + JSON.stringify(alertesDuRapport(obj)));
+        const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+        assert.strictEqual(rapport.controles.perte_de_contenu.mots_manquants <= 1, true,
+          JSON.stringify(rapport.controles.perte_de_contenu));
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+}
+
+test('nettoyeur : un « Note : » qui ne suit pas immédiatement le contenu reste dans le corps',
+  { skip: sansPython }, () => {
+    const base = F.dossierJetable();
+    try {
+      const entree = F.fabriquer(base, 'note-loin', F.manuscritBrut('a', { cles: false,
+        apres: [F.p('Une phrase intercalée entre la figure et la note, de corps ordinaire.'),
+          F.p('Note : ' + NOTE)] }));
+      const { r, obj } = nettoyer(entree, path.join(base, 'sortie'));
+      assert.ok(obj.sortie_docx && fs.existsSync(obj.sortie_docx), 'aucune sortie : ' + r.stderr);
+      const elements = corps(obj.sortie_docx);
+      assert.ok(elements.some((e) => e.style !== 'SZHCleAbbTab' && e.texte === 'Note : ' + NOTE),
+        'la note éloignée doit rester dans le corps');
+      const cles = elements.filter((e) => e.style === 'SZHCleAbbTab').map((e) => e.texte);
+      assert.ok(cles.every((c) => !c.includes(NOTE)), 'la note éloignée a été reprise : ' + cles);
+      assert.ok(!alertesDuRapport(obj).some((a) => a.rule === 'Nettoyage.NoteReprise'));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('nettoyeur : la note reprise voyage jusqu’à l’import (7e champ de la ligne FI)',
+  { skip: sansPython }, () => {
+    const base = F.dossierJetable();
+    try {
+      const entree = F.fabriquer(base, 'note-import', F.manuscritBrut('a', { cles: false,
+        apres: [F.p('Note : ' + NOTE)] }));
+      const { obj } = nettoyer(entree, path.join(base, 'sortie'));
+      const fi = lignesFI(instructionsImport(obj.sortie_docx, base));
+      assert.strictEqual(fi.length, 1, JSON.stringify(fi));
+      assert.strictEqual(fi[0][6], NOTE, JSON.stringify(fi[0]));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }

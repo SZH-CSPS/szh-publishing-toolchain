@@ -238,7 +238,7 @@ def images_de_paragraphe(p):
 
 def _par_depuis(el, catalogue):
     style_resolu = resoudre_style(el.get(TEXT + 'style-name'), catalogue)
-    texte = pm.normaliser(texte_de(el))
+    texte = pm.normaliser_valeur(texte_de(el))
     niveau = pm.niveau_depuis_style(style_resolu)
     images = images_de_paragraphe(el)
     return pm.Par(style=style_resolu, texte=texte, niveau=niveau, images=images)

@@ -254,7 +254,8 @@ const CLES_NATIVES = ', Para [Str "Legende",Space,Str ":",Space,Str "Deux",Space
   + ', Para [Str "Credit",Space,Str ":",Space,Str "(c)",Space,Str "X"]\n';
 const IMG_A = 'Image ("",[],[]) [Str "descr",Space,Str "A"] ("media/image1.png","")';
 const IMG_B = 'Image ("",[],[]) [Str "descr",Space,Str "B"] ("media/image2.png","")';
-const QUEUE_CLES = '\tLegende : Deux vues\tTexte alternatif : Vue nord\tCredit : (c) X';
+// Source puis note, vides, avant les clés : le champ note est toujours présent.
+const QUEUE_CLES = '\t\tLegende : Deux vues\tTexte alternatif : Vue nord\tCredit : (c) X';
 const FI_GROUPE = 'FI\timage1.png;image2.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\n';
 
 // Les membres de la grille tels que le formulaire Médias les relit : c'est LA preuve que le
@@ -287,6 +288,55 @@ test('legendes (a) : deux images dans un paragraphe -> UN groupe, légende, alt 
     assert.match(md, /Apres\./, md);
     assert.ok(!/bloc-valeur-non-reprise/.test(err), 'un bloc posé ne doit pas avertir : ' + err);
   } finally { instr.nettoyer(); }
+});
+
+test('legendes : la note d’un bloc figure se pose sur l’image, et sur la PREMIÈRE seulement d’un groupe', () => {
+  const doc = '[ Para [Str "Avant."]\n' + CLES_NATIVES
+    + ', Para [' + IMG_A + ',Space,' + IMG_B + ']\n, Para [Str "Apres."]\n]\n';
+  // Champs : k, légende, alt, copyright, source, note, puis les clés.
+  const instr = instructionsTemporaires(
+    'FI\timage1.png;image2.png\tDeux vues\tVue nord\t(c) X\tArchives\tDonnees 2025.' + QUEUE_CLES.slice(1) + '\n');
+  try {
+    const { md, err } = pandocAvecErreurs(doc, { filtres: ['szh-legendes.lua'],
+      env: { SZH_META: instr.chemin } });
+    const lignes = md.split(/\r?\n/).filter((l) => /!\[/.test(l));
+    assert.strictEqual(lignes.length, 2, md);
+    assert.match(lignes[0], /note="Donnees 2025\."/, 'la note manque sur la 1re image : ' + md);
+    assert.ok(!/note=/.test(lignes[1]), 'la note est recopiée sur la 2e image : ' + md);
+    assert.strictEqual((md.match(/source="Archives"/g) || []).length, 2,
+      'la source doit rester sur chaque image : ' + md);
+    assert.ok(!/Legende :/.test(md), 'une clé est restée : ' + md);
+    assert.ok(!/bloc-valeur-non-reprise/.test(err), err);
+  } finally { instr.nettoyer(); }
+});
+
+test('legendes : la note d’une figure simple, et le champ note vide ne pose rien', () => {
+  const instr = instructionsTemporaires(
+    'FI\timage1.png\tUne legende\tUn alt\t(c) X\tArchives\tUne note.\n');
+  const vide = instructionsTemporaires('FI\timage1.png\tUne legende\tUn alt\t(c) X\tArchives\t\n');
+  try {
+    const avec = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: instr.chemin } });
+    assert.match(avec, /note="Une note\."/, avec);
+    const sans = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: vide.chemin } });
+    assert.ok(!/note=/.test(sans), 'un note="" est apparu : ' + sans);
+    assert.match(sans, /source="Archives"/, sans);
+  } finally { instr.nettoyer(); vide.nettoyer(); }
+});
+
+test('legendes : sans légende, une note ou un copyright font une image hors numérotation', () => {
+  const instr = instructionsTemporaires('FI\timage1.png\t\tUn alt\t\t\tUne note seule.\n');
+  const rien = instructionsTemporaires('FI\timage1.png\t\tUn alt\t\t\t\n');
+  try {
+    const avec = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: instr.chemin } });
+    assert.match(avec, /szh-hors-figure/, 'la note sans légende se perdrait au rendu : ' + avec);
+    assert.match(avec, /note="Une note seule\."/, avec);
+    const sans = pandoc(FIGURE_NATIVE, { de: 'native', vers: 'markdown',
+      filtres: ['szh-legendes.lua'], env: { SZH_META: rien.chemin } });
+    assert.ok(!/szh-hors-figure/.test(sans), 'rien à porter : la classe ne doit pas être posée : ' + sans);
+  } finally { instr.nettoyer(); rien.nettoyer(); }
 });
 
 test('legendes (b) : deux paragraphes d’images à la suite -> UN groupe, côte à côte (« 2 », jamais « 1-1 »)', () => {
@@ -376,7 +426,7 @@ test('legendes : deux blocs aux clés identiques (« Source : » vide) retirent 
     + ', ' + table + '\n, Para [Str "Fin."]\n]\n';
   const instr = instructionsTemporaires(
     'FI\timage1.png\tDeux vues\tVue nord\t(c) X\t' + QUEUE_CLES + '\tSource :\n'
-    + 'FT\t1\tUn tableau\t\t\t\tLegende : Un tableau\tSource :\n');
+    + 'FT\t1\tUn tableau\t\t\t\t\tLegende : Un tableau\tSource :\n');
   try {
     const { md, err } = pandocAvecErreurs(doc, { filtres: ['szh-meta.lua', 'szh-legendes.lua'],
       env: { SZH_META: instr.chemin } });

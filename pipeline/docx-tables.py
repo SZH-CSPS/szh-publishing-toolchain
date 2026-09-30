@@ -119,6 +119,11 @@ def texte_du_run(run):
             morceaux.append('<br>')
         elif enfant.tag == W + 'tab':
             morceaux.append(' ')
+        elif enfant.tag == W + 'noBreakHyphen':
+            morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
+        elif enfant.tag == W + 'sym':
+            morceaux.append(escape(szh_commun.caractere_sym(enfant.get(W + 'char'),
+                                                             enfant.get(W + 'font'))))
         elif enfant.tag == W + 'drawing':
             morceaux.append(html_du_drawing(enfant))
     texte = ''.join(morceaux)
@@ -239,6 +244,10 @@ def texte_plat(p):
                 morceaux.append(e.text or '')
             elif e.tag == W + 'tab':
                 morceaux.append(' ')
+            elif e.tag == W + 'noBreakHyphen':
+                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
+            elif e.tag == W + 'sym':
+                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
     return ''.join(morceaux)
 
 
@@ -297,7 +306,7 @@ def html_du_tableau(tbl, caption=None, info=None, attributs_table=None):
     `attributs_table`, si fourni, est un dict d'attributs à poser sur la balise <table>
     elle-même : c'est par là que les champs d'un bloc du gabarit Pronto (texte alternatif,
     crédit, source) arrivent sous la forme que szh-numerotation.lua attend — data-alt,
-    data-copyright, data-source."""
+    data-copyright, data-source, data-note."""
     lignes = [tr for tr in tbl if tr.tag == W + 'tr']
     # Pré-analyse : pour chaque ligne, les cellules avec (colonne de départ, colspan,
     # vmerge, élément). Les cellules « continue » occupent leur colonne — elles sont bien
@@ -574,14 +583,14 @@ def _ordinaux_par_lettre(chemin, prefixe):
 
 
 def blocs_pronto_par_meta():
-    """Ordinal (1-based, celui des lignes T) -> {'legende', 'alt', 'credit', 'source'} pour
+    """Ordinal (1-based, celui des lignes T) -> {'legende', 'alt', 'credit', 'source', 'note'} pour
     chaque tableau qui est le CONTENU d'un bloc du gabarit « Pronto » (lignes FT de
     $SZH_META, écrites par pronto-lire.py) :
 
-        FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source
+        FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note
 
-    Les quatre valeurs sont celles que l'autrice ou l'auteur a tapées sous « Légende : »,
-    « Texte alternatif : », « Crédit : » et « Source : » ; les paragraphes qui les portaient
+    Les cinq valeurs sont celles que l'autrice ou l'auteur a tapées sous « Légende : »,
+    « Texte alternatif : », « Copyright : », « Source : » et « Note : » ; les paragraphes qui les portaient
     quittent le corps par les lignes P. Sans cette reprise, ils s'imprimeraient tels quels et
     la légende du tableau serait perdue. Le pendant figure vit dans szh-legendes.lua (FI)."""
     chemin = os.getenv('SZH_META')
@@ -598,9 +607,10 @@ def blocs_pronto_par_meta():
                     ordinal = int(champs[1])
                 except (IndexError, ValueError):
                     continue
-                champs += [''] * (6 - len(champs))
+                champs += [''] * (7 - len(champs))
                 blocs[ordinal] = {'legende': champs[2].strip(), 'alt': champs[3].strip(),
-                                  'credit': champs[4].strip(), 'source': champs[5].strip()}
+                                  'credit': champs[4].strip(), 'source': champs[5].strip(),
+                                  'note': champs[6].strip()}
     except OSError:
         return {}
     return blocs
@@ -648,7 +658,7 @@ def principal(argv):
             # un paragraphe tout en gras au-dessus du tableau lui volerait la sienne.
             caption = bloc['legende'] or None
             attributs = {'data-alt': bloc['alt'], 'data-copyright': bloc['credit'],
-                         'data-source': bloc['source']}
+                         'data-source': bloc['source'], 'data-note': bloc['note']}
         else:
             el, caption = legende_de_table(parent, tbl, consommes, styles_legende)
             if el is not None and caption:

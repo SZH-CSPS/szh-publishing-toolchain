@@ -295,8 +295,8 @@ def _raffiner_und_in_klammern(constat, ligne_texte):
     debut_motif = constat['_span0'][0]
     return {'found': 'und', 'suggested': '&', 'action': 'fix',
             'span': [debut_motif + m.start(), debut_motif + m.end()],
-            'message': 'Zitation korrigieren (Zeitschrift: Literaturverzeichnis) : « %s » wird'
-                       ' « %s ».' % (texte, corrige)}
+            'message': 'Zitation korrigieren (Zeitschrift: Literaturverzeichnis): «%s» wird'
+                       ' «%s».' % (texte, corrige)}
 
 
 def _raffiner_kaufmannsund_ausserhalb_klammern(constat, ligne_texte):

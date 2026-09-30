@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele as pm
+import szh_commun
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
@@ -36,7 +37,8 @@ WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
 
 def texte_paragraphe(p):
     """Texte plat d'un w:p : t -> texte, tab -> espace, br et cr -> espace. Le stringify de
-    pandoc rend LineBreak par un espace, et l'appariement Lua en dépend."""
+    pandoc rend LineBreak par un espace, et l'appariement Lua en dépend. noBreakHyphen rend
+    U+2011 et sym son caractère, comme pandoc ; softHyphen n'est pas du texte."""
     morceaux = []
     for r in p.iter(W + 'r'):
         for e in r:
@@ -44,6 +46,10 @@ def texte_paragraphe(p):
                 morceaux.append(e.text or '')
             elif e.tag in (W + 'tab', W + 'br', W + 'cr'):
                 morceaux.append(' ')
+            elif e.tag == W + 'noBreakHyphen':
+                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
+            elif e.tag == W + 'sym':
+                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
     return ''.join(morceaux)
 
 
@@ -216,7 +222,7 @@ def compter_marqueurs_page(e):
 
 def _par_depuis(p, styles, rels_images):
     style_resolu = resoudre_style(pstyle(p), styles)
-    texte = pm.normaliser(texte_paragraphe(p))
+    texte = pm.normaliser_valeur(texte_paragraphe(p))
     niveau = pm.niveau_depuis_style(style_resolu)
     images = images_de_paragraphe(p, rels_images)
     return pm.Par(style=style_resolu, texte=texte, niveau=niveau, images=images)

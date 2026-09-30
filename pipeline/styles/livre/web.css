@@ -186,6 +186,10 @@ blockquote { font-style: italic; margin: 1em 0 1em 1rem; padding-left: 1rem;
    bornée, par la colonne de lecture elle-même. */
 figure { margin: 1.5rem 0; }
 figcaption { font-size: 0.85rem; color: var(--web-ink2); line-height: 1.4; margin-top: 0.4em; }
+/* Note sous une figure ou un tableau (szh-numerotation.lua) ; cette feuille ne charge pas
+   partage-filtres.css, l'étiquette en italique est donc redite ici. */
+.szh-bloc-note { font-size: 0.85rem; color: var(--web-ink2); line-height: 1.4; margin: 0.4em 0 0; }
+.szh-bloc-note-etiquette { font-style: italic; }
 
 /* ═══ 9. Tableaux ══════════════════════════════════════════════════════════════
    szh-tableau-boite.lua enveloppe déjà chaque tableau dans un vrai Div (voir ce filtre) :

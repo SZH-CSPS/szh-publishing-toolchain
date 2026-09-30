@@ -482,15 +482,15 @@ test('manuscrit_gabarit.ecrire : chaque image est dans un bloc figure, octets id
 
 // ---------------------------------------------------------------------------------
 // Contrôle n°4 — révisé le 21.09.2026 (plus de tableau enveloppe) : les métadonnées d'un bloc
-// sont TOUJOURS exactement quatre paragraphes SZH Cle Abb/Tab, jamais répétés par colonne du
+// sont TOUJOURS exactement cinq paragraphes SZH Cle Abb/Tab, jamais répétés par colonne du
 // tableau de contenu (ici 3, pour distinguer ce risque de la structure du tableau imbriqué
 // lui-même), et ils précèdent DIRECTEMENT ce tableau — aucun <w:tbl> enveloppe ne doit rester.
 //
 // Sabotage minimal : dans _meta_paragraphes_xml(), répéter la boucle `for cle, label in
 // CHAMPS_BLOC` une fois par ligne du tableau de contenu (`for _ in tableau.rangees: for cle,
-// label in CHAMPS_BLOC: ...`) — quatre paragraphes de clé deviennent huit (deux rangées).
+// label in CHAMPS_BLOC: ...`) — cinq paragraphes de clé deviennent dix (deux rangées).
 
-test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont quatre paragraphes SZH Cle Abb/Tab, jamais un par colonne ni par rangée',
+test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont cinq paragraphes SZH Cle Abb/Tab, jamais un par colonne ni par rangée',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
@@ -504,14 +504,14 @@ test('manuscrit_gabarit.ecrire : les métadonnées d\'un bloc sont quatre paragr
       const xml = lireDocumentXml(sortie);
 
       // Après les deux tableaux fixes du gabarit (métadonnées de l'article, autrices et
-      // auteurs), les quatre paragraphes de clé du bloc suivent directement.
+      // auteurs), les cinq paragraphes de clé du bloc suivent directement.
       const finTable1 = xml.indexOf('</w:tbl>') + '</w:tbl>'.length;
       const finTable2 = xml.indexOf('</w:tbl>', finTable1) + '</w:tbl>'.length;
       const reste = xml.slice(finTable2);
 
       const nbCles = (reste.match(/<w:pStyle w:val="SZHCleAbbTab"\/>/g) || []).length;
-      assert.strictEqual(nbCles, 4,
-        'un bloc doit toujours porter EXACTEMENT quatre paragraphes de clé, jamais un par '
+      assert.strictEqual(nbCles, 5,
+        'un bloc doit toujours porter EXACTEMENT cinq paragraphes de clé, jamais un par '
         + 'colonne ou par rangée du tableau de contenu (obtenu : ' + nbCles + ')');
 
       // Le tableau de contenu (3 colonnes, mesurées par son propre tblGrid) suit DIRECTEMENT
@@ -560,16 +560,16 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs qui se to
 
       const textes = textesWp(enfantsCorps(sortie));
       const indicesLegende = [];
-      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
+      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
       assert.strictEqual(indicesLegende.length, 2,
-        'deux blocs (deux groupes de quatre clés) attendus : ' + JSON.stringify(textes));
+        'deux blocs (deux groupes de cinq clés) attendus : ' + JSON.stringify(textes));
       const [i1, i2] = indicesLegende;
-      // Entre les deux « Légende : » : les trois autres clés du premier bloc, son image, PUIS
-      // le paragraphe séparateur — 6 <w:p> d'écart. Un écart de 5 signalerait un paragraphe vide
+      // Entre les deux « Légende : » : les quatre autres clés du premier bloc, son image, PUIS
+      // le paragraphe séparateur — 7 <w:p> d'écart. Un écart de 6 signalerait un paragraphe vide
       // manquant (le sabotage ci-dessus).
-      assert.strictEqual(i2 - i1, 6,
+      assert.strictEqual(i2 - i1, 7,
         'il doit y avoir exactement un paragraphe vide entre l\'image du premier bloc et les '
-        + 'clés du second (6 <w:p> d\'écart attendus, obtenu ' + (i2 - i1) + ') : '
+        + 'clés du second (7 <w:p> d\'écart attendus, obtenu ' + (i2 - i1) + ') : '
         + JSON.stringify(textes.slice(i1, i2 + 1)));
       assert.strictEqual(textes[i2 - 1], '',
         'le <w:p> juste avant le second bloc doit être le séparateur vide');
@@ -608,14 +608,14 @@ test('manuscrit_gabarit.ecrire : un paragraphe vide sépare deux blocs tableau q
 
       const textes = textesWp(enfantsCorps(sortie));
       const indicesLegende = [];
-      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
+      textes.forEach((t, i) => { if (t === 'Légende : ') { indicesLegende.push(i); } });
       assert.strictEqual(indicesLegende.length, 2);
       const [i1, i2] = indicesLegende;
-      // Entre les deux « Légende : » : les trois autres clés puis le séparateur — le tableau de
+      // Entre les deux « Légende : » : les quatre autres clés puis le séparateur — le tableau de
       // contenu lui-même n'est PAS un <w:p> (il n'apparaît donc pas dans cette liste), d'où un
-      // écart de 5 (3 clés + séparateur, en comptant l'index de départ).
-      assert.strictEqual(i2 - i1, 5,
-        'écart inattendu entre les deux groupes de clés (5 <w:p> d\'écart attendus — 3 autres '
+      // écart de 6 (4 clés + séparateur, en comptant l'index de départ).
+      assert.strictEqual(i2 - i1, 6,
+        'écart inattendu entre les deux groupes de clés (6 <w:p> d\'écart attendus — 4 autres '
         + 'clés puis le séparateur) : ' + JSON.stringify(textes.slice(i1, i2 + 1)));
       assert.strictEqual(textes[i2 - 1], '',
         'le <w:p> juste avant le second bloc doit être le paragraphe séparateur vide');
@@ -1251,7 +1251,7 @@ test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd
       // c'est directement le premier <w:tbl> de premier niveau qui SUIT les quatre paragraphes
       // de clé (« Légende : », etc.).
       const idxLegende = document.blocs.findIndex((b) => b.type !== 'tableau' && b.fragments
-        && b.fragments.some((f) => f.texte === 'Légende : '));
+        && b.fragments.some((f) => f.texte === 'Légende : '));
       assert.ok(idxLegende >= 0, 'les quatre paragraphes de clé du bloc doivent être retrouvés');
       const tbl = document.blocs.slice(idxLegende).find((b) => b.type === 'tableau');
       assert.ok(tbl, 'le tableau du manuscrit (directement au premier niveau) doit être relu');
@@ -1553,7 +1553,7 @@ test('manuscrit_gabarit.ecrire : au plus un paragraphe vide sépare deux blocs, 
       assert.strictEqual(enfants[iTbl3 + 1].texte, '',
         'le tout premier élément après le tableau du premier bloc doit être LE séparateur vide');
       assert.strictEqual(enfants[iTbl3 + 2].tag, 'w:p');
-      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
+      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
         'la première clé du second bloc doit suivre IMMÉDIATEMENT le séparateur — un second '
         + 'paragraphe vide signalerait que les trois vides du manuscrit n\'ont pas été '
         + 'repliés : obtenu ' + JSON.stringify(enfants[iTbl3 + 2]));
@@ -1577,7 +1577,7 @@ test('manuscrit_gabarit.ecrire : deux tableaux directement adjacents (rien entre
       const [, , iTbl3] = indicesTbl;
       assert.strictEqual(enfants[iTbl3 + 1].tag, 'w:p');
       assert.strictEqual(enfants[iTbl3 + 1].texte, '', 'exactement un séparateur injecté');
-      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
+      assert.strictEqual(enfants[iTbl3 + 2].texte, 'Légende : ',
         'la clé du second bloc doit suivre immédiatement le séparateur, jamais un second vide');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -2130,7 +2130,7 @@ test('manuscrit_gabarit.ecrire (entete) : Titre/Sous-titre/Résumé/Langue rempl
       // Les mots-clés n'ont aucun champ dans le gabarit livré (§5.5) : repli en premier
       // paragraphe du corps, en Corpsdetexte — jamais un champ inventé dans les métadonnées.
       const xml = lireDocumentXml(sortie);
-      assert.match(xml, /Mots-clés : pedagogie, inclusion/);
+      assert.match(xml, /Mots-clés : pedagogie, inclusion/);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -2280,10 +2280,10 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
 
 for (const { langue, gabarit, labels, mots } of [
   { langue: 'fr', gabarit: GABARIT_LIVRE,
-    labels: ['Légende : ', 'Texte alternatif : ', 'Crédit : ', 'Source : '],
-    mots: 'Mots-clés : un, deux' },
+    labels: ['Légende : ', 'Texte alternatif : ', 'Copyright : ', 'Source : ', 'Note : '],
+    mots: 'Mots-clés : un, deux' },
   { langue: 'de', gabarit: GABARIT_DE,
-    labels: ['Beschriftung: ', 'Alternativtext: ', 'Copyright: ', 'Quelle: '],
+    labels: ['Beschriftung: ', 'Alternativtext: ', 'Copyright: ', 'Quelle: ', 'Notiz: '],
     mots: 'Schlüsselwörter: un, deux' },
 ]) {
   test('manuscrit_gabarit.ecrire (' + langue + ') : les étiquettes des blocs figure/tableau '
@@ -2304,8 +2304,8 @@ for (const { langue, gabarit, labels, mots } of [
             'étiquette attendue absente (' + langue + ') : « ' + label + ' »');
         }
         const autresLabels = langue === 'fr'
-          ? ['Beschriftung', 'Alternativtext', 'Copyright', 'Quelle']
-          : ['Légende', 'Texte alternatif', 'Crédit', 'Source'];
+          ? ['Beschriftung', 'Alternativtext', 'Quelle', 'Notiz']
+          : ['Légende', 'Texte alternatif', 'Crédit', 'Source', 'Note'];
         for (const etrangere of autresLabels) {
           assert.ok(!xml.includes(etrangere),
             'étiquette de l\'AUTRE langue trouvée dans une sortie ' + langue + ' : « '

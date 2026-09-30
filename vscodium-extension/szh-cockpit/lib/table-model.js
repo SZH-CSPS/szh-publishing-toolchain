@@ -313,7 +313,7 @@ function normaliserLegende(v) {
   return canoniserInline(String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' '));
 }
 
-// Texte alternatif, copyright et source : trois attributs data-* sur <table>, du texte pur
+// Texte alternatif, copyright, source et note : quatre attributs data-* sur <table>, du texte pur
 // dans le modèle, dont une valeur vide veut dire attribut absent. Le pipeline n'écrit
 // jamais dans ces fichiers : le numéro et les crédits sont ajoutés au rendu, en mémoire.
 const LONGUEUR_MAX_META = 1000;
@@ -356,6 +356,7 @@ function normaliserModele(modele) {
     alt: normaliserTexteAttribut(a.alt),
     copyright: normaliserTexteAttribut(a.copyright),
     source: normaliserTexteAttribut(a.source),
+    note: normaliserTexteAttribut(a.note),
     enteteLignes: Math.max(0, Math.min(2, Math.min(parseInt(a.enteteLignes, 10) || 0, nbLignes))),
     enteteColonnes: Math.max(0, Math.min(2, parseInt(a.enteteColonnes, 10) || 0)),
     elGras: vrai(a.elGras), elFond: enumOu(a.elFond, FONDS, 'aucun'),
@@ -469,6 +470,7 @@ function analyserTable(html) {
     alt: decoderEntites(at['data-alt'] || ''),
     copyright: decoderEntites(at['data-copyright'] || ''),
     source: decoderEntites(at['data-source'] || ''),
+    note: decoderEntites(at['data-note'] || ''),
     enteteLignes: at['data-entete-lignes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-lignes'], 10) || 0)) : infererEnteteLignes(occ, lignes),
     enteteColonnes: at['data-entete-colonnes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-colonnes'], 10) || 0)) : infererEnteteColonnes(occ, lignes),
     elGras: at['data-el-gras'] === '1', elFond: enumOu(at['data-el-fond'], FONDS, 'aucun'),
@@ -561,6 +563,7 @@ function serialiserTable(modele) {
   if (a.alt !== '') { ouv += ' data-alt="' + echapAttribut(a.alt) + '"'; }
   if (a.copyright !== '') { ouv += ' data-copyright="' + echapAttribut(a.copyright) + '"'; }
   if (a.source !== '') { ouv += ' data-source="' + echapAttribut(a.source) + '"'; }
+  if (a.note !== '') { ouv += ' data-note="' + echapAttribut(a.note) + '"'; }
   if ((eC > 0 || sections.length > 0) && a.elGras) { ouv += ' data-el-gras="1"'; }
   if ((eC > 0 || sections.length > 0) && a.elFond !== 'aucun') { ouv += ' data-el-fond="' + a.elFond + '"'; }
   if (eL > 0 && a.ecGras) { ouv += ' data-ec-gras="1"'; }
@@ -1128,7 +1131,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     }
     return finaliserModele(modele);
   }
-  // La légende, le texte alternatif, le copyright et la source n'ont pas d'opération :
+  // La légende, le texte alternatif, le copyright, la source et la note n'ont pas d'opération :
   // saisis dans la webview, ils voyagent avec le modèle et sont assainis par
   // normaliserModele, sans re-rendu de la grille.
   //

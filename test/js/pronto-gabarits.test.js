@@ -206,7 +206,7 @@ def etiquettes_groupe_cle_abb_tab(blocs, depart):
     # contenu comprise).
     out = []
     fin = depart
-    while fin < len(blocs) and fin - depart < 4:
+    while fin < len(blocs) and fin - depart < 5:
         b = blocs[fin]
         if not isinstance(b, pm.Par) or pm.normaliser_nom_style(b.style) != pm.NOM_STYLE_CLE_BLOC:
             break
@@ -313,7 +313,7 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   // auteurs (l'en-tête « Photo »/« Autrice ou auteur », puis trois rangées-modèle) — mesuré à
   // la main sur les deux fichiers. Depuis la révision du 21.09.2026 (plus de tableau
   // enveloppe), il ne porte plus AUCUN bloc à l'ancienne forme, et deux à la nouvelle (les
-  // exemples de bloc figure et de bloc tableau), chacun à quatre étiquettes. Si ces nombres
+  // exemples de bloc figure et de bloc tableau), chacun à cinq étiquettes (Note depuis le 30.09.2026). Si ces nombres
   // changent un jour, c'est que le gabarit a changé : les deux assertions deepStrictEqual
   // ci-dessus l'auraient déjà dit, celles-ci ne font que documenter la forme attendue pour
   // qui lit ce test.
@@ -321,10 +321,10 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   assert.strictEqual(structDocx.table2_lignes.length, 4);
   assert.strictEqual(structDocx.blocs_ancienne_forme.length, 0);
   assert.strictEqual(structDocx.blocs_nouvelle_forme.length, 2);
-  assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 4);
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[0].length, 5);
   // « Source : » manquait au second bloc depuis la v3 du gabarit, alors que l'aide dit
   // « Copiez ces quatre paragraphes » : rétablie le 23.09.2026.
-  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 4);
+  assert.strictEqual(structDocx.blocs_nouvelle_forme[1].length, 5);
 });
 }
 

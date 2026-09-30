@@ -224,8 +224,8 @@ def _alerte_langue_produit(document_langue, langue):
         return None
     if langue == 'fr':
         nom = NOMS_LANGUE_FR.get(primaire, primaire)
-        message = ("Le document est déclaré en %s alors qu'il est traité comme un article de "
-                    "la Revue : vérifiez la langue de correction dans Word." % nom)
+        message = ("Le document est déclaré en %s alors qu’il est traité comme un article de "
+                    "la Revue\u00a0: vérifiez la langue de correction dans Word." % nom)
     else:
         nom = NOMS_LANGUE_DE.get(primaire, primaire)
         message = ("Das Dokument ist als %s markiert, wird aber als Artikel der Zeitschrift "
@@ -241,7 +241,7 @@ def _alerte_repli_typo():
     --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
     return {'rule': 'Typo.ApplicationImpossible', 'severity': 'warning', 'action': 'report',
             'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "La typographie n'a pas pu être appliquée à ce document ; le texte "
+            'message': "La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
                        "est rendu tel quel."}
 
 
@@ -250,7 +250,7 @@ def _alerte_vale_indisponible():
     manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
     return {'rule': 'Vale.Indisponible', 'severity': 'warning', 'action': 'report',
             'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Le contrôle du vocabulaire et du langage n'a pas pu être effectué sur "
+            'message': "Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
                        "ce document."}
 
 
@@ -271,7 +271,7 @@ def _alerte_annotation_impossible():
     posés — une alerte le dit, jamais un plantage silencieux de la CLI."""
     return {'rule': 'Annotation.Impossible', 'severity': 'warning', 'action': 'report',
             'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Les corrections n'ont pas pu être posées dans le document : "
+            'message': "Les corrections n’ont pas pu être posées dans le document\u00a0: "
                        "consultez le rapport pour la liste complète des remarques."}
 
 
@@ -279,7 +279,7 @@ def _alerte_conversion_odt_impossible(detail, langue):
     """La sortie .odt demandée (point 3, --format odt) n'a pas pu être produite : le .docx
     déjà écrit et annoté est gardé tel quel (jamais de perte), cette alerte dit pourquoi."""
     if langue == 'fr':
-        message = ("Le document .odt demandé n'a pas pu être produit ; le fichier .docx est "
+        message = ("Le document .odt demandé n’a pas pu être produit\u00a0; le fichier .docx est "
                    "livré à la place (%s)." % detail)
     else:
         message = ("Das angeforderte .odt-Dokument konnte nicht erstellt werden; stattdessen "
@@ -386,6 +386,45 @@ def _recueillir_refs_paragraphes(blocs):
 
     parcours(blocs)
     return refs
+
+
+def _normaliser_entete(entete, langue):
+    """Les champs de l'en-tête passent par le MÊME pont que le corps (manuscrit_typo) avant
+    d'être écrits dans les tableaux du gabarit : ils étaient extraits avant la typographie et
+    écrits tels quels (« L'école … et après ? », mesuré le 30.09.2026). Titre et sous-titre
+    reçoivent les règles de titre ; un résumé en autre langue se normalise dans SA langue.
+    Mute `entete` ; rend (traces, avertissements). Une langue que le filtre ne connaît pas
+    (« abstract », en) laisse son texte intact."""
+    par_langue = {}
+
+    def ajouter(texte, niveau, poser, lang=langue):
+        if texte and texte.strip() and lang in ('fr', 'de', 'it'):
+            par_langue.setdefault(lang, []).append(((texte, niveau), poser))
+
+    ajouter(entete.titre, 1, lambda v: setattr(entete, 'titre', v))
+    ajouter(entete.sous_titre, 2, lambda v: setattr(entete, 'sous_titre', v))
+    ajouter(entete.resume, 0, lambda v: setattr(entete, 'resume', v),
+            (entete.langue_resume or langue)[:2].lower())
+    for i, mot in enumerate(entete.mots_cles):
+        ajouter(mot, 0, lambda v, i=i: entete.mots_cles.__setitem__(i, v))
+    for auteur in entete.auteurs:
+        for cle in ('fonction', 'institution'):
+            ajouter(auteur.get(cle) or '', 0,
+                    lambda v, a=auteur, c=cle: a.__setitem__(c, v))
+    for lang, texte in list((entete.resumes_autres or {}).items()):
+        ajouter(texte, 0, lambda v, l=lang: entete.resumes_autres.__setitem__(l, v),
+                (lang or '')[:2].lower())
+
+    traces, avertissements = [], []
+    for lang in sorted(par_langue):
+        champs = par_langue[lang]
+        normalises, t, a, _statut = mt.normaliser_textes([c for c, _ in champs], lang,
+                                                         RACINE_DEPOT)
+        for (_, poser), valeur in zip(champs, normalises):
+            poser(valeur)
+        traces.extend(t)
+        avertissements.extend(a)
+    return traces, avertissements
 
 
 def _collecter_images(document):
@@ -503,8 +542,8 @@ def _alerte_ecartes(ecartes, langue):
     if not ecartes or not ecartes['elements']:
         return None
     if langue == 'fr':
-        message = ("Le document nettoyé ne porte pas : %s. Le gabarit n'a pas de place pour "
-                   "ces éléments de l'en-tête ; reportez-les à la main si l'article en a besoin."
+        message = ("Le document nettoyé ne porte pas\u00a0: %s. Le gabarit n’a pas de place pour "
+                   "ces éléments de l’en-tête\u00a0; reportez-les à la main si l’article en a besoin."
                    % ', '.join(fr for fr, _ in ecartes['elements']))
     else:
         message = ("Das bereinigte Dokument enthält nicht: %s. Die Vorlage hat für diese Teile "
@@ -543,8 +582,8 @@ def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
         return ({'rule': 'Nettoyage.ControleImpossible', 'severity': 'warning',
                  'action': 'report', 'para': None, 'span': None, 'found': None,
                  'suggested': None,
-                 'message': ("Le document écrit n'a pas pu être relu pour vérifier qu'aucun "
-                             "contenu ne s'est perdu (%s)." % e) if langue == 'fr' else
+                 'message': ("Le document écrit n’a pas pu être relu pour vérifier qu’aucun "
+                             "contenu ne s’est perdu (%s)." % e) if langue == 'fr' else
                             ("Das geschriebene Dokument konnte nicht erneut gelesen werden, um "
                              "zu prüfen, dass kein Inhalt verloren ging (%s)." % e)},
                 {'controle': 'impossible'})
@@ -567,14 +606,14 @@ def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
     mesure['refus'] = taux >= PERTE_REFUS
     exemples = ', '.join(mesure['exemples_manquants'][:8])
     if langue == 'fr':
-        message = ("Le document nettoyé a perdu du contenu du manuscrit : %d mot(s) sur %d "
+        message = ("Le document nettoyé a perdu du contenu du manuscrit\u00a0: %d mot(s) sur %d "
                    "(%.0f %%)%s, %d image(s) sur %d retrouvée(s). %s"
                    % (n_manquants, total, taux * 100,
                       (' — par exemple : %s' % exemples) if exemples else '',
                       images_out, images_in,
-                      "Il n'a pas été livré : signalez ce manuscrit à la maintenance."
+                      "Il n’a pas été livré\u00a0: signalez ce manuscrit à la maintenance."
                       if mesure['refus'] else
-                      "Comparez-le au manuscrit avant de l'utiliser, et signalez ce "
+                      "Comparez-le au manuscrit avant de l’utiliser, et signalez ce "
                       "manuscrit à la maintenance."))
     else:
         message = ("Das bereinigte Dokument hat Inhalt des Manuskripts verloren: %d von %d "
@@ -1106,12 +1145,21 @@ def principal(argv):
         statut_typo = 'repli'
     else:
         progres('normalisation typographique (langue=%s)...' % langue)
+        # Le corps ET les notes (bas de page et fin), dans le même appel : les notes vivent à
+        # part (Document.notes) et restaient sans typographie (mesuré le 30.09.2026 : 23
+        # apostrophes droites sur 23 dans les notes de 2-fin-de-document, 1 sur 75 au corps).
         refs = _recueillir_refs_paragraphes(document.blocs)
+        for cle in sorted(document.notes):
+            refs.extend(_recueillir_refs_paragraphes(document.notes[cle]))
         paras = [conteneur[i] for conteneur, i in refs]
         nouveaux, traces_typo, abandons_typo, avertissements_typo, statut_typo = (
             mt.normaliser_paragraphes(paras, langue, RACINE_DEPOT))
         for (conteneur, i), p in zip(refs, nouveaux):
             conteneur[i] = p
+        if entete is not None and statut_typo == 'appliquee':
+            traces_entete_typo, avert_entete = _normaliser_entete(entete, langue)
+            traces_typo = traces_typo + traces_entete_typo
+            avertissements_typo = avertissements_typo + avert_entete
         for ligne in traces_typo:
             progres(ligne)
         if statut_typo == 'repli':
@@ -1207,7 +1255,8 @@ def principal(argv):
         # ajoute des révisions dont le texte barré fausserait le compte).
         alerte_perte, mesure_perte = _controler_perte(empreinte_entree, sortie_docx, langue,
                                                       ecartes_entete)
-        for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue)):
+        for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue),
+                       mg.alerte_notes_reprises(resultat_ecriture['trace'], langue)):
             if alerte is not None:
                 alertes.append(alerte)
                 progres(alerte['message'])

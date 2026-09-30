@@ -67,6 +67,9 @@
 #    d'origine (x.odt) survit dans $SZH_SOURCE, lu par docx-meta.py et pronto_modele.py
 #    pour le champ `source:` de la fiche et par reimporter.py --empreintes --word.
 set -u
+# L'insécable U+00A0 des messages français (E1, E2), écrite ici une fois : jamais un
+# blanc invisible dans les phrases qui suivent.
+NB="$(printf '\302\240')"
 
 F="$1"; SLUG="$2"; PIPE="$3"
 # Destination : articles/<slug>, sauf si $SZH_IMPORT_DIR en désigne une autre. C'est par là
@@ -121,7 +124,7 @@ case "$DOCX_ABS" in
   *.[oO][dD][tT])
     CONVDIR="$(mktemp -d)"
     if ! DOCX_ABS="$(python3 "$PIPE/conversion_odt.py" "$DOCX_ABS" docx "$CONVDIR")"; then
-      signaler "[import] ⚠ « $SLUG » : la conversion de « $SZH_SOURCE » (.odt) en .docx a échoué ; rien n'a été créé, le fichier reste en attente. [de] « $SLUG »: die Umwandlung von « $SZH_SOURCE » (.odt) in .docx ist fehlgeschlagen; es wurde nichts angelegt, die Datei bleibt in der Warteschlange."
+      signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: la conversion de «${NB}$SZH_SOURCE${NB}» (.odt) en .docx a échoué${NB}; rien n’a été créé, le fichier reste en attente. [de] «$SLUG»: die Umwandlung von «$SZH_SOURCE» (.odt) in .docx ist fehlgeschlagen; es wurde nichts angelegt, die Datei bleibt in der Warteschlange."
       exit 1
     fi
     ;;
@@ -169,9 +172,9 @@ if ! STATS="$(python3 "$LECTEUR" "$DOCX_ABS" "$SLUG" .)"; then
   # deux cas l'article n'entre pas dans le numéro et son Word reste en attente ; seul le
   # geste à faire diffère, et c'est lui que la personne doit lire.
   if [ "$NOM_LECTEUR" = pronto ]; then
-    signaler "[import] ⚠ « $SLUG » n'a pas été importé : son document suit le gabarit « Pronto », mais un ou plusieurs champs n'ont pas pu être lus (voir les messages juste au-dessus, qui nomment chaque étiquette en cause). Rien n'a été créé, et le fichier Word reste en attente. Corrigez les étiquettes dans le document, puis enregistrez (Ctrl+S). [de] « $SLUG » wurde nicht importiert: das Dokument folgt der Vorlage «Pronto», aber ein oder mehrere Felder konnten nicht gelesen werden (siehe die Meldungen direkt darüber, die jede betroffene Bezeichnung nennen). Es wurde nichts angelegt, die Word-Datei bleibt in der Warteschlange. Korrigieren Sie die Bezeichnungen im Dokument und speichern Sie (Ctrl+S)."
+    signaler "[import] ⚠ «${NB}$SLUG${NB}» n’a pas été importé${NB}: son document suit le gabarit «${NB}Pronto${NB}», mais un ou plusieurs champs n’ont pas pu être lus (voir les messages juste au-dessus, qui nomment chaque étiquette en cause). Rien n’a été créé, et le fichier Word reste en attente. Corrigez les étiquettes dans le document, puis enregistrez (Ctrl+S). [de] «$SLUG» wurde nicht importiert: das Dokument folgt der Vorlage «Pronto», aber ein oder mehrere Felder konnten nicht gelesen werden (siehe die Meldungen direkt darüber, die jede betroffene Bezeichnung nennen). Es wurde nichts angelegt, die Word-Datei bleibt in der Warteschlange. Korrigieren Sie die Bezeichnungen im Dokument und speichern Sie (Ctrl+S)."
   else
-    signaler "[import] ⚠ Les métadonnées de « $SLUG » n'ont pas pu être lues : l'article n'est pas importé et son fichier Word reste en attente. Vérifiez que le document s'ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von « $SLUG » konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
+    signaler "[import] ⚠ Les métadonnées de «${NB}$SLUG${NB}» n’ont pas pu être lues${NB}: l’article n’est pas importé et son fichier Word reste en attente. Vérifiez que le document s’ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von «$SLUG» konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
   fi
   exit 1
 fi
@@ -251,7 +254,7 @@ rmdir tables 2>/dev/null || true
 # celui qu'on n'a pas vu venir. Non bloquant : l'article est importé, mais il est dit.
 BRUT="$(grep -c -E '^<(figure|img|table|div)[ />]' "$SLUG.md" 2>/dev/null || true)"
 if [ "${BRUT:-0}" -gt 0 ]; then
-  signaler "[import] ⚠ « $SLUG » contient $BRUT bloc(s) HTML que la conversion n'a pas su écrire en markdown : ces passages ne seront ni modifiables dans l'éditeur ni numérotés à la compilation. Signalez ce document à la maintenance. [de] « $SLUG » enthält $BRUT HTML-Block/Blöcke, die die Konvertierung nicht in Markdown schreiben konnte: diese Stellen sind weder im Editor bearbeitbar noch werden sie beim Kompilieren nummeriert. Melden Sie dieses Dokument der Wartung."
+  signaler "[import] ⚠ «${NB}$SLUG${NB}» contient $BRUT bloc(s) HTML que la conversion n’a pas su écrire en markdown${NB}: ces passages ne seront ni modifiables dans l’éditeur ni numérotés à la compilation. Signalez ce document à la maintenance. [de] «$SLUG» enthält $BRUT HTML-Block/Blöcke, die die Konvertierung nicht in Markdown schreiben konnte: diese Stellen sind weder im Editor bearbeitbar noch werden sie beim Kompilieren nummeriert. Melden Sie dieses Dokument der Wartung."
 fi
 
 

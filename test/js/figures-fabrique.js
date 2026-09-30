@@ -4,7 +4,7 @@
 //
 // Deux familles, les mêmes que le diagnostic qui a ouvert ce chantier :
 //   * « brut » : un manuscrit quelconque (styles Normal et heading 1), l'en-tête de figure
-//     TAPÉ à la main (« Légende : … », « Texte alternatif : … », « Crédit : … ») ;
+//     TAPÉ à la main (« Légende : … », « Texte alternatif : … », « Copyright : … ») ;
 //   * « pronto » : une copie du gabarit livré (revue-template), dont le premier bloc figure
 //     reçoit les mêmes valeurs dans ses paragraphes « SZH Cle Abb/Tab ».
 // Et trois contenus : (a) deux images dans un paragraphe, (b) deux paragraphes d'images,
@@ -232,9 +232,10 @@ function manuscritBrut(cas, options) {
     p('Un paragraphe de corps avant la figure, assez long pour ne pas passer pour un titre de section.'),
   ];
   if (o.cles !== false) {
-    corps.push(p('Légende : ' + LEGENDE), p('Texte alternatif : ' + ALT), p('Crédit : ' + CREDIT));
+    corps.push(p('Légende : ' + LEGENDE), p('Texte alternatif : ' + ALT), p('Copyright : ' + CREDIT));
   }
   corps.push(...(o.contenu || contenu(cas, o.descrB)));
+  corps.push(...(o.apres || []));   // ce qui suit IMMÉDIATEMENT le contenu (une note, par exemple)
   corps.push(p('Un paragraphe de corps après la figure, assez long lui aussi pour rester du corps.'));
   if (!o.court) {
     corps.push(p('Discussion', 'Heading1'),
@@ -251,7 +252,7 @@ function manuscritBrut(cas, options) {
 function documentPronto(cas, options) {
   const o = options || {};
   return { gabarit: GABARIT,
-    valeurs: [['Légende', LEGENDE], ['Texte alternatif', ALT], ['Crédit', CREDIT]],
+    valeurs: [['Légende', LEGENDE], ['Texte alternatif', ALT], ['Copyright', CREDIT]],
     contenu: o.contenu || contenu(cas, o.descrB) };
 }
 
@@ -269,7 +270,7 @@ function deuxImagesSeparees(entre) {
 const LEGENDE_2 = 'Une seconde figure';
 function clesSecondes(style) {
   return [{ p: [{ t: 'Légende : ' + LEGENDE_2 }], style: style },
-    { p: [{ t: 'Crédit : © Autre' }], style: style }];
+    { p: [{ t: 'Copyright : © Autre' }], style: style }];
 }
 
 module.exports = { fabriquer, manuscritBrut, documentPronto, dossierJetable, GABARIT,

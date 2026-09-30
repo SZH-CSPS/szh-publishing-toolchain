@@ -70,10 +70,10 @@ RELS = '{http://schemas.openxmlformats.org/package/2006/relationships}'
 
 # Étiquettes sous lesquelles une valeur est remise dans le texte : celles du gabarit, que la
 # rédaction reconnaît (manuscrit_gabarit.CHAMPS_BLOC, pronto_modele.CANON_FIGURE).
-CHAMPS = (('legende', 'Légende'), ('alt', 'Texte alternatif'), ('credit', 'Crédit'),
-          ('source', 'Source'))
-NOMS_DE = {'legende': 'Legende', 'alt': 'Alternativtext', 'credit': 'Bildnachweis',
-           'source': 'Quelle'}
+CHAMPS = (('legende', 'Légende'), ('alt', 'Texte alternatif'), ('credit', 'Copyright'),
+          ('source', 'Source'), ('note', 'Note'))
+NOMS_DE = {'legende': 'Legende', 'alt': 'Alternativtext', 'credit': 'Copyright',
+           'source': 'Quelle', 'note': 'Notiz'}
 
 # Le numéro manuel du Word qui part de la légende (szh-legendes.lua, nettoyer_figure) : une
 # légende « Figure 2 : Vue » se retrouve « Vue » dans l'article, et c'est bien elle.
@@ -117,7 +117,7 @@ def lire_instructions(chemin):
             champs = ligne.split('\t')
             lettre = champs[0]
             if lettre in ('FI', 'FG', 'FT') and len(champs) >= 2:
-                champs += [''] * (6 - len(champs))
+                champs += [''] * (7 - len(champs))
                 blocs.append({'lettre': lettre, 'cible': champs[1],
                               'valeurs': {c: champs[2 + i].strip()
                                           for i, (c, _) in enumerate(CHAMPS)}})

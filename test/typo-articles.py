@@ -211,7 +211,7 @@ CAS = [
      "Les personnes de la formation restent ici."),
 
     # ---- ce que la maquette a déjà posé, et qui doit survivre ---------------------------
-    # szh-numerotation.lua écrit « Source⍽: » avec une FINE insécable : c'est une décision
+    # szh-numerotation.lua écrit « Note⍽: » avec une FINE insécable : c'est une décision
     # de composition, et l'élargir en insécable ordinaire la déferait.
     ("E2", "fr", "Le crédit dit Source : Banc d’essai.",
      "Le crédit dit Source : Banc d’essai."),
@@ -330,6 +330,103 @@ CAS_TITRE = [
 ]
 
 
+# Les résumés de couverture, chacun dans SA langue (30.09.2026). szh-maquette.lua les pose
+# en `resumes`, une liste dont le texte est une MetaString : le filtre ne les atteignait pas,
+# et aucun résumé n'avait de typographie. Un résumé français dans la Zeitschrift se compose
+# en français, un résumé allemand dans la Revue en allemand.
+# (code, produit du numéro, langue du résumé, résumé tapé, résumé attendu)
+CAS_RESUME = [
+    ("E2", "revue", "fr", "Un résumé : « oui » ou non ?",
+     "Un résumé" + NB + ": «" + NB + "oui" + NB + "» ou non" + NB + "?"),
+    ("E2", "zeitschrift", "de", "Eine Zusammenfassung : « ja » oder nein ?",
+     "Eine Zusammenfassung: «ja» oder nein?"),
+    ("E2", "zeitschrift", "fr", "Un résumé : « oui » ou non ?",
+     "Un résumé" + NB + ": «" + NB + "oui" + NB + "» ou non" + NB + "?"),
+    ("E2", "revue", "de", "Eine Zusammenfassung : « ja » oder nein ?",
+     "Eine Zusammenfassung: «ja» oder nein?"),
+    ("T1", "revue", "fr", "l'école — et la suite", "l’école" + NB + "– et la suite"),
+]
+
+# Les attributs que szh-numerotation.lua IMPRIME sous une figure (note, copyright, source),
+# et eux seuls : ils passent par le filtre avant d'être composés.
+# (code, langue, fragment Markdown, attribut html attendu dans la sortie)
+CAS_ATTRIBUT = [
+    ("E2", "fr", '![L](a.png){note="fin 2025 : voir l\'annexe"}',
+     'data-note="fin 2025' + NB + ': voir l’annexe"'),
+    ("A1", "fr", '![L](a.png){source="Banc d\'essai" copyright="(c) l\'auteur"}',
+     'data-source="Banc d’essai"'),
+    ("E2", "fr", '![L](a.png){source="x : y" class="a:b"}',
+     'src="a.png"'),
+    ("E2", "de", '![L](a.png){note="Ende 2025 : siehe Anhang"}',
+     'data-note="Ende 2025: siehe Anhang"'),
+]
+
+# data-note, data-copyright et data-source du <table> réinjecté (szh-tabelle-inclure) :
+# la valeur est échappée HTML, et « &amp; » ne doit pas se lire « &amp » suivi d'un « ; ».
+CAS_ATTRIBUT_TABLEAU = [
+    # Le même piège dans le TEXTE d'une cellule : « &amp; » y sortait « &amp ; ».
+    ("E2", "fr", "<table><tr><td>Effectifs &amp; durées : A &lt; B</td></tr></table>",
+     "<td>Effectifs &amp; durées" + NB + ": A &lt; B</td>"),
+    ("E2", "fr", '<table data-note="Effectifs &amp; durées : arrondis. Voir l&#39;annexe" '
+     'data-alt="a : b"><tr><td>1</td></tr></table>',
+     'data-note="Effectifs &amp; durées' + NB + ': arrondis. Voir l’annexe"'),
+    ("E2", "fr", '<table data-note="x" data-alt="a : b"><tr><td>1</td></tr></table>',
+     'data-alt="a : b"'),
+    ("E2", "de", '<table data-source="Quelle : Amt"><tr><td>1</td></tr></table>',
+     'data-source="Quelle: Amt"'),
+]
+
+
+def rendre_resume(texte, produit, langue_resume):
+    """Compose `resumes` comme la compilation : szh-maquette.lua, puis ce filtre. Le gabarit
+    minimal imprime le texte du résumé demandé, et lui seul."""
+    maquette = os.path.join(RACINE, "pipeline", "filters", "szh-maquette.lua")
+    langue_article = "fr" if produit == "revue" else "de"
+    with tempfile.TemporaryDirectory() as dossier:
+        with open(os.path.join(dossier, "essai.md"), "w", encoding="utf-8") as f:
+            f.write("Corps.\n")
+        with open(os.path.join(dossier, "ausgabe.yaml"), "w", encoding="utf-8") as f:
+            f.write("revue: " + produit + "\n")
+        with open(os.path.join(dossier, "essai.meta.yaml"), "w", encoding="utf-8") as f:
+            # szh-maquette exige le résumé dans la langue de l'article : un résumé neutre
+            # l'y pose quand le cas éprouve l'autre langue.
+            resumes = {langue_article: "Neutre."}
+            resumes[langue_resume] = texte
+            f.write('type: article\nlang: %s\ntitle:\n  %s: "Titre"\nresume:\n'
+                    % (langue_article, langue_article))
+            for l, t in resumes.items():
+                f.write('  %s: "%s"\n' % (l, t.replace('"', '\\"')))
+        with open(os.path.join(dossier, "gabarit.html"), "w", encoding="utf-8") as f:
+            f.write("$for(resumes)$$if(it.texte)$[$it.lang$]$it.texte$\n$endif$$endfor$")
+        env = dict(os.environ, SZH_AUSGABE=os.path.join(dossier, "ausgabe.yaml"))
+        r = subprocess.run(
+            ["pandoc", "essai.md", "--from=markdown", "--to=html", "--wrap=none",
+             "--template=gabarit.html", "--metadata-file=ausgabe.yaml",
+             "--metadata-file=essai.meta.yaml",
+             "--lua-filter=" + maquette, "--lua-filter=" + FILTRE],
+            cwd=dossier, capture_output=True, env=env)
+        if r.returncode != 0:
+            return None, r.stderr.decode("utf-8", "replace").strip()
+        for ligne in r.stdout.decode("utf-8").splitlines():
+            if ligne.startswith("[" + langue_resume + "]"):
+                return ligne[len(langue_resume) + 2:].strip(), ""
+        return "(résumé « %s » absent de la sortie)" % langue_resume, ""
+
+
+def rendre_html(md, langue):
+    """Fragment Markdown compilé en HTML avec le filtre seul (attributs d'image)."""
+    with tempfile.TemporaryDirectory() as dossier:
+        with open(os.path.join(dossier, "essai.md"), "w", encoding="utf-8") as f:
+            f.write(md + "\n")
+        r = subprocess.run(
+            ["pandoc", "essai.md", "--from=markdown", "--to=html", "--wrap=none",
+             "--metadata=lang=" + langue, "--lua-filter=" + FILTRE],
+            cwd=dossier, capture_output=True)
+        if r.returncode != 0:
+            return None, r.stderr.decode("utf-8", "replace").strip()
+        return r.stdout.decode("utf-8").strip(), ""
+
+
 def rendre(md, langue):
     """Compile un fragment avec le filtre, dans un dossier d'article factice."""
     with tempfile.TemporaryDirectory() as dossier:
@@ -426,7 +523,32 @@ def main(argv):
         elif bavard:
             print("  ok   %-4s %-3s %s" % (code, langue, montrer(obtenu)))
 
-    total = len(CAS) + len(CAS_TABLEAU) + len(CAS_TITRE)
+    for code, produit, langue, entree, attendu in CAS_RESUME:
+        obtenu, err = rendre_resume(entree, produit, langue)
+        etiquette = "%s(%s)" % (langue, produit)
+        if obtenu is None:
+            echecs.append((code, etiquette, entree, attendu, "pandoc en échec : " + err))
+            continue
+        if obtenu != attendu:
+            echecs.append((code, etiquette, entree, attendu, obtenu))
+        elif bavard:
+            print("  ok   %-4s %-3s %s" % (code, etiquette, montrer(obtenu)))
+
+    # Un attribut se vérifie par sa présence dans le HTML produit : le reste de la balise
+    # (src, dimensions, ordre des attributs) n'est pas ce que ces cas éprouvent.
+    for table, rendu in ((CAS_ATTRIBUT, rendre_html), (CAS_ATTRIBUT_TABLEAU, rendre_tableau)):
+        for code, langue, entree, attendu in table:
+            obtenu, err = rendu(entree, langue)
+            if obtenu is None:
+                echecs.append((code, langue, entree, attendu, "pandoc en échec : " + err))
+                continue
+            if attendu not in obtenu:
+                echecs.append((code, langue, entree, attendu, obtenu))
+            elif bavard:
+                print("  ok   %-4s %-3s %s" % (code, langue, montrer(attendu)))
+
+    total = (len(CAS) + len(CAS_TABLEAU) + len(CAS_TITRE) + len(CAS_RESUME)
+             + len(CAS_ATTRIBUT) + len(CAS_ATTRIBUT_TABLEAU))
     print()
     if echecs:
         for code, langue, entree, attendu, obtenu in echecs:

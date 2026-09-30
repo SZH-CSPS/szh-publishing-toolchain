@@ -384,8 +384,8 @@ function construireBarre(){barre.textContent='';barre.className='szh-barre';
   construireChamps();construirePanneau();}
 // ---- Légende, texte alternatif et crédits du tableau ----
 //
-// Quatre champs au-dessus de la grille : `legende` devient le <caption> du fichier, `alt`
-// son data-alt, puis data-copyright et data-source. Tous sont traités comme le texte d'une
+// Cinq champs au-dessus de la grille : `legende` devient le <caption> du fichier, `alt`
+// son data-alt, puis data-copyright, data-source et data-note (imprimée sous le tableau). Tous sont traités comme le texte d'une
 // cellule — récoltés dans le modèle, photographiés à la prise de focus, empilés à la perte
 // de focus — et participent donc à annuler et rétablir sans re-rendu de la grille.
 //
@@ -408,6 +408,7 @@ function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';ch
   var credits=document.createElement('div');credits.className='szh-grille-2';boiteChamps.appendChild(credits);
   champTexte('copyright',false,credits);
   champTexte('source',false,credits);
+  champTexte('note',true);
   var titre=document.createElement('p');titre.className='szh-section';titre.textContent=TXT['section.a11y']||'';
   boiteChamps.appendChild(titre);
   // Le cas courant est le champ vide : un tableau bien fait se lit seul, ses en-têtes
@@ -426,12 +427,12 @@ function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';ch
 function recolterChamps(){if(!modele)return;
   if(champs.legende){var saisi=String(champs.legende.value||'').replace(/[\r\n]+/g,' ').trim();
     if(saisi!==texteDeInline(modele.attrs.legende||'').trim())modele.attrs.legende=echap(saisi);}
-  ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
+  ['alt','copyright','source','note'].forEach(function(cle){if(!champs[cle])return;
     var v=String(champs[cle].value||'').replace(/[\r\n]+/g,' ').trim();
     if(v!==String(modele.attrs[cle]||''))modele.attrs[cle]=v;});}
 function majChamps(){if(!modele)return;
   if(champs.legende){var v=texteDeInline(modele.attrs.legende||'');if(champs.legende.value!==v)champs.legende.value=v;}
-  ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
+  ['alt','copyright','source','note'].forEach(function(cle){if(!champs[cle])return;
     var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
 // Sens d'en-tête déduit de la sélection : une rangée du haut sur toute la largeur donne
 // 'lignes', une colonne de gauche sur toute la hauteur donne 'colonnes', sinon le bord

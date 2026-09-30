@@ -6801,6 +6801,7 @@ function textesTable() {
     'table.legende', 'table.legende.indice',
     'table.alt', 'table.alt.indice', 'table.alt.aide',
     'table.copyright', 'table.copyright.indice', 'table.source', 'table.source.indice',
+    'table.note', 'table.note.indice',
     'table.zone.styles', 'table.zone.preset',
     'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
     'table.total', 'table.gras',

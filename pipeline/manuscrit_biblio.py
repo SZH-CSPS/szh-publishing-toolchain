@@ -849,7 +849,7 @@ def croiser(citations, references):
                     cle = cle_large
         if not correspondances:
             message = ('Cette citation ne correspond à aucune référence de la '
-                       'bibliographie : « %s ».' % c.get('texte'))
+                       'bibliographie\u00a0: «\u00a0%s\u00a0».' % c.get('texte'))
             # Même nom, autre année : c'est presque toujours une coquille d'année, pas une
             # référence manquante — le dire (mesuré sur gzdf_Huttner : « Beukelman &
             # Mirenda, 1993 » dans le texte, 2013 dans la bibliographie).
@@ -874,7 +874,7 @@ def croiser(citations, references):
                 'rule': 'APA.Suffixe', 'severity': 'warning', 'action': 'comment',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': None,
-                'message': 'Le suffixe « %s » de cette citation ne correspond à aucune '
+                'message': 'Le suffixe «\u00a0%s\u00a0» de cette citation ne correspond à aucune '
                            'référence du même auteur et de la même année.' % c['suffixe'],
             })
         # « et al. » : manquant dès trois auteurs, posé à tort pour un ou deux.
@@ -887,8 +887,8 @@ def croiser(citations, references):
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': suggere,
-                'message': 'Cette référence compte %d auteurs : la citation doit porter '
-                           '« et al. » (« %s »).' % (nb, suggere),
+                'message': 'Cette référence compte %d auteurs\u00a0: la citation doit porter '
+                           '«\u00a0et al.\u00a0» («\u00a0%s\u00a0»).' % (nb, suggere),
             })
         elif 1 <= nb <= 2 and c.get('et_al'):
             if nb == 2 and len(ref.get('auteurs') or []) == 2:
@@ -902,8 +902,8 @@ def croiser(citations, references):
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': suggere,
-                'message': 'Cette référence ne compte que %d auteur(s) : « et al. » est de '
-                           'trop (« %s »).' % (nb, suggere),
+                'message': 'Cette référence ne compte que %d auteur(s)\u00a0: «\u00a0et al.\u00a0» est de '
+                           'trop («\u00a0%s\u00a0»).' % (nb, suggere),
             })
 
     for cle, lot in refs_par_cle.items():
@@ -1005,8 +1005,8 @@ def _appels_en_ordre_texte(citations):
 
 
 _MESSAGE_REFERENCE_NON_VERIFIEE = {
-    'fr': ('La référence « %s » n\'a pas pu être vérifiée automatiquement : son format n\'a '
-           'pas été reconnu. Contrôlez l\'entrée correspondante dans la liste des références, '
+    'fr': ('La référence «\u00a0%s\u00a0» n’a pas pu être vérifiée automatiquement\u00a0: son format n’a '
+           'pas été reconnu. Contrôlez l’entrée correspondante dans la liste des références, '
            'puis corrigez cet appel si nécessaire.'),
     'de': ('Der Verweis «%s» konnte nicht automatisch überprüft werden: Sein Format wurde '
            'nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
@@ -1105,8 +1105,8 @@ def verifier_ordre(references, langue='fr'):
                 'rule': 'APA.OrdreBiblio', 'severity': 'warning', 'action': 'report',
                 'para': r.get('para'), 'span': None,
                 'found': r.get('texte') or r.get('titre'), 'suggested': None,
-                'message': 'Référence mal classée : l\'ordre alphabétique puis '
-                           'chronologique n\'est pas respecté.',
+                'message': 'Référence mal classée\u00a0: l’ordre alphabétique puis '
+                           'chronologique n’est pas respecté.',
             })
 
     # Même auteur, même année, plusieurs entrées : les suffixes a/b/c doivent les distinguer.
@@ -1155,7 +1155,7 @@ def doi_normaliser(ref):
     alertes.append({
         'rule': 'APA.DoiForme', 'severity': 'warning', 'action': 'fix',
         'para': ref.get('para'), 'span': None, 'found': trouve, 'suggested': canonique,
-        'message': 'Le DOI n\'est pas écrit sous sa forme normalisée « %s ».' % canonique,
+        'message': 'Le DOI n’est pas écrit sous sa forme normalisée «\u00a0%s\u00a0».' % canonique,
     })
     return alertes
 
@@ -1433,8 +1433,8 @@ def _segment_fin_reference(ref):
 
 
 def _message_doi_retrouve(doi):
-    return ('Un DOI correspondant a été trouvé pour cette référence : %s '
-            '(à confirmer avant de l\'accepter).' % doi)
+    return ('Un DOI correspondant a été trouvé pour cette référence\u00a0: %s '
+            '(à confirmer avant de l’accepter).' % doi)
 
 
 def _alerte_insertion_doi(ref, doi):
@@ -1549,7 +1549,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                     })
                 else:
                     message = ('La mise en forme APA 7 de cette référence diffère de '
-                                'l\'original — révision proposée.')
+                                'l’original\u00a0– révision proposée.')
                     if doi_retrouve:
                         message += (' DOI ajouté : un DOI correspondant a été trouvé (%s), à '
                                      'confirmer avant d\'accepter cette révision.' % doi_retrouve)

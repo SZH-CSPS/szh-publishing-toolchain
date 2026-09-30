@@ -11,6 +11,37 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 2.6.1
+
+**Note des figures et des tableaux.** Une nouvelle clé « Note : » (DE « Notiz: ») dans
+les blocs figure et tableau du gabarit Pronto, lue par le parser, écrite par le nettoyeur et
+éditable dans le cockpit (formulaire Médias, éditeur de tableau). Elle est stockée en
+`note="…"` sur l'image (la première d'un groupe) et en `data-note` sur le `<table>`, et
+s'imprime sous la figure ou le tableau, précédée de *Note* ou *Notiz* en italique. En HTML,
+c'est un `<p class="szh-bloc-note">` dans la `<figure>` ou juste après le `</table>`, relié par
+`aria-describedby` ; PDF/UA reste conforme, la note est un /P frère de la /Figure. Le
+nettoyeur reprend dans cette clé le paragraphe « Note : » ou « Note. » (APA) qui suit
+immédiatement un tableau ou une figure.
+
+**Crédit devient Copyright.** La clé visible du gabarit FR s'appelle « Copyright : » ;
+« Crédit » reste lu sans avertissement dans les documents déjà remplis. Les modèles FR et
+DE du dépôt et ceux du partage des autrices sont à jour.
+
+**Crédits entre parenthèses.** La légende sort en `Figure N — Titre (© X | source)`, sans
+étiquette « Source : » ; le `©` n'est ajouté que s'il manque, un `(c)` tapé devient `©`.
+Sous une image sans légende, le crédit sort sans parenthèses, collé à l'image. Les figures,
+leur légende et leur note s'alignent à gauche sur la marge.
+
+**Typographie FR/DE du parser et du nettoyeur.** Le parser ne rabat plus les tirets ni les
+insécables des valeurs (titre, légende, noms) ; le trait d'union insécable de Word
+(`w:noBreakHyphen`) et `w:sym` ne disparaissent plus ; la langue d'un Word hérité vient du
+produit ; les résumés, la note, le copyright et la source passent par `szh-typographie.lua`,
+chaque résumé dans sa langue. Le nettoyeur normalise aussi les notes de bas de page, l'en-tête
+et les intertitres, et ses messages suivent la typographie de leur langue.
+
+Éditeur de tableau : « Définir comme en-tête intermédiaire » remplace « Définir comme titre
+de section ».
+
 ## 2.6.0
 
 Medium : le texte des PDF se copie et se lit enfin correctement ; à dire à la rédaction et à

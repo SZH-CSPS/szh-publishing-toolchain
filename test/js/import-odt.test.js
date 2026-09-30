@@ -164,8 +164,9 @@ doc = remplir_champ(doc, 'Institution : ', 'Universit\\u00e9 de Test')
 
 doc = remplir_champ(doc, 'L\\u00e9gende\\u00a0: ', "Vue d\\u2019ensemble du dispositif (test)")
 doc = remplir_champ(doc, 'Texte alternatif\\u00a0: ', 'Description alternative de test')
-doc = remplir_champ(doc, 'Cr\\u00e9dit\\u00a0: ', 'Studio Test')
+doc = remplir_champ(doc, 'Copyright\\u00a0: ', 'Studio Test')
 doc = remplir_champ(doc, 'Source\\u00a0: ', 'Phototh\\u00e8que SZH')
+doc = remplir_champ(doc, 'Note\\u00a0: ', 'Note de test')
 
 contenu['word/document.xml'] = doc.encode('utf-8')
 contenu['word/_rels/document.xml.rels'] = rels.encode('utf-8')

@@ -736,13 +736,16 @@ test('médias : l’accordéon du groupe porte les réglages de la grille, et el
   assert.ok(dedans.indexOf('2 + 1') !== -1, 'la disposition « 2-1 » n’est pas libellée');
   // La légende de la figure appartient au groupe : elle est dans l'accordéon, portée par
   // l'ancre (fig-02.png, deuxième média reçu), et nulle part ailleurs.
-  assert.strictEqual(page.compter('.groupe-corps input'), 1, 'la légende de la figure n’est pas dans l’accordéon');
+  assert.strictEqual(page.compter('.groupe-corps input'), 2, 'la légende et la note de la figure ne sont pas dans l’accordéon');
   assert.strictEqual(corps.querySelectorAll('input')[0].id, 'ch-legende-1');
+  assert.strictEqual(corps.querySelectorAll('input')[1].id, 'ch-note-1', 'la note de la figure n’est pas dans l’accordéon');
   assert.ok(dedans.indexOf(txt.grilleLegende) !== -1, 'l’intitulé ne dit pas que la légende vaut pour la grille');
   assert.strictEqual(corps.querySelectorAll('input')[0].value, 'Les trois moments');
   // Les images suivantes n'ont plus de champ légende du tout : la figure n'en porte qu'une.
   assert.strictEqual(champId(page, 'ch-legende-2').length, 0, 'une image suivante garde un champ légende');
   assert.strictEqual(champId(page, 'ch-legende-3').length, 0, 'une image suivante garde un champ légende');
+  assert.strictEqual(champId(page, 'ch-note-2').length, 0, 'une image suivante garde un champ note');
+  assert.strictEqual(champId(page, 'ch-note-3').length, 0, 'une image suivante garde un champ note');
   // Une image seule garde la sienne dans son propre formulaire : sa figure, c'est elle.
   assert.strictEqual(champId(page, 'ch-legende-0').length, 1);
   // Le formulaire de l'image seule porte sa légende ; celui d'un membre de grille, non.
@@ -1056,6 +1059,33 @@ test('médias : « occupé » se pose et se retire sur la carte de figure', () =
     'la carte reste occupée après un dépôt annulé : ses zones de dépôt sont mortes');
 });
 
+// La note : un champ après la source pour une figure seule, dans l'accordéon pour la grille
+// (elle est celle de la figure entière), et elle repart avec les valeurs de l'image.
+test('médias : le champ Note d’une figure seule et d’une grille, lu et renvoyé', () => {
+  const txt = MEDIAS_TXT();
+  assert.ok(txt.note && txt.noteIndice, 'libellés de la note non transmis à la page');
+  const page = pageMedias(txt);
+  const ids = formDe(page, 'fig-01.png').querySelectorAll('input').map((e) => e.id);
+  assert.ok(ids.indexOf('ch-source-0') !== -1 && ids.indexOf('ch-note-0') === ids.indexOf('ch-source-0') + 1,
+    'la note ne suit pas la source : ' + ids);
+  const note = champId(page, 'ch-note-0')[0];
+  assert.strictEqual(note.placeholder, txt.noteIndice);
+  note.value = 'Données OFS 2024.';
+  note.dispatchEvent({ type: 'input' });
+  const noteGrille = champId(page, 'ch-note-1')[0];
+  noteGrille.value = 'Note de la grille.';
+  noteGrille.dispatchEvent({ type: 'input' });
+  page.messages.length = 0;
+  page.parId.barre.querySelectorAll('button')[0].dispatchEvent({ type: 'click' });   // « Enregistrer »
+  const envoi = page.messages.filter((m) => m.type === MSG.ENREGISTRER).pop();
+  assert.ok(envoi, 'aucun enregistrement posté');
+  const de = (r) => envoi.medias.find((m) => m.relatif === r).valeurs;
+  assert.strictEqual(de('fig-01.png').note, 'Données OFS 2024.');
+  assert.strictEqual(de('fig-02.png').note, 'Note de la grille.');
+  assert.strictEqual(de('fig-03.png').note, '', 'une image suivante porte la note de la grille');
+  assert.strictEqual(de('fig-04.png').note, '');
+});
+
 // Une image supprimée quitte la page sans rechargement. Sa vignette, son formulaire, et sa
 // carte si elle était seule dedans.
 test('médias : une image retirée emporte sa vignette, son formulaire et sa carte vide', () => {
@@ -1107,7 +1137,12 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
   // leur identifiant, comme la page elle-même.
   const boite = page.parId.champs;
   const inputs = boite.querySelectorAll('input');
-  assert.strictEqual(inputs.length, 4, 'champs du tableau absents (légende, crédits, alt)');
+  assert.strictEqual(inputs.length, 5, 'champs du tableau absents (légende, crédits, note, alt)');
+  const ids = inputs.map((e) => e.id).join(',');
+  assert.ok(ids.indexOf('champ-source') < ids.indexOf('champ-note')
+    && ids.indexOf('champ-note') < ids.indexOf('champ-alt'), 'la note ne suit pas la source : ' + ids);
+  const champNote = inputs.find((e) => e.id === 'champ-note');
+  assert.strictEqual(champNote.placeholder, T('table.note.indice'));
   // Le texte d'aide sous la description : rendu, traduit — pas la clé brute que T() rend
   // quand la traduction manque — et relié au champ pour les lecteurs d'écran.
   const aides = boite.querySelectorAll('.szh-notif--discret');
@@ -1117,6 +1152,31 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
   assert.ok(inputs.some((e) => e.getAttribute('aria-describedby') === 'aide-alt'),
     'le champ de description n’est pas relié à son aide');
   assert.strictEqual(page.parId.zone.querySelectorAll('.cell').length, 4, 'grille non rendue');
+});
+
+// La note du tableau : lue dans data-note à l'ouverture, renvoyée avec le modèle à l'enregistrement.
+test('éditeur de tableau : le champ Note montre data-note et le renvoie modifié', () => {
+  const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
+  const page = ouvrir({
+    racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'], jsPartage: ['_messages.js']
+  });
+  const modele = table.analyserTable(
+    '<table data-note="Lecture : 12 %."><tr><th>A</th></tr><tr><td>1</td></tr></table>');
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
+                 accent: '', teintes: {}, presets: [], i18n: libellesTable() });
+  const champ = page.parId.champs.querySelectorAll('input').find((e) => e.id === 'champ-note');
+  assert.ok(champ, 'champ Note absent');
+  assert.strictEqual(champ.value, 'Lecture : 12 %.');
+  champ.dispatchEvent({ type: 'focus' });
+  champ.value = 'Autre note.';
+  champ.dispatchEvent({ type: 'input' });
+  champ.dispatchEvent({ type: 'blur' });
+  page.messages.length = 0;
+  page.parId.barre.querySelectorAll('button').find((e) => e.textContent === T('table.enregistrer'))
+    .dispatchEvent({ type: 'click' });
+  const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
+  assert.ok(envoi, 'aucun enregistrement : ' + JSON.stringify(page.messages));
+  assert.strictEqual(envoi.modele.attrs.note, 'Autre note.');
 });
 
 // Le clic droit sur la POIGNÉE de la 2e ligne doit offrir « les 2 premières lignes en

@@ -159,30 +159,30 @@ RE_LEGENDE = re.compile(
     re.I)
 
 # Étiquettes des blocs figure/tableau, PAR LANGUE — mêmes libellés que chaque gabarit lui-même
-# (mesurés dans document.xml : FR « Légende / Texte alternatif / Crédit / Source », DE
-# « Beschriftung / Alternativtext / Copyright / Quelle »), dans l'ORDRE où le gabarit les pose
+# (FR « Légende / Texte alternatif / Copyright / Source / Note », DE « Beschriftung /
+# Alternativtext / Copyright / Quelle / Notiz » ; le FR écrivait « Crédit » avant le
+# 30.09.2026, forme qui reste reconnue à la lecture), dans l'ORDRE où le gabarit les pose
 # — CANON_FIGURE de pronto_modele.py n'impose aucun ordre à la LECTURE (identifier_cle()
 # compare chaque étiquette indépendamment), mais reproduire l'ordre du gabarit rend une sortie
 # que Robin reconnaît à l'œil. `ecrire(..., langue=...)` choisit le jeu à écrire ; la
 # RECONNAISSANCE d'une clé déjà tapée par l'autrice ou l'auteur (_lire_cle plus bas), elle,
 # reste indépendante de la langue : identifier_cle() contre CANON_FIGURE reconnaît déjà les
 # deux jeux d'étiquettes à la fois.
-_ORDRE_CHAMPS_BLOC = ('legende', 'alt', 'credit', 'source')
+_ORDRE_CHAMPS_BLOC = ('legende', 'alt', 'credit', 'source', 'note')
 CHAMPS_BLOC = {
     'fr': tuple(zip(_ORDRE_CHAMPS_BLOC,
-                    ('Légende', 'Texte alternatif', 'Crédit', 'Source'))),
+                    ('Légende', 'Texte alternatif', 'Copyright', 'Source', 'Note'))),
     'de': tuple(zip(_ORDRE_CHAMPS_BLOC,
-                    ('Beschriftung', 'Alternativtext', 'Copyright', 'Quelle'))),
+                    ('Beschriftung', 'Alternativtext', 'Copyright', 'Quelle', 'Notiz'))),
 }
 
-# Séparateur entre l'étiquette et sa valeur, PAR LANGUE — mesuré dans document.xml des deux
-# gabarits (29.09.2026) : le FR garde l'espace simple déjà écrit par ce module avant ce
-# chantier (« Légende : », inchangé) ; le DE colle le deux-points à l'étiquette (« Beschriftung:
-# », jamais d'espace avant, un espace après) — c'est exactement ce que le gabarit DE écrit lui-
-# même dans ses paragraphes SZH Cle Abb/Tab.
-_SEPARATEUR_CLE = {'fr': ' : ', 'de': ': '}
+# Séparateur entre l'étiquette et sa valeur, PAR LANGUE — celui que chaque gabarit écrit
+# lui-même dans ses paragraphes SZH Cle Abb/Tab (mesuré dans document.xml le 30.09.2026) : le
+# FR met l'insécable U+00A0 devant le deux-points (« Légende : », E2), le DE le colle à
+# l'étiquette (« Beschriftung: »). La lecture reconnaît les deux formes et l'espace ordinaire.
+_SEPARATEUR_CLE = {'fr': '\u00a0: ', 'de': ': '}
 
-# Position de la clé « Texte alternatif : » parmi les quatre paragraphes de clé d'un bloc
+# Position de la clé « Texte alternatif : » parmi les paragraphes de clé d'un bloc
 # (ajout du 22.09.2026, ancrage de A11y.TexteAlternatif.* dans `correspondance`, voir
 # _convertir_niveau_racine) — calculée depuis _ORDRE_CHAMPS_BLOC (le même pour les deux
 # langues, seuls les LIBELLÉS changent), jamais un « 1 » écrit en dur : un futur
@@ -935,8 +935,8 @@ def _tableau_xml(tableau, registre, espace='document'):
 
 
 # ---------------------------------------------------------------------------------
-# Blocs figure/tableau — révision du 21.09.2026 (décision de Robin) : quatre paragraphes de
-# métadonnées (Légende/Texte alternatif/Crédit/Source, style SZH Cle Abb/Tab) puis le contenu
+# Blocs figure/tableau — révision du 21.09.2026 (décision de Robin) : cinq paragraphes de
+# métadonnées (Légende/Texte alternatif/Copyright/Source/Note, style SZH Cle Abb/Tab) puis le contenu
 # — une image en ligne, ou le tableau du manuscrit directement. Plus de tableau enveloppe :
 # c'est la bordure ouverte du style (haut/gauche/droite, pas en bas — voir word/styles.xml du
 # gabarit) qui dessine seule le cadre, les paragraphes consécutifs de même bordure se
@@ -947,9 +947,9 @@ def _tableau_xml(tableau, registre, espace='document'):
 # peuvent donc plus jamais se toucher directement à cause d'un bloc.
 
 def _meta_paragraphes_xml(champs, registre):
-    """Les quatre paragraphes de métadonnées d'un bloc, en style SZH Cle Abb/Tab — remplace
+    """Les paragraphes de métadonnées d'un bloc (cinq), en style SZH Cle Abb/Tab — remplace
     l'ancienne rangée de tableau (_rangee_meta_xml). `champs['legende']` peut être soit une
-    chaîne (Crédit/Source/Texte alternatif, ou Légende sans contenu retrouvé dans le manuscrit
+    chaîne (Copyright/Source/Note/Texte alternatif, ou Légende sans contenu retrouvé dans le manuscrit
     — jamais inventée), soit une LISTE DE FRAGMENTS (la légende déjà écrite dans le manuscrit,
     préservée avec sa mise en forme — voir _cherche_legende) : une légende aplatie en texte
     plat perdrait ses exposants, d'où la distinction. `registre.champs_bloc`/`registre.
@@ -983,7 +983,7 @@ def _image_paragraphe_xml(image, registre):
 
 
 def _meta_et_contenu_xml(champs, contenu_xml, registre):
-    """Un bloc figure ou tableau complet : les quatre paragraphes de clé suivis directement du
+    """Un bloc figure ou tableau complet : les paragraphes de clé suivis directement du
     contenu — remplace l'ancien _bloc_xml (qui enveloppait tout dans un <w:tbl>). `contenu_xml`
     est soit _image_paragraphe_xml(...), soit _tableau_xml(...) directement (le tableau du
     manuscrit n'est plus jamais imbriqué dans une cellule d'enveloppe, voir plus bas)."""
@@ -1178,10 +1178,11 @@ class _Bloc:
     gabarit porte une étiquette que personne ne connaît — le jeu de clés est alors recopié tel
     quel, jamais « normalisé » en perdant cette ligne. `source` : celle du premier contenu."""
 
-    __slots__ = ('nature', 'rangees', 'tableau', 'champs', 'cles', 'cles_brutes', 'source')
+    __slots__ = ('nature', 'rangees', 'tableau', 'champs', 'cles', 'cles_brutes', 'source',
+                 'note_reprise')
 
     def __init__(self, nature, rangees=None, tableau=None, champs=None, cles=None,
-                 cles_brutes=False, source=None):
+                 cles_brutes=False, source=None, note_reprise=None):
         self.nature = nature
         self.rangees = rangees or []
         self.tableau = tableau
@@ -1189,6 +1190,9 @@ class _Bloc:
         self.cles = cles or []
         self.cles_brutes = cles_brutes
         self.source = source
+        # Le paragraphe « Note : … » qui suivait le contenu dans le manuscrit et que le bloc a
+        # repris dans sa clé Note (le Paragraphe lui-même), ou None.
+        self.note_reprise = note_reprise
 
     def images(self):
         return [img for rangee in self.rangees for img in rangee]
@@ -1315,8 +1319,8 @@ def _cles_avant(blocs, idx, pris):
 
 
 def _champs_des_cles(paragraphes):
-    """({'legende': fragments, 'alt', 'credit', 'source': texte}, brutes)."""
-    champs = {'legende': [], 'alt': '', 'credit': '', 'source': ''}
+    """({'legende': fragments, 'alt', 'credit', 'source', 'note': texte}, brutes)."""
+    champs = {'legende': [], 'alt': '', 'credit': '', 'source': '', 'note': ''}
     brutes = False
     for p in paragraphes:
         champ, _ = _lire_cle(p)
@@ -1329,6 +1333,33 @@ def _champs_des_cles(paragraphes):
         else:
             champs[champ] = ''.join(f.texte for f in fragments).strip()
     return champs, brutes
+
+
+# Étiquettes d'une note de figure ou de tableau TAPÉE sous le contenu, en clair : la note d'un
+# tableau APA, « Note : … ». Reconnaissance STRICTE (pas de score de proximité) et réservée au
+# paragraphe qui suit immédiatement le contenu — un « Note : » ailleurs dans le corps n'est
+# jamais une note de bloc. La forme APA 7, « Note. » suivi du texte (et « Notiz. »,
+# « Anmerkung. » en allemand), est reconnue aussi, au singulier seulement : c'est ainsi
+# qu'APA l'écrit sous un tableau (demande du lot A, mesurée sur RV02_Redaction le 30.09.2026).
+_RE_NOTE_ADJACENTE = re.compile(
+    r'^\s*(?:(?:notes?|remarques?|notizen?|anmerkung(?:en)?|hinweis(?:e)?|nota)\s*:'
+    r'|(?:note|notiz|anmerkung)\.)\s*(?=\S)', re.I)
+
+
+def _note_adjacente(bloc):
+    """(texte de la note sans l'étiquette) si `bloc` est un paragraphe de texte « Note : … »
+    — ni image, ni liste, ni appel de note de bas de page (une note reprise dans une clé
+    perdrait l'appel) —, sinon None."""
+    if not isinstance(bloc, mm.Paragraphe) or bloc.liste is not None:
+        return None
+    if any(f.image is not None or getattr(f, 'note', None) is not None
+           for f in bloc.fragments):
+        return None
+    texte = bloc.texte().strip()
+    m = _RE_NOTE_ADJACENTE.match(texte)
+    if not m:
+        return None
+    return re.sub(r'[ \t\r\n]+', ' ', texte[m.end():]).strip()
 
 
 def _regrouper_blocs(blocs):
@@ -1373,14 +1404,24 @@ def _regrouper_blocs(blocs):
         cles = _cles_avant(blocs, i, pris)
         groupe = rangees is not None and (len(rangees) > 1 or len(rangees[0]) > 1
                                            or isinstance(bloc, mm.Tableau))
-        if not cles and not groupe:
+        champs, brutes = _champs_des_cles([blocs[k] for k in cles])
+        # Le paragraphe qui suit IMMÉDIATEMENT le contenu, s'il commence par « Note : » : c'est
+        # la note du bloc. Il reste dans le texte quand une clé Note saisie la dit déjà, ou
+        # quand le jeu de clés est recopié tel quel (aucune place où l'écrire).
+        note_para = None
+        if fin + 1 < n and (fin + 1) not in pris and not champs.get('note') and not brutes:
+            note_texte = _note_adjacente(blocs[fin + 1])
+            if note_texte is not None:
+                note_para = blocs[fin + 1]
+                champs['note'] = note_texte
+                pris.add(fin + 1)
+        if not cles and not groupe and note_para is None:
             i = fin + 1                   # image seule ou tableau sans clé : voie de toujours
             continue
-        champs, brutes = _champs_des_cles([blocs[k] for k in cles])
         blocs_par_debut[i] = _Bloc('figure' if rangees is not None else 'tableau',
                                    rangees=rangees, tableau=tableau, champs=champs,
                                    cles=[blocs[k] for k in cles], cles_brutes=brutes,
-                                   source=bloc.source)
+                                   source=bloc.source, note_reprise=note_para)
         pris.update(cles)
         pris.update(range(i + 1, fin + 1))
         i = fin + 1
@@ -1473,11 +1514,11 @@ def _convertir_niveau_racine(blocs, registre, trace):
     # construction de `correspondance` plus bas, une entrée normale (`idx_source` = SA propre
     # source, `sortie` = SA position) d'une entrée `bloc` (`idx_source` = la source du
     # paragraphe/tableau qui porte le bloc, `sortie` = la position de sa clé « Texte
-    # alternatif : », toujours DEUXIÈME des quatre clés — voir CHAMPS_BLOC/_INDICE_CLE_ALT).
+    # alternatif : », toujours DEUXIÈME des clés — voir CHAMPS_BLOC/_INDICE_CLE_ALT).
     # `n_wp` (ajouté le 21.09.2026, avec la nouvelle forme des blocs) : le nombre de <w:p>
     # RÉELLEMENT écrits par ce segment au premier niveau du corps — 1 pour un paragraphe de
     # corps ordinaire, comme avant ; pour un bloc, ce n'est PLUS zéro comme du temps de
-    # l'enveloppe <w:tbl> unique : un bloc écrit désormais ses quatre paragraphes de clé (SZH
+    # l'enveloppe <w:tbl> unique : un bloc écrit désormais ses paragraphes de clé (SZH
     # Cle Abb/Tab) en <w:p> de plein droit, plus un cinquième pour l'image d'un bloc figure (le
     # contenu d'un bloc tableau, lui, est un <w:tbl>, qui n'en ajoute aucun). Sans ce compte
     # correct, `compteur_wp` déraille dès le premier bloc rencontré et toute la table de
@@ -1513,12 +1554,21 @@ def _convertir_niveau_racine(blocs, registre, trace):
                               'decision': 'bloc_tableau',
                               'motif': 'tableau posé dans un bloc tableau ; clés saisies '
                                        'reprises : %s' % (', '.join(saisies) or 'aucune')})
+            if bloc.note_reprise is not None:
+                trace.append({'portee': 'bloc', 'source': bloc.note_reprise.source,
+                              'decision': 'note_reprise', 'nature': bloc.nature,
+                              'motif': 'paragraphe « Note : » qui suivait le %s repris dans '
+                                       'la clé Note du bloc : « %s »'
+                                       % ('tableau' if bloc.nature == 'tableau' else 'figure',
+                                          bloc.champs.get('note', ''))})
 
         elif isinstance(bloc, mm.Tableau):
             fragments_legende = legendes.get(idx)
-            champs = {'legende': fragments_legende or '', 'alt': '', 'credit': '', 'source': ''}
+            champs = {'legende': fragments_legende or '', 'alt': '', 'credit': '', 'source': '',
+                      'note': ''}
             xml = _meta_et_contenu_xml(champs, _tableau_xml(bloc, registre), registre)
-            segments.append((True, xml, bloc.source, False, 4, 'tableau'))
+            segments.append((True, xml, bloc.source, False, len(registre.champs_bloc),
+                             'tableau'))
             texte_legende = _texte_legende_trace(fragments_legende)
             trace.append({'portee': 'bloc', 'source': bloc.source, 'decision': 'bloc_tableau',
                           'motif': 'tableau posé dans un bloc tableau ; légende %s'
@@ -1553,10 +1603,11 @@ def _convertir_niveau_racine(blocs, registre, trace):
                     images = []
                 for k, image in enumerate(images):
                     champs = {'legende': (fragments_legende if k == 0 else None) or '',
-                              'alt': image.alt, 'credit': '', 'source': ''}
+                              'alt': image.alt, 'credit': '', 'source': '', 'note': ''}
                     xml = _meta_et_contenu_xml(champs, _image_paragraphe_xml(image, registre),
                                                 registre)
-                    segments.append((True, xml, bloc.source, False, 5, 'figure'))
+                    segments.append((True, xml, bloc.source, False,
+                                     len(registre.champs_bloc) + 1, 'figure'))
                     champs_vides = [label for cle, label in registre.champs_bloc
                                      if not champs.get(cle)]
                     trace.append({'portee': 'bloc', 'source': bloc.source,
@@ -1605,7 +1656,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
     precedent_est_vide = False
     for i, seg in enumerate(segments_reduits):
         est_bloc, xml, idx_source, est_vide, n_wp, type_bloc = seg[:6]
-        # Position de la clé « Texte alternatif : » dans le bloc : la deuxième des quatre,
+        # Position de la clé « Texte alternatif : » dans le bloc : la deuxième des clés,
         # sauf pour un jeu de clés recopié tel quel (`_Bloc.cles_brutes`), qui la donne.
         indice_alt = seg[6] if len(seg) > 6 else _INDICE_CLE_ALT
         if (i > 0 and _separateur_requis(est_bloc, precedent_est_bloc)
@@ -1616,8 +1667,8 @@ def _convertir_niveau_racine(blocs, registre, trace):
         if not est_bloc and idx_source is not None:
             correspondance.append({'source': idx_source, 'sortie': compteur_wp})
         elif est_bloc and idx_source is not None:
-            # La clé « Texte alternatif : » est la DEUXIÈME des quatre paragraphes de clé
-            # (CHAMPS_BLOC : légende, alt, crédit, source) — `compteur_wp` vise ici le premier
+            # La clé « Texte alternatif : » est la DEUXIÈME des paragraphes de clé
+            # (CHAMPS_BLOC : légende, alt, crédit, source, note) — `compteur_wp` vise ici le premier
             # <w:p> du bloc (« Légende : »), +1 pour atteindre celui-ci. Vrai pour un bloc
             # figure ET un bloc tableau : les deux partagent _meta_paragraphes_xml().
             correspondance.append({'source': idx_source, 'sortie': compteur_wp + indice_alt,
@@ -1626,6 +1677,25 @@ def _convertir_niveau_racine(blocs, registre, trace):
         precedent_est_bloc = est_bloc
         precedent_est_vide = est_vide
     return ''.join(morceaux), correspondance
+
+
+def alerte_notes_reprises(trace, langue):
+    """L'avertissement du rapport quand des paragraphes « Note : » ont quitté le corps pour la
+    clé Note d'un bloc (voir _note_adjacente) — None s'il n'y en a pas. `trace` : celle que
+    ecrire() rend."""
+    n = sum(1 for l in trace if l.get('decision') == 'note_reprise')
+    if not n:
+        return None
+    if langue == 'de':
+        message = ('%d Absatz/Absätze «Note:» unter einer Abbildung oder Tabelle wurde(n) in '
+                   'das Feld «Notiz» des Blocks übernommen und aus dem Text entfernt. Prüfen '
+                   'Sie, dass die Notiz zum richtigen Block gehört.' % n)
+    else:
+        message = ('%d paragraphe(s) «\u00a0Note\u00a0:\u00a0» placé(s) sous une figure ou un tableau '
+                   'ont été repris dans la clé Note du bloc et retirés du corps du texte. '
+                   'Vérifiez que chaque note est bien rattachée au bon bloc.' % n)
+    return {'rule': 'Nettoyage.NoteReprise', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
 def _separateur_requis(est_bloc_courant, est_bloc_precedent):
@@ -1732,8 +1802,8 @@ _JETON_VERS_CHAMP_AUTEUR = {
 LANGUE_PRODUIT_TEXTE = {'fr': 'français', 'de': 'deutsch'}
 
 # Préfixe de la ligne « Mots-clés » écrite en tête du corps (voir ecrire()), PAR LANGUE — même
-# convention de deux-points que _SEPARATEUR_CLE (FR : espace avant, DE : collé).
-_PREFIXE_MOTS_CLES = {'fr': 'Mots-clés : ', 'de': 'Schlüsselwörter: '}
+# convention de deux-points que _SEPARATEUR_CLE (FR : insécable avant, DE : collé).
+_PREFIXE_MOTS_CLES = {'fr': 'Mots-clés\u00a0: ', 'de': 'Schlüsselwörter: '}
 
 
 def _texte_xml_brut(fragment_xml):

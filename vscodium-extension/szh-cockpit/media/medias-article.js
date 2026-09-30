@@ -51,7 +51,7 @@
 //   auteur-erreur { slug, index, message }
 // où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
 // sansAlternative, largeur, hauteur, grille, rangGrille, valeurs } et valeurs =
-// { legende, alt, altDefini, copyright, source, horsFigure } ; une grille
+// { legende, alt, altDefini, copyright, source, note, horsFigure } ; une grille
 // { disposition, auto, membres } ; et un portrait { base, index, nom, auteur, auteurFiche,
 // version, description, apercu, qualite, rattache }.
 var api = acquireVsCodeApi();
@@ -121,6 +121,11 @@ function horsFigure(c) { return !!(c.ctl.horsFigure && c.ctl.horsFigure.checked)
 function legendeDe(c) {
   return c.ctl.legende ? (horsFigure(c) ? '' : ligne(c.ctl.legende.value)) : c.legendeFigee;
 }
+// Même cas pour la note : imprimée sous la figure, elle n'a de champ que sur l'ancre d'une
+// grille (ou sur une figure seule).
+function noteDe(c) {
+  return c.ctl.note ? ligne(c.ctl.note.value) : c.noteFigee;
+}
 function valeurs(c) {
   var alt = decorative(c) ? '' : ligne(c.ctl.alt.value);
   return {
@@ -128,6 +133,7 @@ function valeurs(c) {
     alt: alt, altDefini: decorative(c) || alt !== '',
     copyright: ligne(c.ctl.copyright.value),
     source: ligne(c.ctl.source.value),
+    note: noteDe(c),
     horsFigure: horsFigure(c)
   };
 }
@@ -140,6 +146,7 @@ function poserValeurs(c, v) {
   c.ctl.alt.value = deco ? '' : String(v.alt || '');
   c.ctl.copyright.value = String(v.copyright || '');
   c.ctl.source.value = String(v.source || '');
+  if (c.ctl.note) { c.ctl.note.value = String(v.note || ''); }
   // « Sans légende ni numéro » n'a pas de sens dans une grille : c'est la figure entière
   // qui porte le numéro, et l'image n'a pas de légende propre à supprimer. La case est
   // décochée d'office, et le prochain enregistrement ôtera la classe du .md.
@@ -685,6 +692,7 @@ function nouvelleCarte(media, index, figure) {
     // par media-remplace.
     qualite: media.qualite || {},
     legendeFigee: String((media.valeurs || {}).legende || ''),
+    noteFigee: String((media.valeurs || {}).note || ''),
     valeursInitiales: media.valeurs || {}
   };
 }
@@ -785,6 +793,8 @@ function construireGroupeAccordeon(parent, figure) {
   champLegende.addEventListener('input', function () {
     legendeTete.textContent = ligne(champLegende.value) || (TXT.grilleLegendeAbsente || '');
   });
+  // La note suit la légende : elle aussi est celle de la figure entière.
+  champ(corpsAcc, figure.ancre, 'note');
 
   tete.addEventListener('click', function () {
     var ouvert = tete.getAttribute('aria-expanded') === 'true';
@@ -851,6 +861,7 @@ function construireFormulaireImage(parent, figure, c) {
   var credits = texte(d, 'div', 'szh-grille-2');
   champ(credits, c, 'copyright');
   champ(credits, c, 'source');
+  if (figure.membres.length === 1) { champ(d, c, 'note'); }
   // La case « sans légende ni numéro » suit les crédits : c'est le second réglage qui
   // change ce que la mise en page fabrique. L'accessibilité vient après, comme un chapitre
   // à part.
@@ -917,7 +928,7 @@ function poserOcc(c) {
     }, 'szh-bouton--principal', TXT.insererTip));
   }
   var verrou = c.occurrences === 0;
-  ['legende', 'alt', 'copyright', 'source'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
+  ['legende', 'alt', 'copyright', 'source', 'note'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
   [c.ctl.roleDecrit, c.ctl.roleDeco].forEach(function (e) { if (e) { e.disabled = verrou; } });
   if (c.ctl.horsFigure) { c.ctl.horsFigure.disabled = verrou || c.grille !== null; }
   if (verrou) { majAlerteAlt(c); majPastilles(c); } else { majRole(c); }

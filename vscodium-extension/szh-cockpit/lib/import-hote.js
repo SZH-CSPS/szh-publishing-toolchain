@@ -181,7 +181,7 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
 // ---- Le garde-fou du gabarit : une boîte de dialogue, pas une ligne de plus ------------
 //
 // `bloc-mal-forme` se lève quand un tableau porte les étiquettes d'une figure ou d'un tableau
-// (« Légende : », « Texte alternatif : », « Crédit : », « Source : ») sans en avoir la forme.
+// (« Légende : », « Texte alternatif : », « Copyright : », « Source : », « Note : ») sans en avoir la forme.
 // Ce qui suit n'est PAS cosmétique : ce tableau s'imprimera tel quel, sa légende ne sera ni
 // numérotée ni reprise comme texte alternatif, et il n'y a qu'un seul endroit où le réparer —
 // le document Word, qu'il faut rouvrir. Un avertissement qu'on lit trois jours plus tard, dans

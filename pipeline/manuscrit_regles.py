@@ -516,11 +516,11 @@ CATALOGUE = [
     Regle('APA.TroisAuteursPlus', 'APA', '', '', 'warning', 'fix',
           'Revue: 3.1.3 / Zeitschrift: Weitere Regeln', _detecter_et_al,
           '« et al. » doit porter son point final : « %(found)s ».',
-          '« et al. » muss mit Punkt enden: « %(found)s ».'),
+          '«et al.» muss mit Punkt enden: «%(found)s».'),
     Regle('APA.MemeAuteurMemeAnnee', 'APA', '', '', 'warning', 'fix',
           'Revue: 3.1.2 / 3.2.1 / Zeitschrift: Sinngemässe Zitate im Text / Anordnung',
           _detecter_annee_lettre_espacee,
-          'La lettre colle à l’année, sans espace : « %(found)s ».',
+          'La lettre colle à l’année, sans espace\u00a0: «\u00a0%(found)s\u00a0».',
           'Der Buchstabe klebt am Jahr, ohne Leerzeichen: « %(found)s ».'),
     Regle('APA.NombreAuteursListes.Revue', 'APA', 'fr', 'revue', 'error', 'comment',
           'Revue: 3.2.2.1', _detecter_nb_auteurs_revue,
@@ -535,31 +535,31 @@ CATALOGUE = [
           'Image sans texte alternatif.', ''),
     Regle('A11y.TexteAlternatif.ZeitschriftHeritee', 'A11y', '', 'zeitschrift', 'suggestion',
           'comment',
-          'Revue: 2.4.2 (hérité — aucun chapitre équivalent dans le document allemand)',
+          'Revue: 2.4.2 (hérité\u00a0– aucun chapitre équivalent dans le document allemand)',
           _detecter_alt_manquant,
           '', 'Bild ohne Alternativtext (aus der Revue übernommen, keine deutsche Quelle).'),
     Regle('A11y.TableauLineaire.Revue', 'A11y', 'fr', 'revue', 'warning', 'comment',
           'Revue: 2.4.3 Tableaux', _detecter_tableau_fusionne,
-          'Tableau avec cellules fusionnées : lecture linéaire compromise.', ''),
+          'Tableau avec cellules fusionnées\u00a0: lecture linéaire compromise.', ''),
     Regle('A11y.TableauLineaire.ZeitschriftHeritee', 'A11y', '', 'zeitschrift', 'suggestion',
           'comment',
-          'Revue: 2.4.3 (hérité — aucun chapitre équivalent dans le document allemand)',
+          'Revue: 2.4.3 (hérité\u00a0– aucun chapitre équivalent dans le document allemand)',
           _detecter_tableau_fusionne,
           '', 'Tabelle mit verschmolzenen Zellen (aus der Revue übernommen).'),
 
     Regle('Entete.OrdreNomIncertain', 'Entete', '', '', 'warning', 'report',
-          "Aucune source normative : contrôle technique interne (attribution automatique "
-          "de l'ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
+          "Aucune source normative\u00a0: contrôle technique interne (attribution automatique "
+          "de l’ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
           _detecter_ordre_nom_incertain,
-          '« %(found)s » : lu Prénom Nom, mais les indices se contredisent — vérifier.',
-          '« %(found)s » : als Vorname Nachname gelesen, aber die Hinweise widersprechen '
-          'sich — bitte prüfen.'),
+          '«\u00a0%(found)s\u00a0»\u00a0: lu Prénom Nom, mais les indices se contredisent\u00a0– vérifier.',
+          '«%(found)s»: als Vorname Nachname gelesen, aber die Hinweise widersprechen '
+          'sich – bitte prüfen.'),
     Regle('Entete.OrdreNomParDefaut', 'Entete', '', '', 'suggestion', 'report',
-          "Aucune source normative : contrôle technique interne (attribution automatique "
-          "de l'ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
+          "Aucune source normative\u00a0: contrôle technique interne (attribution automatique "
+          "de l’ordre prénom/nom, absente des deux Redaktionsrichtlinien).",
           _detecter_ordre_nom_par_defaut,
-          "Ordre prénom/nom établi par convention faute d'indice, pour %(n_fiches)d "
-          'fiche(s) : %(found)s.',
+          "Ordre prénom/nom établi par convention faute d’indice, pour %(n_fiches)d "
+          'fiche(s)\u00a0: %(found)s.',
           'Reihenfolge Vorname/Nachname mangels Hinweis nach Konvention festgelegt, für '
           '%(n_fiches)d Eintrag/Einträge: %(found)s.'),
 ]

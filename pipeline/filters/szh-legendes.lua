@@ -222,12 +222,13 @@ end
 
 -- ─── Blocs figure du gabarit « Pronto » ──────────────────────────────────────
 -- Le lecteur du gabarit (pipeline/pronto-lire.py) écrit une ligne par bloc figure :
---   FI<TAB>images<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
---   FG<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
---   FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>crédit<TAB>source[<TAB>clé…]
+--   FI<TAB>images<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note[<TAB>clé…]
+--   FG<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note[<TAB>clé…]
+--   FT<TAB>k<TAB>légende<TAB>texte alternatif<TAB>copyright<TAB>source<TAB>note[<TAB>clé…]
 --   (FT : les champs vont au tableau par docx-tables.py ; ici, seules ses clés partent.)
--- Les quatre valeurs sont celles que l'autrice ou l'auteur a TAPÉES dans le document, sous
--- les étiquettes « Légende : », « Texte alternatif : », « Crédit : », « Source : ». Sans
+-- Les cinq valeurs sont celles que l'autrice ou l'auteur a TAPÉES dans le document, sous
+-- les étiquettes « Légende : », « Texte alternatif : », « Copyright : », « Source : »,
+-- « Note : » (le champ note est toujours présent, vide si rien n'est tapé). Sans
 -- cette reprise, elles s'imprimeraient telles quelles au milieu de l'article et le texte
 -- alternatif serait perdu — mesuré sur le gabarit réel avant le branchement.
 --
@@ -245,7 +246,7 @@ end
 -- les retire du corps — AU MOMENT où il pose leurs valeurs sur l'image, jamais avant, jamais
 -- autrement (garantie « rien ne disparaît », décision de Robin du 29.09.2026). Jusque-là,
 -- szh-meta.lua les retirait d'avance (lignes P) : le jour où l'image ne se laissait pas
--- trouver ici — deux images dans un paragraphe, mesuré —, légende, texte alternatif et crédit
+-- trouver ici — deux images dans un paragraphe, mesuré —, légende, texte alternatif et copyright
 -- disparaissaient sans un mot. Un bloc qu'on n'a pas su poser garde donc ses paragraphes
 -- tels quels dans le texte, et l'avertissement « bloc-valeur-non-reprise » le dit.
 local function lire_champs(reste)
@@ -253,14 +254,15 @@ local function lire_champs(reste)
   for champ in (reste .. '\t'):gmatch('([^\t]*)\t') do champs[#champs + 1] = champ end
   local bloc = { legende = trim(champs[2] or ''), alt = trim(champs[3] or ''),
                  credit = trim(champs[4] or ''), source = trim(champs[5] or ''),
+                 note = trim(champs[6] or ''),
                  cles = {}, images = {}, pose = false }
-  for i = 6, #champs do
+  for i = 7, #champs do
     if trim(champs[i]) ~= '' then bloc.cles[#bloc.cles + 1] = champs[i] end
   end
   return champs[1] or '', bloc
 end
 
--- FT<TAB>k<TAB>… (bloc TABLEAU) : docx-tables.py pose les quatre champs sur tables/table-NN
+-- FT<TAB>k<TAB>… (bloc TABLEAU) : docx-tables.py pose les cinq champs sur tables/table-NN
 -- .html ; ici, on ne fait que retirer les clés, juste devant le k-ième tableau, quand on le
 -- rencontre. `sautes` : les ordinaux que szh-meta.lua a déjà ôtés du corps (T) ou changés en
 -- groupe (FG) — la numérotation des Table restants saute les mêmes, comme docx-tables.py.
@@ -327,9 +329,9 @@ end
 local function avertir_bloc_non_repris(bloc)
   local valeurs, premiere = {}, nil
   for _, c in ipairs({ { 'legende', 'légende', 'Legende' }, { 'alt', 'texte alternatif',
-      'Alternativtext' }, { 'credit', 'crédit', 'Bildnachweis' }, { 'source', 'source',
-      'Quelle' } }) do
-    local v = bloc[c[1]]
+      'Alternativtext' }, { 'credit', 'copyright', 'Copyright' }, { 'source', 'source',
+      'Quelle' }, { 'note', 'note', 'Notiz' } }) do
+    local v = bloc[c[1]] or ''
     if v ~= '' then
       valeurs[#valeurs + 1] = { c[2], c[3], v }
       premiere = premiere or v
@@ -416,9 +418,9 @@ local function base_fichier(chemin)
   return (tostring(chemin):gsub('[?#].*$', ''):gsub('^.*[/\\]', ''))
 end
 
--- Pose les quatre champs d'un bloc Pronto sur son image. Renvoie (nfig, nalt) à ajouter aux
+-- Pose les cinq champs d'un bloc Pronto sur son image. Renvoie (nfig, nalt) à ajouter aux
 -- compteurs. Le contrat d'attributs est celui de szh-numerotation.lua :
---   ![légende](media/x.png){alt="…" copyright="…" source="…"}
+--   ![légende](media/x.png){alt="…" copyright="…" source="…" note="…"}
 local function poser_bloc_pronto(img, bloc)
   local nfig, nalt = 0, 0
   if bloc.alt ~= '' then
@@ -432,10 +434,16 @@ local function poser_bloc_pronto(img, bloc)
   end
   if bloc.credit ~= '' then img.attributes['copyright'] = bloc.credit end
   if bloc.source ~= '' then img.attributes['source'] = bloc.source end
+  if (bloc.note or '') ~= '' then img.attributes['note'] = bloc.note end
   local legende = trim(nettoyer_figure(bloc.legende))
   if legende ~= '' then
     img.caption = pandoc.Inlines({ pandoc.Str(legende) })
     nfig = 1
+  elseif bloc.credit ~= '' or bloc.source ~= '' or (bloc.note or '') ~= '' then
+    -- Sans légende, droits et note n'auraient aucun endroit où s'écrire : la classe fait de
+    -- l'image une figure hors numérotation (szh-numerotation.lua), qui les porte.
+    img.classes = pandoc.List(img.classes)
+    img.classes:insert('szh-hors-figure')
   end
   return nfig, nalt
 end
@@ -466,9 +474,11 @@ end
 --     description que Word leur donnait (descr), si elle existe et n'est pas automatique.
 --     Une image restée sans alt est nommée après l'import (figure-alt-a-completer,
 --     docx-controle-import.py), jamais laissée muette en silence ;
---   * crédit et source sur CHAQUE image : le cockpit tient les droits image par image, et
+--   * copyright et source sur CHAQUE image : le cockpit tient les droits image par image, et
 --     szh-numerotation.lua ne répète pas un crédit identique sous la figure. Posés sur la
---     première seulement, ils se perdraient le jour où elle quitte le groupe.
+--     première seulement, ils se perdraient le jour où elle quitte le groupe ;
+--   * la note, elle, sur la première image seulement : c'est une donnée de la figure, comme
+--     la légende, pas un droit propre à chaque image.
 -- `autres` : ce qu'un tableau de mise en page portait d'autre que des images (FG) — gardé,
 -- à la suite, dans le bloc ; szh-grille.lua l'imprime sous les images.
 local function poser_groupe(imgs, rangees, bloc, autres)
@@ -484,6 +494,7 @@ local function poser_groupe(imgs, rangees, bloc, autres)
     end
     if (bloc.credit or '') ~= '' then img.attributes['copyright'] = bloc.credit end
     if (bloc.source or '') ~= '' then img.attributes['source'] = bloc.source end
+    if i == 1 and (bloc.note or '') ~= '' then img.attributes['note'] = bloc.note end
   end
   if legende ~= '' then
     imgs[1].caption = pandoc.Inlines({ pandoc.Str(legende) })
@@ -560,7 +571,7 @@ function Pandoc(doc)
     -- bloc `.szh-grille` marqué `szh-tableau`, une rangée du tableau par paragraphe.
     if b.t == 'Div' and b.attributes['szh-tableau'] then
       local bloc = grillesP[tonumber(b.attributes['szh-tableau'])]
-                   or { legende = '', alt = '', credit = '', source = '', cles = {} }
+                   or { legende = '', alt = '', credit = '', source = '', note = '', cles = {} }
       local imgs, rangees, autres = {}, {}, {}
       for _, dedans in ipairs(b.content) do
         local lot = images_seules(dedans)

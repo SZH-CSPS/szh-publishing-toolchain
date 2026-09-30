@@ -23,6 +23,12 @@
 figure > figcaption .szh-numero,
 table > caption .szh-numero { font-weight: 600; }
 
+/* Étiquette « Note » / « Notiz » du paragraphe de note d'une figure ou d'un tableau, posée
+   par szh-numerotation.lua : seule l'étiquette est en italique (pas `<em>`, ce n'est pas une
+   emphase), le deux-points et le texte restent en romain. La boîte du paragraphe
+   (.szh-bloc-note) est dans print.css pour la revue, dans livre/base.css pour le livre. */
+.szh-bloc-note-etiquette { font-style: italic; }
+
 /* Crédits (© et source) à la suite de la légende, posés par szh-numerotation.lua. La
    distinction se fait par la taille, pas par un gris plus clair : #444 sur blanc vaut
    Lc 92,6, et tout le texte de cette maquette étant sous 18 px, le seuil APCA est 90 —
@@ -80,7 +86,7 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
 
    L'écart entre les images est le seul chiffre en dur de ce bloc : 6 px à la largeur de
    la colonne, assez pour séparer deux visuels sans creuser une gouttière. */
-.szh-grille-rangee { display: flex; align-items: flex-start; justify-content: center; gap: 6px;
+.szh-grille-rangee { display: flex; align-items: flex-start; justify-content: flex-start; gap: 6px;
   margin-bottom: 6px; break-inside: avoid; }
 .szh-grille-rangee:last-child { margin-bottom: 0; }
 .szh-grille-case { display: block; flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
@@ -125,7 +131,7 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
        la seule forme qu'un moteur ne déforme pas. WeasyPrint n'applique pas
        @media screen : ces deux règles ne concernent que la lecture à l'écran. */
     .szh-grille-case { max-width: none; }
-    .szh-grille-case > img { width: auto; max-width: 100%; margin: 0 auto;
+    .szh-grille-case > img { width: auto; max-width: 100%; margin: 0;
       max-height: var(--plafond-figure); }
   }
 }

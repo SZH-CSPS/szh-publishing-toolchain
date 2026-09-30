@@ -7,22 +7,30 @@
 -- Accessibilité : la légende n'est jamais masquée, l'alt la complète. Sur une figure,
 -- <img alt> porte la description et la <figcaption> « Figure N — Légende » plus les
 -- crédits, sans ARIA ajouté — la légende différant structurellement de l'alt, pandoc ne
--- repose pas aria-hidden dessus, et c'est un invariant de ce filtre. alt="" explicite ->
+-- repose pas aria-hidden dessus, et c'est un invariant de ce filtre.
+-- Crédits : entre parenthèses à la suite du titre, « Figure 3 — Titre (© X | Y) » ; le
+-- copyright porte toujours un ©, la source n'a pas d'étiquette.
+-- Note : un paragraphe sous la figure ou le tableau, « Note : texte » (seule l'étiquette en
+-- italique). HTML : <p class="szh-bloc-note" id="szh-bloc-note-N"> dans la <figure> après
+-- l'image, ou juste après </table> — aucun élément HTML n'existe pour cela, et l'id est
+-- ajouté à l'aria-describedby de l'<img> ou du <table> pour que le lecteur d'écran la lise
+-- avec lui. ⚠ Pas la classe .szh-note : c'est celle des notes de bas de page. alt="" explicite ->
 -- image décorative (alt="" + role="presentation"). Sur un tableau, le <caption> porte
 -- numéro, légende et crédits ; une description longue (data-alt) devient un
 -- aria-describedby vers un élément masqué visuellement, et sans data-alt il n'y a rien,
 -- la structure th/scope/colspan se lisant d'elle-même.
 --
 -- Contrat de format, partagé avec l'éditeur du cockpit. Figure, dans le .md :
---   ![Légende visible](media/x.png){alt="description" copyright="© J. D." source="ESA"}
---   alt absent -> l'alt reprend la légende ; alt="" -> décorative ; copyright= et
---   source= facultatifs (pandoc 3.5 les émet en data-copyright / data-source).
+--   ![Légende visible](media/x.png){alt="description" copyright="© J. D." source="ESA"
+--                                   note="texte de la note"}
+--   alt absent -> l'alt reprend la légende ; alt="" -> décorative ; copyright=, source= et
+--   note= facultatifs (pandoc 3.5 émet les deux premiers en data-copyright / data-source).
 -- Image hors numérotation, dans le .md :
 --   ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. D."}
 --   légende vide et classe .szh-hors-figure : ni numéro, ni légende visible. Voir la
 --   passe dédiée plus bas ; le contrat d'écriture vit dans lib/references.js.
 -- Tableau, dans articles/<slug>/tables/table-NN.html, en attributs sur <table> :
---   class="szh-tableau" data-entete-lignes data-alt data-copyright data-source, plus
+--   class="szh-tableau" data-entete-lignes data-alt data-copyright data-source data-note, plus
 --   <caption>Légende</caption> ; attributs omis quand vides.
 --
 -- ⚠ Deux lecteurs, un seul résultat : le lecteur `markdown` (PDF et HTML) consomme
@@ -164,16 +172,23 @@ end
 -- Libellés localisés : les trois langues de la revue, plus l'anglais.
 local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura',  en = 'Figure' }
 local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella', en = 'Table' }
--- Libellé de la source, ponctuation comprise : le français exige une espace fine
--- insécable (U+202F) avant le deux-points, pas les trois autres langues.
-local LIBELLE_SOURCE  = { fr = 'Source\u{202F}: ', de = 'Quelle: ',
-                          it = 'Fonte: ',          en = 'Source: ' }
+-- Étiquette de la note sous une figure ou un tableau ; l'anglais reste celui de
+-- LIBELLE_FIGURE. Le deux-points n'appartient pas à l'étiquette (elle seule est en italique).
+local LIBELLE_NOTE    = { fr = 'Note', de = 'Notiz', it = 'Nota', en = 'Note' }
+-- Ponctuation après l'étiquette : le français exige une espace fine insécable (U+202F)
+-- avant le deux-points, pas les trois autres langues.
+local PONCT_NOTE      = { fr = '\u{202F}:', de = ':', it = ':', en = ':' }
 
 -- Séparateur visible : cadratin entouré d'espaces. L'espace de tête est un
 -- pandoc.Space (donc sécable), celui de queue est collé au cadratin dans le Span.
 local CADRATIN = '\u{2014}'
 -- Séparateur entre copyright et source dans un crédit.
-local SEP_CREDIT = ' / '
+local SEP_CREDIT = ' | '
+-- Sous un même titre, plusieurs copyrights (ou plusieurs sources) se suivent par une virgule.
+local SEP_MEME_CHAMP = ', '
+-- Classe et préfixe d'id du paragraphe de note ; szh-legende-avant.lua reconnaît la classe.
+local CLASSE_NOTE = 'szh-bloc-note'
+local n_note = 0               -- id unique de chaque note posée dans le document
 
 -- Classe posée par le cockpit sur une image à ne pas numéroter, et classe posée par ce
 -- filtre sur la <figure> qu'il en fait : elle dit à szh-legende-avant.lua que la
@@ -316,18 +331,110 @@ local function langue_de(meta)
   })
 end
 
--- Crédits « © J. Dupont / Source : ESA ». L'un des deux peut manquer ; les deux
--- manquants -> nil, donc pas de ponctuation orpheline. Valeurs reprises telles
--- quelles : texte brut côté figure (pandoc les échappera), déjà échappées côté
--- tableau puisqu'elles sortent d'un attribut HTML.
-local function texte_credit(copyright, source, lang)
-  local bouts = {}
-  if not vide(copyright) then bouts[#bouts + 1] = trim(copyright) end
-  if not vide(source) then
-    bouts[#bouts + 1] = (LIBELLE_SOURCE[lang] or LIBELLE_SOURCE.fr) .. trim(source)
+-- Copyright avec son ©. Une valeur qui commence déjà par ©, « Copyright » ou l'entité
+-- &copy; est gardée ; un « (c) » ou « (C) » de tête est remplacé par ©.
+local function copyright_avec_signe(c)
+  c = trim(c)
+  local bas = c:lower()
+  if c:sub(1, 2) == '\u{A9}' or bas:sub(1, 9) == 'copyright' or bas:sub(1, 6) == '&copy;' then
+    return c
   end
+  local reste = c:match('^%([cC]%)%s*(.*)$')
+  if reste then return '\u{A9} ' .. reste end
+  return '\u{A9} ' .. c
+end
+
+-- Crédit « (© J. Dupont | ESA) », parenthèses comprises. Entrées : la liste des copyrights
+-- et celle des sources, déjà dédoublonnées ; l'une ou l'autre peut être vide, les deux vides
+-- -> nil, donc pas de parenthèse orpheline. `seul` : le crédit n'accompagne aucun titre (il
+-- se lit sous l'image), il sort sans parenthèses (décision de Robin, 30.09.2026).
+local function credit_depuis(copyrights, sources, seul)
+  local bouts = {}
+  if #copyrights > 0 then bouts[#bouts + 1] = table.concat(copyrights, SEP_MEME_CHAMP) end
+  if #sources > 0 then bouts[#bouts + 1] = table.concat(sources, SEP_MEME_CHAMP) end
   if #bouts == 0 then return nil end
-  return table.concat(bouts, SEP_CREDIT)
+  if seul then return table.concat(bouts, SEP_CREDIT) end
+  return '(' .. table.concat(bouts, SEP_CREDIT) .. ')'
+end
+
+-- Crédit d'une seule image ou d'un seul tableau. Valeurs reprises telles quelles : texte
+-- brut côté figure (pandoc les échappera), déjà échappées côté tableau puisqu'elles
+-- sortent d'un attribut HTML.
+local function texte_credit(copyright, source, seul)
+  return credit_depuis(
+    vide(copyright) and {} or { copyright_avec_signe(copyright) },
+    vide(source) and {} or { trim(source) }, seul)
+end
+
+-- Cumul des crédits de plusieurs images (grille) : un copyright ou une source identique ne
+-- se répète pas, chaque champ garde l'ordre de première apparition.
+local function nouveau_cumul() return { copyrights = {}, sources = {}, vus = {} } end
+local function cumuler(cumul, img)
+  local function ajouter(liste, valeur, cle)
+    if not cumul.vus[cle .. valeur] then
+      cumul.vus[cle .. valeur] = true
+      liste[#liste + 1] = valeur
+    end
+  end
+  local c, s = img.attributes['copyright'], img.attributes['source']
+  if not vide(c) then ajouter(cumul.copyrights, copyright_avec_signe(c), 'c') end
+  if not vide(s) then ajouter(cumul.sources, trim(s), 's') end
+end
+
+-- ─── Note sous une figure ou un tableau ──────────────────────────────────────
+-- Ajoute `id` aux ids déjà présents dans aria-describedby, sans les écraser.
+local function ajouter_describedby(img, id)
+  local deja = img.attributes['aria-describedby']
+  img.attributes['aria-describedby'] = vide(deja) and id or (trim(deja) .. ' ' .. id)
+end
+
+-- Découpe un texte brut en Str et Space : les filtres qui suivent (césure) travaillent mot
+-- par mot, ce que ne ferait pas une seule Str.
+local function mots(texte)
+  local inl = pandoc.Inlines({})
+  for mot in texte:gmatch('%S+') do
+    if #inl > 0 then inl:insert(pandoc.Space()) end
+    inl:insert(pandoc.Str(mot))
+  end
+  return inl
+end
+
+-- Le paragraphe de note d'une figure, en blocs pandoc : <p> et </p> sont du HTML brut
+-- autour d'un Plain, seule façon d'obtenir une classe et un id sur un <p> (le lecteur
+-- comme le writer ne les gardent que sur div et span).
+local function bloc_note(texte, id, lang)
+  local inl = pandoc.Inlines({
+    pandoc.RawInline('html', '<p class="' .. CLASSE_NOTE .. '" id="' .. id .. '">'),
+    pandoc.Span({ pandoc.Str(LIBELLE_NOTE[lang] or LIBELLE_NOTE.fr) },
+                pandoc.Attr('', { CLASSE_NOTE .. '-etiquette' }, {})),
+    pandoc.Str(PONCT_NOTE[lang] or PONCT_NOTE.fr),
+    pandoc.Space(),
+  })
+  inl:extend(mots(texte))
+  inl:insert(pandoc.RawInline('html', '</p>'))
+  return pandoc.Plain(inl)
+end
+
+-- Le même paragraphe en HTML brut, pour un tableau réinjecté : `texte` sort d'un attribut
+-- HTML, il est donc déjà échappé.
+local function html_note(texte, id, lang)
+  return '<p class="' .. CLASSE_NOTE .. '" id="' .. id .. '"><span class="' .. CLASSE_NOTE
+    .. '-etiquette">' .. (LIBELLE_NOTE[lang] or LIBELLE_NOTE.fr) .. '</span>'
+    .. (PONCT_NOTE[lang] or PONCT_NOTE.fr) .. ' ' .. trim(texte) .. '</p>'
+end
+
+-- Prend la note d'une image : l'attribut note= est retiré (il ne doit pas ressortir en
+-- data-note sur l'<img>), un id lui est attribué et l'image le reçoit en aria-describedby
+-- — sauf si elle est décorative, une image sans nom n'ayant rien à se faire décrire.
+-- Renvoie (texte, id), ou nil sans note.
+local function prendre_note(img)
+  local t = img.attributes['note']
+  img.attributes['note'] = nil
+  if vide(t) then return nil end
+  n_note = n_note + 1
+  local id = CLASSE_NOTE .. '-' .. n_note
+  if img.attributes['role'] ~= 'presentation' then ajouter_describedby(img, id) end
+  return trim(t), id
 end
 
 -- Insère le préfixe en tête du premier bloc de la légende (Plain ou Para) ; les blocs
@@ -383,9 +490,12 @@ end
 -- Traite un bloc HTML de tableau. Renvoie (html, numerote), numerote valant true si un
 -- numéro a été consommé ; nil si le bloc n'est pas un <table>. L'ordre des insertions
 -- compte, chacune décalant ce qui suit : la <caption> d'abord (tout est après le '>' du
--- <table …>, les indices du tag restent valides), puis aria-describedby dans le tag, puis
--- l'élément de description après </table>.
-local function traiter_tableau(html, prefixe, credit, id_desc)
+-- <table …>, les indices du tag restent valides), puis le tag lui-même (aria-describedby,
+-- data-note retiré), puis la note après </table>. `ids` : les ids que le tableau doit
+-- référencer en aria-describedby, séparés par une espace (nil sans rien à référencer).
+-- `note_html` : le paragraphe de note, posé juste après </table> ; l'élément de description
+-- longue, ajouté par l'appelant, vient donc après la note.
+local function traiter_tableau(html, prefixe, credit, ids, note_html)
   local _, fin_tag, attrs = html:find(TABLE)
   if not fin_tag then return nil end
   if attrs ~= '' and not attrs:match('^[%s/]') then return nil end   -- pas un <table>
@@ -418,10 +528,34 @@ local function traiter_tableau(html, prefixe, credit, id_desc)
         .. apres
   end
 
-  if id_desc then
-    html = html:sub(1, fin_tag - 1)
-        .. ' aria-describedby="' .. id_desc .. '"'
-        .. html:sub(fin_tag)
+  -- Le tag : data-note en sort (le texte est rendu plus bas, pas dupliqué en attribut) et
+  -- aria-describedby reçoit les ids, ajoutés à ceux déjà présents, jamais écrasés.
+  local tag = html:sub(1, fin_tag)
+  tag = tag:gsub('%s+data%-note%s*=%s*"[^"]*"', ''):gsub("%s+data%-note%s*=%s*'[^']*'", '')
+  if ids then
+    local function ajouter(avant, valeur, apres)
+      valeur = trim(valeur)
+      return avant .. (valeur == '' and '' or (valeur .. ' ')) .. ids .. apres
+    end
+    local n
+    tag, n = tag:gsub('(%saria%-describedby%s*=%s*")([^"]*)(")', ajouter, 1)
+    if n == 0 then
+      tag, n = tag:gsub("(%saria%-describedby%s*=%s*')([^']*)(')", ajouter, 1)
+    end
+    if n == 0 then tag = tag:sub(1, -2) .. ' aria-describedby="' .. ids .. '">' end
+  end
+  html = tag .. html:sub(fin_tag + 1)
+
+  if note_html then
+    -- Après le DERNIER </table> du bloc ; sans fermeture (HTML tronqué), en fin de bloc.
+    local pos, suivant = nil, 1
+    while true do
+      local _, f = html:find('</[tT][aA][bB][lL][eE]%s*>', suivant)
+      if not f then break end
+      pos, suivant = f, f + 1
+    end
+    pos = pos or #html
+    html = html:sub(1, pos) .. '\n' .. note_html .. html:sub(pos + 1)
   end
 
   return html, numerote
@@ -429,12 +563,13 @@ end
 
 -- ─── Images hors numérotation ────────────────────────────────────────────────
 -- La légende est vide dans le .md, donc aucun lecteur n'en fait de Figure et rien n'est
--- numéroté : il n'y a que le texte alternatif et les crédits à placer. Or un crédit est
--- une mention de droits, il ne doit pas se perdre — comme pour un tableau sans légende.
+-- numéroté : il n'y a que le texte alternatif, les crédits et la note à placer. Or un crédit
+-- est une mention de droits, il ne doit pas se perdre — comme pour un tableau sans légende.
 -- L'image est donc enveloppée dans une <figure> dont la <figcaption> ne porte que le
 -- crédit : le lien entre l'image et ses droits reste explicite pour un lecteur d'écran,
--- sans numéro ni légende. Sans crédit à porter, l'image reste un <img> dans son
--- paragraphe, une <figure> sans <figcaption> n'apportant rien.
+-- sans numéro ni légende. Sans crédit ni note à porter, l'image reste un <img> dans son
+-- paragraphe, une <figure> sans <figcaption> n'apportant rien. Une note sans crédit donne
+-- une <figure> sans <figcaption>, la note après l'image.
 
 -- L'image seule d'un Para/Plain, si elle porte la classe ; nil sinon.
 local function image_hors_figure(b)
@@ -458,8 +593,9 @@ local function hors_numerotation(b, lang)
   -- Sans texte alternatif, l'image est décorative : role="presentation" neutralise le
   -- role="img" que --embed-resources ajoute (même raison que dans la passe principale).
   -- Avec un alt=, le writer l'émet tel quel, la description de l'Image étant vide.
-  local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], lang)
+  local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], true)
   local contenu = img
+  local a_note = not vide(img.attributes['note'])
   if vide(img.attributes['alt']) then
     img.attributes['alt'] = ''
     img.attributes['role'] = 'presentation'
@@ -467,15 +603,22 @@ local function hors_numerotation(b, lang)
     -- l'image passe en fond CSS, sans quoi la <figure> porterait une /Figure sans /Alt.
     -- Sans crédit, on laisse la passe principale s'en charger : `en_decor` inscrit une
     -- règle CSS, l'appeler ici pour rien en laisserait une inutile.
-    if credit then contenu = en_decor(img) or img end
+    if credit or a_note then contenu = en_decor(img) or img end
   end
-  if not credit then return nil end
-  return pandoc.Figure(
-    pandoc.Blocks({ pandoc.Plain({ contenu }) }),
-    { long = pandoc.Blocks({ pandoc.Plain({
-        pandoc.Span({ pandoc.Str(credit) }, pandoc.Attr('', { 'szh-credit' }, {})) }) }) },
-    pandoc.Attr('', { CLASSE_CREDIT_SEUL }, {})
-  )
+  if not credit and not a_note then return nil end
+  -- La note se prend AVANT d'insérer l'image dans le Plain : pandoc copie l'élément à
+  -- l'insertion, une modification faite ensuite ne l'atteindrait plus. Décor : pas d'<img>
+  -- à décrire (role="presentation"), la note se lit quand même sous l'image.
+  local texte, id = prendre_note(img)
+  local corps = pandoc.Blocks({ pandoc.Plain({ contenu }) })
+  if texte then corps:insert(bloc_note(texte, id, lang)) end
+  local legende = pandoc.Blocks({})
+  if credit then
+    legende:insert(pandoc.Plain({
+      pandoc.Span({ pandoc.Str(credit) }, pandoc.Attr('', { 'szh-credit' }, {})) }))
+  end
+  return pandoc.Figure(corps, { long = legende },
+                       pandoc.Attr('', { CLASSE_CREDIT_SEUL }, {}))
 end
 
 -- ─── Constat au rédacteur : figure sans texte alternatif (aperçu seulement) ─────────────
@@ -509,7 +652,7 @@ local function constat_figure_sans_alt(src)
   FIGURES_SANS_ALT_SIGNALEES[src] = true
   local nom = src:match('([^/\\]+)$') or src
   local champ_unite = (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »'
-  -- Insécable française devant le deux-points (même caractère que LIBELLE_SOURCE plus
+  -- Insécable française devant le deux-points (même caractère que PONCT_NOTE plus
   -- haut) ; l'allemand suisse colle sa ponctuation haute, donc aucune espace ici.
   local morceaux = {
     '[numerotation-avertissement] figure-sans-alt',
@@ -622,7 +765,29 @@ function Pandoc(doc)
       -- déjà posé, et elle ne consomme pas de numéro.
       if a_classe(fig, CLASSE_CREDIT_SEUL) then return nil end
       local legende = utils.stringify(fig.caption.long)
-      if legende:match('^%s*$') then return nil end   -- sans légende : pas de numéro
+      if legende:match('^%s*$') then
+        -- Sans légende : pas de numéro. Mais un copyright, une source ou une note ne se
+        -- perdent pas (grille sans légende) : ils sortent comme pour une image hors
+        -- numérotation, le crédit en <figcaption> après les images, la note sous elles.
+        local cumul, note, id_note = nouveau_cumul(), nil, nil
+        fig.content = fig.content:walk({
+          Image = function(img)
+            cumuler(cumul, img)
+            if not note then note, id_note = prendre_note(img) end
+            return img
+          end,
+        })
+        local credit = credit_depuis(cumul.copyrights, cumul.sources, true)
+        if not credit and not note then return nil end
+        if credit then
+          fig.caption.long = crediter(pandoc.Blocks({}), credit)
+          local classes = pandoc.List(fig.classes)
+          classes:insert(CLASSE_CREDIT_SEUL)
+          fig.classes = classes
+        end
+        if note then fig.content:insert(bloc_note(note, id_note, lang)) end
+        return fig
+      end
       n_figure = n_figure + 1
       local prefixe = mot_figure .. ' ' .. n_figure .. ' ' .. CADRATIN
       fig.caption.long = prefixer(fig.caption.long, prefixe)
@@ -631,7 +796,7 @@ function Pandoc(doc)
       -- (szh-grille.lua). Chacune a ses droits, et une mention de droits ne se perd pas.
       -- Les crédits identiques — le cas courant d'une série d'un même photographe — ne se
       -- répètent pas. Sur une figure à une image, le résultat est exactement l'ancien.
-      local credits, vus = {}, {}
+      local cumul, note, id_note = nouveau_cumul(), nil, nil
       fig.content = fig.content:walk({
         Image = function(img)
           -- L'alt se lit à deux endroits selon le lecteur (voir l'en-tête) : attribut
@@ -656,18 +821,19 @@ function Pandoc(doc)
           -- déjà mis le bon texte dans la description ; le réécrire en pandoc.Str
           -- aplatirait la mise en forme de la légende. Le numéro n'est jamais ajouté à
           -- l'alt, la légende n'étant pas masquée.
-          local c = texte_credit(img.attributes['copyright'],
-                                 img.attributes['source'], lang)
-          if c and not vus[c] then
-            vus[c] = true
-            credits[#credits + 1] = c
+          cumuler(cumul, img)
+          -- La note est une donnée de la figure : celle de la première image qui en porte une.
+          if not note then
+            note, id_note = prendre_note(img)
+          else
+            img.attributes['note'] = nil
           end
           return img
         end,
       })
-      if #credits > 0 then
-        fig.caption.long = crediter(fig.caption.long, table.concat(credits, SEP_CREDIT))
-      end
+      local credit = credit_depuis(cumul.copyrights, cumul.sources)
+      if credit then fig.caption.long = crediter(fig.caption.long, credit) end
+      if note then fig.content:insert(bloc_note(note, id_note, lang)) end
       return fig
     end,
 
@@ -689,19 +855,32 @@ function Pandoc(doc)
 
       local alt = attribut(attrs, 'data-alt')
       local credit = texte_credit(attribut(attrs, 'data-copyright'),
-                                  attribut(attrs, 'data-source'), lang)
+                                  attribut(attrs, 'data-source'))
       -- data-alt vide ou absent -> ni aria-describedby, ni élément : la structure du
       -- tableau se lit d'elle-même.
       local id_desc = nil
+      local ids = {}
       if not vide(alt) then
         n_desc = n_desc + 1
         id_desc = 'szh-tabelle-desc-' .. n_desc
+        ids[#ids + 1] = id_desc
+      end
+      -- data-note -> un paragraphe après le tableau, que le tableau référence aussi.
+      local note = attribut(attrs, 'data-note')
+      local id_note, note_html = nil, nil
+      if not vide(note) then
+        n_note = n_note + 1
+        id_note = CLASSE_NOTE .. '-' .. n_note
+        ids[#ids + 1] = id_note
+        note_html = html_note(note, id_note, lang)
       end
 
       local prefixe = mot_tableau .. ' ' .. (n_tableau + 1) .. ' ' .. CADRATIN
-      local html, numerote = traiter_tableau(raw.text, prefixe, credit, id_desc)
+      local html, numerote = traiter_tableau(raw.text, prefixe, credit,
+        #ids > 0 and table.concat(ids, ' ') or nil, note_html)
       if not html then
         if id_desc then n_desc = n_desc - 1 end
+        if id_note then n_note = n_note - 1 end
         return nil
       end
       if numerote then n_tableau = n_tableau + 1 end

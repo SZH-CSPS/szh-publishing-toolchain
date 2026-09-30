@@ -149,6 +149,15 @@ figure, blockquote { break-inside: avoid; }
 figure { margin: var(--esp-figure) 0; break-inside: avoid; }
 figure img { max-width: 100%; max-height: var(--plafond-figure); height: auto; display: block; }
 figcaption { font-size: var(--legende); line-height: 1.35; color: var(--c-ink2); text-indent: 0; }
+/* Note sous une figure ou un tableau (szh-numerotation.lua) : au corps de la légende, sans
+   alinéa, collée à ce qu'elle commente. L'étiquette en italique est dans partage-filtres.css. */
+.szh-bloc-note {
+  font-size: var(--legende); line-height: 1.35; color: var(--c-ink2); text-indent: 0;
+  margin: 0.4em 0 0; text-align: left; break-before: avoid;
+}
+/* Crédit sans titre, sous l'image : collé à elle, et la note collée au crédit. */
+figure > figcaption.szh-credit-seul { margin-top: 0.1em; }
+figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
 
 /* ═══ 6. Notes ════════════════════════════════════════════════════════════════
    Comme dans la revue : au bas de leur page. szh-notes.lua a déjà transformé les Note en

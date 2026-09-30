@@ -1299,14 +1299,14 @@ def lire(chemin):
     if n_entetes_pieds:
         avertir('entetes-pieds-non-lus',
                 ['article', 'fichiers %d' % n_entetes_pieds],
-                'Ce document porte %d en-tête(s)/pied(s) de page : leur contenu n\'est pas '
+                'Ce document porte %d en-tête(s)/pied(s) de page\u00a0: leur contenu n’est pas '
                 'lu par le nettoyeur, qui ne regarde que le corps du document.' % n_entetes_pieds,
                 'Dieses Dokument enthält %d Kopf-/Fußzeile(n): ihr Inhalt wird vom Bereiniger '
                 'nicht gelesen, der nur den Dokumentkörper betrachtet.' % n_entetes_pieds)
     if n_txbx:
         avertir('zones-de-texte-non-lues',
                 ['article', 'occurrences %d' % n_txbx],
-                'Ce document porte %d zone(s) de texte : leur contenu n\'est pas lu, il '
+                'Ce document porte %d zone(s) de texte\u00a0: leur contenu n’est pas lu, il '
                 'sera absent de la sortie.' % n_txbx,
                 'Dieses Dokument enthält %d Textfeld(er): ihr Inhalt wird nicht gelesen und '
                 'fehlt in der Ausgabe.' % n_txbx)
@@ -1314,7 +1314,7 @@ def lire(chemin):
         avertir('champs-word-non-resolus',
                 ['article', 'marqueurs %d' % n_fld],
                 'Ce document porte %d marqueur(s) de champ Word (renvoi, sommaire, numéro '
-                'de page…) : sa valeur affichée est lue comme du texte normal, mais elle ne '
+                'de page…)\u00a0: sa valeur affichée est lue comme du texte normal, mais elle ne '
                 'sera jamais recalculée.' % n_fld,
                 'Dieses Dokument enthält %d Word-Feldmarkierung(en) (Querverweis, '
                 'Inhaltsverzeichnis, Seitenzahl…): ihr angezeigter Wert wird als normaler '
@@ -1323,7 +1323,7 @@ def lire(chemin):
         avertir('formes-vectorielles-ignorees',
                 ['article', 'occurrences %d' % recensement['forme_vectorielle_ignoree']],
                 'Ce document porte %d dessin(s) flottant(s) ou en ligne sans image '
-                'incorporée (rectangle, forme, groupe de formes) : ils ne sont pas '
+                'incorporée (rectangle, forme, groupe de formes)\u00a0: ils ne sont pas '
                 'repris.' % recensement['forme_vectorielle_ignoree'],
                 'Dieses Dokument enthält %d schwebende oder eingebettete Zeichnung(en) ohne '
                 'eingebettetes Bild (Rechteck, Form, Formengruppe): sie werden nicht '
@@ -1331,8 +1331,8 @@ def lire(chemin):
     if recensement['image_vml_ignoree']:
         avertir('images-vml-ignorees',
                 ['article', 'occurrences %d' % recensement['image_vml_ignoree']],
-                'Ce document porte %d image(s) au format hérité (VML, w:pict) : ce lecteur '
-                'ne sait lire que les images modernes (DrawingML) ; elles ne sont pas '
+                'Ce document porte %d image(s) au format hérité (VML, w:pict)\u00a0: ce lecteur '
+                'ne sait lire que les images modernes (DrawingML)\u00a0; elles ne sont pas '
                 'reprises.' % recensement['image_vml_ignoree'],
                 'Dieses Dokument enthält %d Bild(er) im veralteten Format (VML, w:pict): '
                 'dieser Leser kann nur moderne Bilder (DrawingML) lesen; sie werden nicht '
@@ -1341,21 +1341,21 @@ def lire(chemin):
         avertir('images-introuvables',
                 ['article', 'sans-relation %d' % recensement['image_sans_relation'],
                  'octets-introuvables %d' % recensement['image_octets_introuvables']],
-                'Ce document référence une ou plusieurs images que ce lecteur n\'a pas pu '
-                'retrouver dans l\'archive (relation absente ou fichier manquant, par '
-                'exemple une image liée en externe) : elles ne sont pas reprises.',
+                'Ce document référence une ou plusieurs images que ce lecteur n’a pas pu '
+                'retrouver dans l’archive (relation absente ou fichier manquant, par '
+                'exemple une image liée en externe)\u00a0: elles ne sont pas reprises.',
                 'Dieses Dokument verweist auf ein oder mehrere Bilder, die dieser Leser im '
                 'Archiv nicht wiederfinden konnte (fehlende Beziehung oder fehlende Datei, '
                 'zum Beispiel ein extern verknüpftes Bild): sie werden nicht übernommen.')
     if recensement['image_dimensions_indisponibles']:
         avertir('images-dimensions-indisponibles',
                 ['article', 'occurrences %d' % recensement['image_dimensions_indisponibles']],
-                'Ce document porte %d image(s) dont les dimensions en pixels n\'ont pas pu '
-                'être lues (format vectoriel — SVG, EMF, WMF — ou fichier abîmé) : la '
+                'Ce document porte %d image(s) dont les dimensions en pixels n’ont pas pu '
+                'être lues (format vectoriel\u00a0– SVG, EMF, WMF\u00a0– ou fichier abîmé)\u00a0: la '
                 'qualité de ces images ne peut pas être évaluée.'
                 % recensement['image_dimensions_indisponibles'],
                 'Dieses Dokument enthält %d Bild(er), deren Pixelabmessungen nicht gelesen '
-                'werden konnten (Vektorformat — SVG, EMF, WMF — oder beschädigte Datei): '
+                'werden konnten (Vektorformat – SVG, EMF, WMF – oder beschädigte Datei): '
                 'die Qualität dieser Bilder kann nicht beurteilt werden.'
                 % recensement['image_dimensions_indisponibles'])
     if recensement['symboles_police_speciale']:
@@ -1364,8 +1364,8 @@ def lire(chemin):
                 ['article', 'occurrences %d' % recensement['symboles_police_speciale'],
                  'polices ' + polices],
                 'Ce document porte %d caractère(s) composé(s) via Insertion > Symbole, dans '
-                'une police à correspondance non standard (%s) : le caractère est repris tel '
-                'quel, sa fidélité doit être vérifiée à l\'écran.'
+                'une police à correspondance non standard (%s)\u00a0: le caractère est repris tel '
+                'quel, sa fidélité doit être vérifiée à l’écran.'
                 % (recensement['symboles_police_speciale'], polices),
                 'Dieses Dokument enthält %d über Einfügen > Symbol erstellte(s) Zeichen in '
                 'einer Schriftart mit nicht standardisierter Zuordnung (%s): das Zeichen wird '
@@ -1375,7 +1375,7 @@ def lire(chemin):
         avertir('notes-orphelines',
                 ['article', 'occurrences %d' % len(notes_orphelines)],
                 'Ce document porte %d note(s) de bas de page ou de fin présente(s) dans le '
-                'fichier mais jamais appelée(s) par un renvoi dans le texte : elles ne sont '
+                'fichier mais jamais appelée(s) par un renvoi dans le texte\u00a0: elles ne sont '
                 'pas reprises.' % len(notes_orphelines),
                 'Dieses Dokument enthält %d Fuß- oder Endnote(n), die in der Datei vorhanden '
                 'sind, aber im Text nie durch einen Verweis aufgerufen werden: sie werden '
@@ -1395,15 +1395,12 @@ def projeter_pronto(document):
     list[pronto_modele.Par | pronto_modele.Tableau] (§3 du contrat)."""
 
     def texte_paragraphe(p):
-        # Concaténation brute des Fragment — depuis le 19.09.2026, tab/br/cr/tiret y sont
-        # RÉELS, plus des espaces/traits d'union déjà substitués (voir le point 1 de l'en-tête)
-        # — puis pm.normaliser(), le MÊME que pronto_docx.lire() appelle sur son propre texte
-        # brut. ' '.join(t.split()) de normaliser() traite '\t'/'\n' exactement comme une
-        # espace (str.split() les reconnaît tous deux comme des blancs), et ses trois
-        # substitutions de tiret s'appliquent ici pour la première fois : la projection reste
-        # donc l'exact miroir de pronto_docx.lire(), qui applique les deux dès la lecture.
+        # Concaténation brute des Fragment (tab/br/cr/tiret y sont RÉELS depuis le
+        # 19.09.2026), puis pm.normaliser_valeur(), le MÊME que pronto_docx.lire() : tabulation et
+        # saut de ligne y deviennent une espace, les insécables et les tirets restent. La projection
+        # reste donc l'exact miroir de pronto_docx.lire().
         brut = ''.join(f.texte for f in p.fragments if f.image is None and f.note is None)
-        return pm.normaliser(brut)
+        return pm.normaliser_valeur(brut)
 
     def images_paragraphe(p):
         return [(f.image.nom, f.image.surface) for f in p.fragments if f.image is not None]

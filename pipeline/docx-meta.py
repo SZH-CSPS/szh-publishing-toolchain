@@ -63,6 +63,7 @@ import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
+from pronto_modele import langue_du_produit
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
@@ -89,11 +90,21 @@ RELS_IMAGES = {}
 
 
 def normaliser(t):
-    """Espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné."""
-    for a, b in ((' ', ' '), (' ', ' '), (' ', ' '),
-                 ('–', '-'), ('—', '-'), ('‑', '-')):
+    """Forme de COMPARAISON : blancs Unicode (insécables comprises, par str.split())
+    repliés, tirets spéciaux -> '-', rogné. Jamais pour une valeur : voir valeur()."""
+    for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
         t = t.replace(a, b)
     return ' '.join(t.split())
+
+
+_RE_BLANCS_ASCII = re.compile(r'[ \t\r\n\f\v]+')
+
+
+def valeur(t):
+    """Forme de VALEUR (titre, sous-titre, résumé, mots-clés, champs d'auteur) : seuls les
+    blancs ASCII sont repliés ; insécables, espace fine, tirets et U+2011 restent tels que
+    tapés, pour szh-typographie.lua. Même règle que pronto_modele.normaliser_valeur()."""
+    return _RE_BLANCS_ASCII.sub(' ', t or '').strip()
 
 
 def texte_paragraphe(p):
@@ -106,6 +117,10 @@ def texte_paragraphe(p):
                 morceaux.append(e.text or '')
             elif e.tag in (W + 'tab', W + 'br', W + 'cr'):
                 morceaux.append(' ')
+            elif e.tag == W + 'noBreakHyphen':
+                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
+            elif e.tag == W + 'sym':
+                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
     return ''.join(morceaux)
 
 
@@ -559,13 +574,17 @@ def lignes_cellule(tc):
                     courant.append(e.text or '')
                 elif e.tag == W + 'tab':
                     courant.append(' ')
+                elif e.tag == W + 'noBreakHyphen':
+                    courant.append(szh_commun.TRAIT_UNION_INSECABLE)
+                elif e.tag == W + 'sym':
+                    courant.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
                 elif e.tag in (W + 'br', W + 'cr'):
-                    t = normaliser(''.join(courant))
+                    t = valeur(''.join(courant))
                     if t:
                         lignes.append((t, sep))
                         sep = 'br'
                     courant = []
-        t = normaliser(''.join(courant))
+        t = valeur(''.join(courant))
         if t:
             lignes.append((t, sep))
     return lignes
@@ -601,7 +620,7 @@ def cellule_auteur(tc):
             email = m.group(1)
             # e-mail collé en fin de ligne (« PH Luzern bruno.zobrist@phlu.ch ») : le
             # reste de la ligne est une info à part entière.
-            reste = normaliser(txt.replace(m.group(1), ' '))
+            reste = valeur(txt.replace(m.group(1), ' '))
             if reste:
                 infos.append((reste, sep))
             continue
@@ -1021,7 +1040,9 @@ def principal(argv):
             break
         sid = pstyle(e)
         fam = classeur.famille(sid)
-        txt = normaliser(texte_paragraphe(e))
+        brut = texte_paragraphe(e)
+        txt = normaliser(brut)            # pour reconnaître
+        val = valeur(brut)                # pour écrire dans la fiche
         mange = classeur.pandoc_mange(sid)
 
         def consommer():
@@ -1035,23 +1056,26 @@ def principal(argv):
             i += 1
             continue
         if fam == 'title':
-            titre_parts.append(txt)
+            titre_parts.append(val)
             titre_source = 'style'
             consommer()
         elif fam == 'subtitle':
             if not titre_parts:
                 # « Dokumentation » : Untertitel en tout premier bloc = titre de fait.
-                titre_parts.append(txt)
+                titre_parts.append(val)
                 titre_source = 'style-sous-titre'
             else:
-                sous_titre_parts.append(txt)
+                sous_titre_parts.append(val)
                 sous_titre_source = 'style'
             consommer()
         elif fam == 'author':
-            byline = (byline + ', ' + txt) if byline else txt
+            byline = (byline + ', ' + val) if byline else val
             consommer()
         elif RE_KEYWORDS.match(txt):
-            keywords_brut = RE_KEYWORDS.sub('', txt, count=1).strip()
+            # l'étiquette se reconnaît sur la forme de comparaison (« Mots‑clés » tapé au
+            # trait d'union insécable), la valeur se prend sur la forme tapée.
+            source_mc = val if RE_KEYWORDS.match(val) else txt
+            keywords_brut = RE_KEYWORDS.sub('', source_mc, count=1).strip()
             consommer()
         elif RE_DOI_LIGNE.match(txt) and RE_DOI.search(txt):
             doi = nettoyer_doi(txt)
@@ -1063,7 +1087,8 @@ def principal(argv):
             m = RE_RESUME.match(txt)
             if m:
                 lang = langue_resume(m.group(1))
-                corps_resume = RE_RESUME.sub('', txt, count=1).strip()
+                corps_resume = RE_RESUME.sub('', val if RE_RESUME.match(val) else txt,
+                                             count=1).strip()
                 cle = lang                # None (« Abstract ») = langue doc
                 if cle in resumes and resumes[cle]:
                     resumes[cle] += ' ' + corps_resume
@@ -1072,9 +1097,9 @@ def principal(argv):
                 dernier_resume = cle
             elif dernier_resume is not None or dernier_resume in resumes:
                 resumes[dernier_resume] = (resumes.get(dernier_resume, '')
-                                           + ' ' + txt).strip()
+                                           + ' ' + val).strip()
             else:
-                resumes[None] = txt
+                resumes[None] = val
                 dernier_resume = None
             consommer()
         else:
@@ -1100,7 +1125,7 @@ def principal(argv):
             t = taille_max(e)
             grand = t is not None and taille_corps is not None and t >= taille_corps * 1.2
             if len(txt.split()) <= 30 and (grand or paragraphe_tout_gras(e)):
-                titre_parts.append(txt)
+                titre_parts.append(valeur(texte_paragraphe(e)))
                 titre_source = 'heuristique'
                 if not classeur.pandoc_mange(pstyle(e)):
                     consommes_p.append(txt)
@@ -1113,7 +1138,7 @@ def principal(argv):
                     if txt2 and len(txt2.split()) <= 30 and t2 and t and t2 < t \
                             and taille_corps and t2 > taille_corps \
                             and not auteurs_depuis_byline(txt2):
-                        sous_titre_parts.append(txt2)
+                        sous_titre_parts.append(valeur(texte_paragraphe(e2)))
                         sous_titre_source = 'heuristique'
                         if not classeur.pandoc_mange(pstyle(e2)):
                             consommes_p.append(txt2)
@@ -1163,6 +1188,15 @@ def principal(argv):
         if abs(nde - nfr) >= 5:
             langue = 'de' if nde > nfr else 'fr'
             langue_source = 'contenu'
+    # Le PRODUIT du numéro décide, comme pour pronto-lire.py (décision du 22.09.2026) :
+    # $SZH_PRODUIT, posé par import-docx.sh depuis ausgabe.yaml. Ce qui précède ne sert plus
+    # qu'à avertir d'un désaccord — une Zeitschrift porte souvent un résumé français en
+    # tête, et « premier-resume » faisait composer tout l'article allemand en français
+    # (mesuré le 30.09.2026). Sans produit (appel hors d'un numéro), la déduction reste.
+    langue_detectee, source_detectee = langue, langue_source
+    langue_produit = langue_du_produit(os.getenv('SZH_PRODUIT', ''))
+    if langue_produit:
+        langue, langue_source = langue_produit, 'produit'
     if not langue:
         langue = 'fr'
         langue_source = 'defaut'
@@ -1339,15 +1373,29 @@ def principal(argv):
     # démentir. On l'écrit quand même — un champ vide bloquerait la composition — mais
     # on le dit. Sur une fiche conservée, rien à signaler : le champ du rédacteur fait
     # foi et nous ne l'avons pas touché.
+    if (meta_ecrit and langue_source == 'produit' and langue_detectee
+            and langue_detectee != langue):
+        avertir(
+            'langue-desaccord-produit',
+            ['article « %s »' % slug, 'langue « %s »' % langue,
+             'document « %s » (%s)' % (langue_detectee, source_detectee)],
+            "Le document semble écrit en «\u00a0%s\u00a0», mais l’article est composé en "
+            "«\u00a0%s\u00a0», la langue du numéro. Si c’est voulu, rien à faire\u00a0; "
+            "sinon, corrigez la langue dans «\u00a0Métadonnées des articles\u00a0»."
+            % (langue_detectee, langue),
+            'Das Dokument scheint auf «%s» geschrieben, der Artikel wird aber auf «%s» '
+            'gesetzt, der Sprache der Ausgabe. Ist das gewollt, ist nichts zu tun; sonst '
+            'korrigieren Sie die Sprache unter «Metadaten der Artikel».'
+            % (langue_detectee, langue))
     if meta_ecrit and langue_source in ('contenu', 'defaut'):
         avertir(
             'langue-deduite',
             ['article « %s »' % slug, 'langue « %s »' % langue],
-            "La langue de cet article n'était pas indiquée dans le document : elle a "
-            "été devinée. Vérifiez-la dans « Métadonnées des articles » : la maquette "
+            "La langue de cet article n’était pas indiquée dans le document\u00a0: elle a "
+            "été devinée. Vérifiez-la dans «\u00a0Métadonnées des articles\u00a0»\u00a0: la maquette "
             "et les résumés en dépendent.",
             'Die Sprache dieses Artikels stand nicht im Dokument: sie wurde erraten. '
-            'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
+            'Prüfen Sie sie unter «Metadaten der Artikel» – Layout und '
             'Zusammenfassungen richten sich danach.')
 
     # Le sous-titre déduit d'un deux-points est une coupe que nous avons décidée, et elle
@@ -1358,12 +1406,12 @@ def principal(argv):
             'sous-titre-deduit',
             ['article « %s »' % slug, 'titre « %s »' % ' '.join(titre_parts),
              'soustitre « %s »' % ' '.join(sous_titre_parts)],
-            "Le document ne donnait qu'un titre, avec un deux-points au milieu : ce qui "
-            'suit a été repris comme sous-titre. Vérifiez la coupe dans « Métadonnées des '
-            "articles » — titre et sous-titre ne se composent pas de la même façon.",
+            "Le document ne donnait qu’un titre, avec un deux-points au milieu\u00a0: ce qui "
+            'suit a été repris comme sous-titre. Vérifiez la coupe dans «\u00a0Métadonnées des '
+            "articles\u00a0»\u00a0– titre et sous-titre ne se composent pas de la même façon.",
             'Das Dokument enthielt nur einen Titel, mit einem Doppelpunkt darin: was '
             'darauf folgt, wurde als Untertitel übernommen. Prüfen Sie die Trennung unter '
-            '« Metadaten der Artikel » — Titel und Untertitel werden nicht gleich '
+            '«Metadaten der Artikel» – Titel und Untertitel werden nicht gleich '
             'gesetzt.')
 
     # Un tableau de fin porteur d'e-mails que nous n'avons pas su lire, et pas un seul
@@ -1375,16 +1423,16 @@ def principal(argv):
         avertir(
             'tableau-auteurs-non-lu',
             ['article « %s »' % slug, 'tableaux %d' % refuses_parlants],
-            "Le tableau des autrices et auteurs de cet article n'a pas pu être lu : la "
+            "Le tableau des autrices et auteurs de cet article n’a pas pu être lu\u00a0: la "
             'fiche ne porte que les noms lus sous le titre, sans fonction, affiliation, '
             'e-mail ni portrait, et le tableau reste imprimé dans le texte. Vérifiez '
-            '« Métadonnées des articles » et complétez à la main, ou remettez chaque '
+            '«\u00a0Métadonnées des articles\u00a0» et complétez à la main, ou remettez chaque '
             'personne dans sa propre cellule (nom, fonction, e-mail) dans le Word puis '
-            "réimportez l'article.",
+            "réimportez l’article.",
             'Die Tabelle der Autorinnen und Autoren dieses Artikels konnte nicht '
             'gelesen werden: die Metadaten enthalten nur die Namen aus der Titelzeile, '
             'ohne Funktion, Institution, E-Mail und Porträt, und die Tabelle bleibt im '
-            'Text gedruckt. Prüfen Sie « Metadaten der Artikel » und ergänzen Sie von '
+            'Text gedruckt. Prüfen Sie «Metadaten der Artikel» und ergänzen Sie von '
             'Hand, oder setzen Sie im Word jede Person in ihre eigene Zelle (Name, '
             'Funktion, E-Mail) und importieren Sie den Artikel neu.')
 
@@ -1394,8 +1442,8 @@ def principal(argv):
         avertir(
             'credit-photo-non-repris',
             ['article « %s »' % slug] + ['crédit « %s »' % c for c in credits_photo],
-            'Le tableau des autrices et auteurs portait %d crédit(s) de photo (%s) : la '
-            "fiche n'a pas de champ pour les reprendre et ils ne s'imprimeront plus. "
+            'Le tableau des autrices et auteurs portait %d crédit(s) de photo (%s)\u00a0: la '
+            "fiche n’a pas de champ pour les reprendre et ils ne s’imprimeront plus. "
             'Reportez-les où ils doivent paraître si le numéro doit les mentionner.'
             % (len(credits_photo), ' ; '.join(credits_photo)),
             'Die Tabelle der Autorinnen und Autoren enthielt %d Bildnachweis(e) (%s): '
@@ -1411,9 +1459,9 @@ def principal(argv):
             'biblio-references-restees',
             ['article « %s »' % slug, 'references %d' % biblio['restees']],
             '%d référence(s) suivent la bibliographie sans porter son style dans le '
-            'document Word : elles restent dans le texte, à part de la liste. Pour les '
-            'rattacher : appliquez-leur le style de bibliographie dans le Word, puis '
-            "réimportez l'article." % biblio['restees'],
+            'document Word\u00a0: elles restent dans le texte, à part de la liste. Pour les '
+            'rattacher\u00a0: appliquez-leur le style de bibliographie dans le Word, puis '
+            "réimportez l’article." % biblio['restees'],
             '%d Einträge folgen dem Literaturverzeichnis, ohne im Word-Dokument dessen '
             'Formatvorlage zu tragen: sie bleiben im Text, ausserhalb der Liste. So '
             'hängen Sie sie an: weisen Sie ihnen im Word die Formatvorlage für '
@@ -1428,12 +1476,12 @@ def principal(argv):
         avertir(
             'biblio-non-detachee',
             ['article « %s »' % slug],
-            "La bibliographie de cet article n'a pas pu être mise à part : ses "
+            "La bibliographie de cet article n’a pas pu être mise à part\u00a0: ses "
             'références ne portent pas le style de bibliographie dans le document Word. '
-            "Elle reste dans le texte et s'imprimera normalement ; en revanche l'export "
-            "vers la plateforme partira sans liste de références. Pour la corriger : "
+            "Elle reste dans le texte et s’imprimera normalement\u00a0; en revanche l’export "
+            "vers la plateforme partira sans liste de références. Pour la corriger\u00a0: "
             'appliquez le style de bibliographie aux références dans le Word, puis '
-            "réimportez l'article.",
+            "réimportez l’article.",
             'Das Literaturverzeichnis dieses Artikels konnte nicht ausgelagert werden: '
             'seine Einträge tragen im Word-Dokument nicht die Formatvorlage für '
             'Literaturverzeichnisse. Es bleibt im Text und wird normal gedruckt; der '
@@ -1476,6 +1524,7 @@ def principal(argv):
     stats.update({
         'type': type_article, 'type_regle': type_regle,
         'langue': langue, 'langue_source': langue_source,
+        'langue_detectee': langue_detectee or '',
         'titre': bool(titre_parts), 'titre_source': titre_source or 'aucun',
         'sous_titre': bool(sous_titre_parts),
         'sous_titre_source': sous_titre_source or 'aucun',

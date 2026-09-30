@@ -192,11 +192,24 @@ def _appeler_pandoc(textes, langue, racine_depot):
     `[typo-avertissement]` que le filtre a émises sur stderr (révision du 19.09.2026 : lues
     aussi sur un appel RÉUSSI, plus seulement sur l'échec — avant, elles étaient capturées puis
     jetées en silence sur un succès). Lève _PandocIndisponible pour tout ce qui empêche une
-    réponse — c'est l'appelant qui décide du repli, jamais cette fonction."""
+    réponse — c'est l'appelant qui décide du repli, jamais cette fonction.
+
+    Un élément de `textes` est une chaîne (corps) ou un couple (texte, niveau) : niveau 1 à 6
+    part en Header, pour que le filtre y applique ses règles de TITRE (A4 majuscules
+    accentuées, L2 soudure des mots outils) — en Para, un intertitre « Ecole et Etat » restait
+    tel quel et levait C3 comme s'il était du corps (mesuré le 30.09.2026)."""
+    blocs_envoyes = []
+    for t in textes:
+        texte, niveau = (t, 0) if isinstance(t, str) else t
+        inlines = _construire_inlines(texte)
+        if niveau and 1 <= niveau <= 6:
+            blocs_envoyes.append({'t': 'Header', 'c': [niveau, ['', [], []], inlines]})
+        else:
+            blocs_envoyes.append({'t': 'Para', 'c': inlines})
     doc = {
         'pandoc-api-version': [1, 23, 1],
         'meta': {},
-        'blocks': [{'t': 'Para', 'c': _construire_inlines(t)} for t in textes],
+        'blocks': blocs_envoyes,
     }
     entree = json.dumps(doc).encode('utf-8')
 
@@ -215,7 +228,8 @@ def _appeler_pandoc(textes, langue, racine_depot):
         raise _PandocIndisponible(
             'pandoc a rendu %d bloc(s) pour %d envoyé(s)' % (len(blocs), len(textes)))
     try:
-        textes_normalises = [_a_plat(b.get('c', [])) for b in blocs]
+        textes_normalises = [_a_plat(b['c'][2] if b.get('t') == 'Header' else b.get('c', []))
+                             for b in blocs]
     except _EchecReconstruction as e:
         # Un type d'inline imprévu au niveau du LOT ENTIER (pas d'une unité isolée) est une
         # anomalie de l'outillage, pas d'un paragraphe précis : traité comme une
@@ -405,7 +419,9 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
             if texte == '':
                 continue  # rien à envoyer à pandoc pour un run de texte vide
             plan.append((ip, iu))
-            textes_a_envoyer.append(texte)
+            # Un intertitre retenu part en Header (voir _appeler_pandoc) : même texte, mêmes
+            # fragments, seules les règles de titre s'y ajoutent.
+            textes_a_envoyer.append((texte, min(getattr(p, 'niveau_retenu', 0) or 0, 6)))
 
     if not textes_a_envoyer:
         traces.append('manuscrit-typo : aucun texte à normaliser dans ce lot.')
@@ -431,7 +447,8 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
     # fragment d'origine entre les deux passes (garde d'entrée du §6).
     envoye_par_cle = {}
     normalise_par_cle = {}
-    for (ip, iu), texte_env, texte_norm in zip(plan, textes_a_envoyer, textes_normalises):
+    for (ip, iu), (texte_env, _niveau), texte_norm in zip(plan, textes_a_envoyer,
+                                                          textes_normalises):
         envoye_par_cle[(ip, iu)] = texte_env
         normalise_par_cle[(ip, iu)] = texte_norm
 
@@ -463,3 +480,27 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
                        % len(abandons))
 
     return resultat, traces, abandons, avertissements, 'appliquee'
+
+
+def normaliser_textes(textes, langue, racine_depot):
+    """Le même pont pour des textes qui ne sont pas des paragraphes Word : les champs de
+    l'en-tête (titre, sous-titre, résumé, mots-clés, fonction et institution des auteurs),
+    que le nettoyeur écrit dans les tableaux du gabarit. `textes` : liste de chaînes ou de
+    couples (texte, niveau) comme pour _appeler_pandoc — niveau 1 et 2 pour le titre et le
+    sous-titre. Un seul appel pandoc. Rend (textes_normalises, traces, avertissements,
+    statut) ; en repli, les textes ressortent inchangés et `statut` vaut 'repli'."""
+    a_envoyer = [(i, t) for i, t in enumerate(textes)
+                 if (t if isinstance(t, str) else t[0]).strip()]
+    resultat = [t if isinstance(t, str) else t[0] for t in textes]
+    if not a_envoyer:
+        return resultat, [], [], 'appliquee'
+    try:
+        normalises, avertissements = _appeler_pandoc([t for _, t in a_envoyer], langue,
+                                                     racine_depot)
+    except _PandocIndisponible as e:
+        return (resultat, ['manuscrit-typo : en-tête sans typographie (pandoc/wsl '
+                           'indisponible) — %s' % e], [], 'repli')
+    for (i, _), n in zip(a_envoyer, normalises):
+        resultat[i] = n
+    return (resultat, ['manuscrit-typo : %d champ(s) d’en-tête normalisé(s) (langue=%s).'
+                       % (len(a_envoyer), langue)], avertissements, 'appliquee')

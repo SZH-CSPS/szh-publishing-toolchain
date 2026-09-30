@@ -113,7 +113,9 @@ function retirerTable(texte, nom) {
 //   - le texte entre crochets est la légende, visible dans le rendu ;
 //   - alt absent : le pipeline retombe sur la légende. alt="" : image décorative,
 //     ignorée des lecteurs d'écran, et seule valeur vide qui s'écrive ;
-//   - copyright et source sont omis quand vides, et sans attribut il n'y a pas de bloc ;
+//   - copyright, source et note sont omis quand vides, et sans attribut il n'y a pas de bloc ;
+//   - note : imprimée sous la figure ; comme la légende, une grille ne porte que celle de sa
+//     première image (offsetsSuiveuses) ;
 //   - échappement : " -> \" dans les valeurs, pas de saut de ligne, valeurs trimées.
 
 // Image hors numérotation : la classe .szh-hors-figure et une légende vide.
@@ -202,7 +204,7 @@ function reconstruireBloc(blocOriginal, cibles) {
   for (const j of scannerAttributs(contenu)) {
     if (!j.paire && j.brut === '.' + CLASSE_HORS_FIGURE) { continue; }   // reposée ou retirée
     const cle = j.paire ? j.cle.toLowerCase() : '';
-    if (cle === 'alt' || cle === 'copyright' || cle === 'source') {
+    if (cle === 'alt' || cle === 'copyright' || cle === 'source' || cle === 'note') {
       if (traites[cle]) { continue; }              // doublon dans le fichier : une seule fois
       traites[cle] = true;
       if (cibles[cle] !== null) { sortie.push(cle + '=' + citerValeur(cibles[cle])); }
@@ -210,7 +212,7 @@ function reconstruireBloc(blocOriginal, cibles) {
     }
     sortie.push(j.brut);
   }
-  for (const cle of ['alt', 'copyright', 'source']) {
+  for (const cle of ['alt', 'copyright', 'source', 'note']) {
     if (traites[cle] || cibles[cle] === null) { continue; }
     sortie.push(cle + '=' + citerValeur(cibles[cle]));
   }
@@ -320,7 +322,8 @@ function listerImages(texte) {
     const entree = {
       cible: cible,
       relatif: dansMedia ? cible.slice('media/'.length) : null,
-      legende: m[1], alt: '', altDefini: false, copyright: '', source: '', horsFigure: false
+      legende: m[1], alt: '', altDefini: false, copyright: '', source: '', note: '',
+      horsFigure: false
     };
     for (const j of scannerAttributs(m[4] ? m[4].slice(1, -1) : '')) {
       if (!j.paire) {
@@ -331,6 +334,7 @@ function listerImages(texte) {
       if (cle === 'alt' && !entree.altDefini) { entree.alt = j.valeur; entree.altDefini = true; }
       else if (cle === 'copyright' && entree.copyright === '') { entree.copyright = j.valeur; }
       else if (cle === 'source' && entree.source === '') { entree.source = j.valeur; }
+      else if (cle === 'note' && entree.note === '') { entree.note = j.valeur; }
     }
     res.push(entree);
   }
@@ -347,12 +351,13 @@ function imagesSansAlternative(texte) {
 }
 
 // lireAttributsImage(texte, relatif)
-//   -> { legende, alt, altDefini, copyright, source, horsFigure, n }
+//   -> { legende, alt, altDefini, copyright, source, note, horsFigure, n }
 // n compte les insertions de l'image ; à zéro, le gestionnaire refuse d'enregistrer. Les
 // valeurs viennent de la première insertion, et l'écriture les reporte sur toutes.
 function lireAttributsImage(texte, relatif) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
-  const res = { legende: '', alt: '', altDefini: false, copyright: '', source: '', horsFigure: false, n: 0 };
+  const res = { legende: '', alt: '', altDefini: false, copyright: '', source: '', note: '',
+                horsFigure: false, n: 0 };
   if (attendu === 'media/') { return res; }
   const re = reImage();
   const s = String(texte === undefined || texte === null ? '' : texte);
@@ -371,6 +376,7 @@ function lireAttributsImage(texte, relatif) {
       if (cle === 'alt' && !res.altDefini) { res.alt = j.valeur; res.altDefini = true; }
       else if (cle === 'copyright' && res.copyright === '') { res.copyright = j.valeur; }
       else if (cle === 'source' && res.source === '') { res.source = j.valeur; }
+      else if (cle === 'note' && res.note === '') { res.note = j.valeur; }
     }
   }
   return res;
@@ -588,10 +594,12 @@ function referenceImage(relatif, valeurs) {
   const alt = normaliserValeurFigure(v.alt);
   const copyright = normaliserValeurFigure(v.copyright);
   const source = normaliserValeurFigure(v.source);
+  const note = normaliserValeurFigure(v.note);
   const cibles = {
     alt: v.altDefini ? alt : null,
     copyright: copyright === '' ? null : copyright,
     source: source === '' ? null : source,
+    note: note === '' ? null : note,
     horsFigure: horsFigure
   };
   const legende = horsFigure ? '' : normaliserLegendeFigure(v.legende);
@@ -636,11 +644,12 @@ function poserDansGrille(texte, ancre, ajout) {
   if ((dansGrille ? dansGrille.grille.membres.length : 1) >= GRILLE_MAX) { return refus('pleine'); }
 
   // Les valeurs de l'image qui rejoint la grille, prises avant de la retirer : son texte
-  // alternatif et ses crédits la suivent, sa légende propre ne peut pas — une grille n'en
+  // alternatif et ses crédits la suivent, sa légende et sa note propres ne peuvent pas — une grille n'en
   // porte qu'une, celle de la figure.
   const valeursAjout = lireAttributsImage(src, cibleAjout);
   if (valeursAjout.n > 1) { return refus('ajout'); }
-  const legendePerdue = valeursAjout.n === 1 && valeursAjout.legende.trim() !== '';
+  const legendePerdue = valeursAjout.n === 1
+    && (valeursAjout.legende.trim() !== '' || valeursAjout.note.trim() !== '');
 
   // Le retrait d'abord : il déplace des lignes, et tout ce qui suit se recalcule dessus.
   let travail = src;
@@ -653,7 +662,7 @@ function poserDansGrille(texte, ancre, ajout) {
   // Légende forcée vide : la figure n'en porte qu'une, celle de son ancre. `legendePerdue`
   // dit à l'appelant qu'il y avait quelque chose à perdre, pour qu'il le signale.
   const nouvelle = '  ' + referenceImage(cibleAjout,
-    Object.assign({}, valeursAjout, { legende: '' }));
+    Object.assign({}, valeursAjout, { legende: '', note: '' }));
   const apres = grilleDeImage(travail, cibleAncre);
   if (apres) {
     // Grille existante : l'image s'ajoute en queue, juste avant le « ::: » de fermeture.
@@ -793,23 +802,27 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
   const alt = normaliserValeurFigure(v.alt);
   const copyright = normaliserValeurFigure(v.copyright);
   const source = normaliserValeurFigure(v.source);
+  const note = normaliserValeurFigure(v.note);
   const cibles = {
     alt: v.altDefini ? alt : null,
     copyright: copyright === '' ? null : copyright,
     source: source === '' ? null : source,
+    note: note === '' ? null : note,
     horsFigure: horsFigure
   };
+  const ciblesSuiveuse = Object.assign({}, cibles, { note: null });
   const entree = String(texte === undefined || texte === null ? '' : texte);
-  // Dans une grille, seule la première image porte la légende de la figure : les suivantes
-  // s'écrivent entre crochets vides, quoi que la carte affiche.
+  // Dans une grille, seule la première image porte la légende et la note de la figure : les
+  // suivantes s'écrivent entre crochets vides et sans note, quoi que la carte affiche.
   const suiveuses = offsetsSuiveuses(entree);
   let n = 0;
   const sortie = entree.replace(reImage(), function (tout, leg, cible, titre, bloc) {
     if (cibleNormalisee(cible) !== attendu) { return tout; }
     n++;
     const decalage = arguments[arguments.length - 2];
-    const texteLegende = suiveuses.has(decalage) ? '' : legende;
-    return '![' + texteLegende + '](' + cible + (titre || '') + ')' + reconstruireBloc(bloc, cibles);
+    const suiveuse = suiveuses.has(decalage);
+    return '![' + (suiveuse ? '' : legende) + '](' + cible + (titre || '') + ')'
+      + reconstruireBloc(bloc, suiveuse ? ciblesSuiveuse : cibles);
   });
   if (n === 0) { return { texte: texte, n: 0 }; }
   return { texte: sortie, n: n };

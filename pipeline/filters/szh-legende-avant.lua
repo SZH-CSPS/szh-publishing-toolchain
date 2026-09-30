@@ -9,6 +9,9 @@
 -- Exception : la <figcaption> d'une figure marquée .szh-credit-seul (szh-numerotation.lua,
 -- images hors numérotation) ne porte pas de légende mais une mention de droits ; elle se
 -- lit donc après l'image, comme dans l'usage imprimé.
+-- La note de figure (<p class="szh-bloc-note">, posée par szh-numerotation.lua dans le
+-- contenu de la Figure) reste toujours sous l'image, et après la <figcaption> d'un crédit
+-- seul : elle est écartée du contenu et remise en dernier.
 -- Réservé aux sorties HTML : un writer non-HTML jette les RawBlock html et les images
 -- disparaîtraient. La garde ci-dessous le rappelle.
 --
@@ -46,6 +49,14 @@ local function credit_seul(fig)
   return false
 end
 
+-- Un bloc de note : un Plain dont le premier inline est le <p class="szh-bloc-note"> brut.
+local function est_bloc_note(b)
+  if b.t ~= 'Plain' then return false end
+  local premier = b.content[1]
+  return premier ~= nil and premier.t == 'RawInline'
+    and premier.text:find('class="szh-bloc-note"', 1, true) ~= nil
+end
+
 function Figure(fig)
   local blocs = pandoc.Blocks({ pandoc.RawBlock('html', balise_ouvrante(fig)) })
   local apres = credit_seul(fig)
@@ -58,9 +69,14 @@ function Figure(fig)
     legende:extend(fig.caption.long)
     legende:insert(pandoc.RawBlock('html', '</figcaption>'))
   end
+  local corps, notes = pandoc.Blocks({}), pandoc.Blocks({})
+  for _, b in ipairs(fig.content) do
+    if est_bloc_note(b) then notes:insert(b) else corps:insert(b) end
+  end
   if not apres then blocs:extend(legende) end
-  blocs:extend(fig.content)
+  blocs:extend(corps)
   if apres then blocs:extend(legende) end
+  blocs:extend(notes)
   blocs:insert(pandoc.RawBlock('html', '</figure>'))
   return blocs
 end

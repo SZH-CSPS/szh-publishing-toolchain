@@ -467,7 +467,10 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
       assert.ok(rapport.decisions.entete, 'le rapport doit porter decisions.entete en cas B');
       assert.strictEqual(rapport.decisions.entete.donnees.titre, 'Inclusion scolaire');
-      assert.strictEqual(rapport.decisions.entete.donnees.sous_titre, 'le role de l enseignant');
+      // Depuis le 30.09.2026, l'en-tête passe par le pont typographique (règles de titre
+      // comprises) : L2 soude « l » à son mot par une insécable. Le texte, lui, est le même.
+      assert.strictEqual(rapport.decisions.entete.donnees.sous_titre.replace(/ /g, ' '),
+        'le role de l enseignant');
       assert.strictEqual(rapport.decisions.entete.donnees.auteurs.length, 2);
 
       const dossierPronto = path.join(base, 'article-pronto');
@@ -481,7 +484,9 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
 
       const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
       assert.match(meta, /title:\s*\n\s*fr: "Inclusion scolaire"/);
-      assert.match(meta, /subtitle:\s*\n\s*fr: "le role de l enseignant"/);
+      // L'insécable posée par L2 traverse désormais l'import (valeurs non repliées, D2).
+      // (\s couvre U+00A0 en JavaScript : L2 peut en poser devant « l » comme après.)
+      assert.match(meta, /subtitle:\s*\n\s*fr: "le\s+role\s+de\s+l\s+enseignant"/);
       assert.match(meta, /resume:\s*\n\s*fr: "Un texte de resume tout a fait ordinaire pour ce contr[ôo]le de bout en bout\."/);
       assert.match(meta, /prenom: "Jean"/);
       assert.match(meta, /nom: "Dupont"/);

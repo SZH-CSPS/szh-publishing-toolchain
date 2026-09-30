@@ -835,13 +835,31 @@ blockquote p:last-child { margin-bottom: 0; }
    WeasyPrint 69 (mesuré) : ne pas le rajouter en croyant mieux faire, seule la hauteur
    de l'image referme la page. */
 img { max-width: 100%; height: auto; max-height: var(--plafond-figure); }
-figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
+figure { break-inside: avoid; margin: 1.4em 0; text-align: left; }
 /* La légende est au-dessus de l'image (szh-legende-avant.lua la place avant dans le
    document) : l'espace se met donc dessous, comme pour `table > caption`. */
 figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; text-align: left; }
 /* Crédit seul (image hors numérotation) : la <figcaption> suit l'image au lieu de la
-   précéder — voir szh-legende-avant.lua — donc la marge change de côté. */
-figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
+   précéder — voir szh-legende-avant.lua — donc la marge change de côté. Collée à l'image,
+   et la note collée au crédit : les trois se lisent comme un seul bloc. */
+figure > figcaption.szh-credit-seul { margin: 0.1em 0 0; line-height: 1.3; }
+figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
+
+/* Les images s'alignent à gauche, sur la marge, et la légende comme la note avec elles :
+   aucun attribut ni classe ne centre une figure précise (il n'en existait pas avant ce
+   changement, `text-align: center` s'appliquait à toutes). */
+
+/* Note sous une figure ou un tableau (filters/szh-numerotation.lua) : au corps et à
+   l'interlignage de la légende, collée à ce qu'elle commente. Un <p> dans la <figure> après
+   l'image, ou juste après le <table> dans sa boîte. ⚠ Pas `.szh-note`, déjà prise par les
+   notes de bas de page. L'étiquette en italique est dans partage-filtres.css. */
+.szh-bloc-note {
+  font-size: 0.85rem; color: #444; margin: 0.5em 0 0; text-align: left; text-indent: 0;
+  hyphens: manual; break-before: avoid;
+}
+/* Sous un tableau, la marge basse du <table> (1.4em) éloignerait la note : on la rattrape
+   par une marge haute négative, et la note rend ensuite l'espace que le tableau rendait. */
+.szh-tableau-boite > table + .szh-bloc-note { margin: -0.9em 0 1.4em; }
 
 /* La grille d'images (filters/szh-grille.lua, .szh-grille-rangee/.szh-grille-case et leur
    repli à l'écran) est désormais dans styles/partage-filtres.css : une grille vaut pour un

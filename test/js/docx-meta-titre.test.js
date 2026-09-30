@@ -178,8 +178,10 @@ test('docx-meta.py : un sous-titre stylé interdit la coupe du titre', (t) => {
     ['Subtitle', 'Une enquête romande'],
     ['Normal', CORPS]
   ]);
-  // Le document a tranché : le titre reste entier, deux-points compris.
-  assert.match(vu.fiche, /title:\n  fr: "Inclusion scolaire : le rôle de l’enseignant"\n/,
+  // Le document a tranché : le titre reste entier, deux-points compris — et son insécable
+  // tapée (U+00A0) avec lui, depuis que les valeurs ne passent plus par la forme de
+  // comparaison (30.09.2026).
+  assert.match(vu.fiche, /title:\n  fr: "Inclusion scolaire : le rôle de l’enseignant"\n/,
     'le titre a été coupé alors que le Word portait déjà un sous-titre : ' + vu.fiche);
   assert.match(vu.fiche, /subtitle:\n  fr: "Une enquête romande"\n/);
   assert.strictEqual(vu.stats.sous_titre_source, 'style');

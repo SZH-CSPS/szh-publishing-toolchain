@@ -143,7 +143,7 @@ Elle a **quatre sections** :
     fichier. Le nom est conservé, donc le texte de l’article n’y perd aucun lien  une
     confirmation est demandée avant d’écraser 
   - la **légende** (celle qui s’affiche sous la figure, numérotée toute seule), le
-    **copyright** et la **source** 
+    **copyright**, la **source** et la **note**. Les droits suivent la légende entre parenthèses, « Titre (© X | source) », et la note s’imprime sous la figure, précédée de *Note* 
   - **Image sans légende ni numéro**  à cocher pour une image qui n’est pas une figure
     de la revue. Elle ne reçoit ni « Figure N », ni légende visible  son texte
     alternatif reste, et ses crédits s’affichent discrètement sous l’image, dans une

@@ -13,7 +13,7 @@
 #                                          c'est le SEUL endroit où .docx et .odt diffèrent,
 #                                          et c'est exactement pour ça qu'il vit dans le
 #                                          lecteur (pronto_docx.py / pronto_odt.py), jamais
-#                                          ici. `texte` est déjà normalisé (normaliser()) —
+#                                          ici. `texte` est déjà normalisé (normaliser_valeur()) —
 #                                          le lecteur ne rend jamais de texte brut. `niveau`
 #                                          vaut 1..6 pour un titre, 0 sinon. `images` est une
 #                                          liste de (nom de fichier sous media/ ou Pictures/,
@@ -76,7 +76,7 @@ import szh_commun
 
 class Par:
     """Un paragraphe (ou un titre). `style` est le nom humain déjà résolu par le lecteur,
-    `texte` le texte déjà normalisé (normaliser()), `niveau` 1..6 pour un titre (0 sinon),
+    `texte` le texte déjà normalisé (normaliser_valeur()), `niveau` 1..6 pour un titre (0 sinon),
     `images` la liste (nom_fichier, surface) des images qu'il porte, dans l'ordre."""
 
     __slots__ = ('style', 'texte', 'niveau', 'images')
@@ -174,11 +174,26 @@ EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
 # extraient de leur propre XML avant de construire un Par.
 
 def normaliser(t):
-    """Espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné."""
-    for a, b in ((' ', ' '), (' ', ' '), (' ', ' '),
-                 ('–', '-'), ('—', '-'), ('‑', '-')):
+    """Forme de COMPARAISON : tous les blancs Unicode (insécables comprises, par str.split())
+    repliés en une espace, tirets spéciaux -> '-', rogné. Pour reconnaître une clé ou un
+    style, jamais pour une valeur : voir normaliser_valeur()."""
+    for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
         t = t.replace(a, b)
     return ' '.join(t.split())
+
+
+_RE_BLANCS_ASCII = re.compile(r'[ \t\r\n\f\v]+')
+
+
+def normaliser_valeur(t):
+    """Forme de VALEUR, celle que lisent les lecteurs (Par.texte) : seuls les blancs ASCII
+    (tabulation et saut de ligne compris) sont repliés en une espace. Les insécables
+    U+00A0/U+202F, l'espace fine U+2009, les tirets et U+2011 restent tels que la rédaction
+    les a tapés : szh-typographie.lua en a besoin à la compilation, et « 1990–2000 » passé
+    au trait d'union ne se reconstruit plus. Rogné de tout blanc Unicode aux deux bouts, pour
+    qu'un paragraphe fait d'une seule insécable reste vide. Toute comparaison repasse par
+    normaliser() (normaliser_cle, _sans_fioritures) ; cle_comparaison ne garde que [A-Za-z0-9]."""
+    return _RE_BLANCS_ASCII.sub(' ', t or '').strip()
 
 
 def aplatir(t):
@@ -423,10 +438,10 @@ def etendue_biblio(blocs, type_article, slug):
                 'biblio-tableau-apres-titre',
                 ['article « %s »' % slug, 'titre « %s »' % blocs[titre].texte],
                 'Un tableau a été trouvé dans la bibliographie de cet article, après son '
-                'titre (« %s ») : ce n\'est pas normal, la bibliographie ne s\'étend donc '
-                'que jusqu\'à ce tableau. Ce qui le suit n\'a pas été examiné ; vérifiez la '
+                'titre («\u00a0%s\u00a0»)\u00a0: ce n’est pas normal, la bibliographie ne s’étend donc '
+                'que jusqu’à ce tableau. Ce qui le suit n’a pas été examiné\u00a0; vérifiez la '
                 'liste des références détachée.' % blocs[titre].texte,
-                'In der Bibliografie dieses Artikels wurde nach ihrem Titel (« %s ») eine '
+                'In der Bibliografie dieses Artikels wurde nach ihrem Titel («%s») eine '
                 'Tabelle gefunden: das ist ungewöhnlich, das Literaturverzeichnis reicht '
                 'daher nur bis zu dieser Tabelle. Was danach folgt, wurde nicht geprüft; '
                 'prüfen Sie die ausgelagerte Literaturliste.' % blocs[titre].texte)
@@ -512,8 +527,10 @@ def normaliser_cle(texte):
     """Étiquette prête à comparer à une clé attendue : espaces (déjà uniformisées par
     normaliser()) et ponctuation de repli retirées, minuscules, pluriel final toléré — les
     ACCENTS SONT CONSERVÉS (contrairement à aplatir()) : c'est justement l'écart d'accent que
-    le score doit mesurer, pas l'effacer avant de mesurer."""
-    t = normaliser(texte or '').lower()
+    le score doit mesurer, pas l'effacer avant de mesurer. Recomposée en NFC d'abord : un
+    « Légende » en NFD (e + U+0301, un Mac, un copier-coller) n'est pas une autre étiquette,
+    et se lisait « approximée à 0,93 » avec un avertissement incompréhensible."""
+    t = unicodedata.normalize('NFC', normaliser(texte or '')).lower()
     t = re.sub(r"[\s:./_'’-]+", '', t)
     if len(t) > 1 and t.endswith('s'):
         t = t[:-1]
@@ -534,7 +551,7 @@ def _sans_fioritures(t):
     normaliser(), apostrophe courbe assimilée à l'apostrophe droite (les deux sortent du même
     clavier selon le correcteur automatique de l'autrice ou de l'auteur, jamais une faute à
     signaler — le gabarit réel écrit « d'article » à l'apostrophe courbe), casse ignorée."""
-    return normaliser(t or '').replace('’', "'").casefold()
+    return unicodedata.normalize('NFC', normaliser(t or '')).replace('’', "'").casefold()
 
 
 def identifier_cle(etiquette, table):
@@ -565,8 +582,11 @@ def identifier_cle(etiquette, table):
         return None
     if len(scores) > 1 and (meilleur_score - scores[1][0]) < ECART_CLE:
         return ('__ambigu__', meilleur_jeton, scores[1][1], meilleur_score, scores[1][0])
+    formes_exactes = list(table[meilleur_jeton][:2])
+    if table is CANON_FIGURE:
+        formes_exactes += FORMES_EXACTES_ANCIENNES.get(meilleur_jeton, ())
     exact = any(_sans_fioritures(etiquette) == _sans_fioritures(forme)
-                for forme in table[meilleur_jeton][:2])
+                for forme in formes_exactes)
     return (meilleur_jeton, meilleur_score, exact)
 
 
@@ -576,9 +596,9 @@ def _avertir_cle_approximee(brute, table, jeton, score, slug, lieu):
         'cle-approximee',
         ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % brute,
          'reconnue « %s »' % canonique, 'proximite %.2f' % score],
-        'Clé « %s » lue comme « %s » (proximité %.2f). Corrigez l\'étiquette dans le document '
-        'si ce n\'était pas voulu.' % (brute, canonique, score),
-        'Schlüssel « %s » als « %s » gelesen (Ähnlichkeit %.2f). Korrigieren Sie die '
+        'Clé «\u00a0%s\u00a0» lue comme «\u00a0%s\u00a0» (proximité %.2f). Corrigez l’étiquette dans le document '
+        'si ce n’était pas voulu.' % (brute, canonique, score),
+        'Schlüssel «%s» als «%s» gelesen (Ähnlichkeit %.2f). Korrigieren Sie die '
         'Bezeichnung im Dokument, falls das nicht beabsichtigt war.' % (brute, canonique, score))
 
 
@@ -587,11 +607,11 @@ def _avertir_cle_ambigue(brute, table, jeton1, jeton2, slug, lieu):
     avertir(
         'cle-ambigue',
         ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % brute],
-        'La clé « %s » est ambiguë : elle ressemble presque autant à « %s » qu\'à « %s ». '
-        'Aucune des deux n\'a été retenue, et l\'article n\'a PAS été importé : rien n\'a été '
-        'créé, et le fichier Word reste en attente. Réécrivez l\'étiquette exactement comme '
+        'La clé «\u00a0%s\u00a0» est ambiguë\u00a0: elle ressemble presque autant à «\u00a0%s\u00a0» qu’à «\u00a0%s\u00a0». '
+        'Aucune des deux n’a été retenue, et l’article n’a PAS été importé\u00a0: rien n’a été '
+        'créé, et le fichier Word reste en attente. Réécrivez l’étiquette exactement comme '
         'dans le gabarit, puis enregistrez.' % (brute, c1, c2),
-        'Der Schlüssel « %s » ist mehrdeutig: er ähnelt « %s » fast ebenso stark wie « %s ». '
+        'Der Schlüssel «%s» ist mehrdeutig: er ähnelt «%s» fast ebenso stark wie «%s». '
         'Keiner von beiden wurde übernommen, und der Artikel wurde NICHT importiert: es wurde '
         'nichts angelegt, und die Word-Datei bleibt in der Warteschlange. Schreiben Sie die '
         'Bezeichnung genau wie in der Vorlage und speichern Sie.' % (brute, c1, c2))
@@ -664,9 +684,9 @@ def _avertir_cle_attendue_absente(canonique, slug, lieu, canonique_de=None):
         'cle-attendue-absente',
         ['article « %s »' % slug, 'lieu « %s »' % lieu, 'clé « %s »' % canonique,
          'clé-de « %s »' % canonique_de],
-        'Le champ « %s » attendu par le gabarit n\'a pas été trouvé, ou a été laissé vide : '
-        'rien n\'est perdu, mais rien n\'a été rempli non plus.' % canonique,
-        'Das von der Vorlage erwartete Feld « %s » wurde nicht gefunden oder leer gelassen: '
+        'Le champ «\u00a0%s\u00a0» attendu par le gabarit n’a pas été trouvé, ou a été laissé vide\u00a0: '
+        'rien n’est perdu, mais rien n’a été rempli non plus.' % canonique,
+        'Das von der Vorlage erwartete Feld «%s» wurde nicht gefunden oder leer gelassen: '
         'es geht nichts verloren, aber es wurde auch nichts ausgefüllt.' % canonique_de)
 
 
@@ -788,10 +808,23 @@ CANON_FIGURE = {
                 'abbildung', 'légende de la figure', 'didascalia'),
     'alt': ('Texte alternatif', 'Alternativtext', 'texte alternatif', 'alt', 'alt text',
             'description', 'texte de remplacement', 'testo alternativo'),
-    'credit': ('Crédit', 'Copyright', 'credit', 'crédit photo', 'credit photo', 'photo credit',
-               'droits', 'bildnachweis', 'credito'),
+    # « Copyright » est la clé écrite depuis la révision du 30.09.2026 ; « Crédit » (exact, donc
+    # sans avertissement : voir FORMES_EXACTES_ANCIENNES) et les anciennes variantes restent
+    # reconnus pour les documents déjà remplis.
+    'credit': ('Copyright', 'Copyright', 'Crédit', 'credit', 'crédit photo', 'credit photo',
+               'photo credit', 'droits', 'bildnachweis', 'credito'),
     'source': ('Source', 'Quelle', 'provenance', 'fonte'),
+    # La note imprimée sous la figure ou le tableau. Clé FACULTATIVE : son absence n'est
+    # jamais signalée (voir CLES_BLOC_ATTENDUES).
+    'note': ('Note', 'Notiz', 'notes', 'anmerkung', 'hinweis', 'remarque', 'nota'),
 }
+
+# Formes que le gabarit écrivait avant sa révision : toujours TAPÉES JUSTE par les documents déjà
+# remplis, donc reconnues exactes (aucun avertissement d'approximation). jeton -> formes.
+FORMES_EXACTES_ANCIENNES = {'credit': ('Crédit',)}
+
+# Les clés de bloc dont l'absence se signale (cle-attendue-absente) : toutes sauf la note.
+CLES_BLOC_ATTENDUES = tuple(k for k in CANON_FIGURE if k != 'note')
 
 
 # ---------------------------------------------------------------------------------
@@ -871,12 +904,12 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                 avertir(
                     'type-article-non-reconnu',
                     ['article « %s »' % slug, 'valeur « %s »' % valeur],
-                    "Le champ « Type d'article » du tableau des métadonnées porte une "
-                    'valeur que le gabarit ne reconnaît pas : « %s ». Le type n\'a pas '
-                    'été rempli dans la fiche ; choisissez-le dans « Métadonnées des '
-                    'articles ».' % valeur,
+                    "Le champ «\u00a0Type d’article\u00a0» du tableau des métadonnées porte une "
+                    'valeur que le gabarit ne reconnaît pas\u00a0: «\u00a0%s\u00a0». Le type n’a pas '
+                    'été rempli dans la fiche\u00a0; choisissez-le dans «\u00a0Métadonnées des '
+                    'articles\u00a0».' % valeur,
                     'Das Feld «Type d\'article» der Metadatentabelle enthält einen von '
-                    'der Vorlage nicht erkannten Wert: « %s ». Der Typ wurde in den '
+                    'der Vorlage nicht erkannten Wert: «%s». Der Typ wurde in den '
                     'Metadaten nicht gesetzt; wählen Sie ihn unter «Metadaten der '
                     'Artikel».' % valeur)
         elif jeton == 'langue':
@@ -888,14 +921,14 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
             avertir(
                 'langue-du-document-ignoree',
                 ['article « %s »' % slug, 'valeur « %s »' % valeur],
-                'Le tableau des métadonnées de cet article porte encore un champ « Langue '
-                'de l\'article » (« %s ») : il n\'est plus lu. La langue vient désormais de '
-                'la revue du numéro — Revue en français, Zeitschrift en allemand. Si cet '
-                'article est dans une autre langue, corrigez-la dans « Métadonnées des '
-                'articles » ; vous pouvez retirer ce champ du document.' % valeur,
-                'Die Metadatentabelle dieses Artikels enthält noch ein Feld « Langue de '
-                'l\'article » (« %s »): es wird nicht mehr gelesen. Die Sprache ergibt sich '
-                'jetzt aus der Zeitschrift der Ausgabe — Revue auf Französisch, Zeitschrift '
+                'Le tableau des métadonnées de cet article porte encore un champ «\u00a0Langue '
+                'de l’article\u00a0» («\u00a0%s\u00a0»)\u00a0: il n’est plus lu. La langue vient désormais de '
+                'la revue du numéro\u00a0– Revue en français, Zeitschrift en allemand. Si cet '
+                'article est dans une autre langue, corrigez-la dans «\u00a0Métadonnées des '
+                'articles\u00a0»\u00a0; vous pouvez retirer ce champ du document.' % valeur,
+                'Die Metadatentabelle dieses Artikels enthält noch ein Feld «Langue de '
+                'l\'article» («%s»): es wird nicht mehr gelesen. Die Sprache ergibt sich '
+                'jetzt aus der Zeitschrift der Ausgabe – Revue auf Französisch, Zeitschrift '
                 'auf Deutsch. Ist dieser Artikel in einer anderen Sprache, korrigieren Sie '
                 'sie unter «Metadaten der Artikel»; das Feld können Sie aus dem Dokument '
                 'entfernen.' % valeur)
@@ -915,12 +948,12 @@ def extraire_table_metadonnees(tableau, slug, bloquants=None):
                 ['article « %s »' % slug, 'etiquette « %s »' % etiquette,
                  'valeur « %s »' % valeur],
                 'Le tableau des métadonnées de cet article porte une étiquette que le '
-                'gabarit ne connaît pas : « %s » (valeur : « %s »). L\'article n\'a PAS '
-                'été importé, pour ne pas perdre cette valeur : rien n\'a été créé, et le '
-                'fichier Word reste en attente. Corrigez l\'étiquette dans le document, '
+                'gabarit ne connaît pas\u00a0: «\u00a0%s\u00a0» (valeur\u00a0: «\u00a0%s\u00a0»). L’article n’a PAS '
+                'été importé, pour ne pas perdre cette valeur\u00a0: rien n’a été créé, et le '
+                'fichier Word reste en attente. Corrigez l’étiquette dans le document, '
                 'puis enregistrez.' % (etiquette, valeur),
                 'Die Metadatentabelle dieses Artikels enthält eine der Vorlage '
-                'unbekannte Bezeichnung: « %s » (Wert: « %s »). Der Artikel wurde NICHT '
+                'unbekannte Bezeichnung: «%s» (Wert: «%s»). Der Artikel wurde NICHT '
                 'importiert, damit dieser Wert nicht verloren geht: es wurde nichts '
                 'angelegt, und die Word-Datei bleibt in der Warteschlange. Korrigieren Sie '
                 'die Bezeichnung im Dokument und speichern Sie.' % (etiquette, valeur))
@@ -1067,9 +1100,9 @@ def extraire_table_auteurs(tableau, slug, bloquants=None):
                 'auteur-etiquette-inconnue',
                 ['article « %s »' % slug] + ['ligne « %s »' % t for t in lignes_inconnues],
                 'Le tableau des autrices et auteurs porte une ligne que le gabarit ne '
-                'reconnaît pas (%s). L\'article n\'a PAS été importé, pour ne pas perdre '
-                'ce que cette ligne contient : rien n\'a été créé, et le fichier Word reste '
-                'en attente. Corrigez l\'étiquette dans le document, puis enregistrez.'
+                'reconnaît pas (%s). L’article n’a PAS été importé, pour ne pas perdre '
+                'ce que cette ligne contient\u00a0: rien n’a été créé, et le fichier Word reste '
+                'en attente. Corrigez l’étiquette dans le document, puis enregistrez.'
                 % ' ; '.join('« %s »' % t for t in lignes_inconnues),
                 'Die Tabelle der Autorinnen und Autoren enthält eine von der Vorlage nicht '
                 'erkannte Zeile (%s). Der Artikel wurde NICHT importiert, damit ihr Inhalt '
@@ -1169,7 +1202,7 @@ def est_bloc_meta(tableau):
 
 def _premier_par_etiquette_bloc(tableau):
     """Le premier paragraphe SZH Cle, n'importe où dans le tableau, dont l'ÉTIQUETTE (le
-    texte avant le premier deux-points) est l'une des quatre du bloc figure/tableau — ou
+    texte avant le premier deux-points) est l'une des cinq du bloc figure/tableau — ou
     None. Ne regarde que les Par DIRECTS de chaque cellule (comme _premiere_etiquette_szh_cle
     et _champs_bloc_meta) : un tableau imbriqué dans une cellule n'est jamais lui-même une
     étiquette de bloc, inutile d'y descendre ici."""
@@ -1191,7 +1224,7 @@ def _premier_par_etiquette_bloc(tableau):
 
 def ressemble_a_un_bloc(tableau):
     """Vrai quand ce tableau porte au moins un paragraphe SZH Cle dont l'ÉTIQUETTE vaut
-    Légende, Texte alternatif, Crédit ou Source — même tolérance que partout ici (aplatir()) —
+    Légende, Texte alternatif, Copyright, Source ou Note — même tolérance que partout ici (aplatir()) —
     SANS être reconnu comme un bloc bien formé par n_blocs_meta().
 
     ⚠ Volontairement restreint à l'ÉTIQUETTE d'un paragraphe SZH Cle (le motif « Étiquette :
@@ -1238,9 +1271,9 @@ def _repere_bloc_mal_forme(page, rang, etiquette):
     elif page:
         tete_fr += ')'
         tete_de += ')'
-    fr = (tete_fr + " porte les étiquettes d'une figure ou d'un tableau, mais pas la forme "
-          "attendue : ses légendes et textes alternatifs n'ont pas été lus. Vérifiez ce "
-          "tableau dans le document, puis réimportez l'article.")
+    fr = (tete_fr + " porte les étiquettes d’une figure ou d’un tableau, mais pas la forme "
+          "attendue\u00a0: ses légendes et textes alternatifs n’ont pas été lus. Vérifiez ce "
+          "tableau dans le document, puis réimportez l’article.")
     de = (tete_de + ' trägt die Kennungen eines Abbildungs- oder Tabellenblocks, aber nicht '
           'in der erwarteten Form: ihre Legenden und Alternativtexte wurden nicht gelesen. '
           'Prüfen Sie diese Tabelle im Dokument und importieren Sie den Artikel neu.')
@@ -1331,13 +1364,13 @@ def _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug):
     avertir(
         'auteur-champ-hors-gabarit',
         ['article « %s »' % slug, 'champ « %s »' % etiquette, 'valeur « %s »' % valeur],
-        'Le tableau des autrices et auteurs porte un champ « %s » (« %s ») : le gabarit n\'en '
-        'a pas. L\'article n\'a PAS été importé, pour ne pas perdre cette valeur — rien n\'a '
+        'Le tableau des autrices et auteurs porte un champ «\u00a0%s\u00a0» («\u00a0%s\u00a0»)\u00a0: le gabarit n’en '
+        'a pas. L’article n’a PAS été importé, pour ne pas perdre cette valeur\u00a0– rien n’a '
         'été créé, et le fichier Word reste en attente. %s'
         % (etiquette, valeur, geste_fr),
-        'Die Tabelle der Autorinnen und Autoren enthält ein Feld « %s » (« %s »), das die '
+        'Die Tabelle der Autorinnen und Autoren enthält ein Feld «%s» («%s»), das die '
         'Vorlage nicht kennt. Der Artikel wurde NICHT importiert, damit dieser Wert nicht '
-        'verloren geht — es wurde nichts angelegt, und die Word-Datei bleibt in der '
+        'verloren geht – es wurde nichts angelegt, und die Word-Datei bleibt in der '
         'Warteschlange. %s' % (etiquette, valeur, geste_de))
 
 
@@ -1349,15 +1382,15 @@ def _avertir_etiquette_bloc_inconnue(etiquette, valeur, slug):
         'bloc-etiquette-inconnue',
         ['article « %s »' % slug, 'etiquette « %s »' % etiquette, 'valeur « %s »' % valeur],
         'Un bloc figure ou tableau de cet article porte une étiquette que le gabarit ne '
-        'connaît pas : « %s » (valeur : « %s »). L\'article n\'a PAS été importé : rien n\'a '
-        'été créé, et le fichier Word reste en attente. Les quatre étiquettes attendues sont '
-        '« Légende : », « Texte alternatif : », « Crédit : » et « Source : ».'
+        'connaît pas\u00a0: «\u00a0%s\u00a0» (valeur\u00a0: «\u00a0%s\u00a0»). L’article n’a PAS été importé\u00a0: rien n’a '
+        'été créé, et le fichier Word reste en attente. Les cinq étiquettes attendues sont '
+        '«\u00a0Légende\u00a0:\u00a0», «\u00a0Texte alternatif\u00a0:\u00a0», «\u00a0Copyright\u00a0:\u00a0», «\u00a0Source\u00a0:\u00a0» et «\u00a0Note\u00a0:\u00a0».'
         % (etiquette, valeur),
         'Ein Abbildungs- oder Tabellenblock dieses Artikels enthält eine der Vorlage '
-        'unbekannte Bezeichnung: « %s » (Wert: « %s »). Der Artikel wurde NICHT importiert: es '
+        'unbekannte Bezeichnung: «%s» (Wert: «%s»). Der Artikel wurde NICHT importiert: es '
         'wurde nichts angelegt, und die Word-Datei bleibt in der Warteschlange. Erwartet '
-        'werden die vier Bezeichnungen «Légende :», «Texte alternatif :», «Crédit :» und '
-        '«Source :».' % (etiquette, valeur))
+        'werden die fünf Bezeichnungen «Légende:», «Texte alternatif:», «Copyright:», '
+        '«Source:» und «Note:».' % (etiquette, valeur))
 
 
 def _decouper_champ_bloc(texte):
@@ -1414,7 +1447,7 @@ def _champs_bloc_meta_paragraphes(paragraphes, slug, bloquants=None):
     `textes_pris` est la liste des paragraphes dont l'étiquette a été RECONNUE — les seuls que
     la chaîne d'import a le droit de retirer du corps (en queue des lignes FI/FG/FT depuis le
     29.09.2026, retirés par szh-legendes.lua au moment de la pose — voir principal()). Un
-    paragraphe laissé vide par l'autrice ou l'auteur (« Crédit : » tout seul, comme dans le
+    paragraphe laissé vide par l'autrice ou l'auteur (« Copyright : » tout seul, comme dans le
     gabarit livré) en fait partie : il n'apporte rien, mais il s'imprimerait. Un paragraphe
     dont l'étiquette n'est reconnue par rien n'en fait JAMAIS partie : on ne retire pas du
     texte qu'on n'a pas compris."""
@@ -1477,21 +1510,21 @@ def extraire_bloc(tableau, slug, indice=0, bloquants=None):
         avertir(
             'bloc-contenu-absent',
             ['article « %s »' % slug, 'legende « %s »' % champs.get('legende', '')],
-            'Un bloc de cet article annonce une légende (« %s ») mais sa rangée de '
-            'contenu ne porte ni image ni tableau : le dépôt est resté vide. Complétez-le '
-            'dans le document puis réimportez l\'article.' % champs.get('legende', ''),
-            'Ein Block dieses Artikels kündigt eine Legende an (« %s »), aber seine '
+            'Un bloc de cet article annonce une légende («\u00a0%s\u00a0») mais sa rangée de '
+            'contenu ne porte ni image ni tableau\u00a0: le dépôt est resté vide. Complétez-le '
+            'dans le document puis réimportez l’article.' % champs.get('legende', ''),
+            'Ein Block dieses Artikels kündigt eine Legende an («%s»), aber seine '
             'Inhaltszeile trägt weder Bild noch Tabelle: die Ablage ist leer geblieben. '
             'Ergänzen Sie sie im Dokument und importieren Sie den Artikel neu.'
             % champs.get('legende', ''))
     else:
-        _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
+        _avertir_cles_attendues_absentes(CANON_FIGURE, CLES_BLOC_ATTENDUES, cles_vues, slug,
                                           'bloc')
     return nature, champs, consommee, tbl_interne
 
 
 # ---------------------------------------------------------------------------------
-# Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) : 1 à 4
+# Blocs figure/tableau — NOUVELLE forme (révision du 21.09.2026, décision de Robin) : 1 à 5
 # paragraphes SZH Cle Abb/Tab consécutifs, suivis à 1 ou 2 paragraphes de distance (un
 # paragraphe vide toléré entre les deux — une fausse manipulation courante) par un paragraphe
 # qui porte une image, ou par un tableau. Plus de tableau enveloppe : la bordure du style
@@ -1634,9 +1667,9 @@ def _avertir_tableau_images_et_texte(rang, slug):
     avertir(
         'tableau-images-et-texte',
         ['article « %s »' % slug, 'tableau %d' % rang],
-        'Le tableau %d de cet article range des images avec des textes dans ses cases : il a '
-        'été importé comme un tableau, rien n\'est perdu. Si c\'est une planche d\'images, '
-        'retirez les textes des cases (reportez-les dans la légende) et réimportez : il '
+        'Le tableau %d de cet article range des images avec des textes dans ses cases\u00a0: il a '
+        'été importé comme un tableau, rien n’est perdu. Si c’est une planche d’images, '
+        'retirez les textes des cases (reportez-les dans la légende) et réimportez\u00a0: il '
         'deviendra une figure à plusieurs images.' % rang,
         'Die Tabelle %d dieses Artikels ordnet Bilder zusammen mit Texten in ihren Zellen an: '
         'sie wurde als Tabelle importiert, es geht nichts verloren. Falls es sich um eine '
@@ -1650,13 +1683,13 @@ def _avertir_cles_sans_contenu(champs, slug):
     avertir(
         'bloc-cles-sans-contenu',
         ['article « %s »' % slug, 'legende « %s »' % legende],
-        'Une ou plusieurs clés de figure ou de tableau (« Légende : », « Texte alternatif : »,'
-        ' « Crédit : », « Source : ») ont été trouvées dans cet article, mais ni une image ni '
-        'un tableau ne les suit dans les un ou deux paragraphes qui viennent juste après : '
-        'rien n\'a été reconnu comme un bloc, ces paragraphes restent tels quels dans le '
-        'texte. Vérifiez leur position par rapport à l\'image ou au tableau dans le document.',
+        'Une ou plusieurs clés de figure ou de tableau («\u00a0Légende\u00a0:\u00a0», «\u00a0Texte alternatif\u00a0:\u00a0»,'
+        ' «\u00a0Copyright\u00a0:\u00a0», «\u00a0Source\u00a0:\u00a0», «\u00a0Note\u00a0:\u00a0») ont été trouvées dans cet article, mais ni une image ni '
+        'un tableau ne les suit dans les un ou deux paragraphes qui viennent juste après\u00a0: '
+        'rien n’a été reconnu comme un bloc, ces paragraphes restent tels quels dans le '
+        'texte. Vérifiez leur position par rapport à l’image ou au tableau dans le document.',
         'In diesem Artikel wurden Schlüsselabsätze eines Abbildungs- oder Tabellenblocks '
-        'gefunden (« Légende : », « Texte alternatif : », « Crédit : », « Source : »), aber '
+        'gefunden («Légende:», «Texte alternatif:», «Copyright:», «Source:», «Note:»), aber '
         'weder ein Bild noch eine Tabelle folgt in den ein oder zwei Absätzen unmittelbar '
         'danach: nichts wurde als Block erkannt, diese Absätze bleiben unverändert im Text. '
         'Prüfen Sie ihre Position gegenüber dem Bild oder der Tabelle im Dokument.')
@@ -1689,7 +1722,7 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
             continue
         depart = i
         fin = depart
-        while fin < n and fin - depart < 4 and _est_cle_bloc(blocs[fin]):
+        while fin < n and fin - depart < 5 and _est_cle_bloc(blocs[fin]):
             fin += 1
         champs, consommee, cles_vues, textes_pris = _champs_bloc_meta_paragraphes(
             blocs[depart:fin], slug, bloquants)
@@ -1698,7 +1731,7 @@ def _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug, bloqua
             _avertir_cles_sans_contenu(champs, slug)
             i = fin                       # les paragraphes de clé restent tels quels
             continue
-        _avertir_cles_attendues_absentes(CANON_FIGURE, CANON_FIGURE.keys(), cles_vues, slug,
+        _avertir_cles_attendues_absentes(CANON_FIGURE, CLES_BLOC_ATTENDUES, cles_vues, slug,
                                           'bloc')
         fin_contenu = idx_contenu
         if nature == 'image':
@@ -1860,11 +1893,11 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         avertir(
             'structure-inattendue',
             ['article « %s »' % slug, 'tableau metadonnees'],
-            "Le premier tableau attendu (métadonnées) est introuvable : ce document ne "
-            "suit pas la forme du gabarit « Pronto — modèle d'article ». Rien n'a été "
-            "lu automatiquement ; complétez « Métadonnées des articles » à la main.",
+            "Le premier tableau attendu (métadonnées) est introuvable\u00a0: ce document ne "
+            "suit pas la forme du gabarit «\u00a0Pronto\u00a0– modèle d’article\u00a0». Rien n’a été "
+            "lu automatiquement\u00a0; complétez «\u00a0Métadonnées des articles\u00a0» à la main.",
             'Die erste erwartete Tabelle (Metadaten) fehlt: dieses Dokument folgt nicht '
-            'der Form der Vorlage «Pronto — Artikelmodell». Es wurde nichts '
+            'der Form der Vorlage «Pronto – Artikelmodell». Es wurde nichts '
             'automatisch gelesen; ergänzen Sie «Metadaten der Artikel» von Hand.')
 
     auteurs = []
@@ -1878,11 +1911,11 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         avertir(
             'structure-inattendue',
             ['article « %s »' % slug, 'tableau auteurs'],
-            "Le second tableau attendu (autrices et auteurs) est introuvable : ce "
-            "document ne suit pas la forme du gabarit « Pronto — modèle d'article ». "
-            "Complétez « Métadonnées des articles » à la main.",
+            "Le second tableau attendu (autrices et auteurs) est introuvable\u00a0: ce "
+            "document ne suit pas la forme du gabarit «\u00a0Pronto\u00a0– modèle d’article\u00a0». "
+            "Complétez «\u00a0Métadonnées des articles\u00a0» à la main.",
             'Die zweite erwartete Tabelle (Autorinnen und Autoren) fehlt: dieses Dokument '
-            'folgt nicht der Form der Vorlage «Pronto — Artikelmodell». Ergänzen Sie '
+            'folgt nicht der Form der Vorlage «Pronto – Artikelmodell». Ergänzen Sie '
             '«Metadaten der Artikel» von Hand.')
 
     blocs_figtab = []
@@ -1897,19 +1930,19 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         avertir(
             'bloc-ancienne-forme',
             ['article « %s »' % slug, 'tableau %d' % (k + 1)],
-            'Le tableau %d de cet article utilise l\'ancienne forme de bloc figure ou tableau '
-            '(un tableau à deux rangées), dépassée depuis le 21.09.2026 : il s\'imprimera tel '
-            'quel, avec ses étiquettes (« Légende : », « Texte alternatif : »…), et sa légende '
-            'ne sera ni numérotée ni reprise comme texte alternatif. Rien n\'est perdu. Pour '
+            'Le tableau %d de cet article utilise l’ancienne forme de bloc figure ou tableau '
+            '(un tableau à deux rangées), dépassée depuis le 21.09.2026\u00a0: il s’imprimera tel '
+            'quel, avec ses étiquettes («\u00a0Légende\u00a0:\u00a0», «\u00a0Texte alternatif\u00a0:\u00a0»…), et sa légende '
+            'ne sera ni numérotée ni reprise comme texte alternatif. Rien n’est perdu. Pour '
             'que ce bloc redevienne une figure ou un tableau légendé, convertissez-le vers la '
-            'nouvelle forme (quatre paragraphes « SZH Cle Abb/Tab » suivis de l\'image ou du '
-            'tableau) puis réimportez l\'article.' % (k + 1),
+            'nouvelle forme (cinq paragraphes «\u00a0SZH Cle Abb/Tab\u00a0» suivis de l’image ou du '
+            'tableau) puis réimportez l’article.' % (k + 1),
             'Die Tabelle %d dieses Artikels verwendet die alte Form eines Abbildungs- oder '
             'Tabellenblocks (eine zweizeilige Tabelle), seit dem 21.09.2026 veraltet: sie wird '
-            'so gedruckt, wie sie ist, mitsamt ihren Bezeichnungen («Légende :», «Texte '
-            'alternatif :»…), und ihre Legende wird weder nummeriert noch als Alternativtext '
+            'so gedruckt, wie sie ist, mitsamt ihren Bezeichnungen («Légende:», «Texte '
+            'alternatif:»…), und ihre Legende wird weder nummeriert noch als Alternativtext '
             'übernommen. Es geht nichts verloren. Damit dieser Block wieder eine beschriftete '
-            'Abbildung oder Tabelle wird, wandeln Sie ihn in die neue Form um (vier Absätze '
+            'Abbildung oder Tabelle wird, wandeln Sie ihn in die neue Form um (fünf Absätze '
             '«SZH Cle Abb/Tab», gefolgt vom Bild oder der Tabelle) und importieren Sie den '
             'Artikel neu.' % (k + 1))
         if n_paires > 1:
@@ -1919,10 +1952,10 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
             avertir(
                 'blocs-colles',
                 ['article « %s »' % slug, 'tableau %d' % (k + 1), 'blocs %d' % n_paires],
-                'Un tableau de cet article empile %d blocs figure ou tableau collés l\'un à '
-                'l\'autre (%d rangées) : deux blocs copiés à la suite, sans paragraphe entre '
+                'Un tableau de cet article empile %d blocs figure ou tableau collés l’un à '
+                'l’autre (%d rangées)\u00a0: deux blocs copiés à la suite, sans paragraphe entre '
                 'eux, ont fusionné en un seul tableau à la conversion. Les %d blocs ont '
-                'quand même été reconnus séparément ; pour éviter ce piège, laissez une '
+                'quand même été reconnus séparément\u00a0; pour éviter ce piège, laissez une '
                 'ligne vide entre deux blocs dans le Word.'
                 % (n_paires, n_paires * 2, n_paires),
                 'Eine Tabelle dieses Artikels stapelt %d aneinandergeklebte Abbildungs- oder '
@@ -2037,15 +2070,15 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
         avertir(
             'langue-deduite',
             ['article « %s »' % slug, 'langue « %s »' % meta['lang']],
-            "La langue de cet article n'a pas pu être établie : le numéro ne dit pas s'il "
-            "s'agit de la Revue ou de la Zeitschrift, et la langue du document ne se lit "
-            "plus dans le document lui-même. Le français a été posé par défaut ; "
-            "vérifiez-le dans « Métadonnées des articles », la maquette et les résumés en "
+            "La langue de cet article n’a pas pu être établie\u00a0: le numéro ne dit pas s’il "
+            "s’agit de la Revue ou de la Zeitschrift, et la langue du document ne se lit "
+            "plus dans le document lui-même. Le français a été posé par défaut\u00a0; "
+            "vérifiez-le dans «\u00a0Métadonnées des articles\u00a0», la maquette et les résumés en "
             "dépendent.",
             'Die Sprache dieses Artikels konnte nicht bestimmt werden: die Ausgabe sagt '
             'nicht, ob es sich um die Revue oder die Zeitschrift handelt, und die Sprache '
             'steht nicht mehr im Dokument selbst. Ersatzweise wurde Französisch gesetzt; '
-            'prüfen Sie es unter «Metadaten der Artikel» — Layout und Zusammenfassungen '
+            'prüfen Sie es unter «Metadaten der Artikel» – Layout und Zusammenfassungen '
             'richten sich danach.')
 
     chemin_photos = os.getenv('SZH_PHOTOS')
@@ -2067,9 +2100,14 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
             # Les paragraphes de clé d'un bloc quittent le corps, et leurs valeurs vont se
             # poser sur l'image (FI, szh-legendes.lua), sur le groupe d'images (FI à plusieurs
             # images, FG pour un tableau d'images) ou sur le tableau (FT, docx-tables.py). Sans
-            # ces lignes, « Légende : », « Texte alternatif : », « Crédit : » et « Source : »
-            # s'impriment tels quels au milieu de l'article et le texte alternatif est perdu —
+            # ces lignes, « Légende : », « Texte alternatif : », « Copyright : », « Source : »
+            # et « Note : » s'impriment tels quels au milieu de l'article et le texte alternatif est perdu —
             # mesuré sur le gabarit réel avant ce branchement.
+            #
+            # Format : FI|FG|FT <TAB> contenu <TAB> légende <TAB> alt <TAB> copyright <TAB>
+            # source <TAB> note [<TAB> texte d'une clé à retirer du corps]… — cinq champs de
+            # valeur toujours présents (chaîne vide si absent), texte brut sur une ligne
+            # (normaliser() a déjà replié tabulations et sauts de ligne en espaces).
             #
             # ⚠ AUCUNE LIGNE P pour un bloc (garantie « rien ne disparaît », décision de Robin
             # du 29.09.2026). Les textes des clés voyagent en queue de la ligne FI/FG/FT, et
@@ -2088,14 +2126,15 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
                     continue
                 champs = b['champs']
                 queue = '\t'.join([champs.get('legende', ''), champs.get('alt', ''),
-                                   champs.get('credit', ''), champs.get('source', '')])
+                                   champs.get('credit', ''), champs.get('source', ''),
+                                   champs.get('note', '')])
                 lettre = {'table': 'FT', 'grille': 'FG'}.get(b['nature'], 'FI')
                 f.write('%s\t%s\t%s%s\n' % (lettre, b['contenu'], queue,
                                             ''.join('\t' + t for t in b['cles'])))
             # Tableaux d'images sans en-tête (voir grilles_libres plus haut) : un groupe
             # d'images sans légende, ni clé à retirer.
             for k in grilles_libres:
-                f.write('FG\t%d\t\t\t\t\n' % k)
+                f.write('FG\t%d\t\t\t\t\t\n' % k)
             if ligne_bt:
                 f.write('BT\t%s\n' % ligne_bt)
             for t in lignes_b:

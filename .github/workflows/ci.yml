@@ -421,7 +421,7 @@ jobs:
       # reproduit SANS le filtre — sans quoi il ne prouverait rien le jour où pandoc
       # changerait de comportement.
       - name: Vérifier les filtres qui demandent pandoc
-        run: node --test test/filtres-pandoc.test.js test/filtres-import.test.js
+        run: node --test test/filtres-pandoc.test.js test/filtres-import.test.js test/filtres-note-credits.test.js
 
       # plusieurs chapitres — qu'un tableau mal placé ou une liste lâche suffit à faire
       # tomber SANS ERREUR VISIBLE.

@@ -80,6 +80,8 @@ def texte_paragraphe(p):
                 morceaux.append(e.text or '')
             elif e.tag == W + 'tab':
                 morceaux.append(' ')
+            elif e.tag == W + 'noBreakHyphen':
+                morceaux.append('\u2011')    # pandoc le lit ainsi : l'appariement en dépend
     return ''.join(morceaux)
 
 

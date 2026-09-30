@@ -1033,11 +1033,74 @@ end
 
 local function fermante(tag) return tag:sub(1, 2) == '</' end
 
+-- ------------------------------------------------------- les attributs imprimés d'un bloc
+--
+-- szh-numerotation.lua compose sous la figure ou le tableau la note, le copyright et la
+-- source, APRÈS ce filtre : ils y arrivaient donc bruts (« fin 2025 : voir l'annexe »,
+-- mesuré le 30.09.2026). Ils reçoivent ici les règles du texte, dans la langue de
+-- l'article ; aucun autre attribut (alt, src, classes, ids) n'est touché.
+local ATTRIBUTS_IMPRIMES = { 'note', 'copyright', 'source' }
+
+local ENTITES = { amp = '&', lt = '<', gt = '>', quot = '"', apos = "'" }
+
+-- Une valeur d'attribut HTML est échappée : on la décode avant les règles (sinon « &amp; »
+-- se lirait comme un mot suivi d'un point-virgule), et on la réécrit échappée après.
+local function decoder_entites(s)
+  return (s:gsub('&(#?)(%w+);', function(diese, nom)
+    if diese == '#' then
+      local n = nom:match('^[xX]%x+$') and tonumber(nom:sub(2), 16) or tonumber(nom)
+      if n and n > 0 and n <= 0x10FFFF then return utf8.char(n) end
+      return nil
+    end
+    return ENTITES[nom]
+  end))
+end
+
+local function echapper_texte_html(s)
+  return (s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'))
+end
+
+local function echapper_attribut(s, delimiteur)
+  s = s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;')
+  if delimiteur == '"' then return (s:gsub('"', '&quot;')) end
+  return (s:gsub("'", '&#39;'))
+end
+
+-- data-note, data-copyright et data-source du <table …> que szh-tabelle-inclure a réinjecté.
+local function normaliser_attributs_table(balise)
+  for _, nom in ipairs(ATTRIBUTS_IMPRIMES) do
+    for _, q in ipairs({ '"', "'" }) do
+      local motif = '(%sdata%-' .. nom .. '%s*=%s*' .. q .. ')([^' .. q .. ']*)(' .. q .. ')'
+      balise = balise:gsub(motif, function(avant, v, apres)
+        return avant .. echapper_attribut(normaliser_texte(decoder_entites(v)), q) .. apres
+      end)
+    end
+  end
+  return balise
+end
+
+-- note, copyright et source d'une image (bloc figure, grille ou image hors figure).
+local function transformer_image(img)
+  local change = false
+  for _, nom in ipairs(ATTRIBUTS_IMPRIMES) do
+    local v = img.attributes[nom]
+    if v ~= nil and v ~= '' then
+      local n = normaliser_texte(v)
+      if n ~= v then
+        img.attributes[nom] = n
+        change = true
+      end
+    end
+  end
+  return change and img or nil
+end
+
 -- --------------------------------------------------------------------- le HTML réinjecté
 --
 -- szh-tabelle-inclure pose les tableaux en RawBlock html : leur texte n'est plus un Str et
 -- échapperait à tout. On y passe donc à la main, en ne touchant que ce qui est entre deux
--- balises — jamais un attribut, jamais un nom d'élément.
+-- balises — jamais un nom d'élément, et d'attribut que les trois imprimés du <table>
+-- (normaliser_attributs_table).
 local function normaliser_html(html)
   local sortie = {}
   local i = 1
@@ -1052,7 +1115,10 @@ local function normaliser_html(html)
       morceau = e9_ordinal_tete(morceau)
       attente_e9 = false
     end
-    sortie[#sortie + 1] = normaliser_texte(morceau)
+    -- Le texte entre deux balises est échappé HTML : sans ce décodage, « &amp; » se lisait
+    -- comme un mot suivi d'un point-virgule, et E2 rendait « &amp ; » (mesuré le 30.09.2026
+    -- sur « Effectifs &amp; durées »), imprimé tel quel.
+    sortie[#sortie + 1] = echapper_texte_html(normaliser_texte(decoder_entites(morceau)))
     if not d then break end
     -- Un commentaire HTML n'est pas une balise : son premier « > » ne le ferme pas, et le
     -- traiter comme tel rendait normalisable le texte qui suit — les commentaires du banc
@@ -1078,6 +1144,9 @@ local function normaliser_html(html)
     elseif attente_e9 and not TRANSPARENTE_E9[nom or ''] then
       attente_e9 = false
     end
+    if nom == 'table' and not fermante(balise) then
+      balise = normaliser_attributs_table(balise)
+    end
     sortie[#sortie + 1] = balise
     i = f + 1
   end
@@ -1091,7 +1160,7 @@ end
 -- stricte — un DOI, une URL, une classe CSS ou un nom de fichier n'ont pas de typographie,
 -- et une insécable y serait un défaut.
 local META_TEXTE = {
-  'pagetitle', 'description', 'resumes', 'licence-texte',
+  'pagetitle', 'description', 'licence-texte',     -- `resumes` : normaliser_resumes()
 }
 local META_AUTEUR = { 'fonction', 'affiliation' }
 
@@ -1138,9 +1207,46 @@ local function poser_langue(meta)
   return nil
 end
 
+-- Un résumé se compose dans SA langue, pas dans celle de l'article : la Zeitschrift publie
+-- des résumés français, la Revue des résumés allemands. `f` tourne avec LANGUE/COLLEE posés
+-- sur `l` (fr, de, it), puis les deux sont rendus ; une langue inconnue garde l'article.
+local function dans_la_langue(l, f)
+  local court = tostring(l or ''):lower():sub(1, 2)
+  if court ~= 'fr' and court ~= 'de' and court ~= 'it' then return f() end
+  local langue0, collee0 = LANGUE, COLLEE
+  LANGUE, COLLEE = court, (court ~= 'fr')
+  local ok, r = pcall(f)
+  LANGUE, COLLEE = langue0, collee0
+  if not ok then error(r, 0) end
+  return r
+end
+
+-- ⚠ `resumes` (posé par szh-maquette.lua) est une liste de MetaMap dont `texte` arrive en
+-- chaîne nue : l'ancien passage par normaliser_valeur_meta sur la LISTE ne visitait que les
+-- Str et n'atteignait jamais ce texte — aucun résumé n'avait de typographie (mesuré le
+-- 30.09.2026). Chaque texte est donc normalisé un par un, dans la langue de son `lang`.
+local function normaliser_resumes(liste)
+  if type(liste) ~= 'table' then return liste end
+  for _, r in ipairs(liste) do
+    if type(r) == 'table' and r.texte ~= nil then
+      local l = r.lang ~= nil and pandoc.utils.stringify(r.lang) or ''
+      r.texte = dans_la_langue(l, function() return normaliser_valeur_meta(r.texte) end)
+    end
+  end
+  return liste
+end
+
 local function transformer_meta(meta)
   for _, cle in ipairs(META_TEXTE) do
     if meta[cle] ~= nil then meta[cle] = normaliser_valeur_meta(meta[cle]) end
+  end
+  if meta.resumes ~= nil then meta.resumes = normaliser_resumes(meta.resumes) end
+  -- `resume` (langue -> texte), tel que la fiche le porte : c'est lui que lit la chaîne
+  -- d'aperçu, qui ne charge pas szh-maquette.lua.
+  if type(meta.resume) == 'table' and meta.resume.t == nil then
+    for l, v in pairs(meta.resume) do
+      meta.resume[l] = dans_la_langue(l, function() return normaliser_valeur_meta(v) end)
+    end
   end
   for _, cle in ipairs(META_TITRE) do
     if meta[cle] ~= nil then
@@ -1457,6 +1563,7 @@ return {
     Inlines = transformer_inlines,
     Header = transformer_header,
     RawBlock = transformer_rawblock,
+    Image = transformer_image,
     Meta = transformer_meta,
     Pandoc = vider_constats,
   },

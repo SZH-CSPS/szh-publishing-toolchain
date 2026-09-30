@@ -1186,10 +1186,10 @@ def _ressemble_reference_biblio_pour_repli(texte):
 
 
 def _est_cle_de_figure(paragraphe):
-    """« Légende : … », « Crédit : © … », « Source : … » — une clé de figure ou de tableau
+    """« Légende : … », « Copyright : © … », « Source : … » — une clé de figure ou de tableau
     (même reconnaissance que l'import, pronto_modele.identifier_cle contre CANON_FIGURE), ou
     un paragraphe au style « SZH Cle Abb/Tab ». Jamais une ligne d'information sur une
-    autrice, même quand elle porte un nom (« Crédit : © Jeanne Test »)."""
+    autrice, même quand elle porte un nom (« Copyright : © Jeanne Test »)."""
     if (pronto_modele.normaliser_nom_style(paragraphe.style)
             == pronto_modele.NOM_STYLE_CLE_BLOC):
         return True

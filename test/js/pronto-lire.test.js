@@ -963,7 +963,7 @@ function pImage(nomImage) {
 }
 
 const CHAMPS_TEST = ['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
-  'Crédit : Photographe X', 'Source : Archives Y'];
+  'Copyright : Photographe X', 'Source : Archives Y', 'Note : Une note de test'];
 
 test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directement : reconnu', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
@@ -1178,8 +1178,8 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
   // tableau), plus en lignes P : voir le contrôle 33.
   const ft = (vuNouvelle.instructions.match(/^FT\t3\t.*$/m) || [''])[0];
   assert.ok(ft, 'la nouvelle forme doit poser ses champs sur son tableau');
-  assert.strictEqual(ft.split('\t').length, 6 + 4,
-    'les quatre paragraphes de clé doivent voyager avec la ligne FT : ' + ft);
+  assert.strictEqual(ft.split('\t').length, 7 + 5,
+    'les cinq paragraphes de clé doivent voyager avec la ligne FT : ' + ft);
   assert.strictEqual((vuNouvelle.instructions.match(/^P\t/gm) || []).length, 0,
     'plus aucune clé retirée d’avance par szh-meta.lua');
   assert.doesNotMatch(vuAncienne.instructions, /^(P|FT|FI)\t/m,
@@ -1726,8 +1726,55 @@ test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose 
   assert.ok(fi, 'aucune ligne FI : les champs du bloc n’atteindraient pas l’image');
   assert.deepStrictEqual(fi.split('\t'),
     ['FI', 'figure.png', 'Une figure de test', 'Un texte alternatif', 'Photographe X',
-      'Archives Y'].concat(CHAMPS_TEST),
-    'la ligne FI ne porte pas les quatre champs puis les quatre clés, dans l’ordre du contrat');
+      'Archives Y', 'Une note de test'].concat(CHAMPS_TEST),
+    'la ligne FI ne porte pas les cinq champs puis les cinq clés, dans l’ordre du contrat');
+});
+
+// La clé Note (30.09.2026) : cinquième champ de valeur des lignes FI/FG/FT, après la source.
+test('pronto-lire.py : la note d’un bloc tableau voyage en 7e champ de la ligne FT', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('48b-bloc-tableau-note', {
+    styles: STYLES_BASE,
+    body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST), { tbl: TABLEAU_INTERNE }]
+  });
+  const ft = (vu.instructions.match(/^FT\t.*$/m) || [])[0];
+  assert.ok(ft, 'aucune ligne FT : ' + vu.instructions);
+  assert.deepStrictEqual(ft.split('\t').slice(0, 7),
+    ['FT', '3', 'Une figure de test', 'Un texte alternatif', 'Photographe X', 'Archives Y',
+      'Une note de test']);
+});
+
+test('pronto-lire.py : sans clé Note, le champ note reste vide et son absence n’est jamais signalée', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const vu = importer('48c-bloc-sans-note', {
+    styles: STYLES_BASE,
+    body: [tableMeta([]), tableAuteurs([]),
+      ...clesAbbTab(['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
+        'Crédit : Photographe X', 'Source : Archives Y']),
+      pImage('figure.png')]
+  });
+  const fi = (vu.instructions.match(/^FI\t.*$/m) || [])[0].split('\t');
+  assert.deepStrictEqual(fi.slice(0, 7),
+    ['FI', 'figure.png', 'Une figure de test', 'Un texte alternatif', 'Photographe X',
+      'Archives Y', ''], 'le champ note doit exister, vide, même sans clé');
+  assert.deepStrictEqual(vu.info.filter((l) => /clé « Note »|clé « Notiz »/.test(l)), [],
+    'la note est facultative : aucune info « clé attendue absente »');
+  // « Crédit » (ancien libellé) reste lu sur le champ crédit, et sans avertissement.
+  assert.deepStrictEqual(vu.avertissements.filter((l) => l.indexOf('cle-approximee') !== -1), [],
+    'l’ancien libellé « Crédit » ne doit pas avertir : ' + vu.avertissements.join(' / '));
+});
+
+test('pronto-lire.py : la clé Note se lit sous ses variantes (Notiz, Remarque, Anmerkung)', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  for (const etiquette of ['Notiz', 'Remarque', 'Anmerkung', 'Hinweis', 'Notes']) {
+    const vu = importer('48d-note-' + etiquette, {
+      styles: STYLES_BASE,
+      body: [tableMeta([]), tableAuteurs([]),
+        ...clesAbbTab(['Légende : L', etiquette + ' : Texte de la note']), pImage('figure.png')]
+    });
+    const fi = (vu.instructions.match(/^FI\t.*$/m) || [])[0].split('\t');
+    assert.strictEqual(fi[6], 'Texte de la note', etiquette + ' : la note n’a pas été lue : ' + fi);
+  }
 });
 
 test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', () => {
@@ -1887,7 +1934,12 @@ test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, s
     // fautes de frappe, rattrapées par le seuil
     ['CANON_AUTEUR', 'Prenoom', 'prenom'], ['CANON_AUTEUR', 'Fontion', 'fonction'],
     ['CANON_AUTEUR', 'Instituion', 'affiliation'], ['CANON_FIGURE', 'Sourse', 'source'],
-    ['CANON_FIGURE', 'Legandes', 'legende'], ['CANON_METADONNEES', 'Resumé', 'resume']
+    ['CANON_FIGURE', 'Legandes', 'legende'], ['CANON_METADONNEES', 'Resumé', 'resume'],
+    // la clé Note (30.09.2026) : les deux libellés du gabarit et les variantes de réflexe
+    ['CANON_FIGURE', 'Note', 'note'], ['CANON_FIGURE', 'Notiz', 'note'],
+    ['CANON_FIGURE', 'Notes', 'note'], ['CANON_FIGURE', 'Anmerkung', 'note'],
+    ['CANON_FIGURE', 'Hinweis', 'note'], ['CANON_FIGURE', 'Remarque', 'note'],
+    ['CANON_FIGURE', 'Nota', 'note']
   ];
   for (const [table, etiquette, jetonAttendu] of attendus) {
     const { jeton, score, seuil } = mesurerCle(etiquette, table);
@@ -1912,7 +1964,7 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
     ['CANON_METADONNEES', 'Résultats'], ['CANON_METADONNEES', 'Nom de la revue'],
     ['CANON_METADONNEES', 'DOI'], ['CANON_METADONNEES', 'Volume'],
     ['CANON_METADONNEES', 'Rubrique'],
-    ['CANON_FIGURE', 'Licence'], ['CANON_FIGURE', 'Cellule 1'], ['CANON_FIGURE', 'Note'],
+    ['CANON_FIGURE', 'Licence'], ['CANON_FIGURE', 'Cellule 1'], ['CANON_FIGURE', 'Notation'],
     ['CANON_FIGURE', 'Tableau']
   ];
   let pire = 0, pireNom = '';

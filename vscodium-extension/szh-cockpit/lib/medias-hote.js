@@ -99,6 +99,7 @@ function textesMedias() {
     alt: T('img.alt'), altIndice: T('img.alt.indice'),
     copyright: T('img.copyright'), copyrightIndice: T('img.copyright.indice'),
     source: T('img.source'), sourceIndice: T('img.source.indice'),
+    note: T('img.note'), noteIndice: T('img.note.indice'),
     horsFigureTitre: T('medias.horsfigure.titre'), horsFigure: T('medias.horsfigure'),
     qualiteInsuffisant: T('medias.qualite.insuffisant'),
     qualiteJuste: T('medias.qualite.juste'),
@@ -203,7 +204,7 @@ function listerMediasArticle(fournisseur, slug, texteMd, budget) {
         { reduit: reduireWarningsImpressionActif() }),
       valeurs: {
         legende: v.legende, alt: v.alt, altDefini: v.altDefini,
-        copyright: v.copyright, source: v.source, horsFigure: v.horsFigure
+        copyright: v.copyright, source: v.source, note: v.note, horsFigure: v.horsFigure
       },
       _rang: ordre.has(relatif.toLowerCase()) ? ordre.get(relatif.toLowerCase()) : Number.MAX_SAFE_INTEGER,
       _empreinte: empreintes.get(relatif) || null
