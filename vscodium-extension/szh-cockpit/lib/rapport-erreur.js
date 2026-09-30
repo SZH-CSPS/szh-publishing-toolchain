@@ -71,6 +71,8 @@ function cheminStatePoste() { return path.join(racineProgramData(), 'state.json'
 function cheminVersionToolkit() { return path.join(racineProgramData(), 'toolkit', 'VERSION'); }
 function cheminEtatUtilisateur() { return path.join(racineUtilisateur(), 'SZH', 'etat-utilisateur.json'); }
 function cheminDossierAttente() { return path.join(racineUtilisateur(), 'SZH', 'rapports-en-attente'); }
+// La file des compteurs d'usage (lib/compteurs.js) : à côté de celle des rapports, jamais mêlée.
+function cheminDossierCompteursAttente() { return path.join(racineUtilisateur(), 'SZH', 'compteurs-en-attente'); }
 
 // =======================================================================================
 // ⚠ LE SEUL ENDROIT JAVASCRIPT QUI PORTE LE NOM DU DOSSIER DE L'APPLICATION ⚠
@@ -95,8 +97,17 @@ const SEGMENT_APPLICATION = '54_Pronto';
 const SEGMENTS_DOSSIER_RAPPORTS = ['2_Produkte', SEGMENT_APPLICATION, '_Systeme', 'rapports'];
 
 function dossierRapportsDepuisAncrage(ancrage) {
+  return dossierSystemeDepuisAncrage(ancrage, 'rapports');
+}
+
+// Un sous-dossier de `_Systeme` (rapports, compteurs…), dérivé des segments des rapports :
+// le segment de l'application n'est jamais recopié. Nom de sous-dossier hors `[A-Za-z0-9_-]+`
+// -> null, pour qu'un appelant ne puisse pas remonter l'arborescence.
+function dossierSystemeDepuisAncrage(ancrage, sousDossier) {
   if (!ancrage) { return null; }
-  return path.join.apply(path, [ancrage].concat(SEGMENTS_DOSSIER_RAPPORTS));
+  if (!/^[A-Za-z0-9_-]+$/.test(String(sousDossier || ''))) { return null; }
+  const segments = SEGMENTS_DOSSIER_RAPPORTS.slice(0, -1).concat(sousDossier);
+  return path.join.apply(path, [ancrage].concat(segments));
 }
 
 // D10 : le dossier D'ÉCRITURE effectif, une fois l'ancrage résolu par ailleurs.
@@ -115,6 +126,8 @@ function resoudreDossierRapports(ancrage) {
 // Plafonds de la file d'attente hors ligne (§4.4) — distincts des plafonds de contenu d'un
 // rapport (codesErreur.PLAFONDS), qui portent sur un rapport déjà construit.
 const PLAFONDS_ATTENTE = Object.freeze({ fichiers: 50, jours: 30 });
+// Les compteurs sont petits et nombreux : plafonds plus larges, même mécanique.
+const PLAFONDS_ATTENTE_COMPTEURS = Object.freeze({ fichiers: 200, jours: 90 });
 
 // ---------------------------------------------------------------------------------------
 // 2. Lecture tolérante et écriture atomique — motif de lib/archivage.js, repris ici en
@@ -593,13 +606,14 @@ function ecrireRapportSurDisque(dossier, rapport) {
 // que « les plus anciens sont effacés » (§4.4) et « vidée » (le vidage tente les plus
 // anciens d'abord) traitent toujours dans le même ordre. Dossier absent -> liste vide,
 // jamais une exception (D5) : une file jamais utilisée n'a pas de dossier.
-function listerFileAttente() {
-  const dossier = cheminDossierAttente();
+function listerFileAttente(dossierFile, extension) {
+  const dossier = dossierFile || cheminDossierAttente();
+  const ext = extension || '.json';
   let noms;
   try { noms = fs.readdirSync(dossier); } catch (e) { return []; }
   const fichiers = [];
   for (const nom of noms) {
-    if (!nom.endsWith('.json')) { continue; }
+    if (!nom.endsWith(ext) || nom.startsWith('~$')) { continue; }
     const chemin = path.join(dossier, nom);
     let mtime = 0;
     try { mtime = fs.statSync(chemin).mtimeMs; } catch (e) { continue; }
@@ -614,14 +628,19 @@ function listerFileAttente() {
 // liste (déjà purgée) qui subsiste, pour que viderFileAttente() n'ait pas à relire le
 // dossier une seconde fois.
 function purgerFileAttente(maintenant) {
+  return purgerDossierAttente(cheminDossierAttente(), '.json', PLAFONDS_ATTENTE, maintenant);
+}
+
+// La même purge pour une autre file (celle des compteurs : .csv, plafonds plus larges).
+function purgerDossierAttente(dossierFile, extension, plafonds, maintenant) {
   const now = maintenant || new Date();
-  const seuilAge = now.getTime() - PLAFONDS_ATTENTE.jours * 24 * 3600 * 1000;
-  let fichiers = listerFileAttente().filter((f) => {
+  const seuilAge = now.getTime() - plafonds.jours * 24 * 3600 * 1000;
+  let fichiers = listerFileAttente(dossierFile, extension).filter((f) => {
     if (f.mtime < seuilAge) { try { fs.unlinkSync(f.chemin); } catch (e) { /* on réessaiera */ } return false; }
     return true;
   });
-  if (fichiers.length > PLAFONDS_ATTENTE.fichiers) {
-    const enTrop = fichiers.length - PLAFONDS_ATTENTE.fichiers;
+  if (fichiers.length > plafonds.fichiers) {
+    const enTrop = fichiers.length - plafonds.fichiers;
     for (let i = 0; i < enTrop; i++) { try { fs.unlinkSync(fichiers[i].chemin); } catch (e) { /* … */ } }
     fichiers = fichiers.slice(enTrop);
   }
@@ -808,26 +827,26 @@ function emettreRapport(champs) {
 module.exports = {
   // Constantes.
   SEGMENT_APPLICATION, SEGMENTS_DOSSIER_RAPPORTS,
-  PLAFONDS_ATTENTE,
+  PLAFONDS_ATTENTE, PLAFONDS_ATTENTE_COMPTEURS,
   // Racines et chemins (impurs : environnement + disque).
   racineProgramData, racineUtilisateur,
   cheminConfigPoste, cheminStatePoste, cheminVersionToolkit,
-  cheminEtatUtilisateur, cheminDossierAttente, cheminTemporaire,
+  cheminEtatUtilisateur, cheminDossierAttente, cheminDossierCompteursAttente, cheminTemporaire,
   // Ancrage.
-  resoudreAncrage, dossierRapportsDepuisAncrage, resoudreDossierRapports,
+  resoudreAncrage, dossierRapportsDepuisAncrage, dossierSystemeDepuisAncrage, resoudreDossierRapports,
   normaliserSeparateursAncrage,
   ecritureReelleEviteeParHarnaisTest,
   // Contexte.
   versionToolkit, versionCockpit, emplacementCourant, produitDepuisRacine,
   formaterHorodatageLocal, lireExtraitFichier, normaliserConstats,
   // État utilisateur (compteurs anti-inondation, cache d'ancrage).
-  lireEtatUtilisateur, ecrireEtatUtilisateur,
+  lireEtatUtilisateur, ecrireEtatUtilisateur, lireJsonTolerant, formaterJourLocal,
   // Construction — pure.
   construireRapport,
   // Anti-inondation — pure.
   purgerCompteursRapports, decisionAntiInondation,
   // File d'attente hors ligne.
-  listerFileAttente, purgerFileAttente, viderFileAttente,
+  listerFileAttente, purgerFileAttente, purgerDossierAttente, viderFileAttente,
   // Orchestrateur.
   genererId, emettreRapport
 };

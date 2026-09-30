@@ -102,6 +102,11 @@ const indexTextes = require('./lib/index-textes');
 // accroches (COMPIL-ECHEC dans relireJournal(), COCKPIT-EXCEPTION ci-dessous) et le
 // vidage de la file au démarrage — voir docs/RAPPORTS-ERREUR.md.
 const rapportErreur = require('./lib/rapport-erreur');
+// ---- Compteurs d'usage de l'import -> lib/compteurs.js ----------------------------
+// Des entiers et des noms de mesures, jamais un mot du manuscrit (docs/RAPPORTS-ERREUR.md,
+// « Les compteurs ne sont pas des rapports »). Trois accroches : la fin d'une tâche
+// (relireJournal), la fin d'un réimport réussi, et le vidage de la file au démarrage.
+const compteurs = require('./lib/compteurs');
 // ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
 const proteges = require('./lib/reglages-proteges');
 // ---- Fichier de langue de l'interface -> lib/export-langue.js ---------------------
@@ -2662,6 +2667,8 @@ async function executerReimport(fournisseur, rafraichirTout, slug, args, annulat
   // remplacés : les laisser ouverts, c'est laisser écrire par-dessus.
   const reussi = !!(r.json && r.json.resultat === 'reussi');
   if (reussi) { fermerFormulairesEcriture(racine, slug); }
+  // Le réimport ne passe pas par le journal : ses codes d'avertissement sont comptés ici.
+  if (reussi && !annulation) { try { compteurs.enregistrerReimport(r.json); } catch (e) { /* idem */ } }
   const constats = r.json ? constatsReimport(r.json, slug) : [];
   poserConstatsReimport(racine, constats);
   rafraichirTout();
@@ -4119,6 +4126,9 @@ async function relireJournal(fournisseur, code) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
   const constats = lireJournalTache(racine);
+  // Un fichier de compteurs par article CONVERTI dans cette tâche, aucun sinon : l'import rejoue
+  // à chaque Ctrl+S tant qu'un Word attend, et ne doit alors rien compter.
+  try { compteurs.enregistrerImportDepuisJournal(racine); } catch (e) { /* jamais une panne */ }
   // Ce que le dernier réimport a signalé survit à la compilation qui le suit : un tableau
   // en conflit reste vrai après un Ctrl+S, et la chaîne ne le connaît pas.
   const reimport = dernierJournal.racine === racine ? dernierJournal.reimport : [];
@@ -7228,6 +7238,7 @@ function activate(context) {
   // posée sur cmd()/cmdEcriture(), là où toute commande szh.* est enregistrée — une
   // exception qui en sort est certainement la nôtre, jamais celle d'une autre extension.
   rapportErreur.viderFileAttente();
+  compteurs.viderFileCompteurs();
   function signalerExceptionCockpit(err, etape) {
     try {
       rapportErreur.emettreRapport({

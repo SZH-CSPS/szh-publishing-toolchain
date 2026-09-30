@@ -315,6 +315,75 @@ exact du texte qui l'a fait échouer (une clé de citation introuvable, une cell
 mal formée…). Ce n'est ni fréquent, ni l'article entier ni un fichier joint — seulement,
 à l'occasion, la ligne fautive telle que l'outil de compilation l'a citée.
 
+### Les compteurs ne sont pas des rapports
+
+Depuis le 30.09.2026, le nettoyeur de manuscrit et l'import Word déposent aussi des
+**compteurs d'usage** dans le dossier partagé. Ce n'est ni un rapport d'erreur ni un
+inventaire : c'est un troisième artefact, qui ne mélange rien avec les deux autres.
+
+**Pourquoi.** Repérer les problèmes *systématiques* du logiciel : telle règle du nettoyeur
+qui signale dix fois plus que les autres et que personne ne suit, tel avertissement de
+l'import qui revient sur un article sur deux, tel service réseau en panne un jour sur trois.
+Un rapport d'erreur ne dit rien de cela, il ne parle que des pannes. La finalité est la
+**qualité du logiciel, jamais l'évaluation d'une personne** : aucun fichier n'est relié à un
+compte, et la synthèse ne connaît que des totaux.
+
+**Ce qui est compté** : des mesures nommées et des entiers. Pour le nettoyeur, le nombre
+d'alertes par règle et par devenir (révision, commentaire, rapport), le nombre de signes,
+de paragraphes, de notes, d'images, les refus par motif, les plantages, les pannes réseau
+par service, les DOI, ROR et ORCID proposés, le plafond de commentaires atteint. Pour
+l'import, les codes d'avertissement de chaque article converti, le nombre d'autrices et
+d'auteurs, combien ont un ORCID ou un ROR, et si la langue a été devinée.
+
+**Ce qui n'est jamais compté, ni écrit** : un nom de fichier, un slug, un titre, un nom
+d'autrice ou d'auteur, une institution, une adresse, un chemin, un message d'exception, une
+phrase du manuscrit, une heure. Les mesures suivent une liste fermée (`MESURES_NETTOYEUR`,
+`MESURES_IMPORT` dans `lib/compteurs.js`) : une mesure qui a la bonne forme mais n'y figure
+pas est écartée, et un identifiant de règle inconnu est remplacé par `Autre`. Du journal
+d'import, seul le **code** d'un avertissement (le second jeton de la ligne) est lu ; le
+reste de la ligne, qui peut citer un nom de fichier, ne l'est jamais.
+
+**Où.** `_Systeme\compteurs\`, dérivé de l'ancrage SharePoint comme les rapports
+(`dossierSystemeDepuisAncrage`, `lib/rapport-erreur.js` ; `Get-SzhDossierSysteme 'compteurs'`
+côté PowerShell), jamais sous la racine active. Surcharge de test : `SZH_COMPTEURS`, le
+dossier lui-même. Même file d'attente hors ligne que les rapports, mais séparée
+(`%LOCALAPPDATA%\SZH\compteurs-en-attente`, 200 fichiers ou 90 jours au plus), vidée au
+lancement suivant. Jamais de fenêtre, jamais d'exception vers l'interface. Rien n'est écrit
+quand `SZH_LANCEUR_SIMULE=1` ou `SZH_RESEAU_INTERDIT` est posée sans `SZH_COMPTEURS`.
+
+**Format.** Un fichier par événement, écrit une fois et jamais réécrit :
+`<AAAAMMJJ>-<POSTE>-<source>-<6hex>.csv`, `source` valant `nettoyeur` ou `import`. UTF-8 avec
+BOM, séparateur `;`, fins de ligne CRLF, une ligne par mesure :
+
+```
+date;poste;contexte;version_toolkit;version_rootfs;source;passage;mesure;valeur
+2026-09-30;RMO-DESK;prod;2.7.0;2.7.0;nettoyeur;dfc2b33a172b;signes;5000
+```
+
+`valeur` est toujours un entier (Excel fr-CH lirait une virgule décimale comme du texte) ;
+un taux s'exprime en « pour 1000 » entier. `contexte` vaut `dev` sur l'instance de
+développement (`SZH_MANUSCRIT_CLI`, `SZH_CODIUM_PROFIL`, toolkit en jonction vers un dépôt,
+ou `"compteurs": "dev"` dans `config.json`), `prod` sinon ; la synthèse écarte `dev` par défaut.
+
+**La date, sans l'heure.** L'heure de travail de quelqu'un ne regarde pas l'outil (art. 26
+OLT 3 : pas de surveillance des heures de travail). Un jour suffit à une synthèse ; l'heure
+n'y ajouterait rien, sinon la possibilité de reconstituer quand telle personne a travaillé.
+
+**Conservation : 24 mois.** `node outils/compteurs-synthese.js --purger` supprime les
+fichiers plus vieux (date lue dans le nom) ; sans ce drapeau, rien n'est jamais supprimé.
+
+**Lire.** `outils/compteurs-synthese.js`, lancé par le Node de VSCodium comme
+`outils/rendre-gabarit.js`, écrit une page HTML autonome (`export-templates/compteurs-synthese.twig`)
+et un CSV de synthèse, avec `--depuis`, `--jusqua`, `--contexte prod|dev|tous` et
+`--sortie`. En tête de page : les règles « à examiner » (les plus bruyantes, celles qui
+finissent le plus en rapport). Les fichiers illisibles, à l'en-tête différent ou aux
+mesures inconnues sont comptés et dits, jamais fatals.
+
+**Côté import**, un fichier naît d'une **conversion réussie** (`[import] converti` dans
+`.szh-journal.log`) et de la fin d'un réimport réussi — jamais de chaque compilation :
+l'import rejoue à chaque Ctrl+S tant qu'un Word attend, et compterait `word-redepose` à
+chaque fois.
+
 ---
 
 ## 4. Plafonds

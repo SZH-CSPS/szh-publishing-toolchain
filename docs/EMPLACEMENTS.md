@@ -56,7 +56,7 @@ exception près, `_Systeme\`, qui ne suit jamais la racine active (§1bis ci-des
 └── Secrétariat und Export\
 
 <racine de PRODUCTION>\      (toujours celle-ci, même quand la racine active est « test »)
-└── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\
+└── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\
 ```
 
 | | Revue (fr) | Zeitschrift (de) | Books |
@@ -100,7 +100,7 @@ Les dossiers hors produit :
 | `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` | l'état des fiches, par langue | le cockpit |
 | `Secrétariat und Export\` | les sorties du secrétariat (OJS, Edudoc…), déposées à la main | personne, pour l'instant |
 
-`_Systeme\` (rapports, journaux, suggestions, inventaire) N'EST PAS un dossier hors produit
+`_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs) N'EST PAS un dossier hors produit
 de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.
 
 En emplacement `test`, le lanceur crée les dossiers manquants de tout cet arbre au
@@ -122,6 +122,7 @@ dossiers entre `Revues-TESTING` et SharePoint selon qui les a écrits en dernier
 |---|---|---|
 | `_Systeme\rapports\` | les rapports d'erreur automatiques (`docs/RAPPORTS-ERREUR.md`) | `lib\rapport-erreur.js`, `windows\szh-rapport.ps1` |
 | `_Systeme\inventaire\` | le **check-in mensuel des postes** : un CSV par machine (`<POSTE>.csv`), une ligne par mois **et par compte Windows**, créée si elle manque et rafraîchie sinon. Le nom du fichier ne porte que le nom de la machine — l'identité de la personne (compte, adresse de connexion) vit **dans** le fichier, jamais dans son nom, qui s'affiche à tout le monde dans un dossier synchronisé. UTF-8 avec BOM, séparateur point-virgule : il s'ouvre d'un double-clic. | `windows\szh-checkin.ps1`, appelé une fois par `open-produit.ps1` au démarrage |
+| `_Systeme\compteurs\` | les **compteurs d'usage** du nettoyeur de manuscrit et de l'import Word : un petit CSV par événement (`<AAAAMMJJ>-<POSTE>-<source>-<6hex>.csv`), fait de noms de mesures et d'entiers, **sans aucun texte de manuscrit**. Conservés 24 mois, lus par `outils\compteurs-synthese.js`. Voir « Les compteurs ne sont pas des rapports » dans `docs/RAPPORTS-ERREUR.md`. Surcharge de test : `SZH_COMPTEURS` (le dossier lui-même). | `lib\compteurs.js` (import, cockpit) ; le lanceur et la CLI du nettoyeur (nettoyeur) |
 | `_Systeme\journaux\`, `_Systeme\suggestions\` | réservés | personne, pour l'instant |
 
 Résolu par `Get-SzhDossierSysteme` (`windows\szh-produits.ps1`), qui appelle

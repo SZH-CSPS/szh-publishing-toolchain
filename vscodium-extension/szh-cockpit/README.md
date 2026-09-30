@@ -50,6 +50,10 @@ lib/
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
                         modifie : deux postes sur le même numéro n'écrivent pas ensemble
                         (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
+  compteurs.js          compteurs d'usage du nettoyeur et de l'import (entiers et noms de mesures,
+                        jamais un mot du manuscrit) : un CSV par événement dans _Systeme\compteurs,
+                        file d'attente hors ligne, compteurs tirés de .szh-journal.log. S'appuie
+                        sur rapport-erreur.js (docs/RAPPORTS-ERREUR.md)
   constats.js           ce qu'un défaut ferme, où on va le corriger, et comment il s'écrit :
                         la barrière (compilation, PDF/UA, export, geste) d'où la couleur se
                         déduit, les huit destinations d'où le bouton se fabrique, et le
@@ -212,6 +216,8 @@ lib/
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
 outils/
+  compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
+                        Node de VSCodium ; --purger supprime ce qui a plus de 24 mois
   secretariat-cli.js    entrée en ligne de commande de lib/secretariat.js : JSON Lines sur
                         stdout, lancée par le lanceur Windows avec le Node qu'embarque
                         VSCodium (ELECTRON_RUN_AS_NODE=1)

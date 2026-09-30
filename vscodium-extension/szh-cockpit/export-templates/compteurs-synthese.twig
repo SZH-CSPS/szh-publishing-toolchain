@@ -1,0 +1,118 @@
+{# compteurs-synthese.twig : la page HTML autonome de la synthèse des compteurs d'usage,
+   rendue par lib/gabarits.js via outils/compteurs-synthese.js. Sans réseau, sans script.
+   Elle sert à repérer les défauts du LOGICIEL (une règle du nettoyeur trop bruyante, un
+   avertissement de l'import qui revient partout), jamais à juger une personne : les
+   fichiers sources ne portent ni nom, ni titre, ni heure.
+
+   Toutes les valeurs arrivent déjà calculées et mises en forme (le moteur n'a pas
+   d'arithmétique) :
+   v.periode, v.contextes, v.genere      textes
+   v.apercu[]                             {libelle, valeur}
+   v.avertissements[]                     phrases (fichiers ignorés, lignes écartées)
+   v.examiner[]                           {regle, raison}
+   v.regles[]                             {regle, revision, commentaire, rapport, total, densite, part_rapport}
+   v.plafond                              {passages, atteints, part}
+   v.issues[]                             {libelle, n}
+   v.refus[]                              {code, n}
+   v.reseau[]                             {service, pannes, part}
+   v.codes[]                              {code, n, pour_cent}
+   v.import                               {articles, auteurs, orcid, ror, part_orcid, part_ror}
+   v.proposes[]                           {libelle, n, par_passage}
+   v.mesures[]                            {mesure, total}
+#}
+{% block contenu %}<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Synthèse des compteurs – {{ v.genere|e }}</title>
+<style>
+:root {
+  --papier: #FFFFFF; --texte: #1A1A1A; --bord: #CCCCCC;
+  --gris-clair: #E6E6E6; --zebre: #F2F2F2;
+  --alerte-fond: #555900; --alerte-clair: #E8EFAB;
+  --info-clair: #D8EBF5;
+}
+* { box-sizing: border-box; }
+body { font-family: "Segoe UI", Arial, sans-serif; background: var(--papier); color: var(--texte);
+  margin: 0; padding: 24px; max-width: 980px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; border-bottom: 2px solid var(--bord); padding-bottom: 4px; margin-top: 2rem; }
+table { border-collapse: collapse; width: 100%; margin: 0.6rem 0 1.2rem; font-size: 0.92rem; }
+th, td { border: 1px solid var(--bord); padding: 5px 8px; text-align: left; vertical-align: top; }
+th { background: var(--gris-clair); }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+tr:nth-child(even) td { background: var(--zebre); }
+.note { background: var(--info-clair); border-radius: 6px; padding: 8px 12px; margin: 0.6rem 0; }
+.examiner { background: var(--alerte-clair); border-left: 6px solid var(--alerte-fond);
+  border-radius: 4px; padding: 8px 14px; margin: 0.6rem 0; }
+.vide { color: #555555; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>Synthèse des compteurs d’usage</h1>
+<p>{{ v.periode|e }} – contexte : {{ v.contextes|e }} – établie le {{ v.genere|e }}</p>
+<div class="note">Ces chiffres servent à améliorer le logiciel. Les fichiers ne contiennent aucun texte de manuscrit ni aucun nom, et la date n’y est jamais accompagnée d’une heure.</div>
+
+<h2>Vue d’ensemble</h2>
+<table>
+{% for a in v.apercu %}<tr><th>{{ a.libelle|e }}</th><td class="n">{{ a.valeur|e }}</td></tr>
+{% endfor %}</table>
+{% for w in v.avertissements %}<p class="note">{{ w|e }}</p>
+{% endfor %}
+<h2>Règles à examiner</h2>
+{% if v.examiner is empty %}<p class="vide">Pas assez de données pour désigner une règle.</p>
+{% else %}{% for e in v.examiner %}<div class="examiner"><strong>{{ e.regle|e }}</strong> – {{ e.raison|e }}</div>
+{% endfor %}{% endif %}
+
+<h2>Alertes du nettoyeur, par règle</h2>
+{% if v.regles is empty %}<p class="vide">Aucune alerte comptée sur la période.</p>
+{% else %}<table>
+<tr><th>Règle</th><th>Révisions</th><th>Commentaires</th><th>Rapport</th><th>Total</th><th>Pour 1000 signes</th><th>Part en rapport</th></tr>
+{% for r in v.regles %}<tr><td>{{ r.regle|e }}</td><td class="n">{{ r.revision }}</td><td class="n">{{ r.commentaire }}</td><td class="n">{{ r.rapport }}</td><td class="n">{{ r.total }}</td><td class="n">{{ r.densite|e }}</td><td class="n">{{ r.part_rapport|e }}</td></tr>
+{% endfor %}</table>{% endif %}
+
+<h2>Passages du nettoyeur</h2>
+<table>
+{% for i in v.issues %}<tr><th>{{ i.libelle|e }}</th><td class="n">{{ i.n }}</td></tr>
+{% endfor %}<tr><th>Plafond de commentaires atteint</th><td class="n">{{ v.plafond.atteints }} sur {{ v.plafond.passages }} ({{ v.plafond.part|e }})</td></tr>
+</table>
+<h3>Refus, par motif</h3>
+{% if v.refus is empty %}<p class="vide">Aucun refus.</p>
+{% else %}<table>
+{% for x in v.refus %}<tr><th>{{ x.code|e }}</th><td class="n">{{ x.n }}</td></tr>
+{% endfor %}</table>{% endif %}
+
+<h2>Pannes réseau, par service</h2>
+<table>
+<tr><th>Service</th><th>Pannes</th><th>Part des passages</th></tr>
+{% for s in v.reseau %}<tr><td>{{ s.service|e }}</td><td class="n">{{ s.pannes }}</td><td class="n">{{ s.part|e }}</td></tr>
+{% endfor %}</table>
+
+<h2>Identifiants proposés par le nettoyeur</h2>
+<table>
+<tr><th>Identifiant</th><th>Total</th><th>Par passage</th></tr>
+{% for p in v.proposes %}<tr><td>{{ p.libelle|e }}</td><td class="n">{{ p.n }}</td><td class="n">{{ p.par_passage|e }}</td></tr>
+{% endfor %}</table>
+
+<h2>Import Word</h2>
+<table>
+<tr><th>Articles convertis</th><td class="n">{{ v.import.articles }}</td></tr>
+<tr><th>Autrices et auteurs lus</th><td class="n">{{ v.import.auteurs }}</td></tr>
+<tr><th>Avec ORCID</th><td class="n">{{ v.import.orcid }} ({{ v.import.part_orcid|e }})</td></tr>
+<tr><th>Avec ROR</th><td class="n">{{ v.import.ror }} ({{ v.import.part_ror|e }})</td></tr>
+</table>
+<h3>Avertissements de l’import, pour 100 articles</h3>
+{% if v.codes is empty %}<p class="vide">Aucun avertissement compté.</p>
+{% else %}<table>
+<tr><th>Code</th><th>Occurrences</th><th>Pour 100 articles</th></tr>
+{% for c in v.codes %}<tr><td>{{ c.code|e }}</td><td class="n">{{ c.n }}</td><td class="n">{{ c.pour_cent|e }}</td></tr>
+{% endfor %}</table>{% endif %}
+
+<h2>Toutes les mesures</h2>
+<p>La somme brute de chaque mesure lue, y compris celles que cette page ne commente pas.</p>
+<table>
+{% for m in v.mesures %}<tr><td>{{ m.mesure|e }}</td><td class="n">{{ m.total }}</td></tr>
+{% endfor %}</table>
+</body>
+</html>
+{% endblock %}
