@@ -1090,6 +1090,9 @@ avec un résumé `de` — et rend `PASS`.
 une quatrième occurrence apparaît sur un élément de structure, le défaut devient
 corrigeable. D'ici là, ne pas l'écrire comme réglé.
 
+Les autres non-conformités connues, format par format — PDF, HTML, DOCX, livre — sont
+tenues dans [LIMITES-ACCESSIBILITE.md](LIMITES-ACCESSIBILITE.md).
+
 ### Un tableau disparaît du PDF
 
 **Cause.** Le fichier `tables/table-NN.html` référencé par l'article a été supprimé ou

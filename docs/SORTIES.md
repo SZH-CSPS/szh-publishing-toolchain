@@ -1,6 +1,8 @@
 # Les sorties de la chaîne
 
 Qui produit quoi, ce que chaque sortie garantit, et les deux endroits où l'on se trompe.
+Ce qu'elles ne garantissent pas encore en accessibilité est dans
+[LIMITES-ACCESSIBILITE.md](LIMITES-ACCESSIBILITE.md).
 
 ## En une phrase
 
