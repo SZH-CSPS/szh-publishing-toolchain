@@ -267,12 +267,18 @@ end
 -- La classe sert à l'écran : print.css la neutralise sous @media screen, que WeasyPrint
 -- n'applique pas. La coupure est calculée pour une colonne de 435 px et n'a aucun sens à
 -- une autre largeur ; le PDF la reçoit, le navigateur replie comme il veut.
+--
+-- Une espace AVANT le <br> : le signet du PDF est le texte du <h1>, où un <br> ne vaut
+-- rien — sans elle, « pluridisciplinaires<br>à » devenait le signet
+-- « pluridisciplinairesà » (mesuré, 30.09.2026). En fin de ligne, l'espace est retirée à
+-- la composition : rendu identique au pixel.
 local function poser(meta, rang, gr)
   local avant, apres = {}, {}
   for i = 1, rang do avant[#avant + 1] = gr[i] end
   for i = rang + 1, #gr do apres[#apres + 1] = gr[i] end
   meta['titre-lignes'] = pandoc.MetaInlines({
     pandoc.Str(table.concat(avant, ESPACE)),
+    pandoc.Space(),
     pandoc.RawInline('html', '<br class="szh-titre-ligne" />'),
     pandoc.Str(table.concat(apres, ESPACE)),
   })

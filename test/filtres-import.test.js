@@ -619,6 +619,9 @@ test('titre-lignes : un titre qui déborde reçoit un escalier, le texte est int
   assert.strictEqual(morceaux.length, 2, 'pas exactement une coupure : ' + lignes);
   const reconstitue = morceaux.map((s) => s.trim()).join(' ');
   assert.strictEqual(reconstitue, titre, 'le texte du titre n\'est plus intact : ' + reconstitue);
+  // Une espace avant le <br> : le signet du PDF est le texte du <h1>, où le <br> ne vaut
+  // rien — sans elle, les deux mots de part et d'autre s'y collaient.
+  assert.ok(morceaux[0].endsWith(' '), 'plus d’espace avant le <br> : ' + lignes);
 });
 
 // Cas limite : un titre d'un seul mot ne peut jamais former d'escalier (il faut au moins

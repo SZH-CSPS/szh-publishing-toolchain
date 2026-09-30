@@ -8,12 +8,16 @@ $for(auteurs-noms)$
   <meta name="author" content="$auteurs-noms$" />
 $endfor$
 $if(description)$
-  <meta name="description" content="$description$" />
+  <meta name="description" content="$description/nowrap$" />
 $endif$
 $if(date-meta)$
   <meta name="dcterms.date" content="$date-meta$" />
 $endif$
-  <title>$if(titre-affiche)$$titre-affiche$$else$$pagetitle$$endif$</title>
+  <!-- `nowrap` sur le titre et la description : pandoc replie les lignes longues du
+       gabarit, et WeasyPrint recopie ce retour tel quel dans /Title, /Subject et le XMP
+       (mesuré : « défis
+et apports »). -->
+  <title>$if(titre-affiche)$$titre-affiche/nowrap$$else$$pagetitle/nowrap$$endif$</title>
   <style>
     $styles.html()$
   </style>

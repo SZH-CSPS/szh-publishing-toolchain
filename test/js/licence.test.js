@@ -500,6 +500,18 @@ test('flèche du hero : les deux mentions du gabarit la portent', () => {
   }
 });
 
+// pandoc replie les lignes longues du gabarit, et WeasyPrint recopie le retour tel quel dans
+// /Title, /Subject et le XMP (mesuré le 30.09.2026 : « défis\net apports »).
+test('gabarit d’article : titre et description du document sans repli de ligne', () => {
+  const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
+  const titre = gabarit.match(/<title>(.*)<\/title>/);
+  assert.ok(titre, '<title> introuvable dans le gabarit');
+  for (const v of titre[1].match(/\$(titre-affiche|pagetitle)[^$]*\$/g)) {
+    assert.match(v, /\/nowrap\$$/, 'variable du <title> sans nowrap : ' + v);
+  }
+  assert.match(gabarit, /<meta name="description" content="\$description\/nowrap\$"/);
+});
+
 // WeasyPrint 70 balise tout <svg> inline en /Figure et n'en lit le texte de remplacement que
 // dans un <title> : un décor en <svg> fait tomber PDF/UA-1 sur chaque article (mesuré le
 // 23.09.2026). Filigrane et flèches sont donc des fonds CSS.

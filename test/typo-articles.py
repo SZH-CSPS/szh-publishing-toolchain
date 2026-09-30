@@ -296,9 +296,10 @@ CAS_TITRE = [
     # Sans le filtre, WeasyPrint remplit la première ligne et laisse « régulière » seule
     # (mesuré sur test/accessibilite/out/participation-fr.pdf, rendu du 08.09.2026).
     ("L3", "fr", "titre-affiche", "La participation sociale en classe régulière",
-     # L'espace du point de coupure disparaît : c'est le <br> qui porte la fin de ligne,
-     # et une espace traînante devant lui serait de toute façon ravalée.
-     "La" + NB + "participation⏎sociale en" + NB + "classe régulière"),
+     # L'espace du point de coupure reste DEVANT le <br> : ravalée en fin de ligne à la
+     # composition, elle sépare les deux mots dans le signet du PDF, tiré du texte du <h1>
+     # (sans elle : « participationsociale », mesuré le 30.09.2026).
+     "La" + NB + "participation ⏎sociale en" + NB + "classe régulière"),
     # Rien à faire : ce titre-là se replie DÉJÀ en escalier (304 px puis 340 px), et le
     # filtre s'abstient plutôt que de déplacer une coupure qui est juste.
     ("L3", "fr", "titre-affiche", "Développer ses compétences relationnelles grâce au handicap",
