@@ -399,7 +399,13 @@ test('hors ligne : la file d’attente reçoit le fichier, puis se vide au lance
   } finally { p.fin(); }
 });
 
-test('ancrage introuvable : file d’attente ; ancrage résolu : _Systeme\\compteurs sous lui', () => {
+// L'ancrage est rendu en antislashs (lib/rapport-erreur.js) : exact sous Windows seulement.
+const HORS_WINDOWS = process.platform !== 'win32'
+  ? 'chemins Windows — joué par le job contrats-windows'
+  : false;
+
+test('ancrage introuvable : file d’attente ; ancrage résolu : _Systeme\\compteurs sous lui',
+  { skip: HORS_WINDOWS }, () => {
   const p = poste({ SZH_COMPTEURS: null });
   try {
     let r = compteurs.ecrireCompteurs({ source: 'import', mesures: { auteurs: 1 } });
