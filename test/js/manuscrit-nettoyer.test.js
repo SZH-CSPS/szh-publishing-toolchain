@@ -1252,3 +1252,26 @@ test('manuscrit-nettoyer.py : traçabilité note -> appel — numéro de sortie,
       + 'jamais être prise pour une alerte de note');
     assert.strictEqual(alerteCorps.para, 1);
   });
+
+// ROR/ORCID (manuscrit_identifiants) : le rapport porte une clé `identifiants` en cas B, et
+// --sans-reseau ne tente aucune requête (le réseau lui-même est éprouvé dans
+// manuscrit-identifiants.test.js, avec un annuaire simulé).
+test('manuscrit-nettoyer.py : rapport.identifiants présent en cas B, aucune requête avec --sans-reseau',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(true));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.ok(rapport.identifiants, 'la clé identifiants doit exister en cas B');
+      assert.strictEqual(rapport.identifiants.reseau, false);
+      assert.strictEqual(rapport.identifiants.requetes, 0);
+      assert.strictEqual(rapport.alertes.origine.identifiants, 0);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });

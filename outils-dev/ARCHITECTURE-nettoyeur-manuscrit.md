@@ -85,6 +85,7 @@ importable porte un tiret bas, une CLI porte un tiret**.
 | `pipeline/manuscrit_regles.py` | le catalogue structurel et le moteur d'alertes (§7) | les formats |
 | `pipeline/manuscrit_vale.py` | le pont Vale (§7) | les décisions |
 | `pipeline/manuscrit_biblio.py` | contrôle de bibliographie APA 7 (§7 bis) | Word, OpenDocument |
+| `pipeline/manuscrit_identifiants.py` | ROR et ORCID des autrices et auteurs, cherchés en réseau (§5.5 sexies) | Word, OpenDocument, le gabarit |
 | `pipeline/manuscrit_annoter.py` | révisions et commentaires Word (§7 ter) | les décisions |
 | `pipeline/manuscrit-nettoyer.py` | la CLI (§8) | tout le reste ; il ne fait que brancher |
 
@@ -462,7 +463,7 @@ segments, chacun un seul mot capitalisé, valent Nom puis Prénom (ordre invers�
 distingue) ; 3) une ligne sans nom mais avec un e-mail/ORCID/mot d'institution se rattache à la
 DERNIÈRE fiche ouverte, seulement si un seul nom a été introduit juste avant. Un numéro de
 téléphone est reconnu et **écarté** — le schéma `EnTete.auteurs` n'a pas de champ téléphone.
-`ROR` n'est jamais rempli (la rédaction le choisit dans le cockpit).
+`ROR` n'est jamais lu dans le manuscrit : il est cherché après coup (§5.5 sexies).
 
 L'**ordre prénom/nom** à l'intérieur d'un segment n'appartient plus à ce module : il est demandé
 à `manuscrit_noms` (§5.5 ter). Chaque fiche porte donc trois champs de plus — `ordre_confiance`,
@@ -834,6 +835,36 @@ le réseau — faire patienter tout le monde pour un millier de notices serait u
 visible, quand l'absence de base ne coûte qu'un signal sur quatre. Conséquence assumée : sur un
 poste tout neuf, le premier nettoyage peut tourner sans la base, le suivant l'aura. Hors ligne
 reste un état normal du poste, jamais une erreur affichée.
+
+### 5.5 sexies ROR et ORCID des autrices et auteurs — `manuscrit_identifiants.py`
+
+Après l'extraction de l'en-tête (cas B seulement), la CLI appelle `enrichir_auteurs()` sur
+`EnTete.auteurs`. Le module est pur ; `_requete()` est son seul point réseau (délai 4 s,
+injectable). `--sans-reseau` ne coupe que les requêtes : le contrôle de clé des ORCID du
+manuscrit a toujours lieu.
+
+- **ROR** : auteur avec institution et sans ROR -> `api.ror.org/v2/organizations?affiliation=`,
+  **seul l'item `chosen`** est retenu (mesuré : aucun faux positif parmi les `chosen`, mais le
+  premier item non choisi est souvent faux). Cache par texte d'institution. Forme écrite :
+  `https://ror.org/<id>`.
+- **ORCID absent du manuscrit** : recherche `expanded-search` par nom de famille et prénom. Un
+  candidat n'est retenu que si nom ET premier prénom (aplatis) concordent, ET si l'une de ses
+  institutions concorde avec celle de l'auteur (égalité aplatie avec un nom de l'organisation
+  ROR trouvée, sinon ratio difflib ≥ 0,85 ou inclusion d'au moins 8 caractères). Il en faut
+  **exactement un**. Un homonyme unique sans institution concordante ne remplit rien :
+  alerte `Identifiants.OrcidCandidat`.
+- **ORCID du manuscrit** : jamais remplacé. Clé ISO 7064 mod 11-2 contrôlée (sans réseau,
+  `Identifiants.OrcidInvalide`) ; en réseau, `/person` doit porter le même nom
+  (`Identifiants.OrcidNomDivergent`). Un 404 vaut aussi `OrcidInvalide`.
+- Un champ déjà rempli n'est jamais écrasé. Une panne d'un service l'éteint pour le reste de
+  l'exécution ; jamais d'exception.
+- **« À vérifier »** : chaque valeur trouvée est listée dans `auteur['a_verifier']`, écrite par
+  `manuscrit_gabarit` en révision Word suivie (`w:ins`, auteur « Recherche ROR/ORCID — à vérifier »
+  / « ROR/ORCID-Suche — bitte prüfen »), et signalée par une alerte de rapport
+  (`Identifiants.RorPropose` / `OrcidPropose`, suggestion). Les `w:id` sont renumérotés à
+  l'écriture au-delà du maximum du document, avant que `manuscrit_annoter` ne prenne le relais.
+- Rapport : clé `identifiants` (`requetes`, `ror_trouves`, `orcid_trouves`, `orcid_candidats`,
+  `orcid_invalides`, `orcid_nom_divergent`, `indisponible`), `null` en cas A.
 
 ---
 
@@ -1405,7 +1436,7 @@ transmis à `manuscrit_biblio.analyser_bibliographie(reseau=…)` — le lanceur
 production, les tests le posent toujours (déterminisme).
 
 **Le rapport JSON** porte : `controles.vale` (`'effectue' | 'indisponible'`), `bibliographie`
-(les stats de `manuscrit_biblio.analyser_bibliographie()`), `annotation` (les stats de
+(les stats de `manuscrit_biblio.analyser_bibliographie()`), `identifiants` (§5.5 sexies), `annotation` (les stats de
 `manuscrit_annoter.annoter()`, ou `null`), `decisions.entete` (donnée fusionnée en-tête + bloc
 final), `alertes.origine`, `dans_docx` sur chaque alerte, `compteurs.notes`/`revisions`/
 `commentaires_poses`.

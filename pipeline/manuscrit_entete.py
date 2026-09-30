@@ -193,6 +193,10 @@ class EnTete:
 # lot D à chercher un préfixe de phrase dans `ordre_motif` — fragile dans un dépôt où les
 # messages sont reformulés souvent, sans qu'aucun test ne devienne rouge pour le signaler.
 # Un état voyage comme une donnée, jamais comme une sous-chaîne de prose.
+# `ror` et `a_verifier` : deux champs de plus EN FIN de tuple, pour la même raison. Jamais lus
+# dans le manuscrit : `manuscrit_identifiants.enrichir_auteurs()` les remplit après coup
+# (`ror` = URL https://ror.org/…, `a_verifier` = liste des champs `ror`/`orcid` trouvés par
+# recherche et non écrits par l'auteur — le gabarit les écrit en révision Word suivie).
 # `manuscrit_gabarit._remplir_fiche_auteur()` (vérifié en lisant le fichier avant d'écrire
 # cette ligne) ne lit QUE les champs d'une liste blanche fermée (_CHAMPS_AUTEUR_GABARIT :
 # prenom/nom/fonction/institution/orcid/email) — ces trois champs de plus dans le dict ne le
@@ -215,7 +219,7 @@ class EnTete:
 # la propagation doit éviter. Choix du lot, pas du brief — signalé comme tel au rapport.
 CHAMPS_AUTEUR_ENTETE = ('prenom', 'nom', 'fonction', 'institution', 'email', 'orcid',
                          'texte_source', 'ordre_confiance', 'ordre_motif', 'ordre_conflit',
-                         'ordre')
+                         'ordre', 'ror', 'a_verifier')
 
 
 def _nouvel_auteur(prenom, nom, texte_source, ordre_confiance='defaut', ordre_motif='',
@@ -223,7 +227,8 @@ def _nouvel_auteur(prenom, nom, texte_source, ordre_confiance='defaut', ordre_mo
     return {'prenom': prenom, 'nom': nom, 'fonction': '', 'institution': '',
             'email': '', 'orcid': '', 'texte_source': texte_source,
             'ordre_confiance': ordre_confiance, 'ordre_motif': ordre_motif,
-            'ordre_conflit': bool(ordre_conflit), 'ordre': ordre}
+            'ordre_conflit': bool(ordre_conflit), 'ordre': ordre,
+            'ror': '', 'a_verifier': []}
 
 
 # ---------------------------------------------------------------------------------

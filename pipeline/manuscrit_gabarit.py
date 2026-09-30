@@ -70,6 +70,7 @@
 import os
 import re
 import zipfile
+from datetime import datetime, timezone
 
 import manuscrit_modele as mm
 import pronto_modele
@@ -1790,14 +1791,23 @@ _RE_T_XML = re.compile(r'<w:t\b[^>]*>(.*?)</w:t>', re.S)
 # mais sans destination ici, comme avant ce chantier.
 _JETON_VERS_CHAMP_METADONNEES = {'titre': 'titre', 'soustitre': 'sous_titre', 'resume': 'resume'}
 
-# jeton CANON_AUTEUR -> champ du dict `auteur` (manuscrit_entete.CHAMPS_AUTEUR_ENTETE). « ror »
-# (et les clés CLES_AUTEUR_SANS_DESTINATION : adresse/biographie/telephone/photo) n'y figurent
-# PAS : ROR jamais rempli (décision du brief), les autres n'ont pas de champ dans EnTete.auteurs.
+# jeton CANON_AUTEUR -> champ du dict `auteur` (manuscrit_entete.CHAMPS_AUTEUR_ENTETE). Les
+# clés CLES_AUTEUR_SANS_DESTINATION (adresse/biographie/telephone/photo) n'y figurent PAS :
+# elles n'ont pas de champ dans EnTete.auteurs. `ror` n'est jamais lu dans le manuscrit, il
+# vient de manuscrit_identifiants (et reste alors « à vérifier », voir ci-dessous).
 # 'affiliation' est le seul jeton dont le NOM diffère du champ EnTete (`institution`).
 _JETON_VERS_CHAMP_AUTEUR = {
     'prenom': 'prenom', 'nom': 'nom', 'fonction': 'fonction',
-    'affiliation': 'institution', 'orcid': 'orcid', 'email': 'email',
+    'affiliation': 'institution', 'orcid': 'orcid', 'email': 'email', 'ror': 'ror',
 }
+
+# Auteur de révision des valeurs TROUVÉES par recherche (auteur['a_verifier']) : écrites en
+# révision Word suivie, pour que la rédaction les voie et les accepte ou les rejette.
+_AUTEUR_REVISION_IDENTIFIANTS = {'fr': 'Recherche ROR/ORCID — à vérifier',
+                                 'de': 'ROR/ORCID-Suche — bitte prüfen'}
+# `w:id` provisoire d'une de ces révisions : renuméroté dans ecrire() au-delà de tout `w:id`
+# déjà présent dans le document, pour ne jamais coller avec ceux que pose manuscrit_annoter.
+_ID_REVISION_PROVISOIRE = 'SZH-ID-A-RENUMEROTER'
 
 LANGUE_PRODUIT_TEXTE = {'fr': 'français', 'de': 'deutsch'}
 
@@ -1824,15 +1834,20 @@ def _etiquette_premiere_ligne(cellule_xml):
     return _texte_xml_brut(p.group(0)) if p else ''
 
 
-def _inserer_dans_paragraphe(p_xml, valeur):
+def _inserer_dans_paragraphe(p_xml, valeur, revision=None):
     """Ajoute un <w:r> portant `valeur` juste avant le </w:p> qui referme `p_xml` — le
     paragraphe reste par ailleurs inchangé (style, langue). `p_xml` peut être un paragraphe
     isolé ou une cellule qui n'en contient qu'un seul (le tableau des métadonnées, mesuré :
-    chaque cellule « valeur » est un unique paragraphe vide)."""
+    chaque cellule « valeur » est un unique paragraphe vide). `revision` : l'auteur de révision
+    — le run est alors enveloppé dans un <w:ins> (révision suivie, id à renuméroter)."""
     if not valeur:
         return p_xml
     i = p_xml.rindex('</w:p>')
     run = '<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % _echapper(valeur)
+    if revision:
+        run = '<w:ins w:id="%s" w:author="%s" w:date="%s">%s</w:ins>' % (
+            _ID_REVISION_PROVISOIRE, _echapper_attribut(revision),
+            datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), run)
     return p_xml[:i] + run + p_xml[i:]
 
 
@@ -1875,9 +1890,10 @@ def _remplir_table_metadonnees(table_xml, entete):
     return nouveau_xml, trace
 
 
-def _remplir_fiche_auteur(cellule_xml, auteur):
+def _remplir_fiche_auteur(cellule_xml, auteur, langue='fr'):
     """(cellule remplie, nombre de champs remplis) — une ligne « Étiquette : » (FR) ou
-    « Étiquette: » (DE, collée) par champ, ROR jamais rempli (décision du brief). L'étiquette
+    « Étiquette: » (DE, collée) par champ ; un champ de `auteur['a_verifier']` (trouvé par
+    recherche, pas lu dans le manuscrit) est écrit en révision suivie. L'étiquette
     reconnue contre CANON_AUTEUR — même mécanisme que _remplir_table_metadonnees, jamais de
     suffixe de langue à retirer ici (« Vorname: », pas « Vorname (DE): »). Ne modifie QUE les
     paragraphes dont l'étiquette est reconnue ; toute ligne inconnue du gabarit reste telle
@@ -1897,13 +1913,15 @@ def _remplir_fiche_auteur(cellule_xml, auteur):
         valeur = (auteur.get(champ) or '').strip()
         if not valeur:
             continue
-        nouveau_p = _inserer_dans_paragraphe(p_xml, valeur)
+        revision = (_AUTEUR_REVISION_IDENTIFIANTS.get(langue, _AUTEUR_REVISION_IDENTIFIANTS['fr'])
+                    if champ in (auteur.get('a_verifier') or []) else None)
+        nouveau_p = _inserer_dans_paragraphe(p_xml, valeur, revision)
         nouvelle_cellule = nouvelle_cellule.replace(p_xml, nouveau_p, 1)
         rempli += 1
     return nouvelle_cellule, rempli
 
 
-def _remplir_table_auteurs(table_xml, entete):
+def _remplir_table_auteurs(table_xml, entete, langue='fr'):
     """Une fiche par auteur reconnu, à l'endroit exact où pronto_modele.extraire_table_
     auteurs() va les relire. Plus d'auteurs que de fiches dans le gabarit : la DERNIÈRE fiche
     est dupliquée autant de fois que nécessaire (décision du brief). Moins d'auteurs : les
@@ -1942,7 +1960,7 @@ def _remplir_table_auteurs(table_xml, entete):
         if len(cellules) != 2:
             nouvelles_fiches.append(ligne)
             continue
-        nouvelle_cellule, rempli = _remplir_fiche_auteur(cellules[1], auteurs[i])
+        nouvelle_cellule, rempli = _remplir_fiche_auteur(cellules[1], auteurs[i], langue)
         if rempli:
             ligne = ligne.replace(cellules[1], nouvelle_cellule, 1)
             trace.append({'portee': 'document', 'source': None, 'decision': 'entete_auteur',
@@ -1953,6 +1971,20 @@ def _remplir_table_auteurs(table_xml, entete):
     ancien_bloc = ''.join(lignes)
     nouveau_bloc = entete_ligne + ''.join(nouvelles_fiches)
     return table_xml.replace(ancien_bloc, nouveau_bloc, 1), trace
+
+
+def _numeroter_revisions(doc_xml):
+    """Remplace chaque `w:id` provisoire des révisions d'identifiants par un entier unique,
+    au-delà du plus grand `w:id` déjà présent dans le document."""
+    if _ID_REVISION_PROVISOIRE not in doc_xml:
+        return doc_xml
+    suivant = max([int(m) for m in re.findall(r'\bw:id="(\d+)"', doc_xml)], default=0) + 1
+    morceaux = doc_xml.split('w:id="%s"' % _ID_REVISION_PROVISOIRE)
+    sortie = [morceaux[0]]
+    for i, morceau in enumerate(morceaux[1:]):
+        sortie.append('w:id="%d"' % (suivant + i))
+        sortie.append(morceau)
+    return ''.join(sortie)
 
 
 def _porte_szh_cle(tableau):
@@ -2056,7 +2088,7 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
     trace_entete = []
     if entete is not None:
         table1_xml, trace_meta = _remplir_table_metadonnees(table1_xml, entete)
-        table2_xml, trace_auteurs = _remplir_table_auteurs(table2_xml, entete)
+        table2_xml, trace_auteurs = _remplir_table_auteurs(table2_xml, entete, langue)
         trace_entete = trace_meta + trace_auteurs
 
     i_sect = interieur.rindex('<w:sectPr')
@@ -2133,7 +2165,7 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None,
 
     nouveau_corps = (table1_xml + PARAGRAPHE_VIDE + table2_xml + PARAGRAPHE_VIDE
                       + prefixe_mots_cles_xml + corps_xml + sect_xml)
-    nouveau_doc_xml = preambule + nouveau_corps + queue
+    nouveau_doc_xml = _numeroter_revisions(preambule + nouveau_corps + queue)
 
     nouvelles_relations = [
         (rid, REL_IMAGE, 'media/' + nomfichier, False)

@@ -100,6 +100,7 @@ import manuscrit_typo as mt
 import manuscrit_regles as mr
 import manuscrit_vale as mv
 import manuscrit_biblio as mb
+import manuscrit_identifiants as mi
 import manuscrit_gabarit as mg
 import manuscrit_annoter as ma
 
@@ -1087,6 +1088,8 @@ def principal(argv):
     indices_entete = {}
     paragraphes_entete_ctx = []
     auteurs_ctx = []
+    alertes_identifiants = []
+    stats_identifiants = None
     if gabarit == 'B':
         # Noms de bibliographie (§6.1) — AVANT extraire_entete(), sur le document ENCORE
         # complet (voir _noms_de_bibliographie() plus haut pour le pourquoi).
@@ -1124,13 +1127,24 @@ def principal(argv):
                 % (entete.titre, len(entete.auteurs), len(entete.resume),
                    len(entete.mots_cles)))
 
+        # ROR et ORCID des autrices et auteurs : cherchés en réseau, écrits en révision
+        # « à vérifier » par le gabarit, jamais sur la foi du seul nom (manuscrit_identifiants).
+        progres('recherche des ROR et ORCID des autrices et auteurs...')
+        alertes_identifiants, stats_identifiants = mi.enrichir_auteurs(
+            entete.auteurs, langue, reseau=not args['sans_reseau'])
+        progres('identifiants : %d ROR et %d ORCID trouvé(s), %d candidat(s), %d requête(s) '
+                'en panne' % (stats_identifiants['ror_trouves'],
+                              stats_identifiants['orcid_trouves'],
+                              stats_identifiants['orcid_candidats'],
+                              stats_identifiants['indisponible']))
+
     progres('classement des titres...')
     stats_titres, trace_titres = _classer_titres_selon_le_cas(document, gabarit)
 
     progres('nettoyage de la mise en forme...')
     stats_formatage, trace_formatage = mm.nettoyer_mise_en_forme(document)
 
-    alertes_manuelles = []
+    alertes_manuelles = list(alertes_identifiants)
     alerte_langue = _alerte_langue_produit(document.langue, langue)
     if alerte_langue:
         alertes_manuelles.append(alerte_langue)
@@ -1354,6 +1368,7 @@ def principal(argv):
             1 for a in alertes if a['rule'] in ('Langue.DesaccordProduit', 'Annotation.Impossible')),
         'vale': len(alertes_vale),
         'bibliographie': len(alertes_biblio),
+        'identifiants': len(alertes_identifiants),
         'typographie': len(alertes_typo_reprises) + sum(1 for a in alertes_manuelles
                                                           if a['rule'] == 'Typo.ApplicationImpossible'),
     }
@@ -1408,6 +1423,7 @@ def principal(argv):
             'ecriture': resultat_ecriture,
         },
         'bibliographie': stats_biblio,
+        'identifiants': stats_identifiants,
         'annotation': stats_annotation,
         'alertes': {'total': len(alertes), 'error': n_error, 'warning': n_warning,
                     'suggestion': n_suggestion, 'liste': alertes, 'groupes': groupes,
