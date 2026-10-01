@@ -227,11 +227,18 @@ def texte_du_md(chemin_md):
 
 
 class _TexteHtml(HTMLParser):
-    def __init__(self):
+    """`avec_images` : le src et l'alt d'un <img> comptent comme du texte. Bon pour retrouver une
+    valeur de bloc (un alt écrit dans le Word), mauvais pour une cellule : le Word n'en porte
+    pas, et mêlés à une cellule « texte / image / texte » ils la rendent introuvable."""
+
+    def __init__(self, avec_images=False):
         super().__init__(convert_charrefs=True)
         self.morceaux = []
+        self.avec_images = avec_images
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'img' and not self.avec_images:
+            return
         for k, v in attrs:
             if v and (k.startswith('data-') or k in ('alt', 'src')):
                 self.morceaux.append(' ' + v + ' ')
@@ -240,7 +247,7 @@ class _TexteHtml(HTMLParser):
         self.morceaux.append(data)
 
 
-def texte_des_tables(dossier):
+def texte_des_tables(dossier, avec_images=False):
     tables = os.path.join(dossier, 'tables')
     morceaux = []
     if os.path.isdir(tables):
@@ -248,7 +255,7 @@ def texte_des_tables(dossier):
             if nom.endswith('.html'):
                 try:
                     with open(os.path.join(tables, nom), encoding='utf-8') as f:
-                        p = _TexteHtml()
+                        p = _TexteHtml(avec_images)
                         p.feed(f.read())
                         morceaux.append(''.join(p.morceaux))
                 except OSError:
@@ -532,7 +539,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
     chemin_md = os.path.join(dossier, slug + '.md')
     blocs, t_ordinaux, logos = lire_instructions(os.getenv('SZH_META'))
     relu, brut = texte_du_md(chemin_md)
-    tables = texte_des_tables(dossier)
+    tables = texte_des_tables(dossier, avec_images=True)
     reference = cle((relu or brut) + '\n' + tables)
     try:
         with open(chemin_md, encoding='utf-8') as f:
@@ -586,7 +593,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
         perdus = tableaux_perdus(
             chemin_docx, t_ordinaux,
             {int(b['cible']) for b in blocs if b['lettre'] == 'FG' and b['cible'].isdigit()},
-            sans_blancs((relu or brut) + '\n' + tables),
+            sans_blancs((relu or brut) + '\n' + texte_des_tables(dossier)),
             set(mots((relu or brut) + '\n' + tables + '\n' + fiche)))
     except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as e:
         print('[controle-import] tableaux du Word illisibles : %s' % e, file=sys.stderr)

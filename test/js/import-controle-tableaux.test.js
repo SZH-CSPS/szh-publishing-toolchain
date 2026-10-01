@@ -38,7 +38,7 @@ function wordDeuxTableaux(base) {
 
 // Un article « déjà converti » : le .md, tables/ et la fiche, au choix. Rend les avertissements
 // `tableau-texte-perdu` de la passe 1.
-function controle(base, { md, tables, fiche, instructions }) {
+function controle(base, { md, tables, fiche, instructions, word }) {
   const dossier = path.join(base, 'article');
   fs.mkdirSync(path.join(dossier, 'tables'), { recursive: true });
   fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
@@ -48,7 +48,7 @@ function controle(base, { md, tables, fiche, instructions }) {
   fs.writeFileSync(path.join(dossier, 'essai.meta.yaml'), fiche || '', 'utf8');
   const meta = path.join(base, 'instructions.txt');
   fs.writeFileSync(meta, instructions || '', 'utf8');
-  const r = cp.spawnSync(PYTHON, [CONTROLE, '--avant-medias', wordDeuxTableaux(base), 'essai', dossier,
+  const r = cp.spawnSync(PYTHON, [CONTROLE, '--avant-medias', (word || wordDeuxTableaux)(base), 'essai', dossier,
     path.join(base, 'etat.json')], { encoding: 'utf8', env: Object.assign({}, F.ENV_UTF8, {
     SZH_META: meta, SZH_SLUG: 'essai' }) });
   assert.strictEqual(r.status, 0, r.stderr);
@@ -121,5 +121,37 @@ test('tableaux du Word : les étiquettes « SZH Cle » d’un tableau consommé 
         SZH_META: meta, SZH_SLUG: 'essai' }) });
       assert.strictEqual(r.status, 0, r.stderr);
       assert.ok(r.stderr.indexOf('tableau-texte-perdu') === -1, r.stderr);
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
+
+// Une image au milieu d'une cellule : le Word n'en porte pas le texte, tables/ en porte le src
+// et l'alt. Ils ne doivent pas faire passer la cellule pour perdue.
+function wordCelluleAvecImage(base) {
+  return F.fabriquer(base, 'source', { corps: [
+    p('Un titre pour l’essai', 'Heading1'),
+    tableau([[[p('Anna Muster'), p('Beat Beispiel')]]]),
+  ] });
+}
+
+for (const [nom, img] of [['src seul', '<img src="media/essai-fig-01.png" alt="">'],
+  ['src et alt', '<img src="media/essai-fig-01.png" alt="Portrait de groupe">']]) {
+  test('tableaux du Word : une image dans une cellule (' + nom + ') ne la fait pas passer pour perdue',
+    { skip: sansPython }, () => {
+      const base = F.dossierJetable();
+      try {
+        const html = '<table><tr><td>Anna Muster<br>' + img + '<br>Beat Beispiel</td></tr></table>';
+        assert.deepStrictEqual(
+          controle(base, { md: 'Un titre pour l’essai\n', tables: [html], word: wordCelluleAvecImage }), []);
+      } finally { fs.rmSync(base, { recursive: true, force: true }); }
+    });
+}
+
+test('tableaux du Word : la même cellule sans son texte est toujours signalée malgré l’image',
+  { skip: sansPython }, () => {
+    const base = F.dossierJetable();
+    try {
+      const html = '<table><tr><td>Anna Muster<br><img src="media/essai-fig-01.png" alt=""></td></tr></table>';
+      const dits = controle(base, { md: 'Un titre pour l’essai\n', tables: [html], word: wordCelluleAvecImage });
+      assert.strictEqual(dits.length, 1, dits.join('\n'));
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
   });
