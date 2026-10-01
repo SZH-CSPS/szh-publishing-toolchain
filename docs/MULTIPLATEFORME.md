@@ -175,3 +175,79 @@ déploiement.
 - Des tâches planifiées équivalentes sur chaque OS.
 - Porter l'AppUserModelID.
 - Tout faire d'un bloc.
+
+## Au-delà du poste : les autres architectures envisagées
+
+Examinées le 01.10.2026 avec Robin. Les coûts sont des ordres de grandeur pour une
+personne, pas des devis.
+
+### Ce que l'on perd en quittant Windows
+
+On ne perd rien sur le fond : la compilation reste la même image, donc des PDF identiques
+et la même conformité PDF/UA, et le cockpit garde toutes ses fonctions. Ce qui se perd tient
+au « produit Windows » autour de l'éditeur :
+
+- **l'application distincte**, le lanceur avec son icône et ses entrées de menu, qui
+  devient une vue dans VSCodium ;
+- **les liens `szh://` déjà envoyés**, servis sous Windows pendant une transition ;
+- **la mise à jour silencieuse par tâche planifiée**, qui devient une vérification à
+  l'ouverture ;
+- **l'installation commune** dans `C:\ProgramData`, qui devient une installation par
+  utilisateur ;
+- **le geste « joindre le PDF »** ;
+- **sous Linux, OneDrive** : pas de client officiel, donc pas de fichiers à la demande ni
+  de co-édition garantie.
+
+À cela s'ajoutent la double maintenance pendant la transition et, hors Windows,
+l'installation de Podman.
+
+### VS Code dans le navigateur
+
+- **vscode.dev ou github.dev, l'extension tournant dans le navigateur : non.** 47 des 73
+  modules du cockpit lisent ou écrivent des fichiers, 10 lancent des processus, et la
+  chaîne (pandoc, WeasyPrint, make, veraPDF) ne tourne pas dans un navigateur.
+- **code-server ou openvscode-server sur un serveur : faisable.** Le cockpit et la chaîne
+  tournent sur le serveur, à partir de la même image OCI, et le poste n'a qu'un
+  navigateur. Les préalables sont les étapes 1 et 2 de ce document.
+
+Les choix examinés pour un serveur au bureau :
+
+| Sujet | Choix | Conditions |
+|---|---|---|
+| Stockage | fichiers sur le serveur, sauvegarde ailleurs (restic ou borg, versionnée et chiffrée, vers un NAS ou un stockage en Suisse) | essai de restauration planifié ; export ou accès pour ceux qui lisent aujourd'hui SharePoint (secrétariat, `_NewsUndActu`, archives, `_Systeme`) |
+| Identité | un compte par personne, propre à la plateforme (un conteneur code-server par rédacteur, derrière Caddy ou Authelia) | un compte partagé rendrait la co-édition et les rapports aveugles |
+| Hébergement | Docker sur Debian ou Ubuntu LTS minimal, `unattended-upgrades` | HTTPS obligatoire même en réseau local, faute de quoi les webviews ne fonctionnent pas ; un VPN si l'on veut le télétravail |
+| Mises à jour | correctifs de l'OS automatiques ; code-server épinglé, monté volontairement deux à trois fois par an ; notre image tirée à chaque release | un responsable désigné, et une procédure écrite et essayée pour remonter le serveur |
+
+### Comparaison des maintenances
+
+| | Flotte Windows (aujourd'hui) | Serveur au bureau |
+|---|---|---|
+| Code d'infrastructure | ≈ 14 400 lignes de PowerShell, plus les doublons PS/JS et leurs tests | un `docker-compose`, un proxy, des scripts de sauvegarde |
+| Travail récurrent | continu, piloté par les incidents de poste (WSL, OneDrive, mises à jour) | quelques heures par trimestre, surtout planifiées |
+| Une release | appliquée en silence sur chaque poste, avec un risque par poste | un `docker pull`, avec un retour en arrière immédiat |
+| Si l'équipe grandit | le coût monte | le coût est à peu près stable |
+| Risque principal | dérive des postes, OneDrive | point unique de panne, sauvegarde |
+
+La flotte coûte plus au quotidien. Le serveur coûte cher une fois, à la transition, puis
+peu, à condition qu'il ait un responsable.
+
+### Les options, de la plus légère à la plus lourde
+
+| Option | Principe | Coût | Avis |
+|---|---|---|---|
+| A. Statu quo amélioré | l'étape 1 seule | 2 à 3 sem. | aucun risque, allège déjà la maintenance |
+| B. Client lourd et serveur de compilation | VSCodium reste sur les postes ; la compilation part vers un serveur du bureau (une API devant l'image Docker) au lieu de la WSL | 1 à 2 mois | **meilleur rapport gain/risque** : plus de WSL sur les postes, rien ne change pour la rédaction |
+| C. code-server au bureau | tout tourne sur le serveur | 2,5 à 4 mois | plus de flotte du tout ; B en est une marche naturelle |
+| D. Webapp sur mesure | un éditeur Markdown (CodeMirror ou Monaco), les formulaires actuels, `lib/` en serveur Node | 6 à 10 mois | seulement si l'interface de VS Code freine la rédaction ; c'est un projet produit, et l'on devient mainteneur d'un éditeur |
+| E. Plateforme existante | Kotahi et Ketida (Coko Foundation, Paged.js), Fidus Writer | plusieurs mois | non recommandé : on perd la chaîne (typographie, contrôles, PDF/UA patché, FALC) |
+| F. Application Electron ou Tauri | — | — | écartée |
+
+Le capital réutilisable dans tous les cas :
+
+- la chaîne de compilation (image, filtres, maquettes, patchs) ;
+- le code métier de `lib/` ;
+- les formulaires de `media/`.
+
+La question qui départage les options : est-ce l'interface de VS Code qui gêne la
+rédaction (D), ou la maintenance des postes qui pèse (B puis C) ?
