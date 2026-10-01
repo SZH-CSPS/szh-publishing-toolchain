@@ -1,6 +1,6 @@
 // pipeline/manuscrit_identifiants.py — ROR et ORCID des autrices et auteurs (contrat §5.5
-// sexies), et leur écriture « à vérifier » par manuscrit_gabarit. Module pur, appelé depuis le
-// Python de Windows (PYTHON de gardes.js).
+// sexies), et leur écriture « à vérifier » par manuscrit_gabarit. Module pur, appelé par
+// python() de gardes.js.
 //
 //   node --test test/js/manuscrit-identifiants.test.js
 //
@@ -15,8 +15,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, pythonSortie, sansPython, cheminPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -25,8 +24,8 @@ const GABARIT_DE = path.join(RACINE, 'revue-template', "Pronto - modele d'articl
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
-function python(programme, args) {
-  return cp.spawnSync(PYTHON, ['-c', programme].concat(args || []), {
+function lancerPython(programme, args) {
+  return python(['-c', programme].concat(args || []), {
     encoding: 'utf8', env: ENV_UTF8, maxBuffer: 1024 * 1024 * 16,
   });
 }
@@ -35,7 +34,7 @@ function python(programme, args) {
 // `REQUETES` garde chaque url demandée ; MODE_PANNE='urlerror' simule un réseau coupé.
 const PREAMBULE = `
 import sys, os, json, urllib.error, urllib.parse
-sys.path.insert(0, ${JSON.stringify(PIPELINE)})
+sys.path.insert(0, ${JSON.stringify(cheminPython(PIPELINE))})
 import manuscrit_identifiants as mi
 
 def org(ident, *noms):
@@ -110,7 +109,7 @@ def auteur(**kw):
 `;
 
 function executer(corps) {
-  const r = python(PREAMBULE + '\n' + corps, []);
+  const r = lancerPython(PREAMBULE + '\n' + corps, []);
   assert.strictEqual(r.status, 0, 'le script Python a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -376,7 +375,7 @@ print(json.dumps(alertes))`);
 
 const ECRIRE = `
 import sys, json, zipfile
-sys.path.insert(0, ${JSON.stringify(PIPELINE)})
+sys.path.insert(0, ${JSON.stringify(cheminPython(PIPELINE))})
 import manuscrit_modele as mm, manuscrit_entete as me, manuscrit_gabarit as mg
 gabarit, sortie, langue = sys.argv[1], sys.argv[2], sys.argv[3]
 a = me._nouvel_auteur('Andrea', 'Lanfranchi', 'x')
@@ -393,9 +392,9 @@ mg.ecrire(doc, gabarit, sortie, decisions=None, entete=entete, langue=langue)
 function ecrireFiche(gabarit, langue) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-identifiants-'));
   const sortie = path.join(base, 'sortie.docx');
-  const r = python(ECRIRE, [gabarit, sortie, langue]);
+  const r = lancerPython(ECRIRE, [gabarit, sortie, langue]);
   assert.strictEqual(r.status, 0, 'ecrire() a échoué : ' + r.stderr);
-  const lire = python('import sys, zipfile\nsys.stdout.write(zipfile.ZipFile(sys.argv[1]).read("word/document.xml").decode("utf-8"))',
+  const lire = lancerPython('import sys, zipfile\nsys.stdout.write(zipfile.ZipFile(sys.argv[1]).read("word/document.xml").decode("utf-8"))',
     [sortie]);
   return { base, sortie, xml: lire.stdout };
 }
@@ -416,7 +415,7 @@ test('gabarit : ROR et ORCID trouvés écrits en w:ins (auteur FR), le reste en 
       const ids = [...xml.matchAll(/\bw:id="(\d+)"/g)].map((m) => m[1]);
       assert.strictEqual(new Set(ids).size, ids.length, 'w:id uniques dans document.xml');
 
-      const verif = python('import sys, zipfile, xml.dom.minidom\nz = zipfile.ZipFile(sys.argv[1])\n'
+      const verif = lancerPython('import sys, zipfile, xml.dom.minidom\nz = zipfile.ZipFile(sys.argv[1])\n'
         + 'for n in z.namelist():\n  if n.endswith(".xml") or n.endswith(".rels"): xml.dom.minidom.parseString(z.read(n))\nprint("ok")',
         [sortie]);
       assert.strictEqual(verif.status, 0, verif.stderr);
@@ -424,7 +423,7 @@ test('gabarit : ROR et ORCID trouvés écrits en w:ins (auteur FR), le reste en 
       // L'import Word relit le texte inséré (texte_paragraphe itère sur tous les w:r).
       const dossierPronto = path.join(base, 'pronto');
       fs.mkdirSync(dossierPronto);
-      const lu = cp.spawnSync(PYTHON, [PRONTO_LIRE, sortie, 'essai', dossierPronto],
+      const lu = python([PRONTO_LIRE, sortie, 'essai', dossierPronto],
         { encoding: 'utf8', env: Object.assign({}, ENV_UTF8, { SZH_PRODUIT: 'revue' }) });
       assert.strictEqual(lu.status, 0, lu.stderr);
       const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
@@ -450,9 +449,9 @@ test('gabarit : les w:id des révisions d\'identifiants ne collent pas avec ceux
   { skip: sansPython }, () => {
     const { base, sortie } = ecrireFiche(GABARIT_FR, 'fr');
     try {
-      const r = python(`
+      const r = lancerPython(`
 import sys, zipfile, re
-sys.path.insert(0, ${JSON.stringify(PIPELINE)})
+sys.path.insert(0, ${JSON.stringify(cheminPython(PIPELINE))})
 import manuscrit_annoter as ma
 xml = zipfile.ZipFile(sys.argv[1]).read('word/document.xml').decode('utf-8')
 existants = [int(m) for m in re.findall(r'\\bw:id="(\\d+)"', xml)]

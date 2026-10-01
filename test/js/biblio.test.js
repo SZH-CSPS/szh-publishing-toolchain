@@ -24,7 +24,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync, execFileSync } = require('child_process');
 const { sourceExtensionEtLib } = require('./hote-factice');
-const { sauter, sansPandocWsl } = require('./gardes');
+const { python, sauter, sansPandocWsl } = require('./gardes');
 
 process.env.SZH_LANGUE = 'fr';
 
@@ -118,8 +118,7 @@ test("bibliographie : la clé d’appariement est la même en Lua et en Python",
   ].join('\n');
   const fPy = path.join(TRAVAIL, 'cle.py');
   fs.writeFileSync(fPy, programme, 'utf8');
-  const rPy = wsl(['env', 'PYTHONIOENCODING=utf-8', 'python3', cheminVersWsl(fPy),
-    cheminVersWsl(DOCX_META), cheminVersWsl(fTextes)]);
+  const rPy = python([fPy, DOCX_META, fTextes], { encoding: 'utf8' });
   assert.strictEqual(rPy.status, 0, 'harnais Python sorti en ' + rPy.status + ' : ' + rPy.stderr);
 
   const lignes = (s) => String(s).split('\n').map((l) => l.replace(/\r$/, '')).filter(Boolean);

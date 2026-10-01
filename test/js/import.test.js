@@ -21,9 +21,9 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON } = require('./gardes');
+const { python, sansPython } = require('./gardes');
 const { chargerAvecVscodeFactice } = require('./dom-minimal');
+const ENV = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -241,8 +241,7 @@ test('docx-tables.py : un tableau sans en-tête avertit sans faire échouer l’
 // (plus bas dans ce fichier) fabrique le .docx : une table sans w:tblHeader et sans première
 // rangée tout en gras, ce que docx-tables.py lit comme un tableau plat.
 
-test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la première cellule', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la première cellule', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-debut-'));
   try {
     const docx = path.join(base, '02-essai.docx');
@@ -255,9 +254,9 @@ test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la pr
     ]);
     const dossierTables = path.join(base, 'tables');
     fs.mkdirSync(dossierTables);
-    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+    const r = python([DOCX_TABLES, docx, dossierTables], {
       encoding: 'utf8',
-      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '02-essai' })
+      env: Object.assign({}, ENV, { SZH_SLUG: '02-essai' })
     });
     assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
     const ligne = String(r.stderr).split(/\r?\n/)
@@ -282,8 +281,7 @@ test('docx-tables.py : tableau sans en-tête — `debut` porte le texte de la pr
 // en exécutant la chaîne réelle. Si `champs.tableau` se met à porter autre chose qu'une
 // suite de chiffres (le mot « tableau » compris dedans, une légende, une chaîne vide), la
 // substitution {0} de la phrase se dégraderait en silence.
-test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des chiffres', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des chiffres', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-numero-nu-'));
   try {
     const docx = path.join(base, '02-essai.docx');
@@ -295,9 +293,9 @@ test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des 
     ]);
     const dossierTables = path.join(base, 'tables');
     fs.mkdirSync(dossierTables);
-    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+    const r = python([DOCX_TABLES, docx, dossierTables], {
       encoding: 'utf8',
-      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '02-essai' })
+      env: Object.assign({}, ENV, { SZH_SLUG: '02-essai' })
     });
     assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
     const ligne = String(r.stderr).split(/\r?\n/)
@@ -316,8 +314,7 @@ test('docx-tables.py : le champ `tableau`, une fois parsé, ne contient que des 
   }
 });
 
-test('docx-tables.py : première cellule vide — pas de champ `debut`, jamais vide', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+test('docx-tables.py : première cellule vide — pas de champ `debut`, jamais vide', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-tableau-debut-vide-'));
   try {
     const docx = path.join(base, '03-essai.docx');
@@ -329,9 +326,9 @@ test('docx-tables.py : première cellule vide — pas de champ `debut`, jamais v
     ]);
     const dossierTables = path.join(base, 'tables');
     fs.mkdirSync(dossierTables);
-    const r = cp.spawnSync(PYTHON, [DOCX_TABLES, docx, dossierTables], {
+    const r = python([DOCX_TABLES, docx, dossierTables], {
       encoding: 'utf8',
-      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8', SZH_SLUG: '03-essai' })
+      env: Object.assign({}, ENV, { SZH_SLUG: '03-essai' })
     });
     assert.strictEqual(r.status, 0, 'docx-tables.py a échoué : ' + r.stderr);
     const ligne = String(r.stderr).split(/\r?\n/)
@@ -480,13 +477,12 @@ function fabriquerDocxTableaux(chemin, blocs) {
     '    z.writestr("word/document.xml", doc.encode("utf-8"))',
     '    z.writestr("word/styles.xml", styles.encode("utf-8"))'
   ].join('\n');
-  const r = cp.spawnSync(PYTHON, ['-c', programme, chemin, JSON.stringify(blocs)],
-    { encoding: 'utf8' });
+  const r = python(['-c', programme, chemin, JSON.stringify(blocs)],
+    { encoding: 'utf8', env: ENV });
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
-test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', { skip: sansPython }, () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-encadre-fin-'));
   try {
     const docx = path.join(base, '01-essai.docx');
@@ -499,8 +495,8 @@ test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', () => {
       { tbl: [[[['Normal', 'Anna Muster'], ['Normal', 'anna.muster@example.ch']]]] },
       { tbl: [[[['Normal', 'Table des matières']]]] }
     ]);
-    const r = cp.spawnSync(PYTHON, [DOCX_META, docx, '01-essai', base],
-      { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
+    const r = python([DOCX_META, docx, '01-essai', base],
+      { encoding: 'utf8', env: ENV });
     assert.strictEqual(r.status, 0, 'docx-meta.py a échoué : ' + r.stderr);
     const lignes = String(r.stdout).trim().split(/\r?\n/);
     const stats = JSON.parse(lignes[lignes.length - 1]);

@@ -17,9 +17,9 @@
 //
 //   node --test test/js/import-odt.test.js
 //
-// Saute proprement si python, pandoc (PATH Windows) ou LibreOffice manquent — PYTHON et
-// sansPandoc viennent de gardes.js ; soffice n'y est pas connu (aucun autre test n'en a
-// besoin), sa détection est donc ici, comme demandé.
+// Tout tourne dans la WSL, comme la chaîne réelle : saute proprement si Python, pandoc ou
+// LibreOffice y manquent — sansPython et sansPandocWsl viennent de gardes.js ; soffice n'y
+// est pas connu (aucun autre test n'en a besoin), sa détection est donc ici.
 'use strict';
 
 const test = require('node:test');
@@ -28,47 +28,43 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandoc } = require('./gardes');
+const gardes = require('./gardes');
+const { sansPython, sansPandocWsl, cheminPython } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
 const GABARIT_FR = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
 
-// ---- soffice : détection locale, propre à ce test -------------------------------------
+// ---- soffice : détection locale, propre à ce test, là où conversion_odt.py le cherche ----
 function detecterSoffice() {
-  const explicite = process.env.SZH_SOFFICE;
-  if (explicite) { return fs.existsSync(explicite) ? explicite : null; }
-  const candidats = [
-    'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
-    'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'
-  ];
-  for (const c of candidats) { if (fs.existsSync(c)) { return c; } }
-  try {
-    const r = cp.spawnSync('soffice', ['--version'], { encoding: 'utf8', timeout: 5000 });
-    if (!r.error && r.status === 0) { return 'soffice'; }
-  } catch (e) { /* absent */ }
-  return null;
+  if (sansPython) { return false; }
+  const r = gardes.python(['-c', 'import shutil, sys; '
+    + 'sys.exit(0 if (shutil.which("soffice") or shutil.which("libreoffice")) else 1)'],
+  { timeout: 30000 });
+  return !r.error && r.status === 0;
 }
-const SOFFICE = detecterSoffice();
-const sansSoffice = SOFFICE ? false
-  : 'LibreOffice (soffice) introuvable : ni $SZH_SOFFICE, ni un chemin connu, ni le PATH.';
+const sansSoffice = detecterSoffice() ? false
+  : 'LibreOffice (soffice) introuvable à côté de Python (dans la distro SZH-Publishing sous Windows)';
 
-// ---- bash : détection locale (Git Bash sous Windows, requis par import-docx.sh) --------
-function detecterBash() {
-  try {
-    const r = cp.spawnSync('bash', ['--version'], { encoding: 'utf8', timeout: 5000 });
-    return !r.error && r.status === 0;
-  } catch (e) { return false; }
-}
-const sansBash = detecterBash() ? false : 'bash introuvable sur le PATH (Git Bash attendu).';
-
-const SAUT = sansPython || sansPandoc || sansSoffice || sansBash;
+const SAUT = sansPython || (process.platform === 'win32' ? sansPandocWsl : gardes.sansPandoc) || sansSoffice;
 
 function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
+  return gardes.python(args, {
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
   });
+}
+
+// bash de la distro (ou du système hors Windows), comme la chaîne réelle.
+function bash(args, cwd) {
+  if (process.platform !== 'win32') {
+    return cp.spawnSync('bash', args, { cwd, encoding: 'utf8', timeout: 120000,
+      env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
+  }
+  const wslExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+  return cp.spawnSync(fs.existsSync(wslExe) ? wslExe : 'wsl.exe',
+    ['-d', 'SZH-Publishing', '--cd', cheminPython(cwd), '-e', 'env', 'PYTHONIOENCODING=utf-8',
+      'bash'].concat(args.map(gardes.cheminVersWsl)),
+    { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
 // ---- Remplisseur : chirurgie XML ciblée sur le gabarit FR livré -----------------------
@@ -228,10 +224,7 @@ test('import .odt vs .docx : même article (titre, auteur+photo, bloc figure)',
 
       // 2. Le même contenu, en .odt (conversion_odt.py — le module que la chaîne réelle
       //    appelle aussi).
-      const envConv = Object.assign({}, process.env);
-      if (SOFFICE !== 'soffice') { envConv.SZH_SOFFICE = SOFFICE; }
-      const rConv = python([path.join(PIPE, 'conversion_odt.py'), docx, 'odt', chantier],
-        envConv);
+      const rConv = python([path.join(PIPE, 'conversion_odt.py'), docx, 'odt', chantier]);
       assert.strictEqual(rConv.status, 0,
         'conversion .odt impossible : ' + rConv.stderr);
       const odt = path.join(chantier, 'essai.odt');
@@ -242,23 +235,8 @@ test('import .odt vs .docx : même article (titre, auteur+photo, bloc figure)',
       fs.mkdirSync(numero, { recursive: true });
       fs.writeFileSync(path.join(numero, 'ausgabe.yaml'), 'revue: revue\nlang: fr\n', 'utf8');
 
-      // 4. python3 -> l'interprète réel (voir gardes.js, sansPython : sous Windows,
-      //    python3 nu peut tomber sur l'alias d'exécution WindowsApps et rester accroché).
-      const stubDir = path.join(chantier, 'binstub');
-      fs.mkdirSync(stubDir, { recursive: true });
-      fs.writeFileSync(path.join(stubDir, 'python3'),
-        '#!/bin/sh\nexec "' + PYTHON.replace(/\\/g, '/') + '" "$@"\n');
-      fs.chmodSync(path.join(stubDir, 'python3'), 0o755);
-
-      const envBash = Object.assign({}, process.env, {
-        PATH: stubDir + path.delimiter + process.env.PATH
-      });
-      if (SOFFICE !== 'soffice') { envBash.SZH_SOFFICE = SOFFICE; }
-
       function importer(fichier, slug) {
-        const r = cp.spawnSync('bash',
-          [path.join(PIPE, 'import-docx.sh'), fichier, slug, PIPE],
-          { cwd: numero, encoding: 'utf8', env: envBash, timeout: 120000 });
+        const r = bash([path.join(PIPE, 'import-docx.sh'), fichier, slug, PIPE], numero);
         assert.strictEqual(r.status, 0,
           'import-docx.sh a échoué sur ' + path.basename(fichier) + ' :\n' + r.stderr);
         return path.join(numero, 'articles', slug);

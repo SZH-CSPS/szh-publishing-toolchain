@@ -20,32 +20,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
 const { chargerAvecVscodeFactice } = require('./dom-minimal');
+const { python, sansPython, cheminPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
-
-// python3, puis python — même repli que szh-commun.test.js et livre-scinder.test.js. Aucun
-// saut silencieux : un contrôle qui lit une fiche ne doit pas passer au vert sans rien lancer.
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
-const PYTHON = interpretePython();
-
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
-    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
-  });
-}
+const ENV = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-titre-'));
@@ -77,20 +58,16 @@ const CAS_SCISSION = [
   [': sans titre', ': sans titre', '']
 ];
 
-test('docx-meta.py : scinder_titre coupe au deux-points, et seulement là', (t) => {
-  if (!PYTHON) {
-    assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python) : ce contrôle '
-      + 'ne peut pas être déclaré vert sans avoir tourné');
-  }
+test('docx-meta.py : scinder_titre coupe au deux-points, et seulement là', { skip: sansPython }, () => {
   const programme = [
     'import importlib.util, json, sys',
-    'spec = importlib.util.spec_from_file_location("dm", ' + JSON.stringify(DOCX_META) + ')',
+    'spec = importlib.util.spec_from_file_location("dm", ' + JSON.stringify(cheminPython(DOCX_META)) + ')',
     'dm = importlib.util.module_from_spec(spec)',
     'spec.loader.exec_module(dm)',
     'cas = json.loads(sys.argv[1])',
     'print(json.dumps([dm.scinder_titre(dm.normaliser(t)) for t in cas]))'
   ].join('\n');
-  const r = python(['-c', programme, JSON.stringify(CAS_SCISSION.map((c) => c[0]))]);
+  const r = python(['-c', programme, JSON.stringify(CAS_SCISSION.map((c) => c[0]))], { env: ENV });
   assert.strictEqual(r.status, 0, 'scinder_titre a échoué : ' + r.stderr);
   const rendu = JSON.parse(r.stdout);
   CAS_SCISSION.forEach(([brut, titre, sousTitre], i) => {
@@ -121,7 +98,7 @@ function fabriquerDocx(chemin, paragraphes) {
     '    z.writestr("word/document.xml", doc.encode("utf-8"))',
     '    z.writestr("word/styles.xml", styles.encode("utf-8"))'
   ].join('\n');
-  const r = python(['-c', programme, chemin, JSON.stringify(paragraphes)]);
+  const r = python(['-c', programme, chemin, JSON.stringify(paragraphes)], { env: ENV });
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -131,8 +108,8 @@ function importer(slug, paragraphes) {
   try {
     const docx = path.join(base, slug + '.docx');
     fabriquerDocx(docx, paragraphes);
-    const r = python([DOCX_META, docx, slug, base],
-      { SZH_META: path.join(base, 'instructions.txt') });
+    const envOpts = Object.assign({}, ENV, { SZH_META: path.join(base, 'instructions.txt') });
+    const r = python([DOCX_META, docx, slug, base], { env: envOpts });
     assert.strictEqual(r.status, 0, 'docx-meta.py a échoué : ' + r.stderr);
     const lignes = String(r.stdout).trim().split(/\r?\n/);
     return {
@@ -148,8 +125,7 @@ function importer(slug, paragraphes) {
 
 const CORPS = 'Le corps du texte commence ici, avec le et la et les et des mots.';
 
-test('docx-meta.py : un titre à deux-points sans sous-titre remplit les deux champs', (t) => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-meta.py : un titre à deux-points sans sous-titre remplit les deux champs', { skip: sansPython }, () => {
   const vu = importer('01-inclusion', [
     ['Title', 'Inclusion scolaire : le rôle de l’enseignant'],
     ['Normal', CORPS]
@@ -171,8 +147,7 @@ test('docx-meta.py : un titre à deux-points sans sous-titre remplit les deux ch
     'l’avertissement ne nomme pas son article : ' + ligne);
 });
 
-test('docx-meta.py : un sous-titre stylé interdit la coupe du titre', (t) => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-meta.py : un sous-titre stylé interdit la coupe du titre', { skip: sansPython }, () => {
   const vu = importer('02-ecole', [
     ['Title', 'Inclusion scolaire : le rôle de l’enseignant'],
     ['Subtitle', 'Une enquête romande'],
@@ -190,8 +165,7 @@ test('docx-meta.py : un sous-titre stylé interdit la coupe du titre', (t) => {
     'une coupe non faite s’annonce quand même');
 });
 
-test('docx-meta.py : un titre sans deux-points passe inchangé', (t) => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-meta.py : un titre sans deux-points passe inchangé', { skip: sansPython }, () => {
   const vu = importer('03-fruehfoerderung', [
     ['Title', 'Frühförderung in der Praxis'],
     ['Normal', 'Der Text beginnt hier, mit der und die und das und und und für.']

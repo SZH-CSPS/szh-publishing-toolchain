@@ -168,7 +168,7 @@ test('ids de note : uniques dans le document', () => {
 // ── docx-tables.py : la note d'un bloc tableau (ligne FT) part en data-note ──────────────
 const fs = require('fs');
 const os = require('os');
-const { PYTHON, sansPython } = require('./js/gardes');
+const { python, pythonSortie, sansPython } = require('./js/gardes');
 
 test('docx-tables.py : le champ note d’une ligne FT est lu, les clés qui suivent ne le sont pas', { skip: sansPython }, () => {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-ft-'));
@@ -178,7 +178,7 @@ test('docx-tables.py : le champ note d’une ligne FT est lu, les clés qui suiv
     const script = 'import importlib.util,json,sys\n'
       + 'sp=importlib.util.spec_from_file_location("dt",sys.argv[1]);m=importlib.util.module_from_spec(sp);'
       + 'sp.loader.exec_module(m);print(json.dumps(m.blocs_pronto_par_meta()))\n';
-    const r = spawnSync(PYTHON, ['-c', script, path.resolve(__dirname, '..', 'pipeline', 'docx-tables.py')],
+    const r = python(['-c', script, path.resolve(__dirname, '..', 'pipeline', 'docx-tables.py')],
       { encoding: 'utf8', env: Object.assign({}, process.env, { SZH_META: meta }) });
     assert.strictEqual(r.status, 0, r.stderr);
     const bloc = JSON.parse(r.stdout)['1'];

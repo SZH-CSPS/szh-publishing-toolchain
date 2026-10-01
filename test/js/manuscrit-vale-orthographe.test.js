@@ -30,7 +30,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
+const gardes = require('./gardes');
+const { sansPython, sansPandocWsl } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_VALE = path.join(RACINE, 'pipeline', 'manuscrit_vale.py');
@@ -41,8 +42,7 @@ const STYLES_ORTHOGRAPHE = path.join(RACINE, 'pipeline', 'vale', 'styles', 'CSPS
 const DISTRO = 'SZH-Publishing';
 
 function python(args, entree) {
-  return cp.spawnSync(PYTHON, args,
-    { encoding: 'utf8', input: entree, maxBuffer: 64 * 1024 * 1024 });
+  return gardes.python(args, { input: entree, maxBuffer: 64 * 1024 * 1024 });
 }
 
 // ---------------------------------------------------------------------------------
@@ -361,18 +361,10 @@ const PARAGRAPHE_REEL_3VF = "Depuis l'accord intercantonal (CDIP, 2007) en faveu
   + "dites inclusives à l'école, de nombreux élèves, autrefois scolarisés dans la filière "
   + "spécialisée, fréquentent désormais les classes régulières.";
 
-function versCheminWsl(cheminWindows) {
-  const p = cheminWindows.replace(/\\/g, '/');
-  const m = /^([A-Za-z]):\/(.*)$/.exec(p);
-  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : p;
-}
-
 function versCheminWindows(cheminWsl) {
   const m = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(cheminWsl);
   return m ? m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\') : cheminWsl;
 }
-
-const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
 
 const FABRIQUER_DOCX = [
   'import json, sys, zipfile',
@@ -429,13 +421,8 @@ test('chaîne complète (DANS la WSL) : TraitUnion et Orthographe apparaissent d
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
 
-      const entreeWsl = versCheminWsl(entree);
-      const nettoyeurWsl = versCheminWsl(NETTOYEUR);
-      const sortieWsl = versCheminWsl(sortie);
-
-      const r = cp.spawnSync(WSL_EXE, ['-d', DISTRO, '--', 'python3', nettoyeurWsl,
-        entreeWsl, '--produit', 'revue', '--sortie', sortieWsl, '--sans-reseau'],
-        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+      const r = gardes.python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie,
+        '--sans-reseau'], { maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
       // Code de sortie non nul dès qu'une alerte `error` existe (contrat de la CLI, contrôle
       // n°2 de test/js/manuscrit-nettoyer.test.js) : la fixture ci-dessus déclenche aussi une
       // alerte structurelle 'error' sans rapport avec ce chantier (résumé absent, gabarit

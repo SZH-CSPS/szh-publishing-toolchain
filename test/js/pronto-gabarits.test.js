@@ -25,8 +25,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { sansPandocWsl } = require('./gardes');
+const gardes = require('./gardes');
+const { sansPandocWsl, sansPython } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PRONTO_LIRE = path.join(RACINE, 'pipeline', 'pronto-lire.py');
@@ -36,22 +36,10 @@ const GABARITS = [['FR', 'revue', 'fr'], ['DE', 'zeitschrift', 'de']].map(([code
   odt: path.join(RACINE, 'revue-template', "Pronto - modele d'article_" + code + '.odt')
 }));
 
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
-const PYTHON = interpretePython();
-
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
+function python(args, env, opts) {
+  return gardes.python(args, Object.assign({
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
-  });
+  }, opts || {}));
 }
 
 function dossierJetable() {
@@ -59,15 +47,6 @@ function dossierJetable() {
 }
 
 // ---- Conversion .odt -> .docx, dans la WSL (LibreOffice), comme l'import ------------------
-const DISTRO = 'SZH-Publishing';
-const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
-
-function versWsl(p) {
-  const abs = path.resolve(p).replace(/\\/g, '/');
-  const m = abs.match(/^([A-Za-z]):\/(.*)$/);
-  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : abs;
-}
-
 // Le gabarit .odt livré, converti en .docx par pipeline/conversion_odt.py ; une fois par
 // gabarit et par processus. Rend le chemin du .docx (dans un dossier jetable, nettoyé en fin
 // de fichier).
@@ -82,10 +61,8 @@ function odtConverti(G) {
   const source = path.join(base, 'gabarit-' + G.code + '.odt');
   fs.copyFileSync(G.odt, source);
   const sortie = path.join(base, 'converti');
-  const r = cp.spawnSync(fs.existsSync(WSL_EXE) ? WSL_EXE : 'wsl.exe', ['-d', DISTRO, '--',
-    'python3', versWsl(path.join(RACINE, 'pipeline', 'conversion_odt.py')),
-    versWsl(source), 'docx', versWsl(sortie)],
-  { encoding: 'utf8', windowsHide: true, timeout: 240000 });
+  const r = python([path.join(RACINE, 'pipeline', 'conversion_odt.py'), source, 'docx', sortie],
+    null, { timeout: 240000 });
   assert.strictEqual(r.status, 0, 'conversion_odt.py a échoué sur ' + G.odt + ' : ' + r.stderr);
   const docx = path.join(sortie, 'gabarit-' + G.code + '.docx');
   assert.ok(fs.existsSync(docx), 'la conversion n’a pas écrit ' + docx);
@@ -143,8 +120,7 @@ function sansNomsImages(instructions) {
 
 for (const G of GABARITS) {
 test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt (converti) donne la même fiche',
-  { skip: sansPandocWsl }, () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
+  { skip: sansPandocWsl || sansPython }, () => {
   const REVUE_DOCX = G.docx;
   assert.ok(fs.existsSync(REVUE_DOCX), 'gabarit .docx manquant dans revue-template/ : ' + REVUE_DOCX);
 
@@ -321,8 +297,7 @@ function structureDe(chemin) {
 
 for (const G of GABARITS) {
 test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, mêmes blocs — ' + G.code + ' .docx et .odt (converti)',
-  { skip: sansPandocWsl }, () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  { skip: sansPandocWsl || sansPython }, () => {
   const structDocx = structureDe(G.docx);
   const structOdt = structureDe(odtConverti(G));
 
@@ -366,8 +341,7 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
 
 // Le .odt n'est plus lu directement : pronto-lire.py le refuse en le disant, l'import le
 // convertit d'abord (voir plus haut).
-test('pronto-lire.py : un .odt passé directement est refusé, avec un message fr puis de', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un .odt passé directement est refusé, avec un message fr puis de', { skip: sansPython }, () => {
   const base = dossierJetable();
   try {
     const r = python([PRONTO_LIRE, GABARITS[0].odt, 'x', base]);
@@ -403,8 +377,7 @@ function reconnait(chemin) {
   return r.status === 0;
 }
 
-test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un Word hérité ne l’est pas', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
+test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un Word hérité ne l’est pas', { skip: sansPython }, () => {
   assert.ok(fs.existsSync(CHAPITRE_HERITE),
     'le Word hérité de référence manque : ' + CHAPITRE_HERITE);
 
@@ -422,8 +395,7 @@ test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un
     + 'refuse de deviner, et son import échouerait');
 });
 
-test('pronto-lire.py --reconnaitre : un fichier absent ou illisible n’est jamais « au gabarit »', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py --reconnaitre : un fichier absent ou illisible n’est jamais « au gabarit »', { skip: sansPython }, () => {
   // Un document qu'on ne sait pas ouvrir doit partir chez l'ancien lecteur, dont le message
   // d'échec dit mieux que nous ce qui ne va pas : « pas au gabarit » (10), jamais une panne.
   assert.strictEqual(python([PRONTO_LIRE, '--reconnaitre',

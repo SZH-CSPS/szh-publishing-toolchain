@@ -57,8 +57,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython, sauter } = require('./gardes');
+const { python, cheminPython, sansPython, sauter } = require('./gardes');
 
 const fs = require('fs');
 const RACINE = path.resolve(__dirname, '..', '..');
@@ -70,7 +69,7 @@ const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 // `document` : l'état RÉEL du document après les deux passes — c'est lui qu'il faut lire pour
 // vérifier ce qui a survécu, jamais seulement le texte d'un motif de trace.
 function diagnostiquer(document) {
-  const r = cp.spawnSync(PYTHON, [MANUSCRIT_MODELE, '--diagnostic'], {
+  const r = python( [MANUSCRIT_MODELE, '--diagnostic'], {
     input: JSON.stringify(document),
     encoding: 'utf8'
   });
@@ -121,7 +120,7 @@ const CLASSER_SUR_FICHIER = [
 ];
 
 function classerSurFichier(chemin) {
-  const r = cp.spawnSync(PYTHON, ['-c', CLASSER_SUR_FICHIER.join('\n'), path.join(RACINE, 'pipeline'), chemin],
+  const r = python( ['-c', CLASSER_SUR_FICHIER.join('\n'), path.join(RACINE, 'pipeline'), chemin],
     { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, 'lecture/classement du fichier réel a échoué : ' + r.stderr);
   return JSON.parse(r.stdout.trim());
@@ -133,8 +132,7 @@ function classerSurFichier(chemin) {
 // chantier. Attendu : un seul titre, les trois autres au corps, chacun tracé avec sa
 // signature et sa longueur (la nouvelle conception ne parle plus de « suite »).
 
-test('classer_titres : H2 posé sur trois paragraphes -> un titre, trois corps, chacun tracé',
-  { skip: sansPython }, () => {
+test('classer_titres : H2 posé sur trois paragraphes -> un titre, trois corps, chacun tracé', { skip: sansPython }, () => {
     const doc = {
       styles: ['heading 2'],
       blocs: [
@@ -179,8 +177,7 @@ test('classer_titres : H2 posé sur trois paragraphes -> un titre, trois corps, 
 // détruisait sur le corpus réel des intertitres de 13, 17 et 19 mots au seul motif de leur
 // nombre de mots. C'est un des trois chiffres du critère d'acceptation de cette refonte.
 
-test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas rétrogradé',
-  { skip: sansPython }, () => {
+test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas rétrogradé', { skip: sansPython }, () => {
     const dixNeufMots = Array.from({ length: 18 }, (_, i) => 'mot' + (i + 1)).join(' ') + ' final';
     const doc = {
       styles: ['heading 1', 'heading 2'],
@@ -210,8 +207,7 @@ test('classer_titres : intertitre de 19 mots, à la signature des titres -> pas 
 // 3. Zéro faux positif : un document proprement stylé (heading 1, heading 2, corps) ressort
 // STRICTEMENT INCHANGÉ. C'est le contrôle le plus important de tous.
 
-test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne diffère de niveau_declare',
-  { skip: sansPython }, () => {
+test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne diffère de niveau_declare', { skip: sansPython }, () => {
     const doc = {
       styles: ['heading 1', 'heading 2'],
       blocs: [
@@ -248,8 +244,7 @@ test('classer_titres : document déjà bien stylé -> aucun niveau_retenu ne dif
 // « garde-fou 1 » de l'ancienne conception : il n'existe plus de notion de suite du tout, le
 // jugement est individuel dès la passe 4.
 
-test('classer_titres : paragraphe stylé isolé, signature du corps, trop long -> rétrogradé',
-  { skip: sansPython }, () => {
+test('classer_titres : paragraphe stylé isolé, signature du corps, trop long -> rétrogradé', { skip: sansPython }, () => {
     const quaranteMots = Array.from({ length: 39 }, (_, i) => 'mot' + (i + 1)).join(' ') + ' final.';
     const doc = {
       styles: ['heading 2'],
@@ -270,8 +265,7 @@ test('classer_titres : paragraphe stylé isolé, signature du corps, trop long -
 // 4. Déduction complète : aucun style de titre, hiérarchie seulement en gras et en corps 14
 // sur corps 10. Les titres doivent être retrouvés par la seule mise en forme.
 
-test('classer_titres : aucun style de titre -> déduction par gras et par taille (14 sur 10)',
-  { skip: sansPython }, () => {
+test('classer_titres : aucun style de titre -> déduction par gras et par taille (14 sur 10)', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -313,8 +307,7 @@ test('classer_titres : aucun style de titre -> déduction par gras et par taille
 // alors que police, taille et couleur du même paragraphe disparaissent. Contrôle inchangé :
 // il porte sur nettoyer_mise_en_forme(), que cette refonte ne touche pas.
 
-test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/taille/couleur partent',
-  { skip: sansPython }, () => {
+test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/taille/couleur partent', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [{
@@ -446,8 +439,7 @@ test('nettoyer_mise_en_forme : la trace d\'un paragraphe de cellule porte le sou
 // `for blocs_note in document.notes.values(): paragraphes_a_nettoyer.extend(...)` — l'assertion
 // sur le fragment de note rougit.
 
-test('nettoyer_mise_en_forme : descend aussi dans document.notes',
-  { skip: sansPython }, () => {
+test('nettoyer_mise_en_forme : descend aussi dans document.notes', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -545,8 +537,7 @@ test('nettoyer_mise_en_forme : le gras PARTIEL du corps est retiré normalement 
 // dernier.texte.endswith('\n')` et `if premier.texte.startswith('\t')` — les deux assertions
 // ci-dessous rougissent (le \t et le \n restent en place).
 
-test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fin de paragraphe sont réellement retirés',
-  { skip: sansPython }, () => {
+test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fin de paragraphe sont réellement retirés', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [{
@@ -571,8 +562,7 @@ test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fi
 // signature est PAR CONSTRUCTION celle du corps (il EST le corps) : aucun groupe ne peut le
 // distinguer de lui-même. Un faux titre est pire qu'un titre manqué.
 
-test('classer_titres : paragraphe unique de 11 mots, sans style -> pas promu',
-  { skip: sansPython }, () => {
+test('classer_titres : paragraphe unique de 11 mots, sans style -> pas promu', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -593,8 +583,7 @@ test('classer_titres : paragraphe unique de 11 mots, sans style -> pas promu',
 // taille ; l'ancienne conception, qui ne regardait que le gras et la taille, n'en voyait
 // aucun).
 
-test('classer_titres : titres en italique seul (aucune taille ni gras) -> retrouvés',
-  { skip: sansPython }, () => {
+test('classer_titres : titres en italique seul (aucune taille ni gras) -> retrouvés', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -637,8 +626,7 @@ test('classer_titres : titres en italique seul (aucune taille ni gras) -> retrou
 // questions forment UN SEUL niveau cohérent (pas éparpillées sur deux ou trois), et que le
 // rapport SIGNALE le nombre inhabituel plutôt que de le taire.
 
-test('classer_titres : entretien hors gabarit -> questions promues à UN SEUL niveau, signalé',
-  { skip: sansPython }, () => {
+test('classer_titres : entretien hors gabarit -> questions promues à UN SEUL niveau, signalé', { skip: sansPython }, () => {
     const blocs = [para(0, 'Un court paragraphe d introduction qui plante le decor de cet '
       + 'entretien mene a Zurich au printemps dernier pour la revue.', { taille: 20 })];
     let src = 1;
@@ -714,8 +702,7 @@ test('classer_titres : la bibliographie n\'est jamais promue',
 // promu, et un constat le dit explicitement dans la trace (§5.1 : « en cas de doute : rien,
 // et on le dit »).
 
-test('classer_titres : rien ne convainc -> rien promu, et un constat le dit',
-  { skip: sansPython }, () => {
+test('classer_titres : rien ne convainc -> rien promu, et un constat le dit', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -768,8 +755,7 @@ test('classer_titres : rien ne convainc -> rien promu, et un constat le dit',
 // connaît que ces trois valeurs), et le rabattage ci-dessus ne peut jamais inventer un niveau
 // hors de {1,2,3} non plus (voir le commentaire de classer_titres()).
 
-test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAUX, le 4e rabattu sur le niveau 3',
-  { skip: sansPython }, () => {
+test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAUX, le 4e rabattu sur le niveau 3', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -818,8 +804,7 @@ test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAU
 // met juste italique + augmente la taille ». Cinq H2 déclarés en 12 pt italique, plus un
 // sixième paragraphe SANS style en 12 pt italique : les six ressortent au niveau 2.
 
-test('classer_titres : passe 3 bis, adoption -> le 6e paragraphe (12 pt italique, sans style) rejoint les 5 H2',
-  { skip: sansPython }, () => {
+test('classer_titres : passe 3 bis, adoption -> le 6e paragraphe (12 pt italique, sans style) rejoint les 5 H2', { skip: sansPython }, () => {
     const blocs = [];
     let src = 0;
     for (let i = 0; i < 5; i++) {
@@ -858,8 +843,7 @@ test('classer_titres : passe 3 bis, adoption -> le 6e paragraphe (12 pt italique
 // cinq titres, mais c'est très exactement le mécanisme qui, mal gardé, transformerait le cas
 // d'ouverture du chantier (un vrai titre sur quatre déclarés) en fausse évidence.
 
-test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien adopté',
-  { skip: sansPython }, () => {
+test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien adopté', { skip: sansPython }, () => {
     const blocs = [
       para(0, 'Titre H2 un', { style: 'heading 2', niveauDeclare: 2, gras: true, taille: 24 }),
       para(1, 'Titre H2 deux', { style: 'heading 2', niveauDeclare: 2, italique: true, taille: 22 }),
@@ -893,8 +877,7 @@ test('classer_titres : passe 3 bis, aucune majorité -> aucune référence, rien
 // protège le cas d'ouverture du chantier si la rétrogradation avait laissé passer des faux
 // titres à la signature du corps.
 
-test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune référence',
-  { skip: sansPython }, () => {
+test('classer_titres : passe 3 bis, majorité = signature du corps -> aucune référence', { skip: sansPython }, () => {
     const doc = {
       styles: ['heading 2'],
       blocs: [
@@ -971,8 +954,7 @@ test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption 
 // `return False` — plus aucun item de liste n'est jamais candidat, ce contrôle rougit
 // (source=1 reste `exclu_liste`, jamais `promue_liste`).
 
-test('classer_titres : item de liste numérotée isolé, gras, avec numéro manuel -> promu, numéro retiré',
-  { skip: sansPython }, () => {
+test('classer_titres : item de liste numérotée isolé, gras, avec numéro manuel -> promu, numéro retiré', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1005,8 +987,7 @@ test('classer_titres : item de liste numérotée isolé, gras, avec numéro manu
 // Sabotage minimal : dans _voisin_non_vide(), faire `return None` immédiatement (aucun voisin
 // jamais trouvé) — les trois items deviennent chacun « isolé » à tort, ce contrôle rougit.
 
-test('classer_titres : trois items numérotés consécutifs -> jamais promus (vraie liste)',
-  { skip: sansPython }, () => {
+test('classer_titres : trois items numérotés consécutifs -> jamais promus (vraie liste)', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1037,8 +1018,7 @@ test('classer_titres : trois items numérotés consécutifs -> jamais promus (vr
 // (ne garder que `p.liste is None`) — une puce isolée devient candidate, ce contrôle rougit si
 // elle porte en plus une signature de titre (gras).
 
-test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras',
-  { skip: sansPython }, () => {
+test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1066,8 +1046,7 @@ test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras
 // candidate de sa signature, donc au corps... sauf si elle qualifie, auquel cas elle est
 // promue : ici, isolée et distincte, elle qualifie et le contrôle rougit bel et bien).
 
-test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue',
-  { skip: sansPython }, () => {
+test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1091,8 +1070,7 @@ test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue
 // Sabotage minimal : dans _porte_des_coordonnees(), remplacer le corps par `return False` —
 // la ligne de coordonnées redevient candidate, ce contrôle rougit.
 
-test('classer_titres : une ligne avec adresse courriel -> jamais promue',
-  { skip: sansPython }, () => {
+test('classer_titres : une ligne avec adresse courriel -> jamais promue', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1155,8 +1133,7 @@ function paragrapheAvecEffectif(source, texte, opts = {}) {
     fragments: [{ texte, forme: formeDirecte, effectif }], alignement: '', liste: null };
 }
 
-test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le déclare) -> jugés identiques, rétrogradé par la longueur',
-  { skip: sansPython }, () => {
+test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le déclare) -> jugés identiques, rétrogradé par la longueur', { skip: sansPython }, () => {
     const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
       + 'dominante cohérente sur ce document testé ici pour de bon, numéro ' + n + '.';
     const doc = {
@@ -1197,8 +1174,7 @@ test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le d�
 // direct) — ce contrôle rougit : le faux titre est conservé sans que la longueur soit même
 // regardée.
 
-test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, aucun réglage direct) -> pas de conservation inconditionnelle',
-  { skip: sansPython }, () => {
+test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, aucun réglage direct) -> pas de conservation inconditionnelle', { skip: sansPython }, () => {
     const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
       + 'dominante cohérente sur ce document testé ici pour de bon, numéro ' + n + '.';
     const doc = {
@@ -1233,8 +1209,7 @@ test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, auc
 // avec quatre groupes. Ici, cinq groupes qualifiants : les deux excédentaires (D et E) doivent
 // tous deux rejoindre le niveau 3, aucun n'est perdu.
 
-test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoignent tous deux le niveau 3',
-  { skip: sansPython }, () => {
+test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoignent tous deux le niveau 3', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1277,8 +1252,7 @@ test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoi
 // alignement compris) — les deux candidats d'alignements différents se retrouvent sur deux
 // niveaux distincts, ce contrôle rougit.
 
-test('classer_titres : titres de liste numérotée, même gras/taille mais alignements différents -> même niveau',
-  { skip: sansPython }, () => {
+test('classer_titres : titres de liste numérotée, même gras/taille mais alignements différents -> même niveau', { skip: sansPython }, () => {
     const doc = {
       styles: [],
       blocs: [
@@ -1318,8 +1292,7 @@ test('classer_titres : titres de liste numérotée, même gras/taille mais align
 // `SEUIL_HOMOGENEITE_MOTS * max(mn, 1)` (l'ancien plancher) — le groupe entier redevient
 // rejeté, ce contrôle rougit.
 
-test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 mots -> un seul groupe, tous promus',
-  { skip: sansPython }, () => {
+test('classer_titres : hiérarchie portée par le gras seul, titres de 1 à 10 mots -> un seul groupe, tous promus', { skip: sansPython }, () => {
     // Corps délibérément LONG (~300 signes chacun, proche des 274 signes médians mesurés sur
     // 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP) et en MAJORITÉ (7 paragraphes de corps pour 5
     // titres, comme un vrai document) : sans cette majorité, la MÉDIANE du corps se calcule à

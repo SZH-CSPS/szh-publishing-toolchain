@@ -18,8 +18,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const GENERER = path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py');
@@ -63,7 +62,7 @@ function ecrireLexique() {
 }
 
 function lancerGenerer(lexiqueDir, sortieDir, stylesDir) {
-  return cp.spawnSync(PYTHON, [GENERER,
+  return python([GENERER,
     '--lexique-dir', lexiqueDir, '--sortie', sortieDir, '--styles-dir', stylesDir],
     { encoding: 'utf8' });
 }
@@ -98,7 +97,7 @@ const VERIFIER_XLSX = [
 ].join('\n');
 
 function inspecterXlsx(chemin) {
-  const r = cp.spawnSync(PYTHON, ['-c', VERIFIER_XLSX, chemin], { encoding: 'utf8' });
+  const r = python(['-c', VERIFIER_XLSX, chemin], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, 'lecture xlsx a échoué : ' + r.stderr);
   return r.stdout;
 }
@@ -138,7 +137,7 @@ const VERIFIER_TBX = [
 test('tbx : bien formé, un termEntry par concept, le concept partagé porte fr+de',
   { skip: sansPython }, () => {
     const { sortieDir } = preparerEtLancer();
-    const r = cp.spawnSync(PYTHON, ['-c', VERIFIER_TBX, path.join(sortieDir, 'lexique.tbx')],
+    const r = python(['-c', VERIFIER_TBX, path.join(sortieDir, 'lexique.tbx')],
       { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, 'lecture tbx a échoué : ' + r.stderr);
     // 5 lignes fr + 2 lignes de - 1 concept partagé (CUA) = 6 termEntry

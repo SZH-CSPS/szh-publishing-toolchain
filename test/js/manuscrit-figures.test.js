@@ -23,16 +23,15 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, cheminPython, cheminDepuisPython, sansPython } = require('./gardes');
 const F = require('./figures-fabrique');
 
 const PIPELINE = path.join(F.RACINE, 'pipeline');
 const NETTOYEUR = path.join(PIPELINE, 'manuscrit-nettoyer.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+function lancerPython(args, env) {
+  return python(args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     env: Object.assign({}, F.ENV_UTF8, env || {}) });
 }
 
@@ -41,9 +40,9 @@ const OPTIONS = ['--produit', 'revue', '--sans-reseau', '--sans-annotation', '--
 
 function nettoyer(entree, sortie) {
   fs.mkdirSync(sortie, { recursive: true });
-  const r = python([NETTOYEUR, entree, '--sortie', sortie].concat(OPTIONS));
+  const r = lancerPython([NETTOYEUR, entree, '--sortie', sortie].concat(OPTIONS));
   const ligne = r.stdout.split('\n').filter((l) => l.trim())[0] || '{}';
-  return { r: r, obj: JSON.parse(ligne) };
+  return { r: r, obj: cheminDepuisPython(JSON.parse(ligne)) };
 }
 
 // Les enfants directs de w:body du .docx écrit : { t: 'p'|'tbl', style, texte, images }.
@@ -66,7 +65,7 @@ print(json.dumps(res, ensure_ascii=False))
 `;
 
 function corps(docx) {
-  const r = python(['-c', CORPS_PY, docx]);
+  const r = lancerPython(['-c', CORPS_PY, docx]);
   assert.strictEqual(r.status, 0, r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -74,7 +73,7 @@ function corps(docx) {
 // Ce que l'IMPORT lira du .docx nettoyé : les lignes d'instructions de pronto-lire.py.
 function instructionsImport(docx, dossier) {
   const instr = path.join(dossier, 'instructions.txt');
-  const r = python([PRONTO_LIRE, docx, 'essai', dossier], { SZH_META: instr, SZH_PRODUIT: 'revue' });
+  const r = lancerPython([PRONTO_LIRE, docx, 'essai', dossier], { SZH_META: instr, SZH_PRODUIT: 'revue' });
   assert.strictEqual(r.status, 0, 'pronto-lire.py a refusé la sortie du nettoyeur : ' + r.stderr);
   return fs.readFileSync(instr, 'utf8').split('\n').filter((l) => l);
 }
@@ -169,8 +168,7 @@ for (const cas of ENCHAINEMENTS) {
   });
 }
 
-test('nettoyeur : une ligne de la zone des autrices qu’aucune fiche ne reçoit reste dans le texte',
-  { skip: sansPython }, () => {
+test('nettoyeur : une ligne de la zone des autrices qu’aucune fiche ne reçoit reste dans le texte', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       const spec = F.manuscritBrut('a');
@@ -205,8 +203,7 @@ test('nettoyeur : un tableau de DONNÉES qui porte une image reste un bloc table
   }
 });
 
-test('nettoyeur : un document DÉJÀ au gabarit garde ses tableaux fixes et ses clés, sans doublon',
-  { skip: sansPython }, () => {
+test('nettoyeur : un document DÉJÀ au gabarit garde ses tableaux fixes et ses clés, sans doublon', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       const entree = F.fabriquer(base, 'pronto-a', F.documentPronto('a'));
@@ -237,8 +234,7 @@ test('nettoyeur : un document DÉJÀ au gabarit garde ses tableaux fixes et ses 
     }
   });
 
-test('nettoyeur : incident « tout le corps supprimé » — un manuscrit court sans bibliographie garde son corps et ses images',
-  { skip: sansPython }, () => {
+test('nettoyeur : incident « tout le corps supprimé » — un manuscrit court sans bibliographie garde son corps et ses images', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       for (const cas of ['a', 'b']) {
@@ -284,17 +280,16 @@ sys.argv = [chemin] + sys.argv[4:]
 sys.exit(mod.principal(sys.argv))
 `;
 
-test('nettoyeur : garde-fou — une perte massive refuse la sortie, une perte partielle lève une alerte error',
-  { skip: sansPython }, () => {
+test('nettoyeur : garde-fou — une perte massive refuse la sortie, une perte partielle lève une alerte error', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       const entree = F.fabriquer(base, 'garde', F.manuscritBrut('b'));
       // Tout le corps avalé : refus, rien de livré, le rapport dit ce qui manque.
       const sortie1 = path.join(base, 'massive');
       fs.mkdirSync(sortie1);
-      const r1 = python(['-c', PONT_SABOTE, PIPELINE, NETTOYEUR, '1.0', entree, '--sortie', sortie1]
+      const r1 = lancerPython(['-c', PONT_SABOTE, PIPELINE, NETTOYEUR, '1.0', entree, '--sortie', sortie1]
         .concat(OPTIONS));
-      const o1 = JSON.parse(r1.stdout.trim().split('\n').pop());
+      const o1 = cheminDepuisPython(JSON.parse(r1.stdout.trim().split('\n').pop()));
       assert.strictEqual(r1.status, 2, 'code de refus attendu : ' + r1.stderr);
       assert.strictEqual(o1.refus, true);
       assert.strictEqual(o1.code_refus, 'perte-de-contenu');
@@ -307,9 +302,9 @@ test('nettoyeur : garde-fou — une perte massive refuse la sortie, une perte pa
       // Une partie seulement : le document est livré, mais l'alerte error le dit.
       const sortie2 = path.join(base, 'partielle');
       fs.mkdirSync(sortie2);
-      const r2 = python(['-c', PONT_SABOTE, PIPELINE, NETTOYEUR, '0.5', entree, '--sortie', sortie2]
+      const r2 = lancerPython(['-c', PONT_SABOTE, PIPELINE, NETTOYEUR, '0.5', entree, '--sortie', sortie2]
         .concat(OPTIONS));
-      const o2 = JSON.parse(r2.stdout.trim().split('\n').pop());
+      const o2 = cheminDepuisPython(JSON.parse(r2.stdout.trim().split('\n').pop()));
       assert.strictEqual(o2.code_sortie, 1, 'une alerte error doit donner le code 1 : ' + r2.stderr);
       assert.ok(o2.sortie_docx && fs.existsSync(o2.sortie_docx));
       const rap2 = JSON.parse(fs.readFileSync(o2.sortie_rapport, 'utf8'));
@@ -369,8 +364,7 @@ for (const { nom, apres, contenu } of [
     });
 }
 
-test('nettoyeur : un « Note : » qui ne suit pas immédiatement le contenu reste dans le corps',
-  { skip: sansPython }, () => {
+test('nettoyeur : un « Note : » qui ne suit pas immédiatement le contenu reste dans le corps', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       const entree = F.fabriquer(base, 'note-loin', F.manuscritBrut('a', { cles: false,
@@ -389,8 +383,7 @@ test('nettoyeur : un « Note : » qui ne suit pas immédiatement le contenu rest
     }
   });
 
-test('nettoyeur : la note reprise voyage jusqu’à l’import (7e champ de la ligne FI)',
-  { skip: sansPython }, () => {
+test('nettoyeur : la note reprise voyage jusqu’à l’import (7e champ de la ligne FI)', { skip: sansPython }, () => {
     const base = F.dossierJetable();
     try {
       const entree = F.fabriquer(base, 'note-import', F.manuscritBrut('a', { cles: false,

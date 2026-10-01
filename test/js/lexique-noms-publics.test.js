@@ -25,8 +25,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython, sauter } = require('./gardes');
+const { python, sansPython, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MOISSONNEUR = path.join(RACINE, 'outils-dev', 'lexique', 'moissonner-noms-publics.py');
@@ -37,11 +36,7 @@ const PRENOMS_FREQUENTS = path.join(LEXIQUE, 'prenoms-frequents.txt');
 const CACHE_SOURCES = path.join(RACINE, 'tmp', 'lexique-sources');
 
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
-
-function python(args, opts) {
-  return cp.spawnSync(PYTHON, args,
-    Object.assign({ encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 }, opts || {}));
-}
+const PYTHON_OPTS = { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 };
 
 function lireJetons(chemin) {
   return fs.readFileSync(chemin, 'utf8').split('\n')
@@ -140,7 +135,7 @@ test('toutes les sources déclarées du moissonneur sont publiques (OFS, INSEE) 
     'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
     'print(json.dumps([{"url": s["url"], "citation": s["citation"], "cible": s["cible"]}',
     '                  for s in m.SOURCES]))',
-  ].join('\n'), MOISSONNEUR]);
+  ].join('\n'), MOISSONNEUR], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'lecture de SOURCES impossible : ' + r.stderr);
   const sources = JSON.parse(r.stdout.trim().split('\n').pop());
   assert.ok(sources.length >= 3, 'au moins trois sources attendues');
@@ -175,7 +170,7 @@ test('discriminer() : un jeton va du côté qui domine, jamais des deux ; la zon
     '    n, p, e = m.discriminer(pn, pp, r)',
     '    sortie[str(r)] = {"noms": sorted(n), "prenoms": sorted(p), "neutres": sorted(e)}',
     'print(json.dumps(sortie))',
-  ].join('\n'), MOISSONNEUR]);
+  ].join('\n'), MOISSONNEUR], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, r.stderr);
   const s = JSON.parse(r.stdout.trim().split('\n').pop());
 
@@ -203,7 +198,7 @@ test('moissonner-noms-publics.py refuse d\'écrire quand une famille de sources 
   const sortie = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-moisson-sortie-'));
   const temoin = path.join(sortie, 'noms-frequents.txt');
   fs.writeFileSync(temoin, '# temoin\nmuller\n', 'utf8');
-  const r = python([MOISSONNEUR, '--cache', vide, '--sortie', sortie]);
+  const r = python([MOISSONNEUR, '--cache', vide, '--sortie', sortie], PYTHON_OPTS);
   assert.notStrictEqual(r.status, 0,
     'un cache vide doit faire échouer le moissonneur, pas produire un lexique vide');
   assert.match(r.stdout + r.stderr, /Rien n'est écrit|ERREUR/);
@@ -221,7 +216,7 @@ const sansBaseOjs = BASE_OJS && fs.existsSync(BASE_OJS) ? false : 'base OJS du p
 
 test('banc-noms.py : sans base d\'auteurs, échoue proprement et le dit, jamais une trace '
   + 'Python', { skip: sansPython }, () => {
-  const r = python([BANC, '--auteurs', path.join(os.tmpdir(), 'szh-base-qui-nexiste-pas.json')]);
+  const r = python([BANC, '--auteurs', path.join(os.tmpdir(), 'szh-base-qui-nexiste-pas.json')], PYTHON_OPTS);
   assert.notStrictEqual(r.status, 0);
   assert.doesNotMatch(r.stderr, /Traceback/, 'aucune trace Python ne doit sortir');
   assert.match(r.stdout, /introuvable/);
@@ -232,7 +227,7 @@ test('banc-noms.py sur le lexique livré : les deux index font baisser « muet �
   { skip: sansPython || sansBaseOjs }, (t) => {
     if (sansBaseOjs) { return sauter.fichier(t, BASE_OJS); }
     const tsv = (args) => {
-      const r = python([BANC, '--tsv'].concat(args));
+      const r = python([BANC, '--tsv'].concat(args), PYTHON_OPTS);
       assert.strictEqual(r.status, 0, 'banc-noms.py a échoué : ' + r.stderr);
       const c = r.stdout.trim().split('\n').pop().split('\t');
       return { total: +c[1], juste: +c[2], envers: +c[3], indecis: +c[4], muet: +c[5] };
@@ -279,7 +274,7 @@ test('_charger_fichier_lexique : le chemin rapide donne exactement le même rés
     'cible = {}',
     'n = mn._charger_fichier_lexique(sys.argv[2], "melange.txt", cible)',
     'print(json.dumps({"n": n, "jetons": sorted(cible)}))',
-  ].join('\n'), path.join(RACINE, 'pipeline', 'manuscrit_noms.py'), dossier]);
+  ].join('\n'), path.join(RACINE, 'pipeline', 'manuscrit_noms.py'), dossier], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, r.stderr);
   const out = JSON.parse(r.stdout.trim().split('\n').pop());
   assert.strictEqual(out.n, 6, 'six jetons, le commentaire et la ligne vide exclus');
@@ -296,7 +291,7 @@ test('moissonner-noms-publics.py --statistiques sur le cache réel : n\'écrit r
   + 'ses cinq sources', { skip: sansPython }, (t) => {
   if (!fs.existsSync(CACHE_SOURCES)) { return sauter.corpus(t, CACHE_SOURCES); }
   const avant = fs.readFileSync(NOMS_FREQUENTS, 'utf8');
-  const r = python([MOISSONNEUR, '--statistiques']);
+  const r = python([MOISSONNEUR, '--statistiques'], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /--statistiques : aucun fichier écrit/);
   assert.match(r.stdout, /discrimination \(rapport/);

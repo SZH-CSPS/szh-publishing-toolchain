@@ -37,24 +37,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const cp = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(RACINE, 'pipeline', 'livre-scinder.py');
 
 // python3, puis python. Aucun saut silencieux : un contrôle qui mesure un code de sortie
 // et l'état du disque ne doit pas pouvoir passer au vert sans avoir rien lancé.
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
-
-const PYTHON = interpretePython();
+const { python, sansPython } = require('./gardes');
 
 function livreJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-scinder-'));
@@ -70,13 +59,10 @@ function ecrire(racine, ...segments) {
 
 function lancer(racine, slug) {
   const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
-  return cp.spawnSync(PYTHON, [SCRIPT, racine, slug], { encoding: 'utf8', env: env });
+  return python([SCRIPT, racine, slug], { encoding: 'utf8', env: env });
 }
 
-test('scénario du B329 : une image citée mais absente ne détruit plus le dossier d’origine', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python3, puis python) : ce '
-    + 'contrôle mesure un code de sortie et l’état du disque, il ne peut pas être sauté '
-    + 'en silence');
+test('scénario du B329 : une image citée mais absente ne détruit plus le dossier d’origine', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -104,8 +90,7 @@ test('scénario du B329 : une image citée mais absente ne détruit plus le doss
   }
 });
 
-test('une scission sans ressource manquante réussit encore et nettoie la source', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('une scission sans ressource manquante réussit encore et nettoie la source', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -128,8 +113,7 @@ test('une scission sans ressource manquante réussit encore et nettoie la source
   }
 });
 
-test('une pièce liminaire écrite à la main récupère son média depuis le chapitre scindé', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('une pièce liminaire écrite à la main récupère son média depuis le chapitre scindé', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -152,8 +136,7 @@ test('une pièce liminaire écrite à la main récupère son média depuis le ch
   }
 });
 
-test('le texte de tête d’un chapitre n’est plus capturé puis jeté en silence', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('le texte de tête d’un chapitre n’est plus capturé puis jeté en silence', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -175,8 +158,7 @@ test('le texte de tête d’un chapitre n’est plus capturé puis jeté en sile
   }
 });
 
-test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effacé par la scission d’un autre', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effacé par la scission d’un autre', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -206,11 +188,10 @@ test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effac�
   }
 });
 
-test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en ligne', () => {
+test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en ligne', { skip: sansPython }, () => {
   // pipeline/profils/livre.mk lit désormais les deux formes (szh-lire-config.lua) : ce
   // script ne doit plus être le seul maillon à ignorer la forme en blocs, sous peine de
   // dire une chose différente de ce que le moteur de compilation va lire.
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
 
   const racine = livreJetable();
   try {
@@ -240,14 +221,13 @@ test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en 
 });
 
 test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa place aux ' +
-  'chapitres qui en sortent, sans se retrouver ajouté en fin', () => {
+  'chapitres qui en sortent, sans se retrouver ajouté en fin', { skip: sansPython }, () => {
   // Les scénarios ci-dessus ne listent jamais « manuscrit » (l'argv[2] de lancer()) dans
   // ordre-chapitres avant la scission — seulement un AUTRE chapitre (« 01-avant »). La
   // branche « remplacement en place » de fusionner_ordre() (slug_remplace in
   // ordre_existant) n'est donc exercée par aucun test : ce scénario-ci la met en jeu, avec
   // un slug de part et d'autre pour vérifier que le remplacement respecte la position et
   // ne se contente pas de tout ajouter en fin.
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
 
   const racine = livreJetable();
   try {
@@ -278,8 +258,7 @@ test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa 
   }
 });
 
-test('idempotence : un chapitre déjà présent au nom visé arrête la scission avant tout dégât', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('idempotence : un chapitre déjà présent au nom visé arrête la scission avant tout dégât', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -312,8 +291,7 @@ test('idempotence : un chapitre déjà présent au nom visé arrête la scission
   }
 });
 
-test('une image référencée en HTML brut, ou par un chemin préfixé « ./ », est copiée comme les autres', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('une image référencée en HTML brut, ou par un chemin préfixé « ./ », est copiée comme les autres', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -342,8 +320,7 @@ test('une image référencée en HTML brut, ou par un chemin préfixé « ./ »,
   }
 });
 
-test('une image citée par un TABLEAU suit le chapitre, comme celles du corps', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('une image citée par un TABLEAU suit le chapitre, comme celles du corps', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -376,8 +353,7 @@ test('une image citée par un TABLEAU suit le chapitre, comme celles du corps', 
   }
 });
 
-test('une image citée par un tableau mais ABSENTE est nommée, et la source survit', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('une image citée par un tableau mais ABSENTE est nommée, et la source survit', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -402,8 +378,7 @@ test('une image citée par un tableau mais ABSENTE est nommée, et la source sur
   }
 });
 
-test('un buch.yaml sans ordre-chapitres: reçoit la clé, au lieu de la perdre', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('un buch.yaml sans ordre-chapitres: reçoit la clé, au lieu de la perdre', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -423,8 +398,7 @@ test('un buch.yaml sans ordre-chapitres: reçoit la clé, au lieu de la perdre',
   }
 });
 
-test('un « # » dans un bloc de code clôturé n’ouvre pas un chapitre supplémentaire', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('un « # » dans un bloc de code clôturé n’ouvre pas un chapitre supplémentaire', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {
@@ -458,8 +432,7 @@ test('un « # » dans un bloc de code clôturé n’ouvre pas un chapitre suppl�
   }
 });
 
-test('un buch.yaml en CRLF reste en CRLF après la réécriture d’ordre-chapitres', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('un buch.yaml en CRLF reste en CRLF après la réécriture d’ordre-chapitres', { skip: sansPython }, () => {
 
   const racine = livreJetable();
   try {

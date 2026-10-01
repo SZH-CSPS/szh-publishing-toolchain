@@ -1,4 +1,4 @@
-// pipeline/manuscrit_gabarit.py : l'écrivain du nettoyeur de manuscrit (article), §4/§5.3/
+﻿// pipeline/manuscrit_gabarit.py : l'écrivain du nettoyeur de manuscrit (article), §4/§5.3/
 // §10/§11 de outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
 // contrôles posés au §11 pour manuscrit-gabarit.test.js :
 //   1. aller-retour : un document (corps + titres + une image + un tableau), écrit puis relu
@@ -20,8 +20,8 @@
 //
 //   node --test test/js/manuscrit-gabarit.test.js
 //
-// Patron : test/js/manuscrit-docx.test.js. Gardes de test/js/gardes.js : PYTHON (jamais
-// `python3` en dur). manuscrit_gabarit.py n'a pas de CLI propre (c'est une bibliothèque,
+// Patron : test/js/manuscrit-docx.test.js. Python passe par python() de gardes.js (la WSL sous Windows).
+// manuscrit_gabarit.py n'a pas de CLI propre (c'est une bibliothèque,
 // §4 : « def ecrire(document, chemin_gabarit, chemin_sortie, decisions) ») : ce fichier le
 // pilote via un petit programme Python écrit au vol (patron FABRIQUE de
 // manuscrit-docx.test.js), qui importe le module et appelle ecrire() directement — puis relit
@@ -38,7 +38,8 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl, sauter } = require('./gardes');
+// Plusieurs centaines d'appels Python : un seul processus WSL pour tout le fichier.
+const { pythonGroupe: python, pythonGroupeSortie: pythonSortie, sansPython, sansPandocWsl, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -63,10 +64,6 @@ const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 // ici côté harnais de test, jamais réparé en silence dans le pipeline — voir le rapport final.
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
-function python(args) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
-}
-
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-manuscritgabarit-'));
 }
@@ -87,8 +84,7 @@ const ECRIRE_DEPUIS_JSON = [
 ].join('\n');
 
 function ecrireDepuisSpec(spec, cheminSortie, cheminGabarit) {
-  const r = python(['-c', ECRIRE_DEPUIS_JSON, PIPELINE, cheminGabarit || GABARIT_LIVRE,
-    cheminSortie, JSON.stringify(spec)]);
+  const r = python(['-c', ECRIRE_DEPUIS_JSON, PIPELINE, cheminGabarit || GABARIT_LIVRE, cheminSortie, JSON.stringify(spec)], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'ecrire() a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -107,7 +103,7 @@ const ECRIRE_DEPUIS_DOCX = [
 ].join('\n');
 
 function diagnostiquerManuscritDocx(mode, chemin) {
-  const r = python([MANUSCRIT_DOCX, mode, chemin]);
+  const r = python([MANUSCRIT_DOCX, mode, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, mode + ' a échoué sur ' + chemin + ' : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -118,7 +114,7 @@ function diagnostiquerManuscritDocx(mode, chemin) {
 // 'langue-deduite', voie déjà éprouvée par les contrôles FR existants de ce fichier.
 function prontoLire(chemin, slug, dossier, produit) {
   const env = produit ? Object.assign({}, ENV_UTF8, { SZH_PRODUIT: produit }) : ENV_UTF8;
-  const r = cp.spawnSync(PYTHON, [PRONTO_LIRE, chemin, slug, dossier],
+  const r = python( [PRONTO_LIRE, chemin, slug, dossier],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env });
   assert.strictEqual(r.status, 0, 'pronto-lire.py a échoué sur ' + chemin + ' : ' + r.stderr);
   return JSON.parse(r.stdout);
@@ -131,7 +127,7 @@ const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
 
 function lireDocumentXml(chemin) {
-  return cp.execFileSync(PYTHON, ['-c', LIRE_DOCUMENT_XML, chemin],
+  return pythonSortie( ['-c', LIRE_DOCUMENT_XML, chemin],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
 }
 
@@ -252,7 +248,7 @@ const ENFANTS_CORPS_PY = [
 ].join('\n');
 
 function enfantsCorps(chemin) {
-  const r = python(['-c', ENFANTS_CORPS_PY, chemin]);
+  const r = python(['-c', ENFANTS_CORPS_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'lecture des enfants du corps a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -294,7 +290,7 @@ const VALIDER_PARTIES_XML_PY = [
 ].join('\n');
 
 function validerPartiesXml(chemin) {
-  const r = python(['-c', VALIDER_PARTIES_XML_PY, chemin]);
+  const r = python(['-c', VALIDER_PARTIES_XML_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'validation XML a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -343,7 +339,7 @@ const VALIDER_STRUCTURE_PY = [
 ].join('\n');
 
 function validerStructure(chemin) {
-  const r = python(['-c', VALIDER_STRUCTURE_PY, chemin]);
+  const r = python(['-c', VALIDER_STRUCTURE_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'validation de structure a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -825,7 +821,7 @@ test('manuscrit_gabarit.ecrire : les onze manuscrits réels de lot-A s\'écriven
       for (const nom of fichiers) {
         const entree = path.join(CORPUS_LOT_A, nom);
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         if (r.status !== 0) {
           echecsEcriture.push(nom + ' : ' + r.stderr);
           continue;
@@ -1015,7 +1011,7 @@ test('manuscrit_gabarit.ecrire : un gabarit sans définition de liste produit un
 
       const xml = lireDocumentXml(sortie);
       assert.ok(/<w:numPr>/.test(xml), 'un w:numPr doit avoir été posé sur le paragraphe');
-      const zipListe = cp.execFileSync(PYTHON, ['-c',
+      const zipListe = pythonSortie( ['-c',
         'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
         + 'sys.stdout.write("oui" if "word/numbering.xml" in z.namelist() else "non")', sortie],
         { encoding: 'utf8', env: ENV_UTF8 });
@@ -1053,7 +1049,7 @@ test('manuscrit_gabarit.ecrire : les trois manuscrits réels à listes (3_, 3bis
       for (const nom of fichiers) {
         const entree = path.join(CORPUS_LOT_A, nom);
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         assert.strictEqual(r.status, 0, 'écriture échouée sur ' + nom + ' : ' + r.stderr);
         const resultat = JSON.parse(r.stdout);
         const lignesListe = resultat.trace.filter((l) => l.decision === 'liste_reportee');
@@ -1108,7 +1104,7 @@ test('manuscrit_gabarit.ecrire : un lien avec "&" et un texte alternatif avec de
       const xml = lireDocumentXml(sortie);
       assert.ok(xml.includes('descr="Schéma &quot;A&quot;"'),
         'le guillemet du texte alternatif doit être échappé dans l\'attribut descr');
-      const rels = cp.execFileSync(PYTHON, ['-c',
+      const rels = pythonSortie( ['-c',
         'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
         + 'sys.stdout.write(z.read("word/_rels/document.xml.rels").decode("utf-8"))', sortie],
         { encoding: 'utf8', env: ENV_UTF8 });
@@ -1134,7 +1130,7 @@ test('manuscrit_gabarit.ecrire : une définition de puce injectée porte le glyp
       const sortie = path.join(base, 'sortie.docx');
       const spec = specDocument([paragrapheListe('Un élément à puces', 7, 0, 'puce')]);
       ecrireDepuisSpec(spec, sortie);
-      const numbering = cp.execFileSync(PYTHON, ['-c',
+      const numbering = pythonSortie( ['-c',
         'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
         + 'sys.stdout.write(z.read("word/numbering.xml").decode("utf-8"))', sortie],
         { encoding: 'utf8', env: ENV_UTF8 });
@@ -1318,7 +1314,7 @@ const RANGEES_TABLEAU_IMBRIQUE_PY = [
 ].join('\n');
 
 function rangeesTableauImbrique(chemin) {
-  const r = python(['-c', RANGEES_TABLEAU_IMBRIQUE_PY, chemin]);
+  const r = python(['-c', RANGEES_TABLEAU_IMBRIQUE_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'lecture des rangées du tableau imbriqué a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -1720,7 +1716,7 @@ for (const { langue, gabarit, styleCorpsAttendu } of [
         assert.ok(xml.slice(runAvant, rIdxFootnoteRef).includes('vertAlign w:val="superscript"'),
           'le run d\'appel doit porter un exposant (aucun gabarit n\'a de style dédié)');
 
-        const footnotes = cp.execFileSync(PYTHON, ['-c',
+        const footnotes = pythonSortie( ['-c',
           'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
           + 'sys.stdout.write(z.read("word/footnotes.xml").decode("utf-8"))', sortie],
           { encoding: 'utf8', env: ENV_UTF8 });
@@ -1773,7 +1769,7 @@ test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont �
         const entree = path.join(CORPUS_LOT_A, nom);
         if (!fs.existsSync(entree)) { ecarts.push(nom + ' : fichier introuvable dans lot-A'); continue; }
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
         const resultat = JSON.parse(r.stdout);
         if (resultat.stats.notes_ecrites !== n) {
@@ -1941,7 +1937,7 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la tabl
       for (const nom of fichiers) {
         const entree = path.join(CORPUS_LOT_A, nom);
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
         const resultat = JSON.parse(r.stdout);
         const docEntree = diagnostiquerManuscritDocx('--diagnostic', entree).document;
@@ -2001,7 +1997,7 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, chaque partie X
       for (const nom of fichiers) {
         const entree = path.join(CORPUS_LOT_A, nom);
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         if (r.status !== 0) { echecs.push(nom + ' (écriture) : ' + r.stderr); continue; }
         for (const e of validerPartiesXml(sortie)) { echecs.push(nom + ' (XML) : ' + e); }
         for (const e of validerStructure(sortie)) { echecs.push(nom + ' (structure) : ' + e); }
@@ -2025,7 +2021,7 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, aucun texte (co
       for (const nom of fichiers) {
         const entree = path.join(CORPUS_LOT_A, nom);
         const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
-        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
         assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
         const docEntree = diagnostiquerManuscritDocx('--diagnostic', entree).document;
         const docSortie = diagnostiquerManuscritDocx('--diagnostic', sortie).document;
@@ -2071,7 +2067,7 @@ const ECRIRE_DEPUIS_JSON_AVEC_ENTETE = [
 // existants de ce fichier (tous écrits contre le seul gabarit FR d'alors).
 function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit, langue) {
   const r = python(['-c', ECRIRE_DEPUIS_JSON_AVEC_ENTETE, PIPELINE, cheminGabarit || GABARIT_LIVRE,
-    cheminSortie, JSON.stringify(spec), JSON.stringify(entete), langue || 'fr']);
+    cheminSortie, JSON.stringify(spec), JSON.stringify(entete), langue || 'fr'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'ecrire() avec entete a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -2211,7 +2207,7 @@ const STYLEIDS_PY = [
 ].join('\n');
 
 function styleidsDuGabarit(chemin) {
-  const r = python(['-c', STYLEIDS_PY, chemin]);
+  const r = python(['-c', STYLEIDS_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'lecture des styleId du gabarit a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -2231,7 +2227,7 @@ const PSTYLES_ECRITS_PY = [
 ].join('\n');
 
 function pstylesEcrits(chemin) {
-  const r = python(['-c', PSTYLES_ECRITS_PY, chemin]);
+  const r = python(['-c', PSTYLES_ECRITS_PY, chemin], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'lecture des pStyle écrits a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -2335,7 +2331,7 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
       try {
         const sortie = path.join(base, 'sortie.docx');
         ecrireDepuisSpec(DOC_UN_PARAGRAPHE, sortie, gabarit);
-        const r = cp.execFileSync(PYTHON, ['-c',
+        const r = pythonSortie( ['-c',
           'import sys, zipfile, json; z = zipfile.ZipFile(sys.argv[1]); '
           + 'print(json.dumps(z.namelist()))', sortie], { encoding: 'utf8', env: ENV_UTF8 });
         const noms = JSON.parse(r);
@@ -2343,13 +2339,13 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
           'word/commentsIds.xml', 'word/commentsExtensible.xml', 'word/people.xml']) {
           assert.ok(!noms.includes(partie), partie + ' ne doit pas survivre dans la sortie');
         }
-        const rels = cp.execFileSync(PYTHON, ['-c',
+        const rels = pythonSortie( ['-c',
           'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
           + 'sys.stdout.write(z.read("word/_rels/document.xml.rels").decode("utf-8"))', sortie],
           { encoding: 'utf8', env: ENV_UTF8 });
         assert.ok(!/comment/i.test(rels) && !/people\.xml/i.test(rels),
           'aucune relation vers une partie commentaire ne doit rester : ' + rels);
-        const ct = cp.execFileSync(PYTHON, ['-c',
+        const ct = pythonSortie( ['-c',
           'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
           + 'sys.stdout.write(z.read("[Content_Types].xml").decode("utf-8"))', sortie],
           { encoding: 'utf8', env: ENV_UTF8 });
@@ -2387,7 +2383,7 @@ const ECRIRE_DEPUIS_DOCX_AVEC_ENTETE = [
 
 function ecrireReelAvecEntete(chemin, gabarit, sortie, ent, langue) {
   const r = python(['-c', ECRIRE_DEPUIS_DOCX_AVEC_ENTETE, PIPELINE, chemin, gabarit, sortie,
-    JSON.stringify(ent), langue]);
+    JSON.stringify(ent), langue], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   assert.strictEqual(r.status, 0, 'ecrire() (manuscrit réel + entete) a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -2431,7 +2427,7 @@ for (const { langue, gabarit, produit } of [
         // lue (pas un champ du gabarit, voir prontoLire ci-dessus).
         const dossierPronto = path.join(base, 'pronto');
         fs.mkdirSync(dossierPronto);
-        const r = cp.spawnSync(PYTHON, [PRONTO_LIRE, sortie, 'essai', dossierPronto],
+        const r = python( [PRONTO_LIRE, sortie, 'essai', dossierPronto],
           { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
             env: Object.assign({}, ENV_UTF8, { SZH_PRODUIT: produit }) });
         assert.strictEqual(r.status, 0, 'pronto-lire.py doit rendre 0 : ' + r.stderr);

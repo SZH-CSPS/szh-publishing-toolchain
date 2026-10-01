@@ -43,6 +43,10 @@ const PATCHS = {
     reperes: [/^\+\s+def pagination_artifact\(self, box, page=None\):$/m,
       /^\+\s+with stream\.pagination_artifact\(stacking_context\.box, stacking_context\.page\):$/m],
   },
+  '40-xmp-dc-language': {
+    cibles: ['weasyprint/pdf/metadata.py'],
+    reperes: [/^\+\s+element = SubElement\(element, f'\{\{\{NS\["dc"\]\}\}\}language'\)$/m],
+  },
 };
 
 function dossierPatchs() {

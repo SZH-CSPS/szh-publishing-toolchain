@@ -21,15 +21,15 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
 const crypto = require('crypto');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, cheminPython, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 const NETTOYEUR = path.join(PIPELINE, 'manuscrit-nettoyer.py');
 const SOURCE_CLI = fs.readFileSync(NETTOYEUR, 'utf8');
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
+const PYTHON_OPTS = { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 };
 delete ENV_UTF8.SZH_NETTOYEUR_TRACE;
 
 const S_TITRE = 'SENTINELLE-TITRE-51ab';
@@ -45,8 +45,8 @@ function contientSentinelle(texte) {
   return SENTINELLES.filter((s) => bas.includes(s.toLowerCase()));
 }
 
-function python(args, opts) {
-  return cp.spawnSync(PYTHON, args,
+function lancerPython(args, opts) {
+  return python(args,
     Object.assign({ encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 }, opts || {}));
 }
 
@@ -78,7 +78,7 @@ const FABRIQUER = [
 ].join('\n');
 
 function fabriquer(chemin, paragraphes) {
-  const r = python(['-c', FABRIQUER, chemin, JSON.stringify(paragraphes)]);
+  const r = lancerPython(['-c', FABRIQUER, chemin, JSON.stringify(paragraphes)], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'fabrication impossible : ' + r.stderr);
 }
 
@@ -136,15 +136,14 @@ function verifierCompteurs(c, passageAttendu) {
 // Sabotage : dans _mesures_passage(), poser `m['titres.' + entete.titre] = 1` (le titre comme nom
 // de mesure) -- la liste blanche l'écarte ; retirer aussi le filtre de _compteurs() et la sentinelle
 // du titre sort dans `compteurs`.
-test('un passage réussi : compteurs = noms de la liste blanche et entiers, passage = SHA-256 du fichier, aucune sentinelle',
-  { skip: sansPython }, () => {
+test('un passage réussi : compteurs = noms de la liste blanche et entiers, passage = SHA-256 du fichier, aucune sentinelle', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const entree = path.join(base, S_FICHIER + '.docx');
       fabriquer(entree, manuscritSentinelle());
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
-      const r = python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau', '--sans-typo']);
+      const r = lancerPython([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau', '--sans-typo'], PYTHON_OPTS);
       assert.ok(r.status === 0 || r.status === 1, 'code de sortie inattendu ' + r.status + ' : ' + r.stderr);
       const obj = ligneUnique(r.stdout);
       assert.ok(obj.compteurs, 'la ligne stdout doit porter `compteurs`');
@@ -166,15 +165,14 @@ test('un passage réussi : compteurs = noms de la liste blanche et entiers, pass
     }
   });
 
-test('les mesures sortent des nombres, pas des textes : deux passages du même fichier donnent le même passage et les mêmes compteurs (hors durée)',
-  { skip: sansPython }, () => {
+test('les mesures sortent des nombres, pas des textes : deux passages du même fichier donnent le même passage et les mêmes compteurs (hors durée)', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const entree = path.join(base, 'a.docx');
       fabriquer(entree, manuscritSentinelle());
       const faire = () => {
         const sortie = fs.mkdtempSync(path.join(base, 'o-'));
-        return ligneUnique(python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau', '--sans-typo']).stdout).compteurs;
+        return ligneUnique(python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau', '--sans-typo'], PYTHON_OPTS).stdout).compteurs;
       };
       const un = faire();
       const deux = faire();
@@ -191,8 +189,7 @@ test('les mesures sortent des nombres, pas des textes : deux passages du même f
 // 2. Les refus portent eux aussi un objet `compteurs`
 // ---------------------------------------------------------------------------------------
 
-test('refus : suivi-modifications, fichier-verrou, extension-inconnue et lecture-impossible portent issue.refus:<code> ; aucune sentinelle',
-  { skip: sansPython }, () => {
+test('refus : suivi-modifications, fichier-verrou, extension-inconnue et lecture-impossible portent issue.refus:<code> ; aucune sentinelle', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const sortie = path.join(base, 'sortie');
@@ -209,7 +206,7 @@ test('refus : suivi-modifications, fichier-verrou, extension-inconnue et lecture
       fs.writeFileSync(abime, 'ceci n\u2019est pas un zip ' + S_EXCEPTION);
       cas.push([abime, 'lecture-impossible', 3]);
       for (const [entree, code, sortieAttendue] of cas) {
-        const r = python([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
+        const r = lancerPython([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau'], PYTHON_OPTS);
         assert.strictEqual(r.status, sortieAttendue, code + ' : ' + r.stderr);
         const obj = ligneUnique(r.stdout);
         assert.strictEqual(obj.code_refus, code);
@@ -250,7 +247,7 @@ function planter(base, module, fonction, exception, env) {
   fabriquer(entree, manuscritSentinelle());
   const sortie = path.join(base, 'sortie');
   fs.mkdirSync(sortie, { recursive: true });
-  const r = python(['-c', PILOTE_PLANTAGE, PIPELINE, entree, sortie, module, fonction, exception,
+  const r = lancerPython(['-c', PILOTE_PLANTAGE, PIPELINE, entree, sortie, module, fonction, exception,
     'le message cite ' + S_EXCEPTION + ' et ' + S_TITRE + ' dans ' + entree],
   { env: Object.assign({}, ENV_UTF8, env || {}) });
   return { r, entree, sortie };
@@ -259,8 +256,7 @@ function planter(base, module, fonction, exception, env) {
 // Sabotage : retirer le `except Exception` de principal() (la sortie redevient le code 1 de
 // Python, sans JSON) ; ou remplacer `type(exc).__name__` par `str(exc)` ET retirer le motif
 // _RE_TYPE_EXCEPTION -- la sentinelle de l'exception sort sur stdout.
-test('une exception non rattrapée : code 4, UNE ligne JSON {plantage, type, lieu, etape}, jamais le message ni le nom de fichier',
-  { skip: sansPython }, () => {
+test('une exception non rattrapée : code 4, UNE ligne JSON {plantage, type, lieu, etape}, jamais le message ni le nom de fichier', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const { r, entree } = planter(base, 'mm', 'nettoyer_mise_en_forme', 'RuntimeError');
@@ -284,8 +280,7 @@ test('une exception non rattrapée : code 4, UNE ligne JSON {plantage, type, lie
     }
   });
 
-test('plantage : le type vient de la classe (KeyError), le lieu du fichier du dépôt qui a appelé, l’étape de l’endroit atteint',
-  { skip: sansPython }, () => {
+test('plantage : le type vient de la classe (KeyError), le lieu du fichier du dépôt qui a appelé, l’étape de l’endroit atteint', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const { r } = planter(base, 'mr', 'evaluer', 'KeyError');
@@ -302,8 +297,7 @@ test('plantage : le type vient de la classe (KeyError), le lieu du fichier du d�
 
 // Le lieu est le DERNIER cadre d'un fichier du dépôt : une exception levée au fond d'un module
 // (ici manuscrit_modele.py, appelé de travers) se localise dans ce module, pas dans l'appelant.
-test('plantage : une exception levée dans un autre module du dépôt est localisée dans CE module (fichier:ligne)',
-  { skip: sansPython }, () => {
+test('plantage : une exception levée dans un autre module du dépôt est localisée dans CE module (fichier:ligne)', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const entree = path.join(base, S_FICHIER + '.docx');
@@ -312,7 +306,7 @@ test('plantage : une exception levée dans un autre module du dépôt est locali
       fs.mkdirSync(sortie);
       const pilote = PILOTE_PLANTAGE.replace('setattr(getattr(mod, module), fonction, boom)',
         'setattr(getattr(mod, module), fonction, lambda *a, **k: mod.mm.classer_titres(None))');
-      const r = python(['-c', pilote, PIPELINE, entree, sortie, 'mm', 'nettoyer_mise_en_forme', 'RuntimeError', S_EXCEPTION]);
+      const r = lancerPython(['-c', pilote, PIPELINE, entree, sortie, 'mm', 'nettoyer_mise_en_forme', 'RuntimeError', S_EXCEPTION], PYTHON_OPTS);
       assert.strictEqual(r.status, 4, r.stderr);
       const obj = ligneUnique(r.stdout);
       assert.strictEqual(obj.type, 'AttributeError');
@@ -323,8 +317,7 @@ test('plantage : une exception levée dans un autre module du dépôt est locali
     }
   });
 
-test('plantage : la trace complète n’apparaît que sur demande (SZH_NETTOYEUR_TRACE), sur stderr, jamais sur stdout',
-  { skip: sansPython }, () => {
+test('plantage : la trace complète n’apparaît que sur demande (SZH_NETTOYEUR_TRACE), sur stderr, jamais sur stdout', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const { r } = planter(base, 'mm', 'nettoyer_mise_en_forme', 'RuntimeError', { SZH_NETTOYEUR_TRACE: '1' });
@@ -337,8 +330,7 @@ test('plantage : la trace complète n’apparaît que sur demande (SZH_NETTOYEUR
     }
   });
 
-test('plantage : le code 4 est distinct de 0, 1, 2 et 3 ; la fonction qui lève est une exception de la chaîne, pas un refus',
-  { skip: sansPython }, () => {
+test('plantage : le code 4 est distinct de 0, 1, 2 et 3 ; la fonction qui lève est une exception de la chaîne, pas un refus', { skip: sansPython }, () => {
     const m = /CODE_OK = (\d)\nCODE_ALERTE_ERROR = (\d)\nCODE_REFUS = (\d)\nCODE_ECHEC_INTERNE = (\d)[\s\S]*?CODE_PLANTAGE = (\d)/.exec(SOURCE_CLI);
     assert.ok(m, 'les cinq codes de sortie se lisent en tête de la CLI');
     const codes = m.slice(1).map(Number);
@@ -364,8 +356,7 @@ const PILOTE_UNITAIRE = [
   'print(json.dumps(sortie))'
 ].join('\n');
 
-test('_compteurs : liste blanche par le nom et par le type (entiers positifs seulement), zéros omis, Id de règle inconnu -> Autre, doublons additionnés',
-  { skip: sansPython }, () => {
+test('_compteurs : liste blanche par le nom et par le type (entiers positifs seulement), zéros omis, Id de règle inconnu -> Autre, doublons additionnés', { skip: sansPython }, () => {
     const mesures = {
       'issue.ok': 1, 'signes': 120, 'duree_ms': 0, 'notes': 2,
       'Majuscule': 3, 'issue.ok.extra': 1, 'paragraphes': '12', 'images': 1.5, 'references': -4,
@@ -377,7 +368,7 @@ test('_compteurs : liste blanche par le nom et par le type (entiers positifs seu
     };
     const regles = [['APA.CitationAbsente', 'revision'], ['texte libre', 'commentaire'], [null, 'rapport'],
       ['SZH.Epicene', 'devenir-inconnu'], ['A' + 'b'.repeat(70) + '.C', 'revision'], ['APA', 'revision']];
-    const r = python(['-c', PILOTE_UNITAIRE, PIPELINE, JSON.stringify({ passage: 'abcdef012345', mesures, regles })]);
+    const r = lancerPython(['-c', PILOTE_UNITAIRE, PIPELINE, JSON.stringify({ passage: 'abcdef012345', mesures, regles })], PYTHON_OPTS);
     assert.strictEqual(r.status, 0, r.stderr);
     const sortie = JSON.parse(r.stdout);
     assert.deepStrictEqual(sortie.compteurs, {
@@ -395,7 +386,7 @@ test('_compteurs : liste blanche par le nom et par le type (entiers positifs seu
 
 test('_compteurs : un passage qui n’est pas 12 hexadécimaux devient 000000000000, jamais recopié', { skip: sansPython }, () => {
   for (const passage of [S_FICHIER, 'ABCDEF012345', 'abcdef01234', 'abcdef0123456', 'abcdef012345\n']) {
-    const r = python(['-c', PILOTE_UNITAIRE, PIPELINE, JSON.stringify({ passage, mesures: { 'issue.ok': 1 }, regles: [] })]);
+    const r = lancerPython(['-c', PILOTE_UNITAIRE, PIPELINE, JSON.stringify({ passage, mesures: { 'issue.ok': 1 }, regles: [] })]);
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(JSON.parse(r.stdout).compteurs.passage, '000000000000', JSON.stringify(passage));
   }
@@ -407,7 +398,7 @@ test('_compteurs : un passage qui n’est pas 12 hexadécimaux devient 000000000
 
 // Sabotage : écrire `_etape('ecriture-docx')` quelque part -- le nom n'est pas dans ETAPES et
 // l'étape rendue devient « inconnue » ; ce test le signale avant.
-test('chaque _etape("...") de la CLI nomme une étape de ETAPES, et ETAPES ne porte que des slugs', () => {
+test('chaque _etape("...") de la CLI nomme une étape de ETAPES, et ETAPES ne porte que des slugs', { skip: sansPython }, () => {
   const liste = [...(/ETAPES = \(([\s\S]*?)\n\)/.exec(SOURCE_CLI)[1]).matchAll(/'([^']*)'/g)].map((m) => m[1]);
   assert.ok(liste.length >= 15);
   for (const e of liste) { assert.match(e, /^[a-z0-9-]{1,40}$/); }
@@ -419,7 +410,7 @@ test('chaque _etape("...") de la CLI nomme une étape de ETAPES, et ETAPES ne po
   }
 });
 
-test('principal() : le try global rattrape Exception (jamais BaseException : Ctrl+C et sys.exit passent)', () => {
+test('principal() : le try global rattrape Exception (jamais BaseException : Ctrl+C et sys.exit passent)', { skip: sansPython }, () => {
   const m = /def principal\(argv\):[\s\S]*?\n\n\ndef _plantage/.exec(SOURCE_CLI);
   assert.ok(m, 'principal() se lit encore');
   assert.match(m[0], /except Exception as e:\s+return _plantage\(e\)/);
@@ -461,7 +452,7 @@ function passageReseau(mode) {
     fabriquer(entree, paras);
     const sortie = path.join(base, 'sortie');
     fs.mkdirSync(sortie);
-    const r = python(['-c', PILOTE_RESEAU, PIPELINE, entree, sortie, mode]);
+    const r = lancerPython(['-c', PILOTE_RESEAU, PIPELINE, entree, sortie, mode], PYTHON_OPTS);
     assert.ok(r.status === 0 || r.status === 1, 'code ' + r.status + ' : ' + r.stderr);
     const obj = ligneUnique(r.stdout);
     verifierCompteurs(obj.compteurs);

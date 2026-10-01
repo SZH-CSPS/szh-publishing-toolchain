@@ -30,8 +30,8 @@
 //
 //   node --test test/js/manuscrit-regles.test.js
 //
-// Patron : test/js/manuscrit-docx.test.js. Gardes de test/js/gardes.js : PYTHON (jamais
-// `python3` en dur, qui tombe sur l'alias WindowsApps et fige toute la suite).
+// Patron : test/js/manuscrit-docx.test.js. Python passe par python() de test/js/gardes.js
+// (la WSL sous Windows).
 //
 // manuscrit_regles.py n'est piloté que par sa CLI de diagnostic (--diagnostiquer/
 // --catalogue) : Node ne peut pas l'importer directement.
@@ -40,28 +40,27 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, pythonSortie, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_REGLES = path.join(RACINE, 'pipeline', 'manuscrit_regles.py');
 
-function python(args, entree) {
-  return cp.spawnSync(PYTHON, args,
+function lancerPython(args, entree) {
+  return python(args,
     { encoding: 'utf8', input: entree, maxBuffer: 64 * 1024 * 1024 });
 }
 
 // Lance --diagnostiquer sur un Contexte JS, rend {code, sortie} — `code` est le code de
 // sortie du PROCESSUS (0 = aucune error, 1 = au moins une), `sortie` le JSON déjà parsé.
 function diagnostiquer(contexte) {
-  const r = python([MANUSCRIT_REGLES, '--diagnostiquer'], JSON.stringify(contexte));
+  const r = lancerPython([MANUSCRIT_REGLES, '--diagnostiquer'], JSON.stringify(contexte));
   assert.ok(r.status === 0 || r.status === 1,
     '--diagnostiquer devait rendre 0 ou 1, a rendu ' + r.status + ' : ' + r.stderr);
   return { code: r.status, sortie: JSON.parse(r.stdout) };
 }
 
 function catalogue() {
-  const r = python([MANUSCRIT_REGLES, '--catalogue']);
+  const r = lancerPython([MANUSCRIT_REGLES, '--catalogue']);
   assert.strictEqual(r.status, 0, '--catalogue a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }

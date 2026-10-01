@@ -1,7 +1,7 @@
 // pipeline/manuscrit_biblio.py — vérification de bibliographie APA 7 (nettoyeur de
 // manuscrit, contrat §7 bis). Module PUR : pas de .docx ici, seulement du texte de paragraphe
-// déjà extrait — les fonctions s'appellent depuis le Python de Windows (PYTHON de gardes.js),
-// jamais la WSL, exactement comme docx-meta-titre.test.js pour docx-meta.py.
+// déjà extrait — les fonctions s'appellent par python() de gardes.js, exactement comme
+// docx-meta-titre.test.js pour docx-meta.py.
 //
 //   node --test test/js/manuscrit-biblio.test.js
 //
@@ -20,14 +20,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, cheminPython, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 
-function python(programme, args) {
-  return cp.spawnSync(PYTHON, ['-c', programme].concat(args || []), {
+function lancerPython(programme, args) {
+  return python(['-c', programme].concat(args || []), {
     encoding: 'utf8',
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }),
     maxBuffer: 1024 * 1024 * 16,
@@ -36,12 +35,12 @@ function python(programme, args) {
 
 const PREAMBULE = [
   'import sys, os, json',
-  'sys.path.insert(0, ' + JSON.stringify(PIPELINE) + ')',
+  'sys.path.insert(0, ' + JSON.stringify(cheminPython(PIPELINE)) + ')',
   'import manuscrit_biblio as mb',
 ].join('\n');
 
 function executer(corps) {
-  const r = python(PREAMBULE + '\n' + corps, []);
+  const r = lancerPython(PREAMBULE + '\n' + corps, []);
   assert.strictEqual(r.status, 0, 'le script Python a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -281,7 +280,7 @@ test('analyser_reference : 12 références fr du corpus réel, vérité champ pa
   { skip: sansPython }, (t) => {
     const programme = 'cas = json.loads(sys.argv[1])\n'
       + 'print(json.dumps([mb.analyser_reference(c) for c in cas]))';
-    const r = python(PREAMBULE + '\n' + programme,
+    const r = lancerPython(PREAMBULE + '\n' + programme,
       [JSON.stringify(FIXTURE_FR.map((c) => c.texte))]);
     assert.strictEqual(r.status, 0, r.stderr);
     const resultats = JSON.parse(r.stdout);
@@ -294,7 +293,7 @@ test('analyser_reference : 6 références de du guide Zeitschrift (pas de corpus
   { skip: sansPython }, (t) => {
     const programme = 'cas = json.loads(sys.argv[1])\n'
       + 'print(json.dumps([mb.analyser_reference(c) for c in cas]))';
-    const r = python(PREAMBULE + '\n' + programme,
+    const r = lancerPython(PREAMBULE + '\n' + programme,
       [JSON.stringify(FIXTURE_DE.map((c) => c.texte))]);
     assert.strictEqual(r.status, 0, r.stderr);
     const resultats = JSON.parse(r.stdout);
@@ -308,7 +307,7 @@ test('analyser_reference : au moins 80% de confiance haute sur les 18 référenc
   const programme = 'cas = json.loads(sys.argv[1])\n'
     + 'print(json.dumps([mb.analyser_reference(c)["confiance"] for c in cas]))';
   const tous = FIXTURE_FR.concat(FIXTURE_DE).map((c) => c.texte);
-  const r = python(PREAMBULE + '\n' + programme, [JSON.stringify(tous)]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [JSON.stringify(tous)]);
   assert.strictEqual(r.status, 0, r.stderr);
   const confiances = JSON.parse(r.stdout);
   const haute = confiances.filter((c) => c === 'haute').length;
@@ -325,7 +324,7 @@ test('analyser_reference : un chapitre à trois éditeurs et pages SANS "(pp.)" 
   const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
   const texte = 'Assude, T. & Millon-Faure, K. (2021). Un chapitre. In G. Pelgrims, T. Assude, '
     + '& J.-M. Perez (Éds.), Transitions et transformations, 151-167. Berne : SZH/CSPS.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.type, 'chapitre');
@@ -353,7 +352,7 @@ test('analyser_reference + mise_en_forme_apa : le genre entre crochets d\'un rap
     'print(json.dumps({"genre": r["genre"], "rendu": mb.mise_en_forme_apa(r)}))',
   ].join('\n');
   const texte = 'Booms, A. (2022). Un travail. [Thèse de doctorat, Université de Reims].';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.genre, 'Thèse de doctorat');
@@ -378,7 +377,7 @@ test('mise_en_forme_apa : pages d\'un article, demi-cadratin en allemand, gardé
     ].join('\n');
     const base = 'Skaalvik, E. M., & Skaalvik, S. (2017). Motivated for teaching. Teaching and '
       + 'Teacher Education, 67, ';
-    const r = python(PREAMBULE + '\n' + programme,
+    const r = lancerPython(PREAMBULE + '\n' + programme,
       [base + '152–160.', base + '152-160.']);
     assert.strictEqual(r.status, 0, r.stderr);
     const d = JSON.parse(r.stdout);
@@ -403,7 +402,7 @@ const TEXTE_UNITED_NATIONS = 'United Nations, 2016. General Comment No. 4 (2016)
 test('analyser_reference : une seconde parenthèse à 4 chiffres dans le TITRE ne doit pas '
   + 'faire passer une plage de pages égarée pour un éditeur plausible', { skip: sansPython }, () => {
   const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
-  const r = python(PREAMBULE + '\n' + programme, [TEXTE_UNITED_NATIONS]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [TEXTE_UNITED_NATIONS]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.editeur, '1-24',
@@ -556,8 +555,7 @@ test('citations_du_corps : les préfixes « z. B. », « vgl. z. B. », « e.g. 
 // 29.09.2026 — un intitulé de bibliographie suivi d'un complément entre parenthèses
 // (« 3 Literatur (gemäss Redaktionsrichtlinien) ») est reconnu par le nettoyeur ; un titre qui
 // ne fait que COMMENCER par un mot du lexique ne l'est toujours pas.
-test('nettoyeur : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de bibliographie',
-  { skip: sansPython }, () => {
+test('nettoyeur : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de bibliographie', { skip: sansPython }, () => {
   const programme = [
     'import pronto_modele, manuscrit_modele as mm, manuscrit_entete as me',
     'lex = pronto_modele.lire_titres_bib()',
@@ -894,8 +892,7 @@ test('doi_normaliser : doi:, DOI :, dx.doi.org/, http:// -> forme canonique ; d�
 // ---------------------------------------------------------------------------------
 // 6. resoudre_crossref() / retrouver_doi() — réseau TOUJOURS injecté, jamais réel.
 
-test('resoudre_crossref : confirme quand auteur/année/titre concordent, divergent sinon',
-  { skip: sansPython }, () => {
+test('resoudre_crossref : confirme quand auteur/année/titre concordent, divergent sinon', { skip: sansPython }, () => {
   const programme = [
     "def fausse_requete(url, delai):",
     "    return json.dumps({'message': {",
@@ -920,8 +917,7 @@ test('resoudre_crossref : confirme quand auteur/année/titre concordent, diverge
   assert.strictEqual(r.divergent.confirme, false);
 });
 
-test('Crossref muet : une seule tentative par analyse, un 404 n’éteint rien',
-  { skip: sansPython }, () => {
+test('Crossref muet : une seule tentative par analyse, un 404 n’éteint rien', { skip: sansPython }, () => {
   const programme = [
     'import urllib.error',
     'appels = []',
@@ -953,8 +949,7 @@ test('Crossref muet : une seule tentative par analyse, un 404 n’éteint rien',
   assert.strictEqual(r.n_404, 3, 'un DOI inconnu (404) a éteint Crossref');
 });
 
-test('resoudre_crossref : sans DOI, ne consulte jamais le réseau (rend None)',
-  { skip: sansPython }, () => {
+test('resoudre_crossref : sans DOI, ne consulte jamais le réseau (rend None)', { skip: sansPython }, () => {
   const programme = [
     'appele = []',
     "def requete_espionne(url, delai):",
@@ -1007,7 +1002,7 @@ test('analyser_reference : un titre anglais cité dans une bibliographie frança
   const texte = "Ploessl, D. M., et Rock, M. L. (2014). Coaching : The effects on "
     + "co-teachers' planning and instruction. Teacher Education and Special Education, "
     + "37(3), 191-215.";
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.langue_ref, 'en', 'mots-outils anglais (the, effects...) non détectés');
@@ -1027,7 +1022,7 @@ test('analyser_reference : un titre français garde l\'insécable devant son sé
   // mot-outil anglais/allemand).
   const texte = 'Pelgrims, G. (2016). Une question de terrain: enjeux pour la pratique. '
     + 'Revue suisse de pédagogie spécialisée, 3, 20-29.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.langue_ref, 'fr');
@@ -1043,7 +1038,7 @@ test('analyser_reference : un titre allemand (mots-outils der/die/das/und/für) 
   ].join('\n');
   const texte = 'Muster, E. (2010). Der Titel : Und der Untertitel. Zeitschrift für '
     + 'Umweltfragen, 27, 56-78.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.langue_ref, 'de');
@@ -1063,7 +1058,7 @@ test('mise_en_forme_apa : seul le volume est en italique — "*37*(3)", jamais "
   ].join('\n');
   const texte = 'Ploessl, D. M., & Rock, M. L. (2014). Coaching: The effects on co-teachers\''
     + ' planning and instruction. Teacher Education and Special Education, 37(3), 191-215.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.match(d.rendu, /\*37\*\(3\)/, 'le volume seul doit être en italique : ' + d.rendu);
@@ -1071,8 +1066,7 @@ test('mise_en_forme_apa : seul le volume est en italique — "*37*(3)", jamais "
     + 'être en italique avec le volume : ' + d.rendu);
 });
 
-test('analyser_bibliographie : APA.MiseEnForme porte suggested_texte, sans astérisques',
-  { skip: sansPython }, () => {
+test('analyser_bibliographie : APA.MiseEnForme porte suggested_texte, sans astérisques', { skip: sansPython }, () => {
   const programme = [
     "corps = []",
     "biblio = [{'source': 10, 'texte': "
@@ -1214,7 +1208,7 @@ const TEXTE_GUYTON = 'Untel, A. (2020). Une pratique de coenseignement. Dans E. 
 test('analyser_reference : deux éditeurs liés par "et" (pas seulement "&") sont capturés, '
   + 'jamais perdus — connecteur normalisé en "&"', { skip: sansPython }, () => {
   const programme = 'r = mb.analyser_reference(sys.argv[1])\nprint(json.dumps(r))';
-  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.type, 'chapitre');
@@ -1232,7 +1226,7 @@ test('mise_en_forme_apa : "In", "(Eds.)" (jamais "(dir.)"/accentué), éditeurs 
     "r['_langue'] = 'fr'",
     'print(json.dumps({"rendu": mb.mise_en_forme_apa(r)}))',
   ].join('\n');
-  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.match(d.rendu, /In E\. Guyton & J\. Ranier \(Eds\.\),/,
@@ -1250,7 +1244,7 @@ test('mise_en_forme_apa : la Zeitschrift (langue du produit) prescrit "S.", mêm
     "r['_langue'] = 'de'",
     'print(json.dumps({"rendu": mb.mise_en_forme_apa(r)}))',
   ].join('\n');
-  const r = python(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [TEXTE_GUYTON]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.match(d.rendu, /\(S\. 11–24\)/,
@@ -1270,7 +1264,7 @@ test('mise_en_forme_apa : un ouvrage collectif cité en ALLEMAND prend "(Hrsg.)"
   ].join('\n');
   const texte = 'Muster, E. (2010). Über die Plausibilität von Schmetterlingseffekten. In '
     + 'T. Meier und H. Schneider (dir.), Ökosysteme im Wandel (p. 113-156). Musterverlag.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.langue_ref, 'de');
@@ -1295,7 +1289,7 @@ test('mise_en_forme_apa : un chapitre sans éditeur identifié ne produit plus "
   ].join('\n');
   const texte = 'Alves, I., & Fernandes, D. (2022). Un chapitre bien formé. In Un ouvrage '
     + 'collectif (pp. 10-20). Éditeur X.';
-  const r = python(PREAMBULE + '\n' + programme, [texte]);
+  const r = lancerPython(PREAMBULE + '\n' + programme, [texte]);
   assert.strictEqual(r.status, 0, r.stderr);
   const d = JSON.parse(r.stdout);
   assert.strictEqual(d.nb_editeurs_ouvrage, 0,

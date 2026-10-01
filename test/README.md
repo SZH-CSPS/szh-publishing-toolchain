@@ -44,16 +44,21 @@ python3 test/apca-check.py      # contrastes : palette, couverture, pages couran
 python3 test/typo-check.py      # typographie des textes visibles, fr et de
 python3 test/typo-articles.py   # typographie du texte des articles, par pandoc
 python3 test/palette-html.py    # régénère docs/palette.html
-bash test/build-render.sh       # dans WSL : build PDF + PNG de chaque page, figures-check.py compris
-python test/render.py <pdf> <png> [page] [échelle]   # côté Windows : une seule page
+bash test/build-render.sh       # build PDF + PNG de chaque page, figures-check.py compris
+~/pdfvenv/bin/python test/render.py <pdf> <png> [page] [échelle]   # une seule page
 ```
 
-Les trois premiers ne demandent rien de particulier ; les deux derniers rendent des PNG,
-et c'est là qu'il faut choisir son camp. `build-render.sh` a besoin d'un venv Python avec
-`pypdfium2` et `Pillow` **dans la distro** (voir plus bas) ; s'il n'y est pas, le script
-compile mais ne rend aucune image. La voie courte, quand on veut juste comparer une page
-avant et après une retouche de maquette : compiler dans WSL, puis appeler `render.py`
-côté Windows, où ces deux paquets sont déjà là.
+Tout Python tourne dans la WSL `SZH-Publishing` (Python 3.13), jamais avec le `python` de
+Windows : `python3` y est souvent le raccourci du Microsoft Store, qui fige. Depuis
+Windows, lancer ces commandes par `wsl.exe -d SZH-Publishing -- …` depuis PowerShell
+(jamais depuis Git Bash, qui casse `/mnt/c`). Les tests `node --test` font de même tout
+seuls : ils passent par la fonction `python()` de `test/js/gardes.js`.
+
+Les deux dernières lignes rendent des PNG : elles demandent le venv de développement
+`~/pdfvenv` (`pypdfium2`, `Pillow`, `PyYAML`, versions épinglées), que crée
+`outils-dev/venv-dev.sh` (voir plus bas) ; sans lui, `build-render.sh` compile mais ne rend
+aucune image. La voie courte, quand on veut juste comparer une page avant et après une
+retouche de maquette : compiler, puis appeler `render.py`.
 
 ## La mini-revue
 
@@ -289,13 +294,10 @@ sans quoi ce contrôle ne pourrait plus jamais échouer.
   pire que pas de planche.
 
 ## Build + capture PNG
-Depuis WSL (distro `SZH-Publishing`), avec un venv Python contenant `pypdfium2`
-et `Pillow` :
+Depuis WSL (distro `SZH-Publishing`), avec le venv de développement `~/pdfvenv` :
 
 ```sh
-python3 -m venv ~/pdfvenv
-curl -sS https://bootstrap.pypa.io/get-pip.py | ~/pdfvenv/bin/python   # si pip absent
-~/pdfvenv/bin/python -m pip install pypdfium2 Pillow
+bash outils-dev/venv-dev.sh            # crée ou met à jour ~/pdfvenv (une fois)
 
 bash test/build-render.sh              # tous les articles
 bash test/build-render.sh contenu-long # un seul

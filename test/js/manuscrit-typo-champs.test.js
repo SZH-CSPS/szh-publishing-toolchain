@@ -19,8 +19,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
+const { python, cheminPython, sansPython, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const NETTOYEUR = path.join(RACINE, 'pipeline', 'manuscrit-nettoyer.py');
@@ -91,8 +90,8 @@ for partie in ('word/document.xml', 'word/footnotes.xml'):
 print(json.dumps(sortie, ensure_ascii=False))
 `;
 
-function python(args) {
-  return cp.spawnSync(PYTHON, args, {
+function lancerPython(args) {
+  return python(args, {
     encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' })
   });
@@ -104,8 +103,8 @@ function nettoyerFabrique(spec, produit) {
     const fab = path.join(base, 'fab.py');
     fs.writeFileSync(fab, FABRICANT_PY, 'utf8');
     const docx = path.join(base, 'manuscrit.docx');
-    fs.writeFileSync(path.join(base, 'spec.json'), JSON.stringify(Object.assign({ sortie: docx }, spec)), 'utf8');
-    let r = python([fab, path.join(base, 'spec.json')]);
+    fs.writeFileSync(path.join(base, 'spec.json'), JSON.stringify(Object.assign({ sortie: cheminPython(docx) }, spec)), 'utf8');
+    let r = lancerPython([fab, path.join(base, 'spec.json')]);
     assert.strictEqual(r.status, 0, 'fabrication impossible : ' + r.stderr);
     const sortie = path.join(base, 'sortie');
     r = python([NETTOYEUR, docx, '--produit', produit, '--sortie', sortie, '--sans-reseau',
@@ -115,7 +114,7 @@ function nettoyerFabrique(spec, produit) {
     assert.strictEqual(ligne.typographie, 'appliquee', 'typographie non appliquée : ' + r.stderr);
     const lire = path.join(base, 'lire.py');
     fs.writeFileSync(lire, LIRE_PY, 'utf8');
-    const l = python([lire, ligne.sortie_docx]);
+    const l = lancerPython([lire, ligne.sortie_docx]);
     assert.strictEqual(l.status, 0, l.stderr);
     return JSON.parse(l.stdout);
   } finally {

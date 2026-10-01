@@ -25,11 +25,10 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const cp = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, cheminPython, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_NOMS = path.join(RACINE, 'pipeline', 'manuscrit_noms.py');
@@ -41,7 +40,7 @@ const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 // tourne sur les segments reçus ENSEMBLE dans un même appel).
 function diagnostiquer(segments, base) {
   const entree = { segments, base: base || { prenoms: [], noms: [] } };
-  const r = cp.spawnSync(PYTHON, [MANUSCRIT_NOMS, '--diagnostic'], {
+  const r = python( [MANUSCRIT_NOMS, '--diagnostic'], {
     input: JSON.stringify(entree), encoding: 'utf8', env: ENV_UTF8,
     maxBuffer: 16 * 1024 * 1024,
   });
@@ -374,7 +373,7 @@ test('BaseNoms.charger() : ne lit que noms-famille.txt dans le lexique du dépô
 
     const programme = [
       'import importlib.util, json, sys',
-      'spec = importlib.util.spec_from_file_location("mn", ' + JSON.stringify(MANUSCRIT_NOMS) + ')',
+      'spec = importlib.util.spec_from_file_location("mn", ' + JSON.stringify(cheminPython(MANUSCRIT_NOMS)) + ')',
       'mn = importlib.util.module_from_spec(spec)',
       'spec.loader.exec_module(mn)',
       'base = mn.BaseNoms.charger(chemin_base_auteurs=sys.argv[1], chemin_lexique=sys.argv[2])',
@@ -385,7 +384,7 @@ test('BaseNoms.charger() : ne lit que noms-famille.txt dans le lexique du dépô
       '    "poids_prenom_edith": base.poids_prenom("edith"),',
       '}, ensure_ascii=False))',
     ].join('\n');
-    const r = cp.spawnSync(PYTHON, ['-c', programme, cheminBaseInexistant, dossier], {
+    const r = python( ['-c', programme, cheminBaseInexistant, dossier], {
       encoding: 'utf8', env: ENV_UTF8,
     });
     assert.strictEqual(r.status, 0, 'BaseNoms.charger() a échoué : ' + r.stderr);

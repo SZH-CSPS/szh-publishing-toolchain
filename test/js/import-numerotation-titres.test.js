@@ -27,7 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sauter, sansPandocWsl } = require('./gardes');
+const { python, sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DISTRO = 'SZH-Publishing';
@@ -64,7 +64,7 @@ test(".docx du modèle : les titres sont numérotés par le style, pas par le te
     'sys.stdout.write("\\x00")',
     'sys.stdout.write(z.read("word/numbering.xml").decode("utf-8"))'
   ].join('\n');
-  const r = wsl(['python3', '-c', programme, cheminVersWsl(MODELE)]);
+  const r = python(['-c', programme, MODELE], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, 'lecture du .docx (zip) via WSL : ' + r.stderr);
   const [styles, numbering] = r.stdout.split('\x00');
 

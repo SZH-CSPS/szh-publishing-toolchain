@@ -20,17 +20,12 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandoc, sansPandocWsl } = require('./gardes');
+const { python: pythonGardes, sansPython, sansPandoc, sansPandocWsl } = require('./gardes');
 const F = require('./figures-fabrique');
 
 const PIPELINE = path.join(F.RACINE, 'pipeline');
 const CONTROLE = path.join(PIPELINE, 'docx-controle-import.py');
 const refs = require(path.join(F.RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'references.js'));
-
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    env: Object.assign({}, F.ENV_UTF8, env || {}) });
-}
 
 // Un article « déjà converti », tel que pandoc l'a laissé : le .md, media/, les instructions.
 function articleConverti(base, md, instructions) {
@@ -38,9 +33,9 @@ function articleConverti(base, md, instructions) {
   fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
   const docx = F.fabriquer(base, 'source', F.manuscritBrut('a', { cles: false }));
   // Les deux fichiers d'image de la source, extraits comme pandoc les extrait.
-  const lire = python(['-c', 'import sys,zipfile\nz=zipfile.ZipFile(sys.argv[1])\n'
+  const lire = pythonGardes(['-c', 'import sys,zipfile\nz=zipfile.ZipFile(sys.argv[1])\n'
     + 'for n in ("photoA.png","photoB.png"):\n    open(sys.argv[2]+"/"+n,"wb").write(z.read("word/media/"+n))',
-    docx, path.join(dossier, 'media')]);
+    docx, path.join(dossier, 'media')], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: F.ENV_UTF8 });
   assert.strictEqual(lire.status, 0, lire.stderr);
   fs.writeFileSync(path.join(dossier, 'essai.md'), md, 'utf8');
   const meta = path.join(base, 'instructions.txt');
@@ -50,12 +45,12 @@ function articleConverti(base, md, instructions) {
 }
 
 function passe1(a) {
-  return python([CONTROLE, '--avant-medias', a.docx, 'essai', a.dossier, a.etat],
-    { SZH_META: a.meta, SZH_SLUG: 'essai' });
+  return pythonGardes([CONTROLE, '--avant-medias', a.docx, 'essai', a.dossier, a.etat],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: Object.assign({}, F.ENV_UTF8, { SZH_META: a.meta, SZH_SLUG: 'essai' }) });
 }
 function passe2(a, statsMedias) {
-  return python([CONTROLE, '--apres-medias', 'essai', a.dossier, a.etat, statsMedias || '{}'],
-    { SZH_SLUG: 'essai' });
+  return pythonGardes([CONTROLE, '--apres-medias', 'essai', a.dossier, a.etat, statsMedias || '{}'],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: Object.assign({}, F.ENV_UTF8, { SZH_SLUG: 'essai' }) });
 }
 
 const GRILLE_COMPLETE = '::: {.szh-grille disposition="2"}\n'
@@ -135,7 +130,7 @@ const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 
 function lignesFI(docx, base) {
   const instr = path.join(base, 'instructions.txt');
-  const r = python([PRONTO_LIRE, docx, 'essai', base], { SZH_META: instr, SZH_PRODUIT: 'revue' });
+  const r = pythonGardes([PRONTO_LIRE, docx, 'essai', base], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: Object.assign({}, F.ENV_UTF8, { SZH_META: instr, SZH_PRODUIT: 'revue' }) });
   assert.strictEqual(r.status, 0, r.stderr);
   return fs.readFileSync(instr, 'utf8').split('\n').filter((l) => /^FI\t/.test(l)).map((l) => l.split('\t'));
 }

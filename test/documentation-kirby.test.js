@@ -18,7 +18,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawnSync } = require('child_process');
-const { sansPandoc, sansPython, PYTHON } = require('./js/gardes');
+const { python, cheminDepuisPython, sansPandoc, sansPython } = require('./js/gardes');
 
 const RACINE = path.resolve(__dirname, '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
@@ -54,9 +54,11 @@ function convertir(dossierArticle, sortieDemandee, racineNews) {
   try {
     const args = [CONVERTISSEUR, '--article', dossierArticle, '--champs', CHAMPS_JSON, '--sortie', sortie];
     if (racineNews !== null) { args.push('--racine-news', racineNews === undefined ? BANC_RACINE : racineNews); }
-    const r = spawnSync(PYTHON, args, { encoding: 'utf8' });
+    const r = python(args, { encoding: 'utf8' });
     if (r.error) { throw new Error('python introuvable : ' + r.error.message); }
-    const stdout = (r.status === 0 && fs.existsSync(sortie)) ? fs.readFileSync(sortie, 'utf8') : '';
+    // Les images citées le sont par le chemin que Python a vu : le pandoc du poste les relit.
+    const stdout = (r.status === 0 && fs.existsSync(sortie))
+      ? fs.readFileSync(sortie, 'utf8').replace(/\/mnt\/[a-z]\/[^\s)"'}]*/g, cheminDepuisPython) : '';
     return { stdout, stderr: r.stderr, status: r.status };
   } finally {
     if (dossierTmp) { fs.rmSync(dossierTmp, { recursive: true, force: true }); }

@@ -33,11 +33,8 @@
 // Patron : test/js/docx-titres.test.js (fixtures fabriquées dans le test, jamais figées en
 // binaire, via un petit programme Python écrit au vol) et test/js/biblio-vide.test.js (qui
 // fait déjà tourner un filtre Lua pour de vrai plutôt que de deviner son comportement).
-// Gardes de test/js/gardes.js : PYTHON (jamais `python3` en dur, qui tombe sur l'alias
-// WindowsApps et fige toute la suite), sansPandocWsl (pandoc + WSL SZH-Publishing) et
-// sansPandoc (pandoc du PATH Windows — utilisé UNIQUEMENT par le contrôle n°12, qui a besoin
-// d'un vrai pandoc joignable SANS passer par wsl.exe pour prouver que la branche Linux ne le
-// touche jamais).
+// Gardes de test/js/gardes.js : python() (la WSL sous Windows) et sansPandocWsl (pandoc +
+// WSL SZH-Publishing).
 //
 // manuscrit_typo.py travaille en duck-typing contre les signatures du §4 du contrat
 // (Fragment/Paragraphe) : il n'importe PAS pipeline/manuscrit_modele.py, qui est écrit EN
@@ -51,24 +48,16 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl, sansPandoc } = require('./gardes');
+const { python, sansPython, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
-
-// process.platform de CE poste (Windows) : le contrôle n°4 (repli sans wsl.exe) n'a de sens
-// que là où wsl.exe est la voie normale — sous Linux, _executer_pandoc ne le regarde jamais.
-const sansWindows = process.platform !== 'win32'
-  ? 'contrôle valable uniquement sous Windows (repli via wsl.exe)' : false;
 
 // Le harnais : construit des Fragment/Paragraphe locaux depuis une « recette » JSON, appelle
 // normaliser_paragraphes(), rend le résultat en JSON. Les points d'injection remplacent une
 // fonction/un attribut interne du module par une doublure de test AVANT l'appel — jamais en
 // modifiant manuscrit_typo.py lui-même :
 //   - `sortie_sabotee` : _appeler_pandoc rend exactement le texte fourni, sans toucher à pandoc ;
-//   - `sans_wsl` : _chemin_wsl_exe rend un exécutable inexistant (repli, contrôle n°4) ;
-//   - `forcer_linux` : sys.platform devient 'linux' et wsl.exe/wslpath explosent s'ils sont
-//     appelés — pandoc, lui, tourne pour de vrai (celui du PATH Windows, contrôle n°12) ;
+//   - `sans_pandoc` : le lancement de pandoc lève FileNotFoundError (repli, contrôle n°4) ;
 //   - `appel_direct` : appelle _reconstruire_unite() SANS passer par pandoc, pour éprouver les
 //     deux gardes internes (entrée/sortie, contrôles n°9-10) sans dépendre de la WSL ; son
 //     sous-champ `opcodes_bogues` remplace difflib.SequenceMatcher par une doublure dont
@@ -119,13 +108,6 @@ const HARNAIS = [
   "    print('OK')",
   '    sys.exit(0)',
   '',
-  "if recette.get('forcer_linux'):",
-  "    MT.sys.platform = 'linux'",
-  '    def _explose(*a, **k):',
-  "        raise AssertionError('la branche Linux a touche wsl.exe/wslpath')",
-  '    MT._chemin_wsl_exe = _explose',
-  '    MT._chemin_pour_wsl = _explose',
-  '',
   "if recette.get('sortie_sabotee') is not None:",
   '    # Point d’injection à contrôle EXACT, caractère par caractère : renvoie précisément le',
   '    # texte fourni par la recette, plutôt qu’une altération générique — c’est ce qui permet',
@@ -135,8 +117,10 @@ const HARNAIS = [
   '        return list(_fixe), []',
   '    MT._appeler_pandoc = _appel_fixe',
   '',
-  "if recette.get('sans_wsl'):",
-  "    MT._chemin_wsl_exe = lambda: r'C:\\chemin-tout-a-fait-inexistant\\wsl.exe'",
+  "if recette.get('sans_pandoc'):",
+  '    def _introuvable(*a, **k):',
+  "        raise FileNotFoundError('pandoc')",
+  '    MT.subprocess.run = _introuvable',
   '',
   'paragraphes = []',
   "for p in recette['paragraphes']:",
@@ -177,8 +161,7 @@ function lancerHarnais(recette) {
     const fSortie = path.join(dossier, 'sortie.json');
     fs.writeFileSync(fHarnais, HARNAIS, 'utf8');
     fs.writeFileSync(fEntree, JSON.stringify(recette), 'utf8');
-    const r = cp.spawnSync(PYTHON, [fHarnais, RACINE, fEntree, fSortie],
-      { encoding: 'utf8', timeout: 120000 });
+    const r = python([fHarnais, RACINE, fEntree, fSortie], { timeout: 120000 });
     assert.strictEqual(r.status, 0,
       'harnais Python sorti en ' + r.status + ' : ' + r.stderr + ' / ' + r.stdout);
     return JSON.parse(fs.readFileSync(fSortie, 'utf8'));
@@ -295,14 +278,14 @@ test('manuscrit-typo : un caractère ajouté par le filtre est accepté sans aba
       'le caractère ajouté par le filtre doit être conservé tel quel');
   });
 
-// ---- 4. Le repli sans WSL : inchangé, une trace, jamais d'exception -------------------
+// ---- 4. Le repli sans pandoc : inchangé, une trace, jamais d'exception ----------------
 
-test('manuscrit-typo : sans wsl.exe joignable, le repli est signalé et les paragraphes ressortent inchangés',
-  { skip: sansPython || sansWindows }, () => {
+test('manuscrit-typo : sans pandoc joignable, le repli est signalé et les paragraphes ressortent inchangés',
+  { skip: sansPython }, () => {
     const original = 'Un texte tout simple.';
     const sortie = normaliser({
       langue: 'fr',
-      sans_wsl: true,   // point d'injection : _chemin_wsl_exe rend un exécutable inexistant
+      sans_pandoc: true,
       paragraphes: [{
         source: 7,
         fragments: [{ texte: original, forme: { italique: false } }]
@@ -317,7 +300,7 @@ test('manuscrit-typo : sans wsl.exe joignable, le repli est signalé et les para
     assert.deepStrictEqual(sortie.avertissements, [],
       'aucun avertissement typo ne peut venir d\u2019un appel qui n\u2019a jamais eu lieu');
     assert.strictEqual(texteAPlat(sortie.paragraphes[0]), original,
-      'le paragraphe a été modifié malgré l\u2019absence de wsl.exe');
+      'le paragraphe a été modifié malgré l\u2019absence de pandoc');
   });
 
 // ---- 5. Français contre allemand : la langue part bien jusqu'au filtre ----------------
@@ -499,35 +482,6 @@ test('manuscrit-typo : les avertissements [typo-avertissement] d\u2019un appel r
         'une ligne d\u2019avertissement ne porte pas le préfixe attendu : ' + JSON.stringify(ligne));
     }
   });
-
-// ---- 12. Sous Linux, pandoc est appelé DIRECTEMENT, jamais via wsl.exe/wslpath --------
-//
-// La panne mesurée avant cette révision : la CLI de production tourne DANS la WSL (le
-// lanceur fait `wsl -d SZH-Publishing -e python3 ...`), où wsl.exe n'existe pas —
-// `_appeler_pandoc` l'invoquait quand même, sans erreur visible, et retombait en repli
-// silencieux (845 paragraphes sur 845 inchangés, code de sortie 0). Ce contrôle force
-// `sys.platform` à 'linux' SANS changer le poste réel : wsl.exe/_chemin_pour_wsl explosent
-// s'ils sont appelés (la preuve que la branche ne les touche jamais), et pandoc tourne pour
-// de vrai — celui du PATH Windows (gardes.sansPandoc), pas celui de la WSL.
-
-test('manuscrit-typo : sous Linux (sys.platform != win32), pandoc est appelé directement, jamais via wsl.exe',
-  { skip: sansPython || sansPandoc }, () => {
-    const sortie = normaliser({
-      langue: 'fr',
-      forcer_linux: true,
-      paragraphes: [{
-        source: 0,
-        fragments: [{ texte: 'Attention : ceci compte vraiment.', forme: { italique: false } }]
-      }]
-    });
-    assert.strictEqual(sortie.statut, 'appliquee',
-      'pandoc direct doit réussir sans jamais toucher wsl.exe : ' + JSON.stringify(sortie));
-    assert.deepStrictEqual(sortie.abandons, []);
-    const texte = texteAPlat(sortie.paragraphes[0]);
-    assert.match(texte, /Attention[\u00a0\u202f]:/,
-      'la typographie française (insécable devant « : ») n\u2019a pas été appliquée par le pandoc direct');
-  });
-
 
 // ---- 13. Un fragment a NOTE, au milieu d'un mot, ressort intact au meme rang -----------
 //

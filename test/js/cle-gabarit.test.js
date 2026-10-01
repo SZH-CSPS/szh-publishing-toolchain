@@ -8,8 +8,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -19,12 +18,6 @@ const HERITE = path.join(RACINE, 'livre-template', 'Modele-chapitre-SZH.docx');
 const GABARITS = ['FR', 'DE'].flatMap((c) => ['.docx', '.odt'].map((ext) =>
   path.join(RACINE, 'revue-template', "Pronto - modele d'article_" + c + ext)));
 const ENV = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
-
-function python(args) {
-  const r = cp.spawnSync(PYTHON, args, { encoding: 'utf8', env: ENV });
-  assert.ok(!r.error, String(r.error));
-  return r;
-}
 
 // Valeur de la clé lue directement dans le zip, sans passer par le code de production.
 const LIRE_CLE = [
@@ -37,13 +30,13 @@ const LIRE_CLE = [
 ].join('\n');
 
 function cle(chemin) {
-  const r = python(['-c', LIRE_CLE, chemin]);
+  const r = python(['-c', LIRE_CLE, chemin], { env: ENV });
   assert.strictEqual(r.status, 0, r.stderr);
   return r.stdout.trim();
 }
 
 function reconnu(chemin) {
-  const r = python([PRONTO_LIRE, '--reconnaitre', chemin]);
+  const r = python([PRONTO_LIRE, '--reconnaitre', chemin], { env: ENV });
   assert.ok(r.status === 0 || r.status === 10, r.stderr);  // 10 = pas au gabarit, le reste est une panne
   return r.status === 0;
 }
@@ -56,7 +49,7 @@ const CAS_NETTOYEUR = [
 ].join('\n');
 
 function casNettoyeur(chemin) {
-  const r = python(['-c', CAS_NETTOYEUR, PIPELINE, chemin]);
+  const r = python(['-c', CAS_NETTOYEUR, PIPELINE, chemin], { env: ENV });
   assert.strictEqual(r.status, 0, r.stderr);
   return r.stdout.trim();
 }
@@ -79,7 +72,7 @@ test('la clé seule suffit : un Word hérité marqué est reconnu à l’import 
     fs.copyFileSync(HERITE, marque);
     assert.strictEqual(reconnu(marque), false, 'le Word hérité est déjà reconnu sans clé');
     assert.strictEqual(casNettoyeur(marque), 'B');
-    const r = python([MARQUER, marque]);
+    const r = python([MARQUER, marque], { env: ENV });
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(cle(marque), 'pronto-article-4');
     assert.strictEqual(reconnu(marque), true, 'la clé n’est pas lue par pronto-lire.py --reconnaitre');
@@ -102,7 +95,7 @@ test('sans clé, les styles du gabarit restent le repli', { skip: sansPython }, 
       '        if i.filename == "docProps/custom.xml":',
       '            d = d.decode("utf-8").replace("SZH-Gabarit", "Autre-Propriete").encode("utf-8")',
       '        zo.writestr(i, d)',
-    ].join('\n'), GABARITS[0], sansCle]);
+    ].join('\n'), GABARITS[0], sansCle], { env: ENV });
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(cle(sansCle), '');
     assert.strictEqual(reconnu(sansCle), true);
@@ -121,7 +114,7 @@ test('le document écrit par le nettoyeur garde la clé du gabarit', { skip: san
       'sys.path.insert(0, sys.argv[1])',
       'import manuscrit_docx as md, manuscrit_gabarit as mg',
       'mg.ecrire(md.lire(sys.argv[2]), sys.argv[3], sys.argv[4], decisions=None)',
-    ].join('\n'), PIPELINE, HERITE, GABARITS[0], sortie]);
+    ].join('\n'), PIPELINE, HERITE, GABARITS[0], sortie], { env: ENV });
     assert.strictEqual(r.status, 0, r.stderr);
     assert.strictEqual(cle(sortie), 'pronto-article-4');
     assert.strictEqual(reconnu(sortie), true);

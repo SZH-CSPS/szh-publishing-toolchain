@@ -1,10 +1,10 @@
 # Rend une seule page d'un PDF en PNG, pour comparer un avant et un après à l'œil.
 #
-#   python test/render.py <pdf> <png> [page0] [échelle]
+#   ~/pdfvenv/bin/python test/render.py <pdf> <png> [page0] [échelle]
 #
-# À lancer côté Windows, où pypdfium2 et Pillow sont installés : la distro WSL ne les a
-# pas. C'est le chemin le plus court pour juger une retouche de maquette — compiler dans
-# WSL, rendre ici. Pour toutes les pages d'un coup, voir render-all.py.
+# À lancer dans la WSL, avec le venv de développement que crée outils-dev/venv-dev.sh
+# (pypdfium2 et Pillow) : c'est le chemin le plus court pour juger une retouche de
+# maquette. Pour toutes les pages d'un coup, voir render-all.py.
 import sys
 import pypdfium2 as pdfium
 

@@ -14,11 +14,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
+const { python, sansPython, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
 const GABARIT = path.join(RACINE, 'revue-template', "Pronto - modele d'article_FR.docx");
+const ENV = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-illisible-'));
@@ -30,13 +31,6 @@ function zipTronque(base) {
   const chemin = path.join(base, 'tronque.docx');
   fs.writeFileSync(chemin, complet.subarray(0, Math.floor(complet.length / 2)));
   return chemin;
-}
-
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
-    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
-  });
 }
 
 // Le gabarit livré dont word/document.xml est coupé en deux, le zip restant intact : le
@@ -52,7 +46,7 @@ function xmlCorrompu(base) {
     '        b.writestr(i, d[:len(d) // 2] if i.filename == "word/document.xml" else d)'
   ].join('\n');
   const r = python(['-c', code,
-    GABARIT, chemin]);
+    GABARIT, chemin], { encoding: 'utf8', env: ENV });
   assert.strictEqual(r.status, 0, r.stderr);
   return chemin;
 }
@@ -61,7 +55,7 @@ for (const lecteur of ['docx-meta.py', 'pronto-lire.py']) {
   test(lecteur + ' : un zip tronqué sort en échec, avec un constat fr puis de', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
-      const r = python([path.join(PIPE, lecteur), zipTronque(base), 'art', base]);
+      const r = python([path.join(PIPE, lecteur), zipTronque(base), 'art', base], { encoding: 'utf8', env: ENV });
       assert.notStrictEqual(r.status, 0, lecteur + ' a réussi sur un zip tronqué : ' + r.stderr);
       assert.match(r.stderr, /\[import-avertissement\] fichier-illisible \| article « art » \|/, r.stderr);
       assert.match(r.stderr, /n’a pas pu être ouvert.*\[de\] Die Word-Datei konnte nicht/s, r.stderr);
@@ -75,9 +69,9 @@ test('pronto-lire.py : document.xml corrompu, zip intact — reconnu (0), puis l
     const base = dossierJetable();
     try {
       const f = xmlCorrompu(base);
-      assert.strictEqual(python([path.join(PIPE, 'pronto-lire.py'), '--reconnaitre', f]).status, 0,
+      assert.strictEqual(python([path.join(PIPE, 'pronto-lire.py'), '--reconnaitre', f], { encoding: 'utf8', env: ENV }).status, 0,
         'le reconnaisseur devait répondre « au gabarit »');
-      const r = python([path.join(PIPE, 'pronto-lire.py'), f, 'art', base]);
+      const r = python([path.join(PIPE, 'pronto-lire.py'), f, 'art', base], { encoding: 'utf8', env: ENV });
       assert.strictEqual(r.status, 3, 'code de lecture impossible attendu : ' + r.status + r.stderr);
       assert.match(r.stderr, /fichier-illisible/, r.stderr);
     } finally { fs.rmSync(base, { recursive: true, force: true }); }

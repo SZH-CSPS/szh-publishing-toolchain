@@ -16,7 +16,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { PYTHON, sansPython, sansPandoc, sansPandocWsl } = require('./gardes');
+const { python, pythonSortie, sansPython, sansPandoc, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPE = path.join(RACINE, 'pipeline');
@@ -30,7 +30,7 @@ function jetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-styles-corps-'));
 }
 
-function lancer(commande, args) {
+function lancerCommande(commande, args) {
   return spawnSync(commande, args, {
     encoding: 'utf8', windowsHide: true, timeout: 60000,
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' })
@@ -71,13 +71,16 @@ function fabriquer(dossier, corps) {
   const docx = path.join(dossier, 'essai.docx');
   fs.writeFileSync(script, FABRICANTE, 'utf8');
   fs.writeFileSync(xml, corps, 'utf8');
-  const r = lancer(PYTHON, [script, docx, xml]);
+  const r = python([script, docx, xml], {
+    encoding: 'utf8', timeout: 60000,
+    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' })
+  });
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
   return docx;
 }
 
 function versMarkdown(docx) {
-  const r = lancer('pandoc', [docx, '--from=docx', '--to=markdown', '--wrap=none',
+  const r = lancerCommande('pandoc', [docx, '--from=docx', '--to=markdown', '--wrap=none',
     '--lua-filter=' + FILTRE]);
   assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
   return r.stdout.replace(/\r\n/g, '\n');
@@ -102,7 +105,7 @@ test('chaque style de corps devient son bloc, et seulement le style en vigueur c
         p('Normal', 'Après.')
       ].join(''));
       const marque = path.join(d, 'marque.docx');
-      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      const r = python( [PREPASS, docx, marque]);
       assert.strictEqual(r.status, 0, r.stderr);
       assert.deepStrictEqual(JSON.parse(r.stdout).blocs,
         { highlight: 3, important: 2, question: 1 });
@@ -132,10 +135,10 @@ test('un document sans ces styles ressort identique à l\'octet',
     try {
       const docx = fabriquer(d, p('Normal', 'Rien à marquer.') + p('', 'Sans style.'));
       const marque = path.join(d, 'marque.docx');
-      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      const r = python( [PREPASS, docx, marque]);
       assert.strictEqual(r.status, 0, r.stderr);
       assert.deepStrictEqual(JSON.parse(r.stdout).blocs, {});
-      const lire = lancer(PYTHON, ['-c', 'import sys,zipfile; a,b=(zipfile.ZipFile(f) for f in sys.argv[1:]);'
+      const lire = python( ['-c', 'import sys,zipfile; a,b=(zipfile.ZipFile(f) for f in sys.argv[1:]);'
         + 'print(all(a.read(n)==b.read(n) for n in a.namelist()) and a.namelist()==b.namelist())',
       docx, marque]);
       assert.strictEqual(lire.stdout.trim(), 'True', lire.stderr);
@@ -159,7 +162,7 @@ test('le style Word « Auhors » devient ::: {.szh-auteurs}, au même titre que 
         p('Normal', 'Corps du chapitre.')
       ].join(''));
       const marque = path.join(d, 'marque.docx');
-      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      const r = python( [PREPASS, docx, marque]);
       assert.strictEqual(r.status, 0, r.stderr);
       assert.deepStrictEqual(JSON.parse(r.stdout).blocs, { 'szh-auteurs': 1 });
 
@@ -187,7 +190,7 @@ test('deux paragraphes « Auhors » consécutifs NE fusionnent PAS (contrairemen
         p('Normal', 'Suite normale.')
       ].join(''));
       const marque = path.join(d, 'marque.docx');
-      const r = lancer(PYTHON, [PREPASS, docx, marque]);
+      const r = python( [PREPASS, docx, marque]);
       assert.strictEqual(r.status, 0, r.stderr);
       assert.deepStrictEqual(JSON.parse(r.stdout).blocs, { 'szh-auteurs': 2 });
 
@@ -244,7 +247,7 @@ test('l\'exergue est aria-hidden, ses liens hors du clavier, les autres blocs in
       fs.writeFileSync(md, '::: {.highlight}\nUne [exergue](https://x.ch).\n:::\n\n'
         + '::: {.hervorhebung}\nAncienne classe.\n:::\n\n'
         + '::: {.important}\nUn [encadré](https://y.ch).\n:::\n', 'utf8');
-      const r = lancer('pandoc', [md, '--to=html5', '--lua-filter=' + EXERGUE]);
+      const r = lancerCommande('pandoc', [md, '--to=html5', '--lua-filter=' + EXERGUE]);
       assert.strictEqual(r.status, 0, r.stderr);
       const html = r.stdout.replace(/\r\n/g, '\n');
       assert.match(html, /<div class="highlight" aria-hidden="true">/);

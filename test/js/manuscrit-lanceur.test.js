@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const { POWERSHELL, sansPowerShell, PYTHON, sansPython } = require('./gardes');
+const { POWERSHELL, sansPowerShell, python, sansPython, cheminPython, cheminDepuisPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const OPEN_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
@@ -223,7 +223,7 @@ test('Invoke-SzhManuscrit passe --format <valeur> a la CLI, quel que soit le for
     const argvPath = path.join(travailScript, 'argv.json');
     const cli = fabriquerScriptPython(travailScript, [
       'import sys, json',
-      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      'with open(' + JSON.stringify(cheminPython(argvPath)) + ", 'w', encoding='utf-8') as f:",
       '    json.dump(sys.argv[1:], f)',
       "print(json.dumps({'alertes': 0, 'erreurs': 0}))",
       'sys.exit(0)',
@@ -236,7 +236,7 @@ test('Invoke-SzhManuscrit passe --format <valeur> a la CLI, quel que soit le for
       '$r = [ordered]@{ ok = $resultat.ok }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     // argv.json est lu AVANT de nettoyer travailScript (qui le contient) -- l'inverse a
@@ -266,7 +266,7 @@ test('Invoke-SzhManuscrit : sans -Format explicite, "docx" part quand meme sur l
     const argvPath = path.join(travailScript, 'argv.json');
     const cli = fabriquerScriptPython(travailScript, [
       'import sys, json',
-      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      'with open(' + JSON.stringify(cheminPython(argvPath)) + ", 'w', encoding='utf-8') as f:",
       '    json.dump(sys.argv[1:], f)',
       "print(json.dumps({'alertes': 0, 'erreurs': 0}))",
       'sys.exit(0)',
@@ -279,7 +279,7 @@ test('Invoke-SzhManuscrit : sans -Format explicite, "docx" part quand meme sur l
       '$r = [ordered]@{ ok = $resultat.ok }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     const argvExiste = fs.existsSync(argvPath);
@@ -403,10 +403,10 @@ function fabriquerScriptPython(dossier, lignes) {
 // Un .cmd qui relaie vers un petit script Node : le format des trois appels que ce fichier
 // adresse a wsl.exe est fixe (`-l -q` ; `-d <distro> -e wslpath -a|-w <chemin>` ; `-d
 // <distro> -e python3 <script> <args...>`), mais un parsing par position en pur batch est
-// fragile des le 10e argument -- Node fait ca sans limite. wslpath : identite (aucun test
-// n'inspecte la conversion elle-meme, seulement ce que le faux script Python rend).
-// python3 : relaye vers PYTHON (gardes.js -- jamais un `python3` nu, le piege du stub
-// WindowsApps qui gele un lancement, deja mesure ailleurs dans ce chantier).
+// fragile des le 10e argument -- Node fait ca sans limite. wslpath convertit dans les deux
+// sens, comme le vrai. python3 : relaye au python3 de la vraie distro,
+// les chemins C:/... convertis ; un antislash dans un argument est refuse, le vrai wsl.exe
+// l'avalerait.
 function fabriquerFauxWsl(dossier) {
   const script = path.join(dossier, 'faux-wsl.js');
   fs.writeFileSync(script, [
@@ -424,11 +424,25 @@ function fabriquerFauxWsl(dossier) {
     '}',
     'const reste = args.slice(iE + 1);',
     "if (reste[0] === 'wslpath') {",
-    '  process.stdout.write(reste[reste.length - 1] + \'\\n\');',
+    '  let c = reste[reste.length - 1];',
+    '  const m = /^\\/mnt\\/([a-z])\\/(.*)$/.exec(c);',
+    '  const w = /^([A-Za-z]):[\\\\\\/](.*)$/.exec(c);',
+    "  if (reste[1] === '-w' && m) { c = m[1].toUpperCase() + ':\\\\' + m[2].replace(/\\//g, '\\\\'); }",
+    "  if (reste[1] === '-a' && w) { c = '/mnt/' + w[1].toLowerCase() + '/' + w[2].replace(/\\\\/g, '/'); }",
+    '  process.stdout.write(c + \'\\n\');',
     '  process.exit(0);',
     '}',
     "if (reste[0] === 'python3') {",
-    "  const r = spawnSync(process.env.SZH_MANUSCRIT_FAUX_PYTHON || 'python', reste.slice(1),",
+    "  if (reste.some((a) => a.includes('\\\\'))) {",
+    "    process.stderr.write('faux-wsl : antislash dans un argument : ' + reste.join(' ') + '\\n');",
+    '    process.exit(1);',
+    '  }',
+    '  const conv = reste.slice(1).map((a) => {',
+    '    const m = /^([A-Za-z]):\\/(.*)$/.exec(a);',
+    "    return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : a;",
+    '  });',
+    "  const wsl = require('path').join(process.env.SystemRoot || 'C:\\\\Windows', 'System32', 'wsl.exe');",
+    "  const r = spawnSync(wsl, ['-d', 'SZH-Publishing', '-e', 'python3'].concat(conv),",
     "    { stdio: 'inherit' });",
     '  process.exit(r.status === null ? 1 : r.status);',
     '}',
@@ -465,7 +479,7 @@ test('Invoke-SzhManuscrit : succes - JSON de stdout lu, progression NON recopiee
         'dossier = $resultat.dossier; journal = $journalFaux.Text }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
@@ -500,7 +514,7 @@ test('Invoke-SzhManuscrit : code de sortie non nul - ok:false, une phrase courte
       '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; detail = $resultat.detail; journal = $journalFaux.Text }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
@@ -534,7 +548,7 @@ test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a tra
       'import sys, json',
       "print('lecture du manuscrit...', file=sys.stderr)",
       "print('annotation : 4 revision(s), 3 commentaire(s), 0 renvoyee(s) au rapport', file=sys.stderr)",
-      'with open(' + JSON.stringify(rapportPath) + ", 'w', encoding='utf-8') as f:",
+      'with open(' + JSON.stringify(cheminPython(rapportPath)) + ", 'w', encoding='utf-8') as f:",
       "    json.dump({'compteurs': {'revisions': 4, 'commentaires_poses': 3}}, f)",
       "print('58 alerte(s) (2 error, 1 warning, 0 suggestion)', file=sys.stderr)",
       "print('termine en 500 ms (code de sortie 1)', file=sys.stderr)",
@@ -554,7 +568,7 @@ test('Invoke-SzhManuscrit : code 1 (alerte error) - succes avec des points a tra
         'stats = $resultat.stats; dossier = $resultat.dossier }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
@@ -601,7 +615,7 @@ test('Invoke-SzhManuscrit : code 3 (echec interne) - ok:false, une phrase courte
       '$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; detail = $resultat.detail; alertesBloquantes = $resultat.alertesBloquantes }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
     });
 
     fs.rmSync(travailScript, { recursive: true, force: true });
@@ -753,7 +767,7 @@ test('Invoke-SzhManuscrit : --rapport vise un fichier temporaire (barres oblique
     const argvPath = path.join(travailScript, 'argv.json');
     const cli = fabriquerScriptPython(travailScript, [
       'import sys, json',
-      'with open(' + JSON.stringify(argvPath) + ", 'w', encoding='utf-8') as f:",
+      'with open(' + JSON.stringify(cheminPython(argvPath)) + ", 'w', encoding='utf-8') as f:",
       '    json.dump(sys.argv[1:], f)',
       'args = sys.argv[1:]',
       "chemin = args[args.index('--rapport') + 1] if '--rapport' in args else args[0] + '-rapport.json'",
@@ -772,7 +786,7 @@ test('Invoke-SzhManuscrit : --rapport vise un fichier temporaire (barres oblique
       '$r = [ordered]@{ ok = $resultat.ok; temporaire = $resultat.rapportTemporaire; avant = $avant; apres = $apres }',
     ]), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
       TEMP: tempDir, TMP: tempDir,
     });
 
@@ -790,7 +804,7 @@ test('Invoke-SzhManuscrit : --rapport vise un fichier temporaire (barres oblique
     assert.ok(iRapport !== -1, '--rapport absent des arguments : ' + JSON.stringify(argv));
     const cible = argv[iRapport + 1];
     assert.ok(!cible.includes('\\'), 'le chemin passe a la CLI doit etre en barres obliques : ' + cible);
-    assert.strictEqual(path.dirname(path.resolve(cible)), path.resolve(tempDir), 'le JSON doit viser %TEMP%, pas ' + cible);
+    assert.strictEqual(path.dirname(path.resolve(cheminDepuisPython(cible))), path.resolve(tempDir), 'le JSON doit viser %TEMP%, pas ' + cible);
     assert.match(path.basename(cible), /^szh-rapport-manuscrit-[0-9a-f]{32}\.json$/);
     assert.deepStrictEqual(restes, ['brouillon.docx'], 'rien ne doit etre ecrit a cote du manuscrit : ' + restes);
     assert.strictEqual(r.r.avant, true, 'la CLI devait avoir ecrit le JSON temporaire');
@@ -803,7 +817,7 @@ test('Invoke-SzhManuscrit : --rapport vise un fichier temporaire (barres oblique
 // modifications, puis Show-SzhResultatPreproc : une phrase, pas de doublon, pas de chemin ;
 // et rien d'autre que le manuscrit dans son dossier.
 function fabriquerDocxSuivi(chemin, auteur) {
-  const r = spawnSync(PYTHON, ['-c', [
+  const r = python(['-c', [
     'import sys, zipfile',
     'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
     'corps = ("<w:p><w:r><w:t>Titre</w:t></w:r></w:p><w:p><w:ins w:id=\\"1\\" w:author=\\"%s\\" w:date=\\"2026-01-01T00:00:00Z\\">"',
@@ -814,7 +828,7 @@ function fabriquerDocxSuivi(chemin, auteur) {
     '    z.writestr("word/document.xml", doc.encode("utf-8"))',
     '    z.writestr("word/styles.xml", styles.encode("utf-8"))',
     '    z.writestr("[Content_Types].xml", \'<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>\')',
-  ].join('\n'), chemin, auteur], { encoding: 'utf8', windowsHide: true });
+  ].join('\n'), chemin, auteur]);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -842,7 +856,7 @@ for (const [nomFichier, auteur, attendu] of [
         '$r = [ordered]@{ journal = $journalFaux.Text }',
       ]), {
         SZH_MANUSCRIT_CLI: NETTOYEUR_REEL, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-        SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+        SZH_MANUSCRIT_WSL_EXE: fauxWsl,
         TEMP: tempDir, TMP: tempDir,
       });
       const restes = fs.readdirSync(manuscritsDir);
@@ -939,7 +953,7 @@ function essaiConstats(lignesCli, options) {
     corps.push('$r = [ordered]@{ ok = $resultat.ok; texte = $resultat.texte; journal = $journalFaux.Text }');
     const r = executerPiloteManuscrit(CORPS_FONCTIONS.concat(CORPS_APPEL_COMMUN).concat(corps), {
       SZH_MANUSCRIT_CLI: cli, SZH_MANUSCRIT_DISTRO: 'SZH-Publishing',
-      SZH_MANUSCRIT_WSL_EXE: fauxWsl, SZH_MANUSCRIT_FAUX_PYTHON: PYTHON,
+      SZH_MANUSCRIT_WSL_EXE: fauxWsl,
       SZH_RAPPORTS: path.join(constats, 'rapports'), SZH_COMPTEURS: path.join(constats, 'compteurs'),
       LOCALAPPDATA: path.join(constats, 'localappdata'),
     });

@@ -12,8 +12,7 @@
 // contrat de l'écrivain) puis les paragraphes réels, avec un mot cible FRACTIONNÉ entre deux
 // runs pour éprouver « fractionne les runs aux deux décalages » (§7 ter, point 1).
 //
-// Gardes : PYTHON de test/js/gardes.js (jamais `python3` en dur, §10 du contrat : il peut
-// figer indéfiniment sur ce poste). sansPandocWsl couvre la preuve indépendante (accepter /
+// Gardes : python() de test/js/gardes.js (la WSL sous Windows). sansPandocWsl couvre la preuve indépendante (accepter /
 // rejeter / lire les commentaires via pandoc réel dans la WSL) et le contrôle sur corpus réel,
 // sauté proprement si tmp/ (hors git) est absent ou si la distro manque.
 'use strict';
@@ -24,7 +23,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl, sauter } = require('./gardes');
+const { python, cheminPython, sansPython, sansPandocWsl, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -39,10 +38,7 @@ const DISTRO = 'SZH-Publishing';
 // contrôle « found court ou ambigu » (le seul de ce fichier à faire transiter un accent par
 // simularAceptarRechazar()).
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
-
-function python(args) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
-}
+const PYTHON_OPTS = { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 };
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-manuscritannoter-'));
@@ -138,7 +134,7 @@ const FABRICAR_DOCX_PY = [
 ].join('\n');
 
 function fabriquerDocx(chemin, paragraphes, notes) {
-  const r = python(['-c', FABRICAR_DOCX_PY, chemin, JSON.stringify(paragraphes), JSON.stringify(notes || {})]);
+  const r = python(['-c', FABRICAR_DOCX_PY, chemin, JSON.stringify(paragraphes), JSON.stringify(notes || {})], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -189,7 +185,7 @@ function anotar(paragraphes, alertes, correspondance, options, notas) {
     const sortie = path.join(base, 'sortie.docx');
     fabriquerDocx(entree, paragraphes, notas);
     const r = python(['-c', ANNOTER_PY, PIPELINE, entree, sortie,
-      JSON.stringify(alertes), JSON.stringify(correspondance), JSON.stringify(options || {})]);
+      JSON.stringify(alertes), JSON.stringify(correspondance), JSON.stringify(options || {})], PYTHON_OPTS);
     assert.strictEqual(r.status, 0, 'manuscrit_annoter.annoter() a échoué : ' + r.stderr);
     return JSON.parse(r.stdout);
   } finally {
@@ -245,7 +241,7 @@ const SIMULAR_ACEPTAR_RECHAZAR_PY = [
 ].join('\n');
 
 function simularAceptarRechazar(documentXml) {
-  const r = python(['-c', SIMULAR_ACEPTAR_RECHAZAR_PY, documentXml]);
+  const r = python(['-c', SIMULAR_ACEPTAR_RECHAZAR_PY, documentXml], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'simulation accepter/rejeter a échoué : ' + r.stderr);
   const [aceptado, rechazado] = r.stdout.split('\x00');
   return { aceptado, rechazado };
@@ -300,8 +296,7 @@ test('révision : span incorrect -> repli sur la recherche de `found`, jamais po
 // 2. Le mot cible est fractionné entre deux runs : la révision doit quand même le retrouver
 // et produire une frontière de run exacte (§7 ter, point 1 : « fractionne les runs »).
 
-test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par moitié dans w:del',
-  { skip: sansPython }, () => {
+test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par moitié dans w:del', { skip: sansPython }, () => {
     const paragraphes = [{
       runs: [
         { texte: 'Une personne en sit' },
@@ -389,8 +384,7 @@ function alertesGroupeDoi(avecConcurrente) {
   return alertes;
 }
 
-test('DOI retrouvé : la mise en forme perd un chevauchement, le DOI part quand même en révision',
-  { skip: sansPython }, () => {
+test('DOI retrouvé : la mise en forme perd un chevauchement, le DOI part quand même en révision', { skip: sansPython }, () => {
     const resultat = anotar([{ texte: REF_DOI }], alertesGroupeDoi(true),
       [{ source: 0, sortie: 2 }], {});
     validerBienFormees(resultat);
@@ -437,16 +431,14 @@ test('doublon d\'une révision (Esperluette) : retiré de Word, gardé au rappor
     assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === 'CSPS-Biblio.APA.Esperluette'));
   });
 
-test('doublon déclaré mais révision qui ne dit pas la même chose : reste un commentaire',
-  { skip: sansPython }, () => {
+test('doublon déclaré mais révision qui ne dit pas la même chose : reste un commentaire', { skip: sansPython }, () => {
     const resultat = anotar([{ texte: REF_DOUBLON }],
       alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Autre'), [{ source: 0, sortie: 2 }], {});
     validerBienFormees(resultat);
     assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
   });
 
-test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste un commentaire',
-  { skip: sansPython }, () => {
+test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste un commentaire', { skip: sansPython }, () => {
     const resultat = anotar([{ texte: REF_DOUBLON }],
       alertesDoublon('APA.ReferenceNonCitee', ' & Durand'), [{ source: 0, sortie: 2 }], {});
     validerBienFormees(resultat);
@@ -455,8 +447,7 @@ test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste
     assert.strictEqual(resultat.stats.par_regle['APA.ReferenceNonCitee'].commentes, 1);
   });
 
-test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse)',
-  { skip: sansPython }, () => {
+test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse)', { skip: sansPython }, () => {
     const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
       span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
       message: 'mise en forme' }];
@@ -494,8 +485,7 @@ function alertesFusion(regleDoi, suggestedMef, spanDoi) {
 const MEF_SANS_DOI = 'Martin, A. (2020). Un titre. *Revue X*, *12*(3), 45-67.';
 const MEF_AVEC_DOI = MEF_SANS_DOI + ' ' + DOI_NORME;
 
-test('fusion DOI / mise en forme : un seul commentaire dans Word, la forme du DOI à la suite, le DOI au rapport',
-  { skip: sansPython }, () => {
+test('fusion DOI / mise en forme : un seul commentaire dans Word, la forme du DOI à la suite, le DOI au rapport', { skip: sansPython }, () => {
     for (const regle of ['APA.DoiForme', 'CSPS-Biblio.APA.DoiForme']) {
       const resultat = anotar([{ texte: REF_FUSION }], alertesFusion(regle, MEF_SANS_DOI),
         [{ source: 0, sortie: 2 }], {});
@@ -537,8 +527,7 @@ test('fusion DOI / mise en forme : le DOI déjà dans la forme APA n\'ajoute rie
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
 // TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
 // contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).
-test('found court ou ambigu sans span valide : jamais remplacé, repli sur un commentaire du paragraphe entier',
-  { skip: sansPython }, () => {
+test('found court ou ambigu sans span valide : jamais remplacé, repli sur un commentaire du paragraphe entier', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Cette approche associe recherche et pratique, et convainc.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [
@@ -563,8 +552,7 @@ test('found court ou ambigu sans span valide : jamais remplacé, repli sur un co
 // Défaut n°3 : une révision qui touche un run enveloppé dans <w:hyperlink> pouvait laisser un
 // document.xml mal formé SANS lever d'exception (le XML « de collage » interne à un groupe
 // fusionné, dont l'ouverture/fermeture du lien, était perdu). Mesuré sur 3/12 manuscrits réels.
-test('révision touchant un run de lien : jamais fusionnée, repli sur un commentaire, XML toujours bien formé',
-  { skip: sansPython }, () => {
+test('révision touchant un run de lien : jamais fusionnée, repli sur un commentaire, XML toujours bien formé', { skip: sansPython }, () => {
     const paragraphes = [{
       runs: [
         { texte: 'Voir le lien ' },
@@ -768,8 +756,7 @@ test('commentaire : le texte plat ne porte jamais d\'astérisque littéral quand
 // 3. Commentaire ancré sur un passage localisé, et commentaire de repli sur paragraphe
 // entier (found introuvable) — jamais perdu, jamais confondu avec une révision.
 
-test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe entier sinon',
-  { skip: sansPython }, () => {
+test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe entier sinon', { skip: sansPython }, () => {
     const paragraphes = [
       { texte: 'Ce paragraphe sert a tester le plafond de commentaires.' },
       { vide: true },
@@ -805,8 +792,7 @@ test('commentaire : ancré sur le passage trouvé, et en repli sur le paragraphe
 // 4. Plafond par règle : 7 occurrences d'une même règle -> 5 commentées, 2 renvoyées, la
 // 5e porte la synthèse (§7 ter, point 4).
 
-test('plafond par règle : au plus 5 commentaires, synthèse sur le 5e, le reste renvoyé',
-  { skip: sansPython }, () => {
+test('plafond par règle : au plus 5 commentaires, synthèse sur le 5e, le reste renvoyé', { skip: sansPython }, () => {
     const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' }));
     const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
     const alertes = paragraphes.map((_, i) => ({
@@ -828,8 +814,7 @@ test('plafond par règle : au plus 5 commentaires, synthèse sur le 5e, le reste
 // 5. Plafond global : sous le plafond par règle mais au-dessus du plafond global, trié
 // error > warning > suggestion puis ordre d'apparition.
 
-test('plafond global : les commentaires au-delà de `plafond_commentaires` sont renvoyés, triés par sévérité',
-  { skip: sansPython }, () => {
+test('plafond global : les commentaires au-delà de `plafond_commentaires` sont renvoyés, triés par sévérité', { skip: sansPython }, () => {
     const paragraphes = Array.from({ length: 4 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' }));
     const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
     const alertes = [
@@ -855,8 +840,7 @@ test('plafond global : les commentaires au-delà de `plafond_commentaires` sont 
 // ---------------------------------------------------------------------------------
 // `stats.plafond_global` ne compte que les commentaires refusés par le plafond global : ni les
 // doublons retirés, ni le plafond par règle. Sabotage : l'y faire compter (len(renvoyees)).
-test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e commentaire = 1',
-  { skip: sansPython }, () => {
+test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e commentaire = 1', { skip: sansPython }, () => {
     const paragraphes = [{ texte: REF_DOUBLON }].concat(
       Array.from({ length: 26 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' })));
     const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
@@ -897,8 +881,7 @@ test('les révisions n\'ont aucun plafond, contrairement aux commentaires',
 // 7. Alerte non ancrée : `para` absent, ou introuvable dans la correspondance -> comptée,
 // jamais perdue, et le document n'est PAS modifié.
 
-test('non ancrée : para=None ou introuvable -> comptée dans stats.non_ancrees, document intact',
-  { skip: sansPython }, () => {
+test('non ancrée : para=None ou introuvable -> comptée dans stats.non_ancrees, document intact', { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Paragraphe sans aucun rapport avec les alertes.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
     const alertes = [
@@ -964,8 +947,7 @@ test('l\'entrée n\'est jamais modifiée : annoter en place laisse le contenu or
 // 10. CLI d'essai — accepte le rapport JSON complet du nettoyeur pour --alertes ET
 // --correspondance (alertes.liste / decisions.ecriture.correspondance, §7 ter point 8).
 
-test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--correspondance',
-  { skip: sansPython }, () => {
+test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--correspondance', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'sortie.docx');
@@ -977,7 +959,7 @@ test('CLI : accepte le rapport JSON complet du nettoyeur pour --alertes/--corres
       };
       const fRapport = path.join(base, 'rapport.json');
       fs.writeFileSync(fRapport, JSON.stringify(rapport), 'utf8');
-      const r = python([ANNOTER, docx, '--alertes', fRapport, '--correspondance', fRapport]);
+      const r = python([ANNOTER, docx, '--alertes', fRapport, '--correspondance', fRapport], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, 'la CLI a échoué : ' + r.stderr);
       const stats = JSON.parse(r.stdout);
       assert.strictEqual(stats.revisions, 1);
@@ -1122,7 +1104,7 @@ function sauterSansWsl(t, raison) {
   sauter.wsl(t);
 }
 
-test('preuve indépendante pandoc : accepter/rejeter/lire les commentaires', (t) => {
+test('preuve indépendante pandoc : accepter/rejeter/lire les commentaires', { skip: sansPython }, (t) => {
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
   const base = dossierJetable();
   try {
@@ -1201,7 +1183,7 @@ test('preuve indépendante pandoc, notes : accepter/rejeter une révision DANS f
 // une VRAIE sortie (runs de typographie fractionnés, tableaux fixes, styles réels), pas
 // seulement sur une fixture. Sauté proprement si tmp/ (hors git) ou la distro manquent.
 
-test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc réel', (t) => {
+test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc réel', { skip: sansPython }, (t) => {
   if (sansPandocWsl) { sauterSansWsl(t, sansPandocWsl); return; }
   if (!fs.existsSync(CORPUS_LOT_A)) {
     console.warn('\n*** corpus tmp/corpus-relecture/lot-A absent (hors git) — essai réel sauté ***\n');
@@ -1213,8 +1195,8 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
 
   const base = dossierJetable();
   try {
-    const rNettoyage = wsl(['python3', cheminVersWsl(path.join(PIPELINE, 'manuscrit-nettoyer.py')),
-      cheminVersWsl(manuscrit), '--produit', 'revue', '--sortie', cheminVersWsl(base)]);
+    const rNettoyage = python([path.join(PIPELINE, 'manuscrit-nettoyer.py'),
+      manuscrit, '--produit', 'revue', '--sortie', base], { timeout: 120000 });
     const nom = path.basename(manuscrit, '.docx');
     const docxNettoye = path.join(base, nom + '-nettoye.docx');
     const rapportJson = path.join(base, nom + '-rapport.json');
@@ -1263,7 +1245,7 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
       'm = re.search(r"[A-Za-zÀ-ÿ]{8,}", texto)',
       'print(json.dumps({"source": source, "mot": m.group(0) if m else None}))',
     ].join('\n');
-    const rCible = python(['-c', CHOISIR_CIBLE_PY, PIPELINE, docxNettoye, JSON.stringify(correspondance)]);
+    const rCible = python(['-c', CHOISIR_CIBLE_PY, PIPELINE, docxNettoye, JSON.stringify(correspondance)], PYTHON_OPTS);
     assert.strictEqual(rCible.status, 0, 'choix du mot cible a échoué : ' + rCible.stderr);
     const { source, mot } = JSON.parse(rCible.stdout);
     assert.ok(mot, 'aucun mot de 8 lettres ou plus trouvé dans le corps réel');
@@ -1274,7 +1256,7 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
     ];
     const sortie = path.join(base, 'annote.docx');
     const r = python(['-c', ANNOTER_PY, PIPELINE, docxNettoye, sortie, JSON.stringify(alertes),
-      JSON.stringify(correspondance), JSON.stringify({})]);
+      JSON.stringify(correspondance), JSON.stringify({})], PYTHON_OPTS);
     assert.strictEqual(r.status, 0, 'annoter() a échoué sur une sortie réelle : ' + r.stderr);
     const resultat = JSON.parse(r.stdout);
     validerBienFormees(resultat);
@@ -1365,8 +1347,7 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
 // Sabotage minimal : dans _construir_texto_comentario, ignorer `langue` (t = _textes('fr')) —
 // les assertions allemandes rougissent.
 
-test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »',
-  { skip: sansPython }, () => {
+test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »', { skip: sansPython }, () => {
     const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Absatz Nummer ' + i + ' zum Füllen.' }));
     const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
     const alertes = paragraphes.map((_, i) => ({

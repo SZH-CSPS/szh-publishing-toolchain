@@ -2,26 +2,25 @@
 //
 //   node --test test/js/manuscrit-biblio-langue.test.js
 //
-// Module pur, appelé par le Python de Windows (PYTHON de gardes.js), sans réseau.
+// Module pur, appelé par python() de gardes.js, sans réseau.
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, cheminPython, sansPython } = require('./gardes');
 
 const PIPELINE = path.resolve(__dirname, '..', '..', 'pipeline');
 
 function executer(corps, graine) {
   const programme = [
     'import sys, json',
-    'sys.path.insert(0, ' + JSON.stringify(PIPELINE) + ')',
+    'sys.path.insert(0, ' + JSON.stringify(cheminPython(PIPELINE)) + ')',
     'import manuscrit_biblio as mb',
     corps,
   ].join('\n');
-  const r = cp.spawnSync(PYTHON, ['-c', programme], {
+  const r = python( ['-c', programme], {
     encoding: 'utf8',
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' },
       graine === undefined ? {} : { PYTHONHASHSEED: String(graine) }),
@@ -118,8 +117,7 @@ test('langue de : aucune alerte de la fixture allemande ne porte de français, '
 // jamais « Autor:in(nen) » ; un seul terme pour la citation dans le texte (Quellenangabe) et un
 // seul pour l'entrée de la liste (Eintrag) ; la forme normée du DOI est étiquetée.
 // Sabotage : remettre 'Autor:in(nen)', 'Verweis' ou l'ancienne phrase du DOI dans MESSAGES.
-test('langue de : Autor:in / Autor:innen selon le nombre, Quellenangabe et Eintrag partout, forme du DOI étiquetée',
-  { skip: sansPython }, () => {
+test('langue de : Autor:in / Autor:innen selon le nombre, Quellenangabe et Eintrag partout, forme du DOI étiquetée', { skip: sansPython }, () => {
     const sortie = executer([
       'def tester(corps, biblio):',
       "    alertes, _ = mb.analyser_bibliographie(corps, biblio, 'de', reseau=False)",

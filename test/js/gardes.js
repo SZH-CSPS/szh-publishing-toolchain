@@ -48,33 +48,147 @@ function detecterPowerShell() {
   return '';
 }
 
-// ---- Python (Windows et ailleurs) ------------------------------------------------------
-// `python3` en premier peut tomber sur l'alias d'exécution de WindowsApps quand aucun
-// Python n'est installé : ce lanceur peut rester accroché (tentative d'ouverture du Store)
-// au lieu de rendre la main, ce qui gèlerait toute la suite derrière lui. `python` n'est pas
-// concerné sur les postes de la maison, on l'essaie donc en premier ; `python3` n'est tenté
-// qu'en repli, et jamais nu — borné par un délai, pour qu'un blocage devienne un simple
-// « absent » plutôt qu'un processus de test qui ne rend jamais la main.
-function detecterPython() {
-  for (const commande of ['python', 'python3']) {
-    let r;
-    try {
-      r = spawnSync(commande, ['--version'],
-        { encoding: 'utf8', timeout: 5000, windowsHide: true });
-    } catch (e) {
-      continue;
-    }
-    if (r.error || r.signal) { continue; } // r.signal : tué par le délai (le stub qui traîne)
-    if (/Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) { return commande; }
+// ---- Python : celui de la distro WSL sous Windows, python3 ailleurs ---------------------
+// Sous Windows, jamais le python du poste : `python3` y est souvent le raccourci du
+// Microsoft Store, qui fige, et la production ne lance Python que dans la WSL.
+const DISTRO = 'SZH-Publishing';
+function wslExe() {
+  const w = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+  return fs.existsSync(w) ? w : 'wsl.exe';
+}
+
+// « C:\a\b » ou « C:/a/b » devient « /mnt/c/a/b », y compris derrière « --option= » ; toute
+// autre valeur est rendue telle quelle.
+function cheminVersWsl(valeur) {
+  if (typeof valeur !== 'string') { return valeur; }
+  const m = /^([A-Za-z]):[\\/]([\s\S]*)$/.exec(valeur);
+  if (m) { return '/mnt/' + m[1].toLowerCase() + '/' + m[2].replace(/\\/g, '/'); }
+  const opt = /^(--?[\w-]+=)([A-Za-z]:[\\/][\s\S]*)$/.exec(valeur);
+  return opt ? opt[1] + cheminVersWsl(opt[2]) : valeur;
+}
+
+// Le chemin tel que l'interprète de python() le voit : à écrire dans un script généré, ou à
+// comparer avec ce que Python rend.
+function cheminPython(p) {
+  return process.platform === 'win32' ? cheminVersWsl(p) : p;
+}
+
+// L'inverse : un chemin rendu par Python (/mnt/c/...), à relire depuis Node. Un objet ou un
+// tableau (un JSON lu) est parcouru en profondeur.
+function cheminDepuisPython(p) {
+  if (process.platform !== 'win32') { return p; }
+  if (Array.isArray(p)) { return p.map(cheminDepuisPython); }
+  if (p && typeof p === 'object') {
+    const copie = {};
+    for (const [k, v] of Object.entries(p)) { copie[k] = cheminDepuisPython(v); }
+    return copie;
   }
-  return '';
+  if (typeof p !== 'string') { return p; }
+  const m = /^\/mnt\/([a-zA-Z])\/([^\n]*)$/.exec(p);
+  return m ? m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\') : p;
+}
+
+// Les variables que `env` ajoute ou change par rapport au processus courant, au format de
+// WSLENV : « /p » fait convertir un chemin Windows par wsl.exe lui-même.
+function wslenvPour(env, parent) {
+  const noms = [];
+  for (const [nom, valeur] of Object.entries(env || {})) {
+    if (nom === 'WSLENV' || valeur === undefined || parent[nom] === valeur) { continue; }
+    noms.push(nom + (/^[A-Za-z]:[\\/]/.test(String(valeur)) ? '/p' : ''));
+  }
+  return noms;
+}
+
+// La ligne de commande que python() lance, séparée pour être éprouvée sans rien lancer.
+function commandePython(args, opts, plateforme) {
+  const o = opts || {};
+  const venv = o.venv === 'dev';
+  if ((plateforme || process.platform) !== 'win32') {
+    const exe = venv ? path.join(require('os').homedir(), 'pdfvenv', 'bin', 'python') : 'python3';
+    return { commande: exe, args: args.slice(), env: o.env, cwd: o.cwd };
+  }
+  const tete = ['-d', DISTRO];
+  if (o.cwd) { tete.push('--cd', cheminVersWsl(path.resolve(o.cwd))); }
+  tete.push('-e');
+  if (venv) { tete.push('sh', '-c', 'exec "$HOME/pdfvenv/bin/python" "$@"', 'python'); } else { tete.push('python3'); }
+  let env = o.env;
+  if (env) {
+    const noms = wslenvPour(env, process.env);
+    if (noms.length) {
+      const deja = env.WSLENV || process.env.WSLENV || '';
+      env = Object.assign({}, env, { WSLENV: (deja ? deja + ':' : '') + noms.join(':') });
+    }
+  }
+  return { commande: wslExe(), args: tete.concat(args.map(cheminVersWsl)), env, cwd: undefined };
+}
+
+// Même forme de retour que child_process.spawnSync. `opts` accepte env, cwd, input,
+// encoding (utf8 par défaut), timeout, maxBuffer, et venv: 'dev' pour ~/pdfvenv.
+// Passe par le spawnSync d'origine : sous SZH_SIMULER_RUNNER=ubuntu, le Python reste réel,
+// seul son transport par wsl.exe diffère du runner.
+function python(args, opts) {
+  if (SIMULER && !OUTILS_SIMULES[SIMULER].python) {
+    throw new Error('python() refusé sous SZH_SIMULER_RUNNER=' + SIMULER
+      + ' : ce runner n’a pas de Python, le test devait sauter sur sansPython.');
+  }
+  const o = opts || {};
+  const c = commandePython(args, o);
+  const options = { encoding: o.encoding === undefined ? 'utf8' : o.encoding, windowsHide: true };
+  for (const cle of ['input', 'timeout', 'maxBuffer', 'killSignal', 'stdio']) {
+    if (o[cle] !== undefined) { options[cle] = o[cle]; }
+  }
+  if (c.env) { options.env = c.env; }
+  if (c.cwd) { options.cwd = c.cwd; }
+  return spawnSync(c.commande, c.args, options);
+}
+
+// Même contrat que python(), mais tous les appels d'un fichier passent par un seul processus
+// WSL (test/js/pilote-python.js) : pour les fichiers qui lancent Python des centaines de
+// fois. Hors Windows, c'est python() tel quel.
+function pythonGroupe(args, opts) {
+  const o = opts || {};
+  if (process.platform !== 'win32' || o.venv || o.stdio) { return python(args, o); }
+  if (SIMULER && !OUTILS_SIMULES[SIMULER].python) { return python(args, o); }
+  const env = {};
+  for (const nom of wslenvPour(o.env, process.env)) {
+    const cle = nom.replace(/\/p$/, '');
+    env[cle] = nom.endsWith('/p') ? cheminVersWsl(String(o.env[cle])) : String(o.env[cle]);
+  }
+  const cwd = o.cwd ? cheminVersWsl(path.resolve(o.cwd)) : null;
+  return require('./pilote-python').appeler(wslExe(), DISTRO, args.map(cheminVersWsl), env, cwd, o);
+}
+
+// La sortie standard, ou une exception si le processus échoue (forme d'execFileSync).
+function pythonSortie(args, opts) {
+  return sortieOuEchec(python(args, opts), args);
+}
+function pythonGroupeSortie(args, opts) {
+  return sortieOuEchec(pythonGroupe(args, opts), args);
+}
+function sortieOuEchec(r, args) {
+  if (r.error) { throw r.error; }
+  if (r.status !== 0) {
+    const e = new Error('python ' + String(args[0]).slice(0, 80) + ' : code ' + r.status
+      + '\n' + String(r.stderr || ''));
+    Object.assign(e, { status: r.status, stdout: r.stdout, stderr: r.stderr });
+    throw e;
+  }
+  return r.stdout;
+}
+
+function detecterPython() {
+  let r;
+  try {
+    r = python(['-c', 'import sys; print(sys.version)'], { timeout: 120000 });
+  } catch (e) {
+    return '';
+  }
+  if (r.error || r.signal || r.status !== 0) { return ''; }
+  return /^3\./.test(String(r.stdout || '')) ? String(r.stdout).trim().split(' ')[0] : '';
 }
 
 // ---- pandoc + python3 dans la distro WSL SZH-Publishing --------------------------------
-// Reprend telle quelle la détection de test/js/biblio.test.js (pandocAbsent) : ce n'est pas
-// le python3 de Windows (ci-dessus) qui est en jeu ici, mais celui, réel, de la distro
-// Linux — sans son risque de blocage.
-const DISTRO = 'SZH-Publishing';
+// Reprend telle quelle la détection de test/js/biblio.test.js (pandocAbsent).
 function detecterPandocWsl() {
   const wslExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
   const exe = fs.existsSync(wslExe) ? wslExe : 'wsl.exe';
@@ -184,9 +298,11 @@ if (SIMULER && SIMULER !== 'ubuntu' && SIMULER !== 'windows') {
 // `contrats-windows` (windows-latest). VSCodium n'a sa propre entrée nulle part ici : aucun
 // des deux runners ne l'a jamais, la détection est forcée absente plus bas sous TOUTE
 // simulation, sans distinction.
+// Python : le job windows n'a pas de WSL, et ses tests Python sautent (le job ubuntu les
+// exerce sous le même Python 3.13).
 const OUTILS_SIMULES = {
-  ubuntu: { powershell: false, wsl: false, pandoc: true, vale: true },
-  windows: { powershell: true, wsl: false, pandoc: false, vale: false }
+  ubuntu: { powershell: false, wsl: false, pandoc: true, vale: true, python: true },
+  windows: { powershell: true, wsl: false, pandoc: false, vale: false, python: false }
 };
 
 let POWERSHELL;
@@ -196,9 +312,7 @@ if (SIMULER && !OUTILS_SIMULES[SIMULER].powershell) {
   POWERSHELL = detecterPowerShell();
 }
 
-// Python n'est truqué par aucun runner : présent réellement des deux côtés (ubuntu-latest le
-// fournit de base, SZH_PYTHON_OBLIGATOIRE le confirme ; windows-latest aussi).
-const PYTHON = detecterPython();
+const VERSION_PYTHON = (SIMULER && !OUTILS_SIMULES[SIMULER].python) ? '' : detecterPython();
 
 let _motifPandocWsl;
 if (SIMULER && !OUTILS_SIMULES[SIMULER].wsl) {
@@ -250,8 +364,11 @@ function exiger(variable, motif) {
 }
 
 const sansPowerShell = exiger('SZH_PS_OBLIGATOIRE', POWERSHELL ? false : 'powershell.exe indisponible');
-const sansPython = exiger('SZH_PYTHON_OBLIGATOIRE',
-  PYTHON ? false : 'aucun interprète Python 3 trouvé (python, puis python3)');
+const sansPython = exiger('SZH_PYTHON_OBLIGATOIRE', VERSION_PYTHON ? false
+  : (process.platform === 'win32' && !SIMULER
+    ? 'aucun interprète Python 3 dans la distro ' + DISTRO + ' (wsl.exe)'
+    : 'aucun interprète Python 3 (python3)'
+      + (SIMULER ? ' (SZH_SIMULER_RUNNER=' + SIMULER + ')' : '')));
 const sansPandocWsl = exiger('SZH_WSL_OBLIGATOIRE', _motifPandocWsl === null ? false : _motifPandocWsl);
 const sansPandoc = exiger('SZH_PANDOC_OBLIGATOIRE', _motifPandoc === null ? false : _motifPandoc);
 const sansVale = exiger('SZH_VALE_OBLIGATOIRE', _motifVale === null ? false : _motifVale);
@@ -347,6 +464,10 @@ if (SIMULER) {
   }
   if (!outils.pandoc) { BLOQUES.add('pandoc'); BLOQUES.add('pandoc.exe'); }
   if (!outils.vale) { BLOQUES.add('vale'); BLOQUES.add('vale.exe'); }
+  // Un appel direct au python du poste n'existe sur aucun runner : il passe par python().
+  if (process.platform === 'win32') {
+    for (const n of ['python', 'python.exe', 'python3', 'python3.exe']) { BLOQUES.add(n); }
+  }
 
   function nomDepuisCommande(commande) {
     return typeof commande === 'string' ? path.basename(commande).toLowerCase() : '';
@@ -381,24 +502,19 @@ if (SIMULER) {
   }
 }
 
-// ---- Le bash que PYTHON lancera ---------------------------------------------------------
-// reimporter.py lance `bash <chemin Windows>/import-docx.sh` par subprocess. Sous Windows,
-// Python et Node ne trouvent pas le même `bash` : CreateProcess cherche dans System32 AVANT
-// le PATH et tombe sur la passerelle WSL, qui ne sait rien d'un chemin « C:\… », là où Node
-// (libuv, PATH seul) trouve celui de Git. Sonder depuis Node validait donc un bash que le
-// script n'utilise jamais : la conversion échouait pour une raison de chemin, non de contrat
-// (sortie 1, « /bin/bash: C:Users…import-docx.sh: No such file or directory »). La sonde passe
-// donc par l'interprète même que le test lancera, pour mesurer l'opération réelle.
-function bashDuPython(python) {
-  if (!python) { return false; }
+// ---- Le bash que Python lancera ---------------------------------------------------------
+// reimporter.py lance `bash <dossier>/import-docx.sh` par subprocess : la sonde passe par
+// python(), pour mesurer le bash que le script trouvera, pas celui de Node.
+function bashDuPython() {
+  if (!VERSION_PYTHON) { return false; }
   let dossier = null;
   try {
     dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-sonde-'));
     const script = path.join(dossier, 'sonde.sh');
     fs.writeFileSync(script, '#!/bin/bash' + String.fromCharCode(10) + 'exit 7' + String.fromCharCode(10));
-    const r = spawnSync(python, ['-c',
+    const r = python(['-c',
       'import subprocess, sys; sys.exit(subprocess.call(["bash", sys.argv[1]]))', script],
-    { encoding: 'utf8', timeout: 20000, windowsHide: true });
+    { timeout: 20000 });
     return !r.error && r.status === 7;
   } catch (e) {
     return false;
@@ -408,8 +524,9 @@ function bashDuPython(python) {
 }
 
 module.exports = {
-  POWERSHELL, sansPowerShell, PYTHON, sansPython, sansPandocWsl, sansPandoc,
+  POWERSHELL, sansPowerShell, sansPython, sansPandocWsl, sansPandoc,
   sansVale, sansVSCodium, sansProduction, exiger, sauter, bashDuPython,
+  python, pythonGroupe, pythonSortie, pythonGroupeSortie, VERSION_PYTHON, cheminVersWsl, cheminPython, cheminDepuisPython, wslenvPour, commandePython,
   // Fonction, pas une valeur : le pliage n'est vérifié qu'à la demande (un seul appel
   // pandoc, jamais fait pour un fichier qui ne s'en sert pas). Appeler sansPliage() rend
   // `null` si ce pandoc est sain, sinon la raison.

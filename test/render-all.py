@@ -1,9 +1,10 @@
 # Rend toutes les pages d'un PDF en PNG numérotés, pour relire une maquette page à page.
 #
-#   python render-all.py <pdf> <préfixe de sortie> [échelle]
+#   ~/pdfvenv/bin/python render-all.py <pdf> <préfixe de sortie> [échelle]
 #
 # Appelé par build-render.sh, qui tourne dans WSL et lui passe l'interpréteur du venv
-# pypdfium2 (voir $SZH_RENDER). Pour une seule page, côté Windows, voir render.py.
+# pypdfium2 (voir $SZH_RENDER, et outils-dev/venv-dev.sh qui le crée). Pour une seule page,
+# voir render.py.
 import sys
 import pypdfium2 as pdfium
 

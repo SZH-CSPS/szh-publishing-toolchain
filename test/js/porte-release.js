@@ -37,21 +37,12 @@ const { spawnSync } = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const GARDES_JS = path.join(__dirname, 'gardes.js');
-const { PYTHON } = require('./gardes');
+const { python } = require('./gardes');
 const { verifier } = require('./verifier-tap');
 const { MOTIFS } = require('./motifs-saut');
 
 // ---- utilitaires --------------------------------------------------------------------------
 
-function cheminVersWsl(p) {
-  const abs = path.resolve(p).replace(/\\/g, '/');
-  const m = abs.match(/^([A-Za-z]):\/(.*)$/);
-  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : abs;
-}
-function wslExe() {
-  const w = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
-  return fs.existsSync(w) ? w : 'wsl.exe';
-}
 function resumerEchec(r) {
   if (!r) { return '(aucune tentative)'; }
   if (r.error) { return 'erreur : ' + r.error.message; }
@@ -59,72 +50,44 @@ function resumerEchec(r) {
 }
 
 // ---- (a) YAML des deux workflows -----------------------------------------------------------
-// PyYAML : le `python` de Windows l'a (PYTHON de gardes.js) ; en repli, python3 de la WSL
-// SZH-Publishing ; si ni l'un ni l'autre, échec explicite plutôt qu'un contrôle tu.
+// PyYAML vit dans le venv de développement de la WSL (outils-dev/venv-dev.sh) : si le venv
+// manque, échec explicite plutôt qu'un contrôle tu.
 function verifierYaml() {
   const fichiers = ['.github/workflows/ci.yml', '.github/workflows/release.yml']
     .map((f) => path.join(RACINE, f));
   const script = "import sys, yaml\nfor f in sys.argv[1:]:\n    yaml.safe_load(open(f, encoding='utf-8'))\nprint('YAML_OK')\n";
-
-  if (PYTHON) {
-    const r = spawnSync(PYTHON, ['-c', script].concat(fichiers), { encoding: 'utf8', timeout: 20000 });
-    if (!r.error && r.status === 0 && /YAML_OK/.test(r.stdout || '')) {
-      return { ok: true, detail: 'ci.yml et release.yml : YAML valide (Python Windows, ' + PYTHON + ')' };
-    }
-    if (!r.error) {
-      // pandoc présent mais PyYAML absent, ou YAML réellement invalide : on tente quand
-      // même la WSL avant de conclure, un module Python manquant n'est pas une erreur YAML.
-      var echecWindows = resumerEchec(r);
-    } else {
-      var echecWindowsProcess = resumerEchec(r);
-    }
-  }
-  const argsWsl = ['-c', script].concat(fichiers.map(cheminVersWsl));
-  let r2;
+  let r;
   try {
-    r2 = spawnSync(wslExe(), ['-d', 'SZH-Publishing', '--', 'python3'].concat(argsWsl),
-      { encoding: 'utf8', windowsHide: true, timeout: 30000 });
+    r = python(['-c', script].concat(fichiers), { timeout: 30000, venv: 'dev' });
   } catch (e) {
-    r2 = { error: e };
+    r = { error: e };
   }
-  if (!r2.error && r2.status === 0 && /YAML_OK/.test(r2.stdout || '')) {
-    return { ok: true, detail: 'ci.yml et release.yml : YAML valide (WSL SZH-Publishing, python3)' };
+  if (!r.error && r.status === 0 && /YAML_OK/.test(r.stdout || '')) {
+    return { ok: true, detail: 'ci.yml et release.yml : YAML valide (~/pdfvenv)' };
   }
   return {
     ok: false,
-    detail: 'PyYAML introuvable ou YAML invalide.\n'
-      + '  Python Windows (' + (PYTHON || 'aucun interprète trouvé') + ') : '
-      + (echecWindows || echecWindowsProcess || '(non tenté)') + '\n'
-      + '  WSL SZH-Publishing python3 : ' + resumerEchec(r2)
+    detail: 'PyYAML introuvable (outils-dev/venv-dev.sh crée ~/pdfvenv) ou YAML invalide : '
+      + resumerEchec(r)
   };
 }
 
 // ---- (b) typographie des textes visibles -------------------------------------------------
 function verifierTypographie() {
   const script = path.join(RACINE, 'test', 'typo-check.py');
-  if (PYTHON) {
-    const r = spawnSync(PYTHON, [script], { encoding: 'utf8', timeout: 60000, cwd: RACINE });
-    if (!r.error && r.status === 0) {
-      return { ok: true, detail: 'test/typo-check.py : conforme (Python Windows, ' + PYTHON + ')' };
-    }
-    if (!r.error && r.status !== 0) {
-      return { ok: false, detail: 'test/typo-check.py signale des écarts :\n' + (r.stdout || '') + (r.stderr || '') };
-    }
-  }
-  let r2;
+  let r;
   try {
-    r2 = spawnSync(wslExe(), ['-d', 'SZH-Publishing', '--', 'python3', cheminVersWsl(script)],
-      { encoding: 'utf8', windowsHide: true, timeout: 60000, cwd: RACINE });
+    r = python([script], { timeout: 60000, cwd: RACINE });
   } catch (e) {
-    r2 = { error: e };
+    r = { error: e };
   }
-  if (!r2.error && r2.status === 0) {
-    return { ok: true, detail: 'test/typo-check.py : conforme (WSL SZH-Publishing)' };
+  if (!r.error && r.status === 0) {
+    return { ok: true, detail: 'test/typo-check.py : conforme' };
   }
   return {
     ok: false,
-    detail: 'test/typo-check.py n’a pas pu s’exécuter (ni Python Windows, ni WSL) ou signale '
-      + 'des écarts :\n' + resumerEchec(r2) + (r2.stdout ? '\n' + r2.stdout : '')
+    detail: 'test/typo-check.py n’a pas pu s’exécuter ou signale des écarts :\n'
+      + resumerEchec(r) + (r.stdout ? '\n' + r.stdout : '')
   };
 }
 

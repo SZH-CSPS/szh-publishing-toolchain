@@ -8,9 +8,8 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// Patron repris de test/js/docx-meta-titre.test.js (interprète Python trouvé au démarrage,
-// jamais de saut silencieux si absent ; .docx fabriqués depuis le test, jamais figés en
-// binaire dans le dépôt). Les tableaux du gabarit forcent un fabricant plus général que
+// Patron repris de test/js/docx-meta-titre.test.js (Python par gardes.js ; .docx fabriqués
+// depuis le test, jamais figés en binaire dans le dépôt). Les tableaux du gabarit forcent un fabricant plus général que
 // celui de docx-meta-titre.test.js (qui n'avait que des paragraphes à écrire) : il est
 // défini ci-dessous et écrit une seule fois dans un dossier jetable, comme un script
 // ordinaire, plutôt que rejoué à chaque test comme un programme -c en ligne.
@@ -21,28 +20,14 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
+const gardes = require('./gardes');
+const { sansPython, cheminPython, cheminDepuisPython } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DOCX_PRONTO = path.join(RACINE, 'pipeline', 'pronto-lire.py');
 
-// python3, puis python — même repli que docx-meta-titre.test.js, szh-commun.test.js et
-// livre-scinder.test.js. Aucun saut silencieux : un contrôle qui lit une fiche ne doit pas
-// passer au vert sans rien avoir lancé.
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
-const PYTHON = interpretePython();
-
 function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
+  return gardes.pythonGroupe(args, {
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
   });
 }
@@ -343,8 +328,7 @@ const SPEC_COMPLET = {
   ]
 };
 
-test('docx-pronto.py : un document complet du gabarit donne une fiche juste', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
+test('docx-pronto.py : un document complet du gabarit donne une fiche juste', { skip: sansPython }, () => {
   const vu = importer('01-complet', SPEC_COMPLET);
 
   assert.match(vu.fiche, /^type: article$/m, 'type non reconnu : ' + vu.fiche);
@@ -377,8 +361,7 @@ test('docx-pronto.py : un document complet du gabarit donne une fiche juste', ()
   assert.strictEqual(vu.stats.tableau2_consomme, true);
 });
 
-test('docx-pronto.py : les paragraphes SZH Aide ne finissent jamais dans une valeur', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : les paragraphes SZH Aide ne finissent jamais dans une valeur', { skip: sansPython }, () => {
   const vu = importer('01b-aide', SPEC_COMPLET);
   const aides = ['tribune libre', 'thématique', 'deutsch', 'italiano'];
   for (const mot of aides) {
@@ -401,8 +384,7 @@ function specEmail(separateur) {
   };
 }
 
-test('docx-pronto.py : « Email : » et « Email: » donnent le même résultat', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : « Email : » et « Email: » donnent le même résultat', { skip: sansPython }, () => {
   const avecEspace = importer('02a-email', specEmail(' : '));
   const sansEspace = importer('02b-email', specEmail(': '));
   assert.match(avecEspace.fiche, /email: "ana\.rossi@ex\.ch"/, 'email avec espace non lu');
@@ -411,8 +393,7 @@ test('docx-pronto.py : « Email : » et « Email: » donnent le même résultat'
 
 // ---- 3. Rangée d’auteur vide -> aucun auteur --------------------------------------------
 
-test('docx-pronto.py : une rangée d’auteur entièrement vide ne crée pas d’auteur', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : une rangée d’auteur entièrement vide ne crée pas d’auteur', { skip: sansPython }, () => {
   const vu = importer('03-vide', {
     styles: STYLES_BASE,
     body: [
@@ -431,8 +412,7 @@ test('docx-pronto.py : une rangée d’auteur entièrement vide ne crée pas d�
 
 // ---- 4. Étiquette inconnue dans le tableau des métadonnées -----------------------------
 
-test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) bloque tout l’import (décision de Robin, 22.09.2026)', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : une étiquette inconnue mais PRÉSENTE (valeur réelle) bloque tout l’import (décision de Robin, 22.09.2026)', { skip: sansPython }, () => {
   const vu = importer('04-inconnue', {
     styles: STYLES_BASE,
     body: [
@@ -481,8 +461,7 @@ function docTypeSeul(libelle) {
   };
 }
 
-test("docx-pronto.py : les quatre libellés du gabarit donnent les quatre jetons attendus", () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test("docx-pronto.py : les quatre libellés du gabarit donnent les quatre jetons attendus", { skip: sansPython }, () => {
   const cas = [
     ['dossier thématique', 'article'],
     ['éditorial', 'editorial'],
@@ -499,8 +478,7 @@ test("docx-pronto.py : les quatre libellés du gabarit donnent les quatre jetons
   });
 });
 
-test('docx-pronto.py : un type hors liste avertit et n’écrit rien', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : un type hors liste avertit et n’écrit rien', { skip: sansPython }, () => {
   const vu = importer('05b-type-inconnu', docTypeSeul('recension'));
   assert.ok(!/^type:/m.test(vu.fiche), 'un type a été écrit malgré la valeur hors liste : ' + vu.fiche);
   const ligne = vu.avertissements.find((l) => l.indexOf('type-article-non-reconnu') !== -1);
@@ -510,8 +488,7 @@ test('docx-pronto.py : un type hors liste avertit et n’écrit rien', () => {
 
 // ---- 6. Bloc figure ou tableau resté sans contenu reconnu ------------------------------
 
-test('docx-pronto.py : un bloc resté sans image ni tableau avertit', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : un bloc resté sans image ni tableau avertit', { skip: sansPython }, () => {
   const vu = importer('06-vide', {
     styles: STYLES_BASE,
     body: [
@@ -539,8 +516,7 @@ const TABLEAU_INTERNE = [
   [[['Normal', '12']], [['Normal', '7']]]
 ];
 
-test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tableau interne, et se consomme', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tableau interne, et se consomme', { skip: sansPython }, () => {
   const vu = importer('07-bloc-table', {
     styles: STYLES_BASE,
     body: [
@@ -584,8 +560,7 @@ test('docx-pronto.py : un bloc tableau bien formé lit sa méta, retrouve le tab
     'seuls les deux tableaux fixes de la tête se consomment');
 });
 
-test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellules se lit pareil', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellules se lit pareil', { skip: sansPython }, () => {
   const vu = importer('08-bloc-table-multicol', {
     styles: STYLES_BASE,
     body: [
@@ -616,8 +591,7 @@ test('docx-pronto.py : un bloc tableau à rangée 0 étalée sur plusieurs cellu
 
 // ---- 8. Fiche déjà présente : jamais réécrite -------------------------------------------
 
-test('docx-pronto.py : une fiche déjà là n’est jamais réécrite', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : une fiche déjà là n’est jamais réécrite', { skip: sansPython }, () => {
   const base = dossierJetable();
   try {
     const slug = '06-existe';
@@ -645,8 +619,7 @@ test('docx-pronto.py : une fiche déjà là n’est jamais réécrite', () => {
 
 // ---- 9. Aucun mot-clé, dans aucun scénario ------------------------------------------------
 
-test('docx-pronto.py : aucun mot-clé n’est jamais écrit dans la fiche', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('docx-pronto.py : aucun mot-clé n’est jamais écrit dans la fiche', { skip: sansPython }, () => {
   for (const [slug, spec] of [
     ['07a-motscles', SPEC_COMPLET],
     ['07b-motscles', {
@@ -697,8 +670,7 @@ const VARIANTES_TITRE_BIBLIO = [
   'Literatur', 'Literaturverzeichnis', 'Bibliografia'
 ];
 
-test('pronto-lire.py : la bibliographie se reconnaît à son titre — fr/de/it, avec ou sans accent, numéroté', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : la bibliographie se reconnaît à son titre — fr/de/it, avec ou sans accent, numéroté', { skip: sansPython }, () => {
   VARIANTES_TITRE_BIBLIO.forEach((titreTexte, i) => {
     const vu = importer('10-' + i + '-biblio', specBiblioTitre(titreTexte, [
       'Dupont, J. (2020). Titre un.',
@@ -721,8 +693,7 @@ test('pronto-lire.py : la bibliographie se reconnaît à son titre — fr/de/it,
 
 // ---- 11. Faux positif à éviter : un paragraphe de CORPS ne déclenche rien --------------
 
-test('pronto-lire.py : un paragraphe de CORPS commençant par « Références » ne déclenche rien', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un paragraphe de CORPS commençant par « Références » ne déclenche rien', { skip: sansPython }, () => {
   const vu = importer('11-faux-positif', {
     styles: STYLES_TITRE,
     body: [
@@ -744,8 +715,7 @@ test('pronto-lire.py : un paragraphe de CORPS commençant par « Références »
 
 // ---- 12. « entretien » est un type d'article, au même titre que les autres -------------
 
-test("pronto-lire.py : « entretien » est reconnu comme le type interview", () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test("pronto-lire.py : « entretien » est reconnu comme le type interview", { skip: sansPython }, () => {
   const vu = importer('12-entretien', docTypeSeul('entretien'));
   assert.match(vu.fiche, /^type: interview$/m, 'entretien n’a pas donné le jeton interview : ' + vu.fiche);
   assert.deepStrictEqual(
@@ -781,8 +751,7 @@ function specBlocsColles(nBlocs) {
   };
 }
 
-test('pronto-lire.py : deux blocs collés dans un seul tableau (4 rangées) donnent 2 blocs, avec avertissement', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : deux blocs collés dans un seul tableau (4 rangées) donnent 2 blocs, avec avertissement', { skip: sansPython }, () => {
   const vu = importer('13-colles-2', specBlocsColles(2));
   assert.strictEqual(vu.stats.blocs.length, 2,
     'les deux blocs collés n’ont pas été reconnus séparément : ' + JSON.stringify(vu.stats.blocs));
@@ -792,8 +761,7 @@ test('pronto-lire.py : deux blocs collés dans un seul tableau (4 rangées) donn
   assert.ok(ligne, 'aucun avertissement pour les blocs collés : ' + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : trois blocs collés (6 rangées) donnent 3 blocs', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : trois blocs collés (6 rangées) donnent 3 blocs', { skip: sansPython }, () => {
   const vu = importer('14-colles-3', specBlocsColles(3));
   assert.strictEqual(vu.stats.blocs.length, 3,
     'les trois blocs collés n’ont pas été reconnus séparément : ' + JSON.stringify(vu.stats.blocs));
@@ -801,8 +769,7 @@ test('pronto-lire.py : trois blocs collés (6 rangées) donnent 3 blocs', () => 
   assert.ok(ligne, 'aucun avertissement pour les blocs collés : ' + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : un bloc normal (2 rangées) reste 1 bloc, sans avertissement de collage', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un bloc normal (2 rangées) reste 1 bloc, sans avertissement de collage', { skip: sansPython }, () => {
   const vu = importer('15-normal', specBlocsColles(1));
   assert.strictEqual(vu.stats.blocs.length, 1, 'un bloc normal ne devrait rendre qu’un bloc');
   assert.deepStrictEqual(
@@ -832,8 +799,7 @@ function specTableauMalForme(rangees) {
   };
 }
 
-test('pronto-lire.py : un tableau à 3 rangées portant les étiquettes d’un bloc avertit, et reste dans le corps', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un tableau à 3 rangées portant les étiquettes d’un bloc avertit, et reste dans le corps', { skip: sansPython }, () => {
   const vu = importer('16-impair', specTableauMalForme([
     ligneBlocMeta([LEGENDE_TEST, 'Texte alternatif : Un texte alternatif',
       'Crédit : Photographe X', 'Source : Archives Y']),
@@ -853,8 +819,7 @@ test('pronto-lire.py : un tableau à 3 rangées portant les étiquettes d’un b
   assert.strictEqual(vu.stats.blocs.length, 0, 'un tableau mal formé ne devrait produire aucun bloc');
 });
 
-test('pronto-lire.py : une rangée de méta sans rangée de contenu (1 rangée) avertit aussi', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : une rangée de méta sans rangée de contenu (1 rangée) avertit aussi', { skip: sansPython }, () => {
   const vu = importer('17-seule-rangee', specTableauMalForme([
     ligneBlocMeta([LEGENDE_TEST, 'Texte alternatif : x', 'Crédit : y', 'Source : z'])
   ]));
@@ -872,8 +837,7 @@ test('pronto-lire.py : une rangée de méta sans rangée de contenu (1 rangée) 
 // exactement le cas « page inconnue » du test 16 déjà passé (aucune mention de page dans son
 // avertissement). Celui-ci ajoute des marqueurs et vérifie que la bonne page en sort.
 
-test('pronto-lire.py : des w:lastRenderedPageBreak avant le tableau donnent la bonne page', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : des w:lastRenderedPageBreak avant le tableau donnent la bonne page', { skip: sansPython }, () => {
   const vu = importer('18-page-connue', {
     styles: STYLES_BASE,
     body: [
@@ -895,8 +859,7 @@ test('pronto-lire.py : des w:lastRenderedPageBreak avant le tableau donnent la b
     'la phrase ne commence pas par « Le tableau de la page 6 » : ' + ligne);
 });
 
-test('pronto-lire.py : sans aucun marqueur, le message se tient et ne parle jamais de page', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : sans aucun marqueur, le message se tient et ne parle jamais de page', { skip: sansPython }, () => {
   const vu = importer('18b-sans-marqueur', specTableauMalForme([
     ligneBlocMeta([LEGENDE_TEST, 'Texte alternatif : x', 'Crédit : y', 'Source : z']),
     ligneBlocContenuTable(TABLEAU_INTERNE),
@@ -919,8 +882,7 @@ test('pronto-lire.py : sans aucun marqueur, le message se tient et ne parle jama
 // « Étiquette : valeur ») : ce n'est PAS une étiquette de bloc, et ne doit rien déclencher.
 // C'est exactement le piège que ressemble_a_un_bloc() doit éviter (voir son commentaire).
 
-test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne déclenche rien', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un tableau de contenu avec une colonne « Légende » ne déclenche rien', { skip: sansPython }, () => {
   const vu = importer('19-faux-positif', {
     styles: STYLES_BASE,
     body: [
@@ -965,8 +927,7 @@ function pImage(nomImage) {
 const CHAMPS_TEST = ['Légende : Une figure de test', 'Texte alternatif : Un texte alternatif',
   'Copyright : Photographe X', 'Source : Archives Y', 'Note : Une note de test'];
 
-test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directement : reconnu', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directement : reconnu', { skip: sansPython }, () => {
   const vu = importer('21-nouvelle-d1', {
     styles: STYLES_BASE,
     body: [
@@ -988,8 +949,7 @@ test('pronto-lire.py : nouvelle forme, distance 1 — clés puis image directeme
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : nouvelle forme, distance 2 — un paragraphe vide toléré entre les clés et l’image', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme, distance 2 — un paragraphe vide toléré entre les clés et l’image', { skip: sansPython }, () => {
   const vu = importer('22-nouvelle-d2', {
     styles: STYLES_BASE,
     body: [
@@ -1005,8 +965,7 @@ test('pronto-lire.py : nouvelle forme, distance 2 — un paragraphe vide tolér�
   assert.strictEqual(vu.stats.blocs[0].nature, 'image');
 });
 
-test('pronto-lire.py : nouvelle forme, distance 3 (deux vides) — NON reconnu, avertit, rien ne se perd', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme, distance 3 (deux vides) — NON reconnu, avertit, rien ne se perd', { skip: sansPython }, () => {
   const vu = importer('23-nouvelle-d3', {
     styles: STYLES_BASE,
     body: [
@@ -1027,8 +986,7 @@ test('pronto-lire.py : nouvelle forme, distance 3 (deux vides) — NON reconnu, 
     'la légende annoncée n’apparaît pas dans l’avertissement : ' + ligne);
 });
 
-test('pronto-lire.py : nouvelle forme — un vrai paragraphe de corps interposé arrête la fenêtre net', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme — un vrai paragraphe de corps interposé arrête la fenêtre net', { skip: sansPython }, () => {
   const vu = importer('23b-corps-interpose', {
     styles: STYLES_BASE,
     body: [
@@ -1045,8 +1003,7 @@ test('pronto-lire.py : nouvelle forme — un vrai paragraphe de corps interposé
   assert.ok(ligne, 'aucun avertissement malgré la fenêtre cassée : ' + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : nouvelle forme — clés sans aucun contenu nulle part dans le document', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme — clés sans aucun contenu nulle part dans le document', { skip: sansPython }, () => {
   const vu = importer('24-cles-sans-contenu', {
     styles: STYLES_BASE,
     body: [
@@ -1061,8 +1018,7 @@ test('pronto-lire.py : nouvelle forme — clés sans aucun contenu nulle part da
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne T (rien à faire sauter)', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne T (rien à faire sauter)', { skip: sansPython }, () => {
   const vu = importer('25-nouvelle-table', {
     styles: STYLES_BASE,
     body: [
@@ -1088,8 +1044,7 @@ test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne 
     + vu.instructions);
 });
 
-test('pronto-lire.py : un paragraphe SZH Cle ORDINAIRE (pas Abb/Tab) au premier niveau n’est jamais un bloc', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un paragraphe SZH Cle ORDINAIRE (pas Abb/Tab) au premier niveau n’est jamais un bloc', { skip: sansPython }, () => {
   const vu = importer('26-cle-ordinaire', {
     styles: STYLES_BASE,
     body: [
@@ -1108,8 +1063,7 @@ test('pronto-lire.py : un paragraphe SZH Cle ORDINAIRE (pas Abb/Tab) au premier 
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais avec l’avertissement de conversion', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais avec l’avertissement de conversion', { skip: sansPython }, () => {
   const vu = importer('27-ancienne-forme-avertit', {
     styles: STYLES_BASE,
     body: [
@@ -1136,8 +1090,7 @@ test('pronto-lire.py : ancienne forme (tableau enveloppe) toujours lue, mais ave
 // soit la forme d'entrée — SAUF la ligne T (voir le test 25 ci-dessus : la nouvelle forme n'a
 // justement plus de tableau enveloppe à faire sauter, une différence assumée et documentée).
 
-test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle forme, même stats.blocs', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle forme, même stats.blocs', { skip: sansPython }, () => {
   const specBase = (blocBody) => ({
     styles: STYLES_BASE,
     body: [
@@ -1186,8 +1139,7 @@ test('pronto-lire.py : test différentiel — même bloc, ancienne et nouvelle f
     'l’ancienne forme ne fait rien retirer et ne pose rien');
 });
 
-test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais bloc-mal-forme', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un bloc bien formé (2 rangées) ne déclenche jamais bloc-mal-forme', { skip: sansPython }, () => {
   const vu = importer('20-bien-forme', {
     styles: STYLES_BASE,
     body: [
@@ -1221,8 +1173,7 @@ function cleAmbigue(vu) {
   return vu.avertissements.filter((l) => l.indexOf('cle-ambigue') !== -1);
 }
 
-test('pronto-lire.py : « Resumé (FR) » (accent oublié) est reconnu comme Résumé, avec un avertissement de proximité', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Resumé (FR) » (accent oublié) est reconnu comme Résumé, avec un avertissement de proximité', { skip: sansPython }, () => {
   const vu = importer('30-resume-accent', {
     styles: STYLES_BASE,
     body: [
@@ -1241,8 +1192,7 @@ test('pronto-lire.py : « Resumé (FR) » (accent oublié) est reconnu comme Ré
     'la clé fautive et la clé reconnue ne sont pas toutes deux citées : ' + lignes[0]);
 });
 
-test('pronto-lire.py : « résumé (fr) : » (minuscules, sans espace avant les deux-points) est exact — aucun avertissement', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « résumé (fr) : » (minuscules, sans espace avant les deux-points) est exact — aucun avertissement', { skip: sansPython }, () => {
   const vu = importer('30b-resume-minuscule', {
     styles: STYLES_BASE,
     body: [
@@ -1258,8 +1208,7 @@ test('pronto-lire.py : « résumé (fr) : » (minuscules, sans espace avant les 
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom, avec un avertissement de proximité', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom, avec un avertissement de proximité', { skip: sansPython }, () => {
   const vu = importer('31-prenom-accent', {
     styles: STYLES_BASE,
     body: [
@@ -1276,8 +1225,7 @@ test('pronto-lire.py : « Prenom : » (accent oublié) est reconnu comme Prénom
 
 // « E-mail » n'est plus une variante depuis le 29.09.2026 : c'est la forme du gabarit
 // allemand (« E-Mail: »), donc lue sans avertissement. « Courriel » reste un alias.
-test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un avertissement', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un avertissement', { skip: sansPython }, () => {
   const vu = importer('32-e-mail', {
     styles: STYLES_BASE,
     body: [
@@ -1295,8 +1243,7 @@ test('pronto-lire.py : « Courriel : » (alias) est reconnu comme Email, avec un
 // Le gabarit allemand, rempli avec SES étiquettes : tout est lu, rien n'avertit. Sans la
 // forme allemande en position 1 des tables CANON_*, chaque étiquette partait en
 // cle-approximee ; sans ENTETES_TABLE_AUTEURS, « Autor:in » refusait l'import.
-test('pronto-lire.py : un document au gabarit allemand se lit sans un avertissement', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un document au gabarit allemand se lit sans un avertissement', { skip: sansPython }, () => {
   const vu = importer('32-de', {
     styles: STYLES_BASE,
     body: [
@@ -1327,8 +1274,7 @@ test('pronto-lire.py : un document au gabarit allemand se lit sans un avertissem
     'le bloc figure allemand n’a pas été lu :\n' + vu.instructions);
 });
 
-test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » sont reconnus comme Mots-clés — champ sans destination, mais compris', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » sont reconnus comme Mots-clés — champ sans destination, mais compris', { skip: sansPython }, () => {
   for (const [i, libelle] of ['Mots clefs', 'Keywords', 'Motsclés', 'Schlagwörter'].entries()) {
     const vu = importer('33-' + i + '-motscles', {
       styles: STYLES_BASE,
@@ -1359,8 +1305,7 @@ test('pronto-lire.py : « Mots clefs / Keywords / Motsclés / Schlagwörter » s
   }
 });
 
-test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score mesuré 0,571, sous le seuil', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score mesuré 0,571, sous le seuil', { skip: sansPython }, () => {
   const vu = importer('34-resultats', {
     styles: STYLES_BASE,
     body: [
@@ -1385,8 +1330,7 @@ test('pronto-lire.py : « Résultats : » ne devient jamais Résumé — score m
     '« Résultats » n’apparaît pas dans les clés non reconnues : ' + JSON.stringify(cles));
 });
 
-test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, portant un contenu réel, bloque tout l’import', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, portant un contenu réel, bloque tout l’import', { skip: sansPython }, () => {
   const vu = importer('35-nom-revue', {
     styles: STYLES_BASE,
     body: [
@@ -1406,8 +1350,7 @@ test('pronto-lire.py : « Nom de la revue : » ne devient jamais Nom — et, por
     '« Nom de la revue » n’apparaît pas dans les clés non reconnues : ' + JSON.stringify(cles));
 });
 
-test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (double espace) sont déjà exacts au passage par normaliser() — aucun avertissement', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (double espace) sont déjà exacts au passage par normaliser() — aucun avertissement', { skip: sansPython }, () => {
   // L'insécable et le double espace sont déjà écrasés par pm.normaliser(), appliqué par
   // pronto_docx.py à CHAQUE paragraphe avant que ce module ne le voie (voir l'en-tête de
   // pronto_modele.py) : du point de vue des clés tolérantes, ces deux étiquettes arrivent
@@ -1431,8 +1374,7 @@ test('pronto-lire.py : « Légende » (insécable) et « Texte  alternatif » (d
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux-points) reste une étiquette de bloc inconnue', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux-points) reste une étiquette de bloc inconnue', { skip: sansPython }, () => {
   const etiquetteLongue = 'Ceci est une étiquette beaucoup trop longue pour être une vraie clé';
   assert.ok(etiquetteLongue.length > 40, 'l’étiquette de test doit dépasser 40 signes');
   const vu = importer('37-cle-trop-longue', {
@@ -1463,11 +1405,10 @@ test('pronto-lire.py : une clé beaucoup trop longue (> 40 signes avant les deux
 // en profondeur pour le jour où un alias plus long serait ajouté — il faut l'éprouver seul,
 // avec une table jetable, pour prouver qu'il coupe AVANT le score et pas seulement grâce à
 // lui (patron identique au test d'ambiguïté ci-dessous).
-test('identifier_cle() : une étiquette de plus de 40 signes est jamais scorée, même contre une clé qui lui ressemblerait', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('identifier_cle() : une étiquette de plus de 40 signes est jamais scorée, même contre une clé qui lui ressemblerait', { skip: sansPython }, () => {
   const script = [
     'import sys',
-    'sys.path.insert(0, "' + path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\') + '")',
+    'sys.path.insert(0, ' + JSON.stringify(cheminPython(path.join(RACINE, 'pipeline'))) + ')',
     'import pronto_modele as pm',
     'table = {"x": ("A" * 50,)}',
     '# 45 signes, quasi identique à la forme canonique (50 A) — un score écrasant sans le',
@@ -1483,8 +1424,7 @@ test('identifier_cle() : une étiquette de plus de 40 signes est jamais scorée,
   assert.strictEqual(r.stdout.trim(), 'OK');
 });
 
-test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’est jamais scoré', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’est jamais scoré', { skip: sansPython }, () => {
   const vu = importer('38-sans-deux-points', {
     styles: STYLES_BASE,
     body: [
@@ -1503,11 +1443,10 @@ test('pronto-lire.py : un paragraphe SZH Cle Abb/Tab sans aucun deux-points n’
 // le rapport) ; ce test appelle donc identifier_cle() directement, sur une table jetable, pour
 // prouver le MÉCANISME général d'ambiguïté (le même qui protège CANON_METADONNEES /
 // CANON_AUTEUR / CANON_FIGURE) — c'est le même patron que le test decoder_nom_style() plus haut.
-test('identifier_cle() : deux clés à égale distance ne sont jamais retenues — ambiguïté', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('identifier_cle() : deux clés à égale distance ne sont jamais retenues — ambiguïté', { skip: sansPython }, () => {
   const script = [
     'import sys',
-    'sys.path.insert(0, "' + path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\') + '")',
+    'sys.path.insert(0, ' + JSON.stringify(cheminPython(path.join(RACINE, 'pipeline'))) + ')',
     'import pronto_modele as pm',
     'table = {"un": ("Bonjour",), "deux": ("Bonjeur",)}',
     'r = pm.identifier_cle("Bonjur", table)',
@@ -1531,8 +1470,7 @@ test('identifier_cle() : deux clés à égale distance ne sont jamais retenues �
 // sont mises à part dans vu.info par importer() (voir sa définition), pour ne pas casser les
 // tests plus anciens qui ne les attendaient pas.
 
-test('pronto-lire.py : une clé attendue absente du document est une simple information, jamais bloquante', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : une clé attendue absente du document est une simple information, jamais bloquante', { skip: sansPython }, () => {
   const vu = importer('40-absente', {
     styles: STYLES_BASE,
     body: [
@@ -1551,8 +1489,7 @@ test('pronto-lire.py : une clé attendue absente du document est une simple info
     '« Langue de l\'article », pourtant renseignée, apparaît comme absente : ' + vu.info.join(' / '));
 });
 
-test('pronto-lire.py : une clé présente mais vide (espaces seuls) est traitée comme absente — jamais approximée, jamais bloquante', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : une clé présente mais vide (espaces seuls) est traitée comme absente — jamais approximée, jamais bloquante', { skip: sansPython }, () => {
   const vu = importer('41-vide', {
     styles: STYLES_BASE,
     body: [
@@ -1570,8 +1507,7 @@ test('pronto-lire.py : une clé présente mais vide (espaces seuls) est traitée
   assert.ok(ligne, 'le résumé laissé vide aurait dû apparaître comme absent : ' + vu.info.join(' / '));
 });
 
-test('pronto-lire.py : un auteur — un champ facultatif laissé vide est une information, jamais bloquant', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un auteur — un champ facultatif laissé vide est une information, jamais bloquant', { skip: sansPython }, () => {
   const vu = importer('42-auteur-vide', {
     styles: STYLES_BASE,
     body: [
@@ -1586,8 +1522,7 @@ test('pronto-lire.py : un auteur — un champ facultatif laissé vide est une in
   assert.ok(!/ror:/.test(vu.fiche), 'un ROR vide a quand même été écrit : ' + vu.fiche);
 });
 
-test('pronto-lire.py : un bloc — un champ laissé vide est une information, jamais bloquant', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un bloc — un champ laissé vide est une information, jamais bloquant', { skip: sansPython }, () => {
   const vu = importer('43-bloc-vide', {
     styles: STYLES_BASE,
     body: [
@@ -1617,8 +1552,7 @@ test('pronto-lire.py : un bloc — un champ laissé vide est une information, ja
 // mêmes lieux dans extraire_table_auteurs()/_champs_bloc_meta()) n'acceptent plus qu'un
 // paragraphe de style SZH Cle comme candidat.
 
-test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gabarit) pris pour celui des métadonnées ne bloque jamais l’import', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gabarit) pris pour celui des métadonnées ne bloque jamais l’import', { skip: sansPython }, () => {
   const tableOrdinaire = {
     tbl: [
       [[['Normal', 'Mesure']], [['Normal', 'Valeur']]],
@@ -1645,8 +1579,7 @@ test('pronto-lire.py : un tableau de contenu ORDINAIRE (style Normal, pas au gab
 
 const SPEC_NUE = { styles: STYLES_BASE, body: [tableMeta([]), tableAuteurs([])] };
 
-test('pronto-lire.py : la langue de l’article vient de la revue du numéro', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : la langue de l’article vient de la revue du numéro', { skip: sansPython }, () => {
   for (const [produit, attendue] of [['revue', 'fr'], ['zeitschrift', 'de'],
     // Le jeton canonique comme le nom complet de l'ancien ausgabe.yaml, même règle que
     // derive_revue() de szh-maquette.lua.
@@ -1664,8 +1597,7 @@ test('pronto-lire.py : la langue de l’article vient de la revue du numéro', (
   }
 });
 
-test('pronto-lire.py : sans produit (hors numéro), le français est posé — et c’est DIT', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : sans produit (hors numéro), le français est posé — et c’est DIT', { skip: sansPython }, () => {
   const vu = importer('46-sans-produit', SPEC_NUE, '');
   assert.strictEqual(vu.stats.langue, 'fr', 'le repli doit rester le français');
   assert.strictEqual(vu.stats.langue_deduite, true);
@@ -1674,8 +1606,7 @@ test('pronto-lire.py : sans produit (hors numéro), le français est posé — e
     + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : un champ « Langue de l’article » resté dans le document avertit, ne bloque pas, et n’impose pas sa langue', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un champ « Langue de l’article » resté dans le document avertit, ne bloque pas, et n’impose pas sa langue', { skip: sansPython }, () => {
   // Un document rempli avant le 22.09.2026 porte encore la ligne. Elle ne doit NI bloquer
   // l'import (une clé présente non reconnue le ferait), NI décider de la langue — mais elle
   // doit se dire, sans quoi un article italien sortirait en français sans que personne ne
@@ -1712,8 +1643,7 @@ test('pronto-lire.py : un champ « Langue de l’article » resté dans le docum
 // où szh-legendes.lua ne trouvait pas l'image, légende, texte alternatif et crédit
 // disparaissaient sans un mot. Elles voyagent en queue de la ligne FI, et c'est
 // szh-legendes.lua qui les retire, au moment où il pose les valeurs, et seulement alors.
-test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose ses champs sur l’image', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose ses champs sur l’image', { skip: sansPython }, () => {
   const vu = importer('48-bloc-figure-instructions', {
     styles: STYLES_BASE,
     body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST), pImage('figure.png')]
@@ -1731,8 +1661,7 @@ test('pronto-lire.py : un bloc figure confie ses clés à la ligne FI, qui pose 
 });
 
 // La clé Note (30.09.2026) : cinquième champ de valeur des lignes FI/FG/FT, après la source.
-test('pronto-lire.py : la note d’un bloc tableau voyage en 7e champ de la ligne FT', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : la note d’un bloc tableau voyage en 7e champ de la ligne FT', { skip: sansPython }, () => {
   const vu = importer('48b-bloc-tableau-note', {
     styles: STYLES_BASE,
     body: [tableMeta([]), tableAuteurs([]), ...clesAbbTab(CHAMPS_TEST), { tbl: TABLEAU_INTERNE }]
@@ -1744,8 +1673,7 @@ test('pronto-lire.py : la note d’un bloc tableau voyage en 7e champ de la lign
       'Une note de test']);
 });
 
-test('pronto-lire.py : sans clé Note, le champ note reste vide et son absence n’est jamais signalée', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : sans clé Note, le champ note reste vide et son absence n’est jamais signalée', { skip: sansPython }, () => {
   const vu = importer('48c-bloc-sans-note', {
     styles: STYLES_BASE,
     body: [tableMeta([]), tableAuteurs([]),
@@ -1764,8 +1692,7 @@ test('pronto-lire.py : sans clé Note, le champ note reste vide et son absence n
     'l’ancien libellé « Crédit » ne doit pas avertir : ' + vu.avertissements.join(' / '));
 });
 
-test('pronto-lire.py : la clé Note se lit sous ses variantes (Notiz, Remarque, Anmerkung)', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : la clé Note se lit sous ses variantes (Notiz, Remarque, Anmerkung)', { skip: sansPython }, () => {
   for (const etiquette of ['Notiz', 'Remarque', 'Anmerkung', 'Hinweis', 'Notes']) {
     const vu = importer('48d-note-' + etiquette, {
       styles: STYLES_BASE,
@@ -1777,8 +1704,7 @@ test('pronto-lire.py : la clé Note se lit sous ses variantes (Notiz, Remarque, 
   }
 });
 
-test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variantes (aperçu PNG et SVG)', { skip: sansPython }, () => {
   // Word range une image vectorielle derrière un aperçu PNG : le lecteur voit le PNG, pandoc
   // écrit le SVG. Un seul nom ferait manquer l'appariement — mesuré sur le gabarit réel, dont
   // la figure sort en media/image2.svg alors que le a:blip pointe media/image1.png.
@@ -1802,8 +1728,7 @@ test('pronto-lire.py : l’image d’un bloc est nommée par TOUTES ses variante
 
 const DOCX_TABLES = path.join(RACINE, 'pipeline', 'docx-tables.py');
 
-test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent dans le HTML du tableau', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent dans le HTML du tableau', { skip: sansPython }, () => {
   const base = dossierJetable();
   try {
     const docx = path.join(base, 'bloc-tableau.docx');
@@ -1856,8 +1781,7 @@ test('pronto-lire.py + docx-tables.py : les champs d’un bloc tableau arrivent 
 // et écrit « #### » dans le .md, puis szh-niveaux.lua qui compacte le corps entre <h2> et
 // <h6>. Ce contrôle vise donc le seul endroit où le lecteur, lui, regarde le rang.)
 
-test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée comme les autres', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée comme les autres', { skip: sansPython }, () => {
   const stylesH4 = STYLES_BASE.concat([['H4', 'heading 4']]);
   const vu = importer('50-biblio-rang-4', {
     styles: stylesH4,
@@ -1893,7 +1817,7 @@ test('pronto-lire.py : une bibliographie intitulée en rang 4 est détachée com
 function mesurerCle(etiquette, table) {
   const script = [
     'import json, sys',
-    'sys.path.insert(0, ' + JSON.stringify(path.join(RACINE, 'pipeline')) + ')',
+    'sys.path.insert(0, ' + JSON.stringify(cheminPython(path.join(RACINE, 'pipeline'))) + ')',
     'import pronto_modele as pm',
     'seuil = pm.SEUIL_CLE',
     'pm.SEUIL_CLE = 0.0',   // 0 : on veut le score brut, pas le verdict
@@ -1916,8 +1840,7 @@ function mesurerCle(etiquette, table) {
   return JSON.parse(r.stdout);
 }
 
-test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, sur la bonne clé', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, sur la bonne clé', { skip: sansPython }, () => {
   // Trois familles : la forme sans accent (c'est celle qui tombait sous le seuil — perdre deux
   // accents suffit), les synonymes de réflexe, et les fautes de frappe. « Legandes » est la
   // faute qu'a réellement portée la v3 du gabarit.
@@ -1951,8 +1874,7 @@ test('clés tolérantes : tout ce que la rédaction tape vraiment est reconnu, s
   }
 });
 
-test('clés tolérantes : une étiquette étrangère au gabarit reste sous le seuil, avec de la marge', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('clés tolérantes : une étiquette étrangère au gabarit reste sous le seuil, avec de la marge', { skip: sansPython }, () => {
   // Des étiquettes qu'on rencontre pour de vrai — dans un tableau de contenu, dans la fiche
   // d'un autre gabarit — et qui ne doivent JAMAIS être prises pour un champ Pronto.
   const etrangeres = [
@@ -2004,8 +1926,7 @@ test('clés tolérantes : une étiquette étrangère au gabarit reste sous le se
 //      l'alias allemand « e-mail-adresse » — soit 0,013 sous le seuil. Une adresse postale à
 //      0,013 de finir dans le champ e-mail. Déclarée, elle se reconnaît elle-même à 1,000.
 
-test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-mail', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-mail', { skip: sansPython }, () => {
   const { jeton, score } = mesurerCle('Adresse', 'CANON_AUTEUR');
   assert.strictEqual(jeton, 'adresse',
     '« Adresse » se lit « ' + jeton + ' » (score ' + score.toFixed(3) + ') : si c’est « email », '
@@ -2014,8 +1935,7 @@ test('champs hors gabarit : une adresse ne peut plus être confondue avec un e-m
     'la clé doit se reconnaître elle-même exactement, sinon la concurrence de proximité revient');
 });
 
-test('champs hors gabarit : la ligne refuse l’import, et le message dit où va l’information', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('champs hors gabarit : la ligne refuse l’import, et le message dit où va l’information', { skip: sansPython }, () => {
   // Un cas par champ : le geste à faire diffère, et c'est tout l'intérêt de les avoir nommés.
   const cas = [
     ['Adresse : Bergstrasse 12, 3007 Berne', 'Adresse', /retirez cette ligne/i],
@@ -2047,8 +1967,7 @@ test('champs hors gabarit : la ligne refuse l’import, et le message dit où va
   }
 });
 
-test('champs hors gabarit : les vrais champs de la même rangée restent lus', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+test('champs hors gabarit : les vrais champs de la même rangée restent lus', { skip: sansPython }, () => {
   // L'import est refusé, donc rien n'est écrit — mais le lecteur doit avoir compris le reste
   // de la rangée, sans quoi le rapport nommerait des fautes qui n'existent pas.
   const vu = importer('52-hors-gabarit-reste', {

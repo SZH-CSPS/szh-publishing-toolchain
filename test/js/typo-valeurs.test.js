@@ -22,8 +22,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON } = require('./gardes');
+const { python, cheminPython, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PRONTO_LIRE = path.join(RACINE, 'pipeline', 'pronto-lire.py');
@@ -33,8 +32,8 @@ const GABARIT_FR = path.join(RACINE, 'revue-template', "Pronto - modele d'articl
 const NBSP = ' ';
 const TU_INSECABLE = '‑';
 
-function python(args, env) {
-  return cp.spawnSync(PYTHON, args, {
+function lancerPython(args, env) {
+  return python(args, {
     encoding: 'utf8',
     env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, env || {})
   });
@@ -122,8 +121,9 @@ function fabriquer(base, spec) {
   const fab = path.join(base, 'fabricant.py');
   fs.writeFileSync(fab, FABRICANT_PY, 'utf8');
   const cheminSpec = path.join(base, 'spec.json');
-  fs.writeFileSync(cheminSpec, JSON.stringify(spec), 'utf8');
-  const r = python([fab, cheminSpec]);
+  fs.writeFileSync(cheminSpec, JSON.stringify(Object.assign({}, spec,
+    { sortie: cheminPython(spec.sortie), gabarit: spec.gabarit && cheminPython(spec.gabarit) })), 'utf8');
+  const r = lancerPython([fab, cheminSpec]);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -136,7 +136,7 @@ function lire(lecteur, spec, produit) {
     const instr = path.join(base, 'instructions.txt');
     const env = { SZH_META: instr, SZH_PHOTOS: path.join(base, 'photos.txt') };
     if (produit !== undefined) env.SZH_PRODUIT = produit;
-    const r = python([lecteur, docx, 'essai', base], env);
+    const r = lancerPython([lecteur, docx, 'essai', base], env);
     assert.strictEqual(r.status, 0, path.basename(lecteur) + ' a échoué : ' + r.stderr);
     const lignes = String(r.stdout).trim().split(/\r?\n/);
     const fiche = path.join(base, 'essai.meta.yaml');
@@ -166,7 +166,7 @@ const SPEC_PRONTO = {
   ]
 };
 
-test('pronto-lire.py (D1) : un trait d’union insécable Word reste U+2011, un w:sym son caractère', () => {
+test('pronto-lire.py (D1) : un trait d’union insécable Word reste U+2011, un w:sym son caractère', { skip: sansPython }, () => {
   const vu = lire(PRONTO_LIRE, SPEC_PRONTO, 'revue');
   assert.ok(vu.fiche.includes('prenom: "Jean' + TU_INSECABLE + 'Éric"'),
     'le <w:noBreakHyphen/> du prénom s’est perdu : ' + vu.fiche);
@@ -174,7 +174,7 @@ test('pronto-lire.py (D1) : un trait d’union insécable Word reste U+2011, un 
     'le <w:sym> de la fonction s’est perdu : ' + vu.fiche);
 });
 
-test('pronto-lire.py (D2) : titre, sous-titre, résumé et légende gardent insécables et tirets', () => {
+test('pronto-lire.py (D2) : titre, sous-titre, résumé et légende gardent insécables et tirets', { skip: sansPython }, () => {
   const vu = lire(PRONTO_LIRE, SPEC_PRONTO, 'revue');
   assert.ok(vu.fiche.includes('"L’école inclusive' + NBSP + '– et après' + NBSP + '?"'),
     'titre dégradé : ' + JSON.stringify(vu.fiche));
@@ -193,7 +193,7 @@ test('pronto-lire.py (D2) : titre, sous-titre, résumé et légende gardent ins�
 
 // D9 : les phrases que le lecteur écrit lui-même suivent la typographie de LEUR langue. Le
 // français sépare («U+00A0…U+00A0», U+00A0 devant le deux-points), l'allemand colle.
-test('pronto-lire.py (D9) : ses avertissements sont composés dans la typographie de chaque langue', () => {
+test('pronto-lire.py (D9) : ses avertissements sont composés dans la typographie de chaque langue', { skip: sansPython }, () => {
   const vu = lire(PRONTO_LIRE, SPEC_PRONTO, 'revue');
   const ligne = vu.stderr.split(/\r?\n/).find((l) => l.includes('cle-attendue-absente')) || '';
   const [fr, de] = ligne.split(' | [de] ');
@@ -206,7 +206,7 @@ test('pronto-lire.py (D9) : ses avertissements sont composés dans la typographi
 
 // Une étiquette tapée en NFD (e + U+0301) est la même étiquette : reconnue exactement, sans
 // l'avertissement « Légende lue comme Légende (proximité 0,93) » qu'elle levait.
-test('pronto_modele.identifier_cle : une étiquette en NFD se reconnaît comme en NFC, exactement', () => {
+test('pronto_modele.identifier_cle : une étiquette en NFD se reconnaît comme en NFC, exactement', { skip: sansPython }, () => {
   const programme = [
     'import json, sys',
     "sys.path.insert(0, sys.argv[1])",
@@ -215,7 +215,7 @@ test('pronto_modele.identifier_cle : une étiquette en NFD se reconnaît comme e
     "       ('Pre\\u0301nom', 'CANON_AUTEUR')]",
     'print(json.dumps([list(pm.identifier_cle(e, getattr(pm, t))) for e, t in cas]))'
   ].join('\n');
-  const r = python(['-c', programme, path.join(RACINE, 'pipeline')]);
+  const r = lancerPython(['-c', programme, path.join(RACINE, 'pipeline')]);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(JSON.parse(r.stdout),
     [['legende', 1, true], ['resume', 1, true], ['prenom', 1, true]]);
@@ -230,7 +230,7 @@ const SPEC_HERITE = {
   ]
 };
 
-test('docx-meta.py (D1, D2) : le titre hérité garde U+2011, le demi-cadratin et l’insécable', () => {
+test('docx-meta.py (D1, D2) : le titre hérité garde U+2011, le demi-cadratin et l’insécable', { skip: sansPython }, () => {
   const vu = lire(DOCX_META, SPEC_HERITE, 'revue');
   assert.ok(vu.fiche.includes('fr: "L’école' + NBSP + '– A' + TU_INSECABLE + 'B, 1990–2000"'),
     'titre hérité dégradé : ' + JSON.stringify(vu.fiche));
@@ -247,7 +247,7 @@ const SPEC_HERITE_DE = {
   ]
 };
 
-test('docx-meta.py (D3) : la langue vient du produit du numéro, la déduction ne fait qu’avertir', () => {
+test('docx-meta.py (D3) : la langue vient du produit du numéro, la déduction ne fait qu’avertir', { skip: sansPython }, () => {
   const vu = lire(DOCX_META, SPEC_HERITE_DE, 'zeitschrift');
   assert.match(vu.fiche, /^lang: de$/m, 'la Zeitschrift ne compose pas en allemand : ' + vu.fiche);
   assert.strictEqual(vu.stats.langue_source, 'produit');
@@ -255,14 +255,14 @@ test('docx-meta.py (D3) : la langue vient du produit du numéro, la déduction n
   assert.match(vu.stderr, /langue-desaccord-produit/, 'le désaccord n’est pas dit : ' + vu.stderr);
 });
 
-test('docx-meta.py (D3) : sans produit (hors d’un numéro), la déduction reste la règle', () => {
+test('docx-meta.py (D3) : sans produit (hors d’un numéro), la déduction reste la règle', { skip: sansPython }, () => {
   const vu = lire(DOCX_META, SPEC_HERITE_DE, '');
   assert.match(vu.fiche, /^lang: fr$/m, vu.fiche);
   assert.strictEqual(vu.stats.langue_source, 'premier-resume');
   assert.doesNotMatch(vu.stderr, /langue-desaccord-produit/);
 });
 
-test('docx-meta.py (D3) : produit et document d’accord, aucun avertissement de désaccord', () => {
+test('docx-meta.py (D3) : produit et document d’accord, aucun avertissement de désaccord', { skip: sansPython }, () => {
   const vu = lire(DOCX_META, SPEC_HERITE, 'revue');
   assert.match(vu.fiche, /^lang: fr$/m, vu.fiche);
   assert.doesNotMatch(vu.stderr, /langue-desaccord-produit/);

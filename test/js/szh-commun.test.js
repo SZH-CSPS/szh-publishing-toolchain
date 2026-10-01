@@ -13,32 +13,14 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const cp = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 
-// python3, puis python — même repli que livre-scinder.test.js/reimport.test.js. Aucun saut
-// silencieux : un contrôle qui mesure des octets ne doit pas passer au vert sans rien lancer.
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
-const PYTHON = interpretePython();
-
 // Abstention nommée et comptée, plutôt qu'un simple `return` : un `return` précoce se
 // compte PASS dans le rapport `node --test`, comme n'importe quel test qui a réellement
-// tourné — `{ skip: sansPython }` le distingue, comme le fait déjà le motif POWERSHELL
-// ailleurs dans le dépôt. sansPython vient de gardes.js, la détection PARTAGÉE ; le PYTHON
-// de ce fichier reste la sienne (utilisée pour lancer réellement les sous-processus
-// ci-dessous), et le test canari qui suit garde son rôle : il échoue fort, jamais un skip,
-// si aucun des deux détecteurs ne trouve d'interprète.
-const { sansPython } = require('./gardes');
+// tourné — `{ skip: sansPython }` le distingue.
+const { python, sansPython, cheminPython, VERSION_PYTHON } = require('./gardes');
 
 // Arguments fixes, mêmes pour les quatre appelants : guillemets français, accents,
 // apostrophe — de quoi voir un octet perdu ou une ré-encodure ratée.
@@ -72,19 +54,17 @@ function appelerAvertirModule(nomFichier, journal) {
   const code = [
     'import importlib.util, os',
     'spec = importlib.util.spec_from_file_location("m", ' + JSON.stringify(
-      path.join(PIPELINE, nomFichier)) + ')',
+      cheminPython(path.join(PIPELINE, nomFichier))) + ')',
     'm = importlib.util.module_from_spec(spec)',
     'spec.loader.exec_module(m)',
     'm.avertir(' + JSON.stringify(CODE) + ', ' + JSON.stringify(CHAMPS) + ', '
       + JSON.stringify(FR) + ', ' + JSON.stringify(DE) + ')',
   ].join('\n');
-  return normaliser(cp.spawnSync(PYTHON, ['-c', code], { encoding: 'utf8', env: env }));
+  return normaliser(python(['-c', code], { env: env }));
 }
 
-// Un python natif Windows écrit stdout/stderr en CRLF (traduction de fin de ligne du mode
-// texte, indépendante de ce que szh_commun.py écrit) : uniformisé ici, comme le fait déjà
-// test/filtres-pandoc.test.js pour pandoc, pour que les comparaisons ne dépendent pas de la
-// plateforme qui exécute ce fichier.
+// Fins de ligne uniformisées, comme le fait déjà test/filtres-pandoc.test.js pour pandoc,
+// pour que les comparaisons ne dépendent pas de la plateforme qui exécute ce fichier.
 function normaliser(r) {
   r.stdout = (r.stdout || '').replace(/\r\n/g, '\n');
   r.stderr = (r.stderr || '').replace(/\r\n/g, '\n');
@@ -101,21 +81,21 @@ function appelerAvertirVoix(journal) {
   const code = [
     'import importlib.util, json',
     'spec = importlib.util.spec_from_file_location("m", ' + JSON.stringify(
-      path.join(PIPELINE, 'reimporter.py')) + ')',
+      cheminPython(path.join(PIPELINE, 'reimporter.py'))) + ')',
     'm = importlib.util.module_from_spec(spec)',
     'spec.loader.exec_module(m)',
-    'v = m.Voix(' + JSON.stringify(journal || '') + ')',
+    'v = m.Voix(' + JSON.stringify(journal ? cheminPython(journal) : '') + ')',
     'v.avertir(' + JSON.stringify(CODE) + ', ' + JSON.stringify(CHAMPS) + ', '
       + JSON.stringify(FR) + ', ' + JSON.stringify(DE) + ')',
     'print("LIGNES=" + json.dumps(v.lignes))',
     'print("AVERTISSEMENTS=" + json.dumps(v.avertissements))',
   ].join('\n');
-  return normaliser(cp.spawnSync(PYTHON, ['-c', code], { encoding: 'utf8', env: env }));
+  return normaliser(python(['-c', code], { env: env }));
 }
 
-test('szh_commun : interprète Python 3 disponible', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python3, puis python) : ce contrôle '
-    + 'mesure des octets produits par un sous-processus, il ne peut pas être sauté en silence');
+test('szh_commun : interprète Python 3 disponible', { skip: sansPython }, () => {
+  assert.match(VERSION_PYTHON, /^3\./, 'aucun interprète Python 3 trouvé : ce contrôle '
+    + 'mesure des octets produits par un sous-processus');
 });
 
 // ---- Les trois fonctions module-level : même ligne, même journal ----
@@ -199,14 +179,14 @@ test('szh_commun : reimporter.py — SZH_IMPORT_LOG posée n’a AUCUN effet (le
     const code = [
       'import importlib.util',
       'spec = importlib.util.spec_from_file_location("m", ' + JSON.stringify(
-        path.join(PIPELINE, 'reimporter.py')) + ')',
+        cheminPython(path.join(PIPELINE, 'reimporter.py'))) + ')',
       'm = importlib.util.module_from_spec(spec)',
       'spec.loader.exec_module(m)',
-      'v = m.Voix(' + JSON.stringify(journalConstructeur) + ')',
+      'v = m.Voix(' + JSON.stringify(cheminPython(journalConstructeur)) + ')',
       'v.avertir(' + JSON.stringify(CODE) + ', ' + JSON.stringify(CHAMPS) + ', '
         + JSON.stringify(FR) + ', ' + JSON.stringify(DE) + ')',
     ].join('\n');
-    const r = normaliser(cp.spawnSync(PYTHON, ['-c', code], { encoding: 'utf8', env: env }));
+    const r = normaliser(python(['-c', code], { env: env }));
     assert.strictEqual(r.status, 0, 'reimporter.py a échoué : ' + r.stderr);
     assert.strictEqual(fs.readFileSync(journalConstructeur, 'utf8'), LIGNE_IMPORT + '\n');
     assert.ok(!fs.existsSync(journalEnvFantome),

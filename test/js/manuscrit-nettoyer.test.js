@@ -55,8 +55,8 @@
 //
 // Patron : test/js/manuscrit-gabarit.test.js (fabrication de fixtures .docx via un petit
 // programme Python écrit au vol, jamais figées en binaire). Gardes de test/js/gardes.js :
-// PYTHON (jamais `python3` en dur, voir son en-tête) et sansPandocWsl/SZH_WSL_OBLIGATOIRE
-// (pandoc + WSL SZH-Publishing, contrôle n°12 seulement).
+// python() (la WSL sous Windows) et sansPandocWsl/SZH_WSL_OBLIGATOIRE (pandoc + WSL
+// SZH-Publishing, contrôle n°12 seulement).
 'use strict';
 
 const test = require('node:test');
@@ -65,7 +65,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl, sauter } = require('./gardes');
+const gardes = require('./gardes');
+const { sansPython, sansPandocWsl, sauter, cheminDepuisPython } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -77,17 +78,6 @@ const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 // argument de tableau, on convertit en barres obliques AVANT l'appel).
 const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
 const DISTRO_WSL = 'SZH-Publishing';
-
-function versCheminWsl(cheminWindows) {
-  const p = cheminWindows.replace(/\\/g, '/');
-  const m = /^([A-Za-z]):\/(.*)$/.exec(p);
-  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : p;
-}
-
-function versCheminWindows(cheminWsl) {
-  const m = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(cheminWsl);
-  return m ? m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\') : cheminWsl;
-}
 
 // ---- vale, détecté comme dans test/js/manuscrit-vale.test.js (patron recopié à l'identique,
 // pas importé : sa propre en-tête dit pourquoi — « jamais dans test/js/gardes.js, hors
@@ -124,8 +114,8 @@ const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
 
 function lireDocumentXml(chemin) {
-  return cp.execFileSync(PYTHON, ['-c', LIRE_DOCUMENT_XML, chemin],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
+  return gardes.pythonGroupeSortie(['-c', LIRE_DOCUMENT_XML, chemin],
+    { maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
 }
 
 // Aplatit tout le texte visible de word/document.xml (concaténation de tous les <w:t>), pour
@@ -153,8 +143,8 @@ const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
 
 function python(args, opts) {
-  return cp.spawnSync(PYTHON, args,
-    Object.assign({ encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 }, opts || {}));
+  return gardes.pythonGroupe(args,
+    Object.assign({ maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 }, opts || {}));
 }
 
 function dossierJetable(prefixe) {
@@ -280,7 +270,7 @@ function ligneUniqueJson(stdout) {
   const lignes = stdout.split('\n').filter((l) => l.length > 0);
   assert.strictEqual(lignes.length, 1,
     'stdout doit porter EXACTEMENT une ligne — obtenu : ' + JSON.stringify(lignes));
-  return JSON.parse(lignes[0]);
+  return cheminDepuisPython(JSON.parse(lignes[0]));
 }
 
 // ---------------------------------------------------------------------------------
@@ -422,7 +412,7 @@ test('manuscrit-nettoyer.py : les avertissements d\'import vont dans le rapport 
       assert.ok(r.status === 0 || r.status === 1, 'statut inattendu : ' + r.status + ' ' + r.stderr);
       ligneUniqueJson(r.stdout);
       assert.doesNotMatch(r.stderr, /import-avertissement/, 'le constat fuit encore sur stderr : ' + r.stderr);
-      const rapport = JSON.parse(fs.readFileSync(path.join(sortie, 'article-rapport.json'), 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(path.join(sortie, 'article-rapport.json'), 'utf8')));
       const constat = rapport.avertissements_import.find((a) => a.code === 'entetes-pieds-non-lus');
       assert.ok(constat, 'entetes-pieds-non-lus absent du rapport : ' + JSON.stringify(rapport.avertissements_import));
       assert.match(constat.fr, /1 en-tête\(s\)\/pied\(s\) de page/);
@@ -512,7 +502,7 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
       assert.strictEqual(statsPronto.biblio.paragraphes, 2, 'les deux entrées doivent être détachées');
 
       // Le rapport JSON porte les traces de décision ET les alertes.
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.ok(Array.isArray(rapport.decisions.titres.trace) && rapport.decisions.titres.trace.length > 0,
         'la trace de classement des titres doit être présente');
       assert.ok(Array.isArray(rapport.decisions.formatage.trace),
@@ -589,7 +579,7 @@ test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, d
       const obj = ligneUniqueJson(r.stdout);
       assert.ok(obj.alertes_warning >= 12,
         'les douze occurrences doivent toutes être comptées : ' + obj.alertes_warning);
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       const groupe = rapport.alertes.groupes.par_regle['APA.TroisAuteursPlus'];
       assert.ok(groupe, 'le groupe de cette règle doit exister');
       assert.strictEqual(groupe.total, 12, 'le TOTAL doit rester 12');
@@ -660,20 +650,20 @@ test('manuscrit-nettoyer.py : un nom de fichier accentué traverse toute la cha�
       fabriquerDocx(entree, manuscritMinimal(false));
       const sortie = path.join(base, 'sortie accentuée');
       fs.mkdirSync(sortie);
-      const r = cp.spawnSync(PYTHON,
+      const r = gardes.pythonGroupe(
         [NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau'],
-        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_SANS_PIOE });
+        { maxBuffer: 64 * 1024 * 1024, env: ENV_SANS_PIOE });
       assert.strictEqual(r.status, 0, 'ne doit pas planter sur un nom accentué : ' + r.stderr);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.entree, entree);
       assert.ok(fs.existsSync(obj.sortie_docx), 'le .docx accentué doit exister : ' + obj.sortie_docx);
       assert.ok(path.basename(obj.sortie_docx).startsWith('Étude accentuée'));
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.entree, entree);
       // La progression accentuée doit aussi être lisible (pas de mojibake, pas de '?') —
       // SANS PYTHONIOENCODING dans l'environnement : c'est le script lui-même, par
       // reconfigure(), qui doit garantir ceci, pas une variable posée par le harnais.
-      assert.ok(r.stderr.includes(entree), 'la progression doit reproduire le nom accentué '
+      assert.ok(r.stderr.includes(gardes.cheminPython(entree)), 'la progression doit reproduire le nom accentué '
         + 'intact, sans PYTHONIOENCODING dans l\'environnement');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -787,7 +777,7 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
       // l'isoler évite toute dépendance à pandoc/WSL ici.
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.langue, 'fr',
         'la langue UTILISÉE doit rester celle du produit (fr), jamais celle du document');
       const alerteLangue = rapport.alertes.liste.find((a) => a.rule === 'Langue.DesaccordProduit');
@@ -802,7 +792,7 @@ test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un dés
       fs.mkdirSync(sortieCoherente);
       const rCoherent = nettoyer([entreeCoherente, '--produit', 'revue', '--sortie', sortieCoherente, '--sans-typo', '--sans-reseau']);
       const objCoherent = ligneUniqueJson(rCoherent.stdout);
-      const rapportCoherent = JSON.parse(fs.readFileSync(objCoherent.sortie_rapport, 'utf8'));
+      const rapportCoherent = cheminDepuisPython(JSON.parse(fs.readFileSync(objCoherent.sortie_rapport, 'utf8')));
       assert.ok(!rapportCoherent.alertes.liste.some((a) => a.rule === 'Langue.DesaccordProduit'),
         'fr-CH sur un article de la Revue ne doit lever aucune alerte de langue');
     } finally {
@@ -846,7 +836,7 @@ test('manuscrit-nettoyer.py : un repli typographique réel lève une alerte warn
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.typographie, 'repli',
         'la ligne stdout doit porter typographie: "repli" : ' + JSON.stringify(obj));
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.decisions.typographie.statut, 'repli');
       const alerteRepli = rapport.alertes.liste.find((a) => a.rule === 'Typo.ApplicationImpossible');
       assert.ok(alerteRepli, 'aucune alerte de repli typographique : ' + JSON.stringify(rapport.alertes.liste));
@@ -870,7 +860,7 @@ test('manuscrit-nettoyer.py : --sans-typo porte "repli" sur la ligne stdout mais
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
       assert.strictEqual(obj.typographie, 'repli');
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.sans_typo, true);
       assert.ok(!rapport.alertes.liste.some((a) => a.rule === 'Typo.ApplicationImpossible'),
         '--sans-typo ne doit pas produire l’alerte de repli : ' + JSON.stringify(rapport.alertes.liste));
@@ -882,16 +872,8 @@ test('manuscrit-nettoyer.py : --sans-typo porte "repli" sur la ligne stdout mais
 // ---------------------------------------------------------------------------------
 // Contrôle n°12 — LE test de production : la CLI tourne réellement DANS la WSL, comme le
 // lanceur en production (`wsl -d SZH-Publishing -e python3 pipeline/manuscrit-nettoyer.py`),
-// sur un manuscrit dont la typographie française doit être appliquée. C'est la panne mesurée
-// avant cette révision (repli silencieux, wsl.exe absent de la distro) qu'AUCUN autre test de
-// ce fichier ne peut voir, puisqu'ils tournent tous depuis le Python de Windows.
-//
-// Sabotage minimal, vérifié rouge SEULEMENT ici (vert à tort partout ailleurs dans ce
-// fichier, puisqu'ils passent par le Python de Windows) : dans
-// pipeline/manuscrit_typo.py::_executer_pandoc, retirer la condition `sys.platform !=
-// 'win32'` et appeler INCONDITIONNELLEMENT la branche wsl.exe — DANS la WSL, `wsl.exe`
-// n'existe pas : `subprocess.run` lève `FileNotFoundError`, capturée comme
-// `_PandocIndisponible`, repli silencieux, `typographie: "repli"` au lieu de "appliquee".
+// sur un manuscrit dont la typographie française doit être appliquée : un repli silencieux
+// (pandoc injoignable) y rendrait `typographie: "repli"` au lieu de "appliquee".
 
 test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WSL et applique la typographie française',
   { skip: sansPython || sansPandocWsl }, () => {
@@ -911,13 +893,8 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
       const sortie = path.join(base, 'sortie');
       fs.mkdirSync(sortie);
 
-      const entreeWsl = versCheminWsl(entree);
-      const nettoyeurWsl = versCheminWsl(NETTOYEUR);
-      const sortieWsl = versCheminWsl(sortie);
-
-      const r = cp.spawnSync(WSL_EXE, ['-d', DISTRO_WSL, '--', 'python3', nettoyeurWsl,
-        entreeWsl, '--produit', 'revue', '--sortie', sortieWsl, '--sans-reseau'],
-        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+      const r = gardes.pythonGroupe([NETTOYEUR, entree, '--produit', 'revue', '--sortie', sortie,
+        '--sans-reseau'], { maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
       assert.strictEqual(r.status, 0,
         'la CLI doit réussir dans la WSL : ' + r.stderr + ' / ' + r.stdout);
       const obj = ligneUniqueJson(r.stdout);
@@ -925,7 +902,7 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
         'la typographie doit vraiment s’appliquer DANS la WSL, pas un repli silencieux : '
         + JSON.stringify(obj));
 
-      const cheminDocxWindows = versCheminWindows(obj.sortie_docx);
+      const cheminDocxWindows = cheminDepuisPython(obj.sortie_docx);
       const xml = lireDocumentXml(cheminDocxWindows);
       const texte = extraireTexteBrut(xml);
       assert.match(texte, /[  ]:/, 'aucune insécable devant « : »');
@@ -952,7 +929,7 @@ test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, le
       fs.mkdirSync(sortie);
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       const origine = rapport.alertes.origine;
       assert.ok(origine.nettoyage >= 1, 'Langue.DesaccordProduit doit compter sous nettoyage : ' + JSON.stringify(origine));
       assert.strictEqual(Object.values(origine).reduce((x, y) => x + y, 0), rapport.alertes.total,
@@ -1056,7 +1033,7 @@ function lancerAvecInjections(injections, entree, sortie, argsCli) {
   ]).join(String.fromCharCode(10));
   const r = python(['-c', PONT, PIPELINE, NETTOYEUR, entree, '--sortie', sortie, '--sans-reseau'].concat(argsCli));
   const obj = ligneUniqueJson(r.stdout);
-  return JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+  return cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
 }
 
 function verifierOrigines(rapport) {
@@ -1238,7 +1215,7 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
       const obj = ligneUniqueJson(r.stdout);
       assert.ok(fs.existsSync(obj.sortie_docx));
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
 
       // Les quatre origines, chacune avec au moins une alerte.
       const origine = rapport.alertes.origine;
@@ -1313,7 +1290,7 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
       fs.mkdirSync(sortieSa);
       const rSa = nettoyer([entree, '--produit', 'revue', '--sortie', sortieSa, '--sans-annotation']);
       const objSa = ligneUniqueJson(rSa.stdout);
-      const rapportSa = JSON.parse(fs.readFileSync(objSa.sortie_rapport, 'utf8'));
+      const rapportSa = cheminDepuisPython(JSON.parse(fs.readFileSync(objSa.sortie_rapport, 'utf8')));
       assert.strictEqual(rapportSa.annotation, null);
       assert.ok(!rapportSa.alertes.liste.some((a) => a.dans_docx),
         '--sans-annotation ne doit jamais poser dans_docx');
@@ -1374,7 +1351,7 @@ test('manuscrit-nettoyer.py : sur 2-dense_… (déclencheur réel de l’ancien 
       assert.deepStrictEqual(JSON.parse(rValide.stdout), [],
         'le .docx produit doit rester un XML bien formé sur toutes ses parties');
 
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.ok(rapport.annotation, 'l’annotation doit désormais réussir sur ce fichier : '
         + JSON.stringify(rapport.annotation));
       assert.ok(rapport.annotation.revisions + rapport.annotation.commentaires > 0,
@@ -1439,7 +1416,7 @@ test('manuscrit-nettoyer.py : le filet de sécurité (annotation qui échoue) re
       assert.ok(fs.existsSync(obj.sortie_docx),
         'le .docx pré-annotation doit rester livré malgré la panne : ' + r.stderr);
 
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.strictEqual(rapport.annotation, null,
         'annotation ratée injectée : rapport.annotation doit être None, jamais à moitié fait');
       const alerteImpossible = rapport.alertes.liste.find((a) => a.rule === 'Annotation.Impossible');
@@ -1516,7 +1493,7 @@ test('manuscrit-nettoyer.py : dans_docx recopie stats.devenir — une alerte fix
       const obj = ligneUniqueJson(r.stdout);
       assert.ok(fs.existsSync(obj.sortie_docx), 'le .docx doit rester livré : ' + r.stderr);
 
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       const doi = rapport.alertes.liste.find((a) => a.rule === 'APA.DoiForme');
       assert.ok(doi, 'APA.DoiForme absente : '
         + JSON.stringify(rapport.alertes.liste.map((a) => a.rule)));
@@ -1639,7 +1616,7 @@ test('manuscrit-nettoyer.py : rapport.identifiants présent en cas B, aucune req
       fs.mkdirSync(sortie);
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-reseau']);
       const obj = ligneUniqueJson(r.stdout);
-      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const rapport = cheminDepuisPython(JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8')));
       assert.ok(rapport.identifiants, 'la clé identifiants doit exister en cas B');
       assert.strictEqual(rapport.identifiants.reseau, false);
       assert.strictEqual(rapport.identifiants.requetes, 0);

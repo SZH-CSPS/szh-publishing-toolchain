@@ -34,13 +34,11 @@
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 
-DISTRO = 'SZH-Publishing'
 DELAI_SECONDES = 60
 
 
@@ -95,16 +93,11 @@ def _masquer_urls(ligne):
 
 
 # ---------------------------------------------------------------------------------
-# Pont vers l'exécutable vale. Même détection que manuscrit_typo.py pour le PRINCIPE
-# (sys.platform décide), mais réimplémentée ici, à dessein : ce module ne dépend d'aucun
-# autre du pipeline (§3 du contrat, « ne sait rien de »), et manuscrit_typo.py est hors
-# périmètre de ce chantier. Sous Linux (production : la CLI tourne DANS la WSL, §2 du
-# contrat), vale s'appelle directement — jamais via wsl.exe, qui n'y existe pas. Sous
-# Windows (postes de développement/tests), on passe par wsl.exe -d SZH-Publishing.
+# Pont vers l'exécutable vale. La CLI tourne toujours dans la WSL (§2 du contrat) : vale
+# s'y appelle directement.
 #
-# ⚠ Bug mesuré le 21.09.2026 : un simple 'vale' sur la branche Linux suppose que le binaire
-# est sur le PATH du PROCESSUS — vrai pour un shell de CONNEXION (bash -lc, utilisé par la
-# branche Windows ci-dessous), FAUX pour un exec non interactif (`wsl -d SZH-Publishing --
+# ⚠ Bug mesuré le 21.09.2026 : un simple 'vale' suppose que le binaire
+# est sur le PATH du PROCESSUS — vrai pour un shell de CONNEXION (bash -lc), FAUX pour un exec non interactif (`wsl -d SZH-Publishing --
 # python3 manuscrit-nettoyer.py ...`, ou tout lancement direct dans l'image) : sur un poste
 # de développement sans sudo, vale vit dans ~/.local/bin, qui n'entre sur le PATH que via
 # .profile — jamais sourcé hors shell de connexion. Résultat mesuré : Vale.Indisponible sur
@@ -144,32 +137,6 @@ def _resoudre_vale_bin(repertoire_personnel=None):
     return 'vale'  # aucun candidat : on laisse _executer() échouer avec son message habituel
 
 
-def _chemin_wsl_exe():
-    racine = os.environ.get('WINDIR', 'C:\\Windows')
-    chemin = os.path.join(racine, 'System32', 'wsl.exe')
-    try:
-        if os.path.exists(chemin):
-            return chemin
-    except OSError:
-        pass
-    return 'wsl.exe'
-
-
-def _vers_wsl(wsl_exe, chemin_windows):
-    # wsl.exe avale les antislashs d'un argument passé en tableau (mesuré ailleurs dans ce
-    # chantier, manuscrit_typo.py) : convertir en barres obliques AVANT l'appel.
-    chemin_windows = chemin_windows.replace('\\', '/')
-    try:
-        r = subprocess.run([wsl_exe, '-d', DISTRO, '--', 'wslpath', '-a', chemin_windows],
-                            capture_output=True, timeout=DELAI_SECONDES)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        raise _ValeIndisponible('wslpath injoignable : %s' % e)
-    if r.returncode != 0:
-        raise _ValeIndisponible(
-            'wslpath a échoué (%d) : %s' % (r.returncode, r.stderr.decode('utf-8', 'replace')))
-    return r.stdout.decode('utf-8').strip()
-
-
 def _executer(commande):
     try:
         r = subprocess.run(commande, capture_output=True, timeout=DELAI_SECONDES)
@@ -195,20 +162,8 @@ def _executer(commande):
 
 
 def _lancer_vale(fichiers, chemin_ini):
-    if sys.platform.startswith('linux'):
-        vale_bin = _resoudre_vale_bin()
-        return _executer([vale_bin, '--output=JSON', '--config', chemin_ini] + list(fichiers))
-    wsl_exe = _chemin_wsl_exe()
-    ini_wsl = _vers_wsl(wsl_exe, chemin_ini)
-    fichiers_wsl = [_vers_wsl(wsl_exe, f) for f in fichiers]
-    # `bash -lc` (shell de CONNEXION), pas `--` nu : un poste de développement sans sudo
-    # installe vale dans ~/.local/bin (mesuré le 18.09.2026), qui n'entre sur le PATH que
-    # via .profile — jamais sourcé par une commande `wsl.exe -- vale` directe. L'image de
-    # production (Containerfile, /usr/local/bin) fonctionnerait aussi bien sans ce détour,
-    # mais un shell de connexion ne coûte rien de plus et rend le code robuste aux deux.
-    commande = ' '.join(shlex.quote(a) for a in
-                         ['vale', '--output=JSON', '--config', ini_wsl] + fichiers_wsl)
-    return _executer([wsl_exe, '-d', DISTRO, '--', 'bash', '-lc', commande])
+    vale_bin = _resoudre_vale_bin()
+    return _executer([vale_bin, '--output=JSON', '--config', chemin_ini] + list(fichiers))
 
 
 # ---------------------------------------------------------------------------------
@@ -498,8 +453,8 @@ def analyser(paragraphes_corps, paragraphes_biblio, langue, racine_depot):
 
         alertes = []
         for chemin, index, lignes in fichiers:
-            # vale rend ses clés dans le chemin qu'IL a vu (converti par wslpath côté
-            # Windows) : jamais celui qu'on lui a passé côté appelant. On retrouve le bon
+            # vale rend ses clés dans le chemin qu'IL a vu, pas forcément celui qu'on lui
+            # a passé. On retrouve le bon
             # groupe de constats par le NOM DE FICHIER seul, pas par égalité de chemin.
             base = os.path.basename(chemin)
             for chemin_vale, constats in (sortie or {}).items():

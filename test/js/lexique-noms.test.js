@@ -35,20 +35,13 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython, sauter } = require('./gardes');
+const { python, cheminPython, sansPython, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const GENERATEUR = path.join(RACINE, 'outils-dev', 'lexique', 'generer-noms.py');
 const NOMS_FAMILLE_LIVRE = path.join(RACINE, 'pipeline', 'lexique', 'noms-famille.txt');
 const CORPUS_REEL = path.join(RACINE, 'tmp', 'docx-dev');
-
-function python(args) {
-  return cp.spawnSync(PYTHON, args, {
-    encoding: 'utf8',
-    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' })
-  });
-}
+const PYTHON_OPTS = { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) };
 
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
@@ -84,7 +77,7 @@ function fabriquerDocx(chemin, styles, paragraphes) {
     '    z.writestr("word/document.xml", doc.encode("utf-8"))',
     '    z.writestr("word/styles.xml", "".join(sxml).encode("utf-8"))',
   ].join('\n');
-  const r = python(['-c', programme, chemin, JSON.stringify(styles), JSON.stringify(paragraphes)]);
+  const r = python(['-c', programme, chemin, JSON.stringify(styles), JSON.stringify(paragraphes)], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -94,7 +87,7 @@ function fabriquerDocx(chemin, styles, paragraphes) {
 const STYLES_STD = [['Bibliographie', 'Bibliographie'], ['Titre', 'Titre'], ['Normal', 'Normal']];
 
 function lancerGenerer(args) {
-  return python([GENERATEUR].concat(args));
+  return python([GENERATEUR].concat(args), PYTHON_OPTS);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -104,7 +97,7 @@ function lancerGenerer(args) {
 function appelerFonction(nomFonction, argsJson) {
   const programme = [
     'import importlib.util, json, sys',
-    'spec = importlib.util.spec_from_file_location("gn", ' + JSON.stringify(GENERATEUR) + ')',
+    'spec = importlib.util.spec_from_file_location("gn", ' + JSON.stringify(cheminPython(GENERATEUR)) + ')',
     'gn = importlib.util.module_from_spec(spec)',
     'spec.loader.exec_module(gn)',
     'args = json.loads(sys.argv[1])',
@@ -114,7 +107,7 @@ function appelerFonction(nomFonction, argsJson) {
     '    resultat = sorted(resultat)',
     'print(json.dumps(resultat, ensure_ascii=False))',
   ].join('\n');
-  const r = python(['-c', programme, JSON.stringify(argsJson)]);
+  const r = python(['-c', programme, JSON.stringify(argsJson)], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, nomFonction + ' a échoué : ' + r.stderr);
   return JSON.parse(r.stdout);
 }

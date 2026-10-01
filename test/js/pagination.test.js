@@ -41,7 +41,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sauter, sansPandocWsl } = require('./gardes');
+const { python, pythonSortie, sansPython, sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PAGINATION = path.join(RACINE, 'pipeline', 'pagination.py');
@@ -96,7 +96,7 @@ function preparerNumero(prefixe, pagesParArticle) {
 }
 
 function executer(sousCommande, args, base) {
-  return cp.spawnSync(PYTHON, [PAGINATION, sousCommande].concat(args || []).concat(['--dossier', base]),
+  return python( [PAGINATION, sousCommande].concat(args || []).concat(['--dossier', base]),
     { encoding: 'utf8', env: ENV_UTF8 });
 }
 function etat(base, ordre) { return executer('etat', ['--ordre', ordre.join(',')], base); }

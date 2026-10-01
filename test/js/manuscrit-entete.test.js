@@ -28,8 +28,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, pythonSortie, cheminPython, cheminDepuisPython, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -38,9 +37,10 @@ const NETTOYEUR = path.join(PIPELINE, 'manuscrit-nettoyer.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
 
 const ENV_UTF8 = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
+const PYTHON_OPTS = { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 };
 
-function python(args, opts) {
-  return cp.spawnSync(PYTHON, args,
+function lancerPython(args, opts) {
+  return python(args,
     Object.assign({ encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 }, opts || {}));
 }
 
@@ -52,7 +52,7 @@ function dossierJetable(prefixe) {
 // indices_consommes, trace, document} déjà parsé.
 function diagnostiquer(blocs, langue) {
   const document = { styles: [], langue: '', blocs };
-  const r = cp.spawnSync(PYTHON, [MANUSCRIT_ENTETE, '--diagnostic'], {
+  const r = lancerPython( [MANUSCRIT_ENTETE, '--diagnostic'], {
     input: JSON.stringify({ langue: langue || 'fr', document }), encoding: 'utf8',
   });
   assert.strictEqual(r.status, 0, 'manuscrit_entete.py --diagnostic a échoué : ' + r.stderr);
@@ -74,8 +74,7 @@ function para(texte, opts = {}) {
 // ---------------------------------------------------------------------------------------
 // 1. Titre + sous-titre sur deux lignes, même signature, sans ponctuation finale.
 
-test('extraire_entete : titre et sous-titre sur deux lignes de même signature, sans ponctuation finale',
-  { skip: sansPython }, () => {
+test('extraire_entete : titre et sous-titre sur deux lignes de même signature, sans ponctuation finale', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un grand titre de recherche', { taille: 32, gras: true }),
       para('un sous-titre explicatif', { taille: 32, gras: true }),
@@ -89,8 +88,7 @@ test('extraire_entete : titre et sous-titre sur deux lignes de même signature, 
     assert.strictEqual(out.document.blocs[0].fragments[0].texte, 'Introduction');
   });
 
-test('extraire_entete : titre finissant par « : », sous-titre sur la ligne suivante',
-  { skip: sansPython }, () => {
+test('extraire_entete : titre finissant par « : », sous-titre sur la ligne suivante', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Informations sur les autrices et auteurs :'),
       para('une precision de meme mise en forme'),
@@ -103,8 +101,7 @@ test('extraire_entete : titre finissant par « : », sous-titre sur la ligne sui
 // ---------------------------------------------------------------------------------------
 // 2. Titre avec deux-points sur sa PROPRE ligne (scinder_titre, repli à une seule ligne).
 
-test('extraire_entete : titre scindé sur le deux-points de sa propre ligne (une seule ligne)',
-  { skip: sansPython }, () => {
+test('extraire_entete : titre scindé sur le deux-points de sa propre ligne (une seule ligne)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Inclusion scolaire : le role de l enseignant'),
       para('Introduction'),
@@ -124,8 +121,7 @@ test('extraire_entete : un seul auteur, une seule ligne', { skip: sansPython }, 
   assert.strictEqual(out.entete.auteurs[0].nom, 'Dupont');
 });
 
-test('extraire_entete : deux auteurs sur des lignes séparées, chacun avec institution et e-mail',
-  { skip: sansPython }, () => {
+test('extraire_entete : deux auteurs sur des lignes séparées, chacun avec institution et e-mail', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Jean Dupont'),
@@ -143,8 +139,7 @@ test('extraire_entete : deux auteurs sur des lignes séparées, chacun avec inst
     assert.strictEqual(out.entete.auteurs[1].email, 'marie.martin@hepvd.ch');
   });
 
-test('extraire_entete : trois auteurs sur une seule byline, ORCID sur la ligne suivante non attribué',
-  { skip: sansPython }, () => {
+test('extraire_entete : trois auteurs sur une seule byline, ORCID sur la ligne suivante non attribué', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Jean Dupont, Marie Martin et Paul Durand'),
@@ -163,8 +158,7 @@ test('extraire_entete : trois auteurs sur une seule byline, ORCID sur la ligne s
       'une ligne qu’aucune fiche ne reçoit ne doit plus quitter le corps');
   });
 
-test('extraire_entete : ORCID rattaché au bon auteur quand les noms sont sur des lignes séparées',
-  { skip: sansPython }, () => {
+test('extraire_entete : ORCID rattaché au bon auteur quand les noms sont sur des lignes séparées', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Jean Dupont'),
@@ -247,8 +241,7 @@ test('extraire_entete : DOI reconnu et nettoyé', { skip: sansPython }, () => {
 // « Introduction » se fait alors passer pour LE titre de l'article, et ce contrôle rougit
 // (indices_consommes cesse d'être vide, entete.titre devient « Introduction »).
 
-test('extraire_entete : document qui commence par un intertitre connu -> rien consommé',
-  { skip: sansPython }, () => {
+test('extraire_entete : document qui commence par un intertitre connu -> rien consommé', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Introduction'),
       para('Un corps de texte tout a fait ordinaire qui suit.'),
@@ -284,8 +277,7 @@ test('extraire_entete : un long paragraphe de corps clôt la zone d\'en-tête, s
 // un simple `pass`) — la ligne retombe sur _est_ligne_auteur(), sans auteur déjà connu pour
 // la recevoir : elle devient « auteur_info_non_attribuee » et entete.auteurs reste VIDE.
 
-test('extraire_entete : « Nom, Prénom, institution, téléphone, e-mail » sur une seule ligne -> une fiche, téléphone écarté',
-  { skip: sansPython }, () => {
+test('extraire_entete : « Nom, Prénom, institution, téléphone, e-mail » sur une seule ligne -> une fiche, téléphone écarté', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Protti, Delphine, HEP-VD, +41 79 507 58 10, delphine.protti@edu-vd.ch'),
@@ -301,8 +293,7 @@ test('extraire_entete : « Nom, Prénom, institution, téléphone, e-mail » sur
     assert.strictEqual(out.indices_consommes[1], 'auteurs');
   });
 
-test('extraire_entete : quatre autrices « Nom, Prénom, institution, tel, e-mail », une ligne chacune',
-  { skip: sansPython }, () => {
+test('extraire_entete : quatre autrices « Nom, Prénom, institution, tel, e-mail », une ligne chacune', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Protti, Delphine, HEP-VD, +41 79 507 58 10, delphine.protti@edu-vd.ch'),
@@ -332,8 +323,7 @@ test('extraire_entete : quatre autrices « Nom, Prénom, institution, tel, e-mai
 // jamais avant un marqueur ou un intertitre CONNU, et engloutit le pseudo-titre gras plus
 // tout ce qui suit.
 
-test('extraire_entete : un paragraphe court et entièrement gras arrête la capture du résumé (pseudo-titre)',
-  { skip: sansPython }, () => {
+test('extraire_entete : un paragraphe court et entièrement gras arrête la capture du résumé (pseudo-titre)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Resume : Premier paragraphe du resume.'),
@@ -347,8 +337,7 @@ test('extraire_entete : un paragraphe court et entièrement gras arrête la capt
       'le corps qui suit le pseudo-titre ne doit jamais être touché');
   });
 
-test('extraire_entete : le résumé est plafonné à quatre paragraphes, le reste jamais capturé',
-  { skip: sansPython }, () => {
+test('extraire_entete : le résumé est plafonné à quatre paragraphes, le reste jamais capturé', { skip: sansPython }, () => {
     // index 0 = titre, 1 = marqueur, 2..10 = neuf paragraphes candidats à la suite.
     const paras = [para('Un titre'), para('Resume : paragraphe un.')];
     for (let i = 2; i <= 10; i += 1) {
@@ -363,8 +352,7 @@ test('extraire_entete : le résumé est plafonné à quatre paragraphes, le rest
       'seuls le titre et les quatre paragraphes de résumé plafonnés doivent avoir quitté le corps');
   });
 
-test('extraire_entete : le résumé est plafonné à 1500 signes, jamais tout un article',
-  { skip: sansPython }, () => {
+test('extraire_entete : le résumé est plafonné à 1500 signes, jamais tout un article', { skip: sansPython }, () => {
     const bloc300 = 'Un morceau de résumé assez long pour compter dans le plafond global. '.repeat(4);
     const paras = [para('Un titre'), para('Resume : ' + bloc300)];
     for (let i = 0; i < 6; i += 1) { paras.push(para(bloc300 + ' bis ' + i)); }
@@ -405,7 +393,7 @@ const FABRIQUER_DOCX = [
 ].join('\n');
 
 function fabriquerDocx(chemin, paragraphes) {
-  const r = python(['-c', FABRIQUER_DOCX, chemin, JSON.stringify(paragraphes)]);
+  const r = lancerPython(['-c', FABRIQUER_DOCX, chemin, JSON.stringify(paragraphes)], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -416,7 +404,7 @@ function nettoyer(args) {
 function ligneUniqueJson(stdout) {
   const lignes = stdout.split('\n').filter((l) => l.trim());
   assert.strictEqual(lignes.length, 1, 'stdout doit porter EXACTEMENT une ligne : ' + stdout);
-  return JSON.parse(lignes[0]);
+  return cheminDepuisPython(JSON.parse(lignes[0]));
 }
 
 // Compte les occurrences d'un texte dans TOUT le document.xml de sortie (tableaux fixes ET
@@ -429,7 +417,7 @@ const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
   + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
 
 function occurrencesDansLaSortie(cheminDocx, texte) {
-  const xml = cp.execFileSync(PYTHON, ['-c', LIRE_DOCUMENT_XML, cheminDocx],
+  const xml = pythonSortie(['-c', LIRE_DOCUMENT_XML, cheminDocx],
     { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
   const morceaux = [];
   const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
@@ -475,7 +463,7 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
 
       const dossierPronto = path.join(base, 'article-pronto');
       fs.mkdirSync(dossierPronto);
-      const rl = python([PRONTO_LIRE, obj.sortie_docx, 'essai', dossierPronto]);
+      const rl = lancerPython([PRONTO_LIRE, obj.sortie_docx, 'essai', dossierPronto], PYTHON_OPTS);
       assert.strictEqual(rl.status, 0, 'pronto-lire.py doit relire la sortie sans erreur : ' + rl.stderr);
       const statsPronto = JSON.parse(rl.stdout);
       assert.strictEqual(statsPronto.tableau1_consomme, true);
@@ -531,8 +519,7 @@ test('bout en bout : manuscrit-nettoyer.py reconnaît l\'en-tête et le gabarit 
 // marqueur n'est plus jamais reconnu, indices_consommes reste vide et le bloc final reste
 // dans le corps.
 
-test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices et auteurs », un seul paragraphe multi-lignes',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices et auteurs », un seul paragraphe multi-lignes', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Introduction'),
@@ -554,8 +541,7 @@ test('extraire_bloc_auteurs_final : intertitre « Informations sur les autrices 
       'le titre (en-tête) et le bloc final doivent avoir quitté le corps ; intro et corps restent');
   });
 
-test('extraire_bloc_auteurs_final : sans intertitre, un groupe final de paragraphes courts (nom/institution/e-mail) est reconnu',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : sans intertitre, un groupe final de paragraphes courts (nom/institution/e-mail) est reconnu', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Introduction'),
@@ -582,8 +568,7 @@ test('extraire_bloc_auteurs_final : sans intertitre, un groupe final de paragrap
     assert.strictEqual(out.indices_consommes[4], undefined, 'la référence réelle ne doit jamais être prise pour une info d’auteur');
   });
 
-test('extraire_bloc_auteurs_final : fusionne avec un auteur déjà connu de la tête (même nom), sans dupliquer',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : fusionne avec un auteur déjà connu de la tête (même nom), sans dupliquer', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Caroline Pedrosa'),
@@ -637,8 +622,7 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur l\'intitulé de 
 // retirer la garde `if i in indices_entete: break` du repli — la fonction fait alors
 // `a.fonction === 'Introduction'` au lieu de `''`.
 
-test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà consommé par extraire_entete()',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : ne revisite jamais un paragraphe déjà consommé par extraire_entete()', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Jean Dupont'),
@@ -765,8 +749,7 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence 
 // Défaut 1 (§0 du contrat) : une institution prise pour un second auteur. Correction du
 // superviseur (22.09.2026) : _segments_plausibles() PARTITIONNE (noms, infos) au lieu de
 // rejeter la ligne entière au premier segment d'institution.
-test('extraire_entete : « Marie Dupont, Université de Genève » -> une fiche, institution remplie, jamais un second auteur fantôme (§4.1)',
-  { skip: sansPython }, () => {
+test('extraire_entete : « Marie Dupont, Université de Genève » -> une fiche, institution remplie, jamais un second auteur fantôme (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Marie Dupont, Université de Genève'),
@@ -779,8 +762,7 @@ test('extraire_entete : « Marie Dupont, Université de Genève » -> une fiche,
     assert.strictEqual(out.entete.auteurs[0].institution, 'Université de Genève');
   });
 
-test('extraire_entete : « Université de Genève » seule après « Marie Dupont » -> rattachée à la fiche déjà ouverte, jamais un auteur fantôme (§4.1)',
-  { skip: sansPython }, () => {
+test('extraire_entete : « Université de Genève » seule après « Marie Dupont » -> rattachée à la fiche déjà ouverte, jamais un auteur fantôme (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Marie Dupont'),
@@ -795,8 +777,7 @@ test('extraire_entete : « Université de Genève » seule après « Marie Dupon
 // Défaut 2 (§0 du contrat) : « Dr. phil. Romain Lanners » ne rendait aucun auteur —
 // _segments_plausibles() n'appelait pas dm.sans_titres_academiques(), contrairement à
 // dm.auteurs_depuis_byline().
-test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Romain Lanners » -> un auteur, jamais zéro (§4.1)',
-  { skip: sansPython }, () => {
+test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Romain Lanners » -> un auteur, jamais zéro (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Dr. phil. Romain Lanners'),
@@ -810,8 +791,7 @@ test('extraire_entete : titres académiques en tête reconnus, « Dr. phil. Roma
 // Défaut 3 (§0 du contrat) : un jeton emoji (aucune lettre) disqualifiait toute la ligne
 // dans dm.nom_plausible() — retiré du segment AVANT le test de plausibilité, dans
 // _segments_plausibles(), jamais dans docx-meta.nom_plausible() (fichier d'un autre lot).
-test('extraire_entete : un jeton emoji ne disqualifie plus la ligne, « Marie Dupont 🎓 » -> un auteur, jamais zéro (§4.1)',
-  { skip: sansPython }, () => {
+test('extraire_entete : un jeton emoji ne disqualifie plus la ligne, « Marie Dupont 🎓 » -> un auteur, jamais zéro (§4.1)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Marie Dupont \u{1F393}'),
@@ -900,8 +880,7 @@ test('extraire_bloc_auteurs_final : fusionne par ENSEMBLE de jetons (ordres diff
 // 14. ordre_confiance/ordre_motif/ordre_conflit (§4.4 du contrat de lot ; ordre_conflit
 // ajouté par le superviseur le 22.09.2026, en cours de lot) sur CHAQUE fiche.
 
-test('extraire_entete : chaque fiche porte ordre_confiance (valeur de CONFIANCE), ordre_motif (texte) et ordre_conflit (booléen) (§4.4)',
-  { skip: sansPython }, () => {
+test('extraire_entete : chaque fiche porte ordre_confiance (valeur de CONFIANCE), ordre_motif (texte) et ordre_conflit (booléen) (§4.4)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Jean Dupont, Marie Martin'),
@@ -949,8 +928,7 @@ test('extraire_entete : ordre_conflit distingue un ordre "defaut" par CONFLIT de
 // restant vertes. La copie est supprimée (mn.repartir() est publique depuis) et ce test
 // ferme le trou : il vérifie la répartition à travers extraire_entete(), pas dans le module
 // de décision isolé.
-test('extraire_entete : une initiale intermédiaire reste au prénom, dans les deux ordres (superviseur, 22.09.2026)',
-  { skip: sansPython }, () => {
+test('extraire_entete : une initiale intermédiaire reste au prénom, dans les deux ordres (superviseur, 22.09.2026)', { skip: sansPython }, () => {
     const direct = diagnostiquer([
       para('Un titre'), para('Bernard N. Schumacher'), para('Introduction'),
     ]);
@@ -1079,8 +1057,7 @@ function tableau(cellules) {
   };
 }
 
-test('extraire_bloc_auteurs_final : fiche d’autrice en tableau, ancrée sur la byline (Huttner)',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : fiche d’autrice en tableau, ancrée sur la byline (Huttner)', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('KI-generierte Wort- und Aussagenvorhersagen'),
       para('Hannah Huttner'),
@@ -1105,8 +1082,7 @@ test('extraire_bloc_auteurs_final : fiche d’autrice en tableau, ancrée sur la
     assert.ok(!out.trace.some((t) => t.decision === 'bloc_auteurs_final_absent'));
   });
 
-test('extraire_bloc_auteurs_final : un tableau de données qui ne nomme pas la byline reste en place',
-  { skip: sansPython }, () => {
+test('extraire_bloc_auteurs_final : un tableau de données qui ne nomme pas la byline reste en place', { skip: sansPython }, () => {
     const out = diagnostiquer([
       para('Un titre'),
       para('Hannah Huttner'),

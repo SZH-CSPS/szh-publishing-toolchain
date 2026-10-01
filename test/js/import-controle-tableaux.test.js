@@ -16,8 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, sansPython } = require('./gardes');
 const F = require('./figures-fabrique');
 
 const CONTROLE = path.join(F.RACINE, 'pipeline', 'docx-controle-import.py');
@@ -48,7 +47,7 @@ function controle(base, { md, tables, fiche, instructions, word }) {
   fs.writeFileSync(path.join(dossier, 'essai.meta.yaml'), fiche || '', 'utf8');
   const meta = path.join(base, 'instructions.txt');
   fs.writeFileSync(meta, instructions || '', 'utf8');
-  const r = cp.spawnSync(PYTHON, [CONTROLE, '--avant-medias', (word || wordDeuxTableaux)(base), 'essai', dossier,
+  const r = python([CONTROLE, '--avant-medias', (word || wordDeuxTableaux)(base), 'essai', dossier,
     path.join(base, 'etat.json')], { encoding: 'utf8', env: Object.assign({}, F.ENV_UTF8, {
     SZH_META: meta, SZH_SLUG: 'essai' }) });
   assert.strictEqual(r.status, 0, r.stderr);
@@ -116,7 +115,7 @@ test('tableaux du Word : les étiquettes « SZH Cle » d’un tableau consommé 
       fs.writeFileSync(path.join(dossier, 'essai.md'), 'Un titre pour l’essai\n', 'utf8');
       const meta = path.join(base, 'instructions.txt');
       fs.writeFileSync(meta, 'T\t1\n', 'utf8');
-      const r = cp.spawnSync(PYTHON, [CONTROLE, '--avant-medias', gabarit, 'essai', dossier,
+      const r = python([CONTROLE, '--avant-medias', gabarit, 'essai', dossier,
         path.join(base, 'etat.json')], { encoding: 'utf8', env: Object.assign({}, F.ENV_UTF8, {
         SZH_META: meta, SZH_SLUG: 'essai' }) });
       assert.strictEqual(r.status, 0, r.stderr);
@@ -238,7 +237,7 @@ function wordZoneDeTexte(base) {
     'with zipfile.ZipFile(sys.argv[1], "w") as z:',
     '    z.writestr("word/document.xml", doc)'
   ].join('\n');
-  const r = cp.spawnSync(PYTHON, ['-c', code, chemin], { encoding: 'utf8' });
+  const r = python(['-c', code, chemin], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stderr);
   return () => chemin;
 }

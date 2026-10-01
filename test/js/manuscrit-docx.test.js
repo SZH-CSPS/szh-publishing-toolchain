@@ -19,8 +19,8 @@
 //   node --test test/js/manuscrit-docx.test.js
 //
 // Patron : test/js/docx-titres.test.js (fixtures .docx fabriquées ICI par un petit programme
-// Python écrit au vol, jamais figées en binaire). Gardes de test/js/gardes.js : PYTHON
-// (jamais `python3` en dur, qui tombe sur l'alias WindowsApps et fige toute la suite).
+// Python écrit au vol, jamais figées en binaire). Python passe par python() de
+// test/js/gardes.js (la WSL sous Windows).
 //
 // manuscrit_docx.py n'est piloté que par sa CLI de diagnostic (--diagnostic/--images/
 // --projeter-pronto/--pronto-brut <fichier.docx>) : Node ne peut pas l'importer directement.
@@ -32,19 +32,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const cp = require('child_process');
-const { PYTHON, sansPython, sauter } = require('./gardes');
+const { python, cheminPython, sansPython, sauter } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_DOCX = path.join(RACINE, 'pipeline', 'manuscrit_docx.py');
+const PYTHON_OPTS = { maxBuffer: 64 * 1024 * 1024 };
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 // Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — les contrôles de ce fichier (projection
 // pandoc, styles maison…) sont indépendants de la langue des étiquettes ; le FR suffit.
 const GABARIT_LIVRE = path.join(RACINE, "revue-template", "Pronto - modele d'article_FR.docx");
-
-function python(args) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-}
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-manuscritdocx-'));
@@ -133,13 +129,13 @@ const FABRIQUE = [
 ].join('\n');
 
 function fabriquerDocx(chemin, spec) {
-  const r = python(['-c', FABRIQUE, chemin, JSON.stringify(spec)]);
+  const r = python(['-c', FABRIQUE, chemin, JSON.stringify(spec)], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
 // Lance manuscrit_docx.py en mode `mode` sur `chemin`, rend le JSON déjà parsé.
 function diagnostiquer(mode, chemin) {
-  const r = python([MANUSCRIT_DOCX, mode, chemin]);
+  const r = python([MANUSCRIT_DOCX, mode, chemin], PYTHON_OPTS);
   assert.strictEqual(r.status, 0, mode + ' a échoué sur ' + chemin + ' : ' + r.stderr);
   return JSON.parse(r.stdout);
 }
@@ -215,8 +211,7 @@ test('manuscrit_docx.py --diagnostic : une coupure de run sur une espace ne perd
 //   - ligne `if rpr is None: return None` → `return False` : rougit (fr[0]) ;
 //   - ligne `if el is None: return None` → `return False`  : rougit maintenant AUSSI (fr[3]).
 
-test('manuscrit_docx.py --diagnostic : gras=None (non déclaré) ≠ gras=False (déclaré éteint)',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : gras=None (non déclaré) ≠ gras=False (déclaré éteint)', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -254,8 +249,7 @@ test('manuscrit_docx.py --diagnostic : gras=None (non déclaré) ≠ gras=False 
 // de `pm.niveau_depuis_style(style_resolu)` — tous les niveau_declare tombent à 0, la
 // dernière assertion de chaque bloc rougit.
 
-test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau de titre',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau de titre', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -292,8 +286,7 @@ test('manuscrit_docx.py --diagnostic : styles localisés résolus au bon niveau 
 // détection wp:anchor (mettre flottante = True dans les deux branches) — la première
 // assertion (flottante===false pour l'image inline) rougit.
 
-test('manuscrit_docx.py --images : inline non flottante, anchor flottante, octets exacts',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --images : inline non flottante, anchor flottante, octets exacts', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -406,8 +399,7 @@ function fabriquerDocxAvecImage(chemin, octetsImage, cx, cy, nomFichier) {
 // en `hauteur, largeur = struct.unpack(...)` — largeur et hauteur étant différentes (120≠80)
 // dans cette fixture, l'assertion sur largeur_px rougit.
 
-test('manuscrit_docx.py --diagnostic : un PNG fabriqué en 120 x 80 rend ses vraies dimensions en pixels',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un PNG fabriqué en 120 x 80 rend ses vraies dimensions en pixels', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -451,8 +443,7 @@ test('manuscrit_docx.py --diagnostic : un JPEG rend ses vraies dimensions, pas c
 // non rattrapée jusqu'à la CLI, qui échoue tout le document (code 1) au lieu de rendre (0, 0)
 // pour cette seule image : l'assertion `r.status === 0` de diagnostiquer() rougit.
 
-test('manuscrit_docx.py --diagnostic : un fichier image tronqué rend 0,0 sans jamais lever, et le document se lit quand même',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un fichier image tronqué rend 0,0 sans jamais lever, et le document se lit quand même', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -494,8 +485,7 @@ test('manuscrit_docx.py --diagnostic : un format inconnu (SVG) rend 0,0, sans le
 // `surface = cx + cy` — cx et cy restent corrects (lecture inchangée), seule l'assertion sur
 // `surface` (le produit) rougit.
 
-test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leur produit reste égal à surface',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leur produit reste égal à surface', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -540,7 +530,7 @@ test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occu
       return;
     }
     const chemin = path.join(CORPUS_LOT_A, fichiers[0]);
-    const r = python([MANUSCRIT_DOCX, '--images', chemin]);
+    const r = python([MANUSCRIT_DOCX, '--images', chemin], PYTHON_OPTS);
     assert.strictEqual(r.status, 0, '--images a échoué sur ' + chemin + ' : ' + r.stderr);
     const images = JSON.parse(r.stdout);
     assert.strictEqual(images.length, 36,
@@ -566,8 +556,7 @@ test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occu
 // continue` (le dédoublonnage) — la seconde des deux assertions ci-dessous (rId répété deux
 // fois ne donne qu'UNE image) rougit : deux Image identiques seraient rendues.
 
-test('manuscrit_docx.py --diagnostic : un w:pict groupant 2 images VML DISTINCTES les récupère toutes les deux',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un w:pict groupant 2 images VML DISTINCTES les récupère toutes les deux', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -583,7 +572,7 @@ test('manuscrit_docx.py --diagnostic : un w:pict groupant 2 images VML DISTINCTE
         media: { 'image1.png': octets1.toString('base64'), 'image2.png': octets2.toString('base64') },
         rels: [['rId1', 'media/image1.png'], ['rId2', 'media/image2.png']]
       });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       assert.ok(!/images-vml-ignorees/.test(r.stderr),
         'les deux images sont récupérées : aucune ne doit rester "ignorée". stderr obtenu : '
@@ -615,7 +604,7 @@ test('manuscrit_docx.py --diagnostic : un w:pict qui référence deux fois le M�
         media: { 'image1.png': octets.toString('base64') },
         rels: [['rId1', 'media/image1.png']]
       });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
       const images = document.blocs[0].fragments.filter((f) => f.image).map((f) => f.image);
@@ -634,14 +623,13 @@ test('manuscrit_docx.py --diagnostic : un w:pict qui référence deux fois le M�
 // recensement['image_vml_ignoree'] += 1` par `pass` — l'avertissement ne apparaît plus du
 // tout, l'assertion ci-dessous rougit.
 
-test('manuscrit_docx.py --diagnostic : un w:pict sans aucune image reste compté comme ignoré, jamais 0',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un w:pict sans aucune image reste compté comme ignoré, jamais 0', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
       const corps = '<w:p><w:r><w:pict><v:rect/></w:pict></w:r></w:p>';
       fabriquerDocx(docx, { corps });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       assert.ok(
         /\[import-avertissement\] images-vml-ignorees \| article \| occurrences 1 \|/.test(r.stderr),
@@ -698,7 +686,7 @@ test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont 
         media: { 'image1.png': octets1.toString('base64'), 'image2.png': octets2.toString('base64') },
         rels: [['rId1', 'media/image1.png'], ['rId2', 'media/image2.png']]
       });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
       const images = document.blocs[0].fragments.filter((f) => f.image).map((f) => f.image);
@@ -731,8 +719,7 @@ test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont 
 // Sabotage minimal : dans _colspan(), rendre toujours 1 (ignorer gridSpan) — l'assertion sur
 // colspan===2 rougit.
 
-test('manuscrit_docx.py --diagnostic : cellule fusionnée (gridSpan), colspan correct',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : cellule fusionnée (gridSpan), colspan correct', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -773,8 +760,7 @@ test('manuscrit_docx.py --diagnostic : cellule fusionnée (gridSpan), colspan co
 // (ex. la normalisation du texte) le faisait rougir pour une raison étrangère au compteur qu'il
 // annonce garder. Séparé pour que chaque test tombe pour la raison qu'il dit garder.
 
-test('manuscrit_docx.py --diagnostic : un document en suivi de modifications rend revisions > 0',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un document en suivi de modifications rend revisions > 0', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -790,8 +776,7 @@ test('manuscrit_docx.py --diagnostic : un document en suivi de modifications ren
     }
   });
 
-test('manuscrit_docx.py --diagnostic : le texte inséré en suivi de modifications reste lisible',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : le texte inséré en suivi de modifications reste lisible', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -810,8 +795,7 @@ test('manuscrit_docx.py --diagnostic : le texte inséré en suivi de modificatio
     }
   });
 
-test('manuscrit_docx.py --diagnostic : sans w:ins/w:del, revisions vaut 0',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : sans w:ins/w:del, revisions vaut 0', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -861,7 +845,7 @@ test('manuscrit_docx.py --diagnostic : les onze manuscrits réels de lot-A se li
     assert.ok(fichiers.length > 0, 'aucun .docx trouvé dans lot-A alors que le dossier existe');
     const echecs = [];
     for (const nom of fichiers) {
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', path.join(CORPUS_LOT_A, nom)]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', path.join(CORPUS_LOT_A, nom)], PYTHON_OPTS);
       if (r.status !== 0) { echecs.push(nom + ' : ' + r.stderr); }
     }
     assert.deepStrictEqual(echecs, [], 'ces fichiers ont levé une exception à la lecture');
@@ -948,8 +932,7 @@ test('manuscrit_docx.py --diagnostic : un w:lvlOverride qui porte son propre w:l
     }
   });
 
-test('manuscrit_docx.py --diagnostic : un w:lvlOverride sans w:lvl (simple startOverride) ne change PAS le format',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un w:lvlOverride sans w:lvl (simple startOverride) ne change PAS le format', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -970,8 +953,7 @@ test('manuscrit_docx.py --diagnostic : un w:lvlOverride sans w:lvl (simple start
     }
   });
 
-test('manuscrit_docx.py --diagnostic : numbering.xml absent rend un format vide, sans lever',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : numbering.xml absent rend un format vide, sans lever', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1074,8 +1056,7 @@ test('manuscrit_docx.py --diagnostic : cadratin, demi-cadratin et trait d\'union
 // `elif e.tag in (W + 'tab', W + 'br', W + 'cr'): morceaux.append(' ')` (l'ancien comportement)
 // — les deux assertions ci-dessous rougissent.
 
-test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un vrai saut de ligne, jamais une simple espace',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un vrai saut de ligne, jamais une simple espace', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1104,8 +1085,7 @@ test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un 
 // assertions de texte rougissent (plus rien n'apparaît du tout), ET l'avertissement
 // 'symboles-police-speciale' disparaît (rien à signaler si rien n'est jamais rendu).
 
-test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en Unicode, et signale le reste sans le taire',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en Unicode, et signale le reste sans le taire', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1115,7 +1095,7 @@ test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en U
         '<w:r><w:t xml:space="preserve"> Apres</w:t></w:r></w:p>' +
         '<w:p><w:r><w:sym w:font="Wingdings" w:char="F0C8"/></w:r></w:p>';
       fabriquerDocx(docx, { corps });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
       const t0 = document.blocs[0].fragments.map((f) => f.texte).join('');
@@ -1200,8 +1180,7 @@ test('manuscrit_docx.py --diagnostic : un w:sdt de niveau bloc ne fait plus disp
 // _notes_depuis_racine() pour les endnotes — la note de fin (id brut 1) écrase alors la
 // footnote 1 dans le dict : il n'en reste plus que 2 clés au lieu de 3.
 
-test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent, la note de fin reçoit un identifiant décalé',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent, la note de fin reçoit un identifiant décalé', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1247,8 +1226,7 @@ test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent
 // ids_appelees}` par `pass` (ne rien filtrer) — la note orpheline (id 5) réapparaît dans
 // document.notes, la première assertion rougit.
 
-test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (footnoteReference) est retirée, signalée',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (footnoteReference) est retirée, signalée', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1259,7 +1237,7 @@ test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (f
         '<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Contenu appele</w:t></w:r></w:p></w:footnote>' +
         '<w:footnote w:id="5"><w:p><w:r><w:t xml:space="preserve">Contenu jamais appele</w:t></w:r></w:p></w:footnote>';
       fabriquerDocx(docx, { corps, footnotes });
-      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx], PYTHON_OPTS);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
       assert.deepStrictEqual(Object.keys(document.notes), ['1'],
@@ -1397,8 +1375,7 @@ test('manuscrit_docx.py --diagnostic : numId="0" rend liste=null, jamais une lis
 // Sabotage minimal : dans _liste_depuis(), retirer les deux lignes qui appellent
 // _numpr_depuis_style() en repli — le paragraphe rendrait liste=null au lieu de [7, 0, 'puce'].
 
-test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé sur le paragraphe) résout la liste',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé sur le paragraphe) résout la liste', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1429,7 +1406,7 @@ test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé 
         '    for n, d in noms.items():',
         '        z.writestr(n, d)'
       ].join('\n');
-      const rp = python(['-c', patch, docx]);
+      const rp = python(['-c', patch, docx], PYTHON_OPTS);
       assert.strictEqual(rp.status, 0, 'patch du styles.xml impossible : ' + rp.stderr);
       const { document } = diagnostiquer('--diagnostic', docx);
       assert.deepStrictEqual(document.blocs[0].liste, [7, 0, 'puce'],
@@ -1489,8 +1466,7 @@ test('manuscrit_docx.py --diagnostic : Image.source porte l\'indice du paragraph
 // Sabotage minimal : dans _forme_effective(), `return dict(forme_directe)` en première ligne
 // (jamais consulter aucun style) — `effectif.gras` resterait None comme `forme.gras`.
 
-test('manuscrit_docx.py --diagnostic : Fragment.effectif remonte le gras du style de paragraphe, forme reste None',
-  { skip: sansPython }, () => {
+test('manuscrit_docx.py --diagnostic : Fragment.effectif remonte le gras du style de paragraphe, forme reste None', { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
@@ -1511,7 +1487,7 @@ test('manuscrit_docx.py --diagnostic : Fragment.effectif remonte le gras du styl
         'with zipfile.ZipFile(chemin, "w") as z:',
         '    for n, d in noms.items(): z.writestr(n, d)'
       ].join('\n');
-      const rp = python(['-c', patch, docx]);
+      const rp = python(['-c', patch, docx], PYTHON_OPTS);
       assert.strictEqual(rp.status, 0, 'patch du styles.xml impossible : ' + rp.stderr);
       const { document } = diagnostiquer('--diagnostic', docx);
       const f = document.blocs[0].fragments[0];

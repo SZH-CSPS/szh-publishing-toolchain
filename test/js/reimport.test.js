@@ -24,7 +24,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { sauter, sansPandoc, bashDuPython } = require('./gardes');
+const { sauter, sansPandoc, sansPython, bashDuPython, python } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -292,21 +292,9 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
 // n'est mesurée que là où un bash sait lire les chemins de ce dépôt (CI Linux, WSL).
 
 const os = require('os');
-const cp = require('child_process');
 
 const SCRIPT = path.join(RACINE, 'pipeline', 'reimporter.py');
 
-// python3, puis python. Aucun saut silencieux : un contrôle qui mesure des codes de sortie
-// ne doit pas pouvoir passer au vert sans avoir rien lancé.
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
 
 // Un bash qui comprend les chemins que Python lui passera. Sous Windows, `bash` est
 // souvent la passerelle WSL : elle ne sait rien d'un chemin « C:\… », et la conversion
@@ -315,7 +303,7 @@ function bashCompatible() {
   // On mesure l'opération réelle, pas une approximation : Python lancera
   // « bash <chemin>/import-docx.sh » avec un chemin de cette forme-là — et c'est depuis
   // Python qu'on sonde, Node ne trouvant pas le même bash (bashDuPython, test/js/gardes.js).
-  return bashDuPython(PYTHON);
+  return bashDuPython();
 }
 
 // Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
@@ -325,7 +313,6 @@ function bashCompatible() {
 // test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
 // défaut.
 
-const PYTHON = interpretePython();
 
 function revueJetable(slug) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-reimport-'));
@@ -341,8 +328,7 @@ function revueJetable(slug) {
 
 function lancer(racine, args) {
   const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' });
-  return cp.spawnSync(PYTHON, [SCRIPT].concat(args),
-    { cwd: racine, encoding: 'utf8', env: env });
+  return python([SCRIPT].concat(args), { cwd: racine, env: env });
 }
 
 function jsonDeLaSortie(sortie) {
@@ -350,9 +336,7 @@ function jsonDeLaSortie(sortie) {
   return ligne.length === 1 ? JSON.parse(ligne[0]) : null;
 }
 
-test('les issues du réimport : le processus sort sur le code que le JSON annonce', () => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python3, puis python) : ce contrôle '
-    + 'mesure des codes de sortie, il ne peut pas être sauté en silence');
+test('les issues du réimport : le processus sort sur le code que le JSON annonce', { skip: sansPython }, () => {
   const slug = '01-essai';
 
   // --- refusé (4) : aucun article de ce nom
@@ -432,8 +416,7 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', { skip: sansPython }, (t) => {
   if (!bashCompatible()) {
     // Ni un saut silencieux ni un faux vert : on dit pourquoi, et où la mesure se fait.
     assert.ok(SH.indexOf('SZH_IMPORT_DIR') !== -1,
@@ -480,8 +463,7 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', (t) 
 // déposé AVANT un réimport réel (via --pipeline, comme le test « rien à faire » ci-dessus),
 // et sa survie est constatée sur le disque, après une vraie bascule.
 test('réimport : un sidecar inventé (tâches) que le Word ne possède pas survit à un réimport réel',
-  (t) => {
-    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+  { skip: sansPython }, (t) => {
     if (!bashCompatible()) {
       assert.ok(SH.indexOf('SZH_IMPORT_DIR') !== -1,
         'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');

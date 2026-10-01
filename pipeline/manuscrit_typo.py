@@ -42,7 +42,6 @@ import difflib
 import json
 import os
 import subprocess
-import sys
 import time
 
 # ---------------------------------------------------------------------------------------
@@ -61,8 +60,6 @@ import time
 # deux échecs restent réels mais deviennent des bugs de CE module, jamais un verdict sur une
 # correction du filtre.
 # ---------------------------------------------------------------------------------------
-
-DISTRO = 'SZH-Publishing'
 
 # Délai généreux : un lot de paragraphes reste un appel unique, mais une distro froide (pas
 # encore préchauffée) peut prendre plusieurs secondes à répondre. Un délai qui expire est
@@ -84,42 +81,6 @@ class _PandocIndisponible(Exception):
     """Interne : lève quand l'outillage externe (wsl.exe, la distro, pandoc) n'a pas pu
     répondre. Capturée à l'échelle du LOT ENTIER : c'est le repli obligatoire du contrat,
     tous les paragraphes ressortent inchangés."""
-
-
-def _chemin_wsl_exe():
-    """Même détection que lib/wsl.js : le wsl.exe de System32 d'abord (jamais un éventuel
-    autre wsl.exe du PATH), sinon celui du PATH."""
-    systeme = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'System32', 'wsl.exe')
-    try:
-        if os.path.exists(systeme):
-            return systeme
-    except OSError:
-        pass
-    return 'wsl.exe'
-
-
-def _chemin_pour_wsl(wsl_exe, chemin_windows):
-    """Convertit un chemin Windows en chemin WSL via `wslpath -a`, comme documenté au §6 du
-    contrat — jamais un `/mnt/c/...` posé en dur : le point de montage n'est pas garanti
-    identique sur tous les postes.
-
-    ⚠ Mesuré le 18.09.2026, absent du §10 du contrat : wsl.exe AVALE les antislashs d'un
-    argument passé en tableau (subprocess.run([...])), sans message d'erreur — 'C:\\Users\\x'
-    devient 'C:Usersx' de l'autre côté, et wslpath échoue sur un chemin qui n'existe pas.
-    Rien à voir avec le piège déjà connu de l'encodage de sortie : ici c'est l'ENTRÉE que
-    wsl.exe mutile, avant même que la commande ne s'exécute côté Linux. Windows accepte le
-    slash comme séparateur aussi bien que l'antislash ; le convertir ICI, avant l'appel,
-    contourne le problème sans toucher au fond."""
-    chemin_windows = chemin_windows.replace('\\', '/')
-    try:
-        r = subprocess.run([wsl_exe, '-d', DISTRO, '--', 'wslpath', '-a', chemin_windows],
-                            capture_output=True, timeout=DELAI_SECONDES)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        raise _PandocIndisponible('wslpath injoignable : %s' % e)
-    if r.returncode != 0:
-        raise _PandocIndisponible(
-            'wslpath a échoué (%d) : %s' % (r.returncode, r.stderr.decode('utf-8', 'replace')))
-    return r.stdout.decode('utf-8').strip()
 
 
 def _construire_inlines(texte):
@@ -158,30 +119,17 @@ def _a_plat(inlines):
 
 
 def _executer_pandoc(entree_json, langue, racine_depot):
-    """LA fonction qui décide comment joindre pandoc — une seule fois, testée dans les deux
-    branches. Sous Linux (`sys.platform != 'win32'` : c'est le cas en production, le lanceur
-    exécute cette CLI DANS la WSL via `wsl -d SZH-Publishing -e python3 ...`), pandoc est déjà
-    sur le PATH : l'appeler directement, avec le chemin Linux natif du filtre, sans wslpath ni
-    wsl.exe — ces deux-là n'existent PAS dans la distro, et un `wsl.exe` introuvable n'y lève
-    AUCUNE exception (`FileNotFoundError` sur un nom qui ressemble à un exécutable ordinaire),
-    il déclenche un repli silencieux. Mesuré : 845 paragraphes sur 845 rendus inchangés, code
-    de sortie 0, avant ce correctif. Sous Windows (le poste de développement), rien ne change :
-    `wsl.exe` + `wslpath -a`, comme avant. Rend l'objet `subprocess.CompletedProcess`."""
+    """Lance pandoc avec le filtre de typographie. La CLI tourne toujours dans la WSL (le
+    lanceur passe par `wsl -d SZH-Publishing -e python3 ...`), où pandoc est sur le PATH.
+    Rend l'objet `subprocess.CompletedProcess`."""
     chemin_filtre_natif = os.path.join(racine_depot, 'pipeline', 'filters', 'szh-typographie.lua')
-    if sys.platform != 'win32':
-        commande = ['pandoc', '-f', 'json', '-t', 'json', '-M', 'lang=%s' % langue,
-                    '--lua-filter', chemin_filtre_natif]
-    else:
-        wsl_exe = _chemin_wsl_exe()
-        filtre_wsl = _chemin_pour_wsl(wsl_exe, chemin_filtre_natif)
-        commande = [wsl_exe, '-d', DISTRO, '--', 'pandoc', '-f', 'json', '-t', 'json',
-                    '-M', 'lang=%s' % langue, '--lua-filter', filtre_wsl]
+    commande = ['pandoc', '-f', 'json', '-t', 'json', '-M', 'lang=%s' % langue,
+                '--lua-filter', chemin_filtre_natif]
     try:
         return subprocess.run(commande, input=entree_json, capture_output=True,
                                timeout=DELAI_SECONDES)
     except (OSError, subprocess.TimeoutExpired) as e:
-        raise _PandocIndisponible('pandoc injoignable (%s) : %s'
-                                   % ('direct' if sys.platform != 'win32' else 'via wsl.exe', e))
+        raise _PandocIndisponible('pandoc injoignable : %s' % e)
 
 
 def _appeler_pandoc(textes, langue, racine_depot):
@@ -384,8 +332,7 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
     """Rend (paragraphes_normalises, traces, abandons, avertissements, statut).
 
     `paragraphes` : liste de Paragraphe-like (§4 du contrat). `langue` : 'fr' ou 'de', passée
-    telle quelle en `-M lang=`. `racine_depot` : chemin de la racine du dépôt (Windows ou
-    Linux selon sys.platform, voir _executer_pandoc), pour retrouver
+    telle quelle en `-M lang=`. `racine_depot` : chemin de la racine du dépôt, pour retrouver
     pipeline/filters/szh-typographie.lua quel que soit l'endroit où le toolkit est déployé.
 
     `traces` : liste de chaînes, pour le rapport — au moins une ligne sur l'appel pandoc

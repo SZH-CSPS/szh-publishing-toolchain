@@ -24,7 +24,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { sauter, sansPandocWsl } = require('./gardes');
+const { python, sauter, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const GABARIT = path.join(RACINE, 'pipeline', 'templates', 'szh-livre-chapitre.html');
@@ -72,7 +72,7 @@ function compiler(dossier, nom, gabarit, extras) {
 }
 
 // Fait relire le fragment par les vraies fonctions des deux scripts et rend ce qu'elles
-// trouvent (JSON). Python de la WSL : celui qui exécute ces scripts en production.
+// trouvent (JSON). Python passe par python() de gardes.js (la WSL sous Windows).
 const LECTEUR = [
   'import importlib.util, json, sys',
   'def charger(nom, chemin):',
@@ -100,7 +100,7 @@ const LECTEUR = [
 function relire(dossier, fragment) {
   const lecteur = path.join(dossier, 'lecteur.py');
   fs.writeFileSync(lecteur, LECTEUR, 'utf8');
-  const r = wsl(['python3', versWsl(lecteur), versWsl(RACINE), versWsl(fragment)]);
+  const r = python([lecteur, RACINE, fragment], { cwd: dossier });
   assert.strictEqual(r.status, 0, 'lecture des fragments en échec : ' + r.stderr);
   return JSON.parse(r.stdout);
 }

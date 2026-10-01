@@ -41,15 +41,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const gardes = require('./gardes');
+const { sansPython, cheminPython } = gardes;
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const MANUSCRIT_VALE = path.join(RACINE, 'pipeline', 'manuscrit_vale.py');
 const DISTRO = 'SZH-Publishing';
 
 function python(args, entree) {
-  return cp.spawnSync(PYTHON, args,
-    { encoding: 'utf8', input: entree, maxBuffer: 64 * 1024 * 1024 });
+  return gardes.pythonGroupe(args, { input: entree, maxBuffer: 64 * 1024 * 1024 });
 }
 
 // ---------------------------------------------------------------------------------
@@ -587,8 +587,7 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
     const racineFactice = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-factice-'));
     // Aucun pipeline/vale/.vale.ini sous cette racine : --config pointera vers un chemin
     // qui n'existe pas, exactement la panne mesurée sur une configuration cassée.
-    const r = cp.spawnSync(PYTHON, [MANUSCRIT_VALE, '--analyser'], {
-      encoding: 'utf8',
+    const r = gardes.pythonGroupe([MANUSCRIT_VALE, '--analyser'], {
       input: JSON.stringify({
         paragraphes_corps: [{ source: 0, texte: 'Un texte quelconque.', role: '' }],
         paragraphes_biblio: [], langue: 'fr',
@@ -601,17 +600,16 @@ test('analyser() : indisponible=True proprement, jamais un plantage, config cass
     const pontFactice = path.join(racineFactice, 'pont_vale_factice.py');
     fs.writeFileSync(pontFactice, [
       'import json, sys',
-      'sys.path.insert(0, ' + JSON.stringify(path.dirname(MANUSCRIT_VALE)) + ')',
+      'sys.path.insert(0, ' + JSON.stringify(cheminPython(path.dirname(MANUSCRIT_VALE))) + ')',
       'import manuscrit_vale',
       'entree = json.loads(sys.stdin.read())',
       'alertes, indisponible = manuscrit_vale.analyser(',
       '    entree["paragraphes_corps"], entree["paragraphes_biblio"], entree["langue"],',
-      '    ' + JSON.stringify(racineFactice) + ')',
+      '    ' + JSON.stringify(cheminPython(racineFactice)) + ')',
       'print(json.dumps({"alertes": alertes, "indisponible": indisponible}))',
     ].join('\n'), 'utf8');
 
-    const r2 = cp.spawnSync(PYTHON, [pontFactice], {
-      encoding: 'utf8',
+    const r2 = gardes.pythonGroupe([pontFactice], {
       input: JSON.stringify({
         paragraphes_corps: [{ source: 0, texte: 'Un texte quelconque.', role: '' }],
         paragraphes_biblio: [], langue: 'fr',
@@ -675,7 +673,7 @@ test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé
     const pontFactice = path.join(fauxHome, 'pont_resolution_factice.py');
     fs.writeFileSync(pontFactice, [
       'import sys',
-      'sys.path.insert(0, ' + JSON.stringify(path.dirname(MANUSCRIT_VALE)) + ')',
+      'sys.path.insert(0, ' + JSON.stringify(cheminPython(path.dirname(MANUSCRIT_VALE))) + ')',
       'import manuscrit_vale',
       'manuscrit_vale.shutil.which = lambda nom: None',  // jamais un vale trouvé ailleurs
       '_vrai_isfile = manuscrit_vale.os.path.isfile',
@@ -683,9 +681,9 @@ test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé
       'print(manuscrit_vale._resoudre_vale_bin(sys.argv[1]))',
     ].join('\n'), 'utf8');
 
-    const r = cp.spawnSync(PYTHON, [pontFactice, fauxHome], { encoding: 'utf8' });
+    const r = gardes.pythonGroupe([pontFactice, fauxHome]);
     assert.strictEqual(r.status, 0, 'le pont de résolution a échoué : ' + r.stderr);
-    assert.strictEqual(r.stdout.trim(), fauxVale,
+    assert.strictEqual(r.stdout.trim(), cheminPython(fauxVale),
       'la résolution doit rendre le vale du faux ~/.local/bin, pas un repli littéral : '
       + 'stdout=' + JSON.stringify(r.stdout) + ' stderr=' + r.stderr);
   });
@@ -701,9 +699,9 @@ test('règles Vale de la Zeitschrift : Lexique régénéré à l’identique, me
     const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lexique-'));
     try {
       const styles = path.join(dossier, 'styles');
-      const r = cp.spawnSync(PYTHON, [path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py'),
+      const r = gardes.pythonGroupe([path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py'),
         '--sortie', path.join(dossier, 'sortie'), '--styles-dir', styles],
-      { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
+      { env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
       assert.strictEqual(r.status, 0, r.stderr);
       const depot = path.join(RACINE, 'pipeline', 'vale', 'styles', 'SZH', 'Lexique');
       const neufs = fs.readdirSync(path.join(styles, 'SZH', 'Lexique')).sort();

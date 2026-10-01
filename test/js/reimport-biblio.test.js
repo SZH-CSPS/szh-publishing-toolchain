@@ -26,8 +26,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { sauter, sansPandoc, bashDuPython } = require('./gardes');
+const { sauter, sansPandoc, sansPython, bashDuPython, python } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -151,21 +150,12 @@ test('bibliographie introuvable : l’encadré rouge est bien celui de print.css
 // depuis un dossier de fixtures. --pipeline permet de la substituer sans toucher à la
 // chaîne réelle, et $SZH_IMPORT_DIR est la seule couture nécessaire.
 
-function interpretePython() {
-  for (const commande of ['python3', 'python']) {
-    const r = cp.spawnSync(commande, ['--version'], { encoding: 'utf8' });
-    if (!r.error && /Python 3/.test(String(r.stdout || '') + String(r.stderr || ''))) {
-      return commande;
-    }
-  }
-  return null;
-}
 
 // Un bash qui comprend les chemins que Python lui passera : sous Windows, `bash` est
 // souvent la passerelle WSL, qui ne sait rien d'un chemin « C:\… ». Sondé depuis Python,
 // jamais depuis Node, qui ne trouve pas le même bash (voir bashDuPython, test/js/gardes.js).
 function bashCompatible() {
-  return bashDuPython(PYTHON);
+  return bashDuPython();
 }
 
 // Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
@@ -177,7 +167,6 @@ function bashCompatible() {
 // test/js/gardes.js (sansPandoc) : un saut bruyant par sauter.pandoc(t), jamais un vert par
 // défaut.
 
-const PYTHON = interpretePython();
 
 const REFS_IMPORT = ['Aeschlimann, B. (2020). Un titre.', '',
   'Baumgartner, C. (2021). Un autre.', ''].join(LF);
@@ -191,8 +180,7 @@ const CORPS = ['# Essai', '', 'Un corps.', '',
 
 function lancer(racine, args, extra) {
   const env = Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }, extra || {});
-  return cp.spawnSync(PYTHON, [SCRIPT].concat(args),
-    { cwd: racine, encoding: 'utf8', env: env });
+  return python([SCRIPT].concat(args), { cwd: racine, env: env });
 }
 
 function jsonDeLaSortie(sortie) {
@@ -215,7 +203,7 @@ function revueImportee(bibliolivree, bibliolInstallee) {
   if (bibliolivree !== null) {
     fs.writeFileSync(path.join(dossier, SLUG + '.biblio.md'), bibliolivree);
   }
-  const r = lancer(racine, ['--empreintes', '--dossier', path.join('articles', SLUG),
+  const r = lancer(racine, ['--empreintes', '--dossier', 'articles/' + SLUG,
     '--slug', SLUG, '--word', 'essai.docx']);
   assert.strictEqual(r.status, 0, 'les empreintes de l’import ne s’écrivent plus');
   // Puis la rédaction corrige le fichier à la main, si le cas le demande.
@@ -267,9 +255,7 @@ function shaBiblioNote(racine) {
   return m ? m[1] : null;
 }
 
-test('bibliographie : un Word dont SEULES les références changent est réimporté', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python3, puis python) : ce contrôle '
-    + 'mesure un code de sortie, il ne peut pas être sauté en silence');
+test('bibliographie : un Word dont SEULES les références changent est réimporté', { skip: sansPython }, (t) => {
   if (!bashCompatible()) {
     assert.ok(SH.indexOf('SZH_IMPORT_DIR') !== -1,
       'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
@@ -298,8 +284,7 @@ test('bibliographie : un Word dont SEULES les références changent est réimpor
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('bibliographie : « rien à faire » reste « rien à faire » quand rien ne change', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('bibliographie : « rien à faire » reste « rien à faire » quand rien ne change', { skip: sansPython }, (t) => {
   if (!bashCompatible()) { return; }
   const absent = sansPandoc;
   if (absent) { return sauter.pandoc(t); }
@@ -315,8 +300,7 @@ test('bibliographie : « rien à faire » reste « rien à faire » quand rien n
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('bibliographie gardée : le Word livre les mêmes références qu’à l’import', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('bibliographie gardée : le Word livre les mêmes références qu’à l’import', { skip: sansPython }, (t) => {
   if (!bashCompatible()) { return; }
   const absent = sansPandoc;
   if (absent) { return sauter.pandoc(t); }
@@ -343,8 +327,7 @@ test('bibliographie gardée : le Word livre les mêmes références qu’à l’
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('bibliographie en conflit : les deux ont bougé, le Word gagne et on le dit', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('bibliographie en conflit : les deux ont bougé, le Word gagne et on le dit', { skip: sansPython }, (t) => {
   if (!bashCompatible()) { return; }
   const absent = sansPandoc;
   if (absent) { return sauter.pandoc(t); }
@@ -371,8 +354,7 @@ test('bibliographie en conflit : les deux ont bougé, le Word gagne et on le dit
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('bibliographie retirée : le Word n’en détache plus, et la perte est nommée', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('bibliographie retirée : le Word n’en détache plus, et la perte est nommée', { skip: sansPython }, (t) => {
   if (!bashCompatible()) { return; }
   const absent = sansPandoc;
   if (absent) { return sauter.pandoc(t); }
@@ -395,8 +377,7 @@ test('bibliographie retirée : le Word n’en détache plus, et la perte est nom
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('bibliographie : « Annuler le réimport » la remet avec le reste', (t) => {
-  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+test('bibliographie : « Annuler le réimport » la remet avec le reste', { skip: sansPython }, (t) => {
   if (!bashCompatible()) { return; }
   const absent = sansPandoc;
   if (absent) { return sauter.pandoc(t); }
@@ -424,9 +405,8 @@ test('bibliographie : « Annuler le réimport » la remet avec le reste', (t) =>
 // bibliographie », NI conflit, NI retrait — exactement comme avant, quand le fichier
 // n'existait pas du tout. `biblio: ''` dans les fixtures simule ce que la chaîne réelle
 // produit désormais (fichier vide) sans faire tourner pandoc pour de vrai.
-test('bibliographie : vide comme absent, un Word sans bibliographie reste « rien à faire »',
+test('bibliographie : vide comme absent, un Word sans bibliographie reste « rien à faire »', { skip: sansPython },
   (t) => {
-    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
     if (!bashCompatible()) { return; }
     const absent = sansPandoc;
     if (absent) { return sauter.pandoc(t); }
@@ -446,9 +426,8 @@ test('bibliographie : vide comme absent, un Word sans bibliographie reste « rie
 // nouveau Word plutôt qu'absent : la même perte doit être nommée de la même façon,
 // biblio_absente_ou_vide() effaçant la différence entre les deux avant que la décision ne
 // se prenne.
-test('bibliographie : un Word qui livre un fichier vide retire la bibliographie, comme absent',
+test('bibliographie : un Word qui livre un fichier vide retire la bibliographie, comme absent', { skip: sansPython },
   (t) => {
-    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
     if (!bashCompatible()) { return; }
     const absent = sansPandoc;
     if (absent) { return sauter.pandoc(t); }

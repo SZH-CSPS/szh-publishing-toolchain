@@ -18,8 +18,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON } = require('./gardes');
+const { python, cheminPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 // Gabarits V4 (29.09.2026) : deux fichiers, FR et DE — la fabrique reste sur le FR (les tests
@@ -195,7 +194,9 @@ function ecrireFabrique(dossier) {
 
 function fabriquer(dossier, nom, spec) {
   const sortie = path.join(dossier, nom + '.docx');
-  const r = cp.spawnSync(PYTHON, [ecrireFabrique(dossier), sortie, JSON.stringify(spec)],
+  const specConvertie = Object.assign({}, spec);
+  if (specConvertie.gabarit) { specConvertie.gabarit = cheminPython(specConvertie.gabarit); }
+  const r = python([ecrireFabrique(dossier), sortie, JSON.stringify(specConvertie)],
     { encoding: 'utf8', env: ENV_UTF8 });
   if (r.status !== 0) { throw new Error('fabrication de ' + nom + ' impossible : ' + r.stderr); }
   return sortie;

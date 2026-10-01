@@ -17,15 +17,10 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, sansPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DOCX_TITRES = path.join(RACINE, 'pipeline', 'docx-titres.py');
-
-function python(args) {
-  return cp.spawnSync(PYTHON, args, { encoding: 'utf8' });
-}
 
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-docxtitres-'));

@@ -37,16 +37,14 @@
 //
 // Patron pour le contrôle qui balaye tout le dépôt : test/js/contrats.test.js. Patron pour
 // un petit programme Python écrit au vol par un test JS : test/js/manuscrit-docx.test.js
-// (FABRIQUE). Gardes de test/js/gardes.js : PYTHON (jamais `python3` en dur, qui tombe sur
-// l'alias WindowsApps et fige toute la suite sous spawnSync).
+// (FABRIQUE). Python passe par python() de test/js/gardes.js (la WSL sous Windows).
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { python, sansPython, cheminPython } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
@@ -158,7 +156,7 @@ function fichiersPipeline() {
 
 function analyserTous(fichiers) {
   const chemins = fichiers.map((f) => path.join(PIPELINE, f));
-  const r = cp.spawnSync(PYTHON, ['-c', ANALYSEUR, ...chemins],
+  const r = python(['-c', ANALYSEUR, ...chemins],
     { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   assert.strictEqual(r.status, 0,
     `l'analyseur ast a échoué (${r.status}) :\n${r.stderr}`);
@@ -192,7 +190,7 @@ test('encodage-sorties : chaque script pipeline/*.py qui écrit du non-ASCII dé
 
     for (const f of fichiers) {
       const chemin = path.join(PIPELINE, f);
-      const { risques, gardes } = resultats[chemin];
+      const { risques, gardes } = resultats[cheminPython(chemin)];
       const fluxRequis = new Set(risques.map((r) => r[2]));
       const manquants = [...fluxRequis].filter((flux) => !gardes.includes(flux));
       assert.deepStrictEqual(manquants, [],
@@ -214,9 +212,9 @@ test('encodage-sorties : l\'analyseur détecte un script sans aucune garde (tém
     const script = path.join(dossier, 'temoin.py');
     fs.writeFileSync(script,
       "import sys\nprint('Ceci contient un é accentué', file=sys.stderr)\n", 'utf8');
-    const r = cp.spawnSync(PYTHON, ['-c', ANALYSEUR, script], { encoding: 'utf8' });
+    const r = python(['-c', ANALYSEUR, script], { encoding: 'utf8' });
     const sortie = JSON.parse(r.stdout);
-    const { risques, gardes } = sortie[script];
+    const { risques, gardes } = sortie[cheminPython(script)];
     assert.ok(risques.length >= 1, 'le témoin sans garde doit être vu comme à risque');
     assert.deepStrictEqual(gardes, [], 'le témoin ne déclare aucune garde');
     fs.rmSync(dossier, { recursive: true, force: true });
