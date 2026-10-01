@@ -8,7 +8,7 @@
 # exacte varie d'une autrice à l'autre, ces trois éléments ensemble ne décrivent que cette
 # clause-là.
 extends: existence
-message: "Generalklausel vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache): « %s »."
+message: "Generalklausel vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache): «%s»."
 level: error
 ignorecase: true
 tokens:

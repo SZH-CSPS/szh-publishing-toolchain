@@ -7,7 +7,7 @@
 # générique à `%s` : Vale 3.22.0 ne substitue pas `%s` dans `second`, mesuré en
 # vrai (voir pipeline/vale/lexique/LISEZMOI.md).
 extends: conditional
-message: "Sigle « BV » : à développer au moins une fois dans l'article."
+message: "Sigle «BV»: im Artikel mindestens einmal ausschreiben."
 level: suggestion
 ignorecase: false
 first: '\bBV\b'

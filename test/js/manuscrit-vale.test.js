@@ -689,3 +689,40 @@ test('_resoudre_vale_bin() : un vale hors PATH, dans ~/.local/bin, est retrouvé
       'la résolution doit rendre le vale du faux ~/.local/bin, pas un repli littéral : '
       + 'stdout=' + JSON.stringify(r.stdout) + ' stderr=' + r.stderr);
   });
+
+// Les règles lexicales de la Zeitschrift sont GÉNÉRÉES (outils-dev/lexique/generer-lexique.py) :
+// régénérées dans un dossier jetable, elles doivent retomber sur les fichiers du dépôt (aucune
+// retouche à la main), et leurs messages sont en allemand, sans l'espace française avant « : ».
+// Les règles écrites à la main de la Zeitschrift ne portent pas non plus de « : « » à la
+// française. Sabotage : remettre le message français dans construire_regles_sigle, ou « : « %s » »
+// dans WoertlichesZitatSeite.yml.
+test('règles Vale de la Zeitschrift : Lexique régénéré à l’identique, messages en allemand, ponctuation allemande',
+  { skip: sansPython }, () => {
+    const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lexique-'));
+    try {
+      const styles = path.join(dossier, 'styles');
+      const r = cp.spawnSync(PYTHON, [path.join(RACINE, 'outils-dev', 'lexique', 'generer-lexique.py'),
+        '--sortie', path.join(dossier, 'sortie'), '--styles-dir', styles],
+      { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const depot = path.join(RACINE, 'pipeline', 'vale', 'styles', 'SZH', 'Lexique');
+      const neufs = fs.readdirSync(path.join(styles, 'SZH', 'Lexique')).sort();
+      assert.deepStrictEqual(fs.readdirSync(depot).sort(), neufs);
+      for (const f of neufs) {
+        const attendu = fs.readFileSync(path.join(styles, 'SZH', 'Lexique', f), 'utf8');
+        assert.strictEqual(fs.readFileSync(path.join(depot, f), 'utf8'), attendu, f + ' retouché à la main');
+        const message = (attendu.match(/^message: "(.*)"$/m) || [])[1];
+        assert.ok(message, f + ' sans message');
+        assert.ok(!/à développer|forme privilégiée|lexique maison|\s:/.test(message), f + ' : ' + message);
+      }
+    } finally {
+      fs.rmSync(dossier, { recursive: true, force: true });
+    }
+    const styles = path.join(RACINE, 'pipeline', 'vale', 'styles', 'SZH');
+    for (const sous of ['APA', 'Epicene', 'Vokabular', 'Lexique']) {
+      for (const f of fs.readdirSync(path.join(styles, sous))) {
+        const message = (fs.readFileSync(path.join(styles, sous, f), 'utf8').match(/^message: "(.*)"$/m) || [])[1];
+        assert.ok(message && !/ : | « | »/.test(message), sous + '/' + f + ' : ' + message);
+      }
+    }
+  });

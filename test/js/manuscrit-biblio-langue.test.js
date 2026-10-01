@@ -114,6 +114,32 @@ test('langue de : aucune alerte de la fixture allemande ne porte de français, '
   }
 });
 
+// Écriture inclusive des Richtlinien : « Autor:in » au singulier, « Autor:innen » au pluriel,
+// jamais « Autor:in(nen) » ; un seul terme pour la citation dans le texte (Quellenangabe) et un
+// seul pour l'entrée de la liste (Eintrag) ; la forme normée du DOI est étiquetée.
+// Sabotage : remettre 'Autor:in(nen)', 'Verweis' ou l'ancienne phrase du DOI dans MESSAGES.
+test('langue de : Autor:in / Autor:innen selon le nombre, Quellenangabe et Eintrag partout, forme du DOI étiquetée',
+  { skip: sansPython }, () => {
+    const sortie = executer([
+      'def tester(corps, biblio):',
+      "    alertes, _ = mb.analyser_bibliographie(corps, biblio, 'de', reseau=False)",
+      "    return sorted(a['message'] for a in alertes if a['rule'] == 'APA.EtAl')",
+      "un = tester([{'texte': 'Gesagt (Huber et al., 2016).', 'source': 1}],",
+      "            [{'texte': 'Huber, C. (2016). Integration. Springer.', 'source': 10}])",
+      "deux = tester([{'texte': 'Gesagt (Keller et al., 2015).', 'source': 1}],",
+      "              [{'texte': 'Keller, M., & Frei, S. (2015). Teamarbeit. Haupt.', 'source': 10}])",
+      'print(json.dumps({"un": un, "deux": deux, "catalogue": mb.MESSAGES}))',
+    ].join(String.fromCharCode(10)));
+    assert.strictEqual(sortie.un.length, 1);
+    assert.match(sortie.un[0], /nur 1 Autor:in: /);
+    assert.match(sortie.deux[0], /nur 2 Autor:innen: /);
+    for (const [id, t] of Object.entries(sortie.catalogue)) {
+      assert.ok(!/Autor:in\(nen\)|Verweis/.test(t.de), id + ' : ' + t.de);
+    }
+    assert.match(sortie.catalogue['APA.DoiForme'].de, /^Der DOI ist nicht in der normierten Form geschrieben\. Normierte Form: «%s»\.$/);
+    assert.match(sortie.catalogue['APA.ReferenceNonVerifiee'].de, /^Die Quellenangabe «%s» .*diese Quellenangabe bei Bedarf\.$/);
+  });
+
 test('langue fr : les textes français sont inchangés mot pour mot', { skip: sansPython }, () => {
   const sortie = executer(FIXTURE);
   const norm = (l) => l.map((a) => a.join('\u0000')).sort();

@@ -5,7 +5,7 @@
 # que le français proscrit — aucun motif ci-dessous ne reconnaît le deux-points, et c'est
 # volontaire : voir CSPS/Epicene/FormesContractees.yml pour le sens inverse.
 extends: existence
-message: "Form vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache), Doppelpunkt bevorzugen: « %s »."
+message: "Form vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache), Doppelpunkt bevorzugen: «%s»."
 level: error
 ignorecase: false
 tokens:

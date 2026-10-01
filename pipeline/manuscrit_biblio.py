@@ -920,7 +920,12 @@ MESSAGES = {
     'APA.EtAl.Trop': {
         'fr': 'Cette référence ne compte que %d auteur(s)\u00a0: «\u00a0et al.\u00a0» est de '
               'trop («\u00a0%s\u00a0»).',
-        'de': 'Dieser Eintrag hat nur %d Autor:in(nen): «et al.» ist hier überflüssig («%s»).',
+        'de': 'Dieser Eintrag hat nur %d Autor:innen: «et al.» ist hier überflüssig («%s»).',
+    },
+    'APA.EtAl.Trop.Singulier': {
+        'fr': 'Cette référence ne compte que %d auteur(s)\u00a0: «\u00a0et al.\u00a0» est de '
+              'trop («\u00a0%s\u00a0»).',
+        'de': 'Dieser Eintrag hat nur %d Autor:in: «et al.» ist hier überflüssig («%s»).',
     },
     'APA.ReferenceNonCitee': {
         'fr': 'Cette référence ne semble jamais citée dans le texte.',
@@ -930,9 +935,9 @@ MESSAGES = {
         'fr': ('La référence «\u00a0%s\u00a0» n’a pas pu être vérifiée automatiquement\u00a0: son '
                'format n’a pas été reconnu. Contrôlez l’entrée correspondante dans la liste des '
                'références, puis corrigez cet appel si nécessaire.'),
-        'de': ('Der Verweis «%s» konnte nicht automatisch überprüft werden: Sein Format wurde '
-               'nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
-               'Literaturverzeichnis und korrigieren Sie diesen Verweis bei Bedarf.'),
+        'de': ('Die Quellenangabe «%s» konnte nicht automatisch überprüft werden: Ihr Format '
+               'wurde nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
+               'Literaturverzeichnis und korrigieren Sie diese Quellenangabe bei Bedarf.'),
     },
     'APA.OrdreBiblio': {
         'fr': 'Référence mal classée\u00a0: l’ordre alphabétique puis '
@@ -948,7 +953,7 @@ MESSAGES = {
     },
     'APA.DoiForme': {
         'fr': 'Le DOI n’est pas écrit sous sa forme normalisée «\u00a0%s\u00a0».',
-        'de': 'Der DOI ist nicht in der normierten Schreibweise angegeben: «%s».',
+        'de': 'Der DOI ist nicht in der normierten Form geschrieben. Normierte Form: «%s».',
     },
     'APA.DoiDivergent': {
         'fr': 'Le DOI renvoie à une autre publication (%s).',
@@ -1084,7 +1089,8 @@ def croiser(citations, references, langue='fr'):
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': suggere,
-                'message': _msg('APA.EtAl.Trop', langue, nb, suggere),
+                'message': _msg('APA.EtAl.Trop' if nb > 1 else 'APA.EtAl.Trop.Singulier',
+                                langue, nb, suggere),
             })
 
     for cle, lot in refs_par_cle.items():

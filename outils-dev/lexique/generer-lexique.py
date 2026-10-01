@@ -288,7 +288,11 @@ def construire_coherence_yaml(lignes, langue):
         '# Variantes -> forme privilégiée, uniquement les paires dont le CSV porte le '
         'statut "privilegie" (la rédaction, ou une règle Vale existante, l\'a fondé).\n')
     lignes_yaml.append('extends: substitution\n')
-    lignes_yaml.append('message: "%s est la forme privilégiée du lexique maison (au lieu de « %s »)."\n')
+    if langue == 'de':
+        message = '%s ist die bevorzugte Form des Hausglossars (statt «%s»).'
+    else:
+        message = '%s est la forme privilégiée du lexique maison (au lieu de « %s »).'
+    lignes_yaml.append('message: "{}"\n'.format(message))
     lignes_yaml.append('level: suggestion\n')
     lignes_yaml.append('ignorecase: true\n')
     lignes_yaml.append('action:\n  name: replace\n')
@@ -331,9 +335,11 @@ def construire_regles_sigle(lignes, langue):
             '# générique à `%s` : Vale 3.22.0 ne substitue pas `%s` dans `second`, mesuré en\n'
             '# vrai (voir pipeline/vale/lexique/LISEZMOI.md).\n'.format(sigle=sigle))
         lignes_yaml.append('extends: conditional\n')
-        lignes_yaml.append(
-            'message: "Sigle « {sigle} » : à développer au moins une fois dans l\'article."\n'
-            .format(sigle=sigle))
+        if langue == 'de':
+            message = 'Sigle «{sigle}»: im Artikel mindestens einmal ausschreiben.'
+        else:
+            message = 'Sigle « {sigle} » : à développer au moins une fois dans l\'article.'
+        lignes_yaml.append('message: "{}"\n'.format(message.format(sigle=sigle)))
         lignes_yaml.append('level: suggestion\n')
         lignes_yaml.append('ignorecase: false\n')
         lignes_yaml.append("first: '\\b{s}\\b'\n".format(s=s))
