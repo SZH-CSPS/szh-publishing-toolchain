@@ -7,7 +7,10 @@
 //      un signet aux mots séparés, et un /Title sans retour à la ligne ;
 //   2. un chapitre de livre à titre « A // B » donne le signet « A B », dans le PDF du
 //      chapitre comme dans le livre assemblé, et les /Title sont à plat ;
-//   3. le XMP porte dc:language dans la langue du document (fr, de).
+//   3. le XMP porte dc:language dans la langue du document (fr, de), si le WeasyPrint qui
+//      compile a le correctif 40-xmp-dc-language (image/patches/) ;
+//   4. dc:description d'un article est à plat, sans le repli à 72 colonnes de pandoc ;
+//   5. xmp:CreatorTool nomme Pronto, pour l'article comme pour le livre.
 'use strict';
 
 const test = require('node:test');
@@ -38,10 +41,9 @@ function ecrire(chemin, contenu) {
   fs.writeFileSync(chemin, contenu, 'utf8');
 }
 
-// Signets (titre et niveau), /Title, et toutes les valeurs de dc:language du flux XMP : pypdf
-// ne lit que le premier rdf:RDF, or le fragment de langue en ajoute un second.
+// Signets (titre et niveau), /Title, et dc:language, dc:description, xmp:CreatorTool du XMP.
 const LIRE_PDF = [
-  'import json, re, sys',
+  'import json, sys',
   'from pypdf import PdfReader',
   'sortie = {}',
   'for chemin in sys.argv[1:]:',
@@ -52,9 +54,10 @@ const LIRE_PDF = [
   '            if isinstance(x, list): marche(x, n + 1)',
   '            else: signets.append([n, x.title])',
   '    marche(r.outline, 0)',
-  '    flux = r.trailer["/Root"]["/Metadata"].get_data().decode("utf-8")',
-  '    langues = re.findall(r"<rdf:li>([^<]*)</rdf:li>", "".join(re.findall(r"<dc:language>.*?</dc:language>", flux, re.S)))',
-  '    sortie[chemin] = {"signets": signets, "titre": (r.metadata or {}).get("/Title"), "langues": langues}',
+  '    x = r.xmp_metadata',
+  '    sortie[chemin] = {"signets": signets, "titre": (r.metadata or {}).get("/Title"),',
+  '                      "langues": x.dc_language, "description": x.dc_description,',
+  '                      "outil": x.xmp_creator_tool}',
   'print(json.dumps(sortie))'
 ].join('\n');
 
@@ -64,6 +67,11 @@ const plat = (s) => String(s).replace(/\u00a0/g, ' ');
 // colonnes où pandoc replie le <title> ; le second se coupe en escalier.
 const TITRE_FR = 'Directive de la Commission suisse de maturité sur les mesures de compensation des désavantages au gymnase';
 const TITRE_DE = 'Sprachunterstützende Massnahmen im Teamteaching';
+// Résumé de l'article allemand, plus long que les 72 colonnes du repli de pandoc.
+const RESUME_DE = 'Zwei Lehrpersonen planen den Unterricht gemeinsam und beobachten '
+  + 'die Sprachentwicklung ihrer Klasse während eines ganzen Schuljahres';
+const OUTIL = 'Pronto, open-source publishing software by SZH/CSPS';
+const PATCH_LANGUE = '40-xmp-dc-language.patch';
 
 // Une seule compilation pour tous les cas : un numéro (article fr, article de) et une copie
 // de test/livre-normal dont le livre et le premier chapitre ont un titre « A // B ».
@@ -87,7 +95,7 @@ function compilerUneFois() {
     'type: article\nlang: fr\ntitle:\n  fr: "' + TITRE_FR + '"\n');
   ecrire(path.join(num, 'articles', 'af', 'af.md'), '# Introduction\n\nTexte.\n');
   ecrire(path.join(num, 'articles', 'ad', 'ad.meta.yaml'),
-    'type: article\nlang: de\ntitle:\n  de: "' + TITRE_DE + '"\n');
+    'type: article\nlang: de\ntitle:\n  de: "' + TITRE_DE + '"\nresume:\n  de: "' + RESUME_DE + '"\n');
   ecrire(path.join(num, 'articles', 'ad', 'ad.md'), '# Einleitung\n\nText.\n');
 
   const livre = path.join(base, 'livre');
@@ -123,6 +131,19 @@ function compilerUneFois() {
   const brut = JSON.parse(rLire.stdout.trim());
   const parCle = {};
   for (const cle of Object.keys(pdf)) { parCle[cle] = brut[cheminVersWsl(pdf[cle])]; }
+
+  // Correctifs posés sur le WeasyPrint que le Makefile appelle : témoin szh-patchs.txt écrit
+  // par image/patch-weasyprint.sh, à côté du paquet du python lu sur la ligne #! du script.
+  // En fichier : wsl.exe repasse ses arguments par un shell, qui mangerait les $.
+  const temoin = path.join(base, 'patchs.sh');
+  ecrire(temoin, 'w=$(command -v "${WEASYPRINT:-weasyprint}")\n'
+    + 'py=$(sed -n \'1s/^#!//p\' "$w")\n'
+    + '"$py" -c \'import os, weasyprint\n'
+    + 'f = os.path.join(os.path.dirname(weasyprint.__file__), "szh-patchs.txt")\n'
+    + 'print(open(f).read() if os.path.exists(f) else "")\'\n');
+  const rPatchs = wsl(['bash', cheminVersWsl(temoin)]);
+  assert.strictEqual(rPatchs.status, 0, 'témoin des correctifs illisible : ' + rPatchs.stderr);
+  parCle.patchs = rPatchs.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
   return parCle;
 }
 
@@ -164,8 +185,27 @@ test('livre et chapitre : /Info /Title à plat', (t) => {
 
 test('XMP : dc:language dit la langue du document', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
+  if (!compiler().patchs.includes(PATCH_LANGUE)) {
+    // Le WeasyPrint de la WSL ne le reçoit qu'à la reconstruction de l'image.
+    t.skip('correctif WeasyPrint absent : ' + PATCH_LANGUE);
+    return;
+  }
   const attendu = { af: ['fr'], ad: ['de'], livre: ['de'], chapitre: ['de'] };
   for (const cle of Object.keys(attendu)) {
     assert.deepStrictEqual(compiler()[cle].langues, attendu[cle], cle + ' : dc:language');
+  }
+});
+
+test('XMP : dc:description d\'un article à plat, sans retour à la ligne', (t) => {
+  if (sansPandocWsl) { sauter.wsl(t); return; }
+  const d = compiler().ad.description;
+  assert.ok(d && typeof d['x-default'] === 'string', 'ad : dc:description ' + JSON.stringify(d));
+  assert.strictEqual(plat(d['x-default']), RESUME_DE, 'ad : dc:description');
+});
+
+test('XMP : xmp:CreatorTool nomme Pronto (article, livre, chapitre)', (t) => {
+  if (sansPandocWsl) { sauter.wsl(t); return; }
+  for (const cle of ['af', 'ad', 'livre', 'chapitre']) {
+    assert.strictEqual(compiler()[cle].outil, OUTIL, cle + ' : xmp:CreatorTool');
   }
 });

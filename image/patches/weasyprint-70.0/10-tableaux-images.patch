@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 1/3 — balisage PDF/UA des tableaux et des images décoratives.
+Correctif SZH de WeasyPrint 70.0, 1/4 — balisage PDF/UA des tableaux et des images décoratives.
 
 Posé par image/patch-weasyprint.sh, dans l'ordre des noms, avec les autres patchs actifs de
 image/patches/weasyprint-70.0/ ; indépendant d'eux (aucune ligne de contexte commune). Pour

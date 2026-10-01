@@ -21,7 +21,9 @@
 #      autour de ce seul glyphe ; une ligne coupée sur une espace garde cette espace dans
 #      la couche texte (sinon « ensei-gnants » et « lamarche » au copier-coller) ;
 #   30-marges-artefact : en-tête, pied et folio sont des /Artifact /Pagination, sans MCID
-#      orphelin ; une boîte de marge qui porte un lien reste du contenu balisé.
+#      orphelin ; une boîte de marge qui porte un lien reste du contenu balisé ;
+#   40-xmp-dc-language : la langue de <html lang> est en dc:language dans le XMP, au sein
+#      de l'unique rdf:RDF du paquet (pypdf ne lit que le premier).
 # Et ce qu'ils ne doivent PAS changer : alt="" seul reste une /Figure sans /Alt, signalée —
 # l'import écrit alt="" pour toute image sans description, ce n'est pas une décision de
 # la rédaction. Le cas f ci-dessous DOIT donc échouer en 7.3 : s'il passait, le contrôle
@@ -51,8 +53,9 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
           '</head><body>')
 PIED = '</body></html>'
 
-TABLEAUX, CESURE, MARGES = (
-    '10-tableaux-images.patch', '20-cesure-fin-de-ligne.patch', '30-marges-artefact.patch')
+TABLEAUX, CESURE, MARGES, XMP = (
+    '10-tableaux-images.patch', '20-cesure-fin-de-ligne.patch', '30-marges-artefact.patch',
+    '40-xmp-dc-language.patch')
 
 # nom : (patch, corps HTML, clauses veraPDF en échec attendues)
 CAS = {
@@ -114,6 +117,8 @@ CAS = {
                  '@bottom-center{content:element(pied)}} .pied{position:running(pied)}'
                  '</style><div class="pied">Voir <a href="https://www.szh.ch">szh.ch</a>'
                  '</div><p>Texte courant.</p>', set()),
+    # Langue du document (ENTETE : lang="de") dans le XMP.
+    'l-xmp-langue': (XMP, '<p>Ein Satz.</p>', set()),
 }
 
 
@@ -126,7 +131,7 @@ def _patchs_actifs():
         sys.exit(f'Témoin absent : {TEMOIN}. image/patch-weasyprint.sh n\'a pas posé les '
                  'correctifs SZH sur ce WeasyPrint.')
     actifs = [l.strip() for l in open(TEMOIN, encoding='utf-8') if l.strip()]
-    inconnus = set(actifs) - {TABLEAUX, CESURE, MARGES}
+    inconnus = set(actifs) - {TABLEAUX, CESURE, MARGES, XMP}
     if inconnus:
         sys.exit(f'Patch(s) posé(s) sans contrôle ici : {sorted(inconnus)}')
     return actifs
@@ -337,7 +342,19 @@ def _verifier_marges(pdfs, erreurs):
             erreurs.append(f'k-marges : « {mot} » n\'est plus extractible')
 
 
-VERIFS = {TABLEAUX: _verifier_tableaux, CESURE: _verifier_cesure, MARGES: _verifier_marges}
+def _verifier_xmp(pdfs, erreurs):
+    reader = PdfReader(pdfs['l-xmp-langue'])
+    flux = reader.trailer['/Root']['/Metadata'].get_object().get_data()
+    if flux.count(b'<rdf:RDF') != 1:
+        erreurs.append(f'l-xmp-langue : {flux.count(b"<rdf:RDF")} rdf:RDF dans le XMP, '
+                       'attendu 1')
+    langues = reader.xmp_metadata.dc_language
+    if langues != ['de']:
+        erreurs.append(f'l-xmp-langue : dc:language {langues}, attendu [\'de\']')
+
+
+VERIFS = {TABLEAUX: _verifier_tableaux, CESURE: _verifier_cesure, MARGES: _verifier_marges,
+          XMP: _verifier_xmp}
 
 
 def main():

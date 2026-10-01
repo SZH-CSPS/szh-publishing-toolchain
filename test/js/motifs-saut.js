@@ -30,7 +30,10 @@ const MOTIFS = {
   // Vale : présent sur ubuntu (job `contrats` de ci.yml l'installe et pose
   // SZH_VALE_OBLIGATOIRE=1) ; absent sur windows-latest et sur un poste qui ne l'a pas encore
   // dans son image WSL.
-  vale: ['vale absent']
+  vale: ['vale absent'],
+  // Un correctif de image/patches/ n'atteint le WeasyPrint de la WSL qu'à la reconstruction
+  // de l'image : d'ici là, le poste compile avec un WeasyPrint qui ne l'a pas.
+  correctifWeasyprint: ['correctif WeasyPrint absent']
 };
 
 const ADMIS = {
@@ -46,7 +49,7 @@ const ADMIS = {
   windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium', 'production', 'vale'],
   // Un poste complet : ne restent que les accents du pandoc 3.9 de Windows et le corpus
   // hors dépôt.
-  poste: ['pliage', 'corpus', 'eleve', 'vale']
+  poste: ['pliage', 'corpus', 'eleve', 'vale', 'correctifWeasyprint']
 };
 
 module.exports = { MOTIFS, ADMIS };

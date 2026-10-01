@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 2/3 — couche texte des fins de ligne.
+Correctif SZH de WeasyPrint 70.0, 2/4 — couche texte des fins de ligne.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (fichiers disjoints). Pour le désactiver : .patch.off.

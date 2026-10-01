@@ -1,0 +1,32 @@
+Correctif SZH de WeasyPrint 70.0, 4/4 — langue du document dans le XMP (dc:language).
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (seul à toucher metadata.py). Pour le désactiver : .patch.off.
+
+weasyprint/pdf/metadata.py. WeasyPrint reçoit la langue de <html lang> (self.lang) et la
+pose en /Lang du catalogue, mais generate_rdf_metadata() ne l'écrit pas dans le XMP :
+dc:language manquait. Le seul recours, --xmp-metadata, colle le fragment fourni comme un
+second rdf:RDF après celui de WeasyPrint ; pypdf ne lit que le premier, et la norme XMP
+n'en prévoit qu'un par paquet. Désormais, quand self.lang est posé, une rdf:Description
+porte dc:language > rdf:Bag > rdf:li avec cette langue, dans le même rdf:RDF que
+dc:title et dc:creator. Sans lang, rien ne change.
+Mesuré sur un HTML lang="de" en pdf/ua-1 : veraPDF PDF/UA-1 PASS, un seul rdf:RDF dans le
+flux, pypdf xmp_metadata.dc_language == ['de'] ([] sans le patch).
+
+--- a/weasyprint/pdf/metadata.py
++++ b/weasyprint/pdf/metadata.py
+@@ -168,6 +168,14 @@
+             element = SubElement(element, f'{{{NS["rdf"]}}}li')
+             element.attrib['xml:lang'] = 'x-default'
+             element.text = self.description
++        if self.lang:
++            # SZH : la langue de /Lang, aussi en dc:language dans ce même rdf:RDF.
++            element = SubElement(rdf, f'{{{NS["rdf"]}}}Description')
++            element.attrib[f'{{{NS["rdf"]}}}about'] = ''
++            element = SubElement(element, f'{{{NS["dc"]}}}language')
++            element = SubElement(element, f'{{{NS["rdf"]}}}Bag')
++            element = SubElement(element, f'{{{NS["rdf"]}}}li')
++            element.text = self.lang
+         if self.keywords:
+             element = SubElement(rdf, f'{{{NS["rdf"]}}}Description')
+             element.attrib[f'{{{NS["rdf"]}}}about'] = ''
