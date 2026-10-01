@@ -130,6 +130,17 @@ case "$DOCX_ABS" in
     ;;
 esac
 
+# Un Word qui n'est pas une archive complète (zip tronqué : la fin du fichier, où vit
+# l'annuaire central, a disparu) est refusé tout de suite, comme une conversion .odt qui
+# échoue : rien n'est créé, le fichier reste en attente. Les lecteurs qui suivent échouent
+# aussi sur un tel fichier, mais après la création du dossier. Le test est de shell pur : la
+# signature de fin d'annuaire (PK 05 06) dans les derniers 70 Ko, plafond d'un commentaire
+# de zip.
+if ! tail -c 70000 "$DOCX_ABS" | LC_ALL=C grep -qaF "$(printf 'PK\005\006')"; then
+  signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: le fichier «${NB}$SZH_SOURCE${NB}» n’a pas pu être ouvert (document tronqué ou endommagé)${NB}; rien n’a été créé, le fichier reste en attente. Ouvrez-le dans Word, enregistrez-le de nouveau, puis relancez la conversion. [de] «$SLUG»: die Datei «$SZH_SOURCE» konnte nicht geöffnet werden (Dokument abgeschnitten oder beschädigt); es wurde nichts angelegt, die Datei bleibt in der Warteschlange. Öffnen Sie sie in Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal."
+  exit 1
+fi
+
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
 

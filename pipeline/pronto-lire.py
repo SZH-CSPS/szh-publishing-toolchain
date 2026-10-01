@@ -91,20 +91,29 @@ def principal(argv):
             open(chemin_meta, 'w', encoding='utf-8', newline='\n').close()
         print(json.dumps({'slug': slug, 'erreur': 'extension non reconnue : %s' % ext},
                           ensure_ascii=False))
-        return 0
+        return 1
 
     try:
         blocs = lecteur(chemin)
     except Exception as e:
-        # Non bloquant : même repli que l'ancien docx-pronto.py — un .docx corrompu,
-        # illisible, ou d'une forme inattendue au point de ne même pas s'ouvrir comme un zip,
-        # ne doit jamais faire échouer l'import.
+        # Bloquant : un .docx corrompu, illisible, ou d'une forme inattendue au point de ne
+        # même pas s'ouvrir comme un zip, ne donne ni fiche ni instructions ; import-docx.sh
+        # refuse l'import et le Word reste en attente.
         print('[pronto-lire] lecture impossible de %s : %s' % (chemin, e), file=sys.stderr)
+        pronto_modele.avertir(
+            'fichier-illisible',
+            ['article « %s »' % slug, 'erreur « %s »' % e],
+            "Le fichier Word n’a pas pu être ouvert\u00a0: il est peut-être tronqué ou "
+            "endommagé. Rien n’a été importé. Ouvrez-le dans Word, enregistrez-le de "
+            "nouveau, puis relancez la conversion.",
+            "Die Word-Datei konnte nicht geöffnet werden: sie ist möglicherweise "
+            "abgeschnitten oder beschädigt. Es wurde nichts importiert. Öffnen Sie sie in "
+            "Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal.")
         chemin_meta = os.getenv('SZH_META')
         if chemin_meta:
             open(chemin_meta, 'w', encoding='utf-8', newline='\n').close()
         print(json.dumps({'slug': slug, 'erreur': str(e)}, ensure_ascii=False))
-        return 0
+        return 1
 
     # $SZH_PRODUIT : le jeton `revue:` du numéro (« revue » | « zeitschrift »), posé par
     # pipeline/import-docx.sh, d'où vient la LANGUE de l'article — le gabarit ne la porte plus
