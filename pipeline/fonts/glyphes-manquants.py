@@ -50,6 +50,12 @@ CIBLES = {
     'OpenSans-SemiCondensed-Bold.ttf':     'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-SemiBoldItalic.ttf': 'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-BoldItalic.ttf':     'IBMPlexMono-Medium.ttf',
+    # Chasse normale, statiques d'amont : la couverture des livres seulement.
+    'SZHCouverture-Light.ttf':    'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-Regular.ttf':  'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-Italic.ttf':   'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-SemiBold.ttf': 'IBMPlexMono-Medium.ttf',
+    'SZHCouverture-Bold.ttf':     'IBMPlexMono-Medium.ttf',
 }
 
 ATTENDUS = (0x202F, 0x2010, 0x2011, 0x25B8, 0x21A9, 0xFE0E)

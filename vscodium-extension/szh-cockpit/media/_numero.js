@@ -12,9 +12,16 @@
 //
 // Protocole avec l'hôte, celui des deux pages qui portent ce fragment :
 //   webview -> hôte : enregistrer { auto, modifies } ;
-//                     couverture-deposer { nomFichier, donneesBase64 }
-//   hôte -> webview : valeurs { valeurs, couverture, focus } ;
-//                     enregistre ; erreur { message } ; couverture { nom, description, apercu }
+//                     couverture-deposer { nomFichier, donneesBase64 } ;
+//                     ouvrir { cible } (livre : « quatrieme », ouvre couverture/quatrieme.md)
+//   hôte -> webview : valeurs { valeurs, couverture, dos, focus } ;
+//                     enregistre ; erreur { message } ;
+//                     couverture { nom, description, apercu, inchangee }
+// Le livre ajoute à ce protocole : `dos` (le dos calculé, lecture seule : {nb_pages, dos_mm,
+// grammage_couverture, source} ou null), et l'illustration de couverture, qui emprunte les
+// messages « couverture » (le dépôt d'abord confirmé par l'hôte quand il remplace).
+// Les listes de personnes (auteurs, editeurs) voyagent en tableaux dans valeurs et dans
+// enregistrer.modifies, et se montrent avec les cartes d'auteur·e des articles (_auteurs.js).
 // focus (revue F03, boutons de constat) nomme une clé de CHAMPS/CHAMPS_LIVRE à amener à
 // l'écran ; voir focaliser() plus bas — une clé absente de la table ne fait rien.
 
@@ -54,19 +61,27 @@
 
   // La même construction, pour le formulaire « Métadonnées du livre » (media/metadata-book.*
   // — voir SZH.formulaireLivre plus bas) : `cle` est cette fois une clé de buch.yaml, ou une
-  // clé « parent.sous-clé » pour les six variables du bloc `impression:` (grammage, main,
-  // dos imposé, fond perdu, traits de coupe, profil CMJN) — analyserAusgabe/serialiserAusgabe
+  // clé « parent.sous-clé » pour les blocs `impression:` (papier, couverture, colle, dos
+  // imposé, fond perdu, traits de coupe, profil CMJN) et `couverture:` (fond) —
+  // analyserAusgabe/serialiserAusgabe
   // (lib/yaml.js) savent lire et réécrire ce niveau d'imbrication. Un seul ouvrage par
   // fenêtre : ce formulaire n'a, pour l'instant, qu'une vue à porter, mais partage le même
   // moteur que celui du numéro plutôt que d'en recopier un second.
   var CHAMPS_LIVRE = [
-    { cle: 'titre', genre: 'texte', libelle: 'meta.livre.titre' },
-    { cle: 'sous-titre', genre: 'texte', libelle: 'meta.livre.soustitre' },
+    // `aide` : une ligne sous le champ. `lignes` : champ de plusieurs lignes qui grandit ; dans
+    // un titre, Entrée force un retour à la ligne (écrit « // » par l'hôte, lignesVersTitre).
+    { cle: 'titre', genre: 'texte', libelle: 'meta.livre.titre', aide: 'meta.livre.brAide', lignes: true },
+    { cle: 'sous-titre', genre: 'texte', libelle: 'meta.livre.soustitre', aide: 'meta.livre.brAide', lignes: true },
     { cle: 'ouvrage', genre: 'radio', libelle: 'meta.livre.ouvrage',
       options: [
         { valeur: 'monographie', libelle: 'meta.livre.ouvrage.monographie' },
         { valeur: 'collectif', libelle: 'meta.livre.ouvrage.collectif' }
       ] },
+    // Responsables de l'ouvrage : des listes de personnes, avec les cartes des articles.
+    { cle: 'auteurs', genre: 'personnes', libelle: 'meta.livre.auteurs' },
+    { cle: 'editeurs', genre: 'personnes', libelle: 'meta.livre.editeurs' },
+    // `mention` : le filigrane est le défaut de la langue du livre (majMention).
+    { cle: 'mention-editeurs', genre: 'texte', libelle: 'meta.livre.mention', mention: true },
     { cle: 'lang', genre: 'select', libelle: 'meta.livre.langue',
       options: [
         { valeur: 'fr', libelle: 'meta.langue.fr' },
@@ -91,13 +106,34 @@
     { cle: 'isbn-ebook', genre: 'texte', libelle: 'meta.livre.isbnEbook' },
     { cle: 'doi', genre: 'texte', libelle: 'meta.livre.doi' },
     { cle: 'licence', genre: 'select', libelle: 'meta.livre.licence', optionsDe: 'licences' },
+    // Deux couleurs : celle de l'écran (PDF numérique, EPUB, web) est libre et choisie
+    // accessible ; celle de l'imprimé est une clé de pipeline/styles/couleurs-reference.json.
     { cle: 'couleur', genre: 'hex', libelle: 'meta.livre.couleur' },
+    { cle: 'couleur-impression', genre: 'couleursRef', libelle: 'meta.livre.couleurImpression' },
+    // ---- Fond de couverture : un seul bloc, à fusionner avec le fond paramétrable ----
+    { cle: 'couverture.fond', genre: 'couleursRef', libelle: 'meta.livre.fond', defaut: 'poireau' },
+    { cle: 'couverture.fond-teinte', genre: 'nombre', libelle: 'meta.livre.fondTeinte',
+      min: 1, max: 100, defaut: '9' },
+    // Décalage de l'illustration dans sa zone : des millimètres, décimales et négatifs permis.
+    { cle: 'couverture.illustration-x-mm', genre: 'nombre', libelle: 'meta.livre.illusX',
+      pas: 'any', defaut: '0', aide: 'meta.livre.illusAide' },
+    { cle: 'couverture.illustration-y-mm', genre: 'nombre', libelle: 'meta.livre.illusY',
+      pas: 'any', defaut: '0', aide: 'meta.livre.illusAide' },
+    // ---- fin du bloc « fond de couverture » ----
     { cle: 'impression.grammage', genre: 'nombre', libelle: 'meta.livre.grammage' },
     { cle: 'impression.main', genre: 'nombre', libelle: 'meta.livre.main' },
+    { cle: 'impression.couverture-volume', genre: 'nombre', libelle: 'meta.livre.couvVolume' },
+    { cle: 'impression.couverture-grammage', genre: 'nombre', libelle: 'meta.livre.couvGrammage' },
+    { cle: 'impression.colle-mm', genre: 'nombre', libelle: 'meta.livre.colleMm' },
     { cle: 'impression.dos-mm', genre: 'nombre', libelle: 'meta.livre.dosMm' },
     { cle: 'impression.fond-perdu-mm', genre: 'nombre', libelle: 'meta.livre.fondPerduMm' },
     { cle: 'impression.traits-de-coupe', genre: 'case', libelle: 'meta.livre.traitsDeCoupe' },
-    { cle: 'impression.profil-cmjn', genre: 'texte', libelle: 'meta.livre.profilCmjn' }
+    { cle: 'impression.profil-cmjn', genre: 'texte', libelle: 'meta.livre.profilCmjn' },
+    // Blocs sans clé de buch.yaml (ni lus ni écrits par remplir/envoyer) : le dos calculé,
+    // lu de out/ ; l'illustration de couverture ; le bouton de la 4e de couverture.
+    { bloc: 'dos', libelle: 'meta.livre.dos' },
+    { bloc: 'illustration' },
+    { bloc: 'quatrieme', libelle: 'meta.livre.quatrieme', bouton: 'meta.livre.quatrieme.ouvrir' }
   ];
 
   // Miroir de normaliserRevue() (lib/yaml.js) et de derive_revue() côté Lua : accepte le
@@ -126,6 +162,10 @@
     var indiceDate = null;
     var zoneCouverture = null;
     var apercuEnGrand = null;          // modale d'agrandissement, construite au besoin
+    var personnes = {};                // cle -> liste des personnes affichées (livre)
+    var ctlAuteurs = null;             // SZH.auteurs : fiche et modale, celles des articles
+    var dosTexte = null;               // le dos calculé, lecture seule (livre)
+    var couleursRef = [];              // la référence de l'imprimé : [{ cle, nom, rgb }]
     // Formats et poids acceptés : ce sont ceux de lib/articles.js, envoyés par l'hôte, et
     // non une seconde liste écrite ici. Ils sont revérifiés côté hôte de toute façon.
     var EXTENSIONS = TXT.couvertureExtensions || [];
@@ -148,12 +188,26 @@
     function champTexte(champ, type) {
       var bloc = poser(conteneur, 'div', 'szh-champ');
       poser(bloc, 'label', null, lib(champ.libelle)).setAttribute('for', 'num-' + champ.cle);
-      var i = document.createElement('input');
-      i.type = type;
+      var i = document.createElement(champ.lignes ? 'textarea' : 'input');
+      if (champ.lignes) {
+        i.rows = 1;
+        i.style.resize = 'none';
+        i.style.overflow = 'hidden';
+        i._ajuster = function () {
+          i.style.height = 'auto';
+          if (i.scrollHeight) { i.style.height = i.scrollHeight + 'px'; }
+        };
+        i.addEventListener('input', i._ajuster);
+      } else { i.type = type; }
       i.id = 'num-' + champ.cle;
       i.dataset.cle = champ.cle;
       i.addEventListener('input', function () { toucher(champ.cle); });
+      if (champ.min !== undefined) { i.min = String(champ.min); }
+      if (champ.max !== undefined) { i.max = String(champ.max); }
+      if (champ.defaut !== undefined) { i.placeholder = champ.defaut; }
+      if (champ.pas !== undefined) { i.step = champ.pas; }
       bloc.appendChild(i);
+      if (champ.aide) { poser(bloc, 'p', 'champ-aide', lib(champ.aide)); }
       ctl[champ.cle] = i;
       if (champ.cle === 'date') {
         // Une date que le champ n'a pas su afficher — « 2026 » seul — ne doit pas être
@@ -260,6 +314,161 @@
       l.appendChild(c);
       poser(l, 'span', null, lib(champ.libelle));
       ctl[champ.cle] = c;
+    }
+
+    // ---- Livre : listes de personnes, couleurs de référence, dos, 4e de couverture ----
+
+    // Auteur·e·s et éditeur·rice·s : la fiche et la modale d'édition sont celles des
+    // articles (_auteurs.js), sans la photo. Les personnes vivent dans `personnes[cle]` jusqu'à
+    // l'enregistrement, comme les champs ; ajouter, éditer ou retirer relance l'enregistrement
+    // automatique.
+    function modifierPersonnes(cle) {
+      rendrePersonnes(cle);
+      toucher(cle);
+      autoEnr.programmer();
+    }
+
+    function rendrePersonnes(cle) {
+      var zone = (ctl[cle] || {}).zone;
+      if (!zone) { return; }
+      zone.textContent = '';
+      var liste = personnes[cle] || [];
+      for (var i = 0; i < liste.length; i++) {
+        ctlAuteurs.apercu(zone, {
+          slug: cle, cle: cle, index: i, auteur: liste[i], apercu: null,
+          surRetirer: function (c) {
+            personnes[c.cle].splice(c.index, 1);
+            modifierPersonnes(c.cle);
+          }
+        });
+      }
+    }
+
+    function champPersonnes(champ) {
+      if (!ctlAuteurs) {
+        ctlAuteurs = SZH.auteurs({
+          api: api, txt: TXT, sansPhoto: true,
+          persister: function (c, auteur, fini) {
+            var liste = personnes[c.cle];
+            if (c.index >= liste.length) { liste.push(auteur); } else { liste[c.index] = auteur; }
+            modifierPersonnes(c.cle);
+            fini(null);
+          }
+        });
+      }
+      var bloc = poser(conteneur, 'div', 'szh-champ personnes');
+      poser(bloc, 'label', null, lib(champ.libelle));
+      var zone = poser(bloc, 'div', 'personnes-liste');
+      zone.dataset.cle = champ.cle;
+      var ajouter = document.createElement('button');
+      ajouter.type = 'button';
+      ajouter.className = 'szh-bouton';
+      ajouter.textContent = lib('fiches.auteur.ajouter');
+      ajouter.addEventListener('click', function () {
+        ctlAuteurs.ouvrir({
+          slug: champ.cle, cle: champ.cle, index: (personnes[champ.cle] || []).length,
+          auteur: {}, apercu: null
+        });
+      });
+      bloc.appendChild(ajouter);
+      personnes[champ.cle] = [];
+      ctl[champ.cle] = { zone: zone };
+    }
+
+    // Une couleur de la table de référence de l'imprimé, par pastille (la liste vient de
+    // l'hôte, qui la lit de pipeline/styles/couleurs-reference.json). `defaut` est la
+    // valeur qu'un fichier muet fait appliquer : elle s'allume sans rien écrire.
+    function champCouleursRef(champ) {
+      var bloc = poser(conteneur, 'div', 'szh-champ');
+      poser(bloc, 'label', null, lib(champ.libelle));
+      var zone = poser(bloc, 'div', 'pastilles');
+      zone.dataset.cle = champ.cle;
+      ctl[champ.cle] = { zone: zone, choisie: '', defaut: champ.defaut || '' };
+      rendreCouleursRef(champ);
+    }
+
+    // Les pastilles, une par couleur de la référence : la liste arrive de l'hôte avec les
+    // valeurs (couleursImpression), et se redessine si elle change.
+    function rendreCouleursRef(champ) {
+      var etatRef = ctl[champ.cle];
+      etatRef.zone.textContent = '';
+      var items = couleursRef;
+      var zone = etatRef.zone;
+      for (var i = 0; i < items.length; i++) {
+        (function (c) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'pastille';
+          b.dataset.valeur = c.cle;
+          b.setAttribute('aria-pressed', 'false');
+          var puce = document.createElement('span');
+          puce.className = 'puce';
+          puce.style.background = c.rgb;
+          b.appendChild(puce);
+          b.appendChild(document.createTextNode(c.nom));
+          b.addEventListener('click', function () {
+            etatRef.choisie = c.cle;
+            majCouleurRef(champ.cle);
+            toucher(champ.cle);
+            autoEnr.programmer();
+          });
+          zone.appendChild(b);
+        }(items[i]));
+      }
+      majCouleurRef(champ.cle);
+    }
+
+    function majCouleurRef(cle) {
+      var etatRef = ctl[cle];
+      var allumee = etatRef.choisie || etatRef.defaut;
+      var boutons = etatRef.zone.querySelectorAll('.pastille');
+      for (var i = 0; i < boutons.length; i++) {
+        boutons[i].setAttribute('aria-pressed', boutons[i].dataset.valeur === allumee ? 'true' : 'false');
+      }
+    }
+
+    // Le filigrane de la mention des éditeurs : le mot par défaut de la langue du livre.
+    function majMention() {
+      var champ = ctl['mention-editeurs'];
+      if (!champ) { return; }
+      var langue = ctl.lang ? ctl.lang.value : 'fr';
+      champ.placeholder = lib('meta.livre.mention.defaut.' + langue) || lib('meta.livre.mention.defaut.fr');
+    }
+
+    // Le dos calculé par la compilation de la couverture : un texte, rien à saisir. Un
+    // fichier absent ou illisible (dos null) dit quoi faire plutôt que de rester muet.
+    function blocDos(champ) {
+      var bloc = poser(conteneur, 'div', 'szh-champ');
+      poser(bloc, 'label', null, lib(champ.libelle));
+      dosTexte = poser(bloc, 'p', 'champ-lecture');
+      dosTexte.dataset.cle = 'dos';
+      poserDos(null);
+    }
+
+    function poserDos(dos) {
+      if (!dosTexte) { return; }
+      if (!dos) { dosTexte.textContent = lib('meta.livre.dos.absent'); return; }
+      var virgule = function (n) { return String(Math.round(Number(n) * 10) / 10).replace('.', ','); };
+      dosTexte.textContent = lib('meta.livre.dos.valeur')
+        .split('{0}').join(virgule(dos.dos_mm))
+        .split('{1}').join(String(Math.round(Number(dos.nb_pages))))
+        .split('{2}').join(String(Math.round(Number(dos.grammage_couverture))));
+    }
+
+    // Le texte de la 4e de couverture s'écrit dans l'éditeur : le bouton demande à l'hôte
+    // de l'ouvrir (et de le créer vide s'il manque).
+    function blocBouton(champ) {
+      var bloc = poser(conteneur, 'div', 'szh-champ');
+      poser(bloc, 'label', null, lib(champ.libelle));
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'szh-bouton';
+      b.dataset.cle = champ.bloc;
+      b.textContent = lib(champ.bouton);
+      b.addEventListener('click', function () {
+        api.postMessage({ type: SZH.MSG.OUVRIR, cible: champ.bloc });
+      });
+      bloc.appendChild(b);
     }
 
     // Couleur annuelle : une pastille par teinte, la puce montre la couleur elle-même. Un
@@ -416,7 +625,20 @@
       var v = valeurs || {};
       for (var i = 0; i < champsTable.length; i++) {
         var champ = champsTable[i];
+        if (!champ.cle) { continue; }
+        if (champ.genre === 'personnes') {
+          personnes[champ.cle] = [];
+          var recues = Array.isArray(v[champ.cle]) ? v[champ.cle] : [];
+          for (var q = 0; q < recues.length; q++) { personnes[champ.cle].push(recues[q]); }
+          rendrePersonnes(champ.cle);
+          continue;
+        }
         var brut = v[champ.cle] === undefined ? '' : String(v[champ.cle]);
+        if (champ.genre === 'couleursRef') {
+          ctl[champ.cle].choisie = brut;
+          majCouleurRef(champ.cle);
+          continue;
+        }
         if (champ.genre === 'radio') {
           revueChoisie = normaliserRevue(brut);
           var radios = (ctl[champ.cle] || {}).radios || [];
@@ -459,6 +681,7 @@
         }
         var e = ctl[champ.cle];
         e.value = brut;
+        if (e._ajuster) { e._ajuster(); }
         if (champ.cle === 'date' && indiceDate) {
           if (brut !== '' && e.value !== brut) {
             indiceDate.textContent = (TXT.indiceDate || '').split('{0}').join(brut);
@@ -469,6 +692,7 @@
         // valeur qui n'est pas celle du fichier.
         if (champ.genre === 'select' && e.value !== brut) { e.value = ''; }
       }
+      majMention();
       modifies = {};
       if (etat) { etat.textContent = ''; }
     }
@@ -483,7 +707,7 @@
       var envoi = {};
       for (var i = 0; i < champsTable.length; i++) {
         var champ = champsTable[i];
-        if (!modifies[champ.cle]) { continue; }
+        if (!champ.cle || !modifies[champ.cle]) { continue; }
         // « revue » (genre lecture) n'est jamais touché : champLecture ne pose aucun
         // gestionnaire, donc modifies['revue'] reste faux et cette rangée ne s'exécute pas
         // pour lui. Le garde-fou explicite ci-dessous protège quand même le jeton, au cas où
@@ -493,6 +717,8 @@
         // Le radio restant est « ouvrage » (CHAMPS_LIVRE) : « revue » ne porte plus ce genre.
         if (champ.genre === 'radio') { envoi[champ.cle] = revueChoisie; }
         else if (champ.genre === 'couleurs') { envoi[champ.cle] = couleurChoisie; }
+        else if (champ.genre === 'couleursRef') { envoi[champ.cle] = ctl[champ.cle].choisie; }
+        else if (champ.genre === 'personnes') { envoi[champ.cle] = (personnes[champ.cle] || []).slice(); }
         else if (champ.genre === 'case') { envoi[champ.cle] = ctl[champ.cle].checked ? 'true' : 'false'; }
         else { envoi[champ.cle] = ctl[champ.cle].value; }
       }
@@ -526,10 +752,17 @@
     // page n'ait rien à réimplémenter.
     function message(msg) {
       if (msg.type === SZH.MSG.VALEURS) {
+        if (msg.couleursImpression) {
+          couleursRef = msg.couleursImpression;
+          for (var r = 0; r < champsTable.length; r++) {
+            if (champsTable[r].genre === 'couleursRef') { rendreCouleursRef(champsTable[r]); }
+          }
+        }
         remplir(msg.valeurs);
         // La couverture n'est redessinée que si le message la porte : un re-rendu de la vue
         // ne la renvoie pas, son aperçu pesant plusieurs mégaoctets en base64.
         if (zoneCouverture && msg.couverture !== undefined) { poserCouverture(msg.couverture); }
+        if (msg.dos !== undefined) { poserDos(msg.dos); }
         if (msg.focus) { focaliser(msg.focus); }
         return true;
       }
@@ -546,11 +779,13 @@
       }
       if (msg.type === SZH.MSG.COUVERTURE) {
         if (zoneCouverture) {
-          zoneCouverture.etat.textContent = msg.nom ? (TXT.couvertureEnregistree || '') : '';
+          zoneCouverture.etat.textContent = (msg.nom && !msg.inchangee) ? (TXT.couvertureEnregistree || '') : '';
           poserCouverture(msg);
         }
         return true;
       }
+      // La liste des auteur·e·s connus, pour l'autocomplétion de la modale (livre).
+      if (ctlAuteurs && ctlAuteurs.message(msg)) { return true; }
       return false;
     }
 
@@ -576,8 +811,15 @@
       else if (champ.genre === 'case') { champCase(champ); }
       else if (champ.genre === 'couleurs') { champCouleurs(champ); }
       else if (champ.genre === 'hex') { champHexCouleur(champ); }
+      else if (champ.genre === 'personnes') { champPersonnes(champ); }
+      else if (champ.genre === 'couleursRef') { champCouleursRef(champ); }
+      else if (champ.bloc === 'dos') { blocDos(champ); }
+      else if (champ.bloc === 'illustration') { blocCouverture(); }
+      else if (champ.bloc === 'quatrieme') { blocBouton(champ); }
     }
     if (opts.couverture) { blocCouverture(); }
+    if (ctl.lang && ctl['mention-editeurs']) { ctl.lang.addEventListener('input', majMention); }
+    majMention();
 
     return {
       remplir: remplir, message: message, enregistrement: enregistrement,

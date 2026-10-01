@@ -1,5 +1,3 @@
-# La participation politique des personnes handicapées
-
 ::: {.falc-resume}
 Ces 3 personnes ont parlé de :
 La participation politique

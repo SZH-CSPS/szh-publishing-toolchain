@@ -20,6 +20,9 @@
 -- (pipeline/profils/livre.mk) et ne tourne donc jamais sur un chapitre — le bloc détaillé
 -- de clôture reste propre aux articles de la revue.
 --
+-- Le titre du chapitre, lui, est posé plus haut dans la chaîne par szh-livre-titre.lua,
+-- depuis la même fiche ; son sous-titre par szh-livre-sous-titre.lua, après ce filtre.
+--
 -- Ce qui décide, et rien d'autre : la clé `ouvrage` de buch.yaml.
 --   * `collectif`   -> la ligne est écrite depuis `author` du <slug>.meta.yaml du chapitre ;
 --   * `monographie` -> aucune ligne, quoi que porte la fiche du chapitre. Les auteur·e·s
@@ -81,7 +84,10 @@ local function langue_de(meta)
 end
 
 local function ligne_auteurs(meta)
-  local gens = meta and (meta.author or meta.auteurs)
+  -- `author` seul, jamais `auteurs` : cette clé est celle de buch.yaml (les auteur·e·s du
+  -- LIVRE), fusionnée en premier dans les métadonnées de chaque chapitre — la lire ici
+  -- ferait hériter à un chapitre sans auteur·e·s ceux de l'ouvrage entier.
+  local gens = meta and meta.author
   if type(gens) ~= 'table' then return nil end
   -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste d'une map :
   -- la reconnaître à ses clés, et non au type pandoc, qui varie d'une version à l'autre.

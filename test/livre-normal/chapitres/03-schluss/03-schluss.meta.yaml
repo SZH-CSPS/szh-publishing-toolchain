@@ -2,3 +2,5 @@
 # le banc n'avait couvert par aucun chapitre avant ce complément. Même langue que buch.yaml :
 # aucun changement de rendu attendu.
 lang: de
+title:
+  de: "Schluss"

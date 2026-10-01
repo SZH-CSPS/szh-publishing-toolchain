@@ -1,5 +1,3 @@
-# Theoretische Konzepte und Vorannahmen
-
 Dieses Kapitel trägt die Abbildungen. Es prüft, ob die Nummerierung über Kapitelgrenzen
 hinweg richtig weiterläuft und ob eine Bildunterschrift niemals allein auf einer Seite
 stehen bleibt.

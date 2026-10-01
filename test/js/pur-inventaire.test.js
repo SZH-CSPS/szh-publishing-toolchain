@@ -27,6 +27,8 @@ const ext = require(path.join(COCKPIT, 'extension.js'));
 // Ne pas ajouter ni retirer un nom ici sans avoir vérifié qu'il s'agit d'un vrai
 // changement de contrat, et non d'un effet de bord du découpage.
 //
+// +1 (120e nom) : chargeChapitres, le chargeur de la vue CHAPITRES d'un livre, exposé pour
+// prouver qu'il lit buch.yaml et les fiches sans ausgabe.yaml (test/js/livre-vue-chapitres.test.js).
 // +1 (119e nom) : proposerTutoriel, exposée pour prouver sans activation complète que
 // l'invitation au tutoriel ne s'affiche jamais sur un livre (chantier profil livre,
 // point 6 — voir son commentaire dans extension.js).
@@ -36,7 +38,8 @@ const NOMS_ATTENDUS = [
   'analyserTable', 'analyserTachesFaites', 'analyserTraduction', 'appliquerOperationTable',
   'assainirCheminPhoto', 'avertirCopiesConflit', 'basculerCitation', 'basculerEnrobage',
   'basculerSouligne', 'basculerTache', 'basculerTitre', 'blocReferenceTable',
-  'brouillonAuteur', 'brouillonTraduction', 'canoniserInline', 'cheminDepuisUriConflit',
+  'brouillonAuteur', 'brouillonTraduction', 'canoniserInline', 'chargeChapitres',
+  'cheminDepuisUriConflit',
   'collerDans', 'compacterGrille', 'comparerConflit', 'compilerPuisAfficher',
   'configAvecTaches', 'construireLienTraduction', 'decomposerPhoto', 'deplacerArticle',
   'deplacerColonne', 'deplacerLigne', 'disposition', 'doisCalculesArticles',
@@ -63,10 +66,10 @@ const NOMS_ATTENDUS = [
   'versionsDivergent', 'viderCellules'
 ].sort();
 
-test('module.exports._pur d’extension.js expose exactement les 119 noms figés, avant tout découpage', () => {
+test('module.exports._pur d’extension.js expose exactement les 120 noms figés, avant tout découpage', () => {
   assert.ok(ext && ext._pur, 'extension.js ne rend pas de module.exports._pur');
   const obtenus = Object.keys(ext._pur).sort();
-  // La taille figée (119) n'a pas besoin d'un test à part : tout désaccord de compte se
+  // La taille figée (120) n'a pas besoin d'un test à part : tout désaccord de compte se
   // lit déjà dans le deepStrictEqual ci-dessous, avec le détail des noms en trop ou
   // manquants — un simple compte n'y ajoutait rien.
   assert.deepStrictEqual(obtenus, NOMS_ATTENDUS,

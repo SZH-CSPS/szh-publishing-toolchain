@@ -1,8 +1,9 @@
 // Page « Méta-données du livre » : le pendant de metadata-issue.js pour buch.yaml. Elle ne
 // fait que poser le formulaire partagé SZH.formulaireLivre (media/_numero.js, moteur commun
-// aux deux formulaires) et lui passer les messages — aucune couverture image ici, le dos de
-// l'ouvrage se calcule à la compilation à partir du grammage et du nombre de pages réel
-// (docs/ARCHITECTURE-LIVRES.md §3), il n'y a rien à déposer depuis ce formulaire.
+// aux deux formulaires) et lui passer les messages. L'illustration de couverture et le
+// bouton de la 4e de couverture sont des blocs de la table des champs (CHAMPS_LIVRE) ; le
+// dos, lui, se calcule à la compilation (docs/ARCHITECTURE-LIVRES.md §3) et s'affiche en
+// lecture seule.
 //
 // Protocole avec l'hôte : celui de _numero.js (voir son en-tête), plus l'annonce « pret ».
 (function () {
@@ -15,8 +16,7 @@
     conteneur: document.getElementById('livre'),
     api: vscodeApi,
     txt: TXT,
-    etat: document.getElementById('etat'),
-    couverture: false
+    etat: document.getElementById('etat')
   });
   livre.enregistrement(document.getElementById('enregistrer'));
 

@@ -20,6 +20,11 @@
 // écrivent. La carte reste celle de SZH.listeCartes : cette page n'en refait pas une, elle
 // insère son aperçu dedans.
 //
+// Variante livre (TXT.estLivre, posé par l'hôte quand le dossier porte un buch.yaml) : la même
+// page montre les chapitres, avec SZH.formulaireLivre (media/_numero.js) en tête à la place
+// du formulaire du numéro. Rien d'autre ne change côté page : l'hôte n'envoie ni DOI, ni case
+// « pas de DOI », ni tâches, et les cartes se posent comme celles d'un numéro.
+//
 // Protocole. Vers l'hôte :
 //   pret ; ouvrir { cle } ; action { cle, id } ; tache { cle, id, cochee } ;
 //   sansdoi { cle, coche } ; commande { id } ;
@@ -56,12 +61,20 @@
   var barreActions = document.getElementById('barreActions');
   var ctlEtat = null;
 
-  var numero = SZH.formulaireNumero({
+  var estLivre = TXT.estLivre === true;
+  if (estLivre) {
+    // Les deux intitulés de la page viennent de l'hôte : le gabarit porte ceux du numéro.
+    var intituleNumero = document.getElementById('titreNumero');
+    if (intituleNumero) { intituleNumero.textContent = TXT.numeroSection || ''; }
+    var intituleListe = document.getElementById('titreListe');
+    if (intituleListe) { intituleListe.textContent = TXT.listeSection || ''; }
+  }
+  var numero = (estLivre ? SZH.formulaireLivre : SZH.formulaireNumero)({
     conteneur: document.getElementById('numero'),
     api: api,
     txt: TXT,
     etat: document.getElementById('etatNumero'),
-    couverture: true
+    couverture: !estLivre
   });
   numero.enregistrement(document.getElementById('enregistrer'));
 

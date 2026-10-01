@@ -1164,7 +1164,9 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
       fragments: ['_commun.js', '_numero.js']
     },
     'articles': {
-      libelles: new Set([...cles('textesNumero'), ...cles('textesArticles'), ...TABLES]),
+      // `estLivre` n'est pas un texte mais un drapeau : l'hôte le pose pour que la même page
+      // monte le formulaire du livre à la place de celui du numéro (variante livre).
+      libelles: new Set([...cles('textesNumero'), ...cles('textesArticles'), ...TABLES, 'estLivre']),
       fragments: ['_commun.js', '_numero.js']
     },
     // Le formulaire du livre réutilise le même fragment que celui du numéro (media/_numero.js,

@@ -151,3 +151,7 @@ body { --page-max: 60rem; }
   .apercu-rangee { grid-template-columns: 1fr; gap: 0; padding: var(--e1) 0; }
   .apercu-cle { text-align: left; }
 }
+
+/* Le formulaire du livre dans la vue CHAPITRES : listes de personnes et aide d une ligne sous un champ (le pendant de media/metadata-book.css, dont le reste règle une autre page). */
+.personnes-liste { display: flex; flex-direction: column; gap: var(--e2); margin: var(--e1) 0 var(--e2); }
+.champ-aide { margin: var(--e1) 0 0; font-size: var(--t-libelle); color: var(--encre-2); }

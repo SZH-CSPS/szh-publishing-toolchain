@@ -15,6 +15,11 @@ reproductible : `../styles/print.css` les charge par `@font-face` en chemins rel
 | `OpenSans-SemiCondensed-Italic.ttf`   | Open Sans | 400 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-SemiBoldItalic.ttf` | Open Sans | 600 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-BoldItalic.ttf` | Open Sans | 700 italique | googlefonts/opensans |
+| `SZHCouverture-Light.ttf` | SZH Couverture | 300 | googlefonts/opensans (statique, renommée) |
+| `SZHCouverture-Regular.ttf` | SZH Couverture | 400 | googlefonts/opensans (statique, renommée) |
+| `SZHCouverture-Italic.ttf` | SZH Couverture | 400 italique | googlefonts/opensans (statique, renommée) |
+| `SZHCouverture-SemiBold.ttf` | SZH Couverture | 600 | googlefonts/opensans (statique, renommée) |
+| `SZHCouverture-Bold.ttf` | SZH Couverture | 700 | googlefonts/opensans (statique, renommée) |
 | `IBMPlexMono-Regular.ttf`             | IBM Plex Mono | 400 | IBM/plex |
 | `IBMPlexMono-Medium.ttf`              | IBM Plex Mono | 500 | IBM/plex |
 | `SourceSerif4-Regular.ttf`            | aucune — hors maquette | 400 | adobe-fonts/source-serif |
@@ -112,3 +117,37 @@ masters retombent au contour près sur les fichiers d'ici (seuls diffèrent les 
 ajoutés par `glyphes-manquants.py`).
 
 IBM Plex Mono est distribuée en statique (Regular et Medium repris tels quels).
+
+## SZH Couverture : Open Sans de chasse normale, renommée (couverture FALC)
+
+La référence de couverture FALC est en Open Sans de chasse normale. Les cinq faces
+`SZHCouverture-{Light,Regular,Italic,SemiBold,Bold}.ttf` en sont les statiques d'amont,
+déclarées par `../styles/livre/couverture.css` seule, pour la maquette FALC ; la
+couverture « normal », l'intérieur des livres et la revue restent en semi-condensé.
+
+Provenance : téléchargées le 01.10.2026 depuis
+`https://raw.githubusercontent.com/googlefonts/opensans/bd7e37632246368c60fdcbd374dbf9bad11969b6/fonts/ttf/OpenSans-<Graisse>.ttf`
+(Version 3.003, OFL 1.1 identique à `OFL-OpenSans.txt`, sans Reserved Font Name).
+
+| Fichier livré | Fichier d'amont | sha256 d'amont | sha256 livré |
+|---|---|---|---|
+| `SZHCouverture-Light.ttf`    | `OpenSans-Light.ttf`    | `3472097ec4d9e57228cbfad3c9911e53923664d3df86568d0b05d674399e034e` | `ffcc49a64a1fbe38d00f7d11eed887842422be925f1fab5ebd4e17b64957185d` |
+| `SZHCouverture-Regular.ttf`  | `OpenSans-Regular.ttf`  | `c53aceea2dcf5b4098099c0c4d0a061d17e178a049317b42a422b1a9f7f8eb59` | `50f3ff5a4cf210ad923b5430cd25058d977321b9cbd8ffc9d41fe38857cc90f1` |
+| `SZHCouverture-Italic.ttf`   | `OpenSans-Italic.ttf`   | `93bc1bb6abf4e6b7c75d7131714061d5b57cc478abcabe4cb3519bb38fb917aa` | `bfd643e1f4ee98e6d526d3f311ca51ad03a7296290a00b86bc7683a12be49333` |
+| `SZHCouverture-SemiBold.ttf` | `OpenSans-SemiBold.ttf` | `4a413711684a9dd564ef0f1c10cb62b5d9f7eb6df2cff962f5341a6ecd5f64ae` | `2e2905601f410f5fb2f2aad7a518034360462d92fcb95f9192b9d1463f0023bf` |
+| `SZHCouverture-Bold.ttf`     | `OpenSans-Bold.ttf`     | `27da758f4dcac9a65abe914c13b463b42982b9909bc65713424099f4810bd1e6` | `bbfeb0de0467df576035a9a064ea78b70feb4dad472f9e101959ef6db0536f6c` |
+
+Deux retouches, dans cet ordre :
+1. `glyphes-manquants.py` (elles sont dans sa table) leur ajoute les six caractères de la
+   maquette ;
+2. renommage, fichiers ET table `name` (fontTools, venv `/opt/weasyprint`) : famille
+   « SZH Couverture » (ids 1, 16), style (2, 17), nom complet (4), PostScript
+   `SZHCouverture-<Graisse>` (6), identifiant (3) ; ids 18, 21, 22, 25 retirés. Plus aucun
+   « Open Sans » dans ces champs ; copyright et marque (0, 7) inchangés.
+
+Pourquoi renommer, alors que l'OFL d'Open Sans ne réserve aucun nom : restées « Open Sans »
+dans leur table, fontconfig les servait à TOUTE demande « Open Sans » d'une feuille qui les
+déclare — mesuré, la couverture « normal », en `var(--font-sans)`, sortait en chasse
+normale. Pas de petites capitales (`petites-capitales.py` ne les liste pas) : la couverture
+n'en compose pas. `test/polices-check.py` ne contrôle la couverture des six caractères que
+pour les faces `OpenSans-*` ; pour celles-ci, c'est `glyphes-manquants.py --verifier`.

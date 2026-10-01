@@ -44,8 +44,9 @@
 
   // ---- Build automatique à la sauvegarde ----
   // Régénère out/<article>/ par la tâche « Aperçu / Export PDF » de tasks.json.
+  // Pas les chapitres d'un livre : le cockpit ne recompile que le chapitre enregistré.
   "triggerTaskOnSave.tasks": {
-    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/ausgabe.yaml", "**/buch.yaml"]
+    "Aperçu / Export PDF": ["**/articles/**/*.md", "**/liminaires/**/*.md", "**/*.css", "**/ausgabe.yaml", "**/buch.yaml"]
   },
   "triggerTaskOnSave.restart": true,           // sauvegardes rapprochées : on relance
   "triggerTaskOnSave.showStatusBarToggle": true,

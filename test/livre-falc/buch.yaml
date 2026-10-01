@@ -22,16 +22,28 @@ isbn-ebook: "978-3-905890-10-1"
 doi: "10.57161/b998"
 licence: cc-by-nc-nd-4.0
 couleur: "#E4404E"
+couleur-impression: rouge
 auteurs: []
+editeurs:
+  - prenom: "Cindy"
+    nom: "Diacquenod"
+    affiliation: "SZH / CSPS"
+  - prenom: "Aline"
+    nom: "Veyre"
+    affiliation: "SZH / CSPS"
+mention-editeurs: "Éditrices"
 ordre-chapitres: []
 liminaires: [demi-titre, colophon, page-titre, sommaire]
 impression:
-  grammage: 100
-  main: 1.23
+  grammage: 90
+  main: 1.27
+  couverture-volume: 1.3
+  couverture-grammage:
+  colle-mm: 0
   dos-mm:
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: ""
+  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"
 locked: false
 archived: false
 version-toolkit: ""

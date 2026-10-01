@@ -31,7 +31,7 @@ const PROFILS = {
   revue: {
     cle: 'revue',
     config: 'ausgabe.yaml',
-    unites: { dossier: 'articles', mot: 'article', ordre: 'ordre-articles' },
+    unites: { dossier: 'articles', mot: 'article', ordre: 'ordre-articles', vue: 'szh.vueArticles' },
     depot: 'articles-word',
     sortie: 'out',
     cible: 'all',
@@ -40,7 +40,7 @@ const PROFILS = {
   livre: {
     cle: 'livre',
     config: 'buch.yaml',
-    unites: { dossier: 'chapitres', mot: 'chapitre', ordre: 'ordre-chapitres' },
+    unites: { dossier: 'chapitres', mot: 'chapitre', ordre: 'ordre-chapitres', vue: 'szh.vueChapitres' },
     depot: 'chapitres-word',
     sortie: 'out',
     cible: 'livre',
@@ -152,6 +152,42 @@ function pdfLivre(racine) {
   return path.join(racine, 'out', path.basename(racine) + '.pdf');
 }
 
+// La vue d'ensemble que le clic sur l'en-tête d'une section ouvre, ou null quand la section
+// n'en a pas (« Actualité ») ou n'existe pas dans ce profil. La section des unités porte la
+// vue de son profil (table ci-dessus) ; « traductions » et « Word en attente » sont les
+// mêmes partout. Une revue n'a donc aucune entrée « chapitres », et un livre aucune « articles ».
+const VUES_COMMUNES = { traductions: 'szh.vueTraductions', word: 'szh.vueWord' };
+
+function vueDeSection(profil, categorie) {
+  const p = typeof profil === 'string' ? profilPour(profil) : profil;
+  if (!p) { throw new TypeError('profil inconnu'); }
+  if (categorie === p.unites.dossier) { return p.unites.vue; }
+  return VUES_COMMUNES[categorie] || null;
+}
+
+// Ce que le clic sur une unité fait compiler, et le PDF qu'il ouvre. Un chapitre a le sien
+// (cible livre-chapitre-pdf, out/chapitres/<slug>.pdf) : le livre ne se recompile pas à
+// chaque clic. Une revue garde le sien dans out/<slug>/ et le build complet (cible null :
+// l'appelant lance alors la tâche « Aperçu / Export PDF »).
+//
+// ⚠ Le slug d'un chapitre finit dans une ligne bash (CHAPITRE=<slug>) : il est refusé s'il
+//   porte autre chose que lettres, chiffres, point, tiret et tiret bas. Une revue n'en fait
+//   pas usage dans une ligne de commande, son slug n'est donc pas contrôlé ici.
+const SLUG_SUR = /^[\p{L}\p{N}][\p{L}\p{N}._-]*$/u;
+
+function apercuUnite(profil, racine, slug) {
+  const p = typeof profil === 'string' ? profilPour(profil) : profil;
+  if (!p) { throw new TypeError('profil inconnu'); }
+  if (p.cle === 'livre') {
+    if (typeof slug !== 'string' || !SLUG_SUR.test(slug) || slug.indexOf('..') !== -1) {
+      throw new TypeError('slug de chapitre refusé : ' + slug);
+    }
+    return { cible: 'livre-chapitre-pdf', variables: ['CHAPITRE=' + slug],
+             pdf: path.join(racine, p.sortie, p.unites.dossier, slug + '.pdf') };
+  }
+  return { cible: null, variables: [], pdf: path.join(racine, p.sortie, slug, slug + '.pdf') };
+}
+
 // Le nom d'une unité au singulier, dans la langue de l'interface. Sert aux messages :
 // « supprimer cet article » / « supprimer ce chapitre ». Les libellés complets restent
 // dans lib/i18n.js ; ce qui est ici, c'est la clé à lui demander.
@@ -176,4 +212,5 @@ function contextes(profil) {
 module.exports = {
   PROFILS, ORDRE_DETECTION,
   profilPour, detecter, racineDepuis, remonterVers, chemins, pdfLivre, cleLibelle, contextes,
+  vueDeSection, apercuUnite,
 };

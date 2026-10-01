@@ -1,180 +1,212 @@
-/* Couverture à plat : 4e de couverture, dos, 1re de couverture, sur une page.
-   Empilée après socle.css seulement (polices et jetons) :
-     --css=socle.css --css=livre/couverture.css
-   Pas base.css, pas normal.css/falc.css : leur géométrie (pages en vis-à-vis, marges de
-   lecture, folios, sommaire) est celle de l'intérieur du livre. Une couverture est une
-   page unique, à plat, et n'en a besoin d'aucune.
+/* Couverture d'un livre, deux sorties d'un même gabarit (templates/szh-couverture.html) :
+     .szh-couv-impression  une page à plat 4e + dos + 1re, CMJN, fond perdu, traits ;
+     .szh-couv-ecran       deux pages, 1re puis 4e, RGB, sans dos ni fond perdu.
+   Empilée après socle.css seulement (polices) : --css=socle.css --css=livre/couverture.css.
+   Ni base.css ni la charte de l'intérieur : leur géométrie de page n'a rien à faire ici.
 
-   Les dimensions de ce livre (largeur d'un plat, dos, hauteur, couleur) arrivent en
-   propriétés personnalisées posées par couverture.py sur <html style="…"> (voir
-   templates/szh-couverture.html) : rien ici n'est écrit en dur pour un format donné. Le
-   fond perdu, lui, n'est pas de celles-là — il ne dépend d'aucun livre, voir §1.
+   Aucune taille de livre ni aucune couleur n'est écrite en dur : couverture.py pose sur
+   <html> les dimensions (--szh-couv-largeur, -dos, -hauteur, -fp = fond perdu, 0 à l'écran)
+   et les couleurs (--c-couv-encre, -papier, -accent, -fond, -sur-accent), en device-cmyk()
+   pour l'impression, en hex pour l'écran, toutes tirées de couleurs-reference.json. La
+   règle @page et le profil CMJN sont dans le <style> du gabarit.
 
-   ⚠ Pièges déjà payés, à ne pas repayer :
-   * Le fond doit être peint au-delà du rogné, pas seulement jusqu'à lui : un aplat qui
-     s'arrête pile au bord du format laisse un filet blanc après massicotage, au moindre
-     écart de coupe. Mais peint au-delà ne veut pas dire jusqu'au bord du papier : la
-     référence FALC elle-même (tmp/book/FALC/…_print_cover.pdf, coin agrandi, comparé ici)
-     arrête son aplat bien avant le bord du MediaBox, laissant les traits de coupe et les
-     mires de repérage sur un fond blanc, pas sur l'aplat. La raison est mécanique, pas
-     esthétique : WeasyPrint dessine ces traits dans la même zone que le fond perdu, et un
-     aplat qui la peint en entier les recouvre — mesuré ici (§1) en poussant le débordement
-     du contenu jusqu'à 8 mm : les traits ont disparu, entièrement repeints. La feuille
-     distingue donc deux valeurs (§1) : le fond perdu WeasyPrint (la place que la mise en
-     page réserve à ses traits) et le débordement peint (de combien le contenu déborde
-     réellement au-delà du rogné) — plus petit que le premier, exprès.
-   * Le sens de rotation du dos compte : en Europe, le dos se lit de haut en bas quand le
-     livre est posé à plat, couverture vers le haut. `writing-mode: vertical-rl` ferait
-     exactement cela, mais WeasyPrint 69 ne le connaît pas (mesuré : « Ignored
-     `writing-mode: vertical-rl`, unknown property » au rendu — `transform`, lui, est bien
-     supporté). Le repli est donc une rotation manuelle, `transform: rotate(90deg)`, et le
-     signe compte tout autant : rotate(-90deg) tournerait le texte dans l'autre sens et
-     inverserait le sens de lecture sans qu'aucun avertissement ne le signale. Voir §5 pour
-     le détail de la pose (une seule ligne non coupée, pas des paragraphes empilés avant
-     rotation — empilés, ils deviendraient des colonnes côte à côte après rotation, comme
-     en écriture verticale est-asiatique, et non une suite continue le long du dos). */
+   ⚠ Pièges payés :
+   * Pas de `marks: crop` : WeasyPrint trace ses traits en RGB (`0 0 0 rg`), interdit en
+     PDF/X-4. Les traits sont des éléments .szh-couv-trait posés par couverture.py.
+   * Toute couleur visible doit venir d'une variable : un `color` ou un `background`
+     littéral (le bleu par défaut d'un lien, un blanc #fff) sortirait en `rg` dans le PDF
+     d'impression, que couverture.py refuse alors de livrer.
+   * Le dos se lit de BAS EN HAUT (convention continentale, celle des références InDesign
+     fr et de) : rotate(-90deg). rotate(90deg) le retournerait sans avertissement.
+     WeasyPrint ne connaît pas `writing-mode: vertical-rl`. Responsables puis titre sur UNE
+     ligne avant rotation (couverture.py) : deux lignes empilées deviendraient deux
+     colonnes, et dans cet ordre les responsables tombent sous le titre.
+   * La couverture FALC est en Open Sans de chasse NORMALE, comme sa référence, sous le
+     nom « SZH Couverture » (fichiers ET table name renommés, voir fonts/README.md) :
+     restées « Open Sans » à l'intérieur, fontconfig les servait aussi à toute demande
+     « Open Sans » de la feuille (mesuré). La couverture « normal » et l'intérieur des
+     livres restent en SemiCondensed (var(--font-sans), socle.css). */
 
-/* ═══ 1. La page : taille rognée, WeasyPrint ajoute le fond perdu tout seul ═══════════
-   `size` est la taille de la TrimBox, pas celle du MediaBox final : WeasyPrint 69 agrandit
-   lui-même le MediaBox de la valeur de `bleed` (mesuré — voir docs/ARCHITECTURE-LIVRES.md
-   §4.3). Y mettre la taille déjà agrandie ferait tomber le rognage au mauvais endroit chez
-   l'imprimeur. */
-/* Deux valeurs, volontairement différentes — toutes deux indépendantes de
-   impression.fond-perdu-mm dans buch.yaml, qui règle l'aplomb du texte à l'impression du
-   corps, une tout autre affaire :
-   * --szh-couv-bleed (8 mm) : la place que WeasyPrint réserve à ses propres traits de
-     coupe et mires (propriété `bleed` de `@page`). Essayé à 3 mm d'abord (mesuré sur ce
-     poste, rendu de test/livre-normal et test/livre-falc) : traits et croix de repérage
-     collés au bord de la zone, lisibles mais à l'étroit, la mire débordant presque. 8 mm
-     leur donne de l'air sans repousser sensiblement le format papier de l'épreuve : essayé,
-     comparé, retenu — ce que la mission demandait de faire avant de choisir.
-   * --szh-couv-debord (3 mm) : de combien le fond est réellement peint au-delà du rogné
-     (§2). Volontairement plus petit que --szh-couv-bleed : le peindre jusqu'à la même
-     profondeur recouvrirait les traits de coupe eux-mêmes (mesuré : à bleed complet, ils
-     disparaissent sous l'aplat — voir l'avertissement en tête de fichier, comparé à la
-     référence FALC, qui laisse elle aussi ses traits sur un fond blanc). 3 mm est le
-     minimum que demande la mission ; c'est aussi une profondeur de débord courante en
-     façonnage. */
-:root { --szh-couv-bleed: 8mm; --szh-couv-debord: 3mm; }
-
-@page {
-  size: var(--szh-couv-largeur-totale) var(--szh-couv-hauteur);
-  margin: 0;
-  bleed: var(--szh-couv-bleed);
-  marks: crop cross;
-}
+@font-face { font-family: 'SZH Couverture'; font-weight: 300; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Light.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 400; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 400; font-style: italic;
+  src: url("../../fonts/SZHCouverture-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 600; font-style: normal;
+  src: url("../../fonts/SZHCouverture-SemiBold.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 700; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Bold.ttf") format('truetype'); }
 
 html, body { margin: 0; padding: 0; }
-body {
-  font-family: var(--font-sans);
-  color: var(--c-ink);
+body { font-family: var(--font-sans); color: var(--c-couv-encre); }
+.szh-couv-falc body { font-family: 'SZH Couverture', var(--font-sans); }
+p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+
+/* ═══ 1. Les panneaux ═════════════════════════════════════════════════════════════════ */
+.szh-couv-plat { position: relative; }
+.szh-couv-1re, .szh-couv-4e, .szh-couv-dos {
+  position: absolute; top: 0; height: var(--szh-couv-hauteur); box-sizing: border-box;
 }
 
-/* ═══ 2. Le débordement peint (pas le fond perdu WeasyPrint — voir §1) ═══════════════
-   `size` = la TrimBox ; `body` commence donc à (0,0) de cette boîte, pas du MediaBox
-   agrandi. Pour que le fond peigne un peu au-delà du rogné, ce bloc est élargi de deux
-   fois --szh-couv-debord (box-sizing: border-box, donc la largeur posée est déjà la
-   largeur avec bordure/remplissage) puis ramené en place par une marge négative de la
-   même valeur : son coin (−debord, −debord) tombe à cette profondeur du coin du rogné,
-   pas à celui du MediaBox (qui est plus loin de --szh-couv-bleed − --szh-couv-debord,
-   5 mm ici — c'est cette bande restante, non peinte, qui garde les traits de coupe
-   lisibles). Le remplissage (`padding`), de la même valeur encore, laisse le contenu — les
-   trois zones — occuper très exactement la boîte rognée, comme si le débordement
-   n'existait pas pour lui. */
-.szh-couv-plat {
-  box-sizing: border-box;
-  position: relative;
-  width:  calc(var(--szh-couv-largeur-totale) + 2 * var(--szh-couv-debord));
-  height: calc(var(--szh-couv-hauteur)        + 2 * var(--szh-couv-debord));
-  margin: calc(-1 * var(--szh-couv-debord));
-  padding: var(--szh-couv-debord);
-  background: var(--c-couverture-fond);
-  display: flex;
+/* À plat : (0,0) est le coin haut-gauche du rogné. Le fond est peint jusqu'au fond perdu,
+   les traits commencent au-delà (couverture.py, TRAIT_ECART_MM). */
+.szh-couv-impression .szh-couv-plat {
+  width: calc(2 * var(--szh-couv-largeur) + var(--szh-couv-dos));
+  height: var(--szh-couv-hauteur);
 }
-
-/* ═══ 3. Les trois zones, largeur exacte ══════════════════════════════════════════════
-   4e à gauche, dos au milieu, 1re à droite : l'ordre de lecture d'un livre posé à plat,
-   couverture vers le haut (voir la mission). `flex: none` : leur largeur est un fait du
-   format, jamais une négociation flexible. */
-.szh-couv-4e, .szh-couv-dos, .szh-couv-1re {
-  flex: none; height: 100%; position: relative; overflow: hidden;
+.szh-couv-impression .szh-couv-fond {
+  position: absolute;
+  left: calc(-1 * var(--szh-couv-fp)); top: calc(-1 * var(--szh-couv-fp));
+  width: calc(2 * var(--szh-couv-largeur) + var(--szh-couv-dos) + 2 * var(--szh-couv-fp));
+  height: calc(var(--szh-couv-hauteur) + 2 * var(--szh-couv-fp));
+  background: var(--c-couv-fond);
 }
-.szh-couv-4e  { width: var(--szh-couv-largeur); }
-.szh-couv-dos { width: var(--szh-couv-dos); }
-.szh-couv-1re { width: var(--szh-couv-largeur); }
-
-/* ═══ 4. La 4e de couverture ═══════════════════════════════════════════════════════════
-   Texte compilé comme un chapitre (couverture/quatrieme.md) : mêmes filtres, donc la même
-   typographie maison. Puces simples, pas de fioriture. */
-.szh-couv-4e-texte {
-  position: absolute; inset: 0;
-  padding: 20mm 14mm;
-  font-size: 10.5pt; line-height: 1.5;
+.szh-couv-impression .szh-couv-4e  { left: 0; width: var(--szh-couv-largeur); }
+.szh-couv-impression .szh-couv-dos { left: var(--szh-couv-largeur); width: var(--szh-couv-dos); }
+.szh-couv-impression .szh-couv-1re {
+  left: calc(var(--szh-couv-largeur) + var(--szh-couv-dos)); width: var(--szh-couv-largeur);
 }
-.szh-couv-4e-texte p  { margin: 0 0 4mm 0; }
-.szh-couv-4e-texte ul, .szh-couv-4e-texte ol { margin: 0 0 4mm 0; padding-left: 6mm; }
-.szh-couv-4e-texte li { margin-bottom: 1.5mm; }
+.szh-couv-trait { position: absolute; background: device-cmyk(1 1 1 1); }
 
-/* ═══ 5. Le dos ════════════════════════════════════════════════════════════════════════
-   Titre et auteur·e·s dans l'encre de l'ouvrage (--c-couverture), pas dans une bande de
-   couleur : c'est ce que montre la référence FALC — le dos garde le fond clair de la 4e et
-   de la 1re, seul le texte porte la couleur.
-
-   La rotation, faute de `writing-mode` (voir l'avertissement en tête de fichier) : le bloc
-   titre + auteur·e·s est une seule ligne non coupée (`white-space: nowrap`), centrée par
-   `top/left: 50%` puis ramenée sur son propre centre (`translate(-50%, -50%)`, qui ne
-   suppose rien de sa largeur — variable, elle dépend du titre), et enfin tournée de 90°
-   autour de ce même centre. Dans cet ordre : la rotation ne déplace pas un centre qui lui
-   est déjà propre, seule la position d'ensemble reste à poser.
-   Une seule ligne, et pas des paragraphes empilés (`titre` puis `auteurs` l'un sous
-   l'autre) : empiler avant rotation revient à écrire deux lignes normales, et deux lignes
-   normales tournées ensemble deviennent deux colonnes côte à côte une fois tournées — la
-   place manque sur un dos, qui n'a droit qu'à une colonne. Titre puis auteur·e·s doivent
-   donc se suivre sur la même ligne, avant rotation, pour se suivre le long du même dos
-   après. `overflow: visible` sur .szh-couv-dos (règle plus bas) : sur un livre mince, cette
-   ligne peut dépasser la hauteur du dos plutôt que de se faire couper en silence — un
-   défaut visible se corrige, un défaut invisible ne se corrige jamais. */
-.szh-couv-dos { overflow: visible; }
-.szh-couv-dos-texte {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) rotate(90deg);
-  white-space: nowrap;
-  color: var(--c-couverture);
+/* Écran : une page par panneau, 1re puis 4e ; ni dos, ni fond perdu. */
+.szh-couv-ecran .szh-couv-fond, .szh-couv-ecran .szh-couv-dos { display: none; }
+.szh-couv-ecran .szh-couv-1re, .szh-couv-ecran .szh-couv-4e {
+  position: relative; width: var(--szh-couv-largeur); overflow: hidden;
+  background: var(--c-couv-fond);
 }
-.szh-couv-dos-titre   { font-size: 9pt; font-weight: 700; }
-.szh-couv-dos-auteurs { font-size: 8pt; font-weight: 400; margin-left: 6mm; }
+.szh-couv-ecran .szh-couv-4e { break-before: page; }
 
-/* ═══ 6. La 1re de couverture ══════════════════════════════════════════════════════════ */
-
-/* Illustration facultative (couverture/illustration.*) : plein cadre, sous le bandeau. */
-.szh-couv-1re-illustration { position: absolute; inset: 0; z-index: 0; }
-.szh-couv-1re-illustration img {
-  width: 100%; height: 100%; object-fit: cover; display: block;
-}
-
-/* Bandeau de titre : posé sur l'illustration (ou sur le fond clair si aucune illustration
-   n'est fournie — c'est le cas des deux livres de banc). Couleur de l'ouvrage, texte choisi
-   par contraste APCA (couverture.py, apca.meilleure_polarite) plutôt que codé en dur : la
-   charte varie d'un livre à l'autre. */
+/* Le bandeau part du pli du dos et file jusqu'au fond perdu à droite. */
 .szh-couv-1re-bandeau {
-  position: absolute; left: 0; right: 0; bottom: 32mm; z-index: 1;
-  background: var(--c-couverture);
-  color: var(--c-couverture-texte);
-  padding: 8mm 10mm;
+  position: absolute; left: 0; right: calc(-1 * var(--szh-couv-fp));
+  background: var(--c-couv-accent);
 }
-.szh-couv-auteurs   { font-size: 10pt; font-weight: 500; margin: 0 0 2mm 0; }
-.szh-couv-titre     { font-size: 16pt; font-weight: 700; line-height: 1.25; margin: 0; }
-.szh-couv-sous-titre{ font-size: 11pt; font-weight: 400; margin: 3mm 0 0 0; }
+/* L'illustration se décale dans sa zone (couverture.illustration-x-mm / -y-mm, posés par
+   couverture.py) et peut en déborder, mais le cadre la coupe au fond perdu du plat de 1re
+   (au pli du dos à gauche) : à l'écran, fp = 0, au bord du plat. */
+.szh-couv-1re-cadre {
+  position: absolute; left: 0; overflow: hidden;
+  top: calc(-1 * var(--szh-couv-fp)); right: calc(-1 * var(--szh-couv-fp));
+  bottom: calc(-1 * var(--szh-couv-fp));
+}
+.szh-couv-1re-illustration {
+  position: absolute; background-repeat: no-repeat; background-position: center;
+  transform: translate(var(--szh-couv-illus-x), var(--szh-couv-illus-y));
+}
 
-/* Pied de 1re : collection à gauche, mention d'édition à droite — texte, pas un logo :
-   aucun fichier de logo n'existe dans ce dépôt pour la collection ni pour « EDITION
-   SZH/CSPS » (cherché, absent — voir le rapport de la mission). Écrire une image inventée
-   à leur place afficherait un faux logo comme s'il était réel ; la mention texte reprend
-   d'ailleurs le même intitulé littéral que l'impressum (livre-assembler.py, FONDATION). */
-.szh-couv-1re-pied {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+/* ═══ 2. Maquette FALC — calquée sur « Créer ensemble… (FALC) », A4 2025 ═══════════════
+   Mesures en mm depuis le coin haut-gauche du rogné de chaque panneau. Valeurs du format
+   standard (155 × 225, échelle relevée sur le Prospectrum DE), puis surcharges A4. */
+.szh-couv-falc .szh-couv-4e-texte {
+  position: absolute; top: 30mm; left: 20mm; right: 24mm;
+  font-size: 13pt; line-height: 1.55; font-weight: 300;
+}
+.szh-couv-falc .szh-couv-4e-texte p { margin: 0 0 1.55em 0; }
+.szh-couv-falc .szh-couv-4e-texte ul,
+.szh-couv-falc .szh-couv-4e-texte ol { margin: -1.55em 0 1.55em 0; padding-left: 6mm; }
+.szh-couv-falc .szh-couv-4e-texte ul { list-style: none; }
+.szh-couv-falc .szh-couv-4e-texte ul > li { position: relative; }
+.szh-couv-falc .szh-couv-4e-texte ul > li::before { content: "•"; position: absolute; left: -5.3mm; }
+
+/* Zone de l'illustration, en mm depuis le haut du plat : le cadre commence fp plus haut. */
+.szh-couv-falc .szh-couv-1re-illustration {
+  top: calc(26mm + var(--szh-couv-fp)); left: 10mm; width: 135mm; height: 112mm; background-size: contain;
+}
+.szh-couv-falc .szh-couv-1re-bandeau {
+  top: 145mm; height: 40mm; box-sizing: border-box;
+  padding: 0 calc(10mm + var(--szh-couv-fp)) 0 15mm;
+  display: flex; flex-direction: column; justify-content: center;
+  color: var(--c-couv-papier);
+}
+.szh-couv-falc .szh-couv-auteurs    { font-size: 10pt; font-weight: 400; margin-bottom: 1.5mm;
+                                      letter-spacing: 0.05em; }   /* approche de la réf. */
+.szh-couv-falc .szh-couv-titre      { font-size: 19.9pt; font-weight: 700; line-height: 1.12; }
+.szh-couv-falc .szh-couv-sous-titre { font-size: 13pt; font-weight: 400; margin-top: 2mm; }
+
+.szh-couv-falc .szh-couv-1re-pied {
+  position: absolute; left: 15mm; right: 15mm; top: 201.5mm; height: 10.8mm;
+  display: flex; align-items: center; color: var(--c-couv-accent);
+}
+/* Largeurs posées d'après le viewBox (84 × 91 et 185,28 × 72,33) : en flex, une image
+   sans largeur se laisse rétrécir. */
+.szh-couv-picto { flex: none; height: 10.8mm; width: 9.97mm; }
+.szh-couv-falc .szh-couv-1re-collection {
+  margin-left: 5.4mm; font-size: 13pt; font-weight: 600; line-height: 1.25;
+}
+.szh-couv-logo { flex: none; height: 10.8mm; width: 27.66mm; margin-left: auto; }
+
+/* Dos FALC : tome droit en tête, puis la ligne tournée dont la FIN (le dernier mot du
+   titre) est accrochée à `top`, responsables dessous, symbole de l'édition en pied. Tout à
+   la couleur d'impression. rotate(-90deg) après translate(-100%, -50%) : le bout droit de
+   la ligne vient sur le point d'accroche, centrée sur l'axe du dos. */
+.szh-couv-falc .szh-couv-dos { color: var(--c-couv-accent); }
+.szh-couv-dos-tome {
+  position: absolute; top: 12mm; left: 0; right: 0; text-align: center;
+  font-size: 10pt; font-weight: 700; line-height: 1;
+}
+.szh-couv-falc .szh-couv-dos-texte {
+  position: absolute; top: 32mm; left: 50%;
+  transform-origin: 0 0; transform: rotate(-90deg) translate(-100%, -50%);
+  white-space: nowrap; font-size: 8pt; line-height: 1; letter-spacing: 0.06em;
+}
+.szh-couv-falc .szh-couv-dos-titre   { font-weight: 700; }
+.szh-couv-falc .szh-couv-dos-auteurs { font-weight: 400; margin-right: 8mm; }
+.szh-couv-dos-symbole {
+  position: absolute; top: 207mm; left: 50%; width: 3mm; margin-left: -1.5mm;
+}
+
+.szh-couv-falc.szh-couv-a4 .szh-couv-4e-texte { font-size: 17pt; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-1re-illustration {
+  top: calc(38mm + var(--szh-couv-fp)); left: 10mm; width: 187mm; height: 131mm;
+}
+.szh-couv-falc.szh-couv-a4 .szh-couv-1re-bandeau {
+  top: 189.7mm; height: 53.9mm; padding-left: 14.8mm;
+}
+.szh-couv-falc.szh-couv-a4 .szh-couv-auteurs    { font-size: 14pt; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-titre      { font-size: 22.9pt; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-sous-titre { font-size: 15.9pt; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-1re-pied   { top: 268.4mm; height: 14.6mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-picto      { height: 14.6mm; width: 13.48mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-logo       { height: 14.6mm; width: 37.4mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-1re-collection { margin-left: 5.8mm; font-size: 17pt; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-dos-tome   { top: 14.4mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-dos-texte  { top: 43mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-dos-auteurs { margin-right: 9mm; }
+.szh-couv-falc.szh-couv-a4 .szh-couv-dos-symbole { top: 277mm; }
+
+/* ═══ 3. Maquette « normal » ═══════════════════════════════════════════════════════════
+   Illustration plein cadre, bandeau de titre au-dessus du pied, collection et mention
+   d'édition en texte. Texte du bandeau noir ou blanc par contraste APCA (couverture.py). */
+.szh-couv-normal .szh-couv-4e-texte {
+  position: absolute; inset: 0; padding: 20mm 14mm; font-size: 10.5pt; line-height: 1.5;
+}
+.szh-couv-normal .szh-couv-4e-texte p  { margin: 0 0 4mm 0; }
+.szh-couv-normal .szh-couv-4e-texte ul,
+.szh-couv-normal .szh-couv-4e-texte ol { margin: 0 0 4mm 0; padding-left: 6mm; }
+.szh-couv-normal .szh-couv-4e-texte li { margin-bottom: 1.5mm; }
+
+.szh-couv-normal .szh-couv-dos-texte {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  white-space: nowrap; color: var(--c-couv-accent);
+}
+.szh-couv-normal .szh-couv-dos-titre   { font-size: 9pt; font-weight: 700; }
+.szh-couv-normal .szh-couv-dos-auteurs { font-size: 8pt; font-weight: 400; margin-right: 6mm; }
+
+.szh-couv-normal .szh-couv-1re-illustration { inset: 0; background-size: cover; }  /* jusqu'au fond perdu */
+.szh-couv-normal .szh-couv-1re-bandeau {
+  bottom: 32mm; padding: 8mm calc(10mm + var(--szh-couv-fp)) 8mm 10mm;
+  color: var(--c-couv-sur-accent);
+}
+.szh-couv-normal .szh-couv-auteurs    { font-size: 10pt; font-weight: 400; margin: 0 0 2mm 0; }
+.szh-couv-normal .szh-couv-titre      { font-size: 16pt; font-weight: 700; line-height: 1.25; }
+.szh-couv-normal .szh-couv-sous-titre { font-size: 11pt; font-weight: 400; margin: 3mm 0 0 0; }
+.szh-couv-normal .szh-couv-1re-pied {
+  position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; justify-content: space-between; align-items: flex-end;
   padding: 6mm 10mm; font-size: 8.5pt;
 }
-.szh-couv-1re-collection { max-width: 65%; font-weight: 600; }
-.szh-couv-1re-edition    { margin: 0; font-weight: 700; letter-spacing: 0.02em; }
+.szh-couv-normal .szh-couv-1re-collection { max-width: 65%; font-weight: 600; }
+.szh-couv-normal .szh-couv-1re-edition    { font-weight: 700; letter-spacing: 0.02em; }

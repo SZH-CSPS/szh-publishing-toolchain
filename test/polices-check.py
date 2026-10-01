@@ -44,8 +44,9 @@ LIBELLES = {0x202F: 'fine insécable', 0x2010: "trait d'union", 0x2011: "t. d'un
             0x25B8: 'puce triangle', 0x21A9: 'retour de note', 0xFE0E: 'sélecteur 15'}
 # Les faces qui portent le texte : le corps de la revue est en Open Sans, et c'est donc
 # elle qui doit tout couvrir. IBM Plex Mono ne sert qu'au code, Source Serif 4 n'est plus
-# déclarée dans print.css (elle reste livrée pour test/palette-html.py).
-FACES_DU_CORPS = 'OpenSans-'
+# déclarée dans print.css (elle reste livrée pour test/palette-html.py). SZH Couverture est
+# l'Open Sans de chasse normale renommée, qui compose la couverture FALC.
+FACES_DU_CORPS = ('OpenSans-', 'SZHCouverture-')
 
 
 def _normaliser(nom):

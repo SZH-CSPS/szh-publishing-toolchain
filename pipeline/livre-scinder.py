@@ -25,6 +25,19 @@ from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 
+
+def _charger_migreur():
+    """livre-migrer-meta.py (nom à tiret : pas d'import ordinaire)."""
+    import importlib.util
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'livre-migrer-meta.py')
+    spec = importlib.util.spec_from_file_location('livre_migrer_meta', chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+migrer_meta = _charger_migreur()
+
 # Pas d'import yaml - la WSL de production n'a que la stdlib (voir lire_ordre_existant() :
 # buch.yaml se lit en texte brut pour cette raison, jamais avec un module absent en
 # production).
@@ -379,6 +392,7 @@ def main():
     dossier_chapitres = dossier_livre / 'chapitres'
     dossier_buch = dossier_livre / 'buch.yaml'
     dossier_liminaires = dossier_livre / 'liminaires'
+    langue_livre = str(szh_commun.lire_yaml(str(dossier_buch)).get('lang') or 'fr').strip().lower()[:2]
 
     # Lire le chapitre et le découper
     print(f"Lecture de {chemin_md}...", file=sys.stderr)
@@ -470,13 +484,23 @@ def main():
             dossier_nouveau.mkdir(parents=True, exist_ok=True)
             dossiers_crees.append((slug_numerote, titre))
 
-            # Écrire le .md : on l'écrit avec le titre # (c'est le titre du chapitre)
-            # Reconstruction du contenu : ajouter le titre # en début
-            contenu_complet = f"# {titre}\n\n{contenu.strip()}\n"
+            # Le titre du chapitre va dans sa fiche (title.<lang>), pas dans le .md ; la
+            # ligne d'auteur·e·s qui le suit, s'il y en a une, l'y rejoint juste après
+            # (livre-migrer-meta.py). Si la fiche ne peut pas recevoir le titre, il reste
+            # dans le .md : la compilation sait lire les deux, mais pas l'absence des deux.
+            chemin_fiche_nouveau = dossier_nouveau / f"{slug_numerote}.meta.yaml"
+            titre_en_fiche = migrer_meta.ecrire_titre_fiche(
+                str(chemin_fiche_nouveau), langue_livre, titre)
+            contenu_complet = (f"{contenu.strip()}\n" if titre_en_fiche
+                               else f"# {titre}\n\n{contenu.strip()}\n")
 
             chemin_md_nouveau = dossier_nouveau / f"{slug_numerote}.md"
             with open(chemin_md_nouveau, 'w', encoding='utf-8') as f:
                 f.write(contenu_complet)
+
+            for ligne_rapport in migrer_meta.migrer_chapitre(
+                    str(dossier_livre), slug_numerote, langue_livre):
+                print(f"  {ligne_rapport}", file=sys.stderr)
 
             print(f"  Créé {slug_numerote}/{slug_numerote}.md", file=sys.stderr)
 

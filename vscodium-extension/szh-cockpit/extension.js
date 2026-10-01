@@ -551,10 +551,10 @@ const SLUG_DOCUMENTATION = 'documentation';
 // l'accordéon) et par le dépliage au chevron — mais jamais par les dépliages programmés,
 // un clic d'article ne doit pas ramener la vue Articles par-dessus le texte (décision B).
 // « Actualité » n'y figure pas, comme « chapitres » : elle n'a pas de vue d'ensemble, le
-// clic sur son en-tête ne fait donc que jouer l'accordéon.
-const VUE_SECTION = {
-  articles: 'szh.vueArticles', traductions: 'szh.vueTraductions', word: 'szh.vueWord'
-};
+// clic sur son en-tête ne fait donc que jouer l'accordéon. La vue de la section des unités
+// vient de la table de profil (lib/profil.js) : « articles » pour un numéro, « chapitres »
+// pour un livre.
+function vueDeSection(categorie) { return profils.vueDeSection(profilCourant(), categorie); }
 
 // Une couleur par en-tête de section : le TreeView natif n'offre ni gras ni taille de
 // police, ce sont donc les majuscules du libellé et la couleur de l'icône qui rendent les
@@ -923,9 +923,11 @@ class FournisseurRevue {
       //   paraît en deux langues et chaque article a sa version jumelle ; un livre est écrit
       //   dans une langue, celle de son `lang:`, et sa traduction est un autre livre, avec
       //   son ISBN.
-      const sections = [
-        this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined)
-      ];
+      // Un livre ouvre son formulaire (titre, responsables, maquette, impression) depuis
+      // l'arbre, en tête : sans cette entrée il fallait la palette. Une revue n'a pas
+      // d'équivalent, ses métadonnées de numéro vivent dans la vue ARTICLES.
+      const sections = profilCourant().cle === 'livre' ? [this._itemMetaLivre()] : [];
+      sections.push(this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined));
       // ⚠ Pas de section « Actualité » pour un livre, pour la même raison que les
       //   traductions : la Documentation est une rubrique de revue (« Actualité et
       //   ressources » / « News & Ressourcen »), elle n'a pas d'équivalent dans un ouvrage.
@@ -1145,6 +1147,18 @@ class FournisseurRevue {
     }
     it.tooltip = T('arbre.controles.tooltip');
     it.command = { command: 'szh.vueControles', title: T('arbre.controles'), arguments: [] };
+    return it;
+  }
+
+  // L'entrée « Métadonnées du livre » : une feuille, ni section ni unité (pas de `categorie`,
+  // l'accordéon l'ignore), qui ouvre le formulaire de buch.yaml.
+  _itemMetaLivre() {
+    const it = new vscode.TreeItem(T('arbre.metaLivre'), vscode.TreeItemCollapsibleState.None);
+    it.id = 'meta-livre';
+    it.contextValue = 'meta-livre';
+    it.iconPath = new vscode.ThemeIcon('info');
+    it.tooltip = T('arbre.metaLivre.tip');
+    it.command = { command: 'szh.metadonnees', title: T('arbre.metaLivre'), arguments: [] };
     return it;
   }
 
@@ -1608,6 +1622,9 @@ function attendreFinTache(execution) {
       if (e.execution === execution) { terminer(null); }
     });
     const minuteur = setTimeout(() => { terminer(null); }, DELAI_GARDE_TACHE);
+    // Un garde-fou ne doit jamais retenir le processus : une tâche que personne ne termine
+    // (l'hôte factice des tests, un wsl.exe absent) garderait sinon l'hôte en vie 30 minutes.
+    if (minuteur.unref) { minuteur.unref(); }
   });
 }
 
@@ -1640,6 +1657,49 @@ function reparerBibliosAvantCompilation(racine) {
 function lancerBuild(racine) {
   reparerBibliosAvantCompilation(racine);
   return lancerTache(NOM_TACHE_BUILD);
+}
+
+// La compilation que le clic (ou l'enregistrement) d'UNE unité déclenche. Une revue
+// recompile son numéro (make all), comme avant. Un livre ne compile que le chapitre
+// (livre-chapitre-pdf CHAPITRE=<slug>, out/chapitres/<slug>.pdf) : le volume entier ne se
+// recompile que depuis la vue CHAPITRES ou l'aperçu du livre.
+function lancerBuildUnite(racine, slug) {
+  if (profilCourant().cle !== 'livre' || !slug) { return lancerBuild(racine); }
+  reparerBibliosAvantCompilation(racine);
+  return lancerTacheObjet(tacheChapitrePdf(racine, slug));
+}
+
+// Même mécanisme que les tâches de vscodium-user/tasks.json : bash -c, `set -o pipefail` et
+// `tee .szh-journal.log` pour que le cockpit relise le journal à la fin (relireJournal), `-j2
+// -O` comme elles. Construite ici et non déclarée dans tasks.json, comme tacheMakeArticle :
+// une tâche utilisateur ne reçoit pas de paramètre, et la cible a besoin du slug. Le type
+// `szh` la fait suivre par les mêmes gardes que les autres (verrou de compilation, voile).
+// Le slug est contrôlé par profils.apercuUnite : il finit dans une ligne bash.
+function tacheChapitrePdf(racine, slug) {
+  const a = profils.apercuUnite(profilCourant(), racine, slug);
+  const make = ['make', '-j2', '-O', '-f', "'" + MAKEFILE_WSL + "'", a.cible]
+    .concat(a.variables).join(' ');
+  const execution = new vscode.ProcessExecution('wsl.exe',
+    ['-d', DISTRO_WSL, '--cd', racine, '--', 'bash', '-c',
+     'set -o pipefail; ' + make + ' 2>&1 | tee .szh-journal.log']);
+  const tache = new vscode.Task(
+    { type: 'szh', cible: 'chapitre', slug: slug }, vscode.TaskScope.Workspace,
+    T('tache.chapitrePdf') + ' — ' + slug, 'SZH', execution, []);
+  tache.presentationOptions = {
+    reveal: vscode.TaskRevealKind.Never, showReuseMessage: false,
+    clear: true, panel: vscode.TaskPanelKind.Shared
+  };
+  return tache;
+}
+
+// Le mode d'aperçu d'une unité. Un chapitre s'aperçoit toujours en PDF, le sien : son
+// aperçu HTML n'existe qu'après une compilation du livre entier, ce que le clic ne fait plus.
+function modeApercuUnite() { return profilCourant().cle === 'livre' ? 'pdf' : modeApercu(); }
+
+// Le PDF qu'ouvre le clic sur une unité : out/<slug>/<slug>.pdf pour un article,
+// out/chapitres/<slug>.pdf pour un chapitre (lib/profil.js).
+function pdfApercuUnite(racine, slug) {
+  return profils.apercuUnite(profilCourant(), racine, slug).pdf;
 }
 
 // Une tâche s'est terminée en échec. Si le journal porte un point bloquant, la vue des
@@ -1849,7 +1909,15 @@ async function exporterLivre(nomTache, cles) {
   }
 }
 
+// « Compiler le livre » (vue CHAPITRES) : la tâche par défaut, make all, qui recompose le volume.
+async function compilerLivre(fournisseur) {
+  if (!fournisseur.racine) { return; }
+  reparerBibliosAvantCompilation(fournisseur.racine);
+  await exporterLivre(NOM_TACHE_BUILD, CLES_LIVRE_COMPILER);
+}
+
 const CLES_LIVRE_IMPRIMEUR = { statut: 'livre.imprimeur.statut', fait: 'livre.imprimeur.fait', err: 'livre.imprimeur.err' };
+const CLES_LIVRE_COMPILER = { statut: 'livre.compiler.statut', fait: 'livre.compiler.fait', err: 'livre.compiler.err' };
 const CLES_LIVRE_COUVERTURE = { statut: 'livre.couverture.statut', fait: 'livre.couverture.fait', err: 'livre.couverture.err' };
 const CLES_LIVRE_EPUB = { statut: 'livre.epub.statut', fait: 'livre.epub.fait', err: 'livre.epub.err' };
 const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err: 'livre.web.err' };
@@ -2161,11 +2229,10 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   if (arbreChange) { fournisseur.rafraichir(); }
   if (suivreArbre) { reselectionnerArticle(fournisseur, slug); }
   majArticleOuvert(fournisseur, md);
-  // Un livre n'a qu'un PDF, celui du volume entier — jamais un par chapitre (lib/profil.js).
-  const pdf = vscode.Uri.file(profilCourant().cle === 'livre'
-    ? profils.pdfLivre(racine)
-    : path.join(racine, 'out', slug, slug + '.pdf'));
-  const modeCourant = modeApercu();
+  // Un chapitre a son PDF à lui, composé seul (lib/profil.js, apercuUnite) ; le volume
+  // entier s'ouvre par szh.apercuLivre.
+  const pdf = vscode.Uri.file(pdfApercuUnite(racine, slug));
+  const modeCourant = modeApercuUnite();
   // Un PDF à jour ne dit rien du HTML d'aperçu : on juge celui du mode courant.
   const apercuAttendu = modeCourant === 'html' ? cheminApercuHtml(racine, slug) : pdf.fsPath;
 
@@ -2202,6 +2269,12 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     }
     try { mSource = Math.max(mSource, fs.statSync(cheminMeta(racine, slug)).mtimeMs); }
     catch (e) { /* pas de fiche */ }
+    // La bibliographie d'un chapitre entre dans son PDF : un chapitre se compile seul, rien
+    // d'autre ne la relève. Une revue garde son graphe d'avant.
+    if (profilCourant().cle === 'livre') {
+      try { mSource = Math.max(mSource, fs.statSync(path.join(racine, dossierUnites(), slug, slug + '.biblio.md')).mtimeMs); }
+      catch (e) { /* pas de bibliographie */ }
+    }
     obsolete = fs.statSync(apercuAttendu).mtimeMs < mSource;
   } catch (e) { obsolete = true; }                 // aperçu ou .md illisible : on compile
 
@@ -2223,7 +2296,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
     annoncerAnalyse(slug);                         // voir compilerPuisAfficher
     try {
-      const code = await lancerBuild(racine);
+      const code = await lancerBuildUnite(racine, slug);
       if (code === null) { return; }               // tâche introuvable, déjà signalé
       if (code !== 0) {
         avertirEchecCompilation('err.build');
@@ -2310,7 +2383,7 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   // tâche introuvable ne démarre jamais, et l'annonce ne doit pas échoir au Ctrl+S suivant.
   annoncerAnalyse(slug);
   try {
-    code = await lancerBuild(fournisseur.racine);
+    code = await lancerBuildUnite(fournisseur.racine, slug);
   } finally {
     annoncerAnalyse(null);
     statut.dispose();
@@ -2324,14 +2397,11 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   // d'interaction (differer, lib/interaction.js) n'a donc rien à protéger sur ce chemin.
   if (opts && opts.sansAffichage) { return; }
   if (session.apercuCourantSlug() !== slug || !fournisseur.racine) { return; }   // article changé entre-temps
-  if (modeApercu() === 'html') {
+  if (modeApercuUnite() === 'html') {
     if (session.panneauApercuHtml()) { ouvrirApercuHtml(fournisseur, slug); }
     return;
   }
-  // Un livre n'a qu'un PDF, celui du volume entier — jamais un par chapitre.
-  const pdf = vscode.Uri.file(profilCourant().cle === 'livre'
-    ? profils.pdfLivre(fournisseur.racine)
-    : path.join(fournisseur.racine, 'out', slug, slug + '.pdf'));
+  const pdf = vscode.Uri.file(pdfApercuUnite(fournisseur.racine, slug));
   if (!fs.existsSync(pdf.fsPath)) { return; }
   await fermerApercuCourant(pdf);
   await ouvrirApercuPdf(pdf);
@@ -4057,6 +4127,20 @@ function slugDeLaTache() {
   return null;
 }
 
+// Ctrl+S sur le texte ou la fiche d'un chapitre : seul ce chapitre est recompilé, et son aperçu
+// se rafraîchit s'il est ouvert (compilerPuisAfficher). Le cockpit n'agit que sur un livre ;
+// une revue reste à la tâche que lance triggerTaskOnSave.
+// ⚠ triggerTaskOnSave (vscodium-user/settings.json) ne doit plus viser les .md d'un livre :
+//   il lancerait make all en même temps, et le Makefile n'a pas de verrou.
+function compilerChapitreEnregistre(fournisseur, chemin) {
+  const racine = fournisseur.racine;
+  if (!racine || profilCourant().cle !== 'livre') { return; }
+  if (!/(\.md|\.meta\.yaml)$/i.test(chemin)) { return; }
+  const slug = slugArticleContenant(racine, chemin);
+  if (!slug || path.dirname(chemin) !== path.join(racine, dossierUnites(), slug)) { return; }
+  relancerCompilation(fournisseur, slug);
+}
+
 // Ce que la page reçoit, dans « valeurs » comme dans le message ANALYSE. `cle` (le premier
 // article) reste pour les lecteurs qui ne connaissent pas encore `cles`.
 function etatAnalyse() {
@@ -4378,7 +4462,10 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
 let panneauVueArticles = null;
 
 function textesArticles() {
-  return Object.assign(textesNumero(), {
+  const livre = profilCourant().cle === 'livre';
+  // Un livre monte le formulaire de buch.yaml (SZH.formulaireLivre) à la place de celui du
+  // numéro ; tout le reste de la table est commun.
+  const texte = Object.assign(livre ? metadonneesHote.textesLivre() : textesNumero(), {
     // « Ouvrir l'article » et non « Ouvrir » : sur cette vue, la carte EST un article, et
     // le bouton se lit aussi bien dans la barre de titre que dans le pied. `vue.ouvrir`
     // reste « Ouvrir » pour « Traductions » et « Word en attente », où la carte est un bloc
@@ -4417,13 +4504,29 @@ function textesArticles() {
     doiCaseTip: T('art.doi.case.tip'),
     revues: { revue: T('meta.revue.revue'), zeitschrift: T('meta.revue.zeitschrift') }
   });
+  if (livre) {
+    Object.assign(texte, {
+      estLivre: true,
+      numeroSection: T('chap.numero.section'),
+      listeSection: T('chap.liste.section'),
+      ouvrir: T('chap.ouvrir'),
+      ouvrirTip: T('chap.ouvrir.tip'),
+      listeVide: T('chap.vue.rien')
+    });
+  }
+  return texte;
 }
 
 function htmlArticles(nonce) {
+  // Le formulaire du livre porte l'éditeur de personnes (responsables) : mêmes fragments que
+  // la page « Métadonnées du livre » (lib/metadonnees-hote.js, htmlMetadonneesLivre).
+  const livre = profilCourant().cle === 'livre';
   return construireHtml('articles', nonce, {
-    cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: ['_messages.js', '_numero.js'],
+    cssPartage: ['_design.css', '_liste.css', '_numero.css'].concat(livre ? ['_auteurs.css'] : []),
+    jsPartage: ['_messages.js'].concat(livre ? ['_auteurs.js'] : [], ['_numero.js']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'",
-    titre: T('art.vue.titre'), remplacements: { '__TXT__': JSON.stringify(textesArticles()) }
+    titre: T(profilCourant().cle === 'livre' ? 'chap.vue.titre' : 'art.vue.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesArticles()) }
   });
 }
 
@@ -4679,6 +4782,131 @@ function apercuArticle(meta, langue, doi, langueSeule) {
   };
 }
 
+// Le bandeau d'une unité dans le mode « Changer l'ordre » (vue ARTICLES comme vue CHAPITRES) :
+// son titre au rang à venir, et ses deux flèches. `titre` est celui de la fiche, jamais le
+// libellé numéroté — « 02 » y figure déjà.
+function bandeauOrdre(slug, index, slugs, titre) {
+  const nom = titre || slug;
+  return {
+    cle: slug,
+    // Rang à venir, et non le préfixe du dossier : c'est ce mode-ci qui va l'écrire
+    // (« Terminer »), les flèches doivent donc annoncer la même chose que le titre.
+    titre: libelleArticle(prefixeOrdre(index), slug, titre),
+    ouvrir: false,
+    actions: [],
+    constats: [],
+    taches: [],
+    // Le rang visé vient de prefixeOrdre(), la même fonction que le DOI et
+    // l'arborescence : le redire ici à la main finirait par diverger. Un bouton en
+    // bord de liste reçoit le générique en aria-label lui aussi — il n'annonce jamais
+    // un rang qui n'existe pas.
+    ordre: {
+      monter: {
+        desactive: index === 0,
+        tip: T('art.monter.tip'),
+        ariaLabel: index === 0 ? T('art.monter.tip')
+          : T('art.ordre.aria.monter', [nom, prefixeOrdre(index - 1)])
+      },
+      descendre: {
+        desactive: index === slugs.length - 1,
+        tip: T('art.descendre.tip'),
+        ariaLabel: index === slugs.length - 1 ? T('art.descendre.tip')
+          : T('art.ordre.aria.descendre', [nom, prefixeOrdre(index + 1)])
+      }
+    }
+  };
+}
+
+// L'aperçu d'une carte de chapitre : cinq lignes lues dans <slug>.meta.yaml — titre,
+// sous-titre, auteurs, résumé, et si le chapitre est hors sommaire. Ni DOI, ni type, ni
+// licence, ni mots-clés : un chapitre n'a rien de tout cela (il n'hérite de rien du livre).
+// Un livre est écrit dans une langue : les lignes bilingues se réduisent à celle du livre,
+// sauf quand la fiche ne l'a pas écrite — mieux vaut montrer ce qui existe que du vide.
+function apercuChapitre(meta, langueLivre) {
+  const langues = (map) => {
+    const m = map || {};
+    return String(m[langueLivre] || '').trim() !== '' ? [langueLivre] : LANGUES_META;
+  };
+  const ligne = (libelle, map, limite) => ligneApercuLangues(libelle, map, limite, langues(map));
+  return {
+    lignes: [
+      ligne(T('trad.champ.title'), meta.title, APERCU_COURT),
+      ligne(T('trad.champ.subtitle'), meta.subtitle, APERCU_COURT),
+      ligneApercuAuteurs(meta),
+      ligne(T('trad.champ.resume'), meta.resume, APERCU_LONG),
+      { libelle: T('chap.apercu.sommaire'),
+        valeurs: [{ marque: '', texte: T(meta.horsSommaire ? 'chap.apercu.oui' : 'chap.apercu.non') }] }
+    ].map((l) => (l.valeurs.length > 0 ? l
+      : { libelle: l.libelle, valeurs: [{ marque: '', texte: T('art.apercu.vide') }] }))
+  };
+}
+
+// La vue CHAPITRES : les mêmes cartes que la vue ARTICLES (SZH.listeCartes), sans rien de ce
+// qu'un livre n'a pas — ni DOI et ses rangs, ni tâches de revue, ni traductions, ni
+// ausgabe.yaml. L'ordre est celui d'ordre-chapitres (buch.yaml, via listerArticles), le
+// titre celui de la fiche : le .md ne le porte plus. Les trois boutons de la barre sont
+// ceux du livre entier ; le formulaire du livre est monté en tête par la page.
+function chargeChapitres(fournisseur) {
+  const racine = fournisseur.racine;
+  const langue = langueRevue(racine);
+  const interface_ = langueCockpit();
+  const vue = vueArticlesConfig(lireConfigPoste());
+  // Le mode « Changer l'ordre » de la vue ARTICLES vaut pour les chapitres : rien n'est écrit
+  // avant « Terminer », qui renomme les dossiers et écrit ordre-chapitres dans buch.yaml.
+  const enOrdre = ordreEnCours(racine);
+  const slugs = enOrdre || fournisseur.listerArticles();
+  const lignes = slugs.map((slug, index) => {
+    const meta = lireMetaArticle(racine, slug);
+    const titre = titreFiche(meta, langue);
+    if (enOrdre) { return bandeauOrdre(slug, index, slugs, titre); }
+    return {
+      cle: slug,
+      titre: libelleArticle(prefixeDossier(slug), slug, titre),
+      ouvrir: false,
+      apercu: apercuChapitre(meta, langue),
+      // La compilation d'un chapitre refuse de partir sans titre : la carte le dit.
+      constats: titre === '' ? [{ ton: 'danger', texte: T('art.sansfiche') }] : [],
+      actions: [
+        { id: 'metadonnees', libelle: T('art.meta.editer'), icone: 'info',
+          tip: T('art.meta.editer.tip') },
+        { id: 'medias', libelle: T('art.medias.editer'), icone: 'camera',
+          tip: T('art.medias.editer.tip') },
+        { id: 'ouvrir', libelle: T('chap.ouvrir'), icone: 'fleche', tip: T('chap.ouvrir.tip') }
+      ],
+      taches: []
+    };
+  });
+  return {
+    titre: T('chap.vue.titre'),
+    livre: true,
+    boutons: (enOrdre ? [
+      // Dans le mode, la barre ne propose plus que d'en sortir, comme la vue ARTICLES.
+      { id: 'ordre-terminer', groupe: 'action', libelle: T('art.ordre.terminer'), icone: 'ok',
+        principal: true, tip: T('art.ordre.terminer.tip') },
+      { id: 'ordre-annuler', groupe: 'action', libelle: T('art.ordre.annuler'), icone: 'fermer',
+        tip: T('art.ordre.annuler.tip') }
+    ] : [
+      // Seul interrupteur qui garde un sens pour un livre : replier l'aperçu des cartes.
+      { id: 'cacher-meta', groupe: 'filtre', actif: !vue.cacherMeta,
+        icone: vue.cacherMeta ? 'oeil-ferme' : 'oeil',
+        libelle: T('art.meta.bouton'),
+        tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') },
+      // Les trois gestes du livre entier. Le clic sur un chapitre, lui, ne compile que lui.
+      { id: 'livre-compiler', groupe: 'action', libelle: T('chap.bouton.compiler'), icone: 'ok',
+        principal: true, tip: T('chap.bouton.compiler.tip') },
+      { id: 'livre-pdf', groupe: 'action', libelle: T('chap.bouton.pdf'), icone: 'fleche',
+        tip: T('chap.bouton.pdf.tip') },
+      { id: 'livre-couverture', groupe: 'action', libelle: T('chap.bouton.couverture'),
+        icone: 'camera', tip: T('chap.bouton.couverture.tip') },
+      { id: 'ordre', groupe: 'action', libelle: T('art.ordre.mode'), icone: 'liste',
+        tip: T('art.ordre.mode.tip') }
+    ]),
+    ordre: !!enOrdre,
+    metaRepliees: vue.cacherMeta,
+    lignes: lignes
+  };
+}
+
 // Une carte par article, dans l'ordre du numéro : son nom, son slug, l'aperçu complet de
 // ses métadonnées, ses tâches cochables, et ce qui lui manque. Tout se lit sans rien
 // ouvrir ; les boutons du pied mènent aux formulaires qui écrivent, et sont les seuls à
@@ -4749,37 +4977,7 @@ function chargeArticles(fournisseur) {
     // constats : ce que la webview ne reçoit pas ne peut pas réapparaître par accident
     // (media/articles.js, decorerBandeauOrdre). Le nom qui nomme la destination des deux
     // flèches est le titre de la fiche, jamais le libellé numéroté — « 02 » y figure déjà.
-    if (enOrdre) {
-      const nom = titre || slug;
-      return {
-        cle: slug,
-        // Rang à venir, et non le préfixe du dossier : c'est ce mode-ci qui va l'écrire
-        // (« Terminer »), les flèches doivent donc annoncer la même chose que le titre.
-        titre: libelleArticle(prefixeOrdre(index), slug, titre),
-        ouvrir: false,
-        actions: [],
-        constats: [],
-        taches: [],
-        // Le rang visé vient de prefixeOrdre(), la même fonction que le DOI et
-        // l'arborescence : le redire ici à la main finirait par diverger. Un bouton en
-        // bord de liste reçoit le générique en aria-label lui aussi — il n'annonce jamais
-        // un rang qui n'existe pas.
-        ordre: {
-          monter: {
-            desactive: index === 0,
-            tip: T('art.monter.tip'),
-            ariaLabel: index === 0 ? T('art.monter.tip')
-              : T('art.ordre.aria.monter', [nom, prefixeOrdre(index - 1)])
-          },
-          descendre: {
-            desactive: index === slugs.length - 1,
-            tip: T('art.descendre.tip'),
-            ariaLabel: index === slugs.length - 1 ? T('art.descendre.tip')
-              : T('art.ordre.aria.descendre', [nom, prefixeOrdre(index + 1)])
-          }
-        }
-      };
-    }
+    if (enOrdre) { return bandeauOrdre(slug, index, slugs, titre); }
     const faites = lireTachesArticle(racine, slug).faites;
     const avance = resumeTaches(taches, faites);
     const images = resumeImagesArticle(fournisseur, slug);
@@ -4928,6 +5126,11 @@ const TYPES_ACTION_ARTICLE = [MSG.COMMANDE, MSG.TACHE, MSG.SANSDOI, MSG.ACTION];
 async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
+    // Les trois gestes du livre entier (vue CHAPITRES). Compiler recompose TOUT le livre ;
+    // c'est ici, et par l'aperçu du livre, qu'il se fait — plus au clic d'un chapitre.
+    if (msg.id === 'livre-compiler') { await compilerLivre(fournisseur); return null; }
+    if (msg.id === 'livre-pdf') { await vscode.commands.executeCommand('szh.apercuLivre'); return null; }
+    if (msg.id === 'livre-couverture') { await vscode.commands.executeCommand('szh.livreCouverture'); return null; }
     if (msg.id === 'verif-meta') { await imprimerFeuilleVerifTous(fournisseur); return null; }
     // Les quatre interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
@@ -5092,10 +5295,16 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   // la vue Métadonnées. Les rafraîchissements en
   // tâche de fond passent par envoyerVue, pas par ici : ils ne ferment rien.
   await fermerTousLesApercus();
+  // Un livre montre ses chapitres et le formulaire de buch.yaml, sans couverture-image ni DOI
+  // (chargeChapitres) ; une revue, ses articles et le formulaire du numéro.
+  const livre = profilCourant().cle === 'livre';
   const envoyer = (panneau, avecCouverture) => {
-    const charge = chargeArticles(fournisseur);
+    const charge = livre ? chargeChapitres(fournisseur) : chargeArticles(fournisseur);
     repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge,
-      chargeNumero(racine, avecCouverture), { accent: lireCouleurAccent(racine) }));
+      livre ? metadonneesHote.chargeLivre(racine) : chargeNumero(racine, avecCouverture),
+      { accent: lireCouleurAccent(racine) }));
+    // L'autocomplétion des responsables du livre, comme sur la page « Métadonnées du livre ».
+    if (livre) { envoyerAuteursConnus(panneau, racine); }
     panneau.title = charge.titre;
     noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
@@ -5105,7 +5314,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
-    'szhVueArticles', T('art.vue.titre'), vscode.ViewColumn.One,
+    'szhVueArticles', T(livre ? 'chap.vue.titre' : 'art.vue.titre'), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauVueArticles = panneau;
@@ -5123,8 +5332,11 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     // numéro », et il répond lui-même au panneau. Aucun bail n'est posé à l'ouverture de
     // cette vue — elle se consulte, et geler ausgabe.yaml pour une consultation bloquerait
     // les autres ; il se prend à la première écriture, dans messageNumero.
-    if (messageNumero(panneau, racine, msg, rafraichirTout,
-      () => envoyer(panneau, false))) { return; }
+    const recharger = () => envoyer(panneau, false);
+    // messageLivre rend une promesse pour le dépôt de l'illustration et le bouton « 4e de
+    // couverture » : on l'attend, comme le fait la page « Métadonnées du livre ».
+    if (livre ? await metadonneesHote.messageLivre(panneau, racine, msg, rafraichirTout, recharger)
+      : messageNumero(panneau, racine, msg, rafraichirTout, recharger)) { return; }
     if (msg.type === MSG.OUVRIR) {
       // Par la commande, pour rester sur le point d'entrée unique. sansApercu : depuis la
       // vue d'ensemble, on vient lire ou corriger le texte, pas mettre en page ; seul le
@@ -7274,7 +7486,8 @@ function activate(context) {
       const categorie = e.element.categorie;
       if (fournisseur.definirSectionDeployee(categorie)) {
         fournisseur.rafraichir();
-        if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
+        const vueSection = vueDeSection(categorie);
+        if (vueSection) { vscode.commands.executeCommand(vueSection); }
       }
     }),
     vue.onDidCollapseElement((e) => {
@@ -7535,6 +7748,8 @@ function activate(context) {
     vscode.commands.registerCommand('szh.vueTraductions',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
+    // Même page que ARTICLES, en variante livre (ouvrirVueArticles décide par le profil).
+    cmd('szh.vueChapitres', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
     cmd('szh.envoyerAuteur', (item) => envoyerAuteur(fournisseur, item)),
     // Rien n'est écrit : `cmd`, pas `cmdEcriture`, et pas de garde szh.verrouillee dans le
     // `when` du menu (package.json) — voir voirPdfArticle ci-dessus. C'est aussi la
@@ -7619,7 +7834,8 @@ function activate(context) {
       // La promesse est rendue : sans cela, un appelant qui attend szh.ouvrirSection
       // reprendrait la main avant que le formulaire ne soit ouvert.
       if (categorie === 'actualite') { return vscode.commands.executeCommand('szh.documentation'); }
-      if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
+      const vueSection = vueDeSection(categorie);
+      if (vueSection) { vscode.commands.executeCommand(vueSection); }
     }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     // Le Word corrigé d'un article déjà publié, et le retour en arrière. Les deux
@@ -7645,7 +7861,9 @@ function activate(context) {
     // L'article d'un Ctrl+S, retenu pour le voile de « À corriger » : la tâche que
     // triggerTaskOnSave lance juste après ne dit pas ce qu'elle recompile.
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (doc && doc.uri && doc.uri.fsPath) { retenirEnregistrement(fournisseur, doc.uri.fsPath); }
+      if (!doc || !doc.uri || !doc.uri.fsPath) { return; }
+      retenirEnregistrement(fournisseur, doc.uri.fsPath);
+      compilerChapitreEnregistre(fournisseur, doc.uri.fsPath);
     }),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.
@@ -7909,7 +8127,7 @@ module.exports = {
     analyserTraduction, serialiserTraduction, lignesTraduction, resumeTraduction,
     versionsDivergent, poidsLisible, construireLienTraduction,
     brouillonTraduction, uriMailto, brouillonAuteur, adressesAuteurs,
-    ordonnerArticles, deplacerArticle, prefixeOrdre, libelleArticle, titreFiche,
+    ordonnerArticles, deplacerArticle, prefixeOrdre, libelleArticle, titreFiche, chargeChapitres,
     tachesRevue, tachesConfig, configAvecTaches, libelleTache, resumeTaches, basculerTache,
     analyserTachesFaites, serialiserTachesFaites, nomCouverture,
     texteChamp, valeurChamp,

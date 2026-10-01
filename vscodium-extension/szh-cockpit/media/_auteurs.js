@@ -16,6 +16,8 @@
 //   surSaisie    surSaisie(ctx) : la première frappe dans la modale, pour que la page
 //                sache qu'elle porte du non-enregistré
 //   surApercu    surApercu(uri, nom) : agrandir la photo, là où la vue sait le faire
+//   sansPhoto    vrai : la modale n'offre pas la photo (formulaire du livre, dont les
+//                personnes n'ont pas de portrait) ; absent, rien ne change
 // }
 //
 // ctx = { slug, index, auteur, apercu, element, surRetirer } — `apercu` est la vignette en
@@ -73,6 +75,7 @@
     var persister = opts.persister || function (ctx, auteur, fini) { fini(null); };
     var surSaisie = opts.surSaisie || function () {};
     var surApercu = opts.surApercu || null;
+    var sansPhoto = !!opts.sansPhoto;
 
     var modale = null;      // les champs et boutons, construits une fois, remplis à chaque ouverture
     var modaleCtl = null;   // le contrôleur SZH.modale (voile, clic à côté, Échap, retour du focus)
@@ -477,7 +480,7 @@
         })(CHAMPS_CHERCHES[s]);
       }
 
-      texte(boite, 'p', 'szh-section', TXT.auteurPhoto || '');
+      var titrePhoto = texte(boite, 'p', 'szh-section', TXT.auteurPhoto || '');
       var zone = texte(boite, 'div', 'szh-depot');
       texte(zone, 'div', null, TXT.photoDeposer || '');
       texte(zone, 'div', 'ou', TXT.photoOu || '');
@@ -523,6 +526,12 @@
       img.alt = '';
       cadre.appendChild(img);
       var note = texte(boite, 'p', 'note-modale');
+      if (sansPhoto) {
+        titrePhoto.hidden = true;
+        zone.hidden = true;
+        radios.hidden = true;
+        cadre.hidden = true;
+      }
 
       var boutons = texte(boite, 'div', 'boutons-modale');
       var enregistrer = document.createElement('button');
@@ -571,7 +580,7 @@
       modaleCtl.ouvrir();
       // La photo déjà retenue : l'hôte dit quelles versions existent, et laquelle sert.
       var a = contexte.auteur || {};
-      if (String(a.photo || '') !== '') {
+      if (!sansPhoto && String(a.photo || '') !== '') {
         poserNote(TXT.chargement);
         api.postMessage({ type: SZH.MSG.PHOTO_OUVRIR, slug: ctx.slug, index: ctx.index, photo: a.photo });
       }

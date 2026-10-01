@@ -37,7 +37,7 @@
    le coin du MediaBox, soit 3 mm de décalage qui ont déjà fait « corriger » ce qui était
    bon. */
 .szh-onglet {
-  width: calc(var(--onglet-largeur) + var(--fond-perdu));
+  width: calc(var(--onglet-largeur, 0mm) + var(--fond-perdu));
   margin-left: calc(-1 * var(--fond-perdu));
   margin-right: calc(-1 * var(--fond-perdu));
 }
@@ -55,6 +55,6 @@ a, a:link, a:visited { color: inherit; text-decoration: none; }
 /* Le repère du sommaire déborde comme la marque de chapitre : même largeur visible, plus le
    fond perdu. Le sommaire tombe toujours sur un recto (base.css), le repère est à droite. */
 .szh-sommaire li::after {
-  width: calc(var(--onglet-largeur) + var(--fond-perdu));
+  width: calc(var(--onglet-largeur, 0mm) + var(--fond-perdu));
   right: calc(-1 * (var(--marge-ext) + var(--fond-perdu)));
 }
