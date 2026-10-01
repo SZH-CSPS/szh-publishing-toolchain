@@ -11,6 +11,23 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.1.0
+
+Medium : rien ne change à l'écran ni dans les PDF, mais le poste se prépare à passer un jour
+sous Linux. Release lourde : l'en-tête d'un patch WeasyPrint a changé, l'image WSL est
+reconstruite (contenu identique).
+
+- Les chemins propres à Windows vivent dans `lib/poste.js`, et tous les lancements de la WSL
+  passent par `lib/moteur.js` (étape 1 de `docs/MULTIPLATEFORME.md`). Commandes inchangées
+  à l'octet, figées par un test.
+- Les compteurs d'usage n'ont plus qu'un écrivain, le cockpit : `szh-compteurs.ps1` disparaît
+  (≈ 350 lignes de PowerShell). Sans VSCodium, un compteur du nettoyeur est perdu.
+- Le cockpit accepte les liens `vscodium://szh-csps.szh-cockpit/…` à côté de `szh://` ; un
+  lien refusé le dit. Rien n'émet encore ces liens.
+- Documentation : les architectures envisagées au-delà du poste (navigateur, serveur,
+  options A à F) dans `docs/MULTIPLATEFORME.md`.
+- Cockpit 0.73.0.
+
 ## 3.0.0
 
 Majeure : un numéro ou un livre déjà compilé ressort différent (appels de note, point médian

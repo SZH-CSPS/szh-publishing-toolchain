@@ -15,6 +15,24 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.1": {
+    "fr": {
+      "titre": "Pronto se prépare pour l’avenir",
+      "points": [
+        "Rien ne change dans votre travail : cette version prépare Pronto à fonctionner un jour sur d’autres systèmes que Windows.",
+        "Si un lien Pronto ne peut pas s’ouvrir, un message vous le dit désormais au lieu de ne rien faire.",
+        "Les compteurs d’usage du nettoyeur sont écrits par le cockpit, toujours sans aucun texte, titre ni nom."
+      ]
+    },
+    "de": {
+      "titre": "Pronto bereitet sich auf die Zukunft vor",
+      "points": [
+        "An Ihrer Arbeit ändert sich nichts: Diese Version bereitet Pronto darauf vor, eines Tages auch auf anderen Systemen als Windows zu laufen.",
+        "Wenn sich ein Pronto-Link nicht öffnen lässt, sagt Ihnen jetzt eine Meldung Bescheid, statt dass nichts passiert.",
+        "Die Nutzungszähler des Bereinigers werden vom Cockpit geschrieben, weiterhin ohne Text, Titel oder Namen."
+      ]
+    }
+  },
   "3.0": {
     "fr": {
       "titre": "Des livres complets, des PDF plus accessibles",

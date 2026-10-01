@@ -175,7 +175,8 @@ jobs:
             NEED=true; echo "force_rootfs demandé"
           elif [ ! -s prev-manifest.json ]; then
             NEED=true; echo "pas de manifest précédent (1re release nouveau format)"
-          elif ! git diff --quiet "${{ steps.prev.outputs.tag }}"..HEAD -- image/; then
+          elif ! git diff --quiet "${{ steps.prev.outputs.tag }}"..HEAD -- image/ ':(exclude)image/patches/amont'; then
+            # image/patches/amont/ (rapports et démos des patchs) n'entre pas dans l'image.
             NEED=true; echo "image/ a changé depuis ${{ steps.prev.outputs.tag }}"
           else
             echo "image/ inchangé -> réutilisation du rootfs de ${{ steps.prev.outputs.tag }}"
