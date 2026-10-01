@@ -6,7 +6,8 @@
 # jamais ici : import-docx.sh (et le nettoyeur) le convertissent d'abord en .docx.
 #
 #   python3 pronto-lire.py <fichier.docx> <slug> <dossier-article>
-#   python3 pronto-lire.py --reconnaitre <fichier.docx>   -> 0 = au gabarit, 1 = non
+#   python3 pronto-lire.py --reconnaitre <fichier.docx>   -> 0 = au gabarit, 10 = non,
+#                                                            tout autre code = panne
 #
 # Reprend EXACTEMENT le contrat de sortie de l'ancien pipeline/docx-pronto.py (git log), lui
 # -même écrit pour remplacer un jour pipeline/docx-meta.py : même <dossier-article>/<slug>.
@@ -50,14 +51,19 @@ VARIANTES = {
 }
 
 
+PAS_AU_GABARIT = 10
+
+
 def reconnaitre(chemin):
-    """Mode `--reconnaitre` : sort 0 si ce document est au gabarit Pronto, 1 sinon. C'est
-    pipeline/import-docx.sh qui pose la question, une fois par document déposé, pour choisir
-    entre ce lecteur et l'ancien docx-meta.py. N'écrit rien, ne juge pas le contenu : la
-    seule question est « ce fichier vient-il du gabarit ? »."""
+    """Mode `--reconnaitre` : sort 0 si ce document est au gabarit Pronto, PAS_AU_GABARIT
+    (10) sinon. Tout autre code est une panne (un plantage Python sort en 1), que le shell
+    signale au lieu de la prendre pour un « non ». C'est pipeline/import-docx.sh qui pose la
+    question, une fois par document déposé, pour choisir entre ce lecteur et l'ancien
+    docx-meta.py. N'écrit rien, ne juge pas le contenu : la seule question est « ce fichier
+    vient-il du gabarit ? » ; un fichier illisible n'en vient pas (est_pronto rend Faux)."""
     ext = os.path.splitext(chemin)[1].lower()
     reconnaisseur = RECONNAISSEURS.get(ext)
-    return 0 if reconnaisseur is not None and reconnaisseur(chemin) else 1
+    return 0 if reconnaisseur is not None and reconnaisseur(chemin) else PAS_AU_GABARIT
 
 
 def principal(argv):

@@ -168,13 +168,26 @@ export SZH_PHOTOS="$PHOTOS"
 # Le partage se fait sur la DÉCLARATION des styles du gabarit dans le document (mode
 # `--reconnaitre`), jamais sur un réglage de poste : la rédaction reçoit les deux sortes de
 # documents, souvent le même jour, et personne n'a à basculer quoi que ce soit.
-if python3 "$PIPE/pronto-lire.py" --reconnaitre "$DOCX_ABS" 2>/dev/null; then
-  LECTEUR="$PIPE/pronto-lire.py"
-  NOM_LECTEUR=pronto
-else
-  LECTEUR="$PIPE/docx-meta.py"
-  NOM_LECTEUR=herite
-fi
+# Trois réponses : 0 = au gabarit, 10 = pas au gabarit, tout autre code = panne du
+# reconnaisseur. Une panne n'est pas un « non » : le document repart chez le lecteur qui
+# devine, mais c'est dit au journal avec ce que le reconnaisseur a écrit.
+RECO_ERR="$(python3 "$PIPE/pronto-lire.py" --reconnaitre "$DOCX_ABS" 2>&1)"
+RECO_RC=$?
+case "$RECO_RC" in
+  0)
+    LECTEUR="$PIPE/pronto-lire.py"
+    NOM_LECTEUR=pronto
+    ;;
+  10)
+    LECTEUR="$PIPE/docx-meta.py"
+    NOM_LECTEUR=herite
+    ;;
+  *)
+    LECTEUR="$PIPE/docx-meta.py"
+    NOM_LECTEUR=herite
+    signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: la reconnaissance du gabarit «${NB}Pronto${NB}» est tombée en panne (code $RECO_RC)${NB}; le document est lu comme un Word hérité, ses champs sont à vérifier dans «${NB}Métadonnées des articles${NB}». Signalez-le à la maintenance. [de] «$SLUG»: die Erkennung der Vorlage «Pronto» ist ausgefallen (Code $RECO_RC); das Dokument wird wie ein älteres Word-Dokument gelesen, seine Felder sind unter «Metadaten der Artikel» zu prüfen. Melden Sie dies der Wartung. ${RECO_ERR:+[$(printf '%s' "$RECO_ERR" | tail -n 1)]}"
+    ;;
+esac
 
 if ! STATS="$(python3 "$LECTEUR" "$DOCX_ABS" "$SLUG" .)"; then
   # Le lecteur du gabarit a deux façons d'échouer, et elles ne se disent pas pareil : une clé

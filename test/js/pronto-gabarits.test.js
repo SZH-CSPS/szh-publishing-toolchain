@@ -392,9 +392,13 @@ test('pronto-lire.py : un .odt passé directement est refusé, avec un message f
 
 const CHAPITRE_HERITE = path.join(RACINE, 'livre-template', 'Modele-chapitre-SZH.docx');
 
+// Codes de --reconnaitre : 0 = au gabarit, 10 = pas au gabarit, tout autre = panne (le shell
+// la signale au lieu de la prendre pour un « non »).
+const PAS_AU_GABARIT = 10;
+
 function reconnait(chemin) {
   const r = python([PRONTO_LIRE, '--reconnaitre', chemin]);
-  assert.ok(r.status === 0 || r.status === 1,
+  assert.ok(r.status === 0 || r.status === PAS_AU_GABARIT,
     '--reconnaitre a échoué de façon inattendue (code ' + r.status + ') : ' + r.stderr);
   return r.status === 0;
 }
@@ -421,13 +425,14 @@ test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un
 test('pronto-lire.py --reconnaitre : un fichier absent ou illisible n’est jamais « au gabarit »', () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
   // Un document qu'on ne sait pas ouvrir doit partir chez l'ancien lecteur, dont le message
-  // d'échec dit mieux que nous ce qui ne va pas.
-  assert.strictEqual(reconnait(path.join(RACINE, 'nulle-part-du-tout.docx')), false);
+  // d'échec dit mieux que nous ce qui ne va pas : « pas au gabarit » (10), jamais une panne.
+  assert.strictEqual(python([PRONTO_LIRE, '--reconnaitre',
+    path.join(RACINE, 'nulle-part-du-tout.docx')]).status, PAS_AU_GABARIT);
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pronto-'));
   try {
     const bidon = path.join(base, 'pas-un-zip.docx');
     fs.writeFileSync(bidon, 'ceci n’est pas une archive', 'utf8');
-    assert.strictEqual(reconnait(bidon), false);
+    assert.strictEqual(python([PRONTO_LIRE, '--reconnaitre', bidon]).status, PAS_AU_GABARIT);
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
