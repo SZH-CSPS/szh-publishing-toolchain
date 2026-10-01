@@ -550,8 +550,11 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
-# HTML -> PDF (CSS Paged Media), balisé PDF/UA-1. WeasyPrint 69 : --pdf-variant
-# pdf/ua-1 pose /StructTreeRoot, /MarkInfo /Marked true, /Lang et les StructElem.
+# HTML -> PDF (CSS Paged Media), balisé PDF/UA-1 : la seule cascade WeasyPrint du dépôt,
+# appelée par le PDF d'un article et, dans profils/livre.mk, par le PDF numérique du livre,
+# le PDF imprimeur, la couverture numérique et le chapitre seul. WeasyPrint 69 :
+# --pdf-variant pdf/ua-1 pose /StructTreeRoot, /MarkInfo /Marked true, /Lang et les
+# StructElem.
 # Repli automatique si la variante stricte échoue (--pdf-tags, puis PDF nu) : le
 # balisage ne doit pas faire échouer le build — un rédacteur doit pouvoir sortir
 # l'épreuve d'un article imparfait. La porte dure est ailleurs : `make verifier-ua`,
@@ -559,13 +562,56 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 # Plus de `2>/dev/null` : la sortie d'erreur de WeasyPrint (image sans description,
 # propriété CSS ignorée, police manquante) est le seul endroit où ces défauts se
 # disent. Les envoyer au néant, c'était les rendre invisibles.
-# Elle passe par un journal puis par sed : --embed-resources ayant remplacé les chemins
-# d'image par des data: URI, WeasyPrint nomme l'image fautive par 10 ko de base64. On en
-# garde 16 caractères — assez pour distinguer deux images, assez peu pour rester lisible.
+# Elle passe par un journal puis par ABREGER_BASE64 : --embed-resources ayant remplacé les
+# chemins d'image par des data: URI, WeasyPrint nomme l'image fautive par 10 ko de base64.
+# On en garde 16 caractères — assez pour distinguer deux images, assez peu pour rester
+# lisible.
 # Temporaire « ~$… » dans le même dossier : rename local, ignoré par la synchro
-# OneDrive, donc pas de PDF partiel.
+# OneDrive, donc pas de PDF partiel. Un rename refusé est presque toujours un PDF ouvert
+# côté Windows : le constat pdf-verrouille le dit au cockpit.
 # Quotes simples : $0 et $notdir ne doivent pas être substitués par make.
 #
+# $(1) étiquette des messages, `pipeline` ou `livre` : elle choisit aussi l'affichage du
+#      journal (weasy_journal_<étiquette>, weasy_echec_<étiquette>). La revue le rend tel
+#      quel sur la sortie d'erreur, où le cockpit lit les « WARNING: » de WeasyPrint ; le
+#      livre en montre vingt lignes préfixées et garde le fichier (profils/livre.mk) ;
+#   $(2) options de WeasyPrint placées en tête (la feuille de folio d'un article) ;
+#   $(3) chemin du journal.
+# La recette qui l'appelle le place en fin de ligne continuée, après ses propres
+# affectations.
+ABREGER_BASE64 := sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g'
+
+define weasy_ua
+tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(3)'; \
+: > "$$jrnl"; \
+if $(WEASYPRINT) $(2) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+elif $(WEASYPRINT) $(2) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+  echo "[$(1)] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
+else \
+  echo "[$(1)] balisage PDF indisponible -> PDF non balisé : $@"; \
+  $(WEASYPRINT) $(2) $< "$$tmp" 2>>"$$jrnl" || { \
+    echo "[$(1)] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
+    $(weasy_echec_$(1)) \
+    exit 1; }; \
+fi; \
+$(weasy_journal_$(1)) \
+mv -f "$$tmp" "$@" || { \
+  rm -f "$$tmp"; \
+  echo "[pipeline-blocage] pdf-verrouille | fichier « $@ » | Le PDF est ouvert dans une autre application. | [de] Das PDF ist in einer anderen Anwendung geöffnet."; \
+  exit 1; }
+endef
+
+define weasy_echec_pipeline
+$(ABREGER_BASE64) "$$jrnl" >&2; \
+echo "[pipeline]   Journal conservé : $$jrnl"; \
+echo "[pipeline] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Protokoll: $$jrnl";
+endef
+
+define weasy_journal_pipeline
+$(ABREGER_BASE64) "$$jrnl" >&2; \
+rm -f "$$jrnl";
+endef
+
 # Folio de départ de l'article dans le numéro : out/<slug>/.szh-folio.css, une ligne
 # `@page :first { counter-reset: page N; }` écrite par pipeline/pagination.py et passée à
 # WeasyPrint en feuille UTILISATEUR (-s). Trois raisons à cette forme :
@@ -596,26 +642,7 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 $(OUT)/%.pdf: $(OUT)/%.html $$(wildcard $(OUT)/$$(dir $$*).szh-folio.css) | $(FOLIOS)
 	@folio='$(dir $@).szh-folio.css'; sfolio=""; \
 	if [ -f "$$folio" ]; then sfolio="-s $$folio"; fi; \
-	tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
-	: > "$$jrnl"; \
-	if $(WEASYPRINT) $$sfolio --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) $$sfolio --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[pipeline] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
-	else \
-	  echo "[pipeline] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $$sfolio $< "$$tmp" 2>>"$$jrnl" || { \
-	    echo "[pipeline] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
-	    sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
-	    echo "[pipeline]   Journal conservé : $$jrnl"; \
-	    echo "[pipeline] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Protokoll: $$jrnl"; \
-	    exit 1; }; \
-	fi; \
-	sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
-	rm -f "$$jrnl"; \
-	mv -f "$$tmp" $@ || { \
-	  rm -f "$$tmp"; \
-	  echo "[pipeline-blocage] pdf-verrouille | fichier « $@ » | Le PDF est ouvert dans une autre application. | [de] Das PDF ist in einer anderen Anwendung geöffnet."; \
-	  exit 1; }
+	$(call weasy_ua,pipeline,$$sfolio,$(dir $@)~weasyprint.err)
 
 # Rafraîchir la pagination continue du numéro : compiler ce qui manque, relire le nombre de
 # pages de chaque PDF, recalculer les folios de départ, puis ne recompiler que les articles

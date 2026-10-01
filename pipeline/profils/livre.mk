@@ -104,8 +104,7 @@ ORDRE_CHAPITRES_FICHIER := $(OUT)/.szh-ordre-chapitres
 $(shell mkdir -p "$(OUT)" 2>/dev/null; printf '%s\n' $(CHAPITRES) | cmp -s - "$(ORDRE_CHAPITRES_FICHIER)" 2>/dev/null || printf '%s\n' $(CHAPITRES) > "$(ORDRE_CHAPITRES_FICHIER)")
 
 # Chapitres retirés de la table des matières : clé `sommaire: non` (ou `false`) du
-# <slug>.meta.yaml, lue ligne à ligne comme `maquette:` plus haut — l'image WSL n'a pas
-# PyYAML. Le motif ne retient que les lettres qui suivent le « : », donc « sommaire:
+# <slug>.meta.yaml, lue ligne à ligne au sed — l'image WSL n'a pas PyYAML. Le motif ne retient que les lettres qui suivent le « : », donc « sommaire:
 # "non"  # provisoire » vaut « non » comme une ligne nue ; un chapitre sans meta.yaml, ou
 # dont le meta.yaml ne porte pas cette clé, reste au sommaire (défaut : présent).
 # ⚠ Un chapitre retiré du sommaire compile quand même, à sa place : il garde son rang dans
@@ -192,13 +191,12 @@ LIVRE_EPUB_META := $(OUT)/$(NOM_LIVRE)-epub.yaml
 LIVRE_EPUB      := $(OUT)/$(NOM_LIVRE).epub
 
 # --------------------------------------------------------------------------------------
-# Maquette : deux chartes, une seule feuille de plus. `maquette:` de buch.yaml, lue par sed
-# comme le fait déjà le Makefile pour `profil:` — l'image WSL n'a pas PyYAML.
+# Maquette : deux chartes, une seule feuille de plus. `maquette:` de buch.yaml, lue par
+# szh-lire-config.lua comme `profil:` dans le Makefile — l'image WSL n'a pas PyYAML.
 # Une valeur inconnue tombe sur « normal » après l'avoir dit : un livre composé dans la
 # mauvaise charte sans un mot est pire qu'un livre qui refuse de sortir.
 # --------------------------------------------------------------------------------------
-MAQUETTE_LUE := $(strip $(shell sed -n "s/^maquette:[[:space:]]*[\"']*\([a-zA-Z-]*\).*/\1/p" \
-                          $(CONFIG_LIVRE) 2>/dev/null | head -1))
+MAQUETTE_LUE := $(strip $(shell $(PANDOC) lua $(LIRE_CONFIG) $(CONFIG_LIVRE) maquette 2>/dev/null))
 MAQUETTE     := $(if $(MAQUETTE_LUE),$(MAQUETTE_LUE),normal)
 
 # ⚠ Le lecteur pandoc dépend de la maquette, et c'est le seul endroit où c'est vrai.
@@ -289,6 +287,9 @@ GABARIT_LIVRE     := $(PIPELINE_DIR)/templates/szh-livre.html
 GABARIT_CHAPITRE  := $(PIPELINE_DIR)/templates/szh-livre-chapitre.html
 GABARIT_LIMINAIRE := $(PIPELINE_DIR)/templates/szh-livre-liminaire.html
 ASSEMBLEUR        := $(PIPELINE_DIR)/livre-assembler.py
+# L'appel de l'assembleur, commun aux cinq assemblages ; chaque recette ajoute sa sortie,
+# ses feuilles et ses fragments.
+ASSEMBLER          = python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --gabarit "$(GABARIT_LIVRE)"
 
 # Feuilles empilées, dans l'ordre : socle (polices, jetons), base (géométrie), charte,
 # partage-filtres (balisage des filtres communs à la revue et au livre — voir
@@ -454,6 +455,26 @@ verifie-livre:
 # ⚠ Une règle à motif n'accepte qu'un seul « % » par prérequis : `chapitres/%/%.md` est
 #   refusé par make. C'est `.SECONDEXPANSION` (posé par le Makefile principal) qui permet
 #   d'écrire `$$*` deux fois — même dispositif que la règle des articles.
+#
+# Le contexte d'un chapitre, commun au fragment, à sa variante EPUB, à son aperçu et au
+# chapitre seul : rang, couleur, case de l'index à pouce et fiche, calculés depuis $$slug,
+# que la recette pose avant.
+define contexte_chapitre
+rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
+index=$$(( (rang - 1) % 6 + 1 )); \
+couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
+  onglet_meta="--metadata hors-sommaire=1"; \
+else \
+  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
+  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
+  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
+  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
+fi; \
+meta=""; \
+if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi;
+endef
+
 $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHAPITRE) $(FILTRES) \
                               $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
                               $$(wildcard $(CH_DIR)/$$*/media/*) \
@@ -462,19 +483,7 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
                               $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
-	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
-	index=$$(( (rang - 1) % 6 + 1 )); \
-	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
-	  onglet_meta="--metadata hors-sommaire=1"; \
-	else \
-	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
-	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
-	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
-	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
-	fi; \
-	meta=""; \
-	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	$(contexte_chapitre) \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/$$rang.txt" \
@@ -504,19 +513,7 @@ $(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARI
                               $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
-	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
-	index=$$(( (rang - 1) % 6 + 1 )); \
-	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
-	  onglet_meta="--metadata hors-sommaire=1"; \
-	else \
-	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
-	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
-	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
-	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
-	fi; \
-	meta=""; \
-	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	$(contexte_chapitre) \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, variante EPUB)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/epub/$$rang.txt" \
@@ -556,19 +553,7 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
                               $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$*"; \
-	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
-	index=$$(( (rang - 1) % 6 + 1 )); \
-	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
-	  onglet_meta="--metadata hors-sommaire=1"; \
-	else \
-	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
-	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
-	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
-	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
-	fi; \
-	meta=""; \
-	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	$(contexte_chapitre) \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, aperçu sourcepos)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_APERCU=1 SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/apercu/$$rang.txt" \
@@ -647,19 +632,7 @@ $(CHAPITRE_FRAG_SEUL): $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).md $(CONFIG_LIVRE) $(GA
                        $(SOMMAIRE_CHAPITRES_FICHIER)
 	@mkdir -p "$(dir $@)"
 	@slug="$(CHAPITRE)"; \
-	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
-	index=$$(( (rang - 1) % 6 + 1 )); \
-	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
-	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
-	  onglet_meta="--metadata hors-sommaire=1"; \
-	else \
-	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
-	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
-	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
-	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
-	fi; \
-	meta=""; \
-	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	$(contexte_chapitre) \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, seul)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/$$rang.txt" \
@@ -680,9 +653,7 @@ $(CHAPITRE_FRAG_SEUL): $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).md $(CONFIG_LIVRE) $(GA
 $(CHAPITRE_HTML_SEUL): $(CHAPITRE_FRAG_SEUL) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                        $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(ACCENT_CSS)
 	@mkdir -p "$(dir $@)"
-	@python3 "$(ASSEMBLEUR)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --gabarit "$(GABARIT_LIVRE)" \
+	@$(ASSEMBLER) \
 	  --sortie "$@" \
 	  --out "$(OUT)" \
 	  --sans-liminaires \
@@ -691,24 +662,7 @@ $(CHAPITRE_HTML_SEUL): $(CHAPITRE_FRAG_SEUL) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GAB
 
 # Même cascade de repli que le PDF du livre (PDF/UA-1, puis balisé simple, puis brut).
 $(CHAPITRE_PDF): $(CHAPITRE_HTML_SEUL)
-	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
-	: > "$$jrnl"; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
-	else \
-	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
-	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
-	    tail -12 "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	    echo "[livre]   Journal complet : $$jrnl"; \
-	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
-	    exit 1; }; \
-	fi; \
-	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
-	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
-	mv -f "$$tmp" "$@"
+	@$(call weasy_ua,livre,,$(dir $@)~$(notdir $@).weasyprint.err)
 endif
 
 # Une pièce liminaire écrite à la main : même chaîne, sans le gabarit de chapitre — elle
@@ -727,12 +681,27 @@ $(OUT)/$(LIM_DIR)/%.html: $(LIM_DIR)/%.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $
 # --------------------------------------------------------------------------------------
 # L'assemblage, puis la pagination.
 # --------------------------------------------------------------------------------------
+# La pagination passe par la cascade weasy_ua du Makefile, étiquette `livre`. Son journal
+# se montre ainsi : vingt lignes préfixées en cas de succès, les douze dernières en cas
+# d'échec, base64 abrégé dans les deux cas, et le fichier reste à côté du PDF.
+define weasy_echec_livre
+tail -12 "$$jrnl" | $(ABREGER_BASE64) | sed 's/^/[weasyprint] /'; \
+echo "[livre]   Journal complet : $$jrnl"; \
+echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl";
+endef
+
+# Le digest de succès s'arrête à vingt lignes, et il le dit : une troncature muette se lit
+# comme un journal complet.
+define weasy_journal_livre
+reste=$$(($$(wc -l < "$$jrnl") - 20)); \
+sed -n '1,20p' "$$jrnl" | $(ABREGER_BASE64) | sed 's/^/[weasyprint] /'; \
+test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl";
+endef
+
 $(LIVRE_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(ACCENT_CSS)
 	@mkdir -p "$(OUT)"
-	@python3 "$(ASSEMBLEUR)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --gabarit "$(GABARIT_LIVRE)" \
+	@$(ASSEMBLER) \
 	  --sortie "$@" \
 	  --out "$(OUT)" \
 	  $(CSS_LIVRE) \
@@ -743,24 +712,7 @@ livre-html: verifie-livre $(LIVRE_HTML)
 # Le PDF numérique : balisé PDF/UA-1 quand WeasyPrint y parvient, replis en cascade comme
 # pour la revue. La porte dure reste `verifier-ua`, appelée par l'export.
 $(LIVRE_PDF): $(LIVRE_HTML)
-	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
-	: > "$$jrnl"; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
-	else \
-	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
-	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
-	    tail -12 "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	    echo "[livre]   Journal complet : $$jrnl"; \
-	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
-	    exit 1; }; \
-	fi; \
-	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
-	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
-	mv -f "$$tmp" "$@"
+	@$(call weasy_ua,livre,,$(dir $@)~$(notdir $@).weasyprint.err)
 
 livre-pdf: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_PDF)
 	@echo "[livre] $(LIVRE_PDF)"
@@ -775,9 +727,7 @@ livre-pdf: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_PDF)
 $(LIVRE_IMPRIMEUR_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(PARTAGE) $(ACCENT_CSS)
 	@mkdir -p "$(OUT)"
-	@python3 "$(ASSEMBLEUR)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --gabarit "$(GABARIT_LIVRE)" \
+	@$(ASSEMBLER) \
 	  --sortie "$@" \
 	  --out "$(OUT)" \
 	  $(CSS_LIVRE_IMPRIMEUR) \
@@ -786,24 +736,7 @@ $(LIVRE_IMPRIMEUR_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR
 # Même cascade de repli que le PDF numérique : le balisage PDF/UA ne coûte rien de plus à
 # tenter ici, et un PDF imprimeur non balisé n'a aucune raison de l'être moins que l'autre.
 $(LIVRE_IMPRIMEUR_PDF): $(LIVRE_IMPRIMEUR_HTML)
-	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
-	: > "$$jrnl"; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
-	else \
-	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
-	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
-	    tail -12 "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	    echo "[livre]   Journal complet : $$jrnl"; \
-	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
-	    exit 1; }; \
-	fi; \
-	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
-	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
-	mv -f "$$tmp" "$@"
+	@$(call weasy_ua,livre,,$(dir $@)~$(notdir $@).weasyprint.err)
 
 # --------------------------------------------------------------------------------------
 # La couverture, deux sorties d'un même gabarit (couverture.py, docs/ARCHITECTURE-LIVRES.md) :
@@ -884,20 +817,8 @@ $(COUVERTURE_IMPR_PDF): $(COUVERTURE_IMPR_HTML) $(COUVERTURE_PY)
 # La version écran, balisée PDF/UA-1 : elle porte le titre, les responsables et le texte
 # de 4e, ce qu'un lecteur d'écran doit pouvoir annoncer d'un livre. Même cascade de repli
 # que le PDF intérieur : un défaut de balisage ne doit pas empêcher de sortir une épreuve.
-# Temporaire puis rename local, ignoré par la synchro OneDrive.
 $(COUVERTURE_PDF): $(COUVERTURE_HTML)
-	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
-	: > "$$jrnl"; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[livre] PDF/UA-1 indisponible -> couverture balisée simple : $@"; \
-	elif $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; then \
-	  echo "[livre] balisage PDF indisponible -> couverture non balisée : $@"; \
-	else \
-	  echo "[livre] échec de la couverture :"; cat "$$jrnl" >&2; exit 1; \
-	fi; \
-	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
-	mv -f "$$tmp" "$@"
+	@$(call weasy_ua,livre,,$(dir $@)~$(notdir $@).weasyprint.err)
 
 # PNG de la 1re et de la 4e. Mesuré : Ghostscript 10.05 rend un `rg` DeviceRGB au pixel
 # près (#D31932 -> 211,25,50), sans option de couleur ; l'anticrénelage ne touche que les
@@ -953,9 +874,7 @@ endif
 $(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                $(SOCLE) $(STYLE_LIVRE_WEB) $(ACCENT_CSS)
 	@mkdir -p "$(dir $@)"
-	@python3 "$(ASSEMBLEUR)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --gabarit "$(GABARIT_LIVRE)" \
+	@$(ASSEMBLER) \
 	  --sortie "$@" \
 	  --out "$(OUT)" \
 	  $(CSS_LIVRE_WEB) \
@@ -1000,9 +919,7 @@ livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_DOS) $(COUVERTUR
 $(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
                $(EPUB_PREPARE) $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART)
 	@mkdir -p "$(OUT)"
-	@python3 "$(ASSEMBLEUR)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --gabarit "$(GABARIT_LIVRE)" \
+	@$(ASSEMBLER) \
 	  --sortie "$@.avec-sections" \
 	  --out "$(OUT)" \
 	  --metadonnees-epub "$(LIVRE_EPUB_META)" \
