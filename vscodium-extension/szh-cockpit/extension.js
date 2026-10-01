@@ -3783,11 +3783,13 @@ function activate(context) {
     racine: () => fournisseur.racine,
     surChangement: () => controlesHote.rafraichirPdfUa(fournisseur)
   });
+  lanceurHote.demarrer(context);   // le lanceur dans l'éditeur -> lib/lanceur-hote.js
   demarrageInitial();
 }
 
 // ---- Invitation au tutoriel et « Quoi de neuf » -> lib/accueil-hote.js -----------
 const { proposerTutoriel, proposerNouveautes, montrerNouveautes } = require('./lib/accueil-hote');
+const lanceurHote = require('./lib/lanceur-hote');
 
 function deactivate() { moteur.arreterDormeur(); }
 

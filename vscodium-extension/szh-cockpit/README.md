@@ -110,6 +110,10 @@ lib/
                         images à remettre. Rappelle l'hôte par configurer(), jamais par import
   interaction.js        garde d'interaction : retient ce qui volerait le focus (aperçu,
                         notifications) tant qu'un QuickPick est ouvert
+  inventaire.js         ce que liste le lanceur : la racine active du poste et les numéros en
+                        cours et archivés de chaque produit. Jumeau de Get-SzhBaseRevuesPour
+                        et de l'inventaire d'open-produit.ps1, tenu par un test de parité.
+                        Pur, sans vscode
   journal.js            journal de compilation -> constats de la vue « Contrôles »
   kirby-contenu.js      arborescence Kirby de la Documentation d’un numéro : lecture et
                         écriture de documentation.<lang>.txt et des dossiers <n>_<slug>/ de
@@ -118,6 +122,13 @@ lib/
                         reprise après interruption est idempotente). Tout vient du contrat
                         (pipeline/kirby/champs-documentation.json), remplace ressources.js
                         et rubriques.js. Pur, sans vscode
+  lanceur-hote.js       le lanceur dans l'éditeur : son panneau, ses données, l'ouverture
+                        d'un numéro (vscode.openFolder) et sa création. Ne s'ouvre seul que
+                        sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
+  lanceur-nouveau.js    créer un numéro ou un livre : les refus et la création du socle
+                        PowerShell (new-revue.ps1, new-livre.ps1), en un processus. Sans vscode
+  lanceur-page.js       ce que l'hôte du lanceur envoie à sa page : libellés, noms des
+                        produits, produit ouvert d'office (jumeau de Get-SzhOngletDefaut)
   liens.js              liens szh:// et intention déposée par le lanceur
   medias.js             médias d'un article, sans vscode ni profil actif à connaître :
                         dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,

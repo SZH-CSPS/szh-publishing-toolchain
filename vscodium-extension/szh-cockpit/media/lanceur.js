@@ -8,7 +8,7 @@
 // lanceurInterrompre { commande }, lanceurAfficher { chemin },
 // lanceurJournalLire { rang }, lanceurJournalEditeur { rang }, lanceurSignaler { phrase, rang }.
 // Depuis l'hôte :
-//   charger { langue, produit?, anneeCourante, modeTest, ancrageAbsent, version, exports,
+//   charger { langue, produit, anneeCourante, modeTest, ancrageAbsent, version, exports,
 //             produits: [{ jeton, libelle, type: 'numero' | 'livre', racine, anneeZeroVolume,
 //                          hors: { nombre, dossier }, enCours: [entrée], archives: [entrée] }],
 //             dernierOuvert, historique: { edudoc: { <revue>: { <clé>: <date> } }, caracteres },
@@ -116,15 +116,13 @@
 
   // ---- Le produit choisi ----
   // Un seul choix pour Produits, Nouveau et Secrétariat : passer à la Zeitschrift dans un
-  // onglet la montre dans les deux autres. Le défaut suit la langue de l'interface, sauf
-  // si l'hôte transmet un produit choisi dans les Paramètres.
+  // onglet la montre dans les deux autres. Le défaut vient de l'hôte, qui seul connaît la
+  // règle de langue et le choix du compte.
   var produitChoisi = '';
   var groupesProduit = [];
   function produitParDefaut(msg) {
     var jetons = (msg.produits || []).map(function (p) { return p.jeton; });
     if (msg.produit && jetons.indexOf(msg.produit) !== -1) { return msg.produit; }
-    var parLangue = msg.langue === 'fr' ? 'revue' : 'zeitschrift';
-    if (jetons.indexOf(parLangue) !== -1) { return parLangue; }
     return jetons[0] || '';
   }
   // Des boutons radio natifs : les flèches passent d'un produit à l'autre sans rien écrire.

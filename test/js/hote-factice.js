@@ -125,7 +125,10 @@ function revueDEssai() {
   return revue;
 }
 
-function activerHote(revue) {
+// opts.sansDossier : une fenêtre sans dossier ouvert, comme au lancement de Pronto. La revue
+// sert encore de dossier jetable aux caches.
+function activerHote(revue, opts) {
+  const sansDossier = !!(opts && opts.sansDossier);
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
   // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
   // OAI-PMH en tâche de fond quand dateFetch a plus de trente jours, et aucun test ne doit
@@ -429,7 +432,8 @@ function activerHote(revue) {
       showInputBox: () => Promise.resolve(reponseInput)
     },
     workspace: {
-      workspaceFolders: [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
+      workspaceFolders: sansDossier ? undefined
+        : [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
       // Persiste ce qu'update() écrit : sans ça, basculerApercu (szh.apercuMode) ne se
       // vérifie pas, son .update() ne changeant jamais ce que le .get() suivant rend.
       getConfiguration: (section) => {

@@ -1,5 +1,5 @@
 // La page du lanceur dans l'éditeur (media/lanceur.*), chargée dans le DOM minimal avec les
-// libellés que l'aperçu lui injecte (outils-dev/apercu-lanceur.js, textesLanceur).
+// libellés que l'hôte lui injecte (lib/lanceur-page.js, textesLanceur).
 //
 //   node --test test/js/lanceur-page.test.js
 'use strict';
@@ -14,8 +14,8 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 const { TEXTES_COCKPIT } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
-const APERCU = path.join(RACINE, 'outils-dev', 'apercu-lanceur.js');
-const { textesLanceur } = require(APERCU);
+const TEXTES = path.join(COCKPIT, 'lib', 'lanceur-page.js');
+const { textesLanceur, produitParDefaut } = require(TEXTES);
 
 const TXT = textesLanceur();
 const ORDRE = [['produits', 'ongletProduits'], ['nouveau', 'ongletNouveau'], ['preproc', 'ongletPreproc'],
@@ -96,23 +96,38 @@ test('lanceur : l’onglet Produits est actif au chargement, avant comme après 
   assert.deepStrictEqual(tous(p, '[role="tab"]').map((o) => o.getAttribute('tabindex')), ['0', '-1', '-1', '-1', '-1', '-1']);
 });
 
-test('lanceur : le produit par défaut suit la langue, sauf choix transmis par l’hôte', () => {
+test('lanceur : la page ouvre le produit que l’hôte désigne, sans règle de langue à elle', () => {
   const pFr = page();
-  pFr.envoyer(charger({ langue: 'fr' }));
+  pFr.envoyer(charger({ langue: 'fr', produit: 'revue' }));
   assert.deepStrictEqual(coche(pFr, 'produit-prod'), ['revue']);
   assert.deepStrictEqual(coche(pFr, 'produit-nv'), ['revue']);
   assert.deepStrictEqual(coche(pFr, 'produit-sec'), ['revue']);
   assert.ok(parId(pFr, 'entree-0').textContent.includes('2026-02'));
+  // Une page en français sur la Zeitschrift : c'est l'hôte qui l'a dit, la langue n'y peut rien.
   const pDe = page();
-  pDe.envoyer(charger({ langue: 'de' }));
+  pDe.envoyer(charger({ langue: 'fr', produit: 'zeitschrift' }));
   assert.deepStrictEqual(coche(pDe, 'produit-prod'), ['zeitschrift']);
   assert.deepStrictEqual(coche(pDe, 'produit-sec'), ['zeitschrift']);
   assert.ok(parId(pDe, 'entree-0').textContent.includes('2026-05'));
+  const pSans = page();
+  pSans.envoyer(charger({ langue: 'de' }));
+  assert.deepStrictEqual(coche(pSans, 'produit-prod'), ['revue'], 'sans désignation, le premier produit');
   const pChoix = page();
   pChoix.envoyer(charger({ langue: 'de', produit: 'livre' }));
   assert.deepStrictEqual(coche(pChoix, 'produit-prod'), ['livre']);
   // Le livre n'a pas de secrétariat : celui-ci garde une revue.
   assert.deepStrictEqual(coche(pChoix, 'produit-sec'), ['revue']);
+});
+
+test('lanceur : le produit d’office suit la langue, puis le choix du compte, puis SZH_ONGLET', () => {
+  assert.strictEqual(produitParDefaut('fr', '', ''), 'revue');
+  assert.strictEqual(produitParDefaut('de', '', ''), 'zeitschrift');
+  assert.strictEqual(produitParDefaut('it', '', ''), 'zeitschrift');
+  assert.strictEqual(produitParDefaut('fr', 'livre', ''), 'livre');
+  assert.strictEqual(produitParDefaut('fr', 'Zeitschrift', ''), 'zeitschrift');
+  assert.strictEqual(produitParDefaut('fr', 'livre', 'revue'), 'revue');
+  assert.strictEqual(produitParDefaut('de', 'inconnu', 'aussi'), 'zeitschrift');
+  assert.strictEqual(produitParDefaut('de', '', '', ['revue', 'livre']), 'revue');
 });
 
 test('produits : le dernier ouvert est choisi et prend le focus ; Entrée, double-clic et Ouvrir l’ouvrent', () => {
@@ -311,8 +326,10 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
     const base = cle.replace(/(Un|Plus)$/, '');
     assert.ok(lus.has(cle) || lus.has(base), 'TXT.' + cle + ' fourni mais jamais lu par la page');
   }
-  const src = fs.readFileSync(APERCU, 'utf8');
-  const bloc = src.slice(src.indexOf('function textesLanceur'), src.indexOf('\n}', src.indexOf('function textesLanceur')));
+  const src = fs.readFileSync(TEXTES, 'utf8');
+  const debut = src.indexOf('function textesLanceur');
+  assert.notStrictEqual(debut, -1, 'textesLanceur a quitté lib/lanceur-page.js');
+  const bloc = src.slice(debut, src.indexOf('\n}', debut));
   const cles = [...bloc.matchAll(/T\('([^']+)'\)/g)].map((m) => m[1]);
   assert.strictEqual(cles.length, Object.keys(TXT).length);
   for (const c of cles) {
@@ -320,8 +337,12 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
     assert.ok(c in TEXTES_COCKPIT.fr, 'clé sans texte français : ' + c);
     assert.ok(c in TEXTES_COCKPIT.de, 'clé sans texte allemand : ' + c);
   }
-  // Et aucune clé lanceur.* orpheline dans lib/i18n.js.
-  const orphelines = Object.keys(TEXTES_COCKPIT.fr).filter((k) => k.startsWith('lanceur.') && cles.indexOf(k) === -1);
+  // Et aucune clé lanceur.* orpheline dans lib/i18n.js : chacune va à la page, ou sert à l'hôte.
+  const hote = fs.readFileSync(path.join(COCKPIT, 'lib', 'lanceur-hote.js'), 'utf8');
+  const clesHote = [...hote.matchAll(/'(lanceur\.[^']+)'/g)].map((m) => m[1]);
+  for (const c of clesHote) { assert.ok(c in TEXTES_COCKPIT.de, 'clé de l’hôte sans texte allemand : ' + c); }
+  const orphelines = Object.keys(TEXTES_COCKPIT.fr).filter((k) => k.startsWith('lanceur.')
+    && cles.indexOf(k) === -1 && clesHote.indexOf(k) === -1);
   assert.deepStrictEqual(orphelines, []);
 });
 
