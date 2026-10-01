@@ -1,0 +1,78 @@
+Correctif SZH de WeasyPrint 70.0, 2/6 — image décorative peinte en artefact, sans /Figure.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (touche tags.py comme le 1/6 et le 5/6, stream.py comme le
+5/6, sans ligne de contexte commune). Pour le désactiver : .patch.off.
+
+weasyprint/pdf/stream.py + tags.py. Une <img alt="" role="presentation"> sortait en /Figure
+sans /Alt : WeasyPrint journalisait « has no required alt description » et veraPDF échouait
+sur PDF/UA-1 7.3-1, alors que ce décor déclaré doit être un artefact hors de l'arbre de
+structure (PDF/UA-1 7.1, ISO 32000-1 14.8.2.2).
+Désormais, une image déclarée décorative — alt="" ET role="presentation" (ou "none"), les
+DEUX — est peinte dans /Artifact BMC (Stream.artifact(), déjà là pour les ombres) et
+_build_box_tree ne lui crée pas d'élément. alt="" seul reste une /Figure signalée comme
+avant : l'import l'écrit pour toute image sans description, ce n'est pas une décision.
+Preuve : rendu inchangé, l'image reste peinte ; veraPDF PDF/UA-1 passe de 7.3-1 en échec à
+PASS sur image/patches/amont/15-images-decoratives/demo/ ; cas e-decor, e-decor-seul et
+f-alt-vide-seul (qui doit rester en échec 7.3-1) de test/weasyprint-patch-check.py.
+
+--- a/weasyprint/pdf/stream.py
++++ b/weasyprint/pdf/stream.py
+@@ -11,6 +11,23 @@
+ from .fonts import Font
+ 
+ 
++def is_decorative_image(box):
++    """SZH : image décorative déclarée, à sortir en artefact et non en /Figure.
++
++    Les DEUX marques sont exigées : alt="" (présent et vide) ET role="presentation" (ou
++    son synonyme ARIA "none"). alt="" seul reste ambigu — l'import l'écrit pour toute
++    image sans description — et continue d'être signalé comme avant.
++
++    """
++    element = getattr(box, 'element', None)
++    if element is None or getattr(box, 'element_tag', None) != 'img':
++        return False
++    role = (element.attrib.get('role') or '').strip().lower().split()
++    return (
++        element.attrib.get('alt') == '' and bool(role) and
++        role[0] in ('presentation', 'none'))
++
++
+ class Stream(pydyf.Stream):
+     """PDF stream object with extra features."""
+     def __init__(self, fonts, page_rectangle, resources, images, tags, color_profiles,
+@@ -281,6 +298,11 @@
+ 
+     @contextmanager
+     def marked(self, box, tag):
++        if tag == 'Figure' and is_decorative_image(box):
++            # SZH : décor déclaré, hors de l'arbre de structure (voir tags.py).
++            with self.artifact():
++                yield
++            return
+         if self._tags is not None:
+             property_list = None
+             mcid = len(self._tags)
+--- a/weasyprint/pdf/tags.py
++++ b/weasyprint/pdf/tags.py
+@@ -7,6 +7,7 @@
+ from ..formatting_structure import boxes
+ from ..layout.absolute import AbsolutePlaceholder
+ from ..logger import LOGGER
++from .stream import is_decorative_image
+ 
+ 
+ def add_tags(pdf, document, pdf_version, page_streams):
+@@ -130,6 +131,11 @@
+     if isinstance(box, AbsolutePlaceholder):
+         box = box._box
+ 
++    # SZH : une image décorative déclarée est peinte en artefact (Stream.marked) et n'a
++    # donc ni MCID ni place dans l'arbre : pas de /Figure sans /Alt (PDF/UA 7.3-1).
++    if isinstance(box, boxes.ReplacedBox) and is_decorative_image(box):
++        return
++
+     element_tag = None if box.element is None else box.element_tag
+     tag = _get_pdf_tag(element_tag)
+ 

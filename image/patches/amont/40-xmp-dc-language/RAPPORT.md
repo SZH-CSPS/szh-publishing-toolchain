@@ -60,7 +60,7 @@ Huit lignes dans `generate_rdf_metadata()` : si `self.lang` est posé, une
 ## Recommandation
 
 **Le proposer en amont, directement en PR**, ou par une issue de trois lignes qui l'offre :
-c'est le cas le plus simple des quatre, calqué sur #2681 que l'amont a accepté. Règle
+c'est le cas le plus simple des six, calqué sur #2681 que l'amont a accepté. Règle
 CourtBouillon « Ask before sending code » : poser la question dans l'issue d'abord. **Le
 garder** d'ici là (mais **reconstruire l'image**, sans quoi il ne sert pas), le **retirer**
 dès la version qui l'intègre.

@@ -1,13 +1,13 @@
 #!/bin/bash
-# Démo du correctif 10 : /Headers d'un th colspan, et image décorative en artefact.
+# Démo du correctif 10 : /Headers des cellules sous un th colspan ou rowspan.
 # Lancer dans la WSL : wsl.exe -d SZH-Publishing -- bash <chemin>/demo.sh
 ICI="$(cd "$(dirname "$0")" && pwd)"
 . "$ICI/../../demo-commun.sh"
 
 echo "== Préparation des deux venvs"
-preparer_venvs 10-tableaux-images.patch
+preparer_venvs 10-tableaux-entetes.patch
 
-for cas in tableau-colspan tableau-rowspan image-decorative; do
+for cas in tableau-colspan tableau-rowspan; do
   for venv in NU PATCHE; do
     echo
     echo "== $cas, WeasyPrint $([ $venv = NU ] && echo nu || echo patché)"
@@ -16,8 +16,5 @@ for cas in tableau-colspan tableau-rowspan image-decorative; do
     verapdf_ua1 "$pdf"
     echo "  arbre de structure :"
     "$NU/bin/python" "$AMONT/inspecter.py" arbre "$pdf" | sed 's/^/  /'
-    if [ $cas = image-decorative ]; then
-      "$NU/bin/python" "$AMONT/inspecter.py" artefacts "$pdf"
-    fi
   done
 done

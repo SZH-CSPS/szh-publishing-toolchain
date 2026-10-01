@@ -1,22 +1,28 @@
-Correctif SZH de WeasyPrint 70.0, 2/4 — couche texte des fins de ligne.
+Correctif SZH de WeasyPrint 70.0, 3/6 — trait de césure en /ActualText U+00AD.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
-image/patches/weasyprint-70.0/ (fichiers disjoints). Pour le désactiver : .patch.off.
+image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 4/6, seul autre à
+toucher layout/inline.py). Pour le désactiver : .patch.off.
 
-weasyprint/draw/text.py, layout/inline.py, text/line_break.py, text/ffi.py. Le copier-coller
-et l'extraction rendaient « ensei-gnants » (trait de césure écrit U+002D) et « lamarche »
-(l'espace de fin de ligne n'était pas dans le PDF : 5 fins de ligne sur 782 en portaient
-une, sur 4 articles de la Revue).
-- Le trait ajouté par la césure (hyphens: auto, ou &shy;) est entouré d'un
-  /Span <</ActualText (U+00AD)>> BDC … EMC, comme le veut ISO 32000-1 14.8.2.2.3 pour une
-  coupure de mot incidente. Le trait d'un vrai composé (« Hess-Klein ») coupé à son trait
-  n'est pas touché : WeasyPrint n'y ajoute rien, il reste U+002D.
-- Une ligne coupée sur une espace repliable reçoit, après son dernier glyphe, le glyphe
-  espace de sa police. Jamais après une césure, ni en fin de paragraphe, ni sur un <br>,
-  ni en white-space: pre*, ni de droite à gauche.
-Rendu identique au pixel, veraPDF PDF/UA-1 inchangé. poppler et xpdf ne recollent plus
-d'eux-mêmes un mot coupé en fin de ligne : ils ne le faisaient que pour U+002D (et ils
-recollaient aussi les vrais composés).
+weasyprint/draw/text.py, layout/inline.py, text/line_break.py, text/ffi.py. Le trait
+ajouté par la césure (hyphens: auto, ou &shy;) était un caractère du texte comme un autre :
+le copier-coller et l'extraction rendaient « ensei‐gnants », avec le trait par défaut de
+WeasyPrint, U+2010 (hyphenate-character vaut '‐', css/properties.py de la 70.0).
+- Ce trait est entouré d'un /Span <</ActualText (U+00AD)>> BDC … EMC, comme le veut
+  ISO 32000-1 14.8.2.2.3 pour une coupure de mot incidente : line_break.py pose
+  layout.hyphenated, split_text_box le recopie sur la boîte, draw_first_line ouvre le
+  /Span au premier glyphe du trait et le ferme en fin de ligne. Le trait d'un vrai composé
+  (« Hess-Klein ») coupé à son trait n'est pas touché : WeasyPrint n'y ajoute rien.
+- Ce patch porte aussi le dessin de l'espace de fin de ligne du 4/6 (fin de
+  draw_first_line, et hb_font_get_nominal_glyph déclaré dans text/ffi.py). Ils ne se
+  séparent pas : ce dessin lit les variables truncated et hyphen_start que pose le bloc du
+  trait, au début de draw_first_line, et une même ligne ne peut pas appartenir à deux
+  patchs. Sans le 4/6, ce code dort : rien ne pose line_end_space.
+Preuve : rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas h-cesure (un /Span
+U+00AD autour du seul glyphe du trait) et i-compose de test/weasyprint-patch-check.py, démo
+image/patches/amont/20-cesure-trait/. poppler et xpdf ne recollent plus d'eux-mêmes un mot
+coupé en fin de ligne : ils ne le faisaient que pour U+002D (et recollaient aussi les vrais
+composés).
 
 --- a/weasyprint/draw/text.py
 +++ b/weasyprint/draw/text.py
@@ -113,91 +119,7 @@ recollaient aussi les vrais composés).
  
 --- a/weasyprint/layout/inline.py
 +++ b/weasyprint/layout/inline.py
-@@ -195,9 +195,83 @@
-     if float_children:
-         line.children += tuple(float_children)
- 
-+    # SZH : la ligne est coupée sur une espace repliable, que le rendu retire. Le dessin
-+    # la remet dans la couche texte (draw/text.py), sinon un copier-coller recolle le
-+    # dernier mot de la ligne au premier de la suivante. Ni après une césure, ni en fin
-+    # de paragraphe, ni sur un <br>.
-+    if (resume_at is not None and not preserved_line_break and
-+            _break_at_space(linebox, resume_at)):
-+        textbox = _last_text_box(line)
-+        if (textbox and not textbox.text[-1].isspace() and
-+                textbox.style['white_space'] in ('normal', 'nowrap', 'pre-line')):
-+            textbox.line_end_space = True
-+
-     return line, resume_at
- 
- 
-+def _edge_character(box, last):
-+    """Dernier (ou premier) caractère d'une boîte en ligne.
-+
-+    '' si la boîte est vide ou hors flux, None si elle n'est pas du texte.
-+
-+    """
-+    if isinstance(box, boxes.TextBox):
-+        return box.text[-1:] if last else box.text[:1]
-+    if isinstance(box, (boxes.LineBox, boxes.InlineBox)):
-+        for child in (reversed(box.children) if last else box.children):
-+            if (character := _edge_character(child, last)) != '':
-+                return character
-+        return ''
-+    if not box.is_in_normal_flow():
-+        return ''
-+    return None
-+
-+
-+def _break_at_space(box, skip_stack):
-+    """La coupure ``skip_stack`` de ``box`` tombe-t-elle sur une espace ?"""
-+    before = after = ''
-+    befores, afters = [], []
-+    while skip_stack and isinstance(box, (boxes.LineBox, boxes.InlineBox)):
-+        (index, skip_stack), = skip_stack.items()
-+        if index >= len(box.children):
-+            return False
-+        befores.append(box.children[:index])
-+        afters.append(box.children[index + 1:])
-+        box = box.children[index]
-+    if isinstance(box, boxes.TextBox):
-+        position = next(iter(skip_stack)) if skip_stack else 0
-+        text = box.text.encode()
-+        before = text[:position].decode()[-1:]
-+        after = text[position:].decode()[:1]
-+    else:
-+        after = _edge_character(box, last=False)
-+    for siblings in reversed(befores):
-+        for child in reversed(siblings):
-+            if before != '':
-+                break
-+            before = _edge_character(child, last=True)
-+    for siblings in reversed(afters):
-+        for child in siblings:
-+            if after != '':
-+                break
-+            after = _edge_character(child, last=False)
-+    return ' ' in (before, after)
-+
-+
-+def _last_text_box(box):
-+    """Dernière boîte de texte non vide d'une ligne, None si la ligne finit autrement."""
-+    for child in reversed(box.children):
-+        if isinstance(child, boxes.TextBox):
-+            if child.text.strip():
-+                return child
-+        elif isinstance(child, (boxes.LineBox, boxes.InlineBox)):
-+            if (textbox := _last_text_box(child)) is not False:
-+                return textbox
-+        elif child.is_in_normal_flow():
-+            return None
-+    return False
-+
-+
- def skip_first_whitespace(box, skip_stack):
-     """Return ``skip_stack`` to start just after removable leading spaces.
- 
-@@ -947,6 +1021,10 @@
+@@ -947,6 +947,10 @@
          box = box.copy_with_text(layout.text)
          box.width = width
          box.pango_layout = layout

@@ -3,7 +3,7 @@ Commentaire à ajouter à l'issue ouverte #1836 « PDF/UA page header and footer
 (https://github.com/Kozea/WeasyPrint/issues/1836), plutôt qu'une nouvelle issue.
 Canevas suivi : aucun modèle d'issue ni de PR dans Kozea/WeasyPrint ; CONTRIBUTING.md renvoie
 aux « Guidelines for Contributors » de CourtBouillon (avec ses mots, court, sans intertitres,
-un exemple court, demander avant d'envoyer du code). Voir ../10-tableaux-images/ISSUE.md.
+un exemple court, demander avant d'envoyer du code). Voir ../10-tableaux-entetes/ISSUE.md.
 À reformuler par Robin avant de poster. Tout ce qui est au-dessus de cette ligne n'est pas à
 poster.
 -->

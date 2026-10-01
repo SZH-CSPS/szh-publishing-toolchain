@@ -12,14 +12,16 @@
 # dans weasyprint/szh-patchs.txt. Témoin absent, ou patch posé sans cas ici : échec.
 #
 # Ce que chaque patch doit garantir (voir son en-tête) :
-#   10-tableaux-images : un th colspan/rowspan est inscrit sur toutes les colonnes/lignes
+#   10-tableaux-entetes : un th colspan/rowspan est inscrit sur toutes les colonnes/lignes
 #      qu'il couvre (sans lui : /Headers [] sur la 2e colonne d'un « Punkte » colspan=2,
-#      PDF/UA 7.5-1) ; l'attribut HTML `headers` l'emporte sur la position ; une
-#      <img alt="" role="presentation"> sort en artefact, sans /Figure (sinon 7.3-1), et
-#      reste dessinée ;
-#   20-cesure-fin-de-ligne : le trait ajouté par la césure est un /Span /ActualText U+00AD
-#      autour de ce seul glyphe ; une ligne coupée sur une espace garde cette espace dans
-#      la couche texte (sinon « ensei-gnants » et « lamarche » au copier-coller) ;
+#      PDF/UA 7.5-1) ; l'attribut HTML `headers` l'emporte sur la position ;
+#   15-images-decoratives : une <img alt="" role="presentation"> sort en artefact, sans
+#      /Figure (sinon 7.3-1), et reste dessinée ;
+#   20-cesure-trait : le trait ajouté par la césure est un /Span /ActualText U+00AD autour
+#      de ce seul glyphe (sinon « ensei‐gnants » au copier-coller) ;
+#   25-espace-fin-de-ligne : une ligne coupée sur une espace garde cette espace dans la
+#      couche texte (sinon « lamarche ») ; le dessin de l'espace est dans le 20, sans lequel
+#      ce patch ne produit rien : posé seul, c'est un échec ;
 #   30-marges-artefact : en-tête, pied et folio sont des /Artifact /Pagination, sans MCID
 #      orphelin ; une boîte de marge qui porte un lien reste du contenu balisé ;
 #   40-xmp-dc-language : la langue de <html lang> est en dc:language dans le XMP, au sein
@@ -53,45 +55,45 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
           '</head><body>')
 PIED = '</body></html>'
 
-TABLEAUX, CESURE, MARGES, XMP = (
-    '10-tableaux-images.patch', '20-cesure-fin-de-ligne.patch', '30-marges-artefact.patch',
-    '40-xmp-dc-language.patch')
+ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP = (
+    '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
+    '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch')
 
 # nom : (patch, corps HTML, clauses veraPDF en échec attendues)
 CAS = {
     # Le tableau massie 2025-02 (table-01.html), réduit : « Punkte » colspan=2.
-    'a-colspan': (TABLEAUX,
+    'a-colspan': (ENTETES,
                   '<table><caption>C</caption><thead><tr><th scope="col">X</th>'
                   '<th scope="col">Beschreibung</th><th scope="colgroup" colspan="2">Punkte'
                   '</th></tr></thead><tbody><tr><td>1. Hilfe</td><td colspan="2">Ermutigen'
                   '</td><td>0</td></tr></tbody></table>', set()),
     # En-tête de ligne rowspan=2 : sans patch, la 2e ligne perd son en-tête et se décale.
-    'd-rowspan': (TABLEAUX,
+    'd-rowspan': (ENTETES,
                   '<table><caption>C</caption><thead><tr><td></td><th scope="col">Wert</th>'
                   '<th scope="col">Note</th></tr></thead><tbody><tr><th scope="row" '
                   'rowspan="2">Gruppe</th><td>1</td><td>a</td></tr><tr><td>2</td><td>b</td>'
                   '</tr></tbody></table>', set()),
     # `headers` explicite, qui contredit la position.
-    'c-headers': (TABLEAUX,
+    'c-headers': (ENTETES,
                   '<table><caption>C</caption><thead><tr><th id="h0" scope="col">A</th>'
                   '<th id="h1" scope="col">B</th><th id="h2" scope="col">C</th></tr></thead>'
                   '<tbody><tr><td headers="h0">1</td><td headers="h2">2</td>'
                   '<td headers="h1 h2">3</td></tr></tbody></table>', set()),
     # Portrait décoratif dans un tableau (bloc auteur, table-02.html) + image décrite.
-    'e-decor': (TABLEAUX,
+    'e-decor': (DECOR,
                 '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                 'role="presentation" width="80"></td><td><img src="img.png" '
                 'alt="Porträt" width="80"></td></tr></table>', set()),
     # Décor seul : aucune /Figure ne doit rester, mais l'image doit être peinte.
-    'e-decor-seul': (TABLEAUX,
+    'e-decor-seul': (DECOR,
                      '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                      'role="presentation" width="80"></td><td>Name</td></tr></table>', set()),
     # alt="" seul : pas une décision, reste signalé (7.3-1).
-    'f-alt-vide-seul': (TABLEAUX,
+    'f-alt-vide-seul': (DECOR,
                         '<table><caption>C</caption><tr><td><img src="img.png" alt="" '
                         'width="80"></td><td>x</td></tr></table>', {'7.3-1'}),
     # Non-régression : tableau ordinaire et figure décrite.
-    'g-ordinaire': (TABLEAUX,
+    'g-ordinaire': (DECOR,
                     '<table><caption>C</caption><thead><tr><th scope="col">A</th>'
                     '<th scope="col">B</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr>'
                     '</tbody></table><figure><img src="img.png" alt="Ein Bild" width="100">'
@@ -107,7 +109,7 @@ CAS = {
                   "<p lang=\"fr\" style=\"width:3em;hyphenate-character:'-'\">Hess-Klein "
                   'Hess-Klein</p>', set()),
     # Un mot par ligne : espace en fin de ligne, sauf au <br> et en fin de paragraphe.
-    'j-espace': (CESURE,
+    'j-espace': (ESPACE,
                  '<p style="width:1em">un deux trois<br>quatre <em>cinq</em> six</p>'
                  '<p>sept</p>', set()),
     # En-tête, folio, marge de côté en artefacts ; pied à lien, qui doit rester balisé.
@@ -131,7 +133,7 @@ def _patchs_actifs():
         sys.exit(f'Témoin absent : {TEMOIN}. image/patch-weasyprint.sh n\'a pas posé les '
                  'correctifs SZH sur ce WeasyPrint.')
     actifs = [l.strip() for l in open(TEMOIN, encoding='utf-8') if l.strip()]
-    inconnus = set(actifs) - {TABLEAUX, CESURE, MARGES, XMP}
+    inconnus = set(actifs) - set(VERIFS)
     if inconnus:
         sys.exit(f'Patch(s) posé(s) sans contrôle ici : {sorted(inconnus)}')
     return actifs
@@ -264,7 +266,7 @@ def _verapdf(pdfs):
     return verdicts
 
 
-def _verifier_tableaux(pdfs, erreurs):
+def _verifier_entetes(pdfs, erreurs):
     el = list(_elements(pdfs['a-colspan']))
     ids = [i for s, _, i, _ in el if s == '/TH']
     if _headers(el) != [[ids[0]], [ids[1], ids[2]], [ids[2]]]:
@@ -282,6 +284,8 @@ def _verifier_tableaux(pdfs, erreurs):
     if _headers(el) != voulu:
         erreurs.append(f'c-headers : /Headers {_headers(el)}, attendu {voulu}')
 
+
+def _verifier_decor(pdfs, erreurs):
     figures = [alt for s, _, _, alt in _elements(pdfs['e-decor']) if s == '/Figure']
     if figures != ['Porträt']:
         erreurs.append(f'e-decor : /Figure {figures}, attendu la seule image décrite')
@@ -300,9 +304,21 @@ def _verifier_cesure(pdfs, erreurs):
     spans = _actual_text(pdfs['h-cesure'])
     if len(spans) < 2 or any(s != [SHY, 1] for s in spans):
         erreurs.append(f'h-cesure : {spans}, attendu au moins 2 [U+00AD, 1 glyphe]')
-    for nom in ('i-compose', 'j-espace'):
-        if _actual_text(pdfs[nom]):
-            erreurs.append(f'{nom} : /ActualText hors césure {_actual_text(pdfs[nom])}')
+    if _actual_text(pdfs['i-compose']):
+        erreurs.append(f'i-compose : /ActualText hors césure {_actual_text(pdfs["i-compose"])}')
+    # Les espaces de fin de ligne relèvent du 25 : ici, seul le trait du composé compte.
+    voulu = ['Hess-', 'Klein', 'Hess-', 'Klein']
+    if [l.rstrip(' ') for l in _lignes(pdfs['i-compose'])] != voulu:
+        erreurs.append(f'i-compose : lignes {_lignes(pdfs["i-compose"])}, attendu {voulu}')
+
+
+def _verifier_espace(pdfs, erreurs):
+    # Le dessin de l'espace est dans le 20 : sans lui, ce patch ne produit rien.
+    if 'i-compose' not in pdfs:
+        erreurs.append(f'{ESPACE} posé sans {CESURE}, qui dessine l\'espace de fin de ligne')
+        return
+    if _actual_text(pdfs['j-espace']):
+        erreurs.append(f'j-espace : /ActualText hors césure {_actual_text(pdfs["j-espace"])}')
     voulu = ['Hess-', 'Klein ', 'Hess-', 'Klein']
     if _lignes(pdfs['i-compose']) != voulu:
         erreurs.append(f'i-compose : lignes {_lignes(pdfs["i-compose"])}, attendu {voulu}')
@@ -353,8 +369,8 @@ def _verifier_xmp(pdfs, erreurs):
         erreurs.append(f'l-xmp-langue : dc:language {langues}, attendu [\'de\']')
 
 
-VERIFS = {TABLEAUX: _verifier_tableaux, CESURE: _verifier_cesure, MARGES: _verifier_marges,
-          XMP: _verifier_xmp}
+VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
+          ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp}
 
 
 def main():

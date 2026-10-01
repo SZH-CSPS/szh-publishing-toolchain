@@ -28,15 +28,24 @@ function versionEpinglee() {
 
 // nom du patch : fichiers visés, et une ligne que chacun introduit.
 const PATCHS = {
-  '10-tableaux-images': {
-    cibles: ['weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],
-    reperes: [/^\+def is_decorative_image\(box\):$/m, /^\+\s+j = cell\.grid_x$/m],
+  '10-tableaux-entetes': {
+    cibles: ['weasyprint/pdf/tags.py'],
+    reperes: [/^\+\s+j = cell\.grid_x$/m, /^\+\s+if html_id := cell\.element\.attrib\.get\('id'\):$/m],
   },
-  '20-cesure-fin-de-ligne': {
+  '15-images-decoratives': {
+    cibles: ['weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],
+    reperes: [/^\+def is_decorative_image\(box\):$/m, /^\+from \.stream import is_decorative_image$/m],
+  },
+  // Le dessin de l'espace de fin de ligne est dans le 20 : il lit les variables du trait.
+  '20-cesure-trait': {
     cibles: ['weasyprint/draw/text.py', 'weasyprint/layout/inline.py',
       'weasyprint/text/ffi.py', 'weasyprint/text/line_break.py'],
     reperes: [/^\+SOFT_HYPHEN_ACTUAL_TEXT = pydyf\.Dictionary\(\{'ActualText': pydyf\.String\('\\u00ad'\)\}\)$/m,
-      /^\+def _break_at_space\(box, skip_stack\):$/m],
+      /^\+\s+layout\.hyphenated = hyphenated$/m],
+  },
+  '25-espace-fin-de-ligne': {
+    cibles: ['weasyprint/layout/inline.py'],
+    reperes: [/^\+def _break_at_space\(box, skip_stack\):$/m, /^\+\s+textbox\.line_end_space = True$/m],
   },
   '30-marges-artefact': {
     cibles: ['weasyprint/draw/__init__.py', 'weasyprint/pdf/stream.py', 'weasyprint/pdf/tags.py'],

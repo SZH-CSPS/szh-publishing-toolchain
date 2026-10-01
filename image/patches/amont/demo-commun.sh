@@ -1,7 +1,8 @@
 # Outils communs des démos (sourcé par <nn>-<nom>/demo/demo.sh, dans la WSL SZH-Publishing).
 # Fabrique deux copies jetables du venv WeasyPrint : « nu » (WeasyPrint 70 tel que publié,
-# tous les correctifs SZH retirés) et « patché » (nu + le seul correctif démontré, posé par
-# image/patch-weasyprint.sh). /opt/weasyprint n'est jamais modifié.
+# tous les correctifs SZH retirés, sauf le socle éventuel) et « patché » (nu + le seul
+# correctif démontré, posé par image/patch-weasyprint.sh). /opt/weasyprint n'est jamais
+# modifié.
 set -eu
 export LC_ALL=C.UTF-8 PYTHONIOENCODING=utf-8
 
@@ -15,30 +16,60 @@ trap 'rm -rf "$TRAVAIL"' EXIT
 
 site_de() { "$1/bin/python" -c 'import os, weasyprint; print(os.path.dirname(os.path.dirname(weasyprint.__file__)))'; }
 
-# preparer_venvs <nom du patch> : pose $NU et $PATCHE.
+# preparer_venvs <nom du patch> [socle…] : pose $NU et $PATCHE. Le socle, les patchs sans
+# lesquels le démontré ne produit rien, est posé sur les deux venvs.
 preparer_venvs() {
-  local patch="$1" version site temoin p
+  local patch="$1" version site temoin dossier p manque=0 liste
+  shift
   NU="$TRAVAIL/nu"
   PATCHE="$TRAVAIL/patche"
   cp -a "$SOURCE_VENV" "$NU"
   version="$("$NU/bin/python" -c 'import weasyprint; print(weasyprint.__version__)')"
   site="$(site_de "$NU")"
   temoin="$site/weasyprint/szh-patchs.txt"
+  dossier="$IMAGE/patches/weasyprint-$version"
   # Les correctifs déjà posés sur la source sont retirés, du dernier au premier.
   if [ -e "$temoin" ]; then
-    for p in $(tac "$temoin"); do
-      patch -s -R -d "$site" -p1 --batch --fuzz=0 --no-backup-if-mismatch \
-        < "$IMAGE/patches/weasyprint-$version/$p"
+    for p in $(cat "$temoin"); do [ -e "$dossier/$p" ] || manque=1; done
+    if [ $manque = 0 ]; then
+      liste="$(tac "$temoin")"
+    else
+      # Image construite avant un renommage : on retire les patchs du dossier qui sont
+      # posés, ceux qui s'appliquent encore ne le sont pas.
+      liste="$(cd "$dossier" && ls -r -- *.patch)"
+    fi
+    for p in $liste; do
+      if [ $manque = 1 ] && patch --dry-run -s -d "$site" -p1 --forward --batch --fuzz=0 \
+          < "$dossier/$p" > /dev/null 2>&1; then
+        continue
+      fi
+      patch -s -R -d "$site" -p1 --batch --fuzz=0 --no-backup-if-mismatch < "$dossier/$p"
     done
     rm "$temoin"
   fi
+  # Le venv nu doit l'être : chaque patch du dossier s'y applique au caractère près.
+  for p in "$dossier"/*.patch; do
+    patch --dry-run -s -d "$site" -p1 --forward --batch --fuzz=0 < "$p" > /dev/null ||
+      { echo "demo : $(basename "$p") ne s'applique pas au venv nu" >&2; return 1; }
+  done
   find "$site/weasyprint" -name '__pycache__' -prune -exec rm -rf {} +
   cp -a "$NU" "$PATCHE"
-  mkdir -p "$TRAVAIL/un-seul/weasyprint-$version"
-  cp "$IMAGE/patches/weasyprint-$version/$patch" "$TRAVAIL/un-seul/weasyprint-$version/"
+  mkdir -p "$TRAVAIL/socle/weasyprint-$version" "$TRAVAIL/un-seul/weasyprint-$version"
+  for p in "$@"; do
+    cp "$dossier/$p" "$TRAVAIL/socle/weasyprint-$version/"
+    cp "$dossier/$p" "$TRAVAIL/un-seul/weasyprint-$version/"
+  done
+  cp "$dossier/$patch" "$TRAVAIL/un-seul/weasyprint-$version/"
+  if [ $# -gt 0 ]; then
+    sh "$IMAGE/patch-weasyprint.sh" "$NU/bin/python" "$TRAVAIL/socle" | sed 's/^/  /'
+  fi
   sh "$IMAGE/patch-weasyprint.sh" "$PATCHE/bin/python" "$TRAVAIL/un-seul" | sed 's/^/  /'
-  echo "  nu     : WeasyPrint $version, aucun correctif SZH"
-  echo "  patché : WeasyPrint $version + $(cat "$(site_de "$PATCHE")/weasyprint/szh-patchs.txt")"
+  if [ $# -gt 0 ]; then
+    echo "  nu     : WeasyPrint $version + $* (socle), sans $patch"
+  else
+    echo "  nu     : WeasyPrint $version, aucun correctif SZH"
+  fi
+  echo "  patché : WeasyPrint $version + $(paste -sd' ' "$(site_de "$PATCHE")/weasyprint/szh-patchs.txt")"
 }
 
 # rendre <venv> <html> <pdf> [options WeasyPrint…]

@@ -2,7 +2,7 @@
 Canevas suivi : aucun modèle d'issue ni de PR dans Kozea/WeasyPrint ; CONTRIBUTING.md renvoie
 aux « Guidelines for Contributors » de CourtBouillon (avec ses mots, court, sans intertitres,
 un exemple court, demander avant d'envoyer du code, une seule PR ouverte à la fois). Voir
-../10-tableaux-images/ISSUE.md pour les citations. D'où une issue qui offre la PR ; le diff,
+../10-tableaux-entetes/ISSUE.md pour les citations. D'où une issue qui offre la PR ; le diff,
 sous la seconde ligne de séparation, n'est à envoyer en PR que si liZe le demande, avec un
 test dans tests/test_pdf.py à côté de ceux de dc:description. À reformuler par Robin avant
 de poster.

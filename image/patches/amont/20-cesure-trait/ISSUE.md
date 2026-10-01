@@ -2,7 +2,7 @@
 Canevas suivi : aucun modèle d'issue ni de PR dans Kozea/WeasyPrint ; CONTRIBUTING.md renvoie
 aux « Guidelines for Contributors » de CourtBouillon (avec ses mots, court, sans intertitres,
 un bogue réel avec un exemple court, demander avant d'envoyer du code). Voir
-../10-tableaux-images/ISSUE.md pour les citations. À reformuler par Robin avant de poster.
+../10-tableaux-entetes/ISSUE.md pour les citations. À reformuler par Robin avant de poster.
 Seule la partie « trait de césure » est proposée ; l'espace de fin de ligne reste local
 (voir RAPPORT.md, #1635 et #2715).
 Titre proposé : Mark hyphens added by hyphenation with ActualText

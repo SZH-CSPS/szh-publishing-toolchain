@@ -1,0 +1,106 @@
+Correctif SZH de WeasyPrint 70.0, 4/6 — espace de fin de ligne dans la couche texte.
+
+Posé par image/patch-weasyprint.sh ; s'applique sans les autres patchs de
+image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 3/6, seul autre à
+toucher layout/inline.py), mais ne produit rien sans le 3/6, qui porte le dessin de
+l'espace (voir son en-tête). Pour le désactiver : .patch.off.
+
+weasyprint/layout/inline.py. Une ligne coupée sur une espace ne gardait pas cette espace
+dans le PDF : la mise en ligne la retire, comme le veut CSS Text, et la couche texte la
+perdait avec le dessin. Le copier-coller et l'extraction rendaient « lamarche » (5 fins de
+ligne sur 782 portaient une espace, sur 4 articles de la Revue).
+Désormais, get_next_linebox repère une coupure sur une espace repliable (_break_at_space) et
+pose line_end_space sur la dernière boîte de texte de la ligne ; draw_first_line (3/6) y
+ajoute le glyphe espace de la police, sans encre. Jamais après une césure, ni en fin de
+paragraphe, ni sur un <br>, ni en white-space: pre*, ni de droite à gauche.
+Preuve : rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas j-espace (« un »,
+« deux », « quatre », « cinq » suivis d'une espace, « trois » au <br> et « six » en fin de
+paragraphe sans) et i-compose de test/weasyprint-patch-check.py, démo
+image/patches/amont/25-espace-fin-de-ligne/.
+
+--- a/weasyprint/layout/inline.py
++++ b/weasyprint/layout/inline.py
+@@ -195,9 +195,83 @@
+     if float_children:
+         line.children += tuple(float_children)
+ 
++    # SZH : la ligne est coupée sur une espace repliable, que le rendu retire. Le dessin
++    # la remet dans la couche texte (draw/text.py), sinon un copier-coller recolle le
++    # dernier mot de la ligne au premier de la suivante. Ni après une césure, ni en fin
++    # de paragraphe, ni sur un <br>.
++    if (resume_at is not None and not preserved_line_break and
++            _break_at_space(linebox, resume_at)):
++        textbox = _last_text_box(line)
++        if (textbox and not textbox.text[-1].isspace() and
++                textbox.style['white_space'] in ('normal', 'nowrap', 'pre-line')):
++            textbox.line_end_space = True
++
+     return line, resume_at
+ 
+ 
++def _edge_character(box, last):
++    """Dernier (ou premier) caractère d'une boîte en ligne.
++
++    '' si la boîte est vide ou hors flux, None si elle n'est pas du texte.
++
++    """
++    if isinstance(box, boxes.TextBox):
++        return box.text[-1:] if last else box.text[:1]
++    if isinstance(box, (boxes.LineBox, boxes.InlineBox)):
++        for child in (reversed(box.children) if last else box.children):
++            if (character := _edge_character(child, last)) != '':
++                return character
++        return ''
++    if not box.is_in_normal_flow():
++        return ''
++    return None
++
++
++def _break_at_space(box, skip_stack):
++    """La coupure ``skip_stack`` de ``box`` tombe-t-elle sur une espace ?"""
++    before = after = ''
++    befores, afters = [], []
++    while skip_stack and isinstance(box, (boxes.LineBox, boxes.InlineBox)):
++        (index, skip_stack), = skip_stack.items()
++        if index >= len(box.children):
++            return False
++        befores.append(box.children[:index])
++        afters.append(box.children[index + 1:])
++        box = box.children[index]
++    if isinstance(box, boxes.TextBox):
++        position = next(iter(skip_stack)) if skip_stack else 0
++        text = box.text.encode()
++        before = text[:position].decode()[-1:]
++        after = text[position:].decode()[:1]
++    else:
++        after = _edge_character(box, last=False)
++    for siblings in reversed(befores):
++        for child in reversed(siblings):
++            if before != '':
++                break
++            before = _edge_character(child, last=True)
++    for siblings in reversed(afters):
++        for child in siblings:
++            if after != '':
++                break
++            after = _edge_character(child, last=False)
++    return ' ' in (before, after)
++
++
++def _last_text_box(box):
++    """Dernière boîte de texte non vide d'une ligne, None si la ligne finit autrement."""
++    for child in reversed(box.children):
++        if isinstance(child, boxes.TextBox):
++            if child.text.strip():
++                return child
++        elif isinstance(child, (boxes.LineBox, boxes.InlineBox)):
++            if (textbox := _last_text_box(child)) is not False:
++                return textbox
++        elif child.is_in_normal_flow():
++            return None
++    return False
++
++
+ def skip_first_whitespace(box, skip_stack):
+     """Return ``skip_stack`` to start just after removable leading spaces.
+ 

@@ -1,12 +1,11 @@
 #!/bin/bash
-# Démo du correctif 20 : trait de césure en /ActualText U+00AD, espace de fin de ligne
-# remise dans la couche texte.
+# Démo du correctif 20 : trait de césure en /ActualText U+00AD.
 # Lancer dans la WSL : wsl.exe -d SZH-Publishing -- bash <chemin>/demo.sh
 ICI="$(cd "$(dirname "$0")" && pwd)"
 . "$ICI/../../demo-commun.sh"
 
 echo "== Préparation des deux venvs"
-preparer_venvs 20-cesure-fin-de-ligne.patch
+preparer_venvs 20-cesure-trait.patch
 
 for venv in NU PATCHE; do
   echo

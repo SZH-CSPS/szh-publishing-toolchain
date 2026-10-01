@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 4/4 — langue du document dans le XMP (dc:language).
+Correctif SZH de WeasyPrint 70.0, 6/6 — langue du document dans le XMP (dc:language).
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (seul à toucher metadata.py). Pour le désactiver : .patch.off.
