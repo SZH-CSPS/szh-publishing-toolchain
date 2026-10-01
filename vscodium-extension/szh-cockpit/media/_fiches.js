@@ -375,13 +375,25 @@
     // `traduction` marque les champs d'une autre langue que celle de l'article : ils sont
     // cachés par défaut, et révélés par le bouton de la barre. Une fiche se remplit
     // d'abord dans sa langue ; tout afficher d'emblée triplait la hauteur de la carte.
-    function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne, traduction) {
+    // `croissant` : titre ou sous-titre d'un chapitre — une ligne au départ, qui grandit ;
+    // Entrée y force un retour à la ligne (l'hôte l'écrit « // »).
+    function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne, traduction, croissant) {
       var l = document.createElement('label');
       l.textContent = libelle;
       appeler('champ', l, langue ? cle + '.' + langue : cle);
-      var i = document.createElement(multiligne ? 'textarea' : 'input');
-      if (multiligne) { i.rows = 3; } else { i.type = 'text'; }
+      var i = document.createElement(multiligne || croissant ? 'textarea' : 'input');
+      if (croissant) {
+        i.rows = 1;
+        i.style.resize = 'none';
+        i.style.overflow = 'hidden';
+        i._ajuster = function () {
+          i.style.height = 'auto';
+          if (i.scrollHeight) { i.style.height = i.scrollHeight + 'px'; }
+        };
+        i.addEventListener('input', i._ajuster);
+      } else if (multiligne) { i.rows = 3; } else { i.type = 'text'; }
       i.value = valeur || '';
+      if (i._ajuster) { i._ajuster(); }
       i.dataset.cle = cle;
       if (langue) { i.dataset.langue = langue; l.classList.add('champ-' + langue); i.classList.add('champ-' + langue); }
       if (traduction) { l.classList.add('champ-trad'); i.classList.add('champ-trad'); }
@@ -1014,8 +1026,9 @@
             var traduction = lg !== langueArticle;
             var champ = champTexte(carte, zoneTextes, slug, textes[c][0], lg,
               textes[c][1].split('{0}').join(noms[lg]),
-              (valeurs[textes[c][0]] || {})[lg], textes[c][2], traduction);
-            // Livre seulement : « // » force un retour à la ligne dans un titre de chapitre,
+              (valeurs[textes[c][0]] || {})[lg], textes[c][2], traduction,
+              ESTLIVRE && textes[c][0] !== 'resume');
+            // Livre seulement : Entrée force un retour à la ligne dans un titre de chapitre,
             // comme dans celui du livre (media/_numero.js, champ.aide).
             if (ESTLIVRE && textes[c][0] !== 'resume' && TXT.brAide) {
               var aideBr = document.createElement('p');

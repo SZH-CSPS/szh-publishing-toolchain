@@ -68,9 +68,10 @@
   // fenêtre : ce formulaire n'a, pour l'instant, qu'une vue à porter, mais partage le même
   // moteur que celui du numéro plutôt que d'en recopier un second.
   var CHAMPS_LIVRE = [
-    // `aide` : une ligne sous le champ. Dans un titre, « // » force un retour à la ligne.
-    { cle: 'titre', genre: 'texte', libelle: 'meta.livre.titre', aide: 'meta.livre.brAide' },
-    { cle: 'sous-titre', genre: 'texte', libelle: 'meta.livre.soustitre', aide: 'meta.livre.brAide' },
+    // `aide` : une ligne sous le champ. `lignes` : champ de plusieurs lignes qui grandit ; dans
+    // un titre, Entrée force un retour à la ligne (écrit « // » par l'hôte, lignesVersTitre).
+    { cle: 'titre', genre: 'texte', libelle: 'meta.livre.titre', aide: 'meta.livre.brAide', lignes: true },
+    { cle: 'sous-titre', genre: 'texte', libelle: 'meta.livre.soustitre', aide: 'meta.livre.brAide', lignes: true },
     { cle: 'ouvrage', genre: 'radio', libelle: 'meta.livre.ouvrage',
       options: [
         { valeur: 'monographie', libelle: 'meta.livre.ouvrage.monographie' },
@@ -187,8 +188,17 @@
     function champTexte(champ, type) {
       var bloc = poser(conteneur, 'div', 'szh-champ');
       poser(bloc, 'label', null, lib(champ.libelle)).setAttribute('for', 'num-' + champ.cle);
-      var i = document.createElement('input');
-      i.type = type;
+      var i = document.createElement(champ.lignes ? 'textarea' : 'input');
+      if (champ.lignes) {
+        i.rows = 1;
+        i.style.resize = 'none';
+        i.style.overflow = 'hidden';
+        i._ajuster = function () {
+          i.style.height = 'auto';
+          if (i.scrollHeight) { i.style.height = i.scrollHeight + 'px'; }
+        };
+        i.addEventListener('input', i._ajuster);
+      } else { i.type = type; }
       i.id = 'num-' + champ.cle;
       i.dataset.cle = champ.cle;
       i.addEventListener('input', function () { toucher(champ.cle); });
@@ -671,6 +681,7 @@
         }
         var e = ctl[champ.cle];
         e.value = brut;
+        if (e._ajuster) { e._ajuster(); }
         if (champ.cle === 'date' && indiceDate) {
           if (brut !== '' && e.value !== brut) {
             indiceDate.textContent = (TXT.indiceDate || '').split('{0}').join(brut);

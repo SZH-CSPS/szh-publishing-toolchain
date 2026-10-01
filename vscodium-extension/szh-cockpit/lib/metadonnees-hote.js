@@ -409,6 +409,17 @@ function chargeDos(racine) {
   } catch (e) { return null; }
 }
 
+// Retour à la ligne forcé dans un titre : le formulaire montre de vraies lignes, la chaîne
+// (buch.yaml, fiches) les écrit « // » entre deux espaces, sur une seule ligne. Une seule
+// découpe pour les deux sens : lignes vides retirées, espaces de bord coupées, et « A//B »
+// se lit comme deux lignes.
+function lignesTitre(texte) {
+  return String(texte === undefined || texte === null ? '' : texte)
+    .split(/\r\n|\r|\n|\/\//).map((l) => l.trim()).filter((l) => l !== '');
+}
+function titreVersLignes(texte) { return lignesTitre(texte).join('\n'); }
+function lignesVersTitre(texte) { return lignesTitre(texte).join(' // '); }
+
 function dossierCouvertureLivre(racine) { return path.join(racine, 'couverture'); }
 
 function illustrationExistante(racine) {
@@ -525,6 +536,7 @@ function chargeLivre(racine) {
     if (valeurs[cle] === undefined) { valeurs[cle] = CLES_PERSONNES.indexOf(cle) !== -1 ? [] : ''; }
   }
   valeurs['impression.traits-de-coupe'] = estVraiYaml(valeurs['impression.traits-de-coupe']) ? 'true' : 'false';
+  for (const cle of ['titre', 'sous-titre']) { valeurs[cle] = titreVersLignes(valeurs[cle]); }
   const reference = couleursReference();
   return {
     valeurs: valeurs, dos: chargeDos(racine), couverture: chargeIllustration(racine),
@@ -558,7 +570,8 @@ function ecrireChampsLivre(racine, brut) {
       continue;
     }
     if (brut && typeof brut[cle] === 'string') {
-      modifies[cle] = brut[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
+      modifies[cle] = (cle === 'titre' || cle === 'sous-titre' ? lignesVersTitre(brut[cle]) : brut[cle])
+        .replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
     }
   }
   // Couleur d'impression et fond de couverture : la liste fermée de la référence.
@@ -971,6 +984,12 @@ function lireMetadonneesArticles(fournisseur, filtre) {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
     } catch (e) { /* pas encore de fiche : carte vide */ }
     delete valeurs._inconnues;
+    // Chapitre : les « // » d'un titre se montrent en lignes (voir lignesTitre).
+    if (profilCourant().cle === 'livre') {
+      for (const cle of ['title', 'subtitle']) {
+        for (const l of Object.keys(valeurs[cle] || {})) { valeurs[cle][l] = titreVersLignes(valeurs[cle][l]); }
+      }
+    }
     articles.push({
       slug: slug, valeurs: valeurs, doiCalcule: dois[slug] || '',
       apercusAuteurs: (valeurs.author || [])
@@ -1000,7 +1019,8 @@ function nettoyerCarte(brut) {
     const map = (brut && brut[cle]) || {};
     const max = cle === 'resume' ? 2000 : 500;
     for (const l of LANGUES_META) {
-      const t = texteCourt(map[l], max);
+      const enLignes = profilCourant().cle === 'livre' && cle !== 'resume';
+      const t = texteCourt(enLignes ? lignesVersTitre(map[l]) : map[l], max);
       if (t !== '') { carte[cle][l] = t; }
     }
   }
@@ -1668,7 +1688,7 @@ module.exports = {
   lireMetadonneesArticles, nettoyerCarte, ecrireCartesArticles, messageCartes,
   imprimerFeuilleVerifTous,
   relancerCompilationCartes, textesCarteArticle, textesAuteur, licencesTraduites, typesTraduits,
-  textesLivre, chargeLivre, ecrireChampsLivre, messageLivre, couleursReference, filtreValide, signalerFichesPerimees, titreFiches,
+  lignesTitre, titreVersLignes, lignesVersTitre, textesLivre, chargeLivre, ecrireChampsLivre, messageLivre, couleursReference, filtreValide, signalerFichesPerimees, titreFiches,
   confirmerDoiManuel, ouvrirMetadonnees, ouvrirApercuMetadonnees, ouvrirMetadonneesArticle,
   basculerMarkdownFiche,
   limitesMedias, BUDGET_VIGNETTES, vignetteAuteur, envoyerAuteursConnus, envoyerMotsClesConnus,

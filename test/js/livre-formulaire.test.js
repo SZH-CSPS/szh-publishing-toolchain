@@ -446,7 +446,7 @@ test('livre : le décalage passe la validation de l’hôte, les valeurs absurde
   assert.strictEqual(lu['couverture.illustration-x-mm'], '', 'vider le champ doit remettre le décalage à zéro');
 });
 
-test('livre : champs de décalage dans le bloc de couverture, aide « // » sous titre et sous-titre', async () => {
+test('livre : champs de décalage dans le bloc de couverture, aide « Entrée » sous titre et sous-titre', async () => {
   const { page, formulaire } = await pageDuLivre('titre: "T"\nlang: fr\ncouverture:\n  illustration-x-mm: -2\n');
   const x = parCle(formulaire, 'couverture.illustration-x-mm')[0];
   const y = parCle(formulaire, 'couverture.illustration-y-mm')[0];
@@ -460,8 +460,8 @@ test('livre : champs de décalage dans le bloc de couverture, aide « // » sous
     return descendants(bloc).filter((e) => e.classes.has('champ-aide')).map((e) => e.textContent);
   };
   assert.deepStrictEqual(Array.from(aides('couverture.illustration-x-mm')), ['+ vers la droite / + vers le bas']);
-  assert.deepStrictEqual(Array.from(aides('titre')), ['// force un retour à la ligne']);
-  assert.deepStrictEqual(Array.from(aides('sous-titre')), ['// force un retour à la ligne']);
+  assert.deepStrictEqual(Array.from(aides('titre')), ['Entrée' + NBSP + ': retour à la ligne forcé']);
+  assert.deepStrictEqual(Array.from(aides('sous-titre')), ['Entrée' + NBSP + ': retour à la ligne forcé']);
   // Dans le même bloc que le fond : ils se suivent dans le formulaire (un seul bloc à fusionner).
   const ordre = descendants(formulaire).map((e) => e.dataset && e.dataset.cle)
     .filter((c) => c && c.indexOf('couverture.') === 0);
@@ -473,4 +473,88 @@ test('livre : champs de décalage dans le bloc de couverture, aide « // » sous
   page.parId.enregistrer.dispatchEvent({ type: 'click' });
   const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
   assert.deepStrictEqual(JSON.parse(JSON.stringify(envoi.modifies)), { 'couverture.illustration-y-mm': '-0.5' });
+});
+
+// ---- Titres sur plusieurs lignes : « // » dans le fichier, vrais retours à la ligne à l'écran ----
+
+test('titres : une seule conversion, dans les deux sens (A\nB <-> A // B)', async () => {
+  await ouvrirLivre();   // l'hôte doit être actif pour charger lib/metadonnees-hote.js
+  const h = require(path.join(COCKPIT, 'lib', 'metadonnees-hote.js'));
+  assert.strictEqual(h.lignesVersTitre('A\nB'), 'A // B');
+  assert.strictEqual(h.titreVersLignes('A // B'), 'A\nB');
+  assert.strictEqual(h.titreVersLignes('A//B'), 'A\nB', '« A//B » doit se lire en deux lignes');
+  assert.strictEqual(h.titreVersLignes('  A  //   // B  // '), 'A\nB', 'lignes vides ou espaces de bord conservées');
+  assert.strictEqual(h.lignesVersTitre('A\r\n\r\n  B  \n'), 'A // B');
+  assert.strictEqual(h.lignesVersTitre('Une seule ligne'), 'Une seule ligne');
+  assert.strictEqual(h.lignesVersTitre('\n\n'), '');
+  const t = 'Créer ensemble // Facile à Lire';
+  assert.strictEqual(h.lignesVersTitre(h.titreVersLignes(t)), t, 'l’aller-retour ne rend pas la chaîne');
+});
+
+test('livre : titre et sous-titre sont des champs de plusieurs lignes, écrits sur une seule', async () => {
+  const { LIVRE, p, valeurs } = await ouvrirLivre('titre: "Créer ensemble//Facile à Lire"\nsous-titre: "x"\nlang: fr\n');
+  assert.strictEqual(valeurs().valeurs.titre, 'Créer ensemble\nFacile à Lire', '« // » non montré en retour à la ligne');
+  const page = await pageDuLivre('titre: "A // B"\nlang: fr\n');
+  for (const cle of ['titre', 'sous-titre']) {
+    const champ = parCle(page.formulaire, cle)[0];
+    assert.strictEqual(champ.balise, 'textarea', cle + ' n’est pas un champ de plusieurs lignes');
+    assert.strictEqual(champ.rows, 1, 'une ligne au départ');
+  }
+  assert.strictEqual(parCle(page.formulaire, 'titre')[0].value, 'A\nB');
+  const champ = parCle(page.formulaire, 'sous-titre')[0];
+  champ.value = 'Un\n\n Deux ';
+  champ.dispatchEvent({ type: 'input' });
+  page.page.parId.enregistrer.dispatchEvent({ type: 'click' });
+  const envoi = page.page.messages.filter((m) => m.type === 'enregistrer').pop();
+  assert.strictEqual(envoi.modifies['sous-titre'], 'Un\n\n Deux ', 'la page doit envoyer le texte tel que saisi');
+  // L'hôte, lui, écrit une ligne.
+  await p._recepteur({ type: 'enregistrer', auto: false, modifies: { titre: 'Un\n\n Deux ', 'sous-titre': 'a//b' } });
+  const buch = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  assert.match(buch, /^titre: "Un \/\/ Deux"$/m);
+  assert.match(buch, /^sous-titre: "a \/\/ b"$/m);
+});
+
+test('chapitre : title et subtitle se lisent en lignes et s’écrivent « // » (livre seulement)', async () => {
+  const { LIVRE } = await ouvrirLivre();
+  const h = require(path.join(COCKPIT, 'lib', 'metadonnees-hote.js'));
+  const carte = h.nettoyerCarte({ title: { fr: 'A\nB' }, subtitle: { fr: 'C\n\nD' }, resume: { fr: 'Un\nrésumé' } });
+  assert.strictEqual(carte.title.fr, 'A // B');
+  assert.strictEqual(carte.subtitle.fr, 'C // D');
+  assert.strictEqual(carte.resume.fr, 'Un résumé', 'le résumé ne change pas');
+  const fiche = path.join(LIVRE, 'chapitres', '01-ouverture', '01-ouverture.meta.yaml');
+  fs.writeFileSync(fiche, ['lang: fr', 'title:', '  fr: "A // B"', 'subtitle:', '  fr: "C//D"', ''].join(LF));
+  const lues = h.lireMetadonneesArticles({ racine: LIVRE, listerArticles: () => ['01-ouverture'] });
+  assert.strictEqual(lues[0].valeurs.title.fr, 'A\nB');
+  assert.strictEqual(lues[0].valeurs.subtitle.fr, 'C\nD');
+});
+
+test('fiches : en livre, titre et sous-titre sont des champs qui grandissent ; en revue, une ligne', () => {
+  const { libellesHote } = require('./dom-minimal');
+  const rendre = (estLivre) => {
+    const page = ouvrir({
+      racine: RACINE, page: 'metadata-articles',
+      cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+      jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+      txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+    });
+    page.envoyer({ type: 'valeurs', langue: 'fr', types: [], licences: [], licenceDefaut: '', filtre: null,
+      estLivre: estLivre,
+      articles: [{ slug: '01-a', valeurs: { lang: 'fr', title: { fr: 'A\nB' }, subtitle: { fr: 'C' },
+        resume: { fr: 'R' }, keywords: {}, author: [] } }] });
+    const champs = {};
+    for (const e of descendants(page.conteneur())) {
+      if (e.dataset && (e.dataset.cle === 'title' || e.dataset.cle === 'subtitle') && e.dataset.langue === 'fr') {
+        champs[e.dataset.cle] = e;
+      }
+    }
+    return { champs, aides: descendants(page.conteneur()).filter((e) => e.classes.has('champ-aide')).length };
+  };
+  const livre = rendre(true);
+  assert.strictEqual(livre.champs.title.balise, 'textarea');
+  assert.strictEqual(livre.champs.title.value, 'A\nB');
+  assert.strictEqual(livre.champs.subtitle.balise, 'textarea');
+  assert.ok(livre.aides >= 2, 'l’aide « Entrée » manque sous les titres du chapitre');
+  const revue = rendre(false);
+  assert.strictEqual(revue.champs.title.balise, 'input', 'la revue doit garder des champs d’une ligne');
+  assert.strictEqual(revue.aides, 0);
 });
