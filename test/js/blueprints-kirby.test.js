@@ -2,7 +2,7 @@
 // kirby/site/blueprints/{pages,files}/ égalent la génération depuis le contrat unique
 // pipeline/kirby/champs-documentation.json, et les garanties structurelles tenues par le
 // générateur : chaque liste a ses deux langues ; aucun nom de champ hors a-z0-9_, aucun champ
-// nommé `image` (TODO_KirbyCMS.md §10) ; un champ `files` référence un gabarit files/<cle>.yml
+// nommé `image` (docs/TODO/kirby-cms.md §10) ; un champ `files` référence un gabarit files/<cle>.yml
 // réel, sans `alt` (décoratif) ; translate:false pour tout champ commun (pas traduire:true
 // dans le JSON), rien pour les traduisibles, et par sous-champ dans le structure `suivi` ;
 // ausgabe/ordre présents en hidden traduisibles sur chaque fiche ; plus de blueprint de
@@ -282,7 +282,7 @@ test('blueprints générés : noms de champ en a-z0-9_ uniquement, jamais `image
     for (const [nomChamp, config] of Object.entries(fields)) {
       assert.match(nomChamp, CLE_SIMPLE, origine + ' : nom de champ hors a-z0-9_ : ' + nomChamp);
       assert.notStrictEqual(nomChamp, 'image',
-        origine + ' : champ nommé `image` — méthode réservée de Kirby (TODO_KirbyCMS.md §10)');
+        origine + ' : champ nommé `image` — méthode réservée de Kirby (docs/TODO/kirby-cms.md §10)');
       if (config && config.type === 'structure') { walker(config.fields, origine + '.' + nomChamp); }
     }
   };

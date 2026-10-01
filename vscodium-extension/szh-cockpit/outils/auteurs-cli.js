@@ -6,7 +6,7 @@
 //
 // Pourquoi ce fichier existe : le cache alimente l'autocomplétion du cockpit ET, depuis le
 // 22.09.2026, le signal « lexique » du nettoyeur de manuscrit (pipeline/manuscrit_noms.py,
-// voir outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md §5.5 ter). Il se construisait jusqu'ici
+// voir docs/ARCHITECTURE-nettoyeur-manuscrit.md §5.5 ter). Il se construisait jusqu'ici
 // seulement à l'activation du cockpit (extension.js -> rafraichirAuteursPubliesEnFond(),
 // lib/metadonnees-hote.js) — donc seulement quand VSCodium a démarré. Or les raccourcis du
 // menu Démarrer ouvrent windows/open-produit.ps1 directement (Set-SzhRaccourcisMenu,

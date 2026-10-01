@@ -2,7 +2,7 @@
 // rédaction — CSPS.TraitUnion (huit règles, pipeline/vale/styles/CSPS/TraitUnion/*.yml,
 // écrites à la main) et CSPS.Orthographe.Rectifiee-* (neuf catégories, GÉNÉRÉES par
 // outils-dev/lexique/generer-orthographe.py depuis pipeline/vale/lexique/
-// orthographe-rectifiee.csv). Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7.
+// orthographe-rectifiee.csv). Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7.
 //
 // Ce fichier éprouve :
 //   1. un positif et un négatif pour chacune des huit règles TraitUnion ;

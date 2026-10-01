@@ -3,7 +3,7 @@
 # manuscrit_annoter.py — annote un .docx DÉJÀ au gabarit (la sortie de manuscrit_gabarit.ecrire())
 # avec les alertes du contrat §7/§7 bis : révisions Word (w:ins/w:del) pour les corrections
 # textuelles déterministes, commentaires Word ancrés pour ce qui demande un jugement, plafonnés.
-# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
+# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
 #
 # stdlib seule (zipfile, re, json, itertools, datetime, os, tempfile) — pas de python-docx, pas
 # de lxml (§2 du contrat). Ce module ne prend AUCUNE décision éditoriale : les alertes arrivent

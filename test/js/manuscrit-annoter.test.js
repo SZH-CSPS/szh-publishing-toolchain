@@ -2,7 +2,7 @@
 // manuscrit_gabarit.ecrire()) avec les alertes du contrat §7 — révisions Word (w:ins/w:del)
 // pour les corrections déterministes, commentaires Word ancrés pour ce qui demande un
 // jugement, plafonnés (au plus 5 par règle, un plafond global). Contrat :
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 ter.
 //
 //   node --test test/js/manuscrit-annoter.test.js
 //

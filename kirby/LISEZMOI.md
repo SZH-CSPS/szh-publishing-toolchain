@@ -3,7 +3,7 @@
 Blueprints du site Kirby de la Documentation (« Actualité et ressources » /
 « News & Ressourcen »), générés depuis le contrat unique
 `pipeline/kirby/champs-documentation.json`. Voir `docs/FORMAT-DOCUMENTATION-KIRBY.md` pour le
-format de l'arborescence que Pronto écrit, et `TODO_KirbyCMS.md` pour ce que le site Kirby
+format de l'arborescence que Pronto écrit, et `docs/TODO/kirby-cms.md` pour ce que le site Kirby
 doit encore reprendre — les deux font foi, pas ce fichier.
 
 ## Contenu
@@ -31,7 +31,7 @@ doit encore reprendre — les deux font foi, pas ce fichier.
 - `site/blueprints/files/<cle>.yml` — un gabarit de fichier par CLÉ de champ `fichier` du JSON
   (aujourd'hui : `couverture`, partagé par `livre` et `film`). Porte le `accept: extension:
   […]` ; le champ `files` correspondant le référence via `uploads: <cle>`. Pas de champ
-  `alt` : l'image est décorative (couverture, affiche — TODO_KirbyCMS.md §10), le site doit
+  `alt` : l'image est décorative (couverture, affiche — docs/TODO/kirby-cms.md §10), le site doit
   rendre `alt=""` de lui-même.
 
 ### Traductibilité (`translate`)
@@ -74,7 +74,7 @@ node --test test/js/blueprints-kirby.test.js
 
 Contrôle que les blueprints committés égalent la génération, que chaque liste du JSON porte
 ses deux langues, qu'aucun champ généré n'a un nom hors `[a-z0-9_]` ou ne s'appelle `image`
-(méthode réservée de Kirby, voir `TODO_KirbyCMS.md` §10), que `translate` suit la règle
+(méthode réservée de Kirby, voir `docs/TODO/kirby-cms.md` §10), que `translate` suit la règle
 ci-dessus champ par champ (y compris dans `suivi`), qu'`ausgabe`/`ordre` sont bien présents en
 `hidden` traduisibles sur chaque fiche, qu'il n'y a plus de blueprint de rubriques, que chaque
 `types[].dossier` est bien en ASCII `[A-Za-z]+`, que chaque type a sa page parente (titre =
@@ -95,6 +95,6 @@ getkirby.com consultées le 23.09.2026 ; résumé :
   options) : la restriction par extension passe par un gabarit de fichier séparé, référencé
   via `uploads: <cle>` — c'est ce que fait ce générateur (`site/blueprints/files/<cle>.yml`).
   Syntaxe de `accept.extension` sur un gabarit de fichier également vérifiée sur
-  getkirby.com. Reste à confirmer sur une vraie instance (`TODO_KirbyCMS.md` §6) : la
+  getkirby.com. Reste à confirmer sur une vraie instance (`docs/TODO/kirby-cms.md` §6) : la
   version de Kirby retenue applique bien cette restriction au moment de l'upload dans le
   Panel.

@@ -3,7 +3,7 @@
 # manuscrit_modele.py — le modèle riche du nettoyeur de manuscrit (article) et TOUTES les
 # décisions qui le lisent : classement des titres (promotion ET rétrogradation), nettoyage
 # de la mise en forme manuelle, reconnaissance du gabarit (cas A / cas B), taille dominante
-# du corps. Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §5, §11.
+# du corps. Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §5, §11.
 #
 # AUCUNE trace de Word ni d'OpenDocument ici : pas de namespace `w:`, pas de `office:». Ce
 # fichier ne lit ni .docx ni .odt — il ne raisonne que sur les six classes du §4 du contrat
@@ -460,7 +460,7 @@ def _fragments_non_vides(paragraphe):
     return [f for f in paragraphe.fragments if f.texte]
 
 
-# ⚠ Révision du 19.09.2026 (§5.1, BRIEF-REPRISE §6.2) : les signatures se lisaient sur
+# ⚠ Révision du 19.09.2026 (§5.1) : les signatures se lisaient sur
 # `Fragment.forme` (mise en forme DIRECTE seule), avec ce défaut mesuré sur le corpus réel —
 # « corps sans taille déclarée » (elle hérite du style) et « faux titre déclaré 12 pt » sont
 # jugés DIFFÉRENTS alors qu'ils font tous deux 12 pt à l'écran, ce qui a empêché la passe 3 bis
@@ -1020,7 +1020,7 @@ def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
     # signature EFFECTIVE à la signature DIRECTE fait chuter le corpus 2-fabrique de 21/34 à
     # 5/34 faux titres rattrapés — une RÉGRESSION, pas une amélioration. Cause : ces 34 faux
     # titres sont fabriqués par un simple remplacement de w:pStyle, SANS aucun réglage direct
-    # (BRIEF-REPRISE §4) — leur signature EFFECTIVE, une fois la cascade résolue, devient donc
+    # — leur signature EFFECTIVE, une fois la cascade résolue, devient donc
     # EXACTEMENT celle de leur style de titre, indiscernable en tous points d'un vrai titre du
     # même niveau. La comparer telle quelle à celle du corps la déclare « distincte » et
     # court-circuite la longueur qui, seule, aurait pu les démasquer. La correction du

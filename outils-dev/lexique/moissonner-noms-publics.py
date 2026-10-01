@@ -4,8 +4,7 @@
 #   pipeline/lexique/noms-frequents.txt     (noms de famille)
 #   pipeline/lexique/prenoms-frequents.txt  (prénoms)
 # lus par manuscrit_noms.BaseNoms en renfort de la base OJS du poste. Contrat :
-# outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater. Brief de cadrage :
-# outils-dev/BRIEF-lexique-noms-elargi.md.
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater.
 #
 # ⚠ CE SCRIPT N'EST PAS generer-noms.py, ET NE LE REMPLACE PAS.
 # `noms-famille.txt` (les 1282 noms tirés des bibliographies du corpus local, fabriqué par

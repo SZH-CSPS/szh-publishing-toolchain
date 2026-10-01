@@ -1,8 +1,8 @@
 // Contrôles de pipeline/livre-scinder.py : le script a détruit le seul exemplaire du
 // media/ d'un chapitre alors que sept images manquaient à l'appel, parce qu'une copie
 // ratée ne faisait qu'un avertissement non bloquant sur stderr, suivi d'un rmtree
-// inconditionnel de la source. Voir docs/REPRISE-LIVRES.md (31.08) pour le diagnostic
-// complet — ce fichier ne le refait pas, il en mesure le correctif.
+// inconditionnel de la source. Ce fichier ne refait pas le diagnostic, il en mesure le
+// correctif.
 //
 //   node --test "test/js/*.test.js"
 //

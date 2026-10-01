@@ -1033,7 +1033,7 @@ test('pronto-lire.py : nouvelle forme — bloc tableau reconnu, mais SANS ligne 
   assert.strictEqual(b.nature, 'table');
   assert.strictEqual(b.tbl_interne, true);
   assert.strictEqual(b.consommee, true);
-  // Différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md) : le
+  // Différence assumée avec l'ancienne forme : le
   // tableau n'est plus enveloppé, rien ne doit donc le faire sauter à l'import — seuls les
   // tableaux 1 et 2 (métadonnées, auteurs) sont consommés.
   assert.deepStrictEqual(vu.stats.tableaux_consommes, [1, 2],
@@ -1546,7 +1546,7 @@ test('pronto-lire.py : un bloc — un champ laissé vide est une information, ja
 // Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits réels, aucun au gabarit) : 3 documents
 // sur 11 ont un tableau de données comme PREMIER tableau du document (ex. « Enregistrement des
 // cours | 49 ») — pris pour le tableau des métadonnées par la seule position (piège déjà
-// documenté dans TODO-BRANCHEMENT-PARSER-V2.md). Avant la correction de _etiquette_szh_cle()
+// documenté dans docs/TODO/parser-v2.md). Avant la correction de _etiquette_szh_cle()
 // (22.09.2026), chaque rangée de ce tableau ORDINAIRE était comparée comme une étiquette — et,
 // portant un contenu réel non reconnu, bloquait tout l'import. _etiquette_szh_cle() (et les
 // mêmes lieux dans extraire_table_auteurs()/_champs_bloc_meta()) n'acceptent plus qu'un

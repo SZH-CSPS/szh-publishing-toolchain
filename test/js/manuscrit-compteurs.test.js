@@ -1,5 +1,5 @@
 // pipeline/manuscrit-nettoyer.py : l'objet `compteurs` de la ligne stdout et le plantage rattrapé
-// (§8 de outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md). Deux promesses, une seule
+// (§8 de docs/ARCHITECTURE-nettoyeur-manuscrit.md). Deux promesses, une seule
 // menace : qu'un mot du manuscrit sorte de la CLI par ce canal.
 //
 //   1. `compteurs` ne porte que des noms de mesure d'une liste blanche et des entiers, plus un

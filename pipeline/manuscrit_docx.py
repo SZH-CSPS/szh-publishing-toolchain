@@ -4,7 +4,7 @@
 # riche de manuscrit_modele.py (§4 du contrat) et projeter_pronto(), qui rend EXACTEMENT ce
 # que pronto_docx.lire() rend sur le même fichier (§3, « dette assumée »). AUCUNE décision
 # ici — ni classement de titre, ni nettoyage de mise en forme : seulement de la lecture.
-# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §10, §11.
+# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §10, §11.
 #
 # Repris SANS LES MODIFIER de pronto_docx.py : résolution de style (charger_styles/pstyle/
 # resoudre_style), comptage des marqueurs de page (compter_marqueurs_page), liste des blocs

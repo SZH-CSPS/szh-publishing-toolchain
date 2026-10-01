@@ -854,7 +854,7 @@ existe (`media/metadata-book.*`). La palette de commandes (§10.5) porte désorm
 `when` par profil (voir §6). Le badge « déjà converti » sur un dépôt Word répété
 (correction n° 8, §10.6) est générique : `_itemsWord()` lit `profilCourant().depot` et pose
 `word-deja` pour un chapitre comme pour un article. Ce qui reste ouvert, par sous-section,
-est signalé plus bas ; [`REPRISE-LIVRES.md`](REPRISE-LIVRES.md) tient la liste vivante.
+est signalé plus bas ; [`TODO/livres.md`](TODO/livres.md) tient la liste vivante.
 
 ### 10.1 Le préalable : dégonfler `extension.js`
 

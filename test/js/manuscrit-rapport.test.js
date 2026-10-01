@@ -1,6 +1,6 @@
 // rapport-manuscrit.twig : la page HTML du rapport du nettoyeur de manuscrit, et la vue
 // (construireVueRapportManuscrit, outils/rendre-gabarit.js) qui la nourrit -- §7/§7 bis/
-// §7 ter/§9/§10 de outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Le moteur de gabarits
+// §7 ter/§9/§10 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Le moteur de gabarits
 // (lib/gabarits.js) n'a ni arithmétique ni indexation par crochets : plafonner une liste
 // d'occurrences, grouper par famille puis par règle, juger une image (lib/qualite-image.js)
 // se font donc AVANT le rendu, dans construireVueRapportManuscrit -- ce fichier éprouve

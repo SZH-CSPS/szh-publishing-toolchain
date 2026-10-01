@@ -1,6 +1,6 @@
 // Formulaire « Métadonnées du livre » (media/metadata-book.*, media/_numero.js,
 // extension.js) : buch.yaml n'avait aucun formulaire, le plus gros manque de parité
-// cockpit revue/livre (docs/REPRISE-LIVRES.md §2.1a). Le formulaire réutilise le moteur
+// cockpit revue/livre. Le formulaire réutilise le moteur
 // partagé de media/_numero.js (SZH.formulaireLivre, à côté de SZH.formulaireNumero) plutôt
 // que d'en recopier un second — c'est le même contrôle qui vaut pour les deux : voir
 // articles.test.js pour celui du numéro.

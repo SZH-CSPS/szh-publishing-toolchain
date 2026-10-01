@@ -2,7 +2,7 @@
 //
 //   node --test "test/js/*.test.js"
 //
-// docs/REPRISE-LIVRES.md §2.5 le donnait pour vrai sans qu'un vrai aller-retour l'ait
+// Le suivi du chantier livres le donnait pour vrai sans qu'un vrai aller-retour l'ait
 // jamais mesuré : « il a été affirmé que pandoc retire cette numérotation à l'import [...]
 // mais personne ne l'a constaté sur un vrai aller-retour ».
 //
@@ -71,7 +71,7 @@ test(".docx du modèle : les titres sont numérotés par le style, pas par le te
   const numId = /<w:style [^>]*w:styleId="Heading1"[^>]*>[\s\S]*?<w:numId w:val="(\d+)"/
     .exec(styles);
   assert.ok(numId, 'Heading1 ne référence plus de numérotation automatique (w:numId) — '
-    + 'la prémisse de ce contrôle ne tient plus, à revoir avec docs/REPRISE-LIVRES.md §2.5');
+    + 'la prémisse de ce contrôle ne tient plus');
   assert.match(numbering, /<w:lvlText w:val="%1\."/,
     'le format de numérotation attendu (« %1. ») a changé dans le modèle');
 });

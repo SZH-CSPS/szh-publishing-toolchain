@@ -1,5 +1,5 @@
 // pipeline/manuscrit_typo.py : le pont typographique du nettoyeur de manuscrit (§6 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md). Ce fichier éprouve, depuis la révision du
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md). Ce fichier éprouve, depuis la révision du
 // 19.09.2026 :
 //   1. un run coupé au milieu d'un mot -> texte exact, aucun caractère perdu ;
 //   2. un mot en italique reste en italique après réinjection ;

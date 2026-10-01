@@ -86,7 +86,7 @@ la plus proche du seuil retombe à 0,667, soit 0,083 de marge.
 **Ce qui reste**, et pourquoi : l'`.odt` n'est toujours pas accepté par le reste de la chaîne.
 Le contrat des photos d'auteur avec `import-medias.py` n'a jamais été vérifié pour ce format, et
 l'ouvrir sans cette mesure reviendrait à parier sur les portraits. Détail dans
-`TODO-BRANCHEMENT-PARSER-V2.md`.
+`docs/TODO/parser-v2.md`.
 
 ### Cinq livraisons (7 septembre 2026)
 
@@ -169,7 +169,7 @@ fichier plutôt que d'ouvrir un module, faute d'un moment dédié à ce découpa
 inchangée sur le corpus de bancs (HTML autonome et rendu PNG des articles témoins,
 pixel-identiques avant et après le déplacement de règles entre feuilles CSS).
 
-**Ce qui reste.** Voir [`docs/REPRISE-LIVRES.md`](docs/REPRISE-LIVRES.md) : le préfixe de
+**Ce qui reste.** Voir [`TODO/livres.md`](TODO/livres.md) : le préfixe de
 slug sur les tableaux extraits d'un EPUB, la publication du rootfs portant le profil CMJN,
 la racine SharePoint des livres à confirmer, et l'extraction complète d'`extension.js` si
 on la juge encore utile.
@@ -493,7 +493,6 @@ La mise à jour 2026.08.47 s'est coupée à l'étape 3/5 sur les postes : le CLI
 - Trou de verrou préexistant : le message `enregistrer` d'un panneau resté ouvert traverse le verrou (les médias ont une garde explicite, les fiches non).
 - Le suivi de traduction prend toujours la langue de la revue comme source, pas celle de l'article (préexistant).
 - Rafraîchissement auteurs abouti pendant qu'un panneau est ouvert : la liste arrive au prochain envoi (pas de poussée à chaud).
-- Artefacts compilés committés périmés dans `revue-template/out/` (anciens DOI d'exemple).
 
 Séquentiel (les lots partagent `extension.js` et `lib/i18n.js`) ; du plus petit au plus structurant.
 

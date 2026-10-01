@@ -1,5 +1,5 @@
 // pipeline/manuscrit_docx.py : le lecteur .docx du nettoyeur de manuscrit (article), §3/§4/
-// §10/§11 de outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
+// §10/§11 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
 // contrôles posés au §11 pour manuscrit-docx.test.js :
 //   1. un paragraphe dont Word a coupé les runs au milieu d'un mot (et sur une espace) rend
 //      N Fragment, dans l'ordre, et leur concaténation est le texte exact ;
@@ -339,7 +339,7 @@ test('manuscrit_docx.py --images : inline non flottante, anchor flottante, octet
 // ---------------------------------------------------------------------------------
 // Contrôles ajoutés le 18.09.2026 — dimensions en PIXELS du FICHIER, lues dans SES OCTETS
 // (jamais dans wp:extent/cx/cy, qui ne décrit que la boîte d'AFFICHAGE de Word ; voir
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md §4). Les fabriques ci-dessous assemblent
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md §4). Les fabriques ci-dessous assemblent
 // des octets PNG/JPEG minimaux à la main (Buffer), jamais figés en binaire — même esprit que
 // fabriquerDocx() pour le conteneur .docx qui les enveloppe.
 

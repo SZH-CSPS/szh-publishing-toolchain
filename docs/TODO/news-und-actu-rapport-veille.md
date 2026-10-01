@@ -2,7 +2,7 @@
 
 Rapport du 24.09.2026. Trois questions : d'où tirer les métadonnées des sources de la
 Documentation 2025, comment moissonner les projets de recherche, quelles catégories manquent
-aux fiches. Ce qui reste à trancher est repris dans TODO-NewsUndActu.md.
+aux fiches. Ce qui reste à trancher est repris dans news-und-actu.md.
 
 ## 1. Revues, institutions, éditeurs : pas de source unique
 

@@ -1,6 +1,6 @@
 // pipeline/manuscrit_entete.py : reconnaissance de l'en-tête d'un manuscrit (titre,
 // sous-titre, auteurs, résumé, mots-clés, DOI, ligne de revue) — §5.5 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md.
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
 //   node --test test/js/manuscrit-entete.test.js
 //
@@ -948,8 +948,7 @@ test('extraire_entete : une initiale intermédiaire reste au prénom, dans les d
   });
 
 // ---------------------------------------------------------------------------------------
-// 16. La portée de la propagation : LE DOCUMENT, pas la ligne (§3 bis du brief
-// outils-dev/BRIEF-lexique-noms-elargi.md, principe posé par Robin le 22.09.2026 — « un
+// 16. La portée de la propagation : LE DOCUMENT, pas la ligne (principe posé par Robin le 22.09.2026 — « un
 // article est écrit dans UN seul ordre prénom/nom, du début à la fin »).
 //
 // Ce que le bloc 12 ci-dessus prouvait déjà : deux noms de LA MÊME LIGNE se votent l'un

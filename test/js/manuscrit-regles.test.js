@@ -1,6 +1,6 @@
 // test/js/manuscrit-regles.test.js : le catalogue de règles STRUCTURELLES et le moteur
 // d'alertes du nettoyeur de manuscrit (article), §7 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md.
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 //
 // ⚠ Révision du 19.09.2026 : les contrôles sur le langage épicène, le vocabulaire du
 // handicap (dont le piège OQLF/CSPS) et la liaison et/& ont migré vers

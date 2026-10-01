@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # manuscrit_vale.py — le pont Vale du nettoyeur de manuscrit (article). Contrat :
-# outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7. Les règles lexicales et éditoriales
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7. Les règles lexicales et éditoriales
 # (langage épicène, vocabulaire du handicap, casse, APA) vivent en YAML dans pipeline/vale/,
 # données que la rédaction édite sans coder. Vale lui-même est un binaire épinglé de l'image
 # WSL (comme pandoc et veraPDF), jamais une entrée windows/apps.lock.

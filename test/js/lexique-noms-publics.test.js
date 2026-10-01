@@ -1,8 +1,7 @@
 // outils-dev/lexique/moissonner-noms-publics.py : construit les DEUX index de fréquence
 // publics du lexique — pipeline/lexique/noms-frequents.txt et prenoms-frequents.txt — lus par
 // manuscrit_noms.BaseNoms en renfort de la base OJS du poste. Contrat :
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater. Cadrage :
-// outils-dev/BRIEF-lexique-noms-elargi.md.
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater.
 //
 // ⚠ Ce que ces tests gardent avant tout, c'est une contrainte de PROVENANCE, pas une
 // contrainte de forme. `prenoms.txt` a été supprimé le 22.09.2026 au matin parce qu'il

@@ -1,5 +1,5 @@
 // pipeline/manuscrit-nettoyer.py : la CLI du nettoyeur de manuscrit (article), §8 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md — le CHAÎNON qui branche les six modules
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md — le CHAÎNON qui branche les six modules
 // (manuscrit_docx, manuscrit_modele, manuscrit_typo, manuscrit_regles, manuscrit_gabarit).
 // Ce fichier éprouve les contrôles demandés pour ce chantier :
 //   1. le refus du suivi de modifications (w:ins) : message clair, RIEN écrit sur le disque ;

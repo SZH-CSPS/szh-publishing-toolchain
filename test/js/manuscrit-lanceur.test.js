@@ -1,4 +1,4 @@
-// Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, paragraphe 9 (l'onglet du
+// Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, paragraphe 9 (l'onglet du
 // lanceur) et paragraphe 11 (les controles de validite). Ce fichier ne teste PAS
 // manuscrit-nettoyer.py (n'existe pas encore, un autre agent l'ecrit) : il prouve que
 // l'onglet « Preprocessing » ajoute a windows/open-produit.ps1 respecte les quatre

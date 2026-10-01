@@ -1,5 +1,5 @@
 // test/js/manuscrit-vale.test.js : le pont Vale du nettoyeur de manuscrit (article), §7 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Les familles lexicales et éditoriales
+// docs/ARCHITECTURE-nettoyeur-manuscrit.md. Les familles lexicales et éditoriales
 // (langage épicène, vocabulaire du handicap, casse maison, liaison et/&, citation directe,
 // nom des éditions) vivent en YAML dans pipeline/vale/styles/, portées par Vale — jamais
 // réimplémentées ici ni dans pipeline/manuscrit_regles.py, qui ne garde que le structurel

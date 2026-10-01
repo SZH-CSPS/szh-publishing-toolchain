@@ -82,7 +82,7 @@ function serialiserDoc(arbre) {
 
 // Pour la liste `instrument` (catégorie d'une intervention), les instruments `local: true`
 // portent leurs cantons d'observation entre parenthèses dans le libellé de saisie
-// (« Anzug (BS) ») — décision de Robin, TODO_KirbyCMS.md §2. La valeur stockée reste le
+// (« Anzug (BS) ») — décision de Robin, docs/TODO/kirby-cms.md §2. La valeur stockée reste le
 // jeton, jamais ce libellé composé.
 function optionsPourListe(contrat, nomListe) {
   const items = contrat.listes[nomListe];
@@ -163,7 +163,7 @@ function champVersYaml(contrat, champ) {
       // (23.09.2026) — stocké dans le fichier de contenu, jamais affiché ni modifiable
       // dans le Panel. Exactement ce qu'il faut : `curia` est écrit par Pronto à chaque
       // enregistrement (champs-documentation.json, champ `depuis`/`table`) et ne se
-      // saisit jamais (TODO_KirbyCMS.md §4 : un hook devra le recalculer si `categorie`
+      // saisit jamais (docs/TODO/kirby-cms.md §4 : un hook devra le recalculer si `categorie`
       // change dans le Panel, puisque le Panel ne peut pas l'éditer lui-même).
       c.type = 'hidden';
       break;
@@ -317,7 +317,7 @@ function blueprintDossierType(contrat, cleType) {
       label: { fr: type.libelle.fr, de: type.libelle.de },
       template: cleType,
       // Même raisonnement que pour actualites.yml plus bas : Pronto calcule déjà l'ordre
-      // d'impression dans le champ `Ordre` de chaque fiche (TODO_KirbyCMS.md §3), un tri
+      // d'impression dans le champ `Ordre` de chaque fiche (docs/TODO/kirby-cms.md §3), un tri
       // manuel dans le Panel le romprait au prochain aller-retour.
       sortable: false
     }
@@ -339,7 +339,7 @@ function blueprintDossierType(contrat, cleType) {
 function blueprintActualites(contrat) {
   const doc = {};
   // Pas de libellé dans le JSON pour cette page elle-même : nom repris de l'intitulé de la
-  // fonctionnalité dans TODO_KirbyCMS.md (« Actualité et ressources » / « News & Ressourcen »,
+  // fonctionnalité dans docs/TODO/kirby-cms.md (« Actualité et ressources » / « News & Ressourcen »,
   // §5 : « content/actualites/ »). À ajuster si ce nom change côté site.
   doc.title = { fr: 'Actualité et ressources', de: 'News & Ressourcen' };
 
@@ -352,7 +352,7 @@ function blueprintActualites(contrat) {
       type: 'pages',
       label: { fr: 'Actualité et ressources', de: 'News & Ressourcen' },
       templates: contrat.ordreTypes.map((cleType) => nomGabaritDossier(contrat.types[cleType])),
-      // Même raison qu'avant 8e89548 (Pronto calcule l'ordre, TODO_KirbyCMS.md §3) ; les
+      // Même raison qu'avant 8e89548 (Pronto calcule l'ordre, docs/TODO/kirby-cms.md §3) ; les
       // pages dossier elles-mêmes n'ont de toute façon pas d'ordre à respecter entre elles
       // (l'ordre d'impression est celui d'`ordreTypes`, pas un tri du Panel).
       sortable: false
@@ -391,7 +391,7 @@ function collecterFichiers(contrat) {
   return acc;
 }
 
-// Décorative (TODO_KirbyCMS.md §10 : couverture d'un livre, affiche d'un film — l'image
+// Décorative (docs/TODO/kirby-cms.md §10 : couverture d'un livre, affiche d'un film — l'image
 // double le titre, déjà lu par un lecteur d'écran ; parti du PDF, PDF/UA). Donc pas de champ
 // `alt` ici : rien à saisir, le site doit rendre `alt=""` de lui-même.
 function blueprintFichier(extensions) {

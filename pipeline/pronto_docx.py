@@ -164,7 +164,7 @@ def charger_styles(z):
 # emploi dans le corps : un document parti du gabarit les porte même si l'autrice ou l'auteur
 # a effacé toutes les lignes d'aide, et un Word hérité ne peut pas les porter par accident. Un réglage
 # de poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent
-# le même jour (voir TODO-BRANCHEMENT-PARSER-V2.md, étape 4).
+# le même jour.
 #
 # Les DEUX sont exigés, et non l'un ou l'autre : « SZH Cle » seul se retrouve dans un document
 # fabriqué par manuscrit_gabarit.py à partir d'un gabarit ancien, « SZH Aide » seul n'existe

@@ -12,7 +12,7 @@
 -- ⚠ La numérotation CSS a été retirée de print.css en même temps. Les deux ne doivent
 --   jamais coexister : « 2.1 2.1 Introduction » serait pire que le défaut d'origine. Un
 --   numéro qui porte un `styles/print.css` local hérité peut encore contenir les anciens
---   compteurs `sec1/sec2/sec3` — voir TODORMO.md.
+--   compteurs `sec1/sec2/sec3`.
 --
 -- Trois rangs numérotés, pas plus : c'est ce que faisait le CSS (h5 et h6 gardaient la
 -- taille et la graisse de h4 sans numéro), et un « 2.1.1.1.1 » ne se lit plus. Les rangs

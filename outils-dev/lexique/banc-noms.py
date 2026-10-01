@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 # banc-noms.py — le banc de mesure du signal `lexique` de pipeline/manuscrit_noms.py, en
 # LEAVE-ONE-OUT sur la base d'auteurs réelle du poste. Contrat :
-# outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 ter (la table qu'il porte est produite
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 ter (la table qu'il porte est produite
 # par ce script) et §5.5 quater (le lexique du dépôt, ce que ce banc sert à dimensionner).
 #
 # La table du §5.5 ter existait avant ce script, produite par un bout de code ad hoc jamais
-# committé (22.09.2026). Le remettre au propre était le premier livrable du brief
-# outils-dev/BRIEF-lexique-noms-elargi.md : sans banc réutilisable, aucun palier de lexique ne
+# committé (22.09.2026). Le remettre au propre était le premier livrable du chantier
+# du lexique élargi : sans banc réutilisable, aucun palier de lexique ne
 # peut être ni proposé ni refusé sur des chiffres.
 #
 # ---------------------------------------------------------------------------------

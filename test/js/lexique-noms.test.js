@@ -1,7 +1,7 @@
 // outils-dev/lexique/generer-noms.py : construit pipeline/lexique/noms-famille.txt, le
 // lexique PUBLIC que manuscrit_noms.BaseNoms (lot A, contrat §3.2) lit en renfort de la base
 // OJS du poste, absente sur les runners CI et sur un poste de développement sans
-// C:\ProgramData\SZH. Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
+// C:\ProgramData\SZH. Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
 //
 // ⚠ prenoms.txt (le champ `prenom` de la base OJS) a été SUPPRIMÉ le 22.09.2026 — décision de
 // Robin : dérivé de C:\ProgramData\SZH\auteurs.json, il n'apportait rien de plus que cette

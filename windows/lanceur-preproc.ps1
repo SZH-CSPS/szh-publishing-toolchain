@@ -1,5 +1,5 @@
 ﻿# ---- L'onglet « Preprocessing » : le nettoyeur de manuscrit (Article) ----
-# Contrat complet : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. La CLI appelee est
+# Contrat complet : docs/ARCHITECTURE-nettoyeur-manuscrit.md. La CLI appelee est
 # pipeline/manuscrit-nettoyer.py, executee par le python3 de la WSL SZH-Publishing --
 # jamais le Node de VSCodium ici, ce n'est pas un script JS. Le patron reste celui de
 # Invoke-SzhSecretariat (grisage des boutons, sablier, barre de progression, bouton

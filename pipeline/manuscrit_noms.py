@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # manuscrit_noms.py — attribution prénom/nom au sein d'un segment de nom DÉJÀ reconnu.
-# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §3 ; périmètre exact fixé par le
+# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3 ; périmètre exact fixé par le
 # contrat de lot (lot A, CONTRAT-noms.md, non committé — voir le rapport de livraison).
 #
 # Le nettoyeur confondait deux questions distinctes :

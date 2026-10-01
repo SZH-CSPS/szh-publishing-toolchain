@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # manuscrit_biblio.py — vérification de bibliographie APA 7 (contrôle, DOI, mise en forme).
-# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7 bis.
+# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §7 bis.
 #
 # Module PUR : ne sait rien de Word ni d'OpenDocument. Il reçoit du texte déjà extrait
 # (paragraphes de corps et de bibliographie, sous la forme {'texte':.., 'source':..} — le même

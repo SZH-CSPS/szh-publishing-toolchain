@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # manuscrit_regles.py — le catalogue de règles STRUCTURELLES et le moteur d'alertes du
-# nettoyeur de manuscrit (article). Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md,
+# nettoyeur de manuscrit (article). Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md,
 # §7.
 #
 # Les familles LEXICALES et ÉDITORIALES (langage épicène, vocabulaire du handicap, casse

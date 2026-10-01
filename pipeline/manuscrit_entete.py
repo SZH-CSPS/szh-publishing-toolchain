@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # manuscrit_entete.py — reconnaissance de l'en-tête d'un manuscrit (titre, sous-titre,
 # auteurs, résumé, mots-clés, DOI, ligne de revue) AVANT le classement des titres du corps.
-# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5.
+# Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5.
 #
 # Module PUR, comme manuscrit_modele.py et manuscrit_biblio.py : ne sait rien de Word ni
 # d'OpenDocument. Il travaille sur le Document du modèle riche (manuscrit_modele.py, §4) —

@@ -1,5 +1,5 @@
 ﻿// pipeline/manuscrit_gabarit.py : l'écrivain du nettoyeur de manuscrit (article), §4/§5.3/
-// §10/§11 de outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
+// §10/§11 de docs/ARCHITECTURE-nettoyeur-manuscrit.md. Ce fichier éprouve les sept
 // contrôles posés au §11 pour manuscrit-gabarit.test.js :
 //   1. aller-retour : un document (corps + titres + une image + un tableau), écrit puis relu
 //      par pronto-lire.py, rend les champs attendus (légende, blocs reconnus) ;
@@ -2363,7 +2363,7 @@ for (const { langue, gabarit } of [{ langue: 'fr', gabarit: GABARIT_LIVRE },
 
 // ---- Preuve de bout en bout (§ brief, obligatoire) : manuscrit RÉEL, entete complet, FR/DE -
 
-const MANUSCRIT_REEL = path.join(RACINE, 'outils-dev',
+const MANUSCRIT_REEL = path.join(RACINE, 'tmp', 'corpus-relecture',
   "Le coenseignement développemental_revue Suisse_10082026.docx");
 
 const ECRIRE_DEPUIS_DOCX_AVEC_ENTETE = [

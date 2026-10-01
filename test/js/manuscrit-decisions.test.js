@@ -1118,7 +1118,7 @@ test('classer_titres : "Tableau 1" (lexique de légende) -> jamais promu',
 // (« effectif » rempli par la cascade des styles, `forme` vide) et un faux titre qui la
 // DÉCLARE directement (`forme` rempli, pas d'« effectif » propre — repli sur `forme`, même
 // valeur) doivent être jugés à la MÊME taille effective — et donc, faute d'autre signal,
-// rétrogradé par la longueur (BRIEF-REPRISE §6.2 : « corps sans taille déclarée » et « faux
+// rétrogradé par la longueur (« corps sans taille déclarée » et « faux
 // titre déclaré 12 pt » étaient jugés différents avant cette révision).
 //
 // Sabotage minimal : dans _valeur_effective(), remplacer le corps par

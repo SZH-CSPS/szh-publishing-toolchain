@@ -8,7 +8,7 @@ ce fichier se règle en le modifiant, jamais en s'en écartant dans le code.
 
 Le brief fonctionnel reste `outils-dev/Pipeline de relecture automatisée — Revue CSPS.md` ; ce
 fichier-ci dit comment on le construit ici. Pour la suite du travail (ce qui reste à faire,
-l'état exact du dépôt), voir `outils-dev/ETAT-REPRISE-2026-09-18.md` — ce contrat ne porte plus
+l'état exact du dépôt), voir `docs/TODO/nettoyeur-manuscrit.md` — ce contrat ne porte plus
 aucune liste « à faire ».
 
 ---
@@ -36,7 +36,7 @@ Reconnaissance du cas A : présence des styles `SZH Cle` **et** `SZH Aide` dans 
 Rien d'autre ne sert de critère : ni un réglage de poste, ni le nom du fichier.
 
 Le cas A reste **délibérément conservateur** : aucun document réel au gabarit n'a encore validé
-ce chemin (voir `ETAT-REPRISE-2026-09-18.md` pour l'état de cette validation).
+ce chemin (voir `docs/TODO/nettoyeur-manuscrit.md` pour l'état de cette validation).
 
 ---
 
@@ -77,7 +77,7 @@ importable porte un tiret bas, une CLI porte un tiret**.
 |---|---|---|
 | `pipeline/manuscrit_modele.py` | le modèle riche (§4) et **toutes les décisions** de classement/nettoyage (§5) | Word, OpenDocument, pandoc |
 | `pipeline/manuscrit_docx.py` | `.docx` → modèle riche | les décisions |
-| `pipeline/manuscrit_odt.py` | `.odt` → modèle riche (reste à écrire, voir `ETAT-REPRISE`) | les décisions |
+| `pipeline/manuscrit_odt.py` | `.odt` → modèle riche (reste à écrire) | les décisions |
 | `pipeline/manuscrit_typo.py` | le pont typographique (§6) | les décisions |
 | `pipeline/manuscrit_entete.py` | l'en-tête et le bloc final d'autrices/auteurs (§5.5) | Word, OpenDocument |
 | `pipeline/manuscrit_noms.py` | l'ordre prénom/nom et sa répartition dans UN groupe de segments qu'on lui donne (§5.5 ter) | Word, OpenDocument, le modèle riche, et la PORTÉE de la propagation — c'est l'appelant qui la choisit |
@@ -97,7 +97,7 @@ diffèrent.
 
 `pipeline/pronto_docx.py` lit déjà le `.docx` vers un modèle plus pauvre. `manuscrit_docx.py`
 lit le même format vers un modèle plus riche. **C'est une duplication, elle est temporaire et
-bornée** à la validation formelle du lecteur Pronto par Robin (voir `ETAT-REPRISE` pour l'état) —
+bornée** à la validation formelle du lecteur Pronto par Robin (voir `docs/TODO/nettoyeur-manuscrit.md` pour l'état) —
 la toucher avant cette validation l'invaliderait.
 
 `manuscrit_docx.py` **importe et réutilise littéralement** `resoudre_style`, `pstyle`,
@@ -349,7 +349,7 @@ documents déjà remplis à l'ancienne forme — avec un avertissement invitant 
   consommé — ne s'applique plus qu'aux documents à l'ANCIENNE forme. À la nouvelle forme, le
   contenu d'un bloc tableau n'est plus imbriqué dans rien : aucune ligne `T` (tableau consommé)
   n'est émise pour lui, il se rend comme un tableau de corps ordinaire. Un bloc figure, lui, n'a
-  jamais eu de tableau à faire sauter (voir `TODO-BRANCHEMENT-PARSER-V2.md`).
+  jamais eu de tableau à faire sauter.
 - Une **légende déjà présente** (paragraphe voisin commençant par « Figure 1 », « Abbildung 2 »,
   « Tableau 3 »…, lexique `RE_LEGENDE` de `docx-titres.py`) est reprise dans `Légende :` et
   retirée du corps, **avec sa mise en forme** (italique, exposant…), jamais aplatie en texte
@@ -1816,4 +1816,4 @@ gabarit.
 - **Le lecteur `.odt`.** `pipeline/manuscrit_odt.py` reste à écrire.
 
 Pour l'état exact du dépôt, ce qui reste à faire et dans quel ordre : voir
-`outils-dev/ETAT-REPRISE-2026-09-18.md`.
+`docs/TODO/nettoyeur-manuscrit.md`.

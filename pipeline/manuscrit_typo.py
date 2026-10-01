@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # manuscrit_typo.py — le pont typographique du nettoyeur de manuscrit (§6 de
-# outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md). Une seule fonction publique,
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md). Une seule fonction publique,
 # normaliser_paragraphes(), qui NE RÉÉCRIT PAS la typographie de la maison : elle construit
 # un AST pandoc depuis les fragments Word de chaque paragraphe, l'envoie une seule fois (pour
 # tout le document) au filtre pipeline/filters/szh-typographie.lua dans la WSL, puis

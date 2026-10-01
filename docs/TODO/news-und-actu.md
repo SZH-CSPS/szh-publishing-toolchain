@@ -1,7 +1,7 @@
 # TODO — _NewsUndActu (Documentation)
 
-Rapport de référence : [RAPPORT-VEILLE-DOCUMENTATION.md](RAPPORT-VEILLE-DOCUMENTATION.md) (24.09.2026).
-Projets de la première moisson, à trier : [PROJETS-RECHERCHE-A-TRIER.md](PROJETS-RECHERCHE-A-TRIER.md).
+Rapport de référence : [news-und-actu-rapport-veille.md](news-und-actu-rapport-veille.md) (24.09.2026).
+Projets de la première moisson, à trier : [projets-recherche-a-trier.md](projets-recherche-a-trier.md).
 
 ## Moissonneur de recherches (`..\szh-harvest-research\`) : à trancher
 

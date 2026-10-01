@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # manuscrit_gabarit.py — l'ÉCRIVAIN du nettoyeur de manuscrit (article) : rend un Document du
 # modèle riche (manuscrit_modele.py, §4 du contrat) en un .docx au gabarit « Pronto — modèle
-# d'article ». Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §4, §5.3, §5.4, §10, §11.
+# d'article ». Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §4, §5.3, §5.4, §10, §11.
 #
 # Principe non négociable du §5.3 : on part d'une COPIE du gabarit livré et on la remplit —
 # jamais un .docx fabriqué de zéro. Ce module NE TOUCHE PAS aux styles.xml, numbering.xml,

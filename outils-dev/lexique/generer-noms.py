@@ -3,7 +3,7 @@
 # generer-noms.py — construit pipeline/lexique/noms-famille.txt : la base lexicale PUBLIQUE
 # que manuscrit_noms.BaseNoms (lot A) lit en renfort de la base OJS du poste (absente sur un
 # poste de développement sans C:\ProgramData\SZH, et TOUJOURS absente sur les runners CI —
-# contrat, §3.2 et §2 bis). Contrat du lot : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
+# contrat, §3.2 et §2 bis). Contrat du lot : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
 #
 # UNE seule source écrite sur disque (§5.1 du contrat — confidentialité : ce dépôt est destiné
 # à devenir public) : noms-famille.txt <- les bibliographies des galleys PUBLIÉES du corpus

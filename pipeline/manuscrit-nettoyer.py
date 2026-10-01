@@ -3,7 +3,7 @@
 # manuscrit-nettoyer.py — la CLI du nettoyeur de manuscrit (article) : le CHAÎNON qui
 # branche les six modules déjà écrits et éprouvés (manuscrit_docx, manuscrit_modele,
 # manuscrit_typo, manuscrit_regles, manuscrit_gabarit), et rien d'autre. Contrat :
-# outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §8 (cette CLI), §1 (les deux cas), §10
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §8 (cette CLI), §1 (les deux cas), §10
 # (les pièges), §11 (les contrôles).
 #
 #   manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>

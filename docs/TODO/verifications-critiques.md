@@ -79,9 +79,6 @@ d'ergonomie, les relectures de libellés et les arbitrages esthétiques ont ét�
   et le groupe d'utilisateurs sont rattachés par nom, valables pour le journal français observé ;
   à vérifier pour la Zeitschrift. Un XML de production fera 30 à 50 Mo, ce qui peut imposer
   l'import en ligne de commande.
-- [ ] Pagination continue d'un numéro — chantier en cours (`pipeline/pagination.py`, état dans
-  `.szh-pagination.json`). Tant qu'il n'est pas livré, chaque article commence à la page 1 : une
-  citation « p. 4 » ne désigne rien de stable et l'export OJS n'a pas de `<pages>` à donner.
 
 ## Conformité PDF/UA
 

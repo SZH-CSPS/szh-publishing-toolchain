@@ -1,6 +1,6 @@
 // pipeline/manuscrit_noms.py : attribution prénom/nom au sein d'un segment de nom déjà
 // reconnu (problème (b), distinct de la SEGMENTATION de docx-meta.nom_plausible()) — §3 de
-// CONTRAT-noms.md (lot A, non committé), qui prolonge outils-dev/ARCHITECTURE-nettoyeur-
+// CONTRAT-noms.md (lot A, non committé), qui prolonge docs/ARCHITECTURE-nettoyeur-
 // manuscrit.md, §5.5.
 //
 //   node --test "test/js/manuscrit-noms.test.js"

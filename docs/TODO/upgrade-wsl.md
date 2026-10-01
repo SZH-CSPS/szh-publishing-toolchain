@@ -54,15 +54,6 @@ son dernier changement date du **01.09.2026** (`c78304c`, le profil CMJN). Le d�
 donc un **changement de code**, jamais le calendrier. Le « 2×/an » de
 `docs/MAINTENANCE.md:84` est un geste humain que personne ne fera.
 
-### 2. `apt-get upgrade` n'existe nulle part dans le build
-
-`image/Containerfile` fait `apt-get update && apt-get install` (lignes 29 et 81), jamais
-`upgrade`. Une reconstruction corrige donc les paquets **qu'elle installe**, pas ceux déjà
-présents dans la base — libc, openssl, zlib. Le tag `debian:13-slim` flotte et amont le
-republie régulièrement, si bien qu'une construction en CI part déjà d'une base récente ; il
-reste l'écart entre la dernière publication amont et le jour du build. Quelques semaines, pour
-une ligne à écrire.
-
 ### 3. Les épinglages pip ne reçoivent jamais de correctif
 
 C'est le trou le plus concret des trois, et il n'a rien à voir avec Debian. `pillow==12.2.0`
@@ -74,13 +65,6 @@ celui qui est gelé le plus durement.
 ---
 
 ## Les étapes, dans l'ordre
-
-### 1. `apt-get upgrade` au build — fait le 23.09.2026
-
-Deux lignes, dans les deux étapes de `image/Containerfile` :
-`apt-get update && apt-get upgrade -y && apt-get install …`. Aucun risque propre — cela ne
-fait que rapprocher le build de ce que Debian sert le jour même. À faire en premier parce que
-c'est le moins cher.
 
 ### 2. Un workflow mensuel de reconstruction
 

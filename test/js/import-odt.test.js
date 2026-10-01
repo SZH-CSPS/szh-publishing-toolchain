@@ -5,8 +5,7 @@
 //
 // Chaine REELLE (bash import-docx.sh, vrai pandoc, vrai LibreOffice) : rien ici n'est
 // simule, c'est la seule facon de prouver que le contrat $SZH_PHOTOS et la numerotation des
-// figures survivent au passage par LibreOffice — voir TODO-BRANCHEMENT-PARSER-V2.md,
-// « Ce qui reste », point 1 : « rien ne dit que LibreOffice nomme les images comme Word ».
+// figures survivent au passage par LibreOffice : rien ne disait que LibreOffice nomme les images comme Word.
 //
 // Gabarit rempli PAR SCRIPT (jamais figé en binaire dans le dépôt, comme
 // test/js/pronto-lire.test.js) : titre, un auteur avec une photo PNG dans la cellule de

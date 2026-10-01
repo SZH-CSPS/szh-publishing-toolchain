@@ -849,7 +849,7 @@ def _etiquette_szh_cle(cellule):
     acceptait n'importe quel paragraphe pourvu qu'il ne soit pas SZH Aide, ce qui faisait
     lire comme une « étiquette » la première colonne d'un tableau de contenu ORDINAIRE pris
     pour le tableau des métadonnées par la seule coïncidence de sa position en tête de
-    document (piège déjà documenté dans TODO-BRANCHEMENT-PARSER-V2.md, « Les deux premiers
+    document (piège déjà documenté dans docs/TODO/parser-v2.md, « Les deux premiers
     tableaux sont pris PAR POSITION »). Mesuré sur tmp/corpus-relecture/lot-A (11 manuscrits
     réels, aucun au gabarit) : 3 documents sur 11 voyaient leur véritable tableau de données
     pris pour celui des métadonnées ; depuis qu'une clé présente mais non reconnue bloque tout
@@ -1988,8 +1988,7 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     # d'import pour un bloc figure (le contenu est un simple paragraphe), et le tableau d'un
     # bloc tableau, n'étant plus imbriqué dans une enveloppe, n'a lui non plus RIEN à faire
     # sauter : il doit se rendre comme n'importe quel tableau de contenu ordinaire. C'est une
-    # différence assumée avec l'ancienne forme (voir TODO-BRANCHEMENT-PARSER-V2.md, révision du
-    # 21.09.2026) — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
+    # différence assumée avec l'ancienne forme — stats['blocs'], lui, reste identique quelle que soit la forme d'entrée.
     blocs_nouvelle_forme = _extraire_blocs_nouvelle_forme(blocs, table1_elem, table2_elem, slug,
                                                             bloquants, variantes)
     blocs_figtab = sorted(blocs_figtab + blocs_nouvelle_forme, key=lambda b: b['pos'])
@@ -2018,8 +2017,8 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     #     paragraphe d'image, ou un tableau de premier niveau qui doit se rendre comme
     #     n'importe quel tableau de contenu) ;
     #   * ancienne forme — le tableau enveloppe reste, lui aussi. C'est la décision du
-    #     22.09.2026, et elle supprime d'un coup le piège décrit dans
-    #     TODO-BRANCHEMENT-PARSER-V2.md (étape 1) : consommer une enveloppe aurait fait
+    #     22.09.2026, et elle supprime d'un coup le piège suivant :
+    #     consommer une enveloppe aurait fait
     #     disparaître le tableau qu'elle contient — ni rendu à part par docx-tables.py (qui
     #     saute le tableau consommé en entier), ni rendu dans son parent (puisque le parent
     #     s'en va). Un tableau perdu sans un mot. Ne rien consommer le rend impossible : le

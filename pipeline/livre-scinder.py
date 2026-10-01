@@ -211,7 +211,7 @@ def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) ->
 # stable, des champs, une phrase française puis allemande, sur stderr et dans SZH_IMPORT_LOG
 # si le lanceur en a posé un. C'est l'absence de cette forme qui a rendu l'incident du
 # B329 indiagnosticable le 31.08 : un « ⚠ » perdu dans stderr, jamais bloquant, suivi d'un
-# rmtree — voir docs/REPRISE-LIVRES.md. Le code est ce qu'un outil de surveillance doit
+# rmtree. Le code est ce qu'un outil de surveillance doit
 # chercher ; les phrases ne sont qu'un repli d'affichage.
 # --------------------------------------------------------------------------------------
 PREFIXE_AVERT = '[scission-avertissement]'
@@ -226,7 +226,7 @@ def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tu
     tableaux qu'il référence mais qui n'y sont pas encore — en les cherchant dans
     dossier_source_medias, le chapitre en cours de scission : c'est de là que vient le
     plus souvent ce texte recopié à la main (impressum-du-livre.md du B329 citait sept
-    images sans avoir copié le media/ du manuscrit — voir docs/REPRISE-LIVRES.md, 31.08).
+    images sans avoir copié le media/ du manuscrit).
 
     Symétrique de la copie déjà faite pour les sections d'un chapitre : même forme de
     chemin relatif (« media/xxx.png »), même copier_ressource().
@@ -301,8 +301,7 @@ def fusionner_ordre(ordre_existant: list, slug_remplace: str, slugs_nouveaux: li
     Remplace, À SA PLACE, l'entrée `slug_remplace` (le manuscrit tel qu'il apparaissait
     avant scission, s'il y était) par les chapitres qui en sortent, dans l'ordre où ils
     sortent. Tout le reste d'ordre-chapitres — les chapitres d'une AUTRE scission, ceux
-    réordonnés à la main dans le cockpit (« Monter d'un rang » / « Descendre d'un rang »,
-    voir docs/REPRISE-LIVRES.md §2.1b) — traverse intact : c'est précisément ce que
+    réordonnés à la main dans le cockpit (« Monter d'un rang » / « Descendre d'un rang ») — traverse intact : c'est précisément ce que
     l'ancien code ne faisait pas, en réécrivant ordre-chapitres avec les seuls slugs de
     cette scission-ci, quel que soit ce que buch.yaml portait déjà.
     """
@@ -556,8 +555,7 @@ def main():
         # nouveaux chapitres : lire_chapitre() le sépare, mais rien ne l'écrivait plus
         # loin — jeté en silence par l'ancien main(). C'est ainsi qu'impressum-du-livre.md
         # a vu le jour : quelqu'un l'a retrouvé en lisant le .md source, recopié à la main
-        # dans liminaires/, syntaxe d'image comprise, sans le media/ qui va avec (voir
-        # docs/REPRISE-LIVRES.md, 31.08). On ne l'écrit pas nous-même dans liminaires/ :
+        # dans liminaires/, syntaxe d'image comprise, sans le media/ qui va avec. On ne l'écrit pas nous-même dans liminaires/ :
         # les pièces liminaires sont éditoriales et écrites à la main (livre.mk:88), et un
         # fichier posé là sans revue se ferait passer pour l'une d'elles à la prochaine
         # compilation. On le met de côté, on le dit, et on lui évite de perdre ses images
