@@ -21,7 +21,6 @@
 # Crossref lent ne doit jamais bloquer le nettoyage d'un manuscrit.
 
 import difflib
-import importlib.util
 import json
 import os
 import re
@@ -33,20 +32,10 @@ import urllib.request
 _ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ICI)
 import pronto_modele
+import szh_commun
 
 
-def _charger_module_a_tiret(nom_fichier, nom_module):
-    """docx-meta.py porte un tiret : pas un module importable par son nom (convention du
-    dépôt, §3 du contrat). Chargé par chemin, comme le font déjà les tests
-    (test/js/docx-meta-titre.test.js)."""
-    chemin = os.path.join(_ICI, nom_fichier)
-    spec = importlib.util.spec_from_file_location(nom_module, chemin)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-dm = _charger_module_a_tiret('docx-meta.py', 'szh_docx_meta_pour_biblio')
+dm = szh_commun.charger_module_a_tiret('docx-meta.py')
 
 # ---------------------------------------------------------------------------------
 # Contact générique du dépôt pour le User-Agent Crossref (poli et identifiable, comme le
