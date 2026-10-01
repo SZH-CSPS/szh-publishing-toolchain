@@ -1109,6 +1109,36 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                     devenir[idx] = 'revision'
                     stats['notes']['revisions'] += 1
 
+    # 2 quater. Une révision écrite dit déjà la correction : le commentaire d'une autre règle
+    # dont l'étendue la chevauche, dans le même paragraphe de sortie, ne la répète pas dans
+    # Word. Il reste au rapport (devenir 'rapport', comme un commentaire que le plafond
+    # écarte). Seuls comptent les candidats du corps localisés par span : un bloc, un repli
+    # paragraphe entier ou une alerte de note n'ont pas d'étendue dans le texte révisé. Retrait
+    # fait AVANT le plafond : il ne consomme ni les 5 par règle ni les 25 globaux, et la
+    # synthèse « et N autres » ne compte pas les alertes retirées.
+    spans_revises = {salida: [loc for (loc, _a) in revs]
+                     for salida, revs in revisiones_por_salida.items()}
+    restants = []
+    for item in candidatos_comentario:
+        idx, alerta, salida, localizado = item
+        if (alerta.get('note_numero') is None and localizado is not None
+                and any(localizado[0] < e2 and s2 < localizado[1]
+                        for (s2, e2) in spans_revises.get(salida, []))):
+            stats['renvoyees_au_rapport'].append(alerta)
+            _contar_regla(stats, alerta, 'renvoyees')
+            devenir[idx] = 'rapport'
+            continue
+        restants.append(item)
+    candidatos_comentario = restants
+    # Le repli d'un principal ainsi retiré suit son principal.
+    for i, alerta in enumerate(alertes):
+        if (alerta.get('role_groupe') == 'repli' and alerta.get('groupe') in principaux
+                and devenir[principaux[alerta.get('groupe')]] == 'rapport'
+                and devenir[i] == 'commentaire'):
+            stats['renvoyees_au_rapport'].append(alerta)
+            _contar_regla(stats, alerta, 'renvoyees')
+            devenir[i] = 'rapport'
+
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
     # puis le plafond global.
