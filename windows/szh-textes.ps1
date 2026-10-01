@@ -197,8 +197,8 @@ $script:SzhTextes = @{
     'lanceur.reglages.ojs.cle.note'        = 'Pas encore utilisée par la chaîne de fabrication ; conservée pour un usage à venir. Champ vide = clé effacée.'
     'lanceur.reglages.afficher'            = 'Afficher'
     'lanceur.reglages.secrets.note'        = 'Un éditeur déjà ouvert ne voit pas ce changement : fermez-le et rouvrez une revue pour qu’’il en tienne compte.'
-    # Onglet « Journal » : les dix dernières mises à jour et leur verdict.
-    'lanceur.journal'                  = 'Journal'
+    # Onglet « Log » : les dix dernières mises à jour et leur verdict.
+    'lanceur.journal'                  = 'Log'
     'lanceur.journal.liste'            = 'Dix dernières mises à jour :'
     'lanceur.journal.vide'             = 'Aucune mise à jour enregistrée.'
     'lanceur.journal.entree'           = '{0}    {1}    ({2} ko)'
@@ -491,7 +491,7 @@ $script:SzhTextes = @{
     'lanceur.reglages.afficher'            = 'Anzeigen'
     'lanceur.reglages.secrets.note'        = 'Ein bereits geöffneter Editor sieht diese Änderung nicht: schliessen Sie ihn und öffnen Sie eine Revue neu, damit sie wirkt.'
     # Registerkarte «Protokoll»: die letzten zehn Aktualisierungen und ihr Ausgang.
-    'lanceur.journal'                  = 'Protokoll'
+    'lanceur.journal'                  = 'Log'
     'lanceur.journal.liste'            = 'Letzte zehn Aktualisierungen:'
     'lanceur.journal.vide'             = 'Keine Aktualisierung aufgezeichnet.'
     'lanceur.journal.entree'           = '{0}    {1}    ({2} kB)'

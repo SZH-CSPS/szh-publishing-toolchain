@@ -3383,6 +3383,13 @@ $boutonNon.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
 $script:form.Controls.Add($boutonNon)
 $script:form.CancelButton = $boutonNon
 
+# Ordre des onglets : les produits, puis Preprocessing, Secretariat, Reglages et Log en
+# dernier. Chaque onglet est construit plus haut dans l'ordre de son code ; on les range ici.
+# Clear + AddRange plutot que TabPages.Insert, ignore tant que le controle n'a pas de handle.
+$pagesProduits = @($onglets.TabPages | Where-Object { [string]$_.Tag })
+$onglets.TabPages.Clear()
+$onglets.TabPages.AddRange([System.Windows.Forms.TabPage[]](@($pagesProduits) + @($pagePreproc, $pageSecretariat, $pageReglages, $pageJournal)))
+
 # "Ouvrir" n'a de sens que sur un onglet de produit qui a quelque chose a ouvrir : grise
 # ailleurs, plutot qu'actif et sans effet. L'onglet des reglages porte un .Tag vide, ce qui
 # suffit a le distinguer des trois autres.
