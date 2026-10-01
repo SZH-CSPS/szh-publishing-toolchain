@@ -32,7 +32,10 @@ import sys
 import zipfile
 import xml.etree.ElementTree as ET
 
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ooxml_lecture
+from ooxml_lecture import W, charger_styles, pstyle
+from heritage_meta import RE_LEGENDE
 
 MAX_MOTS = 12          # au-delà, ce n'est pas un titre
 SEUIL_TAILLE = 1.2     # « nettement plus grand » = +20 %
@@ -42,10 +45,8 @@ PONCT_PHRASE = '.;:!?…'
 PUCES = '•▪◦-–—'
 
 # Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est pas un titre : elle est traitée
-# par szh-legendes.lua. L'exclure évite de la promouvoir par erreur.
-RE_LEGENDE = re.compile(
-    r'^(?:figure|fig\.?|abbildung|abb\.?|illustration|grafik|tableau|tabelle|table)\s+\d+',
-    re.I)
+# par szh-legendes.lua. L'exclure évite de la promouvoir par erreur : RE_LEGENDE, importé
+# plus haut.
 
 
 def actif(prop):
@@ -73,16 +74,10 @@ def runs_texte(p):
 
 
 def texte_paragraphe(p):
-    morceaux = []
-    for r in p.iter(W + 'r'):
-        for e in r:
-            if e.tag == W + 't':
-                morceaux.append(e.text or '')
-            elif e.tag == W + 'tab':
-                morceaux.append(' ')
-            elif e.tag == W + 'noBreakHyphen':
-                morceaux.append('\u2011')    # pandoc le lit ainsi : l'appariement en dépend
-    return ''.join(morceaux)
+    """Même texte que les lecteurs (br et cr en espace, sym rendu), comme le Para que
+    szh-titres.lua apparie. L'ancien comportement, qui les ignorait, reste disponible par
+    sauts=False, symboles=False ; mesuré sans aucun effet sur le corpus d'import."""
+    return ooxml_lecture.texte_paragraphe(p)
 
 
 def taille_run(r):
@@ -110,19 +105,6 @@ def est_liste(p):
 
 # ---- classification des styles (styles.xml : id + nom localisé) -------------------
 
-def charger_styles(z):
-    try:
-        racine = ET.fromstring(z.read('word/styles.xml'))
-    except Exception:
-        return {}
-    styles = {}
-    for st in racine.iter(W + 'style'):
-        sid = st.get(W + 'styleId') or ''
-        nom = st.find(W + 'name')
-        styles[sid] = (nom.get(W + 'val') or '').lower() if nom is not None else ''
-    return styles
-
-
 def familles_styles(styles):
     """(ids_section, ids_exclus) : d'un côté les styles de section (heading N,
     Überschrift N, Titre N) ; de l'autre ceux à ne jamais promouvoir — métadonnées
@@ -145,14 +127,6 @@ def familles_styles(styles):
                 or nom.startswith('toc ') or i.startswith('verzeichnis'):
             exclus.add(sid)
     return sections, exclus
-
-
-def pstyle(p):
-    ppr = p.find(W + 'pPr')
-    if ppr is None:
-        return ''
-    ps = ppr.find(W + 'pStyle')
-    return ps.get(W + 'val') if ps is not None else ''
 
 
 def a_outline(p):
@@ -181,10 +155,7 @@ def textes_consommes_par_meta():
 
 def paragraphes_corps(racine):
     """w:p enfants DIRECTS de w:body (donc hors tableaux, hors zones imbriquées)."""
-    body = racine.find(W + 'body')
-    if body is None:
-        return []
-    return [e for e in body if e.tag == W + 'p']
+    return [e for e in ooxml_lecture.blocs_du_corps(racine) if e.tag == W + 'p']
 
 
 def principal(argv):

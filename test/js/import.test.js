@@ -419,7 +419,9 @@ test('docx-meta.py : une langue devinée est écrite, mais elle est dite', () =>
 // mise au point, ces règles font passer les tableaux lus de 404 à 421, sans régression.
 
 test('docx-meta.py : un titre académique composé ne fait plus tomber le tableau', () => {
-  const py = lire('pipeline', 'docx-meta.py');
+  // La bibliothèque des noms vit dans heritage_meta.py ; la lecture des cellules, dans docx-meta.py.
+  const py = lire('pipeline', 'heritage_meta.py');
+  const cellules = lire('pipeline', 'docx-meta.py');
   // Le test d'un jeton vit en UN endroit, et il découpe le jeton : « Univ.-Prof. »,
   // « Dipl.-Psych. », « Dr.in ». Allonger la liste à chaque graphie ne tenait pas.
   assert.match(py, /def _est_titre_academique\(jeton\):/,
@@ -439,7 +441,7 @@ test('docx-meta.py : un titre académique composé ne fait plus tomber le tablea
   // « Prof. Dr. » seul sur sa ligne : le nom est à la suivante. Uniquement dans ce cas —
   // chercher un nom plus loin dans n'importe quelle cellule ferait passer un encadré de
   // contenu pour un bloc auteurs.
-  assert.match(py, /if not premier and len\(lignes\) > 1 and not _sans_titres_academiques\(/,
+  assert.match(cellules, /if not premier and len\(lignes\) > 1 and not sans_titres_academiques\(/,
     'une cellule dont la 1re ligne ne porte que des titres reste illisible');
 });
 

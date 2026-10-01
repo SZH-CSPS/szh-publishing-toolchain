@@ -590,7 +590,7 @@ test('extraire_bloc_auteurs_final : fusionne avec un auteur déjà connu de la t
 // seul le lexique de titres de bibliographie peut arrêter la marche arrière).
 //
 // Sabotage minimal (vérifié pendant ce chantier) : dans extraire_bloc_auteurs_final(),
-// remplacer `if _est_titre_biblio_pour_repli(texte, lexique_biblio): break` par `if False:
+// remplacer `if pronto_modele.titre_est_biblio(texte, lexique_biblio, …): break` par `if False:
 // break` — « Bibliographie » se fait alors avaler avec le bloc final.
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur l\'intitulé de bibliographie, même collé au bloc final',
@@ -682,7 +682,7 @@ test('extraire_bloc_auteurs_final : le repli s\'arrête net sur la silhouette d\
 //
 // Sabotage minimal (vérifié pendant ce chantier) : même sabotage que le test précédent — sans
 // _ressemble_reference_biblio_pour_repli(), le repli descend jusqu'à l'intitulé
-// « Bibliographie » (qui, lui, reste protégé par _est_titre_biblio_pour_repli) et avale Morin
+// « Bibliographie » (qui, lui, reste protégé par titre_est_biblio) et avale Morin
 // juste avant de s'arrêter dessus.
 
 test('extraire_bloc_auteurs_final : le repli s\'arrête net sur une référence courte en toute dernière position, sans entrée longue pour faire mur (Morin, 78 signes)',

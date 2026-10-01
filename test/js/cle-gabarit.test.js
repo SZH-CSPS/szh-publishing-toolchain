@@ -105,6 +105,56 @@ test('sans clé, les styles du gabarit restent le repli', { skip: sansPython }, 
   }
 });
 
+test('est_gabarit : la clé, puis les deux styles comparés par forme normalisée', { skip: sansPython }, () => {
+  const r = python(['-c', [
+    'import json, sys',
+    'sys.path.insert(0, sys.argv[1])',
+    'import pronto_modele as pm',
+    'cas = [',
+    '  ([], "pronto-article-4"),',
+    '  (["normal"], " Pronto-Article-3 "),',
+    '  (["szh cle", "szh aide"], None),',
+    '  (["Normal", "SZH-Cle", "SZH-Aide"], None),',
+    '  (["szhcle", "SZH  Aide"], ""),',
+    '  (["szh cle"], None),',
+    '  (["szh cle abb/tab", "szh aide"], None),',
+    '  ([], None),',
+    '  (["szh cle", "szh aide"], "autre-gabarit"),',
+    ']',
+    'print(json.dumps([pm.est_gabarit(s, cle=c) for s, c in cas]))',
+  ].join('\n'), PIPELINE], { env: ENV });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(JSON.parse(r.stdout),
+    [true, true, true, true, true, false, false, false, true]);
+});
+
+test('styles « SZH-Cle » / « SZH-Aide » sans clé : l’import et le nettoyeur disent tous deux gabarit', { skip: sansPython }, () => {
+  const base = jetable();
+  try {
+    const variante = path.join(base, 'gabarit-tirets.docx');
+    const r = python(['-c', [
+      'import re, sys, zipfile',
+      'src, dst = sys.argv[1], sys.argv[2]',
+      'with zipfile.ZipFile(src) as zi, zipfile.ZipFile(dst, "w") as zo:',
+      '    for i in zi.infolist():',
+      '        d = zi.read(i.filename)',
+      '        if i.filename == "docProps/custom.xml":',
+      '            d = d.decode("utf-8").replace("SZH-Gabarit", "Autre-Propriete").encode("utf-8")',
+      '        if i.filename == "word/styles.xml":',
+      '            t = d.decode("utf-8")',
+      '            t = re.sub(r\'w:val="SZH (Cle|Aide)"\', r\'w:val="SZH-\\1"\', t)',
+      '            d = t.encode("utf-8")',
+      '        zo.writestr(i, d)',
+    ].join('\n'), GABARITS[0], variante], { env: ENV });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(cle(variante), '');
+    assert.strictEqual(casNettoyeur(variante), 'A');
+    assert.strictEqual(reconnu(variante), true, 'l’import ne reconnaît pas « SZH-Cle », le nettoyeur si');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test('le document écrit par le nettoyeur garde la clé du gabarit', { skip: sansPython }, () => {
   const base = jetable();
   try {

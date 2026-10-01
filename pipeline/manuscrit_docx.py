@@ -6,7 +6,7 @@
 # ici — ni classement de titre, ni nettoyage de mise en forme : seulement de la lecture.
 # Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §3, §4, §10, §11.
 #
-# Repris SANS LES MODIFIER de pronto_docx.py : résolution de style (charger_styles/pstyle/
+# Pris dans ooxml_lecture.py, comme pronto_docx.py : résolution de style (charger_styles/pstyle/
 # resoudre_style), comptage des marqueurs de page (compter_marqueurs_page), liste des blocs
 # de premier niveau (blocs_du_corps) — les deux lecteurs appellent le même code, donc ne
 # peuvent pas diverger sur ces points. Idem pour niveau_depuis_style()/normaliser(), repris
@@ -76,6 +76,7 @@ from collections import namedtuple
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
+import ooxml_lecture
 import pronto_docx
 import pronto_modele as pm
 import manuscrit_modele as mm
@@ -93,13 +94,7 @@ import manuscrit_modele as mm
 Contexto = namedtuple('Contexto', ('numerotation', 'index_styles', 'rpr_defaut', 'ppr_defaut',
                                     'decalage_notes_fin'))
 
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
-R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
-WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
-PKG_RELS = '{http://schemas.openxmlformats.org/package/2006/relationships}'
-MC = '{http://schemas.openxmlformats.org/markup-compatibility/2006}'
-V = '{urn:schemas-microsoft-com:vml}'
+from ooxml_lecture import W, A, R, WP, PKG_RELS, MC, V
 
 # Conteneurs qui enveloppent des w:r sans leur ajouter de texte ou de lien propres : les
 # révisions (w:ins/w:del — comptées à part, voir _compter_revisions), les balises de contenu
@@ -308,7 +303,7 @@ def _forme_directe(rpr):
 
 def _lire_rstyle(rpr):
     """Le style de CARACTÈRE porté par ce rPr (w:rStyle), ou None — distinct d'un style de
-    PARAGRAPHE (w:pStyle, résolu par pronto_docx.resoudre_style/pstyle)."""
+    PARAGRAPHE (w:pStyle, résolu par ooxml_lecture.resoudre_style/pstyle)."""
     if rpr is None:
         return None
     el = rpr.find(W + 'rStyle')
@@ -950,8 +945,8 @@ def _alignement_retrait_depuis(ppr):
 
 
 def _paragraphe_depuis(p, styles, rels, z, recensement, indice, ctx):
-    pstyle_brut = pronto_docx.pstyle(p)
-    style_resolu = pronto_docx.resoudre_style(pstyle_brut, styles)
+    pstyle_brut = ooxml_lecture.pstyle(p)
+    style_resolu = ooxml_lecture.resoudre_style(pstyle_brut, styles)
     niveau_declare = pm.niveau_depuis_style(style_resolu)
     fragments = []
     for i, (r, lien) in enumerate(_runs_de_paragraphe(p, rels)):
@@ -1230,7 +1225,7 @@ def lire(chemin):
         racine = ET.fromstring(z.read('word/document.xml'))
         racine_footnotes = _racine_ou_none(z, 'word/footnotes.xml')
         racine_endnotes = _racine_ou_none(z, 'word/endnotes.xml')
-        styles_id_nom = pronto_docx.charger_styles(z)
+        styles_id_nom = ooxml_lecture.charger_styles(z)
         cle_gabarit = pronto_docx.lire_cle_gabarit(z)
         index_styles, rpr_defaut, ppr_defaut = _index_styles_complet(z)
         rels = charger_relations(z)
@@ -1258,8 +1253,8 @@ def lire(chemin):
         if body is not None:
             _deplier_sdt_niveau_bloc(body)
 
-        elements = pronto_docx.blocs_du_corps(racine)
-        marqueurs_total = sum(pronto_docx.compter_marqueurs_page(e) for e in elements)
+        elements = ooxml_lecture.blocs_du_corps(racine)
+        marqueurs_total = sum(ooxml_lecture.compter_marqueurs_page(e) for e in elements)
         blocs = []
         cumul = 0
         for i, e in enumerate(elements):
@@ -1269,7 +1264,7 @@ def lire(chemin):
                 page = (1 + cumul) if marqueurs_total > 0 else None
                 blocs.append(_tableau_depuis(e, styles_id_nom, rels, z, recensement, i, ctx,
                                               page=page))
-            cumul += pronto_docx.compter_marqueurs_page(e)
+            cumul += ooxml_lecture.compter_marqueurs_page(e)
 
         # Filtre des notes ORPHELINES (superviseur, 19.09.2026) : une note présente dans
         # footnotes.xml/endnotes.xml qu'AUCUN fragment n'appelle n'est pas une vraie note de ce

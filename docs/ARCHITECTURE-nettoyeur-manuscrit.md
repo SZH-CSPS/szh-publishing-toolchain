@@ -239,7 +239,7 @@ légende ; tout ce qui est dans l'étendue de bibliographie (repérée par `TITR
 numérotées, voir plus bas), dans un tableau, ou vide ; un paragraphe sans aucune lettre (une
 ligne de tirets/astérisques/soulignés) ; un paragraphe qui porte un e-mail, un numéro de
 téléphone ou une URL ; un paragraphe qui commence par le lexique de légende `RE_LEGENDE` de
-`docx-titres.py` (« Tableau 1 », « Figure 2 »…).
+`heritage_meta.py` (« Tableau 1 », « Figure 2 »…).
 
 Un entretien arrivé hors gabarit (questions en gras, sans style `SZH Question`) n'est **pas**
 exclu par construction : ses questions peuvent être promues à un niveau de titre, à condition de
@@ -351,7 +351,7 @@ documents déjà remplis à l'ancienne forme — avec un avertissement invitant 
   n'est émise pour lui, il se rend comme un tableau de corps ordinaire. Un bloc figure, lui, n'a
   jamais eu de tableau à faire sauter.
 - Une **légende déjà présente** (paragraphe voisin commençant par « Figure 1 », « Abbildung 2 »,
-  « Tableau 3 »…, lexique `RE_LEGENDE` de `docx-titres.py`) est reprise dans `Légende :` et
+  « Tableau 3 »…, lexique `RE_LEGENDE` de `heritage_meta.py`) est reprise dans `Légende :` et
   retirée du corps, **avec sa mise en forme** (italique, exposant…), jamais aplatie en texte
   plat. Une légende répartie sur deux paragraphes (un titre bref qui matche `RE_LEGENDE` à lui
   seul, suivi du texte proprement dit) est reconnue comme UNE seule légende.
@@ -448,7 +448,7 @@ est consommé ; un paragraphe court non reconnu reste en place sans faire cesser
 **Titre et sous-titre** : le titre est le premier paragraphe non vide. Deux lignes consécutives
 de même signature (§4) dont la première finit par « : » ou ne porte aucune ponctuation finale
 valent titre + sous-titre — sauf si la seconde ressemble à une ligne d'auteurs, porte un marqueur
-connu, ou est l'intertitre qui clôt la zone. À défaut, `docx-meta.scinder_titre()` scinde une
+connu, ou est l'intertitre qui clôt la zone. À défaut, `heritage_meta.scinder_titre()` scinde une
 ligne unique sur son premier deux-points suivi d'un espace.
 
 **Auteurs**, trois motifs essayés dans l'ordre : 1) **byline groupée** (« Prénom Nom, Prénom Nom
@@ -470,7 +470,7 @@ L'**ordre prénom/nom** à l'intérieur d'un segment n'appartient plus à ce mod
 `ordre_motif`, `ordre_conflit` — que `manuscrit_gabarit.ecrire()` ignore (il remplit par liste
 blanche d'étiquettes) et que la CLI passe aux règles (§7).
 
-**Résumé — capture bornée** : commence à un marqueur reconnu (`docx-meta.RE_RESUME`) et se
+**Résumé — capture bornée** : commence à un marqueur reconnu (`heritage_meta.RE_RESUME`) et se
 poursuit jusqu'à la première condition atteinte parmi : un nouveau marqueur reconnu ; l'intertitre
 qui clôt la zone (et la zone entière se termine là) ; un paragraphe court (< 120 signes) et
 entièrement gras (un pseudo-titre que `classer_titres()`, qui tourne après ce module, n'a pas
@@ -480,7 +480,7 @@ marqueur par un saut de ligne manuel (« Résumé F\n… ») est retirée avant 
 devant un vrai `w:br`. Un résumé en langue étrangère au produit est conservé à part dans
 `EnTete.resumes_autres`.
 
-**Mots-clés** : une ligne `docx-meta.RE_KEYWORDS`, découpée par `decouper_keywords()`. Le gabarit
+**Mots-clés** : une ligne `heritage_meta.RE_KEYWORDS`, découpée par `decouper_keywords()`. Le gabarit
 livré ne porte aucun champ mots-clés : ils sont écrits en premier paragraphe du corps, style
 `Corpsdetexte`, sous la forme « Mots-clés : a, b, c », et signalés (`entete_mots_cles_corps`).
 
@@ -1034,7 +1034,7 @@ silencieusement.
 
 **Ne recopie rien** de ce qui existe déjà : `pronto_modele.normaliser()`/`aplatir()`/
 `lire_titres_bib()` (repérage de l'étendue d'une bibliographie, identique à celui de
-`manuscrit-nettoyer.py`) ; `docx-meta.py` pour `nettoyer_doi()`, `RE_DOI`, `langue_du_doi()`,
+`manuscrit-nettoyer.py`) ; `heritage_meta.py` pour `nettoyer_doi()`, `RE_DOI`, `langue_du_doi()`,
 `decouper_prenom_nom()`, `nom_plausible()`, `PARTICULES`.
 
 ### Ce que le module fait
@@ -1202,7 +1202,7 @@ Mesuré sur `tmp/docx-cleaner-exemple/gzdf_Huttner` (5 `APA.ReferenceNonCitee`, 
    « & » APA par « und ». Les trois copies de la comparaison propres au nettoyeur retirent
    désormais un complément final entre parenthèses ou crochets
    (`pronto_modele.sans_complement_titre()`). La chaîne de compilation (`szh-citations.lua`,
-   `pronto_modele._titre_est_biblio()`) garde sa comparaison exacte. En renfort, les
+   `pronto_modele.titre_est_biblio()` sans `tolerer_complement`) garde sa comparaison exacte. En renfort, les
    raffineurs des deux règles « & hors parenthèses » (fr et de) ignorent toute ligne qui a la
    silhouette d'une référence (`_RE_LIGNE_REFERENCE` de `manuscrit_vale.py`).
 5. **`Forme.StyleNominal.Zeitschrift` retirée du catalogue** (décision de Robin) : un indice de

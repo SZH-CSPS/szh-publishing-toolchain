@@ -174,6 +174,17 @@ def est_cle_gabarit(valeur):
     return (valeur or '').strip().lower().startswith(_CLE_GABARIT_PREFIXE)
 
 
+def est_gabarit(noms_styles, cle=None):
+    """La seule reconnaissance du gabarit, pour l'import comme pour le nettoyeur : la clé
+    cachée d'abord, sinon les deux styles de STYLES_GABARIT déclarés, comparés par
+    normaliser_nom_style() (« SZH-Cle » vaut « SZH Cle »). Le lecteur résout ses styles maison
+    par la même normalisation (_style_par), donc un document reconnu est lu comme tel."""
+    if est_cle_gabarit(cle):
+        return True
+    presents = {normaliser_nom_style(n) for n in noms_styles}
+    return all(normaliser_nom_style(s) in presents for s in STYLES_GABARIT)
+
+
 # Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
 # le pipeline de portraits : une image d'un autre format n'est pas appariée.
 EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
@@ -215,20 +226,17 @@ def aplatir(t):
 
 def cle_comparaison(t):
     """Clé qui apparie un paragraphe du document source au bloc que pandoc en fera : les
-    quarante premiers caractères [A-Za-z0-9], et rien d'autre. Voir l'en-tête d'origine
-    (git log de docx-pronto.py) pour la justification complète — inchangée par ce chantier."""
+    quarante premiers caractères [A-Za-z0-9], et rien d'autre. Comparer les textes entiers
+    échouait sur ce que les deux lecteurs ne rendent pas pareil (tiret insécable, caractère
+    en police Symbole, tiret conditionnel, hyperlien sans cible) ; szh-biblio-detacher.lua
+    calcule la même clé, classe par classe explicite, sans dépendre d'une locale."""
     return re.sub(r'[^A-Za-z0-9]', '', t)[:40]
 
 
 def slugifier_portrait(prenom, nom):
-    """Nom de base d'un fichier de portrait. À garder aligné sur slugifier() de
-    vscodium-extension/szh-cockpit/lib/slug.js — voir l'en-tête d'origine de docx-pronto.py."""
-    s = re.sub(r'\.[^.]*$', '', (prenom + '-' + nom))
-    for a, b in (('œ', 'oe'), ('Œ', 'oe'), ('æ', 'ae'), ('Æ', 'ae'), ('ß', 'ss')):
-        s = s.replace(a, b)
-    s = re.sub(r'[̀-ͯ]', '', unicodedata.normalize('NFD', s))
-    s = re.sub(r'[^a-z0-9]+', '-', s.lower()).strip('-')
-    return s or 'article'
+    """Nom de base d'un fichier de portrait : szh_commun.slugifier(), alignée sur slugifier()
+    de vscodium-extension/szh-cockpit/lib/slug.js, qui recalcule ces noms."""
+    return szh_commun.slugifier(prenom + '-' + nom)
 
 
 def citer(v):
@@ -384,11 +392,15 @@ def sans_complement_titre(texte):
     return RE_COMPLEMENT_TITRE_BIBLIO.sub('', texte or '')
 
 
-def _titre_est_biblio(texte, lexique):
-    """Ce titre (niveau 1 à 3) se reconnaît-il comme celui d'une bibliographie ? Comparé au
-    même lexique que szh-citations.lua (lire_titres_bib()), sur le texte aplati (accents et
-    casse indifférents, ponctuation et espaces déjà retirés par aplatir()) — après avoir
-    retiré une numérotation de tête et, le cas échéant, un complément « Liste des » devant."""
+def titre_est_biblio(texte, lexique, tolerer_complement=False):
+    """Ce titre se reconnaît-il comme celui d'une bibliographie ? Comparé au même lexique que
+    szh-citations.lua (lire_titres_bib()), sur le texte aplati (accents et casse
+    indifférents, ponctuation et espaces déjà retirés par aplatir()) — après avoir retiré une
+    numérotation de tête et, le cas échéant, un complément « Liste des » devant.
+    `tolerer_complement` retire d'abord un complément final entre parenthèses ou crochets :
+    le nettoyeur, qui lit des titres d'autrices, le demande ; l'import, non."""
+    if tolerer_complement:
+        texte = sans_complement_titre(texte)
     plat = RE_NUM_TITRE_BIBLIO.sub('', aplatir(texte))
     if plat in lexique:
         return True
@@ -433,7 +445,7 @@ def etendue_biblio(blocs, type_article, slug):
         # tranche, jamais le rang.
         if not isinstance(e, Par) or not e.texte or not e.niveau:
             continue
-        if _titre_est_biblio(e.texte, lexique):
+        if titre_est_biblio(e.texte, lexique):
             titre = i
     if titre is None:
         return [], '', stats
@@ -2071,8 +2083,8 @@ def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     else:
         contenu = serialiser_meta(meta)
         if contenu:
-            with open(chemin_meta_yaml, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(contenu)
+            szh_commun.ecrire_atomique(chemin_meta_yaml, lambda f: f.write(contenu),
+                                       binaire=False, encoding='utf-8', newline='\n')
             meta_ecrit = True
 
     if meta_ecrit and langue_deduite:

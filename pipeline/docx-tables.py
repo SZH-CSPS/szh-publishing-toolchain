@@ -46,11 +46,8 @@ from html import escape
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
-
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
-WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
-R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
+import ooxml_lecture
+from ooxml_lecture import W, A, WP, R, pstyle
 
 # Images dans les cellules, rendues en <img src="media/…"> : pandoc extrait tous les
 # médias du docx sous media/ en gardant leurs noms, et la table HTML, quoique rangée dans
@@ -62,17 +59,7 @@ RELS_IMAGES = {}                              # rId -> media/imageN.ext
 
 def charger_rels(z):
     """word/_rels/document.xml.rels : rId -> cible media/ (basename conservé)."""
-    rels = {}
-    try:
-        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
-    except Exception:
-        return rels
-    ns = '{http://schemas.openxmlformats.org/package/2006/relationships}'
-    for rel in racine.iter(ns + 'Relationship'):
-        cible = rel.get('Target') or ''
-        if 'media/' in cible.replace('\\', '/'):
-            rels[rel.get('Id')] = 'media/' + os.path.basename(cible.replace('\\', '/'))
-    return rels
+    return {rid: 'media/' + nom for rid, nom in ooxml_lecture.charger_rels_images(z).items()}
 
 
 def html_du_drawing(drawing):
@@ -236,19 +223,8 @@ def normaliser(t):
 
 
 def texte_plat(p):
-    """Texte brut d'un paragraphe (sans balisage), tabulations -> espace."""
-    morceaux = []
-    for r in p.iter(W + 'r'):
-        for e in r:
-            if e.tag == W + 't':
-                morceaux.append(e.text or '')
-            elif e.tag == W + 'tab':
-                morceaux.append(' ')
-            elif e.tag == W + 'noBreakHyphen':
-                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
-            elif e.tag == W + 'sym':
-                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
-    return ''.join(morceaux)
+    """Texte brut d'un paragraphe (sans balisage), tabulations -> espace, sauts ignorés."""
+    return ooxml_lecture.texte_paragraphe(p, sauts=False)
 
 
 def texte_plat_cellule(tc):
@@ -491,27 +467,9 @@ def tableaux_de_premier_niveau(racine):
 def charger_styles_legende(z):
     """ids des styles « légende » de styles.xml (Tabelle Beschriftung, Abbildung
     Beschriftung, Caption, Légende…), que pandoc perd."""
-    try:
-        racine = ET.fromstring(z.read('word/styles.xml'))
-    except Exception:
-        return set()
-    ids = set()
-    for st in racine.iter(W + 'style'):
-        sid = st.get(W + 'styleId') or ''
-        nom_el = st.find(W + 'name')
-        nom = (nom_el.get(W + 'val') or '').lower() if nom_el is not None else ''
-        if 'beschriftung' in sid.lower() or 'beschriftung' in nom \
-                or nom == 'caption' or 'légende' in nom or 'legende' in nom:
-            ids.add(sid)
-    return ids
-
-
-def _pstyle(p):
-    ppr = p.find(W + 'pPr')
-    if ppr is None:
-        return ''
-    ps = ppr.find(W + 'pStyle')
-    return ps.get(W + 'val') if ps is not None else ''
+    return {sid for sid, nom in ooxml_lecture.charger_styles(z).items()
+            if 'beschriftung' in sid.lower() or 'beschriftung' in nom
+            or nom == 'caption' or 'légende' in nom or 'legende' in nom}
 
 
 def est_legende_candidate(e, styles_legende):
@@ -519,7 +477,7 @@ def est_legende_candidate(e, styles_legende):
     motif strict « Tabelle N: » (séparateur exigé, 50 mots au plus)."""
     if paragraphe_tout_gras(e):
         return True
-    if _pstyle(e) in styles_legende:
+    if pstyle(e) in styles_legende:
         return True
     brut = normaliser(texte_plat(e))
     return bool(RE_NUM_TABLE_STRICT.match(brut)) and len(brut.split()) <= 50

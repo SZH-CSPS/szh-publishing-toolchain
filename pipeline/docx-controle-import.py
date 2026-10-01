@@ -66,17 +66,11 @@ from html.parser import HTMLParser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
+import ooxml_lecture
+import pronto_modele
+from ooxml_lecture import W, A, WP, R, V, MC, ASVG
 
 PREFIXE = '[import-avertissement]'
-
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
-WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
-R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
-V = '{urn:schemas-microsoft-com:vml}'
-MC = '{http://schemas.openxmlformats.org/markup-compatibility/2006}'
-ASVG = '{http://schemas.microsoft.com/office/drawing/2016/SVG/main}'
-RELS = '{http://schemas.openxmlformats.org/package/2006/relationships}'
 
 # Étiquettes sous lesquelles une valeur est remise dans le texte : celles du gabarit, que la
 # rédaction reconnaît (manuscrit_gabarit.CHAMPS_BLOC, pronto_modele.CANON_FIGURE).
@@ -332,23 +326,12 @@ def ancre_du_bloc(lignes, bloc, numeros_tables):
 # ---------------------------------------------------------------------------------
 # Images du Word.
 
-def _rels(z):
-    try:
-        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
-    except (KeyError, ET.ParseError):
-        return {}
-    return {r.get('Id'): os.path.basename((r.get('Target') or '').replace('\\', '/'))
-            for r in racine.iter(RELS + 'Relationship')
-            if 'media/' in (r.get('Target') or '').replace('\\', '/')
-            and r.get('TargetMode') != 'External'}
-
-
 def images_du_word(chemin_docx, t_ordinaux):
     """[{'noms': [...], 'nom_word': str, 'avant_texte': bool}] — une entrée par image du CORPS,
     dans l'ordre du document, hors tableaux consommés (lignes T) et hors mc:Fallback."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
-        rels = _rels(z)
+        rels = ooxml_lecture.charger_rels_images(z, sans_externes=True)
     corps = racine.find(W + 'body')
     if corps is None:
         return []
@@ -443,7 +426,9 @@ def _cellule_texte(tc, sans_etiquettes):
     for p in tc.iter(W + 'p'):
         if sans_etiquettes:
             style = p.find(W + 'pPr/' + W + 'pStyle')
-            if style is not None and RE_STYLE_ETIQUETTE.match(style.get(W + 'val') or ''):
+            # Même forme normalisée que la reconnaissance du gabarit : « SZH-Cle » vaut « SZHCle ».
+            if style is not None and RE_STYLE_ETIQUETTE.match(
+                    pronto_modele.normaliser_nom_style(style.get(W + 'val'))):
                 continue
         pars.append(_texte_paragraphe(p))
     return ' '.join(pars)

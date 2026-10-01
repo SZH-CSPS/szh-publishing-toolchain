@@ -16,88 +16,18 @@
 # stdlib uniquement : pas de PyYAML dans la WSL de la flotte.
 
 import os
-import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele as pm
-import szh_commun
-
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
-R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
-V = '{urn:schemas-microsoft-com:vml}'
-WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
-
-
-# ---------------------------------------------------------------------------------
-# Texte et images bruts — lecture du XML seul, aucune règle du gabarit.
-
-def texte_paragraphe(p):
-    """Texte plat d'un w:p : t -> texte, tab -> espace, br et cr -> espace. Le stringify de
-    pandoc rend LineBreak par un espace, et l'appariement Lua en dépend. noBreakHyphen rend
-    U+2011 et sym son caractère, comme pandoc ; softHyphen n'est pas du texte."""
-    morceaux = []
-    for r in p.iter(W + 'r'):
-        for e in r:
-            if e.tag == W + 't':
-                morceaux.append(e.text or '')
-            elif e.tag in (W + 'tab', W + 'br', W + 'cr'):
-                morceaux.append(' ')
-            elif e.tag == W + 'noBreakHyphen':
-                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
-            elif e.tag == W + 'sym':
-                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
-    return ''.join(morceaux)
-
-
-def charger_rels_images(z):
-    """word/_rels/document.xml.rels : rId -> nom de fichier sous media/. pandoc extrait les
-    médias en gardant leur basename (--extract-media), et docx-tables.py lit la même table
-    pour fabriquer ses <img src="media/…"> : les trois restent alignés."""
-    rels = {}
-    try:
-        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
-    except Exception:
-        return rels
-    ns = '{http://schemas.openxmlformats.org/package/2006/relationships}'
-    for rel in racine.iter(ns + 'Relationship'):
-        cible = (rel.get('Target') or '').replace('\\', '/')
-        if 'media/' in cible:
-            rels[rel.get('Id')] = os.path.basename(cible)
-    return rels
-
-
-ASVG = '{http://schemas.microsoft.com/office/drawing/2016/SVG/main}'
-
-
-def images_de_paragraphe(p, rels_images):
-    """[(nom sous media/, surface déclarée)] des images d'un w:p, dans l'ordre. La surface
-    vient de wp:extent (EMU²) ; elle vaut 0 quand la taille n'est pas déclarée, ce qui est le
-    cas du VML hérité."""
-    trouvees = []
-    for dessin in p.iter(W + 'drawing'):
-        blip = dessin.find('.//' + A + 'blip')
-        if blip is None:
-            continue
-        nom = rels_images.get(blip.get(R + 'embed') or '')
-        if not nom:
-            continue
-        surface = 0
-        extent = dessin.find('.//' + WP + 'extent')
-        if extent is not None:
-            try:
-                surface = int(extent.get('cx', '0')) * int(extent.get('cy', '0'))
-            except (TypeError, ValueError):
-                surface = 0
-        trouvees.append((nom, surface))
-    for donnees in p.iter(V + 'imagedata'):
-        nom = rels_images.get(donnees.get(R + 'id') or '')
-        if nom:
-            trouvees.append((nom, 0))
-    return trouvees
+import ooxml_lecture
+# La lecture bas niveau vit dans ooxml_lecture ; ses noms restent lisibles ici, où
+# manuscrit_docx.py, les tests et les outils les cherchent.
+from ooxml_lecture import (W, A, R, ASVG, blocs_du_corps, charger_rels_images,
+                           charger_styles, compter_marqueurs_page, images_de_paragraphe,
+                           pstyle, resoudre_style, texte_paragraphe)
 
 
 def variantes_images(chemin_docx):
@@ -137,20 +67,6 @@ def variantes_images(chemin_docx):
     return variantes
 
 
-def charger_styles(z):
-    """id -> nom (minuscules). styles.xml absent : dictionnaire vide (repli)."""
-    try:
-        racine = ET.fromstring(z.read('word/styles.xml'))
-    except Exception:
-        return {}
-    styles = {}
-    for st in racine.iter(W + 'style'):
-        sid = st.get(W + 'styleId') or ''
-        nom = st.find(W + 'name')
-        styles[sid] = (nom.get(W + 'val') or '').lower() if nom is not None else ''
-    return styles
-
-
 # ---------------------------------------------------------------------------------
 # Reconnaissance du gabarit — c'est elle qui décide, dans pipeline/import-docx.sh, si un
 # document déposé part à ce lecteur ou à docx-meta.py (le lecteur des Word hérités).
@@ -168,24 +84,14 @@ def charger_styles(z):
 #
 # Les DEUX sont exigés, et non l'un ou l'autre : « SZH Cle » seul se retrouve dans un document
 # fabriqué par manuscrit_gabarit.py à partir d'un gabarit ancien, « SZH Aide » seul n'existe
-# nulle part. Exiger les deux, c'est exiger le gabarit entier. La liste elle-même vit dans
-# pronto_modele.py (pm.STYLES_GABARIT) : les deux lecteurs y lisent la MÊME, plutôt que d'en
-# tenir chacun une qui dériverait de l'autre.
-
-
-CP = '{http://schemas.openxmlformats.org/officeDocument/2006/custom-properties}'
+# nulle part. Exiger les deux, c'est exiger le gabarit entier. La règle elle-même vit dans
+# pronto_modele.est_gabarit(), que le nettoyeur appelle aussi : les noms s'y comparent par
+# forme normalisée (« SZH-Cle » vaut « SZH Cle »).
 
 
 def lire_cle_gabarit(z):
     """Valeur de la propriété personnalisée SZH-Gabarit (docProps/custom.xml), ou None."""
-    try:
-        racine = ET.fromstring(z.read('docProps/custom.xml'))
-    except Exception:
-        return None
-    for prop in racine.iter(CP + 'property'):
-        if prop.get('name') == pm.CLE_GABARIT_NOM:
-            return ''.join(prop.itertext()).strip()
-    return None
+    return ooxml_lecture.propriete_personnalisee(z, pm.CLE_GABARIT_NOM)
 
 
 def est_pronto(chemin_docx):
@@ -195,48 +101,9 @@ def est_pronto(chemin_docx):
     qui ne va pas."""
     try:
         with zipfile.ZipFile(chemin_docx) as z:
-            if pm.est_cle_gabarit(lire_cle_gabarit(z)):
-                return True
-            noms = set(charger_styles(z).values())
+            return pm.est_gabarit(charger_styles(z).values(), cle=lire_cle_gabarit(z))
     except Exception:
         return False
-    return all(nom in noms for nom in pm.STYLES_GABARIT)
-
-
-def pstyle(p):
-    ppr = p.find(W + 'pPr')
-    if ppr is None:
-        return ''
-    ps = ppr.find(W + 'pStyle')
-    return ps.get(W + 'val') if ps is not None else ''
-
-
-def resoudre_style(sid, styles):
-    """Nom résolu d'un styleId : son w:name (déjà en minuscules, voir charger_styles) si
-    connu, sinon le styleId brut lui-même — c'est ce repli qui garde vivante, dans
-    pronto_modele.famille(), la reconnaissance par identifiant que docx-meta.py fait pour
-    les Word hérités dont le styles.xml est absent ou incomplet. '' si le paragraphe ne
-    porte aucun w:pStyle (paragraphe « Normal » implicite : Word n'écrit alors rien)."""
-    if not sid:
-        return ''
-    nom = styles.get(sid, '')
-    return nom if nom else sid
-
-
-def blocs_du_corps(racine):
-    body = racine.find(W + 'body')
-    if body is None:
-        return []
-    return [e for e in body if e.tag in (W + 'p', W + 'tbl')]
-
-
-def compter_marqueurs_page(e):
-    """Nombre de w:lastRenderedPageBreak sous `e`, à n'importe quelle profondeur — Word les
-    pose dans un w:r, lui-même dans un w:p (jamais dans un w:tbl directement, mais un tableau
-    peut en contenir dans les paragraphes de ses cellules). Posés par Word à sa DERNIÈRE
-    repagination : absents d'un .docx jamais ouvert par Word (mesuré : 0 dans les .docx
-    fabriqués par script) — voir Tableau.page dans pronto_modele.py pour ce que ça implique."""
-    return sum(1 for _ in e.iter(W + 'lastRenderedPageBreak'))
 
 
 # ---------------------------------------------------------------------------------

@@ -14,7 +14,7 @@
 # api.crossref.org.
 #
 # Réutilisé, jamais recopié : pronto_modele.normaliser()/aplatir()/lire_titres_bib()/
-# _titre_est_biblio() ; docx-meta.py (chargé par chemin, il porte un tiret) pour
+# titre_est_biblio() ; heritage_meta.py, la bibliothèque de docx-meta.py, pour
 # nettoyer_doi()/RE_DOI/langue_du_doi()/decouper_prenom_nom()/nom_plausible().
 #
 # stdlib seule : re, json, difflib, urllib.request. Délai réseau court (défaut 4 s) — un
@@ -35,7 +35,7 @@ import pronto_modele
 import szh_commun
 
 
-dm = szh_commun.charger_module_a_tiret('docx-meta.py')
+import heritage_meta as hm
 
 # ---------------------------------------------------------------------------------
 # Contact générique du dépôt pour le User-Agent Crossref (poli et identifiable, comme le
@@ -67,7 +67,7 @@ SUFFIXES_GENERATIONNELS = {'jr', 'sr', 'ii', 'iii', 'iv'}
 
 def _normaliser_nom(nom):
     mots = (nom or '').split()
-    while mots and mots[0].strip('.,').lower() in dm.PARTICULES:
+    while mots and mots[0].strip('.,').lower() in hm.PARTICULES:
         mots.pop(0)
     while mots and mots[-1].strip('.,').lower() in SUFFIXES_GENERATIONNELS:
         mots.pop()
@@ -91,7 +91,7 @@ def _cle_tri(nom, langue):
     n = nom or ''
     if langue == 'de':
         mots = n.split()
-        while mots and mots[0].strip('.,').lower() in dm.PARTICULES:
+        while mots and mots[0].strip('.,').lower() in hm.PARTICULES:
             mots.pop(0)
         n = ' '.join(mots) or (nom or '')
     return pronto_modele.aplatir(n)
@@ -306,7 +306,7 @@ def _decouper_initiales_et_particule(segment):
     segment ne s'y prête pas."""
     mots = segment.split()
     particule = []
-    while mots and mots[-1].strip('.,').lower() in dm.PARTICULES:
+    while mots and mots[-1].strip('.,').lower() in hm.PARTICULES:
         # strip('.,') RETIRÉ du mot gardé, pas seulement testé : sinon le point final d'une
         # référence (« … A.-F. de. ») se retrouve collé au milieu du nom reconstruit.
         particule.insert(0, mots.pop().strip('.,'))
@@ -531,9 +531,9 @@ def analyser_reference(texte, langue_doc='fr'):
         champs['nb_auteurs'] = len(auteurs)
 
         # DOI d'abord : sinon ses chiffres se font happer par un motif de pages ou d'année.
-        m_doi = dm.RE_DOI.search(reste)
+        m_doi = hm.RE_DOI.search(reste)
         if m_doi:
-            champs['doi'] = 'https://doi.org/' + dm.nettoyer_doi(reste)
+            champs['doi'] = 'https://doi.org/' + hm.nettoyer_doi(reste)
             reste = (reste[:m_doi.start()] + reste[m_doi.end():])
             # Ce qui précède le DOI (« doi: », « DOI :», « dx.doi.org/ »…) est du bruit,
             # déjà repris dans le champ 'doi' ci-dessus : on l'ôte du texte restant.
@@ -675,7 +675,7 @@ def analyser_reference(texte, langue_doc='fr'):
 # Wenzlaff, 2002) »). Une fois qu'un appel narratif a consommé son « (année) », le passage en
 # parenthèse n'est plus repris comme une citation supplémentaire.
 
-_PARTICULE_ALTERNATIVE = '|'.join(sorted(dm.PARTICULES, key=len, reverse=True))
+_PARTICULE_ALTERNATIVE = '|'.join(sorted(hm.PARTICULES, key=len, reverse=True))
 
 # Le contenu de la parenthèse est capturé EN ENTIER (pas juste une année) : une citation
 # narrative peut porter plusieurs années pour le même auteur (« Pelgrims (2001, 2006) »),
@@ -1331,7 +1331,7 @@ def doi_normaliser(ref):
     if not m:
         return alertes
     trouve = m.group(0).strip().rstrip('.,;)')
-    numero = dm.nettoyer_doi(m.group(1))
+    numero = hm.nettoyer_doi(m.group(1))
     canonique = 'https://doi.org/' + numero
     if FORME_CANONIQUE.match(trouve):
         return alertes
@@ -1885,7 +1885,7 @@ def _extraire_paragraphes(chemin):
         if not isinstance(bloc, mm.Paragraphe) or bloc.niveau_retenu not in (1, 2, 3):
             continue
         t = bloc.texte().strip()
-        if t and pronto_modele._titre_est_biblio(t, lexique):
+        if t and pronto_modele.titre_est_biblio(t, lexique):
             indice_titre = i
 
     corps, biblio = [], []

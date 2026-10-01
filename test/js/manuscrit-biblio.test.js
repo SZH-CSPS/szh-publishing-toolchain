@@ -19,6 +19,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
 const path = require('path');
 const { python, cheminPython, sansPython } = require('./gardes');
 
@@ -555,17 +556,31 @@ test('citations_du_corps : les préfixes « z. B. », « vgl. z. B. », « e.g. 
 // 29.09.2026 — un intitulé de bibliographie suivi d'un complément entre parenthèses
 // (« 3 Literatur (gemäss Redaktionsrichtlinien) ») est reconnu par le nettoyeur ; un titre qui
 // ne fait que COMMENCER par un mot du lexique ne l'est toujours pas.
-test('nettoyeur : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de bibliographie', { skip: sansPython }, () => {
+// Un seul prédicat, pronto_modele.titre_est_biblio : le nettoyeur tolère le complément, la
+// chaîne d'import garde la comparaison exacte de szh-citations.lua.
+test('titre_est_biblio : « Literatur (gemäss Redaktionsrichtlinien) » est un intitulé de '
+  + 'bibliographie pour le nettoyeur seulement', { skip: sansPython }, () => {
   const programme = [
-    'import pronto_modele, manuscrit_modele as mm, manuscrit_entete as me',
+    'import pronto_modele',
     'lex = pronto_modele.lire_titres_bib()',
     "cas = ['3 Literatur (gemäss Redaktionsrichtlinien)', 'Références [sélection]', "
-      + "'Literatur', 'Literaturhinweise für die Praxis', 'Literatur und Praxis']",
-    'print(json.dumps([[mm._est_titre_biblio(t, lex), me._est_titre_biblio_pour_repli(t, lex)] '
-      + 'for t in cas]))',
+      + "'Literatur', '5. Références', 'Liste des références', "
+      + "'Literaturhinweise für die Praxis', 'Literatur und Praxis', '']",
+    'print(json.dumps([[pronto_modele.titre_est_biblio(t, lex, tolerer_complement=True), '
+      + 'pronto_modele.titre_est_biblio(t, lex)] for t in cas]))',
   ].join('\n');
   assert.deepStrictEqual(executer(programme),
-    [[true, true], [true, true], [true, true], [false, false], [false, false]]);
+    [[true, false], [true, false], [true, true], [true, true], [true, true],
+      [false, false], [false, false], [false, false]]);
+});
+
+// Les quatre lecteurs du titre de bibliographie n'en recopient plus la comparaison.
+test('titre_est_biblio : aucune copie de la comparaison hors de pronto_modele', () => {
+  for (const f of ['manuscrit_modele.py', 'manuscrit_entete.py', 'manuscrit_corpus.py',
+    'manuscrit_biblio.py', 'manuscrit-nettoyer.py']) {
+    const src = fs.readFileSync(path.join(PIPELINE, f), 'utf8');
+    assert.doesNotMatch(src, /PREFIXES_TITRE_BIBLIO|RE_NUM_TITRE_BIBLIO/, f + ' recopie la comparaison');
+  }
 });
 
 // 29.09.2026, gzdf_Huttner : « Beukelman & Mirenda, 1993 » dans le texte, 2013 dans la

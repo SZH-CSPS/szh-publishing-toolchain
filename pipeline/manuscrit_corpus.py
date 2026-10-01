@@ -15,6 +15,7 @@ import manuscrit_modele as mm
 import manuscrit_gabarit as mg
 import manuscrit_noms as mn
 import pronto_modele
+import heritage_meta
 
 
 # ---------------------------------------------------------------------------------
@@ -216,8 +217,7 @@ def _plier_jeton_biblio(jeton):
 def _noms_de_bibliographie(document):
     """Ensemble de jetons pliés (§6.1) : le dernier jeton non-particule de chaque nom, plus
     le nom entier — jamais une étendue, jamais une exception. Repéré par
-    dm.ressemble_a_une_reference() (mn.dm, le docx-meta.py déjà chargé par manuscrit_noms.py
-    — ≥ 25 signes, un millésime, une initiale : vérifié en la relisant, une ligne d'en-tête
+    heritage_meta.ressemble_a_une_reference() — ≥ 25 signes, un millésime, une initiale : vérifié en la relisant, une ligne d'en-tête
     comme « Marie Dupont, Université de Genève » n'a pas d'année, elle ne passe pas ce
     filtre) ; ce qui précède la PREMIÈRE virgule, s'il est capitalisé et sans chiffre, est un
     nom de famille certifié par la forme APA (« Wood de Wilde, H. » -> « wood de wilde »)."""
@@ -226,7 +226,7 @@ def _noms_de_bibliographie(document):
         if not isinstance(bloc, mm.Paragraphe):
             continue
         texte = bloc.texte().strip()
-        if not texte or not mn.dm.ressemble_a_une_reference(texte):
+        if not texte or not heritage_meta.ressemble_a_une_reference(texte):
             continue
         avant_virgule = texte.split(',', 1)[0].strip()
         if not avant_virgule or any(c.isdigit() for c in avant_virgule):
@@ -249,19 +249,6 @@ def _noms_de_bibliographie(document):
 # Bibliographie — voir le point 1 de l'en-tête : mêmes briques PUBLIQUES que
 # pronto_modele.etendue_biblio(), jamais une seconde liste de titres.
 
-def _est_titre_biblio(texte, lexique):
-    # « 3 Literatur (gemäss Redaktionsrichtlinien) » (29.09.2026) : sans ce retrait, la
-    # bibliographie passait pour du Lauftext et « & » y était remplacé par « und ».
-    texte = pronto_modele.sans_complement_titre(texte)
-    plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
-    if plat in lexique:
-        return True
-    for prefixe in pronto_modele.PREFIXES_TITRE_BIBLIO:
-        if plat.startswith(prefixe) and plat[len(prefixe):] in lexique:
-            return True
-    return False
-
-
 def _indice_titre_biblio(document, lexique):
     """L'indice, dans document.blocs, du DERNIER paragraphe de titre reconnu comme titre de
     bibliographie — None si aucun. « Dernier » : la bibliographie est normalement la toute
@@ -271,7 +258,9 @@ def _indice_titre_biblio(document, lexique):
         if not isinstance(bloc, mm.Paragraphe) or bloc.niveau_retenu not in (1, 2, 3):
             continue
         texte = bloc.texte().strip()
-        if texte and _est_titre_biblio(texte, lexique):
+        # Complément toléré : « 3 Literatur (gemäss Redaktionsrichtlinien) » passait sinon
+        # pour du Lauftext, et « & » y était remplacé par « und ».
+        if texte and pronto_modele.titre_est_biblio(texte, lexique, tolerer_complement=True):
             indice = i
     return indice
 

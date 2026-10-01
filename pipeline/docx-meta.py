@@ -57,19 +57,25 @@ import json
 import os
 import re
 import sys
-import unicodedata
 import zipfile
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
-from pronto_modele import langue_du_produit
-
-W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
-R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
-V = '{urn:schemas-microsoft-com:vml}'
-WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
+from pronto_modele import (langue_du_produit, aplatir, citer, cle_comparaison, lire_titres_bib,
+                           slugifier_portrait)
+# Tous les noms de la bibliothèque, et non les seuls employés ici : livre-migrer-meta.py et
+# outils-dev/lexique/generer-noms.py les cherchent encore dans ce module.
+from heritage_meta import (
+    RE_RESUME, LANG_RESUME, RE_KEYWORDS, RE_DOI_LIGNE, RE_DOI, RE_JOURNAL, langue_resume,
+    nettoyer_doi, langue_du_doi, decouper_keywords, decouper_liste, RE_TITRE_DEUX_POINTS,
+    scinder_titre, CONNECTEURS, PARTICULES, TITRES_ACAD, SUFFIXES_TITRE, LIANTS_TITRE,
+    RE_EMAIL, RE_ORCID, sans_titres_academiques, RE_ROLE, decouper_ligne_nom, nom_plausible,
+    decouper_prenom_nom, auteurs_depuis_byline, ressemble_a_une_reference,
+)
+import ooxml_lecture
+from ooxml_lecture import (W, A, blocs_du_corps, charger_rels_images, charger_styles, pstyle,
+                           texte_paragraphe)
 
 # Jetons de type reconnus par le cockpit (TYPES_ARTICLE de lib/yaml.js).
 TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
@@ -107,23 +113,6 @@ def valeur(t):
     return _RE_BLANCS_ASCII.sub(' ', t or '').strip()
 
 
-def texte_paragraphe(p):
-    """Texte plat d'un w:p : t -> texte, tab -> espace, br et cr -> espace. Le stringify
-    de pandoc rend LineBreak par un espace, et l'appariement Lua en dépend."""
-    morceaux = []
-    for r in p.iter(W + 'r'):
-        for e in r:
-            if e.tag == W + 't':
-                morceaux.append(e.text or '')
-            elif e.tag in (W + 'tab', W + 'br', W + 'cr'):
-                morceaux.append(' ')
-            elif e.tag == W + 'noBreakHyphen':
-                morceaux.append(szh_commun.TRAIT_UNION_INSECABLE)
-            elif e.tag == W + 'sym':
-                morceaux.append(szh_commun.caractere_sym(e.get(W + 'char'), e.get(W + 'font')))
-    return ''.join(morceaux)
-
-
 def actif(prop):
     if prop is None:
         return False
@@ -137,48 +126,9 @@ def a_image(el):
             or next(el.iter(W + 'pict'), None) is not None)
 
 
-def charger_rels_images(z):
-    """word/_rels/document.xml.rels : rId -> nom de fichier sous media/. pandoc extrait
-    les médias en gardant leur basename (--extract-media), et docx-tables.py lit la même
-    table pour fabriquer ses <img src="media/…"> : les trois restent alignés."""
-    rels = {}
-    try:
-        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
-    except Exception:
-        return rels
-    ns = '{http://schemas.openxmlformats.org/package/2006/relationships}'
-    for rel in racine.iter(ns + 'Relationship'):
-        cible = (rel.get('Target') or '').replace('\\', '/')
-        if 'media/' in cible:
-            rels[rel.get('Id')] = os.path.basename(cible)
-    return rels
-
-
 def images_de(el):
-    """[(nom sous media/, surface déclarée)] des images de `el`, dans l'ordre du document.
-    La surface vient de wp:extent (EMU²) ; elle vaut 0 quand la taille n'est pas déclarée,
-    ce qui est le cas du VML hérité."""
-    trouvees = []
-    for dessin in el.iter(W + 'drawing'):
-        blip = dessin.find('.//' + A + 'blip')
-        if blip is None:
-            continue
-        nom = RELS_IMAGES.get(blip.get(R + 'embed') or '')
-        if not nom:
-            continue
-        surface = 0
-        extent = dessin.find('.//' + WP + 'extent')
-        if extent is not None:
-            try:
-                surface = int(extent.get('cx', '0')) * int(extent.get('cy', '0'))
-            except (TypeError, ValueError):
-                surface = 0
-        trouvees.append((nom, surface))
-    for donnees in el.iter(V + 'imagedata'):
-        nom = RELS_IMAGES.get(donnees.get(R + 'id') or '')
-        if nom:
-            trouvees.append((nom, 0))
-    return trouvees
+    """[(nom sous media/, surface déclarée)] des images de `el`, dans l'ordre du document."""
+    return ooxml_lecture.images_de_paragraphe(el, RELS_IMAGES)
 
 
 def photo_de(el):
@@ -190,21 +140,6 @@ def photo_de(el):
     if not trouvees:
         return None
     return max(trouvees, key=lambda t: t[1])[0]
-
-
-def slugifier_portrait(prenom, nom):
-    """Nom de base d'un fichier de portrait. À garder aligné sur slugifier() de
-    vscodium-extension/szh-cockpit/lib/slug.js : c'est le cockpit qui relit ces noms
-    (decomposerPhoto) et qui les recalcule quand on redépose une photo — une divergence
-    laisserait deux jeux de fichiers pour la même personne. Même ordre qu'en JS :
-    retrait d'une pseudo-extension, ligatures, NFD sans diacritiques, minuscules, puis
-    tout ce qui n'est pas [a-z0-9] en tiret."""
-    s = re.sub(r'\.[^.]*$', '', (prenom + '-' + nom))
-    for a, b in (('œ', 'oe'), ('Œ', 'oe'), ('æ', 'ae'), ('Æ', 'ae'), ('ß', 'ss')):
-        s = s.replace(a, b)
-    s = re.sub(r'[\u0300-\u036f]', '', unicodedata.normalize('NFD', s))
-    s = re.sub(r'[^a-z0-9]+', '-', s.lower()).strip('-')
-    return s or 'article'
 
 
 def paragraphe_tout_gras(p):
@@ -240,20 +175,6 @@ def taille_max(p):
 # ou Date : ces blocs disparaissent du corps sans notre aide, aucune ligne P à émettre.
 
 NOMS_PANDOC_META = {'title', 'subtitle', 'author', 'abstract', 'date'}
-
-
-def charger_styles(z):
-    """id -> nom (minuscules). styles.xml absent : dictionnaire vide (repli)."""
-    try:
-        racine = ET.fromstring(z.read('word/styles.xml'))
-    except Exception:
-        return {}
-    styles = {}
-    for st in racine.iter(W + 'style'):
-        sid = st.get(W + 'styleId') or ''
-        nom = st.find(W + 'name')
-        styles[sid] = (nom.get(W + 'val') or '').lower() if nom is not None else ''
-    return styles
 
 
 class Classeur:
@@ -302,260 +223,6 @@ class Classeur:
         return self.nom(sid) in NOMS_PANDOC_META
 
 
-def pstyle(p):
-    ppr = p.find(W + 'pPr')
-    if ppr is None:
-        return ''
-    ps = ppr.find(W + 'pStyle')
-    return ps.get(W + 'val') if ps is not None else ''
-
-
-# ---------------------------------------------------------------------------------
-# Déclencheurs multilingues en tête de paragraphe. La langue d'un résumé vient de son
-# déclencheur ; celle des mots-clés vient de la langue du document, les deux revues
-# écrivant « Keywords: » quel que soit l'idiome.
-
-RE_RESUME = re.compile(
-    r'^\s*(r[ée]sum[ée]|zusammenfassung|riassunto|abstract)\b\s*[:.]?\s*', re.I)
-LANG_RESUME = {'resume': 'fr', 'zusammenfassung': 'de', 'riassunto': 'it'}
-RE_KEYWORDS = re.compile(
-    r'^\s*(keywords?|mots[- ]cl[ée]s?|schl[üu]sselw[öo]rter|schlagw[öo]rte?r?|'
-    r'parole chiave)\b\s*[:.]?\s*', re.I)
-RE_DOI_LIGNE = re.compile(r'^\s*doi\b\s*:?\s*', re.I)
-RE_DOI = re.compile(r'\b(10\.\d{4,9}/[^\s<>"\']+)')
-RE_JOURNAL = re.compile(
-    r'^\s*(revue\s+suisse\s+de\s+p[ée]dagogie|'
-    r'schweizerische\s+zeitschrift\s+f[üu]r\s+heilp[äa]dagogik)', re.I)
-
-
-def langue_resume(declencheur):
-    d = re.sub(r'[^a-z]', '', declencheur.lower().replace('é', 'e').replace('è', 'e'))
-    return LANG_RESUME.get(d)          # None pour « abstract » (résolu en langue doc)
-
-
-def nettoyer_doi(txt):
-    m = RE_DOI.search(txt)
-    if not m:
-        return ''
-    return m.group(1).rstrip('.,;:)]}')
-
-
-def langue_du_doi(doi):
-    """10.57161/r2023-03-08 -> fr ; 10.57161/z2026-03-01 -> de (préfixe de revue)."""
-    m = re.search(r'/([rz])\d{4}-', doi)
-    if not m:
-        return None
-    return 'fr' if m.group(1) == 'r' else 'de'
-
-
-def decouper_keywords(texte, langue_doc):
-    """Ligne de mots-clés -> map langue -> [mots]. Cas bilingue des deux revues :
-    « kw fr, kw fr / kw de, kw de » — un slash espacé, des virgules des deux côtés — donne
-    la moitié gauche à la langue du document et la droite à l'autre. Sinon tout va dans la
-    langue du document, découpé sur , ; · et « / » espacé."""
-    langue_doc = langue_doc if langue_doc in LANGUES_META else 'fr'
-    moities = re.split(r'\s+/\s+', texte)
-    if len(moities) == 2 and ',' in moities[0] and ',' in moities[1] \
-            and langue_doc in ('fr', 'de'):
-        autre = 'de' if langue_doc == 'fr' else 'fr'
-        return {langue_doc: decouper_liste(moities[0]), autre: decouper_liste(moities[1])}
-    return {langue_doc: decouper_liste(' ; '.join(moities))}
-
-
-def decouper_liste(texte):
-    mots = []
-    for m in re.split(r'[;,·]', texte):
-        m = m.strip().strip('.').strip()
-        if m:
-            mots.append(m)
-    return mots
-
-
-# ---------------------------------------------------------------------------------
-# Titre à deux-points. Les deux revues écrivent souvent le sous-titre à la suite du titre,
-# sur une seule ligne et sans style Untertitel derrière : « Inclusion scolaire : le rôle de
-# l'enseignant », « Frühförderung: Wege in die Praxis ». Faute de sous-titre, la ligne
-# entière partait en titre — et la maquette, qui compose les deux différemment, n'avait
-# plus rien à composer.
-#
-# On scinde au premier deux-points SUIVI D'UN ESPACE. Ce détail suffit à laisser dehors
-# tout ce qui n'est pas une scission : heures (« 10:30 »), rapports, et URL (« https:// »),
-# où le deux-points colle à ce qui suit. La partie gauche ne peut pas enjamber un
-# deux-points : le premier est donc le seul point de coupe examiné, et une heure en tête de
-# titre empêche la scission au lieu de la déplacer.
-
-RE_TITRE_DEUX_POINTS = re.compile(r'^([^:]+?)\s*:\s+(\S.*)$')
-
-
-def scinder_titre(titre):
-    """(titre, sous-titre) — le sous-titre est '' quand la ligne ne se scinde pas."""
-    m = RE_TITRE_DEUX_POINTS.match(titre or '')
-    if not m:
-        return (titre or '').strip(), ''
-    gauche, droite = m.group(1).strip(), m.group(2).strip()
-    # Une numérotation n'est pas un titre : « 2 : Die Schule » reste d'une seule pièce.
-    if not gauche or not droite or not re.search(r'[^\W\d_]', gauche, re.UNICODE):
-        return (titre or '').strip(), ''
-    return gauche, droite
-
-
-# ---------------------------------------------------------------------------------
-# Ligne d'auteurs (byline sous le titre) et cellules du tableau des auteurs.
-
-CONNECTEURS = re.compile(
-    r',?\s*(?:en\s+collaboration\s+avec|in\s+zusammenarbeit\s+mit|'
-    r'unter\s+mitarbeit\s+von|avec\s+la\s+collaboration\s+de)\s+'
-    r'|\s+(?:et|und|and|&|avec|mit)\s+'
-    r'|\s*[,;]\s*', re.I)
-PARTICULES = {'de', 'von', 'van', 'der', 'den', 'da', 'di', 'du', 'le', 'la', 'a',
-              'ten', 'ter', 'te', 'zu', 'zur', 'vom', 'am', 'y', 'e', 'dos', 'del'}
-TITRES_ACAD = {'dr', 'dre', 'drs', 'dott', 'ssa', 'prof', 'pd', 'dres', 'phil', 'lic', 'iur', 'med', 'rer', 'nat',
-               'dipl', 'msc', 'ma', 'ba', 'bsc', 'phd', 'em', 'ém', 'emer', 'hab',
-               'habil', 'des', 'theol', 'psych',
-               'hc', 'mag', 'mlaw', 'blaw', 'msed', 'edd', 'mba', 'ms', 'mph', 'ing',
-               'paed', 'päd', 'soz', 'pol', 'oec', 'hsg', 'msw', 'bsw', 'ded', 'sc',
-               'h', 'c', 'univ', 'doz', 'priv'}
-# Suffixe féminin autrichien collé au titre (« Dr.in », « Prof.in ») : jamais un titre à
-# lui seul, seulement le fragment d'un jeton qui en contient un.
-SUFFIXES_TITRE = {'in', 'innen'}
-# Liants d'une chaîne d'honneur (« Dr. Dr. et Prof. h. c. ») : sautés seulement entre
-# deux titres, jamais devant un nom.
-LIANTS_TITRE = {'et', 'und', 'and', '&', '/'}
-RE_EMAIL = re.compile(r'\b([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b')
-RE_ORCID = re.compile(r'\b(\d{4}-\d{4}-\d{4}-\d{3}[\dxX])\b')
-
-
-def _est_titre_academique(jeton):
-    """Un jeton est un titre académique si tous ses fragments en sont, et au moins un
-    vraiment : « Univ.-Prof. », « Dipl.-Psych. », « Dr.in ». Découper sur le point et le
-    tiret évite d'allonger la liste à chaque graphie composée rencontrée."""
-    fragments = [f for f in re.split(r'[.\-/]', jeton.strip('.,;')) if f]
-    if not fragments:
-        return False
-    vrais = 0
-    for f in fragments:
-        f = f.lower()
-        if f in TITRES_ACAD:
-            vrais += 1
-        elif f not in SUFFIXES_TITRE:
-            return False
-    return vrais > 0
-
-
-def _oter_titres(jetons, gauche):
-    """Retire les titres académiques d'un bout de la liste, liants compris dès qu'un titre
-    est déjà tombé de ce côté. Retourne le nombre de jetons retirés."""
-    otes = 0
-    while jetons:
-        j = jetons[0] if gauche else jetons[-1]
-        if _est_titre_academique(j):
-            pass
-        elif otes and j.strip('.,;').lower() in LIANTS_TITRE:
-            pass
-        else:
-            break
-        jetons.pop(0 if gauche else -1)
-        otes += 1
-    return otes
-
-
-def _sans_titres_academiques(t):
-    """Retire les titres académiques en tête (« Dr. phil. Romain Lanners »), et après la
-    première virgule s'il n'y a que des titres (« L. Tönnissen, lic. phil. »)."""
-    t = t.replace('†', ' ').strip().strip(',;').strip()
-    morceaux = t.split(',', 1)
-    if len(morceaux) == 2:
-        queue = [x for x in morceaux[1].replace('/', ' ').split() if x]
-        # « , M. A. » : un titre écrit lettre par lettre ne se lit pas jeton par jeton.
-        colle = ''.join(queue).replace('.', '').lower()
-        if queue and (all(_est_titre_academique(x) for x in queue)
-                      or colle in TITRES_ACAD):
-            t = morceaux[0]
-    jetons = t.split()
-    _oter_titres(jetons, True)
-    _oter_titres(jetons, False)
-    return ' '.join(jetons).strip().strip(',;').strip()
-
-
-sans_titres_academiques = _sans_titres_academiques   # alias public (manuscrit_noms.py)
-
-
-# Lignes-préfixes de rôle dans les cellules du tableau des auteurs (« Article rédigé
-# par », « En collaboration avec », « Entretien réalisé par »…) : elles précèdent le nom
-# sur leur propre ligne et sont sautées, le schéma d'auteur n'ayant pas de champ rôle.
-RE_ROLE = re.compile(
-    r'^(article\s+r[ée]dig[ée]\s+par|en\s+collaboration\s+avec|'
-    r'entretien\s+(r[ée]alis[ée]|men[ée])\s+par|propos\s+recueillis\s+par|'
-    r'avec,?\s+comme\s+invit[ée]e?s?|interview\s+(gef[üu]hrt\s+von|mit)|'
-    r'ein\s+interview\s+(mit|von)|im\s+gespr[äa]ch\s+mit|'
-    r'unter\s+mitarbeit\s+von|in\s+zusammenarbeit\s+mit)\s*:?\s*$', re.I)
-
-
-def _decouper_ligne_nom(t):
-    """(nom_nettoye, reste_fonction) : si la partie avant la première virgule est un nom
-    plausible, la queue, débarrassée des titres académiques de tête, amorce la fonction —
-    « Sabrina Eigenmann, MA Studienleitung MAS IF » donne (« Sabrina Eigenmann »,
-    « Studienleitung MAS IF »)."""
-    nettoye = _sans_titres_academiques(t)
-    if nom_plausible(nettoye):
-        return nettoye, ''
-    morceaux = t.split(',', 1)
-    if len(morceaux) == 2:
-        gauche = _sans_titres_academiques(morceaux[0])
-        if nom_plausible(gauche):
-            jetons = morceaux[1].split()
-            _oter_titres(jetons, True)
-            return gauche, ' '.join(jetons).strip()
-    return '', ''
-
-
-def nom_plausible(t):
-    """« Prénom Nom » plausible : 2-6 jetons, capitalisés (particules tolérées),
-    pas de chiffre, pas d'e-mail, longueur bornée."""
-    if not t or len(t) > 60 or any(c.isdigit() for c in t) or '@' in t:
-        return False
-    jetons = t.split()
-    if not 2 <= len(jetons) <= 6:
-        return False
-    capitalises = 0
-    for j in jetons:
-        base = j.strip('.,;«»"()')
-        if not base:
-            return False
-        if base[0].isupper():
-            capitalises += 1
-        elif base.lower() not in PARTICULES:
-            return False
-    return capitalises >= 2
-
-
-def decouper_prenom_nom(t):
-    """Découpe prudente : premier jeton = prénom, le reste = nom (« Anne-Françoise de
-    Chambrier », « Rachel Sermier Dessemontet »). Un seul jeton : tout dans nom."""
-    jetons = t.split()
-    if len(jetons) >= 2:
-        return jetons[0], ' '.join(jetons[1:])
-    return '', t
-
-
-def auteurs_depuis_byline(txt):
-    """« A B, C D et E F » -> [{prenom, nom}] ; segment non plausible -> tout en nom."""
-    auteurs = []
-    for part in CONNECTEURS.split(txt):
-        part = (part or '').strip().strip(',;').replace('†', '').strip()
-        if not part:
-            continue
-        part = _sans_titres_academiques(part)
-        if not part:
-            continue
-        if nom_plausible(part):
-            prenom, nom = decouper_prenom_nom(part)
-        else:
-            prenom, nom = '', part
-        auteurs.append({'prenom': prenom, 'nom': nom})
-    return auteurs
-
-
 # --- cellules du tableau des auteurs -----------------------------------------------
 
 def lignes_cellule(tc):
@@ -599,14 +266,14 @@ def cellule_auteur(tc):
         lignes.pop(0)                     # « Article rédigé par », « En collab. avec »…
     if not lignes:
         return None
-    premier, amorce_fonction = _decouper_ligne_nom(lignes[0][0])
+    premier, amorce_fonction = decouper_ligne_nom(lignes[0][0])
     # Ligne de titres seuls, le nom à la ligne suivante (« Prof. Dr. phil. » puis
     # « Angelika Schöllhorn ») : la ligne est sautée. Seulement si elle ne contient que
     # des titres — chercher un nom plus loin dans n'importe quelle cellule ferait passer
     # un encadré de contenu pour un bloc auteurs.
-    if not premier and len(lignes) > 1 and not _sans_titres_academiques(lignes[0][0]):
+    if not premier and len(lignes) > 1 and not sans_titres_academiques(lignes[0][0]):
         lignes.pop(0)
-        premier, amorce_fonction = _decouper_ligne_nom(lignes[0][0])
+        premier, amorce_fonction = decouper_ligne_nom(lignes[0][0])
     if not premier:
         return None
     email = ''
@@ -753,13 +420,6 @@ def detecter_type(nom_fichier, titre, doi):
 
 
 # ---------------------------------------------------------------------------------
-# Sérialisation YAML, à garder alignée sur lib/yaml.js (serialiserMeta, citerFrontmatter) :
-# tout est cité "…", \ et " échappés, fins de ligne LF, clés vides omises.
-
-def citer(v):
-    return '"' + re.sub(r'([\\"])', r'\\\1', str(v)) + '"'
-
-
 # Avertissement destiné au rédacteur : une ligne, préfixe fixe, deuxième champ = code
 # stable, français puis allemand. Même format que docx-tables.py, pour que l'interface
 # n'ait qu'un seul motif à reconnaître. stderr et articles-word/.import.log — voir
@@ -772,6 +432,9 @@ def avertir(code, champs, fr, de):
     szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 
+# Sérialisation YAML, à garder alignée sur lib/yaml.js (serialiserMeta, citerFrontmatter) :
+# tout est cité "…" par pronto_modele.citer(), fins de ligne LF, clés vides omises. Elle
+# diffère de pronto_modele.serialiser_meta() : mots-clés écrits ici, pas de champ ror.
 def serialiser_meta(meta):
     lignes = []
     if meta.get('type') in TYPES_VALIDES:
@@ -819,15 +482,6 @@ def serialiser_meta(meta):
 
 
 # ---------------------------------------------------------------------------------
-
-def blocs_du_corps(racine):
-    body = racine.find(W + 'body')
-    if body is None:
-        return []
-    return [e for e in body if e.tag in (W + 'p', W + 'tbl')]
-
-
-# ---------------------------------------------------------------------------------
 # Bibliographie : quelle étendue du corps détacher.
 #
 # Le signal est le style, et lui seul : mesuré sur les 421 galleys publiés, les deux revues
@@ -846,60 +500,10 @@ def blocs_du_corps(racine):
 # la bibliographie.
 
 
-def aplatir(t):
-    """Minuscules, accents repliés, tout ce qui n'est pas [a-z0-9] retiré. Sur les mots du
-    lexique — tous ASCII — donne le même résultat que plat() de szh-citations.lua."""
-    return ''.join(c for c in unicodedata.normalize('NFD', t.lower())
-                   if c.isalnum() and ord(c) < 128)
-
-
-def cle_comparaison(t):
-    """Clé qui apparie un paragraphe du .docx au bloc que pandoc en fera : les quarante
-    premiers caractères [A-Za-z0-9], et rien d'autre.
-
-    Comparer les textes entiers, c'était échouer sur ce que les deux lecteurs ne rendent
-    pas pareil — tiret insécable, caractère en police Symbole, tiret conditionnel,
-    hyperlien sans cible. Tous sont de la ponctuation, ou vivent en fin de référence (DOI,
-    URL) : la clé n'en voit rien. szh-biblio-detacher.lua calcule la même, classe par
-    classe explicite des deux côtés, sans dépendre d'une locale."""
-    return re.sub(r'[^A-Za-z0-9]', '', t)[:40]
-
-
-def lire_titres_bib():
-    """Le lexique des titres de bibliographie, relu dans szh-citations.lua — qui le porte
-    pour toute la chaîne, cockpit compris (voir lib/citations.js). Deux copies, ce seraient
-    deux réponses. Filtre illisible : lexique vide, donc aucun titre reconnu, donc l'étendue
-    commence au premier paragraphe stylé — on détache moins, jamais à côté."""
-    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                          'filters', 'szh-citations.lua')
-    try:
-        with open(chemin, encoding='utf-8') as f:
-            src = f.read()
-    except Exception:
-        return set()
-    i = src.find('local TITRES_BIB = {')
-    j = src.find('\n}', i) if i != -1 else -1
-    if j == -1:
-        return set()
-    return {m for m in re.findall(r"'([a-z]+)'", src[i:j])}
-
-
-def ressemble_a_une_reference(t):
-    """Ce paragraphe se lit-il comme une référence ? Ne décide JAMAIS de ce qui est
-    détaché — le style seul en décide. Ne sert qu'à choisir s'il y a lieu de prévenir le
-    rédacteur qu'une référence est restée dans le texte : sans ce filtre, la note « rédigé
-    avec l'aide d'une IA » et l'annexe qui suivent parfois la liste déclencheraient une
-    alerte pour rien."""
-    if len(t) < 25:
-        return False
-    if t.startswith('http'):
-        return True
-    if not (re.search(r'[(,\s][12][09]\d\d[a-z]?[).,;\s]', t)
-            or any(x in t for x in ('sous presse', 'en préparation', 'in press',
-                                    'im Druck'))):
-        return False
-    return bool(re.search(r'[A-Z]\.', t) or re.match(r"^[^\W\d_][\w'’-]*,", t)
-                or 'http' in t)
+# aplatir(), cle_comparaison() et lire_titres_bib() viennent de pronto_modele : les deux
+# lecteurs écrivent les mêmes clés B/BT, que szh-biblio-detacher.lua relit. Un lexique
+# illisible rend un ensemble vide : l'étendue commence alors au premier paragraphe stylé.
+# ressemble_a_une_reference() vient de heritage_meta : le nettoyeur s'en sert aussi.
 
 
 def references_restees(blocs, fin):
@@ -1375,8 +979,8 @@ def principal(argv):
     else:
         contenu = serialiser_meta(meta)
         if contenu:
-            with open(chemin_meta_yaml, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(contenu)
+            szh_commun.ecrire_atomique(chemin_meta_yaml, lambda f: f.write(contenu),
+                                       binaire=False, encoding='utf-8', newline='\n')
             meta_ecrit = True
 
     # Langue devinée et non lue dans le document : le rédacteur doit pouvoir la

@@ -91,7 +91,6 @@
 #                                 // protégé a survécu, jamais seulement le texte d'un motif.
 
 import base64
-import importlib.util
 import json
 import os
 import re
@@ -100,23 +99,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 import pronto_modele
-
-
-def _charger_module_a_tiret(nom_fichier, nom_module):
-    """docx-titres.py porte un tiret : pas un module importable par son nom (convention du
-    dépôt, §3 du contrat). Chargé par chemin, comme le fait déjà manuscrit_biblio.py pour
-    docx-meta.py — jamais recopié : la passe 1 (§5.1, révision du 19.09.2026) a besoin du
-    même lexique de légende que le pré-pass d'import (RE_LEGENDE), pour ne jamais promouvoir
-    « Tableau 1 » ou « Figure 2 » en titre."""
-    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), nom_fichier)
-    spec = importlib.util.spec_from_file_location(nom_module, chemin)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-_docx_titres = _charger_module_a_tiret('docx-titres.py', 'szh_docx_titres_pour_manuscrit_modele')
-RE_LEGENDE = _docx_titres.RE_LEGENDE
+# Le lexique de légende du pré-pass d'import : la passe 1 (§5.1) ne promeut jamais
+# « Tableau 1 » ou « Figure 2 » en titre.
+from heritage_meta import RE_LEGENDE
 
 
 # ---------------------------------------------------------------------------------
@@ -407,17 +392,12 @@ def avertir(code, champs, fr, de):
 
 # ---------------------------------------------------------------------------------
 # Reconnaissance du gabarit — §1 du contrat : cas A si le document porte la clé cachée
-# SZH-Gabarit, ou à défaut SZH Cle ET SZH Aide dans styles.xml, cas B sinon. Comparaison tolérante (casse, espaces, tirets) via les
-# constantes déjà éprouvées de pronto_modele — ne pas les réécrire ici en ferait deux copies.
+# SZH-Gabarit, ou à défaut SZH Cle ET SZH Aide dans styles.xml, cas B sinon. La décision est
+# pronto_modele.est_gabarit(), la même que celle de l'import.
 
 def reconnaitre_gabarit(document):
     """'A' (gabarit déjà en place, aucune restructuration) ou 'B' (manuscrit quelconque)."""
-    if pronto_modele.est_cle_gabarit(document.cle_gabarit):
-        return 'A'
-    presents = {pronto_modele.normaliser_nom_style(s) for s in document.styles}
-    if pronto_modele.NOM_STYLE_CLE in presents and pronto_modele.NOM_STYLE_AIDE in presents:
-        return 'A'
-    return 'B'
+    return 'A' if pronto_modele.est_gabarit(document.styles, cle=document.cle_gabarit) else 'B'
 
 
 # ---------------------------------------------------------------------------------
@@ -562,8 +542,8 @@ def _est_style_citation(style):
 # `4_La méthode Flip Flap.docx` (cinq lignes) faute d'un tel garde-fou ; une ligne de
 # coordonnées (courriel, téléphone, URL) qui n'a jamais sa place dans un titre de section ; et
 # une légende déjà écrite dans le manuscrit (« Tableau 1 », « Figure 2 ») que le lexique
-# RE_LEGENDE de docx-titres.py reconnaît déjà pour le pré-pass d'import — importé, jamais
-# recopié (voir _charger_module_a_tiret en tête de fichier).
+# RE_LEGENDE reconnaît déjà pour le pré-pass d'import — importé de heritage_meta, jamais
+# recopié.
 RE_EMAIL = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
 RE_TELEPHONE = re.compile(r'\+?\d[\d\s]{8,}')
 RE_URL = re.compile(r'(?:https?://|www\.)\S+', re.I)
@@ -582,24 +562,6 @@ def _porte_des_coordonnees(texte):
     — jamais un titre de section, mais fréquent dans un encadré de coordonnées d'autrice que
     la mise en forme seule ne distingue pas toujours d'un intertitre."""
     return bool(RE_EMAIL.search(texte) or RE_TELEPHONE.search(texte) or RE_URL.search(texte))
-
-
-def _est_titre_biblio(texte, lexique):
-    """Un texte de paragraphe tombe-t-il dans le lexique TITRES_BIB (via
-    pronto_modele.lire_titres_bib(), qui le RELIT dans szh-citations.lua, jamais recopié) ?
-    Reprend l'exacte petite comparaison de pronto_modele._titre_est_biblio() et de
-    manuscrit-nettoyer.py (numérotation de tête retirée, préfixe « Liste des » toléré) :
-    cette fonction-là est privée à son propre module (convention du tiret bas du dépôt), donc
-    non importable — seule la comparaison, minuscule, est réécrite ici sur les briques
-    PUBLIQUES (lire_titres_bib, RE_NUM_TITRE_BIBLIO, PREFIXES_TITRE_BIBLIO, aplatir)."""
-    texte = pronto_modele.sans_complement_titre(texte)
-    plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
-    if plat in lexique:
-        return True
-    for prefixe in pronto_modele.PREFIXES_TITRE_BIBLIO:
-        if plat.startswith(prefixe) and plat[len(prefixe):] in lexique:
-            return True
-    return False
 
 
 def _indices_etendue_bibliographie(document, paras):
@@ -640,7 +602,7 @@ def _indices_etendue_bibliographie(document, paras):
     for bloc in document.blocs:
         if isinstance(bloc, Paragraphe):
             idx += 1
-            if _est_titre_biblio(bloc.texte(), lexique):
+            if pronto_modele.titre_est_biblio(bloc.texte(), lexique, tolerer_complement=True):
                 dernier = idx
     if dernier is None:
         return set()

@@ -34,8 +34,8 @@
 #   le tout premier bloc du document s'il porte un niveau de titre ; 'bibliographie' pour le
 #   DERNIER paragraphe de titre reconnu par le lexique TITRES_BIB (szh-citations.lua) et tout
 #   ce qui suit jusqu'à la fin ou un tableau (même critère que pronto_modele.etendue_biblio(),
-#   reconstruit ici sur le modèle riche — le lexique n'est jamais recopié, seule la petite
-#   comparaison l'est, `_titre_est_biblio()` de pronto_modele étant privée). 'sous_titre' et
+#   reconstruit ici sur le modèle riche — le lexique et la comparaison viennent de
+#   `pronto_modele.titre_est_biblio()`). 'sous_titre' et
 #   'resume' ne sont jamais déduits en dehors de l'en-tête : rien ne les distingue de façon
 #   fiable d'un intertitre ou d'un paragraphe de corps.
 # - `bibliographie[i].nb_auteurs` reste TOUJOURS 0 pour le moteur STRUCTUREL

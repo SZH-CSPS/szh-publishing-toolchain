@@ -11,9 +11,7 @@
 # privées : un autre chantier refond classer_titres() en ce moment, ce fichier-ci ne doit
 # dépendre d'aucune de ses pièces internes.
 #
-# Réutilisé depuis pipeline/docx-meta.py (chargé par chemin : le nom porte un tiret,
-# `import docx-meta` est syntaxiquement impossible — patron déjà suivi par
-# manuscrit_biblio.py pour ce même fichier) : RE_RESUME, LANG_RESUME, RE_KEYWORDS,
+# Réutilisé depuis pipeline/heritage_meta.py, la bibliothèque de docx-meta.py : RE_RESUME, LANG_RESUME, RE_KEYWORDS,
 # RE_DOI_LIGNE, RE_DOI, RE_JOURNAL, langue_resume(), nettoyer_doi(), decouper_keywords(),
 # scinder_titre(), CONNECTEURS, nom_plausible(), sans_titres_academiques(), RE_EMAIL,
 # RE_ORCID. C'est le parser de l'import Word déjà en service (et son harnais,
@@ -46,7 +44,7 @@ import pronto_modele
 import manuscrit_noms as mn
 
 
-dm = szh_commun.charger_module_a_tiret('docx-meta.py')
+import heritage_meta as hm
 
 
 # ---------------------------------------------------------------------------------
@@ -279,7 +277,7 @@ def _titre_et_sous_titre(bloc1, texte1, bloc2, texte2):
             and not _est_ligne_auteur(texte2) and not _est_marqueur_connu(texte2)
             and not RE_INTERTITRE_CONNU.match(texte2)):
         return texte1.rstrip(' :').strip(), texte2.strip(), True
-    titre, sous_titre = dm.scinder_titre(texte1)
+    titre, sous_titre = hm.scinder_titre(texte1)
     return titre, sous_titre, False
 
 
@@ -299,11 +297,11 @@ def _segments_plausibles(texte):
     avec cible_courante=None, pire qu'aujourd'hui un bon + un fantôme).
 
     Chaque segment (après retrait de l'obèle †, comme avant) devient :
-    - une INFO s'il matche RE_INSTITUTION, dm.RE_EMAIL, dm.RE_ORCID ou RE_TELEPHONE ;
-    - sinon un NOM s'il passe dm.nom_plausible(dm.sans_titres_academiques(segment)) — c'est
+    - une INFO s'il matche RE_INSTITUTION, hm.RE_EMAIL, hm.RE_ORCID ou RE_TELEPHONE ;
+    - sinon un NOM s'il passe hm.nom_plausible(hm.sans_titres_academiques(segment)) — c'est
       le retrait des titres académiques qui manquait ici (§4.1, deuxième défaut du §0:
       « Dr. phil. Romain Lanners » ne passait pas nom_plausible() sans lui, contrairement à
-      dm.auteurs_depuis_byline(), qui l'appelle déjà) ;
+      hm.auteurs_depuis_byline(), qui l'appelle déjà) ;
     - sinon la ligne entière n'introduit pas des noms : None (§2 de la maison, « en cas de
       doute, rien » — un segment en texte libre, non reconnaissable, disqualifie tout, on ne
       devine jamais à qui il appartient).
@@ -311,8 +309,8 @@ def _segments_plausibles(texte):
     Un jeton fait UNIQUEMENT de symboles/ponctuation/emoji (aucune lettre) est retiré du
     segment AVANT ces tests, jamais compté comme un jeton (§4.1, troisième défaut du §0,
     mesuré : « Marie Dupont 🎓 » — un jeton non capitalisé disqualifiait toute la ligne dans
-    dm.nom_plausible(), qui n'a pourtant rien à voir avec un emoji). Retiré ICI et pas dans
-    docx-meta.nom_plausible() : cette fonction sert un AUTRE appelant (dm.auteurs_depuis_
+    hm.nom_plausible(), qui n'a pourtant rien à voir avec un emoji). Retiré ICI et pas dans
+    docx-meta.nom_plausible() : cette fonction sert un AUTRE appelant (hm.auteurs_depuis_
     byline(), lot A), et docx-meta.py n'est pas un fichier de ce lot.
 
     Rend (noms, infos) — `noms` : liste de segments NETTOYÉS (sans titre académique, prêts à
@@ -322,19 +320,19 @@ def _segments_plausibles(texte):
     fait qu'« Université de Genève » seule sur sa ligne retombe correctement sur
     _est_ligne_auteur(), qui la rattache comme institution à l'auteur ouvert juste avant."""
     noms, infos = [], []
-    for part in dm.CONNECTEURS.split(texte):
+    for part in hm.CONNECTEURS.split(texte):
         part = (part or '').strip().strip(',;').replace('†', '').strip()
         if not part:
             continue
         part_filtre = ' '.join(j for j in part.split() if any(c.isalpha() for c in j))
         if not part_filtre:
             continue
-        if (RE_INSTITUTION.search(part_filtre) or dm.RE_EMAIL.search(part_filtre)
-                or dm.RE_ORCID.search(part_filtre) or RE_TELEPHONE.match(part_filtre)):
+        if (RE_INSTITUTION.search(part_filtre) or hm.RE_EMAIL.search(part_filtre)
+                or hm.RE_ORCID.search(part_filtre) or RE_TELEPHONE.match(part_filtre)):
             infos.append(part_filtre)
             continue
-        sans_titres = dm.sans_titres_academiques(part_filtre)
-        if dm.nom_plausible(sans_titres):
+        sans_titres = hm.sans_titres_academiques(part_filtre)
+        if hm.nom_plausible(sans_titres):
             noms.append(sans_titres)
             continue
         return None
@@ -446,7 +444,7 @@ def _tenter_noms(texte, paragraphe=None, base_noms=None, noms_biblio=None):
     place s'applique » sinon).
 
     mn.trancher_groupe() est appelé UNE SEULE FOIS pour toute la ligne (§4.2 : « _tenter_
-    noms() cesse d'appeler dm.decouper_prenom_nom() segment par segment ») — c'est ce qui
+    noms() cesse d'appeler hm.decouper_prenom_nom() segment par segment ») — c'est ce qui
     permet la propagation (§3.5 du contrat de lot A) entre plusieurs noms d'une même byline."""
     resultat = _segments_plausibles(texte)
     if resultat is None:
@@ -460,7 +458,7 @@ def _tenter_noms(texte, paragraphe=None, base_noms=None, noms_biblio=None):
     # il appartient (plusieurs noms déclarés ensemble, ou plusieurs infos ambiguës).
     email_ligne = None
     if len(noms) == 1:
-        emails = [dm.RE_EMAIL.search(info) for info in infos]
+        emails = [hm.RE_EMAIL.search(info) for info in infos]
         emails = [m for m in emails if m]
         if len(emails) == 1:
             email_ligne = emails[0].group(1)
@@ -488,7 +486,7 @@ def _tenter_noms(texte, paragraphe=None, base_noms=None, noms_biblio=None):
 
 
 def _est_ligne_auteur(texte):
-    if dm.RE_EMAIL.search(texte) or dm.RE_ORCID.search(texte):
+    if hm.RE_EMAIL.search(texte) or hm.RE_ORCID.search(texte):
         return True
     if RE_INSTITUTION.search(texte):
         return True
@@ -508,11 +506,11 @@ def _fusionner_info(auteur, texte):
     déjà rempli (une ligne d'info se lit dans l'ordre du document ; la première valeur vue
     l'emporte, jamais une seconde qui la contredirait en silence)."""
     reste = texte
-    m = dm.RE_EMAIL.search(reste)
+    m = hm.RE_EMAIL.search(reste)
     if m and not auteur['email']:
         auteur['email'] = m.group(1)
         reste = reste.replace(m.group(0), ' ')
-    m = dm.RE_ORCID.search(reste)
+    m = hm.RE_ORCID.search(reste)
     if m and not auteur['orcid']:
         auteur['orcid'] = m.group(1)
         reste = reste.replace(m.group(0), ' ')
@@ -547,7 +545,7 @@ def _tenter_nom_virgule_avec_info(texte):
     (Nom, Prénom), le reste de la ligne étant l'info de CETTE seule personne. Rend (prenom,
     nom, segments_info) ou None si le motif ne tient pas."""
     segments = []
-    for part in dm.CONNECTEURS.split(texte):
+    for part in hm.CONNECTEURS.split(texte):
         part = (part or '').strip().strip(',;').replace('†', '').strip()
         if part:
             segments.append(part)
@@ -556,7 +554,7 @@ def _tenter_nom_virgule_avec_info(texte):
     nom, prenom = segments[0], segments[1]
     if len(nom.split()) != 1 or len(prenom.split()) != 1:
         return None
-    if not dm.nom_plausible(nom + ' ' + prenom):
+    if not hm.nom_plausible(nom + ' ' + prenom):
         return None
     return prenom, nom, segments[2:]
 
@@ -565,9 +563,9 @@ def _tenter_nom_virgule_avec_info(texte):
 # L'extraction — un seul passage, dans l'ordre du document (§5.5).
 
 def _est_marqueur_connu(texte):
-    return bool(dm.RE_RESUME.match(texte) or dm.RE_KEYWORDS.match(texte)
-                or (dm.RE_DOI_LIGNE.match(texte) and dm.RE_DOI.search(texte))
-                or dm.RE_JOURNAL.match(texte))
+    return bool(hm.RE_RESUME.match(texte) or hm.RE_KEYWORDS.match(texte)
+                or (hm.RE_DOI_LIGNE.match(texte) and hm.RE_DOI.search(texte))
+                or hm.RE_JOURNAL.match(texte))
 
 
 def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
@@ -738,11 +736,11 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
             titre_trouve = True
             continue
 
-        m = dm.RE_RESUME.match(texte)
+        m = hm.RE_RESUME.match(texte)
         if m:
             declencheur = m.group(1)
-            lang = dm.langue_resume(declencheur) or langue
-            reste = dm.RE_RESUME.sub('', texte, count=1).strip()
+            lang = hm.langue_resume(declencheur) or langue
+            reste = hm.RE_RESUME.sub('', texte, count=1).strip()
             # Marqueur suivi d'une lettre de langue isolée (« Résumé F », « Zusammenfassung
             # D ») — mesuré sur 2-fin-de-document_Article_RSPS.docx : sans ce retrait, le
             # résumé capturé commençait par « F\n... ».
@@ -767,9 +765,9 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
             i += 1
             continue
 
-        if dm.RE_KEYWORDS.match(texte):
-            brut = dm.RE_KEYWORDS.sub('', texte, count=1).strip()
-            par_langue = dm.decouper_keywords(brut, langue)
+        if hm.RE_KEYWORDS.match(texte):
+            brut = hm.RE_KEYWORDS.sub('', texte, count=1).strip()
+            par_langue = hm.decouper_keywords(brut, langue)
             entete.mots_cles = par_langue.get(langue) or next(iter(par_langue.values()), [])
             indices[i] = 'mots_cles'
             trace.append({'source': bloc.source, 'decision': 'mots_cles',
@@ -777,14 +775,14 @@ def extraire_entete(document, langue, base_noms=None, noms_biblio=None):
             i += 1
             continue
 
-        if dm.RE_DOI_LIGNE.match(texte) and dm.RE_DOI.search(texte):
-            entete.doi = dm.nettoyer_doi(texte)
+        if hm.RE_DOI_LIGNE.match(texte) and hm.RE_DOI.search(texte):
+            entete.doi = hm.nettoyer_doi(texte)
             indices[i] = 'doi'
             trace.append({'source': bloc.source, 'decision': 'doi', 'motif': entete.doi})
             i += 1
             continue
 
-        if dm.RE_JOURNAL.match(texte):
+        if hm.RE_JOURNAL.match(texte):
             entete.ligne_revue = texte
             indices[i] = 'ligne_revue'
             trace.append({'source': bloc.source, 'decision': 'ligne_revue', 'motif': texte})
@@ -1136,23 +1134,8 @@ def _analyser_bloc_auteurs(lignes, base_noms=None, noms_biblio=None, noms_attend
     return auteurs
 
 
-def _est_titre_biblio_pour_repli(texte, lexique):
-    """Même reconnaissance que _construire_bibliographie() de manuscrit-nettoyer.py — jamais
-    une seconde liste de titres, seule la petite comparaison est réécrite ici (ce module ne
-    peut pas importer un fichier qui porte un tiret dans son nom sans le charger par chemin,
-    et la CLI, elle, ne peut pas être importée du tout : convention du dépôt, §3 du contrat)."""
-    texte = pronto_modele.sans_complement_titre(texte)
-    plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
-    if plat in lexique:
-        return True
-    for prefixe in pronto_modele.PREFIXES_TITRE_BIBLIO:
-        if plat.startswith(prefixe) and plat[len(prefixe):] in lexique:
-            return True
-    return False
-
-
-# Silhouette d'une ENTRÉE bibliographique (pas son intitulé, reconnu ci-dessus) : deuxième
-# garde du repli, symétrique à _est_titre_biblio_pour_repli — une année de publication, entre
+# Silhouette d'une ENTRÉE bibliographique (pas son intitulé, reconnu par
+# pronto_modele.titre_est_biblio) : deuxième garde du repli — une année de publication, entre
 # parenthèses (« Walton, E. (2025). ») ou non (« UNESCO, 2017. » — autrice institutionnelle
 # sans initiale ; « Marques, M.M., Valente-Rosa, M.J., Martins, J.L., 2007. » — plusieurs
 # autrices), immédiatement encadrée par la ponctuation d'une référence : une parenthèse
@@ -1245,7 +1228,7 @@ def _tableaux_auteurs(document, entete, indices_entete, base_noms=None, noms_bib
         if (not lignes or len(lignes) > MAX_LIGNES_TABLEAU_AUTEURS
                 or any(len(l) >= SEUIL_LIGNE_AUTEUR_FINAL for l in lignes)):
             continue
-        if not any(dm.RE_EMAIL.search(l) or dm.RE_ORCID.search(l) or RE_INSTITUTION.search(l)
+        if not any(hm.RE_EMAIL.search(l) or hm.RE_ORCID.search(l) or RE_INSTITUTION.search(l)
                    for l in lignes):
             continue
         trouves = _analyser_bloc_auteurs([(bloc.source, l) for l in lignes],
@@ -1382,7 +1365,7 @@ def _bloc_auteurs_final_paragraphes(document, entete, langue, indices_entete=Non
             break
         texte = bloc.texte().strip()
         if texte:
-            if _est_titre_biblio_pour_repli(texte, lexique_biblio):
+            if pronto_modele.titre_est_biblio(texte, lexique_biblio, tolerer_complement=True):
                 arret_sur_contenu = True
                 break
             if _ressemble_reference_biblio_pour_repli(texte):

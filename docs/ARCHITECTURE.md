@@ -149,9 +149,10 @@ environnements de l'image : `/opt/weasyprint` et `/opt/portraits`.
 
 | Module | Rôle |
 |---|---|
-| `szh_commun.py` | ce que les scripts partagent : `avertir`, `formater_avertissement`, `lire_yaml`, slug, écriture atomique, chargeur des modules à tiret |
-| `docx-meta.py` | lecteur des Word hérités : métadonnées, auteur·e·s et photos, étendue de la bibliographie |
-| `pronto-lire.py`, `pronto_docx.py`, `pronto_modele.py` | lecteur des Word au gabarit « Pronto — modèle d'article » ; `--reconnaitre` décide du lecteur |
+| `szh_commun.py` | ce que les scripts partagent : `avertir`, `formater_avertissement`, `lire_yaml`, slug, écriture atomique (fiches `meta.yaml` comprises), chargeur des modules à tiret |
+| `ooxml_lecture.py` | la lecture bas niveau d'un .docx, pour tous les lecteurs : espaces de noms, styles, texte d'un paragraphe, images, blocs du corps |
+| `docx-meta.py`, `heritage_meta.py` | lecteur des Word hérités : métadonnées, auteur·e·s et photos, étendue de la bibliographie ; `heritage_meta.py` en porte la bibliothèque sans OOXML (DOI, e-mail, ORCID, noms, légendes), importée aussi par le nettoyeur |
+| `pronto-lire.py`, `pronto_docx.py`, `pronto_modele.py` | lecteur des Word au gabarit « Pronto — modèle d'article » ; `--reconnaitre` décide du lecteur par `pronto_modele.est_gabarit()`, la même règle que le nettoyeur ; `pronto_modele.titre_est_biblio()` reconnaît le titre de bibliographie pour toute la couche |
 | `docx-tables.py`, `docx-titres.py`, `docx-styles-corps.py` | tableaux en HTML, titres déduits, styles de corps du gabarit |
 | `docx-controle-import.py` | le filet de l'import : rien du Word ne doit se perdre en chemin |
 | `conversion_odt.py` | `.odt` ⇄ `.docx` par LibreOffice sans interface, avant tout lecteur |

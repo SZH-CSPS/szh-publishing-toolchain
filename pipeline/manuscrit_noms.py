@@ -19,10 +19,8 @@
 # entete.py, ou tout autre) qui lui fait remonter les indices tirés d'ailleurs (casse mise en
 # forme du modèle riche, e-mail du bloc, noms certifiés par la bibliographie du manuscrit).
 #
-# Réutilisé depuis pipeline/docx-meta.py (chargé par chemin comme le fait déjà
-# manuscrit_entete.py — le nom porte un tiret, `import docx-meta` est syntaxiquement
-# impossible) : sans_titres_academiques() (alias public de _sans_titres_academiques, posé
-# pour ce module par ce même lot) et PARTICULES. Rien n'est recopié.
+# Réutilisé depuis pipeline/heritage_meta.py, la bibliothèque de docx-meta.py :
+# sans_titres_academiques() et PARTICULES. Rien n'est recopié.
 #
 # stdlib seule.
 
@@ -38,7 +36,7 @@ if _ICI not in sys.path:
 import szh_commun
 
 
-dm = szh_commun.charger_module_a_tiret('docx-meta.py')
+import heritage_meta as hm
 
 
 # ---------------------------------------------------------------------------------
@@ -60,7 +58,7 @@ def _plier(jeton):
     return t.strip(_PONCTUATION_BORD)
 
 
-PARTICULES = dm.PARTICULES  # réutilisées telles quelles, jamais recopiées (docx-meta.py).
+PARTICULES = hm.PARTICULES  # réutilisées telles quelles, jamais recopiées (docx-meta.py).
 
 
 def _candidat_debut(jetons):
@@ -503,7 +501,7 @@ def trancher(jetons, indices=None, base=None):
     """{'ordre', 'confiance', 'motif', 'conflit', 'signaux'} — voir le §3.4 du contrat pour
     la règle de combinaison exacte, reprise ici pas à pas. `jetons` : la liste BRUTE (telle
     que tapée, casse conservée — le signal casse en a besoin) des mots du segment, déjà
-    débarrassé des titres académiques par l'appelant (dm.sans_titres_academiques(), §3.6).
+    débarrassé des titres académiques par l'appelant (hm.sans_titres_academiques(), §3.6).
     Moins de 2 jetons : aucun ordre à trancher, rendu directement sans consulter aucun
     signal (même esprit que le « un seul jeton » de decoupe(), §3.6 — appliqué ici aussi par
     prudence, pour qu'un appelant qui invoquerait trancher() seul sur un jeton isolé ne
@@ -716,18 +714,18 @@ repartir = _repartir
 
 
 def _jetons_depuis_texte(texte):
-    """Titres académiques ôtés (dm.sans_titres_academiques(), c'est ce qui manque à
+    """Titres académiques ôtés (hm.sans_titres_academiques(), c'est ce qui manque à
     docx-meta.auteurs_depuis_byline() côté cellules — voir §3.6 du contrat), l'obèle qui
     accompagne parfois un nom (†, même convention que docx-meta.py) retiré, puis découpage
     sur l'espace."""
-    t = dm.sans_titres_academiques(texte) or ''
+    t = hm.sans_titres_academiques(texte) or ''
     t = t.replace('\u2020', ' ').strip()
     return t.split()
 
 
 def decoupe(texte, indices=None, base=None):
     """{'prenom', 'nom', 'ordre', 'confiance', 'motif', 'conflit'} (§3.6 du contrat) — un
-    seul segment. `texte` passe d'abord par dm.sans_titres_academiques(). Un seul jeton :
+    seul segment. `texte` passe d'abord par hm.sans_titres_academiques(). Un seul jeton :
     tout dans `nom`, confiance='defaut', comme le faisait déjà docx-meta.decouper_prenom_nom()
     (jamais de régression sur ce cas, seulement sur celui à 2 jetons ou plus qu'il tranchait
     à l'aveugle)."""

@@ -21,9 +21,7 @@
 # w:vertAlign) — jamais les recalculer.
 #
 # Repris depuis manuscrit_docx.py, PAR COPIE et non par import (ce module ne lit pas de
-# .docx, il en écrit). RE_LEGENDE est recopié tel quel depuis docx-titres.py (nom à tiret,
-# `import docx-titres` est syntaxiquement impossible), comme pronto_modele.py l'a déjà fait
-# pour normaliser().
+# .docx, il en écrit). RE_LEGENDE vient de heritage_meta.py, comme pour docx-titres.py.
 #
 # stdlib uniquement : zipfile, re, os — pas de python-docx, pas de lxml (§2 du contrat).
 #
@@ -74,6 +72,9 @@ from datetime import datetime, timezone
 
 import manuscrit_modele as mm
 import pronto_modele
+# Légende déjà écrite dans le manuscrit (« Figure 1 », « Abbildung 2 »…) : même lexique que
+# le pré-pass d'import.
+from heritage_meta import RE_LEGENDE
 
 # ---------------------------------------------------------------------------------
 # Styles du gabarit — JAMAIS un styleId codé en dur : résolus depuis word/styles.xml DU
@@ -151,13 +152,6 @@ class _StylesResolus:
                      % (motif, ' / '.join(noms), repli)})
         return repli
 
-
-# docx-titres.py, RE_LEGENDE : reconnaît une légende déjà écrite dans le manuscrit (« Figure
-# 1 », « Abbildung 2 », « Tableau 3 »…) — copié tel quel, voir l'en-tête pour la raison (nom
-# de fichier avec un tiret, non importable).
-RE_LEGENDE = re.compile(
-    r'^(?:figure|fig\.?|abbildung|abb\.?|illustration|grafik|tableau|tabelle|table)\s+\d+',
-    re.I)
 
 # Étiquettes des blocs figure/tableau, PAR LANGUE — mêmes libellés que chaque gabarit lui-même
 # (FR « Légende / Texte alternatif / Copyright / Source / Note », DE « Beschriftung /
