@@ -116,6 +116,13 @@ signaler() {
   fi
 }
 
+# Refus d'un Word qui ne s'ouvre pas (zip tronqué, document.xml mal formé) : un seul texte,
+# que le zip soit coupé ou que ce soit le lecteur qui échoue à le lire.
+refuser_fichier_illisible() {
+  signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: le fichier «${NB}$SZH_SOURCE${NB}» n’a pas pu être ouvert (document tronqué ou endommagé)${NB}; rien n’a été créé, le fichier reste en attente. Ouvrez-le dans Word, enregistrez-le de nouveau, puis relancez la conversion. [de] «$SLUG»: die Datei «$SZH_SOURCE» konnte nicht geöffnet werden (Dokument abgeschnitten oder beschädigt); es wurde nichts angelegt, die Datei bleibt in der Warteschlange. Öffnen Sie sie in Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal."
+  exit 1
+}
+
 # .odt : conversion en .docx, avant de créer quoi que ce soit dans $DIR — un échec ici ne
 # doit laisser ni dossier ni fichier derrière lui, le Word reste en attente tel quel.
 # CONVDIR (nettoyé par le trap ci-dessus) reçoit le .docx converti ; DOCX_ABS pointe dessus
@@ -137,8 +144,7 @@ esac
 # signature de fin d'annuaire (PK 05 06) dans les derniers 70 Ko, plafond d'un commentaire
 # de zip.
 if ! tail -c 70000 "$DOCX_ABS" | LC_ALL=C grep -qaF "$(printf 'PK\005\006')"; then
-  signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: le fichier «${NB}$SZH_SOURCE${NB}» n’a pas pu être ouvert (document tronqué ou endommagé)${NB}; rien n’a été créé, le fichier reste en attente. Ouvrez-le dans Word, enregistrez-le de nouveau, puis relancez la conversion. [de] «$SLUG»: die Datei «$SZH_SOURCE» konnte nicht geöffnet werden (Dokument abgeschnitten oder beschädigt); es wurde nichts angelegt, die Datei bleibt in der Warteschlange. Öffnen Sie sie in Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal."
-  exit 1
+  refuser_fichier_illisible
 fi
 
 mkdir -p "$DIR/media" "$DIR/tables"
@@ -190,6 +196,15 @@ case "$RECO_RC" in
 esac
 
 if ! STATS="$(python3 "$LECTEUR" "$DOCX_ABS" "$SLUG" .)"; then
+  # Premier mot du bloc : après `if !`, $? vaut 0, le code du lecteur est dans PIPESTATUS.
+  LECT_RC="${PIPESTATUS[0]}"
+  # 3 = pronto-lire.py n'a pas pu OUVRIR le fichier (zip intact mais document.xml mal formé) :
+  # il n'y a aucune étiquette à corriger, le fichier est endommagé.
+  if [ "$NOM_LECTEUR" = pronto ] && [ "$LECT_RC" -eq 3 ]; then
+    # Le refus dit « rien n'a été créé » : on retire les dossiers vides posés plus haut.
+    cd "$OLDPWD" 2>/dev/null && rmdir "$DIR/media" "$DIR/tables" "$DIR" 2>/dev/null
+    refuser_fichier_illisible
+  fi
   # Le lecteur du gabarit a deux façons d'échouer, et elles ne se disent pas pareil : une clé
   # présente qu'il n'a pas su ranger (code 1, il a déjà écrit un avertissement par clé, et
   # n'a RIEN écrit d'autre — ni fiche, ni instructions), ou une panne de lecture. Dans les
