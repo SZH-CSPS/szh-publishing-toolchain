@@ -1,4 +1,4 @@
-// windows/open-produit.ps1 : Get-SzhOutilAuteurs + Start-SzhMoissonAuteurs, qui construisent
+// windows/open-produit.ps1 : Start-SzhMoissonAuteurs (et, dans szh-shell.ps1, Invoke-SzhNodeCockpit), qui construisent
 // C:\ProgramData\SZH\auteurs.json au lancement de l'application si le cache manque encore --
 // le lanceur PowerShell (raccourcis du menu Démarrer) s'ouvre directement, sans jamais
 // passer par VSCodium (voir outils/auteurs-cli.js pour le pourquoi).
@@ -43,8 +43,11 @@ function extraireFonction(texte, nom) {
   assert.fail('accolade fermante introuvable pour ' + nom);
 }
 
-const OUTIL_AUTEURS = extraireFonction(SOURCE, 'Get-SzhOutilAuteurs');
 const MOISSON_AUTEURS = extraireFonction(SOURCE, 'Start-SzhMoissonAuteurs');
+// Le lancement de VSCodium-en-Node et la résolution du script vivent dans szh-shell.ps1.
+const SOURCE_SHELL = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
+const NODE_COCKPIT = extraireFonction(SOURCE_SHELL, 'Invoke-SzhNodeCockpit');
+const OUTIL_COCKPIT = extraireFonction(SOURCE_SHELL, 'Get-SzhOutilCockpit');
 
 // ---- Contrôle n1 : le script s'analyse toujours sans erreur de syntaxe ------------------
 test('open-produit.ps1 s\'analyse toujours sans erreur de syntaxe après l\'ajout de la moisson des auteur·e·s',
@@ -69,12 +72,35 @@ test('open-produit.ps1 s\'analyse toujours sans erreur de syntaxe après l\'ajou
     assert.strictEqual(run.stdout.trim(), 'OK', 'erreur(s) de syntaxe rapportée(s) - ' + run.stdout);
   });
 
-// ---- Contrôle n2 : Get-SzhOutilAuteurs ne lève jamais (contrairement à Get-SzhOutilSecretariat) --
-test('Get-SzhOutilAuteurs ne lève jamais, et rend une chaîne vide quand l\'outil est introuvable', () => {
-  assert.ok(!/\bthrow\b/.test(OUTIL_AUTEURS),
-    'Get-SzhOutilAuteurs lève -- une extension pas encore posée ne doit produire ni message ni rapport d\'erreur : ' + OUTIL_AUTEURS);
-  assert.match(OUTIL_AUTEURS, /return\s+['"]{2}/, 'Get-SzhOutilAuteurs doit rendre une chaîne vide en repli');
-});
+// ---- Contrôle n2 : avec -SansLever, le résolveur ne lève jamais (sans lui, il lève) ------
+// Dynamique : une extension du cockpit introuvable (SZH_COCKPIT_DOSSIER vers un dossier
+// vide) donne '' avec -SansLever, une exception sans lui.
+test('Get-SzhOutilCockpit -SansLever ne lève jamais et rend une chaîne vide quand l\'outil est introuvable',
+  { skip: sansPowerShell }, () => {
+    const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-outil-cockpit-'));
+    const pilote = path.join(travail, 'p.ps1');
+    const sortie = path.join(travail, 's.json');
+    fs.writeFileSync(pilote, [
+      '$ErrorActionPreference = "Stop"',
+      '. "' + path.join(RACINE, 'windows', 'szh-common.ps1') + '"',
+      '$r = [ordered]@{}',
+      '$r.sansLever = [string](Get-SzhOutilCockpit -Outil "auteurs-cli.js" -SansLever)',
+      '$r.leve = $false',
+      'try { [void](Get-SzhOutilCockpit -Outil "auteurs-cli.js") } catch { $r.leve = $true }',
+      '$r.message = $false',
+      'try { [void](Get-SzhOutilCockpit -Outil "auteurs-cli.js" -MessageAbsent "absent-voulu") } catch { $r.message = ($_.Exception.Message -eq "absent-voulu") }',
+      'Set-SzhJson "' + sortie.replace(/\\/g, '\\\\') + '" $r'
+    ].join('\r\n') + '\r\n', 'utf8');
+    const env = Object.assign({}, process.env, { SZH_BASE: path.join(travail, 'base'), SZH_COCKPIT_DOSSIER: travail });
+    const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote],
+      { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
+    const r = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
+    fs.rmSync(travail, { recursive: true, force: true });
+    assert.ok(r, 'le pilote n\'a rien produit - ' + run.stderr);
+    assert.strictEqual(r.sansLever, '', 'Get-SzhOutilCockpit -SansLever doit rendre une chaîne vide');
+    assert.strictEqual(r.leve, true, 'sans -SansLever, un outil introuvable doit lever');
+    assert.strictEqual(r.message, true, '-MessageAbsent doit être le message levé');
+  });
 
 // ---- Contrôle n3 : Start-SzhMoissonAuteurs -- gardes en tête, jamais bloquant, jamais visible --
 test('Start-SzhMoissonAuteurs : la garde de simulation est la toute première instruction', () => {
@@ -82,7 +108,7 @@ test('Start-SzhMoissonAuteurs : la garde de simulation est la toute première in
   const iOuvreFonction = MOISSON_AUTEURS.indexOf('{');
   assert.ok(iGardeSimule !== -1, 'la garde SZH_LANCEUR_SIMULE est absente de Start-SzhMoissonAuteurs');
   // Rien d'autre entre l'accolade ouvrante de la fonction et cette garde -- un $codium lu, un
-  // Get-SzhOutilAuteurs appelé, ou un Process construit AVANT elle contredirait « rien en
+  // Invoke-SzhNodeCockpit appelé, ou un Process construit AVANT elle contredirait « rien en
   // simulation ».
   const entreDeux = MOISSON_AUTEURS.slice(iOuvreFonction + 1, iGardeSimule).trim();
   assert.strictEqual(entreDeux, '', 'du code s\'exécute avant la garde de simulation : ' + JSON.stringify(entreDeux));
@@ -91,7 +117,7 @@ test('Start-SzhMoissonAuteurs : la garde de simulation est la toute première in
 test('Start-SzhMoissonAuteurs : garde $codium juste après la garde de simulation, avant tout Process', () => {
   const iSimule = MOISSON_AUTEURS.indexOf('if ($script:SzhSimule) { return }');
   const iCodium = MOISSON_AUTEURS.indexOf('if (-not $codium) { return }');
-  const iProcess = MOISSON_AUTEURS.indexOf('System.Diagnostics.Process');
+  const iProcess = MOISSON_AUTEURS.indexOf('Invoke-SzhNodeCockpit');
   assert.ok(iCodium > iSimule, 'la garde $codium doit venir après la garde de simulation');
   assert.ok(iProcess > iCodium, 'un Process est construit avant que $codium ne soit vérifié');
 });
@@ -100,6 +126,16 @@ test('Start-SzhMoissonAuteurs : jamais bloquant -- ni WaitForExit, ni ReadLine/R
   assert.ok(!/WaitForExit/.test(MOISSON_AUTEURS), 'Start-SzhMoissonAuteurs attend la fin du processus -- ce doit être non bloquant');
   assert.ok(!/Read(Line|ToEnd)/.test(MOISSON_AUTEURS), 'Start-SzhMoissonAuteurs lit la sortie du processus -- personne ne doit l\'attendre');
   assert.ok(!/-Wait\b/.test(MOISSON_AUTEURS), 'Start-SzhMoissonAuteurs porte -Wait -- ce doit être non bloquant');
+  // Le lancement lui-même : -SansAttendre, et la branche -SansAttendre de Invoke-SzhNodeCockpit
+  // ne lit rien et n'attend rien.
+  assert.match(MOISSON_AUTEURS, /Invoke-SzhNodeCockpit[^\r\n]*-SansAttendre/,
+    'Start-SzhMoissonAuteurs doit lancer l\'outil avec -SansAttendre');
+  const iBranche = NODE_COCKPIT.indexOf('if ($SansAttendre) {');
+  const iRedirection = NODE_COCKPIT.indexOf('RedirectStandardOutput');
+  assert.ok(iBranche !== -1 && iRedirection > iBranche, 'la branche -SansAttendre doit précéder toute redirection de flux');
+  const brancheSansAttendre = NODE_COCKPIT.slice(iBranche, iRedirection);
+  assert.ok(!/WaitForExit|Read(Line|ToEnd)|-Wait\b/.test(brancheSansAttendre),
+    'la branche -SansAttendre de Invoke-SzhNodeCockpit attend ou lit le processus');
 });
 
 test('Start-SzhMoissonAuteurs : jamais de fenêtre, jamais de rapport d\'erreur, jamais une exception qui remonte', () => {
@@ -110,11 +146,17 @@ test('Start-SzhMoissonAuteurs : jamais de fenêtre, jamais de rapport d\'erreur,
 });
 
 test('Start-SzhMoissonAuteurs : VSCodium-en-Node (ELECTRON_RUN_AS_NODE=1), UseShellExecute=$false, CreateNoWindow=$true', () => {
-  assert.match(MOISSON_AUTEURS, /EnvironmentVariables\['ELECTRON_RUN_AS_NODE'\]\s*=\s*'1'/,
-    'Start-SzhMoissonAuteurs doit lancer VSCodium en mode Node (ELECTRON_RUN_AS_NODE=1)');
-  assert.match(MOISSON_AUTEURS, /UseShellExecute\s*=\s*\$false/);
-  assert.match(MOISSON_AUTEURS, /CreateNoWindow\s*=\s*\$true/);
-  assert.match(MOISSON_AUTEURS, /Get-SzhOutilAuteurs/, 'Start-SzhMoissonAuteurs doit résoudre son script via Get-SzhOutilAuteurs, pas un chemin recopié');
+  // Posés une fois pour tous les appelants, avant la branche -SansAttendre.
+  const iBranche = NODE_COCKPIT.indexOf('if ($SansAttendre) {');
+  const avantBranche = NODE_COCKPIT.slice(0, iBranche);
+  assert.match(avantBranche, /EnvironmentVariables\['ELECTRON_RUN_AS_NODE'\]\s*=\s*'1'/,
+    'Invoke-SzhNodeCockpit doit lancer VSCodium en mode Node (ELECTRON_RUN_AS_NODE=1)');
+  assert.match(avantBranche, /UseShellExecute\s*=\s*\$false/);
+  assert.match(avantBranche, /CreateNoWindow\s*=\s*\$true/);
+  assert.match(MOISSON_AUTEURS, /Invoke-SzhNodeCockpit -Outil 'auteurs-cli\.js'/,
+    'Start-SzhMoissonAuteurs doit résoudre son script par son nom via Invoke-SzhNodeCockpit, pas un chemin recopié');
+  assert.match(MOISSON_AUTEURS, /-SansLever/, 'une extension pas encore posée ne doit rien lever');
+  assert.match(OUTIL_COCKPIT, /if \(\$SansLever\) \{ return '' \}/, 'le résolveur doit rendre une chaîne vide avec -SansLever');
 });
 
 // ---- Contrôle n4 : l'appel a bien lieu une fois, après la vérification de VSCodium -------

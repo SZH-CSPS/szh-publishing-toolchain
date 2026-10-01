@@ -179,6 +179,12 @@ const CORPS_GET_SZH_COURRIEL = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-Sz
 // leur faut ces dépendances dans le même script-pilote jetable.
 const CORPS_GET_VSCODIUM_EXE = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-VSCodiumExe') : '';
 const CORPS_GET_SZH_DOSSIER_COCKPIT = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Get-SzhDossierCockpit') : '';
+// Le lancement de VSCodium-en-Node vit dans szh-shell.ps1 : Get-SzhCourriel en dépend aussi.
+const SHELL_SOURCE = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
+const CORPS_LANCEUR_NODE = POWERSHELL
+  ? ['ConvertTo-SzhArgumentEchappe', 'ConvertTo-SzhArguments', 'Get-SzhOutilCockpit', 'Invoke-SzhNodeCockpit']
+    .map((nom) => corpsFonction(SHELL_SOURCE, nom)).join('\r\n')
+  : '';
 const CORPS_WRITE_SZH_LOG = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'Write-SzhLog') : '';
 const CORPS_T = POWERSHELL ? corpsFonction(COMMUN_SOURCE, 'T') : '';
 // T() lit $SzhTextes et $SzhLangue -- windows/szh-textes.ps1 est une table de données pure
@@ -200,6 +206,7 @@ function executerGetSzhCourriel(travail, appel, extraEnv) {
     "$script:SzhLangue = 'fr'",
     CORPS_GET_VSCODIUM_EXE,
     CORPS_GET_SZH_DOSSIER_COCKPIT,
+    CORPS_LANCEUR_NODE,
     CORPS_WRITE_SZH_LOG,
     CORPS_T,
     CORPS_GET_SZH_COURRIEL,

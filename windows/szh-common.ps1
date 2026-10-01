@@ -1318,10 +1318,8 @@ function Get-VSCodiumCli {
 
 # Le dossier de l'extension du cockpit posée pour ce compte (szh-csps.szh-cockpit-*, la plus
 # récente sous %USERPROFILE%\.vscode-oss\extensions par date d'écriture) -- chaîne vide si
-# aucune n'y est posée. Un seul point de résolution pour les deux appelants qui en ont
-# besoin : Get-SzhOutilSecretariat (open-produit.ps1, cherche outils\secretariat-cli.js) et
-# Get-SzhCourriel (ci-dessous, cherche outils\rendre-gabarit.js) -- chacun demande ensuite le
-# fichier qui l'intéresse dans ce dossier, cette fonction ne connaît aucun des deux noms.
+# aucune n'y est posée. Un seul point de résolution pour Get-SzhOutilCockpit (szh-shell.ps1),
+# qui y cherche ensuite l'outil demandé : cette fonction ne connaît aucun nom d'outil.
 #
 # $env:SZH_COCKPIT_DOSSIER, quand posé, nomme DIRECTEMENT ce dossier et court-circuite le
 # balayage -- sur le patron de $env:SZH_RAPPORTS (szh-rapport.ps1) et $env:SZH_ANCRAGE
@@ -1397,7 +1395,9 @@ function Get-SzhDossierDistro {
 function Get-SzhDistrosEnregistrees {
   $noms = New-Object System.Collections.ArrayList
   try {
-    $wsl = Get-WslExe
+    # SZH_MANUSCRIT_WSL_EXE : point d'entrée de test, un faux wsl.exe à la place du vrai.
+    $wsl = $env:SZH_MANUSCRIT_WSL_EXE
+    if (-not $wsl) { $wsl = Get-WslExe }
     foreach ($l in @(Invoke-SzhNatif { & $wsl -l -q 2>$null })) {
       $n = (([string]$l) -replace "`0", '').Trim()
       if ($n) { [void]$noms.Add($n) }
@@ -1509,78 +1509,28 @@ function Get-SzhCourriel {
   $sujetFinal = ''
   $corpsFinal = ''
   try {
-    $codiumCourriel = Get-VSCodiumExe
-    if (-not $codiumCourriel) { throw 'VSCodium introuvable sur ce poste' }
-    $dossierCockpitCourriel = Get-SzhDossierCockpit
-    if (-not $dossierCockpitCourriel) { throw 'dossier de l''extension du cockpit introuvable' }
-    $scriptRendu = Join-Path $dossierCockpitCourriel 'outils\rendre-gabarit.js'
-    if (-not (Test-Path -LiteralPath $scriptRendu)) { throw ('outils\rendre-gabarit.js introuvable dans ' + $dossierCockpitCourriel) }
+    $reponse = Invoke-SzhNodeCockpit -Outil 'rendre-gabarit.js' -Entree ([pscustomobject]@{ chemin = $chemin; variables = $Variables })
+    $objetRendu = $null
+    try { $objetRendu = $reponse.Sortie.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRendu = $null }
+    if ($reponse.CodeSortie -ne 0 -or (-not $objetRendu) -or (-not $objetRendu.ok)) {
+      $detailErreur = ''
+      if ($objetRendu -and $objetRendu.erreur) { $detailErreur = [string]$objetRendu.erreur }
+      if (-not $detailErreur) { $detailErreur = $reponse.Erreur.Trim() }
+      if (-not $detailErreur) { $detailErreur = 'code de sortie ' + $reponse.CodeSortie }
+      throw ('rendre-gabarit.js : ' + $detailErreur)
+    }
 
-    # Un seul argument, un chemin de fichier : jamais de guillemet ni de barre oblique
-    # inverse en fin de nom, un simple entourage de guillemets suffit à le protéger d'une
-    # espace (un compte "Robin Morand" vit sous un profil qui en porte une).
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $codiumCourriel
-    $psi.Arguments = '"' + $scriptRendu + '"'
-    $psi.RedirectStandardInput = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-    $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-
-    $processusCourriel = New-Object System.Diagnostics.Process
-    $processusCourriel.StartInfo = $psi
-    try {
-      [void]$processusCourriel.Start()
-      # stdout ET stderr lus par des Task .NET (ReadToEndAsync), jamais par un gestionnaire
-      # d'évènement PowerShell (add_ErrorDataReceived) : ce dernier s'exécute sur un thread
-      # hors pipeline dès qu'aucune boucle de messages WinForms ne le marshale (le cas ici,
-      # Show-SzhErreur étant une console) -- planté en vrai sur ce poste (processus PowerShell
-      # entier interrompu, sans exception à attraper). Deux Task lues EN PARALLÈLE, avant même
-      # d'écrire l'entrée : ni l'une ni l'autre ne peut alors saturer son tube et bloquer
-      # l'écriture ou la sortie du processus.
-      $tacheSortie = $processusCourriel.StandardOutput.ReadToEndAsync()
-      $tacheErreur = $processusCourriel.StandardError.ReadToEndAsync()
-      $entreeJson = [pscustomobject]@{ chemin = $chemin; variables = $Variables } | ConvertTo-Json -Depth 6 -Compress
-      # UTF-8 SANS BOM : un BOM en tête romprait le JSON.parse() côté Node.
-      $encodageEntree = New-Object System.Text.UTF8Encoding($false)
-      $octetsEntree = $encodageEntree.GetBytes($entreeJson)
-      $processusCourriel.StandardInput.BaseStream.Write($octetsEntree, 0, $octetsEntree.Length)
-      $processusCourriel.StandardInput.Close()
-      [System.Threading.Tasks.Task]::WaitAll(@($tacheSortie, $tacheErreur))
-      $processusCourriel.WaitForExit()
-      $sortieBrute = $tacheSortie.Result
-
-      $objetRendu = $null
-      try { $objetRendu = $sortieBrute.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRendu = $null }
-      if ($processusCourriel.ExitCode -ne 0 -or (-not $objetRendu) -or (-not $objetRendu.ok)) {
-        $detailErreur = ''
-        if ($objetRendu -and $objetRendu.erreur) { $detailErreur = [string]$objetRendu.erreur }
-        if (-not $detailErreur) { $detailErreur = $tacheErreur.Result.Trim() }
-        if (-not $detailErreur) { $detailErreur = 'code de sortie ' + $processusCourriel.ExitCode }
-        throw ('rendre-gabarit.js : ' + $detailErreur)
-      }
-
-      $blocsRendus = $objetRendu.blocs
-      # Convention du cockpit (lib/courriel.js#rendreCourriel), reprise ici à l'identique :
-      # le sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à
-      # la ligne après l'ouverture du bloc et un avant sa fermeture -- le gabarit les porte
-      # pour rester lisible en édition, ce ne sont pas des blancs du message. C'est une
-      # convention de RENDU, elle reste ici, ce n'est pas l'affaire du moteur.
-      if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'sujet')) {
-        $sujetFinal = ([string]$blocsRendus.sujet).Trim()
-      }
-      if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'corps')) {
-        $corpsFinal = (([string]$blocsRendus.corps) -replace '^\n', '') -replace '\n$', ''
-      }
-    } finally {
-      try {
-        if ($processusCourriel -and -not $processusCourriel.HasExited) { $processusCourriel.Kill() }
-        if ($processusCourriel) { $processusCourriel.Dispose() }
-      } catch { }
+    $blocsRendus = $objetRendu.blocs
+    # Convention du cockpit (lib/courriel.js#rendreCourriel), reprise ici à l'identique :
+    # le sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à
+    # la ligne après l'ouverture du bloc et un avant sa fermeture -- le gabarit les porte
+    # pour rester lisible en édition, ce ne sont pas des blancs du message. C'est une
+    # convention de RENDU, elle reste ici, ce n'est pas l'affaire du moteur.
+    if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'sujet')) {
+      $sujetFinal = ([string]$blocsRendus.sujet).Trim()
+    }
+    if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'corps')) {
+      $corpsFinal = (([string]$blocsRendus.corps) -replace '^\n', '') -replace '\n$', ''
     }
   } catch {
     $raisonRepli = $_.Exception.Message

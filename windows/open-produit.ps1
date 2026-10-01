@@ -195,53 +195,27 @@ if ((-not $codium) -and (-not $script:SzhSimule)) {
 # moissonneur, appelé d'un second endroit -- zéro logique de moissonnage propre côté
 # PowerShell ni côté Node.
 #
-# Le script Node du moissonnage des auteur·e·s publiés (outils/auteurs-cli.js, livré dans
-# l'extension du cockpit -- jamais dans ce dépôt). Même résolution que Get-SzhOutilSecretariat
-# (Get-SzhDossierCockpit, szh-common.ps1) mais SANS lever : contrairement au secrétariat, cet
-# appel n'est pas un geste demandé par la personne -- une extension pas encore posée (poste
-# tout neuf, ou VSCodium jamais ouvert une seule fois) ne doit produire ni message ni rapport
-# d'erreur, seulement une base qui se construira au prochain lancement une fois l'extension en
-# place. Rend '' quand l'outil est introuvable, jamais une exception.
-function Get-SzhOutilAuteurs {
-  $dossierCockpit = Get-SzhDossierCockpit
-  if ($dossierCockpit) {
-    $scriptCandidat = Join-Path $dossierCockpit 'outils\auteurs-cli.js'
-    if (Test-Path -LiteralPath $scriptCandidat) { return $scriptCandidat }
-  }
-  return ''
-}
-
 # Lance le moissonnage en tâche de fond, SANS jamais attendre son issue : décision du
 # superviseur -- l'ouverture du lanceur ne doit jamais patienter pour un millier de notices
 # OAI-PMH ni pour un balayage du corpus OneDrive, alors que l'absence de base ne coûte qu'un
 # signal sur quatre au nettoyeur de manuscrit (Forme.Lexique, pipeline/manuscrit_noms.py).
-# Même mécanisme que Invoke-SzhSecretariat et Get-SzhCourriel (VSCodium-en-Node,
-# ELECTRON_RUN_AS_NODE=1, un seul argument entre guillemets -- repris tel quel, voir
-# Get-SzhCourriel dans szh-common.ps1), mais un Process lancé sans être suivi : personne ne
+# Même mécanisme que Invoke-SzhSecretariat et Get-SzhCourriel (Invoke-SzhNodeCockpit,
+# szh-shell.ps1), mais en -SansAttendre : un Process lancé sans être suivi, personne ne
 # lit sa sortie, personne n'attend sa fin -- outils/auteurs-cli.js décide lui-même quand
 # moissonner (JOURS_FRAICHEUR = 30, cacheFrais(), lib/auteurs-ojs.js) et ne lève jamais.
 #
 # Ne lève JAMAIS et n'affiche JAMAIS rien : hors ligne est un état normal du poste (même
 # politique que le moissonneur lui-même) -- une ligne de journal suffit, dans un sens comme
-# dans l'autre. Rien n'est lancé si VSCodium est absent du poste (Get-SzhOutilAuteurs rend ''
-# sans lever) : ce lanceur passe alors simplement son tour, sur le même repli que
-# Get-SzhCourriel. Rien non plus en simulation (SZH_LANCEUR_SIMULE=1) : un test ne doit jamais
+# dans l'autre. Rien n'est lancé si VSCodium est absent du poste, ni si l'extension du cockpit n'est pas
+# encore posée (-SansLever : poste tout neuf, ni message ni rapport d'erreur) : ce lanceur
+# passe alors simplement son tour. Rien non plus en simulation (SZH_LANCEUR_SIMULE=1) : un test ne doit jamais
 # lancer un vrai processus VSCodium-en-Node de son côté.
 function Start-SzhMoissonAuteurs {
   if ($script:SzhSimule) { return }
   if (-not $codium) { return }
   try {
-    $cheminOutilAuteurs = Get-SzhOutilAuteurs
-    if (-not $cheminOutilAuteurs) { return }
-    $psiAuteurs = New-Object System.Diagnostics.ProcessStartInfo
-    $psiAuteurs.FileName = $codium
-    # Un seul argument, un chemin de fichier : même garde qu'un espace dans "Robin Morand"
-    # que Get-SzhCourriel, un simple entourage de guillemets suffit.
-    $psiAuteurs.Arguments = '"' + $cheminOutilAuteurs + '"'
-    $psiAuteurs.UseShellExecute = $false
-    $psiAuteurs.CreateNoWindow = $true
-    $psiAuteurs.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-    [void][System.Diagnostics.Process]::Start($psiAuteurs)
+    $lanceAuteurs = Invoke-SzhNodeCockpit -Outil 'auteurs-cli.js' -Codium $codium -SansAttendre -SansLever
+    if (-not $lanceAuteurs.Demarre) { return }
     Write-SzhLog 'open-produit : moisson des auteurs publies lancee en tache de fond (non bloquant)'
   } catch {
     Write-SzhLog ('open-produit : moisson des auteurs publies non lancee (' + $_.Exception.Message + ')')
@@ -1509,50 +1483,6 @@ $pageJournal.Controls.Add($boutonEnvoyer)
 # Comme « Journal » et « Reglages » : pas un produit, .Tag reste vide, « Ouvrir » n'a rien a
 # ouvrir ici.
 
-# Echappement Windows d'un argument de ligne de commande (guillemets, barres obliques
-# inverses) -- l'algorithme standard, puisque ProcessStartInfo.Arguments est UNE chaine et
-# non une liste : les chemins de numeros vivent sous OneDrive et portent presque tous une
-# espace.
-function ConvertTo-SzhArgumentEchappe([string]$Valeur) {
-  if ($null -eq $Valeur) { $Valeur = '' }
-  if ($Valeur -eq '') { return '""' }
-  if ($Valeur -notmatch '[\s"]') { return $Valeur }
-  $resultat = '"'
-  $nbBarres = 0
-  foreach ($caractere in $Valeur.ToCharArray()) {
-    if ($caractere -eq '\') {
-      $nbBarres++
-      $resultat += $caractere
-    } elseif ($caractere -eq '"') {
-      $resultat += ('\' * $nbBarres) + '\"'
-      $nbBarres = 0
-    } else {
-      $nbBarres = 0
-      $resultat += $caractere
-    }
-  }
-  $resultat += ('\' * $nbBarres) + '"'
-  return $resultat
-}
-function ConvertTo-SzhArguments([string[]]$Valeurs) {
-  return (($Valeurs | ForEach-Object { ConvertTo-SzhArgumentEchappe $_ }) -join ' ')
-}
-
-# Le script Node du secretariat, livre dans l'extension du cockpit -- jamais dans ce depot.
-# La resolution du dossier d'extension (szh-csps.szh-cockpit-*, le plus recent) est
-# factorisee dans szh-common.ps1 (Get-SzhDossierCockpit) -- Get-SzhCourriel, dans ce meme
-# fichier, en a besoin tout autant pour outils\rendre-gabarit.js. Leve une erreur claire et
-# traduite si le dossier ou le script manquent : un poste mal installe doit le dire, pas
-# planter a la premiere ligne de JSON attendue.
-function Get-SzhOutilSecretariat {
-  $dossierCockpit = Get-SzhDossierCockpit
-  if ($dossierCockpit) {
-    $scriptCandidat = Join-Path $dossierCockpit 'outils\secretariat-cli.js'
-    if (Test-Path -LiteralPath $scriptCandidat) { return $scriptCandidat }
-  }
-  throw (T 'lanceur.secretariat.outil.absent')
-}
-
 # En-tete avant CHAQUE export, dans le journal ou zone de messages passe en $Journal : les
 # executions qui se suivent s'y collaient toutes bout a bout, et rien n'y nommait l'export en
 # cours. Une ligne vide d'abord (seulement si ce journal n'est pas deja vide -- pas de ligne
@@ -1577,23 +1507,17 @@ function Add-SzhEnteteJournal($Journal, [string]$NomExport) {
 # les lui passe.
 #
 # Mesure du 15.09.2026 : une page OAI-PMH de 100 notices prend 4,6 s, la Zeitschrift en
-# compte 7 -> ~32 s bloquant tout entiers avec l'ancien ReadLine(). La lecture de stdout est
-# donc non bloquante (ReadLineAsync), avec une boucle qui pompe l'interface (DoEvents +
-# petite pause) tant que la ligne n'est pas arrivee -- et qui teste au passage le drapeau
-# d'annulation ($EtatAnnulation), une table de hachage et non une variable simple (une
-# fermeture ne reassigne pas une variable simple -- voir $etatBoiteOjs plus bas). `.Result`
-# sur une Task en faute leve une AggregateException : encadree par le try/catch autour de
-# chaque lecture. Chaque ligne recue est decodee comme du JSON : etape/avert vont dans le
-# journal, progres met a jour la barre, numero et fichier s'accumulent, fin memorise
-# l'issue. Une ligne qui n'est pas du JSON valide s'affiche telle quelle plutot que de faire
-# tomber le lanceur. stderr est lu par une Task .NET (ReadToEndAsync), jamais par un
-# gestionnaire d'evenement PowerShell (add_ErrorDataReceived / BeginErrorReadLine /
-# add_OutputDataReceived) : INTERDIT ABSOLU -- ces gestionnaires tournent sur un fil hors
-# pipeline et ont deja tue le processus PowerShell entier sur ce poste, sans exception a
-# attraper. Cette Task demarre AVANT la boucle de stdout, pour empecher stderr de saturer
-# son tube et bloquer l'enfant ; son resultat n'est lu qu'apres WaitForExit, et seulement si
-# le code de sortie n'est pas nul (une annulation ne le lit pas : le texte affiche doit
-# rester "Export interrompu.", pas une sortie de processus tue).
+# compte 7 -> ~32 s bloquant tout entiers avec l'ancien ReadLine(). Invoke-SzhNodeCockpit
+# (szh-shell.ps1) lit donc stdout ligne à ligne sans bloquer l'interface et teste au passage
+# le drapeau d'annulation ($EtatAnnulation, une table de hachage et non une variable simple :
+# une fermeture ne réassigne pas une variable simple -- voir $etatBoiteOjs plus bas). Chaque
+# ligne reçue est décodée comme du JSON par $surLigne, qui s'exécute dans une portée fille :
+# il écrit dans $etat et les listes, jamais dans une variable. etape/avert vont dans le
+# journal, progres met à jour la barre, numero et fichier s'accumulent, fin mémorise
+# l'issue. Une ligne qui n'est pas du JSON valide s'affiche telle quelle plutôt que de faire
+# tomber le lanceur. stderr n'est affiché que si le code de sortie n'est pas nul (une
+# annulation ne le lit pas : le texte affiché doit rester "Export interrompu.", pas une
+# sortie de processus tué).
 function Invoke-SzhSecretariat {
   param(
     [Parameter(Mandatory = $true)][string]$Commande,
@@ -1621,111 +1545,70 @@ function Invoke-SzhSecretariat {
   $dossierGabarits = ''
   $ok = $false
   $texteFin = ''
-  $processus = $null
-  $tacheErreurSecretariat = $null
   try {
     if (-not $codium) { throw (T 'lanceur.codium' @($SzhSupport)) }
-    $cheminOutilSecretariat = Get-SzhOutilSecretariat
-    $tousArguments = @($cheminOutilSecretariat, $Commande) + $Arguments
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $codium
-    $psi.Arguments = ConvertTo-SzhArguments $tousArguments
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-    $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-
-    $processus = New-Object System.Diagnostics.Process
-    $processus.StartInfo = $psi
-    [void]$processus.Start()
-    $tacheErreurSecretariat = $processus.StandardError.ReadToEndAsync()
-
-    $futAnnule = $false
-    while ($true) {
-      $tacheLigne = $processus.StandardOutput.ReadLineAsync()
-      $annulePendant = $false
-      while (-not $tacheLigne.IsCompleted) {
-        if ($EtatAnnulation -and $EtatAnnulation.annule) { $annulePendant = $true; break }
-        [System.Windows.Forms.Application]::DoEvents()
-        [System.Threading.Thread]::Sleep(25)
-      }
-      if ($annulePendant) {
-        try { if (-not $processus.HasExited) { $processus.Kill() } } catch { }
-        $ok = $false
-        $texteFin = (T 'lanceur.secretariat.interrompu')
-        $futAnnule = $true
-        break
-      }
-      $ligne = $null
-      try { $ligne = $tacheLigne.Result } catch { $ligne = $null }
-      if ($null -eq $ligne) { break }
-      $ligneVue = $ligne.Trim()
-      if ($ligneVue) {
-        $objetJson = $null
-        try { $objetJson = $ligneVue | ConvertFrom-Json -ErrorAction Stop } catch { $objetJson = $null }
-        if ($objetJson -and $objetJson.t) {
-          switch ([string]$objetJson.t) {
-            'etape'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
-            'avert'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
-            'numero'  { [void]$numerosRecus.Add($objetJson) }
-            'fichier' {
-              [void]$fichiersRecus.Add($objetJson)
-              if ($DossierSortie) { $dossierRendu = $DossierSortie }
-            }
-            'fin'     {
-              $ok = [bool]$objetJson.ok
-              $texteFin = [string]$objetJson.texte
-              $dossierGabarits = [string]$objetJson.gabarits
-            }
-            'progres' {
-              # total = 0 : total inconnu, la barre reste en Marquee. Sinon elle passe en
-              # Continuous des la premiere ligne qui donne un total.
-              if ($BarreProgression) {
-                $totalProgres = 0
-                try { $totalProgres = [int]$objetJson.total } catch { $totalProgres = 0 }
-                if ($totalProgres -gt 0) {
-                  if ($BarreProgression.Style -ne 'Continuous' -or $BarreProgression.Maximum -ne $totalProgres) {
-                    $BarreProgression.Style = 'Continuous'
-                    $BarreProgression.Maximum = $totalProgres
-                  }
-                  $faitProgres = 0
-                  try { $faitProgres = [int]$objetJson.fait } catch { $faitProgres = 0 }
-                  if ($faitProgres -lt 0) { $faitProgres = 0 }
-                  if ($faitProgres -gt $totalProgres) { $faitProgres = $totalProgres }
-                  $BarreProgression.Value = $faitProgres
+    $etat = @{ ok = $false; texte = ''; gabarits = ''; dossier = '' }
+    $surLigne = {
+      param($texteLigne)
+      $objetJson = $null
+      try { $objetJson = $texteLigne | ConvertFrom-Json -ErrorAction Stop } catch { $objetJson = $null }
+      if ($objetJson -and $objetJson.t) {
+        switch ([string]$objetJson.t) {
+          'etape'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
+          'avert'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
+          'numero'  { [void]$numerosRecus.Add($objetJson) }
+          'fichier' {
+            [void]$fichiersRecus.Add($objetJson)
+            if ($DossierSortie) { $etat.dossier = $DossierSortie }
+          }
+          'fin'     {
+            $etat.ok = [bool]$objetJson.ok
+            $etat.texte = [string]$objetJson.texte
+            $etat.gabarits = [string]$objetJson.gabarits
+          }
+          'progres' {
+            # total = 0 : total inconnu, la barre reste en Marquee. Sinon elle passe en
+            # Continuous des la premiere ligne qui donne un total.
+            if ($BarreProgression) {
+              $totalProgres = 0
+              try { $totalProgres = [int]$objetJson.total } catch { $totalProgres = 0 }
+              if ($totalProgres -gt 0) {
+                if ($BarreProgression.Style -ne 'Continuous' -or $BarreProgression.Maximum -ne $totalProgres) {
+                  $BarreProgression.Style = 'Continuous'
+                  $BarreProgression.Maximum = $totalProgres
                 }
+                $faitProgres = 0
+                try { $faitProgres = [int]$objetJson.fait } catch { $faitProgres = 0 }
+                if ($faitProgres -lt 0) { $faitProgres = 0 }
+                if ($faitProgres -gt $totalProgres) { $faitProgres = $totalProgres }
+                $BarreProgression.Value = $faitProgres
               }
             }
-            default   { Add-SzhLigneJournal $Journal $ligneVue }
           }
-        } else {
-          Add-SzhLigneJournal $Journal $ligneVue
+          default   { Add-SzhLigneJournal $Journal $texteLigne }
         }
+      } else {
+        Add-SzhLigneJournal $Journal $texteLigne
       }
     }
-    if ($futAnnule) {
-      try { [void]$processus.WaitForExit(3000) } catch { }
-    } else {
-      $processus.WaitForExit()
-      if ($processus.ExitCode -ne 0) {
-        $erreurStd = $tacheErreurSecretariat.Result
-        if ($erreurStd -and $erreurStd.Trim()) { Add-SzhLigneJournal $Journal $erreurStd.Trim() }
-        $ok = $false
-      }
+    $reponse = Invoke-SzhNodeCockpit -Outil 'secretariat-cli.js' -Codium $codium -Arguments (@($Commande) + $Arguments) -SurLigne $surLigne -EtatAnnulation $EtatAnnulation -MessageAbsent (T 'lanceur.secretariat.outil.absent')
+    $ok = $etat.ok
+    $texteFin = $etat.texte
+    $dossierGabarits = $etat.gabarits
+    if ($etat.dossier) { $dossierRendu = $etat.dossier }
+    if ($reponse.Annule) {
+      $ok = $false
+      $texteFin = (T 'lanceur.secretariat.interrompu')
+    } elseif ($reponse.CodeSortie -ne 0) {
+      $erreurStd = $reponse.Erreur
+      if ($erreurStd -and $erreurStd.Trim()) { Add-SzhLigneJournal $Journal $erreurStd.Trim() }
+      $ok = $false
     }
   } catch {
     $ok = $false
     $texteFin = $_.Exception.Message
     Add-SzhLigneJournal $Journal $texteFin
   } finally {
-    try {
-      if ($processus -and -not $processus.HasExited) { $processus.Kill() }
-      if ($processus) { $processus.Dispose() }
-    } catch { }
     $script:form.Cursor = [System.Windows.Forms.Cursors]::Default
     foreach ($boutonRallume in $script:secretariatBoutons) { $boutonRallume.Enabled = $true }
     if ($BarreProgression) {
@@ -2345,7 +2228,8 @@ function ConvertFrom-SzhOctetsWsl([byte[]]$Octets) {
 # $env:SZH_MANUSCRIT_WSL_EXE / _DISTRO / _CLI : trois points d'entree de test, pour viser
 # un faux wsl.exe, une fausse distribution ou un faux script sans dependre d'une vraie
 # installation. Absents en production -- Get-WslExe (szh-common.ps1) et $SzhToolkit font
-# alors foi, comme partout ailleurs dans ce fichier.
+# alors foi, comme partout ailleurs dans ce fichier. Get-SzhDistrosEnregistrees (szh-common.ps1)
+# lit lui aussi SZH_MANUSCRIT_WSL_EXE.
 function Get-SzhWslExePreproc {
   if ($env:SZH_MANUSCRIT_WSL_EXE) { return $env:SZH_MANUSCRIT_WSL_EXE }
   return (Get-WslExe)
@@ -2391,22 +2275,6 @@ function Invoke-SzhWslBrut {
   }
 }
 
-# Les distributions enregistrees, vues par CE wsl.exe (celui de Get-SzhWslExePreproc, donc
-# testable) -- propre copie de la logique de Get-SzhDistrosEnregistrees (szh-common.ps1),
-# jamais partagee avec elle : celle-ci doit rester substituable par un faux wsl.exe pour
-# les tests, l'autre vise toujours le vrai poste.
-function Get-SzhDistrosEnregistreesPreproc {
-  $nomsDistrosPreproc = New-Object System.Collections.ArrayList
-  try {
-    $resultatListePreproc = Invoke-SzhWslBrut -Arguments @('-l', '-q')
-    foreach ($ligneListePreproc in ($resultatListePreproc.sortie -split "`r?`n")) {
-      $nomVuPreproc = ([string]$ligneListePreproc).Trim()
-      if ($nomVuPreproc) { [void]$nomsDistrosPreproc.Add($nomVuPreproc) }
-    }
-  } catch { }
-  return @($nomsDistrosPreproc)
-}
-
 # wslpath -a (Windows -> Linux) et -w (Linux -> Windows) : conversion "dans les deux
 # sens" (contrat, paragraphe 9) -- les manuscrits viennent de OneDrive, chemins a espaces
 # et accents compris.
@@ -2433,7 +2301,7 @@ function Test-SzhManuscritPret {
   $wslExePreproc = Get-SzhWslExePreproc
   if (-not (Test-Path -LiteralPath $wslExePreproc)) { throw (T 'lanceur.preproc.wsl.absent' @($SzhSupport)) }
   $distroPreproc = Get-SzhDistroPreproc
-  if (-not ((Get-SzhDistrosEnregistreesPreproc) -contains $distroPreproc)) {
+  if (-not ((Get-SzhDistrosEnregistrees) -contains $distroPreproc)) {
     throw (T 'lanceur.preproc.wsl.distro.absente' @($distroPreproc))
   }
   $cliPreproc = Get-SzhCheminManuscritCli
@@ -2765,16 +2633,10 @@ function New-SzhRapportManuscrit {
   )
   $dossierCockpitRapport = Get-SzhDossierCockpit
   if (-not $dossierCockpitRapport) { throw 'dossier de l''extension du cockpit introuvable' }
-  $scriptRenduRapport = Join-Path $dossierCockpitRapport 'outils\rendre-gabarit.js'
-  if (-not (Test-Path -LiteralPath $scriptRenduRapport)) {
-    throw ('outils\rendre-gabarit.js introuvable dans ' + $dossierCockpitRapport)
-  }
   $cheminGabaritRapport = Join-Path $dossierCockpitRapport 'export-templates\rapport-manuscrit.twig'
   if (-not (Test-Path -LiteralPath $cheminGabaritRapport)) {
     throw ('rapport-manuscrit.twig introuvable dans ' + $dossierCockpitRapport)
   }
-  $codiumRapport = Get-VSCodiumExe
-  if (-not $codiumRapport) { throw 'VSCodium introuvable sur ce poste' }
 
   $cheminManuscritWindowsRapport = $CheminManuscrit
   if (-not $cheminManuscritWindowsRapport) {
@@ -2801,50 +2663,17 @@ function New-SzhRapportManuscrit {
     ',"variables":{"produit":' + ($Produit | ConvertTo-Json -Compress) +
     ',"rapport":' + $rapportJsonTexte + '}}'
 
-  $psiRapport = New-Object System.Diagnostics.ProcessStartInfo
-  $psiRapport.FileName = $codiumRapport
-  $psiRapport.Arguments = '"' + $scriptRenduRapport + '"'
-  $psiRapport.RedirectStandardInput = $true
-  $psiRapport.RedirectStandardOutput = $true
-  $psiRapport.RedirectStandardError = $true
-  $psiRapport.UseShellExecute = $false
-  $psiRapport.CreateNoWindow = $true
-  $psiRapport.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-  $psiRapport.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-  $psiRapport.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-
-  $processusRapport = New-Object System.Diagnostics.Process
-  $processusRapport.StartInfo = $psiRapport
-  $contenuHtmlRapport = ''
-  try {
-    [void]$processusRapport.Start()
-    # Les deux taches AVANT l'ecriture de l'entree, comme Get-SzhCourriel : ni stdout ni
-    # stderr ne peut alors saturer son tube et bloquer l'enfant pendant qu'on ecrit.
-    $tacheSortieRapport = $processusRapport.StandardOutput.ReadToEndAsync()
-    $tacheErreurRapport = $processusRapport.StandardError.ReadToEndAsync()
-    $encodageEntreeRapport = New-Object System.Text.UTF8Encoding($false)
-    $octetsEntreeRapport = $encodageEntreeRapport.GetBytes($enveloppeRapport)
-    $processusRapport.StandardInput.BaseStream.Write($octetsEntreeRapport, 0, $octetsEntreeRapport.Length)
-    $processusRapport.StandardInput.Close()
-    [System.Threading.Tasks.Task]::WaitAll(@($tacheSortieRapport, $tacheErreurRapport))
-    $processusRapport.WaitForExit()
-
-    $objetRenduRapport = $null
-    try { $objetRenduRapport = $tacheSortieRapport.Result.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRenduRapport = $null }
-    if ($processusRapport.ExitCode -ne 0 -or (-not $objetRenduRapport) -or (-not $objetRenduRapport.ok)) {
-      $detailRapport = ''
-      if ($objetRenduRapport -and $objetRenduRapport.erreur) { $detailRapport = [string]$objetRenduRapport.erreur }
-      if (-not $detailRapport) { $detailRapport = $tacheErreurRapport.Result.Trim() }
-      if (-not $detailRapport) { $detailRapport = 'code de sortie ' + $processusRapport.ExitCode }
-      throw ('rendre-gabarit.js : ' + $detailRapport)
-    }
-    $contenuHtmlRapport = [string]$objetRenduRapport.blocs.contenu
-  } finally {
-    try {
-      if ($processusRapport -and -not $processusRapport.HasExited) { $processusRapport.Kill() }
-      if ($processusRapport) { $processusRapport.Dispose() }
-    } catch { }
+  $reponseRapport = Invoke-SzhNodeCockpit -Outil 'rendre-gabarit.js' -Entree $enveloppeRapport
+  $objetRenduRapport = $null
+  try { $objetRenduRapport = $reponseRapport.Sortie.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRenduRapport = $null }
+  if ($reponseRapport.CodeSortie -ne 0 -or (-not $objetRenduRapport) -or (-not $objetRenduRapport.ok)) {
+    $detailRapport = ''
+    if ($objetRenduRapport -and $objetRenduRapport.erreur) { $detailRapport = [string]$objetRenduRapport.erreur }
+    if (-not $detailRapport) { $detailRapport = $reponseRapport.Erreur.Trim() }
+    if (-not $detailRapport) { $detailRapport = 'code de sortie ' + $reponseRapport.CodeSortie }
+    throw ('rendre-gabarit.js : ' + $detailRapport)
   }
+  $contenuHtmlRapport = [string]$objetRenduRapport.blocs.contenu
 
   $cheminHtmlRapport = Join-Path $dossierSortieRapport ($nomBaseRapport + '-rapport.html')
   [System.IO.File]::WriteAllText($cheminHtmlRapport, $contenuHtmlRapport, (New-Object System.Text.UTF8Encoding($false)))

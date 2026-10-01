@@ -545,7 +545,11 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
 
 test('secretariat : ReadLine bloquant a disparu, aucune API interdite ne l\'a remplacé',
   () => {
-    const source = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+    // Le lancement de Node vit dans szh-shell.ps1 (Invoke-SzhNodeCockpit) : les deux fichiers
+    // sont lus, l'interdiction vaut pour l'un comme pour l'autre.
+    const sourceProduit = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+    const sourceShell = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
+    const source = sourceProduit + '\n' + sourceShell;
 
     // INTERDIT ABSOLU (voir le commentaire d'Invoke-SzhSecretariat) : ces gestionnaires
     // tournent sur un fil hors du pipeline PowerShell et ont déjà tué le processus entier
@@ -561,8 +565,10 @@ test('secretariat : ReadLine bloquant a disparu, aucune API interdite ne l\'a re
     // La boucle de lecture du secrétariat ne bloque plus le fil de l'interface.
     assert.ok(source.indexOf('StandardOutput.ReadLine()') === -1,
       'Invoke-SzhSecretariat lit encore stdout de façon bloquante (ReadLine)');
-    assert.ok(source.indexOf('StandardOutput.ReadLineAsync()') !== -1,
-      'Invoke-SzhSecretariat ne lit plus stdout de façon asynchrone (ReadLineAsync)');
+    assert.ok(sourceShell.indexOf('StandardOutput.ReadLineAsync()') !== -1,
+      'Invoke-SzhNodeCockpit ne lit plus stdout de façon asynchrone (ReadLineAsync)');
+    assert.match(sourceProduit, /Invoke-SzhNodeCockpit -Outil 'secretariat-cli\.js'[^\r\n]*-SurLigne/,
+      'Invoke-SzhSecretariat ne passe plus par la lecture ligne à ligne de Invoke-SzhNodeCockpit');
   });
 
 test('secretariat : le dossier des gabarits ne s\'affiche plus nulle part', () => {

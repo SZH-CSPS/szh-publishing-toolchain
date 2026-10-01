@@ -352,10 +352,10 @@ function extraireFonctions(texte, noms) {
 }
 
 const FONCTIONS_NECESSAIRES = [
-  'ConvertTo-SzhArgumentEchappe', 'ConvertTo-SzhArguments', 'Add-SzhLigneJournal',
+  'Add-SzhLigneJournal',
   'Add-SzhEnteteJournal', 'ConvertFrom-SzhOctetsWsl', 'Get-SzhWslExePreproc',
   'Get-SzhDistroPreproc', 'Get-SzhCheminManuscritCli', 'Invoke-SzhWslBrut',
-  'Get-SzhDistrosEnregistreesPreproc', 'ConvertTo-SzhCheminWsl',
+  'ConvertTo-SzhCheminWsl',
   'ConvertTo-SzhCheminWindowsDepuisWsl', 'Test-SzhManuscritPret', 'Invoke-SzhManuscrit',
   'New-SzhRapportTemporaire', 'Remove-SzhRapportTemporaire', 'Show-SzhResultatPreproc',
   'ConvertTo-SzhNettoyeurContenu', 'Send-SzhRapportNettoyeur', 'Send-SzhConstatsNettoyeur',
