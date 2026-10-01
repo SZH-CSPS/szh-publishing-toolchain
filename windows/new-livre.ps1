@@ -117,7 +117,7 @@ if (-not $existait) {
 # « Ouvrir la revue.lnk », mais nommé et décrit pour un livre — et, comme lui, sans aucun
 # chemin de poste depuis le 15.09.2026 (voir Set-SzhRaccourciRevue).
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
-Set-SzhRaccourciRevue $chemin 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' 'livre' | Out-Null
+Set-SzhRaccourciRevue $chemin (T $SzhProduits['livre'].nomRaccourci) (T $SzhProduits['livre'].descRaccourci) 'livre' | Out-Null
 
 Write-SzhOk ('Livre créé : {0}' -f $chemin)
 Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'

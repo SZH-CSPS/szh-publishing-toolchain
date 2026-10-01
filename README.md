@@ -290,7 +290,7 @@ Même arborescence sous les deux racines — une seule table, seule la racine ch
 Un numéro en cours est donc à **un** cran sous la racine, un numéro archivé à **deux** : ce
 qu'on ouvre tous les jours est au plus court, et tout ce qui dort se replie d'un seul
 dossier. Corollaire pour le code : on ne remonte jamais vers la racine en comptant des
-crans, on reconnaît des noms (`racineArbre`, `szh-cockpit/lib/reserve.js`).
+crans, on reconnaît des noms (`racineArbre`, `szh-cockpit/lib/kirby-contenu.js`).
 
 La clé **`emplacementRevues`** de `config.json` choisit la base : `"test"` ou
 `"production"`. Elle remplace `devMode`, qui reste lu (`true` = test) et que la bascule

@@ -20,7 +20,7 @@ numéros en cours sont les enfants DIRECTS), les archives des trois regroupées 
 `_Archive\` unique, le magasin de fiches partagé par les deux rédactions (`_NewsUndActu\`),
 le dossier du secrétariat et ce que l'outil écrit pour lui-même (`_Systeme\`). Un numéro en
 cours est donc à un cran de la racine, un numéro archivé à deux — d'où la règle que suit
-`racineArbre()` (`szh-cockpit/lib/reserve.js`) : on remonte vers la racine en reconnaissant
+`racineArbre()` (`szh-cockpit/lib/kirby-contenu.js`) : on remonte vers la racine en reconnaissant
 des **noms** de dossiers, jamais en comptant des crans. **La même arborescence sous les deux racines** — production et
 essai —, seule la racine change : un essai exerce donc exactement les chemins de la
 production. Détail, chemins réels et manœuvre de reprise :
@@ -111,7 +111,7 @@ sed/grep d'origine qui ne comprenait que la forme la plus simple d'une clé. Deu
 évitent la copie entre scripts : `pipeline/szh_commun.py` (avertir, lire_yaml, slugifier,
 écriture atomique), importé par les scripts Python d'import et de scission, et
 `pipeline/filters/szh-commun.lua` (slug_article, langue_de, a_classe, trim), chargé par
-`dofile` par six filtres. La feuille `pipeline/styles/partage-filtres.css` porte les règles des
+`dofile` par huit filtres. La feuille `pipeline/styles/partage-filtres.css` porte les règles des
 composants que ces filtres communs posent — une grille d'images, la description longue d'un
 tableau, un appel de citation orphelin — et s'empile après la maquette de la revue
 (`print.css`) et après la base et la charte du livre : le détail de la pile est dans

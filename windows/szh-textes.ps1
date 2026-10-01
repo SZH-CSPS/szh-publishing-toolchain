@@ -145,6 +145,12 @@ $script:SzhTextes = @{
     'arch.ok.livre'             = 'Livre déplacé : {0}'
     'arch.rouvre.livre'         = 'Réouverture du livre…'
     'arch.err.suite.livre'      = 'Rien n’’a été déplacé : le livre est resté où il était. En cas de doute : {0}'
+    # Raccourci posé à la racine d'un numéro ou d'un livre (szh-produits.ps1, nomRaccourci) : le nom
+    # du fichier est le même dans les trois langues, seule la description se traduit.
+    'raccourci.nom.revue'       = 'Ouvrir la revue'
+    'raccourci.desc.revue'      = 'Ouvrir cette revue dans l’’éditeur'
+    'raccourci.nom.livre'       = 'Ouvrir le livre'
+    'raccourci.desc.livre'      = 'Ouvrir ce livre dans l’’éditeur'
     # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
     'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
     'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
@@ -442,6 +448,12 @@ $script:SzhTextes = @{
     'arch.ok.livre'             = 'Buch verschoben: {0}'
     'arch.rouvre.livre'         = 'Buch wird wieder geöffnet…'
     'arch.err.suite.livre'      = 'Es wurde nichts verschoben: das Buch ist an seinem Platz geblieben. Bei Zweifeln: {0}'
+    # Raccourci posé à la racine d'un numéro ou d'un livre (szh-produits.ps1, nomRaccourci) : le nom
+    # du fichier est le même dans les trois langues, seule la description se traduit.
+    'raccourci.nom.revue'       = 'Ouvrir la revue'
+    'raccourci.desc.revue'      = 'Diese Zeitschrift im Editor öffnen'
+    'raccourci.nom.livre'       = 'Ouvrir le livre'
+    'raccourci.desc.livre'      = 'Dieses Buch im Editor öffnen'
     # Doppelklick auf eine .md-Datei (open-md.ps1): nur die anormalen Fälle.
     'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
     'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
@@ -733,6 +745,12 @@ $script:SzhTextes = @{
     'arch.ok.livre'             = 'Book moved: {0}'
     'arch.rouvre.livre'         = 'Reopening the book…'
     'arch.err.suite.livre'      = 'Nothing was moved: the book stayed where it was. If in doubt: {0}'
+    # Raccourci posé à la racine d'un numéro ou d'un livre (szh-produits.ps1, nomRaccourci) : le nom
+    # du fichier est le même dans les trois langues, seule la description se traduit.
+    'raccourci.nom.revue'       = 'Ouvrir la revue'
+    'raccourci.desc.revue'      = 'Open this journal in the editor'
+    'raccourci.nom.livre'       = 'Ouvrir le livre'
+    'raccourci.desc.livre'      = 'Open this book in the editor'
     # Double-click on a .md file (open-md.ps1): abnormal cases only.
     'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
     'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."

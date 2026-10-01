@@ -163,14 +163,18 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 // Les quatre dossiers du poste, sous une racine jetable, avec les numéros demandés.
 // `Get-SzhBaseRevuesPour` est remplacée dans le pilote : rien n'est lu de config.json et
 // aucune racine réelle n'est touchée.
-// Mêmes quatre chemins que $SzhSousDossiers (windows/szh-produits.ps1) : recopiés ici faute
-// de pouvoir les lire depuis un fichier PowerShell, mais c'est bien l'arborescence réelle
-// depuis la restructuration du 15.09.2026 — un numéro en cours DIRECTEMENT sous son dossier
-// produit, les archives des trois produits regroupées sous un « _Archive\ » unique.
-const SOUS = {
-  revue: { encours: 'Revue', archive: '_Archive\\Revue' },
-  zeitschrift: { encours: 'Zeitschrift', archive: '_Archive\\Zeitschrift' }
-};
+// Les quatre chemins de $SzhSousDossiers (windows/szh-produits.ps1), lus dans la source : un
+// numéro en cours DIRECTEMENT sous son dossier produit, les archives des produits regroupées
+// sous un « _Archive » unique. Le livre n'a pas de volume, il n'entre pas ici.
+const SOUS = {};
+{
+  const source = fs.readFileSync(PRODUITS, 'utf8');
+  const re = /^\s*(revue|zeitschrift)\s*=\s*@\{\s*encours\s*=\s*'([^']+)';\s*archive\s*=\s*'([^']+)'\s*\}/gm;
+  let m;
+  while ((m = re.exec(source)) !== null) { SOUS[m[1]] = { encours: m[2], archive: m[3] }; }
+  assert.deepStrictEqual(Object.keys(SOUS).sort(), ['revue', 'zeitschrift'],
+    '$SzhSousDossiers ne se lit plus dans szh-produits.ps1');
+}
 
 function poserArbre(numeros) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-volume-'));

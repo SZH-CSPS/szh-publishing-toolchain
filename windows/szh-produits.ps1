@@ -29,7 +29,7 @@
 # Conséquence à ne pas perdre de vue : les deux états n'ont PLUS la même profondeur sous la
 # racine (un cran en cours, deux aux archives). Tout code qui remonte d'un numéro vers la
 # racine doit reconnaître des NOMS et non compter des crans — voir racineArbre()
-# (vscodium-extension/szh-cockpit/lib/reserve.js), qui traite les deux cas.
+# (vscodium-extension/szh-cockpit/lib/kirby-contenu.js), qui traite les deux cas.
 $script:SzhSousDossiers = @{
   revue       = @{ encours = 'Revue';        archive = '_Archive\Revue' }
   zeitschrift = @{ encours = 'Zeitschrift';  archive = '_Archive\Zeitschrift' }
@@ -214,8 +214,7 @@ function Measure-SzhNumeros([string]$Emplacement) {
   $base = Get-SzhBaseRevuesPour $Emplacement
   $total = 0
   foreach ($produit in @('revue', 'zeitschrift', 'livre')) {
-    $manifeste = 'ausgabe.yaml'
-    if ($produit -eq 'livre') { $manifeste = 'buch.yaml' }
+    $manifeste = [string]$SzhProduits[$produit].manifeste
     foreach ($etat in @('encours', 'archive')) {
       # Les trois produits lisent la même table : depuis que les livres vivent dans notre
       # arbre, aucun des six chemins n'est une hypothèse rattrapable par une configuration.
@@ -346,10 +345,11 @@ function Get-SzhEtiquetteRacine {
 }
 
 # Les quatre emplacements de revue du poste, plus les deux de livre ; les listes à plat
-# (`encours`/`archives`) ne portent que les deux produits de revue — le reste est balayé par
-# open-produit.ps1, comme avant le livre. Le livre vit à part, dans sa propre paire
-# `livre.encours`/`livre.archive`, lue par le même open-produit.ps1 (Get-SzhEmplacementRevue
-# 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
+# (`encours`/`archives`) ne portent que les deux produits de revue, parce que leurs lecteurs
+# (new-revue.ps1, les racines héritées d'open-produit.ps1) s'en servent pour décider qu'un
+# dossier est « une revue » : y mettre Books ferait passer un livre pour tel. Le livre vit à
+# part, dans sa propre paire `livre.encours`/`livre.archive`, lue par open-produit.ps1
+# (Get-SzhEmplacementRevue 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
 # d'où venaient les revues d'un lancement donné.
 $script:SzhRacineJournalisee = $false
 function Get-SzhEmplacements {
@@ -406,11 +406,8 @@ function Initialize-SzhEmplacementsTest {
 # inconnu. Le livre n'a pas de « numéro » (volume + numéro) : il partage néanmoins ce point
 # d'entrée, open-livre.ps1 s'en servant exactement comme open-revue.ps1 s'en sert déjà.
 function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
-  $emp = Get-SzhEmplacements
-  if ($Jeton -eq 'zeitschrift') { return [string]$emp.zeitschrift.$Etat }
-  if ($Jeton -eq 'livre') { return [string]$emp.livre.$Etat }
-  if ($Jeton -eq 'revue') { return [string]$emp.revue.$Etat }
-  return ''
+  if (-not $SzhProduits.ContainsKey($Jeton)) { return '' }
+  return [string](Get-SzhEmplacements).$Jeton.$Etat
 }
 
 # ---- Lecture d'ausgabe.yaml ----
@@ -853,26 +850,17 @@ function Get-SzhJetonDossier([string]$Dossier) {
   return 'revue'
 }
 
-# « En cours » d'abord, puis les archives, et nulle part ailleurs : l'ID vient du lien (plus
-# un nom de dossier depuis le 23.09.2026), la racine du poste. Chaque dossier candidat est
-# ouvert et son `id:` comparé — plus un accès direct par nom, puisque le lien ne connaît plus
-# le nom. '' si introuvable.
+# Le verbe « traduction » : « en cours » d'abord, puis les archives, de la racine ACTIVE du
+# poste seulement -- le balayage des deux racines est celui de Find-SzhProduitOuvrir, qui prend
+# ici ces deux dossiers en paramètre. '' si introuvable.
 function Find-SzhRevue([string]$Produit, [string]$Id) {
-  if (-not (Test-SzhIdValide $Id)) { return '' }
+  $p = ([string]$Produit).Trim().ToLower()
+  $racines = New-Object System.Collections.ArrayList
   foreach ($etat in @('encours', 'archive')) {
-    $racine = Get-SzhEmplacementRevue $Produit $etat
-    if (-not $racine) { continue }
-    if (-not (Test-Path -LiteralPath $racine)) { continue }
-    $dossiers = @()
-    try { $dossiers = @(Get-ChildItem -LiteralPath $racine -Directory -ErrorAction SilentlyContinue) } catch { }
-    foreach ($d in $dossiers) {
-      $fichier = Join-Path $d.FullName 'ausgabe.yaml'
-      if (-not (Test-Path -LiteralPath $fichier)) { continue }
-      $valeurs = Get-SzhAusgabe $fichier
-      if ($valeurs.ContainsKey('id') -and ($valeurs['id'] -eq $Id)) { return $d.FullName }
-    }
+    $racine = Get-SzhEmplacementRevue $p $etat
+    if ($racine) { [void]$racines.Add($racine) }
   }
-  return ''
+  return (Find-SzhProduitOuvrir $p $Id @($racines))
 }
 
 # ---- Où le verbe « ouvrir » cherche son numéro ----
@@ -913,13 +901,15 @@ function Get-SzhRacinesOuverture([string]$Produit) {
 # Le dossier visé par un lien « ouvrir », '' si introuvable — l'appelant en fait alors un
 # message, jamais un silence. Le manifeste attendu dépend du produit (buch.yaml pour le
 # livre, ausgabe.yaml sinon) ; chaque dossier candidat est ouvert et son `id:` comparé —
-# depuis le 23.09.2026 le lien ne porte plus le nom du dossier, seulement l'id.
-function Find-SzhProduitOuvrir([string]$Produit, [string]$Id) {
+# depuis le 23.09.2026 le lien ne porte plus le nom du dossier, seulement l'id. $Racines, quand
+# il est donné, remplace le balayage par défaut (Get-SzhRacinesOuverture).
+function Find-SzhProduitOuvrir([string]$Produit, [string]$Id, [string[]]$Racines = $null) {
   $p = ([string]$Produit).Trim().ToLower()
   if (-not $SzhProduits.ContainsKey($p)) { return '' }
   if (-not (Test-SzhIdValide $Id)) { return '' }
   $manifeste = [string]$SzhProduits[$p].manifeste
-  foreach ($racine in (Get-SzhRacinesOuverture $p)) {
+  if ($null -eq $Racines) { $Racines = @(Get-SzhRacinesOuverture $p) }
+  foreach ($racine in $Racines) {
     if (-not (Test-Path -LiteralPath $racine)) { continue }
     $dossiers = @()
     try { $dossiers = @(Get-ChildItem -LiteralPath $racine -Directory -ErrorAction SilentlyContinue) } catch { }
@@ -982,6 +972,12 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
 #   nouveauFormulaire : le nom de la fonction qui pose le formulaire « Nouveau… » -- deux
 #                       fonctions distinctes (Read-SzhNouveauNumero, Read-SzhNouveauLivre), qui
 #                       ne demandent pas les mêmes champs.
+#   nomRaccourci / descRaccourci : les clés de texte du nom du fichier .lnk posé à la racine du
+#                       dossier et de sa description. Le NOM est le même dans les trois langues
+#                       (le dossier se partage sur OneDrive entre des postes de langues
+#                       différentes : un nom qui change laisserait des raccourcis orphelins) ;
+#                       la description se traduit. Zeitschrift garde le raccourci de la revue.
+#   secretariat       : vrai si l'onglet Secrétariat (liste, export, filtre) traite ce produit.
 $script:SzhProduits = @{
   revue = @{
     jeton             = 'revue'
@@ -999,6 +995,9 @@ $script:SzhProduits = @{
     texteModifie      = 'lanceur.modifie'
     texteVideArchives = 'lanceur.vide.archives'
     nouveauFormulaire = 'Read-SzhNouveauNumero'
+    nomRaccourci      = 'raccourci.nom.revue'
+    descRaccourci     = 'raccourci.desc.revue'
+    secretariat       = $true
   }
   zeitschrift = @{
     jeton             = 'zeitschrift'
@@ -1016,6 +1015,9 @@ $script:SzhProduits = @{
     texteModifie      = 'lanceur.modifie'
     texteVideArchives = 'lanceur.vide.archives.zs'
     nouveauFormulaire = 'Read-SzhNouveauNumero'
+    nomRaccourci      = 'raccourci.nom.revue'
+    descRaccourci     = 'raccourci.desc.revue'
+    secretariat       = $true
   }
   livre = @{
     jeton             = 'livre'
@@ -1033,6 +1035,9 @@ $script:SzhProduits = @{
     texteModifie      = 'lanceur.modifie.livre'
     texteVideArchives = 'lanceur.vide.archives.livre'
     nouveauFormulaire = 'Read-SzhNouveauLivre'
+    nomRaccourci      = 'raccourci.nom.livre'
+    descRaccourci     = 'raccourci.desc.livre'
+    secretariat       = $false
   }
 }
 

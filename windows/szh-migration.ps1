@@ -77,7 +77,7 @@ function Move-SzhContenuDossier([string]$Source, [string]$Destination) {
       try {
         $jetonDeplace = Get-SzhJetonDossier $cible
         if ($jetonDeplace -eq 'livre') {
-          [void](Set-SzhRaccourciRevue $cible 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' 'livre')
+          [void](Set-SzhRaccourciRevue $cible (T $SzhProduits['livre'].nomRaccourci) (T $SzhProduits['livre'].descRaccourci) 'livre')
         } elseif ($jetonDeplace) {
           [void](Set-SzhRaccourciRevue $cible)
         }
@@ -97,8 +97,7 @@ function Move-SzhContenuDossier([string]$Source, [string]$Destination) {
 function Update-SzhIdsManquants([string]$Racine) {
   $poses = 0
   foreach ($jeton in @('revue', 'zeitschrift', 'livre')) {
-    $manifeste = 'ausgabe.yaml'
-    if ($jeton -eq 'livre') { $manifeste = 'buch.yaml' }
+    $manifeste = [string]$SzhProduits[$jeton].manifeste
     foreach ($etat in @('encours', 'archive')) {
       $sous = $SzhSousDossiers[$jeton][$etat]
       $dossier = Join-Path $Racine $sous

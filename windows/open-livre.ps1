@@ -1,12 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Point d'entree de l'onglet « Book » du lanceur, appele par hidden.vbs, donc sans console.
-  Enveloppe de quelques lignes : les raccourcis du menu Demarrer (Get-SzhRaccourcisMenu, dans
-  le socle) visent ce script par son nom, il reste donc le point d'entree --
-  toute la logique (fenetre, listes, "Nouveau livre...", selecteur de version) vit
-  maintenant dans open-produit.ps1, commune aux trois produits du lanceur. Un livre n'a ni
-  lien "szh://" ni choix de produit -- open-produit.ps1 est simplement appele avec
-  -Produit livre.
+  Enveloppe gardee pour les anciens epinglages « Books SZH-CSPS » : aucun raccourci pose
+  par l'installation ne vise plus ce script. Toute la logique vit dans open-produit.ps1,
+  appele ici avec -Produit livre.
 
     powershell -ExecutionPolicy Bypass -File open-livre.ps1
     powershell -ExecutionPolicy Bypass -File open-livre.ps1 -Versions   # selecteur de version seul

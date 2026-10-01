@@ -148,11 +148,8 @@ try {
   # de bouger, autant repartir d'un raccourci frais, et rien ici ne peut plus se périmer.
   # $jeton est déjà résolu plus haut, on le passe plutôt que de le faire relire du disque.
   try {
-    if ($estLivre) {
-      Set-SzhRaccourciRevue $cible 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' 'livre' | Out-Null
-    } else {
-      Set-SzhRaccourciRevue $cible 'Ouvrir la revue' 'Ouvrir cette revue dans l''éditeur' $jeton | Out-Null
-    }
+    $infoRaccourci = Get-SzhProduitInfo $jeton
+    Set-SzhRaccourciRevue $cible (T $infoRaccourci.nomRaccourci) (T $infoRaccourci.descRaccourci) $jeton | Out-Null
   } catch { }
 
   # ---- Réouverture à sa nouvelle place ----

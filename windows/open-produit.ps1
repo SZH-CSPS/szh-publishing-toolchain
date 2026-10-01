@@ -2038,7 +2038,7 @@ $pageSecretariat.Controls.Add($introSecretariat)
 # confondus ; le filtre ci-dessous n'y touche jamais.
 $script:secretariatEntrees = New-Object System.Collections.ArrayList
 foreach ($jetonSec in $SzhOrdreOnglets) {
-  if ($jetonSec -eq 'livre') { continue }
+  if (-not $SzhProduits[$jetonSec].secretariat) { continue }
   $infoSec = $SzhProduits[$jetonSec]
   $invSec = $inventaires[$jetonSec]
   foreach ($groupeSec in @($invSec.enCours, $invSec.archives)) {
@@ -2071,7 +2071,7 @@ $pageSecretariat.Controls.Add($etiqFiltreSecretariat)
 
 # Les jetons proposes, dans l'ordre de $SzhOrdreOnglets en sautant 'livre' -- jamais dans la
 # liste ici, comme dans $secretariatEntrees.
-$script:jetonsFiltreSecretariat = @($SzhOrdreOnglets | Where-Object { $_ -ne 'livre' })
+$script:jetonsFiltreSecretariat = @($SzhOrdreOnglets | Where-Object { $SzhProduits[$_].secretariat })
 $script:comboFiltreSecretariat = New-Object System.Windows.Forms.ComboBox
 $script:comboFiltreSecretariat.DropDownStyle = 'DropDownList'
 $script:comboFiltreSecretariat.Location = New-Object System.Drawing.Point(($xPage + 70), 34)
