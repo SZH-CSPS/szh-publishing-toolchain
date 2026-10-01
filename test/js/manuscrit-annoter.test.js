@@ -475,6 +475,65 @@ test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse
     assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 6);
   });
 
+// Décision de Robin (01.10.2026, O2) : un commentaire DOI qui chevauche le commentaire
+// APA.MiseEnForme de la même référence ne fait qu'un dans Word : celui de mise en forme, avec la
+// forme attendue du DOI à la suite (sauf si sa suggestion la contient déjà) ; le commentaire DOI
+// reste au rapport. Sans ancrage commun, les deux restent.
+// Sabotage : supprimer le bloc « 2 quinquies » de manuscrit_annoter.py.
+const REF_FUSION = 'Martin, A. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
+const DOI_NORME = 'https://doi.org/10.1/x';
+function alertesFusion(regleDoi, suggestedMef, spanDoi) {
+  const debut = REF_FUSION.indexOf('10.1/x');
+  return [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'comment', para: 0, span: [0, REF_FUSION.length],
+      found: REF_FUSION, suggested: suggestedMef, message: 'La mise en forme diverge.' },
+    { rule: regleDoi, severity: 'warning', action: 'comment', para: 0,
+      span: spanDoi || [debut, REF_FUSION.length], found: '10.1/x', suggested: DOI_NORME, message: 'DOI.' },
+  ];
+}
+const MEF_SANS_DOI = 'Martin, A. (2020). Un titre. *Revue X*, *12*(3), 45-67.';
+const MEF_AVEC_DOI = MEF_SANS_DOI + ' ' + DOI_NORME;
+
+test('fusion DOI / mise en forme : un seul commentaire dans Word, la forme du DOI à la suite, le DOI au rapport',
+  { skip: sansPython }, () => {
+    for (const regle of ['APA.DoiForme', 'CSPS-Biblio.APA.DoiForme']) {
+      const resultat = anotar([{ texte: REF_FUSION }], alertesFusion(regle, MEF_SANS_DOI),
+        [{ source: 0, sortie: 2 }], {});
+      validerBienFormees(resultat);
+      assert.strictEqual(resultat.stats.commentaires, 1, regle);
+      assert.deepStrictEqual(resultat.stats.devenir, ['commentaire', 'rapport']);
+      assert.deepStrictEqual(resultat.stats.fusion_doi, { fusionnees: 1, deja_dans_la_forme: 0, separees: 0 });
+      assert.match(resultat.commentsXml, /La mise en forme diverge\. DOI : forme attendue https:\/\/doi\.org\/10\.1\/x/);
+      assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === regle));
+    }
+    const de = anotar([{ texte: REF_FUSION }], alertesFusion('APA.DoiForme', MEF_SANS_DOI),
+      [{ source: 0, sortie: 2 }], { langue: 'de' });
+    assert.match(de.commentsXml, /DOI: erwartete Form https:\/\/doi\.org\/10\.1\/x/);
+    // Le message du rapport (l'alerte d'origine) n'est pas modifié.
+    assert.ok(!de.stats.renvoyees_au_rapport.some((a) => /erwartete/.test(a.message || '')));
+  });
+
+test('fusion DOI / mise en forme : le DOI déjà dans la forme APA n\'ajoute rien ; sans ancrage commun, les deux restent',
+  { skip: sansPython }, () => {
+    const deja = anotar([{ texte: REF_FUSION }], alertesFusion('APA.DoiForme', MEF_AVEC_DOI),
+      [{ source: 0, sortie: 2 }], {});
+    assert.strictEqual(deja.stats.commentaires, 1);
+    assert.deepStrictEqual(deja.stats.devenir, ['commentaire', 'rapport']);
+    assert.deepStrictEqual(deja.stats.fusion_doi, { fusionnees: 0, deja_dans_la_forme: 1, separees: 0 });
+    assert.ok(!/forme attendue/.test(deja.commentsXml));
+
+    // Le DOI porte sur un autre passage du paragraphe que la mise en forme (span étroit
+    // ailleurs que la référence entière) : aucun chevauchement, les deux commentaires restent.
+    const alertes = alertesFusion('APA.DoiForme', MEF_SANS_DOI);
+    alertes[0].span = [0, 8];
+    alertes[0].found = REF_FUSION.slice(0, 8);
+    const separes = anotar([{ texte: REF_FUSION }], alertes, [{ source: 0, sortie: 2 }], {});
+    assert.strictEqual(separes.stats.commentaires, 2);
+    assert.deepStrictEqual(separes.stats.devenir, ['commentaire', 'commentaire']);
+    assert.deepStrictEqual(separes.stats.fusion_doi, { fusionnees: 0, deja_dans_la_forme: 0, separees: 1 });
+    assert.ok(!/forme attendue/.test(separes.commentsXml));
+  });
+
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
 // TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
 // contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).

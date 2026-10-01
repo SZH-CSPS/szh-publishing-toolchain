@@ -77,10 +77,10 @@ _ETIQUETA_PASSAGE = {'fr': 'Passage', 'de': 'Textstelle'}
 _TEXTES = {
     'fr': {'synthese': '… et %d autres occurrences de cette règle, voir le rapport.',
            'note': 'Note %d', 'italique': ' (élément(s) en italique dans la révision)',
-           'deux_points': ' : ', 'citation': '« %s »'},
+           'deux_points': ' : ', 'citation': '« %s »', 'doi_attendu': 'forme attendue %s'},
     'de': {'synthese': '… und %d weitere Vorkommen dieser Regel, siehe Bericht.',
            'note': 'Fussnote %d', 'italique': ' (Kursivteile in der Änderung)',
-           'deux_points': ': ', 'citation': '«%s»'},
+           'deux_points': ': ', 'citation': '«%s»', 'doi_attendu': 'erwartete Form %s'},
 }
 
 
@@ -713,6 +713,12 @@ def _plat(t):
     return (t or '').replace('*', '').replace('\u00a0', ' ')
 
 
+# Un commentaire DOI et un commentaire de mise en forme APA sur la même référence ne font qu'un
+# dans Word : le second reçoit la forme attendue du DOI, le premier reste au rapport.
+REGLES_DOI = frozenset({'APA.DoiForme', 'CSPS-Biblio.APA.DoiForme'})
+REGLE_MISE_EN_FORME = 'APA.MiseEnForme'
+
+
 def _est_doublon_de_revision(alerta, localizado, revisiones):
     """Vrai si `alerta` (candidate au commentaire, localisée dans le corps) est d'une règle de
     DOUBLON_DE_REVISION et chevauche une révision dont le `suggested` contient le sien."""
@@ -939,6 +945,10 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
              # Commentaires refusés par le seul plafond global (ni doublons retirés, ni plafond
              # par règle) : c'est lui que mesure `plafond_commentaires_atteint`.
              'plafond_global': 0,
+             # Commentaires DOI fondus dans le commentaire de mise en forme APA de la même
+             # référence, dont « deja_dans_la_forme » (rien à ajouter), et ceux qui restent
+             # séparés faute d'ancrage commun.
+             'fusion_doi': {'fusionnees': 0, 'deja_dans_la_forme': 0, 'separees': 0},
              # Ventilation des alertes de NOTE (§7 ter du contrat) — pas dans le contrat lui-
              # même, ajoutée pour que le rapport dise combien d'alertes de note ont fini en
              # révision DANS la note, en commentaire ancré sur l'appel, ou en repli paragraphe
@@ -1169,6 +1179,50 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             continue
         restants.append(item)
     candidatos_comentario = restants
+
+    # 2 quinquies. Un commentaire DOI qui chevauche le commentaire APA.MiseEnForme de la même
+    # référence (même paragraphe de sortie, corps seulement) s'y fond : le commentaire de mise
+    # en forme garde son ancrage et reçoit « DOI : forme attendue <DOI> » (sauf si sa
+    # suggestion contient déjà le DOI), le commentaire DOI reste au rapport. Hors de ces
+    # conditions (ancrage absent, note, pas de chevauchement), les deux restent. Fait AVANT le
+    # plafond, comme le retrait des doublons.
+    t_fusion = _textes(langue)
+    fusion = stats['fusion_doi']
+    cand = list(candidatos_comentario)
+    absorbes = set()
+    for k, (idx, alerta, salida, localizado) in enumerate(cand):
+        if alerta.get('rule') not in REGLES_DOI:
+            continue
+        meme_salida = [j for j, it in enumerate(cand)
+                       if it[1].get('rule') == REGLE_MISE_EN_FORME and it[2] == salida]
+        cible = None
+        if (localizado is not None and alerta.get('note_numero') is None
+                and alerta.get('suggested')):
+            cible = next((j for j in meme_salida
+                          if cand[j][3] is not None and cand[j][1].get('note_numero') is None
+                          and localizado[0] < cand[j][3][1] and cand[j][3][0] < localizado[1]),
+                         None)
+        if cible is None:
+            if meme_salida:
+                fusion['separees'] += 1
+            continue
+        c_idx, c_alerta, c_salida, c_loc = cand[cible]
+        if _plat(alerta['suggested']) in _plat(c_alerta.get('suggested')):
+            fusion['deja_dans_la_forme'] += 1
+        else:
+            remarque = 'DOI%s%s' % (t_fusion['deux_points'],
+                                    t_fusion['doi_attendu'] % alerta['suggested'])
+            message = c_alerta.get('message') or ''
+            # Copie : le message du rapport reste celui de la règle.
+            cand[cible] = (c_idx, dict(
+                c_alerta, message=('%s %s' % (message, remarque)) if message else remarque),
+                c_salida, c_loc)
+            fusion['fusionnees'] += 1
+        stats['renvoyees_au_rapport'].append(alerta)
+        _contar_regla(stats, alerta, 'renvoyees')
+        devenir[idx] = 'rapport'
+        absorbes.add(k)
+    candidatos_comentario = [it for k, it in enumerate(cand) if k not in absorbes]
 
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
