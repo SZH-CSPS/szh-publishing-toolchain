@@ -32,6 +32,12 @@ if not ok_qr or type(commun_qr) ~= 'table' or type(commun_qr.analyser_bool) ~= '
   os.exit(1, true)
 end
 
+local ok_commun, commun = pcall(dofile, DOSSIER .. 'szh-commun.lua')
+if not ok_commun or type(commun) ~= 'table' then
+  io.stderr:write('[szh-qr-lister] module szh-commun.lua introuvable ou invalide\n')
+  os.exit(1, true)
+end
+
 local CHEMIN_SORTIE = os.getenv('SZH_QR_LISTE')
 
 local function json_echapper(s)
@@ -46,12 +52,7 @@ local function ecrire(url, tracked)
   fh:close()
 end
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
 local function Div(el)
   if not a_classe(el, 'qr-link') then return nil end

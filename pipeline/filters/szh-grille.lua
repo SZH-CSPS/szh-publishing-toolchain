@@ -38,6 +38,24 @@
 
 local utils = pandoc.utils
 
+-- Module commun (a_classe) : un chargement raté arrête la compilation.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[grille] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 local CLASSE = 'szh-grille'
 local AUTO = 'auto'
 
@@ -136,12 +154,7 @@ local function rangees_de_secours(n)
   return liste
 end
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
 -- Les images du bloc, dans l'ordre, chacune avec sa légende visible, et ce que le bloc
 -- contient d'autre. Deux lectures possibles, et il faut les deux — c'est le piège de ce

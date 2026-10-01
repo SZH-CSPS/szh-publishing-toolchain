@@ -1,4 +1,4 @@
--- Pré-passe de szh-livre-entete.lua (livre uniquement, SZH_LIVRE) : protège l'image d'un
+-- Pré-passe de szh-livre-entete.lua (livre uniquement) : protège l'image d'un
 -- falc-header de la numérotation de figures.
 --
 -- MESURÉ (23.09.2026, corpus réel) : szh-livre-entete.lua vit en fin de FILTRES_CHAPITRE
@@ -36,12 +36,26 @@
 -- le clic vers la source : le falc-header entier finit de toute façon en RawBlock HTML
 -- opaque (szh-livre-entete.lua), qui ne porte aucun data-pos individuel, wrappers ou pas.
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
+-- Module commun (contexte, a_classe, texte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
   end
-  return false
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[livre-entete-image] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
 end
+
+local a_classe = commun.a_classe
 
 local function sans_enveloppe(blocs)
   local plat = pandoc.Blocks({})
@@ -74,20 +88,13 @@ local function premiere_image_de(b)
   return trouvee
 end
 
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(pandoc.utils.stringify, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
-end
+local texte = commun.texte
 
 local function alt_de_image(img)
   local a = img.attributes and img.attributes['alt']
   if a and texte(a) ~= '' then return texte(a) end
   return texte(img.caption)
 end
-
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
 
 local function proteger(div)
   if not a_classe(div, 'falc-header') then return nil end
@@ -112,7 +119,7 @@ local function proteger(div)
 end
 
 function Pandoc(doc)
-  if not LIVRE then return doc end
+  if commun.contexte(doc.meta).produit ~= 'livre' then return doc end
   doc.blocks = doc.blocks:walk({ Div = proteger })
   return doc
 end

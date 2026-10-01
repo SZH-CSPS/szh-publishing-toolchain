@@ -324,7 +324,9 @@ class ChaineDeFiltres(unittest.TestCase):
         self.ordre = ['szh-' + f for f in r.stdout.split()]
 
     def test_titre_en_tete(self):
-        self.assertEqual(self.ordre[0], 'szh-livre-titre')
+        # szh-contexte ouvre toute chaîne ; le titre vient aussitôt après, avant tout le reste.
+        self.assertEqual(self.ordre[0], 'szh-contexte')
+        self.assertEqual(self.ordre[1], 'szh-livre-titre')
 
     def test_sous_titre_apres_auteurs_et_encadre(self):
         o = self.ordre

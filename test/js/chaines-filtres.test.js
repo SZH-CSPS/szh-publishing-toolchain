@@ -60,11 +60,15 @@ test('chapitre : livre-sous-titre deux fois, avant la typographie et après livr
   }
 });
 
-test('article : maquette en tête, notes à la fin ; chapitre : livre-titre en tête, qr à la fin', () => {
-  assert.strictEqual(ch.CHAINE_ARTICLE[0], 'maquette');
+test('contexte en tête de chaque chaîne ; article : maquette ensuite, notes à la fin ; chapitre : livre-titre ensuite, qr à la fin', () => {
+  for (const nom of Object.keys(RETRAITS)) {
+    assert.strictEqual(ch[nom][0], 'contexte',
+      nom + ' : szh-contexte n’ouvre plus la chaîne, la langue n’y est plus posée avant les autres filtres');
+  }
+  assert.strictEqual(ch.CHAINE_ARTICLE[1], 'maquette');
   assert.strictEqual(ch.CHAINE_ARTICLE[ch.CHAINE_ARTICLE.length - 1], 'notes');
   assert.ok(!ch.CHAINE_APERCU.includes('maquette'), 'l’aperçu compose une couverture');
-  assert.strictEqual(ch.CHAINE_CHAPITRE[0], 'livre-titre');
+  assert.strictEqual(ch.CHAINE_CHAPITRE[1], 'livre-titre');
   assert.strictEqual(ch.CHAINE_CHAPITRE[ch.CHAINE_CHAPITRE.length - 1], 'qr');
 });
 

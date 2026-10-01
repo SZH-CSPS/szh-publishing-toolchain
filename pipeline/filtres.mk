@@ -8,11 +8,13 @@
 # diverger d'une chaîne à l'autre (test/js/chaines-filtres.test.js le vérifie).
 #
 # Ordre des --lua-filter d'un article, et ce qui casse si on permute :
-#   szh-maquette -> szh-niveaux -> szh-listes-serrees -> szh-tabelle-inclure ->
+#   szh-contexte -> szh-maquette -> szh-niveaux -> szh-listes-serrees -> szh-tabelle-inclure ->
 #   szh-tabelle-scope -> szh-typographie -> szh-titre-lignes -> szh-metafichier ->
 #   szh-grille -> szh-ressource -> szh-figure -> szh-numerotation ->
 #   szh-tableau-boite -> szh-legende-avant -> szh-sections -> szh-auteurs ->
 #   szh-citations -> szh-rubrique -> szh-cesure -> szh-exergue -> szh-notes
+#   * szh-contexte en tête : la langue, le produit et l'unité qu'il pose dans meta sont lus
+#     par presque tous les autres, szh-maquette compris ;
 #   * szh-titre-lignes juste après szh-typographie : il MESURE le titre pour le couper en
 #     escalier (première ligne plus courte que la deuxième), et doit donc voir le titre
 #     tel qu'il s'imprimera — insécables et mots outils soudés compris, ce que
@@ -107,21 +109,23 @@
 # ⚠ `filter-out` retire toutes les occurrences d'un nom : il ne doit jamais viser
 #   livre-sous-titre, appelé deux fois.
 
-# Le socle, en tronçons, dans l'ordre.
+# Le socle, en tronçons, dans l'ordre. szh-contexte ouvre chaque chaîne : il pose la langue,
+# le produit et l'unité que les filtres suivants relisent dans meta.
+SOCLE_CONTEXTE  := contexte
 SOCLE_ENTREE    := niveaux listes-serrees tabelle-inclure tabelle-scope
 SOCLE_TYPO      := typographie
 SOCLE_IMAGES    := metafichier grille
 SOCLE_NUMEROS   := figure numerotation tableau-boite legende-avant sections
 SOCLE_CITATIONS := citations
 SOCLE_SORTIE    := cesure exergue notes
-CHAINE_SOCLE    := $(SOCLE_ENTREE) $(SOCLE_TYPO) $(SOCLE_IMAGES) $(SOCLE_NUMEROS) \
+CHAINE_SOCLE    := $(SOCLE_CONTEXTE) $(SOCLE_ENTREE) $(SOCLE_TYPO) $(SOCLE_IMAGES) $(SOCLE_NUMEROS) \
                    $(SOCLE_CITATIONS) $(SOCLE_SORTIE)
 
-CHAINE_ARTICLE := maquette $(SOCLE_ENTREE) $(SOCLE_TYPO) titre-lignes $(SOCLE_IMAGES) \
+CHAINE_ARTICLE := $(SOCLE_CONTEXTE) maquette $(SOCLE_ENTREE) $(SOCLE_TYPO) titre-lignes $(SOCLE_IMAGES) \
                   ressource $(SOCLE_NUMEROS) auteurs $(SOCLE_CITATIONS) rubrique $(SOCLE_SORTIE)
 CHAINE_APERCU  := $(filter-out maquette exergue,$(CHAINE_ARTICLE))
 
-CHAINE_CHAPITRE := livre-titre sauts-uniques $(SOCLE_ENTREE) livre-sous-titre $(SOCLE_TYPO) \
+CHAINE_CHAPITRE := $(SOCLE_CONTEXTE) livre-titre sauts-uniques $(SOCLE_ENTREE) livre-sous-titre $(SOCLE_TYPO) \
                    livre-entete-image $(SOCLE_IMAGES) $(SOCLE_NUMEROS) livre-auteurs \
                    livre-entete livre-sous-titre $(SOCLE_CITATIONS) $(SOCLE_SORTIE) qr
 # L'aperçu d'un chapitre sert à le relire, et doit donc faire entendre l'exergue (même

@@ -24,14 +24,25 @@
 -- références vit encore dans le corps. Faute de repère, le bloc est alors ajouté à la fin,
 -- soit exactement la place qu'il occupait avant ce filtre. Rien ne casse, rien ne se perd.
 
-local S = pandoc.utils.stringify
-
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
+-- Module commun (texte) : un chargement raté arrête la compilation.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[auteurs] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
 end
+
+local texte = commun.texte
 
 -- Échappement HTML : le gabarit pandoc le faisait pour nous, ce filtre écrit du RawBlock.
 -- Une esperluette dans une affiliation (« Haute école & institut ») produirait sans cela

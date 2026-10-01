@@ -43,7 +43,7 @@
 
 local utils = pandoc.utils
 
--- Module commun (a_classe, trim, langue_de) : un chargement raté arrête la compilation, ce
+-- Module commun (a_classe, trim, contexte) : un chargement raté arrête la compilation, ce
 -- filtre ne pouvant plus distinguer une classe, nettoyer un texte ni dire de langue fiable
 -- sans lui.
 local commun
@@ -101,17 +101,15 @@ end
 -- dossier). Pour trouver son point de départ, ce chapitre additionne ce que les
 -- chapitres 1..SZH_CHAPITRE-1 ont chacun écrit dans leur fichier — pas seulement le
 -- précédent, pour rester correct même si l'un d'eux n'a consommé ni figure ni tableau.
--- SZH_LIVRE absent -> aucun de ces fichiers n'est ni lu ni écrit, comportement identique
--- à aujourd'hui.
+-- Hors livre, aucun de ces fichiers n'est ni lu ni écrit.
 --
 -- ⚠ make peut recompiler un seul chapitre. Si le report d'un chapitre précédent manque
 -- (dossier de sortie nettoyé entre deux builds, ordre de compilation inhabituel...),
 -- impossible de savoir combien de figures ce chapitre absent a réellement consommées :
 -- mieux vaut le dire et repartir de 0 (numérotation locale à ce chapitre, comme hors
 -- livre) que d'inventer un numéro qui aurait l'air juste sans l'être.
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
-local CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
-local CHEMIN_COMPTEURS = LIVRE and os.getenv('SZH_COMPTEURS') or nil
+-- Posés par Pandoc(doc), d'après le contexte de composition.
+local LIVRE, CHAPITRE, CHEMIN_COMPTEURS = false, nil, nil
 
 -- Dossier contenant CHEMIN_COMPTEURS, sans le séparateur final ; '.' si le chemin ne
 -- porte aucun dossier (n'arrive pas en usage réel, seulement en test isolé).
@@ -169,15 +167,15 @@ local function ecrire_compteurs(n_figure, n_tableau)
   fh:close()
 end
 
--- Libellés localisés : les trois langues de la revue, plus l'anglais.
-local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura',  en = 'Figure' }
-local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella', en = 'Table' }
--- Étiquette de la note sous une figure ou un tableau ; l'anglais reste celui de
--- LIBELLE_FIGURE. Le deux-points n'appartient pas à l'étiquette (elle seule est en italique).
-local LIBELLE_NOTE    = { fr = 'Note', de = 'Notiz', it = 'Nota', en = 'Note' }
+-- Libellés localisés : les trois langues de la maison.
+local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura' }
+local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella' }
+-- Étiquette de la note sous une figure ou un tableau. Le deux-points n'appartient pas à
+-- l'étiquette (elle seule est en italique).
+local LIBELLE_NOTE    = { fr = 'Note', de = 'Notiz', it = 'Nota' }
 -- Ponctuation après l'étiquette : le français exige une espace fine insécable (U+202F)
 -- avant le deux-points, pas les trois autres langues.
-local PONCT_NOTE      = { fr = '\u{202F}:', de = ':', it = ':', en = ':' }
+local PONCT_NOTE      = { fr = '\u{202F}:', de = ':', it = ':' }
 
 -- Séparateur visible : cadratin entouré d'espaces. L'espace de tête est un
 -- pandoc.Space (donc sécable), celui de queue est collé au cadratin dans le Span.
@@ -302,34 +300,6 @@ local a_classe = commun.a_classe
 local trim = commun.trim
 local slug_article = commun.slug_article
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
-
--- Langue de composition : le `lang:` de l'article prime, puis le jeton de revue, puis le
--- `lang:` du numéro, « fr » en dernier repli — même ordre que szh-maquette.lua, sans
--- son blocage sur une langue inconnue : ce filtre tourne aussi dans la chaîne d'aperçu, où
--- szh-maquette n'est pas branché, et une fiche mal remplie ne doit pas y empêcher l'aperçu
--- — une langue absente ou hors liste retombe silencieusement sur le jeton de revue.
---
--- Le module commun (szh-commun.lua) fait la lecture de la fiche, partagée avec
--- szh-maquette.lua ; ce qui reste ici et lui est propre, c'est cette suite de replis
--- (jeton de revue puis `lang:` du numéro, en `repli`) et l'ensemble des langues acceptées
--- (`langues_valides`), qui inclut l'anglais des libellés de figure — szh-maquette, lui,
--- n'accepte que fr/de/it.
-local function langue_de(meta)
-  return commun.langue_de(meta, {
-    lire_fiche = true,
-    variante_fiche = 'deux_lettres',
-    langues_valides = LIBELLE_FIGURE,
-    repli = function(m)
-      local revue = utils.stringify(m.revue or ''):lower()
-      if revue:find('zeitschrift') then return 'de' end
-      if revue:find('revue') then return 'fr' end
-      local court = utils.stringify(m.lang or ''):lower():match('^(%a%a)')
-      if court and LIBELLE_FIGURE[court] then return court end
-      return nil
-    end,
-    defaut = 'fr',
-  })
-end
 
 -- Copyright avec son ©. Une valeur qui commence déjà par ©, « Copyright » ou l'entité
 -- &copy; est gardée ; un « (c) » ou « (C) » de tête est remplacé par ©.
@@ -644,8 +614,8 @@ end
 local FIGURES_SANS_ALT_SIGNALEES = {}
 
 -- « | » sépare les champs du format à codes : un nom de fichier qui en porterait un
--- couperait la ligne. Même garde que szh-citations.lua (sans_barre()).
-local function sans_barre_figure(t) return (tostring(t):gsub('|', '/')) end
+-- couperait la ligne (commun.sans_barre).
+local sans_barre = commun.sans_barre
 
 local function constat_figure_sans_alt(src)
   if FIGURES_SANS_ALT_SIGNALEES[src] then return end
@@ -654,16 +624,12 @@ local function constat_figure_sans_alt(src)
   local champ_unite = (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »'
   -- Insécable française devant le deux-points (même caractère que PONCT_NOTE plus
   -- haut) ; l'allemand suisse colle sa ponctuation haute, donc aucune espace ici.
-  local morceaux = {
-    '[numerotation-avertissement] figure-sans-alt',
-    champ_unite,
-    'image « ' .. sans_barre_figure(src) .. ' »',
-    sans_barre_figure('L’image ' .. nom .. ' n’a ni texte alternatif ni légende\u{202F}: '
+  commun.constat('numerotation', 'avertissement', 'figure-sans-alt',
+    { champ_unite, 'image « ' .. sans_barre(src) .. ' »' },
+    sans_barre('L’image ' .. nom .. ' n’a ni texte alternatif ni légende\u{202F}: '
       .. 'un lecteur d’écran n’en dira rien.'),
-    '[de] ' .. sans_barre_figure('Das Bild ' .. nom .. ' hat weder Alternativtext noch '
-      .. 'Legende: ein Screenreader sagt dazu nichts.'),
-  }
-  io.stderr:write(table.concat(morceaux, ' | ') .. '\n')
+    sans_barre('Das Bild ' .. nom .. ' hat weder Alternativtext noch '
+      .. 'Legende: ein Screenreader sagt dazu nichts.'))
 end
 
 -- Vrai si `img` n'a ni alt (attribut absent, donc nil — pas alt="") ni légende (caption
@@ -681,7 +647,11 @@ end
 -- Tout part de Pandoc(doc) : seul point où les métadonnées sont lues avant les blocs
 -- (dans un filtre ordinaire, Meta est appelé après eux).
 function Pandoc(doc)
-  local lang = langue_de(doc.meta)
+  local contexte = commun.contexte(doc.meta)
+  local lang = contexte.lang
+  LIVRE = contexte.produit == 'livre'
+  CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
+  CHEMIN_COMPTEURS = LIVRE and os.getenv('SZH_COMPTEURS') or nil
   local mot_figure  = LIBELLE_FIGURE[lang]  or LIBELLE_FIGURE.fr
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
   -- Hors livre, depart_compteurs() rend (0, 0) : n_figure/n_tableau partent d'où ils

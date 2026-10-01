@@ -236,7 +236,7 @@ end
 
 -- ──────────────────────────────────────────────────────────────────────────────────────
 -- Le nom accessible par défaut du bloc qr-link (`title` omis) : « Lien vers : <url> » et
--- ses trois autres langues — la narrow no-break space devant le deux-points français suit
+-- ses deux autres langues — la narrow no-break space devant le deux-points français suit
 -- la même règle que le reste de la chaîne (szh-typographie.lua), écrite ici en dur : ce
 -- filtre tourne APRÈS szh-typographie.lua dans FILTRES_CHAPITRE (voir livre.mk), un texte
 -- qu'il écrit lui-même n'est donc jamais repassé par cette règle.
@@ -244,7 +244,6 @@ local TITRE_DEFAUT = {
   fr = 'Lien vers\u{202F}: %s',
   de = 'Link zu: %s',
   it = 'Link a: %s',
-  en = 'Link to: %s',
 }
 
 -- Construit le <a> QR cliquable complet — VIDE, SVG en fond (voir szh-qr.lua en tête pour
@@ -260,7 +259,7 @@ local TITRE_DEFAUT = {
 --   color       CSS hexa #RRGGBB, défaut '#000000'
 --   size        CSS (mm/cm/px/em…), défaut '25mm'
 --   title       nom accessible ; nil/vide -> défaut par langue (TITRE_DEFAUT)
---   lang        'fr'|'de'|'it'|'en' ; défaut 'fr'
+--   lang        'fr'|'de'|'it' ; défaut 'fr'
 --   classe_sup  une classe CSS de plus sur le <a>, en plus de "szh-qr" (ex. le falc-header
 --               y ajoute "szh-falc-header-qr" pour son propre `margin-top`)
 --   avertir     function(code, phrase_fr, phrase_de) — jamais appelé si tout va bien

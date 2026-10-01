@@ -10,17 +10,28 @@
 -- Le texte passe par la typographie maison (voir plus bas), puis est écrit en HTML brut.
 -- Un « // » y devient un <br> (retour à la ligne forcé).
 
-local S = pandoc.utils.stringify
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[livre-sous-titre] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
 local CHAPITRE = os.getenv('SZH_CHAPITRE') or ''
 
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
-end
+local texte = commun.texte
 
 -- « A // B » -> Inlines : mots et espaces, un LineBreak à chaque « // » (même règle que
 -- szh_commun.titre_lignes() en Python).
@@ -42,9 +53,7 @@ local function inlines_de(v)
 end
 
 local function langue_de(meta)
-  local l = texte(meta and meta.lang)
-  if l == '' then return 'fr' end
-  return (l:lower():match('^(%a%a)')) or 'fr'
+  return commun.contexte(meta).lang
 end
 
 local function sous_titre_de(meta)
@@ -68,7 +77,7 @@ end
 local ATTENTE = 'szh-sous-titre-attente'
 
 function Pandoc(doc)
-  if not LIVRE or CHAPITRE == '' then return doc end
+  if commun.contexte(doc.meta).produit ~= 'livre' or CHAPITRE == '' then return doc end
 
   local trouve
   doc.blocks = doc.blocks:walk({

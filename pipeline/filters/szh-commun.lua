@@ -1,5 +1,6 @@
--- Fonctions partagées entre plusieurs filtres pandoc du pipeline : slug_article(),
--- a_classe(), trim() et langue_de() (langue de composition). Chargé par dofile — le dossier
+-- Fonctions partagées entre les filtres pandoc du pipeline : slug_article(), a_classe(),
+-- trim(), texte(), lire_cle() / parse_scalar(), les constats au format à codes, et le
+-- contexte de composition (langue, produit, unité). Chargé par dofile — le dossier
 -- se retrouve par debug.getinfo(1, 'S').source, pas par PANDOC_SCRIPT_FILE (le patron déjà
 -- en production, szh-numerotation.lua ~l.51-52 pour szh-apercu-lecteur-ecran.lua) : cette
 -- variable nomme le script que pandoc a reçu en ligne de commande, pas le fichier qui
@@ -21,12 +22,10 @@
 --   local ok, commun = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
 --   if not ok or type(commun) ~= 'table' then ... os.exit(1, true) ... end
 --
--- szh-maquette.lua et szh-numerotation.lua utilisent désormais langue_de() : la cascade de
--- chacun (fiche -> jeton de revue -> ausgabe.yaml -> français pour l'un, fiche -> jeton de
--- revue -> lang: du numéro -> français pour l'autre) reste propre à chaque appelant, passée
--- en `repli`, et le blocage de szh-maquette.lua sur une langue inconnue reste le sien, passé
--- en `fiche_invalide` — voir langue_de() ci-dessous. Un filtre qui n'a besoin de rien
--- d'autre ne charge pas ce module pour la forme.
+-- Le contexte de composition (langue, produit, unité) se calcule ici, une fois, dans
+-- calculer_contexte() ; szh-contexte.lua le pose en tête de chaque chaîne et les filtres le
+-- relisent par contexte(). Un filtre qui n'a besoin de rien d'autre ne charge pas ce module
+-- pour la forme.
 
 local M = {}
 
@@ -45,8 +44,7 @@ function M.slug_article(repli)
   return (chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''))
 end
 
--- Vrai si l'attribut pandoc `el` porte la classe `nom`. szh-numerotation.lua et
--- szh-ressource.lua en avaient chacun leur copie, identiques.
+-- Vrai si l'attribut pandoc `el` porte la classe `nom`.
 function M.a_classe(el, nom)
   for _, c in ipairs(el.classes or {}) do
     if c == nom then return true end
@@ -57,11 +55,9 @@ end
 function M.trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 
 -- ---------------------------------------------------------------------------------------
--- Scalaire YAML « nu / "..." / '...' », reproduisant parse_scalar() de szh-maquette.lua :
--- guillemets échappés, coupe au commentaire « espace(s) + # ». Privé à ce module — les
--- lectures de dossier/DOI de szh-maquette.lua gardent leur propre copie (hors du périmètre
--- de ce lot, elles ne concernent pas la langue).
-local function parse_scalar(reste)
+-- Scalaire YAML « nu / "..." / '...' » (miroir de decouperValeurYaml du cockpit) :
+-- guillemets échappés, coupe au commentaire « espace(s) + # ».
+function M.parse_scalar(reste)
   reste = reste:gsub('%s+$', '')
   local q = reste:sub(1, 1)
   if q == '"' then
@@ -83,82 +79,118 @@ local function parse_scalar(reste)
   return (reste:gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- Lecture de « lang: » en tête de <slug>.meta.yaml, hors pandoc (io.open direct, jamais les
--- métadonnées fusionnées). Trois variantes mesurées, une par appelant, aucune unifiée avec
--- les autres — une divergence de comportement assumée dans chacun des trois filtres, voir
--- langue_de() ci-dessous pour ce qui en dépend :
---   'lire_cle'            scalaire complet (parse_scalar : guillemets échappés, coupe au
---                         commentaire), puis lower():sub(1,2). szh-maquette.lua.
---   'deux_lettres'        motif ancré sur exactement deux lettres après un guillemet
---                         optionnel non refermé ; une ligne « lang: » qui ne les porte pas
---                         est ignorée et la lecture continue aux lignes suivantes (elle ne
---                         s'arrête pas à la première ligne « lang: » venue, contrairement
---                         aux deux autres variantes). szh-numerotation.lua.
---   'guillemets_simples'  tout le reste de la ligne, un guillemet de tête et un de fin ôtés
---                         s'il y en a, puis trim():lower():sub(1,2). S'arrête à la première
---                         ligne « lang: », que la valeur obtenue soit vide ou non.
---                         szh-citations.lua.
--- Rend '' si le fichier est absent, illisible, ou ne porte pas la clé (par la variante
--- retenue).
-function M.lang_fiche(slug, variante)
-  if not slug or slug == '' then return '' end
-  local fh = io.open(slug .. '.meta.yaml', 'r')
+-- Valeur d'une clé scalaire de premier niveau d'un YAML plat, lue hors pandoc, ou '' : la
+-- fusion des métadonnées ne dit pas de quel fichier une clé vient.
+function M.lire_cle(chemin, cle)
+  if not chemin or chemin == '' then return '' end
+  local fh = io.open(chemin, 'r')
   if not fh then return '' end
   local valeur = ''
-  if variante == 'deux_lettres' then
-    for ligne in fh:lines() do
-      local m = ligne:match("^lang:%s*['\"]?(%a%a)")
-      if m then valeur = m:lower(); break end
-    end
-  elseif variante == 'guillemets_simples' then
-    for ligne in fh:lines() do
-      local m = ligne:match('^lang:%s*(.*)$')
-      if m then
-        m = m:gsub('^["\']', ''):gsub('["\']%s*$', '')
-        valeur = M.trim(m):lower():sub(1, 2)
-        break
-      end
-    end
-  else                                          -- 'lire_cle', défaut
-    for ligne in fh:lines() do
-      local m = ligne:match('^lang:%s*(.*)$')
-      if m then valeur = parse_scalar(m):lower():sub(1, 2); break end
-    end
+  for ligne in fh:lines() do
+    local m = ligne:match('^' .. cle .. ':%s*(.*)$')
+    if m then valeur = M.parse_scalar(m); break end
   end
   fh:close()
   return valeur
 end
 
+-- Texte d'une valeur de métadonnées, sans blancs autour ; '' si elle est absente ou ne se
+-- lit pas.
+function M.texte(v)
+  if v == nil then return '' end
+  local ok, r = pcall(pandoc.utils.stringify, v)
+  if not ok then return '' end
+  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
 -- ---------------------------------------------------------------------------------------
--- Langue de composition : quatre filtres la lisent, chacun à sa façon (mesuré et fixé par
--- test/filtres-pandoc.test.js, section « Détection de langue » — ces tests ne bougent pas
--- avec ce module, ils le contraignent). Pas un ordre unique entre eux : une fiche lue ou
--- non, une validation ou non, un repli différent une fois la fiche absente ou invalide.
--- langue_de() ne fait donc que l'étape commune aux trois filtres qui lisent la fiche —
--- la lire, la valider, réagir à son absence ou à son invalidité — et laisse à chaque
--- appelant sa propre suite de replis (`options.repli`) : cette suite-là (jeton de revue
--- d'abord ou meta.lang d'abord, ausgabe.yaml relu ou non...) diffère trop d'un filtre à
--- l'autre pour être un paramètre de plus plutôt qu'un module de moins.
---
+-- Constats au format à codes de docs/ARCHITECTURE.md, miroir de
+-- szh_commun.formater_avertissement côté Python :
+--   [<source>-<ton>] <code> | <champ> | … | <phrase fr> | [de] <phrase de>
+-- Les valeurs partent telles quelles : ôter les « | » qu'un texte pourrait porter
+-- (sans_barre) revient à l'appelant.
+function M.sans_barre(t) return (tostring(t):gsub('|', '/')) end
+
+function M.ligne_constat(source, ton, code, champs, fr, de)
+  local morceaux = { '[' .. source .. '-' .. ton .. '] ' .. code }
+  for _, c in ipairs(champs or {}) do morceaux[#morceaux + 1] = c end
+  morceaux[#morceaux + 1] = fr
+  morceaux[#morceaux + 1] = '[de] ' .. de
+  return table.concat(morceaux, ' | ')
+end
+
+function M.constat(source, ton, code, champs, fr, de)
+  io.stderr:write(M.ligne_constat(source, ton, code, champs, fr, de) .. '\n')
+  io.stderr:flush()
+end
+
+-- Ajoute la ligne au journal d'import (SZH_IMPORT_LOG) quand la variable est posée : pandoc
+-- ne l'écrit pas pour les filtres. Miroir de szh_commun.journaliser côté Python.
+function M.journaliser(ligne)
+  local journal = os.getenv('SZH_IMPORT_LOG')
+  if not journal or journal == '' then return end
+  local f = io.open(journal, 'a')
+  if f then
+    f:write(ligne .. '\n')
+    f:close()
+  end
+end
+
+-- Arrêt de la compilation. Le constat part d'abord seul : `error()` l'enroberait d'une pile
+-- d'appels illisible dans le panneau. L'`error` qui suit os.exit ne sert que si un pandoc
+-- futur cessait de l'honorer.
+function M.bloquer(source, code, champs, fr, de)
+  M.constat(source, 'blocage', code, champs, fr, de)
+  os.exit(1, true)
+  error(code, 0)
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Les trois langues de la maison. L'anglais n'en est pas : ni libellé de résumé, ni mention
+-- de licence, ni titre de bloc auteurs n'existent pour lui.
+M.LANGUES = { fr = true, de = true, it = true }
+
+-- Nom d'une langue dans une phrase, en français et en allemand.
+M.EN_LANGUE = {
+  fr = { fr = 'en français',      de = 'en allemand',   it = 'en italien' },
+  de = { fr = 'auf Französisch',  de = 'auf Deutsch',   it = 'auf Italienisch' },
+}
+
+local function chp_article(slug) return 'article « ' .. slug .. ' »' end
+
+-- Une fiche sans langue : la composition continue dans la langue du numéro, et le dit.
+local function avertir_sans_langue(slug, lang_num)
+  M.constat('meta', 'avertissement', 'sans-langue', { chp_article(slug) },
+    'Article « ' .. slug .. " » : aucune langue déclarée dans " .. slug ..
+      '.meta.yaml – composition ' .. M.EN_LANGUE.fr[lang_num] ..
+      ", la langue du numéro. Ouvrez « Métadonnées de l’article » et fixez la langue de l’article.",
+    'Artikel «' .. slug .. '»: keine Sprache in ' .. slug ..
+      '.meta.yaml erklärt – Satz ' .. M.EN_LANGUE.de[lang_num] ..
+      ', der Sprache der Ausgabe. Öffnen Sie «Metadaten der Artikel» und legen Sie die Sprache des Artikels fest.')
+end
+
+-- Une langue hors des trois de la revue arrête la compilation.
+local function bloquer_langue_inconnue(slug, brut)
+  M.bloquer('meta', 'langue-inconnue', { chp_article(slug), 'langue « ' .. brut .. ' »' },
+    'Article « ' .. slug .. ' » : langue « ' .. brut ..
+      " » inconnue dans " .. slug .. '.meta.yaml. Langues de la revue : fr, de, it.' ..
+      " Ouvrez « Métadonnées de l’article » et choisissez-en une.",
+    'Artikel «' .. slug .. '»: Sprache «' .. brut .. '» in ' .. slug ..
+      '.meta.yaml unbekannt. Sprachen der Zeitschrift: fr, de, it.' ..
+      ' Öffnen Sie «Metadaten der Artikel» und wählen Sie eine davon.')
+end
+
+-- Langue lue dans <slug>.meta.yaml, validée, puis la suite de replis de l'appelant.
 -- options :
---   slug              slug déjà connu (sinon M.slug_article())
---   lire_fiche         bool — lire <slug>.meta.yaml (faux : szh-ressource.lua, qui ne lit
---                      que les métadonnées déjà fusionnées par pandoc)
---   variante_fiche     voir M.lang_fiche ci-dessus (défaut 'deux_lettres')
---   langues_valides    ensemble {fr=true, de=true, ...} : une valeur hors de cet ensemble
---                      est traitée comme absente ; nil = tout code de 2 lettres non vide
---                      est accepté (szh-citations.lua, qui ne valide pas la fiche)
---   fiche_absente      function(slug) — appelée si lire_fiche est vrai et que la clé est
---                      absente ou vide (szh-maquette.lua : avertir « sans-langue »)
---   fiche_invalide     function(slug, valeur) — appelée si la fiche porte une langue hors
---                      langues_valides ; sa valeur de retour devient celle de langue_de
---                      (szh-maquette.lua bloque : la fonction n'a alors pas besoin de
---                      rendre, os.exit ne rend jamais la main). Omise, une fiche invalide
---                      se traite comme une fiche absente — repli silencieux, sans message
---                      (szh-numerotation.lua : « retombe sur 'fr' »).
---   repli              function(meta) -> langue ou nil : tout ce qui suit la fiche
---                      (jeton de revue, meta.lang, ausgabe.yaml...), propre à l'appelant
---   defaut             langue rendue si rien n'a rien donné ('fr' si omis)
+--   slug             slug déjà connu (sinon M.slug_article())
+--   lire_fiche       lire <slug>.meta.yaml
+--   langues_valides  ensemble {fr=true, …} : une valeur hors de cet ensemble vaut une fiche
+--                    invalide ; nil accepte tout code non vide
+--   fiche_absente    function(slug), appelée si la fiche ne porte pas de langue
+--   fiche_invalide   function(slug, valeur), dont le retour devient la langue ; omise, une
+--                    fiche invalide se traite comme une fiche absente, en silence
+--   repli            function(meta) -> langue ou nil, ce qui suit la fiche
+--   defaut           langue rendue si rien n'a rien donné ('fr' si omis)
 function M.langue_de(meta, options)
   local o = options or {}
   local valide = o.langues_valides
@@ -168,11 +200,10 @@ function M.langue_de(meta, options)
     local slug = o.slug
     if slug == nil then slug = M.slug_article() end
     if slug ~= '' then
-      local brut = M.lang_fiche(slug, o.variante_fiche)
+      local brut = M.lire_cle(slug .. '.meta.yaml', 'lang'):lower():sub(1, 2)
       if brut ~= '' then
         if correcte(brut) then return brut end
         if o.fiche_invalide then return o.fiche_invalide(slug, brut) end
-        -- pas de callback : une fiche invalide se traite comme une fiche absente, silence
       elseif o.fiche_absente then
         o.fiche_absente(slug)
       end
@@ -185,6 +216,47 @@ function M.langue_de(meta, options)
   end
 
   return o.defaut or 'fr'
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Contexte de composition de l'unité compilée : sa langue, le produit (revue, zeitschrift,
+-- ou livre sous SZH_LIVRE) et l'unité (article ou chapitre).
+-- La langue suit l'ordre de la couverture : la fiche <slug>.meta.yaml, puis le jeton de
+-- revue, puis le `lang:` du numéro ou de buch.yaml (relu dans SZH_AUSGABE, que la fiche a pu
+-- écraser dans meta ; à défaut meta.lang), puis le français.
+-- `signaler` dit une fiche sans langue et bloque sur une langue inconnue, hors livre ; sans
+-- lui, une fiche invalide vaut une fiche absente, en silence.
+function M.calculer_contexte(meta, signaler)
+  local m = meta or {}
+  local livre = (os.getenv('SZH_LIVRE') or '') ~= ''
+  local revue = M.texte(m.revue):lower()
+  local zeitschrift = revue:find('zeitschrift') ~= nil
+  local produit = livre and 'livre' or (zeitschrift and 'zeitschrift' or 'revue')
+
+  local lang_revue = zeitschrift and 'de' or (revue:find('revue') and 'fr' or '')
+  local lang_numero = M.lire_cle(os.getenv('SZH_AUSGABE'), 'lang')
+  if lang_numero == '' then lang_numero = M.texte(m.lang) end
+  lang_numero = lang_numero:lower():sub(1, 2)
+  local lang_num = lang_revue ~= '' and lang_revue
+                   or (M.LANGUES[lang_numero] and lang_numero or 'fr')
+
+  local dire = signaler and not livre
+  local lang = M.langue_de(m, {
+    lire_fiche = true,
+    langues_valides = M.LANGUES,
+    fiche_absente = dire and function(s) avertir_sans_langue(s, lang_num) end or nil,
+    fiche_invalide = dire and bloquer_langue_inconnue or nil,
+    repli = function() return lang_num end,
+  })
+  return { lang = lang, produit = produit, unite = livre and 'chapitre' or 'article' }
+end
+
+-- Le contexte que szh-contexte.lua a posé dans meta. Un filtre lancé hors chaîne (un test)
+-- le calcule lui-même, en silence sauf `signaler`.
+function M.contexte(meta, signaler)
+  local produit = M.texte(meta and meta['szh-produit'])
+  if produit == '' then return M.calculer_contexte(meta, signaler) end
+  return { lang = M.texte(meta.lang), produit = produit, unite = M.texte(meta['szh-unite']) }
 end
 
 return M

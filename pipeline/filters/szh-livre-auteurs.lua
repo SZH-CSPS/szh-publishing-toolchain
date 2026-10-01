@@ -42,16 +42,26 @@
 -- son numéro et que la ligne se pose sous le titre fini ; avant szh-citations.lua, comme
 -- son voisin.
 
-local S = pandoc.utils.stringify
-
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
-
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[livre-auteurs] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
 end
+
+local texte = commun.texte
 
 -- Échappement HTML : ce filtre écrit du RawBlock, le gabarit ne le fait plus pour nous.
 -- Une esperluette dans un nom composé produirait sans cela un document mal formé.
@@ -72,15 +82,13 @@ end
 -- La conjonction avant le dernier nom, dans la langue du livre. L'italien et le romanche
 -- ne sont pas ici parce qu'aucun livre ne les a demandés ; le repli français est visible,
 -- pas silencieux — un « et » dans un livre allemand se remarque à la relecture.
-local CONJONCTION = { fr = ' et ', de = ' und ', it = ' e ', en = ' and ' }
+local CONJONCTION = { fr = ' et ', de = ' und ', it = ' e ' }
 -- L'amorce de la ligne. L'allemand n'en met pas : « Barbara Fontana-Lana, … » se suffit,
 -- là où le français dit « De … ». Relevé sur les livres des deux collections.
-local AMORCE = { fr = 'De ', de = '', it = 'Di ', en = 'By ' }
+local AMORCE = { fr = 'De ', de = '', it = 'Di ' }
 
 local function langue_de(meta)
-  local l = texte(meta and meta.lang)
-  if l == '' then return 'fr' end
-  return (l:lower():match('^(%a%a)')) or 'fr'
+  return commun.contexte(meta).lang
 end
 
 local function ligne_auteurs(meta)
@@ -121,7 +129,7 @@ local function deja_bloc_auteurs(b)
 end
 
 function Pandoc(doc)
-  if not LIVRE then return doc end
+  if commun.contexte(doc.meta).produit ~= 'livre' then return doc end
   if texte(doc.meta.ouvrage) ~= "collectif" then return doc end
 
   local ligne = ligne_auteurs(doc.meta)

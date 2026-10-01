@@ -360,22 +360,17 @@ test('qualificatif de provenance : deux mots-clés dégénérés différents dis
     '« (na) » et « (szh) » auraient dû disparaître après masquage : ' + JSON.stringify(res.fr));
 });
 
-// ── Détection de langue : le comportement ACTUEL de quatre filtres ─────────────────────
-// szh-maquette.lua, szh-numerotation.lua, szh-ressource.lua et szh-citations.lua lisent
-// chacun la langue de composition à leur manière — quatre fonctions indépendantes,
-// jamais un module commun (chacune le redit dans son propre commentaire de tête). Ce qui
-// suit ne corrige rien : ça fixe ce qu'elles font aujourd'hui, sur les quatre cas qui les
-// distinguent, pour qu'un futur chantier de convergence parte d'un état mesuré plutôt que
-// supposé. Chaque test vérifie D'ABORD que sa sortie dépend réellement du filtre — le
-// patron déjà suivi plus haut dans ce fichier.
+// ── Détection de langue : quatre filtres, une seule langue ─────────────────────────────
+// szh-maquette.lua, szh-numerotation.lua, szh-ressource.lua et szh-citations.lua lisent la
+// langue du contexte de composition (szh-commun.lua, calculer_contexte), que szh-contexte.lua
+// pose en tête de chaîne ; lancé seul, chacun la calcule lui-même, de la même façon. Les
+// quatre cas qui distinguaient leurs anciennes cascades restent fixés ici, filtre par filtre.
+// Chaque test vérifie D'ABORD que sa sortie dépend réellement du filtre — le patron déjà
+// suivi plus haut dans ce fichier.
 //
-// Seul szh-maquette.lua et szh-numerotation.lua et szh-citations.lua relisent
-// <slug>.meta.yaml sur le disque (io.open, pas les métadonnées fusionnées de pandoc) :
-// le prouver demande un VRAI fichier, au bon nom, dans le dossier courant de pandoc —
-// une invocation par stdin, sans nom de fichier, ne peut pas nourrir cette lecture.
-// szh-ressource.lua, lui, ne lit que les métadonnées déjà fusionnées (meta.lang,
-// meta.revue) : sans --metadata-file pour la fiche, il ne la voit jamais, quand bien
-// même elle existerait à côté du .md — le cas « fiche seule » ci-dessous le montre.
+// La fiche <slug>.meta.yaml se relit sur le disque (io.open, pas les métadonnées fusionnées
+// de pandoc) : le prouver demande un VRAI fichier, au bon nom, dans le dossier courant de
+// pandoc — une invocation par stdin, sans nom de fichier, ne peut pas nourrir cette lecture.
 
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
@@ -547,8 +542,7 @@ test('legendes : une Figure irréductible (deux images) est laissée telle quell
     + 'que d’en perdre une : ' + r);
 });
 
-// ── szh-numerotation.lua : sa propre langue_fiche()/langue_de(), même ordre de priorité.
-// Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
+// ── szh-numerotation.lua : la langue du contexte de composition. Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
 // « Abbildung ».
 function docNumerotation(entete) {
   return '---\n' + entete + '---\n\n![Légende de test](x.png)\n';
@@ -715,9 +709,8 @@ test('typographie : un « | » venu du texte, dans le mot fautif, ne coupe pas l
     'le « | » du texte a coupé la ligne en deux : ' + ligne);
 });
 
-// ── szh-ressource.lua : SA propre langue_de(), plus simple — meta.lang direct (fr/de
-// seulement, pas de lecture de fiche), puis le jeton de revue, « fr » en dernier repli.
-// Sortie observée : le texte du lien généré, qui nomme la ressource dans la langue
+// ── szh-ressource.lua : la langue du contexte de composition (szh-commun.lua), réduite au
+// français et à l'allemand, les deux langues du contrat de la Documentation. Sortie observée : le texte du lien généré, qui nomme la ressource dans la langue
 // détectée — « En savoir plus sur le livre… » / « Mehr zum Buch… ».
 function docRessource(entete) {
   return '---\n' + entete + '---\n\n'
@@ -731,17 +724,15 @@ test('langue (préparation) : sans szh-ressource.lua, pas de texte de lien gén�
   assert.ok(!/savoir plus|Mehr zum/.test(r.stdout), 'un texte de lien existe déjà sans le filtre : ' + r.stdout);
 });
 
-test('langue : szh-ressource.lua — une fiche sur le disque, JAMAIS lue (pas de meta.lang fusionné)', () => {
-  // Contrairement aux trois autres, ce filtre ne relit aucun fichier : seules les
-  // métadonnées que pandoc a déjà fusionnées comptent. Une fiche présente mais non
-  // passée en --metadata-file (comme ici) n'a donc AUCUN effet — le résultat retombe
-  // sur le même repli français que « rien du tout ».
+test('langue : szh-ressource.lua — fiche avec lang: de l’emporte sur revue: revue', () => {
+  // La fiche se relit sur le disque, comme pour les autres filtres : la langue est celle du
+  // contexte de composition, la même partout.
   const r = pandocDansDossier(
     { 'essai.md': docRessource('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n' },
     'essai.md', 'szh-ressource.lua');
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.match(r.stdout, /En savoir plus sur le livre Mon Titre/,
-    'la fiche sur le disque a été lue alors que szh-ressource.lua ne le fait jamais : ' + r.stdout);
+  assert.match(r.stdout, /Mehr zum Buch Mon Titre/,
+    'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
 });
 
 test('langue : szh-ressource.lua — meta.lang seul', () => {
@@ -762,8 +753,7 @@ test('langue : szh-ressource.lua — rien du tout, repli français', () => {
   assert.match(r.stdout, /En savoir plus sur le livre Mon Titre/, r.stdout);
 });
 
-// ── szh-citations.lua : langue_article(), même ordre que szh-maquette.lua (sa propre
-// duplication assumée, voir son commentaire de tête). Sortie observée : le titre de
+// ── szh-citations.lua : la langue du contexte de composition. Sortie observée : le titre de
 // bibliographie posé au-dessus de la liste résolue — « Références » ou « Literatur »
 // (TITRES_BIBLIO_DEFAUT ne distingue pas « revue » de « zeitschrift », seule la langue
 // compte pour ce titre-là).
@@ -1814,4 +1804,125 @@ test('collectif : un bloc auteurs déjà importé (Div) empêche le doublon de l
   assert.strictEqual(occurrences, 1, 'un doublon de bloc auteurs est apparu : ' + html);
   assert.match(html, /Nom réel du Word/, 'le bloc importé doit être conservé : ' + html);
   assert.ok(!/Ana Nym|>Ana</.test(html), 'la ligne de la fiche s’est ajoutée par-dessus celle du Word : ' + html);
+});
+
+// ── Cohérence de la langue : une chaîne entière, une seule langue ─────────────────────
+// La langue de composition se décide une fois, par szh-contexte.lua en tête de chaque chaîne
+// de pipeline/filtres.mk. Chaque cas compile un petit document par la chaîne réelle, lue dans
+// filtres.mk, puis relève les marques de langue que posent des filtres différents : l'attribut
+// lang du HTML, le libellé de figure (szh-numerotation), le titre de bibliographie
+// (szh-citations), le texte de lien d'une fiche (szh-ressource, revue seulement), l'espace
+// devant « ? » (szh-typographie) et la protection des noms propres (szh-cesure, français
+// seulement). Toutes doivent dire la langue attendue, à la compilation comme à l'aperçu.
+const { lireChaines } = require('./js/chaines-filtres-lire');
+
+const CORPS_LANGUE = 'Le centre de Fribourg accueille du monde. Est-ce vrai ? Oui.\n\n'
+  + '![Légende de test](x.png)\n\n'
+  + '::: {#r1 .szh-ressource type="livre" title="Mon Titre" lien="https://exemple.org"}\n'
+  + 'Descriptif.\n:::\n\n'
+  + '::: {.szh-biblio src="essai.biblio.md"}\n:::\n';
+
+// Compile essai.md comme le Makefile : métadonnées du numéro (ou de buch.yaml) puis fiche,
+// SZH_AUSGABE en chemin absolu, SZH_APERCU et le lecteur commonmark_x+sourcepos pour un
+// aperçu, SZH_LIVRE et SZH_CHAPITRE pour un chapitre. SZH_CONFIG vise un fichier absent : le
+// config.json du poste ne doit pas changer le titre de bibliographie.
+function compilerChaine(chaine, fichiers, o) {
+  const dossier = dossierJetable('szh-coherence-');
+  try {
+    const tout = Object.assign({ 'essai.md': CORPS_LANGUE, 'essai.biblio.md': BIBLIO_ESSAI,
+      'x.png': PNG_1PX }, fichiers);
+    for (const nom of Object.keys(tout)) { fs.writeFileSync(path.join(dossier, nom), tout[nom]); }
+    const numero = o.livre ? 'buch.yaml' : 'ausgabe.yaml';
+    const meta = ['--metadata-file=' + numero];
+    if (tout['essai.meta.yaml'] !== undefined) { meta.push('--metadata-file=essai.meta.yaml'); }
+    if (o.livre) { meta.push('--metadata=slug:essai'); }
+    const avant = o.apercu ? ['sourcepos', 'ancres'] : [];
+    const filtres = avant.concat(lireChaines()[chaine])
+      .map((f) => '--lua-filter=' + path.join(FILTRES, 'szh-' + f + '.lua'));
+    const args = ['--from=' + (o.apercu ? 'commonmark_x+sourcepos' : 'markdown'), '--to=html5',
+      '--standalone', '--wrap=none', ...meta, ...filtres, 'essai.md'];
+    const env = Object.assign({}, process.env, {
+      SZH_AUSGABE: path.join(dossier, numero),
+      SZH_APERCU: o.apercu ? '1' : '',
+      SZH_LIVRE: o.livre ? '1' : '',
+      SZH_CHAPITRE: o.livre ? '1' : '',
+      SZH_COMPTEURS: path.join(dossier, 'compteurs', '1.txt'),
+      SZH_CONFIG: path.join(dossier, 'absent.json'),
+    });
+    const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
+    if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
+    return { html: r.stdout || '', stderr: r.stderr || '', status: r.status };
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+}
+
+// Les marques relevées, chacune avec la langue qu'elle dit.
+function marquesDeLangue(html) {
+  const m = {};
+  const lang = /<html[^>]*\blang="([a-z]{2})/.exec(html);
+  if (lang) { m.html = lang[1]; }
+  if (/Abbildung 1/.test(html)) { m.figure = 'de'; } else if (/Figure 1/.test(html)) { m.figure = 'fr'; }
+  if (/Literatur/.test(html)) { m.bibliographie = 'de'; } else if (/Références/.test(html)) { m.bibliographie = 'fr'; }
+  if (/Mehr zum Buch/.test(html)) { m.ressource = 'de'; } else if (/En savoir plus sur le livre/.test(html)) { m.ressource = 'fr'; }
+  if (/vrai[  ]\?/.test(html)) { m.typographie = 'fr'; } else if (/vrai ?\?/.test(html)) { m.typographie = 'de'; }
+  m.cesure = /szh-sans-cesure/.test(html) ? 'fr' : 'de';
+  return m;
+}
+
+function exigerLangue(r, attendue, nom, livre) {
+  assert.strictEqual(r.status, 0, nom + ' : la compilation échoue : ' + r.stderr);
+  const m = marquesDeLangue(r.html);
+  const requises = ['html', 'figure', 'bibliographie', 'typographie', 'cesure'].concat(livre ? [] : ['ressource']);
+  for (const cle of requises) {
+    assert.ok(m[cle], nom + ' : la marque « ' + cle + ' » est introuvable : ' + r.html);
+  }
+  const ecarts = Object.keys(m).filter((cle) => m[cle] !== attendue);
+  assert.deepStrictEqual(ecarts, [], nom + ' : ces sorties ne sont pas en « ' + attendue + ' » : '
+    + JSON.stringify(m));
+}
+
+const CAS_LANGUE = [
+  { nom: 'résumé dans l’autre langue', attendue: 'de',
+    fichiers: { 'ausgabe.yaml': 'revue: revue\n',
+      'essai.meta.yaml': 'lang: de\ntitle:\n  de: "Titel"\nresume:\n  de: "Eine Zusammenfassung."\n  fr: "Un résumé."\n' } },
+  { nom: 'fiche sans lang:', attendue: 'de', sansLangue: true,
+    fichiers: { 'ausgabe.yaml': 'revue: zeitschrift\nlang: de\n', 'essai.meta.yaml': 'title:\n  de: "Titel"\n' } },
+  { nom: 'Zeitschrift sans langue déclarée', attendue: 'de', sansLangue: true,
+    fichiers: { 'ausgabe.yaml': 'revue: zeitschrift\n', 'essai.meta.yaml': 'title:\n  de: "Titel"\n' } },
+  { nom: 'article français d’un numéro de la Zeitschrift', attendue: 'fr',
+    fichiers: { 'ausgabe.yaml': 'revue: zeitschrift\nlang: de\n',
+      'essai.meta.yaml': 'lang: fr\ntitle:\n  fr: "Titre"\n' } },
+];
+
+for (const cas of CAS_LANGUE) {
+  test('cohérence de la langue : ' + cas.nom + ' — compilation et aperçu', () => {
+    const pdf = compilerChaine('CHAINE_ARTICLE', cas.fichiers, {});
+    exigerLangue(pdf, cas.attendue, 'compilation');
+    const apercu = compilerChaine('CHAINE_APERCU', cas.fichiers, { apercu: true });
+    exigerLangue(apercu, cas.attendue, 'aperçu');
+    // L'avertissement « sans-langue » part une fois à la compilation, jamais à l'aperçu.
+    const nb = (t) => (t.match(/^\[meta-avertissement\] sans-langue \|/gm) || []).length;
+    assert.strictEqual(nb(pdf.stderr), cas.sansLangue ? 1 : 0, 'compilation : ' + pdf.stderr);
+    assert.strictEqual(nb(apercu.stderr), 0, 'aperçu : ' + apercu.stderr);
+  });
+}
+
+test('cohérence de la langue : chapitre de livre allemand — fragment, EPUB et aperçu', () => {
+  const fichiers = { 'buch.yaml': 'titre: "Ein Buch"\nlang: de\n',
+    'essai.meta.yaml': 'title:\n  de: "Ein Kapitel"\n' };
+  for (const [chaine, o] of [['CHAINE_CHAPITRE', {}], ['CHAINE_CHAPITRE_EPUB', {}],
+    ['CHAINE_CHAPITRE_APERCU', { apercu: true }]]) {
+    const r = compilerChaine(chaine, fichiers, Object.assign({ livre: true }, o));
+    exigerLangue(r, 'de', chaine, true);
+    assert.ok(!/sans-langue|titre-autre-langue/.test(r.stderr), chaine + ' : ' + r.stderr);
+  }
+});
+
+test('cohérence de la langue : une langue inconnue bloque la compilation, pas l’aperçu', () => {
+  const fichiers = { 'ausgabe.yaml': 'revue: revue\n', 'essai.meta.yaml': 'lang: es\ntitle:\n  fr: "Titre"\n' };
+  const pdf = compilerChaine('CHAINE_ARTICLE', fichiers, {});
+  assert.notStrictEqual(pdf.status, 0, 'une langue inconnue ne bloque plus la compilation');
+  assert.strictEqual((pdf.stderr.match(/^\[meta-blocage\] langue-inconnue \|/gm) || []).length, 1, pdf.stderr);
+  exigerLangue(compilerChaine('CHAINE_APERCU', fichiers, { apercu: true }), 'fr', 'aperçu');
 });

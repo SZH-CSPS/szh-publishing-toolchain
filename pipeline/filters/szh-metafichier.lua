@@ -37,6 +37,25 @@
 
 local EXTENSIONS = { '%.emf$', '%.wmf$' }
 
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[metafichier] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 -- Le placeholder vit dans le toolkit, à côté des filtres. PANDOC_SCRIPT_FILE donne le
 -- chemin de ce fichier : de quoi atteindre l'asset sans variable d'environnement ni
 -- chemin codé en dur, et quel que soit le dossier depuis lequel pandoc est lancé (il
@@ -53,10 +72,10 @@ local PLACEHOLDER = chemin_placeholder()
 -- Sans placeholder atteignable, ne rien faire : mieux vaut l'échec franc de WeasyPrint,
 -- qui nomme au moins le fichier, qu'une image remplacée par une cible vide.
 if not PLACEHOLDER then
-  io.stderr:write('[metafichier-avertissement] placeholder-introuvable | '
-    .. "Le substitut d'image du toolkit est introuvable : les images natives Word ne "
-    .. 'seront pas remplacées. | [de] Der Bildersatz des Toolkits fehlt: '
-    .. 'Word-Metadateien werden nicht ersetzt.\n')
+  commun.constat('metafichier', 'avertissement', 'placeholder-introuvable', {},
+    "Le substitut d'image du toolkit est introuvable : les images natives Word ne "
+      .. 'seront pas remplacées.',
+    'Der Bildersatz des Toolkits fehlt: Word-Metadateien werden nicht ersetzt.')
   return {}
 end
 
@@ -75,27 +94,24 @@ end
 
 -- Un constat par fichier, pas par occurrence : la même image citée trois fois ne doit
 -- pas remplir le journal de trois lignes identiques. Même forme que les autres constats
--- de la chaîne (szh-maquette.lua) : code, champs nommés, phrase française, puis « [de] ».
+-- de la chaîne (commun.constat) : code, champs nommés, phrase française, puis « [de] ».
 local vus = {}
 
 local function signaler(fichier)
   if vus[fichier] then return end
   vus[fichier] = true
-  io.stderr:write(table.concat({
-    '[metafichier-avertissement] image-native-word',
-    'image « ' .. fichier .. ' »',
+  commun.constat('metafichier', 'avertissement', 'image-native-word',
+    { 'image « ' .. fichier .. ' »' },
     "Il y a une image native Word (" .. (fichier:lower():match('%.wmf$') and 'wmf' or 'emf')
       .. ") dans ce fichier : « " .. fichier .. " ». La chaîne ne sait pas la rendre – "
       .. "seul Windows dessine ce format. Elle est remplacée dans l'épreuve par un "
       .. "placeholder « IMAGE À REMPLACER ». À faire : ouvrez le Word, clic droit sur "
       .. "cette image > « Enregistrer en tant qu'image » au format PNG, remettez le PNG à "
       .. "sa place, puis redéposez le document pour le réimporter.",
-    '[de] Dieses Dokument enthält ein Word-Metabild (« ' .. fichier .. ' »), das die '
+    'Dieses Dokument enthält ein Word-Metabild (« ' .. fichier .. ' »), das die '
       .. 'Kette nicht rendern kann – nur Windows zeichnet dieses Format. Es wird im '
       .. 'Andruck durch einen Platzhalter « BILD ZU ERSETZEN » ersetzt. Zu tun: im Word '
-      .. 'als PNG speichern, wieder einfügen und das Dokument erneut ablegen.',
-  }, ' | ') .. '\n')
-  io.stderr:flush()
+      .. 'als PNG speichern, wieder einfügen und das Dokument erneut ablegen.')
 end
 
 -- Le texte alternatif du substitut, dans la langue du document. Un lecteur d'écran doit
@@ -171,14 +187,9 @@ local function remplacer_brut(el)
 end
 
 -- La langue se lit avant de parcourir le document : un walker Image seul ne saurait pas
--- dans quelle langue nommer ce qui manque. `lang` vient de buch.yaml pour un livre, de la
--- fiche de l'article pour un article ; en son absence, le français, langue de la maison.
+-- dans quelle langue nommer ce qui manque. Hors allemand, le français, langue de la maison.
 function Pandoc(doc)
-  local lang = doc.meta and doc.meta.lang
-  if lang then
-    local texte = pandoc.utils.stringify(lang):lower()
-    if texte:match('^de') then libelle = LIBELLE.de end
-  end
+  if commun.contexte(doc.meta).lang == 'de' then libelle = LIBELLE.de end
   return doc:walk({
     Image = remplacer_image,
     RawBlock = remplacer_brut,

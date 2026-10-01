@@ -72,6 +72,25 @@
 
 local utils = pandoc.utils
 
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[cesure] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 -- ── Classes de caractères ───────────────────────────────────────────────────────────────
 -- Points de code écrits en clair plutôt qu'un repli sur une bascule de casse : la
 -- couverture voulue est celle des trois langues de la revue, et elle se relit ici. Les
@@ -364,8 +383,7 @@ local function hisser_hors_des_liens(lien)
 end
 
 local function Pandoc(doc)
-  local lang = utils.stringify(doc.meta.lang or ''):lower():sub(1, 2)
-  if lang ~= 'fr' then return doc end
+  if commun.contexte(doc.meta).lang ~= 'fr' then return doc end
 
   local noms = {}
   -- Seuls les blocs qui portent DIRECTEMENT des inlines sont relevés. Les blocs

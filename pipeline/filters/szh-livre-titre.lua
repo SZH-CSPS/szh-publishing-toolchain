@@ -24,17 +24,28 @@
 -- Ne tourne que sur un chapitre (SZH_CHAPITRE posé par livre.mk) : une pièce liminaire ou
 -- la 4e de couverture n'ont pas de fiche, et buch.yaml écrit `titre`, pas `title`.
 
-local S = pandoc.utils.stringify
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[livre-titre] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
 local CHAPITRE = os.getenv('SZH_CHAPITRE') or ''
 
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
-end
+local texte = commun.texte
 
 -- Même règle que szh_commun.titre_lignes() en Python : « A // B » -> {'A', 'B'}.
 local function titre_lignes(s)
@@ -47,9 +58,7 @@ local function titre_lignes(s)
 end
 
 local function langue_de(meta)
-  local l = texte(meta and meta.lang)
-  if l == '' then return 'fr' end
-  return (l:lower():match('^(%a%a)')) or 'fr'
+  return commun.contexte(meta).lang
 end
 
 -- Le titre dans la langue du chapitre. Rend (titre, langue_utilisee).
@@ -72,7 +81,7 @@ local function titre_de(meta)
 end
 
 function Pandoc(doc)
-  if not LIVRE or CHAPITRE == '' then return doc end
+  if commun.contexte(doc.meta).produit ~= 'livre' or CHAPITRE == '' then return doc end
 
   local deja = false
   doc.blocks:walk({ Header = function(h) if h.level == 1 then deja = true end end })
@@ -81,9 +90,11 @@ function Pandoc(doc)
   local titre, langue_titre = titre_de(doc.meta)
   if titre == '' then return doc end
   if langue_titre ~= langue_de(doc.meta) then
-    io.stderr:write(string.format(
-      '[livre-avertissement] titre-autre-langue | chapitre « %s » | Le titre du chapitre est vide en %s dans sa fiche : celui de la langue « %s » est imprimé à la place. | [de] Der Kapiteltitel ist in der Fiche auf %s leer: stattdessen wird der Titel in « %s » gedruckt.\n',
-      texte(doc.meta.slug), langue_de(doc.meta), langue_titre, langue_de(doc.meta), langue_titre))
+    local slug, lang = texte(doc.meta.slug), langue_de(doc.meta)
+    commun.constat('livre', 'avertissement', 'titre-autre-langue',
+      { string.format('chapitre « %s »', slug) },
+      string.format('Le titre du chapitre est vide en %s dans sa fiche : celui de la langue « %s » est imprimé à la place.', lang, langue_titre),
+      string.format('Der Kapiteltitel ist in der Fiche auf %s leer: stattdessen wird der Titel in « %s » gedruckt.', lang, langue_titre))
   end
 
   -- Le titre se lit comme du markdown, exactement comme s'il avait été écrit « # Titre »

@@ -41,9 +41,28 @@ local LIAISON = '\u{00A0}'
 -- numérote (« 2 Theoretische Konzepte… ») et les sections s'y accrochent (« 2.1 »,
 -- « 2.1.1 »). SZH_CHAPITRE porte le rang du chapitre ; absent (hors livre, ou pour les
 -- pièces liminaires qui ne le reçoivent pas), RANG_CHAPITRE reste nil et tout ce qui suit
--- retombe sur le comportement d'un article, à l'identique.
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
-local RANG_CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
+-- retombe sur le comportement d'un article, à l'identique. Posé par Pandoc(doc), d'après le
+-- contexte de composition.
+local RANG_CHAPITRE = nil
+
+-- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus dire dans quelle langue il compose.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[sections] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
 local compteurs = {}
 
@@ -113,6 +132,8 @@ end
 -- rubrique seraient numérotés quand même. `false` en second retour arrête la descente
 -- (traverse = 'topdown', pandoc >= 2.17).
 function Pandoc(doc)
+  local livre = commun.contexte(doc.meta).produit == 'livre'
+  RANG_CHAPITRE = livre and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
   doc.blocks = doc.blocks:walk({
     traverse = 'topdown',
     Div = function(d) if est_rubrique(d) then return d, false end end,

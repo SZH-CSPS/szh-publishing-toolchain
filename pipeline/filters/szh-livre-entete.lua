@@ -62,9 +62,7 @@
 -- légende de figure que rien ne demandait). classer() ci-dessous lit donc ces attributs,
 -- jamais un Para/Figure d'image.
 --
--- Repère de langue : `doc.meta.lang`, deux lettres — même cascade et même repli français
--- que szh-qr.lua (pas commun.langue_de() ici : cette clé n'a pas de fiche à part à lire ni
--- de jeton de revue à consulter, juste `lang:` déjà fusionné).
+-- Repère de langue : celle du contexte de composition (szh-contexte.lua).
 --
 -- ⚠ Le lecteur `commonmark_x+sourcepos` de l'aperçu enveloppe chaque bloc IMBRIQUÉ (donc les
 -- paragraphes de texte et le Div qr-link, enfants du Div falc-header) dans un Div
@@ -99,15 +97,16 @@ if not ok_qr or type(commun_qr) ~= 'table' or type(commun_qr.construire_qr) ~= '
   os.exit(1, true)
 end
 
-local S = pandoc.utils.stringify
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
-
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
+local ok_commun, commun = pcall(dofile, DOSSIER .. 'szh-commun.lua')
+if not ok_commun or type(commun) ~= 'table' then
+  io.stderr:write('[szh-livre-entete] module szh-commun.lua introuvable ou invalide\n')
+  io.stderr:write('[szh-livre-entete] [de] Modul szh-commun.lua nicht gefunden oder ungültig\n')
+  os.exit(1, true)
 end
+
+local S = pandoc.utils.stringify
+
+local texte = commun.texte
 
 local function ech(v)
   return (texte(v):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'))
@@ -117,22 +116,13 @@ local function ech_attr(v)
 end
 
 local function langue_de(meta)
-  local l = texte(meta and meta.lang)
-  if l == '' then return 'fr' end
-  return (l:lower():match('^(%a%a)')) or 'fr'
+  return commun.contexte(meta).lang
 end
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
 local function avertir(slug, code, phrase_fr, phrase_de)
-  io.stderr:write(table.concat({
-    '[livre-entete-avertissement] ' .. code, 'chapitre « ' .. slug .. ' »', phrase_fr, '[de] ' .. phrase_de,
-  }, ' | ') .. '\n')
+  commun.constat('livre-entete', 'avertissement', code, { 'chapitre « ' .. slug .. ' »' }, phrase_fr, phrase_de)
 end
 
 -- Défait les Div « wrapper=1 » de szh-sourcepos.lua (aperçu seulement) pour lire ce qu'il y
@@ -318,7 +308,7 @@ local function est_bloc_auteurs(b)
 end
 
 function Pandoc(doc)
-  if not LIVRE then return doc end
+  if commun.contexte(doc.meta).produit ~= 'livre' then return doc end
 
   local slug = texte(doc.meta and doc.meta.slug)
   if slug == '' then slug = '?' end

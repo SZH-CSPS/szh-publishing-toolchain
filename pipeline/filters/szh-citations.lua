@@ -41,7 +41,7 @@
 
 local utils = pandoc.utils
 
--- Module commun (slug_article, trim, langue_de) : un chargement raté arrête la
+-- Module commun (slug_article, trim, contexte) : un chargement raté arrête la
 -- compilation, ce filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
 local commun
 do
@@ -91,22 +91,18 @@ local slug_article = commun.slug_article
 -- « | » sépare les champs : un texte d'article qui en porte un couperait la ligne en deux
 -- et emporterait la moitié allemande. Le seul endroit où cela peut venir du texte, c'est
 -- l'appel et l'entrée de bibliographie recopiés dans un champ.
-local function sans_barre(t) return (tostring(t):gsub('|', '/')) end
+local sans_barre = commun.sans_barre
 
--- Livre : même variable que celle que lit szh-niveaux.lua (SZH_LIVRE, posée par
--- livre.mk sur chaque recette de chapitre). Le champ nommé du constat devient alors
--- « chapitre « <slug> » » plutôt que « article « <slug> » » — le cockpit reconnaît ses
--- champs par leur nom, jamais par leur position, donc ce seul mot suffit à faire lire
--- correctement les constats de citations d'un chapitre.
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
+-- Livre (posé par Pandoc(doc), d'après le contexte de composition) : le champ nommé du
+-- constat devient « chapitre « <slug> » » plutôt que « article « <slug> » » — le cockpit
+-- reconnaît ses champs par leur nom, jamais par leur position, donc ce seul mot suffit à
+-- faire lire correctement les constats de citations d'un chapitre.
+local LIVRE = false
 
 local function constat(ton, code, champs, fr, de)
-  local morceaux = { '[citations-' .. ton .. '] ' .. code,
-                     (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »' }
-  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = sans_barre(c) end
-  morceaux[#morceaux + 1] = sans_barre(fr)
-  morceaux[#morceaux + 1] = '[de] ' .. sans_barre(de)
-  io.stderr:write(table.concat(morceaux, ' | ') .. '\n')
+  local nommes = { (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »' }
+  for _, c in ipairs(champs) do nommes[#nommes + 1] = sans_barre(c) end
+  commun.constat('citations', ton, code, nommes, sans_barre(fr), sans_barre(de))
 end
 
 local function avertir(code, champs, fr, de) constat('avertissement', code, champs, fr, de) end
@@ -591,34 +587,10 @@ local function lire_config_poste()
   return lire_json((brut:gsub('^\239\187\191', '')))   -- BOM d'anciens config.json
 end
 
--- Jeton de revue, lu dans les métadonnées : ausgabe.yaml est le seul des deux fichiers de
--- métadonnées à porter `revue`, la fusion de pandoc ne prête donc pas à confusion.
-local function jeton_revue(meta)
-  local v = utils.stringify(meta and meta.revue or ''):lower()
-  if v:find('zeitschrift') then return 'zeitschrift' end
-  return 'revue'
-end
-
--- Langue de composition de l'article, dans l'ordre où szh-maquette.lua l'établit : la fiche
--- d'abord, la revue ensuite. La fiche est relue au lieu d'être prise dans les métadonnées
--- fusionnées, qui ne disent pas de quel fichier une clé vient — même arbitrage, et même
--- dette, que szh-maquette.
--- Un livre n'a pas de <slug>.meta.yaml : meta.lang (buch.yaml) s'intercale avant le repli sur
--- la revue ; sans effet pour la revue, dont la fiche porte toujours lang (szh-maquette.lua bloque sinon).
-local function langue_article(slug, revue, meta)
-  return commun.langue_de(meta, {
-    slug = slug,
-    lire_fiche = true,
-    variante_fiche = 'guillemets_simples',
-    -- Pas de langues_valides : une fiche qui porte quoi que ce soit sur sa ligne « lang: »
-    -- l'emporte, sans validation — à la différence de szh-maquette.lua, qui bloque.
-    repli = function(m)
-      local v = utils.stringify(m and m.lang or ''):lower():sub(1, 2)
-      if v ~= '' then return v end
-      return nil
-    end,
-    defaut = (revue == 'zeitschrift') and 'de' or 'fr',
-  })
+-- Jeu de titres par défaut : celui de la Zeitschrift, ou celui de la revue, que le livre
+-- reprend.
+local function jeton_revue(contexte)
+  return contexte.produit == 'zeitschrift' and 'zeitschrift' or 'revue'
 end
 
 -- « Références bibliographiques » en inlines pandoc : un Str par mot, un Space entre. Un
@@ -633,9 +605,10 @@ local function inlines_du_titre(titre)
   return pandoc.Inlines(out)
 end
 
-local function titre_bibliographie(meta, slug)
-  local revue = jeton_revue(meta)
-  local lang = langue_article(slug, revue, meta)
+local function titre_bibliographie(meta)
+  local contexte = commun.contexte(meta)
+  local revue = jeton_revue(contexte)
+  local lang = contexte.lang
   local defauts = TITRES_BIBLIO_DEFAUT[revue] or TITRES_BIBLIO_DEFAUT.revue
   local titre = defauts[lang] or defauts.fr
   local cfg = lire_config_poste()
@@ -1069,7 +1042,7 @@ local function resoudre_biblio(doc, slug)
       else
         local entrees = pandoc.read(contenu, 'markdown').blocks
         if #entrees > 0 then
-          local titre = titre_bibliographie(doc.meta, slug)
+          local titre = titre_bibliographie(doc.meta)
           if titre ~= '' then
             -- Identifiant fixe et préfixé : le lecteur markdown en pose un sur les titres
             -- du corps, pas sur celui-ci, qui n'est pas dans le texte. « szh- » le met hors
@@ -1104,9 +1077,10 @@ function Pandoc(doc)
   -- « ::: {.szh-biblio src=…} » à sa place. On la résout ici — c'est le patron des
   -- tableaux — et on pose le titre, que le texte ne porte plus.
   local slug = slug_article()
-  -- Langue de la flèche retour (aria-label, FR/DE) : même calcul que le titre de
-  -- bibliographie, dont c'est la seule autre consommatrice — pas de troisième copie.
-  local LANG_RETOUR = langue_article(slug, jeton_revue(doc.meta), doc.meta)
+  local contexte = commun.contexte(doc.meta)
+  LIVRE = contexte.produit == 'livre'
+  -- Langue de la flèche retour (aria-label, FR/DE).
+  local LANG_RETOUR = contexte.lang
   local blocs, premiere, derniere_liste = resoudre_biblio(doc, slug)
 
   -- Repli, et nommé comme tel : un article importé avant que la bibliographie devienne un

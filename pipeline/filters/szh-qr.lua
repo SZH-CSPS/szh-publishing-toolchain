@@ -63,35 +63,26 @@ if not ok_charge or type(commun_qr) ~= 'table' or type(commun_qr.svg_qr) ~= 'fun
   os.exit(1, true)
 end
 
+local ok_commun, commun = pcall(dofile, DOSSIER .. 'szh-commun.lua')
+if not ok_commun or type(commun) ~= 'table' then
+  io.stderr:write('[szh-qr] module szh-commun.lua introuvable ou invalide\n')
+  io.stderr:write('[szh-qr] [de] Modul szh-commun.lua nicht gefunden oder ungültig\n')
+  os.exit(1, true)
+end
+
 local S = pandoc.utils.stringify
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
-local function texte(v)
-  if v == nil then return '' end
-  local ok, r = pcall(S, v)
-  if not ok then return '' end
-  return (r:gsub('^%s+', ''):gsub('%s+$', ''))
-end
+local texte = commun.texte
 
--- Même repli que szh-livre-ecouter.lua avant lui : `lang:` déjà fusionné dans la fiche du
--- chapitre, pas de jeton de revue à consulter ici (voir szh-commun.lua, M.langue_de, pensé
--- pour un autre usage).
+-- Langue du contexte de composition (szh-contexte.lua).
 local function langue_de(meta)
-  local l = texte(meta and meta.lang)
-  if l == '' then return 'fr' end
-  return (l:lower():match('^(%a%a)')) or 'fr'
+  return commun.contexte(meta).lang
 end
 
 local function avertir(slug, code, phrase_fr, phrase_de)
-  io.stderr:write(table.concat({
-    '[qr-avertissement] ' .. code, 'chapitre « ' .. slug .. ' »', phrase_fr, '[de] ' .. phrase_de,
-  }, ' | ') .. '\n')
+  commun.constat('qr', 'avertissement', code, { 'chapitre « ' .. slug .. ' »' }, phrase_fr, phrase_de)
 end
 
 -- Un lien `.qr` : options identiques au bloc qr-link, en attributs du lien markdown.

@@ -29,12 +29,13 @@
 --   (ISO 14289-1 7.4.2-1, « un niveau de titre est sauté »). Un lecteur d'écran y perd le
 --   plan du document. Le compactage est donc branché des deux côtés ; seul le h1 du
 --   chapitre est mis à part.
-local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
+-- Posé par Pandoc(doc), d'après le contexte de composition.
+local LIVRE = false
 local MIN_CIBLE = 2
 local MAX_CIBLE = 6
 
--- Module commun (slug_article) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus nommer l'article dans ses messages sans lui.
+-- Module commun (slug_article, contexte) : un chargement raté arrête la compilation, ce
+-- filtre ne pouvant plus nommer l'article dans ses messages sans lui.
 local commun
 do
   -- debug.getinfo, pas PANDOC_SCRIPT_FILE : voir szh-commun.lua (celui-ci nomme le script
@@ -104,6 +105,7 @@ local function parcourir_hors_rubriques(cible, sur_titre)
 end
 
 function Pandoc(doc)
+  LIVRE = commun.contexte(doc.meta).produit == 'livre'
   local presents = {}
   parcourir_hors_rubriques(doc,
     -- En mode livre, le h1 est le titre du chapitre : il garde son rang et ne participe

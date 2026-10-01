@@ -26,6 +26,24 @@
 
 local utils = pandoc.utils
 
+-- Module commun (constats) : un chargement raté arrête la conversion.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[biblio-detacher] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 -- Clé d'appariement : les quarante premiers caractères [A-Za-z0-9], et rien d'autre.
 -- Identique à cle_comparaison() de docx-meta.py, classe par classe explicite des deux
 -- côtés. Ce que le .docx et pandoc ne rendent pas pareil — tiret insécable, caractère en
@@ -40,20 +58,12 @@ end
 -- stderr et articles-word/.import.log, comme avertir() de docx-meta.py : c'est dans la vue
 -- « Word » que le rédacteur regarde après une conversion.
 local function constat(ton, code, champs, fr, de)
-  local morceaux = { '[import-' .. ton .. '] ' .. code }
-  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = (tostring(c):gsub('|', '/')) end
-  morceaux[#morceaux + 1] = (fr:gsub('|', '/'))
-  morceaux[#morceaux + 1] = '[de] ' .. (de:gsub('|', '/'))
-  local ligne = table.concat(morceaux, ' | ')
+  local nommes = {}
+  for _, c in ipairs(champs) do nommes[#nommes + 1] = commun.sans_barre(c) end
+  local ligne = commun.ligne_constat('import', ton, code, nommes,
+    commun.sans_barre(fr), commun.sans_barre(de))
   io.stderr:write(ligne .. '\n')
-  local journal = os.getenv('SZH_IMPORT_LOG')
-  if journal and journal ~= '' then
-    local f = io.open(journal, 'a')
-    if f then
-      f:write(ligne .. '\n')
-      f:close()
-    end
-  end
+  commun.journaliser(ligne)
 end
 
 local function slug_article()

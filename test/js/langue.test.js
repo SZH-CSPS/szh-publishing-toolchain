@@ -29,6 +29,15 @@ const { TEXTES_COCKPIT } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const MAQUETTE = lire('pipeline', 'filters', 'szh-maquette.lua');
 const NUMEROTATION = lire('pipeline', 'filters', 'szh-numerotation.lua');
+const COMMUN = lire('pipeline', 'filters', 'szh-commun.lua');
+const CONTEXTE = lire('pipeline', 'filters', 'szh-contexte.lua');
+// Corps d'une fonction Lua de premier niveau, jusqu'au « end » de sa colonne.
+function corpsLua(src, entete) {
+  const debut = src.indexOf(entete);
+  assert.ok(debut !== -1, 'fonction introuvable : ' + entete);
+  const fin = src.indexOf('\nend\n', debut);
+  return src.slice(debut, fin === -1 ? undefined : fin);
+}
 
 // ---- La fiche d'article ----
 
@@ -76,7 +85,7 @@ test('fiche d’article : les clés inconnues survivent à un aller-retour avec 
 // ---- Ce qui se recopie d'un fichier à l'autre ----
 
 test('langues de la revue : une seule liste, trois fichiers', () => {
-  // yaml.js décide, _commun.js propose, szh-maquette.lua tranche au rendu. Une liste qui
+  // yaml.js décide, _commun.js propose, szh-commun.lua tranche au rendu. Une liste qui
   // diverge, et le formulaire offrirait une langue que la maquette refuse.
   const commun = lire('vscodium-extension', 'szh-cockpit', 'media', '_commun.js');
   const mCommun = commun.match(/var LANGUES_CHOIX = \[([^\]]*)\]/);
@@ -84,38 +93,57 @@ test('langues de la revue : une seule liste, trois fichiers', () => {
   const duCommun = mCommun[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean);
   assert.deepStrictEqual(duCommun, yaml.LANGUES_ARTICLE.slice());
 
-  const mLua = MAQUETTE.match(/local LANGUES = \{([^}]*)\}/);
-  assert.ok(mLua, 'table LANGUES introuvable dans szh-maquette.lua');
+  const mLua = COMMUN.match(/^M\.LANGUES = \{([^}]*)\}/m);
+  assert.ok(mLua, 'table M.LANGUES introuvable dans szh-commun.lua');
   const duLua = (mLua[1].match(/([a-z]{2}) = true/g) || []).map((s) => s.slice(0, 2));
   assert.deepStrictEqual(duLua.slice().sort(), yaml.LANGUES_ARTICLE.slice().sort());
+  // Et c'est cette liste-là qui valide la fiche, aucune autre.
+  assert.match(corpsLua(COMMUN, 'function M.calculer_contexte'), /langues_valides = M\.LANGUES,/,
+    'calculer_contexte ne valide plus la fiche contre M.LANGUES');
+  for (const f of fs.readdirSync(path.join(RACINE, 'pipeline', 'filters')).filter((n) => n.endsWith('.lua'))) {
+    if (f === 'szh-commun.lua') { continue; }
+    assert.ok(!/local LANGUES\s*=\s*\{/.test(lire('pipeline', 'filters', f)),
+      f + ' redéclare sa propre liste de langues');
+  }
 });
 
 test('les deux filtres résolvent la langue via le module commun', () => {
   // szh-numerotation tourne aussi dans la chaîne d'aperçu, où szh-maquette n'est pas
-  // branché : sans cette lecture, l'aperçu dirait « Figure » et le PDF « Abbildung ». Les
-  // deux filtres délèguent désormais la lecture de la fiche à commun.langue_de() — c'est
-  // le nom de la fonction commune et de ses options qui font foi ici, plus aucun code
-  // local ne la reproduit.
+  // branché : sans une langue commune, l'aperçu dirait « Figure » et le PDF « Abbildung ».
+  // La langue se calcule une fois, dans calculer_contexte() de szh-commun.lua, que
+  // szh-contexte.lua pose en tête de chaîne ; les deux filtres la relisent par
+  // commun.contexte().
+  assert.match(CONTEXTE, /commun\.calculer_contexte\(meta,/, 'szh-contexte.lua ne calcule plus le contexte');
+  assert.match(CONTEXTE, /meta\.lang = pandoc\.MetaString\(c\.lang\)/, 'szh-contexte.lua ne pose plus meta.lang');
   for (const [nom, src] of [['szh-maquette', MAQUETTE], ['szh-numerotation', NUMEROTATION]]) {
     assert.ok(src.indexOf("dofile, dossier_ce_fichier() .. 'szh-commun.lua'") !== -1,
       nom + ' ne charge plus szh-commun.lua par dofile');
-    assert.match(src, /commun\.langue_de\(meta,/,
-      nom + ' ne résout plus la langue via la fonction commune langue_de()');
-    assert.match(src, /lire_fiche = true,/, nom + ' ne lit plus la fiche de l’article');
+    assert.match(src, /commun\.contexte\((doc\.)?meta\b/, nom + ' ne lit plus le contexte commun');
+    assert.ok(!/langue_de\(/.test(src.replace(/^\s*--.*$/gm, '')), nom + ' a retrouvé sa propre résolution de langue');
   }
-  // Chaque filtre garde son propre ensemble de langues acceptées pour la fiche : les trois
-  // de la revue pour szh-maquette (qui bloque hors de cet ensemble, voir fiche_invalide
-  // plus bas), plus l'anglais des libellés de figure pour szh-numerotation (qui ne bloque
-  // jamais, un article mal rempli ne devant pas empêcher l'aperçu).
-  assert.match(MAQUETTE, /langues_valides = LANGUES,/,
-    'szh-maquette ne valide plus la fiche contre les trois langues de la revue');
-  assert.match(NUMEROTATION, /langues_valides = LIBELLE_FIGURE,/,
-    'szh-numerotation ne valide plus la fiche contre ses libellés');
-  // Et, dans le repli de szh-numerotation — atteint seulement si la fiche est absente ou
-  // hors liste — le jeton de revue passe toujours devant meta.lang du numéro.
-  const repli = NUMEROTATION.slice(NUMEROTATION.indexOf('local function langue_de'));
-  assert.ok(repli.indexOf("revue:find('zeitschrift')") < repli.indexOf('m.lang'),
-    'szh-numerotation : le jeton de revue doit encore passer devant meta.lang dans le repli');
+  // La cascade elle-même : la fiche, validée, puis le jeton de revue AVANT la langue du
+  // numéro, puis le français.
+  const calcul = corpsLua(COMMUN, 'function M.calculer_contexte');
+  assert.match(calcul, /M\.langue_de\(m, \{\s*\n\s*lire_fiche = true,/, 'la fiche n’est plus lue en premier');
+  assert.ok(calcul.indexOf("lang_revue ~= '' and lang_revue") !== -1
+    && calcul.indexOf("lang_revue ~= '' and lang_revue") < calcul.indexOf('M.LANGUES[lang_numero]'),
+    'le jeton de revue doit passer devant la langue du numéro');
+  assert.ok(calcul.indexOf("getenv('SZH_AUSGABE')") < calcul.indexOf('M.texte(m.lang)'),
+    'la langue du numéro se relit dans SZH_AUSGABE avant meta.lang, que la fiche a pu écraser');
+});
+
+test('aucune cascade de langue locale : seul szh-commun.lua lit la fiche ou SZH_LIVRE', () => {
+  // Une cascade recopiée dans un filtre, c'est un aperçu qui finit par parler une autre
+  // langue que le PDF. Hors du module commun, aucun filtre ne relit `lang:` dans un fichier,
+  // ne recalcule la langue depuis le jeton de revue ni ne lit SZH_LIVRE.
+  for (const f of fs.readdirSync(path.join(RACINE, 'pipeline', 'filters')).filter((n) => n.endsWith('.lua'))) {
+    if (f === 'szh-commun.lua') { continue; }
+    const code = lire('pipeline', 'filters', f).replace(/^\s*--.*$/gm, '');
+    assert.ok(!/['"]\^?lang:|,\s*['"]lang['"]\s*\)/.test(code), f + ' lit `lang:` dans un fichier');
+    assert.ok(!/getenv\(\s*['"]SZH_LIVRE['"]/.test(code), f + ' lit SZH_LIVRE au lieu du contexte');
+    assert.ok(!/commun\.langue_de\(|commun\.lang_fiche\(/.test(code), f + ' refait la cascade du module commun');
+    assert.ok(!/find\(['"]zeitschrift['"]\)/.test(code), f + ' reconnaît la Zeitschrift lui-même, au lieu de szh-produit');
+  }
 });
 
 test('szh-maquette : plus de repli silencieux sur une autre langue', () => {
@@ -143,10 +171,22 @@ test('szh-maquette : chaque message nomme l’article, le champ et le geste', ()
   // faire ne vaut pas mieux que le silence d'avant.
   for (const langue of ['fr', 'de']) {
     const bloc = MAQUETTE.slice(MAQUETTE.indexOf('  ' + langue + ' = {', MAQUETTE.indexOf('local MESSAGES')));
-    for (const cle of ['sans_langue', 'langue_inconnue', 'champ_vide', 'marque_motcle', 'marque_champ']) {
+    for (const cle of ['champ_vide', 'marque_motcle', 'marque_champ']) {
       assert.ok(bloc.indexOf(cle + ' = function') !== -1,
         'message « ' + cle + ' » absent en ' + langue);
     }
+  }
+  // Les deux messages de langue vivent avec le calcul de la langue, dans szh-commun.lua :
+  // chacun porte sa phrase française, puis l'allemande.
+  for (const [entete, code] of [['local function avertir_sans_langue', 'sans-langue'],
+    ['local function bloquer_langue_inconnue', 'langue-inconnue']]) {
+    const corps = corpsLua(COMMUN, entete);
+    assert.ok(corps.indexOf("'" + code + "'") !== -1, entete + ' : code « ' + code + ' » absent');
+    assert.ok(/'Article «[ \u00A0]' \.\. slug/.test(corps), entete + ' : phrase française absente');
+    assert.ok(corps.indexOf("'Artikel «' .. slug") !== -1, entete + ' : phrase allemande absente');
+    assert.ok(/Métadonnées de l’article/.test(corps) && /Metadaten der Artikel/.test(corps),
+      entete + ' : le geste qui corrige n’est plus nommé');
+    assert.ok(corps.indexOf('ß') === -1, entete + ' : ß dans le message allemand');
   }
   // L'allemand de la maison s'écrit en « ss ».
   const debutDe = MAQUETTE.indexOf('  de = {', MAQUETTE.indexOf('local MESSAGES'));
@@ -216,14 +256,15 @@ test('métadonnées des articles : le choix suit la langue du numéro', () => {
 // ---- La cascade de langue à la compilation ----
 
 test('szh-maquette : la langue déclarée prime — un article IT dans une revue FR sort en IT', () => {
-  // La cascade fiche > repli (lang_num) vit dans l'appel à commun.langue_de() : la langue
-  // de la fiche est prise telle quelle dès qu'elle est déclarée et valide — et « une
-  // seule liste, trois fichiers » garantit plus haut que l'italien fait partie des
-  // langues acceptées (langues_valides = LANGUES).
-  assert.match(MAQUETTE, /local lang = commun\.langue_de\(meta, \{/,
-    'la maquette ne résout plus la langue via la fonction commune');
-  assert.match(MAQUETTE, /lire_fiche = true,\s*\n\s*langues_valides = LANGUES,/,
-    'la fiche n’est plus lue et validée avant le repli sur la langue du numéro');
+  // La langue de la fiche est prise telle quelle dès qu'elle est déclarée et valide, avant
+  // tout repli — et « une seule liste, trois fichiers » garantit plus haut que l'italien
+  // fait partie des langues acceptées (M.LANGUES).
+  const fiche = corpsLua(COMMUN, 'function M.langue_de');
+  assert.ok(fiche.indexOf('if correcte(brut) then return brut end') !== -1
+    && fiche.indexOf('if correcte(brut) then return brut end') < fiche.indexOf('o.repli(meta)'),
+    'une langue de fiche valide ne passe plus devant le repli sur la langue du numéro');
+  assert.match(MAQUETTE, /local lang = contexte\.lang\b/,
+    'la maquette ne prend plus la langue du contexte commun');
   // …et c'est ce `lang` que pandoc reçoit et que le gabarit imprime : <html lang="it">
   // pour un article italien, quelle que soit la revue.
   assert.match(MAQUETTE, /meta\['lang'\] = pandoc\.MetaString\(lang\)/,

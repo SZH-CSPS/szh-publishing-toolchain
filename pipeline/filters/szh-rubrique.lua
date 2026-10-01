@@ -83,21 +83,28 @@
 -- les sections de fiches restaient sans titre imprimé, seules les rubriques en avaient un
 -- — les fiches horizon/recherche se rangeaient visuellement sous la dernière rubrique.
 
-local utils = pandoc.utils
-
 local CLASSE = 'szh-rubrique'
 local CLASSE_SECTION = 'szh-ressources-section'
 
 -- Chargement du contrat JSON, chemin résolu depuis le dossier de CE fichier (même
 -- mécanisme que szh-ressource.lua, largement commenté là-bas). Un chargement raté arrête
--- la compilation : ce filtre ne peut pas composer un titre de rubrique sans lui.
+-- la compilation : ce filtre ne peut pas composer un titre de rubrique sans lui. Le module
+-- commun (contexte, a_classe) se charge au même endroit, avec la même règle.
 local TITRES
+local commun
 do
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
     return source:match('^(.*[/\\])') or ''
   end
+  local ok_commun, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok_commun or type(module) ~= 'table' then
+    io.stderr:write('[rubrique] szh-commun.lua introuvable ou fautif (' .. tostring(module) ..
+      ') : ce filtre ne peut pas composer sans lui, arret.\n')
+    os.exit(1, true)
+  end
+  commun = module
   local chemin = dossier_ce_fichier() .. '../kirby/champs-documentation.json'
   local fh = io.open(chemin, 'r')
   if not fh then
@@ -125,24 +132,7 @@ do
   end
 end
 
--- Langue de composition : même idiome que langue_de() de szh-ressource.lua, recopié tel
--- quel (voir son commentaire pour le pourquoi de la simplification par rapport à la
--- version de szh-numerotation.lua) — meta.lang de l'article d'abord, puis le jeton de
--- revue, puis le français.
-local function langue_de(meta)
-  local l = utils.stringify(meta and meta.lang or ''):lower():match('^(%a%a)')
-  if l == 'fr' or l == 'de' then return l end
-  local revue = utils.stringify(meta and meta.revue or ''):lower()
-  if revue:find('zeitschrift') then return 'de' end
-  return 'fr'
-end
-
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
 -- Un type dont le nom ne peut pas casser la liste de classes HTML (espace, accolade…) —
 -- même contrôle que type_sain() de szh-ressource.lua. Les clés du JSON portent un
@@ -243,7 +233,9 @@ local function section_titree(div, classe, lang, rabattre)
 end
 
 function Pandoc(doc)
-  local lang = langue_de(doc.meta)
+  -- Le contrat de la Documentation n'existe qu'en français et en allemand.
+  local lang = commun.contexte(doc.meta).lang
+  if lang ~= 'de' then lang = 'fr' end
 
   doc.blocks = doc.blocks:walk({
     Div = function(div)

@@ -61,7 +61,7 @@
 
 local utils = pandoc.utils
 
--- Module commun (a_classe, langue_de...) : un chargement raté arrête la compilation, ce
+-- Module commun (a_classe, contexte...) : un chargement raté arrête la compilation, ce
 -- filtre ne pouvant plus dire de langue fiable sans lui.
 local commun
 do
@@ -253,26 +253,6 @@ local function formater_champ(type_, cle, v, lang)
   return v
 end
 
--- Langue de composition, simplifiée par rapport à langue_de() de szh-numerotation.lua (qui
--- lit en plus la fiche <slug>.meta.yaml pour départager, dans les métadonnées fusionnées,
--- un lang: d'article d'un lang: de numéro). Un lien mal traduit reste lisible ; une figure
--- mal numérotée ne l'est pas — la duplication complète n'apporterait rien ici.
--- meta.lang de l'article d'abord, puis le jeton de revue, puis le français. lire_fiche
--- omis (faux) : ce filtre ne lit que les métadonnées déjà fusionnées par pandoc, jamais la
--- fiche sur le disque.
-local function langue_de(meta)
-  return commun.langue_de(meta, {
-    repli = function(m)
-      local l = utils.stringify(m and m.lang or ''):lower():match('^(%a%a)')
-      if l == 'fr' or l == 'de' then return l end
-      local revue = utils.stringify(m and m.revue or ''):lower()
-      if revue:find('zeitschrift') then return 'de' end
-      return nil
-    end,
-    defaut = 'fr',
-  })
-end
-
 local a_classe = commun.a_classe
 
 -- L'image seule d'un Para/Plain, si elle n'est accompagnée que d'espaces — même lecture
@@ -381,7 +361,9 @@ local function type_sain(t) return t ~= nil and t:match('^%a[%w_%-]*$') ~= nil e
 local CLASSE_SUIVI_ENTREE = 'szh-suivi-entree'
 
 function Pandoc(doc)
-  local lang = langue_de(doc.meta)
+  -- Le contrat de la Documentation n'existe qu'en français et en allemand.
+  local lang = commun.contexte(doc.meta).lang
+  if lang ~= 'de' then lang = 'fr' end
 
   doc.blocks = doc.blocks:walk({
     Div = function(div)

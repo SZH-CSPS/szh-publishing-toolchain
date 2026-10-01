@@ -92,7 +92,13 @@ CMJN, que ni les navigateurs ni WeasyPrint n'affichent correctement, sont conver
 À la compilation, Pandoc produit un HTML autonome — images et feuilles de style embarquées en
 base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF/UA. La même source
 donne aussi un aperçu HTML cliquable pour la colonne de droite de l'éditeur, et, à la demande,
-un galley DOCX pour l'export OJS. Le détail — quelle sortie vient de quel lecteur pandoc, ce
+un galley DOCX pour l'export OJS. Les chaînes de filtres Lua sont déclarées une fois, dans
+`pipeline/filtres.mk`, et chacune s'ouvre sur `szh-contexte.lua` : il fixe une fois la langue
+de composition (`meta.lang`), le produit (`szh-produit` : `revue`, `zeitschrift` ou `livre`)
+et l'unité (`szh-unite` : `article` ou `chapitre`), que les filtres suivants relisent au lieu
+de refaire chacun leur cascade. La langue suit un seul ordre : la fiche `<slug>.meta.yaml`,
+puis le jeton de revue, puis le `lang:` du numéro ou de `buch.yaml`, puis le français ; seules
+fr, de et it sont acceptées. Le détail — quelle sortie vient de quel lecteur pandoc, ce
 que le site fait du HTML qu'il reçoit, et l'organisation des feuilles de style — est dans
 [`SORTIES.md`](SORTIES.md).
 
@@ -110,8 +116,9 @@ le Makefile lit ainsi une clé exactement comme pandoc la relira à la compilati
 sed/grep d'origine qui ne comprenait que la forme la plus simple d'une clé. Deux modules
 évitent la copie entre scripts : `pipeline/szh_commun.py` (avertir, lire_yaml, slugifier,
 écriture atomique), importé par les scripts Python d'import et de scission, et
-`pipeline/filters/szh-commun.lua` (slug_article, langue_de, a_classe, trim), chargé par
-`dofile` par huit filtres. La feuille `pipeline/styles/partage-filtres.css` porte les règles des
+`pipeline/filters/szh-commun.lua` (le contexte de composition, slug_article, a_classe,
+texte, lire_cle, l'émetteur de constats `constat`), chargé par `dofile` par la plupart des
+filtres. La feuille `pipeline/styles/partage-filtres.css` porte les règles des
 composants que ces filtres communs posent — une grille d'images, la description longue d'un
 tableau, un appel de citation orphelin — et s'empile après la maquette de la revue
 (`print.css`) et après la base et la charte du livre : le détail de la pile est dans
@@ -177,13 +184,25 @@ Deux formats de message comptent ici, et ils sont contractuels :
   qu'un repli d'affichage : elle se reformule sans rien casser. Jamais de « ⚠ » sur ces
   lignes — `lireRapportImport()` classe « danger » toute ligne qui en porte un, et un
   avertissement non bloquant s'y déguiserait en import raté.
-  Émetteurs : `docx-meta.py`, `docx-tables.py`, `reimporter.py` et le `Makefile` sous
-  `[import-avertissement]` ; `szh-maquette.lua` sous `[meta-blocage]` / `[meta-avertissement]` ;
+  Côté Lua, une seule fonction écrit ces lignes : `constat()` de `filters/szh-commun.lua`,
+  miroir de `szh_commun.formater_avertissement`.
+  Émetteurs : `docx-meta.py`, `docx-tables.py`, `reimporter.py`, le `Makefile`,
+  `szh-biblio-detacher.lua` et `szh-legendes.lua` sous `[import-avertissement]` /
+  `[import-info]` ; `szh-contexte.lua` et `szh-maquette.lua` sous `[meta-blocage]` /
+  `[meta-avertissement]` (`sans-langue`, `langue-inconnue`, `champ-vide`, `marque-motcle`,
+  `marque-champ`) ;
   `szh-citations.lua` sous `[citations-avertissement]` / `[citations-info]` ; côté livre,
   `profils/livre.mk` sous `[livre-avertissement]` (`chapitre-ecarte`, `chapitre-introuvable`)
   et `livre-assembler.py` sous `[livre-blocage]` (`liminaire-introuvable`) ; `szh-numerotation.lua`
   sous `[numerotation-avertissement]` (`figure-sans-alt`, une image sans texte alternatif ni
-  légende), à la passe d'aperçu seulement.
+  légende), à la passe d'aperçu seulement ; `szh-typographie.lua` sous `[typo-avertissement]`
+  (`eszett`, `guillemets-droits`, `majuscule-accentuee`) ; `szh-metafichier.lua` sous
+  `[metafichier-avertissement]` (`image-native-word`, `placeholder-introuvable`) ; côté livre
+  encore, `szh-qr.lua` sous `[qr-avertissement]` (`qr-link-vide`, `qr-contraste-insuffisant`,
+  `qr-couleur-non-noire-imprimeur`), `szh-livre-entete.lua` sous
+  `[livre-entete-avertissement]` (`bloc-vide`, `image-sans-alt`, `plusieurs-images`,
+  `qr-link-vide`, `plusieurs-falc-header`) et `szh-livre-titre.lua` sous
+  `[livre-avertissement]` (`titre-autre-langue`).
 - `[prefixe] …` en français, `[prefixe] [de] …` en allemand, ou les deux moitiés sur une
   seule ligne séparées par `[de] `. Le pipeline n'a pas de mécanisme de locale, en shell
   comme en Python : il écrit les deux et l'interface choisit. C'est ce qui reste au

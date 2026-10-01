@@ -111,62 +111,31 @@ local SLUG = ''
 local vus = {}
 local constats = {}
 
--- ---------------------------------------------------------------- lecture de la fiche
---
--- Même lecture que szh-maquette.lua, volontairement minimale : une clé de premier niveau,
--- un scalaire, guillemets retirés. Le pipeline ne dispose d'aucun lecteur YAML.
-local function parse_scalar(v)
-  v = (v or ''):gsub('%s+$', ''):gsub('^%s+', '')
-  v = v:gsub('^#.*$', '')
-  local q = v:match('^"(.*)"$') or v:match("^'(.*)'$")
-  return q or v
-end
-
-local function lire_cle(chemin, cle)
-  if not chemin or chemin == '' then return '' end
-  local fh = io.open(chemin, 'r')
-  if not fh then return '' end
-  local valeur = ''
-  for ligne in fh:lines() do
-    local m = ligne:match('^' .. cle .. ':%s*(.*)$')
-    if m then valeur = parse_scalar(m); break end
+-- Module commun (contexte, slug_article) : un chargement raté arrête la compilation, ce
+-- filtre ne pouvant plus dire dans quelle langue composer.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
   end
-  fh:close()
-  return valeur
-end
-
-local function slug_entree()
-  local fichiers = (PANDOC_STATE or {}).input_files or {}
-  local chemin = fichiers[1]
-  if type(chemin) ~= 'string' then return '' end
-  return (chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''))
-end
-
--- Trois sources, dans cet ordre : la langue que szh-maquette a déjà arrêtée (chaîne de
--- compilation), la fiche de l'article (chaîne d'aperçu, qui ne charge pas szh-maquette),
--- puis le numéro. Aucune n'invente : szh-maquette reste le seul endroit où la règle de
--- repli est écrite, et l'aperçu ne fait que relire la même clé du même fichier.
-local function resoudre_langue(meta)
-  local candidats = {}
-  if meta and meta.lang then
-    candidats[#candidats + 1] = pandoc.utils.stringify(meta.lang)
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[typographie] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
   end
-  SLUG = slug_entree()
-  if SLUG ~= '' then candidats[#candidats + 1] = lire_cle(SLUG .. '.meta.yaml', 'lang') end
-  candidats[#candidats + 1] = lire_cle(os.getenv('SZH_AUSGABE'), 'lang')
-  for _, c in ipairs(candidats) do
-    local court = tostring(c or ''):lower():sub(1, 2)
-    if court == 'fr' or court == 'de' or court == 'it' then return court end
-  end
-  return 'fr'
+  commun = module
 end
 
 -- ------------------------------------------------------------------------- les constats
 --
 -- « | » sépare les champs : un mot du texte qui en porterait un couperait la ligne en
--- deux. Même protection que szh-citations.lua (sans_barre) ; le cas ne peut guère se
--- produire pour un mot, mais autant s'en prémunir au même endroit qu'ailleurs.
-local function sans_barre(t) return (tostring(t):gsub('|', '/')) end
+-- deux. Même protection qu'ailleurs (commun.sans_barre) ; le cas ne peut guère se produire
+-- pour un mot, mais autant s'en prémunir au même endroit qu'ailleurs.
+local sans_barre = commun.sans_barre
 
 -- Le mot qui contient l'octet de position `pos` (telle que la rend t:find) dans `t` : ses
 -- bornes sont les caractères qui l'entourent jusqu'à la première espace de part et
@@ -204,10 +173,10 @@ end
 local function signaler(code, mot, phrase_fr, phrase_de)
   if vus[code] then return end
   vus[code] = true
-  local champ_mot = ''
-  if mot ~= nil and mot ~= '' then champ_mot = ' | mot « ' .. sans_barre(mot) .. ' »' end
-  constats[#constats + 1] = '[typo-avertissement] ' .. code ..
-    ' | article « ' .. SLUG .. ' »' .. champ_mot .. ' | ' .. phrase_fr .. ' | [de] ' .. phrase_de
+  local champs = { 'article « ' .. SLUG .. ' »' }
+  if mot ~= nil and mot ~= '' then champs[2] = 'mot « ' .. sans_barre(mot) .. ' »' end
+  constats[#constats + 1] = commun.ligne_constat('typo', 'avertissement', code, champs,
+    phrase_fr, phrase_de)
 end
 
 -- ------------------------------------------------------ règles internes à une chaîne
@@ -1202,8 +1171,9 @@ end
 -- passe avant les blocs ; ainsi elle ne se pose pas.
 
 local function poser_langue(meta)
-  LANGUE = resoudre_langue(meta)
+  LANGUE = commun.contexte(meta).lang
   COLLEE = (LANGUE ~= 'fr')
+  SLUG = commun.slug_article()
   return nil
 end
 

@@ -28,7 +28,7 @@
 
 local utils = pandoc.utils
 
--- Module commun (slug_article, langue_de) : un chargement raté arrête la compilation, ce
+-- Module commun (slug_article, contexte) : un chargement raté arrête la compilation, ce
 -- filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
 local commun
 do
@@ -55,45 +55,10 @@ local function S(v)
   return (utils.stringify(v):gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- Analyse un scalaire YAML « nu / "..." / '...' » (miroir de decouperValeurYaml).
-local function parse_scalar(reste)
-  reste = reste:gsub('%s+$', '')
-  local q = reste:sub(1, 1)
-  if q == '"' then
-    local fin = 2
-    while fin <= #reste do
-      local c = reste:sub(fin, fin)
-      if c == '\\' then fin = fin + 2
-      elseif c == '"' then break
-      else fin = fin + 1 end
-    end
-    return reste:sub(2, fin - 1):gsub('\\(["\\])', '%1')
-  elseif q == "'" then
-    local m = reste:match("^'(.-)'%s*$")
-    if m then return (m:gsub("''", "'")) end
-  end
-  -- nu : coupe au commentaire « espace(s) + # »
-  local pos = reste:find('%s+#')
-  if reste:sub(1, 1) == '#' then return '' end
-  if pos then reste = reste:sub(1, pos - 1) end
-  return (reste:gsub('^%s+', ''):gsub('%s+$', ''))
-end
-
--- Valeur d'une clé scalaire de premier niveau d'un YAML plat, hors pandoc, ou ''. Sert
--- à ausgabe.yaml (titre du dossier, langue du numéro) et à la fiche de l'article : la
--- fusion de pandoc, elle, ne dit pas de quel fichier une clé vient.
-local function lire_cle(chemin, cle)
-  if not chemin or chemin == '' then return '' end
-  local fh = io.open(chemin, 'r')
-  if not fh then return '' end
-  local valeur = ''
-  for ligne in fh:lines() do
-    local m = ligne:match('^' .. cle .. ':%s*(.*)$')
-    if m then valeur = parse_scalar(m); break end
-  end
-  fh:close()
-  return valeur
-end
+-- Lecture hors pandoc d'ausgabe.yaml (titre du dossier) et de la fiche (licence) : la fusion
+-- de pandoc ne dit pas de quel fichier une clé vient.
+local parse_scalar = commun.parse_scalar
+local lire_cle = commun.lire_cle
 
 -- Année portée par la couverture. `date:` d'ausgabe.yaml est la date de publication du
 -- numéro : elle reste vide jusqu'à la parution, alors que la couverture doit porter son
@@ -108,10 +73,6 @@ local function annee_numero(date_val)
   local nom = racine:match('([^/\\]+)$') or ''
   return nom:match('^(%d%d%d%d)%-%d') or ''
 end
-
--- Les trois langues de la revue. L'anglais n'en est pas : ni libellé de résumé, ni
--- mention de licence, ni titre de bloc auteurs n'existent pour lui.
-local LANGUES = { fr = true, de = true, it = true }
 
 -- ─── Tri alphabétique des mots-clés (A8) ─────────────────────────────────────
 -- table.sort nu trie par octet : en UTF-8, une lettre accentuée occupe deux octets dont
@@ -217,17 +178,15 @@ local function doi_calcule_du_numero(slug)
   return valeur
 end
 
--- revue -> { nom, issn, lang }. Accepte le jeton canonique (zeitschrift/revue) et le
--- nom complet de l'ancien ausgabe.yaml. Valeur inconnue -> champ libre, sans langue :
--- c'est l'appelant qui enchaîne les replis, la langue de l'article passant devant tout.
-local function derive_revue(revue_val)
-  local v = revue_val:lower()
-  if v:find('zeitschrift') then
-    return 'Schweizerische Zeitschrift für Heilpädagogik', '2813-4907', 'de'
-  elseif v:find('revue') then
-    return 'Revue suisse de pédagogie spécialisée', '2813-4915', 'fr'
+-- Nom et ISSN de la revue. Accepte le jeton canonique (zeitschrift/revue) et le nom complet
+-- de l'ancien ausgabe.yaml. Valeur inconnue -> champ libre, sans ISSN.
+local function derive_revue(revue_val, produit)
+  if produit == 'zeitschrift' then
+    return 'Schweizerische Zeitschrift für Heilpädagogik', '2813-4907'
+  elseif revue_val:lower():find('revue') then
+    return 'Revue suisse de pédagogie spécialisée', '2813-4915'
   end
-  return revue_val, '', ''
+  return revue_val, ''
 end
 
 -- Libellés localisés des types hors dossier, repris de LIBELLES_TYPES de l'extension.
@@ -392,10 +351,7 @@ local LA_LANGUE = {
   fr = { fr = 'le français', de = "l’allemand", it = "l’italien" },
   de = { fr = 'Französisch', de = 'Deutsch',    it = 'Italienisch' },
 }
-local EN_LANGUE = {
-  fr = { fr = 'en français',      de = 'en allemand',   it = 'en italien' },
-  de = { fr = 'auf Französisch',  de = 'auf Deutsch',   it = 'auf Italienisch' },
-}
+local EN_LANGUE = commun.EN_LANGUE
 local NOM_CHAMP = {
   fr = { title = 'le titre', subtitle = 'le sous-titre', resume = 'le résumé' },
   de = { title = 'den Titel', subtitle = 'den Untertitel', resume = 'die Zusammenfassung' },
@@ -404,16 +360,6 @@ local MARQUE = 'TO BE TRANSLATED'
 
 local MESSAGES = {
   fr = {
-    sans_langue = function(slug, lang_num)
-      return 'Article « ' .. slug .. " » : aucune langue déclarée dans " .. slug ..
-        '.meta.yaml – composition ' .. EN_LANGUE.fr[lang_num] ..
-        ", la langue du numéro. Ouvrez « Métadonnées de l’article » et fixez la langue de l’article."
-    end,
-    langue_inconnue = function(slug, brut)
-      return 'Article « ' .. slug .. ' » : langue « ' .. brut ..
-        " » inconnue dans " .. slug .. '.meta.yaml. Langues de la revue : fr, de, it.' ..
-        " Ouvrez « Métadonnées de l’article » et choisissez-en une."
-    end,
     champ_vide = function(slug, lang, cle)
       return 'Article « ' .. slug .. ' » : la langue déclarée est ' .. LA_LANGUE.fr[lang] ..
         ', mais ' .. cle .. '.' .. lang .. ' est vide. Ouvrez « Métadonnées de ' ..
@@ -433,16 +379,6 @@ local MESSAGES = {
     end,
   },
   de = {
-    sans_langue = function(slug, lang_num)
-      return 'Artikel «' .. slug .. '»: keine Sprache in ' .. slug ..
-        '.meta.yaml erklärt – Satz ' .. EN_LANGUE.de[lang_num] ..
-        ', der Sprache der Ausgabe. Öffnen Sie «Metadaten der Artikel» und legen Sie die Sprache des Artikels fest.'
-    end,
-    langue_inconnue = function(slug, brut)
-      return 'Artikel «' .. slug .. '»: Sprache «' .. brut .. '» in ' .. slug ..
-        '.meta.yaml unbekannt. Sprachen der Zeitschrift: fr, de, it.' ..
-        ' Öffnen Sie «Metadaten der Artikel» und wählen Sie eine davon.'
-    end,
     champ_vide = function(slug, lang, cle)
       return 'Artikel «' .. slug .. '»: die erklärte Sprache ist ' .. LA_LANGUE.de[lang] ..
         ', aber ' .. cle .. '.' .. lang .. ' ist leer. Öffnen Sie «Metadaten der Artikel» ' ..
@@ -481,29 +417,9 @@ local function chp_langue(l)     return 'langue « ' .. l .. ' »' end
 local function chp_champ(cle)    return 'champ « ' .. cle .. ' »' end
 local function chp_motcle(rang)  return 'motcle ' .. rang end
 
-local function ligne_constat(ton, code, champs, fr, de)
-  local morceaux = { '[meta-' .. ton .. '] ' .. code }
-  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = c end
-  morceaux[#morceaux + 1] = fr
-  morceaux[#morceaux + 1] = '[de] ' .. de
-  return table.concat(morceaux, ' | ')
-end
-
-local function avertir(code, champs, fr, de)
-  io.stderr:write(ligne_constat('avertissement', code, champs, fr, de) .. '\n')
-  io.stderr:flush()
-end
-
--- Arrêt de la compilation. Le message part d'abord seul : `error()` seul l'enrobe d'un
--- « Error running filter » et d'une pile d'appels, illisibles dans le panneau. os.exit(1)
--- rend un code non nul et n'écrit aucun fichier de sortie ; l'`error` qui suit ne sert
--- que si un pandoc futur cessait d'honorer os.exit.
-local function bloquer(code, champs, fr, de)
-  io.stderr:write(ligne_constat('blocage', code, champs, fr, de) .. '\n')
-  io.stderr:flush()
-  os.exit(1, true)
-  error(code, 0)
-end
+-- Arrêt de la compilation, par l'émetteur commun (szh-commun.lua) : os.exit(1) rend un code
+-- non nul et n'écrit aucun fichier de sortie.
+local function bloquer(code, champs, fr, de) commun.bloquer('meta', code, champs, fr, de) end
 
 -- Champ localisé, dans la langue de l'article et dans elle seule. L'ancien repli
 -- « première langue non vide » imprimait le titre français sous `lang="de"`, sans un mot
@@ -567,38 +483,12 @@ local function verifier_marque(meta, slug)
 end
 
 function Meta(meta)
-  local revue_val = S(meta.revue)
-  local nom, issn, revue_lang = derive_revue(revue_val)
+  -- Langue de l'article et produit, posés par szh-contexte.lua. Filtre lancé seul : le
+  -- calcul se fait ici, avec ses messages (fiche sans langue, langue inconnue).
+  local contexte = commun.contexte(meta, true)
+  local lang = contexte.lang
+  local nom, issn = derive_revue(S(meta.revue), contexte.produit)
   local slug = commun.slug_article()
-
-  -- Langue du NUMÉRO : le jeton de revue, puis le `lang:` d'ausgabe.yaml. Ce `lang:` est
-  -- relu dans le fichier et non dans `meta.lang`, que la fiche de l'article vient
-  -- peut-être d'écraser — pandoc garde le dernier --metadata-file à clé égale.
-  local lang_ausgabe = lire_cle(os.getenv('SZH_AUSGABE'), 'lang')
-  if lang_ausgabe == '' then lang_ausgabe = S(meta.lang) end
-  lang_ausgabe = lang_ausgabe:lower():sub(1, 2)
-  local lang_num = revue_lang ~= '' and revue_lang
-                   or (LANGUES[lang_ausgabe] and lang_ausgabe or 'fr')
-
-  -- Langue de l'article : elle prime sur tout, lue par le module commun (fiche relue hors
-  -- pandoc, comme avant la migration). Absente, on retombe sur le numéro et on le dit —
-  -- casser les articles existants serait pire que composer comme avant. Une langue hors
-  -- des trois de la revue arrête la compilation, message nommant l'article — c'est ce que
-  -- fait fiche_invalide, jamais un simple repli silencieux.
-  local lang = commun.langue_de(meta, {
-    slug = slug,
-    lire_fiche = true,
-    langues_valides = LANGUES,
-    fiche_absente = function(s)
-      avertir('sans-langue', { chp_article(s) },
-        MESSAGES.fr.sans_langue(s, lang_num), MESSAGES.de.sans_langue(s, lang_num))
-    end,
-    fiche_invalide = function(s, brut)
-      bloquer('langue-inconnue', { chp_article(s), chp_langue(brut) },
-        MESSAGES.fr.langue_inconnue(s, brut), MESSAGES.de.langue_inconnue(s, brut))
-    end,
-    repli = function() return lang_num end,
-  })
 
   verifier_marque(meta, slug)
 

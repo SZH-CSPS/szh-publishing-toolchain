@@ -34,6 +34,24 @@
 
 local utils = pandoc.utils
 
+-- Module commun (constats) : un chargement raté arrête la conversion.
+local commun
+do
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[legendes] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 local function assainir(t)
   t = t:gsub('\194\160', ' '):gsub('\226\128\175', ' '):gsub('\226\128\137', ' ')
   t = t:gsub('\226\128\147', '-'):gsub('\226\128\148', '-'):gsub('\226\128\145', '-')
@@ -307,21 +325,15 @@ end
 -- | phrase FR | [de] phrase DE » —, pour que lib/journal.js n'ait qu'une forme à lire, sur
 -- stderr ET dans le journal d'import ($SZH_IMPORT_LOG), que pandoc n'écrit pas pour nous.
 -- « | » sépare les champs : il est remplacé dans les valeurs, comme sans_barre() ailleurs.
-local function sans_barre(t) return (tostring(t or ''):gsub('|', '/')) end
+local function sans_barre(t) return commun.sans_barre(t or '') end
 
 local function avertir(code, champs, fr, de)
-  local morceaux = { '[import-avertissement] ' .. code,
-                     'article « ' .. sans_barre(os.getenv('SZH_SLUG') or '') .. ' »' }
-  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = sans_barre(c) end
-  morceaux[#morceaux + 1] = sans_barre(fr)
-  morceaux[#morceaux + 1] = '[de] ' .. sans_barre(de)
-  local ligne = table.concat(morceaux, ' | ')
+  local nommes = { 'article « ' .. sans_barre(os.getenv('SZH_SLUG') or '') .. ' »' }
+  for _, c in ipairs(champs) do nommes[#nommes + 1] = sans_barre(c) end
+  local ligne = commun.ligne_constat('import', 'avertissement', code, nommes,
+    sans_barre(fr), sans_barre(de))
   io.stderr:write(ligne .. '\n')
-  local journal = os.getenv('SZH_IMPORT_LOG')
-  if journal and journal ~= '' then
-    local j = io.open(journal, 'a')
-    if j then j:write(ligne .. '\n'); j:close() end
-  end
+  commun.journaliser(ligne)
 end
 
 -- Un bloc dont aucune image n'a été retrouvée : ses valeurs restent dans le texte, dans les
