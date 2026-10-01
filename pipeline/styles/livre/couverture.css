@@ -21,25 +21,26 @@
      WeasyPrint ne connaît pas `writing-mode: vertical-rl`. Responsables puis titre sur UNE
      ligne avant rotation (couverture.py) : deux lignes empilées deviendraient deux
      colonnes, et dans cet ordre les responsables tombent sous le titre.
-   * La couverture est en Open Sans de chasse NORMALE (famille « Open Sans Couverture »
-     ci-dessous, statiques d'amont), comme la référence FALC ; l'intérieur des livres reste
-     en SemiCondensed (socle.css). Les deux maquettes : mesuré, une fois ces faces
-     déclarées, fontconfig sert aussi « Open Sans » avec elles (leur nom interne), si bien
-     que la couverture « normal », restée en var(--font-sans), y sortait déjà sans le dire. */
+   * La couverture FALC est en Open Sans de chasse NORMALE, comme sa référence, sous le
+     nom « SZH Couverture » (fichiers ET table name renommés, voir fonts/README.md) :
+     restées « Open Sans » à l'intérieur, fontconfig les servait aussi à toute demande
+     « Open Sans » de la feuille (mesuré). La couverture « normal » et l'intérieur des
+     livres restent en SemiCondensed (var(--font-sans), socle.css). */
 
-@font-face { font-family: 'Open Sans Couverture'; font-weight: 300; font-style: normal;
-  src: url("../../fonts/OpenSans-Light.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans Couverture'; font-weight: 400; font-style: normal;
-  src: url("../../fonts/OpenSans-Regular.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans Couverture'; font-weight: 400; font-style: italic;
-  src: url("../../fonts/OpenSans-Italic.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans Couverture'; font-weight: 600; font-style: normal;
-  src: url("../../fonts/OpenSans-SemiBold.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans Couverture'; font-weight: 700; font-style: normal;
-  src: url("../../fonts/OpenSans-Bold.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 300; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Light.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 400; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 400; font-style: italic;
+  src: url("../../fonts/SZHCouverture-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 600; font-style: normal;
+  src: url("../../fonts/SZHCouverture-SemiBold.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Couverture'; font-weight: 700; font-style: normal;
+  src: url("../../fonts/SZHCouverture-Bold.ttf") format('truetype'); }
 
 html, body { margin: 0; padding: 0; }
-body { font-family: 'Open Sans Couverture', var(--font-sans); color: var(--c-couv-encre); }
+body { font-family: var(--font-sans); color: var(--c-couv-encre); }
+.szh-couv-falc body { font-family: 'SZH Couverture', var(--font-sans); }
 p { margin: 0; }
 a { color: inherit; text-decoration: none; }
 

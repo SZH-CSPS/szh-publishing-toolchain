@@ -51,11 +51,11 @@ CIBLES = {
     'OpenSans-SemiCondensed-SemiBoldItalic.ttf': 'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-BoldItalic.ttf':     'IBMPlexMono-Medium.ttf',
     # Chasse normale, statiques d'amont : la couverture des livres seulement.
-    'OpenSans-Light.ttf':    'IBMPlexMono-Regular.ttf',
-    'OpenSans-Regular.ttf':  'IBMPlexMono-Regular.ttf',
-    'OpenSans-Italic.ttf':   'IBMPlexMono-Regular.ttf',
-    'OpenSans-SemiBold.ttf': 'IBMPlexMono-Medium.ttf',
-    'OpenSans-Bold.ttf':     'IBMPlexMono-Medium.ttf',
+    'SZHCouverture-Light.ttf':    'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-Regular.ttf':  'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-Italic.ttf':   'IBMPlexMono-Regular.ttf',
+    'SZHCouverture-SemiBold.ttf': 'IBMPlexMono-Medium.ttf',
+    'SZHCouverture-Bold.ttf':     'IBMPlexMono-Medium.ttf',
 }
 
 ATTENDUS = (0x202F, 0x2010, 0x2011, 0x25B8, 0x21A9, 0xFE0E)
