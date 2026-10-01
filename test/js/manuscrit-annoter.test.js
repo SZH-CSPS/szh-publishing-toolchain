@@ -1274,3 +1274,34 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
     // ailleurs dans le document, comme tout paragraphe écrit).
     assert.strictEqual((resultat.documentXml.match(/<w:commentRangeStart/g) || []).length, 1);
   });
+
+// ---------------------------------------------------------------------------------
+// Langue des textes que le module ajoute lui-même (synthèse du plafond, « Note N », étiquettes,
+// remarque d'italique) : français pour la Revue, allemand pour la Zeitschrift.
+//
+// Sabotage minimal : dans _construir_texto_comentario, ignorer `langue` (t = _textes('fr')) —
+// les assertions allemandes rougissent.
+
+test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »',
+  { skip: sansPython }, () => {
+    const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Absatz Nummer ' + i + ' zum Füllen.' }));
+    const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
+    const alertes = paragraphes.map((_, i) => ({
+      rule: 'Test.RegelA', severity: 'warning', action: 'comment', para: i, span: null,
+      found: null, suggested: i === 0 ? '*Titel* neu' : null, message: 'Vorkommen ' + i,
+    }));
+    const resultat = anotar(paragraphes, alertes, correspondance, { langue: 'de' });
+    validerBienFormees(resultat);
+    assert.match(resultat.commentsXml, /… und 2 weitere Vorkommen dieser Regel, siehe Bericht\./);
+    assert.ok(!/autres occurrences|voir le rapport/.test(resultat.commentsXml));
+    assert.match(resultat.commentsXml, /Vorschlag: Titel neu \(Kursivteile in der Änderung\)/);
+    assert.ok(!/élément/.test(resultat.commentsXml));
+
+    const note = anotar(PARA_AVEC_APPEL_NOTE, [{
+      rule: 'Test.Note.Comment', severity: 'warning', action: 'comment', para: 0, span: null,
+      found: 'Reconnaître', suggested: null, message: 'Rechtschreibung',
+      note_id: 1, note_numero: 1 }], [{ source: 0, sortie: 2 }], { langue: 'de' }, NOTE_RECONNAITRE);
+    validerBienFormees(note);
+    assert.match(note.commentsXml, /Fussnote 1: Rechtschreibung/);
+    assert.match(note.commentsXml, /Textstelle: «Reconnaître»/);
+  });

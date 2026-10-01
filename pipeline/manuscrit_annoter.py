@@ -72,6 +72,21 @@ _ETIQUETA_SUGGESTION = {'fr': 'Suggestion', 'de': 'Vorschlag'}
 # précède l'appel, voir _mot_avant_position()).
 _ETIQUETA_PASSAGE = {'fr': 'Passage', 'de': 'Textstelle'}
 
+# Les autres textes visibles d'un commentaire, par langue du produit (fr = Revue, de =
+# Zeitschrift) : l'allemand n'a pas d'espace avant « : » et cite entre «».
+_TEXTES = {
+    'fr': {'synthese': '… et %d autres occurrences de cette règle, voir le rapport.',
+           'note': 'Note %d', 'italique': ' (élément(s) en italique dans la révision)',
+           'deux_points': ' : ', 'citation': '« %s »'},
+    'de': {'synthese': '… und %d weitere Vorkommen dieser Regel, siehe Bericht.',
+           'note': 'Fussnote %d', 'italique': ' (Kursivteile in der Änderung)',
+           'deux_points': ': ', 'citation': '«%s»'},
+}
+
+
+def _textes(langue):
+    return _TEXTES.get(langue) or _TEXTES['fr']
+
 # Rang de sévérité partagé entre le classement des commentaires (point 4 du contrat) et la
 # résolution des chevauchements de révisions (point 3, révision du 21.09.2026 bis) — CORPS et
 # notes de bas de page (§7 ter, point 4) l'utilisent tous les deux, module-level pour ne pas le
@@ -717,7 +732,7 @@ def _contar_regla(stats, alerta, campo):
     entrada[campo] = entrada.get(campo, 0) + 1
 
 
-def _texto_sin_marcas_italica(suggested):
+def _texto_sin_marcas_italica(suggested, langue='fr'):
     """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (un commentaire Word ne
     rend jamais le Markdown, §7 ter, point 4) : des astérisques littéraux n'y disent rien à
     une relectrice. Une note signale qu'un passage était en italique, sans jamais le marquer."""
@@ -726,15 +741,16 @@ def _texto_sin_marcas_italica(suggested):
     segments = _segmentos_italica(suggested)
     texte = ''.join(t for t, _ in segments)
     if any(es for _, es in segments):
-        return texte + ' (élément(s) en italique dans la révision)'
+        return texte + _textes(langue)['italique']
     return texte
 
 
 def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
+    t = _textes(langue)
     mensaje = alerta.get('message') or ''
     if es_sintesis:
         extra = total_por_regla.get(alerta.get('rule'), 0) - 5
-        frase = '… et %d autres occurrences de cette règle, voir le rapport.' % extra
+        frase = t['synthese'] % extra
         mensaje = ('%s %s' % (mensaje, frase)) if mensaje else frase
     # Alerte de NOTE (§7 ter du contrat) : « Note N : » en tête, puis le passage cité de la
     # note elle-même — le commentaire, lui, est ancré dans le CORPS (sur le mot qui précède
@@ -742,14 +758,17 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
     # quoi il retourne dans la note.
     note_numero = alerta.get('note_numero')
     if note_numero is not None:
-        mensaje = ('Note %d : %s' % (note_numero, mensaje)) if mensaje else 'Note %d :' % note_numero
+        entete_note = (t['note'] % note_numero) + t['deux_points'].rstrip(' ')
+        mensaje = ('%s %s' % (entete_note, mensaje)) if mensaje else entete_note
     lineas = [mensaje]
     if note_numero is not None and alerta.get('found'):
         etiqueta_passage = _ETIQUETA_PASSAGE.get(langue, 'Passage')
-        lineas.append('%s : « %s »' % (etiqueta_passage, alerta['found']))
+        lineas.append('%s%s%s' % (etiqueta_passage, t['deux_points'],
+                                  t['citation'] % alerta['found']))
     if alerta.get('suggested'):
         etiqueta = _ETIQUETA_SUGGESTION.get(langue, 'Suggestion')
-        lineas.append('%s : %s' % (etiqueta, _texto_sin_marcas_italica(alerta['suggested'])))
+        lineas.append('%s%s%s' % (etiqueta, t['deux_points'],
+                                  _texto_sin_marcas_italica(alerta['suggested'], langue)))
     lineas.append('[%s]' % alerta.get('rule'))
     return lineas
 
