@@ -27,7 +27,6 @@
 #
 # stdlib seule.
 
-import importlib.util
 import json
 import os
 import re
@@ -36,6 +35,7 @@ import unicodedata
 
 _ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ICI)
+import szh_commun
 import manuscrit_modele as mm
 import pronto_modele
 # manuscrit_noms.py porte un tiret BAS (comme docx-meta.py en porte un — voir la convention
@@ -46,17 +46,7 @@ import pronto_modele
 import manuscrit_noms as mn
 
 
-def _charger_module_a_tiret(nom_fichier, nom_module):
-    """docx-meta.py porte un tiret : pas un module importable par son nom (convention du
-    dépôt). Chargé par chemin, comme manuscrit_biblio.py le fait déjà pour ce même fichier."""
-    chemin = os.path.join(_ICI, nom_fichier)
-    spec = importlib.util.spec_from_file_location(nom_module, chemin)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-dm = _charger_module_a_tiret('docx-meta.py', 'szh_docx_meta_pour_entete')
+dm = szh_commun.charger_module_a_tiret('docx-meta.py')
 
 
 # ---------------------------------------------------------------------------------

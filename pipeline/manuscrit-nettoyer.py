@@ -77,6 +77,7 @@
 #   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
 #   de livrer un .docx corrompu.
 
+import collections
 import hashlib
 import io
 import json
@@ -106,6 +107,17 @@ import manuscrit_identifiants as mi
 import manuscrit_gabarit as mg
 import manuscrit_annoter as ma
 import szh_commun
+import manuscrit_controle as mc
+# Le métier déplacé hors de la CLI (corpus des moteurs, garde-fou de perte) : noms ré-exportés
+# ici, les tests et le reste de ce fichier les appellent sous leur nom d'origine.
+from manuscrit_corpus import (
+    ROLES_ENTETE_POUR_REGLES, _collecter_images, _collecter_tableaux,
+    _construire_bibliographie, _construire_paragraphes_contexte, _entree_biblio,
+    _marquer_notes_dans_alertes, _noms_de_bibliographie, _numeros_notes,
+    _paragraphes_cellules_pour_vale, _paragraphes_entete_contexte,
+    _paragraphes_notes_pour_vale, _parcourir_blocs)
+from manuscrit_controle import (
+    _controler_perte, _ecartes_par_entete, _mots_et_images, _valider_docx_bien_forme)
 
 RACINE_DEPOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Un gabarit par produit (revue = FR, zeitschrift = DE, décision de Robin 29.09.2026) --
@@ -161,12 +173,11 @@ def progres(message):
 # nettoyage, on les recueille au lieu de les laisser fuir : ils vont dans le rapport (JSON et
 # HTML). SZH_IMPORT_LOG, s'il est posé, les reçoit toujours.
 _AVERTISSEMENTS_IMPORT = []
-_capture_suspendue = False
 _avertir_original = szh_commun.avertir
 
 
 def _avertir_capture(prefixe, code, champs, fr, de, journal=None, flush=False):
-    if _capture_suspendue:
+    if mc._capture_suspendue:
         return _avertir_original(prefixe, code, champs, fr, de, journal=journal, flush=flush)
     ligne = szh_commun.formater_avertissement(prefixe, code, champs, fr, de)
     _AVERTISSEMENTS_IMPORT.append({'code': code, 'champs': list(champs), 'fr': fr, 'de': de})
@@ -469,44 +480,45 @@ def _alerte_recherche_impossible(crossref_en_panne, identifiants_en_panne, langu
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_repli_typo():
+def _alerte_repli_typo(langue='fr'):
     """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
     dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
     --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
+    if langue == 'fr':
+        message = ("La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
+                   "est rendu tel quel.")
+    else:
+        message = ("Die Typografie konnte auf dieses Dokument nicht angewendet werden; der "
+                   "Text wird unverändert wiedergegeben.")
     return {'rule': 'Typo.ApplicationImpossible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
-                       "est rendu tel quel."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_vale_indisponible():
+def _alerte_vale_indisponible(langue='fr'):
     """vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, config cassée — voir
     manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
+    if langue == 'fr':
+        message = ("Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
+                   "ce document.")
+    else:
+        message = ("Die Prüfung von Wortschatz und Sprache konnte für dieses Dokument nicht "
+                   "durchgeführt werden.")
     return {'rule': 'Vale.Indisponible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
-                       "ce document."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _valider_docx_bien_forme(chemin):
-    """Après manuscrit_annoter.annoter() (troisième défaut connu, voir le commentaire au point
-    d'appel) : chaque partie .xml/.rels de la sortie doit rester un XML bien formé. Lève sinon
-    — l'appelant restaure alors la version PRÉ-annotation plutôt que de livrer un .docx
-    corrompu qui semblerait avoir réussi (code de sortie 0, aucune exception)."""
-    with zipfile.ZipFile(chemin) as z:
-        for nom in z.namelist():
-            if nom.endswith('.xml') or nom.endswith('.rels'):
-                ET.fromstring(z.read(nom))
-
-
-def _alerte_annotation_impossible():
+def _alerte_annotation_impossible(langue='fr'):
     """manuscrit_annoter.annoter() a levé une exception (défaut connu, voir le commentaire à
     son point d'appel) : le .docx déjà écrit reste utilisable, sans révisions ni commentaires
     posés — une alerte le dit, jamais un plantage silencieux de la CLI."""
+    if langue == 'fr':
+        message = ("Les corrections n’ont pas pu être posées dans le document\u00a0: "
+                   "consultez le rapport pour la liste complète des remarques.")
+    else:
+        message = ("Die Korrekturen konnten nicht in das Dokument eingetragen werden: Die "
+                   "vollständige Liste der Anmerkungen finden Sie im Bericht.")
     return {'rule': 'Annotation.Impossible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Les corrections n’ont pas pu être posées dans le document\u00a0: "
-                       "consultez le rapport pour la liste complète des remarques."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
 def _alerte_conversion_odt_impossible(detail, langue):
@@ -559,6 +571,17 @@ def _grouper_toutes_alertes(alertes):
     return {'par_famille': par_famille, 'par_regle': resume_par_regle}
 
 
+ORIGINES_ALERTE = ('regles', 'vale', 'bibliographie', 'identifiants', 'typographie', 'nettoyage')
+
+
+def _etiqueter(lot, origine):
+    """Pose `origine` sur chaque alerte du lot au moment où il rejoint la liste, et rend le lot
+    (même liste, même ordre). `nettoyage` : les alertes que cette CLI émet elle-même."""
+    for a in lot:
+        a['origine'] = origine
+    return lot
+
+
 RANG_SEVERITE = {'error': 0, 'warning': 1, 'suggestion': 2}
 
 
@@ -584,23 +607,6 @@ def _marquer_dans_docx(alertes, stats_annotation):
     for i, a in enumerate(alertes):
         verdict = devenir[i] if i < len(devenir) else None
         a['dans_docx'] = verdict if verdict in ('revision', 'commentaire') else 'rapport'
-
-
-# ---------------------------------------------------------------------------------
-# Parcours du modèle riche — à toute profondeur (cellules de tableau comprises), pour les
-# images/tableaux du rapport et pour la typographie ; UNIQUEMENT le premier niveau pour les
-# paragraphes que voit le moteur de règles (même périmètre que
-# manuscrit_modele.taille_dominante() / classer_titres()).
-
-def _parcourir_blocs(blocs):
-    """Rend chaque Paragraphe et chaque Tableau, à toute profondeur (corps + cellules)."""
-    for bloc in blocs:
-        yield bloc
-        if isinstance(bloc, mm.Tableau):
-            for rangee in bloc.rangees:
-                for cellule in rangee:
-                    for sous in _parcourir_blocs(cellule.blocs):
-                        yield sous
 
 
 def _recueillir_refs_paragraphes(blocs):
@@ -661,116 +667,6 @@ def _normaliser_entete(entete, langue):
     return traces, avertissements
 
 
-def _collecter_images(document):
-    """Une entrée par image trouvée à toute profondeur, avec sa source (celle de l'Image
-    elle-même si le lecteur l'a posée, sinon celle du paragraphe qui la porte)."""
-    images = []
-    for bloc in _parcourir_blocs(document.blocs):
-        if not isinstance(bloc, mm.Paragraphe):
-            continue
-        for f in bloc.fragments:
-            if f.image is not None:
-                img = f.image
-                source = img.source if img.source is not None else bloc.source
-                images.append({'nom': img.nom, 'source': source, 'alt': img.alt,
-                                'largeur_px': img.largeur_px, 'hauteur_px': img.hauteur_px,
-                                'objet': id(img)})
-    # Le texte alternatif TAPÉ sous « Texte alternatif : » (clés saisies à la main, ou bloc
-    # déjà au gabarit) va sur la première image de sa figure — c'est ainsi que l'écriture le
-    # posera (manuscrit_gabarit.blocs_figure) et que l'import le relira. Sans cette reprise,
-    # l'image était jugée « sans texte alternatif » alors que l'autrice en avait écrit un.
-    saisis = {}
-    for bloc in mg.blocs_figure(document):
-        alt = (bloc.champs.get('alt') or '').strip()
-        if bloc.nature == 'figure' and alt and bloc.rangees:
-            saisis[id(bloc.rangees[0][0])] = alt
-    for i in images:
-        if not (i['alt'] or '').strip() and i['objet'] in saisis:
-            i['alt'] = saisis[i['objet']]
-    return images
-
-
-# ---------------------------------------------------------------------------------
-# Garde-fou « rien ne se perd » (décision de Robin, 29.09.2026). L'incident qui l'a fait
-# poser : un manuscrit court sans bibliographie ressortait du nettoyeur SANS SON CORPS — le
-# repli du bloc d'autrices final l'avait avalé en entier, images comprises — avec un code 0 et
-# aucune alerte. La cause est corrigée (manuscrit_entete._bloc_auteurs_final_paragraphes) ;
-# ce contrôle est là pour la SUIVANTE, celle qu'on n'a pas vue venir : il compare les mots et
-# les images du manuscrit à ceux du .docx écrit, relu comme n'importe quel manuscrit.
-#
-# Les mots, pas les signes : la typographie change des espaces et des guillemets, jamais un
-# mot. L'en-tête reconnu part dans les tableaux fixes, qui sont relus aussi (cellules
-# comprises) — seuls sortent vraiment du document ce que l'en-tête jette exprès (ligne de
-# revue, DOI, étiquettes « Résumé », « Mots-clés »…), quelques mots. D'où les deux seuils :
-# PERTE_ALERTE donne une alerte `error` (le document est écrit, à vérifier avant usage),
-# PERTE_REFUS refuse la sortie — un document qui a perdu la moitié de ses mots ne doit pas
-# pouvoir être importé par mégarde.
-
-RE_MOT = re.compile(r'\w{2,}', re.UNICODE)
-PERTE_MOTS_MIN = 10          # en deçà, ce sont les étiquettes d’en-tête qu’on a quittées
-PERTE_ALERTE = 0.05          # 5 % des mots du manuscrit
-PERTE_REFUS = 0.5            # la moitié
-
-
-def _mots_et_images(document):
-    """(Counter des mots en minuscules, nombre d'images) du document entier : corps et
-    cellules à toute profondeur, notes comprises."""
-    from collections import Counter
-    mots = Counter()
-    n_images = 0
-
-    def creuser(blocs):
-        nonlocal n_images
-        for bloc in _parcourir_blocs(blocs):
-            if isinstance(bloc, mm.Paragraphe):
-                mots.update(RE_MOT.findall(unicodedata.normalize('NFC', bloc.texte()).casefold()))
-                n_images += sum(1 for f in bloc.fragments if f.image is not None)
-
-    creuser(document.blocs)
-    for blocs_note in (document.notes or {}).values():
-        creuser(blocs_note)
-    return mots, n_images
-
-
-def _ecartes_par_entete(document, entete, indices_entete):
-    """Ce que la reconnaissance de l'en-tête met de côté SANS que le gabarit ait où l'écrire :
-    le DOI, la ligne de citation de la revue, les résumés dans une autre langue que celle du
-    produit, et les photos des blocs d'autrices consommés (le tableau des autrices du gabarit
-    n'en reçoit pas). Mesuré sur les 72 manuscrits lisibles de tmp/docx-dev (29.09.2026) : le
-    résumé français d'un article allemand (4 à 7 % des mots) et la photo de l'autrice, dans
-    presque tous — une perte RÉELLE, mais connue, et antérieure au garde-fou. Elle n'est donc
-    pas comptée comme une perte inexpliquée (qui crierait sur chaque manuscrit, et qu'on
-    apprendrait vite à ne plus lire) : elle est DITE à part, par `Nettoyage.ContenuEcarte`.
-    Rend {'mots': Counter, 'images': int, 'elements': [(fr, de), ...]}."""
-    from collections import Counter
-    mots = Counter()
-    elements = []
-    if entete is not None:
-        def ajouter(texte, fr, de):
-            texte = (texte or '').strip()
-            if texte:
-                mots.update(RE_MOT.findall(unicodedata.normalize('NFC', texte).casefold()))
-                elements.append((fr, de))
-        ajouter(entete.doi, 'le DOI', 'die DOI')
-        ajouter(entete.ligne_revue, 'la ligne de citation de la revue', 'die Zitierzeile der Zeitschrift')
-        for langue, texte in sorted((entete.resumes_autres or {}).items()):
-            ajouter(texte, 'le résumé (%s)' % langue, 'die Zusammenfassung (%s)' % langue)
-    # Les photos : seulement celles d'une FICHE en tableau consommée (la voie des tableaux
-    # d'autrices, _tableaux_auteurs). Une image d'un PARAGRAPHE consommé n'est jamais « une
-    # photo mise de côté » : c'est exactement ce que l'incident du 29.09.2026 avalait — le
-    # corps d'un manuscrit court, images comprises —, et elle doit compter comme perdue.
-    images = 0
-    for idx in indices_entete or {}:
-        if 0 <= idx < len(document.blocs) and isinstance(document.blocs[idx], mm.Tableau):
-            for bloc in _parcourir_blocs([document.blocs[idx]]):
-                if isinstance(bloc, mm.Paragraphe):
-                    images += sum(1 for f in bloc.fragments if f.image is not None)
-    if images:
-        elements.append(('%d photo(s) des autrices et auteurs' % images,
-                         '%d Foto(s) der Autorinnen und Autoren' % images))
-    return {'mots': mots, 'images': images, 'elements': elements}
-
-
 def _alerte_ecartes(ecartes, langue):
     """L'avertissement qui dit ce que l'en-tête a mis de côté (voir _ecartes_par_entete)."""
     if not ecartes or not ecartes['elements']:
@@ -785,393 +681,6 @@ def _alerte_ecartes(ecartes, langue):
                    "sie braucht." % ', '.join(de for _, de in ecartes['elements']))
     return {'rule': 'Nettoyage.ContenuEcarte', 'severity': 'warning', 'action': 'report',
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
-
-
-def _controler_perte(entree, chemin_sortie, langue, ecartes=None):
-    """(alerte ou None, mesure) — la comparaison du manuscrit lu (`entree` : le résultat de
-    _mots_et_images() pris AVANT tout traitement) avec le .docx écrit, relu par le lecteur du
-    nettoyeur lui-même. `ecartes` (_ecartes_par_entete) : ce qui est mis de côté sciemment,
-    retiré de l'étalon et dit ailleurs."""
-    mots_in, images_in = entree
-    if ecartes:
-        mots_in = mots_in - ecartes['mots']
-        images_in = max(images_in - ecartes['images'], 0)
-    # La relecture refait les constats du lecteur (en-têtes et pieds non lus…) sur NOTRE
-    # sortie : ils ont déjà été dits sur le manuscrit, on les tait ici.
-    global _capture_suspendue
-    stderr, journal = sys.stderr, os.environ.pop('SZH_IMPORT_LOG', None)
-    try:
-        sys.stderr = io.StringIO()
-        _capture_suspendue = True
-        relu = md.lire(chemin_sortie)
-    except Exception as e:
-        relu = e
-    finally:
-        _capture_suspendue = False
-        sys.stderr = stderr
-        if journal is not None:
-            os.environ['SZH_IMPORT_LOG'] = journal
-    try:
-        if isinstance(relu, Exception):
-            raise relu
-        mots_out, images_out = _mots_et_images(relu)
-    except Exception as e:                         # relecture impossible : on le dit
-        return ({'rule': 'Nettoyage.ControleImpossible', 'severity': 'warning',
-                 'action': 'report', 'para': None, 'span': None, 'found': None,
-                 'suggested': None,
-                 'message': ("Le document écrit n’a pas pu être relu pour vérifier qu’aucun "
-                             "contenu ne s’est perdu (%s)." % e) if langue == 'fr' else
-                            ("Das geschriebene Dokument konnte nicht erneut gelesen werden, um "
-                             "zu prüfen, dass kein Inhalt verloren ging (%s)." % e)},
-                {'controle': 'impossible'})
-    total = sum(mots_in.values())
-    manquants = {m: n - mots_out.get(m, 0) for m, n in mots_in.items() if n > mots_out.get(m, 0)}
-    n_manquants = sum(manquants.values())
-    taux = (n_manquants / total) if total else 0.0
-    mesure = {'mots_entree': total, 'mots_sortie': sum(mots_out.values()),
-              'mots_manquants': n_manquants, 'taux_perte': round(taux, 4),
-              'images_entree': images_in, 'images_sortie': images_out,
-              'exemples_manquants': sorted(manquants, key=lambda m: -manquants[m])[:15],
-              'ecartes_par_entete': ({'mots': sum(ecartes['mots'].values()),
-                                      'images': ecartes['images'],
-                                      'elements': [fr for fr, _ in ecartes['elements']]}
-                                     if ecartes else None)}
-    perte_mots = n_manquants >= PERTE_MOTS_MIN and taux >= PERTE_ALERTE
-    perte_images = images_out < images_in
-    if not (perte_mots or perte_images):
-        return None, mesure
-    mesure['refus'] = taux >= PERTE_REFUS
-    exemples = ', '.join(mesure['exemples_manquants'][:8])
-    if langue == 'fr':
-        message = ("Le document nettoyé a perdu du contenu du manuscrit\u00a0: %d mot(s) sur %d "
-                   "(%.0f %%)%s, %d image(s) sur %d retrouvée(s). %s"
-                   % (n_manquants, total, taux * 100,
-                      (' — par exemple : %s' % exemples) if exemples else '',
-                      images_out, images_in,
-                      "Il n’a pas été livré\u00a0: signalez ce manuscrit à la maintenance."
-                      if mesure['refus'] else
-                      "Comparez-le au manuscrit avant de l’utiliser, et signalez ce "
-                      "manuscrit à la maintenance."))
-    else:
-        message = ("Das bereinigte Dokument hat Inhalt des Manuskripts verloren: %d von %d "
-                   "Wörtern (%.0f %%)%s, %d von %d Bildern wiedergefunden. %s"
-                   % (n_manquants, total, taux * 100,
-                      (' — zum Beispiel: %s' % exemples) if exemples else '',
-                      images_out, images_in,
-                      'Es wurde nicht ausgeliefert: melden Sie dieses Manuskript der Wartung.'
-                      if mesure['refus'] else
-                      'Vergleichen Sie es vor der Verwendung mit dem Manuskript und melden '
-                      'Sie dieses Manuskript der Wartung.'))
-    return ({'rule': 'Nettoyage.ContenuPerdu', 'severity': 'error', 'action': 'report',
-             'para': None, 'span': None, 'found': None, 'suggested': None,
-             'message': message}, mesure)
-
-
-def _collecter_tableaux(document):
-    tableaux = []
-    for bloc in _parcourir_blocs(document.blocs):
-        if isinstance(bloc, mm.Tableau):
-            fusion = any(c.colspan > 1 or c.rowspan > 1
-                         for rangee in bloc.rangees for c in rangee)
-            tableaux.append({'fusion': fusion, 'source': bloc.source})
-    return tableaux
-
-
-# ---------------------------------------------------------------------------------
-# Paragraphes de cellule et de note pour Vale (point 1 de la consigne de branchement) — Vale
-# doit VOIR ce texte (une forme épicène dans un tableau ou une note n'est pas moins fautive),
-# mais ni l'un ni l'autre n'est ANCRABLE : `correspondance` de manuscrit_gabarit.ecrire() ne
-# porte que les <w:p> de PREMIER NIVEAU qu'elle écrit elle-même (§7 ter du contrat, mesuré en
-# lisant _convertir_niveau_racine()) — jamais un <w:p> de cellule (sa `source` n'est qu'une
-# position LOCALE au conteneur, §4 : « pas de chemin complet ») ni le <w:p> d'une note. Y
-# recopier une `source` non ancrable risquerait pire qu'une alerte perdue : une COLLISION
-# silencieuse avec un indice de premier niveau sans rapport (une cellule à la position locale
-# 3 « ancrée » par erreur sur le 4e paragraphe du corps). `source=None` est donc le seul choix
-# sûr ici ; manuscrit_annoter.annoter() la classe alors normalement dans `non_ancrees`.
-
-def _paragraphes_cellules_pour_vale(blocs):
-    resultat = []
-    for bloc in blocs:
-        if not isinstance(bloc, mm.Tableau):
-            continue
-        for rangee in bloc.rangees:
-            for cellule in rangee:
-                for sous in cellule.blocs:
-                    if isinstance(sous, mm.Paragraphe):
-                        texte = sous.texte()
-                        if texte.strip():
-                            resultat.append({'texte': texte, 'source': None, 'role': ''})
-                    elif isinstance(sous, mm.Tableau):
-                        resultat.extend(_paragraphes_cellules_pour_vale([sous]))
-    return resultat
-
-
-def _paragraphe_source_appelant_note(document, note_id):
-    """Le `source` du paragraphe qui APPELLE cette note (un Fragment dont `.note ==
-    note_id`) — seulement s'il est de PREMIER NIVEAU, le seul espace que `correspondance`
-    sait ancrer (voir ci-dessus) : None si l'appel vient d'une cellule, ou si aucun appelant
-    n'est trouvé (ne devrait pas arriver — document.notes ne porte que des notes déjà APPELÉES,
-    les orphelines sont filtrées par le lecteur, §4 du contrat)."""
-    for bloc in document.blocs:
-        if isinstance(bloc, mm.Paragraphe) and any(f.note == note_id for f in bloc.fragments):
-            return bloc.source
-    return None
-
-
-def _numeros_notes(document):
-    """{note_id: numero} — le numéro de SORTIE (1, 2, 3… dans l'ordre d'appel du corps,
-    cellules de tableau comprises) que `manuscrit_gabarit._RegistreNotes` donnera à chaque
-    note APPELÉE, recalculé ICI en lecture seule sur le modèle riche, AVANT l'écriture du
-    gabarit (§7 ter du contrat, point « traçabilité note -> appel ») : c'est le numéro que
-    Word affichera, et c'est lui que manuscrit_annoter.py cherche dans
-    `<w:footnoteReference w:id="…">` du paragraphe de sortie. Même ordre de parcours que
-    l'écrivain (`_parcourir_blocs`, premier niveau + cellules, dans l'ordre) et même règle
-    (« ordre de PREMIÈRE rencontre ») — voir manuscrit_gabarit.py, lu en lecture seule,
-    jamais modifié (hors des fichiers autorisés pour ce lot)."""
-    numeros = {}
-    for bloc in _parcourir_blocs(document.blocs):
-        if not isinstance(bloc, mm.Paragraphe):
-            continue
-        for f in bloc.fragments:
-            if f.note is not None and f.note not in numeros:
-                numeros[f.note] = len(numeros) + 1
-    return numeros
-
-
-# Décalage hors de portée de tout Paragraphe.source réel (un index de <w:p>/<w:tbl> du corps,
-# toujours largement < 1 000 000 sur un article réel) : un paragraphe de note reçoit un
-# `source` SYNTHÉTIQUE négatif, jamais ancrable tel quel — voir _paragraphes_notes_pour_vale().
-_DECALAGE_SOURCE_SYNTHETIQUE_NOTE = 1_000_000
-
-
-def _paragraphes_notes_pour_vale(document, numeros_notes):
-    """(paragraphes, correspondance_notes) — `paragraphes` : même forme qu'avant (texte/
-    source/role) mais `source` porte, pour un paragraphe de NOTE, un identifiant SYNTHÉTIQUE
-    (voir _DECALAGE_SOURCE_SYNTHETIQUE_NOTE), jamais un vrai `Paragraphe.source` : Vale ne
-    fait que recopier ce `source` dans `para` de chaque alerte qu'il rend (manuscrit_vale.
-    _convertir_alerte() : `'para': index.get(ligne_num)`), sans rien savoir de plus sur son
-    origine. `correspondance_notes[synthetique] = {'note_id', 'para', 'numero'}` permet à
-    _marquer_notes_dans_alertes(), APRÈS le passage par Vale, de retrouver le paragraphe RÉEL
-    du corps qui porte l'appel (c'est lui que manuscrit_annoter.py doit ancrer, §7 ter du
-    contrat) et le numéro de note écrit. Un identifiant synthétique DISTINCT par note (jamais
-    partagé) : deux notes appelées depuis le MÊME paragraphe de corps restent distinguables."""
-    resultat = []
-    correspondance_notes = {}
-    for note_id, contenu in (document.notes or {}).items():
-        para = _paragraphe_source_appelant_note(document, note_id)
-        numero = numeros_notes.get(note_id)
-        # Ni l'appelant (hors premier niveau) ni le numéro (note jamais appelée, ne devrait
-        # pas arriver, §4 du contrat) ne sont garantis : sans les deux, `source=None` reste le
-        # seul choix sûr (comme avant ce lot) — jamais un ancrage à moitié construit.
-        synthetique = (-(_DECALAGE_SOURCE_SYNTHETIQUE_NOTE + note_id)
-                       if para is not None and numero is not None else None)
-        for bloc in (contenu or []):
-            if isinstance(bloc, mm.Paragraphe):
-                texte = bloc.texte()
-                if texte.strip():
-                    resultat.append({'texte': texte, 'source': synthetique, 'role': ''})
-            elif isinstance(bloc, mm.Tableau):
-                # Rare (un tableau dans une note) mais possible : mêmes cellules, jamais
-                # ancrables non plus.
-                resultat.extend(_paragraphes_cellules_pour_vale([bloc]))
-        if synthetique is not None:
-            correspondance_notes[synthetique] = {'note_id': note_id, 'para': para, 'numero': numero}
-    return resultat, correspondance_notes
-
-
-def _marquer_notes_dans_alertes(alertes, correspondance_notes):
-    """Pour chaque alerte dont `para` est un identifiant SYNTHÉTIQUE de note (voir
-    _paragraphes_notes_pour_vale ci-dessus) : remplace `para` par le paragraphe RÉEL qui porte
-    l'appel et ajoute `note_id`/`note_numero` — les deux champs que manuscrit_annoter.py lit
-    pour ancrer sur le mot qui précède l'appel (ou écrire une révision DANS la note, §7 ter du
-    contrat) plutôt que sur le paragraphe de corps entier. Mute et rend la MÊME liste (mêmes
-    dicts que le reste de la CLI, jamais une copie)."""
-    for a in alertes:
-        info = correspondance_notes.get(a.get('para'))
-        if info is None:
-            continue
-        a['note_id'] = info['note_id']
-        a['note_numero'] = info['numero']
-        a['para'] = info['para']
-    return alertes
-
-
-# ---------------------------------------------------------------------------------
-# Noms de bibliographie, AVANT l'en-tête (§6.1 du contrat de lot D, CONTRAT-noms.md —
-# ⚠ tranché par le superviseur le 22.09.2026, à ne pas rouvrir) : _construire_bibliographie()
-# ci-dessous tourne APRÈS l'en-tête (elle dépend de son retrait du corps) et ne peut donc pas
-# fournir `noms_biblio` à temps pour me.extraire_entete(). Cette passe-ci est délibérément
-# LÉGÈRE et INDÉPENDANTE : elle ne décide d'AUCUNE étendue de bibliographie (ne déplace, ne
-# duplique jamais _construire_bibliographie()), elle ne fait que récolter des jetons de noms
-# de famille certifiés par la forme APA (« Nom, P. »), sur tout le document, avant tout
-# retrait.
-
-def _plier_jeton_biblio(jeton):
-    """Pliage minimal (NFD, accents retirés, minuscule, ponctuation de bord retirée) — même
-    principe que manuscrit_noms._plier() (privée, non importable telle quelle depuis ce
-    fichier), sans avoir besoin d'être bit-identique : manuscrit_noms._signal_biblio() replie
-    de toute façon chaque jeton de `noms_biblio` à la réception (voir son code) — cette
-    fonction-ci n'a donc besoin que d'être RAISONNABLE, jamais canonique."""
-    t = unicodedata.normalize('NFD', (jeton or '').strip().lower())
-    t = ''.join(c for c in t if not unicodedata.combining(c))
-    return t.strip('.,;:!?()[]{}«»“”‘’\'"-')
-
-
-def _noms_de_bibliographie(document):
-    """Ensemble de jetons pliés (§6.1) : le dernier jeton non-particule de chaque nom, plus
-    le nom entier — jamais une étendue, jamais une exception. Repéré par
-    dm.ressemble_a_une_reference() (mn.dm, le docx-meta.py déjà chargé par manuscrit_noms.py
-    — ≥ 25 signes, un millésime, une initiale : vérifié en la relisant, une ligne d'en-tête
-    comme « Marie Dupont, Université de Genève » n'a pas d'année, elle ne passe pas ce
-    filtre) ; ce qui précède la PREMIÈRE virgule, s'il est capitalisé et sans chiffre, est un
-    nom de famille certifié par la forme APA (« Wood de Wilde, H. » -> « wood de wilde »)."""
-    jetons = set()
-    for bloc in document.blocs:
-        if not isinstance(bloc, mm.Paragraphe):
-            continue
-        texte = bloc.texte().strip()
-        if not texte or not mn.dm.ressemble_a_une_reference(texte):
-            continue
-        avant_virgule = texte.split(',', 1)[0].strip()
-        if not avant_virgule or any(c.isdigit() for c in avant_virgule):
-            continue
-        if not avant_virgule[0].isupper():
-            continue
-        mots = avant_virgule.split()
-        dernier_non_particule = None
-        for mot in reversed(mots):
-            if _plier_jeton_biblio(mot) not in mn.PARTICULES:
-                dernier_non_particule = mot
-                break
-        if dernier_non_particule:
-            jetons.add(_plier_jeton_biblio(dernier_non_particule))
-        jetons.add(_plier_jeton_biblio(avant_virgule))
-    return jetons
-
-
-# ---------------------------------------------------------------------------------
-# Bibliographie — voir le point 1 de l'en-tête : mêmes briques PUBLIQUES que
-# pronto_modele.etendue_biblio(), jamais une seconde liste de titres.
-
-def _est_titre_biblio(texte, lexique):
-    # « 3 Literatur (gemäss Redaktionsrichtlinien) » (29.09.2026) : sans ce retrait, la
-    # bibliographie passait pour du Lauftext et « & » y était remplacé par « und ».
-    texte = pronto_modele.sans_complement_titre(texte)
-    plat = pronto_modele.RE_NUM_TITRE_BIBLIO.sub('', pronto_modele.aplatir(texte))
-    if plat in lexique:
-        return True
-    for prefixe in pronto_modele.PREFIXES_TITRE_BIBLIO:
-        if plat.startswith(prefixe) and plat[len(prefixe):] in lexique:
-            return True
-    return False
-
-
-def _indice_titre_biblio(document, lexique):
-    """L'indice, dans document.blocs, du DERNIER paragraphe de titre reconnu comme titre de
-    bibliographie — None si aucun. « Dernier » : la bibliographie est normalement la toute
-    dernière section (même raison que pronto_modele.etendue_biblio)."""
-    indice = None
-    for i, bloc in enumerate(document.blocs):
-        if not isinstance(bloc, mm.Paragraphe) or bloc.niveau_retenu not in (1, 2, 3):
-            continue
-        texte = bloc.texte().strip()
-        if texte and _est_titre_biblio(texte, lexique):
-            indice = i
-    return indice
-
-
-RE_ANNEE_BIBLIO = re.compile(r'((?:19|20)\d{2})')
-
-
-def _entree_biblio(paragraphe):
-    """Extraction minimale (nom, année) pour APA.OrdreAlphabetiqueBiblio — voir le point 2 de
-    l'en-tête : nb_auteurs reste TOUJOURS 0, jamais deviné."""
-    texte = paragraphe.texte().strip()
-    m = RE_ANNEE_BIBLIO.search(texte)
-    annee = int(m.group(1)) if m else None
-    nom = None
-    virgule = texte.find(',')
-    if 0 < virgule <= 60:
-        nom = texte[:virgule].strip()
-    elif m:
-        nom = texte[:m.start()].strip(' (').rstrip('.,') or None
-    return {'texte': texte, 'source': paragraphe.source, 'nom': nom, 'annee': annee,
-            'nb_auteurs': 0}
-
-
-def _construire_bibliographie(document):
-    """(sources_biblio, entrees) : `sources_biblio` = l'ensemble des Paragraphe.source qui
-    appartiennent à la bibliographie (titre compris, pour le compte de signes du §7 —
-    « références bibliographiques compris ») ; `entrees` = une par référence, hors le titre
-    lui-même."""
-    lexique = pronto_modele.lire_titres_bib()
-    indice_titre = _indice_titre_biblio(document, lexique)
-    if indice_titre is None:
-        return set(), []
-    sources = set()
-    entrees = []
-    for i in range(indice_titre, len(document.blocs)):
-        bloc = document.blocs[i]
-        if isinstance(bloc, mm.Tableau):
-            break
-        if not isinstance(bloc, mm.Paragraphe):
-            continue
-        sources.add(bloc.source)
-        if i == indice_titre:
-            continue
-        if bloc.texte().strip():
-            entrees.append(_entree_biblio(bloc))
-    return sources, entrees
-
-
-# ---------------------------------------------------------------------------------
-# Rôle des paragraphes — voir le point 1 de l'en-tête : deux cas seulement, '' sinon.
-#
-# Révision du 19.09.2026 (§5.5) : le repli « premier bloc du document = titre » ne vaut plus
-# qu'en CAS A. En cas B, le titre est désormais retiré du corps par
-# manuscrit_entete.extraire_entete() AVANT cette fonction — le premier bloc restant n'est
-# alors qu'un paragraphe de corps ordinaire (ou un intertitre), jamais LE titre de l'article ;
-# le rôle 'titre' de cas B vient exclusivement de _paragraphes_entete_contexte() ci-dessous.
-
-def _construire_paragraphes_contexte(document, sources_biblio, gabarit):
-    paras = [b for b in document.blocs if isinstance(b, mm.Paragraphe)]
-    premier_bloc = document.blocs[0] if document.blocs else None
-    resultat = []
-    for p in paras:
-        if p.source in sources_biblio:
-            role = 'bibliographie'
-        elif gabarit == 'A' and p is premier_bloc and p.niveau_retenu > 0:
-            role = 'titre'
-        else:
-            role = ''
-        resultat.append({'source': p.source, 'texte': p.texte(), 'role': role,
-                          'niveau_retenu': p.niveau_retenu})
-    return resultat
-
-
-# ---------------------------------------------------------------------------------
-# En-tête (§5.5) — cas B seulement. Les paragraphes que manuscrit_entete.extraire_entete() a
-# retirés du corps sont remis dans le contexte des règles, avec leur rôle : c'est ce dont
-# Forme.LongueurResume/LongueurTitre ont besoin pour juger (ils lisent contexte['paragraphes'],
-# jamais l'EnTete elle-même). 'doi'/'ligne_revue' n'appartiennent pas au vocabulaire de rôle
-# que manuscrit_regles.py reconnaît (voir son en-tête) : ces deux-là ne sont donc jamais
-# ajoutés ici — ils restent simplement absents du corps, sans qu'aucune règle les juge.
-ROLES_ENTETE_POUR_REGLES = ('titre', 'sous_titre', 'resume', 'mots_cles', 'auteurs')
-
-
-def _paragraphes_entete_contexte(document, indices_consommes):
-    """Appelée AVANT le retrait des indices de document.blocs — elle a besoin des
-    paragraphes encore en place pour lire leur texte."""
-    resultat = []
-    for i, role in indices_consommes.items():
-        if role not in ROLES_ENTETE_POUR_REGLES:
-            continue
-        bloc = document.blocs[i]
-        if not isinstance(bloc, mm.Paragraphe):
-            continue
-        resultat.append({'source': bloc.source, 'texte': bloc.texte(), 'role': role,
-                          'niveau_retenu': 0})
-    return resultat
 
 
 # ---------------------------------------------------------------------------------
@@ -1469,6 +978,7 @@ def _principal(argv):
         progres('recherche des ROR et ORCID des autrices et auteurs...')
         alertes_identifiants, stats_identifiants = mi.enrichir_auteurs(
             entete.auteurs, langue, reseau=not args['sans_reseau'])
+        _etiqueter(alertes_identifiants, 'identifiants')
         progres('identifiants : %d ROR et %d ORCID trouvé(s), %d candidat(s), %d requête(s) '
                 'en panne' % (stats_identifiants['ror_trouves'],
                               stats_identifiants['orcid_trouves'],
@@ -1486,7 +996,7 @@ def _principal(argv):
     alertes_manuelles = list(alertes_identifiants)
     alerte_langue = _alerte_langue_produit(document.langue, langue)
     if alerte_langue:
-        alertes_manuelles.append(alerte_langue)
+        alertes_manuelles.append(_etiqueter([alerte_langue], 'nettoyage')[0])
         progres(alerte_langue['message'])
 
     _etape('typographie')
@@ -1517,7 +1027,7 @@ def _principal(argv):
         for ligne in traces_typo:
             progres(ligne)
         if statut_typo == 'repli':
-            alertes_manuelles.append(_alerte_repli_typo())
+            alertes_manuelles.append(_etiqueter([_alerte_repli_typo(langue)], 'typographie')[0])
 
     _etape('regles')
     progres('évaluation des règles éditoriales...')
@@ -1539,8 +1049,10 @@ def _principal(argv):
     # C1/C2 du filtre typographique (préfixe 'Typo.') mélangés dans une seule liste — on les
     # sépare ICI pour que `alertes.origine` (point 4 de la consigne de branchement) compte
     # chaque moteur pour de vrai, sans toucher à manuscrit_regles.evaluer() lui-même.
-    alertes_regles = [a for a in alertes_python if not a['rule'].startswith('Typo.')]
-    alertes_typo_reprises = [a for a in alertes_python if a['rule'].startswith('Typo.')]
+    alertes_regles = _etiqueter([a for a in alertes_python if not a['rule'].startswith('Typo.')],
+                                 'regles')
+    alertes_typo_reprises = _etiqueter([a for a in alertes_python if a['rule'].startswith('Typo.')],
+                                        'typographie')
 
     # Vale (point 1) — le titre de la bibliographie n'y passe pas : `entrees_biblio` l'exclut
     # déjà (voir _construire_bibliographie()), et le corps de Vale ci-dessous exclut tout
@@ -1560,8 +1072,9 @@ def _principal(argv):
         + paragraphes_vale_notes)
     alertes_vale, vale_indisponible = mv.analyser(
         paragraphes_vale_corps, paragraphes_vale_biblio, langue, RACINE_DEPOT)
+    _etiqueter(alertes_vale, 'vale')
     if vale_indisponible:
-        alertes_vale = [_alerte_vale_indisponible()]
+        alertes_vale = _etiqueter([_alerte_vale_indisponible(langue)], 'vale')
         progres("contrôle du vocabulaire indisponible")
     else:
         # §7 ter du contrat (traçabilité note -> appel) : une alerte dont `para` est le
@@ -1585,11 +1098,12 @@ def _principal(argv):
                                  for p in paragraphes_vale_corps]
     alertes_biblio, stats_biblio = mb.analyser_bibliographie(
         paragraphes_corps_module, paragraphes_biblio_module, langue, reseau=not args['sans_reseau'])
+    _etiqueter(alertes_biblio, 'bibliographie')
     _marquer_notes_dans_alertes(alertes_biblio, correspondance_notes_vale)
     alerte_reseau = _alerte_recherche_impossible(
         mb._hors_service, bool(stats_identifiants and stats_identifiants['indisponible']), langue)
     if alerte_reseau:
-        alertes_manuelles.append(alerte_reseau)
+        alertes_manuelles.append(_etiqueter([alerte_reseau], 'nettoyage')[0])
         progres(alerte_reseau['message'])
 
     alertes = _trier_alertes(alertes_regles + alertes_vale + alertes_biblio
@@ -1623,7 +1137,7 @@ def _principal(argv):
         for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue),
                        mg.alerte_notes_reprises(resultat_ecriture['trace'], langue)):
             if alerte is not None:
-                alertes.append(alerte)
+                alertes.append(_etiqueter([alerte], 'nettoyage')[0])
                 progres(alerte['message'])
         _trier_alertes(alertes)
         if mesure_perte.get('refus'):
@@ -1676,7 +1190,7 @@ def _principal(argv):
                 stats_annotation = None
                 annotation_restauree = True
                 progres('annotation impossible : %s' % e)
-                alertes.append(_alerte_annotation_impossible())
+                alertes.append(_etiqueter([_alerte_annotation_impossible(langue)], 'nettoyage')[0])
                 _trier_alertes(alertes)
             else:
                 _marquer_dans_docx(alertes, stats_annotation)
@@ -1701,7 +1215,8 @@ def _principal(argv):
                                                    nom_sortie=nom + '-nettoye')
         except conversion_odt.ConversionImpossible as e:
             progres('conversion en .odt impossible, le .docx est conservé : %s' % e)
-            alertes.append(_alerte_conversion_odt_impossible(str(e), langue))
+            alertes.append(_etiqueter([_alerte_conversion_odt_impossible(str(e), langue)],
+                                      'nettoyage')[0])
             _trier_alertes(alertes)
         else:
             try:
@@ -1713,19 +1228,10 @@ def _principal(argv):
             format_sortie = 'odt'
 
     groupes = _grouper_toutes_alertes(alertes)
-    # 'regles' accueille aussi les deux alertes propres à cette CLI qui ne viennent d'aucun
-    # des trois moteurs externes : Langue.DesaccordProduit (§8) et, si l'annotation a échoué
-    # (voir plus haut), Annotation.Impossible — la plus proche des quatre origines du brief,
-    # faute d'une cinquième catégorie prévue par le contrat.
-    alertes_origine = {
-        'regles': len(alertes_regles) + sum(
-            1 for a in alertes if a['rule'] in ('Langue.DesaccordProduit', 'Annotation.Impossible')),
-        'vale': len(alertes_vale),
-        'bibliographie': len(alertes_biblio),
-        'identifiants': len(alertes_identifiants),
-        'typographie': len(alertes_typo_reprises) + sum(1 for a in alertes_manuelles
-                                                          if a['rule'] == 'Typo.ApplicationImpossible'),
-    }
+    # Chaque alerte porte son `origine`, posée là où son lot a rejoint la liste : la somme vaut
+    # toujours le total.
+    compte_origine = collections.Counter(a['origine'] for a in alertes)
+    alertes_origine = {o: compte_origine[o] for o in ORIGINES_ALERTE}
     n_error = sum(1 for a in alertes if a['severity'] == 'error')
     n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
     n_suggestion = sum(1 for a in alertes if a['severity'] == 'suggestion')
