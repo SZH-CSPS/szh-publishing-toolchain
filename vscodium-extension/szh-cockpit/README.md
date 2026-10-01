@@ -60,6 +60,10 @@ lib/
                         gabarit « {défaut} : {objet} ». Données et fonctions pures, sans
                         vscode ni fs ; un code de journal.js sans ligne ici fait tomber
                         test/js/constats.test.js
+  controles-hote.js     contrôles de la compilation : les constats rangés par source (chaîne,
+                        réimport, export, pagination), la vue « À corriger », le compteur et
+                        le badge PDF/UA de la barre d'état, le voile « Analyse en cours… ».
+                        Rappelle l'hôte par configurer(), jamais par import
   copies-conflit.js     détection des copies en conflit déposées par OneDrive/SharePoint, et
                         application bloc par bloc des divergences que l'éditeur calcule
                         (« Prendre cette version » / « Garder la mienne »). Deux portes :

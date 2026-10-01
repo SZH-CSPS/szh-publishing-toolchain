@@ -994,10 +994,10 @@ test('profil-differe : la prose que le Makefile écrit est celle que journal.js 
 // lib/journal.js reconnaît tout préfixe « <source>-<ton> » sans code à ajouter) : seule
 // l'étiquette de section peut manquer, et la carte se serait affichée sous
 // « ctl.source.pipeline » (revue F03, 22.09.2026).
-test('SOURCES_CONSTAT (extension.js) connaît typo et metafichier, avec leur clé traduite', () => {
-  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+test('SOURCES_CONSTAT (lib/controles-hote.js) connaît typo et metafichier, avec leur clé traduite', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'controles-hote.js');
   const i = src.indexOf('const SOURCES_CONSTAT');
-  assert.ok(i !== -1, 'SOURCES_CONSTAT introuvable dans extension.js');
+  assert.ok(i !== -1, 'SOURCES_CONSTAT introuvable dans lib/controles-hote.js');
   const bloc = src.slice(i, src.indexOf('};', i));
   for (const source of ['typo', 'metafichier']) {
     const m = new RegExp(source + ":\\s*'(ctl\\.source\\.[a-z]+)'").exec(bloc);

@@ -744,7 +744,9 @@ test('synthèse : sans --dossier, le dossier résolu par SZH_COMPTEURS', () => {
 // ---------------------------------------------------------------------------------------
 
 test('extension.js appelle les compteurs aux trois endroits prévus, et nulle part ailleurs', () => {
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // La relecture du journal vit dans lib/controles-hote.js : les deux fichiers sont lus ensemble.
+  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8')
+    + fs.readFileSync(path.join(COCKPIT, 'lib', 'controles-hote.js'), 'utf8');
   const appels = (nom) => (src.match(new RegExp('compteurs\\.' + nom + '\\(', 'g')) || []).length;
   assert.strictEqual(appels('enregistrerImportDepuisJournal'), 1);
   assert.strictEqual(appels('enregistrerReimport'), 1);
