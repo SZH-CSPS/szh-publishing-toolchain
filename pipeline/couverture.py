@@ -361,14 +361,33 @@ def charger_reference():
         return json.load(f)
 
 
-def fond_couverture(buch):
-    """(clé de référence, teinte en %) du fond de toute la couverture. SEUL point de
-    lecture de couverture.fond / couverture.fond-teinte : ces noms sont provisoires."""
+def _cle_couverture(buch):
+    """Le bloc `couverture:` de buch.yaml. SEUL point de lecture de ses clés (fond,
+    fond-teinte, illustration-x-mm, illustration-y-mm) : ces noms sont provisoires."""
     couv = buch.get('couverture')
-    couv = couv if isinstance(couv, dict) else {}
+    return couv if isinstance(couv, dict) else {}
+
+
+def fond_couverture(buch):
+    """(clé de référence, teinte en %) du fond de toute la couverture."""
+    couv = _cle_couverture(buch)
     cle = str(couv.get('fond') or 'poireau').strip()
     teinte = _nombre(couv.get('fond-teinte'), 9.0)
     return cle, teinte
+
+
+def decalage_illustration(buch):
+    """(x, y) en mm du décalage de l'illustration dans sa zone, + vers la droite et le bas."""
+    couv = _cle_couverture(buch)
+    return (_nombre(couv.get('illustration-x-mm'), 0.0),
+            _nombre(couv.get('illustration-y-mm'), 0.0))
+
+
+def variables_illustration(buch):
+    """Les propriétés CSS du décalage, posées sur <html> à l'identique pour les quatre
+    sorties (couverture.css les applique par translate)."""
+    x, y = decalage_illustration(buch)
+    return '--szh-couv-illus-x: %gmm; --szh-couv-illus-y: %gmm;' % (round(x, 3), round(y, 3))
 
 
 def _cmjn_css(cmjn):
@@ -530,8 +549,9 @@ def blocs_maquette(buch, lang, maquette, couleurs, titre, resp):
         lignes = [x for x in (collection, (MOT_LIVRE.get(lang, MOT_LIVRE['fr']) + ' ' + tome)
                               if tome else '') if x]
         pied = '\n'.join([
+            # Picto plein : son blanc est une réserve dans l'encre, donc la couleur du fond.
             _img('szh-couv-picto', logo_uri('leichte-sprache.svg', couleurs['accent'],
-                                            couleurs['papier']),
+                                            couleurs['fond']),
                  ALT_PICTO.get(lang, ALT_PICTO['fr'])),
             '<p class="szh-couv-1re-collection">%s</p>' % '<br />'.join(lignes),
             _img('szh-couv-logo', logo_uri('edition-szh-csps.svg', couleurs['accent'],
@@ -631,7 +651,11 @@ def composer(opts, buch, mode):
     fond_cle, fond_t = fond_couverture(buch)
     illus = illustration_uri(opts.get('illustration'), mode, icc,
                              teinte_rgb(ref[fond_cle]['rgb'], fond_t))
-    titre = html.escape(str(buch.get('titre') or ''))
+    # « // » : saut de ligne en 1re de couverture, espace simple au dos et dans <title>.
+    titre = html.escape(szh_commun.titre_plat(buch.get('titre')))
+    titre_bloc = '<br />'.join(html.escape(x) for x in szh_commun.titre_lignes(buch.get('titre')))
+    sous_titre_bloc = '<br />'.join(
+        html.escape(x) for x in szh_commun.titre_lignes(buch.get('sous-titre')))
     resp = html.escape(responsables(buch, lang))
     pied, dos = blocs_maquette(buch, lang, maquette, couleurs, titre, resp)
 
@@ -650,7 +674,7 @@ def composer(opts, buch, mode):
                  '%.3fmm; --szh-couv-fp: %.3fmm; --c-couv-encre: %s; --c-couv-papier: %s; '
                  '--c-couv-accent: %s; --c-couv-fond: %s; --c-couv-sur-accent: %s;'
                  % (L, D, H, fp, couleurs['encre'], couleurs['papier'], couleurs['accent'],
-                    couleurs['fond'], couleurs['sur-accent']))
+                    couleurs['fond'], couleurs['sur-accent'])) + ' ' + variables_illustration(buch)
     classes = 'szh-couv-%s szh-couv-%s szh-couv-%s' % (
         'impression' if impression else 'ecran', maquette, m['format'])
 
@@ -665,11 +689,13 @@ def composer(opts, buch, mode):
         '$css$': liens,
         '$style-page$': page,
         '$titre$': titre,
-        '$sous-titre$': html.escape(str(buch.get('sous-titre') or '')),
+        '$titre-bloc$': titre_bloc,
+        '$sous-titre-bloc$': sous_titre_bloc,
         '$responsables$': resp,
         '$quatrieme$': quatrieme,
-        '$illustration$': ('<div class="szh-couv-1re-illustration" style="background-image: '
-                           'url(%s)"></div>' % illus) if illus else '',
+        '$illustration$': ('<div class="szh-couv-1re-cadre"><div class="szh-couv-1re-illustration" '
+                           'style="background-image: url(%s)"></div></div>' % illus)
+                          if illus else '',
         '$pied$': pied,
         '$dos$': dos,
         '$traits$': les_traits,

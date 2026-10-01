@@ -21,12 +21,25 @@
      WeasyPrint ne connaît pas `writing-mode: vertical-rl`. Responsables puis titre sur UNE
      ligne avant rotation (couverture.py) : deux lignes empilées deviendraient deux
      colonnes, et dans cet ordre les responsables tombent sous le titre.
-   * fonts/ n'a qu'Open Sans SemiCondensed, sans Light : la référence FALC est en chasse
-     normale (titres plus longs ici, coupés autrement) et son texte de 4e Light sort en
-     Regular. */
+   * La couverture est en Open Sans de chasse NORMALE (famille « Open Sans Couverture »
+     ci-dessous, statiques d'amont), comme la référence FALC ; l'intérieur des livres reste
+     en SemiCondensed (socle.css). Les deux maquettes : mesuré, une fois ces faces
+     déclarées, fontconfig sert aussi « Open Sans » avec elles (leur nom interne), si bien
+     que la couverture « normal », restée en var(--font-sans), y sortait déjà sans le dire. */
+
+@font-face { font-family: 'Open Sans Couverture'; font-weight: 300; font-style: normal;
+  src: url("../../fonts/OpenSans-Light.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans Couverture'; font-weight: 400; font-style: normal;
+  src: url("../../fonts/OpenSans-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans Couverture'; font-weight: 400; font-style: italic;
+  src: url("../../fonts/OpenSans-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans Couverture'; font-weight: 600; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiBold.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans Couverture'; font-weight: 700; font-style: normal;
+  src: url("../../fonts/OpenSans-Bold.ttf") format('truetype'); }
 
 html, body { margin: 0; padding: 0; }
-body { font-family: var(--font-sans); color: var(--c-couv-encre); }
+body { font-family: 'Open Sans Couverture', var(--font-sans); color: var(--c-couv-encre); }
 p { margin: 0; }
 a { color: inherit; text-decoration: none; }
 
@@ -69,8 +82,17 @@ a { color: inherit; text-decoration: none; }
   position: absolute; left: 0; right: calc(-1 * var(--szh-couv-fp));
   background: var(--c-couv-accent);
 }
+/* L'illustration se décale dans sa zone (couverture.illustration-x-mm / -y-mm, posés par
+   couverture.py) et peut en déborder, mais le cadre la coupe au fond perdu du plat de 1re
+   (au pli du dos à gauche) : à l'écran, fp = 0, au bord du plat. */
+.szh-couv-1re-cadre {
+  position: absolute; left: 0; overflow: hidden;
+  top: calc(-1 * var(--szh-couv-fp)); right: calc(-1 * var(--szh-couv-fp));
+  bottom: calc(-1 * var(--szh-couv-fp));
+}
 .szh-couv-1re-illustration {
   position: absolute; background-repeat: no-repeat; background-position: center;
+  transform: translate(var(--szh-couv-illus-x), var(--szh-couv-illus-y));
 }
 
 /* ═══ 2. Maquette FALC — calquée sur « Créer ensemble… (FALC) », A4 2025 ═══════════════
@@ -78,7 +100,7 @@ a { color: inherit; text-decoration: none; }
    standard (155 × 225, échelle relevée sur le Prospectrum DE), puis surcharges A4. */
 .szh-couv-falc .szh-couv-4e-texte {
   position: absolute; top: 30mm; left: 20mm; right: 24mm;
-  font-size: 13pt; line-height: 1.55; font-weight: 400;
+  font-size: 13pt; line-height: 1.55; font-weight: 300;
 }
 .szh-couv-falc .szh-couv-4e-texte p { margin: 0 0 1.55em 0; }
 .szh-couv-falc .szh-couv-4e-texte ul,
@@ -87,8 +109,9 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-falc .szh-couv-4e-texte ul > li { position: relative; }
 .szh-couv-falc .szh-couv-4e-texte ul > li::before { content: "•"; position: absolute; left: -5.3mm; }
 
+/* Zone de l'illustration, en mm depuis le haut du plat : le cadre commence fp plus haut. */
 .szh-couv-falc .szh-couv-1re-illustration {
-  top: 26mm; left: 10mm; width: 135mm; height: 112mm; background-size: contain;
+  top: calc(26mm + var(--szh-couv-fp)); left: 10mm; width: 135mm; height: 112mm; background-size: contain;
 }
 .szh-couv-falc .szh-couv-1re-bandeau {
   top: 145mm; height: 40mm; box-sizing: border-box;
@@ -96,7 +119,8 @@ a { color: inherit; text-decoration: none; }
   display: flex; flex-direction: column; justify-content: center;
   color: var(--c-couv-papier);
 }
-.szh-couv-falc .szh-couv-auteurs    { font-size: 10pt; font-weight: 400; margin-bottom: 1.5mm; }
+.szh-couv-falc .szh-couv-auteurs    { font-size: 10pt; font-weight: 400; margin-bottom: 1.5mm;
+                                      letter-spacing: 0.05em; }   /* approche de la réf. */
 .szh-couv-falc .szh-couv-titre      { font-size: 19.9pt; font-weight: 700; line-height: 1.12; }
 .szh-couv-falc .szh-couv-sous-titre { font-size: 13pt; font-weight: 400; margin-top: 2mm; }
 
@@ -124,7 +148,7 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-falc .szh-couv-dos-texte {
   position: absolute; top: 32mm; left: 50%;
   transform-origin: 0 0; transform: rotate(-90deg) translate(-100%, -50%);
-  white-space: nowrap; font-size: 8pt; line-height: 1;
+  white-space: nowrap; font-size: 8pt; line-height: 1; letter-spacing: 0.06em;
 }
 .szh-couv-falc .szh-couv-dos-titre   { font-weight: 700; }
 .szh-couv-falc .szh-couv-dos-auteurs { font-weight: 400; margin-right: 8mm; }
@@ -134,7 +158,7 @@ a { color: inherit; text-decoration: none; }
 
 .szh-couv-falc.szh-couv-a4 .szh-couv-4e-texte { font-size: 17pt; }
 .szh-couv-falc.szh-couv-a4 .szh-couv-1re-illustration {
-  top: 38mm; left: 10mm; width: 187mm; height: 131mm;
+  top: calc(38mm + var(--szh-couv-fp)); left: 10mm; width: 187mm; height: 131mm;
 }
 .szh-couv-falc.szh-couv-a4 .szh-couv-1re-bandeau {
   top: 189.7mm; height: 53.9mm; padding-left: 14.8mm;
@@ -170,7 +194,7 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-normal .szh-couv-dos-titre   { font-size: 9pt; font-weight: 700; }
 .szh-couv-normal .szh-couv-dos-auteurs { font-size: 8pt; font-weight: 400; margin-right: 6mm; }
 
-.szh-couv-normal .szh-couv-1re-illustration { inset: 0; background-size: cover; }
+.szh-couv-normal .szh-couv-1re-illustration { inset: 0; background-size: cover; }  /* jusqu'au fond perdu */
 .szh-couv-normal .szh-couv-1re-bandeau {
   bottom: 32mm; padding: 8mm calc(10mm + var(--szh-couv-fp)) 8mm 10mm;
   color: var(--c-couv-sur-accent);

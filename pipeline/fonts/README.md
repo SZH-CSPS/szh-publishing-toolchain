@@ -15,6 +15,11 @@ reproductible : `../styles/print.css` les charge par `@font-face` en chemins rel
 | `OpenSans-SemiCondensed-Italic.ttf`   | Open Sans | 400 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-SemiBoldItalic.ttf` | Open Sans | 600 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-BoldItalic.ttf` | Open Sans | 700 italique | googlefonts/opensans |
+| `OpenSans-Light.ttf`                  | Open Sans Couverture | 300 | googlefonts/opensans (statique) |
+| `OpenSans-Regular.ttf`                | Open Sans Couverture | 400 | googlefonts/opensans (statique) |
+| `OpenSans-Italic.ttf`                 | Open Sans Couverture | 400 italique | googlefonts/opensans (statique) |
+| `OpenSans-SemiBold.ttf`               | Open Sans Couverture | 600 | googlefonts/opensans (statique) |
+| `OpenSans-Bold.ttf`                   | Open Sans Couverture | 700 | googlefonts/opensans (statique) |
 | `IBMPlexMono-Regular.ttf`             | IBM Plex Mono | 400 | IBM/plex |
 | `IBMPlexMono-Medium.ttf`              | IBM Plex Mono | 500 | IBM/plex |
 | `SourceSerif4-Regular.ttf`            | aucune — hors maquette | 400 | adobe-fonts/source-serif |
@@ -112,3 +117,26 @@ masters retombent au contour près sur les fichiers d'ici (seuls diffèrent les 
 ajoutés par `glyphes-manquants.py`).
 
 IBM Plex Mono est distribuée en statique (Regular et Medium repris tels quels).
+
+## Chasse normale (couverture des livres seulement)
+
+La référence de couverture FALC est en Open Sans de chasse normale. Les cinq faces
+`OpenSans-{Light,Regular,Italic,SemiBold,Bold}.ttf` sont les statiques d'amont, déclarées
+par `../styles/livre/couverture.css` seule (famille « Open Sans Couverture ») ; l'intérieur
+des livres et la revue restent en semi-condensé. Téléchargées le 01.10.2026 depuis
+`https://raw.githubusercontent.com/googlefonts/opensans/bd7e37632246368c60fdcbd374dbf9bad11969b6/fonts/ttf/OpenSans-<Graisse>.ttf`
+(Version 3.003, OFL 1.1 identique à `OFL-OpenSans.txt`), sha256 d'amont :
+
+| Fichier | sha256 d'amont |
+|---|---|
+| `OpenSans-Light.ttf`    | `3472097ec4d9e57228cbfad3c9911e53923664d3df86568d0b05d674399e034e` |
+| `OpenSans-Regular.ttf`  | `c53aceea2dcf5b4098099c0c4d0a061d17e178a049317b42a422b1a9f7f8eb59` |
+| `OpenSans-Italic.ttf`   | `93bc1bb6abf4e6b7c75d7131714061d5b57cc478abcabe4cb3519bb38fb917aa` |
+| `OpenSans-SemiBold.ttf` | `4a413711684a9dd564ef0f1c10cb62b5d9f7eb6df2cff962f5341a6ecd5f64ae` |
+| `OpenSans-Bold.ttf`     | `27da758f4dcac9a65abe914c13b463b42982b9909bc65713424099f4810bd1e6` |
+
+Puis `glyphes-manquants.py` leur a ajouté les six caractères de la maquette (elles sont
+dans sa table) : les fichiers livrés ne portent donc plus ces empreintes. Pas de petites
+capitales (`petites-capitales.py` ne les liste pas) : la couverture n'en compose pas.
+Mesuré : une fois ces faces déclarées, fontconfig les sert aussi pour « Open Sans » (leur
+nom interne) ; elles ne doivent donc être déclarées que dans une feuille qui les veut.

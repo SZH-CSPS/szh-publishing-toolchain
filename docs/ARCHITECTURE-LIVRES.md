@@ -138,6 +138,8 @@ couleur-impression: bleu-acier  # clé de styles/couleurs-reference.json : couve
 couverture:                # provisoire (fond paramétrable en cours de conception)
   fond: poireau            # clé de référence, défaut poireau
   fond-teinte: 9           # % de cette couleur, défaut 9
+  illustration-x-mm: 0     # décalage de couverture/illustration.*, + vers la droite
+  illustration-y-mm: 0     # + vers le bas ; coupé au fond perdu du plat de 1re
 auteurs: []                # monographie : ici. Collectif : dans chaque chapitre.
 ordre-chapitres: []
 liminaires: [demi-titre, colophon, sommaire, avant-propos.md]
