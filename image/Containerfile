@@ -111,7 +111,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 # papier qui décide du profil, parce que le profil décrit comment ce papier boit l'encre.
 # Un profil « couché » appliqué à du non couché donne des images délavées et un noir boueux.
 #
-# ⚠ À reconfirmer auprès de l'imprimerie : docs/ARCHITECTURE-LIVRES.md:287 rappelle à juste
+# ⚠ À reconfirmer auprès de l'imprimerie : docs/ARCHITECTURE-LIVRES.md §4.3 rappelle à juste
 #   titre que « le profil ICC est une décision d'imprimeur, pas de logiciel ». FOGRA52 est le
 #   standard actuel du non couché (ISO 12647-2:2013, encrage max 300 %) ; si l'imprimeur en
 #   demande un autre, seules les deux lignes ARG ci-dessous changent.

@@ -35,7 +35,7 @@ change le geste de compilation pour tout le monde, et c’est un arbitrage à po
 
 ### 2.6 CMJN
 
-⚠ **À reconfirmer auprès de l'imprimerie**, comme `docs/ARCHITECTURE-LIVRES.md:287` le
+⚠ **À reconfirmer auprès de l'imprimerie**, comme `docs/ARCHITECTURE-LIVRES.md` (§4.3) le
 rappelle : « le profil ICC est une décision d'imprimeur, pas de logiciel ». FOGRA52 est le
 standard actuel du non couché (ISO 12647-2:2013, encrage maximal 300 %) ; si l'imprimeur en
 demande un autre, seules les lignes `ARG` du Containerfile changent. Et rien ne presse : le

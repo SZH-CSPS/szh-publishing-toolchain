@@ -82,8 +82,8 @@ import pypdf  # noqa: E402  — après la relance éventuelle, sous le bon inter
 # neutralité (spread < tolérance) : ce dernier reconnaît un RVB proche du gris avant
 # conversion, alors qu'ici on juge une sortie CMJN déjà convertie, où un vrai défaut —
 # noir quadri, ou C+M+J sans plaque K — ne revient PAS forcément gris neutre une fois
-# reconverti en RVB approché. Mesuré sur les trois exemples de docs/ARCHITECTURE-LIVRES.md
-# §4.3 (0.722/0.675/0.671/0.882, 0.89/0.784/0.616/0.969, 1/1/1/0) : les trois tombent sous
+# reconverti en RVB approché. Mesuré sur trois noirs de Ghostscript
+# (0.722/0.675/0.671/0.882, 0.89/0.784/0.616/0.969, 1/1/1/0) : les trois tombent sous
 # ce seuil de noirceur au premier canal, avec un spread RVB approché de 6 à 12 % — au-delà
 # de 0.05, ce qui les aurait fait manquer si le critère de neutralité était resté. Les sept
 # couleurs de la maison, elles, restent toutes au-dessus (« Nuit », la plus sombre, à ~0,40)

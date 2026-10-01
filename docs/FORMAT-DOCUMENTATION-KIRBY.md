@@ -143,7 +143,7 @@ fiche est traduite et son statut ne compte plus.
 ## Rubriques (documentation.<lang>.txt du numéro)
 
 Champs Dossier_references, Dossier_liens, Ressources, Podcasts : markdown libre (paragraphes,
-*italique*, **gras**, [liens](url), listes, intertitres ##/###). `ressources` n'existe que pour
+*italique*, **gras**, liens `[texte](url)`, listes, intertitres ##/###). `ressources` n'existe que pour
 la Revue (`rubriques[].revues`).
 
 ## Ordre d'impression (`Ordre`)

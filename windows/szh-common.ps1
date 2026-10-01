@@ -476,8 +476,8 @@ function Set-SzhOjsCle([string]$Cle) {
 # touche que ce processus PowerShell, et Start-Process (Start-SzhCodium dans szh-shell.ps1,
 # Start-SzhCodiumFichier dans open-md.ps1) le transmet à VSCodium comme n'importe quel autre
 # enfant -- exactement le même principe que $env:SZH_CODIUM_PROFIL. wsl.exe, lui, ne recopie
-# rien de l'environnement Windows sans WSLENV (voir docs/DEVELOPPEMENT.md, « SZH_CONFIG dans
-# tasks.json ») : les tâches du cockpit (vscodium-user/tasks.json,
+# rien de l'environnement Windows sans WSLENV (voir docs/DEVELOPPEMENT.md, « L'instance de
+# développement ») : les tâches du cockpit (vscodium-user/tasks.json,
 # `wsl.exe -d SZH-Publishing -- bash -c '… make …'`) sont des petits-enfants de VSCodium et
 # n'en voient donc les trois variables que par ce pont.
 #

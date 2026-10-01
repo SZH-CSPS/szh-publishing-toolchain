@@ -20,7 +20,7 @@
   logiciels partagés.
 
   À lancer depuis un clone frais du dépôt ou une extraction de toolkit-<v>.zip -- jamais
-  depuis C:\ProgramData\SZH\toolkit sous élévation (voir README.md, « Réparer un poste ») :
+  depuis C:\ProgramData\SZH\toolkit sous élévation (voir docs/MAINTENANCE.md, « Réparer un poste ») :
   ce dossier est inscriptible par le groupe Utilisateurs, et un administrateur qui
   l'exécuterait tel quel exécuterait aussi bien un code qu'un compte standard y aurait
   déposé. -Simuler n'est pas concerné : il ne fait qu'afficher le plan.
@@ -64,7 +64,7 @@ function Sortir([int]$Code, [string]$Message) {
   exit $Code
 }
 
-# ---- Jamais depuis le toolkit sous élévation (README.md, « Réparer un poste ») ----
+# ---- Jamais depuis le toolkit sous élévation (docs/MAINTENANCE.md, « Réparer un poste ») ----
 # -Simuler n'est pas concerné : il ne fait qu'afficher un plan, jamais un Remove-Item.
 $sousToolkit = $false
 try {

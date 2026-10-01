@@ -1,83 +1,44 @@
-# Éditeur de livres — architecture partagée
+# Le moteur livre
 
-Ce document est la proposition de refactorisation qui permet à un **éditeur de livres**
-(« Books SZH/CSPS ») de naître du cockpit de revue existant sans le dupliquer. Il porte la
-décision, ses raisons, et ce qu'elle refuse de faire.
-
-Il se lit avec [ARCHITECTURE.md](ARCHITECTURE.md) (la chaîne telle qu'elle est) et
-[SORTIES.md](SORTIES.md) (ce que la chaîne produit aujourd'hui).
+Comment Pronto fabrique un livre : le dossier, la chaîne de compilation, les sorties, les deux
+maquettes et ce que le cockpit en montre. Il se lit avec [`ARCHITECTURE.md`](ARCHITECTURE.md),
+qui situe le livre parmi les trois produits, et [`SORTIES.md`](SORTIES.md), qui décrit la pile
+de feuilles de style. Ce qui reste à faire est dans [`TODO/livres.md`](TODO/livres.md).
 
 ---
 
-## 1. Le constat de départ
+## 1. Un livre, pour la chaîne
 
-Un livre et un numéro de revue sont, pour la chaîne, **le même objet** : un dossier qui
-porte un fichier de configuration, une suite ordonnée d'unités de texte — chacune avec ses
-métadonnées, ses images et ses tableaux — et un dossier de sorties.
+Un livre et un numéro de revue sont le même objet : un dossier qui porte un fichier de
+configuration, une suite ordonnée d'unités de texte, chacune avec sa fiche, ses images et
+ses tableaux, et un dossier de sorties. La maquette et le vocabulaire diffèrent, la
+mécanique non : l'import Word, le gestionnaire de médias, l'éditeur de tableaux, la
+typographie maison, les portraits, la co-édition, les verrous, les copies en conflit et
+l'accessibilité PDF/UA ne savent pas si le texte est un article ou un chapitre.
 
-Le relevé le confirme, chiffres à l'appui :
+D'où la seule règle du moteur : **un chapitre se compile comme un article**. Même `cd` dans
+son dossier, même socle de filtres, même `--embed-resources`. Seul le gabarit diffère : un
+chapitre sort un fragment HTML, que `livre-assembler.py` colle ensuite dans le livre.
 
-| Couche | Réutilisable tel quel | À adapter | Spécifique revue |
-|---|---|---|---|
-| Filtres Lua (19) | 15 | 3 (`szh-niveaux`, `szh-sections`, `szh-numerotation`) | 1 (`szh-maquette`) |
-| Modules `lib/` (24) | 8 | 12 | 4 |
-| Webviews (9) | 3 | 4 | 2 |
-| Styles CSS | `socle.css` entier | — | `print.css` |
-| Windows / WSL / déploiement | tout le socle | 3 lanceurs à décliner | — |
+Un dossier est un livre parce qu'il porte `buch.yaml`, et pour aucune autre raison :
+`pipeline/Makefile` inclut alors `pipeline/profils/livre.mk`, et le cockpit choisit le
+profil `livre`. Les deux côtés tranchent pour le livre si un dossier porte les deux fichiers.
 
-Autrement dit : **la maquette et le vocabulaire diffèrent, la mécanique non**. Tout ce qui
-fait le prix du cockpit — l'import Word, le gestionnaire de médias par figure, l'éditeur de
-tableaux, la typographie maison, les portraits, la co-édition, les verrous, la détection
-des copies en conflit, l'accessibilité PDF/UA — est indifférent au fait que le texte soit
-un article ou un chapitre.
+## 2. Ce que le livre partage, ce qu'il ajoute
 
-Le toolkit sait d'ailleurs **déjà** gérer deux produits : `revue` et `zeitschrift`
-partagent tout et ne diffèrent que par un jeton, deux icônes et deux racines SharePoint
-(`windows/szh-common.ps1`, `$SzhSousDossiers`). Le livre est un troisième produit — plus
-éloigné, mais du même patron. (Depuis le 13.09.2026, les trois produits partagent en plus une
-seule fenêtre de lanceur, à onglets, et une seule identité de barre des tâches — `$SzhAppIds`,
-`windows/szh-shell.ps1`, ne porte plus qu'une clé par lanceur et non plus une par produit.)
+| | Partagé avec la revue | Propre au livre |
+|---|---|---|
+| Filtres | le socle de `filtres.mk`, dans le même ordre | `szh-livre-titre`, `szh-sauts-uniques`, `szh-livre-sous-titre` (deux fois, avant et après la typographie), `szh-livre-entete-image`, `szh-livre-auteurs`, `szh-livre-entete`, `szh-qr` |
+| Filtres absents | — | `szh-maquette`, `szh-titre-lignes`, `szh-auteurs`, `szh-ressource`, `szh-rubrique` |
+| Filtres lus autrement | `szh-niveaux` laisse le `<h1>` du chapitre en place ; `szh-numerotation` numérote en continu sur le volume (`SZH_COMPTEURS`) ; `szh-sections` préfixe par le numéro du chapitre | |
+| Recettes | l'import Word (`UNITES_DIR`, `WORD_DIR`), `define weasy_ua`, la porte PDF/UA | `profils/livre.mk`, `define contexte_chapitre` |
+| Python | `szh_commun.py`, l'import | `livre-assembler.py`, `livre-epub-prepare.py`, `livre-scinder.py`, `livre-migrer-meta.py`, `couverture.py`, `cmjn.py`, `liens-courts.py` |
+| Styles | `socle.css`, `partage-filtres.css`, la couleur annuelle | `styles/livre/` : `base.css`, `normal.css`, `falc.css`, `imprimeur.css`, `couverture.css`, `web.css`, `epub.css` |
+| Gabarits | — | `szh-livre.html`, `szh-livre-chapitre.html`, `szh-livre-liminaire.html`, `szh-couverture.html` |
 
----
-
-## 2. Le principe de la refactorisation
-
-**Une seule abstraction nouvelle : le _profil d'ouvrage_.** Pas de cadre à greffons, pas
-d'inversion de contrôle, pas de couche d'indirection générale. Un objet descriptif, lu là
-où le code demandait jusqu'ici « où est `ausgabe.yaml` » et « comment s'appelle le dossier
-des articles ».
-
-```js
-// vscodium-extension/szh-cockpit/lib/profil.js
-const PROFILS = {
-  revue: {
-    config: 'ausgabe.yaml',
-    unites: { dossier: 'articles',  mot: 'article',  ordre: 'ordre-articles'  },
-    depot:  'articles-word',
-    cible:  'all',
-  },
-  livre: {
-    config: 'buch.yaml',
-    unites: { dossier: 'chapitres', mot: 'chapitre', ordre: 'ordre-chapitres' },
-    depot:  'chapitres-word',
-    cible:  'livre',
-  },
-};
-```
-
-Ce que ce choix achète : chaque hypothèse « revue » du code devient **nommée et testable**.
-Ce qu'il refuse : généraliser ce qui n'a qu'un cas d'usage. Un profil n'est pas un moteur
-de règles ; c'est une table de vérité de six lignes.
-
-### Trois règles de conduite
-
-1. **Aucune règle de revue ne bouge.** Les cibles `pdf`, `html`, `apercu`, `docx`,
-   `import`, `verifier-ua` du `Makefile` restent au caractère près. Le moteur livre
-   s'ajoute par un `include` conditionnel, jamais par un déplacement.
-2. **Le partage se fait par le bas, pas par le haut.** `socle.css` porte les jetons ; les
-   feuilles de sortie les consomment. Les filtres Lua ne connaissent ni revue ni livre :
-   ils connaissent des figures, des tableaux, des notes, une langue.
-3. **Un seul VSIX.** Voir §6.
+L'en-tête de `pipeline/filtres.mk` donne la raison de chaque écart de chaîne. Une règle de
+composant émise par un filtre partagé vit dans `partage-filtres.css`, jamais dans une feuille
+propre au livre.
 
 ---
 
@@ -89,43 +50,45 @@ de règles ; c'est une table de vérité de six lignes.
   BIENVENUE.md
   chapitres/
     01-einleitung/
-      01-einleitung.md
-      01-einleitung.meta.yaml     la fiche : titre, sous-titre, auteurs, résumé, DOI du chapitre
+      01-einleitung.md            le corps, sans titre
+      01-einleitung.meta.yaml     la fiche : titre, sous-titre, auteur·e·s, résumé
       media/                      images, comme un article
       tables/                     tableaux extraits, comme un article
   chapitres-word/                 dépôt des .docx à convertir
   liminaires/
-    avant-propos.md               les pièces liminaires écrites à la main
+    avant-propos.md               pièces liminaires écrites à la main
   couverture/
     illustration.jpg
     quatrieme.md                  texte de 4e de couverture
   styles/                         surcharges locales facultatives
   out/
-    <slug>.pdf                    PDF numérique (RVB, PDF/UA-1, signets)
-    <slug>-imprimeur.pdf          PDF imprimeur (CMJN, fond perdu, traits de coupe)
-    <slug>-couverture-impression.pdf  couverture à plat 4e + dos + 1re (PDF/X-4, CMJN)
-    <slug>-couverture.pdf         1re puis 4e, pour l'écran (RGB, PDF/UA-1)
-    <slug>-couverture-1.png       1re de couverture, 300 dpi (aussi l'image de l'EPUB)
-    <slug>-couverture-4.png       4e de couverture, 300 dpi
-    <slug>-dos.json               le dos : pages lues, mm, grammage de couverture, source
-    <slug>.epub                   EPUB 3
-    chapitres/<slug>.pdf          un chapitre seul (aperçu du cockpit, folios depuis 1)
-    web/                          HTML responsive
+    <livre>.pdf                   PDF numérique (RVB, PDF/UA-1, signets)
+    <livre>-imprimeur.pdf         PDF imprimeur (fond perdu, traits de coupe, CMJN si profil)
+    <livre>-couverture-impression.pdf  couverture à plat 4e + dos + 1re (PDF/X-4, CMJN)
+    <livre>-couverture.pdf        1re puis 4e, pour l'écran (RVB, PDF/UA-1)
+    <livre>-couverture-1.png      1re de couverture, 300 dpi (aussi l'image de l'EPUB)
+    <livre>-couverture-4.png      4e de couverture, 300 dpi
+    <livre>-dos.json              le dos : pages lues, mm, grammage, source du chiffre
+    <livre>.epub                  EPUB 3
+    chapitres/<slug>.pdf          un chapitre seul
+    chapitres/<slug>.apercu.html  l'aperçu cliquable d'un chapitre
+    web/<livre>.html              HTML pour l'écran
 ```
 
-`chapitres/<slug>/<slug>.md` est **volontairement homonyme** de
-`articles/<slug>/<slug>.md` : c'est ce qui rend le gestionnaire de médias, l'éditeur de
-tableaux, l'import Word et les filtres Lua utilisables sans une ligne de changement.
+`chapitres/<slug>/<slug>.md` est volontairement homonyme d'`articles/<slug>/<slug>.md` :
+c'est ce qui rend les médias, l'éditeur de tableaux, l'import et les filtres utilisables
+sans une ligne de plus. Le nom du dossier d'un livre ne doit pas contenir d'espace : les
+fonctions de chemin de make découpent sur les blancs, et un garde-fou refuse le cas.
 
 ### `buch.yaml`
 
 ```yaml
 titre: "Berufliche Teilhabe von Erwachsenen mit dem Asperger-Syndrom"
 sous-titre: "Strategien von Arbeitnehmer:innen und Arbeitgeber:innen"
-ouvrage: monographie       # monographie | collectif — décide où vivent les auteurs
-lang: de                   # même clé que dans ausgabe.yaml : les filtres la lisent
+ouvrage: monographie       # monographie | collectif : décide où vivent les auteur·e·s
+lang: de                   # langue du texte, lue par szh-contexte.lua
 maquette: normal           # normal | falc
-format: standard           # standard (155x225) | a4 (210x297, FALC seulement)
+format: standard           # standard (155 × 225) | a4 (210 × 297, FALC seulement)
 collection: "Sonderpädagogische Forschung in der Schweiz"
 tome: "6"
 annee: 2025
@@ -133,65 +96,62 @@ isbn-print: "978-3-905890-96-9"
 isbn-ebook: "978-3-905890-95-2"
 doi: "10.57161/b327"
 licence: cc-by-nc-nd-4.0
-couleur: "#5F9FBC"          # couleur NUMÉRIQUE (PDF écran, EPUB, web)
+couleur: "#5F9FBC"          # couleur numérique (PDF écran, EPUB, web)
 couleur-impression: bleu-acier  # clé de styles/couleurs-reference.json : couverture
-couverture:                # provisoire (fond paramétrable en cours de conception)
-  fond: poireau            # clé de référence, défaut poireau
-  fond-teinte: 9           # % de cette couleur, défaut 9
+couverture:
+  fond: poireau            # clé de couleurs-reference.json
+  fond-teinte: 9           # % de cette couleur
   illustration-x-mm: 0     # décalage de couverture/illustration.*, + vers la droite
   illustration-y-mm: 0     # + vers le bas ; coupé au fond perdu du plat de 1re
-auteurs: []                # monographie : ici. Collectif : dans chaque chapitre.
-ordre-chapitres: []
-liminaires: [demi-titre, colophon, sommaire, avant-propos.md]
+auteurs: []                # monographie : ici ; collectif : dans chaque chapitre
+ordre-chapitres: []        # vide : l'ordre des dossiers
+liminaires: [demi-titre, colophon, page-titre, sommaire, avant-propos.md]
 impression:
   grammage: 90             # g/m² du papier intérieur
-  main: 1.27               # « Papier-Volumen » du papier intérieur
-  couverture-volume: 1.3   # volume du papier de couverture
-  couverture-grammage:     # vide = 250 sous 20 mm de dos, 300 au-delà
-  colle-mm: 0              # « Seitenleimauftrag »
+  main: 1.27               # volume du papier intérieur
+  couverture-volume: 1.3
+  couverture-grammage:     # vide : 250 sous 20 mm de dos, 300 au-delà
+  colle-mm: 0
   dos-mm:                  # imposé par l'imprimeur : gagne toujours
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"   # un seul profil pour tout
+  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"   # dans /opt/icc/ de l'image
 locked: false
 archived: false
 version-toolkit: ""
 ```
 
-**Monographie ou ouvrage collectif.** Une seule clé décide : `ouvrage`. Et elle ne s'appelle pas `type`, parce que `type` est déjà la RUBRIQUE d'un article dans les fiches de la revue : pandoc fusionne les fichiers de métadonnées, le dernier gagnant, et le `type: article` d'un chapitre importé de Word aurait effacé le `type: collectif` du livre sans un mot. En monographie, les
-auteur·e·s sont dans `buch.yaml` et s'impriment sur la couverture et la page de titre ; les
-chapitres n'ont pas de bloc auteurs. En ouvrage collectif, chaque `<slug>.meta.yaml` porte
-ses auteur·e·s (clé `author`), imprimés sous le titre du chapitre — c'est le schéma d'auteur
-à sept champs déjà utilisé par les articles. Un chapitre n'hérite jamais des `auteurs` de
-`buch.yaml` (clé du LIVRE, fusionnée en premier dans ses métadonnées) : le filtre ne lit que
-`author`.
+**Monographie ou ouvrage collectif.** La clé s'appelle `ouvrage` et non `type` : `type` est
+la rubrique d'un article, et pandoc fusionne les métadonnées en laissant gagner la dernière ;
+le `type: article` d'un chapitre importé aurait effacé celui du livre. En monographie, les
+auteur·e·s sont dans `buch.yaml` et s'impriment sur la couverture et la page de titre. En
+collectif, chaque fiche porte les siens (clé `author`, le schéma d'auteur à sept champs des
+articles), imprimés sous le titre du chapitre. Un chapitre n'hérite jamais des `auteurs` du
+livre : le filtre ne lit que `author`.
 
 **Le titre et les auteur·e·s d'un chapitre sont dans sa fiche, pas dans son `.md`.**
-`<slug>.meta.yaml` porte `title` (une entrée par langue, `fr:`, `de:`…), `subtitle`
-(facultatif, même forme) et `author` ; le `.md` commence directement par le corps. À la
-compilation, `szh-livre-titre.lua` (tête de `FILTRES_CHAPITRE`) pose le `<h1>` comme si le
-rédacteur avait écrit `# Titre` — numéro de section, ancre et sommaire n'y voient rien —,
-`szh-livre-auteurs.lua` la ligne d'auteur·e·s (ouvrage collectif seulement) et
-`szh-livre-sous-titre.lua` le sous-titre, dans l'ordre titre, sous-titre, auteur·e·s, encadré
-`falc-header`. Un `.md` qui porte encore son `# Titre` le garde : il n'y a jamais deux
-titres, et l'ancien livre compile comme avant.
+`<slug>.meta.yaml` porte `title` et `subtitle` (une entrée par langue) et `author`.
+`szh-livre-titre.lua`, en tête de chaîne, pose le `<h1>` comme si le rédacteur avait écrit
+`# Titre` ; `szh-livre-sous-titre.lua` et `szh-livre-auteurs.lua` posent la suite, dans
+l'ordre titre, sous-titre, auteur·e·s, encadré `falc-header`. Un `.md` qui porte encore son
+`# Titre` le garde, sans doublon. `livre-migrer-meta.py <livre> [--simuler]` range titre et
+auteur·e·s d'un ancien chapitre dans sa fiche, sans jamais écraser une valeur ; l'import Word
+d'un chapitre et `livre-scinder.py` font de même.
 
-`pipeline/livre-migrer-meta.py <dossier-livre> [--simuler]` fait le passage pour un livre
-existant : le premier titre de niveau 1 et le bloc `::: {.szh-auteurs}` qui le suit
-sortent du `.md` et entrent dans la fiche (`title.<lang>`, `author`), l'un et l'autre
-découpés comme les bylines de l'import Word des articles (« A & B », « A, B et C »,
-« A und B »). Il ne remplace jamais une valeur déjà présente dans la fiche — il la signale —,
-refuse un livre `locked: true`, laisse tel quel un `.md` à plusieurs titres de niveau 1
-(manuscrit à scinder) et ne change rien au second passage. Même script en dernière étape de
-l'import Word d'un chapitre (`import-docx.sh`) et dans `livre-scinder.py`, qui écrit la
-fiche de chaque morceau au lieu d'un `# Titre`.
+**Clés de fiche propres au chapitre :**
 
-**Un bloc écrit directement dans le `.md` du chapitre** (remplace depuis le 23.09.2026 la
-clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
+- `sommaire: non` retire le chapitre du sommaire : ni pastille numérotée, ni marque de
+  tranche, ni entrée. Il compile à sa place (pagination, compteurs, rang inchangés) ; les
+  autres chapitres se numérotent sans trou, et l'index à pouce se repartage entre eux
+  (`profils/livre.mk`, § « Index à pouce »).
+- `picto-entete: ecouter` pose un picto de lecture audio au coin extérieur de chaque page du
+  chapitre, par le même running element que l'onglet de tranche (`szh-livre-chapitre.html`,
+  `styles/livre/base.css`).
 
-* `falc-header` — un encadré « cette histoire existe aussi en audio » sur la première page
-  du chapitre, sous le titre (et sous le bloc auteurs s'il y en a un), où qu'il soit écrit
-  dans le fichier :
+**Blocs écrits dans le `.md` d'un chapitre :**
+
+- **`falc-header`** : l'encadré « cette histoire existe aussi en audio », sur la première
+  page du chapitre, sous le titre et les auteur·e·s, où qu'il soit écrit dans le fichier.
 
   ```
   :::: falc-header
@@ -206,15 +166,12 @@ clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
   ::::
   ```
 
-  Texte (facultatif, un ou plusieurs paragraphes — chaque ligne écrite devient une ligne
-  imprimée), image (facultative, texte alternatif `![alt](…)` obligatoire — sans lui,
-  l'image est omise, avertissement, jamais un `<img>` muet), bloc `qr-link` (facultatif —
-  voir ci-dessous). Filtre : `filters/szh-livre-entete.lua`. Un bloc entièrement vide
-  n'imprime rien (avertissement) ; deux `falc-header` dans le même chapitre : seul le
-  premier compte (avertissement).
+  Texte facultatif (chaque ligne écrite est une ligne imprimée), image facultative dont
+  l'alternative est obligatoire (sans elle, l'image est omise avec un avertissement), bloc
+  `qr-link` facultatif. Filtre : `szh-livre-entete.lua`. Un bloc vide n'imprime rien ; de deux
+  `falc-header`, seul le premier compte. Les deux cas sont signalés.
 
-* `qr-link` — un QR cliquable réutilisable n'importe où dans un chapitre, seul ou embarqué
-  dans un `falc-header` (même bloc, mêmes options) :
+- **`qr-link`** : un QR cliquable, seul ou dans un `falc-header`.
 
   ```
   ::: {.qr-link tracked=false background=transparent color=#000000 size=25mm title="…"}
@@ -222,778 +179,250 @@ clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
   :::
   ```
 
-  Options, toutes en anglais : `tracked` (défaut `true` : lien court Shlink via le cache
-  `liens-courts.yaml`, si `SZH_SHLINK_URL`/`SZH_SHLINK_CLE` sont posées dans l'environnement
-  — `pipeline/liens-courts.py`, résolu automatiquement avant la compilation par
-  `pipeline/profils/livre.mk` ; sans ces variables, l'URL d'origine traverse telle quelle,
-  un seul avertissement par livre ; `false` : lien d'origine, jamais raccourci),
-  `background` (défaut `transparent`), `color` (défaut `#000000`), `size`
-  (défaut `25mm`), `title` (nom accessible ; défaut « Lien vers : url » selon `lang` du
-  livre). La forme courte `[texte](url){.qr}` reste acceptée, mêmes options (`taille=` en
-  repli silencieux pour `size=`) ; son nom accessible par défaut est aussi « Lien vers :
-  url », plus le texte du lien lui-même (sauf `title=` explicite). Avertissements : `color`
-  pas nettement plus foncée que `background` (contraste WCAG < 3:1) ; dans le PDF
-  imprimeur, `color` non noire (repérage quadri). Filtre : `filters/szh-qr.lua`,
-  construction partagée dans `filters/szh-qr-commun.lua` (`M.construire_qr`).
-
-* `picto-entete: ecouter` — un petit picto (10 mm, un cercle et un triangle — la lecture
-  audio) au coin extérieur de CHAQUE page du chapitre, en en-tête. Écrit dans le gabarit
-  (`templates/szh-livre-chapitre.html`) et posé en CSS (`styles/livre/base.css`, § picto
-  d'en-tête) par le même mécanisme de running element que l'onglet de tranche FALC — un
-  picto ne déborde jamais sur le chapitre suivant, chacun promeut le sien, vide ou non.
-* `sommaire: non` (ou `false`) — retire le chapitre de la table des matières : ni pastille
-  numérotée, ni marque de tranche (maquette FALC), ni repère au sommaire. Il compile quand
-  même à sa place (pagination, compteurs de figures/tableaux continus, SZH_CHAPITRE :
-  rien de tout cela ne bouge) ; il disparaît seulement de ce que le lecteur feuillette pour
-  s'orienter. Par défaut (clé absente, ou toute autre valeur) : présent. Les chapitres
-  restants se numérotent quand même 1, 2, 3… sans trou, et l'index à pouce (les cases de
-  l'onglet FALC) se repartage entre eux à parts égales — voir `pipeline/profils/livre.mk`,
-  § « Index à pouce », pour le calcul.
+  `tracked` (défaut `true`) encode le lien court Shlink tiré du cache `liens-courts.yaml`,
+  résolu avant la compilation par `liens-courts.py` quand `SZH_SHLINK_URL` et `SZH_SHLINK_CLE`
+  sont posées ; sans elles, l'URL d'origine passe telle quelle, avec un avertissement par
+  livre. `background`, `color` et `size` règlent le dessin ; `title` est le nom accessible
+  (défaut « Lien vers : url »). La forme courte `[texte](url){.qr}` reste acceptée.
+  Avertissements : contraste sous 3:1 entre `color` et `background`, couleur non noire dans le
+  PDF imprimeur. Filtres : `szh-qr.lua`, construction dans `szh-qr-commun.lua`.
 
 ### Calcul du dos
 
-La formule est celle du tableur de l'imprimeur, `Buchrueckenberechnung_2022_250_300_gm21.xlsx`
-(feuille « Buchrückenberechnung Softcover ») :
+La formule est celle du tableur de l'imprimeur (`Buchrueckenberechnung_2022_250_300_gm21.xlsx`,
+feuille « Buchrückenberechnung Softcover ») :
 
 ```
 dos (mm) = 4 × g_couv/2000 × vol_couv  +  pages × g_int/2000 × vol_int  +  colle
 ```
 
-* `pages` : le nombre de pages du PDF intérieur, **lu dans le PDF** juste avant de composer
-  la couverture (`/Root → /Pages → /Count`), jamais saisi — un dos calculé sur un compte de
-  pages périmé est le défaut le plus cher du métier ;
-* `g_int`, `vol_int` : grammage et volume du papier intérieur, par défaut celui du
-  tableur, Mondi DNS Premium 90 g/m², volume 1,27 ;
-* `g_couv`, `vol_couv` : la couverture, Offset blanc mat, volume 1,3, en 250 g/m² ou 300 ;
-* `colle` : l'épaisseur de colle au dos (« Seitenleimauftrag »), 0 par défaut.
+- `pages` est lu dans le PDF intérieur juste avant de composer la couverture, jamais saisi :
+  un dos calculé sur un compte de pages périmé est le défaut le plus cher du métier ;
+- `g_int`, `vol_int` : le papier intérieur, par défaut celui du tableur (90 g/m², volume 1,27) ;
+- `g_couv`, `vol_couv` : la couverture, volume 1,3, en 250 ou 300 g/m² ;
+- `colle` : l'épaisseur de colle au dos, 0 par défaut.
 
-**Règle 250/300 g.** Le grammage de couverture n'est pas un réglage mais une conséquence :
-le dos se calcule d'abord en 250 g ; s'il atteint 20 mm, la couverture passe en 300 g et le
-dos se recalcule avec ce grammage (un 300 g casse au pli d'un dos étroit). Un dos de moins
-de 6 mm reste en 250 g et garde son texte de dos (cas réel : le BRK en Leichte Sprache,
-3,6 mm).
+**Règle 250/300 g.** Le dos se calcule d'abord en 250 g ; s'il atteint 20 mm, la couverture
+passe en 300 g et le dos se recalcule (un 300 g casse au pli d'un dos étroit). Quand
+l'imprimeur impose le dos, `impression.dos-mm` gagne, et le grammage suit la même règle sauf
+`couverture-grammage` explicite. `out/<livre>-dos.json` écrit le résultat et sa source. Le
+code est `calculer_dos()` de `pipeline/couverture.py`, éprouvé par
+`test/couverture-dos.test.py`. Recoupé sur le FALC A4 de 2026 : 134 pages, dos mesuré
+8,26 mm, calculé 8,31 mm.
 
-| Clé `impression.` | Rôle | Défaut |
-|---|---|---|
-| `grammage` | g/m² du papier intérieur | 90 |
-| `main` | volume (« Papier-Volumen ») du papier intérieur | 1,27 |
-| `couverture-volume` | volume du papier de couverture | 1,3 |
-| `couverture-grammage` | impose 250 ou 300 g/m² | vide : la règle ci-dessus |
-| `colle-mm` | colle au dos | 0 |
-| `dos-mm` | dos imposé par l'imprimeur | vide : calculé |
-| `fond-perdu-mm` | fond perdu de la couverture d'impression | 3 |
-| `traits-de-coupe` | traits de coupe et de pli | true |
-| `profil-cmjn` | profil ICC (dans `/opt/icc/`) de l'OutputIntent et de l'illustration | `PSOuncoated_v3_FOGRA52.icc` |
-
-**Quand l'imprimeur impose le dos**, on écrit sa valeur dans `impression.dos-mm` : elle
-gagne sur le calcul, sans discussion, et le grammage de couverture suit la même règle
-(300 g dès 20 mm) sauf `couverture-grammage` explicite. `out/<livre>-dos.json` écrit le
-résultat et sa source (`calculé : 4 × 250/2000 × 1.3 + 134 pages … ` ou `imposé par
-buch.yaml`) ; le code est `calculer_dos()` dans `pipeline/couverture.py`, éprouvé par
-`test/couverture-dos.test.py`.
-
-Recoupé : le FALC A4 de 2026 (134 pages, dos mesuré 8,26 mm au `TrimBox`) donne
-0,65 + 134 × 0,05715 = 8,31 mm.
-
-⚠ **Incohérence du tableur.** Le bloc 300 g écrit le volume intérieur **1,25 en dur**
-(cellule D21), là où le bloc 250 g le tire de la table des papiers (1,27, cellule E33). On
-retient 1,27 dans les deux cas : c'est la valeur de la table, et rien ne justifie qu'un
-papier intérieur change de volume avec le grammage de sa couverture.
+Le tableur écrit le volume intérieur 1,25 en dur dans son bloc 300 g, là où le bloc 250 g lit
+1,27 dans sa table des papiers : on retient 1,27 dans les deux cas.
 
 ---
 
 ## 4. La chaîne de compilation
 
-### Ce qui ne change pas
+### 4.1 L'assemblage par fragments
 
-Les 17 filtres Lua génériques, `socle.css`, les scripts Python d'import, les cibles revue
-du `Makefile`, la porte PDF/UA, l'image WSL (à une exception, §4.3).
+Un filtre Lua ne peut pas réunir les chapitres : il travaille sur l'arbre d'une seule
+invocation de pandoc, qui n'a qu'un dossier courant, alors que chaque chapitre a ses `media/`
+et ses `tables/` (non préfixés par le slug : `table-01.html` partout). Le moteur procède donc
+en trois temps :
 
-### Ce qui s'ajoute
-
-```
-pipeline/
-  profils/
-    livre.mk                     règles du moteur livre, incluses si buch.yaml est là
-  livre-assembler.py             colle les fragments, compose les liminaires et le sommaire
-  filters/
-    szh-tableau-boite.lua        enveloppe chaque tableau (défaut PDF/UA, voir §4.4)
-    szh-livre-titre.lua          le titre d'un chapitre, depuis sa fiche (première de la chaîne)
-    szh-livre-auteurs.lua        le bloc auteurs d'un chapitre, après son titre
-    szh-livre-sous-titre.lua     le sous-titre, depuis la fiche, juste sous le titre
-    szh-livre-couverture.lua     4e + dos + 1re, une page à plat
-  styles/livre/
-    base.css                     géométrie, folios, liminaires, sommaire, coupures
-    normal.css                   la charte courante (155x225, Open Sans SemiCondensed 10 pt)
-    falc.css                     la charte FALC (pastilles, onglets, InfoBox, une phrase par ligne)
-    imprimeur.css                fond perdu, traits de coupe, repères
-    couverture.css               la page à plat
-    web.css                      HTML responsive
-    epub.css                     EPUB 3
-  templates/
-    szh-livre.html               enveloppe du livre (rempli par l'assembleur, pas par pandoc)
-    szh-livre-chapitre.html      gabarit de FRAGMENT d'un chapitre
-    szh-livre-liminaire.html     gabarit de fragment d'une pièce liminaire
-    szh-couverture.html          gabarit de la couverture
-```
-
-### L'assemblage : par fragments, pas par une invocation unique
-
-**C'est le point où la première rédaction de ce document se trompait**, et la correction est
-structurante. Elle proposait un filtre Lua `szh-livre-assembler.lua` qui aurait réuni les
-chapitres en un document. C'est impossible : un filtre Lua travaille sur l'arbre d'**une**
-invocation pandoc, et une invocation n'a **qu'un dossier courant**. Or la règle de
-compilation fait `cd chapitres/<slug>` précisément pour que `media/` et `tables/` tombent
-juste — `szh-tabelle-inclure.lua` ouvre `tables/table-NN.html` en relatif, tel quel. Douze
-chapitres, ce sont douze dossiers courants. Et les tableaux extraits ne sont pas préfixés
-par leur slug (`table-01.html` partout) : une résolution par `--resource-path` prendrait
-silencieusement le fichier d'un autre chapitre.
-
-Le dispositif retenu, **mesuré sur le banc** :
-
-1. chaque chapitre est compilé **comme un article** — même `cd`, même suite de filtres,
-   `--standalone --embed-resources` — avec un gabarit qui ne sort que le corps. Le
-   fragment obtenu est autonome : images en `data:` URI, **zéro chemin relatif survivant** ;
+1. chaque chapitre est compilé comme un article, `--standalone --embed-resources`, avec un
+   gabarit qui ne sort que le corps : le fragment est autonome, aucun chemin relatif ne
+   survit ;
 2. `livre-assembler.py` relève les titres des fragments, compose les liminaires que la
-   machine sait écrire, bâtit le sommaire en liens internes, et remplit l'enveloppe ;
-3. WeasyPrint pagine le tout.
+   machine sait écrire (demi-titre, colophon, page de titre, sommaire), bâtit le sommaire en
+   liens internes et remplit l'enveloppe `szh-livre.html` ;
+3. WeasyPrint pagine le tout, par `define weasy_ua`.
 
-Ce que cela achète, et qui n'est pas un effet de bord : la compilation reste **incrémentale
-par chapitre**, et l'aperçu du cockpit sur un chapitre est, littéralement, l'aperçu d'un
-article.
+La compilation reste incrémentale par chapitre. `out/.szh-ordre-chapitres` rend l'ordre
+explicite, pour qu'un chapitre retiré recompile les suivants ; `out/.szh-compteurs/` reporte
+la numérotation des figures et des tableaux d'un chapitre au suivant, un jeu par sortie.
+`ordre-chapitres` de `buch.yaml` place les slugs nommés en tête, les autres suivent par ordre
+alphabétique ; un dossier préfixé « `_` » est une pièce de travail, jamais imprimée.
 
-Le `Makefile` actuel route déjà `profil: book` vers un message d'attente
-(`profil-differe`). Cette branche devient l'`include` de `profils/livre.mk`, et la valeur
-acceptée devient `livre` — `book` restant toléré en synonyme, des dossiers portant déjà la
-clé.
-
-### Un chapitre seul : `make livre-chapitre-pdf CHAPITRE=<slug>`
-
-Le clic sur un chapitre, dans le cockpit, ne recompile pas le livre : la cible compile ce
-seul chapitre (même suite de filtres, même rang, même couleur que dans le livre) et écrit
-`out/chapitres/<slug>.pdf` — sans liminaires ni sommaire, avec les CSS du livre, folios
-« page X sur Y » depuis 1. Codes de sortie : 0 écrit, 1 compilation en échec, 2 `CHAPITRE`
-absent ou inconnu. L'interface complète est en tête de la règle, dans `profils/livre.mk`.
-
-Écart assumé : la numérotation des figures et des tableaux court sur tout le livre, et les
-autres chapitres ne sont pas recompilés. Le PDF seul garde donc la numérotation du dernier
-build complet (les reports de `out/.szh-compteurs/`) ; elle ne se met à jour qu'au prochain
-`make livre`.
-
-### Les six sorties
+### 4.2 Les sorties
 
 | Cible | Produit | Comment |
 |---|---|---|
-| `livre-pdf` | PDF numérique | WeasyPrint, RVB, PDF/UA-1, signets, liens vivants, sans fond perdu |
-| `livre-imprimeur` | PDF imprimeur | WeasyPrint + `bleed`/`marks`, puis conversion CMJN |
-| `livre-couverture` | Couverture | à plat `(2 × largeur + dos)` en PDF/X-4 CMJN, fond perdu, traits de coupe et de pli ; 1re + 4e en PDF/UA-1 et PNG RGB ; `-dos.json` |
-| `livre-html` | HTML responsive | pandoc + `web.css`, autonome |
-| `livre-epub` | EPUB 3 | **pas résolu — voir §4.5** |
-| `livre-mobi` | *(refusé, voir §7)* | |
+| `livre` (`Ctrl+S`) | PDF numérique et aperçus de chapitre | `livre-pdf` plus les `.apercu.html` |
+| `livre-pdf` | PDF numérique | RVB, PDF/UA-1, signets, liens vivants, sans fond perdu ; seul PDF du livre jugé par la porte PDF/UA |
+| `livre-imprimeur` | PDF imprimeur | `imprimeur.css` en plus (`bleed`, traits de coupe), puis conversion CMJN (§4.3) |
+| `livre-couverture` | couverture | à plat `2 × largeur + dos` en PDF/X-4 CMJN ; 1re et 4e en PDF/UA-1 et PNG ; `-dos.json` |
+| `livre-html-web` | HTML pour l'écran | `web.css`, feuilles incorporées |
+| `livre-epub` | EPUB 3 | §4.5 |
+| `livre-chapitre-pdf CHAPITRE=<slug>` | un chapitre seul | même chaîne, même rang, même couleur ; sans liminaires ; folios depuis 1 |
 
-### 4.3 Le CMJN : mécanisme mesuré, texte en K seul confirmé
+Un chapitre seul garde la numérotation des figures du dernier build complet : les autres
+chapitres ne sont pas recompilés. Codes de sortie de `livre-chapitre-pdf` : 0 écrit,
+1 compilation en échec, 2 `CHAPITRE` absent ou inconnu. Les tâches VSCodium « Livre : … »
+(`vscodium-user/tasks.json`) et le panneau Export du cockpit appellent ces cibles.
 
-**Mesuré, pas supposé.** WeasyPrint honore `bleed` : un `MediaBox` agrandi, un `TrimBox`
-juste. Ses `marks: crop cross`, en revanche, sont tracés en RGB (`0 0 0 rg`).
+### 4.3 Le CMJN
 
-**WeasyPrint 70 écrit le CMJN qu'on lui donne.** `device-cmyk(c m y k)` sort tel quel
-(`0.16 0.9 0.64 0 scn`), y compris dans les `fill` d'un SVG chargé en `<img>` ou en fond
-CSS, et `device-cmyk(0 0 0 1)` est un noir K seul. Avec `--pdf-variant pdf/x-4
---output-intent=--nom` et en CSS `@color-profile --nom { src: url(file:///opt/icc/….icc);
-components: cyan, magenta, yellow, black }` (sans `components`, WeasyPrint plante), il pose
-un OutputIntent `/GTS_PDFX` (« PSO Uncoated v3 (FOGRA52) »). Ce qui reste en `DeviceRGB`,
-c'est ce que la feuille écrit en hex — tout l'intérieur du livre.
+**La couverture** est composée en CMJN exact par `couverture.py`, sans Ghostscript ni
+`cmjn.py` :
 
-**La couverture n'utilise donc ni cmjn.py ni Ghostscript** (`pipeline/couverture.py`) :
-* le HTML d'impression ne porte que des `device-cmyk()` tirés de
-  `styles/couleurs-reference.json` (CMJN du graphiste ; une teinte = t % de chaque encre) ;
-  la version écran ne porte que leurs RGB (une teinte = `round(255 − t × (255 − c))`).
-  Jamais l'un n'est converti en l'autre ;
-* les traits de coupe et de pli sont des éléments CSS en `device-cmyk(1 1 1 1)`, posés hors
-  du fond perdu (de fond perdu + 1 mm à + 6 mm), pas `marks: crop` ;
-* l'illustration matricielle est convertie en JPEG CMJN par Pillow ImageCms (sRGB → profil
-  d'impression, relatif colorimétrique, compensation du point noir) ; l'écran et les PNG
-  gardent l'original ;
-* WeasyPrint fixe la `BleedBox` à min(bleed, 10 pt) du rogné : couverture.py compose par
-  l'API et la remet au fond perdu de `buch.yaml` ; il refuse de livrer s'il reste un
-  `rg`/`RG` ou une image RGB, Form XObjects compris ;
-* les PNG sortent de Ghostscript (`png16m`, 300 dpi) : mesuré, un `rg` DeviceRGB y garde
-  son RGB au pixel près (`#D31932` → 211, 25, 50), sans aucune option de couleur.
+- le HTML d'impression ne porte que des `device-cmyk()` tirés de `couleurs-reference.json`
+  (le CMJN du graphiste ; une teinte vaut t % de chaque encre), la version écran que leurs
+  RVB ; jamais l'un n'est converti en l'autre ;
+- WeasyPrint écrit le CMJN qu'on lui donne, y compris dans un SVG, et `device-cmyk(0 0 0 1)`
+  est un noir K seul. Avec `--pdf-variant pdf/x-4` et un `@color-profile` (dont `components`
+  est obligatoire), il pose un OutputIntent `/GTS_PDFX` ;
+- les traits de coupe et de pli sont des éléments CSS en `device-cmyk(1 1 1 1)`, posés hors
+  du fond perdu, et non `marks: crop`, que WeasyPrint trace en RVB ;
+- l'illustration matricielle passe en JPEG CMJN par Pillow ImageCms (sRGB vers le profil
+  d'impression, relatif colorimétrique, compensation du point noir) ;
+- WeasyPrint borne la `BleedBox` à 10 pt : `couverture.py` la remet au fond perdu de
+  `buch.yaml`, et refuse de livrer s'il reste un opérateur RVB ou une image RVB ;
+- les PNG sortent de Ghostscript (`png16m`, 300 dpi), qui garde un RVB au pixel près.
 
-**L'intérieur (`livre-imprimeur`)** reste en hex dans ses feuilles ; `pipeline/cmjn.py` le
-convertit en deux étapes (sa table des couleurs de maison est lue dans le même
-`couleurs-reference.json`) :
+**L'intérieur** (`livre-imprimeur`) reste en hex dans ses feuilles, et `pipeline/cmjn.py` le
+convertit en deux temps :
 
-1. **Une passe sur le flux de contenu**, avant Ghostscript : le texte de labeur (un `rg`
-   neutre et sombre immédiatement suivi de `BT`) devient `0 0 0 1 k` — noir K seul —, les
-   sept couleurs de la maison deviennent leur CMJN chiffré par le graphiste
-   (`couleurs-reference.json`), et le blanc `1 1 1 rg` devient `0 0 0 0 k` (papier, pas d'encre). Tout le
-   reste — images, teintes non chiffrées — reste en RVB à ce stade.
-2. **Ghostscript** convertit ce qui reste :
-   ```
-   gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dProcessColorModel=/DeviceCMYK \
-      -sColorConversionStrategy=CMYK --permit-file-read=<profil>.icc \
-      -sOutputICCProfile=<profil>.icc -o sortie.pdf entree.pdf
-   ```
-   `-sColorConversionStrategy=CMYK` laisse intact ce qui est déjà en `DeviceCMYK` : le
-   `0 0 0 1 k` posé à l'étape 1 traverse donc la passe sans être retouché.
+1. une passe sur le flux de contenu : le texte de labeur (un `rg` neutre et sombre suivi de
+   `BT`) devient `0 0 0 1 k`, les couleurs de la maison leur CMJN chiffré, le blanc
+   `0 0 0 0 k` ;
+2. Ghostscript convertit le reste vers le profil (`-sColorConversionStrategy=CMYK`, qui laisse
+   intact ce qui est déjà en `DeviceCMYK`). `--permit-file-read=<profil>.icc` est
+   indispensable : en mode SAFER, Ghostscript refuse de lire le profil et échoue par un
+   message (« /undefined in --runpdf-- ») qui ressemble à un PDF corrompu.
 
-**`--permit-file-read` n'est pas cosmétique : sans lui, la passe échoue TOUJOURS, sur
-n'importe quel PDF.** Mesuré sur ce poste, Ghostscript 10.05.1 tourne par défaut en bac à
-sable SAFER, qui refuse de lire un fichier hors de ses répertoires connus — le profil ICC
-de `/opt/icc/`, y compris. L'échec ne dit rien de tel : `gs` s'arrête sur « Error: /undefined
-in --runpdf-- » puis, tout en bas de la pile, « Last OS error: Permission denied » — un
-message qui ressemble à un PDF corrompu, sur un fichier qui ne l'est pas. Reproduit à
-l'identique sur le PDF WeasyPrint le plus neuf, balisé PDF/UA-1 ou non : ce n'est pas un
-défaut du contenu, c'est Ghostscript qui refuse le profil. C'était, avant ce constat, ce qui
-faisait échouer `make livre-imprimeur` dès qu'un `profil-cmjn` réel était posé.
+Sans la passe 1, le noir du texte sortirait en quadrichromie (`0.89 0.655 0.325 0.824 k`), et
+aucune imprimerie n'accepte un texte de 10 pt en quatre couleurs : au moindre défaut de
+repérage, les lettres frangent. `test/cmjn-check.py` vérifie texte K seul, couleurs de la
+maison et absence de RVB ; `test/build-render.sh` le lance sur une copie du banc avec un
+profil posé, et le saute si Ghostscript ou le profil manquent.
 
-Sans cette option, et sans la passe 1 de `cmjn.py` — une conversion Ghostscript nue, sur un
-PDF WeasyPrint tout juste sorti (texte noir en `0 0 0 rg`), avec le profil PSO Uncoated
-v3/FOGRA52 épinglé dans `image/Containerfile` :
+Ce que la passe ne garantit pas : une couleur qui n'est ni un neutre sombre de texte, ni une
+couleur de la maison, ni le blanc, passe par la conversion ICC générique, sans CMJN chiffré ;
+et le mécanisme n'a été mesuré qu'avec PSO Uncoated v3 (FOGRA52), le profil épinglé dans
+`image/Containerfile`. Le profil ICC est une décision d'imprimeur, pas de logiciel : il reste
+à reconfirmer avec l'imprimerie. Sans `profil-cmjn`, le PDF imprimeur sort en RVB, avec fond
+perdu et traits de coupe ; avec un profil absent de l'image, la cible s'arrête plutôt que de
+livrer un RVB qu'on croirait CMJN.
 
-| Texte du PDF | Ce que devient le noir |
-|---|---|
-| `0 0 0 rg` (WeasyPrint, avant toute passe) | `0.89 0.655 0.325 0.824 k` — noir quadri |
+### 4.4 Le tableau qui décroche le balisage
 
-Aucune imprimerie n'accepte un texte de labeur de 10 pt composé en quadrichromie : au
-moindre défaut de repérage, les lettres frangent. C'est exactement ce que la passe 1 de
-`cmjn.py` empêche, en posant le noir K seul AVANT que Ghostscript n'y touche.
+Un `<table>` porteur d'une `<caption>` est mis en page dans une boîte enveloppe anonyme ;
+quand elle se coupe entre légende et table, le baliseur de WeasyPrint s'arrête
+(`ValueError: Table wrapper without a table`) et la cascade de `define weasy_ua` livre un PDF
+non balisé. La condition tient à quelques millimètres, aucun test de contenu ne l'attrape.
+`szh-tableau-boite.lua` enveloppe chaque tableau dans un vrai `Div`, et
+`.szh-tableau-boite { break-inside: avoid; }`, dans `partage-filtres.css`, retire la
+condition, pour la revue comme pour le livre. `epub.css` et `web.css` gardent leur propre
+règle (défilement horizontal) : ce sont des sorties sans pagination. `test/build-render.sh`
+refuse un PDF du banc livre sorti non balisé.
 
-**Ce que la passe garantit, mesuré bout en bout sur les 16 pages du banc `test/livre-normal`
-(profil PSO Uncoated v3/FOGRA52, `test/cmjn-check.py`) :**
-* le texte de labeur sort en `0 0 0 1 k`, sans exception, sur les pages de texte, de
-  tableau et d'image contrôlées ;
-* les sept couleurs de la maison sortent en leur CMJN chiffré, jamais reconverties par
-  Ghostscript (elles sont déjà `k` avant qu'il n'intervienne) ;
-* aucun XObject image ne reste en `DeviceRGB` : les images du chapitre 2 (dont une en
-  grille et celles d'un tableau) sortent en `DeviceCMYK` ;
-* aucun opérateur `rg`/`RG` ne survit dans les 16 flux de contenu.
+### 4.5 L'EPUB
 
-**Ce qu'elle ne garantit pas :**
-* une couleur qui n'est ni un neutre sombre avant `BT`, ni l'une des sept couleurs de la
-  table, ni du blanc pur — un dégradé, une teinte décorative — passe par la conversion ICC
-  générique de Ghostscript, sans CMJN chiffré par le graphiste. Mesuré sur le banc : un
-  fond de bandeau `0.788 0.776 0.745 rg` (gris chaud, ni texte ni couleur de la maison)
-  ressort en `0.176 0.133 0.165 0.016 k` — correct pour une décoration, mais ce n'est pas
-  une teinte qu'un imprimeur pourrait reproduire à l'identique d'un tirage à l'autre ;
-* le mécanisme n'a été mesuré qu'avec le profil PSO Uncoated v3/FOGRA52 épinglé dans
-  `image/Containerfile` — pas avec un profil fourni par un autre imprimeur ;
-* `test/cmjn-check.py` contrôle le résultat (texte K seul, couleurs de la maison, aucun RVB
-  résiduel) mais ne tourne pas sur le banc committé : `test/livre-normal/buch.yaml` garde
-  `profil-cmjn: ""`, et `test/build-render.sh` ne pose le profil que sur une copie
-  temporaire, sautée si Ghostscript ou le profil ICC manquent — le cas de la CI.
+`profils/livre.mk` compile chaque chapitre une seconde fois en fragment EPUB
+(`CHAINE_CHAPITRE_EPUB`, le socle moins `szh-notes.lua` : le writer `epub3` de pandoc fait de
+vraies notes de fin, liées, là où une note flottante en CSS se lirait au milieu de la
+phrase). `livre-assembler.py` colle les fragments et écrit les métadonnées (`--metadonnees-epub`) ;
+`livre-epub-prepare.py` prépare le HTML pour `pandoc --to=epub3 --split-level=1` :
 
-⚠ Le profil ICC est de toute façon une décision d'imprimeur, pas de logiciel. `ISO Coated v2`
-n'est pas librement redistribuable ; les profils ECI le sont sous licence d'usage.
+- il retire les `<section class="szh-chapitre">`, utiles au PDF, invisibles pour un writer
+  qui découpe aux `<h1>` ;
+- il retire le `<div class="szh-onglet">` de tête de chapitre, que `--split-level=1` rangeait
+  dans le fichier du chapitre précédent, créant un XHTML fantôme absent du sommaire ;
+- il bascule en attributs `style=` le fond d'une image décorative, posé dans un `<style>` de
+  corps que pandoc remonte vide dans le `<head>` : sans cela, l'image disparaissait ;
+- il préfixe par le slug l'identifiant des descriptions longues de tableau, compté par
+  chapitre, pour qu'un liminaire à tableau ne le duplique pas.
 
-**Sans `profil-cmjn` dans `buch.yaml`, le PDF imprimeur sort en RVB, avec fond perdu et
-traits de coupe** — ce que beaucoup d'imprimeries acceptent, et qui est de toute façon
-meilleur qu'un CMJN faux. La clé n'est plus un chantier ouvert : le mécanisme est écrit et
-mesuré ; ce qui reste est la publication dans un rootfs (voir L7b, §8).
-
-### 4.4 Le défaut qui a coûté le plus cher : le tableau qui décroche le balisage
-
-Trouvé au premier livre du banc. Un `<table>` porteur d'une `<caption>` est mis en page dans
-une **boîte enveloppe anonyme**, qu'aucun sélecteur CSS n'atteint. Quand elle se coupe entre
-sa légende et sa table, le baliseur de WeasyPrint 69 s'arrête net :
-
-```
-File ".../weasyprint/formatting_structure/boxes.py", line 407, in get_wrapped_table
-ValueError: Table wrapper without a table
-```
-
-Le vrai piège n'est pas le plantage : c'est que le `Makefile` le rattrape et sort un PDF
-**non balisé**. Le rédacteur voit un PDF correct, aucune erreur rouge, et le fichier a perdu
-sa conformité PDF/UA sans un mot. La condition est une affaire de millimètres — le tableau
-seul passe, précédé de deux figures il échoue — donc aucun test de contenu ne peut
-l'attraper.
-
-`szh-tableau-boite.lua` enveloppe chaque tableau dans un vrai `Div`, atteignable en CSS, et
-`break-inside: avoid` sur lui retire la condition. **Ce filtre est désormais branché aussi
-pour la revue** (`pipeline/Makefile`, même ordre que dans `profils/livre.mk`) : le même
-défaut y est possible.
-
-Sa règle CSS l'a maintenant suivi. `.szh-tableau-boite { break-inside: avoid; }` vit dans
-`styles/partage-filtres.css`, chargée après la maquette dans les deux profils (le Makefile
-de la revue et `profils/livre.mk`, §4) : la revue est donc protégée au même titre que le
-livre. `styles/livre/base.css` ne la duplique plus. La règle générale que ce constat
-illustre : **une règle de composant émise par un filtre partagé entre la revue et le livre
-vit dans `partage-filtres.css`**, pas dans une feuille propre au livre. `epub.css` et
-`web.css` gardent chacune leur propre règle pour `.szh-tableau-boite` (défilement
-horizontal, pas coupure de page) : ce sont des sorties hors pagination, qui refont déjà
-tout ce qu'il faut à leur medium — voir l'en-tête de ces deux feuilles, et celui de
-`partage-filtres.css` pour la liste des sorties qui la chargent.
-
-### 4.5 EPUB : mesuré sur `livre-epub`, deux défauts trouvés et corrigés
-
-La route retenue est un assembleur maison, pas une invocation pandoc unique sur tous les
-`.md` : `profils/livre.mk` compile chaque chapitre une seconde fois, en fragments EPUB
-(`%.epub-frag.html` — même suite de filtres que le PDF, moins `szh-notes.lua` : pandoc fait
-de vraies notes de fin en EPUB, mieux que nos notes flottantes en CSS).
-`livre-assembler.py` les colle en un seul HTML (`--metadonnees-epub` écrit au passage le
-fichier de métadonnées que pandoc attend), et `livre-epub-prepare.py` prépare ce HTML pour
-`pandoc --to=epub3 --split-level=1` : retirer les `<section class="szh-chapitre">`
-(indispensables au PDF pour l'ouverture sur belle page, la couleur et l'onglet de tranche —
-invisibles pour un writer qui découpe aux `<h1>` non imbriqués).
-
-**Ce que l'archive produite contient, relevé sur `test/livre-normal` et `test/livre-falc`
-(décompression du fichier, un vrai zip) :**
-
-* le tableau du chapitre 2 (`tables/table-01.html`) est présent dans son XHTML, avec sa
-  description longue (`aria-describedby` vers un `<div>` masqué visuellement) et les
-  `scope` d'en-tête — ceux-ci sont écrits en dur dans le fichier source, pas posés par
-  `szh-tabelle-scope.lua` (qui ne voit que les tableaux markdown, pas le HTML brut
-  réinjecté par `szh-tabelle-inclure.lua`) ;
-* la bibliographie et ses ancres survivent au passage par pandoc : les identifiants qui
-  commencent par un chiffre (`02-konzepte-ref-bovey-2022`) sont renommés `id_…` par le
-  writer XHTML, et toutes les références internes (appel → référence, retour-appel) sont
-  renommées à l'identique — vérifié lien par lien, aucun lien mort ;
-* la grille de deux images sort en deux vrais `<img>`, extraits dans `EPUB/media/` et
-  référencés par leur chemin — rien à corriger ;
-* le sommaire (`nav.xhtml`) porte un lien par chapitre, vers l'ancre préfixée par le slug du
-  chapitre (`#id_02-konzepte-…`) — vérifié sur les deux livres ;
-* `szh-legende-avant.lua` s'applique bien à `epub3` (sa garde `FORMAT:match` accepte
-  `'^epub'` depuis le correctif du défaut A9) : la légende précède l'image dans le XHTML,
-  vérifié sur les figures numérotées du banc ;
-* les métadonnées OPF portent le titre, la langue, un `dc:identifier` (l'ISBN e-book —
-  `isbn-print` n'y entre pas, comme prévu), et l'auteur·e de la monographie (aucun pour
-  l'ouvrage collectif, où l'auteur·e appartient au chapitre, pas au volume) — mais **pas le
-  DOI** : `metadonnees_epub()` (`livre-assembler.py`) ne l'écrit pas, seul l'ISBN e-book
-  entre dans `identifier:`. Hors des fichiers autorisés pour cette passe, non corrigé ;
-* `epub.css` est bien la seule feuille embarquée dans l'archive (`styles/stylesheet1.css`).
-
-**Deux défauts réels trouvés, tous deux corrigés dans `livre-epub-prepare.py` — aucun autre
-fichier touché :**
-
-1. **L'image décorative disparaissait entièrement, sans un mot.** `szh-numerotation.lua`
-   pose le fond d'une image décorative en CSS (`<span class="szh-decor…">`, jamais un
-   `<img>`, pour qu'un lecteur d'écran n'annonce rien) : le fond vit dans un `<style>`
-   ajouté en fin de chapitre. Pandoc, à l'écriture de l'EPUB, retrouve ce `<style>` de
-   corps et le remonte dans le `<head>` du XHTML — mais VIDE, son contenu perdu (reproduit
-   sur un HTML minimal ne portant que ce `<style>`). Ni `<img>`, ni fond CSS : l'image
-   sortait absente de l'EPUB, sans erreur ni avertissement. Corrigé en basculant les
-   règles en attributs `style=` sur les deux `<span>` concernés, dans les bornes de
-   chaque chapitre (les classes `szh-decor-N` ne sont, elles non plus, pas préfixées par
-   chapitre — même compteur Lua remis à 1 à chaque invocation pandoc, il fallait donc
-   apparier chaque règle à la bonne image sans sortir des bornes de sa section). Le
-   fichier image n'entre plus dans l'archive comme entrée séparée : il vit en `data:` URI
-   dans l'attribut `style=`, déjà résolu par `--embed-resources` à la compilation du
-   fragment, avant que `livre-epub-prepare.py` ne s'exécute.
-2. **Un chapitre sur deux gagnait un fichier XHTML fantôme, absent du sommaire.** Le
-   `<div class="szh-onglet">` que le gabarit de chapitre écrit en tout premier enfant de
-   la section (avant `$body$`, donc avant le `<h1>` une fois la section retirée) est mort
-   pour l'EPUB (`epub.css` : `display:none`, l'onglet de tranche n'existe qu'en
-   pagination). Laissé en place, ce `<div>` vide traîne juste avant chaque `<h1>` de
-   chapitre, et `pandoc --split-level=1` le range dans le fichier du chapitre PRÉCÉDENT
-   (tout ce qui précède un `<h1>` appartient au découpage d'avant) : un fichier XHTML
-   quasi vide s'intercalait entre les liminaires et le premier chapitre (`ch004.xhtml`
-   sur le banc `livre-normal`), et le `<div>` du dernier chapitre traînait à la fin de
-   l'avant-dernier. Rien n'était perdu (le `<div>` est vide, `aria-hidden`), mais un
-   fichier fantôme absent de `nav.xhtml` — exactement ce que `test/epub-check.py` (point
-   8 ci-dessous) attrape. Corrigé en retirant ce `<div>` avant la conversion EPUB.
-
-**Un doublon d'identifiant théorique, pas observé en pratique.** `szh-tabelle-desc-N`
-(l'id visé par l'`aria-describedby` d'un tableau à description longue) compte par
-invocation pandoc, donc par chapitre — comme `szh-decor-N`. Deux chapitres portant chacun
-un tel tableau produiraient le même id une fois fusionnés par `livre-assembler.py`, AVANT
-que pandoc ne découpe le document en fichiers EPUB. Éprouvé en ajoutant temporairement un
-second chapitre à tableau dans une copie de banc (`livre-normal-preuve`, hors dépôt) :
-**le doublon ne survit pas au découpage** — chaque chapitre atterrit dans son propre
-XHTML, et un id dupliqué entre deux documents XML distincts n'est pas un défaut (l'unicité
-d'un id est une contrainte par document, pas par livre). `livre-epub-prepare.py` préfixe
-quand même l'id par le slug du chapitre, par précaution : le défaut 2 ci-dessus prouve que
-du contenu sans `<h1>` propre PEUT se retrouver mélangé au chapitre voisin — un liminaire à
-tableau ferait le même doublon pour de vrai. Cas qui ne s'est pas encore présenté sur ce
-banc, corrigé préventivement puisque cela ne coûte rien.
-
-**`test/epub-check.py`** contrôle la structure (`zipfile` + `xml.etree`, aucune dépendance
-externe) : mimetype en tête non compressé, `container.xml` → OPF, manifeste ↔ archive dans
-les deux sens, chaque XHTML bien formé, liens internes et images résolus, titre/langue/
-identifiant posés, et chaque document du *spine* atteint par un lien de `nav.xhtml` — ce
-dernier point est ce qui aurait attrapé le défaut 2 à lui seul (vérifié en désactivant la
-correction puis en relançant le contrôle : échec, qui nomme exactement le fichier fantôme).
-`epubcheck` (Java) n'est pas dans la distro SZH-Publishing ; ce script ne le remplace pas,
-il tient la porte en attendant. Les deux livres du banc le passent (6/6).
-
-**L'EPUB n'est donc plus un lot différé : `livre-epub` sort une archive conforme sur les
-deux livres du banc, deux défauts réels fermés.**
+L'archive contient les tableaux avec leur description longue et leurs `scope`, la
+bibliographie et ses ancres (renommées `id_…` à l'identique par le writer XHTML), les images
+extraites dans `EPUB/media/`, un `nav.xhtml` qui atteint chaque chapitre, et l'OPF avec
+titre, langue et identifiant (l'ISBN e-book). `epub.css` est la seule feuille embarquée : les
+jetons du socle n'y sont pas, d'où quelques replis de couleur en dur. `test/epub-check.py`
+contrôle la structure sans dépendance (mimetype, `container.xml`, manifeste, XHTML bien formés,
+liens et images résolus, chaque document du *spine* atteint par `nav.xhtml`) ; il ne
+remplace pas `epubcheck`, absent de l'image.
 
 ---
 
 ## 5. Les deux maquettes
 
-### 5.1 « Normal » — relevé sur les livres réels
+### 5.1 « Normal »
 
-Mesures prises sur `2025_Canonica_Berufliche Teilhabe.pdf` et sur l'IDML
-`Thaler-Battistini_Alice_Inhalt.idml` :
+Relevé sur `2025_Canonica_Berufliche Teilhabe.pdf` et l'IDML de Thaler-Battistini :
 
-* format **155 × 225 mm**, pages en vis-à-vis ;
-* marges **20 mm intérieur/extérieur, 24 mm haut/bas** (IDML), folio à 9 mm du pied ;
-* corps **Open Sans SemiCondensed Regular 10 pt** — la police est **déjà dans le toolkit**
-  (`pipeline/fonts/`), c'est celle de la revue ;
-* notes et légendes 8,5 pt, mentions légales 7 pt ;
-* texte **justifié**, césure active, alinéa de première ligne sauf après un titre ;
-* pas de titre courant, seulement le folio, en gras, en pied de page extérieur ;
-* chapitres numérotés `1`, `2`, `2.1`, ouverture sur belle page (recto) ;
-* liminaires dans l'ordre : couverture, demi-titre, colophon, page de titre, sommaire.
+- 155 × 225 mm, pages en vis-à-vis ; marges de 20 mm à l'intérieur et à l'extérieur, 24 mm
+  en haut et en bas ; folio à 9 mm du pied ;
+- Open Sans SemiCondensed 10 pt, la police de la revue ; notes et légendes 8,5 pt, mentions
+  légales 7 pt ;
+- texte justifié, césure active, alinéa sauf après un titre ;
+- pas de titre courant : le folio seul, en gras, en pied de page extérieur ;
+- chapitres numérotés `1`, `2`, `2.1`, ouverts sur la belle page ;
+- liminaires : couverture, demi-titre, colophon, page de titre, sommaire.
 
-La fidélité est **volontairement approchée** ici : la charte varie d'un livre à l'autre et
-les IDML de référence arriveront plus tard. Rien de ce qui varie — bandeaux de personnages
-en marge gauche, par exemple — n'est traité.
+La fidélité est approchée : la charte varie d'un livre à l'autre, et ce qui varie (bandeaux de
+personnages en marge, par exemple) n'est pas traité. Feuilles : `base.css` puis `normal.css`.
 
-### 5.2 FALC — la charte à reproduire fidèlement
+### 5.2 FALC
 
-Le modèle est le **Prospectrum FALC** (155 × 225 mm, Open Sans), pas le manuscrit Word
-« Créer ensemble » resté en Calibri sans mise en page. Le second donne en revanche le
-**vocabulaire de styles**, qui devient le jeu de blocs pandoc.
-
-Relevé sur les `.docx` :
+Le modèle est le Prospectrum FALC (155 × 225 mm, Open Sans) ; le manuscrit Word « Créer
+ensemble » donne le vocabulaire de styles.
 
 | | FALC standard | FALC A4 |
 |---|---|---|
 | Format | 155 × 225 mm | 210 × 297 mm |
 | Marges | 15 mm | 25 mm |
-| En-tête / pied | 10 mm | 10 mm |
+| En-tête, pied | 10 mm | 10 mm |
 | Corps | 13 pt | 14 pt |
 | Interligne | 1,2 | 1,3 |
-| Espace après ¶ | 18 pt | 18 pt |
+| Espace après un paragraphe | 18 pt | 18 pt |
 | Encre des titres | `#252B46` | `#252B46` |
 
-Traits de charte visibles au rendu, à reproduire :
-
-* **un numéro de chapitre en pastille ronde**, en haut à droite, à la couleur du chapitre ;
-* **un onglet de couleur en bord extérieur**, un par chapitre, qui descend de chapitre en
-  chapitre — un index à pouce ;
-* **encadré gris de résumé** (`InfoBox`) en tête de chapitre : « Ces 3 personnes ont parlé
-  de : » ;
-* **sommaire à filets**, avec la pastille de couleur de chaque chapitre en regard ;
-* **une phrase par ligne** — la règle FALC cardinale : le retour à la ligne est du sens, pas
-  de la justification. Le texte est donc **au fer à gauche, sans césure**, et les retours du
-  `.md` sont significatifs ;
-* gras sur les mots-clés, listes numérotées courtes.
-
-Correspondances de styles Word → blocs pandoc :
+Traits de charte : numéro de chapitre en pastille ronde à la couleur du chapitre ; onglet de
+couleur en bord extérieur, qui descend de chapitre en chapitre (index à pouce) ; encadré gris
+de résumé en tête de chapitre ; sommaire à filets avec la pastille de chaque chapitre ; une
+phrase par ligne, donc le lecteur pandoc en `hard_line_breaks`, un texte au fer à gauche et
+sans césure ; gras sur les mots-clés, listes numérotées courtes.
 
 | Style Word | Écriture dans le `.md` | Rendu |
 |---|---|---|
-| `Titre1..4` | `#` : `title` de la fiche ; `##`, `###`, `####` dans le `.md` | titres, avec pastille sur le titre du chapitre |
+| `Titre1..4` | `title` de la fiche ; `##`, `###`, `####` dans le `.md` | titres, pastille sur celui du chapitre |
 | `InfoBox` | `::: {.falc-resume}` | encadré gris de tête de chapitre |
 | `InfoBox2` | `::: {.falc-encadre}` | encadré à filet |
 | `Mis en évidence` | `::: {.falc-cle}` | paragraphe gras détaché |
-| `Légende_Photo` | légende de figure | inchangé (`szh-numerotation`) |
+| `Légende_Photo` | légende de figure | `szh-numerotation.lua` |
 | `Liste étapes` | `::: {.falc-etapes}` | liste numérotée espacée |
-| `Nom auteurs` | `::: {.szh-auteurs}` à l'import, rangé ensuite dans `author:` de la fiche par `livre-migrer-meta.py` (la clé `auteurs:` est celle de `buch.yaml`, pas d'un chapitre) | ligne d'auteur·e·s sous le titre |
+| `Nom auteurs` | `author:` de la fiche, rangé par `livre-migrer-meta.py` | ligne d'auteur·e·s sous le titre |
 | `Soustitre Projet` | `## …` + `{.falc-projet}` | sous-titre de projet |
 
----
-
-## 6. Un seul VSIX, deux profils
-
-**Décision : le cockpit reste une seule extension**, qui reconnaît le dossier qu'on lui
-ouvre et se présente en conséquence.
-
-Pourquoi :
-
-* c'est la demande — partager le code au maximum ;
-* deux VSIX, ce serait deux `i18n.js` de 178 Ko à tenir en phase, deux jeux de webviews,
-  deux harnais de tests, deux entrées de `vsix.lock`, et la certitude qu'une correction
-  n'atterrira que d'un côté ;
-* l'activation de VSCodium est déjà conditionnelle (`szh.estRevue`) : la clé devient
-  `szh.profil` ∈ {`revue`, `livre`}, et les `when` du `package.json` s'y accrochent.
-  `activationEvents` vaut `onStartupFinished`, indifférent au profil : rien à y changer.
-
-Les deux frictions que les `when` ne réglaient pas à eux seuls sont closes :
-* **la catégorie des commandes** est désormais `"category": "SZH/CSPS"`, neutre pour les
-  deux produits — plus de mention « Revue SZH » en dur.
-* **la vue latérale** garde un seul bloc `views`, un seul id (`szhCockpitVue`), mais son
-  `name` vaut lui aussi « SZH/CSPS » et son `when` est `szh.estRevue || szh.estLivre` : elle
-  apparaît pour les deux profils.
-* **la palette de commandes** porte 87 entrées dans `contributes.menus.commandPalette`, dont
-  57 gardées par `szh.estRevue`, `szh.estLivre` ou `szh.estRevue || szh.estLivre` — ce que
-  §10.5 relevait comme un trou (deux entrées seulement, sans rapport avec le profil) est
-  refermé.
-
-Ce que cela coûte, et comment on le paie : un défaut du moteur livre peut faire tomber
-l'extension d'une rédaction de revue. Le prix se paie en tests — les 578 contrats existants
-restent verts et deviennent la définition du profil `revue`, et le profil `livre` reçoit
-les siens.
-
-### Le préalable : dégonfler `extension.js`
-
-7 495 lignes, dont 52 sections annotées par leur auteur `// ---- Titre -> lib/xxx.js ----`.
-**Le plan d'extraction est écrit dans le fichier, et il a déjà été exécuté une vingtaine de
-fois** : 16 de ces marqueurs désignent des modules `lib/` qui existent (`i18n`, `yaml`,
-`citations`, `archivage`, `table-model`, `formatting`, `coedition`, `export-ojs`…). C'est un
-argument POUR la manœuvre, pas contre : le motif est rodé.
-
-Extraction proposée :
-
-| Sections | Nouveau module | Lignes |
-|---|---|---|
-| Aperçu HTML/PDF, défilement synchronisé | `lib/apercu.js` | ~490 |
-| Import guidé, réimport, annulation | `lib/import.js` | ~420 |
-| Assets, remplacement, gestionnaire de médias | `lib/medias.js` | ~1 130 |
-| Gabarits de webview (9 constructeurs `html*`) | `lib/vues/*.js` | ~1 500 |
-| Courriels (auteur, traduction) | `lib/courriel.js` — **fait** | — |
-| Cycle de vie (verrou, archive, version) | `lib/cycle-vie.js` | ~370 |
-| Compilation et contrôles | `lib/compilation.js` | ~440 |
-| Résolution des conflits bloc à bloc | `lib/conflits-hote.js` | ~300 |
-
-`lib/courriel.js` a été extrait pour un autre motif que celui de ce plan – les modèles de
-courriel en fichiers Twig plutôt qu'en dur dans `lib/i18n.js` – mais il couvre exactement ce que
-cette ligne visait : `adressesAuteurs`, `brouillonAuteur`, `brouillonTraduction`, `uriMailto` ont
-quitté `extension.js`.
-
-Le tableau ci-dessus **sous-compte** : environ 800 lignes de plus (co-édition, articles,
-suivi de traduction, auteur·e·s publiés, photos) portent un intitulé qui a déjà un module
-`lib/` du même nom mais dont le code est resté en place. `extension.js` retombe donc vers
-2 300 à 3 000 lignes selon la rigueur du passage. **C'est le préalable, pas un bonus** : sans
-lui, le profil livre ajoute deux mille lignes à un fichier qui n'en supporte plus.
-
-⚠ Deux avertissements sur le mot « mécanique ».
-* **Le filet de tests ne couvre pas également.** `test/js/hote.test.js` active réellement
-  l'extension et couvre bien l'arbre, les panneaux et le remplacement de médias. Il ne
-  couvre **ni l'aperçu commutable HTML/PDF ni le geste d'import par la commande** — les deux
-  premières lignes du tableau, donc les plus exposées. Elles se travaillent avec un test
-  écrit AVANT le déplacement, pas après.
-* **Le risque de cycle est réel.** Tant qu'un module extrait ne fait qu'importer, tout va
-  bien. Dès qu'il doit rappeler `extension.js` — rafraîchir l'arbre, repeindre le marqueur
-  de fichier —, il faut un découpage par rappel ou par événement. C'est de la conception,
-  pas du copier-coller, et `module.exports._pur` (une centaine de fonctions pures exposées
-  aux tests) doit continuer de les exporter après le déménagement.
+Feuilles : `base.css` puis `falc.css`.
 
 ---
 
-## 7. Ce que la proposition refuse
+## 6. Le livre dans le cockpit et le lanceur
 
-* **MOBI.** Le format est mort : Amazon ne l'accepte plus au dépôt depuis 2022 et KindleGen
-  n'est plus distribué. Le produire demanderait Calibre — plusieurs centaines de Mo dans le
-  rootfs — pour un fichier que personne ne réclame. **Proposition : EPUB 3 seul**, que le
-  KDP accepte et que tous les liseurs lisent. Si un partenaire exige un `.azw3`, il se
-  fabrique en une commande depuis l'EPUB, hors chaîne.
-* **Un éditeur visuel de couverture.** La couverture se compose en CSS depuis `couverture/`
-  et se relit en PDF. Un éditeur WYSIWYG serait un second logiciel.
-* **Le déplacement des règles revue du `Makefile`.** Le gain serait cosmétique, le risque
-  porte sur la seule chaîne qui tourne en production.
-* **Un cadre à greffons.** Deux profils ne justifient pas une architecture d'extension.
+Le cockpit reste une seule extension. Le profil `livre` de `lib/profil.js` nomme `buch.yaml`,
+`chapitres/`, `chapitres-word/`, la clé `ordre-chapitres`, la vue `szh.vueChapitres` et la
+cible `livre`. Ses capacités propres sont `horsSommaire` (la case « hors sommaire » d'un
+chapitre), `titreEnLignes` (le « // » d'un titre montré en lignes), `sortiesLivre` (imprimeur,
+couverture, EPUB, web) et `paletteLivre` (en-tête FALC et QR dans la mise en forme) ; il n'a
+pas les capacités de la revue (DOI, OJS, traductions, Documentation, pagination, réimport,
+envoi à l'auteur…). Les libellés passent par `TP()`, qui prend la variante `.livre` d'une clé.
 
----
+Ce qui existe côté livre : l'arbre des chapitres, le formulaire de l'ouvrage
+(`media/metadata-book.*`, `buch.yaml`), les fiches de chapitre, l'aperçu HTML par chapitre, le
+PDF d'un chapitre au clic, les quatre tâches de sortie dans le panneau Export, la palette
+FALC et QR, le badge « déjà converti » sur un Word redéposé. Le formulaire des réglages
+d'impression (grammage, main, fond perdu, profil CMJN, dos en lecture seule) n'existe pas
+encore : ces clés se corrigent dans `buch.yaml`.
 
-## 8. Ordre des travaux
+Dans le lanceur, le livre est l'onglet « Book » : entrée `livre` de `$SzhProduits`,
+création par `new-livre.ps1`, dossiers `Books\` et `_Archive\Books\`
+([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
 
-Deux voies indépendantes, qui n'ont pas besoin l'une de l'autre : la **chaîne** (L3 à L7) ne
-demande rien au cockpit, et le **cockpit** (L1, L2, L9) ne demande rien à la chaîne. Elles
-se rejoignent au lanceur.
+## 7. Ce que le moteur refuse
 
-| Lot | Contenu | Risque | État |
-|---|---|---|---|
-| **L3** | `profils/livre.mk`, assembleur, gabarits, `base.css` + `normal.css` — PDF numérique | moyen | **fait**, PDF/UA-1 validé |
-| **L4** | Maquette FALC (pastilles, onglet de tranche, encadrés, une phrase par ligne) | faible | **fait** |
-| **L4b** | Numérotation continue et numéro de chapitre | **fort** — filtres partagés avec la revue | **fait**, ordre de compilation garanti |
-| **L5** | Couverture à plat, dos calculé sur les pages lues dans le PDF intérieur | moyen | **fait** |
-| **L6** | HTML responsive | faible | **fait** |
-| **L6b** | EPUB 3 — assembleur propre, contrôle structurel | **fort** (§4.5) | **fait et mesuré** : `livre-epub` sort une archive conforme sur les deux livres du banc (`test/epub-check.py`, 6/6). Deux défauts réels trouvés et corrigés dans `livre-epub-prepare.py` — image décorative perdue (pandoc vide le `<style>` de corps à l'écriture de l'EPUB), fichier XHTML fantôme absent du sommaire (`<div class="szh-onglet">` avant chaque `<h1>`, mal réparti par `--split-level=1`). DOI absent des métadonnées OPF (seul l'ISBN e-book y entre) — hors fichiers autorisés pour cette passe, non corrigé |
-| **L7** | Fond perdu et traits de coupe | faible — natif WeasyPrint | **fait** |
-| **L7b** | CMJN à noir préservé | **mécanisme mesuré, publication restante** (§4.3) | `cmjn.py` préserve le noir du texte en K seul et convertit les couleurs de la maison ; Ghostscript termine par le profil PSO Uncoated v3/FOGRA52, épinglé et vérifié dans `image/Containerfile`. **Mesuré bout en bout** sur `test/livre-normal` — `--permit-file-read` sur le profil ICC était le maillon manquant : sans lui Ghostscript refuse de le lire, et le dit par un message qui ne parle pas de permission. `test/cmjn-check.py` vérifie automatiquement texte K seul, couleurs de la maison et absence de RVB résiduel. **Reste non publié** : aucun poste de rédaction n'en bénéficie tant que le rootfs n'a pas été reconstruit par une release |
-| **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | **fait partiellement** : six modules extraits (`session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js`, `documentation-hote.js`), `extension.js` réduit à environ 6 700 lignes |
-| **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **fait** : `chemins()` a des appelants dans `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js` et `media/_commun.js` |
-| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait**, puis **remplacé le 13.09.2026** : le livre est un onglet (« Book ») du lanceur unique « Pronto », plus une entrée de menu à lui — racine tranchée le 15.09.2026 : `Books\` dans notre propre arbre, archives sous `_Archive\Books\` |
-| **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | **fait partiellement** : formulaire de métadonnées de l'ouvrage fait, les quatre tâches de sortie faites, aperçu HTML par chapitre fait ; formulaire de couverture (grammage, main, fond perdu, profil CMJN, dos en lecture seule) pas encore fait |
-
----
-
-## 9. Ce qui reste à décider avec la rédaction
-
-1. ~~**La racine SharePoint des livres.**~~ **TRANCHÉ le 15.09.2026.** L'hypothèse
-   (`54_Buch\BU02_Redaktion` en cours, `54_Buch\BU01_Auflagen finale` aux archives)
-   supposait que les livres restaient dans le dossier produit d'une autre équipe. Ce n'est
-   plus le cas : les trois produits vivent dans **notre** arbre, et les livres sous
-   `Books\` (en cours) / `_Archive\Books\` (archives) (`docs/EMPLACEMENTS.md`, §1). La clé
-   `sousDossiersLivre` de `config.json`, qui n'existait que pour rattraper cette devinette,
-   a été supprimée avec elle.
-2. **Le nom du produit.** *Dépassé par l'unification du 13.09.2026 : il n'y a plus d'entrée de
-   menu par produit à nommer.* « Books SZH/CSPS » avait été demandé pour une entrée séparée,
-   mais un nom de fichier `.lnk` ne peut pas porter de barre oblique. Le livre est désormais un
-   onglet (« Book », non traduit) du lanceur unique « Pronto » — lui-même un nom
-   provisoire, tenu dans `$SzhNomApplication` (`windows/szh-shell.ps1`) — et non plus une entrée
-   de menu à son nom propre. La question du sigle double ne se pose donc plus dans ces termes ;
-   elle resurgira si le produit reçoit un jour son propre onglet nommé.
-3. **Le profil CMJN** exigé par l'imprimerie (Edubook / Ediprim). C'est lui qui décidera
-   de la voie à prendre sur le noir (§4.3).
-4. **Le papier de référence** (grammage et main) des collections courantes.
-5. **La collection et la numérotation de tome** : `Sonderpädagogische Forschung in der
-   Schweiz` est une collection numérotée ; y en a-t-il d'autres, et qui tient le compte ?
-6. **L'import Word d'un chapitre** n'est pas branché sur la route livre du `Makefile` :
-   `chapitres-word/` existe et est documenté, mais la cible `import` n'est appelée que par
-   la route article. Travail de chaîne, à faire avant que la rédaction ne dépose son
-   premier `.docx` de chapitre.
-
----
-
-## 10. Le cockpit côté livre — le plan, corrigé par sa revue adverse
-
-Le principe qui tient tout : **le cockpit ne devient pas deux logiciels**. Le même arbre, les
-mêmes formulaires, la même mécanique d'écriture — avec un profil qui dit les noms, les
-chemins et les sections.
-
-⚠ **Ce qui suit est la deuxième rédaction.** La première a été relue de façon adverse, et
-elle s'est trompée sur cinq points vérifiables. Les corrections sont dans le texte, et les
-erreurs sont nommées : un plan qu'on corrige en silence se retrompe de la même façon.
-
-**État au 7 septembre 2026 — ce que ce plan tenait pour manquant et qui est fait, vérifié
-dans le code.** Le remède de la correction n° 1 est posé : chaque module qui tient des
-panneaux expose `fermerPanneauxDe`, et `cycle-vie.js` les appelle en boucle
-(`ctx.fermerPanneauxDe`). La section « Traductions » de l'arbre (correction n° 5,
-`getChildren`) est devenue conditionnelle à `profilCourant().cle === 'revue'`, de même que
-la section « Actualité » ; `sectionDeployee` s'initialise sur `categorieUnites()` et non
-plus sur le littéral `'articles'`. `profils.chemins()` (correction n° 5) a maintenant des
-appelants — `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`,
-`medias-hote.js`, `media/_commun.js`. Le formulaire de métadonnées de l'ouvrage (§10.4)
-existe (`media/metadata-book.*`). La palette de commandes (§10.5) porte désormais des
-`when` par profil (voir §6). Le badge « déjà converti » sur un dépôt Word répété
-(correction n° 8, §10.6) est générique : `_itemsWord()` lit `profilCourant().depot` et pose
-`word-deja` pour un chapitre comme pour un article. Ce qui reste ouvert, par sous-section,
-est signalé plus bas ; [`TODO/livres.md`](TODO/livres.md) tient la liste vivante.
-
-### 10.1 Le préalable : dégonfler `extension.js`
-
-7 524 lignes, 52 bandeaux `// ---- Titre -> lib/xxx.js ----`, une vingtaine déjà exécutés.
-
-**Correction n° 1 — les lots A et C sont COUPLÉS, et le plan les séparait.**
-`extension.js:1804-1817`, dans `fermerFormulairesEcriture()` — section « Archiver,
-verrouiller, désarchiver », donc lot C — itère directement sur `panneauxMedias`, la Map
-interne du futur `lib/medias.js` (lot A), et en supprime des entrées :
-
-```js
-for (const table of [panneauxMedias, panneauxTable]) {
-  for (const [cle, panneau] of Array.from(table.entries())) { panneau.dispose(); table.delete(cle); }
-}
-```
-
-Ce n'est pas le risque que le plan anticipait (« `lib/` rappelle `extension.js` ») : c'est
-l'inverse, du code qui reste fouille l'état privé d'un module extrait. **Le remède** : chaque
-module qui tient des panneaux expose `fermerPanneauxDe(dossier)`, et le cycle de vie les
-appelle en boucle. Sans cela, ni A ni C ne s'extrait « à comportement constant ».
-
-Trois autres traversées de frontière, dans le même lot A : `buildEnCours` (l.1611) lu quatre
-fois, `panneauxTable` (l.6285) lu en l.3161, `apercuCourantSlug` (l.2000) lu en l.6774.
-Cette dernière est un état de session partagé par huit sections : ni un rappel ni un
-paramètre ne la capturent. Elle mérite son propre petit module avant qu'on touche au lot A.
-
-**Correction n° 2 — l'ordre par couverture de test ne tient pas pour le lot B.**
-`webviews.test.js` n'exerce réellement que **quatre** des neuf webviews
-(`metadata-articles`, `import-verif`, `table-editor`, `medias-article`) ; `metadata-issue`,
-`vue-ensemble`, `articles`, `traduction` et `settings` n'y apparaissent jamais. Le lot B
-perd donc son rang.
-
-**Correction n° 3 — le lot B ne pesait pas ce que le plan disait.** Les neuf constructeurs
-`html*` font **75 lignes** au total : chacun n'est qu'un appel à `construireHtml()`. Les
-~2 000 lignes annoncées sont en réalité les **gestionnaires de messages** des neuf
-formulaires — le code métier, pas les gabarits. Le lot est donc plus lourd qu'annoncé, pas
-plus léger, et son étiquette mentait sur sa nature.
-
-| Lot | Contenu réel | Ce qui le garde | Rang |
-|---|---|---|---|
-| **A+C** | Médias, assets, cycle de vie, co-édition, conflits — **ensemble**, ils partagent leur état | `hote.test.js`, `coedition.test.js`, `conflits-*.test.js` — mais **`comparerConflit` n'a aucun test**, ni direct ni transitif : à écrire avant | 1 |
-| **B** | Les neuf formulaires : gabarits **et** gestionnaires de messages | 4 webviews sur 9 | 2 |
-| **D** | Aperçu, import guidé, réimport | **rien** — tests à écrire avant | 3 |
-
-**Correction n° 4 — `contrats.test.js` ne lit PAS `_pur`.** Il lit `extension.js` comme du
-texte, et le dit lui-même. Les vrais lecteurs sont `articles.test.js`,
-`carte-article.test.js`, `coedition-hote.test.js` et `conflits-hote.test.js`. `_pur` compte
-110 noms, dont 58 ne sont nommés par aucun test — surtout des ré-exports inertes de modules
-déjà extraits, dont la perte serait un silence. La garantie « les tests attraperont un nom
-manquant » n'est donc vraie que pour la moitié.
-
-### 10.2 L'arbre — et les trois quarts du travail qui sont ailleurs
-
-**Correction n° 5, la plus lourde.** Le plan disait « cinq endroits où `articles/` est codé
-en dur dans `FournisseurRevue`, qui passent par `profils.chemins()` ». Trois choses fausses :
-
-1. Ce sont **onze** occurrences, dans dix méthodes (l.1150, 1187, 1193, 1207, 1244, 1297,
-   1314, 1328, 1470, 1488, 1494).
-2. `extension.js` en compte **43 au total** : les 32 autres sont hors de l'arbre — médias,
-   réimport, marqueur de fichier ouvert, éditeur de tableau, portraits, formulaire de
-   fiches. Corriger la classe rend la NAVIGATION possible, pas les gestes.
-3. **`profils.chemins()` n'a aujourd'hui aucun appelant.** Le module est écrit, il est juste
-   mort. « Passe par `profils.chemins()` » décrivait un branchement qui n'existe nulle part.
-
-Et l'arbre a des hypothèses qui ne sont pas des chemins, que `chemins()` ne corrigera donc
-jamais :
-
-* `getParent()` (l.1204-1210) suppose que le parent d'un nœud `article` est la section
-  `'articles'` — c'est ce qui fait marcher `reveal()` ;
-* la section **Traductions** est construite **inconditionnellement** (l.1188). L'affirmation
-  « pas de section Traductions pour un livre » reste juste — une revue paraît en deux
-  langues, un livre est écrit dans une, et sa traduction est un autre livre avec son ISBN —
-  mais elle demande une condition explicite que le plan ne nommait pas comme du travail ;
-* `sectionDeployee` est initialisé à `'articles'` (l.1150) : pour un livre, l'accordéon
-  s'ouvrirait sur une section qui n'existe pas.
-
-### 10.3 Réordonner les chapitres
-
-**Ce qui est fait** : le moteur honore déjà `ordre-chapitres` — `profils/livre.mk` le lit,
-place les slugs nommés en tête, met les autres derrière par tri alphabétique, et signale un
-slug listé dont le dossier a disparu. Le plan le donnait comme travail à venir ; il ne
-l'était plus.
-
-**Correction n° 6 — « rien à inventer » ne valait que pour le calcul.** Seule
-`deplacerArticle` — une quinzaine de lignes pures — se réutilise telle quelle. Tout le
-chemin d'écriture est câblé sur la revue :
-
-* `CLE_ORDRE` est le littéral `'ordre-articles'` (`lib/articles.js:26`), sans lien avec
-  `PROFILS.livre.unites.ordre` (`lib/profil.js:43`) — deux constantes qui ne se parlent pas ;
-* `ecrireClesAusgabe()` (l.236-248) code `path.join(racine, 'ausgabe.yaml')`, et le bail de
-  co-édition est posé sur ce même nom (l.4689). **18 occurrences** du littéral dans le
-  fichier.
-
-Il faut donc généraliser l'écriture par le profil **avant** le formulaire de couverture du
-§10.4, qui en dépendra aussi.
-
-### 10.4 Les deux formulaires nouveaux
-
-* **Métadonnées de l'ouvrage** (`buch.yaml`) — frère de « Métadonnées du numéro ». Le bloc
-  auteur·e·s n'apparaît **qu'en monographie** : en collectif il vit dans la fiche de chaque
-  chapitre, et l'offrir aux deux endroits inviterait à saisir deux fois la même chose pour
-  qu'elles divergent.
-* **Couverture** — grammage, main, fond perdu, profil CMJN, et le **dos en lecture seule**,
-  calculé sous les yeux de la rédaction depuis le dernier PDF compilé, avec la date de ce
-  PDF. Une case pour le forcer quand l'imprimeur a dicté sa valeur.
-
-### 10.5 Le `package.json` — le nom n'était pas le vrai problème
-
-Le plan traitait la **catégorie** des commandes et passait sous silence leur **visibilité**.
-
-**Correction n° 7.** Les 52 commandes portent `"category": "Revue SZH"`, et aucun test n'en
-dépend : le renommage en « SZH/CSPS » est sûr. Mais `contributes.menus.commandPalette` ne
-contient que **deux** entrées, toutes deux `"when": "false"`, sans rapport avec le profil.
-Les familles `szh.estRevue` / `szh.estLivre` du plan n'existent que sur les menus de l'arbre
-et de la barre de titre — **jamais sur la palette**. Concrètement : sur un livre, `Ctrl+Shift+P`
-offre aujourd'hui les 52 commandes, « Envoyer pour traduction » et l'export OJS compris.
-Aucune ne plante — elles ouvrent un panneau vide — mais aucune ne devrait être là.
-
-C'est donc une cinquantaine d'entrées `commandPalette` à écrire, pas un renommage.
-
-Et la marque vit ailleurs que dans `category` : au moins six messages de `lib/i18n.js`
-nomment « la barre « Revue SZH » » pour dire au rédacteur où cliquer. Donner sa propre vue au
-livre les rendrait faux pour lui.
-
-### 10.6 Ce que le plan refuse, et le trou que ce refus laisse
-
-* **L'export OJS d'un livre.** OJS publie des revues.
-* **Le suivi de traduction.** Voir §10.2.
-* **Le réimport d'un chapitre corrigé.** `reimporter.py` code `articles/` en dur à dix
-  endroits et bascule un dossier par deux renommages atomiques, avec réconciliation des
-  tableaux par empreinte. On n'étend pas cette mécanique-là en passant. Le refus tient.
-
-**Correction n° 8 — mais le refus laisse un trou, et il faut le boucher.** L'import simple
-**ignore silencieusement** un `.docx` dont le slug existe déjà. Côté revue, l'interface le
-rattrape : `_itemsWord()` (l.1383-1391) pose un `contextValue = 'word-deja'` et une icône
-d'avertissement, qui mène au réimport. Un livre a un `chapitres-word/` permanent, donc des
-dépôts répétés — et un ouvrage collectif en relecture en aura. Sans réimport **et** sans ce
-badge, un rédacteur qui redépose un chapitre corrigé ne verra rien du tout : le fichier
-reste là, rien ne se passe, rien ne le dit.
-
-**Le badge doit donc être porté au profil livre même sans le réimport** : l'absence de
-mécanisme doit se VOIR, pas se deviner.
+- **MOBI.** Le format est mort (Amazon ne l'accepte plus, KindleGen n'est plus distribué) ;
+  l'EPUB 3 suffit, et un `.azw3` se fabrique depuis lui hors chaîne.
+- **Un éditeur visuel de couverture.** La couverture se compose en CSS depuis `couverture/`
+  et se relit en PDF.
+- **L'export OJS et le suivi de traduction d'un livre.** OJS publie des revues ; la
+  traduction d'un livre est un autre livre, avec son ISBN.
+- **Le réimport d'un chapitre corrigé.** `reimporter.py` reste propre aux articles ; le badge
+  « déjà converti » rend visible un Word redéposé qui ne sera pas relu.
+- **Un Makefile unique paramétré revue/livre**, ou la fusion de `print.css` et des feuilles
+  du livre : le partage se fait par le socle et par `filtres.mk`, pas par le haut.

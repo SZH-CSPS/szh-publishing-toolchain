@@ -5,8 +5,6 @@ la clé **`emplacementRevues`** de `C:\ProgramData\SZH\config.json`, qui vaut `t
 `production`. Elle déplace la **racine** de tout le travail. Elle ne déplace **aucun
 fichier** : les dossiers restent où ils sont, c'est le regard de l'outil qui change.
 
-État constaté sur le poste `robin` le 2026-08-23, arborescence mise à jour le 2026-09-15.
-
 ---
 
 ## 1. Les deux racines
@@ -133,43 +131,6 @@ silencieux vers OneDrive — l'appelant journalise et passe son tour (§1 « rap
 déplacés » ci-dessus, `docs/RAPPORTS-ERREUR.md`). Le dossier est créé s'il manque : il est à
 nous, contrairement aux dossiers de produits que SharePoint fournit.
 
-### Ce qui a changé le 15.09.2026
-
-| Avant | Après |
-|---|---|
-| `52_Revue\RV02_Redaction`, `RV99_Archives` | `Revue`, `_Archive\Revue` |
-| `53_Zeitschrift\ZS02_Redaktion`, `ZS99_Archives` | `Zeitschrift`, `_Archive\Zeitschrift` |
-| `54_Buch\BU02_Redaktion`, `BU01_Auflagen finale` (hypothèse jamais vérifiée) | `Books`, `_Archive\Books` — **dans notre arbre** |
-| un niveau d'état sous chaque produit (`01_Redaction`…) | supprimé : le numéro en cours est **directement** sous son produit |
-| un dossier d'archives par produit (`99_Archives`…) | regroupés sous un `_Archive\` unique, un sous-dossier par produit |
-| racine de production = `…\2_Produkte` | `…\2_Produkte\54_Pronto` |
-| rapports d'erreur sous `2_Produkte\Edition SZH CSPS allgemein\_AutoReportToolbox…` (dossier d'une autre équipe) | `…\54_Pronto\_Systeme\rapports` |
-| réserve de fiches dans le **parent du numéro** — donc invisible de l'autre rédaction | `_NewsUndActu\` à la **racine**, lue par les deux |
-| clé `basesRevues` de `config.json` | supprimée |
-| clé `sousDossiersLivre` de `config.json` | supprimée (l'hypothèse qu'elle rattrapait est tranchée) |
-
-Pas de période de transition et aucune relecture des anciens chemins : il n'y a que deux
-postes, mis à jour ensemble. Depuis le 23.09.2026, les numéros existants se déplacent
-automatiquement, à chaque mise à jour (`windows\szh-migration.ps1`,
-`Invoke-SzhMigrationArborescence`, appelée par `update.ps1`) — uniquement dans le dossier de
-**test**, jamais sur SharePoint. §8 en détaille le comportement (conflit, idempotence,
-journal).
-
-### Ce qui a changé le 23.09.2026
-
-| Avant | Après |
-|---|---|
-| `_NewsUndActu\Revue\`, `_NewsUndActu\Zeitschrift\` (posé le 15.09.2026, jamais réellement déployé) | `_NewsUndActu\Fiches\`, `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` — la bibliothèque trie par langue, pas par revue d'origine |
-| `_Systeme\` créé et lu sous la racine ACTIVE (bug : un poste en mode test y aurait écrit sous `Revues-TESTING`, jamais lu par personne d'autre) | `_Systeme\` (rapports, journaux, suggestions, inventaire) TOUJOURS sur la racine de PRODUCTION, ancrée via `Resolve-SzhAncrage` — `Get-SzhDossierSysteme` |
-| lien `szh://…/<nom-de-dossier>` — mort dès qu'un numéro est renommé ou archivé | lien `szh://…/<id>`, où `id` est la clé `id:` d'`ausgabe.yaml`/`buch.yaml`, posée une fois à la création et jamais recalculée — résolu par recherche de l'id, en cours ET aux archives |
-| migration de l'arborescence : script manuel (`outils\migrer-arborescence.ps1`, supprimé), à lancer une fois à la main | migration automatique (`windows\szh-migration.ps1`, `Invoke-SzhMigrationArborescence`), appelée par `update.ps1` à chaque mise à jour, dans le dossier de test seulement |
-
-Pas de rétrocompatibilité avec un lien `szh://` par nom de dossier : aucune production
-n'était en cours au moment du changement. Un numéro créé avant le 23.09.2026 reçoit son
-`id:` à la première migration automatique qui le trouve (`Update-SzhIdsManquants`) ou, s'il
-est déjà dans la forme neuve de l'arbre, à la première ouverture dans le cockpit (autre
-agent, hors de ce document).
-
 ---
 
 ## 2. Ce que chaque racine contient, dossier par dossier
@@ -285,7 +246,7 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `szh-cockpit\lib\rapport-erreur.js` · `SEGMENT_APPLICATION` | **Son jumeau JavaScript.** Les deux se changent ENSEMBLE ; `test/js/rapport-erreur-ps.test.js` compare les deux dérivations sur le même ancrage. | `SEGMENTS_DOSSIER_RAPPORTS` |
 | `windows\szh-produits.ps1` · `$script:SzhSousDossiers`, `$script:SzhDossiersCommuns` | **Les six chemins de produit et les dossiers hors produit qui suivent la racine active.** Une seule table pour les deux racines : il n'existe aucun chemin qui dépende de l'emplacement actif. Les trois dossiers de la bibliothèque en dérivent, par `$SzhNomDossierReserve` et `$SzhDossiersBibliotheque`. `_Systeme\` n'y figure PAS : voir `Get-SzhDossierSysteme` plus haut. | `Get-SzhEmplacements`, `Initialize-SzhEmplacementsTest` |
 | `windows\szh-migration.ps1` · `Invoke-SzhMigrationArborescence` | La migration AUTOMATIQUE, dans le dossier de **test** seulement (jamais SharePoint), appelée par `update.ps1` à chaque mise à jour. Déplace enfant par enfant (jamais tout un dossier d'un coup, pour qu'un conflit sur un nom n'empêche pas les autres) ; un conflit laisse la source en place et se journalise. Pose aussi un `id:` manquant sur chaque numéro/livre trouvé (`Update-SzhIdsManquants`, jamais un recalcul) et refait le raccourci de chaque numéro déplacé. Idempotente : rien à faire une fois les six dossiers sources vidés. | `update.ps1`, une fois par mise à jour |
-| *(le côté cockpit de la bibliothèque `_NewsUndActu\Fiches\` / `_Statuts\` est hors du périmètre de ce document : il vit dans `vscodium-extension\szh-cockpit`, et n'est pas le fichier `lib\reserve.js` — remplacé, pas ce dépôt PowerShell.)* | | |
+| `szh-cockpit\lib\kirby-contenu.js` · `racineArbre` | Le côté cockpit de l'arborescence : remonte du dossier ouvert à la racine, et de là à `_NewsUndActu\Fiches\`, en reconnaissant des noms de dossiers, jamais en comptant des crans. | `lib\documentation-hote.js` |
 | `windows\szh-epinglage.ps1` · `Invoke-SzhEpinglageHorsLigne` | Marque « Toujours conserver sur cet appareil » (OneDrive Files On-Demand) le numéro en cours de chaque revue et la bibliothèque `_NewsUndActu`, sans geste manuel (§8bis). Jamais bloquant, jamais en simulation. | `open-produit.ps1`, juste après le check-in |
 | `windows\szh-ancrage.ps1` · `Resolve-SzhAncrage` / `Initialize-SzhAncrage` | L'ancrage SharePoint : le dossier `Daten_Allgemein - General`, dont `2_Produkte` **dérive** — cherché (4 niveaux passifs, jamais de fenêtre), pas déduit d'une variable d'environnement. `Initialize-SzhAncrage` seule peut ouvrir un sélecteur de dossier, une fois par lancement. Détail complet : `docs/RAPPORTS-ERREUR.md`, §1. | `Get-SzhBaseRevuesPour`, `windows\open-produit.ps1` |
 | `windows\szh-produits.ps1` · `Measure-SzhNumeros` | Compte les dossiers portant un manifeste (`ausgabe.yaml` pour une revue ou une zeitschrift, `buch.yaml` pour un livre), en cours et aux archives, dans une racine. Un livre compte donc lui aussi dans la bascule automatique `test`/`production`. | `Initialize-SzhEmplacementRevues` |

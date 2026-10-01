@@ -43,7 +43,7 @@ if (-not (Test-Path -LiteralPath $makefileDepot)) {
 # ---- crochet pre-push : la porte rapide (test/js/porte-release.js --rapide) avant un push ----
 # Idempotent (git config ecrase sans se plaindre) et jamais bloquant : un vieux clone sans
 # .githooks/pre-push ne doit pas empecher pronto-dev.ps1 de demarrer. SZH_SANS_PORTE=1
-# contourne le crochet lui-meme, au moment du push - voir .githooks/pre-push et le README.
+# contourne le crochet lui-meme, au moment du push - voir .githooks/pre-push et docs/DEVELOPPEMENT.md.
 try {
   git -C $racineDepot config core.hooksPath .githooks 2>$null | Out-Null
 } catch { }

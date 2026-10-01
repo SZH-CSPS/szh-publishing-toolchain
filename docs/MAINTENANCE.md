@@ -1,7 +1,9 @@
 # Guide d'exploitation
 
 Ce que le mainteneur doit surveiller pour que la chaîne continue de fonctionner, ce
-qu'il faut regarder, à quelle fréquence, et quoi faire quand ça casse.
+qu'il faut regarder, à quelle fréquence, et quoi faire quand ça casse. Installer, régler et
+réparer un poste sont au §4 ; les réglages de l'éditeur et la langue de l'interface au §3.
+Publier une version est dans [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version).
 
 Le principe qui rend tout le reste supportable : **aucune donnée de revue ne vit dans
 la chaîne**. Les articles sont sur OneDrive, le reste est du code versionné et
@@ -22,7 +24,12 @@ Un PDF produit sans erreur, la chaîne est saine. Le contrôle complet, qui vér
 plus les allers-retours du cockpit et les valeurs recopiées d'un fichier à l'autre :
 
 ```powershell
-node --test "test/js/*.test.js"        # tout le harnais, aucune dépendance
+node --test test/js/*.test.js > sortie.txt 2>&1   # tout le harnais, puis lire sortie.txt
+```
+
+et, dans la WSL (`wsl.exe -d SZH-Publishing -- …`, depuis PowerShell) :
+
+```sh
 python3 test/apca-check.py             # contrastes de la palette
 python3 test/typo-check.py             # typographie des deux langues
 python3 test/typo-articles.py          # typographie des articles, par pandoc
@@ -47,7 +54,7 @@ libre, tâche planifiée) de ce qui appartient au **compte** (environnement WSL,
 réglages, raccourcis, associations `.md` et `szh://`), et nomme le geste qui répare. Code de
 sortie 0 si tout est en place pour ce compte, 1 sinon.
 
-**Le piège, qui a coûté une matinée le 26 août 2026.** L'installation d'un poste se lance en
+**Le piège de l'élévation.** L'installation d'un poste se lance en
 administrateur. Quand l'élévation se fait avec un **compte de support** depuis la session
 d'un **rédacteur**, tout le script tourne sous le compte de support : `HKCU`, `%APPDATA%`,
 `%LOCALAPPDATA%` et l'enregistrement des distributions WSL sont ceux du support. Or
@@ -55,7 +62,7 @@ l'essentiel de l'outil s'installe **par utilisateur**. Le rédacteur ouvre donc 
 sans extensions, sans réglages, sans raccourcis et sans environnement de fabrication — sur
 un poste dont le journal dit « tout est à jour ».
 
-Ce qui est fait de cela, depuis 2026-08 :
+Ce que la chaîne en fait :
 
 - `bootstrap.ps1` compare le compte qui installe à celui de la session ouverte, l'écrit au
   journal, et **ne lance pas** la première mise à jour quand ils diffèrent : elle poserait
@@ -76,7 +83,7 @@ Ce qui est fait de cela, depuis 2026-08 :
 
 | Quand | Geste | Durée |
 |---|---|---|
-| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau du tag (majeure / medium / mineure, voir [README](../README.md#numéroter-une-version)) et écrire sa section dans `CHANGELOG.md` ; **pour un medium ou une majeure**, écrire aussi sa note bilingue dans `nouveautes.json` — c'est elle que les rédactions liront | 15 min |
+| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau (majeure / medium / mineure, voir [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#numéroter)) et écrire sa section dans `CHANGELOG.md` ; **pour un medium ou une majeure**, écrire aussi sa note bilingue dans `nouveautes.json` — c'est elle que les rédactions liront | 15 min |
 | **Avant chaque numéro** (≈ 4×/an) | compiler le numéro précédent pour confirmer que rien n'a bougé ; vérifier que les dossiers de revue sont « toujours conservés sur cet appareil » côté OneDrive | 10 min |
 | **Après une mise à jour majeure de Windows** | test de fumée sur un poste ; `wsl --version` et `wsl -l -v` | 15 min |
 | **Après un changement de politique antivirus ou Intune** | re-vérifier les exclusions WSL (elles ne sont pas posées automatiquement, voir § Poste) | 10 min |
@@ -189,7 +196,7 @@ ni U+2010 (le trait d'union de chaque coupure de mot), et les PDF du banc embarq
 DejaVu et Noto. La fine insécable de « Source : », rendue par la police de repli,
 ressortait même en espace ordinaire d'un copier-coller. Les six caractères manquants ont
 été ajoutés aux faces Open Sans (voir `pipeline/fonts/README.md`), et le contrôle qui
-garde la promesse est **`python test/polices-check.py`** : il refuse tout PDF embarquant
+garde la promesse est **`test/polices-check.py`**, lancé dans la WSL : il refuse tout PDF embarquant
 une police absente de `pipeline/fonts/`. `test/build-render.sh` l'appelle. Une police
 ajoutée à la maquette, ou un caractère nouveau écrit par un filtre, se signale là.
 
@@ -305,24 +312,176 @@ installée sur les nouveaux postes.
 fait de fait à chaque release : une release qui échoue à cette étape, c'est ce
 symptôme.
 
-**Manœuvre.** Chercher un remplaçant, ou vendoriser le `.vsix` dans le dépôt. Les cinq
-`.vsix` présents dans `deploy/vsix/` ne sont référencés par aucun script : ce sont des
-copies locales, pas une solution de repli — ne pas compter dessus.
+**Manœuvre.** Chercher un remplaçant, ou vendoriser le `.vsix` dans le dépôt.
 
-### Les réglages faits par le rédacteur sont écrasés à la prochaine mise à jour
+### Les réglages de l'éditeur, et pourquoi la mise à jour n'y touche pas
 
-**C'est un défaut présent, pas un risque futur.** Le formulaire « Réglages » du
-cockpit écrit thème, zoom, taille de police et langue dans
-`%APPDATA%\VSCodium\User\settings.json` ; or `update.ps1` recopie ce fichier depuis le
-toolkit à chaque mise à jour. Tout choix personnel est donc perdu à la mise à jour
-suivante.
+Le gabarit commenté `vscodium-user/settings.json` est la source unique de ce que la maison
+impose à tous les postes. Il est recopié tel quel dans `contributes.configurationDefaults`
+du cockpit (`package.json`), et `test/js/reglages-flotte.test.js` refuse que les deux
+divergent, en affichant le bloc à recoller.
 
-**Manœuvre.** À corriger dans `update.ps1` : fusionner au lieu de recopier, ou déplacer
-les réglages du cockpit vers un fichier qui ne soit pas écrasé.
+Un défaut d'extension vit sous le fichier du rédacteur au lieu de le remplacer : `update.ps1`
+ne recopie `settings.json` que sur un poste qui n'en a pas, et ce que le rédacteur choisit dans
+« Réglages SZH » (thème, zoom, taille de police, langue, mode d'aperçu) survit à la mise à
+jour. `keybindings.json` et `tasks.json`, eux, sont écrasés : personne ne les édite.
+
+L'éditeur refuse en silence certains défauts d'extension, selon la portée du réglage :
+mesuré sur VSCodium 1.121, `update.mode`, `extensions.autoUpdate`,
+`extensions.autoCheckUpdates`, `window.commandCenter` et `window.menuBarVisibility` (portée
+« application ») sont retirés avec un simple avertissement. `poserReglagesMaison`
+(`extension.js`) relit au démarrage le défaut effectif de chaque clé et pose lui-même, par
+`getConfiguration().update(…, Global)`, celles qui n'ont pas pris, une fois par valeur voulue :
+l'empreinte du gabarit est mémorisée, pour ne pas réimposer à chaque ouverture un réglage que
+le rédacteur a délibérément changé.
+
+### Les réglages protégés
+
+Trois blocs de « Réglages SZH » décrivent la chaîne de publication et non le confort d'une
+personne : la configuration de l'export OJS, les titres de bibliographie et les tâches
+éditoriales par article (`tachesArticle`). Une rubrique OJS renommée sur un seul poste ferait
+atterrir ses articles dans la mauvaise section ; deux jeux de tâches feraient suivre le même
+numéro de deux façons. Ils sont donc en lecture seule, et déployés depuis
+`windows/settings-protected.json` vers `C:\ProgramData\SZH\settings-protected.json`, écrasé à
+chaque mise à jour.
+
+Le cockpit relaie ces blocs dans `config.json`, seul fichier que `szh-citations.lua` sache lire
+depuis la WSL, et seulement quand la référence a changé : sinon une modification locale
+disparaîtrait le lendemain. Un bloc absent du fichier déployé laisse celui du poste intact ;
+seul un bloc présent prend la main. Le fichier part vide.
+
+Le rédacteur peut déverrouiller (case à cocher, question modale). Sa modification vaut alors
+sur son poste jusqu'à la prochaine mise à jour ; le formulaire affiche un bandeau, le bouton
+« Télécharger les réglages protégés » produit le fichier à transmettre, et
+`windows/diagnostic.ps1` (§ *Réglages de la rédaction*) sort la divergence en défaut.
+
+### La langue de l'interface
+
+Deux sources indépendantes, ce qui rend possible un écran mi-français mi-allemand. Les menus
+de l'éditeur, les titres de commandes et les descriptions de réglages viennent de
+`package.nls.json` et `package.nls.de.json`, que VSCodium résout selon sa propre langue
+d'affichage (`argv.json`, clé `locale`, et le pack de langue épinglé dans `vsix.lock`). Tout le
+reste vient de `lib/i18n.js`, que `sourceLangue()` résout par cette cascade :
+
+| # | Source | Où |
+|---|--------|-----|
+| 1 | `SZH_LANGUE` | l'environnement : un essai, jamais posée sur un poste |
+| 2 | réglage `szh.langue` | réglages de l'éditeur, écrits par « Réglages SZH » |
+| 3 | clé `langue` | configuration du poste, hors des réglages de l'éditeur |
+| 4 | clé `langue` | état du poste, recopiée en miroir par le lanceur (`Set-SzhLangueInterface`) |
+| 5 | langue d'affichage de l'éditeur | `argv.json` et pack de langue |
+| 6 | langue d'affichage de Windows | locale du système |
+| — | français | faute de mieux |
+
+L'étage 4 existe parce que les postes affichent Windows et VSCodium en anglais : ni l'un ni
+l'autre ne dit l'équipe qui s'en sert. Le lanceur, lui, le sait par sa propre cascade (compte,
+`state.json`, langue de Windows, allemand en dernier recours, `$SzhLangue` dans
+`szh-common.ps1`) et la recopie. L'étage 3 double l'étage 2 dans un fichier que rien d'autre ne
+réécrit : le choix survit à tout ce qui toucherait aux réglages de l'éditeur.
+
+Quand les deux moitiés divergent, `windows/diagnostic.ps1` (§ *Langue de l'interface*) pose les
+six sources côte à côte, et « Réglages SZH » affiche la discordance sous le choix de la langue.
+Des menus en anglais ne sont pas une discordance : aucun pack de langue français n'est épinglé.
+Gardé par `test/js/langue-interface.test.js`.
+
+### Raccourcis clavier, et qui les fournit
+
+| Raccourci | Effet | Fourni par |
+|---|---|---|
+| `Ctrl+S` | enregistrer : import des Word déposés puis régénération | triggertaskonsave |
+| `Ctrl+B` / `Ctrl+I` / `Ctrl+U` | gras / italique / souligné | szh-cockpit |
+| `Ctrl+Alt+1` / `2` / `3` | titre de niveau 1 / 2 / 3 | szh-cockpit |
+| `Ctrl+Alt+W` / `H` / `Q` | bloc Important / Mise en évidence / Question | szh-cockpit |
+| `Ctrl+Alt+C` | citation | szh-cockpit |
+| `Ctrl+Alt+F` / `Ctrl+Alt+T` | insérer une figure / un tableau | szh-cockpit |
+| `Ctrl+Alt+N` | insérer une note de bas de page | szh-cockpit |
+| `Ctrl+Alt+K` | insérer un lien | szh-cockpit |
+| `Ctrl+Alt+V` | coller un tableau depuis Excel ou Word, fusions comprises | szh-cockpit |
+| `Ctrl+Alt+Entrée` | saut de page, dans le PDF seulement | szh-cockpit |
+| `Ctrl+Alt+A` / `S` / `D` | panneaux Commande / Édition / Export | szh-cockpit |
+| `Ctrl+Alt+P` | basculer l'aperçu HTML ⇄ PDF ; sur un `.biblio.md`, montrer ou cacher son rendu | szh-cockpit |
+| `Ctrl+Alt+I` | importer les Word à la demande | tâche utilisateur |
+| `Ctrl+E` / `Ctrl+Maj+B` | relancer la compilation | tâche utilisateur |
+| `Ctrl+Alt+R` | recharger la fenêtre, si l'aperçu se fige | keybindings |
+| `Ctrl+Espace` | suggestions de blocs `:::` | VS Code, réactivé en Markdown |
+| `Entrée` dans une liste | continuation automatique | markdown-all-in-one |
+| `Tab` dans un tableau | cellule suivante, formatage automatique | markdowntable |
 
 ---
 
 ## 4. Le poste Windows
+
+### Préparer un poste, une fois, en administrateur
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\windows\bootstrap.ps1
+```
+
+`windows\Installer le poste SZH.cmd` fait la même chose à double-clic. Le script active la
+WSL, installe VSCodium et SumatraPDF au niveau machine, dans les versions figées par
+`windows/apps.lock` (téléchargement direct, sha256 et signature vérifiés, voir
+[`../windows/APPS.md`](../windows/APPS.md)), donne aux Utilisateurs le droit d'écrire dans
+`C:\ProgramData\SZH`, pose les raccourcis, crée les tâches planifiées (mise à jour,
+préchauffage WSL) et lance la première mise à jour. Si la WSL était absente : redémarrer, puis
+relancer.
+
+Le script pose aussi, pour le compte qui l'exécute, tout ce qui est par utilisateur
+(extensions, réglages, raccourcis, environnement WSL). Élevé avec un compte de support depuis
+la session d'un rédacteur, il ne peut pas servir ce rédacteur : il le dit et laisse la tâche
+planifiée le faire à sa prochaine ouverture de session (voir plus haut « Le diagnostic d'un
+poste »). Restent à poser à la main les exclusions antivirus (ci-dessous). Ensuite, plus
+besoin d'administrateur ; seule la montée de VSCodium ou de SumatraPDF reste manuelle.
+
+### Créer un numéro ou un livre
+
+Lanceur « Pronto » → onglet Revue, Zeitschrift ou Book → *Nouveau…*. Le dossier est créé
+dans les « en cours » du produit, dans la racine active ([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
+`new-revue.ps1` (ou `new-livre.ps1`) copie le gabarit, écrit le jeton de produit et l'`id:`,
+déduit année et numéro du nom du dossier, estampille la version du toolkit et pose le
+raccourci « Ouvrir la revue » (« Ouvrir le livre »).
+
+### Le lanceur et ses réglages
+
+Deux entrées au menu Démarrer, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
+(`szh-shell.ps1`) : « Pronto », le lanceur, sans console (`wscript.exe //B hidden.vbs`), et
+« Pronto (Updater) », qui lance `update.ps1` dans une fenêtre visible. Leurs noms vivent dans
+`$SzhNomApplication` et `$SzhNomMiseAJour`. `bootstrap.ps1`, `update.ps1` et
+`update-launcher.ps1` posent les raccourcis, ce dernier à chaque ouverture de session : un
+poste déjà à jour reçoit ainsi une entrée ajoutée après coup. Un ancien raccourci se reconnaît
+à sa cible et non à son nom, ce qui retire tout seul ceux d'un renommage ; la désinstallation,
+qui peut survenir sans toolkit, a besoin de la liste figée de `Get-SzhRaccourcisObsoletes`. Un
+raccourci épinglé à la barre des tâches est une copie que la migration ne touche pas : le
+dépingler et réépingler à la main. Le sous-dossier `SZH\` du menu appartient à un autre produit
+et n'est jamais touché. Le lanceur porte une seule identité de barre des tâches,
+`SZH.Publishing.Suite`, et l'updater `SZH.Publishing.MiseAJour` (`$SzhAppIds`).
+
+L'onglet **Paramètres** porte les réglages du compte (langue, onglet par défaut, mise à jour
+visible ou silencieuse, rangés dans `%LOCALAPPDATA%\SZH\etat-utilisateur.json`) et un réglage
+du poste, « Mode développeur (dossiers de test) », qui bascule `emplacementRevues`
+(`Set-SzhEmplacementRevues`).
+
+L'onglet **Journal** liste les dix derniers transcrits de mise à jour
+(`C:\ProgramData\SZH\logs\update-<horodatage>.log`, `Get-SzhJournauxMaj`) avec leur date, tirée
+du nom du fichier, et leur verdict, lu sur la fin du transcript
+(`Get-SzhVerdictJournalMaj`). Deux boutons : « Signaler une erreur… » écrit un rapport
+`LANCEUR-SIGNALEMENT` avec le journal choisi ([`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) §7) ;
+« Envoyer les journaux… » réunit les journaux dans un zip du dossier temporaire et ouvre un
+brouillon de courriel au support, la pièce jointe restant à glisser à la main.
+
+### Revenir à une version précédente
+
+`update.ps1 -Version <X>`, ou lanceur → *Version du logiciel…*, ou le bouton *Changer de
+version…* de l'avertissement de divergence du cockpit. Volontairement manuel et visible :
+l'opération remplace le rootfs et les extensions, et demande de redémarrer l'éditeur.
+
+### Réparer un poste
+
+Un script qui répare (`bootstrap.ps1` relancé en administrateur, `update.ps1` en ligne de
+commande) ne s'exécute jamais depuis `C:\ProgramData\SZH\toolkit` sous élévation : ce dossier
+est inscriptible par le groupe Utilisateurs, et un administrateur qui l'exécuterait tel quel
+exécuterait aussi bien un code qu'un compte standard y aurait déposé. Toujours repartir d'un
+clone frais du dépôt, ou d'une archive `toolkit-<v>.zip` fraîchement téléchargée et vérifiée
+par sha256. Les manœuvres par symptôme suivent ; la reprise minimale est en fin de document.
 
 ### Les exclusions antivirus ne sont pas posées automatiquement
 
@@ -623,16 +782,11 @@ le VSIX est bien reconstruit et publié, mais **jamais réinstallé**.
 
 **Ce qui protège désormais.** `release.yml` compare, pour chaque extension, le contenu de
 son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suivi, la release
-échoue avant même de construire les VSIX, en nommant le fichier en cause. Ce n'était pas le
-cas jusqu'ici — plusieurs releases de septembre ont été reconstruites sans être réinstallées
-nulle part, faute de ce contrôle.
+échoue avant même de construire les VSIX, en nommant le fichier en cause.
 
-**À observer.** Depuis le 21.09.2026, il n'y a plus de tag à poser à la main : un commit
-`release: X.Y.Z résumé` poussé sur `main` suffit, et `release.yml` (déclenché par
-`workflow_run` après un `ci` réussi) pose le tag lui-même avant de construire quoi que ce
-soit — voir le README, § « Publier une version ». `node test/js/porte-release.js --version
-X.Y.Z` rejoue ce même contrôle de bump en local, avant de committer, plutôt que de le vérifier
-à la main en comparant à `git show <tag précédent>:<…>/package.json`.
+**À observer.** `node test/js/porte-release.js --version X.Y.Z` rejoue ce contrôle de bump en
+local, avant le commit `release:` (voir
+[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version)).
 
 ⚠ **La version d'une extension n'est pas celle du toolkit, et ne le devient pas avec
 `1.0.0`.** `szh-cockpit` suit son propre compte (`0.60.0` à la release `1.0.0`), parce que le
@@ -682,14 +836,11 @@ Le nettoyage complet passe par une réinstallation du toolkit.
 
 ### Deux workflows, et ils ne gardent pas la même porte
 
-`release.yml` ne se déclenche que sur un tag `v*` : il **publie**. `ci.yml` se
-déclenche à chaque push sur `main` et à chaque pull request : il **vérifie** — contrats
-du cockpit (`node --test test/js/*.test.js`), banc `test/` recompilé de zéro, puis
-`make verifier-ua`. Une porte qui ne se ferme qu'au moment de publier se ferme trop
-tard, d'où le second. `release.yml` rejoue désormais entièrement `ci.yml` comme premier
-job (`controles`, `uses: ./.github/workflows/ci.yml`) avant de publier quoi que ce soit :
-une régression qui n'aurait dû se voir qu'au prochain push sur `main` arrête la release
-elle-même.
+`ci.yml` se déclenche à chaque push sur `main` et à chaque pull request : il **vérifie** —
+contrats du cockpit (`node --test test/js/*.test.js`, sur ubuntu et sur windows), banc
+`test/` recompilé de zéro, puis `make verifier-ua`. `release.yml` **publie**, et seulement
+après un `ci` vert sur un commit `release: X.Y.Z …` (`workflow_run`) : il pose alors le tag
+lui-même. Un tag n'est donc jamais posé sur un commit que la CI n'a pas jugé.
 
 `ci.yml` installe lui-même pandoc 3.7.0.2, WeasyPrint depuis `image/requirements.txt` et
 veraPDF 1.30.2, tous épinglés et vérifiés par sha256 — sans quoi son verdict ne serait
@@ -743,9 +894,20 @@ ferme donc les onglets d'aperçu avant tout `clean` ou toute suppression. Un PDF
 
 ### Deux personnes ouvrent le même numéro
 
-Rien ne l'empêche. OneDrive crée alors un fichier en conflit
-(`ausgabe-<machine>.yaml`) que la chaîne ignore, et les modifications de l'un écrasent
-celles de l'autre. **La règle de travail reste : un numéro, une personne à la fois.**
+Rien ne l'empêche, et deux garde-fous en limitent l'effet. Un formulaire pose un bail de deux
+minutes sur le fichier qu'il modifie (`lib/coedition.js`, `lib/coedition-hote.js`) : un
+second poste voit que l'autre écrit et refuse son geste plutôt que d'écraser. Pour le reste,
+OneDrive crée une copie en conflit, que le cockpit détecte et fait résoudre bloc par bloc
+(`lib/copies-conflit.js`, `lib/cycle-vie.js`). **La règle de travail reste : un article, une
+personne à la fois.**
+
+### Verrouiller, archiver, désarchiver
+
+`locked` et `archived` dans `ausgabe.yaml` (ou `buch.yaml`) font foi. Le panneau d'export
+(`Ctrl+Alt+D`) porte les trois gestes. Un numéro verrouillé passe en lecture seule
+(`lib/verrou.js`), refuse toute commande d'écriture et ne se recompile plus tout seul.
+L'archivage supprime `out/`, en chiffrant le gain de place dans la confirmation, puis déplace
+le dossier vers `_Archive\` (`windows/archive-revue.ps1`) et rouvre l'éditeur dessus.
 
 ### Le lanceur n'affiche plus aucune revue
 
@@ -1039,9 +1201,9 @@ PDF non conforme. **À chaque reconstruction du rootfs.**
 
 ### La validation PDF/UA en arrière-plan, après chaque Ctrl+S
 
-**Ce qui change.** La logique de la cible `verifier-ua` a quitté le Makefile pour
-`pipeline/verifier-ua.sh` (garde-fous d'outillage, appel de veraPDF, traduction par
-`rapport-ua.py`) ; le Makefile ne fait plus qu'appeler ce script. `lib/pdfua-hote.js`, côté
+**Le mécanisme.** La logique de la porte vit dans `pipeline/verifier-ua.sh` (garde-fous
+d'outillage, appel de veraPDF, traduction par `rapport-ua.py`) ; la cible `verifier-ua` du
+Makefile ne fait qu'appeler ce script. `lib/pdfua-hote.js`, côté
 cockpit, lance ce même script dans WSL après chaque compilation réussie — sans attendre
 l'export, et sans jamais bloquer la rédaction — et pose un badge dans la barre d'état
 (« PDF/UA », icône `$(verified)` conforme, `$(error)` non conforme, `$(sync~spin)` en
@@ -1071,12 +1233,11 @@ et le PDF n'en garde rien. Mesuré sur `test/out/figures/figures.pdf` : `/Lang` 
 document = `fr`, et **aucun** élément de l'arbre de structure ne porte de `/Lang`. Un
 lecteur d'écran lira donc le résumé allemand avec une voix française.
 
-**Cause, en amont.** WeasyPrint 69 — et 70, vérifié le 23.09.2026 — n'écrit `/Lang` qu'à
-un seul endroit, le catalogue du
+**Cause, en amont.** WeasyPrint 70 n'écrit `/Lang` qu'à un seul endroit, le catalogue du
 document (`weasyprint/pdf/__init__.py`) ; `weasyprint/pdf/tags.py`, qui construit les
-éléments de structure, n'en pose aucun. Trois occurrences de `Lang` dans tout le paquet,
-toutes sur le catalogue. **Rien côté HTML ne peut donc corriger ce défaut** : l'attribut
-`lang` est simplement perdu.
+éléments de structure, n'en pose aucun. **Rien côté HTML ne peut donc corriger ce défaut** :
+l'attribut `lang` est simplement perdu. C'est l'une des limites listées dans
+[`ACCESSIBILITE.md`](ACCESSIBILITE.md#limites).
 
 **Pourquoi veraPDF passe quand même.** Sa règle de clause 7.2 sur le texte du contenu de
 page se lit `gContainsCatalogLang == true || Lang != null` : un `/Lang` dans le catalogue
@@ -1107,7 +1268,7 @@ un compte qui n'utilise plus l'outil (`-ProfilSeulement`).
 
 **D'où le lancer.** Depuis un clone frais du dépôt ou une extraction de
 `toolkit-<v>.zip` — jamais depuis `C:\ProgramData\SZH\toolkit` sous élévation, même règle
-que « Réparer un poste » (README.md) : ce dossier est inscriptible par le groupe
+que « Réparer un poste » (§4) : ce dossier est inscriptible par le groupe
 Utilisateurs, et un administrateur qui l'exécuterait tel quel exécuterait aussi bien un
 code qu'un compte standard y aurait déposé. `-Simuler` n'est pas concerné : il ne fait
 qu'afficher un plan.

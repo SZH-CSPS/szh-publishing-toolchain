@@ -6,7 +6,7 @@
 # à chaque push découragerait vite de le laisser actif.
 #
 # Activation, une fois par poste : git config core.hooksPath .githooks (posé automatiquement
-# par outils-dev/pronto-dev.ps1 ; sinon voir le README, § « Publier une release »).
+# par outils-dev/pronto-dev.ps1 ; sinon voir docs/DEVELOPPEMENT.md, § « Publier une version »).
 #
 # Ce crochet ne bloque QUE sur un rouge. SZH_SANS_PORTE=1 le contourne, en le disant.
 

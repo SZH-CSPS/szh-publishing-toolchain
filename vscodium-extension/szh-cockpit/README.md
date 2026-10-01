@@ -19,7 +19,9 @@ Construite et publiée par la CI du dépôt (`release.yml`), installée sur les 
 Aucune étape de build : du CommonJS chargé tel quel, et des fichiers statiques.
 
 ```
-extension.js            activation, câblage des commandes et des modules de lib/
+extension.js            activation, câblage des modules de lib/ par leurs configurer(), arbre
+                        latéral (FournisseurRevue), compiler et ouvrir une unité ; aucun
+                        panneau n'y est créé (motif des modules hôtes : docs/ARCHITECTURE.md)
 lib/
   accueil-hote.js       l'accueil d'un poste : l'invitation au tutoriel, une seule fois, et
                         « Quoi de neuf » après une mise à jour. Sans rappel vers l'hôte
@@ -45,10 +47,10 @@ lib/
                         forme WSL
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
-  codes-erreur.js       table des 9 codes d'erreur applicatifs et schéma v1 des rapports
+  codes-erreur.js       table des codes d'erreur applicatifs et schéma v1 des rapports
                         automatiques (masquage, plafonds, anti-inondation) : données et
-                        fonctions pures, sans vscode ni fs, partagées avec l'écrivain
-                        PowerShell (docs/RAPPORTS-ERREUR.md ; pas encore posé)
+                        fonctions pures, sans vscode ni fs, dont windows/szh-rapport.ps1
+                        est le jumeau PowerShell (docs/RAPPORTS-ERREUR.md)
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
                         modifie : deux postes sur le même numéro n'écrivent pas ensemble
                         (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
@@ -92,9 +94,11 @@ lib/
   formatting-pur.js      la part de formatting.js qui ne référence pas vscode (bascules de
                         texte, pose des blocs :::, palette), réutilisable par medias.js et
                         panneaux.js
-  gabarits.js           moteur de gabarits, sous-ensemble de Twig sans vscode ni dépendance :
-                        sert lib/courriel.js
-  i18n.js               textes fr/de et T(clé[, args])
+  gabarits.js           le seul moteur de gabarits, sous-ensemble de Twig sans vscode ni
+                        dépendance : courriels, exports, feuille de vérification, et le
+                        lanceur Windows par outils/rendre-gabarit.js
+  i18n.js               textes fr/de, T(clé[, args]) et TP(clé, profil[, args]), qui
+                        prend la variante « clé.livre » quand elle existe
   index-textes.js       l'index qui retrouve la clé i18n d'un texte lu à l'écran :
                         exact, motifs à trous ({0}) et clés partagées. Sert le mode
                         « Trad ». Module pur, sans disque ni vscode
@@ -152,13 +156,14 @@ lib/
                         configurer(), jamais par import
   portraits.js          appel du script de détourage des photos, dans WSL
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
-                        articles/) ou livre (buch.yaml, chapitres/) — et ses chemins
+                        articles/) ou livre (buch.yaml, chapitres/) —, ses chemins, et la
+                        table des capacités (contextes szh.peut.*) ; courant() rend le
+                        profil actif
   qualite-image.js      seuils de résolution des images et verdict de qualité
   rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
                         résolution passive de l'ancrage SharePoint, masquage, anti-
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
-                        sans le modifier ; l'écrivain PowerShell (windows/*.ps1) est un
-                        autre jalon (docs/RAPPORTS-ERREUR.md)
+                        (docs/RAPPORTS-ERREUR.md)
   reglages-hote.js      le panneau des réglages, les réglages protégés et le fichier de langue ;
                         modifierConfigPoste() porte la garde « config du poste illisible ».
                         Rappelle l'hôte par configurer(), jamais par import
@@ -241,6 +246,9 @@ lib/
   webviews/panneau.js   panneauUnique() : singleton, fermeture, mode Trad et poignée PRET de
                         chaque panneau
 outils/
+  auteurs-cli.js        moissonnage des auteur·e·s publiés (lib/auteurs-ojs.js), lancé par le
+                        lanceur Windows
+  rendre-gabarit.js     rend un gabarit Twig par lib/gabarits.js pour le lanceur Windows
   compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
                         Node de VSCodium ; --purger supprime ce qui a plus de 24 mois
   secretariat-cli.js    entrée en ligne de commande de lib/secretariat.js : JSON Lines sur
@@ -280,11 +288,14 @@ media/
   traduction.{html,css,js}        suivi des traductions
   vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word, contrôles)
   articles.{html,css,js}          vue « Articles » : ordre, tâches, métadonnées du numéro
-```
-print-templates/         gabarit Twig de la feuille de vérification des métadonnées
+  suggestion.{html,css,js}        proposer une traduction d'un champ, sans rien écrire
+  nouveautes.{html,css,js}        « Quoi de neuf », en lecture seule
+  tutoriel/                       les illustrations du parcours de démarrage
+print-templates/        gabarit Twig de la feuille de vérification des métadonnées
                         (verification-meta.twig, lib/verif-meta.js) : du HTML, donc chaque
                         valeur y porte le filtre |e — le moteur n'échappe rien tout seul.
                         Lu directement d'ici, jamais copié sur le poste
+```
 
 `test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les
 autres valeurs recopiées d'un fichier à l'autre. `test/js/webviews.test.js` rend les pages

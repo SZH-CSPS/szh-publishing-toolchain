@@ -20,8 +20,10 @@
 ## Racine de confiance
 
 Le seul point qui peut modifier ce qui s'exécute sur les postes, c'est **une release GitHub**.
-→ **Restreindre qui peut pousser un tag / créer une release** (droits du dépôt, protection de
-branche, 2FA obligatoire sur les comptes ayant ce droit). C'est le contrôle de sécurité le plus
+Elle part d'un commit `release: X.Y.Z …` poussé sur `main` et jugé vert par la CI, ou d'un
+lancement manuel du workflow `release`.
+→ **Restreindre qui peut pousser sur `main` et lancer un workflow** (droits du dépôt,
+protection de branche, 2FA obligatoire sur les comptes ayant ce droit). C'est le contrôle de sécurité le plus
 important de tout le système.
 
 ## Risques assumés (à connaître)
