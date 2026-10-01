@@ -480,7 +480,7 @@ def _alerte_recherche_impossible(crossref_en_panne, identifiants_en_panne, langu
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_repli_typo(langue='fr'):
+def _alerte_repli_typo(langue):
     """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
     dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
     --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
@@ -494,7 +494,7 @@ def _alerte_repli_typo(langue='fr'):
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_vale_indisponible(langue='fr'):
+def _alerte_vale_indisponible(langue):
     """vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, config cassée — voir
     manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
     if langue == 'fr':
@@ -507,7 +507,7 @@ def _alerte_vale_indisponible(langue='fr'):
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_annotation_impossible(langue='fr'):
+def _alerte_annotation_impossible(langue):
     """manuscrit_annoter.annoter() a levé une exception (défaut connu, voir le commentaire à
     son point d'appel) : le .docx déjà écrit reste utilisable, sans révisions ni commentaires
     posés — une alerte le dit, jamais un plantage silencieux de la CLI."""

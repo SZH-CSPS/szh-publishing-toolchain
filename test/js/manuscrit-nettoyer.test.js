@@ -968,7 +968,7 @@ test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, le
 // Les trois alertes que la CLI émet sans passer par un moteur (repli typographique, Vale
 // indisponible, annotation impossible) suivent la langue de traitement : français pour la
 // Revue, allemand pour la Zeitschrift. Sabotage : retirer la branche allemande d'une des trois
-// (ou ne plus lui passer `langue`) rend le français dans la Zeitschrift.
+// Les trois fonctions n'ont aucun défaut de langue ; le test suivant garde les sites d'appel.
 test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale indisponible, annotation impossible) sortent en allemand pour la Zeitschrift',
   { skip: sansPython }, () => {
     const PONT = [
@@ -993,6 +993,34 @@ test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale in
     assert.match(m.de[0], /^Die Typografie/);
     assert.match(m.de[1], /^Die Prüfung/);
     assert.match(m.de[2], /^Die Korrekturen/);
+  });
+
+// Les trois alertes n'ont pas de langue par défaut, et chaque site d'appel de la CLI la passe :
+// un oubli rendrait le français dans la Zeitschrift sans qu'aucun chemin du doré ne le voie.
+// Contrôle par l'arbre syntaxique, car les chemins (Vale absent, annotation en échec) sont rares.
+// Sabotage : retirer `langue` d'un des trois appels, ou remettre `langue='fr'` en défaut.
+test('manuscrit-nettoyer.py : les trois alertes de la CLI reçoivent la langue à chaque site d’appel, sans défaut',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import ast, json, sys',
+      'arbre = ast.parse(open(sys.argv[1], encoding="utf-8").read())',
+      'noms = ("_alerte_repli_typo", "_alerte_vale_indisponible", "_alerte_annotation_impossible")',
+      'defauts = {n.name: len(n.args.defaults) for n in ast.walk(arbre)',
+      '           if isinstance(n, ast.FunctionDef) and n.name in noms}',
+      'appels = {n: [] for n in noms}',
+      'for n in ast.walk(arbre):',
+      '    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in noms:',
+      '        appels[n.func.id].append(len(n.args) + len(n.keywords))',
+      'print(json.dumps({"defauts": defauts, "appels": appels}))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const m = JSON.parse(r.stdout);
+    for (const nom of ['_alerte_repli_typo', '_alerte_vale_indisponible', '_alerte_annotation_impossible']) {
+      assert.strictEqual(m.defauts[nom], 0, nom + ' ne doit pas avoir de langue par défaut');
+      assert.ok(m.appels[nom].length >= 1, nom + ' n’est plus appelée par la CLI');
+      assert.ok(m.appels[nom].every((n) => n === 1), nom + ' appelée sans langue : ' + JSON.stringify(m.appels[nom]));
+    }
   });
 
 // ---------------------------------------------------------------------------------
