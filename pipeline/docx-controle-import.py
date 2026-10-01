@@ -227,11 +227,18 @@ def texte_du_md(chemin_md):
 
 
 class _TexteHtml(HTMLParser):
-    def __init__(self):
+    """`avec_images` : le src et l'alt d'un <img> comptent comme du texte. Bon pour retrouver une
+    valeur de bloc (un alt écrit dans le Word), mauvais pour une cellule : le Word n'en porte
+    pas, et mêlés à une cellule « texte / image / texte » ils la rendent introuvable."""
+
+    def __init__(self, avec_images=False):
         super().__init__(convert_charrefs=True)
         self.morceaux = []
+        self.avec_images = avec_images
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'img' and not self.avec_images:
+            return
         for k, v in attrs:
             if v and (k.startswith('data-') or k in ('alt', 'src')):
                 self.morceaux.append(' ' + v + ' ')
@@ -240,7 +247,7 @@ class _TexteHtml(HTMLParser):
         self.morceaux.append(data)
 
 
-def texte_des_tables(dossier):
+def texte_des_tables(dossier, avec_images=False):
     tables = os.path.join(dossier, 'tables')
     morceaux = []
     if os.path.isdir(tables):
@@ -248,7 +255,7 @@ def texte_des_tables(dossier):
             if nom.endswith('.html'):
                 try:
                     with open(os.path.join(tables, nom), encoding='utf-8') as f:
-                        p = _TexteHtml()
+                        p = _TexteHtml(avec_images)
                         p.feed(f.read())
                         morceaux.append(''.join(p.morceaux))
                 except OSError:
@@ -348,7 +355,7 @@ def images_du_word(chemin_docx, t_ordinaux):
     images = []
     # `texte_vu` : un texte du corps a-t-il déjà été rencontré ? Une image vue AVANT est en
     # tête de document — seule place où le logo de licence (ligne G) est retiré exprès.
-    etat = {'texte_vu': False, 'ordinal': 0}
+    etat = {'texte_vu': False}
 
     def noter(element):
         noms = []
@@ -383,14 +390,13 @@ def images_du_word(chemin_docx, t_ordinaux):
                 etat['texte_vu'] = True
             parcourir(enfant, dans_table_consommee)
 
-    # Les tableaux de PREMIER NIVEAU sont comptés comme docx-tables.py et szh-meta.lua les
-    # comptent (tableaux_de_premier_niveau : on ne descend pas dans un tableau pour en
-    # chercher d'autres), pour reconnaître ceux des lignes T.
+    # Les tableaux consommés (lignes T) se reconnaissent à leur numéro, celui de docx-tables.py.
+    consommes = {id(tbl) for ordinal, tbl in tableaux_de_la_racine(racine) if ordinal in t_ordinaux}
+
     def premier_niveau(element):
         for enfant in element:
             if enfant.tag == W + 'tbl':
-                etat['ordinal'] += 1
-                parcourir(enfant, etat['ordinal'] in t_ordinaux)
+                parcourir(enfant, id(enfant) in consommes)
             elif enfant.tag in (W + 'drawing', W + 'pict'):
                 noter(enfant)
             elif enfant.tag == MC + 'Fallback':
@@ -443,28 +449,20 @@ def _cellule_texte(tc, sans_etiquettes):
     return ' '.join(pars)
 
 
+def tableaux_de_la_racine(racine):
+    """[(ordinal, tbl)] — les tableaux de premier niveau du document, numérotés par la fonction
+    de docx-tables.py elle-même (w:sdt, zone de texte et mc:Fallback compris) : les ordinaux des
+    lignes T et FG sont ceux de ce maillon, et les recopier ici les ferait diverger."""
+    docx_tables = szh_commun.charger_module_a_tiret('docx-tables.py')
+    return [(ordinal, tbl) for ordinal, (tbl, _) in
+            enumerate(docx_tables.tableaux_de_premier_niveau(racine), start=1)]
+
+
 def tableaux_du_word(chemin_docx):
-    """[(ordinal, tc)] — les tableaux de premier niveau du corps, dépliés comme
-    docx-tables.py et pandoc les comptent (w:sdt traversé, pas de descente dans un tableau,
-    ni dans un dessin ou un mc:Fallback)."""
+    """[(ordinal, tbl)] — voir tableaux_de_la_racine."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
-    corps = racine.find(W + 'body')
-    trouves = []
-    if corps is None:
-        return trouves
-
-    def marche(e):
-        for enfant in e:
-            if enfant.tag == W + 'tbl':
-                trouves.append((len(trouves) + 1, enfant))
-            elif enfant.tag in (W + 'drawing', W + 'pict', MC + 'Fallback'):
-                continue
-            else:
-                marche(enfant)
-
-    marche(corps)
-    return trouves
+    return tableaux_de_la_racine(racine)
 
 
 def sans_blancs(t):
@@ -488,26 +486,29 @@ def mots(texte):
     return re.findall(r'[^\W_]+', cle(texte))
 
 
-def tableaux_perdus(chemin_docx, t_ordinaux, ignores, reference, mots_connus):
+def tableaux_perdus(chemin_docx, t_ordinaux, ignores, reference, mots_fiche):
     """[(ordinal, [textes introuvables])] — voir 1.c. `reference` : .md et tables/, sans
-    blancs ; `mots_connus` : les mots de ce texte, de la fiche, des instructions du lecteur et de
-    l'appariement des photos. Un tableau consommé est passé dans la fiche, champ par champ : on
-    n'y retrouve pas ses cellules entières, mais ses mots. Moins de la moitié de ses mots
-    (ceux d'au moins trois caractères, sinon tous) dans `mots_connus`, et il est perdu."""
+    blancs ; `mots_fiche` : les mots de la fiche, des instructions du lecteur et de
+    l'appariement des photos, et d'eux seuls. Un tableau consommé est passé dans la fiche,
+    champ par champ : on n'y retrouve pas ses cellules entières, mais leurs mots. Chaque cellule
+    se juge à part : moins de la moitié de ses mots (ceux d'au moins trois caractères, sinon
+    tous) dans `mots_fiche`, et elle est perdue. Le corps de l'article n'entre pas dans cette
+    liste : un résumé perdu dont le sujet revient dans le texte ne doit pas passer."""
     perdus = []
     for ordinal, tbl in tableaux_du_word(chemin_docx):
         if ordinal in ignores:
             continue
         if ordinal in t_ordinaux:
-            cellules = cellules_a_chercher(tbl, True)
-            tous = [m for t, _ in cellules for m in mots(t)]
-            longs = [m for m in tous if len(m) >= 3] or tous
-            if longs and sum(1 for m in longs if m in mots_connus) * 2 < len(longs):
-                perdus.append((ordinal, [t for t, _ in cellules]))
+            manquantes = []
+            for texte, _ in cellules_a_chercher(tbl, True):
+                tous = mots(texte)
+                longs = [m for m in tous if len(m) >= 3] or tous
+                if longs and sum(1 for m in longs if m in mots_fiche) * 2 < len(longs):
+                    manquantes.append(texte)
         else:
             manquantes = [t for t, f in cellules_a_chercher(tbl, False) if f not in reference]
-            if manquantes:
-                perdus.append((ordinal, manquantes))
+        if manquantes:
+            perdus.append((ordinal, manquantes))
     return perdus
 
 
@@ -532,7 +533,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
     chemin_md = os.path.join(dossier, slug + '.md')
     blocs, t_ordinaux, logos = lire_instructions(os.getenv('SZH_META'))
     relu, brut = texte_du_md(chemin_md)
-    tables = texte_des_tables(dossier)
+    tables = texte_des_tables(dossier, avec_images=True)
     reference = cle((relu or brut) + '\n' + tables)
     try:
         with open(chemin_md, encoding='utf-8') as f:
@@ -586,8 +587,8 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
         perdus = tableaux_perdus(
             chemin_docx, t_ordinaux,
             {int(b['cible']) for b in blocs if b['lettre'] == 'FG' and b['cible'].isdigit()},
-            sans_blancs((relu or brut) + '\n' + tables),
-            set(mots((relu or brut) + '\n' + tables + '\n' + fiche)))
+            sans_blancs((relu or brut) + '\n' + texte_des_tables(dossier)),
+            set(mots(fiche)))
     except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as e:
         print('[controle-import] tableaux du Word illisibles : %s' % e, file=sys.stderr)
         perdus = []

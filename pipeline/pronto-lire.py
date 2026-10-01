@@ -5,7 +5,8 @@
 # dans pronto_docx.py ; ce fichier ne fait que les brancher l'un à l'autre. Un .odt n'arrive
 # jamais ici : import-docx.sh (et le nettoyeur) le convertissent d'abord en .docx.
 #
-#   python3 pronto-lire.py <fichier.docx> <slug> <dossier-article>
+#   python3 pronto-lire.py <fichier.docx> <slug> <dossier-article>   -> 0 = lu, 1 = bloquant (clé
+#                                                            non reconnue), 3 = fichier illisible
 #   python3 pronto-lire.py --reconnaitre <fichier.docx>   -> 0 = au gabarit, 10 = non,
 #                                                            tout autre code = panne
 #
@@ -52,6 +53,9 @@ VARIANTES = {
 
 
 PAS_AU_GABARIT = 10
+# Le fichier ne s'ouvre pas (document.xml mal formé, zip cassé) : ce n'est pas une étiquette à
+# corriger, et import-docx.sh ne doit pas le dire comme tel.
+LECTURE_IMPOSSIBLE = 3
 
 
 def reconnaitre(chemin):
@@ -119,7 +123,7 @@ def principal(argv):
         if chemin_meta:
             open(chemin_meta, 'w', encoding='utf-8', newline='\n').close()
         print(json.dumps({'slug': slug, 'erreur': str(e)}, ensure_ascii=False))
-        return 1
+        return LECTURE_IMPOSSIBLE
 
     # $SZH_PRODUIT : le jeton `revue:` du numéro (« revue » | « zeitschrift »), posé par
     # pipeline/import-docx.sh, d'où vient la LANGUE de l'article — le gabarit ne la porte plus
