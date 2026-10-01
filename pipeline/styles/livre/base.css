@@ -34,26 +34,24 @@
 @page :left  { margin-left: var(--marge-ext); margin-right: var(--marge-int); }
 @page :right { margin-left: var(--marge-int); margin-right: var(--marge-ext); }
 
-/* Folio en pied, du côté extérieur. Un livre se feuillette par la tranche : le numéro doit
-   tomber sous le pouce, jamais vers la couture. */
-@page :left  { @bottom-left  { content: counter(page); font: var(--folio-font);
+/* Folio « page X sur Y » en pied, du côté extérieur. Un livre se feuillette par la tranche :
+   le numéro doit tomber sous le pouce, jamais vers la couture.
+   X est la page du PDF, Y le nombre total de pages : la page du PDF est la page du papier,
+   aucune pagination romaine, aucun counter-reset. Les mots viennent de la langue du
+   document (<html lang>), par deux jetons : une boîte de marge ne lit pas :lang() elle-même. */
+:root { --folio-page: "page "; --folio-sur: " sur "; }
+html[lang|=de] { --folio-page: "Seite "; --folio-sur: " von "; }
+html[lang|=it] { --folio-page: "pagina "; --folio-sur: " di "; }
+@page :left  { @bottom-left  { content: var(--folio-page) counter(page) var(--folio-sur) counter(pages);
+                               font: var(--folio-font);
                                color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
-@page :right { @bottom-right { content: counter(page); font: var(--folio-font);
+@page :right { @bottom-right { content: var(--folio-page) counter(page) var(--folio-sur) counter(pages);
+                               font: var(--folio-font);
                                color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
 
-/* Les liminaires ne portent pas de folio arabe. Le demi-titre, l'impressum et la page de
-   titre n'en portent aucun ; le sommaire et les préfaces prennent des chiffres romains,
-   selon l'usage. Le compteur repart à 1 au premier chapitre (voir §3). */
+/* Les pages qui précèdent le sommaire (demi-titre, page de titre, impressum) ne portent
+   aucun folio : le premier folio est celui du sommaire. */
 @page liminaire { @bottom-left { content: none } @bottom-right { content: none } }
-/* ⚠ Un seul folio par page : les deux boîtes se déclarent séparément sur :left et :right,
-   jamais toutes les deux sur la même page nommée. Déclarées ensemble, WeasyPrint remplit
-   les deux — le numéro s'imprime alors à gauche et à droite. Vu au premier rendu. */
-@page romain:left  { @bottom-left  { content: counter(page, lower-roman);
-                       font: var(--folio-font); color: var(--c-ink2);
-                       margin-bottom: var(--folio-fond); } }
-@page romain:right { @bottom-right { content: counter(page, lower-roman);
-                       font: var(--folio-font); color: var(--c-ink2);
-                       margin-bottom: var(--folio-fond); } }
 /* Ouverture de chapitre : le folio y figure aussi, comme sur toute page de texte — la
    page d'ouverture n'a plus de règle ici, elle retombe simplement sur les boîtes de
    :left/:right posées plus haut (§ folio en pied). Rien à annuler ni à redéclarer : un
@@ -92,19 +90,17 @@ figure + p, ul + p, ol + p, blockquote + p, table + p,
 /* ═══ 3. Structure du livre ═══════════════════════════════════════════════════ */
 
 /* Un chapitre = un fragment compilé à part, assemblé ici. Il ouvre sur une belle page
-   (recto), sans folio, et ne se coupe jamais de son titre. */
+   (recto), et ne se coupe jamais de son titre. */
 .szh-chapitre { break-before: recto; }
 .szh-chapitre > h1 {
   page: ouverture;
   break-after: avoid;
   string-set: chapitre content(text);
 }
-/* Le premier chapitre remet le folio à 1 : les liminaires ont consommé leurs pages en
-   romain, et la page 1 d'un livre est la première page de texte. */
-.szh-chapitre:first-of-type { counter-reset: page 1; }
-
 .szh-liminaire { break-before: page; page: liminaire; }
-.szh-liminaire.szh-romain { page: romain; }
+/* Un liminaire placé APRÈS le sommaire (préface, avant-propos) est une page ordinaire, avec
+   son folio. Il est le frère suivant du sommaire : la parenté suffit, aucune classe de plus. */
+.szh-sommaire ~ .szh-liminaire { page: auto; }
 
 /* Demi-titre, page de titre, impressum : composés par le gabarit, jamais écrits à la
    main. Leur contenu vient de buch.yaml. */
@@ -115,7 +111,7 @@ figure + p, ul + p, ol + p, blockquote + p, table + p,
    Le numéro de page est posé par target-counter() : le sommaire est écrit avec des liens
    internes, et c'est WeasyPrint qui résout la page à la pagination. Une table des matières
    écrite à la main serait fausse au premier ajout de paragraphe. */
-.szh-sommaire { page: romain; break-before: recto; }
+.szh-sommaire { break-before: recto; }
 .szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
 .szh-sommaire li { break-inside: avoid; }
 .szh-sommaire a { text-decoration: none; color: inherit; }

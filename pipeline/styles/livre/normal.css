@@ -65,6 +65,10 @@
   /* Le titre de chapitre ouvre la page à 16 mm du haut, comme le corps : l'ouverture n'est
      pas décalée vers le bas dans cette collection. */
 }
+/* La collection normale n'a ni onglet de tranche ni pastille : ces repères sont ceux du FALC
+   (falc.css les met en marge). Laissés dans le flux, la pastille « 1 » occupait seule la
+   page qui précède le titre de chapitre. */
+.szh-onglet, .szh-pastille { display: none; }
 h2 { font-size: 10pt; font-weight: 700; margin: 6mm 0 0 0; text-indent: 0; }
 h3 { font-size: 10pt; font-weight: 600; margin: 5mm 0 0 0; text-indent: 0; }
 h4 { font-size: 10pt; font-weight: 400; font-style: italic; margin: 4mm 0 0 0; text-indent: 0; }
