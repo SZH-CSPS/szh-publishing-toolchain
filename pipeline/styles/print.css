@@ -325,7 +325,12 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
    l'œil entre les trois qui la disqualifierait.
    ⚠ Avantage collatéral du `rem` : si le corps de `.szh-note` change un jour, l'appel ne
    bougera pas avec lui — ce qui serait arrivé avec des `em`, puisqu'il en hérite. */
-::footnote-call   { font-size: 0.54rem; vertical-align: 0.24rem; line-height: 0; font-weight: 700; }
+/* Encre de l'appel : celle du corps (30.09.2026). Il héritait du gris des notes (--c-ink2,
+   #3d3d49), qui ne tient pas sur les fonds teintés à sa taille : Lc 87 sur le fond d'un
+   encadré, pour un seuil de 90 sous 14 px (mesuré dans le PDF, article 09 du 4/2017).
+   test/apca-check.py le mesure sur le papier, le zébrage et chaque fond d'encadré. */
+::footnote-call   { font-size: 0.54rem; vertical-align: 0.24rem; line-height: 0; font-weight: 700;
+  color: var(--c-ink); }
 ::footnote-marker { font-weight: 700; padding-right: 5px; color: var(--c-ink2); }
 
 /* Repli écran : `float: footnote` n'existe dans aucun navigateur, la note s'imprimerait
@@ -523,26 +528,40 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-authors li { display: inline; padding: 0; margin: 0; text-align: left;
   hyphens: manual; }
 .szh-authors li::before { content: none; }
-/* ⚠ L'espace de largeur nulle qui suit le point médian n'est pas un ornement : c'est la
-   SEULE occasion de retour à la ligne de toute la liste. Le gabarit écrit les <li> sans
-   blanc entre eux (`</li><li>`), le point médian vient d'un ::before et ses 6 px sont
-   une marge — or ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
-   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit
-   où couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui
-   donnait « Vannot- / ti-Bourquin ». U+200B est de classe ZW, coupure permise ; il suit
-   le point médian, qui reste donc collé au nom qui précède. */
+/* ⚠ L'espace qui suit le point médian n'est pas un ornement : c'est la SEULE occasion de
+   retour à la ligne de toute la liste. Le gabarit écrit les <li> sans blanc entre eux
+   (`</li><li>`), et ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
+   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit où
+   couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui donnait
+   « Vannot- / ti-Bourquin ». Elle suit le point médian, qui reste donc collé au nom qui
+   précède.
+   Le point médian est un FOND, et plus un caractère (30.09.2026) : écrit en `content`, il
+   entrait dans l'arbre de structure et un lecteur d'écran le lisait entre deux noms. Un fond
+   est un artefact. Le SVG trace le glyphe · d'Open Sans SemiCondensed (glyf, 2048 unités
+   par em), dans une boîte de 496 unités (sa chasse, le `padding-left`) sur 1 em de haut :
+   la hauteur que WeasyPrint donne au fond d'une boîte en ligne, de 1818,5 unités au-dessus
+   de la ligne de base (l'ascendante 2189 moins la moitié de l'excédent 2189 + 600 − 2048).
+   Taille du fond en em et non en 100 % : la boîte de fond couvre aussi l'espace qui suit, et
+   le point s'y retrouvait décentré d'une demi-espace (mesuré).
+   Mesuré : le point se dessine aux mêmes coordonnées que le glyphe, à 0,001 pt près ; au
+   rendu, seul l'anticrénelage de ses bords diffère.
+   L'espace est une vraie espace (U+0020), et plus une espace de largeur nulle : le texte
+   extrait et copié garde « Guilley, E. Cecchini, A. » au lieu de coller les noms. Sa
+   chasse (456 unités) est reprise sur la marge droite, pour que l'écart reste de 6 px. */
 .szh-authors li + li::before {
-  content: "\B7\200B";                     /* · point médian + coupure permise (U+200B) */
+  content: " ";
   position: static; display: inline; left: auto; top: auto;
-  /* ⚠ Couleur pré-mélangée, et `opacity` laissée à 1 : ne pas revenir à
-     `#fff` + `opacity: 0.5`. Toute déclaration `opacity` < 1 fait dessiner l'élément par
-     WeasyPrint dans un Form XObject à groupe de transparence, où il ré-émet un /MCID sans
-     référence /Stm : le contenu devient orphelin de l'arbre de structure et le PDF n'est
-     plus conforme PDF/UA-1 (règle 7.1-3). #9295A2 est exactement le blanc à 50 % composé
-     sur le bleu nuit du hero (#252B46), fond que `overflow: hidden` garantit — l'œil ne
-     voit aucune différence, et test/apca-check.py mesure la même couleur qu'avant. */
+  padding-left: 0.2421875em;               /* chasse du · : 496 / 2048 */
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -1818.5 496 2048'%3E%3Cpath fill='%239295A2' transform='scale(1 -1)' d='M136 716Q136 781 166.5 812Q197 843 247 843Q297 843 328.5 813.5Q360 784 360 716Q360 649 328 618.5Q296 588 247 588Q198 588 167 619.5Q136 651 136 716Z'/%3E%3C/svg%3E") 0 0 / 0.2421875em 1em no-repeat;
+  /* ⚠ Couleur pré-mélangée (le fill du SVG, et `color`, que lit test/apca-check.py), et
+     `opacity` laissée à 1 : ne pas revenir à `#fff` + `opacity: 0.5`. Toute déclaration
+     `opacity` < 1 fait dessiner l'élément par WeasyPrint dans un Form XObject à groupe de
+     transparence, où il ré-émet un /MCID sans référence /Stm : le contenu devient orphelin
+     de l'arbre de structure et le PDF n'est plus conforme PDF/UA-1 (règle 7.1-3). #9295A2
+     est exactement le blanc à 50 % composé sur le bleu nuit du hero (#252B46), fond que
+     `overflow: hidden` garantit. */
   color: #9295A2; opacity: 1; font-weight: 400; font-size: inherit; line-height: inherit;
-  margin: 0 6px;
+  margin: 0 calc(6px - 0.22265625em) 0 6px;  /* chasse de l'espace : 456 / 2048 */
 }
 .szh-doi, .szh-licence {
   display: inline-flex; align-items: center; gap: 6px; color: var(--c-hero2);
@@ -710,41 +729,56 @@ h4, h5, h6 { font-size: var(--body-size); }
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
-/* Listes : puce = triangle ▸ noir (~1.2 em) ; numérotée « 1. » noire, via compteurs.
-   Texte justifié et césure hérités de `p` et `li`. */
-ul, ol { margin: 0.7em 0; padding: 0; list-style: none; }
-li { position: relative; padding-left: 1.5em; margin: 0.3em 0;
+/* Listes : puce = triangle ▸ noir (~1.2 em) ; numérotée « 1. » noire.
+   Texte justifié et césure hérités de `p` et `li`.
+   Les marqueurs sont de vrais ::marker (30.09.2026), et non plus des ::before : WeasyPrint
+   balise le ::marker en /Lbl et le reste de l'élément en /LBody (LI > Lbl + LBody). Un
+   ::before, lui, laissait des /LI sans /Lbl, le ▸ et le « 1. » lus comme des mots du texte
+   (mesuré sur l'arbre de structure).
+   ⚠ WeasyPrint place le marqueur extérieur CONTRE le bord gauche de la boîte du <li>, à sa
+   largeur naturelle : ni `left`, ni `width`, ni `margin`, ni `text-align` n'ont d'effet sur
+   un ::marker (mesuré). Pour garder le signe sur la marge du texte, c'est donc le <ul>/<ol>
+   qui porte, en retrait, EXACTEMENT la largeur du marqueur, et le <li> le reste du retrait
+   du texte (1,5 em et 1,7 em, comme avant). Les largeurs sont celles des glyphes d'Open Sans
+   SemiCondensed (hmtx, 2048 unités par em) :
+     ▸      1081 dans les six faces, dessiné à 1,05 em        -> 0,554224 em
+     « 1. » 1021 + 496 (romain 400 ; chiffres à chasse fixe)  -> 0,740723 em
+     « 1. » 959 + 459 (italique, citation)                    -> 0,692383 em
+     un chiffre de plus : 1021 (romain), 959 (italique)       -> 0,498535 / 0,468262 em
+   Le PDF est identique au pixel à celui des ::before (300 dpi, listes de 12, imbriquées,
+   lettrées, citées). Dans l'aperçu (Chromium), chaque élément à puce gagne 1 px : le
+   marqueur à 1,05 em y compte dans la hauteur de la première ligne. Changer de police ou de corps du
+   marqueur, c'est recalculer ces nombres — sinon le signe glisse de la marge, sans erreur. */
+@counter-style szh-puce { system: cyclic; symbols: "\25B8"; suffix: ""; }   /* ▸ (U+25B8) */
+@counter-style szh-numero { system: extends decimal; suffix: "."; }         /* « 1. » sans espace */
+ul, ol { margin: 0.7em 0; padding: 0; }
+ul { list-style: szh-puce outside; padding-left: 0.554224em; }
+ol { list-style: szh-numero outside; padding-left: 0.740723em; }
+li { position: relative; padding-left: 0.945776em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
-/* Le marqueur est une boîte positionnée : sa ligne de base ne se cale sur celle du
-   texte que si sa ligne a la même hauteur. `line-height: inherit` reprend donc
-   l'interligne du corps, comme le marqueur des listes numérotées ci-dessous ; avec
-   `line-height: 1`, le triangle remontait d'environ 3,5 px, visiblement décroché de son
-   texte. `top: 0` : plus rien à rattraper. */
-ul > li::before {
-  content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
-  position: absolute; left: 0; top: 0;    /* aligné sur la marge du texte (comme les numéros) */
-  color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: inherit;
-}
-/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré, et ce
-   compteur maison n'y est pour rien — un `<ol start="13">` rendu par le marqueur natif
-   (`list-style: decimal`, sans ::before) numérote « 1. » lui aussi. Les quatre variantes
-   ont été essayées : natif pur, ::marker, ::before + counter(list-item), et le compteur
-   maison ci-dessous. Toutes donnent « 1. ». Une liste qui doit commencer à un autre rang
-   ne peut donc pas s'obtenir en CSS ici ; ne pas remplacer ce compteur en croyant régler
-   la question. Conséquence côté saisie : un descriptif de fiche qui commence par « 13. »
-   perdrait son nombre en silence — lib/ressources.js (cockpit) échappe donc le point à
-   l'écriture, pour que ce texte reste un paragraphe. */
-ol { counter-reset: liste-ol; }
-ol > li { padding-left: 1.7em; }
-ol > li::before {
-  content: counter(liste-ol) ".";
-  counter-increment: liste-ol;
-  position: absolute; left: 0; top: 0;
-  /* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
-     mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
-     non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. */
-  color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums;
-}
+/* Le marqueur hérite l'interligne du <li> : sa ligne de base se cale sur celle du texte. */
+ul > li::marker { color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; }
+/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré — un
+   `<ol start="13">` numérote « 1. ». Les variantes ont été essayées : natif pur, ::marker,
+   ::before + counter(list-item), compteur maison. Toutes donnent « 1. ». Une liste qui doit
+   commencer à un autre rang ne peut donc pas s'obtenir en CSS ici. Conséquence côté saisie :
+   un descriptif de fiche qui commence par « 13. » perdrait son nombre en silence —
+   lib/ressources.js (cockpit) échappe donc le point à l'écriture, pour que ce texte reste un
+   paragraphe. L'attribut `type` (« a. », « i. ») est ignoré de même : szh-numero l'emporte. */
+ol > li { padding-left: 0.959277em; }
+/* À partir de 10, le numéro gagne un chiffre : le <li> s'écarte d'autant (marge), pour que le
+   numéro commence toujours sur la marge et le texte toujours à 1,7 em. Trois chiffres ne
+   tiennent plus dans 1,7 em (1,74 em) : sans objet pour une liste d'article. */
+ol > li:nth-child(n+10) { margin-left: 0.498535em; padding-left: 0.460742em; }
+/* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
+   mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
+   non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. Chiffres à
+   chasse fixe : déjà la valeur de ::marker dans la feuille par défaut de WeasyPrint. */
+ol > li::marker { color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* Citation (italique) : chiffres et point plus étroits. */
+blockquote ol { padding-left: 0.692383em; }
+blockquote ol > li { padding-left: 1.007617em; }
+blockquote ol > li:nth-child(n+10) { margin-left: 0.468262em; padding-left: 0.539355em; }
 /* Listes imbriquées : re-numérotation / re-puçage cohérents. */
 li > ul, li > ol { margin: 0.2em 0 0.1em; }
 

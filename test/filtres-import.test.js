@@ -619,6 +619,9 @@ test('titre-lignes : un titre qui déborde reçoit un escalier, le texte est int
   assert.strictEqual(morceaux.length, 2, 'pas exactement une coupure : ' + lignes);
   const reconstitue = morceaux.map((s) => s.trim()).join(' ');
   assert.strictEqual(reconstitue, titre, 'le texte du titre n\'est plus intact : ' + reconstitue);
+  // Le signet du PDF lit le titre à plat (data-signet), où le <br> ne colle aucun mot.
+  const signet = champYaml(md, 'titre-signet');
+  assert.ok(signet && signet.includes(titre), 'titre-signet absent ou pas à plat : ' + signet);
 });
 
 // Cas limite : un titre d'un seul mot ne peut jamais former d'escalier (il faut au moins
@@ -689,4 +692,52 @@ const GALLEY_MIXTE = '<div class="autre szh-description">Cas mixte a retirer.</d
 test('galley-docx : un Div à deux classes dont szh-description disparaît entièrement', () => {
   const md = pandoc(GALLEY_MIXTE, { de: 'html', vers: 'markdown', filtres: ['szh-galley-docx.lua'] });
   assert.ok(!/Cas mixte a retirer/.test(md), 'le Div mixte a survécu en partie ou en totalité : ' + md);
+});
+
+// Notes du galley : szh-notes.lua pose chaque note en <span class="szh-note"> a l'endroit
+// de l'appel (float: footnote). Lu tel quel, le texte de la note restait dans la phrase ;
+// le filtre en refait une Note, que le writer docx ecrit en note de bas de page Word.
+const GALLEY_NOTE = '<p>Texte<span class="szh-note">Note <em>en italique</em> et '
+  + '<a href="https://www.szh.ch">un lien</a>.</span> suite.</p>'
+  + '<table><thead><tr><th>A</th></tr></thead><tbody><tr><td>Cellule<span class="szh-note">'
+  + 'Note de cellule.</span></td></tr></tbody></table>';
+
+test('galley-docx : une note szh-note redevient une Note, a sa place, sans residu', () => {
+  const natif = pandoc(GALLEY_NOTE, { de: 'html', vers: 'native', filtres: ['szh-galley-docx.lua'] });
+  assert.strictEqual((natif.match(/\bNote\b\s*\[/g) || []).length, 2, natif);
+  assert.ok(!/szh-note/.test(natif), 'un Span szh-note a survecu : ' + natif);
+  assert.match(natif, /Emph/, 'l\'italique de la note est perdu : ' + natif);
+  assert.match(natif, /Link/, 'le lien de la note est perdu : ' + natif);
+  // Le texte de la phrase continue apres l'appel, et la note n'y est plus.
+  const md = pandoc(GALLEY_NOTE, { de: 'html', vers: 'markdown', filtres: ['szh-galley-docx.lua'] });
+  assert.match(md, /Texte\[\^1\] suite\./, md);
+});
+
+// Figures du galley : une image alt="" est un decor, fond CSS d'un span.szh-decor-N, que
+// pandoc ne voit pas. Une figure LEGENDEE n'est pas un decor (regle retenue le 30.09.2026) :
+// le galley lui rend son image, decrite par sa legende. Un decor sans legende reste absent.
+// Le filtre lit les fonds dans le fichier HTML lui-meme : l'entree passe donc par un fichier.
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const GALLEY_FIGURES = '<figure><figcaption><span class="szh-numero">Figure 1 -</span> Eleves'
+  + '<span class="szh-note">Note de legende.</span></figcaption>'
+  + '<span class="szh-decor szh-decor-1" role="presentation"><span></span></span></figure>'
+  + '<p><span class="szh-decor szh-decor-2" role="presentation"><span></span></span></p>'
+  + '<style>\n.szh-decor-1>span{padding-top:50%;background-image:url(' + PIXEL + ')}\n'
+  + '.szh-decor-2>span{padding-top:50%;background-image:url(' + PIXEL + ')}\n</style>';
+
+test('galley-docx : une figure legendee retrouve son image, decrite par sa legende ; un decor reste absent', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-galley-'));
+  try {
+    const chemin = path.join(dossier, 'article.html');
+    fs.writeFileSync(chemin, GALLEY_FIGURES, 'utf8');
+    const r = spawnSync('pandoc', [chemin, '--from=html', '--to=native',
+      '--lua-filter=' + path.join(FILTRES, 'szh-galley-docx.lua')], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    const images = r.stdout.match(/Image/g) || [];
+    assert.strictEqual(images.length, 1, 'une seule image attendue (la figure legendee) : ' + r.stdout);
+    assert.match(r.stdout, /Str "Figure 1 - Eleves"/, 'description = legende sans la note : ' + r.stdout);
+    assert.match(r.stdout, /data:image\/png;base64/, r.stdout);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
 });

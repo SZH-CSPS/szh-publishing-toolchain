@@ -141,15 +141,19 @@ $endif$
            annotation de lien par boîte descendante du <a> — la propriété `link` est
            héritée — et une seule est rattachée au /Link de l'arbre de structure ; les
            autres pendent sous /Span ou /NonStruct, ce que PDF/UA-1 interdit (7.18.5).
-           C'est le <span class="szh-doi"> qui porte désormais le flex de la ligne. -->
+           C'est le <span class="szh-doi"> qui porte désormais le flex de la ligne.
+           ⚠ Et le <a> n'en est jamais l'enfant direct : un <a> élément d'un conteneur flex
+           ne reçoit aucune annotation /Link sous WeasyPrint 70 — le lien n'était ni
+           cliquable ni annoncé (mesuré, 30.09.2026). Le <span> intermédiaire, sans classe
+           ni style, suffit à le rendre ; le rendu est identique au pixel. -->
 $if(doi)$
-      <span class="szh-doi"><a href="https://doi.org/$doi$">DOI: $doi$</a><span class="szh-arrow" aria-hidden="true"></span></span>
+      <span class="szh-doi"><span><a href="https://doi.org/$doi$">DOI: $doi$</a></span><span class="szh-arrow" aria-hidden="true"></span></span>
 $endif$
       <!-- Licence de l'article : l'adresse vient de sa fiche (szh-maquette.lua), elle
            n'est plus écrite ici. Sans adresse — « droits réservés » — la mention reste
            du texte, sans lien et sans flèche : aucune URL n'est fabriquée. -->
 $if(licence-url)$
-      <span class="szh-licence"><a href="$licence-url$">$licence-texte$</a><span class="szh-arrow" aria-hidden="true"></span></span>
+      <span class="szh-licence"><span><a href="$licence-url$">$licence-texte$</a></span><span class="szh-arrow" aria-hidden="true"></span></span>
 $else$
       <span class="szh-licence">$licence-texte$</span>
 $endif$

@@ -16,7 +16,8 @@ cockpit.
 | [`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md) | le format de la bibliothèque de fiches de la Documentation, partagé avec le site Kirby |
 | [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) | les rapports d'erreur automatiques : schéma, masquage, plafonds, codes, compteurs d'usage |
 | [`TRADUCTION.md`](TRADUCTION.md) | le vérificateur de traduction et le mode « Trad » : des suggestions, jamais une édition |
-| [`ACCESSIBILITE.md`](ACCESSIBILITE.md) | les normes visées, ce qui est en place, les règles de travail et les limites connues |
+| [`ACCESSIBILITE.md`](ACCESSIBILITE.md) | les normes visées, ce qui est en place et les règles de travail |
+| [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md) | les limites d'accessibilité connues, format par format : norme, gravité, origine, statut |
 | [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md) | ce qu'il faudrait refaire, morceau par morceau, pour tourner sous Linux et macOS |
 
 ## Travailler sur le dépôt et le parc

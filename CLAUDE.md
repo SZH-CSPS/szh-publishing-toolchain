@@ -159,9 +159,10 @@ Le détail est dans [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Les règles 
 
 ## 6. Accessibilité
 
-Les normes visées, ce qui est en place et les limites connues sont dans
+Les normes visées et ce qui est en place sont dans
 [`docs/ACCESSIBILITE.md`](docs/ACCESSIBILITE.md) : PDF/UA-1, WCAG 2.2 AA et RGAA pour le HTML,
-contraste APCA, FALC pour les livres FALC. Règles de travail :
+contraste APCA, FALC pour les livres FALC. Les limites connues, format par format, sont dans
+[`docs/LIMITES-ACCESSIBILITE.md`](docs/LIMITES-ACCESSIBILITE.md). Règles de travail :
 
 - **Toute correction se prouve** par un HTML minimal avant/après, puis veraPDF, puis la
   comparaison au pixel.

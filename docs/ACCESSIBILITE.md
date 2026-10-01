@@ -48,6 +48,12 @@ l'imprimeur, contrôlé par `couverture.py` lui-même.
   le texte ; l'aperçu la laisse entendre.
 - **Liens sans texte.** Le QR est un `<a>` vide portant `aria-label`, le SVG passant en fond :
   un `<svg>` dans un `<a>` casse PDF/UA. L'icône ORCID suit le même patron.
+- **Liens dans un flex.** Un `<a>` enfant direct d'un conteneur flex n'a pas d'annotation
+  `/Link` sous WeasyPrint 70 : un `<span>` intermédiaire le porte, pour le DOI et la licence
+  de la couverture (`szh-article.html`) et pour les entrées du sommaire FALC
+  (`livre-assembler.py`).
+- **Listes.** Les puces et numéros des articles sont des `::marker` (`print.css`), que
+  WeasyPrint balise en `LI > Lbl + LBody`.
 - **Langue.** Décidée une fois par `szh-contexte.lua`, posée sur `<html lang>` donc sur le
   `/Lang` du document, et sur chaque passage dans une autre langue. Les webviews du cockpit
   prennent la langue de l'interface.
@@ -90,7 +96,8 @@ moins 3:1 contre le blanc ; un QR sous 3:1 contre son fond lève `qr-contraste-i
 - veraPDF ne teste que l'automatisable. On ne dit jamais « accessible » sur la foi d'un
   PASS : ce qui touche la voix ou la navigation demande un vrai lecteur d'écran (NVDA), ou se
   dit « non vérifié ».
-- Pas de `<svg>` ni de bloc dans un `<a>`.
+- Pas de `<svg>` ni de bloc dans un `<a>`, et pas d'`<a>` enfant direct d'un conteneur flex.
+- Les puces et numéros de liste passent par `::marker`.
 - Un lien a un texte visible ou un `aria-label` explicite.
 - Une image a une alternative ou une légende, sauf si elle est décorative (`alt=""`
   volontaire).
@@ -107,26 +114,7 @@ moins 3:1 contre le blanc ; un QR sous 3:1 contre son fond lève `qr-contraste-i
 
 ## Limites
 
-Défauts connus, mesurés le 30.09.2026 sur les PDF du banc. veraPDF UA-1 passe malgré eux :
-ses règles ne les voient pas, ce qui ne les rend pas moins réels.
-
-- **`Caption` en frère de `Figure`.** WeasyPrint balise la légende d'une `<figure>` comme un
-  élément `Caption` placé à côté de l'élément `Figure`, et non à l'intérieur : un lecteur
-  d'écran ne relie pas la légende à son image. Le défaut est dans le baliseur de WeasyPrint,
-  et ne se corrige que par un patch, que Robin n'a pas retenu. Voir l'issue amont
-  [« Use better PDF tags for &lt;figure&gt; » (Kozea/WeasyPrint#2482)](https://github.com/Kozea/WeasyPrint/issues/2482).
-- **Pas de `/Lang` d'élément.** WeasyPrint n'écrit `/Lang` que sur le catalogue du document.
-  Un `Zusammenfassung` dans un article français porte bien `lang="de"` dans le HTML, mais le
-  PDF n'en garde rien : un lecteur d'écran le lit avec une voix française. veraPDF passe,
-  parce que sa règle se satisfait du `/Lang` du catalogue. À vérifier à chaque montée de
-  WeasyPrint (voir [`MAINTENANCE.md`](MAINTENANCE.md#un-passage-en-langue-seconde-nest-pas-annoncé-comme-tel)).
-- **Notes sans `/Note`.** Les notes de bas de page ne sont pas balisées en `/Note` ni reliées
-  à leur appel par `/Reference`.
-- **Listes sans `Lbl`.** Les puces et numéros sont posés par `list-style: none` et un
-  `::before`, que le baliseur ne voit pas : les éléments de liste n'ont pas de `Lbl`.
-  `::marker` le donnerait.
-- **Lien enfant direct d'un flex.** Un `<a>` placé directement dans un conteneur
-  `display: flex` ne reçoit pas d'annotation de lien dans le PDF.
-
-Résolus, et à ne plus lister comme ouverts : les signets collés par `<br>` et `dc:language`
-absent du XMP (ce dernier en attente de la prochaine image sur les postes, voir plus haut).
+Les défauts connus, format par format (PDF d'article, HTML, Word, livre), avec leur norme,
+leur gravité, leur origine et leur statut, sont tenus dans
+[`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md). veraPDF UA-1 passe malgré eux : ses
+règles ne les voient pas, ce qui ne les rend pas moins réels.

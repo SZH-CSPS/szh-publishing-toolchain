@@ -243,7 +243,9 @@ def sommaire_html(entrees, titre):
     for niveau, ancre, txt, couleur, _onglet_h in entrees:
         style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
                  if couleur else '')
-        lignes.append('<li class="niveau-%d"%s><a href="#%s">%s</a></li>'
+        # Un <span> entre le <li> et le <a> : le <li> FALC est un flex, et un <a> enfant
+        # direct d'un flex n'a pas d'annotation /Link dans le PDF (WeasyPrint 70).
+        lignes.append('<li class="niveau-%d"%s><span><a href="#%s">%s</a></span></li>'
                       % (niveau, style, html.escape(ancre, quote=True), html.escape(txt)))
     lignes += ['</ol>', '</section>']
     return '\n'.join(lignes)

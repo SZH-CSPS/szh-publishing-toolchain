@@ -4,7 +4,9 @@ Pour la rédaction francophone de la *Revue suisse de pédagogie spécialisée*.
 
 Vous n’avez rien à taper de particulier. Écrivez au kilomètre, avec l’apostrophe et les
 guillemets de votre clavier : la chaîne pose la bonne typographie à la compilation, dans
-la langue déclarée de l’article.
+la langue déclarée de l’article. Un passage marqué dans une autre langue – un mot
+`[Nachteilsausgleich]{lang=de}`, une citation entourée de `::: {lang=de}` – suit les
+règles de SA langue ; en anglais (`lang=en`) ou dans une autre langue, la chaîne n’y touche pas.
 
 **Votre fichier n’est jamais modifié.** La correction a lieu au moment où le PDF se
 fabrique. Le Markdown reste exactement ce que vous avez écrit – lisible, comparable d’une

@@ -203,9 +203,9 @@ end
 
 -- Tableau réinjecté en HTML brut (szh-tabelle-inclure.lua) : opaque à l'AST, on lit le
 -- texte. data-alt est la description longue — le seul contenu de toute la chaîne qui
--- n'apparaisse nulle part ailleurs : print.css la masque à l'écran (elle n'est là que pour
--- l'aria-describedby), la retire en @media print, et szh-galley-docx.lua l'ôte du Word.
--- L'aperçu est donc le seul endroit où elle se relit. Absente, elle est facultative : pas
+-- ne se voie nulle part ailleurs : partage-filtres.css la masque à l'écran comme dans le PDF
+-- (elle n'y est que pour les technologies d'assistance), et szh-galley-docx.lua l'ôte du
+-- Word. L'aperçu est donc le seul endroit où elle se relit. Absente, elle est facultative : pas
 -- d'alerte, un simple témoin.
 local function encadre_table_html(html, l)
   -- Commentaires retirés d'abord, et ce n'est pas une précaution théorique : les fichiers

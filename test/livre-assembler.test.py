@@ -261,6 +261,15 @@ class SommaireHtml(unittest.TestCase):
         html = la.sommaire_html(entrees, 'Sommaire')
         self.assertIn('style="--c-chapitre: #111111"', html)
 
+    def test_le_lien_n_est_jamais_enfant_direct_du_li(self):
+        # Le <li> du sommaire FALC est un flex : un <a> qui en est l'enfant direct n'a
+        # aucune annotation /Link dans le PDF (WeasyPrint 70).
+        entrees = [(1, 'c1', '1 Premier', '#111111', '20.000mm')]
+        html = la.sommaire_html(entrees, 'Sommaire')
+        self.assertNotRegex(html, r'<li\b[^>]*><a\b')
+        self.assertIn('<li class="niveau-1" style="--c-chapitre: #111111">'
+                      '<span><a href="#c1">1 Premier</a></span></li>', html)
+
     def test_entree_sans_onglet_hauteur_aucun_style_sur_la_section(self):
         entrees = [(1, 'c1', 'Un titre', '#111111', None)]
         html = la.sommaire_html(entrees, 'Sommaire')

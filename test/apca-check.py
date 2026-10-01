@@ -522,6 +522,21 @@ for selecteur, quoi in (('.szh-authors li + li::before', 'point médian entre au
     mesure('%s (%s, opacité %d %%)' % (quoi, selecteur, round(100 * alpha)),
            melange(couleur_de(selecteur), NUIT, alpha), NUIT, NON_TEXTE)
 
+# ---- 6. Appel de note ----
+# ::footnote-call appartient à la note (GCPM) et en héritait le gris --c-ink2 : Lc 87 sur le
+# fond d'un encadré, sous le seuil (mesuré dans le PDF le 30.09.2026). Il s'imprime partout
+# où le texte peut aller : papier, rangée zébrée, encadré et bande de chaque couleur.
+titre("Appel de note (::footnote-call, print.css §4)")
+TAILLE_APPEL = 0.54 * REM_EN_PX     # print.css : font-size: 0.54rem
+SEUIL_APPEL = apca.seuil_pour(TAILLE_APPEL, gras=True)
+APPEL = couleur_de('::footnote-call')
+mesure('appel de note sur le papier (%s px, gras)' % _nb(TAILLE_APPEL), APPEL, BLANC, SEUIL_APPEL)
+mesure('appel de note sur --szh-zebre', APPEL, var('--szh-zebre'), SEUIL_APPEL)
+for nom, marque in COULEURS:
+    j = dict(accent.jetons_annuels(marque))
+    mesure('%s appel de note sur --annual-soft (encadré)' % nom, APPEL, j['--annual-soft'], SEUIL_APPEL)
+    mesure('%s appel de note sur --annual-tint (bande)' % nom, APPEL, j['--annual-tint'], SEUIL_APPEL)
+
 titre("Pages courantes : en-tête et pied sur le papier (print.css §3)")
 SEUIL_COURANTE = apca.seuil_pour(TAILLE_COURANTE)
 mesure('en-tête courant, dossier à gauche « .g » (%s px)' % _nb(TAILLE_COURANTE),

@@ -158,6 +158,10 @@ test('plus une seule adresse de licence en dur hors de la table', () => {
   // Le gabarit prend l'adresse de l'article, et sait s'en passer.
   assert.match(GABARIT, /\$if\(licence-url\)\$/, 'le gabarit ne teste pas l’absence d’adresse');
   assert.match(GABARIT, /<a href="\$licence-url\$">\$licence-texte\$<\/a>/);
+  // Un <a> enfant direct du conteneur inline-flex ne reçoit aucune annotation /Link sous
+  // WeasyPrint 70 : DOI et licence n'étaient plus cliquables (mesuré, 30.09.2026).
+  assert.ok(!/class="szh-(doi|licence)"><a /.test(GABARIT),
+    'le lien du DOI ou de la licence est redevenu l’enfant direct de son conteneur flex');
   // ⚠ PDF/UA-1 7.18.5 : le <a> ne contient que du texte, la flèche reste dehors. Et la
   // branche sans lien n'a ni <a> ni flèche.
   const sansLien = GABARIT.slice(GABARIT.indexOf('$else$', GABARIT.indexOf('$if(licence-url)$')),
@@ -484,7 +488,9 @@ const lireFichier = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 test('flèche du hero : les deux mentions du gabarit la portent', () => {
   const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
-  const spans = gabarit.match(/<span class="szh-(doi|licence)">[\s\S]*?<\/span>/g) || [];
+  // Jusqu'au bout de la ligne : le lien est dans un <span> intermédiaire, le premier
+  // </span> venu n'est plus celui de la mention.
+  const spans = gabarit.match(/<span class="szh-(doi|licence)">.*/g) || [];
   const avecLien = spans.filter((s) => /<a href=/.test(s));
   assert.strictEqual(avecLien.length, 2,
     'le DOI et la licence liés sont les deux seules mentions à flèche');
@@ -492,6 +498,18 @@ test('flèche du hero : les deux mentions du gabarit la portent', () => {
     assert.match(s, /<span class="szh-arrow" aria-hidden="true"><\/span>/,
       'mention sans flèche : ' + s.slice(0, 60));
   }
+});
+
+// pandoc replie les lignes longues du gabarit, et WeasyPrint recopie le retour tel quel dans
+// /Title, /Subject et le XMP (mesuré le 30.09.2026 : « défis\net apports »).
+test('gabarit d’article : titre et description du document sans repli de ligne', () => {
+  const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
+  const titre = gabarit.match(/<title>(.*)<\/title>/);
+  assert.ok(titre, '<title> introuvable dans le gabarit');
+  for (const v of titre[1].match(/\$(titre-affiche|pagetitle)[^$]*\$/g)) {
+    assert.match(v, /\/nowrap\$$/, 'variable du <title> sans nowrap : ' + v);
+  }
+  assert.match(gabarit, /<meta name="description" content="\$description\/nowrap\$"/);
 });
 
 // WeasyPrint 70 balise tout <svg> inline en /Figure et n'en lit le texte de remplacement que
