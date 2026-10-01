@@ -18,6 +18,15 @@ Preuve : rendu identique au pixel, veraPDF PDF/UA-1 inchangé ; cas j-espace («
 paragraphe sans) et i-compose de test/weasyprint-patch-check.py, démo
 image/patches/amont/25-espace-fin-de-ligne/.
 
+Statut amont : non proposé, et à ne pas proposer. Aucune issue ne demande ce correctif,
+mais le mainteneur a fermé les demandes voisines par principe : #1635 (les lecteurs PDF
+déduisent les mots de l'écart entre les fragments, pas des espaces) et #2715 (« PDF text
+extraction is heavily based on heuristics […] We won't try to please them all »), en
+renvoyant au balisage PDF. Le code touche la mise en ligne, la partie la plus mouvante de
+WeasyPrint (refonte en brouillon : PR #1840), pour un gain mince que veraPDF ne contrôle
+pas. Premier patch à retirer si une montée de version le met en conflit ; sans effet sur
+la conformité PDF/UA, seul le copier-coller serait à remesurer.
+
 --- a/weasyprint/layout/inline.py
 +++ b/weasyprint/layout/inline.py
 @@ -195,9 +195,83 @@
