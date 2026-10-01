@@ -1231,6 +1231,7 @@ def lire(chemin):
         racine_footnotes = _racine_ou_none(z, 'word/footnotes.xml')
         racine_endnotes = _racine_ou_none(z, 'word/endnotes.xml')
         styles_id_nom = pronto_docx.charger_styles(z)
+        cle_gabarit = pronto_docx.lire_cle_gabarit(z)
         index_styles, rpr_defaut, ppr_defaut = _index_styles_complet(z)
         rels = charger_relations(z)
         langue = _langue_declaree(z)
@@ -1383,7 +1384,7 @@ def lire(chemin):
 
     return mm.Document(blocs=blocs, styles=list(styles_id_nom.values()), langue=langue,
                         revisions=revisions, commentaires=commentaires, notes=notes,
-                        source=None)
+                        source=None, cle_gabarit=cle_gabarit)
 
 
 # ---------------------------------------------------------------------------------

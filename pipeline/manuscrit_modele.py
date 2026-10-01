@@ -363,8 +363,8 @@ class Tableau:
 
 class Document:
     """Le document entier. `blocs` : liste de Paragraphe | Tableau, premier niveau, dans
-    l'ordre. `styles` : noms des styles présents dans styles.xml — sert au cas A
-    (reconnaitre_gabarit).
+    l'ordre. `styles` : noms des styles présents dans styles.xml, et `cle_gabarit` : valeur
+    de la propriété cachée SZH-Gabarit ou None — servent au cas A (reconnaitre_gabarit).
 
     `notes` : dict[int, list[Paragraphe | Tableau]], le contenu de CHAQUE note par
     identifiant — CHANGÉ le 19.09.2026 (§4 du contrat), c'était une liste plate qui fondait
@@ -373,10 +373,11 @@ class Document:
     plus grand identifiant de note de bas de page (manuscrit_docx.py), pour qu'aucune clé ne
     se percute jamais entre les deux familles."""
 
-    __slots__ = ('blocs', 'styles', 'langue', 'revisions', 'commentaires', 'notes', 'source')
+    __slots__ = ('blocs', 'styles', 'langue', 'revisions', 'commentaires', 'notes', 'source',
+                 'cle_gabarit')
 
     def __init__(self, blocs=None, styles=None, langue='', revisions=0, commentaires=0,
-                 notes=None, source=None):
+                 notes=None, source=None, cle_gabarit=None):
         self.blocs = blocs if blocs is not None else []
         self.styles = styles if styles is not None else []
         self.langue = langue or ''
@@ -384,6 +385,7 @@ class Document:
         self.commentaires = commentaires or 0
         self.notes = notes if notes is not None else {}
         self.source = source
+        self.cle_gabarit = cle_gabarit
 
     def __repr__(self):
         return 'Document(%d bloc(s), %d style(s), langue=%r, source=%r)' % (
@@ -404,12 +406,14 @@ def avertir(code, champs, fr, de):
 
 
 # ---------------------------------------------------------------------------------
-# Reconnaissance du gabarit — §1 du contrat : cas A si SZH Cle ET SZH Aide sont présents
-# dans styles.xml, cas B sinon. Comparaison tolérante (casse, espaces, tirets) via les
+# Reconnaissance du gabarit — §1 du contrat : cas A si le document porte la clé cachée
+# SZH-Gabarit, ou à défaut SZH Cle ET SZH Aide dans styles.xml, cas B sinon. Comparaison tolérante (casse, espaces, tirets) via les
 # constantes déjà éprouvées de pronto_modele — ne pas les réécrire ici en ferait deux copies.
 
 def reconnaitre_gabarit(document):
     """'A' (gabarit déjà en place, aucune restructuration) ou 'B' (manuscrit quelconque)."""
+    if pronto_modele.est_cle_gabarit(document.cle_gabarit):
+        return 'A'
     presents = {pronto_modele.normaliser_nom_style(s) for s in document.styles}
     if pronto_modele.NOM_STYLE_CLE in presents and pronto_modele.NOM_STYLE_AIDE in presents:
         return 'A'
@@ -1792,7 +1796,7 @@ def document_depuis_json(obj):
     return Document(blocs=blocs, styles=list(obj.get('styles') or []),
                      langue=obj.get('langue', ''), revisions=obj.get('revisions', 0) or 0,
                      commentaires=obj.get('commentaires', 0) or 0, notes=notes,
-                     source=obj.get('source'))
+                     source=obj.get('source'), cle_gabarit=obj.get('cle_gabarit'))
 
 
 # ---------------------------------------------------------------------------------
@@ -1845,11 +1849,14 @@ def bloc_vers_json(bloc):
 def document_vers_json(document):
     # `notes` : dict[int, list[bloc]] (§4, révision du 19.09.2026) — JSON n'a que des clés
     # chaîne, converties ici ; document_depuis_json() fait le chemin inverse.
-    return {'styles': list(document.styles), 'langue': document.langue,
-            'revisions': document.revisions, 'commentaires': document.commentaires,
-            'notes': {str(id_note): [bloc_vers_json(b) for b in blocs]
-                      for id_note, blocs in document.notes.items()},
-            'blocs': [bloc_vers_json(b) for b in document.blocs], 'source': document.source}
+    obj = {'styles': list(document.styles), 'langue': document.langue,
+           'revisions': document.revisions, 'commentaires': document.commentaires,
+           'notes': {str(id_note): [bloc_vers_json(b) for b in blocs]
+                     for id_note, blocs in document.notes.items()},
+           'blocs': [bloc_vers_json(b) for b in document.blocs], 'source': document.source}
+    if document.cle_gabarit is not None:
+        obj['cle_gabarit'] = document.cle_gabarit
+    return obj
 
 
 # ---------------------------------------------------------------------------------

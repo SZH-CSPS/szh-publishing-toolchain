@@ -155,9 +155,14 @@ def charger_styles(z):
 # Reconnaissance du gabarit — c'est elle qui décide, dans pipeline/import-docx.sh, si un
 # document déposé part à ce lecteur ou à docx-meta.py (le lecteur des Word hérités).
 #
-# Le critère est la DÉCLARATION des deux styles maison dans styles.xml, pas leur emploi dans
-# le corps : un document parti du gabarit les porte même si l'autrice ou l'auteur a effacé
-# toutes les lignes d'aide, et un Word hérité ne peut pas les porter par accident. Un réglage
+# Le premier critère est la clé cachée SZH-Gabarit (docProps/custom.xml, voir
+# pm.CLE_GABARIT_NOM) : elle survit aux enregistrements Word et LibreOffice, et à la
+# conversion .odt -> .docx de l'import. À défaut, ce qui suit vaut pour les documents partis
+# d'un gabarit antérieur à la clé.
+#
+# Le critère de repli est la DÉCLARATION des deux styles maison dans styles.xml, pas leur
+# emploi dans le corps : un document parti du gabarit les porte même si l'autrice ou l'auteur
+# a effacé toutes les lignes d'aide, et un Word hérité ne peut pas les porter par accident. Un réglage
 # de poste aurait été un pis-aller — la rédaction reçoit les deux sortes de documents, souvent
 # le même jour (voir TODO-BRANCHEMENT-PARSER-V2.md, étape 4).
 #
@@ -168,13 +173,30 @@ def charger_styles(z):
 # tenir chacun une qui dériverait de l'autre.
 
 
+CP = '{http://schemas.openxmlformats.org/officeDocument/2006/custom-properties}'
+
+
+def lire_cle_gabarit(z):
+    """Valeur de la propriété personnalisée SZH-Gabarit (docProps/custom.xml), ou None."""
+    try:
+        racine = ET.fromstring(z.read('docProps/custom.xml'))
+    except Exception:
+        return None
+    for prop in racine.iter(CP + 'property'):
+        if prop.get('name') == pm.CLE_GABARIT_NOM:
+            return ''.join(prop.itertext()).strip()
+    return None
+
+
 def est_pronto(chemin_docx):
-    """Vrai si ce .docx déclare les styles du gabarit « Pronto — modèle d'article ». Toute
-    erreur de lecture (zip invalide, styles.xml absent) rend Faux : un document qu'on ne sait
-    pas ouvrir n'est pas un document Pronto, et l'ancienne chaîne dira mieux que nous ce qui
-    ne va pas."""
+    """Vrai si ce .docx porte la clé cachée du gabarit, ou à défaut en déclare les styles.
+    Toute erreur de lecture (zip invalide, styles.xml absent) rend Faux : un document qu'on ne
+    sait pas ouvrir n'est pas un document Pronto, et l'ancienne chaîne dira mieux que nous ce
+    qui ne va pas."""
     try:
         with zipfile.ZipFile(chemin_docx) as z:
+            if pm.est_cle_gabarit(lire_cle_gabarit(z)):
+                return True
             noms = set(charger_styles(z).values())
     except Exception:
         return False

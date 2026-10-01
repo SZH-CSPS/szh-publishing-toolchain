@@ -164,6 +164,20 @@ CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'em
 # lecteur Pronto ou l'ancien docx-meta.py lit ce qu'on vient de déposer — voir
 # pronto_docx.est_pronto() pour le détail du critère et pourquoi les DEUX sont exigés.
 STYLES_GABARIT = ('szh cle', 'szh aide')
+# La clé cachée des gabarits livrés : une propriété personnalisée du document (Fichier >
+# Propriétés), posée par outils-dev/marquer-gabarit.py. Word et LibreOffice la gardent à
+# l'enregistrement. Elle prime sur les styles, qui restent le repli des documents partis
+# d'un gabarit antérieur à la clé. Le suffixe est la version du gabarit, pas une condition.
+CLE_GABARIT_NOM = 'SZH-Gabarit'
+CLE_GABARIT_VALEUR = 'pronto-article-4'
+_CLE_GABARIT_PREFIXE = 'pronto-article'
+
+
+def est_cle_gabarit(valeur):
+    """Vrai si `valeur` (celle de la propriété SZH-Gabarit, ou None) désigne un gabarit Pronto."""
+    return (valeur or '').strip().lower().startswith(_CLE_GABARIT_PREFIXE)
+
+
 # Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
 # le pipeline de portraits : une image d'un autre format n'est pas appariée.
 EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
