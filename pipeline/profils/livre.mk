@@ -11,22 +11,39 @@
 # son propre media/, et pandoc n'a qu'un dossier courant. Le détail est en tête de
 # livre-assembler.py.
 #
-# ⚠ Quatre écarts connus avec la revue, à ne pas découvrir en production :
-#   * szh-niveaux.lua EST branché, en mode livre (SZH_LIVRE) : il laisse le <h1> du
-#     chapitre où il est et ne compacte que le corps, à partir de <h2>. Il ne l'était pas
-#     au début, au motif qu'il décalerait les titres — et le prix s'est vu au premier livre
-#     réel : un manuscrit qui passe de « # » à « ### » sort un PDF non conforme PDF/UA-1.
-#   * szh-numerotation.lua et szh-sections.lua comptent par document, donc ici par
-#     chapitre : les compteurs repartent à 1 à chaque chapitre. Les livres publiés
-#     numérotent en continu (« Abbildung 12 » au chapitre 4). Le rang du chapitre leur est
-#     passé en SZH_CHAPITRE ; tant qu'ils ne le lisent pas, la numérotation est locale au
-#     chapitre. C'est le premier défaut à corriger.
-#   * la bibliographie est aujourd'hui celle de chaque chapitre. Un ouvrage collectif la
-#     veut ainsi ; une monographie la veut en fin de volume.
-#   * szh-ressource.lua n'est pas branché : les fiches de ressources (livre, film,
-#     intervention, recherche en cours…) sont un format de la Documentation de la revue,
-#     sans équivalent pensé pour un livre. FILTRES_CHAPITRE ne le liste donc pas ; un
+# ⚠ Écarts de FILTRES_CHAPITRE avec la chaîne d'un article (pipeline/Makefile, règle
+#   $(OUT)/%.html), à ne pas découvrir en production. Les filtres communs gardent l'ordre
+#   de la revue.
+#   Absents du chapitre :
+#   * szh-maquette.lua et szh-titre-lignes.lua : ils composent la couverture et l'en-tête
+#     courant d'un article, qu'un chapitre n'a pas (buch.yaml et le gabarit du livre s'en
+#     chargent) ;
+#   * szh-auteurs.lua : remplacé par szh-livre-auteurs.lua, la ligne d'auteur·e·s sous le
+#     titre du chapitre ;
+#   * szh-ressource.lua et szh-rubrique.lua : les fiches et les rubriques sont des formats
+#     de la Documentation de la revue, sans équivalent pensé pour un livre ; un
 #     ::: {.szh-ressource …} écrit dans un chapitre traverserait tel quel, non composé.
+#   Ajoutés au chapitre :
+#   * szh-livre-titre.lua, en tête : le <h1> vient de la fiche <slug>.meta.yaml ;
+#   * szh-sauts-uniques.lua, juste après : un saut de ligne, jamais deux (lecteur FALC) ;
+#   * szh-livre-sous-titre.lua, deux fois, exprès : avant szh-typographie pour que le
+#     sous-titre passe par la typographie maison, puis après szh-livre-entete pour le poser
+#     sous le titre (voir l'en-tête du filtre) ;
+#   * szh-livre-entete-image.lua, avant szh-figure : soustrait l'image d'un falc-header à
+#     la numérotation des figures ;
+#   * szh-livre-auteurs.lua et szh-livre-entete.lua, à la place de szh-auteurs.lua ;
+#   * szh-qr.lua, en dernier (voir sous FILTRES_CHAPITRE).
+#   Communs, mais lus autrement sous SZH_LIVRE :
+#   * szh-niveaux.lua laisse le <h1> du chapitre où il est et ne compacte que le corps, à
+#     partir de <h2> : un manuscrit qui passe de « # » à « ### » sortait sinon un PDF non
+#     conforme PDF/UA-1 ;
+#   * szh-numerotation.lua lit SZH_CHAPITRE et les reports de SZH_COMPTEURS : figures et
+#     tableaux sont numérotés en continu sur le volume (voir COMPTEURS_DIR plus bas) ;
+#   * szh-sections.lua lit SZH_CHAPITRE : les sections portent le numéro du chapitre (2.1).
+#   Hors filtres : la bibliographie est celle de chaque chapitre. Un ouvrage collectif la
+#   veut ainsi ; une monographie la veut en fin de volume.
+#   Les variantes EPUB (sans szh-notes) et aperçu (sans szh-exergue) sont dérivées de
+#   FILTRES_CHAPITRE par filter-out, plus bas.
 
 # --------------------------------------------------------------------------------------
 # Ce que le dossier contient
@@ -299,7 +316,7 @@ CSS_LIVRE_IMPRIMEUR := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE)
 CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE_WEB))" \
              --css-embed "$(ACCENT_ABS)"
 
-# La suite de filtres d'un chapitre. Même ordre que la revue, aux quatre écarts ci-dessus.
+# La suite de filtres d'un chapitre. Même ordre que la revue, aux écarts près (en tête).
 # Le titre du chapitre (szh-livre-titre.lua, EN PREMIER : les filtres de niveaux et de
 # numérotation doivent voir le <h1>) et son sous-titre (szh-livre-sous-titre.lua, après
 # auteur·e·s et encadré, voir son en-tête) viennent de la fiche <slug>.meta.yaml, pas du .md.
@@ -325,6 +342,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-sous-titre.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-exergue.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-qr.lua"
 
@@ -333,6 +351,10 @@ FILTRES_CHAPITRE := \
 # lirait au milieu de la phrase ; sans ce filtre, les Note traversent intactes et le writer
 # epub3 de pandoc en fait de vraies notes de fin, liées et navigables.
 FILTRES_CHAPITRE_EPUB := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua",$(FILTRES_CHAPITRE))
+
+# La même suite, moins szh-exergue.lua : la variante de l'aperçu, qui sert à relire le
+# chapitre et doit donc faire entendre l'exergue (même choix que l'aperçu de la revue).
+FILTRES_CHAPITRE_APERCU := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-exergue.lua",$(FILTRES_CHAPITRE))
 
 # szh-qr.lua (QR vectoriel cliquable, lien `.qr`) est en tout dernier dans les deux suites :
 # une fois le Link changé en RawInline (<a><svg>…), aucun filtre suivant n'a de raison d'y
@@ -513,7 +535,8 @@ $(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARI
 	  --output="$(abspath $@)"
 
 # Aperçu HTML cliquable d'un chapitre, comme $(OUT)/%.apercu.html pour un article de revue
-# (Makefile ~l.420) : même suite de filtres que le fragment, mais lecteur $(LECTEUR_APERCU)
+# (Makefile ~l.420) : même suite de filtres que le fragment moins szh-exergue
+# ($(FILTRES_CHAPITRE_APERCU)), mais lecteur $(LECTEUR_APERCU)
 # (chaque bloc porte data-pos, pour le clic vers le texte source dans la webview) sous
 # SZH_APERCU=1, et deux filtres de plus en tête. Ces deux-là réparent ce que le lecteur
 # commonmark fait autrement que $(LECTEUR) : szh-sourcepos.lua défait les enveloppes et le
@@ -562,7 +585,7 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sourcepos.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ancres.lua" \
-	  $(FILTRES_CHAPITRE) \
+	  $(FILTRES_CHAPITRE_APERCU) \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour ce chapitre (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 

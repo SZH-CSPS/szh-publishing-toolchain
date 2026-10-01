@@ -334,6 +334,10 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
 }
 .falc-encadre p:last-child { margin-bottom: 0; }
 
+/* Exergue (base.css) : l'air d'un paragraphe FALC autour du bloc et entre ses lignes-idées. */
+.hervorhebung, .highlight { margin: 0 0 var(--esp-para) 0; }
+.hervorhebung > * + *, .highlight > * + * { margin-top: var(--esp-para); }
+
 /* Paragraphe-clé — le style Word `Mis en évidence` : une phrase qui porte l'essentiel,
    détachée et en gras. */
 .falc-cle { font-weight: 600; margin: 6mm 0; }

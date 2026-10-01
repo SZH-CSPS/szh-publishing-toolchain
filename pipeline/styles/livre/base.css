@@ -84,8 +84,20 @@ body {
    rien, le titre l'a déjà fait. */
 p { margin: 0; text-indent: var(--alinea); }
 h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p,
-figure + p, ul + p, ol + p, blockquote + p, table + p,
+figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
+.hervorhebung + p, .highlight + p,
 .szh-liminaire p:first-of-type, .falc-resume + p { text-indent: 0; }
+
+/* Exergue (::: {.highlight}, alias .hervorhebung) : barre latérale à la couleur de
+   l'ouvrage, texte au corps courant, au fer à gauche et sans césure, comme dans print.css.
+   szh-exergue.lua la rend muette au lecteur d'écran dans le HTML publié ; le PDF la lit. */
+.hervorhebung, .highlight {
+  margin: 4mm 0; padding: 0 0 0 5mm; border: 0;
+  border-left: 3pt solid var(--c-annual); break-inside: avoid;
+}
+.hervorhebung > *, .highlight > * {
+  margin: 0; text-indent: 0; text-align: left; hyphens: none; color: var(--c-ink);
+}
 
 /* ═══ 3. Structure du livre ═══════════════════════════════════════════════════ */
 
@@ -162,11 +174,61 @@ figure > figcaption.szh-credit-seul + .szh-bloc-note { margin-top: 0.1em; }
 @page { @footnote { border-top: 0.5pt solid var(--c-rule); padding-top: 2mm; margin-top: 4mm; } }
 
 /* ═══ 7. Tableaux ═════════════════════════════════════════════════════════════ */
+/* L'espace autour d'un tableau est porté par sa boîte (szh-tableau-boite.lua), pour que la
+   note qui suit le <table> dans la même boîte lui reste collée. */
+.szh-tableau-boite { margin: var(--esp-figure); }
 table { border-collapse: collapse; width: 100%; font-size: var(--tableau); }
-caption { text-align: left; font-size: var(--legende); color: var(--c-ink2); }
+caption {
+  caption-side: top; text-align: left; font-size: var(--legende); line-height: 1.35;
+  color: var(--c-ink2); margin-bottom: 1.5mm;
+}
 th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
 /* Pas de « Punk-te » ni de « Hil-fe » : même réglage et même raison que dans print.css (tableaux importés bruts). */
 th, td { hyphenate-limit-chars: 6 3 3; }
+
+/* Tableaux de l'éditeur maison (.szh-tableau) : repris de print.css § 7, filets en pt.
+   Attributs data-* absents, le tableau est nu : ni grille, ni graisse, ni fond. Les jetons
+   d'accent (--szh-accent-*, --szh-gris-clair, --szh-zebre, --c-annual-ui) viennent du socle,
+   surchargés par l'accent de l'ouvrage. */
+.szh-tableau { table-layout: auto; }
+/* `break-word` et non `anywhere`, qui écraserait la colonne d'étiquettes (voir print.css). */
+.szh-tableau th, .szh-tableau td { border: 0; overflow-wrap: break-word; }
+.szh-tableau th { background: transparent; font-weight: 400; }
+
+.szh-tableau th[data-align="center"], .szh-tableau td[data-align="center"] { text-align: center; }
+.szh-tableau th[data-align="right"], .szh-tableau td[data-align="right"] { text-align: right; }
+
+/* Zébrage, avant en-têtes et total, qui le surchargent. */
+.szh-tableau[data-zebre-lig="paires"] tbody tr:nth-child(even) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="impaires"] tbody tr:nth-child(odd) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="paires"][data-zebre-lig-entetes="1"] thead tr:nth-child(even) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="impaires"][data-zebre-lig-entetes="1"] thead tr:nth-child(odd) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="paires"] tbody td:nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="impaires"] tbody td:nth-child(odd) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="paires"][data-zebre-col-entetes="1"] tr > :nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="impaires"][data-zebre-col-entetes="1"] tr > :nth-child(odd) { background: var(--szh-zebre); }
+
+/* En-têtes de lignes (th[scope=row|rowgroup]) et de colonnes (th[scope=col|colgroup]). */
+.szh-tableau[data-el-gras="1"] th[scope^="row"] { font-weight: 700; }
+.szh-tableau[data-el-fond="negatif"] th[scope^="row"] { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-el-fond="couleur"] th[scope^="row"] { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-el-fond="gris"] th[scope^="row"] { background: var(--szh-gris-clair); color: #000; }
+.szh-tableau[data-ec-gras="1"] th[scope^="col"] { font-weight: 700; }
+.szh-tableau[data-ec-fond="negatif"] th[scope^="col"] { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-ec-fond="couleur"] th[scope^="col"] { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-ec-fond="gris"] th[scope^="col"] { background: var(--szh-gris-clair); color: #000; }
+
+/* Ligne de total = dernière rangée du <tbody>. */
+.szh-tableau[data-total-fond="negatif"] tbody tr:last-child > * { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-total-fond="couleur"] tbody tr:last-child > * { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-total-fond="gris"] tbody tr:last-child > * { background: var(--szh-gris-clair); color: #000; }
+.szh-tableau[data-total-gras="1"] tbody tr:last-child > * { font-weight: 700; }
+
+/* Filets : --c-annual-ui et non --szh-accent, qui peut disparaître sur une rangée zébrée
+   (voir print.css). Haut sous le <thead>, ou en tête du <tbody> sans en-tête de colonne. */
+.szh-tableau[data-bordure-haute="1"] thead tr:last-child > * { border-bottom: 1.5pt solid var(--c-annual-ui); }
+.szh-tableau[data-bordure-haute="1"]:not([data-entete-lignes]) tbody tr:first-child > * { border-top: 1.5pt solid var(--c-annual-ui); }
+.szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 1.5pt solid var(--c-annual-ui); }
 
 /* ═══ 8. Écran ════════════════════════════════════════════════════════════════
    `float: footnote` n'existe dans aucun navigateur : sans ce repli, les notes

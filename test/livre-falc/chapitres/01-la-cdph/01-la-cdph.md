@@ -20,6 +20,11 @@ En Suisse, les personnes handicapées peuvent
 **moins** participer à la vie de la société.
 Cela doit changer.
 
+::: {.highlight}
+Les personnes handicapées doivent avoir les mêmes droits.
+Cela doit changer en Suisse.
+:::
+
 ::: {.falc-cle}
 Le changement commence par le regard des autres.
 :::

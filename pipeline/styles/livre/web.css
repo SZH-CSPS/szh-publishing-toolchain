@@ -179,6 +179,11 @@ ul, ol { margin: 0 0 1em; padding-left: 1.5rem; }
 li { margin-bottom: 0.25em; }
 blockquote { font-style: italic; margin: 1em 0 1em 1rem; padding-left: 1rem;
              border-left: 3px solid var(--web-filet); }
+/* Exergue (::: {.highlight}, alias .hervorhebung) : la barre de livre/base.css, en rem. */
+.hervorhebung, .highlight { margin: 1.25rem 0; padding-left: 1.25rem;
+                            border-left: 4px solid var(--c-annual); }
+.hervorhebung > *, .highlight > * { margin: 0; text-align: left; hyphens: none; }
+.hervorhebung > * + *, .highlight > * + * { margin-top: 1em; }
 
 /* ═══ 8. Figures ═══════════════════════════════════════════════════════════════
    Aucun plafond de hauteur : c'est une contrainte de page (une image ne doit pas déborder
@@ -204,6 +209,15 @@ th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-
    (accent-css.py écrit --szh-accent-…/--szh-gris-clair/--szh-zebre depuis buch.yaml). */
 .szh-tableau thead th { background: var(--szh-accent-clair); }
 .szh-tableau tbody tr:nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau th[data-align="center"], .szh-tableau td[data-align="center"] { text-align: center; }
+.szh-tableau th[data-align="right"], .szh-tableau td[data-align="right"] { text-align: right; }
+/* Description longue d'un tableau (aria-describedby) : masquée à l'œil, gardée pour le
+   lecteur d'écran, comme dans partage-filtres.css que cette feuille ne charge pas. */
+.szh-description {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
 
 /* ═══ 10. Notes ════════════════════════════════════════════════════════════════
    `float: footnote` (livre/base.css) n'existe dans aucun navigateur — même repli que le
