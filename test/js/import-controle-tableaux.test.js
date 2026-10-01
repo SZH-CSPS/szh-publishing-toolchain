@@ -155,3 +155,62 @@ test('tableaux du Word : la même cellule sans son texte est toujours signalée 
       assert.strictEqual(dits.length, 1, dits.join('\n'));
     } finally { fs.rmSync(base, { recursive: true, force: true }); }
   });
+
+
+// ---- Tableaux consommés (T) : ce que la fiche ne porte pas est perdu, quoi que dise le corps.
+const RESUME = 'Cette étude examine la collaboration entre les enseignantes et les enseignants '
+  + 'spécialisés dans les classes ordinaires du canton.';
+const CORPS_MEME_SUJET = 'Titre\n\nNous examinons ici la collaboration entre les enseignantes et les '
+  + 'enseignants spécialisés dans les classes ordinaires du canton de Vaud, une étude menée en '
+  + '2024.\n';
+
+// Un Word dont le seul tableau est une suite de lignes « étiquette | valeur ».
+function wordCellules(valeurs) {
+  return (base) => F.fabriquer(base, 'source', { corps: [
+    p('Titre', 'Heading1'),
+    tableau(valeurs.map((v) => [[p(v[0], 'SZHCle')], [p(v[1])]])),
+    p('Un paragraphe de corps assez long pour ne pas passer pour un titre de section.'),
+  ] });
+}
+// Les avertissements du filet pour ce Word, le tableau 1 étant déclaré consommé.
+function consomme(opts) {
+  const base = F.dossierJetable();
+  try { return controle(base, Object.assign({ instructions: 'T\t1\n' }, opts)); }
+  finally { fs.rmSync(base, { recursive: true, force: true }); }
+}
+
+test('tableau consommé : un résumé absent de la fiche est signalé même si le corps parle du même sujet',
+  { skip: sansPython }, () => {
+    const dits = consomme({ md: CORPS_MEME_SUJET, fiche: 'title: "Titre"\n',
+      word: wordCellules([['Résumé :', RESUME]]) });
+    assert.strictEqual(dits.length, 1, dits.join('\n'));
+  });
+
+test('tableau consommé : une troisième autrice absente de la fiche est signalée',
+  { skip: sansPython }, () => {
+    const fiche = 'authors:\n- prenom: "Jeanne"\n  nom: "Exemple"\n- prenom: "Anna"\n  nom: "Muster"\n';
+    const dits = consomme({ md: 'Titre\n\nCorps.\n', fiche, word: wordCellules([
+      ['Prénom :', 'Jeanne'], ['Nom :', 'Exemple'], ['Prénom :', 'Anna'], ['Nom :', 'Muster'],
+      ['Prénom :', 'Lucie'], ['Nom :', 'Perdue']]) });
+    assert.strictEqual(dits.length, 1, dits.join('\n'));
+    assert.match(dits[0], /Lucie/);
+  });
+
+// Le seuil : une cellule est perdue sous la moitié de ses mots connus de la fiche. Dix mots,
+// quatre connus (perdue) puis cinq (sauve) : un seuil plus lâche ou plus strict fait rougir l'un.
+const DIX_MOTS = 'alpha bravo charlie delta echo foxtrot golf hotel india juliet';
+for (const [connus, attendu] of [[4, 1], [5, 0]]) {
+  test('tableau consommé : une cellule de dix mots dont ' + connus + ' sont dans la fiche '
+    + (attendu ? 'est signalée' : 'passe'), { skip: sansPython }, () => {
+    const fiche = 'resume: "' + DIX_MOTS.split(' ').slice(0, connus).join(' ') + '"\n';
+    const dits = consomme({ md: 'Titre\n', fiche, word: wordCellules([['Résumé :', DIX_MOTS]]) });
+    assert.strictEqual(dits.length, attendu, dits.join('\n'));
+  });
+}
+
+test('tableau consommé : les mots du corps ne sauvent pas une cellule absente de la fiche',
+  { skip: sansPython }, () => {
+    const dits = consomme({ md: 'Titre\n\n' + DIX_MOTS + '\n', fiche: 'title: "Titre"\n',
+      word: wordCellules([['Résumé :', DIX_MOTS]]) });
+    assert.strictEqual(dits.length, 1, dits.join('\n'));
+  });

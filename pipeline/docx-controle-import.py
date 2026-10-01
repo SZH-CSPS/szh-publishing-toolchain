@@ -495,26 +495,29 @@ def mots(texte):
     return re.findall(r'[^\W_]+', cle(texte))
 
 
-def tableaux_perdus(chemin_docx, t_ordinaux, ignores, reference, mots_connus):
+def tableaux_perdus(chemin_docx, t_ordinaux, ignores, reference, mots_fiche):
     """[(ordinal, [textes introuvables])] — voir 1.c. `reference` : .md et tables/, sans
-    blancs ; `mots_connus` : les mots de ce texte, de la fiche, des instructions du lecteur et de
-    l'appariement des photos. Un tableau consommé est passé dans la fiche, champ par champ : on
-    n'y retrouve pas ses cellules entières, mais ses mots. Moins de la moitié de ses mots
-    (ceux d'au moins trois caractères, sinon tous) dans `mots_connus`, et il est perdu."""
+    blancs ; `mots_fiche` : les mots de la fiche, des instructions du lecteur et de
+    l'appariement des photos, et d'eux seuls. Un tableau consommé est passé dans la fiche,
+    champ par champ : on n'y retrouve pas ses cellules entières, mais leurs mots. Chaque cellule
+    se juge à part : moins de la moitié de ses mots (ceux d'au moins trois caractères, sinon
+    tous) dans `mots_fiche`, et elle est perdue. Le corps de l'article n'entre pas dans cette
+    liste : un résumé perdu dont le sujet revient dans le texte ne doit pas passer."""
     perdus = []
     for ordinal, tbl in tableaux_du_word(chemin_docx):
         if ordinal in ignores:
             continue
         if ordinal in t_ordinaux:
-            cellules = cellules_a_chercher(tbl, True)
-            tous = [m for t, _ in cellules for m in mots(t)]
-            longs = [m for m in tous if len(m) >= 3] or tous
-            if longs and sum(1 for m in longs if m in mots_connus) * 2 < len(longs):
-                perdus.append((ordinal, [t for t, _ in cellules]))
+            manquantes = []
+            for texte, _ in cellules_a_chercher(tbl, True):
+                tous = mots(texte)
+                longs = [m for m in tous if len(m) >= 3] or tous
+                if longs and sum(1 for m in longs if m in mots_fiche) * 2 < len(longs):
+                    manquantes.append(texte)
         else:
             manquantes = [t for t, f in cellules_a_chercher(tbl, False) if f not in reference]
-            if manquantes:
-                perdus.append((ordinal, manquantes))
+        if manquantes:
+            perdus.append((ordinal, manquantes))
     return perdus
 
 
@@ -594,7 +597,7 @@ def avant_medias(chemin_docx, slug, dossier, chemin_etat):
             chemin_docx, t_ordinaux,
             {int(b['cible']) for b in blocs if b['lettre'] == 'FG' and b['cible'].isdigit()},
             sans_blancs((relu or brut) + '\n' + texte_des_tables(dossier)),
-            set(mots((relu or brut) + '\n' + tables + '\n' + fiche)))
+            set(mots(fiche)))
     except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError) as e:
         print('[controle-import] tableaux du Word illisibles : %s' % e, file=sys.stderr)
         perdus = []
