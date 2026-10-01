@@ -77,6 +77,7 @@
 #   (`_valider_docx_bien_forme()`) et restaure la version pré-annotation si besoin, plutôt que
 #   de livrer un .docx corrompu.
 
+import collections
 import hashlib
 import io
 import json
@@ -557,6 +558,17 @@ def _grouper_toutes_alertes(alertes):
     resume_par_regle = {identifiant: {'total': len(lot), 'exemples': lot[:mr.MAX_EXEMPLES_PAR_REGLE]}
                          for identifiant, lot in par_regle.items()}
     return {'par_famille': par_famille, 'par_regle': resume_par_regle}
+
+
+ORIGINES_ALERTE = ('regles', 'vale', 'bibliographie', 'identifiants', 'typographie', 'nettoyage')
+
+
+def _etiqueter(lot, origine):
+    """Pose `origine` sur chaque alerte du lot au moment où il rejoint la liste, et rend le lot
+    (même liste, même ordre). `nettoyage` : les alertes que cette CLI émet elle-même."""
+    for a in lot:
+        a['origine'] = origine
+    return lot
 
 
 RANG_SEVERITE = {'error': 0, 'warning': 1, 'suggestion': 2}
@@ -1469,6 +1481,7 @@ def _principal(argv):
         progres('recherche des ROR et ORCID des autrices et auteurs...')
         alertes_identifiants, stats_identifiants = mi.enrichir_auteurs(
             entete.auteurs, langue, reseau=not args['sans_reseau'])
+        _etiqueter(alertes_identifiants, 'identifiants')
         progres('identifiants : %d ROR et %d ORCID trouvé(s), %d candidat(s), %d requête(s) '
                 'en panne' % (stats_identifiants['ror_trouves'],
                               stats_identifiants['orcid_trouves'],
@@ -1486,7 +1499,7 @@ def _principal(argv):
     alertes_manuelles = list(alertes_identifiants)
     alerte_langue = _alerte_langue_produit(document.langue, langue)
     if alerte_langue:
-        alertes_manuelles.append(alerte_langue)
+        alertes_manuelles.append(_etiqueter([alerte_langue], 'nettoyage')[0])
         progres(alerte_langue['message'])
 
     _etape('typographie')
@@ -1517,7 +1530,7 @@ def _principal(argv):
         for ligne in traces_typo:
             progres(ligne)
         if statut_typo == 'repli':
-            alertes_manuelles.append(_alerte_repli_typo())
+            alertes_manuelles.append(_etiqueter([_alerte_repli_typo()], 'typographie')[0])
 
     _etape('regles')
     progres('évaluation des règles éditoriales...')
@@ -1539,8 +1552,10 @@ def _principal(argv):
     # C1/C2 du filtre typographique (préfixe 'Typo.') mélangés dans une seule liste — on les
     # sépare ICI pour que `alertes.origine` (point 4 de la consigne de branchement) compte
     # chaque moteur pour de vrai, sans toucher à manuscrit_regles.evaluer() lui-même.
-    alertes_regles = [a for a in alertes_python if not a['rule'].startswith('Typo.')]
-    alertes_typo_reprises = [a for a in alertes_python if a['rule'].startswith('Typo.')]
+    alertes_regles = _etiqueter([a for a in alertes_python if not a['rule'].startswith('Typo.')],
+                                 'regles')
+    alertes_typo_reprises = _etiqueter([a for a in alertes_python if a['rule'].startswith('Typo.')],
+                                        'typographie')
 
     # Vale (point 1) — le titre de la bibliographie n'y passe pas : `entrees_biblio` l'exclut
     # déjà (voir _construire_bibliographie()), et le corps de Vale ci-dessous exclut tout
@@ -1560,8 +1575,9 @@ def _principal(argv):
         + paragraphes_vale_notes)
     alertes_vale, vale_indisponible = mv.analyser(
         paragraphes_vale_corps, paragraphes_vale_biblio, langue, RACINE_DEPOT)
+    _etiqueter(alertes_vale, 'vale')
     if vale_indisponible:
-        alertes_vale = [_alerte_vale_indisponible()]
+        alertes_vale = _etiqueter([_alerte_vale_indisponible()], 'vale')
         progres("contrôle du vocabulaire indisponible")
     else:
         # §7 ter du contrat (traçabilité note -> appel) : une alerte dont `para` est le
@@ -1585,11 +1601,12 @@ def _principal(argv):
                                  for p in paragraphes_vale_corps]
     alertes_biblio, stats_biblio = mb.analyser_bibliographie(
         paragraphes_corps_module, paragraphes_biblio_module, langue, reseau=not args['sans_reseau'])
+    _etiqueter(alertes_biblio, 'bibliographie')
     _marquer_notes_dans_alertes(alertes_biblio, correspondance_notes_vale)
     alerte_reseau = _alerte_recherche_impossible(
         mb._hors_service, bool(stats_identifiants and stats_identifiants['indisponible']), langue)
     if alerte_reseau:
-        alertes_manuelles.append(alerte_reseau)
+        alertes_manuelles.append(_etiqueter([alerte_reseau], 'nettoyage')[0])
         progres(alerte_reseau['message'])
 
     alertes = _trier_alertes(alertes_regles + alertes_vale + alertes_biblio
@@ -1623,7 +1640,7 @@ def _principal(argv):
         for alerte in (alerte_perte, _alerte_ecartes(ecartes_entete, langue),
                        mg.alerte_notes_reprises(resultat_ecriture['trace'], langue)):
             if alerte is not None:
-                alertes.append(alerte)
+                alertes.append(_etiqueter([alerte], 'nettoyage')[0])
                 progres(alerte['message'])
         _trier_alertes(alertes)
         if mesure_perte.get('refus'):
@@ -1676,7 +1693,7 @@ def _principal(argv):
                 stats_annotation = None
                 annotation_restauree = True
                 progres('annotation impossible : %s' % e)
-                alertes.append(_alerte_annotation_impossible())
+                alertes.append(_etiqueter([_alerte_annotation_impossible()], 'nettoyage')[0])
                 _trier_alertes(alertes)
             else:
                 _marquer_dans_docx(alertes, stats_annotation)
@@ -1701,7 +1718,8 @@ def _principal(argv):
                                                    nom_sortie=nom + '-nettoye')
         except conversion_odt.ConversionImpossible as e:
             progres('conversion en .odt impossible, le .docx est conservé : %s' % e)
-            alertes.append(_alerte_conversion_odt_impossible(str(e), langue))
+            alertes.append(_etiqueter([_alerte_conversion_odt_impossible(str(e), langue)],
+                                      'nettoyage')[0])
             _trier_alertes(alertes)
         else:
             try:
@@ -1713,19 +1731,10 @@ def _principal(argv):
             format_sortie = 'odt'
 
     groupes = _grouper_toutes_alertes(alertes)
-    # 'regles' accueille aussi les deux alertes propres à cette CLI qui ne viennent d'aucun
-    # des trois moteurs externes : Langue.DesaccordProduit (§8) et, si l'annotation a échoué
-    # (voir plus haut), Annotation.Impossible — la plus proche des quatre origines du brief,
-    # faute d'une cinquième catégorie prévue par le contrat.
-    alertes_origine = {
-        'regles': len(alertes_regles) + sum(
-            1 for a in alertes if a['rule'] in ('Langue.DesaccordProduit', 'Annotation.Impossible')),
-        'vale': len(alertes_vale),
-        'bibliographie': len(alertes_biblio),
-        'identifiants': len(alertes_identifiants),
-        'typographie': len(alertes_typo_reprises) + sum(1 for a in alertes_manuelles
-                                                          if a['rule'] == 'Typo.ApplicationImpossible'),
-    }
+    # Chaque alerte porte son `origine`, posée là où son lot a rejoint la liste : la somme vaut
+    # toujours le total.
+    compte_origine = collections.Counter(a['origine'] for a in alertes)
+    alertes_origine = {o: compte_origine[o] for o in ORIGINES_ALERTE}
     n_error = sum(1 for a in alertes if a['severity'] == 'error')
     n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
     n_suggestion = sum(1 for a in alertes if a['severity'] == 'suggestion')

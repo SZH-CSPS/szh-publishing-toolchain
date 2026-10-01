@@ -938,6 +938,33 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
     }
   });
 
+// Les alertes que la CLI émet elle-même (ici Langue.DesaccordProduit) portent l'origine
+// `nettoyage` : la somme des origines vaut le total, chaque alerte porte la sienne.
+// Sabotage : retirer l'étiquette d'un lot (retirer l'appel _etiqueter d'une des alertes de la
+// CLI) fait tomber la somme sous le total, ou lève KeyError sur `a['origine']`.
+test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, les alertes de la CLI sont comptées sous `nettoyage`',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false), 'de-CH');
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const origine = rapport.alertes.origine;
+      assert.ok(origine.nettoyage >= 1, 'Langue.DesaccordProduit doit compter sous nettoyage : ' + JSON.stringify(origine));
+      assert.strictEqual(Object.values(origine).reduce((x, y) => x + y, 0), rapport.alertes.total,
+        'somme des origines différente du total : ' + JSON.stringify(origine));
+      for (const a of rapport.alertes.liste) {
+        assert.ok(a.origine in origine, 'alerte sans origine reconnue : ' + JSON.stringify(a));
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
 // ---------------------------------------------------------------------------------
 // Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
 // (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
@@ -998,7 +1025,7 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
         assert.ok(origine[cle] >= 1, 'origine "' + cle + '" absente : ' + JSON.stringify(origine));
       }
       assert.strictEqual(
-        origine.regles + origine.vale + origine.bibliographie + origine.typographie,
+        Object.values(origine).reduce((x, y) => x + y, 0),
         rapport.alertes.total, 'la somme des origines doit couvrir TOUTES les alertes');
 
       // controles.vale dit si le contrôle a vraiment tourné.
