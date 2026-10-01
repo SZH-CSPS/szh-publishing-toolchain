@@ -470,23 +470,31 @@ def _alerte_recherche_impossible(crossref_en_panne, identifiants_en_panne, langu
             'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_repli_typo():
+def _alerte_repli_typo(langue='fr'):
     """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
     dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
     --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
+    if langue == 'fr':
+        message = ("La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
+                   "est rendu tel quel.")
+    else:
+        message = ("Die Typografie konnte auf dieses Dokument nicht angewendet werden; der "
+                   "Text wird unverändert wiedergegeben.")
     return {'rule': 'Typo.ApplicationImpossible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "La typographie n’a pas pu être appliquée à ce document\u00a0; le texte "
-                       "est rendu tel quel."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
-def _alerte_vale_indisponible():
+def _alerte_vale_indisponible(langue='fr'):
     """vale n'a pas pu tourner (binaire absent, wsl.exe injoignable, config cassée — voir
     manuscrit_vale.analyser()) : une alerte unique, jamais un plantage de la CLI."""
+    if langue == 'fr':
+        message = ("Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
+                   "ce document.")
+    else:
+        message = ("Die Prüfung von Wortschatz und Sprache konnte für dieses Dokument nicht "
+                   "durchgeführt werden.")
     return {'rule': 'Vale.Indisponible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Le contrôle du vocabulaire et du langage n’a pas pu être effectué sur "
-                       "ce document."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
 def _valider_docx_bien_forme(chemin):
@@ -500,14 +508,18 @@ def _valider_docx_bien_forme(chemin):
                 ET.fromstring(z.read(nom))
 
 
-def _alerte_annotation_impossible():
+def _alerte_annotation_impossible(langue='fr'):
     """manuscrit_annoter.annoter() a levé une exception (défaut connu, voir le commentaire à
     son point d'appel) : le .docx déjà écrit reste utilisable, sans révisions ni commentaires
     posés — une alerte le dit, jamais un plantage silencieux de la CLI."""
+    if langue == 'fr':
+        message = ("Les corrections n’ont pas pu être posées dans le document\u00a0: "
+                   "consultez le rapport pour la liste complète des remarques.")
+    else:
+        message = ("Die Korrekturen konnten nicht in das Dokument eingetragen werden: Die "
+                   "vollständige Liste der Anmerkungen finden Sie im Bericht.")
     return {'rule': 'Annotation.Impossible', 'severity': 'warning', 'action': 'report',
-            'para': None, 'span': None, 'found': None, 'suggested': None,
-            'message': "Les corrections n’ont pas pu être posées dans le document\u00a0: "
-                       "consultez le rapport pour la liste complète des remarques."}
+            'para': None, 'span': None, 'found': None, 'suggested': None, 'message': message}
 
 
 def _alerte_conversion_odt_impossible(detail, langue):
@@ -1530,7 +1542,7 @@ def _principal(argv):
         for ligne in traces_typo:
             progres(ligne)
         if statut_typo == 'repli':
-            alertes_manuelles.append(_etiqueter([_alerte_repli_typo()], 'typographie')[0])
+            alertes_manuelles.append(_etiqueter([_alerte_repli_typo(langue)], 'typographie')[0])
 
     _etape('regles')
     progres('évaluation des règles éditoriales...')
@@ -1577,7 +1589,7 @@ def _principal(argv):
         paragraphes_vale_corps, paragraphes_vale_biblio, langue, RACINE_DEPOT)
     _etiqueter(alertes_vale, 'vale')
     if vale_indisponible:
-        alertes_vale = _etiqueter([_alerte_vale_indisponible()], 'vale')
+        alertes_vale = _etiqueter([_alerte_vale_indisponible(langue)], 'vale')
         progres("contrôle du vocabulaire indisponible")
     else:
         # §7 ter du contrat (traçabilité note -> appel) : une alerte dont `para` est le
@@ -1693,7 +1705,7 @@ def _principal(argv):
                 stats_annotation = None
                 annotation_restauree = True
                 progres('annotation impossible : %s' % e)
-                alertes.append(_etiqueter([_alerte_annotation_impossible()], 'nettoyage')[0])
+                alertes.append(_etiqueter([_alerte_annotation_impossible(langue)], 'nettoyage')[0])
                 _trier_alertes(alertes)
             else:
                 _marquer_dans_docx(alertes, stats_annotation)

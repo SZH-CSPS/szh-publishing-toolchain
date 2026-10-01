@@ -965,6 +965,36 @@ test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, le
     }
   });
 
+// Les trois alertes que la CLI émet sans passer par un moteur (repli typographique, Vale
+// indisponible, annotation impossible) suivent la langue de traitement : français pour la
+// Revue, allemand pour la Zeitschrift. Sabotage : retirer la branche allemande d'une des trois
+// (ou ne plus lui passer `langue`) rend le français dans la Zeitschrift.
+test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale indisponible, annotation impossible) sortent en allemand pour la Zeitschrift',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import importlib.util, json, sys',
+      'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+      'sys.path.insert(0, dossier_pipeline)',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_langue", chemin_nettoyeur)',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      'sys.stdout.reconfigure(encoding="utf-8")',
+      'print(json.dumps({l: [mod._alerte_repli_typo(l)["message"],',
+      '                      mod._alerte_vale_indisponible(l)["message"],',
+      '                      mod._alerte_annotation_impossible(l)["message"]]',
+      '                  for l in ("fr", "de")}, ensure_ascii=False))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const m = JSON.parse(r.stdout);
+    assert.match(m.fr[0], /^La typographie/);
+    assert.match(m.fr[1], /^Le contrôle/);
+    assert.match(m.fr[2], /^Les corrections/);
+    assert.match(m.de[0], /^Die Typografie/);
+    assert.match(m.de[1], /^Die Prüfung/);
+    assert.match(m.de[2], /^Die Korrekturen/);
+  });
+
 // ---------------------------------------------------------------------------------
 // Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
 // (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
