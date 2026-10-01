@@ -44,7 +44,7 @@ function cle(chemin) {
 
 function reconnu(chemin) {
   const r = python([PRONTO_LIRE, '--reconnaitre', chemin]);
-  assert.ok(r.status === 0 || r.status === 1, r.stderr);
+  assert.ok(r.status === 0 || r.status === 10, r.stderr);  // 10 = pas au gabarit, le reste est une panne
   return r.status === 0;
 }
 
