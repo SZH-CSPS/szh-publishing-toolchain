@@ -46,7 +46,7 @@ W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
 styles = ''.join('<w:style w:type="paragraph" w:styleId="%s"><w:name w:val="%s"/></w:style>' % s
                  for s in [('Normal', 'Normal'), ('EncadreX', 'SZH Important'),
                            ('MiseX', 'SZH Hervorhebung'), ('QuestionX', 'SZH Question (interview)'),
-                           ('AuhorsX', 'Auhors')])
+                           ('AuhorsX', 'Auhors'), ('VarianteX', 'szh-Important')])
 with zipfile.ZipFile(sortie, 'w') as z:
     z.writestr('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>')
     z.writestr('_rels/.rels', '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
@@ -124,6 +124,20 @@ test('chaque style de corps devient son bloc, et seulement le style en vigueur c
         '::: highlight\nNouvelle mise en évidence.\n:::',
         'Après.'
       ]);
+    } finally {
+      fs.rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+test('un style de corps se reconnaît à son nom normalisé (« szh-Important »)',
+  { skip: sansPython }, () => {
+    const d = jetable();
+    try {
+      const docx = fabriquer(d, p('VarianteX', 'Encadré au nom retouché.'));
+      const marque = path.join(d, 'marque.docx');
+      const r = python([PREPASS, docx, marque]);
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.deepStrictEqual(JSON.parse(r.stdout).blocs, { important: 1 });
     } finally {
       fs.rmSync(d, { recursive: true, force: true });
     }

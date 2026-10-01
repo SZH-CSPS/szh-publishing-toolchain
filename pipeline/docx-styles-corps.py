@@ -23,7 +23,11 @@
 import json
 import re
 import sys
+import os
 import zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pronto_modele import normaliser_nom_style
 
 # Nom du style Word -> classe du bloc du cockpit (lib/formatting-pur.js, CLASSES_BLOCS).
 # Tenu en miroir dans szh-styles-corps.lua.
@@ -51,6 +55,9 @@ STYLES_AUTEURS_CHAPITRE = {
 # pas le même métier — bloc du cockpit contre ligne de titre de chapitre — même si le
 # marquage est rigoureusement le même mécanisme.
 TOUS_LES_STYLES = {**STYLES_BLOCS, **STYLES_AUTEURS_CHAPITRE}
+# Reconnus par nom normalisé, comme les styles qui signent le gabarit : « SZH-Important »
+# et « szh important » désignent le même style.
+_STYLES_NORMALISES = {normaliser_nom_style(n): c for n, c in TOUS_LES_STYLES.items()}
 
 DEBUT, FIN = '', ''
 
@@ -68,8 +75,9 @@ def ids_par_classe(styles_xml):
             continue
         sid = re.search(r'w:styleId="([^"]+)"', bloc)
         nom = re.search(r'<w:name w:val="([^"]+)"', bloc)
-        if sid and nom and nom.group(1) in TOUS_LES_STYLES:
-            ids[sid.group(1)] = TOUS_LES_STYLES[nom.group(1)]
+        classe = _STYLES_NORMALISES.get(normaliser_nom_style(nom.group(1))) if nom else None
+        if sid and classe:
+            ids[sid.group(1)] = classe
     return ids
 
 
