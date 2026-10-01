@@ -643,3 +643,72 @@ test('Get-SzhRaccourcisMenu rend exactement deux entrees, et aucune ne nomme Pro
       'Get-SzhRaccourcisMenu porte ' + NOM_RACCOURCI_DEV +
       ' : une redactrice le recevrait a la prochaine mise a jour');
   });
+
+// ---- Groupe 7 : l'entree DEV ouvre VSCodium sur le lanceur du cockpit ----
+// Sans argument, pronto-dev.ps1 ne passe plus par open-produit.ps1 : il fait les taches de
+// demarrage, puis lance VSCodium sans dossier, SZH_ACCUEIL=1 dans l'environnement de l'enfant.
+// En simulation, il ecrit son plan en JSON ; open-produit.ps1 simule ecrit le sien, reconnaissable
+// a son champ produit.
+
+function executerEntree(args) {
+  if (!POWERSHELL) { return null; }
+  const jetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-entree-'));
+  const baseDev = path.join(jetable, 'SZH-dev');
+  const menuJetable = path.join(jetable, 'menu');
+  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' });
+  delete env.SZH_ACCUEIL;
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT,
+    '-BaseDev', baseDev, '-Menu', menuJetable].concat(args || []), { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
+  fs.rmSync(jetable, { recursive: true, force: true });
+  let sortie = null;
+  if (run.stdout) { try { sortie = JSON.parse(run.stdout.trim()); } catch (e) { /* rapporte par le test */ } }
+  return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', sortie, baseDev };
+}
+
+const ENTREE_SANS_ARGUMENT = executerEntree([]);
+const ENTREE_LANCEUR = executerEntree(['-Lanceur']);
+const ENTREE_PRODUIT = executerEntree(['-Produit', 'zeitschrift']);
+
+test('sans argument - VSCodium du profil dev, en --new-window, sans dossier, SZH_ACCUEIL=1 pour l\'enfant seul',
+  { skip: sansPowerShell }, () => {
+    const r = ENTREE_SANS_ARGUMENT;
+    assert.ok(r && r.status === 0, 'pronto-dev.ps1 a echoue - ' + (r ? r.stderr + r.stdout.slice(0, 300) : ''));
+    assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
+    assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
+      'open-produit.ps1 a ete appele alors qu\'aucun argument n\'etait passe');
+    assert.strictEqual(r.sortie.entree, 'cockpit');
+    assert.deepStrictEqual(r.sortie.environnement, { SZH_ACCUEIL: '1' });
+    assert.ok(!r.sortie.accueilProcessus, 'SZH_ACCUEIL pose dans le processus de pronto-dev.ps1 lui-meme');
+    const args = r.sortie.arguments;
+    assert.ok(Array.isArray(args) && args.indexOf('--new-window') !== -1, 'pas de --new-window - ' + JSON.stringify(args));
+    const ligne = args.join(' ');
+    assert.ok(contientOption(ligne, '--user-data-dir', path.join(r.baseDev, 'codium', 'data')),
+      'pas de --user-data-dir du profil dev - ' + ligne);
+    assert.ok(contientOption(ligne, '--extensions-dir', path.join(r.baseDev, 'codium', 'extensions')),
+      'pas de --extensions-dir du profil dev - ' + ligne);
+    assert.strictEqual(args.length, 3, 'un argument de trop, un dossier serait ouvert - ' + ligne);
+  });
+
+test('sans argument - les taches de demarrage d\'open-produit.ps1 et les secrets sont appeles',
+  { skip: sansPowerShell }, () => {
+    const r = ENTREE_SANS_ARGUMENT;
+    assert.ok(r && r.sortie, 'sortie JSON illisible');
+    assert.deepStrictEqual(r.sortie.taches, ['Initialize-SzhAncrage', 'Clear-SzhRapportsEnAttente',
+      'Invoke-SzhCheckin', 'Invoke-SzhEpinglageHorsLigne', 'Initialize-SzhEmplacementsTest',
+      'Set-SzhEnvironnementSecrets']);
+  });
+
+test('-Lanceur garde open-revue.ps1, donc le lanceur WinForms', { skip: sansPowerShell }, () => {
+  const r = ENTREE_LANCEUR;
+  assert.ok(r && r.status === 0, 'pronto-dev.ps1 -Lanceur a echoue - ' + (r ? r.stderr : ''));
+  assert.ok(r.sortie && Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
+    'open-produit.ps1 n\'a pas rendu son JSON de simulation - ' + r.stdout.slice(0, 300));
+  assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'entree'), 'le chemin cockpit a ete pris');
+});
+
+test('un argument (-Produit zeitschrift) passe toujours a open-revue.ps1', { skip: sansPowerShell }, () => {
+  const r = ENTREE_PRODUIT;
+  assert.ok(r && r.status === 0, 'pronto-dev.ps1 -Produit a echoue - ' + (r ? r.stderr : ''));
+  assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
+  assert.strictEqual(r.sortie.produit, 'zeitschrift');
+});
