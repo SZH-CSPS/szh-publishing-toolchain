@@ -123,6 +123,13 @@ signaler() {
   fi
 }
 
+# Refus d'un Word qui ne s'ouvre pas (zip tronqué, document.xml mal formé) : un seul texte,
+# que le zip soit coupé ou que ce soit le lecteur qui échoue à le lire.
+refuser_fichier_illisible() {
+  signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: le fichier «${NB}$SZH_SOURCE${NB}» n’a pas pu être ouvert (document tronqué ou endommagé)${NB}; rien n’a été créé, le fichier reste en attente. Ouvrez-le dans Word, enregistrez-le de nouveau, puis relancez la conversion. [de] «$SLUG»: die Datei «$SZH_SOURCE» konnte nicht geöffnet werden (Dokument abgeschnitten oder beschädigt); es wurde nichts angelegt, die Datei bleibt in der Warteschlange. Öffnen Sie sie in Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal."
+  exit 1
+}
+
 # .odt : conversion en .docx, avant de créer quoi que ce soit dans $DIR — un échec ici ne
 # doit laisser ni dossier ni fichier derrière lui, le Word reste en attente tel quel.
 # CONVDIR (nettoyé par le trap ci-dessus) reçoit le .docx converti ; DOCX_ABS pointe dessus
@@ -136,6 +143,16 @@ case "$DOCX_ABS" in
     fi
     ;;
 esac
+
+# Un Word qui n'est pas une archive complète (zip tronqué : la fin du fichier, où vit
+# l'annuaire central, a disparu) est refusé tout de suite, comme une conversion .odt qui
+# échoue : rien n'est créé, le fichier reste en attente. Les lecteurs qui suivent échouent
+# aussi sur un tel fichier, mais après la création du dossier. Le test est de shell pur : la
+# signature de fin d'annuaire (PK 05 06) dans les derniers 70 Ko, plafond d'un commentaire
+# de zip.
+if ! tail -c 70000 "$DOCX_ABS" | LC_ALL=C grep -qaF "$(printf 'PK\005\006')"; then
+  refuser_fichier_illisible
+fi
 
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
@@ -164,15 +181,37 @@ export SZH_PHOTOS="$PHOTOS"
 # Le partage se fait sur la DÉCLARATION des styles du gabarit dans le document (mode
 # `--reconnaitre`), jamais sur un réglage de poste : la rédaction reçoit les deux sortes de
 # documents, souvent le même jour, et personne n'a à basculer quoi que ce soit.
-if python3 "$PIPE/pronto-lire.py" --reconnaitre "$DOCX_ABS" 2>/dev/null; then
-  LECTEUR="$PIPE/pronto-lire.py"
-  NOM_LECTEUR=pronto
-else
-  LECTEUR="$PIPE/docx-meta.py"
-  NOM_LECTEUR=herite
-fi
+# Trois réponses : 0 = au gabarit, 10 = pas au gabarit, tout autre code = panne du
+# reconnaisseur. Une panne n'est pas un « non » : le document repart chez le lecteur qui
+# devine, mais c'est dit au journal avec ce que le reconnaisseur a écrit.
+RECO_ERR="$(python3 "$PIPE/pronto-lire.py" --reconnaitre "$DOCX_ABS" 2>&1)"
+RECO_RC=$?
+case "$RECO_RC" in
+  0)
+    LECTEUR="$PIPE/pronto-lire.py"
+    NOM_LECTEUR=pronto
+    ;;
+  10)
+    LECTEUR="$PIPE/docx-meta.py"
+    NOM_LECTEUR=herite
+    ;;
+  *)
+    LECTEUR="$PIPE/docx-meta.py"
+    NOM_LECTEUR=herite
+    signaler "[import] ⚠ «${NB}$SLUG${NB}»${NB}: la reconnaissance du gabarit «${NB}Pronto${NB}» est tombée en panne (code $RECO_RC)${NB}; le document est lu comme un Word hérité, ses champs sont à vérifier dans «${NB}Métadonnées des articles${NB}». Signalez-le à la maintenance. [de] «$SLUG»: die Erkennung der Vorlage «Pronto» ist ausgefallen (Code $RECO_RC); das Dokument wird wie ein älteres Word-Dokument gelesen, seine Felder sind unter «Metadaten der Artikel» zu prüfen. Melden Sie dies der Wartung. ${RECO_ERR:+[$(printf '%s' "$RECO_ERR" | tail -n 1)]}"
+    ;;
+esac
 
 if ! STATS="$(python3 "$LECTEUR" "$DOCX_ABS" "$SLUG" .)"; then
+  # Premier mot du bloc : après `if !`, $? vaut 0, le code du lecteur est dans PIPESTATUS.
+  LECT_RC="${PIPESTATUS[0]}"
+  # 3 = pronto-lire.py n'a pas pu OUVRIR le fichier (zip intact mais document.xml mal formé) :
+  # il n'y a aucune étiquette à corriger, le fichier est endommagé.
+  if [ "$NOM_LECTEUR" = pronto ] && [ "$LECT_RC" -eq 3 ]; then
+    # Le refus dit « rien n'a été créé » : on retire les dossiers vides posés plus haut.
+    cd "$OLDPWD" 2>/dev/null && rmdir "$DIR/media" "$DIR/tables" "$DIR" 2>/dev/null
+    refuser_fichier_illisible
+  fi
   # Le lecteur du gabarit a deux façons d'échouer, et elles ne se disent pas pareil : une clé
   # présente qu'il n'a pas su ranger (code 1, il a déjà écrit un avertissement par clé, et
   # n'a RIEN écrit d'autre — ni fiche, ni instructions), ou une panne de lecture. Dans les

@@ -938,6 +938,254 @@ test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WS
     }
   });
 
+// Les alertes que la CLI émet elle-même (ici Langue.DesaccordProduit) portent l'origine
+// `nettoyage` : la somme des origines vaut le total, chaque alerte porte la sienne.
+// Sabotage : retirer l'étiquette d'un lot (retirer l'appel _etiqueter d'une des alertes de la
+// CLI) fait tomber la somme sous le total, ou lève KeyError sur `a['origine']`.
+test('manuscrit-nettoyer.py : la somme de alertes.origine vaut alertes.total, les alertes de la CLI sont comptées sous `nettoyage`',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false), 'de-CH');
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo', '--sans-reseau']);
+      const obj = ligneUniqueJson(r.stdout);
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      const origine = rapport.alertes.origine;
+      assert.ok(origine.nettoyage >= 1, 'Langue.DesaccordProduit doit compter sous nettoyage : ' + JSON.stringify(origine));
+      assert.strictEqual(Object.values(origine).reduce((x, y) => x + y, 0), rapport.alertes.total,
+        'somme des origines différente du total : ' + JSON.stringify(origine));
+      for (const a of rapport.alertes.liste) {
+        assert.ok(a.origine in origine, 'alerte sans origine reconnue : ' + JSON.stringify(a));
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Les trois alertes que la CLI émet sans passer par un moteur (repli typographique, Vale
+// indisponible, annotation impossible) suivent la langue de traitement : français pour la
+// Revue, allemand pour la Zeitschrift. Sabotage : retirer la branche allemande d'une des trois
+// Les trois fonctions n'ont aucun défaut de langue ; le test suivant garde les sites d'appel.
+test('manuscrit-nettoyer.py : les alertes propres à la CLI (repli typo, Vale indisponible, annotation impossible) sortent en allemand pour la Zeitschrift',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import importlib.util, json, sys',
+      'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+      'sys.path.insert(0, dossier_pipeline)',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_langue", chemin_nettoyeur)',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      'sys.stdout.reconfigure(encoding="utf-8")',
+      'print(json.dumps({l: [mod._alerte_repli_typo(l)["message"],',
+      '                      mod._alerte_vale_indisponible(l)["message"],',
+      '                      mod._alerte_annotation_impossible(l)["message"]]',
+      '                  for l in ("fr", "de")}, ensure_ascii=False))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const m = JSON.parse(r.stdout);
+    assert.match(m.fr[0], /^La typographie/);
+    assert.match(m.fr[1], /^Le contrôle/);
+    assert.match(m.fr[2], /^Les corrections/);
+    assert.match(m.de[0], /^Die Typografie/);
+    assert.match(m.de[1], /^Die Prüfung/);
+    assert.match(m.de[2], /^Die Korrekturen/);
+  });
+
+// Les trois alertes n'ont pas de langue par défaut, et chaque site d'appel de la CLI la passe :
+// un oubli rendrait le français dans la Zeitschrift sans qu'aucun chemin du doré ne le voie.
+// Contrôle par l'arbre syntaxique, car les chemins (Vale absent, annotation en échec) sont rares.
+// Sabotage : retirer `langue` d'un des trois appels, ou remettre `langue='fr'` en défaut.
+test('manuscrit-nettoyer.py : les trois alertes de la CLI reçoivent la langue à chaque site d’appel, sans défaut',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import ast, json, sys',
+      'arbre = ast.parse(open(sys.argv[1], encoding="utf-8").read())',
+      'noms = ("_alerte_repli_typo", "_alerte_vale_indisponible", "_alerte_annotation_impossible")',
+      'defauts = {n.name: len(n.args.defaults) for n in ast.walk(arbre)',
+      '           if isinstance(n, ast.FunctionDef) and n.name in noms}',
+      'appels = {n: [] for n in noms}',
+      'for n in ast.walk(arbre):',
+      '    if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in noms:',
+      '        appels[n.func.id].append(len(n.args) + len(n.keywords))',
+      'print(json.dumps({"defauts": defauts, "appels": appels}))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const m = JSON.parse(r.stdout);
+    for (const nom of ['_alerte_repli_typo', '_alerte_vale_indisponible', '_alerte_annotation_impossible']) {
+      assert.strictEqual(m.defauts[nom], 0, nom + ' ne doit pas avoir de langue par défaut');
+      assert.ok(m.appels[nom].length >= 1, nom + ' n’est plus appelée par la CLI');
+      assert.ok(m.appels[nom].every((n) => n === 1), nom + ' appelée sans langue : ' + JSON.stringify(m.appels[nom]));
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Origine des alertes : chaque lot est étiqueté là où il rejoint la liste, et l'étiquette est
+// vérifiée sur une exécution réelle, règle par règle. Les sources rares (identifiants, perte,
+// écartés, notes reprises, réseau, annotation, conversion .odt, Vale absent, repli typo) sont
+// provoquées par injection au chargement du module, comme le contrôle n°15 : le code de
+// production reste intact. Sabotage : étiqueter un lot du mauvais nom (ou l'oublier) dans
+// manuscrit-nettoyer.py rend ces tests rouges.
+function origineAttendue(regle) {
+  if (/^Typo\./.test(regle)) return 'typographie';
+  if (/^(Langue|Annotation|Nettoyage|Reseau)\./.test(regle)) return 'nettoyage';
+  if (/^Identifiants\./.test(regle)) return 'identifiants';
+  if (/^(CSPS|SZH)[.-]/.test(regle) || regle === 'Vale.Indisponible') return 'vale';
+  if (/^APA\./.test(regle)) return 'bibliographie';
+  return 'regles';
+}
+
+function lancerAvecInjections(injections, entree, sortie, argsCli) {
+  const PONT = [
+    'import importlib.util, sys',
+    'dossier_pipeline, chemin_nettoyeur = sys.argv[1], sys.argv[2]',
+    'sys.path.insert(0, dossier_pipeline)',
+    'spec = importlib.util.spec_from_file_location("nettoyeur_origine", chemin_nettoyeur)',
+    'mod = importlib.util.module_from_spec(spec)',
+    'spec.loader.exec_module(mod)',
+    'def alerte(regle):',
+    '    return {"rule": regle, "severity": "warning", "action": "report", "para": None,',
+    '            "span": None, "found": None, "suggested": None, "message": "injectee"}',
+  ].concat(injections, [
+    'sys.argv = [chemin_nettoyeur] + sys.argv[3:]',
+    'sys.exit(mod.principal(sys.argv))',
+  ]).join(String.fromCharCode(10));
+  const r = python(['-c', PONT, PIPELINE, NETTOYEUR, entree, '--sortie', sortie, '--sans-reseau'].concat(argsCli));
+  const obj = ligneUniqueJson(r.stdout);
+  return JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+}
+
+function verifierOrigines(rapport) {
+  const origine = rapport.alertes.origine;
+  assert.ok(!('inconnue' in origine), 'alerte sans origine valide : ' + JSON.stringify(origine));
+  assert.strictEqual(Object.values(origine).reduce((x, y) => x + y, 0), rapport.alertes.total);
+  for (const a of rapport.alertes.liste) {
+    assert.strictEqual(a.origine, origineAttendue(a.rule),
+      a.rule + ' étiquetée ' + a.origine + ' au lieu de ' + origineAttendue(a.rule));
+  }
+}
+
+test('manuscrit-nettoyer.py : chaque lot d’alertes porte la bonne origine sur une exécution réelle (regles, vale, bibliographie, identifiants, typographie, nettoyage)',
+  { skip: sansPython || sansVale }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'origines.docx');
+      fabriquerDocx(entree, fixtureQuatreOrigines(), 'de-CH');
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const rapport = lancerAvecInjections([
+        'def _ident(auteurs, *a, **k):',
+        '    alertes, stats = _ident_reel(auteurs, *a, **k)',
+        '    return alertes + [alerte("Identifiants.Injection")], stats',
+        '_ident_reel = mod.mi.enrichir_auteurs',
+        'mod.mi.enrichir_auteurs = _ident',
+        'def _perte(*a, **k):',
+        '    _, mesure = _perte_reelle(*a, **k)',
+        '    return alerte("Nettoyage.ContenuPerdu"), mesure',
+        '_perte_reelle = mod._controler_perte',
+        'mod._controler_perte = _perte',
+        'mod._alerte_ecartes = lambda e, l: alerte("Nettoyage.ContenuEcarte")',
+        'mod.mg.alerte_notes_reprises = lambda t, l: alerte("Nettoyage.NoteReprise")',
+        '_reseau = mod._alerte_recherche_impossible',
+        'mod._alerte_recherche_impossible = lambda a, b, l: _reseau(True, True, l)',
+        'def _annoter_sabote(*a, **k):',
+        '    raise ValueError("injection")',
+        'mod.ma.annoter = _annoter_sabote',
+        'def _convertir_sabote(*a, **k):',
+        '    raise mod.conversion_odt.ConversionImpossible("injection")',
+        'mod.conversion_odt.convertir = _convertir_sabote',
+      ], entree, sortie, ['--produit', 'revue', '--format', 'odt']);
+      verifierOrigines(rapport);
+      const origine = rapport.alertes.origine;
+      for (const cle of ['regles', 'vale', 'bibliographie', 'identifiants', 'typographie', 'nettoyage']) {
+        assert.ok(origine[cle] >= 1, 'aucune alerte d’origine "' + cle + '" : ' + JSON.stringify(origine));
+      }
+      const regles = rapport.alertes.liste.map((a) => a.rule);
+      for (const r of ['Langue.DesaccordProduit', 'Reseau.RechercheImpossible', 'Nettoyage.ContenuPerdu',
+        'Nettoyage.ContenuEcarte', 'Nettoyage.NoteReprise', 'Annotation.Impossible',
+        'Nettoyage.ConversionOdtImpossible']) {
+        assert.ok(regles.includes(r), r + ' absente : ' + JSON.stringify(regles));
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : Vale indisponible et repli typographique portent leur origine (vale, typographie)',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'panne.docx');
+      fabriquerDocx(entree, manuscritMinimal(false));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const rapport = lancerAvecInjections([
+        'mod.mv.analyser = lambda *a, **k: ([], True)',
+        'mod.mt.normaliser_paragraphes = lambda paras, *a, **k: (paras, [], [], [], "repli")',
+      ], entree, sortie, ['--produit', 'revue']);
+      verifierOrigines(rapport);
+      const regles = rapport.alertes.liste.map((a) => a.rule);
+      assert.ok(regles.includes('Vale.Indisponible') && regles.includes('Typo.ApplicationImpossible'),
+        JSON.stringify(regles));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : une alerte sans origine valide est comptée sous `inconnue` et tracée, jamais un plantage',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import importlib.util, json, sys',
+      'sys.path.insert(0, sys.argv[1])',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_inconnue", sys.argv[2])',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      'sys.stderr = open(__import__("os").devnull, "w")',
+      'al = [{"rule": "A", "origine": "regles"}, {"rule": "B"}, {"rule": "C", "origine": "faute"}]',
+      'bon = mod._compter_origines([{"rule": "A", "origine": "vale"}])',
+      'mal = mod._compter_origines(al)',
+      'print(json.dumps({"bon": bon, "mal": mal, "etiquettes": [a["origine"] for a in al],',
+      '                  "journal": mod._JOURNAL_PROGRES}))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const m = JSON.parse(r.stdout);
+    assert.ok(!('inconnue' in m.bon), 'la clé inconnue ne doit apparaître qu’en cas de défaut');
+    assert.strictEqual(m.mal.inconnue, 2);
+    assert.strictEqual(m.mal.regles, 1);
+    assert.deepStrictEqual(m.etiquettes, ['regles', 'inconnue', 'inconnue']);
+    assert.strictEqual(m.journal.length, 2);
+  });
+
+// `plafond_commentaires_atteint` suit le plafond global de l'annoteur (`plafond_global`), pas le
+// nombre de commentaires écrits : 25 commentaires et un doublon retiré ne sont pas un plafond.
+// Sabotage : revenir à `ecrits >= 25 and renvoyees_au_rapport`.
+test('manuscrit-nettoyer.py : plafond_commentaires_atteint suit le plafond global, pas les doublons retirés',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import importlib.util, json, sys',
+      'sys.path.insert(0, sys.argv[1])',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_plafond", sys.argv[2])',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      'al = [{"rule": "R", "dans_docx": "commentaire"} for _ in range(25)]',
+      'def mesure(stats):',
+      '    m = mod._mesures_passage("ok", 1, {"produit": "revue", "sans_typo": False}, "B", "docx",',
+      '        "docx", al, None, 0, 0, 0, 0, 0, 0, 0, stats, False, None, None, False, "appliquee",',
+      '        None, None, None, None)',
+      '    return m.get("plafond_commentaires_atteint", 0)',
+      'print(json.dumps({"doublon": mesure({"renvoyees_au_rapport": [{}], "plafond_global": 0}),',
+      '                  "plafond": mesure({"renvoyees_au_rapport": [{}], "plafond_global": 1})}))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(JSON.parse(r.stdout), { doublon: 0, plafond: 1 });
+  });
+
 // ---------------------------------------------------------------------------------
 // Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
 // (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
@@ -998,7 +1246,7 @@ test('manuscrit-nettoyer.py : les quatre origines (structurel, vocabulaire, bibl
         assert.ok(origine[cle] >= 1, 'origine "' + cle + '" absente : ' + JSON.stringify(origine));
       }
       assert.strictEqual(
-        origine.regles + origine.vale + origine.bibliographie + origine.typographie,
+        Object.values(origine).reduce((x, y) => x + y, 0),
         rapport.alertes.total, 'la somme des origines doit couvrir TOUTES les alertes');
 
       // controles.vale dit si le contrôle a vraiment tourné.

@@ -1289,6 +1289,15 @@ Un commentaire pose `<w:commentRangeStart>`/`<w:commentRangeEnd>` autour du pass
 message, puis « Suggestion : … » (« Vorschlag : … » en allemand) si `suggested`, puis
 `[code.de.la.regle]` en fin de message — toujours en dernier.
 
+**Fusion DOI / mise en forme** (avant le plafond) : un commentaire `APA.DoiForme` (ou
+`CSPS-Biblio.APA.DoiForme`) qui chevauche le commentaire `APA.MiseEnForme` de la même référence
+(corps seulement) s'y fond. Le commentaire de mise en forme garde son ancrage et reçoit
+« DOI : forme attendue *DOI* » (« DOI: erwartete Form *DOI* »), sauf si sa suggestion contient déjà
+le DOI ; le commentaire DOI reste au rapport. Sans ancrage commun, les deux restent.
+`stats['fusion_doi']` compte `fusionnees`, `deja_dans_la_forme` et `separees`. `stats['plafond_global']`
+compte les commentaires refusés par le seul plafond global (c'est lui que mesure
+`plafond_commentaires_atteint`).
+
 **Le plafond** : les commentaires (jamais les révisions) sont triés `error` > `warning` >
 `suggestion` puis par ordre d'apparition. Au plus 5 par règle — le 5ᵉ commentaire écrit d'une
 règle reçoit une phrase de synthèse (« … et *N* autres occurrences… »), ajoutée à la fin de son
@@ -1476,7 +1485,10 @@ déjà retirés ; Vale reçoit EN PLUS les cellules de tableau et le contenu des
 profondeur — jamais ancrables dans le `.docx` produit (`source=None`), mais Vale doit les voir
 quand même. `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : la CLI
 regroupe elle-même par famille et par règle (`_grouper_toutes_alertes()`). `rapport['alertes']
-['origine']` compte les quatre moteurs séparément.
+['origine']` compte les quatre moteurs séparément, plus `nettoyage` (les alertes que la CLI émet
+elle-même : perte de contenu, éléments écartés, notes reprises, langue en désaccord avec le
+produit, recherche en ligne en panne, annotation ou conversion `.odt` impossible). Une alerte sans
+origine valide est comptée sous `inconnue` (clé présente seulement alors) et tracée au journal.
 
 **Annotation** : après l'écriture du gabarit, si ni `--analyse-seule` ni `--sans-annotation` ne
 sont posés, `manuscrit_annoter.annoter()` reçoit les alertes fusionnées et

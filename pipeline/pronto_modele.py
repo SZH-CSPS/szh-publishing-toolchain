@@ -6,29 +6,27 @@
 # de bibliographie, et la sérialisation en meta.yaml + instructions $SZH_META/$SZH_PHOTOS.
 #
 # AUCUNE trace de Word ni d'OpenDocument ici : pas de namespace `w:`, pas de `office:`. Ce
-# fichier ne sait pas lire un .docx ni un .odt — il ne sait que raisonner sur trois classes :
+# fichier ne sait pas lire un .docx — il ne sait que raisonner sur trois classes :
 #
 #   Par(style, texte, niveau, images)   — un paragraphe. `style` est déjà résolu en son nom
 #                                          humain (« SZH Cle », « heading 1», « Quote »…) ;
-#                                          c'est le SEUL endroit où .docx et .odt diffèrent,
-#                                          et c'est exactement pour ça qu'il vit dans le
-#                                          lecteur (pronto_docx.py / pronto_odt.py), jamais
-#                                          ici. `texte` est déjà normalisé (normaliser_valeur()) —
-#                                          le lecteur ne rend jamais de texte brut. `niveau`
-#                                          vaut 1..6 pour un titre, 0 sinon. `images` est une
+#                                          c'est le lecteur (pronto_docx.py) qui le
+#                                          résout, jamais ce noyau. `texte` est déjà
+#                                          normalisé (normaliser_valeur()) — le lecteur
+#                                          ne rend jamais de texte brut. `niveau` vaut
+#                                          1..6 pour un titre, 0 sinon. `images` est une
 #                                          liste de (nom de fichier sous media/ ou Pictures/,
 #                                          surface déclarée — 0 si inconnue).
 #   Cellule(colspan, blocs)             — `blocs` est une liste de Par | Tableau, dans l'ordre
 #                                          du document (imbrication comprise : une cellule de
 #                                          bloc tableau porte un Tableau parmi ses blocs).
 #   Tableau(rangees)                    — `rangees` est une liste de listes de Cellule. Une
-#                                          cellule masquée par une fusion (w:gridSpan côté
-#                                          Word, table:covered-table-cell côté OpenDocument)
+#                                          cellule masquée par une fusion (w:gridSpan)
 #                                          n'apparaît PAS ici : le lecteur l'a déjà sautée.
 #
 # Un « document » lu est simplement une list[Par | Tableau] — les blocs de premier niveau,
-# dans l'ordre. pronto_docx.lire() et pronto_odt.lire() en rendent chacun un ; principal()
-# ci-dessous les consomme sans jamais savoir d'où ils viennent.
+# dans l'ordre. pronto_docx.lire() en rend un ; principal() ci-dessous le consomme sans
+# rien savoir du format.
 #
 # ── Ce qui a dû changer par rapport à docx-pronto.py pour accueillir l'ODT ─────────────────
 #
@@ -43,13 +41,11 @@
 #    deux.
 #
 # 2. Le style de base (paragraphe sans mise en forme particulière) résout différemment selon
-#    le format : '' côté .docx (un w:p sans w:pStyle n'a simplement pas de style — voir
-#    pronto_docx.py), mais « Standard » côté .odt (le paragraphe SANS style particulier y
-#    référence quand même explicitement le style racine de la feuille, remonté par la chaîne
-#    de parents — voir pronto_odt.py). Mesuré : ça ne change AUCUN comportement observable,
-#    puisque famille('') et famille('standard') rendent toutes deux '' (aucune classe
-#    reconnue) — mais c'est bien une différence de valeur entre les deux lecteurs pour le
-#    « même » paragraphe, qu'il fallait constater plutôt que suffixée en silence.
+#    le format : '' pour un .docx natif (un w:p sans w:pStyle n'a simplement pas de style),
+#    mais « Standard » pour un .odt converti par LibreOffice (le paragraphe sans style
+#    particulier y référence explicitement le style racine). Ça ne change AUCUN comportement
+#    observable : famille('') et famille('standard') rendent toutes deux '' (aucune classe
+#    reconnue).
 #
 # 3. Word donne « Body Text » comme nom (w:name du style Corpsdetexte) là où LibreOffice
 #    donne « Text body » (style:display-name de Text_20_body, même style, ordre des mots
@@ -114,8 +110,8 @@ class Tableau:
     `page` est le numéro de page où ce tableau se trouve dans le document source, ou None
     quand il est inconnu — JAMAIS deviné. Seul pronto_docx.lire() le calcule (à partir des
     marqueurs w:lastRenderedPageBreak que Word pose à sa dernière repagination — absents d'un
-    .docx jamais ouvert par Word, mesuré) ; pronto_odt.lire() le laisse toujours à None, faute
-    d'équivalent OpenDocument. Ne vaut que pour les tableaux de PREMIER NIVEAU : un tableau
+    .docx jamais ouvert par Word, mesuré, comme d'un .docx converti depuis un .odt). Ne vaut
+    que pour les tableaux de PREMIER NIVEAU : un tableau
     imbriqué (contenu d'un bloc tableau) ne le porte jamais, rien n'en a besoin aujourd'hui."""
 
     __slots__ = ('rangees', 'page')
@@ -1772,7 +1768,7 @@ def _images_du_groupe(pars, variantes=None):
     image (le cas de toujours : « nom|variante »), sinon une entrée par image, dans l'ordre du
     document, séparées par « ; » — chacune avec ses variantes séparées par « | ». « ; » ne
     peut pas apparaître dans un nom sous media/ : Word nomme ses médias imageN.ext, et
-    pronto_docx/pronto_odt ne rendent que ce nom-là."""
+    pronto_docx ne rend que ce nom-là."""
     images = [(nom, surface) for p in pars for nom, surface in p.images if nom]
     if len(images) <= 1:
         return _images_du_bloc(pars[0], variantes) if pars else ''

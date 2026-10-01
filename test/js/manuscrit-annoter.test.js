@@ -412,6 +412,128 @@ test('DOI retrouvé : la mise en forme passe, le repli ne s\'écrit ni en révis
       'le DOI ne doit figurer qu’une fois');
   });
 
+// Décision de Robin (01.10.2026) : seul un vrai doublon n'est pas posé en commentaire, c'est-à-dire
+// une règle de DOUBLON_DE_REVISION dont le constat est dit par la révision qui la chevauche.
+// Un constat différent qui chevauche une révision (ReferenceNonCitee) reste un commentaire.
+const REF_DOUBLON = 'Martin, A. et Durand, B. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
+function alertesDoublon(regleCommentaire, suggested) {
+  return [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0, span: null,
+      found: REF_DOUBLON, suggested: 'Martin, A., & Durand, B. (2020). Un titre. *Revue X*, *12*(3), '
+        + '45-67. https://doi.org/10.1/x', message: 'mise en forme' },
+    { rule: regleCommentaire, severity: 'warning', action: 'comment', para: 0, span: null,
+      found: ' et Durand', suggested, message: 'constat' },
+  ];
+}
+
+test('doublon d\'une révision (Esperluette) : retiré de Word, gardé au rapport',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Durand'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'rapport']);
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 1);
+    assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === 'CSPS-Biblio.APA.Esperluette'));
+  });
+
+test('doublon déclaré mais révision qui ne dit pas la même chose : reste un commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Autre'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
+  });
+
+test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste un commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('APA.ReferenceNonCitee', ' & Durand'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.strictEqual(resultat.stats.par_regle['APA.ReferenceNonCitee'].commentes, 1);
+  });
+
+test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse)',
+  { skip: sansPython }, () => {
+    const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
+      span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
+      message: 'mise en forme' }];
+    // Six doublons Esperluette (error), puis un constat de la même règle hors de la révision.
+    for (let i = 0; i < 6; i++) {
+      alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'error', action: 'comment',
+        para: 0, span: null, found: ' et Durand', suggested: ' & Durand', message: 'doublon ' + i });
+    }
+    alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'suggestion', action: 'comment',
+      para: 0, span: null, found: 'Un titre', suggested: ' & Durand', message: 'libre' });
+    const resultat = anotar([{ texte: REF_DOUBLON }], alertes, [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1, 'le libre garde sa place');
+    assert.strictEqual(resultat.stats.commentaires_synthese, 0);
+    assert.strictEqual(resultat.stats.devenir[7], 'commentaire');
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 6);
+  });
+
+// Décision de Robin (01.10.2026, O2) : un commentaire DOI qui chevauche le commentaire
+// APA.MiseEnForme de la même référence ne fait qu'un dans Word : celui de mise en forme, avec la
+// forme attendue du DOI à la suite (sauf si sa suggestion la contient déjà) ; le commentaire DOI
+// reste au rapport. Sans ancrage commun, les deux restent.
+// Sabotage : supprimer le bloc « 2 quinquies » de manuscrit_annoter.py.
+const REF_FUSION = 'Martin, A. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
+const DOI_NORME = 'https://doi.org/10.1/x';
+function alertesFusion(regleDoi, suggestedMef, spanDoi) {
+  const debut = REF_FUSION.indexOf('10.1/x');
+  return [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'comment', para: 0, span: [0, REF_FUSION.length],
+      found: REF_FUSION, suggested: suggestedMef, message: 'La mise en forme diverge.' },
+    { rule: regleDoi, severity: 'warning', action: 'comment', para: 0,
+      span: spanDoi || [debut, REF_FUSION.length], found: '10.1/x', suggested: DOI_NORME, message: 'DOI.' },
+  ];
+}
+const MEF_SANS_DOI = 'Martin, A. (2020). Un titre. *Revue X*, *12*(3), 45-67.';
+const MEF_AVEC_DOI = MEF_SANS_DOI + ' ' + DOI_NORME;
+
+test('fusion DOI / mise en forme : un seul commentaire dans Word, la forme du DOI à la suite, le DOI au rapport',
+  { skip: sansPython }, () => {
+    for (const regle of ['APA.DoiForme', 'CSPS-Biblio.APA.DoiForme']) {
+      const resultat = anotar([{ texte: REF_FUSION }], alertesFusion(regle, MEF_SANS_DOI),
+        [{ source: 0, sortie: 2 }], {});
+      validerBienFormees(resultat);
+      assert.strictEqual(resultat.stats.commentaires, 1, regle);
+      assert.deepStrictEqual(resultat.stats.devenir, ['commentaire', 'rapport']);
+      assert.deepStrictEqual(resultat.stats.fusion_doi, { fusionnees: 1, deja_dans_la_forme: 0, separees: 0 });
+      assert.match(resultat.commentsXml, /La mise en forme diverge\. DOI : forme attendue https:\/\/doi\.org\/10\.1\/x/);
+      assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === regle));
+    }
+    const de = anotar([{ texte: REF_FUSION }], alertesFusion('APA.DoiForme', MEF_SANS_DOI),
+      [{ source: 0, sortie: 2 }], { langue: 'de' });
+    assert.match(de.commentsXml, /DOI: erwartete Form https:\/\/doi\.org\/10\.1\/x/);
+    // Le message du rapport (l'alerte d'origine) n'est pas modifié.
+    assert.ok(!de.stats.renvoyees_au_rapport.some((a) => /erwartete/.test(a.message || '')));
+  });
+
+test('fusion DOI / mise en forme : le DOI déjà dans la forme APA n\'ajoute rien ; sans ancrage commun, les deux restent',
+  { skip: sansPython }, () => {
+    const deja = anotar([{ texte: REF_FUSION }], alertesFusion('APA.DoiForme', MEF_AVEC_DOI),
+      [{ source: 0, sortie: 2 }], {});
+    assert.strictEqual(deja.stats.commentaires, 1);
+    assert.deepStrictEqual(deja.stats.devenir, ['commentaire', 'rapport']);
+    assert.deepStrictEqual(deja.stats.fusion_doi, { fusionnees: 0, deja_dans_la_forme: 1, separees: 0 });
+    assert.ok(!/forme attendue/.test(deja.commentsXml));
+
+    // Le DOI porte sur un autre passage du paragraphe que la mise en forme (span étroit
+    // ailleurs que la référence entière) : aucun chevauchement, les deux commentaires restent.
+    const alertes = alertesFusion('APA.DoiForme', MEF_SANS_DOI);
+    alertes[0].span = [0, 8];
+    alertes[0].found = REF_FUSION.slice(0, 8);
+    const separes = anotar([{ texte: REF_FUSION }], alertes, [{ source: 0, sortie: 2 }], {});
+    assert.strictEqual(separes.stats.commentaires, 2);
+    assert.deepStrictEqual(separes.stats.devenir, ['commentaire', 'commentaire']);
+    assert.deepStrictEqual(separes.stats.fusion_doi, { fusionnees: 0, deja_dans_la_forme: 0, separees: 1 });
+    assert.ok(!/forme attendue/.test(separes.commentsXml));
+  });
+
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
 // TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
 // contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).
@@ -731,6 +853,30 @@ test('plafond global : les commentaires au-delà de `plafond_commentaires` sont 
   });
 
 // ---------------------------------------------------------------------------------
+// `stats.plafond_global` ne compte que les commentaires refusés par le plafond global : ni les
+// doublons retirés, ni le plafond par règle. Sabotage : l'y faire compter (len(renvoyees)).
+test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e commentaire = 1',
+  { skip: sansPython }, () => {
+    const paragraphes = [{ texte: REF_DOUBLON }].concat(
+      Array.from({ length: 26 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' })));
+    const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
+    const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
+      span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
+      message: 'mise en forme' },
+    { rule: 'CSPS-Biblio.APA.Esperluette', severity: 'error', action: 'comment', para: 0,
+      span: null, found: ' et Durand', suggested: ' & Durand', message: 'doublon' }];
+    const libres = (n) => Array.from({ length: n }, (_, i) => ({ rule: 'Test.R' + i,
+      severity: 'warning', action: 'comment', para: i + 1, span: null, found: null,
+      suggested: null, message: 'm' + i }));
+    const pile = anotar(paragraphes, alertes.concat(libres(25)), correspondance, { plafond_commentaires: 25 });
+    assert.strictEqual(pile.stats.commentaires, 25);
+    assert.strictEqual(pile.stats.renvoyees_au_rapport.length, 1, 'le doublon seul est renvoyé');
+    assert.strictEqual(pile.stats.plafond_global, 0);
+    const trop = anotar(paragraphes, alertes.concat(libres(26)), correspondance, { plafond_commentaires: 25 });
+    assert.strictEqual(trop.stats.commentaires, 25);
+    assert.strictEqual(trop.stats.plafond_global, 1);
+  });
+
 // 6. Révisions sans plafond : 40 corrections de la même règle doivent TOUTES s'écrire.
 
 test('les révisions n\'ont aucun plafond, contrairement aux commentaires',
@@ -1210,4 +1356,35 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
     // le revérifier par une recherche de texte (son propre texte apparaît de toute façon
     // ailleurs dans le document, comme tout paragraphe écrit).
     assert.strictEqual((resultat.documentXml.match(/<w:commentRangeStart/g) || []).length, 1);
+  });
+
+// ---------------------------------------------------------------------------------
+// Langue des textes que le module ajoute lui-même (synthèse du plafond, « Note N », étiquettes,
+// remarque d'italique) : français pour la Revue, allemand pour la Zeitschrift.
+//
+// Sabotage minimal : dans _construir_texto_comentario, ignorer `langue` (t = _textes('fr')) —
+// les assertions allemandes rougissent.
+
+test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »',
+  { skip: sansPython }, () => {
+    const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Absatz Nummer ' + i + ' zum Füllen.' }));
+    const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
+    const alertes = paragraphes.map((_, i) => ({
+      rule: 'Test.RegelA', severity: 'warning', action: 'comment', para: i, span: null,
+      found: null, suggested: i === 0 ? '*Titel* neu' : null, message: 'Vorkommen ' + i,
+    }));
+    const resultat = anotar(paragraphes, alertes, correspondance, { langue: 'de' });
+    validerBienFormees(resultat);
+    assert.match(resultat.commentsXml, /… und 2 weitere Vorkommen dieser Regel, siehe Bericht\./);
+    assert.ok(!/autres occurrences|voir le rapport/.test(resultat.commentsXml));
+    assert.match(resultat.commentsXml, /Vorschlag: Titel neu \(Kursivteile in der Änderung\)/);
+    assert.ok(!/élément/.test(resultat.commentsXml));
+
+    const note = anotar(PARA_AVEC_APPEL_NOTE, [{
+      rule: 'Test.Note.Comment', severity: 'warning', action: 'comment', para: 0, span: null,
+      found: 'Reconnaître', suggested: null, message: 'Rechtschreibung',
+      note_id: 1, note_numero: 1 }], [{ source: 0, sortie: 2 }], { langue: 'de' }, NOTE_RECONNAITRE);
+    validerBienFormees(note);
+    assert.match(note.commentsXml, /Fussnote 1: Rechtschreibung/);
+    assert.match(note.commentsXml, /Textstelle: «Reconnaître»/);
   });

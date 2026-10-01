@@ -286,3 +286,28 @@ def titre_lignes(titre):
 def titre_plat(titre):
     """« A // B » -> « A B »."""
     return ' '.join(titre_lignes(titre))
+
+
+# ---------------------------------------------------------------------------------------
+# Module à tiret (docx-meta.py, docx-titres.py) : pas importable par son nom, donc chargé
+# par chemin. Une seule instance par processus, rangée dans sys.modules : avant, entête,
+# noms et biblio chargeaient chacun leur copie de docx-meta.py.
+# ---------------------------------------------------------------------------------------
+
+def charger_module_a_tiret(nom_fichier):
+    """Le module `pipeline/<nom_fichier>`, chargé une fois puis rendu depuis sys.modules
+    sous le nom `szh_<nom sans .py, tirets en _>`."""
+    import importlib.util
+    nom = 'szh_' + os.path.splitext(nom_fichier)[0].replace('-', '_')
+    if nom in sys.modules:
+        return sys.modules[nom]
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), nom_fichier)
+    spec = importlib.util.spec_from_file_location(nom, chemin)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[nom] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[nom]
+        raise
+    return module

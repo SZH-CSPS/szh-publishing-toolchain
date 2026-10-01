@@ -1008,14 +1008,24 @@ def principal(argv):
             styles = charger_styles(z)
             RELS_IMAGES.update(charger_rels_images(z))
     except Exception as e:
-        # Non bloquant : l'import continue sans métadonnées (comme docx-titres.py).
+        # Bloquant : sans lecture il n'y a ni fiche ni instructions, et import-docx.sh
+        # refuse l'import (le Word reste en attente).
         print('[docx-meta] lecture impossible de %s : %s' % (chemin_docx, e),
               file=sys.stderr)
+        avertir(
+            'fichier-illisible',
+            ['article « %s »' % slug, 'erreur « %s »' % e],
+            "Le fichier Word n’a pas pu être ouvert\u00a0: il est peut-être tronqué ou "
+            "endommagé. Rien n’a été importé. Ouvrez-le dans Word, enregistrez-le de "
+            "nouveau, puis relancez la conversion.",
+            "Die Word-Datei konnte nicht geöffnet werden: sie ist möglicherweise "
+            "abgeschnitten oder beschädigt. Es wurde nichts importiert. Öffnen Sie sie in "
+            "Word, speichern Sie sie erneut und starten Sie die Konvertierung noch einmal.")
         chemin_meta = os.getenv('SZH_META')
         if chemin_meta:
             open(chemin_meta, 'w', encoding='utf-8', newline='\n').close()
         print(json.dumps({'slug': slug, 'erreur': str(e)}, ensure_ascii=False))
-        return 0
+        return 1
 
     classeur = Classeur(styles)
     blocs = blocs_du_corps(racine)
