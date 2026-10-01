@@ -412,6 +412,69 @@ test('DOI retrouvé : la mise en forme passe, le repli ne s\'écrit ni en révis
       'le DOI ne doit figurer qu’une fois');
   });
 
+// Décision de Robin (01.10.2026) : seul un vrai doublon n'est pas posé en commentaire, c'est-à-dire
+// une règle de DOUBLON_DE_REVISION dont le constat est dit par la révision qui la chevauche.
+// Un constat différent qui chevauche une révision (ReferenceNonCitee) reste un commentaire.
+const REF_DOUBLON = 'Martin, A. et Durand, B. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
+function alertesDoublon(regleCommentaire, suggested) {
+  return [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0, span: null,
+      found: REF_DOUBLON, suggested: 'Martin, A., & Durand, B. (2020). Un titre. *Revue X*, *12*(3), '
+        + '45-67. https://doi.org/10.1/x', message: 'mise en forme' },
+    { rule: regleCommentaire, severity: 'warning', action: 'comment', para: 0, span: null,
+      found: ' et Durand', suggested, message: 'constat' },
+  ];
+}
+
+test('doublon d\'une révision (Esperluette) : retiré de Word, gardé au rapport',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Durand'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'rapport']);
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 1);
+    assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === 'CSPS-Biblio.APA.Esperluette'));
+  });
+
+test('doublon déclaré mais révision qui ne dit pas la même chose : reste un commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Autre'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
+  });
+
+test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste un commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('APA.ReferenceNonCitee', ' & Durand'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.strictEqual(resultat.stats.par_regle['APA.ReferenceNonCitee'].commentes, 1);
+  });
+
+test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse)',
+  { skip: sansPython }, () => {
+    const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
+      span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
+      message: 'mise en forme' }];
+    // Six doublons Esperluette (error), puis un constat de la même règle hors de la révision.
+    for (let i = 0; i < 6; i++) {
+      alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'error', action: 'comment',
+        para: 0, span: null, found: ' et Durand', suggested: ' & Durand', message: 'doublon ' + i });
+    }
+    alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'suggestion', action: 'comment',
+      para: 0, span: null, found: 'Un titre', suggested: ' & Durand', message: 'libre' });
+    const resultat = anotar([{ texte: REF_DOUBLON }], alertes, [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1, 'le libre garde sa place');
+    assert.strictEqual(resultat.stats.commentaires_synthese, 0);
+    assert.strictEqual(resultat.stats.devenir[7], 'commentaire');
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 6);
+  });
+
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
 // TOUT le paragraphe, y compris À L'INTÉRIEUR d'un autre mot — mesuré en construisant le
 // contrôle n°13 du lot de branchement (« et » dans « Cette » -> « C&te »).
@@ -1210,4 +1273,35 @@ test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerai
     // le revérifier par une recherche de texte (son propre texte apparaît de toute façon
     // ailleurs dans le document, comme tout paragraphe écrit).
     assert.strictEqual((resultat.documentXml.match(/<w:commentRangeStart/g) || []).length, 1);
+  });
+
+// ---------------------------------------------------------------------------------
+// Langue des textes que le module ajoute lui-même (synthèse du plafond, « Note N », étiquettes,
+// remarque d'italique) : français pour la Revue, allemand pour la Zeitschrift.
+//
+// Sabotage minimal : dans _construir_texto_comentario, ignorer `langue` (t = _textes('fr')) —
+// les assertions allemandes rougissent.
+
+test('langue de : synthèse du plafond, étiquettes et note en allemand, sans espace avant « : »',
+  { skip: sansPython }, () => {
+    const paragraphes = Array.from({ length: 7 }, (_, i) => ({ texte: 'Absatz Nummer ' + i + ' zum Füllen.' }));
+    const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
+    const alertes = paragraphes.map((_, i) => ({
+      rule: 'Test.RegelA', severity: 'warning', action: 'comment', para: i, span: null,
+      found: null, suggested: i === 0 ? '*Titel* neu' : null, message: 'Vorkommen ' + i,
+    }));
+    const resultat = anotar(paragraphes, alertes, correspondance, { langue: 'de' });
+    validerBienFormees(resultat);
+    assert.match(resultat.commentsXml, /… und 2 weitere Vorkommen dieser Regel, siehe Bericht\./);
+    assert.ok(!/autres occurrences|voir le rapport/.test(resultat.commentsXml));
+    assert.match(resultat.commentsXml, /Vorschlag: Titel neu \(Kursivteile in der Änderung\)/);
+    assert.ok(!/élément/.test(resultat.commentsXml));
+
+    const note = anotar(PARA_AVEC_APPEL_NOTE, [{
+      rule: 'Test.Note.Comment', severity: 'warning', action: 'comment', para: 0, span: null,
+      found: 'Reconnaître', suggested: null, message: 'Rechtschreibung',
+      note_id: 1, note_numero: 1 }], [{ source: 0, sortie: 2 }], { langue: 'de' }, NOTE_RECONNAITRE);
+    validerBienFormees(note);
+    assert.match(note.commentsXml, /Fussnote 1: Rechtschreibung/);
+    assert.match(note.commentsXml, /Textstelle: «Reconnaître»/);
   });

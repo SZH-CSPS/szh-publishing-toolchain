@@ -72,6 +72,21 @@ _ETIQUETA_SUGGESTION = {'fr': 'Suggestion', 'de': 'Vorschlag'}
 # précède l'appel, voir _mot_avant_position()).
 _ETIQUETA_PASSAGE = {'fr': 'Passage', 'de': 'Textstelle'}
 
+# Les autres textes visibles d'un commentaire, par langue du produit (fr = Revue, de =
+# Zeitschrift) : l'allemand n'a pas d'espace avant « : » et cite entre «».
+_TEXTES = {
+    'fr': {'synthese': '… et %d autres occurrences de cette règle, voir le rapport.',
+           'note': 'Note %d', 'italique': ' (élément(s) en italique dans la révision)',
+           'deux_points': ' : ', 'citation': '« %s »'},
+    'de': {'synthese': '… und %d weitere Vorkommen dieser Regel, siehe Bericht.',
+           'note': 'Fussnote %d', 'italique': ' (Kursivteile in der Änderung)',
+           'deux_points': ': ', 'citation': '«%s»'},
+}
+
+
+def _textes(langue):
+    return _TEXTES.get(langue) or _TEXTES['fr']
+
 # Rang de sévérité partagé entre le classement des commentaires (point 4 du contrat) et la
 # résolution des chevauchements de révisions (point 3, révision du 21.09.2026 bis) — CORPS et
 # notes de bas de page (§7 ter, point 4) l'utilisent tous les deux, module-level pour ne pas le
@@ -688,6 +703,28 @@ def _proximo_contador(doc_xml, comments_xml, footnotes_xml=None):
     return (max(ids) + 1) if ids else 1
 
 
+# Règles dont le constat est entièrement couvert par la révision qui les chevauche (la mise en
+# forme APA d'une référence corrige le DOI et le « et » -> « & » du dernier auteur).
+DOUBLON_DE_REVISION = frozenset({
+    'APA.DoiForme', 'CSPS-Biblio.APA.DoiForme', 'CSPS-Biblio.APA.Esperluette'})
+
+
+def _plat(t):
+    return (t or '').replace('*', '').replace('\u00a0', ' ')
+
+
+def _est_doublon_de_revision(alerta, localizado, revisiones):
+    """Vrai si `alerta` (candidate au commentaire, localisée dans le corps) est d'une règle de
+    DOUBLON_DE_REVISION et chevauche une révision dont le `suggested` contient le sien."""
+    if (alerta.get('rule') not in DOUBLON_DE_REVISION or localizado is None
+            or alerta.get('note_numero') is not None or not alerta.get('suggested')):
+        return False
+    voulu = _plat(alerta['suggested'])
+    return any(localizado[0] < loc[1] and loc[0] < localizado[1]
+               and voulu in _plat(rev.get('suggested'))
+               for (loc, rev) in revisiones)
+
+
 def _contar_regla(stats, alerta, campo):
     regla = alerta.get('rule')
     entrada = stats['par_regle'].setdefault(
@@ -695,7 +732,7 @@ def _contar_regla(stats, alerta, campo):
     entrada[campo] = entrada.get(campo, 0) + 1
 
 
-def _texto_sin_marcas_italica(suggested):
+def _texto_sin_marcas_italica(suggested, langue='fr'):
     """`suggested` sans le marquage *…* — pour un usage en TEXTE PLAT (un commentaire Word ne
     rend jamais le Markdown, §7 ter, point 4) : des astérisques littéraux n'y disent rien à
     une relectrice. Une note signale qu'un passage était en italique, sans jamais le marquer."""
@@ -704,15 +741,16 @@ def _texto_sin_marcas_italica(suggested):
     segments = _segmentos_italica(suggested)
     texte = ''.join(t for t, _ in segments)
     if any(es for _, es in segments):
-        return texte + ' (élément(s) en italique dans la révision)'
+        return texte + _textes(langue)['italique']
     return texte
 
 
 def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
+    t = _textes(langue)
     mensaje = alerta.get('message') or ''
     if es_sintesis:
         extra = total_por_regla.get(alerta.get('rule'), 0) - 5
-        frase = '… et %d autres occurrences de cette règle, voir le rapport.' % extra
+        frase = t['synthese'] % extra
         mensaje = ('%s %s' % (mensaje, frase)) if mensaje else frase
     # Alerte de NOTE (§7 ter du contrat) : « Note N : » en tête, puis le passage cité de la
     # note elle-même — le commentaire, lui, est ancré dans le CORPS (sur le mot qui précède
@@ -720,14 +758,17 @@ def _construir_texto_comentario(alerta, es_sintesis, total_por_regla, langue):
     # quoi il retourne dans la note.
     note_numero = alerta.get('note_numero')
     if note_numero is not None:
-        mensaje = ('Note %d : %s' % (note_numero, mensaje)) if mensaje else 'Note %d :' % note_numero
+        entete_note = (t['note'] % note_numero) + t['deux_points'].rstrip(' ')
+        mensaje = ('%s %s' % (entete_note, mensaje)) if mensaje else entete_note
     lineas = [mensaje]
     if note_numero is not None and alerta.get('found'):
         etiqueta_passage = _ETIQUETA_PASSAGE.get(langue, 'Passage')
-        lineas.append('%s : « %s »' % (etiqueta_passage, alerta['found']))
+        lineas.append('%s%s%s' % (etiqueta_passage, t['deux_points'],
+                                  t['citation'] % alerta['found']))
     if alerta.get('suggested'):
         etiqueta = _ETIQUETA_SUGGESTION.get(langue, 'Suggestion')
-        lineas.append('%s : %s' % (etiqueta, _texto_sin_marcas_italica(alerta['suggested'])))
+        lineas.append('%s%s%s' % (etiqueta, t['deux_points'],
+                                  _texto_sin_marcas_italica(alerta['suggested'], langue)))
     lineas.append('[%s]' % alerta.get('rule'))
     return lineas
 
@@ -1108,6 +1149,23 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                         (i_p, localizado_nota, alerta))
                     devenir[idx] = 'revision'
                     stats['notes']['revisions'] += 1
+
+    # 2 quater. Un commentaire de DOUBLON_DE_REVISION dit la même faute qu'une révision écrite
+    # qui le chevauche (même paragraphe, `suggested` du commentaire contenu dans celui de la
+    # révision) : il n'est pas posé dans Word et reste au rapport (devenir 'rapport', comme un
+    # commentaire que le plafond écarte). Toute autre règle reste en commentaire. Retrait fait
+    # AVANT le plafond : il ne consomme ni les 5 par règle ni les 25 globaux, et la synthèse
+    # « et N autres » ne compte pas les alertes retirées.
+    restants = []
+    for item in candidatos_comentario:
+        idx, alerta, salida, localizado = item
+        if _est_doublon_de_revision(alerta, localizado, revisiones_por_salida.get(salida, [])):
+            stats['renvoyees_au_rapport'].append(alerta)
+            _contar_regla(stats, alerta, 'renvoyees')
+            devenir[idx] = 'rapport'
+            continue
+        restants.append(item)
+    candidatos_comentario = restants
 
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),
