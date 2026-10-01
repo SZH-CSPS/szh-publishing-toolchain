@@ -175,8 +175,9 @@ def _jetons_significatifs(texte):
     """Les mots qui commencent par une majuscule (noms propres, mots de titre en début de
     phrase) et les nombres (années, volume, pages, DOI) — jamais les mots-outils, jamais une
     simple initiale (« E. » seule ne prouve rien), jamais un marqueur structurel que la mise en
-    forme réécrit exprès (voir _JETONS_STRUCTURELS_IGNORES)."""
-    jetons = set()
+    forme réécrit exprès (voir _JETONS_STRUCTURELS_IGNORES). Liste sans doublon, dans l'ordre
+    d'apparition (le jeton annoncé ne doit pas dépendre de PYTHONHASHSEED)."""
+    jetons = {}
     for t in RE_JETON_SIGNIFICATIF.findall(texte or ''):
         if len(t) < 2:
             continue
@@ -184,8 +185,8 @@ def _jetons_significatifs(texte):
             aplati = pronto_modele.aplatir(t)
             if aplati in _JETONS_STRUCTURELS_IGNORES:
                 continue
-            jetons.add(aplati)
-    return jetons
+            jetons[aplati] = None
+    return list(jetons)
 
 
 def _jeton_manquant(original, rendu):
