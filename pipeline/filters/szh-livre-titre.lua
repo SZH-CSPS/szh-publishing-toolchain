@@ -17,6 +17,10 @@
 -- défaut de buch.yaml. Langue vide dans une table : on prend la première langue remplie et
 -- on le dit — un titre dans la mauvaise langue se remarque, un chapitre sans titre non.
 --
+-- Un « // » dans le titre (espaces autour ignorés) est un retour à la ligne forcé : un
+-- LineBreak dans le <h1>. L'ancre se fabrique sur le titre plat. Le sommaire et l'en-tête
+-- courant relisent le <h1> : livre-assembler.py lit un <br> comme une espace.
+--
 -- Ne tourne que sur un chapitre (SZH_CHAPITRE posé par livre.mk) : une pièce liminaire ou
 -- la 4e de couverture n'ont pas de fiche, et buch.yaml écrit `titre`, pas `title`.
 
@@ -30,6 +34,16 @@ local function texte(v)
   local ok, r = pcall(S, v)
   if not ok then return '' end
   return (r:gsub('^%s+', ''):gsub('%s+$', ''))
+end
+
+-- Même règle que szh_commun.titre_lignes() en Python : « A // B » -> {'A', 'B'}.
+local function titre_lignes(s)
+  local lignes = {}
+  for l in (s .. ' // '):gmatch('(.-)%s*//%s*') do
+    l = l:gsub('^%s+', ''):gsub('%s+$', '')
+    if l ~= '' then lignes[#lignes + 1] = l end
+  end
+  return lignes
 end
 
 local function langue_de(meta)
@@ -76,10 +90,37 @@ function Pandoc(doc)
   -- dans le .md : emphase, notes de langue, tout passe par le même lecteur — et c'est lui
   -- qui fabrique l'identifiant d'ancre. Un titre sur une seule ligne, quoi qu'il arrive.
   local ligne = titre:gsub('%s*[\r\n]+%s*', ' ')
-  local ok, lu = pcall(pandoc.read, '# ' .. ligne, 'markdown')
+  local lignes = titre_lignes(ligne)
+  local plat = table.concat(lignes, ' ')
+  local avec_saut = #lignes > 1
+  -- Le saut passe par un jeton sans ponctuation, que le lecteur ne touche pas.
+  local JETON = 'SZHSAUTLIGNE'
+  local source = avec_saut and table.concat(lignes, JETON) or ligne
+  local ok, lu = pcall(pandoc.read, '# ' .. source, 'markdown')
   local h = ok and lu and lu.blocks[1]
   if not h or h.t ~= 'Header' then
-    h = pandoc.Header(1, { pandoc.Str(ligne) })
+    h = pandoc.Header(1, { pandoc.Str(source) })
+  end
+  if avec_saut then
+    h.content = h.content:walk({
+      Str = function(s)
+        if not s.text:find(JETON, 1, true) then return nil end
+        local sortie = pandoc.List()
+        local rang = 1
+        while true do
+          local a, b = s.text:find(JETON, rang, true)
+          if not a then break end
+          if a > rang then sortie:insert(pandoc.Str(s.text:sub(rang, a - 1))) end
+          sortie:insert(pandoc.LineBreak())
+          rang = b + 1
+        end
+        if rang <= #s.text then sortie:insert(pandoc.Str(s.text:sub(rang))) end
+        return sortie
+      end })
+    -- L'ancre vient du titre plat, sans le jeton.
+    local okp, luplat = pcall(pandoc.read, '# ' .. plat, 'markdown')
+    local hp = okp and luplat and luplat.blocks[1]
+    h.identifier = (hp and hp.t == 'Header') and hp.identifier or ''
   end
 
   -- L'ancre ne doit pas déjà exister : le lecteur, qui a vu le .md SANS ce titre, a pu

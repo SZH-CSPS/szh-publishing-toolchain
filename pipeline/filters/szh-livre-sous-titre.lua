@@ -7,7 +7,8 @@
 -- bloc auteurs » ; un sous-titre déjà posé là les ferait se glisser entre le titre et lui.
 -- Inséré en dernier, il passe devant eux : titre, sous-titre, auteur·e·s, encadré.
 --
--- Il est écrit en HTML brut après la typographie : texte tel que dans la fiche.
+-- Il est écrit en HTML brut après la typographie : texte tel que dans la fiche. Un « // »
+-- y devient un <br> (retour à la ligne forcé).
 
 local S = pandoc.utils.stringify
 
@@ -21,8 +22,14 @@ local function texte(v)
   return (r:gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
-local function ech(v)
-  return (texte(v):gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'))
+-- « A // B » -> « A<br>B » (même règle que szh_commun.titre_lignes() en Python).
+local function lignes_html(v)
+  local sortie = {}
+  for l in (v .. ' // '):gmatch('(.-)%s*//%s*') do
+    l = l:gsub('^%s+', ''):gsub('%s+$', '')
+    if l ~= '' then sortie[#sortie + 1] = (l:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;')) end
+  end
+  return table.concat(sortie, '<br>')
 end
 
 local function langue_de(meta)
@@ -52,7 +59,7 @@ function Pandoc(doc)
   for rang, b in ipairs(doc.blocks) do
     if b.t == 'Header' then
       doc.blocks:insert(rang + 1,
-        pandoc.RawBlock('html', '<p class="szh-sous-titre">' .. ech(sous) .. '</p>'))
+        pandoc.RawBlock('html', '<p class="szh-sous-titre">' .. lignes_html(sous) .. '</p>'))
       return doc
     end
   end

@@ -56,6 +56,7 @@ RE_TITRE = re.compile(
     r'<h(?P<n>[1-3])\b[^>]*\bid="(?P<id>[^"]+)"[^>]*>(?P<txt>.*?)</h(?P=n)>',
     re.S | re.I)
 RE_BALISE = re.compile(r'<[^>]+>')
+RE_BR = re.compile(r'<br\s*/?>', re.I)
 RE_NUM_SECTION = re.compile(r'<span class="szh-num-section">.*?</span>', re.S)
 
 # La couleur d'un chapitre est déjà dans son fragment : livre.mk (PALETTE_CHAPITRE) l'a
@@ -151,7 +152,8 @@ def titres_du_fragment(fragment):
         brut = m.group('txt')
         if niveau == 1 and numero:
             brut = RE_NUM_SECTION.sub('', brut)
-        txt = RE_BALISE.sub('', brut)
+        # Un <br> du titre (« // ») vaut une espace : sans cela, deux mots se colleraient.
+        txt = RE_BALISE.sub('', RE_BR.sub(' ', brut))
         txt = re.sub(r'\s+', ' ', html.unescape(txt).strip())
         if niveau == 1 and numero and txt:
             txt = numero + ' ' + txt
@@ -315,14 +317,19 @@ def metadonnees_html(meta, lang='fr'):
     return '\n'.join(lignes) + ('\n' if lignes else '')
 
 
+def _titre_en_lignes(titre):
+    """Titre composé en bloc : chaque « // » devient un <br>, le reste est échappé."""
+    return '<br>'.join(html.escape(l) for l in szh_commun.titre_lignes(titre))
+
+
 def demi_titre(meta, lang='fr'):
     return ('<section class="szh-liminaire szh-demi-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
             % (html.escape(_auteurs_ligne(meta, lang)),
-               html.escape(str(meta.get('titre') or '')),
-               html.escape(str(meta.get('sous-titre') or ''))))
+               _titre_en_lignes(meta.get('titre')),
+               _titre_en_lignes(meta.get('sous-titre'))))
 
 
 def page_titre(meta, lang='fr'):
@@ -331,8 +338,8 @@ def page_titre(meta, lang='fr'):
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
             % (html.escape(_auteurs_ligne(meta, lang)),
-               html.escape(str(meta.get('titre') or '')),
-               html.escape(str(meta.get('sous-titre') or ''))))
+               _titre_en_lignes(meta.get('titre')),
+               _titre_en_lignes(meta.get('sous-titre'))))
 
 
 # Les quatre raisons sociales de la fondation, dans l'ordre des livres publiés. Elles ne
@@ -476,9 +483,9 @@ def metadonnees_epub(meta):
 
     lignes = []
     if meta.get('titre'):
-        lignes.append('title: ' + guillemets(meta['titre']))
+        lignes.append('title: ' + guillemets(szh_commun.titre_plat(meta['titre'])))
     if meta.get('sous-titre'):
-        lignes.append('subtitle: ' + guillemets(meta['sous-titre']))
+        lignes.append('subtitle: ' + guillemets(szh_commun.titre_plat(meta['sous-titre'])))
     lignes.append('lang: ' + guillemets(str(meta.get('lang') or 'fr')))
 
     # Les auteur·e·s et éditeur·rice·s de l'ouvrage au format pandoc EPUB : creator avec
@@ -665,7 +672,7 @@ def main(argv):
         liens += ('\n  <style>/* %s */\n%s\n</style>'
                   % (html.escape(os.path.basename(c)), contenu))
     # Chapitre seul : le <title> (donc le /Title du PDF) nomme le chapitre, puis le livre.
-    titre_document = str(meta.get('titre') or '')
+    titre_document = szh_commun.titre_plat(meta.get('titre'))
     if sans_liminaires:
         premier = next((e[2] for e in entrees if e[0] == 1), '')
         if premier:
@@ -673,7 +680,7 @@ def main(argv):
     remplacements = {
         '$lang$':          langue,
         '$titre$':         html.escape(titre_document),
-        '$sous-titre$':    html.escape(str(meta.get('sous-titre') or '')),
+        '$sous-titre$':    html.escape(szh_commun.titre_plat(meta.get('sous-titre'))),
         '$auteurs$':       html.escape(_auteurs_ligne(meta, langue)),
         # Pas en EPUB : le lecteur HTML de pandoc ferait de <meta name="author"> un dc:creator de plus.
         '$metadonnees$':   '' if meta_epub else metadonnees_html(meta, langue),

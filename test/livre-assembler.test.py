@@ -334,5 +334,63 @@ class ChaineDeFiltres(unittest.TestCase):
         self.assertGreater(o.index('szh-livre-auteurs'), o.index('szh-sections'))
 
 
+class SautDeLigneDansLeTitre(unittest.TestCase):
+    """« // » dans un titre : <br> là où le titre se compose en bloc, espace ailleurs."""
+
+    META = {'titre': 'La CDPH // en <Suisse>', 'sous-titre': 'Un // deux // trois',
+            'auteurs': [], 'lang': 'fr'}
+
+    def test_page_et_demi_titre_en_lignes(self):
+        for composer in (la.page_titre, la.demi_titre):
+            h = composer(self.META, 'fr')
+            self.assertIn('<p class="szh-titre">La CDPH<br>en &lt;Suisse&gt;</p>', h)
+            self.assertIn('<p class="szh-sous-titre">Un<br>deux<br>trois</p>', h)
+
+    def test_titre_sans_saut_inchange(self):
+        h = la.page_titre({'titre': 'A & B', 'sous-titre': ''}, 'fr')
+        self.assertIn('<p class="szh-titre">A &amp; B</p>', h)
+
+    def test_metadonnees_epub_a_plat(self):
+        y = la.metadonnees_epub(self.META)
+        self.assertIn('title: "La CDPH en <Suisse>"', y)
+        self.assertIn('subtitle: "Un deux trois"', y)
+        self.assertNotIn('//', y)
+
+    def test_sommaire_lit_le_br_comme_une_espace(self):
+        frag = _fragment('c', 'Titre<br />\nsuite<br>fin', rang=1, numero=1)
+        self.assertEqual(la.titres_du_fragment(frag)[0][2], '1 Titre suite fin')
+
+    def test_filtres_lua(self):
+        pandoc = shutil.which('pandoc')
+        self.assertTrue(pandoc, 'pandoc introuvable')
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        fiche = os.path.join(tmp, 'c.meta.yaml')
+        with open(fiche, 'w', encoding='utf-8') as f:
+            f.write('lang: fr\nslug: c\ntitle:\n  fr: "Un titre // sur deux lignes"\n'
+                    'subtitle:\n  fr: "Sous // titre & co"\n')
+        entree = os.path.join(tmp, 'c.md')
+        with open(entree, 'w', encoding='utf-8') as f:
+            f.write('Texte.\n')
+        env = dict(os.environ, SZH_LIVRE='1', SZH_CHAPITRE='1')
+        filtres = [os.path.join(RACINE, 'pipeline', 'filters', n)
+                   for n in ('szh-livre-titre.lua', 'szh-livre-sous-titre.lua')]
+        cmd = [pandoc, entree, '-f', 'markdown', '-t', 'html', '--metadata-file', fiche]
+        for fl in filtres:
+            cmd += ['--lua-filter', fl]
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        sortie = r.stdout
+        self.assertRegex(sortie, r'<h1 id="un-titre-sur-deux-lignes">Un titre<br\s*/>\s*sur deux lignes</h1>')
+        self.assertIn('<p class="szh-sous-titre">Sous<br>titre &amp; co</p>', sortie)
+        self.assertNotIn('//', sortie)
+        self.assertNotIn('SZHSAUTLIGNE', sortie)
+        # La même fiche sans « // » : un seul bloc, pas de <br>.
+        with open(fiche, 'w', encoding='utf-8') as f:
+            f.write('lang: fr\nslug: c\ntitle:\n  fr: "Un titre"\n')
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding='utf-8')
+        self.assertIn('<h1 id="un-titre">Un titre</h1>', r.stdout)
+
+
 if __name__ == '__main__':
     unittest.main()
