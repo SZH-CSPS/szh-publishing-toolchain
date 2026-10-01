@@ -67,6 +67,12 @@ function cheminVersWsl(valeur) {
   return opt ? opt[1] + cheminVersWsl(opt[2]) : valeur;
 }
 
+// Un dossier courant absolu : un chemin Windows déjà absolu se garde tel quel, même quand
+// les tests tournent sous Linux (path.resolve le croirait relatif).
+function dossierAbsolu(d) {
+  return /^[A-Za-z]:[\\/]/.test(d) ? d : path.resolve(d);
+}
+
 // Le chemin tel que l'interprète de python() le voit : à écrire dans un script généré, ou à
 // comparer avec ce que Python rend.
 function cheminPython(p) {
@@ -108,7 +114,7 @@ function commandePython(args, opts, plateforme) {
     return { commande: exe, args: args.slice(), env: o.env, cwd: o.cwd };
   }
   const tete = ['-d', DISTRO];
-  if (o.cwd) { tete.push('--cd', cheminVersWsl(path.resolve(o.cwd))); }
+  if (o.cwd) { tete.push('--cd', cheminVersWsl(dossierAbsolu(o.cwd))); }
   tete.push('-e');
   if (venv) { tete.push('sh', '-c', 'exec "$HOME/pdfvenv/bin/python" "$@"', 'python'); } else { tete.push('python3'); }
   let env = o.env;
@@ -154,7 +160,7 @@ function pythonGroupe(args, opts) {
     const cle = nom.replace(/\/p$/, '');
     env[cle] = nom.endsWith('/p') ? cheminVersWsl(String(o.env[cle])) : String(o.env[cle]);
   }
-  const cwd = o.cwd ? cheminVersWsl(path.resolve(o.cwd)) : null;
+  const cwd = o.cwd ? cheminVersWsl(dossierAbsolu(o.cwd)) : null;
   return require('./pilote-python').appeler(wslExe(), DISTRO, args.map(cheminVersWsl), env, cwd, o);
 }
 
