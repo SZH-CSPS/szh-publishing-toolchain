@@ -300,7 +300,11 @@ CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE
              --css-embed "$(ACCENT_ABS)"
 
 # La suite de filtres d'un chapitre. Même ordre que la revue, aux quatre écarts ci-dessus.
+# Le titre du chapitre (szh-livre-titre.lua, EN PREMIER : les filtres de niveaux et de
+# numérotation doivent voir le <h1>) et son sous-titre (szh-livre-sous-titre.lua, après
+# auteur·e·s et encadré, voir son en-tête) viennent de la fiche <slug>.meta.yaml, pas du .md.
 FILTRES_CHAPITRE := \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-titre.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-sauts-uniques.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
@@ -317,6 +321,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-auteurs.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-sous-titre.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
@@ -560,6 +565,128 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour ce chapitre (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
+# --------------------------------------------------------------------------------------
+# Un chapitre SEUL en PDF : `make livre-chapitre-pdf CHAPITRE=<slug>`
+#
+# Interface (le cockpit appelle cette cible quand on clique sur un chapitre) :
+#   entrée   CHAPITRE=<slug>  le nom du dossier sous chapitres/ (obligatoire) ; à lancer
+#                             depuis le dossier du livre, comme `make livre`.
+#   sortie   out/chapitres/<slug>.pdf — le chapitre seul : ni liminaires ni sommaire, les
+#            CSS du livre (maquette, accent), folios « page X sur Y » depuis 1.
+#            Intermédiaires sous out/chapitres/.seul/ (fragment, HTML assemblé).
+#   code     0 le PDF est écrit ; 1 compilation en échec (pandoc ou WeasyPrint, le message
+#            suit) ; 2 CHAPITRE absent, ou qui ne désigne aucun chapitre du livre (la liste
+#            des chapitres valides est imprimée) — rien n'est compilé.
+#   durée    un pandoc et un WeasyPrint sur quelques pages : pas de recompilation du livre,
+#            ni des autres chapitres.
+#
+# Ce que cela ne fait pas, à dessein :
+#   * Les AUTRES chapitres ne sont pas recompilés. La numérotation continue des figures et
+#     des tableaux part donc des reports du dernier build complet ($(COMPTEURS_DIR)/) :
+#     « Abbildung 7 » y garde le numéro que le livre lui a donné. Si ces reports manquent
+#     (out/ nettoyé, jamais de build complet), szh-numerotation.lua le dit et renumérote
+#     depuis 1. Modifier le NOMBRE de figures d'un chapitre précédent sans recompiler le
+#     livre laisse les suivants à leur ancien numéro, jusqu'au prochain `make livre`.
+#   * Les folios repartent à 1 : le chapitre seul n'a pas de pagination du livre.
+#
+# Le fragment est celui d'un build complet, mêmes variables, mêmes filtres
+# ($(FILTRES_CHAPITRE)), même rang, même couleur : seule la chaîne « un fragment dépend du
+# précédent » est coupée (elle forcerait à compiler tous les chapitres d'avant), et le
+# fichier est écrit à part pour ne jamais passer pour le fragment du livre. Le report de
+# compteurs de ce chapitre est, lui, réécrit au même endroit qu'au build complet.
+# --------------------------------------------------------------------------------------
+CHAPITRE ?=
+CHAPITRE_SEUL_DIR := $(OUT)/$(CH_DIR)/.seul
+CHAPITRE_PDF := $(if $(and $(CHAPITRE),$(filter $(CHAPITRE),$(CHAPITRES))),$(OUT)/$(CH_DIR)/$(CHAPITRE).pdf)
+
+.PHONY: livre-chapitre-pdf
+livre-chapitre-pdf: verifie-livre $(CHAPITRE_PDF)
+	@test -n "$(CHAPITRE)" || { \
+	  echo "[livre] CHAPITRE=<slug> est obligatoire : make livre-chapitre-pdf CHAPITRE=<slug>. Chapitres : $(CHAPITRES)"; \
+	  echo "[livre] [de] CHAPITRE=<slug> ist erforderlich. Kapitel: $(CHAPITRES)"; \
+	  exit 2; }
+	@test -n "$(CHAPITRE_PDF)" || { \
+	  echo "[livre] « $(CHAPITRE) » n'est pas un chapitre de ce livre. Chapitres : $(CHAPITRES)"; \
+	  echo "[livre] [de] « $(CHAPITRE) » ist kein Kapitel dieses Buches. Kapitel: $(CHAPITRES)"; \
+	  exit 2; }
+	@echo "[livre] $(CHAPITRE_PDF)"
+
+ifneq ($(CHAPITRE_PDF),)
+CHAPITRE_FRAG_SEUL := $(CHAPITRE_SEUL_DIR)/$(CHAPITRE).frag.html
+CHAPITRE_HTML_SEUL := $(CHAPITRE_SEUL_DIR)/$(CHAPITRE).html
+
+$(CHAPITRE_FRAG_SEUL): $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).md $(CONFIG_LIVRE) $(GABARIT_CHAPITRE) $(FILTRES) \
+                       $(wildcard $(CH_DIR)/$(CHAPITRE)/tables/*.html) \
+                       $(wildcard $(CH_DIR)/$(CHAPITRE)/media/*) \
+                       $(wildcard $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).meta.yaml) \
+                       $(wildcard $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).biblio.md) $(ORDRE_CHAPITRES_FICHIER) \
+                       $(SOMMAIRE_CHAPITRES_FICHIER)
+	@mkdir -p "$(dir $@)"
+	@slug="$(CHAPITRE)"; \
+	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
+	index=$$(( (rang - 1) % 6 + 1 )); \
+	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+	if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
+	  onglet_meta="--metadata hors-sommaire=1"; \
+	else \
+	  numero=$$(printf '%s\n' $(CHAPITRES_SOMMAIRE) | grep -n -x "$$slug" | cut -d: -f1); \
+	  hauteur=$$(awk -v y0=$(ONGLET_Y0) -v y1=$(ONGLET_Y1) -v n=$(NB_CHAPITRES_SOMMAIRE) 'BEGIN{printf "%.3f", (y1-y0)/n}'); \
+	  haut=$$(awk -v y0=$(ONGLET_Y0) -v h=$$hauteur -v k=$$numero 'BEGIN{printf "%.3f", y0+(k-1)*h}'); \
+	  onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
+	fi; \
+	meta=""; \
+	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, seul)"; \
+	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
+	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/$$rang.txt" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" \
+	  SZH_LIENS_COURTS="$(abspath $(LIENS_COURTS_CACHE))" $(PANDOC) "$$slug.md" \
+	  --from=$(LECTEUR) --to=html5 \
+	  --id-prefix="$$slug-" \
+	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
+	  --metadata slug="$$slug" \
+	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata rang-chapitre="$$rang" \
+	  $$onglet_meta \
+	  --standalone --embed-resources \
+	  --template="$(abspath $(GABARIT_CHAPITRE))" \
+	  $(FILTRES_CHAPITRE) \
+	  --output="$(abspath $@)"
+
+$(CHAPITRE_HTML_SEUL): $(CHAPITRE_FRAG_SEUL) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+                       $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(ACCENT_CSS)
+	@mkdir -p "$(dir $@)"
+	@python3 "$(ASSEMBLEUR)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --gabarit "$(GABARIT_LIVRE)" \
+	  --sortie "$@" \
+	  --out "$(OUT)" \
+	  --sans-liminaires \
+	  $(CSS_LIVRE) \
+	  $(CHAPITRE_FRAG_SEUL)
+
+# Même cascade de repli que le PDF du livre (PDF/UA-1, puis balisé simple, puis brut).
+$(CHAPITRE_PDF): $(CHAPITRE_HTML_SEUL)
+	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
+	: > "$$jrnl"; \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
+	else \
+	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
+	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
+	    tail -12 "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	    echo "[livre]   Journal complet : $$jrnl"; \
+	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
+	    exit 1; }; \
+	fi; \
+	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
+	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
+	mv -f "$$tmp" "$@"
+endif
+
 # Une pièce liminaire écrite à la main : même chaîne, sans le gabarit de chapitre — elle
 # n'ouvre pas sur une belle page et ne porte pas de pastille.
 $(OUT)/$(LIM_DIR)/%.html: $(LIM_DIR)/%.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $(FILTRES)
@@ -655,28 +782,39 @@ $(LIVRE_IMPRIMEUR_PDF): $(LIVRE_IMPRIMEUR_HTML)
 	mv -f "$$tmp" "$@"
 
 # --------------------------------------------------------------------------------------
-# La couverture à plat : 4e de couverture, dos, 1re de couverture, sur une page — le
-# second fichier qui part chez l'imprimeur, à côté du PDF intérieur.
+# La couverture, deux sorties d'un même gabarit (couverture.py, docs/ARCHITECTURE-LIVRES.md) :
+#   <livre>-couverture-impression.pdf  à plat 4e + dos + 1re, PDF/X-4, CMJN exact, fond
+#                                      perdu, traits de coupe et de pli ;
+#   <livre>-couverture.pdf             1re puis 4e, RGB, PDF/UA-1 ; -1.png et -4.png en sont
+#                                      tirés à 300 dpi ;
+#   <livre>-dos.json                   le dos et d'où il vient.
 #
-# Le dos ne se devine pas : couverture.py le calcule à partir du nombre de pages lu dans
-# $(LIVRE_PDF), juste avant de composer (sauf si buch.yaml impose impression.dos-mm, qui
-# gagne toujours). C'est pourquoi $(LIVRE_PDF) est un prérequis de la couverture, et non
-# l'inverse : un dos calculé sur un compte de pages périmé est le défaut le plus cher du
-# métier (voir docs/ARCHITECTURE-LIVRES.md §3 et l'en-tête de couverture.py).
+# Le dos ne se devine pas : couverture.py le calcule sur le nombre de pages lu dans
+# $(LIVRE_PDF) (sauf impression.dos-mm, qui gagne toujours). $(LIVRE_PDF) est donc un
+# prérequis de la couverture : un dos calculé sur un compte de pages périmé est le défaut
+# le plus cher du métier. couverture.py lit buch.yaml lui-même (couleur-impression,
+# profil-cmjn, fond) et tourne dans le python de l'image : Pillow (CMJN de l'illustration),
+# pypdf et l'API WeasyPrint n'existent que là.
 # --------------------------------------------------------------------------------------
 GABARIT_COUVERTURE := $(PIPELINE_DIR)/templates/szh-couverture.html
 STYLE_COUVERTURE   := $(PIPELINE_DIR)/styles/livre/couverture.css
 COUVERTURE_PY      := $(PIPELINE_DIR)/couverture.py
+COULEURS_REFERENCE := $(PIPELINE_DIR)/styles/couleurs-reference.json
+LOGOS_COUVERTURE   := $(wildcard $(PIPELINE_DIR)/media/logos/*.svg)
+GS ?= gs
 
-# L'illustration est facultative (couverture/illustration.jpg|jpeg|png|svg|webp) : aucun
-# des deux livres de banc n'en porte. `firstword` : une seule image par couverture, celle
-# qui trie en premier si plusieurs extensions coexistent — un cas qui ne s'est pas encore
-# présenté, donc sans règle de priorité éprouvée.
+# L'illustration est facultative (couverture/illustration.jpg|jpeg|png|svg|webp).
+# `firstword` : une seule image par couverture, celle qui trie en premier.
 ILLUSTRATION_COUV := $(firstword $(wildcard $(COUV_DIR)/illustration.*))
 
-COUVERTURE_FRAG := $(OUT)/$(COUV_DIR)/quatrieme.html
-COUVERTURE_HTML := $(OUT)/$(COUV_DIR)/$(NOM_LIVRE)-couverture.html
-COUVERTURE_PDF  := $(OUT)/$(NOM_LIVRE)-couverture.pdf
+COUVERTURE_FRAG      := $(OUT)/$(COUV_DIR)/quatrieme.html
+COUVERTURE_IMPR_HTML := $(OUT)/$(COUV_DIR)/$(NOM_LIVRE)-couverture-impression.html
+COUVERTURE_HTML      := $(OUT)/$(COUV_DIR)/$(NOM_LIVRE)-couverture.html
+COUVERTURE_IMPR_PDF  := $(OUT)/$(NOM_LIVRE)-couverture-impression.pdf
+COUVERTURE_PDF       := $(OUT)/$(NOM_LIVRE)-couverture.pdf
+COUVERTURE_PNG_1     := $(OUT)/$(NOM_LIVRE)-couverture-1.png
+COUVERTURE_PNG_4     := $(OUT)/$(NOM_LIVRE)-couverture-4.png
+COUVERTURE_DOS       := $(OUT)/$(NOM_LIVRE)-dos.json
 
 # Le texte de 4e de couverture : compilé comme un chapitre (même chaîne que les
 # liminaires : même lecteur, mêmes filtres, donc la même typographie maison), mais il ne
@@ -693,27 +831,36 @@ $(COUVERTURE_FRAG): $(COUV_DIR)/quatrieme.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE
 	  $(FILTRES_CHAPITRE) \
 	  --output="$(abspath $@)"
 
-# L'assemblage : buch.yaml + le fragment de 4e + le PDF intérieur (pour son compte de
-# pages) + l'illustration éventuelle -> le HTML que WeasyPrint composera.
-$(COUVERTURE_HTML): $(LIVRE_PDF) $(COUVERTURE_FRAG) $(CONFIG_LIVRE) $(GABARIT_COUVERTURE) \
-                    $(COUVERTURE_PY) $(SOCLE) $(STYLE_COUVERTURE) $(ILLUSTRATION_COUV)
-	@mkdir -p "$(dir $@)"
-	@python3 "$(COUVERTURE_PY)" \
-	  --meta "$(CONFIG_LIVRE)" \
-	  --pdf-interieur "$(LIVRE_PDF)" \
-	  --quatrieme "$(COUVERTURE_FRAG)" \
-	  --illustration "$(ILLUSTRATION_COUV)" \
-	  --gabarit "$(GABARIT_COUVERTURE)" \
-	  --sortie "$@" \
-	  --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_COUVERTURE))"
+$(COUVERTURE_DOS): $(LIVRE_PDF) $(CONFIG_LIVRE) $(COUVERTURE_PY)
+	@$(CMJN_PYTHON) "$(COUVERTURE_PY)" --mode dos --meta "$(CONFIG_LIVRE)" \
+	  --pdf-interieur "$(LIVRE_PDF)" --sortie "$@"
 
-# HTML -> PDF. Balisé PDF/UA-1 comme les autres sorties, et pas « seulement une image
-# d'imprimerie » : la couverture porte le titre, les auteur·e·s et le texte de 4e, c'est-à-dire
-# précisément ce qu'un lecteur d'écran doit pouvoir annoncer d'un livre. Mesuré : elle passe
-# la porte veraPDF ua1 telle quelle, le balisage ne coûte donc rien à tenter.
-# Même cascade de repli que le PDF intérieur, et pour la même raison : un défaut de balisage
-# ne doit pas empêcher de sortir une épreuve. `bleed`/`marks` sont posés par couverture.css,
-# pas par cette recette. Temporaire puis rename local, ignoré par la synchro OneDrive.
+COUVERTURE_PREALABLES := $(LIVRE_PDF) $(COUVERTURE_FRAG) $(CONFIG_LIVRE) $(GABARIT_COUVERTURE) \
+                         $(COUVERTURE_PY) $(SOCLE) $(STYLE_COUVERTURE) $(COULEURS_REFERENCE) \
+                         $(LOGOS_COUVERTURE) $(ILLUSTRATION_COUV)
+COUVERTURE_ARGS = --meta "$(CONFIG_LIVRE)" --pdf-interieur "$(LIVRE_PDF)" \
+  --quatrieme "$(COUVERTURE_FRAG)" --illustration "$(ILLUSTRATION_COUV)" \
+  --gabarit "$(GABARIT_COUVERTURE)" --icc-dir "$(ICC_DIR)" \
+  --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_COUVERTURE))"
+
+$(COUVERTURE_IMPR_HTML): $(COUVERTURE_PREALABLES)
+	@mkdir -p "$(dir $@)"
+	@$(CMJN_PYTHON) "$(COUVERTURE_PY)" --mode impression $(COUVERTURE_ARGS) --sortie "$@"
+
+$(COUVERTURE_HTML): $(COUVERTURE_PREALABLES)
+	@mkdir -p "$(dir $@)"
+	@$(CMJN_PYTHON) "$(COUVERTURE_PY)" --mode ecran $(COUVERTURE_ARGS) --sortie "$@"
+
+# PDF/X-4 sans repli : un échec ici fait échouer la cible, jamais un PDF nu qu'on
+# prendrait pour un PDF d'impression. couverture.py refuse aussi de livrer s'il reste
+# une couleur RGB.
+$(COUVERTURE_IMPR_PDF): $(COUVERTURE_IMPR_HTML) $(COUVERTURE_PY)
+	@$(CMJN_PYTHON) "$(COUVERTURE_PY)" --imprimer "$<" "$@" --meta "$(CONFIG_LIVRE)"
+
+# La version écran, balisée PDF/UA-1 : elle porte le titre, les responsables et le texte
+# de 4e, ce qu'un lecteur d'écran doit pouvoir annoncer d'un livre. Même cascade de repli
+# que le PDF intérieur : un défaut de balisage ne doit pas empêcher de sortir une épreuve.
+# Temporaire puis rename local, ignoré par la synchro OneDrive.
 $(COUVERTURE_PDF): $(COUVERTURE_HTML)
 	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~$(notdir $@).weasyprint.err'; \
 	: > "$$jrnl"; \
@@ -727,6 +874,16 @@ $(COUVERTURE_PDF): $(COUVERTURE_HTML)
 	fi; \
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
 	mv -f "$$tmp" "$@"
+
+# PNG de la 1re et de la 4e. Mesuré : Ghostscript 10.05 rend un `rg` DeviceRGB au pixel
+# près (#D31932 -> 211,25,50), sans option de couleur ; l'anticrénelage ne touche que les
+# bords, jamais l'intérieur d'un aplat.
+COUVERTURE_GS = $(GS) -q -dSAFER -dNOPAUSE -dBATCH -sDEVICE=png16m -r300 \
+  -dTextAlphaBits=4 -dGraphicsAlphaBits=4
+$(COUVERTURE_PNG_1): $(COUVERTURE_PDF)
+	@$(COUVERTURE_GS) -dFirstPage=1 -dLastPage=1 -o "$@" "$<"
+$(COUVERTURE_PNG_4): $(COUVERTURE_PDF)
+	@$(COUVERTURE_GS) -dFirstPage=2 -dLastPage=2 -o "$@" "$<"
 
 # --------------------------------------------------------------------------------------
 # La passe CMJN, facultative et commandée : la clé `impression.profil-cmjn` de buch.yaml
@@ -793,8 +950,9 @@ verifie-couverture:
 	  echo "[livre] [de] Kein Klappentext ($(COUV_DIR)/quatrieme.md fehlt)."; \
 	  exit 1; }
 
-livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_PDF)
-	@echo "[livre] $(COUVERTURE_PDF)"
+livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_DOS) $(COUVERTURE_IMPR_PDF) \
+                  $(COUVERTURE_PDF) $(COUVERTURE_PNG_1) $(COUVERTURE_PNG_4)
+	@echo "[livre] $(COUVERTURE_IMPR_PDF), $(COUVERTURE_PDF), $(COUVERTURE_PNG_1), $(COUVERTURE_PNG_4), $(COUVERTURE_DOS)"
 
 # --------------------------------------------------------------------------------------
 # EPUB 3. Pas un nouvel assembleur : pandoc sait fabriquer l'archive — catalogue OPF,
@@ -832,8 +990,14 @@ $(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR
 #   ci-dessus, donc make n'a aucune règle pour le fabriquer seul. Le déclarer ici faisait
 #   échouer la cible sur « No rule to make target » — et seulement sur un `out/` propre,
 #   c'est-à-dire chez quelqu'un d'autre.
-$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB)
-	@$(PANDOC) "$(LIVRE_EPUB_HTML)" 	  --from=html --to=epub3 	  --split-level=1 	  --metadata-file="$(LIVRE_EPUB_META)" 	  --css="$(abspath $(STYLE_LIVRE_EPUB))" 	  --output="$@"
+$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB) $(OUT)/$(NOM_LIVRE)-couverture-1.png
+	@$(PANDOC) "$(LIVRE_EPUB_HTML)" \
+	  --from=html --to=epub3 \
+	  --split-level=1 \
+	  --metadata-file="$(LIVRE_EPUB_META)" \
+	  --css="$(abspath $(STYLE_LIVRE_EPUB))" \
+	  --epub-cover-image="$(OUT)/$(NOM_LIVRE)-couverture-1.png" \
+	  --output="$@"
 
 livre-epub: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_EPUB)
 	@echo "[livre] $(LIVRE_EPUB)"

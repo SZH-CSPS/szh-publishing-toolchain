@@ -212,7 +212,8 @@ def controler_epub(chemin, buch, personnes):
         return
     z = zipfile.ZipFile(chemin)
     opf_nom = re.search(r'full-path="([^"]+)"', z.read('META-INF/container.xml').decode()).group(1)
-    opf = z.read(opf_nom).decode('utf-8')
+    # pandoc typographie l'apostrophe : « d’essai » vaut « d'essai ».
+    opf = z.read(opf_nom).decode('utf-8').replace('’', "'")
     if 'properties="cover-image"' not in opf:
         fail('%s : pas d’image de couverture' % chemin)
     titre = str(buch.get('titre', ''))

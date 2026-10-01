@@ -90,7 +90,7 @@ de règles ; c'est une table de vérité de six lignes.
   chapitres/
     01-einleitung/
       01-einleitung.md
-      01-einleitung.meta.yaml     ouvrage collectif : auteurs, résumé, DOI du chapitre
+      01-einleitung.meta.yaml     la fiche : titre, sous-titre, auteurs, résumé, DOI du chapitre
       media/                      images, comme un article
       tables/                     tableaux extraits, comme un article
   chapitres-word/                 dépôt des .docx à convertir
@@ -103,8 +103,13 @@ de règles ; c'est une table de vérité de six lignes.
   out/
     <slug>.pdf                    PDF numérique (RVB, PDF/UA-1, signets)
     <slug>-imprimeur.pdf          PDF imprimeur (CMJN, fond perdu, traits de coupe)
-    <slug>-couverture.pdf         couverture à plat (4e + dos + 1re)
+    <slug>-couverture-impression.pdf  couverture à plat 4e + dos + 1re (PDF/X-4, CMJN)
+    <slug>-couverture.pdf         1re puis 4e, pour l'écran (RGB, PDF/UA-1)
+    <slug>-couverture-1.png       1re de couverture, 300 dpi (aussi l'image de l'EPUB)
+    <slug>-couverture-4.png       4e de couverture, 300 dpi
+    <slug>-dos.json               le dos : pages lues, mm, grammage de couverture, source
     <slug>.epub                   EPUB 3
+    chapitres/<slug>.pdf          un chapitre seul (aperçu du cockpit, folios depuis 1)
     web/                          HTML responsive
 ```
 
@@ -128,17 +133,24 @@ isbn-print: "978-3-905890-96-9"
 isbn-ebook: "978-3-905890-95-2"
 doi: "10.57161/b327"
 licence: cc-by-nc-nd-4.0
-couleur: "#5F9FBC"
+couleur: "#5F9FBC"          # couleur NUMÉRIQUE (PDF écran, EPUB, web)
+couleur-impression: bleu-acier  # clé de styles/couleurs-reference.json : couverture
+couverture:                # provisoire (fond paramétrable en cours de conception)
+  fond: poireau            # clé de référence, défaut poireau
+  fond-teinte: 9           # % de cette couleur, défaut 9
 auteurs: []                # monographie : ici. Collectif : dans chaque chapitre.
 ordre-chapitres: []
 liminaires: [demi-titre, colophon, sommaire, avant-propos.md]
 impression:
-  grammage: 90             # g/m²
-  main: 1.22               # volume spécifique du papier (cm³/g)
-  dos-mm:                  # vide = calculé ; une valeur ici gagne
+  grammage: 90             # g/m² du papier intérieur
+  main: 1.27               # « Papier-Volumen » du papier intérieur
+  couverture-volume: 1.3   # volume du papier de couverture
+  couverture-grammage:     # vide = 250 sous 20 mm de dos, 300 au-delà
+  colle-mm: 0              # « Seitenleimauftrag »
+  dos-mm:                  # imposé par l'imprimeur : gagne toujours
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: ""          # vide = conversion par défaut
+  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"   # un seul profil pour tout
 locked: false
 archived: false
 version-toolkit: ""
@@ -147,8 +159,30 @@ version-toolkit: ""
 **Monographie ou ouvrage collectif.** Une seule clé décide : `ouvrage`. Et elle ne s'appelle pas `type`, parce que `type` est déjà la RUBRIQUE d'un article dans les fiches de la revue : pandoc fusionne les fichiers de métadonnées, le dernier gagnant, et le `type: article` d'un chapitre importé de Word aurait effacé le `type: collectif` du livre sans un mot. En monographie, les
 auteur·e·s sont dans `buch.yaml` et s'impriment sur la couverture et la page de titre ; les
 chapitres n'ont pas de bloc auteurs. En ouvrage collectif, chaque `<slug>.meta.yaml` porte
-ses auteur·e·s, imprimés sous le titre du chapitre — c'est exactement le schéma d'auteur à
-sept champs déjà utilisé par les articles, `szh-auteurs.lua` compris.
+ses auteur·e·s (clé `author`), imprimés sous le titre du chapitre — c'est le schéma d'auteur
+à sept champs déjà utilisé par les articles. Un chapitre n'hérite jamais des `auteurs` de
+`buch.yaml` (clé du LIVRE, fusionnée en premier dans ses métadonnées) : le filtre ne lit que
+`author`.
+
+**Le titre et les auteur·e·s d'un chapitre sont dans sa fiche, pas dans son `.md`.**
+`<slug>.meta.yaml` porte `title` (une entrée par langue, `fr:`, `de:`…), `subtitle`
+(facultatif, même forme) et `author` ; le `.md` commence directement par le corps. À la
+compilation, `szh-livre-titre.lua` (tête de `FILTRES_CHAPITRE`) pose le `<h1>` comme si le
+rédacteur avait écrit `# Titre` — numéro de section, ancre et sommaire n'y voient rien —,
+`szh-livre-auteurs.lua` la ligne d'auteur·e·s (ouvrage collectif seulement) et
+`szh-livre-sous-titre.lua` le sous-titre, dans l'ordre titre, sous-titre, auteur·e·s, encadré
+`falc-header`. Un `.md` qui porte encore son `# Titre` le garde : il n'y a jamais deux
+titres, et l'ancien livre compile comme avant.
+
+`pipeline/livre-migrer-meta.py <dossier-livre> [--simuler]` fait le passage pour un livre
+existant : le premier titre de niveau 1 et le bloc `::: {.szh-auteurs}` qui le suit
+sortent du `.md` et entrent dans la fiche (`title.<lang>`, `author`), l'un et l'autre
+découpés comme les bylines de l'import Word des articles (« A & B », « A, B et C »,
+« A und B »). Il ne remplace jamais une valeur déjà présente dans la fiche — il la signale —,
+refuse un livre `locked: true`, laisse tel quel un `.md` à plusieurs titres de niveau 1
+(manuscrit à scinder) et ne change rien au second passage. Même script en dernière étape de
+l'import Word d'un chapitre (`import-docx.sh`) et dans `livre-scinder.py`, qui écrit la
+fiche de chaque morceau au lieu d'un `# Titre`.
 
 **Un bloc écrit directement dans le `.md` du chapitre** (remplace depuis le 23.09.2026 la
 clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
@@ -214,23 +248,55 @@ clé YAML `ecouter:`, qui a disparu — aucun livre réel ne l'avait adoptée) :
   l'onglet FALC) se repartage entre eux à parts égales — voir `pipeline/profils/livre.mk`,
   § « Index à pouce », pour le calcul.
 
-### Le calcul du dos
+### Calcul du dos
+
+La formule est celle du tableur de l'imprimeur, `Buchrueckenberechnung_2022_250_300_gm21.xlsx`
+(feuille « Buchrückenberechnung Softcover ») :
 
 ```
-épaisseur d'une feuille (mm) = grammage (g/m²) × main (cm³/g) / 1000
-dos (mm) = (pages / 2) × épaisseur de feuille + 2 × épaisseur de la couverture
+dos (mm) = 4 × g_couv/2000 × vol_couv  +  pages × g_int/2000 × vol_int  +  colle
 ```
 
-Vérifié sur deux couvertures réelles : le FALC A4 de 2026 (134 pages, dos mesuré 8,26 mm
-au `TrimBox`) donne 0,123 mm par feuille — cohérent avec un couché 100 g/m² de main 1,23.
-Le Thaler 2019 était livré sous le nom `UG_7,5mm`, dos de 7,5 mm.
+* `pages` : le nombre de pages du PDF intérieur, **lu dans le PDF** juste avant de composer
+  la couverture (`/Root → /Pages → /Count`), jamais saisi — un dos calculé sur un compte de
+  pages périmé est le défaut le plus cher du métier ;
+* `g_int`, `vol_int` : grammage et volume du papier intérieur, par défaut celui du
+  tableur, Mondi DNS Premium 90 g/m², volume 1,27 ;
+* `g_couv`, `vol_couv` : la couverture, Offset blanc mat, volume 1,3, en 250 g/m² ou 300 ;
+* `colle` : l'épaisseur de colle au dos (« Seitenleimauftrag »), 0 par défaut.
 
-Les valeurs de départ (90 g/m², main 1,22, couverture 0,3 mm) sont **des variables
-cohérentes, pas une vérité** : le papier se choisit livre par livre, et l'imprimeur donne
-sa main. La clé `dos-mm` permet de forcer la valeur qu'il aura dictée. Le nombre de pages,
-lui, n'est pas saisi : il est **lu dans le PDF intérieur** juste avant de composer la
-couverture — un dos calculé sur un compte de pages périmé est le défaut le plus cher de
-tout le métier.
+**Règle 250/300 g.** Le grammage de couverture n'est pas un réglage mais une conséquence :
+le dos se calcule d'abord en 250 g ; s'il atteint 20 mm, la couverture passe en 300 g et le
+dos se recalcule avec ce grammage (un 300 g casse au pli d'un dos étroit). Un dos de moins
+de 6 mm reste en 250 g et garde son texte de dos (cas réel : le BRK en Leichte Sprache,
+3,6 mm).
+
+| Clé `impression.` | Rôle | Défaut |
+|---|---|---|
+| `grammage` | g/m² du papier intérieur | 90 |
+| `main` | volume (« Papier-Volumen ») du papier intérieur | 1,27 |
+| `couverture-volume` | volume du papier de couverture | 1,3 |
+| `couverture-grammage` | impose 250 ou 300 g/m² | vide : la règle ci-dessus |
+| `colle-mm` | colle au dos | 0 |
+| `dos-mm` | dos imposé par l'imprimeur | vide : calculé |
+| `fond-perdu-mm` | fond perdu de la couverture d'impression | 3 |
+| `traits-de-coupe` | traits de coupe et de pli | true |
+| `profil-cmjn` | profil ICC (dans `/opt/icc/`) de l'OutputIntent et de l'illustration | `PSOuncoated_v3_FOGRA52.icc` |
+
+**Quand l'imprimeur impose le dos**, on écrit sa valeur dans `impression.dos-mm` : elle
+gagne sur le calcul, sans discussion, et le grammage de couverture suit la même règle
+(300 g dès 20 mm) sauf `couverture-grammage` explicite. `out/<livre>-dos.json` écrit le
+résultat et sa source (`calculé : 4 × 250/2000 × 1.3 + 134 pages … ` ou `imposé par
+buch.yaml`) ; le code est `calculer_dos()` dans `pipeline/couverture.py`, éprouvé par
+`test/couverture-dos.test.py`.
+
+Recoupé : le FALC A4 de 2026 (134 pages, dos mesuré 8,26 mm au `TrimBox`) donne
+0,65 + 134 × 0,05715 = 8,31 mm.
+
+⚠ **Incohérence du tableur.** Le bloc 300 g écrit le volume intérieur **1,25 en dur**
+(cellule D21), là où le bloc 250 g le tire de la table des papiers (1,27, cellule E33). On
+retient 1,27 dans les deux cas : c'est la valeur de la table, et rien ne justifie qu'un
+papier intérieur change de volume avec le grammage de sa couverture.
 
 ---
 
@@ -250,7 +316,9 @@ pipeline/
   livre-assembler.py             colle les fragments, compose les liminaires et le sommaire
   filters/
     szh-tableau-boite.lua        enveloppe chaque tableau (défaut PDF/UA, voir §4.4)
+    szh-livre-titre.lua          le titre d'un chapitre, depuis sa fiche (première de la chaîne)
     szh-livre-auteurs.lua        le bloc auteurs d'un chapitre, après son titre
+    szh-livre-sous-titre.lua     le sous-titre, depuis la fiche, juste sous le titre
     szh-livre-couverture.lua     4e + dos + 1re, une page à plat
   styles/livre/
     base.css                     géométrie, folios, liminaires, sommaire, coupures
@@ -297,31 +365,67 @@ Le `Makefile` actuel route déjà `profil: book` vers un message d'attente
 acceptée devient `livre` — `book` restant toléré en synonyme, des dossiers portant déjà la
 clé.
 
+### Un chapitre seul : `make livre-chapitre-pdf CHAPITRE=<slug>`
+
+Le clic sur un chapitre, dans le cockpit, ne recompile pas le livre : la cible compile ce
+seul chapitre (même suite de filtres, même rang, même couleur que dans le livre) et écrit
+`out/chapitres/<slug>.pdf` — sans liminaires ni sommaire, avec les CSS du livre, folios
+« page X sur Y » depuis 1. Codes de sortie : 0 écrit, 1 compilation en échec, 2 `CHAPITRE`
+absent ou inconnu. L'interface complète est en tête de la règle, dans `profils/livre.mk`.
+
+Écart assumé : la numérotation des figures et des tableaux court sur tout le livre, et les
+autres chapitres ne sont pas recompilés. Le PDF seul garde donc la numérotation du dernier
+build complet (les reports de `out/.szh-compteurs/`) ; elle ne se met à jour qu'au prochain
+`make livre`.
+
 ### Les six sorties
 
 | Cible | Produit | Comment |
 |---|---|---|
 | `livre-pdf` | PDF numérique | WeasyPrint, RVB, PDF/UA-1, signets, liens vivants, sans fond perdu |
 | `livre-imprimeur` | PDF imprimeur | WeasyPrint + `bleed`/`marks`, puis conversion CMJN |
-| `livre-couverture` | Couverture à plat | page unique `(2 × largeur + dos)`, fond perdu, traits de coupe, CMJN |
+| `livre-couverture` | Couverture | à plat `(2 × largeur + dos)` en PDF/X-4 CMJN, fond perdu, traits de coupe et de pli ; 1re + 4e en PDF/UA-1 et PNG RGB ; `-dos.json` |
 | `livre-html` | HTML responsive | pandoc + `web.css`, autonome |
 | `livre-epub` | EPUB 3 | **pas résolu — voir §4.5** |
 | `livre-mobi` | *(refusé, voir §7)* | |
 
 ### 4.3 Le CMJN : mécanisme mesuré, texte en K seul confirmé
 
-**Mesuré, pas supposé.** WeasyPrint 69 honore `bleed` et `marks: crop cross` : un essai sur
-ce poste sort un `MediaBox` agrandi du fond perdu, un `TrimBox` juste, et des traits de
-coupe et repères de montage dessinés. Les traits de coupe **ne demandent donc aucun outil
-supplémentaire**.
+**Mesuré, pas supposé.** WeasyPrint honore `bleed` : un `MediaBox` agrandi, un `TrimBox`
+juste. Ses `marks: crop cross`, en revanche, sont tracés en RGB (`0 0 0 rg`).
 
-Le CMJN, si. WeasyPrint écrit en `DeviceRGB` et n'a pas de mode CMJN. `pipeline/cmjn.py`
-fait la conversion en deux étapes :
+**WeasyPrint 70 écrit le CMJN qu'on lui donne.** `device-cmyk(c m y k)` sort tel quel
+(`0.16 0.9 0.64 0 scn`), y compris dans les `fill` d'un SVG chargé en `<img>` ou en fond
+CSS, et `device-cmyk(0 0 0 1)` est un noir K seul. Avec `--pdf-variant pdf/x-4
+--output-intent=--nom` et en CSS `@color-profile --nom { src: url(file:///opt/icc/….icc);
+components: cyan, magenta, yellow, black }` (sans `components`, WeasyPrint plante), il pose
+un OutputIntent `/GTS_PDFX` (« PSO Uncoated v3 (FOGRA52) »). Ce qui reste en `DeviceRGB`,
+c'est ce que la feuille écrit en hex — tout l'intérieur du livre.
+
+**La couverture n'utilise donc ni cmjn.py ni Ghostscript** (`pipeline/couverture.py`) :
+* le HTML d'impression ne porte que des `device-cmyk()` tirés de
+  `styles/couleurs-reference.json` (CMJN du graphiste ; une teinte = t % de chaque encre) ;
+  la version écran ne porte que leurs RGB (une teinte = `round(255 − t × (255 − c))`).
+  Jamais l'un n'est converti en l'autre ;
+* les traits de coupe et de pli sont des éléments CSS en `device-cmyk(1 1 1 1)`, posés hors
+  du fond perdu (de fond perdu + 1 mm à + 6 mm), pas `marks: crop` ;
+* l'illustration matricielle est convertie en JPEG CMJN par Pillow ImageCms (sRGB → profil
+  d'impression, relatif colorimétrique, compensation du point noir) ; l'écran et les PNG
+  gardent l'original ;
+* WeasyPrint fixe la `BleedBox` à min(bleed, 10 pt) du rogné : couverture.py compose par
+  l'API et la remet au fond perdu de `buch.yaml` ; il refuse de livrer s'il reste un
+  `rg`/`RG` ou une image RGB, Form XObjects compris ;
+* les PNG sortent de Ghostscript (`png16m`, 300 dpi) : mesuré, un `rg` DeviceRGB y garde
+  son RGB au pixel près (`#D31932` → 211, 25, 50), sans aucune option de couleur.
+
+**L'intérieur (`livre-imprimeur`)** reste en hex dans ses feuilles ; `pipeline/cmjn.py` le
+convertit en deux étapes (sa table des couleurs de maison est lue dans le même
+`couleurs-reference.json`) :
 
 1. **Une passe sur le flux de contenu**, avant Ghostscript : le texte de labeur (un `rg`
    neutre et sombre immédiatement suivi de `BT`) devient `0 0 0 1 k` — noir K seul —, les
-   sept couleurs de la maison deviennent leur CMJN chiffré par le graphiste (table dans
-   `cmjn.py`), et le blanc `1 1 1 rg` devient `0 0 0 0 k` (papier, pas d'encre). Tout le
+   sept couleurs de la maison deviennent leur CMJN chiffré par le graphiste
+   (`couleurs-reference.json`), et le blanc `1 1 1 rg` devient `0 0 0 0 k` (papier, pas d'encre). Tout le
    reste — images, teintes non chiffrées — reste en RVB à ce stade.
 2. **Ghostscript** convertit ce qui reste :
    ```
@@ -571,13 +675,13 @@ Correspondances de styles Word → blocs pandoc :
 
 | Style Word | Écriture dans le `.md` | Rendu |
 |---|---|---|
-| `Titre1..4` | `#`, `##`, `###`, `####` | titres, avec pastille sur `#` |
+| `Titre1..4` | `#` : `title` de la fiche ; `##`, `###`, `####` dans le `.md` | titres, avec pastille sur le titre du chapitre |
 | `InfoBox` | `::: {.falc-resume}` | encadré gris de tête de chapitre |
 | `InfoBox2` | `::: {.falc-encadre}` | encadré à filet |
 | `Mis en évidence` | `::: {.falc-cle}` | paragraphe gras détaché |
 | `Légende_Photo` | légende de figure | inchangé (`szh-numerotation`) |
 | `Liste étapes` | `::: {.falc-etapes}` | liste numérotée espacée |
-| `Nom auteurs` | `auteurs:` du `.meta.yaml` | bloc auteurs (`szh-auteurs`) |
+| `Nom auteurs` | `::: {.szh-auteurs}` à l'import, rangé ensuite dans `author:` de la fiche par `livre-migrer-meta.py` (la clé `auteurs:` est celle de `buch.yaml`, pas d'un chapitre) | ligne d'auteur·e·s sous le titre |
 | `Soustitre Projet` | `## …` + `{.falc-projet}` | sous-titre de projet |
 
 ---

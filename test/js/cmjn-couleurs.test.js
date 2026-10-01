@@ -1,10 +1,11 @@
 /**
- * Audit de conformité : les sept couleurs de maison du script cmjn.py
- * DOIVENT correspondre exactement aux définitions CSS et socle.
+ * Audit de conformité : la table de référence des couleurs de maison
+ * (pipeline/styles/couleurs-reference.json) DOIT correspondre exactement aux
+ * définitions CSS et aux CMJN du graphiste.
  *
- * Toute divergence est un défaut : une mise à jour d'une couleur
- * charte doit être doublée dans pipeline/cmjn.py avant la compilation,
- * sinon l'imprimerie recevra les mauvaises teintes.
+ * C'est la seule table : cmjn.py (PDF imprimeur) et couverture.py (couverture)
+ * la lisent, aucun des deux n'en garde de copie. Une couleur de charte qui change
+ * se change dans le JSON, et ce test dit si le CSS a suivi.
  *
  * Table des sept couleurs officielles (graphiste) :
  *   - Rouge SZH-CSPS (#D31932) → CMJN officiel 16 90 64 0
@@ -14,11 +15,6 @@
  *   - Poireau (#51A66D)         → CMJN officiel 70 10 70 0
  *   - Bleu acier (#5F9FBC)      → CMJN officiel 65 25 20 0
  *   - Mountbatten (#A98899)     → CMJN officiel 40 50 30 0
- *
- * Les trois sources doivent coïncider :
- * 1. pipeline/styles/socle.css (--c-nuit)
- * 2. pipeline/styles/couleurs.css (-marque alias)
- * 3. pipeline/cmjn.py (table house_colors)
  */
 
 const test = require('node:test');
@@ -47,28 +43,19 @@ function extractCSSColors(filePath) {
 }
 
 /**
- * Extrait les définitions CMJN depuis pipeline/cmjn.py.
+ * Lit la table de référence.
  * Retourne un objet { '#HEX': [C, M, J, N] }.
  */
 function extractCMYKTable(filePath) {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  const ref = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   const cmyk = {};
-
-  // Pattern dans la table house_colors
-  // hex_to_rgb('#D31932'): (0.16, 0.90, 0.64, 0.0),  # Rouge SZH-CSPS
-  const pattern = /hex_to_rgb\('(#[0-9A-Fa-f]{6})'\):\s*\(([\d.]+),\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)\)/gi;
-  let match;
-  while ((match = pattern.exec(content)) !== null) {
-    const hex = match[1].toUpperCase();
-    const c = parseFloat(match[2]);
-    const m = parseFloat(match[3]);
-    const y = parseFloat(match[4]);
-    const k = parseFloat(match[5]);
-    cmyk[hex] = [c, m, y, k];
+  for (const entree of Object.values(ref)) {
+    cmyk[entree.rgb.toUpperCase()] = entree.cmjn.map(Number);
   }
-
   return cmyk;
 }
+
+const REFERENCE = path.join(__dirname, '../../pipeline/styles/couleurs-reference.json');
 
 /**
  * Normalise un hex pour comparaison.
@@ -111,11 +98,11 @@ test('Couleurs de maison : socle.css vs couleurs.css', () => {
   }
 });
 
-test('Couleurs de maison : CSS vs cmjn.py', () => {
+test('Couleurs de maison : CSS vs couleurs-reference.json', () => {
   const toolkitPath = path.join(__dirname, '../../pipeline');
   const couleursColors = extractCSSColors(path.join(toolkitPath, 'styles/couleurs.css'));
   const socleColors = extractCSSColors(path.join(toolkitPath, 'styles/socle.css'));
-  const cmykTable = extractCMYKTable(path.join(toolkitPath, 'cmjn.py'));
+  const cmykTable = extractCMYKTable(REFERENCE);
 
   // Sept variables : l'une du socle, les six de couleurs.css
   const hexMapping = {
@@ -133,7 +120,7 @@ test('Couleurs de maison : CSS vs cmjn.py', () => {
 
     assert.ok(
       cmykTable[normalizedHex],
-      `Couleur ${name} (${hex}) absente de la table CMJN dans cmjn.py`
+      `Couleur ${name} (${hex}) absente de couleurs-reference.json`
     );
 
     // Vérifier aussi que le hex figure dans CSS
@@ -142,17 +129,14 @@ test('Couleurs de maison : CSS vs cmjn.py', () => {
 
     assert.ok(
       foundInCSS,
-      `Couleur ${name} (${hex}) trouvée dans cmjn.py mais absente de CSS`
+      `Couleur ${name} (${hex}) trouvée dans couleurs-reference.json mais absente de CSS`
     );
   }
 });
 
-// « Cohérence intra-cmjn.py » (sept entrées, quatre composantes en [0,1]) a été retiré :
-// redondant avec le test suivant, qui compare à la table du graphiste (source indépendante)
-// et vérifie donc déjà, en creux, qu'il y a sept couleurs à quatre composantes exploitables.
 test('Valeurs officielles CMJN (graphiste)', () => {
   const toolkitPath = path.join(__dirname, '../../pipeline');
-  const cmykTable = extractCMYKTable(path.join(toolkitPath, 'cmjn.py'));
+  const cmykTable = extractCMYKTable(REFERENCE);
 
   // Table attendue (en format normalisé [0, 1])
   const expectedCMYK = {
@@ -165,8 +149,8 @@ test('Valeurs officielles CMJN (graphiste)', () => {
     '#A98899': [0.40, 0.50, 0.30, 0.0],  // Mountbatten
   };
 
-  // Table du graphiste et table du script doivent porter exactement les mêmes couleurs :
-  // ni une de plus (résidu), ni une de moins (couleur oubliée dans cmjn.py).
+  // Table du graphiste et table de référence doivent porter exactement les mêmes couleurs :
+  // ni une de plus (résidu), ni une de moins (couleur oubliée).
   assert.strictEqual(Object.keys(cmykTable).length, Object.keys(expectedCMYK).length,
     `Table CMJN : attendu ${Object.keys(expectedCMYK).length} couleurs, trouvé ${Object.keys(cmykTable).length}`);
 
@@ -174,7 +158,7 @@ test('Valeurs officielles CMJN (graphiste)', () => {
     const normalized = normalizeHex(hex);
     const actual = cmykTable[normalized];
 
-    assert.ok(actual, `Couleur ${hex} absente de cmjn.py`);
+    assert.ok(actual, `Couleur ${hex} absente de couleurs-reference.json`);
     assert.strictEqual(actual.length, 4, `CMJN de ${hex} a ${actual.length} composantes au lieu de 4`);
 
     // Comparaison avec tolérance (PDF arrondit)
@@ -184,6 +168,20 @@ test('Valeurs officielles CMJN (graphiste)', () => {
         Math.abs(actual[i] - expected[i]) < tolerance,
         `CMJN[${i}] de ${hex} : attendu ${expected[i]}, trouvé ${actual[i]}`
       );
+    }
+  }
+});
+
+// Pas de seconde table : cmjn.py et couverture.py lisent le JSON, aucun n'écrit de hex
+// de maison en dur (une copie divergerait à la première retouche de charte).
+test('cmjn.py et couverture.py lisent la table de référence, sans copie', () => {
+  const pipeline = path.join(__dirname, '../../pipeline');
+  const hexMaison = Object.keys(extractCMYKTable(REFERENCE));
+  for (const f of ['cmjn.py', 'couverture.py']) {
+    const src = fs.readFileSync(path.join(pipeline, f), 'utf-8');
+    assert.ok(src.includes('couleurs-reference.json'), `${f} ne lit pas couleurs-reference.json`);
+    for (const hex of hexMaison) {
+      assert.ok(!src.toUpperCase().includes(hex), `${f} écrit ${hex} en dur`);
     }
   }
 });

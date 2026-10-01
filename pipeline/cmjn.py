@@ -11,17 +11,10 @@ a) Noir du texte : un `rg` (RVB) immédiatement suivi de `BT` (début texte) don
    ⚠ N'applique jamais cette règle à un `rg` suivi d'un tracé (re, m, c…) —
    un aplat noir n'est pas du texte.
 
-b) Sept couleurs de maison remplacées par leurs CMJN officiels (pas ICC) :
-   - Rouge SZH-CSPS (#D31932)         → 0.16 0.90 0.64 0
-   - Nuit (#252B46)                   → 0.65 0.45 0 0.60
-   - Capucine (#EB5E51)               → 0 0.74 0.64 0
-   - Moutarde (#C7CF1C)               → 0.30 0.04 0.95 0
-   - Poireau (#51A66D)                → 0.70 0.10 0.70 0
-   - Bleu acier (#5F9FBC)             → 0.65 0.25 0.20 0
-   - Mountbatten (#A98899)            → 0.40 0.50 0.30 0
-
-   Ces hex viennent de pipeline/styles/socle.css et couleurs.css. Toute divergence
-   est un défaut (vérifiée par test/). Les CMJN viennent du graphiste.
+b) Sept couleurs de maison remplacées par leurs CMJN officiels (pas ICC), lus dans
+   pipeline/styles/couleurs-reference.json — la seule table, partagée avec couverture.py.
+   Ses hex doivent coïncider avec socle.css et couleurs.css, ses CMJN avec ceux du
+   graphiste (vérifié par test/js/cmjn-couleurs.test.js).
 
 c) Blanc `1 1 1 rg` → `0 0 0 0 k` (papier, pas d'encre).
 
@@ -40,9 +33,19 @@ import os
 import subprocess
 import sys
 import re
+import json
 
 import pypdf
 from pypdf.generic import StreamObject
+
+REFERENCE_COULEURS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  'styles', 'couleurs-reference.json')
+
+
+def lire_reference():
+    """La table de référence des couleurs de maison : {clé: {nom, rgb, cmjn}}."""
+    with open(REFERENCE_COULEURS, encoding='utf-8') as f:
+        return json.load(f)
 
 
 def hex_to_rgb(hexc):
@@ -84,17 +87,9 @@ class CMYKConverter:
     """Convertisseur des opérateurs de couleur d'un flux PDF."""
 
     def __init__(self):
-        # Table des sept couleurs de maison : hex → CMYK (normalisés)
-        # Les CMJN viennent du graphiste, en pourcentages — conversion en [0, 1]
-        self.house_colors = {
-            hex_to_rgb('#D31932'): (0.16, 0.90, 0.64, 0.0),  # Rouge SZH-CSPS
-            hex_to_rgb('#252B46'): (0.65, 0.45, 0.0, 0.60),   # Nuit
-            hex_to_rgb('#EB5E51'): (0.0, 0.74, 0.64, 0.0),    # Capucine
-            hex_to_rgb('#C7CF1C'): (0.30, 0.04, 0.95, 0.0),   # Moutarde
-            hex_to_rgb('#51A66D'): (0.70, 0.10, 0.70, 0.0),   # Poireau
-            hex_to_rgb('#5F9FBC'): (0.65, 0.25, 0.20, 0.0),   # Bleu acier
-            hex_to_rgb('#A98899'): (0.40, 0.50, 0.30, 0.0),   # Mountbatten
-        }
+        # Les sept couleurs de maison : RGB normalisé -> CMJN du graphiste, en [0, 1].
+        self.house_colors = {hex_to_rgb(c['rgb']): tuple(float(v) for v in c['cmjn'])
+                             for c in lire_reference().values()}
 
     def is_house_color(self, r, g, b):
         """Cherche (r, g, b) dans la table ; tolère l'arrondi PDF."""
