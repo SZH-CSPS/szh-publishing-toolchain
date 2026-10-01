@@ -158,8 +158,9 @@ function Remove-SzhRapportTemporaire([string]$Chemin) {
 # message d'exception ne sort jamais d'ici. Le rapport d'erreur (NETTOYEUR-ECHEC) ne porte que
 # des valeurs d'une liste blanche -- le type de l'exception, le lieu dans le depot, l'etape, un
 # code de refus, un code de sortie -- revalidees ICI par motif meme quand la CLI les a deja
-# assainies ; les compteurs (windows\szh-compteurs.ps1) ne portent que des noms de mesure et des
-# entiers. Jamais $textePreproc, jamais le journal de l'onglet, jamais de fichiers joints.
+# assainies ; les compteurs (vscodium-extension\szh-cockpit\lib\compteurs.js, lance par
+# outils\compteurs-cli.js) ne portent que des noms de mesure et des entiers.
+# Jamais $textePreproc, jamais le journal de l'onglet, jamais de fichiers joints.
 # Aucune de ces deux ecritures ne leve vers l'interface.
 
 # Le contenu assaini d'un rapport : un objet ordonne de valeurs a motif verifie, ou $null.
@@ -217,6 +218,7 @@ function Send-SzhConstatsNettoyeur {
   try {
     $mesures = $null
     $passage = ''
+    $fichier = ''
     if ($Stats -and $Stats.PSObject.Properties['compteurs'] -and $Stats.compteurs) {
       $mesures = $Stats.compteurs.mesures
       $passage = [string]$Stats.compteurs.passage
@@ -224,13 +226,17 @@ function Send-SzhConstatsNettoyeur {
     if (($null -eq $mesures) -and ($Interrompu -or (-not $Ok))) {
       # Rien n'est revenu de la CLI (interruption, sortie sans JSON, WSL pas prete) : un
       # compteur minimal, pour que l'issue se compte quand meme.
-      $passage = Get-SzhCompteursPassage $CheminManuscrit
+      $fichier = $CheminManuscrit
       $issue = 'plantage'
       if ($Interrompu) { $issue = 'interrompu' }
       $mesures = [ordered]@{ ('issue.' + $issue) = 1 }
       if (($Produit -ceq 'revue') -or ($Produit -ceq 'zeitschrift')) { $mesures['produit.' + $Produit] = 1 }
     }
-    if ($null -ne $mesures) { Write-SzhCompteurs -Source 'nettoyeur' -Passage $passage -Mesures $mesures }
+    if ($null -ne $mesures) {
+      # Sans VSCodium ni outil, le compteur est perdu sans bruit : un compteur est un confort.
+      Invoke-SzhNodeCockpit -Outil 'compteurs-cli.js' -SansLever -Entree ([ordered]@{
+        source = 'nettoyeur'; passage = $passage; fichier = $fichier; mesures = $mesures }) | Out-Null
+    }
   } catch { }
 
   try {

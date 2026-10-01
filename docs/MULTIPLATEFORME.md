@@ -133,8 +133,8 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 
 ## 8. Rapports d'erreur, compteurs, inventaire
 
-- **Ce qui bloque.** Les écrivains PowerShell jumeaux (`szh-rapport.ps1`,
-  `szh-compteurs.ps1`), l'inventaire en PowerShell seul (registre, `COMPUTERNAME`, mutex), le
+- **Ce qui bloque.** L'écrivain PowerShell jumeau des rapports (`szh-rapport.ps1` ; celui des
+  compteurs est déjà porté par `outils/compteurs-cli.js`), l'inventaire en PowerShell seul (registre, `COMPUTERNAME`, mutex), le
   masquage par `%USERPROFILE%`.
 - **Option.** Le cockpit devient le seul écrivain. L'inventaire passe en JavaScript
   (`os.hostname`, `os.userInfo`), et le masquage reconnaît `~`, `/home/…` et `/Users/…`.

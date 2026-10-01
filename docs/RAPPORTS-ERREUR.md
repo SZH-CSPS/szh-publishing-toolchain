@@ -344,11 +344,13 @@ d'import, seul le **code** d'un avertissement (le second jeton de la ligne) est 
 reste de la ligne, qui peut citer un nom de fichier, ne l'est jamais.
 
 **Où.** `_Systeme\compteurs\`, dérivé de l'ancrage SharePoint comme les rapports
-(`dossierSystemeDepuisAncrage`, `lib/rapport-erreur.js` ; `Get-SzhDossierSysteme 'compteurs'`
-côté PowerShell), jamais sous la racine active. Surcharge de test : `SZH_COMPTEURS`, le
-dossier lui-même. Même file d'attente hors ligne que les rapports, mais séparée
-(`%LOCALAPPDATA%\SZH\compteurs-en-attente`, 200 fichiers ou 90 jours au plus), vidée au
-lancement suivant. Jamais de fenêtre, jamais d'exception vers l'interface. Rien n'est écrit
+(`dossierSystemeDepuisAncrage`, `lib/rapport-erreur.js`), jamais sous la racine active.
+Surcharge de test : `SZH_COMPTEURS`, le dossier lui-même. Le seul écrivain est
+`lib/compteurs.js` : le cockpit l'appelle directement, et le lanceur passe par
+`outils/compteurs-cli.js` sous le Node de VSCodium (sans VSCodium, le compteur est perdu sans
+message). Même file d'attente hors ligne que les rapports, mais séparée
+(`%LOCALAPPDATA%\SZH\compteurs-en-attente`, 200 fichiers ou 90 jours au plus), vidée par le
+cockpit à son activation. Jamais de fenêtre, jamais d'exception vers l'interface. Rien n'est écrit
 quand `SZH_LANCEUR_SIMULE=1` ou `SZH_RESEAU_INTERDIT` est posée sans `SZH_COMPTEURS`.
 
 **Format.** Un fichier par événement, écrit une fois et jamais réécrit :

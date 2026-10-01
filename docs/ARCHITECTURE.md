@@ -331,7 +331,6 @@ l'ordre de leurs dépendances, ses fils :
 | `szh-rapport.ps1` | écrivain PowerShell des rapports d'erreur ([`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md)) |
 | `szh-produits.ps1` | `$SzhProduits`, les emplacements, l'identité d'un numéro ou d'un livre, les liens `szh://` |
 | `szh-checkin.ps1` | l'inventaire mensuel des postes, un CSV par machine |
-| `szh-compteurs.ps1` | écrivain PowerShell des compteurs d'usage |
 | `szh-shell.ps1` | identité de barre des tâches, raccourcis, lancement de VSCodium, `Invoke-SzhNodeCockpit` |
 | `szh-migration.ps1` | migration de l'arborescence du dossier de test |
 | `szh-epinglage.ps1` | épinglage hors ligne des dossiers OneDrive |

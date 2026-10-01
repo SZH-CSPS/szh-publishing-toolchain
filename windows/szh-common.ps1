@@ -14,8 +14,6 @@ $ErrorActionPreference = 'Stop'
 # l'épinglage hors ligne tout à la fin : Get-SzhDossiersAEpingler ne se sert que des produits
 # (Get-SzhBaseRevuesPour, $SzhSousDossiers, $SzhNomDossierReserve), mais n'a de sens qu'une
 # fois l'arborescence de test migrée dans sa forme neuve.
-# Les compteurs d'usage (szh-compteurs.ps1) viennent juste après le check-in, dont ils relisent
-# la version du disque virtuel.
 # $SzhBaseUtilisateur (plus bas) est calculé après ce dot-source et n'en dépend pas, mais
 # szh-taches.ps1 et szh-rapport.ps1 (file d'attente hors ligne), dot-sourcés ensuite ou juste
 # ici, le lisent dès leur premier appel, jamais à leur chargement.
@@ -24,7 +22,6 @@ $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\szh-rapport.ps1"
 . "$PSScriptRoot\szh-produits.ps1"
 . "$PSScriptRoot\szh-checkin.ps1"
-. "$PSScriptRoot\szh-compteurs.ps1"
 . "$PSScriptRoot\szh-shell.ps1"
 . "$PSScriptRoot\szh-migration.ps1"
 . "$PSScriptRoot\szh-epinglage.ps1"

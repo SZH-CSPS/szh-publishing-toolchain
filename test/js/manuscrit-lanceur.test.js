@@ -318,6 +318,9 @@ function executerPiloteManuscrit(corpsSupplementaire, envSupplementaire) {
     // szh-common.ps1 (dot-source) : rien qu'il n'ecrit sur le disque a ce stade, mais
     // $env:SZH_BASE (pose plus bas, dans env) isole quand meme Write-SzhLog etc. de la
     // vraie production, jamais C:\ProgramData\SZH pendant une suite de tests.
+    // Les compteurs passent par outils\compteurs-cli.js sous « VSCodium » : le node.exe de ce
+    // poste en tient lieu (ELECTRON_RUN_AS_NODE y est sans effet), le cockpit est celui du depot.
+    "function Get-VSCodiumExe { return '" + process.execPath.replace(/'/g, "''") + "' }",
     '$script:form = New-Object System.Windows.Forms.Form',
     // New-SzhPagePreproc range son contexte la ou Invoke-SzhManuscrit le lit.
     '$script:ctxPreproc = @{ Form = $script:form }',
@@ -332,6 +335,7 @@ function executerPiloteManuscrit(corpsSupplementaire, envSupplementaire) {
   // dossier partage ni le vrai %LOCALAPPDATA%.
   const env = Object.assign({}, process.env, {
     SZH_BASE: baseJetable, SZH_LANGUE: 'fr',
+    SZH_COCKPIT_DOSSIER: path.join(RACINE, 'vscodium-extension', 'szh-cockpit'),
     SZH_RAPPORTS: path.join(travail, 'rapports'), SZH_COMPTEURS: path.join(travail, 'compteurs'),
     LOCALAPPDATA: path.join(travail, 'localappdata'),
   }, envSupplementaire || {});

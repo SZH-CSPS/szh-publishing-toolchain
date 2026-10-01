@@ -271,8 +271,6 @@ if ($ancrageResolu.origine -eq 'absent') {
 # silencieux, jamais bloquant -- l'ancrage vient d'etre resolu, c'est le bon moment pour
 # retenter les rapports ecrits hors ligne depuis le dernier lancement.
 try { Clear-SzhRapportsEnAttente } catch { }
-# Meme geste pour les compteurs d'usage (windows\szh-compteurs.ps1).
-try { Clear-SzhCompteursEnAttente } catch { }
 
 # ---- Check-in mensuel du poste ----
 # Une ligne par mois et par compte dans <racine>\_Systeme\inventaire\<POSTE>.csv, creee si
