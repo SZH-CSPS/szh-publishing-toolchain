@@ -1476,7 +1476,10 @@ déjà retirés ; Vale reçoit EN PLUS les cellules de tableau et le contenu des
 profondeur — jamais ancrables dans le `.docx` produit (`source=None`), mais Vale doit les voir
 quand même. `manuscrit_regles.grouper()` ne connaît que le catalogue structurel : la CLI
 regroupe elle-même par famille et par règle (`_grouper_toutes_alertes()`). `rapport['alertes']
-['origine']` compte les quatre moteurs séparément.
+['origine']` compte les quatre moteurs séparément, plus `nettoyage` (les alertes que la CLI émet
+elle-même : perte de contenu, éléments écartés, notes reprises, langue en désaccord avec le
+produit, recherche en ligne en panne, annotation ou conversion `.odt` impossible). Une alerte sans
+origine valide est comptée sous `inconnue` (clé présente seulement alors) et tracée au journal.
 
 **Annotation** : après l'écriture du gabarit, si ni `--analyse-seule` ni `--sans-annotation` ne
 sont posés, `manuscrit_annoter.annoter()` reçoit les alertes fusionnées et

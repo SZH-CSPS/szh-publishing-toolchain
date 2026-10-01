@@ -582,6 +582,22 @@ def _etiqueter(lot, origine):
     return lot
 
 
+def _compter_origines(alertes):
+    """Compte des alertes par origine ; la somme vaut toujours le total. Une alerte sans origine
+    valide (étiquette oubliée à un site rare) devient `inconnue` : comptée, tracée dans le
+    journal, et la clé n'apparaît qu'alors. Un plantage ici perdrait tout le passage pour un
+    défaut d'étiquette ; ce sont les tests qui échouent sur `inconnue`, pas la production."""
+    inconnues = [a for a in alertes if a.get('origine') not in ORIGINES_ALERTE]
+    for a in inconnues:
+        progres('alerte sans origine valide (%r) : %s' % (a.get('origine'), a.get('rule')))
+        a['origine'] = 'inconnue'
+    compte = collections.Counter(a['origine'] for a in alertes)
+    resultat = {o: compte[o] for o in ORIGINES_ALERTE}
+    if inconnues:
+        resultat['inconnue'] = len(inconnues)
+    return resultat
+
+
 RANG_SEVERITE = {'error': 0, 'warning': 1, 'suggestion': 2}
 
 
@@ -1228,10 +1244,7 @@ def _principal(argv):
             format_sortie = 'odt'
 
     groupes = _grouper_toutes_alertes(alertes)
-    # Chaque alerte porte son `origine`, posée là où son lot a rejoint la liste : la somme vaut
-    # toujours le total.
-    compte_origine = collections.Counter(a['origine'] for a in alertes)
-    alertes_origine = {o: compte_origine[o] for o in ORIGINES_ALERTE}
+    alertes_origine = _compter_origines(alertes)
     n_error = sum(1 for a in alertes if a['severity'] == 'error')
     n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
     n_suggestion = sum(1 for a in alertes if a['severity'] == 'suggestion')
