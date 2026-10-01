@@ -95,6 +95,9 @@ const TONS_IMPORT = {
   'titre-manquant': 'attention',
   'meta-illisible': 'attention',
   'homonymes-epuises': 'danger',
+  // Le .docx ne s'ouvre pas : l'import est refusé, comme un échec.
+  'fichier-illisible': 'danger',
+  'tableau-texte-perdu': 'attention',
   // ---- Le lecteur du gabarit « Pronto » (pipeline/pronto-lire.py) ------------------
   //
   // Branché sur la chaîne d'import le 22.09.2026. Ce lecteur LIT une structure imposée par

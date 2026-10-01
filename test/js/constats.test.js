@@ -566,6 +566,24 @@ test('exhaustivité : tout code de la chaîne a sa gravité et sa destination', 
     'ces codes arriveraient à l’écran sans couleur décidée ni bouton : ' + manquants.join(', '));
 });
 
+test('exhaustivité : fichier-illisible et tableau-texte-perdu, émis par pipeline/, sont dans la table', () => {
+  // Relève dans les .py les appels avertir('code', ...) (même sur deux lignes) et exige une
+  // entrée pour chacun : un code absent arriverait en carte grise, sans bouton.
+  const dossier = path.join(RACINE, 'pipeline');
+  const emis = new Set();
+  for (const f of fs.readdirSync(dossier).filter((n) => n.endsWith('.py'))) {
+    const src = fs.readFileSync(path.join(dossier, f), 'utf8');
+    for (const m of src.matchAll(/avertir\(\s*'([a-z-]+)'/g)) { emis.add(m[1]); }
+  }
+  // Les deux refus et pertes de l'import qui portaient une carte grise (01.10.2026). Les autres
+  // codes d'avertir() relèvent d'autres sources (scission, rendu...) ou de repli connu.
+  for (const code of ['fichier-illisible', 'tableau-texte-perdu']) {
+    assert.ok(emis.has(code), 'plus émis par pipeline/ : ' + code);
+    assert.ok(constats.TABLE['import/' + code], 'code émis sans entrée : ' + code);
+    assert.strictEqual(constats.TABLE['import/' + code].defaut, 'defaut.' + code);
+  }
+});
+
 test('exhaustivité : aucune ligne morte dans la table', () => {
   // L'inverse du contrôle ci-dessus : une entrée pour un code que plus personne n'émet est
   // une décision qui ne s'applique à rien, et qu'on relira comme si elle valait encore.
@@ -601,6 +619,8 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
     // entrée CLES_IMPORT — même repli que les quatre ci-dessus.
     'import/bloc-valeur-non-reprise', 'import/image-absente-import',
     'import/figure-alt-a-completer', 'import/tableau-images-et-texte',
+    // Émis par docx-meta.py, pronto-lire.py et docx-controle-import.py (revue du 01.10.2026).
+    'import/fichier-illisible', 'import/tableau-texte-perdu',
     // Vu par le cockpit en lisant les tableaux de l'article (constatEnteteVide).
     'cockpit/entete-vide'];
   const mortes = Object.keys(constats.TABLE)
