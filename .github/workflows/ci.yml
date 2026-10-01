@@ -228,7 +228,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             make patch \
             libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libharfbuzz-subset0 libffi8 fontconfig \
-            fonts-dejavu-core
+            fonts-dejavu-core ghostscript
 
       # Python 3.13, comme la WSL : c'est lui qui crée le venv de WeasyPrint plus bas, et le
       # python3 des contrôles sans dépendance.
