@@ -22,6 +22,7 @@ isbn-ebook: "978-3-905890-00-1"
 doi: "10.57161/b999"
 licence: cc-by-nc-nd-4.0
 couleur: "#5F9FBC"
+couleur-impression: bleu-acier
 auteurs:
 - prenom: "Banc"
   nom: "d'essai"
@@ -32,11 +33,14 @@ ordre-chapitres: []
 liminaires: [demi-titre, colophon, page-titre, sommaire, vorwort.md]
 impression:
   grammage: 90
-  main: 1.22
+  main: 1.27
+  couverture-volume: 1.3
+  couverture-grammage:
+  colle-mm: 0
   dos-mm:
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: ""
+  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"
 locked: false
 archived: false
 version-toolkit: ""
