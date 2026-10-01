@@ -271,3 +271,18 @@ def caractere_sym(code_hex, police=''):
     if (police or '').lower() in _POLICES_SYMBOLES and point in _SYM_PUCES:
         return _SYM_PUCES[point]
     return chr(point)
+
+
+# Retour à la ligne forcé dans un titre de livre ou de chapitre : « // », espaces autour
+# ignorés. Composé en bloc, il devient un saut ; partout ailleurs, une espace.
+_SAUT_TITRE = re.compile(r'\s*//\s*')
+
+
+def titre_lignes(titre):
+    """« A // B » -> ['A', 'B'] ; lignes vides retirées."""
+    return [x for x in _SAUT_TITRE.split(str(titre or '').strip()) if x]
+
+
+def titre_plat(titre):
+    """« A // B » -> « A B »."""
+    return ' '.join(titre_lignes(titre))
