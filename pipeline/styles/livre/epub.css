@@ -108,11 +108,11 @@ blockquote {
   border-left: 1px solid var(--c-rule);
 }
 /* Exergue (::: {.highlight}, alias .hervorhebung) : la barre de livre/base.css, en unités
-   d'écran. Le repli est celui du socle, que l'EPUB n'embarque pas. */
+   d'écran. */
 .hervorhebung, .highlight {
   margin: 1em 0;
   padding-left: 1em;
-  border-left: 4px solid var(--c-annual, #8f8f95);
+  border-left: 4px solid var(--c-annual);
 }
 .hervorhebung > *, .highlight > * { margin: 0; hyphens: none; }
 .hervorhebung > * + *, .highlight > * + * { margin-top: 1em; }

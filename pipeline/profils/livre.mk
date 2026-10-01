@@ -855,12 +855,20 @@ $(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR
 #   ci-dessus, donc make n'a aucune règle pour le fabriquer seul. Le déclarer ici faisait
 #   échouer la cible sur « No rule to make target » — et seulement sur un `out/` propre,
 #   c'est-à-dire chez quelqu'un d'autre.
-$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB) $(OUT)/$(NOM_LIVRE)-couverture-1.png
+# Les jetons du socle et l'accent annuel précèdent epub.css, dans l'ordre du PDF : epub.css
+# consomme var(--c-ink) et consorts, qu'une liseuse ne devine pas. Le socle y entre sans ses
+# @font-face, dont les ../fonts/ ne sont pas dans l'archive : la liseuse garde ses polices.
+EPUB_SOCLE := $(OUT)/.szh-socle-epub.css
+$(EPUB_SOCLE): $(SOCLE)
+	@mkdir -p "$(OUT)"
+	@sed '/^@font-face/,/}/d' "$<" > "$@"
+
+$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB) $(EPUB_SOCLE) $(ACCENT_CSS) $(OUT)/$(NOM_LIVRE)-couverture-1.png
 	@$(PANDOC) "$(LIVRE_EPUB_HTML)" \
 	  --from=html --to=epub3 \
 	  --split-level=1 \
 	  --metadata-file="$(LIVRE_EPUB_META)" \
-	  --css="$(abspath $(STYLE_LIVRE_EPUB))" \
+	  --css="$(abspath $(EPUB_SOCLE))" --css="$(abspath $(STYLE_LIVRE_EPUB))" --css="$(ACCENT_ABS)" \
 	  --epub-cover-image="$(OUT)/$(NOM_LIVRE)-couverture-1.png" \
 	  --output="$@"
 

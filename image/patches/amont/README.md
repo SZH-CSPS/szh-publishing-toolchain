@@ -13,7 +13,7 @@ Pour chaque correctif de `image/patches/weasyprint-70.0/`, ce qu'en sait l'amont
 - À chaque montée de version, chaque patch est rejugé : l'amont l'a-t-il intégré, le code
   a-t-il bougé ? Ce dossier sert à ce jugement.
 
-## Les six correctifs (état au 01.10.2026, WeasyPrint 70.0, `main` 369b1534)
+## Les six correctifs et un contournement (état au 01.10.2026, WeasyPrint 70.0, `main` 369b1534)
 
 | Patch | Défaut | Statut amont | Recommandation |
 |---|---|---|---|
@@ -23,6 +23,7 @@ Pour chaque correctif de `image/patches/weasyprint-70.0/`, ce qu'en sait l'amont
 | [25-espace-fin-de-ligne](25-espace-fin-de-ligne/RAPPORT.md) | Espace de fin de ligne absente de la couche texte. veraPDF ne voit rien. Sans effet sans le 20. | Refus de principe (#1635, #2715 « We won't try to please them all »). `main` inchangé. | Garder sans proposer, rejuger à chaque montée. |
 | [30-marges-artefact](30-marges-artefact/RAPPORT.md) | En-têtes, pieds et folios en MCID rattachés à rien, au lieu d'artefacts de pagination. veraPDF ne le voit que si une marge a une opacité. | #1836 ouverte depuis 2023 ; liZe croit l'artefact réservé à PDF 2.0 (confusion élément de structure / contenu marqué) et dit « no way to do this easily ». `main` inchangé. | Commentaire sur #1836 avec l'approche, code sur demande ; garder. |
 | [40-xmp-dc-language](40-xmp-dc-language/RAPPORT.md) | `dc:language` absent du XMP ; `--xmp-metadata` n'ajoute qu'un second `rdf:RDF`, ignoré par pypdf. | Aucune issue ; `--xmp-metadata` pensé pour Factur-X (#2338, #2658) ; précédent accepté pour `dc:description` (#2681). `main` inchangé. | Issue qui offre la PR (diff prêt) ; garder, puis retirer. Pas encore posé dans la WSL : reconstruire l'image. |
+| [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | `<a>` enfant direct d'un conteneur flex sans annotation `/Link` (`blockify()` jette `box.link`). Pas de patch : un `<span>` intermédiaire suffit, posé par la chaîne. | #2941 ouverte le 28.09.2026, reconnue par liZe ("we'll find a way to fix that"), sans PR. | Ne rien publier ; rejuger à la montée. |
 
 Le 10 et le 15 portaient un seul patch, le 20 et le 25 aussi : scindés le 01.10.2026, sans
 changer le code obtenu une fois tous posés (paquets comparés, 0 différence). Le dessin de

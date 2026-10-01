@@ -331,8 +331,9 @@ phrase). `livre-assembler.py` colle les fragments et écrit les métadonnées (`
 L'archive contient les tableaux avec leur description longue et leurs `scope`, la
 bibliographie et ses ancres (renommées `id_…` à l'identique par le writer XHTML), les images
 extraites dans `EPUB/media/`, un `nav.xhtml` qui atteint chaque chapitre, et l'OPF avec
-titre, langue et identifiant (l'ISBN e-book). `epub.css` est la seule feuille embarquée : les
-jetons du socle n'y sont pas, d'où quelques replis de couleur en dur. `test/epub-check.py`
+titre, langue et identifiant (l'ISBN e-book). L'archive embarque, dans l'ordre, le socle sans ses
+`@font-face` (`out/.szh-socle-epub.css`, les polices n'étant pas dans l'archive), `epub.css` et
+l'accent annuel : chaque `var(--x)` y a sa définition (`test/js/epub-jetons.test.js`). `test/epub-check.py`
 contrôle la structure sans dépendance (mimetype, `container.xml`, manifeste, XHTML bien formés,
 liens et images résolus, chaque document du *spine* atteint par `nav.xhtml`) ; il ne
 remplace pas `epubcheck`, absent de l'image.
