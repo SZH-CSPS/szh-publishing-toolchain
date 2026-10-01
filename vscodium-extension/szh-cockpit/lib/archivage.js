@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ecrireAtomique } = require('./yaml');
-const { basePoste } = require('./chemins-poste');
+const { basePoste } = require('./poste');
 
 // Mêmes chemins que szh-common.ps1 ($SzhBase et $SzhToolkit) et que lib/portraits.js,
 // qui vise le même toolkit depuis WSL.

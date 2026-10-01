@@ -41,20 +41,18 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 const vscode = require('vscode');
 
-const wsl = require('./wsl');
+const moteur = require('./moteur');
 const profils = require('./profil');
 const coedition = require('./coedition');
 const { ecrireAtomique } = require('./yaml');
 const { verdictsPdfUa } = require('./journal');
-const { toolkitWsl } = require('./chemins-poste');
 
 const NOM_CACHE = '.szh-pdfua.json';
 
-// Même source que MAKEFILE_WSL d'extension.js : lib/chemins-poste.js.
-const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
+// Même source que MAKEFILE_WSL d'extension.js : lib/moteur.js.
+const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 const VERIFIER_UA_WSL = path.posix.dirname(MAKEFILE_WSL) + '/verifier-ua.sh';
 
 // Large, comme lancerReimporter() (extension.js) : le premier appel paie le réveil de la
@@ -83,12 +81,11 @@ function reglageActif() {
 // (verdict, panne, délai) se lisent dans le retour, jamais dans une exception — même
 // contrat que lancerReimporter() (extension.js).
 function lancerValidateurDefaut(racine, pdfsRelatifs) {
-  const argv = ['-d', wsl.DISTRO, '--cd', racine, '--', 'bash', VERIFIER_UA_WSL, '-']
-    .concat(pdfsRelatifs);
-  return wsl.reveillerWsl().then(() => new Promise((resolve) => {
+  const argv = ['bash', VERIFIER_UA_WSL, '-'].concat(pdfsRelatifs);
+  return moteur.reveiller().then(() => new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(wsl.cheminWsl(), argv, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = moteur.executer(argv, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) {
       resolve({ lignes: [], code: null, erreur: String((e && e.message) || e) });
       return;

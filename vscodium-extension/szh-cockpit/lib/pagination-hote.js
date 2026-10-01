@@ -26,10 +26,8 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
 
-const wsl = require('./wsl');
-const { toolkitWsl } = require('./chemins-poste');
+const moteur = require('./moteur');
 const { FORME_SLUG } = require('./articles');
 
 const NOM_ETAT = '.szh-pagination.json';
@@ -39,8 +37,8 @@ const NOM_JOURNAL = '.szh-journal.log';
 
 const SCHEMA = 'szh-pagination/1';
 
-// Même source que MAKEFILE_WSL de lib/pdfua-hote.js : lib/chemins-poste.js.
-const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
+// Même source que MAKEFILE_WSL de lib/pdfua-hote.js : lib/moteur.js.
+const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 
 // Large, comme DELAI_VALIDATION de lib/pdfua-hote.js : un numéro de plusieurs articles
 // recompile deux fois (pagination.py appelle `make pdf` avant et après le recalcul).
@@ -54,10 +52,10 @@ function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 // -> Promise<{ texte, code, erreur }>. Ne rejette jamais : comme lancerValidateurDefaut()
 // de lib/pdfua-hote.js, les trois issues (sortie, panne, délai) se lisent dans le retour.
 function lancerDefaut(racine, argv) {
-  return wsl.reveillerWsl().then(() => new Promise((resolve) => {
+  return moteur.reveiller().then(() => new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(wsl.cheminWsl(), argv, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = moteur.executer(argv, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) {
       resolve({ texte: '', code: null, erreur: String((e && e.message) || e) });
       return;
@@ -94,10 +92,6 @@ function ordreInvalide(ordre) {
   return '';
 }
 
-function argvBase(racine) {
-  return ['-d', wsl.DISTRO, '--cd', racine, '--'];
-}
-
 // ---- La ligne JSON au milieu d'une sortie mêlée ------------------------------------
 // Pure : aucune ligne qui ne commence pas EXACTEMENT par `{"schema"`, ni dont le schéma
 // diffère, ne compte — un JSON d'un autre outil (pdf-ua, par exemple) ne doit jamais être
@@ -124,8 +118,7 @@ function lireEtat(racine, ordre) {
   const erreur = ordreInvalide(ordre);
   if (erreur) { return Promise.reject(new Error(erreur)); }
   const liste = Array.isArray(ordre) ? ordre : [];
-  const argv = argvBase(racine).concat(['make', '-f', MAKEFILE_WSL, 'etat-pagination',
-    'ORDRE=' + liste.join(',')]);
+  const argv = ['make', '-f', MAKEFILE_WSL, 'etat-pagination', 'ORDRE=' + liste.join(',')];
   return ctx.lancer(racine, argv).then((r) => {
     if (r.erreur) { throw new Error('etat-pagination : ' + r.erreur); }
     if (r.code !== 0) { throw new Error('etat-pagination a rendu le code ' + r.code + '.'); }
@@ -148,7 +141,7 @@ function rafraichir(racine, ordre) {
   const liste = Array.isArray(ordre) ? ordre : [];
   const commande = "set -o pipefail; make -f '" + MAKEFILE_WSL + "' rafraichir-pagination "
     + 'ORDRE=' + liste.join(',') + ' 2>&1 | tee ' + NOM_JOURNAL;
-  const argv = argvBase(racine).concat(['bash', '-c', commande]);
+  const argv = ['bash', '-c', commande];
   return ctx.lancer(racine, argv).then((r) => ({
     code: r.erreur ? null : r.code,
     etat: extraireEtat(r.texte)

@@ -1,10 +1,10 @@
-// Point de passage unique pour les chemins du poste (base SZH, toolkit, forme WSL) —
-// jusqu'ici écrits en dur à une dizaine d'endroits du cockpit. Aucun de ces autres
-// fichiers n'est encore branché sur ce module ; ce lot ne fait que l'écrire.
+// Les chemins et dossiers du poste : base SZH, toolkit, forme WSL, dossiers de l'utilisateur
+// et de Windows. Seul module du cockpit à lire LOCALAPPDATA, USERPROFILE, APPDATA et WINDIR.
 'use strict';
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const BASE_DEFAUT = 'C:\\ProgramData\\SZH';
 
@@ -46,4 +46,32 @@ function toolkitWsl(...segments) {
   return [versWsl(toolkitPoste()), ...segments].join('/');
 }
 
-module.exports = { basePoste, resoudreToolkit, toolkitPoste, versWsl, toolkitWsl };
+// Les dossiers de l'utilisateur, lus à l'appel comme basePoste().
+// %LOCALAPPDATA%, ou son emplacement habituel sous le profil quand la variable manque.
+function racineUtilisateur() {
+  const v = String(process.env.LOCALAPPDATA || '').trim();
+  return v || path.join(os.homedir(), 'AppData', 'Local');
+}
+
+// %USERPROFILE%, ou '' : le masquage des rapports d'erreur ne doit rien deviner.
+function dossierProfil() {
+  return process.env.USERPROFILE || '';
+}
+
+function dossierBureau() {
+  return path.join(dossierProfil() || process.env.HOME || '', 'Desktop');
+}
+
+// Le dossier de configuration de VSCodium (%APPDATA%\VSCodium), où vit argv.json.
+function dossierEditeur() {
+  return path.join(process.env.APPDATA || '', 'VSCodium');
+}
+
+// Un exécutable de System32, par chemin absolu pour ne pas dépendre du PATH.
+function cheminSysteme(...segments) {
+  return path.join(process.env.WINDIR || 'C:\\Windows', 'System32', ...segments);
+}
+
+module.exports = {
+  basePoste, resoudreToolkit, toolkitPoste, versWsl, toolkitWsl,
+  racineUtilisateur, dossierProfil, dossierBureau, dossierEditeur, cheminSysteme };

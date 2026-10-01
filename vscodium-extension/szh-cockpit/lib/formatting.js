@@ -13,6 +13,7 @@ const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable } = requ
 const citations = require('./citations');
 const { lancerChoixVersion } = require('./archivage');
 const { ecrireAtomique } = require('./yaml');
+const { cheminSysteme } = require('./poste');
 // Un QuickPick ou une InputBox se ferme dès que le focus bouge : la garde retient, tant
 // qu'un choix est ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin
 // de compilation).
@@ -226,8 +227,7 @@ async function fmtTableau() {
 // Windows, que l'API de VS Code ne sait pas lire mais que PowerShell atteint.
 
 function cheminPowerShell() {
-  const systeme = path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const systeme = cheminSysteme('WindowsPowerShell', 'v1.0', 'powershell.exe');
   try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
   return 'powershell.exe';
 }

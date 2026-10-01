@@ -39,6 +39,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { racineUtilisateur } = require('./poste');
 
 const SCHEMA = 'szh';
 const VUE_TRADUCTION = 'traduction';
@@ -127,7 +128,7 @@ function analyserLien(lien) {
 }
 
 // ⚠ Même chemin que Set-SzhIntention dans windows/szh-common.ps1.
-const DOSSIER_INTENTION = path.join(process.env.LOCALAPPDATA || '', 'SZH');
+const DOSSIER_INTENTION = path.join(racineUtilisateur(), 'SZH');
 const FICHIER_INTENTION = path.join(DOSSIER_INTENTION, 'intention.json');
 const PEREMPTION_MS = 5 * 60 * 1000;
 

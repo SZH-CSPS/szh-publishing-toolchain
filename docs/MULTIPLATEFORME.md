@@ -41,7 +41,7 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
   - `wsl.exe` écrit en dur dans `vscodium-user/tasks.json` (8 tâches), dans `extension.js`
     et dans `lib/cmyk.js`, `lib/portraits.js`, `lib/wsl.js`, et par lui
     `lib/pagination-hote.js` et `lib/pdfua-hote.js` ;
-  - la conversion en `/mnt/c` de `lib/chemins-poste.js` ;
+  - la conversion en `/mnt/c` de `lib/poste.js` ;
   - le `Makefile` désigné par `/mnt/c/ProgramData/SZH/…`.
 - **Option : un `lib/moteur.js` unique** (exécuter, réveiller, traduire un chemin), avec
   trois implémentations.
@@ -111,7 +111,7 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 ## 6. Le cockpit
 
 - **Ce qui suppose Windows** (une dizaine de modules sur 73) :
-  - `lib/wsl.js`, `lib/chemins-poste.js`, et les lancements de `wsl.exe` ;
+  - `lib/wsl.js`, `lib/poste.js`, et les lancements de `wsl.exe` ;
   - `lib/archivage.js` (`wscript.exe`, `archive-revue.ps1`) ;
   - `lib/auteurs-corpus.js` (`powershell.exe`) ;
   - `lib/formatting.js` (presse-papiers HTML par WinForms) ;

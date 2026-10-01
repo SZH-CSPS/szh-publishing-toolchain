@@ -41,6 +41,7 @@ const path = require('path');
 
 const { ecrireAtomique, LANGUES_META } = require('./yaml');
 const { CHAMPS_TRADUISIBLES } = require('./traduction');
+const { racineUtilisateur } = require('./poste');
 
 // Le dossier, à la racine du numéro. Voir l'avertissement de tête : frère de articles/.
 const DOSSIER_SUGGESTIONS = 'traduction';
@@ -140,7 +141,7 @@ const DOSSIER_INTERFACE = 'suggestions-interface';
 
 function dossierSuggestionsInterface(base) {
   const b = String(base === undefined || base === null ? '' : base).trim() ||
-    String(process.env.LOCALAPPDATA || '');
+    racineUtilisateur();
   return path.join(b, 'SZH', DOSSIER_INTERFACE);
 }
 

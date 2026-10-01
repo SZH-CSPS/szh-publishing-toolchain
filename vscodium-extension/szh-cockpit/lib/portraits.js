@@ -7,19 +7,17 @@
 // L'écriture de l'original et les chemins relatifs du champ `photo` restent à l'appelant.
 'use strict';
 
-const { spawn } = require('child_process');
-const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
-const { versWsl, toolkitWsl } = require('./chemins-poste');
+const moteur = require('./moteur');
 
 const INTERPRETE_DEFAUT = '/opt/portraits/bin/python';
-const SCRIPT_DEFAUT = toolkitWsl('pipeline', 'portraits.py');
+const SCRIPT_DEFAUT = moteur.toolkitMoteur('pipeline', 'portraits.py');
 // Large, car le premier appel paie le réveil de la VM et le chargement du modèle
 // u2net_human_seg ; les images suivantes de la même session sont bien plus rapides.
 const TIMEOUT_DEFAUT = 180000;
 
-// Conservée sous ce nom : lib/cmyk.js (et d'autres) l'importent d'ici. Délègue à versWsl().
+// Conservée sous ce nom : lib/cmyk.js (et d'autres) l'importent d'ici.
 function cheminVersWsl(chemin) {
-  return versWsl(chemin);
+  return moteur.versMoteur(chemin);
 }
 
 // -> Promise<[{slug, ok, visage, recadre, fichiers, erreur}]>. Une invocation traite
@@ -37,13 +35,13 @@ function traiterPortraits(options) {
   const script = String(o.script || SCRIPT_DEFAUT);
   const timeoutMs = Number(o.timeoutMs) > 0 ? Number(o.timeoutMs) : TIMEOUT_DEFAUT;
 
-  const args = ['-d', DISTRO, '--', interprete, script, cheminVersWsl(o.dossierPortraits)];
+  const args = [interprete, script, cheminVersWsl(o.dossierPortraits)];
   for (const e of entrees) { args.push(e.slug, cheminVersWsl(e.cheminSource)); }
 
-  return reveillerWsl().then(() => new Promise((resolve, reject) => {
+  return moteur.reveiller().then(() => new Promise((resolve, reject) => {
     let proc;
     try {
-      proc = spawn(cheminWsl(), args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = moteur.executer(args, { stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) {
       const erreur = new Error('wsl.exe introuvable : ' + e.message);
       erreur.wsl = true;

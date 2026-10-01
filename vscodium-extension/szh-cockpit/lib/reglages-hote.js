@@ -6,6 +6,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { dossierBureau, dossierEditeur } = require('./poste');
 
 const { TEXTES_COCKPIT, T, TL, TP, langueCockpit, oublierLanguePoste } = require('./i18n');
 const { MSG } = require('./messages');
@@ -199,7 +200,7 @@ function htmlReglages(nonce) {
 // perdrait.
 function ecrireLocaleArgv(langue) {
   try {
-    const dossier = path.join(process.env.APPDATA || '', 'VSCodium');
+    const dossier = dossierEditeur();
     const chemin = path.join(dossier, 'argv.json');
     let contenu = '';
     try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { contenu = '{\n}\n'; }
@@ -293,8 +294,7 @@ async function telechargerReglagesProteges() {
   try {
     cible = await vscode.window.showSaveDialog({
       saveLabel: T('regl.proteges.telecharger'),
-      defaultUri: vscode.Uri.file(path.join(
-        process.env.USERPROFILE || process.env.HOME || '', 'Desktop', proteges.NOM_FICHIER))
+      defaultUri: vscode.Uri.file(path.join(dossierBureau(), proteges.NOM_FICHIER))
     });
   } catch (e) { cible = null; }
   if (!cible) { return null; }                     // annulé : rien à dire
@@ -340,9 +340,7 @@ async function telechargerFichierLangue() {
     cible = await vscode.window.showSaveDialog({
       saveLabel: T('regl.exportLangue'),
       filters: { JSON: ['json'] },
-      defaultUri: vscode.Uri.file(path.join(
-        process.env.USERPROFILE || process.env.HOME || '', 'Desktop',
-        exportLangue.nomFichier(version)))
+      defaultUri: vscode.Uri.file(path.join(dossierBureau(), exportLangue.nomFichier(version)))
     });
   } catch (e) { cible = null; }
   if (!cible) { return null; }                     // annulé : rien à dire

@@ -526,6 +526,13 @@ function activerHote(revue) {
         reveillerWsl: () => Promise.resolve()
       });
     }
+    // Même neutralisation pour la façade lib/moteur.js, reconnue à ses trois exports.
+    if (m && typeof m.demarrerDormeur === 'function' && typeof m.reveiller === 'function'
+        && typeof m.executer === 'function') {
+      return Object.assign({}, m, {
+        demarrerDormeur: () => {}, arreterDormeur: () => {}, reveiller: () => Promise.resolve()
+      });
+    }
     return m;
   };
 

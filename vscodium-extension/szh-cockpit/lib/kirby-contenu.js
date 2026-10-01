@@ -33,7 +33,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { slugifier } = require('./slug');
 const { ecrireAtomique, idNumero } = require('./yaml');
-const { basePoste } = require('./chemins-poste');
+const { basePoste } = require('./poste');
 
 // ---- Chargement du contrat : dépôt d'abord, puis toolkit/ -------------------------
 const EMPLACEMENTS = [

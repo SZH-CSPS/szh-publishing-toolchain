@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { T, TP } = require('./i18n');
-const { toolkitPoste } = require('./chemins-poste');
+const { toolkitPoste } = require('./poste');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');

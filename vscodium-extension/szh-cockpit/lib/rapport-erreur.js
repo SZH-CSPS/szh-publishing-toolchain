@@ -11,7 +11,7 @@
 // d'attente, disque) — la moitié impure que codes-erreur.js n'a pas.
 //
 // Dépendances volontairement limitées à fs/path/os (plus codes-erreur.js, le contrat déjà livré,
-// et chemins-poste.js, qui ne dépend lui aussi que de fs/path) : jamais `require('vscode')`,
+// et poste.js, qui ne dépend lui aussi que de fs/path/os) : jamais `require('vscode')`,
 // jamais un autre module de lib/ (archivage.js, yaml.js…). Deux raisons : ce module doit rester
 // chargeable par le banc de test hors de l'éditeur (test/js/rapport-erreur.test.js le requiert
 // directement), et un futur écrivain PowerShell doit pouvoir reproduire cette moitié-ci comme il
@@ -26,7 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const codesErreur = require('./codes-erreur');
-const { basePoste } = require('./chemins-poste');
+const { basePoste, racineUtilisateur, dossierProfil } = require('./poste');
 
 // ---------------------------------------------------------------------------------------
 // 1. Racines et chemins — dérivés, jamais en dur, surchargeables pour les tests
@@ -61,10 +61,6 @@ const { basePoste } = require('./chemins-poste');
 // que lib/archivage.js#cheminConfigPoste).
 function racineProgramData() {
   return basePoste();
-}
-function racineUtilisateur() {
-  const v = String(process.env.LOCALAPPDATA || '').trim();
-  return v || path.join(os.homedir(), 'AppData', 'Local');
 }
 function cheminConfigPoste() { return path.join(racineProgramData(), 'config.json'); }
 function cheminStatePoste() { return path.join(racineProgramData(), 'state.json'); }
@@ -718,7 +714,7 @@ function emettreRapport(champs) {
     }
     const racines = {
       ancrage: ancrage.chemin,
-      userProfile: process.env.USERPROFILE || null,
+      userProfile: dossierProfil() || null,
       programData: racineProgramData()
     };
 

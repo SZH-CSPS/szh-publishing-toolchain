@@ -9,7 +9,7 @@
 // main. La langue retombe alors sur SZH_LANGUE, puis sur le français.
 const fs = require('fs');
 const path = require('path');
-const { basePoste } = require('./chemins-poste');
+const { basePoste } = require('./poste');
 let vscode = null;
 try { vscode = require('vscode'); } catch (e) { /* hors éditeur */ }
 

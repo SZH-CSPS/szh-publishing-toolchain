@@ -3,8 +3,8 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 const { spawn } = require('child_process');
+const { cheminSysteme } = require('./poste');
 
 // Les compilations sont des `wsl.exe` éphémères : entre deux enregistrements la VM
 // s'éteint (vmIdleTimeout) et la suivante repart à froid. Tant qu'une revue est ouverte,
@@ -16,7 +16,7 @@ const DISTRO = 'SZH-Publishing';
 let dormeurWsl = null;
 
 function cheminWsl() {
-  const systeme = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wsl.exe');
+  const systeme = cheminSysteme('wsl.exe');
   try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
   return 'wsl.exe';
 }

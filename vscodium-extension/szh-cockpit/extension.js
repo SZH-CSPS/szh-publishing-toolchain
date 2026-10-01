@@ -40,7 +40,7 @@ function estTacheSuivie(tache) {
   return TACHES_SUIVIES.indexOf(tache.name) !== -1 || !!(tache.definition && tache.definition.type === 'szh');
 }
 // ---- Chemins du poste -> lib/chemins-poste.js -------------------------------------
-const { toolkitWsl } = require('./lib/chemins-poste');
+const { toolkitWsl } = require('./lib/poste');
 
 // À garder alignés avec vscodium-user/tasks.json et lib/wsl.js.
 const DISTRO_WSL = 'SZH-Publishing';

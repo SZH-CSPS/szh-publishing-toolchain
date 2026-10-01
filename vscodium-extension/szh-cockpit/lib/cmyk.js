@@ -11,13 +11,11 @@
 'use strict';
 
 const fs = require('fs');
-const { spawn } = require('child_process');
-const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
+const moteur = require('./moteur');
 const { cheminVersWsl, INTERPRETE_DEFAUT } = require('./portraits');
 const { sofJpeg } = require('./medias');
-const { toolkitWsl } = require('./chemins-poste');
 
-const SCRIPT_DEFAUT = toolkitWsl('pipeline', 'cmyk-rgb.py');
+const SCRIPT_DEFAUT = moteur.toolkitMoteur('pipeline', 'cmyk-rgb.py');
 // Pillow est déjà chargé par le venv : sans le réveil de la VM, quelques secondes suffisent.
 const TIMEOUT_DEFAUT = 60000;
 
@@ -46,12 +44,12 @@ function convertirCmykEnRgb(options) {
   const interprete = String(o.interprete || INTERPRETE_DEFAUT);
   const script = String(o.script || SCRIPT_DEFAUT);
   const timeoutMs = Number(o.timeoutMs) > 0 ? Number(o.timeoutMs) : TIMEOUT_DEFAUT;
-  const args = ['-d', DISTRO, '--', interprete, script].concat(candidats.map(cheminVersWsl));
+  const args = [interprete, script].concat(candidats.map(cheminVersWsl));
 
-  return reveillerWsl().then(() => new Promise((resolve, reject) => {
+  return moteur.reveiller().then(() => new Promise((resolve, reject) => {
     let proc;
     try {
-      proc = spawn(cheminWsl(), args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = moteur.executer(args, { stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) {
       const erreur = new Error('wsl.exe introuvable : ' + e.message);
       erreur.wsl = true;

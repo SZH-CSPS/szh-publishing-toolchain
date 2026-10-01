@@ -1,8 +1,8 @@
-// Contrat de vscodium-extension/szh-cockpit/lib/chemins-poste.js : basePoste(),
+// Contrat de vscodium-extension/szh-cockpit/lib/poste.js : basePoste(),
 // resoudreToolkit(), toolkitPoste(), versWsl(), toolkitWsl() — plus le garde-fou récursif contre
 // le retour d'un littéral ProgramData ailleurs dans le cockpit.
 //
-//   node --test test/js/chemins-poste.test.js
+//   node --test test/js/poste.test.js
 'use strict';
 
 const test = require('node:test');
@@ -14,9 +14,9 @@ const { spawnSync } = require('child_process');
 
 const RACINE_DEPOT = path.join(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE_DEPOT, 'vscodium-extension', 'szh-cockpit');
-const CHEMIN_MODULE = path.join(COCKPIT, 'lib', 'chemins-poste.js');
+const CHEMIN_MODULE = path.join(COCKPIT, 'lib', 'poste.js');
 
-function cheminsPoste() { return require(CHEMIN_MODULE); }
+function modulePoste() { return require(CHEMIN_MODULE); }
 
 // resoudreToolkit()/toolkitPoste() passent par path.resolve/path.join sur des chemins à
 // la Windows (lettre de lecteur, antislash) — comme lib/rapport-erreur.js, seuls exacts
@@ -48,25 +48,25 @@ function avecEnv(vars, fn) {
 
 test('basePoste(), SZH_BASE absente, rend le défaut C:\\ProgramData\\SZH', () => {
   avecEnv({ SZH_BASE: undefined }, () => {
-    assert.equal(cheminsPoste().basePoste(), 'C:\\ProgramData\\SZH');
+    assert.equal(modulePoste().basePoste(), 'C:\\ProgramData\\SZH');
   });
 });
 
 test('basePoste(), SZH_BASE renseignée, rend cette valeur', () => {
   avecEnv({ SZH_BASE: 'D:\\essai\\SZH' }, () => {
-    assert.equal(cheminsPoste().basePoste(), 'D:\\essai\\SZH');
+    assert.equal(modulePoste().basePoste(), 'D:\\essai\\SZH');
   });
 });
 
 test('basePoste(), SZH_BASE à blancs seuls, rend le défaut et jamais une chaîne vide', () => {
   avecEnv({ SZH_BASE: '   ' }, () => {
-    assert.equal(cheminsPoste().basePoste(), 'C:\\ProgramData\\SZH');
+    assert.equal(modulePoste().basePoste(), 'C:\\ProgramData\\SZH');
   });
 });
 
 test('basePoste(), SZH_BASE entourée de blancs, rend la valeur .trim()ée', () => {
   avecEnv({ SZH_BASE: '  D:\\essai  ' }, () => {
-    assert.equal(cheminsPoste().basePoste(), 'D:\\essai');
+    assert.equal(modulePoste().basePoste(), 'D:\\essai');
   });
 });
 
@@ -75,7 +75,7 @@ test('basePoste(), SZH_BASE entourée de blancs, rend la valeur .trim()ée', () 
 // =========================================================================================
 
 test('resoudreToolkit(), SZH_TOOLKIT renseignée, l’emporte sur tout, même existe toujours vrai et SZH_BASE renseignée', () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const resultat = resoudreToolkit(
     { SZH_TOOLKIT: 'C:\\ailleurs\\toolkit', SZH_BASE: 'D:\\essai\\SZH' },
     'C:\\peu\\importe\\lib',
@@ -85,7 +85,7 @@ test('resoudreToolkit(), SZH_TOOLKIT renseignée, l’emporte sur tout, même ex
 });
 
 test('resoudreToolkit(), SZH_TOOLKIT à blancs seuls, ne compte pas, les règles suivantes s’appliquent', { skip: HORS_WINDOWS }, () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const resultat = resoudreToolkit(
     { SZH_TOOLKIT: '   ', SZH_BASE: 'D:\\essai' },
     'C:\\peu\\importe\\lib',
@@ -95,7 +95,7 @@ test('resoudreToolkit(), SZH_TOOLKIT à blancs seuls, ne compte pas, les règles
 });
 
 test('resoudreToolkit(), branche dépôt, Makefile trouvé trois crans au-dessus, rend la racine du dépôt', { skip: HORS_WINDOWS }, () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const dossierModule = 'C:\\depot\\vscodium-extension\\szh-cockpit\\lib';
   const existe = (p) => p === 'C:\\depot\\pipeline\\Makefile';
   const resultat = resoudreToolkit({}, dossierModule, existe);
@@ -103,7 +103,7 @@ test('resoudreToolkit(), branche dépôt, Makefile trouvé trois crans au-dessus
 });
 
 test('resoudreToolkit(), branche dépôt, Makefile absent, ne rend pas la racine du dépôt mais le poste installé', { skip: HORS_WINDOWS }, () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const dossierModule = 'C:\\depot\\vscodium-extension\\szh-cockpit\\lib';
   const resultat = resoudreToolkit({}, dossierModule, () => false);
   assert.notEqual(resultat, 'C:\\depot');
@@ -111,13 +111,13 @@ test('resoudreToolkit(), branche dépôt, Makefile absent, ne rend pas la racine
 });
 
 test('resoudreToolkit(), branche poste installé, SZH_BASE fixe la base sous laquelle vit toolkit', { skip: HORS_WINDOWS }, () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const resultat = resoudreToolkit({ SZH_BASE: 'D:\\essai' }, 'C:\\peu\\importe\\lib', () => false);
   assert.equal(resultat, 'D:\\essai\\toolkit');
 });
 
 test('resoudreToolkit() est pure, elle ne lit rien de process.env', () => {
-  const { resoudreToolkit } = cheminsPoste();
+  const { resoudreToolkit } = modulePoste();
   const avait = process.env.SZH_TOOLKIT;
   process.env.SZH_TOOLKIT = 'C:\\piege';
   try {
@@ -136,7 +136,7 @@ test('resoudreToolkit() est pure, elle ne lit rien de process.env', () => {
 test('toolkitPoste(), sans SZH_TOOLKIT, lancé depuis ce dépôt, rend la racine du dépôt', () => {
   avecEnv({ SZH_TOOLKIT: undefined }, () => {
     const racineAttendue = path.resolve(__dirname, '..', '..');
-    const resultat = cheminsPoste().toolkitPoste();
+    const resultat = modulePoste().toolkitPoste();
     assert.equal(resultat, racineAttendue);
     assert.ok(fs.existsSync(path.join(resultat, 'pipeline', 'Makefile')),
       'pipeline/Makefile doit exister sous la racine rendue par toolkitPoste()');
@@ -145,7 +145,7 @@ test('toolkitPoste(), sans SZH_TOOLKIT, lancé depuis ce dépôt, rend la racine
 
 test('toolkitPoste(), SZH_TOOLKIT renseignée, rend cette valeur', () => {
   avecEnv({ SZH_TOOLKIT: 'D:\\ailleurs\\toolkit' }, () => {
-    assert.equal(cheminsPoste().toolkitPoste(), 'D:\\ailleurs\\toolkit');
+    assert.equal(modulePoste().toolkitPoste(), 'D:\\ailleurs\\toolkit');
   });
 });
 
@@ -154,27 +154,27 @@ test('toolkitPoste(), SZH_TOOLKIT renseignée, rend cette valeur', () => {
 // =========================================================================================
 
 test('versWsl(), lettre de lecteur minusculisée et antislash convertis', () => {
-  const { versWsl } = cheminsPoste();
+  const { versWsl } = modulePoste();
   assert.equal(versWsl('C:\\ProgramData\\SZH\\toolkit'), '/mnt/c/ProgramData/SZH/toolkit');
 });
 
 test('versWsl(), lecteur D, la lettre est minusculisée', () => {
-  const { versWsl } = cheminsPoste();
+  const { versWsl } = modulePoste();
   assert.equal(versWsl('D:\\a\\b'), '/mnt/d/a/b');
 });
 
 test('versWsl(), chemin déjà en barres obliques, préfixe /mnt/ tout de même posé', () => {
-  const { versWsl } = cheminsPoste();
+  const { versWsl } = modulePoste();
   assert.equal(versWsl('c:/deja/slash'), '/mnt/c/deja/slash');
 });
 
 test('versWsl(), chemin UNC, pas de préfixe /mnt/, seules les barres sont converties', () => {
-  const { versWsl } = cheminsPoste();
+  const { versWsl } = modulePoste();
   assert.equal(versWsl('\\\\serveur\\partage'), '//serveur/partage');
 });
 
 test('versWsl(), chaîne vide, rend une chaîne vide sans lever', () => {
-  const { versWsl } = cheminsPoste();
+  const { versWsl } = modulePoste();
   assert.doesNotThrow(() => versWsl(''));
   assert.equal(versWsl(''), '');
 });
@@ -185,7 +185,7 @@ test('versWsl(), chaîne vide, rend une chaîne vide sans lever', () => {
 
 test('toolkitWsl(), le chemin réellement employé par les tâches de compilation ne bouge pas', () => {
   avecEnv({ SZH_TOOLKIT: 'C:\\ProgramData\\SZH\\toolkit' }, () => {
-    const { toolkitWsl } = cheminsPoste();
+    const { toolkitWsl } = modulePoste();
     assert.equal(toolkitWsl('pipeline', 'Makefile'), '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile');
   });
 });
@@ -202,7 +202,7 @@ test('le chemin de Makefile des tâches VSCodium et celui de toolkitWsl() ne div
     assert.equal(chemin, trouves[0], 'les tâches ne portent pas toutes le même chemin de Makefile : ' + chemin);
   }
   avecEnv({ SZH_TOOLKIT: 'C:\\ProgramData\\SZH\\toolkit' }, () => {
-    const { toolkitWsl } = cheminsPoste();
+    const { toolkitWsl } = modulePoste();
     assert.equal(toolkitWsl('pipeline', 'Makefile'), trouves[0]);
   });
 });
@@ -219,7 +219,7 @@ test('lib/cmyk.js et lib/portraits.js suivent SZH_TOOLKIT dès le chargement', (
     'const portraits = require(' + JSON.stringify(cheminPortraits) + ');',
     'process.stdout.write(JSON.stringify({ cmyk: cmyk.SCRIPT_DEFAUT, portraits: portraits.SCRIPT_DEFAUT }));',
   ];
-  const fichierScript = path.join(os.tmpdir(), 'szh-chemins-poste-sonde-' + process.pid + '.js');
+  const fichierScript = path.join(os.tmpdir(), 'szh-poste-sonde-' + process.pid + '.js');
   fs.writeFileSync(fichierScript, lignesScript.join('\n'), 'utf8');
   try {
     const env = Object.assign({}, process.env, { SZH_TOOLKIT: 'D:\\faux' });
@@ -237,7 +237,7 @@ test('lib/cmyk.js et lib/portraits.js suivent SZH_TOOLKIT dès le chargement', (
 // dur qu'on croyait éteint, soit un module qui n'a pas suivi le branchement.
 test('aucun littéral ProgramData ne revient hors de la liste blanche', () => {
   const listeBlanche = new Set([
-    path.join('lib', 'chemins-poste.js'),  // la source du chemin
+    path.join('lib', 'poste.js'),          // la source du chemin
     path.join('lib', 'codes-erreur.js'),   // motif de caviardage, pas un chemin lu sur le poste
     path.join('lib', 'articles.js'),       // texte d'en-tête pour le lecteur, pas un chemin ouvert
   ]);
@@ -258,4 +258,63 @@ test('aucun littéral ProgramData ne revient hors de la liste blanche', () => {
     }
   })(COCKPIT);
   assert.deepEqual(fautifs, [], 'littéral ProgramData hors liste blanche : ' + fautifs.join(', '));
+});
+
+// =========================================================================================
+// Les dossiers de l'utilisateur et de Windows, lus à l'appel
+// =========================================================================================
+
+test('racineUtilisateur(), LOCALAPPDATA renseignée, rend cette valeur ; absente, le profil', () => {
+  avecEnv({ LOCALAPPDATA: '  D:\\Local  ' }, () => {
+    assert.equal(modulePoste().racineUtilisateur(), 'D:\\Local');
+  });
+  avecEnv({ LOCALAPPDATA: undefined }, () => {
+    assert.equal(modulePoste().racineUtilisateur(), path.join(os.homedir(), 'AppData', 'Local'));
+  });
+});
+
+test('dossierProfil() et dossierBureau() suivent USERPROFILE, puis HOME', () => {
+  avecEnv({ USERPROFILE: 'D:\\Profil', HOME: 'D:\\Maison' }, () => {
+    assert.equal(modulePoste().dossierProfil(), 'D:\\Profil');
+    assert.equal(modulePoste().dossierBureau(), path.join('D:\\Profil', 'Desktop'));
+  });
+  avecEnv({ USERPROFILE: undefined, HOME: 'D:\\Maison' }, () => {
+    assert.equal(modulePoste().dossierProfil(), '');
+    assert.equal(modulePoste().dossierBureau(), path.join('D:\\Maison', 'Desktop'));
+  });
+});
+
+test('dossierEditeur() et cheminSysteme() suivent APPDATA et WINDIR', () => {
+  avecEnv({ APPDATA: 'D:\\Roaming', WINDIR: 'D:\\Win' }, () => {
+    assert.equal(modulePoste().dossierEditeur(), path.join('D:\\Roaming', 'VSCodium'));
+    assert.equal(modulePoste().cheminSysteme('wsl.exe'), path.join('D:\\Win', 'System32', 'wsl.exe'));
+  });
+  avecEnv({ WINDIR: undefined }, () => {
+    assert.equal(modulePoste().cheminSysteme('wsl.exe'), path.join('C:\\Windows', 'System32', 'wsl.exe'));
+  });
+});
+
+// Les variables des dossiers Windows ne se lisent qu'ici : un autre module qui les lirait
+// échapperait au jour où le poste n'est plus Windows.
+test('LOCALAPPDATA, USERPROFILE, APPDATA et WINDIR ne se lisent que dans lib/poste.js', () => {
+  const reVariable = /process\.env(\.|\[\s*['"])(LOCALAPPDATA|USERPROFILE|APPDATA|WINDIR)\b/;
+  const fautifs = [];
+  (function parcourir(dossier) {
+    for (const entree of fs.readdirSync(dossier, { withFileTypes: true })) {
+      const chemin = path.join(dossier, entree.name);
+      if (entree.isDirectory()) {
+        if (entree.name !== 'node_modules') { parcourir(chemin); }
+        continue;
+      }
+      if (!entree.name.endsWith('.js')) { continue; }
+      const relatif = path.relative(COCKPIT, chemin);
+      if (relatif === path.join('lib', 'poste.js')) { continue; }
+      const lignes = fs.readFileSync(chemin, 'utf8').split(/\r?\n/);
+      lignes.forEach((ligne, i) => {
+        if (ligne.trim().startsWith('//')) { return; }
+        if (reVariable.test(ligne)) { fautifs.push(relatif + ':' + (i + 1)); }
+      });
+    }
+  })(COCKPIT);
+  assert.deepEqual(fautifs, [], 'variable du poste lue hors de lib/poste.js : ' + fautifs.join(', '));
 });

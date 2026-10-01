@@ -43,8 +43,6 @@ lib/
   cantons.js            les 26 cantons et la Confédération : la liste fermée du champ
                         « canton » d'une fiche d'intervention parlementaire — le code est
                         stocké et imprimé, le nom complet ne sert qu'à la liste déroulante
-  chemins-poste.js      point de passage unique des chemins du poste : base, toolkit,
-                        forme WSL
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   codes-erreur.js       table des codes d'erreur applicatifs et schéma v1 des rapports
@@ -136,6 +134,9 @@ lib/
   mots-cles-edudoc.js   descripteurs bilingues DE/FR des deux revues, moissonnés en OAI-PMH
                         public sur edudoc.ch (marcxml, champ MARC 690) et cachés dans
                         mots-cles.json — pas encore branché sur une autocomplétion
+  moteur.js             façade du moteur de la chaîne (la distro WSL) : lancement d'une
+                        commande, ligne d'une tâche, réveil et dormeur, chemins vus du
+                        moteur ; seul module, avec wsl.js, à connaître wsl.exe
   nouveautes.js         « Quoi de neuf » : les notes livrées à la racine du toolkit
                         (nouveautes.json), indexées par MEDIUM de version — jamais par
                         mineure —, et la décision de ce qu'il y a à montrer. Écrites pour
@@ -155,6 +156,9 @@ lib/
                         cache par empreinte du PDF (.szh-pdfua.json). Rappelle l'hôte par
                         configurer(), jamais par import
   portraits.js          appel du script de détourage des photos, dans WSL
+  poste.js              chemins du poste : base, toolkit, forme WSL, dossiers de
+                        l'utilisateur (LOCALAPPDATA, profil, bureau, VSCodium) et System32 ;
+                        seul module à lire ces variables d'environnement
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
                         articles/) ou livre (buch.yaml, chapitres/) —, ses chemins, et la
                         table des capacités (contextes szh.peut.*) ; courant() rend le
@@ -240,7 +244,8 @@ lib/
   vue-ensemble-hote.js  les vues d'ensemble des sections (traductions, Word, contrôles) : une
                         page par section, la même webview pour toutes. Rappelle l'hôte par
                         configurer(), jamais par import
-  wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
+  wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM ; derrière
+                        moteur.js
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
   webviews/panneau.js   panneauUnique() : singleton, fermeture, mode Trad et poignée PRET de

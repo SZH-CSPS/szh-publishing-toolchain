@@ -42,7 +42,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { basePoste } = require('./chemins-poste');
+const { basePoste } = require('./poste');
 
 // Mêmes chemins que lib/archivage.js et lib/i18n.js. La surcharge d'environnement suit la
 // même règle que partout : une fonction, jamais une constante, pour voir une surcharge

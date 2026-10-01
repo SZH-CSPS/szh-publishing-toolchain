@@ -607,7 +607,11 @@ test('chemins : tout littéral Windows du cockpit double ses contre-obliques', (
       }
     }
   }
-  assert.ok(vus >= 4, 'aucun chemin Windows trouvé : le balayage ne balaie plus rien');
+  // Les deux défauts de lib/poste.js doivent être vus, sans quoi le balayage ne balaie rien.
+  const vusPoste = litterauxWindows(path.join(lib, 'poste.js')).map((t) => t.brut);
+  assert.ok(vus >= 3 && vusPoste.indexOf('C:\\\\ProgramData\\\\SZH') !== -1
+    && vusPoste.indexOf('C:\\\\Windows') !== -1,
+    'aucun chemin Windows trouvé : le balayage ne balaie plus rien');
   assert.deepStrictEqual(fautes, [], 'chemins Windows mal échappés :\n' + fautes.join('\n'));
 });
 

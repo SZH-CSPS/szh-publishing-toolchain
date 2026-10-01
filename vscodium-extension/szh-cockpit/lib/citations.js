@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { REVUES, LANGUES_META } = require('./yaml');
 const { lireConfigPoste } = require('./archivage');
-const { basePoste } = require('./chemins-poste');
+const { basePoste } = require('./poste');
 
 // Les deux revues et les trois langues du titre de bibliographie, dans l'ordre où le
 // panneau les affiche. Une seule définition des unes et des autres, celle des fiches.
