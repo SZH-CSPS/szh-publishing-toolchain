@@ -50,8 +50,7 @@ ce sont eux qui expliquent pourquoi le branchement a la forme qu'il a.
 |---|---|
 | `pipeline/pronto_modele.py` | le modèle neutre, toutes les règles du gabarit, les sorties |
 | `pipeline/pronto_docx.py` | lit un `.docx` vers le modèle neutre |
-| `pipeline/pronto_odt.py` | lit un `.odt` vers le modèle neutre |
-| `pipeline/pronto-lire.py` | la CLI unique, renifle l'extension |
+| `pipeline/pronto-lire.py` | la CLI unique ; ne lit que le `.docx`, l'import convertit d'abord un `.odt` |
 | `test/js/pronto-lire.test.js` | les contrôles du lecteur |
 | `test/js/pronto-gabarits.test.js` | la parité `.docx` / `.odt` sur les gabarits livrés |
 | `revue-template/Pronto - modele d'article.docx` et `.odt` | les deux gabarits |
@@ -203,7 +202,7 @@ de documents pendant des mois.
 
 ### 5. Accepter le `.odt` dans toute la chaîne — FAITE le 29.09.2026, voir « Ce qui reste » point 1
 
-Le lecteur sait lire les deux formats ; la chaîne autour ne connaît que `.docx`. À reprendre :
+Le lecteur ne lit que le `.docx` (pas de lecteur `.odt` : `pipeline/conversion_odt.py` convertit d'abord) ; la chaîne autour ne connaissait que `.docx`. À reprendre :
 `pipeline/Makefile` (la cible `import`, le balayage de `$(WORD_DIR)`), le dépôt par
 glisser-déposer de `lib/import-hote.js` (message `drop.seulement.docx`), le sélecteur de fichiers
 d'`importerWord()`, et `windows/open-md.ps1` si l'on veut le double-clic.
@@ -223,7 +222,7 @@ documents réels). Cette lecture change aussi le reste de l'arbre : le gras du s
 L'import passe donc par une copie marquée (`docx-styles-corps.py`, puis `szh-styles-corps.lua`
 en premier filtre) : 15 documents sur 16 ressortent identiques à l'octet, le seizième (le
 gabarit) ne diffère que par ses trois blocs. `Quote` n'était pas perdu : pandoc en fait déjà
-un `BlockQuote`. Côté `.odt`, rien de fait : la chaîne ne lit pas encore l'ODT.
+un `BlockQuote`. Un `.odt` est converti en `.docx` avant tout lecteur : la copie marquée le sert aussi.
 
 **LibreOffice fusionne deux tableaux qui se touchent.** Mesuré sur le gabarit réel avec son bloc
 figure dupliqué : 4 tableaux côté `.docx`, 3 côté `.odt`. Le lecteur **répare** (un tableau de
@@ -248,11 +247,7 @@ sources sont sur le partage, `Daten_Allgemein - General\2_Produkte\52_Revue\RV02
 pages, remplir le gabarit depuis leur fiche `.meta.yaml`, relire avec `pronto-lire.py`. Mais
 mieux vaut un seul document rempli à la main qu'un nouveau banc circulaire.
 
-**Le chemin image du lecteur `.odt` n'est éprouvé par aucun contrôle versionné.** Il a été exercé
-par le banc (33 images portées et retrouvées) mais aucun gabarit ne porte d'image, donc rien ne
-garde cette route. **Le contrat `$SZH_PHOTOS` avec `import-medias.py` n'a jamais été vérifié pour
-l'ODT** — rien ne dit que LibreOffice nomme les images comme Word. À mesurer sur un article
-illustré avant toute mise en production.
+**Il n'y a plus de lecteur `.odt`** (le lecteur direct a été retiré) : la route des images d'un `.odt` est celle de sa conversion en `.docx`, et le contrat `$SZH_PHOTOS` avec `import-medias.py` a été mesuré dessus (« Ce qui reste », point 1).
 
 **Les deux premiers tableaux sont pris PAR POSITION.** `principal()` traite `tables[0]` comme le
 tableau des métadonnées et `tables[1]` comme celui des autrices et auteurs, quoi qu'ils contiennent
