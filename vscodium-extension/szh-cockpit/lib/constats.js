@@ -214,6 +214,9 @@ const TABLE = Object.freeze({
   // ---- L'import des Word ---------------------------------------------------------
   'import/echec': { barrage: 'geste', nature: D, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.import-echec' },
+  // Le .docx est endommagé : rien n'est créé, le Word reste en attente. Même barrage que l'échec.
+  'import/fichier-illisible': { barrage: 'geste', nature: D, lieu: 'word',
+    defaut: 'defaut.fichier-illisible' },
   'import/restes': { barrage: null, nature: A, lieu: 'word', defaut: 'defaut.import-restes' },
   // La flèche vise un extrait repérable de la première cellule (« debut », que l'autre
   // chantier ajoute à docx-tables.py) ; la phrase continue de nommer le tableau
@@ -285,6 +288,9 @@ const TABLE = Object.freeze({
   'import/figure-alt-a-completer': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-alt-a-completer' },
   // Tableau d'images sous-titrées gardé en tableau : rien n'est perdu, une information.
+  // Le texte d'un tableau du Word ne se retrouve pas dans l'article : à reprendre à la main.
+  'import/tableau-texte-perdu': { barrage: null, nature: D, lieu: 'article',
+    defaut: 'defaut.tableau-texte-perdu' },
   'import/tableau-images-et-texte': { barrage: null, nature: F, lieu: 'word',
     defaut: 'defaut.tableau-images-et-texte' },
   'import/biblio-tableau-apres-titre': { barrage: null, nature: D, lieu: 'word',
@@ -509,6 +515,8 @@ const SECOND_ETAGE = Object.freeze({
   'citations/reference-orpheline': { consigne: 'consigne.reference-orpheline' },
   'citations/ancrage-inconnu': { consigne: 'consigne.ancrage-inconnu' },
   'import/echec': { consigne: 'consigne.import-echec' },
+  'import/fichier-illisible': { consigne: 'consigne.fichier-illisible' },
+  'import/tableau-texte-perdu': { consigne: 'consigne.tableau-texte-perdu' },
   'import/restes': { consigne: 'consigne.import-restes' },
   'import/tableau-sans-entete': { consigne: 'consigne.tableau-sans-entete' },
   'import/langue-deduite': { consigne: 'consigne.langue-deduite' },
