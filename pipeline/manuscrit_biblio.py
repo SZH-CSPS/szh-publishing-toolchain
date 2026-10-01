@@ -890,7 +890,113 @@ def _appariee_sans_annee(c, index):
     return any(nom in mots and c['annee'] in annees for mots, annees in index)
 
 
-def croiser(citations, references):
+# ---------------------------------------------------------------------------------
+# Catalogue des messages : un identifiant de règle -> {'fr': ..., 'de': ...}. Tout message émis
+# par ce module passe par _msg() ; la langue est celle du PRODUIT (la Zeitschrift lit de
+# l'allemand), jamais celle de l'ouvrage cité. Une langue inconnue retombe sur le français.
+# Un identifiant « Regle.Variante » désigne une variante de message de la même règle.
+
+MESSAGES = {
+    'APA.CitationAbsente': {
+        'fr': 'Cette citation ne correspond à aucune référence de la '
+              'bibliographie\u00a0: «\u00a0%s\u00a0».',
+        'de': 'Diese Quellenangabe entspricht keinem Eintrag im Literaturverzeichnis: «%s».',
+    },
+    'APA.CitationAbsente.AnneeDifferente': {
+        'fr': ' La bibliographie porte « %s » avec l\'année %s : vérifier l\'année.',
+        'de': ' Das Literaturverzeichnis enthält «%s» mit dem Jahr %s: bitte das Jahr prüfen.',
+    },
+    'APA.Suffixe.Citation': {
+        'fr': 'Le suffixe «\u00a0%s\u00a0» de cette citation ne correspond à aucune '
+              'référence du même auteur et de la même année.',
+        'de': 'Der Buchstabe «%s» dieser Quellenangabe passt zu keinem Eintrag mit denselben '
+              'Autor:innen und demselben Jahr.',
+    },
+    'APA.EtAl.Manque': {
+        'fr': 'Cette référence compte %d auteurs\u00a0: la citation doit porter '
+              '«\u00a0et al.\u00a0» («\u00a0%s\u00a0»).',
+        'de': 'Dieser Eintrag hat %d Autor:innen: Die Quellenangabe muss «et al.» enthalten («%s»).',
+    },
+    'APA.EtAl.Trop': {
+        'fr': 'Cette référence ne compte que %d auteur(s)\u00a0: «\u00a0et al.\u00a0» est de '
+              'trop («\u00a0%s\u00a0»).',
+        'de': 'Dieser Eintrag hat nur %d Autor:in(nen): «et al.» ist hier überflüssig («%s»).',
+    },
+    'APA.ReferenceNonCitee': {
+        'fr': 'Cette référence ne semble jamais citée dans le texte.',
+        'de': 'Dieser Eintrag scheint im Text nie zitiert zu werden.',
+    },
+    'APA.ReferenceNonVerifiee': {
+        'fr': ('La référence «\u00a0%s\u00a0» n’a pas pu être vérifiée automatiquement\u00a0: son '
+               'format n’a pas été reconnu. Contrôlez l’entrée correspondante dans la liste des '
+               'références, puis corrigez cet appel si nécessaire.'),
+        'de': ('Der Verweis «%s» konnte nicht automatisch überprüft werden: Sein Format wurde '
+               'nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
+               'Literaturverzeichnis und korrigieren Sie diesen Verweis bei Bedarf.'),
+    },
+    'APA.OrdreBiblio': {
+        'fr': 'Référence mal classée\u00a0: l’ordre alphabétique puis '
+              'chronologique n’est pas respecté.',
+        'de': 'Eintrag falsch eingeordnet: Die alphabetische, danach chronologische Reihenfolge '
+              'ist nicht eingehalten.',
+    },
+    'APA.Suffixe.Biblio': {
+        'fr': 'Plusieurs références du même auteur et de la même année '
+              '(%d) ne sont pas distinguées par a/b/c.',
+        'de': 'Mehrere Einträge mit denselben Autor:innen im selben Jahr (%d) sind nicht durch '
+              'a/b/c unterschieden.',
+    },
+    'APA.DoiForme': {
+        'fr': 'Le DOI n’est pas écrit sous sa forme normalisée «\u00a0%s\u00a0».',
+        'de': 'Der DOI ist nicht in der normierten Schreibweise angegeben: «%s».',
+    },
+    'APA.DoiDivergent': {
+        'fr': 'Le DOI renvoie à une autre publication (%s).',
+        'de': 'Der DOI verweist auf eine andere Publikation (%s).',
+    },
+    'APA.DoiDivergent.SansChamp': {
+        'fr': 'Le DOI renvoie à une autre publication.',
+        'de': 'Der DOI verweist auf eine andere Publikation.',
+    },
+    'APA.DoiRetrouve': {
+        'fr': 'Un DOI correspondant a été trouvé pour cette référence\u00a0: %s '
+              '(à confirmer avant de l’accepter).',
+        'de': 'Für diesen Eintrag wurde ein passender DOI gefunden: %s '
+              '(vor der Übernahme bitte bestätigen).',
+    },
+    'APA.MiseEnForme': {
+        'fr': 'La mise en forme APA 7 de cette référence diffère de '
+              'l’original\u00a0– révision proposée.',
+        'de': 'Die APA-7-Formatierung dieses Eintrags weicht vom Original ab – '
+              'Änderung vorgeschlagen.',
+    },
+    'APA.MiseEnForme.DoiAjoute': {
+        'fr': ' DOI ajouté : un DOI correspondant a été trouvé (%s), à '
+              'confirmer avant d\'accepter cette révision.',
+        'de': ' DOI ergänzt: Es wurde ein passender DOI gefunden (%s); bitte vor der Übernahme '
+              'dieser Änderung bestätigen.',
+    },
+}
+
+# Les champs que Crossref contredit, nommés dans APA.DoiDivergent.
+CHAMPS_DIVERGENTS = {
+    'auteur': {'fr': 'auteur', 'de': 'Autor:innen'},
+    'annee': {'fr': 'annee', 'de': 'Jahr'},
+    'titre': {'fr': 'titre', 'de': 'Titel'},
+}
+
+
+def _langue_message(langue):
+    return 'de' if langue == 'de' else 'fr'
+
+
+def _msg(identifiant, langue, *args):
+    """Le message `identifiant` dans la langue du produit, `args` insérés par %."""
+    gabarit = MESSAGES[identifiant][_langue_message(langue)]
+    return gabarit % args if args else gabarit
+
+
+def croiser(citations, references, langue='fr'):
     alertes = []
     refs_par_cle = {}
     for r in references or []:
@@ -919,8 +1025,7 @@ def croiser(citations, references):
             c['appariee_sans_annee'] = True
             continue
         if not correspondances:
-            message = ('Cette citation ne correspond à aucune référence de la '
-                       'bibliographie\u00a0: «\u00a0%s\u00a0».' % c.get('texte'))
+            message = _msg('APA.CitationAbsente', langue, c.get('texte'))
             # Même nom, autre année : c'est presque toujours une coquille d'année, pas une
             # référence manquante — le dire (mesuré sur gzdf_Huttner : « Beukelman &
             # Mirenda, 1993 » dans le texte, 2013 dans la bibliographie).
@@ -932,9 +1037,8 @@ def croiser(citations, references):
                     nom_indice = nom
                     break
             if annees_meme_nom:
-                message += (' La bibliographie porte « %s » avec l\'année %s : vérifier '
-                            'l\'année.' % (nom_indice,
-                                            ', '.join(str(a) for a in annees_meme_nom)))
+                message += _msg('APA.CitationAbsente.AnneeDifferente', langue, nom_indice,
+                                ', '.join(str(a) for a in annees_meme_nom))
             alertes.append({
                 'rule': 'APA.CitationAbsente', 'severity': 'error', 'action': 'comment',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
@@ -951,8 +1055,7 @@ def croiser(citations, references):
                 'rule': 'APA.Suffixe', 'severity': 'warning', 'action': 'comment',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': None,
-                'message': 'Le suffixe «\u00a0%s\u00a0» de cette citation ne correspond à aucune '
-                           'référence du même auteur et de la même année.' % c['suffixe'],
+                'message': _msg('APA.Suffixe.Citation', langue, c['suffixe']),
             })
         # « et al. » : manquant dès trois auteurs, posé à tort pour un ou deux.
         ref = correspondances[0]
@@ -967,8 +1070,7 @@ def croiser(citations, references):
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': suggere,
-                'message': 'Cette référence compte %d auteurs\u00a0: la citation doit porter '
-                           '«\u00a0et al.\u00a0» («\u00a0%s\u00a0»).' % (nb, suggere),
+                'message': _msg('APA.EtAl.Manque', langue, nb, suggere),
             })
         elif 1 <= nb <= 2 and c.get('et_al'):
             if nb == 2 and len(ref.get('auteurs') or []) == 2:
@@ -982,8 +1084,7 @@ def croiser(citations, references):
                 'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
                 'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
                 'suggested': suggere,
-                'message': 'Cette référence ne compte que %d auteur(s)\u00a0: «\u00a0et al.\u00a0» est de '
-                           'trop («\u00a0%s\u00a0»).' % (nb, suggere),
+                'message': _msg('APA.EtAl.Trop', langue, nb, suggere),
             })
 
     for cle, lot in refs_par_cle.items():
@@ -995,7 +1096,7 @@ def croiser(citations, references):
                 'para': r.get('para'), 'span': None,
                 'found': r.get('texte') or (r['auteurs'][0]['nom'] if r.get('auteurs') else None),
                 'suggested': None,
-                'message': 'Cette référence ne semble jamais citée dans le texte.',
+                'message': _msg('APA.ReferenceNonCitee', langue),
             })
     return alertes
 
@@ -1084,25 +1185,6 @@ def _appels_en_ordre_texte(citations):
     return out
 
 
-_MESSAGE_REFERENCE_NON_VERIFIEE = {
-    'fr': ('La référence «\u00a0%s\u00a0» n’a pas pu être vérifiée automatiquement\u00a0: son format n’a '
-           'pas été reconnu. Contrôlez l’entrée correspondante dans la liste des références, '
-           'puis corrigez cet appel si nécessaire.'),
-    'de': ('Der Verweis «%s» konnte nicht automatisch überprüft werden: Sein Format wurde '
-           'nicht erkannt. Kontrollieren Sie den entsprechenden Eintrag im '
-           'Literaturverzeichnis und korrigieren Sie diesen Verweis bei Bedarf.'),
-}
-
-
-def _message_reference_non_verifiee(repere, langue):
-    # Même mécanisme que Regle.message_fr/message_de de manuscrit_regles.py (évaluer(), choix
-    # sur la langue COURTE du produit) — la seule localisation de message déjà en usage dans cet
-    # outil ; manuscrit_biblio.py lui-même n'a encore aucun message bilingue, ce module-ci ne
-    # devait pas en inventer un second mécanisme.
-    gabarit = _MESSAGE_REFERENCE_NON_VERIFIEE.get(langue) or _MESSAGE_REFERENCE_NON_VERIFIEE['fr']
-    return gabarit % repere
-
-
 def signaler_references_non_verifiees(citations, references, langue):
     """Alertes `APA.ReferenceNonVerifiee` : une référence de confiance non haute, mais dont
     l'appel a pu être retrouvé dans le corps (voir `_cle_appariement_repli()`), reçoit un
@@ -1135,7 +1217,7 @@ def signaler_references_non_verifiees(citations, references, langue):
             'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
             'para': appel.get('para'), 'span': appel.get('span'), 'found': appel.get('texte'),
             'suggested': None,
-            'message': _message_reference_non_verifiee('%s, %d' % (nom, annee), langue),
+            'message': _msg('APA.ReferenceNonVerifiee', langue, '%s, %d' % (nom, annee)),
         })
 
     # Un appel que croiser() n'a retrouvé que dans une référence SANS année lue (texte
@@ -1149,8 +1231,8 @@ def signaler_references_non_verifiees(citations, references, langue):
             'rule': 'APA.ReferenceNonVerifiee', 'severity': 'warning', 'action': 'comment',
             'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
             'suggested': None,
-            'message': _message_reference_non_verifiee(
-                '%s, %d' % (c['nom_premier_auteur'], c['annee']), langue),
+            'message': _msg(
+                'APA.ReferenceNonVerifiee', langue, '%s, %d' % (c['nom_premier_auteur'], c['annee'])),
         })
     return alertes
 
@@ -1202,8 +1284,7 @@ def verifier_ordre(references, langue='fr'):
                 'rule': 'APA.OrdreBiblio', 'severity': 'warning', 'action': 'report',
                 'para': r.get('para'), 'span': None,
                 'found': r.get('texte') or r.get('titre'), 'suggested': None,
-                'message': 'Référence mal classée\u00a0: l’ordre alphabétique puis '
-                           'chronologique n’est pas respecté.',
+                'message': _msg('APA.OrdreBiblio', langue),
             })
 
     # Même auteur, même année, plusieurs entrées : les suffixes a/b/c doivent les distinguer.
@@ -1221,8 +1302,7 @@ def verifier_ordre(references, langue='fr'):
                     'rule': 'APA.Suffixe', 'severity': 'warning', 'action': 'fix',
                     'para': r.get('para'), 'span': None,
                     'found': r.get('texte') or r.get('titre'), 'suggested': None,
-                    'message': 'Plusieurs références du même auteur et de la même année '
-                               '(%d) ne sont pas distinguées par a/b/c.' % annee,
+                    'message': _msg('APA.Suffixe.Biblio', langue, annee),
                 })
     return alertes
 
@@ -1252,7 +1332,7 @@ def doi_normaliser(ref):
     alertes.append({
         'rule': 'APA.DoiForme', 'severity': 'warning', 'action': 'fix',
         'para': ref.get('para'), 'span': None, 'found': trouve, 'suggested': canonique,
-        'message': 'Le DOI n’est pas écrit sous sa forme normalisée «\u00a0%s\u00a0».' % canonique,
+        'message': _msg('APA.DoiForme', ref.get('_langue'), canonique),
     })
     return alertes
 
@@ -1546,9 +1626,8 @@ def _segment_fin_reference(ref):
     return None
 
 
-def _message_doi_retrouve(doi):
-    return ('Un DOI correspondant a été trouvé pour cette référence\u00a0: %s '
-            '(à confirmer avant de l’accepter).' % doi)
+def _message_doi_retrouve(doi, langue):
+    return _msg('APA.DoiRetrouve', langue, doi)
 
 
 def _alerte_insertion_doi(ref, doi):
@@ -1560,7 +1639,7 @@ def _alerte_insertion_doi(ref, doi):
     return {'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'track',
             'para': ref.get('para'), 'span': None, 'found': segment,
             'suggested': segment + (' ' if segment.endswith('.') else '. ') + doi,
-            'message': _message_doi_retrouve(doi)}
+            'message': _message_doi_retrouve(doi, ref.get('_langue'))}
 
 
 # ---------------------------------------------------------------------------------
@@ -1648,7 +1727,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
     citations = citations_du_corps(paragraphes_corps or [])
     stats['citations'] = len(citations)
 
-    alertes_croisement = croiser(citations, references)
+    alertes_croisement = croiser(citations, references, langue)
     alertes.extend(alertes_croisement)
     stats['citees_absentes'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.CitationAbsente')
     stats['non_citees'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.ReferenceNonCitee')
@@ -1686,9 +1765,10 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                     'rule': 'APA.DoiDivergent', 'severity': 'warning', 'action': 'comment',
                     'para': r.get('para'), 'span': None, 'found': r.get('doi'),
                     'suggested': None,
-                    'message': 'Le DOI renvoie à une autre publication (%s).'
-                               % ', '.join(champs_divergents) if champs_divergents else
-                               'Le DOI renvoie à une autre publication.',
+                    'message': _msg('APA.DoiDivergent', langue, ', '.join(
+                        CHAMPS_DIVERGENTS[c][_langue_message(langue)]
+                        for c in champs_divergents)) if champs_divergents else
+                        _msg('APA.DoiDivergent.SansChamp', langue),
                 })
         doi_retrouve = None
         if reseau and not r.get('doi'):
@@ -1730,11 +1810,9 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                         'jeton': jeton_manquant, 'found': r.get('texte'),
                     })
                 else:
-                    message = ('La mise en forme APA 7 de cette référence diffère de '
-                                'l’original\u00a0– révision proposée.')
+                    message = _msg('APA.MiseEnForme', langue)
                     if doi_retrouve:
-                        message += (' DOI ajouté : un DOI correspondant a été trouvé (%s), à '
-                                     'confirmer avant d\'accepter cette révision.' % doi_retrouve)
+                        message += _msg('APA.MiseEnForme.DoiAjoute', langue, doi_retrouve)
                     mef = {
                         'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
                         'para': r.get('para'), 'span': None, 'found': r.get('texte'),
@@ -1776,7 +1854,7 @@ def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau
                 alertes.append({
                     'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
                     'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi_retrouve,
-                    'message': _message_doi_retrouve(doi_retrouve),
+                    'message': _message_doi_retrouve(doi_retrouve, langue),
                 })
 
     return alertes, stats
