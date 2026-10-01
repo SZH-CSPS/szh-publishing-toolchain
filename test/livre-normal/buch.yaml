@@ -40,7 +40,7 @@ impression:
   dos-mm:
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"
+  profil-cmjn: ""
 locked: false
 archived: false
 version-toolkit: ""

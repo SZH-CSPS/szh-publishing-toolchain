@@ -142,8 +142,9 @@ def inliner_decors(html):
 # jamais sur ces <div>.
 RE_ONGLET = re.compile(r'<div class="szh-onglet" aria-hidden="true"></div>\s*')
 RE_PASTILLE = re.compile(r'<div class="szh-pastille" aria-hidden="true">[^<]*</div>\s*')
-# Le picto d'en-tête : même défaut, data-picto vide ou non.
-RE_PICTO = re.compile(r'<div class="szh-picto-entete" data-picto="[^"]*" aria-hidden="true"></div>\s*')
+# Le picto d'en-tête : même défaut, data-picto vide ou non. Vide, --embed-resources le
+# réécrit sans valeur (`data-picto`, pas `data-picto=""`).
+RE_PICTO = re.compile(r'<div class="szh-picto-entete" data-picto(?:="[^"]*")? aria-hidden="true"></div>\s*')
 
 
 def retirer_onglets(html):

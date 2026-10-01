@@ -158,7 +158,10 @@ if [ -z "$only" ]; then
       # dernier maillon compte, et un validateur absent rendrait 0.
       if [ -x "$VERAPDF" ]; then
         ua="$REPO/test/out/.$livre.pdfua"
-        JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text out/*.pdf > "$ua" 2>&1
+        # Sauf la couverture d'impression : PDF/X-4, pas PDF/UA (une variante par PDF dans
+        # WeasyPrint). Elle est gardée plus bas par livre-sorties-check.py.
+        JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text \
+          $(ls out/*.pdf | grep -v -- '-couverture-impression\.pdf$') > "$ua" 2>&1
         if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
           echo "    ✗ PDF/UA-1 : NON conforme"
           sed 's/^/      /' "$ua"
@@ -167,6 +170,21 @@ if [ -z "$only" ]; then
         echo "    PDF/UA-1 : conforme ($(grep -c '^PASS' "$ua") fichier(s))"
       else
         echo "    (PDF/UA ignoré : veraPDF introuvable en $VERAPDF)"
+      fi
+      # Folios, métadonnées, couverture d'impression (PDF/X-4 FOGRA52, aucun RGB, CMJN de
+      # référence exact), PNG au RGB exact, EPUB : test/livre-sorties-check.py.
+      if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+        for c in chapitres/*/; do
+          make -f "$REPO/pipeline/Makefile" livre-chapitre-pdf CHAPITRE="$(basename "$c")" >> "$journal" 2>&1 || exit 1
+        done
+        sorties="$REPO/test/out/.$livre.sorties"
+        "$FONTPY" "$REPO/test/livre-sorties-check.py" . > "$sorties" 2>&1
+        if grep -q "^FAIL" "$sorties" || ! grep -q "^ok" "$sorties"; then
+          echo "    ✗ sorties du livre :"
+          grep -v "^ok" "$sorties" | sed 's/^/      /'
+          exit 1
+        fi
+        echo "    sorties : conformes ($(grep -c '^ok' "$sorties") contrôle(s))"
       fi
       if [ -x "$RENDER" ] || command -v "$RENDER" >/dev/null 2>&1; then
         for pdf in out/*.pdf; do
