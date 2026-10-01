@@ -55,6 +55,9 @@
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
 #      citent sont supprimées (Word livre aussi les logos et filigranes du document).
+#   5bis. livre seulement : livre-migrer-meta.py range le titre (« # Titre ») et la ligne
+#      d'auteur·e·s du chapitre dans sa fiche <slug>.meta.yaml — le .md d'un chapitre n'en
+#      porte plus. Avant l'étape 6, pour que les empreintes décrivent le chapitre rendu.
 #   6. reimporter.py --empreintes : note l'empreinte de ce que cette conversion a livré,
 #      pour que « Réimporter cet article » sache plus tard ce que personne n'a retouché.
 # Suivi de modifications accepté, commentaires Word ignorés.
@@ -76,6 +79,10 @@ F="$1"; SLUG="$2"; PIPE="$3"
 # que reimporter.py convertit dans un chantier voisin, sans toucher l'article vivant : une
 # seule chaîne d'import, pas deux à garder d'accord.
 DIR="${SZH_IMPORT_DIR:-articles/$SLUG}"
+# Racine du LIVRE quand l'import vient d'un dossier de livre (buch.yaml à côté) : le
+# chapitre y est rangé sous chapitres/<slug>, et l'étape 5bis ne concerne que lui.
+LIVRE_RACINE=""
+[ -f buch.yaml ] && LIVRE_RACINE="$PWD"
 DOCX_ABS="$(realpath "$F")"
 
 # Nom d'origine du Word déposé (.docx ou .odt), avant toute conversion : c'est lui que la
@@ -283,6 +290,22 @@ MEDIAS="$(python3 "$PIPE/import-medias.py" "$SLUG" . "$PHOTOS" || true)"
 # Seconde passe, sur les noms définitifs (<slug>-fig-NN) : les images remises sont nommées,
 # et toute image d'un groupe sans texte alternatif aussi.
 python3 "$PIPE/docx-controle-import.py" --apres-medias "$SLUG" . "$CONTROLE" "$MEDIAS" || true
+
+# Livre seulement : titre et auteur·e·s du chapitre quittent le .md pour la fiche. Un Word
+# à plusieurs titres de niveau 1 (manuscrit à scinder) est laissé tel quel, livre-scinder.py
+# s'en charge ensuite. Non bloquant : le chapitre est déjà converti ; un conflit avec la
+# fiche est dit, jamais tranché. Les constats (lignes « | ») vont aussi au journal.
+if [ -n "$LIVRE_RACINE" ]; then
+  MIGRATION="$(python3 "$PIPE/livre-migrer-meta.py" "$LIVRE_RACINE" --chapitre "$SLUG" 2>&1 || true)"
+  if [ -n "$MIGRATION" ]; then
+    while IFS= read -r ligne_migration; do
+      case "$ligne_migration" in
+        *" | "*) signaler "$ligne_migration" ;;
+        *) echo "$ligne_migration" ;;
+      esac
+    done <<< "$MIGRATION"
+  fi
+fi
 
 # Empreintes de ce que cette conversion a livré : c'est ce qui permettra à « Réimporter cet
 # article » de distinguer un tableau retravaillé dans l'éditeur d'un tableau tel que le Word

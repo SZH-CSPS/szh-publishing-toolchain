@@ -4,6 +4,10 @@
 #
 #   python3 livre-assembler.py --meta buch.yaml --gabarit <g.html> --sortie <out.html>
 #                              [--css <feuille>]... [--css-embed <feuille>]... <fragment>...
+#                              [--sans-liminaires]
+#
+# --sans-liminaires : le chapitre seul (cible livre-chapitre-pdf de livre.mk). Aucun
+# liminaire, pas de sommaire ; le titre du document devient celui du chapitre.
 #
 # --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
 # problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester un
@@ -270,6 +274,47 @@ def _auteurs_ligne(meta, lang='fr'):
     return ', '.join(noms[:-1]) + conjonction + noms[-1]
 
 
+def _editeurs_ligne(meta, lang='fr'):
+    """Même format que _auteurs_ligne : « Prénom Nom, Prénom Nom et Prénom Nom »."""
+    noms = []
+    for a in (meta.get('editeurs') or []):
+        if isinstance(a, dict):
+            n = ' '.join(x for x in (a.get('prenom'), a.get('nom')) if x)
+            if n:
+                noms.append(n)
+        elif a:
+            noms.append(str(a))
+    if not noms:
+        return ''
+    if len(noms) == 1:
+        return noms[0]
+    conjonction = CONJONCTION_AUTEURS.get(lang, CONJONCTION_AUTEURS['fr'])
+    return ', '.join(noms[:-1]) + conjonction + noms[-1]
+
+
+def metadonnees_html(meta, lang='fr'):
+    """Génère les balises <meta> du <head> pour le gabarit HTML du livre."""
+    lignes = []
+    # Auteurs et éditeurs pour meta name="author"
+    auteurs = _auteurs_ligne(meta, lang)
+    editeurs = _editeurs_ligne(meta, lang)
+    auteurs_et_editeurs = auteurs
+    if editeurs:
+        auteurs_et_editeurs = auteurs + (', ' + editeurs if auteurs else editeurs)
+    if auteurs_et_editeurs:
+        lignes.append('  <meta name="author" content="%s" />' % html.escape(auteurs_et_editeurs, quote=True))
+    # Résumé pour meta name="description"
+    if meta.get('resume'):
+        lignes.append('  <meta name="description" content="%s" />' % html.escape(str(meta['resume']), quote=True))
+    # Mots-clés
+    if meta.get('mots-cles'):
+        lignes.append('  <meta name="keywords" content="%s" />' % html.escape(str(meta['mots-cles']), quote=True))
+    # Année pour dcterms.created
+    if meta.get('annee'):
+        lignes.append('  <meta name="dcterms.created" content="%s" />' % html.escape(str(meta['annee']), quote=True))
+    return '\n'.join(lignes) + ('\n' if lignes else '')
+
+
 def demi_titre(meta, lang='fr'):
     return ('<section class="szh-liminaire szh-demi-titre">'
             '<p class="szh-auteurs">%s</p>'
@@ -436,21 +481,34 @@ def metadonnees_epub(meta):
         lignes.append('subtitle: ' + guillemets(meta['sous-titre']))
     lignes.append('lang: ' + guillemets(str(meta.get('lang') or 'fr')))
 
-    # Les auteur·e·s de l'ouvrage. En ouvrage collectif la liste est vide, et c'est voulu :
-    # les auteur·e·s y sont ceux des chapitres, et les hisser en dc:creator du volume
-    # attribuerait le livre entier à la première personne de la liste.
-    noms = []
+    # Les auteur·e·s et éditeur·rice·s de l'ouvrage au format pandoc EPUB : creator avec
+    # role (aut pour auteurs, edt pour éditeurs) et text (le nom). En ouvrage collectif la
+    # liste des auteurs peut être vide, ce qui est voulu : les auteur·e·s sont ceux des
+    # chapitres, et les hisser en dc:creator du volume attribuerait le livre à la première
+    # personne de la liste.
+    creators = []
     for a in (meta.get('auteurs') or []):
         if isinstance(a, dict):
             n = ' '.join(x for x in (a.get('prenom'), a.get('nom')) if x)
             if n:
-                noms.append(n)
+                creators.append(('aut', n))
         elif a:
-            noms.append(str(a))
-    if noms:
-        lignes.append('author:')
-        for n in noms:
-            lignes.append('- ' + guillemets(n))
+            creators.append(('aut', str(a)))
+    for a in (meta.get('editeurs') or []):
+        if isinstance(a, dict):
+            n = ' '.join(x for x in (a.get('prenom'), a.get('nom')) if x)
+            if n:
+                creators.append(('edt', n))
+        elif a:
+            creators.append(('edt', str(a)))
+    if creators:
+        lignes.append('creator:')
+        for role, nom in creators:
+            lignes.append('- role: ' + role)
+            lignes.append('  text: ' + guillemets(nom))
+
+    if meta.get('resume'):
+        lignes.append('description: ' + guillemets(meta['resume']))
 
     if meta.get('isbn-ebook'):
         lignes.append('identifier:')
@@ -492,6 +550,7 @@ def main(argv):
     # jour. SZH_OUT_LIVRE en repli, pour un appel hors Makefile (tests, essai à la main).
     out_dir = os.environ.get('SZH_OUT_LIVRE') or 'out'
     feuilles, feuilles_incorporees, fragments = [], [], []
+    sans_liminaires = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -513,6 +572,9 @@ def main(argv):
         elif a == '--css-embed' and i + 1 < len(argv):
             feuilles_incorporees.append(argv[i + 1])
             i += 2
+        elif a == '--sans-liminaires':
+            sans_liminaires = True
+            i += 1
         elif a == '--out' and i + 1 < len(argv):
             out_dir = argv[i + 1]
             i += 2
@@ -554,7 +616,7 @@ def main(argv):
                                             TITRES_SOMMAIRE.get(langue, 'Sommaire')),
     }
     tete = []
-    for piece in (meta.get('liminaires') or []):
+    for piece in ([] if sans_liminaires else (meta.get('liminaires') or [])):
         piece = str(piece)
         if piece in composeurs:
             tete.append(composeurs[piece]())
@@ -602,11 +664,19 @@ def main(argv):
         contenu = contenu.replace('</style>', '<\\/style>')
         liens += ('\n  <style>/* %s */\n%s\n</style>'
                   % (html.escape(os.path.basename(c)), contenu))
+    # Chapitre seul : le <title> (donc le /Title du PDF) nomme le chapitre, puis le livre.
+    titre_document = str(meta.get('titre') or '')
+    if sans_liminaires:
+        premier = next((e[2] for e in entrees if e[0] == 1), '')
+        if premier:
+            titre_document = premier + (' — ' + titre_document if titre_document else '')
     remplacements = {
         '$lang$':          langue,
-        '$titre$':         html.escape(str(meta.get('titre') or '')),
+        '$titre$':         html.escape(titre_document),
         '$sous-titre$':    html.escape(str(meta.get('sous-titre') or '')),
         '$auteurs$':       html.escape(_auteurs_ligne(meta, langue)),
+        # Pas en EPUB : le lecteur HTML de pandoc ferait de <meta name="author"> un dc:creator de plus.
+        '$metadonnees$':   '' if meta_epub else metadonnees_html(meta, langue),
         '$classe-format$': 'szh-a4' if str(meta.get('format')) == 'a4' else '',
         '$css$':           liens,
         '$liminaires$':    '\n'.join(tete),

@@ -1,5 +1,3 @@
-# La société doit comprendre les personnes handicapées
-
 ::: {.falc-resume}
 Ces 2 personnes ont parlé de :
 la place des personnes handicapées dans la société.

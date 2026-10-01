@@ -1,5 +1,3 @@
-# Einleitung
-
 Das Wissen über Autismus hat in den letzten Jahrzehnten deutlich zugenommen. Dieser
 Prüfband dient allein dazu, die Buchmaschine zu prüfen: Kapitelanfang auf einer rechten
 Seite, Seitenzahl, Kolumnentitel, Silbentrennung und Blocksatz.

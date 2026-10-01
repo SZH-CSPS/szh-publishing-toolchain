@@ -1,5 +1,3 @@
-# Schluss
-
 Ein kurzes Schlusskapitel. Es prüft, dass ein Kapitel von weniger als einer Seite die
 Paginierung nicht durcheinanderbringt und dass das letzte Kapitel ebenfalls auf einer
 rechten Seite beginnt.

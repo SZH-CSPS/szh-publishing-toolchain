@@ -14,7 +14,9 @@ $--
 $-- Le bloc des auteur·e·s d'un chapitre n'est PAS écrit ici : il doit venir APRÈS le titre
 $-- du chapitre, et un gabarit pandoc ne sait rien intercaler — il écrit ce qui suit
 $-- `$body$`. C'est szh-livre-auteurs.lua qui l'insère, exactement comme szh-auteurs.lua le
-$-- fait pour un article. Même raison, même remède.
+$-- fait pour un article. Même raison, même remède. Le titre (<h1>) et le sous-titre viennent
+$-- eux aussi de la fiche <slug>.meta.yaml, posés par szh-livre-titre.lua (tête de chaîne)
+$-- et szh-livre-sous-titre.lua : `$body$` les contient déjà quand ce gabarit s'exécute.
 $--
 $-- La couleur du chapitre et la position/hauteur de son onglet sont POSÉES ICI, par le
 $-- Makefile (PALETTE_CHAPITRE, ONGLET_Y0/ONGLET_Y1), et non choisies en CSS avec

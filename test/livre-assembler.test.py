@@ -271,5 +271,68 @@ class SommaireHtml(unittest.TestCase):
         self.assertIn('<section class="szh-sommaire" id="szh-sommaire">', html)
 
 
+class ChapitreSeul(unittest.TestCase):
+    """--sans-liminaires : le chapitre seul de `make livre-chapitre-pdf`."""
+
+    def _assembler(self, *extra):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        meta = os.path.join(tmp, 'buch.yaml')
+        with open(meta, 'w', encoding='utf-8') as f:
+            f.write('titre: "Le livre"\nlang: de\nliminaires: [demi-titre, page-titre, sommaire]\n')
+        frag = os.path.join(tmp, 'c.frag.html')
+        with open(frag, 'w', encoding='utf-8') as f:
+            f.write(_fragment('c', 'Teilhabe', rang=2, numero=2))
+        sortie = os.path.join(tmp, 'sortie.html')
+        gabarit = os.path.join(RACINE, 'pipeline', 'templates', 'szh-livre.html')
+        tampon = io.StringIO()
+        ancien = sys.stderr
+        sys.stderr = tampon
+        try:
+            code = la.main(['x', '--meta', meta, '--gabarit', gabarit, '--sortie', sortie,
+                            '--out', tmp, *extra, frag])
+        finally:
+            sys.stderr = ancien
+        self.assertEqual(code, 0, tampon.getvalue())
+        with open(sortie, encoding='utf-8') as f:
+            return f.read()
+
+    def test_livre_complet_garde_ses_liminaires(self):
+        html = self._assembler()
+        self.assertIn('szh-sommaire', html)
+        self.assertIn('szh-page-titre', html)
+
+    def test_chapitre_seul_sans_liminaires_ni_sommaire(self):
+        html = self._assembler('--sans-liminaires')
+        self.assertNotIn('szh-sommaire', html)
+        self.assertNotIn('szh-page-titre', html)
+        self.assertNotIn('szh-demi-titre', html)
+        self.assertIn('<section class="szh-chapitre" id="ch-c"', html)
+
+    def test_chapitre_seul_titre_du_document(self):
+        html = self._assembler('--sans-liminaires')
+        self.assertIn('<title>2 Teilhabe — Le livre</title>', html)
+
+
+class ChaineDeFiltres(unittest.TestCase):
+    """livre.mk : le titre et le sous-titre viennent de la fiche, dans le bon ordre."""
+
+    def setUp(self):
+        with open(CHEMIN_LIVRE_MK, encoding='utf-8') as f:
+            texte = f.read()
+        debut = texte.index('FILTRES_CHAPITRE := ')
+        bloc = texte[debut:texte.index('\n\n', debut)]
+        self.ordre = re.findall(r'filters/(szh-[a-z-]+)\.lua', bloc)
+
+    def test_titre_en_tete(self):
+        self.assertEqual(self.ordre[0], 'szh-livre-titre')
+
+    def test_sous_titre_apres_auteurs_et_encadre(self):
+        o = self.ordre
+        self.assertGreater(o.index('szh-livre-sous-titre'), o.index('szh-livre-entete'))
+        self.assertGreater(o.index('szh-livre-entete'), o.index('szh-livre-auteurs'))
+        self.assertGreater(o.index('szh-livre-auteurs'), o.index('szh-sections'))
+
+
 if __name__ == '__main__':
     unittest.main()
