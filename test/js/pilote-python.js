@@ -50,8 +50,11 @@ let fil = null;
 function demarrer(commande, args) {
   const signal = new Int32Array(new SharedArrayBuffer(4));
   const { port1, port2 } = new MessageChannel();
+  // execArgv vide : sous un runner simulé, `--require gardes.js` refuserait le wsl.exe du
+  // fil comme un appel réel, alors qu'il porte le même Python que python().
   const worker = new Worker(CODE_FIL, {
-    eval: true, workerData: { signal, port: port2, commande, args }, transferList: [port2]
+    eval: true, execArgv: [], workerData: { signal, port: port2, commande, args },
+    transferList: [port2]
   });
   worker.unref();
   fil = { signal, port: port1, worker };

@@ -11,6 +11,50 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.0.0
+
+Majeure : un numéro ou un livre déjà compilé ressort différent (appels de note, point médian
+des auteurs, exergue et tableaux des livres). Release lourde : l'image WSL est reconstruite.
+
+**Livres.**
+- Couverture d'impression en PDF/X-4 CMJN FOGRA52, avec le dos calculé.
+- Folios « page X sur Y ».
+- Titre et auteurs de chaque chapitre dans sa fiche.
+- Saut forcé « // » dans les titres.
+- Aperçu PDF d'un chapitre seul.
+- L'exergue et la mise en forme des tableaux, comme dans la revue.
+- Les couleurs de l'EPUB sont enfin définies.
+
+**Accessibilité des PDF.**
+- Listes balisées (puces et numéros reconnus), à position inchangée.
+- Liens DOI, licence et sommaire FALC de nouveau cliquables.
+- Description longue des tableaux dans l'arbre de structure.
+- Signets et titre du document sans mots collés.
+- Langue dans les métadonnées XMP.
+- Un passage dans une autre langue suit la typographie de sa langue.
+- Limites restantes : `docs/LIMITES-ACCESSIBILITE.md`.
+
+**Nettoyeur et import.**
+- Messages et annotations en allemand pour la Zeitschrift.
+- Le texte des tableaux du Word est contrôlé à l'import.
+- Un fichier endommagé est refusé net.
+- Les gabarits Pronto portent une clé cachée qui les fait reconnaître à coup sûr.
+- Le lecteur .odt disparaît : un .odt est converti avant lecture.
+- Un encadré reste reconnu même si le nom de son style a été retouché (« szh-Important »).
+
+**Cockpit.**
+- Un livre ne montre que ce qui le concerne, avec son vocabulaire (« chapitre », « livre »).
+- La barre d'état compte aussi les refus d'export.
+- Le lanceur : onglets dans un ordre fixe, « Journal » devient « Log ».
+
+**Sous le capot.** Architecture refaite sans changer le comportement (cockpit 0.72.0) :
+- `extension.js` passe de 8 133 à 3 844 lignes et ne fait plus que câbler des modules ;
+- la langue d'un document est décidée une seule fois ;
+- les chaînes de filtres et la compilation PDF ne sont écrites qu'à un endroit ;
+- tout Python tourne dans la WSL ;
+- les patchs de WeasyPrint sont un par fonctionnalité, avec un dossier amont ;
+- la documentation est réécrite, et `CLAUDE.md` ajouté.
+
 ## 2.8.0
 
 **Journal du nettoyeur réduit à l'essentiel.** L'onglet Preprocessing n'affiche plus que le

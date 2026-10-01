@@ -15,6 +15,28 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.0": {
+    "fr": {
+      "titre": "Des livres complets, des PDF plus accessibles",
+      "points": [
+        "Un livre a maintenant sa couverture d’impression en CMJN, son dos calculé, ses folios « page X sur Y » et l’aperçu PDF d’un chapitre seul.",
+        "Dans un livre, le cockpit ne montre que ce qui le concerne, et parle de chapitres plutôt que d’articles.",
+        "Les PDF sont plus accessibles : listes reconnues comme telles, liens DOI et licence cliquables, signets propres, langue déclarée.",
+        "Un passage écrit dans une autre langue suit désormais la typographie de sa propre langue.",
+        "Le nettoyeur parle allemand pour la Zeitschrift, et l’import refuse net un fichier Word endommagé."
+      ]
+    },
+    "de": {
+      "titre": "Vollständige Bücher, barrierefreiere PDF",
+      "points": [
+        "Ein Buch hat jetzt seinen Druckumschlag in CMYK, einen berechneten Rücken, Seitenzahlen «Seite X von Y» und die PDF-Vorschau eines einzelnen Kapitels.",
+        "In einem Buch zeigt das Cockpit nur, was dazugehört, und spricht von Kapiteln statt von Artikeln.",
+        "Die PDF sind barrierefreier: Listen werden als solche erkannt, DOI- und Lizenzlinks sind anklickbar, Lesezeichen sauber, die Sprache ist angegeben.",
+        "Eine Passage in einer anderen Sprache folgt jetzt der Typografie ihrer eigenen Sprache.",
+        "Der Bereiniger spricht Deutsch für die Zeitschrift, und der Import lehnt eine beschädigte Word-Datei klar ab."
+      ]
+    }
+  },
   "2.8": {
     "fr": {
       "titre": "Un nettoyeur plus sobre, et qui dit quand il plante",
