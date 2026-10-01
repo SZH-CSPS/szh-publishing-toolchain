@@ -267,7 +267,16 @@ end
 -- La classe sert à l'écran : print.css la neutralise sous @media screen, que WeasyPrint
 -- n'applique pas. La coupure est calculée pour une colonne de 435 px et n'a aucun sens à
 -- une autre largeur ; le PDF la reçoit, le navigateur replie comme il veut.
+-- Le titre à plat, échappé pour un attribut : le gabarit en fait le data-signet du <h1>,
+-- que print.css donne au signet du PDF (content(text) collerait les mots autour du <br>).
+-- En RawInline, parce qu'un guillemet droit laissé par pandoc fermerait l'attribut.
+local function signet(titre)
+  local echappe = titre:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;')
+  return pandoc.MetaInlines({ pandoc.RawInline('html', echappe) })
+end
+
 local function poser(meta, rang, gr)
+  meta['titre-signet'] = signet(table.concat(gr, ESPACE))
   local avant, apres = {}, {}
   for i = 1, rang do avant[#avant + 1] = gr[i] end
   for i = rang + 1, #gr do apres[#apres + 1] = gr[i] end

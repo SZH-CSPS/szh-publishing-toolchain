@@ -13,7 +13,8 @@ $endif$
 $if(date-meta)$
   <meta name="dcterms.date" content="$date-meta$" />
 $endif$
-  <title>$if(titre-affiche)$$titre-affiche$$else$$pagetitle$$endif$</title>
+$-- nowrap : replié à 72 colonnes par pandoc, le titre garderait un retour à la ligne dans le /Title du PDF.
+  <title>$if(titre-affiche)$$titre-affiche/nowrap$$else$$pagetitle/nowrap$$endif$</title>
   <style>
     $styles.html()$
   </style>
@@ -109,8 +110,9 @@ $endfor$
            que la deuxième, règle L3 —, posé par filters/szh-titre-lignes.lua quand il a
            pu mesurer que la coupure tient sans ajouter de ligne. Absent, on retombe sur
            le titre d'une pièce et WeasyPrint replie comme avant. Le <title> de la page
-           garde `titre-affiche` : une balise <br> n'a pas de sens dans le /Title du PDF. -->
-      <h1 class="szh-title">$if(titre-lignes)$$titre-lignes$$else$$titre-affiche$$endif$</h1>
+           garde `titre-affiche` : une balise <br> n'a pas de sens dans le /Title du PDF.
+           data-signet donne au signet le titre à plat, que le <br> collerait (print.css). -->
+      <h1 class="szh-title"$if(titre-signet)$ data-signet="$titre-signet$"$endif$>$if(titre-lignes)$$titre-lignes$$else$$titre-affiche$$endif$</h1>
 $if(sous-titre-affiche)$
       <p class="szh-subtitle">$sous-titre-affiche$</p>
 $endif$

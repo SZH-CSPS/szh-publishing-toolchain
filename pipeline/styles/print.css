@@ -462,6 +462,9 @@ code { white-space: pre-wrap; }
   line-height: 1.12; letter-spacing: var(--interlettrage-titre-hero); color: #fff;
   margin: 20px 0 0; text-align: left; hyphens: manual;
 }
+/* Le signet lit le titre à plat posé par le gabarit : content(text) colle les mots que le
+   <br> de l'escalier sépare. */
+.szh-title[data-signet] { bookmark-label: attr(data-signet); }
 /* `hyphens: manual` comme le titre au-dessus (08.09.2026) : sans lui, le sous-titre
    héritait du `hyphens: auto` du corps (§4) et se coupait dès qu'il passait à la ligne —
    « ... comme partenaires de forma-tion » en tête de couverture. Un titre de couverture ne

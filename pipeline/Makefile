@@ -482,6 +482,7 @@ $(OUT)/%.apercu.html: $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).md) $$(
 #      livre en montre vingt lignes préfixées et garde le fichier (profils/livre.mk) ;
 #   $(2) options de WeasyPrint placées en tête (la feuille de folio d'un article) ;
 #   $(3) chemin du journal.
+# Le XMP reçoit dc:language par un fragment de xmp/, choisi d'après le <html lang> du document.
 # La recette qui l'appelle le place en fin de ligne continuée, après ses propres
 # affectations.
 ABREGER_BASE64 := sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g'
@@ -489,12 +490,14 @@ ABREGER_BASE64 := sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-
 define weasy_ua
 tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(3)'; \
 : > "$$jrnl"; \
-if $(WEASYPRINT) $(2) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
-elif $(WEASYPRINT) $(2) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+lang=$$(grep -o -m1 '<html[^>]* lang="[^"]*"' $< | sed 's/.* lang="//; s/[-"].*//'); \
+xmp=''; if [ -f "$(PIPELINE_DIR)/xmp/langue-$$lang.xmp" ]; then xmp="--xmp-metadata $(PIPELINE_DIR)/xmp/langue-$$lang.xmp"; fi; \
+if $(WEASYPRINT) $(2) $$xmp --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+elif $(WEASYPRINT) $(2) $$xmp --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
   echo "[$(1)] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 else \
   echo "[$(1)] balisage PDF indisponible -> PDF non balisé : $@"; \
-  $(WEASYPRINT) $(2) $< "$$tmp" 2>>"$$jrnl" || { \
+  $(WEASYPRINT) $(2) $$xmp $< "$$tmp" 2>>"$$jrnl" || { \
     echo "[$(1)] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
     $(weasy_echec_$(1)) \
     exit 1; }; \
