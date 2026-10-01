@@ -64,7 +64,7 @@ test('filtres : le contrôle de position détecte un filtre remonté avant szh-a
 // posé deux fois — le `\` de l'import Word, puis le retour promu par hard_line_breaks — et
 // l'ouvrage gagne un tiers de pages sans qu'aucun avertissement ne l'annonce.
 test('filtres : les sauts uniques sont dans la chaîne du livre', () => {
-  const mk = fs.readFileSync(path.join(RACINE, 'pipeline', 'profils', 'livre.mk'), 'utf8');
-  assert.match(mk, /szh-sauts-uniques\.lua/,
+  const chapitre = require('./chaines-filtres-lire').lireChaines().CHAINE_CHAPITRE;
+  assert.ok(chapitre.includes('sauts-uniques'),
     'szh-sauts-uniques.lua n’est plus dans FILTRES_CHAPITRE : les sauts redeviendront doubles');
 });

@@ -547,15 +547,12 @@ test('grille : la table des dispositions est la même dans le cockpit et dans le
 });
 
 test('grille : le filtre est branché dans les deux chaînes, avant szh-figure', () => {
-  const makefile = lire('pipeline', 'Makefile');
-  const lignes = makefile.split('\n');
-  const rang = (nom) => lignes.reduce((acc, l, i) => (l.includes('filters/' + nom) ? acc.concat(i) : acc), []);
-  const grille = rang('szh-grille.lua');
-  const figure = rang('szh-figure.lua');
-  assert.strictEqual(grille.length, 2, 'szh-grille n’est pas branché dans les deux chaînes');
-  assert.strictEqual(figure.length, 2);
-  for (let i = 0; i < 2; i++) {
-    assert.ok(grille[i] < figure[i],
+  const chaines = require('./chaines-filtres-lire').lireChaines();
+  for (const nom of ['CHAINE_ARTICLE', 'CHAINE_APERCU']) {
+    const c = chaines[nom];
+    assert.ok(c.includes('grille'), 'szh-grille n’est pas branché dans ' + nom);
+    assert.ok(c.includes('figure'), 'szh-figure n’est pas branché dans ' + nom);
+    assert.ok(c.indexOf('grille') < c.indexOf('figure'),
       'szh-grille doit précéder szh-figure : une grille tombée à une image se dissout en paragraphe');
   }
 });
@@ -1123,7 +1120,7 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
     const i = src.indexOf('function ' + nom);
     assert.notStrictEqual(i, -1, 'fonction introuvable : ' + nom);
     const bloc = src.slice(i, src.indexOf('\n}', i));
-    return new Set([...bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*T\(/g)].map((m) => m[1]));
+    return new Set([...bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*TP?\(/g)].map((m) => m[1]));
   };
   // La fiche d'auteur·e est partagée par les trois vues : ses libellés viennent de
   // textesAuteur(), qu'Object.assign ajoute à chaque table.
@@ -1485,8 +1482,13 @@ test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
     assert.ok(!/citeproc|anystyle|\.bib\b|apa\.csl/i.test(src),
       nom + ' cite encore la bibliographie BibTeX');
   }
-  // Le filtre de liage, lui, doit être appelé par les deux rendus.
-  assert.strictEqual((mk.match(/--lua-filter="\$\(PIPELINE_DIR\)\/filters\/szh-citations\.lua"/g) || []).length, 2);
+  // Le filtre de liage, lui, doit être appelé par les deux rendus : il est dans le socle,
+  // et le rendu comme l'aperçu prennent leur chaîne de filtres.mk.
+  const chaines = require('./chaines-filtres-lire').lireChaines();
+  assert.ok(chaines.CHAINE_SOCLE.includes('citations'), 'szh-citations a quitté le socle');
+  assert.ok(chaines.CHAINE_ARTICLE.includes('citations') && chaines.CHAINE_APERCU.includes('citations'));
+  assert.strictEqual((mk.match(/\$\(FILTRES_ARTICLE\)/g) || []).length, 1, 'le rendu ne prend plus FILTRES_ARTICLE');
+  assert.strictEqual((mk.match(/\$\(FILTRES_APERCU\)/g) || []).length, 1, 'l’aperçu ne prend plus FILTRES_APERCU');
   assert.ok(!fs.existsSync(path.join(RACINE, 'pipeline', 'filters', 'szh-biblio.lua')));
   assert.ok(!fs.existsSync(path.join(RACINE, 'pipeline', 'csl')));
 });
@@ -1582,24 +1584,44 @@ test('métafichiers Windows : le filtre de substitution est dans les trois chaî
   // Décidé avec Robin le 02.09.2026 : substituer, pas refuser. Une compilation qui
   // s'arrête ne dit pas OÙ est le trou ; un placeholder à la place de l'image le montre,
   // à sa place, et le document se compose jusqu'au bout.
-  const mk = lire('pipeline', 'Makefile');
-  const livre = lire('pipeline', 'profils', 'livre.mk');
-  const nb = (src) => (src.match(/szh-metafichier\.lua/g) || []).length;
-  assert.strictEqual(nb(mk), 2,
+  const chaines = require('./chaines-filtres-lire').lireChaines();
+  const nb = (c) => c.filter((f) => f === 'metafichier').length;
+  assert.strictEqual(nb(chaines.CHAINE_ARTICLE) + nb(chaines.CHAINE_APERCU), 2,
     'le filtre doit être dans les DEUX chaînes de la revue — le rendu ET l’aperçu : '
     + 'un aperçu qui tomberait sur une image native Word laisserait le rédacteur sans vue');
-  assert.strictEqual(nb(livre), 1, 'le filtre a quitté la chaîne des chapitres');
+  assert.strictEqual(nb(chaines.CHAINE_CHAPITRE), 1, 'le filtre a quitté la chaîne des chapitres');
   // La position n'est pas indifférente : voir l'en-tête du filtre. Après tabelle-inclure,
   // sans quoi les images des tableaux extraits ne sont pas encore là.
-  for (const [nom, src] of [['Makefile', mk], ['livre.mk', livre]]) {
-    assert.ok(src.indexOf('szh-tabelle-inclure.lua') < src.indexOf('szh-metafichier.lua'),
+  for (const nom of ['CHAINE_ARTICLE', 'CHAINE_APERCU', 'CHAINE_CHAPITRE']) {
+    const src = chaines[nom];
+    assert.ok(src.indexOf('tabelle-inclure') < src.indexOf('metafichier'),
       nom + ' : szh-metafichier passe AVANT szh-tabelle-inclure, il ne verrait donc pas '
       + 'une image citée uniquement dans un tableau extrait');
-    assert.ok(src.indexOf('szh-metafichier.lua') < src.indexOf('szh-grille.lua'),
+    assert.ok(src.indexOf('metafichier') < src.indexOf('grille'),
       nom + ' : szh-metafichier passe après szh-grille, qui ne verrait plus l’image');
   }
   assert.ok(fs.existsSync(path.join(RACINE, 'pipeline', 'media', 'image-a-remplacer.svg')),
     'le placeholder a disparu du toolkit : le filtre se désactive alors de lui-même');
+});
+
+// L'exergue d'un chapitre est muette dans le livre publié comme dans la revue, mais pas dans
+// son aperçu, qui sert à la relire.
+test('livre : szh-exergue est dans la chaîne du chapitre, à la place de la revue, et hors de l’aperçu', () => {
+  const livre = lire('pipeline', 'profils', 'livre.mk');
+  const chaines = require('./chaines-filtres-lire').lireChaines();
+  const suite = chaines.CHAINE_CHAPITRE;
+  assert.ok(suite, 'CHAINE_CHAPITRE introuvable dans filtres.mk');
+  const rang = (f) => suite.indexOf(f);
+  assert.ok(rang('exergue') !== -1, 'szh-exergue.lua n’est pas dans FILTRES_CHAPITRE');
+  assert.ok(rang('cesure') < rang('exergue') && rang('exergue') < rang('notes'),
+    'szh-exergue doit venir après szh-cesure et avant szh-notes, comme dans la revue');
+  const i = livre.indexOf('\n$(OUT)/$(CH_DIR)/%.apercu.html:');
+  const apercu = livre.slice(i, livre.indexOf('\n\n', i + 1));
+  assert.doesNotMatch(apercu, /\$\(FILTRES_CHAPITRE\)/,
+    'l’aperçu du chapitre reprend la chaîne publiée, exergue muette comprise');
+  assert.match(apercu, /\$\(FILTRES_CHAPITRE_APERCU\)/);
+  assert.deepStrictEqual(chaines.CHAINE_CHAPITRE_APERCU, suite.filter((f) => f !== 'exergue'),
+    'l’aperçu du chapitre n’est plus la chaîne publiée moins szh-exergue');
 });
 
 test('métafichiers Windows : les deux extensions se testent SANS alternation Lua', () => {
@@ -1678,4 +1700,30 @@ test('protocole de messages : SZH.MSG concorde entre lib/messages.js et media/_m
   for (const cle of Object.keys(MSG)) {
     assert.strictEqual(webview[cle], MSG[cle], 'valeur SZH.MSG.' + cle + ' divergente');
   }
+});
+
+// Côté hôte, un message vers une webview se nomme par MSG.<NOM>, jamais par un littéral :
+// la table est le seul endroit où le protocole s'écrit. Ce contrôle refuse tout `type: '…'`
+// dans extension.js et lib/*-hote.js, hors la liste blanche ci-dessous — les `type:` qui ne
+// sont pas des messages (définition de tâche VS Code, champ vide d'une fiche).
+test('protocole de messages : aucun littéral type: \'…\' côté hôte (MSG.<NOM> à la place)', () => {
+  const NON_MESSAGES = {
+    // Définition de tâche VS Code { type: 'szh', cible, slug }, pas un message de webview.
+    'extension.js': ["type: 'szh'"],
+    // Champ « type » (article, chapitre…) d'une fiche : vide par défaut, c'est une donnée.
+    'lib/metadonnees-hote.js': ["type: ''"]
+  };
+  const fichiers = ['extension.js'].concat(
+    fs.readdirSync(path.join(COCKPIT, 'lib')).filter((f) => /-hote\.js$/.test(f)).map((f) => 'lib/' + f));
+  const fautes = [];
+  for (const f of fichiers) {
+    const permis = NON_MESSAGES[f] || [];
+    fs.readFileSync(path.join(COCKPIT, f), 'utf8').split('\n').forEach((ligne, i) => {
+      if (/^\s*\/\//.test(ligne)) { return; }
+      for (const m of ligne.match(/\btype: '[^']*'/g) || []) {
+        if (permis.indexOf(m) === -1) { fautes.push(f + ':' + (i + 1) + ' ' + m); }
+      }
+    });
+  }
+  assert.deepStrictEqual(fautes, [], 'littéraux type: à remplacer par MSG.<NOM> :\n' + fautes.join('\n'));
 });

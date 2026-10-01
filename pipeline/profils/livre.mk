@@ -11,39 +11,8 @@
 # son propre media/, et pandoc n'a qu'un dossier courant. Le détail est en tête de
 # livre-assembler.py.
 #
-# ⚠ Écarts de FILTRES_CHAPITRE avec la chaîne d'un article (pipeline/Makefile, règle
-#   $(OUT)/%.html), à ne pas découvrir en production. Les filtres communs gardent l'ordre
-#   de la revue.
-#   Absents du chapitre :
-#   * szh-maquette.lua et szh-titre-lignes.lua : ils composent la couverture et l'en-tête
-#     courant d'un article, qu'un chapitre n'a pas (buch.yaml et le gabarit du livre s'en
-#     chargent) ;
-#   * szh-auteurs.lua : remplacé par szh-livre-auteurs.lua, la ligne d'auteur·e·s sous le
-#     titre du chapitre ;
-#   * szh-ressource.lua et szh-rubrique.lua : les fiches et les rubriques sont des formats
-#     de la Documentation de la revue, sans équivalent pensé pour un livre ; un
-#     ::: {.szh-ressource …} écrit dans un chapitre traverserait tel quel, non composé.
-#   Ajoutés au chapitre :
-#   * szh-livre-titre.lua, en tête : le <h1> vient de la fiche <slug>.meta.yaml ;
-#   * szh-sauts-uniques.lua, juste après : un saut de ligne, jamais deux (lecteur FALC) ;
-#   * szh-livre-sous-titre.lua, deux fois, exprès : avant szh-typographie pour que le
-#     sous-titre passe par la typographie maison, puis après szh-livre-entete pour le poser
-#     sous le titre (voir l'en-tête du filtre) ;
-#   * szh-livre-entete-image.lua, avant szh-figure : soustrait l'image d'un falc-header à
-#     la numérotation des figures ;
-#   * szh-livre-auteurs.lua et szh-livre-entete.lua, à la place de szh-auteurs.lua ;
-#   * szh-qr.lua, en dernier (voir sous FILTRES_CHAPITRE).
-#   Communs, mais lus autrement sous SZH_LIVRE :
-#   * szh-niveaux.lua laisse le <h1> du chapitre où il est et ne compacte que le corps, à
-#     partir de <h2> : un manuscrit qui passe de « # » à « ### » sortait sinon un PDF non
-#     conforme PDF/UA-1 ;
-#   * szh-numerotation.lua lit SZH_CHAPITRE et les reports de SZH_COMPTEURS : figures et
-#     tableaux sont numérotés en continu sur le volume (voir COMPTEURS_DIR plus bas) ;
-#   * szh-sections.lua lit SZH_CHAPITRE : les sections portent le numéro du chapitre (2.1).
-#   Hors filtres : la bibliographie est celle de chaque chapitre. Un ouvrage collectif la
-#   veut ainsi ; une monographie la veut en fin de volume.
-#   Les variantes EPUB (sans szh-notes) et aperçu (sans szh-exergue) sont dérivées de
-#   FILTRES_CHAPITRE par filter-out, plus bas.
+# Les chaînes de filtres d'un chapitre (FILTRES_CHAPITRE et ses variantes EPUB et
+# aperçu), et leurs écarts avec celle d'un article : pipeline/filtres.mk.
 
 # --------------------------------------------------------------------------------------
 # Ce que le dossier contient
@@ -104,16 +73,17 @@ ORDRE_CHAPITRES_FICHIER := $(OUT)/.szh-ordre-chapitres
 $(shell mkdir -p "$(OUT)" 2>/dev/null; printf '%s\n' $(CHAPITRES) | cmp -s - "$(ORDRE_CHAPITRES_FICHIER)" 2>/dev/null || printf '%s\n' $(CHAPITRES) > "$(ORDRE_CHAPITRES_FICHIER)")
 
 # Chapitres retirés de la table des matières : clé `sommaire: non` (ou `false`) du
-# <slug>.meta.yaml, lue ligne à ligne au sed — l'image WSL n'a pas PyYAML. Le motif ne retient que les lettres qui suivent le « : », donc « sommaire:
-# "non"  # provisoire » vaut « non » comme une ligne nue ; un chapitre sans meta.yaml, ou
-# dont le meta.yaml ne porte pas cette clé, reste au sommaire (défaut : présent).
+# <slug>.meta.yaml, lue par szh-lire-config.lua — l'image WSL n'a pas PyYAML. Guillemets et
+# commentaire de fin de ligne n'y comptent pas : « sommaire: "non"  # provisoire » vaut
+# « non » ; un chapitre sans meta.yaml, ou dont le meta.yaml ne porte pas cette clé, reste
+# au sommaire (défaut : présent).
 # ⚠ Un chapitre retiré du sommaire compile quand même, à sa place : il garde son rang dans
 #   $(CHAPITRES) (couleur, SZH_CHAPITRE, compteurs de figures/tableaux continus — rien de
 #   tout cela ne change). Seul $(CHAPITRES_SOMMAIRE), calculé ici, sert à numéroter la
 #   pastille et à partager l'index à pouce — voir plus bas.
 CHAPITRES_HORS_SOMMAIRE := $(strip $(foreach c,$(CHAPITRES),\
-  $(if $(filter non false,$(strip $(shell sed -n "s/^[[:space:]]*sommaire:[[:space:]]*[\"']*\([a-zA-Z]*\).*/\1/p" \
-       $(CH_DIR)/$(c)/$(c).meta.yaml 2>/dev/null | head -1))),$(c))))
+  $(if $(filter non false,$(strip $(shell $(PANDOC) lua $(LIRE_CONFIG) \
+       $(CH_DIR)/$(c)/$(c).meta.yaml sommaire 2>/dev/null))),$(c))))
 CHAPITRES_SOMMAIRE    := $(filter-out $(CHAPITRES_HORS_SOMMAIRE),$(CHAPITRES))
 NB_CHAPITRES_SOMMAIRE := $(words $(CHAPITRES_SOMMAIRE))
 
@@ -316,51 +286,6 @@ CSS_LIVRE_IMPRIMEUR := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE)
 # voir leur en-tête. Une feuille pensée en px pour l'impression n'y ajouterait rien.
 CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE_WEB))" \
              --css-embed "$(ACCENT_ABS)"
-
-# La suite de filtres d'un chapitre. Même ordre que la revue, aux écarts près (en tête).
-# Le titre du chapitre (szh-livre-titre.lua, EN PREMIER : les filtres de niveaux et de
-# numérotation doivent voir le <h1>) et son sous-titre (szh-livre-sous-titre.lua, après
-# auteur·e·s et encadré, voir son en-tête) viennent de la fiche <slug>.meta.yaml, pas du .md.
-FILTRES_CHAPITRE := \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-titre.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-sauts-uniques.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-sous-titre.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete-image.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-tableau-boite.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-auteurs.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-sous-titre.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-exergue.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
-  --lua-filter="$(PIPELINE_DIR)/filters/szh-qr.lua"
-
-# La même suite, moins szh-notes.lua : la variante EPUB. Sur une liseuse, le `float:
-# footnote` de print.css qui descend la note en pied de page n'existe pas, et son texte se
-# lirait au milieu de la phrase ; sans ce filtre, les Note traversent intactes et le writer
-# epub3 de pandoc en fait de vraies notes de fin, liées et navigables.
-FILTRES_CHAPITRE_EPUB := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua",$(FILTRES_CHAPITRE))
-
-# La même suite, moins szh-exergue.lua : la variante de l'aperçu, qui sert à relire le
-# chapitre et doit donc faire entendre l'exergue (même choix que l'aperçu de la revue).
-FILTRES_CHAPITRE_APERCU := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-exergue.lua",$(FILTRES_CHAPITRE))
-
-# szh-qr.lua (QR vectoriel cliquable, lien `.qr`) est en tout dernier dans les deux suites :
-# une fois le Link changé en RawInline (<a><svg>…), aucun filtre suivant n'a de raison d'y
-# toucher — le poser plus tôt exposerait ce balisage aux passes de typographie/coupure de
-# mots, qui walkent Str/Link du document entier. Voir l'en-tête de szh-qr.lua.
 
 .PHONY: livre livre-pdf livre-imprimeur livre-couverture livre-html livre-html-web \
         livre-epub \
@@ -840,8 +765,7 @@ $(COUVERTURE_PNG_4): $(COUVERTURE_PDF)
 # convertit le reste par le profil ICC : le noir du texte doit rester en K seul, ce
 # qu'aucune option de Ghostscript ne fait ; la passe reste en RVB tant que la séparation
 # n'est pas juste.
-PROFIL_CMJN := $(strip $(shell sed -n "s/^[[:space:]]*profil-cmjn:[[:space:]]*[\"']*\([^\"'#]*\).*/\1/p" \
-                         $(CONFIG_LIVRE) 2>/dev/null | head -1))
+PROFIL_CMJN := $(strip $(shell $(PANDOC) lua $(LIRE_CONFIG) $(CONFIG_LIVRE) impression.profil-cmjn 2>/dev/null))
 # Le profil vit dans l'image (voir image/Containerfile) ; surchargeable pour une machine
 # qui l'a ailleurs, ou pour éprouver avec le profil d'Adobe.
 ICC_DIR ?= /opt/icc

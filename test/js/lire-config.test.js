@@ -141,6 +141,22 @@ test('map : toutes les sous-valeurs vides -> chaîne vide, code 0', (t) => {
   assert.strictEqual(r.status, 0);
 });
 
+// livre.mk lit ainsi `impression.profil-cmjn` de buch.yaml.
+test('chemin pointé : sous-clé d’une map, vide présente, absente, et clé pointée de premier niveau', (t) => {
+  if (sauterSiPandocAbsent(t)) { return; }
+  const dossier = dossierJetable();
+  const f = ecrire(dossier, 'a.yaml', 'impression:\n  grammage: 90\n  profil-cmjn: "ISOcoated_v2.icc"  # fourni\n'
+    + 'vide:\n  profil-cmjn: ""\nprofil-cmjn: "pas celui-ci"\na.b: "premier niveau"\n');
+  assert.deepStrictEqual(lire(f, 'impression.profil-cmjn'),
+    { stdout: 'ISOcoated_v2.icc', stderr: '', status: 0 });
+  assert.deepStrictEqual(lire(f, 'vide.profil-cmjn'), { stdout: '', stderr: '', status: 0 });
+  assert.strictEqual(lire(f, 'impression.absent').status, 1);
+  assert.strictEqual(lire(f, 'impression.grammage.trop').status, 1);
+  assert.strictEqual(lire(f, 'a.b').stdout, 'premier niveau',
+    'une clé de premier niveau qui porte un point doit gagner sur le chemin');
+  assert.strictEqual(lire(f, 'impression').stdout, '90', 'la lecture d’une map a changé');
+});
+
 // ---- BOM, CRLF ----
 
 test('BOM UTF-8 et CRLF : lus sans un octet de reste dans la valeur', (t) => {

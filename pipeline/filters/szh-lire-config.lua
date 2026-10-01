@@ -5,6 +5,9 @@
 --
 --   pandoc lua szh-lire-config.lua <fichier.yaml> <cle>
 --
+-- <cle> peut être un chemin pointé (impression.profil-cmjn) : il descend dans les maps,
+-- mais une clé de premier niveau qui porte ce nom exact gagne toujours.
+--
 -- Méthode : le fichier est enveloppé dans un bloc de métadonnées markdown (--- ... ---) et
 -- lu par pandoc.read(texte, 'markdown-smart') ; le « -smart » coupe la conversion des
 -- guillemets droits, apostrophes et tirets en signes typographiques, pour rendre les
@@ -56,6 +59,18 @@ local ok, doc = pcall(pandoc.read, texte, 'markdown-smart')
 if not ok then os.exit(1) end
 
 local valeur = doc.meta[cle]
+-- Chemin pointé (`impression.profil-cmjn`) : une sous-clé d'une map, lue seulement si
+-- aucune clé de premier niveau ne porte ce nom exact.
+if valeur == nil and cle:find('.', 1, true) then
+  local premier = true
+  valeur = doc.meta
+  for segment in cle:gmatch('[^.]+') do
+    if not premier and pandoc.utils.type(valeur) ~= 'table' then valeur = nil; break end
+    premier = false
+    valeur = valeur[segment]
+    if valeur == nil then break end
+  end
+end
 if valeur == nil then os.exit(1) end
 
 -- Ordre déterministe pour une MetaMap (title: fr/de/..., impression: grammage/dos-mm/...).

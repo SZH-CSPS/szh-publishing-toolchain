@@ -266,6 +266,10 @@ test('szh-exergue est dans la chaîne du HTML publié, et pas dans celle de l\'a
     const fin = mk.indexOf('\n\n', i + 1);
     return mk.slice(i, fin === -1 ? undefined : fin);
   };
-  assert.match(recette('$(OUT)/%.html'), /szh-exergue\.lua/);
-  assert.doesNotMatch(recette('$(OUT)/%.apercu.html'), /szh-exergue\.lua/);
+  // Les chaînes vivent dans filtres.mk : chaque recette doit prendre la sienne.
+  const chaines = require('./chaines-filtres-lire').lireChaines();
+  assert.match(recette('$(OUT)/%.html'), /\$\(FILTRES_ARTICLE\)/);
+  assert.match(recette('$(OUT)/%.apercu.html'), /\$\(FILTRES_APERCU\)/);
+  assert.ok(chaines.CHAINE_ARTICLE.includes('exergue'), 'szh-exergue a quitté la chaîne du HTML publié');
+  assert.ok(!chaines.CHAINE_APERCU.includes('exergue'), 'szh-exergue est dans la chaîne de l’aperçu');
 });

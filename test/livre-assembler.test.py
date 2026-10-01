@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # test/livre-assembler.test.py — deux mécanismes du chapitre 4 (« sommaire: non ») :
 #
-#   1. la lecture de `sommaire: non` / `false` dans un <slug>.meta.yaml, exactement le
-#      motif sed que pipeline/profils/livre.mk applique (CHAPITRES_HORS_SOMMAIRE) — extrait
-#      du Makefile ici, pas recopié à la main, pour ne jamais dériver de lui en silence ;
+#   1. la lecture de `sommaire: non` / `false` dans un <slug>.meta.yaml, par
+#      szh-lire-config.lua, le lecteur que pipeline/profils/livre.mk appelle
+#      (CHAPITRES_HORS_SOMMAIRE) — le test vérifie aussi que livre.mk l'appelle bien ;
 #   2. pipeline/livre-assembler.py : extraction (couleur, hauteur de case, numéro de
 #      sommaire, retrait), le remplacement du numéro périmé (szh-num-section, posé par
 #      SZH_CHAPITRE = le rang) par le numéro DU SOMMAIRE dans le h1 d'un chapitre, et
@@ -28,6 +28,8 @@ import unittest
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHEMIN_ASSEMBLEUR = os.path.join(RACINE, 'pipeline', 'livre-assembler.py')
 CHEMIN_LIVRE_MK = os.path.join(RACINE, 'pipeline', 'profils', 'livre.mk')
+CHEMIN_FILTRES_MK = os.path.join(RACINE, 'pipeline', 'filtres.mk')
+CHEMIN_LIRE_CONFIG =os.path.join(RACINE, 'pipeline', 'filters', 'szh-lire-config.lua')
 
 _spec = importlib.util.spec_from_file_location('livre_assembler', CHEMIN_ASSEMBLEUR)
 la = importlib.util.module_from_spec(_spec)
@@ -61,41 +63,35 @@ def _fragment(slug, niveau1_titre, rang=4, numero=None, couleur='#949A00',
 
 
 class LectureSommaireMeta(unittest.TestCase):
-    """Le motif sed de CHAPITRES_HORS_SOMMAIRE (livre.mk), extrait du fichier — pas
-    recopié à la main, pour ne jamais dériver de lui en silence."""
+    """CHAPITRES_HORS_SOMMAIRE (livre.mk) lit la clé par szh-lire-config.lua : le test
+    vérifie que livre.mk passe bien par ce lecteur, avec cette clé et ces valeurs, puis
+    fait lire chaque fiche par le même script."""
 
     @classmethod
     def setUpClass(cls):
         with open(CHEMIN_LIVRE_MK, encoding='utf-8') as f:
             texte = f.read()
-        # Le motif contient lui-même un guillemet échappé (`[\"']*`) : s'arrêter au
-        # premier `"` rencontré (regex naïve) le tronquerait là. La suite `/\1/p` est le
-        # seul endroit où le motif sed se termine réellement — bornage sans ambiguïté.
-        m = re.search(r'sed -n "(s/\^\[\[:space:]]\*sommaire:.*?/\\1/p)"', texte)
+        m = re.search(r'^CHAPITRES_HORS_SOMMAIRE :=(.*?)\n\S', texte, re.M | re.S)
         if not m:
+            raise AssertionError('CHAPITRES_HORS_SOMMAIRE est introuvable dans livre.mk')
+        regle = m.group(1)
+        if not re.search(r'\$\(filter non false,.*\$\(PANDOC\) lua \$\(LIRE_CONFIG\)\s*\\?\s*'
+                         r'\$\(CH_DIR\)/\$\(c\)/\$\(c\)\.meta\.yaml sommaire', regle, re.S):
             raise AssertionError(
-                "le motif sed de CHAPITRES_HORS_SOMMAIRE est introuvable dans livre.mk — "
-                "a-t-il changé de forme sans que ce test ne suive ?")
-        cls.motif = m.group(1)
-        if not shutil.which('sed'):
-            raise unittest.SkipTest('sed introuvable sur ce poste (attendu sous WSL)')
+                "CHAPITRES_HORS_SOMMAIRE ne lit plus `sommaire` par szh-lire-config.lua, "
+                "ou ne retient plus « non » et « false » — ce test ne suit plus livre.mk")
+        if not shutil.which('pandoc'):
+            raise unittest.SkipTest('pandoc introuvable sur ce poste (attendu sous WSL)')
 
     def _lu(self, contenu):
-        # Le motif, tel qu'extrait, porte les échappements du SHELL du Makefile
-        # (`\"` pour un guillemet littéral à l'intérieur de la chaîne entre doubles
-        # guillemets) : il ne prend son sens qu'une fois repassé par un shell, exactement
-        # comme make le fait pour lancer sa recette. Un appel direct à sed (liste argv,
-        # sans shell) recevrait le `\` lui-même comme caractère de la classe — un défaut
-        # de CE test, pas du motif : mesuré, `sed: unknown option to 's'`.
         with tempfile.NamedTemporaryFile('w', suffix='.meta.yaml', delete=False,
                                           encoding='utf-8') as f:
             f.write(contenu)
             chemin = f.name
         try:
-            cmd = 'sed -n "%s" %s' % (self.motif, shlex.quote(chemin))
-            r = subprocess.run(['sh', '-c', cmd], capture_output=True, text=True)
-            lignes = [l for l in r.stdout.splitlines() if l]
-            return lignes[0] if lignes else None
+            r = subprocess.run(['pandoc', 'lua', CHEMIN_LIRE_CONFIG, chemin, 'sommaire'],
+                               capture_output=True, text=True)
+            return r.stdout.strip() or None
         finally:
             os.unlink(chemin)
 
@@ -315,14 +311,17 @@ class ChapitreSeul(unittest.TestCase):
 
 
 class ChaineDeFiltres(unittest.TestCase):
-    """livre.mk : le titre et le sous-titre viennent de la fiche, dans le bon ordre."""
+    """filtres.mk : le titre et le sous-titre viennent de la fiche, dans le bon ordre. La
+    chaîne est celle que make développe, lue par make lui-même."""
 
     def setUp(self):
-        with open(CHEMIN_LIVRE_MK, encoding='utf-8') as f:
-            texte = f.read()
-        debut = texte.index('FILTRES_CHAPITRE := ')
-        bloc = texte[debut:texte.index('\n\n', debut)]
-        self.ordre = re.findall(r'filters/(szh-[a-z-]+)\.lua', bloc)
+        if not shutil.which('make'):
+            raise unittest.SkipTest('make introuvable sur ce poste (attendu sous WSL)')
+        r = subprocess.run(['make', '-s', '-f', CHEMIN_FILTRES_MK, 'PIPELINE_DIR=/P', '--eval',
+                            'montrer: ; @echo $(CHAINE_CHAPITRE)', 'montrer'],
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.ordre = ['szh-' + f for f in r.stdout.split()]
 
     def test_titre_en_tete(self):
         self.assertEqual(self.ordre[0], 'szh-livre-titre')

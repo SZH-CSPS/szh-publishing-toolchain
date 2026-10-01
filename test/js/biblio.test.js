@@ -292,7 +292,9 @@ test('la chaîne connaît le fichier de bibliographie de bout en bout', () => {
   // bibliographie ne porte pas de numéro. Entre les deux passe szh-auteurs, qui a besoin
   // du marqueur .szh-biblio encore intact pour glisser le bloc auteurs juste devant —
   // c'est l'ordre des trois qui compte, pas leur contiguïté.
-  const rang = (f) => mk.indexOf('filters/' + f + '.lua"');
+  const article = require('./chaines-filtres-lire').lireChaines().CHAINE_ARTICLE;
+  assert.match(mk, /\$\(FILTRES_ARTICLE\)/, 'le rendu ne prend plus la chaîne de filtres.mk');
+  const rang = (f) => article.indexOf(f.replace(/^szh-/, ''));
   assert.ok(rang('szh-sections') > 0, 'szh-sections a quitté la chaîne');
   assert.ok(rang('szh-auteurs') > rang('szh-sections'),
     'szh-auteurs passe avant szh-sections : le titre du bloc auteurs recevrait un numéro de section');
