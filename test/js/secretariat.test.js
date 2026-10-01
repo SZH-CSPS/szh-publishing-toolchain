@@ -323,8 +323,8 @@ test('commandeNewsletter : un numéro sans date: produit quand même un DOI, don
       emettre: (e) => evenements.push(e)
     });
     assert.strictEqual(resultat.ok, true);
-    // Le libellé (« fin ») porte l'année reprise du nom du dossier, jamais « /03 » tout seul.
-    assert.ok(resultat.texte.indexOf('2027/03') !== -1, resultat.texte);
+    // Le bilan nomme le numéro par l'année reprise du nom du dossier, numéro sur deux chiffres.
+    assert.strictEqual(resultat.texte, '2 fichiers produits pour le numéro 2027-03.');
     assert.ok(!evenements.some((e) => e.t === 'avert' && e.texte.indexOf('pas de DOI') !== -1),
       'aucun avert "pas de DOI" attendu : le DOI doit se calculer malgré date: vide');
     const dossierThematique = fs.readFileSync(path.join(dossierSortie, 'dossier-thematique.txt'), 'utf8');
@@ -834,7 +834,7 @@ test('commandeEdudoc : avec --numero (racines locales), colonnes 690 en forme ca
   // Le troisième article (OAI) n'a pas de pendant local : ligne sans descripteurs, avec un
   // avertissement explicite — le CSV reste valide (colonnes toutes présentes, vides).
   assert.ok(evenements.some((e) => e.t === 'avert' &&
-    e.texte.indexOf('10.57161/r2026-03-03') !== -1 && e.texte.indexOf('aucun article local') !== -1),
+    e.texte.indexOf('10.57161/r2026-03-03') !== -1 && e.texte.indexOf('aucun article des numéros du poste') !== -1),
     evenements.map((e) => e.texte).join('\n'));
 
   // Bilan chiffré : 2 + 5 = 7 descripteurs exportés, un mot-clé saisi non reconnu par le
@@ -842,7 +842,7 @@ test('commandeEdudoc : avec --numero (racines locales), colonnes 690 en forme ca
   assert.ok(evenements.some((e) => e.t === 'etape' && e.texte.indexOf('7 descripteur') !== -1),
     evenements.map((e) => e.texte).join('\n'));
   assert.ok(evenements.some((e) => e.t === 'avert' &&
-    e.texte.indexOf('1 mot') !== -1 && e.texte.indexOf('terme inconnu du thesaurus') !== -1),
+    e.texte.indexOf('1 mot-clé n’est pas reconnu') !== -1 && e.texte.indexOf('terme inconnu du thesaurus') !== -1),
     evenements.map((e) => e.texte).join('\n'));
 });
 
@@ -903,10 +903,9 @@ test('commandeEdudoc : un même mot-clé non reconnu saisi par deux articles ne 
 
   // Un seul avertissement de bilan, et le compte qu'il annonce dit bien « 1 » — le terme
   // saisi deux fois (une par article, sous deux casses) ne doit compter qu'une fois.
-  const bilans = evenements.filter((e) => e.t === 'avert' && e.texte.indexOf('non reconnu') !== -1);
+  const bilans = evenements.filter((e) => e.t === 'avert' && e.texte.indexOf('pas reconnu') !== -1);
   assert.strictEqual(bilans.length, 1, 'un seul avertissement de bilan attendu : ' + evenements.map((e) => e.texte).join('\n'));
-  assert.ok(bilans[0].texte.indexOf('1 mot') !== -1, bilans[0].texte);
-  assert.ok(bilans[0].texte.indexOf('distinct') !== -1, bilans[0].texte);
+  assert.ok(bilans[0].texte.indexOf('1 mot-clé n’est pas reconnu') === 0, 'compté une fois, au singulier : ' + bilans[0].texte);
 
   // Et il n'apparaît qu'une fois dans la liste affichée, quelle que soit sa casse.
   const occurrences = bilans[0].texte.toLowerCase().split('terme partage inconnu').length - 1;
@@ -956,7 +955,7 @@ test('commandeCaracteres : compte les caractères de la galley HTML, signale l�
     }
   });
   assert.strictEqual(resultat.ok, true);
-  assert.ok(evenements.some((e) => e.t === 'avert' && e.texte.indexOf('pas de galley HTML') !== -1));
+  assert.ok(evenements.some((e) => e.t === 'avert' && e.texte.indexOf('pas de version HTML en ligne') !== -1));
   const csv = fs.readFileSync(path.join(dossierSortie, 'caracteres.csv'), 'utf8');
   const lignes = csv.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '');
   assert.strictEqual(lignes.length, 2); // en-tête + 1 (le second article est écarté, pas de galley)
@@ -1051,4 +1050,42 @@ test('SZH_RESEAU_INTERDIT : numeros-ojs échoue sans recuperer injecté, newslet
   } finally {
     if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
+});
+
+// Les textes de la newsletter : la rubrique et son compte au vrai pluriel, le nombre de
+// personnes, le bilan qui nomme le numéro « 2026-03 », dans la langue demandée.
+test('commandeNewsletter : des textes au vrai pluriel, en français par défaut et en allemand sur demande', async () => {
+  const avant = process.env.SZH_RESEAU_INTERDIT;
+  process.env.SZH_RESEAU_INTERDIT = '1';
+  try {
+    const racine = ecrireNumeroEssai();
+    const textes = async (langue) => {
+      const evenements = [];
+      const r = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierTemp('szh-secr-langue-'),
+        langue: langue, emettre: (e) => evenements.push(e) });
+      return { fin: r.texte, etapes: evenements.filter((e) => e.texte).map((e) => e.texte) };
+    };
+    const fr = await textes();
+    assert.strictEqual(fr.fin, '4 fichiers produits pour le numéro 2026-03.');
+    assert.ok(fr.etapes.some((t) => /^Varia\s:\s2 articles$/.test(t)), fr.etapes.join(' | '));
+    assert.ok(fr.etapes.some((t) => /\s:\s1 article$/.test(t)), fr.etapes.join(' | '));
+    assert.ok(fr.etapes.some((t) => /\s:\saucun article, pas de fichier$/.test(t)), fr.etapes.join(' | '));
+    assert.ok(fr.etapes.some((t) => /^Liste des auteurs\s:\s7 personnes$/.test(t)), fr.etapes.join(' | '));
+    const de = await textes('de');
+    assert.strictEqual(de.fin, '4 Dateien für die Ausgabe 2026-03 erstellt.');
+    assert.ok(de.etapes.some((t) => / 2 Artikel$/.test(t)), de.etapes.join(' | '));
+    assert.ok(de.etapes.some((t) => /^Liste der Autorenschaft: 7 Personen$/.test(t)), de.etapes.join(' | '));
+    for (const t of fr.etapes.concat(de.etapes)) { assert.doesNotMatch(t, /\(s\)|OAI|moisson/); }
+  } finally {
+    if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
+  }
+});
+
+test('compter : zéro, un et plusieurs dans les deux langues', () => {
+  assert.strictEqual(secretariat.compter('fr', 'caracteres.fin', 0), '0 article compté.');
+  assert.strictEqual(secretariat.compter('fr', 'caracteres.fin', 1), '1 article compté.');
+  assert.strictEqual(secretariat.compter('fr', 'caracteres.fin', 3), '3 articles comptés.');
+  assert.strictEqual(secretariat.compter('de', 'ojs.fin', 0), 'Keine veröffentlichte Ausgabe gefunden.');
+  assert.strictEqual(secretariat.compter('de', 'ojs.fin', 2), '2 veröffentlichte Ausgaben gefunden.');
+  assert.strictEqual(secretariat.langueDe({ langue: 'en' }), 'fr', 'jamais d’anglais : le français à défaut');
 });

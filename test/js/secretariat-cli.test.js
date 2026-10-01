@@ -113,7 +113,7 @@ test('secretariat-cli.js : commande inconnue -> code de sortie 1, message JSON e
   const obj = JSON.parse(derniere);
   assert.strictEqual(obj.t, 'fin');
   assert.strictEqual(obj.ok, false);
-  assert.ok(obj.texte.indexOf('commande inconnue') !== -1,
+  assert.ok(/^Commande inconnue\s:\s«\sinconnue\s»/.test(obj.texte),
     'le message ne nomme pas la commande inconnue : ' + obj.texte);
 });
 
@@ -124,4 +124,58 @@ test('secretariat-cli.js edudoc : --cache manquant -> code de sortie 1, message 
   const obj = JSON.parse(derniere);
   assert.strictEqual(obj.ok, false);
   assert.ok(obj.texte.indexOf('--cache') !== -1, 'le message ne nomme pas --cache : ' + obj.texte);
+});
+
+// Les textes que lit la secrétaire : la langue de l'interface, un vrai pluriel, aucun mot
+// technique. Sans --langue, le français, que le lanceur WinForms attend.
+function edudocEssai(langue) {
+  const dossier = dossierJetable('szh-cli-langue-');
+  const cheminCache = path.join(dossier, 'cache.json');
+  cacheEssai(cheminCache);
+  const args = [CLI, 'edudoc', '--cache', cheminCache, '--numeros', '2026-03,2026-09', '--sortie', path.join(dossier, 'sortie')];
+  if (langue) { args.push('--langue', langue); }
+  const r = cp.spawnSync(process.execPath, args, { encoding: 'utf8' });
+  fs.rmSync(dossier, { recursive: true, force: true });
+  return { status: r.status, lignes: String(r.stdout).trim().split(/\r?\n/).map((l) => JSON.parse(l)) };
+}
+const JARGON = /OAI|moisson|\(s\)|cache|galley/i;
+
+test('secretariat-cli.js : sans --langue, des textes en français, au vrai pluriel et sans jargon', () => {
+  const r = edudocEssai('');
+  assert.strictEqual(r.status, 0);
+  const fin = r.lignes[r.lignes.length - 1];
+  assert.strictEqual(fin.texte, '1 article exporté vers Edudoc.');
+  const textes = r.lignes.filter((l) => l.texte).map((l) => l.texte);
+  assert.ok(textes.some((t) => t.indexOf('2026-09') !== -1), 'le numéro introuvable est nommé : ' + textes.join(' | '));
+  for (const t of textes) { assert.doesNotMatch(t, JARGON); }
+});
+
+test('secretariat-cli.js : --langue de écrit en allemand, et une langue inconnue retombe sur le français', () => {
+  const de = edudocEssai('de');
+  assert.strictEqual(de.status, 0);
+  assert.strictEqual(de.lignes[de.lignes.length - 1].texte, '1 Artikel nach Edudoc exportiert.');
+  for (const t of de.lignes.filter((l) => l.texte).map((l) => l.texte)) {
+    assert.doesNotMatch(t, JARGON);
+    assert.doesNotMatch(t, /numéro|exporté/, 'du français dans un texte allemand : ' + t);
+  }
+  const en = edudocEssai('en');
+  assert.strictEqual(en.lignes[en.lignes.length - 1].texte, '1 article exporté vers Edudoc.');
+  const inconnue = cp.spawnSync(process.execPath, [CLI, 'inconnue', '--langue', 'de'], { encoding: 'utf8' });
+  assert.match(JSON.parse(String(inconnue.stdout).trim().split(/\r?\n/).pop()).texte, /Unbekannter Befehl/);
+});
+
+// Le contrat que lit Invoke-SzhSecretariat (windows/lanceur-secretariat.ps1) : les mêmes types
+// de ligne et les mêmes clés, quelle que soit la langue.
+test('secretariat-cli.js : le contrat JSON Lines ne dépend pas de la langue', () => {
+  const CLES = { etape: ['t', 'texte'], avert: ['t', 'texte'], progres: ['fait', 't', 'total'],
+    fichier: ['chemin', 'nom', 't'], fin: ['gabarits', 'ok', 't', 'texte'] };
+  for (const langue of ['', 'fr', 'de']) {
+    const r = edudocEssai(langue);
+    assert.strictEqual(r.lignes[r.lignes.length - 1].t, 'fin');
+    for (const l of r.lignes) {
+      assert.ok(CLES[l.t], 'type de ligne hors contrat : ' + l.t);
+      assert.deepStrictEqual(Object.keys(l).sort(), CLES[l.t], 'clés de « ' + l.t + ' » (' + (langue || 'défaut') + ')');
+    }
+    assert.deepStrictEqual(r.lignes.map((l) => l.t), edudocEssai('fr').lignes.map((l) => l.t));
+  }
 });

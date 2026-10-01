@@ -14,6 +14,8 @@ const nouveau = require('./lanceur-nouveau');
 const { textesLanceur, LIBELLES_PRODUITS, produitParDefaut, numeroAffiche } = require('./lanceur-page');
 const { versionInstallee, lancerChoixVersion } = require('./archivage');
 const { lireEtatUtilisateur } = require('./rapport-erreur');
+const secretariat = require('./lanceur-secretariat-hote');
+const journal = require('./lanceur-journal-hote');
 
 const VIEW_TYPE = 'szhLanceur';
 const CONTEXTE_ACTIF = 'szh.lanceur.actif';
@@ -26,6 +28,7 @@ let ctx = {
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 let etatPoste = null;
+let panneauActif = null;
 // Les dossiers envoyés à la page : elle n'ouvre que ceux-là.
 let cheminsConnus = new Set();
 let anneesZero = null;
@@ -78,7 +81,7 @@ async function donnees() {
     anneeCourante: new Date().getFullYear(), modeTest: inv.modeTest, ancrageAbsent: inv.ancrageAbsent,
     version: versionInstallee(), exports: path.join(inv.base, 'Exports'), produits,
     dernierOuvert: (etatPoste && etatPoste.globalState.get(CLE_DERNIER)) || '',
-    historique: {}, journaux: []
+    historique: secretariat.historique(), journaux: journal.listePage()
   };
 }
 
@@ -86,8 +89,10 @@ async function envoyerDonnees(panneau) {
   repondre(panneau, await donnees());
 }
 
-// Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert.
+// Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
+// ne survit pas au changement de dossier.
 async function ouvrirDossier(chemin) {
+  secretariat.arreter();
   if (etatPoste) { await etatPoste.globalState.update(CLE_DERNIER, chemin); }
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(chemin), { forceReuseWindow: true });
 }
@@ -116,8 +121,9 @@ async function creer(msg, panneau) {
   repondre(panneau, { type: MSG.LANCEUR_CREE, ok: false, texte: texteRefus(r) });
 }
 
-// Secrétariat et Log ne sont pas encore branchés : leurs messages restent sans effet.
+// Les messages du Secrétariat et du Log vont à leur module.
 async function surMessage(msg, panneau) {
+  if (secretariat.surMessage(msg) || journal.surMessage(msg)) { return; }
   if (msg.type === MSG.LANCEUR_OUVRIR) {
     if (cheminsConnus.has(msg.chemin)) { await ouvrirDossier(msg.chemin); }
     return;
@@ -143,15 +149,34 @@ function ouvrirLanceur() {
     modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
     html: htmlLanceur,
     surPret: (msg, p) => envoyerDonnees(p),
-    surMessage: (msg, p) => surMessage(msg, p)
+    surMessage: (msg, p) => surMessage(msg, p),
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); }
   });
+  panneauActif = panneau;
   return panneau;
 }
+
+// Les deux onglets parlent à la page par le panneau ouvert, et à l'éditeur par ces rappels.
+function configurerOnglets() {
+  const envoyer = (m) => { if (panneauActif) { repondre(panneauActif, m); } };
+  const revelerFichier = (chemin) => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(chemin));
+  const ouvrirDossierOs = (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin));
+  secretariat.configurer({ envoyer, revelerFichier, ouvrirDossier: ouvrirDossierOs, memoire: etatPoste && etatPoste.globalState,
+    numerosConnus: () => cheminsConnus });
+  journal.configurer({ envoyer, ouvrirDossier: ouvrirDossierOs,
+    ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
+    ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
+    versionEditeur: () => vscode.version || null });
+}
+
+// À la désactivation : aucun enfant ne survit à l'éditeur.
+function arreter() { secretariat.arreter(); }
 
 // À l'activation : la clé de contexte de la porte, la commande, et l'ouverture d'office
 // quand la porte est ouverte sur une fenêtre sans dossier.
 function demarrer(context) {
   etatPoste = context;
+  configurerOnglets();
   const actif = porteOuverte();
   vscode.commands.executeCommand('setContext', CONTEXTE_ACTIF, actif);
   context.subscriptions.push(vscode.commands.registerCommand('szh.lanceur', () => ouvrirLanceur()));
@@ -159,6 +184,6 @@ function demarrer(context) {
 }
 
 module.exports = {
-  configurer, demarrer, ouvrirLanceur, donnees, texteRefus,
+  configurer, demarrer, ouvrirLanceur, donnees, texteRefus, arreter,
   VIEW_TYPE, CONTEXTE_ACTIF, CLE_DERNIER
 };

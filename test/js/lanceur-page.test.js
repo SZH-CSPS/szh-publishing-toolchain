@@ -197,9 +197,9 @@ test('secrétariat : les numéros publiés se chargent seuls, et chaque tâche p
   assert.deepStrictEqual(posts(p, MSG.LANCEUR_OJS_CHARGER), [{ type: MSG.LANCEUR_OJS_CHARGER, revue: 'revue', depuisAnnee: 2026 }]);
   assert.strictEqual(parId(p, 'sec-edudoc').disabled, true, 'Exporter reste actif pendant le chargement');
   ojsRecus(p);
-  assert.strictEqual(parId(p, 'sec-edudoc-resume').textContent, f('secResumeNonExportesPlus', ['2026/2, 2026/3']));
+  assert.strictEqual(parId(p, 'sec-edudoc-resume').textContent, f('secResumeNonExportesPlus', ['2026-02, 2026-03']));
   // Sans historique, les numéros de l'année.
-  assert.strictEqual(parId(p, 'sec-caracteres-resume').textContent, f('secResumeAnneePlus', ['2026/1, 2026/2, 2026/3', 2026]));
+  assert.strictEqual(parId(p, 'sec-caracteres-resume').textContent, f('secResumeAnneePlus', ['2026-01, 2026-02, 2026-03', 2026]));
   clic(parId(p, 'sec-edudoc'));
   clic(parId(p, 'sec-newsletter'));
   assert.deepStrictEqual(posts(p, MSG.LANCEUR_EXPORTER), [
@@ -213,7 +213,7 @@ test('secrétariat : les numéros publiés se chargent seuls, et chaque tâche p
   assert.deepStrictEqual(cases.map((c) => c.checked), [true, true, false]);
   cases[0].checked = false;
   cases[0].dispatchEvent({ type: 'change' });
-  assert.strictEqual(parId(p, 'sec-edudoc-resume').textContent, f('secResumeChoisisUn', ['2026/2']));
+  assert.strictEqual(parId(p, 'sec-edudoc-resume').textContent, f('secResumeChoisisUn', ['2026-02']));
   clic(parId(p, 'sec-edudoc-plus'));
   assert.strictEqual(posts(p, MSG.LANCEUR_OJS_CHARGER).pop().depuisAnnee, 2025);
 });

@@ -3791,7 +3791,7 @@ function activate(context) {
 const { proposerTutoriel, proposerNouveautes, montrerNouveautes } = require('./lib/accueil-hote');
 const lanceurHote = require('./lib/lanceur-hote');
 
-function deactivate() { moteur.arreterDormeur(); }
+function deactivate() { moteur.arreterDormeur(); lanceurHote.arreter(); }
 
 // `_pur` : les fonctions pures, exposées aux harnais de test.
 module.exports = {

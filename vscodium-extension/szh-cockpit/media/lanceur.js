@@ -600,7 +600,7 @@
   });
   var secDossier = poser(sec, 'p', 'lanceur-infos');
 
-  function cleCourte(n) { return SZH.remplir(TXT, 'secNumeroCourt', [n.annee, Number(n.numero)]); }
+  function cleCourte(n) { return SZH.remplir(TXT, 'secNumeroCourt', [n.annee, String(Number(n.numero)).padStart(2, '0')]); }
   function historiqueDe(commande, revue) {
     var h = (donnees.historique || {})[commande] || {};
     return h[revue] || {};

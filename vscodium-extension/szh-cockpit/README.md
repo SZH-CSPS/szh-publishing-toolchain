@@ -115,6 +115,9 @@ lib/
                         et de l'inventaire d'open-produit.ps1, tenu par un test de parité.
                         Pur, sans vscode
   journal.js            journal de compilation -> constats de la vue « Contrôles »
+  journaux-maj.js       les dix derniers journaux de mise à jour du poste, leur verdict et leur
+                        fin. Jumeau de Get-SzhJournauxMaj, tenu par un test de parité. Pur,
+                        sans vscode
   kirby-contenu.js      arborescence Kirby de la Documentation d’un numéro : lecture et
                         écriture de documentation.<lang>.txt et des dossiers <n>_<slug>/ de
                         ses fiches, calcul de l’ordre d’impression et du nom de dossier,
@@ -125,10 +128,16 @@ lib/
   lanceur-hote.js       le lanceur dans l'éditeur : son panneau, ses données, l'ouverture
                         d'un numéro (vscode.openFolder) et sa création. Ne s'ouvre seul que
                         sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
+  lanceur-journal-hote.js  l'onglet Log : la fin d'un journal, l'éditeur, et le signalement
+                        (rapport, dossier des journaux, brouillon au support). Sans vscode
   lanceur-nouveau.js    créer un numéro ou un livre : les refus et la création du socle
                         PowerShell (new-revue.ps1, new-livre.ps1), en un processus. Sans vscode
   lanceur-page.js       ce que l'hôte du lanceur envoie à sa page : libellés, noms des
                         produits, produit ouvert d'office (jumeau de Get-SzhOngletDefaut)
+  lanceur-secretariat-hote.js  l'onglet Secrétariat : les quatre exports par
+                        outils/secretariat-cli.js, dans <racine>Exports<action>, et
+                        l'historique Edudoc et Caractères du compte. Tue ses enfants avec le
+                        lanceur. Sans vscode
   liens.js              liens szh:// et intention déposée par le lanceur
   medias.js             médias d'un article, sans vscode ni profil actif à connaître :
                         dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,
@@ -271,8 +280,9 @@ outils/
   compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
                         Node de VSCodium ; --purger supprime ce qui a plus de 24 mois
   secretariat-cli.js    entrée en ligne de commande de lib/secretariat.js : JSON Lines sur
-                        stdout, lancée par le lanceur Windows avec le Node qu'embarque
-                        VSCodium (ELECTRON_RUN_AS_NODE=1)
+                        stdout, lancée par les deux lanceurs avec le Node qu'embarque
+                        VSCodium (ELECTRON_RUN_AS_NODE=1) ; --langue fr|de, le français à
+                        défaut
 mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue
                         (envoi-auteur.fr.twig, traduction.de.twig, …) — voir son README.md
 export-templates/        gabarits Twig des quatre exports du secrétariat (lib/secretariat.js) :
