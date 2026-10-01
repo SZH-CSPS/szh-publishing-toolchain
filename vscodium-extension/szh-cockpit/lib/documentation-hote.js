@@ -22,13 +22,13 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const { T } = require('./i18n');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
+const { panneauUnique, revelerPanneau, fermerPanneaux } = require('./webviews/panneau');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
@@ -420,8 +420,6 @@ async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, cate
   await ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, categorie);
 }
 
-let panneauxDocumentation = new Map();   // slug -> WebviewPanel (un formulaire par unité)
-
 // Le compte de l'entrée Archive dans l'arbre (extension.js#_itemsActualite) : jamais une
 // lecture à part de la bibliothèque de production pour l'arbre — repris du dernier
 // ARCHIVE_CHARGER/ARCHIVE_ACTUALISER servi à un panneau, quel qu'il soit. `undefined` tant
@@ -430,13 +428,10 @@ let panneauxDocumentation = new Map();   // slug -> WebviewPanel (un formulaire 
 let dernierCompteArchive;
 function compteArchiveConnu() { return dernierCompteArchive; }
 
+// Un formulaire par unité, sous viewType 'szhDocumentation' et le slug pour clé
+// (lib/webviews/panneau.js).
 function fermerPanneauxDocumentationDe(racine, slug) {
-  const tout = !racine || !slug;
-  for (const [cle, panneau] of Array.from(panneauxDocumentation.entries())) {
-    if (!tout && cle !== slug) { continue; }
-    try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
-    panneauxDocumentation.delete(cle);
-  }
+  fermerPanneaux('szhDocumentation', (!racine || !slug) ? undefined : slug);
 }
 
 async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, categorie) {
@@ -456,9 +451,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   // sécurité si ce formulaire s'ouvrait avant tout passage par majContexte.
   const ausgabeId = assurerIdNumero(racine);
 
-  const existant = panneauxDocumentation.get(slug);
+  const existant = revelerPanneau({ viewType: 'szhDocumentation', cle: slug });
   if (existant) {
-    existant.reveal(vscode.ViewColumn.One);
     // Le panneau vit déjà : le premier chargement (charger.vueInitiale) est passé depuis
     // longtemps, la bascule passe donc par ce message dédié — jamais en reconstruisant
     // « charger », qui rejouerait un rechargement complet pour un simple changement de vue.
@@ -467,19 +461,22 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   }
   await fermerTousLesApercus();
   const titrePanneau = T('doc.titre.page');
-  const panneau = vscode.window.createWebviewPanel(
-    'szhDocumentation', titrePanneau, vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauxDocumentation.set(slug, panneau);
   // Toute image déposée dans cette session et jamais réclamée par une fiche enregistrée
   // (carte retirée avant sauvegarde, panneau fermé sans enregistrer) doit être nettoyée : le
   // dépôt vit hors bibliothèque (os.tmpdir()), mais rien n'empêche qu'il s'accumule.
   const idsImagesEnAttente = new Set();
-  panneau.onDidDispose(() => {
-    if (panneauxDocumentation.get(slug) === panneau) { panneauxDocumentation.delete(slug); }
-    for (const id of idsImagesEnAttente) { kirby.nettoyerImageProvisoire(id); }
-    idsImagesEnAttente.clear();
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie : ils peuvent lire
+  // les fonctions déclarées plus bas.
+  const { panneau } = panneauUnique({
+    viewType: 'szhDocumentation', cle: slug, titre: titrePanneau, retenir: true,
+    modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+    html: htmlDocumentation,
+    surPret: (msg) => traiterPret(msg),
+    surMessage: (msg) => traiterMessage(msg),
+    surFermeture: () => {
+      for (const id of idsImagesEnAttente) { kirby.nettoyerImageProvisoire(id); }
+      idsImagesEnAttente.clear();
+    }
   });
   // Le bouton « Aperçu du PDF » peut se désynchroniser si l'aperçu se ferme à la croix
   // pendant que ce panneau est en arrière-plan (un aperçu fermé ne le dit à personne
@@ -614,16 +611,14 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     return { total: total, correspondances: correspondances };
   };
 
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) {
-      const extra = { requete: msg.requete };
-      if (premierPret && onglet) { extra.vueInitiale = { onglet: onglet, categorie: categorie }; }
-      premierPret = false;
-      await charger(panneau, extra);
-      return;
-    }
+  async function traiterPret(msg) {
+    const extra = { requete: msg.requete };
+    if (premierPret && onglet) { extra.vueInitiale = { onglet: onglet, categorie: categorie }; }
+    premierPret = false;
+    await charger(panneau, extra);
+  }
+
+  async function traiterMessage(msg) {
     if (msg.type === MSG.MODIFIE) {
       panneau.title = (msg.modifie ? '● ' : '') + titrePanneau;
       return;
@@ -848,8 +843,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       return;
     }
     console.warn('documentation : type de message inconnu', msg.type);
-  });
-  panneau.webview.html = htmlDocumentation(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 module.exports = {

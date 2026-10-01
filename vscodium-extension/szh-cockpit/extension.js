@@ -146,6 +146,7 @@ const tableImages = require('./lib/table-images');
 const relanceCompilation = require('./lib/relance-compilation');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml } = require('./lib/webviews/util');
+const { panneauUnique, revelerPanneau } = require('./lib/webviews/panneau');
 // ---- « Quoi de neuf » -> lib/nouveautes.js ---------------------------------------
 // Les notes livrées avec le toolkit, et la décision de ce qu'il y a à montrer.
 const nouveautes = require('./lib/nouveautes');
@@ -4316,29 +4317,27 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type, item) {
   const def = VUES[type];
   const focus = item && typeof item === 'object' ? String(item.focus || '') : '';
   const envoyer = (panneau) => envoyerVue(panneau, fournisseur, type);
-  const ouvert = panneauxVue.get(type);
+  // panneauxVue reste la garde : les rafraîchissements de la vue Contrôles y lisent le panneau.
+  const ouvert = revelerPanneau({ viewType: def.id, cle: type, garde: panneauxVue });
   if (ouvert) {
-    ouvert.reveal(vscode.ViewColumn.One);
     envoyer(ouvert);
     if (focus !== '') { repondrePanneau(ouvert, { type: MSG.FOCALISER, focus: focus }); }
     return;
   }
   const charge = def.charge(fournisseur);
-  const panneau = vscode.window.createWebviewPanel(
-    def.id, charge.titre, vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [] }
-  );
-  panneauxVue.set(type, panneau);
-  panneau.onDidDispose(() => { if (panneauxVue.get(type) === panneau) { panneauxVue.delete(type); } });
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (repondreModeTrad(panneau, msg)) { return; }
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie.
+  const { panneau } = panneauUnique({
+    viewType: def.id, cle: type, titre: charge.titre, garde: panneauxVue,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
+    html: (nonce) => htmlVueEnsemble(nonce, charge.titre),
     // Seule réponse au tout premier PRET de ce panneau : `focus` (capturé ci-dessus) part
     // avec cette « valeurs »-là, jamais avec celles qui suivent (envoyer(), plus bas, n'en
     // porte pas).
-    if (msg.type === MSG.PRET) { envoyerVue(panneau, fournisseur, type, focus); return; }
+    surPret: (msg, p) => envoyerVue(p, fournisseur, type, focus),
+    surMessage: (msg) => traiterMessage(msg)
+  });
+  async function traiterMessage(msg) {
     // La croix d'un constat gris. Retenue, puis la vue est renvoyée : la page l'a déjà
     // retirée de son côté, mais c'est l'hôte qui décide de ce qu'elle montre, et le lot
     // « Pour information » peut s'être vidé en entier.
@@ -4372,8 +4371,7 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type, item) {
     if (panneauxVue.get(type) !== panneau) { return; }
     envoyer(panneau);
     if (dit) { repondrePanneau(panneau, { type: MSG.ETAT, message: dit }); }
-  });
-  panneau.webview.html = htmlVueEnsemble(crypto.randomBytes(16).toString('hex'), charge.titre);
+  }
 }
 
 // Le bouton d'un constat : « <lieu>:<objet> », tel que actionsConstat l'a formé et que la
@@ -5784,8 +5782,9 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     // Une erreur de compilation est déjà signalée par ouvrirArticle.
     ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* déjà signalé */ });
   };
-  if (panneauTraduction) {
-    panneauTraduction.reveal(vscode.ViewColumn.One);
+  // La variable de module reste la garde : la fin d'une compilation la lit aussi.
+  const garde = { lire: () => panneauTraduction, poser: (p) => { panneauTraduction = p; } };
+  if (revelerPanneau({ viewType: 'szhTraduction', garde: garde })) {
     if (vise.slug === slugTraduction) {
       if (vise.cle) { repondrePanneau(panneauTraduction, { type: MSG.FOCUS, cle: vise.cle }); }
       montrerApercu(vise.slug);
@@ -5806,30 +5805,29 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   slugTraduction = vise.slug;
   traductionModifiee = false;
   rechargementTraduction = null;
-  const panneau = vscode.window.createWebviewPanel(
-    'szhTraduction', T('trad.titre.un', [vise.slug]), vscode.ViewColumn.One,
-    // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauTraduction = panneau;
   let focusInitial = vise.cle;
-  panneau.onDidDispose(() => {
-    libererCoedition(panneau);
-    if (panneauTraduction === panneau) {
-      panneauTraduction = null; slugTraduction = null;
-      traductionModifiee = false; rechargementTraduction = null;
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie.
+  const { panneau } = panneauUnique({
+    viewType: 'szhTraduction', titre: T('trad.titre.un', [vise.slug]), garde: garde,
+    // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
+    retenir: true,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
+    html: htmlTraduction,
+    surPret: (msg, p) => {
+      envoyerValeursTraduction(p, fournisseur, slugTraduction, focusInitial);
+      focusInitial = null;
+    },
+    surMessage: (msg) => traiterMessage(msg),
+    surFermeture: (p, courant) => {
+      libererCoedition(p);
+      if (courant) {
+        slugTraduction = null;
+        traductionModifiee = false; rechargementTraduction = null;
+      }
     }
   });
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) {
-      envoyerValeursTraduction(panneau, fournisseur, slugTraduction, focusInitial);
-      focusInitial = null;
-      return;
-    }
+  async function traiterMessage(msg) {
     if (msg.type === MSG.MODIFIE) { traductionModifiee = !!msg.modifie; return; }
     if (msg.type === MSG.COPIER) {
       await vscode.env.clipboard.writeText(String(msg.texte || ''));
@@ -5876,8 +5874,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     if (!msg.auto) { envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null); }
     // La fiche est une dépendance de compilation ; jamais en pleine frappe.
     if (res.metaChangee && !msg.auto) { montrerApercu(slugTraduction); }
-  });
-  panneau.webview.html = htmlTraduction(crypto.randomBytes(16).toString('hex'));
+  }
   montrerApercu(vise.slug);
 }
 
@@ -5994,7 +5991,6 @@ function diffuserModeTrad() {
 // Un seul panneau à la fois : une seconde pastille le recharge sur son champ plutôt que
 // d'ouvrir un second onglet où la première proposition serait oubliée.
 
-let panneauSuggestion = null;
 let viseSuggestion = null;       // { slug, champ, langue, actuel } — ce que la pastille visait
 
 function textesSuggestion() {
@@ -6146,31 +6142,25 @@ function ouvrirSuggestionInterface(msg) {
 // son nouveau texte plutôt que d'ouvrir un second onglet où la première proposition serait
 // oubliée.
 function montrerPanneauSuggestion(fournisseur, titre) {
-  if (panneauSuggestion) {
-    panneauSuggestion.title = titre;
-    panneauSuggestion.reveal(vscode.ViewColumn.Beside);
-    envoyerValeursSuggestion(panneauSuggestion);
-    return;
+  // Sans modeTrad : c'est lui que le mode ouvre (voir repondreModeTrad).
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhSuggestionTraduction', titre: titre, colonne: vscode.ViewColumn.Beside,
+    html: htmlSuggestion,
+    surPret: (recu, p) => envoyerValeursSuggestion(p),
+    surMessage: (recu, p) => {
+      if (recu.type === MSG.FERMER) { p.dispose(); return; }
+      if (recu.type !== MSG.ENREGISTRER) {
+        console.warn('suggestion de traduction : type de message inconnu', recu.type);
+        return;
+      }
+      enregistrerSuggestion(fournisseur, p, recu);
+    },
+    surFermeture: (p, courant) => { if (courant) { viseSuggestion = null; } }
+  });
+  if (!nouveau) {
+    panneau.title = titre;
+    envoyerValeursSuggestion(panneau);
   }
-  const panneau = vscode.window.createWebviewPanel(
-    'szhSuggestionTraduction', titre, vscode.ViewColumn.Beside,
-    { enableScripts: true, localResourceRoots: [] }
-  );
-  panneauSuggestion = panneau;
-  panneau.onDidDispose(() => {
-    if (panneauSuggestion === panneau) { panneauSuggestion = null; viseSuggestion = null; }
-  });
-  panneau.webview.onDidReceiveMessage((recu) => {
-    if (!recu) { return; }
-    if (recu.type === MSG.PRET) { envoyerValeursSuggestion(panneau); return; }
-    if (recu.type === MSG.FERMER) { panneau.dispose(); return; }
-    if (recu.type !== MSG.ENREGISTRER) {
-      console.warn('suggestion de traduction : type de message inconnu', recu.type);
-      return;
-    }
-    enregistrerSuggestion(fournisseur, panneau, recu);
-  });
-  panneau.webview.html = htmlSuggestion(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Photos, auteur·e·s connus et fiches de tous les articles -> lib/metadonnees-hote.js
@@ -6185,7 +6175,6 @@ function repondrePanneau(panneau, message) {
 // « détecté » ou « à compléter » ; les photos d'auteur·e·s ; et les images de
 // articles/<slug>/media/, à remplacer par leur original en gardant leur nom.
 
-let panneauImportVerif = null;
 let slugsImportVerif = [];                         // slugs de la dernière conversion
 
 function htmlImportVerif(nonce) {
@@ -6282,26 +6271,21 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine || !Array.isArray(slugs) || slugs.length === 0) { return; }
   slugsImportVerif = slugs.slice();
   await fermerTousLesApercus();
-  if (panneauImportVerif) {
-    panneauImportVerif.reveal(vscode.ViewColumn.One);
-    envoyerValeursImportVerif(panneauImportVerif, fournisseur);
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie.
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhImportVerif', titre: T('importv.titre'),
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
+    html: htmlImportVerif,
+    surPret: (msg, p) => envoyerValeursImportVerif(p, fournisseur, { requete: msg.requete }),
+    surMessage: (msg) => traiterMessage(msg),
+    surFermeture: (p) => libererCoedition(p)
+  });
+  if (!nouveau) {
+    envoyerValeursImportVerif(panneau, fournisseur);
     return;
   }
-  const panneau = vscode.window.createWebviewPanel(
-    'szhImportVerif', T('importv.titre'), vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [] }
-  );
-  panneauImportVerif = panneau;
-  panneau.onDidDispose(() => {
-    libererCoedition(panneau);
-    if (panneauImportVerif === panneau) { panneauImportVerif = null; }
-  });
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) { envoyerValeursImportVerif(panneau, fournisseur, { requete: msg.requete }); return; }
+  async function traiterMessage(msg) {
     if (msg.type === MSG.PHOTO_DEPOSER) { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.PHOTO_OUVRIR) { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.PHOTO_CHOISIR) { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
@@ -6346,8 +6330,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (!msg.auto || res.recharger) {
       envoyerValeursImportVerif(panneau, fournisseur, res.recharger ? { rechargement: true } : undefined);
     }
-  });
-  panneau.webview.html = htmlImportVerif(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 // ---- Réglages « SZH » ------------------------------------------------------------
@@ -6685,8 +6668,6 @@ function lireReglagesActuels() {
   };
 }
 
-let panneauReglages = null;
-
 // Les quatre blocs « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par
 // article » et « Export OJS » n'ont de sens que pour une revue/Zeitschrift : pas
 // d'export OJS pour un livre, donc rien de tout cela à régler. On ne les envoie même
@@ -6708,23 +6689,19 @@ function messageValeursReglages() {
 }
 
 function ouvrirReglages(rafraichirTout) {
-  if (panneauReglages) {
-    panneauReglages.reveal(vscode.ViewColumn.One);
-    panneauReglages.webview.postMessage(messageValeursReglages());
+  // Sans modeTrad : c'est ici qu'on éteint le mode (voir repondreModeTrad). Les
+  // gestionnaires ne sont appelés qu'une fois cette fonction finie.
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhReglages', titre: T('regl.titre'),
+    html: htmlReglages,
+    surPret: (msg, p) => p.webview.postMessage(messageValeursReglages()),
+    surMessage: (msg) => traiterMessage(msg)
+  });
+  if (!nouveau) {
+    panneau.webview.postMessage(messageValeursReglages());
     return;
   }
-  const panneau = vscode.window.createWebviewPanel(
-    'szhReglages', T('regl.titre'), vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [] }
-  );
-  panneauReglages = panneau;
-  panneau.onDidDispose(() => { if (panneauReglages === panneau) { panneauReglages = null; } });
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    if (msg.type === MSG.PRET) {
-      panneau.webview.postMessage(messageValeursReglages());
-      return;
-    }
+  async function traiterMessage(msg) {
     // ---- Les réglages protégés ----
     //
     // Déverrouiller n'est pas un réglage mais un geste, et il se redemande à chaque
@@ -6962,8 +6939,7 @@ function ouvrirReglages(rafraichirTout) {
     } catch (e) {
       vscode.window.showErrorMessage(T('err.ecriture', ['settings.json', e.message]));
     }
-  });
-  panneau.webview.html = htmlReglages(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 // ---- Éditeur de tableau (webview) ------------------------------------------------
@@ -7129,26 +7105,29 @@ async function ouvrirEditeurTable(fournisseur, item) {
   })();
   // L'éditeur a besoin de largeur ; « Voir dans l'aperçu » le rouvre à la demande.
   await fermerTousLesApercus();
-  const existant = panneauxTable.get(chemin);
-  if (existant) {
-    existant.reveal(vscode.ViewColumn.One);
-    annoncerMain(existant, fournisseur.racine, chemin);
-    if (focusImage) { existant.webview.postMessage({ type: MSG.FOCALISER, focusImage: focusImage }); }
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie : ils peuvent lire
+  // les fonctions déclarées plus bas. panneauxTable reste la garde, lue ailleurs dans ce fichier.
+  let focusEnAttente = focusImage;   // servi au premier chargement seulement
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhEditeurTable', cle: chemin, titre: T('table.titre', [nom]), garde: panneauxTable,
+    // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
+    retenir: true,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
+    html: htmlEditeurTable,
+    surPret: () => traiterPret(),
+    surMessage: (msg) => traiterMessage(msg),
+    surFermeture: (p) => {
+      libererCoedition(p);
+      // Un enregistrement encore sous l'anti-rebond part à la fermeture, sans attendre.
+      if (slugCompile) { relanceDifferee.vider(slugCompile); }
+    }
+  });
+  if (!nouveau) {
+    annoncerMain(panneau, fournisseur.racine, chemin);
+    if (focusImage) { panneau.webview.postMessage({ type: MSG.FOCALISER, focusImage: focusImage }); }
     return;
   }
-  let focusEnAttente = focusImage;   // servi au premier chargement seulement
-  const panneau = vscode.window.createWebviewPanel(
-    'szhEditeurTable', T('table.titre', [nom]), vscode.ViewColumn.One,
-    // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauxTable.set(chemin, panneau);
-  panneau.onDidDispose(() => {
-    libererCoedition(panneau);
-    if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); }
-    // Un enregistrement encore sous l'anti-rebond part à la fermeture, sans attendre.
-    if (slugCompile) { relanceDifferee.vider(slugCompile); }
-  });
   const charger = () => {
     let html = '';
     try { html = fs.readFileSync(chemin, 'utf8'); } catch (e) { html = '<table><tr><td></td></tr></table>'; }
@@ -7231,17 +7210,12 @@ async function ouvrirEditeurTable(fournisseur, item) {
     if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }
     return null;
   };
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) {
-      charger();
-      // Un éditeur de tableau ne s'ouvre pas pour lire : le bail se prend tout de suite.
-      annoncerMain(panneau, fournisseur.racine, chemin);
-      return;
-    }
+  function traiterPret() {
+    charger();
+    // Un éditeur de tableau ne s'ouvre pas pour lire : le bail se prend tout de suite.
+    annoncerMain(panneau, fournisseur.racine, chemin);
+  }
+  async function traiterMessage(msg) {
     if (msg.type === MSG.OPERATION) { await appliquer(msg); return; }
     if (msg.type === MSG.TABLE_IMAGE_CHOISIR) { await choisirImage(msg); return; }
     if (msg.type === MSG.RESTAURER) {
@@ -7307,8 +7281,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       return;
     }
     console.warn('éditeur de tableau : type de message inconnu', msg.type);
-  });
-  panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 // Le nombre de blocs de la page de Documentation : ses fiches rattachées (bibliothèque
@@ -8040,8 +8013,6 @@ async function proposerTutoriel(context) {
 // nouveautes.json, livré à la racine du toolkit, et il est écrit pour la rédaction — pas
 // de CHANGELOG.md, qui nomme des fonctions et n'existe qu'en français.
 
-let panneauNouveautes = null;
-
 function htmlNouveautes(nonce) {
   return construireHtml('nouveautes', nonce, {
     cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('nouv.titre')
@@ -8063,23 +8034,14 @@ function valeursNouveautes(medium) {
 // panneau de commande passe le medium installé — elle montre alors la note du jour, et non
 // tout ce qui a été manqué.
 function montrerNouveautes(medium) {
-  if (panneauNouveautes) {
-    panneauNouveautes.reveal(vscode.ViewColumn.One);
-    repondrePanneau(panneauNouveautes, valeursNouveautes(medium));
-    return;
-  }
-  const panneau = vscode.window.createWebviewPanel(
-    'szhNouveautes', T('nouv.titre'), vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [] }
-  );
-  panneauNouveautes = panneau;
-  panneau.onDidDispose(() => { if (panneauNouveautes === panneau) { panneauNouveautes = null; } });
-  panneau.webview.onDidReceiveMessage((recu) => {
-    if (!recu) { return; }
-    if (recu.type === MSG.PRET) { repondrePanneau(panneau, valeursNouveautes(medium)); return; }
-    console.warn('nouveautés : type de message inconnu', recu.type);
+  // Sans modeTrad : voir PANNEAUX_SANS_MODE_TRAD (test/js/mode-trad.test.js).
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhNouveautes', titre: T('nouv.titre'),
+    html: htmlNouveautes,
+    surPret: (recu, p) => repondrePanneau(p, valeursNouveautes(medium)),
+    surMessage: (recu) => { console.warn('nouveautés : type de message inconnu', recu.type); }
   });
-  panneau.webview.html = htmlNouveautes(crypto.randomBytes(16).toString('hex'));
+  if (!nouveau) { repondrePanneau(panneau, valeursNouveautes(medium)); }
 }
 
 // Rien n'est montré sans un clic : la fenêtre s'ouvre seule, mais elle ne s'ouvre qu'après

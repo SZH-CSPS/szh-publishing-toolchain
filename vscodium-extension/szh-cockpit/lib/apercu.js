@@ -12,6 +12,7 @@ const { T } = require('./i18n');
 const session = require('./session');
 const profils = require('./profil');
 const { lireMedia } = require('./webviews/util');
+const { panneauUnique } = require('./webviews/panneau');
 const { differer } = require('./interaction');
 const { compilationAutoCoupee } = require('./cycle-vie');
 const { MSG } = require('./messages');
@@ -347,26 +348,24 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
             + lignes.join('</p><p>') + '</p></body></html>';
   }
   const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'));
+  // Ni reveal ni PRET : le panneau est créé s'il manque, puis son HTML est réécrit à chaque
+  // appel ; c'est la session qui le tient.
   if (!session.panneauApercuHtml()) {
-    const panneau = vscode.window.createWebviewPanel(
-      'szhApercuHtml', slug,
-      { viewColumn: vscode.ViewColumn.Two, preserveFocus: true },
-      { enableScripts: true, localResourceRoots: [] }
-    );
-    session.poserPanneauApercuHtml(panneau);
-    panneau.onDidDispose(() => { if (session.panneauApercuHtml() === panneau) { session.poserPanneauApercuHtml(null); } });
-    panneau.webview.onDidReceiveMessage((msg) => {
-      if (!msg) { return; }
-      // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-      // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-      if (ctx.repondreModeTrad(panneau, msg)) { return; }
-      if (msg.type === MSG.BASCULER) { vscode.commands.executeCommand('szh.basculerApercu'); return; }
-      if (msg.type === MSG.REVELE) {
-        if (session.apercuCourantSlug()) { revelerPos(fournisseur, session.apercuCourantSlug(), msg.pos, msg.mot); }
-        return;
+    panneauUnique({
+      viewType: 'szhApercuHtml', titre: slug,
+      colonne: { viewColumn: vscode.ViewColumn.Two, preserveFocus: true },
+      garde: { lire: session.panneauApercuHtml, poser: session.poserPanneauApercuHtml },
+      // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+      modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+      surMessage: (msg) => {
+        if (msg.type === MSG.BASCULER) { vscode.commands.executeCommand('szh.basculerApercu'); return; }
+        if (msg.type === MSG.REVELE) {
+          if (session.apercuCourantSlug()) { revelerPos(fournisseur, session.apercuCourantSlug(), msg.pos, msg.mot); }
+          return;
+        }
+        if (msg.type === MSG.SCROLL_SOURCE) { revelerLigneSource(fournisseur, msg.ligne); return; }
+        console.warn('aperçu HTML : type de message inconnu', msg.type);
       }
-      if (msg.type === MSG.SCROLL_SOURCE) { revelerLigneSource(fournisseur, msg.ligne); return; }
-      console.warn('aperçu HTML : type de message inconnu', msg.type);
     });
   }
   session.panneauApercuHtml().title = slug;

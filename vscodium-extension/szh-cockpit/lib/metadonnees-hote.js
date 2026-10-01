@@ -7,7 +7,6 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const { T, TP } = require('./i18n');
 const { toolkitPoste } = require('./chemins-poste');
@@ -15,6 +14,7 @@ const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
+const { panneauUnique, panneauCourant, revelerPanneau } = require('./webviews/panneau');
 const { refuserSiVerrouille, poidsLisible } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
@@ -296,8 +296,6 @@ function htmlMetadonnees(nonce) {
     titre: T('meta.titre'), remplacements: { '__TXT__': JSON.stringify(textesNumero()) }
   });
 }
-
-let panneauMetadonnees = null;
 
 function envoyerValeursMetadonnees(panneau, racine) {
   repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, chargeNumero(racine, true)));
@@ -669,40 +667,27 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
     else { repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, chargeNumero(racine, true), extra)); }
     ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
-  if (panneauMetadonnees) {
-    panneauMetadonnees.reveal(vscode.ViewColumn.One);
-    envoyerValeurs(panneauMetadonnees);
-    ctx.annoncerMain(panneauMetadonnees, racine, cheminConfig(racine));
-    return;
-  }
-  const panneau = vscode.window.createWebviewPanel(
-    'szhMetadonnees', titre, vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauMetadonnees = panneau;
-  panneau.onDidDispose(() => {
-    ctx.libererCoedition(panneau);
-    if (panneauMetadonnees === panneau) { panneauMetadonnees = null; }
+  // Panneau neuf (PRET) ou déjà ouvert : les mêmes valeurs, et la même annonce de bail.
+  const accueillir = (panneau) => {
+    envoyerValeurs(panneau);
+    ctx.annoncerMain(panneau, racine, cheminConfig(racine));
+  };
+  const { panneau, nouveau } = panneauUnique({
+    viewType: 'szhMetadonnees', titre: titre, retenir: true,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+    html: estLivre ? htmlMetadonneesLivre : htmlMetadonnees,
+    surPret: (msg, p) => accueillir(p),
+    surMessage: (msg, p) => {
+      const traite = estLivre
+        ? messageLivre(p, racine, msg, rafraichirTout, () => envoyerValeurs(p))
+        : messageNumero(p, racine, msg, rafraichirTout, () => envoyerValeurs(p));
+      if (!traite) { console.warn('métadonnées : type de message inconnu', msg.type); }
+      return traite && typeof traite.then === 'function' ? traite : undefined;
+    },
+    surFermeture: (p) => ctx.libererCoedition(p)
   });
-  panneau.webview.onDidReceiveMessage((msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) {
-      envoyerValeurs(panneau);
-      ctx.annoncerMain(panneau, racine, cheminConfig(racine));
-      return;
-    }
-    const traite = estLivre
-      ? messageLivre(panneau, racine, msg, rafraichirTout, () => envoyerValeurs(panneau))
-      : messageNumero(panneau, racine, msg, rafraichirTout, () => envoyerValeurs(panneau));
-    if (!traite) { console.warn('métadonnées : type de message inconnu', msg.type); }
-    return traite && typeof traite.then === 'function' ? traite : undefined;
-  });
-  panneau.webview.html = estLivre
-    ? htmlMetadonneesLivre(crypto.randomBytes(16).toString('hex'))
-    : htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
+  if (!nouveau) { accueillir(panneau); }
 }
 
 // ---- Éditeur des métadonnées de tous les articles --------------------------------
@@ -877,8 +862,6 @@ function htmlApercuMetadonnees(nonce) {
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
-
-let panneauArticles = null;
 
 // Migration idempotente : les métadonnées encore en frontmatter partent vers
 // <slug>.meta.yaml, sous la langue de la revue.
@@ -1318,7 +1301,7 @@ function filtreValide(fournisseur, slugs) {
 // recharge. Panneau portant des cartes modifiées : on le dit et c'est à l'utilisateur de
 // trancher.
 function signalerFichesPerimees() {
-  if (!panneauArticles || !rafraichirFiches) { return; }
+  if (!panneauCourant('szhApercuMetadonnees') || !rafraichirFiches) { return; }
   if (fichesModifie) { vscode.window.showWarningMessage(T('fiches.perimees')); return; }
   rafraichirFiches();
 }
@@ -1430,48 +1413,46 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
     envoyerMotsClesConnus(panneau);
     fichesModifie = false;
   };
-  rafraichirFiches = () => { if (panneauArticles) { envoyerValeurs(panneauArticles); } };
+  rafraichirFiches = () => {
+    const ouvert = panneauCourant('szhApercuMetadonnees');
+    if (ouvert) { envoyerValeurs(ouvert); }
+  };
   const appliquerFiltre = (panneau, nouveau, extra) => {
     filtreArticles = nouveau;
     panneau.title = titreFiches(filtreArticles);
     envoyerValeurs(panneau, extra);
   };
-  if (panneauArticles) {
-    panneauArticles.reveal(vscode.ViewColumn.One);
+  const existant = revelerPanneau({ viewType: 'szhApercuMetadonnees' });
+  if (existant) {
     if (fichesModifie) {
       // Des cartes portent une saisie non enregistrée : le focus attend la décision de la
       // personne (RECHARGEMENT ci-dessous), pour ne pas se perdre derrière la question.
       rechargementEnAttente = { filtre: filtre, focus: focusNorme };
-      repondrePanneau(panneauArticles, { type: MSG.DEMANDE_RECHARGEMENT });
+      repondrePanneau(existant, { type: MSG.DEMANDE_RECHARGEMENT });
       return;
     }
-    appliquerFiltre(panneauArticles, filtre, focusNorme ? { focus: focusNorme } : undefined);
+    appliquerFiltre(existant, filtre, focusNorme ? { focus: focusNorme } : undefined);
     return;
   }
   filtreArticles = filtre;
   fichesModifie = false;
-  const panneau = vscode.window.createWebviewPanel(
-    'szhApercuMetadonnees', titreFiches(filtreArticles), vscode.ViewColumn.One,
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauArticles = panneau;
-  panneau.onDidDispose(() => {
-    ctx.libererCoedition(panneau);
-    if (panneauArticles === panneau) {
-      panneauArticles = null; fichesModifie = false; rechargementEnAttente = null;
-      rafraichirFiches = null;
+  const { panneau } = panneauUnique({
+    viewType: 'szhApercuMetadonnees', titre: titreFiches(filtreArticles), retenir: true,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+    html: htmlApercuMetadonnees,
+    surPret: (msg, p) => envoyerValeurs(p, Object.assign({ requete: msg.requete },
+      focusNorme ? { focus: focusNorme } : {})),
+    surMessage: (msg) => traiterMessage(msg),
+    surFermeture: (p, courant) => {
+      ctx.libererCoedition(p);
+      if (courant) {
+        fichesModifie = false; rechargementEnAttente = null;
+        rafraichirFiches = null;
+      }
     }
   });
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) {
-      envoyerValeurs(panneau, Object.assign({ requete: msg.requete },
-        focusNorme ? { focus: focusNorme } : {}));
-      return;
-    }
+  async function traiterMessage(msg) {
     if (msg.type === MSG.MODIFIE) { fichesModifie = !!msg.modifie; return; }
     if (msg.type === MSG.TOUS) { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }
     if (msg.type === MSG.MARKDOWN) { await basculerMarkdownFiche(fournisseur, panneau, msg); return; }
@@ -1518,8 +1499,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
     if (rafraichirTout) { rafraichirTout(); }
     relancerCompilationCartes(fournisseur, res);
     if (!msg.auto || res.recharger) { envoyerValeurs(panneau, res.recharger ? { rechargement: true } : undefined); }
-  });
-  panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 // ---- « Vérifier les méta (print) » ------------------------------------------------

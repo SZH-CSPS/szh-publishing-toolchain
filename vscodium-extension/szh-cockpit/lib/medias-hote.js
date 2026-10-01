@@ -6,13 +6,13 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 const { T } = require('./i18n');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
+const { panneauUnique, revelerPanneau, fermerPanneaux } = require('./webviews/panneau');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
@@ -432,16 +432,10 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
   return propre;
 }
 
-let panneauxMedias = new Map();   // slug -> WebviewPanel (un gestionnaire par article)
-
-// Rappel donné à lib/cycle-vie.js (fermerFormulairesEcriture).
+// Un gestionnaire par article, sous viewType 'szhMedias' et le slug pour clé
+// (lib/webviews/panneau.js). Rappel donné à lib/cycle-vie.js (fermerFormulairesEcriture).
 function fermerPanneauxMediasDe(racine, slug) {
-  const tout = !racine || !slug;
-  for (const [cle, panneau] of Array.from(panneauxMedias.entries())) {
-    if (!tout && cle !== slug) { continue; }
-    try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
-    panneauxMedias.delete(cle);
-  }
+  fermerPanneaux('szhMedias', (!racine || !slug) ? undefined : slug);
 }
 
 // L'image que vise un bouton de constat, telle que le formulaire la nomme. Le constat ne
@@ -481,25 +475,28 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   // Mis à jour à chaque ouverture : le gestionnaire d'un panneau déjà ouvert le lit.
   let focus = relatifDuFocus(fournisseur, slug, String((item && item.focus) || ''));
   const md = path.join(racine, dossierUnites(), slug, slug + '.md');
-  const existant = panneauxMedias.get(slug);
+  const existant = revelerPanneau({ viewType: 'szhMedias', cle: slug });
   if (existant) {
     // Pas de rechargement : il écraserait des saisies non encore écrites. Seule la carte
     // visée est amenée à l'écran.
-    existant.reveal(vscode.ViewColumn.One);
     if (focus !== '') { repondrePanneau(existant, { type: MSG.FOCALISER, relatif: focus }); }
     return;
   }
   // Le formulaire prend toute la place ; sans cela la webview s'ouvre derrière un PDF.
   await fermerTousLesApercus();
-  const panneau = vscode.window.createWebviewPanel(
-    'szhMedias', T('medias.titre', [slug]), vscode.ViewColumn.One,
+  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie : ils peuvent lire
+  // les fonctions déclarées plus bas.
+  const { panneau } = panneauUnique({
+    viewType: 'szhMedias', cle: slug, titre: T('medias.titre', [slug]),
     // Saisie longue : la webview garde son état masquée, plutôt que de repartir à vide.
-    { enableScripts: true, localResourceRoots: [], retainContextWhenHidden: true }
-  );
-  panneauxMedias.set(slug, panneau);
-  panneau.onDidDispose(() => {
-    if (panneauxMedias.get(slug) === panneau) { panneauxMedias.delete(slug); }
-    ctx.viderCompilation(slug);   // une recompilation encore sous l'anti-rebond part maintenant
+    retenir: true,
+    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
+    modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+    html: htmlMedias,
+    surPret: (msg) => charger(panneau, { requete: msg.requete }),
+    surMessage: (msg) => traiterMessage(msg),
+    // Une recompilation encore sous l'anti-rebond part maintenant.
+    surFermeture: () => ctx.viderCompilation(slug)
   });
   // Chaque geste qui a écrit le .md, media/ ou la fiche le dit ici, et seulement s'il a
   // réellement écrit : la compilation de l'article repart en tâche de fond, sans affichage.
@@ -608,12 +605,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     return total;
   };
 
-  panneau.webview.onDidReceiveMessage(async (msg) => {
-    if (!msg) { return; }
-    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
-    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
-    if (ctx.repondreModeTrad(panneau, msg)) { return; }
-    if (msg.type === MSG.PRET) { await charger(panneau, { requete: msg.requete }); return; }
+  async function traiterMessage(msg) {
     if (msg.type === MSG.MODIFIE) {
       panneau.title = (msg.modifie ? '● ' : '') + T('medias.titre', [slug]);
       return;
@@ -863,8 +855,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       return;
     }
     console.warn('médias : type de message inconnu', msg.type);
-  });
-  panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
+  }
 }
 
 module.exports = {

@@ -626,7 +626,7 @@ function sourcesHote() {
   return liste;
 }
 
-// Chaque `webview.onDidReceiveMessage(` d'un fichier, avec le nom de la fonction de premier
+// Chaque `webview.onDidReceiveMessage(` ou `panneauUnique({` d'un fichier, avec le nom de la fonction de premier
 // niveau qui l'entoure (c'est ce nom qui sert d'identité : le viewType du panneau n'est pas
 // toujours une chaîne littérale — ouvrirVueEnsemble passe `def.id`).
 function gestionnairesDe(chemin) {
@@ -643,7 +643,22 @@ function gestionnairesDe(chemin) {
         ligne: i + 1,
         // La garde se pose en tête : après le `if (!msg)` et son commentaire de deux
         // lignes, jamais plus loin. Six lignes laissent la marge, pas un traitement.
-        tete: lignes.slice(i, i + 6).join('\n')
+        garde: /repondreModeTrad\(panneau, msg\)\) \{ return; \}/.test(lignes.slice(i, i + 6).join('\n'))
+      });
+    }
+    // Un panneau de la fabrique (lib/webviews/panneau.js) : la garde est son option
+    // `modeTrad`, que la fabrique passe avant tout autre message. Les options s'arrêtent à
+    // la ligne qui referme l'appel, à la même indentation.
+    if (/panneauUnique\(\{/.test(lignes[i])) {
+      const retrait = /^\s*/.exec(lignes[i])[0];
+      let fin = i + 1;
+      while (fin < lignes.length && !lignes[fin].startsWith(retrait + '}')) { fin++; }
+      trouves.push({
+        fichier: path.relative(COCKPIT, chemin).replace(/\\\\/g, '/'),
+        fonction: fonction,
+        ligne: i + 1,
+        garde: /^\s*modeTrad: \(panneau, msg\) => (ctx\.)?repondreModeTrad\(panneau, msg\),?$/m
+          .test(lignes.slice(i, fin).join('\n'))
       });
     }
   }
@@ -660,7 +675,7 @@ test('mode trad : tout panneau détourne ses clics, sauf les deux gardiens du mo
   const manquants = [];
   const detournentATort = [];
   for (const g of tous) {
-    const garde = /repondreModeTrad\(panneau, msg\)\) \{ return; \}/.test(g.tete);
+    const garde = g.garde;
     const exclu = Object.prototype.hasOwnProperty.call(PANNEAUX_SANS_MODE_TRAD, g.fonction);
     if (exclu && garde) { detournentATort.push(`${g.fichier}:${g.ligne} (${g.fonction})`); }
     if (!exclu && !garde) { manquants.push(`${g.fichier}:${g.ligne} (${g.fonction})`); }
