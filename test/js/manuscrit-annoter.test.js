@@ -794,6 +794,30 @@ test('plafond global : les commentaires au-delà de `plafond_commentaires` sont 
   });
 
 // ---------------------------------------------------------------------------------
+// `stats.plafond_global` ne compte que les commentaires refusés par le plafond global : ni les
+// doublons retirés, ni le plafond par règle. Sabotage : l'y faire compter (len(renvoyees)).
+test('plafond_global : 25 commentaires pile et un doublon retiré = 0 ; un 26e commentaire = 1',
+  { skip: sansPython }, () => {
+    const paragraphes = [{ texte: REF_DOUBLON }].concat(
+      Array.from({ length: 26 }, (_, i) => ({ texte: 'Paragraphe numero ' + i + ' de remplissage.' })));
+    const correspondance = paragraphes.map((_, i) => ({ source: i, sortie: i + 2 }));
+    const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
+      span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
+      message: 'mise en forme' },
+    { rule: 'CSPS-Biblio.APA.Esperluette', severity: 'error', action: 'comment', para: 0,
+      span: null, found: ' et Durand', suggested: ' & Durand', message: 'doublon' }];
+    const libres = (n) => Array.from({ length: n }, (_, i) => ({ rule: 'Test.R' + i,
+      severity: 'warning', action: 'comment', para: i + 1, span: null, found: null,
+      suggested: null, message: 'm' + i }));
+    const pile = anotar(paragraphes, alertes.concat(libres(25)), correspondance, { plafond_commentaires: 25 });
+    assert.strictEqual(pile.stats.commentaires, 25);
+    assert.strictEqual(pile.stats.renvoyees_au_rapport.length, 1, 'le doublon seul est renvoyé');
+    assert.strictEqual(pile.stats.plafond_global, 0);
+    const trop = anotar(paragraphes, alertes.concat(libres(26)), correspondance, { plafond_commentaires: 25 });
+    assert.strictEqual(trop.stats.commentaires, 25);
+    assert.strictEqual(trop.stats.plafond_global, 1);
+  });
+
 // 6. Révisions sans plafond : 40 corrections de la même règle doivent TOUTES s'écrire.
 
 test('les révisions n\'ont aucun plafond, contrairement aux commentaires',

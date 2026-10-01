@@ -936,6 +936,9 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
     devenir = [None] * len(alertes)
     stats = {'revisions': 0, 'commentaires': 0, 'commentaires_synthese': 0,
              'renvoyees_au_rapport': [], 'non_ancrees': [], 'par_regle': {}, 'devenir': devenir,
+             # Commentaires refusés par le seul plafond global (ni doublons retirés, ni plafond
+             # par règle) : c'est lui que mesure `plafond_commentaires_atteint`.
+             'plafond_global': 0,
              # Ventilation des alertes de NOTE (§7 ter du contrat) — pas dans le contrat lui-
              # même, ajoutée pour que le rapport dise combien d'alertes de note ont fini en
              # révision DANS la note, en commentaire ancré sur l'appel, ou en repli paragraphe
@@ -1191,6 +1194,7 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             devenir[item[0]] = 'rapport'
 
     escritos = conservados[:plafond_commentaires]
+    stats['plafond_global'] = len(conservados) - len(escritos)
     for item in conservados[plafond_commentaires:]:
         stats['renvoyees_au_rapport'].append(item[1])
         _contar_regla(stats, item[1], 'renvoyees')

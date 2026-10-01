@@ -309,10 +309,8 @@ def _mesures_passage(issue, duree_ms, args, gabarit, format_entree, format_sorti
     for a in alertes:
         nom = _mesure_regle(a.get('rule'), a.get('dans_docx') or 'rapport')
         m[nom] = m.get(nom, 0) + 1
-    if stats_annotation:
-        ecrits = sum(1 for a in alertes if a.get('dans_docx') == 'commentaire')
-        if ecrits >= 25 and stats_annotation.get('renvoyees_au_rapport'):
-            m['plafond_commentaires_atteint'] = 1
+    if stats_annotation and stats_annotation.get('plafond_global'):
+        m['plafond_commentaires_atteint'] = 1
     if mesure_perte:
         m['perte_mots'] = int(mesure_perte.get('mots_manquants') or 0)
     if ecartes_entete:

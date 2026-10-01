@@ -1161,6 +1161,31 @@ test('manuscrit-nettoyer.py : une alerte sans origine valide est comptée sous `
     assert.strictEqual(m.journal.length, 2);
   });
 
+// `plafond_commentaires_atteint` suit le plafond global de l'annoteur (`plafond_global`), pas le
+// nombre de commentaires écrits : 25 commentaires et un doublon retiré ne sont pas un plafond.
+// Sabotage : revenir à `ecrits >= 25 and renvoyees_au_rapport`.
+test('manuscrit-nettoyer.py : plafond_commentaires_atteint suit le plafond global, pas les doublons retirés',
+  { skip: sansPython }, () => {
+    const PONT = [
+      'import importlib.util, json, sys',
+      'sys.path.insert(0, sys.argv[1])',
+      'spec = importlib.util.spec_from_file_location("nettoyeur_plafond", sys.argv[2])',
+      'mod = importlib.util.module_from_spec(spec)',
+      'spec.loader.exec_module(mod)',
+      'al = [{"rule": "R", "dans_docx": "commentaire"} for _ in range(25)]',
+      'def mesure(stats):',
+      '    m = mod._mesures_passage("ok", 1, {"produit": "revue", "sans_typo": False}, "B", "docx",',
+      '        "docx", al, None, 0, 0, 0, 0, 0, 0, 0, stats, False, None, None, False, "appliquee",',
+      '        None, None, None, None)',
+      '    return m.get("plafond_commentaires_atteint", 0)',
+      'print(json.dumps({"doublon": mesure({"renvoyees_au_rapport": [{}], "plafond_global": 0}),',
+      '                  "plafond": mesure({"renvoyees_au_rapport": [{}], "plafond_global": 1})}))',
+    ].join(String.fromCharCode(10));
+    const r = python(['-c', PONT, PIPELINE, NETTOYEUR]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(JSON.parse(r.stdout), { doublon: 0, plafond: 1 });
+  });
+
 // ---------------------------------------------------------------------------------
 // Contrôle n°13 — le branchement de manuscrit_vale.py/manuscrit_biblio.py/manuscrit_annoter.py
 // (révision du 21.09.2026). Fixture construite pour porter, chacune sur son propre
