@@ -355,7 +355,7 @@ def images_du_word(chemin_docx, t_ordinaux):
     images = []
     # `texte_vu` : un texte du corps a-t-il déjà été rencontré ? Une image vue AVANT est en
     # tête de document — seule place où le logo de licence (ligne G) est retiré exprès.
-    etat = {'texte_vu': False, 'ordinal': 0}
+    etat = {'texte_vu': False}
 
     def noter(element):
         noms = []
@@ -390,14 +390,13 @@ def images_du_word(chemin_docx, t_ordinaux):
                 etat['texte_vu'] = True
             parcourir(enfant, dans_table_consommee)
 
-    # Les tableaux de PREMIER NIVEAU sont comptés comme docx-tables.py et szh-meta.lua les
-    # comptent (tableaux_de_premier_niveau : on ne descend pas dans un tableau pour en
-    # chercher d'autres), pour reconnaître ceux des lignes T.
+    # Les tableaux consommés (lignes T) se reconnaissent à leur numéro, celui de docx-tables.py.
+    consommes = {id(tbl) for ordinal, tbl in tableaux_de_la_racine(racine) if ordinal in t_ordinaux}
+
     def premier_niveau(element):
         for enfant in element:
             if enfant.tag == W + 'tbl':
-                etat['ordinal'] += 1
-                parcourir(enfant, etat['ordinal'] in t_ordinaux)
+                parcourir(enfant, id(enfant) in consommes)
             elif enfant.tag in (W + 'drawing', W + 'pict'):
                 noter(enfant)
             elif enfant.tag == MC + 'Fallback':
@@ -450,28 +449,20 @@ def _cellule_texte(tc, sans_etiquettes):
     return ' '.join(pars)
 
 
+def tableaux_de_la_racine(racine):
+    """[(ordinal, tbl)] — les tableaux de premier niveau du document, numérotés par la fonction
+    de docx-tables.py elle-même (w:sdt, zone de texte et mc:Fallback compris) : les ordinaux des
+    lignes T et FG sont ceux de ce maillon, et les recopier ici les ferait diverger."""
+    docx_tables = szh_commun.charger_module_a_tiret('docx-tables.py')
+    return [(ordinal, tbl) for ordinal, (tbl, _) in
+            enumerate(docx_tables.tableaux_de_premier_niveau(racine), start=1)]
+
+
 def tableaux_du_word(chemin_docx):
-    """[(ordinal, tc)] — les tableaux de premier niveau du corps, dépliés comme
-    docx-tables.py et pandoc les comptent (w:sdt traversé, pas de descente dans un tableau,
-    ni dans un dessin ou un mc:Fallback)."""
+    """[(ordinal, tbl)] — voir tableaux_de_la_racine."""
     with zipfile.ZipFile(chemin_docx) as z:
         racine = ET.fromstring(z.read('word/document.xml'))
-    corps = racine.find(W + 'body')
-    trouves = []
-    if corps is None:
-        return trouves
-
-    def marche(e):
-        for enfant in e:
-            if enfant.tag == W + 'tbl':
-                trouves.append((len(trouves) + 1, enfant))
-            elif enfant.tag in (W + 'drawing', W + 'pict', MC + 'Fallback'):
-                continue
-            else:
-                marche(enfant)
-
-    marche(corps)
-    return trouves
+    return tableaux_de_la_racine(racine)
 
 
 def sans_blancs(t):

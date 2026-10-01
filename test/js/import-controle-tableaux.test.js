@@ -214,3 +214,45 @@ test('tableau consommé : les mots du corps ne sauvent pas une cellule absente d
       word: wordCellules([['Résumé :', DIX_MOTS]]) });
     assert.strictEqual(dits.length, 1, dits.join('\n'));
   });
+
+// ---- Numérotation : celle de docx-tables.py, zones de texte comprises.
+// Un tableau dans une zone de texte (mc:Choice et son doublon mc:Fallback) compte pour deux
+// dans docx-tables.py : le tableau d'autrices est alors le 3e, pas le 1er. Le filet doit
+// désigner le même tableau que les lignes T.
+function wordZoneDeTexte(base) {
+  const chemin = path.join(base, 'zone.docx');
+  const code = [
+    'import sys, zipfile',
+    'W = ("xmlns:w=\\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\\" "',
+    '     "xmlns:mc=\\"http://schemas.openxmlformats.org/markup-compatibility/2006\\" "',
+    '     "xmlns:wp=\\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\\" "',
+    '     "xmlns:a=\\"http://schemas.openxmlformats.org/drawingml/2006/main\\" "',
+    '     "xmlns:wps=\\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\\"")',
+    'tbl = lambda t: "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>%s</w:t></w:r></w:p></w:tc></w:tr></w:tbl>" % t',
+    'zone = ("<w:p><w:r><mc:AlternateContent><mc:Choice Requires=\\"wps\\"><w:drawing><wp:anchor><a:graphic>"',
+    '        "<a:graphicData><wps:wsp><wps:txbx><w:txbxContent>%s<w:p/></w:txbxContent></wps:txbx></wps:wsp>"',
+    '        "</a:graphicData></a:graphic></wp:anchor></w:drawing></mc:Choice><mc:Fallback><w:pict>"',
+    '        "<w:txbxContent>%s<w:p/></w:txbxContent></w:pict></mc:Fallback></mc:AlternateContent></w:r></w:p>")',
+    'zone = zone % (tbl("dans la zone"), tbl("dans la zone"))',
+    'doc = "<w:document %s><w:body>%s%s%s</w:body></w:document>" % (W, zone, tbl("Jeanne Exemple"), tbl("Donnees"))',
+    'with zipfile.ZipFile(sys.argv[1], "w") as z:',
+    '    z.writestr("word/document.xml", doc)'
+  ].join('\n');
+  const r = cp.spawnSync(PYTHON, ['-c', code, chemin], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  return () => chemin;
+}
+
+test('tableaux du Word : après une zone de texte à tableau, T désigne le tableau de docx-tables.py',
+  { skip: sansPython }, () => {
+    const base = F.dossierJetable();
+    try {
+      const zone = '<table><tr><td>dans la zone</td></tr></table>';
+      const donnees = '<table><tr><td>Donnees</td></tr></table>';
+      // docx-tables.py compte : zone (1), son doublon (2), autrice (3), données (4).
+      const dits = controle(base, { md: 'Titre\n', tables: [zone, zone, donnees],
+        fiche: 'authors:\n- prenom: "Jeanne"\n  nom: "Exemple"\n', instructions: 'T\t3\n',
+        word: wordZoneDeTexte(base) });
+      assert.deepStrictEqual(dits, []);
+    } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  });
