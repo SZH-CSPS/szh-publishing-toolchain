@@ -11,13 +11,25 @@ const path = require('path');
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
+// Les éléments de barre d'état créés par installerBarres, dans l'ordre : compteur, badge PDF/UA.
+const barres = [];
+
 // Le module demande « vscode », que ce banc n'a pas : une doublure minimale suffit.
 function charger() {
   const Module = require('module');
   const orig = Module._load;
   const faux = {
     Uri: { file: (p) => ({ fsPath: p }) },
-    window: {},
+    window: {
+      createStatusBarItem: () => {
+        const item = { text: '', visible: false };
+        item.show = () => { item.visible = true; };
+        item.hide = () => { item.visible = false; };
+        barres.push(item);
+        return item;
+      }
+    },
+    StatusBarAlignment: { Left: 1 },
     commands: { executeCommand: async () => {} },
     workspace: { getConfiguration: () => ({ get: (cle, defaut) => defaut }) },
     env: { language: 'fr' },
@@ -52,6 +64,23 @@ test('poser les constats d’une source n’efface pas ceux d’une autre', () =
   assert.deepStrictEqual(codes(controles.constatsCourants(racine)),
     ['export/refus', 'pagination/impair']);
   assert.deepStrictEqual(controles.constatsPoses('pagination').map((c) => c.code), ['impair']);
+});
+
+test('la barre d’état compte les refus d’export comme la vue les montre', () => {
+  controles.reinitialiser();
+  barres.length = 0;
+  controles.installerBarres({ subscriptions: [] }, {});
+  const compteur = barres[0];
+  controles.poserConstats(racine, 'reimport', []);
+  assert.strictEqual(compteur.visible, false, 'rien à signaler : la barre reste masquée');
+  controles.poserConstatsExport(racine, ['articles/00-a : titre manquant', 'articles/01-b : auteur manquant'], 0);
+  assert.strictEqual(compteur.visible, true, 'des refus d’export font monter le compteur');
+  assert.match(compteur.text, /2/, 'deux refus, ton danger : deux bloquants');
+  // Un avertissement de réimport seul : la barre le dit, les bloquants d'export gardent la main.
+  controles.poserConstats(racine, 'reimport', [constat('import', 'tableau', '00-a')]);
+  assert.match(compteur.text, /2/);
+  controles.poserConstatsExport(racine, [], 0);
+  assert.match(compteur.text, /1/, 'les refus effacés, il ne reste que l’avertissement');
 });
 
 test('changer de numéro périme toutes les sources à la fois', () => {

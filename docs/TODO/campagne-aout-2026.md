@@ -27,9 +27,6 @@ Points encore ouverts de la campagne du 23 août 2026, repris tels quels de `FEA
 
 ### Sans vague assignée
 
-- [ ] **L'avertissement `nonempty <title>` de la cible aperçu** subsiste : l'aperçu passe par
-  `commonmark_x` sans gabarit ni `szh-maquette`, donc sans `pagetitle`. HTML interne au cockpit,
-  jamais publié.
 - [ ] **`docx-titres.py` et `import-medias.py`** gardent leur `|| true`, documentés comme non
   bloquants. À réexaminer une fois que les avertissements arrivent à l'écran.
 
@@ -49,22 +46,3 @@ Points encore ouverts de la campagne du 23 août 2026, repris tels quels de `FEA
 
 - [ ] **Ne rien changer aux images importées** : la légende et le texte alternatif venus du
   Word sont repris comme aujourd'hui. C'est explicitement demandé.
-
-### F9 — Les dossiers de revue, paramétrables dans les Réglages
-
-- [ ] Demandé : « rends le dossier de la Revue et de la Zeitschrift paramétrable, avec des
-  gros warning ! Attention ne changez cela que si vous êtes certain de ce que vous faites. »
-
-  Aujourd'hui les deux racines sont **en dur** dans `Get-SzhEmplacements` de
-  `windows/szh-common.ps1`, et seul le choix entre elles est réglable
-  (`emplacementRevues`, voir `docs/EMPLACEMENTS.md`). Les rendre saisissables est un cran
-  au-dessus en danger : une racine fausse ne casse rien, elle **fait disparaître le
-  travail**, et c'est exactement le sinistre que la campagne d'hier a évité de justesse.
-
-  L'avertissement demandé n'est donc pas décoratif. Trois garde-fous à prévoir, au-delà du
-  texte : refuser un chemin qui n'existe pas ; dire **combien de numéros** la nouvelle
-  racine contient avant de valider — une racine vide se voit alors avant, pas après ; et
-  garder la précédente pour pouvoir revenir. `Set-SzhRaccourcisMenu` montre le patron d'une
-  écriture jamais bloquante qui rend un bilan.
-
-  Bloqué par `media/settings.*`, `extension.js` et `lib/i18n.js`.

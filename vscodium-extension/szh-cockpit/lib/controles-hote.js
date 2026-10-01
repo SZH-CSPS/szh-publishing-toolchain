@@ -709,10 +709,10 @@ function majBarreControles() {
   // comme à l'export — c'est la même règle, elle arrive juste une minute après le Ctrl+S
   // au lieu du jour de l'export.
   // Même tri que la vue (constatsAffichables) : la barre ne doit pas compter ce que la
-  // liste ne montre plus, ni le résumé PDF/UA en plus de ses règles. Les refus d'export
-  // n'y entrent pas : la notification de l'export les a déjà comptés.
+  // liste ne montre plus, ni le résumé PDF/UA en plus de ses règles. Les refus d'export y
+  // entrent, au même ton que dans la vue.
   let constats = constatsAffichables(journal.racine,
-    reunir(['reimport', 'pagination', 'chaine'])
+    reunir(ORDRE_SOURCES)
       .concat(pdfuaHote.constats(journal.racine, langueCockpit())));
   // Regroupés comme dans la vue : trois voies pour les mêmes images muettes font UNE carte,
   // donc un seul bloquant — la barre ne doit pas annoncer plus que la liste n'en montre.
