@@ -34,6 +34,8 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const OUVRIR = lire('windows', 'open-produit.ps1');
+// Les deux onglets sortis du lanceur : l'interdiction d'appeler Set-SzhLangueProduit vaut aussi pour eux.
+const OUVRIR_ET_ONGLETS = OUVRIR + '\n' + lire('windows', 'lanceur-secretariat.ps1') + '\n' + lire('windows', 'lanceur-preproc.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
@@ -68,7 +70,7 @@ test('open-produit.ps1 : le bloc « lien reçu » ne touche à aucune langue', (
   // Set-SzhLangueProduit, comme FONCTION APPELÉE, a disparu de tout le fichier -- seul son
   // nom survit dans le commentaire d'en-tête, qui raconte le défaut d'origine. On le
   // cherche donc suivi d'un argument (une vraie invocation), jamais comme simple mot.
-  assert.ok(!/Set-SzhLangueProduit\s+[$']/.test(OUVRIR),
+  assert.ok(!/Set-SzhLangueProduit\s+[$']/.test(OUVRIR_ET_ONGLETS),
     'Set-SzhLangueProduit est encore APPELÉE quelque part dans open-produit.ps1 : cette ' +
     'fonction devait disparaître avec la fusion des lanceurs, pas seulement son bloc lien');
   // Et rien d'autre, dans CE bloc précisément, ne change la langue résolue ni ne réécrit

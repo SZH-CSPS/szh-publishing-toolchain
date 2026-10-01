@@ -537,7 +537,7 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
 // ---- L'onglet « Export et secretariat » : lecture non bloquante, plus de dossier de
 // gabarits affiche, nouvelles clés de texte ----
 //
-// Mesure du 15.09.2026 (voir le commentaire d'Invoke-SzhSecretariat, open-produit.ps1) :
+// Mesure du 15.09.2026 (voir le commentaire d'Invoke-SzhSecretariat, lanceur-secretariat.ps1) :
 // une page OAI-PMH de 100 notices prend 4,6 s, la Zeitschrift en compte 7 -> ~32 s qui
 // figeaient toute la fenêtre avec l'ancien ReadLine() bloquant. Non-régression, sans
 // dérouler le lanceur en vrai (les quatre exports appellent un vrai processus Node) :
@@ -545,11 +545,14 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
 
 test('secretariat : ReadLine bloquant a disparu, aucune API interdite ne l\'a remplacé',
   () => {
-    // Le lancement de Node vit dans szh-shell.ps1 (Invoke-SzhNodeCockpit) : les deux fichiers
-    // sont lus, l'interdiction vaut pour l'un comme pour l'autre.
+    // Le lancement de Node vit dans szh-shell.ps1 (Invoke-SzhNodeCockpit), l'onglet dans
+    // lanceur-secretariat.ps1, le nettoyeur dans lanceur-preproc.ps1 : tous sont lus,
+    // l'interdiction vaut pour chacun.
     const sourceProduit = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+    const sourceSecretariat = fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-secretariat.ps1'), 'utf8');
+    const sourcePreproc = fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-preproc.ps1'), 'utf8');
     const sourceShell = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
-    const source = sourceProduit + '\n' + sourceShell;
+    const source = sourceProduit + '\n' + sourceSecretariat + '\n' + sourcePreproc + '\n' + sourceShell;
 
     // INTERDIT ABSOLU (voir le commentaire d'Invoke-SzhSecretariat) : ces gestionnaires
     // tournent sur un fil hors du pipeline PowerShell et ont déjà tué le processus entier
@@ -567,7 +570,7 @@ test('secretariat : ReadLine bloquant a disparu, aucune API interdite ne l\'a re
       'Invoke-SzhSecretariat lit encore stdout de façon bloquante (ReadLine)');
     assert.ok(sourceShell.indexOf('StandardOutput.ReadLineAsync()') !== -1,
       'Invoke-SzhNodeCockpit ne lit plus stdout de façon asynchrone (ReadLineAsync)');
-    assert.match(sourceProduit, /Invoke-SzhNodeCockpit -Outil 'secretariat-cli\.js'[^\r\n]*-SurLigne/,
+    assert.match(sourceSecretariat, /Invoke-SzhNodeCockpit -Outil 'secretariat-cli\.js'[^\r\n]*-SurLigne/,
       'Invoke-SzhSecretariat ne passe plus par la lecture ligne à ligne de Invoke-SzhNodeCockpit');
   });
 
@@ -616,7 +619,7 @@ test('secretariat : les nouvelles clés de texte existent dans les trois langues
 // qu'en conditions réelles : la boîte modale et son dialogue OAI-PMH ne passent pas par
 // SZH_LANCEUR_SIMULE, qui ne couvre que la liste des produits.
 test('secretariat : --depuis-annee est passé par la boîte d\'export CSV et par le contrôle des métadonnées', () => {
-  const source = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+  const source = fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-secretariat.ps1'), 'utf8');
 
   // Deux appels réels de numeros-ojs portent --depuis-annee suivi d'une valeur explicitement
   // convertie en chaîne -- un dans Show-SzhBoiteExportOjs (le second, chargé conditionnellement

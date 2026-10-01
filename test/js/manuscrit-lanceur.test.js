@@ -18,7 +18,14 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const OPEN_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
 const TEXTES = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
+// L'onglet vit dans son propre fichier, dot-source par open-produit.ps1 ; les interdictions
+// valent pour les trois fichiers du lanceur, d'ou TEXTE_LANCEUR.
+const LANCEUR_PREPROC = path.join(RACINE, 'windows', 'lanceur-preproc.ps1');
+const LANCEUR_SECRETARIAT = path.join(RACINE, 'windows', 'lanceur-secretariat.ps1');
+
 const TEXTE_PRODUIT = fs.readFileSync(OPEN_PRODUIT, 'utf8');
+const TEXTE_PREPROC = fs.readFileSync(LANCEUR_PREPROC, 'utf8');
+const TEXTE_LANCEUR = TEXTE_PRODUIT + '\n' + fs.readFileSync(LANCEUR_SECRETARIAT, 'utf8') + '\n' + TEXTE_PREPROC;
 const TEXTE_TEXTES = fs.readFileSync(TEXTES, 'utf8');
 
 // ---- Controle n1 : le script s'analyse toujours sans erreur de syntaxe ----------------
@@ -27,14 +34,18 @@ const TEXTE_TEXTES = fs.readFileSync(TEXTES, 'utf8');
 // poste), donc jamais path.join a barres obliques ici -- OPEN_PRODUIT (path.join) est deja
 // en barres inverses sous Windows, mais on le redit explicitement pour ne pas dependre de
 // ce detail de plateforme.
-test('open-produit.ps1 s\'analyse toujours sans erreur de syntaxe apres l\'ajout de l\'onglet',
+test('open-produit.ps1 et les fichiers de ses onglets s\'analysent toujours sans erreur de syntaxe',
   { skip: sansPowerShell }, () => {
-    const cheminBarres = OPEN_PRODUIT.replace(/\//g, '\\');
+    const chemins = [OPEN_PRODUIT, LANCEUR_PREPROC, LANCEUR_SECRETARIAT].map((c) => c.replace(/\//g, '\\'));
     const script = [
-      '$chemin = ' + JSON.stringify(cheminBarres),
-      '$erreurs = $null',
-      '[System.Management.Automation.Language.Parser]::ParseFile($chemin, [ref]$null, [ref]$erreurs) | Out-Null',
-      'if ($erreurs.Count -gt 0) { $erreurs | ForEach-Object { Write-Output $_.ToString() } } else { Write-Output "OK" }'
+      '$erreurs = @()',
+      '$chemins = @(' + chemins.map((c) => JSON.stringify(c)).join(', ') + ')',
+      'foreach ($chemin in $chemins) {',
+      '  $e = $null',
+      '  [System.Management.Automation.Language.Parser]::ParseFile($chemin, [ref]$null, [ref]$e) | Out-Null',
+      '  foreach ($erreur in $e) { $erreurs += ($chemin + " : " + $erreur.ToString()) }',
+      '}',
+      'if ($erreurs.Count -gt 0) { $erreurs | ForEach-Object { Write-Output $_ } } else { Write-Output "OK" }'
     ].join("\r\n");
     const pilote = path.join(require('os').tmpdir(), 'szh-parse-open-produit-' + process.pid + '.ps1');
     fs.writeFileSync(pilote, script, 'utf8');
@@ -76,14 +87,14 @@ function clesPreprocEmployees(texteScript) {
   return vues;
 }
 
-test('toute cle lanceur.preproc.* employee dans open-produit.ps1 existe dans les trois langues, et reciproquement', () => {
+test('toute cle lanceur.preproc.* employee dans le lanceur existe dans les trois langues, et reciproquement', () => {
   const blocs = extraireBlocsLangues(TEXTE_TEXTES);
   const declareesFr = clesPreprocDeclarees(blocs.fr);
   const declareesDe = clesPreprocDeclarees(blocs.de);
   const declareesEn = clesPreprocDeclarees(blocs.en);
-  const employees = clesPreprocEmployees(TEXTE_PRODUIT);
+  const employees = clesPreprocEmployees(TEXTE_LANCEUR);
 
-  assert.ok(employees.size > 0, 'aucune cle lanceur.preproc.* employee dans open-produit.ps1 - le controle est casse');
+  assert.ok(employees.size > 0, 'aucune cle lanceur.preproc.* employee dans le lanceur - le controle est casse');
 
   // Chaque cle employee doit exister dans les TROIS langues.
   for (const cle of employees) {
@@ -108,7 +119,7 @@ test('toute cle lanceur.preproc.* employee dans open-produit.ps1 existe dans les
 function extraireBlocOnglet(texte) {
   const debut = texte.indexOf('$pagePreproc = New-Object System.Windows.Forms.TabPage');
   assert.ok(debut !== -1, 'le bloc de l\'onglet Preprocessing (pagePreproc) est introuvable');
-  const fin = texte.indexOf('$onglets.TabPages.Add($pagePreproc)', debut);
+  const fin = texte.indexOf('return $pagePreproc', debut);
   assert.ok(fin !== -1, 'la fin du bloc de l\'onglet Preprocessing est introuvable');
   return texte.slice(debut, fin);
 }
@@ -143,7 +154,7 @@ test('aucun controle de l\'onglet Preprocessing ne deborde de $xPage + $largeurP
   const largeurPageVal = Number(mLargeurPage[1]);
   const borneDroite = xPageVal + largeurPageVal;
 
-  const bloc = extraireBlocOnglet(TEXTE_PRODUIT);
+  const bloc = extraireBlocOnglet(TEXTE_PREPROC);
 
   const locations = new Map();
   for (const m of bloc.matchAll(/\$(script:)?(\w+)\.Location = New-Object System\.Drawing\.Point\(([^;]*?)\)\r?\n/g)) {
@@ -188,16 +199,16 @@ test('BeginErrorReadLine et ReadLine() synchrone sur la sortie standard sont abs
   // nomme les deux motifs en toutes lettres ("add_ErrorDataReceived / BeginErrorReadLine
   // / add_OutputDataReceived") sans jamais les appeler -- une recherche de sous-chaine nue
   // s'y accrocherait a tort.
-  assert.ok(!/\.\s*BeginErrorReadLine\s*\(/.test(TEXTE_PRODUIT),
-    'un appel .BeginErrorReadLine( trouve dans open-produit.ps1');
-  assert.ok(!/\.\s*add_ErrorDataReceived\s*\(/.test(TEXTE_PRODUIT),
-    'un appel .add_ErrorDataReceived( trouve dans open-produit.ps1');
-  assert.ok(!/StandardOutput\.ReadLine\(\)/.test(TEXTE_PRODUIT),
+  assert.ok(!/\.\s*BeginErrorReadLine\s*\(/.test(TEXTE_LANCEUR),
+    'un appel .BeginErrorReadLine( trouve dans le lanceur');
+  assert.ok(!/\.\s*add_ErrorDataReceived\s*\(/.test(TEXTE_LANCEUR),
+    'un appel .add_ErrorDataReceived( trouve dans le lanceur');
+  assert.ok(!/StandardOutput\.ReadLine\(\)/.test(TEXTE_LANCEUR),
     'un ReadLine() synchrone sur StandardOutput a ete trouve (il faut ReadLineAsync, ou ReadToEndAsync)');
   // Ceinture et bretelles : aucun appel ".ReadLine()" synchrone nu (sans le suffixe Async)
   // nulle part, qu'il porte sur stdout ou un flux enveloppe autrement.
-  assert.ok(!/\.ReadLine\(\)/.test(TEXTE_PRODUIT),
-    'un appel .ReadLine() synchrone (sans Async) a ete trouve dans open-produit.ps1');
+  assert.ok(!/\.ReadLine\(\)/.test(TEXTE_LANCEUR),
+    'un appel .ReadLine() synchrone (sans Async) a ete trouve dans le lanceur');
 });
 
 // ---- Controle n5 : --format atteint vraiment la CLI (point 4 du chantier "gabarits Pronto
@@ -308,6 +319,8 @@ function executerPiloteManuscrit(corpsSupplementaire, envSupplementaire) {
     // $env:SZH_BASE (pose plus bas, dans env) isole quand meme Write-SzhLog etc. de la
     // vraie production, jamais C:\ProgramData\SZH pendant une suite de tests.
     '$script:form = New-Object System.Windows.Forms.Form',
+    // New-SzhPagePreproc range son contexte la ou Invoke-SzhManuscrit le lit.
+    '$script:ctxPreproc = @{ Form = $script:form }',
     '$script:preprocBoutons = @()',
   ].concat(corpsSupplementaire).concat([
     'Set-SzhJson "' + sortie.replace(/\\/g, '\\\\') + '" $r'
@@ -337,7 +350,7 @@ function extraireFonctions(texte, noms) {
   for (const nom of noms) {
     const motifDebut = new RegExp('\\nfunction ' + nom + ' ?\\(?[^\\r\\n]*\\r?\\n');
     const mDebut = texte.match(motifDebut);
-    assert.ok(mDebut, 'fonction introuvable dans open-produit.ps1 : ' + nom);
+    assert.ok(mDebut, 'fonction introuvable dans le lanceur : ' + nom);
     const debutBloc = mDebut.index + 1;
     // Fin du bloc : la prochaine ligne qui commence par "function " ou par "$" a la colonne
     // 0 (debut de la section suivante), au meme niveau d'indentation (aucune des fonctions
@@ -360,7 +373,7 @@ const FONCTIONS_NECESSAIRES = [
   'New-SzhRapportTemporaire', 'Remove-SzhRapportTemporaire', 'Show-SzhResultatPreproc',
   'ConvertTo-SzhNettoyeurContenu', 'Send-SzhRapportNettoyeur', 'Send-SzhConstatsNettoyeur',
 ];
-const CORPS_FONCTIONS = extraireFonctions(TEXTE_PRODUIT, FONCTIONS_NECESSAIRES);
+const CORPS_FONCTIONS = extraireFonctions(TEXTE_LANCEUR, FONCTIONS_NECESSAIRES);
 
 // Un faux Consolas^Wjournal : une simple TextBox WinForms suffit, Add-SzhLigneJournal ne
 // demande rien de plus (voir le vrai code : TextLength / AppendText / SelectionStart).
@@ -1123,12 +1136,13 @@ test('echec du rendu de la page du rapport : un rapport {echec: rendu-rapport, t
 
 test('analyse statique : aucun appel qui ecrit un rapport, dans la zone Preprocessing, ne passe le texte de l\u2019onglet, le journal, un fichier ou un message d\u2019exception',
   () => {
-    const debut = TEXTE_PRODUIT.indexOf('# ---- L\'onglet « Preprocessing »');
-    const fin = TEXTE_PRODUIT.indexOf('# ---- L\'onglet des reglages ----');
+    // Tout le fichier de l'onglet, de son en-tete a sa derniere fonction.
+    const debut = TEXTE_PREPROC.indexOf('# ---- L\'onglet « Preprocessing »');
+    const fin = TEXTE_PREPROC.length;
     assert.ok(debut !== -1 && fin > debut, 'la zone Preprocessing se repere encore');
     // Les commentaires retires, et chaque instruction ramenee sur une ligne (le backtick de fin de
     // ligne continue l'instruction).
-    const zone = TEXTE_PRODUIT.slice(debut, fin).split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n')
+    const zone = TEXTE_PREPROC.slice(debut, fin).split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n')
       .replace(/`\n\s*/g, ' ');
     const appels = [...zone.matchAll(/^(?!function ).*\b(Write-SzhRapport|Send-SzhRapportNettoyeur)\b[^\n]*/gm)].map((m) => m[0]);
     assert.ok(appels.length >= 6, 'au moins six appels reperes dans la zone (cinq envois et Write-SzhRapport) : ' + appels.length);

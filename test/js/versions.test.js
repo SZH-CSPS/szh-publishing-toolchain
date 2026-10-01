@@ -29,6 +29,10 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const COMMUN = fs.readFileSync(COMMUN_PS1, 'utf8');
+// Le sélecteur WinForms vit dans son propre fichier, chargé par le seul lanceur.
+const VERSIONS_PS1 = path.join(RACINE, 'windows', 'szh-versions.ps1');
+const VERSIONS = fs.readFileSync(VERSIONS_PS1, 'utf8');
+const LANCEUR = fs.readFileSync(path.join(RACINE, 'windows', 'open-produit.ps1'), 'utf8');
 const TEXTES = fs.readFileSync(path.join(RACINE, 'windows', 'szh-textes.ps1'), 'utf8');
 
 // La liste d'épreuve, mélangée exprès : l'ordre d'entrée ne doit jamais transparaître dans
@@ -131,13 +135,13 @@ test('le medium se lit sur la majeure et la mineure, et l’année n’en est pa
 // reviendrait par la porte « installable hors ligne », que rien n'aurait filtrée.
 
 test('Show-SzhVersions filtre les versions publiées ET celles du staging', () => {
-  assert.match(COMMUN, /\$locales = @\(Select-SzhVersionsProposables \(Get-SzhVersionsLocales\)\)/,
+  assert.match(VERSIONS, /\$locales = @\(Select-SzhVersionsProposables \(Get-SzhVersionsLocales\)\)/,
     'les versions du staging ne passent plus par le filtre');
-  assert.match(COMMUN, /\$publiees = @\(Select-SzhVersionsProposables \$publieesBrutes\)/,
+  assert.match(VERSIONS, /\$publiees = @\(Select-SzhVersionsProposables \$publieesBrutes\)/,
     'les versions publiées ne passent plus par le filtre');
   // Le message « hors ligne » juge la réponse de GitHub, pas le résultat du filtre : un
   // réseau qui répond mais ne rend que de l'ancienne ère n'est pas un poste hors ligne.
-  assert.match(COMMUN, /if \(\$publieesBrutes\.Count -gt 0\)/,
+  assert.match(VERSIONS, /if \(\$publieesBrutes\.Count -gt 0\)/,
     'le message hors ligne se décide sur la liste filtrée, et ment donc au premier jour');
 });
 
@@ -145,9 +149,28 @@ test('la ligne présélectionnée n’est pas la version installée quand une au
   // Régression possible du filtre lui-même : une version d'avant 1.0.0 n'étant plus
   // proposable, elle s'insère en tête de liste comme « installée » — et la présélection à 0
   // faisait alors du bouton « Installer » une réinstallation à l'identique.
-  assert.match(COMMUN, /\$premier = 0\r?\n\s*if \(\(\$disponibles\.Count -gt 1\) -and \(\$disponibles\[0\] -eq \$installee\)\) \{ \$premier = 1 \}/,
+  assert.match(VERSIONS, /\$premier = 0\r?\n\s*if \(\(\$disponibles\.Count -gt 1\) -and \(\$disponibles\[0\] -eq \$installee\)\) \{ \$premier = 1 \}/,
     'la présélection est revenue à la première ligne, quelle qu’elle soit');
-  assert.match(COMMUN, /\$liVersions\.SelectedIndex = \$premier/);
+  assert.match(VERSIONS, /\$liVersions\.SelectedIndex = \$premier/);
+});
+
+test('Show-SzhVersions n’est plus dans le socle : seul le lanceur charge son fichier', () => {
+  // szh-common.ps1 est chargé par des scripts sans fenêtre : le sélecteur WinForms n’y a pas sa place.
+  assert.ok(!/function Show-SzhVersions\b/.test(COMMUN), 'Show-SzhVersions est revenue dans szh-common.ps1');
+  assert.ok(!/System\.Windows\.Forms/.test(COMMUN), 'le socle commun porte à nouveau du WinForms');
+  assert.match(VERSIONS, /function Show-SzhVersions\(\$Parent, \[string\]\$FichierIcone\)/);
+  const iCharge = LANCEUR.indexOf('. "$PSScriptRoot\\szh-versions.ps1"');
+  const iAppel = LANCEUR.indexOf('Show-SzhVersions $null');
+  assert.ok(iCharge !== -1 && iAppel !== -1 && iCharge < iAppel,
+    'open-produit.ps1 doit dot-sourcer szh-versions.ps1 avant d’appeler Show-SzhVersions');
+  // Aucun autre script de windows/ n’appelle le sélecteur sans charger son fichier.
+  for (const nom of fs.readdirSync(path.join(RACINE, 'windows'))) {
+    if (!nom.endsWith('.ps1') || nom === 'szh-versions.ps1') { continue; }
+    const source = fs.readFileSync(path.join(RACINE, 'windows', nom), 'utf8');
+    if (/\bShow-SzhVersions\s+[$]/.test(source)) {
+      assert.ok(source.indexOf('szh-versions.ps1') !== -1, nom + ' appelle Show-SzhVersions sans charger szh-versions.ps1');
+    }
+  }
 });
 
 test('la note qui explique la liste courte existe dans les trois langues', () => {

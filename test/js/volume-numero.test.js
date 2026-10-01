@@ -80,7 +80,10 @@ test('volume : la formule ne se laisse pas écrire ailleurs', () => {
   // séparément. Get-SzhVolumePour est le seul chemin.
   const copies = (codeSeul(psProduits).match(/\b(1994|2010)\b/g) || []).length;
   assert.strictEqual(copies, 2, 'les années zéro apparaissent ' + copies + ' fois dans szh-produits.ps1');
-  assert.strictEqual((psLanceur.match(/\b(1994|2010)\b/g) || []).length, 0,
+  // Le lanceur, ses deux onglets sortis dans leurs propres fichiers compris.
+  const lanceurEtOnglets = psLanceur + '\n' + fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-secretariat.ps1'), 'utf8')
+    + '\n' + fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-preproc.ps1'), 'utf8');
+  assert.strictEqual((lanceurEtOnglets.match(/\b(1994|2010)\b/g) || []).length, 0,
     'open-produit.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
   assert.strictEqual((psCreation.match(/\b(1994|2010)\b/g) || []).length, 0,
     'new-revue.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
