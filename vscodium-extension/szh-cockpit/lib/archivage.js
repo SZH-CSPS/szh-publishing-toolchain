@@ -366,6 +366,7 @@ function ecrireModeDeveloppeur(actif) {
 
 module.exports = {
   BASE_SZH, TOOLKIT, CONFIG, CONFIG_POSTE: CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR,
+  lancerScriptPowerShell,
   cheminConfigPoste, lireConfigPoste, ecrireConfigPoste, FORME_MAIL,
   MAILS_TRADUCTION, MAIL_TRADUCTION_DEFAUT, choisirAdresseMail, adresseMailTraduction,
   EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,

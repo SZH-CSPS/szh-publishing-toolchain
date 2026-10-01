@@ -228,6 +228,8 @@ function activerHote(revue) {
   // Le décorateur de fichiers (point de l'article ouvert), interrogeable par chemin, et
   // l'événement d'éditeur actif, déclenchable.
   let decorateur = null;
+  // Le gestionnaire des liens vscodium:// enregistré par le cockpit.
+  let gestionnaireUri = null;
   const editeurActif = emetteur();
 
   const ouvertures = [];
@@ -388,6 +390,7 @@ function activerHote(revue) {
         };
       },
       registerFileDecorationProvider: (p) => { decorateur = p; return { dispose() {} }; },
+      registerUriHandler: (g) => { gestionnaireUri = g; return { dispose() {} }; },
       createStatusBarItem: () => {
         const b = { visible: false, text: '', tooltip: '', command: '',
                     show() { b.visible = true; }, hide() { b.visible = false; }, dispose() {} };
@@ -573,6 +576,7 @@ function activerHote(revue) {
     fermetures: () => fermetures.slice(),
     oublierFermetures: () => { fermetures.length = 0; },
     arbre: () => arbre,
+    gestionnaireUri: () => gestionnaireUri,
     // Le dragAndDropController posé sur la TreeView (controleurDepotVue, extension.js) :
     // de quoi simuler un .docx glissé sur l'arbre, sans passer par un vrai DataTransfer.
     controleurDepot: () => controleurDepot,

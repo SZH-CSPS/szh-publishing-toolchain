@@ -63,11 +63,8 @@ test('versMoteur et toolkitMoteur rendent les chemins de lib/poste.js', () => {
   assert.strictEqual(moteur.DISTRO, 'SZH-Publishing');
 });
 
-// Le jour où le moteur change, seuls moteur.js et wsl.js ont à changer. Les fichiers encore
-// à brancher sont listés à part : la liste ne peut que diminuer, car chacun doit encore
-// fauter pour y rester.
+// Le jour où le moteur change, seuls moteur.js et wsl.js ont à changer.
 const PERMIS = [path.join('lib', 'moteur.js'), path.join('lib', 'wsl.js')];
-const A_BRANCHER = ['extension.js'];
 
 function fautesMoteur(relatif) {
   const motifs = [/(['"`])wsl\.exe\1/, /\bcheminWsl\b/, /require\(\s*['"]\.\/(lib\/)?wsl['"]\s*\)/];
@@ -91,12 +88,8 @@ test('ni wsl.exe, ni cheminWsl, ni lib/wsl.js hors de moteur.js et wsl.js', () =
   })(path.join(COCKPIT, 'lib'));
   const fautifs = [];
   for (const relatif of fichiers) {
-    if (PERMIS.indexOf(relatif) !== -1 || A_BRANCHER.indexOf(relatif) !== -1) { continue; }
+    if (PERMIS.indexOf(relatif) !== -1) { continue; }
     fautifs.push(...fautesMoteur(relatif));
   }
   assert.deepStrictEqual(fautifs, [], 'lancement de WSL hors de lib/moteur.js : ' + fautifs.join(', '));
-  for (const relatif of A_BRANCHER) {
-    assert.ok(fautesMoteur(relatif).length > 0,
-      relatif + ' passe par lib/moteur.js : le retirer de la liste des fichiers à brancher');
-  }
 });

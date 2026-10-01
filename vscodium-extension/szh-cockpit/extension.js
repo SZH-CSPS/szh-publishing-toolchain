@@ -14,7 +14,6 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 
 // Les clés de contexte du profil — szh.estRevue, szh.estLivre — ne sont plus nommées
 // ici : elles vivent dans la table de lib/profil.js, avec le reste de ce qui
@@ -39,15 +38,13 @@ const TACHES_SUIVIES = [NOM_TACHE_BUILD, NOM_TACHE_EXPORT, NOM_TACHE_IMPORT, NOM
 function estTacheSuivie(tache) {
   return TACHES_SUIVIES.indexOf(tache.name) !== -1 || !!(tache.definition && tache.definition.type === 'szh');
 }
-// ---- Chemins du poste -> lib/chemins-poste.js -------------------------------------
-const { toolkitWsl } = require('./lib/poste');
+// ---- Le moteur de la chaîne et ses chemins -> lib/moteur.js -----------------------
+const moteur = require('./lib/moteur');
 
-// À garder alignés avec vscodium-user/tasks.json et lib/wsl.js.
-const DISTRO_WSL = 'SZH-Publishing';
-const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
+const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 // Le réimport d'un article corrigé. Seul maillon que le cockpit appelle sans passer par
 // une tâche : il rend une ligne JSON qu'il faut lire, et une tâche n'en rapporte rien.
-const REIMPORTER_WSL = toolkitWsl('pipeline', 'reimporter.py');
+const REIMPORTER_WSL = moteur.toolkitMoteur('pipeline', 'reimporter.py');
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
 const { TEXTES_COCKPIT, T, TL, TP, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
@@ -144,14 +141,13 @@ const nouveautes = require('./lib/nouveautes');
 // ---- Ce qu'est le dossier ouvert -> lib/profil.js --------------------------------
 // Numéro de revue ou livre : la table qui le dit, et les chemins qui en découlent.
 const profils = require('./lib/profil');
-// ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
+// ---- Modules impératifs -> lib/{slug,formatting}.js ------------------------------
 const { slugifier, slugifierArticle } = require('./lib/slug');
 // tige() ignore le préfixe « NN- » d'un dossier : depuis que l'import en pose un
 // (lib/import-hote.js), le slug qu'un Word laisse deviner (slugifierArticle) et le nom
 // du dossier qui le porte (« 00-inclusion ») ne sont plus la même chaîne. Comparer sans
 // cette fonction referait le doublon que « déjà converti » existe pour éviter.
 const { tige } = require('./lib/renumerotation');
-const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl, cheminWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
@@ -160,6 +156,8 @@ const {
 // ---- Liens profonds « szh:// » -> lib/liens.js (le verrou lui-même est dans -------
 // lib/cycle-vie.js, qui require lib/verrou.js directement) ------------------------
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
+// Les mêmes liens reçus en vscodium:// par l'éditeur -> lib/uri-hote.js.
+const uriHote = require('./lib/uri-hote');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 // ---- État de session partagé entre les zones -> lib/session.js -------------------
 const session = require('./lib/session');
@@ -1483,9 +1481,9 @@ function tacheChapitrePdf(racine, slug) {
   const a = profils.apercuUnite(profilCourant(), racine, slug);
   const make = ['make', '-j2', '-O', '-f', "'" + MAKEFILE_WSL + "'", a.cible]
     .concat(a.variables).join(' ');
-  const execution = new vscode.ProcessExecution('wsl.exe',
-    ['-d', DISTRO_WSL, '--cd', racine, '--', 'bash', '-c',
-     'set -o pipefail; ' + make + ' 2>&1 | tee .szh-journal.log']);
+  const ligne = moteur.ligneTache(
+    ['bash', '-c', 'set -o pipefail; ' + make + ' 2>&1 | tee .szh-journal.log'], { cwd: racine });
+  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args);
   const tache = new vscode.Task(
     { type: 'szh', cible: 'chapitre', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.chapitrePdf') + ' — ' + slug, 'SZH', execution, []);
@@ -1738,8 +1736,9 @@ const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err
 // `-O` va avec `-j` : voir tasks.json pour ce qu'un journal entrelacé coûterait à lib/journal.js.
 function tacheMakeArticle(racine, slug) {
   const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
-  const execution = new vscode.ProcessExecution('wsl.exe',
-    ['-d', DISTRO_WSL, '--cd', racine, '--', 'make', '-j2', '-O', '-f', MAKEFILE_WSL].concat(cibles));
+  const ligne = moteur.ligneTache(
+    ['make', '-j2', '-O', '-f', MAKEFILE_WSL].concat(cibles), { cwd: racine });
+  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args);
   const tache = new vscode.Task(
     { type: 'szh', cible: 'article', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.exportArticle') + ' — ' + slug, 'SZH', execution, []);
@@ -2361,13 +2360,11 @@ const REIMPORT_DELAI = 600000;
 // mal formé et une machine absente n'en produisent pas, et l'appelant le dit autrement.
 // Ne rejette jamais : les cinq issues se lisent dans le retour, pas dans une exception.
 function lancerReimporter(racine, args) {
-  const argv = ['-d', DISTRO_WSL, '--cd', racine, '--', 'python3', REIMPORTER_WSL]
-    .concat(args || []);
-  return reveillerWsl().then(() => new Promise((resolve) => {
+  const argv = ['python3', REIMPORTER_WSL].concat(args || []);
+  return moteur.reveiller().then(() => new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(cheminWsl(), argv,
-        { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      proc = moteur.executer(argv, { cwd: racine, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) {
       resolve({ json: null, code: null, erreur: String((e && e.message) || e) });
       return;
@@ -3315,7 +3312,16 @@ function activate(context) {
 
   let watchers = [];
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
-  context.subscriptions.push({ dispose: arreterDormeurWsl });   // pas de dormeur orphelin
+  context.subscriptions.push({ dispose: moteur.arreterDormeur });   // pas de dormeur orphelin
+
+  // Un lien vscodium:// vers ce dossier ouvre sa vue ici ; vers un autre, il part au lanceur.
+  uriHote.configurer({
+    racine: () => fournisseur.racine, idDossier: idNumero,
+    ouvrirTraduction: (article) => traductionHote.ouvrirTraduction(fournisseur, rafraichirTout,
+      (article && fournisseur.listerArticles().indexOf(article) !== -1) ? { slug: article } : undefined),
+    signalerRefus: () => vscode.window.showWarningMessage(T('uri.refuse'))
+  });
+  context.subscriptions.push(vscode.window.registerUriHandler(uriHote.gestionnaire));
 
   const barreApercu = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   barreApercu.command = 'szh.basculerApercu';
@@ -3440,7 +3446,7 @@ function activate(context) {
       vscode.commands.executeCommand('setContext', nom, !!racine && cles[nom]);
     }
     reinstallerWatchers(racine);
-    if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }
+    if (racine) { moteur.demarrerDormeur(); } else { moteur.arreterDormeur(); }
     // Les copies en conflit du numéro précédent ne sont plus les nôtres, et les baux
     // laissés par une session tuée finissent par partir : un ménage par revue ouverte, pas
     // un de plus — le dossier .szh-edition ne contient qu'un fichier par (fichier, personne).
@@ -3752,7 +3758,7 @@ function activate(context) {
         { location: vscode.ProgressLocation.Notification, title: T('demarrage.titre'), cancellable: false },
         async (progress) => {
           progress.report({ message: T('demarrage.env') });
-          await reveillerWsl();                    // démarrage à froid de la machine
+          await moteur.reveiller();                // démarrage à froid de la machine
           progress.report({ message: T('demarrage.revue') });
           majContexte();                           // racine, contexte, watchers, dormeur, arbre
           await ouvrirArticleActifAuDemarrage(fournisseur);
@@ -3783,7 +3789,7 @@ function activate(context) {
 // ---- Invitation au tutoriel et « Quoi de neuf » -> lib/accueil-hote.js -----------
 const { proposerTutoriel, proposerNouveautes, montrerNouveautes } = require('./lib/accueil-hote');
 
-function deactivate() { arreterDormeurWsl(); }
+function deactivate() { moteur.arreterDormeur(); }
 
 // `_pur` : les fonctions pures, exposées aux harnais de test.
 module.exports = {

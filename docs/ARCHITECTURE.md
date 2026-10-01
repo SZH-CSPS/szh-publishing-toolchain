@@ -251,7 +251,7 @@ Une zone de l'interface est un module `lib/<zone>-hote.js` qui suit toujours le 
 Les modules hôtes : `accueil-hote`, `controles-hote`, `coedition-hote`,
 `documentation-hote`, `import-hote`, `import-verif-hote`, `medias-hote`, `metadonnees-hote`,
 `pagination-hote`, `pdfua-hote`, `reglages-hote`, `table-hote`, `traduction-hote`,
-`vue-articles-hote`, `vue-ensemble-hote`, ainsi que `cycle-vie.js` et `apercu.js`, qui
+`uri-hote` (les liens `vscodium://`, sans panneau), `vue-articles-hote`, `vue-ensemble-hote`, ainsi que `cycle-vie.js` et `apercu.js`, qui
 suivent le même motif ; `accueil-hote` et `coedition-hote` n'ont besoin d'aucun rappel, donc
 d'aucun `configurer()`. Les autres modules de `lib/` sont purs ou presque : sans `vscode`,
 souvent sans disque, exercés directement par `node --test`.

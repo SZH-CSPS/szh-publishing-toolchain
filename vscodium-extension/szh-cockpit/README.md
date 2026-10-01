@@ -233,6 +233,9 @@ lib/
   traduction-hote.js    envoi pour traduction, panneau de traduction, mode « Trad » et
                         suggestions ; repondreModeTrad, que les autres modules prennent par
                         défaut. Rappelle l'hôte par configurer(), jamais par import
+  uri-hote.js           liens vscodium://szh-csps.szh-cockpit/… relus en szh:// par liens.js :
+                        le dossier ouvert sert la vue, un autre id part au lanceur
+                        (open-revue.ps1), un lien mal formé n'ouvre rien
   verrou.js             lecture seule du dossier quand le numéro est gelé
   verif-meta.js         feuille « Vérifier les méta (print) » : une page A4 par article,
                         rendue depuis print-templates/verification-meta.twig. Module pur,
