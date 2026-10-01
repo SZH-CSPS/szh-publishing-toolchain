@@ -1,7 +1,7 @@
 # Zeitschrift : Sprachliche Richtlinien / Keine stigmatisierende Sprache — « Verwenden Sie
 # durchgehend Begriffe wie "Menschen mit Behinderungen" anstelle von "behinderte Menschen" ».
 extends: substitution
-message: "%s statt « %s » (Zeitschrift: Keine stigmatisierende Sprache)."
+message: "%s statt «%s» (Zeitschrift: Keine stigmatisierende Sprache)."
 level: warning
 ignorecase: true
 action:

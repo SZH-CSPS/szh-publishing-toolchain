@@ -227,9 +227,9 @@ def _detecter_longueur_article_zeitschrift(contexte):
     # compris » — le résumé entre explicitement dans ce total, à la différence du français.
     total = _signes_par_role(contexte, ('', 'corps', 'bibliographie', 'resume'))
     if total > LONGUEUR_ARTICLE_MAX:
-        return [{'para': None, 'span': None, 'found': '%d signes' % total,
-                 'suggested': 'réduire sous %d signes (résumé inclus dans ce total)'
-                               % LONGUEUR_ARTICLE_MAX}]
+        return [{'para': None, 'span': None, 'found': '%d Zeichen' % total,
+                 'suggested': 'höchstens %d Zeichen (inkl. Leerzeichen, Zusammenfassung und '
+                              'Literaturverzeichnis)' % LONGUEUR_ARTICLE_MAX}]
     return []
 
 
@@ -248,8 +248,8 @@ def _detecter_longueur_resume_zeitschrift(contexte):
     if total == 0:
         return []
     if total > RESUME_MAX_ZEITSCHRIFT:
-        return [{'para': None, 'span': None, 'found': '%d signes' % total,
-                 'suggested': 'au plus %d signes' % RESUME_MAX_ZEITSCHRIFT}]
+        return [{'para': None, 'span': None, 'found': '%d Zeichen' % total,
+                 'suggested': 'höchstens %d Zeichen' % RESUME_MAX_ZEITSCHRIFT}]
     return []
 
 
@@ -258,8 +258,8 @@ def _detecter_longueur_titre_zeitschrift(contexte):
     if total == 0:
         return []
     if total > TITRE_MAX_ZEITSCHRIFT:
-        return [{'para': None, 'span': None, 'found': '%d signes' % total,
-                 'suggested': 'au plus %d signes' % TITRE_MAX_ZEITSCHRIFT}]
+        return [{'para': None, 'span': None, 'found': '%d Zeichen' % total,
+                 'suggested': 'höchstens %d Zeichen' % TITRE_MAX_ZEITSCHRIFT}]
     return []
 
 
@@ -268,8 +268,8 @@ def _detecter_longueur_sous_titre_zeitschrift(contexte):
     if total == 0:
         return []
     if total > SOUS_TITRE_MAX_ZEITSCHRIFT:
-        return [{'para': None, 'span': None, 'found': '%d signes' % total,
-                 'suggested': 'au plus %d signes' % SOUS_TITRE_MAX_ZEITSCHRIFT}]
+        return [{'para': None, 'span': None, 'found': '%d Zeichen' % total,
+                 'suggested': 'höchstens %d Zeichen' % SOUS_TITRE_MAX_ZEITSCHRIFT}]
     return []
 
 
@@ -283,9 +283,12 @@ def _detecter_longueur_titre_chapitre_zeitschrift(contexte):
         return []
     premier = trop_longs[0]
     texte = premier.get('texte') or ''
+    n = len(trop_longs)
+    # Phrase allemande selon le nombre : singulier pour un seul titre, « der erste » sinon.
     return [{'para': premier.get('source'), 'span': [0, len(texte)], 'found': texte,
-             'suggested': None, 'n_titres': len(trop_longs),
-             'limite': TITRE_CHAPITRE_MAX_ZEITSCHRIFT}]
+             'suggested': None, 'n_titres': n, 'limite': TITRE_CHAPITRE_MAX_ZEITSCHRIFT,
+             'sujet': 'Ein Titel der Kapitel ist' if n == 1 else '%d Titel der Kapitel sind' % n,
+             'suite': ': ' if n == 1 else '; der erste: '}]
 
 
 # ---------------------------------------------------------------------------------
@@ -508,8 +511,7 @@ CATALOGUE = [
           '', 'Untertitel zu lang: %(found)s.'),
     Regle('Forme.LongueurTitreChapitre.Zeitschrift', 'Forme', 'de', 'zeitschrift', 'error',
           'report', 'Zeitschrift: Checkliste', _detecter_longueur_titre_chapitre_zeitschrift,
-          '', 'Kapitelüberschriften zu lang (mehr als %(limite)d Zeichen): %(n_titres)d, '
-          'die erste: «%(found)s».'),
+          '', '%(sujet)s länger als %(limite)d Zeichen (inkl. Leerzeichen)%(suite)s«%(found)s».'),
 
     Regle('Structure.NiveauxTitre', 'Structure', '', '', 'warning', 'report',
           'Revue: 1.1 Mise en page / Zeitschrift: Checkliste', _detecter_saut_niveau_titre,

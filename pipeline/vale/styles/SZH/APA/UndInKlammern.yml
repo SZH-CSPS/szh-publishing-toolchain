@@ -11,7 +11,7 @@
 # pipeline/manuscrit_vale.py affine ensuite found/suggested/action, et exclut « et al. »
 # (utilisé tel quel en allemand, voir l'exemple du PDF).
 extends: existence
-message: "Zitation zu korrigieren (Zeitschrift: Literaturverzeichnis, «und» -> «&» in Klammern) : « %s »."
+message: "Zitation zu korrigieren (Zeitschrift: Literaturverzeichnis, «und» -> «&» in Klammern): «%s»."
 level: warning
 ignorecase: false
 nonword: true

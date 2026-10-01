@@ -83,6 +83,26 @@ test('chaque règle du catalogue porte une référence de chapitre non vide',
       'ces règles n\'ont aucune référence de chapitre : ' + JSON.stringify(sansChapitre));
   });
 
+// Les règles de longueur de la Zeitschrift parlent allemand jusque dans `found` et `suggested`
+// (insérés dans le message ou affichés tels quels) : « Zeichen », jamais « signes ».
+// Sabotage : remettre '%d signes' dans un des quatre détecteurs Zeitschrift.
+test('longueurs Zeitschrift : found et suggested en allemand, sans « signes »',
+  { skip: sansPython }, () => {
+    const { sortie } = diagnostiquer({ produit: 'zeitschrift', langue: 'de', paragraphes: [
+      { source: 0, role: 'titre', texte: 'T'.repeat(101) },
+      { source: 1, role: 'sous_titre', texte: 'S'.repeat(121) },
+      { source: 2, role: 'resume', texte: 'R'.repeat(701) },
+      { source: 3, role: 'corps', texte: 'C'.repeat(18000) },
+    ] });
+    const regles = sortie.alertes.filter((a) => /^Forme\.Longueur(Article|Resume|Titre|SousTitre)\.Zeitschrift$/.test(a.rule));
+    assert.strictEqual(regles.length, 4, JSON.stringify(sortie.alertes.map((a) => a.rule)));
+    for (const a of regles) {
+      assert.match(a.found, /^\d+ Zeichen$/, a.rule);
+      assert.match(a.suggested, /^höchstens \d+ Zeichen/, a.rule);
+      assert.ok(!/signes|au plus|réduire/.test(a.message + a.found + a.suggested), a.rule + ' : ' + a.message);
+    }
+  });
+
 // ---------------------------------------------------------------------------------
 // Contrôle n°2 — les seuils sont bien des CONSTANTES PAR PRODUIT : un résumé de 650 signes
 // passe en Zeitschrift (plafond seul, 700) et échoue en Revue (fourchette 400–600).
@@ -432,12 +452,14 @@ test('intertitres trop longs (Zeitschrift) : une seule alerte, qui compte et cit
     assert.strictEqual(a.action, 'report');
     assert.ok(a.message.includes('3') && a.message.includes('80') && a.message.includes(long('a')),
       'le message dit le nombre, la limite et cite le premier : ' + a.message);
-    assert.ok(/Kapitelüberschriften/.test(a.message), 'message allemand : ' + a.message);
+    assert.strictEqual(a.message,
+      '3 Titel der Kapitel sind länger als 80 Zeichen (inkl. Leerzeichen); der erste: «' + long('a') + '».');
 
     const un = diagnostiquer({ produit: 'zeitschrift', langue: 'de',
       paragraphes: [{ source: 2, role: 'corps', texte: long('z'), niveau_retenu: 2 }] });
     assert.strictEqual(un.sortie.alertes.length, 1);
-    assert.ok(un.sortie.alertes[0].message.includes(': 1,'), un.sortie.alertes[0].message);
+    assert.strictEqual(un.sortie.alertes[0].message,
+      'Ein Titel der Kapitel ist länger als 80 Zeichen (inkl. Leerzeichen): «' + long('z') + '».');
 
     const aucun = diagnostiquer({ produit: 'zeitschrift', langue: 'de',
       paragraphes: [{ source: 2, role: 'corps', texte: 'x'.repeat(80), niveau_retenu: 2 }] });
