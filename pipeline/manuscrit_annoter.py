@@ -688,6 +688,28 @@ def _proximo_contador(doc_xml, comments_xml, footnotes_xml=None):
     return (max(ids) + 1) if ids else 1
 
 
+# Règles dont le constat est entièrement couvert par la révision qui les chevauche (la mise en
+# forme APA d'une référence corrige le DOI et le « et » -> « & » du dernier auteur).
+DOUBLON_DE_REVISION = frozenset({
+    'APA.DoiForme', 'CSPS-Biblio.APA.DoiForme', 'CSPS-Biblio.APA.Esperluette'})
+
+
+def _plat(t):
+    return (t or '').replace('*', '').replace('\u00a0', ' ')
+
+
+def _est_doublon_de_revision(alerta, localizado, revisiones):
+    """Vrai si `alerta` (candidate au commentaire, localisée dans le corps) est d'une règle de
+    DOUBLON_DE_REVISION et chevauche une révision dont le `suggested` contient le sien."""
+    if (alerta.get('rule') not in DOUBLON_DE_REVISION or localizado is None
+            or alerta.get('note_numero') is not None or not alerta.get('suggested')):
+        return False
+    voulu = _plat(alerta['suggested'])
+    return any(localizado[0] < loc[1] and loc[0] < localizado[1]
+               and voulu in _plat(rev.get('suggested'))
+               for (loc, rev) in revisiones)
+
+
 def _contar_regla(stats, alerta, campo):
     regla = alerta.get('rule')
     entrada = stats['par_regle'].setdefault(
@@ -1109,35 +1131,22 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
                     devenir[idx] = 'revision'
                     stats['notes']['revisions'] += 1
 
-    # 2 quater. Une révision écrite dit déjà la correction : le commentaire d'une autre règle
-    # dont l'étendue la chevauche, dans le même paragraphe de sortie, ne la répète pas dans
-    # Word. Il reste au rapport (devenir 'rapport', comme un commentaire que le plafond
-    # écarte). Seuls comptent les candidats du corps localisés par span : un bloc, un repli
-    # paragraphe entier ou une alerte de note n'ont pas d'étendue dans le texte révisé. Retrait
-    # fait AVANT le plafond : il ne consomme ni les 5 par règle ni les 25 globaux, et la
-    # synthèse « et N autres » ne compte pas les alertes retirées.
-    spans_revises = {salida: [loc for (loc, _a) in revs]
-                     for salida, revs in revisiones_por_salida.items()}
+    # 2 quater. Un commentaire de DOUBLON_DE_REVISION dit la même faute qu'une révision écrite
+    # qui le chevauche (même paragraphe, `suggested` du commentaire contenu dans celui de la
+    # révision) : il n'est pas posé dans Word et reste au rapport (devenir 'rapport', comme un
+    # commentaire que le plafond écarte). Toute autre règle reste en commentaire. Retrait fait
+    # AVANT le plafond : il ne consomme ni les 5 par règle ni les 25 globaux, et la synthèse
+    # « et N autres » ne compte pas les alertes retirées.
     restants = []
     for item in candidatos_comentario:
         idx, alerta, salida, localizado = item
-        if (alerta.get('note_numero') is None and localizado is not None
-                and any(localizado[0] < e2 and s2 < localizado[1]
-                        for (s2, e2) in spans_revises.get(salida, []))):
+        if _est_doublon_de_revision(alerta, localizado, revisiones_por_salida.get(salida, [])):
             stats['renvoyees_au_rapport'].append(alerta)
             _contar_regla(stats, alerta, 'renvoyees')
             devenir[idx] = 'rapport'
             continue
         restants.append(item)
     candidatos_comentario = restants
-    # Le repli d'un principal ainsi retiré suit son principal.
-    for i, alerta in enumerate(alertes):
-        if (alerta.get('role_groupe') == 'repli' and alerta.get('groupe') in principaux
-                and devenir[principaux[alerta.get('groupe')]] == 'rapport'
-                and devenir[i] == 'commentaire'):
-            stats['renvoyees_au_rapport'].append(alerta)
-            _contar_regla(stats, alerta, 'renvoyees')
-            devenir[i] = 'rapport'
 
     # 3. Plafond des commentaires (§7 ter, point 4) : tri error > warning > suggestion puis
     # ordre d'apparition, au plus 5 par règle (la 5e écrite porte la synthèse des suivantes),

@@ -340,7 +340,7 @@ test('révision : mot cible fractionné entre deux runs -> retrouvé, un w:r par
 // Défaut n°1 : deux révisions du même paragraphe dont les spans se chevauchent levaient un
 // KeyError('texto') — la seconde fusionnait un atome déjà fusionné par la première. Mesuré en
 // rejouant 2-grappes_En Route pour Apprendre.docx (deux règles distinctes sur le même DOI).
-test('chevauchement de révisions dans un même paragraphe : la plus sévère devient révision, l\'autre reste au rapport (pas de commentaire qui répète)',
+test('chevauchement de révisions dans un même paragraphe : la plus sévère devient révision, l\'autre un commentaire au même endroit',
   { skip: sansPython }, () => {
     const paragraphes = [{ texte: 'Un lien https://exemple.org/rapport-2026 est cite deux fois.' }];
     const correspondance = [{ source: 0, sortie: 2 }];
@@ -359,12 +359,11 @@ test('chevauchement de révisions dans un même paragraphe : la plus sévère de
     validerBienFormees(resultat);
     // Aucun crash (c'était un KeyError avant le correctif) : une seule révision retenue.
     assert.strictEqual(resultat.stats.revisions, 1);
-    assert.strictEqual(resultat.stats.commentaires, 0);
-    assert.deepStrictEqual(resultat.stats.devenir, ['rapport', 'revision']);
+    assert.strictEqual(resultat.stats.commentaires, 1);
     assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Etroit'].revisions, 1,
       'la règle la plus sévère (error) doit devenir la révision');
-    assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Large'].renvoyees, 1,
-      'la règle la moins sévère ne devient jamais une seconde révision imbriquée, ni un commentaire');
+    assert.strictEqual(resultat.stats.par_regle['Test.Chevauchement.Large'].commentes, 1,
+      'la règle la moins sévère doit devenir un commentaire, jamais une seconde révision imbriquée');
     assert.match(resultat.documentXml, /<w:delText[^>]*>https:\/\/exemple\.org\/rapport-2026<\/w:delText>/);
     assert.match(resultat.documentXml, /<w:t[^>]*>URL-CORRIGEE<\/w:t>/);
   });
@@ -397,8 +396,7 @@ test('DOI retrouvé : la mise en forme perd un chevauchement, le DOI part quand 
     validerBienFormees(resultat);
     assert.strictEqual(resultat.stats.par_regle['APA.DoiRetrouve'].revisions, 1,
       'le DOI doit être une révision : ' + JSON.stringify(resultat.stats.par_regle));
-    assert.strictEqual(resultat.stats.par_regle['APA.MiseEnForme'].renvoyees, 1);
-    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.strictEqual(resultat.stats.par_regle['APA.MiseEnForme'].commentes, 1);
     assert.match(resultat.documentXml, /<w:ins\b[\s\S]*?https:\/\/doi\.org\/10\.1\/x/);
   });
 
@@ -414,55 +412,67 @@ test('DOI retrouvé : la mise en forme passe, le repli ne s\'écrit ni en révis
       'le DOI ne doit figurer qu’une fois');
   });
 
-// Décision de Robin (01.10.2026) : une révision écrite suffit, le commentaire d'une autre règle
-// qui la chevauche n'est plus posé dans Word (il reste au rapport). Un commentaire du même
-// paragraphe qui ne chevauche aucune révision est posé comme avant.
-test('commentaire chevauchant une révision : retiré de Word, gardé au rapport ; sans chevauchement : posé',
+// Décision de Robin (01.10.2026) : seul un vrai doublon n'est pas posé en commentaire, c'est-à-dire
+// une règle de DOUBLON_DE_REVISION dont le constat est dit par la révision qui la chevauche.
+// Un constat différent qui chevauche une révision (ReferenceNonCitee) reste un commentaire.
+const REF_DOUBLON = 'Martin, A. et Durand, B. (2020). Un titre. Revue X, 12(3), 45-67. 10.1/x';
+function alertesDoublon(regleCommentaire, suggested) {
+  return [
+    { rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0, span: null,
+      found: REF_DOUBLON, suggested: 'Martin, A., & Durand, B. (2020). Un titre. *Revue X*, *12*(3), '
+        + '45-67. https://doi.org/10.1/x', message: 'mise en forme' },
+    { rule: regleCommentaire, severity: 'warning', action: 'comment', para: 0, span: null,
+      found: ' et Durand', suggested, message: 'constat' },
+  ];
+}
+
+test('doublon d\'une révision (Esperluette) : retiré de Word, gardé au rapport',
   { skip: sansPython }, () => {
-    const texte = 'Dupont et Martin ont écrit ce texte ancien avec soin.';
-    const alertes = [
-      { rule: 'Test.Revision', severity: 'warning', action: 'fix', para: 0, span: null,
-        found: 'Dupont et Martin', suggested: 'Dupont & Martin', message: 'liaison' },
-      // Chevauche la révision (« Martin ») : commentaire retiré.
-      { rule: 'Test.CommentaireChevauche', severity: 'suggestion', action: 'comment', para: 0,
-        span: null, found: 'Martin ont', suggested: null, message: 'doublon' },
-      // Même paragraphe, aucun chevauchement : commentaire posé.
-      { rule: 'Test.CommentaireLibre', severity: 'suggestion', action: 'comment', para: 0,
-        span: null, found: 'texte ancien', suggested: null, message: 'ancien' },
-    ];
-    const resultat = anotar([{ texte }], alertes, [{ source: 0, sortie: 2 }], {});
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Durand'), [{ source: 0, sortie: 2 }], {});
     validerBienFormees(resultat);
-    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'rapport', 'commentaire']);
-    assert.strictEqual(resultat.stats.revisions, 1);
-    assert.strictEqual(resultat.stats.commentaires, 1);
-    assert.strictEqual(resultat.stats.par_regle['Test.CommentaireChevauche'].renvoyees, 1);
-    assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === 'Test.CommentaireChevauche'));
-    assert.ok(!resultat.commentsXml.includes('doublon'));
-    assert.ok(resultat.commentsXml.includes('ancien'));
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'rapport']);
+    assert.strictEqual(resultat.stats.commentaires, 0);
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 1);
+    assert.ok(resultat.stats.renvoyees_au_rapport.some((a) => a.rule === 'CSPS-Biblio.APA.Esperluette'));
   });
 
-test('retrait des commentaires doublons : fait avant le plafond (rien n\'est compté ni consommé)',
+test('doublon déclaré mais révision qui ne dit pas la même chose : reste un commentaire',
   { skip: sansPython }, () => {
-    const texte = 'Dupont et Martin ont écrit. Premier autre. Second autre.';
-    const alertes = [
-      { rule: 'Test.Revision', severity: 'warning', action: 'fix', para: 0, span: null,
-        found: 'Dupont et Martin', suggested: 'Dupont & Martin', message: 'liaison' },
-    ];
-    // Six commentaires de la même règle chevauchant la révision, puis un libre : sans le
-    // retrait avant le plafond, les cinq premiers prendraient les 5 places de la règle.
-    for (let i = 0; i < 6; i++) {
-      alertes.push({ rule: 'Test.Doublon', severity: 'error', action: 'comment', para: 0,
-        span: null, found: 'Dupont', suggested: null, message: 'doublon ' + i });
-    }
-    alertes.push({ rule: 'Test.Doublon', severity: 'suggestion', action: 'comment', para: 0,
-      span: null, found: 'Second autre', suggested: null, message: 'libre' });
-    const resultat = anotar([{ texte }], alertes, [{ source: 0, sortie: 2 }], {});
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('CSPS-Biblio.APA.Esperluette', ' & Autre'), [{ source: 0, sortie: 2 }], {});
     validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
+  });
+
+test('constat différent qui chevauche une révision (ReferenceNonCitee) : reste un commentaire',
+  { skip: sansPython }, () => {
+    const resultat = anotar([{ texte: REF_DOUBLON }],
+      alertesDoublon('APA.ReferenceNonCitee', ' & Durand'), [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.deepStrictEqual(resultat.stats.devenir, ['revision', 'commentaire']);
     assert.strictEqual(resultat.stats.commentaires, 1);
-    assert.strictEqual(resultat.stats.commentaires_synthese, 0,
-      'pas de synthèse « et N autres » : les six doublons ne comptent plus');
+    assert.strictEqual(resultat.stats.par_regle['APA.ReferenceNonCitee'].commentes, 1);
+  });
+
+test('retrait des doublons : fait avant le plafond (ni place prise, ni synthèse)',
+  { skip: sansPython }, () => {
+    const alertes = [{ rule: 'APA.MiseEnForme', severity: 'warning', action: 'track', para: 0,
+      span: null, found: 'Martin, A. et Durand, B.', suggested: 'Martin, A., & Durand, B.',
+      message: 'mise en forme' }];
+    // Six doublons Esperluette (error), puis un constat de la même règle hors de la révision.
+    for (let i = 0; i < 6; i++) {
+      alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'error', action: 'comment',
+        para: 0, span: null, found: ' et Durand', suggested: ' & Durand', message: 'doublon ' + i });
+    }
+    alertes.push({ rule: 'CSPS-Biblio.APA.Esperluette', severity: 'suggestion', action: 'comment',
+      para: 0, span: null, found: 'Un titre', suggested: ' & Durand', message: 'libre' });
+    const resultat = anotar([{ texte: REF_DOUBLON }], alertes, [{ source: 0, sortie: 2 }], {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1, 'le libre garde sa place');
+    assert.strictEqual(resultat.stats.commentaires_synthese, 0);
     assert.strictEqual(resultat.stats.devenir[7], 'commentaire');
-    assert.strictEqual(resultat.stats.par_regle['Test.Doublon'].renvoyees, 6);
+    assert.strictEqual(resultat.stats.par_regle['CSPS-Biblio.APA.Esperluette'].renvoyees, 6);
   });
 
 // Défaut n°2 : found court/ambigu sans span valide mésancrait sur la première occurrence dans
@@ -672,8 +682,8 @@ test('chevauchement à sévérité égale : le span le plus large gagne (la rév
     assert.strictEqual(resultat.stats.revisions, 1);
     assert.strictEqual(resultat.stats.par_regle['Test.Large'].revisions, 1,
       'la révision au span le plus large doit gagner le chevauchement');
-    assert.strictEqual(resultat.stats.par_regle['Test.Etroit'].renvoyees, 1,
-      'la révision au span le plus étroit part au rapport : la large la couvre');
+    assert.strictEqual(resultat.stats.par_regle['Test.Etroit'].commentes, 1,
+      'la révision au span le plus étroit doit devenir un commentaire au même endroit');
   });
 
 // Point 4 : un commentaire dont le `suggested` porte un marquage *…* ne doit jamais afficher
