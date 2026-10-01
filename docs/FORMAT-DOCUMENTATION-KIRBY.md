@@ -28,7 +28,7 @@ rubriques restent dans le numéro ; un réservoir remplace l'envoi à l'autre re
 │   └── _Statuts\
 │       ├── fr\<uuid>.txt          décision de la Revue sur une fiche allemande
 │       └── de\<uuid>.txt          décision de la Zeitschrift sur une fiche française
-├── Secrétariat und Export\
+├── Exports\
 └── _Systeme\ rapports\ journaux\ suggestions\ inventaire\
 ```
 

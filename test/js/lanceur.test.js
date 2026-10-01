@@ -154,7 +154,7 @@ const ARBRE_CREE = (function () {
     path.join('_Archive', 'Revue'), path.join('_Archive', 'Zeitschrift'), path.join('_Archive', 'Books'),
     path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
     path.join('_NewsUndActu', '_Statuts', 'de'),
-    'Secrétariat und Export',
+    'Exports', 'Secrétariat und Export',
     // Ce qui ne doit PLUS exister : les niveaux supprimes le 15.09.2026.
     path.join('Revue', '01_Redaction'), path.join('Zeitschrift', '01_Redaktion'),
     path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
@@ -213,9 +213,9 @@ test('le lanceur cree l\'arbre d\'essai dans sa forme du 15.09.2026, et rien de 
     }
     // Le reste de l'arbre, qui suit la racine active : la bibliotheque de fiches, sous sa
     // forme du 23.09.2026 (Fiches\, _Statuts\fr\, _Statuts\de\ -- plus l'ancien magasin par
-    // revue), et Secretariat und Export.
+    // revue), et Exports, ou le cockpit range les sorties du secretariat.
     for (const d of [path.join('_NewsUndActu', 'Fiches'), path.join('_NewsUndActu', '_Statuts', 'fr'),
-      path.join('_NewsUndActu', '_Statuts', 'de'), 'Secrétariat und Export']) {
+      path.join('_NewsUndActu', '_Statuts', 'de'), 'Exports']) {
       assert.strictEqual(ARBRE_CREE[d], true, 'dossier commun manquant : ' + d);
     }
     // Et l'ancienne forme a bien disparu : sans ce controle, une table oubliee a moitie
@@ -226,7 +226,7 @@ test('le lanceur cree l\'arbre d\'essai dans sa forme du 15.09.2026, et rien de 
       path.join('Books', '01_Redaktion'), path.join('Revue', '99_Archives'),
       path.join('Zeitschrift', '99_Archiv'), path.join('Books', '99_Archiv'),
       path.join('_NewsUndActu', 'Revue'), path.join('_NewsUndActu', 'Zeitschrift'),
-      path.join('_Systeme', 'rapports'), path.join('_Systeme', 'journaux'),
+      'Secrétariat und Export', path.join('_Systeme', 'rapports'), path.join('_Systeme', 'journaux'),
       path.join('_Systeme', 'suggestions'), path.join('_Systeme', 'inventaire')]) {
       assert.strictEqual(ARBRE_CREE[d], false, 'ne devrait pas etre cree sous la racine de test : ' + d);
     }
