@@ -274,16 +274,18 @@ def _detecter_longueur_sous_titre_zeitschrift(contexte):
 
 
 def _detecter_longueur_titre_chapitre_zeitschrift(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        if (p.get('niveau_retenu') or 0) in (1, 2, 3):
-            texte = p.get('texte') or ''
-            if len(texte) > TITRE_CHAPITRE_MAX_ZEITSCHRIFT:
-                constats.append({'para': p.get('source'), 'span': [0, len(texte)],
-                                  'found': '%d signes' % len(texte),
-                                  'suggested': 'au plus %d signes'
-                                               % TITRE_CHAPITRE_MAX_ZEITSCHRIFT})
-    return constats
+    # UNE alerte par document (un manuscrit en comptait jusqu'à 44) : le nombre d'intertitres
+    # trop longs, la limite, et le premier, sur lequel l'alerte est ancrée.
+    trop_longs = [p for p in _paragraphes(contexte)
+                  if (p.get('niveau_retenu') or 0) in (1, 2, 3)
+                  and len(p.get('texte') or '') > TITRE_CHAPITRE_MAX_ZEITSCHRIFT]
+    if not trop_longs:
+        return []
+    premier = trop_longs[0]
+    texte = premier.get('texte') or ''
+    return [{'para': premier.get('source'), 'span': [0, len(texte)], 'found': texte,
+             'suggested': None, 'n_titres': len(trop_longs),
+             'limite': TITRE_CHAPITRE_MAX_ZEITSCHRIFT}]
 
 
 # ---------------------------------------------------------------------------------
@@ -506,7 +508,8 @@ CATALOGUE = [
           '', 'Untertitel zu lang: %(found)s.'),
     Regle('Forme.LongueurTitreChapitre.Zeitschrift', 'Forme', 'de', 'zeitschrift', 'error',
           'report', 'Zeitschrift: Checkliste', _detecter_longueur_titre_chapitre_zeitschrift,
-          '', 'Kapitelüberschrift zu lang: %(found)s.'),
+          '', 'Kapitelüberschriften zu lang (mehr als %(limite)d Zeichen): %(n_titres)d, '
+          'die erste: «%(found)s».'),
 
     Regle('Structure.NiveauxTitre', 'Structure', '', '', 'warning', 'report',
           'Revue: 1.1 Mise en page / Zeitschrift: Checkliste', _detecter_saut_niveau_titre,
