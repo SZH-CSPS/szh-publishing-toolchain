@@ -67,7 +67,6 @@ const PIPELINE = path.join(RACINE, 'pipeline');
 //                          BIBLIOTHÈQUE (appelée par pronto-lire.py), pas une CLI — voir le
 //                          commentaire de manuscrit_modele.py qui le dit explicitement.
 //   pronto_docx.py      — lecteur .docx du gabarit Pronto, importé par pronto-lire.py.
-//   pronto_odt.py       — lecteur .odt du gabarit Pronto, importé par pronto-lire.py.
 //   manuscrit_gabarit.py — écrivain du gabarit manuscrit (.ecrire), importé par les tests
 //                          et par le nettoyeur ; aucune CLI.
 //   manuscrit_typo.py   — règles typographiques maison, importées par manuscrit_regles.py
@@ -80,7 +79,6 @@ const EXEMPTS = new Set([
   'szh_commun.py',
   'pronto_modele.py',
   'pronto_docx.py',
-  'pronto_odt.py',
   'manuscrit_gabarit.py',
   'manuscrit_typo.py',
 ]);

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-# pronto-lire.py — CLI UNIQUE du lecteur du gabarit « Pronto — modèle d'article » (.docx ET
-# .odt). Renifle l'extension, appelle le bon lecteur (pronto_docx.lire() ou pronto_odt.lire()),
-# passe le modèle neutre qu'il rend à pronto_modele.principal(). Toutes les RÈGLES du gabarit
-# vivent dans pronto_modele.py ; toute la lecture du format vit dans pronto_docx.py /
-# pronto_odt.py ; ce fichier ne fait que les brancher l'un à l'autre.
+# pronto-lire.py — CLI UNIQUE du lecteur du gabarit « Pronto — modèle d'article » (.docx).
+# Appelle pronto_docx.lire(), passe le modèle neutre qu'il rend à pronto_modele.principal().
+# Toutes les RÈGLES du gabarit vivent dans pronto_modele.py ; toute la lecture du format vit
+# dans pronto_docx.py ; ce fichier ne fait que les brancher l'un à l'autre. Un .odt n'arrive
+# jamais ici : import-docx.sh (et le nettoyeur) le convertissent d'abord en .docx.
 #
-#   python3 pronto-lire.py <fichier.docx|.odt> <slug> <dossier-article>
-#   python3 pronto-lire.py --reconnaitre <fichier.docx|.odt>   -> 0 = au gabarit, 1 = non
+#   python3 pronto-lire.py <fichier.docx> <slug> <dossier-article>
+#   python3 pronto-lire.py --reconnaitre <fichier.docx>   -> 0 = au gabarit, 1 = non
 #
 # Reprend EXACTEMENT le contrat de sortie de l'ancien pipeline/docx-pronto.py (git log), lui
 # -même écrit pour remplacer un jour pipeline/docx-meta.py : même <dossier-article>/<slug>.
@@ -33,16 +33,13 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele
 import pronto_docx
-import pronto_odt
 
 LECTEURS = {
     '.docx': pronto_docx.lire,
-    '.odt': pronto_odt.lire,
 }
 
 RECONNAISSEURS = {
     '.docx': pronto_docx.est_pronto,
-    '.odt': pronto_odt.est_pronto,
 }
 
 # Les autres noms de fichier sous lesquels une même image peut apparaître dans le .md (Word
@@ -50,7 +47,6 @@ RECONNAISSEURS = {
 # neutre — voir pronto_docx.variantes_images() pour pourquoi elle n'entre pas dans Par.images.
 VARIANTES = {
     '.docx': pronto_docx.variantes_images,
-    '.odt': pronto_odt.variantes_images,
 }
 
 
@@ -73,8 +69,8 @@ def principal(argv):
     if len(argv) == 3 and argv[1] == '--reconnaitre':
         return reconnaitre(argv[2])
     if len(argv) != 4:
-        print('usage : pronto-lire.py <fichier.docx|.odt> <slug> <dossier-article>\n'
-              '        pronto-lire.py --reconnaitre <fichier.docx|.odt>',
+        print('usage : pronto-lire.py <fichier.docx> <slug> <dossier-article>\n'
+              '        pronto-lire.py --reconnaitre <fichier.docx>',
               file=sys.stderr)
         return 2
     chemin, slug, dossier = argv[1], argv[2], argv[3]
@@ -83,6 +79,11 @@ def principal(argv):
     ext = os.path.splitext(chemin)[1].lower()
     lecteur = LECTEURS.get(ext)
     if lecteur is None:
+        if ext == '.odt':
+            print('[pronto-lire] un .odt n’est pas lu directement : l’import le convertit '
+                  'd’abord en .docx. [de] eine .odt-Datei wird nicht direkt gelesen: der '
+                  'Import wandelt sie zuerst in .docx um : %s' % chemin, file=sys.stderr)
+            return 1
         print('[pronto-lire] extension non reconnue (%s) : %s' % (ext, chemin),
               file=sys.stderr)
         chemin_meta = os.getenv('SZH_META')
@@ -95,9 +96,9 @@ def principal(argv):
     try:
         blocs = lecteur(chemin)
     except Exception as e:
-        # Non bloquant : même repli que l'ancien docx-pronto.py, désormais commun aux deux
-        # formats — un .docx ou un .odt corrompu, illisible, ou d'une forme inattendue au
-        # point de ne même pas s'ouvrir comme un zip, ne doit jamais faire échouer l'import.
+        # Non bloquant : même repli que l'ancien docx-pronto.py — un .docx corrompu,
+        # illisible, ou d'une forme inattendue au point de ne même pas s'ouvrir comme un zip,
+        # ne doit jamais faire échouer l'import.
         print('[pronto-lire] lecture impossible de %s : %s' % (chemin, e), file=sys.stderr)
         chemin_meta = os.getenv('SZH_META')
         if chemin_meta:

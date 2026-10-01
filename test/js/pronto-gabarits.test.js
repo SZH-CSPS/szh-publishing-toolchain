@@ -1,9 +1,9 @@
-// LE CONTRÔLE LE PLUS IMPORTANT du chantier qui a séparé pipeline/docx-pronto.py en trois
-// modules (pronto_modele.py, le noyau neutre ; pronto_docx.py et pronto_odt.py, les deux
-// lecteurs ; pronto-lire.py, la CLI unique) : le même document, dans les deux formats, doit
-// produire la MÊME fiche et les MÊMES lignes d'instructions. Sans ce contrôle, le partage de
-// code entre les deux lecteurs ne serait qu'une promesse — rien ne prouverait qu'ils disent
-// la même chose.
+// LE CONTRÔLE LE PLUS IMPORTANT du lecteur du gabarit (pronto_modele.py, le noyau neutre ;
+// pronto_docx.py, le lecteur ; pronto-lire.py, la CLI) : le même gabarit, livré en .docx et en
+// .odt, doit produire la MÊME fiche et les MÊMES lignes d'instructions. Le lecteur ne lit que
+// le .docx : le .odt passe par la vraie chaîne de l'import, pipeline/conversion_odt.py
+// (LibreOffice, présent dans la WSL), puis pronto-lire.py. Sans ce contrôle, rien ne
+// prouverait que la conversion garde ce que le lecteur attend.
 //
 //   node --test "test/js/*.test.js"
 //
@@ -16,7 +16,8 @@
 //
 // C'est cette commande qu'il faudra rejouer le jour où quelqu'un modifiera un .docx sans
 // toucher à son .odt — ce qui arrivera, et c'est exactement ce que le second contrôle
-// (parité de STRUCTURE) est là pour détecter.
+// (parité de STRUCTURE) est là pour détecter. Les contrôles sur le .odt tournent dans la WSL
+// (LibreOffice) et sautent, ou échouent avec SZH_WSL_OBLIGATOIRE, quand elle manque.
 'use strict';
 
 const test = require('node:test');
@@ -25,6 +26,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PRONTO_LIRE = path.join(RACINE, 'pipeline', 'pronto-lire.py');
@@ -55,6 +57,45 @@ function python(args, env) {
 function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pronto-gabarits-'));
 }
+
+// ---- Conversion .odt -> .docx, dans la WSL (LibreOffice), comme l'import ------------------
+const DISTRO = 'SZH-Publishing';
+const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+
+function versWsl(p) {
+  const abs = path.resolve(p).replace(/\\/g, '/');
+  const m = abs.match(/^([A-Za-z]):\/(.*)$/);
+  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : abs;
+}
+
+// Le gabarit .odt livré, converti en .docx par pipeline/conversion_odt.py ; une fois par
+// gabarit et par processus. Rend le chemin du .docx (dans un dossier jetable, nettoyé en fin
+// de fichier).
+const DOSSIERS_CONVERSION = [];
+const CONVERTIS = {};
+function odtConverti(G) {
+  if (CONVERTIS[G.code]) { return CONVERTIS[G.code]; }
+  assert.ok(fs.existsSync(G.odt), 'gabarit .odt manquant dans revue-template/ : ' + G.odt);
+  const base = dossierJetable();
+  DOSSIERS_CONVERSION.push(base);
+  // Nom simple : l'apostrophe et les espaces du nom livré ne passent pas le relais wsl.exe.
+  const source = path.join(base, 'gabarit-' + G.code + '.odt');
+  fs.copyFileSync(G.odt, source);
+  const sortie = path.join(base, 'converti');
+  const r = cp.spawnSync(fs.existsSync(WSL_EXE) ? WSL_EXE : 'wsl.exe', ['-d', DISTRO, '--',
+    'python3', versWsl(path.join(RACINE, 'pipeline', 'conversion_odt.py')),
+    versWsl(source), 'docx', versWsl(sortie)],
+  { encoding: 'utf8', windowsHide: true, timeout: 240000 });
+  assert.strictEqual(r.status, 0, 'conversion_odt.py a échoué sur ' + G.odt + ' : ' + r.stderr);
+  const docx = path.join(sortie, 'gabarit-' + G.code + '.docx');
+  assert.ok(fs.existsSync(docx), 'la conversion n’a pas écrit ' + docx);
+  CONVERTIS[G.code] = docx;
+  return docx;
+}
+
+test.after(() => {
+  for (const d of DOSSIERS_CONVERSION) { fs.rmSync(d, { recursive: true, force: true }); }
+});
 
 // Lance pronto-lire.py sur `chemin` (le .docx ou le .odt du dépôt), rend { fiche,
 // instructions, avertissements (codes seuls, triés), bloquant }. Un gabarit tapé juste ne
@@ -101,14 +142,14 @@ function sansNomsImages(instructions) {
 }
 
 for (const G of GABARITS) {
-test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt donne la même fiche', () => {
+test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt (converti) donne la même fiche',
+  { skip: sansPandocWsl }, () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé (python3, puis python)'); }
-  const REVUE_DOCX = G.docx, REVUE_ODT = G.odt;
+  const REVUE_DOCX = G.docx;
   assert.ok(fs.existsSync(REVUE_DOCX), 'gabarit .docx manquant dans revue-template/ : ' + REVUE_DOCX);
-  assert.ok(fs.existsSync(REVUE_ODT), 'gabarit .odt manquant dans revue-template/ : ' + REVUE_ODT);
 
   const vuDocx = lire(REVUE_DOCX, 'gabarit-docx', G.produit);
-  const vuOdt = lire(REVUE_ODT, 'gabarit-odt', G.produit);
+  const vuOdt = lire(odtConverti(G), 'gabarit-odt', G.produit);
   assert.ok(new RegExp('^lang: ' + G.langue + '$', 'm').test(vuDocx.fiche),
     'la fiche du gabarit ' + G.code + ' ne porte pas lang: ' + G.langue + ' :\n' + vuDocx.fiche);
 
@@ -162,7 +203,7 @@ test('pronto-lire.py : le même gabarit ' + G.code + ' en .docx et en .odt donne
 //
 // Écrit une fois en tant que script Python dans un dossier jetable, comme FABRICANTE_PY dans
 // pronto-lire.test.js : plus lisible qu'un programme -c pour une inspection aussi précise du
-// modèle neutre. Importe pronto_docx/pronto_odt/pronto_modele DIRECTEMENT (pas via la CLI)
+// modèle neutre. Importe pronto_docx/pronto_modele DIRECTEMENT (pas via la CLI)
 // pour lire, sous chaque étiquette « SZH Cle » d'une cellule, son texte aplati — QU'IL Y AIT
 // UNE VALEUR OU NON, ce que pronto_modele.principal() ne rend jamais tel quel.
 
@@ -173,16 +214,10 @@ import json, os, sys
 sys.path.insert(0, sys.argv[1])
 import pronto_modele as pm
 import pronto_docx
-import pronto_odt
 
 
 def lire(chemin):
-    ext = os.path.splitext(chemin)[1].lower()
-    if ext == '.docx':
-        return pronto_docx.lire(chemin)
-    if ext == '.odt':
-        return pronto_odt.lire(chemin)
-    raise ValueError(ext)
+    return pronto_docx.lire(chemin)
 
 
 def etiquettes_cle(cellule):
@@ -285,10 +320,11 @@ function structureDe(chemin) {
 }
 
 for (const G of GABARITS) {
-test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, mêmes blocs — ' + G.code + ' .docx et .odt', () => {
+test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, mêmes blocs — ' + G.code + ' .docx et .odt (converti)',
+  { skip: sansPandocWsl }, () => {
   if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
   const structDocx = structureDe(G.docx);
-  const structOdt = structureDe(G.odt);
+  const structOdt = structureDe(odtConverti(G));
 
   assert.strictEqual(structDocx.n_tables, structOdt.n_tables,
     'nombre de tableaux de premier niveau différent : docx=' + structDocx.n_tables
@@ -328,36 +364,18 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
 });
 }
 
-// Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),
-// etc. Un style commun sans display-name doit quand même rendre un nom humain via decoder_nom_style().
-// Le test n'a aucun moyen de fabriquer un .odt, donc appelle la fonction directement.
-test('decoder_nom_style() : les noms de style ODT encodés se décodent en noms humains', () => {
-  if (!PYTHON) { assert.ok(false, 'aucun interpreete Python 3 trouve'); }
-
-  // Construction du script Python en tant qu'array de lignes pour éviter les pièges
-  // des guillemets imbriqués et backticks.
-  const pipelineDir = path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\');
-  const script = [
-    'import sys, os',
-    'sys.path.insert(0, "' + pipelineDir + '")',
-    'from pronto_odt import decoder_nom_style',
-    'cases = [',
-    '  ("SZH_20_Important", "SZH Important"),',
-    '  ("Titre_20_1", "Titre 1"),',
-    '  ("P1", "P1"),',
-    '  ("_20_", " "),',
-    ']',
-    'for encoded, expected in cases:',
-    '  result = decoder_nom_style(encoded)',
-    '  if result != expected:',
-    '    print("FAIL: " + encoded + " -> " + result + ", expected " + expected, file=__import__("sys").stderr)',
-    '    sys.exit(1)',
-    'print("OK")'
-  ].join('\n');
-
-  const r = python(['-c', script]);
-  assert.strictEqual(r.status, 0, 'decoder_nom_style a echoue : ' + r.stderr);
-  assert.strictEqual(r.stdout.trim(), 'OK');
+// Le .odt n'est plus lu directement : pronto-lire.py le refuse en le disant, l'import le
+// convertit d'abord (voir plus haut).
+test('pronto-lire.py : un .odt passé directement est refusé, avec un message fr puis de', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interprète Python 3 trouvé'); }
+  const base = dossierJetable();
+  try {
+    const r = python([PRONTO_LIRE, GABARITS[0].odt, 'x', base]);
+    assert.strictEqual(r.status, 1, 'un .odt direct doit être refusé : ' + r.stdout + r.stderr);
+    assert.match(r.stderr, /\.odt n’est pas lu directement.*\[de\].*\.odt/s);
+    assert.strictEqual(fs.readdirSync(base).length, 0, 'rien ne doit être créé');
+    assert.notStrictEqual(python([PRONTO_LIRE, '--reconnaitre', GABARITS[0].odt]).status, 0);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
 // ── Le choix du lecteur, document par document ────────────────────────────────────────────
@@ -390,7 +408,10 @@ test('pronto-lire.py --reconnaitre : les deux gabarits livrés sont reconnus, un
     assert.strictEqual(reconnait(G.docx), true,
       'le gabarit .docx ' + G.code + ' livré n’est plus reconnu : tout document du gabarit '
       + 'repartirait chez docx-meta.py, qui devine au lieu de lire');
-    assert.strictEqual(reconnait(G.odt), true, 'le gabarit .odt ' + G.code + ' livré n’est plus reconnu');
+    if (!sansPandocWsl) {
+      assert.strictEqual(reconnait(odtConverti(G)), true,
+        'le gabarit .odt ' + G.code + ' converti n’est plus reconnu');
+    }
   }
   assert.strictEqual(reconnait(CHAPITRE_HERITE), false,
     'un Word hérité a été pris pour un document du gabarit : il serait lu par un lecteur qui '

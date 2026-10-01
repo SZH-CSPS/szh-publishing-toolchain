@@ -4,7 +4,7 @@
 # rend le modèle neutre de pronto_modele.py (Par, Cellule, Tableau). RIEN D'AUTRE — aucune
 # règle du gabarit ne vit ici (tableau des métadonnées, tableau des auteurs, blocs
 # figure/tableau, bibliographie…) : tout ça vit dans pronto_modele.py, qui ne sait rien de
-# `w:` et peut donc appliquer les mêmes règles à ce que rend pronto_odt.py.
+# `w:` et peut donc appliquer ses règles sans connaître le format.
 #
 # Reconnaissance des styles par NOM (w:name de styles.xml), jamais par styleId : un document
 # réenregistré par un autre Word peut changer les id, jamais les noms affichés — voir
