@@ -50,8 +50,8 @@ let ctx = {
   choisirPhotoAuteur: () => {},
   convertirCmykSiBesoin: async () => 0,
   // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
-  // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
-  repondreModeTrad: () => false,
+  // configuré le prend à lib/traduction-hote.js.
+  repondreModeTrad: require('./traduction-hote').repondreModeTrad,
   // Un enregistrement a changé ce que la compilation de l'article lit : l'hôte la relance
   // en tâche de fond, après un anti-rebond (relanceDifferee, lib/relance-compilation.js).
   // Appelé seulement quand quelque chose a réellement été écrit.

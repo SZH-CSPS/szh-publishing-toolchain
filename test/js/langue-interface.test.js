@@ -116,13 +116,13 @@ test('le choix de la langue s’écrit hors des réglages de l’éditeur', () =
 test('le formulaire de réglages écrit la langue aux DEUX endroits', () => {
   // Le premier exemplaire pilote la session, le second survit à la mise à jour. Écrire l'un
   // sans l'autre ramènerait le défaut : l'outil remis à jour reparlait français.
-  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'reglages-hote.js');
   const i = src.indexOf("msg.cle === 'langue'");
   assert.notStrictEqual(i, -1, 'la branche « langue » du formulaire de réglages a disparu');
   const bloc = src.slice(i, src.indexOf(LF + '      }', i));
   assert.match(bloc, /getConfiguration\('szh'\)\.update\('langue'/,
     'le réglage de l’éditeur n’est plus écrit');
-  assert.match(bloc, /ecrireConfigPoste\(configAvecLangue\(/,
+  assert.match(bloc, /modifierConfigPoste\(\(avant\) => configAvecLangue\(/,
     'le second exemplaire, hors des réglages de l’éditeur, n’est plus écrit');
   assert.match(bloc, /oublierLanguePoste\(\)/,
     'le souvenir des fichiers du poste n’est pas jeté après écriture');
@@ -136,7 +136,7 @@ test('discordance : elle ne se signale que lorsqu’elle existe vraiment', () =>
   // Des menus en anglais ne sont pas une discordance : c'est l'état ordinaire d'un poste
   // sans pack de langue, et personne ne s'en plaint. Le message ne sort donc que quand
   // l'éditeur parle une des deux langues de la maison, et pas la même que le cockpit.
-  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'reglages-hote.js');
   const i = src.indexOf('function avertissementLangue');
   assert.notStrictEqual(i, -1, 'avertissementLangue a disparu');
   const bloc = src.slice(i, src.indexOf(LF + '}', i));

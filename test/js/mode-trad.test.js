@@ -698,20 +698,19 @@ test('mode trad : tout panneau détourne ses clics, sauf les deux gardiens du mo
   }
 });
 
-test('mode trad : un module non configuré ne détourne rien', () => {
-  // Les modules de lib/ ne voient pas extension.js : ils reçoivent repondreModeTrad par
-  // configurer(). Le défaut doit rendre faux — sans quoi un test qui require un module seul
-  // se mettrait à détourner des clics, et l'hôte réel qui oublie de le configurer aussi.
-  for (const f of ['metadonnees-hote.js', 'documentation-hote.js', 'medias-hote.js', 'apercu.js']) {
+test('mode trad : les modules de lib/ prennent la garde à lib/traduction-hote.js', () => {
+  // Les modules de lib/ ne voient pas extension.js : leur rappel repondreModeTrad est, par
+  // défaut, celui de lib/traduction-hote.js. Un défaut muet laisserait un panneau oublié
+  // par l'hôte répondre normalement, mode allumé, et la personne croirait le mode en panne.
+  for (const f of ['metadonnees-hote.js', 'documentation-hote.js', 'medias-hote.js', 'table-hote.js', 'apercu.js', 'vue-articles-hote.js']) {
     const src = fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8');
-    assert.match(src, /repondreModeTrad: \(\) => false/,
-      `lib/${f} : pas de défaut repondreModeTrad, un module non configuré détournerait`);
+    assert.match(src, /repondreModeTrad: require\('\.\/traduction-hote'\)\.repondreModeTrad/,
+      `lib/${f} : la garde ne vient pas de lib/traduction-hote.js`);
     assert.match(src, /ctx\.repondreModeTrad\(panneau, msg\)/,
       `lib/${f} : la garde n’appelle pas le rappel du ctx`);
   }
-  // Et l'hôte les configure tous les quatre.
+  // Et l'hôte ne les relaie plus par une lambda : il n'y a qu'une garde, celle du module.
   const ext = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
-  const branchements = ext.match(/^ {2}repondreModeTrad: \(panneau, msg\) => repondreModeTrad\(panneau, msg\)$/gm) || [];
-  assert.strictEqual(branchements.length, 4,
-    'extension.js ne pose pas le rappel dans les quatre configurer() : un module resterait muet');
+  const relais = ext.match(/^ {2}repondreModeTrad: \(panneau, msg\) => repondreModeTrad\(panneau, msg\)$/gm) || [];
+  assert.strictEqual(relais.length, 0, 'extension.js relaie encore repondreModeTrad à un module de lib/');
 });

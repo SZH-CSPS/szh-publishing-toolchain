@@ -169,11 +169,7 @@ test('panneauUnique : sans modeTrad, le panneau ne détourne rien, et PRET va à
 // Les panneaux d'extension.js qui n'ont pas encore été repris, par fonction englobante. La
 // liste ne peut que diminuer : un nouveau createWebviewPanel échoue ici, et une exception
 // qui ne correspond plus à rien doit être retirée.
-const EXCEPTIONS_EXTENSION = {
-  // contrats.test.js vérifie par le texte que fermerTousLesApercus() précède le
-  // `.reveal(` et le `createWebviewPanel` de cette fonction.
-  ouvrirVueArticles: 'contrat textuel de contrats.test.js'
-};
+const EXCEPTIONS_EXTENSION = {};
 
 function fichiersJs(dossier) {
   const liste = [];

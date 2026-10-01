@@ -56,7 +56,7 @@ let ctx = {
   revueCourante: () => 'revue',
   nomRevueAffiche: (revue) => String(revue || ''),
   convertirCmykSiBesoin: async () => 0,
-  repondreModeTrad: () => false,
+  repondreModeTrad: require('./traduction-hote').repondreModeTrad,
   // Le bouton « Aperçu du PDF » (extension.js#apercuOuvertPourSlug/
   // basculerApercuDocumentation/rafraichirApercuDocumentationSiOuvert). Un module non
   // configuré (contrôle isolé) répond « jamais ouvert, rien ne bascule » — sans effet, pas

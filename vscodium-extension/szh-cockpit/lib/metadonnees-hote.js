@@ -77,8 +77,8 @@ let ctx = {
   lireVerifTraduction: () => false,
   ouvrirSuggestionTraduction: () => {},
   // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
-  // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
-  repondreModeTrad: () => false
+  // configuré le prend à lib/traduction-hote.js.
+  repondreModeTrad: require('./traduction-hote').repondreModeTrad
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }

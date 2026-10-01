@@ -1074,12 +1074,12 @@ test('les traductions fr et de couvrent les mêmes clés, avec les mêmes repèr
   assert.strictEqual(Object.keys(textes.de).length, Object.keys(textes.fr).length);
 });
 
-// textesTable() (extension.js) traduit une liste de clés, et non des littéraux
+// textesTable() (lib/table-hote.js) traduit une liste de clés, et non des littéraux
 // `nom: T(...)` que le contrôle des webviews sait lire. Une clé absente d'i18n n'échoue
 // pas : T() la rend telle quelle, et l'éditeur de tableau affiche « table.x » — c'est
 // arrivé avec table.alt.aide, demandée pendant des mois sans jamais être traduite.
 test('chaque clé demandée par textesTable existe dans les traductions', () => {
-  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'table-hote.js');
   const i = src.indexOf('function textesTable');
   assert.notStrictEqual(i, -1, 'fonction introuvable : textesTable');
   const bloc = src.slice(i, src.indexOf('\n}', i));
@@ -1410,8 +1410,16 @@ test('vue Articles : son ouverture ferme l’aperçu de la colonne 2', () => {
   const fermeture = fn.indexOf('fermerTousLesApercus()');
   assert.notStrictEqual(fermeture, -1,
     'ouvrirVueArticles ne ferme pas les aperçus : la colonne 2 resterait occupée');
-  assert.ok(fermeture < fn.indexOf('.reveal(') && fermeture < fn.indexOf('createWebviewPanel'),
+  // panneauUnique révèle le panneau ouvert ou le crée : la fermeture précède donc les deux.
+  const fabrique = fn.indexOf('panneauUnique(');
+  assert.notStrictEqual(fabrique, -1, 'ouvrirVueArticles ne passe plus par panneauUnique');
+  assert.ok(fermeture < fabrique,
     'la fermeture doit précéder le reveal et la création du panneau');
+  // Réutilisé, pas recréé : aucun panneau fait main, et celui déjà ouvert reçoit ses valeurs.
+  assert.doesNotMatch(fn, /createWebviewPanel|\.reveal\(/,
+    'ouvrirVueArticles crée ou révèle encore son panneau à la main');
+  assert.match(fn, /if \(!nouveau\) \{ envoyer\(panneau, true\); \}/,
+    'la vue déjà ouverte n’est plus rechargée à sa réouverture');
   // Les rafraîchissements en tâche de fond (fin de compilation) passent par envoyerVue,
   // qui ne doit jamais fermer quoi que ce soit sous les yeux du rédacteur.
   assert.doesNotMatch(bloc('envoyerVue'), /fermerTousLesApercus/,

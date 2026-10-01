@@ -246,10 +246,10 @@ test('la page arme le geste au lieu de l’envoyer, et le formulaire dit ce qu�
   assert.match(page, /gesteQuoi\.textContent = suppression \? TXT\.supprimerQuoi/,
     'le bandeau ne reprend pas le texte du geste');
   // Et l'hôte transmet ce que la page a dit, sinon tout ce qui précède est décoratif.
-  const extension = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
-  assert.match(extension, /geste: msg\.geste/,
+  const hote = fs.readFileSync(path.join(COCKPIT, 'lib', 'traduction-hote.js'), 'utf8');
+  assert.match(hote, /geste: msg\.geste/,
     'l’hôte n’envoie pas le geste au module : toute suppression s’écrirait « remplacer »');
-  assert.match(extension, /supprimerQuoi: T\('sugg\.supprimer\.quoi'\)/,
+  assert.match(hote, /supprimerQuoi: T\('sugg\.supprimer\.quoi'\)/,
     'le texte du bandeau ne parvient pas à la page');
 });
 

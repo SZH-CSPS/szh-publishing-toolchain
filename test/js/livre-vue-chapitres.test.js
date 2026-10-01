@@ -292,7 +292,7 @@ test('vue des chapitres : une carte par chapitre, dans l’ordre de buch.yaml, t
 });
 
 test('vue des chapitres : les boutons mènent à la compilation du livre, au PDF du livre, à la couverture', async () => {
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'vue-articles-hote.js'), 'utf8');
   assert.match(src, /'livre-compiler'/);
   assert.match(src, /'livre-pdf'/);
   assert.match(src, /'livre-couverture'/);
@@ -379,7 +379,7 @@ test('panneau Commande d’un livre : l’entrée du formulaire dit « Métadonn
 });
 
 test('vue des chapitres : dépôt d’illustration et 4e de couverture sont relayés et attendus, les auteurs connus envoyés', () => {
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'vue-articles-hote.js'), 'utf8');
   assert.match(src, /await metadonneesHote\.messageLivre\(/);
   assert.match(src, /if \(livre\) \{ envoyerAuteursConnus\(panneau, racine\); \}/);
   const fiches = fs.readFileSync(path.join(COCKPIT, 'media', '_fiches.js'), 'utf8');

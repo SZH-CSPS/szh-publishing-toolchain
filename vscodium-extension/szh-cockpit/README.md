@@ -147,6 +147,9 @@ lib/
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
                         sans le modifier ; l'écrivain PowerShell (windows/*.ps1) est un
                         autre jalon (docs/RAPPORTS-ERREUR.md)
+  reglages-hote.js      le panneau des réglages, les réglages protégés et le fichier de langue ;
+                        modifierConfigPoste() porte la garde « config du poste illisible ».
+                        Rappelle l'hôte par configurer(), jamais par import
   relance-compilation.js  recompilation d'un article après un enregistrement fait hors de
                         l'éditeur de texte (formulaire des médias, éditeur de tableaux) :
                         anti-rebond de 2,5 s par article, départ immédiat à la fermeture du
@@ -183,8 +186,6 @@ lib/
                         malgré la normalisation que le filtre Lua des citations lui a fait subir
                         au texte. Fonction pure, sans vscode ni fs : extension.js s'en sert pour
                         surligner le bouton « Vers l'article »
-  reserve.js            réserve de fiches hors numéro (dossier parent, _reserve/<revue>/) :
-                        mettre de côté, et envoyer une copie à traduire dans la revue sœur
   secretariat.js        les quatre exports du secrétariat : newsletter (local), edudoc et
                         caractères (moisson OAI-PMH oai_dc propre au secrétariat — ni
                         auteurs-ojs.js ni mots-cles-edudoc.js n'exposent le titre, le résumé
@@ -202,19 +203,28 @@ lib/
   suggestion-traduction.js  dossier traduction/ du numéro : une SUGGESTION de traduction par
                         fichier JSON, jamais un fichier commun (OneDrive), et leur lecture.
                         Rien n'y est publié et aucun texte n'y est modifié. Sans vscode
+  table-hote.js         l'éditeur de tableau (webview) d'un article. Rappelle l'hôte par
+                        configurer(), jamais par import
   table-images.js       images des cellules de tableau : aperçu en data: pour l'éditeur,
                         copie d'une image choisie dans media/ de l'article. Sans vscode
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
+  traduction-hote.js    envoi pour traduction, panneau de traduction, mode « Trad » et
+                        suggestions ; repondreModeTrad, que les autres modules prennent par
+                        défaut. Rappelle l'hôte par configurer(), jamais par import
   verrou.js             lecture seule du dossier quand le numéro est gelé
   verif-meta.js         feuille « Vérifier les méta (print) » : une page A4 par article,
                         rendue depuis print-templates/verification-meta.twig. Module pur,
                         sans disque ni vscode. Les clés du modèle qui finissent par `Html`
                         en sortent déjà échappées ; toutes les autres attendent le filtre
                         |e du gabarit
+  vue-articles-hote.js  la vue « Articles » (cartes, ordre, envoi à l'auteur, PDF d'un
+                        article). Rappelle l'hôte par configurer(), jamais par import
   wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
+  webviews/panneau.js   panneauUnique() : singleton, fermeture, mode Trad et poignée PRET de
+                        chaque panneau
 outils/
   compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
                         Node de VSCodium ; --purger supprime ce qui a plus de 24 mois
