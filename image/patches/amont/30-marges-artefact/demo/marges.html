@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Running header and footer</title>
+  <style>
+    @page {
+      size: A6;
+      @top-center { content: "Journal title"; }
+      @bottom-right { content: "Page " counter(page) " / " counter(pages); }
+      @bottom-left { content: "ISSN 0000-0000"; opacity: 0.6; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Heading</h1>
+  <p>First page.</p>
+  <p style="break-before: page">Second page.</p>
+</body>
+</html>
