@@ -29,6 +29,11 @@ const {
   decomposerPhoto, baseAuteurValide, apercuMedia, BUDGET_APERCUS_MEDIA, empreintesPartagees
 } = require('./medias');
 const { analyserMeta, serialiserMeta, ecrireAtomique } = require('./yaml');
+// Les auteur·e·s et leurs photos : les mêmes gestes que le formulaire des fiches.
+const {
+  envoyerAuteursConnus, textesAuteur, limitesMedias, nettoyerCarte, signalerFichesPerimees,
+  deposerPhotoAuteur, ouvrirVersionsPhoto, choisirPhotoAuteur
+} = require('./metadonnees-hote');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés une seule fois, à la fin d'extension.js. Les valeurs par défaut ne servent qu'à ne
@@ -38,16 +43,8 @@ let ctx = {
   slugDepuisChemin: () => null,
   ouvrirArticle: async () => {},
   lireCouleurAccent: () => '',
-  envoyerAuteursConnus: () => {},
-  textesAuteur: () => ({}),
-  limitesMedias: () => ({}),
-  nettoyerCarte: (brut) => brut,
-  signalerFichesPerimees: () => {},
   remplacerFichierImage: async () => ({ etat: 'erreur', message: 'lib/medias-hote.js non configuré' }),
   supprimerAsset: async () => false,
-  deposerPhotoAuteur: async () => {},
-  ouvrirVersionsPhoto: () => {},
-  choisirPhotoAuteur: () => {},
   convertirCmykSiBesoin: async () => 0,
   // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
   // configuré le prend à lib/traduction-hote.js.
@@ -147,7 +144,7 @@ function textesMedias() {
     dispositionPile: T('medias.disposition.pile'),
     dispositionTableau: T('medias.disposition.tableau'),
     dispositionRangees: T('medias.disposition.rangees')
-  }, ctx.textesAuteur());
+  }, textesAuteur());
 }
 
 function htmlMedias(nonce) {
@@ -421,7 +418,7 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
     const surPlace = assainirCheminPhoto((meta.author[rang] || {}).photo);
     if (surPlace !== attendue) { return null; }    // la fiche a bougé sous nos pieds
   }
-  const propre = ctx.nettoyerCarte({ author: [brut] }).author[0];
+  const propre = nettoyerCarte({ author: [brut] }).author[0];
   if (!propre || (propre.prenom === '' && propre.nom === '')) { return null; }
   meta.author[rang] = propre;
   const texte = serialiserMeta(meta);
@@ -527,9 +524,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       portraits: listerPortraitsArticle(fournisseur, slug, budget),
       focus: focus, accent: ctx.lireCouleurAccent(fournisseur.racine), i18n: textesMedias(),
       // Plafond des images et des photos : plus de littéral côté webview (medias-article.js).
-      limites: ctx.limitesMedias()
+      limites: limitesMedias()
     }, extra || {}));
-    ctx.envoyerAuteursConnus(cible, fournisseur.racine);
+    envoyerAuteursConnus(cible, fournisseur.racine);
   }
 
   // Réécrit le .md entier, par WorkspaceEdit puis doc.save() : annulable d'un Ctrl+Z, et
@@ -825,7 +822,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         return;
       }
       if (rafraichirTout) { rafraichirTout(); }     // le PDF porte le nom et la photo
-      ctx.signalerFichesPerimees();                 // le formulaire des fiches, s'il est ouvert
+      signalerFichesPerimees();                 // le formulaire des fiches, s'il est ouvert
       const budget = { reste: BUDGET_APERCUS_MEDIA };
       const portrait = listerPortraitsArticle(fournisseur, slug, budget)
         .filter((x) => x.index === index)[0] || null;
@@ -836,9 +833,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     }
     // Photo : les trois messages du composant partagé, comme dans les deux formulaires de
     // métadonnées.
-    if (msg.type === MSG.PHOTO_DEPOSER) { await ctx.deposerPhotoAuteur(fournisseur, panneau, msg); return; }
-    if (msg.type === MSG.PHOTO_OUVRIR) { ctx.ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
-    if (msg.type === MSG.PHOTO_CHOISIR) { ctx.choisirPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === MSG.PHOTO_DEPOSER) { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === MSG.PHOTO_OUVRIR) { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
+    if (msg.type === MSG.PHOTO_CHOISIR) { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.RETOUR_ARTICLE) {
       // Garde « non enregistré », comme dans l'éditeur de tableau.
       if (msg.modifie) {

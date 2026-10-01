@@ -19,8 +19,10 @@ Construite et publiée par la CI du dépôt (`release.yml`), installée sur les 
 Aucune étape de build : du CommonJS chargé tel quel, et des fichiers statiques.
 
 ```
-extension.js            activation, câblage des commandes, hôtes de webview
+extension.js            activation, câblage des commandes et des modules de lib/
 lib/
+  accueil-hote.js       l'accueil d'un poste : l'invitation au tutoriel, une seule fois, et
+                        « Quoi de neuf » après une mise à jour. Sans rappel vers l'hôte
   apercu.js             l'aperçu commutable HTML/PDF en colonne 2 : panneau HTML (CSP,
                         bandeau), bascule avec le PDF, défilement synchronisé dans les deux
                         sens avec l'éditeur. Rappelle l'hôte par configurer(), jamais par
@@ -50,6 +52,9 @@ lib/
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
                         modifie : deux postes sur le même numéro n'écrivent pas ensemble
                         (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
+  coedition-hote.js     les baux que tiennent les panneaux du poste : la main sur un fichier,
+                        l'écriture sous la main, le refus d'un geste quand un autre poste
+                        écrit. Sans rappel vers l'hôte : les formulaires le requièrent
   compteurs.js          compteurs d'usage du nettoyeur et de l'import (entiers et noms de mesures,
                         jamais un mot du manuscrit) : un CSV par événement dans _Systeme\compteurs,
                         file d'attente hors ligne, compteurs tirés de .szh-journal.log. S'appuie
@@ -98,6 +103,9 @@ lib/
                         tête du Word migre vers ordre-articles/ordre-chapitres), et la
                         compilation qui suit un import fructueux. Rappelle l'hôte par
                         configurer(), jamais par import
+  import-verif-hote.js  le dialogue « Vérification de l'import » ouvert après une conversion :
+                        les fiches des nouveaux articles, leurs photos, et les originaux des
+                        images à remettre. Rappelle l'hôte par configurer(), jamais par import
   interaction.js        garde d'interaction : retient ce qui volerait le focus (aperçu,
                         notifications) tant qu'un QuickPick est ouvert
   journal.js            journal de compilation -> constats de la vue « Contrôles »
@@ -224,6 +232,9 @@ lib/
                         |e du gabarit
   vue-articles-hote.js  la vue « Articles » (cartes, ordre, envoi à l'auteur, PDF d'un
                         article). Rappelle l'hôte par configurer(), jamais par import
+  vue-ensemble-hote.js  les vues d'ensemble des sections (traductions, Word, contrôles) : une
+                        page par section, la même webview pour toutes. Rappelle l'hôte par
+                        configurer(), jamais par import
   wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)

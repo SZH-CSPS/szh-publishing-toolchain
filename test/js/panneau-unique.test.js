@@ -1,7 +1,7 @@
 // Tests de la fabrique des panneaux webview (lib/webviews/panneau.js) : un seul panneau par
 // viewType et par clé, remis à zéro à la fermeture, mode Trad en tête du gestionnaire, et
-// la poignée de main PRET. Le second test balaie les sources : tout createWebviewPanel de
-// lib/ passe par la fabrique, et extension.js n'en garde que les exceptions nommées.
+// la poignée de main PRET. Les deux derniers balaient les sources : tout createWebviewPanel de
+// lib/ passe par la fabrique, et extension.js n'en crée plus aucun.
 //
 // Exécution : depuis la racine du dépôt,
 //   node --test test/js/panneau-unique.test.js
@@ -169,8 +169,6 @@ test('panneauUnique : sans modeTrad, le panneau ne détourne rien, et PRET va à
 // Les panneaux d'extension.js qui n'ont pas encore été repris, par fonction englobante. La
 // liste ne peut que diminuer : un nouveau createWebviewPanel échoue ici, et une exception
 // qui ne correspond plus à rien doit être retirée.
-const EXCEPTIONS_EXTENSION = {};
-
 function fichiersJs(dossier) {
   const liste = [];
   for (const f of fs.readdirSync(dossier, { withFileTypes: true })) {
@@ -207,14 +205,14 @@ test('panneauUnique : tout createWebviewPanel de lib/ passe par la fabrique', ()
   assert.strictEqual(sitesDe(fabrique).length, 1, 'la fabrique doit créer elle-même ses panneaux');
 });
 
-test('panneauUnique : extension.js ne garde que les exceptions nommées', () => {
-  const sites = sitesDe(path.join(COCKPIT, 'extension.js'));
-  const imprevus = sites.filter((s) => !Object.prototype.hasOwnProperty.call(EXCEPTIONS_EXTENSION, s.fonction))
-    .map((s) => s.fonction + ' (ligne ' + s.ligne + ')');
-  assert.deepStrictEqual(imprevus, [],
-    'nouveau createWebviewPanel dans extension.js : passez par panneauUnique');
-  const noms = new Set(sites.map((s) => s.fonction));
-  for (const nom of Object.keys(EXCEPTIONS_EXTENSION)) {
-    assert.ok(noms.has(nom), nom + ' ne crée plus de panneau à la main : retirez-le des exceptions');
-  }
+// extension.js ne fait que câbler : aucun panneau n'y naît, ni à la main ni par la fabrique.
+// Lu seul, sans lib/ : c'est ce fichier-là que la règle vise.
+test('panneauUnique : extension.js ne crée plus aucun panneau', () => {
+  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  const compter = (motif) => src.split('\n')
+    .map((l, i) => ({ l: l, n: i + 1 })).filter((x) => motif.test(x.l)).map((x) => 'ligne ' + x.n);
+  assert.deepStrictEqual(compter(/createWebviewPanel/), [],
+    'createWebviewPanel dans extension.js : le panneau va dans son module lib/*-hote.js');
+  assert.deepStrictEqual(compter(/panneauUnique\(/), [],
+    'panneauUnique( dans extension.js : le panneau va dans son module lib/*-hote.js');
 });

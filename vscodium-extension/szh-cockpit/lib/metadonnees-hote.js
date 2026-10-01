@@ -16,6 +16,10 @@ const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique, panneauCourant, revelerPanneau } = require('./webviews/panneau');
 const { refuserSiVerrouille, poidsLisible } = require('./cycle-vie');
+const {
+  mainCoedition, ecrireSousMain, annoncerMain, noterLectureCoedition, rafraichirEmpreinteCoedition,
+  libererCoedition
+} = require('./coedition-hote');
 const { fermerTousLesApercus } = require('./apercu');
 const { confirmerAbandon } = require('./interaction');
 const { slugifier } = require('./slug');
@@ -47,20 +51,10 @@ const {
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés une seule fois, à la fin d'extension.js. Les valeurs par défaut ne servent qu'à ne
-// pas planter un test qui require ce module seul. Tous relèvent de la co-édition (le bail
-// par fichier vit chez l'hôte, partagé entre tous les panneaux) ou d'un geste que ce
-// module ne connaît pas (relancer une compilation, focaliser l'arbre).
+// pas planter un test qui require ce module seul. Ils portent les gestes que ce module ne
+// connaît pas (relancer une compilation, focaliser l'arbre, ouvrir un onglet).
 let ctx = {
   ecrireClesAusgabe: () => 'lib/metadonnees-hote.js non configuré',
-  mainCoedition: () => null,
-  ecrireSousMain: (panneau, racine, chemin, ecrire) => {
-    const erreur = ecrire();
-    return erreur ? { code: 'echec', message: erreur } : null;
-  },
-  annoncerMain: () => null,
-  noterLectureCoedition: () => {},
-  rafraichirEmpreinteCoedition: () => {},
-  libererCoedition: () => {},
   lireCouleurAccent: () => '',
   permuterStatutsTraduction: () => {},
   relancerCompilation: () => {},
@@ -263,7 +257,7 @@ function messageNumero(panneau, racine, msg, rafraichirTout, recharger) {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
       return true;
     }
-    const refus = ctx.ecrireSousMain(panneau, racine, cheminConfig(racine),
+    const refus = ecrireSousMain(panneau, racine, cheminConfig(racine),
       () => ecrireChampsNumero(racine, msg.modifies));
     if (refus) {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: refus.message });
@@ -299,7 +293,7 @@ function htmlMetadonnees(nonce) {
 
 function envoyerValeursMetadonnees(panneau, racine) {
   repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, chargeNumero(racine, true)));
-  ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
+  noterLectureCoedition(panneau, racine, cheminConfig(racine));
 }
 
 // ---- Formulaire « Métadonnées du livre » -----------------------------------------
@@ -617,7 +611,7 @@ function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
       return true;
     }
-    const refus = ctx.ecrireSousMain(panneau, racine, cheminConfig(racine),
+    const refus = ecrireSousMain(panneau, racine, cheminConfig(racine),
       () => ecrireChampsLivre(racine, msg.modifies));
     if (refus) {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: refus.message });
@@ -665,12 +659,12 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
       envoyerAuteursConnus(panneau, racine);
     }
     else { repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, chargeNumero(racine, true), extra)); }
-    ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
+    noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
   // Panneau neuf (PRET) ou déjà ouvert : les mêmes valeurs, et la même annonce de bail.
   const accueillir = (panneau) => {
     envoyerValeurs(panneau);
-    ctx.annoncerMain(panneau, racine, cheminConfig(racine));
+    annoncerMain(panneau, racine, cheminConfig(racine));
   };
   const { panneau, nouveau } = panneauUnique({
     viewType: 'szhMetadonnees', titre: titre, retenir: true,
@@ -685,7 +679,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
       if (!traite) { console.warn('métadonnées : type de message inconnu', msg.type); }
       return traite && typeof traite.then === 'function' ? traite : undefined;
     },
-    surFermeture: (p) => ctx.libererCoedition(p)
+    surFermeture: (p) => libererCoedition(p)
   });
   if (!nouveau) { accueillir(panneau); }
 }
@@ -793,7 +787,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
     if (!connus.has(slug)) { continue; }
     if (slugsAutorises && slugsAutorises.indexOf(slug) === -1) { continue; }
     const fichierMeta = cheminMeta(fournisseur.racine, slug);
-    const barre = ctx.mainCoedition(panneau, fournisseur.racine, fichierMeta, { ecriture: true });
+    const barre = mainCoedition(panneau, fournisseur.racine, fichierMeta, { ecriture: true });
     if (barre) {
       refus.push(barre.code === 'pris'
         ? T('coedition.fiche.prise', [slug, barre.titulaire])
@@ -820,7 +814,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
         langAvant = ancien.lang || langueNumero;
       } catch (e) { /* pas de fiche existante */ }
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
-      ctx.rafraichirEmpreinteCoedition(fournisseur.racine, fichierMeta);
+      rafraichirEmpreinteCoedition(fournisseur.racine, fichierMeta);
       n++;
       ecrits.push(slug);
       // La langue a changé : les statuts du suivi de traduction suivent leurs contenus.
@@ -1445,7 +1439,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
       focusNorme ? { focus: focusNorme } : {})),
     surMessage: (msg) => traiterMessage(msg),
     surFermeture: (p, courant) => {
-      ctx.libererCoedition(p);
+      libererCoedition(p);
       if (courant) {
         fichesModifie = false; rechargementEnAttente = null;
         rafraichirFiches = null;

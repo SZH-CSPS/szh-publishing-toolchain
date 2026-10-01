@@ -1,7 +1,7 @@
 // La co-édition vue de l'hôte : ce qu'un formulaire a le droit d'écrire.
 //
 // lib/coedition.js est éprouvé à part (coedition.test.js) : le bail, son expiration, son
-// renouvellement. Ici on éprouve la DÉCISION, celle qui vit dans extension.js — refuser
+// renouvellement. Ici on éprouve la DÉCISION, celle de lib/coedition-hote.js — refuser
 // quand un autre poste tient le fichier, refuser quand la saisie a dormi ET que le fichier
 // a changé, laisser passer quand elle a dormi mais que personne n'y a touché.
 //

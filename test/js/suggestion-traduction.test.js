@@ -122,7 +122,7 @@ test('le dossier est frère de articles/, jamais dedans', () => {
   // Et la source elle-même : les deux recensements partent bien de articles/, si bien que
   // rien à la racine du numéro ne peut y entrer.
   const extension = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
-  assert.match(extension, /_sousDossiersAvecMd\(path\.join\(this\.racine, dossierUnites\(\)\)\)/,
+  assert.match(extension, /_sousDossiersAvecMd\(profils\.chemins\(profilCourant\(\), this\.racine\)\.unites\)/,
     'le recensement de l’arbre ne part plus du dossier des unités : la garde ne vaut plus');
   const ojs = fs.readFileSync(path.join(COCKPIT, 'lib', 'export-ojs.js'), 'utf8');
   assert.match(ojs, /const dossier = path\.join\(racine, 'articles'\)/,

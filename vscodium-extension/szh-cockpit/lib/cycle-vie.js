@@ -12,6 +12,9 @@ const { T, TP } = require('./i18n');
 const session = require('./session');
 const profils = require('./profil');
 const { appliquerVerrou, verrouPose } = require('./verrou');
+const {
+  refusCoedition, refusCoeditionNumero, rafraichirEmpreinteCoedition
+} = require('./coedition-hote');
 const { etatRevue, titreNumero, ecrireAtomique } = require('./yaml');
 const {
   versionInstallee, versionsDivergent, lancerArchivage, lancerChoixVersion, tailleDossier
@@ -35,9 +38,6 @@ function profilCourant() { return profils.courant(); }
 // Les valeurs par défaut ne servent qu'à ne pas planter un test qui require ce module seul.
 let ctx = {
   trouverRacineRevue: () => null,
-  refusCoedition: () => null,
-  refusCoeditionNumero: () => null,
-  rafraichirEmpreinteCoedition: () => {},
   ecrireClesAusgabe: () => 'lib/cycle-vie.js non configuré',
   fermerTousLesApercus: async () => {},
   fermerOngletsSous: async () => {},
@@ -182,7 +182,7 @@ async function verrouillerSeulement(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   // Geler le numéro pendant que quelqu'un y écrit, c'est couper une saisie en cours sur un
   // autre poste. La question porte sur tout le numéro, pas sur un fichier.
-  const refusBail = ctx.refusCoeditionNumero(racine);
+  const refusBail = refusCoeditionNumero(racine);
   if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   const choix = await vscode.window.showWarningMessage(
     T('modale.verrouiller.question', [titreNumero(racine)]),
@@ -204,7 +204,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     return;
   }
   // Le dossier va être déplacé : personne ne doit être en train d'écrire dedans.
-  const refusBail = ctx.refusCoeditionNumero(racine);
+  const refusBail = refusCoeditionNumero(racine);
   if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   // Déjà archivé : il ne reste qu'à reposer le verrou.
   if (session.etatNumero().archivee) {
@@ -592,7 +592,7 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
     // ensuite — un clic isolé ne garde pas la main, il se contente de vérifier.
     if (refuserSiVerrouille()) { return; }
     const racine = ctx.trouverRacineRevue();
-    const refus = ctx.refusCoedition(racine, chemin);
+    const refus = refusCoedition(racine, chemin);
     if (refus) { vscode.window.showWarningMessage(refus); return; }
     const texte = appliquerBlocs(mien, sien, [inverserBloc(bloc)]);
     if (texte === mien) { return; }                // rien à faire, bloc déjà résolu
@@ -613,7 +613,7 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
     }
     // L'écriture n'est pas passée par le point d'écriture du fichier du numéro : les
     // formulaires ouverts doivent quand même savoir que le disque a bougé de notre fait.
-    ctx.rafraichirEmpreinteCoedition(racine, chemin);
+    rafraichirEmpreinteCoedition(racine, chemin);
     if (texte === sien) { proposerSuppressionCopie(copie); }
     return;
   }

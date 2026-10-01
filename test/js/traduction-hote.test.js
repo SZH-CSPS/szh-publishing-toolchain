@@ -1,5 +1,5 @@
 // Le module de la traduction côté hôte, configuré seul, sans extension.js : le mode
-// « Trad », l'envoi pour traduction et le panneau « Traductions » répondent par leurs rappels.
+// « Trad », l'envoi pour traduction et le panneau « Traductions », qui tient son propre état.
 //
 //   node --test "test/js/traduction-hote.test.js"
 'use strict';
@@ -71,28 +71,18 @@ test('traduction-hote : la garde du mode Trad laisse passer ce qui n’est pas �
   assert.strictEqual(vu.panneaux.length, 0);
 });
 
-test('traduction-hote : l’envoi demande sa cible à l’hôte, et refuse un numéro sans lien', async () => {
+test('traduction-hote : l’envoi refuse un numéro sans lien', async () => {
   const { m, vu } = charger();
-  const demandes = [];
-  m.configurer({ cibleTraduction: (f, cible) => { demandes.push(cible); return { slug: 'a', cle: null }; } });
   const fournisseur = { racine: path.join(os.tmpdir(), 'szh-sans-ausgabe'), listerArticles: () => ['a'] };
   await m.envoyerPourTraduction(fournisseur, { slug: 'a' });
-  assert.deepStrictEqual(demandes, [{ slug: 'a' }], 'la cible n’est pas passée par le rappel');
   assert.strictEqual(vu.avertissements.length, 1, 'un numéro sans ausgabe.yaml n’a pas de lien');
   assert.deepStrictEqual(vu.presse, [], 'rien ne doit partir au presse-papiers');
 });
 
-test('traduction-hote : le panneau « Traductions » tient son état par les rappels de l’hôte', async () => {
+test('traduction-hote : le panneau « Traductions » tient son état lui-même', async () => {
   const { m, vu } = charger();
-  let etat = { panneau: null, slug: null, modifiee: false, rechargement: null };
   const ouverts = [];
-  m.configurer({
-    cibleTraduction: (f, cible) => ({ slug: cible.slug, cle: null }),
-    etatTraduction: () => etat,
-    poserEtatTraduction: (n) => { etat = Object.assign({}, etat, n); },
-    htmlTraduction: (nonce) => '<p>' + nonce + '</p>',
-    ouvrirArticle: async (f, slug, opts) => { ouverts.push([slug, opts]); }
-  });
+  m.configurer({ ouvrirArticle: async (f, slug, opts) => { ouverts.push([slug, opts]); } });
   const fournisseur = { racine: os.tmpdir(), listerArticles: () => ['01-essai'] };
 
   await m.ouvrirTraduction(fournisseur, null, { slug: 'inconnu' });
@@ -102,12 +92,34 @@ test('traduction-hote : le panneau « Traductions » tient son état par les rap
   assert.strictEqual(vu.panneaux.length, 1);
   const panneau = vu.panneaux[0];
   assert.strictEqual(panneau.viewType, 'szhTraduction');
-  assert.match(panneau.webview.html, /^<p>[0-9a-f]+<\/p>$/, 'la page ne vient pas de l’hôte');
-  assert.strictEqual(etat.panneau, panneau, 'le panneau n’est pas rangé dans l’état de l’hôte');
-  assert.strictEqual(etat.slug, '01-essai');
+  assert.match(panneau.webview.html, /<html/i, 'la page n’est pas assemblée par le module');
   assert.deepStrictEqual(ouverts, [['01-essai', { sansTexte: true }]]);
 
-  // Une saisie en cours se dit à l'hôte, qui la garde.
+  // Une saisie en cours se garde dans le module : le rafraîchissement ne l'écrase pas.
   await panneau.recepteurs[0]({ type: MSG.MODIFIE, modifie: true });
-  assert.strictEqual(etat.modifiee, true);
+  m.rafraichirPanneauTraduction(fournisseur);
+  assert.strictEqual(vu.avertissements.length, 1, 'la saisie non enregistrée n’est pas protégée');
+  assert.strictEqual(panneau.postes.length, 0, 'les valeurs ont été renvoyées par-dessus la saisie');
+
+  // Un second appel sur le même article révèle le panneau au lieu d'en créer un autre.
+  await m.ouvrirTraduction(fournisseur, null, { slug: '01-essai' });
+  assert.strictEqual(vu.panneaux.length, 1);
+});
+
+test('traduction-hote : la cible vient de l’argument, sinon de l’éditeur actif par le rappel', () => {
+  const { m } = charger();
+  const fournisseur = { racine: os.tmpdir(), listerArticles: () => [] };
+  assert.deepStrictEqual(m.cibleTraduction(fournisseur, 'a'), { slug: 'a', cle: null });
+  assert.deepStrictEqual(m.cibleTraduction(fournisseur, { slug: 'b', cle: 'titre' }), { slug: 'b', cle: 'titre' });
+  assert.deepStrictEqual(m.cibleTraduction(fournisseur, null), { slug: null, cle: null });
+  assert.strictEqual(m.libelleGroupe({ groupe: 'titre', champs: ['title'], langue: 'de' }).indexOf('(DE)') !== -1, true);
+});
+
+test('traduction-hote : l’enregistrement refuse un article hors du numéro, sans écrire', () => {
+  const { m } = charger();
+  const ecrits = [];
+  m.configurer({ ecrireSuiviTraduction: (r, slug) => { ecrits.push(slug); } });
+  const res = m.enregistrerTraduction({ racine: os.tmpdir(), listerArticles: () => ['a'] }, { slug: 'z' }, null);
+  assert.strictEqual(res.ok, false);
+  assert.deepStrictEqual(ecrits, []);
 });

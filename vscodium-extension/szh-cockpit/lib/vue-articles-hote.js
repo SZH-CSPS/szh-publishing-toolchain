@@ -15,7 +15,8 @@ const {
   LIBELLES_TYPES, LANGUES_META, analyserAusgabe, langueRevue, langueDefaut, titreNumero,
   normaliserLangueArticle, LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence
 } = require('./yaml');
-const { lireConfigPoste, ecrireConfigPoste, CONFIG_POSTE } = require('./archivage');
+const { lireConfigPoste, CONFIG_POSTE } = require('./archivage');
+const { modifierConfigPoste } = require('./reglages-hote');
 const {
   CLE_SANS_DOI, deplacerArticle, prefixeOrdre, prefixeDossier, titreFiche,
   libelleArticle, basculerSansDoi, trierParDoi, refusDeplacement, rangDoi, resumeImages,
@@ -26,6 +27,7 @@ const { lireAttributsImage } = require('./references');
 const { citationsParArticle } = require('./journal');
 const tableConstats = require('./constats');
 const { refuserSiArchivee, refuserSiVerrouille } = require('./cycle-vie');
+const { refusCoedition, noterLectureCoedition, libererCoedition } = require('./coedition-hote');
 const { fermerTousLesApercus } = require('./apercu');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique, panneauCourant } = require('./webviews/panneau');
@@ -34,6 +36,7 @@ const {
   textesNumero, chargeNumero, messageNumero, imprimerFeuilleVerifTous, envoyerAuteursConnus
 } = metadonneesHote;
 const { adressesAuteurs, brouillonAuteur, uriMailto } = require('./courriel');
+const { cibleTraduction } = require('./traduction-hote');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés une seule fois par extension.js. Les valeurs par défaut ne servent qu'à ne pas
@@ -52,13 +55,9 @@ let ctx = {
   compilerLivre: async () => {},
   tacheMakeArticle: () => null,
   lancerTacheObjet: async () => null,
-  cibleTraduction: () => ({ slug: null, cle: null }),
   constatsCourants: () => [],
   contexteConstats: () => ({}),
   ecrireClesAusgabe: () => 'lib/vue-articles-hote.js non configuré',
-  refusCoedition: () => null,
-  noterLectureCoedition: () => {},
-  libererCoedition: () => {},
   lireCouleurAccent: () => '',
   // Mode « Trad » : l'état du mode, et le clic détourné, sans relais par l'hôte.
   repondreModeTrad: require('./traduction-hote').repondreModeTrad
@@ -782,12 +781,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     };
     const cle = bascules[String(msg.id || '')];
     if (cle) {
-      const avant = lireConfigPoste();
-      // Illisible n'est pas absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi
-      // l'emplacement des revues et la configuration OJS partiraient avec.
-      if (avant === null && fs.existsSync(CONFIG_POSTE)) { return T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]); }
-      const etat = vueArticlesConfig(avant);
-      const erreur = ecrireConfigPoste(configAvecVueArticles(avant, cle, !etat[cle]));
+      const erreur = modifierConfigPoste((avant) => configAvecVueArticles(avant, cle, !vueArticlesConfig(avant)[cle]));
       if (erreur) { return T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]); }
       return null;                                 // la vue se repose, les cartes suivent
     }
@@ -833,7 +827,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     modifies[cleOrdre()] = trierParDoi(slugs, ctx.articlesSansDoi(racine, slugs, { voulus: voulus }));
     // Un clic isolé ne garde pas de main : il regarde le bail de co-édition et s'abstient
     // si quelqu'un modifie ausgabe.yaml en ce moment.
-    const refusBail = ctx.refusCoedition(racine, cheminConfig(racine));
+    const refusBail = refusCoedition(racine, cheminConfig(racine));
     if (refusBail) { return refusBail; }
     const erreur = ctx.ecrireClesAusgabe(racine, modifies);
     if (erreur) { return T('err.ecriture', ['ausgabe.yaml', erreur]); }
@@ -900,7 +894,7 @@ function deplacerUnite(fournisseur, slug, delta, rafraichirTout) {
   // les autres unités à réparer au prochain rendu.
   const modifies = {};
   modifies[cleOrdre()] = nouveau;
-  const refusBail = ctx.refusCoedition(racine, cheminConfig(racine));
+  const refusBail = refusCoedition(racine, cheminConfig(racine));
   if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier en ce moment
   const erreur = ctx.ecrireClesAusgabe(racine, modifies);
   if (erreur) { return T('err.ecriture', ['ausgabe.yaml', erreur]); }
@@ -929,7 +923,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     // L'autocomplétion des responsables du livre, comme sur la page « Métadonnées du livre ».
     if (livre) { envoyerAuteursConnus(panneau, racine); }
     panneau.title = charge.titre;
-    ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
+    noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
   // Le formulaire du numéro d'abord : c'est le même code que la page « Méta-données du
   // numéro », et il répond lui-même au panneau. Aucun bail n'est posé à l'ouverture de
@@ -982,7 +976,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     html: htmlArticles,
     surPret: (msg, p) => envoyer(p, true),
     surMessage: (msg, p) => messageVue(p, msg),
-    surFermeture: (p) => ctx.libererCoedition(p)
+    surFermeture: (p) => libererCoedition(p)
   });
   // Déjà ouverte : la fabrique l'a révélée sans la recréer, et ses valeurs sont relues du disque.
   if (!nouveau) { envoyer(panneau, true); }
@@ -1050,7 +1044,7 @@ function copierFichierPressePapiers(chemin) {
 async function envoyerAuteur(fournisseur, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  const slug = ctx.cibleTraduction(fournisseur, cible).slug;
+  const slug = cibleTraduction(fournisseur, cible).slug;
   if (!slug || fournisseur.listerArticles().indexOf(slug) === -1) {
     vscode.window.showInformationMessage(T('err.article.introuvable'));
     return;
@@ -1111,7 +1105,7 @@ async function envoyerAuteur(fournisseur, cible) {
 async function voirPdfArticle(fournisseur, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  const slug = ctx.cibleTraduction(fournisseur, cible).slug;
+  const slug = cibleTraduction(fournisseur, cible).slug;
   if (!slug || fournisseur.listerArticles().indexOf(slug) === -1) {
     vscode.window.showInformationMessage(T('err.article.introuvable'));
     return;

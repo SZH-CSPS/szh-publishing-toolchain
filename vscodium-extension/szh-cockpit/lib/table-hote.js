@@ -14,6 +14,7 @@ const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique } = require('./webviews/panneau');
 const { fermerTousLesApercus, fermerApercuHtml, ouvrirApercuHtml } = require('./apercu');
+const { annoncerMain, noterLectureCoedition, ecrireSousMain, libererCoedition } = require('./coedition-hote');
 const { sousGarde, confirmerAbandon } = require('./interaction');
 const { ecrireAtomique } = require('./yaml');
 const { BUDGET_APERCUS_MEDIA } = require('./medias');
@@ -31,14 +32,6 @@ let ctx = {
   ouvrirArticle: async () => {},
   convertirCmykSiBesoin: async () => 0,
   repondreModeTrad: require('./traduction-hote').repondreModeTrad,
-  // Co-édition : le bail d'un fichier, tenu tant que le panneau est ouvert.
-  annoncerMain: () => null,
-  noterLectureCoedition: () => {},
-  ecrireSousMain: (panneau, racine, chemin, ecrire) => {
-    const erreur = ecrire();
-    return erreur ? { code: 'echec', message: String(erreur) } : null;
-  },
-  libererCoedition: () => {},
   // Un enregistrement a changé ce que la compilation de l'article lit (relanceDifferee).
   demanderCompilation: () => {},
   viderCompilation: () => {}
@@ -216,20 +209,20 @@ async function ouvrirEditeurTable(fournisseur, item) {
     surPret: () => traiterPret(),
     surMessage: (msg) => traiterMessage(msg),
     surFermeture: (p) => {
-      ctx.libererCoedition(p);
+      libererCoedition(p);
       // Un enregistrement encore sous l'anti-rebond part à la fermeture, sans attendre.
       if (slugCompile) { ctx.viderCompilation(slugCompile); }
     }
   });
   if (!nouveau) {
-    ctx.annoncerMain(panneau, fournisseur.racine, chemin);
+    annoncerMain(panneau, fournisseur.racine, chemin);
     if (focusImage) { panneau.webview.postMessage({ type: MSG.FOCALISER, focusImage: focusImage }); }
     return;
   }
   const charger = () => {
     let html = '';
     try { html = fs.readFileSync(chemin, 'utf8'); } catch (e) { html = '<table><tr><td></td></tr></table>'; }
-    ctx.noterLectureCoedition(panneau, fournisseur.racine, chemin);
+    noterLectureCoedition(panneau, fournisseur.racine, chemin);
     const modele = analyserTable(html);
     panneau.webview.postMessage({
       type: MSG.CHARGER, modele: modele, disposition: disposition(modele),
@@ -291,7 +284,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
   // champ) ne recompile rien : seul un fichier qui a changé relance la compilation.
   const enregistrer = (modele, auto) => {
     let change = false;
-    const refus = ctx.ecrireSousMain(panneau, fournisseur.racine, chemin, () => {
+    const refus = ecrireSousMain(panneau, fournisseur.racine, chemin, () => {
       try {
         const texte = serialiserTable(normaliserModele(modele));
         let avant = null;
@@ -311,7 +304,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
   function traiterPret() {
     charger();
     // Un éditeur de tableau ne s'ouvre pas pour lire : le bail se prend tout de suite.
-    ctx.annoncerMain(panneau, fournisseur.racine, chemin);
+    annoncerMain(panneau, fournisseur.racine, chemin);
   }
   async function traiterMessage(msg) {
     if (msg.type === MSG.OPERATION) { await appliquer(msg); return; }

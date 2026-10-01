@@ -12,10 +12,17 @@ const { MSG } = require('./messages');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique, revelerPanneau } = require('./webviews/panneau');
 const { confirmerAbandon } = require('./interaction');
+const { libererCoedition, moiCoedition, noterLectureCoedition, ecrireSousMain } = require('./coedition-hote');
 const { brouillonTraduction, uriMailto } = require('./courriel');
 const { construireLienTraduction, consommerIntention } = require('./liens');
-const { analyserAusgabe, normaliserRevue, titreNumero } = require('./yaml');
-const { CONFIG_POSTE, lireModeTrad, ecrireModeTrad } = require('./archivage');
+const { analyserAusgabe, normaliserRevue, titreNumero, langueRevue, LANGUES_META } = require('./yaml');
+const { CONFIG_POSTE, lireModeTrad, ecrireModeTrad, lireVerifTraduction } = require('./archivage');
+const {
+  CHAMPS_TRADUISIBLES, STATUTS, cleChamp, statutValide,
+  texteChamp, listeChamp, valeurChamp, alignerMotsCles
+} = require('./traduction');
+const session = require('./session');
+const profils = require('./profil');
 const suggestionTraduction = require('./suggestion-traduction');
 const indexTextes = require('./index-textes');
 
@@ -23,20 +30,17 @@ const indexTextes = require('./index-textes');
 // Posés une seule fois dans extension.js. Les valeurs par défaut ne servent qu'à ne pas
 // planter un test qui require ce module seul.
 let ctx = {
-  // L'argument de l'arbre ({slug[, cle]} ou slug), sinon le .md actif, sinon l'aperçu.
-  cibleTraduction: (fournisseur, cible) => ({ slug: (cible && cible.slug) || null, cle: null }),
   ouvrirArticle: async () => {},
-  libererCoedition: () => {},
-  moiCoedition: () => ({ utilisateur: '' }),
+  slugDepuisChemin: () => null,
   revueNumero: () => '',
-  // Le panneau « Traductions » : sa page, ses valeurs, son enregistrement et DeepL vivent
-  // encore dans extension.js, avec l'état qu'ils partagent (panneau, slug, saisie, rechargement).
-  htmlTraduction: () => '',
-  envoyerValeursTraduction: () => {},
-  enregistrerTraduction: () => ({ ok: false, message: 'lib/traduction-hote.js non configuré' }),
-  ouvrirDeepl: () => {},
-  etatTraduction: () => ({ panneau: null, slug: null, modifiee: false, rechargement: null }),
-  poserEtatTraduction: () => {}
+  // Le suivi de traduction d'un article : sa fiche, son sidecar, et l'état qu'ils donnent.
+  etatTraduction: () => ({
+    meta: {}, suivi: { statuts: {}, commentaire: '' }, lignes: [], groupes: [], source: 'fr', resume: null
+  }),
+  cheminTraduction: () => '',
+  lireMetaArticle: () => ({}),
+  lireSuiviTraduction: () => ({ statuts: {}, commentaire: '' }),
+  ecrireSuiviTraduction: () => {}
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -67,7 +71,7 @@ function ouvrirBrouillonMail(brouillon) {
 async function envoyerPourTraduction(fournisseur, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  const vise = ctx.cibleTraduction(fournisseur, cible);   // sinon le lien vise le numéro
+  const vise = cibleTraduction(fournisseur, cible);   // sinon le lien vise le numéro
   const slug = (vise.slug && fournisseur.listerArticles().indexOf(vise.slug) !== -1) ? vise.slug : '';
   let produit = '';
   let id = '';
@@ -120,21 +124,239 @@ async function honorerIntention(fournisseur, rafraichirTout) {
   } catch (e) { /* jamais bloquant */ }
 }
 
+// ---- Le panneau « Traductions » : page, valeurs, enregistrement, DeepL ---------
+
+// « Titre et sous-titre (DE) » quand les deux existent, sinon « Titre (DE) ».
+function libelleGroupe(groupe) {
+  let nom;
+  if (groupe.groupe === 'titre') {
+    nom = groupe.champs.length > 1
+      ? T('trad.champ.titre.duo')
+      : T('trad.champ.' + groupe.champs[0]);
+  } else {
+    nom = T('trad.champ.' + groupe.champs[0]);
+  }
+  return T('trad.champ.libelle', [nom, groupe.langue.toUpperCase()]);
+}
+
+// « traduit » ou « à traduire », sauf pour les mots-clés : « 2/4 traduits ».
+function etatRemplissageGroupe(groupe) {
+  if (groupe.groupe === 'motscles') {
+    const l = groupe.lignes[0];
+    return T('trad.avancement', [l.remplies, l.total]);
+  }
+  return groupe.rempli ? T('trad.traduit') : T('trad.atraduire');
+}
+
+function textesTraduction() {
+  return {
+    source: T('trad.source'), sourceVide: T('trad.source.vide'), cible: T('trad.cible'),
+    copier: T('trad.copier'), copie: T('trad.copie'), statut: T('trad.statut'),
+    traduit: T('trad.traduit'), atraduire: T('trad.atraduire'),
+    courtTraduction: T('trad.court.traduction'), courtRelecture: T('trad.court.relecture'),
+    courtFinalise: T('trad.court.finalise'), toutTip: T('trad.tout.tip'),
+    rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre'),
+    // `commentaire` et son aide sont resolus a l'assemblage de la page
+    // (%%SZH:cle%% dans media/traduction.html) : ils ne passent pas par cette table.
+    commentaire: T('trad.commentaire'),
+    deepl: T('trad.deepl'), deeplTip: T('trad.deepl.tooltip'),
+    envoyer: T('trad.envoyer'), envoyerTip: T('trad.envoyer.tooltip'),
+    motCle: T('trad.motcle'), motCleSansEquiv: T('trad.motcle.sansequivalent'),
+    motsClesAide: T('trad.motscles.aide'),
+    // Placeholder d'un mot-clé vide : la même clé que la fiche des métadonnées, jamais
+    // la sentinelle anglaise écrite dans le YAML.
+    motCleATraduire: T('mc.aTraduire'),
+    // Vérificateur de traduction : l'infobulle de la pastille, la même que sur les fiches.
+    suggPastille: T('sugg.pastille')
+  };
+}
+
+function htmlTraduction(nonce) {
+  return construireHtml('traduction', nonce, {
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+    titre: T('trad.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesTraduction()) }
+  });
+}
+
+// Le panneau ouvert, l'article qu'il montre, sa saisie non enregistrée, et le changement
+// d'article qui attend la réponse de la page.
+let panneauTraduction = null;
+let slugTraduction = null;
+let traductionModifiee = false;
+let rechargementTraduction = null;
+
+function etatPanneau() {
+  return {
+    panneau: panneauTraduction, slug: slugTraduction,
+    modifiee: traductionModifiee, rechargement: rechargementTraduction
+  };
+}
+
+function poserEtatPanneau(n) {
+  if ('panneau' in n) { panneauTraduction = n.panneau; }
+  if ('slug' in n) { slugTraduction = n.slug; }
+  if ('modifiee' in n) { traductionModifiee = n.modifiee; }
+  if ('rechargement' in n) { rechargementTraduction = n.rechargement; }
+}
+
+// Libellés résolus côté hôte : la webview ne connaît pas la langue d'interface.
+function groupesPourWebview(etat) {
+  return etat.groupes.map((groupe) => ({
+    cle: groupe.cle, groupe: groupe.groupe, langue: groupe.langue,
+    langueSource: etat.source,
+    libelle: libelleGroupe(groupe),
+    remplissage: etatRemplissageGroupe(groupe),
+    rempli: groupe.rempli,
+    statut: groupe.statut,
+    champs: groupe.lignes.map((ligne) => ({
+      champ: ligne.champ,
+      libelle: T('trad.champ.' + ligne.champ),
+      source: ligne.source,
+      cible: ligne.cible,
+      paires: ligne.paires || null,
+      multiligne: ligne.champ === 'resume'
+    }))
+  }));
+}
+
+function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
+  const etat = ctx.etatTraduction(fournisseur.racine, slug);
+  repondrePanneau(panneau, {
+    type: MSG.VALEURS,
+    slug: slug,
+    langueSource: etat.source,
+    groupes: groupesPourWebview(etat),
+    commentaire: etat.suivi.commentaire,
+    statuts: STATUTS.map((s) => ({ valeur: s, libelle: T('trad.statut.' + s) })),
+    focus: focus || null,
+    // Le vérificateur de traduction : lu à chaque envoi, donc pris en compte dès le
+    // prochain rendu des cartes (changement d'article, rechargement).
+    verifTrad: lireVerifTraduction()
+  });
+  traductionModifiee = false;                      // les cartes viennent d'être reconstruites
+  // Les deux fichiers que ce panneau écrit, et ce qu'ils valaient à cet instant.
+  const fiche = profils.chemins(profils.courant(), fournisseur.racine, slug).meta;
+  noterLectureCoedition(panneau, fournisseur.racine, fiche);
+  noterLectureCoedition(panneau, fournisseur.racine, ctx.cheminTraduction(fournisseur.racine, slug));
+}
+
+// Le panneau suit ce qui vient d'être écrit ailleurs — sauf s'il porte une saisie non
+// enregistrée : le re-rendu la jetterait sans un mot, et remettrait son témoin de
+// modification à zéro. On le dit alors, et l'utilisateur tranche.
+function rafraichirPanneauTraduction(fournisseur) {
+  if (!panneauTraduction || !slugTraduction || !fournisseur.racine) { return; }
+  if (fournisseur.listerArticles().indexOf(slugTraduction) === -1) { return; }
+  if (traductionModifiee) { vscode.window.showWarningMessage(T('trad.perimee')); return; }
+  envoyerValeursTraduction(panneauTraduction, fournisseur, slugTraduction, null);
+}
+
+// Enregistre ce que renvoie le panneau ; les textes passent par ecrireCartesArticles,
+// qui relit la fiche et n'écrase donc pas une modification enregistrée ailleurs.
+// metaChangee, dans le retour, pilote la recompilation de l'aperçu.
+// `panneau` : le bail de co-édition sur les deux fichiers écrits ici — la fiche et le
+// sidecar du suivi.
+function enregistrerTraduction(fournisseur, msg, panneau) {
+  const racine = fournisseur.racine;
+  const slug = String((msg && msg.slug) || '');
+  if (!racine || fournisseur.listerArticles().indexOf(slug) === -1) {
+    return { ok: false, message: T('err.ecriture', [slug + '.trad.yaml', slug]) };
+  }
+  const source = langueRevue(racine);
+  const meta = ctx.lireMetaArticle(racine, slug);
+  delete meta._inconnues;                          // ecrireCartesArticles les relit du disque
+  const suivi = ctx.lireSuiviTraduction(racine, slug);
+  const statuts = Object.assign({}, suivi.statuts);
+  let metaChangee = false;
+  for (const groupe of (Array.isArray(msg.groupes) ? msg.groupes : [])) {
+    const langue = String((groupe && groupe.langue) || '');
+    // Pas la langue du numéro : ce panneau ne touche pas au texte source.
+    if (LANGUES_META.indexOf(langue) === -1 || langue === source) { continue; }
+    const s = statutValide(groupe.statut);
+    for (const brut of (Array.isArray(groupe.champs) ? groupe.champs : [])) {
+      const champ = String((brut && brut.champ) || '');
+      if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
+      // Sur chaque clé du groupe : le sidecar reste lisible sans notion de groupe.
+      if (s) { statuts[cleChamp(champ, langue)] = s; }
+      const avant = texteChamp(meta, champ, langue);
+      let valeur;
+      if (champ === 'keywords') {
+        // alignerMotsCles tient la place des cases vides, ici du côté qui écrit.
+        valeur = alignerMotsCles(brut.paires, listeChamp(meta, 'keywords', source).length);
+      } else {
+        valeur = valeurChamp(champ, brut.texte);
+      }
+      meta[champ] = meta[champ] || {};
+      meta[champ][langue] = valeur;
+      if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
+    }
+  }
+  // Requis ici et non en tête : lib/metadonnees-hote.js requiert déjà ce module.
+  const { ecrireCartesArticles, messageCartes } = require('./metadonnees-hote');
+  const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug], panneau);
+  const refusCartes = messageCartes(res);
+  if (refusCartes) { return { ok: false, message: refusCartes, recharger: res.recharger }; }
+  const commentaire = String(msg.commentaire === undefined || msg.commentaire === null ? '' : msg.commentaire)
+    .replace(/\r\n?/g, '\n').slice(0, 4000);
+  // Le sidecar du suivi a son propre bail : c'est un autre fichier, et la fiche vient
+  // d'être écrite — s'arrêter ici laisserait les deux désaccordés, mais écrire par-dessus
+  // la saisie de quelqu'un d'autre serait pire, et le message dit lequel des deux manque.
+  const refusSuivi = ecrireSousMain(panneau, racine, ctx.cheminTraduction(racine, slug), () => {
+    try {
+      ctx.ecrireSuiviTraduction(racine, slug, {
+        statuts: statuts, commentaire: commentaire, _inconnues: suivi._inconnues
+      });
+      return null;
+    } catch (e) { return String((e && e.message) || e); }
+  });
+  if (refusSuivi) {
+    return { ok: false, message: refusSuivi.message, recharger: refusSuivi.code === 'perime' };
+  }
+  return { ok: true, metaChangee: metaChangee };
+}
+
+// Le traducteur web accepte le texte dans le fragment de l'URL,
+// https://www.deepl.com/translator#<source>/<cible>/<texte>, ouverte par le navigateur.
+// Sans clé d'API, le retour se fait au copier-coller.
+const LONGUEUR_MAX_DEEPL = 4000;                   // au-delà, les navigateurs tronquent
+
+function ouvrirDeepl(panneau, msg) {
+  const texte = String((msg && msg.texte) || '').trim();
+  const de = LANGUES_META.indexOf(String(msg.source || '')) !== -1 ? msg.source : 'fr';
+  const vers = LANGUES_META.indexOf(String(msg.cible || '')) !== -1 ? msg.cible : 'de';
+  if (texte === '') { return; }
+  if (texte.length > LONGUEUR_MAX_DEEPL) {
+    repondrePanneau(panneau, { type: MSG.ERREUR, message: T('trad.deepl.troplong') });
+    return;
+  }
+  const url = 'https://www.deepl.com/translator#' + de + '/' + vers + '/' + encodeURIComponent(texte);
+  vscode.env.openExternal(vscode.Uri.parse(url));
+}
+
+// L'argument de l'arbre ({slug[, cle]} ou slug), sinon le .md actif, sinon l'aperçu.
+function cibleTraduction(fournisseur, cible) {
+  if (typeof cible === 'string' && cible !== '') { return { slug: cible, cle: null }; }
+  if (cible && cible.slug) { return { slug: String(cible.slug), cle: cible.cle ? String(cible.cle) : null }; }
+  const ed = vscode.window.activeTextEditor;
+  const actif = ed ? ctx.slugDepuisChemin(fournisseur.racine, ed.document.uri.fsPath) : null;
+  return { slug: actif || session.apercuCourantSlug() || null, cle: null };
+}
+
 // Formulaire en colonne 1, aperçu de l'article en colonne 2, ouvert sans le .md.
 async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   if (!fournisseur.racine) { return; }
-  const vise = ctx.cibleTraduction(fournisseur, cible);
+  const vise = cibleTraduction(fournisseur, cible);
   if (!vise.slug || fournisseur.listerArticles().indexOf(vise.slug) === -1) {
     vscode.window.setStatusBarMessage(T('trad.horsarticle'), 4000);
     return;
   }
-  const etat = () => ctx.etatTraduction();
-  const poser = (n) => ctx.poserEtatTraduction(n);
+  const etat = etatPanneau;
+  const poser = poserEtatPanneau;
   const montrerApercu = (slug) => {
     // Une erreur de compilation est déjà signalée par ouvrirArticle.
     ctx.ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* déjà signalé */ });
   };
-  // L'état de l'hôte reste la garde : la fin d'une compilation le lit aussi.
+  // L'état du module reste la garde : rafraichirPanneauTraduction le lit aussi.
   const garde = { lire: () => etat().panneau, poser: (p) => poser({ panneau: p }) };
   if (revelerPanneau({ viewType: 'szhTraduction', garde: garde })) {
     const ouvert = etat().panneau;
@@ -151,7 +373,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     }
     poser({ slug: vise.slug });
     ouvert.title = T('trad.titre.un', [vise.slug]);
-    ctx.envoyerValeursTraduction(ouvert, fournisseur, vise.slug, vise.cle);
+    envoyerValeursTraduction(ouvert, fournisseur, vise.slug, vise.cle);
     montrerApercu(vise.slug);
     return;
   }
@@ -164,14 +386,14 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     retenir: true,
     // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
     modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
-    html: (nonce) => ctx.htmlTraduction(nonce),
+    html: (nonce) => htmlTraduction(nonce),
     surPret: (msg, p) => {
-      ctx.envoyerValeursTraduction(p, fournisseur, etat().slug, focusInitial);
+      envoyerValeursTraduction(p, fournisseur, etat().slug, focusInitial);
       focusInitial = null;
     },
     surMessage: (msg) => traiterMessage(msg),
     surFermeture: (p, courant) => {
-      ctx.libererCoedition(p);
+      libererCoedition(p);
       if (courant) { poser({ slug: null, modifiee: false, rechargement: null }); }
     }
   });
@@ -182,7 +404,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       repondrePanneau(panneau, { type: MSG.COPIE });
       return;
     }
-    if (msg.type === MSG.DEEPL) { ctx.ouvrirDeepl(panneau, msg); return; }
+    if (msg.type === MSG.DEEPL) { ouvrirDeepl(panneau, msg); return; }
     if (msg.type === MSG.LIEN) { envoyerPourTraduction(fournisseur, { slug: etat().slug }); return; }
     if (msg.type === MSG.SUGGERER_TRADUCTION) { ouvrirSuggestionTraduction(fournisseur, msg); return; }
     if (msg.type === MSG.RECHARGEMENT) {
@@ -192,14 +414,14 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       const choix = await confirmerAbandon(T('trad.recharger.question'));
       if (choix === 'annuler') { return; }         // Annuler : on reste sur l'article
       if (choix === 'enregistrer') {
-        const res = ctx.enregistrerTraduction(fournisseur, msg, panneau);
+        const res = enregistrerTraduction(fournisseur, msg, panneau);
         if (!res.ok) { repondrePanneau(panneau, { type: MSG.ERREUR, message: res.message }); return; }
         vscode.window.setStatusBarMessage(T('statut.traduction', [msg.slug]), 3000);
         if (rafraichirTout) { rafraichirTout(); }
       }
       poser({ slug: attente.slug });
       panneau.title = T('trad.titre.un', [attente.slug]);
-      ctx.envoyerValeursTraduction(panneau, fournisseur, attente.slug, attente.cle);
+      envoyerValeursTraduction(panneau, fournisseur, attente.slug, attente.cle);
       montrerApercu(attente.slug);
       return;
     }
@@ -207,11 +429,11 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       console.warn('traduction : type de message inconnu', msg.type);
       return;
     }
-    const res = ctx.enregistrerTraduction(fournisseur, msg, panneau);
+    const res = enregistrerTraduction(fournisseur, msg, panneau);
     if (!res.ok) {
       repondrePanneau(panneau, { type: MSG.ERREUR, message: res.message });
       // Périmé : ce que le panneau montre n'est plus ce que les fichiers contiennent.
-      if (res.recharger) { ctx.envoyerValeursTraduction(panneau, fournisseur, etat().slug, null); }
+      if (res.recharger) { envoyerValeursTraduction(panneau, fournisseur, etat().slug, null); }
       return;
     }
     repondrePanneau(panneau, { type: MSG.ENREGISTRE, auto: !!msg.auto });
@@ -219,7 +441,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.traduction', [etat().slug]), 3000); }
     if (rafraichirTout) { rafraichirTout(); }
     // Un enregistrement automatique ne renvoie rien : le re-rendu perdrait le curseur.
-    if (!msg.auto) { ctx.envoyerValeursTraduction(panneau, fournisseur, etat().slug, null); }
+    if (!msg.auto) { envoyerValeursTraduction(panneau, fournisseur, etat().slug, null); }
     // La fiche est une dépendance de compilation ; jamais en pleine frappe.
     if (res.metaChangee && !msg.auto) { montrerApercu(etat().slug); }
   }
@@ -388,7 +610,7 @@ function envoyerValeursSuggestion(panneau) {
 function enregistrerSuggestionInterface(msg) {
   return suggestionTraduction.ecrireSuggestionInterface(
     suggestionTraduction.dossierSuggestionsInterface(), {
-      auteur: ctx.moiCoedition().utilisateur,
+      auteur: moiCoedition().utilisateur,
       // La clé retenue vient de la page : elle a pu être choisie parmi plusieurs
       // candidates, ou n'exister du tout — le formulaire s'ouvre quand même.
       cle: msg.cle,
@@ -410,7 +632,7 @@ function enregistrerSuggestion(fournisseur, panneau, msg) {
   const racine = fournisseur && fournisseur.racine;
   if (!racine) { return; }
   const res = suggestionTraduction.ecrireSuggestion(racine, {
-    auteur: ctx.moiCoedition().utilisateur,
+    auteur: moiCoedition().utilisateur,
     produit: ctx.revueNumero(racine),
     numero: path.basename(racine),
     article: viseSuggestion.slug,
@@ -513,7 +735,8 @@ function montrerPanneauSuggestion(fournisseur, titre) {
 
 module.exports = {
   configurer,
-  envoyerPourTraduction, honorerIntention, ouvrirTraduction,
+  envoyerPourTraduction, honorerIntention, ouvrirTraduction, rafraichirPanneauTraduction,
+  cibleTraduction, libelleGroupe, etatRemplissageGroupe, enregistrerTraduction,
   repondreModeTrad, diffuserModeTrad, compterSuggestionsInterface, etatModeTrad,
   ouvrirSuggestionTraduction, ouvrirSuggestionInterface
 };

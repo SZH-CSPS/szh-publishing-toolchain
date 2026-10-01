@@ -17,6 +17,8 @@ const { trierParDoi, prefixeOrdre } = require('./articles');
 const { tige } = require('./renumerotation');
 const { alignerFichiers } = require('./renumerotation-fs');
 const { refuserSiVerrouille } = require('./cycle-vie');
+const { refusCoedition } = require('./coedition-hote');
+const { ouvrirImportVerif } = require('./import-verif-hote');
 
 // À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
@@ -25,12 +27,10 @@ const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
   articlesSansDoi: () => [],
-  refusCoedition: () => null,
   ecrireClesAusgabe: () => 'lib/import-hote.js non configuré',
   lancerTache: async () => null,
   avertirEchecCompilation: () => {},
   convertirCmykSiBesoin: async () => 0,
-  ouvrirImportVerif: async () => {},
   rejouerCompilationsDifferees: () => {}
 };
 
@@ -171,7 +171,7 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
   // conflit avec cette écriture — l'import a déjà réussi, ce n'est pas à lui d'échouer pour
   // un ordre qui se répare de toute façon. Les dossiers, eux, restent renommés dans tous les
   // cas : l'auto-réparation les retrouvera sous leur nom définitif, jamais sous l'ancien.
-  if (ctx.refusCoedition(racine, cheminConfig(racine))) { return renommes; }
+  if (refusCoedition(racine, cheminConfig(racine))) { return renommes; }
   ctx.ecrireClesAusgabe(racine, modifies);
   return renommes;
 }
@@ -271,7 +271,7 @@ async function lancerConversion(fournisseur, rafraichirTout) {
       // Avant le dialogue de vérification : celui-ci fait relire l'article, et il vaut mieux
       // savoir AVANT de le relire qu'un de ses tableaux n'a pas été lu comme une figure.
       await avertirBlocsMalFormes(fournisseur.racine);
-      await ctx.ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
+      await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
     } else {
       vscode.window.showInformationMessage(T('info.importes.aucun'));
     }
