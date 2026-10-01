@@ -126,7 +126,7 @@ function ouvrirFiches(articles, estLivre) {
   });
   page.envoyer({
     type: 'valeurs', articles: articles, types: TYPES, langue: 'fr', filtre: null,
-    estLivre: estLivre === true,
+    capacites: require(path.join(COCKPIT, 'lib', 'profil.js')).PROFILS[estLivre === true ? 'livre' : 'revue'].capacites,
     licences: licencesHote(), licenceDefaut: yaml.LICENCE_DEFAUT
   });
   return page;
@@ -270,7 +270,7 @@ test('livre : l’aller-retour complet écrit « sommaire: non », préserve pic
   await p._recepteur({ type: 'pret' });
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.ok(charge, 'aucune valeur envoyée au panneau');
-  assert.strictEqual(charge.estLivre, true, 'le panneau ne se sait pas ouvert sur un livre');
+  assert.strictEqual(charge.capacites && charge.capacites.horsSommaire, true, 'le panneau ne se sait pas ouvert sur un livre');
   const carteEnvoyee = charge.articles.filter((a) => a.slug === '01-ouverture')[0];
   assert.strictEqual(carteEnvoyee.valeurs.horsSommaire, false, 'la fiche d’essai ne doit pas déjà être hors sommaire');
 

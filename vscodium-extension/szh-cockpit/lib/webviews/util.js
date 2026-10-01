@@ -1,12 +1,13 @@
 // Assemble les webviews à partir des fichiers statiques media/<base>.{html,css,js} :
-// libellés i18n (%%SZH:cle%% -> T(cle)), remplacements de gabarit, puis sortie en un
+// libellés i18n (%%SZH:cle%% -> TP(cle, profil)), remplacements de gabarit, puis sortie en un
 // document autonome à CSP stricte. Les données utilisateur passent par postMessage et
 // n'entrent jamais dans le gabarit.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { T } = require('../i18n');
+const { TP, langueCockpit } = require('../i18n');
+const profils = require('../profil');
 
 const MEDIA = path.join(__dirname, '..', '..', 'media');
 const RE_I18N = /%%SZH:([A-Za-z0-9_.]+)%%/g;
@@ -27,7 +28,8 @@ function echapperPourScript(s) {
 }
 
 // Options : `titre` pour le <title>, `csp` pour la Content-Security-Policy,
-// `cssPartage` et `jsPartage`, les fragments de media/ à poser avant ceux de la page, et
+// `cssPartage` et `jsPartage`, les fragments de media/ à poser avant ceux de la page,
+// `profil` pour les variantes de libellés (le profil du dossier ouvert par défaut), et
 // `remplacements`, une map { marqueur: valeur } appliquée au HTML et au JS par split/join
 // — String.replace interpréterait les séquences « $& » d'une valeur.
 function construireHtml(base, nonce, opts) {
@@ -44,8 +46,9 @@ function construireHtml(base, nonce, opts) {
     .map((nom) => fs.readFileSync(path.join(MEDIA, nom), 'utf8').replace(/\n+$/, ''));
   let js = morceaux.join('\n\n');
 
-  corps = corps.replace(RE_I18N, function (_, cle) { return T(cle); });
-  js = js.replace(RE_I18N, function (_, cle) { return T(cle); });
+  const profil = opts.profil || profils.courant();
+  corps = corps.replace(RE_I18N, function (_, cle) { return TP(cle, profil); });
+  js = js.replace(RE_I18N, function (_, cle) { return TP(cle, profil); });
 
   const rempl = opts.remplacements || {};
   for (const cle of Object.keys(rempl)) {
@@ -56,7 +59,8 @@ function construireHtml(base, nonce, opts) {
 
   const csp = opts.csp || ("default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'");
   const titre = echapperHtml(opts.titre === undefined ? 'SZH' : opts.titre);
-  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
+  const langue = opts.langue || langueCockpit();
+  return '<!DOCTYPE html>\n<html lang="' + langue + '">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="' + csp + '">\n' +
     '<title>' + titre + '</title>\n' +
     '<style>\n' + css + '</style>\n</head>\n<body>\n' +

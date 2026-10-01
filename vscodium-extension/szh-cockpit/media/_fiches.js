@@ -282,9 +282,11 @@
     // page de vérification d'import, qui ne l'envoie pas : reste null, et la note de forme
     // ne s'affiche jamais là.
     var FORME_DOI_ACTUELLE = null;
-    // Livre ou revue/Zeitschrift (message valeurs, msg.estLivre) : décide de la case
-    // « hors sommaire » d'une carte — jamais construite pour un article.
-    var ESTLIVRE = false;
+    // Les capacités du profil (message valeurs, msg.capacites, lib/profil.js) : elles
+    // décident des champs qu'une carte construit. Une page qui ne les envoie pas a la carte
+    // d'un article de revue, d'où les deux formes de test : `CAP.x !== false` pour un champ
+    // de la revue, `CAP.x === true` pour un champ du livre.
+    var CAP = {};
     // ---- Le vérificateur de traduction ----
     //
     // Un mode, posé par l'hôte dans le message « valeurs » (réglage du poste, voir
@@ -803,13 +805,13 @@
 
     // ---- Construction des cartes ----
 
-    function rendre(articles, types, langueDefaut, licences, licenceDefaut, formeDoi, estLivre) {
+    function rendre(articles, types, langueDefaut, licences, licenceDefaut, formeDoi, capacites) {
       if (types) { TYPES = types; }
       if (langueDefaut) { LANGUE_DEFAUT = langueDefaut; }
       if (licences) { LICENCES = licences; }
       if (licenceDefaut) { LICENCE_DEFAUT = licenceDefaut; }
       FORME_DOI_ACTUELLE = formeDoi || null;
-      ESTLIVRE = !!estLivre;
+      CAP = capacites || {};
       ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
@@ -882,10 +884,10 @@
       });
 
       // Type : n'a de sens que pour un article (éditorial, documentation…), jamais pour
-      // un chapitre — un livre n'en a pas de taxonomie. Absente du DOM pour ESTLIVRE, la
+      // un chapitre — un livre n'en a pas de taxonomie. Absente du DOM sans CAP.typeArticle, la
       // clé reste préservée telle quelle à l'enregistrement : voir nettoyerCarte()
       // (lib/metadonnees-hote.js), qui ne l'efface que si la fiche est celle d'un article.
-      if (!ESTLIVRE) {
+      if (CAP.typeArticle !== false) {
         var lType = document.createElement('label');
         lType.textContent = TXT.type;
         appeler('champ', lType, 'type');
@@ -935,8 +937,8 @@
       // reprise sous droits se déclare. Même composant que la langue, à liste et libellés
       // près, qui viennent de l'hôte. Sans objet pour un chapitre — la licence d'un livre
       // se décide pour l'ouvrage entier, pas chapitre par chapitre — donc absente pour
-      // ESTLIVRE, avec la même préservation que le type ci-dessus.
-      if (!ESTLIVRE) {
+      // CAP.licence, avec la même préservation que le type ci-dessus.
+      if (CAP.licence !== false) {
         var licence = SZH.choixFerme({
           cle: 'licence', libelle: TXT.licence, options: LICENCES,
           valeur: v.licence, defaut: LICENCE_DEFAUT,
@@ -952,7 +954,7 @@
       // chapitre perd numéro, pastille et marque de tranche, et les autres se renumérotent
       // — c'est pipeline/profils/livre.mk (CHAPITRES_HORS_SOMMAIRE) qui fait ce travail à
       // la compilation, cette case ne fait qu'écrire la clé.
-      if (ESTLIVRE) {
+      if (CAP.horsSommaire === true) {
         var caseSommaire = document.createElement('label');
         caseSommaire.className = 'case-sommaire';
         var cocheSommaire = document.createElement('input');
@@ -1027,10 +1029,10 @@
             var champ = champTexte(carte, zoneTextes, slug, textes[c][0], lg,
               textes[c][1].split('{0}').join(noms[lg]),
               (valeurs[textes[c][0]] || {})[lg], textes[c][2], traduction,
-              ESTLIVRE && textes[c][0] !== 'resume');
+              CAP.titreEnLignes === true && textes[c][0] !== 'resume');
             // Livre seulement : Entrée force un retour à la ligne dans un titre de chapitre,
             // comme dans celui du livre (media/_numero.js, champ.aide).
-            if (ESTLIVRE && textes[c][0] !== 'resume' && TXT.brAide) {
+            if (CAP.titreEnLignes === true && textes[c][0] !== 'resume' && TXT.brAide) {
               var aideBr = document.createElement('p');
               aideBr.className = 'champ-aide champ-' + lg + (traduction ? ' champ-trad' : '');
               aideBr.textContent = TXT.brAide;
@@ -1067,7 +1069,7 @@
       // article.doiCalcule arriverait de toute façon vide. `champDoi` inscrit ses
       // contrôles dans doiParCarte ; tous ses lecteurs (doiEffectifCarte,
       // verifierDoublonsDoi, collecter) tolèrent déjà son absence.
-      if (!ESTLIVRE) { champDoi(carte, slug, article); }
+      if (CAP.doi !== false) { champDoi(carte, slug, article); }
 
       // Mots-clés edudoc/thésaurus : sans objet pour un chapitre, même raison que le type
       // et la licence ci-dessus — pas de classification par sujet pour un livre. `var
@@ -1076,7 +1078,7 @@
       // fonctionner : elles savent déjà tolérer son absence (`if (!editeurMots) …`, voir
       // ci-dessus) ou sont gardées ici pour la même raison.
       var editeurMots;
-      if (!ESTLIVRE) {
+      if (CAP.motsCles !== false) {
         // On ajoute et on retire une rangée entière, jamais un mot dans une seule langue,
         // la position seule appariant « diagnostic » et « Diagnose ».
         var lMots = document.createElement('label');
@@ -1153,7 +1155,7 @@
             poserClasses();
             // La colonne apparaît ou disparaît ; le fragment garde ses valeurs, qui
             // vivent dans son modèle et non dans le DOM. Pas de grille pour un chapitre
-            // (ESTLIVRE) : rien à reconstruire.
+            // (CAP.motsCles) : rien à reconstruire.
             if (editeurMots) { editeurMots.reconstruire(colonnes()); }
             appeler('carteChangee', carte);
           });
@@ -1190,7 +1192,7 @@
           map[ancienne] = map[nouvelle] || '';
           map[nouvelle] = t;
         }
-        // editeurMots n'existe pas pour un chapitre (ESTLIVRE) : rien à permuter ni à
+        // editeurMots n'existe pas pour un chapitre (CAP.motsCles) : rien à permuter ni à
         // reconstruire côté mots-clés, seulement à défaut de grille.
         if (editeurMots) { editeurMots.permuter(ancienne, nouvelle); }
         langueArticle = nouvelle;
@@ -1266,7 +1268,7 @@
       if (selLangue) { resultat.lang = selLangue.value; }
       var selLicence = carte.querySelector('select[data-cle=licence]');
       if (selLicence) { resultat.licence = selLicence.value; }
-      // Absente pour un article (ESTLIVRE faux) : la case n'existe alors pas dans le DOM,
+      // Absente pour un article (CAP.horsSommaire faux) : la case n'existe alors pas dans le DOM,
       // et resultat.horsSommaire reste à false — jamais de `sommaire: non` écrit à sa place.
       var cocheSommaire = carte.querySelector('input[data-cle=sommaire]');
       if (cocheSommaire) { resultat.horsSommaire = !!cocheSommaire.checked; }
@@ -1350,7 +1352,7 @@
         // Posé avant rendre() : les cartes construisent leurs pastilles au passage.
         VERIF_TRAD = msg.verifTrad === true;
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
-          msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null, msg.estLivre === true);
+          msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null, msg.capacites || null);
         surValeurs(msg);
         if (msg.focus) { focaliserChamp(msg.filtre, msg.focus); }
         return true;

@@ -17,14 +17,14 @@ const path = require('path');
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
-test('package.json : les deux boutons d’item portent && !szh.estLivre dans leur when', () => {
+test('package.json : les deux boutons d’item portent leur capacité szh.peut.* dans leur when', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const items = pkg.contributes.menus['view/item/context'];
-  for (const id of ['szh.voirPdfArticle', 'szh.envoyerAuteur']) {
+  for (const [id, cap] of [['szh.voirPdfArticle', 'pdfArticle'], ['szh.envoyerAuteur', 'envoiAuteur']]) {
     const e = items.find((x) => x.command === id);
     assert.ok(e, id + ' absente de view/item/context');
     assert.match(e.when, /viewItem == article/, id + ' : ne vise plus l’item article');
-    assert.match(e.when, /&&\s*!szh\.estLivre\b/, id + ' : when incorrect (' + e.when + ')');
+    assert.ok(e.when.endsWith('&& szh.peut.' + cap), id + ' : when incorrect (' + e.when + ')');
   }
 });
 
@@ -33,11 +33,8 @@ test('package.json : commandPalette n’offre plus envoyerAuteur que pour une re
   const palette = pkg.contributes.menus.commandPalette;
   const e = palette.find((x) => x.command === 'szh.envoyerAuteur');
   assert.ok(e, 'szh.envoyerAuteur absente de commandPalette');
-  // (szh.estRevue || szh.estLivre) && !szh.estLivre se réduit à szh.estRevue, les deux
-  // profils s'excluant (lib/profil.js, contextes()) : c'est la forme la plus simple qui
-  // dit la même chose, cohérente avec le reste de commandPalette (szh.vueArticles,
-  // szh.vueTraductions…).
-  assert.strictEqual(e.when, 'szh.estRevue', 'szh.envoyerAuteur : when incorrect (' + e.when + ')');
+  // La capacité envoiAuteur n'est vraie que pour une revue (lib/profil.js).
+  assert.strictEqual(e.when, 'szh.peut.envoiAuteur', 'szh.envoyerAuteur : when incorrect (' + e.when + ')');
 });
 
 test('package.json : szh.voirPdfArticle n’a pas d’entrée commandPalette à corriger', () => {

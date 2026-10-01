@@ -8,7 +8,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T } = require('./i18n');
+const { T, TP } = require('./i18n');
 const session = require('./session');
 const profils = require('./profil');
 const { appliquerVerrou, verrouPose } = require('./verrou');
@@ -25,16 +25,10 @@ const {
 // nom de l'application, qui ne vit qu'à un seul endroit du JavaScript.
 const { resoudreAncrage, resoudreDossierRapports } = require('./rapport-erreur');
 
-// Le profil du dossier ouvert, tel que extension.js l'a posé dans session (même source que
-// lib/apercu.js, lib/import-hote.js…) : jamais relu ici par un accès disque à soi. Verrou
-// et archivage valent pour les deux profils depuis peu — un livre publié se fige et se
-// range comme un numéro (windows/archive-revue.ps1 le fait déjà, $estLivre) — mais les
-// textes qu'on montre pendant le geste, eux, parlaient tous de « numéro » ou de « revue » ;
-// Tcycle() choisit la variante « .livre » d'une clé quand c'est le cas, lib/i18n.js portant
-// les deux versions côte à côte.
-function profilCourant() { return session.profilOuvrage() || profils.profilPour('revue'); }
-function estLivre() { return profilCourant().cle === 'livre'; }
-function Tcycle(cle, args) { return T(estLivre() ? cle + '.livre' : cle, args); }
+// Le profil du dossier ouvert (lib/profil.js#courant). Verrou et archivage valent pour les
+// deux profils : les textes du geste passent par TP, qui prend la variante « .livre » d'une
+// clé quand elle existe.
+function profilCourant() { return profils.courant(); }
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés une seule fois, à la fin d'extension.js (module déjà chargé, tables déjà créées).
@@ -79,7 +73,7 @@ function compilationAutoCoupee() {
 function refuserSiArchivee() {
   if (!session.etatNumero().archivee) { return false; }
   const bouton = T('art.ordre.archive.bouton');
-  vscode.window.showWarningMessage(Tcycle('art.ordre.archive'), bouton).then((choix) => {
+  vscode.window.showWarningMessage(TP('art.ordre.archive', profilCourant()), bouton).then((choix) => {
     if (choix === bouton) { vscode.commands.executeCommand('szh.desarchiver'); }
   });
   return true;
@@ -88,8 +82,8 @@ function refuserSiArchivee() {
 // Garde d'écriture : true = refusé, l'appelant sort. Le refus est toujours affiché.
 function refuserSiVerrouille() {
   if (!session.etatNumero().verrouillee) { return false; }
-  const bouton = Tcycle('verrou.refuse.bouton');
-  vscode.window.showWarningMessage(Tcycle('verrou.refuse'), bouton).then((choix) => {
+  const bouton = TP('verrou.refuse.bouton', profilCourant());
+  vscode.window.showWarningMessage(TP('verrou.refuse', profilCourant()), bouton).then((choix) => {
     if (choix === bouton) { vscode.commands.executeCommand('szh.deverrouiller'); }
   });
   return true;
@@ -131,7 +125,7 @@ function majBarreEtatNumero(barre) {
   else if (session.etatNumero().verrouillee) { barre.text = T('etat.barre.verrouillee'); }
   else { barre.text = T('etat.barre.archivee'); }
   barre.command = session.etatNumero().verrouillee ? 'szh.deverrouiller' : 'szh.desarchiver';
-  const morceaux = [Tcycle(session.etatNumero().verrouillee ? 'etat.barre.tooltip.verrou' : 'etat.barre.tooltip.archive')];
+  const morceaux = [TP(session.etatNumero().verrouillee ? 'etat.barre.tooltip.verrou' : 'etat.barre.tooltip.archive', profilCourant())];
   if (session.etatNumero().versionToolkit !== '') {
     morceaux.push(T('etat.barre.tooltip.version',
       [session.etatNumero().versionToolkit, versionInstallee() || '?']));
@@ -192,14 +186,14 @@ async function verrouillerSeulement(fournisseur, rafraichirTout) {
   if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   const choix = await vscode.window.showWarningMessage(
     T('modale.verrouiller.question', [titreNumero(racine)]),
-    { modal: true, detail: Tcycle('modale.verrouiller.detail') },
+    { modal: true, detail: TP('modale.verrouiller.detail', profilCourant()) },
     T('modale.verrouiller.bouton'));
   if (choix !== T('modale.verrouiller.bouton')) { return; }
   const erreur = ctx.ecrireClesAusgabe(racine, { locked: 'true' });
   if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreur])); return; }
   fermerFormulairesEcriture(null, null);           // un formulaire ouvert écrit par fs
   rafraichirTout();
-  vscode.window.setStatusBarMessage(Tcycle('statut.verrouille'), 4000);
+  vscode.window.setStatusBarMessage(TP('statut.verrouille', profilCourant()), 4000);
 }
 
 async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
@@ -222,9 +216,9 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
       // à sa place, il le dit et rouvre le dossier. Le relancer ne coûte donc rien, et
       // rattrape le seul cas où le rédacteur voit « archivé » sans voir le dossier bouger.
       const ranger = T('arch.ranger.bouton');
-      if (await vscode.window.showInformationMessage(Tcycle('info.deja.archivee'), ranger) !== ranger) { return; }
+      if (await vscode.window.showInformationMessage(TP('info.deja.archivee', profilCourant()), ranger) !== ranger) { return; }
       const erreurReprise = lancerArchivage('archiver', racine);
-      if (erreurReprise) { vscode.window.showErrorMessage(Tcycle('err.archivage', [erreurReprise])); return; }
+      if (erreurReprise) { vscode.window.showErrorMessage(TP('err.archivage', profilCourant(), [erreurReprise])); return; }
       vscode.window.setStatusBarMessage(T('statut.archivage'), 10000);
       await fermerFenetreApresArchivage();
       return;
@@ -236,7 +230,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   const bouton = T('modale.archiver.bouton');
   const choix = await vscode.window.showWarningMessage(
     T('modale.archiver.question', [titreNumero(racine)]),
-    { modal: true, detail: Tcycle('modale.archiver.detail', [poidsLisible(tailleDossier(dossierOut))]) },
+    { modal: true, detail: TP('modale.archiver.detail', profilCourant(), [poidsLisible(tailleDossier(dossierOut))]) },
     bouton);
   if (choix !== bouton) { return; }
   // La modale reste ouverte le temps que le rédacteur réponde : une compilation a pu
@@ -280,7 +274,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   // 5. le déplacement, puis la fermeture de cette fenêtre (condition du déplacement).
   const erreurScript = lancerArchivage('archiver', racine);
   if (erreurScript) {
-    vscode.window.showErrorMessage(Tcycle('err.archivage', [erreurScript]));
+    vscode.window.showErrorMessage(TP('err.archivage', profilCourant(), [erreurScript]));
     return;                                        // le numéro reste gelé, à sa place
   }
   vscode.window.setStatusBarMessage(T('statut.archivage'), 10000);
@@ -291,7 +285,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
 async function desarchiver(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  if (!session.etatNumero().archivee) { vscode.window.showInformationMessage(Tcycle('info.deja.encours')); return; }
+  if (!session.etatNumero().archivee) { vscode.window.showInformationMessage(TP('info.deja.encours', profilCourant())); return; }
   if (session.buildEnCours() || session.importEnCours()) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
@@ -299,7 +293,7 @@ async function desarchiver(fournisseur, rafraichirTout) {
   const bouton = T('modale.desarchiver.bouton');
   const choix = await vscode.window.showWarningMessage(
     T('modale.desarchiver.question', [titreNumero(racine)]),
-    { modal: true, detail: Tcycle('modale.desarchiver.detail') }, bouton);
+    { modal: true, detail: TP('modale.desarchiver.detail', profilCourant()) }, bouton);
   if (choix !== bouton) { return; }
   // La modale reste ouverte le temps que le rédacteur réponde : une compilation a pu
   // démarrer entre-temps. Même refus qu'avant la modale, avant tout effet sur le disque.
@@ -314,7 +308,7 @@ async function desarchiver(fournisseur, rafraichirTout) {
   session.poserApercuCourantSlug(null);
   rafraichirTout();
   const erreurScript = lancerArchivage('desarchiver', racine);
-  if (erreurScript) { vscode.window.showErrorMessage(Tcycle('err.desarchivage', [erreurScript])); return; }
+  if (erreurScript) { vscode.window.showErrorMessage(TP('err.desarchivage', profilCourant(), [erreurScript])); return; }
   vscode.window.setStatusBarMessage(T('statut.desarchivage'), 10000);
   await fermerFenetreApresArchivage();
 }
@@ -330,20 +324,20 @@ async function deverrouiller(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
   if (!session.etatNumero().verrouillee) {
-    vscode.window.showInformationMessage(Tcycle('info.deja.deverrouillee'));
+    vscode.window.showInformationMessage(TP('info.deja.deverrouillee', profilCourant()));
     return;
   }
   const bouton = T('modale.deverrouiller.bouton');
   const choix = await vscode.window.showWarningMessage(
     T('modale.deverrouiller.question', [titreNumero(racine)]),
-    { modal: true, detail: Tcycle('modale.deverrouiller.detail') }, bouton);
+    { modal: true, detail: TP('modale.deverrouiller.detail', profilCourant()) }, bouton);
   if (choix !== bouton) { return; }
   const erreur = ctx.ecrireClesAusgabe(racine, { locked: 'false' });
   if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreur])); return; }
   appliquerEtVerifierVerrou(racine, false);
   session.poserRacineVerrou(racine);
   rafraichirTout();
-  vscode.window.setStatusBarMessage(Tcycle('statut.deverrouille'), 5000);
+  vscode.window.setStatusBarMessage(TP('statut.deverrouille', profilCourant()), 5000);
 }
 
 // ---- Copies en conflit déjà déposées par le synchroniseur ------------------------
@@ -552,6 +546,13 @@ function majConflitsScm(racine, copies) {
   });
 }
 
+// Libère le contrôle de source des conflits, créé à la demande : appelée à l'extinction.
+function libererScm() {
+  if (scmConflits) { scmConflits.dispose(); }
+  scmConflits = null;
+  groupeConflits = null;
+}
+
 // Le bloc affiché, ou null : le menu passe le tableau entier et l'index de celui qu'on
 // regarde, et un clic tardif sur un diff recalculé entre-temps peut sortir du tableau.
 function blocVise(blocs, index) {
@@ -686,5 +687,5 @@ module.exports = {
   dossierPartageOutil, copiesDuDossierPartage,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
   cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
-  rafraichirConflitsScm, majConflitsScm
+  rafraichirConflitsScm, majConflitsScm, libererScm
 };

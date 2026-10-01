@@ -58,3 +58,15 @@ test('construireHtml : un titre ordinaire n’est pas défiguré par l’échapp
   const html = util.construireHtml('settings', 'abc123', { cssPartage: ['_design.css'], titre: 'Réglages' });
   assert.match(html, /<title>Réglages<\/title>/);
 });
+
+test('construireHtml : le document porte la langue de l’interface', () => {
+  const avant = process.env.SZH_LANGUE;
+  try {
+    process.env.SZH_LANGUE = 'de';
+    assert.match(util.construireHtml('settings', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="de">/);
+    process.env.SZH_LANGUE = 'fr';
+    assert.match(util.construireHtml('settings', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="fr">/);
+  } finally {
+    if (avant === undefined) { delete process.env.SZH_LANGUE; } else { process.env.SZH_LANGUE = avant; }
+  }
+});

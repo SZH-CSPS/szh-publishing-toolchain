@@ -386,7 +386,8 @@ function libellesHote(racine, fonctions) {
     const i = src.indexOf('function ' + nom);
     if (i === -1) { throw new Error('fonction de libellés introuvable : ' + nom); }
     const bloc = src.slice(i, src.indexOf('\n}', i));
-    for (const m of bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*T\('([^']+)'(?:,\s*\[[^\]]*\])?\)/g)) {
+    // TP(clé, profilCourant()) se lit comme T(clé) : le harnais rend les textes de la revue.
+    for (const m of bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*TP?\('([^']+)'(?:,\s*profilCourant\(\))?(?:,\s*\[[^\]]*\])?\)/g)) {
       txt[m[1]] = T(m[2]);
     }
   }

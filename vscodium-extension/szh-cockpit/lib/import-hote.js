@@ -36,10 +36,8 @@ let ctx = {
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// Mêmes calculs que dans extension.js (profilCourant, dossierUnites, cleOrdre,
-// cheminConfig), tirés directement de session.profilOuvrage() : ce module n'a pas à les
-// recevoir en rappel, lib/profil.js suffit.
-function profilCourant() { return session.profilOuvrage() || profils.profilPour('revue'); }
+// Le profil du dossier ouvert (lib/profil.js#courant) et ce qui en découle.
+function profilCourant() { return profils.courant(); }
 function dossierUnites() { return profilCourant().unites.dossier; }
 function cleOrdre() { return profilCourant().unites.ordre; }
 function cheminConfig(racine) { return path.join(racine, profilCourant().config); }

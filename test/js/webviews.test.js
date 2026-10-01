@@ -92,6 +92,34 @@ test('métadonnées des articles : une carte remplie par article', () => {
   }
 });
 
+// La carte d'une unité dans chaque profil, avec les capacités que l'hôte envoie
+// (lib/profil.js) : la revue construit type, licence, DOI et mots-clés, le livre la seule
+// case « hors sommaire ».
+test('métadonnées des articles : la carte suit les capacités de chaque profil', () => {
+  const { PROFILS } = require(path.join(COCKPIT, 'lib', 'profil.js'));
+  const articles = articlesDuCorpus().filter((a) => ((a.valeurs.keywords || {}).fr || []).length > 0);
+  assert.ok(articles.length >= 1, 'aucune fiche du corpus avec mots-clés');
+  for (const p of Object.values(PROFILS)) {
+    const page = ouvrir({
+      racine: RACINE, page: 'metadata-articles',
+      cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+      jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+      txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+    });
+    page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                   licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null,
+                   capacites: p.capacites });
+    const n = articles.length, cap = p.capacites;
+    assert.strictEqual(page.compter('.carte'), n, p.cle + ' : cartes');
+    assert.strictEqual(page.compter('select[data-cle="type"]'), cap.typeArticle ? n : 0, p.cle + ' : type');
+    assert.strictEqual(page.compter('select[data-cle="licence"]'), cap.licence ? n : 0, p.cle + ' : licence');
+    assert.strictEqual(page.compter('[data-cle="doi-manuel"]'), cap.doi ? n : 0, p.cle + ' : DOI');
+    assert.strictEqual(page.compter('input[data-cle="sommaire"]'), cap.horsSommaire ? n : 0, p.cle + ' : hors sommaire');
+    assert.strictEqual(page.compter('.mc-rangee') > 0, cap.motsCles, p.cle + ' : mots-clés');
+    assert.strictEqual(page.compter('select[data-cle="lang"]'), n, p.cle + ' : langue');
+  }
+});
+
 // Point 6 (lot câblage hôte) : SZH.annoncerPret pose un jeton dans « pret », que ce test
 // récupère dans page.messages[0] comme le ferait l'hôte réel ; deux « valeurs » qui le
 // recopient à l'identique (l'aller-retour lent qui fait répondre l'hôte deux fois à

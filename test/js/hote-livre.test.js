@@ -53,6 +53,14 @@ test('livre : les deux clés de contexte sont posées, et elles s’excluent', (
     'szh.estRevue reste vrai sur un livre : les deux vues s’afficheraient ensemble');
 });
 
+test('livre : chaque capacité de la table est posée en szh.peut.*, à la valeur du livre', () => {
+  const ctx = HOTE.contexte();
+  const { PROFILS } = require(path.join(COCKPIT, 'lib', 'profil.js'));
+  for (const [c, v] of Object.entries(PROFILS.livre.capacites)) {
+    assert.strictEqual(ctx['szh.peut.' + c], v, 'szh.peut.' + c + ' mal posé sur un livre');
+  }
+});
+
 // ⚠ PAS de section « Traductions » pour un livre, et ce n'est pas un détail d'affichage.
 // Une revue paraît en deux langues et chaque article a sa version jumelle ; un livre est
 // écrit dans une langue, et sa traduction est un AUTRE livre, avec son ISBN. La section
@@ -421,6 +429,32 @@ test('livre : le panneau Export offre archiver/verrouiller avec des libellés de
     'szh.deverrouiller apparaît alors que le livre d’essai n’est pas verrouillé');
   assert.ok(!items.some((it) => it.commande === 'szh.desarchiver'),
     'szh.desarchiver apparaît alors que le livre d’essai n’est pas archivé');
+});
+
+// Les panneaux retirent ce que la palette réserve à une capacité absente du livre
+// (szh.peut.* de commandPalette, lib/panneaux.js).
+test('livre : les panneaux n’offrent aucune commande réservée à une capacité de la revue', async () => {
+  const { PROFILS } = require(path.join(COCKPIT, 'lib', 'profil.js'));
+  const pkg = require(path.join(COCKPIT, 'package.json'));
+  const interdites = pkg.contributes.menus.commandPalette
+    .filter((e) => /^szh\.peut\.(\w+)$/.test(e.when || '')
+      && PROFILS.livre.capacites[e.when.slice('szh.peut.'.length)] === false)
+    .map((e) => e.command);
+  assert.ok(interdites.includes('szh.traduction') && interdites.includes('szh.exporterXml'));
+  const original = HOTE.stub.window.showQuickPick;
+  const vus = [];
+  HOTE.stub.window.showQuickPick = (its) => { vus.push(...its); return Promise.resolve(undefined); };
+  try {
+    await HOTE.executer('szh.panneauCommande');
+    await HOTE.executer('szh.panneauExport');
+  } finally {
+    HOTE.stub.window.showQuickPick = original;
+  }
+  assert.ok(vus.length > 0, 'aucun panneau ouvert');
+  for (const it of vus) {
+    assert.ok(!interdites.includes(it.commande), it.commande + ' offerte dans un panneau de livre');
+  }
+  assert.ok(vus.some((it) => it.commande === 'szh.livreEpub'), 'les sorties du livre manquent au panneau Export');
 });
 
 test('livre : archiverVerrouiller écrit locked et archived dans buch.yaml', async () => {

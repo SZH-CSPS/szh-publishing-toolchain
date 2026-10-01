@@ -538,7 +538,7 @@ test('fiches : en livre, titre et sous-titre sont des champs qui grandissent ; e
       txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
     });
     page.envoyer({ type: 'valeurs', langue: 'fr', types: [], licences: [], licenceDefaut: '', filtre: null,
-      estLivre: estLivre,
+      capacites: require(path.join(COCKPIT, 'lib', 'profil.js')).PROFILS[estLivre ? 'livre' : 'revue'].capacites,
       articles: [{ slug: '01-a', valeurs: { lang: 'fr', title: { fr: 'A\nB' }, subtitle: { fr: 'C' },
         resume: { fr: 'R' }, keywords: {}, author: [] } }] });
     const champs = {};

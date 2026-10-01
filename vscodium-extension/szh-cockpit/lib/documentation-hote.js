@@ -69,7 +69,7 @@ let ctx = {
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 function dossierUnites() {
-  return (session.profilOuvrage() || profils.profilPour('revue')).unites.dossier;
+  return profils.courant().unites.dossier;
 }
 function cheminMeta(racine, slug) {
   return path.join(racine, dossierUnites(), slug, slug + '.meta.yaml');
@@ -354,7 +354,7 @@ function uuidsDuMessage(msg) {
 // installée dans le dossier de la fiche au moment où enregistrer() l'écrit.
 async function deposerImageRessource(panneau, idsImagesEnAttente, msg) {
   const id = String(msg.id || '');
-  const echec = (message) => repondrePanneau(panneau, { type: 'image-erreur', id: id, message: message });
+  const echec = (message) => repondrePanneau(panneau, { type: MSG.IMAGE_ERREUR, id: id, message: message });
   if (session.buildEnCours() || session.importEnCours()) { echec(T('statut.occupe')); return; }
   const nom = nomImageAssaini(msg.nomFichier);
   if (!nom) { echec(T('importv.err.format')); return; }
@@ -367,7 +367,7 @@ async function deposerImageRessource(panneau, idsImagesEnAttente, msg) {
   idsImagesEnAttente.add(id);
   await ctx.convertirCmykSiBesoin([cible]);       // un JPEG d'imprimerie ne s'affiche pas
   repondrePanneau(panneau, {
-    type: 'image-deposee', id: id, image: path.basename(cible).replace(/^[^_]*__/, ''),
+    type: MSG.IMAGE_DEPOSEE, id: id, image: path.basename(cible).replace(/^[^_]*__/, ''),
     apercu: apercuMedia(cible, { reste: BUDGET_APERCUS_MEDIA })
   });
 }
@@ -409,8 +409,7 @@ function creerPageDocumentation(fournisseur) {
 // déjà affichée si le panneau vit déjà.
 async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, categorie) {
   if (!fournisseur.racine) { return; }
-  const profil = session.profilOuvrage() || profils.profilPour('revue');
-  if (profil.cle !== 'revue') { return; }      // un livre n'a pas de Documentation
+  if (!profils.courant().capacites.documentation) { return; }   // un livre n'a pas de Documentation
   let slug = fournisseur.slugDocumentation();
   if (!slug) {
     if (refuserSiVerrouille()) { return; }
@@ -546,7 +545,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   async function charger(vers, extra) {
     const budget = { reste: BUDGET_APERCUS_MEDIA };
     repondrePanneau(vers, Object.assign({
-      type: 'charger', slug: slug,
+      type: MSG.CHARGER, slug: slug,
       ressources: listerRessources(budget),
       rubriques: listerRubriques(),
       typesConfig: typesRessourceConfig(langue),
@@ -631,7 +630,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     }
     if (msg.type === MSG.ENREGISTRER) {
       const resultat = await enregistrer(msg.ressources, msg.rubriques);
-      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto, correspondances: resultat.correspondances });
+      repondrePanneau(panneau, { type: MSG.ENREGISTRE, auto: !!msg.auto, correspondances: resultat.correspondances });
       if (resultat.total > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [resultat.total]), 5000); }
       // L'aperçu ouvert (bouton « Aperçu du PDF ») se rafraîchit tout seul — jamais attendu :
       // une compilation ne doit pas retarder la confirmation d'enregistrement. Rien à faire
@@ -653,7 +652,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     // enregistrer() qui la vide, pas ce message (voir le formulaire).
     if (msg.type === MSG.RETIRER) {
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
+        repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
         return;
       }
       const id = String(msg.id || '');
@@ -688,7 +687,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     // documentation.js) : id est ici toujours un Uuid Kirby réel.
     if (msg.type === MSG.SUPPRIMER_FICHE_NUMERO) {
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
+        repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
         return;
       }
       const id = String(msg.id || '');
@@ -709,7 +708,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     }
     if (msg.type === MSG.DEPOSER_IMAGE) {
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'image-erreur', id: msg.id, message: T('verrou.refuse') });
+        repondrePanneau(panneau, { type: MSG.IMAGE_ERREUR, id: msg.id, message: T('verrou.refuse') });
         return;
       }
       await deposerImageRessource(panneau, idsImagesEnAttente, msg);
@@ -762,7 +761,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     // complet — la sélection de numéros du filtre, côté webview, n'a pas à être reconstruite.
     if (msg.type === MSG.RESERVOIR_FILTRE) {
       repondrePanneau(panneau, {
-        type: 'reservoir', avecIgnorees: !!msg.avecIgnorees,
+        type: MSG.RESERVOIR, avecIgnorees: !!msg.avecIgnorees,
         entrees: listerReservoirEntrees(!!msg.avecIgnorees)
       });
       return;

@@ -50,7 +50,7 @@ const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
 const REIMPORTER_WSL = toolkitWsl('pipeline', 'reimporter.py');
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
-const { TEXTES_COCKPIT, T, TL, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
+const { TEXTES_COCKPIT, T, TL, TP, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
 // ---- Protocole de messages hôte <-> webviews -> lib/messages.js -----------------
 const { MSG } = require('./lib/messages');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
@@ -418,9 +418,8 @@ function profilOuvrage_detecter() {
   return trouve;
 }
 
-// Le profil du dossier ouvert, ou celui de la revue par défaut : les gestes écrits avant
-// le moteur livre continuent de se comporter comme avant tant qu'aucun livre n'est ouvert.
-function profilCourant() { return session.profilOuvrage() || profils.profilPour('revue'); }
+// Le profil du dossier ouvert, revue par défaut (lib/profil.js#courant).
+function profilCourant() { return profils.courant(); }
 
 // Le dossier des unités de texte du profil actif : « articles » pour un numéro,
 // « chapitres » pour un livre. C'est la seule façon d'écrire ce chemin dans l'arbre.
@@ -719,7 +718,7 @@ function ecrireSousMain(panneau, racine, chemin, ecrire) {
 // première écriture.
 function annoncerMain(panneau, racine, chemin) {
   const refus = mainCoedition(panneau, racine, chemin, {});
-  if (refus) { repondrePanneau(panneau, { type: 'erreur', message: refus.message }); }
+  if (refus) { repondrePanneau(panneau, { type: MSG.ERREUR, message: refus.message }); }
   return refus;
 }
 
@@ -808,7 +807,7 @@ function articlesSansDoi(racine, slugs, opts) {
   //   vide n'est donc pas une précaution, c'est la vérité du modèle — et c'est ce qui évite
   //   que refusDeplacement() invente une « frontière DOI » au milieu d'un sommaire de
   //   livre, refusant un déplacement avec un message qui ne voudrait rien dire.
-  if (profilCourant().cle === 'livre') { return new Set(); }
+  if (!profilCourant().capacites.doi) { return new Set(); }
   const o = opts || {};
   const jeu = new Set(o.voulus || slugsSansDoiVoulu(racine));
   if (!slugs || slugs.length === 0) { return jeu; }
@@ -931,7 +930,8 @@ class FournisseurRevue {
       // ⚠ Pas de section « Actualité » pour un livre, pour la même raison que les
       //   traductions : la Documentation est une rubrique de revue (« Actualité et
       //   ressources » / « News & Ressourcen »), elle n'a pas d'équivalent dans un ouvrage.
-      if (profilCourant().cle === 'revue') {
+      const cap = profilCourant().capacites;
+      if (cap.documentation) {
         // Le badge compte les blocs de la page de Documentation — ses fiches et ses
         // rubriques réunies — et non les articles : il n'y en a qu'un, et il ne se liste
         // plus dans l'arbre.
@@ -939,7 +939,7 @@ class FournisseurRevue {
         sections.push(this._section('actualite', T('arbre.actualite'), 'megaphone',
           a > 0 ? '(' + a + ')' : undefined));
       }
-      if (profilCourant().cle === 'revue') {
+      if (cap.traductions) {
         sections.push(this._section('traductions', T('arbre.traductions'), 'globe',
           t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined));
       }
@@ -981,7 +981,7 @@ class FournisseurRevue {
   // d'une revue, la section des unités sinon. Un slug inconnu répond la section des unités,
   // qui est le cas ordinaire.
   sectionDeSlug(slug) {
-    if (profilCourant().cle === 'revue' && this.estActualite(slug)) {
+    if (profilCourant().capacites.documentation && this.estActualite(slug)) {
       return this._section('actualite', T('arbre.actualite'), 'megaphone', undefined);
     }
     return this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined);
@@ -990,7 +990,7 @@ class FournisseurRevue {
   // La catégorie d'accordéon à déplier pour ce slug — pendant de sectionDeSlug(), pour les
   // appelants qui n'ont besoin que du nom (focaliserUnite).
   categorieDeSlug(slug) {
-    return (profilCourant().cle === 'revue' && this.estActualite(slug))
+    return (profilCourant().capacites.documentation && this.estActualite(slug))
       ? 'actualite' : categorieUnites();
   }
 
@@ -1007,11 +1007,11 @@ class FournisseurRevue {
   // que le slug.
   _repartirUnites() {
     if (!this.racine) { return { unites: [], actualite: [] }; }
-    const revue = profilCourant().cle === 'revue';
+    const documentation = profilCourant().capacites.documentation;
     const unites = [], actualite = [];
     this.listerArticles().forEach((slug) => {
       const entree = { slug: slug };
-      if (revue && this.estActualite(slug)) { actualite.push(entree); }
+      if (documentation && this.estActualite(slug)) { actualite.push(entree); }
       else { unites.push(entree); }
     });
     return { unites: unites, actualite: actualite };
@@ -4298,7 +4298,7 @@ const VUES = {
 // et la page ne remarque donc jamais un focus périmé.
 function envoyerVue(panneau, fournisseur, type, focus) {
   const charge = VUES[type].charge(fournisseur);
-  const valeurs = Object.assign({ type: 'valeurs' }, charge, {
+  const valeurs = Object.assign({ type: MSG.VALEURS }, charge, {
     accent: lireCouleurAccent(fournisseur.racine), i18n: textesVueEnsemble()
   });
   if (focus) { valeurs.focus = focus; }
@@ -4371,7 +4371,7 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type, item) {
     catch (e) { dit = T('err.commande', [e && e.message ? e.message : String(e)]); }
     if (panneauxVue.get(type) !== panneau) { return; }
     envoyer(panneau);
-    if (dit) { repondrePanneau(panneau, { type: 'etat', message: dit }); }
+    if (dit) { repondrePanneau(panneau, { type: MSG.ETAT, message: dit }); }
   });
   panneau.webview.html = htmlVueEnsemble(crypto.randomBytes(16).toString('hex'), charge.titre);
 }
@@ -4475,11 +4475,8 @@ function textesArticles() {
     // `listeVide` et non `rien` : `rien` est déjà « Aucune modification » dans la table du
     // formulaire du numéro, que cette table étend.
     listeVide: T('art.vue.rien'),
-    tachesTitre: T('art.taches.titre'),
-    // Le titre compact de l'encadré des tâches, sur chaque carte — à ne pas
-    // confondre avec tachesTitre ci-dessus, celui de la modale de réglage des intitulés.
+    // Le titre compact de l'encadré des tâches, sur chaque carte.
     tachesEntete: T('art.taches.entete'),
-    tachesAide: T('art.taches.aide'),
     tachesFr: T('art.taches.fr'),
     tachesDe: T('art.taches.de'),
     tachesAjouter: T('art.taches.ajouter'),
@@ -4497,18 +4494,17 @@ function textesArticles() {
     // geste, en second bouton, et partage le même état.
     metaVoir: T('art.meta.voir'),
     metaCacher: T('art.meta.cacher'),
-    // La case « pas de DOI » : le seul texte que la page écrit elle-même. Les intitulés et
-    // les valeurs de l'aperçu, eux, arrivent tout faits dans chaque ligne — c'est l'hôte qui
-    // sait dire une licence ou une rubrique.
-    doiCase: T('art.doi.case'),
-    doiCaseTip: T('art.doi.case.tip'),
     revues: { revue: T('meta.revue.revue'), zeitschrift: T('meta.revue.zeitschrift') }
   });
+  // La case « pas de DOI » : le seul texte que la page écrit elle-même, et seulement là où
+  // l'unité reçoit un DOI. Les intitulés et les valeurs de l'aperçu, eux, arrivent tout
+  // faits dans chaque ligne — c'est l'hôte qui sait dire une licence ou une rubrique.
+  if (profilCourant().capacites.doi) {
+    Object.assign(texte, { doiCase: T('art.doi.case'), doiCaseTip: T('art.doi.case.tip') });
+  }
   if (livre) {
     Object.assign(texte, {
       estLivre: true,
-      numeroSection: T('chap.numero.section'),
-      listeSection: T('chap.liste.section'),
       ouvrir: T('chap.ouvrir'),
       ouvrirTip: T('chap.ouvrir.tip'),
       listeVide: T('chap.vue.rien')
@@ -5300,7 +5296,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   const livre = profilCourant().cle === 'livre';
   const envoyer = (panneau, avecCouverture) => {
     const charge = livre ? chargeChapitres(fournisseur) : chargeArticles(fournisseur);
-    repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge,
+    repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS }, charge,
       livre ? metadonneesHote.chargeLivre(racine) : chargeNumero(racine, avecCouverture),
       { accent: lireCouleurAccent(racine) }));
     // L'autocomplétion des responsables du livre, comme sur la page « Métadonnées du livre ».
@@ -5366,9 +5362,9 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     // Une case cochée ne fait reposer que sa pastille : « valeurs » reconstruirait la liste
     // entière, et le focus clavier quitterait la case qu'on vient d'utiliser. Dans un outil
     // dont le sujet est l'accessibilité, cela compte.
-    if (avancement) { repondrePanneau(panneau, Object.assign({ type: 'avancement' }, avancement)); }
+    if (avancement) { repondrePanneau(panneau, Object.assign({ type: MSG.AVANCEMENT }, avancement)); }
     else { envoyer(panneau); }
-    if (dit) { repondrePanneau(panneau, { type: 'etat', message: dit }); }
+    if (dit) { repondrePanneau(panneau, { type: MSG.ETAT, message: dit }); }
   });
   panneau.webview.html = htmlArticles(crypto.randomBytes(16).toString('hex'));
 }
@@ -5584,7 +5580,7 @@ function groupesPourWebview(etat) {
 function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
   const etat = etatTraduction(fournisseur.racine, slug);
   repondrePanneau(panneau, {
-    type: 'valeurs',
+    type: MSG.VALEURS,
     slug: slug,
     langueSource: etat.source,
     groupes: groupesPourWebview(etat),
@@ -5684,7 +5680,7 @@ function ouvrirDeepl(panneau, msg) {
   const vers = LANGUES_META.indexOf(String(msg.cible || '')) !== -1 ? msg.cible : 'de';
   if (texte === '') { return; }
   if (texte.length > LONGUEUR_MAX_DEEPL) {
-    repondrePanneau(panneau, { type: 'erreur', message: T('trad.deepl.troplong') });
+    repondrePanneau(panneau, { type: MSG.ERREUR, message: T('trad.deepl.troplong') });
     return;
   }
   const url = 'https://www.deepl.com/translator#' + de + '/' + vers + '/' + encodeURIComponent(texte);
@@ -5791,14 +5787,14 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   if (panneauTraduction) {
     panneauTraduction.reveal(vscode.ViewColumn.One);
     if (vise.slug === slugTraduction) {
-      if (vise.cle) { repondrePanneau(panneauTraduction, { type: 'focus', cle: vise.cle }); }
+      if (vise.cle) { repondrePanneau(panneauTraduction, { type: MSG.FOCUS, cle: vise.cle }); }
       montrerApercu(vise.slug);
       return;
     }
     if (traductionModifiee) {
       // Le panneau porte un ● : le changement d'article se joue à la réponse.
       rechargementTraduction = vise;
-      repondrePanneau(panneauTraduction, { type: 'demande-rechargement' });
+      repondrePanneau(panneauTraduction, { type: MSG.DEMANDE_RECHARGEMENT });
       return;
     }
     slugTraduction = vise.slug;
@@ -5837,7 +5833,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     if (msg.type === MSG.MODIFIE) { traductionModifiee = !!msg.modifie; return; }
     if (msg.type === MSG.COPIER) {
       await vscode.env.clipboard.writeText(String(msg.texte || ''));
-      repondrePanneau(panneau, { type: 'copie' });
+      repondrePanneau(panneau, { type: MSG.COPIE });
       return;
     }
     if (msg.type === MSG.DEEPL) { ouvrirDeepl(panneau, msg); return; }
@@ -5851,7 +5847,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       if (choix === 'annuler') { return; }         // Annuler : on reste sur l'article
       if (choix === 'enregistrer') {
         const res = enregistrerTraduction(fournisseur, msg, panneau);
-        if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
+        if (!res.ok) { repondrePanneau(panneau, { type: MSG.ERREUR, message: res.message }); return; }
         vscode.window.setStatusBarMessage(T('statut.traduction', [msg.slug]), 3000);
         if (rafraichirTout) { rafraichirTout(); }
       }
@@ -5867,12 +5863,12 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     }
     const res = enregistrerTraduction(fournisseur, msg, panneau);
     if (!res.ok) {
-      repondrePanneau(panneau, { type: 'erreur', message: res.message });
+      repondrePanneau(panneau, { type: MSG.ERREUR, message: res.message });
       // Périmé : ce que le panneau montre n'est plus ce que les fichiers contiennent.
       if (res.recharger) { envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null); }
       return;
     }
-    repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
+    repondrePanneau(panneau, { type: MSG.ENREGISTRE, auto: !!msg.auto });
     traductionModifiee = false;
     if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000); }
     if (rafraichirTout) { rafraichirTout(); }
@@ -6244,7 +6240,7 @@ function lireArticlesImport(fournisseur) {
 function envoyerValeursImportVerif(panneau, fournisseur, extra) {
   const langue = langueRevue(fournisseur.racine);
   repondrePanneau(panneau, Object.assign({
-    type: 'valeurs',
+    type: MSG.VALEURS,
     articles: lireArticlesImport(fournisseur),
     langue: langue,
     accent: lireCouleurAccent(fournisseur.racine),
@@ -6269,15 +6265,15 @@ async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
     msg.nomFichier, msg.donneesBase64);
   if (res.etat === 'annule') {
-    repondrePanneau(panneau, { type: 'image-annulee', slug: slug, relatif: relatif });
+    repondrePanneau(panneau, { type: MSG.IMAGE_ANNULEE, slug: slug, relatif: relatif });
     return;
   }
   if (res.etat === 'erreur') {
-    repondrePanneau(panneau, { type: 'image-erreur', slug: slug, relatif: relatif, message: res.message });
+    repondrePanneau(panneau, { type: MSG.IMAGE_ERREUR, slug: slug, relatif: relatif, message: res.message });
     return;
   }
   repondrePanneau(panneau, {
-    type: 'image-remplacee', slug: slug, relatif: relatif,
+    type: MSG.IMAGE_REMPLACEE, slug: slug, relatif: relatif,
     description: decrireImage(path.join(fournisseur.racine, dossierUnites(), slug, 'media', relatif))
   });
 }
@@ -6321,7 +6317,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
           const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif, panneau);
           const refusCartes = messageCartes(res);
           if (refusCartes) {
-            repondrePanneau(panneau, { type: 'erreur', message: refusCartes });
+            repondrePanneau(panneau, { type: MSG.ERREUR, message: refusCartes });
             return;                                                // échec : on reste
           }
           vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
@@ -6339,9 +6335,9 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif, panneau);
     const refusCartes = messageCartes(res);
     if (refusCartes) {
-      repondrePanneau(panneau, { type: 'erreur', message: refusCartes });
+      repondrePanneau(panneau, { type: MSG.ERREUR, message: refusCartes });
     } else {
-      repondrePanneau(panneau, { type: 'enregistre', n: res.n, auto: !!msg.auto });
+      repondrePanneau(panneau, { type: MSG.ENREGISTRE, n: res.n, auto: !!msg.auto });
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
@@ -6369,10 +6365,10 @@ function REGL_LIBELLES() {
   themeSysteme: T('regl.theme.systeme'), themeClair: T('regl.theme.clair'), themeSombre: T('regl.theme.sombre'),
   zoom: T('regl.zoom'),
   zoomNormal: T('regl.zoom.normal'), zoomGrand: T('regl.zoom.grand'), zoomTresGrand: T('regl.zoom.tresgrand'),
-  policeMd: T('regl.policemd'),
+  policeMd: TP('regl.policemd', profilCourant()),
   apercu: T('regl.apercu'),
   apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'),
-  assets: T('regl.assets'), assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'),
+  assets: TP('regl.assets', profilCourant()), assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'),
   cmyk: T('regl.cmyk'), cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'),
   warnings: T('regl.warnings'),
   warningsComplets: T('regl.warnings.complets'), warningsReduits: T('regl.warnings.reduits'),
@@ -6698,7 +6694,7 @@ let panneauReglages = null;
 // une donnée absente la laisse masquée, titre compris.
 function messageValeursReglages() {
   const msg = {
-    type: 'valeurs', valeurs: lireReglagesActuels(),
+    type: MSG.VALEURS, valeurs: lireReglagesActuels(),
     suggInterface: compterSuggestionsInterface(),
     avertLangue: avertissementLangue(), proteges: etatProteges()
   };
@@ -6782,7 +6778,7 @@ function ouvrirReglages(rafraichirTout) {
     BLOC_DE_MSG[MSG.TACHES_ENREGISTRER] = CLE_TACHES;
     if (BLOC_DE_MSG[msg.type] && !protegesDeverrouilles) {
       repondrePanneau(panneau, {
-        type: 'erreur', bloc: BLOC_DE_MSG[msg.type], message: T('regl.proteges.refus')
+        type: MSG.ERREUR, bloc: BLOC_DE_MSG[msg.type], message: T('regl.proteges.refus')
       });
       return;
     }
@@ -6795,9 +6791,9 @@ function ouvrirReglages(rafraichirTout) {
         vscode.window.showErrorMessage(message);
         // Sinon l'auto-enregistrement du panneau (enVol) reste bloqué : plus rien ne
         // s'enregistre jamais après le premier échec.
-        repondrePanneau(panneau, { type: 'erreur', bloc: 'ojs', message: message });
+        repondrePanneau(panneau, { type: MSG.ERREUR, bloc: 'ojs', message: message });
       } else {
-        repondrePanneau(panneau, { type: 'enregistre', bloc: 'ojs' });
+        repondrePanneau(panneau, { type: MSG.ENREGISTRE, bloc: 'ojs' });
         // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
         // doit le dire tout de suite, pas au prochain rechargement du panneau.
         repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
@@ -6812,16 +6808,16 @@ function ouvrirReglages(rafraichirTout) {
       if (avant === null && fs.existsSync(CONFIG_POSTE)) {
         const message = T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
         vscode.window.showErrorMessage(message);
-        repondrePanneau(panneau, { type: 'erreur', bloc: 'biblio', message: message });
+        repondrePanneau(panneau, { type: MSG.ERREUR, bloc: 'biblio', message: message });
         return;
       }
       const erreur = ecrireConfigPoste(configAvecTitresBiblio(avant, msg.titres || {}));
       if (erreur) {
         const message = T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]);
         vscode.window.showErrorMessage(message);
-        repondrePanneau(panneau, { type: 'erreur', bloc: 'biblio', message: message });
+        repondrePanneau(panneau, { type: MSG.ERREUR, bloc: 'biblio', message: message });
       } else {
-        repondrePanneau(panneau, { type: 'enregistre', bloc: 'biblio' });
+        repondrePanneau(panneau, { type: MSG.ENREGISTRE, bloc: 'biblio' });
         // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
         // doit le dire tout de suite, pas au prochain rechargement du panneau.
         repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
@@ -6837,7 +6833,7 @@ function ouvrirReglages(rafraichirTout) {
       if (avant === null && fs.existsSync(CONFIG_POSTE)) {
         const message = T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
         vscode.window.showErrorMessage(message);
-        repondrePanneau(panneau, { type: 'erreur', bloc: CLE_TACHES, message: message });
+        repondrePanneau(panneau, { type: MSG.ERREUR, bloc: CLE_TACHES, message: message });
         return;
       }
       let cfg = avant;
@@ -6850,10 +6846,10 @@ function ouvrirReglages(rafraichirTout) {
       if (erreur) {
         const message = T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]);
         vscode.window.showErrorMessage(message);
-        repondrePanneau(panneau, { type: 'erreur', bloc: CLE_TACHES, message: message });
+        repondrePanneau(panneau, { type: MSG.ERREUR, bloc: CLE_TACHES, message: message });
         return;
       }
-      repondrePanneau(panneau, { type: 'enregistre', bloc: CLE_TACHES });
+      repondrePanneau(panneau, { type: MSG.ENREGISTRE, bloc: CLE_TACHES });
       // Les identifiants viennent d'être dérivés pour les tâches neuves : la page doit les
       // recevoir, sinon la rangée suivante en fabriquerait un second sur le même intitulé.
       repondrePanneau(panneau, { type: MSG.VALEURS, valeurs: lireReglagesActuels(),
@@ -7159,7 +7155,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
     noterLectureCoedition(panneau, fournisseur.racine, chemin);
     const modele = analyserTable(html);
     panneau.webview.postMessage({
-      type: 'charger', modele: modele, disposition: disposition(modele),
+      type: MSG.CHARGER, modele: modele, disposition: disposition(modele),
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE,
       i18n: textesTable(),
@@ -7189,7 +7185,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
         ? T('table.image.format', [path.basename(source)])
         : T('err.copie', [path.basename(source), String((e && e.message) || e)]);
       vscode.window.showErrorMessage(message);
-      panneau.webview.postMessage({ type: 'erreur', message: message });
+      panneau.webview.postMessage({ type: MSG.ERREUR, message: message });
       return;
     }
     vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [copie.nom]), 4000);
@@ -7207,8 +7203,8 @@ async function ouvrirEditeurTable(fournisseur, item) {
       if (choix !== T('table.suppr.bouton')) { return; }
     }
     const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
-    if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
-    panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res),
+    if (res && res.erreur) { panneau.webview.postMessage({ type: MSG.ERREUR, message: T(res.erreur) }); return; }
+    panneau.webview.postMessage({ type: MSG.CHARGER, modele: res, disposition: disposition(res),
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE });
   };
@@ -7251,7 +7247,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
     if (msg.type === MSG.RESTAURER) {
       // La pile d'annulation vit dans la webview ; l'hôte calcule la disposition.
       const m = normaliserModele(msg.modele);
-      panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m),
+      panneau.webview.postMessage({ type: MSG.CHARGER, modele: m, disposition: disposition(m),
         accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE });
       return;
@@ -7274,7 +7270,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
         // La webview vient d'être créée, son script n'écoute pas encore.
         setTimeout(() => {
           if (!session.panneauApercuHtml()) { return; }
-          try { session.panneauApercuHtml().webview.postMessage({ type: 'surligner', ligne: ligne, mot: '' }); }
+          try { session.panneauApercuHtml().webview.postMessage({ type: MSG.SURLIGNER, ligne: ligne, mot: '' }); }
           catch (e) { /* aperçu refermé entre-temps */ }
         }, 400);
       }
@@ -7292,7 +7288,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
         if (choix === 'annuler') { return; }                       // Annuler : on reste
         if (choix === 'enregistrer') {
           const refus = enregistrer(msg.modele);
-          if (refus) { panneau.webview.postMessage({ type: 'erreur', message: refus.message }); return; }
+          if (refus) { panneau.webview.postMessage({ type: MSG.ERREUR, message: refus.message }); return; }
         }
       }
       if (item.slug) { await ouvrirArticle(fournisseur, item.slug); }
@@ -7302,12 +7298,12 @@ async function ouvrirEditeurTable(fournisseur, item) {
     if (msg.type === MSG.ENREGISTRER) {
       const refus = enregistrer(msg.modele, !!msg.auto);
       if (refus) {
-        panneau.webview.postMessage({ type: 'erreur', message: refus.message });
+        panneau.webview.postMessage({ type: MSG.ERREUR, message: refus.message });
         // Périmé : la grille à l'écran n'est plus celle du fichier, elle repart du disque.
         if (refus.code === 'perime') { charger(); }
         return;
       }
-      panneau.webview.postMessage({ type: 'enregistre', auto: !!msg.auto });
+      panneau.webview.postMessage({ type: MSG.ENREGISTRE, auto: !!msg.auto });
       return;
     }
     console.warn('éditeur de tableau : type de message inconnu', msg.type);
@@ -7658,10 +7654,10 @@ function activate(context) {
     // l'ouverture du formulaire de Documentation — parce que le pipeline refuse désormais de
     // compiler une Documentation sans id. Un livre n'a pas de Documentation (buch.yaml n'a
     // pas besoin de cette clé) : on ne la pose que sur une revue.
-    if (racine && profilCourant().cle === 'revue') { poserIdNumeroEtAvertirDoublon(racine); }
-    // Les deux clés se posent à chaque rafraîchissement, celle du profil actif à vrai et
-    // l'autre à faux. Ne poser que la première laisserait szh.estRevue vrai après le
-    // passage à un livre, et les deux vues latérales s'afficheraient ensemble.
+    if (racine && profilCourant().capacites.documentation) { poserIdNumeroEtAvertirDoublon(racine); }
+    // Les clés de profil et de capacité (szh.peut.*) se posent toutes à chaque
+    // rafraîchissement, à vrai ou à faux. Ne poser que les vraies laisserait szh.estRevue
+    // vrai après le passage à un livre, et les deux vues latérales s'afficheraient ensemble.
     const cles = profils.contextes(session.profilOuvrage());
     for (const nom of Object.keys(cles)) {
       vscode.commands.executeCommand('setContext', nom, !!racine && cles[nom]);
@@ -7723,7 +7719,7 @@ function activate(context) {
       return supprimerCopieConflit(chemin ? copieConflitPour(chemin) : null, true);
     }),
     // Le SourceControl est créé à la demande : il faut quand même le défaire à l'extinction.
-    { dispose: () => { if (scmConflits) { scmConflits.dispose(); scmConflits = null; } } },
+    { dispose: () => cycleVie.libererScm() },
     // `item` porte { slug, focus } quand la commande vient d'un bouton de constat (voir
     // ouvrirCible) : le slug ne sert à rien ici (un seul numéro), mais focus nomme un champ
     // du formulaire — lu par ouvrirMetadonnees, qui le fait suivre jusqu'à la webview.
@@ -8029,7 +8025,7 @@ function activate(context) {
 // ni traductions.
 async function proposerTutoriel(context) {
   try {
-    if (profilCourant().cle === 'livre') { return; }
+    if (!profilCourant().capacites.tutoriel) { return; }
     if (context.globalState.get(CLE_TUTORIEL_VU)) { return; }
     await context.globalState.update(CLE_TUTORIEL_VU, true);
     const ouvrir = T('tuto.invite.bouton');

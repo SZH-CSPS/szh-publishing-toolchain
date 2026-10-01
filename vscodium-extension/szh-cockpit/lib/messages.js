@@ -48,6 +48,8 @@ const MSG = Object.freeze({
   TRADUIRE_DANS_NUMERO: 'traduireDansNumero', TIRER_DANS_NUMERO: 'tirerDansNumero',
   MARQUER_A_TRADUIRE: 'marquerATraduire', IGNORER_TRADUCTION: 'ignorerTraduction',
   ANNULER_DECISION: 'annulerDecisionTraduction', RESERVOIR_FILTRE: 'reservoirFiltre',
+  // RESERVOIR : la réponse de l'hôte avec le contenu de l'onglet Réservoir.
+  RESERVOIR: 'reservoir',
   // Onglet Archive : TOUTE la bibliothèque de production, lue à la demande (jamais à
   // l'ouverture du panneau — des centaines de fiches sur OneDrive). ARCHIVE_CHARGER : la
   // page le demande la première fois qu'on ouvre l'onglet ; ARCHIVE_ACTUALISER : le bouton

@@ -38,11 +38,9 @@ let ctx = {
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// Le dossier des unités de texte du profil actif — même calcul que dossierUnites()
-// dans extension.js, mais tiré directement de session.profilOuvrage() : ce module n'a pas
-// à recevoir ce rappel-là, lib/profil.js suffit.
+// Le dossier des unités de texte du profil actif (lib/profil.js#courant).
 function dossierUnites() {
-  return (session.profilOuvrage() || profils.profilPour('revue')).unites.dossier;
+  return profils.courant().unites.dossier;
 }
 
 async function fermerApercuCourant(saufUri) {
@@ -150,7 +148,7 @@ function pousserDefilementVersApercu(ligne0Based) {
   if (session.minuteurHoteVersApercu()) { clearTimeout(session.minuteurHoteVersApercu()); }
   session.poserMinuteurHoteVersApercu(setTimeout(() => {
     if (!session.panneauApercuHtml()) { return; }
-    try { session.panneauApercuHtml().webview.postMessage({ type: 'scroll', ligne: ligne0Based + 1 }); }
+    try { session.panneauApercuHtml().webview.postMessage({ type: MSG.SCROLL, ligne: ligne0Based + 1 }); }
     catch (e) { /* webview fermée entre-temps */ }
   }, 35));
 }
@@ -166,7 +164,7 @@ function pousserSurlignageVersApercu(fournisseur) {
     let mot = '';
     try { mot = jetonSource(ed.document.lineAt(pos.line).text, pos.character); }
     catch (e) { mot = ''; }
-    try { session.panneauApercuHtml().webview.postMessage({ type: 'surligner', ligne: pos.line + 1, mot: mot }); }
+    try { session.panneauApercuHtml().webview.postMessage({ type: MSG.SURLIGNER, ligne: pos.line + 1, mot: mot }); }
     catch (e) { /* webview fermée entre-temps */ }
   }, 60));
 }
@@ -286,7 +284,7 @@ function echapperTexte(valeur) {
 // fichier), celui de l'article pour une revue (out/<slug>/<slug>.apercu.html — outUnite y
 // est le dossier de sortie de l'article, pas le fichier).
 function cheminApercuHtml(racine, slug) {
-  const profil = session.profilOuvrage() || profils.profilPour('revue');
+  const profil = profils.courant();
   const c = profils.chemins(profil, racine, slug);
   return profil.cle === 'livre' ? c.outUnite : path.join(c.outUnite, slug + '.apercu.html');
 }
@@ -295,7 +293,7 @@ function cheminApercuHtml(racine, slug) {
 // article — un chapitre de livre n'a pas de HTML complet à lui, seulement son fragment et
 // son aperçu, voir profil.js.
 function cheminHtmlComplet(racine, slug) {
-  const profil = session.profilOuvrage() || profils.profilPour('revue');
+  const profil = profils.courant();
   if (profil.cle === 'livre') { return null; }
   return path.join(profils.chemins(profil, racine, slug).outUnite, slug + '.html');
 }

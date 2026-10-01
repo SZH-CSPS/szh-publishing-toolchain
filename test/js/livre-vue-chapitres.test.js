@@ -356,8 +356,13 @@ test('vue des chapitres (page) : formulaire du livre, intitulés du livre, une c
   visiter(page.parId.numero);
   assert.ok(cles.indexOf('maquette') !== -1 && cles.indexOf('ouvrage') !== -1,
     'le formulaire monté n’est pas celui du livre : ' + cles.join(', '));
-  assert.strictEqual(page.parId.titreListe.textContent, txt.listeSection);
-  assert.strictEqual(page.parId.titreNumero.textContent, txt.numeroSection);
+  // Les intitulés du gabarit prennent leur variante .livre (lib/i18n.js, TP).
+  const { TP } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+  const { construireHtml } = require(path.join(COCKPIT, 'lib', 'webviews', 'util.js'));
+  const html = construireHtml('articles', 'n', {});
+  assert.ok(html.includes('>' + TP('art.liste.section', 'livre') + '<'), 'intitulé de la liste sans sa variante livre');
+  assert.ok(html.includes('>' + TP('art.numero.section', 'livre') + '<'), 'intitulé du formulaire sans sa variante livre');
+  assert.doesNotMatch(html, /du numéro</);
   assert.strictEqual(page.compter('.szh-carte'), 2);
   assert.strictEqual(page.compter('.apercu-doi'), 0, 'case « pas de DOI » sur un chapitre');
 });
@@ -378,7 +383,7 @@ test('vue des chapitres : dépôt d’illustration et 4e de couverture sont rela
   assert.match(src, /await metadonneesHote\.messageLivre\(/);
   assert.match(src, /if \(livre\) \{ envoyerAuteursConnus\(panneau, racine\); \}/);
   const fiches = fs.readFileSync(path.join(COCKPIT, 'media', '_fiches.js'), 'utf8');
-  assert.match(fiches, /ESTLIVRE && textes\[c\]\[0\] !== 'resume' && TXT\.brAide/,
+  assert.match(fiches, /CAP\.titreEnLignes === true && textes\[c\]\[0\] !== 'resume' && TXT\.brAide/,
     'l’aide « // » manque sous titre et sous-titre d’un chapitre');
   const pkg = require(path.join(COCKPIT, 'package.json'));
   assert.ok(!pkg.contributes.configurationDefaults['triggerTaskOnSave.tasks']['Aperçu / Export PDF'].includes('**/*.md'));

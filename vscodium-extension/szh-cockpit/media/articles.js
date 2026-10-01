@@ -62,13 +62,6 @@
   var ctlEtat = null;
 
   var estLivre = TXT.estLivre === true;
-  if (estLivre) {
-    // Les deux intitulés de la page viennent de l'hôte : le gabarit porte ceux du numéro.
-    var intituleNumero = document.getElementById('titreNumero');
-    if (intituleNumero) { intituleNumero.textContent = TXT.numeroSection || ''; }
-    var intituleListe = document.getElementById('titreListe');
-    if (intituleListe) { intituleListe.textContent = TXT.listeSection || ''; }
-  }
   var numero = (estLivre ? SZH.formulaireLivre : SZH.formulaireNumero)({
     conteneur: document.getElementById('numero'),
     api: api,

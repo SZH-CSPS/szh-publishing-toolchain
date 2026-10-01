@@ -61,11 +61,9 @@ let ctx = {
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// Le dossier des unités de texte du profil actif — même calcul que dossierUnites() dans
-// extension.js, mais tiré directement de session.profilOuvrage() : ce module n'a pas à le
-// recevoir en rappel, lib/profil.js suffit (comme lib/apercu.js et lib/import-hote.js).
+// Le dossier des unités de texte du profil actif (lib/profil.js#courant).
 function dossierUnites() {
-  return (session.profilOuvrage() || profils.profilPour('revue')).unites.dossier;
+  return profils.courant().unites.dossier;
 }
 
 function cheminMeta(racine, slug) {
@@ -488,7 +486,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     // Pas de rechargement : il écraserait des saisies non encore écrites. Seule la carte
     // visée est amenée à l'écran.
     existant.reveal(vscode.ViewColumn.One);
-    if (focus !== '') { repondrePanneau(existant, { type: 'focaliser', relatif: focus }); }
+    if (focus !== '') { repondrePanneau(existant, { type: MSG.FOCALISER, relatif: focus }); }
     return;
   }
   // Le formulaire prend toute la place ; sans cela la webview s'ouvre derrière un PDF.
@@ -524,7 +522,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     const texteMd = await texteArticle();
     const budget = { reste: BUDGET_APERCUS_MEDIA };
     repondrePanneau(cible, Object.assign({
-      type: 'charger', slug: slug,
+      type: MSG.CHARGER, slug: slug,
       medias: listerMediasArticle(fournisseur, slug, texteMd, budget),
       grilles: listerGrillesArticle(fournisseur, slug, texteMd),
       grilleMax: GRILLE_MAX, grilleAuto: GRILLE_AUTO,
@@ -545,7 +543,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     try { doc = await vscode.workspace.openTextDocument(md); }
     catch (e) {
       repondrePanneau(panneau,
-        { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+        { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), e.message]) });
       return false;
     }
     if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
@@ -554,12 +552,12 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
+        repondrePanneau(panneau, { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return false;
       }
       await doc.save();
     } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+      repondrePanneau(panneau, { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), e.message]) });
       return false;
     }
     compilerArticle();
@@ -572,7 +570,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     try { doc = await vscode.workspace.openTextDocument(md); }
     catch (e) {
       repondrePanneau(panneau,
-        { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+        { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), e.message]) });
       return -1;
     }
     const source = doc.getText();
@@ -598,12 +596,12 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
+        repondrePanneau(panneau, { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return -1;
       }
       await doc.save();                              // déclenche la recompilation
     } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+      repondrePanneau(panneau, { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), e.message]) });
       return -1;
     }
     compilerArticle();                               // texte alternatif, légende, crédit, rôle
@@ -626,7 +624,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       // « écriture en vol » : poster « enregistre » par-dessus effacerait l'avertissement
       // et déclarerait propres des cartes dont rien n'a été écrit.
       if (n < 0) { return; }
-      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
+      repondrePanneau(panneau, { type: MSG.ENREGISTRE, auto: !!msg.auto });
       if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('medias.statut.enregistrees', [n]), 5000); }
       return;
     }
@@ -641,11 +639,11 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       // verrouillage du numéro.
       const relatif = String(msg.relatif || '');
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif });
+        repondrePanneau(panneau, { type: MSG.MEDIA_ANNULEE, relatif: relatif });
         return;
       }
       if (!relatifImageValide(relatif)) {
-        repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif });
+        repondrePanneau(panneau, { type: MSG.MEDIA_ANNULEE, relatif: relatif });
         return;
       }
       let source = await texteArticle();
@@ -662,9 +660,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
           const res = await ctx.remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
             msg.nomFichier, msg.donneesBase64, { offrirACote: true });
           if (res.etat === 'a-cote') { geste = MSG.AJOUTER_A_COTE; continue; }
-          if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
+          if (res.etat === 'annule') { repondrePanneau(panneau, { type: MSG.MEDIA_ANNULEE, relatif: relatif }); return; }
           if (res.etat === 'erreur') {
-            repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+            repondrePanneau(panneau, { type: MSG.MEDIA_ERREUR, relatif: relatif, message: res.message });
             return;
           }
           // Même nom, même lien : seul le fichier a changé dans media/, et aucun
@@ -672,7 +670,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
           compilerArticle();
           const chemin = path.join(racine, dossierUnites(), slug, 'media', relatif);
           repondrePanneau(panneau, {
-            type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
+            type: MSG.MEDIA_REMPLACE, relatif: relatif, description: decrireImage(chemin),
             apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
             qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
               { reduit: reduireWarningsImpressionActif() })
@@ -687,9 +685,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         const res = await ajouterImageACote(fournisseur, slug, relatif,
           msg.nomFichier, msg.donneesBase64, dansGrille());
         if (res.etat === 'remplacer') { geste = MSG.REMPLACER; continue; }
-        if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
+        if (res.etat === 'annule') { repondrePanneau(panneau, { type: MSG.MEDIA_ANNULEE, relatif: relatif }); return; }
         if (res.etat === 'erreur') {
-          repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+          repondrePanneau(panneau, { type: MSG.MEDIA_ERREUR, relatif: relatif, message: res.message });
           return;
         }
         const reprendreFichier = () => {
@@ -711,7 +709,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
             pleine: T('medias.grille.ajouter.pleine')
           };
           repondrePanneau(panneau, {
-            type: 'media-erreur', relatif: relatif,
+            type: MSG.MEDIA_ERREUR, relatif: relatif,
             message: messages[pose.motif] || T('medias.err.grille.ancre', [relatif])
           });
           return;
@@ -735,7 +733,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) { return; }
       const pose = await insererImageDansArticle(md, relatif);
       if (!pose.ok) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
+        repondrePanneau(panneau, { type: MSG.ERREUR, message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return;
       }
       compilerArticle();
@@ -774,7 +772,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
             pleine: T('medias.grille.ajouter.pleine')
           };
           const dit = messages[resultat.motif];
-          if (dit) { repondrePanneau(panneau, { type: 'erreur', message: dit }); }
+          if (dit) { repondrePanneau(panneau, { type: MSG.ERREUR, message: dit }); }
           return;
         }
         annonce = resultat.legendePerdue
@@ -818,7 +816,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (!retire) { return; }
       compilerArticle();                             // l'image et sa référence sont parties
       if (dansGrille) { focus = ''; await charger(panneau); return; }
-      repondrePanneau(panneau, { type: 'media-retire', relatif: relatif });
+      repondrePanneau(panneau, { type: MSG.MEDIA_RETIRE, relatif: relatif });
       return;
     }
     // La fiche d'auteur·e, éditée dans la modale partagée : écrite tout de suite, puis
@@ -826,12 +824,12 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     if (msg.type === MSG.AUTEUR_ENREGISTRER) {
       const index = Number(msg.index);
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'auteur-erreur', slug: slug, index: index, message: T('verrou.refuse') });
+        repondrePanneau(panneau, { type: MSG.AUTEUR_ERREUR, slug: slug, index: index, message: T('verrou.refuse') });
         return;
       }
       const propre = ecrireAuteur(fournisseur, slug, index, msg.auteur, msg.photoAttendue);
       if (!propre) {
-        repondrePanneau(panneau, { type: 'auteur-erreur', slug: slug, index: index, message: T('auteur.err.decale') });
+        repondrePanneau(panneau, { type: MSG.AUTEUR_ERREUR, slug: slug, index: index, message: T('auteur.err.decale') });
         return;
       }
       if (rafraichirTout) { rafraichirTout(); }     // le PDF porte le nom et la photo
@@ -840,7 +838,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const portrait = listerPortraitsArticle(fournisseur, slug, budget)
         .filter((x) => x.index === index)[0] || null;
       repondrePanneau(panneau, {
-        type: 'auteur-enregistre', slug: slug, index: index, auteur: propre, portrait: portrait
+        type: MSG.AUTEUR_ENREGISTRE, slug: slug, index: index, auteur: propre, portrait: portrait
       });
       return;
     }

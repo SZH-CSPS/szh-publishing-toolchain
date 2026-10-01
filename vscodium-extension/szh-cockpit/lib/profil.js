@@ -11,8 +11,8 @@
 // table de vérité de six lignes, plus les fonctions qui la lisent, pour que chaque
 // hypothèse « revue » du code devienne nommée et testable au lieu d'être littérale.
 //
-// ⚠ Le module est pur : aucun `require('vscode')`. Il ne fait que du chemin et du
-//   `fs.existsSync`, ce qui permet à `node --test` de l'exercer sans hôte. Toute
+// ⚠ Le module est pur : aucun `require('vscode')`. Il ne fait que du chemin, du
+//   `fs.existsSync` et la lecture du profil posé dans lib/session.js, ce qui permet à `node --test` de l'exercer sans hôte. Toute
 //   fonction qui aurait besoin de l'API de l'éditeur n'a pas sa place ici.
 //
 // ⚠ La détection se fait sur la présence du fichier de configuration, jamais sur une
@@ -24,9 +24,14 @@
 
 const fs = require('fs');
 const path = require('path');
+// Seul état lu : le profil posé par l'extension (module pur lui aussi).
+const session = require('./session');
 
 // La table. `contexte` est la clé que l'extension pose pour VS Code (`setContext`) et que
 // les `when` du package.json lisent ; `cible` est la cible make que Ctrl+S déclenche.
+// `capacites` dit quelle fonction existe dans le profil : chacune est posée en contexte
+// `szh.peut.<nom>` (contextes() plus bas) et relue par les `when`, les panneaux, l'arbre
+// et les webviews. Les deux profils portent le même jeu de clés.
 const PROFILS = {
   revue: {
     cle: 'revue',
@@ -36,6 +41,25 @@ const PROFILS = {
     sortie: 'out',
     cible: 'all',
     contexte: 'szh.estRevue',
+    capacites: {
+      doi: true,            // DOI par unité, calculé d'après le rang
+      ojs: true,            // export XML vers OJS
+      traductions: true,    // version jumelle de chaque unité, section « Traductions »
+      documentation: true,  // rubrique Documentation, section « Actualité »
+      pagination: true,     // folios continus du numéro
+      reimport: true,       // réimport d'un Word sur une unité existante
+      envoiAuteur: true,    // envoi de la version finale aux auteur·e·s
+      pdfArticle: true,     // PDF propre à chaque unité, à exporter ou à voir
+      vueFiches: true,      // page « Métadonnées des articles »
+      typeArticle: true,    // type de l'unité dans sa fiche
+      licence: true,        // licence par unité
+      motsCles: true,       // mots-clés edudoc par unité
+      tutoriel: true,       // parcours de démarrage
+      horsSommaire: false,  // case « hors sommaire » d'une unité
+      titreEnLignes: false, // « // » d'un titre montré en lignes
+      sortiesLivre: false,  // imprimeur, couverture, EPUB, web et aperçu du livre entier
+      paletteLivre: false,  // en-tête FALC et code QR dans la mise en forme
+    },
   },
   livre: {
     cle: 'livre',
@@ -45,8 +69,17 @@ const PROFILS = {
     sortie: 'out',
     cible: 'livre',
     contexte: 'szh.estLivre',
+    capacites: {
+      doi: false, ojs: false, traductions: false, documentation: false, pagination: false,
+      reimport: false, envoiAuteur: false, pdfArticle: false, vueFiches: false,
+      typeArticle: false, licence: false, motsCles: false, tutoriel: false,
+      horsSommaire: true, titreEnLignes: true, sortiesLivre: true, paletteLivre: true,
+    },
   },
 };
+
+// Préfixe des clés de contexte des capacités : `szh.peut.doi`, `szh.peut.ojs`…
+const PREFIXE_CAPACITE = 'szh.peut.';
 
 // ⚠ L'ordre compte. Un dossier qui porterait les deux fichiers de configuration est un
 //   accident — une revue dans laquelle quelqu'un a déposé un buch.yaml, ou l'inverse. On
@@ -206,11 +239,21 @@ function contextes(profil) {
   for (const cle of Object.keys(PROFILS)) {
     out[PROFILS[cle].contexte] = !!(actif && actif.cle === cle);
   }
+  for (const c of Object.keys(PROFILS.revue.capacites)) {
+    out[PREFIXE_CAPACITE + c] = !!(actif && actif.capacites[c]);
+  }
   return out;
 }
 
+// Le profil du dossier ouvert, tel que l'extension l'a posé dans lib/session.js, ou celui
+// de la revue tant qu'aucun livre n'est ouvert : les gestes écrits avant le moteur livre
+// gardent ainsi leur comportement.
+function courant() {
+  return session.profilOuvrage() || PROFILS.revue;
+}
+
 module.exports = {
-  PROFILS, ORDRE_DETECTION,
+  PROFILS, ORDRE_DETECTION, PREFIXE_CAPACITE,
   profilPour, detecter, racineDepuis, remonterVers, chemins, pdfLivre, cleLibelle, contextes,
-  vueDeSection, apercuUnite,
+  vueDeSection, apercuUnite, courant,
 };

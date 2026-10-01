@@ -747,11 +747,11 @@
         },
         {
           "command": "szh.reimporterArticle",
-          "when": "szh.estRevue"
+          "when": "szh.peut.reimport"
         },
         {
           "command": "szh.annulerReimport",
-          "when": "szh.estRevue"
+          "when": "szh.peut.reimport"
         },
         {
           "command": "szh.toutExporter",
@@ -759,31 +759,31 @@
         },
         {
           "command": "szh.exporterXml",
-          "when": "szh.estRevue"
+          "when": "szh.peut.ojs"
         },
         {
           "command": "szh.rafraichirPagination",
-          "when": "szh.estRevue"
+          "when": "szh.peut.pagination"
         },
         {
           "command": "szh.exporterArticle",
-          "when": "szh.estRevue"
+          "when": "szh.peut.pdfArticle"
         },
         {
           "command": "szh.livreImprimeur",
-          "when": "szh.estLivre"
+          "when": "szh.peut.sortiesLivre"
         },
         {
           "command": "szh.livreCouverture",
-          "when": "szh.estLivre"
+          "when": "szh.peut.sortiesLivre"
         },
         {
           "command": "szh.livreEpub",
-          "when": "szh.estLivre"
+          "when": "szh.peut.sortiesLivre"
         },
         {
           "command": "szh.livreWeb",
-          "when": "szh.estLivre"
+          "when": "szh.peut.sortiesLivre"
         },
         {
           "command": "szh.archiverVerrouiller",
@@ -807,7 +807,7 @@
         },
         {
           "command": "szh.apercuMetadonnees",
-          "when": "szh.estRevue"
+          "when": "szh.peut.vueFiches"
         },
         {
           "command": "szh.metadonneesArticle",
@@ -819,7 +819,7 @@
         },
         {
           "command": "szh.traduction",
-          "when": "szh.estRevue"
+          "when": "szh.peut.traductions"
         },
         {
           "command": "szh.tutoriel",
@@ -839,7 +839,7 @@
         },
         {
           "command": "szh.envoyerAuteur",
-          "when": "szh.estRevue"
+          "when": "szh.peut.envoiAuteur"
         },
         {
           "command": "szh.monterUnite",
@@ -851,7 +851,7 @@
         },
         {
           "command": "szh.vueTraductions",
-          "when": "szh.estRevue"
+          "when": "szh.peut.traductions"
         },
         {
           "command": "szh.vueWord",
@@ -863,11 +863,11 @@
         },
         {
           "command": "szh.traductionsToutPret",
-          "when": "szh.estRevue"
+          "when": "szh.peut.traductions"
         },
         {
           "command": "szh.envoyerTraduction",
-          "when": "szh.estRevue"
+          "when": "szh.peut.traductions"
         },
         {
           "command": "szh.reglages",
@@ -963,11 +963,11 @@
         },
         {
           "command": "szh.fmt.falcHeader",
-          "when": "szh.estLivre"
+          "when": "szh.peut.paletteLivre"
         },
         {
           "command": "szh.fmt.qrLink",
-          "when": "szh.estLivre"
+          "when": "szh.peut.paletteLivre"
         },
         {
           "command": "szh.lierReference",
@@ -983,7 +983,7 @@
         },
         {
           "command": "szh.apercuLivre",
-          "when": "szh.estLivre"
+          "when": "szh.peut.sortiesLivre"
         }
       ],
       "scm/resourceState/context": [
@@ -1035,14 +1035,14 @@
         },
         {
           "command": "szh.apercuLivre",
-          "when": "view == szhCockpitVue && szh.estLivre",
+          "when": "view == szhCockpitVue && szh.peut.sortiesLivre",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "szh.exporterArticle",
-          "when": "view == szhCockpitVue && viewItem == article && (szh.archivee || szh.verrouillee) && szh.estRevue",
+          "when": "view == szhCockpitVue && viewItem == article && (szh.archivee || szh.verrouillee) && szh.peut.pdfArticle",
           "group": "inline@0"
         },
         {
@@ -1097,22 +1097,22 @@
         },
         {
           "command": "szh.voirPdfArticle",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.estLivre",
+          "when": "view == szhCockpitVue && viewItem == article && szh.peut.pdfArticle",
           "group": "navigation@3"
         },
         {
           "command": "szh.envoyerAuteur",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.estLivre",
+          "when": "view == szhCockpitVue && viewItem == article && szh.peut.envoiAuteur",
           "group": "navigation@4"
         },
         {
           "command": "szh.reimporterArticle",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.estRevue",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.peut.reimport",
           "group": "reimport@1"
         },
         {
           "command": "szh.reimporterArticle",
-          "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee && szh.estRevue",
+          "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee && szh.peut.reimport",
           "group": "reimport@1"
         },
         {

@@ -116,7 +116,7 @@ test('package.json : commandPalette n’offre les deux commandes que pour un liv
   for (const id of ['szh.fmt.falcHeader', 'szh.fmt.qrLink']) {
     const e = palette.find((x) => x.command === id);
     assert.ok(e, id + ' absente de commandPalette');
-    assert.strictEqual(e.when, 'szh.estLivre', id + ' : when incorrect (' + e.when + ')');
+    assert.strictEqual(e.when, 'szh.peut.paletteLivre', id + ' : when incorrect (' + e.when + ')');
   }
 });
 

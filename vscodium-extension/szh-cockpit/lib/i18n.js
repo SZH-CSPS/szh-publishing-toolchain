@@ -110,8 +110,6 @@ const TEXTES_COCKPIT = {
     // La vue d’ensemble qu’ouvre l’en-tête CHAPITRES (media/articles.js, variante livre), l’entrée
     // « Métadonnées du livre » de l’arbre et l’aperçu d’un chapitre seul.
     'chap.vue.titre': 'Chapitres',
-    'chap.numero.section': 'Métadonnées du livre',
-    'chap.liste.section': 'Chapitres du livre',
     'chap.vue.rien': 'Aucun chapitre dans ce livre pour l’instant.',
     'chap.ouvrir': 'Ouvrir le chapitre',
     'chap.ouvrir.tip': 'Ouvrir le texte du chapitre dans l’éditeur. Ni compilation ni aperçu.',
@@ -391,12 +389,16 @@ const TEXTES_COCKPIT = {
     'form.rien': 'Aucune modification.',
     'form.enregistre': '✓ Enregistré',
     'fiches.titre': 'Métadonnées des articles',
+    'fiches.titre.livre': 'Métadonnées des chapitres',
     'fiches.langue': 'Changer la langue de l’article',
+    'fiches.langue.livre': 'Changer la langue du chapitre',
     'fiches.langue.avenir': 'La langue se choisit sur chaque carte, juste sous le type d’article.',
+    'fiches.langue.avenir.livre': 'La langue se choisit sur chaque carte, en tête de la fiche.',
     // Langue de l'article : elle prime sur celle du numéro au rendu (titres imprimés,
     // libellés Figure/Tableau, /Lang du PDF). Les noms de langues sont ceux du
     // formulaire du numéro, une seule table pour les deux.
     'fiches.langue.article': 'Langue de l’article',
+    'fiches.langue.article.livre': 'Langue du chapitre',
     // Licence de l'article. Les six licences Creative Commons 4.0 et le cas « droits
     // réservés » d'une reprise ; les clés sont celles de LICENCES_ARTICLE (lib/yaml.js),
     // et le sigle est en graphie de la maison, celle qui s'imprime sur la couverture.
@@ -416,7 +418,9 @@ const TEXTES_COCKPIT = {
     // dialogue — c'est une précision, pas un incident.
     'fiches.md.bouton': 'Markdown',
     'fiches.md.afficher': 'Ouvrir le texte de l’article à droite de sa fiche : de quoi y recopier un titre, un résumé ou une référence sans fermer le formulaire.',
+    'fiches.md.afficher.livre': 'Ouvrir le texte du chapitre à droite de sa fiche : de quoi y recopier un titre, un résumé ou une référence sans fermer le formulaire.',
     'fiches.md.masquer': 'Refermer le texte de l’article et rendre toute la place à sa fiche.',
+    'fiches.md.masquer.livre': 'Refermer le texte du chapitre et rendre toute la place à sa fiche.',
     'fiches.md.horsarticle': 'Cliquez d’abord dans la fiche de l’article dont vous voulez voir le texte.',
     // ---- Feuille « Vérifier les méta (print) » ----
     // Une page A4 par article, ouverte dans le navigateur, qui l'imprime. La consigne
@@ -441,6 +445,7 @@ const TEXTES_COCKPIT = {
     'fiches.trad.afficher': 'Afficher les traductions',
     'fiches.trad.masquer': 'Masquer les traductions',
     'fiches.enregistre': '✓ {0} article(s) enregistré(s)',
+    'fiches.enregistre.livre': '✓ {0} chapitre(s) enregistré(s)',
     'fiches.type': 'Type d’article',
     'fiches.type.aucun': '(non défini)',
     'fiches.titre.champ': 'Titre ({0})',
@@ -480,7 +485,9 @@ const TEXTES_COCKPIT = {
     'fiches.statuts.echec': 'Les métadonnées de « {0} » sont bien enregistrées, mais le suivi de traduction n’a pas pu suivre le changement de langue. Vérifiez les statuts de cet article dans « Traductions ».',
     'fiches.titre.un': 'Métadonnées – {0}',
     'fiches.filtre.note': 'Un seul article affiché : {0}',
+    'fiches.filtre.note.livre': 'Un seul chapitre affiché : {0}',
     'fiches.tous': 'Voir tous les articles',
+    'fiches.tous.livre': 'Voir tous les chapitres',
     'fiches.perimees': 'Un·e auteur·e vient d’être modifié·e depuis les médias, et ce formulaire porte des cartes non enregistrées : enregistrez-les ou refermez-le, sinon votre correction sera écrasée.',
     'fiches.recharger.question': 'Recharger le formulaire des métadonnées ?',
     'fiches.horsarticle': 'Ouvrez d’abord un article pour éditer ses métadonnées.',
@@ -505,7 +512,9 @@ const TEXTES_COCKPIT = {
     'art.vue.titre': 'Articles',
     'art.vue.rien': 'Aucun article dans ce numéro pour l’instant.',
     'art.numero.section': 'Méta-données du numéro',
+    'art.numero.section.livre': 'Métadonnées du livre',
     'art.liste.section': 'Articles du numéro',
+    'art.liste.section.livre': 'Chapitres du livre',
     // Les deux lignes de la barre de commandes (media/articles.html, media/articles.js) :
     // aucun titre visible entre elles — la vue vise à gagner de la hauteur, deux titres
     // de section la reprendraient — donc c’est l’aria-label qui les nomme pour un
@@ -906,8 +915,8 @@ const TEXTES_COCKPIT = {
     'conflit.scm.tooltip': 'Copie en conflit : {0}',
     'modale.archiver.question': 'Archiver et verrouiller « {0} » ?',
     'modale.archiver.detail': 'Le numéro passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources – textes, images, tableaux, métadonnées, traductions – sont intégralement conservées, et « Exporter cet article » (ou « Recompiler toute la revue ») les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis la revue se rouvrira depuis les archives.',
-    // Un livre n'a ni « Exporter cet article » ni traduction suivie (panneau.js,
-    // REVUE_SEULEMENT) : compiler le livre régénère tout, il n'y a qu'une option.
+    // Un livre n'a ni « Exporter cet article » ni traduction suivie (capacités de
+    // lib/profil.js) : compiler le livre régénère tout, il n'y a qu'une option.
     'modale.archiver.detail.livre': 'Le livre passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources – textes, images, tableaux, métadonnées – sont intégralement conservées, et « Compiler le livre » les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis le livre se rouvrira depuis les archives.',
     'modale.archiver.bouton': 'Archiver et verrouiller',
     'modale.archiver.rien': 'aucun document produit pour l’instant',
@@ -1321,10 +1330,12 @@ const TEXTES_COCKPIT = {
     'regl.zoom.grand': 'Grande',
     'regl.zoom.tresgrand': 'Très grande',
     'regl.policemd': 'Taille du texte des articles (affichage seulement)',
+    'regl.policemd.livre': 'Taille du texte des chapitres (affichage seulement)',
     'regl.apercu': 'Aperçu par défaut',
     'regl.apercu.html': 'HTML',
     'regl.apercu.pdf': 'PDF',
     'regl.assets': 'Cacher automatiquement les tableaux des articles non sélectionnés',
+    'regl.assets.livre': 'Cacher automatiquement les tableaux des chapitres non sélectionnés',
     'regl.assets.oui': 'Oui',
     'regl.assets.non': 'Non',
     'regl.cmyk': 'Convertir les images CMJN en RVB',
@@ -1964,8 +1975,6 @@ const TEXTES_COCKPIT = {
     'livre.couverture.err': 'Der Umschlag wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
     // ---- Livre — vue chapitres ----
     'chap.vue.titre': 'Kapitel',
-    'chap.numero.section': 'Metadaten des Buches',
-    'chap.liste.section': 'Kapitel des Buches',
     'chap.vue.rien': 'In diesem Buch gibt es noch kein Kapitel.',
     'chap.ouvrir': 'Kapitel öffnen',
     'chap.ouvrir.tip': 'Den Text des Kapitels im Editor öffnen. Keine Kompilierung, keine Vorschau.',
@@ -2229,9 +2238,13 @@ const TEXTES_COCKPIT = {
     'form.rien': 'Keine Änderung.',
     'form.enregistre': '✓ Gespeichert',
     'fiches.titre': 'Metadaten der Artikel',
+    'fiches.titre.livre': 'Metadaten der Kapitel',
     'fiches.langue': 'Sprache des Artikels ändern',
+    'fiches.langue.livre': 'Sprache des Kapitels ändern',
     'fiches.langue.avenir': 'Die Sprache wird auf jeder Karte gewählt, direkt unter dem Artikeltyp.',
+    'fiches.langue.avenir.livre': 'Die Sprache wird auf jeder Karte gewählt, zuoberst im Formular.',
     'fiches.langue.article': 'Sprache des Artikels',
+    'fiches.langue.article.livre': 'Sprache des Kapitels',
     'fiches.licence': 'Lizenz des Artikels',
     'licence.cc-by-4.0': 'CC-BY 4.0 – Namensnennung',
     'licence.cc-by-sa-4.0': 'CC-BY-SA 4.0 – Namensnennung, Weitergabe unter gleichen Bedingungen',
@@ -2243,7 +2256,9 @@ const TEXTES_COCKPIT = {
     'fiches.trad.bouton': 'Übersetzungen',
     'fiches.md.bouton': 'Markdown',
     'fiches.md.afficher': 'Den Artikeltext rechts neben seinem Formular öffnen: so lassen sich Titel, Zusammenfassung oder eine Referenz übernehmen, ohne das Formular zu schliessen.',
+    'fiches.md.afficher.livre': 'Den Kapiteltext rechts neben seinem Formular öffnen: so lassen sich Titel, Zusammenfassung oder eine Referenz übernehmen, ohne das Formular zu schliessen.',
     'fiches.md.masquer': 'Den Artikeltext wieder schliessen und dem Formular den ganzen Platz geben.',
+    'fiches.md.masquer.livre': 'Den Kapiteltext wieder schliessen und dem Formular den ganzen Platz geben.',
     'fiches.md.horsarticle': 'Klicken Sie zuerst in das Formular des Artikels, dessen Text Sie sehen möchten.',
     // ---- Blatt «Metadaten prüfen (Druck)» ----
     'verif.bouton': 'Metadaten prüfen (Druck)',
@@ -2265,6 +2280,7 @@ const TEXTES_COCKPIT = {
     'fiches.trad.afficher': 'Übersetzungen anzeigen',
     'fiches.trad.masquer': 'Übersetzungen ausblenden',
     'fiches.enregistre': '✓ {0} Artikel gespeichert',
+    'fiches.enregistre.livre': '✓ {0} Kapitel gespeichert',
     'fiches.type': 'Artikeltyp',
     'fiches.type.aucun': '(nicht festgelegt)',
     'fiches.titre.champ': 'Titel ({0})',
@@ -2295,7 +2311,9 @@ const TEXTES_COCKPIT = {
     'fiches.statuts.echec': 'Die Metadaten von «{0}» sind gespeichert, aber die Übersetzungs-Statusliste konnte dem Sprachwechsel nicht folgen. Prüfen Sie die Status dieses Artikels unter «Übersetzungen».',
     'fiches.titre.un': 'Metadaten – {0}',
     'fiches.filtre.note': 'Nur ein Artikel angezeigt: {0}',
+    'fiches.filtre.note.livre': 'Nur ein Kapitel angezeigt: {0}',
     'fiches.tous': 'Alle Artikel anzeigen',
+    'fiches.tous.livre': 'Alle Kapitel anzeigen',
     'fiches.perimees': 'Eine Autorin oder ein Autor wurde gerade über die Medien geändert, und dieses Formular enthält nicht gespeicherte Karten: speichern Sie sie oder schliessen Sie das Formular, sonst wird Ihre Korrektur überschrieben.',
     'fiches.recharger.question': 'Das Metadaten-Formular neu laden?',
     'fiches.horsarticle': 'Öffnen Sie zuerst einen Artikel, um seine Metadaten zu bearbeiten.',
@@ -2319,7 +2337,9 @@ const TEXTES_COCKPIT = {
     'art.vue.titre': 'Artikel',
     'art.vue.rien': 'In dieser Ausgabe gibt es noch keinen Artikel.',
     'art.numero.section': 'Metadaten der Ausgabe',
+    'art.numero.section.livre': 'Metadaten des Buches',
     'art.liste.section': 'Artikel der Ausgabe',
+    'art.liste.section.livre': 'Kapitel des Buches',
     // Die beiden Zeilen der Befehlsleiste (media/articles.html, media/articles.js): kein
     // sichtbarer Titel dazwischen — die Ansicht soll Höhe gewinnen, zwei Abschnittstitel
     // würden das wieder aufheben — daher benennt sie das aria-label je Zeile für
@@ -3085,10 +3105,12 @@ const TEXTES_COCKPIT = {
     'regl.zoom.grand': 'Gross',
     'regl.zoom.tresgrand': 'Sehr gross',
     'regl.policemd': 'Textgrösse der Artikel (nur Anzeige)',
+    'regl.policemd.livre': 'Textgrösse der Kapitel (nur Anzeige)',
     'regl.apercu': 'Standard-Vorschau',
     'regl.apercu.html': 'HTML',
     'regl.apercu.pdf': 'PDF',
     'regl.assets': 'Tabellen der nicht ausgewählten Artikel automatisch ausblenden',
+    'regl.assets.livre': 'Tabellen der nicht ausgewählten Kapitel automatisch ausblenden',
     'regl.assets.oui': 'Ja',
     'regl.assets.non': 'Nein',
     'regl.cmyk': 'CMYK-Bilder nach RGB konvertieren',
@@ -3684,4 +3706,21 @@ function T(cle, args) {
   return TL(langueCockpit(), cle, args);
 }
 
-module.exports = { TEXTES_COCKPIT, T, TL, langueCockpit, sourceLangue, oublierLanguePoste };
+// TP('clé', profil, [args]) -> la variante « clé.<profil> » quand elle existe, dans la
+// langue du cockpit ou en français, sinon T('clé'). `profil` est une clé (« livre ») ou un
+// profil de lib/profil.js. La revue est le profil de base : ses textes sont les clés nues,
+// et un suffixe « .revue » n'en est pas une variante (meta.revue.revue nomme une revue).
+function TP(cle, profil, args) {
+  const nom = profil && typeof profil === 'object' ? profil.cle : profil;
+  if (nom && nom !== 'revue') {
+    const variante = cle + '.' + nom;
+    const langue = langueCockpit();
+    if ((TEXTES_COCKPIT[langue] && TEXTES_COCKPIT[langue][variante] !== undefined)
+        || TEXTES_COCKPIT.fr[variante] !== undefined) {
+      return TL(langue, variante, args);
+    }
+  }
+  return TL(langueCockpit(), cle, args);
+}
+
+module.exports = { TEXTES_COCKPIT, T, TL, TP, langueCockpit, sourceLangue, oublierLanguePoste };
