@@ -7,8 +7,8 @@
 -- bloc auteurs » ; un sous-titre déjà posé là les ferait se glisser entre le titre et lui.
 -- Inséré en dernier, il passe devant eux : titre, sous-titre, auteur·e·s, encadré.
 --
--- Il est écrit en HTML brut après la typographie : texte tel que dans la fiche. Un « // »
--- y devient un <br> (retour à la ligne forcé).
+-- Le texte passe par la typographie maison (voir plus bas), puis est écrit en HTML brut.
+-- Un « // » y devient un <br> (retour à la ligne forcé).
 
 local S = pandoc.utils.stringify
 
@@ -22,14 +22,23 @@ local function texte(v)
   return (r:gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- « A // B » -> « A<br>B » (même règle que szh_commun.titre_lignes() en Python).
-local function lignes_html(v)
-  local sortie = {}
+-- « A // B » -> Inlines : mots et espaces, un LineBreak à chaque « // » (même règle que
+-- szh_commun.titre_lignes() en Python).
+local function inlines_de(v)
+  local sortie = pandoc.List()
+  local n = 0
   for l in (v .. ' // '):gmatch('(.-)%s*//%s*') do
     l = l:gsub('^%s+', ''):gsub('%s+$', '')
-    if l ~= '' then sortie[#sortie + 1] = (l:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;')) end
+    if l ~= '' then
+      n = n + 1
+      if n > 1 then sortie:insert(pandoc.LineBreak()) end
+      for mot in l:gmatch('%S+') do
+        if sortie[#sortie] and sortie[#sortie].t ~= 'LineBreak' then sortie:insert(pandoc.Space()) end
+        sortie:insert(pandoc.Str(mot))
+      end
+    end
   end
-  return table.concat(sortie, '<br>')
+  return sortie
 end
 
 local function langue_de(meta)
@@ -52,14 +61,40 @@ local function sous_titre_de(meta)
   return ''
 end
 
+-- Deux passages (le filtre est listé deux fois dans livre.mk). Le premier, AVANT
+-- szh-typographie.lua, pose le sous-titre en Div « attente » : la typographie maison le
+-- traite comme le reste du chapitre. Le second, à la place décrite plus haut, le retire et
+-- le réécrit en <p class="szh-sous-titre"> sous le titre.
+local ATTENTE = 'szh-sous-titre-attente'
+
 function Pandoc(doc)
   if not LIVRE or CHAPITRE == '' then return doc end
-  local sous = sous_titre_de(doc.meta)
-  if sous == '' then return doc end
+
+  local trouve
+  doc.blocks = doc.blocks:walk({
+    Div = function(d)
+      if d.classes:includes(ATTENTE) then trouve = d; return {} end
+    end })
+
+  if not trouve then
+    local sous = sous_titre_de(doc.meta)
+    if sous == '' then return doc end
+    for rang, b in ipairs(doc.blocks) do
+      if b.t == 'Header' then
+        doc.blocks:insert(rang + 1, pandoc.Div({ pandoc.Para(inlines_de(sous)) },
+          pandoc.Attr('', { ATTENTE })))
+        return doc
+      end
+    end
+    return doc
+  end
+
+  local corps = pandoc.write(pandoc.Pandoc({ pandoc.Plain(trouve.content[1].content) }), 'html')
+  corps = corps:gsub('%s+$', ''):gsub('<br />%s*', '<br>')
   for rang, b in ipairs(doc.blocks) do
     if b.t == 'Header' then
       doc.blocks:insert(rang + 1,
-        pandoc.RawBlock('html', '<p class="szh-sous-titre">' .. lignes_html(sous) .. '</p>'))
+        pandoc.RawBlock('html', '<p class="szh-sous-titre">' .. corps .. '</p>'))
       return doc
     end
   end

@@ -310,6 +310,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-sous-titre.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-entete-image.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \

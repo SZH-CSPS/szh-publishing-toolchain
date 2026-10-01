@@ -329,7 +329,7 @@ class ChaineDeFiltres(unittest.TestCase):
 
     def test_sous_titre_apres_auteurs_et_encadre(self):
         o = self.ordre
-        self.assertGreater(o.index('szh-livre-sous-titre'), o.index('szh-livre-entete'))
+        self.assertGreater(len(o) - 1 - o[::-1].index('szh-livre-sous-titre'), o.index('szh-livre-entete'))
         self.assertGreater(o.index('szh-livre-entete'), o.index('szh-livre-auteurs'))
         self.assertGreater(o.index('szh-livre-auteurs'), o.index('szh-sections'))
 
@@ -374,14 +374,15 @@ class SautDeLigneDansLeTitre(unittest.TestCase):
             f.write('Texte.\n')
         env = dict(os.environ, SZH_LIVRE='1', SZH_CHAPITRE='1')
         filtres = [os.path.join(RACINE, 'pipeline', 'filters', n)
-                   for n in ('szh-livre-titre.lua', 'szh-livre-sous-titre.lua')]
+                   for n in ('szh-livre-titre.lua', 'szh-livre-sous-titre.lua',
+                             'szh-typographie.lua', 'szh-livre-sous-titre.lua')]
         cmd = [pandoc, entree, '-f', 'markdown', '-t', 'html', '--metadata-file', fiche]
         for fl in filtres:
             cmd += ['--lua-filter', fl]
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(r.returncode, 0, r.stderr)
         sortie = r.stdout
-        self.assertRegex(sortie, r'<h1 id="un-titre-sur-deux-lignes">Un titre<br\s*/>\s*sur deux lignes</h1>')
+        self.assertRegex(sortie, r'<h1 id="un-titre-sur-deux-lignes">Un.titre<br\s*/>\s*sur.deux lignes</h1>')
         self.assertIn('<p class="szh-sous-titre">Sous<br>titre &amp; co</p>', sortie)
         self.assertNotIn('//', sortie)
         self.assertNotIn('SZHSAUTLIGNE', sortie)
@@ -389,7 +390,16 @@ class SautDeLigneDansLeTitre(unittest.TestCase):
         with open(fiche, 'w', encoding='utf-8') as f:
             f.write('lang: fr\nslug: c\ntitle:\n  fr: "Un titre"\n')
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding='utf-8')
-        self.assertIn('<h1 id="un-titre">Un titre</h1>', r.stdout)
+        self.assertRegex(r.stdout, r'<h1 id="un-titre">Un.titre</h1>')
+        # Le sous-titre reçoit la typographie maison : fr, insécable avant « ? » ; de, l'espace est retirée.
+        for lang, attendu in (('fr', '\u00a0?'), ('de', '?')):
+            with open(fiche, 'w', encoding='utf-8') as f:
+                f.write('lang: %s\nslug: c\ntitle:\n  %s: "T"\nsubtitle:\n  %s: "Que faut-il ?"\n'
+                        % (lang, lang, lang))
+            r = subprocess.run(cmd, env=env, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertRegex(r.stdout, r'<p class="szh-sous-titre">[^<]*il' + re.escape(attendu) +'</p>')
+            self.assertNotIn('szh-sous-titre-attente', r.stdout)
 
 
 if __name__ == '__main__':
