@@ -27,8 +27,10 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
   - Sections Produits, Nouveau, Secrétariat (par `require` direct), Préprocessing (par le
     moteur), Réglages, Journal (un OutputChannel) ; ouverture par `vscode.openFolder`.
   - Une extension séparée doublerait l'i18n, les réglages et les chemins.
-- **Gain.** Les jumeaux PowerShell/JavaScript disparaissent (ancrage, rapports, compteurs,
-  courriel, liens), avec leurs tests de parité.
+- **Gain.** Une bonne part des jumeaux PowerShell/JavaScript disparaît avec le lanceur, et
+  leurs tests de parité avec eux. Pas tous : la mise à jour (`update.ps1`) tourne quand Node
+  ou VSCodium manquent, et doit garder en PowerShell son rapport d'erreur, l'ancrage
+  SharePoint et le repli du courriel de support.
 - **Coût.** 3 à 5 semaines. Risque moyen : mode simulé, mutex, sélecteur de version.
 
 ## 2. Le moteur (WSL et make)
@@ -156,10 +158,18 @@ déploiement.
 
 ## Ordre recommandé
 
-1. **Abstraire sans rien changer sous Windows** : chemins du poste et `moteur.js` (WSL
-   seulement), tâches générées par le cockpit, `registerUriHandler` à côté de `szh://`,
-   ancrage et inventaire en JavaScript. Cette étape vaut d'être faite même si le projet
-   s'arrête là.
+1. **Abstraire sans rien changer sous Windows** : `poste.js` pour les chemins du poste,
+   `moteur.js` (WSL seulement) pour tous les lancements, `registerUriHandler` à côté de
+   `szh://`, et les compteurs d'usage écrits par le seul cockpit. Cette étape vaut d'être
+   faite même si le projet s'arrête là.
+   - Elle n'allège le PowerShell que d'environ 2 % (`szh-compteurs.ps1`). L'ancrage, les
+     rapports d'erreur, le courriel et les liens gardent leur version PowerShell, parce que la
+     mise à jour et l'entrée par `szh://` tournent sans Node.
+   - L'inventaire du poste reste en PowerShell : il doit justement décrire les postes en
+     panne.
+   - La génération des tâches de compilation par le cockpit est reportée à l'étape 3 : la
+     tâche par défaut (Ctrl+E), l'import à l'ouverture et le `tasks.json` copié sur chaque
+     poste en dépendent, et rien n'y gagne sous Windows.
 2. **Faire entrer le lanceur dans le cockpit**, onglet par onglet : Secrétariat et Journal,
    puis Produits et Nouveau, puis Préprocessing et Réglages. WinForms reste en secours pendant
    la transition.
