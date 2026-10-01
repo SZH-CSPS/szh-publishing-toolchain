@@ -26,6 +26,7 @@
   "cmd.documentation": "Dokumentation der Ausgabe öffnen (News & Ressourcen)",
   "cmd.traduction": "Übersetzungsstand dieses Artikels",
   "cmd.vueArticles": "Artikel der Ausgabe",
+  "cmd.vueChapitres": "Kapitel des Buchs",
   "cmd.envoyerAuteur": "Diesen Artikel an die Autorin/den Autor senden",
   "cmd.monterUnite": "Eine Position nach oben",
   "cmd.descendreUnite": "Eine Position nach unten",

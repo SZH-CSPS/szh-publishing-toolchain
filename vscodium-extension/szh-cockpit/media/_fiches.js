@@ -1015,6 +1015,14 @@
             var champ = champTexte(carte, zoneTextes, slug, textes[c][0], lg,
               textes[c][1].split('{0}').join(noms[lg]),
               (valeurs[textes[c][0]] || {})[lg], textes[c][2], traduction);
+            // Livre seulement : « // » force un retour à la ligne dans un titre de chapitre,
+            // comme dans celui du livre (media/_numero.js, champ.aide).
+            if (ESTLIVRE && textes[c][0] !== 'resume' && TXT.brAide) {
+              var aideBr = document.createElement('p');
+              aideBr.className = 'champ-aide champ-' + lg + (traduction ? ' champ-trad' : '');
+              aideBr.textContent = TXT.brAide;
+              zoneTextes.appendChild(aideBr);
+            }
             if (textes[c][0] !== 'resume') { continue; }
             var compteur = document.createElement('div');
             compteur.className = 'compteur-resume champ-' + lg + (traduction ? ' champ-trad' : '');

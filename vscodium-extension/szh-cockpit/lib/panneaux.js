@@ -169,7 +169,9 @@ const REVUE_SEULEMENT = [
 
 function pourProfil(entrees) {
   if (hote.profil() !== 'livre') { return entrees; }
-  return entrees.filter((e) => e[0] === '--' || REVUE_SEULEMENT.indexOf(e[1]) === -1);
+  // Le formulaire de buch.yaml se nomme « Métadonnées du livre », pas « du numéro ».
+  return entrees.filter((e) => e[0] === '--' || REVUE_SEULEMENT.indexOf(e[1]) === -1)
+    .map((e) => (e[1] === 'szh.metadonnees' ? ['meta.livre.panneau'].concat(e.slice(1)) : e));
 }
 
 function enregistrerPanneaux(context, injecte) {

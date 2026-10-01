@@ -235,7 +235,8 @@
       },
       "triggerTaskOnSave.tasks": {
         "Aperçu / Export PDF": [
-          "**/*.md",
+          "**/articles/**/*.md",
+          "**/liminaires/**/*.md",
           "**/*.css",
           "**/ausgabe.yaml",
           "**/buch.yaml"
@@ -479,6 +480,12 @@
       {
         "command": "szh.vueArticles",
         "title": "%cmd.vueArticles%",
+        "category": "SZH/CSPS",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "szh.vueChapitres",
+        "title": "%cmd.vueChapitres%",
         "category": "SZH/CSPS",
         "icon": "$(dashboard)"
       },
@@ -827,6 +834,10 @@
           "when": "szh.estRevue"
         },
         {
+          "command": "szh.vueChapitres",
+          "when": "szh.estLivre"
+        },
+        {
           "command": "szh.envoyerAuteur",
           "when": "szh.estRevue"
         },
@@ -1077,6 +1088,11 @@
         {
           "command": "szh.vueArticles",
           "when": "view == szhCockpitVue && viewItem == section-articles",
+          "group": "navigation"
+        },
+        {
+          "command": "szh.vueChapitres",
+          "when": "view == szhCockpitVue && viewItem == section-chapitres",
           "group": "navigation"
         },
         {

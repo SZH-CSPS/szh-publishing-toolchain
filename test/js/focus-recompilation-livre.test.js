@@ -19,26 +19,23 @@ const tick = () => new Promise((r) => setImmediate(r));
 const LIVRE = livreDEssai();
 const HOTE = activerHote(LIVRE);
 
-// Un aperçu déjà composé, comme hote-livre.test.js ~L196-220 : sans lui, « l'aperçu est
-// fermé » serait vrai par construction — aucun aperçu n'ayant jamais existé avant l'appel.
-// Rend un témoin de fermeture : hote-factice.js ne retire pas un panneau fermé de sa liste
-// (panneauDeType le retrouverait donc encore après coup, disposé ou pas), donc c'est
-// dispose() lui-même qu'on observe, sur l'objet réellement rendu par createWebviewPanel.
+// Un aperçu déjà ouvert, comme hote-livre.test.js : sans lui, « l'aperçu est fermé »
+// serait vrai par construction — aucun aperçu n'ayant jamais existé avant l'appel.
+// L'aperçu d'un chapitre est son PDF (out/chapitres/<slug>.pdf, composé seul) : il s'ouvre
+// dans un onglet, et c'est la fermeture de cet onglet (tabGroups.close) qu'on observe.
 async function ouvrirApercuChapitre(slug) {
   const dossierOut = path.join(LIVRE, 'out', 'chapitres');
   fs.mkdirSync(dossierOut, { recursive: true });
-  const apercu = path.join(dossierOut, slug + '.apercu.html');
-  fs.writeFileSync(apercu, '<html><body>chapitre déjà composé</body></html>');
+  const pdf = path.join(dossierOut, slug + '.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.7\n');
   const futur = (Date.now() + 60000) / 1000;
-  fs.utimesSync(apercu, futur, futur);
+  fs.utimesSync(pdf, futur, futur);
   await HOTE.executer('szh.ouvrirArticle', slug);
-  const panneau = HOTE.panneauDeType('szhApercuHtml');
-  assert.ok(panneau,
+  assert.ok(HOTE.ouvertures().some((o) => String(o).toLowerCase() === pdf.toLowerCase()),
     'l’aperçu ne s’est pas ouvert avant le test : la fermeture qui suit ne prouverait rien');
-  const etat = { ferme: false };
-  const origDispose = panneau.dispose.bind(panneau);
-  panneau.dispose = () => { etat.ferme = true; origDispose(); };
-  return etat;
+  HOTE.poserOnglets([{ uri: { fsPath: pdf } }]);
+  HOTE.oublierFermetures();
+  return { get ferme() { return HOTE.fermetures().length >= 1; } };
 }
 
 test('mise en route : le démarrage se tait', async () => {

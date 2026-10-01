@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const { T } = require('./i18n');
+const { toolkitPoste } = require('./chemins-poste');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
@@ -25,7 +26,8 @@ const {
 } = require('./auteurs-ojs');
 const { lireCacheMotsCles, rafraichirMotsCles } = require('./mots-cles-edudoc');
 const {
-  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue, estVraiYaml,
+  CLES_METADONNEES, CLES_PERSONNES, CHAMPS_PERSONNE, COULEURS_NUMERO, HEX_COULEURS,
+  normaliserRevue, estVraiYaml,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
@@ -320,7 +322,17 @@ const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.
   'meta.livre.isbnPrint', 'meta.livre.isbnEbook', 'meta.livre.doi',
   'meta.livre.licence', 'meta.livre.couleur',
   'meta.livre.grammage', 'meta.livre.main', 'meta.livre.dosMm', 'meta.livre.fondPerduMm',
-  'meta.livre.traitsDeCoupe', 'meta.livre.profilCmjn'];
+  'meta.livre.traitsDeCoupe', 'meta.livre.profilCmjn',
+  // Responsables, couleurs de l imprimé, fond, papier de couverture, dos calculé,
+  // illustration et 4e de couverture.
+  'fiches.auteur.ajouter', 'meta.livre.auteurs', 'meta.livre.editeurs', 'meta.livre.mention',
+  'meta.livre.mention.defaut.fr', 'meta.livre.mention.defaut.de',
+  'meta.livre.mention.defaut.it', 'meta.livre.mention.defaut.en',
+  'meta.livre.couleurImpression', 'meta.livre.fond', 'meta.livre.fondTeinte',
+  'meta.livre.illusX', 'meta.livre.illusY', 'meta.livre.illusAide', 'meta.livre.brAide',
+  'meta.livre.couvVolume', 'meta.livre.couvGrammage', 'meta.livre.colleMm',
+  'meta.livre.dos', 'meta.livre.dos.valeur', 'meta.livre.dos.absent',
+  'meta.livre.illustration', 'meta.livre.quatrieme', 'meta.livre.quatrieme.ouvrir'];
 
 // Les jetons fermés du formulaire — refusés ici ET par le <select>/<input radio> côté
 // webview.
@@ -328,32 +340,200 @@ const OUVRAGES_VALIDES = ['monographie', 'collectif'];
 const MAQUETTES_LIVRE_VALIDES = ['normal', 'falc'];
 const FORMATS_LIVRE_VALIDES = ['standard', 'a4'];
 
+// Les couleurs de référence de l'imprimé : pipeline/styles/couleurs-reference.json, lu et
+// non recopié — la même table décide du CMJN du PDF d'impression et du RGB de la couverture.
+// Dépôt d'abord (développement, tests), puis le toolkit installé.
+function couleursReference() {
+  const relatif = ['pipeline', 'styles', 'couleurs-reference.json'];
+  const candidats = [path.resolve(__dirname, '..', '..', '..', ...relatif), path.join(toolkitPoste(), ...relatif)];
+  for (const c of candidats) {
+    try {
+      const json = JSON.parse(fs.readFileSync(c, 'utf8'));
+      const sortie = {};
+      for (const cle of Object.keys(json)) {
+        const e = json[cle] || {};
+        if (/^[a-z][a-z0-9-]*$/.test(cle) && /^#[0-9A-Fa-f]{6}$/.test(String(e.rgb || ''))) {
+          sortie[cle] = { nom: String(e.nom || cle), rgb: String(e.rgb).toUpperCase() };
+        }
+      }
+      if (Object.keys(sortie).length > 0) { return sortie; }
+    } catch (e) { /* emplacement suivant */ }
+  }
+  return {};
+}
+
+// couverture/illustration.<ext> : l'image de la 1re de couverture. Formats de l'ouvrage,
+// plus larges que ceux de la couverture d'un numéro (JPEG et PNG seuls).
+const EXTENSIONS_ILLUSTRATION = { jpg: 'jpg', jpeg: 'jpg', png: 'png', svg: 'svg', webp: 'webp' };
+const MIME_ILLUSTRATION = { jpg: 'image/jpeg', png: 'image/png', svg: 'image/svg+xml', webp: 'image/webp' };
+
 function textesLivre() {
   const libelles = {};
   for (const cle of LIBELLES_LIVRE) { libelles[cle] = T(cle); }
   // Le reste (rien, enregistre, couleurs, couvertureExtensions/Max, couverture*) vient de
-  // textesNumero() : ce formulaire réutilise le même moteur (_numero.js).
-  return Object.assign({}, textesNumero(), {
+  // textesNumero() : ce formulaire réutilise le même moteur (_numero.js). La « couverture »
+  // du moteur est ici l'illustration de couverture, avec ses textes et ses formats.
+  return Object.assign({}, textesNumero(), textesAuteur(), {
     libelles: libelles,
-    licences: [{ valeur: '', libelle: T('meta.livre.licence.aucune') }].concat(licencesTraduites())
+    licences: [{ valeur: '', libelle: T('meta.livre.licence.aucune') }].concat(licencesTraduites()),
+    couverture: T('meta.livre.illustration'),
+    couvertureAbsente: T('meta.livre.illustration.absente'),
+    couvertureDeposer: T('meta.livre.illustration.deposer'),
+    couvertureFormat: T('meta.livre.illustration.format'),
+    couvertureEnregistree: T('meta.livre.illustration.enregistree'),
+    couvertureExtensions: Object.keys(EXTENSIONS_ILLUSTRATION)
   });
 }
 
 function htmlMetadonneesLivre(nonce) {
   return construireHtml('metadata-book', nonce, {
-    cssPartage: ['_design.css', '_numero.css'], jsPartage: ['_messages.js', '_numero.js'],
+    cssPartage: ['_design.css', '_numero.css', '_auteurs.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_numero.js'],
     titre: T('meta.livre.panneau'), remplacements: { '__TXT__': JSON.stringify(textesLivre()) }
   });
 }
 
-// `avecCouverture` n'existe pas ici : buch.yaml n'a pas de couverture-image.
+// ---- Dos calculé, illustration et 4e de couverture ----
+
+// out/<livre>-dos.json, écrit par la compilation de la couverture : {nb_pages, dos_mm,
+// grammage_couverture, source}. null s'il manque ou ne se lit pas — la page dit alors de
+// compiler la couverture, plutôt que d'afficher des NaN.
+function chargeDos(racine) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(racine, 'out', path.basename(racine) + '-dos.json'), 'utf8'));
+    const nb = Number(j.nb_pages);
+    const dos = Number(j.dos_mm);
+    const gram = Number(j.grammage_couverture);
+    if (!isFinite(nb) || !isFinite(dos) || !isFinite(gram)) { return null; }
+    return { nb_pages: nb, dos_mm: dos, grammage_couverture: gram, source: String(j.source || '') };
+  } catch (e) { return null; }
+}
+
+function dossierCouvertureLivre(racine) { return path.join(racine, 'couverture'); }
+
+function illustrationExistante(racine) {
+  for (const ext of ['jpg', 'png', 'svg', 'webp']) {
+    const chemin = path.join(dossierCouvertureLivre(racine), 'illustration.' + ext);
+    try {
+      const st = fs.statSync(chemin);
+      if (st.isFile()) { return { nom: 'illustration.' + ext, ext: ext, chemin: chemin, taille: st.size }; }
+    } catch (e) { /* extension suivante */ }
+  }
+  return null;
+}
+
+// Même forme que chargeCouverture : la page traite l'illustration comme la couverture d'un
+// numéro, avec les mêmes messages.
+function chargeIllustration(racine) {
+  const trouvee = illustrationExistante(racine);
+  if (!trouvee) { return { nom: '', description: '', apercu: null }; }
+  let apercu = null;
+  if (trouvee.taille <= MAX_APERCU_COUVERTURE) {
+    try {
+      apercu = 'data:' + MIME_ILLUSTRATION[trouvee.ext] + ';base64,'
+        + fs.readFileSync(trouvee.chemin).toString('base64');
+    } catch (e) { apercu = null; }
+  }
+  return { nom: trouvee.nom, description: poidsLisible(trouvee.taille), apercu: apercu };
+}
+
+// -> { erreur } ou { ext, donnees }. Format et poids revérifiés ici : ce qui vient d'une
+// webview n'est jamais cru sur parole.
+function illustrationRecevable(nomFichier, donneesBase64) {
+  const m = String(nomFichier || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  const ext = m ? EXTENSIONS_ILLUSTRATION[m[1]] : undefined;
+  if (!ext) { return { erreur: T('meta.livre.illustration.format') }; }
+  let donnees;
+  try { donnees = Buffer.from(String(donneesBase64 || ''), 'base64'); }
+  catch (e) { return { erreur: T('meta.livre.illustration.format') }; }
+  if (donnees.length === 0) { return { erreur: T('meta.livre.illustration.format') }; }
+  if (donnees.length > MAX_COUVERTURE) { return { erreur: T('art.couverture.poids') }; }
+  return { ext: ext, donnees: donnees };
+}
+
+// -> null, ou le message de l'échec. Une seule illustration par livre : les autres
+// extensions sont retirées, sans quoi la compilation prendrait la première de sa liste.
+function ecrireIllustration(racine, ext, donnees) {
+  const dossier = dossierCouvertureLivre(racine);
+  const cible = path.join(dossier, 'illustration.' + ext);
+  try {
+    fs.mkdirSync(dossier, { recursive: true });
+    const tmp = path.join(dossier, '~$illustration.' + ext);
+    try {
+      fs.writeFileSync(tmp, donnees);
+      fs.renameSync(tmp, cible);
+    } finally {
+      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+    }
+  } catch (e) { return T('err.ecriture', ['illustration.' + ext, String((e && e.message) || e)]); }
+  for (const autre of ['jpg', 'png', 'svg', 'webp']) {
+    if (autre === ext) { continue; }
+    try {
+      const c = path.join(dossier, 'illustration.' + autre);
+      if (fs.existsSync(c)) { fs.unlinkSync(c); }
+    } catch (e) { /* verrouillé : le nom affiché dira laquelle la compilation voit */ }
+  }
+  return null;
+}
+
+// Dépôt d'une illustration : confirmation avant d'en remplacer une, puis réponse à la page
+// par le message « couverture » (nom, poids, aperçu).
+async function deposerIllustration(panneau, racine, msg) {
+  if (refuserSiVerrouille()) { return; }
+  const recu = illustrationRecevable(msg.nomFichier, msg.donneesBase64);
+  if (recu.erreur) { repondrePanneau(panneau, { type: 'erreur', message: recu.erreur }); return; }
+  const ancienne = illustrationExistante(racine);
+  if (ancienne) {
+    const oui = T('meta.livre.illustration.remplacer.oui');
+    const choix = await vscode.window.showWarningMessage(
+      T('meta.livre.illustration.remplacer', [ancienne.nom]), { modal: true }, oui);
+    if (choix !== oui) {
+      repondrePanneau(panneau, Object.assign({ type: 'couverture', inchangee: true }, chargeIllustration(racine)));
+      return;
+    }
+  }
+  const erreur = ecrireIllustration(racine, recu.ext, recu.donnees);
+  if (erreur) { repondrePanneau(panneau, { type: 'erreur', message: erreur }); return; }
+  repondrePanneau(panneau, Object.assign({ type: 'couverture' }, chargeIllustration(racine)));
+  vscode.window.setStatusBarMessage(T('meta.livre.illustration.enregistree'), 3000);
+}
+
+// Ouvre couverture/quatrieme.md dans l'éditeur, en le créant vide s'il manque ; un texte
+// existant n'est jamais touché.
+async function ouvrirQuatrieme(racine) {
+  const chemin = path.join(dossierCouvertureLivre(racine), 'quatrieme.md');
+  if (!fs.existsSync(chemin)) {
+    try {
+      fs.mkdirSync(path.dirname(chemin), { recursive: true });
+      fs.writeFileSync(chemin, '');
+    } catch (e) {
+      vscode.window.showErrorMessage(T('err.ecriture', ['quatrieme.md', String((e && e.message) || e)]));
+      return;
+    }
+  }
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(chemin));
+  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+}
+
+// Les valeurs de buch.yaml, plus ce que la page montre sans le saisir : le dos calculé et
+// l'illustration de couverture. Les listes de personnes absentes sont des listes vides.
 function chargeLivre(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfig(racine), 'utf8')); }
   catch (e) { /* fichier illisible : formulaire vide */ }
-  for (const cle of CLES_METADONNEES) { if (valeurs[cle] === undefined) { valeurs[cle] = ''; } }
+  for (const cle of CLES_METADONNEES) {
+    if (valeurs[cle] === undefined) { valeurs[cle] = CLES_PERSONNES.indexOf(cle) !== -1 ? [] : ''; }
+  }
   valeurs['impression.traits-de-coupe'] = estVraiYaml(valeurs['impression.traits-de-coupe']) ? 'true' : 'false';
-  return { valeurs: valeurs };
+  const reference = couleursReference();
+  return {
+    valeurs: valeurs, dos: chargeDos(racine), couverture: chargeIllustration(racine),
+    // Les couleurs de la référence de l'imprimé, pour les pastilles : lues du JSON à chaque
+    // chargement, jamais recopiées dans la page.
+    couleursImpression: Object.keys(reference).map((cle) => ({
+      cle: cle, nom: reference[cle].nom, rgb: reference[cle].rgb
+    }))
+  };
 }
 
 // -> null, ou le message de l'échec. Miroir d'ecrireChampsNumero, avec sa propre
@@ -362,9 +542,34 @@ function chargeLivre(racine) {
 function ecrireChampsLivre(racine, brut) {
   const modifies = {};
   for (const cle of CLES_METADONNEES) {
+    if (CLES_PERSONNES.indexOf(cle) !== -1) {
+      // Une liste de personnes : champs du schéma, texte sur une ligne, personnes sans nom
+      // écartées. Rien n'est cru sur parole.
+      if (brut && Array.isArray(brut[cle])) {
+        modifies[cle] = brut[cle].slice(0, 100).map((p) => {
+          const propre = {};
+          for (const champ of CHAMPS_PERSONNE) {
+            const v = p && p[champ] !== undefined && p[champ] !== null ? p[champ] : '';
+            propre[champ] = String(v).replace(/[\r\n]+/g, ' ').slice(0, 300).trim();
+          }
+          return propre;
+        }).filter((p) => p.prenom !== '' || p.nom !== '');
+      }
+      continue;
+    }
     if (brut && typeof brut[cle] === 'string') {
       modifies[cle] = brut[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
     }
+  }
+  // Couleur d'impression et fond de couverture : la liste fermée de la référence.
+  const reference = couleursReference();
+  for (const cle of ['couleur-impression', 'couverture.fond']) {
+    if (cle in modifies && !Object.prototype.hasOwnProperty.call(reference, modifies[cle])) { delete modifies[cle]; }
+  }
+  // Teinte du fond : de 1 à 100 %, ou vide (retour au défaut).
+  if ('couverture.fond-teinte' in modifies && modifies['couverture.fond-teinte'] !== '') {
+    const n = Number(modifies['couverture.fond-teinte']);
+    if (!isFinite(n) || n < 1 || n > 100) { delete modifies['couverture.fond-teinte']; }
   }
   if ('ouvrage' in modifies && OUVRAGES_VALIDES.indexOf(modifies.ouvrage) === -1) { delete modifies.ouvrage; }
   if ('maquette' in modifies && MAQUETTES_LIVRE_VALIDES.indexOf(modifies.maquette) === -1) { delete modifies.maquette; }
@@ -376,6 +581,15 @@ function ecrireChampsLivre(racine, brut) {
     const c = modifies.couleur.toUpperCase();
     if (c !== '' && !/^#[0-9A-F]{6}$/.test(c)) { delete modifies.couleur; } else { modifies.couleur = c; }
   }
+  // Décalage de l'illustration, en mm : un nombre (négatif et décimales permis), ou vide (0).
+  for (const cle of ['couverture.illustration-x-mm', 'couverture.illustration-y-mm']) {
+    if (cle in modifies && modifies[cle] !== '') {
+      const texte = modifies[cle].replace(',', '.');
+      const n = Number(texte);
+      if (!/^-?\d+(\.\d+)?$/.test(texte) || !isFinite(n) || Math.abs(n) > 500) { delete modifies[cle]; }
+      else { modifies[cle] = texte; }
+    }
+  }
   if ('impression.traits-de-coupe' in modifies) {
     const t = modifies['impression.traits-de-coupe'].toLowerCase();
     if (t !== 'true' && t !== 'false') { delete modifies['impression.traits-de-coupe']; }
@@ -386,7 +600,7 @@ function ecrireChampsLivre(racine, brut) {
   return ctx.ecrireClesAusgabe(racine, modifies);
 }
 
-// Miroir de messageNumero, sans la couverture-image.
+// Miroir de messageNumero ; l'illustration de couverture et la 4e de couverture en plus.
 function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
   if (msg.type === MSG.ENREGISTRER) {
     if (session.etatNumero().verrouillee) {
@@ -404,6 +618,17 @@ function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
     vscode.window.setStatusBarMessage(T('statut.ausgabe'), 3000);
     if (rafraichirTout) { rafraichirTout(); }
     return true;
+  }
+  // L'illustration de couverture : mêmes messages que la couverture d'un numéro. Rend la
+  // promesse (truthy) : le dépôt peut attendre une confirmation.
+  if (msg.type === MSG.COUVERTURE_DEPOSER) {
+    return deposerIllustration(panneau, racine, msg).catch((e) => {
+      repondrePanneau(panneau, { type: 'erreur', message: String((e && e.message) || e) });
+    });
+  }
+  // Le bouton « 4e de couverture » : ouvre couverture/quatrieme.md dans l'éditeur.
+  if (msg.type === MSG.OUVRIR && msg.cible === 'quatrieme') {
+    return ouvrirQuatrieme(racine).catch((e) => console.warn('4e de couverture : ' + ((e && e.message) || e)));
   }
   return false;
 }
@@ -425,7 +650,10 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
   const titre = estLivre ? T('meta.livre.panneau') : T('meta.titre');
   const envoyerValeurs = (panneau) => {
     const extra = focus ? { focus: focus } : {};
-    if (estLivre) { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeLivre(racine), extra)); }
+    if (estLivre) {
+      repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeLivre(racine), extra));
+      envoyerAuteursConnus(panneau, racine);
+    }
     else { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true), extra)); }
     ctx.noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
@@ -458,6 +686,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout, item) {
       ? messageLivre(panneau, racine, msg, rafraichirTout, () => envoyerValeurs(panneau))
       : messageNumero(panneau, racine, msg, rafraichirTout, () => envoyerValeurs(panneau));
     if (!traite) { console.warn('métadonnées : type de message inconnu', msg.type); }
+    return traite && typeof traite.then === 'function' ? traite : undefined;
   });
   panneau.webview.html = estLivre
     ? htmlMetadonneesLivre(crypto.randomBytes(16).toString('hex'))
@@ -505,7 +734,9 @@ function textesCarteArticle() {
     suggPastille: T('sugg.pastille'),
     // Case « hors sommaire » : livre seulement (msg.estLivre décide côté webview), jamais
     // construite pour un article. Voir construireCarte() dans media/_fiches.js.
-    sommaireCase: T('fiches.sommaire'), sommaireAide: T('fiches.sommaire.aide')
+    sommaireCase: T('fiches.sommaire'), sommaireAide: T('fiches.sommaire.aide'),
+    // Aide sous titre et sous-titre d'un chapitre (livre seulement, media/_fiches.js).
+    brAide: T('meta.livre.brAide')
   }, textesAuteur());
 }
 
@@ -1437,7 +1668,7 @@ module.exports = {
   lireMetadonneesArticles, nettoyerCarte, ecrireCartesArticles, messageCartes,
   imprimerFeuilleVerifTous,
   relancerCompilationCartes, textesCarteArticle, textesAuteur, licencesTraduites, typesTraduits,
-  ecrireChampsLivre, filtreValide, signalerFichesPerimees, titreFiches,
+  textesLivre, chargeLivre, ecrireChampsLivre, messageLivre, couleursReference, filtreValide, signalerFichesPerimees, titreFiches,
   confirmerDoiManuel, ouvrirMetadonnees, ouvrirApercuMetadonnees, ouvrirMetadonneesArticle,
   basculerMarkdownFiche,
   limitesMedias, BUDGET_VIGNETTES, vignetteAuteur, envoyerAuteursConnus, envoyerMotsClesConnus,

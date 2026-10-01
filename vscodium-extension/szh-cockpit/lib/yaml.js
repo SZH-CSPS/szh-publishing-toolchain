@@ -43,7 +43,15 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
   // regex de ligne top-level et tomberaient, elles aussi, en silence.
   'titre', 'sous-titre', 'ouvrage', 'maquette', 'format', 'collection', 'tome', 'annee',
   'isbn-print', 'isbn-ebook', 'doi', 'licence',
-  'impression.grammage', 'impression.main', 'impression.dos-mm',
+  // Responsables de l'ouvrage : deux listes de personnes (CLES_PERSONNES), la mention qui
+  // suit leurs noms, et la couleur de l'imprimé (clé de pipeline/styles/couleurs-reference.json).
+  'auteurs', 'editeurs', 'mention-editeurs', 'couleur-impression',
+  // Fond de la couverture : un seul bloc, à garder groupé (le fond paramétrable s'y fond).
+  'couverture.fond', 'couverture.fond-teinte',
+  // Décalage de l'illustration de couverture, en mm (+ vers la droite / + vers le bas).
+  'couverture.illustration-x-mm', 'couverture.illustration-y-mm',
+  'impression.grammage', 'impression.main', 'impression.couverture-volume',
+  'impression.couverture-grammage', 'impression.colle-mm', 'impression.dos-mm',
   'impression.fond-perdu-mm', 'impression.traits-de-coupe', 'impression.profil-cmjn'];
 
 // Les articles du numéro qui ne reçoivent pas de DOI, décidés à la case sur leur carte.
@@ -61,6 +69,19 @@ const CLE_SANS_DOI = 'articles-sans-doi';
 // `ordre-chapitres` est la même clé pour un livre, dans buch.yaml : même forme, même
 // lecteur, même réparation. Les deux profils ne diffèrent que par le nom.
 const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI];
+
+// Clés qui portent une liste de personnes (une liste de dicts, au schéma des auteur·e·s des
+// articles) : `auteurs` et `editeurs` de buch.yaml. Écrites en blocs, un dict par « - »,
+// comme dans les modèles du dépôt ; une liste vide s'écrit `[]`.
+//   auteurs:
+//   - prenom: "Ada"
+//     nom: "Lovelace"
+const CLES_PERSONNES = ['auteurs', 'editeurs'];
+// Les clés d'une personne, dans l'ordre où elles s'écrivent. Les cinq premières sont
+// toujours écrites ; `ror`, `email` et `photo` seulement si elles portent une valeur. Toute
+// autre clé est ignorée à l'écriture : le schéma est fermé, comme celui des articles.
+const CHAMPS_PERSONNE = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'ror', 'email', 'photo'];
+const CHAMPS_PERSONNE_FIXES = 5;
 
 // Les jetons d'une séquence en ligne, telle que `ordre-articles` et `articles-sans-doi`
 // l'écrivent : `["a", "b"]` comme le sérialiseur la pose, ou une simple suite séparée par
@@ -119,11 +140,14 @@ const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived', 'impression.t
 // à contourner. Une valeur vide est un jeton nu valide — c'est ainsi que `dos-mm:` dit
 // « pas de valeur imposée » dans buch.yaml, et effacer le champ doit pouvoir la restituer.
 const CLES_NOMBRES = ['annee', 'impression.grammage', 'impression.main',
-  'impression.dos-mm', 'impression.fond-perdu-mm'];
+  'impression.couverture-volume', 'impression.couverture-grammage', 'impression.colle-mm',
+  'impression.dos-mm', 'impression.fond-perdu-mm', 'couverture.fond-teinte',
+  'couverture.illustration-x-mm', 'couverture.illustration-y-mm'];
 
 // Clés de buch.yaml qui s'écrivent en jeton nu, comme `lang` : voir l'en-tête de
 // formaterValeurYaml pour le pourquoi (le fichier les écrit toujours ainsi à la main).
-const CLES_JETONS_NUS = ['ouvrage', 'maquette', 'format', 'licence'];
+const CLES_JETONS_NUS = ['ouvrage', 'maquette', 'format', 'licence', 'couleur-impression',
+  'couverture.fond'];
 
 // Valeurs acceptées comme vraies à la lecture, un ausgabe.yaml pouvant avoir été écrit à
 // la main. Miroir de la table VRAIS de pipeline/filters/szh-maquette.lua, qui décide au
@@ -330,6 +354,88 @@ function erreurInfidelite(cle, raison) {
     + 'fidèlement (' + raison + ').');
 }
 
+// ---- Listes de personnes (buch.yaml : auteurs, editeurs) ----
+//
+// Une liste de dicts, un niveau d'imbrication plus bas que le reste du fichier. Un bloc va
+// de la ligne de la clé jusqu'à la dernière ligne qui lui appartient : un « - » (indenté ou
+// non) ou une ligne indentée « clé: valeur ». Les lignes vides et les commentaires n'en
+// font partie que s'ils sont suivis d'une autre ligne du bloc. L'analyse et l'écriture
+// partagent cette règle, pour retirer exactement ce que l'une a lu.
+function finListePersonnes(lignes, debut) {
+  let derniere = debut;
+  for (let k = debut + 1; k < lignes.length; k++) {
+    const l = lignes[k];
+    if (/^\s*-(\s|$)/.test(l) || /^\s+[A-Za-z0-9_-]+:/.test(l)) { derniere = k; continue; }
+    if (/^\s*(#.*)?$/.test(l)) { continue; }
+    break;
+  }
+  return derniere + 1;
+}
+
+function lirePersonnes(lignes, debut, fin) {
+  const personnes = [];
+  let courante = null;
+  const poser = (cle, brut) => {
+    if (CHAMPS_PERSONNE.indexOf(cle) === -1) { return; }
+    if (!courante) { courante = {}; personnes.push(courante); }
+    courante[cle] = decouperValeurYaml(brut).valeur;
+  };
+  for (let k = debut; k < fin; k++) {
+    const tiret = lignes[k].match(/^\s*-\s*(.*)$/);
+    let reste = lignes[k];
+    if (tiret) {
+      courante = null;
+      reste = tiret[1];
+      // Dict en ligne : `- {prenom: "Ada", nom: "Lovelace"}`.
+      const flow = reste.match(/^\{(.*)\}\s*$/);
+      if (flow) {
+        for (const morceau of decouperFlowYaml(flow[1])) {
+          const m = morceau.match(/^\s*([A-Za-z0-9_-]+):\s*(.*)$/);
+          if (m) { poser(m[1], m[2].trim()); }
+        }
+        courante = null;
+        continue;
+      }
+    }
+    const m = reste.match(/^\s*([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (m) { poser(m[1], m[2]); }
+  }
+  return personnes;
+}
+
+// Les personnes à écrire : champs du schéma seulement, valeurs assainies sur une ligne,
+// personnes entièrement vides retirées.
+function personnesAssainies(liste) {
+  const sortie = [];
+  for (const p of (Array.isArray(liste) ? liste : [])) {
+    const propre = {};
+    let vide = true;
+    for (const cle of CHAMPS_PERSONNE) {
+      const v = String((p && p[cle]) === undefined || (p && p[cle]) === null ? '' : p[cle])
+        .replace(/[\r\n]+/g, ' ').trim();
+      propre[cle] = v;
+      if (v !== '') { vide = false; }
+    }
+    if (!vide) { sortie.push(propre); }
+  }
+  return sortie;
+}
+
+function lignesPersonnes(cle, liste) {
+  const personnes = personnesAssainies(liste);
+  if (personnes.length === 0) { return [cle + ': []']; }
+  const lignes = [cle + ':'];
+  for (const p of personnes) {
+    let premiere = true;
+    CHAMPS_PERSONNE.forEach((champ, rang) => {
+      if (rang >= CHAMPS_PERSONNE_FIXES && p[champ] === '') { return; }
+      lignes.push((premiere ? '- ' : '  ') + champ + ': "' + encoderEchappementsYaml(p[champ]) + '"');
+      premiere = false;
+    });
+  }
+  return lignes;
+}
+
 // Lit un YAML plat, une clé par ligne — ausgabe.yaml comme buch.yaml — avec UN niveau
 // d'imbrication : un bloc top-level ouvre un bloc pour les lignes indentées qui suivent,
 // exposées sous la forme « parent.sous-clé » — c'est ainsi que `impression.grammage` entre
@@ -366,6 +472,12 @@ function analyserAusgabe(contenu) {
       // Le dernier gagne, comme YAML : aucune garde de « déjà vu », on écrase à chaque
       // occurrence rencontrée.
       if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !clesInfideles.has(mTop[1])) {
+        if (CLES_PERSONNES.indexOf(mTop[1]) !== -1) {
+          const fin = finListePersonnes(lignes, i);
+          valeurs[mTop[1]] = lirePersonnes(lignes, i + 1, fin);
+          i = fin;
+          continue;
+        }
         if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
           // Liste en blocs : chaque « - item » qui suit, tant qu'il y en a.
           const items = [];
@@ -1170,7 +1282,8 @@ function serialiserAusgabe(contenu, modifies) {
         // Occurrence plus ancienne d'une clé dupliquée : retirée, avec ses éventuels
         // « - item » de liste en blocs.
         let j = i + 1;
-        if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
+        if (CLES_PERSONNES.indexOf(mTop[1]) !== -1) { j = finListePersonnes(lignes, i); }
+        else if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
           while (j < lignes.length && /^\s*-\s*(.*)$/.test(lignes[j])) { j++; }
         }
         i = j;
@@ -1179,7 +1292,9 @@ function serialiserAusgabe(contenu, modifies) {
       // Liste en blocs : ses « - item » suivent la ligne de clé, valeur propre vide — si
       // cette clé est réécrite, ils ne survivent pas à la forme en ligne qui les remplace.
       let finBlocListe = i;
-      if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
+      const estPersonnes = CLES_PERSONNES.indexOf(mTop[1]) !== -1;
+      if (estPersonnes) { finBlocListe = finListePersonnes(lignes, i) - 1; }
+      else if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
         let j = i + 1;
         while (j < lignes.length && /^\s*-\s*(.*)$/.test(lignes[j])) { j++; }
         finBlocListe = j - 1;
@@ -1187,6 +1302,11 @@ function serialiserAusgabe(contenu, modifies) {
       finBloc.set(parentActuel, resultat.length);
       if (!restantes.has(mTop[1])) { resultat.push(ligne); i++; continue; }
       restantes.delete(mTop[1]);
+      if (estPersonnes) {
+        for (const l of lignesPersonnes(mTop[1], modifies[mTop[1]])) { resultat.push(l); }
+        i = finBlocListe + 1;
+        continue;
+      }
       // `suite` garde ses espaces de tête ; s'il colle à la valeur, on intercale un espace.
       const suite = decouperValeurYaml(mTop[2]).suite;
       resultat.push(mTop[1] + ': ' + formaterValeurYaml(mTop[1], modifies[mTop[1]])
@@ -1219,6 +1339,12 @@ function serialiserAusgabe(contenu, modifies) {
   const indexNouveauBloc = {};
   for (const cle of CLES_METADONNEES) {
     if (!restantes.has(cle)) { continue; }
+    if (CLES_PERSONNES.indexOf(cle) !== -1) {
+      // Une liste de personnes absente du fichier et vide ne crée rien.
+      if (personnesAssainies(modifies[cle]).length === 0) { continue; }
+      for (const l of lignesPersonnes(cle, modifies[cle])) { resultat.push(l); }
+      continue;
+    }
     // Une liste vide vaut « rien à retenir » : String([]) rend '', et la clé n'est pas
     // ajoutée. Une clé déjà présente, elle, est réécrite plus haut, vide comprise.
     if (String(modifies[cle]) === '') { continue; }
@@ -1267,7 +1393,7 @@ function ecrireAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLES_NOMBRES, CLES_JETONS_NUS, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, couleurAnnuelle, CLES_FRONTMATTER, estVraiYaml,
+  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLES_PERSONNES, CHAMPS_PERSONNE, CLES_NOMBRES, CLES_JETONS_NUS, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, couleurAnnuelle, CLES_FRONTMATTER, estVraiYaml,
   etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,

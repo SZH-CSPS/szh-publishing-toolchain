@@ -30,6 +30,8 @@ const { livreDEssai, activerHote } = require('./hote-factice');
 
 const LIVRE = livreDEssai();
 const HOTE = activerHote(LIVRE);
+// La section des chapitres : la première entrée de l'arbre est « Métadonnées du livre ».
+const sectionChapitres = (racine) => racine.find((it) => it.categorie === 'chapitres');
 
 // langueRevue (lib/yaml.js) est un module pur : pas besoin de l'hôte factice, un dossier
 // suffit. Test isolé, sur son propre dossier temporaire — jamais LIVRE, partagé par tout
@@ -69,7 +71,7 @@ test('livre : l’arbre montre Chapitres et Word, jamais Traductions', async () 
 test('livre : la section des unités s’appelle « chapitres », pas « articles »', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  const section = racine[0];
+  const section = sectionChapitres(racine);
   assert.strictEqual(section.contextValue, 'section-chapitres');
   assert.match(String(section.label), /CHAPITRES/i,
     'le titre de section ne dit pas « chapitres » : ' + section.label);
@@ -80,14 +82,14 @@ test('livre : la section des unités s’appelle « chapitres », pas « article
 test('livre : la section des chapitres est dépliée à l’ouverture', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  assert.strictEqual(racine[0].collapsibleState, 2,
+  assert.strictEqual(sectionChapitres(racine).collapsibleState, 2,
     'la section des chapitres n’est pas dépliée (2 = Expanded)');
 });
 
 test('livre : les chapitres du dossier sont listés', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  const enfants = await arbre.getChildren(racine[0]);
+  const enfants = await arbre.getChildren(sectionChapitres(racine));
   const slugs = enfants.map((it) => it.slug).filter(Boolean);
   assert.deepStrictEqual(slugs.sort(), ['01-ouverture', '02-suite'],
     'les chapitres ne sont pas lus dans chapitres/ — obtenu ' + slugs.join(', '));
@@ -101,7 +103,7 @@ test('livre : les chapitres du dossier sont listés', async () => {
 test('livre : un chapitre pointe sur chapitres/<slug>/<slug>.md', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  const enfants = await arbre.getChildren(racine[0]);
+  const enfants = await arbre.getChildren(sectionChapitres(racine));
   const premier = enfants.find((it) => it.slug === '01-ouverture');
   assert.ok(premier, 'le chapitre 01-ouverture n’est pas dans l’arbre');
   const cible = String((premier.resourceUri && premier.resourceUri.fsPath) || '');
@@ -215,6 +217,12 @@ test('livre : sauvegarder une fiche de chapitre ne vide ni n’efface type/licen
   assert.deepStrictEqual(apres.keywords, { fr: ['inclusion'] }, 'les mots-clés hérités ont été effacés');
   // Le reste de l'enregistrement a bien eu lieu : ce n'est pas un enregistrement ignoré.
   assert.strictEqual(apres.title.fr, 'Suite modifiée', 'le titre modifié n’a pas été écrit');
+
+  // L’enregistrement relance la compilation du chapitre seul (tâche construite par le
+  // cockpit, qui ne se termine que si on la termine) : sans cela le verrou de compilation
+  // resterait posé pour tous les tests suivants.
+  await new Promise((r) => setImmediate(r));
+  await HOTE.finirTache('Aperçu du chapitre — 02-suite', 0);
 });
 
 // cheminBiblio() codait « articles » en dur : sur un livre, le fichier était cherché sous
@@ -228,7 +236,7 @@ test('livre : la bibliographie d’un chapitre apparaît sous lui dans l’arbre
 
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
-  const enfants = await arbre.getChildren(racine[0]);
+  const enfants = await arbre.getChildren(sectionChapitres(racine));
   const chapitre = enfants.find((it) => it.slug === '01-ouverture');
   assert.ok(chapitre, 'le chapitre 01-ouverture n’est pas dans l’arbre');
 
@@ -249,14 +257,14 @@ test('livre : la bibliographie d’un chapitre apparaît sous lui dans l’arbre
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const tick = () => new Promise((r) => setImmediate(r));
 
-test('livre : un chapitre déjà compilé ouvre son aperçu sans lancer aucune tâche', async () => {
+test('livre : un chapitre déjà compilé ouvre son PDF sans lancer aucune tâche', async () => {
   const dossierOut = path.join(LIVRE, 'out', 'chapitres');
   fs.mkdirSync(dossierOut, { recursive: true });
-  const apercu = path.join(dossierOut, '01-ouverture.apercu.html');
-  fs.writeFileSync(apercu, '<html><body>chapitre déjà composé</body></html>');
+  const pdf = path.join(dossierOut, '01-ouverture.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.7\n');
   // Plus récent que le .md : ouvrirArticle ne doit rien trouver d’obsolète.
   const futur = (Date.now() + 60000) / 1000;
-  fs.utimesSync(apercu, futur, futur);
+  fs.utimesSync(pdf, futur, futur);
 
   const origExecute = HOTE.stub.tasks.executeTask;
   let appels = 0;
@@ -264,46 +272,41 @@ test('livre : un chapitre déjà compilé ouvre son aperçu sans lancer aucune t
   try {
     await HOTE.executer('szh.ouvrirArticle', '01-ouverture');
     assert.strictEqual(appels, 0,
-      'un aperçu de chapitre déjà présent et à jour ne doit lancer aucune tâche');
-    const panneau = HOTE.panneauDeType('szhApercuHtml');
-    assert.ok(panneau, 'l’aperçu HTML du chapitre ne s’est pas ouvert');
-    assert.ok(String(panneau.html).indexOf('chapitre déjà composé') !== -1,
-      'le panneau ne montre pas out/chapitres/01-ouverture.apercu.html, le bon fichier '
-      + 'pour un chapitre');
+      'un PDF de chapitre déjà présent et à jour ne doit lancer aucune tâche');
+    assert.ok(HOTE.ouvertures().map(String).some((o) => o.toLowerCase() === pdf.toLowerCase()),
+      'le PDF out/chapitres/01-ouverture.pdf, le bon fichier pour un chapitre, ne s’est pas ouvert');
   } finally {
     HOTE.stub.tasks.executeTask = origExecute;
   }
 });
 
-test('livre : un chapitre sans aperçu ne lance qu’UNE tâche', async () => {
+test('livre : un chapitre sans PDF ne lance qu’UNE tâche, celle du chapitre', async () => {
   const dossierOut = path.join(LIVRE, 'out', 'chapitres');
   fs.rmSync(path.join(LIVRE, 'out'), { recursive: true, force: true });   // rien compilé
 
-  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_TACHE_BUILD }]);
   const origExecute = HOTE.stub.tasks.executeTask;
   let appels = 0;
+  let nomTache = null;
   HOTE.stub.tasks.executeTask = (t) => {
     appels++;
-    // Ce qu'une vraie compilation écrirait : le fichier que lib/profil.js#chemins attend
-    // maintenant pour un CHAPITRE (out/chapitres/<slug>.apercu.html) — jamais le chemin de
-    // revue (out/<slug>/<slug>.apercu.html) que ouvrirArticle cherchait avant ce lot, et
-    // qui n'existe pour aucun chapitre.
+    nomTache = t && t.name;
+    // Ce qu’une vraie compilation écrirait : le PDF du chapitre, et lui seul.
     fs.mkdirSync(dossierOut, { recursive: true });
-    fs.writeFileSync(path.join(dossierOut, '02-suite.apercu.html'), '<html><body>build</body></html>');
+    fs.writeFileSync(path.join(dossierOut, '02-suite.pdf'), '%PDF-1.7\n');
     return origExecute(t);
   };
   try {
     const promesse = HOTE.executer('szh.ouvrirArticle', '02-suite');
     await tick(); await tick();
-    await HOTE.finirTache(NOM_TACHE_BUILD, 0);
+    await HOTE.finirTache(nomTache, 0);
     await promesse;
     await tick(); await tick();
     assert.strictEqual(appels, 1,
-      'un aperçu absent doit déclencher UNE compilation, jamais deux — celle que la '
+      'un PDF absent doit déclencher UNE compilation, jamais deux — celle que la '
       + 'compilation vient d’écrire doit être vue, pas cherchée au mauvais endroit');
+    assert.notStrictEqual(nomTache, NOM_TACHE_BUILD, 'le livre entier a été recompilé');
   } finally {
     HOTE.stub.tasks.executeTask = origExecute;
-    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
   }
 });
 

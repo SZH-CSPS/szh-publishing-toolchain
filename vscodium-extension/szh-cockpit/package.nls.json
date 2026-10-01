@@ -26,6 +26,7 @@
   "cmd.documentation": "Ouvrir la Documentation du numéro (Actualité et ressources)",
   "cmd.traduction": "Suivi de traduction de cet article",
   "cmd.vueArticles": "Articles du numéro",
+  "cmd.vueChapitres": "Chapitres du livre",
   "cmd.envoyerAuteur": "Envoyer cet article à l’auteur",
   "cmd.monterUnite": "Monter d’un rang",
   "cmd.descendreUnite": "Descendre d’un rang",
