@@ -725,4 +725,7 @@ test('règles Vale de la Zeitschrift : Lexique régénéré à l’identique, me
         assert.ok(message && !/ : | « | »/.test(message), sous + '/' + f + ' : ' + message);
       }
     }
+    // Le texte cité commence déjà par « : pas de seconde paire de guillemets autour.
+    assert.match(fs.readFileSync(path.join(styles, 'APA', 'WoertlichesZitatSeite.yml'), 'utf8'),
+      /^message: "Wörtliches Zitat ohne Seitenangabe \(Zeitschrift: Wörtliche Zitate im Text\): %s\."$/m);
   });

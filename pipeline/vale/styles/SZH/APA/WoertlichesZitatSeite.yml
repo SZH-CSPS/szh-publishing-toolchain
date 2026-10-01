@@ -19,7 +19,7 @@
 # personnelle, typiquement un entretien) ne porte structurellement JAMAIS de numéro de page
 # en APA — pipeline/manuscrit_vale.py rejette ce cas précis.
 extends: existence
-message: "Wörtliches Zitat ohne Seitenangabe (Zeitschrift: Wörtliche Zitate im Text): «%s»."
+message: "Wörtliches Zitat ohne Seitenangabe (Zeitschrift: Wörtliche Zitate im Text): %s."
 level: suggestion
 ignorecase: false
 nonword: true
