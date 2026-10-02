@@ -11,9 +11,9 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
-## 3.3.0
+## 3.2.1
 
-Medium : une copie en conflit OneDrive se tranche en un clic.
+Mineure : une copie en conflit OneDrive se tranche en un clic.
 
 **Production.**
 - Copies en conflit : après « Comparer les deux versions », un message propose « Garder ma
