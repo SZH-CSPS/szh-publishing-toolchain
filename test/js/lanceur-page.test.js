@@ -257,6 +257,112 @@ test('secrétariat : avancement sur la ligne, avis du contrat et « Afficher le 
   assert.strictEqual(parId(p, 'sec-edudoc-resume').textContent, TXT.secToutExporte);
 });
 
+const etatPp = (autres) => Object.assign({ type: MSG.LANCEUR_PREPROC_ETAT, produit: 'zeitschrift', format: 'docx',
+  dossier: 'C:\\M\\Reçus', depot: true }, autres || {});
+const deposer = (p, donnees) => tous(p, '.preproc-zone')[0].dispatchEvent({ type: 'drop', preventDefault() {},
+  dataTransfer: { getData: (t) => (t === 'text/uri-list' ? donnees.uri || '' : ''), files: donnees.files || [] } });
+
+test('préprocessing : le produit d’office vient de l’hôte, et choisir un manuscrit envoie produit et format', () => {
+  const p = page();
+  p.envoyer(charger({ produit: 'revue' }));
+  clic(parId(p, 'onglet-preproc'));
+  assert.deepStrictEqual(visibles(p), ['panneau-preproc']);
+  const panneau = parId(p, 'panneau-preproc');
+  assert.ok(!panneau.textContent.includes(TXT.avenir), 'le Préprocessing n’est plus « à venir »');
+  // Le livre n'a pas de nettoyeur : deux produits seulement, la revue en attendant l'hôte.
+  assert.deepStrictEqual(tous(p, 'input[name="produit-pp"]').map((r) => r.value), ['revue', 'zeitschrift']);
+  assert.deepStrictEqual(coche(p, 'produit-pp'), ['revue']);
+  p.envoyer(etatPp());
+  assert.deepStrictEqual(coche(p, 'produit-pp'), ['zeitschrift']);
+  // Le choix des autres onglets n'y change rien.
+  assert.deepStrictEqual(coche(p, 'produit-prod'), ['revue']);
+  assert.ok(panneau.textContent.includes(f('ppDossier', ['C:\\M\\Reçus'])));
+  assert.strictEqual(parId(p, 'pp-options').textContent, f('ppOptions', [TXT.ppFormatDocx]));
+  clic(parId(p, 'pp-choisir'));
+  const odt = parId(p, 'pp-format-odt');
+  odt.checked = true;
+  odt.dispatchEvent({ type: 'change' });
+  assert.strictEqual(parId(p, 'pp-options').textContent, f('ppOptions', [TXT.ppFormatOdt]));
+  const revue = parId(p, 'produit-pp-revue');
+  revue.checked = true;
+  revue.dispatchEvent({ type: 'change' });
+  clic(parId(p, 'pp-choisir'));
+  assert.deepStrictEqual(posts(p, MSG.LANCEUR_PREPROC_CHOISIR), [
+    { type: MSG.LANCEUR_PREPROC_CHOISIR, produit: 'zeitschrift', format: 'docx' },
+    { type: MSG.LANCEUR_PREPROC_CHOISIR, produit: 'revue', format: 'odt' }
+  ]);
+  // Un compte réglé sur le livre : le nettoyeur garde une revue.
+  const pLivre = page();
+  pLivre.envoyer(charger({ produit: 'livre' }));
+  assert.deepStrictEqual(coche(pLivre, 'produit-pp'), ['revue']);
+});
+
+test('préprocessing : un dépôt part avec son adresse, et se refuse sans chemin ou hors .docx et .odt', () => {
+  const p = page();
+  p.envoyer(charger());
+  p.envoyer(etatPp({ depot: false }));
+  deposer(p, { uri: 'file:///C:/M/a.docx' });
+  assert.deepStrictEqual(posts(p, MSG.LANCEUR_PREPROC_DEPOSER), [], 'dépôt retenu alors que l’hôte ne l’offre pas');
+  p.envoyer(etatPp());
+  deposer(p, { uri: 'file:///C:/M/a.docx' });
+  assert.deepStrictEqual(posts(p, MSG.LANCEUR_PREPROC_DEPOSER),
+    [{ type: MSG.LANCEUR_PREPROC_DEPOSER, uri: 'file:///C:/M/a.docx', produit: 'zeitschrift', format: 'docx' }]);
+  const avisDepot = tous(p, '.preproc-depot-avis')[0];
+  deposer(p, { files: [{ name: 'a.docx' }] });
+  assert.strictEqual(avisDepot.textContent, TXT.ppDepotChemin);
+  deposer(p, { uri: 'file:///C:/M/a.pdf' });
+  assert.strictEqual(avisDepot.textContent, TXT.ppDepotFormat);
+  assert.strictEqual(posts(p, MSG.LANCEUR_PREPROC_DEPOSER).length, 1);
+});
+
+test('préprocessing : l’avancement compte les étapes, l’issue garde ses alertes et ses liens, l’échec ouvre les détails', () => {
+  const p = page();
+  p.envoyer(charger());
+  p.envoyer(etatPp());
+  clic(parId(p, 'onglet-preproc'));
+  const repos = tous(p, '.preproc-repos')[0];
+  const cours = tous(p, '.preproc-cours')[0];
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_DEBUT, nom: 'a.docx', produit: 'zeitschrift', format: 'docx' });
+  assert.strictEqual(repos.hidden, true, 'le bouton principal reste pendant le nettoyage');
+  assert.strictEqual(cours.hidden, false);
+  assert.ok(cours.textContent.includes(f('ppEnCours', ['a.docx'])));
+  assert.ok(cours.textContent.includes(f('ppEnCoursProduit', ['Zeitschrift', TXT.ppFormatDocx])));
+  assert.ok(tous(p, 'input[name="produit-pp"]').every((r) => r.disabled));
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_ETAPE, etape: 'lecture' });
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_ETAPE, etape: 'titres' });
+  assert.ok(cours.textContent.includes(f('ppEtape', [5, 12, TXT.ppEtapeTitres])));
+  assert.strictEqual(cours.querySelectorAll('progress')[0].getAttribute('value'), '4');
+  clic(parId(p, 'pp-interrompre'));
+  assert.deepStrictEqual(posts(p, MSG.LANCEUR_PREPROC_INTERROMPRE), [{ type: MSG.LANCEUR_PREPROC_INTERROMPRE }]);
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_FIN, issue: 'alertes', document: 'a-nettoye.docx', rapport: true,
+    rapportOuvert: true, alertes: { erreurs: 1, avertissements: 0, suggestions: 2 } });
+  assert.strictEqual(repos.hidden, false);
+  assert.strictEqual(cours.hidden, true);
+  const issue = tous(p, '.preproc-issue')[0];
+  assert.ok(issue.textContent.includes(f('ppReussi', ['a-nettoye.docx'])));
+  assert.ok(issue.textContent.includes(TXT.ppReussiAlertes));
+  assert.ok(issue.textContent.includes(TXT.ppRapportOuvert));
+  assert.deepStrictEqual(issue.querySelectorAll('.szh-pastille').map((x) => x.textContent),
+    [f('ppErreursUn', [1]), f('ppSuggestionsPlus', [2])]);
+  const details = tous(p, '.preproc-details')[0];
+  assert.strictEqual(details.hidden, false);
+  assert.notStrictEqual(details.open, true);
+  assert.deepStrictEqual(details.querySelectorAll('li').map((l) => l.className),
+    ['preproc-ligne preproc-ligne--fait', 'preproc-ligne preproc-ligne--fait']);
+  clic(parId(p, 'pp-ouvrir-rapport'));
+  clic(parId(p, 'pp-ouvrir-dossier'));
+  assert.deepStrictEqual(posts(p, MSG.LANCEUR_PREPROC_OUVRIR).map((m) => m.quoi), ['rapport', 'dossier']);
+  // L'échec : la phrase de l'hôte, l'étape en échec, les détails dépliés, aucun lien.
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_DEBUT, nom: 'b.docx' });
+  assert.strictEqual(details.hidden, true, 'les détails d’avant restent pendant le nettoyage suivant');
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_ETAPE, etape: 'lecture' });
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_FIN, issue: 'echec', texte: 'Réessayez.' });
+  assert.ok(issue.textContent.includes(TXT.ppEchec) && issue.textContent.includes('Réessayez.'));
+  assert.strictEqual(details.open, true);
+  assert.deepStrictEqual(details.querySelectorAll('li').map((l) => l.className), ['preproc-ligne preproc-ligne--echec']);
+  assert.strictEqual(parId(p, 'pp-ouvrir-rapport'), null);
+});
+
 test('log : le journal le plus récent s’ouvre de lui-même, son verdict écrit en toutes lettres ; signaler en une phrase', () => {
   const p = page();
   p.envoyer(charger());
@@ -295,8 +401,14 @@ test('lanceur : chaque texte affiché vient de l’hôte', () => {
   p.envoyer({ type: MSG.LANCEUR_FIN, commande: 'newsletter', ok: true, texte: 'Bilan.', dossier: 'C:\\E' });
   clic(parId(p, 'onglet-nouveau'));
   clic(parId(p, 'onglet-journal'));
+  p.envoyer(etatPp());
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_DEBUT, nom: 'a.docx' });
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_ETAPE, etape: 'lecture' });
+  p.envoyer({ type: MSG.LANCEUR_PREPROC_FIN, issue: 'alertes', document: 'a-nettoye.docx', rapport: true,
+    rapportOuvert: true, alertes: { erreurs: 2, avertissements: 1, suggestions: 0 } });
   // Les noms des deux langues s'écrivent chacun dans sa langue, et les tailles sont des nombres de pixels.
-  const donnees = ['Bilan.', ' Bilan.', 'Français', 'Deutsch', '14 px', '16 px', '18 px'];
+  const donnees = ['Bilan.', ' Bilan.', 'Français', 'Deutsch', '14 px', '16 px', '18 px',
+    ' ' + TXT.ppReussiAlertes, ' ' + TXT.ppRapportOuvert];
   for (const pr of c.produits) {
     donnees.push(pr.libelle);
     for (const x of pr.enCours.concat(pr.archives)) { donnees.push(x.nom, x.titre); }
@@ -317,7 +429,7 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   const js = fs.readFileSync(path.join(COCKPIT, 'media', 'lanceur.js'), 'utf8');
   const lus = new Set([...js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)].map((m) => m[1]));
   // Les clés lues par une variable (VERDICTS, ISSUES, remplir, pluriel) se nomment entre apostrophes.
-  for (const m of js.matchAll(/'((?:prod|nv|sec|jrn|rg)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
+  for (const m of js.matchAll(/'((?:prod|nv|pp|sec|jrn|rg)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
   const fournis = new Set(Object.keys(TXT));
   for (const cle of lus) {
     const pluriel = fournis.has(cle + 'Un') && fournis.has(cle + 'Plus');

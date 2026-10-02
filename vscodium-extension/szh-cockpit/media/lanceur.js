@@ -26,6 +26,7 @@
 //   valeurs { valeurs, poste, services, proteges, ojs, biblio, taches, auteursOjs, suggInterface,
 //             avertLangue }   les réglages ; une clé n'y figure jamais, seulement « définie » ou non
 //   proteges, enregistre { bloc }, erreur { bloc, message }   le verrou et l'issue d'une écriture
+// Le Préprocessing décrit les siens dans son bloc.
 (function () {
   'use strict';
   var TXT = __TXT__;
@@ -118,8 +119,6 @@
   }
   // Produits d'abord, toujours : c'est le geste de tous les quinze jours.
   activer('produits', false);
-
-  panneaux.preproc.appendChild(SZH.notif('info', TXT.avenir));
 
   // ---- Le produit choisi ----
   // Un seul choix pour Produits, Nouveau et Secrétariat : passer à la Zeitschrift dans un
@@ -513,6 +512,296 @@
     avis(nvRefus, '', '');
     api.postMessage(m);
   }
+
+  // ---- Préprocessing ----
+  // Le nettoyeur de manuscrit. Choisir ou déposer un manuscrit le nettoie aussitôt, avec le
+  // produit et le format affichés au-dessus : pas de second bouton à trouver. L'issue, ses
+  // alertes et ses liens restent au-dessus de la zone jusqu'au manuscrit suivant.
+  //
+  // Vers l'hôte : lanceurPreprocChoisir { produit, format }, lanceurPreprocDeposer { uri, produit,
+  // format }, lanceurPreprocInterrompre, lanceurPreprocOuvrir { quoi: 'document' | 'rapport' | 'dossier' }.
+  // Depuis l'hôte : lanceurPreprocEtat { produit, format, dossier, depot }, à l'ouverture et après
+  // chaque nettoyage ; lanceurPreprocDebut { nom, produit, format } ; lanceurPreprocEtape { etape } ;
+  // lanceurPreprocFin { issue: 'ok' | 'alertes' | 'refus' | 'echec' | 'interrompu', texte, document,
+  // rapport, rapportOuvert, alertes: { erreurs, avertissements, suggestions } }.
+  var pp = panneaux.preproc;
+  // Les étapes dans l'ordre du nettoyeur : l'hôte en nomme une à la fois, la page les compte.
+  var PP_ETAPES = [
+    ['preparation', 'ppEtapePreparation'], ['lecture', 'ppEtapeLecture'], ['entete', 'ppEtapeEntete'],
+    ['identifiants', 'ppEtapeIdentifiants'], ['titres', 'ppEtapeTitres'], ['formatage', 'ppEtapeFormatage'],
+    ['typographie', 'ppEtapeTypographie'], ['regles', 'ppEtapeRegles'], ['bibliographie', 'ppEtapeBibliographie'],
+    ['ecriture', 'ppEtapeEcriture'], ['annotation', 'ppEtapeAnnotation'], ['rapport', 'ppEtapeRapport']
+  ];
+  var PP_FORMATS = [['docx', 'ppFormatDocx'], ['odt', 'ppFormatOdt']];
+  var PP_ALERTES = [['erreurs', 'ppErreurs', 'danger'], ['avertissements', 'ppAvertissements', 'attention'],
+    ['suggestions', 'ppSuggestions', 'info']];
+  var PP_LIENS = [['document', 'ppOuvrirDocument'], ['rapport', 'ppOuvrirRapport'], ['dossier', 'ppAfficher']];
+  var PP_ICONES = { fait: 'ok', cours: 'cercle', echec: 'danger', arret: 'croix' };
+  var MSG_PREPROC = [MSG.LANCEUR_PREPROC_ETAT, MSG.LANCEUR_PREPROC_DEBUT, MSG.LANCEUR_PREPROC_ETAPE,
+    MSG.LANCEUR_PREPROC_FIN];
+  var ppEtat = { produits: [], produit: '', produitHote: '', format: 'docx', dossier: '', depot: false,
+    enCours: false };
+  var ppLigne = null;
+
+  var ppTete = poser(pp, 'div', 'lanceur-tete');
+  var ppProduits = poser(ppTete, 'div', 'lanceur-segments');
+  ppProduits.setAttribute('role', 'radiogroup');
+  ppProduits.setAttribute('aria-label', TXT.prodChoix);
+  poser(ppTete, 'p', 'preproc-intro', TXT.ppIntro);
+
+  // L'issue du dernier nettoyage passe avant la zone : c'est elle qu'on vient lire.
+  var ppIssue = poser(pp, 'div', 'lanceur-issue preproc-issue');
+  ppIssue.setAttribute('role', 'status');
+  var ppDetails = poser(pp, 'details', 'lanceur-details preproc-details');
+  poser(ppDetails, 'summary', '', TXT.secDetails);
+  var ppJournal = poser(ppDetails, 'ol', 'preproc-journal');
+  ppJournal.setAttribute('role', 'log');
+  ppJournal.setAttribute('aria-label', TXT.secDetails);
+  ppDetails.hidden = true;
+
+  var ppZone = poser(pp, 'div', 'preproc-zone');
+  var ppRepos = poser(ppZone, 'div', 'preproc-repos');
+  var ppDeposer = poser(ppRepos, 'p', 'preproc-deposer');
+  poser(ppDeposer, 'strong', '', TXT.ppDeposer);
+  poser(ppDeposer, 'span', 'preproc-ou', TXT.ppOu);
+  var ppChoisir = SZH.bouton(TXT.ppChoisir, choisirManuscrit, 'szh-bouton--principal');
+  ppChoisir.id = 'pp-choisir';
+  ppRepos.appendChild(ppChoisir);
+  var ppDossier = poser(ppRepos, 'p', 'preproc-aide');
+  poser(ppRepos, 'p', 'preproc-aide', TXT.ppSortie);
+  var ppDepotAvis = poser(ppRepos, 'p', 'preproc-depot-avis');
+  ppDepotAvis.setAttribute('role', 'alert');
+
+  var ppCours = poser(ppZone, 'div', 'preproc-cours');
+  ppCours.hidden = true;
+  var ppCoursTete = poser(ppCours, 'div', 'preproc-cours-tete');
+  var ppCoursTexte = poser(ppCoursTete, 'div', 'preproc-cours-texte');
+  var ppCoursTitre = poser(ppCoursTexte, 'h2', 'preproc-cours-titre');
+  ppCoursTitre.id = 'pp-cours-titre';
+  var ppCoursProduit = poser(ppCoursTexte, 'p', 'preproc-aide');
+  var ppInterrompre = SZH.bouton(TXT.ppInterrompre, function () {
+    ppInterrompre.disabled = true;
+    api.postMessage({ type: MSG.LANCEUR_PREPROC_INTERROMPRE });
+  });
+  ppInterrompre.id = 'pp-interrompre';
+  ppCoursTete.appendChild(ppInterrompre);
+  var ppBarre = poser(ppCours, 'progress', 'lanceur-barre');
+  ppBarre.setAttribute('aria-labelledby', 'pp-cours-titre');
+  var ppCoursEtape = poser(ppCours, 'p', 'preproc-cours-etape');
+  ppCoursEtape.setAttribute('aria-live', 'polite');
+
+  var ppOptions = poser(pp, 'details', 'lanceur-details preproc-options');
+  var ppOptionsTitre = poser(ppOptions, 'summary', '');
+  ppOptionsTitre.id = 'pp-options';
+  var ppFormats = poser(ppOptions, 'fieldset', 'preproc-formats');
+  poser(ppFormats, 'legend', '', TXT.ppFormat);
+  PP_FORMATS.forEach(function (f) {
+    var l = poser(ppFormats, 'label', 'szh-opt');
+    var r = poser(l, 'input', '');
+    r.type = 'radio';
+    r.name = 'pp-format';
+    r.value = f[0];
+    r.id = 'pp-format-' + f[0];
+    r.addEventListener('change', function () { if (r.checked) { ppEtat.format = f[0]; rendrePreproc(); } });
+    poser(l, 'span', '', TXT[f[1]]);
+  });
+  poser(pp, 'p', 'lanceur-astuce preproc-compteurs', TXT.ppCompteurs);
+
+  function libelleFormat(jeton) { return TXT[(PP_FORMATS.filter(function (f) { return f[0] === jeton; })[0] || PP_FORMATS[0])[1]]; }
+  function libelleProduitPp(jeton) {
+    var p = ppEtat.produits.filter(function (x) { return x.jeton === jeton; })[0];
+    return p ? p.libelle : '';
+  }
+  function rendreProduitsPp() {
+    ppProduits.textContent = '';
+    ppProduits.hidden = ppEtat.produits.length < 2;
+    ppEtat.produits.forEach(function (p) {
+      var l = poser(ppProduits, 'label', 'lanceur-segment');
+      var r = poser(l, 'input', '');
+      r.type = 'radio';
+      r.name = 'produit-pp';
+      r.value = p.jeton;
+      r.id = 'produit-pp-' + p.jeton;
+      r.checked = p.jeton === ppEtat.produit;
+      r.disabled = ppEtat.enCours;
+      r.addEventListener('change', function () { if (r.checked) { ppEtat.produit = p.jeton; } });
+      poser(l, 'span', '', p.libelle);
+    });
+  }
+  function rendrePreproc() {
+    ppOptionsTitre.textContent = SZH.remplir(TXT, 'ppOptions', [libelleFormat(ppEtat.format)]);
+    Array.prototype.slice.call(ppFormats.querySelectorAll('input')).forEach(function (r) {
+      r.checked = r.value === ppEtat.format;
+      r.disabled = ppEtat.enCours;
+    });
+    ppDeposer.hidden = !ppEtat.depot;
+    ppZone.classList.toggle('preproc-zone--depot', ppEtat.depot && !ppEtat.enCours);
+    ppDossier.textContent = ppEtat.dossier ? SZH.remplir(TXT, 'ppDossier', [ppEtat.dossier]) : '';
+    ppDossier.hidden = !ppEtat.dossier;
+    ppRepos.hidden = ppEtat.enCours;
+    ppCours.hidden = !ppEtat.enCours;
+  }
+  rendrePreproc();
+
+  function choisirManuscrit() {
+    if (ppEtat.enCours || !ppEtat.produit) { return; }
+    ppDepotAvis.textContent = '';
+    api.postMessage({ type: MSG.LANCEUR_PREPROC_CHOISIR, produit: ppEtat.produit, format: ppEtat.format });
+  }
+  // Un dépôt n'est retenu que s'il donne l'emplacement du fichier (une adresse file://) :
+  // le document nettoyé s'écrit à côté du manuscrit, et une copie sans chemin n'en a pas.
+  function deposeAccepte() { return ppEtat.depot && !ppEtat.enCours; }
+  ppZone.addEventListener('dragover', function (ev) {
+    if (!deposeAccepte()) { return; }
+    ev.preventDefault();
+    ppZone.classList.add('survol');
+  });
+  ppZone.addEventListener('dragleave', function () { ppZone.classList.remove('survol'); });
+  ppZone.addEventListener('drop', function (ev) {
+    if (!deposeAccepte()) { return; }
+    ev.preventDefault();
+    ppZone.classList.remove('survol');
+    var dt = ev.dataTransfer || {};
+    var uri = String((dt.getData && dt.getData('text/uri-list')) || '').split(/\r?\n/)
+      .filter(function (l) { return l && l.charAt(0) !== '#'; })[0] || '';
+    var nom = uri || (dt.files && dt.files[0] ? String(dt.files[0].name || '') : '');
+    if (!nom) { return; }
+    if (!/\.(docx|odt)$/i.test(nom)) { ppDepotAvis.textContent = TXT.ppDepotFormat; return; }
+    if (!/^file:/i.test(uri)) { ppDepotAvis.textContent = TXT.ppDepotChemin; return; }
+    ppDepotAvis.textContent = '';
+    api.postMessage({ type: MSG.LANCEUR_PREPROC_DEPOSER, uri: uri, produit: ppEtat.produit, format: ppEtat.format });
+  });
+
+  // Le journal en clair : une ligne par étape atteinte, marquée faite, en cours, en échec
+  // ou arrêtée.
+  function marquerLigne(li, etat) {
+    if (!li) { return; }
+    li.className = 'preproc-ligne preproc-ligne--' + etat;
+    li.replaceChild(SZH.icone(PP_ICONES[etat]), li.firstChild);
+  }
+  function surDebutPp(msg) {
+    ppEtat.enCours = true;
+    if (msg.produit) { ppEtat.produit = String(msg.produit); }
+    if (msg.format) { ppEtat.format = String(msg.format); }
+    ppCoursTitre.textContent = SZH.remplir(TXT, 'ppEnCours', [String(msg.nom || '')]);
+    ppCoursProduit.textContent = SZH.remplir(TXT, 'ppEnCoursProduit',
+      [libelleProduitPp(ppEtat.produit), libelleFormat(ppEtat.format)]);
+    ppCoursEtape.textContent = '';
+    ppBarre.removeAttribute('value');
+    ppInterrompre.disabled = false;
+    ppJournal.textContent = '';
+    ppLigne = null;
+    ppIssue.textContent = '';
+    ppDepotAvis.textContent = '';
+    ppDetails.hidden = true;
+    rendreProduitsPp();
+    rendrePreproc();
+  }
+  function surEtapePp(msg) {
+    var i = PP_ETAPES.map(function (e) { return e[0]; }).indexOf(msg.etape);
+    if (i === -1 || !ppEtat.enCours) { return; }
+    var texte = TXT[PP_ETAPES[i][1]];
+    marquerLigne(ppLigne, 'fait');
+    ppLigne = poser(ppJournal, 'li', '');
+    ppLigne.appendChild(SZH.icone(PP_ICONES.cours));
+    poser(ppLigne, 'span', '', texte);
+    marquerLigne(ppLigne, 'cours');
+    ppCoursEtape.textContent = SZH.remplir(TXT, 'ppEtape', [i + 1, PP_ETAPES.length, texte]);
+    ppBarre.max = PP_ETAPES.length;
+    ppBarre.value = i;
+    ppBarre.setAttribute('max', String(PP_ETAPES.length));
+    ppBarre.setAttribute('value', String(i));
+  }
+  // Un avis au titre en gras, suivi de phrases ordinaires ; une phrase vide ne s'ajoute pas.
+  function notifTitre(ton, titre, suite) {
+    var t = document.createElement('strong');
+    t.textContent = titre;
+    var corps = [t];
+    suite.forEach(function (phrase) {
+      if (!phrase) { return; }
+      var s = document.createElement('span');
+      s.textContent = ' ' + phrase;
+      corps.push(s);
+    });
+    return SZH.notif(ton, corps);
+  }
+  function surFinPp(msg) {
+    var issue = String(msg.issue || '');
+    var reussi = issue === 'ok' || issue === 'alertes';
+    var texte = String(msg.texte || '');
+    ppEtat.enCours = false;
+    marquerLigne(ppLigne, reussi ? 'fait' : (issue === 'interrompu' ? 'arret' : 'echec'));
+    ppDetails.hidden = !ppLigne;
+    ppIssue.textContent = '';
+    if (reussi) {
+      ppIssue.appendChild(notifTitre(issue === 'alertes' ? 'attention' : 'ok',
+        SZH.remplir(TXT, 'ppReussi', [String(msg.document || '')]),
+        [issue === 'alertes' ? TXT.ppReussiAlertes : '', msg.rapportOuvert ? TXT.ppRapportOuvert : '']));
+      var compte = poser(ppIssue, 'p', 'preproc-alertes');
+      var alertes = msg.alertes || {};
+      var aucune = true;
+      PP_ALERTES.forEach(function (a) {
+        var n = Number(alertes[a[0]]) || 0;
+        if (!n) { return; }
+        aucune = false;
+        poser(compte, 'span', 'szh-pastille szh-pastille--' + a[2], pluriel(n, a[1], [n]));
+      });
+      if (aucune) { poser(compte, 'span', '', TXT.ppAucuneAlerte); }
+      ppDetails.open = false;
+    } else if (issue === 'interrompu') {
+      ppIssue.appendChild(SZH.notif('attention', TXT.ppInterrompu));
+      ppDetails.open = false;
+    } else if (issue === 'refus') {
+      ppIssue.appendChild(notifTitre('attention', TXT.ppRefus, [texte || TXT.secEchecInconnu]));
+      ppDetails.open = false;
+    } else {
+      ppIssue.appendChild(notifTitre('danger', TXT.ppEchec, [texte || TXT.secEchecInconnu]));
+      ppDetails.open = true;
+    }
+    // Les liens vers ce que l'hôte a écrit : il les connaît, la page ne lui renvoie qu'un mot.
+    var liens = PP_LIENS.filter(function (l) { return l[0] === 'dossier' ? (msg.document || msg.rapport) : msg[l[0]]; });
+    if (liens.length) {
+      var rang = poser(ppIssue, 'p', 'preproc-liens');
+      liens.forEach(function (l) {
+        var b = lien(TXT[l[1]], function () { api.postMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: l[0] }); });
+        b.id = 'pp-ouvrir-' + l[0];
+        rang.appendChild(b);
+      });
+    }
+    rendreProduitsPp();
+    rendrePreproc();
+    if (ongletActif === 'preproc') { ppChoisir.focus(); }
+  }
+  // Le produit d'office vient de l'hôte, qui suit la langue ; le livre n'a pas de nettoyeur.
+  function surChargerPp(msg) {
+    ppEtat.produits = (msg.produits || []).filter(function (p) { return p.type !== 'livre'; });
+    var jetons = ppEtat.produits.map(function (p) { return p.jeton; });
+    var candidats = [ppEtat.produitHote, msg.produit, jetons[0]];
+    ppEtat.produit = candidats.filter(function (j) { return j && jetons.indexOf(j) !== -1; })[0] || '';
+    rendreProduitsPp();
+    rendrePreproc();
+  }
+  function surEtatPp(msg) {
+    if (msg.produit) {
+      ppEtat.produitHote = String(msg.produit);
+      if (!ppEtat.produits.length || ppEtat.produits.some(function (p) { return p.jeton === msg.produit; })) {
+        ppEtat.produit = ppEtat.produitHote;
+      }
+    }
+    if (PP_FORMATS.some(function (f) { return f[0] === msg.format; })) { ppEtat.format = msg.format; }
+    ppEtat.dossier = String(msg.dossier || '');
+    ppEtat.depot = !!msg.depot;
+    rendreProduitsPp();
+    rendrePreproc();
+  }
+  window.addEventListener('message', function (ev) {
+    var msg = (ev && ev.data) || {};
+    if (msg.type === MSG.CHARGER) { surChargerPp(msg); }
+    else if (msg.type === MSG.LANCEUR_PREPROC_ETAT) { surEtatPp(msg); }
+    else if (msg.type === MSG.LANCEUR_PREPROC_DEBUT) { surDebutPp(msg); }
+    else if (msg.type === MSG.LANCEUR_PREPROC_ETAPE) { surEtapePp(msg); }
+    else if (msg.type === MSG.LANCEUR_PREPROC_FIN) { surFinPp(msg); }
+  });
 
   // ---- Secrétariat ----
   // Une ligne par tâche, rangées par fréquence. Chacune a ses réglages déjà remplis et un
@@ -1776,7 +2065,8 @@
       return;
     } else if (msg.type === MSG.LANCEUR_CREE) {
       if (!msg.ok) { avis(nvRefus, 'danger', SZH.remplir(TXT, 'nvRefus', [msg.texte || TXT.secEchecInconnu])); }
-    } else if (msg.type === MSG.LANCEUR_DEBUT) { surDebut(msg); }
+    } else if (MSG_PREPROC.indexOf(msg.type) !== -1) { return; } // le bloc Préprocessing les écoute
+    else if (msg.type === MSG.LANCEUR_DEBUT) { surDebut(msg); }
     else if (msg.type === MSG.LANCEUR_LIGNE) { surLigne(msg); }
     else if (msg.type === MSG.LANCEUR_FIN) { surFin(msg); }
     else if (msg.type === MSG.LANCEUR_JOURNAL_TEXTE) { surTexteJournal(msg); }

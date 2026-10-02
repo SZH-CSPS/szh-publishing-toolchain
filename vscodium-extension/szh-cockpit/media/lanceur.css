@@ -214,6 +214,50 @@ body {
   .lanceur-tache-reglage { grid-column: 1 / -1; }
 }
 
+/* ═══ Préprocessing ═════════════════════════════════════════════════════════════ */
+.preproc-intro { margin: 0; color: var(--encre-2); flex: 1 1 20rem; min-width: 0; }
+#panneau-preproc .lanceur-segment input:disabled + span { opacity: .55; cursor: default; }
+.preproc-details { margin: 0 0 var(--e3); }
+.preproc-details[hidden] { display: none; }
+/* La zone du geste : au repos, le bouton et ce qui est déjà décidé ; pendant le nettoyage,
+   le manuscrit, l'étape et Interrompre, à la même place. */
+.preproc-zone {
+  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini);
+  padding: var(--e4); background: var(--vscode-input-background, var(--fond));
+}
+.preproc-zone--depot { border-style: dashed; }
+.preproc-zone.survol { border-style: solid; border-color: var(--accent); background: var(--vscode-list-hoverBackground, var(--surface)); }
+.preproc-repos { display: flex; flex-direction: column; align-items: center; gap: var(--e2); text-align: center; }
+.preproc-repos[hidden], .preproc-cours[hidden] { display: none; }
+.preproc-deposer { display: flex; flex-direction: column; align-items: center; gap: var(--e1); margin: 0; }
+.preproc-deposer[hidden] { display: none; }
+.preproc-ou { font-size: var(--t-libelle); color: var(--encre-2); }
+.preproc-aide { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); overflow-wrap: anywhere; }
+.preproc-aide[hidden] { display: none; }
+.preproc-depot-avis { margin: 0; font-size: var(--t-libelle); color: var(--danger); font-weight: 600; }
+.preproc-depot-avis:empty { display: none; }
+.preproc-cours-tete { display: flex; align-items: flex-start; gap: var(--e3); }
+.preproc-cours-texte { flex: 1 1 auto; min-width: 0; }
+.preproc-cours-titre { font-size: var(--t-corps); font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.preproc-cours-etape { margin: var(--e2) 0 0; }
+.preproc-issue { margin: 0 0 var(--e2); display: flex; flex-direction: column; gap: var(--e2); }
+.preproc-alertes, .preproc-liens { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--e1) var(--e3); margin: 0; }
+.preproc-issue .preproc-liens .lanceur-lien { margin-left: 0; }
+.preproc-journal { list-style: none; margin: var(--e1) 0 0; padding: var(--e2) var(--e3);
+  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini);
+  background: var(--vscode-input-background, var(--fond)); max-height: 12rem; overflow: auto; }
+.preproc-ligne { display: flex; align-items: center; gap: var(--e2); padding: .1em 0; }
+.preproc-ligne svg { flex: 0 0 auto; }
+.preproc-ligne--fait svg { color: var(--ok); }
+.preproc-ligne--cours { font-weight: 600; }
+.preproc-ligne--cours svg { color: var(--accent); }
+.preproc-ligne--echec { color: var(--danger); font-weight: 600; }
+.preproc-ligne--arret { color: var(--encre-2); }
+.preproc-options { margin-top: var(--e4); }
+.preproc-formats { border: 0; margin: var(--e1) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--e1) var(--e4); align-items: baseline; }
+.preproc-formats legend { font-size: var(--t-libelle); color: var(--encre-2); padding: 0; margin-bottom: var(--e1); width: 100%; }
+.preproc-compteurs { margin: var(--e4) 0 0; max-width: 46rem; }
+
 /* ═══ Log ═══════════════════════════════════════════════════════════════════════ */
 .lanceur-jrn { display: grid; grid-template-columns: 1fr; gap: var(--e4); }
 .lanceur-jrn .lanceur-liste { max-height: 19rem; }

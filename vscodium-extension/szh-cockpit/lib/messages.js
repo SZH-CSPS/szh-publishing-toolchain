@@ -129,6 +129,12 @@ const MSG = Object.freeze({
   // le refus éventuel de l'hôte.
   LANCEUR_ONGLET: 'lanceurOnglet', LANCEUR_OUVRIR: 'lanceurOuvrir', LANCEUR_VERSIONS: 'lanceurVersions',
   LANCEUR_CREER: 'lanceurCreer', LANCEUR_CREE: 'lanceurCree',
+  // Préprocessing : choisir ou déposer un manuscrit, interrompre, ouvrir le document, le
+  // rapport ou leur dossier ; l'hôte envoie ses réglages, le début, chaque étape et l'issue.
+  LANCEUR_PREPROC_CHOISIR: 'lanceurPreprocChoisir', LANCEUR_PREPROC_DEPOSER: 'lanceurPreprocDeposer',
+  LANCEUR_PREPROC_INTERROMPRE: 'lanceurPreprocInterrompre', LANCEUR_PREPROC_OUVRIR: 'lanceurPreprocOuvrir',
+  LANCEUR_PREPROC_ETAT: 'lanceurPreprocEtat', LANCEUR_PREPROC_DEBUT: 'lanceurPreprocDebut',
+  LANCEUR_PREPROC_ETAPE: 'lanceurPreprocEtape', LANCEUR_PREPROC_FIN: 'lanceurPreprocFin',
   // Secrétariat : la page demande une tâche ou le chargement des numéros publiés ; l'hôte
   // annonce le début, relaie chaque ligne JSON de secretariat-cli.js telle quelle, puis
   // l'issue, chaque fois avec la commande concernée.

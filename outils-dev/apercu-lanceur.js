@@ -211,6 +211,23 @@ function valeursReglages(langue, opts) {
   return msg;
 }
 
+// Le Préprocessing : un dossier de manuscrits reçus, un manuscrit fictif, et les textes que
+// l'hôte devra rendre (le refus au vrai pluriel, que la CLI n'écrit pas encore ainsi).
+const PREPROC = {
+  fr: {
+    dossier: 'C:\\Users\\redaction\\OneDrive - SZH\\Revue\\Manuscrits reçus\\2026-04',
+    nom: 'Martin-cooperation-ecole-familles.docx', sortie: 'Martin-cooperation-ecole-familles-nettoye.docx',
+    refus: '12 modifications suivies ne sont pas acceptées. Acceptez-les ou refusez-les dans Word, puis relancez.',
+    echec: 'Le nettoyeur s’est arrêté pendant le contrôle de la bibliographie. Réessayez ; si cela se répète, écrivez au support de Pronto.'
+  },
+  de: {
+    dossier: 'C:\\Users\\redaktion\\OneDrive - SZH\\Zeitschrift\\Manuskripte\\2026-06',
+    nom: 'Keller-Kooperation-Schule-Familie.docx', sortie: 'Keller-Kooperation-Schule-Familie-nettoye.docx',
+    refus: '12 nachverfolgte Änderungen sind nicht angenommen. Nehmen Sie sie in Word an oder lehnen Sie sie ab und starten Sie dann erneut.',
+    echec: 'Der Bereiniger hat bei der Prüfung des Literaturverzeichnisses angehalten. Versuchen Sie es erneut; wenn es sich wiederholt, schreiben Sie an den Pronto-Support.'
+  }
+};
+
 // ---- Les états -----------------------------------------------------------------------
 // Une étape : ['hote', message] rejoue un message de l'hôte ; ['clic', sélecteur] un clic ;
 // ['saisir', sélecteur, texte] une frappe dans un champ ; ['ouvrirTous', sélecteur] ouvre des <details>.
@@ -231,6 +248,17 @@ function etats(langue) {
   const journal = [['clic', '#onglet-journal'],
     ['hote', { type: MSG.LANCEUR_JOURNAL_TEXTE, rang: 0, texte: transcript(), lignes: 200 }]];
   const signaler = journal.concat([['clic', '#jrn-signaler'], ['saisir', '#jrn-phrase', P.phrase]]);
+  const PP = PREPROC[langue] || PREPROC.fr;
+  const preproc = [['clic', '#onglet-preproc'], ['hote', { type: MSG.LANCEUR_PREPROC_ETAT, produit: revue,
+    format: 'docx', dossier: PP.dossier, depot: true }]];
+  const ppEtapes = (jusqua) => ['preparation', 'lecture', 'entete', 'identifiants', 'titres', 'formatage',
+    'typographie', 'regles', 'bibliographie', 'ecriture', 'annotation', 'rapport']
+    .slice(0, jusqua).map((e) => ['hote', { type: MSG.LANCEUR_PREPROC_ETAPE, etape: e }]);
+  const ppDebut = preproc.concat([['clic', '#pp-choisir'],
+    ['hote', { type: MSG.LANCEUR_PREPROC_DEBUT, nom: PP.nom, produit: revue, format: 'docx' }]]);
+  const ppFin = (jusqua, o) => ppDebut.concat(ppEtapes(jusqua),
+    [['hote', Object.assign({ type: MSG.LANCEUR_PREPROC_FIN }, o)]]);
+  const ppReussi = { document: PP.sortie, rapport: true, rapportOuvert: true };
   return {
     'P1-repos': { etapes: [] },
     'P2-archives': { etapes: [['clic', '#prod-archives'], ['clic', '#archive-1']] },
@@ -239,6 +267,16 @@ function etats(langue) {
     'N1-repos': { etapes: [['clic', '#onglet-nouveau']] },
     'N2-erreur': { etapes: [['clic', '#onglet-nouveau'], ['saisir', '#nv-numero', '3']] },
     'N3-livre': { etapes: [['clic', '#onglet-nouveau'], ['clic', '#produit-nv-livre']] },
+    'PP1-repos': { etapes: preproc },
+    'PP2-choisi': { etapes: ppDebut.concat(ppEtapes(1)) },
+    'PP3-en-cours': { etapes: ppDebut.concat(ppEtapes(8)) },
+    'PP4-reussite': { etapes: ppFin(12, Object.assign({ issue: 'ok', alertes: { suggestions: 3 } }, ppReussi)) },
+    'PP5-alertes': { etapes: ppFin(12, Object.assign({ issue: 'alertes',
+      alertes: { erreurs: 2, avertissements: 5, suggestions: 7 } }, ppReussi)) },
+    'PP6-refus': { etapes: ppFin(2, { issue: 'refus', texte: PP.refus, rapport: true }) },
+    'PP7-echec': { etapes: ppFin(9, { issue: 'echec', texte: PP.echec }) },
+    'PP8-options': { etapes: preproc.concat([['clic', '#pp-options']]) },
+    'PP9-interrompu': { etapes: ppFin(5, { issue: 'interrompu' }) },
     'S1-repos': { etapes: secretariat },
     'S2-chargement': { etapes: [['clic', '#onglet-secretariat']] },
     'S3-edudoc': { etapes: secretariat.concat([['clic', '#sec-edudoc-modifier']]) },
@@ -333,7 +371,9 @@ function htmlEtat(nom, langue) {
 // Les états rendus : tous en français, et le repos de Produits et du Secrétariat en allemand.
 function liste() {
   const fr = Object.keys(etats('fr')).filter((n) => n !== 'R1-reglages-de').map((n) => ({ nom: n, langue: 'fr' }));
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }]);
+  // Le Préprocessing en allemand : la Zeitschrift d'office, et une réussite.
+  const preprocDe = [{ nom: 'PP1-repos', langue: 'de' }, { nom: 'PP5-alertes', langue: 'de' }];
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }], preprocDe);
 }
 
 function ecrire(dossier, filtres) {
