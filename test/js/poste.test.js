@@ -273,14 +273,13 @@ test('racineUtilisateur(), LOCALAPPDATA renseignée, rend cette valeur ; absente
   });
 });
 
-test('dossierProfil() et dossierBureau() suivent USERPROFILE, puis HOME', () => {
+// Le repli de dossierBureau() est éprouvé dans bureau-visible.test.js, sans PowerShell.
+test('dossierProfil() suit USERPROFILE, puis rien', () => {
   avecEnv({ USERPROFILE: 'D:\\Profil', HOME: 'D:\\Maison' }, () => {
     assert.equal(modulePoste().dossierProfil(), 'D:\\Profil');
-    assert.equal(modulePoste().dossierBureau(), path.join('D:\\Profil', 'Desktop'));
   });
   avecEnv({ USERPROFILE: undefined, HOME: 'D:\\Maison' }, () => {
     assert.equal(modulePoste().dossierProfil(), '');
-    assert.equal(modulePoste().dossierBureau(), path.join('D:\\Maison', 'Desktop'));
   });
 });
 

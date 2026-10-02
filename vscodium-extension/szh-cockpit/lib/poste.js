@@ -5,6 +5,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { execFile } = require('child_process');
 
 const BASE_DEFAUT = 'C:\\ProgramData\\SZH';
 
@@ -58,8 +59,33 @@ function dossierProfil() {
   return process.env.USERPROFILE || '';
 }
 
-function dossierBureau() {
-  return path.join(dossierProfil() || process.env.HOME || '', 'Desktop');
+// Le Bureau que la personne voit, redirection OneDrive comprise : Windows le rend par
+// GetFolderPath, en UTF-8 (reg query écrit dans la page de code OEM, qui abîme un chemin
+// accentué). Lu une fois par processus, sans bloquer l'hôte ; sinon <profil>\Desktop.
+// -> Promise<string>
+function lireBureauSysteme() {
+  if (process.platform !== 'win32') { return Promise.resolve(''); }
+  const script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8;[Environment]::GetFolderPath('Desktop')";
+  return new Promise((resoudre) => {
+    execFile(cheminSysteme('WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { encoding: 'utf8', windowsHide: true, timeout: 10000 },
+      (err, sortie) => resoudre(err ? '' : String(sortie || '')));
+  });
+}
+
+let lecteurBureau = lireBureauSysteme;
+let bureauLu = null;
+// Les tests posent leur propre lecture ; null remet celle du système.
+function poserLecteurBureau(f) { lecteurBureau = f || lireBureauSysteme; bureauLu = null; }
+
+async function dossierBureau() {
+  if (bureauLu === null) {
+    bureauLu = Promise.resolve().then(() => lecteurBureau())
+      .then((v) => String(v === undefined || v === null ? '' : v).trim(), () => '');
+  }
+  const lu = await bureauLu;
+  return lu && path.isAbsolute(lu) ? lu : path.join(dossierProfil() || process.env.HOME || '', 'Desktop');
 }
 
 // Le dossier de configuration de VSCodium (%APPDATA%\VSCodium), où vit argv.json.
@@ -78,4 +104,5 @@ function cheminSysteme(...segments) {
 
 module.exports = {
   basePoste, resoudreToolkit, toolkitPoste, versWsl, toolkitWsl,
-  racineUtilisateur, dossierProfil, dossierBureau, dossierEditeur, dossierWindows, cheminSysteme };
+  racineUtilisateur, dossierProfil, dossierBureau, poserLecteurBureau, dossierEditeur, dossierWindows,
+  cheminSysteme };

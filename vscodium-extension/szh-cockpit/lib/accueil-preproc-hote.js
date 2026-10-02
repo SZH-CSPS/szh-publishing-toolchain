@@ -254,8 +254,8 @@ function constats(p, r, fin) {
 
 // Le dossier du passage : <nom>, sinon <nom> (2), (3)… Un mkdir sans recursive échoue sur
 // un dossier qui existe : rien n'est jamais écrasé.
-function dossierPassage(nom) {
-  const base = path.join(ctx.bureau(), DOSSIER_SORTIE);
+function dossierPassage(bureau, nom) {
+  const base = path.join(bureau, DOSSIER_SORTIE);
   fs.mkdirSync(base, { recursive: true });
   const racine = path.parse(nom).name;
   for (let i = 1; i < 1000; i++) {
@@ -267,10 +267,10 @@ function dossierPassage(nom) {
 
 // Le manuscrit entre dans un dossier neuf du Bureau, par copie ou par ses octets déposés.
 // Rend le chemin de la copie, ou '' si le Bureau refuse l'écriture.
-function preparer(entree) {
+function preparer(bureau, entree) {
   let dossier = '';
   try {
-    dossier = dossierPassage(entree.nom);
+    dossier = dossierPassage(bureau, entree.nom);
     const cible = path.join(dossier, entree.nom);
     if (entree.octets) { fs.writeFileSync(cible, entree.octets, { flag: 'wx' }); }
     else { fs.copyFileSync(entree.source, cible, fs.constants.COPYFILE_EXCL); }
@@ -292,9 +292,10 @@ function finSansPassage(issue, texte) {
 // puis la page reçoit l'issue. L'original n'est jamais touché.
 async function nettoyer(entree, produit, format) {
   const nom = path.basename(entree.source || entree.nom);
-  const chemin = preparer({ nom, source: entree.source, octets: entree.octets });
+  const bureau = await ctx.bureau();
+  const chemin = preparer(bureau, { nom, source: entree.source, octets: entree.octets });
   if (!chemin) {
-    finSansPassage('echec', T('accueil.preproc.echec.bureau', [path.join(ctx.bureau(), DOSSIER_SORTIE)]));
+    finSansPassage('echec', T('accueil.preproc.echec.bureau', [path.join(bureau, DOSSIER_SORTIE)]));
     return;
   }
   const p = passage = { annule: false, proc: null, rang: -1, chemin, produit, dossier: path.dirname(chemin) };

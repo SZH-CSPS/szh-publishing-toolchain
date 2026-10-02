@@ -230,7 +230,7 @@ async function telechargerReglagesProteges() {
   try {
     cible = await vscode.window.showSaveDialog({
       saveLabel: T('regl.proteges.telecharger'),
-      defaultUri: vscode.Uri.file(path.join(dossierBureau(), proteges.NOM_FICHIER))
+      defaultUri: vscode.Uri.file(path.join(await dossierBureau(), proteges.NOM_FICHIER))
     });
   } catch (e) { cible = null; }
   if (!cible) { return null; }                     // annulé : rien à dire
@@ -276,7 +276,7 @@ async function telechargerFichierLangue() {
     cible = await vscode.window.showSaveDialog({
       saveLabel: T('regl.exportLangue'),
       filters: { JSON: ['json'] },
-      defaultUri: vscode.Uri.file(path.join(dossierBureau(), exportLangue.nomFichier(version)))
+      defaultUri: vscode.Uri.file(path.join(await dossierBureau(), exportLangue.nomFichier(version)))
     });
   } catch (e) { cible = null; }
   if (!cible) { return null; }                     // annulé : rien à dire

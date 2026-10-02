@@ -251,6 +251,8 @@ function activerHote(revue, opts) {
   // la même liste : jamais un vrai explorer.exe lancé par un test.
   require(path.join(cockpit, 'lib', 'ouvrir-systeme.js'))
     .poserLanceur((programme, args) => { ouvertures.push(args[0]); });
+  // Le Bureau du système n'est pas lu par un test : jamais de PowerShell, le repli du profil.
+  require(path.join(cockpit, 'lib', 'poste.js')).poserLecteurBureau(() => '');
 
   function fauxPanneau(type, titre) {
     const p = {
