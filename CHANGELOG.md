@@ -24,6 +24,8 @@ un clic.
   version » (la copie est supprimée) ou « Prendre celle de la copie » (elle remplace le
   fichier, annulable au Ctrl+Z, puis disparaît), chacun avec sa confirmation. La résolution
   passage par passage, dans la marge du fichier, reste possible.
+- Interventions : « OpenParlData » rejoint les sources possibles d'une fiche, pour les fiches
+  que le moissonneur des parlements déposera.
 
 ## 3.2.0
 
