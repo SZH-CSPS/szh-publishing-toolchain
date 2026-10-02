@@ -40,7 +40,8 @@ fs.writeFileSync(FAUX, [
   "const dire = (o) => process.stdout.write(JSON.stringify(o) + '\\n');",
   'const val = (k) => args[args.indexOf(k) + 1];',
   "dire({ t: 'etape', texte: 'Lecture…' });",
-  "if (process.env.SZH_FAUX_MODE === 'dormir') { setInterval(() => {}, 1000); } else {",
+  // Même oublié par un test qui échoue, un enfant qui dort ne vit pas plus d'une minute.
+  "if (process.env.SZH_FAUX_MODE === 'dormir') { setTimeout(() => process.exit(3), 60000); } else {",
   "  if (args[0] === 'numeros-ojs') { dire({ t: 'numero', cle: '2026-03', libelle: 'Trois', annee: '2026', numero: '03' }); }",
   "  else { const n = args[0] === 'newsletter' ? 2 : 1; for (let i = 0; i < n; i++) {",
   "    const f = path.join(val('--sortie'), 'f' + i + '.txt'); fs.writeFileSync(f, 'x'); dire({ t: 'fichier', chemin: f, nom: 'f' + i + '.txt' }); } }",
@@ -53,6 +54,8 @@ process.env.SZH_FAUX_JOURNAL = JOURNAL;
 function appels() {
   try { return fs.readFileSync(JOURNAL, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch (e) { return []; }
 }
+// Le journal suit l'ordre de démarrage des enfants, pas celui des spawn : on les reconnaît à leur commande.
+const appelDe = (commande) => appels().filter((a) => a.args[0] === commande)[0];
 function vivant(pid) { try { process.kill(pid, 0); return true; } catch (e) { return false; } }
 // Une promesse qui ne se tient pas en cinq secondes fait échouer le test au lieu de le figer.
 function tenu(promesse) {
@@ -84,7 +87,8 @@ async function enfant() {
   if (CAS === 'dossier') { await p._recepteur({ type: MSG.LANCEUR_OUVRIR, chemin }); }
   if (CAS === 'desactivation') { require(path.join(COCKPIT, 'extension.js')).deactivate(); }
   await attendre(() => !pids.some(vivant), 10000);
-  const sortie = { pids, vivants: pids.filter(vivant), fins: p.messages.filter((m) => m.type === MSG.LANCEUR_FIN).length };
+  const sortie = { pids, vivants: pids.filter(vivant), fins: p.messages.filter((m) => m.type === MSG.LANCEUR_FIN).length,
+    commandes: appels().map((a) => a.args[0]) };
   for (const pid of sortie.vivants) { try { process.kill(pid); } catch (e) { /* déjà mort */ } }
   process.stdout.write('@@SEC@@' + JSON.stringify(sortie) + '\n');
   process.exit(0);
@@ -106,6 +110,9 @@ if (CAS) {
   });
   const EXPORTS = path.join(BASE, 'Exports');
   const oublier = () => { envoyes.length = 0; reveles.length = 0; dossiers.length = 0; try { fs.rmSync(JOURNAL); } catch (e) { /* vide */ } };
+  // Un test qui échoue en laissant un enfant ne doit pas figer le fichier : ses tuyaux le tiendraient en vie.
+  // On tue par l'hôte, jamais par un pid relevé plus tôt, que Windows a pu redonner à un autre processus.
+  test.after(() => hote.arreter());
   const fin = () => envoyes.filter((m) => m.type === MSG.LANCEUR_FIN).pop();
   const val = (args, k) => args[args.indexOf(k) + 1];
 
@@ -324,7 +331,8 @@ if (CAS) {
       const chargement = hote.chargerOjs({ revue: 'revue', depuisAnnee: 2025 });
       const exportEnCours = hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] });
       assert.ok(await attendre(() => appels().length === 2), 'deux enfants à la fois');
-      const [ojs, tache] = appels().map((a) => a.pid);
+      const ojs = appelDe('numeros-ojs').pid;
+      const tache = appelDe('edudoc').pid;
       await hote.exporter({ commande: 'caracteres', revue: 'revue', cles: ['2026-03'] });
       hote.chargerOjs({ revue: 'zeitschrift', depuisAnnee: 2025 });
       assert.strictEqual(appels().length, 2, 'au plus un chargement et une tâche');
@@ -340,7 +348,7 @@ if (CAS) {
       hote.arreter();
       await tenu(chargement);
       assert.strictEqual(vivant(ojs), false);
-    } finally { delete process.env.SZH_FAUX_MODE; }
+    } finally { delete process.env.SZH_FAUX_MODE; hote.arreter(); }
   });
 
   test('secrétariat : arrêter tue les deux enfants, jamais d’orphelin', async () => {
@@ -357,7 +365,7 @@ if (CAS) {
       assert.ok(await attendre(() => !pids.some(vivant), 5000), 'un enfant a survécu');
       assert.deepStrictEqual(hote.enCours(), { ojs: false, tache: false });
       assert.strictEqual(appels().length, 2, 'la comparaison ne part pas après une interruption');
-    } finally { delete process.env.SZH_FAUX_MODE; }
+    } finally { delete process.env.SZH_FAUX_MODE; hote.arreter(); }
   });
 
   // Les trois gestes qui ferment le lanceur, dans l'extension activée : chacun dans son
@@ -367,9 +375,9 @@ if (CAS) {
       const env = Object.assign({}, process.env, { SZH_SECRETARIAT_CAS: cas, SZH_ACCUEIL: '1' });
       const r = spawnSync(process.execPath, [__filename], { env, encoding: 'utf8', timeout: 120000 });
       const ligne = String(r.stdout || '').split(/\r?\n/).filter((l) => l.indexOf('@@SEC@@') === 0).pop();
-      assert.ok(ligne, 'aucun verdict de l’enfant : ' + r.stdout + r.stderr);
+      assert.ok(ligne, 'aucun verdict de l’enfant (' + (r.error || 'code ' + r.status) + ') : ' + r.stdout + r.stderr);
       const v = JSON.parse(ligne.slice('@@SEC@@'.length));
-      assert.strictEqual(v.pids.length, 2, 'la tâche et le chargement tournaient');
+      assert.strictEqual(v.pids.length, 2, 'la tâche et le chargement tournaient : ' + JSON.stringify(v));
       assert.deepStrictEqual(v.vivants, [], 'orphelins : ' + v.vivants.join(', '));
     });
   }
