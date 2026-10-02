@@ -91,8 +91,8 @@
       "problemMatcher": []
     },
     {
-      // Import à la demande (Ctrl+Alt+I) ; le build ci-dessus le fait aussi, c'est un
-      // secours explicite. runOn:folderOpen ne se déclenche pas toujours pour une tâche
+      // Import à la demande, lancé par le cockpit (szh.convertirEnAttente, Ctrl+Alt+I) ;
+      // le build ci-dessus le fait aussi. runOn:folderOpen ne se déclenche pas toujours pour une tâche
       // utilisateur, la première sauvegarde prend alors le relais.
       "label": "Importer les articles Word",
       "type": "process",

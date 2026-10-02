@@ -323,7 +323,7 @@ divergent, en affichant le bloc à recoller.
 
 Un défaut d'extension vit sous le fichier du rédacteur au lieu de le remplacer : `update.ps1`
 ne recopie `settings.json` que sur un poste qui n'en a pas, et ce que le rédacteur choisit dans
-« Réglages SZH » (thème, zoom, taille de police, langue, mode d'aperçu) survit à la mise à
+« Réglages Pronto » (thème, zoom, taille de police, langue, mode d'aperçu) survit à la mise à
 jour. `keybindings.json` et `tasks.json`, eux, sont écrasés : personne ne les édite.
 
 L'éditeur refuse en silence certains défauts d'extension, selon la portée du réglage :
@@ -337,7 +337,7 @@ le rédacteur a délibérément changé.
 
 ### Les réglages protégés
 
-Trois blocs de « Réglages SZH » décrivent la chaîne de publication et non le confort d'une
+Trois blocs de « Réglages Pronto » décrivent la chaîne de publication et non le confort d'une
 personne : la configuration de l'export OJS, les titres de bibliographie et les tâches
 éditoriales par article (`tachesArticle`). Une rubrique OJS renommée sur un seul poste ferait
 atterrir ses articles dans la mauvaise section ; deux jeux de tâches feraient suivre le même
@@ -380,7 +380,7 @@ l'autre ne dit l'équipe qui s'en sert. Le lanceur, lui, le sait par sa propre c
 réécrit : le choix survit à tout ce qui toucherait aux réglages de l'éditeur.
 
 Quand les deux moitiés divergent, `windows/diagnostic.ps1` (§ *Langue de l'interface*) pose les
-six sources côte à côte, et « Réglages SZH » affiche la discordance sous le choix de la langue.
+six sources côte à côte, et « Réglages Pronto » affiche la discordance sous le choix de la langue.
 Des menus en anglais ne sont pas une discordance : aucun pack de langue français n'est épinglé.
 Gardé par `test/js/langue-interface.test.js`.
 
@@ -400,7 +400,7 @@ Gardé par `test/js/langue-interface.test.js`.
 | `Ctrl+Alt+Entrée` | saut de page, dans le PDF seulement | szh-cockpit |
 | `Ctrl+Alt+A` / `S` / `D` | panneaux Commande / Édition / Export | szh-cockpit |
 | `Ctrl+Alt+P` | basculer l'aperçu HTML ⇄ PDF ; sur un `.biblio.md`, montrer ou cacher son rendu | szh-cockpit |
-| `Ctrl+Alt+I` | importer les Word à la demande | tâche utilisateur |
+| `Ctrl+Alt+I` | convertir les Word en attente, par le cockpit (`szh.convertirEnAttente`) : ordre du numéro et vérification de l'import | szh-cockpit |
 | `Ctrl+E` / `Ctrl+Maj+B` | relancer la compilation | tâche utilisateur |
 | `Ctrl+Alt+R` | recharger la fenêtre, si l'aperçu se fige | keybindings |
 | `Ctrl+Espace` | suggestions de blocs `:::` | VS Code, réactivé en Markdown |
@@ -890,7 +890,7 @@ la synchronisation avant de compiler.
 ferme donc les onglets d'aperçu avant tout `clean` ou toute suppression. Un PDF ouvert
 **hors** de l'éditeur (SumatraPDF, Acrobat) échappe à cette précaution.
 
-**Manœuvre.** Fermer le lecteur externe et relancer « Tout exporter ».
+**Manœuvre.** Fermer le lecteur externe et relancer « Tout recompiler ».
 
 ### Deux personnes ouvrent le même numéro
 
@@ -1148,7 +1148,7 @@ ses fichiers (`lib/renumerotation-fs.js:alignerFichiers`), mais le `src=` à l'i
 bibliographie pourtant intacte à côté. Corrigé à la racine : tout renommage réécrit
 désormais le marqueur dans le même geste (`reecrireMarqueurBiblio`). Un numéro déjà touché
 guérit seul, sans intervention : `reparerMarqueursOrphelins`, appelée avant chaque
-compilation lancée depuis le cockpit (`lancerBuild`, « Tout exporter », l'export OJS),
+compilation lancée depuis le cockpit (`lancerBuild`, « Tout recompiler », l'export OJS),
 réécrit le marqueur sur l'unique `*.biblio.md` du dossier quand celui qu'il nomme est
 introuvable. Zéro ou plusieurs candidats : elle ne devine pas, et `biblio-introuvable`
 continue de le dire — c'est alors un vrai cas 2 ci-dessus, pas un marqueur périmé.

@@ -464,7 +464,7 @@ test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async
       + JSON.stringify(charge.lignes.map((l) => l.titre)));
   assert.ok(charge.lignes.every((l) => l.pastilles.length === 0 && l.ouvrir === false),
     'la pastille de ton ou le bouton « Ouvrir » sont revenus faire doublon');
-  assert.match(charge.titre, /À corriger/);
+  assert.match(charge.titre, /Contrôles/);
   const dits = defauts(charge.lignes);
   assert.strictEqual(dits.length, 5, 'les cartes ne portent pas tous les constats');
   const corps = dits.map((m) => m.texte).join(' | ');

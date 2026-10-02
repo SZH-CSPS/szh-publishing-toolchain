@@ -59,15 +59,16 @@ Les deux autres entrées restent disponibles et font exactement la même chose 
 - **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
   onglet par onglet).
 
-## La barre « Revue » (tout gérer sans l’explorateur)
+## La barre « Pronto » (tout gérer sans l’explorateur)
 
 À l’ouverture d’une revue, une barre **« Pronto »** apparaît dans le panneau de
 gauche (l’Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
-[capture : la barre « Pronto » avec ses quatre sections]
+[capture : la barre « Pronto » avec ses cinq sections]
 
-Elle a **quatre sections** :
+Elle a **cinq sections** : Articles, Actualité, Traductions, Word en attente et
+Contrôles.
 
 - **Articles** – un article par ligne. **Un clic fait tout** : le texte s’ouvre à
   gauche, l’article est recompilé **si besoin** (texte ou tableau plus récent que le
@@ -88,6 +89,10 @@ Elle a **quatre sections** :
   et l’outil sait dès lors de quel article on parle – sans ouvrir son texte, que le
   formulaire recouvrirait de toute façon. `Ctrl+Alt+P` montre donc l’aperçu **du bon
   article** en sortant du formulaire, et non celui d’avant.
+
+  Le **clic droit** sur un article ajoute « Voir le PDF de cet article », « Envoyer cet
+  article à l’auteur », « Réimporter cet article (Word corrigé) » et « Revenir au texte
+  d’avant de cet article » (voir « L’auteur renvoie son Word corrigé »).
 
   La documentation d’un article – fiches de livre, de film, d’intervention parlementaire,
   de recherche en cours, d’agenda, et reprise d’un article de la revue sœur – n’a plus son
@@ -292,29 +297,40 @@ Elle a **quatre sections** :
   grille. Deux boutons de la barre le rouvrent (**Voir le tableau dans l’aperçu**, qui
   amène la vue sur le tableau) et le referment (**Cacher l’aperçu**).
 - **Actualité** (**News** en allemand) – la page de **Documentation** du numéro. Cliquer
-  l’en-tête ouvre son formulaire, et la crée si le numéro n’en a pas encore ;
-  la section elle-même ne porte que l’entrée **Réserve**. Une
+  l’en-tête ouvre son formulaire, et la crée si le numéro n’en a pas encore.
+  La section porte quatre entrées, chacune avec son compte : **Documentation du numéro**,
+  **Traductions à faire**, **Réservoir** et **Archive** ; un clic ouvre le formulaire sur
+  cette vue. **Publier sur le site web**, grisée, n’est pas encore livrée. Une
   revue seulement : un livre n’a pas de Documentation. Tout est décrit dans
   la section « Actualité », plus bas.
 - **Word en attente (n)** – les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
-  l’article existe déjà (renommer le fichier si c’est une nouvelle version).
+  l’article existe déjà : si c’est sa version corrigée, clic droit → « Réimporter cet
+  article » (voir « L’auteur renvoie son Word corrigé »).
   Après une conversion réussie, le fichier Word **disparaît de ce dossier** : l’article
   (`.md`) devient l’unique copie de travail – c’est voulu, plus de doublons.
   **Nouveau : on peut aussi glisser-déposer des `.docx` directement sur la barre
   « Pronto »** (depuis l’Explorateur ou le bureau) : ils sont copiés puis convertis,
   exactement comme avec le bouton « Importer des Word ».
+- **Traductions** – l’avancement des titres, résumés et mots-clés à traduire, article
+  par article (voir « La section « Traductions » », plus bas).
+- **Contrôles** – la dernière ligne, sous « Word en attente » : son icône est rouge s’il y
+  a un blocage, ambre s’il y a un point à vérifier, grise sinon, et un clic ouvre la page
+  des contrôles (voir « Les contrôles de la compilation », plus bas).
 
 Le **titre de la barre** affiche le numéro en cours (p. ex. « R2026-2 | Autodétermination »),
-mis à jour dès que les méta-données changent. En haut de la barre, **trois boutons** –
-chacun ouvre un petit menu qui regroupe les actions (le raccourci clavier fait pareil,
-depuis n’importe où dans la revue) :
+mis à jour dès que les métadonnées changent. En haut de la barre, le bouton **＋**, le
+**🎓** du tutoriel, et **trois boutons** dont chacun ouvre un petit menu qui regroupe les actions (le raccourci clavier fait pareil,
+depuis n’importe où dans le numéro) :
 
-- **🚀 Commande** (`Ctrl+Alt+A`) – la gestion de la revue :
+- **＋ Importer des Word** – ouvre le sélecteur de fichiers : les `.docx` choisis sont
+  copiés dans le numéro, convertis, et la vérification de l’import s’ouvre. C’est le même
+  chemin que le glisser-déposer. Le bouton disparaît sur un numéro verrouillé.
+- **🚀 Commande** (`Ctrl+Alt+A`) – la gestion du numéro :
   - **Importer des Word** – ouvre un sélecteur pour **choisir des `.docx` sur le disque** ;
     ils sont copiés dans la revue puis convertis.
   - **Convertir les Word en attente** – convertit d’un clic tous les Word déjà déposés.
-  - **Méta-données du numéro** – un petit formulaire (titre du dossier, nom de la revue,
+  - **Métadonnées du numéro** – un petit formulaire (titre du dossier, nom de la revue,
     volume, numéro, date, langue, couleur) ; **Enregistrer** met à jour la revue sans rien
     toucher d’autre. Aucun fichier technique à ouvrir.
     Une case à cocher y règle aussi l’allure de la couverture, **pour tout le numéro** :
@@ -342,6 +358,8 @@ depuis n’importe où dans la revue) :
     Ces informations vivent dans une **fiche cachée** à côté de l’article (invisible
     dans l’explorateur) – le texte de l’article n’est jamais touché, et la fiche ne
     s’édite **que** par ce formulaire.
+    Ouvert depuis un article, le formulaire porte **← Retour à l’article** : il enregistre,
+    puis ramène au texte de cet article.
     **L’autocomplétion des auteur·e·s.** Dans la fenêtre d’un·e auteur·e, dès **deux
     lettres** tapées dans **Nom** ou **Prénom**, une liste propose les personnes déjà
     connues. Elle vient de deux endroits : les **auteur·e·s publiés sur ojs.szh.ch**
@@ -387,7 +405,7 @@ depuis n’importe où dans la revue) :
     latérale, il n’y a qu’un article et la question ne se pose pas. Un second clic referme
     le texte, et le bouton s’éteint aussi si l’on ferme l’onglet à la croix : il dit ce qui
     est à l’écran, pas ce qu’on a cliqué.
-  - **Réglages SZH** – thème, taille de l’interface et du texte, **aperçu par défaut**
+  - **Réglages Pronto** – thème, taille de l’interface et du texte, **aperçu par défaut**
     (voir ci-dessous), langue de l’interface, la **validation PDF/UA en arrière-plan**
     (activée par défaut – voir « Les contrôles de la compilation » ci-dessous), et le
     **vérificateur de traduction** (voir « Le vérificateur de traduction –
@@ -398,28 +416,31 @@ depuis n’importe où dans la revue) :
   clic droit → « Mise en forme », chaque raccourci rappelé à droite.
 - **⬆ Export** (`Ctrl+Alt+D`) – les **documents produits**, puis le **cycle de vie du
   numéro** :
-  - **Recompiler toute la revue** : régénère **tous** les PDF, même ceux à jour (utile
+  - **Recompiler le PDF de cet article** : régénère le PDF de l’article ouvert (à défaut,
+    celui de l’aperçu), sans attendre un enregistrement ni lancer tout le numéro – sur un
+    numéro en cours comme sur un numéro gelé ;
+  - **Tout recompiler** : régénère **tous** les PDF, même ceux à jour (utile
     avant une livraison : tout est reconstruit proprement d’un coup) ;
-  - **Exporter la revue en XML (OJS)** : fabrique **un seul fichier** `native-….xml` à la
-    racine de la revue, avec tout dedans (métadonnées du numéro et des articles, et pour
+  - **Rafraîchir la pagination** – voir « Rafraîchir la pagination au bouclage » ;
+  - **Exporter le numéro pour OJS** : fabrique **un seul fichier** `native-….xml` à la
+    racine du numéro, avec tout dedans (métadonnées du numéro et des articles, et pour
     chaque article ses trois fichiers PDF, HTML et Word encodés dans le XML). Ce fichier
-    s’importe tel quel dans OJS (« Importation XML des articles et numéros »). La revue
-    est recompilée au passage. Ce qui manque se répartit en deux : les informations
+    s’importe tel quel dans OJS (« Importation XML des articles et numéros »). Le numéro
+    est recompilé au passage. Ce qui manque se répartit en deux : les informations
     **facultatives** (sous-titre, mots-clés, e-mail d’un auteur, couverture…) sont
     listées en **avertissements** et l’export part quand même ; ce qui rendrait le numéro
     faux dans OJS **arrête l’export**, avec la liste de ce qu’il faut corriger et où – la
     **date de publication** du numéro, un **titre** ou un **résumé** manquant dans la
     langue de l’article, un **DOI** absent, **deux articles au même DOI**, un PDF / HTML / Word pas encore produit, ou
-    un champ vide dans **Réglages SZH → Export OJS** (voir « Régler l’export OJS »
+    un champ vide dans **Réglages Pronto → Export OJS** (voir « Régler l’export OJS »
     ci-dessous). Dans ce cas **rien n’est écrit** : pas de fichier à moitié fait.
-  - **Archiver et verrouiller la revue** – voir « Terminer un numéro » ci-dessous ;
-  - **Déverrouiller la revue** / **Désarchiver la revue** – présentes seulement quand le
-    numéro est verrouillé / archivé ;
-  - **Exporter cet article** – présente seulement sur un numéro gelé (voir ci-dessous).
+  - **Archiver et verrouiller le numéro** – voir « Terminer un numéro » ci-dessous ;
+  - **Déverrouiller le numéro** / **Désarchiver le numéro** – présentes seulement quand le
+    numéro est verrouillé / archivé.
 
 ### Les réglages de la rédaction (lecture seule)
 
-Trois blocs de **Réglages SZH** ne se modifient pas : **« Titre de la bibliographie »**,
+Trois blocs de **Réglages Pronto** ne se modifient pas : **« Titre de la bibliographie »**,
 **« Tâches par article »** et **« Export OJS »**. Ils ne décrivent pas votre confort mais
 la façon dont la revue paraît et dont elle se fabrique, et ils valent pour **toute la
 rédaction** : une rubrique OJS renommée sur un seul poste fait atterrir ses articles dans la
@@ -454,7 +475,7 @@ lanceur ouvert qui décide, depuis que « Revues SZH » et « Zeitschriften S
 ont fusionné en un seul lanceur, « Pronto ». Il n’y a rien à régler sur
 un poste neuf.
 
-Pour en changer, ou pour le figer : **🚀 Commande → Réglages SZH → Langue de l’interface**.
+Pour en changer, ou pour le figer : **🚀 Commande → Réglages Pronto → Langue de l’interface**.
 Le choix est retenu **pour ce poste**, et il y reste – une mise à jour de l’outil ne le
 remet plus au français. Les **menus** de l’éditeur (la barre du haut, la palette de
 commandes) ne basculent qu’au **redémarrage** de l’éditeur ; les textes de l’outil, eux,
@@ -469,11 +490,14 @@ français ou en allemand, en revanche, sont normaux : c’est ainsi que les pos
 L’aperçu HTML s’affiche **toujours sur fond blanc**, comme du papier, même si l’éditeur est en
 thème sombre : c’est ce que montrera le PDF.
 
-L'**aperçu par défaut** (dans **Réglages SZH**) choisit ce qui s’affiche à droite au clic
+L'**aperçu par défaut** (dans **Réglages Pronto**) choisit ce qui s’affiche à droite au clic
 sur un article : l’aperçu **HTML** (cliquable – un clic dans l’aperçu amène au passage
 correspondant du texte) ou directement le **PDF**. `Ctrl+Alt+P` bascule à tout moment,
 sans passer par les réglages. Et quand un formulaire ou l’éditeur de tableau s’ouvre,
 les aperçus se ferment tout seuls : la page de travail occupe tout l’écran.
+
+Pendant qu’on corrige, l’aperçu HTML recompilé **garde sa place** : il se recale sur le
+passage visible dans l’éditeur, au lieu de repartir en haut de l’article.
 
 La liste des articles se met à jour toute seule (plus de bouton « Rafraîchir » : si
 OneDrive tarde à synchroniser, la liste suit dès que les fichiers arrivent).
@@ -504,11 +528,11 @@ traduction »). La petite flèche **déplie** ses champs : chacun dit s’il e
 | **Prêt pour relecture** | la traduction est faite, elle attend un regard |
 | **Traduction finalisée** | plus rien à faire sur ce champ |
 
-Sur la section, un bouton :
-
-- **✓✓ Tout marquer prêt pour traduction** – d’un clic, tous les champs encore
-  « pas prêt » de **toute la revue** passent à « prêt pour traduction ». Les champs
-  déjà plus avancés ne bougent pas : le bouton lance la campagne, il ne l’efface pas.
+Un clic sur l’en-tête de la section ouvre la **vue « Traductions »**. Sa barre porte trois
+boutons d’état – **À traduire**, **Relecture**, **Finalisé** – qui posent cet état sur
+tous les champs de **tout le numéro**, y compris ceux qui étaient plus avancés : chacun
+demande donc confirmation. Revenir en arrière se fait champ par champ, dans le suivi de
+chaque article. Le quatrième bouton, **Envoyer pour traduction**, est décrit plus bas.
 
 **Un clic sur un article** (ou sur l’un de ses champs) ouvre le **panneau de
 traduction**, avec l’aperçu de l’article à droite. Pour chaque champ :
@@ -560,7 +584,7 @@ personne qui préfère ne jamais changer un texte publié elle-même. Là où le
 traduction **écrit** la traduction dans l’article, celui-ci ne fait que **proposer** : rien
 de ce qu’il enregistre ne change quoi que ce soit à ce qui est publié.
 
-**Pour l’activer** : **🚀 Commande → Réglages SZH → « Vérificateur de traduction »**, puis
+**Pour l’activer** : **🚀 Commande → Réglages Pronto → « Vérificateur de traduction »**, puis
 **Activé**. Une fois actif, chaque champ traduisible d’un article – titre, sous-titre,
 résumé, mots-clés, dans chaque langue – porte une petite pastille à côté de son intitulé,
 dans les fiches, dans la vérification de l’import et dans le panneau de traduction lui-même.
@@ -597,7 +621,7 @@ article : il sert à relire les textes de l’outil lui-même – les intitul�
 formulaires et des messages du cockpit, plus d’un millier au total, à l’endroit exact où ils
 s’affichent à l’écran.
 
-**Pour l’activer** : **🚀 Commande → Réglages SZH → « Mode « Trad » »**, puis **Activé**.
+**Pour l’activer** : **🚀 Commande → Réglages Pronto → « Mode « Trad » »**, puis **Activé**.
 
 Une fois actif, tout change de comportement : un clic sur un texte, n’importe où dans un
 panneau du cockpit, n’exécute plus l’action habituelle. Il ouvre le même formulaire de
@@ -622,7 +646,7 @@ fichier de langue téléchargeable ci-dessous.
 
 ### Le fichier de langue de l’interface
 
-Dans **Réglages SZH**, sous « Fichier de langue de l’interface », un bouton « Télécharger
+Dans **Réglages Pronto**, sous « Fichier de langue de l’interface », un bouton « Télécharger
 (JSON) » enregistre un fichier qui reprend tous les textes de l’interface du cockpit, en
 français et en allemand côte à côte, puis l’affiche dans l’Explorateur de fichiers. C’est une
 copie : la corriger dans ce fichier ne change rien à l’écran ; elle sert à envoyer des
@@ -633,7 +657,7 @@ un petit avertissement bilingue qui le redit.
 
 Une suggestion faite en mode « Trad » ne concerne aucun numéro : elle ne part pas dans le
 dossier « traduction » d’une revue, mais dans un dossier propre à votre poste. Dans
-**Réglages SZH**, la ligne « Suggestions sur les textes de l’outil » dit combien en attendent
+**Réglages Pronto**, la ligne « Suggestions sur les textes de l’outil » dit combien en attendent
 d’être relues, et le bouton « Ouvrir le dossier » les montre dans l’Explorateur.
 
 [capture : la section « Traductions » dépliée sur un article]
@@ -642,7 +666,7 @@ d’être relues, et le bouton « Ouvrir le dossier » les montre dans l’Exp
 [capture : la barre avec son titre « R2026-2 | … » et les trois boutons]
 [capture : le panneau « Commande » ouvert (menu déroulant)]
 [capture : la section « Word en attente (2) » avec le bouton « Convertir »]
-[capture : le formulaire « Méta-données du numéro »]
+[capture : le formulaire « Métadonnées du numéro »]
 [capture : le formulaire « Métadonnées des articles » (cartes par article)]
 [capture : le gestionnaire des médias, une carte par figure, repliée sur ses aperçus]
 
@@ -651,13 +675,18 @@ d’être relues, et le bouton « Ouvrir le dossier » les montre dans l’Exp
 Un article naît toujours d’un `.docx` : c’est l’unique geste qui en crée un dans le cockpit.
 
 1. **Glisser les `.docx` finalisés sur la barre « Pronto »** (ou dans le dossier
-   **articles-word**, ou via **🚀 Commande → Importer des Word**).
+   **articles-word**, ou par le bouton **＋** de la barre, ou **🚀 Commande → Importer des
+   Word**). `Ctrl+Alt+I` convertit les Word déjà déposés.
 2. La conversion démarre, puis **les articles sont compilés dans la foulée** (PDF et
    aperçu) : le premier clic sur un article importé affiche son aperçu tout de suite.
    À la fin, le panneau **« Vérification de l’import »** s’ouvre tout seul (voir
    ci-dessous). Les `.docx` convertis sont retirés du dossier.
 3. **Cliquer un article** : son texte s’ouvre à gauche et son aperçu apparaît à droite
    (compilé au passage si nécessaire). Ensuite, chaque **Ctrl + S** régénère l’aperçu.
+
+Un Word converti sans passer par ces gestes – par le **Ctrl + S** qui le trouve en
+attente, ou par l’import au démarrage – finit de la même façon : l’article prend sa place
+dans l’ordre du numéro, il est compilé, et la vérification de l’import s’ouvre.
 
 ### La vérification de l’import
 
@@ -670,7 +699,7 @@ C’est aussi là qu’on finit l’article proprement :
 - **les photos des auteur·e·s** : le même bouton photo que dans les métadonnées –
   déposer l’original, choisir la version (sans fond, avec fond, originale) ;
 - **les originaux des images** : le Word ne contient souvent que des images compressées ;
-  chaque image de l’article a sa zone « Remplacer par l’original » (glisser-déposer le
+  chaque image de l’article a sa zone « Déposer l’original ici » (glisser-déposer le
   fichier haute qualité – le nom est conservé, le texte n’a pas à changer).
 
 Deux choses sont déjà faites à l’import, sans rien demander :
@@ -692,12 +721,20 @@ enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnée
 ### L’auteur renvoie son Word corrigé
 
 C’est le cas le plus fréquent après un premier envoi, et il a son geste : **« Réimporter cet
-article »**, par un clic droit sur l’article dans la barre « Revue », ou depuis la carte de
-l’article dans **Word en attente**.
+article »**, par un clic droit sur l’article dans la barre « Pronto », ou sur le Word
+dans **Word en attente**.
 
 Déposez le Word corrigé comme le premier. Il ne créera pas un second article : l’outil
-reconnaît qu’il vient du même document et vous le dit, sans rien toucher. C’est vous qui
-décidez ensuite de publier la correction.
+reconnaît qu’il vient du même document et vous le dit, sans rien toucher : « Ce Word corrige
+l’article X. Le réimporter ? ». Son bouton **Réimporter** lance le réimport, qui ne demande
+qu’une confirmation.
+
+Si l’auteur a renommé le fichier et que son nom prolonge celui de l’article
+(« dupont-corrige.docx » pour l’article « dupont »), l’outil demande d’abord ce qu’il est :
+**Version corrigée de cet article** lance le réimport, **Nouvel article** l’importe à part.
+
+Lancé depuis l’article alors que le Word corrigé n’est pas encore là, le réimport le dit, et
+dit où le déposer. Rien n’est touché.
 
 **Ce que le réimport remplace** : le texte de l’article, ses images, ses tableaux – tout ce
 qui vient du Word.
@@ -718,7 +755,8 @@ distinguer trois cas :
   perdue – voir ci-dessous.
 
 **On peut revenir en arrière.** Avant de remplacer quoi que ce soit, l’outil met de côté le
-dossier entier de l’article, tel qu’il était. **« Annuler le réimport »** le remet en place –
+dossier entier de l’article, tel qu’il était. **« Revenir au texte d’avant de cet
+article »**, au clic droit de l’article dans la barre, le remet en place –
 et met à son tour de côté ce qu’il remplace, donc annuler l’annulation est possible aussi.
 
 Ces sauvegardes s’accumulent dans le numéro et **ne se suppriment pas toutes seules** : elles
@@ -782,11 +820,17 @@ Désormais, **quand il y a quelque chose à dire, cela se dit** :
 - un **compteur reste dans la barre d’état**, en bas à gauche : `⚠ 3 à vérifier` ou
   `⛔ 1 à corriger`. Il survit à la notification, qui disparaît toute seule ; un clic
   dessus ouvre la page ;
-- la page **« Contrôles de la compilation »** range ses points par article : une carte par article, et dessous ce
-  qu’il y a à y corriger. Elle s’ouvre aussi
-  par **🚀 Commande → Contrôles de la compilation**.
+- la page **« Contrôles »** range ses points par article : une carte par article, et dessous ce
+  qu’il y a à y corriger. Elle s’ouvre aussi par la ligne **Contrôles** de la barre, et
+  par **🚀 Commande → Contrôles**.
 
-[capture : la vue « Contrôles de la compilation », deux sections, une carte par article, et une flèche au
+En tête de page, **Tout recompiler** refait tout le numéro et tous les contrôles. Chaque
+carte d’article porte **Recompiler cet article**, qui ne refait que lui. Un point que
+l’outil ne sait pas expliquer, comme une compilation arrêtée sans cause reconnue, porte
+un bouton **Signaler** : il enregistre un signalement pour l’équipe qui entretient Pronto,
+avec la fin du journal de compilation.
+
+[capture : la vue « Contrôles », deux sections, une carte par article, et une flèche au
 bout de chaque point]
 
 ### Deux tons, et ils ne mentent pas
@@ -794,9 +838,8 @@ bout de chaque point]
 La page range les points en deux sections, dans l’ordre où il faut s’en occuper.
 
 **« Ce qui empêche de publier »** – la compilation s’est arrêtée, ou elle a produit un
-document qu’on ne peut pas publier en l’état : un article sans titre, une figure appelée
-par le texte mais absente du disque, un PDF sorti sans balisage d’accessibilité. Tant
-qu’un point est là, le numéro n’est pas prêt.
+document qu’on ne peut pas publier en l’état : un article sans titre, un PDF sorti sans
+balisage d’accessibilité. Tant qu’un point est là, le numéro n’est pas prêt.
 
 **« À regarder avant de publier »** – les documents sont sortis, ils sont publiables, et
 il reste du travail d’édition : un appel de citation à lier, une référence que rien
@@ -805,6 +848,12 @@ notification le dit sur le ton d’un avertissement, pas d’une erreur.
 
 Une troisième section, **« Pour information »**, porte les chiffres : « 4 références,
 3 appels, dont 1 lié ».
+
+**Une image appelée par le texte mais absente du disque** (renommée ou supprimée) est un
+cas à part. La compilation va au bout et la range sous « À regarder avant de publier » ;
+l’aperçu et le PDF montrent un cadre « Image introuvable » à sa place. Mais l’export OJS
+et l’archivage refusent de partir tant qu’elle manque. Le point mène à « Médias de
+l’article », pour la redéposer.
 
 ### Ce qu’une carte contient
 
@@ -817,12 +866,12 @@ phrase.
 
 Au bout de chaque phrase, une **flèche étroite** mène là où le point se corrige : le texte
 de l’article, le formulaire des métadonnées, celui des images. Le survol le dit – « Vers
-l’article », « Décrire les images ». Un point qui ne se corrige nulle part dans
+l’article », « Ouvrir Médias de l’article ». Un point qui ne se corrige nulle part dans
 l’application n’a pas de flèche : renommer un dossier, par exemple, se fait dans
 l’explorateur de Windows.
 
 Les messages sont dans la langue de l’interface, et dans elle seule : le réglage de langue
-(**🚀 Commande → Réglages SZH**) les fait basculer du français à l’allemand.
+(**🚀 Commande → Réglages Pronto**) les fait basculer du français à l’allemand.
 
 ### Le badge PDF/UA de l’article ouvert
 
@@ -830,9 +879,12 @@ Un second contrôle tourne après chaque compilation réussie, sans rien bloquer
 « PDF/UA » apparaît dans la barre d’état et dit si le PDF de l’article ouvert (ou du livre)
 respecte la norme d’accessibilité – une coche s’il la respecte, une croix sinon, une roue
 tournante pendant la validation, un point d’interrogation si le validateur n’a pas pu se
-prononcer cette fois-ci. Un clic dessus ouvre « Contrôles de la compilation », où un PDF non
-conforme apparaît sous « Accessibilité du PDF » comme un point qui empêche de publier. Ce
-contrôle se désactive dans **Réglages SZH** si besoin – voir plus haut.
+prononcer cette fois-ci. Un clic dessus ouvre « Contrôles », où un PDF non
+conforme apparaît sous « Accessibilité du PDF » comme un point qui empêche de publier.
+Quand la validation trouve de nouveaux points bloquants, une notification le dit aussi :
+« Le PDF de « X » n’est pas encore accessible : 2 point(s) à corriger. », avec un bouton
+**Voir** qui ouvre les Contrôles. Ce
+contrôle se désactive dans **Réglages Pronto** si besoin – voir plus haut.
 
 ### Le journal reste sur le disque
 
@@ -884,7 +936,7 @@ La barre de titre porte deux gestes, à droite du titre :
   titre, les tâches et ce que la carte signale – de quoi parcourir un numéro entier d’un
   coup d’œil. Un second clic les ramène. Chaque carte se replie séparément, et le pli
   tient tant que la page reste ouverte.
-- **→ Ouvrir l’article** ouvre son texte dans l’éditeur, sans compiler ni ouvrir
+- **Ouvrir le texte** ouvre son texte dans l’éditeur, sans compiler ni ouvrir
   l’aperçu : depuis cette vue, on vient lire ou corriger. Le même bouton se retrouve en
   bas de la carte, avec les autres.
 
@@ -913,15 +965,20 @@ et ils restent visibles quand l’aperçu des métadonnées est replié : c’e
 
 ### Changer l’ordre du numéro
 
-Chaque carte porte **↑ Monter** et **↓ Descendre**. Un clic déplace l’article d’un cran,
-les deux chiffres se renumérotent, et la barre latérale suit dans la seconde. Les boutons
-s’atteignent au **Tab** et s’activent à l'**Entrée** : l’ordre se change entièrement au
-clavier.
+Le bouton **« Changer l’ordre »** de la barre fait passer la vue dans un mode à part. Chaque
+carte porte alors **↑ Monter** et **↓ Descendre** : un clic déplace l’article d’un cran, et
+les deux chiffres se renumérotent. Les boutons s’atteignent au **Tab** et s’activent à
+l’**Entrée** : l’ordre se change entièrement au clavier.
 
-**Aucun dossier n’est renommé.** L’ordre est retenu dans `ausgabe.yaml`, sur une ligne
-`ordre-articles`, à côté du titre et du volume du numéro. C’est ce qui permet de déplacer
-un article sans invalider son PDF déjà compilé ni les liens du numéro – renommer un
-dossier obligeait à tout recompiler.
+Rien n’est écrit pendant ce temps. **Terminer** renomme les dossiers pour qu’ils portent le
+rang affiché, et enregistre l’ordre ; **Annuler** revient à l’ordre enregistré, sans avoir
+touché à aucun dossier. Si un dossier ne se laisse pas renommer, parce qu’un de ses
+fichiers est ouvert, l’outil le dit : fermez-le, puis reprenez « Changer l’ordre ». Un
+article sans DOI reste après ceux qui en portent un, et un numéro archivé ne se
+réordonne plus.
+
+L’ordre est retenu dans `ausgabe.yaml`, sur une ligne `ordre-articles`, à côté du titre et
+du volume du numéro.
 
 Cette ligne se relit et se corrige à la main si besoin. Elle **se répare toute seule** :
 un article déposé dans `articles/` hors de l’interface apparaît à la fin de la liste, un
@@ -945,8 +1002,7 @@ part avec l’article si on le déplace.
 **« À faire »** de la carte (« 2/4 tâches », vert quand tout est fait), et la
 même mesure dans la barre latérale, à côté du nom du dossier.
 
-Le bouton **« Régler les tâches »** de la barre ne règle plus rien sur place : il
-**ouvre « Réglages SZH »**, où les intitulés vivent désormais, à côté du titre de la
+Les intitulés des tâches se règlent dans **« Réglages Pronto »**, à côté du titre de la
 bibliographie et de l’export OJS. Ils y sont en **lecture seule** : ce sont des réglages de
 la rédaction (voir « Les réglages de la rédaction » plus haut), et les modifier demande de
 cocher **« Déverrouiller ces réglages »**.
@@ -969,7 +1025,7 @@ et l’avancement se recompte sur ce que la revue demande aujourd’hui.
 
 Sur un numéro complet, la vue devient longue : chaque carte porte l’aperçu de ses
 métadonnées – neuf lignes, chacune dans les deux langues – **et** sa liste de cases à
-cocher. Trois boutons de la barre la resserrent :
+cocher. Quatre boutons de la barre la resserrent :
 
 - **« Tâches »**, éteint, retire la liste de cases de toutes les cartes. Rien n’est
   décoché : l’avancement reste écrit, et la barre latérale continue de l’afficher à côté du
@@ -981,21 +1037,30 @@ cocher. Trois boutons de la barre la resserrent :
   exactement comme à la compilation.
 - **« Métadonnées »**, éteint, replie l’aperçu de **toutes** les cartes d’un coup ;
   chaque carte se déplie ensuite seule, par son chevron.
+- **« Avertissements »**, éteint, retire les avertissements de chaque carte : rien n’est
+  corrigé, ils sont seulement moins nombreux à lire ici.
 
-Ces trois boutons sont des **interrupteurs**, et ils montrent leur état plutôt que de le
+Ces quatre boutons sont des **interrupteurs**, et ils montrent leur état plutôt que de le
 faire deviner : quand la chose est à l’écran, le bouton est **allumé** (fond plein) et
 porte un **œil ouvert** ; quand elle est cachée, il reprend son fond ordinaire et l’œil se
 **ferme**. Leur libellé, lui, ne bouge plus : il nomme la chose (« Tâches »,
-« Traductions », « Métadonnées »), et c’est l’**infobulle** qui annonce ce que le
-clic fera. Les trois choix sont retenus dans les réglages du poste – ils valent donc pour
+« Traductions », « Métadonnées », « Avertissements »), et c’est l’**infobulle** qui annonce
+ce que le clic fera. Les quatre choix sont retenus dans les réglages du poste – ils valent donc pour
 tous les numéros, et ils survivent à une mise à jour de l’outil.
 
 ### Les métadonnées du numéro, dans la vue
 
-Le bloc **« Méta-données du numéro »**, en haut de la vue, se déplie sur **exactement le
-même formulaire** que la commande du même nom (**🚀 Commande → Méta-données du numéro**) :
+Le bloc **« Métadonnées du numéro »**, en haut de la vue, se déplie sur **exactement le
+même formulaire** que la commande du même nom (**🚀 Commande → Métadonnées du numéro**) :
 mêmes champs, même enregistrement automatique, même fichier. Il n’y a qu’un formulaire du
 numéro dans le logiciel ; on l’atteint par deux portes.
+
+### Paginer et exporter depuis la vue
+
+La ligne des actions porte aussi **Paginer**, qui rafraîchit la pagination du numéro (voir
+« Rafraîchir la pagination au bouclage »), et **Exporter pour OJS**, qui recompile le
+numéro puis produit le XML d’import OJS à sa racine. Ce sont les mêmes gestes que dans le
+panneau d’export. « Paginer » disparaît sur un numéro verrouillé ou archivé.
 
 ### La couverture du numéro
 
@@ -1175,8 +1240,8 @@ inventée.
 
 Dans le panneau de traduction, le bouton **« Envoyer pour traduction »** (à côté d'*Enregistrer*)
 prépare tout : il **copie un lien** et **ouvre un brouillon d’e-mail** déjà rédigé, où le lien est
-un **vrai hyperlien** cliquable. Les mêmes boutons ✉ existent dans la barre, sur la section
-**Traductions** (lien vers tout le numéro) et sur chaque article (lien vers cet article).
+un **vrai hyperlien** cliquable. Le même bouton se trouve dans la barre de la vue
+**« Traductions »**.
 
 L’e-mail est écrit **dans la langue de la personne qui va traduire**, et adressé à la bonne
 rédaction – vous n’avez rien à choisir :
@@ -1202,8 +1267,8 @@ OneDrive), le message le dit et il reste toujours possible d’ouvrir le numéro
 « Pronto ». Le lien ne contient aucun chemin : il ne peut désigner qu’un numéro rangé aux
 emplacements officiels.
 
-Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c’est le bouton ✓✓ de
-la section « Traductions » (ou les boutons d’état du panneau).
+Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, ce sont les boutons
+d’état de la vue « Traductions » (ou ceux du panneau).
 
 ### Changer le texte de ces deux e-mails
 
@@ -1218,7 +1283,7 @@ manquante, par exemple) restent dans `lib/i18n.js`, à changer par qui touche au
 
 ## Régler l’export OJS (une fois par poste)
 
-**Réglages SZH → « Export OJS »** (en allemand : *SZH-Einstellungen → « OJS-Export »*)
+**Réglages Pronto → « Export OJS »** (en allemand : *Pronto-Einstellungen → « OJS-Export »*)
 porte les valeurs qu’OJS attend. Elles ne se devinent pas, et c’est la raison d’être de ce
 bloc : OJS reconnaît un genre de fichier, un groupe d’auteur et une rubrique **à leur
 intitulé exact**. Un intitulé approximatif ne provoque aucune erreur visible – il **crée un
@@ -1247,7 +1312,7 @@ Les **trois premiers sont obligatoires**. Vide, l’un d’eux arrête l’expor
 qui dit exactement où regarder, par exemple : *« Schweizerische Zeitschrift für
 Heilpädagogik : « Genre de fichier » n’est pas renseigné. À relever dans OJS (OJS →
 Paramètres → Flux de travail → Composants de la soumission : le nom exact du composant),
-puis à saisir dans « Réglages SZH » → « Export OJS ». »*
+puis à saisir dans « Réglages Pronto » → « Export OJS ». »*
 
 ### La table des rubriques
 
@@ -1293,7 +1358,7 @@ dans la fiche d’un article.
 
 ## La date de publication du numéro
 
-Dans **Méta-données du numéro**, le champ **date** est la **date de publication** du
+Dans **Métadonnées du numéro**, le champ **date** est la **date de publication** du
 numéro : le jour où il paraît. Un numéro tout neuf l’a donc **vide**, et c’est normal –
 personne ne connaît cette date le jour où le dossier est créé.
 
@@ -1359,8 +1424,9 @@ Le bouton « Comparer les deux versions » ouvre les deux fichiers côte à c�
 surlignées.
 
 Vous n’avez rien à recopier à la main. Tant qu’une copie en conflit existe à côté d’un fichier,
-ce fichier porte un repère dans sa marge de gauche à chaque endroit où les deux versions
-divergent. Cliquez le repère : la divergence s’ouvre, et deux boutons apparaissent.
+ce fichier porte un repère, un trait de couleur dans sa marge de gauche, à chaque endroit où
+les deux versions divergent. Cliquez le repère : la divergence s’ouvre sous la ligne, et
+deux boutons apparaissent en haut de cette fenêtre.
 
 - **« Prendre cette version »** : le passage de la copie remplace le vôtre.
 - **« Garder la mienne »** : c’est la copie qui reçoit votre passage.
@@ -1382,7 +1448,8 @@ boucle : il est donné une fois par fichier et par session de travail.
 
 Les folios de la Revue se suivent d’un article à l’autre, mais ils ne se recalculent jamais
 seuls. Une fois l’ordre du numéro arrêté et tous les articles compilés, ouvrez le panneau
-d’export (`Ctrl+Alt+D`) → **« Rafraîchir la pagination »** : l’outil annonce les pages et
+d’export (`Ctrl+Alt+D`) → **« Rafraîchir la pagination »**, ou le bouton **Paginer** de la
+vue « Articles » : l’outil annonce les pages et
 les PDF à recompiler avant d’agir. L’export OJS refuse un numéro dont la pagination n’est
 plus à jour, et un numéro verrouillé garde les folios publiés.
 
@@ -1390,7 +1457,7 @@ plus à jour, et un numéro verrouillé garde les folios publiés.
 
 Quand un numéro est publié, il n’a plus à changer – et ses PDF, HTML et Word occupent
 souvent plusieurs centaines de mégaoctets sur OneDrive pour rien. Le panneau d’export
-(`Ctrl+Alt+D`) propose donc **« Archiver et verrouiller la revue »**.
+(`Ctrl+Alt+D`) propose donc **« Archiver et verrouiller le numéro »**.
 
 Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place libérée** :
 
@@ -1400,22 +1467,22 @@ Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place 
 2. les **documents produits** (dossier `out` : PDF, HTML, Word) sont
    **supprimés**. Vos **sources** – textes, images, tableaux, métadonnées, traductions –
    sont intégralement conservées : c’est ce qui permet de tout régénérer plus tard ;
-3. le **dossier de la revue est déplacé** dans l’arborescence d’archives
+3. le **dossier du numéro est déplacé** dans l’arborescence d’archives
    (`_Archive\Revue` pour la Revue, `_Archive\Zeitschrift` pour la Zeitschrift) ;
-4. la fenêtre se ferme, puis **la revue se rouvre** depuis les archives, verrouillée.
+4. la fenêtre se ferme, puis **le numéro se rouvre** depuis les archives, verrouillé.
 
 Une fois le numéro archivé, **la compilation automatique s’arrête** : enregistrer ne
 relance plus rien, et cliquer un article ne le recompile plus. Pour revoir un PDF, deux
 gestes explicites :
 
-- le bouton **« Exporter cet article »** qui apparaît au survol de l’article dans la
+- le bouton **« Recompiler le PDF de cet article »** qui apparaît au survol de l’article dans la
   barre (et dans le panneau d’export) – il régénère **ce** PDF et son aperçu ;
-- **« Recompiler toute la revue »**, comme avant, pour tout refaire d’un coup.
+- **« Tout recompiler »**, comme avant, pour tout refaire d’un coup.
 
 Deux boutons pour revenir en arrière, indépendants l’un de l’autre :
 
-- **« Déverrouiller la revue »** rend le numéro modifiable (le dossier ne bouge pas) ;
-- **« Désarchiver la revue »** le ramène dans l’arborescence « en cours » (le verrou,
+- **« Déverrouiller le numéro »** rend le numéro modifiable (le dossier ne bouge pas) ;
+- **« Désarchiver le numéro »** le ramène dans l’arborescence « en cours » (le verrou,
   lui, reste posé : à déverrouiller séparément si vous voulez corriger quelque chose).
 
 Dans le lanceur **« Pronto »**, les numéros archivés apparaissent dans une **liste
@@ -1431,7 +1498,7 @@ reste de ce document, valable aussi pour un livre – seulement ce qui lui est 
   `Ctrl+Alt+D` Export) et la bascule d’aperçu (`Ctrl+Alt+P`) fonctionnent aussi dans un
   livre. La barre latérale d’un livre n’a pas de section « Traductions » ni « Actualité » :
   un livre est écrit dans une seule langue, et sa traduction est un autre livre.
-- Un **double-clic sur un chapitre** l’ouvre exactement comme un double-clic sur un
+- Un **clic sur un chapitre** l’ouvre exactement comme un clic sur un
   article : le chapitre s’ouvre à gauche, son aperçu à droite, recompilé si besoin.
 - Le panneau **Export** (`Ctrl+Alt+D`) porte quatre sorties propres au livre, à côté du PDF
   numérique (le build par défaut, `Ctrl+S`) : **PDF imprimeur du livre**, **Couverture du
@@ -1566,8 +1633,10 @@ pointillé ; le panneau de compilation en donne la liste, avec deux autres aver
 utiles : une **référence jamais citée** dans le texte, et un appel **ambigu** entre deux
 références du même auteur et de la même année.
 
-**Pour lier à la main** : place le curseur dans l’appel (ou sélectionne-le), `Ctrl+Alt+S`,
-**« Lier un appel à une référence »**, choisis l’entrée dans la liste. C’est aussi la
+**Pour lier à la main** : place le curseur dans l’appel, n’importe où dans la parenthèse (ou
+sélectionne-le), puis **clic droit → « Mise en forme » → « Lier un appel à une
+référence »**, ou `Ctrl+Alt+L` ; choisis l’entrée dans la liste. Le panneau d’édition
+(`Ctrl+Alt+S`) porte la même entrée. C’est aussi la
 manœuvre pour corriger un lien qui pointe vers la mauvaise entrée. Si tu modifies ensuite le
 texte de la référence, refais l’opération : le lien suit le contenu de l’entrée.
 
@@ -1575,7 +1644,7 @@ texte de la référence, refais l’opération : le lien suit le contenu de l�
 
 Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit →
 « Mise en forme »** (ou `Ctrl+Alt+S` : le panneau d’édition propose les mêmes actions,
-plus la bascule d’aperçu). Le sous-menu propose (chaque raccourci y est rappelé) :
+plus la bascule d’aperçu). Une liste de choix s’ouvre, chaque raccourci rappelé à droite :
 
 - **Gras**, **Italique**, **Souligné** (`Ctrl+B`, `Ctrl+I`, `Ctrl+U`) ;
 - **Titre 1 / 2 / 3** (`Ctrl+Alt+1/2/3`) ;
@@ -1598,6 +1667,8 @@ plus la bascule d’aperçu). Le sous-menu propose (chaque raccourci y est rappe
   de courriel devient un lien d’envoi de message. Sans sélection, c’est l’adresse
   elle-même qui s’affiche ; elle reste sélectionnée pour que tu puisses taper
   par-dessus le texte voulu ;
+- **Lier un appel à une référence** (`Ctrl+Alt+L`) : voir « Les références », juste
+  au-dessus ;
 - **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d’une
   nouvelle page **dans le PDF**. Rien ne change dans l’aperçu ni dans la version HTML :
   une page web n’a pas de pages, le saut n’y a donc aucun sens et n’y apparaît pas.
@@ -1695,7 +1766,7 @@ Puis **OK**, et le numéro s’ouvre tout prêt : dossiers `articles-word` et `
 renseignés dans ses métadonnées.
 
 Le titre du dossier thématique, lui, reste **vide** : c’est à vous de le remplir dans
-**Méta-données du numéro**. La **date de publication** aussi reste vide – elle se saisit le jour
+**Métadonnées du numéro**. La **date de publication** aussi reste vide – elle se saisit le jour
 où la parution est décidée (voir « La date de publication du numéro »).
 
 > **« Le volume 16, numéro 4 existe déjà ».** Deux numéros ne peuvent pas porter le même volume
@@ -1711,7 +1782,7 @@ où la parution est décidée (voir « La date de publication du numéro »).
 
 > Si un ancien numéro s’annonce « R2026-2 | Dossier – numéro d’exemple » dans la barre, ou porte
 > un **Vol. 44**, c’est qu’il a été créé avant cette version et garde les valeurs du gabarit :
-> ouvrez **Méta-données du numéro** et corrigez le volume, le numéro et le titre. Le nom du
+> ouvrez **Métadonnées du numéro** et corrigez le volume, le numéro et le titre. Le nom du
 > dossier, lui, est déjà le bon.
 
 Le lanceur cherche les revues aux emplacements officiels :

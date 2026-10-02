@@ -101,12 +101,12 @@ test('PALETTE_MEF_LIVRE : le groupe « Livre », falc-header puis qr-link, qrLin
 
 // ---- CONTRAT ----------------------------------------------------------------------------
 
-test('package.json : les deux commandes sont déclarées, catégorie SZH/CSPS', () => {
+test('package.json : les deux commandes sont déclarées, catégorie Pronto', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   for (const id of ['szh.fmt.falcHeader', 'szh.fmt.qrLink']) {
     const c = pkg.contributes.commands.find((x) => x.command === id);
     assert.ok(c, 'commande absente de contributes.commands : ' + id);
-    assert.strictEqual(c.category, 'SZH/CSPS');
+    assert.strictEqual(c.category, 'Pronto');
   }
 });
 

@@ -550,7 +550,7 @@ test('refus : un galley HTML ou PDF non produit nomme le fichier, avec le messag
   assert.match(e.message, /articles\/01-edito/, 'l’article en cause n’est pas nommé');
   assert.match(e.message, /out\/01-edito\/01-edito\.html/, 'le fichier attendu n’est pas nommé');
   assert.match(e.message, /n’a pas encore été produit/, 'le message générique n’est pas celui attendu');
-  assert.match(e.message, /Recompiler toute la revue/, 'le geste de retour n’est pas nommé');
+  assert.match(e.message, /Tout recompiler/, 'le geste de retour n’est pas nommé');
 });
 
 test('refus : une locale hors des deux revues nomme la locale saisie et les deux connues', () => {
@@ -618,7 +618,7 @@ test('configuration : un champ obligatoire vide arrête l’export, en français
   assert.match(fr.message, /Groupe d’auteur/);
   assert.match(fr.message, /Rôles/);
   assert.match(fr.message, /Compte de téléversement/);
-  assert.match(fr.message, /Réglages SZH/);
+  assert.match(fr.message, /Réglages Pronto/);
 
   process.env.SZH_LANGUE = 'de';
   try {
@@ -628,7 +628,7 @@ test('configuration : un champ obligatoire vide arrête l’export, en français
     assert.match(de.message, /Autorengruppe/);
     assert.match(de.message, /Rollen/);
     assert.match(de.message, /Konto für den Upload/);
-    assert.match(de.message, /SZH-Einstellungen/);
+    assert.match(de.message, /Pronto-Einstellungen/);
     assert.strictEqual(de.message.indexOf('ß'), -1, 'eszett dans un message allemand');
   } finally { process.env.SZH_LANGUE = 'fr'; }
 });
