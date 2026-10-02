@@ -1,6 +1,12 @@
 /* Le lanceur dans l'éditeur : six onglets posés sur le socle (_design.css). Aucune couleur
    ici, rien que des jetons : le thème de l'éditeur décide de tout. */
-body { --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4); }
+/* Centré sur une fenêtre large : le vide passe dans les marges intérieures, à parts égales.
+   Par la marge intérieure et non `margin: auto`, qui retirerait la marge par défaut du body et
+   décalerait la page d'autant sur une fenêtre étroite. */
+body {
+  --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4);
+  padding-inline: max(var(--e5), calc((100% - var(--page-max)) / 2));
+}
 
 /* ═══ Onglets ═══════════════════════════════════════════════════════════════════ */
 .lanceur-onglets {
