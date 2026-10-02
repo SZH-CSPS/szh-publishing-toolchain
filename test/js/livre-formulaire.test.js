@@ -213,7 +213,7 @@ test('livre : la validation de l’hôte refuse une couleur hors de la liste de 
   assert.ok(buch.indexOf('fuchsia') === -1, 'un fond hors liste a été écrit');
   assert.ok(!/fond-teinte/.test(buch), 'une teinte de 150 % a été écrite');
   assert.match(buch, /^mention-editeurs: "Éditrices"$/m, 'le texte libre est refusé à tort');
-  assert.strictEqual(CLES_COULEURS.length, 7);
+  assert.strictEqual(CLES_COULEURS.length, 8);
   for (const cle of CLES_COULEURS) {
     buch = await ecrire({ 'couleur-impression': cle });
     assert.match(buch, new RegExp('^couleur-impression: ' + cle + '$', 'm'), 'clé de référence refusée : ' + cle);
@@ -321,13 +321,13 @@ test('livre : le formulaire montre les cartes auteur·e·s et éditeur·rice·s 
   assert.strictEqual(envoi.modifies.editeurs[0].nom, 'Dupont');
 });
 
-test('livre : couleur d’impression en pastilles, les sept de la référence, et la couleur numérique relibellée', async () => {
+test('livre : couleur d’impression en pastilles, les huit de la référence, et la couleur numérique relibellée', async () => {
   const { page, formulaire } = await pageDuLivre('titre: "T"\ncouleur-impression: rouge\nlang: fr\n');
   for (const cle of ['couleur-impression', 'couverture.fond']) {
     const zone = parCle(formulaire, cle)[0];
     assert.ok(zone, 'pas de zone « ' + cle + ' »');
     const pastilles = descendants(zone).filter((x) => x.classes.has('pastille'));
-    assert.strictEqual(pastilles.length, 7, cle + ' : une pastille par couleur de référence');
+    assert.strictEqual(pastilles.length, 8, cle + ' : une pastille par couleur de référence');
     const noms = pastilles.map((x) => x.textContent).sort();
     assert.deepStrictEqual(noms, CLES_COULEURS.map((k) => REFERENCE[k].nom).sort());
     // La pastille montre la couleur RGB de la ligne de référence, lue du JSON et non recopiée.
@@ -466,7 +466,8 @@ test('livre : champs de décalage dans le bloc de couverture, aide « Entrée »
   const ordre = descendants(formulaire).map((e) => e.dataset && e.dataset.cle)
     .filter((c) => c && c.indexOf('couverture.') === 0);
   assert.deepStrictEqual(ordre, ['couverture.fond', 'couverture.fond-teinte',
-    'couverture.illustration-x-mm', 'couverture.illustration-y-mm']);
+    'couverture.illustration-x-mm', 'couverture.illustration-y-mm', 'couverture.modele',
+    'couverture.illustration-plein', 'couverture.titre-2', 'couverture.sous-titre-2']);
   // Saisir un décalage négatif le fait partir à l'enregistrement.
   y.value = '-0.5';
   y.dispatchEvent({ type: 'input' });
@@ -557,4 +558,92 @@ test('fiches : en livre, titre et sous-titre sont des champs qui grandissent ; e
   const revue = rendre(false);
   assert.strictEqual(revue.champs.title.balise, 'input', 'la revue doit garder des champs d’une ligne');
   assert.strictEqual(revue.aides, 0);
+});
+
+// ---- Couverture : modèle, illustration pleine, titre et sous-titre dans la langue voisine ----
+
+const CLES_COUV_NOUVELLES = ['couverture.modele', 'couverture.illustration-plein',
+  'couverture.titre-2', 'couverture.sous-titre-2'];
+
+test('couverture : les quatre clés sont lues et écrites dans le bloc couverture, modèle en jeton nu', () => {
+  for (const cle of CLES_COUV_NOUVELLES) {
+    assert.ok(yaml.CLES_METADONNEES.indexOf(cle) !== -1, 'absente de CLES_METADONNEES : ' + cle);
+  }
+  assert.ok(yaml.CLES_JETONS_NUS.indexOf('couverture.modele') !== -1, 'le modèle doit s’écrire en jeton nu');
+  const src = ['titre: "T"', 'couverture:', '  fond: poireau', 'locked: false', ''].join(LF);
+  const sortie = yaml.serialiserAusgabe(src, {
+    'couverture.modele': 'prospectrum', 'couverture.illustration-plein': 'true',
+    'couverture.titre-2': 'Titel // Zwei', 'couverture.sous-titre-2': 'Unter'
+  });
+  assert.match(sortie, /^ {2}modele: prospectrum$/m);
+  assert.match(sortie, /^ {2}illustration-plein: (true|"true")$/m);
+  assert.match(sortie, /^ {2}titre-2: "Titel \/\/ Zwei"$/m);
+  const relu = yaml.analyserAusgabe(sortie);
+  assert.strictEqual(relu['couverture.modele'], 'prospectrum');
+  assert.strictEqual(relu['couverture.titre-2'], 'Titel // Zwei');
+  assert.strictEqual(relu['couverture.sous-titre-2'], 'Unter');
+});
+
+test('couverture : l’hôte valide le modèle (liste fermée, vide permis) et la case (true/false seuls)', async () => {
+  const { LIVRE, p } = await ouvrirLivre();
+  const ecrire = async (modifies) => {
+    await p._recepteur({ type: 'enregistrer', auto: false, modifies: modifies });
+    return yaml.analyserAusgabe(fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8'));
+  };
+  for (const m of ['falc', 'classique', 'recherche', 'prospectrum']) {
+    const lu = await ecrire({ 'couverture.modele': m });
+    assert.strictEqual(lu['couverture.modele'], m, 'modèle valide refusé : ' + m);
+  }
+  let lu = await ecrire({ 'couverture.modele': 'inconnu' });
+  assert.strictEqual(lu['couverture.modele'], 'prospectrum', 'un modèle hors liste a été écrit');
+  lu = await ecrire({ 'couverture.modele': '' });
+  assert.strictEqual(lu['couverture.modele'], '', 'le modèle vide (selon la maquette) est refusé');
+  lu = await ecrire({ 'couverture.illustration-plein': 'true' });
+  assert.ok(yaml.estVraiYaml(lu['couverture.illustration-plein']));
+  lu = await ecrire({ 'couverture.illustration-plein': 'peut-être' });
+  assert.ok(yaml.estVraiYaml(lu['couverture.illustration-plein']), 'une valeur autre que true/false a été écrite');
+  lu = await ecrire({ 'couverture.illustration-plein': 'false' });
+  assert.ok(!yaml.estVraiYaml(lu['couverture.illustration-plein']));
+  const buch = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  assert.match(buch, /^ {2}illustration-plein: false$/m, 'la case doit s’écrire en booléen nu');
+  // Titre et sous-titre voisins : une ligne par ligne, « // » dans le fichier.
+  await ecrire({ 'couverture.titre-2': 'Un\n\n Deux ', 'couverture.sous-titre-2': 'a//b' });
+  const apres = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  assert.match(apres, /^ {2}titre-2: "Un \/\/ Deux"$/m);
+  assert.match(apres, /^ {2}sous-titre-2: "a \/\/ b"$/m);
+});
+
+test('couverture : le formulaire montre les quatre champs, relit titre-2 en lignes et envoie la case', async () => {
+  const { page, formulaire, valeurs } = await pageDuLivre(
+    'titre: "T"\nlang: fr\ncouverture:\n  modele: classique\n  illustration-plein: true\n  titre-2: "Un // Deux"\n');
+  const v = valeurs().valeurs;
+  assert.strictEqual(v['couverture.modele'], 'classique');
+  assert.strictEqual(v['couverture.illustration-plein'], 'true');
+  assert.strictEqual(v['couverture.titre-2'], 'Un\nDeux', '« // » non montré en retour à la ligne');
+  const sel = parCle(formulaire, 'couverture.modele')[0];
+  assert.strictEqual(sel.balise, 'select');
+  assert.strictEqual(sel.value, 'classique');
+  assert.deepStrictEqual(Array.from(sel.enfants.map((o) => o.value)),
+    ['', 'falc', 'classique', 'recherche', 'prospectrum']);
+  assert.strictEqual(sel.enfants[0].textContent, 'Selon la maquette');
+  const caseIllus = parCle(formulaire, 'couverture.illustration-plein')[0];
+  assert.strictEqual(caseIllus.type, 'checkbox');
+  assert.strictEqual(caseIllus.checked, true);
+  for (const cle of ['couverture.titre-2', 'couverture.sous-titre-2']) {
+    assert.strictEqual(parCle(formulaire, cle)[0].balise, 'textarea', cle + ' n’est pas un champ de plusieurs lignes');
+  }
+  assert.strictEqual(parCle(formulaire, 'couverture.titre-2')[0].value, 'Un\nDeux');
+  caseIllus.checked = false;
+  caseIllus.dispatchEvent({ type: 'change' });
+  page.parId.enregistrer.dispatchEvent({ type: 'click' });
+  const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(envoi.modifies)), { 'couverture.illustration-plein': 'false' });
+  // Libellés : chaque clé existe en fr et en de.
+  for (const cle of ['livre.couverture.modele', 'livre.couverture.modele.defaut', 'livre.couverture.modele.falc',
+    'livre.couverture.modele.classique', 'livre.couverture.modele.recherche',
+    'livre.couverture.modele.prospectrum', 'livre.couverture.illustrationPlein',
+    'livre.couverture.illustrationPlein.aide', 'livre.couverture.titre2', 'livre.couverture.sousTitre2',
+    'livre.couverture.voisinAide']) {
+    assert.notStrictEqual(T(cle), cle, 'clé i18n absente : ' + cle);
+  }
 });

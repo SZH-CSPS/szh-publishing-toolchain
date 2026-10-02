@@ -50,6 +50,8 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
   'couverture.fond', 'couverture.fond-teinte',
   // Décalage de l'illustration de couverture, en mm (+ vers la droite / + vers le bas).
   'couverture.illustration-x-mm', 'couverture.illustration-y-mm',
+  // Modèle de couverture, illustration pleine page, titre et sous-titre dans la langue voisine.
+  'couverture.modele', 'couverture.illustration-plein', 'couverture.titre-2', 'couverture.sous-titre-2',
   'impression.grammage', 'impression.main', 'impression.couverture-volume',
   'impression.couverture-grammage', 'impression.colle-mm', 'impression.dos-mm',
   'impression.fond-perdu-mm', 'impression.traits-de-coupe', 'impression.profil-cmjn'];
@@ -130,7 +132,8 @@ function listeYamlEnLigne(valeur) {
 // (éditeur en lecture seule, écritures du cockpit refusées) et `archived` le range dans
 // l'arborescence d'archives (plus de compilation automatique). Désarchiver ne
 // déverrouille pas, et l'inverse.
-const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived', 'impression.traits-de-coupe'];
+const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived', 'impression.traits-de-coupe',
+  'couverture.illustration-plein'];
 
 // Clés numériques : écrites en jeton YAML nu (jamais cité), comme les booléennes — un
 // grammage ou un dos en millimètres cité en chaîne (« "90" ») resterait lisible côté
@@ -147,7 +150,7 @@ const CLES_NOMBRES = ['annee', 'impression.grammage', 'impression.main',
 // Clés de buch.yaml qui s'écrivent en jeton nu, comme `lang` : voir l'en-tête de
 // formaterValeurYaml pour le pourquoi (le fichier les écrit toujours ainsi à la main).
 const CLES_JETONS_NUS = ['ouvrage', 'maquette', 'format', 'licence', 'couleur-impression',
-  'couverture.fond'];
+  'couverture.fond', 'couverture.modele'];
 
 // Valeurs acceptées comme vraies à la lecture, un ausgabe.yaml pouvant avoir été écrit à
 // la main. Miroir de la table VRAIS de pipeline/filters/szh-maquette.lua, qui décide au

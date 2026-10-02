@@ -119,6 +119,20 @@
       pas: 'any', defaut: '0', aide: 'meta.livre.illusAide' },
     { cle: 'couverture.illustration-y-mm', genre: 'nombre', libelle: 'meta.livre.illusY',
       pas: 'any', defaut: '0', aide: 'meta.livre.illusAide' },
+    { cle: 'couverture.modele', genre: 'select', libelle: 'livre.couverture.modele',
+      options: [
+        { valeur: '', libelle: 'livre.couverture.modele.defaut' },
+        { valeur: 'falc', libelle: 'livre.couverture.modele.falc' },
+        { valeur: 'classique', libelle: 'livre.couverture.modele.classique' },
+        { valeur: 'recherche', libelle: 'livre.couverture.modele.recherche' },
+        { valeur: 'prospectrum', libelle: 'livre.couverture.modele.prospectrum' }
+      ] },
+    { cle: 'couverture.illustration-plein', genre: 'case', libelle: 'livre.couverture.illustrationPlein',
+      aide: 'livre.couverture.illustrationPlein.aide' },
+    { cle: 'couverture.titre-2', genre: 'texte', libelle: 'livre.couverture.titre2',
+      aide: 'livre.couverture.voisinAide', lignes: true },
+    { cle: 'couverture.sous-titre-2', genre: 'texte', libelle: 'livre.couverture.sousTitre2',
+      aide: 'livre.couverture.voisinAide', lignes: true },
     // ---- fin du bloc « fond de couverture » ----
     { cle: 'impression.grammage', genre: 'nombre', libelle: 'meta.livre.grammage' },
     { cle: 'impression.main', genre: 'nombre', libelle: 'meta.livre.main' },
@@ -238,6 +252,7 @@
       }
       s.addEventListener('input', function () { toucher(champ.cle); });
       bloc.appendChild(s);
+      if (champ.aide) { poser(bloc, 'p', 'champ-aide', lib(champ.aide)); }
       ctl[champ.cle] = s;
     }
 
@@ -313,6 +328,7 @@
       c.addEventListener('change', function () { toucher(champ.cle); });
       l.appendChild(c);
       poser(l, 'span', null, lib(champ.libelle));
+      if (champ.aide) { poser(conteneur, 'p', 'champ-aide', lib(champ.aide)); }
       ctl[champ.cle] = c;
     }
 

@@ -324,13 +324,22 @@ const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.
   'meta.livre.illusX', 'meta.livre.illusY', 'meta.livre.illusAide', 'meta.livre.brAide',
   'meta.livre.couvVolume', 'meta.livre.couvGrammage', 'meta.livre.colleMm',
   'meta.livre.dos', 'meta.livre.dos.valeur', 'meta.livre.dos.absent',
-  'meta.livre.illustration', 'meta.livre.quatrieme', 'meta.livre.quatrieme.ouvrir'];
+  'meta.livre.illustration', 'meta.livre.quatrieme', 'meta.livre.quatrieme.ouvrir',
+  // Modèle de couverture, illustration pleine page, titre et sous-titre voisins.
+  'livre.couverture.modele', 'livre.couverture.modele.defaut', 'livre.couverture.modele.falc',
+  'livre.couverture.modele.classique', 'livre.couverture.modele.recherche',
+  'livre.couverture.modele.prospectrum', 'livre.couverture.illustrationPlein',
+  'livre.couverture.illustrationPlein.aide', 'livre.couverture.titre2',
+  'livre.couverture.sousTitre2', 'livre.couverture.voisinAide'];
 
 // Les jetons fermés du formulaire — refusés ici ET par le <select>/<input radio> côté
 // webview.
 const OUVRAGES_VALIDES = ['monographie', 'collectif'];
 const MAQUETTES_LIVRE_VALIDES = ['normal', 'falc'];
 const FORMATS_LIVRE_VALIDES = ['standard', 'a4'];
+const MODELES_COUVERTURE_VALIDES = ['falc', 'classique', 'recherche', 'prospectrum'];
+// Titres de couverture à plusieurs lignes : « // » dans le fichier.
+const CLES_TITRES_LIGNES = ['titre', 'sous-titre', 'couverture.titre-2', 'couverture.sous-titre-2'];
 
 // Les couleurs de référence de l'imprimé : pipeline/styles/couleurs-reference.json, lu et
 // non recopié — la même table décide du CMJN du PDF d'impression et du RGB de la couverture.
@@ -528,7 +537,8 @@ function chargeLivre(racine) {
     if (valeurs[cle] === undefined) { valeurs[cle] = CLES_PERSONNES.indexOf(cle) !== -1 ? [] : ''; }
   }
   valeurs['impression.traits-de-coupe'] = estVraiYaml(valeurs['impression.traits-de-coupe']) ? 'true' : 'false';
-  for (const cle of ['titre', 'sous-titre']) { valeurs[cle] = titreVersLignes(valeurs[cle]); }
+  valeurs['couverture.illustration-plein'] = estVraiYaml(valeurs['couverture.illustration-plein']) ? 'true' : 'false';
+  for (const cle of CLES_TITRES_LIGNES) { valeurs[cle] = titreVersLignes(valeurs[cle]); }
   const reference = couleursReference();
   return {
     valeurs: valeurs, dos: chargeDos(racine), couverture: chargeIllustration(racine),
@@ -562,7 +572,7 @@ function ecrireChampsLivre(racine, brut) {
       continue;
     }
     if (brut && typeof brut[cle] === 'string') {
-      modifies[cle] = (cle === 'titre' || cle === 'sous-titre' ? lignesVersTitre(brut[cle]) : brut[cle])
+      modifies[cle] = (CLES_TITRES_LIGNES.indexOf(cle) !== -1 ? lignesVersTitre(brut[cle]) : brut[cle])
         .replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
     }
   }
@@ -578,6 +588,8 @@ function ecrireChampsLivre(racine, brut) {
   }
   if ('ouvrage' in modifies && OUVRAGES_VALIDES.indexOf(modifies.ouvrage) === -1) { delete modifies.ouvrage; }
   if ('maquette' in modifies && MAQUETTES_LIVRE_VALIDES.indexOf(modifies.maquette) === -1) { delete modifies.maquette; }
+  if ('couverture.modele' in modifies && modifies['couverture.modele'] !== ''
+    && MODELES_COUVERTURE_VALIDES.indexOf(modifies['couverture.modele']) === -1) { delete modifies['couverture.modele']; }
   if ('format' in modifies && FORMATS_LIVRE_VALIDES.indexOf(modifies.format) === -1) { delete modifies.format; }
   if ('licence' in modifies && modifies.licence !== '' && normaliserLicence(modifies.licence) === '') {
     delete modifies.licence;
@@ -599,6 +611,11 @@ function ecrireChampsLivre(racine, brut) {
     const t = modifies['impression.traits-de-coupe'].toLowerCase();
     if (t !== 'true' && t !== 'false') { delete modifies['impression.traits-de-coupe']; }
     else { modifies['impression.traits-de-coupe'] = t; }
+  }
+  if ('couverture.illustration-plein' in modifies) {
+    const t = modifies['couverture.illustration-plein'].toLowerCase();
+    if (t !== 'true' && t !== 'false') { delete modifies['couverture.illustration-plein']; }
+    else { modifies['couverture.illustration-plein'] = t; }
   }
   delete modifies[cleOrdre()];
   if (Object.keys(modifies).length === 0) { return null; }
