@@ -1,6 +1,6 @@
-// L'onglet Préprocessing du lanceur : le nettoyeur de manuscrit (pipeline/manuscrit-nettoyer.py),
+// L'onglet Préprocessing de l'Accueil : le nettoyeur de manuscrit (pipeline/manuscrit-nettoyer.py),
 // lancé dans le moteur comme par l'onglet WinForms, son rapport HTML et ses compteurs. Sans
-// panneau : lib/lanceur-hote.js lui relaie les messages de la page.
+// panneau : lib/accueil-hote.js lui relaie les messages de la page.
 'use strict';
 
 const fs = require('fs');
@@ -22,16 +22,17 @@ const FORMATS = ['docx', 'odt'];
 // Un fichier glissé depuis l'Explorateur n'apporte pas son chemin à la page : le dépôt reste fermé.
 const DEPOT = false;
 // Par compte : le dossier du dernier manuscrit choisi, où la boîte de choix se rouvre.
+// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
 const CLE_DOSSIER = 'szh.lanceur.preproc.dossier';
 const GABARIT = path.join(__dirname, '..', 'export-templates', 'rapport-manuscrit.twig');
 // Les étapes de la page, dans l'ordre, et celle où tombe chaque étape de la CLI (ETAPES).
 const LIBELLES = {
-  preparation: 'lanceur.preproc.etape.preparation', lecture: 'lanceur.preproc.etape.lecture',
-  entete: 'lanceur.preproc.etape.entete', identifiants: 'lanceur.preproc.etape.identifiants',
-  titres: 'lanceur.preproc.etape.titres', formatage: 'lanceur.preproc.etape.formatage',
-  typographie: 'lanceur.preproc.etape.typographie', regles: 'lanceur.preproc.etape.regles',
-  bibliographie: 'lanceur.preproc.etape.bibliographie', ecriture: 'lanceur.preproc.etape.ecriture',
-  annotation: 'lanceur.preproc.etape.annotation', rapport: 'lanceur.preproc.etape.rapport'
+  preparation: 'accueil.preproc.etape.preparation', lecture: 'accueil.preproc.etape.lecture',
+  entete: 'accueil.preproc.etape.entete', identifiants: 'accueil.preproc.etape.identifiants',
+  titres: 'accueil.preproc.etape.titres', formatage: 'accueil.preproc.etape.formatage',
+  typographie: 'accueil.preproc.etape.typographie', regles: 'accueil.preproc.etape.regles',
+  bibliographie: 'accueil.preproc.etape.bibliographie', ecriture: 'accueil.preproc.etape.ecriture',
+  annotation: 'accueil.preproc.etape.annotation', rapport: 'accueil.preproc.etape.rapport'
 };
 const ORDRE = Object.keys(LIBELLES);
 const VERS_PAGE = {
@@ -79,7 +80,7 @@ function supprimer(chemin) { try { fs.rmSync(chemin, { force: true }); } catch (
 // Le produit suit la langue et le format suit szh.formatTravail : la page ne retient rien
 // d'un passage à l'autre.
 function etat() {
-  return { type: MSG.LANCEUR_PREPROC_ETAT, produit: produitParDefaut(), format: formatParDefaut(),
+  return { type: MSG.ACCUEIL_PREPROC_ETAT, produit: produitParDefaut(), format: formatParDefaut(),
     dossier: dossierDepart(), depot: DEPOT };
 }
 function envoyerEtat() { if (!passage) { ctx.envoyer(etat()); } }
@@ -89,7 +90,7 @@ function relayer(p, etape) {
   const rang = ORDRE.indexOf(etape);
   if (rang <= p.rang) { return; }
   p.rang = rang;
-  ctx.envoyer({ type: MSG.LANCEUR_PREPROC_ETAPE, etape });
+  ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_ETAPE, etape });
 }
 
 function lireStats(sortie) {
@@ -160,15 +161,15 @@ function libelleEtape(etapeCli) {
 // Le refus dit dans la langue de l'interface ; un code inconnu garde la phrase de la CLI.
 function texteRefus(s) {
   const code = String(s.code_refus || '');
-  if (code === 'fichier-verrou') { return T('lanceur.preproc.refus.verrou'); }
-  if (code === 'extension-inconnue') { return T('lanceur.preproc.depot.format'); }
-  if (code === 'conversion-impossible') { return T('lanceur.preproc.refus.conversion'); }
-  if (code === 'lecture-impossible') { return T('lanceur.preproc.refus.lecture'); }
-  if (code === 'perte-de-contenu') { return T('lanceur.preproc.refus.perte', [COURRIEL_SUPPORT]); }
+  if (code === 'fichier-verrou') { return T('accueil.preproc.refus.verrou'); }
+  if (code === 'extension-inconnue') { return T('accueil.preproc.depot.format'); }
+  if (code === 'conversion-impossible') { return T('accueil.preproc.refus.conversion'); }
+  if (code === 'lecture-impossible') { return T('accueil.preproc.refus.lecture'); }
+  if (code === 'perte-de-contenu') { return T('accueil.preproc.refus.perte', [COURRIEL_SUPPORT]); }
   if (code === 'suivi-modifications') {
-    if (s.sortie_nettoyeur) { return T('lanceur.preproc.refus.sortie'); }
+    if (s.sortie_nettoyeur) { return T('accueil.preproc.refus.sortie'); }
     const n = Number(s.revisions) || 0;
-    return n === 1 ? T('lanceur.preproc.refus.suivi.un') : T('lanceur.preproc.refus.suivi.plus', [n]);
+    return n === 1 ? T('accueil.preproc.refus.suivi.un') : T('accueil.preproc.refus.suivi.plus', [n]);
   }
   return String(s.message || '');
 }
@@ -178,11 +179,11 @@ function texteRefus(s) {
 function conclure(p, r, json) {
   const s = r.stats;
   if (r.annule) { return { issue: 'interrompu' }; }
-  if (r.lancement) { return { issue: 'echec', texte: T('lanceur.preproc.echec.moteur') }; }
+  if (r.lancement) { return { issue: 'echec', texte: T('accueil.preproc.echec.moteur') }; }
   if (s && s.plantage) {
     const libelle = libelleEtape(s.etape);
-    return { issue: 'echec', texte: libelle ? T('lanceur.preproc.echec.etape', [libelle, COURRIEL_SUPPORT])
-      : T('lanceur.preproc.echec.inconnu', [COURRIEL_SUPPORT]) };
+    return { issue: 'echec', texte: libelle ? T('accueil.preproc.echec.etape', [libelle, COURRIEL_SUPPORT])
+      : T('accueil.preproc.echec.inconnu', [COURRIEL_SUPPORT]) };
   }
   if (s && s.refus) { return { issue: 'refus', texte: texteRefus(s), rapport: rendreRapport(p, s, json) }; }
   const alertes = !!s && r.code === 1 && Number(s.alertes_error) > 0;
@@ -194,7 +195,7 @@ function conclure(p, r, json) {
         suggestions: Number(s.alertes_suggestion) || 0 }
     };
   }
-  return { issue: 'echec', texte: T('lanceur.preproc.echec.inconnu', [COURRIEL_SUPPORT]) };
+  return { issue: 'echec', texte: T('accueil.preproc.echec.inconnu', [COURRIEL_SUPPORT]) };
 }
 
 function empreinte(chemin) {
@@ -251,7 +252,7 @@ async function nettoyer(chemin, produit, format) {
   const json = path.join(os.tmpdir(), 'szh-rapport-manuscrit-' + crypto.randomBytes(8).toString('hex') + '.json');
   let fin;
   try {
-    ctx.envoyer({ type: MSG.LANCEUR_PREPROC_DEBUT, nom, produit, format });
+    ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_DEBUT, nom, produit, format });
     relayer(p, 'preparation');
     // Le dossier du manuscrit passe à --cd, que wsl.exe traduit lui-même : le nom reste relatif.
     const r = await executer(p, ['python3', cheminCli(), './' + nom, '--produit', produit, '--sortie', '.',
@@ -265,7 +266,7 @@ async function nettoyer(chemin, produit, format) {
   derniers = { document: fin.document || '', rapport: fin.rapport || '' };
   let ouvert = false;
   if (fin.rapport) { try { ouvert = !!(await ctx.ouvrirExterne(fin.rapport)); } catch (e) { ouvert = false; } }
-  ctx.envoyer({ type: MSG.LANCEUR_PREPROC_FIN, issue: fin.issue, texte: fin.texte || '',
+  ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_FIN, issue: fin.issue, texte: fin.texte || '',
     document: fin.document ? path.basename(fin.document) : '', rapport: !!fin.rapport, rapportOuvert: ouvert,
     alertes: fin.alertes || null });
   envoyerEtat();
@@ -302,10 +303,10 @@ function ouvrir(msg) {
 
 // Rend vrai si le message est l'un des siens. Le dépôt, fermé, n'est pas traité.
 function surMessage(msg) {
-  if (msg.type === MSG.LANCEUR_PREPROC_CHOISIR) { choisir(msg); return true; }
-  if (msg.type === MSG.LANCEUR_PREPROC_INTERROMPRE) { arreter(); return true; }
-  if (msg.type === MSG.LANCEUR_PREPROC_OUVRIR) { ouvrir(msg); return true; }
-  if (msg.type === MSG.LANCEUR_PREPROC_DEPOSER) { return true; }
+  if (msg.type === MSG.ACCUEIL_PREPROC_CHOISIR) { choisir(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_PREPROC_INTERROMPRE) { arreter(); return true; }
+  if (msg.type === MSG.ACCUEIL_PREPROC_OUVRIR) { ouvrir(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_PREPROC_DEPOSER) { return true; }
   return false;
 }
 

@@ -33,21 +33,21 @@ const HOTE = activerHote(LIVRE);
 
 const INTERDIT = /article|numéro|numero|artikel|ausgabe/i;
 
-// Le lanceur sert tous les produits : ses onglets Produits, Nouveau et Secrétariat parlent de
+// L'Accueil sert tous les produits : ses onglets Produits, Nouveau et Secrétariat parlent de
 // numéros pour les revues. Ce que garde ce fichier, c'est l'onglet Paramètres, que le livre voit :
 // ses libellés portent les préfixes ci-dessous (rg*, regl_*, auteurs*, ojs*, biblio*, art*).
-const PARAMETRES_LANCEUR = /^(rg|regl_|auteurs|ojs|biblio|art)/;
+const PARAMETRES_ACCUEIL = /^(rg|regl_|auteurs|ojs|biblio|art)/;
 
 // Les seules valeurs admises malgré le mot, par page et par clé.
 const LISTE_BLANCHE = [
-  // Paramètres du lanceur : blocs OJS, bibliographie, tâches et auteur·e·s publié·e·s, jamais
-  // montrés pour un livre (l'hôte n'envoie pas leurs données, media/lanceur.js les laisse masqués).
-  'lanceur:ojsIntro', 'lanceur:ojsRubriquesAide', 'lanceur:ojsTypes', 'lanceur:ojsTypesAide',
-  'lanceur:rgOjsResume', 'lanceur:biblioIntro', 'lanceur:biblioColLangue', 'lanceur:artTachesTitre',
-  'lanceur:artTachesAide', 'lanceur:auteursCorpus', 'lanceur:auteursCorpusJamais',
+  // Paramètres de l'Accueil : blocs OJS, bibliographie, tâches et auteur·e·s publié·e·s, jamais
+  // montrés pour un livre (l'hôte n'envoie pas leurs données, media/accueil.js les laisse masqués).
+  'accueil:ojsIntro', 'accueil:ojsRubriquesAide', 'accueil:ojsTypes', 'accueil:ojsTypesAide',
+  'accueil:rgOjsResume', 'accueil:biblioIntro', 'accueil:biblioColLangue', 'accueil:artTachesTitre',
+  'accueil:artTachesAide', 'accueil:auteursCorpus', 'accueil:auteursCorpusJamais',
   // Le vérificateur de traduction ne vaut que pour les champs d'un article : réglage du poste, que
-  // le livre voit parce que la page est celle du lanceur, commune à tous les produits.
-  'lanceur:rgVerifAide',
+  // le livre voit parce que la page est celle de l'Accueil, commune à tous les produits.
+  'accueil:rgVerifAide',
   // Fiche : champs que la carte d'un chapitre ne construit pas (capacités typeArticle,
   // licence et doi à faux).
   'metadata-articles:type', 'metadata-articles:licence', 'metadata-articles:doiVerrouTip',
@@ -97,7 +97,7 @@ async function relever(langue) {
       await HOTE.executer(cmd, arg);
     }
     const bases = new Set(PAGES.map((p) => p.base));
-    for (const b of ['metadata-book', 'articles', 'metadata-articles', 'medias-article', 'lanceur']) {
+    for (const b of ['metadata-book', 'articles', 'metadata-articles', 'medias-article', 'accueil']) {
       assert.ok(bases.has(b), 'page ' + b + ' non construite (' + [...bases].join(', ') + ')');
     }
     for (const page of PAGES) {
@@ -108,7 +108,7 @@ async function relever(langue) {
       const brut = (page.opts.remplacements || {}).__TXT__;
       if (!brut) { continue; }
       for (const [cle, v] of chainesDe(JSON.parse(brut), '', [])) {
-        if (page.base === 'lanceur' && !PARAMETRES_LANCEUR.test(cle)) { continue; }
+        if (page.base === 'accueil' && !PARAMETRES_ACCUEIL.test(cle)) { continue; }
         if (INTERDIT.test(v) && !LISTE_BLANCHE.includes(page.base + ':' + cle)) { fautes.push(page.base + ' __TXT__.' + cle + ' : ' + v); }
       }
     }

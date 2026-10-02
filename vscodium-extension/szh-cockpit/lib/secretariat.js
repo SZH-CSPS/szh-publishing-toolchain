@@ -31,7 +31,7 @@ const { urlJournal } = adresses;
 // MARC 690) pour la commande « edudoc » — voir la section dédiée plus bas.
 const motsClesEdudoc = require('./mots-cles-edudoc');
 const { TL, TEXTES_COCKPIT } = require('./i18n');
-const { numeroAffiche, LIBELLES_PRODUITS } = require('./lanceur-page');
+const { numeroAffiche, LIBELLES_PRODUITS } = require('./accueil-page');
 
 // ---- Petites aides communes ----------------------------------------------------------
 

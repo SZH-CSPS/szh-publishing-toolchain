@@ -1,11 +1,11 @@
-// Rendu autonome du lanceur dans l'éditeur (media/lanceur.html/.css/.js), hors toolkit : un
+// Rendu autonome de l'Accueil dans l'éditeur (media/accueil.html/.css/.js), hors toolkit : un
 // HTML par état, assemblé par construireHtml comme dans l'éditeur, avec un faux hôte qui
 // répond à « pret » puis rejoue les gestes et les messages de l'état demandé.
 //
 // Usage :
-//   node outils-dev/apercu-lanceur.js [dossier]          tous les états
-//   node outils-dev/apercu-lanceur.js [dossier] S1 J2    quelques états seulement
-// Les valeurs de l'onglet Paramètres sortent du VRAI hôte (lib/lanceur-reglages-hote.js), joué sous
+//   node outils-dev/apercu-accueil.js [dossier]          tous les états
+//   node outils-dev/apercu-accueil.js [dossier] S1 J2    quelques états seulement
+// Les valeurs de l'onglet Paramètres sortent du VRAI hôte (lib/accueil-reglages-hote.js), joué sous
 // un faux vscode et sur des fichiers jetables : aucun fichier du poste n'est lu ni écrit.
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<png> --window-size=1100,720 file:///<html>
@@ -18,7 +18,7 @@ const crypto = require('crypto');
 
 const COCKPIT = path.join(__dirname, '..', 'vscodium-extension', 'szh-cockpit');
 const { construireHtml } = require(path.join(COCKPIT, 'lib', 'webviews', 'util.js'));
-const { textesLanceur, produitParDefaut } = require(path.join(COCKPIT, 'lib', 'lanceur-page.js'));
+const { textesAccueil, produitParDefaut } = require(path.join(COCKPIT, 'lib', 'accueil-page.js'));
 const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 
 // ---- Le thème Default Light+ de l'éditeur, variable par variable ----------------------
@@ -190,7 +190,7 @@ function chargerHote() {
     const reglages = require(path.join(COCKPIT, 'lib', 'reglages-hote.js'));
     reglages.configurer({ compterSuggestionsInterface: () => 3 });
     hoteReglages = {
-      lanceur: require(path.join(COCKPIT, 'lib', 'lanceur-reglages-hote.js')),
+      accueil: require(path.join(COCKPIT, 'lib', 'accueil-reglages-hote.js')),
       session: require(path.join(COCKPIT, 'lib', 'session.js')),
       profils: require(path.join(COCKPIT, 'lib', 'profil.js')),
       services: require(path.join(COCKPIT, 'lib', 'services-env.js'))
@@ -205,7 +205,7 @@ function valeursReglages(langue, opts) {
   const o = opts || {};
   const hote = chargerHote();
   hote.session.poserProfilOuvrage(o.livre ? hote.profils.PROFILS.livre : null);
-  const msg = hote.lanceur.messageValeurs();
+  const msg = hote.accueil.messageValeurs();
   msg.poste.produitAuto = produitParDefaut(langue, '', '', ['revue', 'zeitschrift', 'livre']);
   if (o.deverrouille) { msg.proteges = Object.assign({}, msg.proteges, { deverrouille: true }); }
   return msg;
@@ -233,9 +233,9 @@ const PREPROC = {
 // ['saisir', sélecteur, texte] une frappe dans un champ ; ['ouvrirTous', sélecteur] ouvre des <details>.
 function etats(langue) {
   const P = PHRASES[langue] || PHRASES.fr;
-  const L = (commande, ligne) => ['hote', { type: MSG.LANCEUR_LIGNE, commande: commande, ligne: ligne }];
-  const debut = (commande) => ['hote', { type: MSG.LANCEUR_DEBUT, commande: commande }];
-  const fin = (commande, o) => ['hote', Object.assign({ type: MSG.LANCEUR_FIN, commande: commande }, o)];
+  const L = (commande, ligne) => ['hote', { type: MSG.ACCUEIL_LIGNE, commande: commande, ligne: ligne }];
+  const debut = (commande) => ['hote', { type: MSG.ACCUEIL_DEBUT, commande: commande }];
+  const fin = (commande, o) => ['hote', Object.assign({ type: MSG.ACCUEIL_FIN, commande: commande }, o)];
   const ojs = (revue) => OJS[revue].map((n) => L('numeros-ojs', { t: 'numero', cle: n[0] + '-0' + n[1],
     libelle: n[2], annee: n[0], numero: n[1] })).concat([fin('numeros-ojs', { ok: true, texte: '' })]);
   const revue = langue === 'de' ? 'zeitschrift' : 'revue';
@@ -246,18 +246,18 @@ function etats(langue) {
   const fichiers = ['0-intro.txt', '1-editorial.txt', '2-dossier-thematique.txt', '3-varia.txt', '4-tribune-libre.txt', '5-documentation.txt', 'auteurs.csv']
     .map((f) => L('newsletter', { t: 'fichier', chemin: BASE + '\\Exports\\Newsletter\\2026-03\\' + f, nom: f }));
   const journal = [['clic', '#onglet-journal'],
-    ['hote', { type: MSG.LANCEUR_JOURNAL_TEXTE, rang: 0, texte: transcript(), lignes: 200 }]];
+    ['hote', { type: MSG.ACCUEIL_JOURNAL_TEXTE, rang: 0, texte: transcript(), lignes: 200 }]];
   const signaler = journal.concat([['clic', '#jrn-signaler'], ['saisir', '#jrn-phrase', P.phrase]]);
   const PP = PREPROC[langue] || PREPROC.fr;
-  const preproc = [['clic', '#onglet-preproc'], ['hote', { type: MSG.LANCEUR_PREPROC_ETAT, produit: revue,
+  const preproc = [['clic', '#onglet-preproc'], ['hote', { type: MSG.ACCUEIL_PREPROC_ETAT, produit: revue,
     format: 'docx', dossier: PP.dossier, depot: false }]];
   const ppEtapes = (jusqua) => ['preparation', 'lecture', 'entete', 'identifiants', 'titres', 'formatage',
     'typographie', 'regles', 'bibliographie', 'ecriture', 'annotation', 'rapport']
-    .slice(0, jusqua).map((e) => ['hote', { type: MSG.LANCEUR_PREPROC_ETAPE, etape: e }]);
+    .slice(0, jusqua).map((e) => ['hote', { type: MSG.ACCUEIL_PREPROC_ETAPE, etape: e }]);
   const ppDebut = preproc.concat([['clic', '#pp-choisir'],
-    ['hote', { type: MSG.LANCEUR_PREPROC_DEBUT, nom: PP.nom, produit: revue, format: 'docx' }]]);
+    ['hote', { type: MSG.ACCUEIL_PREPROC_DEBUT, nom: PP.nom, produit: revue, format: 'docx' }]]);
   const ppFin = (jusqua, o) => ppDebut.concat(ppEtapes(jusqua),
-    [['hote', Object.assign({ type: MSG.LANCEUR_PREPROC_FIN }, o)]]);
+    [['hote', Object.assign({ type: MSG.ACCUEIL_PREPROC_FIN }, o)]]);
   const ppReussi = { document: PP.sortie, rapport: true, rapportOuvert: true };
   return {
     'P1-repos': { etapes: [] },
@@ -293,12 +293,12 @@ function etats(langue) {
     'R1-reglages-fr': { valeurs: {}, etapes: [['clic', '#onglet-reglages']] },
     'R1-reglages-de': { valeurs: {}, etapes: [['clic', '#onglet-reglages']] },
     'R2-deverrouille': { valeurs: { deverrouille: true }, etapes: [['clic', '#onglet-reglages'],
-      ['ouvrirTous', '#panneau-reglages .lanceur-details']] },
+      ['ouvrirTous', '#panneau-reglages .accueil-details']] },
     'R3-livre': { valeurs: { livre: true }, etapes: [['clic', '#onglet-reglages']] },
     'J1-ouvert': { etapes: journal },
     'J2-signaler': { etapes: signaler },
     'J3-envoye': { etapes: signaler.concat([['clic', '#jrn-signal-envoyer'],
-      ['hote', { type: MSG.LANCEUR_SIGNALE, issue: 'fait', courriel: true }]]) }
+      ['hote', { type: MSG.ACCUEIL_SIGNALE, issue: 'fait', courriel: true }]]) }
   };
 }
 
@@ -310,10 +310,10 @@ function htmlEtat(nom, langue) {
     const etat = etats(langue)[nom];
     if (!etat) { throw new Error('état inconnu : ' + nom); }
     const nonce = crypto.randomBytes(16).toString('hex');
-    const html = construireHtml('lanceur', nonce, {
+    const html = construireHtml('accueil', nonce, {
       cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
       titre: 'Pronto – ' + nom,
-      remplacements: { '__TXT__': JSON.stringify(textesLanceur()) },
+      remplacements: { '__TXT__': JSON.stringify(textesAccueil()) },
       csp: "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
     });
     const liste = etat.produits ? etat.produits(produits()) : produits();
@@ -391,7 +391,7 @@ function ecrire(dossier, filtres) {
 if (require.main === module) {
   const args = process.argv.slice(2);
   const dossier = args[0] && !/^[SJPNR]\d/.test(args[0]) ? args.shift()
-    : fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-lanceur-'));
+    : fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-accueil-'));
   for (const f of ecrire(dossier, args)) { console.log(f); }
 }
 

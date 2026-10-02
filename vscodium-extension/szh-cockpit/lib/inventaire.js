@@ -1,4 +1,4 @@
-// Ce que liste le lanceur : la racine active du poste et, pour chaque produit, ses numéros
+// Ce que liste l'Accueil : la racine active du poste et, pour chaque produit, ses numéros
 // en cours et archivés. Jumeau de Get-SzhBaseRevuesPour (windows/szh-produits.ps1) et de
 // Get-SzhInventaireProduit (windows/open-produit.ps1), tenu par test/js/inventaire.test.js.
 'use strict';
@@ -120,7 +120,7 @@ function horsArborescence(jeton, base, cfg) {
   return { nombre, dossier };
 }
 
-// Les entrées d'un produit, rangées comme le lanceur les montre : en cours du plus récemment
+// Les entrées d'un produit, rangées comme l'Accueil les montre : en cours du plus récemment
 // modifié au plus ancien, archives par nom décroissant. Une entrée est archivée si son
 // manifeste le dit ou si elle dort sous la racine d'archives.
 function inventaireProduit(jeton, base, cfg) {
@@ -160,7 +160,7 @@ function inventaireProduit(jeton, base, cfg) {
   return { jeton, racineEnCours, racineArchive, enCours, archives, hors: horsArborescence(jeton, base, cfg) };
 }
 
-// Tout ce que le lanceur affiche, pour les trois produits. L'ancrage n'est dit absent qu'en
+// Tout ce que l'Accueil affiche, pour les trois produits. L'ancrage n'est dit absent qu'en
 // production : en test, il n'entre pour rien dans la racine.
 function inventaire() {
   const cfg = lireConfigPoste();

@@ -1,7 +1,7 @@
-// Créer un numéro ou un livre depuis le lanceur de l'éditeur (lib/lanceur-nouveau.js) : les
+// Créer un numéro ou un livre depuis l'Accueil de l'éditeur (lib/accueil-nouveau.js) : les
 // refus et la création sont ceux du socle PowerShell, rejoués ici sur une arborescence jetable.
 //
-//   node --test test/js/lanceur-nouveau.test.js
+//   node --test test/js/accueil-nouveau.test.js
 'use strict';
 
 const test = require('node:test');
@@ -13,7 +13,7 @@ const { POWERSHELL, sansPowerShell, sansVSCodium, sauter } = require('./gardes')
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
-const nouveau = require(path.join(COCKPIT, 'lib', 'lanceur-nouveau.js'));
+const nouveau = require(path.join(COCKPIT, 'lib', 'accueil-nouveau.js'));
 
 const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-nouveau-'));
 process.on('exit', () => { try { fs.rmSync(TRAVAIL, { recursive: true, force: true }); } catch (e) { /* débris */ } });
@@ -97,7 +97,7 @@ test('nouveau : l’année zéro du volume vient du socle', { skip: sansPowerShe
 
 test('nouveau : l’hôte dit chaque refus du socle en clair', () => {
   const { chargerAvecVscodeFactice } = require('./dom-minimal');
-  const { texteRefus } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'lanceur-hote.js'));
+  const { texteRefus } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'accueil-hote.js'));
   assert.match(texteRefus({ refus: 'existe', nom: '2026-03' }), /2026-03/);
   const doublon = texteRefus({ refus: 'doublon', volume: 16, numero: 3, nom: 'ancien-trois', archive: true });
   assert.match(doublon, /16/);

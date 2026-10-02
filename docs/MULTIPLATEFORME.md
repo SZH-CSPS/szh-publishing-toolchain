@@ -14,7 +14,7 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 
 - **Déjà portable.** La logique lourde tourne en Node (`outils/secretariat-cli.js`,
   `outils/rendre-gabarit.js`, `outils/auteurs-cli.js`, `lib/gabarits.js`) ; le PowerShell ne
-  fait que l'appeler. `lib/accueil-hote.js` montre déjà une page d'accueil dans VSCodium.
+  fait que l'appeler. `lib/accueil-hote.js` montre déjà l'Accueil dans VSCodium.
 - **Ce qui bloque.**
   - WinForms : `open-produit.ps1`, `lanceur-secretariat.ps1`, `lanceur-preproc.ps1` ;
   - `szh-produits.ps1` (listes, racines), `szh-textes.ps1`, `new-revue.ps1` et
@@ -170,10 +170,10 @@ déploiement.
    - La génération des tâches de compilation par le cockpit est reportée à l'étape 3 : la
      tâche par défaut (Ctrl+E), l'import à l'ouverture et le `tasks.json` copié sur chaque
      poste en dépendent, et rien n'y gagne sous Windows.
-2. **Faire entrer le lanceur dans le cockpit**, onglet par onglet : Secrétariat et Journal,
+2. **Faire entrer le lanceur dans le cockpit**, où il devient l'Accueil, onglet par onglet : Secrétariat et Journal,
    puis Produits et Nouveau, puis Préprocessing et Réglages. WinForms reste en secours pendant
    la transition.
-   - **État.** Produits, Nouveau, Secrétariat et Log sont portés, en DEV seulement, derrière
+   - **État.** L'Accueil porte Produits, Nouveau, Secrétariat et Log, en DEV seulement, derrière
      `SZH_ACCUEIL` (voir `ARCHITECTURE.md`). Restent Préprocessing et Réglages (ce dernier
      est en cours), puis la bascule de la production, qui n'est pas faite : elle utilise
      toujours WinForms.

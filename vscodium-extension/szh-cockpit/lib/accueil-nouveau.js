@@ -1,4 +1,4 @@
-// Créer un numéro ou un livre depuis le lanceur : les refus et la création restent ceux du
+// Créer un numéro ou un livre depuis l'Accueil : les refus et la création restent ceux du
 // socle PowerShell (Find-SzhNumeroVolume, Find-SzhLivreReference, new-revue.ps1, new-livre.ps1),
 // appelés en un processus qui rend son verdict en une ligne JSON.
 'use strict';

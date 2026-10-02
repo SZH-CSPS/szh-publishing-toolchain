@@ -1,9 +1,9 @@
-// L'onglet Préprocessing du lanceur côté hôte (lib/lanceur-preproc-hote.js) : les arguments
+// L'onglet Préprocessing de l'Accueil côté hôte (lib/accueil-preproc-hote.js) : les arguments
 // passés au nettoyeur dans le moteur, l'ordre des messages, l'issue, le rapport, le réglage
-// szh.formatTravail, et aucun enfant qui survive au lanceur. Une fausse commande du moteur
+// szh.formatTravail, et aucun enfant qui survive à l'Accueil. Une fausse commande du moteur
 // tient lieu de wsl.exe : elle note ses arguments et son pid, puis répond ou dort.
 //
-//   node --test test/js/lanceur-preproc.test.js
+//   node --test test/js/accueil-preproc.test.js
 'use strict';
 
 const test = require('node:test');
@@ -17,7 +17,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const CAS = process.env.SZH_PREPROC_CAS;
 
-const TRAVAIL = process.env.SZH_PREPROC_TRAVAIL || fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-pp-'));
+const TRAVAIL = process.env.SZH_PREPROC_TRAVAIL || fs.mkdtempSync(path.join(os.tmpdir(), 'szh-accueil-pp-'));
 const PROGRAMDATA = path.join(TRAVAIL, 'ProgramData');
 const RECUS = path.join(TRAVAIL, 'Manuscrits reçus');
 const MANUSCRIT = path.join(RECUS, 'Martin école.docx');
@@ -87,7 +87,7 @@ function fauxLancer(argv, options) {
 }
 const val = (argv, k) => argv[argv.indexOf(k) + 1];
 
-// ---- Le côté enfant : l'extension activée, sans dossier, et la page du lanceur ----
+// ---- Le côté enfant : l'extension activée, sans dossier, et la page de l'Accueil ----
 async function enfant() {
   const { revueDEssai, activerHote } = require('./hote-factice');
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
@@ -99,27 +99,27 @@ async function enfant() {
     return Object.assign({}, c, { update: (cle, v) => { ecritures.push((section ? section + '.' : '') + cle); return c.update(cle, v); } });
   };
   if (CAS === 'reglage') { await getConfiguration('szh').update('formatTravail', 'odt'); }
-  const preproc = require(path.join(COCKPIT, 'lib', 'lanceur-preproc-hote.js'));
+  const preproc = require(path.join(COCKPIT, 'lib', 'accueil-preproc-hote.js'));
   preproc.configurer({ lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => c,
     compter: () => {}, signaler: () => {} });
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
-  const p = HOTE.panneaux.filter((x) => x.type === 'szhLanceur')[0];
+  const p = HOTE.panneaux.filter((x) => x.type === 'szhAccueil')[0];
   await p._recepteur({ type: MSG.PRET });
-  await attendre(() => p.messages.some((m) => m.type === MSG.LANCEUR_PREPROC_ETAT));
-  const etats = () => p.messages.filter((m) => m.type === MSG.LANCEUR_PREPROC_ETAT);
+  await attendre(() => p.messages.some((m) => m.type === MSG.ACCUEIL_PREPROC_ETAT));
+  const etats = () => p.messages.filter((m) => m.type === MSG.ACCUEIL_PREPROC_ETAT);
   HOTE.repondreOuverture([{ fsPath: MANUSCRIT }]);
   if (CAS !== 'reglage') { process.env.SZH_FAUX_MODE = 'dormir'; }
-  p._recepteur({ type: MSG.LANCEUR_PREPROC_CHOISIR, produit: 'revue', format: 'docx' });
-  await attendre(() => appels().length === 1 && p.messages.some((m) => m.type === MSG.LANCEUR_PREPROC_ETAPE && m.etape === 'lecture'));
+  p._recepteur({ type: MSG.ACCUEIL_PREPROC_CHOISIR, produit: 'revue', format: 'docx' });
+  await attendre(() => appels().length === 1 && p.messages.some((m) => m.type === MSG.ACCUEIL_PREPROC_ETAPE && m.etape === 'lecture'));
   const pids = appels().map((a) => a.pid);
   if (CAS === 'fermeture') { p.dispose(); }
   if (CAS === 'dossier') {
     const charger = p.messages.filter((m) => m.type === MSG.CHARGER)[0];
-    await p._recepteur({ type: MSG.LANCEUR_OUVRIR, chemin: charger.produits[0].enCours[0].chemin });
+    await p._recepteur({ type: MSG.ACCUEIL_OUVRIR, chemin: charger.produits[0].enCours[0].chemin });
   }
   if (CAS === 'desactivation') { require(path.join(COCKPIT, 'extension.js')).deactivate(); }
   await attendre(() => !pids.some(vivant) && !preproc.enCours(), 10000);
-  const fin = p.messages.filter((m) => m.type === MSG.LANCEUR_PREPROC_FIN).pop() || null;
+  const fin = p.messages.filter((m) => m.type === MSG.ACCUEIL_PREPROC_FIN).pop() || null;
   const sortie = { pids, vivants: pids.filter(vivant), fin, premierEtat: etats()[0], dernierEtat: etats().pop(),
     argv: (appels()[0] || {}).argv || [], ecritures, format: getConfiguration('szh').get('formatTravail') };
   for (const pid of sortie.vivants) { try { process.kill(pid); } catch (e) { /* déjà mort */ } }
@@ -138,7 +138,7 @@ function lancerEnfant(cas) {
 if (CAS) {
   enfant().catch((e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(1); });
 } else {
-  const hote = require(path.join(COCKPIT, 'lib', 'lanceur-preproc-hote.js'));
+  const hote = require(path.join(COCKPIT, 'lib', 'accueil-preproc-hote.js'));
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
   const { TL } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
   const envoyes = [];
@@ -165,7 +165,7 @@ if (CAS) {
     delete process.env.SZH_FAUX_MODE;
   };
   const types = () => envoyes.map((m) => m.type);
-  const fin = () => envoyes.filter((m) => m.type === MSG.LANCEUR_PREPROC_FIN).pop();
+  const fin = () => envoyes.filter((m) => m.type === MSG.ACCUEIL_PREPROC_FIN).pop();
   const lancer = async (mode, produit, fmt) => {
     oublier();
     if (mode) { process.env.SZH_FAUX_MODE = mode; }
@@ -179,7 +179,7 @@ if (CAS) {
     oublier();
     format = 'odt';
     try {
-      assert.deepStrictEqual(hote.etat(), { type: MSG.LANCEUR_PREPROC_ETAT, produit: 'revue', format: 'odt', dossier: '', depot: false });
+      assert.deepStrictEqual(hote.etat(), { type: MSG.ACCUEIL_PREPROC_ETAT, produit: 'revue', format: 'odt', dossier: '', depot: false });
       process.env.SZH_LANGUE = 'de';
       try { assert.strictEqual(hote.etat().produit, 'zeitschrift'); } finally { process.env.SZH_LANGUE = 'fr'; }
       format = 'pdf';
@@ -200,14 +200,14 @@ if (CAS) {
     assert.match(path.basename(val(a[0].argv, '--rapport')), /^szh-rapport-manuscrit-[0-9a-f]{16}\.json$/);
     assert.deepStrictEqual(convertis, [val(a[0].argv, '--rapport')], 'le chemin du rapport passe par le moteur');
     assert.ok(!fs.existsSync(val(a[0].argv, '--rapport')), 'le JSON temporaire est effacé');
-    assert.deepStrictEqual(types(), [MSG.LANCEUR_PREPROC_DEBUT].concat(Array(10).fill(MSG.LANCEUR_PREPROC_ETAPE),
-      [MSG.LANCEUR_PREPROC_FIN, MSG.LANCEUR_PREPROC_ETAT]));
-    assert.deepStrictEqual(envoyes[0], { type: MSG.LANCEUR_PREPROC_DEBUT, nom: 'Martin école.docx', produit: 'revue', format: 'odt' });
-    assert.deepStrictEqual(envoyes.filter((m) => m.type === MSG.LANCEUR_PREPROC_ETAPE).map((m) => m.etape),
+    assert.deepStrictEqual(types(), [MSG.ACCUEIL_PREPROC_DEBUT].concat(Array(10).fill(MSG.ACCUEIL_PREPROC_ETAPE),
+      [MSG.ACCUEIL_PREPROC_FIN, MSG.ACCUEIL_PREPROC_ETAT]));
+    assert.deepStrictEqual(envoyes[0], { type: MSG.ACCUEIL_PREPROC_DEBUT, nom: 'Martin école.docx', produit: 'revue', format: 'odt' });
+    assert.deepStrictEqual(envoyes.filter((m) => m.type === MSG.ACCUEIL_PREPROC_ETAPE).map((m) => m.etape),
       ['preparation', 'lecture', 'titres', 'formatage', 'typographie', 'regles', 'bibliographie', 'ecriture', 'annotation', 'rapport'],
       'une étape par étape de la page, jamais en arrière');
     const rapport = path.join(RECUS, 'Martin école-rapport.html');
-    assert.deepStrictEqual(fin(), { type: MSG.LANCEUR_PREPROC_FIN, issue: 'ok', texte: '', document: 'Martin école-nettoye.odt',
+    assert.deepStrictEqual(fin(), { type: MSG.ACCUEIL_PREPROC_FIN, issue: 'ok', texte: '', document: 'Martin école-nettoye.odt',
       rapport: true, rapportOuvert: true, alertes: { erreurs: 0, avertissements: 1, suggestions: 3 } });
     assert.ok(fs.statSync(rapport).size > 0, 'le rapport HTML est rendu à côté du manuscrit');
     assert.deepStrictEqual(ouvertures, [rapport], 'le rapport s’ouvre dans le navigateur, avant l’issue');
@@ -215,10 +215,10 @@ if (CAS) {
     assert.deepStrictEqual(comptes[0], { source: 'nettoyeur', passage: 'abcdef012345', mesures: { 'issue.ok': 1, 'produit.revue': 1 } });
     assert.deepStrictEqual(signales, []);
     // La page ne renvoie qu'un mot : l'hôte garde les chemins.
-    hote.surMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: 'document' });
-    hote.surMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: 'rapport' });
-    hote.surMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: 'dossier' });
-    hote.surMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: 'C:\\Windows' });
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'document' });
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'rapport' });
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'dossier' });
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'C:\\Windows' });
     assert.deepStrictEqual(ouvertures.slice(1), [path.join(RECUS, 'Martin école-nettoye.odt'), rapport]);
     assert.deepStrictEqual(reveles, [path.join(RECUS, 'Martin école-nettoye.odt')]);
   });
@@ -240,7 +240,7 @@ if (CAS) {
     assert.strictEqual(memoire[hote.CLE_DOSSIER], RECUS);
     await lancer('ok');
     assert.deepStrictEqual(choix, [RECUS]);
-    assert.strictEqual(envoyes.filter((m) => m.type === MSG.LANCEUR_PREPROC_ETAT).pop().dossier, RECUS);
+    assert.strictEqual(envoyes.filter((m) => m.type === MSG.ACCUEIL_PREPROC_ETAT).pop().dossier, RECUS);
   });
 
   test('préprocessing : des erreurs bloquantes restent une réussite, avec leur compte', async () => {
@@ -253,20 +253,20 @@ if (CAS) {
   test('préprocessing : un refus se dit en clair dans la langue de l’interface, au vrai pluriel', async () => {
     await lancer('refus');
     assert.strictEqual(fin().issue, 'refus');
-    assert.strictEqual(fin().texte, TL('fr', 'lanceur.preproc.refus.suivi.plus', [3]));
+    assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.refus.suivi.plus', [3]));
     assert.doesNotMatch(fin().texte, /\(s\)/);
     assert.strictEqual(fin().rapport, true, 'un refus a sa page courte');
     assert.deepStrictEqual(signales, [], 'un refus attendu ne fait aucun rapport d’erreur');
     process.env.SZH_LANGUE = 'de';
     try { await lancer('refus', 'zeitschrift'); } finally { process.env.SZH_LANGUE = 'fr'; }
-    assert.strictEqual(fin().texte, TL('de', 'lanceur.preproc.refus.suivi.plus', [3]));
-    assert.notStrictEqual(fin().texte, TL('fr', 'lanceur.preproc.refus.suivi.plus', [3]));
+    assert.strictEqual(fin().texte, TL('de', 'accueil.preproc.refus.suivi.plus', [3]));
+    assert.notStrictEqual(fin().texte, TL('fr', 'accueil.preproc.refus.suivi.plus', [3]));
   });
 
   test('préprocessing : un plantage dit l’étape et fait un rapport sans chemin', async () => {
     await lancer('plantage');
     assert.strictEqual(fin().issue, 'echec');
-    assert.match(fin().texte, new RegExp(TL('fr', 'lanceur.preproc.etape.bibliographie')));
+    assert.match(fin().texte, new RegExp(TL('fr', 'accueil.preproc.etape.bibliographie')));
     assert.strictEqual(fin().rapport, false);
     assert.strictEqual(signales.length, 1);
     assert.strictEqual(signales[0].code, 'NETTOYEUR-ECHEC');
@@ -279,12 +279,12 @@ if (CAS) {
   test('préprocessing : une sortie sans ligne JSON, puis un moteur absent, sont des échecs dits', async () => {
     await lancer('muet');
     assert.strictEqual(fin().issue, 'echec');
-    assert.strictEqual(fin().texte, TL('fr', 'lanceur.preproc.echec.inconnu', [require(path.join(COCKPIT, 'lib', 'codes-erreur.js')).COURRIEL_SUPPORT]));
+    assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.echec.inconnu', [require(path.join(COCKPIT, 'lib', 'codes-erreur.js')).COURRIEL_SUPPORT]));
     assert.deepStrictEqual(signales.map((s) => s.etape), ['nettoyeur : sortie-inattendue']);
     assert.deepStrictEqual(comptes[0].mesures, { 'issue.plantage': 1, 'produit.revue': 1 }, 'un compteur minimal');
     hote.configurer({ lancer: () => { throw new Error('ENOENT'); } });
     try { await lancer('ok'); } finally { hote.configurer({ lancer: fauxLancer }); }
-    assert.strictEqual(fin().texte, TL('fr', 'lanceur.preproc.echec.moteur'));
+    assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.echec.moteur'));
     assert.strictEqual(hote.enCours(), false);
   });
 
@@ -299,14 +299,14 @@ if (CAS) {
     const pid = appels()[0].pid;
     await hote.choisir({ produit: 'revue', format: 'docx' });
     assert.strictEqual(appels().length, 1, 'un seul nettoyage à la fois');
-    hote.surMessage({ type: MSG.LANCEUR_PREPROC_INTERROMPRE });
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_INTERROMPRE });
     await tenu(passage);
     assert.ok(await attendre(() => !vivant(pid), 5000), 'le nettoyeur a survécu');
     assert.strictEqual(fin().issue, 'interrompu');
     assert.strictEqual(fin().rapport, false);
     assert.deepStrictEqual(comptes[0].mesures, { 'issue.interrompu': 1, 'produit.revue': 1 });
     assert.deepStrictEqual(signales, []);
-    assert.strictEqual(types().pop(), MSG.LANCEUR_PREPROC_ETAT);
+    assert.strictEqual(types().pop(), MSG.ACCUEIL_PREPROC_ETAT);
   });
 
   // La vraie CLI : avec --etapes, chaque étape s'écrit sur stderr dans la forme que lit l'hôte ;
@@ -331,10 +331,10 @@ if (CAS) {
     assert.deepStrictEqual(marques(sans.stderr), [], 'sans --etapes, rien de neuf sur stderr');
   });
 
-  // Les gestes qui ferment le lanceur, et le réglage, dans l'extension activée : chacun dans
+  // Les gestes qui ferment l'Accueil, et le réglage, dans l'extension activée : chacun dans
   // son propre processus, le faux vscode ne s'activant qu'une fois.
   for (const cas of ['fermeture', 'dossier', 'desactivation']) {
-    test('préprocessing : ' + cas + ' du lanceur pendant un nettoyage, et aucun enfant ne survit', () => {
+    test('préprocessing : ' + cas + ' de l’Accueil pendant un nettoyage, et aucun enfant ne survit', () => {
       oublier();
       const v = lancerEnfant(cas);
       assert.strictEqual(v.pids.length, 1, 'le nettoyeur tournait');

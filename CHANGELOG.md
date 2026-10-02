@@ -17,7 +17,7 @@ Medium : une seule page de réglages, une newsletter prête pour Mailchimp, et d
 mise à jour reconnus dans toutes les langues.
 
 **Production.**
-- Une seule page de réglages : l'onglet Paramètres du lanceur du cockpit. « Ouvrir les
+- Une seule page de réglages : l'onglet Paramètres de l'Accueil du cockpit. « Ouvrir les
   réglages » y mène, même sans produit ouvert ; l'ancien panneau des réglages est retiré. Les
   clés Shlink et OJS passent au coffre de VSCodium (`context.secrets`), transmises à la
   chaîne par `WSLENV` (`lib/services-env.js`).
@@ -31,12 +31,12 @@ mise à jour reconnus dans toutes les langues.
 - Le dossier des journaux se nettoie : dix mises à jour et trois mois au plus.
 
 **DEV seulement.**
-- Le lanceur dans le cockpit s'ouvre seul au démarrage derrière `SZH_ACCUEIL` : Produits,
+- L'Accueil du cockpit s'ouvre seul au démarrage derrière `SZH_ACCUEIL` : Produits,
   Nouveau, Secrétariat, Log, Paramètres. WinForms reste le lanceur de production.
-- « Pronto (dev) » ouvre VSCodium directement sur ce lanceur ; `SZH_JOURNAUX_MAJ` lui fait
+- « Pronto (dev) » ouvre VSCodium directement sur l'Accueil ; `SZH_JOURNAUX_MAJ` lui fait
   lire les journaux du poste.
 - Les exports vont dans `Exports\<export>`, qui remplace « Secrétariat und Export » dans
-  l'arbre. L'export Edudoc du lanceur du cockpit ne garde que les mots-clés du thésaurus, et
+  l'arbre. L'export Edudoc de l'Accueil ne garde que les mots-clés du thésaurus, et
   son historique retient les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
 - Cockpit 0.74.0.
 

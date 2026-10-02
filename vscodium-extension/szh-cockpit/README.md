@@ -23,8 +23,21 @@ extension.js            activation, câblage des modules de lib/ par leurs confi
                         latéral (FournisseurRevue), compiler et ouvrir une unité ; aucun
                         panneau n'y est créé (motif des modules hôtes : docs/ARCHITECTURE.md)
 lib/
-  accueil-hote.js       l'accueil d'un poste : l'invitation au tutoriel, une seule fois, et
-                        « Quoi de neuf » après une mise à jour. Sans rappel vers l'hôte
+  accueil-hote.js       l'Accueil : son panneau, ses données, l'ouverture
+                        d'un numéro (vscode.openFolder) et sa création. Ne s'ouvre seul que
+                        sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
+  accueil-journal-hote.js  l'onglet Log : la fin d'un journal, l'éditeur, et le signalement
+                        (rapport, dossier des journaux, brouillon au support). Sans vscode
+  accueil-preproc-hote.js  l'onglet Préprocessing : le nettoyeur de manuscrit dans le moteur,
+                        ses étapes, son rapport HTML et ses compteurs. Sans vscode
+  accueil-nouveau.js    créer un numéro ou un livre : les refus et la création du socle
+                        PowerShell (new-revue.ps1, new-livre.ps1), en un processus. Sans vscode
+  accueil-page.js       ce que l'hôte de l'Accueil envoie à sa page : libellés, noms des
+                        produits, produit ouvert d'office (jumeau de Get-SzhOngletDefaut)
+  accueil-secretariat-hote.js  l'onglet Secrétariat : les quatre exports par
+                        outils/secretariat-cli.js, dans <racine>Exports<action>, et
+                        l'historique Edudoc et Caractères du compte. Tue ses enfants avec
+                        l'Accueil. Sans vscode
   apercu.js             l'aperçu commutable HTML/PDF en colonne 2 : panneau HTML (CSP,
                         bandeau), bascule avec le PDF, défilement synchronisé dans les deux
                         sens avec l'éditeur. Rappelle l'hôte par configurer(), jamais par
@@ -40,6 +53,8 @@ lib/
   auteurs-ojs.js        auteur·e·s publiés, moissonnés en OAI-PMH public sur ojs.szh.ch
                         (marcxml : noms et affiliations, ROR résolus par api.ror.org)
                         et cachés dans auteurs.json — l'autocomplétion de la modale
+  bienvenue-hote.js     la bienvenue d'un poste : l'invitation au tutoriel, une seule fois, et
+                        « Quoi de neuf » après une mise à jour. Sans rappel vers l'hôte
   cantons.js            les 26 cantons et la Confédération : la liste fermée du champ
                         « canton » d'une fiche d'intervention parlementaire — le code est
                         stocké et imprimé, le nom complet ne sert qu'à la liste déroulante
@@ -110,7 +125,7 @@ lib/
                         images à remettre. Rappelle l'hôte par configurer(), jamais par import
   interaction.js        garde d'interaction : retient ce qui volerait le focus (aperçu,
                         notifications) tant qu'un QuickPick est ouvert
-  inventaire.js         ce que liste le lanceur : la racine active du poste et les numéros en
+  inventaire.js         ce que liste l'Accueil : la racine active du poste et les numéros en
                         cours et archivés de chaque produit. Jumeau de Get-SzhBaseRevuesPour
                         et de l'inventaire d'open-produit.ps1, tenu par un test de parité.
                         Pur, sans vscode
@@ -125,21 +140,6 @@ lib/
                         reprise après interruption est idempotente). Tout vient du contrat
                         (pipeline/kirby/champs-documentation.json), remplace ressources.js
                         et rubriques.js. Pur, sans vscode
-  lanceur-hote.js       le lanceur dans l'éditeur : son panneau, ses données, l'ouverture
-                        d'un numéro (vscode.openFolder) et sa création. Ne s'ouvre seul que
-                        sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
-  lanceur-journal-hote.js  l'onglet Log : la fin d'un journal, l'éditeur, et le signalement
-                        (rapport, dossier des journaux, brouillon au support). Sans vscode
-  lanceur-preproc-hote.js  l'onglet Préprocessing : le nettoyeur de manuscrit dans le moteur,
-                        ses étapes, son rapport HTML et ses compteurs. Sans vscode
-  lanceur-nouveau.js    créer un numéro ou un livre : les refus et la création du socle
-                        PowerShell (new-revue.ps1, new-livre.ps1), en un processus. Sans vscode
-  lanceur-page.js       ce que l'hôte du lanceur envoie à sa page : libellés, noms des
-                        produits, produit ouvert d'office (jumeau de Get-SzhOngletDefaut)
-  lanceur-secretariat-hote.js  l'onglet Secrétariat : les quatre exports par
-                        outils/secretariat-cli.js, dans <racine>Exports<action>, et
-                        l'historique Edudoc et Caractères du compte. Tue ses enfants avec le
-                        lanceur. Sans vscode
   liens.js              liens szh:// et intention déposée par le lanceur
   medias.js             médias d'un article, sans vscode ni profil actif à connaître :
                         dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,
@@ -199,7 +199,7 @@ lib/
   reglages-hote.js      les valeurs et écritures des réglages, les réglages protégés et le fichier de langue ;
                         modifierConfigPoste() porte la garde « config du poste illisible ».
                         Rappelle l'hôte par configurer(), jamais par import
-  lanceur-reglages-hote.js  l'onglet Paramètres du lanceur : produit proposé, mise à jour silencieuse,
+  accueil-reglages-hote.js  l'onglet Paramètres de l'Accueil : produit proposé, mise à jour silencieuse,
                         mode développeur, services en ligne et clés dans le coffre ;
   services-env.js       l'adresse Shlink et les clés vues de la chaîne : variables d'environnement et WSLENV ;
   relance-compilation.js  recompilation d'un article après un enregistrement fait hors de

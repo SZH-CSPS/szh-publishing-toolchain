@@ -651,8 +651,8 @@ test('le réglage « réduire les warnings d’impression » est déclaré, trad
   assert.strictEqual(
     (src.match(/reduit: reduireWarningsImpressionActif\(\)/g) || []).length, 3,
     'les trois appels à qualiteImage doivent porter l’option');
-  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'lanceur.js');
-  assert.match(panneau, /choix\([^,]+, 'warnings'/, 'groupe absent de l’onglet Paramètres du lanceur');
+  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'accueil.js');
+  assert.match(panneau, /choix\([^,]+, 'warnings'/, 'groupe absent de l’onglet Paramètres de l’Accueil');
   const hote = lire('vscodium-extension', 'szh-cockpit', 'lib', 'reglages-hote.js');
   assert.ok(hote.includes("msg.cle === 'warnings'"), 'l’hôte ne traite plus le groupe warnings');
 });
@@ -679,8 +679,8 @@ test('le réglage « désactiver les liens des références » est déclaré, tr
     'aucune branche d’écriture du réglage VSCodium dans extension.js');
   assert.ok(src.includes('configAvecLiensDesactives(avant, desactiver)'),
     'le réglage n’est pas répercuté dans config.json — le filtre Lua ne le verra jamais');
-  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'lanceur.js');
-  assert.match(panneau, /choix\([^,]+, 'liensReferences'/, 'groupe absent de l’onglet Paramètres du lanceur');
+  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'accueil.js');
+  assert.match(panneau, /choix\([^,]+, 'liensReferences'/, 'groupe absent de l’onglet Paramètres de l’Accueil');
   // Le filtre lit la même clé, dans le même fichier, et ne coupe que le Link — pas l'ancre.
   const lua = lire('pipeline', 'filters', 'szh-citations.lua');
   assert.match(lua, /cfg\.desactiverLiensReferences/, 'le filtre ne lit pas la clé de config.json');
@@ -1387,7 +1387,7 @@ test('chaque webview reçoit le socle visuel, et ses fragments existent', () => 
   // page ajoutée correctement fait échouer ce chiffre, et c'est le moment de relire les
   // assertions ci-dessous plutôt que de bumper le nombre sans regarder. Parmi elles :
   // « suggestion » (mode vérificateur de traduction), « nouveautes » (« Quoi de neuf ») et
-  // « lanceur », qui porte aussi les réglages depuis la suppression du panneau « settings ».
+  // « accueil », qui porte aussi les réglages depuis la suppression du panneau « settings ».
   assert.strictEqual(appels.length, 13, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);

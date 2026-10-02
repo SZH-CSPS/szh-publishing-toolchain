@@ -9,7 +9,7 @@
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1 -Lanceur
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1 -Simuler -BaseDev <dossier>
 
-  Sans argument, il ouvre VSCodium sans dossier sur le lanceur du cockpit (SZH_ACCUEIL=1).
+  Sans argument, il ouvre VSCodium sans dossier sur l'Accueil du cockpit (SZH_ACCUEIL=1).
   -Lanceur, un lien szh://, -Produit ou -Versions passent par windows\open-revue.ps1.
 
   Compatibilite, Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
@@ -26,7 +26,7 @@ param(
   [Parameter(Position = 0)][string]$Lien = '',
   [string]$Produit = '',
   [switch]$Versions,
-  # Le lanceur WinForms plutot que celui du cockpit.
+  # Le lanceur WinForms plutot que l'Accueil du cockpit.
   [switch]$Lanceur
 )
 
@@ -316,7 +316,7 @@ try {
     exit $LASTEXITCODE
   }
 
-  # ---- entree par defaut : VSCodium sans dossier, sur le lanceur du cockpit ----
+  # ---- entree par defaut : VSCodium sans dossier, sur l'Accueil du cockpit ----
   # Les taches de demarrage d'open-produit.ps1, dans son ordre. La moisson des auteurs n'y est
   # pas : le cockpit la lance lui-meme a son activation.
   $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')

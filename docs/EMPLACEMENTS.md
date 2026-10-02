@@ -96,7 +96,7 @@ Les dossiers hors produit :
 |---|---|---|
 | `_NewsUndActu\Fiches\` | les fiches de la bibliothèque, **partagées par les deux rédactions** | le cockpit (`vscodium-extension\szh-cockpit`) |
 | `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` | l'état des fiches, par langue | le cockpit |
-| `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | le lanceur du cockpit (`lib/lanceur-secretariat-hote.js`) |
+| `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | l'Accueil du cockpit (`lib/accueil-secretariat-hote.js`) |
 
 `_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs) N'EST PAS un dossier hors produit
 de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.
@@ -262,7 +262,7 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `windows\szh-produits.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
 | `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
 | `windows\archive-revue.ps1` | Déplace un numéro **ou un livre** « en cours » ⇄ « archives », dans la racine active — `$estLivre` choisit la variante `.livre` des textes et le sous-dossier de livre. | panneau d'export du cockpit |
-| `windows\szh-produits.ps1` · `Set-SzhEmplacementRevues` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » de l'onglet **Paramètres** du lanceur (`open-produit.ps1`, et la page du cockpit : `lib/lanceur-reglages-hote.js`, qui écrit les mêmes clés) |
+| `windows\szh-produits.ps1` · `Set-SzhEmplacementRevues` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » de l'onglet **Paramètres** du lanceur (`open-produit.ps1`, et la page du cockpit : `lib/accueil-reglages-hote.js`, qui écrit les mêmes clés) |
 | `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | `lireEmplacementRevues` / `lireModeDeveloppeur`, pour le seul badge de la barre d'état (`extension.js`) |
 | `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` / `ecrireModeDeveloppeur` | Existent encore, exportées, mais **plus appelées par aucune commande du cockpit** : le groupe de boutons radio du formulaire « Réglages SZH » a disparu quand la bascule a déménagé dans le lanceur. | aucune, côté interface — gardées pour les tests |
 | `windows\bootstrap.ps1` | Pose `config.json` sur un poste neuf, avec `devMode = $true` (donc l'emplacement de test). **N'y écrit plus aucune racine.** | installation, une fois |
@@ -348,7 +348,7 @@ La bascule se fait dans l'onglet **Paramètres** du lanceur (réglage « Mode d�
 qui écrit **les deux** clés à la fois (`Set-SzhEmplacementRevues`, `windows/szh-produits.ps1`) :
 un poste resté sur un toolkit plus ancien continue de lire `devMode` et voit la même chose. Le
 cockpit écrit aussi les deux clés (`configAvecEmplacement`), depuis la page Paramètres de
-son lanceur (`lib/lanceur-reglages-hote.js`), puis recharge les listes.
+son Accueil (`lib/accueil-reglages-hote.js`), puis recharge les listes.
 
 Au premier lancement après la mise à jour, un poste dont `config.json` ne portait aucune
 des deux clés se voit écrire `emplacementRevues` en clair. La valeur retenue suit le
@@ -491,6 +491,6 @@ d'attribut et lancement de processus injectés, jamais un vrai `attrib.exe` dans
 - **Le dossier `54_Pronto` reste à créer sur SharePoint** : le code le nomme ainsi des deux
   côtés (§1) ; reste à poser le dossier dans la bibliothèque et à publier.
 - **`_Systeme\journaux\` et `_Systeme\suggestions\` sont créés mais vides** : aucun code
-  n'y écrit encore. `Exports\` n'est écrit que par le lanceur du cockpit ; le lanceur
+  n'y écrit encore. `Exports\` n'est écrit que par l'Accueil du cockpit ; le lanceur
   WinForms demande toujours son dossier de sortie. `_Systeme\inventaire\`, lui, est écrit
   depuis le 15.09.2026 (`windows\szh-checkin.ps1`).

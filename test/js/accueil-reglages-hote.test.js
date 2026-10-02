@@ -1,10 +1,10 @@
-// L'onglet Paramètres du lanceur côté hôte (lib/lanceur-reglages-hote.js) : szh.reglages ouvre le
-// lanceur sur cet onglet, les clés Shlink et OJS vont dans SecretStorage et n'en sortent que par
+// L'onglet Paramètres de l'Accueil côté hôte (lib/accueil-reglages-hote.js) : szh.reglages ouvre
+// l'Accueil sur cet onglet, les clés Shlink et OJS vont dans SecretStorage et n'en sortent que par
 // l'environnement de la chaîne, les réglages simples sont recopiés une seule fois depuis
 // l'état du compte, et langue comme mise à jour silencieuse restent écrites là où les scripts
 // PowerShell les lisent.
 //
-//   node --test test/js/lanceur-reglages-hote.test.js
+//   node --test test/js/accueil-reglages-hote.test.js
 'use strict';
 
 const test = require('node:test');
@@ -44,7 +44,7 @@ const moteur = require(path.join(COCKPIT, 'lib', 'moteur.js'));
 const HOTE = activerHote(revueDEssai(), { sansDossier: true });
 
 const CLE = 'cle-shlink-secrete-9876';
-const panneau = () => HOTE.panneauDeType('szhLanceur');
+const panneau = () => HOTE.panneauDeType('szhAccueil');
 const dits = (type) => panneau().messages.filter((m) => m.type === type);
 const envoyer = (msg) => panneau()._recepteur(msg);
 const tick = async () => { for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); } };
@@ -57,7 +57,7 @@ test('premier lancement : produit proposé recopié depuis l’état du compte, 
   // La mise à jour silencieuse reste dans l'état du compte : on n'y touche pas à la recopie.
   assert.strictEqual(lireEtat().majSilencieuse, false);
   // Une seconde recopie, réglages effacés et état changé : le drapeau l'interdit.
-  const regl = require(path.join(COCKPIT, 'lib', 'lanceur-reglages-hote.js'));
+  const regl = require(path.join(COCKPIT, 'lib', 'accueil-reglages-hote.js'));
   delete HOTE.configuration['szh.produitParDefaut'];
   delete HOTE.configuration['szh.langue'];
   fs.writeFileSync(ETAT, JSON.stringify({ ongletDefaut: 'livre', langueInterface: 'de' }));
@@ -69,7 +69,7 @@ test('premier lancement : produit proposé recopié depuis l’état du compte, 
 });
 
 test('la langue de l’état du compte se recopie au premier lancement, sauf si elle est déjà choisie', async () => {
-  const regl = require(path.join(COCKPIT, 'lib', 'lanceur-reglages-hote.js'));
+  const regl = require(path.join(COCKPIT, 'lib', 'accueil-reglages-hote.js'));
   const memoire = {};
   const ctx = { globalState: { get: (c) => memoire[c], update: (c, v) => { memoire[c] = v; return Promise.resolve(); } } };
   fs.writeFileSync(ETAT, JSON.stringify({ langueInterface: 'fr' }));
@@ -79,10 +79,10 @@ test('la langue de l’état du compte se recopie au premier lancement, sauf si 
   fs.writeFileSync(ETAT, JSON.stringify({ ongletDefaut: 'zeitschrift', langueInterface: 'fr', majSilencieuse: false }));
 });
 
-test('szh.reglages : hors porte et sans produit, ouvre le lanceur sur Paramètres, une seule page', async () => {
-  assert.strictEqual(HOTE.contexte()['szh.lanceur.actif'], false, 'le test doit être hors porte');
+test('szh.reglages : hors porte et sans produit, ouvre l’Accueil sur Paramètres, une seule page', async () => {
+  assert.strictEqual(HOTE.contexte()['szh.accueil.actif'], false, 'le test doit être hors porte');
   await HOTE.executer('szh.reglages');
-  assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhLanceur').length, 1);
+  assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length, 1);
   assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhReglages').length, 0, 'l’ancien panneau existe encore');
   await envoyer({ type: MSG.PRET });
   const charger = dits(MSG.CHARGER)[0];
@@ -96,24 +96,24 @@ test('szh.reglages : hors porte et sans produit, ouvre le lanceur sur Paramètre
   assert.ok(valeurs.ojs && valeurs.biblio && valeurs.taches, 'sans produit ouvert, les blocs de la revue sont envoyés');
   // Rouvrir : la page existante reçoit l'ordre d'aller sur Paramètres.
   await HOTE.executer('szh.reglages');
-  assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhLanceur').length, 1);
-  assert.deepStrictEqual(dits(MSG.LANCEUR_ALLER), [{ type: MSG.LANCEUR_ALLER, onglet: 'reglages' }]);
+  assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length, 1);
+  assert.deepStrictEqual(dits(MSG.ACCUEIL_ALLER), [{ type: MSG.ACCUEIL_ALLER, onglet: 'reglages' }]);
 });
 
 test('adresse Shlink : https:// exigé, valide enregistrée, vide efface', async () => {
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'shlinkUrl', valeur: 'http://link.exemple.ch' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: 'http://link.exemple.ch' });
   const refus = dits(MSG.ERREUR).pop();
   assert.strictEqual(refus.bloc, 'service');
   assert.ok(refus.message);
   assert.strictEqual(HOTE.configuration['szh.shlinkUrl'], undefined);
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'shlinkUrl', valeur: 'https://link.exemple.ch' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: 'https://link.exemple.ch' });
   assert.strictEqual(HOTE.configuration['szh.shlinkUrl'], 'https://link.exemple.ch');
   assert.strictEqual(dits(MSG.VALEURS).pop().services.shlinkUrl, 'https://link.exemple.ch');
   assert.strictEqual(services.variables().SZH_SHLINK_URL, 'https://link.exemple.ch');
 });
 
 test('clé Shlink : dans SecretStorage seulement, jamais dans un message, dans l’env de la chaîne', async () => {
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'shlinkCle', valeur: '  ' + CLE + '  ' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkCle', valeur: '  ' + CLE + '  ' });
   await tick();
   assert.strictEqual(HOTE.coffre['szh.shlinkCle'], CLE);
   assert.strictEqual(dits(MSG.VALEURS).pop().services.shlinkCle, true);
@@ -139,19 +139,19 @@ test('une clé modifiée hors de la page (onDidChange) est relue', async () => {
   await HOTE.secrets.delete('szh.ojsCle');
   await tick();
   assert.strictEqual(services.variables().SZH_OJS_CLE, undefined);
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'ojsCle', valeur: 'cle-ojs-0002' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'ojsCle', valeur: 'cle-ojs-0002' });
   await tick();
   assert.strictEqual(services.variables().SZH_OJS_CLE, 'cle-ojs-0002');
 });
 
 test('Effacer, ou un champ vide enregistré, supprime la clé et ses variables', async () => {
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'shlinkCle', valeur: '' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkCle', valeur: '' });
   await tick();
   assert.strictEqual(HOTE.coffre['szh.shlinkCle'], undefined);
   assert.strictEqual(dits(MSG.VALEURS).pop().services.shlinkCle, false);
   assert.strictEqual(services.variables().SZH_SHLINK_CLE, undefined);
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'ojsCle', valeur: '' });
-  await envoyer({ type: MSG.LANCEUR_SERVICE, service: 'shlinkUrl', valeur: '' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'ojsCle', valeur: '' });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: '' });
   await tick();
   // Plus rien de réglé : plus aucune variable posée, nulle part.
   assert.deepStrictEqual(services.variables(), {});
@@ -192,14 +192,14 @@ test('verrou des réglages de la rédaction : se referme au changement d’ongle
   HOTE.repondreModale(require(path.join(COCKPIT, 'lib', 'i18n.js')).T('regl.proteges.confirmer'));
   await envoyer({ type: MSG.DEVERROUILLER, valeur: true });
   assert.strictEqual(dits(MSG.PROTEGES).pop().deverrouille, true);
-  await envoyer({ type: MSG.LANCEUR_ONGLET, onglet: 'secretariat' });
+  await envoyer({ type: MSG.ACCUEIL_ONGLET, onglet: 'secretariat' });
   assert.strictEqual(dits(MSG.PROTEGES).pop().deverrouille, false, 'le verrou est resté ouvert hors de l’onglet');
   // Verrouillé, une écriture du bloc OJS est refusée.
   await envoyer({ type: MSG.REGLER_OJS, ojs: { revues: {}, rubriques: [], types: {} } });
   assert.strictEqual(dits(MSG.ERREUR).pop().bloc, 'ojs');
   // Revenir sur Paramètres renvoie les valeurs fraîches.
   const avant = dits(MSG.VALEURS).length;
-  await envoyer({ type: MSG.LANCEUR_ONGLET, onglet: 'reglages' });
+  await envoyer({ type: MSG.ACCUEIL_ONGLET, onglet: 'reglages' });
   assert.strictEqual(dits(MSG.VALEURS).length, avant + 1);
 });
 

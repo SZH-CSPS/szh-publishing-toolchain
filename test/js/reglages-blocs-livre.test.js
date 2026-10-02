@@ -1,13 +1,13 @@
 // Les quatre blocs de la carte des réglages de la rédaction qui n'ont de sens que pour une
 // revue/Zeitschrift — « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par article »,
-// « Export OJS » — masqués quand le lanceur est ouvert depuis un livre. L'hôte
-// (lib/lanceur-reglages-hote.js, messageValeurs) ne les envoie alors pas ; côté page
-// (media/lanceur.js), chaque bloc reste masqué — TITRE compris — tant que sa donnée n'arrive pas.
+// « Export OJS » — masqués quand l'Accueil est ouvert depuis un livre. L'hôte
+// (lib/accueil-reglages-hote.js, messageValeurs) ne les envoie alors pas ; côté page
+// (media/accueil.js), chaque bloc reste masqué — TITRE compris — tant que sa donnée n'arrive pas.
 //
 //   node --test test/js/reglages-blocs-livre.test.js
 //
 // Le geste de l'hôte (le message réellement construit selon le profil) vit dans
-// test/js/hote-livre.test.js et test/js/lanceur-reglages-hote.test.js : chacun a déjà son propre
+// test/js/hote-livre.test.js et test/js/accueil-reglages-hote.test.js : chacun a déjà son propre
 // activerHote() — « un seul activerHote() par processus » (hote-factice.js) l'interdit ici. Ce
 // fichier-ci n'éprouve que le rendu de la page.
 'use strict';

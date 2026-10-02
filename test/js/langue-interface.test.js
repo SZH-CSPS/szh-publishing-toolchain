@@ -152,7 +152,7 @@ test('discordance : elle ne se signale que lorsqu’elle existe vraiment', () =>
 });
 
 test('discordance : l’onglet Paramètres la pose sous le choix de la langue', () => {
-  const src = lire('vscodium-extension', 'szh-cockpit', 'media', 'lanceur.js');
+  const src = lire('vscodium-extension', 'szh-cockpit', 'media', 'accueil.js');
   assert.match(src, /var zoneLangue = poser\(rLangue\.el, 'p'/,
     'la zone du message ne se pose plus dans le groupe « langue »');
   assert.match(src, /zoneLangue\.textContent = String\(msg\.avertLangue \|\| ''\)/,

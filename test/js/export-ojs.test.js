@@ -40,7 +40,7 @@ async function messagePanneau() {
   if (_panneauOjs) { return _panneauOjs; }
   const HOTE = activerHote(revueDEssai());
   await HOTE.executer('szh.reglages');
-  const panneau = HOTE.panneauDeType('szhLanceur');
+  const panneau = HOTE.panneauDeType('szhAccueil');
   // L'hôte ne répond qu'à réception du « pret » envoyé par la page.
   await panneau._recepteur({ type: 'pret' });
   const valeurs = panneau.messages.find((m) => m.type === 'valeurs');

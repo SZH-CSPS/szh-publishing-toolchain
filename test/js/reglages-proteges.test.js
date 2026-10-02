@@ -172,7 +172,7 @@ const HOTE = activerHote(REVUE);
 
 async function panneauReglages() {
   await HOTE.executer('szh.reglages');
-  const p = HOTE.panneauDeType('szhLanceur');
+  const p = HOTE.panneauDeType('szhAccueil');
   assert.ok(p, 'panneau des réglages absent');
   await p._recepteur({ type: MSG.PRET });
   return p;
@@ -369,7 +369,7 @@ test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () =>
   });
   const zone = page.parId('regl-proteges');
   assert.ok(zone, 'le bloc des réglages protégés n’est pas dans la page');
-  const cases = zone.querySelectorAll('label.lanceur-verrou input');
+  const cases = zone.querySelectorAll('label.accueil-verrou input');
   assert.strictEqual(cases.length, 1, 'une seule case, « déverrouiller », attendue');
   assert.strictEqual(cases[0].checked, false);
 

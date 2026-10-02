@@ -73,7 +73,7 @@ const {
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
   versionsDivergent,
   // ecrireModeDeveloppeur n'est pas appelée ici : l'écriture se fait depuis l'onglet
-  // Paramètres du lanceur (lib/lanceur-reglages-hote.js).
+  // Paramètres de l'Accueil (lib/accueil-reglages-hote.js).
   lireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   configAvecLangue, CONFIG_POSTE,
   // Vérificateur de traduction : un réglage du poste et non de l'éditeur, pour que trois
@@ -3333,7 +3333,7 @@ function activate(context) {
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
   context.subscriptions.push({ dispose: moteur.arreterDormeur });   // pas de dormeur orphelin
 
-  // Un lien vscodium:// vers ce dossier ouvre sa vue ici ; vers un autre, il part au lanceur.
+  // Un lien vscodium:// vers ce dossier ouvre sa vue ici ; vers un autre, il part au lanceur Windows.
   uriHote.configurer({
     racine: () => fournisseur.racine, idDossier: idNumero,
     ouvrirTraduction: (article) => traductionHote.ouvrirTraduction(fournisseur, rafraichirTout,
@@ -3359,7 +3359,7 @@ function activate(context) {
   // dans la barre d'état, en couleur — la décision test/production reste ouverte, ce badge
   // ne fait qu'annoncer. Couleur posée une fois pour toutes : elle ne varie pas, seule la
   // visibilité change.
-  // Un clic mène à l'onglet Paramètres du lanceur, où se règle le mode développeur.
+  // Un clic mène à l'onglet Paramètres de l'Accueil, où se règle le mode développeur.
   const barreModeTest = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 70);
   barreModeTest.command = 'szh.reglages';
   barreModeTest.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -3565,7 +3565,7 @@ function activate(context) {
     cmd('szh.envoyerTraduction', (item) => traductionHote.envoyerPourTraduction(fournisseur, item)),
     // Aucun constat de constats.js ne vise « reglages » avec un focus utile (vérifié dans
     // TABLE) : `item` est accepté pour honorer le contrat, rien de plus n'est câblé.
-    cmd('szh.reglages', (item) => lanceurHote.ouvrirLanceur({ onglet: 'reglages' })),
+    cmd('szh.reglages', (item) => accueilHote.ouvrirAccueil({ onglet: 'reglages' })),
     // basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif/en aperçu, pas
     // un « ouvrir l'aperçu de tel article », et ne prend même pas de slug — lui donner ce
     // sens demanderait de refaire son ciblage. `item` est accepté sans y toucher.
@@ -3796,16 +3796,16 @@ function activate(context) {
     racine: () => fournisseur.racine,
     surChangement: () => controlesHote.rafraichirPdfUa(fournisseur)
   });
-  lanceurHote.configurer({ rafraichirTout });
-  lanceurHote.demarrer(context);   // le lanceur dans l'éditeur -> lib/lanceur-hote.js
+  accueilHote.configurer({ rafraichirTout });
+  accueilHote.demarrer(context);   // l'Accueil -> lib/accueil-hote.js
   demarrageInitial();
 }
 
-// ---- Invitation au tutoriel et « Quoi de neuf » -> lib/accueil-hote.js -----------
-const { proposerTutoriel, proposerNouveautes, montrerNouveautes } = require('./lib/accueil-hote');
-const lanceurHote = require('./lib/lanceur-hote');
+// ---- Invitation au tutoriel et « Quoi de neuf » -> lib/bienvenue-hote.js -----------
+const { proposerTutoriel, proposerNouveautes, montrerNouveautes } = require('./lib/bienvenue-hote');
+const accueilHote = require('./lib/accueil-hote');
 
-function deactivate() { moteur.arreterDormeur(); lanceurHote.arreter(); }
+function deactivate() { moteur.arreterDormeur(); accueilHote.arreter(); }
 
 // `_pur` : les fonctions pures, exposées aux harnais de test.
 module.exports = {

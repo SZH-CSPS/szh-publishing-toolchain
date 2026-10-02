@@ -341,14 +341,14 @@
     "viewsWelcome": [
       {
         "view": "explorer",
-        "contents": "%vue.lanceur.accueil%",
-        "when": "workbenchState == empty && szh.lanceur.actif"
+        "contents": "%vue.accueil%",
+        "when": "workbenchState == empty"
       }
     ],
     "commands": [
       {
-        "command": "szh.lanceur",
-        "title": "%cmd.lanceur%",
+        "command": "szh.accueil",
+        "title": "%cmd.accueil%",
         "category": "Pronto"
       },
       {
@@ -741,10 +741,6 @@
         }
       ],
       "commandPalette": [
-        {
-          "command": "szh.lanceur",
-          "when": "szh.lanceur.actif"
-        },
         {
           "command": "szh.conflit.prendre",
           "when": "false"

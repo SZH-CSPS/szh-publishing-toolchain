@@ -1,9 +1,9 @@
-// L'onglet Secrétariat du lanceur côté hôte (lib/lanceur-secretariat-hote.js) : les
+// L'onglet Secrétariat de l'Accueil côté hôte (lib/accueil-secretariat-hote.js) : les
 // arguments passés à outils/secretariat-cli.js, le dossier Exports\<action>, l'historique
-// du compte, et aucun enfant qui survive au lanceur. Un faux CLI tient lieu du vrai : il
+// du compte, et aucun enfant qui survive à l'Accueil. Un faux CLI tient lieu du vrai : il
 // note ses arguments et son pid, puis répond ou dort.
 //
-//   node --test test/js/lanceur-secretariat.test.js
+//   node --test test/js/accueil-secretariat.test.js
 'use strict';
 
 const test = require('node:test');
@@ -17,7 +17,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const CAS = process.env.SZH_SECRETARIAT_CAS;
 
-const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-sec-'));
+const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-accueil-sec-'));
 process.on('exit', () => { try { fs.rmSync(TRAVAIL, { recursive: true, force: true }); } catch (e) { /* débris */ } });
 const PROGRAMDATA = path.join(TRAVAIL, 'ProgramData');
 const BASE = path.join(TRAVAIL, 'Base');
@@ -73,21 +73,21 @@ async function enfant() {
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
   process.env.SZH_FAUX_MODE = 'dormir';
   const HOTE = activerHote(revueDEssai(), { sansDossier: true });
-  require(path.join(COCKPIT, 'lib', 'lanceur-secretariat-hote.js')).configurer({ cli: FAUX });
+  require(path.join(COCKPIT, 'lib', 'accueil-secretariat-hote.js')).configurer({ cli: FAUX });
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
-  const p = HOTE.panneaux.filter((x) => x.type === 'szhLanceur')[0];
+  const p = HOTE.panneaux.filter((x) => x.type === 'szhAccueil')[0];
   await p._recepteur({ type: MSG.PRET });
   const charger = p.messages.filter((m) => m.type === MSG.CHARGER)[0];
   const chemin = charger.produits[0].enCours[0].chemin;
-  p._recepteur({ type: MSG.LANCEUR_EXPORTER, commande: 'newsletter', revue: 'revue', numeros: [chemin] });
-  p._recepteur({ type: MSG.LANCEUR_OJS_CHARGER, revue: 'revue', depuisAnnee: 2026 });
+  p._recepteur({ type: MSG.ACCUEIL_EXPORTER, commande: 'newsletter', revue: 'revue', numeros: [chemin] });
+  p._recepteur({ type: MSG.ACCUEIL_OJS_CHARGER, revue: 'revue', depuisAnnee: 2026 });
   await attendre(() => appels().length === 2);
   const pids = appels().map((a) => a.pid);
   if (CAS === 'fermeture') { p.dispose(); }
-  if (CAS === 'dossier') { await p._recepteur({ type: MSG.LANCEUR_OUVRIR, chemin }); }
+  if (CAS === 'dossier') { await p._recepteur({ type: MSG.ACCUEIL_OUVRIR, chemin }); }
   if (CAS === 'desactivation') { require(path.join(COCKPIT, 'extension.js')).deactivate(); }
   await attendre(() => !pids.some(vivant), 10000);
-  const sortie = { pids, vivants: pids.filter(vivant), fins: p.messages.filter((m) => m.type === MSG.LANCEUR_FIN).length,
+  const sortie = { pids, vivants: pids.filter(vivant), fins: p.messages.filter((m) => m.type === MSG.ACCUEIL_FIN).length,
     commandes: appels().map((a) => a.args[0]) };
   for (const pid of sortie.vivants) { try { process.kill(pid); } catch (e) { /* déjà mort */ } }
   process.stdout.write('@@SEC@@' + JSON.stringify(sortie) + '\n');
@@ -97,7 +97,7 @@ async function enfant() {
 if (CAS) {
   enfant().catch((e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(1); });
 } else {
-  const hote = require(path.join(COCKPIT, 'lib', 'lanceur-secretariat-hote.js'));
+  const hote = require(path.join(COCKPIT, 'lib', 'accueil-secretariat-hote.js'));
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
   const envoyes = [];
   const reveles = [];
@@ -113,7 +113,7 @@ if (CAS) {
   // Un test qui échoue en laissant un enfant ne doit pas figer le fichier : ses tuyaux le tiendraient en vie.
   // On tue par l'hôte, jamais par un pid relevé plus tôt, que Windows a pu redonner à un autre processus.
   test.after(() => hote.arreter());
-  const fin = () => envoyes.filter((m) => m.type === MSG.LANCEUR_FIN).pop();
+  const fin = () => envoyes.filter((m) => m.type === MSG.ACCUEIL_FIN).pop();
   const val = (args, k) => args[args.indexOf(k) + 1];
 
   test('secrétariat : la newsletter part dans Exports\\Newsletter\\<numéro>, l’Explorateur s’ouvre dessus', async () => {
@@ -129,8 +129,8 @@ if (CAS) {
     assert.strictEqual(val(a[0].args, '--sortie'), sortie, 'la racine active, puis Exports\\Newsletter et le numéro sur deux chiffres');
     assert.strictEqual(val(a[0].args, '--langue'), 'fr');
     assert.ok(fs.statSync(sortie).isDirectory());
-    assert.deepStrictEqual(envoyes.map((m) => m.type), [MSG.LANCEUR_DEBUT, MSG.LANCEUR_LIGNE, MSG.LANCEUR_LIGNE,
-      MSG.LANCEUR_LIGNE, MSG.LANCEUR_LIGNE, MSG.LANCEUR_FIN]);
+    assert.deepStrictEqual(envoyes.map((m) => m.type), [MSG.ACCUEIL_DEBUT, MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_LIGNE,
+      MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_FIN]);
     assert.deepStrictEqual(envoyes[1].ligne, { t: 'etape', texte: 'Lecture…' }, 'chaque ligne passe telle quelle');
     assert.strictEqual(fin().ok, true);
     assert.strictEqual(fin().texte, 'Fini.');
@@ -152,8 +152,8 @@ if (CAS) {
   test('secrétariat : Edudoc relit les numéros chargés, retient ce qu’il a exporté et ouvre le fichier', async () => {
     oublier();
     await hote.chargerOjs({ revue: 'revue', depuisAnnee: 2026 });
-    assert.deepStrictEqual(envoyes.map((m) => m.type), [MSG.LANCEUR_DEBUT, MSG.LANCEUR_LIGNE, MSG.LANCEUR_LIGNE, MSG.LANCEUR_LIGNE, MSG.LANCEUR_FIN]);
-    assert.ok(envoyes.every((m) => m.type === MSG.LANCEUR_FIN || m.type === MSG.LANCEUR_DEBUT || m.commande === 'numeros-ojs'));
+    assert.deepStrictEqual(envoyes.map((m) => m.type), [MSG.ACCUEIL_DEBUT, MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_LIGNE, MSG.ACCUEIL_FIN]);
+    assert.ok(envoyes.every((m) => m.type === MSG.ACCUEIL_FIN || m.type === MSG.ACCUEIL_DEBUT || m.commande === 'numeros-ojs'));
     const cache = val(appels()[0].args, '--cache');
     assert.strictEqual(val(appels()[0].args, '--depuis-annee'), '2026');
     await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-02', '2026-03'] });
@@ -192,7 +192,7 @@ if (CAS) {
     assert.strictEqual(a[1].args.filter((x) => x === '--numero').length, 1);
     assert.strictEqual(val(a[1].args, '--sortie'), path.join(EXPORTS, 'Contrôle des métadonnées', '2026-03'));
     assert.ok(!fs.existsSync(val(a[0].args, '--cache')), 'son fichier des numéros publiés est effacé');
-    assert.strictEqual(envoyes.filter((m) => m.type === MSG.LANCEUR_DEBUT).length, 1, 'une seule tâche pour la page');
+    assert.strictEqual(envoyes.filter((m) => m.type === MSG.ACCUEIL_DEBUT).length, 1, 'une seule tâche pour la page');
   });
 
   test('secrétariat : la langue de l’interface passe au CLI', async () => {
@@ -279,7 +279,7 @@ if (CAS) {
       try { await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2025-02', '2026-03'] }); }
       finally { hote.configurer({ cli: FAUX }); }
     });
-    const lignes = envoyes.filter((m) => m.type === MSG.LANCEUR_LIGNE && m.commande === 'edudoc').map((m) => m.ligne);
+    const lignes = envoyes.filter((m) => m.type === MSG.ACCUEIL_LIGNE && m.commande === 'edudoc').map((m) => m.ligne);
     return { lignes, fin: fin(), csv: lireCsv(path.join(EXPORTS, 'Edudoc', 'edudoc.csv')) };
   }
 
@@ -316,10 +316,10 @@ if (CAS) {
   test('secrétariat : « Afficher » ne montre que ce qui est sous Exports', () => {
     oublier();
     const fichier = path.join(EXPORTS, 'Edudoc', 'f0.txt');
-    hote.surMessage({ type: MSG.LANCEUR_AFFICHER, chemin: fichier });
-    hote.surMessage({ type: MSG.LANCEUR_AFFICHER, chemin: path.join(EXPORTS, 'Edudoc') });
-    hote.surMessage({ type: MSG.LANCEUR_AFFICHER, chemin: path.join(PROGRAMDATA, 'config.json') });
-    hote.surMessage({ type: MSG.LANCEUR_AFFICHER, chemin: path.join(EXPORTS, '..', 'Revue') });
+    hote.surMessage({ type: MSG.ACCUEIL_AFFICHER, chemin: fichier });
+    hote.surMessage({ type: MSG.ACCUEIL_AFFICHER, chemin: path.join(EXPORTS, 'Edudoc') });
+    hote.surMessage({ type: MSG.ACCUEIL_AFFICHER, chemin: path.join(PROGRAMDATA, 'config.json') });
+    hote.surMessage({ type: MSG.ACCUEIL_AFFICHER, chemin: path.join(EXPORTS, '..', 'Revue') });
     assert.deepStrictEqual(reveles, [fichier]);
     assert.deepStrictEqual(dossiers, [path.join(EXPORTS, 'Edudoc')]);
   });
@@ -336,12 +336,12 @@ if (CAS) {
       await hote.exporter({ commande: 'caracteres', revue: 'revue', cles: ['2026-03'] });
       hote.chargerOjs({ revue: 'zeitschrift', depuisAnnee: 2025 });
       assert.strictEqual(appels().length, 2, 'au plus un chargement et une tâche');
-      hote.surMessage({ type: MSG.LANCEUR_INTERROMPRE, commande: 'caracteres' });
-      hote.surMessage({ type: MSG.LANCEUR_INTERROMPRE, commande: 'edudoc' });
+      hote.surMessage({ type: MSG.ACCUEIL_INTERROMPRE, commande: 'caracteres' });
+      hote.surMessage({ type: MSG.ACCUEIL_INTERROMPRE, commande: 'edudoc' });
       await tenu(exportEnCours);
       assert.strictEqual(vivant(tache), false);
       assert.strictEqual(vivant(ojs), true, 'le chargement continue');
-      const f = envoyes.filter((m) => m.type === MSG.LANCEUR_FIN && m.commande === 'edudoc').pop();
+      const f = envoyes.filter((m) => m.type === MSG.ACCUEIL_FIN && m.commande === 'edudoc').pop();
       assert.strictEqual(f.ok, false);
       assert.strictEqual(f.annule, true);
       assert.strictEqual(f.texte, '');
@@ -368,10 +368,10 @@ if (CAS) {
     } finally { delete process.env.SZH_FAUX_MODE; hote.arreter(); }
   });
 
-  // Les trois gestes qui ferment le lanceur, dans l'extension activée : chacun dans son
+  // Les trois gestes qui ferment l'Accueil, dans l'extension activée : chacun dans son
   // propre processus, le faux vscode ne s'activant qu'une fois.
   for (const cas of ['fermeture', 'dossier', 'desactivation']) {
-    test('secrétariat : ' + cas + ' du lanceur pendant un export, et aucun enfant ne survit', () => {
+    test('secrétariat : ' + cas + ' de l’Accueil pendant un export, et aucun enfant ne survit', () => {
       const env = Object.assign({}, process.env, { SZH_SECRETARIAT_CAS: cas, SZH_ACCUEIL: '1' });
       const r = spawnSync(process.execPath, [__filename], { env, encoding: 'utf8', timeout: 120000 });
       const ligne = String(r.stdout || '').split(/\r?\n/).filter((l) => l.indexOf('@@SEC@@') === 0).pop();

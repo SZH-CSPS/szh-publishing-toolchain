@@ -1,13 +1,13 @@
-// Le lanceur dans l'éditeur : six onglets, Produits ouvert d'office. Chaque tâche fréquente
+// L'Accueil dans l'éditeur : six onglets, Produits ouvert d'office. Chaque tâche fréquente
 // tient en un ou deux clics : tout ce qui se déduit est déjà choisi.
 //
-// Protocole. Vers l'hôte : pret, lanceurOnglet { onglet }, lanceurOuvrir { chemin },
-// lanceurVersions, lanceurCreer { produit, annee, numero, volume, volumeManuel } ou
+// Protocole. Vers l'hôte : pret, accueilOnglet { onglet }, accueilOuvrir { chemin },
+// accueilVersions, accueilCreer { produit, annee, numero, volume, volumeManuel } ou
 // { produit, titre, annee, reference, genre, maquette, format },
-// lanceurExporter { commande, revue, numeros | cles }, lanceurOjsCharger { revue, depuisAnnee },
-// lanceurInterrompre { commande }, lanceurAfficher { chemin },
-// lanceurJournalLire { rang }, lanceurJournalEditeur { rang }, lanceurSignaler { phrase, rang },
-// regler { cle, valeur }, lanceurService { service, valeur }, deverrouiller { valeur },
+// accueilExporter { commande, revue, numeros | cles }, accueilOjsCharger { revue, depuisAnnee },
+// accueilInterrompre { commande }, accueilAfficher { chemin },
+// accueilJournalLire { rang }, accueilJournalEditeur { rang }, accueilSignaler { phrase, rang },
+// regler { cle, valeur }, accueilService { service, valeur }, deverrouiller { valeur },
 // telecharger-proteges, exporterLangue, suggestionsInterface, reglerOjs, reglerBiblio, taches-enregistrer.
 // Depuis l'hôte :
 //   charger { langue, onglet, produit, anneeCourante, modeTest, ancrageAbsent, version, exports,
@@ -16,13 +16,13 @@
 //             dernierOuvert, historique: { edudoc: { <revue>: { <clé>: <date> } }, caracteres },
 //             journaux: [{ rang, date, verdict, ko }] }
 //     entrée : { nom, titre, chemin, modifie, verrouillee }
-//   lanceurCree { ok, texte }   la création a été refusée (ok faux) ; sinon la fenêtre change
-//   lanceurDebut { commande }   une tâche ou le chargement des numéros (« numeros-ojs ») part
-//   lanceurLigne { commande, ligne }   une ligne JSON de secretariat-cli.js, telle quelle
-//   lanceurFin { commande, ok, texte, annule, dossier, date }
-//   lanceurJournalTexte { rang, texte, lignes } ou { rang, erreur }
-//   lanceurSignale { issue: 'fait' | 'attente' | 'refuse', courriel }
-//   lanceurAller { onglet }   la commande szh.reglages ouvre Paramètres
+//   accueilCree { ok, texte }   la création a été refusée (ok faux) ; sinon la fenêtre change
+//   accueilDebut { commande }   une tâche ou le chargement des numéros (« numeros-ojs ») part
+//   accueilLigne { commande, ligne }   une ligne JSON de secretariat-cli.js, telle quelle
+//   accueilFin { commande, ok, texte, annule, dossier, date }
+//   accueilJournalTexte { rang, texte, lignes } ou { rang, erreur }
+//   accueilSignale { issue: 'fait' | 'attente' | 'refuse', courriel }
+//   accueilAller { onglet }   la commande szh.reglages ouvre Paramètres
 //   valeurs { valeurs, poste, services, proteges, ojs, biblio, taches, auteursOjs, suggInterface,
 //             avertLangue }   les réglages ; une clé n'y figure jamais, seulement « définie » ou non
 //   proteges, enregistre { bloc }, erreur { bloc, message }   le verrou et l'issue d'une écriture
@@ -34,7 +34,7 @@
   var poser = SZH.poser;
   var api = acquireVsCodeApi();
   var recu = false;
-  var racine = document.getElementById('lanceur');
+  var racine = document.getElementById('accueil');
 
   // Un vrai pluriel : chaque texte compté a sa forme au singulier (…Un) et au pluriel (…Plus).
   function pluriel(n, cle, valeurs) { return SZH.remplir(TXT, cle + (n === 1 ? 'Un' : 'Plus'), valeurs); }
@@ -44,7 +44,7 @@
   }
   // Un bouton qui se lit comme un lien : une action secondaire, qui ne doit pas peser autant
   // que le bouton de la tâche.
-  function lien(texte, fn) { return SZH.bouton(texte, fn, 'lanceur-lien'); }
+  function lien(texte, fn) { return SZH.bouton(texte, fn, 'accueil-lien'); }
 
   var donnees = { langue: 'fr', anneeCourante: 0, produits: [], historique: {}, exports: '' };
   function produitDe(jeton) { return donnees.produits.filter(function (p) { return p.jeton === jeton; })[0] || null; }
@@ -60,7 +60,7 @@
     { cle: 'reglages', libelle: TXT.ongletReglages },
     { cle: 'journal', libelle: TXT.ongletJournal }
   ];
-  var tablist = poser(racine, 'div', 'lanceur-onglets');
+  var tablist = poser(racine, 'div', 'accueil-onglets');
   tablist.setAttribute('role', 'tablist');
   tablist.setAttribute('aria-label', TXT.ongletsAria);
   var boutonsOnglet = [];
@@ -68,7 +68,7 @@
   // Le mode « Trad » détourne les clics, sauf ici : la barre d'onglets et Paramètres, où on l'éteint.
   tablist.dataset.tradExempt = '1';
   ONGLETS.forEach(function (o, i) {
-    var b = poser(tablist, 'button', 'lanceur-onglet', o.libelle);
+    var b = poser(tablist, 'button', 'accueil-onglet', o.libelle);
     b.type = 'button';
     b.id = 'onglet-' + o.cle;
     // Le pseudo-élément ::after réserve la largeur du libellé en gras : l'onglet choisi ne
@@ -93,7 +93,7 @@
       boutonsOnglet[cible].focus();
     });
     boutonsOnglet.push(b);
-    var p = poser(racine, 'section', 'lanceur-panneau');
+    var p = poser(racine, 'section', 'accueil-panneau');
     p.id = 'panneau-' + o.cle;
     p.setAttribute('role', 'tabpanel');
     p.setAttribute('aria-labelledby', b.id);
@@ -112,7 +112,7 @@
       boutonsOnglet[i].setAttribute('tabindex', choisi ? '0' : '-1');
       panneaux[o.cle].hidden = !choisi;
     });
-    if (parGeste) { api.postMessage({ type: MSG.LANCEUR_ONGLET, onglet: cle }); }
+    if (parGeste) { api.postMessage({ type: MSG.ACCUEIL_ONGLET, onglet: cle }); }
     if (!recu) { return; }
     if (cle === 'secretariat') { assurerOjs(revueSec()); }
     if (cle === 'journal') { ouvrirJournalRecent(); }
@@ -133,7 +133,7 @@
   }
   // Des boutons radio natifs : les flèches passent d'un produit à l'autre sans rien écrire.
   function groupeProduit(parent, nom, filtre) {
-    var g = poser(parent, 'div', 'lanceur-segments');
+    var g = poser(parent, 'div', 'accueil-segments');
     g.setAttribute('role', 'radiogroup');
     g.setAttribute('aria-label', TXT.prodChoix);
     var entree = { element: g, nom: nom, filtre: filtre, radios: [] };
@@ -147,7 +147,7 @@
       var liste = donnees.produits.filter(g.filtre);
       g.element.hidden = liste.length < 2;
       liste.forEach(function (p) {
-        var l = poser(g.element, 'label', 'lanceur-segment');
+        var l = poser(g.element, 'label', 'accueil-segment');
         var r = poser(l, 'input', '');
         r.type = 'radio';
         r.name = g.nom;
@@ -176,7 +176,7 @@
   // aria-activedescendant et la sélection suit les flèches. Entrée et le double-clic
   // déclenchent `surActiver`.
   function listeChoix(opts) {
-    var ul = poser(opts.parent, 'ul', 'lanceur-liste');
+    var ul = poser(opts.parent, 'ul', 'accueil-liste');
     ul.setAttribute('role', 'listbox');
     ul.setAttribute('tabindex', '0');
     ul.setAttribute('aria-labelledby', opts.etiquettePar);
@@ -216,7 +216,7 @@
       ul.textContent = '';
       lis = []; cles = []; actif = -1;
       (options || []).forEach(function (o, i) {
-        var li = poser(ul, 'li', 'lanceur-option');
+        var li = poser(ul, 'li', 'accueil-option');
         li.id = opts.prefixe + '-' + i;
         li.setAttribute('role', 'option');
         o.rendre(li);
@@ -241,12 +241,12 @@
 
   // ---- Produits ----
   var prod = panneaux.produits;
-  var prodAvis = poser(prod, 'div', 'lanceur-avis');
-  var prodTete = poser(prod, 'div', 'lanceur-tete');
+  var prodAvis = poser(prod, 'div', 'accueil-avis');
+  var prodTete = poser(prod, 'div', 'accueil-tete');
   groupeProduit(prodTete, 'produit-prod', function () { return true; });
-  var prodEtiq = poser(prod, 'p', 'lanceur-etiquette', TXT.prodEnCours);
+  var prodEtiq = poser(prod, 'p', 'accueil-etiquette', TXT.prodEnCours);
   prodEtiq.id = 'prod-etiquette';
-  var prodVide = poser(prod, 'div', 'lanceur-vide');
+  var prodVide = poser(prod, 'div', 'accueil-vide');
   prodVide.hidden = true;
   var prodVideTexte = poser(prodVide, 'p', '');
   var boutonPremier = SZH.bouton(TXT.prodCreer, function () {
@@ -257,16 +257,16 @@
   prodVide.appendChild(boutonPremier);
   var listeEnCours = listeChoix({ parent: prod, etiquettePar: 'prod-etiquette', prefixe: 'entree',
     surChange: function () { listeArchives.selectionner(null); majOuvrir(); }, surActiver: ouvrir });
-  var archives = poser(prod, 'details', 'lanceur-archives');
+  var archives = poser(prod, 'details', 'accueil-archives');
   var archivesTitre = poser(archives, 'summary', '');
   archivesTitre.id = 'prod-archives';
-  var archivesVide = poser(archives, 'p', 'lanceur-vide', TXT.prodArchivesVide);
+  var archivesVide = poser(archives, 'p', 'accueil-vide', TXT.prodArchivesVide);
   var listeArchives = listeChoix({ parent: archives, etiquettePar: 'prod-archives', prefixe: 'archive',
     surChange: function () { listeEnCours.selectionner(null); majOuvrir(); }, surActiver: ouvrir });
-  var prodPied = poser(prod, 'div', 'lanceur-pied-action');
-  var prodInfos = poser(prodPied, 'p', 'lanceur-infos');
+  var prodPied = poser(prod, 'div', 'accueil-pied-action');
+  var prodInfos = poser(prodPied, 'p', 'accueil-infos');
   poser(prodPied, 'span', 'szh-pousse');
-  var prodAstuce = poser(prodPied, 'span', 'lanceur-astuce', TXT.prodAstuce);
+  var prodAstuce = poser(prodPied, 'span', 'accueil-astuce', TXT.prodAstuce);
   var boutonOuvrir = SZH.bouton(TXT.prodOuvrir, function () {
     var c = listeEnCours.selection() || listeArchives.selection();
     if (c) { ouvrir(c); }
@@ -274,20 +274,20 @@
   boutonOuvrir.id = 'prod-ouvrir';
   prodPied.appendChild(boutonOuvrir);
 
-  function ouvrir(chemin) { if (chemin) { api.postMessage({ type: MSG.LANCEUR_OUVRIR, chemin: chemin }); } }
+  function ouvrir(chemin) { if (chemin) { api.postMessage({ type: MSG.ACCUEIL_OUVRIR, chemin: chemin }); } }
   function majOuvrir() { boutonOuvrir.disabled = !(listeEnCours.selection() || listeArchives.selection()); }
 
   function rendreEntree(p, e) {
     return { cle: e.chemin, rendre: function (li) {
       if (p.type === 'livre') {
-        poser(li, 'span', 'lanceur-cellule-titre', e.titre || e.nom);
+        poser(li, 'span', 'accueil-cellule-titre', e.titre || e.nom);
       } else {
-        poser(li, 'span', 'lanceur-cellule-nom', e.nom);
-        poser(li, 'span', 'lanceur-cellule-titre', e.titre || '');
+        poser(li, 'span', 'accueil-cellule-nom', e.nom);
+        poser(li, 'span', 'accueil-cellule-titre', e.titre || '');
       }
       if (e.chemin === donnees.dernierOuvert) { poser(li, 'span', 'szh-pastille szh-pastille--accent', TXT.prodDernier); }
       if (e.verrouillee) { poser(li, 'span', 'szh-pastille', TXT.prodVerrouille); }
-      if (e.modifie) { poser(li, 'span', 'lanceur-cellule-meta', SZH.remplir(TXT, 'prodModifie', [e.modifie])); }
+      if (e.modifie) { poser(li, 'span', 'accueil-cellule-meta', SZH.remplir(TXT, 'prodModifie', [e.modifie])); }
     } };
   }
   function rendreProduits(focaliser) {
@@ -323,7 +323,7 @@
     prodInfos.textContent = '';
     if (p && p.racine) { poser(prodInfos, 'span', '', SZH.remplir(TXT, 'prodDans', [p.libelle, p.racine])); }
     poser(prodInfos, 'span', '', donnees.version ? SZH.remplir(TXT, 'prodVersion', [donnees.version]) : TXT.prodVersionInconnue);
-    var l = lien(TXT.prodVersions, function () { api.postMessage({ type: MSG.LANCEUR_VERSIONS }); });
+    var l = lien(TXT.prodVersions, function () { api.postMessage({ type: MSG.ACCUEIL_VERSIONS }); });
     l.id = 'prod-versions';
     prodInfos.appendChild(l);
     prodAvis.textContent = '';
@@ -336,20 +336,20 @@
 
   // ---- Nouveau ----
   var nv = panneaux.nouveau;
-  var nvAvis = poser(nv, 'div', 'lanceur-avis');
-  var nvTete = poser(nv, 'div', 'lanceur-tete');
+  var nvAvis = poser(nv, 'div', 'accueil-avis');
+  var nvTete = poser(nv, 'div', 'accueil-tete');
   groupeProduit(nvTete, 'produit-nv', function () { return true; });
-  var nvForm = poser(nv, 'div', 'lanceur-formulaire');
-  var nvErreur = poser(nv, 'p', 'lanceur-erreur');
+  var nvForm = poser(nv, 'div', 'accueil-formulaire');
+  var nvErreur = poser(nv, 'p', 'accueil-erreur');
   nvErreur.id = 'nv-erreur';
   nvErreur.setAttribute('role', 'alert');
-  var nvPied = poser(nv, 'div', 'lanceur-pied-action');
-  var nvOu = poser(nvPied, 'p', 'lanceur-infos');
+  var nvPied = poser(nv, 'div', 'accueil-pied-action');
+  var nvOu = poser(nvPied, 'p', 'accueil-infos');
   poser(nvPied, 'span', 'szh-pousse');
   var boutonCreer = SZH.bouton(TXT.nvCreer, creer, 'szh-bouton--principal');
   boutonCreer.id = 'nv-creer';
   nvPied.appendChild(boutonCreer);
-  var nvRefus = poser(nv, 'div', 'lanceur-avis');
+  var nvRefus = poser(nv, 'div', 'accueil-avis');
   nvRefus.setAttribute('role', 'status');
   var nvChamps = {};
   var nvConteneurs = {};
@@ -357,7 +357,7 @@
   var volumeManuel = false;
 
   function champ(parent, cle, libelle, type) {
-    var c = poser(parent, 'div', 'szh-champ lanceur-champ-' + cle);
+    var c = poser(parent, 'div', 'szh-champ accueil-champ-' + cle);
     var l = poser(c, 'label', '', libelle);
     var i = poser(c, type === 'select' ? 'select' : 'input', '');
     if (type !== 'select') { i.type = type || 'text'; }
@@ -412,10 +412,10 @@
     if (donnees.modeTest) { nvAvis.appendChild(SZH.notif('attention', TXT.modeTest)); }
     if (!p) { return; }
     if (p.type === 'livre') {
-      var ligneTitre = poser(nvForm, 'div', 'lanceur-champs');
+      var ligneTitre = poser(nvForm, 'div', 'accueil-champs');
       champ(ligneTitre, 'titre', TXT.nvTitre, 'text');
       nvChamps.titre.maxLength = 200;
-      var ligne = poser(nvForm, 'div', 'lanceur-champs');
+      var ligne = poser(nvForm, 'div', 'accueil-champs');
       champ(ligne, 'annee', TXT.nvAnnee, 'number');
       champ(ligne, 'reference', TXT.nvReference, 'number');
       champ(ligne, 'genre', TXT.nvType, 'select');
@@ -427,12 +427,12 @@
       nvChamps.annee.value = String(donnees.anneeCourante);
       nvChamps.reference.value = String(referenceSuivante(p));
     } else {
-      var ligneNum = poser(nvForm, 'div', 'lanceur-champs');
+      var ligneNum = poser(nvForm, 'div', 'accueil-champs');
       champ(ligneNum, 'annee', TXT.nvAnnee, 'number');
       champ(ligneNum, 'numero', TXT.nvNumero, 'number');
       var cVolume = champ(ligneNum, 'volume', TXT.nvVolumeLibelle, 'number');
       cVolume.hidden = true;
-      volumeLu = poser(ligneNum, 'div', 'lanceur-volume');
+      volumeLu = poser(ligneNum, 'div', 'accueil-volume');
       var annee = anneeProposee(p);
       nvChamps.annee.value = String(annee);
       nvChamps.numero.value = String(numeroSuivant(p, annee));
@@ -448,7 +448,7 @@
   }
 
   // Ce qui se vérifie sans l'hôte : un nom déjà pris, un titre manquant. Le doublon de
-  // volume et de numéro se décide chez l'hôte, qui répond par lanceurCree.
+  // volume et de numéro se décide chez l'hôte, qui répond par accueilCree.
   function verifierNouveau() {
     var p = produitDe(produitChoisi);
     if (!p || !nvChamps.annee) { return; }
@@ -497,7 +497,7 @@
   function creer() {
     var p = produitDe(produitChoisi);
     if (!p || boutonCreer.disabled) { return; }
-    var m = { type: MSG.LANCEUR_CREER, produit: p.jeton, annee: Number(nvChamps.annee.value) };
+    var m = { type: MSG.ACCUEIL_CREER, produit: p.jeton, annee: Number(nvChamps.annee.value) };
     if (p.type === 'livre') {
       m.titre = String(nvChamps.titre.value || '').trim();
       m.reference = Number(nvChamps.reference.value);
@@ -518,11 +518,11 @@
   // produit et le format affichés au-dessus : pas de second bouton à trouver. L'issue, ses
   // alertes et ses liens restent au-dessus de la zone jusqu'au manuscrit suivant.
   //
-  // Vers l'hôte : lanceurPreprocChoisir { produit, format }, lanceurPreprocDeposer { uri, produit,
-  // format }, lanceurPreprocInterrompre, lanceurPreprocOuvrir { quoi: 'document' | 'rapport' | 'dossier' }.
-  // Depuis l'hôte : lanceurPreprocEtat { produit, format, dossier, depot }, à l'ouverture et après
-  // chaque nettoyage ; lanceurPreprocDebut { nom, produit, format } ; lanceurPreprocEtape { etape } ;
-  // lanceurPreprocFin { issue: 'ok' | 'alertes' | 'refus' | 'echec' | 'interrompu', texte, document,
+  // Vers l'hôte : accueilPreprocChoisir { produit, format }, accueilPreprocDeposer { uri, produit,
+  // format }, accueilPreprocInterrompre, accueilPreprocOuvrir { quoi: 'document' | 'rapport' | 'dossier' }.
+  // Depuis l'hôte : accueilPreprocEtat { produit, format, dossier, depot }, à l'ouverture et après
+  // chaque nettoyage ; accueilPreprocDebut { nom, produit, format } ; accueilPreprocEtape { etape } ;
+  // accueilPreprocFin { issue: 'ok' | 'alertes' | 'refus' | 'echec' | 'interrompu', texte, document,
   // rapport, rapportOuvert, alertes: { erreurs, avertissements, suggestions } }.
   var pp = panneaux.preproc;
   // Les étapes dans l'ordre du nettoyeur : l'hôte en nomme une à la fois, la page les compte.
@@ -537,22 +537,22 @@
     ['suggestions', 'ppSuggestions', 'info']];
   var PP_LIENS = [['document', 'ppOuvrirDocument'], ['rapport', 'ppOuvrirRapport'], ['dossier', 'ppAfficher']];
   var PP_ICONES = { fait: 'ok', cours: 'cercle', echec: 'danger', arret: 'croix' };
-  var MSG_PREPROC = [MSG.LANCEUR_PREPROC_ETAT, MSG.LANCEUR_PREPROC_DEBUT, MSG.LANCEUR_PREPROC_ETAPE,
-    MSG.LANCEUR_PREPROC_FIN];
+  var MSG_PREPROC = [MSG.ACCUEIL_PREPROC_ETAT, MSG.ACCUEIL_PREPROC_DEBUT, MSG.ACCUEIL_PREPROC_ETAPE,
+    MSG.ACCUEIL_PREPROC_FIN];
   var ppEtat = { produits: [], produit: '', produitHote: '', format: 'docx', dossier: '', depot: false,
     enCours: false };
   var ppLigne = null;
 
-  var ppTete = poser(pp, 'div', 'lanceur-tete');
-  var ppProduits = poser(ppTete, 'div', 'lanceur-segments');
+  var ppTete = poser(pp, 'div', 'accueil-tete');
+  var ppProduits = poser(ppTete, 'div', 'accueil-segments');
   ppProduits.setAttribute('role', 'radiogroup');
   ppProduits.setAttribute('aria-label', TXT.prodChoix);
   poser(ppTete, 'p', 'preproc-intro', TXT.ppIntro);
 
   // L'issue du dernier nettoyage passe avant la zone : c'est elle qu'on vient lire.
-  var ppIssue = poser(pp, 'div', 'lanceur-issue preproc-issue');
+  var ppIssue = poser(pp, 'div', 'accueil-issue preproc-issue');
   ppIssue.setAttribute('role', 'status');
-  var ppDetails = poser(pp, 'details', 'lanceur-details preproc-details');
+  var ppDetails = poser(pp, 'details', 'accueil-details preproc-details');
   poser(ppDetails, 'summary', '', TXT.secDetails);
   var ppJournal = poser(ppDetails, 'ol', 'preproc-journal');
   ppJournal.setAttribute('role', 'log');
@@ -581,16 +581,16 @@
   var ppCoursProduit = poser(ppCoursTexte, 'p', 'preproc-aide');
   var ppInterrompre = SZH.bouton(TXT.ppInterrompre, function () {
     ppInterrompre.disabled = true;
-    api.postMessage({ type: MSG.LANCEUR_PREPROC_INTERROMPRE });
+    api.postMessage({ type: MSG.ACCUEIL_PREPROC_INTERROMPRE });
   });
   ppInterrompre.id = 'pp-interrompre';
   ppCoursTete.appendChild(ppInterrompre);
-  var ppBarre = poser(ppCours, 'progress', 'lanceur-barre');
+  var ppBarre = poser(ppCours, 'progress', 'accueil-barre');
   ppBarre.setAttribute('aria-labelledby', 'pp-cours-titre');
   var ppCoursEtape = poser(ppCours, 'p', 'preproc-cours-etape');
   ppCoursEtape.setAttribute('aria-live', 'polite');
 
-  var ppOptions = poser(pp, 'details', 'lanceur-details preproc-options');
+  var ppOptions = poser(pp, 'details', 'accueil-details preproc-options');
   var ppOptionsTitre = poser(ppOptions, 'summary', '');
   ppOptionsTitre.id = 'pp-options';
   var ppFormats = poser(ppOptions, 'fieldset', 'preproc-formats');
@@ -605,7 +605,7 @@
     r.addEventListener('change', function () { if (r.checked) { ppEtat.format = f[0]; rendrePreproc(); } });
     poser(l, 'span', '', TXT[f[1]]);
   });
-  poser(pp, 'p', 'lanceur-astuce preproc-compteurs', TXT.ppCompteurs);
+  poser(pp, 'p', 'accueil-astuce preproc-compteurs', TXT.ppCompteurs);
 
   function libelleFormat(jeton) { return TXT[(PP_FORMATS.filter(function (f) { return f[0] === jeton; })[0] || PP_FORMATS[0])[1]]; }
   function libelleProduitPp(jeton) {
@@ -616,7 +616,7 @@
     ppProduits.textContent = '';
     ppProduits.hidden = ppEtat.produits.length < 2;
     ppEtat.produits.forEach(function (p) {
-      var l = poser(ppProduits, 'label', 'lanceur-segment');
+      var l = poser(ppProduits, 'label', 'accueil-segment');
       var r = poser(l, 'input', '');
       r.type = 'radio';
       r.name = 'produit-pp';
@@ -646,7 +646,7 @@
   function choisirManuscrit() {
     if (ppEtat.enCours || !ppEtat.produit) { return; }
     ppDepotAvis.textContent = '';
-    api.postMessage({ type: MSG.LANCEUR_PREPROC_CHOISIR, produit: ppEtat.produit, format: ppEtat.format });
+    api.postMessage({ type: MSG.ACCUEIL_PREPROC_CHOISIR, produit: ppEtat.produit, format: ppEtat.format });
   }
   // Un dépôt n'est retenu que s'il donne l'emplacement du fichier (une adresse file://) :
   // le document nettoyé s'écrit à côté du manuscrit, et une copie sans chemin n'en a pas.
@@ -669,7 +669,7 @@
     if (!/\.(docx|odt)$/i.test(nom)) { ppDepotAvis.textContent = TXT.ppDepotFormat; return; }
     if (!/^file:/i.test(uri)) { ppDepotAvis.textContent = TXT.ppDepotChemin; return; }
     ppDepotAvis.textContent = '';
-    api.postMessage({ type: MSG.LANCEUR_PREPROC_DEPOSER, uri: uri, produit: ppEtat.produit, format: ppEtat.format });
+    api.postMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER, uri: uri, produit: ppEtat.produit, format: ppEtat.format });
   });
 
   // Le journal en clair : une ligne par étape atteinte, marquée faite, en cours, en échec
@@ -763,7 +763,7 @@
     if (liens.length) {
       var rang = poser(ppIssue, 'p', 'preproc-liens');
       liens.forEach(function (l) {
-        var b = lien(TXT[l[1]], function () { api.postMessage({ type: MSG.LANCEUR_PREPROC_OUVRIR, quoi: l[0] }); });
+        var b = lien(TXT[l[1]], function () { api.postMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: l[0] }); });
         b.id = 'pp-ouvrir-' + l[0];
         rang.appendChild(b);
       });
@@ -797,17 +797,17 @@
   window.addEventListener('message', function (ev) {
     var msg = (ev && ev.data) || {};
     if (msg.type === MSG.CHARGER) { surChargerPp(msg); }
-    else if (msg.type === MSG.LANCEUR_PREPROC_ETAT) { surEtatPp(msg); }
-    else if (msg.type === MSG.LANCEUR_PREPROC_DEBUT) { surDebutPp(msg); }
-    else if (msg.type === MSG.LANCEUR_PREPROC_ETAPE) { surEtapePp(msg); }
-    else if (msg.type === MSG.LANCEUR_PREPROC_FIN) { surFinPp(msg); }
+    else if (msg.type === MSG.ACCUEIL_PREPROC_ETAT) { surEtatPp(msg); }
+    else if (msg.type === MSG.ACCUEIL_PREPROC_DEBUT) { surDebutPp(msg); }
+    else if (msg.type === MSG.ACCUEIL_PREPROC_ETAPE) { surEtapePp(msg); }
+    else if (msg.type === MSG.ACCUEIL_PREPROC_FIN) { surFinPp(msg); }
   });
 
   // ---- Secrétariat ----
   // Une ligne par tâche, rangées par fréquence. Chacune a ses réglages déjà remplis et un
   // seul bouton ; son avancement, son issue et ses détails s'affichent sous elle.
   var sec = panneaux.secretariat;
-  var secTete = poser(sec, 'div', 'lanceur-tete');
+  var secTete = poser(sec, 'div', 'accueil-tete');
   var groupeSec = groupeProduit(secTete, 'produit-sec', function (p) { return p.type !== 'livre'; });
   var revueChoisie = '';
   function revueSec() {
@@ -829,39 +829,39 @@
   ];
   var taches = {};
   var tacheEnCours = '';
-  var listeTaches = poser(sec, 'div', 'lanceur-taches');
+  var listeTaches = poser(sec, 'div', 'accueil-taches');
 
   TACHES.forEach(function (t) {
-    if (t.trimestriel) { poser(listeTaches, 'h2', 'lanceur-intertitre', TXT.secTrimestriels); }
-    var el = poser(listeTaches, 'div', 'lanceur-tache');
+    if (t.trimestriel) { poser(listeTaches, 'h2', 'accueil-intertitre', TXT.secTrimestriels); }
+    var el = poser(listeTaches, 'div', 'accueil-tache');
     el.dataset.tache = t.commande;
     el.setAttribute('role', 'group');
-    var ligne = poser(el, 'div', 'lanceur-tache-ligne');
-    var texte = poser(ligne, 'div', 'lanceur-tache-texte');
-    var nom = poser(texte, 'h3', 'lanceur-tache-nom', t.nom);
+    var ligne = poser(el, 'div', 'accueil-tache-ligne');
+    var texte = poser(ligne, 'div', 'accueil-tache-texte');
+    var nom = poser(texte, 'h3', 'accueil-tache-nom', t.nom);
     nom.id = 'tache-' + t.commande;
     el.setAttribute('aria-labelledby', nom.id);
-    poser(texte, 'p', 'lanceur-tache-aide', t.aide);
-    var reglage = poser(ligne, 'div', 'lanceur-tache-reglage');
-    var action = poser(ligne, 'div', 'lanceur-tache-action');
+    poser(texte, 'p', 'accueil-tache-aide', t.aide);
+    var reglage = poser(ligne, 'div', 'accueil-tache-reglage');
+    var action = poser(ligne, 'div', 'accueil-tache-action');
     var bouton = SZH.bouton(t.bouton, function () { lancer(t); });
     bouton.id = 'sec-' + t.commande;
     action.appendChild(bouton);
     var interrompre = SZH.bouton(TXT.secInterrompre, function () {
       interrompre.disabled = true;
-      api.postMessage({ type: MSG.LANCEUR_INTERROMPRE, commande: t.commande });
+      api.postMessage({ type: MSG.ACCUEIL_INTERROMPRE, commande: t.commande });
     });
     interrompre.id = 'sec-' + t.commande + '-interrompre';
     interrompre.hidden = true;
     action.appendChild(interrompre);
     var x = { t: t, el: el, bouton: bouton, interrompre: interrompre, fichiers: [], choix: [] };
     if (t.local) {
-      var sel = poser(reglage, 'select', 'lanceur-select');
+      var sel = poser(reglage, 'select', 'accueil-select');
       sel.id = 'sec-' + t.commande + '-numero';
       sel.setAttribute('aria-label', TXT.secNumero);
       x.select = sel;
     } else {
-      x.resume = poser(reglage, 'p', 'lanceur-resume');
+      x.resume = poser(reglage, 'p', 'accueil-resume');
       x.resume.id = 'sec-' + t.commande + '-resume';
       x.resume.setAttribute('aria-live', 'polite');
       x.modifier = lien(TXT.secModifier, function () { deplier(x, x.cases.hidden); });
@@ -869,32 +869,32 @@
       x.modifier.setAttribute('aria-expanded', 'false');
       x.modifier.setAttribute('aria-controls', 'sec-' + t.commande + '-cases');
       reglage.appendChild(x.modifier);
-      x.cases = poser(el, 'fieldset', 'lanceur-cases');
+      x.cases = poser(el, 'fieldset', 'accueil-cases');
       x.cases.id = 'sec-' + t.commande + '-cases';
       x.cases.hidden = true;
       poser(x.cases, 'legend', '', TXT.secCasesLegende);
-      x.grille = poser(x.cases, 'div', 'lanceur-cases-grille');
-      var piedCases = poser(x.cases, 'div', 'lanceur-cases-pied');
+      x.grille = poser(x.cases, 'div', 'accueil-cases-grille');
+      var piedCases = poser(x.cases, 'div', 'accueil-cases-pied');
       x.plus = lien('', function () { chargerAnneePrecedente(); });
       x.plus.id = 'sec-' + t.commande + '-plus';
       piedCases.appendChild(x.plus);
-      x.finCourse = poser(piedCases, 'span', 'lanceur-astuce', TXT.secFinCourse);
+      x.finCourse = poser(piedCases, 'span', 'accueil-astuce', TXT.secFinCourse);
     }
-    x.barre = poser(el, 'progress', 'lanceur-barre');
+    x.barre = poser(el, 'progress', 'accueil-barre');
     x.barre.setAttribute('aria-labelledby', nom.id);
     x.barre.hidden = true;
-    x.issue = poser(el, 'div', 'lanceur-issue');
+    x.issue = poser(el, 'div', 'accueil-issue');
     x.issue.setAttribute('role', 'status');
-    x.details = poser(el, 'details', 'lanceur-details');
+    x.details = poser(el, 'details', 'accueil-details');
     poser(x.details, 'summary', '', TXT.secDetails);
-    x.journal = poser(x.details, 'div', 'lanceur-journal');
+    x.journal = poser(x.details, 'div', 'accueil-journal');
     x.journal.setAttribute('role', 'log');
     x.journal.setAttribute('aria-labelledby', nom.id);
     x.journal.setAttribute('tabindex', '0');
     x.details.hidden = true;
     taches[t.commande] = x;
   });
-  var secDossier = poser(sec, 'p', 'lanceur-infos');
+  var secDossier = poser(sec, 'p', 'accueil-infos');
 
   function cleCourte(n) { return SZH.remplir(TXT, 'secNumeroCourt', [n.annee, String(Number(n.numero)).padStart(2, '0')]); }
   function historiqueDe(commande, revue) {
@@ -933,7 +933,7 @@
     o.recus = [];
     ojsRevueEnCours = revue;
     rendreSecretariat();
-    api.postMessage({ type: MSG.LANCEUR_OJS_CHARGER, revue: revue, depuisAnnee: annee });
+    api.postMessage({ type: MSG.ACCUEIL_OJS_CHARGER, revue: revue, depuisAnnee: annee });
   }
   function chargerAnneePrecedente() {
     var revue = revueSec();
@@ -993,7 +993,7 @@
     x.choixNombre = o.numeros.length;
     x.grille.textContent = '';
     o.numeros.forEach(function (n, i) {
-      var l = poser(x.grille, 'label', 'szh-opt lanceur-case');
+      var l = poser(x.grille, 'label', 'szh-opt accueil-case');
       var c = poser(l, 'input', '');
       c.type = 'checkbox';
       c.id = 'sec-' + x.t.commande + '-case-' + i;
@@ -1006,10 +1006,10 @@
         rendreResume(x, revue, o);
         majTache(x);
       });
-      var corps = poser(l, 'span', 'lanceur-case-corps');
+      var corps = poser(l, 'span', 'accueil-case-corps');
       poser(corps, 'strong', '', cleCourte(n));
-      if (n.libelle && n.libelle !== n.cle) { poser(corps, 'span', 'lanceur-case-titre', n.libelle); }
-      if (h[n.cle]) { poser(corps, 'span', 'lanceur-cellule-meta', SZH.remplir(TXT, 'secDejaExporte', [h[n.cle]])); }
+      if (n.libelle && n.libelle !== n.cle) { poser(corps, 'span', 'accueil-case-titre', n.libelle); }
+      if (h[n.cle]) { poser(corps, 'span', 'accueil-cellule-meta', SZH.remplir(TXT, 'secDejaExporte', [h[n.cle]])); }
     });
     var plancher = o.etat === 'charge' ? o.demandee : o.plancher;
     x.plus.textContent = SZH.remplir(TXT, 'secAnneePlus', [plancher - 1]);
@@ -1019,7 +1019,7 @@
   }
   function rendreResume(x, revue, o) {
     x.resume.textContent = '';
-    x.resume.classList.toggle('lanceur-resume--erreur', o.etat === 'erreur');
+    x.resume.classList.toggle('accueil-resume--erreur', o.etat === 'erreur');
     x.pret = false;
     if (o.etat === 'erreur') {
       poser(x.resume, 'span', '', SZH.remplir(TXT, 'secChargementEchec', [o.erreur || TXT.secEchecInconnu]));
@@ -1041,7 +1041,7 @@
       poser(x.resume, 'span', '', texte);
       x.pret = choisis.length > 0 && o.etat !== 'charge';
     }
-    if (o.etat === 'charge') { poser(x.resume, 'span', 'lanceur-attente', TXT.secChargement); }
+    if (o.etat === 'charge') { poser(x.resume, 'span', 'accueil-attente', TXT.secChargement); }
   }
   function majTache(x) {
     var moi = tacheEnCours === x.t.commande;
@@ -1057,7 +1057,7 @@
   function lancer(t) {
     var x = taches[t.commande];
     var revue = revueSec();
-    var m = { type: MSG.LANCEUR_EXPORTER, commande: t.commande, revue: revue };
+    var m = { type: MSG.ACCUEIL_EXPORTER, commande: t.commande, revue: revue };
     if (x.select) {
       if (!x.select.value) { return; }
       m.numeros = [x.select.value];
@@ -1147,7 +1147,7 @@
       var cible = x.fichiers.length === 1 ? x.fichiers[0] : (msg.dossier || x.fichiers[0] || '');
       if (cible) {
         var l = lien(pluriel(x.fichiers.length || 1, 'secAfficher', []), function () {
-          api.postMessage({ type: MSG.LANCEUR_AFFICHER, chemin: cible });
+          api.postMessage({ type: MSG.ACCUEIL_AFFICHER, chemin: cible });
         });
         l.id = 'sec-' + x.t.commande + '-afficher';
         n.appendChild(l);
@@ -1176,32 +1176,32 @@
   var jrn = panneaux.journal;
   var journaux = [];
   var rangLu = -1;
-  var jrnGrille = poser(jrn, 'div', 'lanceur-jrn');
+  var jrnGrille = poser(jrn, 'div', 'accueil-jrn');
   var jrnGauche = poser(jrnGrille, 'div', '');
-  var jrnEtiq = poser(jrnGauche, 'p', 'lanceur-etiquette', TXT.jrnListe);
+  var jrnEtiq = poser(jrnGauche, 'p', 'accueil-etiquette', TXT.jrnListe);
   jrnEtiq.id = 'jrn-etiquette';
-  var jrnVide = poser(jrnGauche, 'p', 'lanceur-vide', TXT.jrnVide);
+  var jrnVide = poser(jrnGauche, 'p', 'accueil-vide', TXT.jrnVide);
   jrnVide.hidden = true;
   var listeJournaux = listeChoix({ parent: jrnGauche, etiquettePar: 'jrn-etiquette', prefixe: 'journal',
     surChange: function (rang) { lire(rang === null ? -1 : Number(rang)); } });
   var jrnDroite = poser(jrnGrille, 'div', '');
-  var jrnTete = poser(jrnDroite, 'div', 'lanceur-jrn-tete');
+  var jrnTete = poser(jrnDroite, 'div', 'accueil-jrn-tete');
   var jrnTitre = poser(jrnTete, 'h2', '');
   jrnTitre.id = 'jrn-titre';
   poser(jrnTete, 'span', 'szh-pousse');
   var boutonEditeur = SZH.bouton(TXT.jrnEditeur, function () {
-    if (rangLu >= 0) { api.postMessage({ type: MSG.LANCEUR_JOURNAL_EDITEUR, rang: rangLu }); }
+    if (rangLu >= 0) { api.postMessage({ type: MSG.ACCUEIL_JOURNAL_EDITEUR, rang: rangLu }); }
   });
   boutonEditeur.disabled = true;
   jrnTete.appendChild(boutonEditeur);
-  var jrnExtrait = poser(jrnDroite, 'p', 'lanceur-jrn-extrait');
+  var jrnExtrait = poser(jrnDroite, 'p', 'accueil-jrn-extrait');
   jrnExtrait.hidden = true;
-  var jrnErreur = poser(jrnDroite, 'div', 'lanceur-avis');
-  var jrnTexte = poser(jrnDroite, 'pre', 'lanceur-jrn-texte');
+  var jrnErreur = poser(jrnDroite, 'div', 'accueil-avis');
+  var jrnTexte = poser(jrnDroite, 'pre', 'accueil-jrn-texte');
   jrnTexte.setAttribute('tabindex', '0');
   jrnTexte.setAttribute('aria-labelledby', 'jrn-titre');
 
-  var jrnPied = poser(jrn, 'div', 'lanceur-boutons');
+  var jrnPied = poser(jrn, 'div', 'accueil-boutons');
   var boutonSignaler = SZH.bouton(TXT.jrnSignaler, function () {
     signal.hidden = false;
     boutonSignaler.hidden = true;
@@ -1211,7 +1211,7 @@
   });
   boutonSignaler.id = 'jrn-signaler';
   jrnPied.appendChild(boutonSignaler);
-  var signal = poser(jrn, 'div', 'lanceur-signal');
+  var signal = poser(jrn, 'div', 'accueil-signal');
   signal.setAttribute('role', 'group');
   signal.setAttribute('aria-label', TXT.jrnSignalerTitre);
   signal.hidden = true;
@@ -1226,13 +1226,13 @@
   champSignal.addEventListener('keydown', function (ev) {
     if (ev.key === 'Enter') { ev.preventDefault(); envoyerSignal(); }
   });
-  var aideSignal = poser(champSig, 'p', 'lanceur-astuce', TXT.jrnSignalerAide);
+  var aideSignal = poser(champSig, 'p', 'accueil-astuce', TXT.jrnSignalerAide);
   aideSignal.id = 'jrn-signal-aide';
   var boutonSignalEnvoyer = SZH.bouton(TXT.jrnSignalerEnvoyer, envoyerSignal, 'szh-bouton--principal');
   boutonSignalEnvoyer.id = 'jrn-signal-envoyer';
   signal.appendChild(boutonSignalEnvoyer);
   signal.appendChild(SZH.bouton(TXT.annuler, function () { fermerSignal(); }));
-  var jrnAvis = poser(jrn, 'div', 'lanceur-avis');
+  var jrnAvis = poser(jrn, 'div', 'accueil-avis');
   jrnAvis.setAttribute('role', 'status');
 
   function fermerSignal() {
@@ -1243,7 +1243,7 @@
   function envoyerSignal() {
     var phrase = String(champSignal.value || '').trim();
     if (!phrase) { champSignal.focus(); return; }
-    api.postMessage({ type: MSG.LANCEUR_SIGNALER, phrase: phrase, rang: rangLu });
+    api.postMessage({ type: MSG.ACCUEIL_SIGNALER, phrase: phrase, rang: rangLu });
     fermerSignal();
   }
 
@@ -1257,12 +1257,12 @@
     listeJournaux.remplir(journaux.map(function (j) {
       return { cle: String(j.rang), rendre: function (li) {
         var v = verdictDe(j);
-        poser(li, 'span', 'lanceur-cellule-nom', j.date);
+        poser(li, 'span', 'accueil-cellule-nom', j.date);
         var p = poser(li, 'span', 'szh-pastille' + (v.ton ? ' szh-pastille--' + v.ton : ''));
         p.appendChild(SZH.icone(v.icone));
         poser(p, 'span', '', TXT[v.texte]);
         poser(li, 'span', 'szh-pousse');
-        poser(li, 'span', 'lanceur-cellule-meta', SZH.remplir(TXT, 'jrnTaille', [j.ko]));
+        poser(li, 'span', 'accueil-cellule-meta', SZH.remplir(TXT, 'jrnTaille', [j.ko]));
       } };
     }));
     jrnVide.hidden = journaux.length > 0;
@@ -1286,7 +1286,7 @@
     jrnTexte.hidden = true;
     jrnExtrait.hidden = true;
     avis(jrnErreur, '', '');
-    if (j) { api.postMessage({ type: MSG.LANCEUR_JOURNAL_LIRE, rang: rang }); }
+    if (j) { api.postMessage({ type: MSG.ACCUEIL_JOURNAL_LIRE, rang: rang }); }
   }
   function surTexteJournal(msg) {
     if (msg.rang !== rangLu) { return; }
@@ -1309,13 +1309,13 @@
   // ---- Paramètres ----
   // Cinq listes de réglages construites comme les tâches du Secrétariat (une rangée : ce qu'elle
   // règle, la valeur, le geste), puis la carte des réglages de la rédaction, verrouillée. Tout
-  // arrive par `valeurs` ; chaque geste repart en `regler` (ou `lanceurService`), et la page se
+  // arrive par `valeurs` ; chaque geste repart en `regler` (ou `accueilService`), et la page se
   // règle sur ce que l'hôte répond, jamais sur son propre geste.
   // Les listes sont posées dans un module local pour que leurs noms (ojs, taches, champ…) ne
   // heurtent pas ceux du Secrétariat.
   var reglagesPage = (function (panneau) {
     var zones = poser(panneau, 'div', '');
-    var avisReglages = poser(zones, 'div', 'lanceur-avis');
+    var avisReglages = poser(zones, 'div', 'accueil-avis');
     avisReglages.setAttribute('role', 'alert');
     var rangeeN = 0;
 
@@ -1324,22 +1324,22 @@
       if (texte) { avisReglages.appendChild(SZH.notif('danger', String(texte))); }
     }
     function liste(titre) {
-      poser(zones, 'h2', 'lanceur-intertitre', titre);
-      return poser(zones, 'div', 'lanceur-taches');
+      poser(zones, 'h2', 'accueil-intertitre', titre);
+      return poser(zones, 'div', 'accueil-taches');
     }
     // Même gabarit qu'une tâche du Secrétariat : le texte, le réglage, le geste.
     function rangee(parent, titre, aide, portee) {
-      var el = poser(parent, 'div', 'lanceur-tache');
+      var el = poser(parent, 'div', 'accueil-tache');
       el.setAttribute('role', 'group');
-      var ligne = poser(el, 'div', 'lanceur-tache-ligne');
-      var texte = poser(ligne, 'div', 'lanceur-tache-texte');
-      var nom = poser(texte, 'h3', 'lanceur-tache-nom', titre);
+      var ligne = poser(el, 'div', 'accueil-tache-ligne');
+      var texte = poser(ligne, 'div', 'accueil-tache-texte');
+      var nom = poser(texte, 'h3', 'accueil-tache-nom', titre);
       nom.id = 'regl-nom-' + (++rangeeN);
       el.setAttribute('aria-labelledby', nom.id);
-      if (portee) { poser(nom, 'span', 'szh-pastille lanceur-portee', portee); }
-      var aideP = aide ? poser(texte, 'p', 'lanceur-tache-aide', aide) : null;
-      return { el: el, nom: nom, aide: aideP, reglage: poser(ligne, 'div', 'lanceur-tache-reglage'),
-        action: poser(ligne, 'div', 'lanceur-tache-action') };
+      if (portee) { poser(nom, 'span', 'szh-pastille accueil-portee', portee); }
+      var aideP = aide ? poser(texte, 'p', 'accueil-tache-aide', aide) : null;
+      return { el: el, nom: nom, aide: aideP, reglage: poser(ligne, 'div', 'accueil-tache-reglage'),
+        action: poser(ligne, 'div', 'accueil-tache-action') };
     }
     function envoyerRegler(cle, valeur) { api.postMessage({ type: MSG.REGLER, cle: cle, valeur: valeur }); }
 
@@ -1347,11 +1347,11 @@
     var radios = {};
     function choix(parent, cle, titre, aide, options, portee) {
       var r = rangee(parent, titre, aide, portee);
-      var g = poser(r.reglage, 'div', 'lanceur-segments');
+      var g = poser(r.reglage, 'div', 'accueil-segments');
       g.setAttribute('role', 'radiogroup');
       g.setAttribute('aria-labelledby', r.nom.id);
       options.forEach(function (o) {
-        var l = poser(g, 'label', 'lanceur-segment');
+        var l = poser(g, 'label', 'accueil-segment');
         var radio = poser(l, 'input', '');
         radio.type = 'radio';
         radio.name = cle;
@@ -1397,7 +1397,7 @@
     // ---- Ce poste ----
     var c = liste(TXT.rgPoste);
     var rProduit = rangee(c, TXT.rgProduit, TXT.rgProduitAide);
-    var selProduit = poser(rProduit.reglage, 'select', 'lanceur-select');
+    var selProduit = poser(rProduit.reglage, 'select', 'accueil-select');
     selProduit.setAttribute('aria-labelledby', rProduit.nom.id);
     selProduit.addEventListener('change', function () { envoyerRegler('produit', selProduit.value); });
     choix(c, 'majSilencieuse', TXT.rgMaj, TXT.rgMajAide, [['fenetre', TXT.rgMajFenetre], ['silence', TXT.rgMajSilence]]);
@@ -1408,18 +1408,18 @@
     var services = {};
     function service(cle, titre, aide, type) {
       var r = rangee(d, titre, aide);
-      var champ = poser(r.reglage, 'div', 'szh-champ lanceur-champ-titre');
+      var champ = poser(r.reglage, 'div', 'szh-champ accueil-champ-titre');
       var saisie = poser(champ, 'input', '');
       saisie.type = type;
       saisie.setAttribute('aria-labelledby', r.nom.id);
       saisie.autocomplete = 'off';
-      if (type === 'password') { champ.classList.add('lanceur-champ-cle'); }
+      if (type === 'password') { champ.classList.add('accueil-champ-cle'); }
       var x = { r: r, saisie: saisie, actuel: '', definie: false };
       if (type === 'password') {
         x.pastille = poser(r.reglage, 'span', 'szh-pastille');
         x.effacer = SZH.bouton(TXT.rgEffacer, function () {
-          api.postMessage({ type: MSG.LANCEUR_SERVICE, service: cle, valeur: '' });
-        }, 'lanceur-lien');
+          api.postMessage({ type: MSG.ACCUEIL_SERVICE, service: cle, valeur: '' });
+        }, 'accueil-lien');
         r.reglage.appendChild(x.effacer);
       }
       x.enregistrer = SZH.bouton(TXT.rgEnregistrer, function () { enregistrer(cle); });
@@ -1434,7 +1434,7 @@
     service('shlinkUrl', TXT.rgShlinkUrl, TXT.rgShlinkUrlAide, 'text');
     service('shlinkCle', TXT.rgShlinkCle, '', 'password');
     service('ojsCle', TXT.rgOjsCle, TXT.rgOjsCleAide, 'password');
-    poser(zones, 'p', 'lanceur-astuce lanceur-coffre', TXT.rgCoffre);
+    poser(zones, 'p', 'accueil-astuce accueil-coffre', TXT.rgCoffre);
     function majService(cle) {
       var x = services[cle];
       var texte = x.saisie.value.trim();
@@ -1446,7 +1446,7 @@
       var x = services[cle];
       if (x.enregistrer.disabled) { return; }
       afficherErreur('');
-      api.postMessage({ type: MSG.LANCEUR_SERVICE, service: cle, valeur: x.saisie.value.trim() });
+      api.postMessage({ type: MSG.ACCUEIL_SERVICE, service: cle, valeur: x.saisie.value.trim() });
     }
     function rendreServices(s) {
       var url = services.shlinkUrl;
@@ -1480,12 +1480,12 @@
     // ---- Réglages de la rédaction : la carte protégée ----
     // Les blocs d'une revue ou d'une Zeitschrift (auteur·e·s, bibliographie, tâches, export OJS)
     // restent masqués tant que l'hôte n'envoie pas leur donnée : il ne l'envoie pas pour un livre.
-    var carte = poser(zones, 'section', 'szh-carte lanceur-carte-proteges');
+    var carte = poser(zones, 'section', 'szh-carte accueil-carte-proteges');
     carte.id = 'regl-proteges';
     var tete = poser(carte, 'div', 'szh-tete');
     poser(tete, 'h2', 'szh-tete-nom', TXT.regl_protegesTitre);
     var etatPastille = poser(tete, 'span', 'szh-pastille szh-pastille--attention');
-    var verrou = poser(tete, 'label', 'szh-pousse lanceur-verrou');
+    var verrou = poser(tete, 'label', 'szh-pousse accueil-verrou');
     var caseDeverrouiller = poser(verrou, 'input', '');
     caseDeverrouiller.type = 'checkbox';
     // On renvoie l'intention, pas l'état : la case se remet sur ce que l'hôte répond, y compris
@@ -1511,15 +1511,15 @@
       return s;
     }
     var blocAuteurs = blocRevue('regl-bloc-auteurs');
-    poser(blocAuteurs, 'h3', 'lanceur-etiquette', TXT.regl_auteursTitre).style.marginTop = 'var(--e4)';
-    var auteursZone = poser(blocAuteurs, 'div', 'lanceur-astuce');
+    poser(blocAuteurs, 'h3', 'accueil-etiquette', TXT.regl_auteursTitre).style.marginTop = 'var(--e4)';
+    var auteursZone = poser(blocAuteurs, 'div', 'accueil-astuce');
     auteursZone.id = 'regl-auteurs';
     function bloc(id, titre, ouvert) {
       var s = blocRevue('regl-bloc-' + id);
-      var det = poser(s, 'details', 'lanceur-details');
+      var det = poser(s, 'details', 'accueil-details');
       if (ouvert) { det.open = true; }
       var sm = poser(det, 'summary', '', titre);
-      var resume = poser(sm, 'span', 'lanceur-astuce');
+      var resume = poser(sm, 'span', 'accueil-astuce');
       var contenu = poser(det, 'div', 'regl-zone');
       contenu.id = 'regl-zone-' + id;
       return { section: s, resume: resume, contenu: contenu, details: det };
@@ -2059,24 +2059,24 @@
       choisirProduit(produitParDefaut(msg));
       rendreProduits(true);
       activer(msg.onglet || ongletActif, !!msg.onglet);
-    } else if (msg.type === MSG.LANCEUR_ALLER) {
+    } else if (msg.type === MSG.ACCUEIL_ALLER) {
       activer(msg.onglet, true);
     } else if (reglagesPage.surMessage(msg)) {
       return;
-    } else if (msg.type === MSG.LANCEUR_CREE) {
+    } else if (msg.type === MSG.ACCUEIL_CREE) {
       if (!msg.ok) { avis(nvRefus, 'danger', SZH.remplir(TXT, 'nvRefus', [msg.texte || TXT.secEchecInconnu])); }
     } else if (MSG_PREPROC.indexOf(msg.type) !== -1) { return; } // le bloc Préprocessing les écoute
-    else if (msg.type === MSG.LANCEUR_DEBUT) { surDebut(msg); }
-    else if (msg.type === MSG.LANCEUR_LIGNE) { surLigne(msg); }
-    else if (msg.type === MSG.LANCEUR_FIN) { surFin(msg); }
-    else if (msg.type === MSG.LANCEUR_JOURNAL_TEXTE) { surTexteJournal(msg); }
-    else if (msg.type === MSG.LANCEUR_SIGNALE) {
+    else if (msg.type === MSG.ACCUEIL_DEBUT) { surDebut(msg); }
+    else if (msg.type === MSG.ACCUEIL_LIGNE) { surLigne(msg); }
+    else if (msg.type === MSG.ACCUEIL_FIN) { surFin(msg); }
+    else if (msg.type === MSG.ACCUEIL_JOURNAL_TEXTE) { surTexteJournal(msg); }
+    else if (msg.type === MSG.ACCUEIL_SIGNALE) {
       var issue = ISSUES[msg.issue] || ISSUES.refuse;
       jrnAvis.textContent = '';
       jrnAvis.appendChild(SZH.notif(issue[0], TXT[issue[1]]));
       if (msg.courriel) { jrnAvis.appendChild(SZH.notif('info', TXT.jrnCourriel)); }
     } else {
-      console.warn('lanceur : type de message inconnu', msg.type);
+      console.warn('accueil : type de message inconnu', msg.type);
     }
   });
 

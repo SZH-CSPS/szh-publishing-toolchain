@@ -1,4 +1,4 @@
-// Smoke test S3 : l'onglet Paramètres du lanceur restaure le bon bouton radio depuis les valeurs
+// Smoke test S3 : l'onglet Paramètres de l'Accueil restaure le bon bouton radio depuis les valeurs
 // que l'hôte envoie.
 //
 //   node --test test/js/smoke-settings.test.js
@@ -13,7 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const { ouvrirReglages, MSG } = require('./page-reglages');
 
-// Un radio par groupe, tel que media/lanceur.js (choix()) les nomme : `name` est la clé du
+// Un radio par groupe, tel que media/accueil.js (choix()) les nomme : `name` est la clé du
 // réglage, `value` la valeur de l'option — la même forme que le message « valeurs » de l'hôte,
 // réduite aux groupes qui suffisent au contrôle : plusieurs clés, pour prouver que cocher() ne
 // s'arrête pas à la première.

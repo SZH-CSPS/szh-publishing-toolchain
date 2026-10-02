@@ -1,6 +1,6 @@
 {
-  "cmd.lanceur": "Ouvrir Pronto",
-  "vue.lanceur.accueil": "Aucun numéro n’est ouvert dans cette fenêtre.\n[Ouvrir Pronto](command:szh.lanceur)",
+  "cmd.accueil": "Retour à l’accueil",
+  "vue.accueil": "Aucun numéro n’est ouvert dans cette fenêtre.\n[Retour à l’accueil](command:szh.accueil)",
   "cmd.importerWord": "Importer des Word",
   "cmd.rafraichir": "Rafraîchir la barre Pronto",
   "cmd.convertirEnAttente": "Convertir les Word en attente",

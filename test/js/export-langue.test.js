@@ -169,10 +169,10 @@ test('l’en-tête dit le schéma, la version, les langues et ce qu’est ce fic
 // Le défaut gardé ici a été vécu la veille, avec la pastille du vérificateur de traduction :
 // le module était juste, ses tests verts, et le bouton ne s'affichait nulle part. Éprouver
 // ce qu'une fonction rend ne dit RIEN de ce qu'une page montre. On rend donc la vraie page
-// des réglages (l'onglet Paramètres du lanceur, avec le vrai media/lanceur.js), et on y cherche
+// des réglages (l'onglet Paramètres de l'Accueil, avec le vrai media/accueil.js), et on y cherche
 // le bouton.
 //
-// Les libellés sont ceux de l'hôte (textesLanceur), chargés par page-reglages.js.
+// Les libellés sont ceux de l'hôte (textesAccueil), chargés par page-reglages.js.
 const { ouvrirReglages } = require('./page-reglages');
 
 function textesDe(racine) {
@@ -196,7 +196,7 @@ test('réglages : le bouton du fichier de langue est dans la page, et parle', ()
     + JSON.stringify(boutons.map((b) => b.textContent)));
   // Son explication est là aussi : un bouton qui enregistre un fichier pour l’envoyer à
   // quelqu’un ne se devine pas de son seul libellé.
-  assert.ok(textesDe(zones).includes(TEXTES_COCKPIT.fr['lanceur.regl.fichier.aide']),
+  assert.ok(textesDe(zones).includes(TEXTES_COCKPIT.fr['accueil.regl.fichier.aide']),
     'le bouton est là, mais rien ne dit à quoi sert le fichier');
   // Et il parle à l’hôte : un bouton muet serait le même défaut, une fois de plus.
   vu[0].dispatchEvent({ type: 'click' });

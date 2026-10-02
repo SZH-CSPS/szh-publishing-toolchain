@@ -1,4 +1,4 @@
-// Les journaux de mise à jour que l'onglet Log du lanceur liste (lib/journaux-maj.js), et leur
+// Les journaux de mise à jour que l'onglet Log de l'Accueil liste (lib/journaux-maj.js), et leur
 // parité avec Get-SzhJournauxMaj et Get-SzhVerdictJournalMaj sur le même dossier jetable.
 //
 //   node --test test/js/journaux-maj.test.js

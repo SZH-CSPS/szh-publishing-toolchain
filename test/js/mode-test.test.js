@@ -70,7 +70,7 @@ function barreModeTest() {
     (b) => b.backgroundColor && b.backgroundColor.id === 'statusBarItem.warningBackground').pop() || null;
 }
 
-// Le badge est un chemin : un clic ouvre l'onglet Paramètres du lanceur (szh.reglages), où se règle
+// Le badge est un chemin : un clic ouvre l'onglet Paramètres de l'Accueil (szh.reglages), où se règle
 // le mode développeur, et l'infobulle le dit. Un badge qui ne mène nulle part ou qui ne dit pas où
 // aller est une impasse : ce test garde les deux moitiés ensemble.
 test('emplacementRevues: "test" -> badge visible, orange, et qui dit où se règle le mode', async () => {

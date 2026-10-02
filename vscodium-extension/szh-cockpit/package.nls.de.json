@@ -1,6 +1,6 @@
 {
-  "cmd.lanceur": "Pronto öffnen",
-  "vue.lanceur.accueil": "In diesem Fenster ist keine Ausgabe geöffnet.\n[Pronto öffnen](command:szh.lanceur)",
+  "cmd.accueil": "Zurück zur Startseite",
+  "vue.accueil": "In diesem Fenster ist keine Ausgabe geöffnet.\n[Zurück zur Startseite](command:szh.accueil)",
   "cmd.importerWord": "Word-Dateien importieren",
   "cmd.rafraichir": "Pronto-Leiste aktualisieren",
   "cmd.convertirEnAttente": "Wartende Word-Dateien konvertieren",

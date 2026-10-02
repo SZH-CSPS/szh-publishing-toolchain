@@ -40,7 +40,7 @@ commentaire « les deux modes sont indépendants : allumer l'un n'allume pas l'a
   booléen propre. Une config illisible n'est **pas** écrasée (`extension.js`, branche
   `msg.cle === 'verifTrad'`, ~l. 5297) : elle emporterait avec elle l'emplacement des revues et
   la configuration OJS.
-- Interface : onglet **Paramètres** du lanceur (`media/lanceur.js`, groupe `verifTrad`), un radio
+- Interface : onglet **Paramètres** de l'Accueil (`media/accueil.js`, groupe `verifTrad`), un radio
   **Activé** / **Désactivé** (`regl.verifTrad.actif` / `.inactif`, `lib/i18n.js`) qui poste
   `{ type: 'regler', cle: 'verifTrad', valeur: 'actif' | 'inactif' }`.
 
@@ -259,7 +259,7 @@ ne répond simplement plus.
 
 1. **On doit toujours pouvoir l'éteindre.** Le **formulaire de suggestion** ne détourne JAMAIS
    ses propres clics : il appelle `SZH.modeTradJamais()` en tête de son script
-   (`media/suggestion.js`) et ne demande même pas l'index à l'hôte. Dans le lanceur, qui est
+   (`media/suggestion.js`) et ne demande même pas l'index à l'hôte. Dans l'Accueil, qui est
    un panneau comme les autres, la **barre d'onglets** et l'onglet **Paramètres** portent
    `data-trad-exempt` : `exempteTrad()` (`media/_commun.js`) leur laisse leurs clics. Sans
    cette exemption, allumer le mode rendrait « Enregistrer la suggestion » et les boutons radio
@@ -322,7 +322,7 @@ par suggestion, nommé `<horodatage>-<clé ou « sans-cle »>-<langue>.json`.
   en connaît une.
 - **Les réglages affichent leur compte** (`compterSuggestionsInterface()`, `extension.js`
   ~l. 4689, via `listerSuggestionsInterface()`) et un bouton **« Ouvrir le dossier »**
-  (`media/lanceur.js`, onglet Paramètres) qui crée le dossier s'il n'existe pas encore et l'ouvre
+  (`media/accueil.js`, onglet Paramètres) qui crée le dossier s'il n'existe pas encore et l'ouvre
   dans l'Explorateur (`vscode.env.openExternal`) — un bouton qui ne ferait rien la première
   fois passerait pour cassé.
 
@@ -349,7 +349,7 @@ fichier par fichier, il exporte tout d'un coup.
   deux phrases d'avertissement lui sont passées par l'appelant
   (`telechargerFichierLangue()`, `extension.js` ~l. 5335).
 - **Le bouton « Télécharger (JSON) »**, dans **Réglages SZH → Fichier de langue de
-  l'interface** (`media/lanceur.js`, onglet Paramètres) : poste `{ type: MSG.EXPORTER_LANGUE }` ;
+  l'interface** (`media/accueil.js`, onglet Paramètres) : poste `{ type: MSG.EXPORTER_LANGUE }` ;
   l'hôte ouvre une boîte d'enregistrement (une webview ne voit pas le disque), écrit le
   fichier, puis le révèle dans l'Explorateur — même geste que « Télécharger les réglages
   protégés ».
@@ -367,7 +367,7 @@ fichier par fichier, il exporte tout d'un coup.
 | `media/_fiches.js` | `pastilleTraduction()`, posée sur les trois champs simples et, séparément, sur les mots-clés par langue. |
 | `media/traduction.js` | Sa propre pose de pastilles sur le panneau de traduction (même mécanisme, panneau distinct). |
 | `media/_commun.js` | Socle partagé : l'écoute d'hôte chaînée (`ecouterHote`), et tout le mode « Trad » côté page — interception du clic (`surClicTrad`, capture sur `document.body`), recherche de clé (`trouverClesTrad`, copie de `lib/index-textes.js`), bandeau et sortie (`poserBandeau`, `eteindreTrad`), `SZH.modeTradJamais()`. |
-| `media/lanceur.js` | L'onglet Paramètres : les groupes « Vérificateur de traduction » et « Mode « Trad » » (radios `verifTrad`/`modeTrad`), le bouton d'export du fichier de langue, le compte et le bouton des suggestions d'interface. Il porte `data-trad-exempt`, comme la barre d'onglets. |
+| `media/accueil.js` | L'onglet Paramètres : les groupes « Vérificateur de traduction » et « Mode « Trad » » (radios `verifTrad`/`modeTrad`), le bouton d'export du fichier de langue, le compte et le bouton des suggestions d'interface. Il porte `data-trad-exempt`, comme la barre d'onglets. |
 | `media/suggestion.js`, `media/suggestion.html`, `media/suggestion.css` | Le formulaire de proposition, commun aux deux cibles (`article`/`interface`) : les deux gestes (`remplacer`/`supprimer`, bouton-interrupteur), le `<select>` des clés candidates. `SZH.modeTradJamais()` en tête. |
 | `test/js/suggestion-traduction.test.js` | Éprouve le module `lib/suggestion-traduction.js` : aller-retour écriture/lecture, dossier frère de `articles/`, `LISEZ-MOI` posé une fois, lecture tolérante, réglage éteint par défaut et tolérant à un `config.json` écrit à la main. |
 | `test/js/mode-trad.test.js` | Éprouve l'index, les suggestions d'interface, le réglage `modeTrad`, l'interception dans les vraies pages (clic détourné, bandeau, sorties), et surtout le contrôle statique qui exige la garde dans tout gestionnaire de panneau — voir « Le test statique » plus haut. |

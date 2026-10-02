@@ -1,6 +1,6 @@
-// L'onglet Secrétariat du lanceur : les numéros publiés et les quatre exports, lancés par
+// L'onglet Secrétariat de l'Accueil : les numéros publiés et les quatre exports, lancés par
 // outils/secretariat-cli.js, et l'historique Edudoc et Caractères du compte. Sans panneau :
-// lib/lanceur-hote.js lui relaie les messages de la page.
+// lib/accueil-hote.js lui relaie les messages de la page.
 'use strict';
 
 const fs = require('fs');
@@ -12,7 +12,7 @@ const { MSG } = require('./messages');
 const { langueCockpit } = require('./i18n');
 const inventaire = require('./inventaire');
 const { cheminCacheMotsCles } = require('./mots-cles-edudoc');
-const { numeroAffiche } = require('./lanceur-page');
+const { numeroAffiche } = require('./accueil-page');
 
 const OJS = 'numeros-ojs';
 // Le dossier de chaque export, sous <racine active>\Exports.
@@ -22,6 +22,7 @@ const SOUS_DOSSIERS = {
 };
 const REVUES = ['revue', 'zeitschrift'];
 // Par compte : { edudoc: { <revue>: { <clé>: <date> } }, caracteres: … }.
+// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
 const CLE_HISTORIQUE = 'szh.lanceur.historique';
 const HISTORISES = ['edudoc', 'caracteres'];
 
@@ -49,7 +50,7 @@ function jour(date) {
 }
 function dossierExport(commande) { return path.join(ctx.racineExports(), SOUS_DOSSIERS[commande]); }
 function cacheDe(revue) {
-  if (!caches[revue]) { caches[revue] = path.join(os.tmpdir(), 'szh-lanceur-' + process.pid + '-' + revue + '.json'); }
+  if (!caches[revue]) { caches[revue] = path.join(os.tmpdir(), 'szh-accueil-' + process.pid + '-' + revue + '.json'); }
   return caches[revue];
 }
 function supprimer(chemin) { try { fs.rmSync(chemin, { force: true }); } catch (e) { /* déjà parti */ } }
@@ -111,7 +112,7 @@ function tuer(place) {
 }
 
 // Tue les deux enfants et oublie les numéros chargés : à la fermeture du panneau, à
-// l'ouverture d'un dossier et à la désactivation, rien ne doit survivre au lanceur.
+// l'ouverture d'un dossier et à la désactivation, rien ne doit survivre à l'Accueil.
 function arreter() {
   if (tache) { tache.annule = true; }
   tuer('ojs');
@@ -136,10 +137,10 @@ async function chargerOjs(msg) {
   const revue = String(msg.revue || '');
   const annee = Number(msg.depuisAnnee);
   if (enfants.ojs || REVUES.indexOf(revue) === -1 || !(annee >= 1000 && annee <= 9999)) { return; }
-  ctx.envoyer({ type: MSG.LANCEUR_DEBUT, commande: OJS });
+  ctx.envoyer({ type: MSG.ACCUEIL_DEBUT, commande: OJS });
   const r = await executer('ojs', OJS, ['--revue', revue, '--cache', cacheDe(revue), '--depuis-annee', String(annee)],
-    (ligne) => ctx.envoyer({ type: MSG.LANCEUR_LIGNE, commande: OJS, ligne }));
-  ctx.envoyer({ type: MSG.LANCEUR_FIN, commande: OJS, ok: r.ok, texte: r.texte, annule: !!r.annule });
+    (ligne) => ctx.envoyer({ type: MSG.ACCUEIL_LIGNE, commande: OJS, ligne }));
+  ctx.envoyer({ type: MSG.ACCUEIL_FIN, commande: OJS, ok: r.ok, texte: r.texte, annule: !!r.annule });
 }
 
 // La demande de la page en arguments du CLI, ou null si elle est mal formée. Un numéro local
@@ -175,7 +176,7 @@ async function etapes(d, relayer) {
     return executer('tache', d.commande, ['--numero', d.chemin, '--sortie', d.sortie], relayer);
   }
   if (d.commande === 'metadonnees') {
-    const cache = path.join(os.tmpdir(), 'szh-lanceur-' + process.pid + '-metadonnees.json');
+    const cache = path.join(os.tmpdir(), 'szh-accueil-' + process.pid + '-metadonnees.json');
     try {
       const annee = /^(\d{4})-/.exec(path.basename(d.chemin));
       const args = ['--revue', d.revue, '--cache', cache].concat(annee ? ['--depuis-annee', annee[1]] : []);
@@ -195,11 +196,11 @@ async function exporter(msg) {
   tache = { commande: d.commande, annule: false };
   try {
     try { fs.mkdirSync(d.sortie, { recursive: true }); } catch (e) { /* le CLI le dira */ }
-    ctx.envoyer({ type: MSG.LANCEUR_DEBUT, commande: d.commande });
-    const r = await etapes(d, (ligne) => ctx.envoyer({ type: MSG.LANCEUR_LIGNE, commande: d.commande, ligne }));
+    ctx.envoyer({ type: MSG.ACCUEIL_DEBUT, commande: d.commande });
+    const r = await etapes(d, (ligne) => ctx.envoyer({ type: MSG.ACCUEIL_LIGNE, commande: d.commande, ligne }));
     const date = jour(new Date());
     if (r.ok) { await retenir(d.commande, d.revue, d.cles || [], date); }
-    ctx.envoyer({ type: MSG.LANCEUR_FIN, commande: d.commande, ok: r.ok, texte: r.texte, annule: !!r.annule,
+    ctx.envoyer({ type: MSG.ACCUEIL_FIN, commande: d.commande, ok: r.ok, texte: r.texte, annule: !!r.annule,
       dossier: d.sortie, date });
     // Le fichier produit s'ouvre dans l'Explorateur ; plusieurs fichiers, leur dossier.
     if (r.ok && r.fichiers.length === 1) { ctx.revelerFichier(r.fichiers[0]); }
@@ -225,10 +226,10 @@ function afficher(msg) {
 
 // Rend vrai si le message est l'un des siens.
 function surMessage(msg) {
-  if (msg.type === MSG.LANCEUR_OJS_CHARGER) { chargerOjs(msg); return true; }
-  if (msg.type === MSG.LANCEUR_EXPORTER) { exporter(msg); return true; }
-  if (msg.type === MSG.LANCEUR_INTERROMPRE) { interrompre(msg); return true; }
-  if (msg.type === MSG.LANCEUR_AFFICHER) { afficher(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_OJS_CHARGER) { chargerOjs(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_EXPORTER) { exporter(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_INTERROMPRE) { interrompre(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_AFFICHER) { afficher(msg); return true; }
   return false;
 }
 

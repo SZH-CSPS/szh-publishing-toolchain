@@ -1,5 +1,5 @@
-// L'onglet Paramètres du lanceur côté hôte : les valeurs que la page reçoit, les réglages propres
-// au lanceur (produit proposé, mise à jour silencieuse, mode développeur), les services en ligne
+// L'onglet Paramètres de l'Accueil côté hôte : les valeurs que la page reçoit, les réglages propres
+// à l'Accueil (produit proposé, mise à jour silencieuse, mode développeur), les services en ligne
 // (adresse Shlink en réglage, clés Shlink et OJS dans SecretStorage) et la recopie, une seule
 // fois, des réglages d'avant. Les autres messages vont à lib/reglages-hote.js.
 'use strict';
@@ -15,13 +15,14 @@ const services = require('./services-env');
 const rapport = require('./rapport-erreur');
 const archivage = require('./archivage');
 const inventaire = require('./inventaire');
-const { produitParDefaut } = require('./lanceur-page');
+const { produitParDefaut } = require('./accueil-page');
 
 // Les clés du coffre : jamais écrites ailleurs, jamais envoyées à la page.
 const COFFRE = Object.freeze({ shlinkCle: 'szh.shlinkCle', ojsCle: 'szh.ojsCle' });
+// Valeur gardée du temps du « lanceur » : la renommer recopierait une seconde fois les réglages.
 const CLE_RECOPIE = 'szh.lanceur.reglagesRecopies';
 const RE_HTTPS = /^https:\/\/[^\s/$.?#][^\s]*$/i;
-// Ceux de REGLER qui sont propres au lanceur ; les autres vont à lib/reglages-hote.js.
+// Ceux de REGLER qui sont propres à l'Accueil ; les autres vont à lib/reglages-hote.js.
 const CLES_PROPRES = new Set(['produit', 'majSilencieuse', 'modeDev']);
 
 let ctx = { rafraichirTout: null, recharger: () => {}, rechargerPage: () => {} };
@@ -122,16 +123,16 @@ async function poserService(msg, repondre) {
   const echec = (texte) => repondre({ type: MSG.ERREUR, bloc: 'service', service: msg.service, message: texte });
   try {
     if (msg.service === 'shlinkUrl') {
-      if (valeur !== '' && !RE_HTTPS.test(valeur)) { echec(T('lanceur.regl.shlink.invalide')); return; }
+      if (valeur !== '' && !RE_HTTPS.test(valeur)) { echec(T('accueil.regl.shlink.invalide')); return; }
       await configSzh().update('shlinkUrl', valeur === '' ? undefined : valeur, vscode.ConfigurationTarget.Global);
     } else if (COFFRE[msg.service]) {
-      if (!secrets) { echec(T('lanceur.regl.coffre.absent')); return; }
+      if (!secrets) { echec(T('accueil.regl.coffre.absent')); return; }
       if (valeur === '') { await secrets.delete(COFFRE[msg.service]); }
       else { await secrets.store(COFFRE[msg.service], valeur); }
     } else { return; }
   } catch (e) {
     // Le message d'erreur du coffre peut citer la valeur : on ne le recopie pas.
-    echec(T('lanceur.regl.coffre.echec'));
+    echec(T('accueil.regl.coffre.echec'));
     return;
   }
   await relireServices();
@@ -140,7 +141,7 @@ async function poserService(msg, repondre) {
 
 // Rend vrai quand le message est celui des réglages.
 async function surMessage(msg, repondre) {
-  if (msg.type === MSG.LANCEUR_SERVICE) { await poserService(msg, repondre); return true; }
+  if (msg.type === MSG.ACCUEIL_SERVICE) { await poserService(msg, repondre); return true; }
   if (msg.type === MSG.REGLER && CLES_PROPRES.has(msg.cle)) { await regler(msg); return true; }
   const traite = await reglages.traiterMessage(msg, repondre, ctx.rafraichirTout);
   if (traite && msg.type === MSG.REGLER && msg.cle === 'langue') {
@@ -192,7 +193,7 @@ function demarrer(context) {
     }));
   } catch (e) { /* hôte sans ces évènements */ }
   relireServices().catch(() => {});
-  recopierUneFois(context).catch((e) => { console.warn('réglages du lanceur : ' + ((e && e.message) || e)); });
+  recopierUneFois(context).catch((e) => { console.warn('réglages de l’Accueil : ' + ((e && e.message) || e)); });
 }
 
 module.exports = {

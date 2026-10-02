@@ -1,5 +1,5 @@
-// L'onglet Paramètres du lanceur (media/lanceur.js), chargé dans le DOM minimal avec les libellés
-// réels de l'hôte (lib/lanceur-page.js), comme le faisaient les tests de l'ancien panneau
+// L'onglet Paramètres de l'Accueil (media/accueil.js), chargé dans le DOM minimal avec les libellés
+// réels de l'hôte (lib/accueil-page.js), comme le faisaient les tests de l'ancien panneau
 // « settings » : une page prête, l'onglet Paramètres ouvert, et de quoi y chercher un élément.
 //
 //   const { ouvrirReglages } = require('./page-reglages');
@@ -14,7 +14,7 @@ const { ouvrir, chargerAvecVscodeFactice } = require('./dom-minimal');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
-const { textesLanceur } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'lanceur-page.js'));
+const { textesAccueil } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'accueil-page.js'));
 
 // Ce que l'hôte envoie en premier : les produits, que le choix du produit proposé reprend.
 const CHARGER = {
@@ -29,11 +29,11 @@ const CHARGER = {
 
 function ouvrirReglages(opts) {
   const o = opts || {};
-  const page = ouvrir({ racine: RACINE, page: 'lanceur', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: o.txt || textesLanceur() });
+  const page = ouvrir({ racine: RACINE, page: 'accueil', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+    txt: o.txt || textesAccueil() });
   page.envoyer(Object.assign({}, CHARGER, o.charger || {}));
-  const lanceur = page.parId.lanceur;
-  const trouver = (id) => lanceur.querySelector('[id="' + id + '"]');
+  const accueil = page.parId.accueil;
+  const trouver = (id) => accueil.querySelector('[id="' + id + '"]');
   trouver('onglet-reglages').dispatchEvent({ type: 'click' });
   return {
     page: page, panneau: trouver('panneau-reglages'), parId: trouver,
@@ -45,4 +45,4 @@ function ouvrirReglages(opts) {
   };
 }
 
-module.exports = { ouvrirReglages, MSG, textesLanceur, RACINE, COCKPIT };
+module.exports = { ouvrirReglages, MSG, textesAccueil, RACINE, COCKPIT };

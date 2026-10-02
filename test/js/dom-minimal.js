@@ -58,7 +58,7 @@ function chargerAvecVscodeFactice(chemin) {
 // via getAttribute) fait foi en premier ; s'il manque, on retombe sur la propriété de même
 // nom que le script de la page pose souvent directement (name, value, type, checked…),
 // car rendre() écrit couramment `input.name = …` sans jamais appeler setAttribute — c'est
-// le cas du radio de media/lanceur.js (reglagesPage, cocher()), sélecteur `input[name="…"][value="…"]`.
+// le cas du radio de media/accueil.js (reglagesPage, cocher()), sélecteur `input[name="…"][value="…"]`.
 function correspondAttribut(e, segment) {
   const mData = segment.match(/^\[data-([a-z-]+)(?:=("?)([^"\]]*)\2)?\]$/);
   if (mData) {
@@ -80,7 +80,7 @@ function correspond(e, motif) {
   // Balise facultative devant, puis une suite de « .classe » et « [attribut] » dans
   // n'importe quel ordre — « balise », « .classe », « .a.b », « p.occ.visible »,
   // « select[data-x=v] », « input[name="…"][value="…"] » (deux crochets accolés, comme
-  // dans media/lanceur.js, cocher()).
+  // dans media/accueil.js, cocher()).
   const m = motif.match(/^([a-z]*)((?:\.[a-zA-Z0-9_-]+|\[[^\]]*\])*)$/);
   if (!m) { return false; }
   const balise = m[1];

@@ -1,113 +1,231 @@
-// L'accueil d'un poste : l'invitation au tutoriel, une seule fois, et « Quoi de neuf »
-// après une mise à jour. Sans rappel vers l'hôte : tout se lit dans globalState et lib/.
+// L'Accueil dans l'éditeur : son panneau, ses données, l'ouverture d'un numéro et sa
+// création. Il ne s'ouvre seul que sous la porte SZH_ACCUEIL=1 et sans dossier ouvert.
 'use strict';
 
 const vscode = require('vscode');
+const path = require('path');
+const crypto = require('crypto');
 
 const { T, langueCockpit } = require('./i18n');
 const { MSG } = require('./messages');
-const profils = require('./profil');
-const nouveautes = require('./nouveautes');
-const { versionInstallee } = require('./archivage');
 const { construireHtml } = require('./webviews/util');
 const { panneauUnique } = require('./webviews/panneau');
+const inventaire = require('./inventaire');
+const nouveau = require('./accueil-nouveau');
+const { textesAccueil, LIBELLES_PRODUITS, produitParDefaut, numeroAffiche } = require('./accueil-page');
+const { versionInstallee, lancerChoixVersion } = require('./archivage');
+const secretariat = require('./accueil-secretariat-hote');
+const journal = require('./accueil-journal-hote');
+const reglages = require('./accueil-reglages-hote');
+const preproc = require('./accueil-preproc-hote');
 
-const CLE_TUTORIEL_VU = 'szh.tutoriel.propose';   // invitation au tutoriel : une seule fois
-// Le dernier MEDIUM dont cette personne a vu les nouveautés (« 1.1 »), et non la version
-// complète : une mineure ne s'annonce pas, sans quoi la fenêtre s'ouvrirait deux fois par
-// jour. globalState et non un fichier du poste : le toolkit est commun à la machine, mais
-// « l'ai-je lu ? » est propre à chaque compte.
-const CLE_NOUVEAUTES_VU = 'szh.nouveautes.medium';
+const VIEW_TYPE = 'szhAccueil';
+const CONTEXTE_ACTIF = 'szh.accueil.actif';
+// Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
+// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
+const CLE_DERNIER = 'szh.lanceur.dernier';
 
-// postMessage tolérant : le panneau peut être fermé.
-function repondrePanneau(panneau, message) {
+let ctx = {
+  repondreModeTrad: require('./traduction-hote').repondreModeTrad,
+  rafraichirTout: null     // posé par extension.js : l'arbre suit un réglage qui change ses libellés
+};
+function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
+
+let etatPoste = null;
+let panneauActif = null;
+// Les dossiers envoyés à la page : elle n'ouvre que ceux-là.
+let cheminsConnus = new Set();
+let anneesZero = null;
+// L'onglet que la prochaine charge de la page doit ouvrir (szh.reglages), consommé par donnees().
+let ongletDemande = '';
+
+function porteOuverte() { return process.env.SZH_ACCUEIL === '1'; }
+function sansDossier() {
+  const dossiers = vscode.workspace.workspaceFolders;
+  return !dossiers || dossiers.length === 0;
+}
+
+function repondre(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
 }
 
-// Une seule fois, et seulement sur un numéro ouvert : la page d'accueil de l'éditeur est
-// désactivée par nos réglages, et la barre d'activités masquée — sans cette invitation,
-// le tutoriel n'existerait que pour qui pense à le chercher.
-//
-// ⚠ Aucun tutoriel pour un livre (le `when` du walkthrough dans package.json ne suffit
-// pas ici : il ne filtre que ce qui apparaît dans la page d'accueil « Get Started »,
-// jamais un `workbench.action.openWalkthrough` appelé par son id, comme le fait
-// la commande szh.tutoriel d'extension.js — vérifié dans le workbench installé, sa
-// commande ouvre l'éditeur sans lire aucun contexte). Sans cette garde ici, la seule invitation
-// ouvrirait quand même les neuf pas d'une revue sur un livre qui n'a ni articles-word/
-// ni traductions.
-async function proposerTutoriel(context) {
-  try {
-    if (!profils.courant().capacites.tutoriel) { return; }
-    if (context.globalState.get(CLE_TUTORIEL_VU)) { return; }
-    await context.globalState.update(CLE_TUTORIEL_VU, true);
-    const ouvrir = T('tuto.invite.bouton');
-    const choix = await vscode.window.showInformationMessage(T('tuto.invite'), ouvrir);
-    if (choix === ouvrir) { await vscode.commands.executeCommand('szh.tutoriel'); }
-  } catch (e) { /* invitation ratée : la commande et l'icône restent */ }
+function jourLisible(date) {
+  if (!date) { return ''; }
+  const p2 = (n) => String(n).padStart(2, '0');
+  return p2(date.getDate()) + '.' + p2(date.getMonth() + 1) + '.' + date.getFullYear();
 }
 
-// ---- « Quoi de neuf » ------------------------------------------------------------
-// La fenêtre s'ouvre seule après une mise à jour qui a changé de MEDIUM, une fois par
-// personne et par medium ; une mineure ne dit jamais rien. Le texte vient de
-// nouveautes.json, livré à la racine du toolkit, et il est écrit pour la rédaction — pas
-// de CHANGELOG.md, qui nomme des fonctions et n'existe qu'en français.
+// Une fois par session : l'année zéro du volume ne change qu'avec le socle.
+function anneesDuVolume() {
+  if (!anneesZero) {
+    anneesZero = nouveau.executer(nouveau.scriptAnnees())
+      .then((r) => (r && Number.isInteger(r.revue) ? r : {}));
+  }
+  return anneesZero;
+}
 
-function htmlNouveautes(nonce) {
-  return construireHtml('nouveautes', nonce, {
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('nouv.titre')
+async function donnees() {
+  const inv = inventaire.inventaire();
+  const zero = await anneesDuVolume();
+  const langue = langueCockpit();
+  const entree = (livre) => (e) => ({ nom: livre ? e.nom : numeroAffiche(e.nom), titre: e.titre, chemin: e.chemin,
+    modifie: jourLisible(e.modifie), verrouillee: e.verrouillee });
+  cheminsConnus = new Set();
+  const produits = inventaire.ORDRE.map((jeton) => {
+    const p = inv.produits[jeton];
+    for (const e of p.enCours.concat(p.archives)) { cheminsConnus.add(e.chemin); }
+    const livre = jeton === 'livre';
+    const fiche = { jeton, libelle: LIBELLES_PRODUITS[jeton], type: livre ? 'livre' : 'numero', racine: p.racineEnCours,
+      hors: p.hors, enCours: p.enCours.map(entree(livre)), archives: p.archives.map(entree(livre)) };
+    if (zero[jeton]) { fiche.anneeZeroVolume = zero[jeton]; }
+    return fiche;
   });
-}
-
-function valeursNouveautes(medium) {
-  const installee = versionInstallee();
+  const choisi = vscode.workspace.getConfiguration('szh').get('produitParDefaut', '');
+  const onglet = ongletDemande;
+  ongletDemande = '';
   return {
-    type: MSG.VALEURS,
-    titre: T('nouv.titre'),
-    version: installee ? T('nouv.version', [installee]) : '',
-    notes: nouveautes.notesPour(medium, langueCockpit()),
-    i18n: { rien: T('nouv.rien') }
+    type: MSG.CHARGER, langue, onglet,
+    produit: produitParDefaut(langue, choisi, process.env.SZH_ONGLET, inventaire.ORDRE),
+    anneeCourante: new Date().getFullYear(), modeTest: inv.modeTest, ancrageAbsent: inv.ancrageAbsent,
+    version: versionInstallee(), exports: path.join(inv.base, 'Exports'), produits,
+    dernierOuvert: (etatPoste && etatPoste.globalState.get(CLE_DERNIER)) || '',
+    historique: secretariat.historique(), journaux: journal.listePage()
   };
 }
 
-// $medium : ce que la personne avait déjà vu. La fenêtre ouverte à la main depuis le
-// panneau de commande passe le medium installé — elle montre alors la note du jour, et non
-// tout ce qui a été manqué.
-function montrerNouveautes(medium) {
-  // Sans modeTrad : voir PANNEAUX_SANS_MODE_TRAD (test/js/mode-trad.test.js).
-  const { panneau, nouveau } = panneauUnique({
-    viewType: 'szhNouveautes', titre: T('nouv.titre'),
-    html: htmlNouveautes,
-    surPret: (recu, p) => repondrePanneau(p, valeursNouveautes(medium)),
-    surMessage: (recu) => { console.warn('nouveautés : type de message inconnu', recu.type); }
+async function envoyerDonnees(panneau) {
+  repondre(panneau, await donnees());
+  repondre(panneau, reglages.messageValeurs());
+}
+
+// Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
+// ne survit pas au changement de dossier.
+async function ouvrirDossier(chemin) {
+  secretariat.arreter();
+  preproc.arreter();
+  if (etatPoste) { await etatPoste.globalState.update(CLE_DERNIER, chemin); }
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(chemin), { forceReuseWindow: true });
+}
+
+// Le refus du socle, dit dans la langue de l'interface. Les numéros s'écrivent « 2026-03 ».
+function texteRefus(r) {
+  const v = r || {};
+  if (v.refus === 'existe') { return T('accueil.nouveau.refus.existe', [v.nom]); }
+  if (v.refus === 'doublon') {
+    return T(v.archive ? 'accueil.nouveau.refus.doublon.archive' : 'accueil.nouveau.refus.doublon',
+      [v.volume, v.numero, v.nom]);
+  }
+  if (v.refus === 'reference') { return T('accueil.nouveau.refus.reference', [v.reference, v.titre || v.nom]); }
+  if (v.refus === 'delai') { return T('accueil.nouveau.refus.delai'); }
+  return String(v.texte || '');
+}
+
+async function creer(msg, panneau) {
+  const script = nouveau.scriptCreation(msg);
+  if (!script) {
+    repondre(panneau, { type: MSG.ACCUEIL_CREE, ok: false, texte: T('accueil.nouveau.refus.demande') });
+    return;
+  }
+  const r = await nouveau.executer(script);
+  if (r && r.ok && r.chemin) { await ouvrirDossier(r.chemin); return; }
+  repondre(panneau, { type: MSG.ACCUEIL_CREE, ok: false, texte: texteRefus(r) });
+}
+
+// Les messages du Secrétariat et du Log vont à leur module.
+async function surMessage(msg, panneau) {
+  if (secretariat.surMessage(msg) || journal.surMessage(msg) || preproc.surMessage(msg)) { return; }
+  if (msg.type === MSG.ACCUEIL_ONGLET) { reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m)); return; }
+  if (await reglages.surMessage(msg, (m) => repondre(panneau, m))) { return; }
+  if (msg.type === MSG.ACCUEIL_OUVRIR) {
+    if (cheminsConnus.has(msg.chemin)) { await ouvrirDossier(msg.chemin); }
+    return;
+  }
+  if (msg.type === MSG.ACCUEIL_VERSIONS) {
+    const erreur = lancerChoixVersion();
+    if (erreur) { vscode.window.showErrorMessage(T('err.version.lancement', [erreur])); }
+    return;
+  }
+  if (msg.type === MSG.ACCUEIL_CREER) { await creer(msg, panneau); }
+}
+
+function htmlAccueil(nonce) {
+  return construireHtml('accueil', nonce, {
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('accueil.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesAccueil()) }
   });
-  if (!nouveau) { repondrePanneau(panneau, valeursNouveautes(medium)); }
 }
 
-// Rien n'est montré sans un clic : la fenêtre s'ouvre seule, mais elle ne s'ouvre qu'après
-// une invitation acceptée — une page qui surgit par-dessus le travail en cours se ferme
-// sans être lue. Le medium est enregistré dans tous les cas, refus compris : reposer la
-// question à chaque ouverture de numéro serait pire que de ne rien dire.
-async function proposerNouveautes(context) {
-  try {
-    const installe = nouveautes.mediumInstalle();
-    if (!installe) { return; }                       // version illisible, ou poste de dev
-    const vu = String(context.globalState.get(CLE_NOUVEAUTES_VU) || '');
-    if (vu === installe) { return; }
-    // Personne n'a encore rien vu. Sur un poste NEUF, tout est nouveau et l'invitation au
-    // tutoriel dit déjà ce qu'il faut : on enregistre en silence. Sur un poste qui tournait
-    // avant cette version, le tutoriel a déjà été proposé — c'est le seul signe fiable que
-    // quelqu'un travaillait ici avant la mise à jour, et c'est à lui qu'on doit la note.
-    const dejaLa = Boolean(context.globalState.get(CLE_TUTORIEL_VU));
-    if (!vu && !dejaLa) { await context.globalState.update(CLE_NOUVEAUTES_VU, installe); return; }
-    if (nouveautes.notesPour(vu, langueCockpit()).length === 0) {
-      await context.globalState.update(CLE_NOUVEAUTES_VU, installe);
-      return;
-    }
-    await context.globalState.update(CLE_NOUVEAUTES_VU, installe);
-    const ouvrir = T('nouv.invite.bouton');
-    const choix = await vscode.window.showInformationMessage(T('nouv.invite'), ouvrir);
-    if (choix === ouvrir) { montrerNouveautes(vu); }
-  } catch (e) { /* invitation ratée : la commande du panneau reste */ }
+// `onglet` : l'onglet à montrer d'emblée (la commande szh.reglages demande « reglages »).
+function ouvrirAccueil(opts) {
+  const onglet = (opts && opts.onglet) || '';
+  if (onglet) { ongletDemande = onglet; }
+  const { panneau, nouveau } = panneauUnique({
+    viewType: VIEW_TYPE, titre: T('accueil.titre'), retenir: true,
+    modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
+    html: htmlAccueil,
+    surPret: (msg, p) => envoyerDonnees(p).then(() => preproc.envoyerEtat()),
+    surMessage: (msg, p) => surMessage(msg, p),
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
+  });
+  panneauActif = panneau;
+  if (!nouveau && onglet) {
+    ongletDemande = '';
+    repondre(panneau, { type: MSG.ACCUEIL_ALLER, onglet });
+  }
+  return panneau;
 }
 
-module.exports = { proposerTutoriel, proposerNouveautes, montrerNouveautes, CLE_TUTORIEL_VU, CLE_NOUVEAUTES_VU };
+// Après un changement de langue : la page se reconstruit dans la nouvelle, sur le même onglet.
+function rechargerPage(onglet) {
+  if (!panneauActif) { return; }
+  ongletDemande = onglet || 'reglages';
+  panneauActif.webview.html = htmlAccueil(crypto.randomBytes(16).toString('hex'));
+}
+
+// Les deux onglets parlent à la page par le panneau ouvert, et à l'éditeur par ces rappels.
+function configurerOnglets() {
+  const envoyer = (m) => { if (panneauActif) { repondre(panneauActif, m); } };
+  const revelerFichier = (chemin) => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(chemin));
+  const ouvrirDossierOs = (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin));
+  secretariat.configurer({ envoyer, revelerFichier, ouvrirDossier: ouvrirDossierOs, memoire: etatPoste && etatPoste.globalState,
+    numerosConnus: () => cheminsConnus });
+  reglages.configurer({ rafraichirTout: (opts) => { if (ctx.rafraichirTout) { ctx.rafraichirTout(opts); } },
+    recharger: () => { if (panneauActif) { envoyerDonnees(panneauActif); } },
+    rechargerPage: () => rechargerPage('reglages') });
+  journal.configurer({ envoyer, ouvrirDossier: ouvrirDossierOs,
+    ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
+    ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
+    versionEditeur: () => vscode.version || null });
+  preproc.configurer({ envoyer, revelerFichier, memoire: etatPoste && etatPoste.globalState,
+    formatTravail: () => vscode.workspace.getConfiguration('szh').get('formatTravail', 'docx'),
+    ouvrirExterne: (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin)),
+    choisirFichier: async (dossier) => {
+      const choix = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+        defaultUri: dossier ? vscode.Uri.file(dossier) : undefined, filters: { [T('accueil.preproc.filtre')]: ['docx', 'odt'] } });
+      return choix && choix[0] ? choix[0].fsPath : null;
+    } });
+}
+
+// À la désactivation : aucun enfant ne survit à l'éditeur.
+function arreter() { secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
+
+// À l'activation : la clé de contexte de la porte, la commande, et l'ouverture d'office
+// quand la porte est ouverte sur une fenêtre sans dossier.
+function demarrer(context) {
+  etatPoste = context;
+  configurerOnglets();
+  reglages.demarrer(context);
+  const actif = porteOuverte();
+  vscode.commands.executeCommand('setContext', CONTEXTE_ACTIF, actif);
+  context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => ouvrirAccueil()));
+  // Le format par défaut change dans les Réglages : l'onglet le reprend aussitôt.
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration('szh.formatTravail')) { preproc.envoyerEtat(); }
+  }));
+  if (actif && sansDossier()) { ouvrirAccueil(); }
+}
+
+module.exports = {
+  configurer, demarrer, ouvrirAccueil, rechargerPage, donnees, texteRefus, arreter,
+  VIEW_TYPE, CONTEXTE_ACTIF, CLE_DERNIER
+};

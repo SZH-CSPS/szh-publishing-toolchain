@@ -1,9 +1,9 @@
-// La porte du lanceur dans l'éditeur (lib/lanceur-hote.js) : il ne s'ouvre seul que sous
+// La porte de l'Accueil dans l'éditeur (lib/accueil-hote.js) : il ne s'ouvre seul que sous
 // SZH_ACCUEIL=1 et dans une fenêtre sans dossier. Une porte mal fermée le ferait surgir sur
 // chaque poste. Chaque cas active l'extension dans son propre processus : le faux vscode ne
 // s'active qu'une fois par processus.
 //
-//   node --test test/js/lanceur-porte.test.js
+//   node --test test/js/accueil-porte.test.js
 'use strict';
 
 const test = require('node:test');
@@ -34,27 +34,27 @@ async function enfant() {
   fs.utimesSync(ancien, 1000000000, 1000000000);
   const HOTE = activerHote(revueDEssai(), { sansDossier: CAS !== 'dossier' });
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
-  const lanceurs = HOTE.panneaux.filter((p) => p.type === 'szhLanceur');
+  const accueils = HOTE.panneaux.filter((p) => p.type === 'szhAccueil');
   const sortie = {
-    lanceurs: lanceurs.length,
-    actif: HOTE.contexte()['szh.lanceur.actif'],
-    commande: HOTE.commandes().indexOf('szh.lanceur') !== -1
+    accueils: accueils.length,
+    actif: HOTE.contexte()['szh.accueil.actif'],
+    commande: HOTE.commandes().indexOf('szh.accueil') !== -1
   };
-  if (CAS === 'ouverte' && lanceurs.length === 1) {
-    const p = lanceurs[0];
+  if (CAS === 'ouverte' && accueils.length === 1) {
+    const p = accueils[0];
     await p._recepteur({ type: MSG.PRET });
     const charger = p.messages.filter((m) => m.type === MSG.CHARGER)[0] || {};
     sortie.produit = charger.produit;
     sortie.enCours = ((charger.produits || [])[0] || {}).enCours;
     const chemin = sortie.enCours && sortie.enCours[0] && sortie.enCours[0].chemin;
     HOTE.oublierCommandes();
-    await p._recepteur({ type: MSG.LANCEUR_OUVRIR, chemin: path.join(travail, 'ailleurs') });
-    await p._recepteur({ type: MSG.LANCEUR_OUVRIR, chemin: chemin });
+    await p._recepteur({ type: MSG.ACCUEIL_OUVRIR, chemin: path.join(travail, 'ailleurs') });
+    await p._recepteur({ type: MSG.ACCUEIL_OUVRIR, chemin: chemin });
     sortie.ouvertures = HOTE.commandesJouees().filter((c) => c.id === 'vscode.openFolder')
       .map((c) => ({ chemin: c.args[0].fsPath, options: c.args[1] }));
     sortie.dernier = HOTE.memoire['szh.lanceur.dernier'];
-    await p._recepteur({ type: MSG.LANCEUR_CREER, produit: 'revue', annee: 2026, numero: 0 });
-    sortie.cree = p.messages.filter((m) => m.type === MSG.LANCEUR_CREE);
+    await p._recepteur({ type: MSG.ACCUEIL_CREER, produit: 'revue', annee: 2026, numero: 0 });
+    sortie.cree = p.messages.filter((m) => m.type === MSG.ACCUEIL_CREE);
   }
   process.stdout.write('@@PORTE@@' + JSON.stringify(sortie) + '\n');
   try { fs.rmSync(travail, { recursive: true, force: true }); } catch (e) { /* débris */ }
@@ -76,23 +76,23 @@ if (CAS) {
 } else {
   test('porte fermée : rien ne s’ouvre, même sans dossier, et le contexte est faux', () => {
     const r = rejouer('fermee', '');
-    assert.strictEqual(r.lanceurs, 0);
+    assert.strictEqual(r.accueils, 0);
     assert.strictEqual(r.actif, false);
     assert.strictEqual(r.commande, true, 'la commande existe, masquée de la palette par le contexte');
     const autre = rejouer('fermee', '0');
-    assert.strictEqual(autre.lanceurs, 0, 'seul « 1 » ouvre la porte');
+    assert.strictEqual(autre.accueils, 0, 'seul « 1 » ouvre la porte');
     assert.strictEqual(autre.actif, false);
   });
 
   test('porte ouverte sur un dossier : rien ne s’ouvre', () => {
     const r = rejouer('dossier', '1');
-    assert.strictEqual(r.lanceurs, 0);
+    assert.strictEqual(r.accueils, 0);
     assert.strictEqual(r.actif, true);
   });
 
   test('porte ouverte sans dossier : le panneau s’ouvre, liste, ouvre et refuse', () => {
     const r = rejouer('ouverte', '1');
-    assert.strictEqual(r.lanceurs, 1);
+    assert.strictEqual(r.accueils, 1);
     assert.strictEqual(r.actif, true);
     assert.strictEqual(r.produit, 'revue', 'le produit d’office vient de l’hôte');
     assert.deepStrictEqual(r.enCours.map((e) => e.nom), ['2026-03', '2025-04'], 'deux chiffres, toujours');

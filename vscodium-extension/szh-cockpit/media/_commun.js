@@ -709,7 +709,7 @@ var SZH = (function () {
   //
   // DEUX GARDE-FOUS, sans lesquels le mode serait un piège.
   //   1. On doit TOUJOURS pouvoir l'éteindre. Le formulaire de suggestion s'exclut lui-même
-  //      (SZH.modeTradJamais, en tête de son script), et la barre d'onglets du lanceur comme son
+  //      (SZH.modeTradJamais, en tête de son script), et la barre d'onglets de l'Accueil comme son
   //      onglet Paramètres sont exemptés (data-trad-exempt) : sans cela on allumerait le mode sans
   //      plus pouvoir l'éteindre. S'y ajoutent deux sorties depuis n'importe quel panneau :
   //      le bouton du bandeau, et la touche Échap.

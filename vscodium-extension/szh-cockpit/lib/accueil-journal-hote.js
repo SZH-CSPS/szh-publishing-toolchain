@@ -1,5 +1,5 @@
-// L'onglet Log du lanceur : les journaux de mise à jour, leur fin, l'éditeur, et le
-// signalement d'un problème en un seul geste. Sans panneau : lib/lanceur-hote.js lui relaie
+// L'onglet Log de l'Accueil : les journaux de mise à jour, leur fin, l'éditeur, et le
+// signalement d'un problème en un seul geste. Sans panneau : lib/accueil-hote.js lui relaie
 // les messages de la page.
 'use strict';
 
@@ -48,9 +48,9 @@ function lire(msg) {
   if (!j) { return; }
   try {
     const fin = journaux.finJournal(j.chemin);
-    ctx.envoyer({ type: MSG.LANCEUR_JOURNAL_TEXTE, rang: msg.rang, texte: fin.texte, lignes: fin.lignes });
+    ctx.envoyer({ type: MSG.ACCUEIL_JOURNAL_TEXTE, rang: msg.rang, texte: fin.texte, lignes: fin.lignes });
   } catch (e) {
-    ctx.envoyer({ type: MSG.LANCEUR_JOURNAL_TEXTE, rang: msg.rang, erreur: String((e && e.message) || e) });
+    ctx.envoyer({ type: MSG.ACCUEIL_JOURNAL_TEXTE, rang: msg.rang, erreur: String((e && e.message) || e) });
   }
 }
 
@@ -58,7 +58,7 @@ function lire(msg) {
 // gabarit lisible, un brouillon vide à la bonne adresse plutôt que rien.
 function brouillonSupport(phrase, journal) {
   const dossier = path.join(toolkitPoste(), 'windows', 'mail-templates');
-  const variables = { poste: os.hostname(), etape: T('lanceur.journal.signaler.titre'), message: phrase, journal: journal || '' };
+  const variables = { poste: os.hostname(), etape: T('accueil.journal.signaler.titre'), message: phrase, journal: journal || '' };
   for (const langue of [langueCockpit(), 'fr']) {
     const chemin = path.join(dossier, 'support.' + langue + '.twig');
     let source;
@@ -79,25 +79,25 @@ function signaler(msg) {
   const j = journalDe(msg.rang);
   const r = rapportErreur.emettreRapport({
     gravite: 'erreur', source: 'lanceur', code: 'LANCEUR-SIGNALEMENT',
-    etape: T('lanceur.journal.signaler.titre'), message: phrase,
+    etape: T('accueil.journal.signaler.titre'), message: phrase,
     journal: j ? rapportErreur.lireExtraitFichier(j.chemin) : null,
     langueInterface: langueCockpit(), vscodiumVersion: ctx.versionEditeur()
   });
   const issue = r.ecrit ? 'fait' : (r.enAttente ? 'attente' : 'refuse');
   ctx.ouvrirDossier(journaux.dossierJournaux());
   ctx.ouvrirLien(uriMailto(brouillonSupport(phrase, j && j.chemin)));
-  ctx.envoyer({ type: MSG.LANCEUR_SIGNALE, issue, courriel: true });
+  ctx.envoyer({ type: MSG.ACCUEIL_SIGNALE, issue, courriel: true });
 }
 
 // Rend vrai si le message est l'un des siens.
 function surMessage(msg) {
-  if (msg.type === MSG.LANCEUR_JOURNAL_LIRE) { lire(msg); return true; }
-  if (msg.type === MSG.LANCEUR_JOURNAL_EDITEUR) {
+  if (msg.type === MSG.ACCUEIL_JOURNAL_LIRE) { lire(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_JOURNAL_EDITEUR) {
     const j = journalDe(msg.rang);
     if (j) { ctx.ouvrirEditeur(j.chemin); }
     return true;
   }
-  if (msg.type === MSG.LANCEUR_SIGNALER) { signaler(msg); return true; }
+  if (msg.type === MSG.ACCUEIL_SIGNALER) { signaler(msg); return true; }
   return false;
 }
 

@@ -1,5 +1,5 @@
 // Les services en ligne (Shlink, OJS) vus de la chaîne de fabrication : l'adresse et les deux
-// clés, copiées en mémoire par le lanceur (lib/lanceur-reglages-hote.js), et les variables
+// clés, copiées en mémoire par l'Accueil (lib/accueil-reglages-hote.js), et les variables
 // d'environnement que lib/moteur.js pose sur chaque appel à la WSL. wsl.exe ne transmet une
 // variable que si WSLENV la nomme, avec /u pour un passage Windows vers WSL seulement.
 // Module pur : ni vscode, ni disque, et une clé n'en sort que dans un env, jamais dans un texte.

@@ -14,12 +14,12 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const util = require(path.join(COCKPIT, 'lib', 'webviews', 'util.js'));
 
-// __TXT__ est le marqueur réel de media/lanceur.js (`var TXT = __TXT__;`) : ce test
+// __TXT__ est le marqueur réel de media/accueil.js (`var TXT = __TXT__;`) : ce test
 // rejoue l'assemblage tel qu'extension.js le fait, pas un marqueur inventé qui n'apparaîtrait
 // nulle part dans le fragment.
 test('construireHtml : un remplacement JSON contenant « </script> » ne referme jamais la balise', () => {
   const donnee = JSON.stringify({ texte: '</script><script>alert(1)</script>' });
-  const html = util.construireHtml('lanceur', 'abc123', {
+  const html = util.construireHtml('accueil', 'abc123', {
     cssPartage: ['_design.css'],
     remplacements: { '__TXT__': donnee }
   });
@@ -36,7 +36,7 @@ test('construireHtml : un remplacement JSON contenant « </script> » ne referme
 
 test('construireHtml : un remplacement JSON sans "<" traverse sans y toucher', () => {
   const donnee = JSON.stringify({ texte: 'Bonjour, ceci est un texte normal.' });
-  const html = util.construireHtml('lanceur', 'abc123', {
+  const html = util.construireHtml('accueil', 'abc123', {
     cssPartage: ['_design.css'],
     remplacements: { '__TXT__': donnee }
   });
@@ -45,7 +45,7 @@ test('construireHtml : un remplacement JSON sans "<" traverse sans y toucher', (
 });
 
 test('construireHtml : le titre est échappé en HTML', () => {
-  const html = util.construireHtml('lanceur', 'abc123', {
+  const html = util.construireHtml('accueil', 'abc123', {
     cssPartage: ['_design.css'],
     titre: '<script>alert(1)</script> & "citation"'
   });
@@ -55,7 +55,7 @@ test('construireHtml : le titre est échappé en HTML', () => {
 });
 
 test('construireHtml : un titre ordinaire n’est pas défiguré par l’échappement', () => {
-  const html = util.construireHtml('lanceur', 'abc123', { cssPartage: ['_design.css'], titre: 'Réglages' });
+  const html = util.construireHtml('accueil', 'abc123', { cssPartage: ['_design.css'], titre: 'Réglages' });
   assert.match(html, /<title>Réglages<\/title>/);
 });
 
@@ -63,9 +63,9 @@ test('construireHtml : le document porte la langue de l’interface', () => {
   const avant = process.env.SZH_LANGUE;
   try {
     process.env.SZH_LANGUE = 'de';
-    assert.match(util.construireHtml('lanceur', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="de">/);
+    assert.match(util.construireHtml('accueil', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="de">/);
     process.env.SZH_LANGUE = 'fr';
-    assert.match(util.construireHtml('lanceur', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="fr">/);
+    assert.match(util.construireHtml('accueil', 'abc123', { cssPartage: ['_design.css'] }), /<html lang="fr">/);
   } finally {
     if (avant === undefined) { delete process.env.SZH_LANGUE; } else { process.env.SZH_LANGUE = avant; }
   }

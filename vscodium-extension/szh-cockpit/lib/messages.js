@@ -124,30 +124,30 @@ const MSG = Object.freeze({
   BASCULER: 'basculer', REVELE: 'revele', SCROLL_SOURCE: 'scrollSource',
   SCROLL: 'scroll', SURLIGNER: 'surligner',
 
-  // Lanceur dans l'éditeur (media/lanceur.js). ONGLET : l'onglet que la page vient d'ouvrir.
+  // Accueil (media/accueil.js). ONGLET : l'onglet que la page vient d'ouvrir.
   // Produits et Nouveau : ouvrir une entrée, la fenêtre des versions, créer une entrée et
   // le refus éventuel de l'hôte.
-  LANCEUR_ONGLET: 'lanceurOnglet', LANCEUR_OUVRIR: 'lanceurOuvrir', LANCEUR_VERSIONS: 'lanceurVersions',
-  LANCEUR_CREER: 'lanceurCreer', LANCEUR_CREE: 'lanceurCree',
+  ACCUEIL_ONGLET: 'accueilOnglet', ACCUEIL_OUVRIR: 'accueilOuvrir', ACCUEIL_VERSIONS: 'accueilVersions',
+  ACCUEIL_CREER: 'accueilCreer', ACCUEIL_CREE: 'accueilCree',
   // Préprocessing : choisir ou déposer un manuscrit, interrompre, ouvrir le document, le
   // rapport ou leur dossier ; l'hôte envoie ses réglages, le début, chaque étape et l'issue.
-  LANCEUR_PREPROC_CHOISIR: 'lanceurPreprocChoisir', LANCEUR_PREPROC_DEPOSER: 'lanceurPreprocDeposer',
-  LANCEUR_PREPROC_INTERROMPRE: 'lanceurPreprocInterrompre', LANCEUR_PREPROC_OUVRIR: 'lanceurPreprocOuvrir',
-  LANCEUR_PREPROC_ETAT: 'lanceurPreprocEtat', LANCEUR_PREPROC_DEBUT: 'lanceurPreprocDebut',
-  LANCEUR_PREPROC_ETAPE: 'lanceurPreprocEtape', LANCEUR_PREPROC_FIN: 'lanceurPreprocFin',
+  ACCUEIL_PREPROC_CHOISIR: 'accueilPreprocChoisir', ACCUEIL_PREPROC_DEPOSER: 'accueilPreprocDeposer',
+  ACCUEIL_PREPROC_INTERROMPRE: 'accueilPreprocInterrompre', ACCUEIL_PREPROC_OUVRIR: 'accueilPreprocOuvrir',
+  ACCUEIL_PREPROC_ETAT: 'accueilPreprocEtat', ACCUEIL_PREPROC_DEBUT: 'accueilPreprocDebut',
+  ACCUEIL_PREPROC_ETAPE: 'accueilPreprocEtape', ACCUEIL_PREPROC_FIN: 'accueilPreprocFin',
   // Secrétariat : la page demande une tâche ou le chargement des numéros publiés ; l'hôte
   // annonce le début, relaie chaque ligne JSON de secretariat-cli.js telle quelle, puis
   // l'issue, chaque fois avec la commande concernée.
-  LANCEUR_EXPORTER: 'lanceurExporter', LANCEUR_OJS_CHARGER: 'lanceurOjsCharger',
-  LANCEUR_INTERROMPRE: 'lanceurInterrompre', LANCEUR_AFFICHER: 'lanceurAfficher',
-  LANCEUR_DEBUT: 'lanceurDebut', LANCEUR_LIGNE: 'lanceurLigne', LANCEUR_FIN: 'lanceurFin',
+  ACCUEIL_EXPORTER: 'accueilExporter', ACCUEIL_OJS_CHARGER: 'accueilOjsCharger',
+  ACCUEIL_INTERROMPRE: 'accueilInterrompre', ACCUEIL_AFFICHER: 'accueilAfficher',
+  ACCUEIL_DEBUT: 'accueilDebut', ACCUEIL_LIGNE: 'accueilLigne', ACCUEIL_FIN: 'accueilFin',
   // Log : lire la fin d'un journal, l'ouvrir en entier, signaler un problème.
-  LANCEUR_JOURNAL_LIRE: 'lanceurJournalLire', LANCEUR_JOURNAL_TEXTE: 'lanceurJournalTexte',
-  LANCEUR_JOURNAL_EDITEUR: 'lanceurJournalEditeur',
-  LANCEUR_SIGNALER: 'lanceurSignaler', LANCEUR_SIGNALE: 'lanceurSignale',
+  ACCUEIL_JOURNAL_LIRE: 'accueilJournalLire', ACCUEIL_JOURNAL_TEXTE: 'accueilJournalTexte',
+  ACCUEIL_JOURNAL_EDITEUR: 'accueilJournalEditeur',
+  ACCUEIL_SIGNALER: 'accueilSignaler', ACCUEIL_SIGNALE: 'accueilSignale',
   // Paramètres : un service en ligne (adresse ou clé) à poser ou à effacer, et l'ordre de l'hôte
   // d'ouvrir un onglet (szh.reglages). Les autres réglages passent par REGLER.
-  LANCEUR_SERVICE: 'lanceurService', LANCEUR_ALLER: 'lanceurAller'
+  ACCUEIL_SERVICE: 'accueilService', ACCUEIL_ALLER: 'accueilAller'
 });
 
 module.exports = { MSG };

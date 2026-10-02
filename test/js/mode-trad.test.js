@@ -5,12 +5,12 @@
 //
 // Ce que ce fichier garde :
 //   * LE PIÈGE. Un mode qui détourne TOUS les clics peut s'enfermer : allumé, si l'onglet
-//     Paramètres du lanceur détournait les siens, on ne pourrait plus l'éteindre — plus aucun bouton ne
+//     Paramètres de l'Accueil détournait les siens, on ne pourrait plus l'éteindre — plus aucun bouton ne
 //     répondrait, dans aucun panneau, et il faudrait éditer C:\ProgramData\SZH\config.json à
 //     la main. C'est LE défaut à empêcher, et il ne se voit sur aucune capture d'écran : la
 //     page a l'air normale, elle ne répond simplement plus. Trois contrôles le gardent — la
-//     barre d'onglets du lanceur et l'onglet Paramètres sont exemptés (data-trad-exempt), le
-//     reste du lanceur détourne, et le formulaire de suggestion ne détourne jamais.
+//     barre d'onglets de l'Accueil et l'onglet Paramètres sont exemptés (data-trad-exempt), le
+//     reste de l'Accueil détourne, et le formulaire de suggestion ne détourne jamais.
 //   * LE MODE QUI NE SE VOIT PAS. Un outil dont plus aucun bouton ne répond, sans un mot,
 //     passe pour cassé. Le bandeau et son bouton de sortie sont éprouvés ici, dans la vraie
 //     page : c'est le défaut vécu la veille avec la pastille du vérificateur — module juste,
@@ -445,17 +445,17 @@ test('Échap éteint le mode depuis n’importe quel panneau', () => {
 
 // ---- LE GARDE-FOU : les réglages ne se détournent JAMAIS -------------------------------
 
-// Les réglages vivent dans l'onglet Paramètres du lanceur : la page détourne ses clics comme les
+// Les réglages vivent dans l'onglet Paramètres de l'Accueil : la page détourne ses clics comme les
 // autres, SAUF sa barre d'onglets et cet onglet (data-trad-exempt), de quoi toujours éteindre le mode.
 const { ouvrirReglages: ouvrirParametres } = require('./page-reglages');
 
-test('lanceur : la barre d’onglets et l’onglet Paramètres ne détournent rien, mode allumé compris', () => {
+test('accueil : la barre d’onglets et l’onglet Paramètres ne détournent rien, mode allumé compris', () => {
   const p = ouvrirParametres();
   const page = p.page;
-  // Le lanceur demande l'état du mode comme tout panneau : c'est l'hôte qui décide.
-  assert.ok(demande(page), 'le lanceur ne demande pas l’état du mode : l’index ne lui viendrait jamais');
+  // L'Accueil demande l'état du mode comme tout panneau : c'est l'hôte qui décide.
+  assert.ok(demande(page), 'l’Accueil ne demande pas l’état du mode : l’index ne lui viendrait jamais');
   allumer(page);
-  assert.strictEqual(bandeaux(page), 1, 'aucun bandeau dans le lanceur : il ne dit pas qu’il est détourné');
+  assert.strictEqual(bandeaux(page), 1, 'aucun bandeau dans l’Accueil : il ne dit pas qu’il est détourné');
   const radios = p.tous('input');
   assert.ok(radios.length > 0, 'l’onglet Paramètres n’a pas rendu ses groupes');
   cliquer(page, radios[0]);
@@ -465,10 +465,10 @@ test('lanceur : la barre d’onglets et l’onglet Paramètres ne détournent ri
   cliquer(page, p.parId('onglet-reglages'));
   assert.strictEqual(detournes(page).length, 0,
     'ON NE PEUT PLUS REJOINDRE LES PARAMÈTRES : la barre d’onglets détourne ses clics');
-  // Le reste du lanceur, lui, est détourné : sans quoi le mode ne relirait rien dans cette page.
+  // Le reste de l'Accueil, lui, est détourné : sans quoi le mode ne relirait rien dans cette page.
   cliquer(page, poserBouton(page, 'Ouvrir l’article'));
   assert.strictEqual(detournes(page).length, 1,
-    'hors barre d’onglets et Paramètres, le lanceur ne détourne pas ses clics');
+    'hors barre d’onglets et Paramètres, l’Accueil ne détourne pas ses clics');
 });
 
 test('réglages : le mode s’allume et s’éteint depuis un vrai bouton radio', () => {
@@ -495,7 +495,7 @@ test('réglages : les suggestions d’interface se comptent et leur dossier s’
     'le bouton est muet ; messages : ' + JSON.stringify(p.messages));
   // Le compte arrive avec les valeurs, et se lit en toutes lettres.
   p.envoyer({ type: 'valeurs', valeurs: {}, suggInterface: 3 });
-  const dit = TEXTES_COCKPIT.fr['lanceur.regl.sugg.plus'].split('{0}').join('3');
+  const dit = TEXTES_COCKPIT.fr['accueil.regl.sugg.plus'].split('{0}').join('3');
   assert.ok(p.panneau.textContent.includes(dit),
     'le compte des suggestions ne s’affiche pas : ' + JSON.stringify(dit));
 });
@@ -603,7 +603,7 @@ test('formulaire : une cible absente reste le geste d’avant, sur un article', 
 // tant que sa garde n'est pas posée.
 
 // Les seuls gestionnaires qui ne détournent JAMAIS, nommés par leur fonction d'accueil. Les
-// réglages n'en font plus partie : ils vivent dans le lanceur, qui détourne mais exempte sa barre
+// réglages n'en font plus partie : ils vivent dans l'Accueil, qui détourne mais exempte sa barre
 // d'onglets et l'onglet Paramètres (éprouvés plus haut), de quoi toujours éteindre le mode.
 const PANNEAUX_SANS_MODE_TRAD = {
   montrerPanneauSuggestion:

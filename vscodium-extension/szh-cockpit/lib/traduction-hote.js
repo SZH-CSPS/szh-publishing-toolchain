@@ -462,7 +462,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
 //
 // ⚠ LE FORMULAIRE DE SUGGESTION NE BRANCHE PAS repondreModeTrad, et c'est le premier garde-fou
 //   du mode, pas un oubli : c'est lui que le mode ouvre. Il ne reçoit jamais l'index, et la page
-//   le redit de son côté (SZH.modeTradJamais). Le lanceur, lui, le branche, mais sa barre
+//   le redit de son côté (SZH.modeTradJamais). L'Accueil, lui, le branche, mais sa barre
 //   d'onglets et son onglet Paramètres, où l'on éteint le mode, gardent leurs clics
 //   (data-trad-exempt, media/_commun.js).
 const panneauxTrad = new Set();

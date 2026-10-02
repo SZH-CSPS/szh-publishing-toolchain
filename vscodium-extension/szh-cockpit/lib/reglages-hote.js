@@ -1,4 +1,4 @@
-// Les réglages « SZH » de l'onglet Paramètres du lanceur : leurs valeurs, leurs écritures, les
+// Les réglages « SZH » de l'onglet Paramètres de l'Accueil : leurs valeurs, leurs écritures, les
 // réglages protégés (relais, état, fichier à transmettre) et le fichier de langue de l'interface. Impur (panneau, dialogues, disque) ;
 // les rappels vers l'hôte passent par configurer() plus bas, jamais par require('../extension').
 'use strict';
@@ -330,14 +330,14 @@ function lireReglagesActuels() {
     // Déclaré par l'onglet Préprocessing : tant qu'il ne l'est pas, null masque la ligne.
     formatTravail: lireFormatTravail()
     // Le mode développeur (dossiers de test) ne fait plus partie de cet état : il se lit
-    // et s'écrit dans lib/lanceur-reglages-hote.js.
+    // et s'écrit dans lib/accueil-reglages-hote.js.
   };
 }
 
 // Les quatre blocs « Auteur·e·s publiés » (OJS), « Bibliographie », « Tâches par
 // article » et « Export OJS » n'ont de sens que pour une revue/Zeitschrift : pas
 // d'export OJS pour un livre, donc rien de tout cela à régler. On ne les envoie même
-// pas — media/lanceur.js (montrer) ne révèle leur <section> que si la donnée arrive, et
+// pas — media/accueil.js (montrer) ne révèle leur <section> que si la donnée arrive, et
 // une donnée absente la laisse masquée, titre compris.
 function messageValeursReglages() {
   const msg = {
@@ -354,9 +354,9 @@ function messageValeursReglages() {
   return msg;
 }
 
-// Les messages de la page des réglages (onglet Paramètres du lanceur). `repondre(message)` écrit à
+// Les messages de la page des réglages (onglet Paramètres de l'Accueil). `repondre(message)` écrit à
 // la page ; ceux que ce module ne connaît pas (services, produit, mise à jour…) sont traités par
-// lib/lanceur-reglages-hote.js, qui l'appelle en dernier. Rend vrai quand le message est traité.
+// lib/accueil-reglages-hote.js, qui l'appelle en dernier. Rend vrai quand le message est traité.
 async function traiterMessage(msg, repondre, rafraichirTout) {
   // ---- Les réglages protégés ----
   //

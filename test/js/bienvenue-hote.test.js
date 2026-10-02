@@ -1,7 +1,7 @@
-// lib/accueil-hote.js chargé seul, sans extension.js : l'invitation au tutoriel se pose une
+// lib/bienvenue-hote.js chargé seul, sans extension.js : l'invitation au tutoriel se pose une
 // fois, et « Quoi de neuf » ouvre son panneau sans rien demander à l'hôte.
 //
-//   node --test test/js/accueil-hote.test.js
+//   node --test test/js/bienvenue-hote.test.js
 'use strict';
 
 const test = require('node:test');
@@ -38,7 +38,7 @@ function charger() {
     }
   };
   Module._load = function (r, p, i) { return r === 'vscode' ? faux : orig(r, p, i); };
-  try { return require(path.join(COCKPIT, 'lib', 'accueil-hote.js')); }
+  try { return require(path.join(COCKPIT, 'lib', 'bienvenue-hote.js')); }
   finally { Module._load = orig; }
 }
 
@@ -47,7 +47,7 @@ function contexte() {
   return { globalState: { get: (c) => etat.get(c), update: (c, v) => { etat.set(c, v); return Promise.resolve(); } } };
 }
 
-test('accueil-hote seul : le tutoriel est proposé une fois, puis plus jamais', async () => {
+test('bienvenue-hote seul : le tutoriel est proposé une fois, puis plus jamais', async () => {
   const m = charger();
   const ctx = contexte();
   vu.infos = [];
@@ -57,7 +57,7 @@ test('accueil-hote seul : le tutoriel est proposé une fois, puis plus jamais', 
   assert.equal(ctx.globalState.get(m.CLE_TUTORIEL_VU), true);
 });
 
-test('accueil-hote seul : « Quoi de neuf » ouvre un seul panneau et répond à PRET', async () => {
+test('bienvenue-hote seul : « Quoi de neuf » ouvre un seul panneau et répond à PRET', async () => {
   const m = charger();
   vu.panneaux = [];
   m.montrerNouveautes('1.0');
