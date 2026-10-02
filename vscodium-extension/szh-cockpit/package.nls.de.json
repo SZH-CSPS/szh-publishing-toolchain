@@ -69,7 +69,7 @@
   "config.reduireWarningsImpression": "Nur bei wirklich zu kleinen Bildern warnen: der Hinweis «empfohlene Auflösung» erscheint nicht mehr, das Minimum wird weiterhin geprüft.",
   "config.desactiverLiensReferences": "Zitatverweise beim Kompilieren nicht mehr automatisch mit ihrem Literaturverzeichniseintrag verknüpfen. Von Hand gesetzte Links («Verweis mit einer Referenz verknüpfen») sind davon nicht betroffen.",
   "config.nomUtilisateur": "Name, der anderen Computern angezeigt wird, wenn Sie eine Datei der Ausgabe bearbeiten. Leer = der Windows-Anmeldename.",
-  "config.formatTravail": "Standard-Arbeitsformat. Das Format, das das Preprocessing erzeugt, sofern beim Start nichts anderes gewählt wird.",
+  "config.formatTravail": "Standard-Arbeitsformat. Das Format, das die Vorverarbeitung erzeugt, sofern beim Start nichts anderes gewählt wird.",
   "config.controlePdfUa": "PDF/UA-Barrierefreiheit nach jeder Kompilierung im Hintergrund prüfen.",
   "cmd.lierReference": "Verweis mit einer Referenz verknüpfen",
   "cmd.tutoriel": "Einstieg (Tutorial)",

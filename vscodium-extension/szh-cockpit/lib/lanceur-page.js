@@ -13,7 +13,7 @@ function textesLanceur() {
     ongletProduits: T('lanceur.onglet.produits'), ongletNouveau: T('lanceur.onglet.nouveau'),
     ongletPreproc: T('lanceur.preproc'), ongletSecretariat: T('lanceur.secretariat'),
     ongletReglages: T('lanceur.reglages'), ongletJournal: T('lanceur.journal'),
-    avenir: T('lanceur.avenir'), annuler: T('lanceur.annuler'), modeTest: T('lanceur.modetest'),
+    annuler: T('lanceur.annuler'), modeTest: T('lanceur.modetest'),
 
     prodChoix: T('lanceur.produits.choix'), prodEnCours: T('lanceur.produits.encours'),
     prodArchives: T('lanceur.produits.archives'), prodArchivesVide: T('lanceur.produits.archives.vide'),

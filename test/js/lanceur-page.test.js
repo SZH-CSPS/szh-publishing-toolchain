@@ -268,7 +268,6 @@ test('préprocessing : le produit d’office vient de l’hôte, et choisir un m
   clic(parId(p, 'onglet-preproc'));
   assert.deepStrictEqual(visibles(p), ['panneau-preproc']);
   const panneau = parId(p, 'panneau-preproc');
-  assert.ok(!panneau.textContent.includes(TXT.avenir), 'le Préprocessing n’est plus « à venir »');
   // Le livre n'a pas de nettoyeur : deux produits seulement, la revue en attendant l'hôte.
   assert.deepStrictEqual(tous(p, 'input[name="produit-pp"]').map((r) => r.value), ['revue', 'zeitschrift']);
   assert.deepStrictEqual(coche(p, 'produit-pp'), ['revue']);
