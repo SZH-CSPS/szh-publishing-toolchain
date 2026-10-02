@@ -6,9 +6,6 @@ engagements.
 - **Ranger `vscodium-extension/szh-cockpit/lib/` en sous-dossiers par domaine** (commun,
   publication, documentation, secrétariat), sur le modèle de `lib/webviews/`. C'est utile
   seulement si les tests suivent sans réécriture.
-- **Multiplateforme** : l'étape 1 de [`../MULTIPLATEFORME.md`](../MULTIPLATEFORME.md)
-  (abstraire `poste.js` et `moteur.js` sans rien changer sous Windows) rend service même
-  sans la suite.
 - **Textes amont des patchs WeasyPrint** : à réécrire avec ses propres mots puis à poster,
   si Robin le décide. Voir [`../../image/patches/amont/README.md`](../../image/patches/amont/README.md).
 - **`_chemin_wsl_exe` et `_requete`** restent en double dans le Python du nettoyeur, faute

@@ -408,8 +408,8 @@ test('Invoke-SzhNodeCockpit lit stdout sans bloquer, et aucune API interdite ne 
     assert.ok(source.indexOf('StandardOutput.ReadLine()') === -1, nom + ' lit stdout de façon bloquante (ReadLine)');
   }
   const shell = fs.readFileSync(path.join(dossierWindows, 'szh-shell.ps1'), 'utf8');
-  assert.ok(shell.indexOf('StandardOutput.ReadLineAsync()') !== -1,
-    'Invoke-SzhNodeCockpit ne lit plus stdout de façon asynchrone (ReadLineAsync)');
+  assert.ok(shell.indexOf('StandardOutput.ReadToEndAsync()') !== -1,
+    'Invoke-SzhNodeCockpit ne lit plus stdout de façon asynchrone (ReadToEndAsync)');
 });
 
 test('secretariat : le dossier des gabarits ne s\'affiche plus nulle part', () => {

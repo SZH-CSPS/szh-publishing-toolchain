@@ -285,8 +285,6 @@ lib/
   webviews/panneau.js   panneauUnique() : singleton, fermeture, mode Trad et poignée PRET de
                         chaque panneau
 outils/
-  auteurs-cli.js        moissonnage des auteur·e·s publiés (lib/auteurs-ojs.js) ; plus aucun
-                        appelant depuis le retrait du lanceur WinForms
   rendre-gabarit.js     rend un gabarit Twig par lib/gabarits.js pour le socle PowerShell
   compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
                         Node de VSCodium ; --purger supprime ce qui a plus de 24 mois

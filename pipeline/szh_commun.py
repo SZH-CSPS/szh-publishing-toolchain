@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import unicodedata
+import urllib.request
 
 # ---------------------------------------------------------------------------------------
 # Constat au rédacteur : une ligne, préfixe fixe (propre à l'appelant), deuxième champ un
@@ -286,6 +287,21 @@ def titre_lignes(titre):
 def titre_plat(titre):
     """« A // B » -> « A B »."""
     return ' '.join(titre_lignes(titre))
+
+
+# ---------------------------------------------------------------------------------------
+# Requête HTTP : le seul GET du nettoyeur (Crossref, ROR, ORCID). Chaque appelant garde son
+# propre `_requete(url, delai)`, point d'injection des tests, et y passe son User-Agent.
+# ---------------------------------------------------------------------------------------
+
+def requete_http(url, delai, user_agent):
+    """Les octets de la réponse JSON attendue. Ne lève rien de plus que urllib : un code HTTP
+    est une HTTPError, un délai dépassé ou une connexion refusée une OSError. L'analyse du
+    corps reste à l'appelant."""
+    req = urllib.request.Request(url, headers={'User-Agent': user_agent,
+                                               'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=delai) as reponse:
+        return reponse.read()
 
 
 # ---------------------------------------------------------------------------------------

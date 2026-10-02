@@ -789,38 +789,26 @@ function ConvertTo-SzhArguments([string[]]$Valeurs) {
   return (($Valeurs | ForEach-Object { ConvertTo-SzhArgumentEchappe $_ }) -join ' ')
 }
 
-# Le script d'outils\ demandé, dans l'extension du cockpit la plus récente. Sans lever avec
-# -SansLever (rend '') ; sinon lève -MessageAbsent s'il est donné, ou un message précis
-# (dossier d'extension absent, ou script absent de ce dossier).
+# Le script d'outils\ demandé, dans l'extension du cockpit la plus récente. Lève un message
+# précis (dossier d'extension absent, ou script absent de ce dossier).
 function Get-SzhOutilCockpit {
   param(
-    [Parameter(Mandatory = $true)][string]$Outil,
-    [switch]$SansLever,
-    [string]$MessageAbsent = ''
+    [Parameter(Mandatory = $true)][string]$Outil
   )
   $dossierCockpit = Get-SzhDossierCockpit
   if ($dossierCockpit) {
     $scriptCandidat = Join-Path $dossierCockpit ('outils\' + $Outil)
     if (Test-Path -LiteralPath $scriptCandidat) { return $scriptCandidat }
   }
-  if ($SansLever) { return '' }
-  if ($MessageAbsent) { throw $MessageAbsent }
   if (-not $dossierCockpit) { throw 'dossier de l''extension du cockpit introuvable' }
   throw ('outils\' + $Outil + ' introuvable dans ' + $dossierCockpit)
 }
 
-# Lance un script d'outils\ sous VSCodium-en-Node. Trois façons de s'en servir :
-#   * aller-retour : -Entree (objet, converti en JSON, ou texte JSON déjà prêt) sur stdin,
-#     tout stdout rendu dans .Sortie ;
-#   * suivi ligne à ligne : -SurLigne reçoit chaque ligne non vide de stdout pendant que le
-#     processus tourne, l'interface est pompée entre deux lignes et -EtatAnnulation (table de
-#     hachage portant .annule) interrompt le processus ;
-#   * -SansAttendre : lancé puis oublié, aucun flux lu, rend .Demarre seulement.
-# -SurLigne s'exécute dans une portée fille : il modifie des objets (table de hachage,
-# ArrayList), il n'affecte aucune variable. Rend .Demarre, .CodeSortie, .Sortie, .Erreur
-# (stderr, vide après une annulation et, en suivi ligne à ligne, après une sortie réussie) et .Annule.
+# Lance un script d'outils\ sous VSCodium-en-Node : -Entree (objet, converti en JSON, ou texte
+# JSON déjà prêt) sur stdin, tout stdout rendu dans .Sortie. Rend .Demarre, .CodeSortie,
+# .Sortie et .Erreur (stderr).
 #
-# stdout ET stderr sont lus par des Task .NET (ReadToEndAsync / ReadLineAsync), jamais par un
+# stdout ET stderr sont lus par des Task .NET (ReadToEndAsync), jamais par un
 # gestionnaire d'évènement PowerShell (add_ErrorDataReceived, BeginErrorReadLine) : celui-ci
 # s'exécute hors pipeline et a tué le processus PowerShell entier sur ce poste, sans
 # exception à attraper. La lecture de stderr démarre AVANT toute autre lecture ou écriture,
@@ -831,23 +819,14 @@ function Invoke-SzhNodeCockpit {
     [string]$Codium = '',
     [string[]]$Arguments = @(),
     $Entree = $null,
-    [scriptblock]$SurLigne = $null,
-    $EtatAnnulation = $null,
-    [hashtable]$Environnement = @{},
-    [switch]$SansAttendre,
-    [switch]$SansLever,
-    [string]$MessageAbsent = ''
+    [hashtable]$Environnement = @{}
   )
-  $resultat = [pscustomobject]@{ Demarre = $false; CodeSortie = $null; Sortie = ''; Erreur = ''; Annule = $false }
+  $resultat = [pscustomobject]@{ Demarre = $false; CodeSortie = $null; Sortie = ''; Erreur = '' }
   if (-not $Codium) {
     $Codium = Get-VSCodiumExe
-    if (-not $Codium) {
-      if ($SansLever) { return $resultat }
-      throw 'VSCodium introuvable sur ce poste'
-    }
+    if (-not $Codium) { throw 'VSCodium introuvable sur ce poste' }
   }
-  $cheminOutil = Get-SzhOutilCockpit -Outil $Outil -SansLever:$SansLever -MessageAbsent $MessageAbsent
-  if (-not $cheminOutil) { return $resultat }
+  $cheminOutil = Get-SzhOutilCockpit -Outil $Outil
 
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $Codium
@@ -856,13 +835,6 @@ function Invoke-SzhNodeCockpit {
   $psi.CreateNoWindow = $true
   $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
   foreach ($nomVariable in $Environnement.Keys) { $psi.EnvironmentVariables[[string]$nomVariable] = [string]$Environnement[$nomVariable] }
-
-  if ($SansAttendre) {
-    $lance = [System.Diagnostics.Process]::Start($psi)
-    if ($lance) { $lance.Dispose() }
-    $resultat.Demarre = $true
-    return $resultat
-  }
 
   $psi.RedirectStandardOutput = $true
   $psi.RedirectStandardError = $true
@@ -876,10 +848,7 @@ function Invoke-SzhNodeCockpit {
     [void]$processus.Start()
     $resultat.Demarre = $true
     $tacheErreur = $processus.StandardError.ReadToEndAsync()
-    $tacheSortie = $null
-    $tacheLigne = $null
-    if ($SurLigne) { $tacheLigne = $processus.StandardOutput.ReadLineAsync() }
-    else { $tacheSortie = $processus.StandardOutput.ReadToEndAsync() }
+    $tacheSortie = $processus.StandardOutput.ReadToEndAsync()
 
     if ($null -ne $Entree) {
       $texteEntree = $Entree
@@ -890,40 +859,11 @@ function Invoke-SzhNodeCockpit {
       $processus.StandardInput.Close()
     }
 
-    if ($SurLigne) {
-      while ($true) {
-        $annulePendant = $false
-        while (-not $tacheLigne.IsCompleted) {
-          if ($EtatAnnulation -and $EtatAnnulation.annule) { $annulePendant = $true; break }
-          [System.Windows.Forms.Application]::DoEvents()
-          [System.Threading.Thread]::Sleep(25)
-        }
-        if ($annulePendant) {
-          try { if (-not $processus.HasExited) { $processus.Kill() } } catch { }
-          $resultat.Annule = $true
-          break
-        }
-        # .Result d'une Task en faute lève une AggregateException : fin de flux.
-        $ligne = $null
-        try { $ligne = $tacheLigne.Result } catch { $ligne = $null }
-        if ($null -eq $ligne) { break }
-        $ligneVue = $ligne.TrimStart([char]0xFEFF).Trim()
-        if ($ligneVue) { & $SurLigne $ligneVue }
-        $tacheLigne = $processus.StandardOutput.ReadLineAsync()
-      }
-      if ($resultat.Annule) {
-        try { [void]$processus.WaitForExit(3000) } catch { }
-        return $resultat
-      }
-      $processus.WaitForExit()
-    } else {
-      [System.Threading.Tasks.Task]::WaitAll(@($tacheSortie, $tacheErreur))
-      $processus.WaitForExit()
-      $resultat.Sortie = $tacheSortie.Result.TrimStart([char]0xFEFF)
-    }
+    [System.Threading.Tasks.Task]::WaitAll(@($tacheSortie, $tacheErreur))
+    $processus.WaitForExit()
+    $resultat.Sortie = $tacheSortie.Result.TrimStart([char]0xFEFF)
     $resultat.CodeSortie = $processus.ExitCode
-    # En suivi ligne à ligne, stderr ne se lit que sur un échec : un petit-fils qui garderait le tube ouvert ne doit pas bloquer une sortie réussie.
-    if ((-not $SurLigne) -or $resultat.CodeSortie -ne 0) { $resultat.Erreur = $tacheErreur.Result }
+    $resultat.Erreur = $tacheErreur.Result
     return $resultat
   } finally {
     try {

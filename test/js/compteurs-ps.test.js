@@ -1,6 +1,6 @@
 // Les compteurs d'usage n'ont qu'un écrivain, lib/compteurs.js (éprouvé par
-// compteurs-cli.test.js et compteurs.test.js) : le jumeau PowerShell a disparu, et rien sous
-// windows/ ne le charge ni ne l'appelle plus.
+// compteurs.test.js) : le jumeau PowerShell a disparu, et rien sous windows/ ne le charge ni
+// ne l'appelle plus.
 //
 //   node --test test/js/compteurs-ps.test.js
 'use strict';
@@ -20,5 +20,5 @@ test('le jumeau PowerShell a disparu : plus de fichier, plus de dot-source, plus
     assert.ok(!/szh-compteurs\.ps1|Write-SzhCompteurs|Clear-SzhCompteursEnAttente|Get-SzhCompteursPassage/.test(texte),
       f + ' référence encore l’écrivain PowerShell des compteurs');
   }
-  assert.ok(fs.existsSync(path.join(COCKPIT, 'outils', 'compteurs-cli.js')));
+  assert.ok(!fs.existsSync(path.join(COCKPIT, 'outils', 'compteurs-cli.js')));
 });

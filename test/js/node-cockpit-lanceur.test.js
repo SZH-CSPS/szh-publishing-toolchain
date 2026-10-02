@@ -1,7 +1,7 @@
 // windows/szh-shell.ps1 : Invoke-SzhNodeCockpit, le seul lanceur des scripts d'outils\ sous
 // VSCodium-en-Node. Preuve dynamique, contre un faux « VSCodium » (le node.exe de ce poste,
-// ELECTRON_RUN_AS_NODE y est sans effet) et un faux outil : aller-retour JSON, suivi ligne à
-// ligne, annulation, lancement sans attente, variables d'environnement propres à l'appelant.
+// ELECTRON_RUN_AS_NODE y est sans effet) et un faux outil : aller-retour JSON, code de sortie,
+// outil introuvable, variables d'environnement propres à l'appelant.
 // Le faux outil écrit DEUX BOM : le lecteur .NET en retire déjà un, le second prouve que la
 // fonction tolère ce qui reste.
 'use strict';
@@ -33,11 +33,6 @@ const FAUX_OUTIL = [
   "  process.stderr.write('petit message d\\u2019erreur\\n');",
   "  process.stdout.write('\\ufeff\\ufeff{\"t\":\"etape\",\"texte\":\"un é\"}\\n\\n{\"t\":\"fin\",\"ok\":true}\\nligne brute\\n');",
   "  process.exit(3);",
-  "} else if (mode === 'long') {",
-  "  process.stdout.write('{\"t\":\"etape\"}\\n');",
-  "  setTimeout(() => {}, 30000);",
-  "} else if (mode === 'marque') {",
-  "  fs.writeFileSync(process.argv[3], 'lance');",
   "}",
 ].join('\n') + '\n';
 
@@ -90,64 +85,34 @@ test('Invoke-SzhNodeCockpit : aller-retour JSON en UTF-8, BOM de sortie toléré
     assert.strictEqual(r.brut, 'brut', 'un texte JSON déjà prêt doit partir tel quel');
   });
 
-test('Invoke-SzhNodeCockpit : suivi ligne à ligne (lignes vides et BOM écartés), stderr et code de sortie',
+test('Invoke-SzhNodeCockpit : stdout, stderr et code de sortie d\'un outil qui échoue',
   { skip: sansPowerShell }, () => {
     const { run, r, travail } = executer(() => [
-      '$etat = @{ lignes = New-Object System.Collections.ArrayList }',
-      '$surLigne = { param($texteLigne) [void]$etat.lignes.Add($texteLigne) }',
-      '$rep = Invoke-SzhNodeCockpit -Outil "faux-outil.js" -Codium $faux -Arguments @("lignes") -SurLigne $surLigne',
-      '$r.lignes = @($etat.lignes)',
+      '$rep = Invoke-SzhNodeCockpit -Outil "faux-outil.js" -Codium $faux -Arguments @("lignes")',
       '$r.code = $rep.CodeSortie',
       '$r.erreur = $rep.Erreur.Trim()',
-      '$r.annule = $rep.Annule',
+      '$r.sortie = $rep.Sortie',
     ]);
     fs.rmSync(travail, { recursive: true, force: true });
     assert.ok(r, 'le pilote n\'a rien produit - ' + run.stderr);
-    assert.deepStrictEqual(r.lignes, ['{"t":"etape","texte":"un é"}', '{"t":"fin","ok":true}', 'ligne brute']);
     assert.strictEqual(r.code, 3);
-    assert.strictEqual(r.erreur, 'petit message d\u2019erreur');
-    assert.strictEqual(r.annule, false);
+    assert.strictEqual(r.erreur, 'petit message d’erreur');
+    assert.ok(r.sortie.includes('{"t":"fin","ok":true}'), 'stdout entier attendu dans .Sortie');
   });
 
-test('Invoke-SzhNodeCockpit : le drapeau d\'annulation tue le processus sans attendre sa fin',
-  { skip: sansPowerShell }, () => {
-    const { run, r, travail } = executer(() => [
-      '$etat = @{ annule = $false }',
-      '$surLigne = { param($texteLigne) $etat.annule = $true }',
-      '$chrono = [Diagnostics.Stopwatch]::StartNew()',
-      '$rep = Invoke-SzhNodeCockpit -Outil "faux-outil.js" -Codium $faux -Arguments @("long") -SurLigne $surLigne -EtatAnnulation $etat',
-      '$r.annule = $rep.Annule',
-      '$r.secondes = $chrono.Elapsed.TotalSeconds',
-      '$r.erreur = $rep.Erreur',
-    ]);
-    fs.rmSync(travail, { recursive: true, force: true });
-    assert.ok(r, 'le pilote n\'a rien produit - ' + run.stderr);
-    assert.strictEqual(r.annule, true);
-    assert.ok(r.secondes < 20, 'l\'annulation a attendu la fin du processus : ' + r.secondes + ' s');
-    assert.strictEqual(r.erreur, '', 'stderr ne se lit pas après une annulation');
-  });
+test('Invoke-SzhNodeCockpit : un outil introuvable lève, sans mode muet', { skip: sansPowerShell }, () => {
+  const { run, r, travail } = executer(() => [
+    '$r.leve = $false',
+    'try { [void](Invoke-SzhNodeCockpit -Outil "inexistant.js" -Codium $faux) } catch { $r.leve = $_.Exception.Message }',
+  ]);
+  fs.rmSync(travail, { recursive: true, force: true });
+  assert.ok(r, 'le pilote n\'a rien produit - ' + run.stderr);
+  assert.match(r.leve, /outils\\inexistant\.js introuvable/);
+});
 
-test('Invoke-SzhNodeCockpit : -SansAttendre lance sans rien lire, -SansLever passe son tour sans outil',
-  { skip: sansPowerShell }, () => {
-    const marque = path.join(os.tmpdir(), 'szh-node-cockpit-marque-' + process.pid);
-    fs.rmSync(marque, { force: true });
-    const { run, r, travail } = executer(() => [
-      '$rep = Invoke-SzhNodeCockpit -Outil "faux-outil.js" -Codium $faux -Arguments @("marque", "' + marque + '") -SansAttendre',
-      '$r.demarre = $rep.Demarre',
-      '$absent = Invoke-SzhNodeCockpit -Outil "inexistant.js" -Codium $faux -SansAttendre -SansLever',
-      '$r.absentDemarre = $absent.Demarre',
-      '$r.leve = $false',
-      'try { [void](Invoke-SzhNodeCockpit -Outil "inexistant.js" -Codium $faux -MessageAbsent "outil-absent") } catch { $r.leve = $_.Exception.Message }',
-    ]);
-    // Le processus lancé sans attente écrit sa marque un instant plus tard.
-    const fin = Date.now() + 10000;
-    while (!fs.existsSync(marque) && Date.now() < fin) { /* attente courte */ }
-    const marqueEcrite = fs.existsSync(marque);
-    fs.rmSync(marque, { force: true });
-    fs.rmSync(travail, { recursive: true, force: true });
-    assert.ok(r, 'le pilote n\'a rien produit - ' + run.stderr);
-    assert.strictEqual(r.demarre, true);
-    assert.strictEqual(r.absentDemarre, false);
-    assert.strictEqual(r.leve, 'outil-absent');
-    assert.ok(marqueEcrite, 'le processus lancé sans attente n\'a jamais tourné');
-  });
+test('Invoke-SzhNodeCockpit et Get-SzhOutilCockpit : plus de suivi ligne à ligne, d\'annulation, de lancement sans attente ni de mode muet', () => {
+  const source = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
+  for (const mort of ['SurLigne', 'EtatAnnulation', 'SansAttendre', 'SansLever', 'MessageAbsent']) {
+    assert.ok(!source.includes(mort), 'szh-shell.ps1 porte encore ' + mort);
+  }
+});

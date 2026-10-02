@@ -17,7 +17,7 @@
 # titre_est_biblio() ; heritage_meta.py, la bibliothèque de docx-meta.py, pour
 # nettoyer_doi()/RE_DOI/langue_du_doi()/decouper_prenom_nom()/nom_plausible().
 #
-# stdlib seule : re, json, difflib, urllib.request. Délai réseau court (défaut 4 s) — un
+# stdlib seule : re, json, difflib, urllib. Délai réseau court (défaut 4 s) — un
 # Crossref lent ne doit jamais bloquer le nettoyage d'un manuscrit.
 
 import difflib
@@ -27,7 +27,6 @@ import re
 import sys
 import urllib.error
 import urllib.parse
-import urllib.request
 
 _ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _ICI)
@@ -1368,9 +1367,7 @@ def _interroger(url, delai):
 
 
 def _requete(url, delai):
-    req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'application/json'})
-    with urllib.request.urlopen(req, timeout=delai) as reponse:
-        return reponse.read()
+    return szh_commun.requete_http(url, delai, USER_AGENT)
 
 
 def _annee_crossref(message):

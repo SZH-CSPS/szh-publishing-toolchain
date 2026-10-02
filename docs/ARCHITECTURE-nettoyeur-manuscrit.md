@@ -1467,7 +1467,7 @@ exception.
   `stats_annotation['devenir']`) ; un `<Id>` qui ne suit pas `^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+$`
   (64 signes au plus) devient `Autre`. Un passage qui n'a pas couru jusqu'au bout (refus, plantage)
   ne porte que `issue.*`, `produit.*`, `format.entree.odt` et `duree_ms`.
-- **Ce que le lanceur en fait.** Il recopie `compteurs` dans un CSV (`outils/compteurs-cli.js`, un
+- **Ce que le cockpit en fait.** Il recopie `compteurs` dans un CSV (`lib/compteurs.js`, un
   fichier par passage) et n'écrit un rapport d'erreur `NETTOYEUR-ECHEC` que pour un défaut du
   logiciel : plantage, code de sortie inattendu, `lecture-impossible`, `perte-de-contenu`, échec du
   rendu HTML, environnement pas prêt. Les refus attendus (`fichier-verrou`, `extension-inconnue`,

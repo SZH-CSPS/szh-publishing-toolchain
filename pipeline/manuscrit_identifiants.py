@@ -25,9 +25,9 @@ import json
 import re
 import urllib.error
 import urllib.parse
-import urllib.request
 
 import pronto_modele
+import szh_commun
 
 CONTACT_DEPOT = 'redaction@csps.ch'
 USER_AGENT = 'SZH-Publishing-manuscrit-identifiants/1.0 (mailto:%s)' % CONTACT_DEPOT
@@ -48,10 +48,7 @@ RE_ROR = re.compile(r'^(?:https?://)?(?:ror\.org/)?(0[0-9a-hj-km-np-tv-z]{6}[0-9
 # Réseau — le seul endroit qui le touche.
 
 def _requete(url, delai):
-    req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT,
-                                               'Accept': 'application/json'})
-    with urllib.request.urlopen(req, timeout=delai) as reponse:
-        return reponse.read()
+    return szh_commun.requete_http(url, delai, USER_AGENT)
 
 
 class _Introuvable(Exception):
