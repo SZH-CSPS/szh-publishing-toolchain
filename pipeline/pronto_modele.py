@@ -1319,60 +1319,8 @@ def _avertir_bloc_mal_forme(tableau, rang, slug):
     avertir('bloc-mal-forme', champs, fr, de)
 
 
-# ---------------------------------------------------------------------------------
-# Point d'intégration du DIALOGUE pour `bloc-mal-forme` — PAS IMPLÉMENTÉ ICI (le lecteur
-# Pronto n'est branché nulle part : pipeline/import-docx.sh appelle encore l'ancienne chaîne,
-# et le cockpit est en plein chantier par un autre agent, interdit d'accès ici). Ce qui suit
-# est ce qu'il faudra faire au branchement, lu dans les trois fichiers concernés (lecture
-# seule, aucun n'est modifié par ce chantier) :
-#
-# 1. RIEN N'EST STRICTEMENT REQUIS pour que ce code s'affiche dans le panneau des contrôles.
-#    La ligne « [import-avertissement] bloc-mal-forme | … | <fr> | [de] <de> » que avertir()
-#    écrit ici suit exactement le format des codes déjà SANS entrée dédiée (bloc-contenu-
-#    absent, auteur-etiquette-inconnue…) : lib/journal.js (analyserJournal -> lireConstatCode)
-#    lui donne le ton « attention » par défaut — un code absent de TONS_IMPORT prend le ton du
-#    préfixe « import-avertissement », jamais « danger » — et affiche notre phrase française
-#    ou allemande TELLE QUELLE en repli (constat.brut, faute d'entrée dans CLES_IMPORT). Et
-#    lib/constats.js (entree()/phrase()) fait de même quand aucune ligne 'import/bloc-mal-
-#    forme' n'existe dans sa TABLE : gravite() rend 'avert' (ambre), phrase() rend
-#    String(constat.brut). Le message bilingue de _repere_bloc_mal_forme() ci-dessus — qui
-#    porte déjà la page, le rang et l'étiquette — est donc, à lui seul, ce qui s'affichera.
-#
-# 2. CE QUI MANQUE VRAIMENT, c'est la MODALE que la rédaction demande : contrairement à la
-#    plupart des avertissements d'import, qui se lisent tranquillement dans le panneau des
-#    contrôles, celui-ci mérite d'interrompre — la personne doit rouvrir son Word avant de
-#    continuer, sans quoi elle publie en croyant une légende lue alors qu'elle ne l'est pas.
-#    lib/import-hote.js pose déjà le point d'accroche naturel : lancerConversion() appelle,
-#    après une compilation réussie et juste avant de rendre la main, `await
-#    ctx.ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux)` — `nouveaux` est la liste
-#    des slugs fraîchement importés, et une modale de vérification y est DÉJÀ levée aujourd'hui
-#    (l'implémentation réelle de ouvrirImportVerif est câblée par configurer(), dans
-#    extension.js — hors de portée ici). Il faudra, à cet endroit précis :
-#      a. relire le journal d'import pour les codes 'bloc-mal-forme' dont le slug est dans
-#         `nouveaux` — lib/journal.js expose déjà analyserJournal() et slugsCompiles() pour ça,
-#         qui rendent chacun un constat { source: 'import', code: 'bloc-mal-forme', slug, … } ;
-#      b. faire dépendre l'ouverture (ou le contenu) de cette modale de leur présence, pour
-#         qu'elle les distingue des autres avertissements — pas une ligne de plus dans une
-#         liste qu'on referme sans lire, mais un état qui arrête la personne, puisque c'est
-#         justement le silence que ce garde-fou existe pour casser.
-#
-# 3. SI un jour ces mêmes codes traversent aussi le RÉIMPORT (reimporter.py, dont la réponse
-#    JSON est lue par constatsReimport() dans lib/journal.js), il faudra alors AJOUTER une
-#    entrée CLES_IMPORT['bloc-mal-forme'] (et sa clé i18n) : constatsReimport() FILTRE déjà
-#    tout code dont la clé est vide — « un code sans clé d'i18n ne doit donc pas donner une
-#    carte muette — il est écarté » (commentaire de journal.js lui-même) — sans cette entrée,
-#    l'avertissement de ce garde-fou disparaîtrait silencieusement sur CE chemin-là
-#    précisément, l'exact silence qu'il existe pour empêcher. Le chemin d'import ORDINAIRE
-#    (point 1 ci-dessus) n'a pas ce problème : il ne filtre rien par défaut.
-#
-# 4. Si une clé i18n et une ligne TABLE de lib/constats.js sont ajoutées malgré tout (pour
-#    poser un bouton sur la carte) : rester barrage: null (rien n'est bloqué, le tableau reste
-#    simplement imprimé, comme le dit le message) et nature: 'defaut'. `lieu: 'word'`
-#    (LIEUX.word -> commande szh.vueWord, la seule vue d'où l'on redépose un Word corrigé)
-#    conviendrait, mais SANS focusChamp : ce garde-fou ne pose pas de champ « fichier » dans
-#    ses champs d'avertissement (seulement article/tableau/page/etiquette, voir
-#    _avertir_bloc_mal_forme ci-dessus) — en poser un supposerait de faire aussi porter le nom
-#    du Word source à avertir(), ce que ce module ne fait pas aujourd'hui.
+# Côté cockpit, `bloc-mal-forme` a sa ligne de TABLE (lib/constats.js), sa clé CLES_IMPORT
+# (lib/journal.js) et une modale après l'import (lib/import-hote.js).
 
 
 def _avertir_champ_hors_gabarit(champ, etiquette, valeur, slug):
@@ -1873,19 +1821,9 @@ def serialiser_meta(meta):
 # Aucun mot-clé n'est jamais écrit dans la fiche : ils sont choisis dans le cockpit, jamais
 # lus dans le document.
 #
-# ── Ce que pandoc perd aujourd'hui, dans les deux formats (mesuré sur pandoc 3.5) ──────────
-# `pandoc -f docx+styles` existe et enveloppe chaque paragraphe dans un Div portant
-# `custom-style` = le nom du style Word. `pandoc -f odt+styles` N'EXISTE PAS : « The
-# extension styles is not supported for odt ». Et SANS `+styles` — la chaîne actuelle
-# (pipeline/import-docx.sh) ne l'emploie pas — les styles de corps du gabarit (« SZH
-# Important », « SZH Hervorhebung », « SZH Question (interview) », « Quote ») sont perdus
-# par pandoc, en .docx COMME en .odt : ils sortent en Para nu. Un auteur qui emploie un
-# encadré « SZH Important » dans le gabarit le perd donc aujourd'hui en silence, dans les
-# deux formats. Le jour où l'on voudra les conserver, ce sera au LECTEUR (qui, lui, voit les
-# styles dans le XML source, via ce module neutre) d'émettre des instructions pour ces
-# paragraphes — pas à `docx+styles`, qui n'a pas d'équivalent OpenDocument et créerait deux
-# chaînes différentes selon le format déposé. NE PAS L'IMPLÉMENTER ICI : ce n'est pas
-# demandé, et ce parser n'est branché nulle part.
+# Les styles de corps du gabarit (« SZH Important », « SZH Hervorhebung », « SZH Question
+# (interview) ») ne passent pas par ce module : pandoc les perd, docx-styles-corps.py les
+# marque dans une copie du .docx avant pandoc (étape 3 bis d'import-docx.sh).
 
 def principal(blocs, chemin_source, slug, dossier, produit='', variantes=None):
     """`produit` est le jeton `revue:` du numéro (« revue » | « zeitschrift »), d'où vient la
