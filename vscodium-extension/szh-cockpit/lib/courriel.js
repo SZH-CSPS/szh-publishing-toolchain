@@ -8,6 +8,7 @@ const path = require('path');
 
 const { compiler } = require('./gabarits');
 const { FORME_MAIL, adresseMailTraduction } = require('./archivage');
+const { COURRIEL_SUPPORT } = require('./codes-erreur');
 
 const DOSSIER_GABARITS = path.join(__dirname, '..', 'mail-templates');
 
@@ -93,6 +94,15 @@ function brouillonTraduction(produit, quoi, lien) {
   return { destinataire: adresseMailTraduction(produit), sujet: rendu.sujet, corps: rendu.corps };
 }
 
+// Le courriel au support après un signalement depuis les Contrôles. Il nomme le fichier du
+// rapport pour que le support le retrouve, jamais le texte de l'article ; un client de
+// messagerie tronque un mailto trop long, d'où la borne.
+const CORPS_SUPPORT_MAX = 1500;
+function brouillonSupport(langue, variables) {
+  const rendu = rendreCourriel('support', langue, variables);
+  return { destinataire: COURRIEL_SUPPORT, sujet: rendu.sujet, corps: rendu.corps.slice(0, CORPS_SUPPORT_MAX) };
+}
+
 // L'adresse n'est pas encodée : sa forme est vérifiée par adresseMailTraduction (ou par
 // FORME_MAIL pour un auteur), qui ne laisse passer aucun caractère réservé. Sujet et corps
 // le sont, eux : accents, guillemets et retours à la ligne d'un corps entier n'y
@@ -105,5 +115,6 @@ function uriMailto(brouillon) {
 
 module.exports = {
   rendreCourriel, normaliserRenduCourriel, adressesAuteurs, brouillonAuteur, brouillonTraduction,
+  brouillonSupport,
   LANGUE_MAIL_TRADUCTION, uriMailto
 };

@@ -1,0 +1,15 @@
+{# support.fr.twig : courriel au support depuis une carte des Contrôles ou la notification d'un échec de compilation #}
+{% block sujet %}Pronto – problème de compilation ({{ poste }}){% endblock %}
+{% block corps %}
+Bonjour,
+
+Pronto a rencontré un problème que l’outil ne sait pas corriger.
+
+Poste : {{ poste }}
+Numéro : {{ numero }}
+Contrôle : {{ controle }}{% if article is not empty %}
+Article : {{ article }}{% endif %}
+Rapport : {{ rapport }}
+
+Merci.
+{% endblock %}

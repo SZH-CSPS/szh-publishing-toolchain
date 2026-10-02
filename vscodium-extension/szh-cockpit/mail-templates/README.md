@@ -1,7 +1,8 @@
 # Gabarits de courriel
 
 Un fichier par courriel et par langue : `nom.langue.twig` (`envoi-auteur.fr.twig`,
-`envoi-auteur.de.twig`, `traduction.fr.twig`, `traduction.de.twig`). La langue manquante
+`envoi-auteur.de.twig`, `traduction.fr.twig`, `traduction.de.twig`, `support.fr.twig`,
+`support.de.twig`). La langue manquante
 retombe sur `.fr.twig` — voir `lib/courriel.js`, `rendreCourriel(nom, langue, variables)`.
 
 Chaque gabarit porte deux blocs obligatoires :
@@ -18,6 +19,9 @@ Variables disponibles :
 - `envoi-auteur` : `titre` (titre de l'article), `numero` (titre du numéro), `auteurs`
   (liste des noms d'auteurs, pour un usage futur), `langue`.
 - `traduction` : `quoi`, `lien`, `produit` (`zeitschrift` ou `revue`), `langue`.
+- `support` : `poste`, `numero` (dossier du numéro), `controle` (`source/code` du constat),
+  `article` (slug, vide pour le numéro), `rapport` (chemin du fichier de rapport, ou la raison de
+  son absence). Jamais de texte d'article.
 
 Syntaxe reconnue (sous-ensemble de Twig, texte brut, sans échappement) : `{{ variable }}`,
 `{{ a.b.c }}`, littéraux `'texte'`, `3`, `true`, `false`, `null` ; les filtres `default(x)`,

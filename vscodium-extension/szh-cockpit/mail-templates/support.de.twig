@@ -1,0 +1,15 @@
+{# support.de.twig : E-Mail an den Support aus einer Karte der Prüfungen oder der Meldung eines Kompilierfehlers #}
+{% block sujet %}Pronto – Problem bei der Kompilierung ({{ poste }}){% endblock %}
+{% block corps %}
+Guten Tag
+
+Pronto ist auf ein Problem gestossen, das das Werkzeug nicht selbst beheben kann.
+
+Computer: {{ poste }}
+Ausgabe: {{ numero }}
+Prüfung: {{ controle }}{% if article is not empty %}
+Artikel: {{ article }}{% endif %}
+Bericht: {{ rapport }}
+
+Danke.
+{% endblock %}

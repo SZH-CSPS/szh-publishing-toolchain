@@ -20,6 +20,7 @@
 
 const vscode = require('vscode');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const { T, TL, TP, langueCockpit } = require('./i18n');
@@ -38,6 +39,7 @@ const { imagesSansAlternative } = require('./references');
 const { differer } = require('./interaction');
 const compteurs = require('./compteurs');
 const rapportErreur = require('./rapport-erreur');
+const courriel = require('./courriel');
 const { analyserMeta, langueRevue } = require('./yaml');
 const { libelleArticle, prefixeDossier, titreFiche } = require('./articles');
 
@@ -453,6 +455,14 @@ function signalerConstat(fournisseur, id) {
     constats: [constat],
     langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
   });
+  // Le support est prévenu par un brouillon de courriel qui nomme le fichier du rapport.
+  const rapport = r.chemin || (r.etouffe ? T('ctl.support.rapport.deja', [r.id || ''])
+    : T('ctl.support.rapport.absent'));
+  const brouillon = courriel.brouillonSupport(langueCockpit(), {
+    poste: os.hostname(), numero: path.basename(racine), controle: cle, article: slug, rapport: rapport
+  });
+  try { vscode.env.openExternal(vscode.Uri.parse(courriel.uriMailto(brouillon))); }
+  catch (e) { /* sans client de messagerie, le rapport reste écrit */ }
   if (r.ecrit) { return T('ctl.signaler.fait'); }
   if (r.enAttente) { return T('ctl.signaler.attente'); }
   if (r.etouffe) { return T('ctl.signaler.deja'); }

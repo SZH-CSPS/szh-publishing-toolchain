@@ -596,6 +596,7 @@ function ecrireRapportSurDisque(dossier, rapport) {
   } finally {
     try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
   }
+  return cible;
 }
 
 // Les fichiers .json de la file d'attente, du plus ancien au plus récent (mtime) — pour
@@ -701,7 +702,8 @@ function genererId(horodatage, poste) {
 //
 // Rend TOUJOURS { ecrit, enAttente, etouffe, id, motif } — jamais ne lève (D5). `motif`
 // documente pourquoi rien n'a été écrit (mal-forme, signature-recente, plafond-jour,
-// ecriture-impossible, exception-interne), ou reste null sur un succès.
+// ecriture-impossible, exception-interne), ou reste null sur un succès. `chemin`, le
+// fichier écrit, s'ajoute quand le rapport est écrit ou mis en attente.
 function emettreRapport(champs) {
   try {
     const c = champs || {};
@@ -790,9 +792,9 @@ function emettreRapport(champs) {
     const dossierCible = resoudreDossierRapports(ancrage);
     if (dossierCible) {
       try {
-        ecrireRapportSurDisque(dossierCible, rapport);
+        const chemin = ecrireRapportSurDisque(dossierCible, rapport);
         console.log('[rapport-erreur] ' + id + ' écrit (' + c.code + ').');
-        return { ecrit: true, enAttente: false, etouffe: false, id: id, motif: null };
+        return { ecrit: true, enAttente: false, etouffe: false, id: id, motif: null, chemin: chemin };
       } catch (e) {
         console.log('[rapport-erreur] dossier de rapports injoignable (' + ((e && e.message) || e) + '), mise en attente.');
         // tombe dans la file ci-dessous
@@ -802,10 +804,10 @@ function emettreRapport(champs) {
     }
 
     try {
-      ecrireRapportSurDisque(cheminDossierAttente(), rapport);
+      const chemin = ecrireRapportSurDisque(cheminDossierAttente(), rapport);
       purgerFileAttente();
       console.log('[rapport-erreur] ' + id + ' mis en attente.');
-      return { ecrit: false, enAttente: true, etouffe: false, id: id, motif: null };
+      return { ecrit: false, enAttente: true, etouffe: false, id: id, motif: null, chemin: chemin };
     } catch (e2) {
       // D5, la règle absolue : un échec d'écriture ne produit PAS un second rapport (pas de
       // boucle sur RAPPORT-ECHEC-ECRITURE, jamais écrit en JSON — voir codes-erreur.js) ;

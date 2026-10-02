@@ -13,6 +13,8 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 // Les notifications sorties, avec leurs boutons ; les commandes lancées ; la réponse à donner.
 const notifs = [];
 const commandes = [];
+// Les liens ouverts hors de l'éditeur (le brouillon de courriel au support).
+const liens = [];
 let reponse;
 
 function charger() {
@@ -25,7 +27,7 @@ function charger() {
   };
   const faux = {
     version: '1.0.0-essai',
-    Uri: { file: (p) => ({ fsPath: p }) },
+    Uri: { file: (p) => ({ fsPath: p }), parse: (t) => ({ toString: () => t }) },
     window: {
       showErrorMessage: notifier('erreur'),
       showWarningMessage: notifier('avert'),
@@ -35,7 +37,7 @@ function charger() {
     StatusBarAlignment: { Left: 1 },
     commands: { executeCommand: async (...args) => { commandes.push(args); } },
     workspace: { getConfiguration: () => ({ get: (cle, defaut) => defaut }) },
-    env: { language: 'fr' },
+    env: { language: 'fr', openExternal: async (u) => { liens.push(String(u)); return true; } },
     ThemeColor: function ThemeColor(id) { this.id = id; }
   };
   Module._load = function (r, pp, i) { return r === 'vscode' ? faux : orig(r, pp, i); };
@@ -259,7 +261,7 @@ test('« Signaler » écrit un rapport COCKPIT-SIGNALEMENT, sans texte d’artic
   try {
     cartes([Object.assign(constat('pipeline', 'balisage-simple', SLUG), { brut: 'TEXTE-DE-L-ARTICLE' })]);
     const dit = await controles.actionControles(fournisseur, 'signaler:pipeline/balisage-simple:' + SLUG, SLUG);
-    assert.strictEqual(plat(dit), 'Signalement enregistré.');
+    assert.strictEqual(plat(dit), 'Signalement enregistré. Un courriel au support est prêt : envoyez-le.');
     const fichiers = fs.readdirSync(process.env.SZH_RAPPORTS).filter((n) => n.endsWith('.json'));
     assert.strictEqual(fichiers.length, 1, 'aucun rapport écrit');
     const texte = fs.readFileSync(path.join(process.env.SZH_RAPPORTS, fichiers[0]), 'utf8');
@@ -271,9 +273,17 @@ test('« Signaler » écrit un rapport COCKPIT-SIGNALEMENT, sans texte d’artic
     assert.ok(rapport.journal && rapport.journal.extrait.some((l) => /Error 1/.test(l)), 'le journal manque');
     assert.strictEqual(rapport.versions.vscodium, '1.0.0-essai');
     assert.ok(texte.indexOf('TEXTE-DE-L-ARTICLE') === -1, 'du texte d’article dans le rapport');
+    // Un brouillon de courriel au support, qui nomme le fichier du rapport et son chemin.
+    const courriel = liens.filter((l) => l.indexOf('mailto:') === 0).pop();
+    assert.ok(courriel, 'aucun courriel au support');
+    assert.match(courriel, /^mailto:robin.morand@szh.ch?/);
+    const corps = decodeURIComponent(courriel.split('&body=')[1] || '');
+    assert.ok(corps.indexOf(path.join(process.env.SZH_RAPPORTS, fichiers[0])) !== -1,
+      'le chemin du rapport manque au courriel : ' + corps);
+    assert.ok(corps.indexOf('TEXTE-DE-L-ARTICLE') === -1, 'du texte d’article dans le courriel');
     // Le même clic juste après : l'anti-inondation le retient, et l'écran ne prétend rien.
     const encore = await controles.actionControles(fournisseur, 'signaler:pipeline/balisage-simple:' + SLUG, SLUG);
-    assert.notStrictEqual(plat(encore), 'Signalement enregistré.');
+    assert.notStrictEqual(plat(encore), 'Signalement enregistré. Un courriel au support est prêt : envoyez-le.');
     assert.strictEqual(fs.readdirSync(process.env.SZH_RAPPORTS).filter((n) => n.endsWith('.json')).length, 1);
   } finally {
     fs.rmSync(journal, { force: true });
