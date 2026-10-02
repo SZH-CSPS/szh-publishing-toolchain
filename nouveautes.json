@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.3": {
+    "fr": {
+      "titre": "La date telle qu’elle sera imprimée",
+      "points": [
+        "Dans la Documentation, chaque champ de date affiche dessous la date telle qu’elle paraîtra dans le PDF.",
+        "Une date mal saisie ou impossible se signale aussitôt, et une date déjà enregistrée n’est plus jamais effacée par erreur.",
+        "Dans « D’une revue à l’autre », vous pouvez préremplir une fiche à partir d’un article de l’autre revue, en le cherchant par titre ou par nom.",
+        "Dans les livres FALC, l’encadré « écouter » guide le lecteur en deux étapes numérotées."
+      ]
+    },
+    "de": {
+      "titre": "Das Datum so, wie es gedruckt wird",
+      "points": [
+        "In der Dokumentation zeigt jedes Datumsfeld darunter das Datum so, wie es im PDF erscheinen wird.",
+        "Ein falsch eingegebenes oder unmögliches Datum wird sofort gemeldet, und ein bereits gespeichertes Datum wird nie mehr aus Versehen gelöscht.",
+        "Unter «Blick in die Revue» können Sie einen Eintrag aus einem Artikel der Revue vorausfüllen, den Sie nach Titel oder Name suchen.",
+        "In den Büchern in Leichter Sprache führt der Kasten zum Hören die Leserinnen und Leser in zwei nummerierten Schritten."
+      ]
+    }
+  },
   "3.2": {
     "fr": {
       "titre": "Réglages en une page, newsletter prête à coller",

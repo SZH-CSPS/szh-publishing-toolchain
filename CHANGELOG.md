@@ -11,6 +11,24 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.3.0
+
+Medium : la Documentation montre la date telle qu'elle sera imprimée, préremplit une reprise
+depuis l'autre revue, et ne perd plus une date hors calendrier ; l'encadré « écouter » des
+livres FALC passe en deux étapes numérotées.
+
+**Production.**
+- Documentation : sous chaque champ de date, la forme imprimée (« Imprimé : 29.06.–02.07.2026 »),
+  calculée par le même code que le PDF ; une date hors format ou impossible se signale sans
+  bloquer l'enregistrement.
+- Documentation : une date stockée qui n'existe pas au calendrier (30 février) n'est plus vidée
+  par le champ ni effacée à l'enregistrement suivant ; elle reste lisible et se signale.
+- « D'une revue à l'autre » : un bouton préremplit la fiche depuis un article de l'autre revue,
+  en cours ou archivé, avec confirmation avant d'écraser un champ rempli.
+- Actualité : « Publier sur le site web » ouvre une notice « fonctionnalité à venir ».
+- Livres FALC : l'encadré « écouter » dit « Scannez le code QR. », puis « Écoutez l'histoire. »,
+  en deux étapes numérotées dont les pastilles tiennent le contraste APCA.
+
 ## 3.2.1
 
 Mineure : un bouton Accueil dans la barre d'état, et une copie en conflit OneDrive se tranche en
