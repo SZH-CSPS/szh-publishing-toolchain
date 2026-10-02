@@ -1071,8 +1071,14 @@ async function relireJournal(fournisseur, code) {
     const bouton = T('ctl.notif.bouton');
     const ouvrir = () => vscode.commands.executeCommand('szh.vueControles');
     if (echecMuet) {
-      const choix = await vscode.window.showErrorMessage(T('ctl.notif.echec'), bouton);
+      // Le support se contacte d'ici, sans passer par la vue : même rapport que la carte.
+      const support = T('ctl.signaler');
+      const choix = await vscode.window.showErrorMessage(T('ctl.notif.echec'), bouton, support);
       if (choix === bouton) { await ouvrir(); }
+      if (choix === support) {
+        vscode.window.showInformationMessage(
+          signalerConstat(fournisseur, PREFIXE_SIGNALER + 'cockpit/compilation-echec:'));
+      }
       return;
     }
     if (r.bloquants > 0) {

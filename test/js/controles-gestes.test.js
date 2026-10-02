@@ -238,12 +238,12 @@ test('« Signaler » sur les cartes qui disent « signalez-le », et sur l’éc
   const signaler = messages.filter((m) => m.action && m.action.id.indexOf('signaler:') === 0);
   assert.deepStrictEqual(signaler.map((m) => m.action.id).sort(),
     ['signaler:cockpit/compilation-echec:', 'signaler:pipeline/balisage-simple:' + SLUG]);
-  assert.ok(signaler.every((m) => m.action.libelle === 'Signaler'));
+  assert.ok(signaler.every((m) => m.action.libelle === 'Contacter le support'));
   // Un défaut qui a son geste garde son bouton, sans « Signaler » à côté.
   const appel = messages.find((m) => /Sen, 2001/.test(m.texte));
   assert.ok(appel.action && appel.action.id.indexOf('article:') === 0);
   assert.strictEqual(plat(TL('fr', 'consigne.signaler')),
-    'Recompilez ; si le message revient, cliquez « Signaler ».');
+    'Recompilez ; si le message revient, contactez le support.');
 });
 
 test('« Signaler » écrit un rapport COCKPIT-SIGNALEMENT, sans texte d’article, et dit ce qui est vrai', async () => {

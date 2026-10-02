@@ -517,7 +517,7 @@ test('hôte : un arrêt que le journal ne sait pas nommer se dit quand même', a
   const msg = defauts(charge.lignes).find((m) => /PDF n’a pas pu être produit/.test(m.titre));
   assert.ok(msg, 'aucune carte dans la vue : ' + JSON.stringify(charge.lignes.map((l) => l.titre)));
   assert.strictEqual(msg.ton, 'danger');
-  assert.match(msg.consigne, /Enregistrez à nouveau/);
+  assert.match(msg.consigne, /Réessayez/);
   // Les dernières lignes du journal, pour qui saura les lire, en infobulle.
   assert.match(msg.infobulle, /szh-legendes\.lua:42/);
 });

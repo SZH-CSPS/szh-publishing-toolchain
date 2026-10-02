@@ -827,8 +827,10 @@ Désormais, **quand il y a quelque chose à dire, cela se dit** :
 En tête de page, **Tout recompiler** refait tout le numéro et tous les contrôles. Chaque
 carte d’article porte **Recompiler cet article**, qui ne refait que lui. Un point que
 l’outil ne sait pas expliquer, comme une compilation arrêtée sans cause reconnue, porte
-un bouton **Signaler** : il enregistre un signalement pour l’équipe qui entretient Pronto,
-avec la fin du journal de compilation.
+un bouton **Contacter le support** : il enregistre un signalement pour l’équipe qui
+entretient Pronto, avec la fin du journal de compilation. Quand une compilation s’arrête
+sans cause reconnue, la notification rouge porte aussi ce bouton : pas besoin d’ouvrir les
+Contrôles.
 
 [capture : la vue « Contrôles », deux sections, une carte par article, et une flèche au
 bout de chaque point]

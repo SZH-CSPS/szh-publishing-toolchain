@@ -14,7 +14,7 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 // Les éléments de barre d'état créés par installerBarres, dans l'ordre : compteur, badge PDF/UA.
 const barres = [];
 // Les notifications sorties, par ton, et les réglages lus par le module.
-const notifs = { erreurs: [], avertissements: [] };
+const notifs = { erreurs: [], avertissements: [], infos: [], boutons: [], reponse: undefined };
 const reglages = {};
 
 // Le module demande « vscode », que ce banc n'a pas : une doublure minimale suffit.
@@ -24,7 +24,8 @@ function charger() {
   const faux = {
     Uri: { file: (p) => ({ fsPath: p }) },
     window: {
-      showErrorMessage: async (m) => { notifs.erreurs.push(m); },
+      showErrorMessage: async (m, ...boutons) => { notifs.erreurs.push(m); notifs.boutons = boutons; return notifs.reponse; },
+      showInformationMessage: async (m) => { notifs.infos.push(m); },
       showWarningMessage: async (m) => { notifs.avertissements.push(m); },
       createStatusBarItem: () => {
         const item = { text: '', visible: false };
@@ -178,4 +179,42 @@ test('la même figure, validation PDF/UA éteinte : un avertissement partout', a
     assert.strictEqual(notifs.erreurs.length, 0, 'une erreur pour ce que la vue range en avertissement');
     assert.strictEqual(notifs.avertissements.length, 1);
   } finally { delete reglages.controlePdfUa; }
+});
+
+// Un arrêt que le journal ne sait pas nommer : la notification porte de quoi contacter le
+// support sans passer par la vue, et le clic écrit le même rapport que la carte.
+test('échec inconnu : la notification offre « Contacter le support », qui écrit le signalement', async () => {
+  const bac = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-support-'));
+  const avant = { SZH_RAPPORTS: process.env.SZH_RAPPORTS, LOCALAPPDATA: process.env.LOCALAPPDATA,
+                  SZH_BASE: process.env.SZH_BASE, SZH_ANCRAGE: process.env.SZH_ANCRAGE };
+  process.env.SZH_RAPPORTS = path.join(bac, 'rapports');
+  process.env.LOCALAPPDATA = path.join(bac, 'local');
+  process.env.SZH_BASE = path.join(bac, 'base');
+  delete process.env.SZH_ANCRAGE;
+  const journal = path.join(racine, '.szh-journal.log');
+  try {
+    controles.reinitialiser();
+    notifs.erreurs.length = 0;
+    notifs.infos.length = 0;
+    notifs.reponse = 'Contacter le support';
+    const fournisseur = { racine: racine, listerArticles: () => ['00-a', '01-b'],
+      _tablesArticle: () => [], _imagesArticle: () => [] };
+    fs.writeFileSync(journal, ['filters/szh-legendes.lua:42: attempt to index a nil value',
+      'make: *** [Makefile:310] Error 83', ''].join('\n'), 'utf8');
+    await controles.relireJournal(fournisseur, 2);
+    for (let i = 0; i < 5; i++) { await new Promise((r) => setImmediate(r)); }
+    assert.strictEqual(notifs.erreurs.length, 1, 'aucune notification d’échec');
+    assert.ok(notifs.boutons.indexOf('Contacter le support') !== -1,
+      'pas de bouton support dans la notification : ' + JSON.stringify(notifs.boutons));
+    const rapports = fs.existsSync(process.env.SZH_RAPPORTS)
+      ? fs.readdirSync(process.env.SZH_RAPPORTS).filter((n) => n.endsWith('.json')) : [];
+    const codes = rapports.map((n) => JSON.parse(fs.readFileSync(path.join(process.env.SZH_RAPPORTS, n), 'utf8')).code);
+    assert.ok(codes.indexOf('COCKPIT-SIGNALEMENT') !== -1, 'le clic n’a rien écrit : ' + JSON.stringify(codes));
+    assert.ok(notifs.infos.some((m) => /Signalement enregistré/.test(m)), 'le clic ne dit pas ce qui a eu lieu');
+  } finally {
+    notifs.reponse = undefined;
+    fs.rmSync(journal, { force: true });
+    for (const [k, v] of Object.entries(avant)) { if (v === undefined) { delete process.env[k]; } else { process.env[k] = v; } }
+    fs.rmSync(bac, { recursive: true, force: true });
+  }
 });
