@@ -42,6 +42,7 @@ const {
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE, rangDoi
 } = require('./articles');
 const { doiCalcule, FORME_DOI } = require('./export-ojs');
+const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 const verifMeta = require('./verif-meta');
 const {
   EXTENSIONS_IMAGE_IMPORT, TAILLE_MAX_IMAGE_IMPORT,
@@ -1619,7 +1620,7 @@ async function genererFeuilleVerif(fournisseur, filtre, panneau) {
     else { vscode.window.showErrorMessage(message); }
     return;
   }
-  await vscode.env.openExternal(vscode.Uri.file(cible));
+  await ouvrirAvecSysteme(cible, vscode);
   vscode.window.setStatusBarMessage(T('verif.ouverte', [modele.total]), 5000);
 }
 

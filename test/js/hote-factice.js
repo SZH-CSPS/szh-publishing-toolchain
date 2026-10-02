@@ -245,6 +245,10 @@ function activerHote(revue, opts) {
   const editeurActif = emetteur();
 
   const ouvertures = [];
+  // Ce que le cockpit ouvre avec l'application du système (lib/ouvrir-systeme.js) part dans
+  // la même liste : jamais un vrai explorer.exe lancé par un test.
+  require(path.join(cockpit, 'lib', 'ouvrir-systeme.js'))
+    .poserLanceur((programme, args) => { ouvertures.push(args[0]); });
 
   function fauxPanneau(type, titre) {
     const p = {

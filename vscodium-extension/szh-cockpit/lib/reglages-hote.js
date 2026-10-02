@@ -18,6 +18,7 @@ const suggestionTraduction = require('./suggestion-traduction');
 const { empreinteReglages } = require('./reglages-flotte');
 const { lireCache: lireCacheAuteursPublies } = require('./auteurs-ojs');
 const { ecrireAtomique, LIBELLES_TYPES, REVUES, TYPES_ARTICLE } = require('./yaml');
+const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 const { configOjs, ecrireConfigOjs, CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT } = require('./export-ojs');
 const {
   configBiblio, configAvecTitresBiblio, configAvecLiensDesactives, REVUES_BIBLIO, LANGUES_BIBLIO
@@ -391,7 +392,7 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
     const dossier = suggestionTraduction.dossierSuggestionsInterface();
     try { fs.mkdirSync(dossier, { recursive: true }); }
     catch (e) { /* déjà là, ou disque en lecture seule : openExternal le dira */ }
-    try { await vscode.env.openExternal(vscode.Uri.file(dossier)); }
+    try { await ouvrirAvecSysteme(dossier, vscode); }
     catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [dossier, String((e && e.message) || e)])); }
     return true;
   }

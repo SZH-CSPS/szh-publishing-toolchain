@@ -175,6 +175,9 @@ lib/
                         aucun appel WSL tant que le numéro n'a pas été paginé une
                         première fois. Rappelle l'hôte par configurer(), jamais par
                         import
+  ouvrir-systeme.js     ouvre un fichier ou un dossier avec l'application du système :
+                        explorer.exe et le chemin brut sous Windows, où le file:// encodé
+                        d'openExternal échoue sur un chemin accentué
   panneaux.js           les trois panneaux QuickPick
   pdfua-hote.js         validation PDF/UA en arrière-plan après une compilation réussie ;
                         badge par article (conforme/non conforme/en cours/outillage),
@@ -182,7 +185,7 @@ lib/
                         configurer(), jamais par import
   portraits.js          appel du script de détourage des photos, dans WSL
   poste.js              chemins du poste : base, toolkit, forme WSL, dossiers de
-                        l'utilisateur (LOCALAPPDATA, profil, bureau, VSCodium) et System32 ;
+                        l'utilisateur (LOCALAPPDATA, profil, bureau, VSCodium), Windows et System32 ;
                         seul module à lire ces variables d'environnement
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
                         articles/) ou livre (buch.yaml, chapitres/) —, ses chemins, et la

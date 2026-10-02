@@ -36,6 +36,7 @@ const {
   textesNumero, chargeNumero, messageNumero, imprimerFeuilleVerifTous, envoyerAuteursConnus
 } = metadonneesHote;
 const { adressesAuteurs, brouillonAuteur, uriMailto } = require('./courriel');
+const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 const { cibleTraduction } = require('./traduction-hote');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
@@ -1145,7 +1146,7 @@ async function voirPdfArticle(fournisseur, cible) {
 async function revelerDansExplorateur(uri) {
   try { await vscode.commands.executeCommand('revealFileInOS', uri); return; }
   catch (e) { /* pas d'intégration Explorateur */ }
-  try { await vscode.env.openExternal(vscode.Uri.file(path.dirname(uri.fsPath))); }
+  try { await ouvrirAvecSysteme(path.dirname(uri.fsPath), vscode); }
   catch (e) { /* rien de plus à tenter */ }
 }
 

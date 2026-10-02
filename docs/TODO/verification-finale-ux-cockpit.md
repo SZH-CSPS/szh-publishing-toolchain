@@ -97,6 +97,14 @@ Pour le provoquer sans toucher au toolkit de production : dans l'instance de dev
   - Son lien « Afficher la barre latérale » révèle la barre.
   - L'étape d'import se coche par le bouton ＋.
 
+## Ouvrir avec l'application du système (chemins accentués)
+
+Un fichier ou un dossier dont le chemin porte un accent ou un espace doit s'ouvrir, sans le message « Failed to open… (0x2) ».
+
+- [ ] **Feuille de vérification des métadonnées** (vue Articles → Vérifier les métadonnées).
+- [ ] **Paramètres → dossier des suggestions** de l'interface.
+- [ ] **Préprocessing → Ouvrir le document / Revoir le rapport.** Ces deux gestes sont rebranchés sur `lib/ouvrir-systeme.js` par la session de la bascule « accueil ». Les vérifier après sa fusion.
+
 ## Copies en conflit (OneDrive)
 
 - [ ] **Créer à la main `ausgabe - copie en conflit.yaml`** à côté d'`ausgabe.yaml`, avec une ligne différente.

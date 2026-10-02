@@ -67,11 +67,15 @@ function dossierEditeur() {
   return path.join(process.env.APPDATA || '', 'VSCodium');
 }
 
-// Un exécutable de System32, par chemin absolu pour ne pas dépendre du PATH.
+// Le dossier de Windows, et un exécutable de System32 par chemin absolu, pour ne pas
+// dépendre du PATH.
+function dossierWindows() {
+  return process.env.WINDIR || 'C:\\Windows';
+}
 function cheminSysteme(...segments) {
-  return path.join(process.env.WINDIR || 'C:\\Windows', 'System32', ...segments);
+  return path.join(dossierWindows(), 'System32', ...segments);
 }
 
 module.exports = {
   basePoste, resoudreToolkit, toolkitPoste, versWsl, toolkitWsl,
-  racineUtilisateur, dossierProfil, dossierBureau, dossierEditeur, cheminSysteme };
+  racineUtilisateur, dossierProfil, dossierBureau, dossierEditeur, dossierWindows, cheminSysteme };
