@@ -1,0 +1,106 @@
+# Banc d'essai du moteur livre, maquette « normal » — un OUVRAGE COLLECTIF.
+# Il pose le second jeu de valeurs du bloc mise-en-page (titre de chapitre au corps du
+# texte, auteur·e·s dessous, intertitres demi-gras, figures à filets, tableaux zébrés,
+# sommaire hiérarchique…). Texte factice : aucun livre réel, aucun nom réel.
+#
+# Ce qu'il éprouve :
+#   * chaque clé du bloc mise-en-page ailleurs qu'à sa valeur par défaut ;
+#   * les auteur·e·s de chapitre, lus dans chaque fiche, sous le titre et au sommaire ;
+#   * la numérotation des figures et des tableaux qui repart à chaque chapitre ;
+#   * un tableau nu de l'éditeur, un tableau markdown, un tableau zébré par l'éditeur ;
+#   * la structure : parties romaines sans page à elles (I, II, puis III avec une
+#     introduction et deux chapitres non numérotés), deux parties arabes sur page seule
+#     dont les chapitres sont numérotés 1.1, 1.2, 2.1, une partie V de notices en grille de
+#     portraits (images grises factices) ; des chapitres sans titre ; les éditeurs
+#     « (Hrsg.) » sur le demi-titre et la page de titre ; l'impressum complet.
+titre: "Lernen in Vielfalt"
+sous-titre: "Ein Sammelband für die Buchmaschine"
+ouvrage: collectif
+lang: de
+maquette: normal
+format: standard
+collection: "Prüfreihe der Buchmaschine"
+tome: "98"
+annee: 2026
+isbn-print: "978-3-905890-20-0"
+isbn-ebook: "978-3-905890-20-1"
+doi: "10.57161/b997"
+licence: cc-by-nc-nd-4.0
+couleur: "#5F9FBC"
+couleur-impression: bleu-acier
+auteurs: []
+editeurs:
+  - prenom: "Mira"
+    nom: "Beispiel"
+    affiliation: "SZH / CSPS"
+  - prenom: "Jonas"
+    nom: "Muster"
+    affiliation: "SZH / CSPS"
+ordre-chapitres: [i-vorwort, ii-einfuehrung, iii-einleitung, iii-fall-1, iii-fall-2, 01-grundlagen, 02-praxis, 03-ausblick, v-verzeichnis]
+liminaires: [demi-titre, impressum, page-titre, sommaire]
+parties:
+- titre: "Vorwort"
+  numero: "I"
+  chapitres: [i-vorwort]
+  page-seule: non
+- titre: "Einführung und Aufbau des Prüfbandes"
+  numero: "II"
+  chapitres: [ii-einfuehrung]
+  page-seule: non
+- titre: "Fallbeispiele"
+  numero: "III"
+  chapitres: [iii-einleitung, iii-fall-1, iii-fall-2]
+  page-seule: non
+- titre: "Grundlagen einer Pädagogik der Vielfalt im Prüfband"
+  numero: "1"
+  chapitres: [01-grundlagen, 02-praxis]
+  page-seule: oui
+  numeroter: oui
+- titre: "Ausblick auf die Buchmaschine"
+  numero: "2"
+  chapitres: [03-ausblick]
+  page-seule: oui
+  numeroter: oui
+- titre: "Verzeichnis der Autorinnen und Autoren"
+  numero: "V"
+  chapitres: [v-verzeichnis]
+  page-seule: non
+impressum:
+  logo-soutien: impressum/soutien.png
+  logo-soutien-alt: "Logo der Prüfstiftung"
+  soutien: "Gedruckt mit Unterstützung der Prüfstiftung für erfundene Bände."
+  credits: "Umschlag: Muster Grafik//Satz: Buchmaschine//Lektorat: Vorlage Text"
+  responsabilite: oui
+  imprimeur: "Gedruckt bei der Musterdruckerei, Beispielstadt"
+  logos-imprimeur: [impressum/druck-1.png, impressum/druck-2.png]
+mise-en-page:
+  folio: seul
+  alinea-mm: 7
+  liste-retrait-mm: 0
+  titre-chapitre: courant
+  auteurs-chapitre: dessous
+  numeros-chapitres: partie
+  titre-partie: titre
+  logo-page-titre: non
+  numeros-sections: aucun
+  intertitres: demi-gras
+  citation: romain
+  legende: dessus
+  numeros-figures: chapitre
+  cadre-figure: filets
+  tableaux: zebre
+  sommaire: hierarchique
+  sommaire-page: recto
+impression:
+  grammage: 90
+  main: 1.27
+  couverture-volume: 1.3
+  couverture-grammage:
+  colle-mm: 0
+  dos-mm:
+  fond-perdu-mm: 3
+  traits-de-coupe: true
+  profil-cmjn: ""
+locked: false
+archived: false
+version-toolkit: ""

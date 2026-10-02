@@ -86,11 +86,19 @@ def _valeur(brut):
     return v
 
 
+def _valeur_ou_liste(brut):
+    """Comme _valeur, mais « [a, b] » rend une liste : la forme en ligne d'une liste."""
+    v = brut.strip()
+    if v.startswith('[') and v.endswith(']'):
+        return [_valeur(x) for x in v[1:-1].split(',') if x.strip()]
+    return _valeur(v)
+
+
 def lire_yaml(chemin):
     """Rend un dict. Une passe, trois formes, et rien d'autre :
 
         cle: valeur              -> chaîne, booléen
-        cle: [a, b]              -> liste sur une ligne
+        cle: [a, b]              -> liste sur une ligne (aussi sous un tiret ou en sous-clé)
         cle:                     -> bloc, suivi soit de « - item » (liste), soit de
           sous-cle: valeur          lignes indentées (dict)
 
@@ -123,10 +131,8 @@ def lire_yaml(chemin):
             conteneur = None
             if v == '':
                 racine[cle] = None          # bloc : la ligne suivante dira lequel
-            elif v.startswith('[') and v.endswith(']'):
-                racine[cle] = [_valeur(x) for x in v[1:-1].split(',') if x.strip()]
             else:
-                racine[cle] = _valeur(v)
+                racine[cle] = _valeur_ou_liste(v)
             continue
 
         if cle is None:
@@ -139,7 +145,7 @@ def lire_yaml(chemin):
             item = nu[2:]
             if ':' in item:
                 c, _, v = item.partition(':')
-                conteneur.append({c.strip(): _valeur(v)})
+                conteneur.append({c.strip(): _valeur_ou_liste(v)})
             else:
                 conteneur.append(_valeur(item))
             continue
@@ -148,12 +154,12 @@ def lire_yaml(chemin):
             c, _, v = nu.partition(':')
             # Ligne indentée sous un tiret : elle complète le dernier item de la liste.
             if isinstance(conteneur, list) and conteneur and isinstance(conteneur[-1], dict):
-                conteneur[-1][c.strip()] = _valeur(v)
+                conteneur[-1][c.strip()] = _valeur_ou_liste(v)
                 continue
             if not isinstance(conteneur, dict):
                 conteneur = {}
                 racine[cle] = conteneur
-            conteneur[c.strip()] = _valeur(v)
+            conteneur[c.strip()] = _valeur_ou_liste(v)
     return racine
 
 

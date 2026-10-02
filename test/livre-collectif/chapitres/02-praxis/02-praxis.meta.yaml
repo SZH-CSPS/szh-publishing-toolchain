@@ -1,0 +1,19 @@
+# Fiche du chapitre : titre et auteur·e·s fictifs (ouvrage collectif).
+lang: de
+title:
+  de: "Praxis im Klassenzimmer"
+author:
+- prenom: "Noah"
+  nom: "Probe"
+  fonction: "Autor des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: "noah.probe@example.org"
+- prenom: "Sara"
+  nom: "Vorlage"
+  fonction: "Autorin des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: ""

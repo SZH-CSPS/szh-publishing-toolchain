@@ -1,0 +1,12 @@
+# Fiche du chapitre : titre et auteur·e·s fictifs (ouvrage collectif).
+lang: de
+title:
+  de: "Fallbeispiel 2: Eine Klasse im Prüfband"
+author:
+- prenom: "Lea"
+  nom: "Beispiel"
+  fonction: "Autorin des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: ""

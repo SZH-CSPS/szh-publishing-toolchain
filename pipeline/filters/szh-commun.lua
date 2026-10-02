@@ -334,4 +334,43 @@ function M.verifier_date(saisie, v1, v2)
   return nil
 end
 
+-- ---------------------------------------------------------------------------------------
+-- Le bloc `mise-en-page:` de buch.yaml : chaque clé de pipeline/livre/mise-en-page.json
+-- avec sa valeur (texte), défaut compris ; nil hors livre et en maquette falc, qui ignore
+-- le bloc. Le contrat est lu au premier appel : un article de la revue ne le charge jamais.
+-- La validation est celle de livre-assembler.py, qui refuse le livre avant tout PDF.
+local CONTRAT_MISE_EN_PAGE
+local function contrat_mise_en_page()
+  if CONTRAT_MISE_EN_PAGE then return CONTRAT_MISE_EN_PAGE end
+  local source = debug.getinfo(1, 'S').source
+  if source:sub(1, 1) == '@' then source = source:sub(2) end
+  local chemin = (source:match('^(.*[/\\])') or '') .. '../livre/mise-en-page.json'
+  local fh = io.open(chemin, 'r')
+  local ok, data = false, nil
+  if fh then
+    ok, data = pcall(pandoc.json.decode, fh:read('a'))
+    fh:close()
+  end
+  if not ok or type(data) ~= 'table' or type(data.cles) ~= 'table' then
+    M.bloquer('livre', 'mise-en-page-contrat', { chemin },
+      'Le contrat des clés de mise en page est introuvable ou illisible : la compilation s’arrête.',
+      'Der Vertrag der Layout-Schlüssel fehlt oder ist unlesbar: die Kompilierung bricht ab.')
+  end
+  CONTRAT_MISE_EN_PAGE = data.cles
+  return CONTRAT_MISE_EN_PAGE
+end
+
+function M.mise_en_page(meta)
+  if M.contexte(meta).produit ~= 'livre' or M.texte(meta.maquette) == 'falc' then return nil end
+  local bloc = meta['mise-en-page']
+  local reglages = {}
+  for cle, definition in pairs(contrat_mise_en_page()) do
+    local v = type(bloc) == 'table' and M.texte(bloc[cle]) or ''
+    local d = definition.defaut
+    if type(d) == 'number' and d == math.floor(d) then d = string.format('%d', d) end
+    reglages[cle] = v ~= '' and v or tostring(d)
+  end
+  return reglages
+end
+
 return M

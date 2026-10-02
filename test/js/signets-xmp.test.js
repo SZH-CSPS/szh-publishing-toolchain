@@ -167,20 +167,21 @@ test('article : /Info /Title à plat, sans retour à la ligne', (t) => {
   }
 });
 
+// Sans bloc mise-en-page, le titre de chapitre ne porte pas de numéro (numeros-chapitres: aucun).
 test('chapitre « A // B » : signet « A B » dans le PDF du chapitre et dans le livre', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
   for (const cle of ['livre', 'chapitre']) {
     const signets = compiler()[cle].signets;
     const s = signets.find((x) => /Leitung/.test(x[1]));
     assert.ok(s, cle + ' : signet du chapitre introuvable : ' + JSON.stringify(signets));
-    assert.strictEqual(plat(s[1]), '1 Ein Leitung', cle + ' : signet du chapitre');
+    assert.strictEqual(plat(s[1]), 'Ein Leitung', cle + ' : signet du chapitre');
   }
 });
 
 test('livre et chapitre : /Info /Title à plat', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
   assert.strictEqual(plat(compiler().livre.titre), 'Berufliche Teilhabe von Erwachsenen');
-  assert.strictEqual(plat(compiler().chapitre.titre), '1 Ein Leitung — Berufliche Teilhabe von Erwachsenen');
+  assert.strictEqual(plat(compiler().chapitre.titre), 'Ein Leitung — Berufliche Teilhabe von Erwachsenen');
 });
 
 test('XMP : dc:language dit la langue du document', (t) => {

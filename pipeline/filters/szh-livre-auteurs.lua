@@ -144,9 +144,18 @@ function Pandoc(doc)
   end
   if not i then return doc end
 
-  if deja_bloc_auteurs(doc.blocks[i + 1]) then return doc end
+  -- Maquette normal : `auteurs-chapitre` du bloc `mise-en-page:` (commun.mise_en_page) ;
+  -- « dessus » place la ligne avant le titre dans le DOM, pour que l'ordre de lecture suive
+  -- l'ordre visuel. Le FALC la garde dessous.
+  local mep = commun.mise_en_page(doc.meta)
+  local dessus = mep ~= nil and mep['auteurs-chapitre'] == 'dessus'
 
-  doc.blocks:insert(i + 1,
+  if deja_bloc_auteurs(doc.blocks[i + 1]) then
+    if dessus then doc.blocks:insert(i, doc.blocks:remove(i + 1)) end
+    return doc
+  end
+
+  doc.blocks:insert(dessus and i or i + 1,
     pandoc.RawBlock('html', '<p class="szh-auteurs">' .. ligne .. '</p>'))
   return doc
 end

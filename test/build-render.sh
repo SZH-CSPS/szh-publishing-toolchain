@@ -292,6 +292,48 @@ if [ -z "$only" ]; then
   done
 fi
 
+# Maquette normal : le banc livre-collectif (jeu de réglages du HfH-Reihe), puis les cotes
+# des deux bancs normal contre les livres de référence (test/livre-cotes-check.py).
+if [ -z "$only" ]; then
+  echo "=== Maquette normal (livre-collectif, cotes) ==="
+  ( cd "$REPO/test/livre-collectif" || exit 1
+    rm -rf out
+    journal="$REPO/test/out/.livre-collectif.log"
+    if ! make -f "$REPO/pipeline/Makefile" livre livre-html-web livre-epub > "$journal" 2>&1; then
+      echo "  ✗ livre-collectif : ÉCHEC du build"
+      sed -n '1,40p' "$journal" | sed 's/^/    /'
+      exit 1
+    fi
+    if grep -q "non balisé" "$journal"; then
+      echo "  ✗ livre-collectif : le PDF est sorti NON BALISÉ"
+      exit 1
+    fi
+    if [ -x "$VERAPDF" ]; then
+      ua="$REPO/test/out/.livre-collectif.pdfua"
+      JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text out/*.pdf > "$ua" 2>&1
+      if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
+        echo "  ✗ livre-collectif : PDF/UA-1 NON conforme"
+        sed 's/^/    /' "$ua"
+        exit 1
+      fi
+      echo "  livre-collectif : PDF/UA-1 conforme ($(grep -c '^PASS' "$ua") fichier(s))"
+    fi
+  ) || echec=1
+  if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+    for livre in livre-normal livre-collectif; do
+      cotes="$REPO/test/out/.$livre.cotes"
+      "$FONTPY" "$REPO/test/livre-cotes-check.py" "$REPO/test/$livre" > "$cotes" 2>&1
+      if grep -q "^FAIL" "$cotes" || ! grep -q "^ok" "$cotes"; then
+        echo "  ✗ $livre : cotes de la maquette"
+        grep -v "^ok" "$cotes" | sed 's/^/    /'
+        echec=1
+      else
+        echo "  $livre : $(grep '^ok' "$cotes" | sed 's/^ok *| //')"
+      fi
+    done
+  fi
+fi
+
 # EPUB : contrôle structurel sans dépendance externe (voir l'en-tête d'epub-check.py,
 # §4.5 de docs/ARCHITECTURE-LIVRES.md) — gardé par sa seule existence, ce script étant
 # d'un autre chantier que celui-ci.

@@ -1,0 +1,26 @@
+# Fiche du chapitre : titre et auteur·e·s fictifs (ouvrage collectif).
+lang: de
+title:
+  de: "Ausblick"
+author:
+- prenom: "Lea"
+  nom: "Beispiel"
+  fonction: "Autorin des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: ""
+- prenom: "Noah"
+  nom: "Probe"
+  fonction: "Autor des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: ""
+- prenom: "Sara"
+  nom: "Vorlage"
+  fonction: "Autorin des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: ""
+  email: ""

@@ -37,7 +37,9 @@
 #    le <div> du dernier chapitre traîne à la fin de l'avant-dernier. Le <div> de l'onglet
 #    est vide et aria-hidden, rien n'y est perdu ; celui de la pastille porte un chiffre en
 #    texte (le numéro de sommaire) — laissé en place, il traînerait, lui, lisible, dans le
-#    mauvais chapitre. Même retrait pour les deux, même raison.
+#    mauvais chapitre. Même retrait pour les deux, même raison. Même défaut pour la ligne
+#    d'auteur·e·s posée au-dessus du titre (maquette normal, `auteurs-chapitre: dessus`) :
+#    elle passe juste après le <h1>, ce qui est aussi l'ordre de lecture d'une liseuse.
 #
 # 4. retire les <section class="szh-chapitre"> enveloppes et leurs </section>
 #    correspondants, de sorte que les <h1> soient au niveau racine et que pandoc puisse
@@ -157,19 +159,41 @@ def retirer_onglets(html):
     return html
 
 
+# La ligne d'auteur·e·s d'un chapitre (szh-livre-auteurs.lua, ou le bloc venu de l'import),
+# et le titre qui la suit quand elle est posée au-dessus (`auteurs-chapitre: dessus`).
+RE_AUTEURS_AVANT_TITRE = re.compile(
+    r'(<(p|div)\b[^>]*\bclass="szh-auteurs"[^>]*>[\s\S]*?</\2>\s*)(<h1\b[\s\S]*?</h1>\s*)')
+
+
+def auteurs_apres_titre(html):
+    """Voir le point 3 de l'en-tête : la ligne posée avant le <h1> tomberait dans le
+    fichier du chapitre précédent. Elle passe juste après le titre, dans chaque chapitre."""
+    def traiter(est_chapitre, slug, texte):
+        if not est_chapitre:
+            return texte
+        return RE_AUTEURS_AVANT_TITRE.sub(lambda m: m.group(3) + m.group(1), texte, count=1)
+
+    return ''.join(traiter(e, s, t) for e, s, t in _segments(html))
+
+
 def prepare_for_epub(html_content):
     """Dédoublonne les descriptions de tableau, inline les images décoratives, retire les
-    onglets de tranche et pastilles morts, puis retire les <section class="szh-chapitre">
-    enveloppes (voir les points 1 à 4 de l'en-tête du fichier)."""
+    onglets de tranche et pastilles morts, passe la ligne d'auteur·e·s sous le titre, puis
+    retire les <section class="szh-chapitre"> enveloppes (voir les points 1 à 4 de
+    l'en-tête du fichier)."""
     html_content = dedoublonner_desc_tableaux(html_content)
     html_content = inliner_decors(html_content)
     html_content = retirer_onglets(html_content)
+    html_content = auteurs_apres_titre(html_content)
 
     # Remplace chaque <section>…</section> par son contenu (groupe 1). Les <section>
     # ont souvent d'autres attributs (id, style, data-*), la regex les attrape en
     # acceptant n'importe quels attributs après class="szh-chapitre".
     pattern = r'<section[^>]*class="szh-chapitre"[^>]*>((?:[\s\S])*?)</section>'
     result = re.sub(pattern, r'\1', html_content)
+    # La section d'une partie (maquette normal), sœur des chapitres et sans section dans
+    # la sienne : son <h1> devient lui aussi un point de découpe.
+    result = re.sub(r'<section[^>]*class="szh-partie"[^>]*>((?:[\s\S])*?)</section>', r'\1', result)
 
     return result
 

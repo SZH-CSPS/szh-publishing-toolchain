@@ -9,6 +9,11 @@
 # --sans-liminaires : le chapitre seul (cible livre-chapitre-pdf de livre.mk). Aucun
 # liminaire, pas de sommaire ; le titre du document devient celui du chapitre.
 #
+#   python3 livre-assembler.py --meta buch.yaml --numeros-chapitres <slug>...
+#
+# --numeros-chapitres : écrit « slug=1.1 » pour chaque chapitre numéroté par sa partie
+# (numeros-chapitres: partie), que livre.mk passe au chapitre ; rien d'autre.
+#
 # --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
 # problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester un
 # seul fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
@@ -35,6 +40,7 @@
 #   s'imprimerait.
 
 import html
+import json
 import os
 import re
 import sys
@@ -46,6 +52,93 @@ import szh_commun
 # niveau) : voir szh_commun.lire_yaml(), dont couverture.py se sert aussi — une divergence
 # entre les deux lecteurs serait un livre dont la couverture et l'intérieur se contredisent.
 lire_yaml = szh_commun.lire_yaml
+
+
+# --------------------------------------------------------------------------------------
+# Le bloc `mise-en-page:` de buch.yaml, maquette normal seulement.
+#
+# Une clé à valeurs nommées devient data-<clé>="<valeur>" sur <html>, un nombre en mm une
+# propriété personnalisée dans le style="" de <html> ; les règles vivent dans
+# styles/livre/normal.css. Les filtres de chapitre (szh-sections, szh-numerotation,
+# szh-livre-auteurs, szh-legende-avant) relisent le même bloc, par szh-commun.lua.
+# Une maquette falc ignore le bloc entier.
+# --------------------------------------------------------------------------------------
+
+# Les clés, leurs valeurs, leurs défauts et les refus : pipeline/livre/mise-en-page.json,
+# que szh-commun.lua lit aussi. Rien n'est recopié ici.
+CHEMIN_MISE_EN_PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   'livre', 'mise-en-page.json')
+with open(CHEMIN_MISE_EN_PAGE, encoding='utf-8') as _f:
+    _CONTRAT = json.load(_f)
+MISE_EN_PAGE = _CONTRAT['cles']
+REFUS_MISE_EN_PAGE = _CONTRAT['refus']
+
+RE_NOMBRE_MM = re.compile(r'^\d+(?:[.,]\d+)?$')
+
+
+def _erreur_mise_en_page(code, champ, **valeurs):
+    gabarit = REFUS_MISE_EN_PAGE[code]
+    return szh_commun.formater_avertissement(
+        '[livre-blocage]', code, [champ], gabarit['fr'].format(**valeurs),
+        gabarit['de'].format(**valeurs))
+
+
+def lire_mise_en_page(meta):
+    """Rend (réglages, erreurs). Réglages : chaque clé de MISE_EN_PAGE avec sa valeur,
+    défaut compris ; None pour une maquette falc. Erreurs : lignes au format maison, une
+    par clé inconnue ou valeur refusée."""
+    if str(meta.get('maquette') or 'normal') == 'falc':
+        return None, []
+    bloc = meta.get('mise-en-page')
+    if bloc in (None, ''):
+        bloc = {}
+    erreurs = []
+    if not isinstance(bloc, dict):
+        erreurs.append(_erreur_mise_en_page('mise-en-page-illisible', 'mise-en-page'))
+        bloc = {}
+    reglages = {cle: d['defaut'] for cle, d in MISE_EN_PAGE.items()}
+    for cle, brut in bloc.items():
+        champ = 'mise-en-page.' + cle
+        if cle not in MISE_EN_PAGE:
+            erreurs.append(_erreur_mise_en_page('mise-en-page-cle-inconnue', champ, cle=cle,
+                                                permises=', '.join(MISE_EN_PAGE)))
+            continue
+        # Un commentaire en fin de ligne n'appartient pas à la valeur : pandoc l'ignore, le
+        # lecteur plat de szh_commun le garderait.
+        valeur = re.sub(r'\s+#.*$', '', str(brut).strip()).strip().strip('"\'')
+        definition = MISE_EN_PAGE[cle]
+        if 'valeurs' not in definition:
+            bas, haut = definition['min'], definition['max']
+            nombre = float(valeur.replace(',', '.')) if RE_NOMBRE_MM.match(valeur) else None
+            if nombre is None or not bas <= nombre <= haut:
+                erreurs.append(_erreur_mise_en_page('mise-en-page-valeur-mm', champ,
+                                                    valeur=valeur, cle=cle, min=bas, max=haut))
+                continue
+            reglages[cle] = int(nombre) if nombre == int(nombre) else nombre
+        elif valeur not in definition['valeurs']:
+            erreurs.append(_erreur_mise_en_page('mise-en-page-valeur', champ, valeur=valeur,
+                                                cle=cle,
+                                                permises=', '.join(definition['valeurs'])))
+        else:
+            reglages[cle] = valeur
+    return reglages, erreurs
+
+
+def attributs_mise_en_page(reglages):
+    """Les attributs de <html> : data-<clé> pour chaque valeur nommée, puis un style=""
+    pour les nombres. Chaîne vide sans réglages (maquette falc)."""
+    if not reglages:
+        return ''
+    attrs, style = [], []
+    for cle, valeur in reglages.items():
+        propriete = MISE_EN_PAGE[cle].get('propriete')
+        if propriete:
+            style.append('%s: %smm' % (propriete, valeur))
+        else:
+            attrs.append(' data-%s="%s"' % (cle, html.escape(str(valeur), quote=True)))
+    if style:
+        attrs.append(' style="%s"' % '; '.join(style))
+    return ''.join(attrs)
 
 
 # --------------------------------------------------------------------------------------
@@ -116,7 +209,22 @@ def hors_sommaire(fragment):
     return RE_HORS_SOMMAIRE.search(fragment) is not None
 
 
-def titres_du_fragment(fragment):
+# La ligne des auteur·e·s d'un chapitre collectif : celle de szh-livre-auteurs.lua, ou le
+# bloc venu de l'import Word.
+RE_AUTEURS_CHAPITRE = re.compile(
+    r'<(p|div)\b[^>]*\bclass="szh-auteurs"[^>]*>(?P<txt>.*?)</(?:p|div)>', re.S | re.I)
+
+
+def auteurs_du_fragment(fragment):
+    """Rend la ligne d'auteur·e·s du chapitre, en texte, ou None."""
+    m = RE_AUTEURS_CHAPITRE.search(fragment)
+    if not m:
+        return None
+    txt = re.sub(r'\s+', ' ', html.unescape(RE_BALISE.sub('', m.group('txt'))).strip())
+    return txt or None
+
+
+def titres_du_fragment(fragment, numeroter=True, separateur=" "):
     """Rend [(niveau, ancre, texte, couleur, onglet_hauteur)] pour h1..h3. Le texte est
     dépouillé de ses balises : « <span class="szh-num-section">2</span> Teilhabe » donne
     « 2 Teilhabe » — SAUF pour le h1 d'un chapitre QUI A UN NUMÉRO DE SOMMAIRE (voir
@@ -140,23 +248,34 @@ def titres_du_fragment(fragment):
     balise `szh-num-section` reste lue comme avant.
 
     Un chapitre hors sommaire (`sommaire: non`) ne rend AUCUNE entrée : il est absent de
-    la table des matières dans son entier, pas seulement de son propre h1."""
+    la table des matières dans son entier, pas seulement de son propre h1.
+
+    `numeroter` faux (maquette normal, `numeros-chapitres: aucun`) : le h1 ne reçoit aucun
+    numéro, pastille ou non. `separateur` : ce qui sépare le numéro du titre."""
     if hors_sommaire(fragment):
         return []
     couleur = couleur_du_fragment(fragment)
     onglet_h = onglet_hauteur_du_fragment(fragment)
-    numero = numero_chapitre_du_fragment(fragment)
+    numero = numero_chapitre_du_fragment(fragment) if numeroter else None
     trouves = []
     for m in RE_TITRE.finditer(fragment):
         niveau = int(m.group('n'))
         brut = m.group('txt')
+        prefixe = numero if niveau == 1 else None
         if niveau == 1 and numero:
             brut = RE_NUM_SECTION.sub('', brut)
+        elif niveau == 1:
+            # Sans numéro de sommaire (numeros-chapitres: partie), celui que szh-sections.lua
+            # a écrit dans le titre, suivi du séparateur du sommaire.
+            m_num = RE_NUM_SECTION.search(brut)
+            if m_num:
+                prefixe = re.sub(r'\s+', ' ', html.unescape(RE_BALISE.sub('', m_num.group(0)))).strip()
+                brut = RE_NUM_SECTION.sub('', brut)
         # Un <br> du titre (« // ») vaut une espace : sans cela, deux mots se colleraient.
         txt = RE_BALISE.sub('', RE_BR.sub(' ', brut))
         txt = re.sub(r'\s+', ' ', html.unescape(txt).strip())
-        if niveau == 1 and numero and txt:
-            txt = numero + ' ' + txt
+        if prefixe and txt:
+            txt = prefixe + separateur + txt
         if txt:
             trouves.append((niveau, m.group('id'), txt, couleur, onglet_h))
     return trouves
@@ -186,7 +305,7 @@ def verifier_hauteur_sommaire(entrees):
     case de l'index à pouce risque d'être trop basse pour son titre. N'arrête rien : c'est
     un avertissement, pas une porte — le sommaire se compose quand même, au pire un peu
     à l'étroit, et c'est cette étroitesse que le message signale."""
-    for niveau, ancre, txt, couleur, onglet_h in entrees:
+    for niveau, ancre, txt, couleur, onglet_h in (e[:5] for e in entrees):
         if niveau != 1 or not onglet_h:
             continue
         try:
@@ -217,7 +336,7 @@ def verifier_hauteur_sommaire(entrees):
                      ONGLET_H_MIN_2_LIGNES), file=sys.stderr)
 
 
-def sommaire_html(entrees, titre):
+def sommaire_html(entrees, titre, hierarchique=False, auteurs=None, cases=True):
     """Le sommaire est une <ol> de liens internes. Le numéro de page est posé par
     target-counter() dans base.css : rien ici ne connaît la pagination, et c'est bien —
     un numéro écrit ici serait faux au premier paragraphe ajouté.
@@ -233,20 +352,41 @@ def sommaire_html(entrees, titre):
     est posée UNE FOIS, en style inline sur la <section> elle-même — elle est héritée par
     chaque <li>, comme toute propriété personnalisée CSS non redéfinie. C'est la même
     valeur que celle que livre.mk a posée sur chaque chapitre (voir onglet_hauteur_du_
-    fragment ci-dessus) : le sommaire ne la recalcule jamais, il la relit."""
-    verifier_hauteur_sommaire(entrees)
-    onglet_hauteur = next((h for *_, h in entrees if h), None)
+    fragment ci-dessus) : le sommaire ne la recalcule jamais, il la relit.
+
+    `hierarchique` (maquette normal, `sommaire: hierarchique`) : parties et chapitres seuls,
+    chaque chapitre suivi de ses auteur·e·s quand `auteurs` (ancre du h1 -> ligne) en donne.
+
+    Une entrée est (niveau, ancre, texte, couleur, hauteur de case[, extra]) ; niveau 0 pour
+    une partie. `extra` : classes du <li> et numéro de partie, imprimé dans son <span>.
+    `cases` faux : pas d'index à pouce (maquette normal), rien à vérifier.
+    """
+    if cases:
+        verifier_hauteur_sommaire(entrees)
+    if hierarchique:
+        entrees = [e for e in entrees if e[0] <= 1]
+    auteurs = auteurs or {}
+    onglet_hauteur = next((e[4] for e in entrees if e[4]), None)
     style_section = (' style="--onglet-hauteur: %s"' % html.escape(onglet_hauteur, quote=True)
                       if onglet_hauteur else '')
     lignes = ['<section class="szh-sommaire" id="szh-sommaire"%s>' % style_section,
               '<h1>' + html.escape(titre) + '</h1>', '<ol>']
-    for niveau, ancre, txt, couleur, _onglet_h in entrees:
+    for entree in entrees:
+        niveau, ancre, txt, couleur = entree[:4]
+        extra = entree[5] if len(entree) > 5 else {}
         style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
                  if couleur else '')
         # Un <span> entre le <li> et le <a> : le <li> FALC est un flex, et un <a> enfant
         # direct d'un flex n'a pas d'annotation /Link dans le PDF (WeasyPrint 70).
-        lignes.append('<li class="niveau-%d"%s><span><a href="#%s">%s</a></span></li>'
-                      % (niveau, style, html.escape(ancre, quote=True), html.escape(txt)))
+        ligne_auteurs = auteurs.get(ancre) if hierarchique else None
+        suite = ('<span class="szh-sommaire-auteurs">%s</span>' % html.escape(ligne_auteurs)
+                 if ligne_auteurs else '')
+        classes = ''.join(' ' + c for c in extra.get('classes', ()))
+        numero = ('<span class="szh-sommaire-num">%s</span>' % html.escape(extra['numero'])
+                  if extra.get('numero') else '')
+        lignes.append('<li class="niveau-%d%s"%s><span>%s<a href="#%s">%s</a></span>%s</li>'
+                      % (niveau, classes, style, numero, html.escape(ancre, quote=True),
+                         html.escape(txt), suite))
     lignes += ['</ol>', '</section>']
     return '\n'.join(lignes)
 
@@ -324,24 +464,149 @@ def _titre_en_lignes(titre):
     return '<br>'.join(html.escape(l) for l in szh_commun.titre_lignes(titre))
 
 
-def demi_titre(meta, lang='fr'):
+def _responsables_page_titre(meta, lang, normal):
+    """La ligne du haut du demi-titre et de la page de titre. Maquette normal : celle de la
+    couverture (couverture.responsables : les auteur·e·s, à défaut les éditeur·rice·s suivi·e·s
+    de « (Hrsg.) », « (éd.) », « (a cura di) » ou de `mention-editeurs`), une seule règle pour
+    les deux. Le FALC garde ses seuls auteur·e·s."""
+    if not normal:
+        return _auteurs_ligne(meta, lang)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'szh_couverture', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'couverture.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.responsables(meta, lang)
+
+
+def demi_titre(meta, lang='fr', normal=False):
     return ('<section class="szh-liminaire szh-demi-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
-            % (html.escape(_auteurs_ligne(meta, lang)),
+            % (html.escape(_responsables_page_titre(meta, lang, normal)),
                _titre_en_lignes(meta.get('titre')),
                _titre_en_lignes(meta.get('sous-titre'))))
 
 
-def page_titre(meta, lang='fr'):
+# Le logo de l'éditeur, en bas à droite de la page de titre (`logo-page-titre`). Son alt
+# est vide, à dessein : le nom de l'éditeur est déjà écrit en toutes lettres à l'impressum.
+LOGO_PAGE_TITRE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'media', 'logos',
+                               'edition-szh-csps.svg')
+
+
+def page_titre(meta, lang='fr', normal=False, logo=False):
+    suite = ''
+    if logo:
+        suite = '<p class="szh-logo-editeur">%s</p>' % _img(LOGO_PAGE_TITRE, '', 'szh-logo-editeur-image')
     return ('<section class="szh-liminaire szh-page-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
-            '<p class="szh-sous-titre">%s</p></section>'
-            % (html.escape(_auteurs_ligne(meta, lang)),
+            '<p class="szh-sous-titre">%s</p>%s</section>'
+            % (html.escape(_responsables_page_titre(meta, lang, normal)),
                _titre_en_lignes(meta.get('titre')),
-               _titre_en_lignes(meta.get('sous-titre'))))
+               _titre_en_lignes(meta.get('sous-titre')), suite))
+
+
+def dedicace(meta):
+    """La dédicace de buch.yaml, « // » pour un saut de ligne. Un liminaire comme le
+    demi-titre : avant le sommaire, sans folio ; après lui, avec."""
+    return ('<section class="szh-liminaire szh-dedicace"><p>%s</p></section>'
+            % _titre_en_lignes(meta.get('dedicace')))
+
+
+# --------------------------------------------------------------------------------------
+# Images posées par l'assembleur (logos de l'impressum, illustration de partie, logo de la
+# page de titre) : incorporées en data: URI, comme celles des chapitres, pour que le HTML
+# web reste un seul fichier.
+# --------------------------------------------------------------------------------------
+TYPES_IMAGE = {'.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
+               '.jpeg': 'image/jpeg'}
+
+
+def uri_image(chemin):
+    import base64
+    with open(chemin, 'rb') as f:
+        donnees = base64.b64encode(f.read()).decode('ascii')
+    type_ = TYPES_IMAGE.get(os.path.splitext(chemin)[1].lower(), 'application/octet-stream')
+    return 'data:%s;base64,%s' % (type_, donnees)
+
+
+def dimensions_image(chemin):
+    """(largeur, hauteur) naturelles d'une image png, jpeg ou svg ; None si illisible."""
+    import struct
+    try:
+        with open(chemin, 'rb') as f:
+            d = f.read()
+    except OSError:
+        return None
+    if d[:8] == b'\x89PNG\r\n\x1a\n' and len(d) >= 24:
+        return struct.unpack('>II', d[16:24])
+    if d[:2] == b'\xff\xd8':
+        i = 2
+        while i + 9 < len(d):
+            if d[i] != 0xFF:
+                return None
+            marque, longueur = d[i + 1], struct.unpack('>H', d[i + 2:i + 4])[0]
+            if 0xC0 <= marque <= 0xCF and marque not in (0xC4, 0xC8, 0xCC):
+                h, l = struct.unpack('>HH', d[i + 5:i + 9])
+                return l, h
+            i += 2 + longueur
+        return None
+    m = re.search(rb'viewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)', d[:4000])
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    return None
+
+
+def _img(chemin, alt, classe):
+    """Une image posée par l'assembleur. Avec un texte alternatif, un <img>. Décorative
+    (alt vide), un fond CSS dans deux <span>, comme les décors de szh-numerotation.lua :
+    WeasyPrint balise tout <img> en /Figure, et une /Figure sans /Alt n'est pas conforme
+    PDF/UA. --ratio (hauteur sur largeur) donne la géométrie à la feuille de style."""
+    if str(alt or '').strip():
+        return '<img class="%s" src="%s" alt="%s" />' % (
+            classe, uri_image(chemin), html.escape(str(alt), quote=True))
+    taille = dimensions_image(chemin) or (1, 1)
+    return ('<span class="szh-decor-livre %s" role="presentation" style="--ratio: %.4f">'
+            '<span style="background-image: url(&quot;%s&quot;)"></span></span>'
+            % (classe, float(taille[1]) / float(taille[0]), uri_image(chemin)))
+
+
+def _liste(v):
+    """Une valeur de buch.yaml qui peut être un nom seul ou une liste de noms."""
+    if v in (None, ''):
+        return []
+    return [str(x) for x in v] if isinstance(v, list) else [str(v)]
+
+
+def _erreur(code, champ, fr, de):
+    return szh_commun.formater_avertissement('[livre-blocage]', code, [champ], fr, de)
+
+
+def _fichier_livre(racine, nom, champ, erreurs):
+    """Le chemin d'un fichier nommé dans buch.yaml (relatif au dossier du livre), ou None
+    après un refus s'il n'existe pas ou n'est pas une image connue."""
+    chemin = os.path.join(racine, nom)
+    if not os.path.isfile(chemin):
+        erreurs.append(_erreur('fichier-introuvable', champ,
+            'Le fichier « %s » nommé dans buch.yaml est introuvable dans le dossier du livre.' % nom,
+            'Die in buch.yaml genannte Datei « %s » fehlt im Buchordner.' % nom))
+        return None
+    if os.path.splitext(nom)[1].lower() not in TYPES_IMAGE:
+        erreurs.append(_erreur('image-format', champ,
+            '« %s » n\'est pas une image reconnue (svg, png, jpg).' % nom,
+            '« %s » ist kein erkanntes Bild (svg, png, jpg).' % nom))
+        return None
+    return chemin
+
+
+PHRASE_RESPONSABILITE = {
+    'de': 'Die Verantwortung für den Inhalt der Texte liegt bei den jeweiligen Autor:innen.',
+    'fr': 'La responsabilité du contenu des textes incombe à leurs autrices et auteurs.',
+    'it': 'La responsabilità del contenuto dei testi spetta alle rispettive autrici e ai '
+          'rispettivi autori.',
+}
 
 
 # Les quatre raisons sociales de la fondation, dans l'ordre des livres publiés. Elles ne
@@ -371,26 +636,272 @@ ETIQUETTES_ISBN = (('isbn-print', 'ISBN Print on demand'), ('isbn-ebook', 'ISBN 
 TITRES_SOMMAIRE = {'de': 'Inhaltsverzeichnis', 'fr': 'Sommaire', 'it': 'Indice'}
 
 
-def impressum(meta):
-    """L'ordre est celui des livres publiés : année et éditeur, la fondation, les ISBN, le
-    DOI, la licence. Chaque ligne absente de buch.yaml disparaît — on n'imprime pas un ISBN
-    qu'on n'a pas."""
+# Les sous-clés du bloc `impressum:` de buch.yaml, toutes facultatives. Une image a son
+# texte alternatif dans `<clé>-alt` ; sans lui, elle est décorative (alt="") : un logo
+# répète le plus souvent un nom déjà écrit à côté (docs/ACCESSIBILITE.md).
+CLES_IMPRESSUM = ('logo-soutien', 'logo-soutien-alt', 'soutien', 'credits', 'responsabilite',
+                  'reserve', 'imprimeur', 'logos-imprimeur', 'logos-imprimeur-alt')
+IMAGES_IMPRESSUM = ('logo-soutien', 'logos-imprimeur')
+
+
+def _bloc_impressum(meta):
+    bloc = meta.get('impressum')
+    return bloc if isinstance(bloc, dict) else {}
+
+
+def verifier_impressum(meta, racine):
+    """Rend les refus du bloc impressum : clé inconnue, image absente."""
+    erreurs = []
+    bloc = _bloc_impressum(meta)
+    for cle in bloc:
+        if cle not in CLES_IMPRESSUM:
+            erreurs.append(_erreur('impressum-cle-inconnue', 'impressum.' + cle,
+                'Clé inconnue dans impressum : « %s ». Clés permises : %s.'
+                % (cle, ', '.join(CLES_IMPRESSUM)),
+                'Unbekannter Schlüssel in impressum: « %s ». Erlaubt: %s.'
+                % (cle, ', '.join(CLES_IMPRESSUM))))
+    for cle in IMAGES_IMPRESSUM:
+        for nom in _liste(bloc.get(cle)):
+            _fichier_livre(racine, nom, 'impressum.' + cle, erreurs)
+    return erreurs
+
+
+def _oui(v):
+    return v is True or str(v).strip().lower() in ('oui', 'true', 'ja', 'si', 'sì')
+
+
+def impressum(meta, racine='.', normal=False):
+    """L'ordre est celui des livres publiés : année et éditeur, la fondation, le logo et la
+    phrase de soutien, les crédits, les ISBN, le DOI, la responsabilité des auteur·e·s, la
+    licence, la réserve, l'imprimeur et la rangée de ses logos. Chaque ligne absente de
+    buch.yaml disparaît : on n'imprime pas un ISBN qu'on n'a pas. Les images ont été
+    vérifiées par verifier_impressum(). En maquette normal, l'année et l'éditeur forment un
+    seul bloc, comme dans les livres de l'Edition SZH ; le FALC garde ses deux blocs."""
+    bloc = _bloc_impressum(meta)
+    lang = str(meta.get('lang') or 'fr')
+
+    def texte(cle):
+        v = bloc.get(cle)
+        if v in (None, '', False):
+            return None
+        return '<br>'.join(html.escape(l) for l in szh_commun.titre_lignes(str(v)))
+
+    def images(cle):
+        alts = _liste(bloc.get(cle + '-alt'))
+        return ' '.join(_img(os.path.join(racine, nom), alts[i] if i < len(alts) else '',
+                             'szh-impressum-image')
+                        for i, nom in enumerate(_liste(bloc.get(cle))))
+
     blocs = []
     if meta.get('annee'):
-        blocs.append('© ' + html.escape(str(meta['annee'])))
-    blocs.append('Edition SZH/CSPS')
-    blocs.append('<br>'.join(html.escape(x) for x in FONDATION))
-    for cle, etiquette in ETIQUETTES_ISBN:
-        if meta.get(cle):
-            blocs.append('%s: %s' % (etiquette, html.escape(str(meta[cle]))))
+        blocs.append(('', '© ' + html.escape(str(meta['annee']))))
+    if normal and blocs:
+        blocs[0] = ('', blocs[0][1] + '<br>Edition SZH/CSPS')
+    else:
+        blocs.append(('', 'Edition SZH/CSPS'))
+    blocs.append(('', '<br>'.join(html.escape(x) for x in FONDATION)))
+    if _liste(bloc.get('logo-soutien')):
+        blocs.append(('szh-impressum-logo', images('logo-soutien')))
+    for cle in ('soutien', 'credits'):
+        if texte(cle):
+            blocs.append(('', texte(cle)))
+    # Les ISBN et le DOI : un seul bloc en maquette normal (Hofer p2), un bloc chacun en FALC.
+    identifiants = ['%s: %s' % (etiquette, html.escape(str(meta[cle])))
+                    for cle, etiquette in ETIQUETTES_ISBN if meta.get(cle)]
     if meta.get('doi'):
-        blocs.append('https://doi.org/' + html.escape(str(meta['doi'])))
+        identifiants.append('https://doi.org/' + html.escape(str(meta['doi'])))
+    if normal and identifiants:
+        blocs.append(('', '<br>'.join(identifiants)))
+    else:
+        blocs.extend(('', x) for x in identifiants)
+    if _oui(bloc.get('responsabilite')):
+        blocs.append(('', html.escape(PHRASE_RESPONSABILITE.get(lang, PHRASE_RESPONSABILITE['fr']))))
     lic = LICENCES.get(str(meta.get('licence') or ''))
     if lic:
-        phrase = PHRASE_LICENCE.get(str(meta.get('lang')), PHRASE_LICENCE['fr'])
-        blocs.append(phrase % html.escape(lic))
-    corps = '\n'.join('<p>' + x + '</p>' for x in blocs)
+        phrase = PHRASE_LICENCE.get(lang, PHRASE_LICENCE['fr'])
+        blocs.append(('', phrase % html.escape(lic)))
+    for cle in ('reserve', 'imprimeur'):
+        if texte(cle):
+            blocs.append(('', texte(cle)))
+    if _liste(bloc.get('logos-imprimeur')):
+        blocs.append(('szh-impressum-logos-imprimeur', images('logos-imprimeur')))
+    corps = '\n'.join(('<p class="%s">' % c if c else '<p>') + x + '</p>' for c, x in blocs)
     return '<section class="szh-liminaire szh-impressum">' + corps + '</section>'
+
+
+# --------------------------------------------------------------------------------------
+# Parties du livre : `parties:` de buch.yaml, une liste ordonnée.
+#
+#   - titre: "Grundlagen"        « // » = saut de ligne
+#     numero: "1"                texte libre ("1", "III") ou absent
+#     chapitres: [01-a, 02-b]    une suite contiguë de l'ordre des chapitres
+#     page-seule: oui            oui : page de partie sur un recto ; non : le titre ouvre
+#                                la page du premier chapitre
+#     numeroter: oui             avec numeros-chapitres: partie, « 1.1 », « 1.2 »…
+#     illustration: parties/x.jpg   page-seule seulement ; illustration-alt facultatif
+#
+# La partie est une <section class="szh-partie"> sœur des chapitres, son titre un <h1> ;
+# ses chapitres portent data-partie, qui leur donne le niveau 2 des signets (base.css).
+# --------------------------------------------------------------------------------------
+CLES_PARTIE = ('titre', 'numero', 'chapitres', 'page-seule', 'numeroter', 'illustration',
+               'illustration-alt')
+RE_SLUG_FRAGMENT = re.compile(r'<section\b[^>]*\bclass="szh-chapitre"[^>]*\bid="ch-([^"]+)"')
+
+
+def slug_du_fragment(fragment):
+    m = RE_SLUG_FRAGMENT.search(fragment)
+    return m.group(1) if m else None
+
+
+def _oui_non(v, defaut):
+    if v in (None, ''):
+        return defaut
+    s = str(v).strip().lower()
+    if v is True or s in ('oui', 'true'):
+        return True
+    if v is False or s in ('non', 'false'):
+        return False
+    return None
+
+
+def lire_parties(meta, slugs):
+    """Rend (parties, erreurs). `slugs` : l'ordre des chapitres du livre. Chaque partie :
+    dict titre, numero, chapitres, page_seule, numeroter, illustration, illustration_alt,
+    rang (1, 2…)."""
+    brut = meta.get('parties')
+    if brut in (None, '', []):
+        return [], []
+    erreurs = []
+    if not isinstance(brut, list) or not all(isinstance(p, dict) for p in brut):
+        return [], [_erreur('parties-illisible', 'parties',
+            'Le bloc parties de buch.yaml doit être une liste de parties, chacune ouverte par '
+            '« - titre: ».',
+            'Der Block parties in buch.yaml muss eine Liste von Teilen sein, jeder mit '
+            '« - titre: » eröffnet.')]
+    rang_de = {s: i for i, s in enumerate(slugs)}
+    deja = {}
+    parties = []
+    for rang, p in enumerate(brut, 1):
+        champ = 'parties[%d]' % rang
+        for cle in p:
+            if cle not in CLES_PARTIE:
+                erreurs.append(_erreur('partie-cle-inconnue', champ + '.' + cle,
+                    'Clé inconnue dans une partie : « %s ». Clés permises : %s.'
+                    % (cle, ', '.join(CLES_PARTIE)),
+                    'Unbekannter Schlüssel in einem Teil: « %s ». Erlaubt: %s.'
+                    % (cle, ', '.join(CLES_PARTIE))))
+        titre = str(p.get('titre') or '').strip()
+        if not titre:
+            erreurs.append(_erreur('partie-sans-titre', champ + '.titre',
+                'La partie %d n\'a pas de titre.' % rang,
+                'Teil %d hat keinen Titel.' % rang))
+        chapitres = _liste(p.get('chapitres'))
+        if not chapitres:
+            erreurs.append(_erreur('partie-sans-chapitre', champ + '.chapitres',
+                'La partie %d ne nomme aucun chapitre (chapitres: [slug, …]).' % rang,
+                'Teil %d nennt kein Kapitel (chapitres: [slug, …]).' % rang))
+        inconnus = [s for s in chapitres if s not in rang_de]
+        for s in inconnus:
+            erreurs.append(_erreur('partie-chapitre-inconnu', champ + '.chapitres',
+                'Le chapitre « %s » de la partie %d n\'existe pas dans chapitres/.' % (s, rang),
+                'Das Kapitel « %s » von Teil %d existiert nicht in chapitres/.' % (s, rang)))
+        for s in chapitres:
+            if s in deja:
+                erreurs.append(_erreur('partie-chapitre-double', champ + '.chapitres',
+                    'Le chapitre « %s » est déjà dans la partie %d.' % (s, deja[s]),
+                    'Das Kapitel « %s » steht schon in Teil %d.' % (s, deja[s])))
+            deja.setdefault(s, rang)
+        rangs = [rang_de[s] for s in chapitres if s in rang_de]
+        if not inconnus and rangs and rangs != list(range(rangs[0], rangs[0] + len(rangs))):
+            erreurs.append(_erreur('partie-non-contigue', champ + '.chapitres',
+                'Les chapitres de la partie %d doivent se suivre, dans l\'ordre des chapitres '
+                'du livre (ordre-chapitres) : %s.' % (rang, ', '.join(slugs)),
+                'Die Kapitel von Teil %d müssen aufeinander folgen, in der Reihenfolge der '
+                'Kapitel des Buches (ordre-chapitres): %s.' % (rang, ', '.join(slugs))))
+        page_seule = _oui_non(p.get('page-seule'), True)
+        numeroter = _oui_non(p.get('numeroter'), False)
+        for cle, v in (('page-seule', page_seule), ('numeroter', numeroter)):
+            if v is None:
+                erreurs.append(_erreur('partie-valeur', champ + '.' + cle,
+                    '« %s » n\'est pas une valeur permise pour %s : oui ou non.'
+                    % (p.get(cle), cle),
+                    '« %s » ist für %s nicht erlaubt: oui oder non.' % (p.get(cle), cle)))
+        illustration = str(p.get('illustration') or '').strip()
+        if illustration and page_seule is False:
+            erreurs.append(_erreur('partie-illustration-page', champ + '.illustration',
+                'Une illustration de partie ne va que sur une page de partie seule '
+                '(page-seule: oui).',
+                'Eine Illustration ist nur auf einer eigenen Teilseite möglich '
+                '(page-seule: oui).'))
+        parties.append({'rang': rang, 'titre': titre,
+                        'numero': str(p.get('numero') or '').strip(),
+                        'chapitres': chapitres, 'page_seule': page_seule is not False,
+                        'numeroter': numeroter is True, 'illustration': illustration,
+                        'illustration_alt': str(p.get('illustration-alt') or '')})
+    return parties, erreurs
+
+
+def _a_un_titre(racine, slug):
+    """Vrai si le chapitre a un titre : `title` dans sa fiche, ou un « # » dans son .md
+    (szh-livre-titre.lua suit la même règle)."""
+    dossier = os.path.join(racine, 'chapitres', slug)
+    fiche = szh_commun.lire_yaml(os.path.join(dossier, slug + '.meta.yaml'))
+    titre = fiche.get('title')
+    if isinstance(titre, dict):
+        titre = ''.join(str(v or '') for v in titre.values())
+    if str(titre or '').strip():
+        return True
+    try:
+        with open(os.path.join(dossier, slug + '.md'), encoding='utf-8-sig') as f:
+            return any(re.match(r'#\s+\S', l) for l in f)
+    except OSError:
+        return False
+
+
+def numeros_chapitres(reglages, parties, racine):
+    """Le numéro de chaque chapitre d'une partie `numeroter: oui`, sous
+    numeros-chapitres: partie : « <numéro de partie>.<rang parmi ses chapitres titrés> ».
+    Un chapitre sans titre n'est ni numéroté ni compté. Calculé ici seulement : livre.mk le
+    passe au chapitre (SZH_NUMERO_CHAPITRE), szh-sections.lua l'écrit."""
+    if not reglages or reglages['numeros-chapitres'] != 'partie':
+        return {}
+    numeros = {}
+    for p in parties:
+        if not p['numeroter'] or not p['numero']:
+            continue
+        k = 0
+        for slug in p['chapitres']:
+            if _a_un_titre(racine, slug):
+                k += 1
+                numeros[slug] = '%s.%d' % (p['numero'], k)
+    return numeros
+
+
+def partie_html(partie, reglages, racine):
+    """La section d'une partie. Le numéro s'imprime avec `titre-partie: titre` ; un
+    intercalaire n'en montre pas. Le signet porte le titre à plat."""
+    avec_numero = bool(partie['numero']) and reglages['titre-partie'] == 'titre'
+    numero = ('<span class="szh-num-partie">%s </span>' % html.escape(partie['numero'])
+              if avec_numero else '')
+    plat = szh_commun.titre_plat(partie['titre'])
+    if avec_numero:
+        plat = partie['numero'] + ' ' + plat
+    illustration = ''
+    if partie['illustration']:
+        illustration = ('<p class="szh-partie-illustration">%s</p>\n'
+                        % _img(os.path.join(racine, partie['illustration']),
+                               partie['illustration_alt'], 'szh-partie-image'))
+    return ('<section class="szh-partie" id="partie-%d" data-page-seule="%s">\n'
+            '<h1 id="partie-%d-titre" data-signet="%s">%s%s</h1>\n%s</section>'
+            % (partie['rang'], 'oui' if partie['page_seule'] else 'non', partie['rang'],
+               html.escape(plat, quote=True), numero, _titre_en_lignes(partie['titre']),
+               illustration))
+
+
+def dans_partie(fragment, rang):
+    """Marque la section du chapitre comme membre de la partie `rang`."""
+    return fragment.replace('<section class="szh-chapitre"',
+                            '<section class="szh-chapitre" data-partie="%d"' % rang, 1)
 
 
 # --------------------------------------------------------------------------------------
@@ -559,7 +1070,7 @@ def main(argv):
     # jour. SZH_OUT_LIVRE en repli, pour un appel hors Makefile (tests, essai à la main).
     out_dir = os.environ.get('SZH_OUT_LIVRE') or 'out'
     feuilles, feuilles_incorporees, fragments = [], [], []
-    sans_liminaires = False
+    sans_liminaires = numeros_seuls = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -584,6 +1095,9 @@ def main(argv):
         elif a == '--sans-liminaires':
             sans_liminaires = True
             i += 1
+        elif a == '--numeros-chapitres':
+            numeros_seuls = True
+            i += 1
         elif a == '--out' and i + 1 < len(argv):
             out_dir = argv[i + 1]
             i += 2
@@ -593,7 +1107,7 @@ def main(argv):
         else:
             fragments.append(a)
             i += 1
-    if not (meta_p and gabarit_p and sortie_p):
+    if not (meta_p and (numeros_seuls or (gabarit_p and sortie_p))):
         print('usage: livre-assembler.py --meta buch.yaml --gabarit g.html '
               '--sortie out.html [--out dossier] [--css f.css]... '
               '[--css-embed f.css]... <fragment>...', file=sys.stderr)
@@ -602,52 +1116,162 @@ def main(argv):
     meta = lire_yaml(meta_p)
     racine = os.path.dirname(os.path.abspath(meta_p))
     langue = str(meta.get('lang') or 'fr')
+    reglages, erreurs = lire_mise_en_page(meta)
 
-    corps, entrees = [], []
+    # Mode de livre.mk : les numéros « 1.1 » des chapitres, une ligne « slug=numéro » par
+    # chapitre numéroté ; les arguments sont les slugs, dans l'ordre du livre.
+    if numeros_seuls:
+        parties, erreurs_parties = lire_parties(meta, fragments) if reglages else ([], [])
+        if erreurs or erreurs_parties:
+            for ligne in erreurs + erreurs_parties:
+                print(ligne, file=sys.stderr)
+            return 1
+        for slug, numero in numeros_chapitres(reglages, parties, racine).items():
+            print('%s=%s' % (slug, numero))
+        return 0
+
+    frags = []
     for f in fragments:
         try:
-            frag = open(f, encoding='utf-8').read()
+            frags.append(open(f, encoding='utf-8').read())
         except OSError as e:
             print('[livre] fragment illisible : %s (%s)' % (f, e), file=sys.stderr)
             return 1
-        entrees.extend(titres_du_fragment(frag))
+    slugs = [slug_du_fragment(t) for t in frags]
+
+    # La structure (parties, pièces de fin, dédicace, impressum) est celle de la maquette
+    # normal ; le FALC n'en lit rien. Tous les refus sont dits avant d'en arrêter.
+    normal = reglages is not None
+    parties = []
+    if normal and not sans_liminaires:
+        parties, erreurs_parties = lire_parties(meta, [s for s in slugs if s])
+        erreurs += erreurs_parties
+        for p in parties:
+            if p['illustration']:
+                _fichier_livre(racine, p['illustration'],
+                               'parties[%d].illustration' % p['rang'], erreurs)
+        erreurs += verifier_impressum(meta, racine)
+        pieces_fin = _liste(meta.get('pieces-fin'))
+        for piece in pieces_fin:
+            if not piece.endswith('.md'):
+                erreurs.append(_erreur('piece-fin-inconnue', 'pieces-fin',
+                    'La pièce de fin « %s » doit être un fichier .md de liminaires/.' % piece,
+                    'Das Schlussstück « %s » muss eine .md-Datei aus liminaires/ sein.' % piece))
+        if 'dedicace' in [str(x) for x in (meta.get('liminaires') or [])] \
+                and not str(meta.get('dedicace') or '').strip():
+            erreurs.append(_erreur('dedicace-vide', 'dedicace',
+                'Le liminaire « dedicace » est annoncé, mais buch.yaml n\'a pas de clé dedicace.',
+                'Das Vorsatzstück « dedicace » ist angekündigt, aber buch.yaml hat keinen '
+                'Schlüssel dedicace.'))
+    else:
+        pieces_fin = []
+    if erreurs:
+        for ligne in erreurs:
+            print(ligne, file=sys.stderr)
+        return 1
+
+    hierarchique = normal and reglages['sommaire'] == 'hierarchique'
+    # Le numéro du sommaire (pastille) remplace celui du titre, sauf quand il n'y en a pas
+    # (`aucun`) ou que le titre porte le sien (`partie`).
+    numeroter = not normal or reglages['numeros-chapitres'] == 'continu'
+    # Le numéro de chapitre suivi d'un demi-cadratin dans le sommaire hiérarchique.
+    separateur = ' ' if hierarchique else ' '
+    niveau_max = int(reglages['sommaire-niveaux']) if normal else 3
+
+    def garder(entree):
+        """Maquette normal : ni la bibliographie, ni ce qui passe sous sommaire-niveaux."""
+        if not normal:
+            return True
+        return entree[0] <= niveau_max and not entree[1].endswith('szh-bibliographie')
+
+    # Les pièces écrites à la main, lues une fois : liminaires puis pièces de fin.
+    def piece_compilee(piece):
+        f = os.path.join(racine, out_dir, 'liminaires', piece[:-3] + '.html')
+        if os.path.exists(f):
+            return open(f, encoding='utf-8').read()
+        # Une pièce annoncée dans buch.yaml mais jamais compilée manquerait au livre sans un
+        # mot : son absence arrête l'assemblage.
+        print('[livre-blocage] liminaire-introuvable | pièce « ' + piece + ' » | '
+              "La pièce « " + piece + " » est annoncée dans buch.yaml (liminaires: ou "
+              "pieces-fin:) mais n'a pas été compilée : " + f + " est introuvable. "
+              "Vérifiez qu'elle existe dans liminaires/, puis relancez la "
+              'compilation. | [de] Das im buch.yaml angekündigte Stück « '
+              + piece + ' » (liminaires: oder pieces-fin:) wurde nicht kompiliert: ' + f
+              + ' fehlt. Prüfen Sie, ob es in liminaires/ liegt, und kompilieren '
+              'Sie danach neu.', file=sys.stderr)
+        return None
+
+    def entree_piece(texte):
+        """L'entrée de sommaire d'une pièce écrite à la main : son titre, au premier niveau."""
+        for m in RE_TITRE.finditer(texte):
+            if m.group('n') == '1':
+                titre = re.sub(r'\s+', ' ', html.unescape(RE_BALISE.sub('', RE_BR.sub(' ', m.group('txt'))))).strip()
+                return [(1, m.group('id'), titre, None, None)] if titre else []
+        return []
+
+    liminaires = [] if sans_liminaires else [str(p) for p in (meta.get('liminaires') or [])]
+    textes_pieces = {}
+    for piece in [p for p in liminaires if p.endswith('.md')] + pieces_fin:
+        texte = piece_compilee(piece)
+        if texte is None:
+            return 1
+        textes_pieces[piece] = texte
+
+    # Les entrées du sommaire, dans l'ordre du livre : les liminaires écrits qui suivent le
+    # sommaire (maquette normal), les parties et leurs chapitres, les pièces de fin.
+    entrees, auteurs = [], {}
+    if normal and 'sommaire' in liminaires:
+        for piece in liminaires[liminaires.index('sommaire') + 1:]:
+            if piece in textes_pieces:
+                entrees.extend(entree_piece(textes_pieces[piece]))
+    premier_de = {p['chapitres'][0]: p for p in parties if p['chapitres']}
+    partie_de = {s: p for p in parties for s in p['chapitres']}
+    corps = []
+    for frag, slug in zip(frags, slugs):
+        if slug in premier_de:
+            p = premier_de[slug]
+            corps.append(partie_html(p, reglages, racine))
+            avec_numero = bool(p['numero']) and reglages['titre-partie'] == 'titre'
+            entrees.append((0, 'partie-%d-titre' % p['rang'], szh_commun.titre_plat(p['titre']),
+                            None, None,
+                            {'classes': ('partie-seule' if p['page_seule'] else 'partie-partagee',),
+                             'numero': p['numero'] if avec_numero else ''}))
+        titres = [e for e in titres_du_fragment(frag, numeroter, separateur) if garder(e)]
+        if slug in partie_de:
+            frag = dans_partie(frag, partie_de[slug]['rang'])
+            titres = [e + ({'classes': ('dans-partie',)},) if e[0] == 1 else e for e in titres]
+        ligne_auteurs = auteurs_du_fragment(frag)
+        if ligne_auteurs and titres and titres[0][0] == 1:
+            auteurs[titres[0][1]] = ligne_auteurs
+        entrees.extend(titres)
         corps.append(frag)
+    for piece in pieces_fin:
+        entrees.extend(entree_piece(textes_pieces[piece]))
+        corps.append('<section class="szh-liminaire szh-romain szh-piece-fin">'
+                     + textes_pieces[piece] + '</section>')
 
     # Les liminaires, dans l'ordre déclaré. Un nom de fichier .md renvoie à la pièce écrite
     # à la main, compilée comme un chapitre ; les autres sont des mots-clés que la machine
     # compose à partir de buch.yaml.
+    logo = normal and reglages['logo-page-titre'] == 'oui'
     composeurs = {
-        'demi-titre': lambda: demi_titre(meta, langue),
-        'colophon':   lambda: impressum(meta),
-        'impressum':  lambda: impressum(meta),
-        'page-titre': lambda: page_titre(meta, langue),
+        'demi-titre': lambda: demi_titre(meta, langue, normal),
+        'colophon':   lambda: impressum(meta, racine, normal),
+        'impressum':  lambda: impressum(meta, racine, normal),
+        'page-titre': lambda: page_titre(meta, langue, normal, logo),
         'sommaire':   lambda: sommaire_html(entrees,
-                                            TITRES_SOMMAIRE.get(langue, 'Sommaire')),
+                                            TITRES_SOMMAIRE.get(langue, 'Sommaire'),
+                                            hierarchique, auteurs, not normal),
     }
+    if normal:
+        composeurs['dedicace'] = lambda: dedicace(meta)
     tete = []
-    for piece in ([] if sans_liminaires else (meta.get('liminaires') or [])):
-        piece = str(piece)
+    for piece in liminaires:
         if piece in composeurs:
             tete.append(composeurs[piece]())
-        elif piece.endswith('.md'):
-            f = os.path.join(racine, out_dir, 'liminaires', piece[:-3] + '.html')
-            if os.path.exists(f):
-                tete.append('<section class="szh-liminaire szh-romain">'
-                            + open(f, encoding='utf-8').read() + '</section>')
-            else:
-                # Une pièce liminaire annoncée dans buch.yaml (`liminaires:`) mais jamais
-                # compilée manquerait au livre sans un mot si on continuait : un simple
-                # print sur stderr, suivi d'un retour 0, laissait partir un livre incomplet
-                # en se donnant l'air d'avoir réussi. Ici, l'absence arrête l'assemblage.
-                print('[livre-blocage] liminaire-introuvable | pièce « ' + piece + ' » | '
-                      "La pièce liminaire « " + piece + " » est annoncée dans buch.yaml "
-                      "(liminaires:) mais n'a pas été compilée : " + f + " est introuvable. "
-                      "Vérifiez qu'elle existe dans liminaires/, puis relancez la "
-                      'compilation. | [de] Das im buch.yaml angekündigte Vorsatzstück « '
-                      + piece + ' » (liminaires:) wurde nicht kompiliert: ' + f
-                      + ' fehlt. Prüfen Sie, ob es in liminaires/ liegt, und kompilieren '
-                      'Sie danach neu.', file=sys.stderr)
-                return 1
+        elif piece in textes_pieces:
+            tete.append('<section class="szh-liminaire szh-romain">'
+                        + textes_pieces[piece] + '</section>')
         else:
             print('[livre] liminaire inconnu, ignore : ' + piece, file=sys.stderr)
 
@@ -687,6 +1311,7 @@ def main(argv):
         # Pas en EPUB : le lecteur HTML de pandoc ferait de <meta name="author"> un dc:creator de plus.
         '$metadonnees$':   '' if meta_epub else metadonnees_html(meta, langue),
         '$classe-format$': 'szh-a4' if str(meta.get('format')) == 'a4' else '',
+        '$mise-en-page$':  attributs_mise_en_page(reglages),
         '$css$':           liens,
         '$liminaires$':    '\n'.join(tete),
         '$corps$':         '\n'.join(corps),

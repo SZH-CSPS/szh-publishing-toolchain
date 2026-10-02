@@ -1,0 +1,8 @@
+Déposez ici les fichiers Word (.docx) des chapitres à convertir.
+
+À la compilation (Ctrl+S), chaque .docx devient un chapitre dans « chapitres » : le texte,
+sa fiche, ses images et ses tableaux. Le .docx est supprimé une fois converti — c'est le
+signe que la conversion a réussi. Un fichier qui reste ici n'est pas passé, et le journal
+de compilation dit pourquoi.
+
+Ce dossier existe aussi dans le banc d'essai pour que la cible d'import ait où chercher.

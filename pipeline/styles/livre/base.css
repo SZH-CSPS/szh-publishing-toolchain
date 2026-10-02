@@ -38,14 +38,16 @@
    le numéro doit tomber sous le pouce, jamais vers la couture.
    X est la page du PDF, Y le nombre total de pages : la page du PDF est la page du papier,
    aucune pagination romaine, aucun counter-reset. Les mots viennent de la langue du
-   document (<html lang>), par deux jetons : une boîte de marge ne lit pas :lang() elle-même. */
-:root { --folio-page: "page "; --folio-sur: " sur "; }
+   document (<html lang>), par des jetons : une boîte de marge ne lit pas :lang() elle-même.
+   --folio-total porte counter(pages), pour qu'une charte puisse le taire : WeasyPrint 70
+   résout un counter() porté par une variable dans une boîte de marge. */
+:root { --folio-page: "page "; --folio-sur: " sur "; --folio-total: counter(pages); }
 html[lang|=de] { --folio-page: "Seite "; --folio-sur: " von "; }
 html[lang|=it] { --folio-page: "pagina "; --folio-sur: " di "; }
-@page :left  { @bottom-left  { content: var(--folio-page) counter(page) var(--folio-sur) counter(pages);
+@page :left  { @bottom-left  { content: var(--folio-page) counter(page) var(--folio-sur) var(--folio-total);
                                font: var(--folio-font);
                                color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
-@page :right { @bottom-right { content: var(--folio-page) counter(page) var(--folio-sur) counter(pages);
+@page :right { @bottom-right { content: var(--folio-page) counter(page) var(--folio-sur) var(--folio-total);
                                font: var(--folio-font);
                                color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
 
@@ -349,3 +351,18 @@ th, td { hyphenate-limit-chars: 6 3 3; }
 }
 @page :right { @top-right-corner { content: element(picto-entete); padding: 3mm 3mm 0 0; } }
 @page :left  { @top-left-corner  { content: element(picto-entete); padding: 3mm 0 0 3mm; } }
+
+/* ═══ 11. Parties et pièces de fin (maquette normal) ════════════════════════════
+   Classes que seul livre-assembler.py pose, et seulement hors FALC (parties:, pieces-fin:).
+   Une partie ouvre un recto ; sous la même page nommée que l'ouverture de chapitre, pour
+   que le titre d'un premier chapitre puisse la suivre sur la même page (page-seule: non).
+   Signets : la partie au niveau 1, ses chapitres au niveau 2 et leurs intertitres un cran
+   plus bas, le titre à plat. */
+.szh-partie { break-before: recto; page: ouverture; }
+.szh-partie > h1 { bookmark-level: 1; bookmark-label: attr(data-signet); }
+.szh-partie[data-page-seule="non"] + .szh-chapitre { break-before: auto; }
+.szh-chapitre[data-partie] > h1 { bookmark-level: 2; }
+.szh-chapitre[data-partie] > h2 { bookmark-level: 3; }
+.szh-chapitre[data-partie] > h3 { bookmark-level: 4; }
+.szh-chapitre[data-partie] > h4 { bookmark-level: 5; }
+.szh-piece-fin { page: auto; break-before: recto; }

@@ -8,7 +8,8 @@
 -- l'alt dans la Figure : après ce filtre-ci, il n'y a plus de Figure.
 -- Exception : la <figcaption> d'une figure marquée .szh-credit-seul (szh-numerotation.lua,
 -- images hors numérotation) ne porte pas de légende mais une mention de droits ; elle se
--- lit donc après l'image, comme dans l'usage imprimé.
+-- lit donc après l'image, comme dans l'usage imprimé. Une figure marquée
+-- .szh-legende-dessous (livre normal, `legende: dessous`) garde aussi sa légende après.
 -- La note de figure (<p class="szh-bloc-note">, posée par szh-numerotation.lua dans le
 -- contenu de la Figure) reste toujours sous l'image, et après la <figcaption> d'un crédit
 -- seul : elle est écartée du contenu et remise en dernier.
@@ -42,12 +43,14 @@ local function balise_ouvrante(fig)
   return table.concat(bouts)
 end
 
-local function credit_seul(fig)
+local function a_classe(fig, nom)
   for _, c in ipairs(fig.classes or {}) do
-    if c == 'szh-credit-seul' then return true end
+    if c == nom then return true end
   end
   return false
 end
+
+local function credit_seul(fig) return a_classe(fig, 'szh-credit-seul') end
 
 -- Un bloc de note : un Plain dont le premier inline est le <p class="szh-bloc-note"> brut.
 local function est_bloc_note(b)
@@ -73,9 +76,11 @@ function Figure(fig)
   for _, b in ipairs(fig.content) do
     if est_bloc_note(b) then notes:insert(b) else corps:insert(b) end
   end
-  if not apres then blocs:extend(legende) end
+  -- Livre normal, `legende: dessous` : szh-numerotation.lua a marqué la figure.
+  local dessous = apres or a_classe(fig, 'szh-legende-dessous')
+  if not dessous then blocs:extend(legende) end
   blocs:extend(corps)
-  if apres then blocs:extend(legende) end
+  if dessous then blocs:extend(legende) end
   blocs:extend(notes)
   blocs:insert(pandoc.RawBlock('html', '</figure>'))
   return blocs

@@ -517,9 +517,20 @@ test('livre-auteurs (préparation) : sans SZH_LIVRE, aucune ligne n\'est insér�
   assert.ok(!/szh-auteurs/.test(html), 'une ligne d\'auteurs existe déjà sans SZH_LIVRE : ' + html);
 });
 
+// La place de la ligne se règle par `auteurs-chapitre` (bloc mise-en-page de buch.yaml) :
+// « dessous » la pose sous le titre, le défaut « dessus » avant lui, dans le DOM.
+const CHAPITRE_DESSOUS = CHAPITRE_MD.replace('ouvrage: collectif\n',
+  'ouvrage: collectif\nmise-en-page:\n  auteurs-chapitre: dessous\n');
+
 test('livre-auteurs : sous SZH_LIVRE, un chapitre collectif reçoit sa ligne sous le titre', () => {
-  const html = pandoc(CHAPITRE_MD, { vers: 'html5', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
+  const html = pandoc(CHAPITRE_DESSOUS, { vers: 'html5', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
   assert.match(html, /<h1[^>]*>Titre du chapitre<\/h1>\s*<p class="szh-auteurs">De Jean Dupont et Marie Martin<\/p>/,
+    html);
+});
+
+test('livre-auteurs : sans réglage, la ligne d’un chapitre collectif précède son titre', () => {
+  const html = pandoc(CHAPITRE_MD, { vers: 'html5', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
+  assert.match(html, /<p class="szh-auteurs">De Jean Dupont et Marie Martin<\/p>\s*<h1[^>]*>Titre du chapitre<\/h1>/,
     html);
 });
 

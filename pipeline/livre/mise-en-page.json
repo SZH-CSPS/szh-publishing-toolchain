@@ -1,0 +1,46 @@
+{
+  "_lisezmoi": [
+    "Le bloc `mise-en-page:` de buch.yaml (maquette normal) : seule source des clés, de leurs valeurs, de leurs défauts et des refus.",
+    "Lu par pipeline/livre-assembler.py (validation, attributs data-* et propriétés de <html>) et par szh-commun.lua (mise_en_page(), que lisent szh-sections, szh-numerotation, szh-livre-auteurs et szh-legende-avant). Les règles CSS vivent dans styles/livre/normal.css.",
+    "Une clé porte soit `valeurs` (liste de mots, le défaut en fait partie), soit `min` et `max` (un nombre de mm, rendu en propriété CSS `propriete`). Les défauts sont ceux de l'Edition SZH. Une maquette falc ignore le bloc entier.",
+    "Les refus : gabarits fr et de, où {cle}, {valeur}, {permises}, {min} et {max} se remplacent."
+  ],
+  "cles": {
+    "folio":             { "valeurs": ["sur-total", "seul"], "defaut": "sur-total" },
+    "alinea-mm":         { "min": 0, "max": 15, "defaut": 4, "propriete": "--alinea" },
+    "liste-retrait-mm":  { "min": 0, "max": 15, "defaut": 4, "propriete": "--liste-retrait" },
+    "titre-chapitre":    { "valeurs": ["grand", "courant"], "defaut": "grand" },
+    "auteurs-chapitre":  { "valeurs": ["dessus", "dessous"], "defaut": "dessus" },
+    "numeros-chapitres": { "valeurs": ["aucun", "continu", "partie"], "defaut": "aucun" },
+    "numeros-sections":  { "valeurs": ["aucun", "chapitre"], "defaut": "aucun" },
+    "intertitres":       { "valeurs": ["gras", "demi-gras"], "defaut": "gras" },
+    "citation":          { "valeurs": ["italique", "romain"], "defaut": "italique" },
+    "legende":           { "valeurs": ["dessus", "dessous"], "defaut": "dessus" },
+    "numeros-figures":   { "valeurs": ["volume", "chapitre", "aucun"], "defaut": "volume" },
+    "cadre-figure":      { "valeurs": ["aucun", "filets"], "defaut": "aucun" },
+    "tableaux":          { "valeurs": ["editeur", "zebre"], "defaut": "editeur" },
+    "sommaire":          { "valeurs": ["plat", "hierarchique"], "defaut": "plat" },
+    "sommaire-page":     { "valeurs": ["recto", "verso"], "defaut": "recto" },
+    "sommaire-niveaux":  { "valeurs": ["1", "2"], "defaut": "1" },
+    "titre-partie":      { "valeurs": ["intercalaire", "titre"], "defaut": "intercalaire" },
+    "logo-page-titre":   { "valeurs": ["oui", "non"], "defaut": "oui" }
+  },
+  "refus": {
+    "mise-en-page-illisible": {
+      "fr": "Le bloc mise-en-page de buch.yaml doit contenir une clé par ligne, en retrait sous « mise-en-page: ».",
+      "de": "Der Block mise-en-page in buch.yaml muss einen eingerückten Schlüssel pro Zeile unter « mise-en-page: » enthalten."
+    },
+    "mise-en-page-cle-inconnue": {
+      "fr": "Clé inconnue dans mise-en-page : « {cle} ». Clés permises : {permises}.",
+      "de": "Unbekannter Schlüssel in mise-en-page: « {cle} ». Erlaubt: {permises}."
+    },
+    "mise-en-page-valeur": {
+      "fr": "« {valeur} » n'est pas une valeur permise pour {cle}. Valeurs permises : {permises}.",
+      "de": "« {valeur} » ist für {cle} nicht erlaubt. Erlaubt: {permises}."
+    },
+    "mise-en-page-valeur-mm": {
+      "fr": "« {valeur} » n'est pas une valeur permise pour {cle} : un nombre de mm entre {min} et {max}.",
+      "de": "« {valeur} » ist für {cle} nicht erlaubt: eine Zahl in mm zwischen {min} und {max}."
+    }
+  }
+}

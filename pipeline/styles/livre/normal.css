@@ -1,110 +1,459 @@
-/* Charte « normal » : la maquette courante des livres SZH/CSPS.
-   Empilée après socle.css et livre/base.css. Elle ne pose que des jetons et le peu de
-   mise en forme qui lui est propre ; la géométrie, les liminaires et les coupures sont
-   dans base.css.
+/* Charte « normal » des livres, empilée après socle.css et livre/base.css : le commun des
+   livres mesurés, et les variantes du bloc `mise-en-page:` de buch.yaml sous html[data-…]
+   (docs/ARCHITECTURE-LIVRES.md § 5.1). */
 
-   Toutes les valeurs ci-dessous sont mesurées sur les livres publiés, pas choisies :
-   * format et marges : trois livres de 2025 (Canonica, Gender Bias, Meier-Popa), bloc de
-     texte identique au dixième de millimètre sur les trois ;
-   * corps, interlignes et tailles de titre : relevés glyphe par glyphe sur les mêmes PDF ;
-   * grille de titres et alinéa : recoupés sur l'IDML `2022-BXXX_ProSpectrum…_IH.idml`,
-     qui donne les mêmes 10 pt / 13,5 pt et le même alinéa de 7 mm.
-   Le relevé complet est dans docs/ARCHITECTURE-LIVRES.md § 5.1.
+/* Grille : 13,5 pt, première ligne de base à 20 mm, dernière à 201 mm, 39 lignes. Sans
+   grille de ligne de base dans WeasyPrint, les espaces sont des multiples de l'interligne. */
 
-   ⚠ La charte a bougé entre 2022 et 2025 : les livres composés jusqu'en 2022 étaient en
-   Frutiger + Celeste, ceux de 2025 en Open Sans SemiCondensed — la police de la revue,
-   déjà dans pipeline/fonts/. C'est la seconde qui fait foi ici. Un livre ancien ne se
-   recompose donc pas à l'identique, et ce n'est pas le but.
-
-   ⚠ Ce qui varie d'un livre à l'autre n'est pas traité : bandeaux de personnages en marge,
-   pages de séparation illustrées, couleurs de collection. Ils reviendront quand les IDML
-   de référence seront là. */
+/* Graisses que le socle ne déclare pas : Light, Medium et ExtraBold servent aux liminaires,
+   au sommaire et aux auteurs de chapitre. Mêmes faces que la couverture (couverture.css). */
+@font-face { font-family: 'Open Sans'; font-weight: 300; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-Light.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-Medium.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 800; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-ExtraBold.ttf") format('truetype'); }
+/* Chasse condensée (75 %), pour le sommaire hiérarchique. Famille à part : sous le nom
+   « Open Sans », fontconfig la servirait à la place de la semi-condensée. */
+@font-face { font-family: 'SZH Condensed'; font-weight: 400; font-style: normal;
+  src: url("../../fonts/SZHCondensed-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Condensed'; font-weight: 700; font-style: normal;
+  src: url("../../fonts/SZHCondensed-Bold.ttf") format('truetype'); }
 
 :root {
   /* ── Page ─────────────────────────────────────────────────────────────────
-     155 × 225 mm. Bloc de texte mesuré : x 20,0 → 135,8 mm (116 mm de justification),
-     première ligne à 16,3 mm du haut, dernière à 206 mm, folio à 212 mm.
-     Quarante lignes par page à 13,5 pt d'interligne. */
+     155 × 225 mm, justification 115 mm (x 20 → 135). La marge haute place la première
+     ligne de base à 20 mm ; la marge basse laisse 39 lignes de 13,5 pt (185,7 mm). */
   --page-l: 155mm;   --page-h: 225mm;
-  --marge-haut: 16mm; --marge-bas: 19mm;
+  --marge-haut: 16.25mm; --marge-bas: 22.9mm;
   --marge-int:  20mm; --marge-ext: 20mm;
 
   /* ── Texte ────────────────────────────────────────────────────────────────
-     10 pt sur 13,5 pt = 1,35. Justifié, césure active : c'est la composition des
-     livres publiés, et sur 116 mm de justification la césure n'est pas une option. */
+     10 pt sur 13,5 pt, justifié, césure, approche de 1 %. */
   --corps: 10pt;
   --interligne: 1.35;
+  --ligne: 13.5pt;
   --alignement: justify;
   --cesure: auto;
-  --alinea: 7mm;
+  --alinea: 4mm;
+  --liste-retrait: 4mm;
+  --approche: 0.01em;
 
   /* ── Tailles dérivées ─────────────────────────────────────────────────────
-     Relevées : légende et note 8,5 pt, tableau 8 pt, impressum 7 pt, folio 8 pt gras. */
-  --legende:  8.5pt;
-  --note:     8.5pt;
+     Légende 10 pt, note 8 pt sur 10, citation 8,5 sur 12,25, tableau 8 pt, impressum
+     7 pt sur 9,6, folio 8 pt gras. */
+  --legende:  10pt;
+  --note:     8pt;
+  --citation: 8.5pt;
   --tableau:  8pt;
   --impressum: 7pt;
   --folio-font: 700 8pt var(--font-sans);
-  --folio-fond: 6mm;          /* le folio tombe à 13 mm du bord, dans la marge de 19 mm */
+  /* Le folio a sa ligne de base à 215 mm, 10 mm au-dessus du bord : sa boîte de marge
+     est calée en haut (plus bas, § Folio), et ce jeton de base.css n'y sert plus. */
+  --folio-fond: 0mm;
 
-  --esp-figure: 4mm 0;
+  --esp-figure: var(--ligne) 0;
 
-  /* Plafond de hauteur d'une figure. 100vh vaut ici la zone de contenu du format livre —
-     190 mm — et non celle d'un A4 : le jeton de socle.css serait faux de 40 %. Les 20 %
-     laissés paient la légende et les crédits. Même défaut, même remède que print.css. */
+  /* Plafond de hauteur d'une figure. 100vh vaut ici la zone de contenu du format livre
+     et non celle d'un A4 : le jeton de socle.css serait faux de 40 %. Les 20 % laissés
+     paient la légende et les crédits. */
   --plafond-figure: 80vh;
 }
 
+body { letter-spacing: var(--approche); }
+
+/* Folio en noir, comme le texte, sa boîte calée en haut de la marge basse : sa ligne de
+   base tombe à 215 mm quelle que soit la hauteur de la marge. */
+@page :left  { @bottom-left  { color: var(--c-ink); vertical-align: top; padding-top: 9.9mm; } }
+@page :right { @bottom-right { color: var(--c-ink); vertical-align: top; padding-top: 9.9mm; } }
+
 /* ═══ Titres ══════════════════════════════════════════════════════════════════
-   Quatre niveaux, mesurés : chapitre 16 pt gras sur 23 pt, section 10 pt gras,
-   sous-section 10 pt demi-gras, quatrième niveau 10 pt italique. Rien au-dessus du
-   corps au-delà du titre de chapitre — c'est la sobriété de la collection, pas un oubli. */
-.szh-chapitre > h1 {
-  font-size: 16pt; font-weight: 700; line-height: 1.44;
-  margin: 0 0 12mm 0; text-indent: 0;
-  /* Le titre de chapitre ouvre la page à 16 mm du haut, comme le corps : l'ouverture n'est
-     pas décalée vers le bas dans cette collection. */
+   Titre de chapitre : 16 pt gras sur 21, au fer à gauche, sans césure. Sous un titre
+   d'une ligne, le texte reprend sur la 7e ligne de la grille (48,6 mm). */
+.szh-chapitre > h1, .szh-liminaire > h1, .szh-sommaire > h1 {
+  font-size: 16pt; font-weight: 700; line-height: 21pt; letter-spacing: 0.035em;
+  text-align: left; hyphens: none;
+  margin: -0.3mm 0 calc(4 * var(--ligne) + 2.4mm) 0; text-indent: 0;
 }
 /* La collection normale n'a ni onglet de tranche ni pastille : ces repères sont ceux du FALC
    (falc.css les met en marge). Laissés dans le flux, la pastille « 1 » occupait seule la
    page qui précède le titre de chapitre. */
 .szh-onglet, .szh-pastille { display: none; }
-h2 { font-size: 10pt; font-weight: 700; margin: 6mm 0 0 0; text-indent: 0; }
-h3 { font-size: 10pt; font-weight: 600; margin: 5mm 0 0 0; text-indent: 0; }
-h4 { font-size: 10pt; font-weight: 400; font-style: italic; margin: 4mm 0 0 0; text-indent: 0; }
+
+/* Intertitres : tous au corps du texte, sur la grille, sans césure. */
+h2, h3, h4 {
+  font-size: var(--corps); line-height: var(--ligne); text-indent: 0;
+  text-align: left; hyphens: none;
+}
+h2 { font-weight: 700; letter-spacing: 0.035em;
+     margin: calc(2 * var(--ligne)) 0 var(--ligne) 0; }
+h3 { font-weight: 600; margin: var(--ligne) 0 0 0; }
+h4 { font-weight: 600; font-style: italic; margin: var(--ligne) 0 0 0; }
+h3 + h4 { margin-top: 0; }
 
 /* Le numéro de section est posé dans le texte du titre par szh-sections.lua, jamais en
    CSS : un numéro généré n'existerait pas dans l'EPUB ni dans un galley Word. L'espace qui
-   le sépare du texte est une tabulation de 7 mm, comme dans les livres imprimés. */
+   le sépare du texte est une tabulation de 7 mm. */
 .szh-num-section { display: inline-block; min-width: 7mm; }
 
-/* ═══ Liminaires ══════════════════════════════════════════════════════════════ */
-.szh-demi-titre  { padding-top: 38mm; }
-.szh-demi-titre .szh-auteurs { font-size: 10pt; font-weight: 500; }
-.szh-demi-titre .szh-titre   { font-size: 10pt; font-weight: 700; margin-top: 9mm; }
-.szh-demi-titre .szh-sous-titre { font-size: 10pt; font-weight: 500; margin-top: 9mm; }
+/* ═══ Liminaires ══════════════════════════════════════════════════════════════
+   Demi-titre et page de titre au fer à gauche, sans alinéa ni césure, une ligne vide entre
+   les blocs. */
+.szh-demi-titre p, .szh-page-titre p {
+  text-indent: 0; text-align: left; hyphens: none; margin: 0;
+}
+.szh-demi-titre  { padding-top: 38.1mm; }
+.szh-demi-titre p { font-size: 10pt; line-height: var(--ligne); }
+.szh-demi-titre .szh-auteurs    { font-weight: 500; letter-spacing: 0.05em; }
+.szh-demi-titre .szh-titre      { font-weight: 700; letter-spacing: 0.035em; margin-top: var(--ligne); }
+.szh-demi-titre .szh-sous-titre { font-weight: 500; letter-spacing: 0.05em; margin-top: var(--ligne); }
 
-.szh-page-titre { padding-top: 25mm; }
-.szh-page-titre .szh-titre      { font-size: 19pt; font-weight: 700; line-height: 1.25; }
-.szh-page-titre .szh-sous-titre { font-size: 12pt; font-weight: 500; margin-top: 8mm; }
-.szh-page-titre .szh-auteurs    { font-size: 10pt; font-weight: 500; margin-bottom: 12mm; }
+.szh-page-titre { padding-top: 3.8mm; }
+.szh-page-titre .szh-auteurs    { font-size: 10pt; line-height: var(--ligne); font-weight: 500;
+                                  letter-spacing: 0.05em; }
+.szh-page-titre .szh-titre      { font-size: 19pt; line-height: 27pt; font-weight: 700;
+                                  letter-spacing: 0.015em; margin-top: 16.4mm; }
+.szh-page-titre .szh-sous-titre { font-size: 12pt; line-height: 18pt; font-weight: 500;
+                                  letter-spacing: 0.05em; margin-top: 7.4mm; }
 
-/* Impressum : 7 pt, un bloc par mention, exactement l'ordre des livres publiés — année et
-   éditeur, les quatre raisons sociales de la fondation, le soutien, les crédits de
-   fabrication, les ISBN, le DOI, la licence, l'imprimeur. */
-.szh-impressum { padding-top: 50mm; line-height: 1.45; }
-.szh-impressum p { text-indent: 0; margin: 0 0 3mm 0; }
+/* Impressum : 7 pt Medium sur 9,6, un bloc par mention, une ligne vide entre les blocs. */
+.szh-impressum { padding-top: 31.3mm; line-height: 9.6pt; font-weight: 500;
+                 letter-spacing: 0.035em; }
+.szh-impressum p { text-indent: 0; text-align: left; hyphens: none; margin: 0 0 9.6pt 0; }
 
-/* ═══ Sommaire ════════════════════════════════════════════════════════════════ */
-.szh-sommaire h1 { font-size: 16pt; font-weight: 700; margin: 0 0 6mm 0; }
-.szh-sommaire li { font-size: 10pt; line-height: 1.35; margin-bottom: 2mm; }
-.szh-sommaire .niveau-1 { font-weight: 700; margin-top: 4mm; }
-.szh-sommaire .niveau-2 { font-weight: 300; padding-left: 7mm; }
-.szh-sommaire .niveau-3 { font-weight: 300; padding-left: 14mm; }
+/* Un liminaire écrit à la main qui suit le sommaire (Vorwort) ouvre une belle page, comme un
+   chapitre. */
+.szh-sommaire ~ .szh-liminaire { break-before: recto; }
+
+/* ═══ Sommaire ════════════════════════════════════════════════════════════════
+   Au fer à gauche, sans retrait : la graisse seule distingue les niveaux. Le folio, au fer
+   à droite, prend la graisse de l'entrée. Une ligne vide avant chaque entrée de rang 1. */
+.szh-sommaire li { font-size: 10pt; line-height: var(--ligne); margin: 0; padding: 0;
+                   text-align: left; hyphens: none; }
+.szh-sommaire .niveau-1 { font-weight: 700; letter-spacing: 0.035em; margin-top: var(--ligne); }
+.szh-sommaire .niveau-1:first-child { margin-top: 0; }
+.szh-sommaire .niveau-2 { font-weight: 500; letter-spacing: 0.02em; }
+.szh-sommaire .niveau-3 { font-weight: 300; letter-spacing: 0.02em; }
 
 /* ═══ Corps ═══════════════════════════════════════════════════════════════════ */
+/* Citation détachée : 8,5 pt sur 12,25, en italique, retrait gauche de 4 mm, sans alinéa. */
 blockquote {
-  font-style: italic; margin: 3mm 0 3mm 7mm; text-indent: 0;
+  font-size: var(--citation); line-height: 12.25pt; font-style: italic;
+  margin: 1.75mm 0 4.6mm 4mm; text-indent: 0;
 }
-ul, ol { margin: 3mm 0; padding-left: 7mm; }
+blockquote p { text-indent: 0; }
+
+/* Listes : sans espace avant ni entre les éléments, une ligne vide après ; la puce à 4 mm
+   du bord, le texte 4 mm plus loin. */
+ul, ol { margin: 0 0 var(--ligne) 0; padding-left: calc(var(--liste-retrait) + 4mm); }
+ul { list-style-type: "•\2002\2009"; }
 li { text-indent: 0; }
+li > p { text-indent: 0; }
+
+/* Liens : en noir et sans soulignement, comme le texte. */
+.szh-chapitre a, .szh-liminaire a { color: inherit; text-decoration: none; }
+
+/* Notes : 8 pt sur 10, numéro suspendu de 3 mm, sans filet, calées au bas du bloc ; la
+   numérotation repart à 1 à chaque chapitre. */
+.szh-chapitre { counter-reset: footnote; }
+.szh-note {
+  font-size: var(--note); line-height: 10pt; text-align: justify; text-indent: 0;
+  letter-spacing: 0.035em; padding-left: 3mm; text-indent: -3mm;
+}
+.szh-note::footnote-marker {
+  content: counter(footnote) "\2003"; font-size: 65%; vertical-align: super; line-height: 0;
+}
+::footnote-call {
+  content: counter(footnote); font-size: 6.5pt; vertical-align: super; line-height: 0;
+}
+@page { @footnote { border-top: 0; padding: 0 0 0.4mm 0; margin-top: var(--ligne); } }
+
+/* Bibliographie : au corps du texte, retrait suspendu de 4 mm, sans espace entre les
+   entrées. Le sélecteur précède partage-filtres.css, qui rend la marge à chaque entrée. */
+.szh-chapitre .szh-reference > p {
+  text-indent: -4mm; padding-left: 4mm; margin: 0;
+}
+.szh-chapitre .szh-reference:not(:last-child) > p:last-child { margin-bottom: 0; }
+
+/* Légendes : 10 pt italique sur la grille, au fer à gauche, en noir ; le numéro dans la
+   même graisse que le texte. */
+figcaption, caption {
+  font-size: var(--legende); line-height: var(--ligne); font-style: italic;
+  color: var(--c-ink); text-align: left;
+}
+.szh-chapitre figure > figcaption .szh-numero,
+.szh-chapitre table > caption .szh-numero { font-weight: inherit; }
+
+/* ═══ Réglages du bloc mise-en-page ═══════════════════════════════════════════
+   Une règle par valeur qui s'écarte du défaut, sous l'attribut que livre-assembler.py pose
+   sur <html> (MISE_EN_PAGE). Les nombres arrivent en propriétés dans le style="" de <html>
+   (--alinea, --liste-retrait) et n'ont besoin d'aucune règle ici. */
+
+/* folio: seul — le numéro sans « Seite … von … ». */
+html[data-folio="seul"] { --folio-page: ""; --folio-sur: ""; --folio-total: ""; }
+
+/* Auteur·e·s du chapitre (ouvrage collectif), au corps du texte, au fer à gauche. */
+.szh-chapitre > .szh-auteurs {
+  font-size: var(--corps); line-height: var(--ligne); text-align: left; hyphens: none;
+  text-indent: 0; margin: 0;
+}
+.szh-chapitre > .szh-auteurs + p { text-indent: 0; }
+
+/* auteurs-chapitre: dessus — Medium, au-dessus du titre (l'ordre du DOM le suit, voir
+   szh-livre-auteurs.lua). Même page nommée que le titre : sans elle, le changement de page
+   nommée couperait la page entre les auteur·e·s et le titre. Sous un grand titre d'une
+   ligne : auteurs y 19,5, titre y 29,0, texte y 43,8. */
+html[data-auteurs-chapitre="dessus"] .szh-chapitre > .szh-auteurs {
+  page: ouverture; break-after: avoid;
+  font-weight: 500; letter-spacing: 0.05em; margin-top: -0.5mm;
+}
+html[data-auteurs-chapitre="dessus"][data-titre-chapitre="grand"] .szh-chapitre > .szh-auteurs + h1 {
+  margin-top: 2.64mm; margin-bottom: 9.5mm;
+}
+
+/* auteurs-chapitre: dessous — Regular, ligne de base 5,8 mm sous la dernière ligne du titre,
+   puis le texte sur la grille après une ligne vide (8,5 mm). La marge négative se fond dans
+   celle du titre. */
+html[data-auteurs-chapitre="dessous"] .szh-chapitre > h1 + .szh-auteurs {
+  margin-top: calc(1.04mm - var(--ligne)); margin-bottom: 3.73mm;
+}
+html[data-auteurs-chapitre="dessous"][data-titre-chapitre="grand"] .szh-chapitre > h1 + .szh-auteurs {
+  margin-top: calc(0.49mm - 4 * var(--ligne) - 2.4mm);
+  margin-bottom: calc(3 * var(--ligne) + 1.91mm);
+}
+
+/* titre-chapitre: courant — au corps du texte, gras, première ligne de base sur la
+   première ligne de la grille (y 20,0), une ligne vide avant le texte. */
+html[data-titre-chapitre="courant"] .szh-chapitre > h1 {
+  font-size: var(--corps); line-height: var(--ligne); letter-spacing: 0.035em;
+  margin: 0 0 var(--ligne) 0;
+}
+/* Le numéro suivi d'une tabulation de 7 mm (.szh-num-section), les lignes suivantes en
+   retrait suspendu de 7 mm. */
+html[data-titre-chapitre="courant"][data-numeros-chapitres="continu"] .szh-chapitre > h1 {
+  padding-left: 7mm; text-indent: -7mm;
+}
+/* Le retrait s'hérite : sans ceci, la boîte du numéro le reprendrait à son compte. */
+html[data-titre-chapitre="courant"] .szh-chapitre > h1 .szh-num-section { text-indent: 0; }
+
+/* intertitres: demi-gras — une ligne vide avant, rien après ; le niveau 3 colle au niveau 2
+   qu'il suit. */
+html[data-intertitres="demi-gras"] h2 {
+  font-weight: 600; letter-spacing: var(--approche); margin: var(--ligne) 0 0 0;
+}
+html[data-intertitres="demi-gras"] h3 {
+  font-weight: 600; font-style: italic; margin: var(--ligne) 0 0 0;
+}
+html[data-intertitres="demi-gras"] h2 + h3 { margin-top: 0; }
+html[data-intertitres="demi-gras"] h4 {
+  font-weight: 400; font-style: italic; margin: var(--ligne) 0 0 0;
+}
+/* La bibliographie garde son titre gras, deux lignes vides avant, rien après. */
+html[data-intertitres="demi-gras"] h2[id$="szh-bibliographie"] {
+  font-weight: 700; letter-spacing: 0.035em; margin: calc(2 * var(--ligne)) 0 0 0;
+}
+
+/* citation: romain */
+html[data-citation="romain"] blockquote { font-style: normal; }
+
+/* cadre-figure: filets — filet noir de 0,35 pt au-dessus et au-dessous de l'image, aplat
+   gris K 4 % sur la pleine justification, image centrée. La légende garde le fond du papier
+   et porte le filet du haut, à 5 mm environ de sa dernière ligne de base ; le texte reprend
+   9,5 mm environ sous le filet du bas. */
+html[data-cadre-figure="filets"] .szh-chapitre figure:not(.szh-credit-seul) {
+  background: #f4f4f4; border-bottom: 0.35pt solid #000; padding-bottom: 3mm;
+  margin-bottom: 5.75mm;
+}
+html[data-cadre-figure="filets"] .szh-chapitre figure:not(.szh-credit-seul) > figcaption {
+  background: #fff; border-bottom: 0.35pt solid #000; padding-bottom: 3.9mm;
+  margin-bottom: 3mm;
+}
+html[data-cadre-figure="filets"] .szh-chapitre figure:not(.szh-credit-seul) img {
+  margin-left: auto; margin-right: auto;
+}
+/* legende: dessous — les filets passent autour de l'image, la légende sous le filet bas, sur
+   le fond du papier, sa première ligne de base à 5 mm environ du filet. */
+html[data-cadre-figure="filets"] .szh-chapitre figure.szh-legende-dessous:not(.szh-credit-seul) {
+  border-bottom: 0; border-top: 0.35pt solid #000; padding: 3mm 0 0 0;
+  margin-bottom: var(--ligne);
+}
+html[data-cadre-figure="filets"] .szh-chapitre figure.szh-legende-dessous:not(.szh-credit-seul) > figcaption {
+  border-bottom: 0; border-top: 0.35pt solid #000; padding: 1.4mm 0 0 0; margin: 3mm 0 0 0;
+}
+
+/* tableaux: zebre — corps 7 sur 8, tête grasse sur aplat bleu, rangées en alternance,
+   2 mm de marge à gauche, aucun filet. Seulement pour les tableaux sans réglage de
+   l'éditeur (.szh-tableau nu) et les tableaux importés bruts. */
+html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) {
+  font-size: 7pt; line-height: 8pt;
+}
+html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) > * > tr > * {
+  padding: 1.8mm 2mm; border: 0;
+}
+html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) thead th {
+  font-weight: 700; background: #c4d4e4; padding-top: 3mm; padding-bottom: 3mm;
+}
+html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) tbody tr:nth-child(even) > * {
+  background: #f0f4f8;
+}
+/* Légende : 4,3 à 5,2 mm de sa dernière ligne de base au haut du tableau. */
+html[data-tableaux="zebre"] .szh-tableau-boite > table > caption { margin-bottom: 3.7mm; }
+
+/* sommaire: hierarchique — les chapitres seuls, en SZH Condensed, le folio gras sur la
+   dernière ligne du titre, les auteur·e·s dessous en romain ; une ligne vide entre deux
+   entrées, deux avant la première. Approche relevée sur les largeurs de mots de la
+   référence : 0,035 em aux titres, 0,045 em aux auteur·e·s, 0,05 em aux parties. */
+html[data-sommaire="hierarchique"] .szh-sommaire li {
+  font-family: 'SZH Condensed', var(--font-sans); letter-spacing: 0;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1 {
+  font-weight: 700; letter-spacing: 0.035em; margin-top: var(--ligne);
+}
+/* Un padding et non une marge : celle-ci se fondrait dans la marge basse du titre. */
+html[data-sommaire="hierarchique"] .szh-sommaire ol { padding-top: calc(2 * var(--ligne)); }
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1:first-child { margin-top: 0; }
+html[data-sommaire="hierarchique"] .szh-sommaire-auteurs { display: block; font-weight: 400;
+                                                           letter-spacing: 0.045em; }
+/* Le titre s'arrête avant la colonne des folios, le folio reste au fer à droite. */
+html[data-sommaire="hierarchique"] .szh-sommaire li { padding-right: 10mm; }
+html[data-sommaire="hierarchique"] .szh-sommaire a::after { margin-right: -10mm; }
+/* Le folio flottant hériterait le retrait négatif de l'entrée de partie. */
+.szh-sommaire a::after { text-indent: 0; }
+
+/* sommaire-page: verso — le sommaire s'ouvre sur une page paire, en double page. */
+html[data-sommaire-page="verso"] .szh-sommaire { break-before: verso; }
+
+/* ═══ Structure : parties, sommaire des parties, pièces de fin ═════════════════
+   Posée par livre-assembler.py (parties:, pieces-fin:, dedicace:, impressum:). Les lignes de
+   base visées sont celles de la grille : 10/13,5 a sa ligne de base 3,75 mm sous le haut
+   de sa ligne, 16/23 à 6,25 mm, 20/26 à 7,3 mm (Open Sans, ascendante 1,069 em). */
+
+/* titre-partie: intercalaire — ExtraBold 20, ligne de base y 43,8, sans numéro ; une
+   illustration dessous, centrée sur la justification, son haut à y 71,0. */
+.szh-partie { padding-top: 20.25mm; }
+.szh-partie > h1 {
+  font-size: 20pt; line-height: 26pt; font-weight: 800; letter-spacing: 0.015em;
+  text-align: left; hyphens: none; text-indent: 0; margin: 0;
+}
+.szh-partie-illustration { margin: 25.35mm 0 0 0; text-indent: 0; }
+.szh-partie-image { display: block; margin: 0 auto; max-width: 100%; max-height: 117.3mm;
+                    height: auto; }
+.szh-partie-illustration .szh-decor-livre {
+  display: block; margin: 0 auto; width: min(100%, calc(117.3mm / var(--ratio)));
+}
+
+/* Image décorative posée par l'assembleur (alt vide) : un fond CSS, à la géométrie que
+   donne --ratio, hauteur sur largeur (livre-assembler.py, _img). */
+.szh-decor-livre { display: inline-block; vertical-align: bottom; }
+.szh-decor-livre > span { display: block; height: 0; padding-top: calc(var(--ratio) * 100%);
+                          background-size: 100% 100%; background-repeat: no-repeat; }
+
+/* titre-partie: titre — Bold 16 sur 23, le numéro suivi d'une tabulation de 7 mm, les
+   lignes suivantes en retrait suspendu de 7 mm. Page seule : ligne de base y 52,0. */
+html[data-titre-partie="titre"] .szh-partie { padding-top: 29.5mm; }
+html[data-titre-partie="titre"] .szh-partie > h1 {
+  font-size: 16pt; line-height: 23pt; font-weight: 700; letter-spacing: 0.035em;
+  padding-left: 7mm; text-indent: -7mm;
+}
+.szh-num-partie { display: inline-block; min-width: 7mm; text-indent: 0; }
+
+/* Partie qui ouvre la page de son premier chapitre (page-seule: non) : titre à y 21,0, le
+   texte du chapitre sans titre qui la suit à y 48,6, sans alinéa, que le titre tienne sur
+   une ligne ou deux (la référence remonte d'une ligne sous un titre de deux lignes). */
+html[data-titre-partie] .szh-partie[data-page-seule="non"] { padding-top: 0; min-height: 30.1mm; }
+.szh-partie[data-page-seule="non"] > h1 { margin: -1.5mm 0 0 0; }
+.szh-partie[data-page-seule="non"] + .szh-chapitre > p:first-of-type { text-indent: 0; }
+
+/* La dédicace : Medium 10, centrée sur la justification, sur un recto, première ligne de
+   base y 61,9. */
+.szh-dedicace { break-before: recto; padding-top: 41.9mm; }
+.szh-dedicace p {
+  font-weight: 500; letter-spacing: 0.05em; line-height: var(--ligne); text-align: center;
+  hyphens: none; text-indent: 0; margin: 0;
+}
+
+/* Le logo de l'éditeur en bas à droite de la page de titre : son encre de x 106,8 à 135 et
+   de y 192,4 à 203,2. Le SVG porte une marge blanche autour du dessin, d'où une boîte un peu
+   plus grande que l'encre, qui déborde de 0,4 mm la justification. */
+.szh-logo-editeur { position: absolute; right: -0.4mm; bottom: -1.4mm; margin: 0; }
+.szh-logo-editeur .szh-decor-livre { display: block; width: calc(11.55mm / var(--ratio)); }
+
+/* Impressum : le logo de soutien dans le flux, la rangée de logos de l'imprimeur posée sur
+   la dernière ligne de base de la page (y 201,0). Hauteurs relevées sur l'Edition SZH. */
+:root { --impressum-logo-soutien: 15.6mm; --impressum-logos-imprimeur: 8.6mm; }
+/* Le logo de soutien : 3,7 mm sous la ligne de base qui le précède, 7,8 mm au-dessus de
+   celle qui le suit. */
+.szh-impressum .szh-impressum-logo { margin: -0.4mm 0 calc(9.6pt + 1.8mm) 0; }
+.szh-impressum .szh-impressum-logo img { display: block; height: var(--impressum-logo-soutien); width: auto; }
+.szh-impressum .szh-impressum-logo .szh-decor-livre {
+  display: block; width: calc(var(--impressum-logo-soutien) / var(--ratio));
+}
+.szh-impressum .szh-impressum-logos-imprimeur {
+  position: absolute; left: 0; bottom: 1.1mm; margin: 0; line-height: 0;
+}
+.szh-impressum-logos-imprimeur img {
+  height: var(--impressum-logos-imprimeur); width: auto; margin-right: 4mm; vertical-align: bottom;
+}
+.szh-impressum-logos-imprimeur .szh-decor-livre {
+  width: calc(var(--impressum-logos-imprimeur) / var(--ratio)); margin-right: 4mm;
+}
+
+/* Sommaire plat : partie et chapitre hors partie en Bold, une ligne vide avant ;
+   chapitre d'une partie en Medium, sans ligne vide ; intertitres en Light. */
+.szh-sommaire .niveau-0 { font-size: 10pt; line-height: var(--ligne); font-weight: 700;
+                          letter-spacing: 0.035em; margin-top: var(--ligne); }
+.szh-sommaire .niveau-0:first-child { margin-top: 0; }
+.szh-sommaire .niveau-1.dans-partie { font-weight: 500; letter-spacing: 0.02em; margin-top: 0; }
+.szh-sommaire .niveau-2 { font-weight: 300; }
+.szh-sommaire-num { margin-right: 0.3em; }
+
+/* Sommaire hiérarchique (HfH p. 7) : partie seule en Bold 14 sur 16,5, numéro à x 20 et
+   titre à x 25,8, environ 19 mm avant ; partie partagée en Bold 11, titre à x 25,6 ;
+   chapitres d'une partie en retrait de 5,5 mm. */
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-0 {
+  font-family: 'SZH Condensed', var(--font-sans); font-weight: 700; letter-spacing: 0.05em;
+  padding-left: 5.8mm; text-indent: -5.8mm;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-0 .szh-sommaire-num {
+  display: inline-block; min-width: 5.8mm; margin-right: 0; text-indent: 0;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-seule {
+  font-size: 14pt; line-height: 16.5pt; margin-top: 13.3mm;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-partagee {
+  font-size: 11pt; line-height: var(--ligne); margin-top: var(--ligne);
+  padding-left: 5.6mm; text-indent: -5.6mm;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-partagee .szh-sommaire-num { min-width: 5.6mm; }
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-0:first-child { margin-top: 0; }
+html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1.dans-partie {
+  font-weight: 700; margin-top: var(--ligne); padding-left: 5.5mm;
+}
+html[data-sommaire="hierarchique"] .szh-sommaire .partie-seule + .dans-partie {
+  margin-top: calc(var(--ligne) - 1.1mm);
+}
+
+/* Notices d'auteur·e·s (::: notices) : un paragraphe par notice, sans alinéa, une ligne
+   vide entre deux ; le nom en tête, en demi-gras. */
+.notices p { text-indent: 0; margin: 0 0 var(--ligne) 0; }
+.notices p:last-child { margin-bottom: 0; }
+.notices p > strong:first-child { font-weight: 600; }
+
+/* ::: {.notices .portraits} : intertitres de groupe en Bold 10, puis une grille de trois
+   colonnes au pas de 39,75 mm ; photo 36,3 × 34,3 mm, nom en SemiBold 8, fonction et
+   courriel en Regular 8 sur 11. Une notice ne se coupe pas. */
+.notices.portraits {
+  display: grid; grid-template-columns: repeat(3, 36.3mm); column-gap: 3.45mm;
+}
+.notices.portraits > h2 {
+  grid-column: 1 / 4; font-weight: 700; letter-spacing: 0.035em; margin: 7.45mm 0 3.4mm 0;
+}
+.notices.portraits > h2:first-child { margin-top: 0; }
+.notices.portraits > .notice { break-inside: avoid; margin-bottom: 3.7mm; }
+.notice p { font-size: 8pt; line-height: 11pt; text-align: left; text-indent: 0; margin: 0;
+            letter-spacing: 0.01em; }
+.notice p strong { font-weight: 600; }
+/* Le courriel, en dernière ligne : coupé n'importe où plutôt que par la césure. */
+.notice p:last-child { hyphens: none; overflow-wrap: anywhere; }
+.notice img { display: block; width: 36.3mm; height: 34.3mm; object-fit: cover;
+              margin-bottom: 1.45mm; }

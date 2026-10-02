@@ -1758,9 +1758,9 @@ test('falc-header : le nom accessible du qr-link embarqué est la première lign
   assert.match(a, /aria-label="Diese Geschichte gibt es auch zum Hören\."/, 'aria-label n’est pas la première ligne : ' + a);
 });
 
-test('falc-header : placé N’IMPORTE OÙ dans le chapitre, imprimé après le titre ET le bloc auteurs (collectif)', () => {
+test('falc-header : placé N’IMPORTE OÙ dans le chapitre, imprimé après le titre ET le bloc auteurs (collectif FALC)', () => {
   const html = pandoc(
-    '---\nouvrage: collectif\nlang: fr\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n---\n\n' +
+    '---\nouvrage: collectif\nmaquette: falc\nlang: fr\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n---\n\n' +
     '# Titre du chapitre\n\nCorps réel du chapitre.\n\n' +
     ':::: falc-header\nÉcrit tout à la fin du fichier.\n::::\n',
     { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: { SZH_LIVRE: '1' } });
@@ -1850,6 +1850,209 @@ test('collectif : un bloc auteurs déjà importé (Div) empêche le doublon de l
   assert.strictEqual(occurrences, 1, 'un doublon de bloc auteurs est apparu : ' + html);
   assert.match(html, /Nom réel du Word/, 'le bloc importé doit être conservé : ' + html);
   assert.ok(!/Ana Nym|>Ana</.test(html), 'la ligne de la fiche s’est ajoutée par-dessus celle du Word : ' + html);
+});
+
+// ── Bloc mise-en-page de buch.yaml (maquette normal) ────────────────────────────────────
+// Les filtres de chapitre relisent le bloc dans leurs métadonnées (buch.yaml passé en
+// --metadata-file). Une maquette falc l'ignore, la revue ne le connaît pas : leurs sorties
+// ne changent pas. Défauts : MISE_EN_PAGE de pipeline/livre-assembler.py.
+function docLivre(entete, corps) {
+  return '---\n' + entete + '---\n\n' + corps;
+}
+const CORPS_SECTIONS = '# Titre du chapitre\n\nCorps.\n\n## Section\n\nTexte.\n\n### Sous-section\n\nTexte.\n';
+function sections(entete, env) {
+  return pandoc(docLivre(entete, CORPS_SECTIONS),
+    { de: 'markdown', vers: 'html', filtres: ['szh-sections.lua'], env: env });
+}
+const LIVRE_CH2 = { SZH_LIVRE: '1', SZH_CHAPITRE: '2' };
+
+test('mise-en-page (sections) : livre normal sans bloc, ni le chapitre ni ses sections ne portent de numéro', () => {
+  const html = sections('lang: de\nmaquette: normal\n', LIVRE_CH2);
+  assert.ok(!/szh-num-section/.test(html), 'un numéro est posé par défaut : ' + html);
+});
+
+test('mise-en-page (sections) : numeros-chapitres continu et numeros-sections chapitre numérotent comme avant', () => {
+  const html = sections('lang: de\nmaquette: normal\nmise-en-page:\n  numeros-chapitres: continu\n'
+    + '  numeros-sections: chapitre\n', LIVRE_CH2);
+  assert.match(html, /<h1[^>]*><span class="szh-num-section">2\u00a0<\/span>Titre/, html);
+  assert.match(html, /<h2[^>]*><span class="szh-num-section">2\.1\u00a0<\/span>Section/, html);
+  assert.match(html, /<h3[^>]*><span class="szh-num-section">2\.1\.1\u00a0<\/span>Sous-section/, html);
+});
+
+test('mise-en-page (sections) : numeros-chapitres continu seul, le titre numéroté et pas les sections', () => {
+  const html = sections('lang: de\nmise-en-page:\n  numeros-chapitres: continu\n', LIVRE_CH2);
+  assert.match(html, /<h1[^>]*><span class="szh-num-section">2\u00a0<\/span>Titre/, html);
+  assert.ok(!/<h2[^>]*><span class="szh-num-section">/.test(html), 'la section est numérotée : ' + html);
+});
+
+test('mise-en-page (sections) : numeros-chapitres partie écrit le numéro que livre.mk passe, rien sans lui', () => {
+  const entete = 'lang: de\nmise-en-page:\n  numeros-chapitres: partie\n  numeros-sections: chapitre\n';
+  const html = sections(entete, Object.assign({ SZH_NUMERO_CHAPITRE: '1.2' }, LIVRE_CH2));
+  assert.match(html, /<h1[^>]*><span class="szh-num-section">1\.2 <\/span>Titre/, html);
+  assert.match(html, /<h2[^>]*><span class="szh-num-section">1\.2\.1 <\/span>Section/, html);
+  const hors = sections(entete, Object.assign({ SZH_NUMERO_CHAPITRE: '' }, LIVRE_CH2));
+  assert.ok(!/<h1[^>]*><span class="szh-num-section">/.test(hors), 'un chapitre hors partie numérotée reçoit un numéro : ' + hors);
+});
+
+test('mise-en-page (sections) : la maquette falc ignore le bloc, tout reste numéroté', () => {
+  const html = sections('lang: fr\nmaquette: falc\nmise-en-page:\n  numeros-chapitres: aucun\n'
+    + '  numeros-sections: aucun\n', LIVRE_CH2);
+  assert.match(html, /<span class="szh-num-section">2\u00a0<\/span>Titre/, html);
+  assert.match(html, /<span class="szh-num-section">2\.1\u00a0<\/span>Section/, html);
+});
+
+test('mise-en-page (sections) : un article de la revue garde sa numérotation, bloc ou non', () => {
+  const html = sections('lang: fr\nrevue: revue\nmise-en-page:\n  numeros-sections: aucun\n', {});
+  assert.match(html, /<h2[^>]*><span class="szh-num-section">1\u00a0<\/span>Section/, html);
+  assert.match(html, /<h3[^>]*><span class="szh-num-section">1\.1\u00a0<\/span>Sous-section/, html);
+});
+
+const FICHE_COLLECTIF = 'ouvrage: collectif\nlang: de\nauthor:\n- prenom: "Ana"\n  nom: "Nym"\n';
+function auteursLivre(entete, corps) {
+  return pandoc(docLivre(FICHE_COLLECTIF + entete, corps || '# Titre\n\nCorps.\n'),
+    { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua'], env: { SZH_LIVRE: '1' } });
+}
+
+test('mise-en-page (auteurs) : maquette normal sans bloc, la ligne précède le titre dans le DOM', () => {
+  const html = auteursLivre('maquette: normal\n');
+  const iAuteurs = html.indexOf('class="szh-auteurs"');
+  assert.ok(iAuteurs >= 0 && iAuteurs < html.indexOf('<h1'), 'la ligne ne précède pas le titre : ' + html);
+});
+
+test('mise-en-page (auteurs) : auteurs-chapitre dessous, la ligne suit le titre', () => {
+  const html = auteursLivre('mise-en-page:\n  auteurs-chapitre: dessous\n');
+  const iTitre = html.indexOf('<h1');
+  assert.ok(iTitre >= 0 && html.indexOf('class="szh-auteurs"') > iTitre, 'la ligne ne suit pas le titre : ' + html);
+});
+
+test('mise-en-page (auteurs) : la maquette falc ignore le bloc, la ligne reste sous le titre', () => {
+  const html = auteursLivre('maquette: falc\nmise-en-page:\n  auteurs-chapitre: dessus\n');
+  const iTitre = html.indexOf('<h1');
+  assert.ok(iTitre >= 0 && html.indexOf('class="szh-auteurs"') > iTitre, 'la ligne ne suit pas le titre : ' + html);
+});
+
+test('mise-en-page (auteurs) : dessus, un bloc auteurs importé passe lui aussi avant le titre, sans doublon', () => {
+  const html = auteursLivre('maquette: normal\n', '# Titre\n\n::: {.szh-auteurs}\nNom du Word\n:::\n\nCorps.\n');
+  assert.strictEqual((html.match(/class="szh-auteurs"/g) || []).length, 1, html);
+  assert.ok(html.indexOf('Nom du Word') < html.indexOf('<h1'), 'le bloc importé ne précède pas le titre : ' + html);
+});
+
+test('mise-en-page (falc-header) : en maquette normal, auteurs puis titre puis encadré', () => {
+  const html = pandoc(docLivre(FICHE_COLLECTIF + 'maquette: normal\n',
+    '# Titre du chapitre\n\nCorps.\n\n:::: falc-header\nTexte.\n::::\n'),
+  { de: 'markdown', vers: 'html', filtres: ['szh-livre-auteurs.lua', 'szh-livre-entete.lua'], env: { SZH_LIVRE: '1' } });
+  const iAuteurs = html.indexOf('class="szh-auteurs"');
+  const iTitre = html.indexOf('<h1');
+  const iEntete = html.indexOf('class="szh-falc-header"');
+  assert.ok(iAuteurs >= 0 && iTitre > iAuteurs && iEntete > iTitre, html);
+});
+
+const CORPS_FIGURES = '# Titre\n\n![Une légende](x.png)\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n: Un tableau\n';
+// `rapports` : les compteurs déjà consommés par le chapitre 1, comme livre.mk les reporte.
+function figures(entete, env, rapports, filtres) {
+  const d = dossierJetable('szh-mep-');
+  try {
+    if (rapports) { fs.writeFileSync(path.join(d, '1.txt'), rapports); }
+    const e = Object.assign({ SZH_COMPTEURS: path.join(d, '2.txt') }, env);
+    return pandoc(docLivre(entete, CORPS_FIGURES),
+      { de: 'markdown', vers: 'html', filtres: filtres || ['szh-numerotation.lua'], env: e });
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+}
+
+test('mise-en-page (figures) : livre normal sans bloc, « Abbildung 1: » et « Tabelle 1: »', () => {
+  const html = figures('lang: de\nmaquette: normal\n', { SZH_LIVRE: '1' });
+  assert.match(html, /<span class="szh-numero">Abbildung 1:<\/span> Une légende/, html);
+  assert.match(html, /<span class="szh-numero">Tabelle 1:<\/span> Un tableau/, html);
+});
+
+test('mise-en-page (figures) : en français, une fine insécable devant le deux-points', () => {
+  const html = figures('lang: fr\n', { SZH_LIVRE: '1' });
+  assert.match(html, /<span class="szh-numero">Figure 1 :<\/span>/, html);
+});
+
+test('mise-en-page (figures) : numeros-figures aucun, ni libellé ni numéro, la légende seule', () => {
+  const html = figures('lang: de\nmise-en-page:\n  numeros-figures: aucun\n', { SZH_LIVRE: '1' });
+  assert.ok(!/szh-numero/.test(html), 'un libellé subsiste : ' + html);
+  assert.match(html, /Une légende/, html);
+  assert.match(html, /Un tableau/, html);
+});
+
+test('mise-en-page (figures) : volume reprend après le chapitre précédent, chapitre repart à 1', () => {
+  const env = { SZH_LIVRE: '1', SZH_CHAPITRE: '2' };
+  const volume = figures('lang: de\n', env, '3\n2\n');
+  assert.match(volume, /Abbildung 4:/, volume);
+  assert.match(volume, /Tabelle 3:/, volume);
+  const chapitre = figures('lang: de\nmise-en-page:\n  numeros-figures: chapitre\n', env, '3\n2\n');
+  assert.match(chapitre, /Abbildung 1:/, chapitre);
+  assert.match(chapitre, /Tabelle 1:/, chapitre);
+});
+
+test('mise-en-page (figures) : legende dessous marque la figure, dessus non', () => {
+  const dessous = figures('lang: de\nmise-en-page:\n  legende: dessous\n', { SZH_LIVRE: '1' });
+  assert.match(dessous, /<figure[^>]*class="[^"]*szh-legende-dessous/, dessous);
+  const dessus = figures('lang: de\n', { SZH_LIVRE: '1' });
+  assert.ok(!/szh-legende-dessous/.test(dessus), dessus);
+});
+
+test('mise-en-page (figures) : legende dessous, la légende suit l’image dans le DOM, dessus la précède', () => {
+  const chaine = ['szh-numerotation.lua', 'szh-legende-avant.lua'];
+  const dessous = figures('lang: de\nmise-en-page:\n  legende: dessous\n', { SZH_LIVRE: '1' }, null, chaine);
+  assert.ok(dessous.indexOf('<img') >= 0 && dessous.indexOf('<figcaption') > dessous.indexOf('<img'),
+    'la légende ne suit pas l’image : ' + dessous);
+  const dessus = figures('lang: de\n', { SZH_LIVRE: '1' }, null, chaine);
+  assert.ok(dessus.indexOf('<figcaption') >= 0 && dessus.indexOf('<figcaption') < dessus.indexOf('<img'),
+    'la légende ne précède pas l’image : ' + dessus);
+});
+
+test('mise-en-page (figures) : la maquette falc et la revue gardent le tiret et la numérotation', () => {
+  const falc = figures('lang: de\nmaquette: falc\nmise-en-page:\n  numeros-figures: aucun\n  legende: dessous\n',
+    { SZH_LIVRE: '1' });
+  assert.match(falc, /<span class="szh-numero">Abbildung 1 —<\/span>/, falc);
+  assert.ok(!/szh-legende-dessous/.test(falc), falc);
+  const revue = figures('lang: fr\nrevue: revue\nmise-en-page:\n  numeros-figures: aucun\n', {});
+  assert.match(revue, /<span class="szh-numero">Figure 1 —<\/span>/, revue);
+});
+
+// Le contrat du bloc, lu par commun.mise_en_page (szh-commun.lua) : une sonde l'appelle et
+// écrit ce qu'elle rend en JSON. Les valeurs attendues viennent du même fichier JSON.
+const CONTRAT_MEP = JSON.parse(fs.readFileSync(
+  path.join(RACINE, 'pipeline', 'livre', 'mise-en-page.json'), 'utf8'));
+function sondeMiseEnPage(entete, env) {
+  const d = dossierJetable('szh-mep-sonde-');
+  try {
+    const sonde = path.join(d, 'sonde.lua');
+    fs.writeFileSync(sonde, 'local commun = dofile(os.getenv("SZH_SONDE_COMMUN"))\n'
+      + 'function Pandoc(doc)\n  local r = commun.mise_en_page(doc.meta)\n'
+      + '  return pandoc.Pandoc({ pandoc.RawBlock("html", r and pandoc.json.encode(r) or "nil") })\nend\n');
+    const html = pandoc(docLivre(entete, 'Corps.\n'), { de: 'markdown', vers: 'html',
+      filtres: [path.relative(FILTRES, sonde)],
+      env: Object.assign({ SZH_SONDE_COMMUN: path.join(FILTRES, 'szh-commun.lua') }, env) });
+    return html.trim() === 'nil' ? null : JSON.parse(html);
+  } finally {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+}
+
+test('mise-en-page (contrat) : commun.mise_en_page rend le défaut du contrat pour chaque clé', () => {
+  const lu = sondeMiseEnPage('lang: de\nmaquette: normal\n', { SZH_LIVRE: '1' });
+  const attendu = {};
+  for (const [cle, d] of Object.entries(CONTRAT_MEP.cles)) { attendu[cle] = String(d.defaut); }
+  assert.deepStrictEqual(lu, attendu);
+});
+
+test('mise-en-page (contrat) : une valeur du bloc remplace le défaut, les autres clés gardent le leur', () => {
+  const cle = Object.keys(CONTRAT_MEP.cles).find((c) => CONTRAT_MEP.cles[c].valeurs);
+  const autre = CONTRAT_MEP.cles[cle].valeurs.find((v) => v !== CONTRAT_MEP.cles[cle].defaut);
+  const lu = sondeMiseEnPage('lang: de\nmise-en-page:\n  ' + cle + ': ' + autre + '\n', { SZH_LIVRE: '1' });
+  assert.strictEqual(lu[cle], autre);
+  assert.strictEqual(Object.keys(lu).length, Object.keys(CONTRAT_MEP.cles).length);
+});
+
+test('mise-en-page (contrat) : rien en maquette falc ni pour un article de la revue', () => {
+  assert.strictEqual(sondeMiseEnPage('lang: fr\nmaquette: falc\n', { SZH_LIVRE: '1' }), null);
+  assert.strictEqual(sondeMiseEnPage('lang: fr\nrevue: revue\n', {}), null);
 });
 
 // ── Cohérence de la langue : une chaîne entière, une seule langue ─────────────────────

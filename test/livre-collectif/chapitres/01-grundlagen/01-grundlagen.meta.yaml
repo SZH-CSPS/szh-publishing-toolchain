@@ -1,0 +1,12 @@
+# Fiche du chapitre : titre et auteur·e·s fictifs (ouvrage collectif).
+lang: de
+title:
+  de: "Gemeinsames Lernen als Grundlage einer inklusiven Schule im Prüfband"
+author:
+- prenom: "Lea"
+  nom: "Beispiel"
+  fonction: "Autorin des Prüfbandes"
+  affiliation: "SZH / CSPS"
+  ror: ""
+  orcid: "0000-0002-1825-0097"
+  email: "lea.beispiel@example.org"

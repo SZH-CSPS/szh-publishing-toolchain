@@ -111,6 +111,14 @@ end
 -- Posés par Pandoc(doc), d'après le contexte de composition.
 local LIVRE, CHAPITRE, CHEMIN_COMPTEURS = false, nil, nil
 
+-- Livre en maquette normal : le bloc `mise-en-page:` de buch.yaml règle la numérotation
+-- (`numeros-figures` : volume, chapitre ou aucun) et la place de la légende des figures
+-- (`legende` : dessus ou dessous), lus par commun.mise_en_page. Hors livre normal, les
+-- deux valent nil et rien ne change.
+local NUMEROS_FIGURES, LEGENDE = nil, nil
+-- Classe posée sur une figure dont la légende se lit après l'image (szh-legende-avant.lua).
+local CLASSE_LEGENDE_DESSOUS = 'szh-legende-dessous'
+
 -- Dossier contenant CHEMIN_COMPTEURS, sans le séparateur final ; '.' si le chemin ne
 -- porte aucun dossier (n'arrive pas en usage réel, seulement en test isolé).
 local function dossier_compteurs()
@@ -127,6 +135,7 @@ end
 -- quoi le calculer, ou dès qu'un report manque — voir l'avertissement en tête de section.
 local function depart_compteurs()
   if not CHAPITRE or not CHEMIN_COMPTEURS then return 0, 0 end
+  if NUMEROS_FIGURES == 'chapitre' then return 0, 0 end
   local figures, tableaux = 0, 0
   for rang = 1, CHAPITRE - 1 do
     local chemin = chemin_report(rang)
@@ -180,6 +189,14 @@ local PONCT_NOTE      = { fr = '\u{202F}:', de = ':', it = ':' }
 -- Séparateur visible : cadratin entouré d'espaces. L'espace de tête est un
 -- pandoc.Space (donc sécable), celui de queue est collé au cadratin dans le Span.
 local CADRATIN = '\u{2014}'
+-- Le préfixe d'une légende : « Figure 3 — ». En livre normal, « Abbildung 3: », avec la
+-- fine insécable du français devant le deux-points (PONCT_NOTE) ; nil pour
+-- `numeros-figures: aucun`, la légende restant seule.
+local function prefixe_legende(mot, n, lang)
+  if NUMEROS_FIGURES == 'aucun' then return nil end
+  if NUMEROS_FIGURES then return mot .. ' ' .. n .. (PONCT_NOTE[lang] or PONCT_NOTE.fr) end
+  return mot .. ' ' .. n .. ' ' .. CADRATIN
+end
 -- Séparateur entre copyright et source dans un crédit.
 local SEP_CREDIT = ' | '
 -- Sous un même titre, plusieurs copyrights (ou plusieurs sources) se suivent par une virgule.
@@ -480,7 +497,7 @@ local function traiter_tableau(html, prefixe, credit, ids, note_html)
     -- numéro en tête de légende, crédits en queue — un seul découpage.
     local queue = credit and (' <span class="szh-credit">' .. credit .. '</span>') or ''
     html = html:sub(1, f_ouv)
-        .. '<span class="szh-numero">' .. prefixe .. '</span> '
+        .. (prefixe and ('<span class="szh-numero">' .. prefixe .. '</span> ') or '')
         .. html:sub(f_ouv + 1, d_ferm - 1)
         .. queue
         .. html:sub(d_ferm)
@@ -652,6 +669,9 @@ function Pandoc(doc)
   LIVRE = contexte.produit == 'livre'
   CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
   CHEMIN_COMPTEURS = LIVRE and os.getenv('SZH_COMPTEURS') or nil
+  local mep = commun.mise_en_page(doc.meta)
+  NUMEROS_FIGURES = mep and mep['numeros-figures'] or nil
+  LEGENDE = mep and mep.legende or nil
   local mot_figure  = LIBELLE_FIGURE[lang]  or LIBELLE_FIGURE.fr
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
   -- Hors livre, depart_compteurs() rend (0, 0) : n_figure/n_tableau partent d'où ils
@@ -759,8 +779,13 @@ function Pandoc(doc)
         return fig
       end
       n_figure = n_figure + 1
-      local prefixe = mot_figure .. ' ' .. n_figure .. ' ' .. CADRATIN
-      fig.caption.long = prefixer(fig.caption.long, prefixe)
+      local prefixe = prefixe_legende(mot_figure, n_figure, lang)
+      if prefixe then fig.caption.long = prefixer(fig.caption.long, prefixe) end
+      if LEGENDE == 'dessous' then
+        local classes = pandoc.List(fig.classes)
+        classes:insert(CLASSE_LEGENDE_DESSOUS)
+        fig.classes = classes
+      end
 
       -- Une figure peut porter plusieurs images : c'est ce qu'est une grille
       -- (szh-grille.lua). Chacune a ses droits, et une mention de droits ne se perd pas.
@@ -812,8 +837,8 @@ function Pandoc(doc)
     Table = function(tbl)
       if utils.stringify(tbl.caption.long):match('^%s*$') then return nil end
       n_tableau = n_tableau + 1
-      tbl.caption.long = prefixer(tbl.caption.long,
-                                  mot_tableau .. ' ' .. n_tableau .. ' ' .. CADRATIN)
+      local prefixe = prefixe_legende(mot_tableau, n_tableau, lang)
+      if prefixe then tbl.caption.long = prefixer(tbl.caption.long, prefixe) end
       return tbl
     end,
 
@@ -845,7 +870,7 @@ function Pandoc(doc)
         note_html = html_note(note, id_note, lang)
       end
 
-      local prefixe = mot_tableau .. ' ' .. (n_tableau + 1) .. ' ' .. CADRATIN
+      local prefixe = prefixe_legende(mot_tableau, n_tableau + 1, lang)
       local html, numerote = traiter_tableau(raw.text, prefixe, credit,
         #ids > 0 and table.concat(ids, ' ') or nil, note_html)
       if not html then

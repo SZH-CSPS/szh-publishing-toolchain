@@ -45,6 +45,14 @@ local LIAISON = '\u{00A0}'
 -- contexte de composition.
 local RANG_CHAPITRE = nil
 
+-- Livre en maquette normal : le bloc `mise-en-page:` de buch.yaml dit si le titre de
+-- chapitre et les sections portent un numéro (commun.mise_en_page, défauts du contrat
+-- pipeline/livre/mise-en-page.json). Hors livre normal, tout reste numéroté.
+local NUMEROTER_CHAPITRE, NUMEROTER_SECTIONS = true, true
+-- Le numéro écrit dans le titre du chapitre et en tête de ses sections : le rang, ou
+-- celui de sa partie (`numeros-chapitres: partie`).
+local NUMERO_CHAPITRE = nil
+
 -- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
 -- pouvant plus dire dans quelle langue il compose.
 local commun
@@ -110,11 +118,13 @@ local function numeroter(h)
   -- Le titre de chapitre, un seul par document livre : il reçoit le rang du chapitre
   -- lui-même, sans point — c'est le niveau dont les sections suivantes héritent.
   if RANG_CHAPITRE and h.level == 1 then
-    return poser_numero(h, tostring(RANG_CHAPITRE))
+    if not NUMEROTER_CHAPITRE or not NUMERO_CHAPITRE then return nil end
+    return poser_numero(h, NUMERO_CHAPITRE)
   end
 
   local rang = h.level - PREMIER_RANG + 1
   if rang < 1 or rang > RANGS then return nil end
+  if not NUMEROTER_SECTIONS then return nil end
 
   compteurs[rang] = (compteurs[rang] or 0) + 1
   for plus_profond = rang + 1, RANGS do compteurs[plus_profond] = 0 end
@@ -122,7 +132,7 @@ local function numeroter(h)
   -- Le numéro de chapitre, s'il y en a un, précède toujours les rangs de section : dans le
   -- chapitre 2, un <h2> donne « 2.1 » et non « 1 ».
   local morceaux = {}
-  if RANG_CHAPITRE then morceaux[#morceaux + 1] = tostring(RANG_CHAPITRE) end
+  if RANG_CHAPITRE and NUMERO_CHAPITRE then morceaux[#morceaux + 1] = NUMERO_CHAPITRE end
   for i = 1, rang do morceaux[#morceaux + 1] = tostring(compteurs[i]) end
   return poser_numero(h, table.concat(morceaux, '.'))
 end
@@ -134,6 +144,16 @@ end
 function Pandoc(doc)
   local livre = commun.contexte(doc.meta).produit == 'livre'
   RANG_CHAPITRE = livre and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
+  local mep = commun.mise_en_page(doc.meta)
+  NUMEROTER_CHAPITRE = not mep or mep['numeros-chapitres'] ~= 'aucun'
+  -- `partie` : le numéro « 1.1 » que livre.mk a calculé une fois (livre-assembler.py
+  -- --numeros-chapitres) ; vide pour un chapitre hors d'une partie numérotée.
+  NUMERO_CHAPITRE = RANG_CHAPITRE and tostring(RANG_CHAPITRE) or nil
+  if mep and mep['numeros-chapitres'] == 'partie' then
+    local n = os.getenv('SZH_NUMERO_CHAPITRE') or ''
+    NUMERO_CHAPITRE = n ~= '' and n or nil
+  end
+  NUMEROTER_SECTIONS = not mep or mep['numeros-sections'] ~= 'aucun'
   doc.blocks = doc.blocks:walk({
     traverse = 'topdown',
     Div = function(d) if est_rubrique(d) then return d, false end end,

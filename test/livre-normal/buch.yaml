@@ -1,16 +1,21 @@
-# Banc d'essai du moteur livre, maquette « normal » — une MONOGRAPHIE.
+# Banc d'essai du moteur livre, maquette « normal » — un OUVRAGE COLLECTIF aux valeurs par
+# défaut du bloc mise-en-page (celles de l'Edition SZH).
 # Ce dossier n'est pas destiné à la publication : il existe pour que le rendu d'un livre
 # se compare d'une passe à l'autre, page par page, comme la mini-revue de test/articles/.
 #
 # Ce qu'il éprouve, et qui a déjà cassé ailleurs :
-#   * l'ouverture de chapitre sur belle page, et le folio absent de cette page-là ;
-#   * la numérotation de section qui reprend le numéro du chapitre (2.1, et non 1.1) ;
+#   * l'ouverture de chapitre sur belle page ;
 #   * une figure dont la légende ne doit pas se détacher de son image ;
-#   * les liminaires (demi-titre, colophon, page de titre, sommaire) dans l'ordre ;
+#   * la numérotation des figures qui court d'un chapitre à l'autre ;
+#   * les liminaires (demi-titre, impressum, page de titre, dédicace, sommaire en double
+#     page, avant-propos) dans l'ordre ;
+#   * une partie intercalaire sur page seule, avec son illustration (aplat gris factice),
+#     qui regroupe deux chapitres ; les auteur·e·s de chapitre au-dessus du titre ;
+#   * l'impressum complet (textes factices) et une pièce de fin de notices d'auteur·e·s ;
 #   * le dos calculé, et la couverture à plat qui en découle.
 titre: "Berufliche Teilhabe von Erwachsenen"
 sous-titre: "Ein Prüfband für die Buchmaschine"
-ouvrage: monographie
+ouvrage: collectif
 lang: de
 maquette: normal
 format: standard
@@ -23,14 +28,33 @@ doi: "10.57161/b999"
 licence: cc-by-nc-nd-4.0
 couleur: "#5F9FBC"
 couleur-impression: bleu-acier
-auteurs:
+auteurs: []
+editeurs:
 - prenom: "Banc"
   nom: "d'essai"
-  fonction: "Prüfband der Buchmaschine"
   affiliation: "SZH / CSPS"
-  orcid: "0000-0002-1825-0097"
+- prenom: "Tina"
+  nom: "Platzhalter"
+  affiliation: "SZH / CSPS"
 ordre-chapitres: []
-liminaires: [demi-titre, colophon, page-titre, sommaire, vorwort.md]
+liminaires: [demi-titre, impressum, page-titre, dedicace, sommaire, vorwort.md]
+dedicace: "Für Anna, Ben, Clara,//Dario und Elif"
+parties:
+- titre: "Lina"
+  chapitres: [02-konzepte, 03-schluss]
+  page-seule: oui
+  illustration: parties/illustration-1.png
+pieces-fin: [autorinnen.md]
+impressum:
+  logo-soutien: impressum/soutien.png
+  soutien: "Diese Publikation wurde von der Prüfstiftung für erfundene Bände unterstützt."
+  credits: "Illustrationen: Muster Atelier//Layout: Buchmaschine//Lektorat: Vorlage Text"
+  responsabilite: oui
+  reserve: "Die Illustrationen sind frei erfunden und zeigen keine wirklichen Personen."
+  imprimeur: "Gedruckt in der Schweiz bei der Musterdruckerei."
+  logos-imprimeur: [impressum/druck-1.png, impressum/druck-2.png]
+mise-en-page:
+  sommaire-page: verso
 impression:
   grammage: 90
   main: 1.27

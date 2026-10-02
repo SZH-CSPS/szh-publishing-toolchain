@@ -58,9 +58,12 @@ function compiler(dossier, nom, gabarit, extras) {
   const sortie = path.join(dossier, nom + '.html');
   const f = (n) => versWsl(path.join(RACINE, 'pipeline', 'filters', n));
   const buch = versWsl(path.join(BANC, 'buch.yaml'));
+  // Le titre de chapitre n'est numéroté que sur demande (bloc mise-en-page) : le contrat
+  // RE_NUM_SECTION se lit sur un livre qui le demande, après buch.yaml qu'il complète.
+  fs.writeFileSync(path.join(dossier, 'numeros.yaml'), 'mise-en-page:\n  numeros-chapitres: continu\n', 'utf8');
   const args = ['env', 'SZH_LIVRE=1', 'SZH_CHAPITRE=2', 'SZH_AUSGABE=' + buch,
     'pandoc', '02-konzepte.md', '--from=markdown', '--to=html5', '--id-prefix=02-konzepte-',
-    '--metadata-file=' + buch, '--metadata-file=02-konzepte.meta.yaml',
+    '--metadata-file=' + buch, '--metadata-file=numeros.yaml', '--metadata-file=02-konzepte.meta.yaml',
     '--metadata', 'slug=02-konzepte', '--metadata', 'couleur-chapitre=#949A00',
     '--metadata', 'rang-chapitre=2'].concat(extras, [
     '--standalone', '--embed-resources', '--template=' + versWsl(gabarit),

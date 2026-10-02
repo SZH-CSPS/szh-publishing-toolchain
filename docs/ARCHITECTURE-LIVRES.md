@@ -56,11 +56,15 @@ propre au livre.
       tables/                     tableaux extraits, comme un article
   chapitres-word/                 dépôt des .docx à convertir
   liminaires/
-    avant-propos.md               pièces liminaires écrites à la main
+    avant-propos.md               pièces liminaires et pièces de fin écrites à la main
+    media/                        leurs images (portraits des notices)
+  parties/                        illustrations des parties (facultatif)
+  impressum/                      logos de l'impressum (facultatif)
   couverture/
     illustration.jpg
     quatrieme.md                  texte de 4e de couverture
-  styles/                         surcharges locales facultatives
+  styles/
+    livre.css                     surcharge propre au livre, facultative (PDF et imprimeur)
   out/
     <livre>.pdf                   PDF numérique (RVB, PDF/UA-1, signets)
     <livre>-imprimeur.pdf         PDF imprimeur (fond perdu, traits de coupe, CMJN si profil)
@@ -108,8 +112,30 @@ couverture:
   illustration-x-mm: 0     # décalage de couverture/illustration.*, + vers la droite
   illustration-y-mm: 0     # + vers le bas ; coupé au fond perdu du plat de 1re
 auteurs: []                # monographie : ici ; collectif : dans chaque chapitre
+editeurs: []               # collectif : « Prénom Nom, … (Hrsg.) » sur le demi-titre et la page de titre
 ordre-chapitres: []        # vide : l'ordre des dossiers
-liminaires: [demi-titre, colophon, page-titre, sommaire, avant-propos.md]
+liminaires: [demi-titre, impressum, page-titre, dedicace, sommaire, avant-propos.md]
+dedicace: "Für A, B, C,//D und E"   # le jeton dedicace des liminaires ; « // » = saut de ligne
+parties:                   # maquette normal ; absent : pas de parties
+- titre: "Grundlagen"      # « // » = saut de ligne
+  numero: "1"              # texte libre ("1", "III"), ou absent
+  chapitres: [01-a, 02-b]  # une suite contiguë de l'ordre des chapitres
+  page-seule: oui          # oui (défaut) : page de partie sur un recto, verso blanc ;
+                           # non : le titre ouvre la page du premier chapitre
+  numeroter: oui           # avec numeros-chapitres: partie, « 1.1 », « 1.2 »… (défaut non)
+  illustration: parties/x.png   # page seule seulement ; illustration-alt facultatif
+pieces-fin: [autorinnen.md]  # .md de liminaires/, après le dernier chapitre, au sommaire
+impressum:                 # maquette normal, chaque sous-clé facultative
+  logo-soutien: impressum/fondation.svg
+  logo-soutien-alt: "Logo de la fondation"   # sans -alt : image décorative
+  soutien: "Avec le soutien de …"
+  credits: "Layout: …//Lektorat: …"
+  responsabilite: oui      # la phrase standard de la langue
+  reserve: "…"
+  imprimeur: "…"
+  logos-imprimeur: [impressum/a.svg, impressum/b.svg]   # logos-imprimeur-alt : liste
+mise-en-page:              # maquette normal : voir § 5.1
+  sommaire-page: verso
 impression:
   grammage: 90             # g/m² du papier intérieur
   main: 1.27               # volume du papier intérieur
@@ -238,8 +264,9 @@ en trois temps :
    gabarit qui ne sort que le corps : le fragment est autonome, aucun chemin relatif ne
    survit ;
 2. `livre-assembler.py` relève les titres des fragments, compose les liminaires que la
-   machine sait écrire (demi-titre, colophon, page de titre, sommaire), bâtit le sommaire en
-   liens internes et remplit l'enveloppe `szh-livre.html` ;
+   machine sait écrire (demi-titre, impressum, page de titre, dédicace, sommaire), pose les
+   parties et les pièces de fin, bâtit le sommaire en liens internes et remplit l'enveloppe
+   `szh-livre.html` ;
 3. WeasyPrint pagine le tout, par `define weasy_ua`.
 
 La compilation reste incrémentale par chapitre. `out/.szh-ordre-chapitres` rend l'ordre
@@ -364,7 +391,11 @@ phrase). `livre-assembler.py` colle les fragments et écrit les métadonnées (`
 - il bascule en attributs `style=` le fond d'une image décorative, posé dans un `<style>` de
   corps que pandoc remonte vide dans le `<head>` : sans cela, l'image disparaissait ;
 - il préfixe par le slug l'identifiant des descriptions longues de tableau, compté par
-  chapitre, pour qu'un liminaire à tableau ne le duplique pas.
+  chapitre, pour qu'un liminaire à tableau ne le duplique pas ;
+- il retire de même les `<section class="szh-partie">` : le titre d'une partie devient un
+  document de l'archive ;
+- il passe sous le `<h1>` la ligne d'auteur·e·s posée au-dessus (`auteurs-chapitre: dessus`),
+  qui serait sinon tombée dans le fichier du chapitre précédent.
 
 L'archive contient les tableaux avec leur description longue et leurs `scope`, la
 bibliographie et ses ancres (renommées `id_…` à l'identique par le writer XHTML), les images
@@ -382,16 +413,84 @@ remplace pas `epubcheck`, absent de l'image.
 
 ### 5.1 « Normal »
 
-Relevé sur `2025_Canonica_Berufliche Teilhabe.pdf` et l'IDML de Thaler-Battistini :
+Relevé sur deux livres imprimés, l'un de l'Edition SZH (Hofer/Buholzer, 2026), l'autre d'une
+collection d'une haute école (HfH-Reihe, 2024) ; les défauts sont ceux de l'Edition SZH :
 
-- 155 × 225 mm, pages en vis-à-vis ; marges de 20 mm à l'intérieur et à l'extérieur, 24 mm
-  en haut et en bas ; folio à 9 mm du pied ;
-- Open Sans SemiCondensed 10 pt, la police de la revue ; notes et légendes 8,5 pt, mentions
-  légales 7 pt ;
+- 155 × 225 mm, pages en vis-à-vis ; justification de 115 mm (marges de 20 mm à l'intérieur
+  et à l'extérieur) ; grille de 13,5 pt, première ligne de base à 20 mm du haut, dernière à
+  201 mm, 39 lignes ;
+- Open Sans SemiCondensed 10/13,5, la police de la revue ; notes 8/10, légendes 10 pt,
+  citations 8,5/12,25, impressum 7/9,6 ;
 - texte justifié, césure active, alinéa sauf après un titre ;
-- pas de titre courant : le folio seul, en gras, en pied de page extérieur ;
-- chapitres numérotés `1`, `2`, `2.1`, ouverts sur la belle page ;
-- liminaires : couverture, demi-titre, colophon, page de titre, sommaire.
+- pas de titre courant : le folio seul, Bold 8, ligne de base à 10 mm du bas, en pied de
+  page extérieur ;
+- chapitres ouverts sur la belle page ;
+- liminaires : demi-titre, impressum, page de titre, dédicace, sommaire, pièces écrites.
+
+**Le bloc `mise-en-page:`.** Ce qui distingue deux collections se règle dans `buch.yaml`. Les
+clés, leurs valeurs, leurs défauts et les refus vivent dans un seul fichier,
+`pipeline/livre/mise-en-page.json`, que lisent `livre-assembler.py` (validation, attributs
+`data-*` et propriétés de `<html>`) et `szh-commun.lua` (`mise_en_page()`, pour
+`szh-sections`, `szh-numerotation` et `szh-livre-auteurs`). Les règles CSS sont dans
+`normal.css`, sous `html[data-<clé>="<valeur>"]`. Une clé ou une valeur inconnue arrête le
+livre, en français et en allemand ; une maquette `falc` ignore le bloc entier. La table
+ci-dessous le résume, le JSON fait foi.
+
+| Clé | Valeurs (défaut en gras) | Effet |
+|---|---|---|
+| `folio` | **`sur-total`**, `seul` | « Seite 12 von 15 » ou « 12 » |
+| `alinea-mm` | **4**, de 0 à 15 | alinéa des paragraphes |
+| `liste-retrait-mm` | **4**, de 0 à 15 | position de la puce depuis la marge |
+| `titre-chapitre` | **`grand`**, `courant` | Bold 16/21 ou Bold 10 en haut de page |
+| `auteurs-chapitre` | **`dessus`**, `dessous` | auteur·e·s du chapitre avant ou après le titre, dans le DOM |
+| `numeros-chapitres` | **`aucun`**, `continu`, `partie` | sans numéro, « 1 », ou « 1.1 » par partie |
+| `numeros-sections` | **`aucun`**, `chapitre` | sans numéro, ou « 2.1 » |
+| `intertitres` | **`gras`**, `demi-gras` | hiérarchie des h2 à h4 |
+| `citation` | **`italique`**, `romain` | style des citations détachées |
+| `legende` | **`dessus`**, `dessous` | place de la légende des figures, dans le DOM |
+| `numeros-figures` | **`volume`**, `chapitre`, `aucun` | numérotation des figures et des tableaux |
+| `cadre-figure` | **`aucun`**, `filets` | filets et aplat gris autour de l'image |
+| `tableaux` | **`editeur`**, `zebre` | réglages de l'éditeur, ou tête bleue et rangées en alternance |
+| `sommaire` | **`plat`**, `hierarchique` | graisses seules, ou retraits, numéros et auteur·e·s |
+| `sommaire-page` | **`recto`**, `verso` | le sommaire s'ouvre en page impaire ou paire |
+| `sommaire-niveaux` | **`1`**, `2` | chapitres seuls, ou aussi leurs intertitres de rang 2 |
+| `titre-partie` | **`intercalaire`**, `titre` | ExtraBold 20 sans numéro, ou Bold 16/23 numéroté |
+| `logo-page-titre` | **`oui`**, `non` | logo de l'éditeur en bas de la page de titre |
+
+En maquette normal, le séparateur de légende est le deux-points (« Abbildung 1: Titel »).
+
+**La structure.**
+
+- *Parties* (`parties:`) : une `<section class="szh-partie">` sœur des chapitres, son titre
+  un `<h1>` ; ses chapitres portent `data-partie` et passent au niveau 2 des signets.
+  `page-seule: oui` pose la partie sur un recto suivi d'un verso blanc ; `non` la met en tête
+  de la page de son premier chapitre, et le texte d'un chapitre sans titre la suit (un
+  chapitre sans `title` n'a ni numéro ni entrée au sommaire). Les chapitres d'une partie se
+  suivent dans l'ordre du livre, sans quoi le livre est refusé. Le numéro « 1.1 » est
+  calculé une fois par `livre-assembler.py --numeros-chapitres`, que `profils/livre.mk`
+  appelle et passe à chaque chapitre en `SZH_NUMERO_CHAPITRE` ; `szh-sections.lua` l'écrit.
+- *Sommaire* : la partie au niveau 0, les chapitres au niveau 1, leurs intertitres au niveau
+  2 avec `sommaire-niveaux: 2` ; la bibliographie n'y entre jamais ; un liminaire écrit qui
+  suit le sommaire et chaque pièce de fin y entrent, sans numéro.
+- *Pièces de fin* (`pieces-fin:`) : compilées comme les liminaires, chacune sur un recto.
+  Deux mises en page de notices s'écrivent dans le `.md` : `::: notices` (un paragraphe par
+  notice, le nom en `**Nom Prénom (Dr.):**`) et `::: {.notices .portraits}` (des `##` de
+  groupe, puis des blocs `::: notice` : `![](media/x.png){.szh-hors-figure alt="…"}`, le nom
+  en gras, la fonction, le courriel) en grille de trois colonnes. Une partie de notices
+  s'écrit aussi comme un chapitre sans titre dans une partie (`page-seule: non`).
+- *Dédicace* (`dedicace:` et le jeton `dedicace`) : centrée, sur un recto ; avant le sommaire
+  elle n'a pas de folio, comme tout liminaire qui le précède.
+- *Impressum* (`impressum:`) : l'ordre est fixe ; une image sans `<clé>-alt` est décorative,
+  rendue en fond CSS (une `/Figure` sans `/Alt` n'est pas conforme PDF/UA), comme le logo
+  de l'éditeur sur la page de titre, dont le nom est déjà écrit à l'impressum.
+- *Éditeurs* : en ouvrage collectif, demi-titre et page de titre portent les `editeurs`
+  suivis de « (Hrsg.) », « (éd.) » ou « (a cura di) », ou de `mention-editeurs` ; c'est la
+  ligne de la couverture (`couverture.responsables`).
+
+Une feuille `styles/livre.css` dans le dossier du livre, si elle existe, s'empile après
+`normal.css` et `partage-filtres.css`, avant l'accent, dans le PDF numérique et le PDF
+imprimeur : la voie des blocs propres à un livre (sections à saut de page, encadrés teintés).
+Le HTML web et l'EPUB ne la lisent pas.
 
 La fidélité est approchée : la charte varie d'un livre à l'autre, et ce qui varie (bandeaux de
 personnages en marge, par exemple) n'est pas traité. Feuilles : `base.css` puis `normal.css`.

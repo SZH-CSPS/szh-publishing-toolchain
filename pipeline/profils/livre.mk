@@ -266,6 +266,18 @@ ASSEMBLEUR        := $(PIPELINE_DIR)/livre-assembler.py
 # ses feuilles et ses fragments.
 ASSEMBLER          = python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --gabarit "$(GABARIT_LIVRE)"
 
+# Le numéro « 1.1 » des chapitres d'une partie (`numeros-chapitres: partie`), calculé une
+# fois par l'assembleur, qui connaît les parties : « slug=numéro » par chapitre numéroté.
+# contexte_chapitre le passe au chapitre en SZH_NUMERO_CHAPITRE, que lit szh-sections.lua.
+# Sans `parties:` dans buch.yaml, aucun appel. Un refus se dit à l'assemblage. Les parties
+# vivent dans buch.yaml, prérequis de chaque fragment : les changer recompile les chapitres.
+NUMEROS_PARTIE := $(if $(shell grep -s '^parties:' $(CONFIG_LIVRE)),$(shell python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --numeros-chapitres $(CHAPITRES) 2>/dev/null))
+
+# Surcharge propre à un livre : styles/livre.css dans son dossier, s'il existe. Empilée
+# après la charte et partage-filtres, avant l'accent ; ni dans le web ni dans l'EPUB.
+STYLE_LIVRE_LOCAL := $(wildcard styles/livre.css)
+CSS_LIVRE_LOCAL   := $(if $(STYLE_LIVRE_LOCAL),--css "$(abspath $(STYLE_LIVRE_LOCAL))")
+
 # Feuilles empilées, dans l'ordre : socle (polices, jetons), base (géométrie), charte,
 # partage-filtres (balisage des filtres communs à la revue et au livre — voir
 # pipeline/Makefile pour ce qu'elle porte), empilée après la charte : ses règles complètent
@@ -274,13 +286,13 @@ ASSEMBLER          = python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --gabarit 
 # lien externe générique quand partage-filtres précédait la maquette). L'accent de
 # l'ouvrage vient en dernier — il surcharge, il ne peut donc pas précéder.
 CSS_LIVRE := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE))" \
-             --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(PARTAGE_ABS)" --css "$(ACCENT_ABS)"
+             --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(PARTAGE_ABS)" $(CSS_LIVRE_LOCAL) --css "$(ACCENT_ABS)"
 
 # Même pile, avec imprimeur.css intercalé entre la charte et partage-filtres — jamais après
 # l'accent, qui surcharge : un fond perdu qu'il masquerait ne servirait à rien.
 CSS_LIVRE_IMPRIMEUR := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE))" \
              --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(abspath $(STYLE_LIVRE_IMPR))" \
-             --css "$(PARTAGE_ABS)" --css "$(ACCENT_ABS)"
+             --css "$(PARTAGE_ABS)" $(CSS_LIVRE_LOCAL) --css "$(ACCENT_ABS)"
 
 # Pile du HTML web : socle (jetons) + web.css seulement — ni livre/base.css ni la charte
 # (normal/falc), bâties en millimètres pour une page imprimée (voir web.css, en tête).
@@ -403,7 +415,8 @@ else \
   onglet_meta="--metadata onglet-haut=$${haut}mm --metadata onglet-hauteur=$${hauteur}mm --metadata numero-chapitre=$$numero"; \
 fi; \
 meta=""; \
-if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi;
+if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+export SZH_NUMERO_CHAPITRE="$$(printf '%s\n' $(NUMEROS_PARTIE) | sed -n "s/^$$slug=//p")";
 endef
 
 $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHAPITRE) $(FILTRES) \
@@ -586,7 +599,7 @@ $(CHAPITRE_FRAG_SEUL): $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).md $(CONFIG_LIVRE) $(GA
 	  --output="$(abspath $@)"
 
 $(CHAPITRE_HTML_SEUL): $(CHAPITRE_FRAG_SEUL) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-                       $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(ACCENT_CSS)
+                       $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS)
 	@mkdir -p "$(dir $@)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
@@ -634,7 +647,7 @@ test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans 
 endef
 
 $(LIVRE_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(ACCENT_CSS)
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS)
 	@mkdir -p "$(OUT)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
@@ -660,7 +673,7 @@ livre-pdf: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_PDF)
 #   ouvert, non traité ici. N'ajoute ni Ghostscript ni profil ICC.
 # --------------------------------------------------------------------------------------
 $(LIVRE_IMPRIMEUR_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(PARTAGE) $(ACCENT_CSS)
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS)
 	@mkdir -p "$(OUT)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
