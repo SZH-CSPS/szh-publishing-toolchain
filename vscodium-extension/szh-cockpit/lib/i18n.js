@@ -2249,6 +2249,21 @@ const TEXTES_COCKPIT = {
     'doc.date.erreur.formatPartiel': 'Format attendu : AAAA, AAAA-MM ou AAAA-MM-JJ',
     'doc.date.erreur.impossible': 'Cette date n’existe pas : {0} sera imprimé tel quel',
     'doc.date.erreur.inversee': 'La fin précède le début',
+    // Documentation, fiche « D'une revue à l'autre » : préremplir depuis un article de l'autre revue.
+    'doc.autrerevue.choisir': 'Préremplir depuis un article de la {0}…',
+    'doc.autrerevue.choisir.tip': 'Reprend le titre, les noms, la référence, le DOI, le lien et le résumé d’un article déjà paru ou en préparation',
+    'doc.autrerevue.titre': 'Choisir un article de la {0}',
+    'doc.autrerevue.recherche': 'Chercher par titre ou par nom',
+    'doc.autrerevue.chargement': 'Lecture des numéros…',
+    'doc.autrerevue.vide': 'Aucun article trouvé dans les numéros de la {0}',
+    'doc.autrerevue.archive': 'archivé',
+    'doc.autrerevue.illisibles': '{0} numéro(s) illisible(s), ignoré(s)',
+    'doc.autrerevue.echec': 'Les numéros de la {0} n’ont pas pu être lus',
+    'doc.autrerevue.remplacer': 'Remplacer les champs déjà remplis ?',
+    'doc.autrerevue.remplacer.oui': 'Remplacer',
+    'doc.autrerevue.annuler': 'Annuler',
+    'doc.autrerevue.fermer': 'Fermer',
+    'doc.autrerevue.rempli': 'Champs préremplis depuis « {0} » : à relire avant d’enregistrer',
   },
   de: {
     // Le badge « Testordner » : voir le commentaire côté français, même contrat.
@@ -4270,6 +4285,20 @@ const TEXTES_COCKPIT = {
     'doc.date.erreur.formatPartiel': 'Erwartetes Format: JJJJ, JJJJ-MM oder JJJJ-MM-TT',
     'doc.date.erreur.impossible': 'Dieses Datum gibt es nicht: {0} wird so gedruckt',
     'doc.date.erreur.inversee': 'Das Ende liegt vor dem Beginn',
+    'doc.autrerevue.choisir': 'Aus einem Artikel der {0} vorausfüllen…',
+    'doc.autrerevue.choisir.tip': 'Übernimmt Titel, Namen, Fundstelle, DOI, Link und Abstract eines erschienenen oder geplanten Artikels',
+    'doc.autrerevue.titre': 'Artikel der {0} wählen',
+    'doc.autrerevue.recherche': 'Nach Titel oder Name suchen',
+    'doc.autrerevue.chargement': 'Ausgaben werden gelesen…',
+    'doc.autrerevue.vide': 'Keine Artikel in den Ausgaben der {0} gefunden',
+    'doc.autrerevue.archive': 'archiviert',
+    'doc.autrerevue.illisibles': '{0} Ausgabe(n) nicht lesbar, übersprungen',
+    'doc.autrerevue.echec': 'Die Ausgaben der {0} konnten nicht gelesen werden',
+    'doc.autrerevue.remplacer': 'Bereits ausgefüllte Felder ersetzen?',
+    'doc.autrerevue.remplacer.oui': 'Ersetzen',
+    'doc.autrerevue.annuler': 'Abbrechen',
+    'doc.autrerevue.fermer': 'Schliessen',
+    'doc.autrerevue.rempli': 'Felder aus «{0}» vorausgefüllt: vor dem Speichern prüfen',
   }
 };
 

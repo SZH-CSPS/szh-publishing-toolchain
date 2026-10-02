@@ -151,7 +151,10 @@ const MSG = Object.freeze({
 
   // Documentation, aperçu de la date imprimée : la page envoie { jeton, saisie, valeurs },
   // l'hôte répond { jeton, ok, forme, erreur, indisponible } (lib/date-apercu.js).
-  DOC_DATE_FORMER: 'docDateFormer', DOC_DATE_FORMEE: 'docDateFormee'
+  DOC_DATE_FORMER: 'docDateFormer', DOC_DATE_FORMEE: 'docDateFormee',
+  // Documentation, fiche « D'une revue à l'autre » : la page demande, une fois par panneau,
+  // les articles de l'autre revue ; l'hôte répond { ok, numeros, illisibles } (lib/autre-revue.js).
+  DOC_AUTREREVUE_CHARGER: 'docAutreRevueCharger', DOC_AUTREREVUE_DONNEES: 'docAutreRevueDonnees'
 });
 
 module.exports = { MSG };

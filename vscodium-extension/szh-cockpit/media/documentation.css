@@ -294,3 +294,17 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-date-forme--erreur { color: var(--avert); }
 .doc-date-forme--erreur svg { flex: 0 0 auto; }
 .szh-champ input.doc-date-champ--erreur { border-color: var(--avert); }
+
+/* « D'une revue à l'autre » : la liste des articles de l'autre revue, dans une modale. */
+.doc-autrerevue-bouton { align-self: flex-start; }
+.doc-autrerevue { width: min(44rem, 92vw); max-height: 80vh; padding: var(--e4);
+  background: var(--fond); border: 1px solid var(--filet-fort); border-radius: var(--rayon); }
+.doc-autrerevue-recherche { font: inherit; padding: .35em .5em; color: var(--vscode-input-foreground, inherit);
+  background: var(--vscode-input-background, transparent); border: 1px solid var(--vscode-input-border, var(--filet));
+  border-radius: var(--rayon-mini); }
+.doc-autrerevue-titre { margin: 0; font-size: var(--t-section); }
+.doc-autrerevue-zone { display: flex; flex-direction: column; gap: var(--e3); overflow-y: auto; min-height: 0; }
+.doc-autrerevue-numero { display: flex; flex-direction: column; gap: var(--e1); }
+.doc-autrerevue-archive { margin-left: var(--e2); font-weight: 400; }
+.doc-autrerevue-article { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--e2);
+  text-align: left; width: 100%; }

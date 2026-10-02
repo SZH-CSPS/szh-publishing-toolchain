@@ -54,6 +54,9 @@ lib/
   auteurs-ojs.js        auteur·e·s publiés, moissonnés en OAI-PMH public sur ojs.szh.ch
                         (marcxml : noms et affiliations, ROR résolus par api.ror.org)
                         et cachés dans auteurs.json — l'autocomplétion de la modale
+  autre-revue.js        les articles de l'autre revue, lus dans les numéros de la racine
+                        active, pour préremplir une fiche « D'une revue à l'autre ». Module
+                        pur, sans vscode
   bienvenue-hote.js     la bienvenue d'un poste : l'invitation au tutoriel, une seule fois, et
                         « Quoi de neuf » après une mise à jour. Sans rappel vers l'hôte
   cantons.js            les 26 cantons et la Confédération : la liste fermée du champ

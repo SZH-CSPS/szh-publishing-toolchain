@@ -578,6 +578,135 @@ function recevoirApercuDate(msg) {
   poserApercuDate(g, 'erreur', msg.erreur === 'impossible' ? [dit] : [forme, dit]);
 }
 
+// ---- Préremplir depuis un article de l'autre revue -----------------------------------
+//
+// Sur la fiche que l'hôte désigne (typesConfig[].preremplissage, la fiche « D'une revue à
+// l'autre »), un bouton ouvre la liste des articles de l'autre revue, demandée à l'hôte une
+// seule fois par panneau. Un choix remplit la carte comme une saisie : rien n'est écrit sur
+// le disque avant l'enregistrement ordinaire. Remplacer un champ déjà rempli se confirme.
+var autreRevueEtat = { demande: false, donnees: null, carte: null, choix: null, filtre: '' };
+var modaleAutreRevue = null;
+function preremplissageDuType(type) {
+  var t = TYPES.filter(function (x) { return x.valeur === type; })[0];
+  return (t && t.preremplissage) || null;
+}
+function brancherPreremplissage(c, corps) {
+  var nom = preremplissageDuType(c.type).revue || '';
+  corps.appendChild(bouton(SZH.remplir(TXT, 'autreRevueChoisir', [nom]),
+    function () { ouvrirAutreRevue(c); }, 'doc-autrerevue-bouton', TXT.autreRevueChoisirTip || ''));
+}
+function ouvrirAutreRevue(c) {
+  autreRevueEtat.carte = c;
+  autreRevueEtat.choix = null;
+  if (!modaleAutreRevue) {
+    modaleAutreRevue = SZH.modale({
+      classeBoite: 'szh-modale-boite doc-autrerevue',
+      construire: function (boite) {
+        texte(boite, 'h2', 'doc-autrerevue-titre');
+        var r = texte(boite, 'input', 'doc-autrerevue-recherche');
+        r.type = 'search';
+        r.placeholder = TXT.autreRevueRecherche || '';
+        r.setAttribute('aria-label', TXT.autreRevueRecherche || '');
+        r.addEventListener('input', function () { autreRevueEtat.filtre = r.value; rendreAutreRevue(); });
+        texte(boite, 'div', 'doc-autrerevue-zone');
+        var pied = texte(boite, 'div', 'szh-modale-pied');
+        pied.appendChild(bouton(TXT.autreRevueFermer || '', function () { modaleAutreRevue.fermer(); }));
+      },
+      surOuverture: function () { rendreAutreRevue(); },
+      focus: function () { return modaleAutreRevue.boite().querySelector('input.doc-autrerevue-recherche'); }
+    });
+  }
+  modaleAutreRevue.ouvrir();
+  if (!autreRevueEtat.demande) {
+    autreRevueEtat.demande = true;
+    api.postMessage({ type: SZH.MSG.DOC_AUTREREVUE_CHARGER });
+  }
+}
+function sansAccent(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+function rendreAutreRevue() {
+  if (!modaleAutreRevue || !modaleAutreRevue.boite()) { return; }
+  var boite = modaleAutreRevue.boite();
+  var c = autreRevueEtat.carte;
+  var nom = ((c && preremplissageDuType(c.type)) || {}).revue || '';
+  boite.querySelector('.doc-autrerevue-titre').textContent = SZH.remplir(TXT, 'autreRevueTitre', [nom]);
+  var zone = boite.querySelector('.doc-autrerevue-zone');
+  zone.textContent = '';
+  var d = autreRevueEtat.donnees;
+  if (!d) { texte(zone, 'p', 'doc-vue-vide', TXT.autreRevueChargement || ''); return; }
+  if (!d.ok) { zone.appendChild(SZH.notif('attention', SZH.remplir(TXT, 'autreRevueEchec', [nom]))); return; }
+  if (d.illisibles > 0) { zone.appendChild(SZH.notif('attention', SZH.remplir(TXT, 'autreRevueIllisibles', [d.illisibles]))); }
+  if (autreRevueEtat.choix) { construireConfirmation(zone); return; }
+  var filtre = sansAccent(autreRevueEtat.filtre).trim();
+  var trouves = 0;
+  (d.numeros || []).forEach(function (n) {
+    var articles = (n.articles || []).filter(function (a) {
+      return filtre === '' || sansAccent(a.titreAffiche + ' ' + a.signature).indexOf(filtre) !== -1;
+    });
+    if (articles.length === 0) { return; }
+    var groupe = texte(zone, 'section', 'doc-autrerevue-numero');
+    var h = texte(groupe, 'h3', 'doc-vue-titre-section', n.libelle || n.cle || '');
+    if (n.archive) { texte(h, 'span', 'szh-pastille doc-autrerevue-archive', TXT.autreRevueArchive || ''); }
+    var liste = texte(groupe, 'div', 'doc-vue-liste');
+    articles.forEach(function (a) {
+      trouves++;
+      var b = bouton(a.titreAffiche || TXT.sansTitre || '', function () { choisirAutreRevue(a); }, 'doc-autrerevue-article');
+      if (a.signature) { texte(b, 'span', 'doc-vue-origine', a.signature); }
+      liste.appendChild(b);
+    });
+  });
+  if (trouves === 0) { texte(zone, 'p', 'doc-vue-vide', SZH.remplir(TXT, 'autreRevueVide', [nom])); }
+}
+// Remplacer un champ rempli par une autre valeur se confirme ; compléter un champ vide, non.
+function choisirAutreRevue(a) {
+  var c = autreRevueEtat.carte;
+  if (!c) { return; }
+  var conflit = Object.keys(a.valeurs || {}).some(function (cle) {
+    var ctlChamp = c.ctl[cle];
+    if (!ctlChamp || typeof ctlChamp.value !== 'string') { return false; }
+    return ctlChamp.value !== '' && ctlChamp.value !== String(a.valeurs[cle] || '');
+  });
+  if (!conflit) { remplirAutreRevue(c, a); return; }
+  autreRevueEtat.choix = a;
+  rendreAutreRevue();
+}
+function construireConfirmation(zone) {
+  var a = autreRevueEtat.choix;
+  var z = texte(zone, 'div', 'doc-autrerevue-confirmer');
+  texte(z, 'p', null, TXT.autreRevueRemplacer || '');
+  texte(z, 'p', 'doc-vue-titre', a.titreAffiche || '');
+  var pied = texte(z, 'div', 'szh-modale-pied');
+  pied.appendChild(bouton(TXT.autreRevueRemplacerOui || '', function () {
+    autreRevueEtat.choix = null;
+    remplirAutreRevue(autreRevueEtat.carte, a);
+  }, 'szh-bouton--principal doc-autrerevue-oui'));
+  pied.appendChild(bouton(TXT.autreRevueAnnuler || '', function () {
+    autreRevueEtat.choix = null;
+    rendreAutreRevue();
+  }, 'doc-autrerevue-annuler'));
+}
+function remplirAutreRevue(c, a) {
+  Object.keys(a.valeurs || {}).forEach(function (cle) {
+    var ctlChamp = c.ctl[cle];
+    if (ctlChamp && typeof ctlChamp.value === 'string') { ctlChamp.value = String(a.valeurs[cle] || ''); }
+  });
+  c.touchee = true;
+  majEtatCarte(c);
+  majConditionnels(c);
+  majDerives(c);
+  majTitreBascule(c);
+  majModifie();
+  modaleAutreRevue.fermer();
+  etat(SZH.remplir(TXT, 'autreRevueRempli', [a.titreAffiche || '']));
+}
+function recevoirAutreRevue(msg) {
+  autreRevueEtat.donnees = { ok: !!msg.ok, numeros: msg.numeros || [], illisibles: msg.illisibles || 0 };
+  // Une lecture en échec se redemandera au prochain clic.
+  if (!msg.ok) { autreRevueEtat.demande = false; }
+  rendreAutreRevue();
+}
+
 // ---- Champ `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste
 //      (docs/FORMAT-DOCUMENTATION-KIRBY.md, saisie liste_multiple) --------------------------
 //
@@ -827,6 +956,7 @@ function construireFiche(section, ressource, persistee) {
   var corps = texte(s, 'div', 'doc-corps');
   corps.hidden = true;
   c.ctl.corps = corps;
+  if (preremplissageDuType(c.type)) { brancherPreremplissage(c, corps); }
 
   var v = ressource.valeurs || {};
   for (var i = 0; i < c.champs.length; i++) { champ(corps, c, c.champs[i], v); }
@@ -1622,6 +1752,10 @@ window.addEventListener('message', function (ev) {
   }
   if (msg.type === SZH.MSG.DOC_DATE_FORMEE) {
     recevoirApercuDate(msg);
+    return;
+  }
+  if (msg.type === SZH.MSG.DOC_AUTREREVUE_DONNEES) {
+    recevoirAutreRevue(msg);
     return;
   }
   // Un panneau DÉJÀ OUVERT qu'une entrée de l'arbre rappelle sur une autre vue — jamais un

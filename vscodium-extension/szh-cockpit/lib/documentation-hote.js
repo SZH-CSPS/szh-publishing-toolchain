@@ -36,6 +36,7 @@ const { langueRevue, ecrireAtomique, serialiserMeta, assurerIdNumero, libelleCou
 const { apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, TAILLE_MAX_IMAGE_IMPORT } = require('./medias');
 const kirby = require('./kirby-contenu');
 const dateApercu = require('./date-apercu');
+const autreRevue = require('./autre-revue');
 // Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
 // PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
 // Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
@@ -48,6 +49,9 @@ const rapportErreur = require('./rapport-erreur');
 // fiche de la page de Documentation, et le slug qu'elle prend par défaut).
 const TYPE_ACTUALITE = 'documentation';
 const SLUG_DOCUMENTATION = 'documentation';
+// La fiche « D'une revue à l'autre » : la seule qui se préremplit depuis un article de
+// l'autre revue. Le contrat n'en dit rien, la page ne connaît aucun nom de type.
+const TYPE_REPRISE = 'reprise';
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
@@ -136,7 +140,7 @@ function champDuTypeParCle(langue, cle) {
   }
   return null;
 }
-function typesRessourceConfig(langue) {
+function typesRessourceConfig(langue, revueJeton) {
   return kirby.typesConnus().map((type) => {
     const champFichier = kirby.champFichierDuType(type);
     return {
@@ -151,6 +155,9 @@ function typesRessourceConfig(langue) {
       champFichier: champFichier,
       // Les deux champs de date imprimés ensemble ([debut, fin] de l'agenda), ou null.
       plage: (kirby.definitionType(type) || {}).plage || null,
+      // Le nom de l'autre revue, sur la seule fiche qui se préremplit depuis elle.
+      preremplissage: type === TYPE_REPRISE && kirby.autreRevue(revueJeton)
+        ? { revue: ctx.nomRevueAffiche(kirby.autreRevue(revueJeton)) } : null,
       champs: kirby.champsDuType(type).map((c) => configChamp(c, langue))
     };
   });
@@ -235,7 +242,16 @@ function textesDocumentation() {
     dateImprime: T('doc.date.imprime'), dateIndisponible: T('doc.date.indisponible'),
     dateIncomplete: T('doc.date.incomplete'), dateModelePartiel: T('doc.date.modelePartiel'),
     dateErreurFormat: T('doc.date.erreur.format'), dateErreurFormatPartiel: T('doc.date.erreur.formatPartiel'),
-    dateErreurImpossible: T('doc.date.erreur.impossible'), dateErreurInversee: T('doc.date.erreur.inversee')
+    dateErreurImpossible: T('doc.date.erreur.impossible'), dateErreurInversee: T('doc.date.erreur.inversee'),
+    // Fiche « D'une revue à l'autre » : préremplir depuis un article de l'autre revue.
+    autreRevueChoisir: T('doc.autrerevue.choisir'), autreRevueChoisirTip: T('doc.autrerevue.choisir.tip'),
+    autreRevueTitre: T('doc.autrerevue.titre'), autreRevueRecherche: T('doc.autrerevue.recherche'),
+    autreRevueChargement: T('doc.autrerevue.chargement'), autreRevueVide: T('doc.autrerevue.vide'),
+    autreRevueArchive: T('doc.autrerevue.archive'), autreRevueIllisibles: T('doc.autrerevue.illisibles'),
+    autreRevueEchec: T('doc.autrerevue.echec'),
+    autreRevueRemplacer: T('doc.autrerevue.remplacer'), autreRevueRemplacerOui: T('doc.autrerevue.remplacer.oui'),
+    autreRevueAnnuler: T('doc.autrerevue.annuler'), autreRevueFermer: T('doc.autrerevue.fermer'),
+    autreRevueRempli: T('doc.autrerevue.rempli')
   };
 }
 
@@ -557,7 +573,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       type: MSG.CHARGER, slug: slug,
       ressources: listerRessources(budget),
       rubriques: listerRubriques(),
-      typesConfig: typesRessourceConfig(langue),
+      typesConfig: typesRessourceConfig(langue, revueJeton),
       typesRubrique: typesRubriqueConfig(revueJeton, langue),
       traductions: listerTraductions(),
       reservoirNumeros: listerReservoirNumeros(),
@@ -844,6 +860,18 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     }
     // L'aperçu de la date imprimée, dans la langue du numéro : une lecture, donc pas de garde
     // de verrou.
+    // Les articles de l'autre revue, dans la racine active : une lecture, demandée une fois
+    // par panneau, au premier clic.
+    if (msg.type === MSG.DOC_AUTREREVUE_CHARGER) {
+      let reponse;
+      try {
+        reponse = Object.assign({ ok: true }, autreRevue.articlesAutreRevue(racineArbreVal, revueJeton, langue));
+      } catch (e) {
+        reponse = { ok: false, numeros: [], illisibles: 0 };
+      }
+      repondrePanneau(panneau, Object.assign({ type: MSG.DOC_AUTREREVUE_DONNEES }, reponse));
+      return;
+    }
     if (msg.type === MSG.DOC_DATE_FORMER) {
       const r = await dateApercu.former({ saisie: msg.saisie, lang: langue, valeurs: msg.valeurs });
       repondrePanneau(panneau, Object.assign({ type: MSG.DOC_DATE_FORMEE, jeton: msg.jeton }, r));
