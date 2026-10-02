@@ -448,6 +448,52 @@ function comparerConflit(cheminFichier, cheminCopie) {
   }
   vscode.commands.executeCommand('vscode.diff', gauche, vscode.Uri.file(cheminFichier),
     T('conflit.copie.titre', [path.basename(copie)]));
+  return proposerTrancherConflit(cheminFichier, copie);
+}
+
+// À côté de la comparaison, trancher tout le fichier d'un coup : garder sa version (la copie
+// est supprimée) ou prendre celle de la copie (elle remplace le fichier, puis disparaît).
+// Chaque choix a sa confirmation ; la résolution passage par passage reste dans la gouttière.
+async function proposerTrancherConflit(chemin, copie) {
+  const garder = T('conflit.trancher.garder');
+  const prendre = T('conflit.trancher.prendre');
+  const choix = await vscode.window.showWarningMessage(
+    T('conflit.trancher', [path.basename(chemin)]), garder, prendre);
+  if (choix === garder) { await supprimerCopieConflit(copie, true); return; }
+  if (choix === prendre) { await prendreCopieConflit(chemin, copie); }
+}
+
+async function prendreCopieConflit(chemin, copie) {
+  const bouton = T('conflit.trancher.prendre');
+  const ok = await vscode.window.showWarningMessage(
+    T('conflit.trancher.prendre.question', [path.basename(chemin)]),
+    { modal: true, detail: T('conflit.trancher.prendre.detail') }, bouton);
+  if (ok !== bouton) { return; }
+  // Les mêmes gardes que « Prendre cette version », bloc par bloc.
+  if (refuserSiVerrouille()) { return; }
+  const racine = ctx.trouverRacineRevue();
+  const refus = refusCoedition(racine, chemin);
+  if (refus) { vscode.window.showWarningMessage(refus); return; }
+  let sien;
+  try { sien = fs.readFileSync(copie, 'utf8'); }
+  catch (e) { vscode.window.showWarningMessage(T('conflit.copie.absente')); return; }
+  try {
+    // Par l'éditeur, pour que le geste s'annule au Ctrl+Z comme une édition.
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(chemin));
+    const edition = new vscode.WorkspaceEdit();
+    const fin = doc.lineAt(doc.lineCount - 1).range.end;
+    edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), sien);
+    if (!(await vscode.workspace.applyEdit(edition))) {
+      vscode.window.showErrorMessage(T('err.ecriture', [path.basename(chemin), chemin]));
+      return;
+    }
+    await doc.save();
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [path.basename(chemin), String((e && e.message) || e)]));
+    return;
+  }
+  rafraichirEmpreinteCoedition(racine, chemin);
+  await supprimerCopieConflit(copie, false);
 }
 
 // ---- Résoudre une copie en conflit au clic, bloc par bloc -------------------------

@@ -197,3 +197,63 @@ test('supprimer la copie la retire du disque et démonte l’entrée', async () 
   assert.strictEqual(HOTE.sourceControls().filter((c) => c.id === 'szh.conflits').length, 0,
     'l’entrée du contrôle de source survit à la dernière copie');
 });
+
+// ---- Trancher tout le fichier d'un coup, depuis la comparaison ----------------------
+//
+// Après « Comparer les deux versions », un message propose de garder sa version ou de
+// prendre celle de la copie, pour tout le fichier ; chaque choix demande sa confirmation,
+// et la copie disparaît ensuite.
+test('comparer, puis « Prendre celle de la copie » : le numéro reçoit la copie, qui disparaît', async () => {
+  await pret;
+  poserCopie();
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  const sien = fs.readFileSync(COPIE, 'utf8');
+  try {
+    HOTE.repondreModale('Prendre celle de la copie');
+    HOTE.repondreModale('Prendre celle de la copie');
+    const avant = HOTE.editions().length;
+    await P.comparerConflit(AUSGABE, COPIE);
+    // Le harnais retient l'édition sans l'écrire : le fichier du numéro reçoit tout le texte de la copie.
+    const faites = HOTE.editions().slice(avant);
+    assert.strictEqual(faites.length, 1, 'aucune édition du fichier du numéro');
+    assert.strictEqual(faites[0].uri.fsPath, AUSGABE);
+    assert.strictEqual(faites[0].texte, sien, 'le numéro n’a pas reçu la copie');
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie est encore là');
+  } finally {
+    fs.writeFileSync(AUSGABE, avantYaml);
+    retirerCopie();
+  }
+});
+
+test('comparer, puis « Garder ma version » : le numéro ne bouge pas, la copie disparaît', async () => {
+  await pret;
+  poserCopie();
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  try {
+    HOTE.repondreModale('Garder ma version');
+    HOTE.repondreModale('Supprimer la copie');
+    await P.comparerConflit(AUSGABE, COPIE);
+    assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), avantYaml, 'le numéro a changé');
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie est encore là');
+  } finally {
+    fs.writeFileSync(AUSGABE, avantYaml);
+    retirerCopie();
+  }
+});
+
+test('comparer, puis annuler la confirmation : rien ne bouge', async () => {
+  await pret;
+  poserCopie();
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  const sien = fs.readFileSync(COPIE, 'utf8');
+  try {
+    HOTE.repondreModale('Prendre celle de la copie');
+    HOTE.repondreModale(undefined);
+    await P.comparerConflit(AUSGABE, COPIE);
+    assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), avantYaml);
+    assert.strictEqual(fs.readFileSync(COPIE, 'utf8'), sien);
+  } finally {
+    fs.writeFileSync(AUSGABE, avantYaml);
+    retirerCopie();
+  }
+});

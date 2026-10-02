@@ -247,6 +247,8 @@ function activerHote(revue, opts) {
   const editeurActif = emetteur();
 
   const ouvertures = [];
+  // Ce que les WorkspaceEdit appliqués ont remplacé, dans l'ordre : { uri, texte }.
+  const editions = [];
   // Ce que le cockpit ouvre avec l'application du système (lib/ouvrir-systeme.js) part dans
   // la même liste : jamais un vrai explorer.exe lancé par un test.
   require(path.join(cockpit, 'lib', 'ouvrir-systeme.js'))
@@ -313,7 +315,8 @@ function activerHote(revue, opts) {
     // szh.fmt.falcHeader/szh.fmt.qrLink (lib/formatting.js) : le texte du snippet, tel quel
     // — le vrai éditeur en fait les tabulations ${1:…}, hors de propos ici.
     SnippetString: class { constructor(v) { this.value = v; } },
-    WorkspaceEdit: class { replace() {} insert() {} },
+    // Les remplacements sont retenus : applyEdit les verse dans `editions`, sans toucher au disque.
+    WorkspaceEdit: class { constructor() { this.ops = []; } replace(uri, plage, texte) { this.ops.push({ uri, texte }); } insert() {} },
     TreeItem: class { constructor(l, c) { this.label = l; this.collapsibleState = c; } },
     ThemeIcon: class { constructor(i, couleur) { this.id = i; this.color = couleur; } },
     ThemeColor: class { constructor(i) { this.id = i; } },
@@ -499,7 +502,7 @@ function activerHote(revue, opts) {
           save: () => Promise.resolve(true), positionAt: () => new stub.Position(0, 0)
         });
       },
-      applyEdit: () => Promise.resolve(true),
+      applyEdit: (e) => { editions.push(...((e && e.ops) || [])); return Promise.resolve(true); },
       fs: { stat: () => Promise.resolve({}) },
       // Le contenu servi sous un schéma à nous : celui des copies en conflit, que le
       // fournisseur de diff rapide donne pour « original » du fichier du numéro.
@@ -624,6 +627,7 @@ function activerHote(revue, opts) {
     panneaux: panneaux,
     // Les chemins et liens passés à env.openExternal, dans l'ordre.
     ouvertures: () => ouvertures.slice(),
+    editions: () => editions.slice(),
     dernierPanneau: () => panneaux[panneaux.length - 1] || null,
     // Les panneaux sont des singletons : rouvrir en révèle un, sans en créer. On le
     // retrouve donc par son type, et non par l'ordre de création.

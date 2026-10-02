@@ -1434,6 +1434,14 @@ important, parce qu’une version du travail n’est alors PAS dans le numéro.
 Le bouton « Comparer les deux versions » ouvre les deux fichiers côte à côte, les différences
 surlignées.
 
+En même temps, un message propose de trancher tout le fichier d’un coup :
+
+- **« Garder ma version »** : la copie est supprimée, le fichier du numéro ne change pas ;
+- **« Prendre celle de la copie »** : la copie remplace le fichier du numéro, puis elle est
+  supprimée (Ctrl+Z annule tant que le fichier reste ouvert).
+
+Chaque choix demande une confirmation. Pour ne reprendre qu’un passage, procédez comme suit.
+
 Vous n’avez rien à recopier à la main. Tant qu’une copie en conflit existe à côté d’un fichier,
 ce fichier porte un repère, un trait de couleur dans sa marge de gauche, à chaque endroit où
 les deux versions divergent. Cliquez le repère : la divergence s’ouvre sous la ligne, et
