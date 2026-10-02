@@ -17,8 +17,9 @@ Mineure : un bouton Accueil dans la barre d'état, et une copie en conflit OneDr
 un clic.
 
 **Production.**
-- Un bouton « Accueil » à gauche de la barre d'état ramène à l'Accueil depuis un numéro
-  ouvert : la barre d'activité est masquée, la commande seule ne se voyait pas.
+- Un bouton « Accueil » à gauche de la barre d'état : depuis un numéro, il enregistre tout,
+  ferme le numéro et revient à l'Accueil, seul dans la fenêtre. La barre d'activité est
+  masquée, la commande seule ne se voyait pas.
 - Copies en conflit : après « Comparer les deux versions », un message propose « Garder ma
   version » (la copie est supprimée) ou « Prendre celle de la copie » (elle remplace le
   fichier, annulable au Ctrl+Z, puis disparaît), chacun avec sa confirmation. La résolution

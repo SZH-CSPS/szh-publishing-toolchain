@@ -48,6 +48,14 @@ async function enfant() {
     commande: HOTE.commandes().indexOf('szh.accueil') !== -1,
     bouton: HOTE.barres.filter((b) => b.command === 'szh.accueil' && b.visible).map((b) => b.text)
   };
+  // Le bouton, depuis un numéro ouvert : tout enregistrer, puis fermer le numéro ; la fenêtre
+  // vide qui en résulte ouvre l'Accueil d'elle-même.
+  if (CAS === 'dossier') {
+    HOTE.oublierCommandes();
+    await HOTE.executer('szh.accueil');
+    sortie.retour = HOTE.commandesJouees().map((c) => c.id).filter((id) => id !== 'szh.accueil');
+    sortie.accueilsApresRetour = HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length;
+  }
   // Le numéro choisi est-il déjà ouvert ailleurs ? Le faux éditeur garde la fenêtre et
   // son focus, ou le donne à une autre, ou se désactive comme au rechargement.
   if (['ailleurs', 'remplacee', 'desactivee'].indexOf(CAS) !== -1 && accueils.length === 1) {
@@ -104,6 +112,9 @@ if (CAS) {
     assert.strictEqual(r.commande, true, 'la commande reste, toujours visible');
     // La barre d'activité est masquée : le retour à l'Accueil a son bouton dans la barre d'état.
     assert.deepStrictEqual(r.bouton, ['$(home) Accueil'], 'pas de bouton Accueil dans la barre d’état');
+    assert.deepStrictEqual(r.retour, ['workbench.action.files.saveAll', 'workbench.action.closeFolder'],
+      'le retour enregistre tout puis ferme le numéro');
+    assert.strictEqual(r.accueilsApresRetour, 0, 'l’Accueil ne s’ouvre pas par-dessus le numéro');
   });
 
   test('un onglet ouvert sans dossier : rien ne s’ouvre, même après la relecture', () => {

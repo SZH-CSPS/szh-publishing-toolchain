@@ -175,6 +175,14 @@ function htmlAccueil(nonce) {
 }
 
 // `onglet` : l'onglet à montrer d'emblée (la commande szh.reglages demande « reglages »).
+// Retour à l'Accueil : depuis un numéro, tout est enregistré puis le numéro se ferme ; la
+// fenêtre vide qui reste ouvre l'Accueil d'elle-même (demarrer). Sans numéro, il s'ouvre ici.
+async function retourAccueil() {
+  if (sansDossier()) { ouvrirAccueil(); return; }
+  await vscode.commands.executeCommand('workbench.action.files.saveAll');
+  await vscode.commands.executeCommand('workbench.action.closeFolder');
+}
+
 function ouvrirAccueil(opts) {
   const onglet = (opts && opts.onglet) || '';
   if (onglet) { ongletDemande = onglet; }
@@ -239,7 +247,7 @@ function demarrer(context) {
   etatPoste = context;
   configurerOnglets();
   reglages.demarrer(context);
-  context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => ouvrirAccueil()));
+  context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => retourAccueil()));
   // La barre d'activité est masquée : le retour à l'Accueil a son bouton, à gauche de la barre d'état.
   const bouton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 1000);
   bouton.text = '$(home) ' + T('accueil.titre');
