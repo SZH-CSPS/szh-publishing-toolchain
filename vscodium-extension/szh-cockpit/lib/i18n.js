@@ -1772,7 +1772,7 @@ const TEXTES_COCKPIT = {
     // Deux phrases, et la différence compte : le code de sortie de la tâche dit si la
     // chaîne s'est arrêtée ou si elle a produit un document qu'on ne peut pas publier.
     'ctl.notif.arret': 'La compilation s’est arrêtée : {0} point(s) à corriger.',
-    'ctl.notif.echec': 'Le PDF n’a pas pu être produit, pour une raison que l’outil ne sait pas nommer. Enregistrez à nouveau ; si cela se répète, signalez-le. Vos textes n’ont pas été touchés.',
+    'ctl.notif.echec': 'Le PDF n’a pas pu être produit à cause d’une erreur inconnue. Réessayez ; si cela se répète, contactez le support.',
     'ctl.notif.bloquant': 'Ce qui vient d’être compilé n’est pas publiable : {0} point(s) à corriger.',
     'ctl.notif.avert': 'Compilation terminée. {0} point(s) méritent un regard avant la publication.',
     'ctl.notif.bouton': 'Voir les contrôles',
@@ -3707,7 +3707,7 @@ const TEXTES_COCKPIT = {
     'ctl.barre.avert': '$(warning) {0} zu prüfen',
     'ctl.barre.tooltip': 'Was die letzte Kompilierung gemeldet hat – zum Öffnen anklicken.',
     'ctl.notif.arret': 'Die Kompilierung wurde angehalten: {0} Punkt(e) zu beheben.',
-    'ctl.notif.echec': 'Das PDF konnte nicht erzeugt werden, aus einem Grund, den das Werkzeug nicht benennen kann. Speichern Sie erneut; wiederholt sich das, melden Sie es. Ihre Texte sind unberührt.',
+    'ctl.notif.echec': 'Das PDF konnte wegen eines unbekannten Fehlers nicht erzeugt werden. Versuchen Sie es erneut; wiederholt sich das, wenden Sie sich an den Support.',
     'ctl.notif.bloquant': 'Das eben Kompilierte ist nicht veröffentlichungsfähig: {0} Punkt(e) zu beheben.',
     'ctl.notif.avert': 'Kompilierung beendet. {0} Punkt(e) verdienen vor der Veröffentlichung einen Blick.',
     'ctl.notif.bouton': 'Prüfungen anzeigen',
