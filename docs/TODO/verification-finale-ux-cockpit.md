@@ -69,7 +69,7 @@ Pour le provoquer sans toucher au toolkit de production : dans l'instance de dev
   - Elle dit « Le PDF n'a pas pu être produit à cause d'une erreur inconnue… ».
   - Elle porte deux boutons, « Voir les contrôles » et « Contacter le support ».
 - [ ] **« Contacter le support »** (depuis la notification, puis depuis la carte)
-  - Un brouillon s'ouvre, adressé à robin.morand@szh.ch, avec damaris.gut@szh.ch en copie.
+  - Un brouillon s'ouvre, adressé à robin.morand@szh.ch, sans copie.
   - Il contient le poste, le numéro, le contrôle et le chemin du rapport `.json`.
   - Il ne contient aucun texte d'article.
 - [ ] **Le fichier du rapport** existe bien à ce chemin, dans le dossier partagé.
@@ -105,9 +105,8 @@ Pour le provoquer sans toucher au toolkit de production : dans l'instance de dev
   - Quand plus rien ne diverge, l'outil propose de supprimer la copie.
   - Sans copie en conflit, aucun repère ne s'affiche dans la marge.
 
-## Points ouverts, à trancher
+## Laissés tels quels (décision de Robin, 02.10.2026)
 
-- **L'adresse de Damaris Gut** est écrite dans `lib/codes-erreur.js`, donc dans un dépôt public. Elle pourrait passer dans `C:\ProgramData\SZH\config.json`.
 - **Les règles PDF/UA qui relèvent de la chaîne** n'ont pas de bouton « Contacter le support ». Le cockpit ne sait pas lesquelles c'est sans un marqueur ajouté par `pipeline/rapport-ua.py`.
 - **Le cadre « Image introuvable » a trois limites connues :**
   - une grille dont toutes les images manquent garde sa légende numérotée ;
