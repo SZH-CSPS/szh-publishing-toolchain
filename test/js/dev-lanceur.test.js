@@ -126,11 +126,43 @@ test('aucun chemin de fichiers, jonctions.lien, variables ou raccourci ne vise l
     .concat([['raccourci', s.raccourci]]);
 
   for (const [origine, valeur] of candidats) {
+    // Seule exception, en lecture : les journaux de mise a jour du poste, a ce chemin exact
+    // (le test suivant prouve que rien n'ecrit par cette variable).
+    if (origine === 'variables.SZH_JOURNAUX_MAJ'
+      && path.resolve(valeur) === path.resolve('C:\\ProgramData\\SZH', 'logs')) { continue; }
     for (const base of basesInterdites) {
       assert.ok(!estSousChemin(valeur, base),
         origine + ' = ' + valeur + ' est sous ' + base + ' (production), la valeur fautive ci-dessus le nomme');
     }
   }
+});
+
+// SZH_JOURNAUX_MAJ vise la production : seuls ses deux lecteurs ont le droit de la nommer,
+// et aucun des deux n'ecrit dans le dossier qu'elle designe.
+test('SZH_JOURNAUX_MAJ n\'est lue que par les deux lecteurs des journaux, qui n\'ecrivent pas', () => {
+  const racine = path.resolve(__dirname, '..', '..');
+  const autorises = [path.join('vscodium-extension', 'szh-cockpit', 'lib', 'journaux-maj.js'),
+    path.join('windows', 'szh-common.ps1'), path.join('outils-dev', 'pronto-dev.ps1')];
+  const vus = [];
+  const parcourir = (d) => {
+    for (const e of fs.readdirSync(path.join(racine, d), { withFileTypes: true })) {
+      const rel = path.join(d, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules') { parcourir(rel); } continue; }
+      if (/\.(js|ps1)$/.test(e.name) && fs.readFileSync(path.join(racine, rel), 'utf8').includes('SZH_JOURNAUX_MAJ')) {
+        vus.push(rel);
+      }
+    }
+  };
+  for (const d of ['vscodium-extension', 'windows', 'outils-dev', 'outils']) {
+    if (fs.existsSync(path.join(racine, d))) { parcourir(d); }
+  }
+  assert.deepStrictEqual(vus.sort(), autorises.slice().sort());
+  const js = fs.readFileSync(path.join(racine, autorises[0]), 'utf8');
+  assert.ok(!/\b(writeFile|appendFile|mkdir|rename|unlink|rm|copyFile)\w*\(/.test(js), 'journaux-maj.js ecrit sur le disque');
+  const ps = fs.readFileSync(path.join(racine, autorises[1]), 'utf8');
+  const corps = ps.slice(ps.indexOf('function Get-SzhJournauxMaj'), ps.indexOf('\n}', ps.indexOf('function Get-SzhJournauxMaj')));
+  assert.ok(corps.length > 50, 'Get-SzhJournauxMaj introuvable');
+  assert.ok(!/(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item)/.test(corps), 'Get-SzhJournauxMaj ecrit sur le disque');
 });
 
 test('raccourci nomme bien Pronto (dev).lnk', { skip: sansPowerShell }, () => {
@@ -159,6 +191,16 @@ test('variables porte SZH_BASE sur le dossier jetable, jamais sur la production'
     'variables ne porte pas SZH_BASE');
   assert.strictEqual(path.resolve(s.variables.SZH_BASE), path.resolve(s.baseDev),
     'SZH_BASE ne vaut pas le dossier jetable - ' + s.variables.SZH_BASE);
+});
+
+// L'onglet Log de l'instance de dev lit les journaux de mise a jour du poste : aucune mise a
+// jour n'ecrit sous le dossier jetable.
+test('variables designe les journaux de mise a jour du poste', { skip: sansPowerShell }, () => {
+  assertScriptExiste();
+  const s = SIMULATION.sortie;
+  assert.strictEqual(path.resolve(String(s.variables.SZH_JOURNAUX_MAJ || '')),
+    path.resolve(process.env.ProgramData || 'C:\\ProgramData', 'SZH', 'logs'),
+    'SZH_JOURNAUX_MAJ ne designe pas les journaux du poste - ' + s.variables.SZH_JOURNAUX_MAJ);
 });
 
 test('makefileWsl commence par /mnt/ et ne designe plus le toolkit de production', { skip: sansPowerShell }, () => {

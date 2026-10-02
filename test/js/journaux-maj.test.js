@@ -84,6 +84,31 @@ test('journaux : un dossier absent rend une liste vide', () => {
   try { assert.deepStrictEqual(journaux.journauxMaj(), []); } finally { process.env.SZH_BASE = avant; }
 });
 
+// L'instance de dev a sa propre base, où aucune mise à jour n'écrit : pronto-dev.ps1 lui
+// désigne les journaux du poste par SZH_JOURNAUX_MAJ.
+test('journaux : SZH_JOURNAUX_MAJ désigne le dossier lu, quelle que soit la base', () => {
+  const avant = process.env.SZH_BASE;
+  process.env.SZH_BASE = path.join(TRAVAIL, 'nulle-part');
+  process.env.SZH_JOURNAUX_MAJ = LOGS;
+  try {
+    assert.strictEqual(journaux.dossierJournaux(), LOGS);
+    assert.ok(journaux.journauxMaj().length > 0, 'les journaux du dossier désigné');
+  } finally { process.env.SZH_BASE = avant; delete process.env.SZH_JOURNAUX_MAJ; }
+});
+
+test('journaux : Get-SzhJournauxMaj suit aussi SZH_JOURNAUX_MAJ', { skip: sansPowerShell }, () => {
+  const script = [
+    ". '" + path.join(RACINE, 'windows', 'szh-common.ps1').replace(/'/g, "''") + "'",
+    '[Console]::Out.Write(@(Get-SzhJournauxMaj).Count)'
+  ].join('\n');
+  const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+    '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+  { encoding: 'utf8', windowsHide: true, timeout: 90000,
+    env: Object.assign({}, process.env, { SZH_BASE: path.join(TRAVAIL, 'nulle-part'), SZH_JOURNAUX_MAJ: LOGS }) });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(Number(r.stdout.trim()) > 0, 'aucun journal lu dans le dossier désigné : ' + r.stdout);
+});
+
 test('journaux : la fin d’un journal, ses deux cents dernières lignes et leur nombre', () => {
   const long = journaux.finJournal(path.join(LOGS, 'update-20260901-080000.log'));
   assert.strictEqual(long.lignes, 200);

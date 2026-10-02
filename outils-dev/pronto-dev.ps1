@@ -143,6 +143,8 @@ $variables = [ordered]@{
   # Lu par Start-SzhCodium (szh-shell.ps1) - sans elle VSCodium ouvrirait le profil de
   # production, et tout ce qui est seme sous <baseDev>\codium ne servirait jamais a rien.
   SZH_CODIUM_PROFIL   = Join-Path $BaseDev 'codium'
+  # Les journaux de mise a jour du poste, en lecture : aucune mise a jour n'ecrit sous baseDev.
+  SZH_JOURNAUX_MAJ    = Join-Path $env:ProgramData 'SZH\logs'
 }
 
 if ($Simuler) {
@@ -298,6 +300,7 @@ try {
   $env:SZH_TOOLKIT = $variables.SZH_TOOLKIT
   $env:SZH_COCKPIT_DOSSIER = $variables.SZH_COCKPIT_DOSSIER
   $env:SZH_CODIUM_PROFIL = $variables.SZH_CODIUM_PROFIL
+  $env:SZH_JOURNAUX_MAJ = $variables.SZH_JOURNAUX_MAJ
 
   # ---- raccourci "Pronto (dev)" au menu Demarrer - pose ici et seulement ici, voir le ----
   # ---- commentaire de Set-SzhRaccourciDev plus haut ----

@@ -10,7 +10,10 @@ const COMBIEN = 10;
 const LIGNES_VERDICT = 40;
 const LIGNES_FIN = 200;
 
-function dossierJournaux() { return path.join(basePoste(), 'logs'); }
+// SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, sa propre base n'en reçoit jamais.
+function dossierJournaux() {
+  return String(process.env.SZH_JOURNAUX_MAJ || '').trim() || path.join(basePoste(), 'logs');
+}
 
 // Les lignes d'un fichier comme Get-Content les rend : sans BOM, et sans la ligne vide qui
 // suit le dernier retour à la ligne.

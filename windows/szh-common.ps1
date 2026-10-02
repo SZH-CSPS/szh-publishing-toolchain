@@ -766,8 +766,11 @@ function Get-SzhJournauxMaj {
   param([int]$Combien = 10)
   $resultats = New-Object System.Collections.ArrayList
   $fichiers = @()
+  # SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, sa propre base n'en reçoit jamais.
+  $dossierMaj = $SzhLogs
+  if ($env:SZH_JOURNAUX_MAJ) { $dossierMaj = $env:SZH_JOURNAUX_MAJ }
   try {
-    $fichiers = @(Get-ChildItem -LiteralPath $SzhLogs -Filter 'update-*.log' -File -ErrorAction Stop)
+    $fichiers = @(Get-ChildItem -LiteralPath $dossierMaj -Filter 'update-*.log' -File -ErrorAction Stop)
   } catch { $fichiers = @() }
   foreach ($f in $fichiers) {
     # La date vient du NOM (update-yyyyMMdd-HHmmss.log), pas de la date du fichier : une copie
