@@ -178,6 +178,8 @@ if (-not $aLaMain) {
 
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 $journal = Join-Path $SzhLogs ('update-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+Limit-SzhJournauxMaj -Garder 9   # avec celui qui s'ouvre, dix journaux de mise à jour au plus
+Limit-SzhJournauxMensuels -Garder 3   # le mois en cours et les deux précédents
 try { Start-Transcript -Path $journal | Out-Null } catch { }
 
 $etape = (T 'etape.prepa')
