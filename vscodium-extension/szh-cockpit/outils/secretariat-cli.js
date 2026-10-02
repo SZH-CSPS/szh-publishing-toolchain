@@ -78,6 +78,9 @@ async function main() {
       // les mots-clés (690), joints aux lignes OAI par DOI. Optionnel — sans lui, le CSV
       // sort comme avant, sans colonnes 690.
       opts.racinesNumeros = Array.isArray(args.numero) ? args.numero : (args.numero ? [args.numero] : []);
+      // --mots-cles : le cache du thésaurus edudoc, passé par la variable que lit
+      // lib/mots-cles-edudoc.js ; absent, son emplacement par défaut.
+      if (typeof args['mots-cles'] === 'string') { process.env.SZH_MOTS_CLES_CACHE = args['mots-cles']; }
       opts.dossierSortie = args.sortie;
       resultat = await secretariat.commandeEdudoc(opts);
     } else if (commande === 'caracteres') {

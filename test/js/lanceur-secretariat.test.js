@@ -196,6 +196,116 @@ if (CAS) {
     assert.strictEqual(val(appels()[0].args, '--langue'), 'de');
   });
 
+  // ---- Edudoc avec le vrai CLI : les mots-clés des numéros du poste, filtrés par le thésaurus ----
+  const secretariat = require(path.join(COCKPIT, 'lib', 'secretariat.js'));
+  const VRAI_CLI = path.join(COCKPIT, 'outils', 'secretariat-cli.js');
+  const ARCHIVE = path.join(BASE, '_Archive', 'Revue', '2025-2');
+  const ZEITSCHRIFT = path.join(BASE, 'Zeitschrift', '2026-5');
+  const numeroLocal = (racine, revue, annee, numero, articles) => {
+    fs.mkdirSync(racine, { recursive: true });
+    fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), ['title: "Essai"', 'revue: ' + revue, 'lang: fr',
+      'volume: "16"', 'numero: "' + numero + '"', 'date: "' + annee + '-09-01"', ''].join('\n'));
+    for (const a of articles) {
+      const dossier = path.join(racine, 'articles', a.slug);
+      fs.mkdirSync(dossier, { recursive: true });
+      fs.writeFileSync(path.join(dossier, a.slug + '.md'), 'Texte.\n');
+      fs.writeFileSync(path.join(dossier, a.slug + '.meta.yaml'), ['type: varia', 'lang: fr', 'doi: "' + a.doi + '"',
+        'title:', '  fr: "' + a.slug + '"', 'author:', '- prenom: "Amelie"', '  nom: "Dentz"', 'keywords:',
+        '  fr: ' + JSON.stringify(a.fr), '  de: ' + JSON.stringify(a.de), ''].join('\n'));
+    }
+  };
+  // Les deux listes sont triées chacune de son côté : leur rang ne les apparie pas.
+  numeroLocal(NUMERO, 'revue', '2026', '03', [{ slug: 'a-encours', doi: '10.57161/r2026-03-01',
+    fr: ['cycle d’orientation', 'jeu éducatif', 'processus cognitif', 'projet pilote'],
+    de: ['kognitiver Prozess', 'Lernspiel', 'Orientierungsstufe', 'Pilotprojekt'] }]);
+  numeroLocal(ARCHIVE, 'revue', '2025', '02', [{ slug: 'b-archive', doi: '10.57161/r2025-02-01',
+    fr: ['inclusion'], de: ['Inklusion'] }]);
+  numeroLocal(ZEITSCHRIFT, 'zeitschrift', '2026', '05', [{ slug: 'c-zeitschrift', doi: '10.57161/z2026-05-01',
+    fr: ['inclusion'], de: ['Inklusion'] }]);
+  const THESAURUS = path.join(TRAVAIL, 'mots-cles.json');
+  fs.writeFileSync(THESAURUS, JSON.stringify({ dateFetch: '2026-09-27T00:00:00.000Z', motsCles: [
+    { de: 'Orientierungsstufe', fr: "cycle d'orientation", manque: null },
+    { de: 'Lernspiel', fr: 'jeu éducatif', manque: null },
+    { de: 'Pilotprojekt (na)', fr: 'projet pilote (na)', manque: null },
+    { de: 'Inklusion (SZH)', fr: 'inclusion (CSPS)', manque: null }
+  ] }));
+  // Ce que le chargement OJS aurait écrit pour ces deux numéros, sans réseau.
+  const cacheOjs = (chemin) => {
+    const numero = (annee, n, doi) => {
+      const xml = '<OAI-PMH><ListRecords><record><header><identifier>oai:ojs.szh.ch:article/' + doi.slice(-7) +
+        '</identifier><datestamp>2026-09-01T00:00:00Z</datestamp><setSpec>revue:VA</setSpec></header><metadata><oai_dc:dc>' +
+        '<dc:title xml:lang="fr">Article ' + doi + '</dc:title><dc:creator>Dentz, Amélie</dc:creator><dc:identifier>' + doi +
+        '</dc:identifier><dc:source>Revue suisse de pédagogie spécialisée; Vol. 16 No ' + n + ' (' + annee + '): Essai</dc:source>' +
+        '</oai_dc:dc></metadata></record></ListRecords></OAI-PMH>';
+      const art = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(xml)[0], 'revue');
+      return [{ cle: annee + '-' + n, revue: 'revue', locale: 'fr', annee, numero: n, volume: '16', titre: 'Essai', issn: '', articles: [art] }];
+    };
+    secretariat.ecrireCacheNumeros(chemin, { version: 1, dateRecolte: null,
+      numeros: { '2025-02': numero('2025', '02', '10.57161/r2025-02-01'), '2026-03': numero('2026', '03', '10.57161/r2026-03-01') } });
+  };
+  // Le CSV d'Edudoc en { DOI : { colonne : valeur } }.
+  const lireCsv = (chemin) => {
+    const champs = (l) => (l.match(/"(?:[^"]|"")*"/g) || []).map((c) => c.slice(1, -1).replace(/""/g, '"'));
+    const [tete, ...corps] = fs.readFileSync(chemin, 'utf8').replace(/^﻿/, '').split('\r\n').filter(Boolean).map(champs);
+    const parDoi = {};
+    for (const l of corps) {
+      const o = {};
+      tete.forEach((c, i) => { o[c] = l[i]; });
+      parDoi[Object.values(o).find((v) => /^https:\/\/doi\.org\//.test(v)).replace('https://doi.org/', '')] = o;
+    }
+    return parDoi;
+  };
+  const descripteurs = (o) => Object.keys(o).filter((c) => /^690__a-/.test(c) && o[c])
+    .map((c) => [o[c], o[c.replace('__a-', '__b-')]]);
+  const avecThesaurus = async (chemin, fn) => {
+    const avant = process.env.SZH_MOTS_CLES_CACHE;
+    process.env.SZH_MOTS_CLES_CACHE = chemin;
+    try { return await fn(); }
+    finally { if (avant === undefined) { delete process.env.SZH_MOTS_CLES_CACHE; } else { process.env.SZH_MOTS_CLES_CACHE = avant; } }
+  };
+  async function exporterEdudoc(thesaurus) {
+    oublier();
+    await avecThesaurus(thesaurus, async () => {
+      await hote.chargerOjs({ revue: 'revue', depuisAnnee: 2025 });
+      cacheOjs(val(appels()[0].args, '--cache'));
+      hote.configurer({ cli: VRAI_CLI });
+      try { await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2025-02', '2026-03'] }); }
+      finally { hote.configurer({ cli: FAUX }); }
+    });
+    const lignes = envoyes.filter((m) => m.type === MSG.LANCEUR_LIGNE && m.commande === 'edudoc').map((m) => m.ligne);
+    return { lignes, fin: fin(), csv: lireCsv(path.join(EXPORTS, 'Edudoc', 'edudoc.csv')) };
+  }
+
+  test('secrétariat : Edudoc passe les numéros du poste et le thésaurus, et seuls ses descripteurs partent en 690', async () => {
+    oublier();
+    await avecThesaurus(THESAURUS, () => hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] }));
+    const args = appels()[0].args;
+    const numeros = args.filter((x, i) => args[i - 1] === '--numero');
+    assert.deepStrictEqual(numeros.sort(), [ARCHIVE, NUMERO].sort(), 'en cours et archivés, de la seule revue choisie');
+    assert.strictEqual(val(args, '--mots-cles'), THESAURUS, 'le cache que lit aussi le panneau des fiches');
+
+    const r = await exporterEdudoc(THESAURUS);
+    assert.strictEqual(r.fin.ok, true, r.fin.texte);
+    assert.deepStrictEqual(descripteurs(r.csv['10.57161/r2026-03-01']), [
+      ['Orientierungsstufe', "cycle d'orientation"], ['Lernspiel', 'jeu éducatif'], ['Pilotprojekt (na)', 'projet pilote (na)']
+    ], 'la paire vient du thésaurus, apostrophe et qualificatif compris, jamais du rang');
+    assert.deepStrictEqual(descripteurs(r.csv['10.57161/r2025-02-01']), [['Inklusion (SZH)', 'inclusion (CSPS)']]);
+    const inconnus = r.lignes.filter((l) => l.t === 'avert' && /thésaurus/.test(l.texte));
+    assert.strictEqual(inconnus.length, 1);
+    assert.match(inconnus[0].texte, /processus cognitif, kognitiver Prozess/, 'l’écarté est dit au journal');
+  });
+
+  test('secrétariat : Edudoc sans cache de mots-clés part sans 690 et le dit', async () => {
+    const r = await exporterEdudoc(path.join(TRAVAIL, 'absent', 'mots-cles.json'));
+    assert.strictEqual(r.fin.ok, true, r.fin.texte);
+    assert.deepStrictEqual(Object.keys(r.csv).sort(), ['10.57161/r2025-02-01', '10.57161/r2026-03-01']);
+    assert.ok(Object.values(r.csv).every((o) => !Object.keys(o).some((c) => /^690/.test(c))), 'aucune colonne 690');
+    const avert = r.lignes.filter((l) => l.t === 'avert');
+    assert.deepStrictEqual(avert.map((l) => l.texte), [secretariat.dire('fr', 'edudoc.sanscache')]);
+    assert.notStrictEqual(secretariat.dire('de', 'edudoc.sanscache'), secretariat.dire('fr', 'edudoc.sanscache'));
+    assert.match(secretariat.dire('fr', 'edudoc.sanscache'), /mots-clés/);
+  });
+
   test('secrétariat : « Afficher » ne montre que ce qui est sous Exports', () => {
     oublier();
     const fichier = path.join(EXPORTS, 'Edudoc', 'f0.txt');

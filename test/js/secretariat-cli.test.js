@@ -106,6 +106,34 @@ test('secretariat-cli.js edudoc : code 0, JSON Lines sur stdout, CSV BOM+CRLF, c
     fs.rmSync(dossier, { recursive: true, force: true });
   });
 
+test('secretariat-cli.js edudoc : --mots-cles désigne le thésaurus, hors de son emplacement par défaut', () => {
+  const dossier = dossierJetable('szh-cli-edu-mc-');
+  const cheminCache = path.join(dossier, 'cache.json');
+  cacheEssai(cheminCache);
+  const numero = path.join(dossier, 'numero');
+  const art = path.join(numero, 'articles', 'a');
+  fs.mkdirSync(art, { recursive: true });
+  fs.writeFileSync(path.join(numero, 'ausgabe.yaml'), 'title: "N"\nrevue: revue\nlang: fr\nvolume: "16"\nnumero: "03"\ndate: "2026-09-01"\n');
+  fs.writeFileSync(path.join(art, 'a.md'), 'Texte.\n');
+  fs.writeFileSync(path.join(art, 'a.meta.yaml'), 'type: varia\nlang: fr\ndoi: "10.57161/r2026-03-01"\ntitle:\n  fr: "A"\n' +
+    'keywords:\n  fr: ["inclusion"]\n  de: ["Inklusion"]\n');
+  const thesaurus = path.join(dossier, 'mots-cles.json');
+  fs.writeFileSync(thesaurus, JSON.stringify({ dateFetch: null, motsCles: [{ de: 'Inklusion (SZH)', fr: 'inclusion (CSPS)' }] }));
+  // Le poste par défaut est un dossier vide : seul --mots-cles peut fournir le thésaurus.
+  const env = Object.assign({}, process.env, { SZH_BASE: path.join(dossier, 'vide') });
+  delete env.SZH_MOTS_CLES_CACHE;
+  const sortie = path.join(dossier, 'sortie');
+  const r = cp.spawnSync(process.execPath, [CLI, 'edudoc', '--cache', cheminCache, '--numeros', '2026-03',
+    '--numero', numero, '--mots-cles', thesaurus, '--sortie', sortie], { encoding: 'utf8', env });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const csv = fs.readFileSync(path.join(sortie, 'edudoc.csv'), 'utf8').replace(/^﻿/, '').split('\r\n');
+  const tete = colonnes(csv[0]);
+  const corps = colonnes(csv[1]);
+  assert.strictEqual(corps[tete.indexOf('"690__a-1"')], '"Inklusion (SZH)"', csv.join('\n'));
+  assert.strictEqual(corps[tete.indexOf('"690__b-1"')], '"inclusion (CSPS)"');
+  fs.rmSync(dossier, { recursive: true, force: true });
+});
+
 test('secretariat-cli.js : commande inconnue -> code de sortie 1, message JSON explicite', () => {
   const r = cp.spawnSync(process.execPath, [CLI, 'inconnue'], { encoding: 'utf8' });
   assert.strictEqual(r.status, 1);

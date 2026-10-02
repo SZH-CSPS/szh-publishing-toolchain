@@ -759,10 +759,15 @@ async function commandeEdudoc(opts) {
   const motsClesNonReconnus = [];
   const motsClesNonReconnusVus = new Set();
   if (racinesLocales.length > 0) {
-    emit({ t: 'etape', texte: dire(L, 'edudoc.motscles') });
-    articlesLocauxParDoi = indexerArticlesLocauxParDoi(racinesLocales, emit, L);
     const motsClesConnus = Array.isArray(o.motsClesConnus) ? o.motsClesConnus : motsClesEdudoc.lireCacheMotsCles().motsCles;
-    indexThesaurus = motsClesEdudoc.indexerThesaurus(motsClesConnus);
+    // Sans thésaurus, aucun mot-clé ne serait reconnu : l'export part sans 690, et le dit une fois.
+    if (motsClesConnus.length === 0) {
+      emit({ t: 'avert', texte: dire(L, 'edudoc.sanscache') });
+    } else {
+      emit({ t: 'etape', texte: dire(L, 'edudoc.motscles') });
+      articlesLocauxParDoi = indexerArticlesLocauxParDoi(racinesLocales, emit, L);
+      indexThesaurus = motsClesEdudoc.indexerThesaurus(motsClesConnus);
+    }
   }
 
   // Total connu d'avance : un numéro résolu du cache = un pas de progression, qu'il porte

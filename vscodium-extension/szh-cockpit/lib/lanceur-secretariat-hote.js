@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const { MSG } = require('./messages');
 const { langueCockpit } = require('./i18n');
 const inventaire = require('./inventaire');
+const { cheminCacheMotsCles } = require('./mots-cles-edudoc');
 const { numeroAffiche } = require('./lanceur-page');
 
 const OJS = 'numeros-ojs';
@@ -159,6 +160,14 @@ function demande(msg) {
   return { commande, revue, cles, sortie: dossierExport(commande) };
 }
 
+// Les mots-clés d'Edudoc : les numéros du poste de la revue, en cours et archivés, et le
+// thésaurus que lit aussi le panneau des fiches.
+function sourcesMotsCles(revue) {
+  const produit = inventaire.inventaire().produits[revue];
+  const numeros = produit ? produit.enCours.concat(produit.archives) : [];
+  return numeros.reduce((args, n) => args.concat(['--numero', n.chemin]), []).concat(['--mots-cles', cheminCacheMotsCles()]);
+}
+
 // Le contrôle des métadonnées charge d'abord les numéros publiés depuis l'année du numéro,
 // dans un fichier à lui.
 async function etapes(d, relayer) {
@@ -175,8 +184,8 @@ async function etapes(d, relayer) {
       return await executer('tache', d.commande, ['--numero', d.chemin, '--cache', cache, '--sortie', d.sortie], relayer);
     } finally { supprimer(cache); }
   }
-  return executer('tache', d.commande, ['--cache', cacheDe(d.revue), '--numeros', d.cles.join(','), '--sortie', d.sortie],
-    relayer);
+  const args = ['--cache', cacheDe(d.revue), '--numeros', d.cles.join(','), '--sortie', d.sortie];
+  return executer('tache', d.commande, d.commande === 'edudoc' ? args.concat(sourcesMotsCles(d.revue)) : args, relayer);
 }
 
 async function exporter(msg) {
