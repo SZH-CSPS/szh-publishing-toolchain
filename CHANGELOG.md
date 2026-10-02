@@ -11,6 +11,16 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.3.0
+
+Medium : une copie en conflit OneDrive se tranche en un clic.
+
+**Production.**
+- Copies en conflit : après « Comparer les deux versions », un message propose « Garder ma
+  version » (la copie est supprimée) ou « Prendre celle de la copie » (elle remplace le
+  fichier, annulable au Ctrl+Z, puis disparaît), chacun avec sa confirmation. La résolution
+  passage par passage, dans la marge du fichier, reste possible.
+
 ## 3.2.0
 
 Medium : « Pronto » s'ouvre dans l'éditeur, sur l'Accueil du cockpit, et le lanceur WinForms
