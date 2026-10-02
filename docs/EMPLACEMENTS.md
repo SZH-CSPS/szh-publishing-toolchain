@@ -51,7 +51,7 @@ exception près, `_Systeme\`, qui ne suit jamais la racine active (§1bis ci-des
 ├── Books\                   idem
 ├── _Archive\                Revue\  Zeitschrift\  Books\
 ├── _NewsUndActu\            Fiches\  _Statuts\fr\  _Statuts\de\
-└── Secrétariat und Export\
+└── Exports\                 Newsletter\  Edudoc\  Caractères par article\  Contrôle des métadonnées\
 
 <racine de PRODUCTION>\      (toujours celle-ci, même quand la racine active est « test »)
 └── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\
@@ -96,7 +96,7 @@ Les dossiers hors produit :
 |---|---|---|
 | `_NewsUndActu\Fiches\` | les fiches de la bibliothèque, **partagées par les deux rédactions** | le cockpit (`vscodium-extension\szh-cockpit`) |
 | `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` | l'état des fiches, par langue | le cockpit |
-| `Secrétariat und Export\` | les sorties du secrétariat (OJS, Edudoc…), déposées à la main | personne, pour l'instant |
+| `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | le lanceur du cockpit (`lib/lanceur-secretariat-hote.js`) |
 
 `_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs) N'EST PAS un dossier hors produit
 de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.
@@ -489,7 +489,7 @@ d'attribut et lancement de processus injectés, jamais un vrai `attrib.exe` dans
   dehors. Elle peut être vidée sans rien casser.
 - **Le dossier `54_Pronto` reste à créer sur SharePoint** : le code le nomme ainsi des deux
   côtés (§1) ; reste à poser le dossier dans la bibliothèque et à publier.
-- **`Secrétariat und Export\`, `_Systeme\journaux\` et `_Systeme\suggestions\` sont
-  créés mais vides** : aucun code n'y écrit encore. Les exports du secrétariat demandent
-  toujours leur dossier de sortie à l'utilisateur. `_Systeme\inventaire\`, lui, est écrit
+- **`_Systeme\journaux\` et `_Systeme\suggestions\` sont créés mais vides** : aucun code
+  n'y écrit encore. `Exports\` n'est écrit que par le lanceur du cockpit ; le lanceur
+  WinForms demande toujours son dossier de sortie. `_Systeme\inventaire\`, lui, est écrit
   depuis le 15.09.2026 (`windows\szh-checkin.ps1`).

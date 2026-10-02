@@ -49,7 +49,7 @@ $script:SzhSousDossiers = @{
 #                          la bibliothèque ne trie plus par revue d'origine, elle trie par
 #                          langue. Le cockpit lit et écrit ces mêmes trois dossiers de son
 #                          côté (hors périmètre de ce dépôt PowerShell).
-#   Secrétariat und Export les sorties du secrétariat (OJS, Edudoc…), déposées à la main.
+#   Exports                les sorties du secrétariat, un sous-dossier par export (le cockpit).
 #
 # `_Systeme\` (rapports d'erreur, journaux, suggestions, inventaire des postes) N'EST PAS
 # dans cette liste : il vit TOUJOURS sur SharePoint, ancré via Resolve-SzhAncrage
@@ -77,7 +77,7 @@ $script:SzhDossiersBibliotheque = @(
 )
 
 $script:SzhDossiersCommuns = @($SzhDossiersBibliotheque) + @(
-  'Secrétariat und Export'
+  'Exports'
 )
 
 # Les deux racines par défaut, dernier recours de Get-SzhBaseRevuesPour ci-dessous.

@@ -309,7 +309,19 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "explorer",
+        "contents": "%vue.lanceur.accueil%",
+        "when": "workbenchState == empty && szh.lanceur.actif"
+      }
+    ],
     "commands": [
+      {
+        "command": "szh.lanceur",
+        "title": "%cmd.lanceur%",
+        "category": "SZH/CSPS"
+      },
       {
         "command": "szh.importerWord",
         "title": "%cmd.importerWord%",
@@ -718,6 +730,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "szh.lanceur",
+          "when": "szh.lanceur.actif"
+        },
         {
           "command": "szh.conflit.prendre",
           "when": "false"

@@ -9,7 +9,8 @@
 // non bloquant), `numero` (un numéro OJS trouvé), `fichier` (un fichier produit), `progres`
 // ({fait, total} — total à 0 quand il est inconnu d'avance, cas du moissonnage OAI-PMH : le
 // lanceur y affiche une barre indéterminée), `fin` (bilan, TOUJOURS la dernière ligne).
-// Code de sortie 0 si `ok`, sinon 1.
+// Code de sortie 0 si `ok`, sinon 1. --langue fr|de choisit la langue des textes ; le français
+// à défaut, que le lanceur WinForms reçoit sans la passer.
 'use strict';
 
 const path = require('path');
@@ -49,14 +50,14 @@ async function main() {
   try {
     const commandesConnues = ['numeros-ojs', 'newsletter', 'edudoc', 'caracteres', 'metadonnees'];
     if (commandesConnues.indexOf(commande) === -1) {
-      throw new Error("commande inconnue : « " + (commande || '') + " » (attendu : " + commandesConnues.join(', ') + ')');
+      throw new Error(secretariat.dire(secretariat.langueDe(args), 'commande.inconnue', [commande || '', commandesConnues.join(', ')]));
     }
 
     // --gabarits : aide de mise au point (et porte d'entrée des tests), jamais un réglage de
     // rédacteur — en usage normal les gabarits sont toujours ceux livrés dans export-templates/.
     dossierGabarits = (typeof args.gabarits === 'string' ? args.gabarits : null) || secretariat.dossierGabaritsSource();
 
-    const opts = { emettre: emettre, dossierGabarits: dossierGabarits };
+    const opts = { emettre: emettre, dossierGabarits: dossierGabarits, langue: args.langue };
     let resultat;
     if (commande === 'numeros-ojs') {
       opts.revue = args.revue;
@@ -77,6 +78,9 @@ async function main() {
       // les mots-clés (690), joints aux lignes OAI par DOI. Optionnel — sans lui, le CSV
       // sort comme avant, sans colonnes 690.
       opts.racinesNumeros = Array.isArray(args.numero) ? args.numero : (args.numero ? [args.numero] : []);
+      // --mots-cles : le cache du thésaurus edudoc, passé par la variable que lit
+      // lib/mots-cles-edudoc.js ; absent, son emplacement par défaut.
+      if (typeof args['mots-cles'] === 'string') { process.env.SZH_MOTS_CLES_CACHE = args['mots-cles']; }
       opts.dossierSortie = args.sortie;
       resultat = await secretariat.commandeEdudoc(opts);
     } else if (commande === 'caracteres') {

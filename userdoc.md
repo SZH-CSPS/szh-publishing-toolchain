@@ -1734,7 +1734,7 @@ l’explorateur :
   traduction arrive chez la collègue. Il est posé à la racine, et non dans un numéro, pour
   deux raisons : il survit à l’archivage d’un numéro, et **les deux rédactions y lisent la
   même chose**.
-- **`Secrétariat und Export`** – pour les sorties du secrétariat, déposées à la main.
+- **`Exports`** – les sorties du secrétariat, un sous-dossier par export.
 - **`_Systeme`** – ce que l’outil écrit pour lui-même (rapports de panne, journaux,
   inventaire des postes). Rien à y faire. À la différence des deux dossiers précédents, il
   n’est **jamais** dans le dossier d’essai décrit ci-dessous : il vit toujours dans le

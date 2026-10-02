@@ -125,8 +125,15 @@ powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1
 Elle vit sous `C:\ProgramData\SZH-dev`, à côté de la production, jamais dedans. Le script
 pose au premier lancement une entrée « Pronto (dev) » au menu Démarrer. Paramètres :
 `-BaseDev <dossier>` (une autre racine, pour deux instances ou un banc jetable), `-Simuler`
-(le plan complet en JSON, sans rien écrire), `-Menu <dossier>` (où poser le raccourci) ;
-tout argument restant part à `windows/open-revue.ps1`.
+(le plan complet en JSON, sans rien écrire), `-Menu <dossier>` (où poser le raccourci).
+
+Sans argument, le script ouvre VSCodium sans dossier, en `--new-window`, sur le lanceur du
+cockpit. Il fait d'abord les tâches de démarrage d'`open-produit.ps1` (ancrage, rapports en
+attente, check-in, épinglage, dossiers de test) et pose les secrets. `SZH_ACCUEIL=1` ne vit
+que dans l'environnement de VSCodium. `-Lanceur`, un lien `szh://`, `-Produit` ou
+`-Versions` passent à `windows/open-revue.ps1`, donc au lanceur WinForms. VSCodium ne
+rouvre pas le dernier numéro : en `--new-window` sans dossier, il ne restaure la session
+que si `window.restoreWindows` vaut `preserve`.
 
 | Élément | Production | Instance de dev |
 |---|---|---|

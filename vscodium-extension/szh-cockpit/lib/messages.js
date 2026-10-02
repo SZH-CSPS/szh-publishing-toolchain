@@ -122,7 +122,23 @@ const MSG = Object.freeze({
 
   // Aperçu HTML
   BASCULER: 'basculer', REVELE: 'revele', SCROLL_SOURCE: 'scrollSource',
-  SCROLL: 'scroll', SURLIGNER: 'surligner'
+  SCROLL: 'scroll', SURLIGNER: 'surligner',
+
+  // Lanceur dans l'éditeur (media/lanceur.js). ONGLET : l'onglet que la page vient d'ouvrir.
+  // Produits et Nouveau : ouvrir une entrée, la fenêtre des versions, créer une entrée et
+  // le refus éventuel de l'hôte.
+  LANCEUR_ONGLET: 'lanceurOnglet', LANCEUR_OUVRIR: 'lanceurOuvrir', LANCEUR_VERSIONS: 'lanceurVersions',
+  LANCEUR_CREER: 'lanceurCreer', LANCEUR_CREE: 'lanceurCree',
+  // Secrétariat : la page demande une tâche ou le chargement des numéros publiés ; l'hôte
+  // annonce le début, relaie chaque ligne JSON de secretariat-cli.js telle quelle, puis
+  // l'issue, chaque fois avec la commande concernée.
+  LANCEUR_EXPORTER: 'lanceurExporter', LANCEUR_OJS_CHARGER: 'lanceurOjsCharger',
+  LANCEUR_INTERROMPRE: 'lanceurInterrompre', LANCEUR_AFFICHER: 'lanceurAfficher',
+  LANCEUR_DEBUT: 'lanceurDebut', LANCEUR_LIGNE: 'lanceurLigne', LANCEUR_FIN: 'lanceurFin',
+  // Log : lire la fin d'un journal, l'ouvrir en entier, signaler un problème.
+  LANCEUR_JOURNAL_LIRE: 'lanceurJournalLire', LANCEUR_JOURNAL_TEXTE: 'lanceurJournalTexte',
+  LANCEUR_JOURNAL_EDITEUR: 'lanceurJournalEditeur',
+  LANCEUR_SIGNALER: 'lanceurSignaler', LANCEUR_SIGNALE: 'lanceurSignale'
 });
 
 module.exports = { MSG };
