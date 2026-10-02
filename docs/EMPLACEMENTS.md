@@ -51,7 +51,7 @@ exception près, `_Systeme\`, qui ne suit jamais la racine active (§1bis ci-des
 ├── Books\                   idem
 ├── _Archive\                Revue\  Zeitschrift\  Books\
 ├── _NewsUndActu\            Fiches\  _Statuts\fr\  _Statuts\de\
-└── Exports\                 Newsletter\  Edudoc\  Caractères par article\  Contrôle des métadonnées\
+└── Exports\                 Newsletter\  Edudoc\  Caractères par article\  Contrôle des métadonnées\  Préprocessing\
 
 <racine de PRODUCTION>\      (toujours celle-ci, même quand la racine active est « test »)
 └── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\
@@ -97,6 +97,7 @@ Les dossiers hors produit :
 | `_NewsUndActu\Fiches\` | les fiches de la bibliothèque, **partagées par les deux rédactions** | le cockpit (`vscodium-extension\szh-cockpit`) |
 | `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` | l'état des fiches, par langue | le cockpit |
 | `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | l'Accueil du cockpit (`lib/accueil-secretariat-hote.js`) |
+| `Exports\Préprocessing\<manuscrit>\` | un dossier par nettoyage, puis `(2)`, `(3)`… : la copie du manuscrit, le document nettoyé et son rapport | l'onglet Préprocessing de l'Accueil (`lib/accueil-preproc-hote.js`) |
 
 `_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs) N'EST PAS un dossier hors produit
 de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.

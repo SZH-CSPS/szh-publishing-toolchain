@@ -1858,10 +1858,13 @@ avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPL
 
 ## L’onglet « Préprocessing » de l’Accueil
 
-Chaque nettoyage écrit dans un dossier neuf du Bureau, `Pronto Preprocessing\<nom du
-manuscrit>` (puis `<nom> (2)`, `<nom> (3)`… au passage suivant) : une copie du manuscrit, le
-document nettoyé et son rapport. Le manuscrit d’origine n’est jamais touché, et rien ne
-s’écrit à côté de lui. On peut aussi glisser un manuscrit .docx ou .odt (50 Mo au plus) sur
+Chaque nettoyage écrit dans un dossier neuf des exports de Pronto, `Exports\Préprocessing\<nom
+du manuscrit>` (puis `<nom> (2)`, `<nom> (3)`… au passage suivant) : une copie du manuscrit, le
+document nettoyé et son rapport. `Exports` est le dossier où le Secrétariat range déjà ses
+sorties, sous la racine active : en mode développeur, c’est celui du dossier de test.
+« Afficher dans le dossier » y ouvre l’Explorateur. Le manuscrit d’origine n’est jamais
+touché, et rien ne s’écrit à côté de lui. Si le dossier des exports est injoignable (partage
+absent), le nettoyage ne part pas et l’onglet le dit, sans rien écrire ailleurs. On peut aussi glisser un manuscrit .docx ou .odt (50 Mo au plus) sur
 la zone de l’onglet, **en maintenant Maj** au moment de le lâcher : sans Maj, VSCodium
 l’ouvre lui-même.
 

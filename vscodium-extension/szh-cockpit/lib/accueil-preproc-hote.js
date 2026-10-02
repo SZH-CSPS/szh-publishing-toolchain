@@ -16,7 +16,7 @@ const { compiler } = require('./gabarits');
 const compteurs = require('./compteurs');
 const rapportErreur = require('./rapport-erreur');
 const { COURRIEL_SUPPORT } = require('./codes-erreur');
-const poste = require('./poste');
+const inventaire = require('./inventaire');
 const { construireVueRapportManuscrit } = require('../outils/rendre-gabarit');
 
 const PRODUITS = ['revue', 'zeitschrift'];
@@ -26,8 +26,8 @@ const FORMATS = ['docx', 'odt'];
 const DEPOT = true;
 // Le plafond d'un manuscrit déposé : un .docx d'article dépasse rarement quelques Mo.
 const TAILLE_MAX = 50 * 1024 * 1024;
-// Chaque passage écrit dans son propre dossier, sous <Bureau>\Pronto Preprocessing.
-const DOSSIER_SORTIE = 'Pronto Preprocessing';
+// Chaque passage écrit dans son propre dossier, sous <racine des exports>\Préprocessing.
+const DOSSIER_SORTIE = 'Préprocessing';
 const RE_MANUSCRIT = /\.(docx|odt)$/i;
 // Par compte : le dossier du dernier manuscrit choisi, où la boîte de choix se rouvre.
 // Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
@@ -59,7 +59,7 @@ let ctx = {
   revelerFichier: () => {},
   formatTravail: () => 'docx',
   memoire: null,
-  bureau: () => poste.dossierBureau(),
+  racineExports: () => inventaire.racineExports(),
   lancer: (argv, options) => moteur.executer(argv, options),
   cli: null,
   versMoteur: (chemin) => moteur.versMoteur(chemin),
@@ -253,9 +253,11 @@ function constats(p, r, fin) {
 }
 
 // Le dossier du passage : <nom>, sinon <nom> (2), (3)… Un mkdir sans recursive échoue sur
-// un dossier qui existe : rien n'est jamais écrasé.
-function dossierPassage(bureau, nom) {
-  const base = path.join(bureau, DOSSIER_SORTIE);
+// un dossier qui existe : rien n'est jamais écrasé. La racine de Pronto doit déjà exister :
+// un partage absent n'est pas recréé en local.
+function dossierPassage(exportsRacine, nom) {
+  if (!path.isAbsolute(exportsRacine) || !fs.statSync(path.dirname(exportsRacine)).isDirectory()) { throw new Error('ENOENT'); }
+  const base = path.join(exportsRacine, DOSSIER_SORTIE);
   fs.mkdirSync(base, { recursive: true });
   const racine = path.parse(nom).name;
   for (let i = 1; i < 1000; i++) {
@@ -265,12 +267,12 @@ function dossierPassage(bureau, nom) {
   throw new Error('EEXIST');
 }
 
-// Le manuscrit entre dans un dossier neuf du Bureau, par copie ou par ses octets déposés.
-// Rend le chemin de la copie, ou '' si le Bureau refuse l'écriture.
-function preparer(bureau, entree) {
+// Le manuscrit entre dans un dossier neuf des exports, par copie ou par ses octets déposés.
+// Rend le chemin de la copie, ou '' si la racine des exports refuse l'écriture.
+function preparer(racine, entree) {
   let dossier = '';
   try {
-    dossier = dossierPassage(bureau, entree.nom);
+    dossier = dossierPassage(racine, entree.nom);
     const cible = path.join(dossier, entree.nom);
     if (entree.octets) { fs.writeFileSync(cible, entree.octets, { flag: 'wx' }); }
     else { fs.copyFileSync(entree.source, cible, fs.constants.COPYFILE_EXCL); }
@@ -281,21 +283,22 @@ function preparer(bureau, entree) {
   }
 }
 
-// Une issue sans passage : un refus du dépôt, ou un Bureau où l'on ne peut écrire.
+// Une issue sans passage : un refus du dépôt, ou des exports où l'on ne peut écrire.
 function finSansPassage(issue, texte) {
   ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_FIN, issue, texte, document: '', rapport: false, rapportOuvert: false, alertes: null });
   envoyerEtat();
 }
 
-// Nettoie un manuscrit, { source } choisi ou { nom, octets } déposé, sur sa copie au Bureau :
-// le document et le rapport s'écrivent à côté d'elle, le rapport s'ouvre dans le navigateur,
-// puis la page reçoit l'issue. L'original n'est jamais touché.
+// Nettoie un manuscrit, { source } choisi ou { nom, octets } déposé, sur sa copie dans les
+// exports : le document et le rapport s'écrivent à côté d'elle, le rapport s'ouvre dans le
+// navigateur, puis la page reçoit l'issue. L'original n'est jamais touché.
 async function nettoyer(entree, produit, format) {
   const nom = path.basename(entree.source || entree.nom);
-  const bureau = await ctx.bureau();
-  const chemin = preparer(bureau, { nom, source: entree.source, octets: entree.octets });
+  let racine = '';
+  try { racine = String((await ctx.racineExports()) || ''); } catch (e) { racine = ''; }
+  const chemin = racine ? preparer(racine, { nom, source: entree.source, octets: entree.octets }) : '';
   if (!chemin) {
-    finSansPassage('echec', T('accueil.preproc.echec.bureau', [path.join(bureau, DOSSIER_SORTIE)]));
+    finSansPassage('echec', T('accueil.preproc.echec.sortie', [path.join(racine || 'Exports', DOSSIER_SORTIE)]));
     return;
   }
   const p = passage = { annule: false, proc: null, rang: -1, chemin, produit, dossier: path.dirname(chemin) };
@@ -337,7 +340,7 @@ async function choisir(msg) {
 }
 
 // Un dépôt sur la zone : une adresse file:// suit le circuit du choix, des octets en base64
-// s'écrivent au Bureau. Extension et taille se revérifient ici, quoi qu'en ait dit la page.
+// s'écrivent dans les exports. Extension et taille se revérifient ici, quoi qu'en ait dit la page.
 async function deposer(msg) {
   const produit = String(msg.produit || '');
   const format = String(msg.format || '');

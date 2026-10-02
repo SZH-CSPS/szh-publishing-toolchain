@@ -23,9 +23,10 @@ const RECUS = path.join(TRAVAIL, 'Manuscrits reçus');
 const MANUSCRIT = path.join(RECUS, 'Martin école.docx');
 const FAUX = path.join(TRAVAIL, 'faux-moteur.js');
 const JOURNAL = path.join(TRAVAIL, 'appels.jsonl');
-// Le faux Bureau : la sortie de chaque passage va sous <Bureau>\Pronto Preprocessing.
-const BUREAU = path.join(TRAVAIL, 'Bureau');
-const SORTIES = path.join(BUREAU, 'Pronto Preprocessing');
+// La racine des exports, celle du Secrétariat : en mode test, <racine de test>\Exports. Chaque
+// passage écrit sous <racine des exports>\Préprocessing.
+const EXPORTS = path.join(TRAVAIL, 'Base', 'Exports');
+const SORTIES = path.join(EXPORTS, 'Préprocessing');
 const SORTIE = path.join(SORTIES, 'Martin école');
 if (!CAS) {
   const numero = path.join(TRAVAIL, 'Base', 'Revue', '2026-3');
@@ -104,7 +105,7 @@ async function enfant() {
   };
   if (CAS === 'reglage') { await getConfiguration('szh').update('formatTravail', 'odt'); }
   const preproc = require(path.join(COCKPIT, 'lib', 'accueil-preproc-hote.js'));
-  preproc.configurer({ lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => c, bureau: () => BUREAU,
+  preproc.configurer({ lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => c,
     compter: () => {}, signaler: () => {} });
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
   const p = HOTE.panneaux.filter((x) => x.type === 'szhAccueil')[0];
@@ -125,7 +126,7 @@ async function enfant() {
   await attendre(() => !pids.some(vivant) && !preproc.enCours(), 10000);
   const fin = p.messages.filter((m) => m.type === MSG.ACCUEIL_PREPROC_FIN).pop() || null;
   const sortie = { pids, vivants: pids.filter(vivant), fin, premierEtat: etats()[0], dernierEtat: etats().pop(),
-    argv: (appels()[0] || {}).argv || [], ecritures, format: getConfiguration('szh').get('formatTravail') };
+    argv: (appels()[0] || {}).argv || [], cwd: (appels()[0] || {}).cwd || '', ecritures, format: getConfiguration('szh').get('formatTravail') };
   for (const pid of sortie.vivants) { try { process.kill(pid); } catch (e) { /* déjà mort */ } }
   process.stdout.write('@@PP@@' + JSON.stringify(sortie) + '\n');
   process.exit(0);
@@ -156,7 +157,7 @@ if (CAS) {
   let reponse = MANUSCRIT;
   let format = 'docx';
   hote.configurer({
-    lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => { convertis.push(c); return c; }, bureau: () => BUREAU,
+    lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => { convertis.push(c); return c; }, racineExports: () => EXPORTS,
     envoyer: (m) => envoyes.push(m), revelerFichier: (c) => reveles.push(c),
     ouvrirExterne: (c) => { ouvertures.push(c); return Promise.resolve(true); },
     choisirFichier: (d) => { choix.push(d); return Promise.resolve(reponse); },
@@ -166,7 +167,7 @@ if (CAS) {
   const oublier = () => {
     for (const t of [envoyes, ouvertures, reveles, comptes, signales, choix, convertis]) { t.length = 0; }
     try { fs.rmSync(JOURNAL); } catch (e) { /* vide */ }
-    fs.rmSync(BUREAU, { recursive: true, force: true });
+    fs.rmSync(EXPORTS, { recursive: true, force: true });
     delete process.env.SZH_FAUX_MODE;
   };
   const types = () => envoyes.map((m) => m.type);
@@ -193,13 +194,13 @@ if (CAS) {
     } finally { format = 'docx'; }
   });
 
-  test('préprocessing : le nettoyeur part sur une copie au Bureau, les étapes arrivent dans l’ordre', async () => {
+  test('préprocessing : le nettoyeur part sur une copie dans les exports, les étapes arrivent dans l’ordre', async () => {
     const avant = fs.readdirSync(RECUS).sort();
     await lancer('ok', 'revue', 'odt');
     const a = appels();
     assert.strictEqual(a.length, 1);
     assert.deepStrictEqual(a[0].argv.slice(0, 3), ['python3', '/faux/manuscrit-nettoyer.py', './Martin école.docx']);
-    assert.strictEqual(fs.realpathSync(a[0].cwd), fs.realpathSync(SORTIE), 'le dossier du Bureau passe à --cd');
+    assert.strictEqual(fs.realpathSync(a[0].cwd), fs.realpathSync(SORTIE), 'le dossier du passage passe à --cd');
     assert.strictEqual(fs.readFileSync(path.join(SORTIE, 'Martin école.docx'), 'utf8'), 'manuscrit', 'la copie sous son nom d’origine');
     assert.strictEqual(fs.readFileSync(MANUSCRIT, 'utf8'), 'manuscrit', 'l’original n’est pas touché');
     assert.deepStrictEqual(fs.readdirSync(RECUS).sort(), avant, 'rien ne s’écrit à côté de l’original');
@@ -246,7 +247,7 @@ if (CAS) {
   const b64 = (t) => Buffer.from(t).toString('base64');
   const deposer = (autres) => tenu(hote.deposer(Object.assign({ type: MSG.ACCUEIL_PREPROC_DEPOSER, produit: 'revue', format: 'docx' }, autres)));
 
-  test('préprocessing : un dépôt d’octets s’écrit au Bureau, puis se nettoie', async () => {
+  test('préprocessing : un dépôt d’octets s’écrit dans les exports, puis se nettoie', async () => {
     oublier();
     assert.strictEqual(hote.surMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER }), true);
     await deposer({ nomFichier: 'Dupont étude.docx', donneesBase64: b64('octets déposés') });
@@ -276,14 +277,14 @@ if (CAS) {
       assert.deepStrictEqual(appels(), [], JSON.stringify(m));
       assert.strictEqual(fin().issue, 'refus');
       assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.depot.format'));
-      assert.ok(!fs.existsSync(BUREAU), 'aucun dossier pour un refus');
+      assert.ok(!fs.existsSync(EXPORTS), 'aucun dossier pour un refus');
     }
     oublier();
     await deposer({ nomFichier: 'gros.docx', donneesBase64: Buffer.alloc(hote.TAILLE_MAX + 1).toString('base64') });
     assert.deepStrictEqual(appels(), []);
     assert.strictEqual(fin().issue, 'refus');
     assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.depot.taille', [50]));
-    assert.ok(!fs.existsSync(BUREAU));
+    assert.ok(!fs.existsSync(EXPORTS));
     assert.strictEqual(types().pop(), MSG.ACCUEIL_PREPROC_ETAT);
   });
 
@@ -395,6 +396,40 @@ if (CAS) {
     assert.deepStrictEqual(marques(sans.stderr), [], 'sans --etapes, rien de neuf sur stderr');
   });
 
+  test('préprocessing : la sortie va sous <racine des exports>\\Préprocessing\\<nom>', async () => {
+    await lancer('ok');
+    assert.strictEqual(fs.realpathSync(appels()[0].cwd), fs.realpathSync(path.join(EXPORTS, 'Préprocessing', 'Martin école')));
+    assert.deepStrictEqual(fs.readdirSync(EXPORTS), ['Préprocessing'], 'rien d’autre dans les exports');
+    hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'dossier' });
+    assert.strictEqual(path.dirname(reveles[0]), path.join(EXPORTS, 'Préprocessing', 'Martin école'));
+  });
+
+  // Un partage absent : la racine des exports pend sous un dossier qui n'existe pas, n'est pas
+  // un chemin absolu, ou ne se lit pas. Le passage échoue avec son message, sans rien créer.
+  test('préprocessing : une racine des exports injoignable échoue proprement, sans écrire ailleurs', async () => {
+    const absent = path.join(TRAVAIL, 'Partage absent', 'Exports');
+    const cwd = process.cwd();
+    const cas = [[() => absent, path.join(absent, 'Préprocessing')],
+      [() => 'Exports', path.join('Exports', 'Préprocessing')],
+      [() => { throw new Error('inventaire illisible'); }, path.join('Exports', 'Préprocessing')]];
+    try {
+      for (const [racine, affiche] of cas) {
+        hote.configurer({ racineExports: racine });
+        await lancer('ok');
+        assert.deepStrictEqual(appels(), [], 'le nettoyeur ne part pas');
+        assert.strictEqual(fin().issue, 'echec');
+        assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.echec.sortie', [affiche]));
+        assert.strictEqual(fin().document, '');
+        assert.strictEqual(types().pop(), MSG.ACCUEIL_PREPROC_ETAT);
+        assert.ok(!fs.existsSync(path.join(TRAVAIL, 'Partage absent')), 'un partage absent n’est pas recréé');
+        assert.ok(!fs.existsSync(path.join(cwd, 'Exports')), 'rien ne s’écrit dans le dossier courant');
+      }
+    } finally { hote.configurer({ racineExports: () => EXPORTS }); }
+    for (const l of ['fr', 'de']) {
+      assert.doesNotMatch(TL(l, 'accueil.preproc.echec.sortie', ['X']), /Bureau|Desktop/, 'le message ne parle plus du Bureau');
+    }
+  });
+
   // Les gestes qui ferment l'Accueil, et le réglage, dans l'extension activée : chacun dans
   // son propre processus, le faux vscode ne s'activant qu'une fois.
   for (const cas of ['fermeture', 'dossier', 'desactivation']) {
@@ -414,6 +449,7 @@ if (CAS) {
     assert.strictEqual(v.premierEtat.depot, true);
     assert.strictEqual(val(v.argv, '--format'), 'docx', 'le choix de la page vaut pour ce passage');
     assert.strictEqual(v.fin.issue, 'ok');
+    assert.strictEqual(fs.realpathSync(v.cwd), fs.realpathSync(SORTIE), 'sans racine injectée, celle des exports du mode test');
     assert.deepStrictEqual(v.ecritures, [], 'aucune écriture de réglage');
     assert.strictEqual(v.format, 'odt');
     assert.strictEqual(v.dernierEtat.format, 'odt', 'le passage suivant repart du réglage');

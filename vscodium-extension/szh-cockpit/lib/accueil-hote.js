@@ -96,7 +96,7 @@ async function donnees() {
     type: MSG.CHARGER, langue, onglet,
     produit: produitParDefaut(langue, choisi, process.env.SZH_ONGLET, inventaire.ORDRE),
     anneeCourante: new Date().getFullYear(), modeTest: inv.modeTest, ancrageAbsent: inv.ancrageAbsent,
-    version: versionInstallee(), exports: path.join(inv.base, 'Exports'), produits,
+    version: versionInstallee(), exports: inventaire.racineExports(inv), produits,
     dernierOuvert: (etatPoste && etatPoste.globalState.get(CLE_DERNIER)) || '',
     historique: secretariat.historique(), journaux: journal.listePage()
   };

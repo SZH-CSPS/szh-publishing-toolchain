@@ -173,7 +173,13 @@ function inventaire() {
   return { emplacement, modeTest, base, ancrageAbsent, produits };
 }
 
+// Le dossier des exports de l'Accueil (Secrétariat, Préprocessing), sous la racine active :
+// celle de test en mode test. `inv`, un inventaire déjà calculé, évite de le refaire.
+function racineExports(inv) {
+  return path.join((inv || inventaire()).base, 'Exports');
+}
+
 module.exports = {
   ORDRE, SOUS_DOSSIERS, BASES_DEFAUT,
-  baseRevuesPour, emplacementProduit, lireYamlPlat, inventaireProduit, inventaire
+  baseRevuesPour, emplacementProduit, lireYamlPlat, inventaireProduit, inventaire, racineExports
 };

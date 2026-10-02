@@ -105,16 +105,17 @@ Un fichier ou un dossier dont le chemin porte un accent ou un espace doit s'ouvr
 - [ ] **Paramètres → dossier des suggestions** de l'interface.
 - [ ] **Préprocessing → Ouvrir le document / Revoir le rapport.** Ces deux gestes sont rebranchés sur `lib/ouvrir-systeme.js` par la session de la bascule « accueil ». Les vérifier après sa fusion.
 
-## Préprocessing : sortie sur le Bureau
+## Préprocessing : sortie dans Exports\Préprocessing
 
-- [ ] **Choisir un manuscrit…**
-  - La sortie apparaît dans `Bureau\Pronto Preprocessing\<manuscrit>\` : la copie, le document nettoyé et le rapport.
-  - Rien n'est écrit à côté de l'original.
+- [ ] **Choisir un manuscrit…, en mode test**
+  - La sortie apparaît dans `<racine de test>\Exports\Préprocessing\<manuscrit>\` : la copie, le document nettoyé et le rapport.
+  - « Afficher dans le dossier » ouvre ce dossier ; « Ouvrir le document » et « Revoir le rapport » ouvrent ses fichiers.
+  - Rien n'est écrit à côté de l'original, ni sur le Bureau.
+- [ ] **Choisir un manuscrit…, en production** : la sortie apparaît dans `Exports\Préprocessing\<manuscrit>\` de la racine de production, à côté des sorties du Secrétariat.
+- [ ] **Partage de production absent** (poste hors ligne, bibliothèque non synchronisée) : le nettoyage ne part pas, l'onglet dit que le dossier de sortie n'a pas pu être créé, et aucun dossier `Exports` n'apparaît ailleurs.
 - [ ] **Le même manuscrit une seconde fois** : le passage va dans « <manuscrit> (2) ».
 - [ ] **Glisser un .docx depuis l'Explorateur en maintenant Maj** : le nettoyage part, et la zone dit bien de maintenir Maj.
 - [ ] **Glisser une pièce jointe depuis Outlook en maintenant Maj** : noter si ça marche, ce n'est pas mesuré.
-- [ ] **Sur un poste dont le Bureau est redirigé vers OneDrive**, la sortie doit apparaître sur le Bureau visible.
-  - `poste.dossierBureau()` lit le Bureau par `[Environment]::GetFolderPath('Desktop')`, une fois par session.
 
 ## Copies en conflit (OneDrive)
 

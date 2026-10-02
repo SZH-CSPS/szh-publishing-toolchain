@@ -32,7 +32,7 @@ let ctx = {
   ouvrirDossier: () => {},
   memoire: null,
   numerosConnus: () => new Set(),
-  racineExports: () => path.join(inventaire.inventaire().base, 'Exports'),
+  racineExports: () => inventaire.racineExports(),
   cli: path.join(__dirname, '..', 'outils', 'secretariat-cli.js'),
   node: process.execPath
 };
