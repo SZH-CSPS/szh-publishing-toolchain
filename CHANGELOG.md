@@ -11,10 +11,10 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
-## À paraître
+## 3.4.0
 
-Couvertures de livre : trois modèles de plus, calqués sur les couvertures InDesign de la
-maison.
+Medium : couvertures de livre, trois modèles de plus, calqués sur les couvertures InDesign de
+la maison.
 
 **Production.**
 - `couverture.modele` dans `buch.yaml` : `falc`, `classique`, `recherche` (Sonderpädagogische

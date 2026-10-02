@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.4": {
+    "fr": {
+      "titre": "Trois nouvelles couvertures de livre",
+      "points": [
+        "Dans la fiche d’un livre, vous pouvez choisir le modèle de couverture : classique, « Sonderpädagogische Forschung in der Schweiz » ou ProSpectrum, en plus du FALC.",
+        "La couverture classique peut porter son illustration en plein cadre, en bas de la première page.",
+        "Pour ProSpectrum, un second titre et un second sous-titre accueillent la langue voisine.",
+        "Le fichier pour l’imprimeur reste en couleurs d’impression exactes, et la version écran reste accessible."
+      ]
+    },
+    "de": {
+      "titre": "Drei neue Buchumschläge",
+      "points": [
+        "Im Formular eines Buches wählen Sie das Umschlagmodell: klassisch, Sonderpädagogische Forschung in der Schweiz oder ProSpectrum, zusätzlich zu Leichter Sprache.",
+        "Der klassische Umschlag kann seine Illustration randlos im unteren Teil der Vorderseite tragen.",
+        "Für ProSpectrum nehmen ein zweiter Titel und ein zweiter Untertitel die andere Sprache auf.",
+        "Die Datei für die Druckerei bleibt in exakten Druckfarben, und die Bildschirmfassung bleibt barrierefrei."
+      ]
+    }
+  },
   "3.3": {
     "fr": {
       "titre": "La date telle qu’elle sera imprimée",
