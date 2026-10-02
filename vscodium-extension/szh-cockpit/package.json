@@ -205,6 +205,16 @@
           "type": "string",
           "default": "",
           "description": "%config.nomUtilisateur%"
+        },
+        "szh.formatTravail": {
+          "type": "string",
+          "enum": [
+            "docx",
+            "odt"
+          ],
+          "default": "docx",
+          "scope": "application",
+          "description": "%config.formatTravail%"
         }
       }
     },

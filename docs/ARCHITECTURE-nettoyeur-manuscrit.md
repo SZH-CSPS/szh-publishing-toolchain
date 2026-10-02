@@ -1368,6 +1368,7 @@ au-delà de l'ordre des étapes.
 manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <dossier>
                       [--rapport <fichier.json>] [--format docx|odt] [--analyse-seule]
                       [--sans-typo] [--sans-annotation] [--sans-reseau] [--base-auteurs <fichier>]
+                      [--etapes]
 ```
 
 Enchaînement : lire (après conversion .odt → .docx d'entrée, si besoin) → reconnaître le cas →
@@ -1501,6 +1502,10 @@ position de liste : la CLI n'a plus besoin de le remapper.
 **Options d'essai** : `--sans-annotation` n'écrit ni révision ni commentaire ; `--sans-reseau`
 transmis à `manuscrit_biblio.analyser_bibliographie(reseau=…)` — le lanceur ne le pose jamais en
 production, les tests le posent toujours (déterminisme).
+
+**`--etapes`** : chaque étape atteinte (un nom de `ETAPES`) s'écrit aussi sur stderr, en
+`[manuscrit-nettoyer] etape <nom>` (en ASCII), hors du journal du rapport. Le Préprocessing du cockpit
+la pose pour suivre le passage ; l'onglet WinForms ne la pose pas.
 
 **Le rapport JSON** porte : `controles.vale` (`'effectue' | 'indisponible'`), `bibliographie`
 (les stats de `manuscrit_biblio.analyser_bibliographie()`), `identifiants` (§5.5 sexies), `annotation` (les stats de

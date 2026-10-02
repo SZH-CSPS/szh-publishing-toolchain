@@ -130,6 +130,8 @@ lib/
                         sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
   lanceur-journal-hote.js  l'onglet Log : la fin d'un journal, l'éditeur, et le signalement
                         (rapport, dossier des journaux, brouillon au support). Sans vscode
+  lanceur-preproc-hote.js  l'onglet Préprocessing : le nettoyeur de manuscrit dans le moteur,
+                        ses étapes, son rapport HTML et ses compteurs. Sans vscode
   lanceur-nouveau.js    créer un numéro ou un livre : les refus et la création du socle
                         PowerShell (new-revue.ps1, new-livre.ps1), en un processus. Sans vscode
   lanceur-page.js       ce que l'hôte du lanceur envoie à sa page : libellés, noms des

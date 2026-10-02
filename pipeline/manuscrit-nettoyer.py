@@ -202,7 +202,8 @@ ETAPES = (
     'identifiants', 'titres', 'formatage', 'typographie', 'regles', 'vale', 'bibliographie',
     'ecriture', 'controle-perte', 'annotation', 'conversion-sortie', 'rapport', 'sortie',
 )
-_ETAT = {'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '', 'debut': 0.0}
+_ETAT = {'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '', 'debut': 0.0,
+         'etapes': False}
 
 _RE_MESURE = re.compile(r'^[a-z0-9_.:-]{1,96}$')
 _RE_ID_REGLE = re.compile(r'^[A-Z][A-Za-z0-9-]*(\.[A-Z][A-Za-z0-9-]*)+$')
@@ -232,6 +233,10 @@ def _etape(nom):
     """Pose l'étape en cours (un nom de la liste ETAPES) : c'est tout ce qu'un plantage dira
     de l'endroit où il est survenu, avec le fichier et la ligne du dépôt."""
     _ETAT['etape'] = nom if nom in ETAPES else 'inconnue'
+    # Avec --etapes, le lanceur du cockpit lit ce nom sur stderr pour suivre le passage ; il
+    # n'entre pas dans le journal du rapport.
+    if _ETAT.get('etapes'):
+        print('%s etape %s' % (PREFIXE, _ETAT['etape']), file=sys.stderr, flush=True)
 
 
 def _passage(chemin):
@@ -374,7 +379,7 @@ def _description_plantage(exc):
 def _analyser_args(argv):
     args = {'entree': None, 'produit': None, 'sortie': None, 'rapport': None,
             'base_auteurs': None, 'format': 'docx', 'analyse_seule': False, 'sans_typo': False,
-            'sans_annotation': False, 'sans_reseau': False}
+            'sans_annotation': False, 'sans_reseau': False, 'etapes': False}
     positionnels = []
     reste = argv[1:]
     i = 0
@@ -412,6 +417,8 @@ def _analyser_args(argv):
             args['sans_annotation'] = True
         elif a == '--sans-reseau':
             args['sans_reseau'] = True
+        elif a == '--etapes':
+            args['etapes'] = True
         else:
             positionnels.append(a)
         i += 1
@@ -423,7 +430,7 @@ def _analyser_args(argv):
 USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift '
          '--sortie <dossier> [--rapport <fichier.json>] [--base-auteurs <fichier>] '
          '[--format docx|odt] [--analyse-seule] [--sans-typo] [--sans-annotation] '
-         '[--sans-reseau]')
+         '[--sans-reseau] [--etapes]')
 
 
 # ---------------------------------------------------------------------------------
@@ -778,7 +785,7 @@ def principal(argv):
     del _JOURNAL_PROGRES[:]
     szh_commun.avertir = _avertir_capture
     _ETAT.update({'etape': 'demarrage', 'entree': '', 'produit': '', 'format_entree': '',
-                  'debut': time.perf_counter()})
+                  'debut': time.perf_counter(), 'etapes': False})
     try:
         return _principal(argv)
     except Exception as e:
@@ -822,7 +829,8 @@ def _principal(argv):
     nom = os.path.splitext(os.path.basename(entree))[0]
     extension = os.path.splitext(entree)[1].lower()
     _ETAT.update({'entree': entree, 'produit': args['produit'],
-                  'format_entree': 'odt' if extension == '.odt' else 'docx'})
+                  'format_entree': 'odt' if extension == '.odt' else 'docx',
+                  'etapes': args['etapes']})
     _etape('controle-entree')
 
     def refuser(code, message_fr, **supplement):

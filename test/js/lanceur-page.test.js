@@ -452,8 +452,9 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
     assert.ok(c in TEXTES_COCKPIT.fr, 'clé sans texte français : ' + c);
     assert.ok(c in TEXTES_COCKPIT.de, 'clé sans texte allemand : ' + c);
   }
-  // Et aucune clé lanceur.* orpheline dans lib/i18n.js : chacune va à la page, ou sert à l'hôte.
-  const hote = ['lanceur-hote.js', 'lanceur-reglages-hote.js']
+  // Et aucune clé lanceur.* orpheline dans lib/i18n.js : chacune va à la page, ou sert à l'hôte
+  // (le lanceur, ses Paramètres et son Préprocessing).
+  const hote = ['lanceur-hote.js', 'lanceur-reglages-hote.js', 'lanceur-preproc-hote.js']
     .map((f) => fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8')).join('\n');
   const clesHote = [...hote.matchAll(/'(lanceur\.[^']+)'/g)].map((m) => m[1]);
   for (const c of clesHote) { assert.ok(c in TEXTES_COCKPIT.de, 'clé de l’hôte sans texte allemand : ' + c); }

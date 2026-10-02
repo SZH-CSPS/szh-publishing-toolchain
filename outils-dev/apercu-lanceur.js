@@ -250,7 +250,7 @@ function etats(langue) {
   const signaler = journal.concat([['clic', '#jrn-signaler'], ['saisir', '#jrn-phrase', P.phrase]]);
   const PP = PREPROC[langue] || PREPROC.fr;
   const preproc = [['clic', '#onglet-preproc'], ['hote', { type: MSG.LANCEUR_PREPROC_ETAT, produit: revue,
-    format: 'docx', dossier: PP.dossier, depot: true }]];
+    format: 'docx', dossier: PP.dossier, depot: false }]];
   const ppEtapes = (jusqua) => ['preparation', 'lecture', 'entete', 'identifiants', 'titres', 'formatage',
     'typographie', 'regles', 'bibliographie', 'ecriture', 'annotation', 'rapport']
     .slice(0, jusqua).map((e) => ['hote', { type: MSG.LANCEUR_PREPROC_ETAPE, etape: e }]);

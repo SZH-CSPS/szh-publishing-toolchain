@@ -17,6 +17,7 @@ const { versionInstallee, lancerChoixVersion } = require('./archivage');
 const secretariat = require('./lanceur-secretariat-hote');
 const journal = require('./lanceur-journal-hote');
 const reglages = require('./lanceur-reglages-hote');
+const preproc = require('./lanceur-preproc-hote');
 
 const VIEW_TYPE = 'szhLanceur';
 const CONTEXTE_ACTIF = 'szh.lanceur.actif';
@@ -100,6 +101,7 @@ async function envoyerDonnees(panneau) {
 // ne survit pas au changement de dossier.
 async function ouvrirDossier(chemin) {
   secretariat.arreter();
+  preproc.arreter();
   if (etatPoste) { await etatPoste.globalState.update(CLE_DERNIER, chemin); }
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(chemin), { forceReuseWindow: true });
 }
@@ -130,7 +132,7 @@ async function creer(msg, panneau) {
 
 // Les messages du Secrétariat et du Log vont à leur module.
 async function surMessage(msg, panneau) {
-  if (secretariat.surMessage(msg) || journal.surMessage(msg)) { return; }
+  if (secretariat.surMessage(msg) || journal.surMessage(msg) || preproc.surMessage(msg)) { return; }
   if (msg.type === MSG.LANCEUR_ONGLET) { reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m)); return; }
   if (await reglages.surMessage(msg, (m) => repondre(panneau, m))) { return; }
   if (msg.type === MSG.LANCEUR_OUVRIR) {
@@ -160,9 +162,9 @@ function ouvrirLanceur(opts) {
     viewType: VIEW_TYPE, titre: T('arbre.titre.defaut'), retenir: true,
     modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
     html: htmlLanceur,
-    surPret: (msg, p) => envoyerDonnees(p),
+    surPret: (msg, p) => envoyerDonnees(p).then(() => preproc.envoyerEtat()),
     surMessage: (msg, p) => surMessage(msg, p),
-    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); }
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
   });
   panneauActif = panneau;
   if (!nouveau && onglet) {
@@ -193,10 +195,18 @@ function configurerOnglets() {
     ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
     ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
     versionEditeur: () => vscode.version || null });
+  preproc.configurer({ envoyer, revelerFichier, memoire: etatPoste && etatPoste.globalState,
+    formatTravail: () => vscode.workspace.getConfiguration('szh').get('formatTravail', 'docx'),
+    ouvrirExterne: (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin)),
+    choisirFichier: async (dossier) => {
+      const choix = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+        defaultUri: dossier ? vscode.Uri.file(dossier) : undefined, filters: { [T('lanceur.preproc.filtre')]: ['docx', 'odt'] } });
+      return choix && choix[0] ? choix[0].fsPath : null;
+    } });
 }
 
 // À la désactivation : aucun enfant ne survit à l'éditeur.
-function arreter() { secretariat.arreter(); reglages.arreter(); }
+function arreter() { secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
 
 // À l'activation : la clé de contexte de la porte, la commande, et l'ouverture d'office
 // quand la porte est ouverte sur une fenêtre sans dossier.
@@ -207,6 +217,10 @@ function demarrer(context) {
   const actif = porteOuverte();
   vscode.commands.executeCommand('setContext', CONTEXTE_ACTIF, actif);
   context.subscriptions.push(vscode.commands.registerCommand('szh.lanceur', () => ouvrirLanceur()));
+  // Le format par défaut change dans les Réglages : l'onglet le reprend aussitôt.
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
+    if (e.affectsConfiguration('szh.formatTravail')) { preproc.envoyerEtat(); }
+  }));
   if (actif && sansDossier()) { ouvrirLanceur(); }
 }
 
