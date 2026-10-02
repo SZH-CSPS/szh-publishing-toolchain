@@ -496,7 +496,7 @@ const IDENTIQUES_ADMISES = new Set([
   // Termes fédéraux et sigles, identiques dans les deux langues par nature — le contrat
   // (pipeline/kirby/champs-documentation.json) les porte tels quels.
   'International', 'National', 'Varia', 'Motion', 'Postulat', 'Interpellation', 'Anzug',
-  'Curia Vista', 'IDES',
+  'Curia Vista', 'IDES', 'OpenParlData',
   // Les deux titres de revue : mêmes noms officiels des deux côtés de la langue.
   'Revue suisse de pédagogie spécialisée', 'Schweizerische Zeitschrift für Heilpädagogik'
 ]);
