@@ -1216,6 +1216,11 @@
         "jeton": "manuel",
         "fr": "Saisie manuelle",
         "de": "Manuell erfasst"
+      },
+      {
+        "jeton": "openparldata",
+        "fr": "OpenParlData",
+        "de": "OpenParlData"
       }
     ],
     "categorie_livre": [

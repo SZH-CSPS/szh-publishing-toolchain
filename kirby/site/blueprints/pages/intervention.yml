@@ -312,6 +312,9 @@ fields:
       manuel:
         fr: "Saisie manuelle"
         de: "Manuell erfasst"
+      openparldata:
+        fr: "OpenParlData"
+        de: "OpenParlData"
     translate: false
     label:
       fr: "Source"
