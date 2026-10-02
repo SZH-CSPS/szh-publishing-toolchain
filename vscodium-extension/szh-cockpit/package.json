@@ -209,7 +209,7 @@
       "editor.guides.indentation": false,
       "editor.renderWhitespace": "none",
       "editor.overviewRulerBorder": false,
-      "scm.diffDecorations": "none",
+      "scm.diffDecorations": "gutter",
       "editor.wordWrap": "on",
       "editor.wordWrapColumn": 90,
       "editor.fontSize": 15,
@@ -510,18 +510,6 @@
         "icon": "$(mail)"
       },
       {
-        "command": "szh.monterUnite",
-        "title": "%cmd.monterUnite%",
-        "category": "SZH/CSPS",
-        "icon": "$(arrow-up)"
-      },
-      {
-        "command": "szh.descendreUnite",
-        "title": "%cmd.descendreUnite%",
-        "category": "SZH/CSPS",
-        "icon": "$(arrow-down)"
-      },
-      {
         "command": "szh.vueTraductions",
         "title": "%cmd.vueTraductions%",
         "category": "SZH/CSPS",
@@ -537,12 +525,6 @@
         "command": "szh.vueControles",
         "title": "%cmd.vueControles%",
         "category": "SZH/CSPS"
-      },
-      {
-        "command": "szh.traductionsToutPret",
-        "title": "%cmd.traductionsToutPret%",
-        "category": "SZH/CSPS",
-        "icon": "$(check-all)"
       },
       {
         "command": "szh.envoyerTraduction",
@@ -860,14 +842,6 @@
           "when": "szh.peut.envoiAuteur"
         },
         {
-          "command": "szh.monterUnite",
-          "when": "false"
-        },
-        {
-          "command": "szh.descendreUnite",
-          "when": "false"
-        },
-        {
           "command": "szh.vueTraductions",
           "when": "szh.peut.traductions"
         },
@@ -878,10 +852,6 @@
         {
           "command": "szh.vueControles",
           "when": "szh.estRevue || szh.estLivre"
-        },
-        {
-          "command": "szh.traductionsToutPret",
-          "when": "szh.peut.traductions"
         },
         {
           "command": "szh.envoyerTraduction",
@@ -1021,13 +991,6 @@
           "command": "szh.miseEnForme",
           "group": "navigation@1",
           "when": "editorLangId == markdown && editorTextFocus"
-        }
-      ],
-      "editor/title": [
-        {
-          "command": "szh.basculerApercu",
-          "group": "navigation",
-          "when": "resourceExtname == .pdf && (szh.estRevue || szh.estLivre) || activeCustomEditorId == 'pdf.preview' && (szh.estRevue || szh.estLivre)"
         }
       ],
       "view/title": [

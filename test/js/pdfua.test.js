@@ -481,7 +481,7 @@ test('après une renumérotation, aucun constat ni verdict sous un ancien slug',
 
   const p = HOTE.panneauDeType('szhVueControles');
   const titres = () => p.messages.filter((m) => m.type === 'valeurs').pop()
-    .lignes.map((l) => l.titre).join(' | ');
+    .lignes.map((l) => l.cle || l.titre).join(' | ');   // le titre porte le nom, la clé le slug
   await p._recepteur({ type: 'pret' });
   assert.match(titres(), /03-trois/, 'décor : 03-trois doit avoir ses cartes');
 

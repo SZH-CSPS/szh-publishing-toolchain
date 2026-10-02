@@ -267,8 +267,12 @@ const CLES_LIVRE = {
 // de l'aperçu (szh-apercu-lecteur-ecran.lua) et de imagesSansAlternative() (lib/references.js).
 const CLES_NUMEROTATION = { 'figure-sans-alt': 'ctl.figure.sansalt' };
 
+// « rendu » au format à codes : szh-image-introuvable.lua, qui remplace l'image absente par
+// un cadre. Même code et même phrase que les deux replis pandoc et WeasyPrint de lireRendu().
+const CLES_RENDU = { 'image-manquante': 'ctl.image.manquante' };
+
 const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS, livre: CLES_LIVRE,
-  numerotation: CLES_NUMEROTATION };
+  numerotation: CLES_NUMEROTATION, rendu: CLES_RENDU };
 const TONS = { import: TONS_IMPORT };
 
 // Les substitutions de la phrase de la maison, par « source/code ». Elles se prennent dans
@@ -320,7 +324,8 @@ const ARGS = {
   'livre/chapitre-introuvable': (ch) => [ch('chapitre')],
   // Substitution PAR NOM de champ (« image « … » »), comme partout ailleurs ici : nomFichier()
   // retire le chemin, un chemin n'aidant personne à retrouver une image dans un formulaire.
-  'numerotation/figure-sans-alt': (ch) => [nomFichier(ch('image'))]
+  'numerotation/figure-sans-alt': (ch) => [nomFichier(ch('image'))],
+  'rendu/image-manquante': (ch) => [nomFichier(ch('image'))]
 };
 
 // Préfixes de la maison qui n'ont pas (encore) de format à codes : le Makefile, les

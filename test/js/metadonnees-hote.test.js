@@ -140,3 +140,29 @@ test('szh.vueWord accepte { slug, focus } sans lever et ouvre la vue', async () 
   await assert.doesNotReject(HOTE.executer('szh.vueWord', { slug: '9_Essai.docx', focus: '9_Essai.docx' }));
   assert.ok(HOTE.panneauDeType('szhVueWord'), 'la vue « Word en attente » ne s’est pas ouverte');
 });
+
+// « ← Retour à l'article » du formulaire filtré sur un article : même garde « non
+// enregistré » que les Médias, puis l'article se rouvre et le formulaire se ferme.
+test('fiche : le retour à l’article garde la saisie, puis rouvre l’article et ferme le formulaire', async () => {
+  const { T } = require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
+  await HOTE.executer('szh.metadonneesArticle', { slug: SLUG });
+  const p = panneauFiche();
+  assert.ok(p, 'le formulaire des fiches ne s’est pas ouvert');
+  let fermetures = 0;
+  const fermer = p.dispose;
+  p.dispose = () => { fermetures++; return fermer(); };
+  const ouvertures = () => HOTE.commandesJouees().filter((c) => c.id === 'szh.ouvrirArticle');
+
+  // Saisie en cours, modale fermée sans choix : on reste.
+  HOTE.oublierCommandes();
+  await p._recepteur({ type: 'retourArticle', modifie: true, articles: {} });
+  assert.strictEqual(ouvertures().length, 0, 'l’article s’est rouvert malgré « Annuler »');
+  assert.strictEqual(fermetures, 0, 'le formulaire s’est fermé malgré « Annuler »');
+
+  // « Quitter sans enregistrer » : l'article se rouvre, le formulaire se ferme.
+  HOTE.repondreModale(T('table.quitter.sansEnregistrer'));
+  await p._recepteur({ type: 'retourArticle', modifie: true, articles: {} });
+  assert.strictEqual(ouvertures().length, 1, 'l’article ne s’est pas rouvert');
+  assert.strictEqual(String((ouvertures()[0].args[0] || {}).slug || ouvertures()[0].args[0]), SLUG);
+  assert.strictEqual(fermetures, 1, 'le formulaire est resté ouvert');
+});

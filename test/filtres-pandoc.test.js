@@ -1838,6 +1838,7 @@ function compilerChaine(chaine, fichiers, o) {
     if (o.livre) { meta.push('--metadata=slug:essai'); }
     const avant = o.apercu ? ['sourcepos', 'ancres'] : [];
     const filtres = avant.concat(lireChaines()[chaine])
+      .filter((f) => !(o.sans || []).includes(f))
       .map((f) => '--lua-filter=' + path.join(FILTRES, 'szh-' + f + '.lua'));
     const args = ['--from=' + (o.apercu ? 'commonmark_x+sourcepos' : 'markdown'), '--to=html5',
       '--standalone', '--wrap=none', ...meta, ...filtres, 'essai.md'];
@@ -1926,3 +1927,65 @@ test('cohérence de la langue : une langue inconnue bloque la compilation, pas l
   assert.strictEqual((pdf.stderr.match(/^\[meta-blocage\] langue-inconnue \|/gm) || []).length, 1, pdf.stderr);
   exigerLangue(compilerChaine('CHAINE_APERCU', fichiers, { apercu: true }), 'fr', 'aperçu');
 });
+
+// ── Image introuvable (szh-image-introuvable.lua) ──────────────────────────────────────
+// Une image appelée par le texte mais absente du disque se voit : un cadre à sa place, son
+// nom en texte réel, et un constat que le cockpit range sous rendu/image-manquante. Éprouvé
+// sur les chaînes réelles de filtres.mk, compilation et aperçu.
+const journalCockpit = require('./js/dom-minimal').chargerAvecVscodeFactice(
+  path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'journal.js'));
+const CORPS_INTROUVABLE = 'Un paragraphe.\n\n![Légende de la figure](absente.png)\n\n'
+  + 'Une image en ligne ![](absente.png) et une brute <img src="brute.png" alt="b"> ici.\n';
+const CHAINES_INTROUVABLE = [['CHAINE_ARTICLE', {}], ['CHAINE_APERCU', { apercu: true }]];
+
+test('image introuvable : le filtre est dans les chaînes de l’article, de l’aperçu et du chapitre', () => {
+  const chaines = lireChaines();
+  for (const nom of ['CHAINE_ARTICLE', 'CHAINE_APERCU', 'CHAINE_CHAPITRE', 'CHAINE_CHAPITRE_APERCU']) {
+    assert.ok(chaines[nom].includes('image-introuvable'), nom + ' ne passe pas par szh-image-introuvable');
+  }
+});
+
+test('image introuvable : une image présente sort à l’identique, sans constat', () => {
+  for (const [chaine, o] of CHAINES_INTROUVABLE) {
+    const fichiers = { 'ausgabe.yaml': 'revue: revue\n', 'essai.meta.yaml': 'lang: fr\ntitle:\n  fr: "Titre"\n' };
+    const avec = compilerChaine(chaine, fichiers, o);
+    const sans = compilerChaine(chaine, fichiers, Object.assign({ sans: ['image-introuvable'] }, o));
+    assert.strictEqual(avec.status, 0, chaine + ' : ' + avec.stderr);
+    assert.ok(!/szh-image-introuvable/.test(avec.html), chaine + ' : cadre posé sur une image présente');
+    assert.strictEqual(avec.html, sans.html, chaine + ' : le filtre a changé le rendu d’une image présente');
+    assert.ok(!/image-manquante/.test(avec.stderr), chaine + ' : constat sur une image présente : ' + avec.stderr);
+  }
+});
+
+for (const [langue, ausgabe, texte] of [
+  ['fr', 'revue: revue\n', 'Image introuvable : '],
+  ['de', 'revue: zeitschrift\n', 'Bild nicht gefunden: ']]) {
+  test('image introuvable (' + langue + ') : un cadre nommé à la place de l’image, et un constat lu par le cockpit', () => {
+    const fichiers = { 'ausgabe.yaml': ausgabe, 'essai.md': CORPS_INTROUVABLE,
+      'essai.meta.yaml': 'lang: ' + langue + '\ntitle:\n  ' + langue + ': "Titre"\n' };
+    for (const [chaine, o] of CHAINES_INTROUVABLE) {
+      const r = compilerChaine(chaine, fichiers, o);
+      assert.strictEqual(r.status, 0, chaine + ' : la compilation doit continuer : ' + r.stderr);
+      // Plus aucune balise <img> vers les fichiers absents : ni la figure, ni l'image en
+      // ligne, ni l'<img> brut.
+      assert.ok(!/<img[^>]*(absente|brute)\.png/.test(r.html), chaine + ' : une <img> absente subsiste : ' + r.html);
+      // La figure, sa légende comprise, laisse la place au cadre.
+      assert.ok(r.html.indexOf('Légende de la figure') === -1, chaine + ' : la légende survit au cadre : ' + r.html);
+      assert.ok(!/<figure/.test(r.html), chaine + ' : une <figure> vide subsiste : ' + r.html);
+      assert.strictEqual(r.html.split(texte + 'absente.png').length - 1, 2, chaine + ' : ' + r.html);
+      assert.strictEqual(r.html.split(texte + 'brute.png').length - 1, 1, chaine + ' : ' + r.html);
+      assert.match(r.html, /<div[^>]*class="szh-image-introuvable"/, chaine + ' : pas de cadre en bloc');
+      // Un constat par fichier, au format à codes, que le cockpit range sous son code.
+      const lignes = r.stderr.split(/\r?\n/).filter((l) => /image-manquante/.test(l));
+      assert.strictEqual(lignes.length, 2, chaine + ' : ' + r.stderr);
+      const constats = journalCockpit.analyserJournal(r.stderr, langue);
+      const images = constats.filter((c) => c.source === 'rendu' && c.code === 'image-manquante');
+      assert.deepStrictEqual(images.map((c) => c.champs.image).sort(), ['absente.png', 'brute.png']);
+      for (const c of images) {
+        assert.strictEqual(c.slug, 'essai', 'le constat ne nomme pas son article');
+        assert.strictEqual(c.ton, 'attention', 'le constat doit rester un avertissement');
+        assert.strictEqual(c.cle, 'ctl.image.manquante');
+      }
+    }
+  });
+}

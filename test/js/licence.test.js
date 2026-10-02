@@ -386,6 +386,9 @@ function monter(opts) {
     '  email: "anne@example.ch"', '']).join(LF));
   const figures = (opts.figures || []).map((attrs, i) =>
     '![Une légende](media/f-0' + (i + 1) + '.png){alt="desc" ' + attrs + '}');
+  // Les images existent : une image appelée mais absente arrêterait l'export.
+  fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
+  figures.forEach((f, i) => fs.writeFileSync(path.join(dossier, 'media', 'f-0' + (i + 1) + '.png'), 'PNG'));
   fs.writeFileSync(path.join(dossier, slug + '.md'),
     ['# Un titre', ''].concat(figures).concat(['', '## Références', '',
       'Shaw, A. (2023). *Enseigner autrement*. Editions SZH/CSPS.', '']).join(LF));

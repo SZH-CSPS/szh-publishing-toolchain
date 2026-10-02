@@ -211,6 +211,53 @@ test('szh.fmt.noteBasPage : pose [^1] au curseur, sa définition en fin de docum
   await HOTE.executer('szh.fmt.noteBasPage');
 
   assert.strictEqual(ed._info.remplacements[0], 'Une phrase.[^1]\n\n[^1]: ');
+  // Le curseur saute en fin de document : la barre d'état dit comment revenir.
+  assert.ok(HOTE.statutsDits(T('fmt.note.retour')).length > 0,
+    'aucun message d’état ne dit Alt+← après la note : ' + HOTE.statuts.join(' | '));
+  assert.match(T('fmt.note.retour'), /Alt\+←/);
+});
+
+// Le clic droit « Mise en forme » propose « Lier un appel à une référence », avec son
+// raccourci ; le panneau Édition, qui l'avait déjà, ne le reçoit pas une seconde fois.
+test('szh.miseEnForme : « Lier une référence » au clic droit, une seule fois au panneau Édition', async () => {
+  const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  ed._lignes = ['mot'];
+  HOTE.stub.window.activeTextEditor = ed;
+  let propose = null;
+  HOTE.stub.window.showQuickPick = (items) => { propose = items; return Promise.resolve(undefined); };
+  try {
+    await HOTE.executer('szh.miseEnForme');
+    const lier = (propose || []).filter((i) => i.commande === 'szh.lierReference');
+    assert.strictEqual(lier.length, 1, 'szh.lierReference absente du clic droit');
+    assert.strictEqual(lier[0].description, '[Ctrl+Alt+L]');
+    propose = null;
+    await HOTE.executer('szh.panneauEdition');
+    assert.strictEqual((propose || []).filter((i) => i.commande === 'szh.lierReference').length, 1,
+      'szh.lierReference en double (ou absente) au panneau Édition');
+  } finally {
+    HOTE.stub.window.showQuickPick = (items) => Promise.resolve(undefined);
+  }
+});
+
+// Un double-clic ne sélectionne qu'un mot de l'appel : le lien couvre quand même toute la
+// parenthèse, comme le liage automatique. Une sélection hors parenthèse reste telle quelle.
+test('szh.lierReference : un mot sélectionné dans l’appel s’étend à toute la parenthèse', async () => {
+  const md = 'Un texte qui cite (Dupont, 2024) une fois, et Dupont ailleurs.';
+  const essai = async (mot, depuis) => {
+    const ed = fauxEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+    ed._lignes = [md];
+    const debut = md.indexOf(mot, depuis);
+    ed.selection = { isEmpty: false, start: { line: 0, character: debut },
+      end: { line: 0, character: debut + mot.length }, active: { line: 0, character: debut + mot.length } };
+    HOTE.stub.window.activeTextEditor = ed;
+    HOTE.stub.window.showQuickPick = (items) => Promise.resolve(items[0]);
+    try { await HOTE.executer('szh.lierReference'); }
+    finally { HOTE.stub.window.showQuickPick = (items) => Promise.resolve(undefined); }
+    return ed._info.remplacements[0];
+  };
+  assert.strictEqual(await essai('Dupont', 0), '[(Dupont, 2024)](#ref-dupont-2024)');
+  assert.strictEqual(await essai('Dupont', md.indexOf('et Dupont')), '[Dupont](#ref-dupont-2024)',
+    'une sélection hors de toute parenthèse a été déplacée');
 });
 
 test('szh.fmt.collerTableau : presse-papiers HTML absent, repli sur le TSV', async () => {

@@ -144,12 +144,37 @@ function titreBibliographie(texte) {
 // texte est justement ce que « biblio-incomplete » signale.
 const MARQUE_BIBLIO = '{.szh-biblio';
 
+// Le premier titre qui descend de plus d'un rang (ISO 14289-1 7.4.2-1), tel que le PDF le
+// voit : szh-niveaux.lua compacte les niveaux présents (2, 3, 4… sans trou), si bien que
+// seul l'ordre peut encore sauter — un « ### » juste après un « # », quand « ## » existe
+// ailleurs dans l'article. Les blocs de code ne portent aucun titre.
+function premierTitreQuiSaute(texte) {
+  const titres = [];
+  let code = false;
+  for (const ligne of String(texte || '').split(/\r?\n/)) {
+    if (/^(```|~~~)/.test(ligne)) { code = !code; continue; }
+    const m = code ? null : ligne.match(/^(#{1,6})[ \t]+\S/);
+    if (m) { titres.push({ niveau: m[1].length, ligne: ligne.trim() }); }
+  }
+  const rangs = Array.from(new Set(titres.map((t) => t.niveau))).sort((a, b) => a - b);
+  let precedent = 0;
+  for (const t of titres) {
+    const rang = rangs.indexOf(t.niveau) + 1;
+    if (rang > precedent + 1) { return t.ligne; }
+    precedent = rang;
+  }
+  return '';
+}
+
 // -> l'extrait du .md qui désigne l'endroit du défaut, ou '' quand rien ne le localise.
-// `cle` « source/code » ; `args` ceux du constat ; `tables` [{ nom, html }] les tableaux
-// de l'article (tables/*.html), lus par l'appelant.
-function focusDeRepli(cle, args, texteMd, tables) {
+// `cle` « source/code » ; `args` et `champs` ceux du constat ; `tables` [{ nom, html }] les
+// tableaux de l'article (tables/*.html), lus par l'appelant.
+function focusDeRepli(cle, args, texteMd, tables, champs) {
   const texte = String(texteMd || '');
   switch (cle) {
+    case 'pdfua/regle':
+      // Le code est le même pour toutes les règles : c'est le repère qui dit laquelle.
+      return String((champs || {}).repere || '') === '7.4.2-1' ? premierTitreQuiSaute(texte) : '';
     case 'rendu/niveaux-ecrases':
       // args[0] : « 6, 7 » — les niveaux écrasés, dans l'ordre ; le premier suffit.
       return premierTitreDeNiveau(texte, String((args || [])[0] || '').split(/[,\s]+/)[0]);

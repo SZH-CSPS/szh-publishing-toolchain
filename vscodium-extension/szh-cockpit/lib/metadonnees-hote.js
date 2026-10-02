@@ -846,7 +846,8 @@ function relancerCompilationCartes(fournisseur, res) {
 
 function htmlApercuMetadonnees(nonce) {
   const txt = JSON.stringify(Object.assign(textesCarteArticle(), {
-    filtreNote: TP('fiches.filtre.note', profilCourant()), tous: TP('fiches.tous', profilCourant())
+    filtreNote: TP('fiches.filtre.note', profilCourant()), tous: TP('fiches.tous', profilCourant()),
+    retour: TP('fiches.retour', profilCourant()), retourTip: TP('fiches.retour.tip', profilCourant())
   }));
   return construireHtml('metadata-articles', nonce, {
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
@@ -1477,6 +1478,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
     if (msg.type === MSG.PHOTO_CHOISIR) { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.DOI_MANUEL_CONFIRMER) { await confirmerDoiManuel(panneau, msg); return; }
     if (msg.type === MSG.SUGGERER_TRADUCTION) { ctx.ouvrirSuggestionTraduction(fournisseur, msg); return; }
+    if (msg.type === MSG.RETOUR_ARTICLE) { await retourArticle(msg); return; }
     if (msg.type !== MSG.ENREGISTRER) {
       console.warn('métadonnées des articles (hôte) : type de message inconnu', msg.type);
       return;
@@ -1493,6 +1495,29 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
     if (rafraichirTout) { rafraichirTout(); }
     relancerCompilationCartes(fournisseur, res);
     if (!msg.auto || res.recharger) { envoyerValeurs(panneau, res.recharger ? { rechargement: true } : undefined); }
+  }
+  // « ← Retour à l'article » : même garde « non enregistré » que les Médias, puis
+  // l'article du filtre se rouvre et le formulaire se ferme.
+  async function retourArticle(msg) {
+    if (!filtreArticles || filtreArticles.length !== 1) { return; }
+    const slug = filtreArticles[0];
+    if (msg.modifie) {
+      const choix = await confirmerAbandon(T('fiches.quitter.question', [slug]));
+      if (choix === 'annuler') { return; }
+      if (choix === 'enregistrer') {
+        const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
+        const refusCartes = messageCartes(res);
+        if (refusCartes) {                         // échec d'écriture : on reste
+          repondrePanneau(panneau, { type: MSG.ERREUR, message: refusCartes });
+          return;
+        }
+        vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+        if (rafraichirTout) { rafraichirTout(); }
+        relancerCompilationCartes(fournisseur, res);
+      }
+    }
+    await vscode.commands.executeCommand('szh.ouvrirArticle', slug);
+    panneau.dispose();
   }
 }
 

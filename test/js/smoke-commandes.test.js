@@ -62,7 +62,6 @@ const PACKAGE = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', '
 const AVEC_SLUG = new Set([
   'szh.metadonneesArticle', 'szh.traduction', 'szh.envoyerTraduction',
   'szh.mediasArticle', 'szh.apercuBiblio', 'szh.voirPdfArticle',
-  'szh.monterUnite', 'szh.descendreUnite',
   'szh.supprimerArticle', 'szh.reimporterArticle', 'szh.annulerReimport'
 ]);
 
@@ -160,4 +159,24 @@ test('smoke S2 : chaque commande du manifeste s’exécute sans lever', async ()
 
   assert.deepStrictEqual(echecs, [],
     'commandes en échec :\n' + echecs.join('\n'));
+});
+
+// Trois commandes qu'aucun menu ni aucune vue n'appelait : la palette les cachait ou les
+// noyait. L'ordre se change par la vue (deplacerUnite, mode « Changer l'ordre »).
+const RETIREES = ['szh.monterUnite', 'szh.descendreUnite', 'szh.traductionsToutPret'];
+
+test('les commandes retirées ne reviennent ni au manifeste, ni aux libellés, ni à l’hôte', () => {
+  const cockpit = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
+  const declarees = PACKAGE.contributes.commands.map((c) => c.command);
+  const palette = (PACKAGE.contributes.menus.commandPalette || []).map((m) => m.command);
+  const source = fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8');
+  for (const id of RETIREES) {
+    assert.ok(declarees.indexOf(id) === -1, id + ' est encore déclarée');
+    assert.ok(palette.indexOf(id) === -1, id + ' est encore dans la palette');
+    assert.ok(source.indexOf('\'' + id + '\'') === -1, id + ' est encore enregistrée');
+    for (const nls of ['package.nls.json', 'package.nls.de.json']) {
+      const cles = Object.keys(JSON.parse(fs.readFileSync(path.join(cockpit, nls), 'utf8')));
+      assert.ok(cles.indexOf('cmd.' + id.slice(4)) === -1, 'cmd.' + id.slice(4) + ' reste dans ' + nls);
+    }
+  }
 });

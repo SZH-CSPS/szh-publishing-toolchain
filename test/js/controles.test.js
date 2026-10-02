@@ -408,6 +408,25 @@ test('arbre : le raccourci « À corriger » suit l’état, sous « Word en att
   await HOTE.finirTache('Aperçu / Export PDF', 0);
 });
 
+// Deux images muettes du même article font UNE carte dans la vue et un bloquant dans la
+// barre d'état : l'arbre doit annoncer le même nombre. Le même article que JOURNAL_CITATIONS,
+// pour que le journal suivant remplace ces constats.
+test('arbre : « À corriger » compte comme la barre d’état', async () => {
+  poserJournal([
+    '[numerotation-blocage] figure-sans-alt | article « 01-inclusion » | image « media/fig-01.png » | Image sans alternative. | [de] Bild ohne Alternative.',
+    '[numerotation-blocage] figure-sans-alt | article « 01-inclusion » | image « media/fig-02.png » | Image sans alternative. | [de] Bild ohne Alternative.'
+  ].join(LF) + LF);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  const barre = HOTE.barreQuiDit('à corriger');
+  assert.ok(barre, 'la barre d’état ne dit rien');
+  const n = String(barre.text).match(/(\d+)/)[1];
+  const raccourci = (await HOTE.arbre().getChildren()).pop();
+  assert.strictEqual(raccourci.description, '(' + n + ')',
+    'l’arbre et la barre ne comptent pas pareil : ' + raccourci.description + ' / ' + barre.text);
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
 test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async () => {
   poserJournal(JOURNAL_CITATIONS);
   const avant = HOTE.avertissements.length;

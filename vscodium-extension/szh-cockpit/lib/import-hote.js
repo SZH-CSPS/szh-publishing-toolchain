@@ -8,12 +8,13 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T, langueCockpit } = require('./i18n');
+const { T, TP, langueCockpit } = require('./i18n');
 const { phrasesBlocMalForme } = require('./journal');
 const session = require('./session');
 const profils = require('./profil');
 const { slugifierArticle, numeroOrdreArticle } = require('./slug');
-const { trierParDoi, prefixeOrdre } = require('./articles');
+const { trierParDoi, prefixeOrdre, titreFiche } = require('./articles');
+const { analyserMeta, langueRevue } = require('./yaml');
 const { tige } = require('./renumerotation');
 const { alignerFichiers } = require('./renumerotation-fs');
 const { refuserSiVerrouille } = require('./cycle-vie');
@@ -261,57 +262,216 @@ async function annoncerAucunNouveau(fournisseur) {
   vscode.window.showInformationMessage(T('info.importes.aucun'));
 }
 
+// La suite d'un import qui a ramené des articles, commune à l'import guidé et à l'import
+// fait par une tâche hors du cockpit. `dejaCompile` : la tâche a compilé après avoir
+// importé (`make all`) ; on ne recompile alors que si un dossier a changé de nom ou si une
+// image a changé de couleurs. Mute `nouveaux` vers les noms réels sur le disque.
+async function finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase, dejaCompile) {
+  // Le numéro du Word migre ici, dans ordre-articles/ordre-chapitres : sans cette
+  // écriture, l'ordre voulu par le rédacteur se perd en silence dès le prochain
+  // listerArticles() (rafraichirTout() ci-dessous, puis chaque rendu de l'arbre). Cette
+  // même écriture préfixe aussi les dossiers créés par cet import (prefixerNouveauxArticles) :
+  // `nouveaux` porte encore les anciens noms après l'appel, d'où le remplacement qui
+  // suit — tout ce qui parle d'un de ces articles après ce point doit parler du dossier
+  // qui existe réellement sur le disque, pas de celui que « make import » avait posé.
+  const renommes = ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
+  for (let i = 0; i < nouveaux.length; i++) { nouveaux[i] = renommes.get(nouveaux[i]) || nouveaux[i]; }
+  // Ce que `make all` a compilé sous l'ancien nom : un PDF périmé que l'export pourrait
+  // reprendre (même règle que renumeroter()).
+  if (dejaCompile) {
+    const sortie = profils.chemins(profilCourant(), fournisseur.racine).sortie;
+    for (const ancien of renommes.keys()) {
+      try { fs.rmSync(path.join(sortie, ancien), { recursive: true, force: true }); } catch (e) { /* rien à retirer */ }
+    }
+  }
+  // Avant la compilation : un JPEG d'imprimerie converti après coup laisserait
+  // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
+  const aConvertir = [];
+  for (const slug of nouveaux) {
+    const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
+    for (const relatif of fournisseur._imagesArticle(slug)) { aConvertir.push(path.join(base, relatif)); }
+  }
+  const convertis = await ctx.convertirCmykSiBesoin(aConvertir);
+  // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
+  if (!dejaCompile || renommes.size > 0 || convertis > 0) { await compilerApresImport(); }
+  rafraichirTout();
+  // Avant le dialogue de vérification : celui-ci fait relire l'article, et il vaut mieux
+  // savoir AVANT de le relire qu'un de ses tableaux n'a pas été lu comme une figure.
+  await avertirBlocsMalFormes(fournisseur.racine);
+  await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
+}
+
+// ---- Word renommé : version corrigée d'un article, ou nouvel article ? ---------------
+//
+// Le Makefile reconnaît un Word corrigé par son nom ou par la fiche (`source:`) ; renommé
+// par l'auteur, il deviendrait un doublon. On pose donc la question pour tout Word dont le
+// slug ne nomme aucun article mais dont la tige prolonge celle d'un article, ou l'inverse.
+// Préfixe seulement, jamais de ressemblance floue. -> [{ word, slug }]
+function wordsRessemblants(fournisseur) {
+  const racine = fournisseur.racine;
+  const articles = fournisseur.listerArticles();
+  const sources = new Set();
+  for (const slug of articles) {
+    const s = String(lireMeta(racine, slug).source || '').toLowerCase();
+    if (s !== '') { sources.add(s); }
+  }
+  const trouves = [];
+  for (const nom of fournisseur._docxEnAttente(path.join(racine, profilCourant().depot))) {
+    const base = slugifierArticle(nom);
+    if (fournisseur._articleExiste(base) || sources.has(nom.toLowerCase())) { continue; }
+    let proche = '';
+    for (const slug of articles) {
+      const t = tige(slug);
+      if (!base.startsWith(t) && !t.startsWith(base)) { continue; }
+      if (proche === '' || t.length > tige(proche).length) { proche = slug; }
+    }
+    if (proche !== '') { trouves.push({ word: nom, slug: proche }); }
+  }
+  return trouves;
+}
+
+function lireMeta(racine, slug) {
+  try { return analyserMeta(fs.readFileSync(profils.chemins(profilCourant(), racine, slug).meta, 'utf8')); }
+  catch (e) { return analyserMeta(''); }
+}
+
+// Une modale par Word ressemblant. -> { corriges: [{ word, slug }], ecartes: [nom] } ;
+// un Word corrigé ou dont la question est annulée ne part pas à la conversion.
+async function demanderRessemblances(fournisseur) {
+  const corriges = [];
+  const ecartes = [];
+  const langue = langueRevue(fournisseur.racine);
+  const profil = profilCourant();
+  for (const r of wordsRessemblants(fournisseur)) {
+    const titre = titreFiche(lireMeta(fournisseur.racine, r.slug), langue) || r.slug;
+    const corrige = TP('modale.ressemble.corrige', profil);
+    const nouveau = TP('modale.ressemble.nouveau', profil);
+    const rep = await vscode.window.showWarningMessage(
+      TP('modale.ressemble.question', profil, [titre]),
+      { modal: true, detail: T('modale.ressemble.detail', [r.word]) }, corrige, nouveau);
+    if (rep === nouveau) { continue; }
+    ecartes.push(r.word);
+    if (rep === corrige) { corriges.push(r); }
+  }
+  return { corriges, ecartes };
+}
+
+// Le temps de la conversion, les Word écartés attendent dans un sous-dossier du dépôt, que
+// la boucle d'import du Makefile ne parcourt pas. Remis en place à la fin, et au début de
+// la conversion suivante si une fenêtre fermée en cours de route les y a laissés.
+const DOSSIER_ECARTES = '.szh-ecartes';
+
+function ecarterWords(depot, noms) {
+  if (noms.length === 0) { return; }
+  const cache = path.join(depot, DOSSIER_ECARTES);
+  fs.mkdirSync(cache, { recursive: true });
+  for (const nom of noms) { fs.renameSync(path.join(depot, nom), path.join(cache, nom)); }
+}
+
+function remettreWords(depot) {
+  const cache = path.join(depot, DOSSIER_ECARTES);
+  let noms;
+  try { noms = fs.readdirSync(cache); } catch (e) { return; }
+  for (const nom of noms) {
+    // Un Word du même nom déposé entre-temps l'emporte ; l'ancien reste à l'écart.
+    if (fs.existsSync(path.join(depot, nom))) { continue; }
+    try { fs.renameSync(path.join(cache, nom), path.join(depot, nom)); } catch (e) { /* réessayé la fois suivante */ }
+  }
+  try { fs.rmdirSync(cache); } catch (e) { /* pas vide : voir ci-dessus */ }
+}
+
+// ---- Import fait par une tâche hors du cockpit -----------------------------------------
+//
+// `make all` (Ctrl+S, Ctrl+E) et la tâche d'import (au démarrage, Ctrl+Alt+I) importent
+// les Word du dépôt sans passer par lancerConversion. Au démarrage d'une telle tâche, on
+// note la liste des articles et les numéros des Word ; à la fin de la dernière tâche en
+// vol, les articles apparus reçoivent la même suite que l'import guidé. Rien n'est noté
+// pendant un import guidé : ses propres tâches passent aussi par ces événements.
+let importExterne = null;
+
+function noterDebutTache(fournisseur, nomTache) {
+  if (nomTache !== NOM_TACHE_IMPORT && nomTache !== NOM_TACHE_BUILD) { return; }
+  if (session.importEnCours() || !fournisseur.racine) { return; }
+  if (importExterne) {
+    if (nomTache === NOM_TACHE_IMPORT) { importExterne.dejaCompile = false; }
+    return;
+  }
+  const parBase = numerosOrdreEnAttente(fournisseur);
+  if (parBase.size === 0) { return; }              // aucun Word en attente : rien à importer
+  importExterne = {
+    racine: fournisseur.racine, avant: new Set(fournisseur.listerArticles()), parBase: parBase,
+    dejaCompile: nomTache === NOM_TACHE_BUILD, echec: false
+  };
+}
+
+function noterFinProcessus(code) {
+  if (importExterne && code !== 0) { importExterne.echec = true; }
+}
+
+async function finirImportExterne(fournisseur, rafraichirTout) {
+  const e = importExterne;
+  if (!e || session.tachesSuiviesEnVol() > 0) { return; }
+  importExterne = null;
+  // Comme lancerConversion : une tâche en échec ne touche ni à l'ordre ni aux dossiers.
+  if (e.echec || session.importEnCours() || e.racine !== fournisseur.racine) { return; }
+  if (session.etatNumero().verrouillee) { return; }
+  const nouveaux = fournisseur.listerArticles().filter((s) => !e.avant.has(s));
+  if (nouveaux.length === 0) { return; }
+  session.poserImportEnCours(true);
+  try { await finirImport(fournisseur, rafraichirTout, e.avant, nouveaux, e.parBase, e.dejaCompile); }
+  finally {
+    session.poserImportEnCours(false);
+    ctx.rejouerCompilationsDifferees();
+  }
+}
+
+// La tâche d'import, puis la suite si elle a ramené des articles. -> ce qu'il reste à
+// annoncer une fois le drapeau d'import levé, ou null.
+async function convertirDepot(fournisseur, rafraichirTout, depot, annoncer) {
+  const avant = new Set(fournisseur.listerArticles());
+  // Capté avant le lancement de la tâche : « make import » supprime les Word convertis
+  // (.docx ou .odt), et avec eux le seul endroit où vivait encore le numéro de tête du
+  // rédacteur.
+  const parBase = numerosOrdreEnAttente(fournisseur);
+  const code = await ctx.lancerTache(NOM_TACHE_IMPORT);
+  remettreWords(depot);
+  rafraichirTout();
+  if (code === null) { return null; }            // tâche introuvable, déjà signalé
+  if (code !== 0) {
+    ctx.avertirEchecCompilation('err.import');
+    return null;
+  }
+  const nouveaux = [];
+  for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
+  if (nouveaux.length > 0) {
+    await finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase, false);
+    return null;
+  }
+  return annoncer ? () => annoncerAucunNouveau(fournisseur) : null;
+}
+
 // Convertit les Word de articles-word/ ; les nouveaux articles sont comptés en comparant
 // la liste avant et après, pas en lisant la sortie de la tâche.
 async function lancerConversion(fournisseur, rafraichirTout) {
   if (session.importEnCours()) { vscode.window.setStatusBarMessage(T('statut.import.encours'), 3000); return; }
   session.poserImportEnCours(true);
+  importExterne = null;                            // cet import-ci fait la suite lui-même
   const statut = vscode.window.setStatusBarMessage(T('statut.import'));
+  const depot = path.join(fournisseur.racine, profilCourant().depot);
   let apresImport = null;
+  let corriges = [];
   try {
-    const avant = new Set(fournisseur.listerArticles());
-    // Capté avant le lancement de la tâche : « make import » supprime les Word convertis
-    // (.docx ou .odt), et avec eux le seul endroit où vivait encore le numéro de tête du
-    // rédacteur.
-    const parBase = numerosOrdreEnAttente(fournisseur);
-    const code = await ctx.lancerTache(NOM_TACHE_IMPORT);
-    rafraichirTout();
-    if (code === null) { return; }               // tâche introuvable, déjà signalé
-    if (code !== 0) {
-      ctx.avertirEchecCompilation('err.import');
-      return;
-    }
-    const nouveaux = [];
-    for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
-    if (nouveaux.length > 0) {
-      // Le numéro du Word migre ici, dans ordre-articles/ordre-chapitres : sans cette
-      // écriture, l'ordre voulu par le rédacteur se perd en silence dès le prochain
-      // listerArticles() (rafraichirTout() ci-dessous, puis chaque rendu de l'arbre). Cette
-      // même écriture préfixe aussi les dossiers créés par cet import (prefixerNouveauxArticles) :
-      // `nouveaux` porte encore les anciens noms après l'appel, d'où le remplacement qui
-      // suit — tout ce qui parle d'un de ces articles après ce point doit parler du dossier
-      // qui existe réellement sur le disque, pas de celui que « make import » avait posé.
-      const renommes = ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
-      for (let i = 0; i < nouveaux.length; i++) { nouveaux[i] = renommes.get(nouveaux[i]) || nouveaux[i]; }
-      // Avant la compilation : un JPEG d'imprimerie converti après coup laisserait
-      // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
-      const aConvertir = [];
-      for (const slug of nouveaux) {
-        const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
-        for (const relatif of fournisseur._imagesArticle(slug)) { aConvertir.push(path.join(base, relatif)); }
-      }
-      await ctx.convertirCmykSiBesoin(aConvertir);
-      // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
-      await compilerApresImport();
-      rafraichirTout();
-      // Avant le dialogue de vérification : celui-ci fait relire l'article, et il vaut mieux
-      // savoir AVANT de le relire qu'un de ses tableaux n'a pas été lu comme une figure.
-      await avertirBlocsMalFormes(fournisseur.racine);
-      await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
+    remettreWords(depot);
+    const choix = await demanderRessemblances(fournisseur);
+    corriges = choix.corriges;
+    ecarterWords(depot, choix.ecartes);
+    if (choix.ecartes.length > 0 && fournisseur._docxEnAttente(depot).length === 0) {
+      rafraichirTout();                            // plus rien à convertir
     } else {
-      apresImport = () => annoncerAucunNouveau(fournisseur);
+      apresImport = await convertirDepot(fournisseur, rafraichirTout, depot, corriges.length === 0);
     }
   } finally {
+    remettreWords(depot);
     statut.dispose();
     session.poserImportEnCours(false);
     // Après le dialogue de vérification (branche nouveaux.length > 0) comme après un
@@ -322,8 +482,14 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   }
   // Sans attendre la notification, comme avant : le dépôt ou la vue qui a lancé l'import
   // n'a pas à rester suspendu à un clic. Une commande qui échoue est déjà signalée par
-  // envelopperCommande (extension.js).
+  // envelopperCommande (extension.js). Le réimport refuse de partir pendant un import :
+  // il vient donc après, un Word à la fois.
   if (apresImport) { apresImport().catch(() => {}); }
+  if (corriges.length > 0) {
+    (async () => {
+      for (const c of corriges) { await vscode.commands.executeCommand('szh.reimporterArticle', c); }
+    })().catch(() => {});
+  }
 }
 
 // Commun au bouton « Importer des Word » et au glisser-déposer : copie vers
@@ -409,6 +575,7 @@ module.exports = {
   configurer,
   numerosOrdreEnAttente, resoudreNumeroOrdre, prefixerNouveauxArticles, ecrireOrdreNouveauxArticles,
   compilerApresImport, lancerConversion, importerFichiersWord, importerWord,
-  blocsMalFormes, avertirBlocsMalFormes,
+  blocsMalFormes, avertirBlocsMalFormes, wordsRessemblants,
+  noterDebutTache, noterFinProcessus, finirImportExterne,
   controleurDepotVue
 };

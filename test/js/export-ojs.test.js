@@ -1338,6 +1338,31 @@ test('pagination : périmée, l’export refuse et n’écrit aucun fichier', ()
     'un fichier est parti malgré la pagination périmée');
 });
 
+test('image introuvable : une image appelée mais absente du disque arrête l’export, et se nomme', () => {
+  // Au rendu, szh-image-introuvable.lua met un cadre à sa place : le PDF existe, il ne doit
+  // pas partir. Le texte et un tableau réinjecté sont lus l'un et l'autre.
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  const dossier = path.join(racine, 'articles', '02-observation');
+  fs.appendFileSync(path.join(dossier, '02-observation.md'), LF + '![Une figure](media/Absente.png)' + LF
+    + LF + '::: {.szh-tabelle src="tables/table-01.html"}' + LF + ':::' + LF);
+  fs.mkdirSync(path.join(dossier, 'tables'));
+  fs.writeFileSync(path.join(dossier, 'tables', 'table-01.html'),
+    '<table><tr><td><img src="media/case.png" alt="c"></td></tr></table>');
+  const e = refuse(racine, configComplete());
+  const points = e.szhBloquants.filter((p) => /introuvable/.test(p));
+  assert.strictEqual(points.length, 2, 'un point par image absente : ' + e.szhBloquants.join(' | '));
+  assert.ok(points[0].indexOf('articles/02-observation') === 0, 'l’article n’est pas nommé : ' + points[0]);
+  assert.ok(points.some((p) => /absente\.png/i.test(p)), 'l’image du texte n’est pas nommée');
+  assert.ok(points.some((p) => p.indexOf('case.png') !== -1), 'l’image du tableau n’est pas nommée');
+  assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), [],
+    'un fichier est parti malgré l’image absente');
+  // Redéposées, elles ne bloquent plus.
+  fs.mkdirSync(path.join(dossier, 'media'));
+  fs.writeFileSync(path.join(dossier, 'media', 'Absente.png'), 'PNG');
+  fs.writeFileSync(path.join(dossier, 'media', 'case.png'), 'PNG');
+  assert.ok(exporter(racine, configComplete()).chemin, 'l’export ne part pas une fois les images là');
+});
+
 test('pagination : enregistre à faux, même avec perimes vide, n’écrit ni <pages> ni ne refuse', () => {
   // `enregistre: false` dit que le numéro n’a jamais été paginé : un tel numéro part
   // exactement comme avant, quel que soit le contenu de `perimes`.

@@ -22,7 +22,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T, TL, langueCockpit } = require('./i18n');
+const { T, TL, TP, langueCockpit } = require('./i18n');
 const { MSG } = require('./messages');
 const profils = require('./profil');
 const pdfuaHote = require('./pdfua-hote');
@@ -38,6 +38,8 @@ const { imagesSansAlternative } = require('./references');
 const { differer } = require('./interaction');
 const compteurs = require('./compteurs');
 const rapportErreur = require('./rapport-erreur');
+const { analyserMeta, langueRevue } = require('./yaml');
+const { libelleArticle, prefixeDossier, titreFiche } = require('./articles');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 // Posés par extension.js. Les valeurs par défaut ne servent qu'à ne pas planter un test qui
@@ -61,6 +63,14 @@ function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 function profilCourant() { return profils.courant(); }
 function dossierUnites() { return profilCourant().unites.dossier; }
+
+// Le nom d'un article tel que la vue Articles l'écrit : « 03 · Titre », le slug en repli.
+function nomArticle(racine, slug) {
+  let meta = null;
+  try { meta = analyserMeta(fs.readFileSync(profils.chemins(profilCourant(), racine, slug).meta, 'utf8')); }
+  catch (e) { meta = null; }
+  return libelleArticle(prefixeDossier(slug), slug, titreFiche(meta, langueRevue(racine)));
+}
 
 // Aligner les dossiers d'article sur une liste de rangs, et ranger ce que le renommage
 // périme. Deux appelants : « Terminer », qui donne l'ordre voulu à l'écran, et la
@@ -409,6 +419,61 @@ async function ouvrirCible(id, cle) {
   await vscode.commands.executeCommand(entree.commande, { slug: String(cle || ''), focus: focus });
 }
 
+// Les défauts dont la seule consigne est de les signaler : la chaîne est en cause, et aucun
+// geste de l'application ne les corrige. « signaler:<source>/<code>:<slug> » porte de quoi
+// retrouver le constat, comme le bouton d'un lieu porte son objet.
+const PREFIXE_SIGNALER = 'signaler:';
+
+function actionSignaler(constat) {
+  const cle = String(constat.source || '') + '/' + String(constat.code || '');
+  const s = tableConstats.SECOND_ETAGE[cle];
+  if (cle !== 'cockpit/compilation-echec' && !(s && s.consigne === 'consigne.signaler')) { return null; }
+  return { id: PREFIXE_SIGNALER + cle + ':' + String(constat.slug || ''),
+           libelle: T('ctl.signaler'), icone: 'fleche', tip: T('ctl.signaler.tip') };
+}
+
+// Le clic sur « Signaler » : un rapport COCKPIT-SIGNALEMENT (lib/rapport-erreur.js) qui
+// nomme le contrôle et l'article, avec la fin du journal. Jamais la phrase du constat ni
+// son texte brut : ils peuvent citer l'article (docs/RAPPORTS-ERREUR.md, §3).
+// -> ce que la barre de la vue dit, selon ce qui a vraiment eu lieu.
+function signalerConstat(fournisseur, id) {
+  const reste = id.slice(PREFIXE_SIGNALER.length);
+  const sep = reste.lastIndexOf(':');
+  const cle = sep === -1 ? reste : reste.slice(0, sep);
+  const slug = sep === -1 ? '' : reste.slice(sep + 1);
+  const racine = fournisseur.racine;
+  const constat = constatsCourants(racine).find((c) => c && (c.source + '/' + c.code) === cle
+    && String(c.slug || '') === slug)
+    || { source: cle.split('/')[0], code: cle.split('/').slice(1).join('/'), ton: null, slug: slug };
+  const r = rapportErreur.emettreRapport({
+    gravite: 'erreur', source: 'cockpit', code: 'COCKPIT-SIGNALEMENT', etape: cle,
+    message: 'Signalé depuis les contrôles : ' + cle + (slug === '' ? '' : ', article ' + slug) + '.',
+    produit: rapportErreur.produitDepuisRacine(racine, profilCourant().cle),
+    journal: rapportErreur.lireExtraitFichier(path.join(racine, JOURNAL_TACHE)),
+    constats: [constat],
+    langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
+  });
+  if (r.ecrit) { return T('ctl.signaler.fait'); }
+  if (r.enAttente) { return T('ctl.signaler.attente'); }
+  if (r.etouffe) { return T('ctl.signaler.deja'); }
+  return T('ctl.signaler.refuse');
+}
+
+// Un bouton de carte ou de constat de la vue « Contrôles » : `cle` est le slug de la carte.
+// -> le message à afficher dans la barre de la vue, ou null.
+async function actionControles(fournisseur, id, cle) {
+  if (id.indexOf(PREFIXE_SIGNALER) === 0) { return signalerConstat(fournisseur, id); }
+  if (id === 'recompiler-article') {
+    const slug = String(cle || '');
+    if (slug !== '' && fournisseur.listerArticles().indexOf(slug) !== -1) {
+      ctx.relancerCompilation(fournisseur, slug);
+    }
+    return null;
+  }
+  await ouvrirCible(id, cle);
+  return null;
+}
+
 // Le second étage d'un message de la vue « À corriger » (lib/constats.js, SECOND_ETAGE) :
 // le titre seul, les objets en cause — un lien chacun, à la même forme d'identifiant que le
 // bouton (« medias:fig-01.png », « table:table-02.html ») —, la phrase d'action, et
@@ -556,7 +621,7 @@ function constatsPourControles(fournisseur, constats) {
     const cible = tableConstats.cible(c);
     if (!cible || cible.lieu !== 'article' || cible.focus !== '') { return c; }
     const lu = lire(c.slug);
-    const focus = lu ? focusDeRepli(c.source + '/' + c.code, c.args, lu.texteMd, lu.tables) : '';
+    const focus = lu ? focusDeRepli(c.source + '/' + c.code, c.args, lu.texteMd, lu.tables, c.champs) : '';
     return focus === '' ? c : Object.assign({}, c, {
       champs: Object.assign({}, c.champs || {}, { focusCalcule: focus }) });
   });
@@ -639,15 +704,21 @@ function vueControles(fournisseur) {
       const source = T(SOURCES_CONSTAT[c.origine || c.source] || 'ctl.source.pipeline');
       let carte = cartes.get(c.slug);
       if (!carte) {
+        // La clé ne vaut que sur un article qui existe encore : un constat peut nommer
+        // un Word qui n'est jamais devenu un article.
+        const article = c.slug !== '' && connus.has(c.slug);
         carte = {
-          // La clé ne vaut que sur un article qui existe encore : un constat peut nommer
-          // un Word qui n'est jamais devenu un article.
-          cle: c.slug !== '' && connus.has(c.slug) ? c.slug : '',
+          cle: article ? c.slug : '',
           groupe: T(GROUPE_GRAVITE[gravite]),
-          titre: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
+          titre: c.slug === '' ? T('ctl.numero')
+            : (article ? nomArticle(racine, c.slug) : T('ctl.article', [c.slug])),
           meta: source,
           messages: [],
-          pastilles: [], ouvrir: false, actions: []
+          pastilles: [], ouvrir: false,
+          // Revérifier un seul article, sans vider out/ ni recompiler tout le numéro.
+          actions: article ? [{ id: 'recompiler-article', icone: 'fleche',
+            libelle: TP('ctl.recompiler.article', profilCourant()),
+            tip: TP('ctl.recompiler.article.tip', profilCourant()) }] : []
         };
         cartes.set(c.slug, carte);
         lignes.push(carte);
@@ -658,8 +729,9 @@ function vueControles(fournisseur) {
       carte.messages.push(Object.assign({
         ton: tableConstats.ton(c, contexte),
         texte: texte,
-        // Un seul geste par défaut, ou aucun : actionsConstat rend au plus une entrée.
-        action: actionsConstat(c, connus)[0] || null,
+        // Un seul geste par défaut, ou aucun : actionsConstat rend au plus une entrée. Sans
+        // lieu où corriger, « Signaler » quand c'est la consigne.
+        action: actionsConstat(c, connus)[0] || actionSignaler(c),
         // La croix, et de quoi la retenir. Vide partout ailleurs : la page ne pose pas de
         // croix sans empreinte, et n'a donc rien à décider.
         fermable: fermable, empreinte: empreinte
@@ -779,6 +851,27 @@ function rafraichirPdfUa(fournisseur) {
   // la vue : la « valeurs » qui suit porte ainsi l'état levé, pas l'ancien.
   verifierFinAnalyse(fournisseur);
   ctx.rafraichirVueControles(fournisseur);
+  annoncerVerdictsPdfUa(fournisseur);
+}
+
+// Le verdict arrive une minute après la compilation, quand la notification du journal est
+// déjà partie : il se dit à son tour, mais seulement s'il ajoute des règles en échec à celles
+// du verdict qu'il remplace (pdfuaHote.prendreNouveautes). Recompiler sans rien corriger ne
+// redit donc rien.
+function annoncerVerdictsPdfUa(fournisseur) {
+  const racine = fournisseur && fournisseur.racine;
+  if (!racine) { return; }
+  for (const n of pdfuaHote.prendreNouveautes(racine)) {
+    const titre = n.cle === 'livre' ? path.basename(racine) : nomArticle(racine, n.cle);
+    const notifier = async () => {
+      const bouton = T('ctl.notif.pdfua.voir');
+      const choix = await vscode.window.showErrorMessage(T('ctl.notif.pdfua', [titre, n.points]), bouton);
+      if (choix === bouton) { await vscode.commands.executeCommand('szh.vueControles'); }
+    };
+    differer('notif-pdfua:' + n.cle, () => {
+      notifier().catch(() => { /* un avis raté ne casse rien */ });
+    });
+  }
 }
 
 // ---- Le voile « Analyse en cours… » de la vue « À corriger » ----------------------
@@ -1017,9 +1110,9 @@ module.exports = {
   configurer, reinitialiser,
   // Constats par source
   poserConstats, poserConstatsExport, constatsPoses, constatsCourants, ouvrirNumero,
-  relireJournal, alignerDossiersSurOrdre, contexteConstats,
+  relireJournal, alignerDossiersSurOrdre, contexteConstats, constatsPourControles,
   // Vue « À corriger »
-  vueControles, fermerConstat, ouvrirCible,
+  vueControles, fermerConstat, ouvrirCible, actionControles,
   // Barre d'état
   installerBarres, majBarreControles, majBadgePdfUa, rafraichirPdfUa,
   // Voile « Analyse en cours… »

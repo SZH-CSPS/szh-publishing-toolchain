@@ -236,6 +236,76 @@ function urlOjs(url) {
   return String(url || '').replace(/\/+$/, '');
 }
 
+// ---- Images introuvables -------------------------------------------------------------
+//
+// Une image que le texte appelle et que le disque n'a pas : au rendu, szh-image-introuvable.lua
+// met un cadre à sa place, et le PDF sort. Il ne doit pas partir : l'export et l'archivage
+// refusent. Les mêmes images que le filtre : celles du .md et celles des tableaux réinjectés,
+// locales seulement (ni URL, ni data:).
+
+// Le fichier existe-t-il, sans égard à la casse ? listerImages() rend des cibles en
+// minuscules, et la WSL lit /mnt/c sans casse, comme Windows.
+function existeSansCasse(base, relatif) {
+  if (path.isAbsolute(relatif)) { return fs.existsSync(relatif); }
+  let courant = base;
+  for (const segment of relatif.split('/').filter((s) => s !== '' && s !== '.')) {
+    if (segment === '..') { courant = path.dirname(courant); continue; }
+    let noms;
+    try { noms = fs.readdirSync(courant); } catch (e) { return false; }
+    const trouve = noms.find((n) => n.toLowerCase() === segment.toLowerCase());
+    if (!trouve) { return false; }
+    courant = path.join(courant, trouve);
+  }
+  return courant !== base;
+}
+
+function cibleLocale(cible) {
+  const c = String(cible || '').trim();
+  return c !== '' && !(/^[a-z][a-z0-9+.-]*:/i.test(c) && !/^[a-z]:[\\/]/i.test(c));
+}
+
+// dossier d'une unité + son texte -> chemins des images appelées et absentes, sans doublon.
+function imagesIntrouvables(dossier, texteMd) {
+  const cibles = listerImages(texteMd).map((i) => i.cible);
+  const reTable = /\{[^}]*\.szh-tabelle\b[^}]*\bsrc="([^"]+)"[^}]*\}/g;
+  let m;
+  while ((m = reTable.exec(String(texteMd || ''))) !== null) {
+    let html = '';
+    try { html = fs.readFileSync(path.join(dossier, m[1]), 'utf8'); } catch (e) { continue; }
+    const reImg = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+    let i;
+    while ((i = reImg.exec(html)) !== null) { cibles.push(i[1] !== undefined ? i[1] : i[2]); }
+  }
+  const vues = new Set();
+  const manquantes = [];
+  for (const brute of cibles) {
+    const cible = String(brute).replace(/\\/g, '/');
+    if (!cibleLocale(cible) || vues.has(cible.toLowerCase())) { continue; }
+    vues.add(cible.toLowerCase());
+    let decodee = cible;
+    try { decodee = decodeURIComponent(cible); } catch (e) { /* tel quel */ }
+    if (!existeSansCasse(dossier, cible) && !existeSansCasse(dossier, decodee)) { manquantes.push(cible); }
+  }
+  return manquantes;
+}
+
+// Dossier des unités (articles/ ou chapitres/) -> [{ slug, image }], dans l'ordre des dossiers.
+function imagesIntrouvablesDesUnites(dossierUnites) {
+  let slugs = [];
+  try {
+    slugs = fs.readdirSync(dossierUnites, { withFileTypes: true })
+      .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  } catch (e) { return []; }
+  const res = [];
+  for (const slug of slugs) {
+    const dossier = path.join(dossierUnites, slug);
+    let texteMd;
+    try { texteMd = fs.readFileSync(path.join(dossier, slug + '.md'), 'utf8'); } catch (e) { continue; }
+    for (const image of imagesIntrouvables(dossier, texteMd)) { res.push({ slug: slug, image: image }); }
+  }
+  return res;
+}
+
 // slug -> "12" ou "12-17", pour chaque article que pagination.articles porte avec un
 // départ et un compte de pages exploitables. Rend {} si la pagination est absente, ou si
 // le numéro n'a jamais été paginé — le cas d'un numéro déjà publié à l'ancienne, qui ne
@@ -722,6 +792,9 @@ function collecter(racine, cfg, avertissements, pagination) {
     // décidé. Le formulaire des médias a une case pour le dire explicitement.
     try {
       const texteMd = fs.readFileSync(path.join(racine, 'articles', slug, slug + '.md'), 'utf8');
+      for (const image of imagesIntrouvables(path.join(racine, 'articles', slug), texteMd)) {
+        bloquants.push(prefixe + T('ojs.err.image.introuvable', [image]));
+      }
       const manquantes = imagesSansAlternative(texteMd);
       if (manquantes.length > 0) {
         const noms = manquantes.map((i) => i.relatif || i.cible || '?').join(', ');
@@ -1112,6 +1185,7 @@ function genererExportOjs(racine, options) {
 module.exports = {
   genererExportOjs, configOjs, ecrireConfigOjs, normaliserConfigOjs, cheminConfigOjs,
   orcidCanonique, rorCanonique, doiCalcule, typeSansDoi, FORME_DOI,
+  imagesIntrouvables, imagesIntrouvablesDesUnites,
   CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, TYPES_DEFAUT
 };
 

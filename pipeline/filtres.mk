@@ -10,7 +10,7 @@
 # Ordre des --lua-filter d'un article, et ce qui casse si on permute :
 #   szh-contexte -> szh-maquette -> szh-niveaux -> szh-listes-serrees -> szh-tabelle-inclure ->
 #   szh-tabelle-scope -> szh-typographie -> szh-titre-lignes -> szh-metafichier ->
-#   szh-grille -> szh-ressource -> szh-figure -> szh-numerotation ->
+#   szh-grille -> szh-image-introuvable -> szh-ressource -> szh-figure -> szh-numerotation ->
 #   szh-tableau-boite -> szh-legende-avant -> szh-sections -> szh-auteurs ->
 #   szh-citations -> szh-rubrique -> szh-cesure -> szh-exergue -> szh-notes
 #   * szh-contexte en tête : la langue, le produit et l'unité qu'il pose dans meta sont lus
@@ -37,6 +37,9 @@
 #   * szh-grille avant szh-figure : une grille tombée à une seule image se dissout en
 #     paragraphe, et c'est szh-figure qui en refait une figure sous le lecteur de
 #     l'aperçu ;
+#   * szh-image-introuvable après szh-metafichier et szh-grille, avant szh-figure : le
+#     substitut d'une image native existe, une grille voit encore toutes ses images, et
+#     aucune figure vide ne se construit ni ne se numérote ;
 #   * szh-numerotation après szh-figure : sous le lecteur commonmark_x de l'aperçu,
 #     les Figure ne sont construites que par szh-figure ;
 #   * szh-legende-avant avant szh-citations : il dissout les Figure en HTML brut, rien
@@ -114,7 +117,7 @@
 SOCLE_CONTEXTE  := contexte
 SOCLE_ENTREE    := niveaux listes-serrees tabelle-inclure tabelle-scope
 SOCLE_TYPO      := typographie
-SOCLE_IMAGES    := metafichier grille
+SOCLE_IMAGES    := metafichier grille image-introuvable
 SOCLE_NUMEROS   := figure numerotation tableau-boite legende-avant sections
 SOCLE_CITATIONS := citations
 SOCLE_SORTIE    := cesure exergue notes

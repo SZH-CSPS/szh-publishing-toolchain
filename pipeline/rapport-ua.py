@@ -163,12 +163,15 @@ REGLES = {
      "La suite des titres descend de plus d'un cran (par exemple un titre de niveau 3 "
      "juste après un niveau 1) : un lecteur d'écran qui parcourt les titres croit qu'une "
      "section manque.",
-     "Rétablissez la marche des titres dans l'article, sans sauter de niveau."),
+     "Un titre saute un niveau (un « Titre 3 » juste après un « Titre 1 »). Placez le "
+     "curseur dessus et choisissez Mise en forme → Titre 2."),
     ("Übersprungene Überschriftenebene",
      "Die Überschriften springen um mehr als eine Ebene (etwa Ebene 3 direkt nach "
      "Ebene 1): ein Screenreader, der die Überschriften durchgeht, meint, ein Abschnitt "
      "fehle.",
-     "Stellen Sie im Artikel die Abfolge der Überschriften ohne übersprungene Ebene her.")),
+     "Eine Überschrift überspringt eine Ebene (eine «Überschrift 3» direkt nach einer "
+     "«Überschrift 1»). Setzen Sie den Cursor darauf und wählen Sie Formatierung → "
+     "Überschrift 2.")),
   ('7.5', '1'): (
     ("Tableau aux en-têtes incomplets",
      "Une cellule n'est reliée à aucun en-tête : un lecteur d'écran ne peut pas dire à "
@@ -295,6 +298,69 @@ REGLES = {
      "Ersetzen Sie das exotische Zeichen im Artikel; gibt es keines, melden Sie es.")),
 }
 
+# ── Les défauts de la chaîne, dits à la rédaction ───────────────────────────────
+# Une phrase par langue, qui remplace la cause dans la puce : la rédaction n'a rien à faire
+# de opacity ni de print.css. La cause de REGLES devient le détail technique, écrit sous le
+# repère ISO : il reste dans le journal de l'export, et le cockpit ne le lit pas.
+CHAINE = {
+  ('5', '1'): (
+    "Le fichier ne dit pas qu'il suit la norme d'accessibilité ; votre article n'y est pour rien.",
+    "Die Datei gibt nicht an, dass sie der Barrierefreiheitsnorm folgt; Ihr Artikel ist nicht "
+    "die Ursache."),
+  ('6.2', '1'): (
+    "Le PDF est sorti sans balisage, un lecteur d'écran ne peut pas le suivre ; votre article "
+    "n'y est pour rien.",
+    "Das PDF wurde ohne Tagging erzeugt, ein Screenreader kann ihm nicht folgen; Ihr Artikel "
+    "ist nicht die Ursache."),
+  ('7.1', '3'): (
+    "Un élément de la mise en page échappe au balisage ; votre article n'y est pour rien.",
+    "Ein Element des Layouts entgeht dem Tagging; Ihr Artikel ist nicht die Ursache."),
+  ('7.1', '10'): (
+    "Le lecteur PDF affichera le nom du fichier au lieu du titre ; votre article n'y est pour "
+    "rien.",
+    "Der PDF-Betrachter zeigt den Dateinamen statt des Titels; Ihr Artikel ist nicht die "
+    "Ursache."),
+  ('7.1', '11'): (
+    "Le PDF ne dit pas ce qui est un titre, un paragraphe ou un tableau ; votre article n'y est "
+    "pour rien.",
+    "Das PDF sagt nicht, was Titel, Absatz oder Tabelle ist; Ihr Artikel ist nicht die "
+    "Ursache."),
+  ('7.18.3', '1'): (
+    "Au clavier, les liens d'une page ne se parcourent pas dans l'ordre de lecture ; votre "
+    "article n'y est pour rien.",
+    "Mit der Tastatur werden die Links einer Seite nicht in Lesereihenfolge durchlaufen; Ihr "
+    "Artikel ist nicht die Ursache."),
+  ('7.18.5', '1'): (
+    "Un lien de la mise en page est mal annoncé aux lecteurs d'écran ; votre article n'y est "
+    "pour rien.",
+    "Ein Link des Layouts wird Screenreadern falsch angesagt; Ihr Artikel ist nicht die "
+    "Ursache."),
+  ('7.18.5', '2'): (
+    "Une zone cliquable de la mise en page n'a pas de description ; votre article n'y est pour "
+    "rien.",
+    "Ein klickbarer Bereich des Layouts hat keine Beschreibung; Ihr Artikel ist nicht die "
+    "Ursache."),
+  ('7.18.1', '2'): (
+    "Une annotation de la mise en page n'a pas de description ; votre article n'y est pour "
+    "rien.",
+    "Eine Anmerkung des Layouts hat keine Beschreibung; Ihr Artikel ist nicht die Ursache."),
+  ('7.20', '2'): (
+    "Un élément de la mise en page perd son balisage ; votre article n'y est pour rien.",
+    "Ein Element des Layouts verliert sein Tagging; Ihr Artikel ist nicht die Ursache."),
+  ('7.21.4.1', '1'): (
+    "Une police manque sur le poste qui compile ; votre article n'y est pour rien.",
+    "Auf dem Kompilier-Rechner fehlt eine Schrift; Ihr Artikel ist nicht die Ursache."),
+  ('7.21.4.1', '2'): (
+    "Un caractère du texte manque dans une police de la mise en page ; votre article n'y est "
+    "pour rien.",
+    "Ein Zeichen des Textes fehlt in einer Schrift des Layouts; Ihr Artikel ist nicht die "
+    "Ursache."),
+  ('7.21.7', '1'): (
+    "Une police ne permet ni de lire ni de copier le texte ; votre article n'y est pour rien.",
+    "Eine Schrift lässt den Text weder vorlesen noch kopieren; Ihr Artikel ist nicht die "
+    "Ursache."),
+}
+
 # ── Gabarits de phrases ────────────────────────────────────────────────────────
 LANGUES = (
   ('fr', '', {
@@ -308,6 +374,7 @@ LANGUES = (
     'pages':      ', page(s) %s',
     'cause':      '      En cause : ',
     'geste':      '      À faire  : ',
+    'technique':  '  Détail technique : ',
     'total_ok':   'Tous les PDF du numéro sont conformes PDF/UA-1 (%d fichier(s)).',
     'total_ko':   '%d fichier(s) sur %d ne sont pas conformes : l\'export est arrêté.',
     'vide':       'Le validateur PDF/UA n\'a rendu aucun verdict : rapport vide.',
@@ -324,6 +391,7 @@ LANGUES = (
     'pages':      ', Seite(n) %s',
     'cause':      '      Ursache: ',
     'geste':      '      Zu tun : ',
+    'technique':  '  Technisches Detail: ',
     'total_ok':   'Alle PDF dieser Ausgabe sind PDF/UA-1-konform (%d Datei(en)).',
     'total_ko':   '%d von %d Datei(en) sind nicht konform: der Export wird angehalten.',
     'vide':       'Der PDF/UA-Prüfer hat kein Urteil abgegeben: leerer Bericht.',
@@ -418,6 +486,10 @@ def main():
                     titre = (regle.findtext('description') or 'règle %s-%s'
                              % (clause, test)).strip()
                     cause, geste = '', ''
+                technique = ''
+                redaction = CHAINE.get((clause, test))
+                if redaction:
+                    technique, cause = cause, redaction[0 if code == 'fr' else 1]
                 combien = mots['occ_1'] if n == 1 else mots['occ_n'] % n
                 pages = pages_en_cause(regle)
                 if pages:
@@ -431,6 +503,10 @@ def main():
                 # en tête de fichier. Sa faible indentation le fait tomber du côté du
                 # bruit d'outillage dans le cockpit, et il reste dans le journal.
                 dire(marque, mots['repere'] % (clause, test))
+                # Après le repère : ni verdictsPdfUa ni analyserJournal (lib/journal.js)
+                # ne rattachent plus rien à la règle, la ligne reste au seul journal.
+                if technique:
+                    replier(technique, marque, mots['technique'])
         if rates:
             dire(marque, mots['total_ko'] % (rates, len(fichiers)))
         else:

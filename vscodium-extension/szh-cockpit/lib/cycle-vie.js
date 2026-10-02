@@ -27,6 +27,7 @@ const {
 // fs/path/os — le requérir ici n'alourdit rien et, surtout, évite de réécrire le segment du
 // nom de l'application, qui ne vit qu'à un seul endroit du JavaScript.
 const { resoudreAncrage, resoudreDossierRapports } = require('./rapport-erreur');
+const { imagesIntrouvablesDesUnites } = require('./export-ojs');
 
 // Le profil du dossier ouvert (lib/profil.js#courant). Verrou et archivage valent pour les
 // deux profils : les textes du geste passent par TP, qui prend la variante « .livre » d'une
@@ -224,6 +225,13 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
       return;
     }
     await verrouillerSeulement(fournisseur, rafraichirTout);
+    return;
+  }
+  // Une image appelée mais absente sort en cadre dans le PDF : on n'archive pas ce PDF-là.
+  const introuvables = imagesIntrouvablesDesUnites(profils.chemins(profilCourant(), racine).unites);
+  if (introuvables.length > 0) {
+    const liste = introuvables.map((i) => i.slug + ' : ' + i.image).join(', ');
+    vscode.window.showWarningMessage(TP('arch.refus.images', profilCourant(), [liste]));
     return;
   }
   const dossierOut = path.join(racine, 'out');

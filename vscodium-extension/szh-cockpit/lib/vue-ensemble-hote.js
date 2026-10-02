@@ -319,10 +319,9 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
   }
   if (type === 'controles') {
     // Recompiler refait tous les contrôles : c'est le seul geste global de cette vue, le
-    // reste se corrige article par article.
-    if (id === 'recompiler') { await vscode.commands.executeCommand('szh.toutExporter'); }
-    else { await controlesHote.ouvrirCible(id, cle); }
-    return null;
+    // reste se corrige article par article (controlesHote.actionControles).
+    if (id === 'recompiler') { await vscode.commands.executeCommand('szh.toutExporter'); return null; }
+    return controlesHote.actionControles(fournisseur, id, cle);
   }
   if (type === 'word') {
     if (id === 'convertir') { await vscode.commands.executeCommand('szh.convertirEnAttente'); return null; }

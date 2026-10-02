@@ -259,6 +259,7 @@ function Get-SzhRapportResume {
     'NETTOYEUR-ECHEC' = @{ fr = 'Le nettoyeur de manuscrit s’’est arrêté sur un défaut du logiciel, sans rapport avec le contenu du manuscrit ; ce rapport n’’en garde que la nature et l’’endroit, jamais le texte.'; de = 'Der Manuskript-Bereiniger wurde durch einen Softwarefehler angehalten, der nichts mit dem Inhalt des Manuskripts zu tun hat; dieser Bericht hält nur Art und Ort fest, nie den Text.' }
     'RAPPORT-ECHEC-ECRITURE' = @{ fr = 'L’’écriture d’’un rapport d’’erreur a elle-même échoué ; par construction, cet échec n’’est jamais transformé en nouveau rapport, seul le journal local le garde.'; de = 'Das Schreiben eines Fehlerberichts ist selbst fehlgeschlagen; dieser Fehler wird bewusst nicht erneut als Bericht erzeugt, nur das lokale Protokoll hält ihn fest.' }
     'LANCEUR-SIGNALEMENT' = @{ fr = 'Une personne a signalé elle-même un problème depuis l’’onglet « Journal » du lanceur ; le message est celui qu’’elle a écrit, et le journal joint celui qu’’elle a choisi.'; de = 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.' }
+    'COCKPIT-SIGNALEMENT' = @{ fr = 'Une personne a signalé elle-même un défaut depuis une carte de contrôle du cockpit ; le rapport nomme le contrôle et l’’article, et joint la fin du journal de compilation.'; de = 'Eine Person hat einen Fehler selbst über eine Prüfkarte des Cockpits gemeldet; der Bericht nennt die Prüfung und den Artikel und fügt das Ende des Kompilierprotokolls bei.' }
   }
 
   if ($table.ContainsKey($Code)) {
@@ -272,7 +273,7 @@ function Get-SzhRapportResume {
 function Get-SzhRapportCodesConnus {
   return @('LANCEUR-TRAP', 'LANCEUR-CODIUM-ABSENT', 'ANCRAGE-INTROUVABLE', 'MAJ-ETAPE-ECHEC',
     'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE',
-    'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC')
+    'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC', 'COCKPIT-SIGNALEMENT')
 }
 
 # =========================================================================================

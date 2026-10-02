@@ -262,3 +262,15 @@ a.szh-orcid::after { content: none; }
   background-repeat: no-repeat;
   background-size: contain;
 }
+
+/* ── Image introuvable ─────────────────────────────────────────────────────────
+   Posé par filters/szh-image-introuvable.lua à la place d'une image que le disque n'a pas :
+   un cadre gris, filet fin et fond clair, qui la nomme en texte réel. En bloc pour une
+   figure, en ligne dans une phrase, une case de grille ou une cellule de tableau. Encre du
+   corps sur #f7f7f8, le fond des fiches de ressource (print.css). */
+.szh-image-introuvable {
+  border: 1px solid #8f8f95; background: #f7f7f8; color: var(--c-ink);
+}
+div.szh-image-introuvable { margin: 1.4em 0; padding: 1.2em 1em; break-inside: avoid; }
+div.szh-image-introuvable > p { margin: 0; text-align: left; text-indent: 0; }
+span.szh-image-introuvable { padding: 0 0.25em; }

@@ -18,7 +18,8 @@
   "editor.guides.indentation": false,
   "editor.renderWhitespace": "none",
   "editor.overviewRulerBorder": false,
-  "scm.diffDecorations": "none",
+  // Repères de marge : seul accès à « Prendre cette version » / « Garder la mienne » d'une copie en conflit OneDrive.
+  "scm.diffDecorations": "gutter",
 
   // ---- Confort de rédaction ----
   "editor.wordWrap": "on",

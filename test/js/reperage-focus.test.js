@@ -111,6 +111,24 @@ test('focusDeRepli : les constats qui ne citent aucun mot désignent quand même
   assert.strictEqual(titreBibliographie('## Literaturhinweise für die Praxis\n'), '');
 });
 
+test('focusDeRepli : la règle PDF/UA 7.4.2-1 vise le premier titre qui saute un niveau', () => {
+  const { focusDeRepli } = require(path.join(COCKPIT, 'lib', 'reperage-focus.js'));
+  const saut = { repere: '7.4.2-1' };
+  // « ### » juste après « # », alors que « ## » existe : le PDF sort h2 puis h4.
+  const md = ['# Introduction', '', 'Texte.', '', '### Méthode', '', '## Résultats', '',
+    '```', '# pas un titre', '```'].join('\n');
+  assert.strictEqual(focusDeRepli('pdfua/regle', [], md, [], saut), '### Méthode');
+  assert.strictEqual(extrait(md, '### Méthode'), '### Méthode');
+  // Des niveaux qui ne se suivent pas mais sans trou dans l'ordre : la chaîne les compacte
+  // (szh-niveaux.lua), le PDF ne saute rien et l'article s'ouvre en haut, comme avant.
+  assert.strictEqual(focusDeRepli('pdfua/regle', [], '## A\n\n#### B\n\n## C\n', [], saut), '');
+  // Le titre en tête de corps qui n'est pas du premier rang saute lui aussi.
+  assert.strictEqual(focusDeRepli('pdfua/regle', [], '### Avant\n\n# Puis\n\n## Fin\n', [], saut), '### Avant');
+  // Une autre règle PDF/UA ne se repère pas ainsi.
+  assert.strictEqual(focusDeRepli('pdfua/regle', [], md, [], { repere: '7.1-9' }), '');
+  assert.strictEqual(focusDeRepli('pdfua/regle', [], md, []), '');
+});
+
 test('trouverPlageFocus : combinaison insécable + tiret + espaces multiples', () => {
   const doc = 'Renvoi  (Shaw et al., 2023, –p. 12) ici.';
   const plage = trouverPlageFocus(doc, '(Shaw et al., 2023, -p. 12)');

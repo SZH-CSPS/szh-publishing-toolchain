@@ -494,11 +494,21 @@ const PALETTE_MEF = [
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];
 
+// Le clic droit « Mise en forme » : PALETTE_MEF, plus « Lier une référence » après le lien.
+// Hors de PALETTE_MEF, parce que le panneau Édition la porte déjà dans son groupe Article.
+const PALETTE_CLIC_DROIT = (() => {
+  const p = PALETTE_MEF.slice();
+  const i = p.findIndex((e) => e[1] === 'szh.fmt.lien');
+  if (i === -1) { throw new Error('PALETTE_MEF sans szh.fmt.lien'); }
+  p.splice(i + 1, 0, ['panneau.lierReference', 'szh.lierReference', 'Ctrl+Alt+L', '']);
+  return p;
+})();
+
 module.exports = {
   estEnrobe, basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
   blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
-  FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE,
+  FALC_HEADER_TEXTES, langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE, PALETTE_CLIC_DROIT,
   insererBlocIsole, BLOC_SAUT_PAGE, blocTableSeul
 };

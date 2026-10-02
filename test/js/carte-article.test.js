@@ -594,7 +594,7 @@ test('carte : l’avancement des tâches vit dans l’entête « À faire », pl
     'l’avancement de départ (0/4 tâches) ne se lit plus nulle part');
 });
 
-test('carte : le pied suit l’ordre du travail, et « Ouvrir l’article » le ferme', async () => {
+test('carte : le pied suit l’ordre du travail, et « Ouvrir le texte » le ferme', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');   // au milieu : rien n’est désactivé
@@ -615,7 +615,7 @@ test('carte : le pied suit l’ordre du travail, et « Ouvrir l’article » le 
   const libelles = carte.querySelectorAll('.ligne-pied button').map((b) => b.textContent.trim());
   assert.deepStrictEqual(libelles,
     ['Éditer les métadonnées', 'Éditer les médias',
-      'Envoyer à l’auteur', 'Ouvrir l’article'],
+      'Envoyer à l’auteur', 'Ouvrir le texte'],
     'l’ordre du pied a changé : ' + libelles.join(' | '));
 });
 
@@ -635,6 +635,37 @@ test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article'
   assert.ok(String(medias.title).indexOf('01-gremion') !== -1,
     'le gestionnaire des médias n’est pas ouvert sur le bon article : ' + medias.title);
   assert.ok(HOTE.panneaux.length > avant);
+});
+
+// La barre de la vue porte les deux gestes de fin de numéro, comme celle des chapitres porte
+// ceux du livre. Paginer disparaît sur un numéro gelé, que la commande refuserait ; l'export
+// OJS reste, puisqu'on exporte justement un numéro gelé.
+test('barre : « Paginer » et « Exporter pour OJS » hors du mode ordre, Paginer retiré d’un numéro gelé', async () => {
+  let p = await vue();
+  const ids = () => derniereCharge(p).boutons.map((b) => b.id);
+  try {
+    // La vue relit l'état du numéro à chaque envoi : on la rouvre après chaque changement.
+    await poserEtat({ locked: false, archived: false });
+    p = await vue();
+    for (const id of ['paginer', 'exporter-ojs']) {
+      assert.ok(ids().indexOf(id) !== -1, 'bouton « ' + id + ' » absent : ' + ids().join(', '));
+      const b = derniereCharge(p).boutons.find((x) => x.id === id);
+      assert.notStrictEqual(b.groupe, 'filtre', id + ' rangé parmi les filtres');
+      assert.ok(b.libelle && b.tip, id + ' sans libellé ni info-bulle');
+    }
+    await poserEtat({ locked: true, archived: false });
+    p = await vue();
+    assert.strictEqual(ids().indexOf('paginer'), -1, 'Paginer offert sur un numéro verrouillé');
+    assert.notStrictEqual(ids().indexOf('exporter-ojs'), -1, 'l’export OJS a quitté un numéro verrouillé');
+    await poserEtat({ locked: false, archived: false });
+    p = await vue();
+    await p._recepteur({ type: 'commande', id: 'ordre' });
+    assert.deepStrictEqual(ids().filter((id) => id === 'paginer' || id === 'exporter-ojs'), [],
+      'les gestes de fin de numéro restent offerts en mode « Changer l’ordre »');
+  } finally {
+    await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
+    await poserEtat({ locked: false, archived: false });
+  }
 });
 
 test('fiches : l’hôte envoie le DOI calculé, et la case manuelle passe par sa modale', async () => {

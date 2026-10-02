@@ -141,7 +141,7 @@ function etatRacine(racine) {
   let st = etatsParRacine.get(racine);
   if (!st) {
     st = { verdicts: chargerVerdicts(racine), transitoire: new Map(), enCours: new Set(),
-           enVol: false, rejouer: false };
+           enVol: false, rejouer: false, nouveautes: new Map() };
     etatsParRacine.set(racine, st);
   }
   return st;
@@ -210,6 +210,11 @@ async function unTravail(racine, st) {
     if (panneGlobale) { st.transitoire.set(it.cle, { verdict: 'outillage', regles: 0, date: '' }); continue; }
     const trouve = verdicts.find((v) => path.basename(String(v.fichier || '')) === path.basename(it.chemin));
     if (!trouve) { st.transitoire.set(it.cle, { verdict: 'outillage', regles: 0, date: '' }); continue; }
+    const ajoutees = reglesAjoutees(st.verdicts[it.cle], trouve);
+    if (ajoutees > 0) {
+      st.nouveautes.set(it.cle, { cle: it.cle, empreinte: it.empreinte,
+        points: ((trouve.details || {}).fr || []).length || trouve.regles || ajoutees });
+    }
     st.verdicts[it.cle] = {
       empreinte: it.empreinte, verdict: trouve.verdict, regles: trouve.regles || 0,
       details: trouve.details || { fr: [], de: [] }, date: new Date().toISOString()
@@ -217,6 +222,36 @@ async function unTravail(racine, st) {
   }
   sauvegarderVerdicts(racine, st.verdicts);
   avertirChangement();
+}
+
+// Le nombre de règles en échec que `nouveau` ajoute à `ancien`, le verdict qu'il remplace.
+// Une règle se reconnaît à son repère ISO : son titre porte aussi le compte et les pages.
+function idsRegles(v) {
+  if (!v || v.verdict !== 'non-conforme') { return null; }
+  return new Set(((v.details || {}).fr || []).map((r) => String(r.repere || r.regle || '')));
+}
+
+function reglesAjoutees(ancien, nouveau) {
+  const neufs = idsRegles(nouveau);
+  if (!neufs) { return 0; }
+  const vieux = idsRegles(ancien);
+  // Un verdict sans règles lisibles n'est neuf que s'il remplace un PDF conforme.
+  if (neufs.size === 0) { return vieux ? 0 : (nouveau.regles || 0); }
+  if (!vieux) { return neufs.size; }
+  let n = 0;
+  for (const id of neufs) { if (!vieux.has(id)) { n++; } }
+  return n;
+}
+
+// prendreNouveautes(racine) -> [{ cle, empreinte, points }] : les PDF dont la dernière
+// validation a ajouté des règles en échec, depuis le dernier appel. La liste se vide à la
+// lecture : chaque verdict ne s'annonce qu'une fois.
+function prendreNouveautes(racine) {
+  if (!racine || !etatsParRacine.has(racine)) { return []; }
+  const st = etatsParRacine.get(racine);
+  const liste = Array.from(st.nouveautes.values());
+  st.nouveautes.clear();
+  return liste;
 }
 
 // planifier(racine) : à appeler après une compilation réussie. Ne fait rien si le réglage
@@ -385,4 +420,4 @@ function enCours(racine, cle) {
 }
 
 module.exports = { configurer, planifier, etat, constats, signalerDebutBuild, reglageActif,
-                   purgerAbsents, enCours };
+                   purgerAbsents, enCours, prendreNouveautes };

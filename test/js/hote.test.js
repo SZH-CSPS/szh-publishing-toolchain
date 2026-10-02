@@ -612,6 +612,30 @@ test('une compilation démarrée hors du cockpit (Ctrl+S) bloque bien les gardes
 // modale de confirmation : une compilation démarrée pendant que la modale est ouverte (elle
 // reste affichée le temps que le rédacteur réponde) n'était donc jamais vue, et l'effet sur
 // le disque suivait quand même le clic sur « Supprimer ».
+// Une image appelée par le texte mais absente du disque sort en cadre dans le PDF : le numéro
+// ne s'archive pas tant qu'elle manque, et on le dit avant la question de confirmation.
+test('archiver : une image introuvable refuse l’archivage et se nomme', async () => {
+  const slug = '93-jetable-image';
+  const dossier = path.join(REVUE, 'articles', slug);
+  const ausgabe = path.join(REVUE, 'ausgabe.yaml');
+  const avantYaml = fs.readFileSync(ausgabe, 'utf8');
+  fs.mkdirSync(dossier, { recursive: true });
+  fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n\n![Légende](media/absente.png)\n');
+  const avant = HOTE.modales.length;
+  try {
+    await HOTE.executer('szh.archiverVerrouiller');
+    const posees = HOTE.modales.slice(avant);
+    assert.ok(posees.some((m) => /absente\.png/.test(m.message) && m.message.indexOf(slug) !== -1),
+      'le refus ne nomme ni l’image ni l’article : ' + JSON.stringify(posees.map((m) => m.message)));
+    assert.ok(!posees.some((m) => m.options && m.options.modal),
+      'la question d’archivage a été posée malgré l’image absente');
+    assert.strictEqual(fs.readFileSync(ausgabe, 'utf8'), avantYaml, 'ausgabe.yaml a été touché');
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+    fs.writeFileSync(ausgabe, avantYaml);
+  }
+});
+
 test('supprimerArticle : une compilation démarrée pendant la modale bloque la suppression',
   async () => {
     const slug = '91-jetable-modal';

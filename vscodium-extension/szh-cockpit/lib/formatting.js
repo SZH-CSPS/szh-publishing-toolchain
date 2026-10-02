@@ -29,7 +29,7 @@ const {
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
   blocReferenceTable, blocSautPage, noteBasPage, normaliserUrl, lienMarkdown, PALETTE_MEF,
-  langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE,
+  langueLivre, texteFalcHeader, TEXTE_QR_LINK, PALETTE_MEF_LIVRE, PALETTE_CLIC_DROIT,
   insererBlocIsole, BLOC_SAUT_PAGE, blocTableSeul
 } = formattingPur;
 
@@ -354,6 +354,7 @@ async function fmtNoteBasPage() {
   if (!ok) { return; }
   const pos = new vscode.Position(r.curseur.ligne, r.curseur.colonne);
   editeur.selection = new vscode.Selection(pos, pos);
+  vscode.window.setStatusBarMessage(T('fmt.note.retour'), 8000);
 }
 
 // Demande l'adresse, puis fait de la sélection le texte du lien : [sélection](adresse).
@@ -481,7 +482,17 @@ async function fmtLierReference() {
     return;
   }
   // Sélection vide : on prend l'appel autour du curseur, parenthèse ou lien déjà posé.
+  // Un mot sélectionné dans la parenthèse (double-clic) s'étend à tout l'appel, comme le
+  // liage automatique ; une sélection hors de toute parenthèse reste telle quelle.
   let plage = editeur.selection;
+  if (!plage.isEmpty && plage.start.line === plage.end.line
+      && doc.getText(plage).indexOf('(') === -1) {
+    const ligne = doc.lineAt(plage.start.line);
+    const bornes = citations.plageDeLAppel(ligne.text, plage.start.character);
+    if (bornes && bornes.debut <= plage.start.character && bornes.fin >= plage.end.character) {
+      plage = new vscode.Range(plage.start.line, bornes.debut, plage.start.line, bornes.fin);
+    }
+  }
   if (plage.isEmpty) {
     const ligne = doc.lineAt(plage.active.line);
     const bornes = citations.plageDeLAppel(ligne.text, plage.active.character);
@@ -517,7 +528,7 @@ async function ouvrirMiseEnForme() {
   // Groupe « Livre » (falc-header, qr-link) : ajouté seulement pour un livre — jamais une
   // revue ni une Zeitschrift. Même condition que pourProfil (lib/panneaux.js) pour le
   // panneau d'édition, qui propose la même palette.
-  const entrees = PALETTE_MEF.concat(revue.profil() === 'livre' ? PALETTE_MEF_LIVRE : []);
+  const entrees = PALETTE_CLIC_DROIT.concat(revue.profil() === 'livre' ? PALETTE_MEF_LIVRE : []);
   const items = entrees.map((e) => (e[0] === '--'
     ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
     : {

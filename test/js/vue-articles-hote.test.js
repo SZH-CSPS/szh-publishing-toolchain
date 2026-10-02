@@ -14,6 +14,8 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 
 // Une doublure minimale de « vscode » : elle compte les panneaux créés.
 const crees = [];
+// Les commandes jouées par le module, dans l'ordre.
+const commandes = [];
 function charger() {
   const Module = require('module');
   const orig = Module._load;
@@ -40,7 +42,7 @@ function charger() {
     },
     workspace: { getConfiguration: () => ({ get: () => '' }), workspaceFolders: [] },
     env: { language: 'fr' },
-    commands: { executeCommand: () => Promise.resolve() }
+    commands: { executeCommand: (id) => { commandes.push(id); return Promise.resolve(); } }
   };
   Module._load = function (r, pp, i) { return r === 'vscode' ? faux : orig(r, pp, i); };
   try { return require(path.join(COCKPIT, 'lib', 'vue-articles-hote.js')); } finally { Module._load = orig; }
@@ -105,4 +107,13 @@ test('vue-articles-hote : rouvrir la vue révèle le panneau existant, sans en c
   assert.strictEqual(vues.length, 1, 'la vue a été recréée au lieu d’être réutilisée');
   assert.strictEqual(vues[0].reveles, 1, 'le panneau ouvert n’a pas été révélé');
   assert.ok(vues[0].messages.some((x) => x.type === 'valeurs'), 'le panneau réutilisé n’a pas reçu ses valeurs');
+});
+
+test('vue-articles-hote : « Paginer » et « Exporter pour OJS » appellent les commandes existantes', async () => {
+  const m = charger();
+  const fournisseur = { racine: os.tmpdir(), listerArticles: () => [] };
+  commandes.length = 0;
+  await m.actionArticle(fournisseur, null, { type: 'commande', id: 'paginer' });
+  await m.actionArticle(fournisseur, null, { type: 'commande', id: 'exporter-ojs' });
+  assert.deepStrictEqual(commandes, ['szh.rafraichirPagination', 'szh.exporterXml']);
 });

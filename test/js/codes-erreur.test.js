@@ -43,7 +43,7 @@ const codes = require(path.join(
 const CODES_ATTENDUS = [
   'LANCEUR-TRAP', 'LANCEUR-CODIUM-ABSENT', 'ANCRAGE-INTROUVABLE', 'MAJ-ETAPE-ECHEC',
   'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE',
-  'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC'
+  'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC', 'COCKPIT-SIGNALEMENT'
 ];
 
 test('CODES : les codes gelés sont présents, chacun avec un résumé FR et DE non vide', () => {
@@ -90,6 +90,20 @@ test('tout code cité par un script de windows/ est connu des DEUX tables', () =
     assert.ok(codes.CODES[code],
       code + ' : cité par un script du poste, absent de CODES (lib/codes-erreur.js)');
   }
+});
+
+// Le cockpit écrit des codes qu'aucun script du poste ne cite (COMPIL-ECHEC, COCKPIT-…) :
+// l'écrivain PowerShell les relit pourtant quand il vide la file d'attente.
+test('CODES et szh-rapport.ps1 connaissent les mêmes codes, résumés compris', () => {
+  const rapport = fs.readFileSync(path.join(__dirname, '..', '..', 'windows', 'szh-rapport.ps1'), 'utf8');
+  const corpsDe = (nom) => {
+    const depuis = rapport.slice(rapport.indexOf('function ' + nom));
+    return depuis.slice(0, depuis.indexOf('\n}'));
+  };
+  const connus = [...corpsDe('Get-SzhRapportCodesConnus').matchAll(/'([A-Z][A-Z-]*)'/g)].map((m) => m[1]);
+  const resumes = [...corpsDe('Get-SzhRapportResume').matchAll(/^\s*'([A-Z][A-Z-]*)' = @\{/gm)].map((m) => m[1]);
+  assert.deepStrictEqual(connus.slice().sort(), CODES_ATTENDUS.slice().sort());
+  assert.deepStrictEqual(resumes.slice().sort(), CODES_ATTENDUS.slice().sort());
 });
 
 test('CODES et les tables gelées sont bien figées (Object.freeze)', () => {

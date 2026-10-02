@@ -1089,6 +1089,61 @@ test('Ctrl+Alt+I passe par le cockpit, pas par la tâche d’import nue', () => 
   assert.strictEqual(k[0].when, 'szh.estRevue || szh.estLivre');
 });
 
+test('Ctrl+Alt+L lie un appel à une référence, et à rien d’autre', () => {
+  const k = jsonc(lire('vscodium-user', 'keybindings.json')).filter((x) => x.key === 'ctrl+alt+l');
+  assert.strictEqual(k.length, 1, 'Ctrl+Alt+L doit avoir exactement une liaison');
+  assert.strictEqual(k[0].command, 'szh.lierReference');
+  assert.strictEqual(k[0].when, 'editorTextFocus && editorLangId == markdown');
+});
+
+// editorActionsLocation vaut « hidden » : une entrée editor/title ne s'affiche nulle part.
+test('aucune entrée editor/title morte pour l’aperçu', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  assert.strictEqual(pkg.contributes.configurationDefaults['workbench.editor.editorActionsLocation'], 'hidden');
+  const titre = pkg.contributes.menus['editor/title'] || [];
+  assert.ok(!titre.some((x) => x.command === 'szh.basculerApercu'),
+    'szh.basculerApercu reste dans editor/title, que la barre masquée ne montre jamais');
+});
+
+test('l’aperçu se nomme « écran ⇄ PDF », dans la commande, le panneau, la barre et le tutoriel', () => {
+  const nls = { fr: JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.json')),
+    de: JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.de.json')) };
+  const attendu = { fr: 'Aperçu : écran ⇄ PDF', de: 'Vorschau: Bildschirm ⇄ PDF' };
+  for (const l of ['fr', 'de']) {
+    // typo-check pose une espace fine insécable devant le deux-points français.
+    const plat = (s) => String(s).replace(/[  ]/g, ' ');
+    assert.strictEqual(plat(nls[l]['cmd.basculerApercu']), attendu[l]);
+    assert.strictEqual(plat(i18n.TL(l, 'panneau.basculerApercu')), attendu[l]);
+    assert.ok(plat(i18n.TL(l, 'apercu.barre.tooltip')).startsWith(attendu[l]), l + ' : info-bulle');
+    assert.ok(plat(nls[l]['tuto.relire.texte']).indexOf('[' + attendu[l] + '](command:szh.basculerApercu)') !== -1,
+      l + ' : lien du tutoriel');
+    assert.ok(!/HTML ⇄ PDF/.test(nls[l]['cmd.basculerApercu'] + nls[l]['tuto.relire.texte']), l);
+  }
+});
+
+test('le tutoriel révèle la barre latérale par l’explorateur, et la nomme Pronto', () => {
+  for (const f of ['package.nls.json', 'package.nls.de.json']) {
+    const texte = JSON.parse(lire('vscodium-extension', 'szh-cockpit', f))['tuto.ouvrir.texte'];
+    assert.match(texte, /\]\(command:workbench\.view\.explorer\)/, f);
+    assert.ok(texte.indexOf('command:szh.cockpit.rafraichir') === -1, f + ' : le lien ne révèle rien');
+    assert.ok(texte.indexOf('Zeitschrift SZH') === -1, f + ' : la barre ne s’appelle plus ainsi');
+    assert.match(texte, /\*\*Pronto\*\*/, f);
+  }
+});
+
+test('« Ajouter une autrice ou un auteur » en fr, l’allemand inchangé', () => {
+  assert.strictEqual(i18n.TL('fr', 'fiches.auteur.ajouter'), '➕ Ajouter une autrice ou un auteur');
+  assert.strictEqual(i18n.TL('de', 'fiches.auteur.ajouter'), '➕ Autor hinzufügen');
+});
+
+// Les boutons « Prendre cette version » / « Garder la mienne » ne vivent que sur les
+// repères de marge du diff rapide des copies en conflit (lib/cycle-vie.js).
+test('les repères de marge du diff rapide sont visibles, sur le poste comme par défaut', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  assert.strictEqual(pkg.contributes.configurationDefaults['scm.diffDecorations'], 'gutter');
+  assert.strictEqual(jsonc(lire('vscodium-user', 'settings.json'))['scm.diffDecorations'], 'gutter');
+});
+
 test('l’étape d’import du tutoriel se coche aussi par le geste nominal', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const etape = pkg.contributes.walkthroughs[0].steps.find((s) => s.id === 'szh.tuto.word');
@@ -1268,6 +1323,8 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
   assert.ok(tuto, 'aucun tutoriel déclaré');
   assert.ok(tuto.steps.length >= 8, 'tutoriel trop court : ' + tuto.steps.length + ' étapes');
   const commandes = new Set(manifeste.contributes.commands.map((c) => c.command));
+  // Une seule commande native admise, nommément : celle qui révèle l'explorateur.
+  commandes.add('workbench.view.explorer');
   const cle = (v) => (typeof v === 'string' && v.startsWith('%') ? v.replace(/%/g, '') : null);
   const verifier = (valeur, ou) => {
     const k = cle(valeur);

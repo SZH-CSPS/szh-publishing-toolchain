@@ -43,6 +43,10 @@
   // [texte](adresse). Sans sélection, l'adresse sert de texte et reste sélectionnée.
   { "key": "ctrl+alt+k", "command": "szh.fmt.lien", "when": "editorTextFocus && editorLangId == markdown" },
 
+  // Lier un appel de citation à une référence de la bibliographie : un mot de l'appel
+  // sélectionné suffit, le lien couvre toute la parenthèse.
+  { "key": "ctrl+alt+l", "command": "szh.lierReference", "when": "editorTextFocus && editorLangId == markdown" },
+
   // « Insérer un tableau » : dans un article, crée articles/<slug>/tables/table-NN.html,
   // insère sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de
   // tableau. Hors article, repli sur un squelette Markdown.

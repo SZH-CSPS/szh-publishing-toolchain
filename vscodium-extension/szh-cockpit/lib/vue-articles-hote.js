@@ -528,6 +528,22 @@ function chargeChapitres(fournisseur) {
   };
 }
 
+// « Paginer » et « Exporter pour OJS », selon les capacités du profil et l'état du numéro.
+function boutonsFinNumero() {
+  const cap = profilCourant().capacites;
+  const etat = session.etatNumero();
+  const boutons = [];
+  if (cap.pagination && !etat.verrouillee && !etat.archivee) {
+    boutons.push({ id: 'paginer', groupe: 'action', libelle: T('art.bouton.paginer'),
+      icone: 'imprimante', tip: T('action.pagination.tip') });
+  }
+  if (cap.ojs) {
+    boutons.push({ id: 'exporter-ojs', groupe: 'action', libelle: T('art.bouton.ojs'),
+      icone: 'fleche', tip: T('art.bouton.ojs.tip') });
+  }
+  return boutons;
+}
+
 // Une carte par article, dans l'ordre du numéro : son nom, son slug, l'aperçu complet de
 // ses métadonnées, ses tâches cochables, et ce qui lui manque. Tout se lit sans rien
 // ouvrir ; les boutons du pied mènent aux formulaires qui écrivent, et sont les seuls à
@@ -726,7 +742,10 @@ function chargeArticles(fournisseur) {
       // des slugs et une empreinte déjà périmés au moment où elle sort de l'imprimante —
       // exactement ce que l'empreinte en pied de feuille est censée empêcher.
       .concat(enOrdre ? [] : [{ id: 'verif-meta', groupe: 'action', libelle: T('verif.bouton'),
-                 icone: 'imprimante', tip: T('verif.tous.tip') }]),
+                 icone: 'imprimante', tip: T('verif.tous.tip') }])
+      // Les deux gestes de fin de numéro, pendant des boutons du livre. Paginer se retire
+      // d'un numéro gelé, que rafraichirPagination refuse ; l'export OJS y reste.
+      .concat(enOrdre ? [] : boutonsFinNumero()),
     // La page gèle ce qui n'a pas de sens pendant qu'on réordonne.
     ordre: !!enOrdre,
     // L'aperçu part toujours, même replié : contrairement aux tâches, que l'interrupteur
@@ -753,6 +772,9 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     if (msg.id === 'livre-pdf') { await vscode.commands.executeCommand('szh.apercuLivre'); return null; }
     if (msg.id === 'livre-couverture') { await vscode.commands.executeCommand('szh.livreCouverture'); return null; }
     if (msg.id === 'verif-meta') { await imprimerFeuilleVerifTous(fournisseur); return null; }
+    // Fin de numéro : les commandes gardent leurs propres refus (gel, compilation en cours).
+    if (msg.id === 'paginer') { await vscode.commands.executeCommand('szh.rafraichirPagination'); return null; }
+    if (msg.id === 'exporter-ojs') { await vscode.commands.executeCommand('szh.exporterXml'); return null; }
     // Les quatre interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
     // applique pas.

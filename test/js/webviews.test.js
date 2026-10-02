@@ -162,6 +162,35 @@ test('métadonnées des articles : deux « valeurs » avec le même jeton ne rec
     'rechargement: true n’a pas passé outre le jeton déjà consommé');
 });
 
+// « ← Retour à l'article » : seulement quand le formulaire est filtré sur un seul article,
+// et le clic emporte l'état « modifié » et les cartes, pour la garde de l'hôte.
+test('métadonnées des articles : le retour à l’article n’existe que filtré sur un article', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  const retour = page.parId.retour;
+  assert.ok(retour, 'aucun bouton « retour » dans la barre');
+  const valeurs = (filtre) => page.envoyer({ type: 'valeurs', articles: [{ slug: 'a', valeurs: analyserMeta('') }],
+    types: TYPES, langue: 'fr', licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: filtre,
+    rechargement: true });
+  valeurs(null);
+  assert.strictEqual(retour.hidden, true, 'retour offert sur tous les articles');
+  valeurs(['a']);
+  assert.strictEqual(retour.hidden, false, 'retour absent du formulaire filtré sur un article');
+  assert.strictEqual(retour.textContent, T('fiches.retour'));
+  page.messages.length = 0;
+  retour.click();
+  const m = page.messages.filter((x) => x.type === MSG.RETOUR_ARTICLE);
+  assert.strictEqual(m.length, 1, 'le clic n’envoie pas retourArticle');
+  assert.strictEqual(m[0].modifie, false);
+  assert.ok(m[0].articles && typeof m[0].articles === 'object', 'les cartes ne partent pas avec le retour');
+  valeurs(['a', 'b']);
+  assert.strictEqual(retour.hidden, true, 'retour offert sur un filtre de plusieurs articles');
+});
+
 // ---- Revue F03 (22.09.2026) : le focus d'un bouton de constat, jusqu'au champ -----------
 //
 // lib/constats.js déclare un focusChamp/focusFixe (« title », « doi », « keywords »…) pour

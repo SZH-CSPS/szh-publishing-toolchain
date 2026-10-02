@@ -470,6 +470,7 @@ plus ancienne du toolkit et continuer à écrire ce code-là.
 | `COMPIL-ECHEC` | tâche de compilation terminée avec un code de sortie non nul |
 | `COCKPIT-EXCEPTION` | exception non rattrapée côté extension |
 | `LANCEUR-SIGNALEMENT` | un rédacteur clique **« Signaler une erreur… »** dans l'onglet Journal du lanceur — **le seul des dix codes qu'un geste déclenche, et non une panne détectée** |
+| `COCKPIT-SIGNALEMENT` | le même geste depuis une carte de contrôle du cockpit (bouton **« Signaler »**) : un défaut que seule la chaîne peut corriger, ou une compilation arrêtée sans cause lisible |
 | `RAPPORT-ECHEC-ECRITURE` | **jamais écrit en rapport** — journal local seulement ; sans quoi un échec d'écriture de rapport tenterait d'écrire un rapport sur son propre échec, indéfiniment |
 
 Chaque code porte un `resume` en français et en allemand (`CODES[code].resume.fr` /
@@ -555,6 +556,7 @@ point d'appel.
 | `COMPIL-ECHEC` | `extension.js` (`relireJournal`) | une tâche de compilation se termine avec un code de sortie non nul — **jamais** sur un `code === 0`, le cas le plus fréquent ; les constats de contenu (tableau sans en-tête, figure sans alt…) ne déclenchent jamais un rapport à eux seuls, ils ne partent qu'en contexte d'un rapport parti pour une autre raison |
 | `COCKPIT-EXCEPTION` | `extension.js` (`signalerExceptionCockpit`), appelée depuis l'enveloppe posée sur `cmd()`/`cmdEcriture()` | une exception sort d'une commande `szh.*` de l'extension — **jamais** via un écouteur global sur le processus (D7, §0 : ce processus est partagé avec toutes les autres extensions de VSCodium) |
 | `LANCEUR-SIGNALEMENT` | `windows/open-produit.ps1` (`Invoke-SzhSignalement`), bouton **« Signaler une erreur… »** de l'onglet Journal | un rédacteur clique le bouton et écrit une phrase — **jamais** détecté par le code, voir §7 |
+| `COCKPIT-SIGNALEMENT` | `lib/controles-hote.js` (`signalerConstat`), bouton **« Signaler »** d'une carte de contrôle | un rédacteur clique le bouton sur une carte dont la consigne est de signaler (`consigne.signaler`) ou sur `cockpit/compilation-echec`. `etape` porte le contrôle (`source/code`), `message` le contrôle et le slug, `constats` le seul constat (code, ton, slug — jamais sa phrase ni son texte brut, qui peuvent citer l'article), `journal` la fin de `.szh-journal.log`. L'écran dit « Signalement enregistré » seulement si le fichier est écrit dans le dossier partagé, et sinon ce qui a eu lieu (file d'attente, anti-inondation, refus) |
 
 ---
 

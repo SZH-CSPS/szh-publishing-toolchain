@@ -95,6 +95,14 @@ const CODES = Object.freeze({
       de: 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.'
     })
   }),
+  // Le même geste, depuis une carte de contrôle du cockpit qui dit « signalez-le » : le
+  // rapport porte le constat (son code, pas son texte), l'article et la fin du journal.
+  'COCKPIT-SIGNALEMENT': Object.freeze({
+    resume: Object.freeze({
+      fr: 'Une personne a signalé elle-même un défaut depuis une carte de contrôle du cockpit ; le rapport nomme le contrôle et l’article, et joint la fin du journal de compilation.',
+      de: 'Eine Person hat einen Fehler selbst über eine Prüfkarte des Cockpits gemeldet; der Bericht nennt die Prüfung und den Artikel und fügt das Ende des Kompilierprotokolls bei.'
+    })
+  }),
   // Le nettoyeur de manuscrit s'est arrêté sur un défaut du logiciel (plantage, lecture ou
   // perte de contenu que rien du manuscrit n'explique, rendu du rapport, environnement
   // inutilisable). Le rapport ne porte jamais de texte du manuscrit : type, lieu dans le dépôt,

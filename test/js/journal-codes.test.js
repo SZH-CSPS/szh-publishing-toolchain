@@ -344,6 +344,38 @@ test('codes : figure-sans-alt en mode livre nomme le chapitre, pas l’article',
   assert.deepStrictEqual(c.args, ['x.png']);
 });
 
+// La ligne de szh-image-introuvable.lua, telle qu'il l'écrit : pandoc et WeasyPrint ne
+// disent plus rien d'une image que le filtre a remplacée par un cadre.
+const LIGNE_IMAGE_MANQUANTE =
+  '[rendu-avertissement] image-manquante | article « essai » | image « media/x.png » | '
+  + 'L’image « x.png » est appelée par le texte mais introuvable sur le disque. '
+  + '| [de] Das Bild «x.png» wird im Text aufgerufen, ist aber nicht zu finden.';
+
+test('codes : l’image introuvable du filtre est lue sous rendu/image-manquante, en avertissement', () => {
+  const constats = require(path.join(COCKPIT, 'lib', 'constats.js'));
+  for (const langue of ['fr', 'de']) {
+    const liste = journal.analyserJournal(LIGNE_IMAGE_MANQUANTE, langue);
+    assert.strictEqual(liste.length, 1, JSON.stringify(liste));
+    const c = liste[0];
+    assert.strictEqual(c.source, 'rendu');
+    assert.strictEqual(c.code, 'image-manquante');
+    assert.strictEqual(c.slug, 'essai');
+    assert.strictEqual(c.cle, 'ctl.image.manquante');
+    assert.deepStrictEqual(c.args, ['x.png']);
+    // Le champ « image » mène la carte au gestionnaire de médias, sur ce fichier.
+    assert.strictEqual(c.champs.image, 'media/x.png');
+    assert.deepStrictEqual(constats.cible(c), { lieu: 'medias', slug: 'essai', focus: 'x.png' });
+    // Un avertissement : la compilation a produit son PDF, avec le cadre.
+    assert.strictEqual(constats.gravite(c, {}), 'avert');
+    assert.strictEqual(journal.resumeJournal([c]).bloquants, 0);
+  }
+  // Et les deux replis d'avant (pandoc, WeasyPrint) donnent le même constat : un seul à
+  // l'écran quand une autre voie les produit encore.
+  const mele = journal.analyserJournal('pandoc articles/essai/essai.md -> out/essai/essai.html'
+    + LF + LIGNE_IMAGE_MANQUANTE + LF + '[WARNING] Could not fetch resource media/x.png', 'fr');
+  assert.strictEqual(mele.filter((c) => c.code === 'image-manquante').length, 1, JSON.stringify(mele));
+});
+
 // ---- 3. Les filtres, pour de vrai : le blocage reste un blocage ----
 
 function wsl(args) {

@@ -933,7 +933,10 @@ class FournisseurRevue {
   // Une ligne de l'arbre, elle, est là en permanence — et son icône dit d'un coup d'oeil
   // s'il y a un blocage (rouge), un point à vérifier (ambre), ou rien (gris).
   _itemControles() {
-    const r = resumeJournal(controlesHote.constatsCourants(this.racine));
+    // Regroupés et comptés comme la vue et la barre d'état.
+    const r = resumeJournal(
+      controlesHote.constatsPourControles(this, controlesHote.constatsCourants(this.racine)),
+      controlesHote.contexteConstats());
     const it = new vscode.TreeItem(T('arbre.controles'), vscode.TreeItemCollapsibleState.None);
     it.id = 'controles';
     it.contextValue = 'controles';
@@ -2959,8 +2962,7 @@ function ecrireSuiviTraduction(racine, slug, suivi) {
 // Lance la campagne : n'avance que les champs « pas prêt », pour ne pas faire reculer un
 // champ déjà en relecture ou finalisé.
 // Poser un état sur tous les blocs de tous les articles du numéro. `seulementPasPret`
-// restreint aux blocs qui n'ont pas commencé — c'est ce que veut la commande de la palette,
-// « rendre prêt tout ce qui ne l'est pas encore », et ce que ne veut pas un bouton de la
+// restreint aux blocs qui n'ont pas commencé, ce que ne veut pas un bouton de la
 // vue d'ensemble : trois boutons côte à côte doivent se comporter pareil, sinon l'un d'eux
 // semble ne rien faire. L'appelant fait confirmer quand il écrit partout.
 // -> nombre de blocs touchés.
@@ -2994,13 +2996,6 @@ function marquerToutStatutRevue(fournisseur, rafraichirTout, statut, seulementPa
   if (rafraichirTout) { rafraichirTout(); }
   traductionHote.rafraichirPanneauTraduction(fournisseur);   // le panneau ouvert suit le bouton
   return n;
-}
-
-// La commande de la palette : « prêt pour traduction » sur tout ce qui ne l'est pas encore.
-// Elle ne défait donc rien, et n'a pas à être confirmée.
-function marquerToutPretTraduction(fournisseur, rafraichirTout) {
-  const n = marquerToutStatutRevue(fournisseur, rafraichirTout, 'pret-traduction', true);
-  vscode.window.setStatusBarMessage(n > 0 ? T('trad.toutpret.fait', [n]) : T('trad.toutpret.rien'), 5000);
 }
 
 // ---- Vues d'ensemble de section -> lib/vue-ensemble-hote.js ----------------------
@@ -3045,7 +3040,7 @@ function ordreEnCours(racine) {
 // ---- Vue « Articles », « Envoyer à l'auteur » -> lib/vue-articles-hote.js ----------
 const vueArticlesHote = require('./lib/vue-articles-hote');
 const {
-  ouvrirVueArticles, chargeChapitres, deplacerUnite, messageDeplacement,
+  ouvrirVueArticles, chargeChapitres,
   envoyerAuteur, voirPdfArticle, revelerDansExplorateur
 } = vueArticlesHote;
 vueArticlesHote.configurer({
@@ -3533,7 +3528,6 @@ function activate(context) {
     // Le même formulaire, filtré sur un article.
     cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traduction', (item) => traductionHote.ouvrirTraduction(fournisseur, rafraichirTout, item)),
-    cmdEcriture('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
     // Le tutoriel : neuf étapes dans la page d'accueil de l'éditeur, cochées à mesure que
     // les commandes correspondantes sont jouées. C'est le seul « calque » qu'une extension
     // puisse poser par-dessus l'interface — un webview vit dans son cadre et ne peut pas
@@ -3557,15 +3551,6 @@ function activate(context) {
     // destination de pipeline/pdf-verrouille (lieu « pdf », lib/constats.js) : `item` porte
     // déjà { slug, focus } sans rien y changer — cibleTraduction (ci-dessous) lit cible.slug.
     cmd('szh.voirPdfArticle', (item) => voirPdfArticle(fournisseur, item)),
-    // Monter et descendre depuis l'arbre. ⚠ `cmd` et non `cmdEcriture` : un numéro
-    // verrouillé a ses textes figés mais son sommaire peut encore se décider, et
-    // deplacerUnite() porte déjà le refus qui convient — celui de l'archivage.
-    // Le message part dans la barre d'état : un déplacement d'un cran ne mérite pas une
-    // notification à fermer, et l'arbre montre déjà le résultat.
-    cmd('szh.monterUnite', (item) => messageDeplacement(
-      deplacerUnite(fournisseur, item && item.slug, -1, rafraichirTout))),
-    cmd('szh.descendreUnite', (item) => messageDeplacement(
-      deplacerUnite(fournisseur, item && item.slug, 1, rafraichirTout))),
     // `item` ({ slug, focus }) porte le contrat des boutons de constat (revue F03) : focus,
     // un nom de fichier Word, amène désormais sa carte à l'écran et la marque quelques
     // secondes (SZH.listeCartes.focaliser, media/_commun.js, media/vue-ensemble.js) — un
@@ -3677,6 +3662,8 @@ function activate(context) {
       // inopérantes sur ce chemin, pourtant le plus fréquent.
       session.poserTachesSuiviesEnVol(session.tachesSuiviesEnVol() + 1);
       session.poserBuildEnCours(true);
+      // Un import fait par cette tâche finira comme l'import guidé (lib/import-hote.js).
+      importHote.noterDebutTache(fournisseur, tache.name);
       // Une compilation de tout le numéro part : elle couvre les enregistrements déjà faits
       // (relanceDifferee). Pas l'export d'UN article (tacheMakeArticle) : il ne compile que lui.
       if (tache.name === NOM_TACHE_BUILD || tache.name === NOM_TACHE_EXPORT) { demarragesBuild++; }
@@ -3699,6 +3686,7 @@ function activate(context) {
       const tache = e.execution.task;
       if (!estTacheSuivie(tache)) { return; }
       const code = e.exitCode === undefined ? 0 : e.exitCode;
+      importHote.noterFinProcessus(code);
       // Le processus a rendu son code : c'est à ce chemin-ci, et non à onDidEndTask, de
       // lever le voile — il attend le journal, puis la validation PDF/UA.
       controlesHote.noterProcessFini();
@@ -3725,6 +3713,8 @@ function activate(context) {
       // Une tâche finie sans processus (annulée, wsl.exe absent) : aucun journal ne sera
       // relu, rien n'a changé sous le voile — il tombe tout de suite.
       if (session.tachesSuiviesEnVol() === 0 && !controlesHote.processFini()) { controlesHote.terminerAnalyse(fournisseur); }
+      // Après le compteur : la suite d'un import externe attend la dernière tâche en vol.
+      importHote.finirImportExterne(fournisseur, rafraichirTout).catch(() => { /* l'import a eu lieu */ });
     }),
     // Éditeur -> aperçu ; ignoré si l'événement vient de notre révélation de ligne.
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {

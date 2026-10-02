@@ -5,7 +5,8 @@
 // Protocole avec l'hôte, en plus de photo-*, du DOI manuel et de l'enregistrement (voir
 // _fiches.js) :
 //   webview -> hôte : pret ; modifie { modifie } ; tous ; markdown { slug } ;
-//                     enregistrer { auto, articles } ; rechargement { articles }
+//                     enregistrer { auto, articles } ; rechargement { articles } ;
+//                     retourArticle { modifie, articles }
 //   hôte -> webview : valeurs { articles, types, langue, filtre, accent } ;
 //                     demande-rechargement ; enregistre { auto, n } ; erreur { message } ;
 //                     markdown { visible, message }
@@ -16,6 +17,7 @@
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
   const bandeauFiltre = document.getElementById('filtre');
+  const boutonRetour = document.getElementById('retour');
   let dernierModifie = false;
 
   // L'hôte doit savoir si des cartes sont modifiées : c'est lui qui garde le formulaire
@@ -35,6 +37,8 @@
     surChangement: signalerModifie,
     surValeurs: function (msg) {
       rendreFiltre(msg.filtre || null);
+      // Le retour n'a de sens que filtré sur un seul article : c'est lui qu'on rouvre.
+      boutonRetour.hidden = !(Array.isArray(msg.filtre) && msg.filtre.length === 1);
       // Les cartes viennent d'être recréées : la carte visée par « Markdown » peut ne
       // plus être à l'écran (un filtre a changé). On repart de la première.
       slugVise = '';
@@ -99,6 +103,14 @@
   // ne le sait pas.
   document.getElementById('verifMeta').addEventListener('click', function () {
     vscodeApi.postMessage({ type: SZH.MSG.VERIF_META, articles: cartes.modifiees() });
+  });
+
+  // « ← Retour à l'article » : l'hôte pose la garde « non enregistré », comme aux Médias.
+  boutonRetour.textContent = TXT.retour || '';
+  boutonRetour.title = TXT.retourTip || '';
+  boutonRetour.addEventListener('click', function () {
+    vscodeApi.postMessage({ type: SZH.MSG.RETOUR_ARTICLE, modifie: cartes.estModifie(),
+      articles: cartes.modifiees() });
   });
 
   function rendreFiltre(filtre) {

@@ -156,7 +156,10 @@ test('livre : descendre un chapitre écrit ordre-chapitres dans buch.yaml', asyn
   const avant = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
   assert.ok(avant.indexOf('ordre-chapitres') !== -1, 'le livre d’essai n’a pas la clé');
 
-  await HOTE.executer('szh.descendreUnite', { slug: '01-ouverture' });
+  // Le chemin que prend la vue des chapitres (bouton Descendre de la carte).
+  const { deplacerUnite } = require(path.join(COCKPIT, 'lib', 'vue-articles-hote.js'));
+  const message = deplacerUnite(HOTE.arbre(), '01-ouverture', 1, null);
+  assert.ok(message, 'le déplacement n’a rien dit : rien n’a été écrit');
 
   const apres = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
   const ligne = apres.split(/\r?\n/).find((l) => l.indexOf('ordre-chapitres:') === 0);
