@@ -113,8 +113,9 @@ La langue suit un seul ordre : la fiche `<slug>.meta.yaml`, puis le jeton de rev
 
 | Filtre | Rôle |
 |---|---|
-| `szh-commun.lua` | la bibliothèque partagée, chargée par `dofile` : `calculer_contexte`, `langue_de`, `slug_article`, `a_classe`, `texte`, `lire_cle`, `parse_scalar`, et l'émetteur de constats `constat()` |
+| `szh-commun.lua` | la bibliothèque partagée, chargée par `dofile` : `calculer_contexte`, `langue_de`, `slug_article`, `a_classe`, `texte`, `lire_cle`, `parse_scalar`, la forme imprimée des dates (`date_suisse`, `plage_date`…), et l'émetteur de constats `constat()` |
 | `szh-lire-config.lua` | lit une clé d'un YAML par le lecteur de pandoc (`pandoc lua`) : make lit une clé exactement comme pandoc la relira |
+| `szh-date-apercu.lua` | hors chaîne (`pandoc lua`, JSON sur stdin) : la date imprimée d'une fiche, pour l'aperçu du cockpit, par les fonctions de `szh-commun.lua` |
 | `szh-contexte.lua` | le contexte de composition, en tête de chaque chaîne |
 | `szh-niveaux.lua` | normalise les niveaux de titre du corps (pas de saut, RGAA 9.1) |
 | `szh-listes-serrees.lua` | resserre les listes dont chaque item tient en un paragraphe |

@@ -98,6 +98,8 @@ lib/
                         résolution bloc par bloc (le calcul lui-même reste dans
                         copies-conflit.js). Rappelle l'hôte par un petit objet de contexte
                         (configurer()), jamais par import
+  date-apercu.js        l'aperçu de la date imprimée d'une fiche : szh-date-apercu.lua lancé
+                        dans le moteur, la saisie sur stdin. Module pur, sans vscode
   documentation-hote.js la Documentation d'un numéro : fiches et rubriques, un seul
                         formulaire. Rappelle l'hôte par configurer(), jamais par import
   export-langue.js      le fichier de langue de l'interface : tous les libellés du

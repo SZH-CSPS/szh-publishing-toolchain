@@ -477,14 +477,105 @@ function champOrdinaire(parent, c, champCfg) {
     if (champCfg.saisie === 'date') { i.type = 'date'; }
     else if (champCfg.saisie === 'url') { i.type = 'url'; }
     else if (champCfg.saisie === 'annee') { i.type = 'text'; i.inputMode = 'numeric'; i.pattern = '\\d{4}'; i.placeholder = 'AAAA'; }
-    else if (champCfg.saisie === 'date_partielle') { i.type = 'text'; i.pattern = '\\d{4}(-\\d{2}(-\\d{2})?)?'; i.placeholder = 'AAAA[-MM[-JJ]]'; }
+    else if (champCfg.saisie === 'date_partielle') { i.type = 'text'; i.pattern = '\\d{4}(-\\d{2}(-\\d{2})?)?'; i.placeholder = TXT.dateModelePartiel || ''; }
     else { i.type = 'text'; }
     i.addEventListener('input', surChangement);
   }
   i.id = id;
   d.appendChild(i);
   c.ctl[champCfg.cle] = i;
+  if (champCfg.saisie === 'date' || champCfg.saisie === 'date_partielle') { brancherApercuDate(d, i, c, champCfg); }
   return d;
+}
+
+// ---- Aperçu de la date imprimée ------------------------------------------------------
+//
+// Sous un champ de date, la forme que le PDF imprimera, calculée par l'hôte avec le
+// formateur de la chaîne (lib/date-apercu.js) et jamais ici. La demande part 400 ms après la
+// dernière frappe, ou aussitôt à la sortie du champ ; seule la réponse au dernier jeton
+// compte. Les deux dates d'une plage (debut et fin de l'agenda) partagent une seule ligne
+// d'aperçu, sous la fin, ou sous le début si la fin est vide. Rien n'est bloqué : la
+// saisie reste libre et l'enregistrement aussi.
+var DELAI_APERCU_DATE = 400;
+var DELAI_REPONSE_DATE = 5000;
+var groupesDate = {};
+var dernierJetonDate = 0;
+function plageDuType(type) {
+  var t = TYPES.filter(function (x) { return x.valeur === type; })[0];
+  return (t && Array.isArray(t.plage) && t.plage.length === 2) ? t.plage : null;
+}
+function brancherApercuDate(d, i, c, champCfg) {
+  var ligneApercu = texte(d, 'p', 'doc-date-forme');
+  ligneApercu.setAttribute('aria-live', 'polite');
+  var plage = plageDuType(c.type);
+  var dansPlage = !!plage && plage.indexOf(champCfg.cle) !== -1;
+  c.groupesDate = c.groupesDate || {};
+  var cleGroupe = dansPlage ? 'plage' : champCfg.cle;
+  var g = c.groupesDate[cleGroupe];
+  if (!g) {
+    g = { carte: c, saisie: dansPlage ? 'plage' : champCfg.saisie, cles: dansPlage ? plage : [champCfg.cle],
+      lignes: {}, jeton: null, minuteur: null, attente: null };
+    c.groupesDate[cleGroupe] = g;
+  }
+  g.lignes[champCfg.cle] = ligneApercu;
+  i.addEventListener('input', function () {
+    clearTimeout(g.minuteur);
+    g.minuteur = setTimeout(function () { demanderApercuDate(g); }, DELAI_APERCU_DATE);
+  });
+  i.addEventListener('blur', function () { clearTimeout(g.minuteur); demanderApercuDate(g); });
+}
+// La ligne qui porte l'aperçu du groupe : sous la fin d'une plage si elle est remplie.
+function ligneApercuDate(g) {
+  if (g.cles.length === 2 && String(g.carte.ctl[g.cles[1]].value || '') === '') { return g.lignes[g.cles[0]]; }
+  return g.lignes[g.cles[g.cles.length - 1]];
+}
+function poserApercuDate(g, ton, contenu) {
+  for (var k in g.lignes) {
+    g.lignes[k].textContent = '';
+    g.lignes[k].className = 'doc-date-forme';
+  }
+  g.cles.forEach(function (cle) { g.carte.ctl[cle].classList.remove('doc-date-champ--erreur'); });
+  if (contenu === null) { return; }
+  var l = ligneApercuDate(g);
+  if (ton) { l.classList.add('doc-date-forme--' + ton); }
+  if (ton === 'erreur') {
+    g.cles.forEach(function (cle) { g.carte.ctl[cle].classList.add('doc-date-champ--erreur'); });
+    l.appendChild(SZH.icone('attention'));
+  }
+  for (var j = 0; j < contenu.length; j++) { texte(l, 'span', null, contenu[j]); }
+}
+function demanderApercuDate(g) {
+  var champs = g.cles.map(function (cle) { return g.carte.ctl[cle]; });
+  clearTimeout(g.attente);
+  g.jeton = null;
+  if (champs.some(function (x) { return x.validity && x.validity.badInput; })) {
+    poserApercuDate(g, 'indisponible', [TXT.dateIncomplete || '']);
+    return;
+  }
+  var valeursDate = champs.map(function (x) { return String(x.value || ''); });
+  if (valeursDate.every(function (v) { return v === ''; })) { poserApercuDate(g, null, null); return; }
+  g.jeton = ++dernierJetonDate;
+  groupesDate[g.jeton] = g;
+  var jeton = g.jeton;
+  g.attente = setTimeout(function () {
+    if (g.jeton === jeton) { g.jeton = null; poserApercuDate(g, 'indisponible', [TXT.dateIndisponible || '']); }
+  }, DELAI_REPONSE_DATE);
+  api.postMessage({ type: SZH.MSG.DOC_DATE_FORMER, jeton: jeton, saisie: g.saisie, valeurs: valeursDate });
+}
+function recevoirApercuDate(msg) {
+  var g = groupesDate[msg.jeton];
+  delete groupesDate[msg.jeton];
+  if (!g || g.jeton !== msg.jeton) { return; }
+  g.jeton = null;
+  clearTimeout(g.attente);
+  if (msg.indisponible || !msg.ok) { poserApercuDate(g, 'indisponible', [TXT.dateIndisponible || '']); return; }
+  var forme = SZH.remplir(TXT, 'dateImprime', [msg.forme]);
+  if (!msg.erreur) { poserApercuDate(g, '', [forme]); return; }
+  var cleErreur = { impossible: 'dateErreurImpossible', inversee: 'dateErreurInversee' }[msg.erreur]
+    || (g.saisie === 'date_partielle' ? 'dateErreurFormatPartiel' : 'dateErreurFormat');
+  var dit = SZH.remplir(TXT, cleErreur, [msg.forme]);
+  // « impossible » cite déjà la forme imprimée.
+  poserApercuDate(g, 'erreur', msg.erreur === 'impossible' ? [dit] : [forme, dit]);
 }
 
 // ---- Champ `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste
@@ -1527,6 +1618,10 @@ window.addEventListener('message', function (ev) {
     }
     rendre(msg);
     majApercuBascule(!!msg.apercuOuvert);
+    return;
+  }
+  if (msg.type === SZH.MSG.DOC_DATE_FORMEE) {
+    recevoirApercuDate(msg);
     return;
   }
   // Un panneau DÉJÀ OUVERT qu'une entrée de l'arbre rappelle sur une autre vue — jamais un

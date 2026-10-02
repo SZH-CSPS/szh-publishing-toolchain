@@ -169,50 +169,8 @@ end
 --   remplacement. Mesuré : {genre}/{date}/{titre} restaient littéraux dans la sortie.
 local function echapper_pourcent(s) return ((s or ''):gsub('%%', '%%%%')) end
 
--- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme stockée, parce
--- que c'est la seule qui se trie ; elle ne sort jamais telle quelle dans le PDF. Toute autre
--- forme sort inchangée : mieux vaut une date au format d'origine qu'une date perdue.
-local function jour_mois_an(v)
-  if not v then return nil end
-  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
-  if not a then return nil end
-  return { j = j, m = m, a = a }
-end
-local function date_suisse(v)
-  local d = jour_mois_an(v)
-  if not d then return v end
-  return d.j .. '.' .. d.m .. '.' .. d.a
-end
-
--- Date partielle (saisie `date_partielle` : AAAA, AAAA-MM ou AAAA-MM-JJ), en forme suisse
--- compacte : « 2026 », « 03.2026 », « 05.03.2026 ».
-local function date_partielle_suisse(v)
-  if not v then return v end
-  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
-  if a then return j .. '.' .. m .. '.' .. a end
-  local a2, m2 = v:match('^(%d%d%d%d)%-(%d%d)$')
-  if a2 then return m2 .. '.' .. a2 end
-  if v:match('^%d%d%d%d$') then return v end
-  return v
-end
-
--- La plage de dates, aussi compacte que le corpus l'écrit :
---   un seul jour              05.01.2026
---   même mois                 05.–06.01.2026
---   même année, deux mois     29.06.–02.07.2026
---   deux années               10.09.2026–04.07.2028
--- Une date non ISO d'un côté ou de l'autre fait retomber sur la forme longue, jointe par le
--- tiret demi-cadratin : rien ne se perd, seule la compacité y passe.
-local function plage_date(v1, v2)
-  local vide1 = (v1 == nil or v1 == '')
-  local vide2 = (v2 == nil or v2 == '')
-  if vide1 then return (not vide2) and date_suisse(v2) or nil end
-  if vide2 or v1 == v2 then return date_suisse(v1) end
-  local d1, d2 = jour_mois_an(v1), jour_mois_an(v2)
-  if not d1 or not d2 or d1.a ~= d2.a then return date_suisse(v1) .. '–' .. date_suisse(v2) end
-  if d1.m ~= d2.m then return d1.j .. '.' .. d1.m .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a end
-  return d1.j .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a
-end
+-- Les dates (ISO stockée, forme suisse imprimée) : commun.date_suisse,
+-- commun.date_partielle_suisse et commun.plage_date, partagées avec l'aperçu du cockpit.
 
 -- Plusieurs jetons de la même liste (saisie `liste_multiple`, valeur « jeton1, jeton2 » —
 -- convention posée par documentation-kirby.py, qui transporte cette chaîne telle quelle en
@@ -246,9 +204,9 @@ local function formater_champ(type_, cle, v, lang)
   elseif saisie == 'liste_multiple' then
     return formater_liste_multiple(def, v, lang)
   elseif saisie == 'date' then
-    return date_suisse(v)
+    return commun.date_suisse(v)
   elseif saisie == 'date_partielle' then
-    return date_partielle_suisse(v)
+    return commun.date_partielle_suisse(v)
   end
   return v
 end
@@ -283,7 +241,7 @@ local function ligne_biblio(attrs, type_, lang)
     if plage and cle == plage.fin then
       -- déjà imprimée avec la date de début, dans la même mention
     elseif plage and cle == plage.debut then
-      local p = plage_date(attrs[plage.debut], attrs[plage.fin])
+      local p = commun.plage_date(attrs[plage.debut], attrs[plage.fin])
       if p and p:match('%S') then morceaux[#morceaux + 1] = p end
     else
       local v = attrs[cle]
@@ -309,7 +267,7 @@ local function ligne_etat(attrs, type_, lang)
   local libelle = formater_champ(type_, 'etat', etat, lang)
   local date = attrs['etat_date']
   if date and date:match('%S') then
-    return libelle .. ' (' .. date_suisse(date) .. ')'
+    return libelle .. ' (' .. commun.date_suisse(date) .. ')'
   end
   return libelle
 end
@@ -332,7 +290,7 @@ local function ligne_suivi(entree, lang)
   local gabarit = SUIVI_IMPRIME[lang] or SUIVI_IMPRIME.fr or '{genre} — {date}{libelle}'
   local genre_lbl = (LISTES['genre_suivi'] and LISTES['genre_suivi'][entree.genre]
     and LISTES['genre_suivi'][entree.genre][lang]) or entree.genre or ''
-  local date_lbl = date_suisse(entree.date)
+  local date_lbl = commun.date_suisse(entree.date)
   local vide = not (entree.libelle and entree.libelle:match('%S'))
   local texte = gabarit
   if vide then

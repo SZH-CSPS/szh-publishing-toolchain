@@ -2240,6 +2240,15 @@ const TEXTES_COCKPIT = {
     'doc.web.explication': 'Les fiches de la bibliothèque seront publiées sur le futur site de la CSPS. Pour l’instant, rien n’est envoyé.',
     'doc.web.bouton': 'Publier',
     'doc.web.bouton.tip': 'Pas encore disponible',
+    // Documentation, aperçu de la date imprimée sous un champ de date.
+    'doc.date.imprime': 'Imprimé : {0}',
+    'doc.date.indisponible': 'Aperçu indisponible',
+    'doc.date.incomplete': 'Date incomplète',
+    'doc.date.modelePartiel': 'AAAA[-MM[-JJ]]',
+    'doc.date.erreur.format': 'Format attendu : AAAA-MM-JJ',
+    'doc.date.erreur.formatPartiel': 'Format attendu : AAAA, AAAA-MM ou AAAA-MM-JJ',
+    'doc.date.erreur.impossible': 'Cette date n’existe pas : {0} sera imprimé tel quel',
+    'doc.date.erreur.inversee': 'La fin précède le début',
   },
   de: {
     // Le badge « Testordner » : voir le commentaire côté français, même contrat.
@@ -4253,6 +4262,14 @@ const TEXTES_COCKPIT = {
     'doc.web.explication': 'Die Einträge der Bibliothek werden künftig auf der neuen Website des SZH veröffentlicht. Vorläufig wird nichts übermittelt.',
     'doc.web.bouton': 'Veröffentlichen',
     'doc.web.bouton.tip': 'Noch nicht verfügbar',
+    'doc.date.imprime': 'Gedruckt: {0}',
+    'doc.date.indisponible': 'Vorschau nicht verfügbar',
+    'doc.date.incomplete': 'Datum unvollständig',
+    'doc.date.modelePartiel': 'JJJJ[-MM[-TT]]',
+    'doc.date.erreur.format': 'Erwartetes Format: JJJJ-MM-TT',
+    'doc.date.erreur.formatPartiel': 'Erwartetes Format: JJJJ, JJJJ-MM oder JJJJ-MM-TT',
+    'doc.date.erreur.impossible': 'Dieses Datum gibt es nicht: {0} wird so gedruckt',
+    'doc.date.erreur.inversee': 'Das Ende liegt vor dem Beginn',
   }
 };
 

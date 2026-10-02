@@ -35,6 +35,7 @@ const { confirmerAbandon } = require('./interaction');
 const { langueRevue, ecrireAtomique, serialiserMeta, assurerIdNumero, libelleCourtNumero } = require('./yaml');
 const { apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, TAILLE_MAX_IMAGE_IMPORT } = require('./medias');
 const kirby = require('./kirby-contenu');
+const dateApercu = require('./date-apercu');
 // Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
 // PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
 // Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
@@ -148,6 +149,8 @@ function typesRessourceConfig(langue) {
       libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
       avecImage: !!champFichier,
       champFichier: champFichier,
+      // Les deux champs de date imprimés ensemble ([debut, fin] de l'agenda), ou null.
+      plage: (kirby.definitionType(type) || {}).plage || null,
       champs: kirby.champsDuType(type).map((c) => configChamp(c, langue))
     };
   });
@@ -227,7 +230,12 @@ function textesDocumentation() {
     // Vue « Publier sur le site web » : notice seule.
     webTitre: T('doc.web.titre'), webAvenir: T('doc.web.avenir'),
     webExplication: T('doc.web.explication'),
-    webBouton: T('doc.web.bouton'), webBoutonTip: T('doc.web.bouton.tip')
+    webBouton: T('doc.web.bouton'), webBoutonTip: T('doc.web.bouton.tip'),
+    // Aperçu de la date imprimée.
+    dateImprime: T('doc.date.imprime'), dateIndisponible: T('doc.date.indisponible'),
+    dateIncomplete: T('doc.date.incomplete'), dateModelePartiel: T('doc.date.modelePartiel'),
+    dateErreurFormat: T('doc.date.erreur.format'), dateErreurFormatPartiel: T('doc.date.erreur.formatPartiel'),
+    dateErreurImpossible: T('doc.date.erreur.impossible'), dateErreurInversee: T('doc.date.erreur.inversee')
   };
 }
 
@@ -832,6 +840,13 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       } else {
         repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('doc.archive.reprise.echec') });
       }
+      return;
+    }
+    // L'aperçu de la date imprimée, dans la langue du numéro : une lecture, donc pas de garde
+    // de verrou.
+    if (msg.type === MSG.DOC_DATE_FORMER) {
+      const r = await dateApercu.former({ saisie: msg.saisie, lang: langue, valeurs: msg.valeurs });
+      repondrePanneau(panneau, Object.assign({ type: MSG.DOC_DATE_FORMEE, jeton: msg.jeton }, r));
       return;
     }
     if (msg.type === MSG.RETOUR_ARTICLE) {

@@ -1,6 +1,6 @@
 -- Fonctions partagées entre les filtres pandoc du pipeline : slug_article(), a_classe(),
--- trim(), texte(), lire_cle() / parse_scalar(), les constats au format à codes, et le
--- contexte de composition (langue, produit, unité). Chargé par dofile — le dossier
+-- trim(), texte(), lire_cle() / parse_scalar(), les constats au format à codes, le
+-- contexte de composition (langue, produit, unité) et la forme imprimée des dates. Chargé par dofile — le dossier
 -- se retrouve par debug.getinfo(1, 'S').source, pas par PANDOC_SCRIPT_FILE (le patron déjà
 -- en production, szh-numerotation.lua ~l.51-52 pour szh-apercu-lecteur-ecran.lua) : cette
 -- variable nomme le script que pandoc a reçu en ligne de commande, pas le fichier qui
@@ -257,6 +257,81 @@ function M.contexte(meta, signaler)
   local produit = M.texte(meta and meta['szh-produit'])
   if produit == '' then return M.calculer_contexte(meta, signaler) end
   return { lang = M.texte(meta.lang), produit = produit, unite = M.texte(meta['szh-unite']) }
+end
+
+-- ---------------------------------------------------------------------------------------
+-- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme stockée, parce
+-- que c'est la seule qui se trie ; elle ne sort jamais telle quelle dans le PDF. Toute autre
+-- forme sort inchangée : mieux vaut une date au format d'origine qu'une date perdue.
+function M.jour_mois_an(v)
+  if not v then return nil end
+  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
+  if not a then return nil end
+  return { j = j, m = m, a = a }
+end
+function M.date_suisse(v)
+  local d = M.jour_mois_an(v)
+  if not d then return v end
+  return d.j .. '.' .. d.m .. '.' .. d.a
+end
+
+-- Date partielle (saisie `date_partielle` : AAAA, AAAA-MM ou AAAA-MM-JJ), en forme suisse
+-- compacte : « 2026 », « 03.2026 », « 05.03.2026 ».
+function M.date_partielle_suisse(v)
+  if not v then return v end
+  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
+  if a then return j .. '.' .. m .. '.' .. a end
+  local a2, m2 = v:match('^(%d%d%d%d)%-(%d%d)$')
+  if a2 then return m2 .. '.' .. a2 end
+  if v:match('^%d%d%d%d$') then return v end
+  return v
+end
+
+-- La plage de dates, aussi compacte que le corpus l'écrit :
+--   un seul jour              05.01.2026
+--   même mois                 05.–06.01.2026
+--   même année, deux mois     29.06.–02.07.2026
+--   deux années               10.09.2026–04.07.2028
+-- Une date non ISO d'un côté ou de l'autre fait retomber sur la forme longue, jointe par le
+-- tiret demi-cadratin : rien ne se perd, seule la compacité y passe.
+function M.plage_date(v1, v2)
+  local vide1 = (v1 == nil or v1 == '')
+  local vide2 = (v2 == nil or v2 == '')
+  if vide1 then return (not vide2) and M.date_suisse(v2) or nil end
+  if vide2 or v1 == v2 then return M.date_suisse(v1) end
+  local d1, d2 = M.jour_mois_an(v1), M.jour_mois_an(v2)
+  if not d1 or not d2 or d1.a ~= d2.a then return M.date_suisse(v1) .. '–' .. M.date_suisse(v2) end
+  if d1.m ~= d2.m then return d1.j .. '.' .. d1.m .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a end
+  return d1.j .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a
+end
+
+-- Le verdict sur une saisie de date, pour l'aperçu du cockpit (szh-date-apercu.lua) : nil si
+-- elle est bonne ou vide, sinon 'format', 'impossible' (2026-02-30) ou 'inversee' (fin avant
+-- début). La compilation ne l'appelle pas. Le calendrier se calcule, sans os.time, qui
+-- dépend du fuseau et de la plage d'années du système.
+local function jour_existe(a, m, j)
+  a, m, j = tonumber(a), tonumber(m), tonumber(j)
+  if m < 1 or m > 12 or j < 1 then return false end
+  if m == 2 and a % 4 == 0 and (a % 100 ~= 0 or a % 400 == 0) then return j <= 29 end
+  return j <= ({ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 })[m]
+end
+local function verifier_une(saisie, v)
+  if v == nil or v == '' then return nil end
+  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
+  if a then return (not jour_existe(a, m, j)) and 'impossible' or nil end
+  if saisie == 'date_partielle' then
+    local a2, m2 = v:match('^(%d%d%d%d)%-(%d%d)$')
+    if a2 then return (tonumber(m2) < 1 or tonumber(m2) > 12) and 'impossible' or nil end
+    if v:match('^%d%d%d%d$') then return nil end
+  end
+  return 'format'
+end
+function M.verifier_date(saisie, v1, v2)
+  if saisie ~= 'plage' then return verifier_une(saisie, v1) end
+  local e = verifier_une('date', v1) or verifier_une('date', v2)
+  if e then return e end
+  if v1 and v1 ~= '' and v2 and v2 ~= '' and v2 < v1 then return 'inversee' end
+  return nil
 end
 
 return M

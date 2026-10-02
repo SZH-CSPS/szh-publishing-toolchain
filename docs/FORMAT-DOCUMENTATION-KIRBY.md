@@ -135,6 +135,9 @@ fiche est traduite et son statut ne compte plus.
   Écriture : chaque valeur en chaîne JSON, clé vide omise. Lecture : accepter aussi les
   scalaires sans guillemets et entre apostrophes (ce qu'écrit le Panel de Kirby).
 - dates `date` : AAAA-MM-JJ ; `date_partielle` : ^\d{4}(-\d{2}(-\d{2})?)?$ ; `annee` : ^\d{4}$.
+  Le PDF les imprime en forme suisse, la même en fr et en de (`05.01.2026`, `03.2026`,
+  `29.06.–02.07.2026`, fonctions de `szh-commun.lua`) ; le formulaire du cockpit montre
+  cette forme sous chaque champ de date, calculée par `szh-date-apercu.lua`.
 - saisie `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste sur
   une ligne, `Genre: drame, comedie` (virgule et espace, convention du champ multiselect de
   Kirby), dans l'ordre de saisie, sans doublon. Champ commun aux deux langues. Pays : codes

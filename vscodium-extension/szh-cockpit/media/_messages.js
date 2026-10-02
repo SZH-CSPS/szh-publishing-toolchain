@@ -132,5 +132,9 @@ SZH.MSG = Object.freeze({
   ACCUEIL_SIGNALER: 'accueilSignaler', ACCUEIL_SIGNALE: 'accueilSignale',
   // Paramètres : un service en ligne (adresse ou clé) à poser ou à effacer, et l'ordre de l'hôte
   // d'ouvrir un onglet (szh.reglages). Les autres réglages passent par REGLER.
-  ACCUEIL_SERVICE: 'accueilService', ACCUEIL_ALLER: 'accueilAller'
+  ACCUEIL_SERVICE: 'accueilService', ACCUEIL_ALLER: 'accueilAller',
+
+  // Documentation, aperçu de la date imprimée : la page envoie { jeton, saisie, valeurs },
+  // l'hôte répond { jeton, ok, forme, erreur, indisponible } (lib/date-apercu.js).
+  DOC_DATE_FORMER: 'docDateFormer', DOC_DATE_FORMEE: 'docDateFormee'
 });
