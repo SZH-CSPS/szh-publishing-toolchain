@@ -60,6 +60,9 @@ CIBLES = {
     'SZHCouverture-Italic.ttf':   'IBMPlexMono-Regular.ttf',
     'SZHCouverture-SemiBold.ttf': 'IBMPlexMono-Medium.ttf',
     'SZHCouverture-Bold.ttf':     'IBMPlexMono-Medium.ttf',
+    # Chasse condensée, renommée : le sommaire hiérarchique des livres (normal.css).
+    'SZHCondensed-Regular.ttf': 'IBMPlexMono-Regular.ttf',
+    'SZHCondensed-Bold.ttf':    'IBMPlexMono-Medium.ttf',
 }
 
 ATTENDUS = (0x202F, 0x2010, 0x2011, 0x25B8, 0x21A9, 0xFE0E)

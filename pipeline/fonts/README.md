@@ -15,9 +15,11 @@ reproductible : `../styles/print.css` les charge par `@font-face` en chemins rel
 | `OpenSans-SemiCondensed-Italic.ttf`   | Open Sans | 400 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-SemiBoldItalic.ttf` | Open Sans | 600 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-BoldItalic.ttf` | Open Sans | 700 italique | googlefonts/opensans |
-| `OpenSans-SemiCondensed-Light.ttf`    | Open Sans | 300 (couverture seule) | googlefonts/opensans |
-| `OpenSans-SemiCondensed-Medium.ttf`   | Open Sans | 500 (couverture seule) | googlefonts/opensans |
-| `OpenSans-SemiCondensed-ExtraBold.ttf` | Open Sans | 800 (couverture seule) | googlefonts/opensans |
+| `OpenSans-SemiCondensed-Light.ttf`    | Open Sans | 300 (couverture, intérieur des livres) | googlefonts/opensans |
+| `OpenSans-SemiCondensed-Medium.ttf`   | Open Sans | 500 (couverture, intérieur des livres) | googlefonts/opensans |
+| `OpenSans-SemiCondensed-ExtraBold.ttf` | Open Sans | 800 (couverture, intérieur des livres) | googlefonts/opensans |
+| `SZHCondensed-Regular.ttf` | SZH Condensed | 400 | googlefonts/opensans (instanciée, renommée) |
+| `SZHCondensed-Bold.ttf` | SZH Condensed | 700 | googlefonts/opensans (instanciée, renommée) |
 | `SZHCouverture-Light.ttf` | SZH Couverture | 300 | googlefonts/opensans (statique, renommée) |
 | `SZHCouverture-Regular.ttf` | SZH Couverture | 400 | googlefonts/opensans (statique, renommée) |
 | `SZHCouverture-Italic.ttf` | SZH Couverture | 400 italique | googlefonts/opensans (statique, renommée) |
@@ -164,3 +166,27 @@ déclare — mesuré, la couverture « normal », en `var(--font-sans)`, sortait
 normale. Pas de petites capitales (`petites-capitales.py` ne les liste pas) : la couverture
 n'en compose pas. `test/polices-check.py` ne contrôle la couverture des six caractères que
 pour les faces `OpenSans-*` ; pour celles-ci, c'est `glyphes-manquants.py --verifier`.
+
+## SZH Condensed : Open Sans condensée (largeur 75 %), renommée (sommaire des livres)
+
+Le sommaire hiérarchique d'un livre normal (`mise-en-page: sommaire: hierarchique`) est
+composé en Open Sans condensée, comme sa référence (HfH-Reihe). Les deux faces
+`SZHCondensed-{Regular,Bold}.ttf` sont déclarées par `../styles/livre/normal.css` seule.
+
+Provenance : le même master variable que les faces semi-condensées,
+`fonts/variable/OpenSans[wdth,wght].ttf` (Version 3.003, sha256
+`36643644f318a812aab2d2ed3bb98f8cf0872527f835fe9398d95fe6b9adb878`), instancié par
+fontTools à `{"wght": 400 | 700, "wdth": 75}` le 02.10.2026.
+
+Deux retouches, dans cet ordre :
+1. renommage de la table `name`, comme « SZH Couverture » : famille « SZH Condensed »
+   (ids 1, 16), style (2, 17), nom complet (4), PostScript `SZHCondensed-<Graisse>` (6),
+   identifiant (3) ; ids 18, 21, 22, 25 retirés. Sous le nom « Open Sans », fontconfig la
+   servirait à la place de la semi-condensée ;
+2. `glyphes-manquants.py` (elles sont dans sa table) leur ajoute les six caractères de la
+   maquette.
+
+| Fichier livré | sha256 livré |
+|---|---|
+| `SZHCondensed-Regular.ttf` | `1a85006df634670674612ebbdf328fa4b5d945b42b53b5c124edc740dab196d0` |
+| `SZHCondensed-Bold.ttf`    | `95cf6e6b361ea1d5883b60ae47ae4e8fd13d9b3aed1ec2d53e175536390d628a` |
