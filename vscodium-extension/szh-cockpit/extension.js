@@ -40,6 +40,7 @@ function estTacheSuivie(tache) {
 }
 // ---- Le moteur de la chaîne et ses chemins -> lib/moteur.js -----------------------
 const moteur = require('./lib/moteur');
+const servicesEnv = require('./lib/services-env');
 
 const MAKEFILE_WSL = moteur.toolkitMoteur('pipeline', 'Makefile');
 // Le réimport d'un article corrigé. Seul maillon que le cockpit appelle sans passer par
@@ -71,8 +72,8 @@ const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
   versionsDivergent,
-  // ecrireModeDeveloppeur n'est plus appelée ici : l'écriture se fait désormais depuis
-  // l'onglet « Paramètres » du lanceur Windows. Elle reste exportée par lib/archivage.js.
+  // ecrireModeDeveloppeur n'est pas appelée ici : l'écriture se fait depuis l'onglet
+  // Paramètres du lanceur (lib/lanceur-reglages-hote.js).
   lireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   configAvecLangue, CONFIG_POSTE,
   // Vérificateur de traduction : un réglage du poste et non de l'éditeur, pour que trois
@@ -456,7 +457,7 @@ function reduireWarningsImpressionActif() {
 // plus le lien entre un appel de citation et sa référence — les liens posés à la main restent
 // tels quels, et l'action « Lier un appel à une référence » du cockpit reste disponible. Lu
 // ici pour l'affichage du panneau ; la valeur qui compte pour la compilation est celle
-// répercutée dans config.json (voir la branche « liensReferences » d'ouvrirReglages), seul
+// répercutée dans config.json (voir la branche « liensReferences » de traiterMessage, lib/reglages-hote.js), seul
 // pont vers pipeline/filters/szh-citations.lua, qui tourne dans WSL sans rien connaître des
 // réglages de VSCodium.
 function desactiverLiensReferencesActif() {
@@ -1438,6 +1439,7 @@ async function lancerTache(nomTache) {
     vscode.window.showErrorMessage(T('err.tache'));
     return null;
   }
+  servicesEnv.dansTache(tache);
   const execution = await vscode.tasks.executeTask(tache);
   return await attendreFinTache(execution);
 }
@@ -1483,7 +1485,7 @@ function tacheChapitrePdf(racine, slug) {
     .concat(a.variables).join(' ');
   const ligne = moteur.ligneTache(
     ['bash', '-c', 'set -o pipefail; ' + make + ' 2>&1 | tee .szh-journal.log'], { cwd: racine });
-  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args);
+  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args, ligne.options);
   const tache = new vscode.Task(
     { type: 'szh', cible: 'chapitre', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.chapitrePdf') + ' — ' + slug, 'SZH', execution, []);
@@ -1738,7 +1740,7 @@ function tacheMakeArticle(racine, slug) {
   const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
   const ligne = moteur.ligneTache(
     ['make', '-j2', '-O', '-f', MAKEFILE_WSL].concat(cibles), { cwd: racine });
-  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args);
+  const execution = new vscode.ProcessExecution(ligne.commande, ligne.args, ligne.options);
   const tache = new vscode.Task(
     { type: 'szh', cible: 'article', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.exportArticle') + ' — ' + slug, 'SZH', execution, []);
@@ -3340,10 +3342,9 @@ function activate(context) {
   // dans la barre d'état, en couleur — la décision test/production reste ouverte, ce badge
   // ne fait qu'annoncer. Couleur posée une fois pour toutes : elle ne varie pas, seule la
   // visibilité change.
-  // Pas de commande de clic : le réglage qui décide de ce badge a déménagé dans l'onglet
-  // « Paramètres » du lanceur Windows, hors de portée de VSCodium — szh.reglages n'y mène
-  // plus, ce serait une impasse. L'infobulle dit où aller à la place.
+  // Un clic mène à l'onglet Paramètres du lanceur, où se règle le mode développeur.
   const barreModeTest = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 70);
+  barreModeTest.command = 'szh.reglages';
   barreModeTest.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   context.subscriptions.push(barreModeTest);
 
@@ -3557,7 +3558,7 @@ function activate(context) {
     cmd('szh.envoyerTraduction', (item) => traductionHote.envoyerPourTraduction(fournisseur, item)),
     // Aucun constat de constats.js ne vise « reglages » avec un focus utile (vérifié dans
     // TABLE) : `item` est accepté pour honorer le contrat, rien de plus n'est câblé.
-    cmd('szh.reglages', (item) => reglagesHote.ouvrirReglages(rafraichirTout)),
+    cmd('szh.reglages', (item) => lanceurHote.ouvrirLanceur({ onglet: 'reglages' })),
     // basculerApercu (lib/apercu.js) est un INTERRUPTEUR sur l'article actif/en aperçu, pas
     // un « ouvrir l'aperçu de tel article », et ne prend même pas de slug — lui donner ce
     // sens demanderait de refaire son ciblage. `item` est accepté sans y toucher.
@@ -3783,6 +3784,7 @@ function activate(context) {
     racine: () => fournisseur.racine,
     surChangement: () => controlesHote.rafraichirPdfUa(fournisseur)
   });
+  lanceurHote.configurer({ rafraichirTout });
   lanceurHote.demarrer(context);   // le lanceur dans l'éditeur -> lib/lanceur-hote.js
   demarrageInitial();
 }

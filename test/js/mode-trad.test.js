@@ -4,13 +4,13 @@
 //   node --test "test/js/*.test.js"
 //
 // Ce que ce fichier garde :
-//   * LE PIÈGE. Un mode qui détourne TOUS les clics peut s'enfermer : allumé, si la page des
-//     réglages détournait les siens, on ne pourrait plus l'éteindre — plus aucun bouton ne
+//   * LE PIÈGE. Un mode qui détourne TOUS les clics peut s'enfermer : allumé, si l'onglet
+//     Paramètres du lanceur détournait les siens, on ne pourrait plus l'éteindre — plus aucun bouton ne
 //     répondrait, dans aucun panneau, et il faudrait éditer C:\ProgramData\SZH\config.json à
 //     la main. C'est LE défaut à empêcher, et il ne se voit sur aucune capture d'écran : la
-//     page a l'air normale, elle ne répond simplement plus. Trois contrôles le gardent — les
-//     réglages ne détournent jamais, ils ne demandent même pas l'index, et le formulaire de
-//     suggestion non plus.
+//     page a l'air normale, elle ne répond simplement plus. Trois contrôles le gardent — la
+//     barre d'onglets du lanceur et l'onglet Paramètres sont exemptés (data-trad-exempt), le
+//     reste du lanceur détourne, et le formulaire de suggestion ne détourne jamais.
 //   * LE MODE QUI NE SE VOIT PAS. Un outil dont plus aucun bouton ne répond, sans un mot,
 //     passe pour cassé. Le bandeau et son bouton de sortie sont éprouvés ici, dans la vraie
 //     page : c'est le défaut vécu la veille avec la pastille du vérificateur — module juste,
@@ -445,52 +445,58 @@ test('Échap éteint le mode depuis n’importe quel panneau', () => {
 
 // ---- LE GARDE-FOU : les réglages ne se détournent JAMAIS -------------------------------
 
-function ouvrirReglages() {
-  return ouvrir({
-    racine: RACINE, page: 'settings',
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: libellesHote(RACINE, ['REGL_LIBELLES'])
-  });
-}
+// Les réglages vivent dans l'onglet Paramètres du lanceur : la page détourne ses clics comme les
+// autres, SAUF sa barre d'onglets et cet onglet (data-trad-exempt), de quoi toujours éteindre le mode.
+const { ouvrirReglages: ouvrirParametres } = require('./page-reglages');
 
-test('réglages : la page ne détourne rien, mode allumé compris', () => {
-  const page = ouvrirReglages();
-  // Elle ne demande même pas l'état du mode : l'hôte n'a rien à lui envoyer.
-  assert.ok(!demande(page),
-    'la page des réglages demande l’index : elle pourrait donc détourner ses clics');
-  // Et même si un message arrivait quand même, elle ne s'y met pas.
+test('lanceur : la barre d’onglets et l’onglet Paramètres ne détournent rien, mode allumé compris', () => {
+  const p = ouvrirParametres();
+  const page = p.page;
+  // Le lanceur demande l'état du mode comme tout panneau : c'est l'hôte qui décide.
+  assert.ok(demande(page), 'le lanceur ne demande pas l’état du mode : l’index ne lui viendrait jamais');
   allumer(page);
-  assert.strictEqual(bandeaux(page), 0, 'la page des réglages se croit en mode « Trad »');
-  const radios = page.parId.zones.querySelectorAll('input');
-  assert.ok(radios.length > 0, 'la page des réglages n’a pas rendu ses groupes');
+  assert.strictEqual(bandeaux(page), 1, 'aucun bandeau dans le lanceur : il ne dit pas qu’il est détourné');
+  const radios = p.tous('input');
+  assert.ok(radios.length > 0, 'l’onglet Paramètres n’a pas rendu ses groupes');
   cliquer(page, radios[0]);
   assert.strictEqual(detournes(page).length, 0,
-    'ON NE PEUT PLUS ÉTEINDRE LE MODE : la page des réglages détourne ses propres clics');
+    'ON NE PEUT PLUS ÉTEINDRE LE MODE : l’onglet Paramètres détourne ses propres clics');
+  // La barre d'onglets non plus : sinon on ne pourrait pas rejoindre Paramètres.
+  cliquer(page, p.parId('onglet-reglages'));
+  assert.strictEqual(detournes(page).length, 0,
+    'ON NE PEUT PLUS REJOINDRE LES PARAMÈTRES : la barre d’onglets détourne ses clics');
+  // Le reste du lanceur, lui, est détourné : sans quoi le mode ne relirait rien dans cette page.
+  cliquer(page, poserBouton(page, 'Ouvrir l’article'));
+  assert.strictEqual(detournes(page).length, 1,
+    'hors barre d’onglets et Paramètres, le lanceur ne détourne pas ses clics');
 });
 
 test('réglages : le mode s’allume et s’éteint depuis un vrai bouton radio', () => {
-  const page = ouvrirReglages();
-  const choix = page.parId.zones.querySelectorAll('input').filter((i) => i.name === 'modeTrad');
+  const p = ouvrirParametres();
+  const choix = p.tous('input').filter((i) => i.name === 'modeTrad');
   assert.strictEqual(choix.length, 2,
     'le mode « Trad » n’a pas de réglage : il ne s’allumerait nulle part');
-  choix[0].dispatchEvent({ type: 'change' });
-  assert.ok(page.messages.some((m) => m.type === 'regler' && m.cle === 'modeTrad' && m.valeur === 'actif'),
-    'le choix ne part pas à l’hôte ; messages : ' + JSON.stringify(page.messages));
+  const actif = choix.filter((i) => i.value === 'actif')[0];
+  assert.ok(actif, 'pas d’option « actif » pour le mode « Trad »');
+  actif.checked = true;
+  actif.dispatchEvent({ type: 'change' });
+  assert.ok(p.messages.some((m) => m.type === 'regler' && m.cle === 'modeTrad' && m.valeur === 'actif'),
+    'le choix ne part pas à l’hôte ; messages : ' + JSON.stringify(p.messages));
 });
 
 test('réglages : les suggestions d’interface se comptent et leur dossier s’ouvre', () => {
-  const page = ouvrirReglages();
+  const p = ouvrirParametres();
   const libelle = TEXTES_COCKPIT.fr['regl.suggInterface.ouvrir'];
-  const boutons = page.parId.zones.querySelectorAll('button').filter((b) => b.textContent === libelle);
+  const boutons = p.tous('button').filter((b) => b.textContent === libelle);
   assert.strictEqual(boutons.length, 1,
     'aucun bouton pour ouvrir le dossier : les suggestions seraient écrites et jamais relues');
   boutons[0].dispatchEvent({ type: 'click' });
-  assert.ok(page.messages.some((m) => m.type === 'suggestionsInterface'),
-    'le bouton est muet ; messages : ' + JSON.stringify(page.messages));
+  assert.ok(p.messages.some((m) => m.type === 'suggestionsInterface'),
+    'le bouton est muet ; messages : ' + JSON.stringify(p.messages));
   // Le compte arrive avec les valeurs, et se lit en toutes lettres.
-  page.envoyer({ type: 'valeurs', valeurs: {}, suggInterface: 3 });
-  const dit = TEXTES_COCKPIT.fr['regl.suggInterface'].split('{0}').join('3');
-  assert.ok(page.parId.zones.textContent.includes(dit),
+  p.envoyer({ type: 'valeurs', valeurs: {}, suggInterface: 3 });
+  const dit = TEXTES_COCKPIT.fr['lanceur.regl.sugg.plus'].split('{0}').join('3');
+  assert.ok(p.panneau.textContent.includes(dit),
     'le compte des suggestions ne s’affiche pas : ' + JSON.stringify(dit));
 });
 
@@ -596,12 +602,10 @@ test('formulaire : une cible absente reste le geste d’avant, sur un article', 
 // avec leur raison. Un panneau neuf entre donc dans la liste tout seul, et ce test tombe
 // tant que sa garde n'est pas posée.
 
-// Les deux seuls gestionnaires qui ne détournent JAMAIS, nommés par leur fonction d'accueil.
-// Ce n'est pas une dispense de confort : c'est le garde-fou du mode lui-même.
+// Les seuls gestionnaires qui ne détournent JAMAIS, nommés par leur fonction d'accueil. Les
+// réglages n'en font plus partie : ils vivent dans le lanceur, qui détourne mais exempte sa barre
+// d'onglets et l'onglet Paramètres (éprouvés plus haut), de quoi toujours éteindre le mode.
 const PANNEAUX_SANS_MODE_TRAD = {
-  ouvrirReglages:
-    'les réglages : c’est là qu’on éteint le mode. S’ils détournaient leurs clics, on ' +
-    'allumerait le mode sans pouvoir l’éteindre.',
   montrerPanneauSuggestion:
     'le formulaire de suggestion : c’est lui que le mode ouvre. Le détourner le rendrait ' +
     'incapable de recevoir la suggestion qu’il demande.',
@@ -665,7 +669,7 @@ function gestionnairesDe(chemin) {
   return trouves;
 }
 
-test('mode trad : tout panneau détourne ses clics, sauf les deux gardiens du mode', () => {
+test('mode trad : tout panneau détourne ses clics, sauf ceux que le mode exclut', () => {
   const tous = [];
   for (const chemin of sourcesHote()) { tous.push(...gestionnairesDe(chemin)); }
 
@@ -689,7 +693,7 @@ test('mode trad : tout panneau détourne ses clics, sauf les deux gardiens du mo
   assert.deepStrictEqual(detournentATort, [],
     'un panneau dispensé détourne quand même ses clics : c’est le garde-fou du mode qui saute.');
 
-  // Les deux dispenses doivent encore correspondre à un panneau réel : une fonction renommée
+  // Les dispenses doivent encore correspondre à un panneau réel : une fonction renommée
   // laisserait une dispense muette, et le vrai panneau passerait sans garde ni alerte.
   const noms = new Set(tous.map((g) => g.fonction));
   for (const nom of Object.keys(PANNEAUX_SANS_MODE_TRAD)) {

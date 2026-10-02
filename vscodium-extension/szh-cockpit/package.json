@@ -148,6 +148,24 @@
           "default": "",
           "description": "%config.langue%"
         },
+        "szh.shlinkUrl": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%config.shlinkUrl%"
+        },
+        "szh.produitParDefaut": {
+          "type": "string",
+          "enum": [
+            "",
+            "revue",
+            "zeitschrift",
+            "livre"
+          ],
+          "default": "",
+          "scope": "application",
+          "description": "%config.produitParDefaut%"
+        },
         "szh.apercuMode": {
           "type": "string",
           "enum": [
@@ -885,10 +903,6 @@
         {
           "command": "szh.envoyerTraduction",
           "when": "szh.peut.traductions"
-        },
-        {
-          "command": "szh.reglages",
-          "when": "szh.estRevue || szh.estLivre"
         },
         {
           "command": "szh.apercuBiblio",

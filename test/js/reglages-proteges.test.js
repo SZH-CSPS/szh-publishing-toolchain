@@ -166,14 +166,15 @@ test('la mise à jour déploie le fichier, et l’écrase — c’est son sens',
 // ---- L'hôte : verrouillé par défaut, et le déverrouillage passe par une modale ----
 
 const { revueDEssai, activerHote } = require('./hote-factice');
+const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
 async function panneauReglages() {
   await HOTE.executer('szh.reglages');
-  const p = HOTE.panneauDeType('szhReglages');
+  const p = HOTE.panneauDeType('szhLanceur');
   assert.ok(p, 'panneau des réglages absent');
-  await p._recepteur({ type: 'pret' });
+  await p._recepteur({ type: MSG.PRET });
   return p;
 }
 function dernier(p, type) {
@@ -307,12 +308,9 @@ test('« Télécharger » écrit un fichier déployable, même verrouillé', asy
 // champs restent saisissables invite à saisir, et le refus n'arrive qu'après coup : la page
 // doit dire, avant le geste, que ces réglages ne sont pas à elle.
 
-function ouvrirReglages() {
-  const { ouvrir, libellesHote } = require('./dom-minimal');
-  const page = ouvrir({
-    racine: RACINE, page: 'settings', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: libellesHote(RACINE, ['REGL_LIBELLES'])
-  });
+function ouvrirFormulaire() {
+  const { ouvrirReglages } = require('./page-reglages');
+  const page = ouvrirReglages();
   const cit = require(path.join(COCKPIT, 'lib', 'citations.js'));
   const biblio = {
     titres: cit.normaliserConfigBiblio({}).titres,
@@ -331,8 +329,8 @@ function ouvrirReglages() {
 // Tous les contrôles des trois blocs protégés, à plat.
 function controles(page) {
   const sortie = [];
-  for (const id of ['biblio', 'taches', 'ojs']) {
-    const bloc = page.parId[id];
+  for (const id of ['regl-biblio', 'regl-taches', 'regl-ojs']) {
+    const bloc = page.parId(id);
     if (!bloc) { continue; }
     sortie.push(...bloc.querySelectorAll('input, select, textarea, button'));
   }
@@ -340,9 +338,9 @@ function controles(page) {
 }
 
 test('le formulaire grise les trois blocs tant qu’on n’a pas déverrouillé', () => {
-  const { page, biblio, taches } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirFormulaire();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
+    type: MSG.VALEURS, valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
   const verrouilles = controles(page);
@@ -364,14 +362,14 @@ test('le formulaire grise les trois blocs tant qu’on n’a pas déverrouillé'
 });
 
 test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () => {
-  const { page, biblio, taches } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirFormulaire();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
+    type: MSG.VALEURS, valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
-  const zone = page.parId.proteges;
+  const zone = page.parId('regl-proteges');
   assert.ok(zone, 'le bloc des réglages protégés n’est pas dans la page');
-  const cases = zone.querySelectorAll('input');
+  const cases = zone.querySelectorAll('label.lanceur-verrou input');
   assert.strictEqual(cases.length, 1, 'une seule case, « déverrouiller », attendue');
   assert.strictEqual(cases[0].checked, false);
 
@@ -382,7 +380,7 @@ test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () =>
   assert.ok(controles(page).every((el) => el.classes.has('fige')),
     'la page s’est déverrouillée toute seule, sans attendre la réponse de l’hôte');
 
-  page.envoyer({ type: 'proteges', deverrouille: true, divergences: [], avertissement: '' });
+  page.envoyer({ type: MSG.PROTEGES, deverrouille: true, divergences: [], avertissement: '' });
   const ouverts = controles(page);
   assert.ok(ouverts.every((el) => !el.classes.has('fige')), 'des contrôles sont restés grisés');
   assert.ok(ouverts.every((el) => !el.disabled && !el.readOnly), 'des contrôles sont restés bloqués');
@@ -390,18 +388,18 @@ test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () =>
 });
 
 test('le formulaire dit quand ce poste s’écarte de la version de la rédaction', () => {
-  const { page, biblio, taches } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirFormulaire();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
+    type: MSG.VALEURS, valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
-  const zone = page.parId.proteges;
+  const zone = page.parId('regl-proteges');
   const bandeau = () => zone.querySelectorAll('.szh-notif--attention')[0];
   assert.ok(bandeau(), 'le bandeau de divergence n’est pas posé dans la page');
   assert.strictEqual(bandeau().hidden, true, 'le bandeau paraît alors qu’il n’y a rien à dire');
 
   page.envoyer({
-    type: 'proteges', deverrouille: true, divergences: ['biblio'],
+    type: MSG.PROTEGES, deverrouille: true, divergences: ['biblio'],
     avertissement: 'Ce poste ne porte plus les valeurs de la rédaction.'
   });
   assert.strictEqual(bandeau().hidden, false, 'la divergence est mesurée mais pas montrée');
@@ -413,12 +411,12 @@ test('le formulaire dit quand ce poste s’écarte de la version de la rédactio
 // le dise — la page s'affiche, le bloc reste vide, et personne ne s'en aperçoit avant le
 // prochain bouclage.
 test('le formulaire montre les tâches des deux revues, et relit ce qui est à l’écran', () => {
-  const { page, biblio, taches } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirFormulaire();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
+    type: MSG.VALEURS, valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: true, divergences: [], avertissement: '' }
   });
-  const zone = page.parId.taches;
+  const zone = page.parId('regl-taches');
   assert.ok(zone, 'le bloc des tâches n’est pas dans la page');
   const champs = zone.querySelectorAll('[data-tache-revue]');
   const attendus = (taches.table.revue.length + taches.table.zeitschrift.length) * 2;

@@ -419,7 +419,7 @@ depuis n’importe où dans la revue) :
 
 ### Les réglages de la rédaction (lecture seule)
 
-Trois blocs de **Réglages SZH** ne se modifient pas : **« Titre de la bibliographie »**,
+Trois blocs de la carte **« Réglages de la rédaction »** de l’onglet **Paramètres** ne se modifient pas : **« Titre de la bibliographie »**,
 **« Tâches par article »** et **« Export OJS »**. Ils ne décrivent pas votre confort mais
 la façon dont la revue paraît et dont elle se fabrique, et ils valent pour **toute la
 rédaction** : une rubrique OJS renommée sur un seul poste fait atterrir ses articles dans la
@@ -607,9 +607,9 @@ l’indique ; s’il y a une hésitation entre plusieurs, on choisit celui qu�
 relire ; si rien n’est reconnu, le formulaire s’ouvre quand même, tel quel.
 
 **Comment en sortir, et c’est le point à retenir** : tant que ce mode est actif, plus aucun
-bouton ne fait ce qu’il fait d’habitude, dans aucun panneau – seuls les Réglages et le
-formulaire de suggestion continuent de répondre normalement, précisément parce que c’est par
-eux qu’on doit pouvoir sortir. Un bandeau reste affiché en haut de chaque page pour le
+bouton ne fait ce qu’il fait d’habitude, dans aucun panneau – seuls la barre d’onglets de Pronto,
+son onglet Paramètres et le formulaire de suggestion continuent de répondre normalement,
+précisément parce que c’est par eux qu’on doit pouvoir sortir. Un bandeau reste affiché en haut de chaque page pour le
 rappeler, avec un bouton « Éteindre le mode « Trad » ». La touche Échap fait la même chose,
 depuis n’importe quel panneau. Si un jour plus rien ne semble répondre dans le cockpit,
 c’est le premier réflexe à avoir.
@@ -1466,7 +1466,7 @@ Quatre choses valent la peine d’être sues.
   visible, même à un mauvais moment : il vaut mieux un message qu’un poste qui décroche en
   silence. Si cette fenêtre échoue, elle dit quoi fermer.
 - **Vous pouvez choisir qu’elle ne montre jamais de fenêtre.** Dans l’onglet **Paramètres** du
-  lanceur, « Mettre à jour en silence, sans fenêtre » fait exactement ce que la mise à jour
+  lanceur, « Mise à jour de l’outil → En silence » fait exactement ce que la mise à jour
   automatique fait déjà chaque semaine, sans jamais rien afficher à l’écran, même en cas
   d’échec. Rien n’est perdu pour autant : l’onglet **Journal** du lanceur garde la trace de
   chaque tentative, avec sa date et son issue, et c’est là qu’on va voir ce qui s’est passé
@@ -1609,7 +1609,7 @@ mise en forme (bascule).
 
 Le menu Démarrer porte **une seule** entrée de lanceur, **« Pronto »**, avec un
 onglet par produit – **Revue**, **Zeitschrift**, **Book** (ces noms d’onglet ne se traduisent pas)
-– plus un onglet **Journal** et un onglet **Paramètres**. Chaque onglet de produit ne montre
+– plus un onglet **Journal** (le **Log**) et un onglet **Paramètres**. Chaque onglet de produit ne montre
 **que son produit** et ne crée **que dans son dossier** – c’est ce qui garantit qu’un numéro ne se retrouve pas rangé du mauvais
 côté. (L’entrée **« Pronto (Updater) »** du même menu, elle, ne crée rien : voir
 « Mettre l’outil à jour soi-même ».)
@@ -1630,39 +1630,42 @@ ne va pas »  :
   pièce jointe tout seul : la fenêtre vous invite à glisser le fichier dans le brouillon avant
   de l’envoyer.
 
-L’onglet **Paramètres** choisit quatre choses. Les trois premières sont pour votre compte
-Windows seulement (une autre personne qui ouvre une session sur le même poste garde les siens) :
-quel onglet s’ouvre par défaut, dans quelle langue le lanceur lui-même s’affiche, et si la mise
-à jour se fait avec ou sans fenêtre (voir plus bas « Mettre l’outil à jour soi-même »). Laissé
-sur **Automatique**, l’onglet suit la langue du poste – allemand donne Zeitschrift, français
-donne Revue, tout le reste donne Zeitschrift ; le livre n’est jamais l’onglet automatique, il
-faut le choisir. Ce réglage d’onglet ne change rien à la langue de l’**éditeur** une fois une
-revue ouverte (voir « La langue de l’outil » plus haut) : ce sont deux réglages distincts.
+L’onglet **Paramètres** rassemble tous les réglages de Pronto, **sur une seule page**. La commande
+**🚀 Commande → Réglages SZH** (ou le badge « Dossier de test » de la barre d’état) y mène
+directement, avec ou sans numéro ouvert. Elle se lit de haut en bas, en cinq listes puis une carte :
 
-Le quatrième, **« Mode développeur (dossiers de test) »**, est différent des trois autres : il
-vaut pour **tout le poste**, quel que soit le compte qui ouvre une session, et non pour vous
-seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et la production (voir
-plus bas « Où vivent vos numéros ») ; les listes et le titre de la fenêtre ne le suivent qu’à la
-prochaine ouverture du lanceur.
+- **Affichage** – la langue de l’interface, le thème, la taille de l’interface et celle du texte
+  des articles et des chapitres (affichage seulement : le PDF ne change pas).
+- **Rédaction et aperçu** – l’aperçu par défaut (HTML ou PDF), le repli des tableaux des articles non
+  sélectionnés, les avertissements sur la taille des images, la conversion des images CMJN en RVB
+  et les liens entre appels de citation et références.
+- **Ce poste** – le produit proposé à l’ouverture de Pronto (laissé sur **Automatique**, il suit la
+  langue : allemand donne Zeitschrift, français donne Revue ; le livre n’est jamais choisi
+  automatiquement), la **mise à jour de l’outil** avec fenêtre visible ou « en silence » (voir plus bas
+  « Mettre l’outil à jour soi-même »), et le **mode développeur (dossiers de test)**. Ce dernier
+  porte la pastille **« Tout le poste »** : il vaut pour tous les comptes du poste, et non pour vous
+  seul. C’est lui qui bascule entre le dossier de test et la production (voir « Où vivent vos
+  numéros ») ; les listes se rechargent aussitôt.
+- **Services en ligne** – l’adresse du raccourcisseur de liens (Shlink), la clé d’API Shlink et la clé
+  d’API OJS (voir ci-dessous).
+- **Traduction** – le vérificateur de traduction et le mode « Trad » (tous deux « Tout le poste »),
+  les suggestions sur les textes de l’outil et le fichier de langue de l’interface.
+- **Réglages de la rédaction** – une carte **verrouillée** (voir « Les réglages de la rédaction »).
 
-L’onglet **Paramètres** porte aussi trois champs liés à Shlink et à OJS, pour votre compte
-seulement comme les trois premiers réglages ci-dessus :
+Les réglages de l’éditeur (thème, tailles, aperçu) s’appliquent tout de suite ; le changement de langue
+reconstruit la page dans la nouvelle langue, mais les **menus de VSCodium** ne changent qu’au prochain
+démarrage. Deux réglages sont aussi écrits dans le fichier de votre compte Windows, parce que des
+programmes qui tournent hors de l’éditeur les lisent : la **mise à jour silencieuse** (la tâche
+planifiée) et la **langue** (les fenêtres d’installation). Vous n’avez rien à faire pour cela.
 
-- **« Adresse du raccourcisseur de liens (Shlink) »** – l’adresse de l’instance Shlink qui
-  raccourcit les liens des QR codes. Doit commencer par `https://` ; une adresse mal formée
-  n’est pas enregistrée, et le champ vous le dit.
-- **« Clé d’API Shlink »** – masquée à l’écran (une case **« Afficher »** la montre en clair au
-  besoin). Un champ laissé vide efface la clé enregistrée.
-- **« Clé d’API OJS »** – même principe que la clé Shlink. Rien ne la lit encore aujourd’hui :
-  elle est posée en réserve pour un usage à venir.
-
-Les deux clés ne sont **jamais** écrites en clair sur le disque : elles sont chiffrées (DPAPI,
-liée à votre compte Windows sur ce poste) dans le même fichier que les trois premiers
-réglages. Une copie de ce fichier sur un autre poste, ou lue par un autre compte, rend ces deux
-champs illisibles plutôt que de révéler la clé. Ces trois réglages sont transmis à
-l’environnement de fabrication (dans WSL) au moment où vous ouvrez une revue dans l’éditeur :
-**un éditeur déjà ouvert ne voit pas un changement fait ici** – fermez-le et rouvrez une revue
-pour qu’il en tienne compte.
+Pour les services en ligne, l’adresse Shlink doit commencer par `https://` ; une adresse mal formée
+n’est pas enregistrée, et la page vous le dit. Les **clés d’API** ne s’affichent **jamais**, ni en
+clair ni masquées : la page dit seulement **« Définie »** ou **« Absente »**. Pour en changer une, on
+saisit la nouvelle puis **Enregistrer** ; **Effacer**, ou un champ vide enregistré, la supprime. Elles
+sont gardées dans le **coffre de VSCodium** (propre à votre compte Windows sur ce poste), jamais dans
+un fichier ni dans un journal. L’éditeur les transmet à l’environnement de fabrication (dans WSL) à
+chaque compilation qu’il lance : un changement fait ici vaut dès la compilation suivante, sans
+rouvrir la revue. La clé OJS n’est pas encore lue par la chaîne ; elle est gardée pour un usage à venir.
 
 Menu Démarrer → **Pronto** → l’onglet du produit voulu → bouton
 **« Nouvelle revue… »** (en bas à gauche).
@@ -1753,15 +1756,14 @@ production. Le lanceur le dit **toujours**, à trois endroits :
   revue… » et « Nouveau livre… ».
 
 Dans le cockpit, un numéro déjà ouvert le montre aussi, par un badge orangé de la barre d’état,
-« Dossier de test » (icône éprouvette). Il ne se clique plus : son infobulle dit désormais où se
-règle le mode développeur, et précise si c’est le réglage du poste ou seulement son défaut,
+« Dossier de test » (icône éprouvette). Un clic ouvre l’onglet **Paramètres**, où se
+règle le mode développeur ; son infobulle précise si c’est le réglage du poste ou seulement son défaut,
 faute de configuration.
 
 La bascule se fait dans le lanceur : menu Démarrer → **Pronto** → onglet
-**Paramètres** → « Mode développeur (dossiers de test) ». C’est le seul réglage de cet onglet
-qui vaille pour **tout le poste**, et non pour votre seul compte Windows. Il ne déplace **aucun
-fichier** : il change l’endroit où le lanceur regarde, et les listes ne le suivent qu’à la
-prochaine ouverture du lanceur. Si vos numéros disparaissent des listes, lisez ces deux lignes
+**Paramètres** → « Ce poste → Mode développeur (dossiers de test) » (ou **🚀 Commande → Réglages SZH**). Il
+vaut pour **tout le poste**, et non pour votre seul compte Windows. Il ne déplace **aucun
+fichier** : il change l’endroit où le lanceur regarde, et les listes se rechargent aussitôt. Si vos numéros disparaissent des listes, lisez ces deux lignes
 avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPLACEMENTS.md`).
 
 ## L’onglet « Export et secrétariat »

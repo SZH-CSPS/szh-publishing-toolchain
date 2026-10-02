@@ -250,7 +250,7 @@ Une zone de l'interface est un module `lib/<zone>-hote.js` qui suit toujours le 
 
 Les modules hôtes : `accueil-hote`, `controles-hote`, `coedition-hote`,
 `documentation-hote`, `import-hote`, `import-verif-hote`, `medias-hote`, `metadonnees-hote`,
-`pagination-hote`, `pdfua-hote`, `reglages-hote`, `table-hote`, `traduction-hote`,
+`pagination-hote`, `pdfua-hote`, `reglages-hote`, `lanceur-reglages-hote`, `table-hote`, `traduction-hote`,
 `uri-hote` (les liens `vscodium://`, sans panneau), `vue-articles-hote`, `vue-ensemble-hote`, ainsi que `cycle-vie.js` et `apercu.js`, qui
 suivent le même motif ; `accueil-hote` et `coedition-hote` n'ont besoin d'aucun rappel, donc
 d'aucun `configurer()`. Les autres modules de `lib/` sont purs ou presque : sans `vscode`,
@@ -297,7 +297,7 @@ Les pages suivent un design atomique de fait, sans cadre :
 |---|---|---|
 | Jetons et atomes | `_design.css`, `_commun.js` | jetons tirés des couleurs de l'éditeur et de l'échelle de `print.css` ; `SZH.poser`, `SZH.icone`, `SZH.notif`, `SZH.modale`, `SZH.autoEnregistrement`… |
 | Molécules partagées | `_auteurs.*`, `_fiches.*`, `_numero.*`, `_liste.css` | la fiche d'auteur·e, la carte de métadonnées d'article, le formulaire du numéro, la liste de cartes |
-| Pages | `metadata-*`, `medias-article`, `table-editor`, `documentation`, `articles`, `vue-ensemble`, `traduction`, `settings`, `import-verif`, `suggestion`, `nouveautes` | une vue, son script et ses ajustements |
+| Pages | `metadata-*`, `medias-article`, `table-editor`, `documentation`, `articles`, `vue-ensemble`, `traduction`, `import-verif`, `suggestion`, `nouveautes` | une vue, son script et ses ajustements |
 
 `test/js/webviews.test.js` rend chaque page dans un DOM minimal, et `test/js/hote.test.js`
 active l'extension sur un faux `vscode` (`test/js/hote-factice.js`) puis ouvre chaque panneau.

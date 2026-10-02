@@ -295,7 +295,8 @@ test('lanceur : chaque texte affiché vient de l’hôte', () => {
   p.envoyer({ type: MSG.LANCEUR_FIN, commande: 'newsletter', ok: true, texte: 'Bilan.', dossier: 'C:\\E' });
   clic(parId(p, 'onglet-nouveau'));
   clic(parId(p, 'onglet-journal'));
-  const donnees = ['Bilan.', ' Bilan.'];
+  // Les noms des deux langues s'écrivent chacun dans sa langue, et les tailles sont des nombres de pixels.
+  const donnees = ['Bilan.', ' Bilan.', 'Français', 'Deutsch', '14 px', '16 px', '18 px'];
   for (const pr of c.produits) {
     donnees.push(pr.libelle);
     for (const x of pr.enCours.concat(pr.archives)) { donnees.push(x.nom, x.titre); }
@@ -316,7 +317,7 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   const js = fs.readFileSync(path.join(COCKPIT, 'media', 'lanceur.js'), 'utf8');
   const lus = new Set([...js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)].map((m) => m[1]));
   // Les clés lues par une variable (VERDICTS, ISSUES, remplir, pluriel) se nomment entre apostrophes.
-  for (const m of js.matchAll(/'((?:prod|nv|sec|jrn)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
+  for (const m of js.matchAll(/'((?:prod|nv|sec|jrn|rg)[A-Z][A-Za-z]+)'/g)) { lus.add(m[1]); }
   const fournis = new Set(Object.keys(TXT));
   for (const cle of lus) {
     const pluriel = fournis.has(cle + 'Un') && fournis.has(cle + 'Plus');
@@ -330,19 +331,23 @@ test('lanceur : chaque TXT.x de la page est fourni et lu, et chaque clé existe 
   const debut = src.indexOf('function textesLanceur');
   assert.notStrictEqual(debut, -1, 'textesLanceur a quitté lib/lanceur-page.js');
   const bloc = src.slice(debut, src.indexOf('\n}', debut));
-  const cles = [...bloc.matchAll(/T\('([^']+)'\)/g)].map((m) => m[1]);
+  const cles = [...bloc.matchAll(/\bTP?\('([^']+)'/g)].map((m) => m[1]);
   assert.strictEqual(cles.length, Object.keys(TXT).length);
+  // Les textes des réglages d'avant la fusion gardent leurs clés (regl., ojs., biblio., art.taches.).
+  const reutilisees = /^(lanceur|regl|ojs|biblio|art.taches)./;
   for (const c of cles) {
-    assert.ok(c.startsWith('lanceur.'), c);
+    assert.ok(reutilisees.test(c), c);
     assert.ok(c in TEXTES_COCKPIT.fr, 'clé sans texte français : ' + c);
     assert.ok(c in TEXTES_COCKPIT.de, 'clé sans texte allemand : ' + c);
   }
   // Et aucune clé lanceur.* orpheline dans lib/i18n.js : chacune va à la page, ou sert à l'hôte.
-  const hote = fs.readFileSync(path.join(COCKPIT, 'lib', 'lanceur-hote.js'), 'utf8');
+  const hote = ['lanceur-hote.js', 'lanceur-reglages-hote.js']
+    .map((f) => fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8')).join('\n');
   const clesHote = [...hote.matchAll(/'(lanceur\.[^']+)'/g)].map((m) => m[1]);
   for (const c of clesHote) { assert.ok(c in TEXTES_COCKPIT.de, 'clé de l’hôte sans texte allemand : ' + c); }
+  // Une variante « .livre » (TP) se lit avec sa clé de base.
   const orphelines = Object.keys(TEXTES_COCKPIT.fr).filter((k) => k.startsWith('lanceur.')
-    && cles.indexOf(k) === -1 && clesHote.indexOf(k) === -1);
+    && cles.indexOf(k) === -1 && clesHote.indexOf(k) === -1 && cles.indexOf(k.replace(/\.livre$/, '')) === -1);
   assert.deepStrictEqual(orphelines, []);
 });
 

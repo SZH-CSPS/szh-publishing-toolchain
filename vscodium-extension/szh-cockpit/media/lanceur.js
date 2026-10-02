@@ -6,9 +6,11 @@
 // { produit, titre, annee, reference, genre, maquette, format },
 // lanceurExporter { commande, revue, numeros | cles }, lanceurOjsCharger { revue, depuisAnnee },
 // lanceurInterrompre { commande }, lanceurAfficher { chemin },
-// lanceurJournalLire { rang }, lanceurJournalEditeur { rang }, lanceurSignaler { phrase, rang }.
+// lanceurJournalLire { rang }, lanceurJournalEditeur { rang }, lanceurSignaler { phrase, rang },
+// regler { cle, valeur }, lanceurService { service, valeur }, deverrouiller { valeur },
+// telecharger-proteges, exporterLangue, suggestionsInterface, reglerOjs, reglerBiblio, taches-enregistrer.
 // Depuis l'hôte :
-//   charger { langue, produit, anneeCourante, modeTest, ancrageAbsent, version, exports,
+//   charger { langue, onglet, produit, anneeCourante, modeTest, ancrageAbsent, version, exports,
 //             produits: [{ jeton, libelle, type: 'numero' | 'livre', racine, anneeZeroVolume,
 //                          hors: { nombre, dossier }, enCours: [entrée], archives: [entrée] }],
 //             dernierOuvert, historique: { edudoc: { <revue>: { <clé>: <date> } }, caracteres },
@@ -20,6 +22,10 @@
 //   lanceurFin { commande, ok, texte, annule, dossier, date }
 //   lanceurJournalTexte { rang, texte, lignes } ou { rang, erreur }
 //   lanceurSignale { issue: 'fait' | 'attente' | 'refuse', courriel }
+//   lanceurAller { onglet }   la commande szh.reglages ouvre Paramètres
+//   valeurs { valeurs, poste, services, proteges, ojs, biblio, taches, auteursOjs, suggInterface,
+//             avertLangue }   les réglages ; une clé n'y figure jamais, seulement « définie » ou non
+//   proteges, enregistre { bloc }, erreur { bloc, message }   le verrou et l'issue d'une écriture
 (function () {
   'use strict';
   var TXT = __TXT__;
@@ -58,6 +64,8 @@
   tablist.setAttribute('aria-label', TXT.ongletsAria);
   var boutonsOnglet = [];
   var panneaux = {};
+  // Le mode « Trad » détourne les clics, sauf ici : la barre d'onglets et Paramètres, où on l'éteint.
+  tablist.dataset.tradExempt = '1';
   ONGLETS.forEach(function (o, i) {
     var b = poser(tablist, 'button', 'lanceur-onglet', o.libelle);
     b.type = 'button';
@@ -90,6 +98,7 @@
     p.setAttribute('aria-labelledby', b.id);
     p.setAttribute('tabindex', '-1');
     panneaux[o.cle] = p;
+    if (o.cle === 'reglages') { p.dataset.tradExempt = '1'; }
   });
   var ongletActif = '';
 
@@ -110,9 +119,7 @@
   // Produits d'abord, toujours : c'est le geste de tous les quinze jours.
   activer('produits', false);
 
-  ['preproc', 'reglages'].forEach(function (cle) {
-    panneaux[cle].appendChild(SZH.notif('info', TXT.avenir));
-  });
+  panneaux.preproc.appendChild(SZH.notif('info', TXT.avenir));
 
   // ---- Le produit choisi ----
   // Un seul choix pour Produits, Nouveau et Secrétariat : passer à la Zeitschrift dans un
@@ -1010,6 +1017,738 @@
     fait: ['ok', 'jrnSignalerFait'], attente: ['info', 'jrnSignalerAttente'], refuse: ['danger', 'jrnSignalerRefuse']
   };
 
+  // ---- Paramètres ----
+  // Cinq listes de réglages construites comme les tâches du Secrétariat (une rangée : ce qu'elle
+  // règle, la valeur, le geste), puis la carte des réglages de la rédaction, verrouillée. Tout
+  // arrive par `valeurs` ; chaque geste repart en `regler` (ou `lanceurService`), et la page se
+  // règle sur ce que l'hôte répond, jamais sur son propre geste.
+  // Les listes sont posées dans un module local pour que leurs noms (ojs, taches, champ…) ne
+  // heurtent pas ceux du Secrétariat.
+  var reglagesPage = (function (panneau) {
+    var zones = poser(panneau, 'div', '');
+    var avisReglages = poser(zones, 'div', 'lanceur-avis');
+    avisReglages.setAttribute('role', 'alert');
+    var rangeeN = 0;
+
+    function afficherErreur(texte) {
+      avisReglages.textContent = '';
+      if (texte) { avisReglages.appendChild(SZH.notif('danger', String(texte))); }
+    }
+    function liste(titre) {
+      poser(zones, 'h2', 'lanceur-intertitre', titre);
+      return poser(zones, 'div', 'lanceur-taches');
+    }
+    // Même gabarit qu'une tâche du Secrétariat : le texte, le réglage, le geste.
+    function rangee(parent, titre, aide, portee) {
+      var el = poser(parent, 'div', 'lanceur-tache');
+      el.setAttribute('role', 'group');
+      var ligne = poser(el, 'div', 'lanceur-tache-ligne');
+      var texte = poser(ligne, 'div', 'lanceur-tache-texte');
+      var nom = poser(texte, 'h3', 'lanceur-tache-nom', titre);
+      nom.id = 'regl-nom-' + (++rangeeN);
+      el.setAttribute('aria-labelledby', nom.id);
+      if (portee) { poser(nom, 'span', 'szh-pastille lanceur-portee', portee); }
+      var aideP = aide ? poser(texte, 'p', 'lanceur-tache-aide', aide) : null;
+      return { el: el, nom: nom, aide: aideP, reglage: poser(ligne, 'div', 'lanceur-tache-reglage'),
+        action: poser(ligne, 'div', 'lanceur-tache-action') };
+    }
+    function envoyerRegler(cle, valeur) { api.postMessage({ type: MSG.REGLER, cle: cle, valeur: valeur }); }
+
+    // Un choix parmi quelques valeurs : des radios natifs, nommés d'après la clé du réglage.
+    var radios = {};
+    function choix(parent, cle, titre, aide, options, portee) {
+      var r = rangee(parent, titre, aide, portee);
+      var g = poser(r.reglage, 'div', 'lanceur-segments');
+      g.setAttribute('role', 'radiogroup');
+      g.setAttribute('aria-labelledby', r.nom.id);
+      options.forEach(function (o) {
+        var l = poser(g, 'label', 'lanceur-segment');
+        var radio = poser(l, 'input', '');
+        radio.type = 'radio';
+        radio.name = cle;
+        radio.value = o[0];
+        radio.addEventListener('change', function () { if (radio.checked) { envoyerRegler(cle, o[0]); } });
+        poser(l, 'span', '', o[1]);
+      });
+      return r;
+    }
+    function cocher(valeurs) {
+      Object.keys(valeurs).forEach(function (cle) {
+        var r = panneau.querySelector('input[name="' + cle + '"][value="' + String(valeurs[cle]) + '"]');
+        if (r) { r.checked = true; }
+      });
+    }
+    function bouton(parent, texte, fn) {
+      var b = SZH.bouton(texte, fn);
+      parent.appendChild(b);
+      return b;
+    }
+
+    // ---- Affichage ----
+    var a = liste(TXT.rgAffichage);
+    var rLangue = choix(a, 'langue', TXT.rgLangue, TXT.rgLangueAide, [['fr', 'Français'], ['de', 'Deutsch']]);
+    // La discordance des menus de VSCodium et des textes de l'outil se dit sous la langue.
+    var zoneLangue = poser(rLangue.el, 'p', 'szh-notif szh-notif--attention szh-notif--discret');
+    zoneLangue.hidden = true;
+    choix(a, 'theme', TXT.regl_theme, '', [['systeme', TXT.regl_themeSysteme], ['clair', TXT.regl_themeClair], ['sombre', TXT.regl_themeSombre]]);
+    choix(a, 'zoom', TXT.regl_zoom, '', [['0', TXT.regl_zoomNormal], ['1', TXT.regl_zoomGrand], ['2', TXT.regl_zoomTresGrand]]);
+    choix(a, 'policeMd', TXT.rgPolice, TXT.rgPoliceAide, [['14', '14 px'], ['16', '16 px'], ['18', '18 px']]);
+
+    // ---- Rédaction et aperçu ----
+    var b = liste(TXT.rgRedaction);
+    choix(b, 'apercu', TXT.regl_apercu, '', [['html', TXT.regl_apercuHtml], ['pdf', TXT.regl_apercuPdf]]);
+    choix(b, 'assets', TXT.rgAssets, '', [['oui', TXT.rgOui], ['non', TXT.rgNon]]);
+    choix(b, 'warnings', TXT.regl_warnings, '', [['complets', TXT.regl_warningsComplets], ['reduits', TXT.regl_warningsReduits]]);
+    choix(b, 'cmyk', TXT.regl_cmyk, '', [['oui', TXT.rgOui], ['non', TXT.rgNon]]);
+    choix(b, 'liensReferences', TXT.rgLiens, TXT.rgLiensAide, [['actifs', TXT.rgLiensActifs], ['desactives', TXT.rgLiensDesactives]]);
+
+    // ---- Ce poste ----
+    var c = liste(TXT.rgPoste);
+    var rProduit = rangee(c, TXT.rgProduit, TXT.rgProduitAide);
+    var selProduit = poser(rProduit.reglage, 'select', 'lanceur-select');
+    selProduit.setAttribute('aria-labelledby', rProduit.nom.id);
+    selProduit.addEventListener('change', function () { envoyerRegler('produit', selProduit.value); });
+    choix(c, 'majSilencieuse', TXT.rgMaj, TXT.rgMajAide, [['fenetre', TXT.rgMajFenetre], ['silence', TXT.rgMajSilence]]);
+    choix(c, 'modeDev', TXT.rgDev, TXT.rgDevAide, [['inactif', TXT.rgDesactive], ['actif', TXT.rgActive]], TXT.rgPortee);
+
+    // ---- Services en ligne ----
+    var d = liste(TXT.rgServices);
+    var services = {};
+    function service(cle, titre, aide, type) {
+      var r = rangee(d, titre, aide);
+      var champ = poser(r.reglage, 'div', 'szh-champ lanceur-champ-titre');
+      var saisie = poser(champ, 'input', '');
+      saisie.type = type;
+      saisie.setAttribute('aria-labelledby', r.nom.id);
+      saisie.autocomplete = 'off';
+      if (type === 'password') { champ.classList.add('lanceur-champ-cle'); }
+      var x = { r: r, saisie: saisie, actuel: '', definie: false };
+      if (type === 'password') {
+        x.pastille = poser(r.reglage, 'span', 'szh-pastille');
+        x.effacer = SZH.bouton(TXT.rgEffacer, function () {
+          api.postMessage({ type: MSG.LANCEUR_SERVICE, service: cle, valeur: '' });
+        }, 'lanceur-lien');
+        r.reglage.appendChild(x.effacer);
+      }
+      x.enregistrer = SZH.bouton(TXT.rgEnregistrer, function () { enregistrer(cle); });
+      r.action.appendChild(x.enregistrer);
+      saisie.addEventListener('input', function () { majService(cle); });
+      saisie.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); enregistrer(cle); }
+      });
+      services[cle] = x;
+      return x;
+    }
+    service('shlinkUrl', TXT.rgShlinkUrl, TXT.rgShlinkUrlAide, 'text');
+    service('shlinkCle', TXT.rgShlinkCle, '', 'password');
+    service('ojsCle', TXT.rgOjsCle, TXT.rgOjsCleAide, 'password');
+    poser(zones, 'p', 'lanceur-astuce lanceur-coffre', TXT.rgCoffre);
+    function majService(cle) {
+      var x = services[cle];
+      var texte = x.saisie.value.trim();
+      // Une clé s'efface en enregistrant un champ vide ; l'adresse aussi.
+      x.enregistrer.disabled = cle === 'shlinkUrl' ? texte === x.actuel : (texte === '' && !x.definie);
+      if (x.effacer) { x.effacer.hidden = !x.definie; }
+    }
+    function enregistrer(cle) {
+      var x = services[cle];
+      if (x.enregistrer.disabled) { return; }
+      afficherErreur('');
+      api.postMessage({ type: MSG.LANCEUR_SERVICE, service: cle, valeur: x.saisie.value.trim() });
+    }
+    function rendreServices(s) {
+      var url = services.shlinkUrl;
+      url.actuel = s.shlinkUrl || '';
+      url.saisie.value = url.actuel;
+      majService('shlinkUrl');
+      [['shlinkCle', s.shlinkCle], ['ojsCle', s.ojsCle]].forEach(function (p) {
+        var x = services[p[0]];
+        x.definie = !!p[1];
+        // Une clé n'est jamais renvoyée à la page : le champ reste vide, la pastille dit l'état.
+        x.saisie.value = '';
+        x.pastille.textContent = x.definie ? TXT.rgDefinie : TXT.rgAbsente;
+        x.pastille.classList.toggle('szh-pastille--ok', x.definie);
+        majService(p[0]);
+      });
+    }
+
+    // ---- Traduction ----
+    var e = liste(TXT.rgTraduction);
+    choix(e, 'verifTrad', TXT.regl_verifTrad, TXT.rgVerifAide, [['inactif', TXT.rgDesactive], ['actif', TXT.rgActive]], TXT.rgPortee);
+    choix(e, 'modeTrad', TXT.rgModeTrad, TXT.rgModeTradAide, [['inactif', TXT.rgDesactive], ['actif', TXT.rgActive]], TXT.rgPortee);
+    var rSugg = rangee(e, TXT.regl_suggInterfaceTitre, TXT.rgSuggAucune);
+    bouton(rSugg.action, TXT.regl_suggInterfaceOuvrir, function () { api.postMessage({ type: MSG.SUGGESTIONS_INTERFACE }); });
+    var rFichier = rangee(e, TXT.regl_exportLangueTitre, TXT.rgFichierLangueAide);
+    bouton(rFichier.action, TXT.regl_exportLangue, function () { api.postMessage({ type: MSG.EXPORTER_LANGUE }); });
+    function rendreSuggestions(n) {
+      var k = Number(n) || 0;
+      rSugg.aide.textContent = k === 0 ? TXT.rgSuggAucune : pluriel(k, 'rgSugg', [k]);
+    }
+
+    // ---- Réglages de la rédaction : la carte protégée ----
+    // Les blocs d'une revue ou d'une Zeitschrift (auteur·e·s, bibliographie, tâches, export OJS)
+    // restent masqués tant que l'hôte n'envoie pas leur donnée : il ne l'envoie pas pour un livre.
+    var carte = poser(zones, 'section', 'szh-carte lanceur-carte-proteges');
+    carte.id = 'regl-proteges';
+    var tete = poser(carte, 'div', 'szh-tete');
+    poser(tete, 'h2', 'szh-tete-nom', TXT.regl_protegesTitre);
+    var etatPastille = poser(tete, 'span', 'szh-pastille szh-pastille--attention');
+    var verrou = poser(tete, 'label', 'szh-pousse lanceur-verrou');
+    var caseDeverrouiller = poser(verrou, 'input', '');
+    caseDeverrouiller.type = 'checkbox';
+    // On renvoie l'intention, pas l'état : la case se remet sur ce que l'hôte répond, y compris
+    // quand la modale a été refusée.
+    caseDeverrouiller.addEventListener('change', function () {
+      api.postMessage({ type: MSG.DEVERROUILLER, valeur: caseDeverrouiller.checked });
+    });
+    poser(verrou, 'span', '', TXT.regl_protegesDeverrouiller);
+    var boutonTelecharger = SZH.bouton(TXT.regl_protegesTelecharger, function () {
+      api.postMessage({ type: MSG.TELECHARGER_PROTEGES });
+    });
+    boutonTelecharger.title = TXT.regl_protegesTelechargerTip;
+    tete.appendChild(boutonTelecharger);
+    var corps = poser(carte, 'div', 'szh-corps');
+    corps.appendChild(SZH.notif('info', TXT.regl_protegesVerrouille, { discret: true }));
+    var banniere = poser(corps, 'p', 'szh-notif szh-notif--attention szh-notif--discret');
+    banniere.hidden = true;
+
+    function blocRevue(id) {
+      var s = poser(corps, 'div', 'regl-bloc');
+      s.id = id;
+      s.hidden = true;
+      return s;
+    }
+    var blocAuteurs = blocRevue('regl-bloc-auteurs');
+    poser(blocAuteurs, 'h3', 'lanceur-etiquette', TXT.regl_auteursTitre).style.marginTop = 'var(--e4)';
+    var auteursZone = poser(blocAuteurs, 'div', 'lanceur-astuce');
+    auteursZone.id = 'regl-auteurs';
+    function bloc(id, titre, ouvert) {
+      var s = blocRevue('regl-bloc-' + id);
+      var det = poser(s, 'details', 'lanceur-details');
+      if (ouvert) { det.open = true; }
+      var sm = poser(det, 'summary', '', titre);
+      var resume = poser(sm, 'span', 'lanceur-astuce');
+      var contenu = poser(det, 'div', 'regl-zone');
+      contenu.id = 'regl-zone-' + id;
+      return { section: s, resume: resume, contenu: contenu, details: det };
+    }
+    var blocOjs = bloc('ojs', TXT.ojsTitre, false);
+    blocOjs.contenu.appendChild(SZH.notif('info', TXT.ojsIntro, { discret: true }));
+    var ojsZone = poser(blocOjs.contenu, 'div', '');
+    ojsZone.id = 'regl-ojs';
+    var blocBiblio = bloc('biblio', TXT.biblioTitre, true);
+    blocBiblio.contenu.appendChild(SZH.notif('info', TXT.biblioIntro, { discret: true }));
+    var biblioZone = poser(blocBiblio.contenu, 'div', '');
+    biblioZone.id = 'regl-biblio';
+    var blocTaches = bloc('taches', TXT.artTachesTitre, false);
+    blocTaches.contenu.appendChild(SZH.notif('info', TXT.artTachesAide, { discret: true }));
+    var tachesZone = poser(blocTaches.contenu, 'div', '');
+    tachesZone.id = 'regl-taches';
+    function montrer(bl) { (bl.section || bl).hidden = false; }
+    function resume(bl, texte) { bl.resume.textContent = texte ? ' – ' + texte : ''; }
+
+    // ---- Auteur·e·s publiés : purement informatif, la liste se rafraîchit seule ----
+    function dateLisible(brute) {
+      try { return new Date(brute).toLocaleDateString(); }
+      catch (err) { return String(brute); }
+    }
+    function rendreAuteursOjs(infos) {
+      auteursZone.textContent = '';
+      var ojsP = poser(auteursZone, 'p', '');
+      ojsP.style.margin = '0';
+      ojsP.textContent = infos.dateFetch
+        ? String(TXT.auteursMaj || '').split('{0}').join(dateLisible(infos.dateFetch))
+          .split('{1}').join(String(infos.nombre || 0)).split('{2}').join(String(infos.nombreRor || 0))
+        : (TXT.auteursJamais || '');
+      var corpus = poser(auteursZone, 'p', '');
+      corpus.style.margin = '0';
+      corpus.textContent = infos.dateCorpus
+        ? String(TXT.auteursCorpus || '').split('{0}').join(dateLisible(infos.dateCorpus))
+        : (TXT.auteursCorpusJamais || '');
+      montrer(blocAuteurs);
+    }
+
+    // ---- Briques des grilles ----
+    function marquer() { ojsModifie = true; auto.programmer(); }
+    function champTexte(valeur, aria, marque, placeholder) {
+      var i = document.createElement('input');
+      i.type = 'text';
+      i.value = valeur === undefined || valeur === null ? '' : String(valeur);
+      i.setAttribute('aria-label', aria);
+      i.placeholder = placeholder || TXT.ojsVide;
+      Object.keys(marque).forEach(function (cle) { i.dataset[cle] = marque[cle]; });
+      i.classList.toggle('vide', i.value.trim() === '');
+      i.addEventListener('input', function () {
+        i.classList.toggle('vide', i.value.trim() === '');
+        marquer();
+      });
+      return i;
+    }
+    function caseACocher(coche, aria, marque) {
+      var c = document.createElement('input');
+      c.type = 'checkbox';
+      c.checked = !!coche;
+      c.setAttribute('aria-label', aria);
+      Object.keys(marque).forEach(function (cle) { c.dataset[cle] = marque[cle]; });
+      c.addEventListener('change', marquer);
+      return c;
+    }
+    function grille(colonnes) {
+      var g = document.createElement('div');
+      g.className = 'regl-grille';
+      g.style.gridTemplateColumns = colonnes;
+      return g;
+    }
+    function entete(g, libelles) {
+      libelles.forEach(function (libelle) {
+        var t = document.createElement('span');
+        t.className = 'regl-entete';
+        t.textContent = libelle;
+        g.appendChild(t);
+      });
+    }
+    function zone(legende) {
+      var f = document.createElement('fieldset');
+      var l = document.createElement('legend');
+      l.textContent = legende;
+      f.appendChild(l);
+      return f;
+    }
+    function note(parent, texte) {
+      var p = document.createElement('p');
+      p.className = 'regl-note';
+      p.textContent = texte;
+      parent.appendChild(p);
+      return p;
+    }
+
+    // ---- Export OJS ----
+    // OJS apparie le genre de fichier, le groupe d'auteur et les rubriques par nom à l'import :
+    // un intitulé approximatif crée un doublon ou range l'article ailleurs. Ce bloc est la seule
+    // façon de corriger un intitulé, ou d'ajouter une rubrique, sans republier l'extension.
+    var ojs = null;              // { config, champs, locales, revues, typesArticle }
+    var ojsModifie = false;
+    var selectsType = [];        // reconstruits dès qu'une clé de rubrique change
+
+    // Un champ par revue. Les valeurs relevées sur l'instance sont là ; celles qui n'ont
+    // jamais pu l'être sont vides, et la note dit dans quel écran d'OJS aller les lire.
+    function rendreRevues() {
+      var f = zone(TXT.ojsRevues);
+      var g = grille('minmax(9em, 1.1fr) repeat(' + ojs.locales.length + ', minmax(8em, 1fr))');
+      entete(g, [''].concat(ojs.locales.map(function (l) { return ojs.revues[l]; })));
+      ojs.champs.forEach(function (champ) {
+        var etiquette = document.createElement('span');
+        etiquette.className = 'regl-libelle';
+        etiquette.textContent = champ.libelle + (champ.requis ? ' *' : '');
+        g.appendChild(etiquette);
+        ojs.locales.forEach(function (loc) {
+          // Une revue absente de la configuration reçue (poste pas à jour, champ ajouté depuis)
+          // se lit vide plutôt que de faire lever toute la page.
+          g.appendChild(champTexte((ojs.config.revues[loc] || {})[champ.cle],
+            champ.libelle + ' – ' + ojs.revues[loc], { revue: loc, champ: champ.cle }));
+        });
+      });
+      f.appendChild(g);
+      ojs.champs.forEach(function (champ) { note(f, champ.libelle + ' – ' + champ.ou); });
+      ojsZone.appendChild(f);
+    }
+    function rangeeRubrique(g, r) {
+      var nom = r.cle || TXT.ojsCleNouvelle;
+      var cle = champTexte(r.cle, TXT.ojsColCle + ' – ' + nom, { rubriqueCle: '1' }, TXT.ojsCleNouvelle);
+      // La clé ne part pas dans le XML : elle relie la rubrique à un type d'article. Celle d'une
+      // rubrique livrée ne se renomme pas : l'ancienne resterait en place et le type d'article
+      // pointerait dans le vide. Les intitulés, eux, restent modifiables.
+      if ((ojs.clesDefaut || []).indexOf(r.cle) !== -1) {
+        cle.readOnly = true;
+        cle.dataset.livree = '1';
+        cle.classList.add('cle-livree');
+      } else {
+        cle.addEventListener('change', majOptionsTypes);
+      }
+      g.appendChild(cle);
+      ojs.locales.forEach(function (loc) {
+        g.appendChild(champTexte(r.abbrev[loc], TXT.ojsColAbbrev + ' ' + ojs.revues[loc] + ' – ' + nom, { rubriqueAbbrev: loc }));
+        g.appendChild(champTexte(r.titre[loc], TXT.ojsColTitre + ' ' + ojs.revues[loc] + ' – ' + nom, { rubriqueTitre: loc }));
+      });
+      g.appendChild(caseACocher(!r.sansResume, TXT.ojsColResume + ' – ' + nom, { rubriqueResume: '1' }));
+      g.appendChild(caseACocher(!r.sansDoi, TXT.ojsColDoi + ' – ' + nom, { rubriqueDoi: '1' }));
+    }
+    function rendreRubriques() {
+      var f = zone(TXT.ojsRubriques);
+      note(f, TXT.ojsRubriquesAide);
+      var g = grille('minmax(4.5em, .6fr)' +
+        ' repeat(' + ojs.locales.length + ', minmax(4.5em, .6fr) minmax(8em, 1.4fr))' +
+        ' 4.5em 4.5em');
+      var titres = [TXT.ojsColCle];
+      ojs.locales.forEach(function (loc) {
+        titres.push(TXT.ojsColAbbrev + ' ' + loc.toUpperCase());
+        titres.push(TXT.ojsColTitre + ' ' + loc.toUpperCase());
+      });
+      titres.push(TXT.ojsColResume);
+      titres.push(TXT.ojsColDoi);
+      entete(g, titres);
+      ojs.config.rubriques.forEach(function (r) { rangeeRubrique(g, r); });
+      f.appendChild(g);
+      var plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'regl-ajouter';
+      plus.textContent = TXT.ojsAjouter;
+      plus.addEventListener('click', function () {
+        var vide = {};
+        ojs.locales.forEach(function (loc) { vide[loc] = ''; });
+        ojs.config = collecter();
+        ojs.config.rubriques.push({
+          cle: '', sansResume: 1, sansDoi: 1,
+          abbrev: Object.assign({}, vide), titre: Object.assign({}, vide)
+        });
+        ojsModifie = true;
+        rendreOjs();
+        var champs = ojsZone.querySelectorAll('[data-rubrique-cle]');
+        if (champs.length) { champs[champs.length - 1].focus(); }
+      });
+      f.appendChild(plus);
+      ojsZone.appendChild(f);
+    }
+    // La rubrique qui reçoit chaque type d'article : c'est ce choix qui rend une rubrique ajoutée
+    // atteignable par un article, et donc visible dans le XML.
+    function rendreTypes() {
+      var f = zone(TXT.ojsTypes);
+      note(f, TXT.ojsTypesAide);
+      var g = grille('minmax(9em, 1fr) minmax(9em, 1fr)');
+      selectsType.length = 0;
+      ojs.typesArticle.forEach(function (type) {
+        var etiquette = document.createElement('span');
+        etiquette.className = 'regl-libelle';
+        etiquette.textContent = type.libelle;
+        g.appendChild(etiquette);
+        var select = document.createElement('select');
+        select.dataset.type = type.valeur;
+        select.setAttribute('aria-label', TXT.ojsTypes + ' – ' + type.libelle);
+        select.addEventListener('change', marquer);
+        selectsType.push(select);
+        g.appendChild(select);
+      });
+      f.appendChild(g);
+      ojsZone.appendChild(f);
+      majOptionsTypes();
+    }
+    function majOptionsTypes() {
+      var rubriques = lireRubriques().filter(function (r) { return r.cle !== ''; });
+      selectsType.forEach(function (select) {
+        var choisi = select.value || ojs.config.types[select.dataset.type] || '';
+        select.textContent = '';
+        rubriques.forEach(function (r) {
+          var opt = document.createElement('option');
+          opt.value = r.cle;
+          opt.textContent = r.cle + ' – ' + (r.titre[ojs.locales[0]] || r.titre[ojs.locales[1]] || r.cle);
+          select.appendChild(opt);
+        });
+        select.value = rubriques.some(function (r) { return r.cle === choisi; }) ? choisi
+          : (rubriques.length ? rubriques[0].cle : '');
+      });
+    }
+    function lireRubriques() {
+      var cles = ojsZone.querySelectorAll('[data-rubrique-cle]');
+      var abbrevs = ojsZone.querySelectorAll('[data-rubrique-abbrev]');
+      var titres = ojsZone.querySelectorAll('[data-rubrique-titre]');
+      var resumes = ojsZone.querySelectorAll('[data-rubrique-resume]');
+      var dois = ojsZone.querySelectorAll('[data-rubrique-doi]');
+      var n = ojs.locales.length;
+      var sortie = [];
+      for (var i = 0; i < cles.length; i++) {
+        var abbrev = {};
+        var titre = {};
+        for (var l = 0; l < n; l++) {
+          var loc = ojs.locales[l];
+          abbrev[loc] = abbrevs[i * n + l] ? abbrevs[i * n + l].value.trim() : '';
+          titre[loc] = titres[i * n + l] ? titres[i * n + l].value.trim() : '';
+        }
+        sortie.push({
+          cle: cles[i].value.trim(), abbrev: abbrev, titre: titre,
+          sansResume: resumes[i] && resumes[i].checked ? 0 : 1,
+          sansDoi: dois[i] && dois[i].checked ? 0 : 1
+        });
+      }
+      return sortie;
+    }
+    // Relit l'écran : ce qui est affiché est ce qui part, sans état parallèle. Même forme que
+    // celle envoyée par l'hôte et que celle écrite dans config.json.
+    function collecter() {
+      var revues = {};
+      ojs.locales.forEach(function (loc) { revues[loc] = {}; });
+      ojsZone.querySelectorAll('[data-champ]').forEach(function (champ) {
+        // Un champ dont la revue n'est plus une locale connue (config rechargée entre-temps)
+        // est ignoré plutôt que de faire échouer toute la collecte.
+        if (!revues[champ.dataset.revue]) { return; }
+        revues[champ.dataset.revue][champ.dataset.champ] = champ.value.trim();
+      });
+      var types = {};
+      selectsType.forEach(function (select) { if (select.value) { types[select.dataset.type] = select.value; } });
+      return { revues: revues, rubriques: lireRubriques(), types: types };
+    }
+    function rendreOjs() {
+      ojsZone.textContent = '';
+      rendreRevues();
+      rendreRubriques();
+      rendreTypes();
+      appliquerVerrou();                     // le bloc vient d'être reconstruit, à neuf
+    }
+    var auto = SZH.autoEnregistrement({
+      estModifie: function () { return ojsModifie; },
+      enregistrer: function (autoEcriture) {
+        ojsModifie = false;
+        api.postMessage({ type: MSG.REGLER_OJS, ojs: collecter(), auto: autoEcriture });
+      }
+    });
+
+    // ---- Titre de la bibliographie ----
+    // Une rangée par langue, une colonne par revue : ce qui est affiché est ce qui part, et un
+    // champ vidé vaut « aucun titre », pas « reprends le défaut ».
+    var biblio = null;           // { titres, revues, langues }
+    var biblioModifie = false;
+    function marquerBiblio() { biblioModifie = true; autoBiblio.programmer(); }
+    function rendreBiblio() {
+      biblioZone.textContent = '';
+      if (!biblio) { return; }
+      var f = zone(TXT.biblioTitre);
+      var g = grille('minmax(9em, 1.1fr) repeat(' + biblio.revues.length + ', minmax(10em, 1fr))');
+      entete(g, [TXT.biblioColLangue].concat(biblio.revues.map(function (r) { return r.libelle; })));
+      biblio.langues.forEach(function (langue) {
+        var etiquette = document.createElement('span');
+        etiquette.className = 'regl-libelle';
+        etiquette.textContent = langue.libelle;
+        g.appendChild(etiquette);
+        biblio.revues.forEach(function (r) {
+          var i = document.createElement('input');
+          i.type = 'text';
+          i.value = String((biblio.titres[r.cle] || {})[langue.cle] || '');
+          i.placeholder = TXT.biblioVide;
+          i.setAttribute('aria-label', TXT.biblioTitre + ' – ' + r.libelle + ' – ' + langue.libelle);
+          i.dataset.biblioRevue = r.cle;
+          i.dataset.biblioLangue = langue.cle;
+          i.classList.toggle('vide', i.value.trim() === '');
+          i.addEventListener('input', function () {
+            i.classList.toggle('vide', i.value.trim() === '');
+            marquerBiblio();
+          });
+          g.appendChild(i);
+        });
+      });
+      f.appendChild(g);
+      biblioZone.appendChild(f);
+    }
+    function collecterBiblio() {
+      var titres = {};
+      biblio.revues.forEach(function (r) { titres[r.cle] = {}; });
+      biblioZone.querySelectorAll('[data-biblio-revue]').forEach(function (champ) {
+        if (!titres[champ.dataset.biblioRevue]) { return; }   // revue disparue entre-temps
+        titres[champ.dataset.biblioRevue][champ.dataset.biblioLangue] = champ.value.trim();
+      });
+      return titres;
+    }
+    var autoBiblio = SZH.autoEnregistrement({
+      estModifie: function () { return biblioModifie; },
+      enregistrer: function (autoEcriture) {
+        biblioModifie = false;
+        api.postMessage({ type: MSG.REGLER_BIBLIO, titres: collecterBiblio(), auto: autoEcriture });
+      }
+    });
+
+    // ---- Tâches par article ----
+    // Les intitulés décrivent le PROCESSUS éditorial d'une revue : ils valent pour tous ses
+    // numéros. L'identifiant n'est PAS à l'écran : c'est lui qui est écrit dans le sidecar de
+    // chaque article, et le montrer inviterait à le corriger, ce qui décocherait la tâche
+    // partout. Il voyage dans un attribut et ne bouge plus (normaliserTaches, lib/articles.js).
+    var taches = null;           // { revues: [{cle, libelle}], table: {revue: [...]}, max }
+    var tachesModifie = false;
+    function marquerTaches() { tachesModifie = true; autoTaches.programmer(); }
+    function rangeeTache(g, revue, tache, index) {
+      var num = document.createElement('span');
+      num.className = 'regl-libelle';
+      num.textContent = String(index + 1);
+      g.appendChild(num);
+      ['fr', 'de'].forEach(function (langue) {
+        var i = document.createElement('input');
+        i.type = 'text';
+        i.value = String(tache[langue] || '');
+        i.setAttribute('aria-label',
+          (langue === 'fr' ? TXT.tachesFr : TXT.tachesDe) + ' – ' + revue.libelle + ' ' + String(index + 1));
+        i.dataset.tacheRevue = revue.cle;
+        i.dataset.tacheLangue = langue;
+        i.dataset.tacheId = String(tache.id || '');
+        i.dataset.tacheRang = String(index);
+        i.addEventListener('input', marquerTaches);
+        g.appendChild(i);
+      });
+      var retirer = document.createElement('button');
+      retirer.type = 'button';
+      retirer.className = 'szh-bouton regl-retirer';
+      retirer.textContent = '×';
+      retirer.title = TXT.tachesRetirer;
+      retirer.setAttribute('aria-label', TXT.tachesRetirer + ' – ' + revue.libelle + ' ' + String(index + 1));
+      retirer.addEventListener('click', function () {
+        taches.table = collecterTaches();
+        taches.table[revue.cle].splice(index, 1);
+        marquerTaches();
+        rendreTaches();
+      });
+      g.appendChild(retirer);
+    }
+    function rendreTaches() {
+      tachesZone.textContent = '';
+      if (!taches) { return; }
+      var morceaux = [];
+      taches.revues.forEach(function (revue) {
+        var f = zone(revue.libelle);
+        var g = grille('2.5em minmax(10em, 1fr) minmax(10em, 1fr) 4.5em');
+        entete(g, ['', TXT.tachesFr, TXT.tachesDe, '']);
+        var liste = taches.table[revue.cle] || [];
+        for (var i = 0; i < liste.length; i++) { rangeeTache(g, revue, liste[i], i); }
+        // Le nom court du produit pour le résumé : le nom complet de la revue (ISSN compris) est trop long.
+        var court = produitDe(revue.cle);
+        morceaux.push(pluriel(liste.length, 'rgTachesResume', [court ? court.libelle : revue.libelle, liste.length]));
+        f.appendChild(g);
+        var plus = document.createElement('button');
+        plus.type = 'button';
+        plus.className = 'regl-ajouter';
+        plus.textContent = TXT.tachesAjouter;
+        plus.disabled = liste.length >= taches.max;
+        plus.addEventListener('click', function () {
+          taches.table = collecterTaches();
+          taches.table[revue.cle].push({ id: '', fr: '', de: '' });
+          marquerTaches();
+          rendreTaches();
+          var champs = tachesZone.querySelectorAll('[data-tache-revue="' + revue.cle + '"]');
+          if (champs.length) { champs[champs.length - 2].focus(); }
+        });
+        f.appendChild(plus);
+        tachesZone.appendChild(f);
+      });
+      resume(blocTaches, morceaux.join(' – '));
+      appliquerVerrou();                     // le bloc vient d'être reconstruit, à neuf
+    }
+    // Relit l'écran. L'identifiant vient de l'attribut, jamais d'un recalcul : corriger une faute
+    // dans un intitulé ne doit pas décocher la tâche sur les articles qui la portent.
+    function collecterTaches() {
+      var sortie = {};
+      taches.revues.forEach(function (revue) { sortie[revue.cle] = []; });
+      tachesZone.querySelectorAll('[data-tache-revue]').forEach(function (champ) {
+        var liste = sortie[champ.dataset.tacheRevue];
+        if (!liste) { return; }              // revue disparue entre-temps : ignorée
+        var rang = Number(champ.dataset.tacheRang);
+        if (!liste[rang]) { liste[rang] = { id: champ.dataset.tacheId || '', fr: '', de: '' }; }
+        liste[rang][champ.dataset.tacheLangue] = champ.value.trim();
+      });
+      Object.keys(sortie).forEach(function (cle) {
+        sortie[cle] = sortie[cle].filter(function (t) { return !!t; });
+      });
+      return sortie;
+    }
+    var autoTaches = SZH.autoEnregistrement({
+      estModifie: function () { return tachesModifie; },
+      enregistrer: function (autoEcriture) {
+        tachesModifie = false;
+        api.postMessage({ type: MSG.TACHES_ENREGISTRER, taches: collecterTaches(), auto: autoEcriture });
+      }
+    });
+
+    // ---- Le verrou ----
+    // Ces blocs décrivent la chaîne de publication, pas le confort d'une personne : une rubrique
+    // renommée sur un seul poste range ses articles dans la mauvaise section de la revue. Ils se
+    // lisent donc seulement, et la page ne décide jamais de son verrou : elle demande, et se règle
+    // sur ce que l'hôte répond (c'est lui qui pose la modale, qu'une webview ne peut pas bloquer).
+    var protegesEtat = { deverrouille: false, divergences: [], avertissement: '' };
+    // Posé sur les CONTRÔLES des trois blocs, et non sur chaque fabrique de champ : un champ
+    // ajouté plus tard est verrouillé sans qu'on ait à y penser.
+    function appliquerVerrou() {
+      var verrouille = !protegesEtat.deverrouille;
+      [biblioZone, tachesZone, ojsZone].forEach(function (bl) {
+        bl.querySelectorAll('input, select, textarea, button').forEach(function (el) {
+          // readOnly sur un champ de saisie, disabled sur le reste : un champ désactivé sort de
+          // l'ordre de tabulation et n'est plus lisible au lecteur d'écran, alors qu'un réglage
+          // qu'on ne peut pas changer doit rester lisible.
+          if (el.tagName === 'INPUT' && el.type === 'text') { el.readOnly = verrouille || !!el.dataset.livree; }
+          else { el.disabled = verrouille; }
+          el.classList.toggle('fige', verrouille);
+        });
+      });
+      caseDeverrouiller.checked = protegesEtat.deverrouille;
+      etatPastille.textContent = verrouille ? TXT.rgVerrouilles : TXT.rgDeverrouilles;
+      etatPastille.classList.toggle('szh-pastille--attention', verrouille);
+      banniere.textContent = String(protegesEtat.avertissement || '');
+      banniere.hidden = String(protegesEtat.avertissement || '') === '';
+    }
+    appliquerVerrou();
+
+    function confirmerBloc(blocNom) {
+      if (blocNom === 'biblio') { autoBiblio.confirme(); }
+      else if (blocNom === 'tachesArticle') { autoTaches.confirme(); }
+      else { auto.confirme(); }
+    }
+
+    // Rend vrai quand le message est un message des réglages.
+    function surMessage(msg) {
+      // Un accusé nomme son bloc : sans cela, l'accusé de l'un confirmerait l'écriture en vol de
+      // l'autre. Le bloc sans nom est celui de l'export OJS, le plus ancien des trois.
+      if (msg.type === MSG.ENREGISTRE) { confirmerBloc(msg.bloc); return true; }
+      // Une écriture ratée relâche le verrou de l'auto-enregistrement autant qu'un succès : sinon
+      // plus rien ne s'enregistre jamais après le premier échec.
+      if (msg.type === MSG.ERREUR) {
+        if (msg.bloc !== 'service') { confirmerBloc(msg.bloc); }
+        afficherErreur(msg.message);
+        return true;
+      }
+      if (msg.type === MSG.PROTEGES) { protegesEtat = msg; appliquerVerrou(); return true; }
+      if (msg.type !== MSG.VALEURS) { return false; }
+      afficherErreur('');
+      cocher(msg.valeurs || {});
+      zoneLangue.textContent = String(msg.avertLangue || '');
+      zoneLangue.hidden = String(msg.avertLangue || '') === '';
+      if (msg.poste) { rendreProduit(msg.poste); }
+      if (msg.services) { rendreServices(msg.services); }
+      rendreSuggestions(msg.suggInterface);
+      if (msg.proteges) { protegesEtat = msg.proteges; }
+      if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
+      // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs.
+      if (msg.ojs && !ojsModifie) {
+        ojs = msg.ojs;
+        montrer(blocOjs);
+        resume(blocOjs, SZH.remplir(TXT, 'rgOjsResume', [ojs.locales.length, ojs.config.rubriques.length, ojs.typesArticle.length]));
+        rendreOjs();
+      }
+      if (msg.biblio && !biblioModifie) {
+        biblio = msg.biblio;
+        montrer(blocBiblio);
+        rendreBiblio();
+      }
+      if (msg.taches && !tachesModifie) {
+        taches = msg.taches;
+        montrer(blocTaches);
+        rendreTaches();
+      }
+      appliquerVerrou();
+      return true;
+    }
+
+    // Le produit proposé : « automatique » d'abord, avec le produit que la langue désignerait.
+    function rendreProduit(poste) {
+      var libelleDe = function (jeton) {
+        var p = produitDe(jeton);
+        return p ? p.libelle : jeton;
+      };
+      selProduit.textContent = '';
+      var o0 = poser(selProduit, 'option', '', SZH.remplir(TXT, 'rgProduitAuto', [libelleDe(poste.produitAuto)]));
+      o0.value = '';
+      donnees.produits.forEach(function (p) {
+        var o = poser(selProduit, 'option', '', p.libelle);
+        o.value = p.jeton;
+      });
+      selProduit.value = poste.produit || '';
+    }
+
+    return { surMessage: surMessage, element: panneau };
+  })(panneaux.reglages);
+
   // ---- Messages de l'hôte ----
   window.addEventListener('message', function (ev) {
     var msg = (ev && ev.data) || {};
@@ -1026,7 +1765,11 @@
       rendreJournaux();
       choisirProduit(produitParDefaut(msg));
       rendreProduits(true);
-      activer(ongletActif, false);
+      activer(msg.onglet || ongletActif, !!msg.onglet);
+    } else if (msg.type === MSG.LANCEUR_ALLER) {
+      activer(msg.onglet, true);
+    } else if (reglagesPage.surMessage(msg)) {
+      return;
     } else if (msg.type === MSG.LANCEUR_CREE) {
       if (!msg.ok) { avis(nvRefus, 'danger', SZH.remplir(TXT, 'nvRefus', [msg.texte || TXT.secEchecInconnu])); }
     } else if (msg.type === MSG.LANCEUR_DEBUT) { surDebut(msg); }

@@ -708,11 +708,11 @@ var SZH = (function () {
   // sont indépendants et peuvent être allumés en même temps.
   //
   // DEUX GARDE-FOUS, sans lesquels le mode serait un piège.
-  //   1. On doit TOUJOURS pouvoir l'éteindre. La page des réglages et le formulaire de
-  //      suggestion s'excluent eux-mêmes (SZH.modeTradJamais, en tête de leur script) :
-  //      sans cela on allumerait le mode sans plus pouvoir l'éteindre, et « Enregistrer »
-  //      deviendrait inatteignable. S'y ajoutent deux sorties depuis n'importe quel
-  //      panneau : le bouton du bandeau, et la touche Échap.
+  //   1. On doit TOUJOURS pouvoir l'éteindre. Le formulaire de suggestion s'exclut lui-même
+  //      (SZH.modeTradJamais, en tête de son script), et la barre d'onglets du lanceur comme son
+  //      onglet Paramètres sont exemptés (data-trad-exempt) : sans cela on allumerait le mode sans
+  //      plus pouvoir l'éteindre. S'y ajoutent deux sorties depuis n'importe quel panneau :
+  //      le bouton du bandeau, et la touche Échap.
   //   2. Le mode se VOIT. Un outil dont plus aucun bouton ne répond, sans explication,
   //      passe pour cassé : tout panneau qui détourne pose un bandeau en tête de page.
   //
@@ -845,11 +845,24 @@ var SZH = (function () {
     return !!(e.closest && e.closest('.szh-trad-bandeau'));
   }
 
+  // Une zone marquée data-trad-exempt garde ses clics, mode allumé : la page qui la porte n'est pas
+  // exclue en entier, mais ce qui permet d'éteindre le mode (ses réglages, sa barre d'onglets) l'est.
+  function exempteTrad(depart) {
+    var e = depart;
+    var garde = 0;
+    while (e && e.nodeType === 1 && garde < 40) {
+      if (e.dataset && e.dataset.tradExempt) { return true; }
+      e = e.parentElement || e.parentNode || e.parent;
+      garde++;
+    }
+    return false;
+  }
+
   function surClicTrad(ev) {
     if (!trad.actif || trad.exclue) { return; }
     var cible = ev.target || null;
     // Le bandeau reste cliquable : c'est la sortie du mode.
-    if (dansBandeau(cible)) { return; }
+    if (dansBandeau(cible) || exempteTrad(cible)) { return; }
     // On barre la route AVANT de savoir si un texte a été trouvé : sinon un clic dans la
     // marge d'un bouton ferait l'action normale alors que le bandeau annonce le contraire.
     if (ev.preventDefault) { ev.preventDefault(); }

@@ -169,13 +169,11 @@ test('l’en-tête dit le schéma, la version, les langues et ce qu’est ce fic
 // Le défaut gardé ici a été vécu la veille, avec la pastille du vérificateur de traduction :
 // le module était juste, ses tests verts, et le bouton ne s'affichait nulle part. Éprouver
 // ce qu'une fonction rend ne dit RIEN de ce qu'une page montre. On rend donc la vraie page
-// de réglages, avec le vrai media/settings.js, et on y cherche le bouton.
+// des réglages (l'onglet Paramètres du lanceur, avec le vrai media/lanceur.js), et on y cherche
+// le bouton.
 //
-// Deux détails de montage, tous deux appris en se trompant : les libellés viennent de
-// REGL_LIBELLES (REGL_TEXTES n'en est que la sérialisation, et n'en porte aucun), et la page
-// des réglages pose tout dans l'élément « zones », que le conteneur par défaut du harnais ne
-// connaît pas — d'où parId.
-const { ouvrir, libellesHote } = require('./dom-minimal');
+// Les libellés sont ceux de l'hôte (textesLanceur), chargés par page-reglages.js.
+const { ouvrirReglages } = require('./page-reglages');
 
 function textesDe(racine) {
   const sortie = [];
@@ -188,12 +186,8 @@ function textesDe(racine) {
 }
 
 test('réglages : le bouton du fichier de langue est dans la page, et parle', () => {
-  const page = ouvrir({
-    racine: RACINE, page: 'settings',
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: libellesHote(RACINE, ['REGL_LIBELLES'])
-  });
-  const zones = page.parId.zones;
+  const page = ouvrirReglages();
+  const zones = page.panneau;
   const boutons = zones.querySelectorAll('button');
   const libelle = TEXTES_COCKPIT.fr['regl.exportLangue'];
   const vu = boutons.filter((b) => b.textContent === libelle);
@@ -202,7 +196,7 @@ test('réglages : le bouton du fichier de langue est dans la page, et parle', ()
     + JSON.stringify(boutons.map((b) => b.textContent)));
   // Son explication est là aussi : un bouton qui enregistre un fichier pour l’envoyer à
   // quelqu’un ne se devine pas de son seul libellé.
-  assert.ok(textesDe(zones).includes(TEXTES_COCKPIT.fr['regl.exportLangue.aide']),
+  assert.ok(textesDe(zones).includes(TEXTES_COCKPIT.fr['lanceur.regl.fichier.aide']),
     'le bouton est là, mais rien ne dit à quoi sert le fichier');
   // Et il parle à l’hôte : un bouton muet serait le même défaut, une fois de plus.
   vu[0].dispatchEvent({ type: 'click' });
