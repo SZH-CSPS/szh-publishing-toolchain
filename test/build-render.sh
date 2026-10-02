@@ -240,6 +240,58 @@ if [ -z "$only" ]; then
   fi
 fi
 
+# Modèles de couverture recherche et prospectrum (le banc livre-normal porte classique,
+# livre-falc le FALC) : sur une copie de livre-normal déjà compilé, gardée sous son nom
+# (les sorties s'appellent comme le dossier), où seul le bloc `couverture:` change. Mêmes
+# portes que les livres : PDF/UA-1 de l'écran, livre-sorties-check.py.
+if [ -z "$only" ]; then
+  echo "=== Modèles de couverture ==="
+  for modele in recherche prospectrum; do
+    copie="$REPO/test/out/couv-$modele/livre-normal"
+    rm -rf "$REPO/test/out/couv-$modele"
+    mkdir -p "$REPO/test/out/couv-$modele"
+    cp -a "$REPO/test/livre-normal" "$copie"
+    if [ "$modele" = recherche ]; then
+      bloc='couverture:\n  modele: recherche'
+      cp "$REPO/test/livre-falc/couverture/illustration.jpg" "$copie/couverture/"
+    else
+      bloc='couverture:\n  modele: prospectrum\n  titre-2: "Un banc // pour la machine"\n  sous-titre-2: "Second titre"'
+      sed -i 's/^couleur-impression:.*/couleur-impression: sapin/' "$copie/buch.yaml"
+    fi
+    sed -i "s|^\(couleur-impression:.*\)$|\1\n$bloc|" "$copie/buch.yaml"
+    journal="$REPO/test/out/.couv-$modele.log"
+    if ( cd "$copie" && make -f "$REPO/pipeline/Makefile" livre-couverture ) > "$journal" 2>&1; then
+      echo "  $modele : compilé"
+    else
+      echo "  ✗ $modele : ÉCHEC de la couverture"
+      sed -n '1,40p' "$journal" | sed 's/^/    /'
+      echec=1
+      continue
+    fi
+    if [ -x "$VERAPDF" ]; then
+      ua="$REPO/test/out/.couv-$modele.pdfua"
+      JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text \
+        "$copie/out/livre-normal-couverture.pdf" > "$ua" 2>&1
+      if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
+        echo "  ✗ $modele : PDF/UA-1 NON conforme"
+        sed 's/^/    /' "$ua"
+        echec=1
+      fi
+    fi
+    if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+      sorties="$REPO/test/out/.couv-$modele.sorties"
+      "$FONTPY" "$REPO/test/livre-sorties-check.py" "$copie" > "$sorties" 2>&1
+      if grep -q "^FAIL" "$sorties" || ! grep -q "^ok" "$sorties"; then
+        echo "  ✗ $modele : sorties du livre"
+        grep -v "^ok" "$sorties" | sed 's/^/    /'
+        echec=1
+      else
+        echo "  $modele : sorties conformes ($(grep -c '^ok' "$sorties") contrôle(s))"
+      fi
+    fi
+  done
+fi
+
 # EPUB : contrôle structurel sans dépendance externe (voir l'en-tête d'epub-check.py,
 # §4.5 de docs/ARCHITECTURE-LIVRES.md) — gardé par sa seule existence, ce script étant
 # d'un autre chantier que celui-ci.

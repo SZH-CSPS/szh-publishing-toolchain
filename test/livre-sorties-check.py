@@ -17,6 +17,16 @@ from PIL import Image
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(ICI, '..', 'pipeline'))
 from szh_commun import lire_yaml  # noqa: E402
+
+
+def _modele(buch):
+    """Le modèle de couverture, lu par couverture.py lui-même."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        'couverture', os.path.join(ICI, '..', 'pipeline', 'couverture.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.modele_couverture(buch)
 REFERENCE = os.path.join(ICI, '..', 'pipeline', 'styles', 'couleurs-reference.json')
 FORMATS_MM = {'standard': (155, 225), 'a4': (210, 297)}
 PT_MM = 25.4 / 72
@@ -186,7 +196,13 @@ def controler_couverture(out, nom, buch, ref):
         if not echecs or ecran not in echecs[-1]:
             ok('%s : 2 pages RGB %d×%d' % (ecran, largeur, hauteur))
 
-    # PNG : 1re et 4e, RGB strict de la référence (pas de conversion).
+    # PNG : 1re et 4e, RGB strict de la référence (pas de conversion), lu sur la couleur
+    # d'impression en 1re. La 1re du modèle recherche n'en porte aucune au pixel près
+    # (illustration sous des voiles) : on y lit le rouge de la bande de 4e.
+    face_lue, attendu, cle_lue = '1', rgb, cle
+    if _modele(buch) == 'recherche':
+        face_lue, cle_lue = '4', 'rouge'
+        attendu = tuple(int(ref['rouge']['rgb'][i:i + 2], 16) for i in (1, 3, 5))
     for face in ('1', '4'):
         png = os.path.join(out, '%s-couverture-%s.png' % (nom, face))
         if not os.path.exists(png):
@@ -198,10 +214,11 @@ def controler_couverture(out, nom, buch, ref):
             im = im.convert('RGB')
         if abs(im.width / im.height - largeur / hauteur) > 0.01:
             fail('%s : rapport %.3f, attendu %.3f' % (png, im.width / im.height, largeur / hauteur))
-        if face == '1':
-            exacts = sum(n for n, c in im.getcolors(1 << 24) if c == rgb)
+        if face == face_lue:
+            exacts = sum(n for n, c in im.getcolors(1 << 24) if c == attendu)
             if exacts < 1000:
-                fail('%s : %d pixels %s exacts (couleur de référence %s)' % (png, exacts, ref[cle]['rgb'], cle))
+                fail('%s : %d pixels %s exacts (couleur de référence %s)'
+                     % (png, exacts, ref[cle_lue]['rgb'], cle_lue))
         if not echecs or png not in echecs[-1]:
             ok('%s : %d×%d RGB' % (png, im.width, im.height))
 

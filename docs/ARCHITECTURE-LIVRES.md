@@ -99,8 +99,12 @@ licence: cc-by-nc-nd-4.0
 couleur: "#5F9FBC"          # couleur numérique (PDF écran, EPUB, web)
 couleur-impression: bleu-acier  # clé de styles/couleurs-reference.json : couverture
 couverture:
-  fond: poireau            # clé de couleurs-reference.json
-  fond-teinte: 9           # % de cette couleur
+  modele: classique        # falc | classique | recherche | prospectrum ; vide : selon la maquette
+  fond: bleu-acier         # clé de couleurs-reference.json ; vide : celle du modèle
+  fond-teinte: 9           # % de cette couleur ; vide : celle du modèle
+  illustration-plein:      # classique : true = illustration plein cadre en bas de la 1re
+  titre-2:                 # prospectrum : titre dans la langue voisine (fr ↔ de)
+  sous-titre-2:
   illustration-x-mm: 0     # décalage de couverture/illustration.*, + vers la droite
   illustration-y-mm: 0     # + vers le bas ; coupé au fond perdu du plat de 1re
 auteurs: []                # monographie : ici ; collectif : dans chaque chapitre
@@ -278,7 +282,35 @@ chapitres ne sont pas recompilés. Codes de sortie de `livre-chapitre-pdf` : 0 �
   d'impression, relatif colorimétrique, compensation du point noir) ;
 - WeasyPrint borne la `BleedBox` à 10 pt : `couverture.py` la remet au fond perdu de
   `buch.yaml`, et refuse de livrer s'il reste un opérateur RVB ou une image RVB ;
-- les PNG sortent de Ghostscript (`png16m`, 300 dpi), qui garde un RVB au pixel près.
+- les PNG sortent de Ghostscript (`png16m`, 300 dpi), qui garde un RVB au pixel près ;
+- une illustration transparente est aplatie après sa conversion, sur le CMJN exact du fond :
+  aplatie sur le RVB, son fond converti sortait en rectangle visible sur l'aplat ;
+- les bandeaux translucides du modèle recherche sont des `device-cmyk(… / α)` : WeasyPrint
+  pose un `/ca` et, pour un groupe, un `/CS` ICCBased du profil d'impression, permis en
+  PDF/X-4 (mesuré, aucun RVB).
+
+**Les modèles de couverture.** `couverture.modele` choisit la mise en page de la couverture,
+indépendamment de la maquette de l'intérieur, qui n'en décide que par défaut (`falc` pour un
+livre FALC, `classique` sinon). Chacun est calqué sur une référence InDesign, mesurée en mm
+depuis le coin du rogné de chaque plat :
+
+| Modèle | Référence | Ce qui le distingue |
+|---|---|---|
+| `falc` | Créer ensemble… (FALC), 2025 | picto, bandeau à la couleur d'impression, chasse normale |
+| `classique` | Teil- und Reintegration als Einzelfall?, 2026 | aplat pâle, titre et filet à la couleur d'impression, dos et bandes rouges, illustration détourée (ou plein cadre, `illustration-plein`, d'après Pelgrims 2021) |
+| `recherche` | Menschen mit Lernschwierigkeiten auf Partnersuche (Sonderpädagogische Forschung in der Schweiz), 2023 | illustration plein cadre, bandeau de titre à la couleur d'impression à 68 %, bandeau de collection capucine à 85 %, collection en petites capitales |
+| `prospectrum` | Die BRK in der Schweiz / La CDPH en Suisse, 2024 | fond arc-en-ciel (`pipeline/media/fonds/prospectrum.jpg`), panneaux à la couleur d'impression (`sapin`), titre second dans la langue voisine |
+
+Le rouge du dos et le capucine du bandeau de collection sont fixés par le modèle ; tout vient
+de `couleurs-reference.json`. Le sapin (90/60/65/53) y a été ajouté pour ProSpectrum : son CMJN
+est celui de la référence, son RVB la conversion FOGRA52 → sRGB, faute de valeur du graphiste.
+Le fond ProSpectrum est un maillage vectoriel dans la référence : il est livré en JPEG CMJN
+300 dpi, rendu par Ghostscript (`tiff32nc`) depuis la source vectorielle, et passé en sRGB
+par le profil pour les sorties écran. Un intertitre de 4e s'écrit au niveau 1 (`# Zum Buch`) :
+un `##` sans `#` avant lui fait tomber le PDF écran en PDF/UA (règle 7.4.2-1). Écarts
+assumés : Open Sans semi-condensée partout (Frutiger et Celeste de Pelgrims, l'Open Sans
+Condensed du dos de recherche et la Frutiger du dos ProSpectrum ne sont pas livrées), et pas
+d'étirement horizontal des titres ProSpectrum (105 % dans la référence).
 
 **L'intérieur** (`livre-imprimeur`) reste en hex dans ses feuilles, et `pipeline/cmjn.py` le
 convertit en deux temps :

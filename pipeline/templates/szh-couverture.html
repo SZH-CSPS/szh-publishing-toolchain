@@ -3,10 +3,12 @@
      (pas par pandoc : le texte de 4e est déjà du HTML compilé, pandoc le dissoudrait).
 
      Un seul gabarit pour les deux sorties : $classes$ porte szh-couv-impression (une page
-     à plat, CMJN, fond perdu, traits) ou szh-couv-ecran (1re puis 4e, RGB, sans dos), la
-     maquette (falc | normal) et le format (standard | a4). Dimensions et couleurs arrivent
-     en propriétés personnalisées ($variables$), la page et le profil CMJN dans $style-page$ :
-     couverture.css n'écrit en dur aucune taille de livre ni aucune couleur.
+     à plat, CMJN, fond perdu, traits) ou szh-couv-ecran (1re puis 4e, RGB, sans dos), le
+     modèle (falc | classique | recherche | prospectrum) et le format (standard | a4).
+     Dimensions et couleurs arrivent en propriétés personnalisées ($variables$), la page et
+     le profil CMJN dans $style-page$ : couverture.css n'écrit en dur aucune taille de livre
+     ni aucune couleur. Les emplacements $1re-haut$, $4e-haut$, $bandeau-extra$ et
+     $4e-extra$ portent ce que seul un modèle compose (aplats, filets, fond, ISBN).
 
      L'ordre du DOM est celui de l'écran (1re, 4e) et de la lecture balisée PDF/UA ; à plat,
      chaque panneau est posé en absolu à sa place (4e, dos, 1re). -->
@@ -25,11 +27,13 @@ $style-page$
   <div class="szh-couv-fond"></div>
 
   <section class="szh-couv-1re">
+$1re-haut$
     $illustration$
     <div class="szh-couv-1re-bandeau">
       <p class="szh-couv-auteurs">$responsables$</p>
       <p class="szh-couv-titre">$titre-bloc$</p>
       <p class="szh-couv-sous-titre">$sous-titre-bloc$</p>
+$bandeau-extra$
     </div>
     <div class="szh-couv-1re-pied">
 $pied$
@@ -37,9 +41,11 @@ $pied$
   </section>
 
   <section class="szh-couv-4e">
+$4e-haut$
     <div class="szh-couv-4e-texte">
 $quatrieme$
     </div>
+$4e-extra$
   </section>
 
   <section class="szh-couv-dos">

@@ -5,5 +5,6 @@
   "moutarde":    {"nom": "Moutarde",    "rgb": "#C7CF1C", "cmjn": [0.30, 0.04, 0.95, 0]},
   "poireau":     {"nom": "Poireau",     "rgb": "#51A66D", "cmjn": [0.70, 0.10, 0.70, 0]},
   "bleu-acier":  {"nom": "Bleu acier",  "rgb": "#5F9FBC", "cmjn": [0.65, 0.25, 0.20, 0]},
-  "mountbatten": {"nom": "Mountbatten", "rgb": "#A98899", "cmjn": [0.40, 0.50, 0.30, 0]}
+  "mountbatten": {"nom": "Mountbatten", "rgb": "#A98899", "cmjn": [0.40, 0.50, 0.30, 0]},
+  "sapin":       {"nom": "Sapin",       "rgb": "#22352D", "cmjn": [0.90, 0.60, 0.65, 0.53]}
 }

@@ -15,6 +15,9 @@ reproductible : `../styles/print.css` les charge par `@font-face` en chemins rel
 | `OpenSans-SemiCondensed-Italic.ttf`   | Open Sans | 400 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-SemiBoldItalic.ttf` | Open Sans | 600 italique | googlefonts/opensans |
 | `OpenSans-SemiCondensed-BoldItalic.ttf` | Open Sans | 700 italique | googlefonts/opensans |
+| `OpenSans-SemiCondensed-Light.ttf`    | Open Sans | 300 (couverture seule) | googlefonts/opensans |
+| `OpenSans-SemiCondensed-Medium.ttf`   | Open Sans | 500 (couverture seule) | googlefonts/opensans |
+| `OpenSans-SemiCondensed-ExtraBold.ttf` | Open Sans | 800 (couverture seule) | googlefonts/opensans |
 | `SZHCouverture-Light.ttf` | SZH Couverture | 300 | googlefonts/opensans (statique, renommée) |
 | `SZHCouverture-Regular.ttf` | SZH Couverture | 400 | googlefonts/opensans (statique, renommée) |
 | `SZHCouverture-Italic.ttf` | SZH Couverture | 400 italique | googlefonts/opensans (statique, renommée) |
@@ -115,6 +118,16 @@ italiques grasses (600 et 700) ont été instanciées ainsi le 29.09.2026, depui
 Même master que les faces déjà livrées : l'italique 400 et le gras 700 réinstanciés de ces
 masters retombent au contour près sur les fichiers d'ici (seuls diffèrent les glyphes
 ajoutés par `glyphes-manquants.py`).
+
+Les faces 300, 500 et 800 (02.10.2026, modèles de couverture classique, recherche et
+prospectrum) sont instanciées ainsi depuis le master droit
+`https://raw.githubusercontent.com/googlefonts/opensans/main/fonts/variable/OpenSans%5Bwdth,wght%5D.ttf`
+(Version 3.003, sha256 `36643644f318a812aab2d2ed3bb98f8cf0872527f835fe9398d95fe6b9adb878`),
+puis complétées par `glyphes-manquants.py`, sans petites capitales. Même master que les faces
+livrées : le 400 réinstancié retombe au contour près sur `OpenSans-SemiCondensed-Regular.ttf`
+(0 glyphe différent sur 1 150). Seule `../styles/livre/couverture.css` les déclare : la revue
+demande déjà 500 et 800 (`print.css`), qui y retombent aujourd'hui sur 400 et 700, et
+changerait de rendu si `socle.css` les déclarait.
 
 IBM Plex Mono est distribuée en statique (Regular et Medium repris tels quels).
 

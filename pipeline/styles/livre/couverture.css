@@ -24,8 +24,18 @@
    * La couverture FALC est en Open Sans de chasse NORMALE, comme sa référence, sous le
      nom « SZH Couverture » (fichiers ET table name renommés, voir fonts/README.md) :
      restées « Open Sans » à l'intérieur, fontconfig les servait aussi à toute demande
-     « Open Sans » de la feuille (mesuré). La couverture « normal » et l'intérieur des
-     livres restent en SemiCondensed (var(--font-sans), socle.css). */
+     « Open Sans » de la feuille (mesuré). Les autres modèles de couverture et l'intérieur
+     des livres restent en SemiCondensed (var(--font-sans), socle.css). */
+
+/* Les graisses 300, 500 et 800 du semi-condensé, pour les modèles classique, recherche et
+   prospectrum : déclarées ici et non dans socle.css, où la revue demande déjà 500 et 800
+   (print.css) et changerait de rendu. */
+@font-face { font-family: 'Open Sans'; font-weight: 300; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-Light.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 500; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-Medium.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 800; font-style: normal;
+  src: url("../../fonts/OpenSans-SemiCondensed-ExtraBold.ttf") format('truetype'); }
 
 @font-face { font-family: 'SZH Couverture'; font-weight: 300; font-style: normal;
   src: url("../../fonts/SZHCouverture-Light.ttf") format('truetype'); }
@@ -176,37 +186,255 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-falc.szh-couv-a4 .szh-couv-dos-auteurs { margin-right: 9mm; }
 .szh-couv-falc.szh-couv-a4 .szh-couv-dos-symbole { top: 277mm; }
 
-/* ═══ 3. Maquette « normal » ═══════════════════════════════════════════════════════════
-   Illustration plein cadre, bandeau de titre au-dessus du pied, collection et mention
-   d'édition en texte. Texte du bandeau noir ou blanc par contraste APCA (couverture.py). */
-.szh-couv-normal .szh-couv-4e-texte {
-  position: absolute; inset: 0; padding: 20mm 14mm; font-size: 10.5pt; line-height: 1.5;
-}
-.szh-couv-normal .szh-couv-4e-texte p  { margin: 0 0 4mm 0; }
-.szh-couv-normal .szh-couv-4e-texte ul,
-.szh-couv-normal .szh-couv-4e-texte ol { margin: 0 0 4mm 0; padding-left: 6mm; }
-.szh-couv-normal .szh-couv-4e-texte li { margin-bottom: 1.5mm; }
+/* ═══ 3. Socle des modèles classique, recherche et prospectrum ═════════════════════════
+   Papier blanc sous tout : aplats, bandes et filets sont des éléments posés par
+   couverture.py dans $1re-haut$ / $4e-haut$ / le dos, peints dans l'ordre du DOM.
+   Cotes relevées sur les références InDesign (155 × 225), en mm depuis le coin haut-gauche
+   du rogné de chaque panneau ; un `top` de texte place la première ligne de base au
+   relevé (Open Sans : jambage haut 1,069 em, bas 0,293 em). */
+.szh-couv-classique .szh-couv-fond, .szh-couv-recherche .szh-couv-fond,
+.szh-couv-prospectrum .szh-couv-fond { background: var(--c-couv-papier); }
+.szh-couv-ecran.szh-couv-classique .szh-couv-1re, .szh-couv-ecran.szh-couv-classique .szh-couv-4e,
+.szh-couv-ecran.szh-couv-recherche .szh-couv-1re, .szh-couv-ecran.szh-couv-recherche .szh-couv-4e,
+.szh-couv-ecran.szh-couv-prospectrum .szh-couv-1re,
+.szh-couv-ecran.szh-couv-prospectrum .szh-couv-4e { background: var(--c-couv-papier); }
 
-.szh-couv-normal .szh-couv-dos-texte {
-  position: absolute; top: 50%; left: 50%;
-  transform: translate(-50%, -50%) rotate(-90deg);
-  white-space: nowrap; color: var(--c-couv-accent);
+.szh-couv-bande, .szh-couv-aplat, .szh-couv-dos-fond, .szh-couv-panneau, .szh-couv-fond-image,
+.szh-couv-filet-haut, .szh-couv-filet-bas { position: absolute; }
+.szh-couv-bande, .szh-couv-aplat, .szh-couv-dos-fond, .szh-couv-fond-image {
+  top: calc(-1 * var(--szh-couv-fp)); bottom: calc(-1 * var(--szh-couv-fp));
 }
-.szh-couv-normal .szh-couv-dos-titre   { font-size: 9pt; font-weight: 700; }
-.szh-couv-normal .szh-couv-dos-auteurs { font-size: 8pt; font-weight: 400; margin-right: 6mm; }
+.szh-couv-bande, .szh-couv-dos-fond { background: var(--c-couv-rouge); }
+.szh-couv-dos-fond { left: 0; right: 0; }
+.szh-couv-aplat { background: var(--c-couv-fond); }
+/* Bande rouge de 15 mm de part et d'autre du dos, 2,8 mm de papier, puis l'aplat. */
+.szh-couv-1re .szh-couv-bande { left: 0; width: 15mm; }
+.szh-couv-1re .szh-couv-aplat { left: 17.8mm; right: calc(-1 * var(--szh-couv-fp)); }
+.szh-couv-4e .szh-couv-bande  { left: 140mm; width: 15mm; }
+.szh-couv-4e .szh-couv-aplat  { left: calc(-1 * var(--szh-couv-fp));
+                                width: calc(137.2mm + var(--szh-couv-fp)); }
 
-.szh-couv-normal .szh-couv-1re-illustration { inset: 0; background-size: cover; }  /* jusqu'au fond perdu */
-.szh-couv-normal .szh-couv-1re-bandeau {
-  bottom: 32mm; padding: 8mm calc(10mm + var(--szh-couv-fp)) 8mm 10mm;
-  color: var(--c-couv-sur-accent);
+.szh-couv-classique .szh-couv-4e-texte, .szh-couv-recherche .szh-couv-4e-texte,
+.szh-couv-prospectrum .szh-couv-4e-texte {
+  position: absolute; left: 17.5mm; width: 105mm;
+  font-size: 10pt; line-height: 13.5pt; text-align: justify; hyphens: auto;
+  hyphenate-limit-chars: 6 3 3;
 }
-.szh-couv-normal .szh-couv-auteurs    { font-size: 10pt; font-weight: 400; margin: 0 0 2mm 0; }
-.szh-couv-normal .szh-couv-titre      { font-size: 16pt; font-weight: 700; line-height: 1.25; }
-.szh-couv-normal .szh-couv-sous-titre { font-size: 11pt; font-weight: 400; margin: 3mm 0 0 0; }
-.szh-couv-normal .szh-couv-1re-pied {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; justify-content: space-between; align-items: flex-end;
-  padding: 6mm 10mm; font-size: 8.5pt;
+.szh-couv-classique .szh-couv-4e-texte p, .szh-couv-recherche .szh-couv-4e-texte p,
+.szh-couv-prospectrum .szh-couv-4e-texte p { margin: 0 0 13.5pt 0; }
+/* Un intertitre de 4e ne porte pas le numéro de section que lui donne la chaîne des
+   chapitres. */
+.szh-couv-classique .szh-num-section, .szh-couv-recherche .szh-num-section,
+.szh-couv-prospectrum .szh-num-section { display: none; }
+.szh-couv-isbn {
+  position: absolute; left: 17.5mm; font-size: 7pt; line-height: 12pt; font-weight: 800;
+  letter-spacing: 0.025em; color: var(--c-couv-accent);
 }
-.szh-couv-normal .szh-couv-1re-collection { max-width: 65%; font-weight: 600; }
-.szh-couv-normal .szh-couv-1re-edition    { font-weight: 700; letter-spacing: 0.02em; }
+
+/* Dos : texte blanc tourné, lu de bas en haut, fin du titre à 10 mm du haut ; symbole de
+   l'édition en pied. */
+.szh-couv-classique .szh-couv-dos, .szh-couv-recherche .szh-couv-dos,
+.szh-couv-prospectrum .szh-couv-dos { color: var(--c-couv-papier); }
+.szh-couv-classique .szh-couv-dos-texte, .szh-couv-recherche .szh-couv-dos-texte {
+  position: absolute; top: 10.1mm; left: 50%;
+  transform-origin: 0 0; transform: rotate(-90deg) translate(-100%, -50%);
+  white-space: nowrap; font-size: 8pt; line-height: 1;
+}
+.szh-couv-classique .szh-couv-dos-auteurs, .szh-couv-recherche .szh-couv-dos-auteurs {
+  font-weight: 400; letter-spacing: 0.05em; margin-right: 3.8mm;
+}
+.szh-couv-classique .szh-couv-dos-titre, .szh-couv-recherche .szh-couv-dos-titre {
+  font-weight: 700; letter-spacing: 0.025em;
+}
+.szh-couv-classique .szh-couv-dos-symbole, .szh-couv-recherche .szh-couv-dos-symbole,
+.szh-couv-prospectrum .szh-couv-dos-symbole { top: 204.6mm; width: 4.9mm; margin-left: -2.45mm; }
+
+.szh-couv-classique .szh-couv-logo, .szh-couv-recherche .szh-couv-logo,
+.szh-couv-prospectrum .szh-couv-logo { position: absolute; height: 10.74mm; width: 27.51mm; }
+
+/* ═══ 4. Modèle classique — calqué sur « Teil- und Reintegration als Einzelfall? » (2026)
+   Responsables, titre, filet et sous-titre à la couleur d'impression sur l'aplat ;
+   illustration détourée sous le titre, ou plein cadre en bas (Pelgrims, 2021). */
+.szh-couv-classique .szh-couv-1re-bandeau {
+  top: 8.93mm; left: 30mm; right: 0; background: none; color: var(--c-couv-accent);
+}
+.szh-couv-classique .szh-couv-auteurs {
+  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.05em;
+}
+.szh-couv-classique .szh-couv-titre {
+  margin-top: 17.11mm; font-size: 20pt; line-height: 26pt; font-weight: 800;
+  letter-spacing: 0.015em;
+}
+/* Le filet sous le titre est la bordure du sous-titre : sans sous-titre, pas de filet. Il
+   court de l'aplat (17,8 mm) au rogné. */
+.szh-couv-classique .szh-couv-sous-titre {
+  margin: 4.58mm 0 0 -12.2mm; padding: 3.74mm 0 0 12.2mm;
+  border-top: 0.3pt solid var(--c-couv-accent);
+  font-size: 13pt; line-height: 19pt; font-weight: 500; letter-spacing: 0.05em;
+}
+.szh-couv-classique .szh-couv-sous-titre:empty { display: none; }
+.szh-couv-classique .szh-couv-1re-illustration {
+  top: calc(76.42mm + var(--szh-couv-fp)); left: 23.5mm; width: 122.49mm; height: 122.49mm;
+  background-size: contain;
+}
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-cadre { left: 17.8mm; }
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-illustration {
+  top: calc(93mm + var(--szh-couv-fp)); left: 0; right: 0; bottom: 0; width: auto; height: auto;
+  background-size: cover; background-position: center top;
+}
+.szh-couv-classique .szh-couv-1re-pied { position: absolute; left: 117.28mm; top: 201.63mm; }
+.szh-couv-classique .szh-couv-logo { left: 0; top: 0; }
+.szh-couv-classique .szh-couv-4e-texte { left: 19.5mm; width: 105.8mm; top: 40.06mm; }
+.szh-couv-classique .szh-couv-isbn { top: 202.77mm; }
+
+/* ═══ 5. Modèle recherche — calqué sur « Menschen mit Lernschwierigkeiten auf
+   Partnersuche » (Sonderpädagogische Forschung in der Schweiz, 2023)
+   Illustration plein cadre ; bandeau de titre à la couleur d'impression et bandeau de
+   collection capucine, tous deux translucides ; filets blancs et capucine au niveau du
+   bandeau de collection, à travers la bande rouge et le dos. */
+.szh-couv-recherche .szh-couv-1re-cadre { left: 3.05mm; }
+.szh-couv-recherche .szh-couv-1re-illustration { inset: 0; background-size: cover; }
+.szh-couv-recherche .szh-couv-1re-bandeau {
+  top: 125mm; height: 64mm; left: 3.05mm; right: calc(-1 * var(--szh-couv-fp));
+  box-sizing: border-box; padding: 20.56mm calc(10mm + var(--szh-couv-fp)) 0 12.2mm;
+  background: var(--c-couv-accent-voile); color: var(--c-couv-papier);
+}
+.szh-couv-recherche .szh-couv-auteurs {
+  position: absolute; top: -115.07mm; left: 16.95mm;
+  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.05em;
+}
+.szh-couv-recherche .szh-couv-titre {
+  font-size: 20pt; line-height: 26pt; font-weight: 800; letter-spacing: 0.01em;
+}
+.szh-couv-recherche .szh-couv-sous-titre {
+  margin: 4.16mm calc(-10mm - var(--szh-couv-fp)) 0 -12.2mm;
+  padding: 4.17mm calc(10mm + var(--szh-couv-fp)) 0 12.2mm;
+  border-top: 0.3pt solid var(--c-couv-papier);
+  font-size: 13pt; line-height: 19pt; font-weight: 500; letter-spacing: 0.05em;
+}
+.szh-couv-recherche .szh-couv-sous-titre:empty { display: none; }
+.szh-couv-recherche .szh-couv-1re-pied {
+  position: absolute; top: 197mm; height: 20mm; left: 3.05mm; right: calc(-1 * var(--szh-couv-fp));
+  box-sizing: border-box; padding: 4.87mm 0 0 11.95mm;
+  border-top: 0.3pt solid var(--c-couv-papier); border-bottom: 0.3pt solid var(--c-couv-papier);
+  background: var(--c-couv-capucine-voile); color: var(--c-couv-papier);
+}
+.szh-couv-recherche .szh-couv-1re-collection {
+  font-size: 10pt; line-height: 14pt; font-weight: 700; font-variant: small-caps;
+  letter-spacing: 0.01em;
+}
+.szh-couv-recherche .szh-couv-logo { left: 111.46mm; top: 4.62mm; }
+
+.szh-couv-recherche .szh-couv-4e-texte { left: 17.25mm; top: 41.01mm; }
+.szh-couv-recherche .szh-couv-isbn { top: 202.53mm; }
+/* Filets à 197,04 et 216,96 mm : capucine sur l'aplat, blancs sur la bande et le dos. */
+.szh-couv-recherche .szh-couv-filet-haut, .szh-couv-recherche .szh-couv-filet-bas {
+  height: 0.3pt; margin-top: -0.15pt;
+}
+.szh-couv-recherche .szh-couv-filet-haut { top: 197.04mm; }
+.szh-couv-recherche .szh-couv-filet-bas  { top: 216.96mm; }
+.szh-couv-recherche .szh-couv-4e .szh-couv-filet-haut,
+.szh-couv-recherche .szh-couv-4e .szh-couv-filet-bas {
+  left: calc(-1 * var(--szh-couv-fp)); width: calc(137.2mm + var(--szh-couv-fp));
+  background: var(--c-couv-capucine);
+}
+.szh-couv-recherche .szh-couv-4e .szh-couv-filet-haut::after,
+.szh-couv-recherche .szh-couv-4e .szh-couv-filet-bas::after {
+  content: ""; position: absolute; top: 0; height: 0.3pt;
+  left: calc(140mm + var(--szh-couv-fp)); width: 15mm; background: var(--c-couv-papier);
+}
+.szh-couv-recherche .szh-couv-dos .szh-couv-filet-haut,
+.szh-couv-recherche .szh-couv-dos .szh-couv-filet-bas {
+  left: 0; right: 0; background: var(--c-couv-papier);
+}
+
+/* ═══ 6. Modèle prospectrum — calqué sur « Die BRK in der Schweiz / La CDPH en Suisse »
+   (ProSpectrum, 2024)
+   Fond arc-en-ciel (media/fonds/prospectrum.jpg), panneaux à la couleur d'impression (le
+   sapin de la référence), tout le texte en blanc ;
+   titre second aligné à droite dans la langue voisine. Le fond du titre coupe le
+   filet supérieur derrière les mots, comme dans la référence. */
+.szh-couv-prospectrum body { color: var(--c-couv-papier); }
+.szh-couv-prospectrum .szh-couv-fond-image { left: 0; right: 0; background-size: 100% 100%; }
+.szh-couv-prospectrum .szh-couv-1re .szh-couv-fond-image { right: calc(-1 * var(--szh-couv-fp)); }
+.szh-couv-prospectrum .szh-couv-4e .szh-couv-fond-image { left: calc(-1 * var(--szh-couv-fp)); }
+.szh-couv-prospectrum .szh-couv-panneau { background: var(--c-couv-accent); }
+.szh-couv-prospectrum .szh-couv-1re .szh-couv-panneau { left: 17.8mm; top: 8mm; width: 130.2mm; height: 209mm; }
+.szh-couv-prospectrum .szh-couv-4e .szh-couv-panneau  { left: 7mm; top: 8mm; width: 130.2mm; height: 209mm; }
+.szh-couv-prospectrum .szh-couv-dos .szh-couv-panneau {
+  left: 0; right: 0; top: calc(-1 * var(--szh-couv-fp)); height: calc(217mm + var(--szh-couv-fp));
+}
+.szh-couv-prospectrum .szh-couv-filet-haut, .szh-couv-prospectrum .szh-couv-filet-bas {
+  height: 0.3pt; margin-top: -0.15pt; background: var(--c-couv-papier);
+}
+.szh-couv-prospectrum .szh-couv-filet-haut { top: 62.94mm; }
+.szh-couv-prospectrum .szh-couv-filet-bas  { top: 197.04mm; }
+.szh-couv-prospectrum .szh-couv-1re .szh-couv-filet-haut,
+.szh-couv-prospectrum .szh-couv-1re .szh-couv-filet-bas { left: 17.8mm; width: 130.2mm; }
+.szh-couv-prospectrum .szh-couv-4e .szh-couv-filet-bas { left: 7mm; width: 130.2mm; }
+.szh-couv-prospectrum .szh-couv-dos .szh-couv-filet-haut,
+.szh-couv-prospectrum .szh-couv-dos .szh-couv-filet-bas { left: 0; right: 0; }
+.szh-couv-prospectrum .szh-couv-1re-cadre { display: none; }
+
+.szh-couv-1re-label {
+  position: absolute; left: 29.95mm; top: 13.52mm;
+  font-size: 12pt; line-height: 14pt; font-weight: 800; letter-spacing: -0.026em;
+}
+.szh-couv-prospectrum .szh-couv-1re-bandeau {
+  top: 18.73mm; left: 30mm; right: 12.2mm; background: none;
+}
+.szh-couv-prospectrum .szh-couv-auteurs {
+  margin-bottom: 19.37mm; font-size: 10pt; line-height: 14pt; letter-spacing: 0.01em;
+}
+.szh-couv-prospectrum .szh-couv-titre, .szh-couv-prospectrum .szh-couv-titre-2 {
+  font-size: 42pt; line-height: 40pt; font-weight: 800; letter-spacing: -0.03em;
+}
+/* En ligne, le titre ne peint son fond que sous ses mots : il n'y cache que là le filet. */
+.szh-couv-prospectrum .szh-couv-titre {
+  display: inline; padding-right: 1.5mm; background: var(--c-couv-accent);
+  box-decoration-break: clone;
+}
+.szh-couv-prospectrum .szh-couv-sous-titre, .szh-couv-prospectrum .szh-couv-sous-titre-2 {
+  font-size: 20pt; line-height: 24pt; font-weight: 300; letter-spacing: -0.013em;
+}
+.szh-couv-prospectrum .szh-couv-sous-titre { margin-top: 10.21mm; }
+.szh-couv-prospectrum .szh-couv-titre-2, .szh-couv-prospectrum .szh-couv-sous-titre-2 {
+  position: absolute; right: 0; text-align: right; white-space: nowrap;
+}
+.szh-couv-prospectrum .szh-couv-titre-2      { top: 99.81mm; }
+.szh-couv-prospectrum .szh-couv-sous-titre-2 { top: 138.24mm; }
+.szh-couv-prospectrum .szh-couv-1re-pied {
+  position: absolute; left: 30mm; right: 12.2mm; top: 201.6mm; height: 10.8mm;
+}
+.szh-couv-prospectrum .szh-couv-1re-collection {
+  position: absolute; left: 0; top: 5.62mm; font-size: 8.46pt; line-height: 10pt;
+  text-transform: uppercase; letter-spacing: 0.17em;
+}
+.szh-couv-prospectrum .szh-couv-logo { left: 84.3mm; top: 0; }
+
+.szh-couv-prospectrum .szh-couv-4e-texte { top: 51.81mm; }
+.szh-couv-prospectrum .szh-couv-4e-texte h1, .szh-couv-prospectrum .szh-couv-4e-texte h2,
+.szh-couv-prospectrum .szh-couv-4e-texte h3 {
+  margin: 0 0 13.5pt 0; font-size: 10pt; line-height: 13.5pt; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+}
+.szh-couv-prospectrum .szh-couv-4e-texte p + h1, .szh-couv-prospectrum .szh-couv-4e-texte p + h2,
+.szh-couv-prospectrum .szh-couv-4e-texte p + h3 { margin-top: 13.5pt; }
+.szh-couv-prospectrum .szh-couv-isbn {
+  top: 201.87mm; font-weight: 700; letter-spacing: 0.015em; color: var(--c-couv-papier);
+}
+
+/* Dos : tome droit en tête, puis collection, titre en capitales et responsables, chacun
+   tourné et accroché par sa fin (le haut une fois tournée). */
+.szh-couv-prospectrum .szh-couv-dos-tome { top: 13.82mm; font-size: 12pt; font-weight: 800; }
+.szh-couv-dos-ligne {
+  position: absolute; left: 50%; transform-origin: 0 0;
+  transform: rotate(-90deg) translate(-100%, -50%); white-space: nowrap; line-height: 1;
+}
+.szh-couv-prospectrum .szh-couv-dos-collection {
+  top: 31.43mm; font-size: 12pt; font-weight: 800; letter-spacing: -0.03em;
+}
+.szh-couv-prospectrum .szh-couv-dos-titre {
+  top: 71.22mm; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.035em;
+}
+.szh-couv-prospectrum .szh-couv-dos-auteurs { top: 153.5mm; font-size: 8pt; letter-spacing: 0.05em; }

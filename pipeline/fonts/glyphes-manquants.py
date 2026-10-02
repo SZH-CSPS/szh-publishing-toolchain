@@ -50,6 +50,10 @@ CIBLES = {
     'OpenSans-SemiCondensed-Bold.ttf':     'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-SemiBoldItalic.ttf': 'IBMPlexMono-Medium.ttf',
     'OpenSans-SemiCondensed-BoldItalic.ttf':     'IBMPlexMono-Medium.ttf',
+    # Graisses déclarées par la couverture des livres seule (couverture.css).
+    'OpenSans-SemiCondensed-Light.ttf':     'IBMPlexMono-Regular.ttf',
+    'OpenSans-SemiCondensed-Medium.ttf':    'IBMPlexMono-Medium.ttf',
+    'OpenSans-SemiCondensed-ExtraBold.ttf': 'IBMPlexMono-Medium.ttf',
     # Chasse normale, statiques d'amont : la couverture des livres seulement.
     'SZHCouverture-Light.ttf':    'IBMPlexMono-Regular.ttf',
     'SZHCouverture-Regular.ttf':  'IBMPlexMono-Regular.ttf',

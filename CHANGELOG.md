@@ -11,6 +11,26 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## À paraître
+
+Couvertures de livre : trois modèles de plus, calqués sur les couvertures InDesign de la
+maison.
+
+**Production.**
+- `couverture.modele` dans `buch.yaml` : `falc`, `classique`, `recherche` (Sonderpädagogische
+  Forschung in der Schweiz) ou `prospectrum`. Vide, la maquette décide (FALC pour un livre
+  FALC, classique sinon). Mêmes sorties qu'avant : à plat PDF/X-4 CMJN pour l'imprimeur, 1re et
+  4e en PDF/UA-1 et PNG.
+- La couverture « normale » change : le modèle classique remplace la maquette provisoire
+  (bandeau sur illustration). Un livre déjà compilé sans `couverture.modele` sort avec la
+  nouvelle couverture : aplat pâle, titre et filet à la couleur d'impression, dos et bandes
+  rouges, ISBN en pied de 4e. La couverture FALC ne bouge pas (identique au pixel).
+- `couverture.illustration-plein` (classique) : illustration plein cadre en bas de la 1re.
+  `couverture.titre-2` / `sous-titre-2` (ProSpectrum) : titre dans la langue voisine.
+- Couleur de référence `sapin` (90/60/65/53), celle des panneaux ProSpectrum.
+- Une illustration transparente ne laisse plus de rectangle visible sur l'aplat du PDF
+  d'impression : elle est aplatie sur le CMJN exact du fond.
+
 ## 3.3.0
 
 Medium : la Documentation montre la date telle qu'elle sera imprimée, préremplit une reprise

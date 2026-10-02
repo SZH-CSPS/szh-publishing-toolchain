@@ -39,6 +39,7 @@ lire_yaml = szh_commun.lire_yaml
 
 REFERENCE_COULEURS = os.path.join(PIPELINE_DIR, 'styles', 'couleurs-reference.json')
 LOGOS_DIR = os.path.join(PIPELINE_DIR, 'media', 'logos')
+FONDS_DIR = os.path.join(PIPELINE_DIR, 'media', 'fonds')
 
 
 def _importer(nom_module, nom_fichier):
@@ -362,18 +363,49 @@ def charger_reference():
 
 
 def _cle_couverture(buch):
-    """Le bloc `couverture:` de buch.yaml. SEUL point de lecture de ses clés (fond,
-    fond-teinte, illustration-x-mm, illustration-y-mm) : ces noms sont provisoires."""
+    """Le bloc `couverture:` de buch.yaml. SEUL point de lecture de ses clés (modele, fond,
+    fond-teinte, illustration-x-mm, illustration-y-mm, illustration-plein, titre-2,
+    sous-titre-2) : ces noms sont provisoires."""
     couv = buch.get('couverture')
     return couv if isinstance(couv, dict) else {}
 
 
+# Les modèles de couverture, chacun calqué sur une référence InDesign (docs/ARCHITECTURE-
+# LIVRES.md) : falc, classique (la collection courante), recherche (Sonderpädagogische
+# Forschung in der Schweiz), prospectrum. La maquette de l'intérieur n'en décide que par
+# défaut.
+MODELES = ('falc', 'classique', 'recherche', 'prospectrum')
+
+# Fond par défaut de chaque modèle : (clé de référence, teinte en %).
+FONDS_PAR_DEFAUT = {'falc': ('poireau', 9.0), 'classique': ('bleu-acier', 9.0),
+                    'recherche': ('bleu-acier', 20.0), 'prospectrum': ('poireau', 10.0)}
+
+
+def modele_couverture(buch):
+    """Le modèle de couverture : couverture.modele, sinon falc pour une maquette FALC et
+    classique pour toute autre. Une valeur hors de la liste arrête la compilation."""
+    valeur = str(_cle_couverture(buch).get('modele') or '').strip()
+    if not valeur:
+        return 'falc' if str(buch.get('maquette') or '') == 'falc' else 'classique'
+    if valeur not in MODELES:
+        raise ErreurCouverture('couverture.modele « %s » hors de la liste (%s)'
+                               % (valeur, ', '.join(MODELES)))
+    return valeur
+
+
 def fond_couverture(buch):
-    """(clé de référence, teinte en %) du fond de toute la couverture."""
+    """(clé de référence, teinte en %) du fond de la couverture."""
     couv = _cle_couverture(buch)
-    cle = str(couv.get('fond') or 'poireau').strip()
-    teinte = _nombre(couv.get('fond-teinte'), 9.0)
+    cle_defaut, teinte_defaut = FONDS_PAR_DEFAUT[modele_couverture(buch)]
+    cle = str(couv.get('fond') or cle_defaut).strip()
+    teinte = _nombre(couv.get('fond-teinte'), teinte_defaut)
     return cle, teinte
+
+
+def illustration_pleine(buch):
+    """Modèle classique : l'illustration couvre le bas de la 1re jusqu'au fond perdu, au
+    lieu d'être posée détourée sur le fond."""
+    return _cle_couverture(buch).get('illustration-plein') is True
 
 
 def decalage_illustration(buch):
@@ -431,6 +463,17 @@ def palette(buch, ref, mode):
     else:
         p = {'encre': '#000000', 'papier': '#FFFFFF', 'accent': accent['rgb'].upper(),
              'fond': teinte_rgb(ref[fond_cle]['rgb'], fond_t)}
+    # Couleurs fixées par modèle (dos et bandes rouges, bandeau de collection capucine), et
+    # les deux bandeaux translucides du modèle recherche.
+    for fixe in ('rouge', 'capucine'):
+        p[fixe] = (_cmjn_css(ref[fixe]['cmjn']) if mode == 'impression'
+                   else ref[fixe]['rgb'].upper())
+    for nom, entree, opacite in (('accent-voile', accent, 0.68),
+                                 ('capucine-voile', ref['capucine'], 0.85)):
+        if mode == 'impression':
+            p[nom] = '%s / %g)' % (_cmjn_css(entree['cmjn'])[:-1], opacite)
+        else:
+            p[nom] = 'rgb(%d %d %d / %g)' % (_rgb(entree['rgb']) + (opacite,))
     p['sur-accent'] = p['papier'] if sur_accent_blanc else p['encre']
     p['cle'] = cle
     return p
@@ -448,20 +491,21 @@ def _data_uri(mime, brut):
     return 'data:%s;base64,%s' % (mime, base64.b64encode(brut).decode('ascii'))
 
 
-def illustration_cmjn(chemin, profil_icc, fond_rgb):
+def illustration_cmjn(chemin, profil_icc, fond_cmjn):
     """L'illustration RGB en JPEG CMJN, par le profil d'impression : intention relative
-    colorimétrique et compensation du point noir. Une transparence est aplatie sur le fond
-    RGB de la couverture, faute d'alpha en CMJN."""
+    colorimétrique et compensation du point noir. Une transparence est aplatie APRÈS la
+    conversion, sur le CMJN exact du fond (faute d'alpha en JPEG) : aplatie sur son RGB,
+    le fond converti par le profil sortait en rectangle visible sur l'aplat (mesuré)."""
     from PIL import Image, ImageCms
     im = Image.open(chemin)
     source = None
     if im.info.get('icc_profile'):
         source = ImageCms.ImageCmsProfile(io.BytesIO(im.info['icc_profile']))
+    alpha = None
     if im.mode in ('RGBA', 'LA', 'P'):
         im = im.convert('RGBA')
-        plat = Image.new('RGB', im.size, _rgb(fond_rgb))
-        plat.paste(im, mask=im.split()[-1])
-        im = plat
+        alpha = im.split()[-1]
+        im = im.convert('RGB')
     elif im.mode == 'CMYK':   # déjà séparée : on n'y touche pas
         tampon = io.BytesIO()
         im.save(tampon, 'JPEG', quality=95, subsampling=0)
@@ -472,12 +516,15 @@ def illustration_cmjn(chemin, profil_icc, fond_rgb):
         im, source or ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')), profil_icc,
         renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC, outputMode='CMYK',
         flags=ImageCms.Flags.BLACKPOINTCOMPENSATION)
+    if alpha is not None:
+        fond = Image.new('CMYK', im.size, tuple(int(round(v * 255)) for v in fond_cmjn))
+        cmjn = Image.composite(cmjn, fond, alpha)
     tampon = io.BytesIO()
     cmjn.save(tampon, 'JPEG', quality=95, subsampling=0)
     return _data_uri('image/jpeg', tampon.getvalue())
 
 
-def illustration_uri(chemin, mode, profil_icc, fond_rgb):
+def illustration_uri(chemin, mode, profil_icc, fond_cmjn):
     """data: URI de l'illustration (facultative), ou None."""
     if not chemin:
         return None
@@ -488,11 +535,28 @@ def illustration_uri(chemin, mode, profil_icc, fond_rgb):
               file=sys.stderr)
         return None
     if mode == 'impression' and ext != '.svg':
-        return illustration_cmjn(chemin, profil_icc, fond_rgb)
+        return illustration_cmjn(chemin, profil_icc, fond_cmjn)
     if mode == 'impression':
         print('[couverture] ⚠ illustration SVG : ses couleurs passent telles quelles dans le '
               'PDF d\'impression, sans conversion CMJN.', file=sys.stderr)
     return _data_uri(mime, open(chemin, 'rb').read())
+
+
+def fond_uri(nom, mode, profil_icc):
+    """Un fond de media/fonds/, JPEG CMJN : tel quel pour l'impression, passé en sRGB par
+    le profil d'impression pour les sorties écran, qui n'ont droit qu'au RGB."""
+    chemin = os.path.join(FONDS_DIR, nom)
+    if mode == 'impression':
+        return _data_uri('image/jpeg', open(chemin, 'rb').read())
+    from PIL import Image, ImageCms
+    rgb = ImageCms.profileToProfile(
+        Image.open(chemin), ImageCms.ImageCmsProfile(profil_icc),
+        ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')),
+        renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC, outputMode='RGB',
+        flags=ImageCms.Flags.BLACKPOINTCOMPENSATION)
+    tampon = io.BytesIO()
+    rgb.save(tampon, 'JPEG', quality=92, subsampling=0)
+    return _data_uri('image/jpeg', tampon.getvalue())
 
 
 def logo_uri(nom, encre, papier):
@@ -535,17 +599,116 @@ def _img(classe, uri, alt):
         classe, html.escape(uri, quote=True), html.escape(alt, quote=True))
 
 
-def blocs_maquette(buch, lang, maquette, couleurs, titre, resp):
-    """(pied de 1re, contenu du dos) selon la maquette. FALC : picto, collection et logo
-    en pied, tome/titre/responsables/symbole au dos. Normal : collection et mention texte
-    en pied, titre et responsables sur une ligne au dos."""
+MOT_VOLUME = {'fr': 'Volume', 'de': 'Band', 'it': 'Volume'}
+ISBN_LIBELLES = {'fr': ('ISBN E-Book : ', 'ISBN Print : '),
+                 'de': ('ISBN E-Book: ', 'ISBN Print on demand: '),
+                 'it': ('ISBN e-book: ', 'ISBN stampa: ')}
+BARRE = ' / '
+
+
+def langue_seconde(lang):
+    """La langue du titre second (ProSpectrum, bilingue) : l'autre de fr et de."""
+    return 'de' if lang == 'fr' else 'fr'
+
+
+def _lignes(texte):
+    return '<br />'.join(html.escape(x) for x in szh_commun.titre_lignes(texte))
+
+
+def bloc_isbn(buch, lang):
+    """Les ISBN en pied de 4e, l'e-book puis l'imprimé ; rien si aucun n'est posé."""
+    valeurs = [str(buch.get(k) or '').strip() for k in ('isbn-ebook', 'isbn-print')]
+    libelles = ISBN_LIBELLES.get(lang, ISBN_LIBELLES['fr'])
+    lignes = [html.escape(l + v) for l, v in zip(libelles, valeurs) if v]
+    return '<p class="szh-couv-isbn">%s</p>' % '<br />'.join(lignes) if lignes else ''
+
+
+def _decor(*classes):
+    """Des aplats et filets sans contenu : ni texte ni balise pour le lecteur d'écran."""
+    return '\n'.join('<div class="%s"></div>' % c for c in classes)
+
+
+def _fond_image(uri):
+    return ('<div class="szh-couv-fond-image" style="background-image: url(%s)"></div>' % uri
+            if uri else '')
+
+
+def blocs_maquette(buch, lang, modele, couleurs, titre, resp, fond=None):
+    """Les fragments de chaque emplacement du gabarit pour `modele` : pied de 1re, dos,
+    décor du haut de la 1re et de la 4e, titre second dans le bandeau, pied de 4e.
+    `fond` est l'URI du fond ProSpectrum (None : pas de fond image)."""
     collection = html.escape(str(buch.get('collection') or ''))
     tome = html.escape(str(buch.get('tome') or ''))
     # Le dos se lit de bas en haut : la ligne commence par les responsables, qui tombent
     # ainsi sous le titre une fois tournée.
     ligne_dos = ('<div class="szh-couv-dos-texte"><span class="szh-couv-dos-auteurs">%s</span>'
                  '<span class="szh-couv-dos-titre">%s</span></div>' % (resp, titre))
-    if maquette == 'falc':
+    blocs = {'pied': '', 'dos': '', '1re-haut': '', 'bandeau-extra': '', '4e-haut': '',
+             '4e-extra': ''}
+    symbole_blanc = _img('szh-couv-dos-symbole', logo_uri(
+        'edition-szh-csps-symbole.svg', couleurs['papier'], couleurs['accent']), ALT_EDITION)
+    if modele in ('classique', 'recherche', 'prospectrum'):
+        blocs['4e-extra'] = bloc_isbn(buch, lang)
+    if modele == 'classique':
+        # Illustration plein cadre : le logo passe en réserve blanche sur l'image.
+        plein = illustration_pleine(buch)
+        blocs['pied'] = _img('szh-couv-logo', logo_uri(
+            'edition-szh-csps.svg', couleurs['papier'] if plein else couleurs['accent'],
+            couleurs['accent'] if plein else couleurs['papier']), ALT_EDITION)
+        blocs['1re-haut'] = _decor('szh-couv-bande', 'szh-couv-aplat')
+        blocs['4e-haut'] = _decor('szh-couv-aplat', 'szh-couv-bande')
+        blocs['dos'] = '\n'.join([_decor('szh-couv-dos-fond'), ligne_dos, symbole_blanc])
+        return blocs
+    if modele == 'recherche':
+        lignes = [x for x in (collection, (MOT_TOME.get(lang, MOT_TOME['fr']) + ' ' + tome)
+                              if tome else '') if x]
+        blocs['pied'] = '\n'.join([
+            '<p class="szh-couv-1re-collection">%s</p>' % '<br />'.join(lignes),
+            _img('szh-couv-logo', logo_uri('edition-szh-csps.svg', couleurs['papier'],
+                                           couleurs['accent']), ALT_EDITION)])
+        blocs['4e-haut'] = _decor('szh-couv-aplat', 'szh-couv-bande', 'szh-couv-filet-haut',
+                                  'szh-couv-filet-bas')
+        blocs['dos'] = '\n'.join([_decor('szh-couv-dos-fond', 'szh-couv-filet-haut',
+                                         'szh-couv-filet-bas'), ligne_dos, symbole_blanc])
+        return blocs
+    if modele == 'prospectrum':
+        couv = _cle_couverture(buch)
+        titre_2 = _lignes(couv.get('titre-2'))
+        sous_titre_2 = _lignes(couv.get('sous-titre-2'))
+        lang_2 = langue_seconde(lang)
+        if titre_2 or sous_titre_2:
+            blocs['bandeau-extra'] = '\n'.join(
+                '<p class="szh-couv-%s" lang="%s">%s</p>' % (classe, lang_2, contenu)
+                for classe, contenu in (('titre-2', titre_2), ('sous-titre-2', sous_titre_2))
+                if contenu)
+        mot = MOT_VOLUME.get(lang, MOT_VOLUME['fr']) + ' ' + tome if tome else ''
+        if tome and titre_2:
+            mot += BARRE + MOT_VOLUME[lang_2] + ' ' + tome
+        blocs['pied'] = '\n'.join([
+            '<p class="szh-couv-1re-collection">%s</p>' % mot,
+            _img('szh-couv-logo', logo_uri('edition-szh-csps.svg', couleurs['papier'],
+                                           couleurs['accent']), ALT_EDITION)])
+        blocs['1re-haut'] = '\n'.join([
+            _fond_image(fond), _decor('szh-couv-panneau', 'szh-couv-filet-haut',
+                                      'szh-couv-filet-bas'),
+            '<p class="szh-couv-1re-label">%s</p>' % collection if collection else ''])
+        blocs['4e-haut'] = '\n'.join([_fond_image(fond),
+                                      _decor('szh-couv-panneau', 'szh-couv-filet-bas')])
+        titre_dos = titre
+        plat_2 = html.escape(szh_commun.titre_plat(couv.get('titre-2')))
+        if plat_2:
+            titre_dos += BARRE + '<span lang="%s">%s</span>' % (lang_2, plat_2)
+        blocs['dos'] = '\n'.join([
+            _fond_image(fond),
+            _decor('szh-couv-panneau', 'szh-couv-filet-haut', 'szh-couv-filet-bas'),
+            '<p class="szh-couv-dos-tome">%s</p>' % tome if tome else '',
+            '<p class="szh-couv-dos-ligne szh-couv-dos-collection">%s</p>' % collection
+            if collection else '',
+            '<p class="szh-couv-dos-ligne szh-couv-dos-titre">%s</p>' % titre_dos,
+            '<p class="szh-couv-dos-ligne szh-couv-dos-auteurs">%s</p>' % resp,
+            symbole_blanc])
+        return blocs
+    if modele == 'falc':
         lignes = [x for x in (collection, (MOT_LIVRE.get(lang, MOT_LIVRE['fr']) + ' ' + tome)
                               if tome else '') if x]
         pied = '\n'.join([
@@ -562,14 +725,9 @@ def blocs_maquette(buch, lang, maquette, couleurs, titre, resp):
             _img('szh-couv-dos-symbole', logo_uri('edition-szh-csps-symbole.svg',
                                                   couleurs['accent'], couleurs['papier']),
                  ALT_EDITION)])
-        return pied, dos
-    bloc = ''
-    if collection:
-        bloc = '%s%s' % (collection, (' — %s %s' % (MOT_TOME.get(lang, MOT_TOME['fr']), tome))
-                         if tome else '')
-    pied = ('<div class="szh-couv-1re-collection">%s</div>\n'
-            '<p class="szh-couv-1re-edition">Edition SZH/CSPS</p>' % bloc)
-    return pied, ligne_dos
+        blocs.update(pied=pied, dos=dos)
+        return blocs
+    raise ErreurCouverture('modèle de couverture inconnu : %s' % modele)
 
 
 # Traits de coupe et de pli, hors du fond perdu : à TRAIT_ECART du bord peint, longs de
@@ -639,25 +797,28 @@ def mesures(buch, pdf_interieur):
 
 def composer(opts, buch, mode):
     lang = str(buch.get('lang') or 'fr')
-    maquette = 'falc' if str(buch.get('maquette') or '') == 'falc' else 'normal'
+    modele = modele_couverture(buch)
     ref = charger_reference()
     m = mesures(buch, opts['pdf-interieur'])
     L, H, D = m['largeur_mm'], m['hauteur_mm'], m['dos_mm']
     couleurs = palette(buch, ref, mode)
     impression = mode == 'impression'
     fp = fond_perdu_mm(buch) if impression else 0.0
-    icc = profil_icc(buch, opts.get('icc-dir')) if impression else None
+    # Le fond ProSpectrum, en CMJN, passe aussi par le profil pour les sorties écran.
+    icc = (profil_icc(buch, opts.get('icc-dir')) if impression or modele == 'prospectrum'
+           else None)
+    fond = fond_uri('prospectrum.jpg', mode, icc) if modele == 'prospectrum' else None
 
     fond_cle, fond_t = fond_couverture(buch)
     illus = illustration_uri(opts.get('illustration'), mode, icc,
-                             teinte_rgb(ref[fond_cle]['rgb'], fond_t))
+                             teinte_cmjn(ref[fond_cle]['cmjn'], fond_t))
     # « // » : saut de ligne en 1re de couverture, espace simple au dos et dans <title>.
     titre = html.escape(szh_commun.titre_plat(buch.get('titre')))
     titre_bloc = '<br />'.join(html.escape(x) for x in szh_commun.titre_lignes(buch.get('titre')))
     sous_titre_bloc = '<br />'.join(
         html.escape(x) for x in szh_commun.titre_lignes(buch.get('sous-titre')))
     resp = html.escape(responsables(buch, lang))
-    pied, dos = blocs_maquette(buch, lang, maquette, couleurs, titre, resp)
+    blocs = blocs_maquette(buch, lang, modele, couleurs, titre, resp, fond)
 
     if impression:
         page = ('@color-profile --szh-cmjn { src: url("file://%s"); '
@@ -672,11 +833,17 @@ def composer(opts, buch, mode):
 
     variables = ('--szh-couv-largeur: %.3fmm; --szh-couv-dos: %.3fmm; --szh-couv-hauteur: '
                  '%.3fmm; --szh-couv-fp: %.3fmm; --c-couv-encre: %s; --c-couv-papier: %s; '
-                 '--c-couv-accent: %s; --c-couv-fond: %s; --c-couv-sur-accent: %s;'
+                 '--c-couv-accent: %s; --c-couv-fond: %s; --c-couv-sur-accent: %s; '
+                 '--c-couv-rouge: %s; --c-couv-capucine: %s; '
+                 '--c-couv-accent-voile: %s; --c-couv-capucine-voile: %s;'
                  % (L, D, H, fp, couleurs['encre'], couleurs['papier'], couleurs['accent'],
-                    couleurs['fond'], couleurs['sur-accent'])) + ' ' + variables_illustration(buch)
+                    couleurs['fond'], couleurs['sur-accent'], couleurs['rouge'],
+                    couleurs['capucine'], couleurs['accent-voile'],
+                    couleurs['capucine-voile'])) + ' ' + variables_illustration(buch)
     classes = 'szh-couv-%s szh-couv-%s szh-couv-%s' % (
-        'impression' if impression else 'ecran', maquette, m['format'])
+        'impression' if impression else 'ecran', modele, m['format'])
+    if modele == 'classique' and illustration_pleine(buch):
+        classes += ' szh-couv-illustration-pleine'
 
     quatrieme = open(opts['quatrieme'], encoding='utf-8').read()
     gabarit = open(opts['gabarit'], encoding='utf-8').read()
@@ -696,8 +863,12 @@ def composer(opts, buch, mode):
         '$illustration$': ('<div class="szh-couv-1re-cadre"><div class="szh-couv-1re-illustration" '
                            'style="background-image: url(%s)"></div></div>' % illus)
                           if illus else '',
-        '$pied$': pied,
-        '$dos$': dos,
+        '$pied$': blocs['pied'],
+        '$dos$': blocs['dos'],
+        '$1re-haut$': blocs['1re-haut'],
+        '$bandeau-extra$': blocs['bandeau-extra'],
+        '$4e-haut$': blocs['4e-haut'],
+        '$4e-extra$': blocs['4e-extra'],
         '$traits$': les_traits,
     }
     return _remplacer_jetons(gabarit, remplacements), m

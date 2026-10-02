@@ -87,7 +87,7 @@ class CMYKConverter:
     """Convertisseur des opérateurs de couleur d'un flux PDF."""
 
     def __init__(self):
-        # Les sept couleurs de maison : RGB normalisé -> CMJN du graphiste, en [0, 1].
+        # Les couleurs de maison : RGB normalisé -> CMJN du graphiste, en [0, 1].
         self.house_colors = {hex_to_rgb(c['rgb']): tuple(float(v) for v in c['cmjn'])
                              for c in lire_reference().values()}
 

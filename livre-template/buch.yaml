@@ -22,6 +22,9 @@
 #             champ vide reste vide sur la page de colophon, jamais une valeur inventée.
 #   couleur : couleur d'accent de l'ouvrage (pastille de chapitre et onglet de tranche en
 #             maquette FALC).
+#   couverture.modele : « falc », « classique », « recherche » (Sonderpädagogische Forschung
+#             in der Schweiz) ou « prospectrum » ; vide, la maquette décide (falc ou
+#             classique). Un intertitre de 4e de couverture s'écrit « # Intertitre ».
 #   auteurs : monographie seulement — voir `type` ci-dessus.
 #   ordre-chapitres : vide = l'ordre des dossiers de chapitres/ (leurs préfixes 01-, 02-…).
 #   liminaires : les pièces liminaires, dans l'ordre où elles s'impriment. Les mots-clés

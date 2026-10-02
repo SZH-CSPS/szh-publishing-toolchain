@@ -7,7 +7,7 @@
  * la lisent, aucun des deux n'en garde de copie. Une couleur de charte qui change
  * se change dans le JSON, et ce test dit si le CSS a suivi.
  *
- * Table des sept couleurs officielles (graphiste) :
+ * Table des couleurs officielles (graphiste), et le sapin de la collection ProSpectrum :
  *   - Rouge SZH-CSPS (#D31932) → CMJN officiel 16 90 64 0
  *   - Nuit (#252B46)            → CMJN officiel 65 45 0 60
  *   - Capucine (#EB5E51)        → CMJN officiel 0 74 64 0
@@ -15,6 +15,8 @@
  *   - Poireau (#51A66D)         → CMJN officiel 70 10 70 0
  *   - Bleu acier (#5F9FBC)      → CMJN officiel 65 25 20 0
  *   - Mountbatten (#A98899)     → CMJN officiel 40 50 30 0
+ *   - Sapin (#22352D)           → CMJN 90 60 65 53, relevé sur la couverture InDesign de
+ *     ProSpectrum ; son RGB est la conversion FOGRA52 → sRGB, faute de valeur du graphiste
  */
 
 const test = require('node:test');
@@ -147,6 +149,7 @@ test('Valeurs officielles CMJN (graphiste)', () => {
     '#51A66D': [0.70, 0.10, 0.70, 0.0],  // Poireau
     '#5F9FBC': [0.65, 0.25, 0.20, 0.0],  // Bleu acier
     '#A98899': [0.40, 0.50, 0.30, 0.0],  // Mountbatten
+    '#22352D': [0.90, 0.60, 0.65, 0.53], // Sapin (ProSpectrum, couverture seule)
   };
 
   // Table du graphiste et table de référence doivent porter exactement les mêmes couleurs :
