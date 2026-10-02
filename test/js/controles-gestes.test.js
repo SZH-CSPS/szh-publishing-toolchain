@@ -277,6 +277,7 @@ test('« Signaler » écrit un rapport COCKPIT-SIGNALEMENT, sans texte d’artic
     const courriel = liens.filter((l) => l.indexOf('mailto:') === 0).pop();
     assert.ok(courriel, 'aucun courriel au support');
     assert.match(courriel, /^mailto:robin.morand@szh.ch?/);
+    assert.match(courriel, /[?&]cc=damaris.gut@szh.ch(&|$)/, 'la copie au support manque : ' + courriel);
     const corps = decodeURIComponent(courriel.split('&body=')[1] || '');
     assert.ok(corps.indexOf(path.join(process.env.SZH_RAPPORTS, fichiers[0])) !== -1,
       'le chemin du rapport manque au courriel : ' + corps);

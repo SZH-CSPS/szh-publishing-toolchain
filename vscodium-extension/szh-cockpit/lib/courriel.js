@@ -8,7 +8,7 @@ const path = require('path');
 
 const { compiler } = require('./gabarits');
 const { FORME_MAIL, adresseMailTraduction } = require('./archivage');
-const { COURRIEL_SUPPORT } = require('./codes-erreur');
+const { COURRIEL_SUPPORT, COURRIEL_SUPPORT_CC } = require('./codes-erreur');
 
 const DOSSIER_GABARITS = path.join(__dirname, '..', 'mail-templates');
 
@@ -100,16 +100,18 @@ function brouillonTraduction(produit, quoi, lien) {
 const CORPS_SUPPORT_MAX = 1500;
 function brouillonSupport(langue, variables) {
   const rendu = rendreCourriel('support', langue, variables);
-  return { destinataire: COURRIEL_SUPPORT, sujet: rendu.sujet, corps: rendu.corps.slice(0, CORPS_SUPPORT_MAX) };
+  return { destinataire: COURRIEL_SUPPORT, copie: COURRIEL_SUPPORT_CC, sujet: rendu.sujet,
+           corps: rendu.corps.slice(0, CORPS_SUPPORT_MAX) };
 }
 
 // L'adresse n'est pas encodée : sa forme est vérifiée par adresseMailTraduction (ou par
-// FORME_MAIL pour un auteur), qui ne laisse passer aucun caractère réservé. Sujet et corps
-// le sont, eux : accents, guillemets et retours à la ligne d'un corps entier n'y
-// survivraient pas autrement.
+// FORME_MAIL pour un auteur ; la copie au support est une constante), qui ne laisse passer
+// aucun caractère réservé. Sujet et corps le sont, eux : accents, guillemets et retours à
+// la ligne d'un corps entier n'y survivraient pas autrement.
 function uriMailto(brouillon) {
   return 'mailto:' + brouillon.destinataire +
-    '?subject=' + encodeURIComponent(brouillon.sujet) +
+    '?' + (brouillon.copie ? 'cc=' + brouillon.copie + '&' : '') +
+    'subject=' + encodeURIComponent(brouillon.sujet) +
     '&body=' + encodeURIComponent(brouillon.corps);
 }
 

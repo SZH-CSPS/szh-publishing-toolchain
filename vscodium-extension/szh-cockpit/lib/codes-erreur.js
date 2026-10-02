@@ -154,6 +154,8 @@ const RACINE_PROGRAMDATA = 'C:\\ProgramData\\SZH';
 // — et c'est là tout l'enjeu — est masquée, y compris celle de la personne qui utilise
 // l'outil : D3 l'exclut explicitement du rapport.
 const COURRIEL_SUPPORT = 'robin.morand@szh.ch';
+// En copie des courriels au support, sur demande de la rédaction. N'échappe pas au masquage.
+const COURRIEL_SUPPORT_CC = 'damaris.gut@szh.ch';
 
 // §4.2 — Plafonds non négociables.
 const PLAFONDS = Object.freeze({
@@ -552,7 +554,7 @@ module.exports = {
   ORIGINES_ANCRAGE,
   ORDRE_CLES_RAPPORT,
   RACINE_PROGRAMDATA,
-  COURRIEL_SUPPORT,
+  COURRIEL_SUPPORT, COURRIEL_SUPPORT_CC,
   PLAFONDS,
   ANTI_INONDATION,
   ID_LONGUEUR_MAX,

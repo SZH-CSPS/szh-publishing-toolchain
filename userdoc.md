@@ -829,7 +829,7 @@ carte d’article porte **Recompiler cet article**, qui ne refait que lui. Un po
 l’outil ne sait pas expliquer, comme une compilation arrêtée sans cause reconnue, porte
 un bouton **Contacter le support** : il enregistre un signalement pour l’équipe qui
 entretient Pronto, avec la fin du journal de compilation, puis ouvre un courriel au support
-prêt à envoyer, qui donne le chemin de ce rapport. Quand une compilation s’arrête
+prêt à envoyer (avec une copie à Damaris Gut), qui donne le chemin de ce rapport. Quand une compilation s’arrête
 sans cause reconnue, la notification rouge porte aussi ce bouton : pas besoin d’ouvrir les
 Contrôles.
 
