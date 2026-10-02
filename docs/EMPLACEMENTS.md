@@ -206,7 +206,9 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 |---|---|
 | Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
 | État du **poste** (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
-| État de **ce compte** (environnement WSL, extensions posées, onglet et langue du lanceur, mise à jour silencieuse — clés `ongletDefaut`, `langueInterface` et `majSilencieuse`, absente/vide = automatique ou fenêtre visible ; adresse Shlink et clés d'API Shlink/OJS — `shlinkUrl` en clair, `shlinkCle`/`ojsCle` chiffrées DPAPI, jamais en clair sur le disque, voir l'onglet **Paramètres**) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
+| État de **ce compte** (environnement WSL, extensions posées, langue et mise à jour silencieuse — clés `langueInterface` et `majSilencieuse`, écrites par l'onglet **Paramètres** du lanceur parce que les scripts PowerShell et la tâche planifiée les lisent ; `ongletDefaut` n'est lu qu'une fois, au premier lancement, pour être recopié dans `szh.produitParDefaut`) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
+| **Réglages simples** de l'onglet **Paramètres** : produit proposé (`szh.produitParDefaut`), adresse Shlink (`szh.shlinkUrl`, en clair : ce n'est pas un secret ; portée application, donc jamais lue dans un dossier de travail), langue (`szh.langue`), thème, tailles, aperçu | réglages utilisateur de VSCodium, `%APPDATA%\VSCodium\User\settings.json` |
+| **Clés d'API Shlink et OJS** | le coffre de VSCodium (`context.secrets`, clés `szh.shlinkCle` et `szh.ojsCle`), chiffré par le système pour ce compte ; **jamais** dans un fichier, un journal ni un message vers la page : la page ne reçoit que « définie » ou « absente ». Le cockpit les pose dans l'environnement de chaque `wsl.exe` qu'il lance (`SZH_SHLINK_URL`, `SZH_SHLINK_CLE`, `SZH_OJS_CLE`, avec `WSLENV` en `/u`, `lib/services-env.js`, `lib/moteur.js`), relues à chaque changement du coffre |
 | Cadence de la vérification hebdomadaire, par compte | `C:\Users\robin\AppData\Local\SZH\maj-auto.json` |
 | Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
 | Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |
@@ -260,7 +262,7 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `windows\szh-produits.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
 | `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
 | `windows\archive-revue.ps1` | Déplace un numéro **ou un livre** « en cours » ⇄ « archives », dans la racine active — `$estLivre` choisit la variante `.livre` des textes et le sous-dossier de livre. | panneau d'export du cockpit |
-| `windows\szh-produits.ps1` · `Set-SzhEmplacementRevues` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » de l'onglet **Paramètres** du lanceur (`open-produit.ps1`) |
+| `windows\szh-produits.ps1` · `Set-SzhEmplacementRevues` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » de l'onglet **Paramètres** du lanceur (`open-produit.ps1`, et la page du cockpit : `lib/lanceur-reglages-hote.js`, qui écrit les mêmes clés) |
 | `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | `lireEmplacementRevues` / `lireModeDeveloppeur`, pour le seul badge de la barre d'état (`extension.js`) |
 | `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` / `ecrireModeDeveloppeur` | Existent encore, exportées, mais **plus appelées par aucune commande du cockpit** : le groupe de boutons radio du formulaire « Réglages SZH » a disparu quand la bascule a déménagé dans le lanceur. | aucune, côté interface — gardées pour les tests |
 | `windows\bootstrap.ps1` | Pose `config.json` sur un poste neuf, avec `devMode = $true` (donc l'emplacement de test). **N'y écrit plus aucune racine.** | installation, une fois |
@@ -315,9 +317,8 @@ distributions ne sont jamais désinscrits ni supprimés.
    `emplacement des revues : "test" ecrit dans config.json (numeros trouves : test 4, production 0)`
 4. **Le badge de la barre d'état du cockpit**, une fois un numéro ouvert dans l'éditeur : icône
    éprouvette, fond orangé, étiqueté « Dossier de test » (« Testordner » en allemand), visible
-   seulement en test. Depuis le 14.09.2026, **il ne se clique plus** : le réglage qui décide de
-   ce badge a déménagé dans l'onglet **Paramètres** du lanceur Windows, hors de portée de
-   VSCodium, et l'infobulle le dit — en plus de distinguer, comme avant, un poste sans
+   seulement en test. **Un clic ouvre l'onglet Paramètres** du lanceur (`szh.reglages`), où se
+   règle le mode développeur ; l'infobulle distingue, comme avant, un poste sans
    `config.json` (le test par défaut) d'un poste où l'emplacement `test` est écrit en clair.
 
 ---
@@ -346,8 +347,8 @@ Ordre de lecture, identique côté PowerShell et côté cockpit :
 La bascule se fait dans l'onglet **Paramètres** du lanceur (réglage « Mode développeur »),
 qui écrit **les deux** clés à la fois (`Set-SzhEmplacementRevues`, `windows/szh-produits.ps1`) :
 un poste resté sur un toolkit plus ancien continue de lire `devMode` et voit la même chose. Le
-cockpit sait encore écrire les deux clés (`ecrireEmplacementRevues`), mais depuis le
-14.09.2026 plus aucune commande de son interface ne l'appelle.
+cockpit écrit aussi les deux clés (`configAvecEmplacement`), depuis la page Paramètres de
+son lanceur (`lib/lanceur-reglages-hote.js`), puis recharge les listes.
 
 Au premier lancement après la mise à jour, un poste dont `config.json` ne portait aucune
 des deux clés se voit écrire `emplacementRevues` en clair. La valeur retenue suit le
@@ -481,7 +482,7 @@ d'attribut et lancement de processus injectés, jamais un vrai `attrib.exe` dans
 
 - **Le cockpit ne dit pas encore l'emplacement actif** dans sa barre latérale : seul le
   lanceur le montre ; le badge de la barre d'état (§6) ne fait qu'annoncer, il ne règle plus
-  rien depuis que le réglage a déménagé dans l'onglet **Paramètres** du lanceur.
+  rien : il mène à l'onglet **Paramètres** du lanceur, où le réglage se fait.
 - **`bootstrap.ps1` pose encore `devMode = $true`** sur un poste neuf, donc l'emplacement
   de test. Sur un poste de rédaction, poser `"emplacementRevues": "production"` juste après
   l'installation — ou corriger le script.

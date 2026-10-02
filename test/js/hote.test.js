@@ -1016,8 +1016,8 @@ test('revue : un type remis à vide EST bien effacé (non-régression)', async (
 // panneau Réglages — seul un livre les fait omettre (test/js/hote-livre.test.js).
 test('revue : le panneau Réglages envoie toujours ojs, biblio, taches et auteursOjs', async () => {
   await HOTE.executer('szh.reglages');
-  const p = HOTE.panneauDeType('szhReglages');
-  assert.ok(p, 'panneau des réglages absent');
+  const p = HOTE.panneauDeType('szhLanceur');
+  assert.ok(p, 'lanceur absent (szh.reglages)');
   await p._recepteur({ type: 'pret' });
   const valeurs = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.ok(valeurs, 'aucun message de valeurs envoyé au panneau des réglages');

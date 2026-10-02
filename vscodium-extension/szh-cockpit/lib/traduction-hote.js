@@ -460,10 +460,11 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
 //   C'est donc la page qui demande (media/_commun.js, au premier « pret »), et l'hôte qui
 //   répond.
 //
-// ⚠ DEUX PANNEAUX NE BRANCHENT PAS repondreModeTrad, et c'est le premier garde-fou du
-//   mode, pas un oubli : les réglages — c'est là qu'on éteint le mode — et le formulaire de
-//   suggestion — c'est lui que le mode ouvre. Ni l'un ni l'autre ne reçoit jamais l'index,
-//   et la page le redit de son côté (SZH.modeTradJamais).
+// ⚠ LE FORMULAIRE DE SUGGESTION NE BRANCHE PAS repondreModeTrad, et c'est le premier garde-fou
+//   du mode, pas un oubli : c'est lui que le mode ouvre. Il ne reçoit jamais l'index, et la page
+//   le redit de son côté (SZH.modeTradJamais). Le lanceur, lui, le branche, mais sa barre
+//   d'onglets et son onglet Paramètres, où l'on éteint le mode, gardent leurs clics
+//   (data-trad-exempt, media/_commun.js).
 const panneauxTrad = new Set();
 let indexTradCache = null;
 let indexTradLangue = '';

@@ -1,6 +1,12 @@
 /* Le lanceur dans l'éditeur : six onglets posés sur le socle (_design.css). Aucune couleur
    ici, rien que des jetons : le thème de l'éditeur décide de tout. */
-body { --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4); }
+/* Centré sur une fenêtre large : le vide passe dans les marges intérieures, à parts égales.
+   Par la marge intérieure et non `margin: auto`, qui retirerait la marge par défaut du body et
+   décalerait la page d'autant sur une fenêtre étroite. */
+body {
+  --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4);
+  padding-inline: max(var(--e5), calc((100% - var(--page-max)) / 2));
+}
 
 /* ═══ Onglets ═══════════════════════════════════════════════════════════════════ */
 .lanceur-onglets {
@@ -239,3 +245,66 @@ body { --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4); }
   .lanceur-jrn .lanceur-liste { max-height: none; height: 20rem; }
   .lanceur-jrn-texte { height: 17.6rem; }
 }
+
+/* ═══ Paramètres ════════════════════════════════════════════════════════════════ */
+.lanceur-portee { margin-left: var(--e2); }
+.lanceur-champ-cle { flex-basis: 12rem; }
+.lanceur-coffre { margin: var(--e2) 0 0; }
+.lanceur-tache > .szh-notif { margin: var(--e2) 0 0; }
+/* Le champ d'un service : large, pour qu'une adresse se lise en entier. */
+#panneau-reglages .lanceur-tache-reglage .szh-champ { flex: 1 1 14rem; }
+#panneau-reglages .lanceur-tache-reglage .lanceur-champ-cle { flex: 0 1 12rem; }
+#panneau-reglages .lanceur-tache-reglage .szh-champ input { width: 100%; box-sizing: border-box; }
+
+/* La carte des réglages de la rédaction : verrouillée tant qu'on ne la déverrouille pas. */
+.lanceur-carte-proteges { margin-top: var(--e6); }
+.lanceur-verrou { display: inline-flex; align-items: center; gap: var(--e1); }
+.lanceur-verrou input { accent-color: var(--accent); }
+.lanceur-carte-proteges .lanceur-details { margin-top: var(--e3); }
+.lanceur-carte-proteges .lanceur-details > summary .lanceur-astuce { font-weight: 400; }
+.lanceur-carte-proteges .szh-notif { margin-top: 0; }
+
+/* Les blocs à tables de correspondance — export OJS, titre de la bibliographie, tâches — sont
+   des grilles : une colonne par revue, une rangée par champ. Le libellé de chaque case est porté
+   par aria-label : l'en-tête de colonne seul ne se lit pas à la voix. */
+.regl-zone { margin-top: var(--e2); }
+.regl-zone .szh-notif { margin: 0 0 var(--e2); }
+.regl-zone fieldset { border: 1px solid var(--filet); border-radius: var(--rayon);
+  background: var(--surface); margin: 0 0 var(--e4); padding: var(--e2) var(--e4) var(--e3); }
+.regl-zone legend { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em;
+  padding: 0 var(--e1); color: var(--encre); }
+.regl-grille { display: grid; align-items: center; gap: var(--e1) var(--e2); margin: var(--e2) 0; }
+.regl-grille > * { min-width: 0; }
+.regl-entete { font-size: var(--t-mini); font-weight: 700; letter-spacing: .02em;
+  color: var(--encre-2); align-self: end; overflow-wrap: anywhere; }
+.regl-libelle { font-size: var(--t-libelle); font-weight: 700; color: var(--encre); overflow-wrap: anywhere; }
+.regl-grille input[type="text"], .regl-grille select {
+  font: inherit; width: 100%; box-sizing: border-box; padding: .3em .45em;
+  color: var(--vscode-input-foreground, inherit);
+  background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--filet));
+  border-radius: var(--rayon-mini);
+}
+.regl-grille input:focus, .regl-grille select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Un champ vide n'est pas une valeur : c'est une valeur qu'il faut aller relever. Le pointillé le
+   dit sans couleur, donc aussi en monochrome. */
+.regl-grille input.vide { border-style: dashed; border-color: var(--filet-fort); }
+/* Clé d'une rubrique livrée : lisible, pas modifiable — c'est l'intitulé qui se corrige. */
+.regl-grille input.cle-livree { background: transparent; border-color: transparent;
+  color: var(--encre-2); font-weight: 700; }
+/* Verrouillés, ces blocs se lisent mais ne se saisissent plus : pas de fond de saisie, le curseur
+   du texte ordinaire. Le contraste du texte, lui, ne baisse PAS — un réglage qu'on ne peut pas
+   changer doit rester lisible. */
+.regl-zone .fige { background: transparent; cursor: default; }
+.regl-zone input.fige, .regl-zone select.fige, .regl-zone textarea.fige { box-shadow: none; }
+.regl-zone button.fige { opacity: .5; }
+.regl-grille input[type="checkbox"] { justify-self: center; accent-color: var(--accent); }
+.regl-note { font-size: var(--t-mini); color: var(--encre-2); margin: var(--e1) 0 0; }
+.regl-ajouter { margin-top: var(--e2); padding: .3em .8em; font: inherit; cursor: pointer;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  color: var(--vscode-button-secondaryForeground, var(--encre));
+  background: var(--vscode-button-secondaryBackground, transparent); }
+.regl-ajouter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Retirer une tâche : la croix porte la couleur du danger, comme les poubelles des listes de cartes. */
+.regl-retirer { color: var(--danger); }
+.regl-retirer:hover:not(:disabled) { color: var(--vscode-button-foreground, var(--fond)); background: var(--danger); }

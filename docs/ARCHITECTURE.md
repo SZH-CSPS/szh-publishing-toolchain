@@ -250,7 +250,7 @@ Une zone de l'interface est un module `lib/<zone>-hote.js` qui suit toujours le 
 
 Les modules hôtes : `accueil-hote`, `controles-hote`, `coedition-hote`,
 `documentation-hote`, `import-hote`, `import-verif-hote`, `medias-hote`, `metadonnees-hote`,
-`pagination-hote`, `pdfua-hote`, `reglages-hote`, `table-hote`, `traduction-hote`,
+`pagination-hote`, `pdfua-hote`, `reglages-hote`, `lanceur-reglages-hote`, `table-hote`, `traduction-hote`,
 `uri-hote` (les liens `vscodium://`, sans panneau), `vue-articles-hote`, `vue-ensemble-hote`, ainsi que `cycle-vie.js` et `apercu.js`, qui
 suivent le même motif ; `accueil-hote` et `coedition-hote` n'ont besoin d'aucun rappel, donc
 d'aucun `configurer()`. Les autres modules de `lib/` sont purs ou presque : sans `vscode`,
@@ -297,7 +297,7 @@ Les pages suivent un design atomique de fait, sans cadre :
 |---|---|---|
 | Jetons et atomes | `_design.css`, `_commun.js` | jetons tirés des couleurs de l'éditeur et de l'échelle de `print.css` ; `SZH.poser`, `SZH.icone`, `SZH.notif`, `SZH.modale`, `SZH.autoEnregistrement`… |
 | Molécules partagées | `_auteurs.*`, `_fiches.*`, `_numero.*`, `_liste.css` | la fiche d'auteur·e, la carte de métadonnées d'article, le formulaire du numéro, la liste de cartes |
-| Pages | `metadata-*`, `medias-article`, `table-editor`, `documentation`, `articles`, `vue-ensemble`, `traduction`, `settings`, `import-verif`, `suggestion`, `nouveautes` | une vue, son script et ses ajustements |
+| Pages | `metadata-*`, `medias-article`, `table-editor`, `documentation`, `articles`, `vue-ensemble`, `traduction`, `import-verif`, `suggestion`, `nouveautes` | une vue, son script et ses ajustements |
 
 `test/js/webviews.test.js` rend chaque page dans un DOM minimal, et `test/js/hote.test.js`
 active l'extension sur un faux `vscode` (`test/js/hote-factice.js`) puis ouvre chaque panneau.
@@ -308,6 +308,30 @@ Courriels (`mail-templates/`), exports du secrétariat (`export-templates/`) et 
 vérification (`print-templates/`) sont des gabarits Twig rendus par un seul moteur,
 `lib/gabarits.js`. Le lanceur Windows passe par ce même moteur, exécuté par le Node de
 VSCodium (`outils/rendre-gabarit.js`).
+
+### Le lanceur dans le cockpit (DEV)
+
+Le lanceur entre dans le cockpit onglet par onglet (étape 2 de
+[`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)). Produits, Nouveau, Secrétariat et Log sont
+portés ; Préprocessing et Réglages ne le sont pas encore. Il n'existe qu'en DEV : la
+production reste sur WinForms (§3).
+
+- **La porte.** `lib/lanceur-hote.js` ouvre son panneau (`panneauUnique`) quand aucun dossier
+  n'est ouvert et que `SZH_ACCUEIL=1` ; il possède aussi l'onglet actif et l'ouverture des
+  dossiers. Sans la variable, rien ne s'ouvre. `outils-dev/pronto-dev.ps1` (« Pronto (dev) »)
+  la pose et lance VSCodium sans dossier ; `SZH_JOURNAUX_MAJ` lui fait lire les journaux de
+  mise à jour du poste.
+- **Un module par onglet**, sur le motif `configurer(ctx)`, sans panneau :
+  `lanceur-nouveau.js` (création, qui rappelle `new-revue.ps1` et `new-livre.ps1`),
+  `lanceur-secretariat-hote.js` (lance `outils/secretariat-cli.js`) et
+  `lanceur-journal-hote.js`. `lanceur-page.js` fournit les libellés de la page.
+- **Deux modules purs**, jumeaux de fonctions PowerShell et gardés par un test de parité sur
+  un dossier jetable : `inventaire.js` (racine active et numéros, jumeau de
+  `Get-SzhBaseRevuesPour`) et `journaux-maj.js` (journaux de mise à jour et leur verdict,
+  jumeau de `Get-SzhJournauxMaj` et `Get-SzhVerdictJournalMaj`).
+- **La page** : `media/lanceur.{html,css,js}`, sans framework, aux libellés `lanceur.*` de
+  `i18n.js` (fr et de).
+- **Les exports** vont dans `<racine>\Exports\<export>` ; seul le lanceur du cockpit y écrit.
 
 ---
 

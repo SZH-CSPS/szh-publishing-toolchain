@@ -61,6 +61,8 @@
   "cmd.fmt.falcHeader": "Kapitelkopf (FALC)",
   "cmd.fmt.qrLink": "QR-Code",
   "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors.",
+  "config.shlinkUrl": "Adresse des Link-Kürzers (Shlink), der die Links der QR-Codes kürzt. Leer = keine Kürzung. Der API-Schlüssel wird nur im Reiter Einstellungen von Pronto gesetzt.",
+  "config.produitParDefaut": "Beim Öffnen von Pronto vorgeschlagenes Produkt. Leer = nach der Sprache.",
   "config.apercuMode": "Vorschaumodus der rechten Spalte: html (klickbar, Standard) oder pdf.",
   "config.convertirCmyk": "JPEG-Bilder in CMYK (Druckfarben, die Browser und PDF nicht korrekt anzeigen) automatisch nach RGB konvertieren.",
   "config.replierAssetsAutres": "Tabellen der nicht ausgewählten Artikel automatisch ausblenden.",

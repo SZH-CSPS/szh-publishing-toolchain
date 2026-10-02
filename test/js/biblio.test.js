@@ -325,11 +325,8 @@ test('arbre : la bibliographie est un enfant de l’article, sans description', 
 // ---- le panneau des Réglages, réellement rendu ---------------------------------------
 
 test('réglages : une case par revue et par langue, et un champ vidé se voit', () => {
-  const { ouvrir, libellesHote } = require('./dom-minimal');
-  const page = ouvrir({
-    racine: RACINE, page: 'settings', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: libellesHote(RACINE, ['REGL_LIBELLES'])
-  });
+  const { ouvrirReglages } = require('./page-reglages');
+  const page = ouvrirReglages();
   // Même charge utile que donneesBiblio() de extension.js.
   const biblio = {
     titres: cit.normaliserConfigBiblio({ biblio: { titres: { revue: { de: '' } } } }).titres,
@@ -337,7 +334,7 @@ test('réglages : une case par revue et par langue, et un champ vidé se voit', 
     langues: cit.LANGUES_BIBLIO.map((cle) => ({ cle: cle, libelle: cle }))
   };
   page.envoyer({ type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio });
-  const bloc = page.parId.biblio;
+  const bloc = page.parId('regl-biblio');
   assert.ok(bloc, 'le bloc « Bibliographie » n’est pas dans la page');
   const cases = bloc.querySelectorAll('[data-biblio-revue]');
   assert.strictEqual(cases.length, cit.REVUES_BIBLIO.length * cit.LANGUES_BIBLIO.length,

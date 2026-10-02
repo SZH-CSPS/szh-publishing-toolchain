@@ -161,6 +161,9 @@ lib/
                         (nouveautes.json), indexées par MEDIUM de version — jamais par
                         mineure —, et la décision de ce qu'il y a à montrer. Écrites pour
                         la rédaction et dans les deux langues, à l'inverse de CHANGELOG.md
+  ojs-adresses.js       la base d'ojs.szh.ch et les chemins (url_path) que l'export OJS
+                        fixe pour le numéro et les articles sans DOI, d'où la newsletter
+                        tire ses liens. Module pur, sans dépendance
   oai-pmh.js            client https et parseur OAI-PMH communs à auteurs-ojs.js et
                         mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT
@@ -188,9 +191,12 @@ lib/
                         résolution passive de l'ancrage SharePoint, masquage, anti-
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
                         (docs/RAPPORTS-ERREUR.md)
-  reglages-hote.js      le panneau des réglages, les réglages protégés et le fichier de langue ;
+  reglages-hote.js      les valeurs et écritures des réglages, les réglages protégés et le fichier de langue ;
                         modifierConfigPoste() porte la garde « config du poste illisible ».
                         Rappelle l'hôte par configurer(), jamais par import
+  lanceur-reglages-hote.js  l'onglet Paramètres du lanceur : produit proposé, mise à jour silencieuse,
+                        mode développeur, services en ligne et clés dans le coffre ;
+  services-env.js       l'adresse Shlink et les clés vues de la chaîne : variables d'environnement et WSLENV ;
   relance-compilation.js  recompilation d'un article après un enregistrement fait hors de
                         l'éditeur de texte (formulaire des médias, éditeur de tableaux) :
                         anti-rebond de 2,5 s par article, départ immédiat à la fermeture du
@@ -312,7 +318,6 @@ media/
   documentation.{html,css,js}     Documentation d'un numéro : fiches « ressources » (livre,
                         film, intervention parlementaire, agenda, …) et rubriques de texte
                         riche, dans un seul formulaire
-  settings.{html,css,js}          réglages
   table-editor.{html,css,js}      éditeur de tableau
   traduction.{html,css,js}        suivi des traductions
   vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word, contrôles)

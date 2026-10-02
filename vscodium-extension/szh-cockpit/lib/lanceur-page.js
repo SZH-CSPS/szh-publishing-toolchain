@@ -2,9 +2,11 @@
 // rejoue : les libellés, le nom de chaque produit et le produit ouvert d'office.
 'use strict';
 
-const { T } = require('./i18n');
+const { T, TP } = require('./i18n');
+const profils = require('./profil');
 
-// Les libellés de la page, injectés dans __TXT__.
+// Les libellés de la page, injectés dans __TXT__. Trois d'entre eux ont une variante « .livre », choisie
+// d'après le produit ouvert dans la fenêtre : un livre ne parle ni d'article ni de numéro.
 function textesLanceur() {
   return {
     ongletsAria: T('lanceur.onglets'),
@@ -75,7 +77,63 @@ function textesLanceur() {
     jrnSignalerFait: T('lanceur.journal.signaler.fait'),
     jrnSignalerAttente: T('lanceur.journal.signaler.attente'),
     jrnSignalerRefuse: T('lanceur.journal.signaler.refuse'),
-    jrnCourriel: T('lanceur.journal.courriel')
+    jrnCourriel: T('lanceur.journal.courriel'),
+
+    // Paramètres : les libellés de la page des réglages. Ceux qui portent un « _ » reprennent une clé
+    // « regl.* » d'avant la fusion, sans la renommer.
+    rgAffichage: T('lanceur.regl.affichage'), rgRedaction: T('lanceur.regl.redaction'),
+    rgPoste: T('lanceur.regl.poste'), rgServices: T('lanceur.regl.services'),
+    rgTraduction: T('lanceur.regl.traduction'), rgLangue: T('regl.langue'),
+    rgLangueAide: T('lanceur.regl.langue.aide'), regl_theme: T('regl.theme'),
+    regl_themeSysteme: T('regl.theme.systeme'), regl_themeClair: T('regl.theme.clair'),
+    regl_themeSombre: T('regl.theme.sombre'), regl_zoom: T('regl.zoom'),
+    regl_zoomNormal: T('regl.zoom.normal'), regl_zoomGrand: T('regl.zoom.grand'),
+    regl_zoomTresGrand: T('regl.zoom.tresgrand'), rgPolice: TP('lanceur.regl.police', profils.courant()),
+    rgPoliceAide: T('lanceur.regl.police.aide'), regl_apercu: T('regl.apercu'),
+    regl_apercuHtml: T('regl.apercu.html'), regl_apercuPdf: T('regl.apercu.pdf'),
+    rgAssets: TP('lanceur.regl.assets', profils.courant()), regl_warnings: T('regl.warnings'),
+    regl_warningsComplets: T('regl.warnings.complets'), regl_warningsReduits: T('regl.warnings.reduits'),
+    regl_cmyk: T('regl.cmyk'), rgOui: T('lanceur.regl.oui'), rgNon: T('lanceur.regl.non'),
+    rgLiens: T('lanceur.regl.liens'), rgLiensAide: T('lanceur.regl.liens.aide'),
+    rgFormat: T('lanceur.regl.format'), rgFormatAide: T('lanceur.regl.format.aide'),
+    rgFormatDocx: T('lanceur.regl.format.docx'), rgFormatOdt: T('lanceur.regl.format.odt'),
+    rgLiensActifs: T('lanceur.regl.liens.actifs'), rgLiensDesactives: T('lanceur.regl.liens.desactives'),
+    rgProduit: T('lanceur.regl.produit'), rgProduitAide: T('lanceur.regl.produit.aide'),
+    rgProduitAuto: T('lanceur.regl.produit.auto'), rgMaj: T('lanceur.regl.maj'),
+    rgMajAide: T('lanceur.regl.maj.aide'), rgMajFenetre: T('lanceur.regl.maj.fenetre'),
+    rgMajSilence: T('lanceur.regl.maj.silence'), rgDev: T('lanceur.regl.dev'),
+    rgDevAide: TP('lanceur.regl.dev.aide', profils.courant()), rgActive: T('lanceur.regl.active'),
+    rgDesactive: T('lanceur.regl.desactive'), rgPortee: T('lanceur.regl.portee'),
+    rgShlinkUrl: T('lanceur.regl.shlink.url'), rgShlinkUrlAide: T('lanceur.regl.shlink.url.aide'),
+    rgShlinkCle: T('lanceur.regl.shlink.cle'), rgOjsCle: T('lanceur.regl.ojs.cle'),
+    rgOjsCleAide: T('lanceur.regl.ojs.cle.aide'), rgCoffre: T('lanceur.regl.coffre'),
+    rgDefinie: T('lanceur.regl.definie'), rgAbsente: T('lanceur.regl.absente'),
+    rgEnregistrer: T('lanceur.regl.enregistrer'), rgEffacer: T('lanceur.regl.effacer'),
+    regl_verifTrad: T('regl.verifTrad'), rgVerifAide: T('lanceur.regl.verif.aide'),
+    rgModeTrad: T('lanceur.regl.trad'), rgModeTradAide: T('lanceur.regl.trad.aide'),
+    regl_suggInterfaceTitre: T('regl.suggInterface.titre'),
+    regl_suggInterfaceOuvrir: T('regl.suggInterface.ouvrir'), rgSuggAucune: T('lanceur.regl.sugg.aucune'),
+    rgSuggUn: T('lanceur.regl.sugg.un'), rgSuggPlus: T('lanceur.regl.sugg.plus'),
+    regl_exportLangueTitre: T('regl.exportLangue.titre'), regl_exportLangue: T('regl.exportLangue'),
+    rgFichierLangueAide: T('lanceur.regl.fichier.aide'), regl_protegesTitre: T('regl.proteges.titre'),
+    rgVerrouilles: T('lanceur.regl.prot.verrouilles'), rgDeverrouilles: T('lanceur.regl.prot.deverrouilles'),
+    regl_protegesDeverrouiller: T('regl.proteges.deverrouiller'),
+    regl_protegesTelecharger: T('regl.proteges.telecharger'),
+    regl_protegesTelechargerTip: T('regl.proteges.telecharger.tip'),
+    regl_protegesVerrouille: T('regl.proteges.verrouille'), regl_auteursTitre: T('regl.auteurs.titre'),
+    auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
+    auteursCorpus: T('regl.auteurs.corpus'), auteursCorpusJamais: T('regl.auteurs.corpus.jamais'),
+    ojsTitre: T('ojs.titre'), ojsIntro: T('ojs.intro'), rgOjsResume: T('lanceur.regl.ojs.resume'),
+    ojsRevues: T('ojs.revues'), ojsVide: T('ojs.vide'), ojsRubriques: T('ojs.rubriques'),
+    ojsRubriquesAide: T('ojs.rubriques.aide'), ojsColCle: T('ojs.col.cle'), ojsColAbbrev: T('ojs.col.abbrev'),
+    ojsColTitre: T('ojs.col.titre'), ojsColResume: T('ojs.col.resume'), ojsColDoi: T('ojs.col.doi'),
+    ojsAjouter: T('ojs.ajouter'), ojsCleNouvelle: T('ojs.cle.nouvelle'), ojsTypes: T('ojs.types'),
+    ojsTypesAide: T('ojs.types.aide'), biblioTitre: T('biblio.titre'), biblioIntro: T('biblio.intro'),
+    biblioColLangue: T('biblio.col.langue'), biblioVide: T('biblio.vide'),
+    artTachesTitre: T('art.taches.titre'), artTachesAide: T('art.taches.aide'), tachesFr: T('art.taches.fr'),
+    tachesDe: T('art.taches.de'), tachesAjouter: T('art.taches.ajouter'),
+    tachesRetirer: T('art.taches.retirer'), rgTachesResumeUn: T('lanceur.regl.taches.resume.un'),
+    rgTachesResumePlus: T('lanceur.regl.taches.resume.plus')
   };
 }
 

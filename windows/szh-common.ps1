@@ -795,6 +795,33 @@ function Get-SzhJournauxMaj {
   return @($resultats | Sort-Object date -Descending | Select-Object -First ([Math]::Max(0, $Combien)))
 }
 
+# Ne garde que les $Garder dernières mises à jour du poste, par l'ordre de leur nom. Toujours
+# $SzhLogs, jamais SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, elle ne les
+# efface pas. Ne lève jamais.
+function Limit-SzhJournauxMaj {
+  param([int]$Garder = 9)
+  try {
+    $anciens = @(Get-ChildItem -LiteralPath $SzhLogs -Filter 'update-*.log' -File -ErrorAction Stop |
+      Sort-Object Name -Descending | Select-Object -Skip ([Math]::Max(0, $Garder)))
+    foreach ($f in $anciens) {
+      try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop } catch { }
+    }
+  } catch { }
+}
+
+# Le journal mensuel (szh-AAAA-MM.log, Write-SzhLog) : les $Garder derniers mois, mêmes règles.
+function Limit-SzhJournauxMensuels {
+  param([int]$Garder = 3)
+  try {
+    $anciens = @(Get-ChildItem -LiteralPath $SzhLogs -Filter 'szh-*.log' -File -ErrorAction Stop |
+      Where-Object { $_.Name -match '^szh-\d{4}-\d{2}\.log$' } |
+      Sort-Object Name -Descending | Select-Object -Skip ([Math]::Max(0, $Garder)))
+    foreach ($f in $anciens) {
+      try { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop } catch { }
+    }
+  } catch { }
+}
+
 # ---- Téléchargement (barre de progression) ----
 
 function Get-SzhFichier {

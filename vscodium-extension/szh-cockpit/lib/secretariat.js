@@ -25,6 +25,8 @@ const auteursOjs = require('./auteurs-ojs');   // normaliserCreator : « Nom, Pr
 const yaml = require('./yaml');
 const articlesLib = require('./articles');     // ordre, rang du DOI, sans-DOI
 const exportOjs = require('./export-ojs');     // doiCalcule, typeSansDoi, RUBRIQUES_DEFAUT, configOjs
+const adresses = require('./ojs-adresses');   // base d'OJS et chemins fixés par l'export OJS
+const { urlJournal } = adresses;
 // lireCacheMotsCles, indexerThesaurus, apparierDescripteurs : thésaurus edudoc (mots-clés
 // MARC 690) pour la commande « edudoc » — voir la section dédiée plus bas.
 const motsClesEdudoc = require('./mots-cles-edudoc');
@@ -133,10 +135,10 @@ function listerSlugsLocaux(racine) {
 // normal c'est toujours ce dossier qui est lu.
 function dossierGabaritsSource() { return path.join(__dirname, '..', 'export-templates'); }
 
-// Les neuf gabarits attendus dans dossierGabaritsSource() — utile aux tests, qui vérifient
+// Les dix gabarits attendus dans dossierGabaritsSource() — utile aux tests, qui vérifient
 // qu'aucun ne manque, sans les nommer une seconde fois en dur.
 const NOMS_GABARITS_DEFAUT = [
-  'newsletter-editorial.twig', 'newsletter-dossier-thematique.twig', 'newsletter-varia.twig',
+  'newsletter-intro.twig', 'newsletter-editorial.twig', 'newsletter-dossier-thematique.twig', 'newsletter-varia.twig',
   'newsletter-tribune-libre.twig', 'newsletter-documentation.twig', 'newsletter-auteurs.twig',
   'edudoc.twig', 'caracteres.twig', 'metadonnees.twig'
 ];
@@ -186,6 +188,9 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
   const numeroTxt = txt(valeurs.numero);
   const volume = txt(valeurs.volume);
   const titreNumero = txt(valeurs.title);
+  // ausgabe.yaml ne porte le titre du numéro que dans la langue du numéro.
+  const titreParLangue = { fr: '', de: '' };
+  if (titreParLangue[locale] !== undefined) { titreParLangue[locale] = titreNumero; }
   const revueCle = yaml.normaliserRevue(valeurs.revue) || (locale === 'de' ? 'zeitschrift' : 'revue');
 
   const cfg = exportOjs.configOjs();
@@ -208,6 +213,11 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
   }
   const slugs = articlesLib.ordonnerArticles(valeurs[articlesLib.CLE_ORDRE], slugsAvecFiche, sansDoi).slugs;
 
+  // Les chemins OJS des articles sans DOI : les mêmes que ceux de l'export OJS.
+  const cleOjs = adresses.cleNumero(annee, numeroTxt);
+  const cheminsSansDoi = adresses.cheminsArticlesSansDoi(cleOjs,
+    slugs.filter((s) => articlesLib.rangDoi(slugs, s, sansDoi) === -1));
+
   const articles = [];
   for (const slug of slugs) {
     const meta = fiches[slug];
@@ -226,6 +236,7 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
       rubriqueTitreFr: rubrique ? txt(rubrique.titre.fr) : '',
       rubriqueTitreDe: rubrique ? txt(rubrique.titre.de) : '',
       doi: doi, urlDoi: doi ? 'https://doi.org/' + doi : '',
+      urlOjs: rang === -1 ? adresses.urlArticle(locale, cheminsSansDoi[slug]) : '',
       langue: yaml.normaliserLangueArticle(meta.lang) || locale,
       licenceNom: yaml.licenceArticle(meta.licence).nom,
       licenceUrl: yaml.licenceArticle(meta.licence).url,
@@ -238,11 +249,19 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
       signature: formerSignature(auteurs, locale),
       auteurs: auteurs.map(auteurComplet)
     });
+    const dernier = articles[articles.length - 1];
+    dernier.lien = dernier.urlDoi || dernier.urlOjs;
   }
   return {
     numero: {
       cle: annee + '-' + deuxChiffres(numeroTxt), revue: revueCle, locale: locale,
       annee: annee, numero: numeroTxt, volume: volume, titre: titreNumero,
+      // « 03/2026 », comme l'écrit la newsletter ; vide dès que l'un des deux manque.
+      numeroAnnee: cleOjs ? cleOjs.slice(5) + '/' + annee : '',
+      // Le titre du numéro dans chaque langue : '' pour la langue que ausgabe.yaml ne porte pas.
+      titreFr: titreParLangue.fr, titreDe: titreParLangue.de,
+      // Page du numéro sur OJS, à l'adresse que l'export OJS lui fixe ('' si calcul impossible).
+      url: adresses.urlNumero(locale, adresses.cheminNumero(annee, numeroTxt)),
       // Le libellé affiché (rapports, messages) : « R2027-03 | Titre » — même fonction que
       // le cockpit lui-même (lib/yaml.js), avec le même repli d'année ; pas de chaîne
       // reconstruite à la main ici.
@@ -252,14 +271,17 @@ function collecterNumeroLocal(racine, emettre, langueTextes) {
   };
 }
 
-// ---- newsletter : cinq .txt (un par rubrique) + auteurs.csv ---------------------------
+// ---- newsletter : l'introduction, cinq .txt (un par rubrique) et auteurs.csv ---------------------------
 
+// L'ordre de la newsletter, le même pour les deux revues ; le préfixe numérique le garde à
+// l'ouverture du dossier. L'introduction (0-intro.txt) est écrite avant les rubriques.
+const FICHIER_INTRO = '0-intro.txt';
 const SECTIONS_NEWSLETTER = [
-  { cle: 'ED', fichier: 'editorial.txt', gabarit: 'newsletter-editorial.twig' },
-  { cle: 'DT', fichier: 'dossier-thematique.txt', gabarit: 'newsletter-dossier-thematique.twig' },
-  { cle: 'VA', fichier: 'varia.txt', gabarit: 'newsletter-varia.twig' },
-  { cle: 'TL', fichier: 'tribune-libre.txt', gabarit: 'newsletter-tribune-libre.twig' },
-  { cle: 'DC', fichier: 'documentation.txt', gabarit: 'newsletter-documentation.twig' }
+  { cle: 'ED', fichier: '1-editorial.txt', gabarit: 'newsletter-editorial.twig' },
+  { cle: 'DT', fichier: '2-dossier-thematique.txt', gabarit: 'newsletter-dossier-thematique.twig' },
+  { cle: 'VA', fichier: '3-varia.txt', gabarit: 'newsletter-varia.twig' },
+  { cle: 'TL', fichier: '4-tribune-libre.txt', gabarit: 'newsletter-tribune-libre.twig' },
+  { cle: 'DC', fichier: '5-documentation.txt', gabarit: 'newsletter-documentation.twig' }
 ];
 
 // Une ligne par auteur·e du numéro, triée par ordre des articles puis alphabétique du nom
@@ -294,12 +316,26 @@ async function commandeNewsletter(opts) {
   const titresRubriques = {};
   for (const r of exportOjs.configOjs().rubriques) { titresRubriques[r.cle] = txt((r.titre || {})[L]) || txt((r.titre || {}).fr); }
 
-  // Total connu d'avance : les cinq rubriques, plus auteurs.csv — qu'un fichier soit
-  // produit ou sauté (rubrique vide), c'est un pas de progression franchi.
-  const totalNewsletter = SECTIONS_NEWSLETTER.length + 1;
+  // Total connu d'avance : l'introduction, les cinq rubriques, plus auteurs.csv — qu'un
+  // fichier soit produit ou sauté (rubrique vide), c'est un pas de progression franchi.
+  const totalNewsletter = SECTIONS_NEWSLETTER.length + 2;
   let faitNewsletter = 0;
 
   const fichiers = [];
+
+  emit({ t: 'etape', texte: dire(L, 'newsletter.intro') });
+  if (numero.url === '') { emit({ t: 'avert', texte: dire(L, 'newsletter.intro.sanslien') }); }
+  if (numero.titre === '') { emit({ t: 'avert', texte: dire(L, 'newsletter.intro.titreaucun') }); }
+  else {
+    const manquante = numero.titreFr === '' ? 'fr' : numero.titreDe === '' ? 'de' : '';
+    if (manquante !== '') { emit({ t: 'avert', texte: dire(L, 'newsletter.intro.titre.' + manquante) }); }
+  }
+  const cheminIntro = path.join(o.dossierSortie, FICHIER_INTRO);
+  fs.writeFileSync(cheminIntro, chargerGabarit(dossierGabarits, 'newsletter-intro.twig', L).rendre({ numero: numero }).contenu || '', 'utf8');
+  fichiers.push(cheminIntro);
+  emit({ t: 'fichier', chemin: cheminIntro, nom: FICHIER_INTRO });
+  faitNewsletter++;
+  emit({ t: 'progres', fait: faitNewsletter, total: totalNewsletter });
   for (const section of SECTIONS_NEWSLETTER) {
     const articlesSection = articles.filter((a) => a.rubriqueCle === section.cle);
     const nomRubrique = titresRubriques[section.cle] || section.fichier;
@@ -310,7 +346,7 @@ async function commandeNewsletter(opts) {
       continue;
     }
     for (const a of articlesSection) {
-      if (!a.doi) { emit({ t: 'avert', texte: dire(L, 'newsletter.sansdoi', [a.slug]) }); }
+      if (!a.lien) { emit({ t: 'avert', texte: dire(L, 'newsletter.sansdoi', [a.slug]) }); }
     }
     const premier = articlesSection[0];
     const sectionCtx = {
@@ -352,8 +388,8 @@ async function commandeNewsletter(opts) {
 // extraireResumptionToken, recupererAvecRepli, garde anti-boucle sur le resumptionToken).
 
 const BASES_OAI = {
-  revue: 'https://ojs.szh.ch/index.php/revue/oai',
-  zeitschrift: 'https://ojs.szh.ch/index.php/zeitschrift/oai'
+  revue: urlJournal('fr') + '/oai',
+  zeitschrift: urlJournal('de') + '/oai'
 };
 // ~350 notices par revue sur l'instance (voir lib/auteurs-ojs.js) ; large marge.
 const PAGES_MAX_OAI_DC = 200;

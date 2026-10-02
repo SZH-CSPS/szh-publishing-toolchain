@@ -4,6 +4,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
+const crypto = require('crypto');
 
 const { T, langueCockpit } = require('./i18n');
 const { MSG } = require('./messages');
@@ -13,9 +14,9 @@ const inventaire = require('./inventaire');
 const nouveau = require('./lanceur-nouveau');
 const { textesLanceur, LIBELLES_PRODUITS, produitParDefaut, numeroAffiche } = require('./lanceur-page');
 const { versionInstallee, lancerChoixVersion } = require('./archivage');
-const { lireEtatUtilisateur } = require('./rapport-erreur');
 const secretariat = require('./lanceur-secretariat-hote');
 const journal = require('./lanceur-journal-hote');
+const reglages = require('./lanceur-reglages-hote');
 
 const VIEW_TYPE = 'szhLanceur';
 const CONTEXTE_ACTIF = 'szh.lanceur.actif';
@@ -23,7 +24,8 @@ const CONTEXTE_ACTIF = 'szh.lanceur.actif';
 const CLE_DERNIER = 'szh.lanceur.dernier';
 
 let ctx = {
-  repondreModeTrad: require('./traduction-hote').repondreModeTrad
+  repondreModeTrad: require('./traduction-hote').repondreModeTrad,
+  rafraichirTout: null     // posé par extension.js : l'arbre suit un réglage qui change ses libellés
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
@@ -32,6 +34,8 @@ let panneauActif = null;
 // Les dossiers envoyés à la page : elle n'ouvre que ceux-là.
 let cheminsConnus = new Set();
 let anneesZero = null;
+// L'onglet que la prochaine charge de la page doit ouvrir (szh.reglages), consommé par donnees().
+let ongletDemande = '';
 
 function porteOuverte() { return process.env.SZH_ACCUEIL === '1'; }
 function sansDossier() {
@@ -74,9 +78,11 @@ async function donnees() {
     if (zero[jeton]) { fiche.anneeZeroVolume = zero[jeton]; }
     return fiche;
   });
-  const choisi = (lireEtatUtilisateur() || {}).ongletDefaut;
+  const choisi = vscode.workspace.getConfiguration('szh').get('produitParDefaut', '');
+  const onglet = ongletDemande;
+  ongletDemande = '';
   return {
-    type: MSG.CHARGER, langue,
+    type: MSG.CHARGER, langue, onglet,
     produit: produitParDefaut(langue, choisi, process.env.SZH_ONGLET, inventaire.ORDRE),
     anneeCourante: new Date().getFullYear(), modeTest: inv.modeTest, ancrageAbsent: inv.ancrageAbsent,
     version: versionInstallee(), exports: path.join(inv.base, 'Exports'), produits,
@@ -87,6 +93,7 @@ async function donnees() {
 
 async function envoyerDonnees(panneau) {
   repondre(panneau, await donnees());
+  repondre(panneau, reglages.messageValeurs());
 }
 
 // Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
@@ -124,6 +131,8 @@ async function creer(msg, panneau) {
 // Les messages du Secrétariat et du Log vont à leur module.
 async function surMessage(msg, panneau) {
   if (secretariat.surMessage(msg) || journal.surMessage(msg)) { return; }
+  if (msg.type === MSG.LANCEUR_ONGLET) { reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m)); return; }
+  if (await reglages.surMessage(msg, (m) => repondre(panneau, m))) { return; }
   if (msg.type === MSG.LANCEUR_OUVRIR) {
     if (cheminsConnus.has(msg.chemin)) { await ouvrirDossier(msg.chemin); }
     return;
@@ -143,17 +152,31 @@ function htmlLanceur(nonce) {
   });
 }
 
-function ouvrirLanceur() {
-  const { panneau } = panneauUnique({
+// `onglet` : l'onglet à montrer d'emblée (la commande szh.reglages demande « reglages »).
+function ouvrirLanceur(opts) {
+  const onglet = (opts && opts.onglet) || '';
+  if (onglet) { ongletDemande = onglet; }
+  const { panneau, nouveau } = panneauUnique({
     viewType: VIEW_TYPE, titre: T('arbre.titre.defaut'), retenir: true,
     modeTrad: (panneau, msg) => ctx.repondreModeTrad(panneau, msg),
     html: htmlLanceur,
     surPret: (msg, p) => envoyerDonnees(p),
     surMessage: (msg, p) => surMessage(msg, p),
-    surFermeture: () => { panneauActif = null; secretariat.arreter(); }
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); }
   });
   panneauActif = panneau;
+  if (!nouveau && onglet) {
+    ongletDemande = '';
+    repondre(panneau, { type: MSG.LANCEUR_ALLER, onglet });
+  }
   return panneau;
+}
+
+// Après un changement de langue : la page se reconstruit dans la nouvelle, sur le même onglet.
+function rechargerPage(onglet) {
+  if (!panneauActif) { return; }
+  ongletDemande = onglet || 'reglages';
+  panneauActif.webview.html = htmlLanceur(crypto.randomBytes(16).toString('hex'));
 }
 
 // Les deux onglets parlent à la page par le panneau ouvert, et à l'éditeur par ces rappels.
@@ -163,6 +186,9 @@ function configurerOnglets() {
   const ouvrirDossierOs = (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin));
   secretariat.configurer({ envoyer, revelerFichier, ouvrirDossier: ouvrirDossierOs, memoire: etatPoste && etatPoste.globalState,
     numerosConnus: () => cheminsConnus });
+  reglages.configurer({ rafraichirTout: (opts) => { if (ctx.rafraichirTout) { ctx.rafraichirTout(opts); } },
+    recharger: () => { if (panneauActif) { envoyerDonnees(panneauActif); } },
+    rechargerPage: () => rechargerPage('reglages') });
   journal.configurer({ envoyer, ouvrirDossier: ouvrirDossierOs,
     ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
     ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
@@ -170,13 +196,14 @@ function configurerOnglets() {
 }
 
 // À la désactivation : aucun enfant ne survit à l'éditeur.
-function arreter() { secretariat.arreter(); }
+function arreter() { secretariat.arreter(); reglages.arreter(); }
 
 // À l'activation : la clé de contexte de la porte, la commande, et l'ouverture d'office
 // quand la porte est ouverte sur une fenêtre sans dossier.
 function demarrer(context) {
   etatPoste = context;
   configurerOnglets();
+  reglages.demarrer(context);
   const actif = porteOuverte();
   vscode.commands.executeCommand('setContext', CONTEXTE_ACTIF, actif);
   context.subscriptions.push(vscode.commands.registerCommand('szh.lanceur', () => ouvrirLanceur()));
@@ -184,6 +211,6 @@ function demarrer(context) {
 }
 
 module.exports = {
-  configurer, demarrer, ouvrirLanceur, donnees, texteRefus, arreter,
+  configurer, demarrer, ouvrirLanceur, rechargerPage, donnees, texteRefus, arreter,
   VIEW_TYPE, CONTEXTE_ACTIF, CLE_DERNIER
 };

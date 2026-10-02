@@ -43,9 +43,11 @@ const {
   resoudreRedirection, recupererHttps, recupererAvecRepli
 } = require('./oai-pmh');
 
+const { urlJournal } = require('./ojs-adresses');
+
 const ENDPOINTS_OAI_DEFAUT = [
-  'https://ojs.szh.ch/index.php/revue/fr/oai',
-  'https://ojs.szh.ch/index.php/zeitschrift/de/oai'
+  urlJournal('fr') + '/fr/oai',
+  urlJournal('de') + '/de/oai'
 ];
 
 const JOURS_FRAICHEUR = 30;                // « une fois par mois »

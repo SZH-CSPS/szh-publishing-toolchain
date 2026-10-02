@@ -151,12 +151,21 @@ test('discordance : elle ne se signale que lorsqu’elle existe vraiment', () =>
   assert.strictEqual(i18n.TEXTES_COCKPIT.de['regl.langue.discordance'].indexOf('ß'), -1);
 });
 
-test('discordance : le formulaire de réglages la pose sous le choix de la langue', () => {
-  const src = lire('vscodium-extension', 'szh-cockpit', 'media', 'settings.js');
-  assert.match(src, /if \(g\.cle === 'langue'\)/,
+test('discordance : l’onglet Paramètres la pose sous le choix de la langue', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'media', 'lanceur.js');
+  assert.match(src, /var zoneLangue = poser\(rLangue\.el, 'p'/,
     'la zone du message ne se pose plus dans le groupe « langue »');
-  assert.match(src, /afficherDiscordanceLangue\(msg\.avertLangue\)/,
+  assert.match(src, /zoneLangue\.textContent = String\(msg\.avertLangue \|\| ''\)/,
     'le message envoyé par l’hôte n’est plus affiché');
+  // Et la page réelle l'affiche, puis le retire quand l'hôte n'a plus rien à dire.
+  const { ouvrirReglages, MSG } = require('./page-reglages');
+  const p = ouvrirReglages();
+  const dit = 'Les menus parlent allemand, le cockpit français.';
+  p.envoyer({ type: MSG.VALEURS, valeurs: { langue: 'fr' }, avertLangue: dit });
+  const zone = p.un('.szh-notif--attention');
+  assert.ok(zone && zone.textContent === dit && !zone.hidden, 'la discordance n’est pas affichée');
+  p.envoyer({ type: MSG.VALEURS, valeurs: { langue: 'fr' }, avertLangue: '' });
+  assert.strictEqual(zone.hidden, true, 'la discordance reste affichée alors que l’hôte n’en signale plus');
 });
 
 // ---- Le diagnostic du poste ----

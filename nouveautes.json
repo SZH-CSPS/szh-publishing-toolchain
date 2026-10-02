@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.2": {
+    "fr": {
+      "titre": "Réglages en une page, newsletter prête à coller",
+      "points": [
+        "Tous les réglages tiennent sur une seule page, l’onglet Paramètres.",
+        "La newsletter sort rubrique par rubrique, prête à coller dans Mailchimp, avec une introduction et un lien direct vers la Documentation.",
+        "Dans l’onglet Log, le résultat de chaque mise à jour est reconnu quelle que soit la langue de Windows.",
+        "Le dossier des journaux se nettoie seul : il garde les dix dernières mises à jour et les trois derniers mois."
+      ]
+    },
+    "de": {
+      "titre": "Einstellungen auf einer Seite, Newsletter zum Einfügen bereit",
+      "points": [
+        "Alle Einstellungen stehen auf einer Seite, im Register Einstellungen.",
+        "Der Newsletter entsteht Rubrik für Rubrik, bereit zum Einfügen in Mailchimp, mit Einleitung und direktem Link zur Dokumentation.",
+        "Im Reiter Log wird das Ergebnis jedes Updates erkannt, unabhängig von der Sprache von Windows.",
+        "Der Ordner mit den Protokollen räumt sich selbst auf: Er behält die letzten zehn Updates und die letzten drei Monate."
+      ]
+    }
+  },
   "3.1": {
     "fr": {
       "titre": "Pronto se prépare pour l’avenir",

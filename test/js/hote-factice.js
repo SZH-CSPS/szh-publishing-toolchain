@@ -64,6 +64,13 @@ for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POS
   process.env[variable] = chemin;
 }
 
+// L'état du compte (%LOCALAPPDATA%\\SZH\\etat-utilisateur.json) : détourné vers un dossier jetable, sauf
+// si le test a déjà posé le sien sous le dossier temporaire. Le lanceur y lit ses réglages d'avant
+// et y écrit la langue et la mise à jour silencieuse : un test ne touche jamais au compte réel.
+if (String(process.env.LOCALAPPDATA || '').indexOf(os.tmpdir()) !== 0) {
+  process.env.LOCALAPPDATA = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-compte-'));
+}
+
 // Une revue minimale mais complète : deux articles dont un sans fiche, un portrait à ses
 // trois versions désigné par la fiche, une image insérée dans le texte, un Word en attente
 // et le rapport de la dernière conversion.
@@ -138,9 +145,11 @@ function activerHote(revue, opts) {
   // lireCache(), qui remet dateFetch à null — « périmé », donc moissonné pour de vrai. C'est
   // exactement ce qui s'est produit (25.08.2026 -> 31.08.2026) : les 19 tests qui passent par
   // cet hôte factice interrogeaient réellement ojs.szh.ch, en silence, à chaque exécution.
+  // dateCorpus est frais pour la même raison : sinon l'activation balaie les vraies racines du
+  // poste (PowerShell) et réécrit ce cache pendant les tests.
   process.env.SZH_AUTEURS_CACHE = path.join(revue, 'auteurs.json');
   fs.writeFileSync(process.env.SZH_AUTEURS_CACHE, JSON.stringify({
-    version: 2, dateFetch: new Date().toISOString(), dateCorpus: null, ror: {}, vus: {},
+    version: 2, dateFetch: new Date().toISOString(), dateCorpus: new Date().toISOString(), ror: {}, vus: {},
     auteurs: [
       { prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' },
       { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-06-01T00:00:00Z' }
@@ -549,11 +558,27 @@ function activerHote(revue, opts) {
   // porte. Un état qui oublie tout les ferait rejouer à chaque activation, et le contrôle
   // du « une seule fois » n'aurait rien à mesurer.
   const memoire = {};
+  // Le coffre (SecretStorage) et l'environnement des terminaux : un coffre qui SE SOUVIENT et
+  // dont on suit les changements, une collection qui retient ce que le cockpit y pose.
+  const coffre = {};
+  const changementCoffre = emetteur();
+  const variablesTerminal = {};
   const contexte = {
     subscriptions: [], extensionPath: cockpit,
     globalState: {
       get: (cle) => memoire[cle],
       update: (cle, valeur) => { memoire[cle] = valeur; return Promise.resolve(); }
+    },
+    secrets: {
+      get: (cle) => Promise.resolve(coffre[cle]),
+      store: (cle, valeur) => { coffre[cle] = valeur; changementCoffre.emettre({ key: cle }); return Promise.resolve(); },
+      delete: (cle) => { delete coffre[cle]; changementCoffre.emettre({ key: cle }); return Promise.resolve(); },
+      onDidChange: changementCoffre
+    },
+    environmentVariableCollection: {
+      persistent: true,
+      clear: () => { for (const k of Object.keys(variablesTerminal)) { delete variablesTerminal[k]; } },
+      replace: (k, v) => { variablesTerminal[k] = v; }
     }
   };
   ext.activate(contexte);
@@ -604,6 +629,11 @@ function activerHote(revue, opts) {
     // erreur en pensant lire un instantané.
     contexte: () => Object.assign({}, contexteVsCode),
     memoire: memoire,
+    coffre: coffre,
+    secrets: contexte.secrets,
+    variablesTerminal: variablesTerminal,
+    terminal: contexte.environmentVariableCollection,
+    configuration: configValeurs,
     avertissements: avertissements,
     erreurs: erreurs,
     motifsSurveilles: () => motifsSurveilles.slice(),

@@ -347,13 +347,13 @@ test('livre : la commande « imprimeur » lance la tâche du bon nom', async () 
 // ---- Réglages : quatre blocs propres à une revue/Zeitschrift, absents pour un livre ---
 //
 // Pas d'OJS pour un livre : ni auteur·e·s publiés, ni bibliographie par revue, ni tâches
-// par article, ni export OJS. ouvrirReglages() (extension.js, messageValeursReglages) ne
-// doit même plus envoyer ces quatre clés — settings.js (montrerBloc) ne les affiche que
-// si elles arrivent, et une clé omise laisse le bloc masqué, titre compris.
+// par article, ni export OJS. Le lanceur ouvert par szh.reglages (lib/lanceur-reglages-hote.js)
+// ne doit même plus envoyer ces quatre clés — l'onglet Paramètres (media/lanceur.js) ne les
+// affiche que si elles arrivent, et une clé omise laisse le bloc masqué, titre compris.
 test('livre : le panneau Réglages n’envoie ni ojs, ni biblio, ni taches, ni auteursOjs', async () => {
   await HOTE.executer('szh.reglages');
-  const p = HOTE.panneauDeType('szhReglages');
-  assert.ok(p, 'panneau des réglages absent pour un livre');
+  const p = HOTE.panneauDeType('szhLanceur');
+  assert.ok(p, 'lanceur absent (szh.reglages) pour un livre');
   await p._recepteur({ type: 'pret' });
   const valeurs = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.ok(valeurs, 'aucun message de valeurs envoyé au panneau des réglages');
@@ -364,6 +364,8 @@ test('livre : le panneau Réglages n’envoie ni ojs, ni biblio, ni taches, ni a
   // Les réglages génériques restent envoyés : ce n'est pas un panneau vide.
   assert.ok(valeurs.valeurs, 'les réglages génériques ont disparu pour un livre');
   assert.ok(valeurs.proteges, 'l’état des réglages protégés a disparu pour un livre');
+  assert.ok(valeurs.suggInterface !== undefined && valeurs.avertLangue !== undefined,
+    'les champs communs du lanceur (suggestions, langue) ont disparu pour un livre');
 });
 
 // ---- Le walkthrough de démarrage : aucun tutoriel pour un livre (point 6) -----------

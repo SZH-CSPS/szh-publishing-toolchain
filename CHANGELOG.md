@@ -11,6 +11,35 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.2.0
+
+Medium : une seule page de réglages, une newsletter prête pour Mailchimp, et des journaux de
+mise à jour reconnus dans toutes les langues.
+
+**Production.**
+- Une seule page de réglages : l'onglet Paramètres du lanceur du cockpit. « Ouvrir les
+  réglages » y mène, même sans produit ouvert ; l'ancien panneau des réglages est retiré. Les
+  clés Shlink et OJS passent au coffre de VSCodium (`context.secrets`), transmises à la
+  chaîne par `WSLENV` (`lib/services-env.js`).
+- Newsletter : un fichier par rubrique, dans l'ordre de la newsletter (0-intro à
+  5-documentation), au balisage des modèles Mailchimp, avec les liens DOI. La Documentation
+  pointe vers sa page OJS par une adresse que l'export OJS fixe désormais
+  (`lib/ojs-adresses.js`). À la première importation, ouvrir l'adresse du numéro et celle de
+  la Documentation pour vérifier qu'OJS les a reprises.
+- Le verdict d'un journal de mise à jour est reconnu quelle que soit la langue de Windows
+  (il valait « inconnu » hors de l'anglais).
+- Le dossier des journaux se nettoie : dix mises à jour et trois mois au plus.
+
+**DEV seulement.**
+- Le lanceur dans le cockpit s'ouvre seul au démarrage derrière `SZH_ACCUEIL` : Produits,
+  Nouveau, Secrétariat, Log, Paramètres. WinForms reste le lanceur de production.
+- « Pronto (dev) » ouvre VSCodium directement sur ce lanceur ; `SZH_JOURNAUX_MAJ` lui fait
+  lire les journaux du poste.
+- Les exports vont dans `Exports\<export>`, qui remplace « Secrétariat und Export » dans
+  l'arbre. L'export Edudoc du lanceur du cockpit ne garde que les mots-clés du thésaurus, et
+  son historique retient les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
+- Cockpit 0.74.0.
+
 ## 3.1.0
 
 Medium : rien ne change à l'écran ni dans les PDF, mais le poste se prépare à passer un jour

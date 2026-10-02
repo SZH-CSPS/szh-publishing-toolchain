@@ -25,7 +25,7 @@ process.env.SZH_LANGUE = 'fr';
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
-const { ouvrir, libellesHote } = require('./dom-minimal');
+const { ouvrirReglages } = require('./page-reglages');
 const { revueDEssai, activerHote } = require('./hote-factice');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
@@ -36,15 +36,13 @@ const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 // Module._load ne se défait pas, voir hote-factice.js), la commande qui ouvre le
 // panneau, puis le message qu'il a réellement posté sur son canal.
 let _panneauOjs = null;
-function messagePanneau() {
+async function messagePanneau() {
   if (_panneauOjs) { return _panneauOjs; }
   const HOTE = activerHote(revueDEssai());
-  HOTE.executer('szh.reglages');
-  const panneau = HOTE.panneauDeType('szhReglages');
-  // onDidReceiveMessage n'est déclenché qu'à réception du « pret » envoyé par la page ;
-  // sa seule branche pour ce message pose le postMessage sans jamais attendre — l'appel
-  // est donc déjà résolu au retour, sans qu'il faille en attendre la promesse ici.
-  panneau._recepteur({ type: 'pret' });
+  await HOTE.executer('szh.reglages');
+  const panneau = HOTE.panneauDeType('szhLanceur');
+  // L'hôte ne répond qu'à réception du « pret » envoyé par la page.
+  await panneau._recepteur({ type: 'pret' });
   const valeurs = panneau.messages.find((m) => m.type === 'valeurs');
   _panneauOjs = valeurs.ojs;
   return _panneauOjs;
@@ -210,7 +208,7 @@ function configComplete() {
 
 const REFERENCE_REVUE = [
   '<?xml version="1.0" encoding="utf-8"?>',
-  '<issue xmlns="http://pkp.sfu.ca" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" published="1" current="1" access_status="1" url_path="" xsi:schemaLocation="http://pkp.sfu.ca native.xsd">',
+  '<issue xmlns="http://pkp.sfu.ca" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" published="1" current="1" access_status="1" url_path="2026-02" xsi:schemaLocation="http://pkp.sfu.ca native.xsd">',
   '  <id type="internal" advice="ignore">1</id>',
   '  <issue_identification>',
   '    <volume>44</volume>',
@@ -1380,14 +1378,11 @@ test('pagination : enregistre à faux, même avec perimes vide, n’écrit ni <p
 
 // Le panneau réellement exécuté : sans cela, une erreur au rendu laisserait le bloc vide
 // sous un titre, et rien ne le dirait — c'est le défaut que webviews.test.js garde ailleurs.
-test('panneau des réglages : la table des rubriques et les champs par revue sont rendus', () => {
-  const page = ouvrir({
-    racine: RACINE, page: 'settings', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
-    txt: libellesHote(RACINE, ['REGL_LIBELLES'])
-  });
-  assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
-  page.envoyer({ type: 'valeurs', valeurs: { langue: 'fr' }, ojs: messagePanneau() });
-  const bloc = page.parId.ojs;
+test('panneau des réglages : la table des rubriques et les champs par revue sont rendus', async () => {
+  const page = ouvrirReglages();
+  assert.strictEqual(page.postes('pret').length, 1, 'la page ne s’annonce pas');
+  page.envoyer({ type: 'valeurs', valeurs: { langue: 'fr' }, ojs: await messagePanneau() });
+  const bloc = page.parId('regl-ojs');
   const nRubriques = ojs.RUBRIQUES_DEFAUT.length;
   assert.strictEqual(bloc.querySelectorAll('[data-champ]').length,
     ojs.CHAMPS_REVUE.length * ojs.LOCALES_REVUE.length, 'champs par revue absents');

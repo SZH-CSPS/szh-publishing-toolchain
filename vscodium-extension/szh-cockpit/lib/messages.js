@@ -138,7 +138,10 @@ const MSG = Object.freeze({
   // Log : lire la fin d'un journal, l'ouvrir en entier, signaler un problème.
   LANCEUR_JOURNAL_LIRE: 'lanceurJournalLire', LANCEUR_JOURNAL_TEXTE: 'lanceurJournalTexte',
   LANCEUR_JOURNAL_EDITEUR: 'lanceurJournalEditeur',
-  LANCEUR_SIGNALER: 'lanceurSignaler', LANCEUR_SIGNALE: 'lanceurSignale'
+  LANCEUR_SIGNALER: 'lanceurSignaler', LANCEUR_SIGNALE: 'lanceurSignale',
+  // Paramètres : un service en ligne (adresse ou clé) à poser ou à effacer, et l'ordre de l'hôte
+  // d'ouvrir un onglet (szh.reglages). Les autres réglages passent par REGLER.
+  LANCEUR_SERVICE: 'lanceurService', LANCEUR_ALLER: 'lanceurAller'
 });
 
 module.exports = { MSG };

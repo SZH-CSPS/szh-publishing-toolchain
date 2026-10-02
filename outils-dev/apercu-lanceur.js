@@ -5,6 +5,8 @@
 // Usage :
 //   node outils-dev/apercu-lanceur.js [dossier]          tous les états
 //   node outils-dev/apercu-lanceur.js [dossier] S1 J2    quelques états seulement
+// Les valeurs de l'onglet Paramètres sortent du VRAI hôte (lib/lanceur-reglages-hote.js), joué sous
+// un faux vscode et sur des fichiers jetables : aucun fichier du poste n'est lu ni écrit.
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<png> --window-size=1100,720 file:///<html>
 'use strict';
@@ -154,9 +156,64 @@ const PHRASES = {
   }
 };
 
+// ---- Les valeurs des réglages : le vrai hôte, sous un faux vscode -----------------------
+// Un hôte unique par processus : le crochet de require ne se défait pas. Les fichiers du poste
+// (config.json, état du compte, cache des auteur·e·s) sont détournés vers un dossier jetable.
+let hoteReglages = null;
+function chargerHote() {
+  if (hoteReglages) { return hoteReglages; }
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-reglages-'));
+  process.on('exit', () => { try { fs.rmSync(travail, { recursive: true, force: true }); } catch (e) { /* débris */ } });
+  const ecrire = (nom, contenu) => { const c = path.join(travail, nom); fs.writeFileSync(c, contenu); return c; };
+  process.env.SZH_CONFIG_OJS = ecrire('config.json', JSON.stringify({ emplacementRevues: 'production' }));
+  process.env.SZH_ETAT_POSTE = ecrire('state.json', '{}');
+  process.env.LOCALAPPDATA = path.join(travail, 'Local');
+  const auteurs = [];
+  for (let i = 0; i < 1412; i++) { auteurs.push({ prenom: 'P' + i, nom: 'N' + i, datePublication: '2026-01-01T00:00:00Z' }); }
+  const ror = {};
+  for (let i = 0; i < 187; i++) { ror['ror' + i] = 'Institution ' + i; }
+  process.env.SZH_AUTEURS_CACHE = ecrire('auteurs.json', JSON.stringify({
+    version: 2, dateFetch: '2026-10-01T08:00:00Z', dateCorpus: '2026-10-01T08:00:00Z', ror: ror, vus: {}, auteurs: auteurs }));
+  const configuration = { 'workbench.colorTheme': 'Default Light Modern', 'window.zoomLevel': 0,
+    'szh.shlinkUrl': 'https://link.szh-csps.ch' };
+  const faux = {
+    Uri: { file: (p) => ({ fsPath: p }) }, window: {}, env: { language: 'fr' },
+    ConfigurationTarget: { Global: 1 }, EventEmitter: class { constructor() { this.event = () => ({}); } fire() {} },
+    workspace: { getConfiguration: (section) => ({
+      get: (cle, defaut) => { const k = (section ? section + '.' : '') + cle; return k in configuration ? configuration[k] : defaut; },
+      update: () => Promise.resolve(), inspect: () => ({}) }) }
+  };
+  const Module = require('module');
+  const orig = Module._load;
+  Module._load = function (requete) { return requete === 'vscode' ? faux : orig.apply(this, arguments); };
+  try {
+    const reglages = require(path.join(COCKPIT, 'lib', 'reglages-hote.js'));
+    reglages.configurer({ compterSuggestionsInterface: () => 3 });
+    hoteReglages = {
+      lanceur: require(path.join(COCKPIT, 'lib', 'lanceur-reglages-hote.js')),
+      session: require(path.join(COCKPIT, 'lib', 'session.js')),
+      profils: require(path.join(COCKPIT, 'lib', 'profil.js')),
+      services: require(path.join(COCKPIT, 'lib', 'services-env.js'))
+    };
+  } finally { Module._load = orig; }
+  hoteReglages.services.poser({ url: 'https://link.szh-csps.ch', shlinkCle: 'x', ojsCle: '' });
+  return hoteReglages;
+}
+// Le message « valeurs » que l'hôte enverrait : `livre` ouvre un livre dans la fenêtre (les blocs
+// d'une revue ne sont alors pas envoyés), `deverrouille` rejoue le verrou ouvert.
+function valeursReglages(langue, opts) {
+  const o = opts || {};
+  const hote = chargerHote();
+  hote.session.poserProfilOuvrage(o.livre ? hote.profils.PROFILS.livre : null);
+  const msg = hote.lanceur.messageValeurs();
+  msg.poste.produitAuto = produitParDefaut(langue, '', '', ['revue', 'zeitschrift', 'livre']);
+  if (o.deverrouille) { msg.proteges = Object.assign({}, msg.proteges, { deverrouille: true }); }
+  return msg;
+}
+
 // ---- Les états -----------------------------------------------------------------------
 // Une étape : ['hote', message] rejoue un message de l'hôte ; ['clic', sélecteur] un clic ;
-// ['saisir', sélecteur, texte] une frappe dans un champ.
+// ['saisir', sélecteur, texte] une frappe dans un champ ; ['ouvrirTous', sélecteur] ouvre des <details>.
 function etats(langue) {
   const P = PHRASES[langue] || PHRASES.fr;
   const L = (commande, ligne) => ['hote', { type: MSG.LANCEUR_LIGNE, commande: commande, ligne: ligne }];
@@ -169,7 +226,7 @@ function etats(langue) {
   const enCours = secretariat.concat([['clic', '#sec-newsletter'], debut('newsletter'),
     L('newsletter', { t: 'etape', texte: P.lecture }), L('newsletter', { t: 'etape', texte: P.ed }),
     L('newsletter', { t: 'etape', texte: P.dt }), L('newsletter', { t: 'progres', fait: 3, total: 6 })]);
-  const fichiers = ['editorial.txt', 'dossier-thematique.txt', 'varia.txt', 'tribune-libre.txt', 'documentation.txt', 'auteurs.csv']
+  const fichiers = ['0-intro.txt', '1-editorial.txt', '2-dossier-thematique.txt', '3-varia.txt', '4-tribune-libre.txt', '5-documentation.txt', 'auteurs.csv']
     .map((f) => L('newsletter', { t: 'fichier', chemin: BASE + '\\Exports\\Newsletter\\2026-03\\' + f, nom: f }));
   const journal = [['clic', '#onglet-journal'],
     ['hote', { type: MSG.LANCEUR_JOURNAL_TEXTE, rang: 0, texte: transcript(), lignes: 200 }]];
@@ -195,6 +252,11 @@ function etats(langue) {
     'S7-interrompu': { etapes: secretariat.concat([['clic', '#sec-edudoc'], debut('edudoc'),
       L('edudoc', { t: 'etape', texte: P.edudocLecture }), L('edudoc', { t: 'progres', fait: 1, total: 2 }),
       ['clic', '#sec-edudoc-interrompre'], fin('edudoc', { ok: false, annule: true, texte: '' })]) },
+    'R1-reglages-fr': { valeurs: {}, etapes: [['clic', '#onglet-reglages']] },
+    'R1-reglages-de': { valeurs: {}, etapes: [['clic', '#onglet-reglages']] },
+    'R2-deverrouille': { valeurs: { deverrouille: true }, etapes: [['clic', '#onglet-reglages'],
+      ['ouvrirTous', '#panneau-reglages .lanceur-details']] },
+    'R3-livre': { valeurs: { livre: true }, etapes: [['clic', '#onglet-reglages']] },
     'J1-ouvert': { etapes: journal },
     'J2-signaler': { etapes: signaler },
     'J3-envoye': { etapes: signaler.concat([['clic', '#jrn-signal-envoyer'],
@@ -217,6 +279,7 @@ function htmlEtat(nom, langue) {
       csp: "default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
     });
     const liste = etat.produits ? etat.produits(produits()) : produits();
+    const reglages = etat.valeurs ? valeursReglages(langue, etat.valeurs) : null;
     const charger = {
       type: MSG.CHARGER, langue: langue, anneeCourante: 2026, modeTest: false, ancrageAbsent: false,
       version: '2026.10.1', exports: BASE + '\\Exports', produits: liste,
@@ -224,9 +287,11 @@ function htmlEtat(nom, langue) {
       dernierOuvert: langue === 'de' ? BASE + '\\Zeitschrift\\2026-05' : BASE + '\\Revue\\2026-03',
       historique: HISTORIQUE, journaux: JOURNAUX
     };
+    const suite = reglages ? [reglages] : [];
     const shim = '<script nonce="' + nonce + '">\n' +
       '(function () {\n' +
       '  var CHARGER = ' + JSON.stringify(charger) + ';\n' +
+      '  var SUITE = ' + JSON.stringify(suite) + ';\n' +
       '  var ETAPES = ' + JSON.stringify(etat.etapes) + ';\n' +
       '  window.__postes = [];\n' +
       '  var api = null;\n' +
@@ -234,7 +299,10 @@ function htmlEtat(nom, langue) {
       '    if (api) { return api; }\n' +
       '    api = { postMessage: function (m) {\n' +
       '      window.__postes.push(m);\n' +
-      '      if (m && m.type === "pret") { window.dispatchEvent(new MessageEvent("message", { data: CHARGER })); }\n' +
+      '      if (m && m.type === "pret") {\n' +
+      '        window.dispatchEvent(new MessageEvent("message", { data: CHARGER }));\n' +
+      '        SUITE.forEach(function (d) { window.dispatchEvent(new MessageEvent("message", { data: d })); });\n' +
+      '      }\n' +
       '    }, setState: function () {}, getState: function () { return null; } };\n' +
       '    return api;\n' +
       '  };\n' +
@@ -246,6 +314,7 @@ function htmlEtat(nom, langue) {
       '  window.addEventListener("load", function () {\n' +
       '    ETAPES.forEach(function (e) {\n' +
       '      if (e[0] === "hote") { window.dispatchEvent(new MessageEvent("message", { data: e[1] })); return; }\n' +
+      '      if (e[0] === "ouvrirTous") { document.querySelectorAll(e[1]).forEach(function (d) { d.open = true; }); return; }\n' +
       '      var el = document.querySelector(e[1]);\n' +
       '      if (!el) { throw new Error("aperçu : élément introuvable " + e[1]); }\n' +
       '      if (e[0] === "clic") { el.click(); }\n' +
@@ -263,8 +332,8 @@ function htmlEtat(nom, langue) {
 
 // Les états rendus : tous en français, et le repos de Produits et du Secrétariat en allemand.
 function liste() {
-  const fr = Object.keys(etats('fr')).map((n) => ({ nom: n, langue: 'fr' }));
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }]);
+  const fr = Object.keys(etats('fr')).filter((n) => n !== 'R1-reglages-de').map((n) => ({ nom: n, langue: 'fr' }));
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }]);
 }
 
 function ecrire(dossier, filtres) {
@@ -272,7 +341,7 @@ function ecrire(dossier, filtres) {
   const sortie = [];
   for (const e of liste()) {
     if (filtres.length && !filtres.some((p) => e.nom.indexOf(p) === 0)) { continue; }
-    const cible = path.join(dossier, e.nom + '-' + e.langue + '.html');
+    const cible = path.join(dossier, (/-(fr|de)$/.test(e.nom) ? e.nom : e.nom + '-' + e.langue) + '.html');
     fs.writeFileSync(cible, htmlEtat(e.nom, e.langue), 'utf8');
     sortie.push(cible);
   }
@@ -281,7 +350,7 @@ function ecrire(dossier, filtres) {
 
 if (require.main === module) {
   const args = process.argv.slice(2);
-  const dossier = args[0] && !/^[SJPN]\d/.test(args[0]) ? args.shift()
+  const dossier = args[0] && !/^[SJPNR]\d/.test(args[0]) ? args.shift()
     : fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-lanceur-'));
   for (const f of ecrire(dossier, args)) { console.log(f); }
 }
