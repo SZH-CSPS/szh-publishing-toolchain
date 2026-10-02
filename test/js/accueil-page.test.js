@@ -275,11 +275,12 @@ test('préprocessing : le produit d’office vient de l’hôte, et choisir un m
   assert.deepStrictEqual(coche(p, 'produit-pp'), ['zeitschrift']);
   // Le choix des autres onglets n'y change rien.
   assert.deepStrictEqual(coche(p, 'produit-prod'), ['revue']);
-  assert.ok(panneau.textContent.includes(f('ppDossier', ['C:\\M\\Reçus'])));
-  // La sortie se dit dans les exports de Pronto, plus sur le Bureau.
-  assert.ok(panneau.textContent.includes(TXT.ppSortie));
-  assert.ok(TXT.ppSortie.includes('Exports\\Préprocessing'), TXT.ppSortie);
-  assert.doesNotMatch(TXT.ppSortie, /Bureau|Desktop/);
+  // Ni le dossier de départ de la fenêtre ni l'emplacement de la sortie ne s'écrivent sous le
+  // bouton (Robin, 02.10.2026) : la page reste au geste.
+  assert.ok(!panneau.textContent.includes('C:\\M\\Reçus'), panneau.textContent);
+  assert.ok(!panneau.textContent.includes('Exports\\Préprocessing'), panneau.textContent);
+  assert.strictEqual(TXT.ppDossier, undefined);
+  assert.strictEqual(TXT.ppSortie, undefined);
   assert.strictEqual(parId(p, 'pp-options').textContent, f('ppOptions', [TXT.ppFormatDocx]));
   clic(parId(p, 'pp-choisir'));
   const odt = parId(p, 'pp-format-odt');

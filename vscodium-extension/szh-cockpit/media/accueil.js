@@ -567,8 +567,6 @@
   var ppChoisir = SZH.bouton(TXT.ppChoisir, choisirManuscrit, 'szh-bouton--principal');
   ppChoisir.id = 'pp-choisir';
   ppRepos.appendChild(ppChoisir);
-  var ppDossier = poser(ppRepos, 'p', 'preproc-aide');
-  poser(ppRepos, 'p', 'preproc-aide', TXT.ppSortie);
   var ppDepotAvis = poser(ppRepos, 'p', 'preproc-depot-avis');
   ppDepotAvis.setAttribute('role', 'alert');
 
@@ -636,8 +634,6 @@
     });
     ppDeposer.hidden = !ppEtat.depot;
     ppZone.classList.toggle('preproc-zone--depot', ppEtat.depot && !ppEtat.enCours);
-    ppDossier.textContent = ppEtat.dossier ? SZH.remplir(TXT, 'ppDossier', [ppEtat.dossier]) : '';
-    ppDossier.hidden = !ppEtat.dossier;
     ppRepos.hidden = ppEtat.enCours;
     ppCours.hidden = !ppEtat.enCours;
   }

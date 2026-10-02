@@ -39,8 +39,7 @@ function textesAccueil() {
     nvCreer: T('accueil.nouveau.creer'), nvRefus: T('accueil.nouveau.refus'),
 
     ppIntro: T('accueil.preproc.intro'), ppDeposer: T('accueil.preproc.deposer'), ppOu: T('accueil.preproc.ou'),
-    ppChoisir: T('accueil.preproc.choisir'), ppDossier: T('accueil.preproc.dossier'),
-    ppSortie: T('accueil.preproc.sortie'), ppOptions: T('accueil.preproc.options'),
+    ppChoisir: T('accueil.preproc.choisir'), ppOptions: T('accueil.preproc.options'),
     ppFormat: T('accueil.preproc.format'), ppFormatDocx: T('accueil.preproc.format.docx'),
     ppFormatOdt: T('accueil.preproc.format.odt'), ppCompteurs: T('accueil.preproc.compteurs'),
     ppDepotFormat: T('accueil.preproc.depot.format'), ppDepotTaille: T('accueil.preproc.depot.taille'),
