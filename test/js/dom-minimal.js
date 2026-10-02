@@ -126,12 +126,28 @@ function chercherUn(racine, selecteur) {
   return courants;
 }
 
+function dateDuCalendrier(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) { return false; }
+  const a = Number(m[1]), mois = Number(m[2]), j = Number(m[3]);
+  if (a < 1 || mois < 1 || mois > 12 || j < 1) { return false; }
+  return j <= new Date(Date.UTC(a, mois, 0)).getUTCDate();
+}
+
 function element(balise) {
   const e = {
     balise: String(balise || '').toLowerCase(),
     enfants: [], parent: null, dataset: {}, style: {}, attributs: {}, classes: new Set(),
-    hidden: false, value: '', checked: false, disabled: false, readOnly: false,
+    hidden: false, checked: false, disabled: false, readOnly: false,
     type: '', name: '',
+    // Comme le navigateur (assainissement de la valeur, HTML §4.10.5.1.7) : un champ
+    // type="date" vide toute valeur qui n'est pas une date du calendrier.
+    _valeur: '',
+    get value() { return this._valeur; },
+    set value(v) {
+      const s = v === undefined || v === null ? '' : String(v);
+      this._valeur = (this.type === 'date' && s !== '' && !dateDuCalendrier(s)) ? '' : s;
+    },
     maxLength: 0, placeholder: '', accept: '', files: null, rows: 0,
     _texte: '',
     // Le strict nécessaire du DOM de nœuds : 3 pour un texte, 1 pour le reste.

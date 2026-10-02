@@ -396,7 +396,9 @@ function champStructure(parent, c, champCfg, valeursInitiales) {
         input = document.createElement('input');
         input.type = sc.saisie === 'date' ? 'date' : (sc.saisie === 'url' ? 'url' : 'text');
         input.maxLength = 300;
-        input.value = valeurInitiale;
+        if (input.type === 'date') {
+          if (poserValeurDate(input, valeurInitiale)) { input.classList.add('doc-date-champ--erreur'); }
+        } else { input.value = valeurInitiale; }
         input.addEventListener('input', surChangementLigne);
       }
       input.id = idSous;
@@ -486,6 +488,26 @@ function champOrdinaire(parent, c, champCfg) {
   c.ctl[champCfg.cle] = i;
   if (champCfg.saisie === 'date' || champCfg.saisie === 'date_partielle') { brancherApercuDate(d, i, c, champCfg); }
   return d;
+}
+
+// ---- Date stockée hors calendrier ---------------------------------------------------
+//
+// Un <input type="date"> vide sans rien dire une valeur qui n'existe pas au calendrier
+// (2026-02-30), et l'enregistrement suivant l'écrirait vide. Le champ repasse alors en
+// texte et garde la valeur lue ; rend true dans ce cas, pour que l'appelant la signale.
+function poserValeurDate(input, v) {
+  input.value = v;
+  if (v === '' || input.value === v) { return false; }
+  input.type = 'text';
+  input.pattern = '\\d{4}-\\d{2}-\\d{2}';
+  input.value = v;
+  return true;
+}
+function demanderApercuDesDates(c, cle) {
+  var groupes = c.groupesDate || {};
+  for (var k in groupes) {
+    if (groupes[k].cles.indexOf(cle) !== -1) { demanderApercuDate(groupes[k]); }
+  }
 }
 
 // ---- Aperçu de la date imprimée ------------------------------------------------------
@@ -836,6 +858,9 @@ function champ(parent, c, champCfg, valeursInitiales) {
     var v0 = valeursInitiales[champCfg.cle];
     if (champCfg.saisie === 'liste') { poserOptions(c.ctl[champCfg.cle], champCfg.options || [], String(v0 || '')); }
     else if (champCfg.saisie === 'structure' || champCfg.saisie === 'derive' || champCfg.saisie === 'liste_multiple') { /* déjà posées */ }
+    else if (champCfg.saisie === 'date') {
+      if (poserValeurDate(c.ctl[champCfg.cle], String(v0 || ''))) { demanderApercuDesDates(c, champCfg.cle); }
+    }
     else { c.ctl[champCfg.cle].value = String(v0 || ''); }
   }
   if (champCfg.quand) {
