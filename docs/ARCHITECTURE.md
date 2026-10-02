@@ -309,6 +309,30 @@ vérification (`print-templates/`) sont des gabarits Twig rendus par un seul mot
 `lib/gabarits.js`. Le lanceur Windows passe par ce même moteur, exécuté par le Node de
 VSCodium (`outils/rendre-gabarit.js`).
 
+### Le lanceur dans le cockpit (DEV)
+
+Le lanceur entre dans le cockpit onglet par onglet (étape 2 de
+[`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)). Produits, Nouveau, Secrétariat et Log sont
+portés ; Préprocessing et Réglages ne le sont pas encore. Il n'existe qu'en DEV : la
+production reste sur WinForms (§3).
+
+- **La porte.** `lib/lanceur-hote.js` ouvre son panneau (`panneauUnique`) quand aucun dossier
+  n'est ouvert et que `SZH_ACCUEIL=1` ; il possède aussi l'onglet actif et l'ouverture des
+  dossiers. Sans la variable, rien ne s'ouvre. `outils-dev/pronto-dev.ps1` (« Pronto (dev) »)
+  la pose et lance VSCodium sans dossier ; `SZH_JOURNAUX_MAJ` lui fait lire les journaux de
+  mise à jour du poste.
+- **Un module par onglet**, sur le motif `configurer(ctx)`, sans panneau :
+  `lanceur-nouveau.js` (création, qui rappelle `new-revue.ps1` et `new-livre.ps1`),
+  `lanceur-secretariat-hote.js` (lance `outils/secretariat-cli.js`) et
+  `lanceur-journal-hote.js`. `lanceur-page.js` fournit les libellés de la page.
+- **Deux modules purs**, jumeaux de fonctions PowerShell et gardés par un test de parité sur
+  un dossier jetable : `inventaire.js` (racine active et numéros, jumeau de
+  `Get-SzhBaseRevuesPour`) et `journaux-maj.js` (journaux de mise à jour et leur verdict,
+  jumeau de `Get-SzhJournauxMaj` et `Get-SzhVerdictJournalMaj`).
+- **La page** : `media/lanceur.{html,css,js}`, sans framework, aux libellés `lanceur.*` de
+  `i18n.js` (fr et de).
+- **Les exports** vont dans `<racine>\Exports\<export>` ; seul le lanceur du cockpit y écrit.
+
 ---
 
 ## 3. Le lanceur Windows (`windows/`)

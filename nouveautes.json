@@ -15,6 +15,22 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.2": {
+    "fr": {
+      "titre": "Des journaux de mise à jour mieux lus",
+      "points": [
+        "Dans l’onglet Log, le résultat de chaque mise à jour est reconnu quelle que soit la langue de Windows.",
+        "Le dossier des journaux se nettoie seul : il garde les dix dernières mises à jour et les trois derniers mois."
+      ]
+    },
+    "de": {
+      "titre": "Update-Protokolle besser gelesen",
+      "points": [
+        "Im Reiter Log wird das Ergebnis jedes Updates erkannt, unabhängig von der Sprache von Windows.",
+        "Der Ordner mit den Protokollen räumt sich selbst auf: Er behält die letzten zehn Updates und die letzten drei Monate."
+      ]
+    }
+  },
   "3.1": {
     "fr": {
       "titre": "Pronto se prépare pour l’avenir",

@@ -173,6 +173,10 @@ déploiement.
 2. **Faire entrer le lanceur dans le cockpit**, onglet par onglet : Secrétariat et Journal,
    puis Produits et Nouveau, puis Préprocessing et Réglages. WinForms reste en secours pendant
    la transition.
+   - **État.** Produits, Nouveau, Secrétariat et Log sont portés, en DEV seulement, derrière
+     `SZH_ACCUEIL` (voir `ARCHITECTURE.md`). Restent Préprocessing et Réglages (ce dernier
+     est en cours), puis la bascule de la production, qui n'est pas faite : elle utilise
+     toujours WinForms.
 3. **Podman et Linux** : image par digest, fumée en CI, mise à jour pilotée par le cockpit.
 4. **macOS**, seulement s'il y a un vrai poste à servir.
 
