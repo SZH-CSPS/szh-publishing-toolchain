@@ -95,6 +95,8 @@ function textesLanceur() {
     regl_warningsComplets: T('regl.warnings.complets'), regl_warningsReduits: T('regl.warnings.reduits'),
     regl_cmyk: T('regl.cmyk'), rgOui: T('lanceur.regl.oui'), rgNon: T('lanceur.regl.non'),
     rgLiens: T('lanceur.regl.liens'), rgLiensAide: T('lanceur.regl.liens.aide'),
+    rgFormat: T('lanceur.regl.format'), rgFormatAide: T('lanceur.regl.format.aide'),
+    rgFormatDocx: T('lanceur.regl.format.docx'), rgFormatOdt: T('lanceur.regl.format.odt'),
     rgLiensActifs: T('lanceur.regl.liens.actifs'), rgLiensDesactives: T('lanceur.regl.liens.desactives'),
     rgProduit: T('lanceur.regl.produit'), rgProduitAide: T('lanceur.regl.produit.aide'),
     rgProduitAuto: T('lanceur.regl.produit.auto'), rgMaj: T('lanceur.regl.maj'),

@@ -219,3 +219,10 @@ test('tâches : une tâche de tasks.json reçoit les variables dans son env, san
   assert.strictEqual(rien.execution.options, undefined, 'rien de réglé : la tâche part telle quelle');
   services.dansTache({});     // sans exécution : sans effet, sans exception
 });
+
+test('format de travail du Préprocessing : écrit dans szh.formatTravail, docx pour toute autre valeur', async () => {
+  await envoyer({ type: MSG.REGLER, cle: 'formatTravail', valeur: 'odt' });
+  assert.strictEqual(HOTE.configuration['szh.formatTravail'], 'odt');
+  await envoyer({ type: MSG.REGLER, cle: 'formatTravail', valeur: 'pdf' });
+  assert.strictEqual(HOTE.configuration['szh.formatTravail'], 'docx');
+});

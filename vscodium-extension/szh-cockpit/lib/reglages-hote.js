@@ -290,6 +290,14 @@ async function telechargerFichierLangue() {
   return { message: T('regl.exportLangue.faite', [path.basename(cible.fsPath)]) };
 }
 
+function lireFormatTravail() {
+  try {
+    const cfg = vscode.workspace.getConfiguration('szh');
+    if (!cfg.inspect('formatTravail')) { return null; }
+    return cfg.get('formatTravail', 'docx') === 'odt' ? 'odt' : 'docx';
+  } catch (e) { return null; }
+}
+
 function lireReglagesActuels() {
   const cfg = vscode.workspace.getConfiguration();
   const autoDetect = cfg.get('window.autoDetectColorScheme', false) === true;
@@ -317,7 +325,9 @@ function lireReglagesActuels() {
     // recouper avec un réglage d'éditeur.
     verifTrad: lireVerifTraduction() ? 'actif' : 'inactif',
     // Même fichier, même lecture : le mode « Trad » vit à côté du vérificateur.
-    modeTrad: lireModeTrad() ? 'actif' : 'inactif'
+    modeTrad: lireModeTrad() ? 'actif' : 'inactif',
+    // Déclaré par l'onglet Préprocessing : tant qu'il ne l'est pas, null masque la ligne.
+    formatTravail: lireFormatTravail()
     // Le mode développeur (dossiers de test) ne fait plus partie de cet état : il se lit
     // et s'écrit dans lib/lanceur-reglages-hote.js.
   };
@@ -486,6 +496,9 @@ async function traiterMessage(msg, repondre, rafraichirTout) {
       // Limité à [markdown] : la taille d'affichage, pas le contenu.
       await vscode.workspace.getConfiguration('editor', { languageId: 'markdown' })
         .update('fontSize', Number(msg.valeur) || 16, Global, true);
+    } else if (msg.cle === 'formatTravail') {
+      await vscode.workspace.getConfiguration('szh')
+        .update('formatTravail', msg.valeur === 'odt' ? 'odt' : 'docx', Global);
     } else if (msg.cle === 'apercu') {
       // Même réglage szh.apercuMode que la bascule Ctrl+Alt+P et la barre d'état.
       await vscode.workspace.getConfiguration('szh')

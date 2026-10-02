@@ -1101,6 +1101,9 @@
     choix(b, 'warnings', TXT.regl_warnings, '', [['complets', TXT.regl_warningsComplets], ['reduits', TXT.regl_warningsReduits]]);
     choix(b, 'cmyk', TXT.regl_cmyk, '', [['oui', TXT.rgOui], ['non', TXT.rgNon]]);
     choix(b, 'liensReferences', TXT.rgLiens, TXT.rgLiensAide, [['actifs', TXT.rgLiensActifs], ['desactives', TXT.rgLiensDesactives]]);
+    // Masquée tant que l'hôte ne l'envoie pas : le réglage appartient au Préprocessing.
+    var rFormat = choix(b, 'formatTravail', TXT.rgFormat, TXT.rgFormatAide, [['docx', TXT.rgFormatDocx], ['odt', TXT.rgFormatOdt]]);
+    rFormat.el.hidden = true;
 
     // ---- Ce poste ----
     var c = liste(TXT.rgPoste);
@@ -1702,6 +1705,7 @@
       if (msg.type !== MSG.VALEURS) { return false; }
       afficherErreur('');
       cocher(msg.valeurs || {});
+      rFormat.el.hidden = !(msg.valeurs && msg.valeurs.formatTravail);
       zoneLangue.textContent = String(msg.avertLangue || '');
       zoneLangue.hidden = String(msg.avertLangue || '') === '';
       if (msg.poste) { rendreProduit(msg.poste); }
