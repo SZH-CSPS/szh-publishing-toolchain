@@ -223,7 +223,11 @@ function textesDocumentation() {
     archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
     archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
     archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
-    archiveCompteur: T('doc.archive.compteur')
+    archiveCompteur: T('doc.archive.compteur'),
+    // Vue « Publier sur le site web » : notice seule.
+    webTitre: T('doc.web.titre'), webAvenir: T('doc.web.avenir'),
+    webExplication: T('doc.web.explication'),
+    webBouton: T('doc.web.bouton'), webBoutonTip: T('doc.web.bouton.tip')
   };
 }
 

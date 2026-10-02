@@ -910,14 +910,14 @@ class FournisseurRevue {
         arguments: e.cle === 'numero' ? ['numero', 'rubriques'] : [e.cle] };
       return it;
     });
-    // « Publier sur le site web » : grisée, pas cliquable — pas encore livré. Aucune
-    // .command posée : un TreeItem sans commande ne réagit à aucun clic, exactement le
-    // contrat de « désactivé » ici (VS Code n'a pas d'état disabled sur un TreeItem).
+    // « Publier sur le site web » : pas encore livré, elle ouvre la vue « web » de la
+    // Documentation, qui le dit.
     const publier = new vscode.TreeItem(T('arbre.actualite.publier'), vscode.TreeItemCollapsibleState.None);
     publier.id = 'actualite:publier';
-    publier.contextValue = 'actualite-entree-desactivee';
-    publier.iconPath = new vscode.ThemeIcon('circle-large-outline');
+    publier.contextValue = 'actualite-entree';
+    publier.iconPath = new vscode.ThemeIcon('cloud-upload');
     publier.tooltip = T('arbre.actualite.publier.tip');
+    publier.command = { command: 'szh.ouvrirActualite', title: T('arbre.actualite.publier'), arguments: ['web'] };
     items.push(publier);
     return items;
   }

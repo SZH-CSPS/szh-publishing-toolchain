@@ -185,25 +185,32 @@ test('arbre : les cinq entrées de ACTUALITÉ, dans l’ordre voulu par Robin, a
   assert.strictEqual(nReservoir, 0);
   assert.strictEqual(nBlocs, 2, 'fixture attendue à ce point du fichier : une rubrique et une fiche');
 
+  // Recherche par id, jamais par rang : une entrée ajoutée ailleurs ne décale rien.
   const entrees = await enfantsDe('section-actualite');
-  assert.strictEqual(entrees.length, 5);
-  assert.deepStrictEqual(entrees.map((it) => it.command && it.command.command),
-    ['szh.ouvrirActualite', 'szh.ouvrirActualite', 'szh.ouvrirActualite', 'szh.ouvrirActualite', undefined],
-    '« Publier sur le site web » ne porte AUCUNE commande : jamais cliquable');
-  assert.deepStrictEqual(entrees.slice(0, 4).map((it) => it.command.arguments),
-    [['numero', 'rubriques'], ['traductions'], ['reservoir'], ['archive']],
-    '« Documentation du numéro » ouvre sur « Rubriques » par défaut');
-  assert.deepStrictEqual(entrees.map((it) => it.label),
+  const IDS = ['numero', 'traductions', 'reservoir', 'archive', 'publier'].map((c) => 'actualite:' + c);
+  const parId = (id) => entrees.find((it) => it.id === id);
+  for (const id of IDS) { assert.ok(parId(id), 'entrée absente : ' + id); }
+  const rangs = IDS.map((id) => entrees.indexOf(parId(id)));
+  assert.deepStrictEqual(rangs.slice().sort((a, b) => a - b), rangs, 'ordre voulu par Robin');
+  const cinq = IDS.map(parId);
+  const [numero, traductions, reservoir, archive, publier] = cinq;
+  for (const it of cinq) {
+    assert.strictEqual(it.command && it.command.command, 'szh.ouvrirActualite', it.id);
+  }
+  assert.deepStrictEqual(cinq.map((it) => it.command.arguments),
+    [['numero', 'rubriques'], ['traductions'], ['reservoir'], ['archive'], ['web']],
+    '« Documentation du numéro » ouvre sur « Rubriques », « Publier » sur la notice « web »');
+  assert.deepStrictEqual(cinq.map((it) => it.label),
     [T('doc.onglet.numero'), T('doc.onglet.traductions'), T('doc.onglet.reservoir'), T('doc.onglet.archive'),
       T('arbre.actualite.publier')],
     'les quatre premiers libellés reprennent ceux des anciens onglets, mot pour mot');
-  assert.strictEqual(entrees[0].description, '(' + nBlocs + ')', 'Documentation du numéro');
-  assert.strictEqual(entrees[1].description, undefined, 'aucune traduction à faire : pas de badge');
-  assert.strictEqual(entrees[2].description, undefined, 'réservoir vide : pas de badge');
-  assert.strictEqual(entrees[3].description, undefined,
+  assert.strictEqual(numero.description, '(' + nBlocs + ')', 'Documentation du numéro');
+  assert.strictEqual(traductions.description, undefined, 'aucune traduction à faire : pas de badge');
+  assert.strictEqual(reservoir.description, undefined, 'réservoir vide : pas de badge');
+  assert.strictEqual(archive.description, undefined,
     'l’Archive n’a pas encore été lue par un panneau : aucun badge, jamais une lecture depuis l’arbre');
-  assert.strictEqual(entrees[4].description, undefined, 'Publier sur le site web : rien à compter');
-  assert.strictEqual(entrees[4].contextValue, 'actualite-entree-desactivee');
+  assert.strictEqual(publier.description, undefined, 'Publier sur le site web : rien à compter');
+  assert.strictEqual(publier.contextValue, 'actualite-entree');
   for (const it of entrees) {
     assert.ok(it.tooltip, 'info-bulle absente : ' + it.label);
     assert.ok(it.iconPath && it.iconPath.id, 'icône absente : ' + it.label);

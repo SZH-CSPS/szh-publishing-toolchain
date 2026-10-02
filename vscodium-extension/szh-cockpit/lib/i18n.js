@@ -2234,6 +2234,12 @@ const TEXTES_COCKPIT = {
     'secretariat.metadonnees.fin.aucun': 'Tout concorde avec le site.',
     'secretariat.metadonnees.fin.un': '{0} article est à revoir ; le rapport en donne le détail.',
     'secretariat.metadonnees.fin.plus': '{0} articles sont à revoir ; le rapport en donne le détail.',
+    // Documentation, vue « Publier sur le site web » : notice d'une fonction à venir.
+    'doc.web.titre': 'Publier sur le site web',
+    'doc.web.avenir': 'Fonctionnalité à venir',
+    'doc.web.explication': 'Les fiches de la bibliothèque seront publiées sur le futur site de la CSPS. Pour l’instant, rien n’est envoyé.',
+    'doc.web.bouton': 'Publier',
+    'doc.web.bouton.tip': 'Pas encore disponible',
   },
   de: {
     // Le badge « Testordner » : voir le commentaire côté français, même contrat.
@@ -4242,6 +4248,11 @@ const TEXTES_COCKPIT = {
     'secretariat.metadonnees.fin.aucun': 'Alles stimmt mit der Website überein.',
     'secretariat.metadonnees.fin.un': '{0} Artikel ist zu überprüfen; der Bericht nennt die Einzelheiten.',
     'secretariat.metadonnees.fin.plus': '{0} Artikel sind zu überprüfen; der Bericht nennt die Einzelheiten.',
+    'doc.web.titre': 'Auf der Website veröffentlichen',
+    'doc.web.avenir': 'Diese Funktion folgt',
+    'doc.web.explication': 'Die Einträge der Bibliothek werden künftig auf der neuen Website des SZH veröffentlicht. Vorläufig wird nichts übermittelt.',
+    'doc.web.bouton': 'Veröffentlichen',
+    'doc.web.bouton.tip': 'Noch nicht verfügbar',
   }
 };
 

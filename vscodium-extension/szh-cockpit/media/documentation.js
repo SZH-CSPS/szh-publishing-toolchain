@@ -53,6 +53,7 @@ var panelTraductions = document.getElementById('panel-traductions');
 var panelReservoir = document.getElementById('panel-reservoir');
 var panelNumero = document.getElementById('panel-numero');
 var panelArchive = document.getElementById('panel-archive');
+var panelWeb = document.getElementById('panel-web');
 var zoneSections = document.getElementById('sections');
 var compteurId = 0;
 var compteurIndex = 0;
@@ -940,6 +941,22 @@ function construireTraductions(parent, traductions) {
     }, 'doc-vue-bouton', TXT.traduireDansNumeroTip || ''));
   });
 }
+// Vue « Publier sur le site web » : une notice statique, sans message vers l'hôte. Le
+// bouton n'a pas d'écouteur : il annonce le geste à venir.
+function construireWeb(parent) {
+  parent.textContent = '';
+  var zone = texte(parent, 'div', 'doc-web');
+  zone.appendChild(SZH.notif('info', TXT.webAvenir || ''));
+  texte(zone, 'p', 'doc-web-explication', TXT.webExplication || '');
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'szh-bouton doc-web-bouton';
+  b.textContent = TXT.webBouton || '';
+  b.title = TXT.webBoutonTip || '';
+  b.disabled = true;
+  b.setAttribute('aria-disabled', 'true');
+  zone.appendChild(b);
+}
 function construireOrphelines(parent, orphelines) {
   var s = texte(parent, 'section', 'doc-vue-orphelines');
   texte(s, 'h3', 'doc-vue-titre-section', TXT.orphelinesTitre || '');
@@ -1149,6 +1166,7 @@ function appliquerVue() {
   panelReservoir.hidden = vueOnglet !== 'reservoir';
   panelNumero.hidden = vueOnglet !== 'numero';
   panelArchive.hidden = vueOnglet !== 'archive';
+  panelWeb.hidden = vueOnglet !== 'web';
   if (vueOnglet === 'numero') { appliquerFiltreNumero(); }
   barreCategories.hidden = vueOnglet !== 'numero';
   if (vueOnglet === 'numero') { construireBarreCategories(); }
@@ -1156,6 +1174,7 @@ function appliquerVue() {
   if (vueOnglet === 'traductions') { titre = TXT.ongletTraductions || ''; }
   else if (vueOnglet === 'reservoir') { titre = TXT.ongletReservoir || ''; }
   else if (vueOnglet === 'archive') { titre = TXT.ongletArchive || ''; }
+  else if (vueOnglet === 'web') { titre = TXT.webTitre || ''; }
   else {
     var categorieLibelle = libelleCategorieNumero();
     titre = (TXT.ongletNumero || '') + (categorieLibelle ? ' – ' + categorieLibelle : '');
@@ -1435,6 +1454,7 @@ function rendre(msg) {
   sections = [];
   construireTraductions(panelTraductions, Array.isArray(msg.traductions) ? msg.traductions : []);
   construireReservoir(panelReservoir, msg);
+  construireWeb(panelWeb);
   TYPES = Array.isArray(msg.typesConfig) ? msg.typesConfig : [];
   TYPES_RUBRIQUE = Array.isArray(msg.typesRubrique) ? msg.typesRubrique : [];
 
