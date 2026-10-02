@@ -36,8 +36,8 @@ est retiré.
   OJS passent au coffre de VSCodium (`context.secrets`), transmises à la chaîne par `WSLENV`
   (`lib/services-env.js`).
 - Les exports vont dans `Exports\<export>`, qui remplace « Secrétariat und Export » dans
-  l'arbre. L'export Edudoc ne garde que les mots-clés du thésaurus, et son historique retient
-  les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
+  l'arbre. L'export Edudoc ne garde que les mots-clés du thésaurus, et son historique, partagé entre
+  les postes dans `_Systeme\exports`, retient les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
 - Newsletter : un fichier par rubrique, dans l'ordre de la newsletter (0-intro à
   5-documentation), au balisage des modèles Mailchimp, avec les liens DOI. La Documentation
   pointe vers sa page OJS par une adresse que l'export OJS fixe désormais

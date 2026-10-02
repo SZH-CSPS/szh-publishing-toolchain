@@ -1,6 +1,6 @@
 // L'onglet Secrétariat de l'Accueil côté hôte (lib/accueil-secretariat-hote.js) : les
 // arguments passés à outils/secretariat-cli.js, le dossier Exports\<action>, l'historique
-// du compte, et aucun enfant qui survive à l'Accueil. Un faux CLI tient lieu du vrai : il
+// partagé dans _Systeme\exports, et aucun enfant qui survive à l'Accueil. Un faux CLI tient lieu du vrai : il
 // note ses arguments et son pid, puis répond ou dort.
 //
 //   node --test test/js/accueil-secretariat.test.js
@@ -25,6 +25,11 @@ fs.mkdirSync(path.join(PROGRAMDATA, 'toolkit'), { recursive: true });
 fs.writeFileSync(path.join(PROGRAMDATA, 'config.json'), JSON.stringify({ emplacementRevues: 'test' }), 'utf8');
 Object.assign(process.env, { SZH_BASE: PROGRAMDATA, SZH_RACINE_TEST: BASE, SZH_RACINE_PROD: path.join(TRAVAIL, 'Prod'),
   SZH_ANCRAGE: '', LOCALAPPDATA: path.join(TRAVAIL, 'Local'), SZH_LANGUE: 'fr' });
+// L'historique partagé des exports, dans un dossier jetable : aucun test n'écrit sur le partage.
+const HISTO = path.join(TRAVAIL, 'Systeme', 'exports');
+process.env.SZH_HISTORIQUE_EXPORTS = HISTO;
+const lireHisto = (nom) => { try { return JSON.parse(fs.readFileSync(path.join(HISTO, nom), 'utf8')); } catch (e) { return undefined; } };
+const emplacement = (v) => fs.writeFileSync(path.join(PROGRAMDATA, 'config.json'), JSON.stringify({ emplacementRevues: v }), 'utf8');
 const NUMERO = path.join(BASE, 'Revue', '2026-3');
 fs.mkdirSync(NUMERO, { recursive: true });
 fs.writeFileSync(path.join(NUMERO, 'ausgabe.yaml'), 'title: "Trois"\nrevue: revue\n');
@@ -137,7 +142,7 @@ if (CAS) {
     assert.strictEqual(fin().dossier, sortie);
     assert.match(fin().date, /^\d{2}\.\d{2}\.\d{4}$/);
     assert.deepStrictEqual(dossiers, [sortie], 'deux fichiers : leur dossier');
-    assert.deepStrictEqual(memoire[hote.CLE_HISTORIQUE], undefined, 'la newsletter n’entre pas dans l’historique');
+    assert.deepStrictEqual(lireHisto('historique-test.json'), undefined, 'la newsletter n’entre pas dans l’historique');
   });
 
   test('secrétariat : un numéro que la page n’a pas reçu ne lance rien', async () => {
@@ -163,22 +168,23 @@ if (CAS) {
     assert.strictEqual(val(a.args, '--sortie'), path.join(EXPORTS, 'Edudoc'));
     assert.deepStrictEqual(reveles, [path.join(EXPORTS, 'Edudoc', 'f0.txt')], 'un seul fichier : sélectionné');
     const date = fin().date;
-    assert.deepStrictEqual(memoire[hote.CLE_HISTORIQUE], { edudoc: { revue: { '2026-02': date, '2026-03': date } } });
-    assert.deepStrictEqual(hote.historique(), memoire[hote.CLE_HISTORIQUE], 'l’historique que la page reçoit pour précocher');
+    assert.deepStrictEqual(lireHisto('historique-test.json'), { edudoc: { revue: { '2026-02': date, '2026-03': date } } });
+    assert.deepStrictEqual(hote.historique(), lireHisto('historique-test.json'), 'l’historique que la page reçoit pour précocher');
+    assert.deepStrictEqual(memoire, {}, 'rien n’est plus retenu par compte');
     await hote.exporter({ commande: 'caracteres', revue: 'revue', cles: ['2026-03'] });
     assert.strictEqual(val(appels()[2].args, '--sortie'), path.join(EXPORTS, 'Caractères par article'));
-    assert.deepStrictEqual(Object.keys(memoire[hote.CLE_HISTORIQUE]).sort(), ['caracteres', 'edudoc']);
+    assert.deepStrictEqual(Object.keys(lireHisto('historique-test.json')).sort(), ['caracteres', 'edudoc']);
   });
 
   test('secrétariat : un export échoué n’entre pas dans l’historique et n’ouvre rien', async () => {
     oublier();
-    for (const k of Object.keys(memoire)) { delete memoire[k]; }
+    const avant = lireHisto('historique-test.json');
     process.env.SZH_FAUX_MODE = 'echec';
     try { await hote.exporter({ commande: 'edudoc', revue: 'zeitschrift', cles: ['2026-05'] }); }
     finally { delete process.env.SZH_FAUX_MODE; }
     assert.strictEqual(fin().ok, false);
     assert.strictEqual(fin().texte, 'Raté.');
-    assert.deepStrictEqual(memoire, {});
+    assert.deepStrictEqual(lireHisto('historique-test.json'), avant);
     assert.deepStrictEqual(reveles.concat(dossiers), []);
   });
 
@@ -201,6 +207,125 @@ if (CAS) {
     try { await hote.exporter({ commande: 'caracteres', revue: 'zeitschrift', cles: ['2026-05'] }); }
     finally { process.env.SZH_LANGUE = 'fr'; }
     assert.strictEqual(val(appels()[0].args, '--langue'), 'de');
+  });
+
+  // ---- L'historique partagé : _Systeme\exports, le même pour tous les postes ----
+  const viderHisto = () => { fs.rmSync(HISTO, { recursive: true, force: true }); };
+  // Un « poste » : son propre globalState, branché sur l'hôte le temps d'un geste.
+  const poste = (etat) => ({ get: (k) => etat[k], update: (k, v) => { if (v === undefined) { delete etat[k]; } else { etat[k] = v; } return Promise.resolve(); } });
+  const brancher = (m) => hote.configurer({ memoire: m });
+  test.afterEach(() => { brancher({ get: (k) => memoire[k], update: (k, v) => { memoire[k] = v; return Promise.resolve(); } }); emplacement('test'); });
+
+  test('historique : _Systeme\\exports sous l’ancrage, un fichier à part en mode test', () => {
+    const ancrage = path.join(TRAVAIL, 'Ancrage');
+    fs.mkdirSync(ancrage, { recursive: true });
+    const dossier = path.join(ancrage, '2_Produkte', '54_Pronto', '_Systeme', 'exports');
+    delete process.env.SZH_HISTORIQUE_EXPORTS;
+    process.env.SZH_ANCRAGE = ancrage;
+    try {
+      assert.strictEqual(hote.cheminHistorique(), path.join(dossier, 'historique-test.json'));
+      emplacement('production');
+      assert.strictEqual(hote.cheminHistorique(), path.join(dossier, 'historique.json'));
+      process.env.SZH_ANCRAGE = '';
+      assert.strictEqual(hote.cheminHistorique(), null, 'sans ancrage, pas de fichier');
+    } finally { process.env.SZH_HISTORIQUE_EXPORTS = HISTO; process.env.SZH_ANCRAGE = ''; }
+  });
+
+  test('historique : deux postes précochent les mêmes numéros', async () => {
+    oublier(); viderHisto();
+    const a = {}; const b = {};
+    brancher(poste(a));
+    await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] });
+    const date = fin().date;
+    brancher(poste(b));
+    assert.deepStrictEqual(hote.historique(), { edudoc: { revue: { '2026-03': date } } }, 'le second poste voit l’export du premier');
+    await hote.exporter({ commande: 'caracteres', revue: 'zeitschrift', cles: ['2026-05'] });
+    brancher(poste(a));
+    assert.deepStrictEqual(hote.historique(), { edudoc: { revue: { '2026-03': date } }, caracteres: { zeitschrift: { '2026-05': date } } });
+    assert.deepStrictEqual([a, b], [{}, {}], 'aucun globalState n’est écrit');
+  });
+
+  test('historique : un export relit le fichier avant d’écrire, sans écraser celui d’un autre poste', async () => {
+    oublier(); viderHisto();
+    brancher(poste({}));
+    assert.deepStrictEqual(hote.historique(), {});
+    // Un autre poste exporte entre la lecture de la page et la fin de notre export.
+    fs.mkdirSync(HISTO, { recursive: true });
+    fs.writeFileSync(path.join(HISTO, 'historique-test.json'), JSON.stringify({ edudoc: { revue: { '2026-01': '01.02.2026' } } }));
+    await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] });
+    assert.deepStrictEqual(lireHisto('historique-test.json'), { edudoc: { revue: { '2026-01': '01.02.2026', '2026-03': fin().date } } });
+  });
+
+  test('historique : le mode test écrit à part, la production ne le voit pas', async () => {
+    oublier(); viderHisto();
+    brancher(poste({}));
+    await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] });
+    assert.ok(lireHisto('historique-test.json'));
+    assert.strictEqual(lireHisto('historique.json'), undefined, 'l’essai ne pollue pas la production');
+    emplacement('production');
+    assert.deepStrictEqual(hote.historique(), {});
+    await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-02'] });
+    assert.deepStrictEqual(lireHisto('historique.json'), { edudoc: { revue: { '2026-02': fin().date } } });
+    assert.deepStrictEqual(Object.keys(lireHisto('historique-test.json').edudoc.revue), ['2026-03']);
+  });
+
+  test('historique : illisible ou injoignable, il est vide et l’export n’est jamais bloqué', async () => {
+    oublier(); viderHisto();
+    brancher(poste({}));
+    fs.mkdirSync(HISTO, { recursive: true });
+    fs.writeFileSync(path.join(HISTO, 'historique-test.json'), '{ pas du json');
+    assert.deepStrictEqual(hote.historique(), {});
+    await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] });
+    assert.strictEqual(fin().ok, true);
+    assert.deepStrictEqual(lireHisto('historique-test.json'), { edudoc: { revue: { '2026-03': fin().date } } });
+    // Un dossier qui ne peut pas exister (son parent est un fichier) : rien ne lève, le journal le dit.
+    const bloque = path.join(TRAVAIL, 'un-fichier');
+    fs.writeFileSync(bloque, 'x');
+    process.env.SZH_HISTORIQUE_EXPORTS = path.join(bloque, 'exports');
+    const avertis = [];
+    const warn = console.warn;
+    console.warn = (...m) => avertis.push(m.join(' '));
+    try {
+      assert.deepStrictEqual(hote.historique(), {});
+      oublier();
+      await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-02'] });
+    } finally { console.warn = warn; process.env.SZH_HISTORIQUE_EXPORTS = HISTO; }
+    assert.strictEqual(fin().ok, true, 'l’export reste réussi');
+    assert.strictEqual(avertis.length, 1);
+    assert.match(avertis[0], /historique/);
+  });
+
+  test('historique : écrit dans un temporaire ~$ du même dossier, puis renommé', async () => {
+    oublier(); viderHisto();
+    brancher(poste({}));
+    const renommages = [];
+    const renommer = fs.renameSync;
+    fs.renameSync = (de, vers) => { renommages.push([de, vers]); return renommer(de, vers); };
+    try { await hote.exporter({ commande: 'edudoc', revue: 'revue', cles: ['2026-03'] }); }
+    finally { fs.renameSync = renommer; }
+    const cible = path.join(HISTO, 'historique-test.json');
+    const vers = renommages.filter((r) => r[1] === cible);
+    assert.strictEqual(vers.length, 1);
+    assert.strictEqual(path.dirname(vers[0][0]), HISTO);
+    assert.ok(path.basename(vers[0][0]).startsWith('~$'), path.basename(vers[0][0]));
+    assert.deepStrictEqual(fs.readdirSync(HISTO), ['historique-test.json'], 'aucun temporaire ne reste');
+  });
+
+  test('historique : la clé d’un ancien poste est fusionnée une fois au premier export, puis oubliée', async () => {
+    oublier(); viderHisto();
+    const ancien = { [hote.CLE_HISTORIQUE]: { edudoc: { zeitschrift: { '2025-04': '03.09.2025' } } } };
+    brancher(poste(ancien));
+    assert.deepStrictEqual(hote.historique(), { edudoc: { zeitschrift: { '2025-04': '03.09.2025' } } }, 'la page la voit déjà');
+    fs.mkdirSync(HISTO, { recursive: true });
+    fs.writeFileSync(path.join(HISTO, 'historique-test.json'), JSON.stringify({ edudoc: { zeitschrift: { '2025-04': '10.09.2025' } } }));
+    await hote.exporter({ commande: 'caracteres', revue: 'revue', cles: ['2026-03'] });
+    assert.deepStrictEqual(lireHisto('historique-test.json'), {
+      edudoc: { zeitschrift: { '2025-04': '10.09.2025' } }, caracteres: { revue: { '2026-03': fin().date } }
+    }, 'le fichier partagé l’emporte sur la clé du poste');
+    assert.deepStrictEqual(ancien, {}, 'la clé est retirée');
+    // Un autre poste efface l'entrée : la clé oubliée ne la ramène pas.
+    fs.writeFileSync(path.join(HISTO, 'historique-test.json'), '{}');
+    assert.deepStrictEqual(hote.historique(), {});
   });
 
   // ---- Edudoc avec le vrai CLI : les mots-clés des numéros du poste, filtrés par le thésaurus ----

@@ -54,7 +54,7 @@ exception près, `_Systeme\`, qui ne suit jamais la racine active (§1bis ci-des
 └── Exports\                 Newsletter\  Edudoc\  Caractères par article\  Contrôle des métadonnées\  Préprocessing\
 
 <racine de PRODUCTION>\      (toujours celle-ci, même quand la racine active est « test »)
-└── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\
+└── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\  exports\
 ```
 
 | | Revue (fr) | Zeitschrift (de) | Books |
@@ -99,7 +99,7 @@ Les dossiers hors produit :
 | `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | l'Accueil du cockpit (`lib/accueil-secretariat-hote.js`) |
 | `Exports\Préprocessing\<manuscrit>\` | un dossier par nettoyage, puis `(2)`, `(3)`… : la copie du manuscrit, le document nettoyé et son rapport | l'onglet Préprocessing de l'Accueil (`lib/accueil-preproc-hote.js`) |
 
-`_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs) N'EST PAS un dossier hors produit
+`_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs, exports) N'EST PAS un dossier hors produit
 de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.
 
 En emplacement `test`, le lanceur crée les dossiers manquants de tout cet arbre au
@@ -122,6 +122,7 @@ dossiers entre `Revues-TESTING` et SharePoint selon qui les a écrits en dernier
 | `_Systeme\rapports\` | les rapports d'erreur automatiques (`docs/RAPPORTS-ERREUR.md`) | `lib\rapport-erreur.js`, `windows\szh-rapport.ps1` |
 | `_Systeme\inventaire\` | le **check-in mensuel des postes** : un CSV par machine (`<POSTE>.csv`), une ligne par mois **et par compte Windows**, créée si elle manque et rafraîchie sinon. Le nom du fichier ne porte que le nom de la machine — l'identité de la personne (compte, adresse de connexion) vit **dans** le fichier, jamais dans son nom, qui s'affiche à tout le monde dans un dossier synchronisé. UTF-8 avec BOM, séparateur point-virgule : il s'ouvre d'un double-clic. | `windows\szh-checkin.ps1`, appelé une fois par `Invoke-SzhTachesDemarrage` au démarrage |
 | `_Systeme\compteurs\` | les **compteurs d'usage** du nettoyeur de manuscrit et de l'import Word : un petit CSV par événement (`<AAAAMMJJ>-<POSTE>-<source>-<6hex>.csv`), fait de noms de mesures et d'entiers, **sans aucun texte de manuscrit**. Conservés 24 mois, lus par `outils\compteurs-synthese.js`. Voir « Les compteurs ne sont pas des rapports » dans `docs/RAPPORTS-ERREUR.md`. Surcharge de test : `SZH_COMPTEURS` (le dossier lui-même). | `lib\compteurs.js` (import, cockpit) ; le lanceur et la CLI du nettoyeur (nettoyeur) |
+| `_Systeme\exports\` | l'**historique des exports** Edudoc et « Caractères par article » : `historique.json`, par export et par revue, chaque numéro avec la date de son dernier export. Partagé entre les postes, pour que chacun précoche les mêmes numéros ; le mode test écrit dans `historique-test.json`, à côté, pour qu'un essai ne pollue pas la production. Lecture tolérante (absent, illisible ou injoignable : historique vide, l'export n'est jamais bloqué) ; écriture atomique (temporaire `~$`) après relecture et fusion du fichier ; un échec ne laisse qu'une ligne au journal. Surcharge de test : `SZH_HISTORIQUE_EXPORTS` (le dossier lui-même). | `lib\accueil-secretariat-hote.js` |
 | `_Systeme\journaux\`, `_Systeme\suggestions\` | réservés | personne, pour l'instant |
 
 Résolu par `Get-SzhDossierSysteme` (`windows\szh-produits.ps1`), qui appelle

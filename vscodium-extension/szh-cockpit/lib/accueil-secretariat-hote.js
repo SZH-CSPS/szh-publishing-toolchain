@@ -1,5 +1,5 @@
 // L'onglet Secrétariat de l'Accueil : les numéros publiés et les quatre exports, lancés par
-// outils/secretariat-cli.js, et l'historique Edudoc et Caractères du compte. Sans panneau :
+// outils/secretariat-cli.js, et l'historique Edudoc et Caractères partagé dans _Systeme. Sans panneau :
 // lib/accueil-hote.js lui relaie les messages de la page.
 'use strict';
 
@@ -11,6 +11,9 @@ const { spawn } = require('child_process');
 const { MSG } = require('./messages');
 const { langueCockpit } = require('./i18n');
 const inventaire = require('./inventaire');
+const rapportErreur = require('./rapport-erreur');
+const { ecrireAtomique } = require('./yaml');
+const { lireConfigPoste, resoudreEmplacementRevues, EMPLACEMENT_TEST } = require('./archivage');
 const { cheminCacheMotsCles } = require('./mots-cles-edudoc');
 const { numeroAffiche } = require('./accueil-page');
 
@@ -21,8 +24,8 @@ const SOUS_DOSSIERS = {
   metadonnees: 'Contrôle des métadonnées'
 };
 const REVUES = ['revue', 'zeitschrift'];
-// Par compte : { edudoc: { <revue>: { <clé>: <date> } }, caracteres: … }.
-// Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
+// L'ancien historique par compte, { edudoc: { <revue>: { <clé>: <date> } }, caracteres: … } :
+// fusionné dans le fichier partagé au premier export réussi, puis retiré du globalState.
 const CLE_HISTORIQUE = 'szh.lanceur.historique';
 const HISTORISES = ['edudoc', 'caracteres'];
 
@@ -33,6 +36,7 @@ let ctx = {
   memoire: null,
   numerosConnus: () => new Set(),
   racineExports: () => inventaire.racineExports(),
+  modeTest: () => resoudreEmplacementRevues(lireConfigPoste()) === EMPLACEMENT_TEST,
   cli: path.join(__dirname, '..', 'outils', 'secretariat-cli.js'),
   node: process.execPath
 };
@@ -120,17 +124,65 @@ function arreter() {
   for (const revue of Object.keys(caches)) { supprimer(caches[revue]); delete caches[revue]; }
 }
 
-function historique() {
-  const h = ctx.memoire && ctx.memoire.get(CLE_HISTORIQUE);
-  return h && typeof h === 'object' ? h : {};
+// L'historique partagé : `_Systeme\exports\historique.json` sous l'ancrage, jamais sous la
+// racine active, et `historique-test.json` à côté en mode test. SZH_HISTORIQUE_EXPORTS donne
+// le dossier tel quel ; sous le banc de test, sans elle ni ancrage d'essai, aucun fichier.
+function cheminHistorique() {
+  const nom = ctx.modeTest() ? 'historique-test.json' : 'historique.json';
+  const surcharge = String(process.env.SZH_HISTORIQUE_EXPORTS || '').trim();
+  if (surcharge) { return path.join(surcharge, nom); }
+  const ancrage = rapportErreur.resoudreAncrage();
+  if (!ancrage.trouve) { return null; }
+  if ((process.env.SZH_LANCEUR_SIMULE === '1' || process.env.SZH_RESEAU_INTERDIT) && ancrage.origine !== 'essai') { return null; }
+  const dossier = rapportErreur.dossierSystemeDepuisAncrage(ancrage.chemin, 'exports');
+  return dossier ? path.join(dossier, nom) : null;
 }
+
+// Ne garde que la forme attendue ; `dans` est complété sans écraser ce qu'il porte déjà.
+function fusionner(dans, h) {
+  for (const commande of HISTORISES) {
+    for (const revue of REVUES) {
+      const numeros = h && h[commande] && h[commande][revue];
+      if (!numeros || typeof numeros !== 'object') { continue; }
+      for (const cle of Object.keys(numeros)) {
+        if (!/^\d{4}-\d{2}$/.test(cle) || typeof numeros[cle] !== 'string') { continue; }
+        const parRevue = (dans[commande] = dans[commande] || {});
+        const cibles = (parRevue[revue] = parRevue[revue] || {});
+        if (!(cle in cibles)) { cibles[cle] = numeros[cle]; }
+      }
+    }
+  }
+  return dans;
+}
+
+// Lecture tolérante : fichier absent, illisible ou partage injoignable donnent un historique vide.
+function lireHistorique() {
+  let chemin = null;
+  try { chemin = cheminHistorique(); } catch (e) { chemin = null; }
+  return chemin ? fusionner({}, rapportErreur.lireJsonTolerant(chemin)) : {};
+}
+function ancienHistorique() { return (ctx.memoire && ctx.memoire.get(CLE_HISTORIQUE)) || null; }
+
+// Ce que la page reçoit : le fichier partagé, complété par l'ancienne clé du poste tant qu'elle existe.
+function historique() { return fusionner(lireHistorique(), ancienHistorique()); }
+
+// Relit le fichier juste avant d'écrire, pour garder l'export qu'un autre poste a fait
+// entre-temps. Un échec ne se dit qu'au journal : l'export, lui, a réussi.
 async function retenir(commande, revue, cles, date) {
-  if (!ctx.memoire || HISTORISES.indexOf(commande) === -1) { return; }
-  const h = JSON.parse(JSON.stringify(historique()));
-  const parRevue = (h[commande] = h[commande] || {});
-  const numeros = (parRevue[revue] = parRevue[revue] || {});
-  for (const c of cles) { numeros[c] = date; }
-  await ctx.memoire.update(CLE_HISTORIQUE, h);
+  if (HISTORISES.indexOf(commande) === -1) { return; }
+  try {
+    const chemin = cheminHistorique();
+    if (!chemin) { throw new Error('ancrage SharePoint introuvable'); }
+    const h = fusionner({ [commande]: { [revue]: Object.fromEntries(cles.map((c) => [c, date])) } },
+      rapportErreur.lireJsonTolerant(chemin));
+    const ancien = ancienHistorique();
+    fusionner(h, ancien);
+    fs.mkdirSync(path.dirname(chemin), { recursive: true });
+    ecrireAtomique(chemin, JSON.stringify(h, null, 2) + '\n');
+    if (ancien) { await ctx.memoire.update(CLE_HISTORIQUE, undefined); }
+  } catch (e) {
+    console.warn('historique des exports non enregistré : ' + ((e && e.message) || e));
+  }
 }
 
 async function chargerOjs(msg) {
@@ -237,5 +289,5 @@ function enCours() { return { ojs: !!enfants.ojs, tache: !!enfants.tache }; }
 
 module.exports = {
   configurer, surMessage, arreter, historique, enCours,
-  chargerOjs, exporter, SOUS_DOSSIERS, CLE_HISTORIQUE
+  chargerOjs, exporter, cheminHistorique, SOUS_DOSSIERS, CLE_HISTORIQUE
 };

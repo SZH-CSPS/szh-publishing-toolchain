@@ -954,7 +954,7 @@
     if (o.etat !== 'pret' || o.finDeCourse) { return; }
     chargerOjs(revue, o.plancher - 1);
   }
-  // Cochés d'office : les numéros parus après le dernier que l'historique du compte connaît ;
+  // Cochés d'office : les numéros parus après le dernier que l'historique partagé connaît ;
   // sans historique, ceux de l'année.
   function choixParDefaut(x, revue) {
     var h = historiqueDe(x.t.commande, revue);

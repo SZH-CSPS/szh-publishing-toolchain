@@ -36,7 +36,8 @@ lib/
                         produits, produit ouvert d'office (jumeau de Get-SzhOngletDefaut)
   accueil-secretariat-hote.js  l'onglet Secrétariat : les quatre exports par
                         outils/secretariat-cli.js, dans <racine>Exports<action>, et
-                        l'historique Edudoc et Caractères du compte. Tue ses enfants avec
+                        l'historique Edudoc et Caractères, partagé dans _Systeme\exports.
+                        Tue ses enfants avec
                         l'Accueil. Sans vscode
   apercu.js             l'aperçu commutable HTML/PDF en colonne 2 : panneau HTML (CSP,
                         bandeau), bascule avec le PDF, défilement synchronisé dans les deux
