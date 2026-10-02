@@ -35,23 +35,26 @@ const pur = require(path.join(COCKPIT, 'lib', 'formatting-pur.js'));
 
 test('texteFalcHeader : le texte par défaut suit la langue du LIVRE, fr/de/it/en', () => {
   const attendus = {
-    fr: ['Cette histoire existe aussi en audio.', 'Scannez le code QR.'],
-    de: ['Diese Geschichte gibt es auch zum Hören.', 'Scannen Sie den QR-Code.'],
-    it: ['Questa storia esiste anche in versione audio.', 'Scansiona il codice QR.'],
-    en: ['This story is also available as audio.', 'Scan the QR code.']
+    fr: ['Cette histoire existe aussi en audio.', 'Scannez le code QR.', 'Écoutez l’histoire.'],
+    de: ['Diese Geschichte gibt es auch zum Hören.', 'Scannen Sie den QR-Code.', 'Hören Sie zu.'],
+    it: ['Questa storia esiste anche in versione audio.', 'Scansiona il codice QR.', 'Ascolta la storia.'],
+    en: ['This story is also available as audio.', 'Scan the QR code.', 'Listen to the story.']
   };
   for (const langue of Object.keys(attendus)) {
-    const [audio, scan] = attendus[langue];
+    const [audio, scan, ecoute] = attendus[langue];
     const corps = pur.texteFalcHeader(langue, 'ALT');
+    // L'intitulé, puis les deux étapes en liste numérotée (szh-livre-entete.lua en fait un <ol>).
     assert.strictEqual(corps, [
       ':::: falc-header',
       '${1:' + audio + '}',
-      '${2:' + scan + '}',
       '',
-      '![${3:ALT}](${4:media/image.jpg})',
+      '1. ${2:' + scan + '}',
+      '2. ${3:' + ecoute + '}',
+      '',
+      '![${4:ALT}](${5:media/image.jpg})',
       '',
       '::: qr-link',
-      '${5:https://}',
+      '${6:https://}',
       ':::',
       '::::'
     ].join('\n'), 'corps inattendu pour ' + langue);

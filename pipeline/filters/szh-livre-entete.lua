@@ -7,7 +7,9 @@
 --
 --   :::: falc-header
 --   Diese Geschichte gibt es auch zum Hören.
---   Scannen Sie den QR-Code.
+--
+--   1. Scannen Sie den QR-Code.
+--   2. Hören Sie zu.
 --
 --   ![Ein weisses Schnecken-Haus](media/escargot.jpg)
 --
@@ -16,11 +18,14 @@
 --   :::
 --   ::::
 --
--- Trois parties, toutes facultatives sauf le texte n'a de sens que si l'encadré n'est pas
+-- Quatre parties, toutes facultatives sauf le texte n'a de sens que si l'encadré n'est pas
 -- vide (voir « bloc vide » plus bas) :
 --   * du texte, en un ou plusieurs paragraphes — CHAQUE ligne écrite devient une ligne
 --     imprimée (lecteur hard_line_breaks OU markdown normal : un saut de ligne SoftBreak et
 --     un LineBreak sont traités pareil ici, voir normaliser_lignes) ;
+--   * des étapes, en liste numérotée (`1. …`, la première trouvée) : un vrai <ol>, dont
+--     les numéros passent par ::marker (LI > Lbl dans le PDF) ; le texte qui précède
+--     devient alors son intitulé ;
 --   * une image, texte alternatif OBLIGATOIRE (`![alt](chemin)`) — sans alt, l'image est
 --     omise (avertissement), jamais un <img> muet (PDF/UA-1 7.3) ;
 --   * un bloc qr-link (szh-qr-commun.lua, M.construire_qr — mêmes options que le bloc
@@ -39,7 +44,8 @@
 -- nouveau filtre :
 --   <div class="szh-falc-header" data-image="oui|non">
 --     <div class="szh-falc-header-texte">
---       <p>Ligne 1<br>Ligne 2…</p>
+--       <p>Ligne 1<br>Ligne 2…</p>       <!-- <p class="szh-falc-header-titre"> s'il y a des étapes -->
+--       <ol class="szh-falc-header-etapes"><li>…</li></ol>   <!-- seulement avec des étapes -->
 --       <a class="szh-qr szh-falc-header-qr" href="…" title="…" aria-label="…" style="…"></a>
 --     </div>
 --     <img class="szh-falc-header-image" src="…" alt="…">   <!-- seulement si data-image="oui" -->
@@ -195,13 +201,15 @@ end
 -- attributs du Div (img-src/img-alt/img-extra) — voir son en-tête pour pourquoi (protéger
 -- l'image de la numérotation de figures, qui numérote SANS EXCEPTION toute image-seule
 -- qu'elle rencontre, où qu'elle soit). Tout le reste du contenu (non prévu par le cahier
--- des charges, ex. une liste) est silencieusement ignoré — aucune place définie pour lui
+-- des charges, ex. une liste à puces) est silencieusement ignoré — aucune place définie pour lui
 -- dans l'encadré.
 local function classer(div, slug)
-  local blocs_texte, qr_div = {}, nil
+  local blocs_texte, qr_div, etapes = {}, nil, nil
   for _, b in ipairs(sans_enveloppe(div.content)) do
     if b.t == 'Div' and a_classe(b, 'qr-link') then
       if not qr_div then qr_div = b end
+    elseif b.t == 'OrderedList' then
+      if not etapes then etapes = b end
     elseif b.t == 'Para' or b.t == 'Plain' then
       blocs_texte[#blocs_texte + 1] = b
     end
@@ -218,14 +226,31 @@ local function classer(div, slug)
   local image = nil
   if attrs['img-src'] then image = { src = attrs['img-src'], alt = texte(attrs['img-alt']) } end
 
-  return blocs_texte, image, qr_div
+  return blocs_texte, image, qr_div, etapes
+end
+
+-- Une étape par <li> ; ses paragraphes (enveloppes de l'aperçu comprises) se recollent par
+-- un saut de ligne, comme les lignes du texte.
+local function etapes_vers_html(liste)
+  local items = {}
+  for _, item in ipairs(liste.content) do
+    local blocs = {}
+    for _, b in ipairs(sans_enveloppe(item)) do
+      if b.t == 'Para' or b.t == 'Plain' then blocs[#blocs + 1] = b end
+    end
+    local lignes = lignes_en_inlines(blocs)
+    if #lignes > 0 then items[#items + 1] = '<li>' .. inlines_vers_html(lignes) .. '</li>' end
+  end
+  if #items == 0 then return '' end
+  return '<ol class="szh-falc-header-etapes">' .. table.concat(items) .. '</ol>'
 end
 
 local function construire_encadre(div, lang, slug)
-  local blocs_texte, image, qr_div = classer(div, slug)
+  local blocs_texte, image, qr_div, etapes = classer(div, slug)
 
   local lignes = lignes_en_inlines(blocs_texte)
   local a_texte = #lignes > 0
+  local etapes_html = etapes and etapes_vers_html(etapes) or ''
 
   local avec_image, img_html = false, ''
   if image then
@@ -276,7 +301,7 @@ local function construire_encadre(div, lang, slug)
     end
   end
 
-  if not a_texte and not avec_image and qr_html == '' then
+  if not a_texte and not avec_image and qr_html == '' and etapes_html == '' then
     avertir(slug, 'bloc-vide',
       "Ce falc-header est vide (ni texte, ni image, ni qr-link reconnus) : rien n'est imprimé.",
       'Dieser falc-header ist leer (weder Text noch Bild noch qr-link erkannt): nichts wird gedruckt.')
@@ -287,7 +312,11 @@ local function construire_encadre(div, lang, slug)
     '<div class="szh-falc-header" data-image="' .. (avec_image and 'oui' or 'non') .. '">',
     '<div class="szh-falc-header-texte">',
   }
-  if a_texte then html[#html + 1] = '<p>' .. inlines_vers_html(lignes) .. '</p>' end
+  if a_texte then
+    local ouvrant = etapes_html ~= '' and '<p class="szh-falc-header-titre">' or '<p>'
+    html[#html + 1] = ouvrant .. inlines_vers_html(lignes) .. '</p>'
+  end
+  html[#html + 1] = etapes_html
   html[#html + 1] = qr_html
   html[#html + 1] = '</div>'
   if avec_image then html[#html + 1] = img_html end

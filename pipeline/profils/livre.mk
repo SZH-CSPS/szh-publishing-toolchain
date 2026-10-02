@@ -208,6 +208,11 @@ LECTEUR_APERCU := commonmark_x$(if $(filter falc,$(MAQUETTE)),+hard_line_breaks,
 #   shell, et tout ce qui suit sur la ligne — la parenthèse fermante comprise — disparaît.
 #   La recette le remet, entre guillemets.
 PALETTE_CHAPITRE := E95D5F 4D869F AE3E35 949A00 A98899 43905D
+# La même teinte au cran 800, rang pour rang : le fond des pastilles numérotées du
+# falc-header (styles/livre/base.css, § 9). Leur chiffre blanc est un petit texte, qui
+# demande |Lc| ≥ 90 (pipeline/apca.py) : le cran 800 le tient dans les six teintes, aucun
+# cran plus clair ne le tient (styles/couleurs.css).
+PALETTE_CHAPITRE_FONCE := 9F001F 2E5A6D 8E2E27 555900 624C58 26613B
 
 # Position ET hauteur de l'onglet de tranche (maquette FALC) : l'index à pouce. Calculées
 # ICI, une seule fois, puis lues telles quelles à deux endroits — la page (--onglet-haut/
@@ -388,6 +393,7 @@ define contexte_chapitre
 rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
 index=$$(( (rang - 1) % 6 + 1 )); \
 couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+fonce="#$$(printf '%s\n' $(PALETTE_CHAPITRE_FONCE) | sed -n "$${index}p")"; \
 if printf '%s\n' $(CHAPITRES_HORS_SOMMAIRE) | grep -qx "$$slug"; then \
   onglet_meta="--metadata hors-sommaire=1"; \
 else \
@@ -419,6 +425,7 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata couleur-chapitre-fonce="$$fonce" \
 	  --metadata rang-chapitre="$$rang" \
 	  $$onglet_meta \
 	  --standalone --embed-resources \
@@ -449,6 +456,7 @@ $(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARI
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata couleur-chapitre-fonce="$$fonce" \
 	  --metadata rang-chapitre="$$rang" \
 	  $$onglet_meta \
 	  --standalone --embed-resources \
@@ -489,6 +497,7 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata couleur-chapitre-fonce="$$fonce" \
 	  --metadata rang-chapitre="$$rang" \
 	  $$onglet_meta \
 	  --standalone --embed-resources \
@@ -568,6 +577,7 @@ $(CHAPITRE_FRAG_SEUL): $(CH_DIR)/$(CHAPITRE)/$(CHAPITRE).md $(CONFIG_LIVRE) $(GA
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata couleur-chapitre-fonce="$$fonce" \
 	  --metadata rang-chapitre="$$rang" \
 	  $$onglet_meta \
 	  --standalone --embed-resources \

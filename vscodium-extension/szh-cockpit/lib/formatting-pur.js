@@ -414,10 +414,10 @@ function lienMarkdown(texte, url) {
 // jour, mais le formulaire buch.yaml (media/_numero.js, CHAMPS_LIVRE) accepte déjà les
 // quatre langues.
 const FALC_HEADER_TEXTES = {
-  fr: { audio: 'Cette histoire existe aussi en audio.', scan: 'Scannez le code QR.' },
-  de: { audio: 'Diese Geschichte gibt es auch zum Hören.', scan: 'Scannen Sie den QR-Code.' },
-  it: { audio: 'Questa storia esiste anche in versione audio.', scan: 'Scansiona il codice QR.' },
-  en: { audio: 'This story is also available as audio.', scan: 'Scan the QR code.' }
+  fr: { audio: 'Cette histoire existe aussi en audio.', scan: 'Scannez le code QR.', ecoute: 'Écoutez l’histoire.' },
+  de: { audio: 'Diese Geschichte gibt es auch zum Hören.', scan: 'Scannen Sie den QR-Code.', ecoute: 'Hören Sie zu.' },
+  it: { audio: 'Questa storia esiste anche in versione audio.', scan: 'Scansiona il codice QR.', ecoute: 'Ascolta la storia.' },
+  en: { audio: 'This story is also available as audio.', scan: 'Scan the QR code.', ecoute: 'Listen to the story.' }
 };
 
 // La langue du LIVRE — pas celle de l'interface, ni yaml.langueRevue() qui la borne à
@@ -432,22 +432,24 @@ function langueLivre(racine) {
   return FALC_HEADER_TEXTES[brut] ? brut : 'fr';
 }
 
-// Le corps (SnippetString.value) de l'en-tête FALC : deux lignes de texte modifiables
-// (${1}/${2}, par défaut celui de la langue du livre), une image avec son texte alternatif
-// (${3}/${4}, alt par défaut dans la langue de l'INTERFACE — altDefaut, fourni par
-// l'appelant), un bloc qr-link (${5}). Pur : aucune ligne vide autour, c'est l'appelant qui
-// les ajoute selon ce qui entoure le point d'insertion (comme blocSautPage ci-dessus).
+// Le corps (SnippetString.value) de l'en-tête FALC : un intitulé et deux étapes numérotées
+// modifiables (${1} à ${3}, par défaut dans la langue du livre), une image avec son texte
+// alternatif (${4}/${5}, alt par défaut dans la langue de l'INTERFACE — altDefaut, fourni
+// par l'appelant), un bloc qr-link (${6}). Pur : aucune ligne vide autour, c'est l'appelant
+// qui les ajoute selon ce qui entoure le point d'insertion (comme blocSautPage ci-dessus).
 function texteFalcHeader(langue, altDefaut) {
   const t = FALC_HEADER_TEXTES[langue] || FALC_HEADER_TEXTES.fr;
   return [
     ':::: falc-header',
     '${1:' + t.audio + '}',
-    '${2:' + t.scan + '}',
     '',
-    '![${3:' + String(altDefaut || '') + '}](${4:media/image.jpg})',
+    '1. ${2:' + t.scan + '}',
+    '2. ${3:' + t.ecoute + '}',
+    '',
+    '![${4:' + String(altDefaut || '') + '}](${5:media/image.jpg})',
     '',
     '::: qr-link',
-    '${5:https://}',
+    '${6:https://}',
     ':::',
     '::::'
   ].join('\n');

@@ -20,12 +20,14 @@ Du texte avec **gras**, *italique*, et une liste :
 
 <!-- L'encadré « écouter » ci-dessous n'est qu'un exemple : retire-le si ce chapitre n'a
      pas de version audio. Il s'imprime toujours juste sous le titre et le bloc auteurs,
-     quel que soit l'endroit où tu l'écris dans le fichier. Texte et image facultatifs,
-     qr-link facultatif — voir docs/ARCHITECTURE-LIVRES.md, § falc-header. -->
+     quel que soit l'endroit où tu l'écris dans le fichier. Texte, étapes numérotées, image
+     et qr-link sont facultatifs — voir docs/ARCHITECTURE-LIVRES.md, § falc-header. -->
 
 :::: falc-header
-Ce texte existe aussi en version audio.
-Voici comment faire : scanne le code QR.
+Cette histoire existe aussi en audio.
+
+1. Scannez le code QR.
+2. Écoutez l’histoire.
 
 ::: qr-link
 https://exemple.ch/remplace-par-le-vrai-lien

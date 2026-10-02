@@ -552,6 +552,26 @@ mesure('pied courant, folio (%s px)' % _nb(TAILLE_COURANTE),
 mesure('filet au-dessus du pied courant (1 px sur papier)',
        couleur_de('.szh-pied-courant', 'border-top'), BLANC, NON_TEXTE)
 
+# ---- 7. Livre FALC : pastilles d'étapes du falc-header ----
+# Un chiffre blanc à 0,8 em du corps FALC, sur le cran foncé de chaque couleur de chapitre
+# (PALETTE_CHAPITRE_FONCE, profils/livre.mk) ; la pastille elle-même sur le gris de
+# l'encadré. Les hex et le corps sont lus dans livre.mk et falc.css, jamais recopiés ici.
+titre("Livre FALC : pastilles d'étapes du falc-header (livre/base.css §9)")
+with open(os.path.join(PIPELINE, 'profils', 'livre.mk'), encoding='utf-8') as f:
+    _mk = f.read()
+_fonce = re.search(r'^PALETTE_CHAPITRE_FONCE\s*:=\s*(.+)$', _mk, re.M)
+_falc = open(os.path.join(PIPELINE, 'styles', 'livre', 'falc.css'), encoding='utf-8').read()
+_corps = re.search(r'--corps:\s*([\d.]+)pt', _falc)
+_fond_encadre = re.search(r'--c-falc-resume-fond:\s*(#[0-9A-Fa-f]{6})', _falc)
+if not (_fonce and _corps and _fond_encadre):
+    sys.stderr.write('apca-check : PALETTE_CHAPITRE_FONCE, --corps ou --c-falc-resume-fond introuvable\n')
+    sys.exit(2)
+TAILLE_ETAPE = 0.8 * float(_corps.group(1)) * 96 / 72    # ::marker à 0.8em du corps
+for hexa in _fonce.group(1).split():
+    mesure('chiffre blanc sur la pastille #%s (%s px, demi-gras)' % (hexa, _nb(TAILLE_ETAPE)),
+           BLANC, '#' + hexa, apca.seuil_pour(TAILLE_ETAPE))
+    mesure('pastille #%s sur le gris de l\'encadré' % hexa, '#' + hexa, _fond_encadre.group(1), NON_TEXTE)
+
 
 # ---- 6. Sortie ----
 

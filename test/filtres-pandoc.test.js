@@ -1780,6 +1780,52 @@ test('falc-header : monographie -> une fiche de chapitre n’ajoute PAS de bloc 
   assert.match(html, /class="szh-falc-header"/, 'l’encadré, lui, doit rester : ' + html);
 });
 
+// Étapes numérotées : une liste `1. … 2. …` dans l'encadré devient un <ol> réel (LI > Lbl
+// dans le PDF), la phrase qui la précède son intitulé.
+const ENTETE_ETAPES = [
+  ':::: falc-header',
+  'Diese Geschichte gibt es auch zum Hören.',
+  '',
+  '1. Scannen Sie den QR-Code.',
+  '2. Hören Sie zu.',
+  '',
+  '::: qr-link',
+  'https://link.szh-csps.ch/BuchLS_03_audio',
+  ':::',
+  '::::',
+].join('\n');
+
+test('falc-header : une liste numérotée devient les étapes (<ol>), entre l’intitulé et le QR', () => {
+  const html = rendreEntete(ENTETE_ETAPES);
+  assert.match(html,
+    /<p class="szh-falc-header-titre">Diese Geschichte gibt es auch zum Hören\.<\/p><ol class="szh-falc-header-etapes"><li>Scannen Sie den QR-Code\.<\/li><li>Hören Sie zu\.<\/li><\/ol><a class="szh-qr szh-falc-header-qr"/,
+    'intitulé, étapes et QR ne sortent pas dans cet ordre, ou la liste a été ignorée : ' + html);
+  const a = (html.match(/<a class="szh-qr szh-falc-header-qr"[^>]*>/) || [''])[0];
+  assert.match(a, /aria-label="Diese Geschichte gibt es auch zum Hören\."/, 'le nom accessible du QR a changé : ' + a);
+});
+
+test('falc-header : sans liste, le paragraphe reste nu (aucun intitulé, aucun <ol>)', () => {
+  const html = rendreEntete(ENTETE_TEXTE_IMAGE_QR);
+  assert.ok(!/szh-falc-header-titre|szh-falc-header-etapes/.test(html), 'un balisage d’étapes apparaît sans liste : ' + html);
+});
+
+test('falc-header : des étapes seules, sans phrase ni QR, ne font pas un bloc vide', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docEntete(':::: falc-header\n1. Scannen Sie den QR-Code.\n2. Hören Sie zu.\n::::') },
+    'essai.md', ['szh-livre-entete-image.lua', 'szh-livre-entete.lua'], { env: { SZH_LIVRE: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /<ol class="szh-falc-header-etapes"><li>Scannen Sie den QR-Code\.<\/li>/, 'les étapes ont disparu : ' + r.stdout);
+  assert.ok(!/bloc-vide/.test(r.stderr), 'des étapes seules sont prises pour un bloc vide : ' + r.stderr);
+});
+
+test('falc-header : sous sourcepos (aperçu), la liste est reconnue malgré l’enveloppe', () => {
+  const html = pandoc(docEntete(ENTETE_ETAPES), {
+    de: 'commonmark_x+sourcepos', vers: 'html',
+    filtres: ['szh-sourcepos.lua', 'szh-livre-entete-image.lua', 'szh-livre-entete.lua'], env: { SZH_LIVRE: '1' } });
+  assert.match(html, /<ol class="szh-falc-header-etapes"><li>Scannen Sie den QR-Code\.<\/li><li>Hören Sie zu\.<\/li><\/ol>/,
+    'la liste n’est pas reconnue sous sourcepos : ' + html);
+});
+
 // ── Bloc auteurs venu de l'import (style Word « Auhors », docx-styles-corps.py) ────────
 // À la compilation, ce bloc est déjà un Div `.szh-auteurs` dans le .md — pas un RawBlock
 // écrit par szh-livre-auteurs.lua. Les deux filtres doivent le traiter pareil.

@@ -262,12 +262,52 @@ th, td { hyphenate-limit-chars: 6 3 3; }
   break-inside: avoid;
 }
 .szh-falc-header-texte { flex: 1 1 auto; min-width: 0; }
-.szh-falc-header-texte p { margin: 0 0 3mm 0; }
+/* Sans alinéa : la maquette normal en pose un à tout paragraphe qui ne suit pas un titre. */
+.szh-falc-header-texte p { margin: 0 0 3mm 0; text-indent: 0; }
 /* Pas d'image : le texte prend toute la largeur, pas de colonne vide à droite. */
 .szh-falc-header[data-image="non"] { gap: 0; }
 /* Le QR sous le texte (classe partagée avec le bloc qr-link/le lien `.qr` du rédacteur,
    partage-filtres.css : 25 mm par défaut, background-image en data URI — voir szh-qr.lua). */
 .szh-falc-header-qr { margin-top: 3mm; }
+
+/* Intitulé et étapes numérotées, quand le bloc porte une liste `1. … 2. …`. L'intitulé
+   s'ouvre sur le picto d'écoute, décoratif (un fond, aucun texte). Chaque étape a son
+   numéro blanc dans une pastille ronde, au cran 800 de la couleur du chapitre
+   (--c-chapitre-fonce, profils/livre.mk) : c'est le seul cran qui tienne |Lc| ≥ 90 pour un
+   chiffre de cette taille.
+   ⚠ Le numéro reste un ::marker, pour obtenir LI > Lbl dans le PDF ; un ::marker ne prend
+     ni fond ni position, d'où la pastille en ::before, derrière lui (z-index -1, dans le
+     contexte d'empilement de l'encadré). WeasyPrint pose le marqueur extérieur contre le
+     bord gauche du <li>, à sa largeur naturelle (voir print.css, § Listes) : le
+     margin-left du <li> centre donc le chiffre dans la pastille. Ses nombres viennent des
+     glyphes d'Open Sans SemiCondensed : un chiffre à chasse fixe fait 1021/2048 em, soit
+     0,3988 em du <li> au corps 0,8 em du marqueur. */
+.szh-falc-header { position: relative; z-index: 0; }
+.szh-falc-header-titre { font-weight: 600; }
+.szh-falc-header-titre::before {
+  content: ""; display: inline-block;
+  width: 1.15em; height: 1.15em; margin-right: 0.4em; vertical-align: -0.22em;
+  background: url("../../media/picto-ecouter.svg") no-repeat center / contain;
+}
+@counter-style szh-falc-etape { system: extends decimal; suffix: ""; }
+.szh-falc-header-etapes { list-style: szh-falc-etape outside; margin: 0 0 3mm 0; padding: 0; }
+.szh-falc-header-etapes > li {
+  position: relative;
+  margin: 0 0 1.5mm 0.8994em;   /* 1,4 em / 2 + 0,3988 em / 2 */
+  padding-left: 0.9006em;       /* le texte à 1,8 em : la pastille et 0,4 em d'air */
+}
+.szh-falc-header-etapes > li:last-child { margin-bottom: 0; }
+.szh-falc-header-etapes > li::marker {
+  color: #fff; font-weight: 600; font-size: 0.8em; font-variant-numeric: tabular-nums;
+}
+.szh-falc-header-etapes > li::before {
+  content: ""; position: absolute; z-index: -1;
+  /* Centrée sur la ligne, puis remontée de 0,17 em : un chiffre posé sur la ligne de base a
+     son milieu au-dessus du milieu de la ligne (mesuré au rendu, 13 pt). */
+  left: -0.8994em; top: calc((var(--interligne, 1.5) - 1.4) * 0.5em - 0.17em);
+  width: 1.4em; height: 1.4em; border-radius: 50%;
+  background: var(--c-chapitre-fonce, var(--c-falc-accent-defaut, #252B46));
+}
 .szh-falc-header-image {
   flex: 0 0 auto; width: 45mm; height: 45mm;
   object-fit: cover;

@@ -156,7 +156,9 @@ d'un chapitre et `livre-scinder.py` font de même.
   ```
   :::: falc-header
   Diese Geschichte gibt es auch zum Hören.
-  Scannen Sie den QR-Code.
+
+  1. Scannen Sie den QR-Code.
+  2. Hören Sie zu.
 
   ![Ein weisses Schnecken-Haus](media/escargot.jpg)
 
@@ -166,7 +168,11 @@ d'un chapitre et `livre-scinder.py` font de même.
   ::::
   ```
 
-  Texte facultatif (chaque ligne écrite est une ligne imprimée), image facultative dont
+  Texte facultatif (chaque ligne écrite est une ligne imprimée). Étapes facultatives : une
+  liste numérotée devient un `<ol>` dont chaque numéro s'imprime en blanc dans une pastille
+  ronde, au cran 800 de la couleur du chapitre (`PALETTE_CHAPITRE_FONCE`, `profils/livre.mk`),
+  et le texte qui la précède devient son intitulé, en demi-gras, après le picto d'écoute.
+  Image facultative dont
   l'alternative est obligatoire (sans elle, l'image est omise avec un avertissement), bloc
   `qr-link` facultatif. Filtre : `szh-livre-entete.lua`. Un bloc vide n'imprime rien ; de deux
   `falc-header`, seul le premier compte. Les deux cas sont signalés.
