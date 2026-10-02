@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.5": {
+    "fr": {
+      "titre": "Des livres à la maquette de l’Edition SZH",
+      "points": [
+        "Les livres reprennent la grille des livres de l’Edition SZH : marges, lignes de base, notes et bibliographie au millimètre.",
+        "Ce qui varie d’un livre à l’autre se règle dans le fichier du livre : alinéa, titres et auteurs des chapitres, numérotation, légendes, tableaux, sommaire.",
+        "Un livre peut désormais avoir des parties, une dédicace, un impressum complet et des notices d’auteurs, en texte ou avec portraits.",
+        "Par défaut, les chapitres ne sont plus numérotés ; la numérotation se demande dans le fichier du livre."
+      ]
+    },
+    "de": {
+      "titre": "Bücher im Layout der Edition SZH",
+      "points": [
+        "Die Bücher übernehmen das Raster der Bücher der Edition SZH: Ränder, Grundlinien, Fussnoten und Literaturverzeichnis auf den Millimeter genau.",
+        "Was von Buch zu Buch variiert, wird in der Datei des Buches eingestellt: Einzug, Titel und Autorinnen und Autoren der Kapitel, Nummerierung, Legenden, Tabellen, Inhaltsverzeichnis.",
+        "Ein Buch kann jetzt Teile, eine Widmung, ein vollständiges Impressum und Angaben zu den Autorinnen und Autoren haben, als Text oder mit Porträts.",
+        "Standardmässig werden die Kapitel nicht mehr nummeriert; die Nummerierung wird in der Datei des Buches verlangt."
+      ]
+    }
+  },
   "3.4": {
     "fr": {
       "titre": "Trois nouvelles couvertures de livre",

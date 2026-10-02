@@ -11,6 +11,26 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.5.0
+
+Medium : l'intérieur des livres normaux reprend la grille mesurée des livres de l'Edition SZH
+(Hofer, HfH-Band 41), et un bloc `mise-en-page:` de `buch.yaml` règle ce qui varie d'un livre à
+l'autre. Aucun livre normal n'a encore été compilé en production : rien de paru ne change.
+
+**Production.**
+- Grille commune : 39 lignes de base de 20 à 201 mm, folio à 215 mm, notes 8/10 sans filet
+  numérotées par chapitre, bibliographie à retrait suspendu de 4 mm et hors sommaire.
+- `mise-en-page:` dans `buch.yaml`, 18 clés (folio, alinéa, titre et auteurs de chapitre,
+  numérotation, intertitres, citation, légende, figures, tableaux, sommaire, parties, logo),
+  chacune avec son défaut ; une valeur inconnue est refusée par un message fr/de. Seule source :
+  `pipeline/livre/mise-en-page.json`, lue par l'assembleur et par les filtres Lua.
+- Par défaut, chapitres et sections ne sont plus numérotés, et la légende prend « : ». Le folio
+  reste « Seite X von Y » (`folio: seul` pour « X »).
+- Structure : parties (`parties:` dans `buch.yaml`), pièces de fin (notices d'auteurs en texte
+  ou en grille de portraits), dédicace, impressum complet, surcharge CSS par livre
+  (`styles/livre.css`).
+- Polices SZH Condensed 400 et 700 pour le sommaire hiérarchique.
+
 ## 3.4.0
 
 Medium : couvertures de livre, trois modèles de plus, calqués sur les couvertures InDesign de
