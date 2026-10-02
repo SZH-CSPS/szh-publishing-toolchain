@@ -261,4 +261,13 @@
   });
 
   indexerBlocs();
+
+  // Une recompilation recharge la page : elle se replace sur la ligne que l'hôte lui
+  // transmet, sous la garde anti-boucle, puis de nouveau une fois les images chargées,
+  // qui décalent les blocs.
+  var ligneInitiale = parseInt(SZH.LIGNE_INITIALE, 10) || 0;
+  if (ligneInitiale > 0) {
+    scrollVersLigne(ligneInitiale);
+    window.addEventListener('load', function () { scrollVersLigne(ligneInitiale); });
+  }
 })();

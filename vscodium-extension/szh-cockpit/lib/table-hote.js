@@ -19,6 +19,7 @@ const { sousGarde, confirmerAbandon } = require('./interaction');
 const { ecrireAtomique } = require('./yaml');
 const { BUDGET_APERCUS_MEDIA } = require('./medias');
 const tableImages = require('./table-images');
+const { RE_DIV_OUVERTURE, fermetureDeDiv, retirerTable } = require('./references');
 const {
   analyserTable, serialiserTable, disposition, normaliserModele, appliquerOperationTable,
   PRESETS_ORDRE
@@ -172,12 +173,44 @@ async function tableDuConstat(fournisseur, item) {
   return choix ? { cheminAsset: path.join(dossier, choix), slug: slug } : null;
 }
 
+// Le texte du bloc ::: {.szh-tabelle …} qui contient la ligne `ligne` (0-based), de son
+// ouverture à sa fermeture, ou null. Pure.
+function blocTableAutour(lignes, ligne) {
+  for (let i = Math.min(ligne, lignes.length - 1); i >= 0; i--) {
+    const ouverture = RE_DIV_OUVERTURE.exec(lignes[i]);
+    if (!ouverture) { continue; }
+    if (ouverture[1].indexOf('szh-tabelle') === -1) { return null; }
+    const fin = fermetureDeDiv(lignes, i);
+    if (i !== ligne && fin < ligne) { return null; }
+    return lignes.slice(i, fin === -1 ? i + 1 : fin + 1).join('\n');
+  }
+  return null;
+}
+
+// Sans élément de l'arbre (palette, panneau Édition) : le tableau dont la référence entoure
+// le curseur de l'éditeur actif, ou null. Le src se lit par retirerTable, seul lecteur de
+// cette référence, appliqué au bloc seul.
+async function tableSousCurseur(fournisseur) {
+  const ed = vscode.window.activeTextEditor;
+  if (!ed || !ed.document || !ed.selection) { return null; }
+  const rel = path.relative(path.join(fournisseur.racine, dossierUnites()), ed.document.uri.fsPath).split(path.sep);
+  if (rel.length !== 2 || rel[1].toLowerCase() !== (rel[0] + '.md').toLowerCase()) { return null; }
+  const bloc = blocTableAutour(ed.document.getText().split(/\r?\n/), ed.selection.active.line);
+  if (!bloc) { return null; }
+  const nom = fournisseur._tablesArticle(rel[0]).find((n) => retirerTable(bloc, n).n > 0);
+  return nom ? tableDuConstat(fournisseur, { slug: rel[0], focus: nom }) : null;
+}
+
 // `item.focusImage` (facultatif) : le NOM DE FICHIER d'une image de cellule
 // (« origf-massie-fig-01.jpeg », un chemin est ramené à son nom). L'éditeur sélectionne la
 // cellule qui la contient, l'amène à l'écran et, si l'image n'a ni texte alternatif ni rôle
 // décoratif, ouvre aussitôt sa saisie (media/table-editor.js, focaliserImage).
 async function ouvrirEditeurTable(fournisseur, item) {
-  if (!fournisseur.racine || !item) { return; }
+  if (!fournisseur.racine) { return; }
+  if (!item) {
+    item = await tableSousCurseur(fournisseur);
+    if (!item) { vscode.window.setStatusBarMessage(T('table.curseur.aucun'), 5000); return; }
+  }
   const focusImage = path.basename(String(item.focusImage || '').replace(/\\/g, '/'));
   if (!item.cheminAsset) {
     item = await tableDuConstat(fournisseur, item);

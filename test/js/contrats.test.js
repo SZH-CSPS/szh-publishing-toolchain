@@ -1059,6 +1059,43 @@ test('les raccourcis pointent des commandes qui existent', () => {
   }
 });
 
+// ---- Découvrabilité : chaque geste a un bouton, et le raccourci passe par le cockpit ----
+
+test('la barre de titre de la vue offre « Importer des Word » en premier, hors numéro verrouillé', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const e = (pkg.contributes.menus['view/title'] || []).find((x) => x.command === 'szh.importerWord');
+  assert.ok(e, 'szh.importerWord absent de view/title : l’import n’a pas de bouton dans la barre');
+  assert.strictEqual(e.group, 'navigation@0');
+  // \s couvre l'espace insécable que typo-check pose devant « ! », et que VS Code saute.
+  assert.strictEqual(e.when.replace(/\s+/g, ' '), 'view == szhCockpitVue && !szh.verrouillee');
+});
+
+test('le clic droit d’un article offre « Revenir au texte d’avant » à côté du réimport', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const ctx = pkg.contributes.menus['view/item/context'];
+  const reimport = ctx.find((x) => x.command === 'szh.reimporterArticle' && /viewItem == article\b/.test(x.when));
+  const annuler = ctx.find((x) => x.command === 'szh.annulerReimport');
+  assert.ok(reimport, 'szh.reimporterArticle a quitté le clic droit d’un article');
+  assert.ok(annuler, 'szh.annulerReimport absent du clic droit : la confirmation du réimport y renvoie');
+  assert.strictEqual(annuler.when.replace(/\s+/g, ' '), reimport.when.replace(/\s+/g, ' '));
+  assert.strictEqual(annuler.group, 'reimport@2');
+});
+
+test('Ctrl+Alt+I passe par le cockpit, pas par la tâche d’import nue', () => {
+  const k = jsonc(lire('vscodium-user', 'keybindings.json')).filter((x) => x.key === 'ctrl+alt+i');
+  assert.strictEqual(k.length, 1, 'Ctrl+Alt+I doit avoir exactement une liaison');
+  assert.strictEqual(k[0].command, 'szh.convertirEnAttente',
+    'Ctrl+Alt+I contourne lancerConversion (ordre du Word, vérification de l’import) : ' + k[0].command);
+  assert.strictEqual(k[0].when, 'szh.estRevue || szh.estLivre');
+});
+
+test('l’étape d’import du tutoriel se coche aussi par le geste nominal', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const etape = pkg.contributes.walkthroughs[0].steps.find((s) => s.id === 'szh.tuto.word');
+  assert.ok(etape.completionEvents.includes('onCommand:szh.importerWord'), JSON.stringify(etape.completionEvents));
+  assert.ok(etape.completionEvents.includes('onCommand:szh.convertirEnAttente'));
+});
+
 test('les traductions fr et de couvrent les mêmes clés, avec les mêmes repères', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
   const debut = src.indexOf('const TEXTES_COCKPIT = {');
@@ -1735,4 +1772,14 @@ test('protocole de messages : aucun littéral type: \'…\' côté hôte (MSG.<N
     });
   }
   assert.deepStrictEqual(fautes, [], 'littéraux type: à remplacer par MSG.<NOM> :\n' + fautes.join('\n'));
+});
+
+// Une clause `when` est du code, pas du texte : typo-check n'y pose pas d'espace insécable
+// devant « ! ». VSCodium la tolère aujourd'hui, rien ne garantit qu'il la tolérera demain.
+test('les clauses when de package.json ne portent que des espaces ordinaires', () => {
+  const fautes = [];
+  lire('vscodium-extension', 'szh-cockpit', 'package.json').split('\n').forEach((l, i) => {
+    if (/"(when|enablement)"\s*:/.test(l) && / | /.test(l)) { fautes.push((i + 1) + ': ' + l.trim()); }
+  });
+  assert.deepStrictEqual(fautes, []);
 });

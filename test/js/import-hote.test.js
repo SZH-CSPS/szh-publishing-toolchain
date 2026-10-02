@@ -224,3 +224,64 @@ test('glisser un fichier qui n’est pas un .docx ne déclenche aucun import', a
     fs.rmSync(source, { force: true });
   }
 });
+
+// ---- Le redépôt d'un Word dont l'article existe : l'import l'ignore, le réimport le prend ----
+
+const { T } = require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
+
+// Lance l'import, le termine sans rien ramener, et rend ce que showInformationMessage a dit.
+async function importerSansNouveau(reponse) {
+  const infos = [];
+  const origine = HOTE.stub.window.showInformationMessage;
+  HOTE.stub.window.showInformationMessage = (m, ...boutons) => {
+    infos.push({ message: m, boutons: boutons.map(String) });
+    return Promise.resolve(reponse);
+  };
+  HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_IMPORT }]);
+  HOTE.oublierCommandes();
+  try {
+    const promesse = HOTE.executer('szh.convertirEnAttente');
+    await tick(); await tick();
+    await HOTE.finirTache(NOM_IMPORT, 0);
+    await promesse;
+    for (let i = 0; i < 5; i++) { await tick(); }
+  } finally {
+    HOTE.stub.window.showInformationMessage = origine;
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+  }
+  return infos;
+}
+
+test('redépôt d’un Word dont l’article existe : « Réimporter » mène au réimport de cet article', async () => {
+  const word = path.join(MOTS, '1_Essai.docx');
+  fs.writeFileSync(word, Buffer.alloc(16));
+  HOTE.modales.length = 0;
+  try {
+    const infos = await importerSansNouveau(T('cmd.reimporter.court'));
+    assert.deepStrictEqual(infos, [{ message: T('info.importes.corrige', ['01-essai']),
+      boutons: [T('cmd.reimporter.court')] }]);
+    const jouees = HOTE.commandesJouees().filter((c) => c.id === 'szh.reimporterArticle');
+    assert.deepStrictEqual(jouees.map((c) => c.args),
+      [[{ word: '1_Essai.docx', slug: '01-essai' }]],
+      'le bouton doit lancer le réimport de cet article avec ce Word');
+    // Jusqu'à la confirmation : le drapeau d'import est bien retombé avant le réimport.
+    assert.deepStrictEqual(HOTE.modales.map((m) => m.message),
+      [T('modale.reimport.question', ['01-essai'])]);
+  } finally {
+    fs.rmSync(word, { force: true });
+  }
+});
+
+test('plusieurs Word redéposés : le message d’avant, et « Réimporter… » ouvre la vue Word', async () => {
+  const mots = [path.join(MOTS, '1_Essai.docx'), path.join(MOTS, '3_Nouveau.docx')];
+  for (const m of mots) { fs.writeFileSync(m, Buffer.alloc(16)); }
+  try {
+    const infos = await importerSansNouveau(T('info.importes.reimporterPlusieurs'));
+    assert.deepStrictEqual(infos, [{ message: T('info.importes.aucun'),
+      boutons: [T('info.importes.reimporterPlusieurs')] }]);
+    assert.ok(HOTE.commandesJouees().some((c) => c.id === 'szh.vueWord'),
+      '« Réimporter… » doit ouvrir la vue Word');
+  } finally {
+    for (const m of mots) { fs.rmSync(m, { force: true }); }
+  }
+});

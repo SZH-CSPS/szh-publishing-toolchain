@@ -89,6 +89,7 @@ function textesMedias() {
     aucuneImage: T('medias.aucune.image'), aucunPortrait: T('medias.aucun.portrait'),
     resume: T('medias.resume'), rienAEcrire: T('medias.rienAEcrire'),
     legende: T('img.legende'), legendeIndice: T('img.legende.indice'),
+    legendeProvisoire: T('fmt.figure.legende'),
     roleTitre: T('img.role.titre'),
     roleDecrit: T('img.role.decrit'), roleDeco: T('img.role.deco'),
     alt: T('img.alt'), altIndice: T('img.alt.indice'),

@@ -719,7 +719,8 @@ function majBarreControles() {
   if (fournisseurBarre && fournisseurBarre.racine && fournisseurBarre.racine === journal.racine) {
     constats = constatsPourControles(fournisseurBarre, constats);
   }
-  const r = resumeJournal(constats);
+  // Comptés par la gravité que la vue affiche, réglage PDF/UA compris.
+  const r = resumeJournal(constats, contexteConstats());
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
   else if (r.avertissements > 0) { barreControles.text = T('ctl.barre.avert', [r.avertissements]); }
   else { barreControles.hide(); return; }
@@ -906,6 +907,25 @@ function verifierFinAnalyse(fournisseur) {
   terminerAnalyse(fournisseur);
 }
 
+// Un constat qui dit à lui seul pourquoi la chaîne s'est arrêtée : la chaîne l'a émis en
+// blocage, ou la table le range derrière la porte de la compilation ou du geste demandé.
+// Une image muette (porte PDF/UA) n'arrête pas `make` : elle n'explique rien.
+function expliqueArret(c) {
+  if (!c) { return false; }
+  if (c.ton === 'danger') { return true; }
+  const e = tableConstats.TABLE[String(c.source || '') + '/' + String(c.code || '')];
+  return !!e && (e.barrage === 'compilation' || e.barrage === 'geste');
+}
+
+// Les dernières lignes non vides du journal, pour l'infobulle de la carte.
+const LIGNES_EXTRAIT_ECHEC = 8;
+
+function constatEchecMuet(racine) {
+  const lignes = texteJournalTache(racine).split(/\r\n|\r|\n/).filter((l) => l.trim() !== '');
+  return { source: 'cockpit', code: 'compilation-echec', ton: 'danger', slug: '', cle: '',
+           args: [], champs: {}, brut: lignes.slice(-LIGNES_EXTRAIT_ECHEC).join('\n') };
+}
+
 // Fin d'une tâche de la chaîne : on relit le journal, on met le compteur à jour, et on le
 // dit une fois. Le code de sortie sépare les deux tons du message : « la compilation s'est
 // arrêtée » n'est vrai que s'il est non nul, et un PDF sorti sans son image n'est pas un
@@ -913,10 +933,14 @@ function verifierFinAnalyse(fournisseur) {
 async function relireJournal(fournisseur, code) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  const constats = lireJournalTache(racine);
+  const lus = lireJournalTache(racine);
   // Un fichier de compteurs par article CONVERTI dans cette tâche, aucun sinon : l'import rejoue
   // à chaque Ctrl+S tant qu'un Word attend, et ne doit alors rien compter.
   try { compteurs.enregistrerImportDepuisJournal(racine); } catch (e) { /* jamais une panne */ }
+  // Un arrêt qu'aucun constat n'explique (filtre qui plante, trace Python) : sans cette carte,
+  // la vue et la barre diraient « rien à signaler » sur un PDF qui n'est pas sorti.
+  const echecMuet = code !== 0 && !lus.some(expliqueArret);
+  const constats = echecMuet ? lus.concat([constatEchecMuet(racine)]) : lus;
   // Seule la source « chaine » est remplacée. Le réimport, les refus d'export et la
   // pagination survivent à la compilation : la chaîne ne les connaît pas, et ils restent
   // vrais tant que leur geste n'a pas été refait. La fusion se calcule avant sourcesDe(),
@@ -936,7 +960,7 @@ async function relireJournal(fournisseur, code) {
         message: 'La compilation a rendu le code de sortie ' + code + '.',
         produit: rapportErreur.produitDepuisRacine(racine, profilCourant().cle),
         journal: rapportErreur.lireExtraitFichier(path.join(racine, JOURNAL_TACHE)),
-        constats: constats,
+        constats: lus,
         langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
       });
     } catch (e) { /* un rapport ne doit jamais faire échouer ni ralentir la compilation */ }
@@ -946,11 +970,18 @@ async function relireJournal(fournisseur, code) {
 
   controlerPagination(racine, fournisseur, 'après compilation');
 
-  const r = resumeJournal(constats);
+  // Regroupés et comptés comme la barre et la vue : une carte, un point, de la même couleur.
+  const r = resumeJournal(tableConstats.regrouper(constats, lecteurObjetsArticles(fournisseur)),
+    contexteConstats());
   if (r.bloquants === 0 && r.avertissements === 0) { return; }
   const notifier = async () => {
     const bouton = T('ctl.notif.bouton');
     const ouvrir = () => vscode.commands.executeCommand('szh.vueControles');
+    if (echecMuet) {
+      const choix = await vscode.window.showErrorMessage(T('ctl.notif.echec'), bouton);
+      if (choix === bouton) { await ouvrir(); }
+      return;
+    }
     if (r.bloquants > 0) {
       const cle = code === 0 ? 'ctl.notif.bloquant' : 'ctl.notif.arret';
       const choix = await vscode.window.showErrorMessage(T(cle, [r.bloquants]), bouton);

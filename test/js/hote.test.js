@@ -770,6 +770,22 @@ test('le panneau Export offre « Exporter cet article » sur un numéro vivant',
     '« Exporter cet article » est passé après « Tout exporter » : ' + JSON.stringify(rangs));
 });
 
+test('le panneau Export offre « Rafraîchir la pagination » juste après la recompilation complète', async () => {
+  const rangs = (await entreesDuPanneau('szh.panneauExport')).map((it) => it.commande);
+  const i = rangs.indexOf('szh.toutExporter');
+  assert.ok(i !== -1, JSON.stringify(rangs));
+  assert.strictEqual(rangs[i + 1], 'szh.rafraichirPagination',
+    'la pagination n’est atteignable que par la palette : ' + JSON.stringify(rangs));
+});
+
+test('le panneau Commande offre « Quoi de neuf » juste après le tutoriel', async () => {
+  const rangs = (await entreesDuPanneau('szh.panneauCommande')).map((it) => it.commande);
+  const i = rangs.indexOf('szh.tutoriel');
+  assert.ok(i !== -1, JSON.stringify(rangs));
+  assert.strictEqual(rangs[i + 1], 'szh.nouveautes',
+    '« Quoi de neuf » n’est atteignable que par la palette : ' + JSON.stringify(rangs));
+});
+
 test('le panneau Export garde « Exporter cet article » sur un numéro verrouillé', async () => {
   const ausgabe = path.join(REVUE, 'ausgabe.yaml');
   const avantYaml = fs.readFileSync(ausgabe, 'utf8');

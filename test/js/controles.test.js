@@ -187,11 +187,11 @@ test('journal : le ton ne ment pas — un avertissement n’est pas un échec', 
   // documents, ils sont publiables, il reste du travail d'édition.
   assert.strictEqual(doux.avertissements, 3);
   assert.strictEqual(doux.bloquants, 0);
-  // La figure absente, elle, ne se rattrape pas après impression : elle est bloquante,
-  // alors même que la compilation a rendu 0.
+  // La figure absente laisse sortir le PDF : la vue la range en avertissement
+  // (lib/constats.js, rendu/image-manquante), et le compte la suit.
   const mele = journal.resumeJournal(journal.analyserJournal(JOURNAL_AVERTISSEMENTS, 'fr'));
-  assert.strictEqual(mele.avertissements, 3);
-  assert.strictEqual(mele.bloquants, 1);
+  assert.strictEqual(mele.avertissements, 4);
+  assert.strictEqual(mele.bloquants, 0);
 
   const dur = journal.analyserJournal(JOURNAL_BLOQUANT, 'fr');
   assert.deepStrictEqual(cles(dur), ['pipeline/titre-manquant']);
@@ -398,8 +398,8 @@ test('arbre : le raccourci « À corriger » suit l’état, sous « Word en att
   assert.match(String(dernier.description), /3/);
 
   // Un journal qui bloque : l'icône passe au rouge et compte les seuls bloquants.
-  poserJournal(JOURNAL_AVERTISSEMENTS);
-  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  poserJournal(JOURNAL_BLOQUANT);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
   const bloquants = (await arbre.getChildren()).pop();
   assert.strictEqual(bloquants.iconPath.id, 'error',
     'un blocage ne se voit pas dans l’arbre : ' + bloquants.iconPath.id);
@@ -469,6 +469,38 @@ test('hôte : une compilation arrêtée le dit autrement', async () => {
   assert.match(avis, /La compilation s’est arrêtée/);
   assert.match(avis, /1 point/);
   assert.ok(HOTE.barreQuiDit('1 à corriger'), 'le compteur de la barre d’état ne suit pas');
+});
+
+// Un filtre qui plante, une trace Python : la chaîne s'arrête sans rien dire que le journal
+// sache lire. La personne doit pourtant apprendre que son PDF n'est pas sorti.
+const JOURNAL_ECHEC_MUET = [
+  'pandoc articles/01-essai/01-essai.md -> out/01-essai/01-essai.html',
+  'pandoc articles/01-inclusion/01-inclusion.md -> out/01-inclusion/01-inclusion.html',
+  // Un avertissement de contenu n'explique pas l'arrêt : il ne doit pas faire taire l'échec.
+  '[citations-avertissement] appel-ambigu | article « 01-inclusion » | appel « (Sen, 2001) » | Appel ambigu, à lier à la main : (Sen, 2001). | [de] Mehrdeutiger Zitatverweis, von Hand zu verknüpfen: (Sen, 2001).',
+  'Error running filter filters/szh-legendes.lua:',
+  'filters/szh-legendes.lua:42: attempt to index a nil value (local \'x\')',
+  'make: *** [Makefile:310: out/01-essai/01-essai.html] Error 83'
+].join(LF) + LF;
+
+test('hôte : un arrêt que le journal ne sait pas nommer se dit quand même', async () => {
+  poserJournal(JOURNAL_ECHEC_MUET);
+  const avant = HOTE.erreurs.length;
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(HOTE.erreurs.length, avant + 1, 'l’échec est passé en silence');
+  assert.match(HOTE.erreurs[HOTE.erreurs.length - 1], /PDF n’a pas pu être produit/);
+  assert.ok(HOTE.barreQuiDit('1 à corriger'), 'la barre d’état dit « rien à signaler »');
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
+  const msg = defauts(charge.lignes).find((m) => /PDF n’a pas pu être produit/.test(m.titre));
+  assert.ok(msg, 'aucune carte dans la vue : ' + JSON.stringify(charge.lignes.map((l) => l.titre)));
+  assert.strictEqual(msg.ton, 'danger');
+  assert.match(msg.consigne, /Enregistrez à nouveau/);
+  // Les dernières lignes du journal, pour qui saura les lire, en infobulle.
+  assert.match(msg.infobulle, /szh-legendes\.lua:42/);
 });
 
 test('hôte : un journal muet ne dérange personne', async () => {

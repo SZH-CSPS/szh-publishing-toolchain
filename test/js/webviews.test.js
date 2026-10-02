@@ -1055,6 +1055,26 @@ test('médias : l’ouverture sur une image visée déplie son formulaire', () =
   assert.deepStrictEqual(ouverts(), ['fig-03.png'], '« focaliser » n’ouvre pas l’image visée');
 });
 
+// « Insérer une figure » pose une légende provisoire : à l'ouverture, elle est sélectionnée
+// pour que la première frappe la remplace, au lieu de partir à l'impression si on l'oublie.
+// Une légende déjà écrite, elle, n'est jamais sélectionnée.
+test('médias : la légende provisoire est sélectionnée à l’ouverture, une vraie légende non', () => {
+  const txt = MEDIAS_TXT();
+  assert.ok(txt.legendeProvisoire, 'la page ne reçoit pas le texte de la légende provisoire');
+  const page = pageMedias(txt);
+  const espion = (champ) => { champ._selected = false; champ.select = () => { champ._selected = true; }; return champ; };
+  const provisoire = espion(champId(page, 'ch-legende-0')[0]);
+  provisoire.value = txt.legendeProvisoire;
+  const ecrite = espion(champId(page, 'ch-legende-1')[0]);   // fig-02 : « Les trois moments »
+
+  page.envoyer({ type: 'focaliser', relatif: 'fig-01.png' });
+  assert.strictEqual(provisoire._focused, true, 'le champ légende n’a pas reçu le curseur');
+  assert.strictEqual(provisoire._selected, true, 'la légende provisoire n’est pas sélectionnée');
+  page.envoyer({ type: 'focaliser', relatif: 'fig-02.png' });
+  assert.strictEqual(ecrite._focused, true, 'le champ légende n’a pas reçu le curseur');
+  assert.strictEqual(ecrite._selected, false, 'une légende déjà écrite a été sélectionnée');
+});
+
 // Un fichier remplacé : l'aperçu, le poids et le verdict changent. Trois écritures, sur
 // trois nœuds qui ne sont plus dans la même carte qu'avant.
 test('médias : une image remplacée refait son aperçu, son poids et son verdict', () => {

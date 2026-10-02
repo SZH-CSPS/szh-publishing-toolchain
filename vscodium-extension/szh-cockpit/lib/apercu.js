@@ -125,13 +125,26 @@ function jetonSource(texte, colonne) {
   return s.slice(deb, fin);
 }
 
-function editeurArticleCourant(fournisseur) {
-  if (!session.apercuCourantSlug() || !fournisseur.racine) { return null; }
-  const cible = path.join(fournisseur.racine, dossierUnites(), session.apercuCourantSlug(), session.apercuCourantSlug() + '.md').toLowerCase();
+function editeurArticle(fournisseur, slug) {
+  if (!slug || !fournisseur.racine) { return null; }
+  const cible = path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md').toLowerCase();
   for (const ed of vscode.window.visibleTextEditors) {
     if (ed.document && ed.document.uri && ed.document.uri.fsPath.toLowerCase() === cible) { return ed; }
   }
   return null;
+}
+
+function editeurArticleCourant(fournisseur) {
+  return editeurArticle(fournisseur, session.apercuCourantSlug());
+}
+
+// Première ligne visible (1-based) de l'éditeur du .md de `slug`, 0 s'il n'est pas à
+// l'écran : l'aperçu rechargé par une recompilation s'y replace au lieu de repartir en haut.
+function ligneVisibleEditeur(fournisseur, slug) {
+  const ed = editeurArticle(fournisseur, slug);
+  const plages = ed && ed.visibleRanges;
+  if (!plages || !plages.length || !plages[0].start) { return 0; }
+  return (plages[0].start.line | 0) + 1;
 }
 
 // Aperçu -> éditeur : révèle `ligne` (1-based) au sommet, sans focus, garde posée.
@@ -179,18 +192,20 @@ function pousserSurlignageVersApercu(fournisseur) {
 // qui emportait le clic vers la source et le défilement synchronisé. Le socle posé ici
 // est le strict minimum : media/_commun.js n'entre pas, l'aperçu n'ayant aucune de ses
 // fonctions à appeler, et _messages.js suppose seulement que `SZH` existe.
-function scriptApercu() {
-  return ['var SZH = SZH || {};', lireMedia('_messages.js'), lireMedia('apercu.js')].join('\n');
+// `ligne` (1-based, 0 = sommet) est celle où la page se place au chargement.
+function scriptApercu(ligne) {
+  return ['var SZH = SZH || {};', 'SZH.LIGNE_INITIALE = ' + (parseInt(ligne, 10) || 0) + ';',
+    lireMedia('_messages.js'), lireMedia('apercu.js')].join('\n');
 }
 
 // Injecte dans le HTML de pandoc la CSP, le bandeau, les styles de survol et le script.
-function injecterApercu(contenu, nonce) {
+function injecterApercu(contenu, nonce, ligne) {
   const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; font-src data:; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">';
   const ajout =
     '<style>' + lireMedia('apercu.css') + '</style>' +
     '<div id="szh-bandeau"><span>' + T('apercu.bandeau') + '</span>' +
     '<button id="szh-basculer" type="button">' + T('apercu.bandeau.pdf') + '</button></div>' +
-    '<script nonce="' + nonce + '">' + scriptApercu() + '</script>';
+    '<script nonce="' + nonce + '">' + scriptApercu(ligne) + '</script>';
   let html = contenu;
   html = html.indexOf('<head>') !== -1 ? html.replace('<head>', '<head>\n' + csp) : csp + html;
   html = html.indexOf('</body>') !== -1 ? html.replace('</body>', ajout + '\n</body>') : html + ajout;
@@ -347,7 +362,7 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
     contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'
             + lignes.join('</p><p>') + '</p></body></html>';
   }
-  const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'));
+  const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'), ligneVisibleEditeur(fournisseur, slug));
   // Ni reveal ni PRET : le panneau est créé s'il manque, puis son HTML est réécrit à chaque
   // appel ; c'est la session qui le tient.
   if (!session.panneauApercuHtml()) {

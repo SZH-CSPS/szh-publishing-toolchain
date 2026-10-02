@@ -182,17 +182,26 @@ test('pdfua : verifier-ua.sh sur les PDF présents, chemins relatifs à la racin
   }]);
 });
 
+// La fiche d'essai ne nomme aucun Word : la chaîne refuserait, donc le Word se choisit
+// avant la confirmation et part en appariement forcé.
 test('réimport : python3 reimporter.py, la sortie standard lue', async () => {
   const [slug] = HOTE.arbre().listerArticles();
-  viderAppels();
-  HOTE.repondreModale(T('modale.reimport.bouton'));
-  await HOTE.executer('szh.reimporterArticle', { slug: slug });
-  assert.deepStrictEqual(appels, [{
-    commande: WSL_SYSTEME,
-    args: ['-d', DISTRO, '--cd', REVUE, '--', 'python3', TK + '/pipeline/reimporter.py',
-      '--article', slug],
-    options: STDIO_LECTURE
-  }]);
+  const depot = path.join(REVUE, 'articles-word');
+  fs.mkdirSync(depot, { recursive: true });
+  const word = path.join(depot, 'essai-corrige.docx');
+  fs.writeFileSync(word, '');
+  try {
+    viderAppels();
+    HOTE.repondreQuickPick('essai-corrige.docx');
+    HOTE.repondreModale(T('modale.reimport.bouton'));
+    await HOTE.executer('szh.reimporterArticle', { slug: slug });
+    assert.deepStrictEqual(appels, [{
+      commande: WSL_SYSTEME,
+      args: ['-d', DISTRO, '--cd', REVUE, '--', 'python3', TK + '/pipeline/reimporter.py',
+        '--article', slug, '--word', 'essai-corrige.docx'],
+      options: STDIO_LECTURE
+    }]);
+  } finally { fs.rmSync(word, { force: true }); }
 });
 
 test('export d’un article : tâche wsl.exe du PATH, make -j2 -O sur le PDF et l’aperçu', async () => {

@@ -2441,10 +2441,14 @@ async function choisirArticleReimport(fournisseur, nom) {
 }
 
 // Le rédacteur désigne le Word. Sortie du refus « la fiche ne dit pas d'où vient cet
-// article » et de « son document n'attend pas sous ce nom ».
+// article » et de « son document n'attend pas sous ce nom ». Rien n'attend : on dit où
+// déposer le Word, car le copier ici passerait par l'import, qui le convertirait en article.
 async function choisirWordReimport(fournisseur, slug) {
   const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
-  if (noms.length === 0) { return ''; }
+  if (noms.length === 0) {
+    vscode.window.showInformationMessage(T('reimport.deposerWord'));
+    return '';
+  }
   const choix = await sousGarde(() => vscode.window.showQuickPick(noms, {
     title: T('reimport.choisirWord.titre', [slug]),
     placeHolder: T('reimport.choisirWord')
@@ -2474,8 +2478,18 @@ async function compilerApresReimport(racine, slug) {
   finally { statut.dispose(); session.poserBuildEnCours(false); }
 }
 
+// Vrai quand la chaîne refuserait faute de Word : la fiche n'en nomme aucun
+// (reimport-fiche-sans-source), ou celui qu'elle nomme n'attend pas dans le dépôt
+// (reimport-sans-word). Même comparaison sans casse que reimporter.py.
+function wordDeLaFicheAbsent(fournisseur, slug) {
+  const source = String(lireMetaArticle(fournisseur.racine, slug).source || '').toLowerCase();
+  if (source === '') { return true; }
+  const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
+  return !noms.some((n) => n.toLowerCase() === source);
+}
+
 // Le geste, du début à la fin. `cible` vaut { slug } depuis un article, { word } depuis la
-// vue « Word en attente ».
+// vue « Word en attente », { word, slug } quand l'appariement est déjà fait.
 async function reimporterArticle(fournisseur, rafraichirTout, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -2485,13 +2499,20 @@ async function reimporterArticle(fournisseur, rafraichirTout, cible) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
-  const word = (cible && typeof cible === 'object' && cible.word) ? String(cible.word) : '';
-  let slug = word === '' ? (cibleTraduction(fournisseur, cible).slug || '') : articleDuWord(fournisseur, word);
+  let word = (cible && typeof cible === 'object' && cible.word) ? String(cible.word) : '';
+  let slug = word === '' ? (cibleTraduction(fournisseur, cible).slug || '')
+    : (cible.slug ? String(cible.slug) : articleDuWord(fournisseur, word));
   if (word !== '' && slug === '') { slug = await choisirArticleReimport(fournisseur, word); }
   if (slug === '') { return; }                     // dialogue annulé : rien n'a été touché
   if (fournisseur.listerArticles().indexOf(slug) === -1) {
     vscode.window.showInformationMessage(T('err.article.introuvable'));
     return;
+  }
+  // Le Word se choisit avant la confirmation : celle-ci porte alors sur un Word connu, et
+  // le refus de la chaîne n'oblige pas à confirmer une seconde fois.
+  if (word === '' && wordDeLaFicheAbsent(fournisseur, slug)) {
+    word = await choisirWordReimport(fournisseur, slug);
+    if (word === '') { return; }
   }
   if (!await confirmerReimport(slug)) { return; }
   // Les deux arguments ensemble quand le fichier est désigné : c'est l'appariement forcé,
@@ -2601,8 +2622,8 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
   // le bouton le fait sur place.
   if (ton === 'attention') {
     const codes = Array.isArray(r.json.avertissements) ? r.json.avertissements : [];
-    const manqueLeWord = codes.indexOf('reimport-sans-word') !== -1
-      || codes.indexOf('reimport-fiche-sans-source') !== -1;
+    const manqueLeWord = !annulation && (codes.indexOf('reimport-sans-word') !== -1
+      || codes.indexOf('reimport-fiche-sans-source') !== -1);
     const boutons = manqueLeWord ? [T('reimport.choisirWord'), voir] : [voir];
     const choix = await vscode.window.showWarningMessage(
       premiere || T('reimport.refuse', [slug]), ...boutons);
@@ -2610,7 +2631,8 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
     if (choix === T('reimport.choisirWord')) {
       const nom = await choisirWordReimport(fournisseur, slug);
       if (nom === '') { return; }
-      if (!await confirmerReimport(slug)) { return; }
+      // Le remplacement de cet article vient d'être confirmé, et le refus n'a rien touché :
+      // le redemander ferait deux confirmations pour un seul geste.
       await executerReimport(fournisseur, rafraichirTout, slug,
         ['--article', slug, '--word', nom], false);
     }

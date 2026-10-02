@@ -47,6 +47,7 @@
 'use strict';
 
 const { TL } = require('./i18n');
+const { gravite } = require('./constats');
 
 // Séparateur des clés de dédoublonnage : un caractère qu'aucune phrase du journal ne
 // contient, pour que deux constats voisins ne se confondent pas.
@@ -844,12 +845,16 @@ function phraseConstat(constat, langue) {
   return constat.brut || '';
 }
 
-// Ce que la barre d'état et la notification ont besoin de savoir.
-function resumeJournal(constats) {
+// Ce que la barre d'état, la notification et l'arbre ont besoin de savoir. Compté par la
+// gravité de lib/constats.js, celle qui range la vue « À corriger » : le ton porté par le
+// constat n'en décide pas (une carte regroupée n'en a aucun). `contexte` : le même que la
+// vue (controles-hote.contexteConstats) ; absent, la validation PDF/UA compte pour active.
+function resumeJournal(constats, contexte) {
   let bloquants = 0, avertissements = 0, infos = 0;
   for (const c of constats || []) {
-    if (c.ton === 'danger') { bloquants++; }
-    else if (c.ton === 'attention') { avertissements++; }
+    const g = gravite(c, contexte);
+    if (g === 'bloquant') { bloquants++; }
+    else if (g === 'avert') { avertissements++; }
     else { infos++; }
   }
   return { bloquants: bloquants, avertissements: avertissements, infos: infos,

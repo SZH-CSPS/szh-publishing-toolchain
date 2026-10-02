@@ -2,12 +2,9 @@
   // Exporter et régénérer l'aperçu PDF : la tâche de build par défaut.
   { "key": "ctrl+e", "command": "workbench.action.tasks.build" },
 
-  // Importer à la demande les Word/LibreOffice déposés dans articles-word/
-  {
-    "key": "ctrl+alt+i",
-    "command": "workbench.action.tasks.runTask",
-    "args": "Importer les articles Word"
-  },
+  // Convertir les Word/LibreOffice déposés dans articles-word/ (chapitres-word/ d'un livre),
+  // par le cockpit : il retient l'ordre tiré du numéro du Word et ouvre la vérification.
+  { "key": "ctrl+alt+i", "command": "szh.convertirEnAttente", "when": "szh.estRevue || szh.estLivre" },
 
   // Les trois panneaux du cockpit — Commande, Édition, Export — soit les mêmes menus que
   // les trois boutons de la barre « Pronto ». Le panneau d'édition contient toute la

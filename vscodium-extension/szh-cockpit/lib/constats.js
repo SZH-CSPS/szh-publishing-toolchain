@@ -419,6 +419,11 @@ const TABLE = Object.freeze({
   // liste « À corriger » ne puissent plus diverger.
   'cockpit/sans-fiche': { barrage: 'compilation', nature: D, lieu: 'fiche',
     focusFixe: 'title', defaut: 'defaut.sans-fiche' },
+  // La chaîne s'est arrêtée sans qu'aucun constat du journal ne dise pourquoi : posé par
+  // relireJournal (lib/controles-hote.js). Les dernières lignes du journal vont dans `brut`,
+  // donc dans l'infobulle.
+  'cockpit/compilation-echec': { barrage: 'compilation', nature: D, lieu: '',
+    defaut: 'defaut.compilation-echec' },
   'cockpit/doi-double': { barrage: 'export', nature: D, lieu: 'fiche', focusFixe: 'doi',
     defaut: 'defaut.doi-double' },
   // Pagination continue du numéro (pipeline/pagination.py, émis par `make pdf` dès qu'un
@@ -575,6 +580,7 @@ const SECOND_ETAGE = Object.freeze({
   'livre/chapitre-ecarte': { consigne: 'consigne.chapitre-ecarte' },
   'livre/chapitre-introuvable': { consigne: 'consigne.chapitre-introuvable' },
   'cockpit/sans-fiche': { consigne: 'consigne.sans-fiche', infobulle: 'infobulle.sans-fiche' },
+  'cockpit/compilation-echec': { consigne: 'consigne.compilation-echec' },
   'cockpit/doi-double': { consigne: 'consigne.doi-double', infobulle: 'infobulle.doi-double' },
   'pagination/perimee': { consigne: 'consigne.pagination-perimee' },
   'cockpit/image-sans-alt': { consigne: 'consigne.images-sans-description',

@@ -1378,6 +1378,14 @@ Tant qu’il reste une copie en conflit dans le numéro, elle est aussi listée 
 retrouve quand l’avertissement a été fermé d’un revers. L’avertissement, lui, ne revient pas en
 boucle : il est donné une fois par fichier et par session de travail.
 
+## Rafraîchir la pagination au bouclage
+
+Les folios de la Revue se suivent d’un article à l’autre, mais ils ne se recalculent jamais
+seuls. Une fois l’ordre du numéro arrêté et tous les articles compilés, ouvrez le panneau
+d’export (`Ctrl+Alt+D`) → **« Rafraîchir la pagination »** : l’outil annonce les pages et
+les PDF à recompiler avant d’agir. L’export OJS refuse un numéro dont la pagination n’est
+plus à jour, et un numéro verrouillé garde les folios publiés.
+
 ## Terminer un numéro : archiver et verrouiller
 
 Quand un numéro est publié, il n’a plus à changer – et ses PDF, HTML et Word occupent

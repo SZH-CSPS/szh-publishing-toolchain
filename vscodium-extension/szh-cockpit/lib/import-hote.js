@@ -226,12 +226,48 @@ async function compilerApresImport() {
   }
 }
 
+// Les Word restés dans le dépôt dont l'article existe déjà : l'import les a ignorés, ce
+// sont des Word corrigés. Même prédicat que le badge « déjà converti » de la vue Word.
+// -> [{ word, slug }], slug étant le dossier réel (préfixé ou non).
+function wordsCorrigesEnAttente(fournisseur) {
+  const articles = fournisseur.listerArticles();
+  const trouves = [];
+  for (const nom of fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot))) {
+    const base = slugifierArticle(nom);
+    if (!fournisseur._articleExiste(base)) { continue; }
+    const slug = articles.find((s) => tige(s) === tige(base));
+    if (slug) { trouves.push({ word: nom, slug: slug }); }
+  }
+  return trouves;
+}
+
+// Rien de neuf : un Word corrigé se propose au réimport, plusieurs renvoient à la vue Word.
+// Appelée hors du drapeau d'import, que le réimport refuserait.
+async function annoncerAucunNouveau(fournisseur) {
+  const corriges = wordsCorrigesEnAttente(fournisseur);
+  if (corriges.length === 1) {
+    const bouton = T('cmd.reimporter.court');
+    const choix = await vscode.window.showInformationMessage(
+      T('info.importes.corrige', [corriges[0].slug]), bouton);
+    if (choix === bouton) { await vscode.commands.executeCommand('szh.reimporterArticle', corriges[0]); }
+    return;
+  }
+  if (corriges.length > 1) {
+    const bouton = T('info.importes.reimporterPlusieurs');
+    const choix = await vscode.window.showInformationMessage(T('info.importes.aucun'), bouton);
+    if (choix === bouton) { await vscode.commands.executeCommand('szh.vueWord'); }
+    return;
+  }
+  vscode.window.showInformationMessage(T('info.importes.aucun'));
+}
+
 // Convertit les Word de articles-word/ ; les nouveaux articles sont comptés en comparant
 // la liste avant et après, pas en lisant la sortie de la tâche.
 async function lancerConversion(fournisseur, rafraichirTout) {
   if (session.importEnCours()) { vscode.window.setStatusBarMessage(T('statut.import.encours'), 3000); return; }
   session.poserImportEnCours(true);
   const statut = vscode.window.setStatusBarMessage(T('statut.import'));
+  let apresImport = null;
   try {
     const avant = new Set(fournisseur.listerArticles());
     // Capté avant le lancement de la tâche : « make import » supprime les Word convertis
@@ -273,7 +309,7 @@ async function lancerConversion(fournisseur, rafraichirTout) {
       await avertirBlocsMalFormes(fournisseur.racine);
       await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
     } else {
-      vscode.window.showInformationMessage(T('info.importes.aucun'));
+      apresImport = () => annoncerAucunNouveau(fournisseur);
     }
   } finally {
     statut.dispose();
@@ -284,6 +320,10 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     // fenêtre repart maintenant.
     ctx.rejouerCompilationsDifferees();
   }
+  // Sans attendre la notification, comme avant : le dépôt ou la vue qui a lancé l'import
+  // n'a pas à rester suspendu à un clic. Une commande qui échoue est déjà signalée par
+  // envelopperCommande (extension.js).
+  if (apresImport) { apresImport().catch(() => {}); }
 }
 
 // Commun au bouton « Importer des Word » et au glisser-déposer : copie vers

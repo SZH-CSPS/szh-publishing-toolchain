@@ -500,9 +500,10 @@ test('après une renumérotation, aucun constat ni verdict sous un ancien slug',
   assert.strictEqual(HOTE.barreQuiDit('à corriger'), null,
     'la barre d’état compte encore les défauts d’un ancien slug');
   // Le journal, lui, nomme toujours 03-trois : relu tel quel à la fin d'une tâche (même
-  // lecture qu'au redémarrage), il ne doit rien réinjecter.
+  // lecture qu'au redémarrage), il ne doit rien réinjecter. Une tâche réussie : un échec
+  // sans cause lisible poserait sa propre carte au numéro.
   prochaineReponse = { lignes: [], code: 0, erreur: null };
-  HOTE.finirTache(NOM_TACHE_BUILD, 1);
+  HOTE.finirTache(NOM_TACHE_BUILD, 0);
   await laisserDecanter();
   await p._recepteur({ type: 'pret' });
   assert.doesNotMatch(titres(), /03-trois/, 'le journal réinjecte l’ancien slug : ' + titres());

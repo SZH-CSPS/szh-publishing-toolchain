@@ -592,6 +592,7 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
   const propres = ['pipeline/pdf-verrouille', 'pdfua/non-conforme', 'pdfua/outillage',
     'export/refus',
     'pdfua/regle', 'cockpit/doi-double', 'cockpit/sans-fiche', 'cockpit/image-sans-alt',
+    'cockpit/compilation-echec',
     'cockpit/image-sans-legende',
     // Les cartes regroupées : regrouper() les fabrique à partir des constats ci-dessus.
     'cockpit/images-sans-description', 'cockpit/tableaux-entete', 'cockpit/tableaux-sans-entete',

@@ -329,10 +329,14 @@ def extraire_ps(lignes, _langue):
                     p + v.replace(APO, APO + APO) + s)
 
 
+# Des clés de package.json dont la valeur est une expression de VS Code, pas du texte.
+RE_CLE_CODE_JSON = re.compile(r'^\s*"(when|enablement)":')
+
+
 def extraire_json(lignes, langue):
     for i, l in enumerate(lignes):
         m = RE_VAL_JSON.match(l)
-        if m:
+        if m and not RE_CLE_CODE_JSON.match(l):
             yield i, langue, m.group(2), _refaire(m.group(1), m.group(3))
 
 

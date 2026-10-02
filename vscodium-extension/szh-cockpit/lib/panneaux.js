@@ -16,6 +16,7 @@ const { sousGarde } = require('./interaction');
 
 const PANNEAU_COMMANDE = [
   ['panneau.tutoriel', 'szh.tutoriel', '', '$(mortar-board)'],
+  ['nouv.titre', 'szh.nouveautes', '', '$(megaphone)'],
   ['panneau.importerWord', 'szh.importerWord', '', '$(add)'],
   ['panneau.convertirEnAttente', 'szh.convertirEnAttente', '', '$(run-all)'],
   ['meta.titre', 'szh.metadonnees', '', '$(gear)'],
@@ -72,6 +73,7 @@ async function ouvrirPanneauEdition() {
     ['--', 'panneau.g.article'],
     ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)'],
     ['panneau.mediasArticle', 'szh.mediasArticle', '', '$(file-media)'],
+    ['panneau.editerTable', 'szh.editerTable', '', '$(table)'],
     ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ]).concat(PALETTE_MEF)
@@ -108,7 +110,9 @@ async function ouvrirPanneauExport() {
   const etat = hote.etat();
   const entrees = [['--', 'panneau.g.export'],
                    ['panneau.exporterArticle', 'szh.exporterArticle', '', '$(file-pdf)'],
-                   ['panneau.toutExporter', 'szh.toutExporter', '', '$(export)']];
+                   ['panneau.toutExporter', 'szh.toutExporter', '', '$(export)'],
+                   // Retirée d'un livre par pourProfil (szh.peut.pagination).
+                   ['action.pagination', 'szh.rafraichirPagination', '', '$(list-ordered)']];
   const commandes = await vscode.commands.getCommands(true);
   if (commandes.indexOf('szh.exporterXml') !== -1) {
     entrees.push(['panneau.exporterXml', 'szh.exporterXml', '', '$(file-code)']);

@@ -102,6 +102,7 @@ function elementFactice(balise, attributs) {
 // déclencher un événement du document ou de la fenêtre.
 function jouerPage(script, blocs) {
   const messages = [];
+  const defilements = [];
   const bandeau = elementFactice('div', { id: 'szh-bandeau' });
   const bouton = elementFactice('button', { id: 'szh-basculer' });
   bouton.parentElement = bandeau;
@@ -122,7 +123,7 @@ function jouerPage(script, blocs) {
     addEventListener: (t, f) => { (ecouteursFen[t] = ecouteursFen[t] || []).push(f); },
     pageYOffset: 0,
     innerHeight: 800,
-    scrollTo: () => {}
+    scrollTo: (x, y) => { defilements.push(y); }
   };
   const contexte = {
     document: documentFactice,
@@ -143,6 +144,7 @@ function jouerPage(script, blocs) {
   };
   return {
     messages: messages,
+    defilements: defilements,
     bouton: bouton,
     surDocument: (ev) => declencher(ecouteursDoc, ev),
     surFenetre: (ev) => declencher(ecouteursFen, ev),
@@ -230,6 +232,57 @@ test('un message « surligner » de l’hôte marque le bloc de la ligne visée'
     'le bloc qui contient la ligne 8 (7-9) n’a pas été surligné');
   assert.ok(!blocs[0].classList.contains('szh-actif'), 'un autre bloc a été surligné');
   assert.ok(!blocs[2].classList.contains('szh-actif'), 'un autre bloc a été surligné');
+});
+
+// Une recompilation réassigne webview.html, ce qui recharge la page : sans la ligne de
+// l'éditeur transmise au chargement, l'aperçu repartait en haut à chaque pause de frappe.
+// Blocs placés bas dans la page, pour qu'un défilement se distingue du sommet.
+function blocsEtages() {
+  const faire = (pos, top) => {
+    const el = elementFactice('p', { 'data-pos': pos });
+    el._rect = { top: top, bottom: top + 40, height: 40 };
+    return el;
+  };
+  return [
+    faire('01-essai.md@3:1-3:20', 0),
+    faire('01-essai.md@7:1-9:12', 400),
+    faire('01-essai.md@20:1-20:8', 2000)
+  ];
+}
+
+test('l’aperçu rechargé se replace sur la ligne visible de l’éditeur, sans renvoyer de défilement', async () => {
+  const md = path.join(REVUE, 'articles', '01-essai', '01-essai.md');
+  const editeur = {
+    document: { uri: HOTE.stub.Uri.file(md), lineCount: 30, lineAt: () => ({ text: '' }) },
+    selection: { active: new HOTE.stub.Position(0, 0) },
+    visibleRanges: [{ start: { line: 19 }, end: { line: 25 } }],   // 0-based : ligne 20
+    revealRange: () => {}
+  };
+  HOTE.stub.window.visibleTextEditors.push(editeur);
+  try {
+    ecrireApercuCompile('01-essai', CORPS + '<p>recompilé</p>');
+    await HOTE.executer('szh.ouvrirArticle', '01-essai');
+    const html = HOTE.panneauDeType('szhApercuHtml').html;
+    assert.ok(html.indexOf('recompilé') !== -1, 'témoin : le HTML recompilé n’a pas été posé');
+
+    const page = jouerPage(scriptDe(html), blocsEtages());
+    assert.deepStrictEqual(page.defilements, [1996],
+      'la page rechargée ne s’est pas placée sur le bloc de la ligne 20 (sommet 2000, moins 4)');
+    // Le défilement qui en découle ne doit pas faire bouger l'éditeur en retour.
+    page.surFenetre({ type: 'scroll' });
+    await attendre(80);
+    assert.deepStrictEqual(page.messages.filter((m) => m.type === 'scrollSource'), [],
+      'le placement initial a renvoyé un « scrollSource » vers l’éditeur');
+  } finally {
+    HOTE.stub.window.visibleTextEditors.length = 0;
+  }
+});
+
+test('sans éditeur visible, l’aperçu rechargé reste en haut', async () => {
+  ecrireApercuCompile('01-essai', CORPS);
+  await HOTE.executer('szh.ouvrirArticle', '01-essai');
+  const page = jouerPage(scriptDe(HOTE.panneauDeType('szhApercuHtml').html), blocsEtages());
+  assert.deepStrictEqual(page.defilements, [], 'la page a défilé sans ligne à rejoindre');
 });
 
 test('sortie : ni erreur ni avertissement de l’hôte', () => {

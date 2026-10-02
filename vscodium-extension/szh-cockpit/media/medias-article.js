@@ -1046,6 +1046,10 @@ function focaliser(relatif) {
   try { c.figure.element.scrollIntoView({ block: 'start' }); } catch (e) { c.figure.element.scrollIntoView(); }
   var cible = c.ctl.legende && !c.ctl.legende.disabled ? c.ctl.legende : c.ctl.alt;
   if (cible && !cible.disabled) { try { cible.focus(); } catch (e) { /* pas focalisable */ } }
+  // La légende provisoire d'« Insérer une figure » : sélectionnée, la première frappe la remplace.
+  if (cible === c.ctl.legende && TXT.legendeProvisoire && cible.value === TXT.legendeProvisoire) {
+    try { cible.select(); } catch (e) { /* pas sélectionnable */ }
+  }
 }
 
 function trouverCarte(relatif) {

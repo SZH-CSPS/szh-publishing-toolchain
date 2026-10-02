@@ -13,6 +13,9 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 
 // Les éléments de barre d'état créés par installerBarres, dans l'ordre : compteur, badge PDF/UA.
 const barres = [];
+// Les notifications sorties, par ton, et les réglages lus par le module.
+const notifs = { erreurs: [], avertissements: [] };
+const reglages = {};
 
 // Le module demande « vscode », que ce banc n'a pas : une doublure minimale suffit.
 function charger() {
@@ -21,6 +24,8 @@ function charger() {
   const faux = {
     Uri: { file: (p) => ({ fsPath: p }) },
     window: {
+      showErrorMessage: async (m) => { notifs.erreurs.push(m); },
+      showWarningMessage: async (m) => { notifs.avertissements.push(m); },
       createStatusBarItem: () => {
         const item = { text: '', visible: false };
         item.show = () => { item.visible = true; };
@@ -31,7 +36,7 @@ function charger() {
     },
     StatusBarAlignment: { Left: 1 },
     commands: { executeCommand: async () => {} },
-    workspace: { getConfiguration: () => ({ get: (cle, defaut) => defaut }) },
+    workspace: { getConfiguration: () => ({ get: (cle, defaut) => (cle in reglages ? reglages[cle] : defaut) }) },
     env: { language: 'fr' },
     ThemeColor: function ThemeColor(id) { this.id = id; }
   };
@@ -130,4 +135,47 @@ test('terminerAnalyse sans analyse en cours ne pousse rien', () => {
   controles.configurer({ pousserAnalyseControles: (m) => pousses.push(m) });
   controles.terminerAnalyse({ racine: racine });
   assert.deepStrictEqual(pousses, []);
+});
+
+// Une seule figure sans texte alternatif : la vue la range en bloquant (lib/constats.js,
+// gravite), la barre d'état et la notification doivent dire la même chose, et retomber
+// avec elle quand la validation PDF/UA est éteinte.
+const JOURNAL_FIGURE = '[numerotation-avertissement] figure-sans-alt | article « 00-a » | image « media/fig-01.png » | L’image n’a pas de texte alternatif | [de] Bild ohne Alt\n';
+
+async function compilerFigure() {
+  controles.reinitialiser();
+  barres.length = 0;
+  notifs.erreurs.length = 0;
+  notifs.avertissements.length = 0;
+  const fournisseur = { racine: racine, listerArticles: () => ['00-a', '01-b'],
+    _tablesArticle: () => [], _imagesArticle: () => [] };
+  controles.installerBarres({ subscriptions: [] }, fournisseur);
+  fs.writeFileSync(path.join(racine, '.szh-journal.log'), JOURNAL_FIGURE, 'utf8');
+  try { await controles.relireJournal(fournisseur, 0); }
+  finally { fs.rmSync(path.join(racine, '.szh-journal.log'), { force: true }); }
+  await new Promise((r) => setImmediate(r));
+  const vue = controles.vueControles(fournisseur);
+  return { compteur: barres[0], tons: vue.lignes.flatMap((l) => l.messages.map((m) => m.ton)) };
+}
+
+test('une figure sans alternative : la barre et la notification comptent comme la vue', async () => {
+  delete reglages.controlePdfUa;
+  const { compteur, tons } = await compilerFigure();
+  assert.deepStrictEqual(tons, ['danger'], 'la vue ne la range plus en bloquant');
+  assert.strictEqual(compteur.visible, true, 'la barre d’état se tait sur un bloquant');
+  assert.match(compteur.text, /1 à corriger/);
+  assert.strictEqual(notifs.erreurs.length, 1, 'la notification n’est pas une erreur');
+  assert.strictEqual(notifs.avertissements.length, 0);
+});
+
+test('la même figure, validation PDF/UA éteinte : un avertissement partout', async () => {
+  reglages.controlePdfUa = false;
+  try {
+    const { compteur, tons } = await compilerFigure();
+    assert.deepStrictEqual(tons, ['attention']);
+    assert.strictEqual(compteur.visible, true);
+    assert.match(compteur.text, /1 à vérifier/);
+    assert.strictEqual(notifs.erreurs.length, 0, 'une erreur pour ce que la vue range en avertissement');
+    assert.strictEqual(notifs.avertissements.length, 1);
+  } finally { delete reglages.controlePdfUa; }
 });
