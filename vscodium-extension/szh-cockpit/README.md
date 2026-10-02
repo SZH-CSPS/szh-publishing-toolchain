@@ -161,6 +161,9 @@ lib/
                         (nouveautes.json), indexées par MEDIUM de version — jamais par
                         mineure —, et la décision de ce qu'il y a à montrer. Écrites pour
                         la rédaction et dans les deux langues, à l'inverse de CHANGELOG.md
+  ojs-adresses.js       la base d'ojs.szh.ch et les chemins (url_path) que l'export OJS
+                        fixe pour le numéro et les articles sans DOI, d'où la newsletter
+                        tire ses liens. Module pur, sans dépendance
   oai-pmh.js            client https et parseur OAI-PMH communs à auteurs-ojs.js et
                         mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT

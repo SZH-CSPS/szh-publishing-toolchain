@@ -533,6 +533,7 @@ def _demasquer(codes):
 
 
 RE_TWIG_TAG = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}")
+RE_TWIG_LANGUE = re.compile(r"\{#\s*langue\s*:\s*(\w+)\s*#\}")
 
 
 def extraire_twig(lignes, langue):
@@ -564,6 +565,11 @@ def extraire_twig(lignes, langue):
         if o != -1 and '#}' not in l[o:]:
             dans_commentaire = True
             continue
+        # Un gabarit à deux langues (newsletter-intro.twig) marque chaque paragraphe par
+        # `{# langue : de #}` ; la marque vaut jusqu'à la suivante.
+        marque = RE_TWIG_LANGUE.search(l)
+        if marque:
+            langue = marque.group(1)
         codes = []
 
         def masquer(m, codes=codes):

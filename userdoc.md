@@ -412,6 +412,14 @@ depuis n’importe où dans la revue) :
     langue de l’article, un **DOI** absent, **deux articles au même DOI**, un PDF / HTML / Word pas encore produit, ou
     un champ vide dans **Réglages SZH → Export OJS** (voir « Régler l’export OJS »
     ci-dessous). Dans ce cas **rien n’est écrit** : pas de fichier à moitié fait.
+    L’export **fixe aussi des adresses** : celle du numéro (`2026-03`) et celle de chaque
+    article **sans DOI** (`2026-03-documentation`, c’est-à-dire le numéro suivi du nom du
+    dossier de l’article, sans son numéro d’ordre). La newsletter s’en sert pour lier ces
+    pages avant même la publication ; les articles qui ont un DOI gardent leur adresse OJS
+    ordinaire. **À la première importation d’un numéro**, ouvrez les deux adresses dans
+    le navigateur (par exemple `https://ojs.szh.ch/index.php/revue/fr/issue/view/2026-03`
+    et `https://ojs.szh.ch/index.php/revue/fr/article/view/2026-03-documentation`) : si l’une
+    ne s’ouvre pas, OJS n’a pas repris le chemin et le lien de la newsletter est à corriger.
   - **Archiver et verrouiller la revue** – voir « Terminer un numéro » ci-dessous ;
   - **Déverrouiller la revue** / **Désarchiver la revue** – présentes seulement quand le
     numéro est verrouillé / archivé ;
@@ -1800,9 +1808,11 @@ Sélectionnez **un seul numéro** dans la liste (si plusieurs lignes sont coché
 première compte), cliquez **« Newsletter et auteurs… »**, puis choisissez un dossier de
 sortie. L’outil y écrit :
 
-- un fichier `.txt` par rubrique qui compte au moins un article – `editorial.txt`,
-  `dossier-thematique.txt`, `varia.txt`, `tribune-libre.txt`, `documentation.txt` – chacun
-  portant le bloc à **coller tel quel dans Mailchimp** ;
+- `0-intro.txt`, l’introduction (le numéro, son thème, le lien vers sa page OJS), puis un
+  fichier `.txt` par rubrique qui compte au moins un article – `1-editorial.txt`,
+  `2-dossier-thematique.txt`, `3-varia.txt`, `4-tribune-libre.txt`, `5-documentation.txt`,
+  dans l’ordre de la newsletter, le même pour les deux revues – chacun portant le bloc à
+  **coller tel quel dans Mailchimp** ;
 - `auteurs.csv`, une ligne par auteur·e du numéro, dans l’ordre des articles puis
   alphabétique à l’intérieur d’un même article.
 
@@ -1810,7 +1820,11 @@ Une rubrique sans article ne produit pas de fichier : le journal le dit.
 
 Les titres sortent liés à leur DOI (`https://doi.org/…`), calculé **sur le poste** – ce qui
 veut dire que cet export fonctionne **avant même que le numéro soit publié dans OJS**. Un
-article sans DOI encore attribué sort sans lien ; le journal le signale.
+article sans DOI (la Documentation) est lié à sa page sur OJS, à l’adresse que l’export OJS
+fixe pour lui (voir « Exporter la revue en XML (OJS) ») ; si cette adresse ne peut pas se
+calculer, le titre sort sans lien et le journal le signale. L’introduction porte le titre du
+numéro **dans la langue du numéro** : l’autre langue n’existe pas dans les métadonnées du
+numéro, le fichier y écrit « À COMPLÉTER » et le journal le dit.
 
 Pourquoi des fichiers `.txt` et non `.html` : c’est avec le Bloc-notes qu’on copie ce bloc
 dans Mailchimp, et le Bloc-notes n’ouvre pas les fichiers `.html` d’un double-clic.
@@ -1864,7 +1878,7 @@ croire à une vérification qui n’a pas eu lieu.
 
 ### La forme des exports
 
-Les cinq `.txt` de la newsletter, `auteurs.csv`, `edudoc.csv`, `caracteres.csv` et
+Les `.txt` de la newsletter, `auteurs.csv`, `edudoc.csv`, `caracteres.csv` et
 `metadonnees.txt` sortent tous d’un **gabarit** – les colonnes d’un CSV, la disposition
 d’un bloc de newsletter, tout cela est fixé par un fichier livré avec l’outil, pas écrit
 par vous.

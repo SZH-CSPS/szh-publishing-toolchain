@@ -208,7 +208,7 @@ function configComplete() {
 
 const REFERENCE_REVUE = [
   '<?xml version="1.0" encoding="utf-8"?>',
-  '<issue xmlns="http://pkp.sfu.ca" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" published="1" current="1" access_status="1" url_path="" xsi:schemaLocation="http://pkp.sfu.ca native.xsd">',
+  '<issue xmlns="http://pkp.sfu.ca" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" published="1" current="1" access_status="1" url_path="2026-02" xsi:schemaLocation="http://pkp.sfu.ca native.xsd">',
   '  <id type="internal" advice="ignore">1</id>',
   '  <issue_identification>',
   '    <volume>44</volume>',

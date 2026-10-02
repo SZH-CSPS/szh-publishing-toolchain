@@ -1,0 +1,27 @@
+{# newsletter-intro.twig : l'introduction de la newsletter, deux paragraphes dans un seul
+   <p>, la langue de la revue d'abord et l'autre ensuite, à coller tel quel dans Mailchimp.
+   Écrit dans 0-intro.txt par lib/secretariat.js (commande « newsletter »). Le lien désigne la
+   page du numéro sur OJS, à l'adresse que l'export OJS fixe (url_path), dans la langue de la
+   revue pour les deux paragraphes. Le commentaire « langue » en tête d'un paragraphe dit à
+   test/typo-check.py comment le composer.
+
+   Seul le bloc `contenu` est écrit dans le fichier (convention du moteur, lib/gabarits.js).
+
+   Variables disponibles ici :
+   numero.locale         "fr" (Revue : français puis allemand) ou "de" (Zeitschrift : allemand puis français)
+   numero.volume         "16" (peut être vide : « Vol. 16, » est alors omis)
+   numero.numeroAnnee    "03/2026" (vide si l'année ou le numéro manque)
+   numero.titre          le titre du numéro dans sa langue (peut être vide)
+   numero.titreFr        le titre en français ("" si ausgabe.yaml ne le porte pas : le gabarit écrit « À COMPLÉTER »)
+   numero.titreDe        le titre en allemand ("" si ausgabe.yaml ne le porte pas : idem)
+   numero.url            adresse de la page du numéro sur OJS ("" si l'année ou le numéro manque : pas de lien)
+#}
+{% block contenu %}{% if numero.locale == 'de' %}<p>{# langue : de #}Die aktuelle Ausgabe der <em>Schweizerischen Zeitschrift für Heilpädagogik</em> zum Thema <strong>«{{ numero.titreDe|default('[À COMPLÉTER : titre en allemand]') }}»</strong> steht ab heute zur Verfügung: {% if numero.url %}<a href="{{ numero.url }}" target="_blank">{% endif %}Jg. {% if numero.volume %}{{ numero.volume }}, {% endif %}{{ numero.numeroAnnee }}{% if numero.url %}</a>{% endif %}<br />
+<br />
+{# langue : fr #}Le numéro actuel de la <em>Schweizerische Zeitschrift für Heilpädagogik</em> sur le thème « <strong>{{ numero.titreFr|default('[À COMPLÉTER : titre en français]') }}</strong> » est disponible dès aujourd’hui : {% if numero.url %}<a href="{{ numero.url }}" target="_blank">{% endif %}Vol. {% if numero.volume %}{{ numero.volume }}, {% endif %}{{ numero.numeroAnnee }}{% if numero.url %}</a>{% endif %}<br />
+(articles en allemand avec résumés en français)</p>
+{% else %}<p>{# langue : fr #}Le numéro actuel de la <em>Revue suisse de pédagogie spécialisée</em> sur le thème « <strong>{{ numero.titreFr|default('[À COMPLÉTER : titre en français]') }}</strong> » est disponible dès aujourd’hui : {% if numero.url %}<a href="{{ numero.url }}" target="_blank">{% endif %}Vol. {% if numero.volume %}{{ numero.volume }}, {% endif %}{{ numero.numeroAnnee }}{% if numero.url %}</a>{% endif %}<br />
+<br />
+{# langue : de #}Die aktuelle Ausgabe der <em>Revue suisse de pédagogie spécialisée</em> zum Thema <strong>«{{ numero.titreDe|default('[À COMPLÉTER : titre en allemand]') }}»</strong> steht ab heute zur Verfügung: {% if numero.url %}<a href="{{ numero.url }}" target="_blank">{% endif %}Jg. {% if numero.volume %}{{ numero.volume }}, {% endif %}{{ numero.numeroAnnee }}{% if numero.url %}</a>{% endif %}<br />
+(Französische Artikel mit Abstracts auf Deutsch)</p>
+{% endif %}{% endblock %}

@@ -26,6 +26,7 @@ const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 const { imagesSansAlternative, listerImages } = require('./references');
 const { referencesDuTexte, referencesDuFichier } = require('./citations');
 const archivage = require('./archivage');
+const adresses = require('./ojs-adresses');
 const { T, TEXTES_COCKPIT } = require('./i18n');
 // Masquage du qualificatif de provenance edudoc (« (szh) », « (na) »…) sur les mots-clés
 // publiés : la règle et la liste fermée sont partagées avec pipeline/filters/szh-maquette.lua
@@ -776,6 +777,13 @@ function collecter(racine, cfg, avertissements, pagination) {
     }
     articles.push(article);
   }
+  // Les adresses que Pronto fixe (url_path), pour que la newsletter puisse lier avant la
+  // publication : le numéro, et chaque article SANS DOI — les autres gardent l'adresse que
+  // leur DOI leur donne. Le calcul est celui de la newsletter (lib/ojs-adresses.js).
+  numero.urlPath = adresses.cheminNumero(numero.annee, numero.numero);
+  const cheminsSansDoi = adresses.cheminsArticlesSansDoi(adresses.cleNumero(numero.annee, numero.numero),
+    slugs.filter((s) => rangDoi(slugs, s, sansDoi) === -1));
+  for (const a of articles) { a.urlPath = cheminsSansDoi[a.slug] || ''; }
   // Un même DOI ne peut désigner deux articles : OJS ne recevrait qu'un seul des deux
   // dépôts, l'autre étant écrasé selon l'ordre d'arrivée. Comparé sur ce qui PART
   // réellement de chaque article — le calculé, ou le manuel qui le remplace — et jamais
@@ -899,7 +907,7 @@ function genererExportOjs(racine, options) {
   try {
     w('<?xml version="1.0" encoding="utf-8"?>\n');
     w('<issue xmlns="http://pkp.sfu.ca"' + XSI +
-      ' published="1" current="1" access_status="1" url_path=""' + SCHEMA + '>\n');
+      ' published="1" current="1" access_status="1" url_path="' + echapperXml(numero.urlPath) + '"' + SCHEMA + '>\n');
     ligne(2, 'id', ' type="internal" advice="ignore"', idNumero);
     // <description> omise : le chapô du numéro ne vit pas dans ausgabe.yaml.
     w('  <issue_identification>\n');
@@ -972,7 +980,7 @@ function genererExportOjs(racine, options) {
       }
 
       w('      <publication' + XSI + ' version="1" status="3"' +
-        ' primary_contact_id="' + a.auteurs[0].idAuteur + '" url_path="" seq="' + a.seq + '"' +
+        ' primary_contact_id="' + a.auteurs[0].idAuteur + '" url_path="' + echapperXml(a.urlPath) + '" seq="' + a.seq + '"' +
         ' access_status="0" date_published="' + numero.datePublication + '"' +
         ' section_ref="' + echapperXml(a.rubrique.abbrev[numero.locale]) + '"' + SCHEMA + '>\n');
       ligne(8, 'id', ' type="internal" advice="ignore"', a.idPublication);

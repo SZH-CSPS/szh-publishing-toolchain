@@ -324,11 +324,11 @@ test('commandeNewsletter : un numéro sans date: produit quand même un DOI, don
     });
     assert.strictEqual(resultat.ok, true);
     // Le bilan nomme le numéro par l'année reprise du nom du dossier, numéro sur deux chiffres.
-    assert.strictEqual(resultat.texte, '2 fichiers produits pour le numéro 2027-03.');
+    assert.strictEqual(resultat.texte, '3 fichiers produits pour le numéro 2027-03.');
     assert.ok(!evenements.some((e) => e.t === 'avert' && e.texte.indexOf('pas de DOI') !== -1),
       'aucun avert "pas de DOI" attendu : le DOI doit se calculer malgré date: vide');
-    const dossierThematique = fs.readFileSync(path.join(dossierSortie, 'dossier-thematique.txt'), 'utf8');
-    assert.ok(dossierThematique.indexOf('<a href="https://doi.org/10.57161/r2027-03-00">') !== -1, dossierThematique);
+    const dossierThematique = fs.readFileSync(path.join(dossierSortie, '2-dossier-thematique.txt'), 'utf8');
+    assert.ok(dossierThematique.indexOf('<a href="https://doi.org/10.57161/r2027-03-00" target="_blank">') !== -1, dossierThematique);
   } finally {
     if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
@@ -349,30 +349,30 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
     });
     assert.strictEqual(resultat.ok, true);
 
-    const varia = fs.readFileSync(path.join(dossierSortie, 'varia.txt'), 'utf8');
+    const varia = fs.readFileSync(path.join(dossierSortie, '3-varia.txt'), 'utf8');
     assert.strictEqual(varia, [
-      '<p><b>VARIA</b><br>',
-      '<br>',
-      'Amélie Dentz, Bianca Frank Baud, Nicolas Ruffieux et Chantal Martin Sölch<br>',
-      '<a href="https://doi.org/10.57161/r2026-03-01">Compensation des désavantages; regards croisés. ' +
-        'Un titre avec un "guillemet" et un point-virgule ; voilà</a><br>',
-      '<i>Nachteilsausgleich</i><br>',
-      '<br>',
-      'Bruno Meyer<br>',
-      '<a href="https://doi.org/10.57161/r2026-03-02">Adapter le curriculum</a></p>\n'
+      '<p><strong>VARIA</strong><br />',
+      '<br />',
+      'Amélie Dentz, Bianca Frank Baud, Nicolas Ruffieux et Chantal Martin Sölch<br />',
+      '<a href="https://doi.org/10.57161/r2026-03-01" target="_blank">Compensation des désavantages; regards croisés. ' +
+        'Un titre avec un "guillemet" et un point-virgule ; voilà</a><br />',
+      '<em>Nachteilsausgleich</em><br />',
+      '<br />',
+      'Bruno Meyer<br />',
+      '<a href="https://doi.org/10.57161/r2026-03-02" target="_blank">Adapter le curriculum</a></p>\n'
     ].join('\n'));
 
-    const editorial = fs.readFileSync(path.join(dossierSortie, 'editorial.txt'), 'utf8');
-    assert.ok(editorial.startsWith('<p><b>ÉDITORIAL</b><br>'), editorial);
+    const editorial = fs.readFileSync(path.join(dossierSortie, '1-editorial.txt'), 'utf8');
+    assert.ok(editorial.startsWith('<p><strong>ÉDITORIAL</strong><br />'), editorial);
 
-    const documentation = fs.readFileSync(path.join(dossierSortie, 'documentation.txt'), 'utf8');
-    // Sans DOI : le titre sort SANS lien.
-    assert.ok(documentation.indexOf('<a href') === -1, documentation);
+    const documentation = fs.readFileSync(path.join(dossierSortie, '5-documentation.txt'), 'utf8');
+    // Sans DOI : le lien est la page OJS de l'article, au chemin que l'export OJS fixe.
+    assert.ok(documentation.indexOf('<a href="https://ojs.szh.ch/index.php/revue/fr/article/view/2026-03-doc" target="_blank">') !== -1, documentation);
     assert.ok(documentation.indexOf('Comptes rendus') !== -1, documentation);
 
     // Aucune rubrique « Dossier thématique »/« Tribune libre » dans la fixture : pas de fichier.
-    assert.ok(!fs.existsSync(path.join(dossierSortie, 'dossier-thematique.txt')));
-    assert.ok(!fs.existsSync(path.join(dossierSortie, 'tribune-libre.txt')));
+    assert.ok(!fs.existsSync(path.join(dossierSortie, '2-dossier-thematique.txt')));
+    assert.ok(!fs.existsSync(path.join(dossierSortie, '4-tribune-libre.txt')));
 
     const auteursCsv = fs.readFileSync(path.join(dossierSortie, 'auteurs.csv'));
     assert.strictEqual(auteursCsv.toString('utf8').charAt(0), '\uFEFF');
@@ -383,7 +383,8 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
     // sur les quatre lignes des auteur·e·s de l'article concerné.
     assert.ok(lignesAuteurs.some((l) => l.indexOf('""guillemet""') !== -1), lignesAuteurs.join('\n'));
 
-    assert.ok(evenements.some((e) => e.t === 'avert' && e.texte.indexOf('10-doc') !== -1));
+    // L'article sans DOI a un lien (sa page OJS) : plus d'avertissement « sans lien ».
+    assert.ok(!evenements.some((e) => e.t === 'avert' && e.texte.indexOf('10-doc') !== -1));
   } finally {
     if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
@@ -422,7 +423,7 @@ test('commandeNewsletter : la Documentation Kirby (sans .md) est quand même rec
     const dossierSortie = dossierTemp('szh-secr-sortie-kirby-');
     const resultat = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierSortie });
     assert.strictEqual(resultat.ok, true);
-    const documentation = fs.readFileSync(path.join(dossierSortie, 'documentation.txt'), 'utf8');
+    const documentation = fs.readFileSync(path.join(dossierSortie, '5-documentation.txt'), 'utf8');
     assert.ok(documentation.indexOf('Actualité et ressources') !== -1,
       'la Documentation sans .md a disparu de la newsletter : ' + documentation);
   } finally {
@@ -449,7 +450,8 @@ test('commandeNewsletter : sans --gabarits, lit export-templates/ et n’écrit 
     const resultat = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierSortie });
     assert.strictEqual(resultat.ok, true);
     // Le rendu a bien eu lieu, avec les gabarits livrés — sans qu'aucun --gabarits ne soit passé.
-    assert.ok(fs.existsSync(path.join(dossierSortie, 'varia.txt')));
+    assert.ok(fs.existsSync(path.join(dossierSortie, '3-varia.txt')));
+    assert.ok(fs.existsSync(path.join(dossierSortie, '0-intro.txt')));
     assert.ok(fs.existsSync(path.join(dossierSortie, 'auteurs.csv')));
     // Les neuf gabarits attendus sont bien tous là où ils sont lus, à la source.
     for (const nom of secretariat.NOMS_GABARITS_DEFAUT) {
@@ -1066,13 +1068,13 @@ test('commandeNewsletter : des textes au vrai pluriel, en français par défaut 
       return { fin: r.texte, etapes: evenements.filter((e) => e.texte).map((e) => e.texte) };
     };
     const fr = await textes();
-    assert.strictEqual(fr.fin, '4 fichiers produits pour le numéro 2026-03.');
+    assert.strictEqual(fr.fin, '5 fichiers produits pour le numéro 2026-03.');
     assert.ok(fr.etapes.some((t) => /^Varia\s:\s2 articles$/.test(t)), fr.etapes.join(' | '));
     assert.ok(fr.etapes.some((t) => /\s:\s1 article$/.test(t)), fr.etapes.join(' | '));
     assert.ok(fr.etapes.some((t) => /\s:\saucun article, pas de fichier$/.test(t)), fr.etapes.join(' | '));
     assert.ok(fr.etapes.some((t) => /^Liste des auteurs\s:\s7 personnes$/.test(t)), fr.etapes.join(' | '));
     const de = await textes('de');
-    assert.strictEqual(de.fin, '4 Dateien für die Ausgabe 2026-03 erstellt.');
+    assert.strictEqual(de.fin, '5 Dateien für die Ausgabe 2026-03 erstellt.');
     assert.ok(de.etapes.some((t) => / 2 Artikel$/.test(t)), de.etapes.join(' | '));
     assert.ok(de.etapes.some((t) => /^Liste der Autorenschaft: 7 Personen$/.test(t)), de.etapes.join(' | '));
     for (const t of fr.etapes.concat(de.etapes)) { assert.doesNotMatch(t, /\(s\)|OAI|moisson/); }

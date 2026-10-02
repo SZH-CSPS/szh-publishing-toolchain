@@ -226,7 +226,7 @@ function etats(langue) {
   const enCours = secretariat.concat([['clic', '#sec-newsletter'], debut('newsletter'),
     L('newsletter', { t: 'etape', texte: P.lecture }), L('newsletter', { t: 'etape', texte: P.ed }),
     L('newsletter', { t: 'etape', texte: P.dt }), L('newsletter', { t: 'progres', fait: 3, total: 6 })]);
-  const fichiers = ['editorial.txt', 'dossier-thematique.txt', 'varia.txt', 'tribune-libre.txt', 'documentation.txt', 'auteurs.csv']
+  const fichiers = ['0-intro.txt', '1-editorial.txt', '2-dossier-thematique.txt', '3-varia.txt', '4-tribune-libre.txt', '5-documentation.txt', 'auteurs.csv']
     .map((f) => L('newsletter', { t: 'fichier', chemin: BASE + '\\Exports\\Newsletter\\2026-03\\' + f, nom: f }));
   const journal = [['clic', '#onglet-journal'],
     ['hote', { type: MSG.LANCEUR_JOURNAL_TEXTE, rang: 0, texte: transcript(), lignes: 200 }]];
