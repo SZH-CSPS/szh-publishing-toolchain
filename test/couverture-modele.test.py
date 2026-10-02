@@ -176,9 +176,10 @@ class Composition(unittest.TestCase):
         return couverture.composer(opts, livre(couverture={'modele': modele}), mode)[0]
 
     def test_chaque_modele_compose_sans_jeton_restant(self):
-        # Le fond ProSpectrum passe par Pillow et le profil ICC, absents du python3 de la
-        # CI : build-render.sh le compose pour de vrai, dans l'image.
-        with mock.patch.object(couverture, 'fond_uri', lambda *a: 'data:,'):
+        # Le fond ProSpectrum passe par Pillow et le profil ICC, absents de la CI (ni Pillow
+        # ni /opt/icc) : build-render.sh le compose pour de vrai, dans l'image.
+        with mock.patch.object(couverture, 'fond_uri', lambda *a: 'data:,'), \
+                mock.patch.object(couverture, 'profil_icc', lambda *a: '/profil-factice.icc'):
             for m in couverture.MODELES:
                 # Les commentaires du gabarit gardent leurs jetons, voulus.
                 html = re.sub(r'<!--.*?-->', '', self.composer(m), flags=re.S)
