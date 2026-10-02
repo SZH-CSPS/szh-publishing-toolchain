@@ -21,7 +21,7 @@ test('hors Windows, pas de commande : on passe par openExternal', () => {
   assert.strictEqual(ouvrir.commande('/home/x/a.docx', 'linux', ''), null);
 });
 
-test('ouvrirAvecSysteme lance explorer.exe, sans passer par openExternal', { skip: process.platform !== 'win32' }, async () => {
+test('ouvrirAvecSysteme lance explorer.exe, sans passer par openExternal', { skip: process.platform !== 'win32' ? 'chemins Windows — joué par le job contrats-windows' : false }, async () => {
   const lances = [];
   let externes = 0;
   ouvrir.poserLanceur((programme, args) => { lances.push([programme, args]); });

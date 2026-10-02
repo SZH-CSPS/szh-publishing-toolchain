@@ -139,6 +139,16 @@ Le détail est dans [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Les règles 
   ```
   Attendu : 0 échec, 0 annulé, et seulement des sauts dont le motif est admis par
   `test/js/motifs-saut.js`. Pas de `t.skip('…')` libre.
+- **Les tests tournent aussi sous Linux** (job `contrats` de la CI, ubuntu). La porte
+  `--runner ubuntu` ne simule que ses sauts, elle tourne sous Windows : elle ne voit ni
+  `path.sep`, ni la casse des fichiers, ni l'absence de `C:`. D'où trois règles :
+  - un test construit ses chemins attendus avec `path.join`, jamais avec `\\` en dur ;
+  - un test qui compare un chemin normalisé en Windows (ancrage SharePoint, Bureau, lettre de
+    lecteur, `C:\ProgramData`) porte `{ skip: process.platform !== 'win32' ? 'chemins
+    Windows — joué par le job contrats-windows' : false }` dès qu'il est écrit. Un `skip`
+    booléen (`skip: process.platform !== 'win32'`) n'a pas de motif : la CI le refuse ;
+  - un `release:` dont la CI est rouge ne pose pas de tag : on corrige, puis on pousse un
+    nouveau commit `release:` (la 3.2.0 l'a appris).
 - **Le rendu ne doit pas bouger sans le vouloir.**
   - On compare au banc (`test/build-render.sh`) contre un worktree détaché du commit
     d'avant.
