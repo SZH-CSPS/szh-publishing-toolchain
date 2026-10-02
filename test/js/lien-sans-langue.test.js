@@ -37,6 +37,8 @@ const OUVRIR = lire('windows', 'open-produit.ps1');
 // Les deux onglets sortis du lanceur : l'interdiction d'appeler Set-SzhLangueProduit vaut aussi pour eux.
 const OUVRIR_ET_ONGLETS = OUVRIR + '\n' + lire('windows', 'lanceur-secretariat.ps1') + '\n' + lire('windows', 'lanceur-preproc.ps1');
 const UPDATE = lire('windows', 'update.ps1');
+// Le lien reçu vit dans Open-SzhLien (szh-produits.ps1), qu'appelle open-revue.ps1.
+const PRODUITS = lire('windows', 'szh-produits.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
@@ -58,15 +60,14 @@ test('update.ps1 enregistre le ProgId szh sans -Produit, et ce n’est plus un p
 
 // ---- Le bloc « lien reçu » ne doit plus toucher à aucune langue ----
 
-test('open-produit.ps1 : le bloc « lien reçu » ne touche à aucune langue', () => {
-  const iBloc = OUVRIR.indexOf('if ($Lien) {');
-  assert.notStrictEqual(iBloc, -1, 'le bloc « lien reçu » a disparu de open-produit.ps1');
-  // Borne de fin : le calcul des racines à balayer, juste après le bloc lien (voir
-  // l'en-tête « ---- Racines à balayer, communes aux trois onglets ---- »).
-  const iRacines = OUVRIR.indexOf('$emplacements = Get-SzhEmplacements', iBloc);
-  assert.notStrictEqual(iRacines, -1, 'le calcul des racines a disparu ou a changé de forme');
-  assert.ok(iBloc < iRacines, 'le bloc « lien reçu » doit précéder le calcul des racines');
-  const corps = OUVRIR.slice(iBloc, iRacines);
+test('Open-SzhLien : le bloc « lien reçu » ne touche à aucune langue', () => {
+  const iBloc = PRODUITS.indexOf('function Open-SzhLien(');
+  assert.notStrictEqual(iBloc, -1, 'Open-SzhLien a disparu de szh-produits.ps1');
+  // Borne de fin : l'accolade qui ferme la fonction, en début de ligne.
+  const iFin = PRODUITS.indexOf('\n}', iBloc);
+  assert.notStrictEqual(iFin, -1, 'la fin d’Open-SzhLien ne se trouve plus');
+  const corps = PRODUITS.slice(iBloc, iFin);
+  assert.ok(corps.indexOf('Get-SzhLien $Lien') !== -1, 'la découpe ne prend plus le corps du lien');
   // Set-SzhLangueProduit, comme FONCTION APPELÉE, a disparu de tout le fichier -- seul son
   // nom survit dans le commentaire d'en-tête, qui raconte le défaut d'origine. On le
   // cherche donc suivi d'un argument (une vraie invocation), jamais comme simple mot.
@@ -133,10 +134,17 @@ test('ouvrir un lien Zeitschrift ne modifie ni state.json ni etat-utilisateur.js
       SZH_BASE: programData,
       LOCALAPPDATA: localAppData,
       SZH_LANCEUR_SIMULE: '1',
+      // Les tâches de démarrage passent avant le lien : un ancrage, des rapports et des
+      // racines jetables, pour que le check-in n'écrive pas dans le vrai dossier partagé.
+      SZH_ANCRAGE: path.join(travail, 'sp', 'Daten_Allgemein - General'),
+      SZH_RAPPORTS: path.join(travail, 'rapports'),
+      SZH_RACINE_TEST: path.join(travail, 'test'),
+      SZH_RACINE_PROD: path.join(travail, 'prod'),
     });
+    fs.mkdirSync(env.SZH_ANCRAGE, { recursive: true });
     delete env.SZH_LANGUE;   // un essai antérieur ne doit pas fausser la cascade
     const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-      path.join(RACINE, 'windows', 'open-produit.ps1'), 'szh://traduction/zeitschrift/2026-05'],
+      path.join(RACINE, 'windows', 'open-revue.ps1'), 'szh://traduction/zeitschrift/2026-05'],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
     assert.ok(run.stdout, 'aucune sortie JSON du lanceur : ' + run.stderr);
     const sortie = JSON.parse(run.stdout.trim());

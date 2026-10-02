@@ -127,13 +127,12 @@ pose au premier lancement une entrée « Pronto (dev) » au menu Démarrer. Para
 `-BaseDev <dossier>` (une autre racine, pour deux instances ou un banc jetable), `-Simuler`
 (le plan complet en JSON, sans rien écrire), `-Menu <dossier>` (où poser le raccourci).
 
-Sans argument, le script ouvre VSCodium sans dossier, en `--new-window`, sur l'Accueil du
-cockpit. Il fait d'abord les tâches de démarrage d'`open-produit.ps1` (ancrage, rapports en
-attente, check-in, épinglage, dossiers de test) et pose les secrets. `SZH_ACCUEIL=1` ne vit
-que dans l'environnement de VSCodium. `-Lanceur`, un lien `szh://`, `-Produit` ou
-`-Versions` passent à `windows/open-revue.ps1`, donc au lanceur WinForms. VSCodium ne
-rouvre pas le dernier numéro : en `--new-window` sans dossier, il ne restaure la session
-que si `window.restoreWindows` vaut `preserve`.
+Sans argument, le script appelle `Start-SzhAccueil` (`windows/szh-shell.ps1`), comme
+« Pronto » en production : les tâches de démarrage (ancrage, rapports en attente, check-in,
+épinglage, dossiers de test, secrets), puis VSCodium en `-n` sans dossier, où le cockpit
+ouvre l'Accueil. Un lien `szh://`, `-Produit` ou `-Versions` passent à
+`windows/open-revue.ps1`. Rien ne se rouvre au démarrage : `window.restoreWindows` vaut
+`none` dans les réglages de la maison.
 
 | Élément | Production | Instance de dev |
 |---|---|---|

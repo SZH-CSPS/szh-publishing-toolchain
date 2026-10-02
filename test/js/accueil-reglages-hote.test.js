@@ -24,7 +24,7 @@ Object.assign(process.env, {
   SZH_RACINE_PROD: path.join(TRAVAIL, 'Prod'), SZH_ANCRAGE: '', SZH_ONGLET: '', LOCALAPPDATA: LOCAL,
   SZH_CONFIG_OJS: CONFIG, SZH_ETAT_POSTE: STATE
 });
-delete process.env.SZH_ACCUEIL;      // hors porte : la commande doit s'ouvrir quand même
+delete process.env.SZH_ACCUEIL;
 delete process.env.WSLENV;
 fs.mkdirSync(path.join(TRAVAIL, 'ProgramData'), { recursive: true });
 fs.writeFileSync(CONFIG, '{}\n');
@@ -41,7 +41,8 @@ const { revueDEssai, activerHote } = require('./hote-factice');
 const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
 const services = require(path.join(COCKPIT, 'lib', 'services-env.js'));
 const moteur = require(path.join(COCKPIT, 'lib', 'moteur.js'));
-const HOTE = activerHote(revueDEssai(), { sansDossier: true });
+// Un fichier ouvert : l'Accueil ne s'ouvre pas seul, la commande doit l'ouvrir quand même.
+const HOTE = activerHote(revueDEssai(), { sansDossier: true, onglets: [{ uri: { fsPath: path.join(TRAVAIL, 'note.md') } }] });
 
 const CLE = 'cle-shlink-secrete-9876';
 const panneau = () => HOTE.panneauDeType('szhAccueil');
@@ -79,8 +80,8 @@ test('la langue de l’état du compte se recopie au premier lancement, sauf si 
   fs.writeFileSync(ETAT, JSON.stringify({ ongletDefaut: 'zeitschrift', langueInterface: 'fr', majSilencieuse: false }));
 });
 
-test('szh.reglages : hors porte et sans produit, ouvre l’Accueil sur Paramètres, une seule page', async () => {
-  assert.strictEqual(HOTE.contexte()['szh.accueil.actif'], false, 'le test doit être hors porte');
+test('szh.reglages : sans Accueil ouvert ni produit, ouvre l’Accueil sur Paramètres, une seule page', async () => {
+  assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length, 0, 'l’Accueil s’est ouvert seul : le test doit partir sans lui');
   await HOTE.executer('szh.reglages');
   assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length, 1);
   assert.strictEqual(HOTE.panneaux.filter((p) => p.type === 'szhReglages').length, 0, 'l’ancien panneau existe encore');

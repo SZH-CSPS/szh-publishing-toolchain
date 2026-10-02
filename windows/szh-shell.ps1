@@ -34,11 +34,7 @@ function Start-SzhCodium([string]$Dossier) {
     return $false
   }
   if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
-  $arguments = @()
-  if ($env:SZH_CODIUM_PROFIL) {
-    $arguments += ('--user-data-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'data'))
-    $arguments += ('--extensions-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'extensions'))
-  }
+  $arguments = @(Get-SzhArgumentsProfil)
   $arguments += ('"{0}"' -f $Dossier)
   Write-SzhLog ('codium : ' + $codium + ' ' + ($arguments -join ' '))
   if ($env:SZH_LANCEUR_SIMULE -eq '1') { return $true }
@@ -48,6 +44,153 @@ function Start-SzhCodium([string]$Dossier) {
   } catch {
     Write-SzhLog ('codium : lancement impossible (' + $_.Exception.Message + ') pour ' + $Dossier)
     return $false
+  }
+}
+
+# ---- L'Accueil du cockpit ----
+# « Pronto » ouvre VSCodium en fenêtre neuve, sans dossier : le cockpit y ouvre l'Accueil.
+# En dessous de cette version du cockpit, la fenêtre resterait vide ; la mise à jour passe
+# d'abord.
+$script:SzhCockpitAccueilMin = '0.74.0'
+
+# Les arguments que $env:SZH_CODIUM_PROFIL ajoute à toute ligne de VSCodium : vide ou
+# absente, rien.
+function Get-SzhArgumentsProfil {
+  $arguments = @()
+  if ($env:SZH_CODIUM_PROFIL) {
+    $arguments += ('--user-data-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'data'))
+    $arguments += ('--extensions-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'extensions'))
+  }
+  return $arguments
+}
+
+# Un plan de simulation, en octets UTF-8 sur la sortie : Write-Output passerait par
+# l'encodage de la console et abîmerait un accent en PowerShell 5.1.
+function Write-SzhPlanJson($Objet) {
+  $octets = [System.Text.Encoding]::UTF8.GetBytes(($Objet | ConvertTo-Json -Depth 6))
+  $flux = [Console]::OpenStandardOutput()
+  $flux.Write($octets, 0, $octets.Length)
+  $flux.Flush()
+}
+
+# VSCodium manque : un rapport, puis une boîte, la seule chose que voie une personne lancée
+# sans console.
+function Show-SzhCodiumAbsent {
+  try { Write-SzhRapport -Code 'LANCEUR-CODIUM-ABSENT' -Source 'lanceur' -Etape 'démarrage du lanceur' } catch { }
+  Add-Type -AssemblyName System.Windows.Forms
+  [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.codium' @($SzhSupport)), $SzhNomApplication)
+}
+
+# La version de szh-cockpit posée pour ce compte, lue dans son package.json sans lancer
+# l'éditeur ; '' quand aucune n'est posée. $env:SZH_COCKPIT_DOSSIER nomme le dossier
+# (instance de dev) ; sinon on parcourt les extensions du profil, sans celles que l'éditeur
+# a marquées obsolètes et qu'il effacera.
+function Get-SzhVersionCockpit {
+  $dossiers = @()
+  if ($env:SZH_COCKPIT_DOSSIER) {
+    $dossiers = @($env:SZH_COCKPIT_DOSSIER)
+  } else {
+    $racine = Join-Path $env:USERPROFILE '.vscode-oss\extensions'
+    if ($env:SZH_CODIUM_PROFIL) { $racine = Join-Path $env:SZH_CODIUM_PROFIL 'extensions' }
+    if (-not (Test-Path -LiteralPath $racine)) { return '' }
+    $obsoletes = @{}
+    $fichierObsoletes = Join-Path $racine '.obsolete'
+    if (Test-Path -LiteralPath $fichierObsoletes) {
+      try {
+        $o = Get-Content -LiteralPath $fichierObsoletes -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($p in $o.PSObject.Properties) { $obsoletes[$p.Name] = $true }
+      } catch { }
+    }
+    foreach ($d in @(Get-ChildItem -LiteralPath $racine -Directory -Filter 'szh-csps.szh-cockpit-*' -ErrorAction SilentlyContinue)) {
+      if (-not $obsoletes.ContainsKey($d.Name)) { $dossiers += $d.FullName }
+    }
+  }
+  $meilleure = $null
+  foreach ($d in $dossiers) {
+    try {
+      $pkg = Get-Content -LiteralPath (Join-Path $d 'package.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+      $v = [version]([string]$pkg.version)
+      if (($null -eq $meilleure) -or ($v -gt $meilleure)) { $meilleure = $v }
+    } catch { }
+  }
+  if ($null -eq $meilleure) { return '' }
+  return $meilleure.ToString()
+}
+
+function Test-SzhCockpitAccueil([string]$Version) {
+  if (-not $Version) { return $false }
+  try { return ([version]$Version -ge [version]$SzhCockpitAccueilMin) } catch { return $false }
+}
+
+# Les tâches de démarrage de tout lancement, lien szh:// compris, dans cet ordre : l'ancrage
+# d'abord, dont les autres lisent la racine. Aucune ne bloque le lancement. Rend leurs noms
+# et l'ancrage résolu.
+function Invoke-SzhTachesDemarrage {
+  $taches = New-Object System.Collections.ArrayList
+  [void]$taches.Add('Initialize-SzhAncrage')
+  $ancrage = Initialize-SzhAncrage
+  if ($ancrage.chemin) {
+    Write-SzhLog ('demarrage : ancrage SharePoint "{0}" (origine {1})' -f $ancrage.chemin, $ancrage.origine)
+  } else {
+    Write-SzhLog ('demarrage : ancrage SharePoint introuvable (origine {0})' -f $ancrage.origine)
+  }
+  # Seulement après une vraie demande restée sans réponse : l'origine « defaut » (demande
+  # évitée) est fréquente et ne vaut pas un rapport à chaque lancement.
+  if ($ancrage.origine -eq 'absent') {
+    try { Write-SzhRapport -Code 'ANCRAGE-INTROUVABLE' -Source 'lanceur' -Etape (T 'ancrage.demande.titre') } catch { }
+  }
+  [void]$taches.Add('Clear-SzhRapportsEnAttente')
+  try { Clear-SzhRapportsEnAttente } catch { }
+  [void]$taches.Add('Invoke-SzhCheckin')
+  try { [void](Invoke-SzhCheckin -OrigineAncrage $ancrage.origine) } catch { }
+  [void]$taches.Add('Invoke-SzhEpinglageHorsLigne')
+  try { [void](Invoke-SzhEpinglageHorsLigne) } catch { }
+  [void]$taches.Add('Initialize-SzhEmplacementsTest')
+  try { [void](Initialize-SzhEmplacementsTest) } catch { }
+  [void]$taches.Add('Set-SzhEnvironnementSecrets')
+  Set-SzhEnvironnementSecrets
+  return [ordered]@{ taches = @($taches); ancrage = $ancrage }
+}
+
+# L'entrée « Pronto » : l'éditeur, puis la version du cockpit, puis les tâches de démarrage,
+# et VSCodium en fenêtre neuve sans dossier. Rend le code de sortie ; sous
+# $env:SZH_LANCEUR_SIMULE=1, écrit le plan en JSON au lieu de lancer, et l'absence de
+# l'éditeur n'arrête rien.
+function Start-SzhAccueil {
+  $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')
+  $codium = Get-VSCodiumExe
+  if ((-not $codium) -and (-not $simule)) { Show-SzhCodiumAbsent; return 1 }
+
+  $version = Get-SzhVersionCockpit
+  if (-not (Test-SzhCockpitAccueil $version)) {
+    $constat = ('cockpit « {0} », il faut au moins {1}' -f $version, $SzhCockpitAccueilMin)
+    Write-SzhLog ('accueil : ' + $constat)
+    try { Write-SzhRapport -Code 'ACCUEIL-COCKPIT-ABSENT' -Source 'lanceur' -Etape 'démarrage de l''Accueil' -Message $constat } catch { }
+    if ($simule) {
+      Write-SzhPlanJson ([ordered]@{ entree = 'accueil'; refus = 'ACCUEIL-COCKPIT-ABSENT'; cockpit = $version; minimum = $SzhCockpitAccueilMin })
+      return 1
+    }
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show(
+      (T 'accueil.cockpit.absent' @($SzhNomApplication, $SzhNomMiseAJour, $SzhSupport)), $SzhNomApplication)
+    return 1
+  }
+
+  $demarrage = Invoke-SzhTachesDemarrage
+  $arguments = @(Get-SzhArgumentsProfil) + @('-n')
+  Write-SzhLog ('accueil : ' + $codium + ' ' + ($arguments -join ' '))
+  if ($simule) {
+    Write-SzhPlanJson ([ordered]@{ entree = 'accueil'; codium = [string]$codium; cockpit = $version
+      arguments = $arguments; taches = $demarrage.taches; ancrage = $demarrage.ancrage })
+    return 0
+  }
+  if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
+  try {
+    Start-Process -FilePath $codium -ArgumentList $arguments
+    return 0
+  } catch {
+    Write-SzhLog ('accueil : lancement impossible (' + $_.Exception.Message + ')')
+    return 1
   }
 }
 
@@ -86,6 +229,9 @@ function Start-SzhCodium([string]$Dossier) {
 # raccourcis de l'ancien.
 $script:SzhAppIds = @{
   'suite' = 'SZH.Publishing.Suite'
+  # Celle de VSCodium (win32AppUserModelId de son product.json), que « Pronto » prend pour
+  # n'avoir qu'un bouton avec la fenêtre de l'éditeur qu'il ouvre.
+  'codium' = 'VSCodium.VSCodium'
   'maj'   = 'SZH.Publishing.MiseAJour'
 }
 
@@ -373,7 +519,7 @@ function Get-SzhRaccourcisMenu {
     args   = ('//B "{0}" "{1}"' -f $vbs, $lanceur)
     desc   = $SzhTextes[$SzhLangue]['raccourci.lanceur.desc']
     icone  = (Join-Path $Toolkit 'windows\pronto.ico')
-    appid  = (Get-SzhAppId 'suite')
+    appid  = (Get-SzhAppId 'codium')
     pilote = $lanceur
   })
   # Aucun -Langue : update.ps1 garde le paramètre pour la ligne de commande, mais son
@@ -417,6 +563,34 @@ function Get-SzhRaccourcisObsoletes {
   return $noms
 }
 
+# Les raccourcis qui visent VSCodium.exe portent la même identité que « Pronto », et la barre
+# des tâches prend l'icône de l'un d'eux : un seul sans icône, et le bouton montre celle de
+# l'exécutable. Ils reçoivent donc pronto.ico, au premier niveau du menu et dans le dossier
+# « VSCodium » de l'installeur, comme le fait patch-icone.ps1. Rend les noms retouchés.
+function Set-SzhIconeRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
+  $retouches = New-Object System.Collections.ArrayList
+  if (-not (Test-Path -LiteralPath $Icone)) { return $retouches }
+  $voulu = ('{0},0' -f $Icone)
+  foreach ($dossier in @($Menu, (Join-Path $Menu 'VSCodium'))) {
+    if (-not (Test-Path -LiteralPath $dossier)) { continue }
+    foreach ($f in @(Get-ChildItem -LiteralPath $dossier -Filter '*.lnk' -File -ErrorAction SilentlyContinue)) {
+      try {
+        $lnk = $Shell.CreateShortcut($f.FullName)
+        $cible = [string]$lnk.TargetPath
+        if ((-not $cible) -or ((Split-Path $cible -Leaf) -ne 'VSCodium.exe')) { continue }
+        if ([string]$lnk.IconLocation -eq $voulu) { continue }
+        # WScript.Shell garde l'identité en réécrivant le fichier ; on la relit quand même.
+        $identite = Get-SzhLnkAppId $f.FullName
+        $lnk.IconLocation = $voulu
+        $lnk.Save()
+        if ($identite -and ((Get-SzhLnkAppId $f.FullName) -ne $identite)) { [void](Set-SzhLnkAppId $f.FullName $identite) }
+        [void]$retouches.Add($f.Name)
+      } catch { }
+    }
+  }
+  return $retouches
+}
+
 # Pose les entrées ci-dessus et retire celles d'une version antérieure. Ne lève jamais :
 # un menu Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une
 # mise à jour par ailleurs réussie. Rend un bilan — poses, retires, manques — que
@@ -432,6 +606,7 @@ function Set-SzhRaccourcisMenu {
     poses   = New-Object System.Collections.ArrayList
     retires = New-Object System.Collections.ArrayList
     manques = New-Object System.Collections.ArrayList
+    icones  = New-Object System.Collections.ArrayList
   }
   $voulus = @(Get-SzhRaccourcisMenu -Toolkit $Toolkit)
   $canoniques = @{}
@@ -475,6 +650,11 @@ function Set-SzhRaccourcisMenu {
     } catch {
       [void]$bilan.manques.Add(('{0} : {1}' -f $r.nom, $_.Exception.Message))
     }
+  }
+
+  foreach ($n in @(Set-SzhIconeRaccourcisCodium $Menu (Join-Path $Toolkit 'windows\pronto.ico') $shell)) {
+    [void]$bilan.icones.Add($n)
+    Write-SzhLog ('raccourcis : pronto.ico posé sur ' + $n + ', qui vise VSCodium')
   }
 
   # Une seule ligne suffit à dire qu'un dossier entier se refuse, et elle doit dire la

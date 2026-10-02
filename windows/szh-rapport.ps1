@@ -250,6 +250,7 @@ function Get-SzhRapportResume {
   $table = @{
     'LANCEUR-TRAP' = @{ fr = 'Une erreur inattendue est survenue à l’’ouverture du lanceur ; ce rapport en garde la trace pour le diagnostic.'; de = 'Beim Öffnen des Starters ist ein unerwarteter Fehler aufgetreten; dieser Bericht hält ihn zur Diagnose fest.' }
     'LANCEUR-CODIUM-ABSENT' = @{ fr = 'VSCodium est introuvable au démarrage du lanceur ; l’’éditeur ne peut pas s’’ouvrir tant qu’’il n’’est pas réinstallé.'; de = 'VSCodium wurde beim Start des Starters nicht gefunden; der Editor kann erst nach einer Neuinstallation geöffnet werden.' }
+    'ACCUEIL-COCKPIT-ABSENT' = @{ fr = 'L’’extension du cockpit manque sur ce poste, ou elle est trop ancienne pour ouvrir l’’Accueil ; « Pronto (Updater) » la remet à jour.'; de = 'Die Cockpit-Erweiterung fehlt auf diesem Computer oder ist zu alt, um die Startseite zu öffnen; «Pronto (Updater)» bringt sie auf den neuesten Stand.' }
     'ANCRAGE-INTROUVABLE' = @{ fr = 'Aucun dossier SharePoint n’’a pu être identifié, ni automatiquement ni par la personne consultée ; les produits restent introuvables jusqu’’à ce qu’’il soit indiqué.'; de = 'Es konnte kein SharePoint-Ordner gefunden werden, weder automatisch noch durch Rückfrage; die Produkte bleiben unauffindbar, bis er angegeben wird.' }
     'MAJ-ETAPE-ECHEC' = @{ fr = 'Une étape de la mise à jour a échoué, mais les suivantes ont continué ; ce rapport précise laquelle.'; de = 'Ein Schritt der Aktualisierung ist fehlgeschlagen, die übrigen wurden trotzdem fortgesetzt; dieser Bericht nennt den betroffenen Schritt.' }
     'MAJ-ECHEC' = @{ fr = 'La mise à jour s’’est arrêtée avant la fin ; le poste garde la version qu’’il avait avant l’’essai.'; de = 'Die Aktualisierung wurde vorzeitig abgebrochen; der Rechner behält die Version, die er vor dem Versuch hatte.' }
@@ -273,7 +274,7 @@ function Get-SzhRapportResume {
 function Get-SzhRapportCodesConnus {
   return @('LANCEUR-TRAP', 'LANCEUR-CODIUM-ABSENT', 'ANCRAGE-INTROUVABLE', 'MAJ-ETAPE-ECHEC',
     'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE',
-    'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC', 'COCKPIT-SIGNALEMENT')
+    'LANCEUR-SIGNALEMENT', 'NETTOYEUR-ECHEC', 'COCKPIT-SIGNALEMENT', 'ACCUEIL-COCKPIT-ABSENT')
 }
 
 # =========================================================================================

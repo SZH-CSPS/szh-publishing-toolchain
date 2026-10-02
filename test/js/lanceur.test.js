@@ -59,6 +59,8 @@ const TITRE_SUITE = new RegExp('^' + echapperRegex(NOM_APPLICATION));
 const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-'));
 const PROGRAMDATA = path.join(TRAVAIL, 'ProgramData');
 const BASE = path.join(TRAVAIL, 'Base');
+const ANCRAGE_JETABLE = path.join(TRAVAIL, 'sp', 'Daten_Allgemein - General');
+fs.mkdirSync(ANCRAGE_JETABLE, { recursive: true });
 
 function creerDossier(...segments) {
   const p = path.join(BASE, ...segments);
@@ -122,6 +124,10 @@ function executer(scriptPath, args, programData) {
     // par Initialize-SzhEmplacementRevues) irait lire le vrai OneDrive du poste.
     SZH_RACINE_TEST: BASE,
     SZH_RACINE_PROD: BASE_PROD,
+    // Un ancrage jetable : sans lui, le check-in du démarrage écrirait dans le vrai dossier
+    // partagé du poste. Et le cockpit du dépôt, sans lequel l'Accueil refuse de s'ouvrir.
+    SZH_ANCRAGE: ANCRAGE_JETABLE,
+    SZH_COCKPIT_DOSSIER: path.join(RACINE, 'vscodium-extension', 'szh-cockpit'),
   });
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });

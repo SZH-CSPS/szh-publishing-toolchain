@@ -24,8 +24,8 @@ extension.js            activation, câblage des modules de lib/ par leurs confi
                         panneau n'y est créé (motif des modules hôtes : docs/ARCHITECTURE.md)
 lib/
   accueil-hote.js       l'Accueil : son panneau, ses données, l'ouverture
-                        d'un numéro (vscode.openFolder) et sa création. Ne s'ouvre seul que
-                        sous SZH_ACCUEIL=1, dans une fenêtre sans dossier
+                        d'un numéro (vscode.openFolder) et sa création. S'ouvre seul dans
+                        une fenêtre sans dossier ni onglet
   accueil-journal-hote.js  l'onglet Log : la fin d'un journal, l'éditeur, et le signalement
                         (rapport, dossier des journaux, brouillon au support). Sans vscode
   accueil-preproc-hote.js  l'onglet Préprocessing : le nettoyeur de manuscrit dans le moteur,

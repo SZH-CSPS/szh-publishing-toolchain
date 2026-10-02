@@ -309,18 +309,19 @@ vérification (`print-templates/`) sont des gabarits Twig rendus par un seul mot
 `lib/gabarits.js`. Le lanceur Windows passe par ce même moteur, exécuté par le Node de
 VSCodium (`outils/rendre-gabarit.js`).
 
-### L'Accueil du cockpit (DEV)
+### L'Accueil du cockpit
 
-L'Accueil reprend le lanceur WinForms onglet par onglet (étape 2 de
-[`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)). Produits, Nouveau, Secrétariat et Log sont
-portés ; Préprocessing et Réglages ne le sont pas encore. Il n'existe qu'en DEV : la
-production reste sur WinForms (§3).
+L'Accueil reprend le lanceur WinForms (étape 2 de [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)) :
+Produits, Nouveau, Secrétariat, Log, Préprocessing et Réglages. « Pronto » l'ouvre en
+production comme en DEV ; WinForms ne sert plus qu'au sélecteur de version (§3).
 
-- **La porte.** `lib/accueil-hote.js` ouvre son panneau (`panneauUnique`) quand aucun dossier
-  n'est ouvert et que `SZH_ACCUEIL=1` ; il possède aussi l'onglet actif et l'ouverture des
-  dossiers. Sans la variable, rien ne s'ouvre. `outils-dev/pronto-dev.ps1` (« Pronto (dev) »)
-  la pose et lance VSCodium sans dossier ; `SZH_JOURNAUX_MAJ` lui fait lire les journaux de
-  mise à jour du poste.
+- **La porte.** `lib/accueil-hote.js` ouvre son panneau (`panneauUnique`) dans une fenêtre
+  sans dossier ni onglet, à l'activation, avec une relecture à +500 ms ; il possède aussi
+  l'onglet actif et l'ouverture des dossiers. Un numéro déjà ouvert ailleurs passe devant :
+  la fenêtre de l'Accueil, restée vide et sans focus, se ferme. `Start-SzhAccueil`
+  (`windows/szh-shell.ps1`) lance VSCodium en `-n` sans dossier, après les tâches de
+  démarrage et le contrôle de la version du cockpit ; `open-revue.ps1` (« Pronto ») et
+  `outils-dev/pronto-dev.ps1` (« Pronto (dev) ») l'appellent.
 - **Un module par onglet**, sur le motif `configurer(ctx)`, sans panneau :
   `accueil-nouveau.js` (création, qui rappelle `new-revue.ps1` et `new-livre.ps1`),
   `accueil-secretariat-hote.js` (lance `outils/secretariat-cli.js`) et

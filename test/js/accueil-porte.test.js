@@ -1,7 +1,8 @@
-// La porte de l'Accueil dans l'éditeur (lib/accueil-hote.js) : il ne s'ouvre seul que sous
-// SZH_ACCUEIL=1 et dans une fenêtre sans dossier. Une porte mal fermée le ferait surgir sur
-// chaque poste. Chaque cas active l'extension dans son propre processus : le faux vscode ne
-// s'active qu'une fois par processus.
+// La porte de l'Accueil dans l'éditeur (lib/accueil-hote.js) : il ne s'ouvre seul que dans
+// une fenêtre sans dossier ni onglet. Une porte mal fermée le ferait surgir par-dessus un
+// numéro ou un fichier. Et quand le numéro choisi est déjà ouvert ailleurs, la fenêtre de
+// l'Accueil se ferme. Chaque cas active l'extension dans son propre processus : le faux
+// vscode ne s'active qu'une fois par processus.
 //
 //   node --test test/js/accueil-porte.test.js
 'use strict';
@@ -32,14 +33,35 @@ async function enfant() {
   fs.mkdirSync(ancien, { recursive: true });
   fs.writeFileSync(path.join(ancien, 'ausgabe.yaml'), 'revue: revue\n');
   fs.utimesSync(ancien, 1000000000, 1000000000);
-  const HOTE = activerHote(revueDEssai(), { sansDossier: CAS !== 'dossier' });
+  const fichier = { uri: { fsPath: path.join(travail, 'note.md') } };
+  const avecOnglet = CAS === 'onglet' || CAS === 'relecture';
+  const HOTE = activerHote(revueDEssai(), { sansDossier: CAS !== 'dossier', onglets: avecOnglet ? [fichier] : [] });
+  const accueilsAvant = HOTE.panneaux.filter((p) => p.type === 'szhAccueil').length;
+  // L'onglet se ferme avant la relecture : seule elle peut ouvrir l'Accueil.
+  if (CAS === 'relecture') { HOTE.poserOnglets([]); }
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
+  await new Promise((r) => setTimeout(r, 700));
   const accueils = HOTE.panneaux.filter((p) => p.type === 'szhAccueil');
   const sortie = {
     accueils: accueils.length,
-    actif: HOTE.contexte()['szh.accueil.actif'],
+    accueilsAvant,
     commande: HOTE.commandes().indexOf('szh.accueil') !== -1
   };
+  // Le numéro choisi est-il déjà ouvert ailleurs ? Le faux éditeur garde la fenêtre et
+  // son focus, ou le donne à une autre, ou se désactive comme au rechargement.
+  if (['ailleurs', 'remplacee', 'desactivee'].indexOf(CAS) !== -1 && accueils.length === 1) {
+    const p = accueils[0];
+    require('../../vscodium-extension/szh-cockpit/lib/accueil-hote').configurer({ delaiFermeture: 50 });
+    await p._recepteur({ type: MSG.PRET });
+    const charger = p.messages.filter((m) => m.type === MSG.CHARGER)[0] || {};
+    const chemin = (((charger.produits || [])[0] || {}).enCours || [])[0].chemin;
+    HOTE.oublierCommandes();
+    if (CAS !== 'remplacee') { HOTE.poserFocus(false); }
+    await p._recepteur({ type: MSG.ACCUEIL_OUVRIR, chemin: chemin });
+    if (CAS === 'desactivee') { HOTE.desactiver(); }
+    await new Promise((r) => setTimeout(r, 200));
+    sortie.jouees = HOTE.commandesJouees().map((c) => c.id);
+  }
   if (CAS === 'ouverte' && accueils.length === 1) {
     const p = accueils[0];
     await p._recepteur({ type: MSG.PRET });
@@ -65,6 +87,7 @@ async function enfant() {
 function rejouer(cas, accueil) {
   const env = Object.assign({}, process.env, { SZH_PORTE_CAS: cas });
   if (accueil) { env.SZH_ACCUEIL = accueil; } else { delete env.SZH_ACCUEIL; }
+  delete env.SZH_ONGLET;
   const r = spawnSync(process.execPath, [__filename], { env, encoding: 'utf8', timeout: 120000 });
   const ligne = String(r.stdout || '').split(/\r?\n/).filter((l) => l.indexOf('@@PORTE@@') === 0).pop();
   assert.ok(ligne, 'aucun verdict de l’enfant : ' + r.stdout + r.stderr);
@@ -74,26 +97,48 @@ function rejouer(cas, accueil) {
 if (CAS) {
   enfant().catch((e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(1); });
 } else {
-  test('porte fermée : rien ne s’ouvre, même sans dossier, et le contexte est faux', () => {
-    const r = rejouer('fermee', '');
+  test('un dossier ouvert : rien ne s’ouvre, même après la relecture', () => {
+    const r = rejouer('dossier', '');
     assert.strictEqual(r.accueils, 0);
-    assert.strictEqual(r.actif, false);
-    assert.strictEqual(r.commande, true, 'la commande existe, masquée de la palette par le contexte');
-    const autre = rejouer('fermee', '0');
-    assert.strictEqual(autre.accueils, 0, 'seul « 1 » ouvre la porte');
-    assert.strictEqual(autre.actif, false);
+    assert.strictEqual(r.commande, true, 'la commande reste, toujours visible');
   });
 
-  test('porte ouverte sur un dossier : rien ne s’ouvre', () => {
-    const r = rejouer('dossier', '1');
+  test('un onglet ouvert sans dossier : rien ne s’ouvre, même après la relecture', () => {
+    const r = rejouer('onglet', '');
     assert.strictEqual(r.accueils, 0);
-    assert.strictEqual(r.actif, true);
   });
 
-  test('porte ouverte sans dossier : le panneau s’ouvre, liste, ouvre et refuse', () => {
-    const r = rejouer('ouverte', '1');
+  test('l’onglet fermé avant la relecture : l’Accueil s’ouvre à +500 ms, pas avant', () => {
+    const r = rejouer('relecture', '');
+    assert.strictEqual(r.accueilsAvant, 0, 'ouvert dès l’activation malgré l’onglet');
+    assert.strictEqual(r.accueils, 1, 'la relecture n’a pas ouvert l’Accueil');
+  });
+
+  test('SZH_ACCUEIL ne décide plus rien : « 0 » n’empêche pas l’Accueil d’une fenêtre vide', () => {
+    const r = rejouer('ouverte', '0');
     assert.strictEqual(r.accueils, 1);
-    assert.strictEqual(r.actif, true);
+    assert.strictEqual(r.accueilsAvant, 1, 'l’Accueil attend la relecture au lieu de s’ouvrir à l’activation');
+  });
+
+  test('le numéro est déjà ouvert ailleurs : la fenêtre de l’Accueil se ferme', () => {
+    const r = rejouer('ailleurs', '');
+    assert.deepStrictEqual(r.jouees, ['vscode.openFolder', 'workbench.action.closeWindow']);
+  });
+
+  test('la fenêtre garde le focus (elle se recharge sur le numéro) : rien ne se ferme', () => {
+    const r = rejouer('remplacee', '');
+    assert.deepStrictEqual(r.jouees, ['vscode.openFolder']);
+  });
+
+  test('l’extension se désactive avant le délai : rien ne se ferme', () => {
+    const r = rejouer('desactivee', '');
+    assert.deepStrictEqual(r.jouees, ['vscode.openFolder']);
+  });
+
+  test('ni dossier ni onglet : le panneau s’ouvre, liste, ouvre et refuse', () => {
+    const r = rejouer('ouverte', '');
+    assert.strictEqual(r.accueils, 1);
+    assert.strictEqual(r.accueilsAvant, 1, 'l’Accueil ne s’ouvre pas dès l’activation');
     assert.strictEqual(r.produit, 'revue', 'le produit d’office vient de l’hôte');
     assert.deepStrictEqual(r.enCours.map((e) => e.nom), ['2026-03', '2025-04'], 'deux chiffres, toujours');
     assert.match(r.enCours[0].modifie, /^\d{2}\.\d{2}\.\d{4}$/);

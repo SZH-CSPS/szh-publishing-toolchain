@@ -687,42 +687,49 @@ test('Get-SzhRaccourcisMenu rend exactement deux entrees, et aucune ne nomme Pro
   });
 
 // ---- Groupe 7 : l'entree DEV ouvre VSCodium sur le lanceur du cockpit ----
-// Sans argument, pronto-dev.ps1 ne passe plus par open-produit.ps1 : il fait les taches de
-// demarrage, puis lance VSCodium sans dossier, SZH_ACCUEIL=1 dans l'environnement de l'enfant.
-// En simulation, il ecrit son plan en JSON ; open-produit.ps1 simule ecrit le sien, reconnaissable
-// a son champ produit.
+// Sans argument, pronto-dev.ps1 appelle Start-SzhAccueil (szh-shell.ps1) : les taches de
+// demarrage, puis VSCodium sans dossier. En simulation, la fonction ecrit son plan en JSON ;
+// open-produit.ps1 simule ecrivait le sien, reconnaissable a son champ produit.
 
 function executerEntree(args) {
   if (!POWERSHELL) { return null; }
   const jetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-entree-'));
   const baseDev = path.join(jetable, 'SZH-dev');
   const menuJetable = path.join(jetable, 'menu');
-  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' });
+  // Ancrage, rapports, racines et LOCALAPPDATA jetables : sans eux, le check-in du demarrage
+  // ecrirait dans le vrai dossier partage du poste.
+  const d = (n) => { const p = path.join(jetable, n); fs.mkdirSync(p, { recursive: true }); return p; };
+  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1',
+    SZH_ANCRAGE: d(path.join('sp', 'Daten_Allgemein - General')), SZH_RAPPORTS: d('rapports'),
+    SZH_RACINE_PROD: d('prod'), SZH_RACINE_TEST: d('test'), LOCALAPPDATA: d('local') });
   delete env.SZH_ACCUEIL;
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT,
     '-BaseDev', baseDev, '-Menu', menuJetable].concat(args || []), { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
+  const fichierJournal = path.join(baseDev, 'logs', 'szh-' + moisCourant() + '.log');
+  const journal = fs.existsSync(fichierJournal) ? fs.readFileSync(fichierJournal, 'utf8') : '';
   fs.rmSync(jetable, { recursive: true, force: true });
   let sortie = null;
   if (run.stdout) { try { sortie = JSON.parse(run.stdout.trim()); } catch (e) { /* rapporte par le test */ } }
-  return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', sortie, baseDev };
+  return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', sortie, baseDev, journal };
 }
 
 const ENTREE_SANS_ARGUMENT = executerEntree([]);
 const ENTREE_LANCEUR = executerEntree(['-Lanceur']);
 const ENTREE_PRODUIT = executerEntree(['-Produit', 'zeitschrift']);
 
-test('sans argument - VSCodium du profil dev, en --new-window, sans dossier, SZH_ACCUEIL=1 pour l\'enfant seul',
+test('sans argument - Start-SzhAccueil sur le profil dev, en -n, sans dossier ni SZH_ACCUEIL',
   { skip: sansPowerShell }, () => {
     const r = ENTREE_SANS_ARGUMENT;
     assert.ok(r && r.status === 0, 'pronto-dev.ps1 a echoue - ' + (r ? r.stderr + r.stdout.slice(0, 300) : ''));
     assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
     assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
       'open-produit.ps1 a ete appele alors qu\'aucun argument n\'etait passe');
-    assert.strictEqual(r.sortie.entree, 'cockpit');
-    assert.deepStrictEqual(r.sortie.environnement, { SZH_ACCUEIL: '1' });
-    assert.ok(!r.sortie.accueilProcessus, 'SZH_ACCUEIL pose dans le processus de pronto-dev.ps1 lui-meme');
+    // La fonction de production, et plus aucune variable pour ouvrir l'Accueil : la fenetre
+    // vide suffit au cockpit.
+    assert.strictEqual(r.sortie.entree, 'accueil');
+    assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'environnement'), 'une variable est encore passee a VSCodium');
     const args = r.sortie.arguments;
-    assert.ok(Array.isArray(args) && args.indexOf('--new-window') !== -1, 'pas de --new-window - ' + JSON.stringify(args));
+    assert.ok(Array.isArray(args) && args.indexOf('-n') !== -1, 'pas de -n - ' + JSON.stringify(args));
     const ligne = args.join(' ');
     assert.ok(contientOption(ligne, '--user-data-dir', path.join(r.baseDev, 'codium', 'data')),
       'pas de --user-data-dir du profil dev - ' + ligne);
@@ -748,9 +755,12 @@ test('-Lanceur garde open-revue.ps1, donc le lanceur WinForms', { skip: sansPowe
   assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'entree'), 'le chemin cockpit a ete pris');
 });
 
+// open-revue.ps1 le dit au journal, puis ouvre l'Accueil, qui suit le reglage du compte.
 test('un argument (-Produit zeitschrift) passe toujours a open-revue.ps1', { skip: sansPowerShell }, () => {
   const r = ENTREE_PRODUIT;
   assert.ok(r && r.status === 0, 'pronto-dev.ps1 -Produit a echoue - ' + (r ? r.stderr : ''));
   assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
-  assert.strictEqual(r.sortie.produit, 'zeitschrift');
+  assert.ok(r.journal.indexOf('open-revue : -Produit zeitschrift ignore') !== -1,
+    'open-revue.ps1 n\'a pas recu -Produit - ' + r.journal.slice(-400));
+  assert.strictEqual(r.sortie.entree, 'accueil');
 });

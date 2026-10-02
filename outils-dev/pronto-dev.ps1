@@ -6,11 +6,10 @@
   negocie pas.
 
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1
-    powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1 -Lanceur
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1 -Simuler -BaseDev <dossier>
 
-  Sans argument, il ouvre VSCodium sans dossier sur l'Accueil du cockpit (SZH_ACCUEIL=1).
-  -Lanceur, un lien szh://, -Produit ou -Versions passent par windows\open-revue.ps1.
+  Sans argument, il ouvre VSCodium sans dossier sur l'Accueil du cockpit (Start-SzhAccueil).
+  Un lien szh://, -Produit ou -Versions passent par windows\open-revue.ps1.
 
   Compatibilite, Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
 #>
@@ -25,9 +24,7 @@ param(
   # "-Produit" comme une valeur positionnelle.
   [Parameter(Position = 0)][string]$Lien = '',
   [string]$Produit = '',
-  [switch]$Versions,
-  # Le lanceur WinForms plutot que l'Accueil du cockpit.
-  [switch]$Lanceur
+  [switch]$Versions
 )
 
 $ErrorActionPreference = 'Stop'
@@ -307,7 +304,7 @@ try {
   . (Join-Path $racineDepot 'windows\szh-common.ps1')
   Set-SzhRaccourciDev -RacineDepot $racineDepot -NomRaccourci $NOM_RACCOURCI_DEV -DossierMenu $Menu
 
-  if ($Lanceur -or $Lien -or $Produit -or $Versions) {
+  if ($Lien -or $Produit -or $Versions) {
     $transmis = @{}
     if ($Lien) { $transmis['Lien'] = $Lien }
     if ($Produit) { $transmis['Produit'] = $Produit }
@@ -317,67 +314,9 @@ try {
   }
 
   # ---- entree par defaut : VSCodium sans dossier, sur l'Accueil du cockpit ----
-  # Les taches de demarrage d'open-produit.ps1, dans son ordre. La moisson des auteurs n'y est
-  # pas : le cockpit la lance lui-meme a son activation.
-  $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')
-  $taches = New-Object System.Collections.ArrayList
-  $codium = Get-VSCodiumExe
-  if ((-not $codium) -and (-not $simule)) {
-    try { Write-SzhRapport -Code 'LANCEUR-CODIUM-ABSENT' -Source 'lanceur' -Etape 'démarrage du lanceur' } catch { }
-    Add-Type -AssemblyName System.Windows.Forms
-    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.codium' @($SzhSupport)), $SzhNomApplication)
-    exit 1
-  }
-
-  [void]$taches.Add('Initialize-SzhAncrage')
-  $ancrageResolu = Initialize-SzhAncrage
-  if ($ancrageResolu.origine -eq 'absent') {
-    try { Write-SzhRapport -Code 'ANCRAGE-INTROUVABLE' -Source 'lanceur' -Etape (T 'ancrage.demande.titre') } catch { }
-  }
-  [void]$taches.Add('Clear-SzhRapportsEnAttente')
-  try { Clear-SzhRapportsEnAttente } catch { }
-  [void]$taches.Add('Invoke-SzhCheckin')
-  try { [void](Invoke-SzhCheckin -OrigineAncrage $ancrageResolu.origine) } catch { }
-  [void]$taches.Add('Invoke-SzhEpinglageHorsLigne')
-  try { [void](Invoke-SzhEpinglageHorsLigne) } catch { }
-  [void]$taches.Add('Initialize-SzhEmplacementsTest')
-  [void](Initialize-SzhEmplacementsTest)
-  [void]$taches.Add('Set-SzhEnvironnementSecrets')
-  Set-SzhEnvironnementSecrets
-
-  $argumentsCodium = @(
-    ('--user-data-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'data')),
-    ('--extensions-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'extensions')),
-    '--new-window'
-  )
-  Write-SzhLog ('pronto-dev : ' + $codium + ' ' + ($argumentsCodium -join ' ') + ' (SZH_ACCUEIL=1)')
-
-  if ($simule) {
-    $plan = [ordered]@{
-      entree           = 'cockpit'
-      codium           = [string]$codium
-      arguments        = $argumentsCodium
-      environnement    = [ordered]@{ SZH_ACCUEIL = '1' }
-      accueilProcessus = [string]$env:SZH_ACCUEIL
-      taches           = @($taches)
-    }
-    $octets = [System.Text.Encoding]::UTF8.GetBytes(($plan | ConvertTo-Json -Depth 4))
-    $flux = [Console]::OpenStandardOutput()
-    $flux.Write($octets, 0, $octets.Length)
-    $flux.Flush()
-    exit 0
-  }
-
-  # SZH_ACCUEIL ne vit que dans l'environnement de l'enfant : Start-Process ne sait pas le
-  # restreindre en PowerShell 5.1, ProcessStartInfo si.
-  $demarrage = New-Object System.Diagnostics.ProcessStartInfo
-  $demarrage.FileName = $codium
-  $demarrage.Arguments = ($argumentsCodium -join ' ')
-  $demarrage.UseShellExecute = $false
-  $demarrage.EnvironmentVariables['SZH_ACCUEIL'] = '1'
-  $demarrage.EnvironmentVariables.Remove('ELECTRON_RUN_AS_NODE')
-  [void][System.Diagnostics.Process]::Start($demarrage)
-  exit 0
+  # La fonction de production (szh-shell.ps1), sur le profil de developpement que designent
+  # les variables posees plus haut.
+  exit (Start-SzhAccueil)
 } catch {
   [Console]::Error.WriteLine('pronto-dev, erreur - ' + $_.Exception.Message)
   exit 1

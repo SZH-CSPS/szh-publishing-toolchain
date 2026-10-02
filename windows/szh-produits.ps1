@@ -942,6 +942,65 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
   Set-SzhJson $SzhIntentionFile $intention
 }
 
+# ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
+# Deux verbes arrivent ici (Get-SzhLien), et par deux portes differentes :
+#   * "traduction" vient d'un courriel, par le gestionnaire de protocole. Revue et
+#     Zeitschrift seulement, et une intention deposee pour que le cockpit ouvre le suivi de
+#     traduction en arrivant.
+#   * "ouvrir" vient du raccourci pose a la racine du numero (Set-SzhRaccourciRevue). Le
+#     livre en est, puisqu'il porte le meme raccourci. Aucune intention : il n'y a aucun
+#     panneau a viser, le dossier s'ouvre et c'est tout.
+# Appelee par open-revue.ps1 apres les taches de demarrage (Invoke-SzhTachesDemarrage).
+#
+# Ce chemin n'ouvre aucune fenetre et ne touche pas a la langue du poste. Il le faisait : un
+# clic sur un lien Zeitschrift depuis Outlook basculait tout l'outil en allemand, pour tous
+# les comptes du poste. La langue est un reglage, et un lien recu par courriel n'en est pas
+# un. Rend le code de sortie ; sous $env:SZH_LANCEUR_SIMULE=1, ecrit son verdict en JSON au
+# lieu d'ouvrir ou d'afficher quoi que ce soit.
+function Open-SzhLien([string]$Lien) {
+  $simule = ($env:SZH_LANCEUR_SIMULE -eq '1')
+  $cible = Get-SzhLien $Lien
+  if (-not $cible) {
+    if ($simule) {
+      Write-SzhPlanJson ([pscustomobject]@{ lien = $Lien; erreur = 'invalide' })
+      return 1
+    }
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lien.invalide' @($Lien)), $SzhNomApplication)
+    return 1
+  }
+  # Deux verbes, deux resolutions. "traduction" : la racine ACTIVE du poste, en cours puis
+  # archives. "ouvrir" balaie la racine active puis celle de PRODUCTION, et connait le livre.
+  $dossierLien = ''
+  if ($cible.vue -eq 'ouvrir') { $dossierLien = Find-SzhProduitOuvrir $cible.produit $cible.id }
+  else { $dossierLien = Find-SzhRevue $cible.produit $cible.id }
+  if (-not $dossierLien) {
+    if ($simule) {
+      Write-SzhPlanJson ([pscustomobject]@{ lien = $Lien; vue = $cible.vue; erreur = 'introuvable' })
+      return 1
+    }
+    # Un echec muet serait le pire : le raccourci ne fait rien, et personne ne sait
+    # pourquoi. Le livre a sa variante du message, "le numero" ne voulant rien dire pour lui.
+    $cleIntrouvable = 'lien.introuvable'
+    if ($cible.produit -eq 'livre') { $cleIntrouvable = 'lien.introuvable.livre' }
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show(
+      (T $cleIntrouvable @($cible.id, $cible.produit)), $SzhNomApplication)
+    return 1
+  }
+  # A usage unique, jamais bloquante : sans elle, la revue s'ouvre sans aller droit au
+  # panneau. Rien a deposer pour "ouvrir", qui ne vise aucun panneau.
+  if ($cible.vue -ne 'ouvrir') {
+    try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
+  }
+  if ($simule) {
+    Write-SzhPlanJson ([pscustomobject]@{ lien = $Lien; vue = $cible.vue; dossier = $dossierLien })
+    return 0
+  }
+  [void](Start-SzhCodium $dossierLien)
+  return 0
+}
+
 # ---- Table de produit : ce que les trois lanceurs (revue, zeitschrift, livre) partagent, et
 # ce qui les distingue, pour qu'open-produit.ps1 n'ait plus à choisir par des `if` répétés ce
 # qui varie d'un produit à l'autre. Une ligne par produit, clé = jeton :

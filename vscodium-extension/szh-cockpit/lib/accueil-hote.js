@@ -1,5 +1,5 @@
 // L'Accueil dans l'éditeur : son panneau, ses données, l'ouverture d'un numéro et sa
-// création. Il ne s'ouvre seul que sous la porte SZH_ACCUEIL=1 et sans dossier ouvert.
+// création. Il s'ouvre seul dans une fenêtre sans dossier ni onglet.
 'use strict';
 
 const vscode = require('vscode');
@@ -20,14 +20,15 @@ const reglages = require('./accueil-reglages-hote');
 const preproc = require('./accueil-preproc-hote');
 
 const VIEW_TYPE = 'szhAccueil';
-const CONTEXTE_ACTIF = 'szh.accueil.actif';
 // Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
 // Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
 const CLE_DERNIER = 'szh.lanceur.dernier';
 
 let ctx = {
   repondreModeTrad: require('./traduction-hote').repondreModeTrad,
-  rafraichirTout: null     // posé par extension.js : l'arbre suit un réglage qui change ses libellés
+  rafraichirTout: null,    // posé par extension.js : l'arbre suit un réglage qui change ses libellés
+  // Après un openFolder qui n'a pas remplacé la fenêtre : le numéro était ouvert ailleurs.
+  delaiFermeture: 1500
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
@@ -39,10 +40,17 @@ let anneesZero = null;
 // L'onglet que la prochaine charge de la page doit ouvrir (szh.reglages), consommé par donnees().
 let ongletDemande = '';
 
-function porteOuverte() { return process.env.SZH_ACCUEIL === '1'; }
+// Une seule relecture, quand la fenêtre avait un onglet à l'activation, et une seule fermeture
+// en attente après un openFolder.
+let relecture = null;
+let fermeture = null;
+
 function sansDossier() {
   const dossiers = vscode.workspace.workspaceFolders;
   return !dossiers || dossiers.length === 0;
+}
+function sansOnglet() {
+  return ((vscode.window.tabGroups && vscode.window.tabGroups.all) || []).every((g) => !g.tabs || g.tabs.length === 0);
 }
 
 function repondre(panneau, message) {
@@ -99,12 +107,22 @@ async function envoyerDonnees(panneau) {
 }
 
 // Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
-// ne survit pas au changement de dossier.
+// ne survit pas au changement de dossier. Déjà ouvert ailleurs, il ne remplace pas cette
+// fenêtre : l'autre passe devant, et celle-ci, restée vide et sans focus, se ferme. Aucune
+// API ne dit où un dossier est ouvert ; un rechargement qui traîne garde le focus, et la
+// désactivation annule la fermeture.
 async function ouvrirDossier(chemin) {
   secretariat.arreter();
   preproc.arreter();
   if (etatPoste) { await etatPoste.globalState.update(CLE_DERNIER, chemin); }
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(chemin), { forceReuseWindow: true });
+  if (fermeture) { clearTimeout(fermeture); }
+  fermeture = setTimeout(() => {
+    fermeture = null;
+    const focus = vscode.window.state && vscode.window.state.focused;
+    if (sansDossier() && focus === false) { vscode.commands.executeCommand('workbench.action.closeWindow'); }
+  }, ctx.delaiFermeture);
+  if (fermeture.unref) { fermeture.unref(); }
 }
 
 // Le refus du socle, dit dans la langue de l'interface. Les numéros s'écrivent « 2026-03 ».
@@ -206,26 +224,35 @@ function configurerOnglets() {
     } });
 }
 
-// À la désactivation : aucun enfant ne survit à l'éditeur.
-function arreter() { secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
+// À la désactivation : aucun enfant ne survit à l'éditeur, aucune minuterie ne joue.
+function arreter() {
+  if (relecture) { clearTimeout(relecture); relecture = null; }
+  if (fermeture) { clearTimeout(fermeture); fermeture = null; }
+  secretariat.arreter(); reglages.arreter(); preproc.arreter();
+}
 
-// À l'activation : la clé de contexte de la porte, la commande, et l'ouverture d'office
-// quand la porte est ouverte sur une fenêtre sans dossier.
+// À l'activation : la commande, et l'ouverture d'office dans une fenêtre sans dossier ni
+// onglet. La mesure la dit fiable dès l'activation ; une relecture à +500 ms couvre un
+// onglet qui se fermerait aussitôt.
 function demarrer(context) {
   etatPoste = context;
   configurerOnglets();
   reglages.demarrer(context);
-  const actif = porteOuverte();
-  vscode.commands.executeCommand('setContext', CONTEXTE_ACTIF, actif);
   context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => ouvrirAccueil()));
   // Le format par défaut change dans les Réglages : l'onglet le reprend aussitôt.
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration('szh.formatTravail')) { preproc.envoyerEtat(); }
   }));
-  if (actif && sansDossier()) { ouvrirAccueil(); }
+  if (!sansDossier()) { return; }
+  if (sansOnglet()) { ouvrirAccueil(); return; }
+  relecture = setTimeout(() => {
+    relecture = null;
+    if (sansDossier() && sansOnglet()) { ouvrirAccueil(); }
+  }, 500);
+  if (relecture.unref) { relecture.unref(); }
 }
 
 module.exports = {
   configurer, demarrer, ouvrirAccueil, rechargerPage, donnees, texteRefus, arreter,
-  VIEW_TYPE, CONTEXTE_ACTIF, CLE_DERNIER
+  VIEW_TYPE, CLE_DERNIER
 };

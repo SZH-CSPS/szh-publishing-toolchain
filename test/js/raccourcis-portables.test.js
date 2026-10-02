@@ -430,11 +430,16 @@ test('le lanceur, lancé sur le lien du raccourci, ouvre le bon dossier',
       SZH_RACINE_TEST: path.join(travail, 'racine-test'),
       SZH_RACINE_PROD: racineProd,
       LOCALAPPDATA: path.join(travail, 'Local'),
-      SZH_LANCEUR_SIMULE: '1'
+      SZH_LANCEUR_SIMULE: '1',
+      // Les tâches de démarrage passent avant le lien : un ancrage jetable, pour que le
+      // check-in n'écrive pas dans le vrai dossier partagé.
+      SZH_ANCRAGE: path.join(travail, 'sp', 'Daten_Allgemein - General'),
+      SZH_RAPPORTS: path.join(travail, 'rapports')
     });
+    fs.mkdirSync(env.SZH_ANCRAGE, { recursive: true });
     const lancer = (lien) => {
       const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-        path.join(RACINE, 'windows', 'open-produit.ps1'), lien],
+        path.join(RACINE, 'windows', 'open-revue.ps1'), lien],
       { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
       assert.ok(run.stdout, 'aucune sortie du lanceur pour ' + lien + ' : ' + run.stderr);
       return JSON.parse(run.stdout.trim());

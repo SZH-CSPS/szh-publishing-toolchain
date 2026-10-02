@@ -133,9 +133,11 @@ function revueDEssai() {
 }
 
 // opts.sansDossier : une fenêtre sans dossier ouvert, comme au lancement de Pronto. La revue
-// sert encore de dossier jetable aux caches.
+// sert encore de dossier jetable aux caches. opts.onglets : les onglets déjà ouverts à
+// l'activation (des `input`, comme poserOnglets).
 function activerHote(revue, opts) {
   const sansDossier = !!(opts && opts.sansDossier);
+  const ongletsInitiaux = (opts && opts.onglets) || [];
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
   // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
   // OAI-PMH en tâche de fond quand dateFetch a plus de trente jours, et aucun test ne doit
@@ -383,12 +385,14 @@ function activerHote(revue, opts) {
       getCommands: () => Promise.resolve(Object.keys(stub.commands._table))
     },
     window: {
+      // Le focus de la fenêtre : un test le retire pour simuler une autre fenêtre passée devant.
+      state: { focused: true },
       activeTextEditor: undefined,
       visibleTextEditors: [],
       // Les onglets : `all` se remplace par un test (ongletsFactices) pour simuler un
       // aperçu déjà ouvert, et `close` retient ce qu'on lui demande de fermer.
       tabGroups: {
-        all: [],
+        all: ongletsInitiaux.length === 0 ? [] : [{ tabs: ongletsInitiaux.map((e) => ({ input: e })) }],
         close: (onglets) => { fermetures.push(onglets); return Promise.resolve(true); }
       },
       createTreeView: (id, opts) => {
@@ -606,6 +610,8 @@ function activerHote(revue, opts) {
       stub.window.tabGroups.all = (entrees || []).length === 0
         ? [] : [{ tabs: entrees.map((e) => ({ input: e })) }];
     },
+    poserFocus: (focus) => { stub.window.state = { focused: !!focus }; },
+    desactiver: () => ext.deactivate(),
     fermetures: () => fermetures.slice(),
     oublierFermetures: () => { fermetures.length = 0; },
     arbre: () => arbre,

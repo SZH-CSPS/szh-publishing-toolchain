@@ -1146,6 +1146,14 @@ test('les repères de marge du diff rapide sont visibles, sur le poste comme par
   assert.strictEqual(jsonc(lire('vscodium-user', 'settings.json'))['scm.diffDecorations'], 'gutter');
 });
 
+// « Pronto » ouvre une fenêtre vide sur l'Accueil : l'éditeur ne doit pas y rouvrir le
+// dernier numéro. Réglage de portée application, que le cockpit pose lui-même.
+test('l’éditeur ne rouvre aucune fenêtre au démarrage, sur le poste comme par défaut', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  assert.strictEqual(pkg.contributes.configurationDefaults['window.restoreWindows'], 'none');
+  assert.strictEqual(jsonc(lire('vscodium-user', 'settings.json'))['window.restoreWindows'], 'none');
+});
+
 test('l’étape d’import du tutoriel se coche aussi par le geste nominal', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const etape = pkg.contributes.walkthroughs[0].steps.find((s) => s.id === 'szh.tuto.word');

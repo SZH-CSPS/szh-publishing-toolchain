@@ -294,62 +294,8 @@ try { [void](Invoke-SzhCheckin -OrigineAncrage $ancrageResolu.origine) } catch {
 # un dossier hors OneDrive ne doit pas empecher le lanceur de s'ouvrir.
 try { [void](Invoke-SzhEpinglageHorsLigne) } catch { }
 
-# ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
-# Deux verbes arrivent ici (Get-SzhLien, szh-produits.ps1), et par deux portes differentes :
-#   * "traduction" vient d'un courriel, par le gestionnaire de protocole. Revue et
-#     Zeitschrift seulement, et une intention deposee pour que le cockpit ouvre le suivi de
-#     traduction en arrivant.
-#   * "ouvrir" vient du raccourci pose a la racine du numero (Set-SzhRaccourciRevue). Le
-#     livre en est, puisqu'il porte le meme raccourci. Aucune intention : il n'y a aucun
-#     panneau a viser, le dossier s'ouvre et c'est tout.
-# $Lien reste vide quand le lanceur est ouvert par le menu Demarrer.
-#
-# Ce chemin n'ouvre aucune fenetre de lanceur et ne touche plus a la langue du poste. Il le
-# faisait : un clic sur un lien Zeitschrift depuis Outlook basculait tout l'outil en
-# allemand, pour tous les comptes du poste, sans que personne ne l'ait demande. La langue
-# est un reglage, et un lien recu par courriel n'est pas un reglage.
-if ($Lien) {
-  $cible = Get-SzhLien $Lien
-  if (-not $cible) {
-    if ($script:SzhSimule) {
-      Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; erreur = 'invalide' })
-      exit 1
-    }
-    [void][System.Windows.Forms.MessageBox]::Show((T 'lien.invalide' @($Lien)), $titreFenetre)
-    exit 1
-  }
-  # Deux verbes, deux resolutions. "traduction" garde EXACTEMENT ce qu'il faisait : la
-  # racine ACTIVE du poste, en cours puis archives. "ouvrir" balaie la racine active puis
-  # celle de PRODUCTION, et connait le livre (Find-SzhProduitOuvrir, szh-produits.ps1).
-  $dossierLien = ''
-  if ($cible.vue -eq 'ouvrir') { $dossierLien = Find-SzhProduitOuvrir $cible.produit $cible.id }
-  else { $dossierLien = Find-SzhRevue $cible.produit $cible.id }
-  if (-not $dossierLien) {
-    if ($script:SzhSimule) {
-      Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; vue = $cible.vue; erreur = 'introuvable' })
-      exit 1
-    }
-    # Un echec muet serait le pire : le raccourci ne fait rien, et personne ne sait
-    # pourquoi. Le livre a sa variante du message, "le numero" ne voulant rien dire pour lui.
-    $cleIntrouvable = 'lien.introuvable'
-    if ($cible.produit -eq 'livre') { $cleIntrouvable = 'lien.introuvable.livre' }
-    [void][System.Windows.Forms.MessageBox]::Show(
-      (T $cleIntrouvable @($cible.id, $cible.produit)), $titreFenetre)
-    exit 1
-  }
-  # A usage unique, jamais bloquante : sans elle, la revue s'ouvre sans aller droit au
-  # panneau. Rien a deposer pour "ouvrir", qui ne vise aucun panneau -- et surtout rien a
-  # laisser trainer dans %LOCALAPPDATA% pour la prochaine fenetre.
-  if ($cible.vue -ne 'ouvrir') {
-    try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
-  }
-  if ($script:SzhSimule) {
-    Write-SzhSimuleJson ([pscustomobject]@{ produit = $ongletActif; lien = $Lien; vue = $cible.vue; dossier = $dossierLien })
-    exit 0
-  }
-  [void](Start-SzhCodium $dossierLien)
-  exit 0
-}
+# ---- Lien "szh://..." recu : Open-SzhLien (szh-produits.ps1) ----
+if ($Lien) { exit (Open-SzhLien $Lien) }
 
 # ---- Racines a balayer, communes aux trois onglets ----
 $emplacements = Get-SzhEmplacements

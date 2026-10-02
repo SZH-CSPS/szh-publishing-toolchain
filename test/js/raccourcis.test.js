@@ -270,14 +270,12 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   assert.ok(SHELL_PRODUITS.indexOf('appId') === -1,
     'szh-produits.ps1 garde encore un champ appId : il n’a plus de sens depuis la fusion des lanceurs');
 
-  // Les deux enveloppes appellent open-produit.ps1 avec le bon -Produit, et rien d'autre :
-  // c'est tout ce qu'il leur reste à faire.
-  assert.ok(OUVRIR.indexOf("Join-Path $PSScriptRoot 'open-produit.ps1'") !== -1,
-    'open-revue.ps1 ne délègue plus à open-produit.ps1');
-  assert.ok(OUVRIR_LIVRE.indexOf("Join-Path $PSScriptRoot 'open-produit.ps1'") !== -1,
-    'open-livre.ps1 ne délègue plus à open-produit.ps1');
-  assert.ok(OUVRIR_LIVRE.indexOf("-Produit 'livre'") !== -1,
-    'open-livre.ps1 ne transmet plus -Produit livre à open-produit.ps1');
+  // L'entrée « Pronto » ouvre VSCodium sur l'Accueil, qui porte l'identité de l'éditeur : elle
+  // ne déclare plus celle du lanceur. open-livre.ps1 n'est plus qu'une enveloppe d'open-revue.ps1.
+  assert.ok(OUVRIR.indexOf('exit (Start-SzhAccueil)') !== -1, 'open-revue.ps1 n’ouvre plus l’Accueil');
+  assert.ok(OUVRIR.indexOf("Get-SzhAppId 'suite'") === -1, 'open-revue.ps1 déclare encore l’identité du lanceur');
+  assert.ok(OUVRIR_LIVRE.indexOf("Join-Path $PSScriptRoot 'open-revue.ps1'") !== -1,
+    'open-livre.ps1 ne délègue plus à open-revue.ps1');
 
   // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi — une
   // seule clé fixe désormais, « maj », et non plus une par langue de son ancien raccourci.
@@ -487,7 +485,8 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
     'le lanceur reçoit encore -Produit : l’onglet ouvert ne devrait plus dépendre du raccourci');
   assert.ok(lanceur.icone.indexOf('pronto.ico') !== -1, 'icône ' + lanceur.icone);
   assert.ok(lanceur.desc.length > 8, 'description vide');
-  assert.strictEqual(lanceur.appid, 'SZH.Publishing.Suite', 'identité de barre des tâches');
+  // L'identité de VSCodium : un seul bouton dans la barre des tâches pour Pronto et l'éditeur.
+  assert.strictEqual(lanceur.appid, 'VSCodium.VSCodium', 'identité de barre des tâches');
 
   // La mise à jour : powershell.exe en direct, fenêtre normale, plus de langue portée par
   // le raccourci (la fenêtre suit le réglage du compte, comme le lanceur).
@@ -699,4 +698,57 @@ test('la migration : un menu à cinq anciennes entrées n’en garde plus que de
     // dit.
     assert.deepStrictEqual(r.apres.slice().sort(), (NOMS_ACTUELS.map((n) => n + '.lnk')).sort());
     assert.strictEqual(r.apres.length, 2, 'le menu ne porte plus exactement deux entrées');
+  });
+
+// Un seul bouton dans la barre des tâches : « Pronto » prend l'identité de VSCodium, et la
+// barre reprend l'icône d'un raccourci de même identité. Un .lnk de VSCodium sans icône (le
+// poste de Robin en porte un, posé le 23.09.2026 au premier niveau du menu) donnerait au
+// bouton l'icône de l'exécutable : la pose des raccourcis lui donne pronto.ico.
+test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium reçoivent pronto.ico',
+  { skip: sansPowerShell }, () => {
+    const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-codium-lnk-'));
+    const menu = path.join(travail, 'Programs');
+    const exe = path.join(travail, 'VSCodium', 'VSCodium.exe');
+    const sortie = path.join(travail, 'bilan.json');
+    const pilote = path.join(travail, 'poser.ps1');
+    fs.mkdirSync(path.dirname(exe), { recursive: true });
+    fs.writeFileSync(exe, 'x');
+    fs.writeFileSync(pilote, [
+      "$ErrorActionPreference = 'Stop'",
+      '. "' + COMMUN_PS1 + '"',
+      '$menu = $args[0]; $toolkit = $args[1]; $sortie = $args[2]; $exe = $args[3]',
+      '$sh = New-Object -ComObject WScript.Shell',
+      "New-Item -ItemType Directory -Force -Path (Join-Path $menu 'VSCodium') | Out-Null",
+      // Celui de l'installeur, dans son dossier, et celui sans icône du premier niveau.
+      "foreach ($n in 'VSCodium\\VSCodium.lnk', 'VSCodium.lnk') {",
+      '  $l = $sh.CreateShortcut((Join-Path $menu $n)); $l.TargetPath = $exe; $l.Save()',
+      "  [void](Set-SzhLnkAppId (Join-Path $menu $n) 'VSCodium.VSCodium') }",
+      "$b = $sh.CreateShortcut((Join-Path $menu 'Bloc-notes.lnk'))",
+      '$b.TargetPath = (Join-Path $env:WINDIR \'System32\\notepad.exe\'); $b.Save()',
+      '$p = Set-SzhRaccourcisMenu -Menu $menu -Toolkit $toolkit',
+      '$r = [ordered]@{ manques = @($p.manques); icones = @($p.icones); lnk = [ordered]@{} }',
+      "foreach ($n in 'Pronto.lnk', 'Pronto (Updater).lnk', 'VSCodium.lnk', 'VSCodium\\VSCodium.lnk', 'Bloc-notes.lnk') {",
+      '  $f = Join-Path $menu $n; $l = $sh.CreateShortcut($f)',
+      '  $r.lnk[$n] = [ordered]@{ icone = [string]$l.IconLocation; appid = [string](Get-SzhLnkAppId $f) } }',
+      'Set-SzhJson $sortie $r'
+    ].join('\r\n') + '\r\n', 'utf8');
+    const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote,
+      menu, RACINE, sortie, exe], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
+    const r = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
+    fs.rmSync(travail, { recursive: true, force: true });
+    assert.ok(r, 'le pilote a échoué : ' + (run.stderr || ''));
+    // Les raccourcis de la nouvelle entrée et de la mise à jour, chacun sous leur nom.
+    const pronto = r.lnk[NOM_APPLICATION + '.lnk'];
+    const maj = r.lnk[NOM_MISE_A_JOUR + '.lnk'];
+    assert.strictEqual(pronto.appid, 'VSCodium.VSCodium', 'Pronto ne partage pas l’identité de VSCodium');
+    assert.ok(pronto.icone.indexOf('pronto.ico') !== -1, 'Pronto a perdu son icône : ' + pronto.icone);
+    assert.strictEqual(maj.appid, 'SZH.Publishing.MiseAJour', 'la mise à jour a perdu son identité');
+    const voulue = path.join(RACINE, 'windows', 'pronto.ico') + ',0';
+    for (const n of ['VSCodium.lnk', 'VSCodium\\VSCodium.lnk']) {
+      assert.strictEqual(r.lnk[n].icone.toLowerCase(), voulue.toLowerCase(), n + ' garde l’icône de l’exécutable');
+      assert.strictEqual(r.lnk[n].appid, 'VSCodium.VSCodium', n + ' a perdu son identité');
+    }
+    assert.deepStrictEqual(r.icones.slice().sort(), ['VSCodium.lnk', 'VSCodium.lnk']);
+    assert.strictEqual(r.lnk['Bloc-notes.lnk'].icone, ',0', 'un raccourci étranger a été retouché');
+    assert.deepStrictEqual(r.manques, []);
   });

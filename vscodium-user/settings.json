@@ -10,6 +10,8 @@
   "workbench.editor.editorActionsLocation": "hidden",
   "window.commandCenter": false,
   "window.menuBarVisibility": "compact",
+  // « Pronto » ouvre une fenêtre vide, sur l’Accueil : rien ne se rouvre au démarrage.
+  "window.restoreWindows": "none",
   "editor.minimap.enabled": false,
   "breadcrumbs.enabled": false,
   "editor.lineNumbers": "off",

@@ -463,6 +463,7 @@ plus ancienne du toolkit et continuer à écrire ce code-là.
 |---|---|
 | `LANCEUR-TRAP` | exception non rattrapée dans `open-produit.ps1` / `open-md.ps1` |
 | `LANCEUR-CODIUM-ABSENT` | VSCodium introuvable au démarrage |
+| `ACCUEIL-COCKPIT-ABSENT` | l'extension du cockpit manque, ou est trop ancienne pour l'Accueil |
 | `ANCRAGE-INTROUVABLE` | aucun ancrage après détection **et** demande à l'utilisateur·trice |
 | `MAJ-ETAPE-ECHEC` | échec partiel d'une étape de `update.ps1` |
 | `MAJ-ECHEC` | échec total de `update.ps1` |
@@ -548,8 +549,9 @@ point d'appel.
 |---|---|---|
 | `LANCEUR-TRAP` | `windows/open-produit.ps1` (bloc `trap`) | toute exception non rattrapée dans le lanceur, quel que soit le produit |
 | `LANCEUR-TRAP` | `windows/open-md.ps1` (bloc `trap`) | toute exception non rattrapée à l'ouverture d'un `.md` par double-clic ; `fichiers` porte le chemin reçu |
-| `LANCEUR-CODIUM-ABSENT` | `windows/open-produit.ps1` | `Get-VSCodiumExe` ne rend rien, hors simulation |
-| `ANCRAGE-INTROUVABLE` | `windows/open-produit.ps1`, juste après `Initialize-SzhAncrage` | seulement quand `$ancrageResolu.origine -eq 'absent'` — une vraie demande a eu lieu et n'a rien donné ; **jamais** quand la demande est évitée par l'anti-harcèlement ou la simulation (origine `defaut`), pour ne pas produire un rapport à chaque lancement d'un poste déjà averti |
+| `LANCEUR-CODIUM-ABSENT` | `windows/szh-shell.ps1` (`Show-SzhCodiumAbsent`), appelée par `Start-SzhAccueil` et par `open-revue.ps1` avant un lien | `Get-VSCodiumExe` ne rend rien, hors simulation |
+| `ACCUEIL-COCKPIT-ABSENT` | `windows/szh-shell.ps1` (`Start-SzhAccueil`) | la version de `szh-cockpit` posée pour le compte (`Get-SzhVersionCockpit`) est absente ou sous `$SzhCockpitAccueilMin` ; une boîte renvoie à « Pronto (Updater) » |
+| `ANCRAGE-INTROUVABLE` | `windows/szh-shell.ps1` (`Invoke-SzhTachesDemarrage`), juste après `Initialize-SzhAncrage` | seulement quand `$ancrageResolu.origine -eq 'absent'` — une vraie demande a eu lieu et n'a rien donné ; **jamais** quand la demande est évitée par l'anti-harcèlement ou la simulation (origine `defaut`), pour ne pas produire un rapport à chaque lancement d'un poste déjà averti |
 | `MAJ-ETAPE-ECHEC` | `windows/szh-common.ps1` (`Show-SzhErreur -Code 'MAJ-ETAPE-ECHEC'`), appelée par `update.ps1` | une étape de la mise à jour échoue, les suivantes continuent |
 | `MAJ-ECHEC` | `windows/szh-common.ps1` (`Show-SzhErreur`, code par défaut), appelée par `update.ps1` | la mise à jour s'arrête avant la fin |
 | `ARCHIVAGE-ECHEC` | `windows/archive-revue.ps1` (`Show-SzhErreurArchivage`) | le déplacement en cours ⇄ archives échoue ; `fichiers` porte `$Dossier`, le seul chemin sûrement connu à ce stade |

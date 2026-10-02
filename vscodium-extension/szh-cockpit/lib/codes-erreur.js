@@ -45,6 +45,12 @@ const CODES = Object.freeze({
       de: 'VSCodium wurde beim Start des Starters nicht gefunden; der Editor kann erst nach einer Neuinstallation geöffnet werden.'
     })
   }),
+  'ACCUEIL-COCKPIT-ABSENT': Object.freeze({
+    resume: Object.freeze({
+      fr: 'L’extension du cockpit manque sur ce poste, ou elle est trop ancienne pour ouvrir l’Accueil ; « Pronto (Updater) » la remet à jour.',
+      de: 'Die Cockpit-Erweiterung fehlt auf diesem Computer oder ist zu alt, um die Startseite zu öffnen; «Pronto (Updater)» bringt sie auf den neuesten Stand.'
+    })
+  }),
   'ANCRAGE-INTROUVABLE': Object.freeze({
     resume: Object.freeze({
       fr: 'Aucun dossier SharePoint n’a pu être identifié, ni automatiquement ni par la personne consultée ; les produits restent introuvables jusqu’à ce qu’il soit indiqué.',

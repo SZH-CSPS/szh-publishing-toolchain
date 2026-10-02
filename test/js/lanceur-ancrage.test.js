@@ -70,7 +70,10 @@ function executer(scriptPath, args, overrides) {
   delete env.OneDrive;
   delete env.OneDriveCommercial;
   delete env.SZH_ANCRAGE;
-  Object.assign(env, { SZH_LANCEUR_SIMULE: '1' }, overrides || {});
+  // Le cockpit du dépôt : open-revue.ps1 refuse d'ouvrir l'Accueil sous une version trop
+  // ancienne, et le profil neutre n'en porte aucune.
+  Object.assign(env, { SZH_LANCEUR_SIMULE: '1',
+    SZH_COCKPIT_DOSSIER: path.join(RACINE, 'vscodium-extension', 'szh-cockpit') }, overrides || {});
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args],
     { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
   let sortie = null;

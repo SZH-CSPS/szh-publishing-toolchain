@@ -229,6 +229,7 @@
       "workbench.editor.editorActionsLocation": "hidden",
       "window.commandCenter": false,
       "window.menuBarVisibility": "compact",
+      "window.restoreWindows": "none",
       "editor.minimap.enabled": false,
       "breadcrumbs.enabled": false,
       "editor.lineNumbers": "off",
