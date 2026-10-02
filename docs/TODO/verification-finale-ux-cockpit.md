@@ -105,6 +105,18 @@ Un fichier ou un dossier dont le chemin porte un accent ou un espace doit s'ouvr
 - [ ] **Paramètres → dossier des suggestions** de l'interface.
 - [ ] **Préprocessing → Ouvrir le document / Revoir le rapport.** Ces deux gestes sont rebranchés sur `lib/ouvrir-systeme.js` par la session de la bascule « accueil ». Les vérifier après sa fusion.
 
+## Préprocessing : sortie sur le Bureau
+
+- [ ] **Choisir un manuscrit…**
+  - La sortie apparaît dans `Bureau\Pronto Preprocessing\<manuscrit>\` : la copie, le document nettoyé et le rapport.
+  - Rien n'est écrit à côté de l'original.
+- [ ] **Le même manuscrit une seconde fois** : le passage va dans « <manuscrit> (2) ».
+- [ ] **Glisser un .docx depuis l'Explorateur en maintenant Maj** : le nettoyage part, et la zone dit bien de maintenir Maj.
+- [ ] **Glisser une pièce jointe depuis Outlook en maintenant Maj** : noter si ça marche, ce n'est pas mesuré.
+- [ ] **Sur un poste dont le Bureau est redirigé vers OneDrive**, noter où la sortie atterrit.
+  - `poste.dossierBureau()` rend `%USERPROFILE%\Desktop` et ne lit pas la redirection.
+  - Si le Bureau visible est ailleurs, il faudra lire « User Shell Folders » dans le registre.
+
 ## Copies en conflit (OneDrive)
 
 - [ ] **Créer à la main `ausgabe - copie en conflit.yaml`** à côté d'`ausgabe.yaml`, avec une ligne différente.
