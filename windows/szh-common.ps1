@@ -737,7 +737,8 @@ function Write-SzhLog([string]$Message) {
 #     transcript-ci. Un tel fichier ne porte donc ni « ✓ » ni « ⚠ » : c'est justement
 #     l'absence du premier qui le désigne comme un échec.
 # Stop-Transcript écrit lui-même, en toute fin de fichier, un pied de page fixe (vérifié sur ce
-# poste : « Windows PowerShell transcript end », suivi de « End time: … »). Sa présence dit que
+# poste : « Windows PowerShell transcript end » suivi de « End time: … » ; en français « Fin de la
+# transcription Windows PowerShell » et « Heure de fin : … »). Sa présence dit que
 # Stop-Transcript est allé au bout, l'une ou l'autre issue ; son absence dit un transcript
 # tronqué -- processus tué, disque plein, fichier fabriqué à moitié -- dont le contenu ne
 # permet de rien conclure.
@@ -752,7 +753,9 @@ function Get-SzhVerdictJournalMaj([string]$Chemin) {
     $fin = Get-Content -LiteralPath $Chemin -Tail 40 -Encoding UTF8 -ErrorAction Stop
   } catch { return 'inconnu' }
   $texte = [string]($fin -join "`n")
-  if ($texte -notmatch 'Windows PowerShell transcript end') { return 'inconnu' }
+  # Pied de page traduit selon la langue de Windows : on reconnaît sa forme (astérisques, titre,
+  # ligne à horodatage de 14 chiffres, astérisques), pas son texte.
+  if ($texte -notmatch '\*{5,}\n[^\n]+\n[^\n]*\d{14}[^\n]*\n\*{5,}\s*$') { return 'inconnu' }
   if ($texte -match '✓') { return 'ok' }
   return 'echec'
 }

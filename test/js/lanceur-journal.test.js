@@ -22,7 +22,8 @@ Object.assign(process.env, { SZH_BASE: path.join(TRAVAIL, 'ProgramData'), LOCALA
   SZH_TOOLKIT: RACINE, SZH_ANCRAGE: path.join(TRAVAIL, 'Ancrage'), SZH_LANGUE: 'fr' });
 delete process.env.SZH_RESEAU_INTERDIT;
 
-const FIN = ['Windows PowerShell transcript end'];
+const FIN = ['**********************', 'Windows PowerShell transcript end', 'End time: 20261001081217',
+  '**********************'];
 const LONG = Array.from({ length: 230 }, (_, i) => 'ligne ' + i).concat(['✓ Tout est à jour.'], FIN);
 fs.writeFileSync(path.join(LOGS, 'update-20261001-081203.log'), LONG.join('\r\n') + '\r\n', 'utf8');
 fs.writeFileSync(path.join(LOGS, 'update-20260924-080500.log'), ['Échec.'].concat(FIN).join('\n') + '\n', 'utf8');
@@ -52,7 +53,7 @@ test('log : la fin d’un journal, l’éditeur, et un journal illisible', () =>
   assert.strictEqual(envoyes[0].type, MSG.LANCEUR_JOURNAL_TEXTE);
   assert.strictEqual(envoyes[0].rang, 0);
   assert.strictEqual(envoyes[0].lignes, 200);
-  assert.ok(envoyes[0].texte.endsWith('Windows PowerShell transcript end'));
+  assert.ok(envoyes[0].texte.endsWith('**********************'));
   hote.surMessage({ type: MSG.LANCEUR_JOURNAL_LIRE, rang: 1 });
   assert.strictEqual(envoyes[1].lignes, 0, 'un journal court se montre en entier');
   hote.surMessage({ type: MSG.LANCEUR_JOURNAL_EDITEUR, rang: 1 });

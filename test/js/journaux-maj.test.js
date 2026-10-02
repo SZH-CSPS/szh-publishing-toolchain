@@ -41,11 +41,18 @@ journal('update-20260902-080000.log', ['Échec : réseau injoignable.'].concat(F
 journal('update-20260903-080000.log', ['✓ Tout est à jour.', '[08:12:17] Terminé.']);
 // La coche plus haut que les quarante dernières lignes ne compte pas.
 journal('update-20260904-080000.log', ['✓ ancien succès'].concat(remplissage(45), FIN));
-journal('update-20260905-080000.log', ['✓ Tout est à jour.', 'windows powershell TRANSCRIPT END']);
+journal('update-20260905-080000.log', ['✓ Tout est à jour.', '**********************', 'windows powershell TRANSCRIPT END',
+  'END TIME: 20260905080017', '**********************']);
 journal('update-20260906-080000.log', ['✓'].concat(FIN));
-journal('update-20260907-080000.log', ['✓'].concat(FIN));
-journal('update-20260908-080000.log', ['✓'].concat(FIN));
-journal('update-20260909-080000.log', ['✓'].concat(FIN));
+// Le pied de page traduit d'un Windows français (texte mesuré dans les ressources de PowerShell
+// 5.1) et d'un Windows allemand (seule la forme compte : le texte allemand n'a pas été relevé).
+const FIN_FR = ['**********************', 'Fin de la transcription Windows PowerShell',
+  'Heure de fin : 20260901080017', '**********************'];
+const FIN_DE = ['**********************', 'Ende der Windows PowerShell-Transkription',
+  'Endzeit: 20260901080017', '**********************'];
+journal('update-20260907-080000.log', ['✓'].concat(FIN_FR));
+journal('update-20260908-080000.log', ['✓ Alles aktuell.'].concat(FIN_DE));
+journal('update-20260909-080000.log', ['Échec : réseau injoignable.'].concat(FIN_FR), { crlf: true });
 // Un nom qui ne se lit pas : la date du fichier en tient lieu.
 journal('update-manuel.log', ['rien'], { mtime: new Date(2026, 8, 3, 12, 0, 0) });
 journal('autre.log', ['✓'].concat(FIN));
@@ -65,6 +72,9 @@ test('journaux : les dix plus récents, avec leur verdict', () => {
   assert.strictEqual(verdict('update-20260904-080000.log'), 'echec', 'la coche hors des quarante dernières lignes');
   assert.strictEqual(verdict('update-20260905-080000.log'), 'ok', 'la fin se reconnaît sans égard à la casse');
   assert.strictEqual(verdict('update-manuel.log'), 'inconnu');
+  assert.strictEqual(verdict('update-20260907-080000.log'), 'ok', 'pied de page en français');
+  assert.strictEqual(verdict('update-20260908-080000.log'), 'ok', 'pied de page en allemand');
+  assert.strictEqual(verdict('update-20260909-080000.log'), 'echec', 'pied de page en français, sans coche');
   assert.strictEqual(liste[0].date.getHours(), 8, 'la date du nom est une heure locale');
 });
 
@@ -98,6 +108,9 @@ test('journaux : même liste, même ordre et mêmes verdicts que Get-SzhJournaux
   { encoding: 'utf8', windowsHide: true, timeout: 90000, env: Object.assign({}, process.env, { SZH_BASE: BASE }) });
   assert.strictEqual(r.status, 0, r.stderr);
   const ps = JSON.parse(r.stdout.trim());
+  const verdictPs = (nom) => ps.filter((j) => j.nom === nom)[0].verdict;
+  assert.deepStrictEqual(['update-20260907-080000.log', 'update-20260908-080000.log', 'update-20260909-080000.log']
+    .map(verdictPs), ['ok', 'ok', 'echec'], 'pieds de page français et allemand');
   const p2 = (n) => String(n).padStart(2, '0');
   const quand = (d) => d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
   const js = journaux.journauxMaj().map((j) => ({ nom: j.nom, verdict: j.verdict, quand: quand(j.date), taille: j.taille }));

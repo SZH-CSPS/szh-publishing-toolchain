@@ -21,12 +21,15 @@ function lignesDe(texte) {
 }
 
 // Une mise à jour finie écrit la fin de sa transcription ; elle a réussi si sa fin porte la
-// coche. -match est insensible à la casse, d'où le drapeau i.
+// coche. Le pied de page de Stop-Transcript est traduit par la langue de Windows : on reconnaît
+// sa forme (astérisques, titre, ligne portant l'horodatage à 14 chiffres, astérisques), pas son texte.
+const PIED_TRANSCRIPT = /\*{5,}\n[^\n]+\n[^\n]*\d{14}[^\n]*\n\*{5,}\s*$/;
+
 function verdictJournal(chemin) {
   let texte;
   try { texte = fs.readFileSync(chemin, 'utf8'); } catch (e) { return 'inconnu'; }
   const fin = lignesDe(texte).slice(-LIGNES_VERDICT).join('\n');
-  if (!/Windows PowerShell transcript end/i.test(fin)) { return 'inconnu'; }
+  if (!PIED_TRANSCRIPT.test(fin)) { return 'inconnu'; }
   return fin.indexOf('✓') !== -1 ? 'ok' : 'echec';
 }
 
