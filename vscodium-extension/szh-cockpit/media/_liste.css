@@ -50,7 +50,8 @@
 .szh-msg-pourquoi[aria-expanded="true"] { opacity: 1; }
 /* L'explication dépliée : plus petite, en retrait de couleur — une note, pas une phrase de
    plus à faire. [hidden] doit gagner sur le display de l'étage. */
-.szh-msg-infobulle { font-size: var(--t-mini); color: var(--encre-2); line-height: 1.45; }
+/* pre-line : un extrait de journal garde une ligne par ligne, une phrase se replie comme avant. */
+.szh-msg-infobulle { font-size: var(--t-mini); color: var(--encre-2); line-height: 1.45; white-space: pre-line; }
 .szh-msg-infobulle[hidden] { display: none; }
 /* Un objet en cause : un lien, pas un bouton de barre — souligné, à la couleur des liens
    du thème, et sa flèche le suit. Le survol et le focus clavier restent ceux d'un lien. */
