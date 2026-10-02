@@ -29,7 +29,10 @@ async function avecEnv(vars, fn) {
 
 test.afterEach(() => { poste.poserLecteurBureau(null); });
 
-test('le Bureau rendu par le système l’emporte, redirigé vers OneDrive ou non', async () => {
+// Le Bureau du système n'est lu que sous Windows ; ailleurs, <profil>/Desktop.
+const SAUT_WIN = process.platform !== 'win32' ? 'chemins Windows — joué par le job contrats-windows' : false;
+
+test('le Bureau rendu par le système l’emporte, redirigé vers OneDrive ou non', { skip: SAUT_WIN }, async () => {
   poste.poserLecteurBureau(() => ONEDRIVE);
   await avecEnv({ USERPROFILE: PROFIL }, async () => {
     assert.equal(await poste.dossierBureau(), ONEDRIVE);

@@ -156,7 +156,10 @@ test('inventaire : même racine par défaut que le socle, sans surcharge ni ancr
   assert.strictEqual(js.base, path.join(p.profil, 'OneDrive - SZH CSPS', 'Revues-TESTING'));
 });
 
-test('inventaire : la surcharge d’essai passe avant l’ancrage, l’ancrage avant le défaut', () => {
+// L'ancrage se normalise en chemin Windows : ce cas ne se joue que sous Windows.
+const SAUT_WIN = process.platform !== 'win32' ? 'chemins Windows — joué par le job contrats-windows' : false;
+
+test('inventaire : la surcharge d’essai passe avant l’ancrage, l’ancrage avant le défaut', { skip: SAUT_WIN }, () => {
   const p = poste('ordre', { emplacementRevues: 'production' });
   const ancrage = path.join(p.racine, 'Daten_Allgemein - General');
   fs.mkdirSync(ancrage, { recursive: true });

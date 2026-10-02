@@ -216,7 +216,9 @@ if (CAS) {
   const brancher = (m) => hote.configurer({ memoire: m });
   test.afterEach(() => { brancher({ get: (k) => memoire[k], update: (k, v) => { memoire[k] = v; return Promise.resolve(); } }); emplacement('test'); });
 
-  test('historique : _Systeme\\exports sous l’ancrage, un fichier à part en mode test', () => {
+  // L'ancrage se normalise en chemin Windows : ce cas ne se joue que sous Windows.
+  test('historique : _Systeme\\exports sous l’ancrage, un fichier à part en mode test',
+    { skip: process.platform !== 'win32' ? 'chemins Windows — joué par le job contrats-windows' : false }, () => {
     const ancrage = path.join(TRAVAIL, 'Ancrage');
     fs.mkdirSync(ancrage, { recursive: true });
     const dossier = path.join(ancrage, '2_Produkte', '54_Pronto', '_Systeme', 'exports');
