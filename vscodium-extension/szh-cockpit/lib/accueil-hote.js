@@ -240,6 +240,13 @@ function demarrer(context) {
   configurerOnglets();
   reglages.demarrer(context);
   context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => ouvrirAccueil()));
+  // La barre d'activité est masquée : le retour à l'Accueil a son bouton, à gauche de la barre d'état.
+  const bouton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 1000);
+  bouton.text = '$(home) ' + T('accueil.titre');
+  bouton.tooltip = T('accueil.bouton.aide');
+  bouton.command = 'szh.accueil';
+  bouton.show();
+  context.subscriptions.push(bouton);
   // Le format par défaut change dans les Réglages : l'onglet le reprend aussitôt.
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration('szh.formatTravail')) { preproc.envoyerEtat(); }

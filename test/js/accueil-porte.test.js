@@ -45,7 +45,8 @@ async function enfant() {
   const sortie = {
     accueils: accueils.length,
     accueilsAvant,
-    commande: HOTE.commandes().indexOf('szh.accueil') !== -1
+    commande: HOTE.commandes().indexOf('szh.accueil') !== -1,
+    bouton: HOTE.barres.filter((b) => b.command === 'szh.accueil' && b.visible).map((b) => b.text)
   };
   // Le numéro choisi est-il déjà ouvert ailleurs ? Le faux éditeur garde la fenêtre et
   // son focus, ou le donne à une autre, ou se désactive comme au rechargement.
@@ -101,6 +102,8 @@ if (CAS) {
     const r = rejouer('dossier', '');
     assert.strictEqual(r.accueils, 0);
     assert.strictEqual(r.commande, true, 'la commande reste, toujours visible');
+    // La barre d'activité est masquée : le retour à l'Accueil a son bouton dans la barre d'état.
+    assert.deepStrictEqual(r.bouton, ['$(home) Accueil'], 'pas de bouton Accueil dans la barre d’état');
   });
 
   test('un onglet ouvert sans dossier : rien ne s’ouvre, même après la relecture', () => {

@@ -1935,6 +1935,7 @@ const TEXTES_COCKPIT = {
     // L'Accueil (media/accueil.js). Les textes repris du lanceur Windows
     // (windows/szh-textes.ps1) gardent leur sens ; un texte compté a ses deux formes (.un, .plus).
     'accueil.titre': 'Accueil',
+    'accueil.bouton.aide': 'Retour à l’accueil de Pronto',
     'accueil.onglets': 'Sections de l’Accueil',
     'accueil.onglet.produits': 'Produits',
     'accueil.onglet.nouveau': 'Nouveau',
@@ -3944,6 +3945,7 @@ const TEXTES_COCKPIT = {
     'statut.reimport.annule': 'Rückkehr zum vorherigen Text von «{0}»…',
     // Die Startseite (media/accueil.js) : voir le commentaire côté français.
     'accueil.titre': 'Startseite',
+    'accueil.bouton.aide': 'Zurück zur Startseite von Pronto',
     'accueil.onglets': 'Bereiche der Startseite',
     'accueil.onglet.produits': 'Produkte',
     'accueil.onglet.nouveau': 'Neu',
