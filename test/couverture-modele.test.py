@@ -129,7 +129,20 @@ class Blocs(unittest.TestCase):
 
     def test_recherche_collection_et_tome(self):
         pied = self.blocs('recherche')['pied']
-        self.assertIn('Sonderpädagogische Forschung in der Schweiz<br />Band 4', pied)
+        pc = lambda t: '<span class="szh-couv-pc">%s</span>' % t
+        self.assertIn('S%s F%s %s %s S%s<br />B%s 4' % (
+            pc('onderpädagogische'), pc('orschung'), pc('in'), pc('der'), pc('chweiz'),
+            pc('and')), pied)
+
+    def test_petites_capitales_composees(self):
+        # La référence compose ses petites capitales en capitales à 70 % : une minuscule
+        # devient une capitale réduite, une capitale garde son corps.
+        self.assertEqual(couverture.petites_capitales('Band 4'),
+                         'B<span class="szh-couv-pc">and</span> 4')
+        self.assertEqual(couverture.petites_capitales('a&b'),
+                         '<span class="szh-couv-pc">a</span>&amp;<span class="szh-couv-pc">b</span>')
+        css = open(CSS, encoding='utf-8').read()
+        self.assertRegex(css, r'\.szh-couv-pc\s*\{[^}]*text-transform:\s*uppercase;[^}]*font-size:\s*0?\.7em')
 
     def test_prospectrum_titre_second_et_sa_langue(self):
         x = self.blocs('prospectrum', couverture={'titre-2': 'La CDPH // en Suisse',
@@ -137,7 +150,7 @@ class Blocs(unittest.TestCase):
         self.assertIn('<p class="szh-couv-titre-2" lang="fr">La CDPH<br />en Suisse</p>',
                       x['bandeau-extra'])
         self.assertIn('lang="fr">Bilan</p>', x['bandeau-extra'])
-        self.assertIn('Band 4 / Volume 4', x['pied'])
+        self.assertIn('Band 4\u200a/\u200aVolume 4', x['pied'])
         self.assertIn('Sonderpädagogische Forschung in der Schweiz', x['1re-haut'])
         sans = self.blocs('prospectrum')
         self.assertEqual(sans['bandeau-extra'], '')

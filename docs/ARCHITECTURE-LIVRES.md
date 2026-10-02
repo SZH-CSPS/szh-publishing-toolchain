@@ -334,10 +334,16 @@ est celui de la référence, son RVB la conversion FOGRA52 → sRGB, faute de va
 Le fond ProSpectrum est un maillage vectoriel dans la référence : il est livré en JPEG CMJN
 300 dpi, rendu par Ghostscript (`tiff32nc`) depuis la source vectorielle, et passé en sRGB
 par le profil pour les sorties écran. Un intertitre de 4e s'écrit au niveau 1 (`# Zum Buch`) :
-un `##` sans `#` avant lui fait tomber le PDF écran en PDF/UA (règle 7.4.2-1). Écarts
-assumés : Open Sans semi-condensée partout (Frutiger et Celeste de Pelgrims, l'Open Sans
-Condensed du dos de recherche et la Frutiger du dos ProSpectrum ne sont pas livrées), et pas
-d'étirement horizontal des titres ProSpectrum (105 % dans la référence).
+un `##` sans `#` avant lui fait tomber le PDF écran en PDF/UA (règle 7.4.2-1).
+
+**Précision du placement.** Les cotes de `couverture.css` sont relevées par extraction (boîtes
+de glyphes, objets image, balayage du rendu) sur les références, et recalées jusqu'à 0,5 mm
+au plus sur Buholzer, Hofer et ProSpectrum. Le dos de recherche est en SZH Condensed, comme
+sa référence ; l'étirement à 105 % des titres ProSpectrum est rendu par l'approche ; le logo
+d'édition est dimensionné sur son encre, dont son cadre SVG déborde de 0,7 mm ; les petites
+capitales de collection sont composées à 70 % par `petites_capitales()`. Écarts assumés :
+Pelgrims (2021) est en Frutiger et Celeste, non livrées, et ouvre sa 4e plus bas que
+Buholzer ; les références divergent entre elles (symbole du dos, logo réduit de Hofer).
 
 **L'intérieur** (`livre-imprimeur`) reste en hex dans ses feuilles, et `pipeline/cmjn.py` le
 convertit en deux temps :

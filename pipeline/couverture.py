@@ -603,7 +603,8 @@ MOT_VOLUME = {'fr': 'Volume', 'de': 'Band', 'it': 'Volume'}
 ISBN_LIBELLES = {'fr': ('ISBN E-Book : ', 'ISBN Print : '),
                  'de': ('ISBN E-Book: ', 'ISBN Print on demand: '),
                  'it': ('ISBN e-book: ', 'ISBN stampa: ')}
-BARRE = ' / '
+# Espaces ultrafines autour de la barre, comme la référence ProSpectrum.
+BARRE = '\u200a/\u200a'
 
 
 def langue_seconde(lang):
@@ -621,6 +622,16 @@ def bloc_isbn(buch, lang):
     libelles = ISBN_LIBELLES.get(lang, ISBN_LIBELLES['fr'])
     lignes = [html.escape(l + v) for l, v in zip(libelles, valeurs) if v]
     return '<p class="szh-couv-isbn">%s</p>' % '<br />'.join(lignes) if lignes else ''
+
+
+def petites_capitales(texte):
+    """Petites capitales composées : chaque suite de minuscules passe en capitales au corps
+    réduit (.szh-couv-pc, 70 % comme la référence du modèle recherche), les capitales gardent
+    le leur. La face petites capitales des polices (80 %, graisse au-dessus) faisait la
+    collection plus large de 3 mm (mesuré)."""
+    morceaux = re.split(r'([^\W\d_A-ZÀ-ÖØ-Þ]+)', str(texte))
+    return ''.join('<span class="szh-couv-pc">%s</span>' % html.escape(m) if i % 2 else
+                   html.escape(m) for i, m in enumerate(morceaux) if m)
 
 
 def _decor(*classes):
@@ -660,10 +671,12 @@ def blocs_maquette(buch, lang, modele, couleurs, titre, resp, fond=None):
         blocs['dos'] = '\n'.join([_decor('szh-couv-dos-fond'), ligne_dos, symbole_blanc])
         return blocs
     if modele == 'recherche':
-        lignes = [x for x in (collection, (MOT_TOME.get(lang, MOT_TOME['fr']) + ' ' + tome)
-                              if tome else '') if x]
+        brut = [str(buch.get('collection') or '').strip(),
+                (MOT_TOME.get(lang, MOT_TOME['fr']) + ' ' + str(buch.get('tome')).strip())
+                if tome else '']
         blocs['pied'] = '\n'.join([
-            '<p class="szh-couv-1re-collection">%s</p>' % '<br />'.join(lignes),
+            '<p class="szh-couv-1re-collection">%s</p>'
+            % '<br />'.join(petites_capitales(x) for x in brut if x),
             _img('szh-couv-logo', logo_uri('edition-szh-csps.svg', couleurs['papier'],
                                            couleurs['accent']), ALT_EDITION)])
         blocs['4e-haut'] = _decor('szh-couv-aplat', 'szh-couv-bande', 'szh-couv-filet-haut',

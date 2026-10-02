@@ -37,6 +37,12 @@
 @font-face { font-family: 'Open Sans'; font-weight: 800; font-style: normal;
   src: url("../../fonts/OpenSans-SemiCondensed-ExtraBold.ttf") format('truetype'); }
 
+/* Open Sans Condensed renommée (voir fonts/README.md) : le dos du modèle recherche. */
+@font-face { font-family: 'SZH Condensed'; font-weight: 400; font-style: normal;
+  src: url("../../fonts/SZHCondensed-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'SZH Condensed'; font-weight: 700; font-style: normal;
+  src: url("../../fonts/SZHCondensed-Bold.ttf") format('truetype'); }
+
 @font-face { font-family: 'SZH Couverture'; font-weight: 300; font-style: normal;
   src: url("../../fonts/SZHCouverture-Light.ttf") format('truetype'); }
 @font-face { font-family: 'SZH Couverture'; font-weight: 400; font-style: normal;
@@ -241,16 +247,20 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap; font-size: 8pt; line-height: 1;
 }
 .szh-couv-classique .szh-couv-dos-auteurs, .szh-couv-recherche .szh-couv-dos-auteurs {
-  font-weight: 400; letter-spacing: 0.05em; margin-right: 3.8mm;
+  font-weight: 400; letter-spacing: 0.05em; margin-right: 4.27mm;
 }
+.szh-couv-recherche .szh-couv-dos-auteurs { margin-right: 3.56mm; }
 .szh-couv-classique .szh-couv-dos-titre, .szh-couv-recherche .szh-couv-dos-titre {
   font-weight: 700; letter-spacing: 0.025em;
 }
 .szh-couv-classique .szh-couv-dos-symbole, .szh-couv-recherche .szh-couv-dos-symbole,
-.szh-couv-prospectrum .szh-couv-dos-symbole { top: 204.6mm; width: 4.9mm; margin-left: -2.45mm; }
+.szh-couv-prospectrum .szh-couv-dos-symbole { top: 204.31mm; width: 5.45mm; margin-left: -2.725mm; }
+.szh-couv-classique .szh-couv-dos-symbole { top: 205.08mm; }
 
 .szh-couv-classique .szh-couv-logo, .szh-couv-recherche .szh-couv-logo,
-.szh-couv-prospectrum .szh-couv-logo { position: absolute; height: 10.74mm; width: 27.51mm; }
+.szh-couv-prospectrum .szh-couv-logo { position: absolute; height: 11.56mm; width: 29.61mm; }
+/* Le cadre de edition-szh-csps.svg déborde son encre de 0,7 mm à gauche et 0,65 mm en haut : les cotes
+   qui suivent placent l'encre aux relevés de chaque référence. */
 
 /* ═══ 4. Modèle classique — calqué sur « Teil- und Reintegration als Einzelfall? » (2026)
    Responsables, titre, filet et sous-titre à la couleur d'impression sur l'aplat ;
@@ -259,7 +269,7 @@ a { color: inherit; text-decoration: none; }
   top: 8.93mm; left: 30mm; right: 0; background: none; color: var(--c-couv-accent);
 }
 .szh-couv-classique .szh-couv-auteurs {
-  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.05em;
+  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.054em;
 }
 .szh-couv-classique .szh-couv-titre {
   margin-top: 17.11mm; font-size: 20pt; line-height: 26pt; font-weight: 800;
@@ -278,11 +288,21 @@ a { color: inherit; text-decoration: none; }
   background-size: contain;
 }
 .szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-cadre { left: 17.8mm; }
+/* Plein cadre (Pelgrims) : titre calé en bas de la zone haute, dernière ligne de base à
+   74,7 mm, comme sa référence. */
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-bandeau { height: 67.62mm; }
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-titre {
+  position: absolute; bottom: 0; left: 0; margin: 0;
+}
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-sous-titre {
+  position: absolute; top: 100%; left: 0; right: 0;
+}
 .szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-illustration {
   top: calc(93mm + var(--szh-couv-fp)); left: 0; right: 0; bottom: 0; width: auto; height: auto;
   background-size: cover; background-position: center top;
 }
-.szh-couv-classique .szh-couv-1re-pied { position: absolute; left: 117.28mm; top: 201.63mm; }
+.szh-couv-classique .szh-couv-1re-pied { position: absolute; left: 116.59mm; top: 201.07mm; }
+.szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-pied { left: 114.02mm; }
 .szh-couv-classique .szh-couv-logo { left: 0; top: 0; }
 .szh-couv-classique .szh-couv-4e-texte { left: 19.5mm; width: 105.8mm; top: 40.06mm; }
 .szh-couv-classique .szh-couv-isbn { top: 202.77mm; }
@@ -301,7 +321,7 @@ a { color: inherit; text-decoration: none; }
 }
 .szh-couv-recherche .szh-couv-auteurs {
   position: absolute; top: -115.07mm; left: 16.95mm;
-  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.05em;
+  font-size: 10pt; line-height: 14pt; font-weight: 500; letter-spacing: 0.0575em;
 }
 .szh-couv-recherche .szh-couv-titre {
   font-size: 20pt; line-height: 26pt; font-weight: 800; letter-spacing: 0.01em;
@@ -320,10 +340,11 @@ a { color: inherit; text-decoration: none; }
   background: var(--c-couv-capucine-voile); color: var(--c-couv-papier);
 }
 .szh-couv-recherche .szh-couv-1re-collection {
-  font-size: 10pt; line-height: 14pt; font-weight: 700; font-variant: small-caps;
-  letter-spacing: 0.01em;
+  font-size: 10pt; line-height: 14pt; font-weight: 700; letter-spacing: 0.017em;
 }
-.szh-couv-recherche .szh-couv-logo { left: 111.46mm; top: 4.62mm; }
+.szh-couv-pc { text-transform: uppercase; font-size: 0.7em; }
+.szh-couv-recherche .szh-couv-dos-texte { font-family: 'SZH Condensed', var(--font-sans); }
+.szh-couv-recherche .szh-couv-logo { left: 110.76mm; top: 4.07mm; }
 
 .szh-couv-recherche .szh-couv-4e-texte { left: 17.25mm; top: 41.01mm; }
 .szh-couv-recherche .szh-couv-isbn { top: 202.53mm; }
@@ -378,7 +399,7 @@ a { color: inherit; text-decoration: none; }
 
 .szh-couv-1re-label {
   position: absolute; left: 29.95mm; top: 13.52mm;
-  font-size: 12pt; line-height: 14pt; font-weight: 800; letter-spacing: -0.026em;
+  font-size: 12pt; line-height: 14pt; font-weight: 800; letter-spacing: 0;
 }
 .szh-couv-prospectrum .szh-couv-1re-bandeau {
   top: 18.73mm; left: 30mm; right: 12.2mm; background: none;
@@ -387,7 +408,7 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 19.37mm; font-size: 10pt; line-height: 14pt; letter-spacing: 0.01em;
 }
 .szh-couv-prospectrum .szh-couv-titre, .szh-couv-prospectrum .szh-couv-titre-2 {
-  font-size: 42pt; line-height: 40pt; font-weight: 800; letter-spacing: -0.03em;
+  font-size: 42pt; line-height: 40pt; font-weight: 800; letter-spacing: -0.009em;
 }
 /* En ligne, le titre ne peint son fond que sous ses mots : il n'y cache que là le filet. */
 .szh-couv-prospectrum .szh-couv-titre {
@@ -395,9 +416,10 @@ a { color: inherit; text-decoration: none; }
   box-decoration-break: clone;
 }
 .szh-couv-prospectrum .szh-couv-sous-titre, .szh-couv-prospectrum .szh-couv-sous-titre-2 {
-  font-size: 20pt; line-height: 24pt; font-weight: 300; letter-spacing: -0.013em;
+  font-size: 20pt; line-height: 24pt; font-weight: 300; letter-spacing: 0;
 }
 .szh-couv-prospectrum .szh-couv-sous-titre { margin-top: 10.21mm; }
+.szh-couv-prospectrum .szh-couv-sous-titre-2 { letter-spacing: 0.016em; }
 .szh-couv-prospectrum .szh-couv-titre-2, .szh-couv-prospectrum .szh-couv-sous-titre-2 {
   position: absolute; right: 0; text-align: right; white-space: nowrap;
 }
@@ -408,9 +430,9 @@ a { color: inherit; text-decoration: none; }
 }
 .szh-couv-prospectrum .szh-couv-1re-collection {
   position: absolute; left: 0; top: 5.62mm; font-size: 8.46pt; line-height: 10pt;
-  text-transform: uppercase; letter-spacing: 0.17em;
+  text-transform: uppercase; letter-spacing: 0.184em;
 }
-.szh-couv-prospectrum .szh-couv-logo { left: 84.3mm; top: 0; }
+.szh-couv-prospectrum .szh-couv-logo { left: 83.6mm; top: -0.65mm; }
 
 .szh-couv-prospectrum .szh-couv-4e-texte { top: 51.81mm; }
 .szh-couv-prospectrum .szh-couv-4e-texte h1, .szh-couv-prospectrum .szh-couv-4e-texte h2,
@@ -419,7 +441,7 @@ a { color: inherit; text-decoration: none; }
   text-transform: uppercase; letter-spacing: 0.1em;
 }
 .szh-couv-prospectrum .szh-couv-4e-texte p + h1, .szh-couv-prospectrum .szh-couv-4e-texte p + h2,
-.szh-couv-prospectrum .szh-couv-4e-texte p + h3 { margin-top: 13.5pt; }
+.szh-couv-prospectrum .szh-couv-4e-texte p + h3 { margin-top: 27pt; }
 .szh-couv-prospectrum .szh-couv-isbn {
   top: 201.87mm; font-weight: 700; letter-spacing: 0.015em; color: var(--c-couv-papier);
 }
@@ -432,9 +454,9 @@ a { color: inherit; text-decoration: none; }
   transform: rotate(-90deg) translate(-100%, -50%); white-space: nowrap; line-height: 1;
 }
 .szh-couv-prospectrum .szh-couv-dos-collection {
-  top: 31.43mm; font-size: 12pt; font-weight: 800; letter-spacing: -0.03em;
+  top: 31.43mm; font-size: 12pt; font-weight: 800; letter-spacing: -0.003em;
 }
 .szh-couv-prospectrum .szh-couv-dos-titre {
-  top: 71.22mm; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.035em;
+  top: 72mm; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.035em;
 }
 .szh-couv-prospectrum .szh-couv-dos-auteurs { top: 153.5mm; font-size: 8pt; letter-spacing: 0.05em; }
