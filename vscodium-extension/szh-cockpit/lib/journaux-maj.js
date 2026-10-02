@@ -1,5 +1,5 @@
 // Les journaux de mise à jour du poste : les dix derniers update-*.log, leur verdict et leur
-// fin. Jumeau de Get-SzhJournauxMaj et de Get-SzhVerdictJournalMaj (windows/szh-common.ps1).
+// fin.
 'use strict';
 
 const fs = require('fs');

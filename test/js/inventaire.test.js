@@ -1,6 +1,6 @@
-// Ce que le lanceur liste (lib/inventaire.js), et sa parité avec le lanceur PowerShell :
-// sur la même arborescence jetable, open-produit.ps1 en mode simulé et le module rendent la
-// même racine et les mêmes numéros, dans le même ordre.
+// Ce que l'Accueil liste (lib/inventaire.js), et sa parité avec le socle PowerShell : sur la
+// même arborescence jetable, Get-SzhEmplacements et Get-SzhEmplacementRevue (szh-produits.ps1)
+// et le module rendent la même racine active, le même mode et les mêmes racines par produit.
 //
 //   node --test test/js/inventaire.test.js
 'use strict';
@@ -15,7 +15,7 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
-const OUVRIR_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
+const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const inventaire = require(path.join(COCKPIT, 'lib', 'inventaire.js'));
 
 const TRAVAIL = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-inventaire-'));
@@ -63,16 +63,22 @@ function remplir(base) {
   numero(base, ['_Archive', 'Books', '2020-B1-Alt'], 'buch.yaml', ['titre: Alt']);
 }
 
-// open-produit.ps1 en simulation, sur ce poste.
+// Le socle PowerShell, sur ce poste : la racine active, le mode, et les deux racines de chaque
+// produit, en JSON.
 function lanceurPowerShell(p, env) {
-  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', OUVRIR_PRODUIT], {
+  const commande = '. "' + COMMUN_PS1 + '"; $e = Get-SzhEmplacements; $r = [ordered]@{ racineBase = $e.base; ' +
+    'modeTest = ($e.emplacement -eq $SzhEmplacementTest); produits = [ordered]@{} }; ' +
+    "foreach ($j in @('revue', 'zeitschrift', 'livre')) { $r.produits[$j] = [ordered]@{ " +
+    "racineEnCours = (Get-SzhEmplacementRevue $j 'encours'); racineArchive = (Get-SzhEmplacementRevue $j 'archive') } }; " +
+    '[Console]::Out.Write(($r | ConvertTo-Json -Depth 4 -Compress))';
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', commande], {
     encoding: 'utf8', windowsHide: true, timeout: 90000,
     env: Object.assign({}, process.env, {
       SZH_BASE: p.programData, SZH_LANCEUR_SIMULE: '1', LOCALAPPDATA: p.local, OneDrive: p.onedrive,
       SZH_ANCRAGE: '', SZH_RACINE_TEST: '', SZH_RACINE_PROD: ''
     }, env)
   });
-  assert.strictEqual(run.status, 0, 'open-produit.ps1 : ' + run.stdout + run.stderr);
+  assert.strictEqual(run.status, 0, 'socle PowerShell : ' + run.stdout + run.stderr);
   return JSON.parse(run.stdout.trim());
 }
 
@@ -92,10 +98,8 @@ function lanceurJs(p, env) {
   }
 }
 
-const seconde = (d) => Math.round(new Date(d).getTime() / 1000);
-const fiche = (e) => ({ nom: e.nom, titre: e.titre, chemin: e.chemin, modifie: seconde(e.modifie),
-  verrouillee: !!e.verrouillee, archivee: !!e.archivee });
-
+// Les listes de numéros n'ont plus de jumeau PowerShell : elles sont prouvées en clair par
+// chaque test ; la parité porte sur les racines, que le socle et le module calculent chacun.
 function comparer(ps, js) {
   assert.strictEqual(js.base, ps.racineBase, 'racine active');
   assert.strictEqual(js.modeTest, ps.modeTest, 'mode test');
@@ -104,19 +108,10 @@ function comparer(ps, js) {
     const b = js.produits[jeton];
     assert.strictEqual(b.racineEnCours, a.racineEnCours, jeton + ' : racine en cours');
     assert.strictEqual(b.racineArchive, a.racineArchive, jeton + ' : racine des archives');
-    assert.deepStrictEqual(b.enCours.map(fiche), a.enCours.map(fiche), jeton + ' : en cours');
-    assert.deepStrictEqual(b.archives.map(fiche), a.archives.map(fiche), jeton + ' : archives');
-    const avert = a.avertissements.join(' ');
-    if (b.hors.nombre > 0) {
-      assert.ok(avert.includes(String(b.hors.nombre)) && avert.includes(b.hors.dossier),
-        jeton + ' : hors arborescence ' + JSON.stringify(b.hors) + ' contre « ' + avert + ' »');
-    } else {
-      assert.strictEqual(avert, '', jeton + ' : le PowerShell signale des dossiers hors arborescence');
-    }
   }
 }
 
-test('inventaire : mêmes numéros que le lanceur PowerShell, en emplacement de test', { skip: sansPowerShell }, () => {
+test('inventaire : mêmes racines que le socle PowerShell, en emplacement de test', { skip: sansPowerShell }, () => {
   const p = poste('test', { emplacementRevues: 'test', revuesRoots: [path.join(TRAVAIL, 'test', 'Ancien')] });
   const base = path.join(p.racine, 'Base');
   remplir(base);
@@ -138,7 +133,7 @@ test('inventaire : mêmes numéros que le lanceur PowerShell, en emplacement de 
   assert.strictEqual(js.ancrageAbsent, false);
 });
 
-test('inventaire : même racine de production que le lanceur, dérivée de l’ancrage', { skip: sansPowerShell }, () => {
+test('inventaire : même racine de production que le socle, dérivée de l’ancrage', { skip: sansPowerShell }, () => {
   const p = poste('prod', { emplacementRevues: 'production' });
   const ancrage = path.join(p.racine, 'SZH', 'Daten_Allgemein - General');
   const base = path.join(ancrage, '2_Produkte', '54_Pronto');
@@ -151,7 +146,7 @@ test('inventaire : même racine de production que le lanceur, dérivée de l’a
   assert.strictEqual(js.produits.revue.enCours.length, 2);
 });
 
-test('inventaire : même racine par défaut que le lanceur, sans surcharge ni ancrage', { skip: sansPowerShell }, () => {
+test('inventaire : même racine par défaut que le socle, sans surcharge ni ancrage', { skip: sansPowerShell }, () => {
   const p = poste('defaut', { emplacementRevues: 'test' });
   const env = { USERPROFILE: p.profil };
   remplir(path.join(p.profil, 'OneDrive - SZH CSPS', 'Revues-TESTING'));

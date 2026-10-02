@@ -1,6 +1,6 @@
 // L'épinglage hors ligne (OneDrive Files On-Demand) — windows/szh-epinglage.ps1,
-// Get-SzhDossiersAEpingler / Invoke-SzhEpinglageHorsLigne —, appelé par open-produit.ps1
-// juste après le check-in (demande de Robin, 24.09.2026).
+// Get-SzhDossiersAEpingler / Invoke-SzhEpinglageHorsLigne —, appelé par les tâches de
+// démarrage (Invoke-SzhTachesDemarrage) juste après le check-in (demande de Robin, 24.09.2026).
 //
 //   node --test test/js/epinglage-hors-ligne.test.js
 //   node --test "test/js/*.test.js"

@@ -273,8 +273,7 @@ function Test-SzhDemandeRecente($Etat) {
   } catch { return $false }
 }
 
-# FolderBrowserDialog, jamais en simulation (D2 du lot, et l'en-tete SZH_LANCEUR_SIMULE de
-# open-produit.ps1). Au plus 3 tentatives ; entre deux, un message qui dit ce qui a ete
+# FolderBrowserDialog, jamais en simulation (SZH_LANCEUR_SIMULE). Au plus 3 tentatives ; entre deux, un message qui dit ce qui a ete
 # cherche plutot qu'un refus muet. Abandon (annulation ou 3 echecs) : MessageBox
 # d'information, jamais bloquante pour la suite du lanceur (D5), et pose le marqueur
 # anti-harcelement. Un succes ecrit ancrageSharePoint et efface ce marqueur.

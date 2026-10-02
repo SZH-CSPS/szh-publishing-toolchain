@@ -1,5 +1,5 @@
-// Les journaux de mise à jour que l'onglet Log de l'Accueil liste (lib/journaux-maj.js), et leur
-// parité avec Get-SzhJournauxMaj et Get-SzhVerdictJournalMaj sur le même dossier jetable.
+// Les journaux de mise à jour que l'onglet Log de l'Accueil liste (lib/journaux-maj.js), sur un
+// dossier jetable.
 //
 //   node --test test/js/journaux-maj.test.js
 'use strict';
@@ -9,8 +9,6 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
-const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -96,19 +94,6 @@ test('journaux : SZH_JOURNAUX_MAJ désigne le dossier lu, quelle que soit la bas
   } finally { process.env.SZH_BASE = avant; delete process.env.SZH_JOURNAUX_MAJ; }
 });
 
-test('journaux : Get-SzhJournauxMaj suit aussi SZH_JOURNAUX_MAJ', { skip: sansPowerShell }, () => {
-  const script = [
-    ". '" + path.join(RACINE, 'windows', 'szh-common.ps1').replace(/'/g, "''") + "'",
-    '[Console]::Out.Write(@(Get-SzhJournauxMaj).Count)'
-  ].join('\n');
-  const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-  { encoding: 'utf8', windowsHide: true, timeout: 90000,
-    env: Object.assign({}, process.env, { SZH_BASE: path.join(TRAVAIL, 'nulle-part'), SZH_JOURNAUX_MAJ: LOGS }) });
-  assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(Number(r.stdout.trim()) > 0, 'aucun journal lu dans le dossier désigné : ' + r.stdout);
-});
-
 test('journaux : la fin d’un journal, ses deux cents dernières lignes et leur nombre', () => {
   const long = journaux.finJournal(path.join(LOGS, 'update-20260901-080000.log'));
   assert.strictEqual(long.lignes, 200);
@@ -118,26 +103,4 @@ test('journaux : la fin d’un journal, ses deux cents dernières lignes et leur
   const court = journaux.finJournal(path.join(LOGS, 'update-20260902-080000.log'));
   assert.strictEqual(court.lignes, 0, 'un journal court se montre en entier');
   assert.strictEqual(court.texte, ['Échec : réseau injoignable.'].concat(FIN).join('\n'));
-});
-
-test('journaux : même liste, même ordre et mêmes verdicts que Get-SzhJournauxMaj', { skip: sansPowerShell }, () => {
-  const script = [
-    '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false',
-    ". '" + path.join(RACINE, 'windows', 'szh-common.ps1').replace(/'/g, "''") + "'",
-    '$l = @(Get-SzhJournauxMaj | ForEach-Object { [pscustomobject]@{ nom = $_.nom; verdict = $_.verdict;',
-    "  quand = $_.date.ToString('yyyyMMddHHmmss'); taille = $_.taille } })",
-    'ConvertTo-Json -InputObject $l -Compress'
-  ].join('\n');
-  const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-    '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
-  { encoding: 'utf8', windowsHide: true, timeout: 90000, env: Object.assign({}, process.env, { SZH_BASE: BASE }) });
-  assert.strictEqual(r.status, 0, r.stderr);
-  const ps = JSON.parse(r.stdout.trim());
-  const verdictPs = (nom) => ps.filter((j) => j.nom === nom)[0].verdict;
-  assert.deepStrictEqual(['update-20260907-080000.log', 'update-20260908-080000.log', 'update-20260909-080000.log']
-    .map(verdictPs), ['ok', 'ok', 'echec'], 'pieds de page français et allemand');
-  const p2 = (n) => String(n).padStart(2, '0');
-  const quand = (d) => d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
-  const js = journaux.journauxMaj().map((j) => ({ nom: j.nom, verdict: j.verdict, quand: quand(j.date), taille: j.taille }));
-  assert.deepStrictEqual(js, ps);
 });

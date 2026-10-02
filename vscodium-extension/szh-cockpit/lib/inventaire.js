@@ -1,6 +1,6 @@
 // Ce que liste l'Accueil : la racine active du poste et, pour chaque produit, ses numéros
-// en cours et archivés. Jumeau de Get-SzhBaseRevuesPour (windows/szh-produits.ps1) et de
-// Get-SzhInventaireProduit (windows/open-produit.ps1), tenu par test/js/inventaire.test.js.
+// en cours et archivés. Jumeau de Get-SzhBaseRevuesPour et de Get-SzhEmplacementRevue
+// (windows/szh-produits.ps1), tenu par test/js/inventaire.test.js.
 'use strict';
 
 const fs = require('fs');
@@ -9,7 +9,7 @@ const { estVraiYaml, normaliserRevue } = require('./yaml');
 const { lireConfigPoste, resoudreEmplacementRevues, EMPLACEMENT_TEST } = require('./archivage');
 const { resoudreAncrage, SEGMENTS_DOSSIER_RAPPORTS, SEGMENT_APPLICATION } = require('./rapport-erreur');
 
-// L'ordre des onglets, celui de $SzhOrdreOnglets.
+// L'ordre des onglets.
 const ORDRE = ['revue', 'zeitschrift', 'livre'];
 
 // Les six dossiers des trois produits, ceux de $SzhSousDossiers.
@@ -91,7 +91,7 @@ function sousDossiers(racine) {
 }
 
 // Les dossiers hors de l'arborescence où dort encore une revue : `revuesRoots` de
-// config.json et OneDrive\Revues, comme les racines héritées d'open-produit.ps1.
+// config.json et OneDrive\Revues.
 function horsArborescence(jeton, base, cfg) {
   const info = PRODUITS[jeton];
   if (!info.racinesHeritees) { return { nombre: 0, dossier: '' }; }

@@ -14,8 +14,7 @@ Depuis le 14.09.2026, ces gabarits sont rendus par **le même moteur que le cock
 plus de mini-Twig écrit à la main côté PowerShell. `Get-SzhCourriel` appelle
 `outils/rendre-gabarit.js` (dans l'extension du cockpit), exécuté par le Node
 qu'embarque VSCodium (`ELECTRON_RUN_AS_NODE=1`) : un aller-retour JSON sur
-stdin/stdout, sur le même patron qu'`Invoke-SzhSecretariat`
-(`windows/open-produit.ps1`). Toute la syntaxe de `lib/gabarits.js` est donc
+stdin/stdout, par `Invoke-SzhNodeCockpit` (`windows/szh-shell.ps1`). Toute la syntaxe de `lib/gabarits.js` est donc
 disponible ici — `{% if %}`, `{% for %}`, `loop.*`, les filtres — voir
 `vscodium-extension/szh-cockpit/mail-templates/README.md` pour le détail.
 

@@ -137,18 +137,21 @@ test('aucun chemin de fichiers, jonctions.lien, variables ou raccourci ne vise l
   }
 });
 
-// SZH_JOURNAUX_MAJ vise la production : seuls ses deux lecteurs ont le droit de la nommer,
-// et aucun des deux n'ecrit dans le dossier qu'elle designe.
-test('SZH_JOURNAUX_MAJ n\'est lue que par les deux lecteurs des journaux, qui n\'ecrivent pas', () => {
+// SZH_JOURNAUX_MAJ vise la production : seuls pronto-dev.ps1, qui la pose, et son lecteur ont
+// le droit de la nommer, et le lecteur n'ecrit pas dans le dossier qu'elle designe.
+test('SZH_JOURNAUX_MAJ n\'est lue que par le lecteur des journaux, qui n\'ecrit pas', () => {
   const racine = path.resolve(__dirname, '..', '..');
   const autorises = [path.join('vscodium-extension', 'szh-cockpit', 'lib', 'journaux-maj.js'),
-    path.join('windows', 'szh-common.ps1'), path.join('outils-dev', 'pronto-dev.ps1')];
+    path.join('outils-dev', 'pronto-dev.ps1')];
   const vus = [];
   const parcourir = (d) => {
     for (const e of fs.readdirSync(path.join(racine, d), { withFileTypes: true })) {
       const rel = path.join(d, e.name);
       if (e.isDirectory()) { if (e.name !== 'node_modules') { parcourir(rel); } continue; }
-      if (/\.(js|ps1)$/.test(e.name) && fs.readFileSync(path.join(racine, rel), 'utf8').includes('SZH_JOURNAUX_MAJ')) {
+      // Le code seulement : un commentaire qui la nomme pour dire qu'on ne la lit pas ne compte pas.
+      const code = /\.(js|ps1)$/.test(e.name) ? fs.readFileSync(path.join(racine, rel), 'utf8').split(/\r?\n/)
+        .filter((l) => !/^\s*(#|\/\/)/.test(l)).join('\n') : '';
+      if (code.includes('SZH_JOURNAUX_MAJ')) {
         vus.push(rel);
       }
     }
@@ -159,10 +162,6 @@ test('SZH_JOURNAUX_MAJ n\'est lue que par les deux lecteurs des journaux, qui n\
   assert.deepStrictEqual(vus.sort(), autorises.slice().sort());
   const js = fs.readFileSync(path.join(racine, autorises[0]), 'utf8');
   assert.ok(!/\b(writeFile|appendFile|mkdir|rename|unlink|rm|copyFile)\w*\(/.test(js), 'journaux-maj.js ecrit sur le disque');
-  const ps = fs.readFileSync(path.join(racine, autorises[1]), 'utf8');
-  const corps = ps.slice(ps.indexOf('function Get-SzhJournauxMaj'), ps.indexOf('\n}', ps.indexOf('function Get-SzhJournauxMaj')));
-  assert.ok(corps.length > 50, 'Get-SzhJournauxMaj introuvable');
-  assert.ok(!/(Set-Content|Add-Content|Out-File|New-Item|Remove-Item|Move-Item|Copy-Item)/.test(corps), 'Get-SzhJournauxMaj ecrit sur le disque');
 });
 
 test('raccourci nomme bien Pronto (dev).lnk', { skip: sansPowerShell }, () => {
@@ -225,6 +224,14 @@ assert.ok(NB_MAKEFILE_SOURCE > 0,
 
 const MAKEFILE_DEPOT_WSL = versWsl(path.join(RACINE, 'pipeline', 'Makefile'));
 
+// Les tâches de démarrage de l'Accueil (ancrage, check-in, rapports, arbre d'essai) visent
+// des dossiers jetables, à côté de la base de dev : jamais le vrai dossier partagé.
+function posteDemarrage(dossier) {
+  const d = (n) => { const p = path.join(dossier, 'poste', n); fs.mkdirSync(p, { recursive: true }); return p; };
+  return { SZH_ANCRAGE: d(path.join('sp', 'Daten_Allgemein - General')), SZH_RAPPORTS: d('rapports'),
+    SZH_RACINE_PROD: d('prod'), SZH_RACINE_TEST: d('test'), LOCALAPPDATA: d('local') };
+}
+
 function executerReel(baseDev, args) {
   if (!POWERSHELL) { return null; }
   // SZH_LANCEUR_SIMULE=1 : le script delegue en bout de course a windows/open-revue.ps1
@@ -237,7 +244,7 @@ function executerReel(baseDev, args) {
   // celui du poste : c'est ce qui permet au groupe 4 de mesurer que le script ne le touche
   // pas de lui-meme.
   const menuJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-menu-'));
-  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' });
+  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' }, posteDemarrage(path.dirname(baseDev)));
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT,
     '-BaseDev', baseDev, '-Menu', menuJetable].concat(args || []), { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
   fs.rmSync(menuJetable, { recursive: true, force: true });
@@ -566,7 +573,7 @@ test('codium --list-extensions, depuis le profil dev, voit bien szh-cockpit et s
 
 function executerReelAvecMenu(baseDev, menu) {
   if (!POWERSHELL) { return null; }
-  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' });
+  const env = Object.assign({}, process.env, { SZH_LANCEUR_SIMULE: '1' }, posteDemarrage(path.dirname(baseDev)));
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT,
     '-BaseDev', baseDev, '-Menu', menu], { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
   return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '' };
@@ -689,7 +696,7 @@ test('Get-SzhRaccourcisMenu rend exactement deux entrees, et aucune ne nomme Pro
 // ---- Groupe 7 : l'entree DEV ouvre VSCodium sur le lanceur du cockpit ----
 // Sans argument, pronto-dev.ps1 appelle Start-SzhAccueil (szh-shell.ps1) : les taches de
 // demarrage, puis VSCodium sans dossier. En simulation, la fonction ecrit son plan en JSON ;
-// open-produit.ps1 simule ecrivait le sien, reconnaissable a son champ produit.
+// l'ancien lanceur WinForms ecrivait le sien, reconnaissable a son champ produit.
 
 function executerEntree(args) {
   if (!POWERSHELL) { return null; }
@@ -714,7 +721,6 @@ function executerEntree(args) {
 }
 
 const ENTREE_SANS_ARGUMENT = executerEntree([]);
-const ENTREE_LANCEUR = executerEntree(['-Lanceur']);
 const ENTREE_PRODUIT = executerEntree(['-Produit', 'zeitschrift']);
 
 test('sans argument - Start-SzhAccueil sur le profil dev, en -n, sans dossier ni SZH_ACCUEIL',
@@ -723,7 +729,7 @@ test('sans argument - Start-SzhAccueil sur le profil dev, en -n, sans dossier ni
     assert.ok(r && r.status === 0, 'pronto-dev.ps1 a echoue - ' + (r ? r.stderr + r.stdout.slice(0, 300) : ''));
     assert.ok(r.sortie, 'sortie JSON illisible - ' + r.stdout.slice(0, 300));
     assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
-      'open-produit.ps1 a ete appele alors qu\'aucun argument n\'etait passe');
+      'le lanceur WinForms a repondu alors qu\'aucun argument n\'etait passe');
     // La fonction de production, et plus aucune variable pour ouvrir l'Accueil : la fenetre
     // vide suffit au cockpit.
     assert.strictEqual(r.sortie.entree, 'accueil');
@@ -738,7 +744,7 @@ test('sans argument - Start-SzhAccueil sur le profil dev, en -n, sans dossier ni
     assert.strictEqual(args.length, 3, 'un argument de trop, un dossier serait ouvert - ' + ligne);
   });
 
-test('sans argument - les taches de demarrage d\'open-produit.ps1 et les secrets sont appeles',
+test('sans argument - les taches de demarrage de l\'Accueil et les secrets sont appeles',
   { skip: sansPowerShell }, () => {
     const r = ENTREE_SANS_ARGUMENT;
     assert.ok(r && r.sortie, 'sortie JSON illisible');
@@ -746,14 +752,6 @@ test('sans argument - les taches de demarrage d\'open-produit.ps1 et les secrets
       'Invoke-SzhCheckin', 'Invoke-SzhEpinglageHorsLigne', 'Initialize-SzhEmplacementsTest',
       'Set-SzhEnvironnementSecrets']);
   });
-
-test('-Lanceur garde open-revue.ps1, donc le lanceur WinForms', { skip: sansPowerShell }, () => {
-  const r = ENTREE_LANCEUR;
-  assert.ok(r && r.status === 0, 'pronto-dev.ps1 -Lanceur a echoue - ' + (r ? r.stderr : ''));
-  assert.ok(r.sortie && Object.prototype.hasOwnProperty.call(r.sortie, 'produit'),
-    'open-produit.ps1 n\'a pas rendu son JSON de simulation - ' + r.stdout.slice(0, 300));
-  assert.ok(!Object.prototype.hasOwnProperty.call(r.sortie, 'entree'), 'le chemin cockpit a ete pris');
-});
 
 // open-revue.ps1 le dit au journal, puis ouvre l'Accueil, qui suit le reglage du compte.
 test('un argument (-Produit zeitschrift) passe toujours a open-revue.ps1', { skip: sansPowerShell }, () => {

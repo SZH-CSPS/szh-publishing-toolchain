@@ -12,11 +12,11 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 
 ## 1. Le lanceur
 
-- **Déjà portable.** La logique lourde tourne en Node (`outils/secretariat-cli.js`,
-  `outils/rendre-gabarit.js`, `outils/auteurs-cli.js`, `lib/gabarits.js`) ; le PowerShell ne
-  fait que l'appeler. `lib/accueil-hote.js` montre déjà l'Accueil dans VSCodium.
-- **Ce qui bloque.**
-  - WinForms : `open-produit.ps1`, `lanceur-secretariat.ps1`, `lanceur-preproc.ps1` ;
+- **Fait.** Le lanceur est devenu l'Accueil du cockpit (`lib/accueil-hote.js`), et le
+  lanceur WinForms est retiré. Il ne reste en WinForms que « Changer de version… »
+  (`szh-versions.ps1`).
+- **Ce qui bloque encore.**
+  - « Pronto » lui-même (`open-revue.ps1`) et ses tâches de démarrage, en PowerShell ;
   - `szh-produits.ps1` (listes, racines), `szh-textes.ps1`, `new-revue.ps1` et
     `new-livre.ps1` ;
   - l'ancrage SharePoint, résolu en PowerShell seulement (`lib/auteurs-corpus.js` l'appelle
@@ -144,7 +144,7 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 
 | Morceau | Portable | Ce qui bloque d'abord | Option | Coût |
 |---|---|---|---|---|
-| Lanceur | ≈ 35 % | WinForms, `szh-produits.ps1` | WebviewView du cockpit | 3 à 5 sem. |
+| Lanceur | fait (l'Accueil) | `open-revue.ps1`, `szh-produits.ps1` | l'Accueil du cockpit | fait |
 | Moteur | ≈ 80 % | `wsl.exe`, `/mnt/c` en dur | `moteur.js` : WSL ou `podman exec` | 2 à 3 sem. |
 | Déploiement | ≈ 40 % | PowerShell, tâches planifiées, `ProgramData` | mise à jour pilotée par le cockpit, pull par digest | 2 à 3 sem. |
 | Raccourcis, protocole | ≈ 5 % | `.lnk`, registre, COM | `registerUriHandler` (`vscodium://`) | 3 à 5 j |
@@ -153,8 +153,8 @@ déploiement du côté de Node et de VSCodium. Le moteur de compilation, lui, ne
 | Tests, CI | ≈ 70 % | tests jumeaux PowerShell | matrice à trois OS, fumée Podman | 3 à 5 j |
 | Rapports, inventaire | ≈ 70 % | écrivains PowerShell, registre | JavaScript seul écrivain | 1 sem. |
 
-Total grossier : 3 à 4 mois pour une personne, dont la moitié pour le lanceur et le
-déploiement.
+Total grossier, estimé avant l'Accueil : 3 à 4 mois pour une personne, dont la moitié pour
+le lanceur, désormais fait, et le déploiement.
 
 ## Ordre recommandé
 
@@ -170,13 +170,9 @@ déploiement.
    - La génération des tâches de compilation par le cockpit est reportée à l'étape 3 : la
      tâche par défaut (Ctrl+E), l'import à l'ouverture et le `tasks.json` copié sur chaque
      poste en dépendent, et rien n'y gagne sous Windows.
-2. **Faire entrer le lanceur dans le cockpit**, où il devient l'Accueil, onglet par onglet : Secrétariat et Journal,
-   puis Produits et Nouveau, puis Préprocessing et Réglages. WinForms reste en secours pendant
-   la transition.
-   - **État.** L'Accueil porte Produits, Nouveau, Secrétariat et Log, en DEV seulement, derrière
-     `SZH_ACCUEIL` (voir `ARCHITECTURE.md`). Restent Préprocessing et Réglages (ce dernier
-     est en cours), puis la bascule de la production, qui n'est pas faite : elle utilise
-     toujours WinForms.
+2. **Faire entrer le lanceur dans le cockpit**, où il devient l'Accueil. **Fait** (3.2.0) :
+   l'Accueil porte Produits, Nouveau, Préprocessing, Secrétariat, Réglages et Log, « Pronto »
+   l'ouvre en production, et le lanceur WinForms est retiré (voir `ARCHITECTURE.md`).
 3. **Podman et Linux** : image par digest, fumée en CI, mise à jour pilotée par le cockpit.
 4. **macOS**, seulement s'il y a un vrai poste à servir.
 

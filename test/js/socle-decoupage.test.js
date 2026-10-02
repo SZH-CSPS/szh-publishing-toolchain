@@ -73,7 +73,7 @@ const PILOTE = [
   '$script:SzhConfigFile = Join-Path $SzhBase "config.json"',
   '$r = [ordered]@{}',
   // szh-textes.ps1, via T.
-  '$r.texte = T \'lanceur.encours\'',
+  '$r.texte = T \'arch.titre\'',
   // szh-produits.ps1, via Get-SzhEmplacements -- rien sur ce dossier jetable n\'existe, la
   // fonction ne doit pas lever pour autant.
   '$emp = Get-SzhEmplacements',
@@ -107,7 +107,7 @@ test('un pilote qui ne dot-source que szh-common.ps1 obtient un résultat non vi
     const r = bilan.r;
     // szh-textes.ps1 : un texte réel, jamais la clé nue (ce que T rend quand la table est
     // introuvable ou incomplète).
-    assert.ok(r.texte && r.texte !== 'lanceur.encours',
+    assert.ok(r.texte && r.texte !== 'arch.titre',
       'T ne trouve plus la table de szh-textes.ps1 : ' + JSON.stringify(r.texte));
     // szh-produits.ps1 : un emplacement résolu ('test' ou 'production'), une base non vide,
     // et deux racines « en cours » (revue + zeitschrift).

@@ -16,7 +16,7 @@
 # Auto-protection (pas dans la spec, necessaire pour ne jamais ecrire ailleurs que dans un
 # dossier jetable pendant les tests) : Write-SzhRapport et Clear-SzhRapportsEnAttente sont
 # des NO-OP silencieux des que $env:SZH_LANCEUR_SIMULE ou $env:SZH_OPENMD_SIMULE valent '1'
-# -- exactement les deux drapeaux que open-produit.ps1 et open-md.ps1 posent deja pour leurs
+# -- exactement les deux drapeaux que open-revue.ps1 et open-md.ps1 posent deja pour leurs
 # propres tests (aucune fenetre WinForms ne doit s'ouvrir en simulation ; un rapport ecrit
 # pour de vrai serait le meme genre d'effet de bord). archive-revue.ps1 n'a pas ce drapeau :
 # il n'a jamais ete concu pour tourner dans un banc de test automatise (fenetre visible
@@ -592,7 +592,7 @@ function Get-SzhRapportExtraitJournal {
 
 # =========================================================================================
 # 11. Champ generique d'un objet -- Hashtable OU PSCustomObject, pour laisser les accroches
-#     (update.ps1, archive-revue.ps1, open-produit.ps1, open-md.ps1) passer -Produit et les
+#     (update.ps1, archive-revue.ps1, szh-shell.ps1, open-md.ps1) passer -Produit et les
 #     entrees de -Fichiers sous la forme la plus commode pour elles.
 # =========================================================================================
 function Get-SzhRapportChampObjet {
@@ -727,7 +727,7 @@ function Limit-SzhRapportsEnAttente {
   return @($fichiers)
 }
 
-# Videe au demarrage du lanceur (open-produit.ps1), apres resolution de l'ancrage : chaque
+# Videe au demarrage (Invoke-SzhTachesDemarrage), apres resolution de l'ancrage : chaque
 # fichier restant apres les plafonds est deplace vers le vrai dossier de rapports ; un echec
 # le laisse en place pour la prochaine tentative. D10 : $env:SZH_RAPPORTS, quand pose,
 # l'emporte sur toute derivation depuis l'ancrage -- exactement comme pour Write-SzhRapport.

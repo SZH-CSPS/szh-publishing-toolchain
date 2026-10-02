@@ -1,7 +1,5 @@
 // outils/auteurs-cli.js : le point d'entrée en ligne de commande sur le moissonneur des
-// auteur·e·s publiés (lib/auteurs-ojs.js, lib/auteurs-corpus.js), lancé par
-// windows/open-produit.ps1 au démarrage du lanceur (voir Start-SzhMoissonAuteurs, même
-// fichier) -- pas seulement à l'activation du cockpit. Ce fichier ne rejoue AUCUN moissonnage
+// auteur·e·s publiés (lib/auteurs-ojs.js, lib/auteurs-corpus.js). Ce fichier ne rejoue AUCUN moissonnage
 // réel : executerRafraichissement() prend ses deux moissonneurs en paramètre, exactement
 // comme lib/auteurs-ojs.js#rafraichir() prend son `recuperer` -- aucun test ici ne fait de
 // réseau ni ne lance PowerShell (voir aussi le test « bout en bout » plus bas, qui redirige

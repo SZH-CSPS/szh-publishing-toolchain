@@ -23,7 +23,6 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const PRODUITS = lire('windows', 'szh-produits.ps1');
-const TEXTES = lire('windows', 'szh-textes.ps1');
 const archivage = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'archivage.js'));
 
 // Les cas soumis aux deux moitiés. `attendu` est ce que voit le rédacteur : 'test' pour la
@@ -141,31 +140,6 @@ test('PowerShell et JavaScript rendent le même emplacement', { skip: sansPowerS
       'les deux moitiés divergent, cas : ' + CAS[i].nom);
   }
   fs.rmSync(travail, { recursive: true, force: true });
-});
-
-// ---- Ce que le lanceur montre ----
-
-test('le titre du lanceur nomme la racine active, dans les trois langues', () => {
-  const ps = TEXTES;
-  // Glissement du 13.09.2026 (fusion des trois lanceurs en un seul, à onglets) : il n'y a
-  // plus un titre par produit ('lanceur.titre' pour la revue, 'lanceur.titre.zs' pour la
-  // Zeitschrift) mais un seul titre, commun aux trois onglets -- 'lanceur.titre.suite'. Le
-  // défaut gardé ne change pas : le jeton {racine} doit rester dans les trois langues, et T
-  // doit savoir le remplacer par l'étiquette de la racine active.
-  const titres = ps.match(/'lanceur\.titre\.suite'\s*=\s*'[^']*'/g) || [];
-  assert.strictEqual(titres.length, 3, 'il faut un titre de lanceur par langue');
-  for (const t of titres) { assert.ok(t.indexOf('{racine}') !== -1, 'titre sans {racine} : ' + t); }
-  // T doit savoir le remplacer, sinon le jeton s'afficherait tel quel — T vit dans
-  // szh-common.ps1, la table qu'il lit dans szh-textes.ps1.
-  const commun = fs.readFileSync(COMMUN_PS1, 'utf8');
-  assert.ok(commun.indexOf("$texte.Replace('{racine}', (Get-SzhEtiquetteRacine))") !== -1,
-    'T ne remplace plus {racine}');
-  // Les deux mots de l'étiquette existent dans les trois langues, allemand en « ss ».
-  for (const cle of ['racine.test', 'racine.prod']) {
-    const mots = ps.match(new RegExp("'" + cle.replace('.', '\\.') + "'\\s*=\\s*'[^']*'", 'g')) || [];
-    assert.strictEqual(mots.length, 3, 'il manque une traduction de ' + cle);
-    for (const m of mots) { assert.ok(m.indexOf('ß') === -1, 'orthographe suisse : ' + m); }
-  }
 });
 
 test('l’écriture de l’emplacement ne touche pas un config.json absent', () => {

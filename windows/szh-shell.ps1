@@ -14,7 +14,7 @@
 #
 # ---- Secrets Shlink/OJS ----
 # Set-SzhEnvironnementSecrets et Set-SzhWslEnvSecrets ont déménagé dans szh-common.ps1 (à
-# côté des Get/Set-SzhShlinkUrl/Cle, Get/Set-SzhOjsCle qu'elles lisent) : open-md.ps1 ne
+# côté des Get-SzhShlinkUrl/Cle, Get-SzhOjsCle qu'elles lisent) : open-md.ps1 ne
 # dot-source QUE szh-common.ps1, jamais szh-shell.ps1, et Start-SzhCodiumFichier (son propre
 # lanceur VSCodium, voir plus haut) en a besoin autant que Start-SzhCodium ci-dessous -- un
 # article ouvert par double-clic doit compiler avec les mêmes variables qu'une revue ouverte
@@ -197,10 +197,8 @@ function Start-SzhAccueil {
 # ---- Identité de barre des tâches (AppUserModelID) ----
 # La barre des tâches ne prend pas l'icône de la fenêtre : elle groupe les boutons par
 # AppUserModelID et va chercher l'image de ce côté-là. Un processus qui n'en déclare aucun
-# s'en voit attribuer un, déduit de son exécutable hôte — powershell.exe pour nos lanceurs,
-# ouverts par hidden.vbs —, et le bouton porte alors l'icône de PowerShell. L'icône posée
-# sur la fenêtre (Set-SzhIconeFenetre, dans open-produit.ps1) ne se voit plus alors que dans
-# le bandeau de titre et dans Alt+Tab, jamais dans la barre.
+# s'en voit attribuer un, déduit de son exécutable hôte — powershell.exe pour nos scripts,
+# ouverts par hidden.vbs —, et le bouton porte alors l'icône de PowerShell.
 #
 # Il faut les deux moitiés :
 #   * le processus déclare son identité avant sa première fenêtre — Windows lit
@@ -210,12 +208,8 @@ function Start-SzhAccueil {
 #     image qu'au menu Démarrer — et « Épingler à la barre des tâches » épingle le lanceur
 #     au lieu d'épingler powershell.exe.
 #
-# Deux identités, parce que le poste ne porte plus que deux entrées de menu : le lanceur, et
-# la mise à jour. Le lanceur en a UNE et non trois — il n'y a plus qu'une fenêtre, dont les
-# onglets changent de contenu sans changer de programme. Windows tient l'AppUserModelID pour
-# l'identité de l'application : trois identités pour une seule fenêtre lui feraient croire à
-# trois programmes, et le bouton de la barre des tâches sauterait d'un groupe à l'autre au
-# gré de l'onglet ouvert.
+# Deux identités, une par entrée de menu : « Pronto » prend celle de VSCodium, qu'il ouvre, et
+# la mise à jour garde la sienne.
 #
 # ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
 # ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
@@ -223,12 +217,7 @@ function Start-SzhAccueil {
 # redémarrage d'explorer.exe. Le renommage des entrées de menu (« Revues SZH » et les deux
 # autres sont devenues « Pronto ») oblige de toute façon à ce geste : un
 # épinglage désigne un .lnk qui n'existe plus.
-#
-# « SZH.Publishing.Suite » est un nom neuf, jamais porté par les anciennes entrées : une
-# identité réutilisée aurait fait hériter le nouveau bouton des vignettes et de la liste de
-# raccourcis de l'ancien.
 $script:SzhAppIds = @{
-  'suite' = 'SZH.Publishing.Suite'
   # Celle de VSCodium (win32AppUserModelId de son product.json), que « Pronto » prend pour
   # n'avoir qu'un bouton avec la fenêtre de l'éditeur qu'il ouvre.
   'codium' = 'VSCodium.VSCodium'
@@ -472,9 +461,9 @@ $script:SzhNomMiseAJour   = 'Pronto (Updater)'
 #
 # Deux entrées, et deux seulement. Avant, il y en avait cinq : un lanceur par produit
 # (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS ») et une mise à jour par langue.
-# Les trois produits vivent maintenant dans une seule fenêtre à onglets (open-produit.ps1),
-# et la mise à jour prend sa langue du réglage du compte au lieu de la recevoir de son
-# raccourci — il n'y a donc plus rien à distinguer par le nom.
+# Les trois produits s'ouvrent maintenant depuis l'Accueil du cockpit, et la mise à jour
+# prend sa langue du réglage du compte au lieu de la recevoir de son raccourci — il n'y a
+# donc plus rien à distinguer par le nom.
 #
 # Pourquoi une seule mise à jour, alors qu'il en fallait deux ? Un nom de .lnk est figé,
 # alors que la langue de l'interface bouge : renommer l'entrée à chaque passe l'aurait fait
@@ -509,9 +498,8 @@ function Get-SzhRaccourcisMenu {
   if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
 
   $liste = New-Object System.Collections.ArrayList
-  # Aucun -Produit : l'onglet qui s'ouvre vient du réglage du compte, pas du raccourci
-  # (Get-SzhOngletDefaut, szh-produits.ps1). C'est exactement ce que l'argument figé
-  # empêchait. La description suit $SzhLangue — une seule entrée, donc une seule infobulle,
+  # Aucun -Produit : le produit que montre l'Accueil vient du réglage du compte, pas du
+  # raccourci. La description suit $SzhLangue — une seule entrée, donc une seule infobulle,
   # et elle s'adresse à qui a réglé le poste.
   [void]$liste.Add([ordered]@{
     nom    = $SzhNomApplication

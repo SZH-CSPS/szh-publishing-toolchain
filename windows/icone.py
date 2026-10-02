@@ -77,9 +77,8 @@ FLECHE = ((TABLETTE, None), (FLECHE_HAMPE, PAPIER), (FLECHE_POINTE, PAPIER))
 # tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 ICI = os.path.dirname(os.path.abspath(__file__))
-# Un fichier par usage. Ces noms sont ceux que cherchent szh-produits.ps1, open-produit.ps1 et
-# open-livre.ps1 : les changer ici sans les changer là-bas fait retomber les raccourcis sur
-# VSCodium.
+# Un fichier par usage. Ces noms sont ceux que cherche szh-produits.ps1 : les changer ici
+# sans les changer là-bas fait retomber les raccourcis sur VSCodium.
 VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),
              ('szh-zeitschrift.ico', MOUTARDE, ETAGERE),
              ('szh-maj.ico', BLEUACIER, FLECHE),

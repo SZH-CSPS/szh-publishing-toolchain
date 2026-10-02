@@ -15,7 +15,7 @@
 //      (même technique que test/js/rapport-erreur-ps.test.js et
 //      test/js/orphelins-toolkit.test.js) : la fusion des lignes, la forme du CSV, le
 //      nettoyage du temporaire quand l'écriture échoue ;
-//   3. le VRAI lanceur (windows/open-produit.ps1) en simulation, sur une arborescence
+//   3. la VRAIE entrée « Pronto » (windows/open-revue.ps1) en simulation, sur une arborescence
 //      jetable : le fichier apparaît au bon endroit, sous le bon nom, et deux lancements de
 //      suite ne font toujours qu'une ligne.
 //
@@ -36,13 +36,18 @@ const CHECKIN_PS1 = path.join(RACINE, 'windows', 'szh-checkin.ps1');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const PRODUITS_PS1 = path.join(RACINE, 'windows', 'szh-produits.ps1');
 const ANCRAGE_PS1 = path.join(RACINE, 'windows', 'szh-ancrage.ps1');
-const LANCEUR_PS1 = path.join(RACINE, 'windows', 'open-produit.ps1');
+const LANCEUR_PS1 = path.join(RACINE, 'windows', 'open-revue.ps1');
+const SHELL_PS1 = path.join(RACINE, 'windows', 'szh-shell.ps1');
 
 const SOURCE_CHECKIN = fs.readFileSync(CHECKIN_PS1, 'utf8');
 const SOURCE_COMMUN = fs.readFileSync(COMMUN_PS1, 'utf8');
 const SOURCE_PRODUITS = fs.readFileSync(PRODUITS_PS1, 'utf8');
 const SOURCE_ANCRAGE = fs.readFileSync(ANCRAGE_PS1, 'utf8');
 const SOURCE_LANCEUR = fs.readFileSync(LANCEUR_PS1, 'utf8');
+// Les tâches de démarrage, que l'entrée appelle avant l'Accueil comme avant un lien.
+const SOURCE_SHELL = fs.readFileSync(SHELL_PS1, 'utf8');
+const I_TACHES = SOURCE_SHELL.indexOf('function Invoke-SzhTachesDemarrage');
+const SOURCE_TACHES = SOURCE_SHELL.slice(I_TACHES, SOURCE_SHELL.indexOf('\n}', I_TACHES));
 
 // Lu plutôt que recopié, même motif que dans test/js/lanceur-ancrage.test.js : un futur
 // renommage du dossier de l'application ne doit pas casser ce banc.
@@ -151,19 +156,22 @@ test('l’écriture du CSV est atomique, préfixée « ~$ », et nettoie son tem
 test('le lanceur appelle le check-in une fois, après la résolution de l’ancrage', () => {
   // Les lignes de CODE seulement : le commentaire au-dessus de l'appel nomme la fonction
   // lui aussi, et il n'appelle rien.
-  const appels = SOURCE_LANCEUR.match(/^\s*try \{ \[void\]\(Invoke-SzhCheckin/gm) || [];
-  assert.strictEqual(appels.length, 1, 'open-produit.ps1 appelle le check-in ' + appels.length + ' fois');
-  const iAncrage = SOURCE_LANCEUR.indexOf('$ancrageResolu = Initialize-SzhAncrage');
-  const iCheckin = SOURCE_LANCEUR.indexOf('try { [void](Invoke-SzhCheckin');
+  assert.ok(I_TACHES !== -1, 'Invoke-SzhTachesDemarrage a disparu de szh-shell.ps1');
+  const appels = SOURCE_TACHES.match(/^\s*try \{ \[void\]\(Invoke-SzhCheckin/gm) || [];
+  assert.strictEqual(appels.length, 1, 'les tâches de démarrage appellent le check-in ' + appels.length + ' fois');
+  const iAncrage = SOURCE_TACHES.indexOf('$ancrage = Initialize-SzhAncrage');
+  const iCheckin = SOURCE_TACHES.indexOf('try { [void](Invoke-SzhCheckin');
   assert.ok(iAncrage !== -1 && iAncrage < iCheckin,
     'le check-in doit venir APRÈS la résolution de l’ancrage');
   // Avant la branche du lien « szh:// », qui sort du script : un poste qui ne sert qu'à
   // ouvrir des liens ne doit pas manquer son rendez-vous mensuel.
   const iLien = SOURCE_LANCEUR.indexOf('if ($Lien) {');
-  assert.ok(iLien !== -1 && iCheckin < iLien,
-    'le check-in doit venir AVANT la branche qui traite un lien et quitte');
-  // Sous garde : le lanceur ne doit jamais échouer à cause de l'inventaire.
-  assert.match(SOURCE_LANCEUR, /try \{ \[void\]\(Invoke-SzhCheckin[^\n]*\} catch \{ \}/,
+  const iTachesLien = SOURCE_LANCEUR.indexOf('Invoke-SzhTachesDemarrage', iLien);
+  const iOuvrirLien = SOURCE_LANCEUR.indexOf('Open-SzhLien $Lien', iLien);
+  assert.ok(iLien !== -1 && iTachesLien !== -1 && iTachesLien < iOuvrirLien,
+    'les tâches de démarrage (check-in compris) doivent passer AVANT le lien');
+  // Sous garde : le démarrage ne doit jamais échouer à cause de l'inventaire.
+  assert.match(SOURCE_TACHES, /try \{ \[void\]\(Invoke-SzhCheckin[^\n]*\} catch \{ \}/,
     'l’appel au check-in n’est pas sous garde');
 });
 
@@ -433,8 +441,12 @@ function lancer(poste, racineTest, ancrage) {
     SZH_RACINE_PROD: path.join(poste.travail, 'BaseProd'),
     SZH_ANCRAGE: ancrage === undefined ? poste.ancrage : ancrage,
     LOCALAPPDATA: path.join(poste.profil, 'AppData', 'Local'),
-    USERPROFILE: poste.profil
+    USERPROFILE: poste.profil,
+    SZH_RAPPORTS: path.join(poste.travail, 'rapports'),
+    // Le cockpit du dépôt : l'Accueil refuse de s'ouvrir sous une version trop ancienne.
+    SZH_COCKPIT_DOSSIER: path.join(RACINE, 'vscodium-extension', 'szh-cockpit')
   });
+  delete env.SZH_CODIUM_PROFIL;
   return spawnSync(POWERSHELL,
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', LANCEUR_PS1],
     { encoding: 'utf8', env: env, windowsHide: true, timeout: 180000 });
@@ -521,7 +533,7 @@ test('un ancrage SharePoint introuvable ne fait pas échouer le lanceur',
       assert.strictEqual(run.status, 0,
         'le lanceur a échoué alors que seul l’inventaire était impossible : ' + run.stderr);
       const json = JSON.parse(String(run.stdout || '').replace(/^﻿/, ''));
-      assert.ok(json && json.produit, 'le lanceur n’a pas produit son état : ' + run.stdout);
+      assert.ok(json && json.entree === 'accueil', 'l’Accueil n’a pas produit son plan : ' + run.stdout);
       assert.match(journal(poste), /check-in : dossier partage introuvable/,
         'le journal ne dit pas que le check-in a été sauté');
       // Et surtout : rien n'a été fabriqué ailleurs pour compenser, ni sous le véritable

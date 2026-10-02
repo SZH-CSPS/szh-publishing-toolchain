@@ -109,7 +109,7 @@ lib/
                         panneaux.js
   gabarits.js           le seul moteur de gabarits, sous-ensemble de Twig sans vscode ni
                         dépendance : courriels, exports, feuille de vérification, et le
-                        lanceur Windows par outils/rendre-gabarit.js
+                        socle PowerShell par outils/rendre-gabarit.js
   i18n.js               textes fr/de, T(clé[, args]) et TP(clé, profil[, args]), qui
                         prend la variante « clé.livre » quand elle existe
   index-textes.js       l'index qui retrouve la clé i18n d'un texte lu à l'écran :
@@ -127,7 +127,7 @@ lib/
                         notifications) tant qu'un QuickPick est ouvert
   inventaire.js         ce que liste l'Accueil : la racine active du poste et les numéros en
                         cours et archivés de chaque produit. Jumeau de Get-SzhBaseRevuesPour
-                        et de l'inventaire d'open-produit.ps1, tenu par un test de parité.
+                        et de Get-SzhEmplacementRevue, tenu par un test de parité.
                         Pur, sans vscode
   journal.js            journal de compilation -> constats de la vue « Contrôles »
   journaux-maj.js       les dix derniers journaux de mise à jour du poste, leur verdict et leur
@@ -285,13 +285,13 @@ lib/
   webviews/panneau.js   panneauUnique() : singleton, fermeture, mode Trad et poignée PRET de
                         chaque panneau
 outils/
-  auteurs-cli.js        moissonnage des auteur·e·s publiés (lib/auteurs-ojs.js), lancé par le
-                        lanceur Windows
-  rendre-gabarit.js     rend un gabarit Twig par lib/gabarits.js pour le lanceur Windows
+  auteurs-cli.js        moissonnage des auteur·e·s publiés (lib/auteurs-ojs.js) ; plus aucun
+                        appelant depuis le retrait du lanceur WinForms
+  rendre-gabarit.js     rend un gabarit Twig par lib/gabarits.js pour le socle PowerShell
   compteurs-synthese.js synthèse des compteurs d'usage : page HTML autonome et CSV, lancée avec le
                         Node de VSCodium ; --purger supprime ce qui a plus de 24 mois
   secretariat-cli.js    entrée en ligne de commande de lib/secretariat.js : JSON Lines sur
-                        stdout, lancée par les deux lanceurs avec le Node qu'embarque
+                        stdout, lancée par l'Accueil avec le Node qu'embarque
                         VSCodium (ELECTRON_RUN_AS_NODE=1) ; --langue fr|de, le français à
                         défaut
 mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue

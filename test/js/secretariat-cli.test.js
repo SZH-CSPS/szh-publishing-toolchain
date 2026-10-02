@@ -192,8 +192,8 @@ test('secretariat-cli.js : --langue de écrit en allemand, et une langue inconnu
   assert.match(JSON.parse(String(inconnue.stdout).trim().split(/\r?\n/).pop()).texte, /Unbekannter Befehl/);
 });
 
-// Le contrat que lit Invoke-SzhSecretariat (windows/lanceur-secretariat.ps1) : les mêmes types
-// de ligne et les mêmes clés, quelle que soit la langue.
+// Le contrat que lit l'Accueil (lib/accueil-secretariat-hote.js) : les mêmes types de ligne
+// et les mêmes clés, quelle que soit la langue.
 test('secretariat-cli.js : le contrat JSON Lines ne dépend pas de la langue', () => {
   const CLES = { etape: ['t', 'texte'], avert: ['t', 'texte'], progres: ['fait', 't', 'total'],
     fichier: ['chemin', 'nom', 't'], fin: ['gabarits', 'ok', 't', 'texte'] };

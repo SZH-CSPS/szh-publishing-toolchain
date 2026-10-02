@@ -368,15 +368,15 @@ reste vient de `lib/i18n.js`, que `sourceLangue()` résout par cette cascade :
 | 1 | `SZH_LANGUE` | l'environnement : un essai, jamais posée sur un poste |
 | 2 | réglage `szh.langue` | réglages de l'éditeur, écrits par « Réglages SZH » |
 | 3 | clé `langue` | configuration du poste, hors des réglages de l'éditeur |
-| 4 | clé `langue` | état du poste, recopiée en miroir par le lanceur (`Set-SzhLangueInterface`) |
+| 4 | clé `langue` | état du poste (`state.json`), écrite autrefois par le lanceur WinForms |
 | 5 | langue d'affichage de l'éditeur | `argv.json` et pack de langue |
 | 6 | langue d'affichage de Windows | locale du système |
 | — | français | faute de mieux |
 
 L'étage 4 existe parce que les postes affichent Windows et VSCodium en anglais : ni l'un ni
-l'autre ne dit l'équipe qui s'en sert. Le lanceur, lui, le sait par sa propre cascade (compte,
-`state.json`, langue de Windows, allemand en dernier recours, `$SzhLangue` dans
-`szh-common.ps1`) et la recopie. L'étage 3 double l'étage 2 dans un fichier que rien d'autre ne
+l'autre ne dit l'équipe qui s'en sert. Le socle PowerShell, lui, le sait par sa propre
+cascade (compte, `state.json`, langue de Windows, allemand en dernier recours, `$SzhLangue`
+dans `szh-common.ps1`). L'étage 3 double l'étage 2 dans un fichier que rien d'autre ne
 réécrit : le choix survit à tout ce qui toucherait aux réglages de l'éditeur.
 
 Quand les deux moitiés divergent, `windows/diagnostic.ps1` (§ *Langue de l'interface*) pose les
@@ -443,7 +443,8 @@ raccourci « Ouvrir la revue » (« Ouvrir le livre »).
 ### Le lanceur et ses réglages
 
 Deux entrées au menu Démarrer, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
-(`szh-shell.ps1`) : « Pronto », le lanceur, sans console (`wscript.exe //B hidden.vbs`), et
+(`szh-shell.ps1`) : « Pronto », sans console (`wscript.exe //B hidden.vbs`), qui ouvre
+VSCodium sur l'Accueil du cockpit, et
 « Pronto (Updater) », qui lance `update.ps1` dans une fenêtre visible. Leurs noms vivent dans
 `$SzhNomApplication` et `$SzhNomMiseAJour`. `bootstrap.ps1`, `update.ps1` et
 `update-launcher.ps1` posent les raccourcis, ce dernier à chaque ouverture de session : un
@@ -452,26 +453,25 @@ poste déjà à jour reçoit ainsi une entrée ajoutée après coup. Un ancien r
 qui peut survenir sans toolkit, a besoin de la liste figée de `Get-SzhRaccourcisObsoletes`. Un
 raccourci épinglé à la barre des tâches est une copie que la migration ne touche pas : le
 dépingler et réépingler à la main. Le sous-dossier `SZH\` du menu appartient à un autre produit
-et n'est jamais touché. Le lanceur porte une seule identité de barre des tâches,
-`SZH.Publishing.Suite`, et l'updater `SZH.Publishing.MiseAJour` (`$SzhAppIds`).
+et n'est jamais touché. « Pronto » porte l'identité de barre des tâches de VSCodium
+(`VSCodium.VSCodium`), pour n'avoir qu'un bouton avec l'éditeur, et l'updater
+`SZH.Publishing.MiseAJour` (`$SzhAppIds`).
 
-L'onglet **Paramètres** porte les réglages du compte (langue, onglet par défaut, mise à jour
-visible ou silencieuse, rangés dans `%LOCALAPPDATA%\SZH\etat-utilisateur.json`) et un réglage
-du poste, « Mode développeur (dossiers de test) », qui bascule `emplacementRevues`
-(`Set-SzhEmplacementRevues`).
+Les Réglages de l'Accueil portent les réglages du compte (langue, produit par défaut, mise à
+jour visible ou silencieuse) et un réglage du poste, « Mode développeur (dossiers de test) »,
+qui bascule `emplacementRevues` (`configAvecEmplacement`, `lib/archivage.js`).
 
-L'onglet **Journal** liste les dix derniers transcrits de mise à jour
-(`C:\ProgramData\SZH\logs\update-<horodatage>.log`, `Get-SzhJournauxMaj`) avec leur date, tirée
-du nom du fichier, et leur verdict, lu sur la fin du transcript
-(`Get-SzhVerdictJournalMaj`). Deux boutons : « Signaler une erreur… » écrit un rapport
+L'onglet **Log** de l'Accueil liste les dix derniers transcrits de mise à jour
+(`C:\ProgramData\SZH\logs\update-<horodatage>.log`, `lib/journaux-maj.js`) avec leur date,
+tirée du nom du fichier, et leur verdict, lu sur la fin du transcript. Deux boutons : « Signaler une erreur… » écrit un rapport
 `LANCEUR-SIGNALEMENT` avec le journal choisi ([`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) §7) ;
 « Envoyer les journaux… » réunit les journaux dans un zip du dossier temporaire et ouvre un
 brouillon de courriel au support, la pièce jointe restant à glisser à la main.
 
 ### Revenir à une version précédente
 
-`update.ps1 -Version <X>`, ou lanceur → *Version du logiciel…*, ou le bouton *Changer de
-version…* de l'avertissement de divergence du cockpit. Volontairement manuel et visible :
+`update.ps1 -Version <X>`, ou *Changer de version…* (dans l'Accueil, ou dans l'avertissement de
+divergence du cockpit), qui ouvre le sélecteur `open-revue.ps1 -Versions`. Volontairement manuel et visible :
 l'opération remplace le rootfs et les extensions, et demande de redémarrer l'éditeur.
 
 ### Réparer un poste
@@ -718,10 +718,10 @@ cockpit, qui compare la version du toolkit à celle qui a créé le numéro, suf
 
 ### La mise à jour silencieuse change la façon de dépanner un poste
 
-Depuis le 14.09.2026, l'onglet **Paramètres** du lanceur porte un réglage « Mise à jour de
-l'outil » : fenêtre visible (défaut) ou silencieuse. Rangé **par compte** (comme `ongletDefaut`
-et `langueInterface`), clé `majSilencieuse` de `%LOCALAPPDATA%\SZH\etat-utilisateur.json`
-(`Get-SzhMajSilencieuse` / `Set-SzhMajSilencieuse`, `windows/szh-common.ps1`) — pas par poste :
+Depuis le 14.09.2026, un réglage « Mise à jour de l'outil » (aujourd'hui dans les Réglages de
+l'Accueil) choisit une fenêtre visible (défaut) ou silencieuse. Rangé **par compte**, clé
+`majSilencieuse` de `%LOCALAPPDATA%\SZH\etat-utilisateur.json`, lue par
+`Get-SzhMajSilencieuse` (`windows/szh-common.ps1`) — pas par poste :
 la distribution WSL et les extensions se posent par utilisateur, un réglage commun aurait rendu
 muette la mise à jour d'un compte qui n'en voulait pas.
 
@@ -741,8 +741,8 @@ processus **pour toujours**, mutex de mise à jour compris.
 complet de chaque tentative reste dans `C:\ProgramData\SZH\logs\update-<horodatage>.log`, ce
 qui change c'est seulement l'absence de fenêtre. Deux façons de le lire, du plus simple au plus
 brut :
-- l'onglet **Journal** du lanceur (`Get-SzhJournauxMaj`, `windows/szh-common.ps1`) liste les dix
-  derniers, avec date, verdict (`Get-SzhVerdictJournalMaj` : lu sur la fin du transcript — pied
+- l'onglet **Log** de l'Accueil (`lib/journaux-maj.js`) liste les dix
+  derniers, avec date, verdict (lu sur la fin du transcript — pied
   de page `Stop-Transcript` absent → `inconnu`, présent avec `✓` → `ok`, sans → `echec`) et
   taille ; un clic l'affiche en entier. C'est aussi de là que partent « Signaler une erreur… »
   (voir [`docs/RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md), qui documente un défaut trouvé sur ce
@@ -806,7 +806,7 @@ utilisateur ?
 
 **Pourquoi ce n'est jamais fatal.** Même posture que la ruche de classes : un menu Démarrer
 tenu par une stratégie de groupe ne doit pas faire échouer une mise à jour par ailleurs
-réussie. La mise à jour reste atteignable par le bouton *Changer de version…* du lanceur et
+réussie. La mise à jour reste atteignable par le bouton *Changer de version…* de l'Accueil et
 par la tâche planifiée qui la déclenche.
 
 **Manœuvre.** Rien, d'ordinaire : `update-launcher.ps1` repose les deux entrées à chaque
@@ -909,19 +909,16 @@ personne à la fois.**
 L'archivage supprime `out/`, en chiffrant le gain de place dans la confirmation, puis déplace
 le dossier vers `_Archive\` (`windows/archive-revue.ps1`) et rouvre l'éditeur dessus.
 
-### Le lanceur n'affiche plus aucune revue
+### L'Accueil n'affiche plus aucune revue
 
 **Cause la plus probable.** L'interrupteur `emplacementRevues` de
-`C:\ProgramData\SZH\config.json` a changé de côté. Il déplace la racine où le lanceur
-cherche les numéros, sans déplacer un seul fichier : les revues sont toujours là, le
-lanceur regarde ailleurs.
+`C:\ProgramData\SZH\config.json` a changé de côté. Il déplace la racine où l'Accueil
+cherche les numéros, sans déplacer un seul fichier : les revues sont toujours là, l'Accueil
+regarde ailleurs.
 
-**À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active — un seul titre,
-quel que soit l'onglet ouvert — `Pronto – dossier de test (Revues-TESTING)` ou
-`… – dossier de production (54_Pronto)`, le jeton entre parenthèses étant la
-feuille de la racine active. Le journal du mois porte la même chose :
+**À observer.** Le journal du mois porte la racine active :
 `revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
-information sans redémarrer le lanceur : le badge « Dossier de test » de sa barre d'état.
+information : le badge « Dossier de test » de sa barre d'état.
 
 **Manœuvre.** [`docs/EMPLACEMENTS.md`](EMPLACEMENTS.md) §8 — la cartographie complète des
 deux racines, ce que chacune contient, et la reprise pas à pas.

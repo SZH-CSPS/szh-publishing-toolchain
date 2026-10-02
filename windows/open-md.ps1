@@ -38,7 +38,7 @@ function Write-SzhTrace([string]$Message) {
 # (szh-common.ps1:4) : une exception non interceptée plus bas tuerait le script sans
 # fenêtre, sans boîte de dialogue et sans ligne de journal — depuis un .md double-cliqué,
 # cela se lit « il ne s'est rien passé ». `trap` plutôt qu'un try/catch enveloppant : il
-# couvre toute la portée sans réindenter tout le fichier, sur le modèle d'open-produit.ps1.
+# couvre toute la portée sans réindenter tout le fichier.
 # Mode simulation respecté : un test ne doit jamais rester bloqué sur une
 # boîte de dialogue, la sortie standard en tient lieu.
 trap {

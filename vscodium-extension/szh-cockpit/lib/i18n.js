@@ -4250,11 +4250,9 @@ const TEXTES_COCKPIT = {
 //                        entièrement les réglages de l'éditeur à chaque mise à jour, et le
 //                        choix du rédacteur disparaissait avec eux — l'outil remis à jour
 //                        reparlait français sur un poste allemand.
-//   4. state.json        la langue choisie par le rédacteur dans l'onglet « Paramètres »
-//                        du lanceur, écrite par Set-SzhLangueInterface. Ce n'est plus un
-//                        signal automatique déduit du raccourci cliqué : la fenêtre à onglets
-//                        est unique et parle une seule langue, quel que soit le produit
-//                        ouvert — ce choix explicite en décide.
+//   4. state.json        la langue choisie par le rédacteur (l'ancien onglet « Paramètres »
+//                        du lanceur l'y écrivait). Ce n'est plus un signal automatique déduit
+//                        du raccourci cliqué : ce choix explicite en décide.
 //   5. VSCodium          sa langue d'affichage, quand un pack de langue est installé.
 //   6. Windows           sa langue d'affichage, par la locale du système.
 //

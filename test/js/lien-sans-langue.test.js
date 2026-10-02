@@ -15,7 +15,7 @@
 // ainsi la préférence de langue de TOUT LE POSTE basculer en français. Le correctif de
 // l'époque : rappeler Set-SzhLangueProduit avec le produit DU LIEN, après Get-SzhLien.
 //
-// La fusion des trois lanceurs (13.09.2026, voir l'en-tête d'open-produit.ps1) a supprimé
+// La fusion des trois lanceurs (13.09.2026) a supprimé
 // Set-SzhLangueProduit — et c'est délibéré, pas un oubli : la langue de l'interface est
 // maintenant un réglage par COMPTE (Set-SzhLangueInterface, choisi dans l'onglet
 // « Paramètres »), jamais quelque chose qu'un lanceur ou un lien pourrait décider à la
@@ -33,9 +33,10 @@ const { spawnSync } = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
-const OUVRIR = lire('windows', 'open-produit.ps1');
-// Les deux onglets sortis du lanceur : l'interdiction d'appeler Set-SzhLangueProduit vaut aussi pour eux.
-const OUVRIR_ET_ONGLETS = OUVRIR + '\n' + lire('windows', 'lanceur-secretariat.ps1') + '\n' + lire('windows', 'lanceur-preproc.ps1');
+const OUVRIR = lire('windows', 'open-revue.ps1');
+// Tout windows/ : l'interdiction d'appeler Set-SzhLangueProduit vaut pour chaque script.
+const WINDOWS_PS1 = fs.readdirSync(path.join(RACINE, 'windows')).filter((n) => n.endsWith('.ps1'))
+  .map((n) => lire('windows', n)).join('\n');
 const UPDATE = lire('windows', 'update.ps1');
 // Le lien reçu vit dans Open-SzhLien (szh-produits.ps1), qu'appelle open-revue.ps1.
 const PRODUITS = lire('windows', 'szh-produits.ps1');
@@ -52,9 +53,8 @@ test('update.ps1 enregistre le ProgId szh sans -Produit, et ce n’est plus un p
   assert.ok(corps.indexOf('-Produit') === -1,
     'update.ps1 passe maintenant -Produit au protocole : la prémisse de ce fichier a changé, ' +
     'à vérifier alors que le lien ne touche toujours à aucune langue');
-  // Ce que $Produit vaut par défaut quand personne ne le passe : '' (onglet décidé par
-  // Get-SzhOngletDefaut), et non plus 'revue' — mais peu importe désormais pour la langue,
-  // qui ne dépend plus du tout de $Produit.
+  // Ce que $Produit vaut par défaut quand personne ne le passe : '', et non plus 'revue' —
+  // mais peu importe désormais pour la langue, qui ne dépend plus du tout de $Produit.
   assert.match(OUVRIR, /\[string\]\$Produit = ''/);
 });
 
@@ -71,8 +71,8 @@ test('Open-SzhLien : le bloc « lien reçu » ne touche à aucune langue', () =>
   // Set-SzhLangueProduit, comme FONCTION APPELÉE, a disparu de tout le fichier -- seul son
   // nom survit dans le commentaire d'en-tête, qui raconte le défaut d'origine. On le
   // cherche donc suivi d'un argument (une vraie invocation), jamais comme simple mot.
-  assert.ok(!/Set-SzhLangueProduit\s+[$']/.test(OUVRIR_ET_ONGLETS),
-    'Set-SzhLangueProduit est encore APPELÉE quelque part dans open-produit.ps1 : cette ' +
+  assert.ok(!/Set-SzhLangueProduit\s+[$']/.test(WINDOWS_PS1),
+    'Set-SzhLangueProduit est encore APPELÉE quelque part dans windows/ : cette ' +
     'fonction devait disparaître avec la fusion des lanceurs, pas seulement son bloc lien');
   // Et rien d'autre, dans CE bloc précisément, ne change la langue résolue ni ne réécrit
   // les deux fichiers de préférence.
@@ -82,29 +82,6 @@ test('Open-SzhLien : le bloc « lien reçu » ne touche à aucune langue', () =>
       'le bloc « lien reçu » touche à la langue (' + interdit + ') : un lien reçu par ' +
       'courriel ne doit pas changer la préférence du poste ni celle du compte');
   }
-});
-
-// ---- Le titre ne peut plus rester périmé : il ne dépend plus du produit du lien ----
-
-test('open-produit.ps1 : le titre de la fenêtre, unique, ne peut plus rester périmé après un lien', () => {
-  // Piège de l'ANCIEN correctif : $titreFenetre se lisait dans la table du produit
-  // (« Revues SZH » / « Zeitschriften SZH »), et sans un recalcul après la bascule de
-  // langue du lien, la boîte « lien introuvable » aurait affiché un titre resté dans la
-  // mauvaise langue ou le mauvais produit. Ce piège ne peut plus se reproduire : il n'y a
-  // plus qu'UN titre, commun aux trois onglets (lanceur.titre.suite), assigné une seule
-  // fois, avant même que le lien ne soit examiné.
-  const assignations = [...OUVRIR.matchAll(/\$titreFenetre\s*=/g)];
-  assert.strictEqual(assignations.length, 1,
-    'titreFenetre est assigné plus d’une fois : le piège d’un titre périmé après un lien ' +
-    'pourrait revenir si une seconde assignation dépendait du produit du lien');
-  const iTitre = assignations[0].index;
-  const iBlocLien = OUVRIR.indexOf('if ($Lien) {');
-  assert.ok(iTitre !== -1 && iBlocLien !== -1 && iTitre < iBlocLien,
-    'titreFenetre doit être calculé avant le bloc « lien reçu », pas après');
-  assert.match(OUVRIR.slice(iTitre, iTitre + 120),
-    /\(T 'lanceur\.titre\.suite' @\(\$SzhNomApplication\)\)/,
-    'titreFenetre ne vient plus de lanceur.titre.suite : un titre par produit reviendrait-il, ' +
-    'le piège d’origine reviendrait avec lui');
 });
 
 // ---- Le mécanisme, réellement exécuté : le lien n'a AUCUN mot à dire sur la langue ----

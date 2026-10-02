@@ -1,17 +1,14 @@
 #!/usr/bin/env node
 // Entrée en ligne de commande du moissonnage des auteur·e·s publiés
-// (C:\ProgramData\SZH\auteurs.json, lib/auteurs-ojs.js), lancée par le lanceur PowerShell
-// (windows/open-produit.ps1) avec le Node qu'embarque VSCodium :
+// (C:\ProgramData\SZH\auteurs.json, lib/auteurs-ojs.js), par le Node qu'embarque VSCodium.
+// Son seul appelant était l'ancien lanceur WinForms, retiré : plus rien ne le lance.
 //   ELECTRON_RUN_AS_NODE=1 VSCodium.exe <chemin>\outils\auteurs-cli.js
 //
 // Pourquoi ce fichier existe : le cache alimente l'autocomplétion du cockpit ET, depuis le
 // 22.09.2026, le signal « lexique » du nettoyeur de manuscrit (pipeline/manuscrit_noms.py,
 // voir docs/ARCHITECTURE-nettoyeur-manuscrit.md §5.5 ter). Il se construisait jusqu'ici
 // seulement à l'activation du cockpit (extension.js -> rafraichirAuteursPubliesEnFond(),
-// lib/metadonnees-hote.js) — donc seulement quand VSCodium a démarré. Or les raccourcis du
-// menu Démarrer ouvrent windows/open-produit.ps1 directement (Set-SzhRaccourcisMenu,
-// windows/szh-shell.ps1) : on peut nettoyer un manuscrit depuis l'onglet « Preprocessing »
-// sans que VSCodium ait jamais tourné, donc sans base.
+// lib/metadonnees-hote.js) — donc seulement quand VSCodium a démarré.
 //
 // ZÉRO logique de moissonnage propre ici : ce script appelle rafraichir() (lib/auteurs-ojs.js)
 // puis rafraichirCorpus() (lib/auteurs-corpus.js) — EXACTEMENT ce que fait
@@ -25,9 +22,7 @@
 //
 // Contrat de sortie, calqué sur secretariat-cli.js : JSON Lines sur stdout, UTF-8, une ligne
 // par étape, `fin` toujours la dernière. Le format n'est là que pour la mise au point et les
-// tests — l'appelant (open-produit.ps1) ne suit jamais cette sortie : l'appel est NON
-// BLOQUANT par décision du superviseur, un lancement du poste n'a pas à attendre un millier
-// de notices OAI-PMH ni un balayage du corpus OneDrive.
+// tests.
 //
 // Ne lève JAMAIS, et sort toujours en 0 : hors ligne est un état normal du poste (même
 // politique que rafraichir()/rafraichirCorpus(), qui ne lèvent déjà rien elles-mêmes — voir

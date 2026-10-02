@@ -1,13 +1,12 @@
 'use strict';
 
-// Rend UN gabarit Twig avec le moteur du cockpit (lib/gabarits.js), pour que le lanceur
-// PowerShell (Get-SzhCourriel, windows/szh-common.ps1 ; Invoke-SzhManuscrit,
-// windows/open-produit.ps1) se serve du MÊME moteur que le cockpit au lieu d'en porter un
+// Rend UN gabarit Twig avec le moteur du cockpit (lib/gabarits.js), pour que le socle
+// PowerShell (Get-SzhCourriel, windows/szh-common.ps1) se serve du MÊME moteur que le cockpit au lieu d'en porter un
 // second écrit à la main. Ne connaît rien aux courriels : chemin et variables lui arrivent
 // tout faits, il ne fait qu'appeler compiler(...).rendre(...).
 //
 // Lancé par VSCodium-en-Node (ELECTRON_RUN_AS_NODE=1) -- voir Get-SzhCourriel pour le
-// patron d'appel, calqué sur Invoke-SzhSecretariat (windows/open-produit.ps1).
+// patron d'appel (Invoke-SzhNodeCockpit, windows/szh-shell.ps1).
 //
 // Entrée : un JSON sur STDIN, jamais en argument -- un corps de courriel porte des accents,
 // des guillemets et des retours à la ligne qu'une ligne de commande Windows digère mal :

@@ -70,15 +70,13 @@ $script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas
 #
 #   1. l'allemand, en dernier recours — et non l'anglais. Les Windows d'ici sont en anglais,
 #      et la cascade retombait donc sur la seule langue qu'aucune des deux équipes n'emploie.
-#      L'allemand est celle de la majorité des postes ; c'est aussi la règle que suit
-#      l'onglet par défaut du lanceur (Get-SzhOngletDefaut, szh-produits.ps1).
+#      L'allemand est celle de la majorité des postes.
 #   2. la langue d'affichage de Windows, quand elle dit fr ou de.
 #   3. state.json — l'héritage. Avant l'onglet « Paramètres », c'est là que le lanceur
 #      écrivait la langue de son produit. La valeur qui s'y trouve déjà sur un poste en
 #      service reste donc la bonne, et personne ne voit sa langue changer à la mise à jour.
-#      C'est aussi la clé que lit le cockpit dans l'éditeur (lib/i18n.js), et le lanceur
-#      continue d'y écrire en miroir — voir Set-SzhLangueInterface.
-#   4. etat-utilisateur.json — le choix fait à la main dans l'onglet « Paramètres ». Rangé
+#      C'est aussi la clé que lit le cockpit dans l'éditeur (lib/i18n.js).
+#   4. etat-utilisateur.json — le choix fait à la main dans l'ancien onglet « Paramètres ». Rangé
 #      par compte et non par poste : deux personnes qui se partagent un poste ne se changent
 #      plus la langue l'une à l'autre.
 #   5. $env:SZH_LANGUE — un essai, pour lire un même message dans les deux langues sans rien
@@ -115,72 +113,7 @@ if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower(
   $script:SzhLangue = $env:SZH_LANGUE.ToLower()
 }
 
-
-# La langue que la cascade donnerait sans aucune préférence : Windows s'il parle fr ou de,
-# l'allemand sinon. Ne lit ni state.json ni l'état par compte, exprès — ce sont justement
-# des préférences, et « automatique » veut dire « sans préférence ». Sert au mode
-# automatique de l'onglet « Paramètres », et à l'onglet par défaut du lanceur.
-function Get-SzhLangueAutomatique {
-  try {
-    $ui = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
-    if ($ui -eq 'fr' -or $ui -eq 'de') { return $ui }
-  } catch { }
-  return 'de'
-}
-
-# Le choix fait dans l'onglet « Paramètres » du lanceur. '' (ou toute valeur inconnue) vaut
-# « automatique ». Écrit à DEUX endroits, et ce n'est pas une redondance :
-#   * etat-utilisateur.json (par compte) porte le CHOIX, « automatique » compris — une
-#     chaîne vide, qui rend la main à la langue de Windows ;
-#   * state.json (par poste) porte la langue RÉSOLUE, jamais vide. C'est le miroir que lit
-#     le cockpit dans l'éditeur, qui ne voit pas l'état par compte. Sans lui, choisir
-#     l'allemand dans le lanceur laisserait les panneaux de l'éditeur en français.
-# Rend la langue résolue. Ne lève jamais : une préférence non écrite se represente à la
-# prochaine ouverture, alors qu'une exception ici fermerait le lanceur.
-function Set-SzhLangueInterface([string]$Langue) {
-  $choix = ([string]$Langue).ToLower()
-  if (-not (@('fr', 'de') -contains $choix)) { $choix = '' }
-  $resolue = $choix
-  if (-not $resolue) { $resolue = Get-SzhLangueAutomatique }
-  $script:SzhLangue = $resolue
-  try {
-    $pref = Get-SzhEtatUtilisateur
-    if (-not $pref) { $pref = New-Object psobject }
-    if ($pref.PSObject.Properties['langueInterface']) { $pref.langueInterface = $choix }
-    else { $pref | Add-Member -MemberType NoteProperty -Name 'langueInterface' -Value $choix }
-    [void](Save-SzhEtatUtilisateur $pref)
-  } catch { }
-  try { Set-SzhStateCles @{ langue = $resolue } } catch { }
-  return $resolue
-}
-
-# Le choix d'onglet par défaut, lu et écrit au même endroit que la langue (par compte).
-# '' = automatique. Une valeur inconnue est traitée comme '' : un état écrit par une version
-# ultérieure, ou abîmé, ne doit pas empêcher le lanceur de s'ouvrir.
-function Get-SzhOngletChoisi {
-  try {
-    $pref = Get-SzhEtatUtilisateur
-    $choix = (Get-SzhEtatUtilisateurChamp $pref 'ongletDefaut').ToLower()
-    if ($SzhProduits.ContainsKey($choix)) { return $choix }
-  } catch { }
-  return ''
-}
-
-function Set-SzhOngletChoisi([string]$Produit) {
-  $choix = ([string]$Produit).ToLower()
-  if (-not $SzhProduits.ContainsKey($choix)) { $choix = '' }
-  try {
-    $pref = Get-SzhEtatUtilisateur
-    if (-not $pref) { $pref = New-Object psobject }
-    if ($pref.PSObject.Properties['ongletDefaut']) { $pref.ongletDefaut = $choix }
-    else { $pref | Add-Member -MemberType NoteProperty -Name 'ongletDefaut' -Value $choix }
-    [void](Save-SzhEtatUtilisateur $pref)
-  } catch { }
-  return $choix
-}
-
-# Réglage « mise à jour silencieuse », rangé par COMPTE, même endroit et même mécanique que
-# ongletDefaut ci-dessus (etat-utilisateur.json). Pas par poste : la tâche planifiée qui
+# Réglage « mise à jour silencieuse », rangé par COMPTE (etat-utilisateur.json). Pas par poste : la tâche planifiée qui
 # déclenche la vérification (update-launcher.ps1) tourne dans la session de chacun, et
 # update.ps1 met aussi à jour des choses propres au compte (la distribution WSL, les
 # extensions de l'éditeur) -- un réglage commun aurait rendu muette la mise à jour d'un compte
@@ -199,27 +132,7 @@ function Get-SzhMajSilencieuse {
   return $false
 }
 
-# Ne lève jamais : un état non écrit fait revoir le réglage à la prochaine ouverture de
-# l'onglet « Paramètres », alors qu'une exception ici interromprait le lanceur pour un simple
-# interrupteur.
-function Set-SzhMajSilencieuse([bool]$Actif) {
-  try {
-    $pref = Get-SzhEtatUtilisateur
-    if (-not $pref) { $pref = New-Object psobject }
-    if ($pref.PSObject.Properties['majSilencieuse']) { $pref.majSilencieuse = $Actif }
-    else { $pref | Add-Member -MemberType NoteProperty -Name 'majSilencieuse' -Value $Actif }
-    [void](Save-SzhEtatUtilisateur $pref)
-  } catch { }
-  return $Actif
-}
-
 # T 'clé' @(args…) -> texte dans la langue courante, fallback anglais, sinon la clé.
-#
-# Le jeton {racine} est remplacé par l'étiquette de la racine active (Get-SzhEtiquetteRacine) :
-# un texte peut ainsi dire où vivent les revues sans que chaque appelant le passe en argument
-# — c'est ce qui met l'emplacement actif dans le titre du lanceur. Substitué avant `-f`, un
-# chemin ne portant pas d'accolade ; les textes 'racine.*' n'ont pas le jeton, donc pas de
-# récursion.
 function T {
   param([Parameter(Mandatory = $true)][string]$Cle, [object[]]$Valeurs)
   $texte = $null
@@ -227,7 +140,6 @@ function T {
   if ($table -and $table.ContainsKey($Cle)) { $texte = $table[$Cle] }
   if (-not $texte) { $texte = $SzhTextes['en'][$Cle] }
   if (-not $texte) { return $Cle }
-  if ($texte -like '*{racine}*') { $texte = $texte.Replace('{racine}', (Get-SzhEtiquetteRacine)) }
   if ($Valeurs -and $Valeurs.Count -gt 0) { return ($texte -f $Valeurs) }
   return $texte
 }
@@ -279,7 +191,7 @@ function Save-SzhState($Etat) {
 }
 
 # Écrit les clés données sans effacer le reste du fichier. state.json porte aussi la langue
-# de l'interface (Set-SzhLangueInterface, plus haut), et une réécriture complète l'effaçait à
+# de l'interface, et une réécriture complète l'effaçait à
 # chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur reparlait
 # anglais à une équipe francophone jusqu'au prochain passage dans l'onglet « Paramètres ».
 # $Retirer : les clés d'une version antérieure qui ne veulent plus rien dire là où elles
@@ -381,45 +293,12 @@ function Get-SzhEtatUtilisateurChamp($Etat, [string]$Nom) {
   return ''
 }
 
-# Écrit un champ d'etat-utilisateur.json, en le créant s'il n'existe pas déjà -- même geste
-# que Set-SzhLangueInterface / Set-SzhOngletChoisi / Set-SzhMajSilencieuse ci-dessus,
-# factorisé ici parce que les réglages Shlink/OJS plus bas en ont besoin à trois reprises.
-# Ne lève jamais, même raison que ces trois fonctions : un état non écrit se represente à la
-# prochaine ouverture, une exception ici fermerait le lanceur.
-function Set-SzhEtatUtilisateurChamp([string]$Nom, $Valeur) {
-  try {
-    $pref = Get-SzhEtatUtilisateur
-    if (-not $pref) { $pref = New-Object psobject }
-    if ($pref.PSObject.Properties[$Nom]) { $pref.$Nom = $Valeur }
-    else { $pref | Add-Member -MemberType NoteProperty -Name $Nom -Value $Valeur }
-    return (Save-SzhEtatUtilisateur $pref)
-  } catch { return $false }
-}
-
 # ---- Secrets par compte : Shlink (raccourcisseur de liens) et OJS ----
 #
-# Trois réglages de l'onglet « Paramètres » (open-produit.ps1) : l'adresse de l'instance
-# Shlink (en clair, ce n'est pas un secret), sa clé d'API, et la clé d'API OJS -- posée pour
-# le jour où quelque chose la lira, rien ne la lit encore. Rangés par COMPTE, comme le reste
-# de etat-utilisateur.json, jamais dans config.json (par poste) : une clé d'API n'est pas un
-# réglage de rédaction à partager entre tous les comptes d'un même poste.
-#
-# Les deux clés ne sont JAMAIS écrites en clair sur le disque. ConvertFrom-SecureString sans
-# -Key chiffre par DPAPI, portée CurrentUser : seul CE compte, sur CE poste, peut relire la
-# valeur -- une copie de etat-utilisateur.json ailleurs (sauvegarde, autre poste, autre
-# compte) rend le champ illisible plutôt que de rendre la clé. C'est aussi pourquoi la copie
-# de secours d'un etat-utilisateur.json ne redonne jamais accès aux clés : c'est le prix de
-# ne jamais les stocker en clair, pas une négligence.
-function ConvertTo-SzhSecretChiffre([string]$Clair) {
-  # '' est le signal qui efface le champ, jamais une chaîne chiffrée représentant « rien » --
-  # Set-SzhShlinkCle/Set-SzhOjsCle s'appuient là-dessus pour qu'un champ vidé dans l'interface
-  # efface vraiment la clé au lieu d'en chiffrer une chaîne vide.
-  if (-not $Clair) { return '' }
-  try {
-    $sec = ConvertTo-SecureString -String $Clair -AsPlainText -Force
-    return (ConvertFrom-SecureString -SecureString $sec)
-  } catch { return '' }
-}
+# Lus dans etat-utilisateur.json (par compte), où l'ancien lanceur les écrivait : l'adresse de
+# l'instance Shlink en clair, et les deux clés d'API chiffrées par DPAPI (portée CurrentUser),
+# que seul ce compte, sur ce poste, peut relire. Le cockpit range désormais les siennes dans
+# son propre coffre.
 
 # Rend '' pour un champ vide, absent, ou que ce compte/poste ne peut pas déchiffrer (DPAPI
 # d'un autre compte, fichier copié d'un autre poste) -- jamais une exception : une clé
@@ -439,11 +318,6 @@ function ConvertFrom-SzhSecretChiffre([string]$Chiffre) {
 function Get-SzhShlinkUrl {
   return (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkUrl')
 }
-function Set-SzhShlinkUrl([string]$Url) {
-  $v = ([string]$Url).Trim()
-  [void](Set-SzhEtatUtilisateurChamp 'shlinkUrl' $v)
-  return $v
-}
 
 # Clé d'API Shlink : chiffrée, voir l'en-tête de section. Get- rend la clé en CLAIR -- à
 # n'employer que pour la poser dans l'environnement du processus enfant (Start-SzhCodium,
@@ -451,18 +325,12 @@ function Set-SzhShlinkUrl([string]$Url) {
 function Get-SzhShlinkCle {
   return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'shlinkCle'))
 }
-function Set-SzhShlinkCle([string]$Cle) {
-  [void](Set-SzhEtatUtilisateurChamp 'shlinkCle' (ConvertTo-SzhSecretChiffre $Cle))
-}
 
 # Clé d'API OJS : posée de la même façon que la clé Shlink, pour le jour où quelque chose la
 # lira -- $env:SZH_OJS_CLE est déjà posé par Set-SzhEnvironnementSecrets ci-dessous, rien ne
 # la lit encore côté WSL.
 function Get-SzhOjsCle {
   return (ConvertFrom-SzhSecretChiffre (Get-SzhEtatUtilisateurChamp (Get-SzhEtatUtilisateur) 'ojsCle'))
-}
-function Set-SzhOjsCle([string]$Cle) {
-  [void](Set-SzhEtatUtilisateurChamp 'ojsCle' (ConvertTo-SzhSecretChiffre $Cle))
 }
 
 # ---- Secrets Shlink/OJS dans l'environnement : posés dans le PROCESSUS ENFANT seulement ----
@@ -721,79 +589,6 @@ function Write-SzhLog([string]$Message) {
 }
 
 # ---- Journaux de mise à jour (transcripts d'update.ps1) ----
-#
-# Chaque passage d'update.ps1 pose son propre transcript complet (Start-Transcript, ~ligne 176
-# de update.ps1) : update-yyyyMMdd-HHmmss.log dans $SzhLogs. C'est la seule relecture possible
-# d'une fenêtre déjà refermée.
-#
-# Le verdict ne devine rien, il s'appuie sur ce qu'update.ps1 écrit RÉELLEMENT juste avant
-# Stop-Transcript, dans ses trois issues (vérifié contre le code, pas supposé) :
-#   * fin heureuse (~ligne 642) : `Write-Host (T 'maj.fini' …)`, qui commence par « ✓ » dans
-#     les trois langues (szh-textes.ps1 : fr/de/en de 'maj.fini' partagent ce seul caractère) ;
-#   * fin malheureuse mais partielle (~ligne 632) : `Write-Host (T 'maj.partiel' …)`, qui
-#     commence par « ⚠ » dans les trois langues -- un échec tout de même (exit 1) ;
-#   * fin malheureuse totale (bloc catch, ~ligne 651) : RIEN n'est écrit à l'écran avant
-#     Stop-Transcript -- seul Write-SzhLog part, et dans le journal mensuel, pas dans ce
-#     transcript-ci. Un tel fichier ne porte donc ni « ✓ » ni « ⚠ » : c'est justement
-#     l'absence du premier qui le désigne comme un échec.
-# Stop-Transcript écrit lui-même, en toute fin de fichier, un pied de page fixe (vérifié sur ce
-# poste : « Windows PowerShell transcript end » suivi de « End time: … » ; en français « Fin de la
-# transcription Windows PowerShell » et « Heure de fin : … »). Sa présence dit que
-# Stop-Transcript est allé au bout, l'une ou l'autre issue ; son absence dit un transcript
-# tronqué -- processus tué, disque plein, fichier fabriqué à moitié -- dont le contenu ne
-# permet de rien conclure.
-#
-# D'où, sur la QUEUE du fichier seulement (-Tail : ces transcripts peuvent grossir, et les deux
-# marqueurs qui comptent sont toujours dans les dernières lignes) :
-#   pas de pied de page Stop-Transcript -> 'inconnu'
-#   pied de page présent, et « ✓ »      -> 'ok'
-#   pied de page présent, sans « ✓ »    -> 'echec'   (partiel ⚠, ou total silencieux)
-function Get-SzhVerdictJournalMaj([string]$Chemin) {
-  try {
-    $fin = Get-Content -LiteralPath $Chemin -Tail 40 -Encoding UTF8 -ErrorAction Stop
-  } catch { return 'inconnu' }
-  $texte = [string]($fin -join "`n")
-  # Pied de page traduit selon la langue de Windows : on reconnaît sa forme (astérisques, titre,
-  # ligne à horodatage de 14 chiffres, astérisques), pas son texte.
-  if ($texte -notmatch '\*{5,}\n[^\n]+\n[^\n]*\d{14}[^\n]*\n\*{5,}\s*$') { return 'inconnu' }
-  if ($texte -match '✓') { return 'ok' }
-  return 'echec'
-}
-
-# Ne lève jamais : un dossier de journaux absent (poste jamais mis à jour) rend un tableau
-# vide, pas une erreur.
-function Get-SzhJournauxMaj {
-  param([int]$Combien = 10)
-  $resultats = New-Object System.Collections.ArrayList
-  $fichiers = @()
-  # SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, sa propre base n'en reçoit jamais.
-  $dossierMaj = $SzhLogs
-  if ($env:SZH_JOURNAUX_MAJ) { $dossierMaj = $env:SZH_JOURNAUX_MAJ }
-  try {
-    $fichiers = @(Get-ChildItem -LiteralPath $dossierMaj -Filter 'update-*.log' -File -ErrorAction Stop)
-  } catch { $fichiers = @() }
-  foreach ($f in $fichiers) {
-    # La date vient du NOM (update-yyyyMMdd-HHmmss.log), pas de la date du fichier : une copie
-    # (sauvegarde, pièce jointe à un ticket) change LastWriteTime sans changer le moment réel
-    # de la mise à jour. Repli sur LastWriteTime si le nom ne se lit pas (fichier renommé à la
-    # main, ou d'un format plus ancien).
-    $quand = $f.LastWriteTime
-    if ($f.Name -match '^update-(\d{8})-(\d{6})\.log$') {
-      try {
-        $quand = [datetime]::ParseExact($Matches[1] + $Matches[2], 'yyyyMMddHHmmss',
-          [Globalization.CultureInfo]::InvariantCulture)
-      } catch { $quand = $f.LastWriteTime }
-    }
-    [void]$resultats.Add([pscustomobject]@{
-      chemin  = $f.FullName
-      nom     = $f.Name
-      date    = $quand
-      taille  = [long]$f.Length
-      verdict = (Get-SzhVerdictJournalMaj $f.FullName)
-    })
-  }
-  return @($resultats | Sort-Object date -Descending | Select-Object -First ([Math]::Max(0, $Combien)))
-}
 
 # Ne garde que les $Garder dernières mises à jour du poste, par l'ordre de leur nom. Toujours
 # $SzhLogs, jamais SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, elle ne les
@@ -1362,8 +1157,7 @@ function Write-SzhAttention([string]$Texte) { Write-Host ('    ! ' + $Texte) -Fo
 # mini-Twig écrit à la main ici. Le gabarit (windows/mail-templates/*.twig) est rendu par
 # lib/gabarits.js -- le même moteur que le cockpit -- via outils/rendre-gabarit.js
 # (vscodium-extension/szh-cockpit), exécuté par le Node qu'embarque VSCodium
-# (ELECTRON_RUN_AS_NODE=1, même mécanisme qu'Invoke-SzhSecretariat dans open-produit.ps1,
-# en plus court : un aller-retour JSON sur stdin/stdout, pas un suivi ligne à ligne).
+# (ELECTRON_RUN_AS_NODE=1, Invoke-SzhNodeCockpit) : un aller-retour JSON sur stdin/stdout.
 #
 # Repli OBLIGATOIRE, et ce n'est pas un second moteur : Show-SzhErreur, seul appelant, est
 # l'écran d'une mise à jour qui a échoué -- y compris à la toute première installation, où

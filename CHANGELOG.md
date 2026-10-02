@@ -13,14 +13,27 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 
 ## 3.2.0
 
-Medium : une seule page de réglages, une newsletter prête pour Mailchimp, et des journaux de
-mise à jour reconnus dans toutes les langues.
+Medium : « Pronto » s'ouvre dans l'éditeur, sur l'Accueil du cockpit, et le lanceur WinForms
+est retiré.
 
 **Production.**
-- Une seule page de réglages : l'onglet Paramètres de l'Accueil du cockpit. « Ouvrir les
-  réglages » y mène, même sans produit ouvert ; l'ancien panneau des réglages est retiré. Les
-  clés Shlink et OJS passent au coffre de VSCodium (`context.secrets`), transmises à la
-  chaîne par `WSLENV` (`lib/services-env.js`).
+- « Pronto » ouvre VSCodium sur l'Accueil : Produits, Nouveau, Préprocessing, Secrétariat,
+  Paramètres, Log. Les tâches de démarrage du poste passent avant (ancrage, rapports en
+  attente, check-in, épinglage, dossiers de test, secrets) ; un lien `szh://` ouvre son
+  numéro. Pronto prend le bouton de VSCodium dans la barre des tâches, et rien ne se rouvre
+  au démarrage (`window.restoreWindows` : `none`).
+- Le lanceur WinForms est retiré, avec son code (≈ 4 200 lignes de PowerShell). Seul
+  « Changer de version… » reste une fenêtre Windows (`open-revue.ps1 -Versions`). Un cockpit
+  absent ou trop ancien pour l'Accueil donne un message et un rapport `ACCUEIL-COCKPIT-ABSENT`.
+- L'Accueil ouvre le document nettoyé, le rapport du nettoyeur et les dossiers d'export ou de
+  journaux avec l'application du système, chemins accentués compris.
+- Une seule page de réglages : l'onglet Paramètres de l'Accueil. « Ouvrir les réglages » y
+  mène, même sans produit ouvert ; l'ancien panneau des réglages est retiré. Les clés Shlink et
+  OJS passent au coffre de VSCodium (`context.secrets`), transmises à la chaîne par `WSLENV`
+  (`lib/services-env.js`).
+- Les exports vont dans `Exports\<export>`, qui remplace « Secrétariat und Export » dans
+  l'arbre. L'export Edudoc ne garde que les mots-clés du thésaurus, et son historique retient
+  les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
 - Newsletter : un fichier par rubrique, dans l'ordre de la newsletter (0-intro à
   5-documentation), au balisage des modèles Mailchimp, avec les liens DOI. La Documentation
   pointe vers sa page OJS par une adresse que l'export OJS fixe désormais
@@ -31,13 +44,11 @@ mise à jour reconnus dans toutes les langues.
 - Le dossier des journaux se nettoie : dix mises à jour et trois mois au plus.
 
 **DEV seulement.**
-- L'Accueil du cockpit s'ouvre seul au démarrage derrière `SZH_ACCUEIL` : Produits,
-  Nouveau, Secrétariat, Log, Paramètres. WinForms reste le lanceur de production.
-- « Pronto (dev) » ouvre VSCodium directement sur l'Accueil ; `SZH_JOURNAUX_MAJ` lui fait
-  lire les journaux du poste.
-- Les exports vont dans `Exports\<export>`, qui remplace « Secrétariat und Export » dans
-  l'arbre. L'export Edudoc de l'Accueil ne garde que les mots-clés du thésaurus, et
-  son historique retient les numéros déjà exportés. Textes du secrétariat réécrits en fr et de.
+- « Pronto (dev) » ouvre l'Accueil par le même chemin que « Pronto » ; `SZH_JOURNAUX_MAJ` lui
+  fait lire les journaux du poste.
+- En simulation (`SZH_LANCEUR_SIMULE=1`), le check-in n'écrit que sous un ancrage d'essai
+  (`SZH_ANCRAGE`) et l'arbre de test que sous `SZH_RACINE_TEST` : un test ne peut plus écrire
+  dans le vrai dossier partagé.
 - Cockpit 0.74.0.
 
 ## 3.1.0

@@ -38,11 +38,8 @@ const LANCEUR_MAJ = lire('windows', 'update-launcher.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const OUVRIR = lire('windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = lire('windows', 'open-livre.ps1');
-// open-revue.ps1 et open-livre.ps1 restent les points d'entrée que visent les raccourcis et
-// le protocole "szh:", mais ne sont plus que des enveloppes de quelques lignes : la fenêtre,
-// l'icône et l'identité de barre des tâches vivent maintenant dans ce troisième fichier,
-// commun aux trois produits (revue, zeitschrift, livre).
-const OUVRIR_PRODUIT = lire('windows', 'open-produit.ps1');
+// open-revue.ps1 reste le point d'entrée que visent les raccourcis et le protocole "szh:" ;
+// open-livre.ps1 n'est plus qu'une enveloppe qui lui renvoie.
 const SHELL_PRODUITS = lire('windows', 'szh-produits.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
 // Les deux icônes de l'application ne sortent pas du même dessin ni du même outil que
@@ -173,8 +170,8 @@ test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriqué
   // donc ne cherche plus que DEUX icônes (pronto.ico pour le lanceur, pronto-maj.ico pour
   // la mise à jour), fabriquées par icone-pronto.py depuis pronto.svg et pronto-maj.svg.
   // szh-revue.ico, szh-zeitschrift.ico et szh-livre.ico restent au dépôt et fabriqués par
-  // icone.py — ils servent encore aux fenêtres « Nouveau... » de open-produit.ps1 — mais ce
-  // n'est plus ce fichier-ci qui les cherche pour le menu Démarrer.
+  // icone.py — ils servent encore aux raccourcis posés à la racine d'un numéro ou d'un livre
+  // (szh-produits.ps1) — mais ce n'est plus ce fichier-ci qui les cherche pour le menu Démarrer.
   const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
   const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   const icones = ['pronto.ico', 'pronto-maj.ico'];
@@ -194,23 +191,6 @@ test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriqué
   assert.ok(SHELL.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
 });
 
-test("la fenetre du lanceur porte l'icone de l'application, pas celle d'un produit", () => {
-  // Defaut garde ici, vu a l'ecran le 18.09.2026 : le renommage en Pronto avait fait passer
-  // le raccourci du menu Demarrer et la mise a jour a pronto.ico, et oublie la fenetre
-  // elle-meme. Elle gardait szh-revue.ico, si bien que la barre de titre et Alt+Tab
-  // montraient l'icone de la Revue, meme sur l'onglet Zeitschrift ou Bucher. Rien ne le
-  // gardait : les deux controles d'icone au-dessus ne regardent que le menu Demarrer.
-  const pose = OUVRIR_PRODUIT.match(/\$fichierIcone = Join-Path \$PSScriptRoot '([^']+)'/);
-  assert.ok(pose, 'open-produit.ps1 ne pose plus $fichierIcone');
-  assert.strictEqual(pose[1], 'pronto.ico',
-    "la fenetre du lanceur porte " + pose[1] + " au lieu de l'icone de l'application");
-  assert.ok(fs.existsSync(path.join(RACINE, 'windows', pose[1])), pose[1] + ' manque au depot');
-  // L'inverse doit rester vrai : les trois icones de produit gardent leur seul emploi
-  // legitime, les boites « Nouveau... », qui n'appartiennent qu'a un produit a la fois.
-  assert.ok(OUVRIR_PRODUIT.indexOf('Set-SzhIconeFenetre $boite (Join-Path $PSScriptRoot $ProduitInfo.icone)') !== -1,
-    "les boites « Nouveau... » ne prennent plus l'icone de leur produit");
-});
-
 test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // Le défaut gardé ici ne change pas : le bouton de la barre des tâches portait l'icône de
   // PowerShell, alors que le raccourci du menu Démarrer et la fenêtre elle-même portaient la
@@ -219,23 +199,17 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // déduit une de l'exécutable hôte — powershell.exe, lancé par hidden.vbs — et affiche
   // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
   //
-  // Glissement du 13.09.2026 : il n'y a plus trois identités de lanceur (une par produit)
-  // mais UNE SEULE, « suite » — les trois onglets sont une seule fenêtre, pas trois
-  // programmes, et Windows tiendrait autrement trois identités pour trois applications.
-  // Les deux mises à jour par langue (« maj.fr », « maj.de ») ont pareillement fusionné en
-  // une seule, « maj », son raccourci ne portant plus de langue.
+  // Deux identités : « Pronto » prend celle de VSCodium, qu'il ouvre (un seul bouton dans la
+  // barre des tâches), et la mise à jour garde la sienne, une seule et sans langue.
   assert.match(SHELL, /\$script:SzhAppIds = @\{/);
-  for (const id of ['SZH.Publishing.Suite', 'SZH.Publishing.MiseAJour']) {
-    assert.ok(SHELL.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
-  }
-  assert.match(SHELL, /'suite'\s*=\s*'SZH\.Publishing\.Suite'/);
+  assert.match(SHELL, /'codium'\s*=\s*'VSCodium\.VSCodium'/);
   assert.match(SHELL, /'maj'\s*=\s*'SZH\.Publishing\.MiseAJour'/);
-  // Les cinq anciennes clés n'existent plus : une identité par produit ou par langue de
+  // Les anciennes clés n'existent plus, « suite » (la fenêtre WinForms) comprise : une identité par produit ou par langue de
   // mise à jour n'aurait plus de sens dans ce modèle. Cherchées dans la table elle-même,
   // pas dans tout le fichier -- ses clés reviennent ailleurs (szh-produits.ps1 notamment).
   const iTable = SHELL.indexOf('$script:SzhAppIds = @{');
   const corpsTable = SHELL.slice(iTable, SHELL.indexOf('}', iTable));
-  for (const ancien of ["'revue'", "'zeitschrift'", "'livre'", "'maj.fr'", "'maj.de'"]) {
+  for (const ancien of ["'suite'", "'revue'", "'zeitschrift'", "'livre'", "'maj.fr'", "'maj.de'"]) {
     assert.ok(corpsTable.indexOf(ancien + ' = ') === -1,
       'szh-shell.ps1 garde encore une ancienne clé d’identité dans $SzhAppIds : ' + ancien);
   }
@@ -251,18 +225,17 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
 
   // Seconde moitié : le processus se déclare AVANT sa première fenêtre. Windows lit
   // l'identité quand la fenêtre s'inscrit à la barre et ne la relit jamais ensuite ;
-  // déclarée après, elle n'a plus aucun effet. Une seule déclaration, par la clé fixe
-  // 'suite' — et non plus table-driven par produit, puisqu'il n'y a plus qu'une fenêtre.
-  const decl = OUVRIR_PRODUIT.indexOf('Set-SzhAppUserModelId');
-  const fenetre = OUVRIR_PRODUIT.indexOf('New-Object System.Windows.Forms.Form');
-  assert.ok(decl !== -1, 'open-produit.ps1 ne déclare plus l’identité de barre des tâches');
-  assert.ok(fenetre !== -1, 'open-produit.ps1 ne crée plus la fenêtre du lanceur');
+  // déclarée après, elle n'a plus aucun effet. La seule fenêtre de Pronto est le sélecteur
+  // de version (open-revue.ps1 -Versions), qui prend l'identité de la mise à jour.
+  const iVersions = OUVRIR.indexOf('if ($Versions) {');
+  const decl = OUVRIR.indexOf("Set-SzhAppUserModelId (Get-SzhAppId 'maj')", iVersions);
+  const fenetre = OUVRIR.indexOf('Show-SzhVersions', iVersions);
+  assert.ok(iVersions !== -1 && decl !== -1, 'open-revue.ps1 -Versions ne déclare plus l’identité de barre des tâches');
+  assert.ok(fenetre !== -1, 'open-revue.ps1 -Versions n’ouvre plus le sélecteur');
   assert.ok(decl < fenetre, 'identité déclarée après la première fenêtre : trop tard');
-  assert.ok(OUVRIR_PRODUIT.indexOf("Get-SzhAppId 'suite'") !== -1,
-    'l’identité n’est plus tirée de $SzhAppIds par la clé fixe "suite"');
 
-  // Chaque produit garde sa propre ligne dans la table (onglet, icône, textes...), mais
-  // plus de champ appId : une seule fenêtre pour les trois ne peut porter qu'une identité.
+  // Chaque produit garde sa propre ligne dans la table (icône, raccourci...), mais plus de
+  // champ appId.
   for (const jeton of ['revue', 'zeitschrift', 'livre']) {
     const debutLigne = SHELL_PRODUITS.indexOf(jeton + ' = @{');
     assert.ok(debutLigne !== -1, 'szh-produits.ps1 : ligne de table manquante pour ' + jeton);
@@ -288,8 +261,7 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
 // ---- Les textes ----
 
 test('les libellés des raccourcis existent dans les trois langues, en « ss »', () => {
-  for (const cle of ['raccourci.maj.nom', 'raccourci.maj.desc',
-    'raccourci.revue.desc', 'raccourci.zs.desc', 'raccourci.livre.desc']) {
+  for (const cle of ['raccourci.maj.nom', 'raccourci.maj.desc', 'raccourci.lanceur.desc']) {
     const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(.+)", 'g');
     const lignes = TEXTES.match(motif) || [];
     assert.strictEqual(lignes.length, 3, 'il manque une traduction de ' + cle);
@@ -475,8 +447,8 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
   const par = {};
   for (const l of r.lnk) { par[l.nom] = l; }
 
-  // Le lanceur : caché, sans -Produit (l'onglet ouvert vient du réglage du compte, pas du
-  // raccourci — Get-SzhOngletDefaut, szh-produits.ps1).
+  // Le lanceur : caché, sans -Produit (le produit que montre l'Accueil vient du réglage du
+  // compte, pas du raccourci).
   const lanceur = par[NOM_APPLICATION + '.lnk'];
   assert.ok(lanceur, NOM_APPLICATION + ' manque au menu');
   assert.match(lanceur.cible, /wscript\.exe$/i);

@@ -220,7 +220,7 @@ function Get-SzhVersionDisqueVirtuel {
 # disque, environnement) et sans aucune écriture : tout ce qu'elle mesure est facultatif, et
 # chaque mesure ratée laisse une case vide plutôt qu'une exception.
 #
-# $OrigineAncrage vient de l'appelant (Initialize-SzhAncrage, dans open-produit.ps1) plutôt
+# $OrigineAncrage vient de l'appelant (Invoke-SzhTachesDemarrage, szh-shell.ps1) plutôt
 # que d'un second Resolve-SzhAncrage : la résolution a déjà eu lieu, et c'est SON verdict
 # qu'on veut consigner, pas un autre calculé après coup.
 function Get-SzhCheckinFaits {
@@ -381,7 +381,7 @@ function Write-SzhCheckinCsv {
 
 # ---- 5. Le check-in lui-même ----
 
-# Appelé UNE FOIS par lancement du lanceur (open-produit.ps1), juste après la résolution de
+# Appelé UNE FOIS par lancement (Invoke-SzhTachesDemarrage), juste après la résolution de
 # l'ancrage. Rend $true quand une ligne a été écrite, $false sinon — et NE LÈVE JAMAIS : le
 # check-in est un confort, pas une condition d'ouverture. Un dossier partagé injoignable
 # (OneDrive en panne, portable hors réseau, ancrage non rattaché) laisse une ligne de journal
@@ -401,6 +401,12 @@ function Write-SzhCheckinCsv {
 function Invoke-SzhCheckin {
   param([string]$OrigineAncrage = '')
 
+  # En simulation, seul un ancrage d'essai reçoit le check-in : un test qui oublierait de
+  # détourner l'ancrage écrirait sinon dans le vrai dossier partagé.
+  if (($env:SZH_LANCEUR_SIMULE -eq '1') -and (-not $env:SZH_ANCRAGE)) {
+    try { Write-SzhLog 'check-in : simulation sans ancrage d''essai -> passe' } catch { }
+    return $false
+  }
   try {
     $dossier = Get-SzhDossierInventaire
     if (-not $dossier) {

@@ -29,10 +29,10 @@ const { POWERSHELL, sansPowerShell } = require('./gardes');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const COMMUN = fs.readFileSync(COMMUN_PS1, 'utf8');
-// Le sélecteur WinForms vit dans son propre fichier, chargé par le seul lanceur.
+// Le sélecteur WinForms vit dans son propre fichier, chargé par le seul open-revue.ps1 -Versions.
 const VERSIONS_PS1 = path.join(RACINE, 'windows', 'szh-versions.ps1');
 const VERSIONS = fs.readFileSync(VERSIONS_PS1, 'utf8');
-const LANCEUR = fs.readFileSync(path.join(RACINE, 'windows', 'open-produit.ps1'), 'utf8');
+const LANCEUR = fs.readFileSync(path.join(RACINE, 'windows', 'open-revue.ps1'), 'utf8');
 const TEXTES = fs.readFileSync(path.join(RACINE, 'windows', 'szh-textes.ps1'), 'utf8');
 
 // La liste d'épreuve, mélangée exprès : l'ordre d'entrée ne doit jamais transparaître dans
@@ -154,7 +154,7 @@ test('la ligne présélectionnée n’est pas la version installée quand une au
   assert.match(VERSIONS, /\$liVersions\.SelectedIndex = \$premier/);
 });
 
-test('Show-SzhVersions n’est plus dans le socle : seul le lanceur charge son fichier', () => {
+test('Show-SzhVersions n’est plus dans le socle : seul open-revue.ps1 charge son fichier', () => {
   // szh-common.ps1 est chargé par des scripts sans fenêtre : le sélecteur WinForms n’y a pas sa place.
   assert.ok(!/function Show-SzhVersions\b/.test(COMMUN), 'Show-SzhVersions est revenue dans szh-common.ps1');
   assert.ok(!/System\.Windows\.Forms/.test(COMMUN), 'le socle commun porte à nouveau du WinForms');
@@ -162,7 +162,7 @@ test('Show-SzhVersions n’est plus dans le socle : seul le lanceur charge son f
   const iCharge = LANCEUR.indexOf('. "$PSScriptRoot\\szh-versions.ps1"');
   const iAppel = LANCEUR.indexOf('Show-SzhVersions $null');
   assert.ok(iCharge !== -1 && iAppel !== -1 && iCharge < iAppel,
-    'open-produit.ps1 doit dot-sourcer szh-versions.ps1 avant d’appeler Show-SzhVersions');
+    'open-revue.ps1 doit dot-sourcer szh-versions.ps1 avant d’appeler Show-SzhVersions');
   // Aucun autre script de windows/ n’appelle le sélecteur sans charger son fichier.
   for (const nom of fs.readdirSync(path.join(RACINE, 'windows'))) {
     if (!nom.endsWith('.ps1') || nom === 'szh-versions.ps1') { continue; }

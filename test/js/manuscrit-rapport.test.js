@@ -5,7 +5,7 @@
 // d'occurrences, grouper par famille puis par règle, juger une image (lib/qualite-image.js)
 // se font donc AVANT le rendu, dans construireVueRapportManuscrit -- ce fichier éprouve
 // cette fonction directement (rapide, un cas par test) ET, une fois, le vrai sous-processus
-// `node outils/rendre-gabarit.js` (le câblage réel de Invoke-SzhManuscrit).
+// `node outils/rendre-gabarit.js`.
 //
 //   node --test test/js/manuscrit-rapport.test.js
 'use strict';

@@ -112,9 +112,8 @@ def _masquer_urls(ligne):
 # stderr par un simple print(). En production, manuscrit-nettoyer.py importe ce module et
 # tourne LUI-MÊME dans la WSL (sys.platform == 'linux' au sens de ce fichier, §2 du
 # contrat) : ce print() atterrit donc directement sur le stderr DE manuscrit-nettoyer.py,
-# jamais filtré par son PREFIXE `[manuscrit-nettoyer]` — et Invoke-SzhManuscrit
-# (open-produit.ps1) recopie une ligne de stderr non reconnue telle quelle dans le journal
-# de la relectrice. Un module qui ne dépend d'aucun autre (§3) ne peut pas non plus router
+# jamais filtré par son PREFIXE `[manuscrit-nettoyer]` — et l'appelant peut recopier une
+# ligne de stderr non reconnue telle quelle dans le journal de la relectrice. Un module qui ne dépend d'aucun autre (§3) ne peut pas non plus router
 # sa trace par le progres() de l'appelant : la bonne place pour ce diagnostic est le mode
 # --resoudre-vale-bin ci-dessous, déjà prévu pour ça, jamais un print() automatique — même
 # principe que manuscrit_typo.py, qui ne trace rien sur la résolution de son propre binaire

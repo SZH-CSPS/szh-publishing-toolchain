@@ -1,5 +1,5 @@
 ﻿# ---- Sélecteur de version du logiciel ----
-# Appelé par le seul open-produit.ps1 (bouton « Changer de version… » et -Versions), qui
+# Appelé par le seul open-revue.ps1 -Versions (bouton « Changer de version… » du cockpit), qui
 # dot-source ce fichier : le socle (szh-common.ps1) est chargé par des scripts sans fenêtre et
 # n'a pas à porter un sélecteur WinForms. Recomposer un ancien numéro à l'identique suppose de
 # réinstaller la version qui l'a fabriqué ; `update.ps1 -Version X` sait le faire, ce dialogue

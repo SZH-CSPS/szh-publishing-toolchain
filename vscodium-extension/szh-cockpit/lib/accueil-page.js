@@ -165,7 +165,7 @@ function textesAccueil() {
 // Le nom de chaque produit sur ses boutons : un nom propre, le même dans les deux langues.
 const LIBELLES_PRODUITS = { revue: 'Revue', zeitschrift: 'Zeitschrift', livre: 'Book' };
 
-// Le produit ouvert d'office, comme Get-SzhOngletDefaut : la langue désigne la Revue ou la
+// Le produit ouvert d'office : la langue désigne la Revue ou la
 // Zeitschrift, le choix du compte l'emporte, et SZH_ONGLET, l'essai, a le dernier mot. Le
 // livre n'est jamais désigné par la langue.
 function produitParDefaut(langue, choisi, essai, jetons) {

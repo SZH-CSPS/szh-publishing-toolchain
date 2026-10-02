@@ -36,10 +36,9 @@ test('ouvrirAvecSysteme lance explorer.exe, sans passer par openExternal', { ski
 });
 
 // Le file:// d'openExternal échoue sous Windows sur un chemin accentué (0x2) : aucun
-// fichier du cockpit ne doit plus passer par là. L'hôte du lanceur est rebranché sur ce
-// module par la bascule « accueil » ; d'ici là il est seul excepté.
+// fichier du cockpit ne doit plus passer par là.
 test('aucun openExternal(vscode.Uri.file(…)) dans le cockpit', () => {
-  const exceptes = [path.join('lib', 'lanceur-hote.js'), path.join('lib', 'ouvrir-systeme.js')];
+  const exceptes = [path.join('lib', 'ouvrir-systeme.js')];
   const fichiers = fs.readdirSync(path.join(COCKPIT, 'lib')).filter((n) => n.endsWith('.js'))
     .map((n) => path.join('lib', n)).concat(['extension.js']);
   const fautes = fichiers.filter((rel) => exceptes.indexOf(rel) === -1

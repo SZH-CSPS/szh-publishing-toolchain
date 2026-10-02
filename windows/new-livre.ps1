@@ -3,8 +3,8 @@
   Crée un nouveau livre à partir du gabarit du toolkit, sans administrateur :
     powershell -ExecutionPolicy Bypass -File new-livre.ps1 -Dossier "$env:OneDrive\Livres\2026-B330-Nom"
 
-  Le lanceur passe en plus -Titre, -Annee, -Reference, -Type, -Maquette et -Format : c'est
-  lui qui les fait saisir (voir Read-SzhNouveauLivre dans open-produit.ps1). Sans -Titre ou
+  L'Accueil passe en plus -Titre, -Annee, -Reference, -Type, -Maquette et -Format : c'est
+  lui qui les fait saisir (lib/accueil-nouveau.js). Sans -Titre ou
   sans -Annee, ils se relisent dans le nom du dossier (convention « <année>-B<référence>-<nom> »,
   Get-SzhNomLivre) — repli imparfait, gardé pour un appel en ligne de commande sur un
   dossier déjà nommé, comme le fait new-revue.ps1 pour l'année et le numéro.

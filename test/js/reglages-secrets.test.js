@@ -1,19 +1,18 @@
-// Trois réglages Shlink/OJS de l'onglet « Paramètres » (windows/open-produit.ps1) :
-// Get/Set-SzhShlinkUrl, Get/Set-SzhShlinkCle, Get/Set-SzhOjsCle, et Set-SzhEnvironnementSecrets
-// / Set-SzhWslEnvSecrets (les cinq dans windows/szh-common.ps1), qui posent SZH_SHLINK_URL,
+// Les réglages Shlink/OJS que l'ancien lanceur rangeait dans etat-utilisateur.json :
+// Get-SzhShlinkUrl, Get-SzhShlinkCle, Get-SzhOjsCle, et Set-SzhEnvironnementSecrets
+// / Set-SzhWslEnvSecrets (tous dans windows/szh-common.ps1), qui posent SZH_SHLINK_URL,
 // SZH_SHLINK_CLE, SZH_OJS_CLE dans l'environnement du processus enfant au lancement de
 // VSCodium et les ajoutent à WSLENV pour que wsl.exe les transmette aux tâches du cockpit
 // (vscodium-user/tasks.json, `wsl.exe -d SZH-Publishing`). DEUX lanceurs appellent
 // Set-SzhEnvironnementSecrets : Start-SzhCodium (windows/szh-shell.ps1, le lanceur principal)
 // et Start-SzhCodiumFichier (windows/open-md.ps1, l'ouverture d'un .md par double-clic) --
-// d'où ces cinq fonctions dans szh-common.ps1 et non dans szh-shell.ps1 : open-md.ps1 ne
+// d'où ces fonctions dans szh-common.ps1 et non dans szh-shell.ps1 : open-md.ps1 ne
 // dot-source QUE szh-common.ps1.
 //
 // Ce que ce fichier prouve, dans l'ordre :
-//   1. la clé n'est JAMAIS en clair sur le disque (DPAPI, ConvertFrom-SecureString/
-//      ConvertTo-SecureString sans -Key) -- un aller-retour la relit, le fichier ne la
-//      porte pas ;
-//   2. un champ vide efface la clé (Set- puis Get- rend '') ;
+//   1. une clé se relit depuis son chiffrement DPAPI du compte (ConvertFrom-SecureString sans
+//      -Key, la forme où l'ancien lanceur la rangeait), et une valeur en clair n'en est pas une ;
+//   2. un champ vide ne rend aucune clé ;
 //   3. Set-SzhWslEnvSecrets construit WSLENV correctement dans les quatre cas -- vide,
 //      valeur existante préservée, appel répété sans doublon, retrait ;
 //   4. Start-SzhCodium ne pose les trois variables que si un réglage existe, jamais à vide,
@@ -22,7 +21,6 @@
 //      Get-VSCodiumExe (voir le commentaire d'en-tête de Start-SzhCodium) ;
 //   5. aucune source (diagnostic.ps1, szh-rapport.ps1) ne recopie etat-utilisateur.json tel
 //      quel, et aucune des deux ne porte les noms de champs shlinkCle/ojsCle ;
-//   6. les six nouvelles clés de texte existent dans les trois langues (fr/de/en) ;
 //   7. Start-SzhCodiumFichier (open-md.ps1) pose le même pont -- même garantie qu'au 4,
 //      via le vrai open-md.ps1 en SZH_OPENMD_SIMULE=1 (sauté si VSCodium n'est pas installé
 //      sur ce poste : Get-VSCodiumExe est vérifié par open-md.ps1 AVANT d'appeler
@@ -45,7 +43,6 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COMMON_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const SHELL_PS1 = path.join(RACINE, 'windows', 'szh-shell.ps1');
 const OPENMD_PS1 = path.join(RACINE, 'windows', 'open-md.ps1');
-const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 const DIAGNOSTIC_PS1 = path.join(RACINE, 'windows', 'diagnostic.ps1');
 const RAPPORT_PS1 = path.join(RACINE, 'windows', 'szh-rapport.ps1');
 
@@ -143,77 +140,83 @@ function lireJournal(base) {
   return fs.readFileSync(fichier, 'utf8');
 }
 
-// ---- 1. Aller-retour chiffré : la valeur relue est celle saisie, le fichier ne la porte pas
+// Range des champs dans etat-utilisateur.json sous la forme où l'ancien lanceur les écrivait :
+// l'adresse en clair, chaque clé chiffrée par DPAPI pour ce compte. { clair: true } range une
+// clé en clair, ce que rien n'a jamais écrit.
+function ranger(champs, opts) {
+  const lignes = ['$etat = Get-SzhEtatUtilisateur', 'if (-not $etat) { $etat = New-Object psobject }'];
+  for (const [nom, valeur] of Object.entries(champs)) {
+    const v = "'" + String(valeur).replace(/'/g, "''") + "'";
+    const chiffre = nom !== 'shlinkUrl' && valeur !== '' && !(opts && opts.clair);
+    const expr = chiffre
+      ? '(ConvertFrom-SecureString -SecureString (ConvertTo-SecureString -String ' + v + ' -AsPlainText -Force))' : v;
+    lignes.push('$etat | Add-Member -Force -MemberType NoteProperty -Name ' + nom + ' -Value ' + expr);
+  }
+  lignes.push('[void](Save-SzhEtatUtilisateur $etat)');
+  return lignes;
+}
 
-test('Get/Set-SzhShlinkCle : la valeur relue est celle saisie, jamais en clair sur le disque',
+// ---- 1. Lecture chiffrée : la clé rangée se relit, une valeur en clair ne vaut rien
+
+test('Get-SzhShlinkCle : relit la clé chiffrée pour ce compte, jamais une valeur en clair',
   { skip: sansPowerShell }, () => {
     const { travail, base, local } = nouveauxDossiers('szh-secrets-roundtrip-');
     const env = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
     const secret = 'CLE-DE-TEST-9f83ac';
-    const res = executerFonctionShell([
-      '[void](Set-SzhShlinkCle "' + secret + '")',
-      '$relue = Get-SzhShlinkCle',
-      '$fichier = Join-Path $env:LOCALAPPDATA "SZH\\etat-utilisateur.json"',
-      '$brut = [string](Get-Content $fichier -Raw -Encoding UTF8)',
-      '$r = [ordered]@{ relue = $relue; brutPorteLeSecret = ($brut -match [regex]::Escape("' + secret + '")); brut = $brut }'
-    ], env);
+    const res = executerFonctionShell(ranger({ shlinkCle: secret }).concat([
+      '$relue = Get-SzhShlinkCle'
+    ], ranger({ shlinkCle: 'CLE-EN-CLAIR' }, { clair: true }), [
+      '$r = [ordered]@{ relue = $relue; clair = (Get-SzhShlinkCle) }'
+    ]), env);
     fs.rmSync(travail, { recursive: true, force: true });
     assert.ok(res && res.status === 0, 'le pilote a echoue - ' + (res ? res.stderr : ''));
-    assert.strictEqual(res.r.relue, secret, 'la cle relue ne correspond pas a la cle ecrite');
-    assert.strictEqual(res.r.brutPorteLeSecret, false,
-      'le fichier etat-utilisateur.json porte la cle EN CLAIR : ' + res.r.brut);
-    assert.ok(/"shlinkCle"\s*:\s*"[0-9A-Fa-f]{20,}"/.test(res.r.brut),
-      'shlinkCle ne ressemble pas a un blob DPAPI (ConvertFrom-SecureString) - ' + res.r.brut);
+    assert.strictEqual(res.r.relue, secret, 'la cle relue ne correspond pas a la cle rangee');
+    assert.strictEqual(res.r.clair, '', 'une valeur en clair dans etat-utilisateur.json passe pour une cle');
   });
 
-test('Get/Set-SzhOjsCle : meme garantie que Shlink -- aller-retour, jamais en clair',
+test('Get-SzhOjsCle : meme garantie que Shlink -- relue chiffrée, jamais en clair',
   { skip: sansPowerShell }, () => {
     const { travail, base, local } = nouveauxDossiers('szh-secrets-ojs-roundtrip-');
     const env = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
     const secret = 'OJS-CLE-7a21bd';
-    const res = executerFonctionShell([
-      '[void](Set-SzhOjsCle "' + secret + '")',
-      '$relue = Get-SzhOjsCle',
-      '$fichier = Join-Path $env:LOCALAPPDATA "SZH\\etat-utilisateur.json"',
-      '$brut = [string](Get-Content $fichier -Raw -Encoding UTF8)',
-      '$r = [ordered]@{ relue = $relue; brutPorteLeSecret = ($brut -match [regex]::Escape("' + secret + '")) }'
-    ], env);
+    const res = executerFonctionShell(ranger({ ojsCle: secret }).concat([
+      '$relue = Get-SzhOjsCle'
+    ], ranger({ ojsCle: 'OJS-EN-CLAIR' }, { clair: true }), [
+      '$r = [ordered]@{ relue = $relue; clair = (Get-SzhOjsCle) }'
+    ]), env);
     fs.rmSync(travail, { recursive: true, force: true });
     assert.ok(res && res.status === 0, 'le pilote a echoue - ' + (res ? res.stderr : ''));
-    assert.strictEqual(res.r.relue, secret, 'la cle OJS relue ne correspond pas a la cle ecrite');
-    assert.strictEqual(res.r.brutPorteLeSecret, false,
-      'le fichier etat-utilisateur.json porte la cle OJS EN CLAIR');
+    assert.strictEqual(res.r.relue, secret, 'la cle OJS relue ne correspond pas a la cle rangee');
+    assert.strictEqual(res.r.clair, '', 'une valeur OJS en clair passe pour une cle');
   });
 
-test('Get-SzhShlinkUrl : en clair (ce n\'est pas un secret), aller-retour simple',
+test('Get-SzhShlinkUrl : en clair (ce n\'est pas un secret)',
   { skip: sansPowerShell }, () => {
     const { travail, base, local } = nouveauxDossiers('szh-secrets-url-');
     const env = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
-    const res = executerFonctionShell([
-      '[void](Set-SzhShlinkUrl "https://link.szh-csps.ch")',
+    const res = executerFonctionShell(ranger({ shlinkUrl: 'https://link.szh-csps.ch' }).concat([
       '$r = [ordered]@{ url = (Get-SzhShlinkUrl) }'
-    ], env);
+    ]), env);
     fs.rmSync(travail, { recursive: true, force: true });
     assert.ok(res && res.status === 0, 'le pilote a echoue - ' + (res ? res.stderr : ''));
     assert.strictEqual(res.r.url, 'https://link.szh-csps.ch');
   });
 
-// ---- 2. Champ vide = clé effacée
+// ---- 2. Champ vide = aucune clé
 
-test('un champ vide efface la cle (Set- "" puis Get- rend "")', { skip: sansPowerShell }, () => {
+test('un champ vide ne rend aucune cle (Get- rend "")', { skip: sansPowerShell }, () => {
   const { travail, base, local } = nouveauxDossiers('szh-secrets-efface-');
   const env = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
-  const res = executerFonctionShell([
-    '[void](Set-SzhShlinkCle "une-cle-quelconque")',
-    '$avant = Get-SzhShlinkCle',
-    '[void](Set-SzhShlinkCle "")',
+  const res = executerFonctionShell(ranger({ shlinkCle: 'une-cle-quelconque' }).concat([
+    '$avant = Get-SzhShlinkCle'
+  ], ranger({ shlinkCle: '' }), [
     '$apres = Get-SzhShlinkCle',
     '$r = [ordered]@{ avant = $avant; apres = $apres }'
-  ], env);
+  ]), env);
   fs.rmSync(travail, { recursive: true, force: true });
   assert.ok(res && res.status === 0, 'le pilote a echoue - ' + (res ? res.stderr : ''));
   assert.strictEqual(res.r.avant, 'une-cle-quelconque');
-  assert.strictEqual(res.r.apres, '', 'un champ vide ne vide pas la cle enregistree');
+  assert.strictEqual(res.r.apres, '', 'un champ vide rend encore une cle');
 });
 
 // ---- 3. Construction de WSLENV : vide, existant, doublon, retrait
@@ -299,11 +302,8 @@ test('Start-SzhCodium : Shlink URL+cle regles, OJS vide -> seules les deux premi
     const { travail, base, local } = nouveauxDossiers('szh-secrets-codium-partiel-');
     const secret = 'SECRET-SHLINK-4c91';
     const envReglage = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
-    const reglage = executerFonctionShell([
-      '[void](Set-SzhShlinkUrl "https://link.szh-csps.ch")',
-      '[void](Set-SzhShlinkCle "' + secret + '")',
-      '$r = [ordered]@{ ok = $true }'
-    ], envReglage);
+    const reglage = executerFonctionShell(ranger({ shlinkUrl: 'https://link.szh-csps.ch', shlinkCle: secret })
+      .concat(['$r = [ordered]@{ ok = $true }']), envReglage);
     assert.ok(reglage && reglage.status === 0, 'le reglage prealable a echoue - ' + (reglage ? reglage.stderr : ''));
 
     // Environnement isole pour Start-SzhCodium : sans SZH_SHLINK_CLE/URL herites de CE
@@ -344,37 +344,7 @@ test('diagnostic.ps1 et szh-rapport.ps1 ne recopient jamais etat-utilisateur.jso
     }
   });
 
-// ---- 6. Les six nouvelles clés de texte existent dans les trois langues
-
-test('les six nouvelles clés de texte Shlink/OJS existent dans les trois langues (fr/de/en)', () => {
-  const textes = fs.readFileSync(TEXTES_PS1, 'utf8');
-  const cles = [
-    'lanceur.reglages.shlink.url',
-    'lanceur.reglages.shlink.url.note',
-    'lanceur.reglages.shlink.url.invalide',
-    'lanceur.reglages.shlink.cle',
-    'lanceur.reglages.shlink.cle.note',
-    'lanceur.reglages.ojs.cle',
-    'lanceur.reglages.ojs.cle.note',
-    'lanceur.reglages.afficher',
-    'lanceur.reglages.secrets.note'
-  ];
-  for (const cle of cles) {
-    const occurrences = textes.split('\'' + cle + '\'').length - 1;
-    assert.strictEqual(occurrences, 3,
-      'la clé « ' + cle + ' » ne porte pas exactement trois entrées (fr/de/en) : ' + occurrences);
-  }
-});
-
-test('open-produit.ps1 utilise bien les trois nouveaux réglages dans l\'onglet Paramètres', () => {
-  const source = fs.readFileSync(path.join(RACINE, 'windows', 'open-produit.ps1'), 'utf8');
-  for (const fn of ['Get-SzhShlinkUrl', 'Set-SzhShlinkUrl', 'Get-SzhShlinkCle', 'Set-SzhShlinkCle',
-    'Get-SzhOjsCle', 'Set-SzhOjsCle', 'Add-SzhReglageTexte', 'Add-SzhReglageSecret']) {
-    assert.ok(source.indexOf(fn) !== -1, 'open-produit.ps1 n\'appelle plus ' + fn);
-  }
-});
-
-test('les cinq fonctions Shlink/OJS vivent dans szh-common.ps1, pas dans szh-shell.ps1 -- '
+test('le pont des secrets vit dans szh-common.ps1, pas dans szh-shell.ps1 -- '
   + 'open-md.ps1 ne dot-source que szh-common.ps1', () => {
     const common = fs.readFileSync(COMMON_PS1, 'utf8');
     const shell = fs.readFileSync(SHELL_PS1, 'utf8');
@@ -442,11 +412,8 @@ test('open-md.ps1 : Shlink URL+cle regles -> Start-SzhCodiumFichier pose les mem
     const { travail, base, local } = nouveauxDossiers('szh-secrets-openmd-plein-');
     const secret = 'SECRET-OPENMD-7f2a';
     const envReglage = envIsole({ SZH_BASE: base, LOCALAPPDATA: local });
-    const reglage = executerFonctionShell([
-      '[void](Set-SzhShlinkUrl "https://link.szh-csps.ch")',
-      '[void](Set-SzhShlinkCle "' + secret + '")',
-      '$r = [ordered]@{ ok = $true }'
-    ], envReglage);
+    const reglage = executerFonctionShell(ranger({ shlinkUrl: 'https://link.szh-csps.ch', shlinkCle: secret })
+      .concat(['$r = [ordered]@{ ok = $true }']), envReglage);
     assert.ok(reglage && reglage.status === 0, 'le reglage prealable a echoue - ' + (reglage ? reglage.stderr : ''));
 
     const md = path.join(travail, 'hors-revue.md');

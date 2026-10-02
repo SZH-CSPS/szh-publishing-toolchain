@@ -42,7 +42,8 @@ ce chemin (voir `docs/TODO/nettoyeur-manuscrit.md` pour l'état de cette validat
 
 ## 2. Où le code tourne
 
-**100 % Python**, sauf l'onglet du lanceur qui est en PowerShell WinForms — incompressible.
+**100 % Python**, sauf l'onglet Préprocessing de l'Accueil, côté cockpit
+(`lib/accueil-preproc-hote.js`). L'ancien onglet WinForms est retiré depuis la 3.2.0.
 
 | | |
 |---|---|
@@ -822,8 +823,8 @@ tout : un poste neuf moissonne donc tout, sans code « premier lancement » à �
 
 Elle était appelée au seul démarrage de VSCodium (`rafraichirAuteursPubliesEnFond()`, activation
 `onStartupFinished` du cockpit). **Trou mesuré le 22.09.2026** : les raccourcis du menu Démarrer
-(`Set-SzhRaccourcisMenu`, `windows/szh-shell.ps1`) pointent sur `windows/open-produit.ps1`, le
-lanceur PowerShell lancé DIRECTEMENT — on pouvait donc nettoyer un manuscrit depuis l'onglet
+(`Set-SzhRaccourcisMenu`, `windows/szh-shell.ps1`) pointaient sur le lanceur WinForms (retiré
+en 3.2.0), lancé DIRECTEMENT — on pouvait donc nettoyer un manuscrit depuis l'onglet
 « Preprocessing » sans que VSCodium ait jamais démarré, donc sans base.
 
 Le lanceur déclenche désormais le même moissonnage, par un point d'entrée CLI sur le moissonneur
@@ -1520,7 +1521,11 @@ final), `alertes.origine`, `dans_docx` sur chaque alerte, `compteurs.notes`/`rev
 
 ## 9. L'onglet du lanceur
 
-Onglet **« Préprocessing »** dans `windows/open-produit.ps1`, calqué sur l'onglet « Export et
+> **Retiré en 3.2.0** avec le lanceur WinForms : l'onglet Préprocessing de l'Accueil
+> (`lib/accueil-preproc-hote.js`, `media/accueil.*`) le remplace. Ce qui suit décrit l'ancien
+> onglet, pour l'histoire des décisions.
+
+Onglet **« Préprocessing »** dans l'ancien `windows/open-produit.ps1`, calqué sur l'onglet « Export et
 secrétariat » — même géométrie, mêmes marges, aucun onglet n'agrandit la fenêtre.
 
 Contenu : un groupe de boutons radio Revue / Zeitschrift, une rangée « Format de sortie » (deux

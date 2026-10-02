@@ -12,8 +12,9 @@ Ce dépôt contient l'outillage, pas les publications : celles-ci vivent sur Sha
 
 - **VSCodium** est l'éditeur ; l'extension **szh-cockpit** y ajoute la barre « Pronto » :
   import, aperçu, métadonnées, médias, tableaux, contrôles, export, cycle de vie.
-- Un **lanceur Windows** (PowerShell, WinForms) liste les numéros et les livres, en crée, et
-  porte le nettoyeur de manuscrit et les exports du secrétariat.
+- L'entrée **« Pronto »** (PowerShell) ouvre VSCodium sur l'**Accueil** du cockpit, qui liste
+  les numéros et les livres, en crée, et porte le nettoyeur de manuscrit et les exports du
+  secrétariat.
 - À chaque `Ctrl+S`, **make** lance dans une distribution **WSL** (`SZH-Publishing`) la chaîne
   **Pandoc → filtres Lua → WeasyPrint**, contrôlée par **veraPDF**.
 - Un chapitre de livre se compile comme un article : revue, Zeitschrift et livre partagent la

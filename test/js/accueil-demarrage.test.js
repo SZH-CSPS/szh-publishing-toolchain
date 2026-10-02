@@ -193,3 +193,21 @@ test('aucun script ni module n’appelle encore open-produit.ps1', () => {
   }
   assert.deepStrictEqual(appels, []);
 });
+
+// En simulation, un oubli de détournement ne doit jamais atteindre le vrai poste : sans
+// ancrage d'essai, le check-in ne part pas, et sans racine d'essai, l'arbre de test n'est pas
+// créé. Le profil factice porte un dossier partagé que la détection automatique trouve.
+test('en simulation, ni check-in ni arbre d’essai hors des dossiers d’essai désignés', { skip: sansPowerShell }, () => {
+  avecPoste({ SZH_COCKPIT_DOSSIER: COCKPIT }, (p) => {
+    const profil = p.d('profil');
+    const partage = p.d('profil', 'SZH CSPS', 'Daten_Allgemein - General');
+    for (const v of ['SZH_ANCRAGE', 'SZH_RACINE_TEST', 'SZH_RACINE_PROD', 'OneDrive', 'OneDriveCommercial']) { delete p.env[v]; }
+    p.env.USERPROFILE = profil;
+    const r = lancer(OUVRIR_REVUE, [], p);
+    assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    assert.strictEqual(r.sortie.ancrage.chemin, partage, 'le dossier partagé factice n’a pas été trouvé : ce test ne prouve rien');
+    assert.deepStrictEqual(fs.readdirSync(partage), [], 'le check-in a écrit sous un ancrage qui n’est pas d’essai');
+    assert.ok(!fs.existsSync(path.join(profil, 'OneDrive - SZH CSPS')), 'l’arbre d’essai est créé sous la racine par défaut');
+    assert.ok(r.journal.indexOf('check-in : simulation sans ancrage d') !== -1, 'le saut du check-in n’est pas dit au journal');
+  });
+});

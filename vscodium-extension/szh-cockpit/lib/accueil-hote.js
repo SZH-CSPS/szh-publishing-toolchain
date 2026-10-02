@@ -18,6 +18,7 @@ const secretariat = require('./accueil-secretariat-hote');
 const journal = require('./accueil-journal-hote');
 const reglages = require('./accueil-reglages-hote');
 const preproc = require('./accueil-preproc-hote');
+const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 
 const VIEW_TYPE = 'szhAccueil';
 // Par compte : le dernier numéro ouvert depuis l'Accueil, qu'il propose en premier.
@@ -204,7 +205,7 @@ function rechargerPage(onglet) {
 function configurerOnglets() {
   const envoyer = (m) => { if (panneauActif) { repondre(panneauActif, m); } };
   const revelerFichier = (chemin) => vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(chemin));
-  const ouvrirDossierOs = (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin));
+  const ouvrirDossierOs = (chemin) => ouvrirAvecSysteme(chemin, vscode);
   secretariat.configurer({ envoyer, revelerFichier, ouvrirDossier: ouvrirDossierOs, memoire: etatPoste && etatPoste.globalState,
     numerosConnus: () => cheminsConnus });
   reglages.configurer({ rafraichirTout: (opts) => { if (ctx.rafraichirTout) { ctx.rafraichirTout(opts); } },
@@ -216,7 +217,7 @@ function configurerOnglets() {
     versionEditeur: () => vscode.version || null });
   preproc.configurer({ envoyer, revelerFichier, memoire: etatPoste && etatPoste.globalState,
     formatTravail: () => vscode.workspace.getConfiguration('szh').get('formatTravail', 'docx'),
-    ouvrirExterne: (chemin) => vscode.env.openExternal(vscode.Uri.file(chemin)),
+    ouvrirExterne: (chemin) => ouvrirAvecSysteme(chemin, vscode),
     choisirFichier: async (dossier) => {
       const choix = await vscode.window.showOpenDialog({ canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
         defaultUri: dossier ? vscode.Uri.file(dossier) : undefined, filters: { [T('accueil.preproc.filtre')]: ['docx', 'odt'] } });

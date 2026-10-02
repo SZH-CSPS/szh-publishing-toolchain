@@ -12,7 +12,6 @@
 //     son nom de dossier : deux dossiers de noms différents peuvent porter le même couple, et
 //     c'est exactement ce qu'il faut refuser. Les archives comptent — un numéro archivé reste
 //     un numéro publié.
-//   * les TEXTES du formulaire et du lanceur, dans les trois langues.
 'use strict';
 
 const test = require('node:test');
@@ -25,17 +24,15 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN = path.join(RACINE, 'windows', 'szh-common.ps1');
 const PRODUITS = path.join(RACINE, 'windows', 'szh-produits.ps1');
-const TEXTES = path.join(RACINE, 'windows', 'szh-textes.ps1');
-const LANCEUR = path.join(RACINE, 'windows', 'open-produit.ps1');
+// Le formulaire « Nouveau » de l'Accueil, qui appelle new-revue.ps1 par le socle.
+const NOUVEAU = path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'accueil-nouveau.js');
 const CREATION = path.join(RACINE, 'windows', 'new-revue.ps1');
 
 const psCommun = fs.readFileSync(COMMUN, 'utf8');
-// Le socle a été découpé : les ancres de volume et la formule vivent dans szh-produits.ps1,
-// les textes de l'interface dans szh-textes.ps1 ; szh-common.ps1 dot-source les deux et ne
-// garde que le reste.
+// Les ancres de volume et la formule vivent dans szh-produits.ps1, que szh-common.ps1
+// dot-source.
 const psProduits = fs.readFileSync(PRODUITS, 'utf8');
-const psTextes = fs.readFileSync(TEXTES, 'utf8');
-const psLanceur = fs.readFileSync(LANCEUR, 'utf8');
+const jsNouveau = fs.readFileSync(NOUVEAU, 'utf8');
 const psCreation = fs.readFileSync(CREATION, 'utf8');
 
 // ---- Le relevé, et lui seul --------------------------------------------------------
@@ -80,83 +77,16 @@ test('volume : la formule ne se laisse pas écrire ailleurs', () => {
   // séparément. Get-SzhVolumePour est le seul chemin.
   const copies = (codeSeul(psProduits).match(/\b(1994|2010)\b/g) || []).length;
   assert.strictEqual(copies, 2, 'les années zéro apparaissent ' + copies + ' fois dans szh-produits.ps1');
-  // Le lanceur, ses deux onglets sortis dans leurs propres fichiers compris.
-  const lanceurEtOnglets = psLanceur + '\n' + fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-secretariat.ps1'), 'utf8')
-    + '\n' + fs.readFileSync(path.join(RACINE, 'windows', 'lanceur-preproc.ps1'), 'utf8');
-  assert.strictEqual((lanceurEtOnglets.match(/\b(1994|2010)\b/g) || []).length, 0,
-    'open-produit.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
+  // Le formulaire de l'Accueil, et tout autre script de windows/.
+  assert.strictEqual((jsNouveau.match(/\b(1994|2010)\b/g) || []).length, 0,
+    'lib/accueil-nouveau.js recalcule le volume au lieu d’appeler Get-SzhVolumePour');
+  for (const nom of fs.readdirSync(path.join(RACINE, 'windows')).filter((n) => n.endsWith('.ps1') && n !== 'szh-produits.ps1')) {
+    const code = codeSeul(fs.readFileSync(path.join(RACINE, 'windows', nom), 'utf8'));
+    assert.strictEqual((code.match(/\b(1994|2010)\b/g) || []).length, 0,
+      nom + ' recalcule le volume au lieu d’appeler Get-SzhVolumePour');
+  }
   assert.strictEqual((psCreation.match(/\b(1994|2010)\b/g) || []).length, 0,
     'new-revue.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
-});
-
-// ---- Ce que le formulaire demande, et ce qu'il montre -------------------------------
-
-test('formulaire : l’année et le numéro se saisissent, le volume et le dossier se lisent', () => {
-  const i = psLanceur.indexOf('function Read-SzhNouveauNumero');
-  assert.notStrictEqual(i, -1, 'le formulaire d’année et de numéro a disparu du lanceur');
-  // Les deux formulaires « Nouveau… » vivent maintenant côte à côte dans le même fichier
-  // (Read-SzhNouveauNumero pour la revue et la Zeitschrift, Read-SzhNouveauLivre pour le
-  // livre) : le corps s'arrête à la fonction suivante, pas à un repère de mise en page.
-  const j = psLanceur.indexOf('function Read-SzhNouveauLivre', i);
-  assert.notStrictEqual(j, -1, 'la fonction Read-SzhNouveauLivre a disparu du lanceur');
-  const corps = psLanceur.slice(i, j);
-
-  // Trois NumericUpDown : année, numéro, volume. Pas de champ de texte libre — c'est
-  // précisément ce dont on sort.
-  assert.strictEqual((corps.match(/System\.Windows\.Forms\.NumericUpDown/g) || []).length, 3,
-    'il faut trois compteurs : année, numéro, volume');
-  assert.strictEqual((corps.match(/System\.Windows\.Forms\.TextBox/g) || []).length, 0,
-    'un champ de texte libre est revenu dans le formulaire');
-
-  // Le volume s'affiche grisé : un NumericUpDown désactivé, flèches comprises.
-  assert.match(corps, /\$champVolume\.Enabled = \$false/,
-    'le volume n’est plus grisé à l’ouverture');
-  // Et il suit l'année, tant que le réglage manuel n'a pas été demandé.
-  assert.match(corps, /if \(-not \$etat\.manuel\) \{[\s\S]{0,200}Get-SzhVolumePour/,
-    'le volume ne se calcule plus d’après l’année');
-
-  // Le nom du dossier est un LIBELLÉ : montré, impossible à changer.
-  assert.match(corps, /\$etiqDossier = New-Object System\.Windows\.Forms\.Label/,
-    'le nom du dossier doit être un libellé, pas un champ');
-  assert.match(corps, /\$etiqDossier\.Text = \(T 'lanceur\.nouvelle\.dossier'/);
-  assert.match(corps, /Get-SzhNomNumero \$anneeVue \$numeroVue/,
-    'le nom du dossier ne se déduit plus de l’année et du numéro');
-
-  // La borne basse de l'année est celle du premier volume : jamais de volume nul. Glissement
-  // du 13.09.2026 (fusion des trois lanceurs) : le formulaire ne lit plus le produit dans la
-  // portée du script ($produitFiltre a disparu de ce fichier) mais le reçoit en paramètre
-  // ($ProduitInfo, un onglet parmi trois) — le défaut gardé est le même, seul le nom change.
-  assert.match(corps, /\$anneeMin = Get-SzhPremiereAnnee \$ProduitInfo\.jeton/);
-  assert.match(corps, /\$champAnnee\.Minimum = \$anneeMin/);
-  // Deux chiffres pour le numéro, comme la convention de nom de dossier.
-  assert.match(corps, /\$champNumero\.Maximum = 99/);
-
-  // Le bouton de réglage manuel existe, et il rend la main.
-  assert.match(corps, /\$boutonManuel\.Text = \(T 'lanceur\.nouvelle\.volume\.manuel'\)/);
-  assert.match(corps, /\$etat\.manuel = \$true[\s\S]{0,120}\$champVolume\.Enabled = \$true/,
-    'le bouton manuel ne déverrouille plus le volume');
-  assert.match(corps, /\$etat\.manuel = \$false[\s\S]{0,120}\$champVolume\.Enabled = \$false/,
-    'on ne peut plus revenir au volume calculé');
-});
-
-test('formulaire : les deux refus se font la boîte ouverte, et ne suppriment rien', () => {
-  const i = psLanceur.indexOf('$okBouton.Add_Click(');
-  assert.notStrictEqual(i, -1, 'le bouton OK ne vérifie plus rien');
-  const corps = psLanceur.slice(i, psLanceur.indexOf('& $rafraichir', i));
-  // Le dossier homonyme, puis le couple volume + numéro.
-  assert.match(corps, /lanceur\.nouvelle\.existe/, 'le dossier homonyme n’est plus refusé');
-  // Glissement du 13.09.2026 : $produitFiltre (une portée de script, un seul produit) a fait
-  // place à $ProduitInfo.jeton (un paramètre, un onglet parmi trois) — le défaut gardé, lui,
-  // ne change pas : le doublon se cherche dans le bon produit, jamais dans les trois à la fois.
-  assert.match(corps, /Find-SzhNumeroVolume \$ProduitInfo\.jeton \$volumeOk \$numeroOk/,
-    'le doublon de volume + numéro n’est plus cherché');
-  assert.match(corps, /lanceur\.nouvelle\.doublon/);
-  // Le refus garde la boîte ouverte : le remède est à un chiffre près.
-  assert.strictEqual((corps.match(/DialogResult\]::None/g) || []).length, 2,
-    'un refus referme le formulaire et fait tout resaisir');
-  // Et rien n'est détruit à la place du rédacteur : aucun geste destructeur ici.
-  assert.ok(!/Remove-Item|Move-Item|\[System\.IO\.Directory\]::Delete/.test(corps),
-    'le refus supprime ou déplace quelque chose : il doit seulement refuser');
 });
 
 // ---- Le doublon, sur une vraie arborescence -----------------------------------------
@@ -332,11 +262,9 @@ test('nom de dossier et lecture des nombres : la convention AAAA-NN, et « 01 »
 // ---- Ce qui part dans ausgabe.yaml -------------------------------------------------
 
 test('création : le volume est écrit, et le « 44 » du gabarit ne survit jamais', () => {
-  // Le lanceur passe les trois valeurs qu'il a fait saisir.
-  for (const p of ['-Annee', '-Numero', '-Volume', 'Annee   = $neuf.annee',
-    'Numero  = $neuf.numero', 'Volume  = $neuf.volume']) {
-    assert.ok(psLanceur.indexOf(p) !== -1 || psCreation.indexOf(p) !== -1,
-      'l’identité du numéro ne circule plus : ' + p);
+  // L'Accueil passe les trois valeurs qu'il a fait saisir.
+  for (const p of [" -Annee '", " -Numero '", ' -Volume $volume']) {
+    assert.ok(jsNouveau.indexOf(p) !== -1, 'l’identité du numéro ne circule plus : ' + p);
   }
   assert.match(psCreation, /\[int\]\$Annee = 0/);
   assert.match(psCreation, /\[int\]\$Numero = 0/);
@@ -366,157 +294,14 @@ test('gabarit : le fichier livré documente le volume', () => {
   assert.match(brut, /ann\u00e9e - 2010/);
 });
 
-// ---- Les textes, dans les trois langues --------------------------------------------
-
-// Les tables de szh-textes.ps1, une par langue, dans l'ordre fr, de, en.
-function textes(cle) {
-  const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(\"[^\"]*\"|'(?:[^']|'')*')", 'g');
-  return (psTextes.match(motif) || []).map((m) => m.slice(m.indexOf('=') + 1).trim());
-}
-
-test('textes : chaque clé du formulaire existe dans les trois langues', () => {
-  for (const cle of ['lanceur.nouvelle.annee', 'lanceur.nouvelle.numero', 'lanceur.nouvelle.volume',
-    'lanceur.nouvelle.volume.manuel', 'lanceur.nouvelle.volume.auto', 'lanceur.nouvelle.dossier',
-    'lanceur.nouvelle.doublon', 'lanceur.nouvelle.doublon.arch', 'lanceur.nouvelle.doublon.suite',
-    'lanceur.version', 'lanceur.version.inconnue', 'lanceur.test', 'lanceur.test.zs']) {
-    assert.strictEqual(textes(cle).length, 3, 'il manque une traduction de ' + cle);
-  }
-  // Les deux clés de l'ancien formulaire n'ont plus de sens : on ne demande plus de nom.
-  for (const morte of ['lanceur.nouvelle.nom', 'lanceur.nouvelle.invalide']) {
-    assert.strictEqual(textes(morte).length, 0, morte + ' est restée alors que rien ne l’affiche');
-  }
-});
-
-test('textes : le réglage manuel est dit déconseillé dans les trois langues', () => {
-  const dits = textes('lanceur.nouvelle.volume.manuel');
-  const attendus = ['(déconseillé)', '(nicht empfohlen)', '(not recommended)'];
-  for (let i = 0; i < 3; i++) {
-    assert.ok(dits[i].indexOf(attendus[i]) !== -1,
-      'le libellé ne porte pas ' + attendus[i] + ' : ' + dits[i]);
-  }
-});
-
-test('textes : le doublon dit quel numéro et où il est', () => {
-  for (const dit of textes('lanceur.nouvelle.doublon')) {
-    // Volume, numéro, nom du numéro, puis son chemin sur sa propre ligne.
-    for (const jeton of ['{0}', '{1}', '{2}', '{3}']) {
-      assert.ok(dit.indexOf(jeton) !== -1, 'le message perd une information (' + jeton + ') : ' + dit);
-    }
-    assert.ok(dit.indexOf('`n{3}') !== -1, 'le chemin doit être sur sa propre ligne : ' + dit);
-  }
-  // Et il demande de supprimer d'abord, sans le faire à la place du rédacteur.
-  const suites = textes('lanceur.nouvelle.doublon.suite');
-  const verbes = [/Supprimez/, /L\u00f6schen/, /Delete/];
-  for (let i = 0; i < 3; i++) {
-    assert.match(suites[i], verbes[i], 'le message ne dit pas de supprimer l’ancien : ' + suites[i]);
-  }
-});
-
-test('textes : la version se dit « Version », plus « Logiciel v. »', () => {
-  for (const dit of textes('lanceur.version')) {
-    assert.match(dit, /^'Version\s?:\s\{0\}'$/, 'libellé de version inattendu : ' + dit);
-  }
-  for (const dit of textes('lanceur.version.inconnue')) {
-    assert.ok(dit.indexOf('Version') === 1, 'libellé inattendu : ' + dit);
-    assert.ok(!/Logiciel|Software/.test(dit), 'le mot « logiciel » est resté : ' + dit);
-  }
-  assert.ok(!/'Logiciel v\.|'Software v\./.test(psTextes), 'un « v. » a survécu');
-});
-
-test('textes : la racine active se dit par le nom du produit, dans les deux racines', () => {
-  // « Revue dans : … » / « Zeitschrift dans : … » — plus « Dossier de test », qui ne se
-  // disait qu'en test et taisait la racine de production.
-  const revue = textes('lanceur.test');
-  const zs = textes('lanceur.test.zs');
-  for (const dit of revue) {
-    assert.ok(dit.indexOf('Revue') !== -1, 'le produit n’est plus nommé : ' + dit);
-    assert.ok(dit.indexOf('{0}') !== -1, 'le chemin de la racine a disparu : ' + dit);
-    assert.ok(!/test|Test/.test(dit), '« test » est resté dans le libellé : ' + dit);
-  }
-  for (const dit of zs) {
-    assert.ok(dit.indexOf('Zeitschrift') !== -1, 'le produit n’est plus nommé : ' + dit);
-    assert.ok(dit.indexOf('{0}') !== -1, 'le chemin de la racine a disparu : ' + dit);
-  }
-});
-
-test('textes : orthographe suisse, jamais de ß', () => {
-  for (const cle of ['lanceur.nouvelle.volume.manuel', 'lanceur.nouvelle.volume.auto',
-    'lanceur.nouvelle.doublon', 'lanceur.nouvelle.doublon.arch', 'lanceur.nouvelle.doublon.suite',
-    'lanceur.test', 'lanceur.test.zs', 'lanceur.version']) {
-    for (const dit of textes(cle)) {
-      assert.strictEqual(dit.indexOf('\u00df'), -1, 'ß dans ' + cle + ' : ' + dit);
-    }
-  }
-});
-
-// ---- Ce que le lanceur montre sous ses listes ---------------------------------------
-
-test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
-  // C'était le correctif d'un danger réel : `emplacementRevues` déplace la racine de tout
-  // le travail, et un lanceur aux listes vides ne se comprend pas sans elle. Le dire en
-  // mode test seulement laissait justement le cas grave — la production — sans un mot.
-  //
-  // Glissement du 13.09.2026 (fusion des trois lanceurs en un seul, à onglets) : le bloc
-  // d'informations vit maintenant dans Get-SzhInventaireProduit, une fonction appelée une
-  // fois PAR ONGLET avant toute fenêtre — il n'y a plus un seul $Info de script ni un seul
-  // $yBoutons juste après le bloc. Le défaut gardé ne change pas : la ligne de racine reste
-  // inconditionnelle, et le libellé reste propre à chaque produit.
-  const i = psLanceur.indexOf('$lignesInfo = @()');
-  assert.notStrictEqual(i, -1, 'le bloc d’informations a disparu');
-  // La borne de fin suit le `return` de Get-SzhInventaireProduit : c'est là que s'arrête tout
-  // ce que cette fonction ajoute au bloc info, pour CET onglet.
-  const corps = psLanceur.slice(i, psLanceur.indexOf('return [pscustomobject]@{', i));
-  assert.match(corps, /\$lignesInfo \+= \(T \$info\.texteTest @\(\$emplacements\.base\)\)/,
-    'la ligne de racine ne s’ajoute plus');
-  // Sans condition : aucune garde de mode test autour de cette ligne.
-  assert.ok(!/devMode/.test(corps),
-    'la ligne de racine est redevenue conditionnelle au mode test');
-  // Et le libellé suit le produit de CET onglet : $info vient de $SzhProduits[$Jeton], le
-  // paramètre de Get-SzhInventaireProduit — appelée une fois par jeton de $SzhOrdreOnglets —
-  // et chaque produit garde son propre texteTest.
-  assert.match(psLanceur, /\$info = \$SzhProduits\[\$Jeton\]/,
-    'le libellé ne se lit plus dans la table de produit');
-  const iRevueProduit = psProduits.indexOf('revue = @{', psProduits.indexOf('$script:SzhProduits = @{'));
-  const iZsProduit = psProduits.indexOf('zeitschrift = @{', iRevueProduit);
-  const iLivreProduit = psProduits.indexOf('livre = @{', iZsProduit);
-  assert.notStrictEqual(iRevueProduit, -1, 'la ligne « revue » de la table de produit a disparu');
-  assert.notStrictEqual(iZsProduit, -1, 'la ligne « zeitschrift » de la table de produit a disparu');
-  assert.match(psProduits.slice(iRevueProduit, iZsProduit), /texteTest\s*=\s*'lanceur\.test'/,
-    'le produit revue n’a plus son texteTest propre');
-  assert.match(psProduits.slice(iZsProduit, iLivreProduit), /texteTest\s*=\s*'lanceur\.test\.zs'/,
-    'le produit zeitschrift n’a plus son texteTest propre');
-  // La hauteur du bloc est mesurée : un chemin long revient à la ligne, et tronqué il ne
-  // dirait plus rien. Ce n'est plus l'étiquette de chaque onglet qui se mesure elle-même
-  // ($infos a disparu de cette mesure) : un TabControl impose la MÊME taille aux trois
-  // pages, donc un unique $mesure compare les trois textes AVANT que les pages n'existent.
-  assert.match(psLanceur, /\$mesure\.GetPreferredSize/, 'la hauteur du bloc n’est plus mesurée');
-  assert.match(psLanceur,
-    /foreach \(\$jeton in \$SzhOrdreOnglets\) \{[\s\S]{0,200}\$mesure\.GetPreferredSize/,
-    'la mesure ne compare plus les trois onglets entre eux');
-  // Les boutons descendent toujours de la hauteur du bloc, mais par une chaîne de positions
-  // (bande d'onglets comprise) et non plus un simple « + 2 » : la fenêtre n'a plus une page,
-  // elle en a quatre.
-  assert.match(psLanceur, /\$yNouveau\s*=\s*\$yInfos \+ \$hInfos \+ 6/,
-    'le bouton « Nouveau… » ne suit plus la hauteur du bloc d’informations');
-  assert.match(psLanceur, /\$yBoutons\s*=\s*8 \+ \$hOnglets \+ 10/,
-    'les boutons ne suivent plus la hauteur de la bande d’onglets, elle-même issue de $hInfos');
-  // Le titre de la fenêtre garde le jeton {racine} — mais un seul titre, commun aux trois
-  // onglets (lanceur.titre.suite), et non plus un par produit (lanceur.titre a disparu du
-  // lanceur, qui ne le lit plus).
-  assert.match(psTextes, /'lanceur\.titre\.suite'\s*=\s*'[^']*\{racine\}/,
-    'le titre commun aux trois onglets a perdu son jeton {racine}');
-  assert.match(psLanceur, /\$titreFenetre = \(T 'lanceur\.titre\.suite'/,
-    'le titre ne se lit plus dans lanceur.titre.suite');
-});
-
 // ---- La forme des fichiers ----------------------------------------------------------
 
-// Deux contrôles de nature différente, désormais séparés : la forme des fichiers (BOM,
+// Deux contrôles de nature différente, séparés : la forme des fichiers (BOM,
 // CRLF) se vérifie sur TOUT poste, sans outil externe, et doit donc tourner toujours ; seule
 // l'analyse syntaxique a besoin de powershell.exe, et c'est elle seule qui se saute — avec
 // le motif nommé de gardes.js — quand il est absent.
 test('forme : les trois scripts gardent leur BOM et leurs CRLF', () => {
-  for (const fichier of [COMMUN, LANCEUR, CREATION]) {
+  for (const fichier of [COMMUN, PRODUITS, CREATION]) {
     const octets = fs.readFileSync(fichier);
     assert.deepStrictEqual([...octets.slice(0, 3)], [0xEF, 0xBB, 0xBF],
       path.basename(fichier) + ' a perdu son BOM UTF-8');
@@ -530,7 +315,7 @@ test('forme : les trois scripts gardent leur BOM et leurs CRLF', () => {
 
 test('forme : les trois scripts s’analysent encore avec le parseur PowerShell',
   { skip: sansPowerShell }, () => {
-    for (const fichier of [COMMUN, LANCEUR, CREATION]) {
+    for (const fichier of [COMMUN, PRODUITS, CREATION]) {
       const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command',
         '$e=$null; $t=$null; ' +
         '[void][System.Management.Automation.Language.Parser]::ParseFile(' +

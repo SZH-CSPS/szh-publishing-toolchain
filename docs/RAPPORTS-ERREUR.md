@@ -65,8 +65,8 @@ mémoïsée en portée script) :
 niveaux et `Get-SzhBaseRevuesPour` l'appelait, or cet accesseur est aussi appelé depuis
 `archive-revue.ps1` et `new-revue.ps1`, qui tournent **sans console**. Le cinquième niveau —
 `FolderBrowserDialog`, garde-fou anti-harcèlement de 24 h compris — vit à part, dans
-`Initialize-SzhAncrage`, appelée **une seule fois**, par `windows/open-produit.ps1` à son
-démarrage : un rattachement vaut d'un coup pour les trois produits (Revue, Zeitschrift,
+`Initialize-SzhAncrage`, appelée **une seule fois**, par les tâches de démarrage de « Pronto »
+(`Invoke-SzhTachesDemarrage`, `windows/szh-shell.ps1`) : un rattachement vaut d'un coup pour les trois produits (Revue, Zeitschrift,
 Books). Détail complet (normalisation d'un chemin donné à la main — parent, enfant, fichier,
 UNC — et garde-fous de la descente) dans `windows/szh-ancrage.ps1` et `docs/EMPLACEMENTS.md`.
 
@@ -438,9 +438,9 @@ rejoint `$script:SzhBaseUtilisateur` (déjà `%LOCALAPPDATA%\SZH`, avec son repl
 `%LOCALAPPDATA%`. Un rapport mis en attente par le lanceur et un autre mis en attente par le
 cockpit, sur le même poste, atterrissent donc côte à côte.
 
-- **Vidée au démarrage du lanceur**, après résolution de l'ancrage : `open-produit.ps1`
-  appelle `Clear-SzhRapportsEnAttente` juste après `Initialize-SzhAncrage`, avant même de
-  traiter un lien `szh://` reçu. Chaque fichier restant après les plafonds est déplacé
+- **Vidée au démarrage de « Pronto »**, après résolution de l'ancrage :
+  `Invoke-SzhTachesDemarrage` appelle `Clear-SzhRapportsEnAttente` juste après
+  `Initialize-SzhAncrage`, avant même de traiter un lien `szh://` reçu. Chaque fichier restant après les plafonds est déplacé
   (`Move-Item`) vers le vrai dossier de rapports ; un échec le laisse en place pour la
   prochaine tentative.
 - **Vidée à l'activation du cockpit** : `activate()` (`extension.js`) appelle
@@ -461,7 +461,7 @@ plus ancienne du toolkit et continuer à écrire ce code-là.
 
 | Code | Quand |
 |---|---|
-| `LANCEUR-TRAP` | exception non rattrapée dans `open-produit.ps1` / `open-md.ps1` |
+| `LANCEUR-TRAP` | exception non rattrapée dans `open-md.ps1` (et, jusqu'à la 3.2.0, dans le lanceur WinForms) |
 | `LANCEUR-CODIUM-ABSENT` | VSCodium introuvable au démarrage |
 | `ACCUEIL-COCKPIT-ABSENT` | l'extension du cockpit manque, ou est trop ancienne pour l'Accueil |
 | `ANCRAGE-INTROUVABLE` | aucun ancrage après détection **et** demande à l'utilisateur·trice |
@@ -470,7 +470,7 @@ plus ancienne du toolkit et continuer à écrire ce code-là.
 | `ARCHIVAGE-ECHEC` | échec de `archive-revue.ps1` |
 | `COMPIL-ECHEC` | tâche de compilation terminée avec un code de sortie non nul |
 | `COCKPIT-EXCEPTION` | exception non rattrapée côté extension |
-| `LANCEUR-SIGNALEMENT` | un rédacteur clique **« Signaler une erreur… »** dans l'onglet Journal du lanceur — **le seul des dix codes qu'un geste déclenche, et non une panne détectée** |
+| `LANCEUR-SIGNALEMENT` | un rédacteur clique **« Signaler une erreur… »** dans l'onglet Log de l'Accueil — **le seul des dix codes qu'un geste déclenche, et non une panne détectée** |
 | `COCKPIT-SIGNALEMENT` | le même geste depuis une carte de contrôle du cockpit (bouton **« Contacter le support »**, aussi dans la notification d'une compilation arrêtée sans cause lisible) : un défaut que seule la chaîne peut corriger, ou une compilation arrêtée sans cause lisible |
 | `RAPPORT-ECHEC-ECRITURE` | **jamais écrit en rapport** — journal local seulement ; sans quoi un échec d'écriture de rapport tenterait d'écrire un rapport sur son propre échec, indéfiniment |
 
@@ -481,10 +481,10 @@ le fichier JSON sans être technicienne.
 ### Le dixième code : un geste, pas une panne
 
 Depuis le 14.09.2026, le bouton **« Signaler une erreur… »** de l'onglet **Journal** du lanceur
-(`Invoke-SzhSignalement`, `windows/open-produit.ps1`) donne au rédacteur un moyen de partir un
+(aujourd'hui l'onglet **Log** de l'Accueil, `lib/accueil-journal-hote.js`) donne au rédacteur un moyen de partir un
 rapport **de sa propre initiative**, et non plus seulement sur une panne que le code a su
 reconnaître : jusque-là, rien ne couvrait le cas le plus courant — rien n'a planté, et pourtant
-quelque chose ne va pas. Il appelle :
+quelque chose ne va pas. Le lanceur WinForms appelait :
 
 ```powershell
 Write-SzhRapport -Code 'LANCEUR-SIGNALEMENT' -Gravite 'erreur' -Source 'lanceur' `
@@ -532,7 +532,7 @@ avant même de lancer PowerShell.
 | `test/js/codes-erreur.test.js` | Éprouve cette table et ces fonctions contre le schéma gelé, et relit tous les `-Code '...'` cités par `windows/*.ps1` pour exiger que chacun soit connu des deux tables (§7, le garde-fou du défaut `LANCEUR-SIGNALEMENT`) — `node --test test/js/codes-erreur.test.js`. |
 | `windows/szh-ancrage.ps1` | L'ancrage SharePoint : résolution passive à 4 niveaux (`Resolve-SzhAncrage`, mémoïsée, n'ouvre jamais de fenêtre), normalisation d'un chemin donné à la main, et `Initialize-SzhAncrage` (5ᵉ niveau, seule fonction habilitée à ouvrir un `FolderBrowserDialog`). |
 | `windows/szh-rapport.ps1` | L'écrivain PowerShell (`Write-SzhRapport`) : construit le rapport, masque, plafonne, valide, applique l'anti-inondation, écrit ou met en attente — reproduit à la main les fonctions de `lib/codes-erreur.js`, PowerShell n'exécutant pas de JS. |
-| `test/js/ancrage-sharepoint.test.js`, `test/js/lanceur-ancrage.test.js` | Éprouvent la résolution de l'ancrage (le partage des 4 niveaux passifs, le garde-fou « jamais de fenêtre » de `Resolve-SzhAncrage`) et son câblage unique, au bon endroit, dans `open-produit.ps1`. |
+| `test/js/ancrage-sharepoint.test.js`, `test/js/lanceur-ancrage.test.js` | Éprouvent la résolution de l'ancrage (le partage des 4 niveaux passifs, le garde-fou « jamais de fenêtre » de `Resolve-SzhAncrage`) et son câblage unique, au bon endroit, dans `Invoke-SzhTachesDemarrage`. |
 | `vscodium-extension/szh-cockpit/lib/rapport-erreur.js` | L'écrivain côté cockpit (`emettreRapport`) : résolution **passive à 3 niveaux seulement** (D8, jamais de balayage ni de fenêtre), construction, anti-inondation, file d'attente, écriture — en s'appuyant sur `lib/codes-erreur.js`. |
 | `test/js/rapport-erreur.test.js` | Éprouve l'écrivain cockpit et ses deux accroches d'`extension.js` (§10). |
 | `test/js/rapport-erreur-ps.test.js` | Éprouve la **parité** entre les deux écrivains (§11) : même schéma, même masquage, même signature, même id, mêmes plafonds — au signe près, sinon l'anti-inondation partagée diverge en silence. Technique : extraction du corps de fonction depuis le vrai `.ps1`, pilote généré, `spawnSync('powershell.exe', …)` (même méthode que `test/js/courriel-support.test.js`). |
@@ -547,7 +547,6 @@ point d'appel.
 
 | Code | Émis depuis | Condition précise |
 |---|---|---|
-| `LANCEUR-TRAP` | `windows/open-produit.ps1` (bloc `trap`) | toute exception non rattrapée dans le lanceur, quel que soit le produit |
 | `LANCEUR-TRAP` | `windows/open-md.ps1` (bloc `trap`) | toute exception non rattrapée à l'ouverture d'un `.md` par double-clic ; `fichiers` porte le chemin reçu |
 | `LANCEUR-CODIUM-ABSENT` | `windows/szh-shell.ps1` (`Show-SzhCodiumAbsent`), appelée par `Start-SzhAccueil` et par `open-revue.ps1` avant un lien | `Get-VSCodiumExe` ne rend rien, hors simulation |
 | `ACCUEIL-COCKPIT-ABSENT` | `windows/szh-shell.ps1` (`Start-SzhAccueil`) | la version de `szh-cockpit` posée pour le compte (`Get-SzhVersionCockpit`) est absente ou sous `$SzhCockpitAccueilMin` ; une boîte renvoie à « Pronto (Updater) » |
@@ -557,7 +556,7 @@ point d'appel.
 | `ARCHIVAGE-ECHEC` | `windows/archive-revue.ps1` (`Show-SzhErreurArchivage`) | le déplacement en cours ⇄ archives échoue ; `fichiers` porte `$Dossier`, le seul chemin sûrement connu à ce stade |
 | `COMPIL-ECHEC` | `extension.js` (`relireJournal`) | une tâche de compilation se termine avec un code de sortie non nul — **jamais** sur un `code === 0`, le cas le plus fréquent ; les constats de contenu (tableau sans en-tête, figure sans alt…) ne déclenchent jamais un rapport à eux seuls, ils ne partent qu'en contexte d'un rapport parti pour une autre raison |
 | `COCKPIT-EXCEPTION` | `extension.js` (`signalerExceptionCockpit`), appelée depuis l'enveloppe posée sur `cmd()`/`cmdEcriture()` | une exception sort d'une commande `szh.*` de l'extension — **jamais** via un écouteur global sur le processus (D7, §0 : ce processus est partagé avec toutes les autres extensions de VSCodium) |
-| `LANCEUR-SIGNALEMENT` | `windows/open-produit.ps1` (`Invoke-SzhSignalement`), bouton **« Signaler une erreur… »** de l'onglet Journal | un rédacteur clique le bouton et écrit une phrase — **jamais** détecté par le code, voir §7 |
+| `LANCEUR-SIGNALEMENT` | `lib/accueil-journal-hote.js`, bouton **« Signaler une erreur… »** de l'onglet Log de l'Accueil | un rédacteur clique le bouton et écrit une phrase — **jamais** détecté par le code, voir §7 |
 | `COCKPIT-SIGNALEMENT` | `lib/controles-hote.js` (`signalerConstat`), bouton **« Contacter le support »** d'une carte de contrôle ou de la notification d'échec | un rédacteur clique le bouton sur une carte dont la consigne est de signaler (`consigne.signaler`) ou sur `cockpit/compilation-echec`. `etape` porte le contrôle (`source/code`), `message` le contrôle et le slug, `constats` le seul constat (code, ton, slug — jamais sa phrase ni son texte brut, qui peuvent citer l'article), `journal` la fin de `.szh-journal.log`. L'écran dit « Signalement enregistré » seulement si le fichier est écrit dans le dossier partagé, et sinon ce qui a eu lieu (file d'attente, anti-inondation, refus). Un brouillon de courriel au support s'ouvre ensuite (`mail-templates/support.*.twig`), avec le chemin du fichier écrit — jamais le texte de l'article |
 
 ---

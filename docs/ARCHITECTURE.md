@@ -38,11 +38,11 @@ flowchart TB
         TACHE["Tâche planifiée<br/>(ouverture de session, mardi 14 h)"]
         TK["C:\\ProgramData\\SZH\\toolkit<br/>pipeline · windows · vscodium-user"]
         WSL["WSL « SZH-Publishing »<br/>Debian · Pandoc · WeasyPrint · veraPDF"]
-        LAN["Lanceur « Pronto »<br/>(PowerShell, WinForms)"]
+        LAN["Lanceur « Pronto »<br/>(PowerShell)"]
         VSC["VSCodium<br/>szh-cockpit · szh-apercu"]
         TACHE -->|"lit manifest.json,<br/>ne télécharge que ce qui change"| TK
         TACHE -->|"importe le rootfs s'il est neuf"| WSL
-        LAN -->|"ouvre un numéro ou un livre"| VSC
+        LAN -->|"ouvre l'Accueil, ou un numéro par un lien"| VSC
     end
 
     subgraph PUB["Numéro ou livre (SharePoint)"]
@@ -311,13 +311,15 @@ VSCodium (`outils/rendre-gabarit.js`).
 
 ### L'Accueil du cockpit
 
-L'Accueil reprend le lanceur WinForms (étape 2 de [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)) :
-Produits, Nouveau, Secrétariat, Log, Préprocessing et Réglages. « Pronto » l'ouvre en
-production comme en DEV ; WinForms ne sert plus qu'au sélecteur de version (§3).
+L'Accueil a remplacé le lanceur WinForms, retiré (étape 2 de
+[`MULTIPLATEFORME.md`](MULTIPLATEFORME.md)) : Produits, Nouveau, Secrétariat, Log, Préprocessing
+et Réglages. « Pronto » l'ouvre en production comme en DEV ; WinForms ne sert plus qu'au
+sélecteur de version (§3).
 
 - **La porte.** `lib/accueil-hote.js` ouvre son panneau (`panneauUnique`) dans une fenêtre
   sans dossier ni onglet, à l'activation, avec une relecture à +500 ms ; il possède aussi
-  l'onglet actif et l'ouverture des dossiers. Un numéro déjà ouvert ailleurs passe devant :
+  l'onglet actif et l'ouverture des fichiers et des dossiers, par `ouvrirAvecSysteme`
+  (`lib/ouvrir-systeme.js`). Un numéro déjà ouvert ailleurs passe devant :
   la fenêtre de l'Accueil, restée vide et sans focus, se ferme. `Start-SzhAccueil`
   (`windows/szh-shell.ps1`) lance VSCodium en `-n` sans dossier, après les tâches de
   démarrage et le contrôle de la version du cockpit ; `open-revue.ps1` (« Pronto ») et
@@ -326,10 +328,9 @@ production comme en DEV ; WinForms ne sert plus qu'au sélecteur de version (§3
   `accueil-nouveau.js` (création, qui rappelle `new-revue.ps1` et `new-livre.ps1`),
   `accueil-secretariat-hote.js` (lance `outils/secretariat-cli.js`) et
   `accueil-journal-hote.js`. `accueil-page.js` fournit les libellés de la page.
-- **Deux modules purs**, jumeaux de fonctions PowerShell et gardés par un test de parité sur
-  un dossier jetable : `inventaire.js` (racine active et numéros, jumeau de
-  `Get-SzhBaseRevuesPour`) et `journaux-maj.js` (journaux de mise à jour et leur verdict,
-  jumeau de `Get-SzhJournauxMaj` et `Get-SzhVerdictJournalMaj`).
+- **Deux modules purs** : `inventaire.js` (racine active et numéros), dont les racines sont
+  jumelles de `Get-SzhEmplacements` et gardées par un test de parité sur un dossier jetable,
+  et `journaux-maj.js` (journaux de mise à jour et leur verdict).
 - **La page** : `media/accueil.{html,css,js}`, sans framework, aux libellés `accueil.*` de
   `i18n.js` (fr et de).
 - **Les exports** vont dans `<racine>\Exports\<export>` ; seul l'Accueil y écrit.
@@ -338,10 +339,12 @@ production comme en DEV ; WinForms ne sert plus qu'au sélecteur de version (§3
 
 ## 3. Le lanceur Windows (`windows/`)
 
-Le lanceur « Pronto » est une fenêtre WinForms à onglets : Revue, Zeitschrift, Book,
-Preprocessing, Export et secrétariat, Paramètres, Journal. Il liste les numéros, en crée,
-archive, ouvre VSCodium sur un dossier et porte les outils qui ne sont pas des produits.
-PowerShell 5.1 seulement : pas de `?.`, `??`, `?:`, `&&` ni `||`. Les `.ps1` sont en CRLF,
+Le lanceur Windows n'a plus de fenêtre à lui. « Pronto » (`open-revue.ps1`) fait les tâches
+de démarrage du poste, puis ouvre VSCodium sur l'Accueil du cockpit (§2), ou sur le numéro
+qu'un lien `szh://` désigne. Sa seule fenêtre WinForms est « Changer de version… »
+(`open-revue.ps1 -Versions`, `szh-versions.ps1`), l'outil de réparation qui ne dépend ni de
+VSCodium ni du cockpit. Le reste de `windows/` installe, met à jour, crée, archive et ouvre un
+`.md`. PowerShell 5.1 seulement : pas de `?.`, `??`, `?:`, `&&` ni `||`. Les `.ps1` sont en CRLF,
 BOM UTF-8 et `\n` final.
 
 ### Le socle en étoile
@@ -368,18 +371,15 @@ seulement par les scripts qui en ont besoin.
 ### La table des produits
 
 `$SzhProduits` (`szh-produits.ps1`) porte une entrée par produit, `revue`, `zeitschrift` et
-`livre` : jeton, onglet, fichier manifeste (`ausgabe.yaml` ou `buch.yaml`), fonction d'état,
-icône, clés de texte, formulaire de création, nom du raccourci, prise en charge par le
-secrétariat. `$SzhOrdreOnglets` fixe l'ordre des onglets de produit. Le code lit la table au
-lieu de tester un littéral de produit.
+`livre` : jeton, nom du produit, fichier manifeste (`ausgabe.yaml` ou `buch.yaml`), icône,
+nom et description du raccourci posé à la racine d'un dossier. Le code lit la table au lieu
+de tester un littéral de produit.
 
 ### Les scripts
 
 | Script | Rôle |
 |---|---|
-| `open-revue.ps1` | point d'entrée, appelé sans console par `hidden.vbs` (raccourci, protocole `szh:`) |
-| `open-produit.ps1` | la fenêtre, l'inventaire des produits et leurs onglets |
-| `lanceur-secretariat.ps1`, `lanceur-preproc.ps1` | les onglets Export et secrétariat et Preprocessing ; chacun expose `New-SzhPage<X>($contexte)` |
+| `open-revue.ps1` | « Pronto », appelé sans console par `hidden.vbs` (raccourci, protocole `szh:`) : l'Accueil (`Start-SzhAccueil`), un lien (`Open-SzhLien`) ou `-Versions` |
 | `open-livre.ps1` | enveloppe gardée pour d'anciens épinglages |
 | `open-md.ps1` | ouverture d'un `.md` par double-clic |
 | `new-revue.ps1`, `new-livre.ps1` | création d'un numéro ou d'un livre depuis le gabarit |
@@ -390,14 +390,13 @@ lieu de tester un littéral de produit.
 | `uninstall.ps1` | désinstallation, `-Simuler` d'abord |
 | `patch-icone.ps1`, `icone.py`, `icone-pronto.py` | icônes de l'application |
 
-### Node du cockpit, appelé par le lanceur
+### Node du cockpit, appelé par le socle
 
-La logique lourde du lanceur est en JavaScript, dans le cockpit : exports du secrétariat
-(`outils/secretariat-cli.js`), moisson des auteur·e·s (`outils/auteurs-cli.js`), rendu des
-gabarits (`outils/rendre-gabarit.js`). `Invoke-SzhNodeCockpit` (`szh-shell.ps1`) est le seul
-lancement de Node du dépôt PowerShell : il exécute l'outil avec le Node qu'embarque VSCodium
-(`ELECTRON_RUN_AS_NODE=1`), lit la sortie standard ligne à ligne en JSON Lines, et lit
-l'erreur standard en parallèle pour ne jamais se bloquer.
+Le socle PowerShell rend ses gabarits de courriel par le moteur du cockpit
+(`outils/rendre-gabarit.js`, appelé par `Get-SzhCourriel`). `Invoke-SzhNodeCockpit`
+(`szh-shell.ps1`) est le seul lancement de Node du dépôt PowerShell : il exécute l'outil
+avec le Node qu'embarque VSCodium (`ELECTRON_RUN_AS_NODE=1`), lit la sortie standard en
+JSON, et lit l'erreur standard en parallèle pour ne jamais se bloquer.
 
 ---
 

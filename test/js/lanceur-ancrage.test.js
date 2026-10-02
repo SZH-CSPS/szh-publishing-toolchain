@@ -1,36 +1,23 @@
-// Le cablage de l'ancrage SharePoint dans le lanceur unique (windows/open-produit.ps1) : un
-// seul appel a Initialize-SzhAncrage (windows/szh-ancrage.ps1), au demarrage, avant tout ce
-// qui en depend -- jamais dans open-md.ps1 ni archive-revue.ps1, qui n'utilisent que la
-// resolution passive et ne doivent jamais rien demander.
+// Le cablage de l'ancrage SharePoint au demarrage de « Pronto » (windows/open-revue.ps1 ->
+// Invoke-SzhTachesDemarrage, windows/szh-shell.ps1) : un seul appel a Initialize-SzhAncrage
+// (windows/szh-ancrage.ps1), avant tout ce qui en depend -- jamais dans open-md.ps1 ni
+// archive-revue.ps1, qui n'utilisent que la resolution passive et ne doivent jamais rien
+// demander.
 //
 //   node --test test/js/lanceur-ancrage.test.js
-//   node --test "test/js/*.test.js"                 (reference : voir le rapport du jalon)
 //
-// Le defaut reel que ce fichier garde : l'ORDRE du cablage est un piege a deux sens.
-//   * Trop TOT (avant le switch -Versions) : la personne devrait choisir un dossier SharePoint
-//     rien que pour reparer une installation abimee -- l'outil de reparation deviendrait
-//     inatteignable sur le poste meme qui en a le plus besoin.
-//   * Trop TARD (apres Get-SzhEmplacements, qui calcule la base des produits) : la base serait
-//     figee sur "introuvable" avant meme que l'ancrage n'ait ete rattache, et la personne
-//     verrait une liste vide alors qu'elle vient de choisir le bon dossier.
-// Ce fichier prouve donc le placement par l'observation (JSON de simulation) ET par le texte
-// source (indexOf), pas seulement l'un des deux : un futur remaniement qui deplacerait
-// l'appel sans casser le texte environnant pourrait sinon passer inapercu.
-//
-// Technique reprise de test/js/lanceur.test.js (SZH_LANCEUR_SIMULE=1, JSON sur stdout) et de
-// test/js/ancrage-sharepoint.test.js (isolation de USERPROFILE/OneDrive*/LOCALAPPDATA) : cette
-// derniere est indispensable ici, parce que open-produit.ps1 appelle desormais une fonction
-// habilitee a LIRE (cache) et, hors simulation, a ECRIRE (etat-utilisateur.json) -- deux
-// choses que test/js/lanceur.test.js n'avait jamais eu a isoler avant l'existence de
-// l'ancrage.
+// L'ORDRE du cablage est un piege a deux sens :
+//   * trop TOT (avant le switch -Versions) : il faudrait choisir un dossier SharePoint rien
+//     que pour reparer une installation abimee ;
+//   * trop TARD (apres le check-in, l'epinglage ou l'arbre d'essai, qui lisent la racine) :
+//     ils travailleraient sur une base « introuvable » alors que la personne vient de
+//     choisir le bon dossier.
+// D'ou une preuve par l'observation (JSON de simulation) ET par le texte source.
 //
 // Aucun test ne touche le vrai C:\ProgramData\SZH, le vrai %LOCALAPPDATA%\SZH ni le vrai
-// SharePoint du poste (C:\Users\<compte>\SZH CSPS\Daten_Allgemein - General\..., une
-// bibliotheque partagee reelle de l'entreprise) : SZH_BASE, USERPROFILE et LOCALAPPDATA sont
-// systematiquement rediriges vers des dossiers jetables (fs.mkdtempSync) AVANT tout appel,
-// OneDrive/OneDriveCommercial sont retires de l'environnement transmis, et
-// SZH_LANCEUR_SIMULE=1 est pose partout -- aucune fenetre ne doit jamais s'ouvrir pendant ces
-// tests.
+// SharePoint du poste : SZH_BASE, USERPROFILE et LOCALAPPDATA sont rediriges vers des dossiers
+// jetables (fs.mkdtempSync) AVANT tout appel, OneDrive/OneDriveCommercial et SZH_ANCRAGE sont
+// retires de l'environnement transmis, et SZH_LANCEUR_SIMULE=1 est pose partout.
 'use strict';
 
 const test = require('node:test');
@@ -43,8 +30,8 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const OUVRIR_REVUE = path.join(RACINE, 'windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = path.join(RACINE, 'windows', 'open-livre.ps1');
-const OUVRIR_PRODUIT_PS1 = path.join(RACINE, 'windows', 'open-produit.ps1');
-const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
+const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
+const SHELL_PS1 = path.join(RACINE, 'windows', 'szh-shell.ps1');
 
 const { POWERSHELL, sansPowerShell } = require('./gardes');
 
@@ -120,7 +107,7 @@ fs.writeFileSync(path.join(PROGRAMDATA_1, 'config.json'), JSON.stringify({
 const ANCRAGE_1 = creerAncrage(TRAVAIL_1);
 // Un numero et un livre, tous deux sous CET ancrage : de quoi prouver que la resolution ne
 // beneficie pas qu'a la revue, mais bien aux trois produits (Revue, Zeitschrift, Books)
-// qu'open-produit.ps1 sert d'un seul cablage.
+// que sert un seul cablage.
 const BASE_1 = path.join.apply(path, [ANCRAGE_1].concat(SEGMENTS_BASE));
 // Numeros DIRECTEMENT sous leur dossier produit : depuis le 15.09.2026 le niveau de
 // redaction a disparu, seules les archives gagnent un etage (« _Archive\<Produit> »).
@@ -130,7 +117,27 @@ ecrireYaml(path.join(BASE_1, 'Books', '2026-B900-LivreViaAncrage'), 'buch.yaml',
   ['titre: "Livre via ancrage"', 'lang: "fr"']);
 
 const envEssai = { SZH_BASE: PROGRAMDATA_1, USERPROFILE: PROFIL_1, LOCALAPPDATA: LOCALAPPDATA_1, SZH_ANCRAGE: ANCRAGE_1 };
-const essaiRevue = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue'], envEssai); })();
+const essaiRevue = (function () { return executer(OUVRIR_REVUE, [], envEssai); })();
+// La base et les racines en cours que le socle tire de cet ancrage, pour les trois produits.
+function emplacementsSocle(env) {
+  if (!POWERSHELL) { return null; }
+  const e = Object.assign({}, process.env);
+  delete e.OneDrive;
+  delete e.OneDriveCommercial;
+  Object.assign(e, { SZH_LANCEUR_SIMULE: '1' }, env);
+  const commande = '. "' + COMMUN_PS1 + '"; $r = [ordered]@{ base = (Get-SzhEmplacements).base; ' +
+    'revue = (Get-SzhEmplacementRevue revue encours); livre = (Get-SzhEmplacementRevue livre encours) }; ' +
+    '[Console]::Out.Write(($r | ConvertTo-Json -Compress))';
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', commande],
+    { encoding: 'utf8', windowsHide: true, timeout: 60000, env: e });
+  let sortie = null;
+  try { sortie = JSON.parse(String(run.stdout || '').trim()); } catch (err) { /* rapporté par le test */ }
+  const lister = (d) => { try { return fs.readdirSync(d).sort(); } catch (err) { return null; } };
+  return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', sortie,
+    enCours: sortie ? { revue: lister(sortie.revue), livre: lister(sortie.livre) } : null };
+}
+const socleEssai = emplacementsSocle(envEssai);
+
 // Un SZH_BASE SEPARE pour le livre : PROGRAMDATA_1 sert au controle "une seule ligne de
 // journal par lancement" juste plus bas, et un deuxieme lancement dans le MEME dossier de
 // journal y ajouterait une deuxieme ligne, faussant ce controle-la.
@@ -164,24 +171,23 @@ test('SZH_ANCRAGE est retenu (origine "essai") et son chemin figure dans le JSON
     assert.strictEqual(r.ancrage.origine, 'essai');
   });
 
-test('la base des produits DECOULE de l\'ancrage retenu : racineBase = <ancrage>\\2_Produkte\\<application>, et la liste reelle en sort',
+test('la base des produits DECOULE de l\'ancrage retenu : base = <ancrage>\\2_Produkte\\<application>, et le numero y est',
   { skip: sansPowerShell }, () => {
-    verifierExecution(essaiRevue, 'essai-revue');
-    const r = essaiRevue.sortie;
-    assert.strictEqual(r.racineBase, BASE_1);
-    assert.strictEqual(r.enCours.length, 1, 'le numero pose sous l\'ancrage doit apparaitre "en cours"');
-    assert.strictEqual(r.enCours[0].nom, '2026-04');
+    verifierExecution(socleEssai, 'socle-essai');
+    const r = socleEssai.sortie;
+    assert.strictEqual(r.base, BASE_1);
+    assert.strictEqual(r.revue, path.join(BASE_1, 'Revue'));
+    assert.deepStrictEqual(socleEssai.enCours.revue, ['2026-04'], 'le numero pose sous l\'ancrage doit etre sous la racine en cours');
   });
 
 test('le meme ancrage sert aussi le produit "livre" -- un seul cablage pour les trois produits',
   { skip: sansPowerShell }, () => {
     verifierExecution(essaiLivre, 'essai-livre');
-    const r = essaiLivre.sortie;
-    assert.strictEqual(r.ancrage.chemin, ANCRAGE_1);
-    assert.strictEqual(r.ancrage.origine, 'essai');
-    assert.strictEqual(r.racineBase, BASE_1);
-    assert.strictEqual(r.enCours.length, 1);
-    assert.strictEqual(r.enCours[0].nom, '2026-B900-LivreViaAncrage');
+    assert.strictEqual(essaiLivre.sortie.ancrage.chemin, ANCRAGE_1);
+    assert.strictEqual(essaiLivre.sortie.ancrage.origine, 'essai');
+    verifierExecution(socleEssai, 'socle-essai');
+    assert.strictEqual(socleEssai.sortie.livre, path.join(BASE_1, 'Books'));
+    assert.deepStrictEqual(socleEssai.enCours.livre, ['2026-B900-LivreViaAncrage']);
   });
 
 test('un seul appel par lancement : une seule ligne de journal "ancrage SharePoint" par processus',
@@ -211,16 +217,16 @@ fs.writeFileSync(path.join(PROGRAMDATA_2, 'config.json'), JSON.stringify({
 }), 'utf8');
 
 const envAbsent = { SZH_BASE: PROGRAMDATA_2, USERPROFILE: PROFIL_2, LOCALAPPDATA: LOCALAPPDATA_2 };
-const absentRevue = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue'], envAbsent); })();
-const absentVersions = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue', '-Versions'], envAbsent); })();
+const absentRevue = (function () { return executer(OUVRIR_REVUE, [], envAbsent); })();
+const absentVersions = (function () { return executer(OUVRIR_REVUE, ['-Versions'], envAbsent); })();
 
 test('sans ancrage trouvable nulle part, le lanceur sort proprement -- meme code de sortie, JSON exploitable',
   { skip: sansPowerShell }, () => {
     verifierExecution(absentRevue, 'absent-revue');
     const r = absentRevue.sortie;
     assert.strictEqual(r.ancrage.chemin, '', 'aucun chemin ne devrait avoir ete trouve');
-    assert.ok(Array.isArray(r.enCours) && Array.isArray(r.archives),
-      'les listes doivent rester des tableaux exploitables, meme vides');
+    assert.strictEqual(r.entree, 'accueil', 'l\'Accueil doit s\'ouvrir quand meme');
+    assert.ok(Array.isArray(r.taches) && r.taches.length > 1, 'les taches suivantes doivent tourner quand meme');
   });
 
 test('GARDE-FOU : en simulation sans ancrage trouvable, l\'origine est "defaut" -- la demande n\'est meme pas tentee',
@@ -257,64 +263,56 @@ test('-Versions reste atteignable meme sans ancrage : le selecteur de version ne
 // ---- Controles statiques : l'ORDRE du cablage, prouve sur le texte source lui-meme -----
 // =====================================================================================
 
-const SOURCE_PRODUIT = fs.readFileSync(OUVRIR_PRODUIT_PS1, 'utf8');
+const SOURCE_REVUE = fs.readFileSync(OUVRIR_REVUE, 'utf8');
+const SOURCE_SHELL = fs.readFileSync(SHELL_PS1, 'utf8');
+const iTaches = SOURCE_SHELL.indexOf('function Invoke-SzhTachesDemarrage');
+const SOURCE_TACHES = SOURCE_SHELL.slice(iTaches, SOURCE_SHELL.indexOf('\n}', iTaches));
 
-test('un seul point d\'appel a Initialize-SzhAncrage dans open-produit.ps1', () => {
-  const occurrences = SOURCE_PRODUIT.split('Initialize-SzhAncrage').length - 1;
-  // Un dans le corps du code (l'appel), au moins un dans les commentaires qui l'expliquent :
-  // au moins 2, mais l'AFFECTATION elle-meme ("$ancrageResolu = Initialize-SzhAncrage") ne
-  // doit apparaitre qu'UNE SEULE fois -- c'est elle qui compte, pas les mentions en commentaire.
-  assert.ok(occurrences >= 1, 'Initialize-SzhAncrage n\'est plus appelee du tout');
-  const appels = SOURCE_PRODUIT.split('$ancrageResolu = Initialize-SzhAncrage').length - 1;
-  assert.strictEqual(appels, 1, 'Initialize-SzhAncrage doit etre assignee a $ancrageResolu exactement une fois');
+test('un seul point d\'appel a Initialize-SzhAncrage, dans Invoke-SzhTachesDemarrage', () => {
+  assert.ok(iTaches !== -1, 'Invoke-SzhTachesDemarrage a disparu de szh-shell.ps1');
+  assert.strictEqual(SOURCE_TACHES.split('$ancrage = Initialize-SzhAncrage').length - 1, 1,
+    'Initialize-SzhAncrage doit etre assignee a $ancrage exactement une fois');
+  // Et nulle part ailleurs dans windows/ ni outils-dev/ : seul le demarrage demande.
+  const appels = [];
+  for (const d of ['windows', 'outils-dev']) {
+    for (const n of fs.readdirSync(path.join(RACINE, d)).filter((x) => x.endsWith('.ps1'))) {
+      const code = fs.readFileSync(path.join(RACINE, d, n), 'utf8').split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+      // Le nom entre apostrophes (la liste des tâches du plan) n'est pas un appel.
+      const nb = (code.match(/(^|[^-\w'])Initialize-SzhAncrage\b/g) || []).length;
+      if (nb) { appels.push(n + ':' + nb); }
+    }
+  }
+  assert.deepStrictEqual(appels.sort(), ['szh-ancrage.ps1:1', 'szh-shell.ps1:1'],
+    'Initialize-SzhAncrage est appelee hors du demarrage : ' + appels.join(', '));
 });
 
-test('ORDRE : le controle -Versions reste le tout premier, avant l\'appel a l\'ancrage', () => {
-  const iVersions = SOURCE_PRODUIT.indexOf('if ($Versions) {');
-  const iAncrage = SOURCE_PRODUIT.indexOf('$ancrageResolu = Initialize-SzhAncrage');
-  assert.ok(iVersions !== -1 && iAncrage !== -1, 'le controle -Versions ou l\'appel a l\'ancrage a disparu');
-  assert.ok(iVersions < iAncrage,
+test('ORDRE : le controle -Versions reste le tout premier, avant les taches de demarrage', () => {
+  const iVersions = SOURCE_REVUE.indexOf('if ($Versions) {');
+  const iTachesRevue = SOURCE_REVUE.indexOf('Invoke-SzhTachesDemarrage');
+  const iAccueil = SOURCE_REVUE.indexOf('Start-SzhAccueil)');
+  assert.ok(iVersions !== -1 && iTachesRevue !== -1 && iAccueil !== -1, 'le controle -Versions ou le demarrage a disparu');
+  assert.ok(iVersions < iTachesRevue && iVersions < iAccueil,
     '-Versions doit rester atteignable AVANT l\'ancrage -- sinon il devient inatteignable sans dossier SharePoint');
 });
 
-test('ORDRE : l\'appel a l\'ancrage precede Get-SzhEmplacements -- jamais la base calculee avant l\'ancrage rattache', () => {
-  const iAncrage = SOURCE_PRODUIT.indexOf('$ancrageResolu = Initialize-SzhAncrage');
-  const iEmplacements = SOURCE_PRODUIT.indexOf('$emplacements = Get-SzhEmplacements');
-  assert.ok(iAncrage !== -1 && iEmplacements !== -1, 'l\'appel a l\'ancrage ou Get-SzhEmplacements a disparu');
-  assert.ok(iAncrage < iEmplacements,
-    'Get-SzhEmplacements calcule la base des produits -- il doit voir l\'ancrage deja resolu, pas l\'inverse');
+test('ORDRE : l\'ancrage precede tout ce qui lit la racine -- check-in, epinglage, arbre d\'essai', () => {
+  const iAncrage = SOURCE_TACHES.indexOf('$ancrage = Initialize-SzhAncrage');
+  for (const suivant of ['Invoke-SzhCheckin', 'Invoke-SzhEpinglageHorsLigne', 'Initialize-SzhEmplacementsTest']) {
+    const i = SOURCE_TACHES.indexOf('try { [void](' + suivant);
+    assert.ok(iAncrage !== -1 && i !== -1, 'repere introuvable : ' + suivant);
+    assert.ok(iAncrage < i, suivant + ' doit voir l\'ancrage deja resolu, pas l\'inverse');
+  }
 });
 
 test('Write-SzhLog est appele juste apres la resolution de l\'ancrage, un branchement if/else -- un seul des deux s\'execute', () => {
-  // Deux mentions dans le SOURCE (une par branche : chemin trouve, chemin absent) ; le
-  // controle behavioral plus haut ("un seul appel par lancement") prouve qu'une seule des
-  // deux s'execute reellement a l'EXECUTION -- ce test-ci ne verifie que la structure.
-  const iAncrage = SOURCE_PRODUIT.indexOf('$ancrageResolu = Initialize-SzhAncrage');
-  const voisinage = SOURCE_PRODUIT.slice(iAncrage, iAncrage + 400);
-  assert.match(voisinage, /if \(\$ancrageResolu\.chemin\)/, 'le branchement chemin trouve/absent a disparu');
+  // Deux mentions dans le SOURCE (une par branche) ; le controle « un seul appel par
+  // lancement » plus haut prouve qu'une seule s'execute.
+  const iAncrage = SOURCE_TACHES.indexOf('$ancrage = Initialize-SzhAncrage');
+  const voisinage = SOURCE_TACHES.slice(iAncrage, iAncrage + 400);
+  assert.match(voisinage, /if \(\$ancrage\.chemin\)/, 'le branchement chemin trouve/absent a disparu');
   const occurrencesLog = voisinage.match(/Write-SzhLog/g) || [];
   assert.strictEqual(occurrencesLog.length, 2,
     'attendu deux mentions de Write-SzhLog (une par branche du if/else), trouve ' + occurrencesLog.length);
-});
-
-// =====================================================================================
-// ---- Le texte affiche quand l'ancrage manque : present dans les trois langues ---------
-// =====================================================================================
-
-const SOURCE_TEXTES = fs.readFileSync(TEXTES_PS1, 'utf8');
-
-test('la cle "lanceur.ancrage.absent" existe dans les trois tables de langue (fr, de, en)', () => {
-  const occurrences = SOURCE_TEXTES.split("'lanceur.ancrage.absent'").length - 1;
-  assert.strictEqual(occurrences, 3, 'attendu une entree par langue (fr/de/en), trouve ' + occurrences);
-});
-
-test('open-produit.ps1 n\'affiche ce texte que si l\'ancrage manque ET qu\'on est hors mode test', () => {
-  assert.ok(SOURCE_PRODUIT.indexOf("T 'lanceur.ancrage.absent'") !== -1,
-    'open-produit.ps1 n\'utilise plus la cle "lanceur.ancrage.absent"');
-  const iUsage = SOURCE_PRODUIT.indexOf("T 'lanceur.ancrage.absent'");
-  const avant = SOURCE_PRODUIT.slice(Math.max(0, iUsage - 400), iUsage);
-  assert.match(avant, /modeTest/, 'le texte devrait rester sous condition du mode test');
-  assert.match(avant, /ancrageResolu\.chemin/, 'le texte devrait rester sous condition de l\'ancrage absent');
 });
 
 // ---- Nettoyage : rien ne doit rester sous le dossier temporaire du systeme apres coup ----

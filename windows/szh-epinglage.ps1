@@ -53,7 +53,7 @@ $script:SzhAttributEpingle      = 0x80000
 # ---- Plan : quels dossiers épingler ----
 # Pure (aucune écriture, aucun lancement de processus) : deux racines en entrée, une liste de
 # chemins en sortie. Les deux paramètres sont résolus tout seuls quand ils manquent (usage
-# normal, depuis open-produit.ps1) ; un test les fournit explicitement, sur une arborescence
+# normal, depuis Invoke-SzhTachesDemarrage) ; un test les fournit explicitement, sur une arborescence
 # jetable, pour ne dépendre ni du poste ni de l'ancrage SharePoint réel.
 function Get-SzhDossiersAEpingler {
   param(
