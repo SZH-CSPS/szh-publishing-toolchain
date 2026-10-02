@@ -43,7 +43,7 @@ function textesAccueil() {
     ppSortie: T('accueil.preproc.sortie'), ppOptions: T('accueil.preproc.options'),
     ppFormat: T('accueil.preproc.format'), ppFormatDocx: T('accueil.preproc.format.docx'),
     ppFormatOdt: T('accueil.preproc.format.odt'), ppCompteurs: T('accueil.preproc.compteurs'),
-    ppDepotChemin: T('accueil.preproc.depot.chemin'), ppDepotFormat: T('accueil.preproc.depot.format'),
+    ppDepotFormat: T('accueil.preproc.depot.format'), ppDepotTaille: T('accueil.preproc.depot.taille'),
     ppEnCours: T('accueil.preproc.encours'), ppEnCoursProduit: T('accueil.preproc.encours.produit'),
     ppEtape: T('accueil.preproc.etape'),
     ppEtapePreparation: T('accueil.preproc.etape.preparation'), ppEtapeLecture: T('accueil.preproc.etape.lecture'),

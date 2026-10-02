@@ -1856,6 +1856,15 @@ vaut pour **tout le poste**, et non pour votre seul compte Windows. Il ne dépla
 fichier** : il change l’endroit où le lanceur regarde, et les listes se rechargent aussitôt. Si vos numéros disparaissent des listes, lisez ces deux lignes
 avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPLACEMENTS.md`).
 
+## L’onglet « Préprocessing » de l’Accueil
+
+Chaque nettoyage écrit dans un dossier neuf du Bureau, `Pronto Preprocessing\<nom du
+manuscrit>` (puis `<nom> (2)`, `<nom> (3)`… au passage suivant) : une copie du manuscrit, le
+document nettoyé et son rapport. Le manuscrit d’origine n’est jamais touché, et rien ne
+s’écrit à côté de lui. On peut aussi glisser un manuscrit .docx ou .odt (50 Mo au plus) sur
+la zone de l’onglet, **en maintenant Maj** au moment de le lâcher : sans Maj, VSCodium
+l’ouvre lui-même.
+
 ## L’onglet « Export et secrétariat »
 
 Menu Démarrer → **Pronto** porte un onglet de plus, à côté de Revue,

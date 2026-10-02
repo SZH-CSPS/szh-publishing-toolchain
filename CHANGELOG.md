@@ -17,6 +17,10 @@ Medium : « Pronto » s'ouvre dans l'éditeur, sur l'Accueil du cockpit, et le l
 est retiré.
 
 **Production.**
+- Préprocessing : chaque nettoyage écrit dans un dossier neuf du Bureau,
+  `Pronto Preprocessing\<nom du manuscrit>` (puis `(2)`, `(3)`…), avec une copie du
+  manuscrit, le document nettoyé et son rapport ; l'original n'est plus touché. Un manuscrit
+  se glisse aussi sur la zone de l'onglet, Maj maintenue, 50 Mo au plus.
 - « Pronto » ouvre VSCodium sur l'Accueil : Produits, Nouveau, Préprocessing, Secrétariat,
   Paramètres, Log. Les tâches de démarrage du poste passent avant (ancrage, rapports en
   attente, check-in, épinglage, dossiers de test, secrets) ; un lien `szh://` ouvre son

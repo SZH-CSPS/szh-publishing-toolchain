@@ -258,7 +258,7 @@ test('secrétariat : avancement sur la ligne, avis du contrat et « Afficher le 
 });
 
 const etatPp = (autres) => Object.assign({ type: MSG.ACCUEIL_PREPROC_ETAT, produit: 'zeitschrift', format: 'docx',
-  dossier: 'C:\\M\\Reçus', depot: true }, autres || {});
+  dossier: 'C:\\M\\Reçus', depot: true, tailleMax: 50 * 1024 * 1024 }, autres || {});
 const deposer = (p, donnees) => tous(p, '.preproc-zone')[0].dispatchEvent({ type: 'drop', preventDefault() {},
   dataTransfer: { getData: (t) => (t === 'text/uri-list' ? donnees.uri || '' : ''), files: donnees.files || [] } });
 
@@ -296,22 +296,30 @@ test('préprocessing : le produit d’office vient de l’hôte, et choisir un m
   assert.deepStrictEqual(coche(pLivre, 'produit-pp'), ['revue']);
 });
 
-test('préprocessing : un dépôt part avec son adresse, et se refuse sans chemin ou hors .docx et .odt', () => {
+test('préprocessing : un dépôt part avec son adresse ou ses octets, et se refuse hors .docx et .odt ou trop gros', () => {
   const p = page();
   p.envoyer(charger());
   p.envoyer(etatPp({ depot: false }));
   deposer(p, { uri: 'file:///C:/M/a.docx' });
   assert.deepStrictEqual(posts(p, MSG.ACCUEIL_PREPROC_DEPOSER), [], 'dépôt retenu alors que l’hôte ne l’offre pas');
   p.envoyer(etatPp());
+  assert.match(TXT.ppDeposer, /Maj/, 'la zone dit de maintenir Maj');
+  assert.ok(parId(p, 'panneau-preproc').textContent.includes(TXT.ppDeposer));
   deposer(p, { uri: 'file:///C:/M/a.docx' });
   assert.deepStrictEqual(posts(p, MSG.ACCUEIL_PREPROC_DEPOSER),
     [{ type: MSG.ACCUEIL_PREPROC_DEPOSER, uri: 'file:///C:/M/a.docx', produit: 'zeitschrift', format: 'docx' }]);
+  // Un fichier de l'Explorateur n'a pas d'adresse : ses octets partent en base64.
+  deposer(p, { files: [{ name: 'Étude.docx', size: 3, _dataUrl: 'data:application/octet-stream;base64,QUJD' }] });
+  assert.deepStrictEqual(posts(p, MSG.ACCUEIL_PREPROC_DEPOSER)[1],
+    { type: MSG.ACCUEIL_PREPROC_DEPOSER, nomFichier: 'Étude.docx', donneesBase64: 'QUJD', produit: 'zeitschrift', format: 'docx' });
   const avisDepot = tous(p, '.preproc-depot-avis')[0];
-  deposer(p, { files: [{ name: 'a.docx' }] });
-  assert.strictEqual(avisDepot.textContent, TXT.ppDepotChemin);
   deposer(p, { uri: 'file:///C:/M/a.pdf' });
   assert.strictEqual(avisDepot.textContent, TXT.ppDepotFormat);
-  assert.strictEqual(posts(p, MSG.ACCUEIL_PREPROC_DEPOSER).length, 1);
+  deposer(p, { files: [{ name: 'a.pdf', size: 3, _dataUrl: 'data:,x' }] });
+  assert.strictEqual(avisDepot.textContent, TXT.ppDepotFormat);
+  deposer(p, { files: [{ name: 'gros.odt', size: 50 * 1024 * 1024 + 1, _dataUrl: 'data:,x' }] });
+  assert.strictEqual(avisDepot.textContent, f('ppDepotTaille', [50]));
+  assert.strictEqual(posts(p, MSG.ACCUEIL_PREPROC_DEPOSER).length, 2);
 });
 
 test('préprocessing : l’avancement compte les étapes, l’issue garde ses alertes et ses liens, l’échec ouvre les détails', () => {

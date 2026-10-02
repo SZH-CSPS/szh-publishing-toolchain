@@ -518,9 +518,9 @@
   // produit et le format affichés au-dessus : pas de second bouton à trouver. L'issue, ses
   // alertes et ses liens restent au-dessus de la zone jusqu'au manuscrit suivant.
   //
-  // Vers l'hôte : accueilPreprocChoisir { produit, format }, accueilPreprocDeposer { uri, produit,
-  // format }, accueilPreprocInterrompre, accueilPreprocOuvrir { quoi: 'document' | 'rapport' | 'dossier' }.
-  // Depuis l'hôte : accueilPreprocEtat { produit, format, dossier, depot }, à l'ouverture et après
+  // Vers l'hôte : accueilPreprocChoisir { produit, format }, accueilPreprocDeposer { uri | nomFichier
+  // et donneesBase64, produit, format }, accueilPreprocInterrompre, accueilPreprocOuvrir { quoi: 'document' | 'rapport' | 'dossier' }.
+  // Depuis l'hôte : accueilPreprocEtat { produit, format, dossier, depot, tailleMax }, à l'ouverture et après
   // chaque nettoyage ; accueilPreprocDebut { nom, produit, format } ; accueilPreprocEtape { etape } ;
   // accueilPreprocFin { issue: 'ok' | 'alertes' | 'refus' | 'echec' | 'interrompu', texte, document,
   // rapport, rapportOuvert, alertes: { erreurs, avertissements, suggestions } }.
@@ -540,7 +540,7 @@
   var MSG_PREPROC = [MSG.ACCUEIL_PREPROC_ETAT, MSG.ACCUEIL_PREPROC_DEBUT, MSG.ACCUEIL_PREPROC_ETAPE,
     MSG.ACCUEIL_PREPROC_FIN];
   var ppEtat = { produits: [], produit: '', produitHote: '', format: 'docx', dossier: '', depot: false,
-    enCours: false };
+    tailleMax: 0, enCours: false };
   var ppLigne = null;
 
   var ppTete = poser(pp, 'div', 'accueil-tete');
@@ -648,8 +648,9 @@
     ppDepotAvis.textContent = '';
     api.postMessage({ type: MSG.ACCUEIL_PREPROC_CHOISIR, produit: ppEtat.produit, format: ppEtat.format });
   }
-  // Un dépôt n'est retenu que s'il donne l'emplacement du fichier (une adresse file://) :
-  // le document nettoyé s'écrit à côté du manuscrit, et une copie sans chemin n'en a pas.
+  // Un fichier de l'explorateur de l'éditeur part avec son adresse file:// ; un fichier de
+  // l'Explorateur Windows, sans chemin, part en octets. Dans VSCodium, il faut maintenir Maj
+  // en lâchant le fichier, sinon l'éditeur l'ouvre lui-même.
   function deposeAccepte() { return ppEtat.depot && !ppEtat.enCours; }
   ppZone.addEventListener('dragover', function (ev) {
     if (!deposeAccepte()) { return; }
@@ -664,12 +665,27 @@
     var dt = ev.dataTransfer || {};
     var uri = String((dt.getData && dt.getData('text/uri-list')) || '').split(/\r?\n/)
       .filter(function (l) { return l && l.charAt(0) !== '#'; })[0] || '';
-    var nom = uri || (dt.files && dt.files[0] ? String(dt.files[0].name || '') : '');
-    if (!nom) { return; }
-    if (!/\.(docx|odt)$/i.test(nom)) { ppDepotAvis.textContent = TXT.ppDepotFormat; return; }
-    if (!/^file:/i.test(uri)) { ppDepotAvis.textContent = TXT.ppDepotChemin; return; }
-    ppDepotAvis.textContent = '';
-    api.postMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER, uri: uri, produit: ppEtat.produit, format: ppEtat.format });
+    var fichier = dt.files && dt.files[0];
+    var produit = ppEtat.produit;
+    var format = ppEtat.format;
+    if (/^file:/i.test(uri)) {
+      if (!/\.(docx|odt)$/i.test(uri)) { ppDepotAvis.textContent = TXT.ppDepotFormat; return; }
+      ppDepotAvis.textContent = '';
+      api.postMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER, uri: uri, produit: produit, format: format });
+      return;
+    }
+    if (!fichier) { return; }
+    var mo = Math.round(ppEtat.tailleMax / 1048576);
+    SZH.lireBase64(fichier, {
+      extensions: ['docx', 'odt'], maxi: ppEtat.tailleMax,
+      msgFormat: TXT.ppDepotFormat, msgPoids: SZH.remplir(TXT, 'ppDepotTaille', [mo]),
+      surLecture: function () { ppDepotAvis.textContent = ''; },
+      surErreur: function (message) { ppDepotAvis.textContent = message; },
+      surDonnees: function (f, base64) {
+        api.postMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER, nomFichier: String(f.name || ''), donneesBase64: base64,
+          produit: produit, format: format });
+      }
+    });
   });
 
   // Le journal en clair : une ligne par étape atteinte, marquée faite, en cours, en échec
@@ -791,6 +807,7 @@
     if (PP_FORMATS.some(function (f) { return f[0] === msg.format; })) { ppEtat.format = msg.format; }
     ppEtat.dossier = String(msg.dossier || '');
     ppEtat.depot = !!msg.depot;
+    ppEtat.tailleMax = Number(msg.tailleMax) || 0;
     rendreProduitsPp();
     rendrePreproc();
   }

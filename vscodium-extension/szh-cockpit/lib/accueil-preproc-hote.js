@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const url = require('url');
 
 const { MSG } = require('./messages');
 const { T, langueCockpit } = require('./i18n');
@@ -15,12 +16,19 @@ const { compiler } = require('./gabarits');
 const compteurs = require('./compteurs');
 const rapportErreur = require('./rapport-erreur');
 const { COURRIEL_SUPPORT } = require('./codes-erreur');
+const poste = require('./poste');
 const { construireVueRapportManuscrit } = require('../outils/rendre-gabarit');
 
 const PRODUITS = ['revue', 'zeitschrift'];
 const FORMATS = ['docx', 'odt'];
-// Un fichier glissé depuis l'Explorateur n'apporte pas son chemin à la page : le dépôt reste fermé.
-const DEPOT = false;
+// Le dépôt est ouvert : un fichier de l'Explorateur arrive en octets (base64, comme les autres
+// dépôts du cockpit), un fichier de l'explorateur de l'éditeur avec son adresse file://.
+const DEPOT = true;
+// Le plafond d'un manuscrit déposé : un .docx d'article dépasse rarement quelques Mo.
+const TAILLE_MAX = 50 * 1024 * 1024;
+// Chaque passage écrit dans son propre dossier, sous <Bureau>\Pronto Preprocessing.
+const DOSSIER_SORTIE = 'Pronto Preprocessing';
+const RE_MANUSCRIT = /\.(docx|odt)$/i;
 // Par compte : le dossier du dernier manuscrit choisi, où la boîte de choix se rouvre.
 // Valeur gardée du temps du « lanceur » : les postes l'ont déjà écrite.
 const CLE_DOSSIER = 'szh.lanceur.preproc.dossier';
@@ -51,6 +59,7 @@ let ctx = {
   revelerFichier: () => {},
   formatTravail: () => 'docx',
   memoire: null,
+  bureau: () => poste.dossierBureau(),
   lancer: (argv, options) => moteur.executer(argv, options),
   cli: null,
   versMoteur: (chemin) => moteur.versMoteur(chemin),
@@ -81,7 +90,7 @@ function supprimer(chemin) { try { fs.rmSync(chemin, { force: true }); } catch (
 // d'un passage à l'autre.
 function etat() {
   return { type: MSG.ACCUEIL_PREPROC_ETAT, produit: produitParDefaut(), format: formatParDefaut(),
-    dossier: dossierDepart(), depot: DEPOT };
+    dossier: dossierDepart(), depot: DEPOT, tailleMax: TAILLE_MAX };
 }
 function envoyerEtat() { if (!passage) { ctx.envoyer(etat()); } }
 
@@ -243,18 +252,59 @@ function constats(p, r, fin) {
   } catch (e) { /* jamais vers l'interface */ }
 }
 
-// Nettoie un manuscrit : le document et le rapport s'écrivent à côté de lui, le rapport
-// s'ouvre dans le navigateur, puis la page reçoit l'issue.
-async function nettoyer(chemin, produit, format) {
+// Le dossier du passage : <nom>, sinon <nom> (2), (3)… Un mkdir sans recursive échoue sur
+// un dossier qui existe : rien n'est jamais écrasé.
+function dossierPassage(nom) {
+  const base = path.join(ctx.bureau(), DOSSIER_SORTIE);
+  fs.mkdirSync(base, { recursive: true });
+  const racine = path.parse(nom).name;
+  for (let i = 1; i < 1000; i++) {
+    const d = path.join(base, i === 1 ? racine : racine + ' (' + i + ')');
+    try { fs.mkdirSync(d); return d; } catch (e) { if (e.code !== 'EEXIST') { throw e; } }
+  }
+  throw new Error('EEXIST');
+}
+
+// Le manuscrit entre dans un dossier neuf du Bureau, par copie ou par ses octets déposés.
+// Rend le chemin de la copie, ou '' si le Bureau refuse l'écriture.
+function preparer(entree) {
+  let dossier = '';
+  try {
+    dossier = dossierPassage(entree.nom);
+    const cible = path.join(dossier, entree.nom);
+    if (entree.octets) { fs.writeFileSync(cible, entree.octets, { flag: 'wx' }); }
+    else { fs.copyFileSync(entree.source, cible, fs.constants.COPYFILE_EXCL); }
+    return cible;
+  } catch (e) {
+    if (dossier) { try { fs.rmSync(dossier, { recursive: true, force: true }); } catch (e2) { /* tant pis */ } }
+    return '';
+  }
+}
+
+// Une issue sans passage : un refus du dépôt, ou un Bureau où l'on ne peut écrire.
+function finSansPassage(issue, texte) {
+  ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_FIN, issue, texte, document: '', rapport: false, rapportOuvert: false, alertes: null });
+  envoyerEtat();
+}
+
+// Nettoie un manuscrit, { source } choisi ou { nom, octets } déposé, sur sa copie au Bureau :
+// le document et le rapport s'écrivent à côté d'elle, le rapport s'ouvre dans le navigateur,
+// puis la page reçoit l'issue. L'original n'est jamais touché.
+async function nettoyer(entree, produit, format) {
+  const nom = path.basename(entree.source || entree.nom);
+  const chemin = preparer({ nom, source: entree.source, octets: entree.octets });
+  if (!chemin) {
+    finSansPassage('echec', T('accueil.preproc.echec.bureau', [path.join(ctx.bureau(), DOSSIER_SORTIE)]));
+    return;
+  }
   const p = passage = { annule: false, proc: null, rang: -1, chemin, produit, dossier: path.dirname(chemin) };
   derniers = null;
-  const nom = path.basename(chemin);
   const json = path.join(os.tmpdir(), 'szh-rapport-manuscrit-' + crypto.randomBytes(8).toString('hex') + '.json');
   let fin;
   try {
     ctx.envoyer({ type: MSG.ACCUEIL_PREPROC_DEBUT, nom, produit, format });
     relayer(p, 'preparation');
-    // Le dossier du manuscrit passe à --cd, que wsl.exe traduit lui-même : le nom reste relatif.
+    // Le dossier de la copie passe à --cd, que wsl.exe traduit lui-même : le nom reste relatif.
     const r = await executer(p, ['python3', cheminCli(), './' + nom, '--produit', produit, '--sortie', '.',
       '--rapport', ctx.versMoteur(json), '--format', format, '--etapes']);
     fin = conclure(p, r, json);
@@ -282,7 +332,35 @@ async function choisir(msg) {
   try { chemin = await ctx.choisirFichier(dossierDepart()); } finally { enChoix = false; }
   if (!chemin || passage) { return; }
   if (ctx.memoire) { await ctx.memoire.update(CLE_DOSSIER, path.dirname(chemin)); }
-  await nettoyer(chemin, produit, format);
+  await nettoyer({ source: chemin }, produit, format);
+}
+
+// Un dépôt sur la zone : une adresse file:// suit le circuit du choix, des octets en base64
+// s'écrivent au Bureau. Extension et taille se revérifient ici, quoi qu'en ait dit la page.
+async function deposer(msg) {
+  const produit = String(msg.produit || '');
+  const format = String(msg.format || '');
+  if (passage || enChoix || PRODUITS.indexOf(produit) === -1 || FORMATS.indexOf(format) === -1) { return; }
+  const refuser = (cle, valeurs) => finSansPassage('refus', T(cle, valeurs));
+  if (msg.uri) {
+    let source = '';
+    try { source = url.fileURLToPath(String(msg.uri)); } catch (e) { source = ''; }
+    if (!RE_MANUSCRIT.test(source)) { refuser('accueil.preproc.depot.format'); return; }
+    let fichier = false;
+    try { fichier = fs.statSync(source).isFile(); } catch (e) { fichier = false; }
+    if (!fichier) { refuser('accueil.preproc.refus.lecture'); return; }
+    await nettoyer({ source }, produit, format);
+    return;
+  }
+  const nom = String(msg.nomFichier || '').split(/[\\/]/).pop();
+  const donnees = String(msg.donneesBase64 || '');
+  if (!RE_MANUSCRIT.test(nom) || !donnees) { refuser('accueil.preproc.depot.format'); return; }
+  // Le base64 vaut 4/3 des octets : un texte trop long n'est même pas décodé.
+  if (donnees.length > Math.ceil(TAILLE_MAX / 3) * 4) { refuser('accueil.preproc.depot.taille', [TAILLE_MAX / 1048576]); return; }
+  const octets = Buffer.from(donnees, 'base64');
+  if (!octets.length) { refuser('accueil.preproc.depot.format'); return; }
+  if (octets.length > TAILLE_MAX) { refuser('accueil.preproc.depot.taille', [TAILLE_MAX / 1048576]); return; }
+  await nettoyer({ nom, octets }, produit, format);
 }
 
 // Tue le nettoyeur en cours : Interrompre, la fermeture du panneau, l'ouverture d'un dossier
@@ -301,18 +379,18 @@ function ouvrir(msg) {
   if (quoi === 'dossier' && (derniers.document || derniers.rapport)) { ctx.revelerFichier(derniers.document || derniers.rapport); }
 }
 
-// Rend vrai si le message est l'un des siens. Le dépôt, fermé, n'est pas traité.
+// Rend vrai si le message est l'un des siens.
 function surMessage(msg) {
   if (msg.type === MSG.ACCUEIL_PREPROC_CHOISIR) { choisir(msg); return true; }
   if (msg.type === MSG.ACCUEIL_PREPROC_INTERROMPRE) { arreter(); return true; }
   if (msg.type === MSG.ACCUEIL_PREPROC_OUVRIR) { ouvrir(msg); return true; }
-  if (msg.type === MSG.ACCUEIL_PREPROC_DEPOSER) { return true; }
+  if (msg.type === MSG.ACCUEIL_PREPROC_DEPOSER) { deposer(msg); return true; }
   return false;
 }
 
 function enCours() { return !!passage; }
 
 module.exports = {
-  configurer, surMessage, arreter, envoyerEtat, etat, enCours, choisir, nettoyer,
-  CLE_DOSSIER, DEPOT, VERS_PAGE
+  configurer, surMessage, arreter, envoyerEtat, etat, enCours, choisir, deposer, nettoyer,
+  CLE_DOSSIER, DEPOT, TAILLE_MAX, DOSSIER_SORTIE, VERS_PAGE
 };

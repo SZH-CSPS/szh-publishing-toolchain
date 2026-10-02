@@ -310,7 +310,10 @@ function ouvrir(opts) {
       removeEventListener: () => {}
     },
     acquireVsCodeApi: () => ({ postMessage: (m) => messages.push(m), setState: () => {}, getState: () => null }),
-    FileReader: function () { this.readAsDataURL = () => {}; },
+    // Muet, sauf pour un faux fichier qui porte son `_dataUrl` : la lecture réussit aussitôt.
+    FileReader: function () {
+      this.readAsDataURL = (f) => { if (f && f._dataUrl) { this.result = f._dataUrl; this.onload(); } };
+    },
     // Un événement construit à la main (`new Event('input', { bubbles: true })`), comme le
     // fait media/_fiches.js pour prévenir un écouteur délégué après une écriture
     // programmatique. `dispatchEvent` (plus haut) lit `bubbles` sur l'objet qu'on lui passe,

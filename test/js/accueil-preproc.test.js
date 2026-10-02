@@ -23,6 +23,10 @@ const RECUS = path.join(TRAVAIL, 'Manuscrits reçus');
 const MANUSCRIT = path.join(RECUS, 'Martin école.docx');
 const FAUX = path.join(TRAVAIL, 'faux-moteur.js');
 const JOURNAL = path.join(TRAVAIL, 'appels.jsonl');
+// Le faux Bureau : la sortie de chaque passage va sous <Bureau>\Pronto Preprocessing.
+const BUREAU = path.join(TRAVAIL, 'Bureau');
+const SORTIES = path.join(BUREAU, 'Pronto Preprocessing');
+const SORTIE = path.join(SORTIES, 'Martin école');
 if (!CAS) {
   const numero = path.join(TRAVAIL, 'Base', 'Revue', '2026-3');
   fs.mkdirSync(numero, { recursive: true });
@@ -100,7 +104,7 @@ async function enfant() {
   };
   if (CAS === 'reglage') { await getConfiguration('szh').update('formatTravail', 'odt'); }
   const preproc = require(path.join(COCKPIT, 'lib', 'accueil-preproc-hote.js'));
-  preproc.configurer({ lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => c,
+  preproc.configurer({ lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => c, bureau: () => BUREAU,
     compter: () => {}, signaler: () => {} });
   for (let i = 0; i < 30; i++) { await new Promise((r) => setImmediate(r)); }
   const p = HOTE.panneaux.filter((x) => x.type === 'szhAccueil')[0];
@@ -152,7 +156,7 @@ if (CAS) {
   let reponse = MANUSCRIT;
   let format = 'docx';
   hote.configurer({
-    lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => { convertis.push(c); return c; },
+    lancer: fauxLancer, cli: '/faux/manuscrit-nettoyer.py', versMoteur: (c) => { convertis.push(c); return c; }, bureau: () => BUREAU,
     envoyer: (m) => envoyes.push(m), revelerFichier: (c) => reveles.push(c),
     ouvrirExterne: (c) => { ouvertures.push(c); return Promise.resolve(true); },
     choisirFichier: (d) => { choix.push(d); return Promise.resolve(reponse); },
@@ -162,6 +166,7 @@ if (CAS) {
   const oublier = () => {
     for (const t of [envoyes, ouvertures, reveles, comptes, signales, choix, convertis]) { t.length = 0; }
     try { fs.rmSync(JOURNAL); } catch (e) { /* vide */ }
+    fs.rmSync(BUREAU, { recursive: true, force: true });
     delete process.env.SZH_FAUX_MODE;
   };
   const types = () => envoyes.map((m) => m.type);
@@ -175,11 +180,12 @@ if (CAS) {
 
   test.after(() => { for (const a of appels()) { try { process.kill(a.pid); } catch (e) { /* déjà mort */ } } });
 
-  test('préprocessing : l’état suit la langue et szh.formatTravail, le dépôt reste fermé', () => {
+  test('préprocessing : l’état suit la langue et szh.formatTravail, le dépôt est ouvert', () => {
     oublier();
     format = 'odt';
     try {
-      assert.deepStrictEqual(hote.etat(), { type: MSG.ACCUEIL_PREPROC_ETAT, produit: 'revue', format: 'odt', dossier: '', depot: false });
+      assert.deepStrictEqual(hote.etat(), { type: MSG.ACCUEIL_PREPROC_ETAT, produit: 'revue', format: 'odt', dossier: '', depot: true,
+        tailleMax: 50 * 1024 * 1024 });
       process.env.SZH_LANGUE = 'de';
       try { assert.strictEqual(hote.etat().produit, 'zeitschrift'); } finally { process.env.SZH_LANGUE = 'fr'; }
       format = 'pdf';
@@ -187,12 +193,16 @@ if (CAS) {
     } finally { format = 'docx'; }
   });
 
-  test('préprocessing : le nettoyeur part dans le dossier du manuscrit, les étapes arrivent dans l’ordre', async () => {
+  test('préprocessing : le nettoyeur part sur une copie au Bureau, les étapes arrivent dans l’ordre', async () => {
+    const avant = fs.readdirSync(RECUS).sort();
     await lancer('ok', 'revue', 'odt');
     const a = appels();
     assert.strictEqual(a.length, 1);
     assert.deepStrictEqual(a[0].argv.slice(0, 3), ['python3', '/faux/manuscrit-nettoyer.py', './Martin école.docx']);
-    assert.strictEqual(fs.realpathSync(a[0].cwd), fs.realpathSync(RECUS), 'le dossier du manuscrit passe à --cd');
+    assert.strictEqual(fs.realpathSync(a[0].cwd), fs.realpathSync(SORTIE), 'le dossier du Bureau passe à --cd');
+    assert.strictEqual(fs.readFileSync(path.join(SORTIE, 'Martin école.docx'), 'utf8'), 'manuscrit', 'la copie sous son nom d’origine');
+    assert.strictEqual(fs.readFileSync(MANUSCRIT, 'utf8'), 'manuscrit', 'l’original n’est pas touché');
+    assert.deepStrictEqual(fs.readdirSync(RECUS).sort(), avant, 'rien ne s’écrit à côté de l’original');
     assert.strictEqual(val(a[0].argv, '--produit'), 'revue');
     assert.strictEqual(val(a[0].argv, '--sortie'), '.');
     assert.strictEqual(val(a[0].argv, '--format'), 'odt');
@@ -206,10 +216,10 @@ if (CAS) {
     assert.deepStrictEqual(envoyes.filter((m) => m.type === MSG.ACCUEIL_PREPROC_ETAPE).map((m) => m.etape),
       ['preparation', 'lecture', 'titres', 'formatage', 'typographie', 'regles', 'bibliographie', 'ecriture', 'annotation', 'rapport'],
       'une étape par étape de la page, jamais en arrière');
-    const rapport = path.join(RECUS, 'Martin école-rapport.html');
+    const rapport = path.join(SORTIE, 'Martin école-rapport.html');
     assert.deepStrictEqual(fin(), { type: MSG.ACCUEIL_PREPROC_FIN, issue: 'ok', texte: '', document: 'Martin école-nettoye.odt',
       rapport: true, rapportOuvert: true, alertes: { erreurs: 0, avertissements: 1, suggestions: 3 } });
-    assert.ok(fs.statSync(rapport).size > 0, 'le rapport HTML est rendu à côté du manuscrit');
+    assert.ok(fs.statSync(rapport).size > 0, 'le rapport HTML est rendu à côté de la copie');
     assert.deepStrictEqual(ouvertures, [rapport], 'le rapport s’ouvre dans le navigateur, avant l’issue');
     assert.strictEqual(comptes.length, 1);
     assert.deepStrictEqual(comptes[0], { source: 'nettoyeur', passage: 'abcdef012345', mesures: { 'issue.ok': 1, 'produit.revue': 1 } });
@@ -219,8 +229,62 @@ if (CAS) {
     hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'rapport' });
     hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'dossier' });
     hote.surMessage({ type: MSG.ACCUEIL_PREPROC_OUVRIR, quoi: 'C:\\Windows' });
-    assert.deepStrictEqual(ouvertures.slice(1), [path.join(RECUS, 'Martin école-nettoye.odt'), rapport]);
-    assert.deepStrictEqual(reveles, [path.join(RECUS, 'Martin école-nettoye.odt')]);
+    assert.deepStrictEqual(ouvertures.slice(1), [path.join(SORTIE, 'Martin école-nettoye.odt'), rapport]);
+    assert.deepStrictEqual(reveles, [path.join(SORTIE, 'Martin école-nettoye.odt')]);
+  });
+
+  test('préprocessing : un second passage du même nom va dans « (2) », sans rien écraser', async () => {
+    await lancer('ok');
+    await tenu(hote.choisir({ produit: 'revue', format: 'docx' }));
+    await tenu(hote.choisir({ produit: 'revue', format: 'docx' }));
+    assert.deepStrictEqual(appels().map((a) => fs.realpathSync(a.cwd)),
+      [SORTIE, SORTIE + ' (2)', SORTIE + ' (3)'].map((d) => fs.realpathSync(d)));
+    assert.deepStrictEqual(fs.readdirSync(SORTIES).sort(), ['Martin école', 'Martin école (2)', 'Martin école (3)']);
+    assert.deepStrictEqual(fs.readdirSync(SORTIE).sort(), ['Martin école-nettoye.docx', 'Martin école-rapport.html', 'Martin école.docx']);
+  });
+
+  const b64 = (t) => Buffer.from(t).toString('base64');
+  const deposer = (autres) => tenu(hote.deposer(Object.assign({ type: MSG.ACCUEIL_PREPROC_DEPOSER, produit: 'revue', format: 'docx' }, autres)));
+
+  test('préprocessing : un dépôt d’octets s’écrit au Bureau, puis se nettoie', async () => {
+    oublier();
+    assert.strictEqual(hote.surMessage({ type: MSG.ACCUEIL_PREPROC_DEPOSER }), true);
+    await deposer({ nomFichier: 'Dupont étude.docx', donneesBase64: b64('octets déposés') });
+    const dossier = path.join(SORTIES, 'Dupont étude');
+    assert.strictEqual(fs.readFileSync(path.join(dossier, 'Dupont étude.docx'), 'utf8'), 'octets déposés');
+    assert.strictEqual(appels().length, 1);
+    assert.strictEqual(fs.realpathSync(appels()[0].cwd), fs.realpathSync(dossier));
+    assert.strictEqual(appels()[0].argv[2], './Dupont étude.docx');
+    assert.strictEqual(fin().issue, 'ok');
+    assert.strictEqual(envoyes[0].nom, 'Dupont étude.docx');
+    // Un nom venu de la page ne remonte pas l'arborescence.
+    oublier();
+    await deposer({ nomFichier: '..\\..\\Évasion.odt', donneesBase64: b64('x') });
+    assert.ok(fs.existsSync(path.join(SORTIES, 'Évasion', 'Évasion.odt')));
+    // Un fichier de l'explorateur de l'éditeur arrive avec son adresse : il est copié comme un choix.
+    oublier();
+    await deposer({ uri: require('url').pathToFileURL(MANUSCRIT).href });
+    assert.strictEqual(fs.realpathSync(appels()[0].cwd), fs.realpathSync(SORTIE));
+    assert.strictEqual(fs.readFileSync(path.join(SORTIE, 'Martin école.docx'), 'utf8'), 'manuscrit');
+  });
+
+  test('préprocessing : un dépôt hors .docx et .odt, ou trop gros, est refusé sans rien écrire', async () => {
+    for (const m of [{ nomFichier: 'a.pdf', donneesBase64: b64('x') }, { nomFichier: 'a.docx', donneesBase64: '' },
+      { uri: require('url').pathToFileURL(path.join(RECUS, 'a.pdf')).href }]) {
+      oublier();
+      await deposer(m);
+      assert.deepStrictEqual(appels(), [], JSON.stringify(m));
+      assert.strictEqual(fin().issue, 'refus');
+      assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.depot.format'));
+      assert.ok(!fs.existsSync(BUREAU), 'aucun dossier pour un refus');
+    }
+    oublier();
+    await deposer({ nomFichier: 'gros.docx', donneesBase64: Buffer.alloc(hote.TAILLE_MAX + 1).toString('base64') });
+    assert.deepStrictEqual(appels(), []);
+    assert.strictEqual(fin().issue, 'refus');
+    assert.strictEqual(fin().texte, TL('fr', 'accueil.preproc.depot.taille', [50]));
+    assert.ok(!fs.existsSync(BUREAU));
+    assert.strictEqual(types().pop(), MSG.ACCUEIL_PREPROC_ETAT);
   });
 
   test('préprocessing : la boîte de choix part du dernier dossier, et un choix annulé ne lance rien', async () => {
@@ -347,7 +411,7 @@ if (CAS) {
     const v = lancerEnfant('reglage');
     assert.strictEqual(v.premierEtat.format, 'odt', 'l’état envoyé à la page suit le réglage');
     assert.strictEqual(v.premierEtat.produit, 'revue');
-    assert.strictEqual(v.premierEtat.depot, false);
+    assert.strictEqual(v.premierEtat.depot, true);
     assert.strictEqual(val(v.argv, '--format'), 'docx', 'le choix de la page vaut pour ce passage');
     assert.strictEqual(v.fin.issue, 'ok');
     assert.deepStrictEqual(v.ecritures, [], 'aucune écriture de réglage');
