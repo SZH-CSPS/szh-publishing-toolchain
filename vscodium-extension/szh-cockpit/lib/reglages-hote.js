@@ -251,7 +251,7 @@ function nlsCommandes() {
   const paire = {};
   for (const [langue, nom] of [['fr', 'package.nls.json'], ['de', 'package.nls.de.json']]) {
     try {
-      const brut = String(fs.readFileSync(path.join(__dirname, nom), 'utf8')).replace(/^﻿/, '');
+      const brut = String(fs.readFileSync(path.join(__dirname, '..', nom), 'utf8')).replace(/^﻿/, '');
       const valeurs = JSON.parse(brut);
       paire[langue] = valeurs && typeof valeurs === 'object' ? valeurs : {};
     } catch (e) { paire[langue] = {}; }

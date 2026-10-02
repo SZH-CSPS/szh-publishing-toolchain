@@ -60,3 +60,11 @@ test('module seul : un rappel configuré est bien employé', () => {
   assert.strictEqual(reglages.lireReglagesActuels().assets, 'non');
   assert.strictEqual(reglages.lireReglagesActuels().cmyk, 'non');
 });
+
+// Les titres de commandes du fichier de langue viennent des package.nls*.json de
+// l'extension, à sa racine : une table vide les aurait laissés hors de la relecture.
+test('fichier de langue : les titres de commandes sont lus, en fr et en de', () => {
+  const t = reglages.nlsCommandes();
+  assert.ok(Object.keys(t.fr).length > 10, 'aucun titre fr lu');
+  assert.ok(Object.keys(t.de).length > 10, 'aucun titre de lu');
+});
