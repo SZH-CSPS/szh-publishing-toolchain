@@ -46,6 +46,8 @@ est retiré.
 - Le verdict d'un journal de mise à jour est reconnu quelle que soit la langue de Windows
   (il valait « inconnu » hors de l'anglais).
 - Le dossier des journaux se nettoie : dix mises à jour et trois mois au plus.
+- Le fichier de langue exporté porte enfin les titres de commandes (ils étaient cherchés
+  au mauvais endroit et la table restait vide).
 
 **DEV seulement.**
 - « Pronto (dev) » ouvre l'Accueil par le même chemin que « Pronto » ; `SZH_JOURNAUX_MAJ` lui
