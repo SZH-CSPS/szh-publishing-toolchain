@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 1/6 — en-têtes de tableau sur toutes les cellules qu'ils couvrent.
+Correctif SZH de WeasyPrint 70.0, 1/8 — en-têtes de tableau sur toutes les cellules qu'ils couvrent.
 
 Posé par image/patch-weasyprint.sh, dans l'ordre des noms, avec les autres patchs actifs de
 image/patches/weasyprint-70.0/ ; indépendant d'eux (aucune ligne de contexte commune). Pour

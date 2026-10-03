@@ -56,6 +56,15 @@ const PATCHS = {
     cibles: ['weasyprint/pdf/metadata.py'],
     reperes: [/^\+\s+element = SubElement\(element, f'\{\{\{NS\["dc"\]\}\}\}language'\)$/m],
   },
+  '50-notes-doublon': {
+    cibles: ['weasyprint/layout/page.py'],
+    reperes: [/^\+\s+context\.reported_footnotes = list\(remake_state\.get\('reported_footnotes', \(\)\)\)$/m,
+      /^\+\s+'reported_footnotes': list\(context\.reported_footnotes\),$/m],
+  },
+  '55-notes-reportees': {
+    cibles: ['weasyprint/layout/block.py'],
+    reperes: [/^\+\s+context\.current_page_footnotes\[-1\] in own_footnotes\):$/m],
+  },
 };
 
 function dossierPatchs() {

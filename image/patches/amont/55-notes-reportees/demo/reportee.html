@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Note chassée loin de son appel</title>
+  <style>
+    @page { size: 100mm 80mm; margin: 10mm; @footnote { margin-top: 1mm; } }
+    body { font: 4mm/5mm sans-serif; margin: 0; orphans: 2; widows: 2; }
+    p { margin: 0; }
+    .note { float: footnote; }
+    ::footnote-call { line-height: 0; vertical-align: super; font-size: 70%; }
+  </style>
+</head>
+<body>
+  <p>a1 appel<span class="note">note une, ligne 1<br>note une, ligne 2</span><br>a2<br>a3</p>
+  <p>b1<br>b2<br>b3<br>b4<br>b5</p>
+  <p>c1<br>c2<br>c3<br>c4<br>c5</p>
+</body>
+</html>

@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 4/6 — espace de fin de ligne dans la couche texte.
+Correctif SZH de WeasyPrint 70.0, 4/8 — espace de fin de ligne dans la couche texte.
 
 Posé par image/patch-weasyprint.sh ; s'applique sans les autres patchs de
 image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 3/6, seul autre à

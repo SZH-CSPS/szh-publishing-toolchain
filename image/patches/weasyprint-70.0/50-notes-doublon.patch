@@ -1,0 +1,58 @@
+Correctif SZH de WeasyPrint 70.0, 7/8 — note reportée imprimée deux fois après une repagination.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (seul à toucher layout/page.py). Pour le désactiver : .patch.off.
+
+weasyprint/layout/page.py. Une note qui ne tient pas sur la page de son appel est reportée
+à la suivante par context.reported_footnotes, une liste unique du contexte, alors que le
+reste de l'état d'une page vit dans context.page_maker. Quand un target-counter fait
+repaginer, une page « à jour » n'est pas refaite : la page refaite suivante lit la liste
+laissée par la page d'avant la page sautée, et pose une seconde fois la note déjà imprimée.
+Désormais, la liste des notes reportées en fin de page est gardée dans l'état de la page
+suivante (remake_state['reported_footnotes']), restaurée au début de remake_page(), et
+comptée dans « la page suivante a-t-elle changé ? ». Sans repagination, rien ne change.
+Mesuré sur image/patches/amont/50-notes-doublon/demo/doublon.html : note en p. 2 et p. 3
+sans le patch, en p. 2 seule avec ; suite pytest de WeasyPrint 70.0 sans nouvel échec.
+
+--- a/weasyprint/layout/page.py
++++ b/weasyprint/layout/page.py
+@@ -969,7 +969,11 @@
+ 
+     """
+     page_maker = context.page_maker
+-    resume_at, next_page, right_page, page_state, _ = page_maker[index]
++    resume_at, next_page, right_page, page_state, remake_state = page_maker[index]
++
++    # Footnotes reported by the previous page, as they were when it was laid out:
++    # this page may follow an up-to-date page that has not been laid out again.
++    context.reported_footnotes = list(remake_state.get('reported_footnotes', ()))
+ 
+     # PageType for current page, values for page_maker[index + 1].
+     # Don't modify actual page_maker[index] values!
+@@ -1008,13 +1012,15 @@
+         page_maker_next_changed = True
+     else:
+         # Check whether something changed
+-        next_resume_at, next_next_page, next_right_page, next_page_state, _ = (
+-            page_maker[index + 1])
++        (next_resume_at, next_next_page, next_right_page, next_page_state,
++         next_remake_state) = page_maker[index + 1]
+         page_maker_next_changed = (
+             next_resume_at != resume_at or
+             next_next_page != next_page or
+             next_right_page != right_page or
+-            next_page_state != page_state)
++            next_page_state != page_state or
++            next_remake_state.get('reported_footnotes', []) !=
++            context.reported_footnotes)
+ 
+     if page_maker_next_changed:
+         # Reset remake_state
+@@ -1023,6 +1029,7 @@
+             'pages_wanted': False,
+             'anchors': [],
+             'content_lookups': [],
++            'reported_footnotes': list(context.reported_footnotes),
+         }
+         # Setting content_changed to True ensures remake.
+         # If resume_at is None (last page) it must be False to prevent endless

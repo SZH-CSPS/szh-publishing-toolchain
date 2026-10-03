@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 3/6 — trait de césure en /ActualText U+00AD.
+Correctif SZH de WeasyPrint 70.0, 3/8 — trait de césure en /ActualText U+00AD.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (aucune ligne de contexte commune avec le 4/6, seul autre à

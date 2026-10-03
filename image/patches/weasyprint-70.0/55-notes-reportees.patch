@@ -1,0 +1,35 @@
+Correctif SZH de WeasyPrint 70.0, 8/8 — une note reste sur la page de son appel.
+
+Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
+image/patches/weasyprint-70.0/ (seul à toucher layout/block.py). Pour le désactiver : .patch.off.
+
+weasyprint/layout/block.py, _linebox_layout. Quand une ligne déborde, que le paragraphe n'a
+encore que orphans - 1 lignes sur la page et que couper après cette ligne respecterait
+orphans et widows, WeasyPrint reporte des notes de la page, en partant de la dernière,
+jusqu'à ce que la ligne tienne (PR amont #2437). Il ne regarde pas où est leur appel : la
+note d'un paragraphe déjà posé plus haut part à la page suivante, loin de son appel.
+Désormais, seules les notes appelées dans les lignes déjà posées de ce paragraphe peuvent
+être reportées ; sinon, la voie ordinaire (_break_line) renvoie le début du paragraphe à la
+page suivante, comme orphans le demande, et ses notes avec lui.
+Mesuré sur image/patches/amont/55-notes-reportees/demo/reportee.html : note en p. 2, appel
+en p. 1 sans le patch ; note et appel en p. 1 avec, le paragraphe « c » entier en p. 2 ;
+suite pytest de WeasyPrint 70.0 sans nouvel échec.
+
+--- a/weasyprint/layout/block.py
++++ b/weasyprint/layout/block.py
+@@ -396,7 +396,14 @@
+             needed = max(0, needed)
+             report = not context.in_column and can_break_now and not could_break_before
+             reported_footnotes = 0
+-            while report and context.current_page_footnotes:
++            # Only report footnotes called in the lines of this box already laid out on
++            # this page: footnotes called earlier on the page stay with their calls,
++            # and the start of this box is pushed to the next page instead.
++            own_footnotes = [
++                descendant.footnote for previous_line in new_children
++                for descendant in previous_line.descendants() if descendant.footnote]
++            while (report and context.current_page_footnotes and
++                   context.current_page_footnotes[-1] in own_footnotes):
+                 context.report_footnote(context.current_page_footnotes[-1])
+                 reported_footnotes += 1
+                 if not context.overflows_page(bottom_space, new_position_y + offset_y):

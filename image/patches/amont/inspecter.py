@@ -6,6 +6,7 @@ Usage (avec le Python d'un venv qui a pypdf, par exemple /opt/weasyprint/bin/pyt
   inspecter.py artefacts <pdf>    marques /Artifact du flux et leurs propriétés
   inspecter.py flux <pdf> <motif> lignes du flux de contenu qui contiennent le motif
   inspecter.py texte <pdf>        texte extrait par pypdf, ligne à ligne, espaces visibles
+  inspecter.py pages <pdf>        texte de chaque page sur une ligne, lignes séparées par « | »
   inspecter.py xmp <pdf>          paquet XMP brut, nombre de rdf:RDF, dc:language lu par pypdf
 """
 
@@ -142,6 +143,12 @@ def texte(reader):
             print(f'  p{numero} |{ligne.replace(" ", "·")}|')
 
 
+def pages(reader):
+    for numero, page in enumerate(reader.pages, 1):
+        lignes = [l for l in page.extract_text().split('\n') if l.strip()]
+        print(f'  p{numero} : ' + ' | '.join(lignes))
+
+
 def xmp(reader):
     metadonnees = resoudre(reader.trailer['/Root'].get('/Metadata'))
     brut = metadonnees.get_data().decode('utf-8')
@@ -155,8 +162,8 @@ def xmp(reader):
 def main():
     commande, chemin, *reste = sys.argv[1:]
     reader = PdfReader(chemin)
-    {'arbre': arbre, 'mcid': mcid, 'artefacts': artefacts, 'texte': texte, 'xmp': xmp,
-     'flux': lambda r: flux(r, reste[0])}[commande](reader)
+    {'arbre': arbre, 'mcid': mcid, 'artefacts': artefacts, 'texte': texte, 'pages': pages,
+     'xmp': xmp, 'flux': lambda r: flux(r, reste[0])}[commande](reader)
 
 
 if __name__ == '__main__':

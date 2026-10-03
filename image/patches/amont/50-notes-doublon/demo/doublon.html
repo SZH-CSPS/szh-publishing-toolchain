@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Note reportée, puis repagination</title>
+  <style>
+    @page { size: 100mm 80mm; margin: 10mm; }
+    body { font: 4mm/5mm sans-serif; margin: 0; orphans: 1; widows: 1; }
+    p { margin: 0; }
+    .note { float: footnote; }
+    a.ref::after { content: " p" target-counter(attr(href), page); }
+    .saut { break-before: page; }
+  </style>
+</head>
+<body>
+  <p>a1 <a class="ref" href="#fin">renvoi</a><br>a2<br>a3<br>a4<br>a5<br>a6<br>a7<br>a8<br>a9<br>a10<br>a11 appel<span class="note">note une, ligne 1<br>note une, ligne 2</span></p>
+  <p>b1</p>
+  <p class="saut">c1 <a class="ref" href="#fin">renvoi</a></p>
+  <p class="saut" id="fin">fin</p>
+</body>
+</html>

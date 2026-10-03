@@ -160,7 +160,8 @@ RUN mkdir -p /opt/icc \
 # fichier par sujet, voir leurs en-têtes) : 10 en-têtes de tableau fusionnés (PDF/UA-1
 # 7.5-1) et images décoratives en artefact (7.3-1), 20 couche texte des fins de ligne
 # (césure lue U+00AD, espace de fin de ligne gardée), 30 en-tête, pied et folio en
-# artefact de pagination. Un patch renommé en .patch.off est ignoré, et le journal le
+# artefact de pagination, 40 dc:language dans le XMP, 50 et 55 notes de bas de page (pas
+# de doublon après une repagination, pas de note chassée loin de son appel). Un patch renommé en .patch.off est ignoré, et le journal le
 # dit. patch-weasyprint.sh fait échouer la construction si le dossier manque pour cette
 # version ou si un patch ne s'applique plus au caractère près — une montée de WeasyPrint
 # oblige à les rejuger. `patch` vient de la liste apt ci-dessus.

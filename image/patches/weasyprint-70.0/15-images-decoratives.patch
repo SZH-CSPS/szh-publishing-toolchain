@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 2/6 — image décorative peinte en artefact, sans /Figure.
+Correctif SZH de WeasyPrint 70.0, 2/8 — image décorative peinte en artefact, sans /Figure.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (touche tags.py comme le 1/6 et le 5/6, stream.py comme le

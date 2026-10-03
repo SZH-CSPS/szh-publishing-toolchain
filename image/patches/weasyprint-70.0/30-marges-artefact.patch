@@ -1,4 +1,4 @@
-Correctif SZH de WeasyPrint 70.0, 5/6 — boîtes de marge en artefact de pagination.
+Correctif SZH de WeasyPrint 70.0, 5/8 — boîtes de marge en artefact de pagination.
 
 Posé par image/patch-weasyprint.sh ; indépendant des autres patchs de
 image/patches/weasyprint-70.0/ (touche stream.py comme le 2/6, tags.py comme le 1/6 et le

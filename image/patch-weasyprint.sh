@@ -69,7 +69,7 @@ for p in $ACTIFS; do
 done
 
 # Les modules patchés doivent s'importer, et les .pyc compilés par pip sont périmés.
-"$PY" -c 'import weasyprint.pdf.tags, weasyprint.pdf.stream, weasyprint.draw, weasyprint.draw.text, weasyprint.layout.inline, weasyprint.text.line_break, weasyprint.text.ffi'
+"$PY" -c 'import weasyprint.pdf.tags, weasyprint.pdf.stream, weasyprint.pdf.metadata, weasyprint.draw, weasyprint.draw.text, weasyprint.layout.inline, weasyprint.layout.block, weasyprint.layout.page, weasyprint.text.line_break, weasyprint.text.ffi'
 "$PY" -m compileall -q "$SITE/weasyprint"
 : > "$TEMOIN"
 for p in $ACTIFS; do echo "$p" >> "$TEMOIN"; done

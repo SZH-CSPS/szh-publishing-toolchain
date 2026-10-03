@@ -25,7 +25,11 @@
 #   30-marges-artefact : en-tête, pied et folio sont des /Artifact /Pagination, sans MCID
 #      orphelin ; une boîte de marge qui porte un lien reste du contenu balisé ;
 #   40-xmp-dc-language : la langue de <html lang> est en dc:language dans le XMP, au sein
-#      de l'unique rdf:RDF du paquet (pypdf ne lit que le premier).
+#      de l'unique rdf:RDF du paquet (pypdf ne lit que le premier) ;
+#   50-notes-doublon : une note reportée à la page suivante n'y est pas imprimée une
+#      seconde fois quand un target-counter fait repaginer ;
+#   55-notes-reportees : une note reste sur la page de son appel quand c'est un paragraphe
+#      suivant qui manque de lignes pour orphans ; c'est ce paragraphe qui part.
 # Et ce qu'ils ne doivent PAS changer : alt="" seul reste une /Figure sans /Alt, signalée —
 # l'import écrit alt="" pour toute image sans description, ce n'est pas une décision de
 # la rédaction. Le cas f ci-dessous DOIT donc échouer en 7.3 : s'il passait, le contrôle
@@ -55,9 +59,21 @@ ENTETE = ('<!doctype html><html lang="de"><head><meta charset="utf-8"><title>T</
           '</head><body>')
 PIED = '</body></html>'
 
-ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP = (
+ENTETES, DECOR, CESURE, ESPACE, MARGES, XMP, DOUBLON, REPORTEE = (
     '10-tableaux-entetes.patch', '15-images-decoratives.patch', '20-cesure-trait.patch',
-    '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch')
+    '25-espace-fin-de-ligne.patch', '30-marges-artefact.patch', '40-xmp-dc-language.patch',
+    '50-notes-doublon.patch', '55-notes-reportees.patch')
+
+# Pages de 100 × 80 mm à 12 lignes de 5 mm ; un renvoi target-counter vers la dernière
+# page fait repaginer.
+NOTES = ('<style>@page{size:100mm 80mm;margin:10mm;@footnote{margin-top:1mm}}'
+         ' body{font:4mm/5mm sans-serif;margin:0;orphans:2;widows:2} p{margin:0}'
+         ' .note{float:footnote} ::footnote-call{line-height:0;vertical-align:super;'
+         'font-size:70%}'
+         ' a.ref::after{content:" S. " target-counter(attr(href), page)}'
+         ' .saut{break-before:page}</style>')
+FIN = ('<p class="saut">d1 <a class="ref" href="#fin">Verweis</a></p>'
+       '<p class="saut" id="fin">Ende</p>')
 
 # nom : (patch, corps HTML, clauses veraPDF en échec attendues)
 CAS = {
@@ -121,6 +137,20 @@ CAS = {
                  '</div><p>Texte courant.</p>', set()),
     # Langue du document (ENTETE : lang="de") dans le XMP.
     'l-xmp-langue': (XMP, '<p>Ein Satz.</p>', set()),
+    # Appel sur la dernière ligne de la p. 1 : la note n'y tient pas, elle passe en p. 2,
+    # qui est « à jour » à la repagination ; sans le patch, la p. 3 refaite la reprend.
+    'm-doublon': (DOUBLON,
+                  NOTES + '<p style="orphans:1;widows:1">a1 <a class="ref" href="#fin">'
+                  'Verweis</a><br>a2<br>a3<br>a4<br>a5<br>a6<br>a7<br>a8<br>a9<br>a10<br>'
+                  'a11 Aufruf<span class="note">Fussnote eins, Zeile 1<br>Zeile 2</span>'
+                  '</p><p>b1</p>' + FIN, set()),
+    # Le paragraphe « c » n'a qu'une ligne en bas de la p. 1 (orphans: 2) : sans le patch,
+    # la note du paragraphe « a » est chassée en p. 2 pour y loger c2.
+    'n-reportee': (REPORTEE,
+                   NOTES + '<p>a1 <a class="ref" href="#fin">Verweis</a> Aufruf<span '
+                   'class="note">Fussnote eins, Zeile 1<br>Zeile 2</span><br>a2<br>a3</p>'
+                   '<p>b1<br>b2<br>b3<br>b4<br>b5</p><p>c1<br>c2<br>c3<br>c4<br>c5</p>'
+                   + FIN, set()),
 }
 
 
@@ -369,8 +399,30 @@ def _verifier_xmp(pdfs, erreurs):
         erreurs.append(f'l-xmp-langue : dc:language {langues}, attendu [\'de\']')
 
 
+def _pages_de(pdf, texte):
+    """Numéros des pages dont le texte contient `texte`."""
+    return [n for n, p in enumerate(PdfReader(pdf).pages, 1) if texte in p.extract_text()]
+
+
+def _verifier_doublon(pdfs, erreurs):
+    notes = _pages_de(pdfs['m-doublon'], 'Fussnote eins')
+    if notes != [2]:
+        erreurs.append(f'm-doublon : note en p. {notes}, attendu [2] (reportée une fois)')
+
+
+def _verifier_reportee(pdfs, erreurs):
+    appel = _pages_de(pdfs['n-reportee'], 'Aufruf')
+    notes = _pages_de(pdfs['n-reportee'], 'Fussnote eins')
+    if appel != [1] or notes != [1]:
+        erreurs.append(f'n-reportee : appel en p. {appel}, note en p. {notes}, attendu [1] '
+                       'et [1]')
+    if _pages_de(pdfs['n-reportee'], 'c1') != [2]:
+        erreurs.append('n-reportee : le paragraphe « c » n\'est pas parti entier en p. 2')
+
+
 VERIFS = {ENTETES: _verifier_entetes, DECOR: _verifier_decor, CESURE: _verifier_cesure,
-          ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp}
+          ESPACE: _verifier_espace, MARGES: _verifier_marges, XMP: _verifier_xmp,
+          DOUBLON: _verifier_doublon, REPORTEE: _verifier_reportee}
 
 
 def main():
