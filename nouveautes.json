@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.6": {
+    "fr": {
+      "titre": "Les propositions des moissonneurs, et des listes bien numérotées",
+      "points": [
+        "Sous Actualité, la nouvelle entrée « Propositions » réunira ce que les moissonneurs trouvent : vous l’acceptez dans le numéro, la gardez au réservoir ou la refusez, en un clic.",
+        "Une liste numérotée qui reprend plus loin, à 7 par exemple, imprime désormais son vrai numéro.",
+        "« Tirer dans ce numéro » et « Traduire dans ce numéro » enregistrent d’abord votre saisie au lieu de la perdre.",
+        "Couvertures et pages intérieures des livres suivent au millimètre les livres imprimés de l’Edition SZH."
+      ]
+    },
+    "de": {
+      "titre": "Treffer der Suchroboter und richtig nummerierte Listen",
+      "points": [
+        "Unter News sammelt der neue Eintrag «Treffer», was die Suchroboter finden: Sie übernehmen einen Treffer in die Ausgabe, behalten ihn in der Reserve oder lehnen ihn ab, mit einem Klick.",
+        "Eine nummerierte Liste, die später weitergeht, zum Beispiel bei 7, druckt jetzt ihre richtige Nummer.",
+        "Die Schaltflächen «In diese Ausgabe übernehmen» speichern zuerst Ihre Eingabe, statt sie zu verlieren.",
+        "Umschläge und Innenseiten der Bücher folgen millimetergenau den gedruckten Büchern der Edition SZH."
+      ]
+    }
+  },
   "3.5": {
     "fr": {
       "titre": "Des livres à la maquette de l’Edition SZH",

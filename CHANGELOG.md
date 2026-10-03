@@ -11,6 +11,33 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.6.0
+
+Medium : la vue « Propositions » de la Documentation arrive, une liste numérotée qui reprend
+plus loin imprime enfin son vrai numéro (revue et livres), et couvertures et intérieurs des
+livres sont recalés au plus près des livres imprimés de l'Edition SZH.
+
+**Production.**
+- Revue et livres : une liste numérotée qui reprend à un autre rang que 1 (« 7. » après un
+  paragraphe) imprimait « 1. » ; elle imprime désormais son vrai numéro, et ses numéros à deux
+  chiffres restent alignés.
+- Documentation : « Propositions », sous Actualité, montre ce que les moissonneurs déposent
+  (interventions parlementaires, recherches) : accepter dans le numéro, garder au réservoir ou
+  refuser, en un clic ou en lot, avec Annuler. Les cas douteux se vérifient d'abord. La vue
+  reste vide tant qu'aucun moissonneur ne dépose de lot.
+- Documentation : « Tirer dans ce numéro » et « Traduire dans ce numéro » enregistrent d'abord
+  une fiche modifiée au lieu de perdre la saisie.
+- Couvertures : logo, titres, petites capitales et dos recalés à 0,5 mm près des couvertures
+  InDesign ; une illustration JPEG CMJN sort en sRGB par son profil dans le PDF écran et les
+  PNG (elle y passait telle quelle) ; justification de la 4e rapprochée de la référence.
+- Livres normaux : marge d'un titre ou d'une figure supprimée en tête de page, retour à la
+  grille après une citation, césure 5 2 3, crédit de légende sur sa ligne, indices et exposants
+  sans écart d'interligne, impressum calé en bas de page, clé
+  `impressum.logo-soutien-hauteur-mm`.
+
+**Interne.**
+- `docs/FORMAT-PROPOSITIONS.md` : le contrat commun des moissonneurs ; `lib/propositions.js`.
+
 ## 3.5.0
 
 Medium : l'intérieur des livres normaux reprend la grille mesurée des livres de l'Edition SZH
