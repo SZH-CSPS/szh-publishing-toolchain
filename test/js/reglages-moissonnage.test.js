@@ -14,14 +14,16 @@ const CRANS = SEUILS.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: 81 - i * 
   rappel_sur: 79, identique_au_cran_precedent: i > 0 && SEUILS[i - 1] === s }));
 const TEXTES = {
   titre: 'Moissonnage', astuce: 'Astuce.', passe: 'Dernière passe le {0}.', passeInconnue: 'Inconnue.',
-  finesse: 'Finesse – {0}, {1}', regle: 'Réglé par {0} le {1}.', regleAucun: 'Pas réglé.',
+  finesse: 'Finesse – {0}, {1}', regle: 'Réglé par {0} le {1}.', regleAucun: 'Pas réglé : cran {0}.',
   lecture: 'Cran {0} : environ {1} par mois, retrouve {2} des {3}', lectureSans: 'Cran {0} : environ {1} par mois',
   identique: ' (identique au cran {0})', valeur: '{0} sur 10, environ {1} par mois', crans: 'Les dix crans – {0}',
   cransAide: 'Du {0} au {1}, calculés le {2}.', cransCommun: 'Déciles communs.', colCran: 'Cran', colSeuil: 'Note dès',
   colMois: 'Par mois', colRappel: 'Rappel (sur {0})', colActif: 'Réglage actif', egal: '= cran {0}', actif: 'réglage actif',
   optimiste: 'Optimiste.', categories: 'Catégories', categoriesAide: 'Aide.', sansCrans: 'Pas de crans.',
-  large: 'Large', strict: 'Strict', revues: { fr: 'Revue (fr)', de: 'Zeitschrift (de)' },
-  jetons: { titre: 'terme dans le titre', 'signal-faible': 'signal faible' }
+  large: 'Large', tresLarge: 'Très large', parDefaut: '{0} (par défaut)', strict: 'Strict',
+  plusLarge: 'Plus large que le normal (cran {0}).', normal: 'Normal (cran {0}).', revues: { fr: 'Revue (fr)', de: 'Zeitschrift (de)' },
+  jetons: { titre: 'terme dans le titre', 'signal-faible': 'signal faible', 'texte-large': 'vivier élargi' },
+  categorieAutre: 'autre catégorie'
 };
 function moissonnage() {
   return {
@@ -36,7 +38,7 @@ function moissonnage() {
           fr: { crans: CRANS, source: 'langue', reglages: { intervention: { cran: 6, par: 'Claire Exemple', le: '2026-10-01' } } },
           de: { crans: CRANS, source: 'commun', reglages: {} }
         },
-        calculeLe: '2026-10-01', fenetre: { du: '2026-04-01', au: '2026-09-30' }, categories: ['titre', 'signal-faible'] }
+        calculeLe: '2026-10-01', fenetre: { du: '2026-04-01', au: '2026-09-30' }, categories: ['titre', 'signal-faible', 'texte-large', 'jeton-mystere'] }
     ]
   };
 }
@@ -73,7 +75,7 @@ test('réglages : un curseur par revue, avec « réglé par… le… » ; il éc
   assert.ok(fr && de, 'un curseur par revue');
   assert.strictEqual(fr.querySelector('.accueil-tache-nom').textContent, 'Finesse – Revue (fr), Interventions parlementaires');
   assert.strictEqual(fr.querySelector('.accueil-tache-aide').textContent, 'Réglé par Claire Exemple le 01.10.2026.');
-  assert.strictEqual(de.querySelector('.accueil-tache-aide').textContent, 'Pas réglé.');
+  assert.strictEqual(de.querySelector('.accueil-tache-aide').textContent, 'Pas réglé : cran 1.');
   const c = fr.querySelector('.accueil-finesse-curseur');
   assert.deepStrictEqual([c.type, c.min, c.max, c.value], ['range', '1', '10', '6']);
   assert.strictEqual(c.getAttribute('aria-valuetext'), '6 sur 10, environ 41 par mois');
@@ -99,7 +101,7 @@ test('réglages : la table des dix crans de chaque langue — note dès, par moi
   assert.deepStrictEqual(cellules(lignes[4]), ['= cran 4', '49', '49', '']);
   assert.deepStrictEqual(cellules(lignes[5]), ['18', '41', '43', '◀ réglage actif']);
   assert.deepStrictEqual(cellules(lignes[9]), ['78', '9', '–', '']);
-  assert.strictEqual(lignes[0].querySelector('th').textContent, '1 · Large');
+  assert.strictEqual(lignes[0].querySelector('th').textContent, '1 · Large (par défaut)');
   assert.strictEqual(lignes[9].querySelector('th').textContent, '10 · Strict');
   assert.ok(lignes[5].classList.contains('accueil-finesse-actif'));
   const t = r.querySelector('thead').querySelectorAll('th').map((x) => x.textContent);
@@ -107,6 +109,58 @@ test('réglages : la table des dix crans de chaque langue — note dès, par moi
   assert.strictEqual(r.querySelector('.accueil-tache-aide').textContent, 'Du 01.04.2026 au 30.09.2026, calculés le 01.10.2026.');
   // Sans réglage, le cran 1 est l'actif.
   assert.strictEqual(cellules(rangeeCrans(p, 'parlement:de').querySelector('tbody').querySelectorAll('tr')[0])[3], '◀ réglage actif');
+});
+
+// ---- Le cran par défaut du moissonneur (cran_defaut) ----------------------------------------
+
+function ouvrirAvecDefaut(cranDefaut) {
+  const m = moissonnage();
+  if (cranDefaut !== undefined) { m.moissonneurs[1].cranDefaut = cranDefaut; }
+  const p = ouvrirReglages();
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false }, moissonnage: m });
+  return p;
+}
+
+test('réglages : les bouts du curseur sont « Très large » et « Strict »', () => {
+  const p = ouvrir();
+  const bouts = rangeeFinesse(p, 'parlement:fr:intervention').querySelectorAll('.accueil-finesse-bout').map((b) => b.textContent);
+  assert.deepStrictEqual(bouts, ['Très large', 'Strict']);
+});
+
+test('réglages : cran par défaut 2 — curseur sur 2 sans réglage, ligne active au cran 2, en-têtes nommés', () => {
+  const p = ouvrirAvecDefaut(2);
+  const de = rangeeFinesse(p, 'parlement:de:intervention');
+  assert.strictEqual(de.querySelector('.accueil-finesse-curseur').value, '2');
+  assert.strictEqual(de.querySelector('.accueil-tache-aide').textContent, 'Pas réglé : cran 2.');
+  assert.strictEqual(de.querySelector('.accueil-finesse-lecture').textContent,
+    'Cran 2 : environ 73 par mois, retrouve 67 des 79. Normal (cran 2).');
+  // Le réglage partagé garde la main : fr reste au cran 6, sans ligne de cran par défaut.
+  const fr = rangeeFinesse(p, 'parlement:fr:intervention');
+  assert.strictEqual(fr.querySelector('.accueil-finesse-curseur').value, '6');
+  assert.strictEqual(fr.querySelector('.accueil-finesse-lecture').textContent, 'Cran 6 : environ 41 par mois, retrouve 43 des 79');
+  // Au cran 1, sous le cran par défaut : la ligne « plus large ».
+  const c = de.querySelector('.accueil-finesse-curseur');
+  c.value = '1';
+  c.dispatchEvent({ type: 'input' });
+  assert.strictEqual(de.querySelector('.accueil-finesse-lecture').textContent,
+    'Cran 1 : environ 81 par mois, retrouve 73 des 79. Plus large que le normal (cran 2).');
+  const lignes = rangeeCrans(p, 'parlement:de').querySelector('tbody').querySelectorAll('tr');
+  const th = lignes.map((l) => l.querySelector('th').textContent);
+  assert.deepStrictEqual([th[0], th[1], th[2], th[9]], ['1 · Très large', '2 · Large (par défaut)', '3', '10 · Strict']);
+  assert.ok(lignes[1].classList.contains('accueil-finesse-actif'));
+  assert.strictEqual(lignes[1].querySelectorAll('td')[3].textContent, '◀ réglage actif');
+  assert.strictEqual(lignes[0].querySelectorAll('td')[3].textContent, '');
+});
+
+test('réglages : sans cran par défaut, le cran 1 est « Large (par défaut) », le curseur sur 1', () => {
+  const p = ouvrirAvecDefaut(undefined);
+  const de = rangeeFinesse(p, 'parlement:de:intervention');
+  assert.strictEqual(de.querySelector('.accueil-finesse-curseur').value, '1');
+  assert.strictEqual(de.querySelector('.accueil-finesse-lecture').textContent,
+    'Cran 1 : environ 81 par mois, retrouve 73 des 79. Normal (cran 1).');
+  const th = rangeeCrans(p, 'parlement:de').querySelector('tbody').querySelectorAll('tr').map((l) => l.querySelector('th').textContent);
+  assert.deepStrictEqual([th[0], th[1], th[9]], ['1 · Large (par défaut)', '2', '10 · Strict']);
 });
 
 // Une langue sans fiches de référence (rappel_sur = 0) n'a pas de rappel mesuré : jamais « 0 des 0 ».
@@ -128,7 +182,7 @@ test('réglages : crans_source dit quand une langue prend les déciles communs ;
   assert.strictEqual(rangeeCrans(p, 'parlement:fr').querySelector('.accueil-moiss-commun'), null);
   assert.strictEqual(rangeeCrans(p, 'parlement:de').querySelector('.accueil-moiss-commun').textContent, 'Déciles communs.');
   const ol = p.un('.accueil-moiss-categories');
-  assert.deepStrictEqual(ol.querySelectorAll('li').map((li) => li.textContent), ['terme dans le titre', 'signal faible']);
+  assert.deepStrictEqual(ol.querySelectorAll('li').map((li) => li.textContent), ['terme dans le titre', 'signal faible', 'vivier élargi', 'autre catégorie']);
 });
 
 // ---- Les demandes sur le lexique ------------------------------------------------------------

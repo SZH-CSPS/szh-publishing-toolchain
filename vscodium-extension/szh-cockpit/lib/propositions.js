@@ -208,7 +208,7 @@ function empreinteMoissons(racineArbreVal) {
 const cacheComptes = new Map();
 
 // compterPropositions(racine, langue) -> { total, aVerifier } : les propositions en attente
-// dans cette langue, visibles au réglage partagé, dont les cas B.
+// dans cette langue, visibles au réglage partagé (sinon au cran par défaut), dont les cas B.
 function compterPropositions(racineArbreVal, langue) {
   const c = compterVisibles(racineArbreVal, langue);
   return { total: c.total, aVerifier: c.aVerifier };
@@ -217,7 +217,7 @@ function compterPropositions(racineArbreVal, langue) {
 // compterVisibles(racine, langue, apercu?) -> { total, aVerifier, masquees } : les
 // propositions en attente et visibles dans cette langue, dont les cas B, et celles que la
 // finesse masque. `apercu` ({ type: cran }) est le cran que le poste regarde ; sans lui, le
-// réglage partagé. Rien n'est relu tant que l'empreinte, l'aperçu et le contrat n'ont pas changé.
+// réglage partagé, sinon le cran par défaut. Rien n'est relu tant que l'empreinte, l'aperçu et le contrat n'ont pas changé.
 function compterVisibles(racineArbreVal, langue, apercu) {
   const cle = racineArbreVal + '|' + langue + '|' + JSON.stringify(apercu || {});
   const empreinte = empreinteMoissons(racineArbreVal);
@@ -753,20 +753,32 @@ function retablirReglage(racineArbreVal, langue, moissonneur, type, ancien) {
   return { ok: true };
 }
 
-// finessePourVue(racine, langue, etats, apercu?) -> { crans, reglages, cranVu(p), visible(p) }.
-// Le cran regardé : l'aperçu du poste pour ce type, sinon le réglage partagé, sinon 1.
+// cranDefautDe(etat) -> 1..10 : le cran du moissonneur faute de réglage partagé (cran_defaut),
+// 1 s'il manque ou est invalide.
+function cranDefautDe(etat) {
+  const c = etat && typeof etat === 'object' ? etat.cran_defaut : undefined;
+  return cranValide(c) ? c : 1;
+}
+
+// finessePourVue(racine, langue, etats, apercu?) -> { crans, reglages, defauts, cranVu(p), visible(p) }.
+// Le cran regardé : l'aperçu du poste pour ce type, sinon le réglage partagé, sinon le cran par
+// défaut du moissonneur.
 function finessePourVue(racineArbreVal, langue, etats, apercu) {
   const crans = {};
-  for (const m of Object.keys(etats || {})) { crans[m] = cransDe(etats[m], langue); }
+  const defauts = {};
+  for (const m of Object.keys(etats || {})) {
+    crans[m] = cransDe(etats[m], langue);
+    defauts[m] = cranDefautDe(etats[m]);
+  }
   const reglages = lireReglages(racineArbreVal, langue);
   const ap = apercu && typeof apercu === 'object' ? apercu : {};
   const cranVu = (p) => {
     if (cranValide(ap[p.type])) { return ap[p.type]; }
     const r = (reglages[moissonneurDe(p)] || {})[p.type];
-    return r ? r.cran : 1;
+    return r ? r.cran : (defauts[moissonneurDe(p)] || 1);
   };
   return {
-    crans: crans, reglages: reglages, cranVu: cranVu,
+    crans: crans, reglages: reglages, defauts: defauts, cranVu: cranVu,
     visible: (p) => cranMax(p, crans[moissonneurDe(p)] || null) >= cranVu(p)
   };
 }
@@ -1106,7 +1118,7 @@ module.exports = {
   comptesTermes, filtrerSurTerme, validerTerme, listerDemandes, ecrireDemande, confirmerDemande,
   retirerDemande, retablirDemande, SENS_DEMANDE, STATUTS_DEMANDE, LANGUES_TERME, REGLE_TERME,
   FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS, NB_CRANS,
-  cransDe, cranMax, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
+  cransDe, cranMax, cranDefautDe, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
   finessePourVue, comptesCrans, compterVisibles, resumeMoissonneurs, lireAuteurDemande,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,
   listerPropositions, listerRefusees, classer, bloquants, ordonner, compterPropositions,

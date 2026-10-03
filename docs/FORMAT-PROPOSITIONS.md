@@ -241,18 +241,19 @@ ne lit que ceux-ci, et ceux de la finesse du tri, plus bas.
 
 ## La finesse du tri : champs facultatifs
 
-La rédaction règle la finesse du tri par un curseur à dix crans, de « Large » (cran 1, tout est
-visible) à « Strict » (cran 10). Tous les champs de cette section sont facultatifs, et le format
-reste `pronto-proposition/1`. Un moissonneur qui ne les remplit pas reste conforme : la vue
-cache alors le curseur, la vue Termes et le « Pourquoi » détaillé pour ses types, et tout ce
-qu’il propose est visible.
+La rédaction règle la finesse du tri par un curseur à dix crans, de « Très large » (cran 1, tout
+est visible) à « Strict » (cran 10). Le cran par défaut du moissonneur (`cran_defaut`) se nomme
+« Large ». Tous les champs de cette section sont facultatifs, et le format reste
+`pronto-proposition/1`. Un moissonneur qui ne les remplit pas reste conforme : la vue cache alors
+le curseur, la vue Termes et le « Pourquoi » détaillé pour ses types, et tout ce qu’il propose est
+visible.
 
 ### Dans une proposition, sous `pertinence`
 
 | Champ | Contenu |
 |---|---|
 | `score` | nombre de 0 à 100, propre au moissonneur ; par bandes chez le parlement (une catégorie = une plage) |
-| `categorie` | jeton de l’explication, documenté par le moissonneur (parlement : `titre`, `texte-dense`, `signal-faible`, `ecole`, `theme`) |
+| `categorie` | jeton de l’explication, documenté par le moissonneur (parlement : `titre`, `texte-dense`, `signal-faible`, `ecole`, `theme`, `texte-large`) |
 | `termes` | liste complète, sans plafond, de `{ terme, langue: fr\|de\|it, role: ancrage\|ambigu\|ecole\|theme, ou: titre\|texte\|extrait, note_sans }` ; un terme une seule fois, à son emplacement le plus fort |
 
 `note_sans` est le score qu’aurait la proposition sans ce terme, tous les autres en place. Le
@@ -267,9 +268,10 @@ Sans `score`, ou sans crans pour sa langue, elle est visible à tous les crans.
 
 | Champ | Contenu |
 |---|---|
-| `crans` | `{ fr: [...], de: [...] }`, 10 entrées par langue : `{ cran: 1..10, seuil, par_mois, rappel, rappel_sur, identique_au_cran_precedent }` ; le cran 1 a le seuil 0 (Large), le cran 10 est Strict |
+| `crans` | `{ fr: [...], de: [...] }`, 10 entrées par langue : `{ cran: 1..10, seuil, par_mois, rappel, rappel_sur, identique_au_cran_precedent }` ; le cran 1 a le seuil 0 (Très large), le cran 10 est Strict |
+| `cran_defaut` | facultatif, entier de 1 à 10 : le cran que la vue regarde tant que la rédaction n’a pas de réglage partagé pour le type. Absent ou invalide (pas un entier, ou hors de 1 à 10), il vaut 1 |
 | `crans_calcules_le` | date AAAA-MM-JJ, recalcul trimestriel |
-| `note_calibree` | facultatif, `true` quand la note a été calibrée sur des jugements humains ; sinon la vue dit que le curseur coupe surtout par volume |
+| `note_calibree` | facultatif, `true` quand la note a été calibrée sur des jugements humains ; sinon la vue dit que le curseur coupe surtout par volume |
 | `crans_source` | `{ fr: "langue" \| "commun", de: … }` : une langue qui a moins de 200 propositions sur 12 mois, ou plus de 3 crans identiques, prend les déciles communs, et le champ le dit |
 | `crans_fenetre` | `{ du, au }`, la fenêtre du `par_mois` |
 | `termes` | `[{ terme, langue, role, ref, ref_seul }]`, avec `rappel_sur` à côté |
@@ -284,6 +286,14 @@ Sans `score`, ou sans crans pour sa langue, elle est visible à tous les crans.
   dans les déciles fr.
 - Le cockpit ignore une langue dont la liste n’a pas exactement 10 crans numérotés de 1 à 10 avec
   un `seuil` numérique.
+- `cran_defaut` permet d’ouvrir sous le réglage normal un vivier plus large, que la rédaction ne
+  voit qu’en descendant le curseur. Chez le parlement, ce vivier élargi porte
+  `pertinence.categorie: "texte-large"` et une bande de note à lui (0 à 4,99, sous la bande
+  `theme`), et `cran_defaut` vaut 2 : le cran 1 « Très large » ajoute ces propositions plus
+  incertaines, le cran 2 « Large » est le réglage normal. Aucun autre drapeau.
+- Le réglage effectif d’un type est le réglage partagé, sinon `cran_defaut`. Un aperçu du poste
+  égal au réglage effectif s’efface, et « Garder ce cran pour la rédaction » n’apparait que s’il
+  en diffère.
 
 Statuts d’une demande :
 - `en-attente` ;
@@ -307,13 +317,13 @@ _Moissons\
         └── <id>.json               une demande sur le lexique
 ```
 
-- `_Reglages\<langue>.json` contient `{ "<moissonneur>": { "<type>": { cran, par, le } } }`.
-  C’est le réglage partagé de la rédaction de cette langue : `cran` de 1 à 10, `par` le nom
-  d’affichage du poste qui l’a posé (celui que la co-édition montre, « – » à défaut), `le` la
-  date AAAA-MM-JJ. Le cockpit l’écrit d’un coup (nom temporaire, puis renommage). Un fichier
-  illisible vaut « pas de réglage » : cran 1, tout est visible. Dans la vue Propositions, le
-  curseur n’est qu’un aperçu propre au poste, gardé dans l’éditeur et jamais partagé ; « Garder
-  ce cran pour la rédaction » l’écrit ici, comme les Paramètres de l’Accueil.
+- `_Reglages\<langue>.json` contient `{ "<moissonneur>": { "<type>": { cran, par, le } } }`. C’est
+  le réglage partagé de la rédaction de cette langue : `cran` de 1 à 10, `par` le nom d’affichage
+  du poste qui l’a posé (celui que la co-édition montre, « – » à défaut), `le` la date AAAA-MM-JJ.
+  Le cockpit l’écrit d’un coup (nom temporaire, puis renommage). Un fichier illisible vaut « pas
+  de réglage » : le cran par défaut du moissonneur (`cran_defaut`, 1 à défaut). Dans la vue
+  Propositions, le curseur n’est qu’un aperçu propre au poste, gardé dans l’éditeur et jamais
+  partagé ; « Garder ce cran pour la rédaction » l’écrit ici, comme les Paramètres de l’Accueil.
 - `<moissonneur>\demandes\<id>.json` contient, pour une demande, `{ id, terme, langue, sens:
   ajout|exclusion|retrait, par, le, confirme_par?, confirme_le? }`. Il y a un fichier par
   demande, comme pour les décisions, pour que deux postes n’écrivent jamais le même fichier. Le
@@ -329,7 +339,7 @@ de la demande.
   le cockpit prend le `rappel_sur` du premier cran. Un terme absent de `etat.termes` a « – » pour
   réf. et réf. seul.
 - **« Seul à ramener »** se compte au cran que la vue regarde pour le type de la proposition :
-  l’aperçu du poste, sinon le réglage partagé de son moissonneur. Une proposition y compte si elle
+  l’aperçu du poste, sinon le réglage partagé de son moissonneur, sinon son `cran_defaut`. Une proposition y compte si elle
   est visible et ne le serait plus avec `note_sans` pour score. Sans `note_sans`, seule une
   proposition à un seul terme compte, et la vue marque le nombre d’un « ≈ ».
 - **Plusieurs moissonneurs sur un même type** : chaque proposition se juge sur les crans de son

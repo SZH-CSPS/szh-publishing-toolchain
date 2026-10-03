@@ -22,7 +22,8 @@
 //     …?onglet=propositions&etat=liste|selection|detail-b|detail-b-applique|echec|detail-recherche|doublon|colonnes|annuler|largeur|recherche|vide
 //     &theme=clair|sombre : les couleurs d’un thème de l’éditeur, sinon les replis de _design.css
 //     SZH_APERCU_CRANS=1 : la finesse du tri (crans, notes, réglage de la rédaction au cran 6), avec
-//     &etat=finesse-garder|finesse-garde|finesse-masquees|finesse-aide|finesse-identique|finesse-pourquoi|finesse-colonne
+//     &etat=finesse-garder|finesse-garde|finesse-masquees|finesse-aide|finesse-large|finesse-pourquoi-large|finesse-identique|finesse-pourquoi|finesse-colonne
+//     SZH_APERCU_CRAN_DEFAUT=2 : avec SZH_APERCU_CRANS, cran_defaut à 2 et pas de réglage de la rédaction
 //     SZH_APERCU_MULTI=1 : les affaires fédérales en propositions multilingues (marque « fr · de », titres officiels)
 //     SZH_APERCU_SANS_TERMES=1 : avec SZH_APERCU_CRANS, les notes sans les termes (ni vue Termes, ni demandes)
 //     SZH_APERCU_REEL=<dossier> : un lot du parlement (lot et etat.json) à la place du lot synthétique, hors dépôt
@@ -336,6 +337,8 @@ function cransDemo() {
     identique_au_cran_precedent: i > 0 && SEUILS_DEMO[i - 1] === s }));
 }
 const SANS_TERMES = !!process.env.SZH_APERCU_SANS_TERMES;
+// Avec SZH_APERCU_CRANS, un cran par défaut (cran_defaut) et pas de réglage de la rédaction.
+const CRAN_DEFAUT = Number(process.env.SZH_APERCU_CRAN_DEFAUT || 0);
 // Le vocabulaire du moissonneur parlementaire, synthétique : un terme, sa langue, son rôle, et ses
 // fiches de référence (ref, ref_seul) ; le dernier n'en a pas, pour montrer « – ».
 function vocabulaireDemo(l) {
@@ -384,7 +387,9 @@ function noterInterventions(interventions, l, inter, t) {
     }
     return res;
   };
-  const categorie = (s) => (s >= 56 ? 'titre' : s >= 29 ? 'texte-dense' : s >= 12 ? 'signal-faible' : s >= 5 ? 'ecole' : 'theme');
+  // Avec un cran par défaut, la bande sous 5 est le vivier élargi (texte-large), comme chez le parlement.
+  const categorie = (s) => (s >= 56 ? 'titre' : s >= 29 ? 'texte-dense' : s >= 12 ? 'signal-faible' : s >= 5 ? 'ecole'
+    : CRAN_DEFAUT && s < 5 ? 'texte-large' : 'theme');
   interventions.forEach((x, i) => {
     // Les dix premières, sujets du handicap, notées haut ; les objets d'école, bas.
     const score = i < 10 ? [62, 88, 79, 41, 33, 91, 58, 30, 47, 66][i] : [2, 3, 7, 8, 11, 12, 14, 19, 22, 26][i % 10] + (i % 3);
@@ -449,12 +454,12 @@ function donneesPropositionsDemo(l) {
       format: 'pronto-etat/1', moissonneur: 'parlement', derniere_moisson: '2026-10-01T05:12:00Z',
       crans: { fr: cransDemo(), de: cransDemo() }, crans_calcules_le: '2026-10-01',
       crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
-      rappel_sur: 79,
+      rappel_sur: 79, cran_defaut: CRAN_DEFAUT || undefined,
       termes: SANS_TERMES ? undefined : vocabulaireDemo(l).filter((v) => v.ref !== null)
         .map((v) => ({ terme: v.terme, langue: v.langue, role: v.role, ref: v.ref, ref_seul: v.ref_seul })) }));
     if (!SANS_TERMES) { demandesDemo(racine, l); }
     fs.mkdirSync(path.join(pr.cheminMoissons(racine), '_Reglages'), { recursive: true });
-    fs.writeFileSync(pr.cheminReglages(racine, l), JSON.stringify({ parlement: { intervention: {
+    fs.writeFileSync(pr.cheminReglages(racine, l), JSON.stringify(CRAN_DEFAUT ? {} : { parlement: { intervention: {
       cran: 6, par: l === 'de' ? 'Jonas Beispiel' : 'Claire Exemple', le: '2026-10-01' } } }));
   }
   const etats = {
@@ -488,7 +493,7 @@ function donneesPropositionsDemo(l) {
     const e = lu.etats[m] || {};
     finesse[x.type] = { moissonneurs: [m], crans: vue.crans[m], source: String((e.crans_source || {})[l] || ''),
       calculeLe: String(e.crans_calcules_le || ''), fenetre: e.crans_fenetre || null,
-      reglage: (vue.reglages[m] || {})[x.type] || null, apercu: null };
+      reglage: (vue.reglages[m] || {})[x.type] || null, cranDefaut: vue.defauts[m] || 1, apercu: null };
   }
   // Les termes et les demandes, comme documentation-hote.js#termesEtDemandes ; les filtres d'avance,
   // pour que le faux hôte réponde à propFiltreTerme sans la règle.
@@ -650,7 +655,7 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '  var GARDE = null;\n' +
   '  function repondreFinesse(msg) {\n' +
   '    var f = PROP.finesse[msg.typeFiche]; if (!f) { return; }\n' +
-  '    var partage = f.reglage ? f.reglage.cran : 1, geste = null;\n' +
+  '    var partage = f.reglage ? f.reglage.cran : (f.cranDefaut || 1), geste = null;\n' +
   '    if (msg.type === "propFinesseApercu") { f.apercu = msg.cran === partage ? null : msg.cran; }\n' +
   '    else if (msg.type === "propFinesseGarder") { GARDE = { reglage: f.reglage, apercu: f.apercu }; f.reglage = { cran: f.apercu, par: "Poste Essai", le: "2026-10-03" }; geste = { geste: "garde", typeFiche: msg.typeFiche, cran: f.apercu }; f.apercu = null; }\n' +
   '    else if (GARDE) { f.reglage = GARDE.reglage; f.apercu = GARDE.apercu; GARDE = null; geste = { geste: "annule", typeFiche: msg.typeFiche }; }\n' +
@@ -758,6 +763,8 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    if (etat === "finesse-garde") { panel.querySelector(".prop-finesse-garder").click(); }\n' +
   '    if (etat === "finesse-masquees") { panel.querySelector(".prop-finesse-voir").click(); }\n' +
   '    if (etat === "finesse-aide") { panel.querySelector(".prop-finesse-aide").click(); }\n' +
+  '    if (etat === "finesse-large") { curseur(1); panel.querySelector(".prop-finesse-aide").click(); }\n' +
+  '    if (etat === "finesse-pourquoi-large") { curseur(1); var pl = PROP.propositions.filter(function (x) { return x.pertinence && x.pertinence.categorie === "texte-large"; })[0]; if (pl) { ligne(pl.cle).querySelector(".prop-titre").click(); } }\n' +
   '    if (etat === "finesse-identique") { curseur(5); panel.querySelector(".prop-finesse-aide").click(); }\n' +
   '    if (etat === "finesse-pourquoi") { ligne("26.4021").querySelector(".prop-titre").click(); }\n' +
   '    if (etat === "finesse-colonne") { panel.querySelector(".prop-bouton-colonnes").click(); Array.prototype.filter.call(document.querySelectorAll(".prop-menu-colonnes button"), function (b) { return b.dataset.col === "cran"; })[0].click(); }\n' +

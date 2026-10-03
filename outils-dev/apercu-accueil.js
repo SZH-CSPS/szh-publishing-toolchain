@@ -202,7 +202,8 @@ function chargerHote() {
 }
 // Une racine active jetable : vide, ou avec deux moissonneurs synthétiques (`moissons`), l'un
 // avec ses crans et un réglage par revue, l'autre sans crans. `avec` vaut 'demandes' pour ajouter
-// des demandes sur le lexique de chaque statut, avec la réponse du moissonneur.
+// des demandes sur le lexique de chaque statut, avec la réponse du moissonneur ; 'defaut' pour un
+// cran par défaut à 2 (cran_defaut) et la Zeitschrift sans réglage.
 function racineMoissons(avec, langue) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-moissons-'));
   process.on('exit', () => { try { fs.rmSync(racine, { recursive: true, force: true }); } catch (e) { /* débris */ } });
@@ -215,7 +216,8 @@ function racineMoissons(avec, langue) {
     identique_au_cran_precedent: i > 0 && seuils[i - 1] === s }));
   ecrire('parlement', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'parlement',
     derniere_moisson: '2026-10-01T05:12:00Z', crans: { fr: crans, de: crans }, crans_calcules_le: '2026-10-01',
-    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
+    cran_defaut: avec === 'defaut' ? 2 : undefined }));
   const ligne = (id, categorie) => JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:exemple:' + id,
     moissonneur: 'parlement', type: 'intervention', langue: 'fr', valeurs: { title: 'Objet ' + id },
     pertinence: { score: 20, categorie: categorie } });
@@ -223,7 +225,8 @@ function racineMoissons(avec, langue) {
     .map((c, i) => ligne(String(i), c)).join('\n') + '\n');
   ecrire('isbn', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'isbn', derniere_moisson: '2026-09-30T06:05:00Z' }));
   ecrire('_Reglages', 'fr.json', JSON.stringify({ parlement: { intervention: { cran: 6, par: 'Claire Exemple', le: '2026-10-01' } } }));
-  ecrire('_Reglages', 'de.json', JSON.stringify({ parlement: { intervention: { cran: 5, par: 'Jonas Beispiel', le: '2026-09-24' } } }));
+  ecrire('_Reglages', 'de.json', JSON.stringify(avec === 'defaut' ? {}
+    : { parlement: { intervention: { cran: 5, par: 'Jonas Beispiel', le: '2026-09-24' } } }));
   if (avec === 'demandes') { demandesSynthetiques(base, ecrire, langue, crans); }
   return racine;
 }
@@ -386,6 +389,9 @@ function etats(langue) {
     // Les demandes sur le lexique, un exemple de chaque statut.
     'R5-demandes-fr': { valeurs: { moissons: 'demandes' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
     'R5-demandes-de': { valeurs: { moissons: 'demandes' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
+    // Le cran par défaut à 2 : la Zeitschrift sans réglage, la table qui nomme « Large (par défaut) ».
+    'R6-defaut-fr': { valeurs: { moissons: 'defaut' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
+    'R6-defaut-de': { valeurs: { moissons: 'defaut' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
     'J1-ouvert': { etapes: journal },
     'J2-signaler': { etapes: signaler },
     'J3-envoye': { etapes: signaler.concat([['clic', '#jrn-signal-envoyer'],
@@ -465,7 +471,7 @@ function liste() {
   const fr = Object.keys(etats('fr')).filter((n) => !/-de$/.test(n)).map((n) => ({ nom: n, langue: 'fr' }));
   // Le Préprocessing en allemand : la Zeitschrift d'office, et une réussite.
   const preprocDe = [{ nom: 'PP1-repos', langue: 'de' }, { nom: 'PP5-alertes', langue: 'de' }];
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }, { nom: 'R5-demandes-de', langue: 'de' }], preprocDe);
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }, { nom: 'R5-demandes-de', langue: 'de' }, { nom: 'R6-defaut-de', langue: 'de' }], preprocDe);
 }
 
 function ecrire(dossier, filtres) {

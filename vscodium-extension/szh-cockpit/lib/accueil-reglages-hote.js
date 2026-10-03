@@ -111,7 +111,10 @@ function textesMoissonnage() {
     actif: T('accueil.regl.moiss.actif'), optimiste: T('accueil.regl.moiss.optimiste'),
     categories: T('accueil.regl.moiss.categories'), categoriesAide: T('accueil.regl.moiss.categoriesAide'),
     sansCrans: T('accueil.regl.moiss.sansCrans'), large: T('accueil.regl.moiss.large'),
-    strict: T('accueil.regl.moiss.strict'),
+    strict: T('accueil.regl.moiss.strict'), tresLarge: T('accueil.regl.moiss.tresLarge'),
+    parDefaut: T('accueil.regl.moiss.parDefaut'),
+    // Les lignes du cran par défaut sont celles de l'infobulle de la vue Propositions.
+    plusLarge: T('doc.prop.finesse.plusLarge'), normal: T('doc.prop.finesse.normal'),
     revues: { fr: T('accueil.regl.moiss.revue.fr'), de: T('accueil.regl.moiss.revue.de') },
     demandes: T('accueil.regl.moiss.demandes'), demandesAide: T('accueil.regl.moiss.demandesAide'),
     demandesAucune: T('accueil.regl.moiss.demandesAucune'), ouvrirTermes: T('accueil.regl.moiss.ouvrirTermes'),
@@ -145,11 +148,13 @@ function textesMoissonnage() {
     jetons: {
       titre: T('doc.prop.categorie.titre'), 'texte-dense': T('doc.prop.categorie.texte-dense'),
       'signal-faible': T('doc.prop.categorie.signal-faible'), ecole: T('doc.prop.categorie.ecole'),
-      theme: T('doc.prop.categorie.theme')
-    }
+      theme: T('doc.prop.categorie.theme'), 'texte-large': T('doc.prop.categorie.texte-large')
+    },
+    // Un jeton que le cockpit ne connait pas se nomme ainsi, jamais tel quel.
+    categorieAutre: T('doc.prop.categorie.autre')
   };
 }
-const ORDRE_CATEGORIES = ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme'];
+const ORDRE_CATEGORIES = ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme', 'texte-large'];
 
 function libelleMoissonneur(id) {
   const v = T('doc.prop.moissonneur.' + id);
@@ -185,7 +190,7 @@ function donneesMoissonnage() {
     return {
       id: m, libelle: libelleMoissonneur(m), derniere: String(e.derniere_moisson || ''),
       types: resume[m].types.filter((t) => kirby.typeConnu(t)).map((t) => ({ type: t, libelle: kirby.libelleCockpitType(t, langueUi) })),
-      langues: langues, calculeLe: String(e.crans_calcules_le || ''),
+      langues: langues, cranDefaut: propositions.cranDefautDe(e), calculeLe: String(e.crans_calcules_le || ''),
       fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
         ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
       categories: connues.concat(resume[m].categories.filter((c) => connues.indexOf(c) === -1)),

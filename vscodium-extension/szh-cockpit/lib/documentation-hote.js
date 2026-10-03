@@ -343,7 +343,8 @@ function textesDocumentation() {
     propRecreer: T('doc.prop.recreer'), propRecreerTip: T('doc.prop.recreer.tip'),
     propBRecree: T('doc.prop.b.recree'),
     // La finesse du tri.
-    propFinesse: T('doc.prop.finesse'), propFinesseLarge: T('doc.prop.finesse.large'),
+    propFinesse: T('doc.prop.finesse'), propFinesseTresLarge: T('doc.prop.finesse.tresLarge'),
+    propFinessePlusLarge: T('doc.prop.finesse.plusLarge'), propFinesseNormal: T('doc.prop.finesse.normal'),
     propFinesseStrict: T('doc.prop.finesse.strict'), propFinesseLecture: T('doc.prop.finesse.lecture'),
     propFinesseIdentique: T('doc.prop.finesse.identique'),
     propFinesseVisiblesUn: T('doc.prop.finesse.visibles.un'), propFinesseVisiblesPlus: T('doc.prop.finesse.visibles.plus'),
@@ -366,7 +367,8 @@ function textesDocumentation() {
     propOuTitre: T('doc.prop.ou.titre'), propOuTexte: T('doc.prop.ou.texte'), propOuExtrait: T('doc.prop.ou.extrait'),
     propCategorieTitre: T('doc.prop.categorie.titre'), propCategorieTexteDense: T('doc.prop.categorie.texte-dense'),
     propCategorieSignalFaible: T('doc.prop.categorie.signal-faible'), propCategorieEcole: T('doc.prop.categorie.ecole'),
-    propCategorieTheme: T('doc.prop.categorie.theme'),
+    propCategorieTheme: T('doc.prop.categorie.theme'), propCategorieTexteLarge: T('doc.prop.categorie.texte-large'),
+    propCategorieAutre: T('doc.prop.categorie.autre'),
     // Les propositions multilingues.
     propLanguesTip: T('doc.prop.langues.tip'), propTitreOfficiel: T('doc.prop.titreOfficiel'),
     propAutreGardee: T('doc.prop.b.autreGardee'),
@@ -609,7 +611,8 @@ function finesseParType(racineArbreVal, langue, lu) {
       calibree: e.note_calibree === true,
       fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
         ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
-      reglage: (vue.reglages[m] || {})[type] || null
+      reglage: (vue.reglages[m] || {})[type] || null,
+      cranDefaut: vue.defauts[m] || 1
     };
   };
   for (const type of Object.keys(res)) {
@@ -619,7 +622,7 @@ function finesseParType(racineArbreVal, langue, lu) {
     Object.assign(res[type], {
       crans: premier.crans, source: premier.source, calculeLe: premier.calculeLe, fenetre: premier.fenetre,
       calibree: premier.calibree,
-      reglage: premier.reglage,
+      reglage: premier.reglage, cranDefaut: premier.cranDefaut,
       apercu: Number.isInteger(ap[type]) ? ap[type] : null,
       parMoissonneur: parMoissonneur
     });
@@ -1073,8 +1076,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     if (msg.type === MSG.PROP_FINESSE_APERCU) {
       const cran = Number(msg.cran);
       if (!f || !Number.isInteger(cran) || cran < 1 || cran > propositions.NB_CRANS) { return null; }
-      // Un aperçu égal au réglage partagé n'est plus un aperçu : le poste suit la rédaction.
-      await poserApercuFinesse(langue, typeFiche, cran === (f.reglage ? f.reglage.cran : 1) ? null : cran);
+      // Un aperçu égal au réglage effectif (partagé, sinon cran par défaut) n'est plus un aperçu :
+      // le poste suit la rédaction.
+      await poserApercuFinesse(langue, typeFiche, cran === (f.reglage ? f.reglage.cran : f.cranDefaut) ? null : cran);
       return donneesProp();
     }
     if (msg.type === MSG.PROP_FINESSE_GARDER) {

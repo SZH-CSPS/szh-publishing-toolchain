@@ -1530,7 +1530,7 @@
           var rc = rangee(liste, X.categories, X.categoriesAide);
           rc.el.classList.add('accueil-moiss-large');
           var ol = poser(rc.el, 'ol', 'accueil-moiss-categories');
-          mo.categories.forEach(function (c) { poser(ol, 'li', '', X.jetons[c] || c); });
+          mo.categories.forEach(function (c) { poser(ol, 'li', '', X.jetons[c] || X.categorieAutre); });
         }
         if ((mo.demandes || []).length > 0 || (mo.avertissements || []).length > 0 || mo.aTermes) {
           listeDemandes(liste, mo, tx, X, m.moi);
@@ -1542,17 +1542,18 @@
     function curseurFinesse(parent, mo, langue, t, tx, X) {
       var crans = mo.langues[langue].crans;
       var reg = mo.langues[langue].reglages[t.type] || null;
+      var d = mo.cranDefaut || 1;
       var r = rangee(parent, tx('finesse', [X.revues[langue], t.libelle]),
-        reg ? tx('regle', [reg.par, dateCourte(reg.le)]) : X.regleAucun);
+        reg ? tx('regle', [reg.par, dateCourte(reg.le)]) : tx('regleAucun', [d]));
       r.el.dataset.finesse = mo.id + ':' + langue + ':' + t.type;
       var box = poser(r.reglage, 'div', 'accueil-finesse');
-      poser(box, 'span', 'accueil-finesse-bout', X.large).setAttribute('aria-hidden', 'true');
+      poser(box, 'span', 'accueil-finesse-bout', X.tresLarge).setAttribute('aria-hidden', 'true');
       var c = poser(box, 'input', 'accueil-finesse-curseur');
       c.type = 'range';
       c.min = '1';
       c.max = String(crans.length);
       c.step = '1';
-      c.value = String(reg ? reg.cran : 1);
+      c.value = String(reg ? reg.cran : d);
       c.setAttribute('aria-labelledby', r.nom.id);
       poser(box, 'span', 'accueil-finesse-bout', X.strict).setAttribute('aria-hidden', 'true');
       var out = poser(r.reglage, 'output', 'accueil-finesse-lecture');
@@ -1560,6 +1561,8 @@
         var x = crans[k - 1];
         var s = rappelMesure(x) ? tx('lecture', [k, x.par_mois, x.rappel, x.rappel_sur]) : tx('lectureSans', [k, x.par_mois]);
         if (x.identique_au_cran_precedent) { s += tx('identique', [cranRepere(crans, k)]); }
+        // Sous le cran par défaut, ou sur lui, une phrase le situe.
+        if (k <= d) { s += '. ' + tx(k < d ? 'plusLarge' : 'normal', [d]); }
         out.textContent = s;
         c.setAttribute('aria-valuetext', tx('valeur', [k, x.par_mois]));
       }
@@ -1584,14 +1587,17 @@
       var tb = poser(table, 'tbody');
       // Le réglage actif se dit en texte, pour chaque type qu'il règle.
       var actifs = {};
+      var d = mo.cranDefaut || 1;
       mo.types.forEach(function (t) {
         var reg = L.reglages[t.type];
-        var k = reg ? reg.cran : 1;
+        var k = reg ? reg.cran : d;
         (actifs[k] = actifs[k] || []).push(mo.types.length > 1 ? X.actif + ' (' + t.libelle + ')' : X.actif);
       });
       crans.forEach(function (c) {
         var l = poser(tb, 'tr', actifs[c.cran] ? 'accueil-finesse-actif' : '');
-        var th = poser(l, 'th', '', String(c.cran) + (c.cran === 1 ? ' · ' + X.large : c.cran === crans.length ? ' · ' + X.strict : ''));
+        // Le cran par défaut se nomme « Large », les deux bouts « Très large » et « Strict ».
+        var nom = c.cran === d ? tx('parDefaut', [X.large]) : c.cran === 1 ? X.tresLarge : c.cran === crans.length ? X.strict : '';
+        var th = poser(l, 'th', '', String(c.cran) + (nom ? ' · ' + nom : ''));
         th.setAttribute('scope', 'row');
         poser(l, 'td', 'accueil-finesse-num', c.identique_au_cran_precedent ? tx('egal', [cranRepere(crans, c.cran)]) : String(c.seuil));
         poser(l, 'td', 'accueil-finesse-num', String(c.par_mois));

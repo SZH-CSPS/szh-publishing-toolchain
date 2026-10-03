@@ -243,9 +243,13 @@ test('moissonnage : sans _Moissons, pas de section ; avec, chaque moissonneur, s
   const ecrire = (m, nom, contenu) => { fs.mkdirSync(path.join(moissons, m), { recursive: true }); fs.writeFileSync(path.join(moissons, m, nom), contenu); };
   ecrire('parlement', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'parlement', derniere_moisson: '2026-10-01T05:12:00Z',
     crans: { fr: crans, de: crans }, crans_source: { fr: 'langue', de: 'commun' }, crans_calcules_le: '2026-10-01',
-    crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+    crans_fenetre: { du: '2026-04-01', au: '2026-09-30' }, cran_defaut: 2 }));
   ecrire('parlement', '2026-10-01-1.jsonl', JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:x:1', moissonneur: 'parlement',
-    type: 'intervention', langue: 'fr', valeurs: { title: 'Essai' }, pertinence: { score: 20, categorie: 'signal-faible' } }) + '\n');
+    type: 'intervention', langue: 'fr', valeurs: { title: 'Essai' }, pertinence: { score: 20, categorie: 'signal-faible' } }) + '\n'
+    + JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:x:3', moissonneur: 'parlement',
+      type: 'intervention', langue: 'fr', valeurs: { title: 'Essai inconnu' }, pertinence: { score: 2, categorie: 'jeton-mystere' } }) + '\n'
+    + JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:x:2', moissonneur: 'parlement',
+      type: 'intervention', langue: 'fr', valeurs: { title: 'Essai large' }, pertinence: { score: 2, categorie: 'texte-large' } }) + '\n');
   ecrire('isbn', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'isbn', derniere_moisson: '2026-09-30T06:05:00Z' }));
   pr.ecrireReglage(base, 'fr', 'parlement', 'intervention', 6, 'Claire Exemple');
   HOTE.configuration['szh.nomUtilisateur'] = 'Poste Essai';
@@ -261,9 +265,18 @@ test('moissonnage : sans _Moissons, pas de section ; avec, chaque moissonneur, s
     assert.strictEqual(p.langues.de.source, 'commun');
     assert.strictEqual(p.langues.fr.reglages.intervention.cran, 6);
     assert.deepStrictEqual(p.langues.de.reglages, {});
-    assert.deepStrictEqual(p.categories, ['signal-faible']);
+    // texte-large, le plus large des jetons connus, vient après theme ; un jeton inconnu suit.
+    assert.deepStrictEqual(p.categories, ['signal-faible', 'texte-large', 'jeton-mystere']);
+    assert.ok(m.textes.jetons['texte-large'] && m.textes.categorieAutre);
     assert.strictEqual(m.moissonneurs[0].langues.fr.crans, null, 'un moissonneur sans crans');
     assert.ok(m.textes.titre && m.textes.jetons['signal-faible']);
+    // Le cran par défaut de chaque moissonneur : 1 s'il n'en déclare pas.
+    assert.strictEqual(p.cranDefaut, 2);
+    assert.strictEqual(m.moissonneurs[0].cranDefaut, 1);
+    const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+    assert.deepStrictEqual([m.textes.tresLarge, m.textes.large, m.textes.strict], [T('accueil.regl.moiss.tresLarge'),
+      T('accueil.regl.moiss.large'), T('accueil.regl.moiss.strict')]);
+    assert.ok(m.textes.parDefaut && m.textes.plusLarge && m.textes.normal);
     // Un curseur des Paramètres écrit le réglage partagé, au nom du poste.
     await envoyer({ type: MSG.ACCUEIL_FINESSE, moissonneur: 'parlement', typeFiche: 'intervention', langue: 'de', cran: 3 });
     const r = pr.lireReglages(base, 'de').parlement.intervention;

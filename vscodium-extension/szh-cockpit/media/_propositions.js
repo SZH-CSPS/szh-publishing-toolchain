@@ -48,7 +48,7 @@
   // « Pourquoi » : les jetons de catégorie, de rôle et d'emplacement que documente un moissonneur.
   var CATEGORIES = {
     titre: 'propCategorieTitre', 'texte-dense': 'propCategorieTexteDense', 'signal-faible': 'propCategorieSignalFaible',
-    ecole: 'propCategorieEcole', theme: 'propCategorieTheme'
+    ecole: 'propCategorieEcole', theme: 'propCategorieTheme', 'texte-large': 'propCategorieTexteLarge'
   };
   var ROLES = { ancrage: 'propRoleAncrage', ambigu: 'propRoleAmbigu', ecole: 'propRoleEcole', theme: 'propRoleTheme' };
   var OU = { titre: 'propOuTitre', texte: 'propOuTexte', extrait: 'propOuExtrait' };
@@ -134,9 +134,11 @@
     }
     // ---- Finesse du tri ----------------------------------------------------------------------
     // Un type a des crans quand l'hôte les envoie. Le cran regardé : celui que le curseur vient de
-    // poser, sinon l'aperçu du poste, sinon le réglage de la rédaction, sinon 1 (tout visible).
+    // poser, sinon l'aperçu du poste, sinon le réglage de la rédaction, sinon le cran par défaut
+    // du moissonneur (1 s'il n'en déclare pas).
     function finesseDe(t) { return (donnees && donnees.finesse && donnees.finesse[t]) || null; }
-    function cranPartage(t) { var f = finesseDe(t); return f && f.reglage ? f.reglage.cran : 1; }
+    function reglageEffectif(f) { return f.reglage ? f.reglage.cran : (f.cranDefaut || 1); }
+    function cranPartage(t) { var f = finesseDe(t); return f ? reglageEffectif(f) : 1; }
     function cranVu(t) {
       var f = finesseDe(t);
       if (!f) { return 1; }
@@ -150,7 +152,7 @@
       if (!f) { return 1; }
       if (apercuLocal[p.type] || f.apercu) { return apercuLocal[p.type] || f.apercu; }
       var pm = f.parMoissonneur && f.parMoissonneur[p.dossier];
-      if (pm) { return pm.reglage ? pm.reglage.cran : 1; }
+      if (pm) { return reglageEffectif(pm); }
       return cranPartage(p.type);
     }
     function visible(p) { return visibleAu(p, cranVuP(p)); }
@@ -472,7 +474,7 @@
       t.hidden = !t.hidden;
       b.setAttribute('aria-expanded', t.hidden ? 'false' : 'true');
     }
-    // Le curseur tient sur une ligne : « Finesse  Large ━━●━━ Strict  Cran 6 : … · les voir · ? ».
+    // Le curseur tient sur une ligne : « Finesse  Très large ━━●━━ Strict  Cran 6 : … · les voir · ? ».
     // Le reste des chiffres est dans l'infobulle du « ? », et dans les Réglages de l'Accueil.
     function rendreCurseur(f, type) {
       var g = poser(f, 'div', 'prop-finesse');
@@ -480,7 +482,7 @@
       var nom = poser(g, 'span', 'prop-finesse-nom', TXT.propFinesse);
       nom.id = 'prop-finesse-nom';
       g.setAttribute('aria-labelledby', nom.id);
-      poser(g, 'span', 'prop-finesse-bout', TXT.propFinesseLarge).setAttribute('aria-hidden', 'true');
+      poser(g, 'span', 'prop-finesse-bout', TXT.propFinesseTresLarge).setAttribute('aria-hidden', 'true');
       var c = poser(g, 'input', 'prop-finesse-curseur');
       c.type = 'range';
       c.min = '1';
@@ -558,9 +560,13 @@
       l.push(TXT.propFinesseApercu);
       return l.join('\n');
     }
-    // Les chiffres d'un moissonneur au cran k : volume, rappel, date des crans, réglage partagé.
+    // Les chiffres d'un moissonneur au cran k : place par rapport au cran par défaut, volume,
+    // rappel, date des crans, réglage partagé.
     function chiffresAide(l, f, k) {
       var c = f.crans[k - 1] || {};
+      var d = f.cranDefaut || 1;
+      if (k < d) { l.push(remplir('propFinessePlusLarge', [d])); }
+      if (k === d) { l.push(remplir('propFinesseNormal', [d])); }
       if (f.fenetre) { l.push(remplir('propFinesseParMois', [c.par_mois, dateCourte(f.fenetre.du), dateCourte(f.fenetre.au)])); }
       // Sans fiches de référence dans cette langue (rappel_sur = 0), le rappel n'est pas mesuré.
       l.push(typeof c.rappel === 'number' && c.rappel_sur > 0 ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
@@ -568,10 +574,10 @@
       if (f.source === 'commun') { l.push(TXT.propFinesseCommun); }
       if (!f.calibree) { l.push(TXT.propFinesseNonCalibree); }
       l.push(f.reglage ? remplir('propFinesseRegle', [donnees.revue, f.reglage.cran, f.reglage.par, dateCourte(f.reglage.le)])
-        : remplir('propFinesseRegleAucun', [donnees.revue]));
+        : remplir('propFinesseRegleAucun', [donnees.revue, d]));
     }
     // « Garder ce cran pour la rédaction » n'apparait que si l'aperçu du poste diffère du réglage
-    // partagé ; le bandeau qui suit le geste permet de l'annuler.
+    // effectif ; le bandeau qui suit le geste permet de l'annuler.
     function rendreGarde() {
       var z = zone.garde;
       if (!z) { return; }
@@ -1629,7 +1635,7 @@
         ? remplir('propPourquoiNote', [arrondi(pe.score), p.cranMax || NB_CRANS]) : TXT.propPourquoiSansNote);
       if (pe.categorie) {
         poser(s, 'p', 'prop-pourquoi-categorie', remplir('propPourquoiCategorie',
-          [CATEGORIES[pe.categorie] ? TXT[CATEGORIES[pe.categorie]] : String(pe.categorie)]));
+          [(CATEGORIES[pe.categorie] && TXT[CATEGORIES[pe.categorie]]) || TXT.propCategorieAutre]));
       }
       var termes = Array.isArray(pe.termes) ? pe.termes.filter(function (x) { return x && x.terme; }) : [];
       // Un terme s'ouvre sur ses gestes quand le moissonneur a sa vue Termes.

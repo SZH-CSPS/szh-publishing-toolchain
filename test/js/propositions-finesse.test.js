@@ -86,13 +86,14 @@ function repartir(options) {
   fs.rmSync(pr.cheminMoissons(RACINE_ARBRE), { recursive: true, force: true });
   delete HOTE.memoire[CLE_APERCU];
   delete HOTE.memoire['szh.propositions.colonnes'];
-  ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'parlement'), '2026-10-01-1.jsonl', LOT.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'parlement'), '2026-10-01-1.jsonl', LOT.concat(o.lot || []).map((l) => JSON.stringify(l)).join('\n') + '\n');
   ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'recherche'), '2026-10-01-1.jsonl', JSON.stringify(recherche('R1', 'Une recherche')) + '\n');
   ecrireEtat('parlement', o.sansCrans ? {} : {
     crans: { fr: o.sansReference ? crans().map((c) => Object.assign(c, { rappel: 0, rappel_sur: 0 })) : crans(), de: crans() },
     crans_calcules_le: '2026-10-01',
     crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
-    ...(o.calibree ? { note_calibree: true } : {})
+    ...(o.calibree ? { note_calibree: true } : {}),
+    ...(o.cranDefaut !== undefined ? { cran_defaut: o.cranDefaut } : {})
   });
   ecrireEtat('recherche', { propositions_ecrites: 1 });
   if (o.reglage) { pr.ecrireReglage(RACINE_ARBRE, 'fr', 'parlement', 'intervention', o.reglage, 'Claire Exemple'); }
@@ -256,7 +257,7 @@ test('page : le curseur tient sur une ligne, au cran du réglage partagé ; les 
   assert.deepStrictEqual([c.min, c.max, c.step, c.value], ['1', '10', '1', '6']);
   assert.strictEqual(panel.querySelector('.prop-filtre-pertinence'), null, 'le filtre de pertinence cède la place au curseur');
   const bouts = panel.querySelectorAll('.prop-finesse-bout').map((b) => b.textContent);
-  assert.deepStrictEqual(bouts, [txt.propFinesseLarge, txt.propFinesseStrict], 'seuls les deux bouts sont nommés');
+  assert.deepStrictEqual(bouts, [txt.propFinesseTresLarge, txt.propFinesseStrict], 'seuls les deux bouts sont nommés');
   assert.strictEqual(panel.querySelector('.prop-finesse-lecture').textContent,
     r(txt.propFinesseLecture, [6, r(txt.propFinesseVisiblesPlus, [5]), r(txt.propFinesseMasqueesPlus, [3])]));
   assert.strictEqual(c.getAttribute('aria-valuetext'), r(txt.propFinesseValeur, [6, r(txt.propFinesseVisiblesPlus, [5])]));
@@ -415,6 +416,123 @@ test('page : « Pourquoi » dans le détail — la note, la catégorie en clair,
   boutons.forEach((b) => assert.strictEqual(b.getAttribute('aria-haspopup'), 'menu'));
 });
 
+// ---- Le cran par défaut (cran_defaut dans etat.json) ----------------------------------------
+
+test('cran par défaut : absent ou invalide (0, 11, « deux », 2.5), il vaut 1', () => {
+  for (const v of [undefined, 0, 11, 'deux', '2', 2.5, null]) {
+    assert.strictEqual(pr.cranDefautDe({ cran_defaut: v }), 1, String(v));
+  }
+  assert.strictEqual(pr.cranDefautDe(null), 1);
+  assert.strictEqual(pr.cranDefautDe({ cran_defaut: 2 }), 2);
+  assert.strictEqual(pr.cranDefautDe({ cran_defaut: 10 }), 10);
+  for (const v of [0, 11, 'deux']) {
+    repartir({ cranDefaut: v });
+    const lu = pr.listerPropositions(RACINE_ARBRE, 'fr');
+    const vue = pr.finessePourVue(RACINE_ARBRE, 'fr', lu.etats, {});
+    assert.strictEqual(vue.cranVu(LOT[0]), 1, String(v));
+    assert.strictEqual(pr.compterVisibles(RACINE_ARBRE, 'fr').total, 9, String(v));
+  }
+});
+
+test('cran par défaut : sans réglage, la vue, les comptes, l’arbre et les termes sont au cran 2', async () => {
+  repartir({ cranDefaut: 2 });
+  const lu = pr.listerPropositions(RACINE_ARBRE, 'fr');
+  const vue = pr.finessePourVue(RACINE_ARBRE, 'fr', lu.etats, {});
+  assert.strictEqual(vue.cranVu(LOT[0]), 2);
+  assert.strictEqual(vue.visible(LOT[0]), false, 'A (cran 1 seulement) est masquée');
+  assert.deepStrictEqual(pr.compterVisibles(RACINE_ARBRE, 'fr'), { total: 8, aVerifier: 1, masquees: 1 });
+  const e = await entreeArbre();
+  assert.strictEqual(e.description, '(8)');
+  assert.deepStrictEqual(pr.comptesTermes(RACINE_ARBRE, 'fr').parlement.types, { intervention: 2 });
+  // Un réglage partagé l'emporte sur le cran par défaut.
+  pr.ecrireReglage(RACINE_ARBRE, 'fr', 'parlement', 'intervention', 6, 'A');
+  assert.strictEqual(pr.finessePourVue(RACINE_ARBRE, 'fr', lu.etats, {}).cranVu(LOT[0]), 6);
+});
+
+test('cran par défaut : PROP_DONNEES le porte ; un aperçu égal au cran par défaut s’efface', async () => {
+  repartir({ cranDefaut: 2 });
+  const p = await panneau();
+  const d = await donnees(p);
+  assert.strictEqual(d.finesse.intervention.cranDefaut, 2);
+  assert.strictEqual(d.finesse.intervention.parMoissonneur.parlement.cranDefaut, 2);
+  await p._recepteur({ type: MSG.PROP_FINESSE_APERCU, typeFiche: 'intervention', cran: 1 });
+  assert.deepStrictEqual(HOTE.memoire[CLE_APERCU], { fr: { intervention: 1 } });
+  await p._recepteur({ type: MSG.PROP_FINESSE_APERCU, typeFiche: 'intervention', cran: 2 });
+  assert.deepStrictEqual(HOTE.memoire[CLE_APERCU], { fr: {} }, 'égal au réglage effectif : plus un aperçu');
+});
+
+test('cran par défaut : la page se place sur 2, sans « Garder » ; au cran 1, la ligne « plus large » et « Garder »', async () => {
+  repartir({ cranDefaut: 2 });
+  const { panel, txt, page, p } = await vueBranchee();
+  const c = panel.querySelector('.prop-finesse-curseur');
+  assert.strictEqual(c.value, '2');
+  assert.strictEqual(panel.querySelector('.prop-finesse-garder'), null);
+  assert.deepStrictEqual(titres(panel).length, 7, 'A masquée');
+  let t = panel.querySelector('.prop-finesse-aide').title;
+  assert.ok(t.indexOf(r(txt.propFinesseNormal, [2])) !== -1, t);
+  assert.ok(t.indexOf(r(txt.propFinesseRegleAucun, ['Revue', 2])) !== -1, t);
+  assert.strictEqual(t.indexOf(r(txt.propFinessePlusLarge, [2])), -1);
+  c.value = '1';
+  c.dispatchEvent({ type: 'input' });
+  c.dispatchEvent({ type: 'change' });
+  await relayer(page, p);
+  t = panel.querySelector('.prop-finesse-aide').title;
+  assert.ok(t.indexOf(r(txt.propFinessePlusLarge, [2])) !== -1, t);
+  assert.strictEqual(t.indexOf(r(txt.propFinesseNormal, [2])), -1);
+  assert.ok(panel.querySelector('.prop-finesse-garder'), '« Garder » devait apparaitre');
+  assert.strictEqual(titres(panel).length, 8);
+});
+
+test('cran par défaut : absent, la page reste au cran 1 sans « Garder », et l’infobulle dit le cran 1', async () => {
+  repartir();
+  const { panel, txt } = await vueBranchee();
+  assert.strictEqual(panel.querySelector('.prop-finesse-curseur').value, '1');
+  assert.strictEqual(panel.querySelector('.prop-finesse-garder'), null);
+  assert.strictEqual(titres(panel).length, 8);
+  const t = panel.querySelector('.prop-finesse-aide').title;
+  assert.ok(t.indexOf(r(txt.propFinesseRegleAucun, ['Revue', 1])) !== -1, t);
+});
+
+test('libellés : les bouts du curseur et le cran par défaut, en fr et en de', () => {
+  const { TEXTES_COCKPIT } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+  // Les espaces insécables de la typographie maison se comparent comme des espaces.
+  const sp = (o) => { const x = {}; for (const k of Object.keys(o)) { x[k] = String(o[k]).replace(/[  ]/g, ' '); } return x; };
+  const fr = sp(TEXTES_COCKPIT.fr), de = sp(TEXTES_COCKPIT.de);
+  assert.deepStrictEqual([fr['doc.prop.finesse.tresLarge'], fr['doc.prop.finesse.strict']], ['Très large', 'Strict']);
+  assert.deepStrictEqual([de['doc.prop.finesse.tresLarge'], de['doc.prop.finesse.strict']], ['Sehr breit', 'Streng']);
+  assert.deepStrictEqual([fr['accueil.regl.moiss.tresLarge'], fr['accueil.regl.moiss.large'], fr['accueil.regl.moiss.strict']],
+    ['Très large', 'Large', 'Strict']);
+  assert.deepStrictEqual([de['accueil.regl.moiss.tresLarge'], de['accueil.regl.moiss.large'], de['accueil.regl.moiss.strict']],
+    ['Sehr breit', 'Breit', 'Streng']);
+  assert.strictEqual(r(fr['accueil.regl.moiss.parDefaut'], ['Large']), 'Large (par défaut)');
+  assert.strictEqual(r(de['accueil.regl.moiss.parDefaut'], ['Breit']), 'Breit (Standard)');
+  assert.strictEqual(r(fr['doc.prop.finesse.plusLarge'], [2]),
+    'Plus large que le réglage normal (cran 2) : ajoute des propositions plus incertaines.');
+  assert.strictEqual(r(fr['doc.prop.finesse.normal'], [2]), 'Réglage normal de la rédaction (cran 2).');
+  assert.ok(/Stufe 2/.test(r(de['doc.prop.finesse.plusLarge'], [2])) && /Treffer/.test(de['doc.prop.finesse.plusLarge']));
+  assert.ok(/Stufe 2/.test(r(de['doc.prop.finesse.normal'], [2])));
+  assert.strictEqual(r(fr['doc.prop.finesse.regleAucun'], ['Revue', 2]), 'Réglage de la rédaction (Revue) : aucun, donc le réglage normal (cran 2).');
+  assert.strictEqual(r(fr['accueil.regl.moiss.regleAucun'], [2]), 'Pas encore réglé : réglage normal (cran 2).');
+  assert.ok(/Stufe 2/.test(r(de['doc.prop.finesse.regleAucun'], ['Zeitschrift', 2])));
+  assert.ok(/Stufe 2/.test(r(de['accueil.regl.moiss.regleAucun'], [2])));
+});
+
+// Le « Pourquoi » ne montre jamais un jeton brut : texte-large a son libellé, un jeton inconnu un libellé générique.
+test('page : « Pourquoi » nomme texte-large, et un jeton inconnu par un libellé générique, jamais brut', async () => {
+  const avec = (id, cat) => intervention(id, 'Catégorie ' + id, 3, { pertinence: { verdict: 'retenu', raison: 'ancrage', score: 3, categorie: cat, termes: [] } });
+  repartir({ lot: [avec('L', 'texte-large'), avec('M', 'jeton-mystere')] });
+  const { panel, txt } = await vueBranchee();
+  const categorie = (id) => {
+    lignes(panel).find((tr) => tr.dataset.cle === cle(id)).querySelector('.prop-titre').click();
+    return panel.querySelector('.prop-detail .prop-pourquoi-categorie').textContent;
+  };
+  assert.ok(txt.propCategorieTexteLarge && txt.propCategorieAutre);
+  assert.strictEqual(categorie('L'), r(txt.propPourquoiCategorie, [txt.propCategorieTexteLarge]));
+  const m = categorie('M');
+  assert.strictEqual(m, r(txt.propPourquoiCategorie, [txt.propCategorieAutre]));
+  assert.strictEqual(m.indexOf('jeton-mystere'), -1);
+});
+
 test('libellés : la finesse a ses clés en fr et en de, sans « Vorschlag », et les catégories des moissonneurs', () => {
   const { TEXTES_COCKPIT } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
   const cles = Object.keys(TEXTES_COCKPIT.fr).filter((k) => /^doc\.prop\.(finesse|categorie|role|ou|pourquoi|cran|col\.cran)|^arbre\.actualite\.propositions\.masquees|^accueil\.regl\.moiss/.test(k));
@@ -423,7 +541,7 @@ test('libellés : la finesse a ses clés en fr et en de, sans « Vorschlag », e
     assert.ok(TEXTES_COCKPIT.de[k], 'clé allemande absente : ' + k);
     assert.ok(!/Vorschlag|Vorschläge/.test(TEXTES_COCKPIT.de[k]), k);
   }
-  for (const j of ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme']) {
+  for (const j of ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme', 'texte-large', 'autre']) {
     assert.ok(TEXTES_COCKPIT.fr['doc.prop.categorie.' + j] && TEXTES_COCKPIT.de['doc.prop.categorie.' + j], j);
   }
 });
