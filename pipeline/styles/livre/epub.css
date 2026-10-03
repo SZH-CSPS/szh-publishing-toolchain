@@ -78,6 +78,11 @@ span.smallcaps { font-variant: small-caps; }
 .szh-sous-titre { font-size: 1em; color: var(--c-ink2); }
 .szh-auteurs { color: var(--c-ink2); font-style: italic; }
 .szh-impressum { font-size: 0.85em; color: var(--c-ink2); text-align: left; }
+/* Badge de licence : même repli qu'en web.css, sinon un lien invisible. */
+.szh-impressum-badge {
+  display: block; height: 2.6em; width: calc(2.6em / var(--ratio, 0.35));
+  background-size: 100% 100%; background-repeat: no-repeat;
+}
 
 /* ═══ 5. Sommaire ══════════════════════════════════════════════════════════════ */
 .szh-sommaire {

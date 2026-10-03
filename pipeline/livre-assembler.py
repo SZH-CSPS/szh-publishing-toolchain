@@ -635,6 +635,16 @@ LICENCES = {
     'cc-by-nc-4.0':    'Creative Commons CC BY-NC 4.0 International',
 }
 
+# L'acte (Commons deed) de chaque licence, sans « https:// » ni barre finale : la phrase de
+# licence l'imprime ainsi, le badge y mène. Les mêmes adresses que la licence d'article de
+# szh-maquette.lua (test/js/livre-structure.test.js).
+ACTES_LICENCE = {
+    'cc-by-nc-nd-4.0': 'creativecommons.org/licenses/by-nc-nd/4.0',
+    'cc-by-4.0':       'creativecommons.org/licenses/by/4.0',
+    'cc-by-sa-4.0':    'creativecommons.org/licenses/by-sa/4.0',
+    'cc-by-nc-4.0':    'creativecommons.org/licenses/by-nc/4.0',
+}
+
 # Le bouton de chaque licence, sous la phrase de licence en maquette normal : un fichier
 # officiel de Creative Commons, versé sans retouche (media/logos/README.md).
 LOGOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'media', 'logos')
@@ -645,9 +655,16 @@ def badge_licence(cle):
 
 
 PHRASE_LICENCE = {
-    'de': 'Dieses Werk ist lizenziert unter einer %s.',
-    'fr': 'Cette œuvre est diffusée sous licence %s.',
-    'it': "Quest'opera è distribuita con licenza %s.",
+    'de': 'Dieses Werk ist lizenziert unter einer %s (%s).',
+    'fr': 'Cette œuvre est diffusée sous licence %s (%s).',
+    'it': "Quest'opera è distribuita con licenza %s (%s).",
+}
+
+# Le nom accessible du badge, un lien vide.
+LIEN_ACTE_LICENCE = {
+    'de': 'Zusammenfassung der Lizenz %s',
+    'fr': 'Résumé de la licence %s',
+    'it': 'Riassunto della licenza %s',
 }
 
 ETIQUETTES_ISBN = (('isbn-print', 'ISBN Print on demand'), ('isbn-ebook', 'ISBN E-Book'))
@@ -714,6 +731,19 @@ def _hauteur_logo(bloc):
     return (int(nombre) if nombre == int(nombre) else nombre) if bas <= nombre <= haut else None
 
 
+def _lien_badge(cle, nom, lang):
+    """Le badge de la licence, lien vers son acte : un <a> vide à aria-label, le bouton en
+    fond CSS. Un élément dans le <a> donnerait une annotation par boîte (partage-filtres.css,
+    a.szh-orcid) ; --ratio donne sa géométrie à normal.css."""
+    chemin = badge_licence(cle)
+    largeur, hauteur = dimensions_image(chemin) or (1, 1)
+    label = LIEN_ACTE_LICENCE.get(lang, LIEN_ACTE_LICENCE['fr']) % nom
+    return ('<a class="szh-impressum-badge" href="https://%s/" aria-label="%s" style="--ratio: %.4f; '
+            'background-image: url(&quot;%s&quot;)"></a>'
+            % (ACTES_LICENCE[cle], html.escape(label, quote=True), float(hauteur) / float(largeur),
+               uri_image(chemin)))
+
+
 def _oui(v):
     return v is True or str(v).strip().lower() in ('oui', 'true', 'ja', 'si', 'sì')
 
@@ -764,14 +794,13 @@ def impressum(meta, racine='.', normal=False):
         blocs.extend(('', x) for x in identifiants)
     if _oui(bloc.get('responsabilite')):
         blocs.append(('', html.escape(PHRASE_RESPONSABILITE.get(lang, PHRASE_RESPONSABILITE['fr']))))
-    lic = LICENCES.get(str(meta.get('licence') or ''))
+    cle_licence = str(meta.get('licence') or '')
+    lic = LICENCES.get(cle_licence)
     if lic:
         phrase = PHRASE_LICENCE.get(lang, PHRASE_LICENCE['fr'])
-        blocs.append(('', phrase % html.escape(lic)))
-        # Le badge est un décor : la phrase dit déjà la licence.
+        blocs.append(('', phrase % (html.escape(lic), ACTES_LICENCE[cle_licence])))
         if normal:
-            blocs.append(('szh-impressum-licence', _img(badge_licence(str(meta['licence'])), '',
-                                                        'szh-impressum-image')))
+            blocs.append(('szh-impressum-licence', _lien_badge(cle_licence, lic, lang)))
     for cle in ('reserve', 'imprimeur'):
         if texte(cle):
             blocs.append(('', texte(cle)))

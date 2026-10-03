@@ -347,22 +347,49 @@ test('impressum : logo-soutien-hauteur-mm règle la hauteur du logo de soutien, 
   }
 });
 
-// Le badge Creative Commons suit la phrase de licence, en maquette normal seulement : un décor
-// (la phrase dit déjà la licence), au fond CSS du fichier livré dans media/logos.
+// Le badge Creative Commons suit la phrase de licence, en maquette normal seulement : un lien
+// vide vers l'acte de la licence, le fichier livré dans media/logos en fond CSS. Le <a> est
+// dans un <p> : enfant direct de l'impressum, qui est un flex, il n'aurait pas d'annotation.
 const LOGOS_CC = path.join(RACINE, 'pipeline', 'media', 'logos');
-const BADGE = /<p class="szh-impressum-licence"><span class="szh-decor-livre szh-impressum-image" role="presentation" style="--ratio: ([\d.]+)"><span style="background-image: url\(&quot;data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)&quot;\)"><\/span><\/span><\/p>/;
+const BADGE = /<p class="szh-impressum-licence"><a class="szh-impressum-badge" href="([^"]+)" aria-label="([^"]+)" style="--ratio: ([\d.]+); background-image: url\(&quot;data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)&quot;\)"><\/a><\/p>/;
+const ACTES = { 'cc-by-4.0': 'by', 'cc-by-sa-4.0': 'by-sa', 'cc-by-nc-4.0': 'by-nc', 'cc-by-nc-nd-4.0': 'by-nc-nd' };
 
-test('impressum : le badge de la licence suit sa phrase, en décor, pour chaque licence', { skip: sansPython }, () => {
-  for (const cle of ['cc-by-4.0', 'cc-by-sa-4.0', 'cc-by-nc-4.0', 'cc-by-nc-nd-4.0']) {
+test('impressum : le badge de la licence suit sa phrase, en lien vers l’acte, pour chaque licence', { skip: sansPython }, () => {
+  for (const [cle, chemin] of Object.entries(ACTES)) {
     const r = livre(buch('licence: ' + cle + '\nreserve: x\n', 'impressum'));
     assert.strictEqual(r.status, 0, cle + ' : ' + r.stderr);
     const s = /<section class="szh-liminaire szh-impressum">[\s\S]*?<\/section>/.exec(r.html)[0];
     const m = BADGE.exec(s);
     assert.ok(m, cle + ' : badge absent\n' + s);
-    assert.ok(Buffer.from(m[2], 'base64').equals(fs.readFileSync(path.join(LOGOS_CC, cle + '.svg'))), cle + ' : autre fichier');
-    assert.strictEqual(m[1], '0.3500', cle + ' : proportions du bouton 88x31');
-    assert.match(s, /lizenziert unter einer Creative Commons [^<]+\.<\/p>\n<p class="szh-impressum-licence">/, cle);
-    assert.doesNotMatch(s, /<img/, cle);
+    assert.strictEqual(m[1], 'https://creativecommons.org/licenses/' + chemin + '/4.0/', cle + ' : acte');
+    assert.match(m[2], /^Zusammenfassung der Lizenz Creative Commons CC [A-Z-]+ 4\.0 International$/, cle);
+    assert.ok(m[2].indexOf(chemin.toUpperCase()) !== -1, cle + ' : ' + m[2]);
+    assert.ok(Buffer.from(m[4], 'base64').equals(fs.readFileSync(path.join(LOGOS_CC, cle + '.svg'))), cle + ' : autre fichier');
+    assert.strictEqual(m[3], '0.3500', cle + ' : proportions du bouton 88x31');
+    assert.ok(s.indexOf('lizenziert unter einer Creative Commons CC ' + chemin.toUpperCase() + ' 4.0 International'
+      + ' (creativecommons.org/licenses/' + chemin + '/4.0).</p>\n<p class="szh-impressum-licence">') !== -1, cle + '\n' + s);
+    assert.doesNotMatch(s, /<img|<svg/, cle);
+    // Un seul <a>, et jamais enfant direct de la section (un flex).
+    assert.strictEqual((s.match(/<a\b/g) || []).length, 1, cle);
+    assert.doesNotMatch(s, /(<section[^>]*>|<\/p>\n?)<a\b/, cle);
+  }
+});
+
+test('impressum : l’intitulé du lien et la phrase de licence suivent la langue du livre', { skip: sansPython }, () => {
+  for (const [lang, label, phrase] of [
+    ['fr', 'Résumé de la licence Creative Commons CC BY-NC-ND 4.0 International',
+      'Cette œuvre est diffusée sous licence Creative Commons CC BY-NC-ND 4.0 International (creativecommons.org/licenses/by-nc-nd/4.0).'],
+    ['de', 'Zusammenfassung der Lizenz Creative Commons CC BY-NC-ND 4.0 International',
+      'Dieses Werk ist lizenziert unter einer Creative Commons CC BY-NC-ND 4.0 International (creativecommons.org/licenses/by-nc-nd/4.0).'],
+    ['it', 'Riassunto della licenza Creative Commons CC BY-NC-ND 4.0 International',
+      "Quest'opera è distribuita con licenza Creative Commons CC BY-NC-ND 4.0 International (creativecommons.org/licenses/by-nc-nd/4.0)."],
+  ]) {
+    const r = livre(buch('licence: cc-by-nc-nd-4.0\n', 'impressum').replace('lang: de', 'lang: ' + lang));
+    assert.strictEqual(r.status, 0, lang + ' : ' + r.stderr);
+    const m = BADGE.exec(r.html);
+    assert.ok(m, lang + ' : badge absent');
+    assert.strictEqual(m[2], label, lang);
+    assert.ok(r.html.indexOf('<p>' + phrase + '</p>') !== -1, lang + ' : phrase\n' + r.html);
   }
 });
 
@@ -375,8 +402,23 @@ test('impressum : pas de badge sans licence, ni pour une licence inconnue, ni en
   assert.doesNotMatch(inconnue.html, /szh-impressum-licence|lizenziert/);
   const falc = livre(buch('licence: cc-by-nc-nd-4.0\n', 'impressum').replace('maquette: normal', 'maquette: falc'));
   assert.strictEqual(falc.status, 0, falc.stderr);
-  assert.match(falc.html, /lizenziert unter einer Creative Commons CC BY-NC-ND 4\.0 International\.<\/p>/);
-  assert.doesNotMatch(falc.html, /szh-impressum-licence|svg\+xml/);
+  assert.match(falc.html, /<p>Dieses Werk ist lizenziert unter einer Creative Commons CC BY-NC-ND 4\.0 International \(creativecommons\.org\/licenses\/by-nc-nd\/4\.0\)\.<\/p>/);
+  assert.doesNotMatch(falc.html, /szh-impressum-licence|szh-impressum-badge|svg\+xml/);
+});
+
+test('impressum : l’acte de chaque licence du livre est celui de la licence d’article de même clé', () => {
+  // Deux tables (livre-assembler.py et szh-maquette.lua) : elles ne doivent pas diverger.
+  const py = fs.readFileSync(ASSEMBLEUR, 'utf8');
+  const table = /^ACTES_LICENCE = \{\n([\s\S]*?)\n\}/m.exec(py);
+  assert.ok(table, 'ACTES_LICENCE introuvable');
+  const actes = Object.fromEntries([...table[1].matchAll(/^ {4}'([^']+)': +'([^']+)',$/gm)].map((x) => [x[1], x[2]]));
+  assert.deepStrictEqual(Object.keys(actes).sort(), Object.keys(ACTES).sort());
+  const lua = fs.readFileSync(path.join(RACINE, 'pipeline', 'filters', 'szh-maquette.lua'), 'utf8');
+  for (const [cle, adresse] of Object.entries(actes)) {
+    assert.strictEqual(adresse, 'creativecommons.org/licenses/' + ACTES[cle] + '/4.0', cle);
+    const ligne = lua.split('\n').find((l) => l.trim().startsWith("['" + cle + "']"));
+    assert.ok(ligne && ligne.endsWith("url = 'https://" + adresse + "/' },"), cle + ' : autre adresse dans szh-maquette.lua : ' + ligne);
+  }
 });
 
 test('logos : chaque bouton Creative Commons livré est celui de la source (sha256 du README)', () => {
@@ -435,5 +477,19 @@ test('lire_yaml : « chapitres: [a, b] » dans un item de liste et dans un sous-
     });
   } finally {
     fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
+// Le badge de licence est un <a> vide : sans taille ni fond dans les sorties d'écran, il serait
+// un arrêt de tabulation invisible (WCAG 2.4.7). web.css et epub.css lui en donnent.
+test('impressum : le badge de licence a une taille et un fond en HTML web et en EPUB', () => {
+  for (const f of ['web.css', 'epub.css']) {
+    const css = fs.readFileSync(path.join(RACINE, 'pipeline', 'styles', 'livre', f), 'utf8');
+    const regle = css.match(/\n\.szh-impressum-badge \{([^}]*)\}/);
+    assert.ok(regle, f + ' : pas de règle .szh-impressum-badge');
+    assert.match(regle[1], /display: block/, f);
+    assert.match(regle[1], /height: [\d.]+r?em/, f);
+    assert.match(regle[1], /width: calc\(/, f);
+    assert.match(regle[1], /background-size: 100% 100%/, f);
   }
 });

@@ -62,12 +62,24 @@ def boites(boite, classes, acc):
 res = {}
 for cas in json.load(open(sys.argv[1], encoding='utf-8')):
     doc = weasyprint.HTML(string=cas['html'], base_url=cas['base']).render()
-    tampon = io.BytesIO(); doc.write_pdf(tampon)
+    # Variante pdf/ua-1 comme la chaîne : WeasyPrint n'écrit le /Contents d'un lien qu'en PDF balisé.
+    tampon = io.BytesIO(); doc.write_pdf(tampon, pdf_variant=cas.get('variante'))
     r = pypdf.PdfReader(io.BytesIO(tampon.getvalue()))
     st = {}; bx = {}
     for p in doc.pages: styles(p._page_box, cas.get('classes', []), st)
     for p in doc.pages: boites(p._page_box, cas.get('boites', []), bx)
-    res[cas['nom']] = {'pages': [lignes(p) for p in r.pages], 'styles': st, 'boites': bx}
+    liens = []
+    for p in r.pages:
+        haut = float(p.mediabox[3]); lp = []
+        for a in p.get('/Annots') or []:
+            a = a.get_object()
+            if a.get('/Subtype') != '/Link': continue
+            x1, y1, x2, y2 = [float(v) for v in a['/Rect']]
+            x1, x2, y1, y2 = min(x1, x2), max(x1, x2), min(y1, y2), max(y1, y2)
+            lp.append({'uri': str(a.get('/A', {}).get('/URI', '')), 'contents': str(a.get('/Contents', '')),
+                       'boite': [round(v * PT_MM, 2) for v in (x1, haut - y2, x2 - x1, y2 - y1)]})
+        liens.append(lp)
+    res[cas['nom']] = {'pages': [lignes(p) for p in r.pages], 'styles': st, 'boites': bx, 'liens': liens}
 print(json.dumps(res))
 `;
 
@@ -89,6 +101,9 @@ function chapitre(id, contenu) {
 // Un pixel gris, image de figure.
 const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNoAAAAggCBd81ytgAAAABJRU5ErkJggg==';
 const TEXTE = 'Ein Satz ohne Bedeutung, der eine Zeile des Fliesstexts füllt und noch etwas weiter geht. ';
+const PHRASE_LICENCE = 'Dieses Werk ist lizenziert unter einer Creative Commons CC BY-NC-ND 4.0 International '
+  + '(creativecommons.org/licenses/by-nc-nd/4.0).';
+const ACTE = 'https://creativecommons.org/licenses/by-nc-nd/4.0/';
 const CITATION = 'Zitierter Satz in kleinerer Schrift, der eine ganze Zeile der Blockzitate füllt. ';
 
 // Une citation de n lignes : n phrases d'à peu près une ligne chacune, coupées par <br>.
@@ -153,10 +168,10 @@ function cas() {
   }
   // Impressum avec la phrase de licence et son badge, dans la forme de livre-assembler.py.
   const badge = cheminVersWsl(path.join(RACINE, 'pipeline', 'media', 'logos', 'cc-by-nc-nd-4.0.svg'));
-  l.push({ nom: 'impressum-licence', base, boites: ['szh-decor-livre'], html: livre('<section class="szh-liminaire szh-impressum">'
-    + '<p>Block 1 des Impressums</p><p>Dieses Werk ist lizenziert unter einer Creative Commons CC BY-NC-ND 4.0 International.</p>'
-    + '<p class="szh-impressum-licence"><span class="szh-decor-livre szh-impressum-image" role="presentation" style="--ratio: 0.3500">'
-    + '<span style="background-image: url(&quot;file://' + badge + '&quot;)"></span></span></p>'
+  l.push({ nom: 'impressum-licence', base, variante: 'pdf/ua-1', boites: ['szh-impressum-badge'], html: livre('<section class="szh-liminaire szh-impressum">'
+    + '<p>Block 1 des Impressums</p><p>' + PHRASE_LICENCE + '</p>'
+    + '<p class="szh-impressum-licence"><a class="szh-impressum-badge" href="' + ACTE + '" aria-label="Zusammenfassung der Lizenz '
+    + 'Creative Commons CC BY-NC-ND 4.0 International" style="--ratio: 0.3500; background-image: url(&quot;file://' + badge + '&quot;)"></a></p>'
     + '<p>Alle Rechte vorbehalten.</p><p>Letzter Block des Impressums</p></section>') });
   return l;
 }
@@ -306,16 +321,26 @@ test('rendu normal : l’impressum est calé sur le bas de la page', (t) => {
 test('rendu normal : le badge de licence suit la phrase de licence à l’impressum', (t) => {
   if (sansPandocWsl) { sauter.wsl(t); return; }
   const m = mesures()['impressum-licence'];
-  const phrase = trouver(m.pages, 'Dieses Werk ist lizenziert');
+  const debut = trouver(m.pages, 'Dieses Werk ist lizenziert');
+  const phrase = trouver(m.pages, '4.0).');
   const reserve = trouver(m.pages, 'Alle Rechte vorbehalten');
   const fin = trouver(m.pages, 'Letzter Block');
-  const b = m.boites['szh-decor-livre'];
-  assert.ok(phrase && reserve && fin && b, 'phrase, réserve ou badge introuvable');
+  const b = m.boites['szh-impressum-badge'];
+  assert.ok(debut && phrase && reserve && fin && b, 'phrase, réserve ou badge introuvable');
+  // L'adresse de l'acte se coupe sans trait de césure ajouté.
+  const texte = debut.ls.slice(debut.i, phrase.i + 1).map((x) => x[3]).join('').replace(/\s/g, '');
+  assert.strictEqual(texte, PHRASE_LICENCE.replace(/\s/g, ''), 'phrase de licence altérée à la coupure');
   proche(b[3], 12.6, 0.05, 'hauteur du badge');
   proche(b[2], 36.0, 0.1, 'largeur du badge');
   proche(+(b[1] - phrase.ls[phrase.i][0]).toFixed(2), 4.8, 0.15, 'ligne de base de la phrase → haut du badge');
   proche(+(reserve.ls[reserve.i][0] - (b[1] + b[3])).toFixed(2), 6.2, 0.15, 'bas du badge → ligne de base suivante');
   proche(fin.ls[fin.i][0], 185.6, 0.3, 'dernier bloc');
+  // Une seule annotation /Link, vers l'acte, sur la boîte du badge, avec son /Contents.
+  const liens = m.liens.flat();
+  assert.strictEqual(liens.length, 1, JSON.stringify(m.liens));
+  assert.strictEqual(liens[0].uri, ACTE);
+  assert.strictEqual(liens[0].contents, ACTE);
+  liens[0].boite.forEach((v, i) => proche(v, b[i], 0.05, 'annotation, cote ' + i));
 });
 
 // Page de titre (Hofer p3, HfH p5) : le titre à 48,6 mm, que les éditeurs tiennent sur une

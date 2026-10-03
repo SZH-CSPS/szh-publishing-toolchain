@@ -34,5 +34,9 @@ Conditions d'usage, d'après la *Trademark Policy* de Creative Commons
 - l'usage ne doit pas laisser croire à un soutien de Creative Commons ou à une association
   avec elle.
 
+Dans Pronto, le bouton est un lien vers l'acte de la licence, et la phrase de licence juste
+au-dessus en imprime l'adresse (`ACTES_LICENCE` de `livre-assembler.py`) : la deuxième
+condition est remplie dans le PDF numérique comme sur le papier.
+
 Un nouveau bouton se télécharge de la même page, sans retouche, et sa ligne s'ajoute
 ci-dessus.

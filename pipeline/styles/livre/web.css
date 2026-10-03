@@ -126,6 +126,12 @@ h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
 /* L'impressum (ISBN, DOI, licence) : mentions légales, pas le texte du livre — plus petit
    et discret, comme au dos d'une page de titre imprimée. */
 .szh-impressum { font-size: 0.8rem; color: var(--web-ink2); text-align: left; }
+/* Badge de licence : un <a> vide vers l'acte, le bouton en fond (livre-assembler.py). Sans
+   dimension propre, il serait un arrêt de tabulation invisible. */
+.szh-impressum-badge {
+  display: block; height: 2.6rem; width: calc(2.6rem / var(--ratio, 0.35));
+  background-size: 100% 100%; background-repeat: no-repeat;
+}
 
 /* ═══ 5. Le sommaire : une vraie navigation ═══════════════════════════════════
    Un livre en pagination écrit son numéro de page par target-counter() (base.css) — une

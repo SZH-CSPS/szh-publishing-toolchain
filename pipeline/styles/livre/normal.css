@@ -415,10 +415,12 @@ html[data-titre-partie] .szh-partie[data-page-seule="non"] { padding-top: 0; min
   display: block; width: calc(var(--impressum-logo-soutien) / var(--ratio));
 }
 /* Le badge Creative Commons sous la phrase de licence (Hofer p2) : son haut 4,8 mm sous la
-   ligne de base de la phrase, la ligne de base suivante 6,2 mm sous lui. */
+   ligne de base de la phrase, la ligne de base suivante 6,2 mm sous lui. C'est un lien vide
+   vers l'acte de la licence, le bouton en fond (livre-assembler.py, _lien_badge). */
 .szh-impressum .szh-impressum-licence { margin: 0.7mm 0 3.55mm 0; }
-.szh-impressum .szh-impressum-licence .szh-decor-livre {
+.szh-impressum .szh-impressum-badge {
   display: block; width: calc(var(--impressum-licence) / var(--ratio));
+  height: var(--impressum-licence); background-size: 100% 100%; background-repeat: no-repeat;
 }
 .szh-impressum .szh-impressum-logos-imprimeur {
   position: absolute; left: 0; bottom: 1.1mm; margin: 0; line-height: 0;

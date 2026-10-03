@@ -443,5 +443,26 @@ class BadgeDeLicence(unittest.TestCase):
         self.assertEqual(la.verifier_impressum({'licence': 'cc-by-99'}, RACINE), [])
 
 
+class ActeDeLicence(unittest.TestCase):
+    """Le badge mène à l'acte de la licence, dont la phrase imprime l'adresse."""
+
+    def test_chaque_licence_a_son_acte(self):
+        self.assertEqual(sorted(la.ACTES_LICENCE), sorted(la.LICENCES))
+
+    def test_lien_vide_vers_l_acte_et_adresse_dans_la_phrase(self):
+        for lang, label in (('fr', 'Résumé de la licence'), ('de', 'Zusammenfassung der Lizenz'),
+                            ('it', 'Riassunto della licenza')):
+            for cle, adresse in la.ACTES_LICENCE.items():
+                s = la.impressum({'lang': lang, 'licence': cle}, RACINE, normal=True)
+                self.assertIn('<a class="szh-impressum-badge" href="https://%s/" aria-label="%s %s" '
+                              % (adresse, label, la.LICENCES[cle]), s)
+                self.assertRegex(s, r'<p class="szh-impressum-licence"><a [^>]*></a></p>')
+                self.assertIn(' (%s).</p>' % adresse, s)
+                self.assertNotIn('https://%s)' % adresse, s)
+                falc = la.impressum({'lang': lang, 'licence': cle}, RACINE)
+                self.assertIn(' (%s).</p>' % adresse, falc)
+                self.assertNotIn('<a ', falc)
+
+
 if __name__ == '__main__':
     unittest.main()

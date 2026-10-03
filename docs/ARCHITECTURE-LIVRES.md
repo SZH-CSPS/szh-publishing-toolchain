@@ -504,8 +504,11 @@ En maquette normal, le séparateur de légende est le deux-points (« Abbildung 
   rendue en fond CSS (une `/Figure` sans `/Alt` n'est pas conforme PDF/UA), comme le logo
   de l'éditeur sur la page de titre, dont le nom est déjà écrit à l'impressum. Sous la
   phrase de `licence:`, le bouton Creative Commons officiel (`media/logos/cc-*.svg`, 12,6 mm
-  de haut, provenance dans `media/logos/README.md`) se pose de lui-même, en décor ; une
-  licence connue sans bouton livré est refusée (`licence-badge-absent`). Pas de bouton en FALC.
+  de haut, provenance dans `media/logos/README.md`) se pose de lui-même ; une licence connue
+  sans bouton livré est refusée (`licence-badge-absent`). Pas de bouton en FALC. Le bouton est
+  un lien vide vers l'acte de la licence (`ACTES_LICENCE`), à `aria-label`, et la phrase
+  imprime l'adresse de cet acte sans « https:// », en normal comme en FALC : c'est l'URI que
+  la *Trademark Policy* de Creative Commons exige à côté du bouton.
 - *Éditeurs* : en ouvrage collectif, demi-titre et page de titre portent les `editeurs`
   suivis de « (Hrsg.) », « (éd.) » ou « (a cura di) », ou de `mention-editeurs` ; c'est la
   ligne de la couverture (`couverture.responsables`).
