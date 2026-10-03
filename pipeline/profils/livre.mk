@@ -273,6 +273,12 @@ ASSEMBLER          = python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --gabarit 
 # vivent dans buch.yaml, prérequis de chaque fragment : les changer recompile les chapitres.
 NUMEROS_PARTIE := $(if $(shell grep -s '^parties:' $(CONFIG_LIVRE)),$(shell python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --numeros-chapitres $(CHAPITRES) 2>/dev/null))
 
+# Les images que l'assembleur incorpore (impressum, illustrations de partie, badge de
+# licence, logo de la page de titre), listées par lui seul : prérequis des quatre
+# assemblages, pour qu'une image remplacée sous le même nom recompile le livre.
+# `wildcard` écarte un nom absent ou coupé par une espace ; le refus reste à l'assemblage.
+IMAGES_ASSEMBLEES := $(wildcard $(shell python3 "$(ASSEMBLEUR)" --meta "$(CONFIG_LIVRE)" --fichiers-images 2>/dev/null))
+
 # Surcharge propre à un livre : styles/livre.css dans son dossier, s'il existe. Empilée
 # après la charte et partage-filtres, avant l'accent ; ni dans le web ni dans l'EPUB.
 STYLE_LIVRE_LOCAL := $(wildcard styles/livre.css)
@@ -614,8 +620,10 @@ $(CHAPITRE_PDF): $(CHAPITRE_HTML_SEUL)
 endif
 
 # Une pièce liminaire écrite à la main : même chaîne, sans le gabarit de chapitre — elle
-# n'ouvre pas sur une belle page et ne porte pas de pastille.
-$(OUT)/$(LIM_DIR)/%.html: $(LIM_DIR)/%.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $(FILTRES)
+# n'ouvre pas sur une belle page et ne porte pas de pastille. Ses images vivent dans
+# liminaires/media/, partagé par toutes les pièces.
+$(OUT)/$(LIM_DIR)/%.html: $(LIM_DIR)/%.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $(FILTRES) \
+                          $(wildcard $(LIM_DIR)/media/*)
 	@mkdir -p "$(dir $@)"
 	@echo "pandoc $< -> $@ (liminaire)"
 	@cd "$(LIM_DIR)" && SZH_LIVRE=1 $(PANDOC) "$(notdir $<)" \
@@ -647,7 +655,8 @@ test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans 
 endef
 
 $(LIVRE_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS)
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS) \
+               $(IMAGES_ASSEMBLEES)
 	@mkdir -p "$(OUT)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
@@ -673,7 +682,8 @@ livre-pdf: $(LIENS_COURTS_PREALABLE) verifie-livre $(LIVRE_PDF)
 #   ouvert, non traité ici. N'ajoute ni Ghostscript ni profil ICC.
 # --------------------------------------------------------------------------------------
 $(LIVRE_IMPRIMEUR_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS)
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(PARTAGE) $(STYLE_LIVRE_LOCAL) $(ACCENT_CSS) \
+               $(IMAGES_ASSEMBLEES)
 	@mkdir -p "$(OUT)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
@@ -706,6 +716,8 @@ STYLE_COUVERTURE   := $(PIPELINE_DIR)/styles/livre/couverture.css
 COUVERTURE_PY      := $(PIPELINE_DIR)/couverture.py
 COULEURS_REFERENCE := $(PIPELINE_DIR)/styles/couleurs-reference.json
 LOGOS_COUVERTURE   := $(wildcard $(PIPELINE_DIR)/media/logos/*.svg)
+# Les fonds du toolkit (prospectrum.jpg), que couverture.py lit selon le modèle.
+FONDS_COUVERTURE   := $(wildcard $(PIPELINE_DIR)/media/fonds/*)
 GS ?= gs
 
 # L'illustration est facultative (couverture/illustration.jpg|jpeg|png|svg|webp).
@@ -742,7 +754,7 @@ $(COUVERTURE_DOS): $(LIVRE_PDF) $(CONFIG_LIVRE) $(COUVERTURE_PY)
 
 COUVERTURE_PREALABLES := $(LIVRE_PDF) $(COUVERTURE_FRAG) $(CONFIG_LIVRE) $(GABARIT_COUVERTURE) \
                          $(COUVERTURE_PY) $(SOCLE) $(STYLE_COUVERTURE) $(COULEURS_REFERENCE) \
-                         $(LOGOS_COUVERTURE) $(ILLUSTRATION_COUV)
+                         $(LOGOS_COUVERTURE) $(FONDS_COUVERTURE) $(ILLUSTRATION_COUV)
 COUVERTURE_ARGS = --meta "$(CONFIG_LIVRE)" --pdf-interieur "$(LIVRE_PDF)" \
   --quatrieme "$(COUVERTURE_FRAG)" --illustration "$(ILLUSTRATION_COUV)" \
   --gabarit "$(GABARIT_COUVERTURE)" --icc-dir "$(ICC_DIR)" \
@@ -819,7 +831,7 @@ endif
 # et couleurs incorporées, images déjà en data: URI depuis la compilation des fragments.
 # --------------------------------------------------------------------------------------
 $(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(SOCLE) $(STYLE_LIVRE_WEB) $(ACCENT_CSS)
+               $(SOCLE) $(STYLE_LIVRE_WEB) $(ACCENT_CSS) $(IMAGES_ASSEMBLEES)
 	@mkdir -p "$(dir $@)"
 	@$(ASSEMBLER) \
 	  --sortie "$@" \
@@ -864,7 +876,7 @@ livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_DOS) $(COUVERTUR
 #   il écrit donc le fichier que pandoc attend plutôt que de le reconstruire à la main.
 # --------------------------------------------------------------------------------------
 $(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
-               $(EPUB_PREPARE) $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART)
+               $(EPUB_PREPARE) $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(IMAGES_ASSEMBLEES)
 	@mkdir -p "$(OUT)"
 	@$(ASSEMBLER) \
 	  --sortie "$@.avec-sections" \

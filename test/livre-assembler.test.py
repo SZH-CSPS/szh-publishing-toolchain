@@ -464,5 +464,53 @@ class ActeDeLicence(unittest.TestCase):
                 self.assertNotIn('<a ', falc)
 
 
+class FichiersImages(unittest.TestCase):
+    """--fichiers-images : les images que l'assemblage incorpore, prérequis de livre.mk."""
+
+    META = {'maquette': 'normal', 'licence': 'cc-by-4.0',
+            'impressum': {'logo-soutien': 'impressum/s.png',
+                          'logos-imprimeur': ['impressum/a.png', 'impressum/b.png']},
+            'parties': [{'titre': 'Teil', 'chapitres': ['01-a'], 'illustration': 'parties/p.png'}]}
+
+    def test_normal(self):
+        racine = tempfile.mkdtemp()
+        try:
+            self.assertEqual(la.fichiers_images(self.META, racine), [
+                os.path.join('impressum', 's.png'), os.path.join('impressum', 'a.png'),
+                os.path.join('impressum', 'b.png'), os.path.join('parties', 'p.png'),
+                la.badge_licence('cc-by-4.0'), la.LOGO_PAGE_TITRE])
+        finally:
+            shutil.rmtree(racine)
+
+    def test_sans_logo_de_page_de_titre_ni_licence_connue(self):
+        meta = dict(self.META, licence='cc-by-99', **{'mise-en-page': {'logo-page-titre': 'non'}})
+        images = la.fichiers_images(meta, RACINE)
+        self.assertNotIn(la.LOGO_PAGE_TITRE, images)
+        self.assertFalse(any(i.endswith('.svg') for i in images), images)
+
+    def test_falc_impressum_seul(self):
+        meta = dict(self.META, maquette='falc')
+        self.assertEqual(la.fichiers_images(meta, RACINE), [
+            os.path.join('impressum', 's.png'), os.path.join('impressum', 'a.png'),
+            os.path.join('impressum', 'b.png')])
+
+    def test_option_de_la_ligne_de_commande(self):
+        racine = tempfile.mkdtemp()
+        try:
+            meta = os.path.join(racine, 'buch.yaml')
+            with open(meta, 'w', encoding='utf-8') as f:
+                f.write('maquette: falc\nimpressum:\n  logo-soutien: impressum/s.png\n')
+            sortie = io.StringIO()
+            ancien, sys.stdout = sys.stdout, sortie
+            try:
+                code = la.main(['x', '--meta', meta, '--fichiers-images'])
+            finally:
+                sys.stdout = ancien
+            self.assertEqual(code, 0)
+            self.assertEqual(sortie.getvalue(), os.path.join('impressum', 's.png') + '\n')
+        finally:
+            shutil.rmtree(racine)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -14,6 +14,11 @@
 # --numeros-chapitres : écrit « slug=1.1 » pour chaque chapitre numéroté par sa partie
 # (numeros-chapitres: partie), que livre.mk passe au chapitre ; rien d'autre.
 #
+#   python3 livre-assembler.py --meta buch.yaml --fichiers-images
+#
+# --fichiers-images : les images que l'assemblage incorpore, une par ligne, dont livre.mk
+# fait des prérequis ; rien d'autre.
+#
 # --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
 # problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester un
 # seul fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
@@ -981,6 +986,28 @@ def partie_html(partie, reglages, racine):
                illustration))
 
 
+def fichiers_images(meta, racine):
+    """Les images que l'assemblage incorpore : celles que buch.yaml nomme (impressum,
+    illustrations de partie) et celles du toolkit (badge de licence, logo de la page de
+    titre). Les mêmes lectures que l'assemblage ; un nom absent n'est pas refusé ici, il
+    l'est à l'assemblage. Un fichier du livre est rendu relatif à son dossier."""
+    reglages, _ = lire_mise_en_page(meta)
+    bloc = _bloc_impressum(meta)
+    chemins = [os.path.join(racine, nom) for cle in IMAGES_IMPRESSUM for nom in _liste(bloc.get(cle))]
+    if reglages is not None:
+        parties, _ = lire_parties(meta, [])
+        chemins += [os.path.join(racine, p['illustration']) for p in parties if p['illustration']]
+        if str(meta.get('licence') or '') in LICENCES:
+            chemins.append(badge_licence(str(meta['licence'])))
+        if reglages['logo-page-titre'] == 'oui':
+            chemins.append(LOGO_PAGE_TITRE)
+    rendus = []
+    for c in chemins:
+        relatif = os.path.relpath(c, racine)
+        rendus.append(c if relatif.startswith('..') else relatif)
+    return rendus
+
+
 def dans_partie(fragment, rang):
     """Marque la section du chapitre comme membre de la partie `rang`."""
     return fragment.replace('<section class="szh-chapitre"',
@@ -1153,7 +1180,7 @@ def main(argv):
     # jour. SZH_OUT_LIVRE en repli, pour un appel hors Makefile (tests, essai à la main).
     out_dir = os.environ.get('SZH_OUT_LIVRE') or 'out'
     feuilles, feuilles_incorporees, fragments = [], [], []
-    sans_liminaires = numeros_seuls = False
+    sans_liminaires = numeros_seuls = images_seules = False
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -1181,6 +1208,9 @@ def main(argv):
         elif a == '--numeros-chapitres':
             numeros_seuls = True
             i += 1
+        elif a == '--fichiers-images':
+            images_seules = True
+            i += 1
         elif a == '--out' and i + 1 < len(argv):
             out_dir = argv[i + 1]
             i += 2
@@ -1190,7 +1220,7 @@ def main(argv):
         else:
             fragments.append(a)
             i += 1
-    if not (meta_p and (numeros_seuls or (gabarit_p and sortie_p))):
+    if not (meta_p and (numeros_seuls or images_seules or (gabarit_p and sortie_p))):
         print('usage: livre-assembler.py --meta buch.yaml --gabarit g.html '
               '--sortie out.html [--out dossier] [--css f.css]... '
               '[--css-embed f.css]... <fragment>...', file=sys.stderr)
@@ -1200,6 +1230,11 @@ def main(argv):
     racine = os.path.dirname(os.path.abspath(meta_p))
     langue = str(meta.get('lang') or 'fr')
     reglages, erreurs = lire_mise_en_page(meta)
+
+    if images_seules:
+        for chemin in fichiers_images(meta, racine):
+            print(chemin)
+        return 0
 
     # Mode de livre.mk : les numéros « 1.1 » des chapitres, une ligne « slug=numéro » par
     # chapitre numéroté ; les arguments sont les slugs, dans l'ordre du livre.

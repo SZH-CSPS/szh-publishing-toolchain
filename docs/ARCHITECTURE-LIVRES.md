@@ -273,6 +273,10 @@ en trois temps :
 La compilation reste incrémentale par chapitre. `out/.szh-ordre-chapitres` rend l'ordre
 explicite, pour qu'un chapitre retiré recompile les suivants ; `out/.szh-compteurs/` reporte
 la numérotation des figures et des tableaux d'un chapitre au suivant, un jeu par sortie.
+Les images que l'assembleur incorpore (impressum, illustrations de partie, badge de licence,
+logo de la page de titre) sont des prérequis des assemblages, listées par l'assembleur
+lui-même (`--fichiers-images`), comme `liminaires/media/` l'est des pièces écrites et
+`pipeline/media/fonds/` de la couverture : une image remplacée sous le même nom recompile.
 `ordre-chapitres` de `buch.yaml` place les slugs nommés en tête, les autres suivent par ordre
 alphabétique ; un dossier préfixé « `_` » est une pièce de travail, jamais imprimée.
 
