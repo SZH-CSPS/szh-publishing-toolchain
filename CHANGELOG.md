@@ -11,6 +11,17 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.7.3
+
+Mineure : dans le sommaire des livres, le numéro de page d'un titre sur deux lignes se place sur
+la première ligne.
+
+**Production.**
+- Sommaire des livres (normal plat, hiérarchique, FALC) : le numéro de page s'aligne sur la
+  première ligne de l'entrée, et non plus sur la dernière ; une colonne lui est réservée, un
+  long titre se coupe donc un mot plus tôt. Le lien et les signets sont inchangés, et le texte
+  du PDF se lit titre puis numéro.
+
 ## 3.7.2
 
 Mineure : le texte secondaire du cockpit se lit mieux.
