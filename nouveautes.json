@@ -15,6 +15,24 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.7": {
+    "fr": {
+      "titre": "Des notes de bas de page à leur place",
+      "points": [
+        "Une note de bas de page reste toujours sur la page de son appel, et ne s’imprime plus jamais deux fois dans un livre.",
+        "L’impressum des livres porte le bouton Creative Commons de leur licence ; dans le PDF, il mène au texte de la licence.",
+        "Cette mise à jour est plus longue que d’habitude : le moteur de mise en page est réinstallé."
+      ]
+    },
+    "de": {
+      "titre": "Fussnoten am richtigen Ort",
+      "points": [
+        "Eine Fussnote bleibt immer auf der Seite ihres Verweises und wird in einem Buch nie mehr doppelt gedruckt.",
+        "Das Impressum der Bücher trägt das Creative-Commons-Zeichen ihrer Lizenz; im PDF führt es zum Lizenztext.",
+        "Dieses Update dauert länger als sonst: Die Satzumgebung wird neu installiert."
+      ]
+    }
+  },
   "3.6": {
     "fr": {
       "titre": "Les propositions des moissonneurs, et des listes bien numérotées",

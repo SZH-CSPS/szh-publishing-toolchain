@@ -11,6 +11,23 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.7.0
+
+Medium, release lourde (l'image est reconstruite) : deux correctifs de WeasyPrint pour les
+notes de bas de page, et le badge Creative Commons dans l'impressum des livres.
+
+**Production.**
+- Notes de bas de page : une note ne quitte plus la page de son appel quand le paragraphe
+  suivant ne tient pas (revue et livres, cas rare) ; dans un livre, une note n'est plus
+  imprimée deux fois après la repagination du sommaire. Patchs `50-notes-doublon` et
+  `55-notes-reportees` de WeasyPrint 70.0 (`docs/DEV` : note détaillée ; dossiers amont non
+  déposés). Dans le cas rare de la note reportée, un numéro déjà compilé peut sortir avec un
+  paragraphe commencé une page plus loin.
+- Livres : sous la phrase de licence, le bouton officiel Creative Commons de la licence
+  (`licence:` de `buch.yaml`) ; dans le PDF numérique, il mène à l'acte de licence ; la phrase
+  imprime l'adresse de l'acte. Une licence sans bouton est refusée par un message fr/de.
+- HTML web et EPUB des livres : le lien de licence a une taille et se voit au focus.
+
 ## 3.6.0
 
 Medium : la vue « Propositions » de la Documentation arrive, une liste numérotée qui reprend
