@@ -1188,7 +1188,7 @@ function construireTraductions(parent, traductions) {
     var l = ligneVue(liste, t.typeLibelle, t.titre);
     if (t.origine) { texte(l, 'span', 'doc-vue-origine', t.origine); }
     l.appendChild(bouton(TXT.traduireDansNumero || '', function () {
-      api.postMessage({ type: SZH.MSG.TRADUIRE_DANS_NUMERO, slug: t.slug });
+      apresEcriture(function () { api.postMessage({ type: SZH.MSG.TRADUIRE_DANS_NUMERO, slug: t.slug }); });
     }, 'doc-vue-bouton', TXT.traduireDansNumeroTip || ''));
   });
 }
@@ -1216,7 +1216,7 @@ function construireOrphelines(parent, orphelines) {
   orphelines.forEach(function (o) {
     var l = ligneVue(liste, o.typeLibelle, o.titre);
     l.appendChild(bouton(TXT.tirerDansNumero || '', function () {
-      api.postMessage({ type: SZH.MSG.TIRER_DANS_NUMERO, slug: o.slug });
+      apresEcriture(function () { api.postMessage({ type: SZH.MSG.TIRER_DANS_NUMERO, slug: o.slug }); });
     }, 'doc-vue-bouton', TXT.tirerDansNumeroTip || ''));
     l.appendChild(boutonIcone('poubelle', TXT.supprimerTip || '', function () {
       api.postMessage({ type: SZH.MSG.SUPPRIMER, slug: o.slug });
@@ -1761,6 +1761,16 @@ function enregistrer(auto) {
 }
 var autoEnr = SZH.autoEnregistrement({ delai: 0, estModifie: estModifie, enregistrer: enregistrer });
 
+// Un geste que l'hôte fait suivre d'un rechargement (tirer, traduire) attend que les cartes
+// soient écrites : sinon le rechargement les remettrait à leur valeur du disque. L'écriture
+// passe par autoEnr, qui ne double jamais un envoi déjà en vol.
+var gesteApresEcriture = null;
+function apresEcriture(geste) {
+  if (!estModifie()) { geste(); return; }
+  gesteApresEcriture = geste;
+  autoEnr.ecrire();
+}
+
 document.addEventListener('keydown', function (ev) {
   if (!(ev.ctrlKey || ev.metaKey)) { return; }
   if ((ev.key || '').toLowerCase() === 's') { ev.preventDefault(); enregistrer(false); }
@@ -1833,9 +1843,15 @@ window.addEventListener('message', function (ev) {
     }
     etat(msg.auto ? '' : (TXT.enregistre || ''));
     majModifie();
+    if (gesteApresEcriture && !estModifie()) {
+      var geste = gesteApresEcriture;
+      gesteApresEcriture = null;
+      geste();
+    }
     return;
   }
   if (msg.type === SZH.MSG.ERREUR) {
+    gesteApresEcriture = null;
     autoEnr.confirme();
     etat('⚠ ' + msg.message);
     if (retraitsFicheEnAttente > 0) { retraitsFicheEnAttente--; api.postMessage({ type: SZH.MSG.PRET }); }

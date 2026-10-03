@@ -292,7 +292,8 @@ function champTitre(page) {
   return i;
 }
 
-test('mesure : « Tirer dans ce numéro » ne porte pas les cartes modifiées, et le rechargement qui suit les perd', () => {
+// Le détail est dans documentation-tirer.test.js ; ici, que la vue Propositions n'y change rien.
+test('« Tirer dans ce numéro » enregistre d’abord une carte modifiée, et ne part qu’après l’accusé', () => {
   const { page, txt } = pageDocumentation([LIVRE_CARTE]);
   const titre = champTitre(page);
   titre.value = 'Titre modifié, non enregistré';
@@ -300,12 +301,11 @@ test('mesure : « Tirer dans ce numéro » ne porte pas les cartes modifiées, e
   page.messages.length = 0;
   const tirer = page.document.querySelectorAll('button').find((b) => b.textContent === txt.tirerDansNumero);
   tirer.click();
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(page.messages)), [{ type: MSG.TIRER_DANS_NUMERO, slug: 'orph' }],
-    'le geste part seul : l’hôte n’a rien à enregistrer');
-  // Ce que l'hôte renvoie après « Tirer » : charger, avec la fiche telle qu'elle est sur le disque.
-  page.envoyer({ type: MSG.CHARGER, slug: 'documentation', i18n: txt,
-    typesConfig: doc._libelles.typesRessourceConfig('fr'), typesRubrique: [], rubriques: [], ressources: [LIVRE_CARTE] });
-  assert.strictEqual(champTitre(page).value, 'Titre enregistré', 'la saisie a survécu : la mesure a changé');
+  const envoyes = page.messages.map((m) => m.type);
+  assert.ok(envoyes.includes(MSG.ENREGISTRER), 'la carte part d’abord');
+  assert.ok(!envoyes.includes(MSG.TIRER_DANS_NUMERO), 'le geste attend l’accusé');
+  page.envoyer({ type: MSG.ENREGISTRE, auto: true, correspondances: [] });
+  assert.ok(page.messages.some((m) => m.type === MSG.TIRER_DANS_NUMERO && m.slug === 'orph'));
 });
 
 // ---- La page --------------------------------------------------------------------------------
