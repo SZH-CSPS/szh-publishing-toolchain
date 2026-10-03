@@ -14,6 +14,7 @@ cockpit.
 | [`SORTIES.md`](SORTIES.md) | ce que produit une compilation, le contrat de balisage du HTML publié et la pile de feuilles de style |
 | [`EMPLACEMENTS.md`](EMPLACEMENTS.md) | où vivent les publications : les deux racines, l'arborescence, `_Systeme\`, la bascule test/production et la reprise |
 | [`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md) | le format de la bibliothèque de fiches de la Documentation, partagé avec le site Kirby |
+| [`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md) | le contrat des moissonneurs : lots de propositions, codes de doute, décisions, `etat.json`, `estimer` et `tout`, purge |
 | [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) | les rapports d'erreur automatiques : schéma, masquage, plafonds, codes, compteurs d'usage |
 | [`TRADUCTION.md`](TRADUCTION.md) | le vérificateur de traduction et le mode « Trad » : des suggestions, jamais une édition |
 | [`ACCESSIBILITE.md`](ACCESSIBILITE.md) | les normes visées, ce qui est en place et les règles de travail |

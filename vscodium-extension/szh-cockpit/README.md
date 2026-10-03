@@ -197,6 +197,9 @@ lib/
                         articles/) ou livre (buch.yaml, chapitres/) —, ses chemins, et la
                         table des capacités (contextes szh.peut.*) ; courant() rend le
                         profil actif
+  propositions.js       propositions des moissonneurs : lecture des lots de _Moissons\, cas A/B
+                        revalidés contre le contrat, décisions, accepter/refuser/annuler. Pur,
+                        sans vscode ; la fiche passe par kirby-contenu.js
   qualite-image.js      seuils de résolution des images et verdict de qualité
   rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
                         résolution passive de l'ancrage SharePoint, masquage, anti-

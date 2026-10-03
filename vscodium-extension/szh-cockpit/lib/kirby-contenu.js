@@ -813,9 +813,14 @@ function ecrireFicheSlugLangue(racineArbreVal, slug, langue, type, uuid, valeurs
 // { uuid, slug } — Une fiche neuve : Uuid et slug posés ici, une fois pour toutes. `origine`
 // (optionnel) : Uuid de la fiche archivée dont celle-ci reprend les valeurs — voir le geste
 // « Reprendre dans ce numéro » de l'onglet Archive (documentation-hote.js#reprendreDepuisArchive).
-function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource, origine) {
+// `uuidImpose` (optionnel) : l'Uuid tiré d'avance par l'acceptation d'une proposition, qui
+// l'a déjà écrit dans sa décision (lib/propositions.js).
+function creerFiche(racineArbreVal, langue, type, valeurs, ausgabeId, imageSource, origine, uuidImpose) {
   if (!typeConnu(type)) { throw new Error('creerFiche : type de fiche inconnu « ' + type + ' ».'); }
-  const uuid = genererUuid();
+  if (uuidImpose !== undefined && uuidImpose !== null && !/^[A-Za-z0-9]{16}$/.test(String(uuidImpose))) {
+    throw new Error('creerFiche : uuid imposé mal formé « ' + uuidImpose + ' ».');
+  }
+  const uuid = (uuidImpose === undefined || uuidImpose === null) ? genererUuid() : String(uuidImpose);
   // Collision gérée DANS LE DOSSIER DE CE TYPE seulement (docs/FORMAT-DOCUMENTATION-KIRBY.md) :
   // deux types différents peuvent partager le même slug, chacun dans son propre dossier.
   const slug = slugFicheUnique((valeurs || {}).title || '', ensembleSlugsExistantsPourType(racineArbreVal, type));
