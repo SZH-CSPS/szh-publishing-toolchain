@@ -562,7 +562,8 @@
     function chiffresAide(l, f, k) {
       var c = f.crans[k - 1] || {};
       if (f.fenetre) { l.push(remplir('propFinesseParMois', [c.par_mois, dateCourte(f.fenetre.du), dateCourte(f.fenetre.au)])); }
-      l.push(typeof c.rappel === 'number' ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
+      // Sans fiches de référence dans cette langue (rappel_sur = 0), le rappel n'est pas mesuré.
+      l.push(typeof c.rappel === 'number' && c.rappel_sur > 0 ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
       if (f.calculeLe) { l.push(remplir('propFinesseCalcule', [dateCourte(f.calculeLe)])); }
       if (f.source === 'commun') { l.push(TXT.propFinesseCommun); }
       if (!f.calibree) { l.push(TXT.propFinesseNonCalibree); }

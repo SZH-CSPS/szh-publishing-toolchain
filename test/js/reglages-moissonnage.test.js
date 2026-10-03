@@ -109,6 +109,20 @@ test('réglages : la table des dix crans de chaque langue — note dès, par moi
   assert.strictEqual(cellules(rangeeCrans(p, 'parlement:de').querySelector('tbody').querySelectorAll('tr')[0])[3], '◀ réglage actif');
 });
 
+// Une langue sans fiches de référence (rappel_sur = 0) n'a pas de rappel mesuré : jamais « 0 des 0 ».
+test('réglages : une langue sans fiches de référence dit « non mesuré », jamais « 0 des 0 »', () => {
+  const m = moissonnage();
+  m.moissonneurs[1].langues.fr.crans = CRANS.map((c) => Object.assign({}, c, { rappel: 0, rappel_sur: 0 }));
+  const p = ouvrirReglages();
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false }, moissonnage: m });
+  const r = rangeeCrans(p, 'parlement:fr');
+  const lignes = r.querySelector('tbody').querySelectorAll('tr');
+  assert.strictEqual(lignes[0].querySelectorAll('td')[2].textContent, '–');
+  assert.strictEqual(r.querySelector('thead').querySelectorAll('th')[3].textContent, 'Rappel (sur –)');
+  assert.ok(rangeeFinesse(p, 'parlement:fr:intervention').textContent.indexOf('des 0') === -1);
+});
+
 test('réglages : crans_source dit quand une langue prend les déciles communs ; les catégories s’expliquent', () => {
   const p = ouvrir();
   assert.strictEqual(rangeeCrans(p, 'parlement:fr').querySelector('.accueil-moiss-commun'), null);

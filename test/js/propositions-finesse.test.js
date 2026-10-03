@@ -89,7 +89,8 @@ function repartir(options) {
   ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'parlement'), '2026-10-01-1.jsonl', LOT.map((l) => JSON.stringify(l)).join('\n') + '\n');
   ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'recherche'), '2026-10-01-1.jsonl', JSON.stringify(recherche('R1', 'Une recherche')) + '\n');
   ecrireEtat('parlement', o.sansCrans ? {} : {
-    crans: { fr: crans(), de: crans() }, crans_calcules_le: '2026-10-01',
+    crans: { fr: o.sansReference ? crans().map((c) => Object.assign(c, { rappel: 0, rappel_sur: 0 })) : crans(), de: crans() },
+    crans_calcules_le: '2026-10-01',
     crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
     ...(o.calibree ? { note_calibree: true } : {})
   });
@@ -324,6 +325,14 @@ test('page : « les voir » montre les masquées en grisé, en italique et avec 
 
 // Tant que la note n'est pas calibrée sur des jugements humains, le curseur coupe surtout par
 // volume : l'infobulle le dit, et se tait quand le moissonneur annonce une note calibrée.
+test('page : une langue sans fiches de référence dit « rappel non mesuré », jamais « 0 des 0 »', async () => {
+  repartir({ reglage: 6, sansReference: true });
+  const v = await vueBranchee();
+  const t = v.panel.querySelector('.prop-finesse-aide').title;
+  assert.ok(t.indexOf(v.txt.propFinesseRappelSans) !== -1, t);
+  assert.strictEqual(t.indexOf(r(v.txt.propFinesseRappel, [0, 0])), -1);
+});
+
 test('page : l’infobulle dit que la note n’est pas calibrée, sauf si le moissonneur l’annonce', async () => {
   repartir({ reglage: 6 });
   let v = await vueBranchee();

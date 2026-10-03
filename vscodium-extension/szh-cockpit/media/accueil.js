@@ -1499,6 +1499,8 @@
       var d = String(iso || '').slice(0, 10).split('-');
       return d.length === 3 ? d[2] + '.' + d[1] + '.' + d[0] : '';
     }
+    // Sans fiches de référence dans cette langue (rappel_sur = 0), le rappel n'est pas mesuré.
+    function rappelMesure(c) { return typeof c.rappel === 'number' && c.rappel_sur > 0; }
     function rendreMoissonnage(m) {
       moiss.textContent = '';
       moiss.hidden = !m;
@@ -1556,7 +1558,7 @@
       var out = poser(r.reglage, 'output', 'accueil-finesse-lecture');
       function lire(k) {
         var x = crans[k - 1];
-        var s = typeof x.rappel === 'number' ? tx('lecture', [k, x.par_mois, x.rappel, x.rappel_sur]) : tx('lectureSans', [k, x.par_mois]);
+        var s = rappelMesure(x) ? tx('lecture', [k, x.par_mois, x.rappel, x.rappel_sur]) : tx('lectureSans', [k, x.par_mois]);
         if (x.identique_au_cran_precedent) { s += tx('identique', [cranRepere(crans, k)]); }
         out.textContent = s;
         c.setAttribute('aria-valuetext', tx('valeur', [k, x.par_mois]));
@@ -1575,7 +1577,7 @@
       r.el.dataset.crans = mo.id + ':' + langue;
       var table = poser(r.el, 'table', 'accueil-finesse-table');
       var tr = poser(poser(table, 'thead'), 'tr');
-      [X.colCran, X.colSeuil, X.colMois, tx('colRappel', [crans[0].rappel_sur]), X.colActif].forEach(function (h, i) {
+      [X.colCran, X.colSeuil, X.colMois, tx('colRappel', [crans[0].rappel_sur > 0 ? crans[0].rappel_sur : '–']), X.colActif].forEach(function (h, i) {
         var th = poser(tr, 'th', i > 0 && i < 4 ? 'accueil-finesse-num' : '', h);
         th.setAttribute('scope', 'col');
       });
@@ -1593,7 +1595,7 @@
         th.setAttribute('scope', 'row');
         poser(l, 'td', 'accueil-finesse-num', c.identique_au_cran_precedent ? tx('egal', [cranRepere(crans, c.cran)]) : String(c.seuil));
         poser(l, 'td', 'accueil-finesse-num', String(c.par_mois));
-        poser(l, 'td', 'accueil-finesse-num', typeof c.rappel === 'number' ? String(c.rappel) : '–');
+        poser(l, 'td', 'accueil-finesse-num', rappelMesure(c) ? String(c.rappel) : '–');
         poser(l, 'td', 'accueil-finesse-marque', actifs[c.cran] ? '◀ ' + actifs[c.cran].join(' · ') : '');
       });
       if (L.source === 'commun') { poser(r.el, 'p', 'accueil-astuce accueil-moiss-commun', X.cransCommun); }
