@@ -11,6 +11,15 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.7.2
+
+Mineure : le texte secondaire du cockpit se lit mieux.
+
+**Production.**
+- Cockpit : le texte secondaire (aides, comptes, en-têtes de colonnes, valeurs lues) passe d'un
+  contraste APCA de Lc 59 à Lc 75,7 sous le thème clair des postes, et de −47 à −67 en sombre ;
+  il reste un ton plus pâle que le texte principal.
+
 ## 3.7.1
 
 Mineure : le détail d'une proposition se corrige avant d'être accepté, et une image de livre
