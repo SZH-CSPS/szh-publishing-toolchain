@@ -502,7 +502,10 @@ En maquette normal, le séparateur de légende est le deux-points (« Abbildung 
 - *Impressum* (`impressum:`) : l'ordre est fixe ; `logo-soutien-hauteur-mm` règle la hauteur
   du logo de soutien (refusée hors de 4 à 30 mm) ; une image sans `<clé>-alt` est décorative,
   rendue en fond CSS (une `/Figure` sans `/Alt` n'est pas conforme PDF/UA), comme le logo
-  de l'éditeur sur la page de titre, dont le nom est déjà écrit à l'impressum.
+  de l'éditeur sur la page de titre, dont le nom est déjà écrit à l'impressum. Sous la
+  phrase de `licence:`, le bouton Creative Commons officiel (`media/logos/cc-*.svg`, 12,6 mm
+  de haut, provenance dans `media/logos/README.md`) se pose de lui-même, en décor ; une
+  licence connue sans bouton livré est refusée (`licence-badge-absent`). Pas de bouton en FALC.
 - *Éditeurs* : en ouvrage collectif, demi-titre et page de titre portent les `editeurs`
   suivis de « (Hrsg.) », « (éd.) » ou « (a cura di) », ou de `mention-editeurs` ; c'est la
   ligne de la couverture (`couverture.responsables`).

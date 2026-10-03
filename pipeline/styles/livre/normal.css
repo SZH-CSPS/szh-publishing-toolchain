@@ -405,13 +405,20 @@ html[data-titre-partie] .szh-partie[data-page-seule="non"] { padding-top: 0; min
 
 /* Impressum : le logo de soutien dans le flux, la rangée de logos de l'imprimeur posée sur
    la dernière ligne de base de la page (y 201,0). Hauteurs relevées sur l'Edition SZH. */
-:root { --impressum-logo-soutien: 15.6mm; --impressum-logos-imprimeur: 8.6mm; }
+:root { --impressum-logo-soutien: 15.6mm; --impressum-logos-imprimeur: 8.6mm;
+        --impressum-licence: 12.6mm; }
 /* Le logo de soutien : 3,7 mm sous la ligne de base qui le précède, 7,8 mm au-dessus de
    celle qui le suit. */
 .szh-impressum .szh-impressum-logo { margin: -0.4mm 0 calc(9.6pt + 1.8mm) 0; }
 .szh-impressum .szh-impressum-logo img { display: block; height: var(--impressum-logo-soutien); width: auto; }
 .szh-impressum .szh-impressum-logo .szh-decor-livre {
   display: block; width: calc(var(--impressum-logo-soutien) / var(--ratio));
+}
+/* Le badge Creative Commons sous la phrase de licence (Hofer p2) : son haut 4,8 mm sous la
+   ligne de base de la phrase, la ligne de base suivante 6,2 mm sous lui. */
+.szh-impressum .szh-impressum-licence { margin: 0.7mm 0 3.55mm 0; }
+.szh-impressum .szh-impressum-licence .szh-decor-livre {
+  display: block; width: calc(var(--impressum-licence) / var(--ratio));
 }
 .szh-impressum .szh-impressum-logos-imprimeur {
   position: absolute; left: 0; bottom: 1.1mm; margin: 0; line-height: 0;

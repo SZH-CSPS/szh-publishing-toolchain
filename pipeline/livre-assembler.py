@@ -559,6 +559,13 @@ def dimensions_image(chemin):
     m = re.search(rb'viewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)', d[:4000])
     if m:
         return float(m.group(1)), float(m.group(2))
+    # Sans viewBox, la largeur et la hauteur de la racine <svg>, en px ou sans unité.
+    racine = re.search(rb'<svg\b[^>]*>', d[:4000])
+    if racine:
+        l = re.search(rb'\swidth="([\d.]+)(?:px)?"', racine.group(0))
+        h = re.search(rb'\sheight="([\d.]+)(?:px)?"', racine.group(0))
+        if l and h and float(l.group(1)) and float(h.group(1)):
+            return float(l.group(1)), float(h.group(1))
     return None
 
 
@@ -628,6 +635,15 @@ LICENCES = {
     'cc-by-nc-4.0':    'Creative Commons CC BY-NC 4.0 International',
 }
 
+# Le bouton de chaque licence, sous la phrase de licence en maquette normal : un fichier
+# officiel de Creative Commons, versé sans retouche (media/logos/README.md).
+LOGOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'media', 'logos')
+
+
+def badge_licence(cle):
+    return os.path.join(LOGOS_DIR, cle + '.svg')
+
+
 PHRASE_LICENCE = {
     'de': 'Dieses Werk ist lizenziert unter einer %s.',
     'fr': 'Cette œuvre est diffusée sous licence %s.',
@@ -656,8 +672,16 @@ def _bloc_impressum(meta):
 
 
 def verifier_impressum(meta, racine):
-    """Rend les refus du bloc impressum : clé inconnue, image absente."""
+    """Rend les refus du bloc impressum : clé inconnue, image absente, licence connue dont le
+    badge n'est pas livré. Une licence inconnue de LICENCES n'est pas refusée ici."""
     erreurs = []
+    cle_licence = str(meta.get('licence') or '')
+    if cle_licence in LICENCES and not os.path.isfile(badge_licence(cle_licence)):
+        erreurs.append(_erreur('licence-badge-absent', 'licence',
+            'La licence « %s » n\'a pas de badge livré : le fichier %s.svg manque dans '
+            'pipeline/media/logos.' % (cle_licence, cle_licence),
+            'Für die Lizenz « %s » fehlt das Badge: Die Datei %s.svg fehlt in '
+            'pipeline/media/logos.' % (cle_licence, cle_licence)))
     bloc = _bloc_impressum(meta)
     for cle in bloc:
         if cle not in CLES_IMPRESSUM:
@@ -744,6 +768,10 @@ def impressum(meta, racine='.', normal=False):
     if lic:
         phrase = PHRASE_LICENCE.get(lang, PHRASE_LICENCE['fr'])
         blocs.append(('', phrase % html.escape(lic)))
+        # Le badge est un décor : la phrase dit déjà la licence.
+        if normal:
+            blocs.append(('szh-impressum-licence', _img(badge_licence(str(meta['licence'])), '',
+                                                        'szh-impressum-image')))
     for cle in ('reserve', 'imprimeur'):
         if texte(cle):
             blocs.append(('', texte(cle)))

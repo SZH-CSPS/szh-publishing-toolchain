@@ -422,5 +422,26 @@ class SautDeLigneDansLeTitre(unittest.TestCase):
             self.assertNotIn('szh-sous-titre-attente', r.stdout)
 
 
+class BadgeDeLicence(unittest.TestCase):
+    """Une licence connue de LICENCES sans bouton livré dans media/logos est refusée."""
+
+    def test_chaque_licence_a_son_badge(self):
+        for cle in la.LICENCES:
+            self.assertEqual(la.verifier_impressum({'licence': cle}, RACINE), [], cle)
+
+    def test_licence_sans_badge_refusee(self):
+        la.LICENCES['cc-essai-9.9'] = 'Creative Commons CC ESSAI 9.9 International'
+        self.addCleanup(la.LICENCES.pop, 'cc-essai-9.9')
+        erreurs = la.verifier_impressum({'licence': 'cc-essai-9.9'}, RACINE)
+        self.assertEqual(len(erreurs), 1, erreurs)
+        champs = erreurs[0].split(' | ')
+        self.assertEqual(champs[:2], ['[livre-blocage] licence-badge-absent', 'licence'])
+        self.assertIn('cc-essai-9.9', champs[2])
+        self.assertTrue(champs[3].startswith('[de] ') and 'cc-essai-9.9' in champs[3], erreurs[0])
+
+    def test_licence_inconnue_sans_refus(self):
+        self.assertEqual(la.verifier_impressum({'licence': 'cc-by-99'}, RACINE), [])
+
+
 if __name__ == '__main__':
     unittest.main()

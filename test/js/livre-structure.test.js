@@ -347,6 +347,49 @@ test('impressum : logo-soutien-hauteur-mm règle la hauteur du logo de soutien, 
   }
 });
 
+// Le badge Creative Commons suit la phrase de licence, en maquette normal seulement : un décor
+// (la phrase dit déjà la licence), au fond CSS du fichier livré dans media/logos.
+const LOGOS_CC = path.join(RACINE, 'pipeline', 'media', 'logos');
+const BADGE = /<p class="szh-impressum-licence"><span class="szh-decor-livre szh-impressum-image" role="presentation" style="--ratio: ([\d.]+)"><span style="background-image: url\(&quot;data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)&quot;\)"><\/span><\/span><\/p>/;
+
+test('impressum : le badge de la licence suit sa phrase, en décor, pour chaque licence', { skip: sansPython }, () => {
+  for (const cle of ['cc-by-4.0', 'cc-by-sa-4.0', 'cc-by-nc-4.0', 'cc-by-nc-nd-4.0']) {
+    const r = livre(buch('licence: ' + cle + '\nreserve: x\n', 'impressum'));
+    assert.strictEqual(r.status, 0, cle + ' : ' + r.stderr);
+    const s = /<section class="szh-liminaire szh-impressum">[\s\S]*?<\/section>/.exec(r.html)[0];
+    const m = BADGE.exec(s);
+    assert.ok(m, cle + ' : badge absent\n' + s);
+    assert.ok(Buffer.from(m[2], 'base64').equals(fs.readFileSync(path.join(LOGOS_CC, cle + '.svg'))), cle + ' : autre fichier');
+    assert.strictEqual(m[1], '0.3500', cle + ' : proportions du bouton 88x31');
+    assert.match(s, /lizenziert unter einer Creative Commons [^<]+\.<\/p>\n<p class="szh-impressum-licence">/, cle);
+    assert.doesNotMatch(s, /<img/, cle);
+  }
+});
+
+test('impressum : pas de badge sans licence, ni pour une licence inconnue, ni en FALC', { skip: sansPython }, () => {
+  const sans = livre(buch('annee: 2026\n', 'impressum'));
+  assert.strictEqual(sans.status, 0, sans.stderr);
+  assert.doesNotMatch(sans.html, /szh-impressum-licence|lizenziert/);
+  const inconnue = livre(buch('licence: cc-by-99\n', 'impressum'));
+  assert.strictEqual(inconnue.status, 0, inconnue.stderr);
+  assert.doesNotMatch(inconnue.html, /szh-impressum-licence|lizenziert/);
+  const falc = livre(buch('licence: cc-by-nc-nd-4.0\n', 'impressum').replace('maquette: normal', 'maquette: falc'));
+  assert.strictEqual(falc.status, 0, falc.stderr);
+  assert.match(falc.html, /lizenziert unter einer Creative Commons CC BY-NC-ND 4\.0 International\.<\/p>/);
+  assert.doesNotMatch(falc.html, /szh-impressum-licence|svg\+xml/);
+});
+
+test('logos : chaque bouton Creative Commons livré est celui de la source (sha256 du README)', () => {
+  const doc = fs.readFileSync(path.join(LOGOS_CC, 'README.md'), 'utf8');
+  const lignes = [...doc.matchAll(/^\| `(cc-[^`]+\.svg)` \| (https:\/\/mirrors\.creativecommons\.org\/\S+) \| `([0-9a-f]{64})` \|$/gm)];
+  const livres = fs.readdirSync(LOGOS_CC).filter((f) => /^cc-.*\.svg$/.test(f)).sort();
+  assert.deepStrictEqual(lignes.map((l) => l[1]).sort(), livres, 'README et dossier divergent');
+  for (const [, nom, , empreinte] of lignes) {
+    const vu = require('crypto').createHash('sha256').update(fs.readFileSync(path.join(LOGOS_CC, nom))).digest('hex');
+    assert.strictEqual(vu, empreinte, nom);
+  }
+});
+
 // ── Page de titre et demi-titre ───────────────────────────────────────────────────────
 
 test('page de titre (logo-page-titre) : le logo de l’éditeur par défaut, alt vide ; non le retire', { skip: sansPython }, () => {

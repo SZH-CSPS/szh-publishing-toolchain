@@ -49,14 +49,25 @@ def styles(boite, classes, acc):
     for e in getattr(boite, 'children', []) or []:
         styles(e, classes, acc)
     return acc
+def boites(boite, classes, acc):
+    el = getattr(boite, 'element', None)
+    cl = (el.get('class') or '').split() if el is not None else []
+    for c in classes:
+        if c in cl and c not in acc:
+            acc[c] = [round(v * 25.4 / 96, 2) for v in (boite.border_box_x(), boite.border_box_y(),
+                                                       boite.border_width(), boite.border_height())]
+    for e in getattr(boite, 'children', []) or []:
+        boites(e, classes, acc)
+    return acc
 res = {}
 for cas in json.load(open(sys.argv[1], encoding='utf-8')):
     doc = weasyprint.HTML(string=cas['html'], base_url=cas['base']).render()
     tampon = io.BytesIO(); doc.write_pdf(tampon)
     r = pypdf.PdfReader(io.BytesIO(tampon.getvalue()))
-    st = {}
+    st = {}; bx = {}
     for p in doc.pages: styles(p._page_box, cas.get('classes', []), st)
-    res[cas['nom']] = {'pages': [lignes(p) for p in r.pages], 'styles': st}
+    for p in doc.pages: boites(p._page_box, cas.get('boites', []), bx)
+    res[cas['nom']] = {'pages': [lignes(p) for p in r.pages], 'styles': st, 'boites': bx}
 print(json.dumps(res))
 `;
 
@@ -140,6 +151,13 @@ function cas() {
       + Array.from({ length: n }, (_, i) => '<p>Block ' + (i + 1) + ' des Impressums</p>').join('')
       + '<p>Letzter Block des Impressums</p></section>') });
   }
+  // Impressum avec la phrase de licence et son badge, dans la forme de livre-assembler.py.
+  const badge = cheminVersWsl(path.join(RACINE, 'pipeline', 'media', 'logos', 'cc-by-nc-nd-4.0.svg'));
+  l.push({ nom: 'impressum-licence', base, boites: ['szh-decor-livre'], html: livre('<section class="szh-liminaire szh-impressum">'
+    + '<p>Block 1 des Impressums</p><p>Dieses Werk ist lizenziert unter einer Creative Commons CC BY-NC-ND 4.0 International.</p>'
+    + '<p class="szh-impressum-licence"><span class="szh-decor-livre szh-impressum-image" role="presentation" style="--ratio: 0.3500">'
+    + '<span style="background-image: url(&quot;file://' + badge + '&quot;)"></span></span></p>'
+    + '<p>Alle Rechte vorbehalten.</p><p>Letzter Block des Impressums</p></section>') });
   return l;
 }
 
@@ -280,6 +298,24 @@ test('rendu normal : l’impressum est calé sur le bas de la page', (t) => {
     assert.ok(v, nom + ' : dernier bloc introuvable');
     proche(v.ls[v.i][0], 185.6, 0.3, nom + ', dernier bloc');
   }
+});
+
+// Badge de licence (Hofer p2) : la phrase de licence, le badge de 12,6 mm de haut 4,8 mm sous
+// sa ligne de base, puis la ligne de base du bloc suivant 6,2 mm sous le badge ; le dernier bloc
+// reste calé à 185,6 mm.
+test('rendu normal : le badge de licence suit la phrase de licence à l’impressum', (t) => {
+  if (sansPandocWsl) { sauter.wsl(t); return; }
+  const m = mesures()['impressum-licence'];
+  const phrase = trouver(m.pages, 'Dieses Werk ist lizenziert');
+  const reserve = trouver(m.pages, 'Alle Rechte vorbehalten');
+  const fin = trouver(m.pages, 'Letzter Block');
+  const b = m.boites['szh-decor-livre'];
+  assert.ok(phrase && reserve && fin && b, 'phrase, réserve ou badge introuvable');
+  proche(b[3], 12.6, 0.05, 'hauteur du badge');
+  proche(b[2], 36.0, 0.1, 'largeur du badge');
+  proche(+(b[1] - phrase.ls[phrase.i][0]).toFixed(2), 4.8, 0.15, 'ligne de base de la phrase → haut du badge');
+  proche(+(reserve.ls[reserve.i][0] - (b[1] + b[3])).toFixed(2), 6.2, 0.15, 'bas du badge → ligne de base suivante');
+  proche(fin.ls[fin.i][0], 185.6, 0.3, 'dernier bloc');
 });
 
 // Page de titre (Hofer p3, HfH p5) : le titre à 48,6 mm, que les éditeurs tiennent sur une
