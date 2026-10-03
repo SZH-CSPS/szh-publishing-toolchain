@@ -227,3 +227,57 @@ test('format de travail du Préprocessing : écrit dans szh.formatTravail, docx 
   await envoyer({ type: MSG.REGLER, cle: 'formatTravail', valeur: 'pdf' });
   assert.strictEqual(HOTE.configuration['szh.formatTravail'], 'docx');
 });
+
+// ---- Moissonnage : la finesse du tri, réglée pour la rédaction -----------------------------
+
+test('moissonnage : sans _Moissons, pas de section ; avec, chaque moissonneur, ses crans par langue et le réglage partagé', async () => {
+  const pr = require(path.join(COCKPIT, 'lib', 'propositions.js'));
+  const base = path.join(TRAVAIL, 'Base');
+  const moissons = pr.cheminMoissons(base);
+  fs.rmSync(moissons, { recursive: true, force: true });
+  await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: '' });
+  assert.strictEqual(dits(MSG.VALEURS).pop().moissonnage, undefined, 'une section sans moissonneur');
+  const seuils = [0, 5, 9, 12, 12, 18, 29, 38, 56, 78];
+  const crans = seuils.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: 80 - i * 7, rappel: 70 - i, rappel_sur: 79,
+    identique_au_cran_precedent: i > 0 && seuils[i - 1] === s }));
+  const ecrire = (m, nom, contenu) => { fs.mkdirSync(path.join(moissons, m), { recursive: true }); fs.writeFileSync(path.join(moissons, m, nom), contenu); };
+  ecrire('parlement', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'parlement', derniere_moisson: '2026-10-01T05:12:00Z',
+    crans: { fr: crans, de: crans }, crans_source: { fr: 'langue', de: 'commun' }, crans_calcules_le: '2026-10-01',
+    crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+  ecrire('parlement', '2026-10-01-1.jsonl', JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:x:1', moissonneur: 'parlement',
+    type: 'intervention', langue: 'fr', valeurs: { title: 'Essai' }, pertinence: { score: 20, categorie: 'signal-faible' } }) + '\n');
+  ecrire('isbn', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'isbn', derniere_moisson: '2026-09-30T06:05:00Z' }));
+  pr.ecrireReglage(base, 'fr', 'parlement', 'intervention', 6, 'Claire Exemple');
+  HOTE.configuration['szh.nomUtilisateur'] = 'Poste Essai';
+  require(path.join(COCKPIT, 'lib', 'coedition-hote.js')).oublierIdentiteCoedition();
+  try {
+    await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: '' });
+    const m = dits(MSG.VALEURS).pop().moissonnage;
+    assert.ok(m, 'section absente');
+    assert.deepStrictEqual(m.moissonneurs.map((x) => x.id), ['isbn', 'parlement']);
+    const p = m.moissonneurs[1];
+    assert.deepStrictEqual(p.types.map((t) => t.type), ['intervention']);
+    assert.strictEqual(p.langues.fr.crans.length, 10);
+    assert.strictEqual(p.langues.de.source, 'commun');
+    assert.strictEqual(p.langues.fr.reglages.intervention.cran, 6);
+    assert.deepStrictEqual(p.langues.de.reglages, {});
+    assert.deepStrictEqual(p.categories, ['signal-faible']);
+    assert.strictEqual(m.moissonneurs[0].langues.fr.crans, null, 'un moissonneur sans crans');
+    assert.ok(m.textes.titre && m.textes.jetons['signal-faible']);
+    // Un curseur des Paramètres écrit le réglage partagé, au nom du poste.
+    await envoyer({ type: MSG.ACCUEIL_FINESSE, moissonneur: 'parlement', typeFiche: 'intervention', langue: 'de', cran: 3 });
+    const r = pr.lireReglages(base, 'de').parlement.intervention;
+    assert.strictEqual(r.cran, 3);
+    assert.strictEqual(r.par, 'Poste Essai');
+    assert.strictEqual(dits(MSG.VALEURS).pop().moissonnage.moissonneurs[1].langues.de.reglages.intervention.cran, 3);
+    // Valeurs refusées : rien n'est écrit.
+    await envoyer({ type: MSG.ACCUEIL_FINESSE, moissonneur: 'parlement', typeFiche: 'intervention', langue: 'de', cran: 0 });
+    await envoyer({ type: MSG.ACCUEIL_FINESSE, moissonneur: '../x', typeFiche: 'intervention', langue: 'de', cran: 2 });
+    assert.strictEqual(pr.lireReglages(base, 'de').parlement.intervention.cran, 3);
+    assert.deepStrictEqual(Object.keys(pr.lireReglages(base, 'de')), ['parlement']);
+  } finally {
+    delete HOTE.configuration['szh.nomUtilisateur'];
+    require(path.join(COCKPIT, 'lib', 'coedition-hote.js')).oublierIdentiteCoedition();
+    fs.rmSync(moissons, { recursive: true, force: true });
+  }
+});

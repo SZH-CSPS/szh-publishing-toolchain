@@ -42,6 +42,14 @@
   };
   var MOTIFS = { 'hors-sujet': 'propMotifHorsSujet', doublon: 'propMotifDoublon', autre: 'propMotifAutre' };
   var PERTINENCES = { retenu: 'propPertinenceRetenu', 'a-relire': 'propPertinenceARelire' };
+  // « Pourquoi » : les jetons de catégorie, de rôle et d'emplacement que documente un moissonneur.
+  var CATEGORIES = {
+    titre: 'propCategorieTitre', 'texte-dense': 'propCategorieTexteDense', 'signal-faible': 'propCategorieSignalFaible',
+    ecole: 'propCategorieEcole', theme: 'propCategorieTheme'
+  };
+  var ROLES = { ancrage: 'propRoleAncrage', ambigu: 'propRoleAmbigu', ecole: 'propRoleEcole', theme: 'propRoleTheme' };
+  var OU = { titre: 'propOuTitre', texte: 'propOuTexte', extrait: 'propOuExtrait' };
+  var NB_CRANS = 10;
 
   function vuePropositions(opts) {
     var api = opts.api, panel = opts.panel, barreOnglets = opts.barreOnglets;
@@ -67,6 +75,11 @@
     var enCours = null;          // le geste parti, en attente de son résultat
     var largeurVue = 0;
     var pertinenceAuto = false;  // Pertinence masquée d'elle-même, détail ouvert
+    // La finesse : le cran posé par le curseur en attendant l'hôte, les masquées montrées, et le
+    // bandeau qui suit « Garder » ({ typeFiche, cran, minuteur }).
+    var apercuLocal = {};
+    var voirMasquees = {};
+    var finesseAvis = null;
     var zone = {};
     var menu = null;
     var apresEcriture = opts.apresEcriture || function (geste) { geste(); };
@@ -111,18 +124,45 @@
       return ((donnees && donnees.types) || []).map(function (t) { return t.type; })
         .filter(function (t) { return attente().some(function (p) { return p.type === t; }); });
     }
+    // ---- Finesse du tri ----------------------------------------------------------------------
+    // Un type a des crans quand l'hôte les envoie. Le cran regardé : celui que le curseur vient de
+    // poser, sinon l'aperçu du poste, sinon le réglage de la rédaction, sinon 1 (tout visible).
+    function finesseDe(t) { return (donnees && donnees.finesse && donnees.finesse[t]) || null; }
+    function cranPartage(t) { var f = finesseDe(t); return f && f.reglage ? f.reglage.cran : 1; }
+    function cranVu(t) {
+      var f = finesseDe(t);
+      if (!f) { return 1; }
+      return apercuLocal[t] || f.apercu || cranPartage(t);
+    }
+    function visibleAu(p, k) { return !finesseDe(p.type) || (p.cranMax || NB_CRANS) >= k; }
+    function visible(p) { return visibleAu(p, cranVu(p.type)); }
+    function identique(t, k) { var c = finesseDe(t).crans[k - 1]; return !!(c && c.identique_au_cran_precedent); }
+    // Le premier cran de la suite de crans identiques qui finit en k.
+    function cranRepere(t, k) { var j = k; while (j > 1 && identique(t, j)) { j--; } return j; }
+    function comptesAu(t, k) {
+      var att = attente().filter(function (p) { return p.type === t; });
+      var v = att.filter(function (p) { return visibleAu(p, k); }).length;
+      return { visibles: v, masquees: att.length - v };
+    }
+
     function comptes(type) {
-      var att = attente().filter(function (p) { return p.type === type; });
+      var att = attente().filter(function (p) { return p.type === type && visible(p); });
       return { n: att.length, b: att.filter(estB).length };
     }
-    function filtre(p) { return !filtrePertinence || (p.pertinence && p.pertinence.verdict === filtrePertinence); }
-    // Les lignes de l'onglet : en attente dans l'ordre de l'hôte, puis les refusées si demandé.
+    // Le filtre de pertinence ne vaut que pour un type sans crans : il n'est pas affiché ailleurs.
+    function filtre(p) {
+      if (finesseDe(p.type)) { return true; }
+      return !filtrePertinence || (p.pertinence && p.pertinence.verdict === filtrePertinence);
+    }
+    // Les lignes de l'onglet : en attente dans l'ordre de l'hôte, les masquées seulement si on
+    // les montre, puis les refusées si demandé.
     function lignesOnglet() {
-      var l = attente().filter(function (p) { return p.type === onglet && filtre(p); });
+      var l = attente().filter(function (p) { return p.type === onglet && filtre(p) && (visible(p) || !!voirMasquees[onglet]); });
       if (!afficherRefusees) { return l; }
       return l.concat(refusees().filter(function (p) { return p.type === onglet && filtre(p); }));
     }
-    function attenteOnglet() { return lignesOnglet().filter(enAttente); }
+    // Les masquées montrées ne comptent pas : ni dans la position, ni pour la case de tête.
+    function attenteOnglet() { return lignesOnglet().filter(function (p) { return enAttente(p) && visible(p); }); }
     function titreDe(p) { return (p.valeurs && p.valeurs.title) || TXT.sansTitre || ''; }
     function titreCourt(p) { var t = titreDe(p); return t.length > 60 ? t.slice(0, 57) + '…' : t; }
     // Un champ en doute ne se répète pas comme vide ou hors format : le doute dit déjà tout.
@@ -307,15 +347,18 @@
       zone.moissons = m;
 
       var f = poser(vue, 'div', 'prop-filtres');
-      var lf = poser(f, 'label', 'doc-reservoir-case');
-      poser(lf, 'span', 'doc-reservoir-filtre-label', TXT.propFiltrePertinence);
-      var sel = poser(lf, 'select', 'prop-filtre-pertinence');
-      [['', TXT.propToutes], ['retenu', TXT.propPertinenceRetenu], ['a-relire', TXT.propPertinenceARelire]].forEach(function (o) {
-        var opt = poser(sel, 'option', null, o[1]);
-        opt.value = o[0];
-      });
-      sel.value = filtrePertinence;
-      sel.addEventListener('change', function () { filtrePertinence = sel.value; selection.clear(); rendreTable(); rendrePied(); });
+      // Un type qui a des crans prend le curseur de finesse à la place du filtre de pertinence.
+      if (finesseDe(onglet)) { rendreCurseur(f, onglet); } else {
+        var lf = poser(f, 'label', 'doc-reservoir-case');
+        poser(lf, 'span', 'doc-reservoir-filtre-label', TXT.propFiltrePertinence);
+        var sel = poser(lf, 'select', 'prop-filtre-pertinence');
+        [['', TXT.propToutes], ['retenu', TXT.propPertinenceRetenu], ['a-relire', TXT.propPertinenceARelire]].forEach(function (o) {
+          var opt = poser(sel, 'option', null, o[1]);
+          opt.value = o[0];
+        });
+        sel.value = filtrePertinence;
+        sel.addEventListener('change', function () { filtrePertinence = sel.value; selection.clear(); rendreTable(); rendrePied(); });
+      }
       var lr = poser(f, 'label', 'doc-reservoir-case');
       var cr = poser(lr, 'input', 'prop-afficher-refusees');
       cr.type = 'checkbox';
@@ -338,7 +381,11 @@
       var at = poser(f, 'p', 'prop-aide-texte', TXT.propRaccourcisDetail);
       at.id = 'prop-aide-texte';
       at.hidden = true;
+      if (zone.finesseDetail) { f.appendChild(zone.finesseDetail); }
       zone.filtres = f;
+      // Sous la ligne : « Garder ce cran pour la rédaction », puis le bandeau qui le suit.
+      zone.garde = poser(vue, 'div', 'prop-finesse-garde');
+      rendreGarde();
 
       var split = poser(vue, 'div', 'prop-split');
       zone.split = split;
@@ -358,6 +405,124 @@
       t.hidden = !t.hidden;
       b.setAttribute('aria-expanded', t.hidden ? 'false' : 'true');
     }
+    // Le curseur tient sur une ligne : « Finesse  Large ━━●━━ Strict  Cran 6 : … · les voir · ? ».
+    // Le reste des chiffres est dans l'infobulle du « ? », et dans les Réglages de l'Accueil.
+    function rendreCurseur(f, type) {
+      var g = poser(f, 'div', 'prop-finesse');
+      g.setAttribute('role', 'group');
+      var nom = poser(g, 'span', 'prop-finesse-nom', TXT.propFinesse);
+      nom.id = 'prop-finesse-nom';
+      g.setAttribute('aria-labelledby', nom.id);
+      poser(g, 'span', 'prop-finesse-bout', TXT.propFinesseLarge).setAttribute('aria-hidden', 'true');
+      var c = poser(g, 'input', 'prop-finesse-curseur');
+      c.type = 'range';
+      c.min = '1';
+      c.max = String(NB_CRANS);
+      c.step = '1';
+      c.value = String(cranVu(type));
+      c.setAttribute('aria-labelledby', nom.id);
+      c.setAttribute('aria-describedby', 'prop-finesse-lecture');
+      poser(g, 'span', 'prop-finesse-bout', TXT.propFinesseStrict).setAttribute('aria-hidden', 'true');
+      var lecture = poser(g, 'output', 'prop-finesse-lecture');
+      lecture.id = 'prop-finesse-lecture';
+      var k0 = cranVu(type), n0 = comptesAu(type, k0);
+      if (n0.masquees > 0) {
+        poser(g, 'span', 'prop-point', '·').setAttribute('aria-hidden', 'true');
+        var voir = SZH.bouton(voirMasquees[type] ? TXT.propFinesseCacher : TXT.propFinesseVoir, function () {
+          voirMasquees[type] = !voirMasquees[type];
+          selection.clear();
+          toutRendre(false);
+          var nb = panel.querySelector('.prop-finesse-voir');
+          if (nb) { nb.focus(); }
+        }, 'prop-lien prop-finesse-voir', TXT.propFinesseVoirTip);
+        voir.setAttribute('aria-pressed', voirMasquees[type] ? 'true' : 'false');
+        g.appendChild(voir);
+      }
+      var aide = SZH.bouton('?', function () {
+        zone.finesseDetail.hidden = !zone.finesseDetail.hidden;
+        aide.setAttribute('aria-expanded', zone.finesseDetail.hidden ? 'false' : 'true');
+      }, 'prop-aide prop-finesse-aide');
+      aide.setAttribute('aria-label', TXT.propFinesseAide);
+      aide.setAttribute('aria-expanded', 'false');
+      aide.setAttribute('aria-controls', 'prop-finesse-detail');
+      g.appendChild(aide);
+      // Les chiffres, posés dans la ligne des filtres sous le curseur, au clic sur « ? ».
+      var det = document.createElement('p');
+      det.className = 'prop-finesse-detail';
+      det.id = 'prop-finesse-detail';
+      det.hidden = true;
+      zone.finesseDetail = det;
+      function lire(k) {
+        var n = comptesAu(type, k);
+        var vis = nombre('propFinesseVisibles', n.visibles, [n.visibles]);
+        var mas = nombre('propFinesseMasquees', n.masquees, [n.masquees]);
+        if (identique(type, k)) {
+          lecture.textContent = remplir('propFinesseIdentique', [k, cranRepere(type, k), vis, mas]);
+          c.setAttribute('aria-valuetext', remplir('propFinesseValeurIdentique', [k, cranRepere(type, k), vis]));
+        } else {
+          lecture.textContent = remplir('propFinesseLecture', [k, vis, mas]);
+          c.setAttribute('aria-valuetext', remplir('propFinesseValeur', [k, vis]));
+        }
+        var t = texteAide(type, k);
+        aide.title = t;
+        det.textContent = t;
+      }
+      // Le texte suit en direct ; le cran ne part à l'hôte qu'au lâcher.
+      c.addEventListener('input', function () { lire(Number(c.value)); });
+      c.addEventListener('change', function () {
+        var k = Number(c.value);
+        apercuLocal[type] = k;
+        api.postMessage({ type: SZH.MSG.PROP_FINESSE_APERCU, typeFiche: type, cran: k });
+        selection.clear();
+        toutRendre(false);
+        var nc = panel.querySelector('.prop-finesse-curseur');
+        if (nc) { nc.focus(); }
+      });
+      lire(k0);
+    }
+    // Les chiffres du cran k, une phrase par ligne.
+    function texteAide(type, k) {
+      var f = finesseDe(type), c = f.crans[k - 1] || {}, l = [];
+      if (identique(type, k)) { l.push(remplir('propFinesseIdentiqueTip', [k, cranRepere(type, k)])); }
+      if (f.fenetre) { l.push(remplir('propFinesseParMois', [c.par_mois, dateCourte(f.fenetre.du), dateCourte(f.fenetre.au)])); }
+      l.push(typeof c.rappel === 'number' ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
+      if (f.calculeLe) { l.push(remplir('propFinesseCalcule', [dateCourte(f.calculeLe)])); }
+      if (f.source === 'commun') { l.push(TXT.propFinesseCommun); }
+      l.push(f.reglage ? remplir('propFinesseRegle', [donnees.revue, f.reglage.cran, f.reglage.par, dateCourte(f.reglage.le)])
+        : remplir('propFinesseRegleAucun', [donnees.revue]));
+      l.push(TXT.propFinesseApercu);
+      return l.join('\n');
+    }
+    // « Garder ce cran pour la rédaction » n'apparait que si l'aperçu du poste diffère du réglage
+    // partagé ; le bandeau qui suit le geste permet de l'annuler.
+    function rendreGarde() {
+      var z = zone.garde;
+      if (!z) { return; }
+      z.textContent = '';
+      if (finesseDe(onglet) && cranVu(onglet) !== cranPartage(onglet)) {
+        z.appendChild(SZH.bouton(TXT.propFinesseGarder, function () {
+          api.postMessage({ type: SZH.MSG.PROP_FINESSE_GARDER, typeFiche: onglet });
+        }, 'prop-finesse-garder', remplir('propFinesseGarderTip', [donnees.revue])));
+      }
+      if (finesseAvis && finesseAvis.typeFiche === onglet) {
+        var t = finesseAvis.typeFiche;
+        var n = SZH.notif('ok', [document.createTextNode(remplir('propFinesseGarde', [donnees.revue, finesseAvis.cran]))]);
+        n.classList.add('prop-finesse-bandeau');
+        n.setAttribute('role', 'status');
+        n.querySelector('span').appendChild(SZH.bouton(TXT.propAnnuler, function () {
+          poserFinesseAvis(null);
+          api.postMessage({ type: SZH.MSG.PROP_FINESSE_ANNULER, typeFiche: t });
+        }, 'prop-finesse-annuler', TXT.propAnnulerTip));
+        z.appendChild(n);
+      }
+      z.hidden = !z.firstChild;
+    }
+    function poserFinesseAvis(a) {
+      if (finesseAvis && finesseAvis.minuteur) { clearTimeout(finesseAvis.minuteur); }
+      finesseAvis = a;
+      if (a) { a.minuteur = setTimeout(function () { finesseAvis = null; rendreGarde(); }, DUREE_BANDEAU); }
+    }
+
     function ligneMoisson(parent, e) {
       var l = poser(parent, 'p', 'prop-moisson');
       poser(l, 'span', null, nombre('propMoisson', e.propositions, [e.libelle, dateCourte(e.derniere), heureCourte(e.derniere), e.propositions]));
@@ -403,30 +568,40 @@
       if (d.categorie && d.tri.indexOf('categorie') === -1) {
         cols.push({ id: 'champ:categorie', cle: 'categorie', libelle: TXT.propColType, defaut: 118, min: 56, masquable: true });
       }
-      cols.push({ id: 'pertinence', libelle: TXT.propColPertinence, defaut: 108, min: 56, masquable: true });
+      // Un type qui a des crans montre son cran à la place de la pertinence, masqué tant qu'on ne
+      // l'a pas demandé dans le menu.
+      if (finesseDe(type)) { cols.push({ id: 'cran', libelle: TXT.propColCran, defaut: 76, min: 44, masquable: true, montrable: true }); }
+      else { cols.push({ id: 'pertinence', libelle: TXT.propColPertinence, defaut: 108, min: 56, masquable: true }); }
       cols.push({ id: 'gestes', libelle: TXT.propColGestes, fixe: true });
       return cols;
     }
     function reglageDe(type) {
       var r = (reglages || {})[type] || {};
-      return { largeurs: Object.assign({}, r.largeurs || {}), masquees: (r.masquees || []).slice() };
+      return { largeurs: Object.assign({}, r.largeurs || {}), masquees: (r.masquees || []).slice(), montrees: (r.montrees || []).slice() };
     }
-    function reglageVide(r) { return Object.keys(r.largeurs).length === 0 && r.masquees.length === 0; }
+    function reglageVide(r) { return Object.keys(r.largeurs).length === 0 && r.masquees.length === 0 && r.montrees.length === 0; }
+    // « montrees » n'est écrit que s'il sert : les réglages d'avant restent identiques.
+    function aSauver(r) {
+      var x = { largeurs: r.largeurs, masquees: r.masquees };
+      if (r.montrees.length > 0) { x.montrees = r.montrees; }
+      return x;
+    }
     function poserReglage(type, r) {
       reglages = reglages || {};
-      if (reglageVide(r)) { delete reglages[type]; } else { reglages[type] = r; }
+      if (reglageVide(r)) { delete reglages[type]; } else { reglages[type] = aSauver(r); }
     }
     // Mémorise le réglage d'un type chez l'hôte, dans le globalState du poste.
     function sauverReglage(type, r) {
       poserReglage(type, r);
-      api.postMessage({ type: SZH.MSG.PROP_COLONNES, typeFiche: type, reglage: reglageVide(r) ? null : r });
+      api.postMessage({ type: SZH.MSG.PROP_COLONNES, typeFiche: type, reglage: reglageVide(r) ? null : aSauver(r) });
     }
     function detailPlein() { return !!detailCle && largeurVue > 0 && largeurVue < SEUIL_DETAIL_PLEIN; }
     function colonnesVisibles(type) {
-      var m = reglageDe(type).masquees;
+      var m = reglageDe(type).masquees, montrees = reglageDe(type).montrees;
       var serre = pertinenceAuto && !!detailCle && !detailPlein();
       return colonnesDe(type).filter(function (c) {
         if (c.fixe || c.masquable === false) { return true; }
+        if (c.montrable) { return montrees.indexOf(c.id) !== -1; }
         if (serre && c.id === 'pertinence') { return false; }
         return m.indexOf(c.id) === -1;
       });
@@ -458,7 +633,8 @@
       zone.cols = {};
       cols.forEach(function (c) { zone.cols[c.id] = poser(cg, 'col', 'prop-col-' + c.id.replace(':', '-')); });
       var trh = poser(poser(t, 'thead'), 'tr');
-      var att = lignes.filter(enAttente);
+      // La case de tête ne coche que les visibles : une masquée montrée ne compte pas.
+      var att = lignes.filter(function (p) { return enAttente(p) && visible(p); });
       cols.forEach(function (c) {
         var th = poser(trh, 'th', 'prop-th-' + c.id.replace(':', '-'));
         th.setAttribute('scope', 'col');
@@ -485,7 +661,9 @@
       var tbody = poser(t, 'tbody');
       lignes.forEach(function (p, i) {
         var refusee = !enAttente(p);
-        var tr = poser(tbody, 'tr', 'prop-ligne' + (p.cle === courant ? ' prop-ligne--courante' : '') + (refusee ? ' prop-ligne--refusee' : ''));
+        var masquee = !refusee && !visible(p);
+        var tr = poser(tbody, 'tr', 'prop-ligne' + (p.cle === courant ? ' prop-ligne--courante' : '') + (refusee ? ' prop-ligne--refusee' : '')
+          + (masquee ? ' prop-ligne--masquee' : ''));
         tr.dataset.cle = p.cle;
         tr.tabIndex = p.cle === courant ? 0 : -1;
         tr.setAttribute('aria-rowindex', String(i + 2));
@@ -554,6 +732,15 @@
         bt.addEventListener('click', function () { definirCourant(p.cle, false); ouvrirDetail(p.cle, true); });
         var sl = sousLigne(p);
         if (sl) { var ps = poser(tdt, 'span', 'prop-sousligne', sl); ps.title = sl; }
+        // Une proposition visible des deux rédactions le dit en toutes lettres.
+        if (p.langues && p.langues.length > 1) {
+          var ml = poser(tdt, 'span', 'prop-langues', p.langues.join(' · '));
+          ml.setAttribute('role', 'img');
+          ml.setAttribute('aria-label', remplir('propLanguesTip', [p.langues.join(', ')]));
+          ml.title = ml.getAttribute('aria-label');
+        }
+        // Une masquée montrée le dit en toutes lettres : le gris et l'italique ne font que le doubler.
+        if (enAttente(p) && !visible(p)) { poser(tdt, 'span', 'prop-masquee-mot', TXT.propFinesseMasquee); }
         return;
       }
       if (c.cle) {
@@ -562,6 +749,13 @@
         var court = c.cle === 'categorie' ? libelleJeton(p.type, c.cle, v) : v;
         var td = poser(tr, 'td', 'prop-td-cle', court || '–');
         if (v) { td.title = libelleJeton(p.type, c.cle, v); }
+        return;
+      }
+      if (c.id === 'cran') {
+        var k = p.cranMax || NB_CRANS;
+        var score = p.pertinence && typeof p.pertinence.score === 'number' ? arrondi(p.pertinence.score) : '–';
+        var tdk = poser(tr, 'td', 'prop-discret prop-td-cran', '1–' + k);
+        tdk.title = remplir('propCranTip', [k, score]);
         return;
       }
       if (c.id === 'pertinence') {
@@ -703,13 +897,15 @@
 
     // Le menu « Colonnes » : une case par colonne, puis « Rétablir les largeurs ».
     function basculerColonne(id) {
-      var r = reglageDe(onglet), i = r.masquees.indexOf(id);
-      if (i === -1) { r.masquees.push(id); } else { r.masquees.splice(i, 1); }
+      var r = reglageDe(onglet);
+      var montrable = colonnesDe(onglet).some(function (c) { return c.id === id && c.montrable; });
+      var liste = montrable ? r.montrees : r.masquees, i = liste.indexOf(id);
+      if (i === -1) { liste.push(id); } else { liste.splice(i, 1); }
       sauverReglage(onglet, r);
       rendreTable();
     }
     function retablirColonnes() {
-      sauverReglage(onglet, { largeurs: {}, masquees: [] });
+      sauverReglage(onglet, { largeurs: {}, masquees: [], montrees: [] });
       zone.largeurs = null;
       rendreTable();
     }
@@ -725,7 +921,7 @@
       menu.addEventListener('keyup', function (ev) { if (ev.key === ' ') { ev.preventDefault(); } });
       function remplirMenu() {
         menu.textContent = '';
-        var m = reglageDe(onglet).masquees;
+        var m = reglageDe(onglet).masquees, montrees = reglageDe(onglet).montrees;
         colonnesDe(onglet).forEach(function (c) {
           if (c.id === 'case') { return; }
           var it = poser(menu, 'button', 'szh-sugg-item prop-menu-case');
@@ -733,7 +929,7 @@
           it.setAttribute('role', 'menuitemcheckbox');
           it.dataset.col = c.id;
           var fixe = c.fixe || c.masquable === false;
-          var coche = fixe || m.indexOf(c.id) === -1;
+          var coche = fixe || (c.montrable ? montrees.indexOf(c.id) !== -1 : m.indexOf(c.id) === -1);
           it.setAttribute('aria-checked', coche ? 'true' : 'false');
           var marque = poser(it, 'span', 'prop-menu-marque');
           marque.setAttribute('aria-hidden', 'true');
@@ -993,6 +1189,8 @@
       if (r.faites.length === 0) { return; }
       var defaisable = r.geste !== 'annule' && r.geste !== 'recree';
       poserAnnulable({ cles: defaisable ? r.faites.slice() : [], geste: r.geste, texte: texteResultat(e, r) });
+      // L'autre langue, déjà dans un numéro, n'a pas été retirée : on le dit.
+      if (r.autresGardees > 0) { avertir(TXT.propAutreGardee); }
       if (r.geste === 'annule') {
         // Défaire ramène la première proposition sous les yeux, dans son onglet.
         var p = trouver(r.faites[0]);
@@ -1049,6 +1247,7 @@
       zone.split.classList.toggle('prop-split--plein', plein);
       zone.liste.hidden = plein;
       if (zone.filtres) { zone.filtres.hidden = plein; zone.moissons.hidden = plein; }
+      if (zone.garde) { zone.garde.hidden = plein || !zone.garde.firstChild; }
       if (!detailCle) { return; }
       var att = attenteOnglet();
       var a = poser(zone.split, 'aside', 'szh-carte prop-detail');
@@ -1093,6 +1292,7 @@
       }
 
       if (p.doublon) { rendreDoublon(cps, p); }
+      rendrePourquoi(cps, p);
       // Les champs du contrat, préremplis : on corrige, puis on accepte.
       if (vivante) { cps.appendChild(formulaireDe(p).element); }
       rendreDoutes(cps, p);
@@ -1103,11 +1303,14 @@
       poser(det, 'summary', null, TXT.propBrut);
       var dl = poser(det, 'dl', 'prop-dl');
       // Une clé qui nomme un champ du contrat se lit par son libellé ; les autres restent telles quelles.
+      // Les titres officiels d'une proposition multilingue, chacun dans sa langue.
+      var titres = Object.keys(p.titres || {}).map(function (l) { return [remplir('propTitreOfficiel', [l]), p.titres[l], l]; });
       Object.keys(p.brut || {}).map(function (k) { var c = champDe(p.type, k); return [c ? c.libelle : k, p.brut[k]]; })
-        .concat([[TXT.propBrutCle, p.cle]])
+        .concat(titres, [[TXT.propBrutCle, p.cle]])
         .forEach(function (x) {
           poser(dl, 'dt', null, x[0]);
-          poser(dl, 'dd', null, x[1] === '' || x[1] === null || x[1] === undefined ? '–' : typeof x[1] === 'object' ? JSON.stringify(x[1]) : String(x[1]));
+          var dd = poser(dl, 'dd', null, x[1] === '' || x[1] === null || x[1] === undefined ? '–' : typeof x[1] === 'object' ? JSON.stringify(x[1]) : String(x[1]));
+          if (x[2] && x[2] !== donnees.langue) { dd.setAttribute('lang', x[2]); }
         });
     }
     // Une refusée se lit sans se corriger.
@@ -1328,6 +1531,43 @@
         }
       });
     }
+    // « Pourquoi » : la note et le cran, la catégorie en clair, les termes par rôle avec leur
+    // emplacement. Pour un type qui a des crans seulement.
+    function arrondi(x) { return String(Math.round(x * 10) / 10); }
+    function rendrePourquoi(parent, p) {
+      var pe = p.pertinence;
+      if (!finesseDe(p.type) || !pe) { return; }
+      var s = poser(parent, 'section', 'prop-pourquoi');
+      var h = poser(s, 'h4', 'prop-sous-titre', TXT.propPourquoi);
+      h.id = 'prop-pourquoi-titre';
+      s.setAttribute('aria-labelledby', h.id);
+      poser(s, 'p', 'prop-pourquoi-note', typeof pe.score === 'number'
+        ? remplir('propPourquoiNote', [arrondi(pe.score), p.cranMax || NB_CRANS]) : TXT.propPourquoiSansNote);
+      if (pe.categorie) {
+        poser(s, 'p', 'prop-pourquoi-categorie', remplir('propPourquoiCategorie',
+          [CATEGORIES[pe.categorie] ? TXT[CATEGORIES[pe.categorie]] : String(pe.categorie)]));
+      }
+      var termes = Array.isArray(pe.termes) ? pe.termes.filter(function (x) { return x && x.terme; }) : [];
+      var rangOu = { titre: 0, texte: 1, extrait: 2 };
+      var roles = Object.keys(ROLES);
+      termes.forEach(function (x) { if (roles.indexOf(x.role) === -1) { roles.push(x.role); } });
+      roles.forEach(function (role) {
+        var ts = termes.filter(function (x) { return x.role === role; })
+          .sort(function (a, b) { return (rangOu[a.ou] === undefined ? 9 : rangOu[a.ou]) - (rangOu[b.ou] === undefined ? 9 : rangOu[b.ou]); });
+        if (ts.length === 0) { return; }
+        var l = poser(s, 'p', 'prop-pourquoi-termes');
+        poser(l, 'span', 'prop-pourquoi-role', ROLES[role] ? TXT[ROLES[role]] : String(role));
+        ts.forEach(function (x) {
+          var t = poser(l, 'span', 'prop-pourquoi-terme');
+          var mot = poser(t, 'span', 'prop-pourquoi-mot', String(x.terme));
+          // Entre parenthèses : la langue du terme si elle n'est pas celle du numéro, puis l'emplacement.
+          var precisions = [];
+          if (x.langue && x.langue !== donnees.langue) { mot.setAttribute('lang', x.langue); precisions.push(String(x.langue)); }
+          if (x.ou) { precisions.push(OU[x.ou] ? TXT[OU[x.ou]] : String(x.ou)); }
+          if (precisions.length > 0) { poser(t, 'span', 'prop-pourquoi-ou', ' (' + precisions.join(', ') + ')'); }
+        });
+      });
+    }
     function rendreDoublon(parent, p) {
       var f = p.doublonFiche;
       var b = poser(parent, 'section', 'prop-doublon');
@@ -1488,6 +1728,11 @@
       if (msg.type !== SZH.MSG.PROP_DONNEES) { return false; }
       TXT = opts.txt() || {};
       donnees = msg;
+      // L'hôte a rangé le cran du curseur : son aperçu fait foi.
+      apercuLocal = {};
+      if (msg.finesseGeste) {
+        poserFinesseAvis(msg.finesseGeste.geste === 'garde' ? { typeFiche: msg.finesseGeste.typeFiche, cran: msg.finesseGeste.cran } : null);
+      }
       if (reglages === null) { reglages = Object.assign({}, msg.colonnes || {}); }
       // La marque de l'autre revue : la valeur d'office la première fois qu'on voit la proposition.
       (msg.propositions || []).forEach(function (p) { if (!(p.cle in aussi)) { aussi[p.cle] = !!p.aussi; } });

@@ -1490,6 +1490,110 @@
       rSugg.aide.textContent = k === 0 ? TXT.rgSuggAucune : pluriel(k, 'rgSugg', [k]);
     }
 
+    // ---- Moissonnage : la finesse du tri de chaque revue, partagée par sa rédaction ----
+    // Absente tant que l'hôte n'envoie aucun moissonneur ; ses libellés arrivent avec ses données.
+    var moiss = poser(zones, 'section', 'accueil-moissonnage');
+    moiss.id = 'regl-moissonnage';
+    moiss.hidden = true;
+    function dateCourte(iso) {
+      var d = String(iso || '').slice(0, 10).split('-');
+      return d.length === 3 ? d[2] + '.' + d[1] + '.' + d[0] : '';
+    }
+    function rendreMoissonnage(m) {
+      moiss.textContent = '';
+      moiss.hidden = !m;
+      if (!m) { return; }
+      var X = m.textes;
+      var tx = function (cle, vals) { return SZH.remplir(X, cle, vals || []); };
+      poser(moiss, 'h2', 'accueil-intertitre', X.titre);
+      poser(moiss, 'p', 'accueil-astuce', X.astuce);
+      // La revue de l'interface d'abord.
+      var langues = m.langue === 'de' ? ['de', 'fr'] : ['fr', 'de'];
+      m.moissonneurs.forEach(function (mo) {
+        var h = poser(moiss, 'h3', 'accueil-moiss-nom', mo.libelle);
+        h.id = 'regl-moiss-' + mo.id;
+        poser(moiss, 'p', 'accueil-astuce accueil-moiss-passe',
+          mo.derniere ? tx('passe', [dateCourte(mo.derniere)]) : X.passeInconnue);
+        var avecCrans = langues.filter(function (l) { return !!mo.langues[l].crans; });
+        if (avecCrans.length === 0) { poser(moiss, 'p', 'accueil-moiss-sans', X.sansCrans); return; }
+        var liste = poser(moiss, 'div', 'accueil-taches');
+        avecCrans.forEach(function (l) {
+          mo.types.forEach(function (t) { curseurFinesse(liste, mo, l, t, tx, X); });
+        });
+        avecCrans.forEach(function (l) { tableCrans(liste, mo, l, tx, X); });
+        if (mo.categories.length > 0) {
+          var rc = rangee(liste, X.categories, X.categoriesAide);
+          rc.el.classList.add('accueil-moiss-large');
+          var ol = poser(rc.el, 'ol', 'accueil-moiss-categories');
+          mo.categories.forEach(function (c) { poser(ol, 'li', '', X.jetons[c] || c); });
+        }
+      });
+    }
+    // Le premier cran de la suite de crans identiques qui finit en k.
+    function cranRepere(crans, k) { var j = k; while (j > 1 && crans[j - 1].identique_au_cran_precedent) { j--; } return j; }
+    function curseurFinesse(parent, mo, langue, t, tx, X) {
+      var crans = mo.langues[langue].crans;
+      var reg = mo.langues[langue].reglages[t.type] || null;
+      var r = rangee(parent, tx('finesse', [X.revues[langue], t.libelle]),
+        reg ? tx('regle', [reg.par, dateCourte(reg.le)]) : X.regleAucun);
+      r.el.dataset.finesse = mo.id + ':' + langue + ':' + t.type;
+      var box = poser(r.reglage, 'div', 'accueil-finesse');
+      poser(box, 'span', 'accueil-finesse-bout', X.large).setAttribute('aria-hidden', 'true');
+      var c = poser(box, 'input', 'accueil-finesse-curseur');
+      c.type = 'range';
+      c.min = '1';
+      c.max = String(crans.length);
+      c.step = '1';
+      c.value = String(reg ? reg.cran : 1);
+      c.setAttribute('aria-labelledby', r.nom.id);
+      poser(box, 'span', 'accueil-finesse-bout', X.strict).setAttribute('aria-hidden', 'true');
+      var out = poser(r.reglage, 'output', 'accueil-finesse-lecture');
+      function lire(k) {
+        var x = crans[k - 1];
+        var s = typeof x.rappel === 'number' ? tx('lecture', [k, x.par_mois, x.rappel, x.rappel_sur]) : tx('lectureSans', [k, x.par_mois]);
+        if (x.identique_au_cran_precedent) { s += tx('identique', [cranRepere(crans, k)]); }
+        out.textContent = s;
+        c.setAttribute('aria-valuetext', tx('valeur', [k, x.par_mois]));
+      }
+      c.addEventListener('input', function () { lire(Number(c.value)); });
+      c.addEventListener('change', function () {
+        api.postMessage({ type: MSG.ACCUEIL_FINESSE, moissonneur: mo.id, typeFiche: t.type, langue: langue, cran: Number(c.value) });
+      });
+      lire(Number(c.value));
+    }
+    function tableCrans(parent, mo, langue, tx, X) {
+      var L = mo.langues[langue], crans = L.crans;
+      var aide = mo.fenetre ? tx('cransAide', [dateCourte(mo.fenetre.du), dateCourte(mo.fenetre.au), dateCourte(mo.calculeLe)]) : '';
+      var r = rangee(parent, tx('crans', [X.revues[langue]]), aide);
+      r.el.classList.add('accueil-moiss-large');
+      r.el.dataset.crans = mo.id + ':' + langue;
+      var table = poser(r.el, 'table', 'accueil-finesse-table');
+      var tr = poser(poser(table, 'thead'), 'tr');
+      [X.colCran, X.colSeuil, X.colMois, tx('colRappel', [crans[0].rappel_sur]), X.colActif].forEach(function (h, i) {
+        var th = poser(tr, 'th', i > 0 && i < 4 ? 'accueil-finesse-num' : '', h);
+        th.setAttribute('scope', 'col');
+      });
+      var tb = poser(table, 'tbody');
+      // Le réglage actif se dit en texte, pour chaque type qu'il règle.
+      var actifs = {};
+      mo.types.forEach(function (t) {
+        var reg = L.reglages[t.type];
+        var k = reg ? reg.cran : 1;
+        (actifs[k] = actifs[k] || []).push(mo.types.length > 1 ? X.actif + ' (' + t.libelle + ')' : X.actif);
+      });
+      crans.forEach(function (c) {
+        var l = poser(tb, 'tr', actifs[c.cran] ? 'accueil-finesse-actif' : '');
+        var th = poser(l, 'th', '', String(c.cran) + (c.cran === 1 ? ' · ' + X.large : c.cran === crans.length ? ' · ' + X.strict : ''));
+        th.setAttribute('scope', 'row');
+        poser(l, 'td', 'accueil-finesse-num', c.identique_au_cran_precedent ? tx('egal', [cranRepere(crans, c.cran)]) : String(c.seuil));
+        poser(l, 'td', 'accueil-finesse-num', String(c.par_mois));
+        poser(l, 'td', 'accueil-finesse-num', typeof c.rappel === 'number' ? String(c.rappel) : '–');
+        poser(l, 'td', 'accueil-finesse-marque', actifs[c.cran] ? '◀ ' + actifs[c.cran].join(' · ') : '');
+      });
+      if (L.source === 'commun') { poser(r.el, 'p', 'accueil-astuce accueil-moiss-commun', X.cransCommun); }
+      poser(r.el, 'p', 'accueil-astuce', X.optimiste);
+    }
+
     // ---- Réglages de la rédaction : la carte protégée ----
     // Les blocs d'une revue ou d'une Zeitschrift (auteur·e·s, bibliographie, tâches, export OJS)
     // restent masqués tant que l'hôte n'envoie pas leur donnée : il ne l'envoie pas pour un livre.
@@ -2013,6 +2117,7 @@
       if (msg.poste) { rendreProduit(msg.poste); }
       if (msg.services) { rendreServices(msg.services); }
       rendreSuggestions(msg.suggInterface);
+      rendreMoissonnage(msg.moissonnage || null);
       if (msg.proteges) { protegesEtat = msg.proteges; }
       if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
       // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs.

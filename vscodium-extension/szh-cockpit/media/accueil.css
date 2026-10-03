@@ -352,3 +352,27 @@ body {
 /* Retirer une tâche : la croix porte la couleur du danger, comme les poubelles des listes de cartes. */
 .regl-retirer { color: var(--danger); }
 .regl-retirer:hover:not(:disabled) { color: var(--vscode-button-foreground, var(--fond)); background: var(--danger); }
+
+/* ═══ Paramètres : Moissonnage, la finesse du tri de chaque revue ═════════════════ */
+.accueil-moissonnage[hidden] { display: none; }
+.accueil-moiss-nom { margin: var(--e4) 0 0; font-size: var(--t-corps); font-weight: 700; color: var(--encre); }
+.accueil-moiss-passe { margin: .1rem 0 var(--e2); }
+.accueil-moiss-sans { margin: 0 0 var(--e2); font-size: var(--t-libelle); color: var(--encre); }
+/* Une rangée large : son contenu passe sous la ligne du titre, sur toute la largeur. */
+.accueil-moiss-large .accueil-tache-reglage:empty, .accueil-moiss-large .accueil-tache-action:empty { display: none; }
+.accueil-finesse { display: inline-flex; align-items: center; gap: var(--e2); }
+.accueil-finesse-bout { font-size: var(--t-libelle); color: var(--encre-2); }
+.accueil-finesse-curseur { width: 12rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.accueil-finesse-curseur:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.accueil-finesse-lecture { flex: 1 0 100%; font-size: var(--t-libelle); font-weight: 700; color: var(--encre);
+  font-variant-numeric: tabular-nums; }
+.accueil-finesse-table { width: 100%; max-width: 46rem; margin-top: var(--e2); border-collapse: collapse;
+  font-size: var(--t-libelle); font-variant-numeric: tabular-nums; }
+.accueil-finesse-table th, .accueil-finesse-table td { padding: .15rem var(--e2); border-bottom: 1px solid var(--filet); text-align: left; }
+.accueil-finesse-table thead th { font-size: var(--t-mini); font-weight: 700; color: var(--encre-2); border-bottom-color: var(--filet-fort); }
+.accueil-finesse-table tbody th { font-weight: 400; }
+.accueil-finesse-table .accueil-finesse-num { text-align: right; }
+.accueil-finesse-actif { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.accueil-finesse-marque { font-weight: 700; }
+.accueil-moiss-commun { margin: var(--e1) 0 0; color: var(--encre); }
+.accueil-moiss-categories { margin: var(--e2) 0 0; padding-left: 1.6rem; font-size: var(--t-libelle); }

@@ -150,5 +150,11 @@ SZH.MSG = Object.freeze({
   PROP_COLONNES: 'propColonnes', PROP_OUVRIR_SOURCE: 'propOuvrirSource',
   // Le détail : PROP_VERIFIER { cle, jeton, valeurs, touches } -> PROP_VERIFIE { cle, jeton,
   // bloquants } ; PROP_RECREER { cle, valeurs } recrée la fiche d'une acceptée introuvable.
-  PROP_VERIFIER: 'propVerifier', PROP_VERIFIE: 'propVerifie', PROP_RECREER: 'propRecreer'
+  PROP_VERIFIER: 'propVerifier', PROP_VERIFIE: 'propVerifie', PROP_RECREER: 'propRecreer',
+  // La finesse du tri : PROP_FINESSE_APERCU { typeFiche, cran } range le cran que ce poste regarde
+  // (globalState) ; PROP_FINESSE_GARDER { typeFiche } en fait le réglage partagé de la rédaction,
+  // que PROP_FINESSE_ANNULER { typeFiche } rétablit. ACCUEIL_FINESSE { moissonneur, typeFiche,
+  // langue, cran } règle le partagé depuis les Paramètres de l'Accueil.
+  PROP_FINESSE_APERCU: 'propFinesseApercu', PROP_FINESSE_GARDER: 'propFinesseGarder',
+  PROP_FINESSE_ANNULER: 'propFinesseAnnuler', ACCUEIL_FINESSE: 'accueilFinesse'
 });

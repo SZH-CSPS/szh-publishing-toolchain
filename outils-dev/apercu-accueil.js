@@ -199,12 +199,40 @@ function chargerHote() {
   hoteReglages.services.poser({ url: 'https://link.szh-csps.ch', shlinkCle: 'x', ojsCle: '' });
   return hoteReglages;
 }
+// Une racine active jetable : vide, ou avec deux moissonneurs synthétiques (`moissons`), l'un
+// avec ses crans et un réglage par revue, l'autre sans crans.
+function racineMoissons(avec) {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-moissons-'));
+  process.on('exit', () => { try { fs.rmSync(racine, { recursive: true, force: true }); } catch (e) { /* débris */ } });
+  if (!avec) { return racine; }
+  const base = path.join(racine, '_NewsUndActu', '_Moissons');
+  const ecrire = (dossier, nom, contenu) => { fs.mkdirSync(path.join(base, dossier), { recursive: true }); fs.writeFileSync(path.join(base, dossier, nom), contenu); };
+  const seuils = [0, 5, 9, 12, 12, 18, 29, 38, 56, 78];
+  const par = [81, 75, 66, 63, 63, 41, 34, 25, 16, 9], rappel = [73, 72, 70, 69, 69, 65, 57, 50, 37, 18];
+  const crans = seuils.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: par[i], rappel: rappel[i], rappel_sur: 79,
+    identique_au_cran_precedent: i > 0 && seuils[i - 1] === s }));
+  ecrire('parlement', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'parlement',
+    derniere_moisson: '2026-10-01T05:12:00Z', crans: { fr: crans, de: crans }, crans_calcules_le: '2026-10-01',
+    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+  const ligne = (id, categorie) => JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:exemple:' + id,
+    moissonneur: 'parlement', type: 'intervention', langue: 'fr', valeurs: { title: 'Objet ' + id },
+    pertinence: { score: 20, categorie: categorie } });
+  ecrire('parlement', '2026-10-01-1.jsonl', ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme']
+    .map((c, i) => ligne(String(i), c)).join('\n') + '\n');
+  ecrire('isbn', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'isbn', derniere_moisson: '2026-09-30T06:05:00Z' }));
+  ecrire('_Reglages', 'fr.json', JSON.stringify({ parlement: { intervention: { cran: 6, par: 'Claire Exemple', le: '2026-10-01' } } }));
+  ecrire('_Reglages', 'de.json', JSON.stringify({ parlement: { intervention: { cran: 5, par: 'Jonas Beispiel', le: '2026-09-24' } } }));
+  return racine;
+}
+
 // Le message « valeurs » que l'hôte enverrait : `livre` ouvre un livre dans la fenêtre (les blocs
 // d'une revue ne sont alors pas envoyés), `deverrouille` rejoue le verrou ouvert.
 function valeursReglages(langue, opts) {
   const o = opts || {};
   const hote = chargerHote();
   hote.session.poserProfilOuvrage(o.livre ? hote.profils.PROFILS.livre : null);
+  // La racine active de l'aperçu est toujours jetable : jamais les moissons du poste.
+  process.env.SZH_RACINE_PROD = racineMoissons(!!o.moissons);
   const msg = hote.accueil.messageValeurs();
   msg.poste.produitAuto = produitParDefaut(langue, '', '', ['revue', 'zeitschrift', 'livre']);
   if (o.deverrouille) { msg.proteges = Object.assign({}, msg.proteges, { deverrouille: true }); }
@@ -295,6 +323,9 @@ function etats(langue) {
     'R2-deverrouille': { valeurs: { deverrouille: true }, etapes: [['clic', '#onglet-reglages'],
       ['ouvrirTous', '#panneau-reglages .accueil-details']] },
     'R3-livre': { valeurs: { livre: true }, etapes: [['clic', '#onglet-reglages']] },
+    // La section Moissonnage, mise en tête de la capture : ce qui la précède est masqué.
+    'R4-moissonnage-fr': { valeurs: { moissons: true }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
+    'R4-moissonnage-de': { valeurs: { moissons: true }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
     'J1-ouvert': { etapes: journal },
     'J2-signaler': { etapes: signaler },
     'J3-envoye': { etapes: signaler.concat([['clic', '#jrn-signal-envoyer'],
@@ -352,6 +383,7 @@ function htmlEtat(nom, langue) {
       '  window.addEventListener("load", function () {\n' +
       '    ETAPES.forEach(function (e) {\n' +
       '      if (e[0] === "hote") { window.dispatchEvent(new MessageEvent("message", { data: e[1] })); return; }\n' +
+      '      if (e[0] === "masquerAvant") { var z = document.querySelector(e[1]); Array.prototype.forEach.call(z.parentNode.children, function (x) { if (x !== z && (x.compareDocumentPosition(z) & 4)) { x.style.display = "none"; } }); return; }\n' +
       '      if (e[0] === "ouvrirTous") { document.querySelectorAll(e[1]).forEach(function (d) { d.open = true; }); return; }\n' +
       '      var el = document.querySelector(e[1]);\n' +
       '      if (!el) { throw new Error("aperçu : élément introuvable " + e[1]); }\n' +
@@ -370,10 +402,10 @@ function htmlEtat(nom, langue) {
 
 // Les états rendus : tous en français, et le repos de Produits et du Secrétariat en allemand.
 function liste() {
-  const fr = Object.keys(etats('fr')).filter((n) => n !== 'R1-reglages-de').map((n) => ({ nom: n, langue: 'fr' }));
+  const fr = Object.keys(etats('fr')).filter((n) => !/-de$/.test(n)).map((n) => ({ nom: n, langue: 'fr' }));
   // Le Préprocessing en allemand : la Zeitschrift d'office, et une réussite.
   const preprocDe = [{ nom: 'PP1-repos', langue: 'de' }, { nom: 'PP5-alertes', langue: 'de' }];
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }], preprocDe);
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }], preprocDe);
 }
 
 function ecrire(dossier, filtres) {

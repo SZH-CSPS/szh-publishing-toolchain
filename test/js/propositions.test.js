@@ -703,3 +703,297 @@ test('recreerFiche : la fiche d’une acceptation dont la création a échoué, 
     assert.strictEqual(kc.listerFichesNumero(racine, 'fr', idRevue).length, 1, 'jamais deux fiches');
   } finally { nettoyer(racine); }
 });
+
+// ---- Finesse du tri : crans, comptes, réglage partagé -------------------------------------
+
+const SEUILS = [0, 5, 9, 12, 12, 18, 29, 38, 56, 78];
+function crans(seuils) {
+  return (seuils || SEUILS).map((s, i, t) => ({
+    cran: i + 1, seuil: s, par_mois: 80 - i * 7, rappel: 73 - i * 5, rappel_sur: 79,
+    identique_au_cran_precedent: i > 0 && t[i - 1] === s
+  }));
+}
+function ecrireEtatCrans(racine, moissonneur, cransParLangue) {
+  const dossier = path.join(pr.cheminMoissons(racine), moissonneur);
+  fs.mkdirSync(dossier, { recursive: true });
+  fs.writeFileSync(path.join(dossier, 'etat.json'), JSON.stringify({
+    format: 'pronto-etat/1', moissonneur: moissonneur, contrat: 1, derniere_moisson: '2026-10-01T05:12:00Z',
+    propositions_ecrites: 3, sources_en_echec: [], crans: cransParLangue, crans_calcules_le: '2026-10-01',
+    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' }
+  }));
+}
+function avecScore(p, score) { return Object.assign({}, p, { pertinence: { verdict: 'retenu', raison: 'x', score: score } }); }
+
+test('cranMax : le cran le plus haut où la proposition reste visible, bords des seuils compris', () => {
+  const c = crans();
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 0), c), 1);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 4.9), c), 1);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 5), c), 2, 'un score égal au seuil est visible');
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 12), c), 5, 'les crans 4 et 5 identiques : visible aux deux');
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 17.99), c), 5);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 78), c), 10);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 100), c), 10);
+  // Sans score ou sans crans : visible partout.
+  assert.strictEqual(pr.cranMax(intervention('1'), c), 10);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), 3), null), 10);
+  assert.strictEqual(pr.cranMax(avecScore(intervention('1'), '50'), c), 10, 'un score qui n’est pas un nombre ne compte pas');
+});
+
+test('cransDe : dix crans valides de la langue, sinon rien', () => {
+  const e = { crans: { fr: crans(), de: crans().slice(0, 9) } };
+  assert.strictEqual(pr.cransDe(e, 'fr').length, 10);
+  assert.strictEqual(pr.cransDe(e, 'de'), null, 'neuf crans');
+  assert.strictEqual(pr.cransDe({}, 'fr'), null);
+  assert.strictEqual(pr.cransDe(null, 'fr'), null);
+  const trou = crans(); trou[3] = Object.assign({}, trou[3], { seuil: 'douze' });
+  assert.strictEqual(pr.cransDe({ crans: { fr: trou } }, 'fr'), null);
+  // Rangés par cran, quel que soit l'ordre du fichier.
+  assert.deepStrictEqual(pr.cransDe({ crans: { fr: crans().reverse() } }, 'fr').map((x) => x.cran), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+});
+
+test('comptesCrans : visibles et masquées par type et par cran, dans la langue', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [
+      avecScore(intervention('1'), 2), avecScore(intervention('2'), 20), avecScore(intervention('3'), 90),
+      intervention('4'), avecScore(intervention('5', { langue: 'de' }), 0)
+    ]);
+    ecrireEtatCrans(racine, 'essai', { fr: crans(), de: crans() });
+    const c = pr.comptesCrans(racine, 'fr');
+    assert.strictEqual(c.intervention.aCrans, true);
+    assert.deepStrictEqual(c.intervention.parCran.map((x) => x.visibles), [4, 3, 3, 3, 3, 3, 2, 2, 2, 2]);
+    assert.deepStrictEqual(c.intervention.parCran.map((x) => x.masquees), [0, 1, 1, 1, 1, 1, 2, 2, 2, 2]);
+    pr.refuser(racine, { cle: intervention('3').cle });
+    assert.strictEqual(pr.comptesCrans(racine, 'fr').intervention.parCran[9].visibles, 1, 'une décidée ne compte plus');
+    // Sans crans dans la langue : le type n'a pas de crans, tout est visible.
+    ecrireEtatCrans(racine, 'essai', { de: crans() });
+    const s = pr.comptesCrans(racine, 'fr');
+    assert.strictEqual(s.intervention.aCrans, false);
+    assert.deepStrictEqual(s.intervention.parCran.map((x) => x.visibles), Array(10).fill(3));
+  } finally { nettoyer(racine); }
+});
+
+test('réglage partagé : écrit d’un coup, relu, un fichier illisible vaut « pas de réglage »', () => {
+  const { racine } = bibliotheque();
+  try {
+    assert.deepStrictEqual(pr.lireReglages(racine, 'fr'), {});
+    const r = pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 6, 'Claire Exemple');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(pr.cheminReglages(racine, 'fr'), path.join(pr.cheminMoissons(racine), '_Reglages', 'fr.json'));
+    const lu = JSON.parse(fs.readFileSync(pr.cheminReglages(racine, 'fr'), 'utf8'));
+    assert.strictEqual(lu.essai.intervention.cran, 6);
+    assert.strictEqual(lu.essai.intervention.par, 'Claire Exemple');
+    assert.match(lu.essai.intervention.le, RE_DATE_ISO);
+    // Le reste du fichier est gardé ; aucun fichier temporaire ne traine.
+    pr.ecrireReglage(racine, 'fr', 'essai', 'recherche', 3, 'Jonas Beispiel');
+    assert.strictEqual(pr.lireReglages(racine, 'fr').essai.intervention.cran, 6);
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(pr.cheminReglages(racine, 'fr'))), ['fr.json']);
+    // L'autre langue a son propre fichier.
+    assert.deepStrictEqual(pr.lireReglages(racine, 'de'), {});
+    // Valeurs refusées.
+    assert.strictEqual(pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 11, 'x').ok, false);
+    assert.strictEqual(pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 2.5, 'x').ok, false);
+    assert.strictEqual(pr.ecrireReglage(racine, 'fr', '_Decisions', 'intervention', 2, 'x').ok, false);
+    assert.strictEqual(pr.ecrireReglage(racine, 'fr', 'essai', 'inconnu', 2, 'x').ok, false);
+    assert.strictEqual(pr.ecrireReglage(racine, 'en', 'essai', 'intervention', 2, 'x').ok, false);
+    // Illisible : pas de réglage.
+    fs.writeFileSync(pr.cheminReglages(racine, 'fr'), '{ pas du json');
+    assert.deepStrictEqual(pr.lireReglages(racine, 'fr'), {});
+    // Une entrée mal formée est ignorée, les autres restent.
+    fs.writeFileSync(pr.cheminReglages(racine, 'fr'), JSON.stringify({ essai: { intervention: { cran: 'six' }, recherche: { cran: 4, par: 'A', le: '2026-10-01' } } }));
+    assert.deepStrictEqual(pr.lireReglages(racine, 'fr'), { essai: { recherche: { cran: 4, par: 'A', le: '2026-10-01' } } });
+    // Rétablir un réglage d'avant, ou l'absence de réglage.
+    pr.retablirReglage(racine, 'fr', 'essai', 'recherche', null);
+    assert.deepStrictEqual(pr.lireReglages(racine, 'fr'), {});
+    pr.retablirReglage(racine, 'fr', 'essai', 'recherche', { cran: 4, par: 'A', le: '2026-10-01' });
+    assert.deepStrictEqual(pr.lireReglages(racine, 'fr'), { essai: { recherche: { cran: 4, par: 'A', le: '2026-10-01' } } });
+  } finally { nettoyer(racine); }
+});
+
+test('compterVisibles : les comptes suivent le réglage partagé, puis l’aperçu du poste', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [
+      avecScore(intervention('1'), 2), avecScore(intervention('2'), 20),
+      avecScore(intervention('3', { doutes: [{ champ: 'date', code: 'date-illisible' }] }), 90)
+    ]);
+    ecrireEtatCrans(racine, 'essai', { fr: crans(), de: crans() });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 3, aVerifier: 1, masquees: 0 }, 'sans réglage : cran 1');
+    // Un réglage déjà là : seul le fichier change, pas le dossier ; le cache doit le voir.
+    pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 1, 'A');
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 3, aVerifier: 1, masquees: 0 });
+    pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 6, 'A');
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 2, aVerifier: 1, masquees: 1 }, 'le cache suit le réglage');
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr', { intervention: 10 }), { total: 1, aVerifier: 1, masquees: 2 });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr', { intervention: 1 }), { total: 3, aVerifier: 1, masquees: 0 });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 2, aVerifier: 1, masquees: 1 });
+    assert.deepStrictEqual(pr.compterPropositions(racine, 'fr'), { total: 2, aVerifier: 1 }, 'l’API d’avant suit le réglage partagé');
+    // Des crans recalculés dans etat.json changent aussi le compte.
+    ecrireEtatCrans(racine, 'essai', { de: crans() });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 3, aVerifier: 1, masquees: 0 });
+  } finally { nettoyer(racine); }
+});
+
+test('lireAuteurDemande : l’auteur relu dans le fichier de la demande, id sûr seulement', () => {
+  const { racine } = bibliotheque();
+  try {
+    const dossier = path.join(pr.cheminMoissons(racine), 'essai', 'demandes');
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, 'd-1.json'), JSON.stringify({ id: 'd-1', terme: 'exemple', langue: 'fr', sens: 'exclusion', par: 'Claire Exemple', le: '2026-10-02' }));
+    fs.writeFileSync(path.join(dossier, 'd-2.json'), JSON.stringify({ id: 'autre', par: 'X', le: '2026-10-02' }));
+    assert.deepStrictEqual(pr.lireAuteurDemande(racine, 'essai', 'd-1'), { par: 'Claire Exemple', le: '2026-10-02', confirme_par: '', confirme_le: '' });
+    assert.strictEqual(pr.lireAuteurDemande(racine, 'essai', 'd-2'), null, 'id qui ne correspond pas à son fichier');
+    assert.strictEqual(pr.lireAuteurDemande(racine, 'essai', '../d-1'), null);
+    assert.strictEqual(pr.lireAuteurDemande(racine, 'essai', 'absente'), null);
+  } finally { nettoyer(racine); }
+});
+
+// ---- Propositions multilingues : une ligne pour les deux revues ---------------------------
+
+// Une affaire fédérale : langues fr et de, les titres officiels, pas de valeurs.title.
+function federale(id, extra) {
+  const p = intervention(id, Object.assign({ cle: 'essai:source-exemple:CHE:' + id }, extra || {}));
+  delete p.langue;
+  p.langues = ['fr', 'de'];
+  p.titres = { fr: 'Motion fédérale ' + id, de: 'Bundesmotion ' + id, it: 'Mozione federale ' + id };
+  p.valeurs = Object.assign({}, p.valeurs, { canton: 'CH' });
+  delete p.valeurs.title;
+  return p;
+}
+
+test('multilingue : la ligne se lit dans chaque langue portée, avec le titre de cette langue', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [federale('1'), intervention('2')]);
+    const fr = pr.listerPropositions(racine, 'fr').propositions;
+    const de = pr.listerPropositions(racine, 'de').propositions;
+    assert.deepStrictEqual(fr.map((p) => p.valeurs.title).sort(), ['Motion d’essai 2', 'Motion fédérale 1']);
+    assert.deepStrictEqual(de.map((p) => p.valeurs.title), ['Bundesmotion 1']);
+    assert.deepStrictEqual(de[0].titres, { fr: 'Motion fédérale 1', de: 'Bundesmotion 1', it: 'Mozione federale 1' });
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : langues et langue ensemble, une langue hors contrat ou un titre manquant écartent la ligne', () => {
+  const { racine } = bibliotheque();
+  try {
+    const deux = Object.assign(federale('1'), { langue: 'fr' });
+    const horsContrat = Object.assign(federale('2'), { langues: ['fr', 'en'] });
+    const sansTitre = federale('3');
+    delete sansTitre.titres.de;
+    const vide = Object.assign(federale('4'), { langues: [] });
+    const titresMal = Object.assign(federale('5'), { titres: 'Motion' });
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [deux, horsContrat, sansTitre, vide, titresMal, federale('6')]);
+    const lu = pr.listerPropositions(racine, 'fr');
+    assert.deepStrictEqual(lu.propositions.map((p) => p.cle), [federale('6').cle]);
+    assert.deepStrictEqual(lu.avertissements.map((a) => a.code), Array(5).fill('langues-invalides'));
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : acceptée dans chaque langue, la fiche nait dans la langue de la vue ; une langue absente est refusée', () => {
+  for (const langue of ['fr', 'de']) {
+    const { racine, idRevue } = bibliotheque();
+    try {
+      const p = federale('1');
+      ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+      const vue = pr.listerPropositions(racine, langue).propositions[0];
+      const r = pr.accepterLot(racine, langue, [{ cle: p.cle }], { ausgabeId: langue === 'fr' ? idRevue : '' });
+      assert.deepStrictEqual(r.faites, [p.cle], langue);
+      const f = kc.lireFicheSlugLangue(racine, kc.listerSlugsBibliotheque(racine)[0].slug, langue, 'intervention');
+      assert.strictEqual(f.valeurs.title, vue.valeurs.title);
+      const autre = langue === 'fr' ? 'de' : 'fr';
+      assert.strictEqual(kc.lireFicheSlugLangue(racine, kc.listerSlugsBibliotheque(racine)[0].slug, autre, 'intervention'), null,
+        'coche décochée : un seul fichier');
+      // Une seule décision masque la proposition des deux côtés.
+      assert.strictEqual(pr.listerPropositions(racine, 'fr').propositions.length, 0);
+      assert.strictEqual(pr.listerPropositions(racine, 'de').propositions.length, 0);
+    } finally { nettoyer(racine); }
+  }
+  const { racine } = bibliotheque();
+  try {
+    const p = Object.assign(federale('9'), { langues: ['de', 'fr'] });
+    p.langues = ['de'];
+    p.titres = { de: 'Nur deutsch' };
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+    assert.strictEqual(pr.accepter(racine, p, Object.assign({}, p.valeurs, { title: 'x' }), { langue: 'fr' }).raison, 'langue-absente');
+    assert.strictEqual(pr.lireDecision(racine, p.cle), null, 'aucune décision pour une langue absente');
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : coche mise et seul le titre à traduire — deux fichiers, même Uuid, l’autre orphelin avec son titre officiel', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const p = federale('1');
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+    const r = pr.accepterLot(racine, 'fr', [{ cle: p.cle, aussi: true }], { ausgabeId: idRevue });
+    assert.deepStrictEqual(r.faites, [p.cle]);
+    const slug = kc.listerSlugsBibliotheque(racine)[0].slug;
+    const fr = kc.lireFicheSlugLangue(racine, slug, 'fr', 'intervention');
+    const de = kc.lireFicheSlugLangue(racine, slug, 'de', 'intervention');
+    assert.ok(fr && de, 'les deux fichiers');
+    assert.strictEqual(fr.uuid, de.uuid);
+    assert.strictEqual(fr.ausgabe, idRevue);
+    assert.strictEqual(de.ausgabe, '', 'l’autre langue nait orpheline');
+    assert.strictEqual(de.valeurs.title, 'Bundesmotion 1');
+    assert.strictEqual(de.valeurs.numero, fr.valeurs.numero, 'les champs communs');
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', fr.uuid), null, 'jamais un statut à côté d’un fichier');
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : coche mise et un autre champ à traduire rempli — un fichier, « à traduire », les titres gardés dans la décision', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const traduisible = kc.champsDuType('intervention').find((c) => c.traduire && c.cle !== 'title' && c.saisie !== 'structure');
+    assert.ok(traduisible, 'le contrat de l’intervention n’a pas de champ à traduire hors du titre');
+    const p = federale('1');
+    p.valeurs[traduisible.cle] = 'Un texte à traduire.';
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+    const r = pr.accepterLot(racine, 'fr', [{ cle: p.cle, aussi: true }], { ausgabeId: idRevue });
+    assert.deepStrictEqual(r.faites, [p.cle]);
+    const d = pr.lireDecision(racine, p.cle);
+    assert.deepStrictEqual(d.titres, { fr: 'Motion fédérale 1', de: 'Bundesmotion 1', it: 'Mozione federale 1' });
+    const slug = kc.listerSlugsBibliotheque(racine)[0].slug;
+    assert.strictEqual(kc.lireFicheSlugLangue(racine, slug, 'de', 'intervention'), null);
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', d.fiche).statut, 'a-traduire');
+    assert.deepStrictEqual(pr.titresOfficielsDeFiche(racine, d.fiche), d.titres);
+    assert.strictEqual(pr.titresOfficielsDeFiche(racine, 'XXXXXXXXXXXXXXXX'), null);
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : annuler retire les deux fichiers tant que l’autre n’a pas de numéro, sinon le seul fichier de la vue', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const p = federale('1');
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+    pr.accepterLot(racine, 'fr', [{ cle: p.cle, aussi: true }], { ausgabeId: idRevue });
+    const a = pr.annulerLot(racine, [p.cle], 'fr');
+    assert.deepStrictEqual(a.faites, [p.cle]);
+    assert.strictEqual(a.autresGardees, 0);
+    assert.deepStrictEqual(kc.listerSlugsBibliotheque(racine), [], 'les deux fichiers et le dossier partent');
+    assert.strictEqual(pr.lireDecision(racine, p.cle), null);
+    // L'autre langue déjà tirée dans un numéro de la Zeitschrift : elle reste, et le résultat le dit.
+    pr.accepterLot(racine, 'fr', [{ cle: p.cle, aussi: true }], { ausgabeId: idRevue });
+    const slug = kc.listerSlugsBibliotheque(racine)[0].slug;
+    kc.tirerDansNumero(racine, slug, 'de', 'IdZeitschrift0001');
+    const b = pr.annulerLot(racine, [p.cle], 'fr');
+    assert.deepStrictEqual(b.faites, [p.cle]);
+    assert.strictEqual(b.autresGardees, 1);
+    assert.strictEqual(kc.lireFicheSlugLangue(racine, slug, 'fr', 'intervention'), null);
+    assert.strictEqual(kc.lireFicheSlugLangue(racine, slug, 'de', 'intervention').ausgabe, 'IdZeitschrift0001');
+    assert.strictEqual(pr.lireDecision(racine, p.cle), null);
+  } finally { nettoyer(racine); }
+});
+
+test('multilingue : les comptes et les crans comptent la proposition dans chaque langue portée', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [avecScore(federale('1'), 40), avecScore(intervention('2'), 2)]);
+    ecrireEtatCrans(racine, 'essai', { fr: crans(), de: crans() });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 2, aVerifier: 0, masquees: 0 });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'de'), { total: 1, aVerifier: 0, masquees: 0 });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'de', { intervention: 8 }), { total: 1, aVerifier: 0, masquees: 0 });
+    assert.deepStrictEqual(pr.compterVisibles(racine, 'de', { intervention: 9 }), { total: 0, aVerifier: 0, masquees: 1 });
+    assert.strictEqual(pr.comptesCrans(racine, 'de').intervention.parCran[7].visibles, 1);
+    assert.strictEqual(pr.comptesCrans(racine, 'fr').intervention.parCran[7].visibles, 1);
+    assert.strictEqual(pr.comptesCrans(racine, 'fr').intervention.parCran[0].visibles, 2);
+  } finally { nettoyer(racine); }
+});

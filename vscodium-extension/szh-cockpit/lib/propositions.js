@@ -16,6 +16,10 @@ const DECISIONS = ['accepte', 'refuse'];
 const MOTIFS_REFUS = ['hors-sujet', 'doublon', 'autre'];
 const DOSSIER_DECISIONS = '_Decisions';
 const RE_LOT = /^(\d{4}-\d{2}-\d{2})-(\d+)\.jsonl$/;
+// Finesse du tri : dix crans par moissonneur et par langue, réglés pour toute une rédaction.
+const NB_CRANS = 10;
+const DOSSIER_REGLAGES = '_Reglages';
+const RE_ID_SUR = /^[A-Za-z0-9_-]{1,64}$/;
 
 // ---- Emplacements ------------------------------------------------------------------
 
@@ -70,8 +74,30 @@ function verifierLigne(texte) {
   if (p.format !== FORMAT) { return { code: 'format-inconnu' }; }
   if (typeof p.cle !== 'string' || p.cle.trim() === '' || /[\r\n]/.test(p.cle)) { return { code: 'cle-absente' }; }
   if (!kirby.typeConnu(p.type)) { return { code: 'type-inconnu', cle: p.cle }; }
+  if (p.langues !== undefined) {
+    return languesValides(p) ? { proposition: p } : { code: 'langues-invalides', cle: p.cle };
+  }
   if (kirby.languesDuContrat().indexOf(p.langue) === -1) { return { code: 'langue-inconnue', cle: p.cle }; }
   return { proposition: p };
+}
+
+// Une proposition multilingue : `langues` à la place de `langue`, jamais les deux ; chaque
+// langue du contrat, une fois ; un titre officiel non vide pour chacune dans `titres`.
+function languesValides(p) {
+  if (p.langue !== undefined || !Array.isArray(p.langues) || p.langues.length === 0) { return false; }
+  if (!p.titres || typeof p.titres !== 'object' || Array.isArray(p.titres)) { return false; }
+  const contrat = kirby.languesDuContrat();
+  return p.langues.every((l, i) => contrat.indexOf(l) !== -1 && p.langues.indexOf(l) === i
+    && typeof p.titres[l] === 'string' && p.titres[l].trim() !== '');
+}
+function estMultilingue(p) { return !!p && Array.isArray(p.langues); }
+// languesDe(p) -> les langues où la proposition se montre.
+function languesDe(p) { return estMultilingue(p) ? p.langues.slice() : [p && p.langue]; }
+// La proposition telle qu'une vue la voit : pour une ligne multilingue, le titre officiel de
+// la langue de la vue devient `valeurs.title`, sa seule source.
+function projeter(p, langue) {
+  if (!estMultilingue(p)) { return p; }
+  return Object.assign({}, p, { valeurs: Object.assign({}, p.valeurs || {}, { title: p.titres[langue] }) });
 }
 
 // Les décisions présentes, lues une fois pour toute la liste : cle -> décision.
@@ -95,8 +121,8 @@ function listerPropositions(racineArbreVal, langue) {
   const decidees = clesDecidees(racineArbreVal);
   const propositions = [];
   for (const p of lu.parCle.values()) {
-    if (decidees.has(p.cle) || p.langue !== langue) { continue; }
-    propositions.push(p);
+    if (decidees.has(p.cle) || languesDe(p).indexOf(langue) === -1) { continue; }
+    propositions.push(projeter(p, langue));
   }
   return { propositions: propositions, avertissements: lu.avertissements, etats: lu.etats };
 }
@@ -108,8 +134,8 @@ function listerRefusees(racineArbreVal, langue) {
   const res = [];
   for (const p of lireLots(racineArbreVal).parCle.values()) {
     const d = decisions.get(p.cle);
-    if (!d || d.decision !== 'refuse' || p.langue !== langue) { continue; }
-    res.push(Object.assign({}, p, { motif: d.motif }));
+    if (!d || d.decision !== 'refuse' || languesDe(p).indexOf(langue) === -1) { continue; }
+    res.push(Object.assign({}, projeter(p, langue), { motif: d.motif }));
   }
   return res;
 }
@@ -167,9 +193,11 @@ function empreinteMoissons(racineArbreVal) {
   try { decisions = fs.readdirSync(path.join(base, DOSSIER_DECISIONS)); } catch (e) { /* aucune décision */ }
   noter(base);
   noter(path.join(base, DOSSIER_DECISIONS), String(decisions.length));
+  for (const l of kirby.languesDuContrat()) { noter(cheminReglages(racineArbreVal, l)); }
   for (const m of dossiersMoissonneurs(racineArbreVal)) {
     const dossier = path.join(base, m);
     noter(dossier);
+    noter(path.join(dossier, 'etat.json'));
     let noms = [];
     try { noms = fs.readdirSync(dossier); } catch (e) { /* dossier disparu entre-temps */ }
     for (const nom of noms.filter((n) => /\.jsonl$/.test(n)).sort()) { noter(path.join(dossier, nom)); }
@@ -180,20 +208,31 @@ function empreinteMoissons(racineArbreVal) {
 const cacheComptes = new Map();
 
 // compterPropositions(racine, langue) -> { total, aVerifier } : les propositions en attente
-// dans cette langue, dont les cas B. Rien n'est relu tant que l'empreinte et le contrat
-// n'ont pas changé.
+// dans cette langue, visibles au réglage partagé, dont les cas B.
 function compterPropositions(racineArbreVal, langue) {
-  const cle = racineArbreVal + '|' + langue;
+  const c = compterVisibles(racineArbreVal, langue);
+  return { total: c.total, aVerifier: c.aVerifier };
+}
+
+// compterVisibles(racine, langue, apercu?) -> { total, aVerifier, masquees } : les
+// propositions en attente et visibles dans cette langue, dont les cas B, et celles que la
+// finesse masque. `apercu` ({ type: cran }) est le cran que le poste regarde ; sans lui, le
+// réglage partagé. Rien n'est relu tant que l'empreinte, l'aperçu et le contrat n'ont pas changé.
+function compterVisibles(racineArbreVal, langue, apercu) {
+  const cle = racineArbreVal + '|' + langue + '|' + JSON.stringify(apercu || {});
   const empreinte = empreinteMoissons(racineArbreVal);
   const contratCourant = kirby.contrat();
   const connu = cacheComptes.get(cle);
   if (connu && connu.empreinte === empreinte && connu.contrat === contratCourant) {
-    return { total: connu.total, aVerifier: connu.aVerifier };
+    return { total: connu.total, aVerifier: connu.aVerifier, masquees: connu.masquees };
   }
-  const { propositions } = listerPropositions(racineArbreVal, langue);
-  const aVerifier = propositions.filter((p) => classer(p).cas === 'B').length;
-  cacheComptes.set(cle, { empreinte: empreinte, contrat: contratCourant, total: propositions.length, aVerifier: aVerifier });
-  return { total: propositions.length, aVerifier: aVerifier };
+  const lu = listerPropositions(racineArbreVal, langue);
+  const vue = finessePourVue(racineArbreVal, langue, lu.etats, apercu);
+  const visibles = lu.propositions.filter((p) => vue.visible(p));
+  const aVerifier = visibles.filter((p) => classer(p).cas === 'B').length;
+  const res = { total: visibles.length, aVerifier: aVerifier, masquees: lu.propositions.length - visibles.length };
+  cacheComptes.set(cle, Object.assign({ empreinte: empreinte, contrat: contratCourant }, res));
+  return res;
 }
 
 // ---- Ordre de la vue ------------------------------------------------------------------
@@ -299,10 +338,23 @@ function lireDecisionFichier(chemin) {
   const cle = String(champs.cle || '').trim();
   const decision = String(champs.decision || '').trim();
   if (!cle || DECISIONS.indexOf(decision) === -1) { return null; }
-  return {
+  const d = {
     cle: cle, decision: decision, motif: String(champs.motif || '').trim(),
     fiche: String(champs.fiche || '').trim(), date: String(champs.date || '').trim()
   };
+  // Les titres officiels d'une proposition multilingue : un objet JSON sur une ligne.
+  const titres = lireTitres(champs.titres);
+  if (titres) { d.titres = titres; }
+  return d;
+}
+function lireTitres(brut) {
+  if (brut === undefined || String(brut).trim() === '') { return null; }
+  let t;
+  try { t = JSON.parse(String(brut)); } catch (e) { return null; }
+  if (!t || typeof t !== 'object' || Array.isArray(t)) { return null; }
+  const res = {};
+  for (const l of Object.keys(t)) { if (typeof t[l] === 'string') { res[l] = t[l]; } }
+  return Object.keys(res).length > 0 ? res : null;
 }
 
 // lireDecision(racine, cle) -> { cle, decision, motif, fiche, date } | null.
@@ -315,6 +367,7 @@ function texteDecision(d) {
   const parties = ['Cle: ' + d.cle, 'Decision: ' + d.decision];
   if (d.motif) { parties.push('Motif: ' + d.motif); }
   if (d.fiche) { parties.push('Fiche: ' + d.fiche); }
+  if (d.titres) { parties.push('Titres: ' + JSON.stringify(d.titres)); }
   parties.push('Date: ' + d.date);
   return parties.join('\n\n----\n\n') + '\n';
 }
@@ -339,6 +392,7 @@ function ecrireDecision(racineArbreVal, decision) {
     cle: cle, decision: d.decision, motif: motif, fiche: String(d.fiche || ''),
     date: new Date().toISOString().slice(0, 10)
   };
+  if (d.titres && typeof d.titres === 'object') { ecrite.titres = d.titres; }
   fs.mkdirSync(path.dirname(chemin), { recursive: true });
   ecrireAtomique(chemin, texteDecision(ecrite));
   return { ok: true, decision: ecrite };
@@ -354,24 +408,65 @@ function annulerDecision(racineArbreVal, cle) {
 // accepter(racine, p, valeurs, { ausgabeId, proposerAutreRevue }) -> { ok, uuid, slug, raison? }.
 // La décision est écrite avant la fiche, avec l'Uuid de celle-ci : une création qui
 // échoue laisse une décision qui désigne une fiche introuvable, jamais deux fiches.
+// `langue` (options) est la langue de la vue, celle du numéro ouvert : la fiche y nait. Une
+// proposition multilingue doit la porter ; une monolingue garde sa propre langue.
 function accepter(racineArbreVal, p, valeurs, options) {
   const o = options || {};
   if (!p || !kirby.typeConnu(p.type)) { return { ok: false, raison: 'type-inconnu' }; }
+  const langue = langueVue(p, o.langue);
+  if (!langue) { return { ok: false, raison: 'langue-absente' }; }
   // Le formulaire grise déjà le geste ; ceci garde la fiche si un appel le contourne.
   const ecarts = ecartsFormat(p.type, valeurs);
   if (ecarts.length > 0) { return { ok: false, raison: 'valeurs-hors-format', ecarts: ecarts }; }
   const uuid = kirby.genererUuid();
-  const ecrite = ecrireDecision(racineArbreVal, { cle: p.cle, decision: 'accepte', fiche: uuid });
+  const decision = { cle: p.cle, decision: 'accepte', fiche: uuid };
+  if (estMultilingue(p)) { decision.titres = p.titres; }
+  const ecrite = ecrireDecision(racineArbreVal, decision);
   if (!ecrite.ok) { return ecrite; }
   const ausgabeId = o.ausgabeId || '';
   let cree;
-  try { cree = kirby.creerFiche(racineArbreVal, p.langue, p.type, valeurs || {}, ausgabeId, null, null, uuid); }
+  try { cree = kirby.creerFiche(racineArbreVal, langue, p.type, valeurs || {}, ausgabeId, null, null, uuid); }
   catch (e) { return { ok: false, raison: 'fiche-introuvable', uuid: uuid }; }
-  if (ausgabeId) { kirby.reordonnerNumero(racineArbreVal, p.langue, ausgabeId); }
-  if (o.proposerAutreRevue) {
-    for (const autre of kirby.autresLangues(p.langue)) { kirby.ecrireStatutFiche(racineArbreVal, autre, uuid, 'a-traduire'); }
-  }
+  if (ausgabeId) { kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId); }
+  if (o.proposerAutreRevue) { proposerAutreRevue(racineArbreVal, p, langue, cree.slug, uuid, valeurs || {}); }
   return { ok: true, uuid: uuid, slug: cree.slug };
+}
+
+// La langue où la fiche nait : celle de la vue, si la proposition la porte ; sans vue, la
+// langue d'une proposition monolingue.
+function langueVue(p, langue) {
+  if (!langue) { return estMultilingue(p) ? '' : p.langue; }
+  return languesDe(p).indexOf(langue) !== -1 ? langue : '';
+}
+
+// Un champ `traduire` autre que le titre, rempli : sa traduction ne se devine pas. Pour une
+// structure, un sous-champ `traduire` rempli sur une ligne suffit.
+function resteATraduire(type, valeurs) {
+  return kirby.champsDuType(type).some((c) => {
+    if (c.cle === 'title') { return false; }
+    if (c.traduire) { return !estVide(valeurs[c.cle]); }
+    if (c.saisie !== 'structure' || !Array.isArray(valeurs[c.cle])) { return false; }
+    const sous = (c.champs || []).filter((sc) => sc.traduire).map((sc) => sc.cle);
+    return valeurs[c.cle].some((l) => l && sous.some((k) => !estVide(l[k])));
+  });
+}
+
+// La coche « + autre revue ». Pour une proposition multilingue dont seul le titre se traduit,
+// le fichier de l'autre langue nait aussitôt, orphelin, avec son titre officiel et les champs
+// communs ; sinon, l'autre langue reçoit le statut « à traduire » (jamais les deux : un statut
+// posé à côté d'un fichier existant serait ignoré).
+function proposerAutreRevue(racineArbreVal, p, langue, slug, uuid, valeurs) {
+  for (const autre of kirby.autresLangues(langue)) {
+    const titre = estMultilingue(p) && languesDe(p).indexOf(autre) !== -1 ? p.titres[autre] : '';
+    if (titre && !resteATraduire(p.type, valeurs)) {
+      const t = kirby.traduireDansNumero(racineArbreVal, slug, autre, '');
+      if (t.ok) {
+        kirby.enregistrerFicheLangue(racineArbreVal, slug, autre, p.type, Object.assign({}, valeurs, { title: titre }));
+        continue;
+      }
+    }
+    kirby.ecrireStatutFiche(racineArbreVal, autre, uuid, 'a-traduire');
+  }
 }
 
 // refuser(racine, p, motif?) -> { ok, decision, raison? }.
@@ -394,13 +489,24 @@ function fichesParUuid(racineArbreVal, uuid) {
 // annulerAcceptation(racine, cle) -> { ok, ficheSupprimee, raison? } : la fiche créée, puis
 // le statut de l'autre langue, puis la décision. La suppression vise (type, slug) : le
 // même slug peut exister sous un autre type, que supprimerFicheLangue pourrait viser.
-function annulerAcceptation(racineArbreVal, cle) {
+// Pour une proposition multilingue (sa décision garde ses titres), `langue` désigne la vue :
+// son fichier part toujours, celui de l'autre langue seulement s'il n'est dans aucun numéro ;
+// sinon il reste et `autreGardee` le dit.
+function annulerAcceptation(racineArbreVal, cle, langue) {
   const d = lireDecision(racineArbreVal, cle);
   if (!d || d.decision !== 'accepte') { return { ok: false, raison: 'pas-acceptee' }; }
   const fiches = d.fiche ? fichesParUuid(racineArbreVal, d.fiche) : [];
-  if (fiches.length > 1) { return { ok: false, raison: 'fiche-traduite' }; }
-  const f = fiches[0];
-  if (f) {
+  let aRetirer = fiches;
+  let autreGardee = false;
+  if (fiches.length > 1) {
+    if (!d.titres) { return { ok: false, raison: 'fiche-traduite' }; }
+    const vue = fiches.filter((f) => f.langue === langue);
+    const autres = fiches.filter((f) => f.langue !== langue);
+    if (vue.length === 0) { return { ok: false, raison: 'fiche-traduite' }; }
+    autreGardee = autres.some((f) => !!f.ausgabe);
+    aRetirer = autreGardee ? vue : fiches;
+  }
+  for (const f of aRetirer) {
     const dossier = kirby.cheminFiche(racineArbreVal, f.type, f.slug);
     fs.unlinkSync(path.join(dossier, kirby.nomFichierContenu(f.type, f.langue)));
     let reste;
@@ -413,7 +519,9 @@ function annulerAcceptation(racineArbreVal, cle) {
     }
   }
   const annule = annulerDecision(racineArbreVal, cle);
-  return { ok: annule.ok, ficheSupprimee: !!f };
+  const res = { ok: annule.ok, ficheSupprimee: aRetirer.length > 0 };
+  if (autreGardee) { res.autreGardee = true; }
+  return res;
 }
 
 // ---- Gestes de la vue, en lot -----------------------------------------------------------
@@ -455,7 +563,7 @@ function accepterLot(racineArbreVal, langue, demandes, options) {
       res.ignorees.push({ cle: p.cle, raison: 'a-verifier' });
       continue;
     }
-    const r = accepter(racineArbreVal, p, saisies || p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi });
+    const r = accepter(racineArbreVal, p, saisies || p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi, langue: langue });
     if (r.ok) { res.faites.push(p.cle); } else { res.echecs.push({ cle: p.cle, raison: r.raison }); }
   }
   return res;
@@ -474,17 +582,19 @@ function refuserLot(racineArbreVal, langue, cles, motif) {
   return res;
 }
 
-// annulerLot(racine, [cle]) -> { faites, echecs, fichesSupprimees } : chaque décision se
+// annulerLot(racine, [cle], langue?) -> { faites, echecs, fichesSupprimees, autresGardees } :
+// `langue` est celle de la vue (voir annulerAcceptation). Chaque décision se
 // défait selon sa nature, une acceptation avec la fiche qu'elle a créée.
-function annulerLot(racineArbreVal, cles) {
-  const res = { faites: [], echecs: [], fichesSupprimees: 0 };
+function annulerLot(racineArbreVal, cles, langue) {
+  const res = { faites: [], echecs: [], fichesSupprimees: 0, autresGardees: 0 };
   for (const cle of (Array.isArray(cles) ? cles : [])) {
     const d = lireDecision(racineArbreVal, cle);
     if (!d) { res.echecs.push({ cle: String(cle), raison: 'pas-decidee' }); continue; }
-    const r = d.decision === 'accepte' ? annulerAcceptation(racineArbreVal, cle) : annulerDecision(racineArbreVal, cle);
+    const r = d.decision === 'accepte' ? annulerAcceptation(racineArbreVal, cle, langue) : annulerDecision(racineArbreVal, cle);
     if (!r.ok) { res.echecs.push({ cle: d.cle, raison: r.raison || 'echec' }); continue; }
     res.faites.push(d.cle);
     if (r.ficheSupprimee) { res.fichesSupprimees++; }
+    if (r.autreGardee) { res.autresGardees++; }
   }
   return res;
 }
@@ -494,10 +604,21 @@ function annulerLot(racineArbreVal, cles) {
 function ficheDoublon(racineArbreVal, p) {
   const d = p && p.doublon;
   if (!d || !d.slug || !d.uuid || !kirby.typeConnu(p.type)) { return null; }
-  const langues = [p.langue].concat(kirby.languesDuContrat().filter((l) => l !== p.langue));
+  const premieres = languesDe(p).filter(Boolean);
+  const langues = premieres.concat(kirby.languesDuContrat().filter((l) => premieres.indexOf(l) === -1));
   for (const langue of langues) {
     const f = kirby.lireFicheSlugLangue(racineArbreVal, String(d.slug), langue, p.type);
     if (f && f.uuid === d.uuid) { return { valeurs: f.valeurs, ausgabe: f.ausgabe || '', langue: langue }; }
+  }
+  return null;
+}
+
+// titresOfficielsDeFiche(racine, uuid) -> { fr, de, it? } | null : les titres officiels que garde
+// la décision d'une proposition multilingue acceptée, retrouvée par l'Uuid de sa fiche.
+function titresOfficielsDeFiche(racineArbreVal, uuid) {
+  if (!uuid) { return null; }
+  for (const d of decisionsParCle(racineArbreVal).values()) {
+    if (d.decision === 'accepte' && d.fiche === uuid && d.titres) { return d.titres; }
   }
   return null;
 }
@@ -518,24 +639,202 @@ function recreerFiche(racineArbreVal, cle, p, valeurs, options) {
   const d = lireDecision(racineArbreVal, cle);
   if (!d || d.decision !== 'accepte' || !d.fiche) { return { ok: false, raison: 'pas-acceptee' }; }
   if (!p || p.cle !== d.cle || !kirby.typeConnu(p.type)) { return { ok: false, raison: 'type-inconnu' }; }
+  const langue = langueVue(p, o.langue);
+  if (!langue) { return { ok: false, raison: 'langue-absente' }; }
   if (fichesParUuid(racineArbreVal, d.fiche).length > 0) { return { ok: false, raison: 'fiche-presente' }; }
-  const v = valeursSaisies(p, valeurs && typeof valeurs === 'object' ? valeurs : {});
+  const v = valeursSaisies(projeter(p, langue), valeurs && typeof valeurs === 'object' ? valeurs : {});
   const ecarts = ecartsFormat(p.type, v);
   if (ecarts.length > 0) { return { ok: false, raison: 'valeurs-hors-format', ecarts: ecarts }; }
   const ausgabeId = o.ausgabeId || '';
-  const cree = kirby.creerFiche(racineArbreVal, p.langue, p.type, v, ausgabeId, null, null, d.fiche);
-  if (ausgabeId) { kirby.reordonnerNumero(racineArbreVal, p.langue, ausgabeId); }
-  if (o.proposerAutreRevue) {
-    for (const autre of kirby.autresLangues(p.langue)) { kirby.ecrireStatutFiche(racineArbreVal, autre, d.fiche, 'a-traduire'); }
-  }
+  const cree = kirby.creerFiche(racineArbreVal, langue, p.type, v, ausgabeId, null, null, d.fiche);
+  if (ausgabeId) { kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId); }
+  if (o.proposerAutreRevue) { proposerAutreRevue(racineArbreVal, p, langue, cree.slug, d.fiche, v); }
   return { ok: true, uuid: d.fiche, slug: cree.slug };
 }
 
+// ---- Finesse du tri -----------------------------------------------------------------------
+//
+// Chaque proposition porte un score (pertinence.score) ; chaque moissonneur écrit dans
+// etat.json dix seuils par langue (crans). Au cran k, une proposition est visible si son score
+// atteint le seuil k. Sans score ou sans crans, elle est visible partout.
+
+function scoreDe(p) {
+  const s = p && p.pertinence ? p.pertinence.score : undefined;
+  return typeof s === 'number' && isFinite(s) ? s : null;
+}
+
+// cransDe(etat, langue) -> les dix crans de la langue, rangés, ou null s'ils manquent ou sont mal formés.
+function cransDe(etat, langue) {
+  const l = etat && etat.crans && typeof etat.crans === 'object' ? etat.crans[langue] : null;
+  if (!Array.isArray(l) || l.length !== NB_CRANS) { return null; }
+  if (l.some((c) => !c || typeof c !== 'object')) { return null; }
+  const tri = l.slice().sort((a, b) => Number(a.cran) - Number(b.cran));
+  for (let i = 0; i < NB_CRANS; i++) {
+    if (tri[i].cran !== i + 1 || typeof tri[i].seuil !== 'number' || !isFinite(tri[i].seuil)) { return null; }
+  }
+  return tri;
+}
+
+// cranMax(p, crans) -> 1..10 : le cran le plus haut où la proposition reste visible. Les crans
+// sont emboîtés : on monte tant que le score atteint le seuil.
+function cranMax(p, crans) {
+  const s = scoreDe(p);
+  if (!crans || s === null) { return NB_CRANS; }
+  let k = 1;
+  for (let i = 1; i < crans.length; i++) {
+    if (s < crans[i].seuil) { break; }
+    k = crans[i].cran;
+  }
+  return k;
+}
+
+function moissonneurDe(p) { return String(p.dossier || p.moissonneur || ''); }
+
+function cheminReglages(racineArbreVal, langue) {
+  return path.join(cheminMoissons(racineArbreVal), DOSSIER_REGLAGES, langue + '.json');
+}
+function cranValide(c) { return Number.isInteger(c) && c >= 1 && c <= NB_CRANS; }
+function moissonneurValide(m) { return typeof m === 'string' && RE_ID_SUR.test(m) && m.charAt(0) !== '_'; }
+
+// lireReglages(racine, langue) -> { moissonneur: { type: { cran, par, le } } }. Un fichier
+// illisible vaut « pas de réglage » ; une entrée mal formée est ignorée.
+function lireReglages(racineArbreVal, langue) {
+  let brut;
+  try { brut = JSON.parse(fs.readFileSync(cheminReglages(racineArbreVal, langue), 'utf8').replace(/^﻿/, '')); }
+  catch (e) { return {}; }
+  const res = {};
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) { return res; }
+  for (const m of Object.keys(brut)) {
+    const parType = brut[m];
+    if (!moissonneurValide(m) || !parType || typeof parType !== 'object') { continue; }
+    for (const t of Object.keys(parType)) {
+      const r = parType[t];
+      if (!r || typeof r !== 'object' || !cranValide(r.cran)) { continue; }
+      res[m] = res[m] || {};
+      res[m][t] = { cran: r.cran, par: String(r.par || ''), le: String(r.le || '') };
+    }
+  }
+  return res;
+}
+
+function ecrireTableReglages(racineArbreVal, langue, table) {
+  const chemin = cheminReglages(racineArbreVal, langue);
+  fs.mkdirSync(path.dirname(chemin), { recursive: true });
+  ecrireAtomique(chemin, JSON.stringify(table, null, 2) + '\n');
+}
+
+// ecrireReglage(racine, langue, moissonneur, type, cran, par) -> { ok, reglage, raison? } : le
+// réglage partagé de la rédaction de cette langue, écrit d'un coup.
+function ecrireReglage(racineArbreVal, langue, moissonneur, type, cran, par) {
+  if (kirby.languesDuContrat().indexOf(langue) === -1 || !moissonneurValide(moissonneur)
+    || !kirby.typeConnu(type) || !cranValide(cran)) {
+    return { ok: false, raison: 'reglage-invalide' };
+  }
+  const table = lireReglages(racineArbreVal, langue);
+  const reglage = { cran: cran, par: String(par || '—'), le: new Date().toISOString().slice(0, 10) };
+  table[moissonneur] = Object.assign({}, table[moissonneur] || {}, { [type]: reglage });
+  ecrireTableReglages(racineArbreVal, langue, table);
+  return { ok: true, reglage: reglage };
+}
+
+// retablirReglage(racine, langue, moissonneur, type, ancien|null) : remet le réglage d'avant
+// tel quel, ou le retire.
+function retablirReglage(racineArbreVal, langue, moissonneur, type, ancien) {
+  if (kirby.languesDuContrat().indexOf(langue) === -1 || !moissonneurValide(moissonneur)) { return { ok: false }; }
+  const table = lireReglages(racineArbreVal, langue);
+  if (ancien && cranValide(ancien.cran)) {
+    table[moissonneur] = Object.assign({}, table[moissonneur] || {},
+      { [type]: { cran: ancien.cran, par: String(ancien.par || ''), le: String(ancien.le || '') } });
+  } else if (table[moissonneur]) {
+    delete table[moissonneur][type];
+    if (Object.keys(table[moissonneur]).length === 0) { delete table[moissonneur]; }
+  }
+  ecrireTableReglages(racineArbreVal, langue, table);
+  return { ok: true };
+}
+
+// finessePourVue(racine, langue, etats, apercu?) -> { crans, reglages, cranVu(p), visible(p) }.
+// Le cran regardé : l'aperçu du poste pour ce type, sinon le réglage partagé, sinon 1.
+function finessePourVue(racineArbreVal, langue, etats, apercu) {
+  const crans = {};
+  for (const m of Object.keys(etats || {})) { crans[m] = cransDe(etats[m], langue); }
+  const reglages = lireReglages(racineArbreVal, langue);
+  const ap = apercu && typeof apercu === 'object' ? apercu : {};
+  const cranVu = (p) => {
+    if (cranValide(ap[p.type])) { return ap[p.type]; }
+    const r = (reglages[moissonneurDe(p)] || {})[p.type];
+    return r ? r.cran : 1;
+  };
+  return {
+    crans: crans, reglages: reglages, cranVu: cranVu,
+    visible: (p) => cranMax(p, crans[moissonneurDe(p)] || null) >= cranVu(p)
+  };
+}
+
+// comptesCrans(racine, langue) -> { type: { aCrans, parCran: [{ cran, visibles, masquees }] } } :
+// pour chaque type en attente, ce que montrerait chacun des dix crans.
+function comptesCrans(racineArbreVal, langue) {
+  const lu = listerPropositions(racineArbreVal, langue);
+  const crans = {};
+  for (const m of Object.keys(lu.etats)) { crans[m] = cransDe(lu.etats[m], langue); }
+  const res = {};
+  for (const p of lu.propositions) {
+    const c = crans[moissonneurDe(p)] || null;
+    const t = res[p.type] = res[p.type] || { aCrans: false, maxima: [] };
+    if (c) { t.aCrans = true; }
+    t.maxima.push(cranMax(p, c));
+  }
+  for (const type of Object.keys(res)) {
+    const maxima = res[type].maxima;
+    res[type] = {
+      aCrans: res[type].aCrans,
+      parCran: Array.from({ length: NB_CRANS }, (x, i) => {
+        const v = maxima.filter((k) => k >= i + 1).length;
+        return { cran: i + 1, visibles: v, masquees: maxima.length - v };
+      })
+    };
+  }
+  return res;
+}
+
+// resumeMoissonneurs(racine) -> { moissonneur: { etat, types: [type], categories: [jeton] } } :
+// chaque dossier de _Moissons, son état, et ce que ses lots portent, décidés ou non. Pour les
+// Réglages de l'Accueil, qui n'ont pas de langue de numéro.
+function resumeMoissonneurs(racineArbreVal) {
+  const lu = lireLots(racineArbreVal);
+  const res = {};
+  for (const m of Object.keys(lu.etats)) { res[m] = { etat: lu.etats[m], types: [], categories: [] }; }
+  for (const p of lu.parCle.values()) {
+    const r = res[moissonneurDe(p)];
+    if (!r) { continue; }
+    if (r.types.indexOf(p.type) === -1) { r.types.push(p.type); }
+    const c = p.pertinence && typeof p.pertinence.categorie === 'string' ? p.pertinence.categorie : '';
+    if (c && r.categories.indexOf(c) === -1) { r.categories.push(c); }
+  }
+  for (const m of Object.keys(res)) { res[m].types.sort(); }
+  return res;
+}
+
+// lireAuteurDemande(racine, moissonneur, id) -> { par, le, confirme_par, confirme_le } | null :
+// l'auteur d'une demande, que le moissonneur ne garde pas, relu dans son fichier.
+function lireAuteurDemande(racineArbreVal, moissonneur, id) {
+  if (!moissonneurValide(moissonneur) || typeof id !== 'string' || !RE_ID_SUR.test(id)) { return null; }
+  let d;
+  try { d = JSON.parse(fs.readFileSync(path.join(cheminMoissons(racineArbreVal), moissonneur, 'demandes', id + '.json'), 'utf8').replace(/^﻿/, '')); }
+  catch (e) { return null; }
+  if (!d || typeof d !== 'object' || d.id !== id) { return null; }
+  const s = (v) => String(v === undefined || v === null ? '' : v);
+  return { par: s(d.par), le: s(d.le), confirme_par: s(d.confirme_par), confirme_le: s(d.confirme_le) };
+}
+
 module.exports = {
-  FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS,
+  FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS, NB_CRANS,
+  cransDe, cranMax, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
+  finessePourVue, comptesCrans, compterVisibles, resumeMoissonneurs, lireAuteurDemande,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,
   listerPropositions, listerRefusees, classer, bloquants, ordonner, compterPropositions,
   lireDecision, ecrireDecision, annulerDecision,
   accepter, refuser, annulerAcceptation,
-  accepterLot, refuserLot, annulerLot, ficheDoublon, lireProposition, recreerFiche
+  accepterLot, refuserLot, annulerLot, ficheDoublon, lireProposition, recreerFiche,
+  languesDe, titresOfficielsDeFiche
 };

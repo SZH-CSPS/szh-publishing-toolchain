@@ -16,6 +16,9 @@ const rapport = require('./rapport-erreur');
 const archivage = require('./archivage');
 const inventaire = require('./inventaire');
 const { produitParDefaut } = require('./accueil-page');
+const propositions = require('./propositions');
+const kirby = require('./kirby-contenu');
+const { moiCoedition } = require('./coedition-hote');
 
 // Les clés du coffre : jamais écrites ailleurs, jamais envoyées à la page.
 const COFFRE = Object.freeze({ shlinkCle: 'szh.shlinkCle', ojsCle: 'szh.ojsCle' });
@@ -25,7 +28,11 @@ const RE_HTTPS = /^https:\/\/[^\s/$.?#][^\s]*$/i;
 // Ceux de REGLER qui sont propres à l'Accueil ; les autres vont à lib/reglages-hote.js.
 const CLES_PROPRES = new Set(['produit', 'majSilencieuse', 'modeDev']);
 
-let ctx = { rafraichirTout: null, recharger: () => {}, rechargerPage: () => {} };
+// racineMoissons : la racine active, où vit _NewsUndActu\_Moissons (production, ou Revues-TESTING).
+let ctx = {
+  rafraichirTout: null, recharger: () => {}, rechargerPage: () => {},
+  racineMoissons: () => inventaire.baseRevuesPour(archivage.lireEmplacementRevues())
+};
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
 let secrets = null;
@@ -78,7 +85,94 @@ function messageValeurs() {
   msg.services = {
     shlinkUrl: adresseShlink(), shlinkCle: !!v.SZH_SHLINK_CLE, ojsCle: !!v.SZH_OJS_CLE
   };
+  const moissonnage = donneesMoissonnage();
+  if (moissonnage) { msg.moissonnage = moissonnage; }
   return msg;
+}
+
+// ---- Moissonnage : la finesse du tri, réglée pour la rédaction de chaque revue -------------
+
+// Les libellés de la section, envoyés avec ses données : la section n'existe que s'il y a un
+// moissonneur, et ses textes ne chargent pas la page pour rien.
+function textesMoissonnage() {
+  return {
+    titre: T('accueil.regl.moiss.titre'), astuce: T('accueil.regl.moiss.astuce'),
+    passe: T('accueil.regl.moiss.passe'), passeInconnue: T('accueil.regl.moiss.passeInconnue'),
+    finesse: T('accueil.regl.moiss.finesse'), regle: T('accueil.regl.moiss.regle'),
+    regleAucun: T('accueil.regl.moiss.regleAucun'), lecture: T('accueil.regl.moiss.lecture'),
+    lectureSans: T('accueil.regl.moiss.lectureSans'), identique: T('accueil.regl.moiss.identique'),
+    valeur: T('accueil.regl.moiss.valeur'), crans: T('accueil.regl.moiss.crans'),
+    cransAide: T('accueil.regl.moiss.cransAide'), cransCommun: T('accueil.regl.moiss.cransCommun'),
+    colCran: T('accueil.regl.moiss.col.cran'), colSeuil: T('accueil.regl.moiss.col.seuil'),
+    colMois: T('accueil.regl.moiss.col.mois'), colRappel: T('accueil.regl.moiss.col.rappel'),
+    colActif: T('accueil.regl.moiss.col.actif'), egal: T('accueil.regl.moiss.egal'),
+    actif: T('accueil.regl.moiss.actif'), optimiste: T('accueil.regl.moiss.optimiste'),
+    categories: T('accueil.regl.moiss.categories'), categoriesAide: T('accueil.regl.moiss.categoriesAide'),
+    sansCrans: T('accueil.regl.moiss.sansCrans'), large: T('accueil.regl.moiss.large'),
+    strict: T('accueil.regl.moiss.strict'),
+    revues: { fr: T('accueil.regl.moiss.revue.fr'), de: T('accueil.regl.moiss.revue.de') },
+    jetons: {
+      titre: T('doc.prop.categorie.titre'), 'texte-dense': T('doc.prop.categorie.texte-dense'),
+      'signal-faible': T('doc.prop.categorie.signal-faible'), ecole: T('doc.prop.categorie.ecole'),
+      theme: T('doc.prop.categorie.theme')
+    }
+  };
+}
+const ORDRE_CATEGORIES = ['titre', 'texte-dense', 'signal-faible', 'ecole', 'theme'];
+
+function libelleMoissonneur(id) {
+  const v = T('doc.prop.moissonneur.' + id);
+  return v === 'doc.prop.moissonneur.' + id ? id : v;
+}
+
+// Les moissonneurs de _Moissons à la racine active, chacun avec ses crans et le réglage partagé
+// de chaque langue ; null s'il n'y en a aucun.
+function donneesMoissonnage() {
+  let resume;
+  try { resume = propositions.resumeMoissonneurs(ctx.racineMoissons()); }
+  catch (e) { return null; }
+  const ids = Object.keys(resume).sort();
+  if (ids.length === 0) { return null; }
+  const racine = ctx.racineMoissons();
+  const langueUi = langueCockpit();
+  const reglagesParLangue = {};
+  for (const l of ['fr', 'de']) { reglagesParLangue[l] = propositions.lireReglages(racine, l); }
+  const moissonneurs = ids.map((m) => {
+    const e = resume[m].etat || {};
+    const langues = {};
+    for (const l of ['fr', 'de']) {
+      langues[l] = {
+        crans: propositions.cransDe(e, l), source: String((e.crans_source || {})[l] || ''),
+        reglages: Object.assign({}, reglagesParLangue[l][m] || {})
+      };
+    }
+    const connues = ORDRE_CATEGORIES.filter((c) => resume[m].categories.indexOf(c) !== -1);
+    return {
+      id: m, libelle: libelleMoissonneur(m), derniere: String(e.derniere_moisson || ''),
+      types: resume[m].types.filter((t) => kirby.typeConnu(t)).map((t) => ({ type: t, libelle: kirby.libelleCockpitType(t, langueUi) })),
+      langues: langues, calculeLe: String(e.crans_calcules_le || ''),
+      fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
+        ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
+      categories: connues.concat(resume[m].categories.filter((c) => connues.indexOf(c) === -1))
+    };
+  });
+  return { textes: textesMoissonnage(), langue: langueUi, moissonneurs: moissonneurs };
+}
+
+// Le nom que la co-édition montre déjà aux autres postes, « — » à défaut.
+function auteurPoste() {
+  const nom = String(moiCoedition().utilisateur || '');
+  return nom && nom !== 'inconnu' ? nom : '—';
+}
+
+// Un curseur des Paramètres : le réglage partagé de la rédaction de cette langue.
+function reglerFinesse(msg, repondre) {
+  const cran = Number(msg.cran);
+  const r = propositions.ecrireReglage(ctx.racineMoissons(), String(msg.langue || ''), String(msg.moissonneur || ''),
+    String(msg.typeFiche || ''), Number.isInteger(cran) ? cran : NaN, auteurPoste());
+  if (!r.ok) { return; }
+  repondre(messageValeurs());
+  if (ctx.rafraichirTout) { ctx.rafraichirTout(); }
 }
 
 function ecrireEtatCompte(fn) {
@@ -142,6 +236,7 @@ async function poserService(msg, repondre) {
 // Rend vrai quand le message est celui des réglages.
 async function surMessage(msg, repondre) {
   if (msg.type === MSG.ACCUEIL_SERVICE) { await poserService(msg, repondre); return true; }
+  if (msg.type === MSG.ACCUEIL_FINESSE) { reglerFinesse(msg, repondre); return true; }
   if (msg.type === MSG.REGLER && CLES_PROPRES.has(msg.cle)) { await regler(msg); return true; }
   const traite = await reglages.traiterMessage(msg, repondre, ctx.rafraichirTout);
   if (traite && msg.type === MSG.REGLER && msg.cle === 'langue') {

@@ -221,3 +221,39 @@
 .prop-vide-quand { font-size: var(--t-libelle); color: var(--encre-2); }
 
 .prop-masque { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- Finesse du tri : le curseur sur une ligne, à la place du filtre de pertinence ---- */
+.prop-finesse { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--e1) var(--e2);
+  font-size: var(--t-libelle); }
+.prop-finesse-nom { font-weight: 700; color: var(--encre); }
+.prop-finesse-bout { color: var(--encre-2); }
+.prop-finesse-curseur { width: 11rem; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.prop-finesse-curseur:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prop-finesse-lecture { font-weight: 700; color: var(--encre); font-variant-numeric: tabular-nums; }
+.prop-finesse .prop-lien { font-size: inherit; }
+.prop-finesse-detail { flex: 1 0 100%; margin: 0; white-space: pre-line; font-size: var(--t-mini); color: var(--encre-2); }
+.prop-finesse-garde { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
+.prop-finesse-garde[hidden] { display: none; }
+.prop-finesse-garder { padding: .12em .6em; font-size: var(--t-libelle); }
+.prop-finesse-bandeau { margin: 0; flex: 1 1 auto; }
+.prop-finesse-bandeau > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e3); }
+.prop-finesse-bandeau .szh-bouton { margin-left: auto; padding: .1em .6em; }
+/* Une masquée montrée : grisée, en italique, et le mot « masquée » qui ne laisse pas la couleur seule. */
+.prop-ligne--masquee td { color: var(--encre-2); }
+.prop-ligne--masquee .prop-titre { color: var(--encre-2); font-style: italic; }
+.prop-masquee-mot { display: block; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
+.prop-td-cran { font-variant-numeric: tabular-nums; }
+
+/* ---- Pourquoi, dans le détail ---- */
+.prop-pourquoi { display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2) var(--e3);
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini); background: var(--surface); }
+.prop-pourquoi .prop-sous-titre { margin: 0; }
+.prop-pourquoi p { margin: 0; font-size: var(--t-libelle); }
+.prop-pourquoi-termes { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--e1) var(--e3); }
+.prop-pourquoi-role { min-width: 5.5rem; font-weight: 700; color: var(--encre-2); }
+.prop-pourquoi-terme { color: var(--encre); }
+.prop-pourquoi-ou { color: var(--encre-2); }
+
+/* Une proposition visible des deux rédactions : la marque « fr · de », en texte. */
+.prop-langues { display: inline-block; margin-left: var(--e1); padding: 0 .4em; font-size: var(--t-mini);
+  color: var(--encre-2); border: 1px solid var(--filet-fort); border-radius: 999px; white-space: nowrap; }

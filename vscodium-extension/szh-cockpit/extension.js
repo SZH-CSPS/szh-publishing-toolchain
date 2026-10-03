@@ -320,7 +320,6 @@ const {
 // vivent toutes deux dans documentation.<lang>.txt et les dossiers de fiches. Remplace
 // lib/ressources.js et lib/rubriques.js.
 const kirbyLib = require('./lib/kirby-contenu');
-const propositionsLib = require('./lib/propositions');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -889,14 +888,16 @@ class FournisseurRevue {
     const nBlocs = compterBlocsDocumentation(this.racine, this.slugDocumentation());
     const nArchive = documentationHote.compteArchiveConnu();
     // Les propositions des moissonneurs : un compte en cache (lib/propositions.js), relu
-    // seulement quand un lot ou une décision change.
-    let prop = { total: 0, aVerifier: 0 };
-    try { prop = propositionsLib.compterPropositions(racineArbreVal, langue); }
+    // seulement quand un lot, une décision ou la finesse change. Il suit ce que la personne
+    // voit : l'aperçu de ce poste, sinon le réglage de la rédaction.
+    let prop = { total: 0, aVerifier: 0, masquees: 0 };
+    try { prop = documentationHote.compterPropositionsVues(racineArbreVal, langue); }
     catch (e) { console.warn('propositions : compte impossible — ' + ((e && e.message) || e)); }
     const nProp = prop.total === 1 ? '.un' : '.plus';
-    const tipProp = prop.total === 0 ? T('arbre.actualite.propositions.tipVide')
+    const tipProp = (prop.total === 0 ? T('arbre.actualite.propositions.tipVide')
       : prop.aVerifier ? T('arbre.actualite.propositions.tip' + nProp, [prop.total, prop.aVerifier])
-        : T('arbre.actualite.propositions.tipA' + nProp, [prop.total]);
+        : T('arbre.actualite.propositions.tipA' + nProp, [prop.total]))
+      + (prop.masquees > 0 ? ' · ' + T('arbre.actualite.propositions.masquees' + (prop.masquees === 1 ? '.un' : '.plus'), [prop.masquees]) : '');
     const entrees = [
       { cle: 'numero', libelle: T('doc.onglet.numero'), icone: 'book', compte: nBlocs,
         tip: T('arbre.actualite.numero.tip') },

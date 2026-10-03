@@ -21,6 +21,10 @@
 //   node outils-dev/apercu-documentation.js propositions   (lots synthétiques ; SZH_LANGUE=de pour la Zeitschrift)
 //     …?onglet=propositions&etat=liste|selection|detail-b|detail-b-applique|echec|detail-recherche|doublon|colonnes|annuler|largeur|recherche|vide
 //     &theme=clair|sombre : les couleurs d’un thème de l’éditeur, sinon les replis de _design.css
+//     SZH_APERCU_CRANS=1 : la finesse du tri (crans, notes, réglage de la rédaction au cran 6), avec
+//     &etat=finesse-garder|finesse-garde|finesse-masquees|finesse-aide|finesse-identique|finesse-pourquoi|finesse-colonne
+//     SZH_APERCU_MULTI=1 : les affaires fédérales en propositions multilingues (marque « fr · de », titres officiels)
+//     SZH_APERCU_REEL=<dossier> : un lot du parlement (lot et etat.json) à la place du lot synthétique, hors dépôt
 //
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>"
@@ -317,12 +321,59 @@ function lotsSynthetiques(l) {
   ];
   // La date de la première est celle que le moissonneur n'a pas su lire.
   interventions[0].valeurs.date = '';
+  if (AVEC_CRANS) { noterInterventions(interventions, l, inter, t); }
   return interventions.concat(recherches, livres);
+}
+
+// ---- Finesse du tri (SZH_APERCU_CRANS=1) : une note par intervention, des crans par langue ----
+// Des objets synthétiques en plus, pour qu'un cran masque assez de lignes pour se voir.
+const AVEC_CRANS = !!process.env.SZH_APERCU_CRANS;
+const SEUILS_DEMO = [0, 5, 9, 12, 12, 18, 29, 38, 56, 78];
+function cransDemo() {
+  const par = [81, 75, 66, 63, 63, 41, 34, 25, 16, 9], rappel = [73, 72, 70, 69, 69, 65, 57, 50, 37, 18];
+  return SEUILS_DEMO.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: par[i], rappel: rappel[i], rappel_sur: 79,
+    identique_au_cran_precedent: i > 0 && SEUILS_DEMO[i - 1] === s }));
+}
+function noterInterventions(interventions, l, inter, t) {
+  const sujets = t(['Repas à l’école', 'Horaires des transports scolaires', 'Devoirs surveillés', 'Bâtiments scolaires',
+    'Rentrée scolaire', 'Cantines', 'Numérique à l’école', 'Éducation physique', 'Classes d’accueil', 'Écoles de musique'],
+  ['Schulverpflegung', 'Fahrpläne im Schulverkehr', 'Betreute Hausaufgaben', 'Schulhäuser', 'Schulbeginn', 'Mensen',
+    'Digitalisierung in der Schule', 'Sportunterricht', 'Aufnahmeklassen', 'Musikschulen']);
+  const cantons = ['GE', 'VD', 'NE', 'FR', 'VS', 'JU', 'BE', 'CH'];
+  for (let i = 0; i < 30; i++) {
+    interventions.push(inter('26.' + (5000 + i), cantons[i % cantons.length], ['question', 'postulat', 'interpellation'][i % 3],
+      t(['Question', 'Postulat', 'Interpellation'][i % 3] + ' : ' + sujets[i % sujets.length].toLowerCase(),
+        sujets[i % sujets.length] + ': ' + ['Anfrage', 'Postulat', 'Interpellation'][i % 3])));
+  }
+  const termes = (score) => [
+    { terme: t('aménagement', 'Nachteilsausgleich'), langue: l, role: score > 50 ? 'ancrage' : 'ambigu', ou: 'titre', note_sans: Math.max(0, score - 15) },
+    { terme: t('élèves', 'Lernende'), langue: l, role: 'ecole', ou: 'texte', note_sans: Math.max(0, score - 4) },
+    { terme: l === 'de' ? 'pédagogie spécialisée' : 'Sonderpädagogik', langue: l === 'de' ? 'fr' : 'de', role: 'ancrage', ou: 'extrait', note_sans: Math.max(0, score - 8) }
+  ];
+  const categorie = (s) => (s >= 56 ? 'titre' : s >= 29 ? 'texte-dense' : s >= 12 ? 'signal-faible' : s >= 5 ? 'ecole' : 'theme');
+  interventions.forEach((x, i) => {
+    // Les dix premières, sujets du handicap, notées haut ; les objets d'école, bas.
+    const score = i < 10 ? [62, 88, 79, 41, 33, 91, 58, 30, 47, 66][i] : [2, 3, 7, 8, 11, 12, 14, 19, 22, 26][i % 10] + (i % 3);
+    x.pertinence = Object.assign({}, x.pertinence, { score: score, categorie: categorie(score), termes: termes(score) });
+  });
 }
 
 function donneesPropositionsDemo(l) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-propositions-'));
   const lots = lotsSynthetiques(l);
+  // SZH_APERCU_MULTI=1 : les affaires fédérales deviennent multilingues, titres des deux revues.
+  if (process.env.SZH_APERCU_MULTI) {
+    const autre = l === 'de' ? 'fr' : 'de';
+    const autres = lotsSynthetiques(autre);
+    for (const x of lots) {
+      const y = autres.find((z) => z.cle === x.cle);
+      if (!y || x.valeurs.canton !== 'CH' || !x.valeurs.title) { continue; }
+      x.langues = ['fr', 'de'];
+      x.titres = { [l]: x.valeurs.title, [autre]: y.valeurs.title, it: 'Titolo d’esempio' };
+      delete x.langue;
+      delete x.valeurs.title;
+    }
+  }
   // La fiche qui ressemble à la proposition marquée doublon : une vraie fiche de la bibliothèque jetable.
   const marquee = lots.find((x) => x.doublon);
   const fiche = kirby.creerFiche(racine, l, 'intervention', Object.assign({}, marquee.valeurs,
@@ -334,6 +385,24 @@ function donneesPropositionsDemo(l) {
     fs.mkdirSync(dossier, { recursive: true });
     fs.writeFileSync(path.join(dossier, '2026-10-01-1.jsonl'),
       lots.filter((x) => x.moissonneur === m).map((x) => JSON.stringify(x)).join('\n') + '\n');
+  }
+  // SZH_APERCU_REEL=<dossier> : un lot réel du parlement (lot et etat.json), lu sur place et
+  // copié dans la bibliothèque jetable ; il ne quitte jamais le poste de développement.
+  if (process.env.SZH_APERCU_REEL) {
+    const dossier = path.join(pr.cheminMoissons(racine), 'parlement');
+    for (const n of fs.readdirSync(dossier)) { fs.unlinkSync(path.join(dossier, n)); }
+    for (const n of fs.readdirSync(process.env.SZH_APERCU_REEL)) {
+      fs.copyFileSync(path.join(process.env.SZH_APERCU_REEL, n), path.join(dossier, n));
+    }
+  }
+  if (AVEC_CRANS) {
+    fs.writeFileSync(path.join(pr.cheminMoissons(racine), 'parlement', 'etat.json'), JSON.stringify({
+      format: 'pronto-etat/1', moissonneur: 'parlement', derniere_moisson: '2026-10-01T05:12:00Z',
+      crans: { fr: cransDemo(), de: cransDemo() }, crans_calcules_le: '2026-10-01',
+      crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+    fs.mkdirSync(path.join(pr.cheminMoissons(racine), '_Reglages'), { recursive: true });
+    fs.writeFileSync(pr.cheminReglages(racine, l), JSON.stringify({ parlement: { intervention: {
+      cran: 6, par: l === 'de' ? 'Jonas Beispiel' : 'Claire Exemple', le: '2026-10-01' } } }));
   }
   const etats = {
     parlement: { derniere_moisson: '2026-10-01T05:12:00Z', propositions_ecrites: 10,
@@ -356,16 +425,30 @@ function donneesPropositionsDemo(l) {
         return x;
       }) };
   });
+  const lu = pr.listerPropositions(racine, l);
+  // La finesse, mise en forme comme documentation-hote.js#finesseParType.
+  const vue = pr.finessePourVue(racine, l, lu.etats, {});
+  const finesse = {};
+  for (const x of lu.propositions) {
+    const m = x.dossier || x.moissonneur;
+    if (!vue.crans[m] || finesse[x.type]) { continue; }
+    const e = lu.etats[m] || {};
+    finesse[x.type] = { moissonneurs: [m], crans: vue.crans[m], source: String((e.crans_source || {})[l] || ''),
+      calculeLe: String(e.crans_calcules_le || ''), fenetre: e.crans_fenetre || null,
+      reglage: (vue.reglages[m] || {})[x.type] || null, apercu: null };
+  }
   const pourVue = (x) => {
     const f = x.doublon ? pr.ficheDoublon(racine, x) : null;
     return { cle: x.cle, type: x.type, moissonneur: x.moissonneur, recolte: x.recolte, source: x.cle.split(':')[1],
       valeurs: x.valeurs, doutes: x.doutes, brut: x.brut, pertinence: x.pertinence, doublon: x.doublon, motif: x.motif || '',
       cas: x.cas, raisons: x.raisons, bloquants: pr.bloquants(x), aussi: x.valeurs.canton === 'CH',
+      langues: pr.languesDe(x), titres: x.titres || null,
+      cranMax: pr.cranMax(x, vue.crans[x.dossier || x.moissonneur] || null),
       doublonFiche: f ? { valeurs: f.valeurs, numero: l === 'de' ? 'Zeitschrift 2026/3' : 'Revue 2026/3' } : null };
   };
-  const lu = pr.listerPropositions(racine, l);
   const donnees = {
     type: 'propDonnees', langue: l, cible: l === 'de' ? 'fr' : 'de', revueAutre: l === 'de' ? 'Revue' : 'Zeitschrift',
+    revue: l === 'de' ? 'Zeitschrift' : 'Revue', finesse: finesse,
     types: types, propositions: pr.ordonner(lu.propositions, l).map(pourVue), refusees: [],
     etats: Object.keys(etats).map((m) => ({ moissonneur: m, libelle: libelleMoissonneur(m), connu: true,
       derniere: etats[m].derniere_moisson, propositions: etats[m].propositions_ecrites, echecs: etats[m].sources_en_echec })),
@@ -423,7 +506,8 @@ function demandesDates() {
       }
     }
   }
-  for (const x of PROPOSITIONS.propositions) {
+  // Le lot réel en compte des centaines : ses dates restent sans forme imprimée.
+  for (const x of process.env.SZH_APERCU_REEL ? [] : PROPOSITIONS.propositions) {
     for (const d of x.doutes || []) {
       const c = kirby.champsDuType(x.type).find((k) => k.cle === d.champ);
       if (c && d.suggestion) { res.push([c.saisie, [d.suggestion]]); }
@@ -494,6 +578,17 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    }\n' +
   '    envoyerPropositions({ geste: geste, faites: faites, ignorees: [], echecs: [], motif: msg.motif || "" });\n' +
   '  }\n' +
+  // La finesse : le faux hôte range l'aperçu, « Garder » en fait le réglage de la rédaction.
+  '  var GARDE = null;\n' +
+  '  function repondreFinesse(msg) {\n' +
+  '    var f = PROP.finesse[msg.typeFiche]; if (!f) { return; }\n' +
+  '    var partage = f.reglage ? f.reglage.cran : 1, geste = null;\n' +
+  '    if (msg.type === "propFinesseApercu") { f.apercu = msg.cran === partage ? null : msg.cran; }\n' +
+  '    else if (msg.type === "propFinesseGarder") { GARDE = { reglage: f.reglage, apercu: f.apercu }; f.reglage = { cran: f.apercu, par: "Poste Essai", le: "2026-10-03" }; geste = { geste: "garde", typeFiche: msg.typeFiche, cran: f.apercu }; f.apercu = null; }\n' +
+  '    else if (GARDE) { f.reglage = GARDE.reglage; f.apercu = GARDE.apercu; GARDE = null; geste = { geste: "annule", typeFiche: msg.typeFiche }; }\n' +
+  '    var d = JSON.parse(JSON.stringify(PROP)); if (geste) { d.finesseGeste = geste; }\n' +
+  '    window.dispatchEvent(new MessageEvent("message", { data: d }));\n' +
+  '  }\n' +
   '  var vraiApi = null;\n' +
   '  window.acquireVsCodeApi = function () {\n' +
   '    if (vraiApi) { return vraiApi; }\n' +
@@ -518,6 +613,8 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: Object.assign({ type: "docDateFormee", jeton: msg.jeton }, forme) }));\n' +
   '        } else if (msg.type === "propCharger") {\n' +
   '          envoyerPropositions(null);\n' +
+  '        } else if (msg.type === "propFinesseApercu" || msg.type === "propFinesseGarder" || msg.type === "propFinesseAnnuler") {\n' +
+  '          repondreFinesse(msg);\n' +
   '        } else if (msg.type === "propAccepter" || msg.type === "propRefuser" || msg.type === "propAnnuler") {\n' +
   '          repondreGeste(msg);\n' +
   '        } else if (msg.type === "archiveReprendre") {\n' +
@@ -579,6 +676,14 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    if (etat === "doublon") { ligne("26.3712").querySelector(".prop-bouton-verifier").click(); }\n' +
   '    if (etat === "colonnes") { panel.querySelector(".prop-bouton-colonnes").click(); }\n' +
   '    if (etat === "annuler") { ligne("2026-GC-118").querySelector(".prop-bouton-refuser").click(); }\n' +
+  '    var curseur = function (k) { var c = panel.querySelector(".prop-finesse-curseur"); c.value = String(k); c.dispatchEvent(new Event("input")); c.dispatchEvent(new Event("change")); };\n' +
+  '    if (etat === "finesse-garder" || etat === "finesse-garde") { curseur(9); }\n' +
+  '    if (etat === "finesse-garde") { panel.querySelector(".prop-finesse-garder").click(); }\n' +
+  '    if (etat === "finesse-masquees") { panel.querySelector(".prop-finesse-voir").click(); }\n' +
+  '    if (etat === "finesse-aide") { panel.querySelector(".prop-finesse-aide").click(); }\n' +
+  '    if (etat === "finesse-identique") { curseur(5); panel.querySelector(".prop-finesse-aide").click(); }\n' +
+  '    if (etat === "finesse-pourquoi") { ligne("26.4021").querySelector(".prop-titre").click(); }\n' +
+  '    if (etat === "finesse-colonne") { panel.querySelector(".prop-bouton-colonnes").click(); Array.prototype.filter.call(document.querySelectorAll(".prop-menu-colonnes button"), function (b) { return b.dataset.col === "cran"; })[0].click(); }\n' +
   '    if (etat === "largeur") { var s = panel.querySelector("th.prop-th-titre .prop-poignee"); for (var k = 0; k < 6; k++) { s.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); } s.focus(); }\n' +
   '  }\n' +
   '})();\n' +

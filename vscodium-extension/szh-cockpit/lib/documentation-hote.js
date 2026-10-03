@@ -38,6 +38,7 @@ const kirby = require('./kirby-contenu');
 const dateApercu = require('./date-apercu');
 const autreRevue = require('./autre-revue');
 const propositions = require('./propositions');
+const { moiCoedition } = require('./coedition-hote');
 // Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
 // PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
 // Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
@@ -340,7 +341,35 @@ function textesDocumentation() {
     propChamps: T('doc.prop.champs'), propCouverture: T('doc.prop.couverture'),
     propIntrouvable: T('doc.prop.introuvable'),
     propRecreer: T('doc.prop.recreer'), propRecreerTip: T('doc.prop.recreer.tip'),
-    propBRecree: T('doc.prop.b.recree')
+    propBRecree: T('doc.prop.b.recree'),
+    // La finesse du tri.
+    propFinesse: T('doc.prop.finesse'), propFinesseLarge: T('doc.prop.finesse.large'),
+    propFinesseStrict: T('doc.prop.finesse.strict'), propFinesseLecture: T('doc.prop.finesse.lecture'),
+    propFinesseIdentique: T('doc.prop.finesse.identique'),
+    propFinesseVisiblesUn: T('doc.prop.finesse.visibles.un'), propFinesseVisiblesPlus: T('doc.prop.finesse.visibles.plus'),
+    propFinesseMasqueesUn: T('doc.prop.finesse.masquees.un'), propFinesseMasqueesPlus: T('doc.prop.finesse.masquees.plus'),
+    propFinesseValeur: T('doc.prop.finesse.valeur'), propFinesseValeurIdentique: T('doc.prop.finesse.valeurIdentique'),
+    propFinesseVoir: T('doc.prop.finesse.voir'), propFinesseCacher: T('doc.prop.finesse.cacher'),
+    propFinesseVoirTip: T('doc.prop.finesse.voir.tip'), propFinesseAide: T('doc.prop.finesse.aide'),
+    propFinesseParMois: T('doc.prop.finesse.parMois'), propFinesseRappel: T('doc.prop.finesse.rappel'),
+    propFinesseRappelSans: T('doc.prop.finesse.rappelSans'), propFinesseCalcule: T('doc.prop.finesse.calcule'),
+    propFinesseCommun: T('doc.prop.finesse.commun'), propFinesseRegle: T('doc.prop.finesse.regle'),
+    propFinesseRegleAucun: T('doc.prop.finesse.regleAucun'), propFinesseIdentiqueTip: T('doc.prop.finesse.identiqueTip'),
+    propFinesseApercu: T('doc.prop.finesse.apercu'), propFinesseGarder: T('doc.prop.finesse.garder'),
+    propFinesseGarderTip: T('doc.prop.finesse.garder.tip'), propFinesseGarde: T('doc.prop.finesse.garde'),
+    propFinesseMasquee: T('doc.prop.finesse.masquee'), propColCran: T('doc.prop.col.cran'),
+    propCranTip: T('doc.prop.cran.tip'), propPourquoi: T('doc.prop.pourquoi'),
+    propPourquoiNote: T('doc.prop.pourquoi.note'), propPourquoiSansNote: T('doc.prop.pourquoi.sansNote'),
+    propPourquoiCategorie: T('doc.prop.pourquoi.categorie'),
+    propRoleAncrage: T('doc.prop.role.ancrage'), propRoleAmbigu: T('doc.prop.role.ambigu'),
+    propRoleEcole: T('doc.prop.role.ecole'), propRoleTheme: T('doc.prop.role.theme'),
+    propOuTitre: T('doc.prop.ou.titre'), propOuTexte: T('doc.prop.ou.texte'), propOuExtrait: T('doc.prop.ou.extrait'),
+    propCategorieTitre: T('doc.prop.categorie.titre'), propCategorieTexteDense: T('doc.prop.categorie.texte-dense'),
+    propCategorieSignalFaible: T('doc.prop.categorie.signal-faible'), propCategorieEcole: T('doc.prop.categorie.ecole'),
+    propCategorieTheme: T('doc.prop.categorie.theme'),
+    // Les propositions multilingues.
+    propLanguesTip: T('doc.prop.langues.tip'), propTitreOfficiel: T('doc.prop.titreOfficiel'),
+    propAutreGardee: T('doc.prop.b.autreGardee')
   };
 }
 
@@ -486,10 +515,72 @@ function etatsPropositions(etats) {
   });
 }
 
+// L'aperçu de la finesse : le cran que ce poste regarde, par langue et par type de fiche. Propre
+// au poste, jamais partagé ; le réglage de la rédaction vit dans _Moissons\_Reglages.
+const CLE_FINESSE_APERCU = 'szh.propositions.finesse';
+
+function apercuFinesse(langue) {
+  const etatPoste = ctx.etatPoste();
+  const table = (etatPoste && etatPoste.globalState.get(CLE_FINESSE_APERCU)) || {};
+  return Object.assign({}, table[langue] || {});
+}
+async function poserApercuFinesse(langue, typeFiche, cran) {
+  const etatPoste = ctx.etatPoste();
+  if (!etatPoste) { return; }
+  const table = Object.assign({}, etatPoste.globalState.get(CLE_FINESSE_APERCU) || {});
+  const l = Object.assign({}, table[langue] || {});
+  if (cran) { l[typeFiche] = cran; } else { delete l[typeFiche]; }
+  table[langue] = l;
+  await etatPoste.globalState.update(CLE_FINESSE_APERCU, table);
+}
+
+// Qui règle la finesse pour la rédaction : le nom que la co-édition montre déjà aux autres
+// postes (réglage szh.nomUtilisateur, sinon la session Windows), « — » à défaut.
+function auteurPoste() {
+  const nom = String(moiCoedition().utilisateur || '');
+  return nom && nom !== 'inconnu' ? nom : '—';
+}
+
+// Le compte de l'entrée « Propositions » de l'arbre : ce que la personne voit, l'aperçu du
+// poste s'il existe, sinon le réglage partagé.
+function compterPropositionsVues(racineArbreVal, langue) {
+  return propositions.compterVisibles(racineArbreVal, langue, apercuFinesse(langue));
+}
+
+// La finesse de chaque type qui a des crans dans cette langue : les moissonneurs qui le
+// nourrissent, leurs crans (ceux du premier, rangé par nom), le réglage partagé et l'aperçu.
+function finesseParType(racineArbreVal, langue, lu) {
+  const vue = propositions.finessePourVue(racineArbreVal, langue, lu.etats, apercuFinesse(langue));
+  const ap = apercuFinesse(langue);
+  const res = {};
+  for (const p of lu.propositions) {
+    const m = p.dossier || p.moissonneur;
+    if (!vue.crans[m]) { continue; }
+    const f = res[p.type] = res[p.type] || { moissonneurs: [] };
+    if (f.moissonneurs.indexOf(m) === -1) { f.moissonneurs.push(m); f.moissonneurs.sort(); }
+  }
+  for (const type of Object.keys(res)) {
+    const m = res[type].moissonneurs[0];
+    const e = lu.etats[m] || {};
+    const reglage = (vue.reglages[m] || {})[type] || null;
+    Object.assign(res[type], {
+      crans: vue.crans[m],
+      source: String((e.crans_source || {})[langue] || ''),
+      calculeLe: String(e.crans_calcules_le || ''),
+      fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
+        ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
+      reglage: reglage,
+      apercu: Number.isInteger(ap[type]) ? ap[type] : null
+    });
+  }
+  return { parType: res, vue: vue };
+}
+
 // donneesPropositions(racineArbreVal, langue, revueJeton, resultat?, connues?) -> le message
 // PROP_DONNEES. `connues` (une Map) retient les propositions servies, par cle.
 function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connues) {
   const lu = propositions.listerPropositions(racineArbreVal, langue);
+  const finesse = finesseParType(racineArbreVal, langue, lu);
   if (connues) {
     connues.clear();
     for (const p of lu.propositions) { connues.set(p.cle, p); }
@@ -498,10 +589,14 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
     const fiche = p.doublon ? propositions.ficheDoublon(racineArbreVal, p) : null;
     return {
       cle: p.cle, type: p.type, moissonneur: p.moissonneur, recolte: String(p.recolte || ''),
+      // Les langues où elle se montre, et les titres officiels d'une proposition multilingue.
+      langues: propositions.languesDe(p), titres: p.titres || null,
       source: String(p.cle).split(':')[1] || p.moissonneur,
       valeurs: p.valeurs || {}, doutes: Array.isArray(p.doutes) ? p.doutes : [], brut: p.brut || {},
       pertinence: p.pertinence || null, doublon: p.doublon || null, motif: p.motif || '',
       cas: p.cas, raisons: p.raisons, bloquants: propositions.bloquants(p),
+      // Le cran le plus haut où elle reste visible (10 sans crans ou sans note).
+      cranMax: propositions.cranMax(p, finesse.vue.crans[p.dossier || p.moissonneur] || null),
       // « Proposer aussi à l'autre revue » : cochée d'office pour la Confédération seule.
       aussi: (p.valeurs || {}).canton === 'CH',
       doublonFiche: fiche ? { valeurs: fiche.valeurs, numero: nomNumeroPour(racineArbreVal, fiche.ausgabe) } : null
@@ -512,6 +607,8 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
   const msg = {
     type: MSG.PROP_DONNEES, langue: langue, cible: kirby.autresLangues(langue)[0] || '',
     revueAutre: autre ? ctx.nomRevueAffiche(autre) : '',
+    revue: ctx.nomRevueAffiche(revueJeton),
+    finesse: finesse.parType,
     types: typesPropositions(langue),
     propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
     refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
@@ -834,7 +931,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       if (refuserSiVerrouille()) { refusVerrou('recree'); return; }
       const cle = String(msg.cle || '');
       const p = propositions.lireProposition(racineArbreVal, cle);
-      const r = p && p.langue === langue ? propositions.recreerFiche(racineArbreVal, cle, p, msg.valeurs, { ausgabeId: ausgabeId })
+      const r = p && propositions.languesDe(p).indexOf(langue) !== -1
+        ? propositions.recreerFiche(racineArbreVal, cle, p, msg.valeurs, { ausgabeId: ausgabeId, langue: langue })
         : { ok: false, raison: 'pas-acceptee' };
       resultat = { geste: 'recree', faites: r.ok ? [cle] : [], ignorees: [], echecs: r.ok ? [] : [{ cle: cle, raison: r.raison }] };
       recharger = r.ok;
@@ -850,12 +948,58 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
         return d && d.decision === 'accepte';
       });
       if (acceptation && refuserSiVerrouille()) { refusVerrou('annule'); return; }
-      resultat = Object.assign({ geste: 'annule' }, propositions.annulerLot(racineArbreVal, cles));
+      resultat = Object.assign({ geste: 'annule' }, propositions.annulerLot(racineArbreVal, cles, langue));
       recharger = resultat.fichesSupprimees > 0;
     }
     if (recharger) { await charger(panneau); }
     repondrePanneau(panneau, donneesProp(resultat));
     if (rafraichirTout) { rafraichirTout(); }
+  }
+
+  // Une fiche née d'une proposition multilingue : sa traduction part du titre officiel de
+  // cette langue, gardé dans la décision, plutôt que du titre de l'autre langue.
+  function prendreTitreOfficiel(slug, uuid) {
+    const titres = propositions.titresOfficielsDeFiche(racineArbreVal, uuid);
+    if (!titres || !titres[langue]) { return; }
+    const f = kirby.lireFicheSlugLangue(racineArbreVal, slug, langue);
+    if (!f) { return; }
+    kirby.enregistrerFicheLangue(racineArbreVal, slug, langue, f.type, Object.assign({}, f.valeurs, { title: titres[langue] }));
+  }
+
+  // Le dernier « Garder » de ce panneau, que « Annuler » défait : { typeFiche, avant, apercu }.
+  let dernierGarde = null;
+  // Rend le message à renvoyer à la page, ou null pour un message refusé.
+  async function traiterFinesse(msg) {
+    const typeFiche = String(msg.typeFiche || '');
+    if (!kirby.typeConnu(typeFiche)) { return null; }
+    const lu = propositions.listerPropositions(racineArbreVal, langue);
+    const f = finesseParType(racineArbreVal, langue, lu).parType[typeFiche];
+    if (msg.type === MSG.PROP_FINESSE_APERCU) {
+      const cran = Number(msg.cran);
+      if (!f || !Number.isInteger(cran) || cran < 1 || cran > propositions.NB_CRANS) { return null; }
+      // Un aperçu égal au réglage partagé n'est plus un aperçu : le poste suit la rédaction.
+      await poserApercuFinesse(langue, typeFiche, cran === (f.reglage ? f.reglage.cran : 1) ? null : cran);
+      return donneesProp();
+    }
+    if (msg.type === MSG.PROP_FINESSE_GARDER) {
+      if (!f || f.apercu === null) { return null; }
+      const avant = {};
+      const par = auteurPoste();
+      for (const m of f.moissonneurs) {
+        avant[m] = (propositions.lireReglages(racineArbreVal, langue)[m] || {})[typeFiche] || null;
+        propositions.ecrireReglage(racineArbreVal, langue, m, typeFiche, f.apercu, par);
+      }
+      dernierGarde = { typeFiche: typeFiche, avant: avant, apercu: f.apercu };
+      await poserApercuFinesse(langue, typeFiche, null);
+      return Object.assign(donneesProp(), { finesseGeste: { geste: 'garde', typeFiche: typeFiche, cran: dernierGarde.apercu } });
+    }
+    if (!dernierGarde || dernierGarde.typeFiche !== typeFiche) { return null; }
+    for (const m of Object.keys(dernierGarde.avant)) {
+      propositions.retablirReglage(racineArbreVal, langue, m, typeFiche, dernierGarde.avant[m]);
+    }
+    await poserApercuFinesse(langue, typeFiche, dernierGarde.apercu);
+    dernierGarde = null;
+    return Object.assign(donneesProp(), { finesseGeste: { geste: 'annule', typeFiche: typeFiche } });
   }
 
   async function traiterPret(msg) {
@@ -964,6 +1108,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       if (slugCible === '') { return; }
       const r = kirby.traduireDansNumero(racineArbreVal, slugCible, langue, ausgabeId);
       if (r.ok) {
+        prendreTitreOfficiel(slugCible, r.uuid);
         kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId);
         await charger(panneau);
         if (rafraichirTout) { rafraichirTout(); }
@@ -1119,6 +1264,15 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       await etatPoste.globalState.update(CLE_COLONNES_PROPOSITIONS, table);
       return;
     }
+    // La finesse du tri : l'aperçu reste sur ce poste ; « Garder » l'écrit pour la rédaction.
+    if (msg.type === MSG.PROP_FINESSE_APERCU || msg.type === MSG.PROP_FINESSE_GARDER
+      || msg.type === MSG.PROP_FINESSE_ANNULER) {
+      const reponse = await traiterFinesse(msg);
+      if (!reponse) { return; }
+      repondrePanneau(panneau, reponse);
+      if (rafraichirTout) { rafraichirTout(); }
+      return;
+    }
     // Le lien vient du lot, jamais de la page : la page ne désigne que la proposition.
     if (msg.type === MSG.PROP_OUVRIR_SOURCE) {
       const cible = String(msg.cle || '');
@@ -1166,7 +1320,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
 module.exports = {
   configurer,
   ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe,
-  dossierArticleDoc, compteArchiveConnu,
+  dossierArticleDoc, compteArchiveConnu, compterPropositionsVues,
   // Les fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne sont pas
   // pures — elles lisent la langue et le contrat — et c'est précisément ce qu'il faut
   // éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige que
