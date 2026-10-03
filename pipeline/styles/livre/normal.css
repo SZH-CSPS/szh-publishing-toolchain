@@ -29,7 +29,9 @@
   --marge-int:  20mm; --marge-ext: 20mm;
 
   /* ── Texte ────────────────────────────────────────────────────────────────
-     10 pt sur 13,5 pt, justifié, césure, approche de 1 %. */
+     10 pt sur 13,5 pt, justifié, césure, sans approche. L'IDML de référence porte une
+     approche de 10/1000 em, mais InDesign resserre aussi les espaces justifiées : mesurés
+     de 0 à 0,01 em, les deux livres de référence apparient le plus de lignes à 0. */
   --corps: 10pt;
   --interligne: 1.35;
   --ligne: 13.5pt;
@@ -37,7 +39,7 @@
   --cesure: auto;
   --alinea: 4mm;
   --liste-retrait: 4mm;
-  --approche: 0.01em;
+  --approche: 0em;
 
   /* ── Tailles dérivées ─────────────────────────────────────────────────────
      Légende 10 pt, note 8 pt sur 10, citation 8,5 sur 12,25, tableau 8 pt, impressum
@@ -60,7 +62,12 @@
   --plafond-figure: 80vh;
 }
 
-body { letter-spacing: var(--approche); }
+/* Césure : au moins 2 lettres avant le tiret et 3 après. pyphen coupe « ge-sch-ah » ;
+   sans ce plancher, « gesch-ah » sortait en fin de ligne. */
+body { letter-spacing: var(--approche); hyphenate-limit-chars: 5 2 3; }
+
+/* Un indice ou un exposant ne hausse pas sa ligne : l'interligne reste celui de la grille. */
+sub, sup { line-height: 0; }
 
 /* Folio en noir, comme le texte, sa boîte calée en haut de la marge basse : sa ligne de
    base tombe à 215 mm quelle que soit la hauteur de la marge. */
@@ -90,6 +97,10 @@ h2 { font-weight: 700; letter-spacing: 0.035em;
 h3 { font-weight: 600; margin: var(--ligne) 0 0 0; }
 h4 { font-weight: 600; font-style: italic; margin: var(--ligne) 0 0 0; }
 h3 + h4 { margin-top: 0; }
+/* En tête de page, la marge du dessus tombe aussi après une coupure forcée (nouveau
+   chapitre) : WeasyPrint ne la tronque d'office qu'aux coupures non forcées. La première
+   ligne de base reste sur la grille. */
+h2, h3, h4, figure { margin-break: discard; }
 
 /* Le numéro de section est posé dans le texte du titre par szh-sections.lua, jamais en
    CSS : un numéro généré n'existerait pas dans l'EPUB ni dans un galley Word. L'espace qui
@@ -109,15 +120,21 @@ h3 + h4 { margin-top: 0; }
 .szh-demi-titre .szh-sous-titre { font-weight: 500; letter-spacing: 0.05em; margin-top: var(--ligne); }
 
 .szh-page-titre { padding-top: 3.8mm; }
+/* Les éditeurs dans une boîte de deux lignes : le titre reste à 48,6 mm qu'ils tiennent sur une
+   ligne (Hofer p3) ou sur deux (HfH p5). */
 .szh-page-titre .szh-auteurs    { font-size: 10pt; line-height: var(--ligne); font-weight: 500;
-                                  letter-spacing: 0.05em; }
+                                  letter-spacing: 0.05em; min-height: calc(2 * var(--ligne)); }
 .szh-page-titre .szh-titre      { font-size: 19pt; line-height: 27pt; font-weight: 700;
-                                  letter-spacing: 0.015em; margin-top: 16.4mm; }
+                                  letter-spacing: 0.015em; margin-top: calc(16.4mm - var(--ligne)); }
 .szh-page-titre .szh-sous-titre { font-size: 12pt; line-height: 18pt; font-weight: 500;
                                   letter-spacing: 0.05em; margin-top: 7.4mm; }
 
-/* Impressum : 7 pt Medium sur 9,6, un bloc par mention, une ligne vide entre les blocs. */
-.szh-impressum { padding-top: 31.3mm; line-height: 9.6pt; font-weight: 500;
+/* Impressum : 7 pt Medium sur 9,6, un bloc par mention, une ligne vide entre les blocs. Il est
+   calé sur le bas de la page : le dernier bloc finit à 185,6 mm, la rangée de logos de
+   l'imprimeur dessous (Hofer p2, HfH p6), quel que soit le nombre de mentions. */
+.szh-impressum { display: flex; flex-direction: column; justify-content: flex-end;
+                 box-sizing: border-box; height: calc(var(--page-h) - var(--marge-haut) - var(--marge-bas));
+                 padding: 0 0 12.3mm 0; line-height: 9.6pt; font-weight: 500;
                  letter-spacing: 0.035em; }
 .szh-impressum p { text-indent: 0; text-align: left; hyphens: none; margin: 0 0 9.6pt 0; }
 
@@ -136,10 +153,13 @@ h3 + h4 { margin-top: 0; }
 .szh-sommaire .niveau-3 { font-weight: 300; letter-spacing: 0.02em; }
 
 /* ═══ Corps ═══════════════════════════════════════════════════════════════════ */
-/* Citation détachée : 8,5 pt sur 12,25, en italique, retrait gauche de 4 mm, sans alinéa. */
+/* Citation détachée : 8,5 pt sur 12,25, en italique, retrait gauche de 4 mm, sans alinéa.
+   Le texte qui suit reprend deux lignes de grille (9,5 mm) sous sa dernière ligne : exact
+   sur la grille pour 4 lignes, 0,44 mm plus bas par ligne de moins (la référence recale sur
+   sa grille, ce que WeasyPrint ne sait pas faire). */
 blockquote {
   font-size: var(--citation); line-height: 12.25pt; font-style: italic;
-  margin: 1.75mm 0 4.6mm 4mm; text-indent: 0;
+  margin: 1.75mm 0 4.78mm 4mm; text-indent: 0;
 }
 blockquote p { text-indent: 0; }
 
@@ -183,6 +203,11 @@ figcaption, caption {
 }
 .szh-chapitre figure > figcaption .szh-numero,
 .szh-chapitre table > caption .szh-numero { font-weight: inherit; }
+/* Le crédit (© et source) au corps et à l'encre de la légende, sur sa propre ligne :
+   partage-filtres.css, chargée après, le réduit pour la revue ; la référence ne le distingue
+   que par le retour à la ligne (HfH p56, p207). */
+.szh-chapitre figure > figcaption .szh-credit,
+.szh-chapitre table > caption .szh-credit { display: block; font-size: inherit; color: inherit; }
 
 /* ═══ Réglages du bloc mise-en-page ═══════════════════════════════════════════
    Une règle par valeur qui s'écarte du défaut, sous l'attribut que livre-assembler.py pose
@@ -262,7 +287,7 @@ html[data-citation="romain"] blockquote { font-style: normal; }
    9,5 mm environ sous le filet du bas. */
 html[data-cadre-figure="filets"] .szh-chapitre figure:not(.szh-credit-seul) {
   background: #f4f4f4; border-bottom: 0.35pt solid #000; padding-bottom: 3mm;
-  margin-bottom: 5.75mm;
+  margin-bottom: 6.75mm;
 }
 html[data-cadre-figure="filets"] .szh-chapitre figure:not(.szh-credit-seul) > figcaption {
   background: #fff; border-bottom: 0.35pt solid #000; padding-bottom: 3.9mm;
@@ -288,7 +313,7 @@ html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not
   font-size: 7pt; line-height: 8pt;
 }
 html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) > * > tr > * {
-  padding: 1.8mm 2mm; border: 0;
+  padding: 1.814mm 2mm; border: 0;
 }
 html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not([data-zebre-col]):not([data-el-fond]):not([data-ec-fond]):not([data-total-fond]):not([data-el-gras]):not([data-ec-gras]):not([data-total-gras]):not([data-bordure-haute]):not([data-bordure-basse]) thead th {
   font-weight: 700; background: #c4d4e4; padding-top: 3mm; padding-bottom: 3mm;

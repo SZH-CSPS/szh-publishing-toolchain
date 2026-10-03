@@ -480,12 +480,15 @@ def _responsables_page_titre(meta, lang, normal):
 
 
 def demi_titre(meta, lang='fr', normal=False):
+    """En maquette normal, le titre y court d'un trait : ses « // » sont ceux de la page de
+    titre, où il est composé en grand. Le sous-titre garde les siens sur les deux pages."""
+    titre = (html.escape(szh_commun.titre_plat(meta.get('titre'))) if normal
+             else _titre_en_lignes(meta.get('titre')))
     return ('<section class="szh-liminaire szh-demi-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
-            % (html.escape(_responsables_page_titre(meta, lang, normal)),
-               _titre_en_lignes(meta.get('titre')),
+            % (html.escape(_responsables_page_titre(meta, lang, normal)), titre,
                _titre_en_lignes(meta.get('sous-titre'))))
 
 
@@ -639,9 +642,12 @@ TITRES_SOMMAIRE = {'de': 'Inhaltsverzeichnis', 'fr': 'Sommaire', 'it': 'Indice'}
 # Les sous-clés du bloc `impressum:` de buch.yaml, toutes facultatives. Une image a son
 # texte alternatif dans `<clé>-alt` ; sans lui, elle est décorative (alt="") : un logo
 # répète le plus souvent un nom déjà écrit à côté (docs/ACCESSIBILITE.md).
-CLES_IMPRESSUM = ('logo-soutien', 'logo-soutien-alt', 'soutien', 'credits', 'responsabilite',
-                  'reserve', 'imprimeur', 'logos-imprimeur', 'logos-imprimeur-alt')
+CLES_IMPRESSUM = ('logo-soutien', 'logo-soutien-alt', 'logo-soutien-hauteur-mm', 'soutien',
+                  'credits', 'responsabilite', 'reserve', 'imprimeur', 'logos-imprimeur',
+                  'logos-imprimeur-alt')
 IMAGES_IMPRESSUM = ('logo-soutien', 'logos-imprimeur')
+# Hauteur du logo de soutien en mm : sans la clé, celle de normal.css (15,6 mm).
+HAUTEUR_LOGO_SOUTIEN = (4, 30)
 
 
 def _bloc_impressum(meta):
@@ -663,7 +669,25 @@ def verifier_impressum(meta, racine):
     for cle in IMAGES_IMPRESSUM:
         for nom in _liste(bloc.get(cle)):
             _fichier_livre(racine, nom, 'impressum.' + cle, erreurs)
+    if bloc.get('logo-soutien-hauteur-mm') not in (None, '') and _hauteur_logo(bloc) is None:
+        bas, haut = HAUTEUR_LOGO_SOUTIEN
+        valeur = str(bloc['logo-soutien-hauteur-mm']).strip()
+        erreurs.append(_erreur('impressum-valeur-mm', 'impressum.logo-soutien-hauteur-mm',
+            '« %s » n\'est pas une valeur permise pour logo-soutien-hauteur-mm : un nombre de mm '
+            'entre %s et %s.' % (valeur, bas, haut),
+            '« %s » ist für logo-soutien-hauteur-mm nicht erlaubt: eine Zahl in mm zwischen '
+            '%s und %s.' % (valeur, bas, haut)))
     return erreurs
+
+
+def _hauteur_logo(bloc):
+    """La hauteur du logo de soutien en mm (nombre), ou None si absente ou refusée."""
+    valeur = str(bloc.get('logo-soutien-hauteur-mm') or '').strip().strip('"\'')
+    if not RE_NOMBRE_MM.match(valeur):
+        return None
+    nombre = float(valeur.replace(',', '.'))
+    bas, haut = HAUTEUR_LOGO_SOUTIEN
+    return (int(nombre) if nombre == int(nombre) else nombre) if bas <= nombre <= haut else None
 
 
 def _oui(v):
@@ -726,7 +750,9 @@ def impressum(meta, racine='.', normal=False):
     if _liste(bloc.get('logos-imprimeur')):
         blocs.append(('szh-impressum-logos-imprimeur', images('logos-imprimeur')))
     corps = '\n'.join(('<p class="%s">' % c if c else '<p>') + x + '</p>' for c, x in blocs)
-    return '<section class="szh-liminaire szh-impressum">' + corps + '</section>'
+    hauteur = _hauteur_logo(bloc)
+    style = ' style="--impressum-logo-soutien: %smm"' % hauteur if hauteur is not None else ''
+    return '<section class="szh-liminaire szh-impressum"%s>' % style + corps + '</section>'
 
 
 # --------------------------------------------------------------------------------------

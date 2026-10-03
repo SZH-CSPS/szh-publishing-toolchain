@@ -128,6 +128,7 @@ pieces-fin: [autorinnen.md]  # .md de liminaires/, après le dernier chapitre, a
 impressum:                 # maquette normal, chaque sous-clé facultative
   logo-soutien: impressum/fondation.svg
   logo-soutien-alt: "Logo de la fondation"   # sans -alt : image décorative
+  logo-soutien-hauteur-mm: 8.7   # hauteur du logo, de 4 à 30 mm ; absente : 15,6 mm
   soutien: "Avec le soutien de …"
   credits: "Layout: …//Lektorat: …"
   responsabilite: oui      # la phrase standard de la langue
@@ -425,9 +426,19 @@ collection d'une haute école (HfH-Reihe, 2024) ; les défauts sont ceux de l'Ed
 - 155 × 225 mm, pages en vis-à-vis ; justification de 115 mm (marges de 20 mm à l'intérieur
   et à l'extérieur) ; grille de 13,5 pt, première ligne de base à 20 mm du haut, dernière à
   201 mm, 39 lignes ;
-- Open Sans SemiCondensed 10/13,5, la police de la revue ; notes 8/10, légendes 10 pt,
+- Open Sans SemiCondensed 10/13,5, la police de la revue, sans approche (la valeur qui
+  apparie le plus de lignes avec les deux références, mesurée de 0 à 0,01 em) ; notes 8/10, légendes 10 pt,
   citations 8,5/12,25, impressum 7/9,6 ;
-- texte justifié, césure active, alinéa sauf après un titre ;
+- texte justifié, césure active (au moins 2 lettres avant le tiret et 3 après), alinéa sauf
+  après un titre ;
+- un intertitre ou une figure en tête de page perd sa marge du dessus, même après une coupure
+  forcée (`margin-break: discard`) ; le texte qui suit une citation reprend 9,5 mm sous sa
+  dernière ligne, sur la grille pour une citation de 4 lignes ;
+- légende : le crédit (« (© X | source) ») sur sa propre ligne, au corps et à l'encre de la
+  légende ; un indice ou un exposant n'écarte pas l'interligne ; une figure à filets reprend le
+  texte environ 9,6 mm sous son filet bas, un tableau zébré a des rangées de 6,45 mm ;
+- page de titre : le titre à 48,6 mm, que les éditeurs tiennent sur une ligne ou sur deux ;
+  impressum calé sur le bas de la page, son dernier bloc finissant à 185,6 mm ;
 - pas de titre courant : le folio seul, Bold 8, ligne de base à 10 mm du bas, en pied de
   page extérieur ;
 - chapitres ouverts sur la belle page ;
@@ -486,7 +497,10 @@ En maquette normal, le séparateur de légende est le deux-points (« Abbildung 
   s'écrit aussi comme un chapitre sans titre dans une partie (`page-seule: non`).
 - *Dédicace* (`dedicace:` et le jeton `dedicace`) : centrée, sur un recto ; avant le sommaire
   elle n'a pas de folio, comme tout liminaire qui le précède.
-- *Impressum* (`impressum:`) : l'ordre est fixe ; une image sans `<clé>-alt` est décorative,
+- *Demi-titre* : en maquette normal, le titre y court d'un trait, ses « // » ne coupent que
+  la page de titre ; le sous-titre se coupe au même endroit sur les deux pages.
+- *Impressum* (`impressum:`) : l'ordre est fixe ; `logo-soutien-hauteur-mm` règle la hauteur
+  du logo de soutien (refusée hors de 4 à 30 mm) ; une image sans `<clé>-alt` est décorative,
   rendue en fond CSS (une `/Figure` sans `/Alt` n'est pas conforme PDF/UA), comme le logo
   de l'éditeur sur la page de titre, dont le nom est déjà écrit à l'impressum.
 - *Éditeurs* : en ouvrage collectif, demi-titre et page de titre portent les `editeurs`
@@ -500,6 +514,12 @@ Le HTML web et l'EPUB ne la lisent pas.
 
 La fidélité est approchée : la charte varie d'un livre à l'autre, et ce qui varie (bandeaux de
 personnages en marge, par exemple) n'est pas traité. Feuilles : `base.css` puis `normal.css`.
+
+Limite connue de WeasyPrint 70, sans parade en CSS : quand la ligne qui respecte `orphans`
+ne tient qu'en chassant une note déjà posée, il reporte la note à la page suivante, loin de
+son appel ; et si la page de l'appel est refaite à une repagination (sommaire, renvois), la
+note reportée peut sortir une seconde fois plus loin. Le remède est un correctif de
+WeasyPrint.
 
 ### 5.2 FALC
 

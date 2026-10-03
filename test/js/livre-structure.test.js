@@ -331,6 +331,22 @@ test('impressum : les ISBN et le DOI en un seul bloc ; le FALC garde un bloc cha
   assert.match(falc.html, /<p>ISBN Print on demand: 978-0-00<\/p>\n<p>ISBN E-Book: 978-0-01<\/p>\n<p>https:\/\/doi\.org\/10\.0\/x<\/p>/);
 });
 
+test('impressum : logo-soutien-hauteur-mm règle la hauteur du logo de soutien, refusée hors bornes', { skip: sansPython }, () => {
+  for (const [brut, attendu] of [['8.7', '8.7mm'], ['8,7', '8.7mm'], ['12', '12mm'], ['"4"', '4mm'], ['30', '30mm']]) {
+    const r = livre(buch(IMPRESSUM + '  logo-soutien-hauteur-mm: ' + brut + '\n', 'impressum'), { fichiers: LOGOS });
+    assert.strictEqual(r.status, 0, brut + ' : ' + r.stderr);
+    assert.match(r.html, new RegExp('<section class="szh-liminaire szh-impressum" style="--impressum-logo-soutien: '
+      + attendu.replace('.', '\\.') + '">'), brut);
+  }
+  // Sans la clé, aucun style : la hauteur de normal.css.
+  const sans = livre(buch(IMPRESSUM, 'impressum'), { fichiers: LOGOS });
+  assert.match(sans.html, /<section class="szh-liminaire szh-impressum"><p>/);
+  for (const brut of ['3', '31', 'gross', '8mm', '-5']) {
+    exigerRefus(livre(buch(IMPRESSUM + '  logo-soutien-hauteur-mm: ' + brut + '\n', 'impressum'), { fichiers: LOGOS }),
+      'impressum-valeur-mm', 'impressum.logo-soutien-hauteur-mm');
+  }
+});
+
 // ── Page de titre et demi-titre ───────────────────────────────────────────────────────
 
 test('page de titre (logo-page-titre) : le logo de l’éditeur par défaut, alt vide ; non le retire', { skip: sansPython }, () => {

@@ -356,6 +356,16 @@ class SautDeLigneDansLeTitre(unittest.TestCase):
             self.assertIn('<p class="szh-titre">La CDPH<br>en &lt;Suisse&gt;</p>', h)
             self.assertIn('<p class="szh-sous-titre">Un<br>deux<br>trois</p>', h)
 
+    def test_demi_titre_normal_titre_d_un_trait(self):
+        # Maquette normal : le « // » du titre vaut pour la page de titre seule ; le
+        # sous-titre se coupe au même endroit sur les deux pages.
+        h = la.demi_titre(self.META, 'fr', normal=True)
+        self.assertIn('<p class="szh-titre">La CDPH en &lt;Suisse&gt;</p>', h)
+        self.assertIn('<p class="szh-sous-titre">Un<br>deux<br>trois</p>', h)
+        p = la.page_titre(self.META, 'fr', normal=True)
+        self.assertIn('<p class="szh-titre">La CDPH<br>en &lt;Suisse&gt;</p>', p)
+        self.assertIn('<p class="szh-sous-titre">Un<br>deux<br>trois</p>', p)
+
     def test_titre_sans_saut_inchange(self):
         h = la.page_titre({'titre': 'A & B', 'sous-titre': ''}, 'fr')
         self.assertIn('<p class="szh-titre">A &amp; B</p>', h)
