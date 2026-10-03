@@ -116,3 +116,163 @@ test('réglages : crans_source dit quand une langue prend les déciles communs ;
   const ol = p.un('.accueil-moiss-categories');
   assert.deepStrictEqual(ol.querySelectorAll('li').map((li) => li.textContent), ['terme dans le titre', 'signal faible']);
 });
+
+// ---- Les demandes sur le lexique ------------------------------------------------------------
+
+const TEXTES_DEMANDES = Object.assign({}, TEXTES, {
+  demandes: 'Demandes', demandesAide: 'Aide demandes.', demandesAucune: 'Aucune demande.', ouvrirTermes: 'Ouvrir Termes',
+  ouvrirTermesTip: 'Dans le numéro ouvert.', par: 'demandé par {0} le {1}', effet: 'rappel {0} → {1} · {2} → {3} par mois',
+  effetIncomplet: 'effet complet après la prochaine moisson', mesure: 'mesuré le {0}', perdues: 'Fiches perdues ({0})',
+  perteUn: 'Perte d’une fiche.', pertePlus: 'Perte de {0} fiches.', confirmee: 'Confirmé par {0} le {1}.',
+  quandMeme: 'Appliquer quand même', quandMemeTip: 'Vous avez vu les fiches.', quandMemeAutre: 'Seul {0} peut le faire.',
+  retirer: 'Retirer', retirerLabel: 'Retirer : {0} {1}', retirerTipAttente: 'tip attente', retirerTipAppliquee: 'tip appliquée',
+  retirerTipClose: 'tip close', retirerTipRetrait: 'tip retrait', retiree: 'Retirée : {0} {1}.', retraitDemande: 'Retrait de {0}.',
+  confirmeeAvis: 'Confirmée : {0}.', annuler: 'Annuler', annulee: 'Retrait annulé.', refus: 'Refus ({0}).',
+  ignoree: 'Ignorée : {0} ({1}).', illisible: 'Illisible : {0}.', terme: '« {0} »',
+  sens: { ajout: 'ajouter', exclusion: 'exclure', retrait: 'défaire' },
+  st: { 'en-attente': 'en attente', applique: 'appliquée', 'applique-partiel': 'appliquée en partie', 'refuse-perte': 'refusée : perte',
+    'refuse-bruit': 'refusée : bruit', doublon: 'doublon', 'a-confirmer': 'à confirmer', 'retrait-en-attente': 'retrait en attente' },
+  expl: { 'en-attente': 'Sera mesurée.', 'applique-partiel': 'Base locale seulement.', 'refuse-bruit': 'Trop de bruit.',
+    doublon: 'Déjà au lexique.', 'a-confirmer': 'À confirmer.', 'retrait-en-attente': 'Retrait mesuré à la prochaine passe.' }
+});
+const effet = (complet) => ({ rappel_avant: 73, rappel_apres: 70, par_mois_avant: 81, par_mois_apres: 69, complet: complet });
+function demande(id, statut, extra) {
+  return Object.assign({ id: id, terme: 'terme ' + id, langue: 'fr', sens: 'exclusion', par: 'Claire Exemple',
+    le: '2026-10-02T09:15:00Z', statut: statut, effet: null, fiches_perdues: [], mesure_le: '' }, extra || {});
+}
+function moissonnageDemandes(extra) {
+  const m = moissonnage();
+  m.textes = TEXTES_DEMANDES;
+  m.moi = 'Claire Exemple';
+  const p = m.moissonneurs[1];
+  p.aTermes = true;
+  p.avertissements = [{ code: 'demande-ignoree', moissonneur: 'parlement', fichier: 'x y.json', raison: 'id non sûr' }];
+  p.demandes = [
+    demande('attente', 'en-attente'),
+    demande('appliquee', 'applique', { effet: effet(true), mesure_le: '2026-09-15' }),
+    demande('partielle', 'applique-partiel', { sens: 'ajout', effet: effet(false), mesure_le: '2026-10-01' }),
+    demande('perte', 'refuse-perte', { fiches_perdues: ['Intégration au cycle 3', 'Transition vers le secondaire'], mesure_le: '2026-09-15' }),
+    demande('perte-autre', 'refuse-perte', { par: 'Jonas Beispiel', fiches_perdues: ['Participation des familles'] }),
+    demande('confirmee', 'refuse-perte', { fiches_perdues: ['X'], confirme_par: 'Claire Exemple', confirme_le: '2026-10-03T08:00:00Z' }),
+    demande('bruit', 'refuse-bruit', { sens: 'ajout' }),
+    demande('doublon', 'doublon', { sens: 'ajout' }),
+    demande('a-confirmer', 'a-confirmer', { fiches_perdues: ['Y'] }),
+    demande('retrait', 'retrait-en-attente')
+  ];
+  return Object.assign(m, extra || {});
+}
+function ouvrirDemandes(extra) {
+  const p = ouvrirReglages();
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false }, moissonnage: moissonnageDemandes(extra) });
+  return p;
+}
+function ligneDemande(p, id) { return p.tous('.accueil-demande').find((li) => li.dataset.id === id); }
+
+test('réglages : sans demande ni termes, pas de bloc des demandes', () => {
+  const p = ouvrir();
+  assert.strictEqual(p.tous('.accueil-tache').filter((r) => r.dataset.demandes !== undefined).length, 0);
+});
+
+test('réglages : un moissonneur à termes sans demande montre le bloc, vide, avec le lien vers Termes', () => {
+  const p = ouvrirDemandes();
+  const m = moissonnageDemandes();
+  m.moissonneurs[1].demandes = [];
+  m.moissonneurs[1].avertissements = [];
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false }, moissonnage: m });
+  const bloc = p.tous('.accueil-tache').find((r) => r.dataset.demandes === 'parlement');
+  assert.ok(bloc, 'bloc absent');
+  assert.strictEqual(bloc.querySelector('.accueil-demandes-aucune').textContent, 'Aucune demande.');
+  bloc.querySelector('.accueil-moiss-termes').click();
+  assert.deepStrictEqual(p.postes(MSG.ACCUEIL_OUVRIR_TERMES), [{ type: MSG.ACCUEIL_OUVRIR_TERMES, moissonneur: 'parlement' }]);
+});
+
+test('réglages : chaque demande dit son statut en texte et en badge, qui et quand, et l’effet mesuré', () => {
+  const p = ouvrirDemandes();
+  const statut = (id) => ligneDemande(p, id).querySelector('.accueil-demande-statut');
+  for (const [id, texte] of [['attente', 'en attente'], ['appliquee', 'appliquée'], ['partielle', 'appliquée en partie'],
+    ['perte', 'refusée : perte'], ['bruit', 'refusée : bruit'], ['doublon', 'doublon'], ['a-confirmer', 'à confirmer'],
+    ['retrait', 'retrait en attente']]) {
+    assert.strictEqual(statut(id).textContent, texte, id);
+    assert.ok(statut(id).classList.contains('szh-pastille'), id);
+  }
+  assert.ok(statut('appliquee').classList.contains('szh-pastille--ok'));
+  assert.ok(statut('perte').classList.contains('szh-pastille--attention'));
+  const l = ligneDemande(p, 'appliquee');
+  assert.strictEqual(l.querySelector('.accueil-demande-terme').textContent, 'exclure « terme appliquee » (fr)');
+  assert.strictEqual(l.querySelector('.accueil-demande-par').textContent, 'demandé par Claire Exemple le 02.10.2026');
+  assert.strictEqual(l.querySelector('.accueil-demande-effet').textContent, 'rappel 73 → 70 · 81 → 69 par mois · mesuré le 15.09.2026');
+  assert.strictEqual(ligneDemande(p, 'partielle').querySelector('.accueil-demande-effet').textContent,
+    'rappel 73 → 70 · 81 → 69 par mois · effet complet après la prochaine moisson · mesuré le 01.10.2026');
+  assert.ok(ligneDemande(p, 'attente').textContent.indexOf('Sera mesurée.') !== -1);
+  assert.ok(ligneDemande(p, 'bruit').textContent.indexOf('Trop de bruit.') !== -1);
+  assert.ok(p.un('[data-demandes="parlement"]').textContent.indexOf('Ignorée : x y.json (id non sûr).') !== -1, 'la demande ignorée remonte');
+});
+
+test('réglages : une demande refusée pour perte déplie ses fiches perdues ; « Appliquer quand même » au demandeur seul', () => {
+  const p = ouvrirDemandes();
+  const perte = ligneDemande(p, 'perte');
+  const det = perte.querySelector('details');
+  assert.strictEqual(det.open, true);
+  assert.strictEqual(det.querySelector('summary').textContent, 'Fiches perdues (2)');
+  assert.deepStrictEqual(det.querySelectorAll('li').map((x) => x.textContent), ['Intégration au cycle 3', 'Transition vers le secondaire']);
+  assert.ok(perte.textContent.indexOf('Perte de 2 fiches.') !== -1);
+  const b = perte.querySelector('.accueil-demande-quand-meme');
+  assert.strictEqual(b.disabled, false);
+  assert.strictEqual(b.title, 'Vous avez vu les fiches.');
+  b.click();
+  assert.deepStrictEqual(p.postes(MSG.ACCUEIL_DEMANDE_CONFIRMER), [{ type: MSG.ACCUEIL_DEMANDE_CONFIRMER, moissonneur: 'parlement', id: 'perte' }]);
+  // Une autre personne voit pourquoi, en infobulle et en texte.
+  const autre = ligneDemande(p, 'perte-autre');
+  const ba = autre.querySelector('.accueil-demande-quand-meme');
+  assert.strictEqual(ba.disabled, true);
+  assert.strictEqual(ba.title, 'Seul Jonas Beispiel peut le faire.');
+  assert.strictEqual(autre.querySelector('.accueil-demande-qui').textContent, 'Seul Jonas Beispiel peut le faire.');
+  // Une fois confirmée, tout le monde voit qui et quand.
+  const conf = ligneDemande(p, 'confirmee');
+  assert.strictEqual(conf.querySelector('.accueil-demande-quand-meme'), null);
+  assert.ok(conf.textContent.indexOf('Confirmé par Claire Exemple le 03.10.2026.') !== -1);
+  assert.ok(ligneDemande(p, 'a-confirmer').querySelector('.accueil-demande-quand-meme'), 'à confirmer : le geste aussi');
+});
+
+test('réglages : « Retirer » part à l’hôte, dit ce qu’il fera, et un bandeau Annuler suit le geste', () => {
+  const p = ouvrirDemandes();
+  const retirer = (id) => ligneDemande(p, id).querySelector('.accueil-demande-retirer');
+  assert.strictEqual(retirer('attente').title, 'tip attente');
+  assert.strictEqual(retirer('appliquee').title, 'tip appliquée');
+  assert.strictEqual(retirer('partielle').title, 'tip appliquée');
+  assert.strictEqual(retirer('bruit').title, 'tip close');
+  assert.strictEqual(retirer('retrait').disabled, true);
+  assert.strictEqual(retirer('retrait').title, 'tip retrait');
+  assert.strictEqual(retirer('attente').getAttribute('aria-label'), 'Retirer : exclure terme attente');
+  retirer('appliquee').click();
+  assert.deepStrictEqual(p.postes(MSG.ACCUEIL_DEMANDE_RETIRER), [{ type: MSG.ACCUEIL_DEMANDE_RETIRER, moissonneur: 'parlement', id: 'appliquee' }]);
+  // La réponse de l'hôte : le bandeau, et Annuler.
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false },
+    moissonnage: moissonnageDemandes({ demandeGeste: { geste: 'retiree', ok: true, action: 'retrait', terme: 'terme appliquee', sens: 'exclusion' } }) });
+  let bandeau = p.un('.accueil-moiss-bandeau');
+  assert.ok(bandeau, 'bandeau absent');
+  assert.ok(bandeau.textContent.indexOf('Retrait de terme appliquee.') !== -1);
+  bandeau.querySelector('.accueil-moiss-annuler').click();
+  assert.deepStrictEqual(p.postes(MSG.ACCUEIL_DEMANDE_ANNULER), [{ type: MSG.ACCUEIL_DEMANDE_ANNULER }]);
+  assert.strictEqual(p.un('.accueil-moiss-bandeau'), null, 'Annuler retire le bandeau');
+  // Une demande en attente retirée : le texte le dit.
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false },
+    moissonnage: moissonnageDemandes({ demandeGeste: { geste: 'retiree', ok: true, action: 'supprimee', terme: 'terme attente', sens: 'exclusion' } }) });
+  bandeau = p.un('.accueil-moiss-bandeau');
+  assert.ok(bandeau.textContent.indexOf('Retirée : exclure terme attente.') !== -1);
+  // Le bandeau survit à un rendu sans geste.
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false }, moissonnage: moissonnageDemandes() });
+  assert.ok(p.un('.accueil-moiss-bandeau'));
+  // Un refus de l'hôte se dit, sans Annuler.
+  p.envoyer({ type: MSG.VALEURS, valeurs: {}, poste: { produit: '', produitAuto: 'revue' },
+    services: { shlinkUrl: '', shlinkCle: false, ojsCle: false },
+    moissonnage: moissonnageDemandes({ demandeGeste: { geste: 'confirmee', ok: false, raison: 'pas-le-demandeur', terme: '' } }) });
+  bandeau = p.un('.accueil-moiss-bandeau');
+  assert.ok(bandeau.textContent.indexOf('Refus (pas-le-demandeur).') !== -1);
+  assert.strictEqual(bandeau.querySelector('.accueil-moiss-annuler'), null);
+});

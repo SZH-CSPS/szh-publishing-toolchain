@@ -31,7 +31,9 @@ const CLES_PROPRES = new Set(['produit', 'majSilencieuse', 'modeDev']);
 // racineMoissons : la racine active, où vit _NewsUndActu\_Moissons (production, ou Revues-TESTING).
 let ctx = {
   rafraichirTout: null, recharger: () => {}, rechargerPage: () => {},
-  racineMoissons: () => inventaire.baseRevuesPour(archivage.lireEmplacementRevues())
+  racineMoissons: () => inventaire.baseRevuesPour(archivage.lireEmplacementRevues()),
+  // La vue Termes s'ouvre dans la Documentation du numéro ouvert, par la commande de l'arbre.
+  ouvrirTermes: (moissonneur) => vscode.commands.executeCommand('szh.ouvrirActualite', 'propositions', '_termes:' + moissonneur)
 };
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
@@ -111,6 +113,35 @@ function textesMoissonnage() {
     sansCrans: T('accueil.regl.moiss.sansCrans'), large: T('accueil.regl.moiss.large'),
     strict: T('accueil.regl.moiss.strict'),
     revues: { fr: T('accueil.regl.moiss.revue.fr'), de: T('accueil.regl.moiss.revue.de') },
+    demandes: T('accueil.regl.moiss.demandes'), demandesAide: T('accueil.regl.moiss.demandesAide'),
+    demandesAucune: T('accueil.regl.moiss.demandesAucune'), ouvrirTermes: T('accueil.regl.moiss.ouvrirTermes'),
+    ouvrirTermesTip: T('accueil.regl.moiss.ouvrirTermes.tip'), par: T('accueil.regl.moiss.par'),
+    effet: T('accueil.regl.moiss.effet'), effetIncomplet: T('accueil.regl.moiss.effetIncomplet'),
+    mesure: T('accueil.regl.moiss.mesure'), perdues: T('accueil.regl.moiss.perdues'),
+    perteUn: T('accueil.regl.moiss.perte.un'), pertePlus: T('accueil.regl.moiss.perte.plus'),
+    confirmee: T('accueil.regl.moiss.confirmee'), quandMeme: T('accueil.regl.moiss.quandMeme'),
+    quandMemeTip: T('accueil.regl.moiss.quandMeme.tip'), quandMemeAutre: T('accueil.regl.moiss.quandMeme.autre'),
+    retirer: T('accueil.regl.moiss.retirer'), retirerLabel: T('accueil.regl.moiss.retirer.label'),
+    retirerTipAttente: T('accueil.regl.moiss.retirer.tipAttente'), retirerTipAppliquee: T('accueil.regl.moiss.retirer.tipAppliquee'),
+    retirerTipClose: T('accueil.regl.moiss.retirer.tipClose'), retirerTipRetrait: T('accueil.regl.moiss.retirer.tipRetrait'),
+    retiree: T('accueil.regl.moiss.retiree'), retraitDemande: T('accueil.regl.moiss.retraitDemande'),
+    confirmeeAvis: T('accueil.regl.moiss.confirmee.avis'), annuler: T('accueil.regl.moiss.annuler'),
+    annulee: T('accueil.regl.moiss.annulee'), refus: T('accueil.regl.moiss.refus'),
+    ignoree: T('accueil.regl.moiss.ignoree'), illisible: T('accueil.regl.moiss.illisible'),
+    terme: T('accueil.regl.moiss.terme'),
+    sens: { ajout: T('accueil.regl.moiss.sens.ajout'), exclusion: T('accueil.regl.moiss.sens.exclusion'),
+      retrait: T('accueil.regl.moiss.sens.retrait') },
+    st: {
+      'en-attente': T('accueil.regl.moiss.st.en-attente'), applique: T('accueil.regl.moiss.st.applique'),
+      'applique-partiel': T('accueil.regl.moiss.st.applique-partiel'), 'refuse-perte': T('accueil.regl.moiss.st.refuse-perte'),
+      'refuse-bruit': T('accueil.regl.moiss.st.refuse-bruit'), doublon: T('accueil.regl.moiss.st.doublon'),
+      'a-confirmer': T('accueil.regl.moiss.st.a-confirmer'), 'retrait-en-attente': T('accueil.regl.moiss.st.retrait-en-attente')
+    },
+    expl: {
+      'en-attente': T('accueil.regl.moiss.expl.en-attente'), 'applique-partiel': T('accueil.regl.moiss.expl.applique-partiel'),
+      'refuse-bruit': T('accueil.regl.moiss.expl.refuse-bruit'), doublon: T('accueil.regl.moiss.expl.doublon'),
+      'a-confirmer': T('accueil.regl.moiss.expl.a-confirmer'), 'retrait-en-attente': T('accueil.regl.moiss.expl.retrait-en-attente')
+    },
     jetons: {
       titre: T('doc.prop.categorie.titre'), 'texte-dense': T('doc.prop.categorie.texte-dense'),
       'signal-faible': T('doc.prop.categorie.signal-faible'), ecole: T('doc.prop.categorie.ecole'),
@@ -136,6 +167,9 @@ function donneesMoissonnage() {
   const racine = ctx.racineMoissons();
   const langueUi = langueCockpit();
   const reglagesParLangue = {};
+  // Un moissonneur dont les propositions portent des termes a sa vue Termes, et donc ses demandes.
+  const aTermes = {};
+  for (const l of ['fr', 'de']) { for (const m of Object.keys(propositions.comptesTermes(racine, l))) { aTermes[m] = true; } }
   for (const l of ['fr', 'de']) { reglagesParLangue[l] = propositions.lireReglages(racine, l); }
   const moissonneurs = ids.map((m) => {
     const e = resume[m].etat || {};
@@ -147,16 +181,22 @@ function donneesMoissonnage() {
       };
     }
     const connues = ORDRE_CATEGORIES.filter((c) => resume[m].categories.indexOf(c) !== -1);
+    const demandes = propositions.listerDemandes(racine, m);
     return {
       id: m, libelle: libelleMoissonneur(m), derniere: String(e.derniere_moisson || ''),
       types: resume[m].types.filter((t) => kirby.typeConnu(t)).map((t) => ({ type: t, libelle: kirby.libelleCockpitType(t, langueUi) })),
       langues: langues, calculeLe: String(e.crans_calcules_le || ''),
       fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
         ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
-      categories: connues.concat(resume[m].categories.filter((c) => connues.indexOf(c) === -1))
+      categories: connues.concat(resume[m].categories.filter((c) => connues.indexOf(c) === -1)),
+      demandes: demandes.demandes, avertissements: demandes.avertissements, aTermes: !!aTermes[m]
     };
   });
-  return { textes: textesMoissonnage(), langue: langueUi, moissonneurs: moissonneurs };
+  const res = { textes: textesMoissonnage(), langue: langueUi, moissonneurs: moissonneurs,
+    // Le nom du poste, vide s’il n’en a pas : personne ne confirme alors une demande.
+    moi: auteurPoste() === '—' ? '' : auteurPoste() };
+  if (dernierGeste) { res.demandeGeste = dernierGeste; dernierGeste = null; }
+  return res;
 }
 
 // Le nom que la co-édition montre déjà aux autres postes, « — » à défaut.
@@ -173,6 +213,35 @@ function reglerFinesse(msg, repondre) {
   if (!r.ok) { return; }
   repondre(messageValeurs());
   if (ctx.rafraichirTout) { ctx.rafraichirTout(); }
+}
+
+// Le geste qui vient d'avoir lieu, rendu une fois avec les valeurs ; le dernier retrait, pour Annuler.
+let dernierGeste = null;
+let dernierRetrait = null;
+
+// Confirmer, retirer, annuler un retrait : la règle est dans lib/propositions.js, `par` est le nom du poste.
+function gesteDemande(msg, repondre) {
+  const racine = ctx.racineMoissons();
+  const m = String(msg.moissonneur || '');
+  const id = String(msg.id || '');
+  let r;
+  if (msg.type === MSG.ACCUEIL_DEMANDE_CONFIRMER) {
+    r = propositions.confirmerDemande(racine, m, id, auteurPoste());
+    dernierGeste = { geste: 'confirmee', ok: r.ok, raison: r.raison || '', terme: r.demande ? r.demande.terme : '' };
+  } else if (msg.type === MSG.ACCUEIL_DEMANDE_RETIRER) {
+    r = propositions.retirerDemande(racine, m, id, auteurPoste());
+    dernierRetrait = r.ok ? { moissonneur: m, action: r.action, demande: r.demande, retrait: r.retrait || null } : null;
+    dernierGeste = { geste: 'retiree', ok: r.ok, raison: r.raison || '', action: r.action || '',
+      terme: r.demande ? r.demande.terme : '', sens: r.demande ? r.demande.sens : '' };
+  } else {
+    const x = dernierRetrait;
+    dernierRetrait = null;
+    if (!x) { return; }
+    r = x.action === 'retrait' ? propositions.retirerDemande(racine, x.moissonneur, x.retrait.id, auteurPoste())
+      : propositions.retablirDemande(racine, x.moissonneur, x.demande);
+    dernierGeste = { geste: 'annulee', ok: r.ok, raison: r.raison || '' };
+  }
+  repondre(messageValeurs());
 }
 
 function ecrireEtatCompte(fn) {
@@ -237,6 +306,13 @@ async function poserService(msg, repondre) {
 async function surMessage(msg, repondre) {
   if (msg.type === MSG.ACCUEIL_SERVICE) { await poserService(msg, repondre); return true; }
   if (msg.type === MSG.ACCUEIL_FINESSE) { reglerFinesse(msg, repondre); return true; }
+  if (msg.type === MSG.ACCUEIL_DEMANDE_CONFIRMER || msg.type === MSG.ACCUEIL_DEMANDE_RETIRER
+    || msg.type === MSG.ACCUEIL_DEMANDE_ANNULER) { gesteDemande(msg, repondre); return true; }
+  if (msg.type === MSG.ACCUEIL_OUVRIR_TERMES) {
+    const m = String(msg.moissonneur || '');
+    if (/^[A-Za-z0-9_-]{1,64}$/.test(m) && m.charAt(0) !== '_') { await ctx.ouvrirTermes(m); }
+    return true;
+  }
   if (msg.type === MSG.REGLER && CLES_PROPRES.has(msg.cle)) { await regler(msg); return true; }
   const traite = await reglages.traiterMessage(msg, repondre, ctx.rafraichirTout);
   if (traite && msg.type === MSG.REGLER && msg.cle === 'langue') {

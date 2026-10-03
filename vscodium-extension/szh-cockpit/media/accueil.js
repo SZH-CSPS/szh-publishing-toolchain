@@ -1507,6 +1507,9 @@
       var tx = function (cle, vals) { return SZH.remplir(X, cle, vals || []); };
       poser(moiss, 'h2', 'accueil-intertitre', X.titre);
       poser(moiss, 'p', 'accueil-astuce', X.astuce);
+      // Le geste qui vient d'avoir lieu sur une demande, avec Annuler s'il se défait.
+      if (m.demandeGeste) { poserBandeauDemande(m.demandeGeste, X, tx); }
+      if (bandeauDemande) { rendreBandeauDemande(moiss, X); }
       // La revue de l'interface d'abord.
       var langues = m.langue === 'de' ? ['de', 'fr'] : ['fr', 'de'];
       m.moissonneurs.forEach(function (mo) {
@@ -1526,6 +1529,9 @@
           rc.el.classList.add('accueil-moiss-large');
           var ol = poser(rc.el, 'ol', 'accueil-moiss-categories');
           mo.categories.forEach(function (c) { poser(ol, 'li', '', X.jetons[c] || c); });
+        }
+        if ((mo.demandes || []).length > 0 || (mo.avertissements || []).length > 0 || mo.aTermes) {
+          listeDemandes(liste, mo, tx, X, m.moi);
         }
       });
     }
@@ -1592,6 +1598,116 @@
       });
       if (L.source === 'commun') { poser(r.el, 'p', 'accueil-astuce accueil-moiss-commun', X.cransCommun); }
       poser(r.el, 'p', 'accueil-astuce', X.optimiste);
+    }
+
+    // ---- Les demandes sur le lexique : statut, effet mesuré, « Appliquer quand même », Retirer ----
+    // La règle est chez l'hôte (lib/propositions.js) ; la page montre et envoie le geste.
+    var bandeauDemande = null;
+    var TON_DEMANDE = { applique: 'ok', 'applique-partiel': 'ok', 'refuse-perte': 'attention', 'refuse-bruit': 'attention', 'a-confirmer': 'attention' };
+    function tiret(v) { return v === null || v === undefined ? '–' : String(v); }
+    function poserBandeauDemande(g, X, tx) {
+      if (bandeauDemande && bandeauDemande.minuteur) { clearTimeout(bandeauDemande.minuteur); }
+      var sens = X.sens[g.sens] || g.sens || '';
+      var texte = !g.ok ? tx('refus', [g.raison || ''])
+        : g.geste === 'retiree' ? (g.action === 'retrait' ? tx('retraitDemande', [g.terme]) : tx('retiree', [sens, g.terme]))
+          : g.geste === 'confirmee' ? tx('confirmeeAvis', [g.terme]) : X.annulee;
+      bandeauDemande = { texte: texte, ton: g.ok ? 'ok' : 'attention', annulable: g.ok && g.geste === 'retiree' };
+      bandeauDemande.minuteur = setTimeout(function () {
+        bandeauDemande = null;
+        var z = moiss.querySelector('.accueil-moiss-bandeau');
+        if (z) { z.remove(); }
+      }, 10000);
+    }
+    function rendreBandeauDemande(parent, X) {
+      var n = SZH.notif(bandeauDemande.ton, [document.createTextNode(bandeauDemande.texte)]);
+      n.classList.add('accueil-moiss-bandeau');
+      n.setAttribute('role', 'status');
+      if (bandeauDemande.annulable) {
+        n.querySelector('span').appendChild(SZH.bouton(X.annuler, function () {
+          if (bandeauDemande && bandeauDemande.minuteur) { clearTimeout(bandeauDemande.minuteur); }
+          bandeauDemande = null;
+          n.remove();
+          api.postMessage({ type: MSG.ACCUEIL_DEMANDE_ANNULER });
+        }, 'accueil-moiss-annuler'));
+      }
+      parent.appendChild(n);
+    }
+    function listeDemandes(parent, mo, tx, X, moi) {
+      var r = rangee(parent, X.demandes, X.demandesAide);
+      r.el.classList.add('accueil-moiss-large');
+      r.el.dataset.demandes = mo.id;
+      r.action.appendChild(SZH.bouton(X.ouvrirTermes, function () {
+        api.postMessage({ type: MSG.ACCUEIL_OUVRIR_TERMES, moissonneur: mo.id });
+      }, 'accueil-lien accueil-moiss-termes', X.ouvrirTermesTip));
+      (mo.avertissements || []).forEach(function (a) {
+        var t = a.code === 'demande-ignoree' ? tx('ignoree', [a.fichier, a.raison]) : tx('illisible', [a.fichier]);
+        var n = SZH.notif('attention', t);
+        n.classList.add('accueil-moiss-avert');
+        r.el.appendChild(n);
+      });
+      var demandes = mo.demandes || [];
+      if (demandes.length === 0) { poser(r.el, 'p', 'accueil-astuce accueil-demandes-aucune', X.demandesAucune); return; }
+      var ul = poser(r.el, 'ul', 'accueil-demandes');
+      demandes.forEach(function (d) { ligneDemande(ul, mo, d, tx, X, moi); });
+    }
+    function ligneDemande(ul, mo, d, tx, X, moi) {
+      var li = poser(ul, 'li', 'accueil-demande');
+      li.dataset.id = d.id;
+      var tete = poser(li, 'div', 'accueil-demande-tete');
+      var ton = TON_DEMANDE[d.statut];
+      poser(tete, 'span', 'szh-pastille accueil-demande-statut' + (ton ? ' szh-pastille--' + ton : ''), X.st[d.statut] || d.statut);
+      var q = poser(tete, 'span', 'accueil-demande-terme');
+      poser(q, 'span', 'accueil-demande-sens', (X.sens[d.sens] || d.sens) + ' ');
+      var mot = poser(q, 'strong', '', tx('terme', [d.terme]));
+      mot.setAttribute('lang', d.langue);
+      poser(q, 'span', 'accueil-demande-langue', ' (' + d.langue + ')');
+      poser(tete, 'span', 'accueil-demande-par', tx('par', [d.par, dateCourte(d.le)]));
+      poser(tete, 'span', 'szh-pousse');
+      var b = SZH.bouton(X.retirer, function () {
+        api.postMessage({ type: MSG.ACCUEIL_DEMANDE_RETIRER, moissonneur: mo.id, id: d.id });
+      }, 'accueil-demande-retirer');
+      b.setAttribute('aria-label', tx('retirerLabel', [X.sens[d.sens] || d.sens, d.terme]));
+      b.title = d.statut === 'retrait-en-attente' ? X.retirerTipRetrait
+        : d.statut === 'en-attente' ? X.retirerTipAttente
+          : (d.statut === 'applique' || d.statut === 'applique-partiel') ? X.retirerTipAppliquee : X.retirerTipClose;
+      b.disabled = d.statut === 'retrait-en-attente';
+      tete.appendChild(b);
+      var corps = poser(li, 'div', 'accueil-demande-corps');
+      var mesure = d.mesure_le ? tx('mesure', [dateCourte(d.mesure_le)]) : '';
+      if (d.effet) {
+        var e = d.effet;
+        var t = [tx('effet', [tiret(e.rappel_avant), tiret(e.rappel_apres), tiret(e.par_mois_avant), tiret(e.par_mois_apres)])];
+        if (e.complet === false) { t.push(X.effetIncomplet); }
+        if (mesure) { t.push(mesure); }
+        poser(corps, 'span', 'accueil-demande-effet', t.join(' · '));
+      } else if (mesure) { poser(corps, 'span', 'accueil-demande-effet', mesure); }
+      if (X.expl[d.statut]) { poser(corps, 'span', 'accueil-demande-expl', X.expl[d.statut]); }
+      if (d.statut !== 'refuse-perte' && d.statut !== 'a-confirmer') { return; }
+      var perdues = d.fiches_perdues || [];
+      if (d.statut === 'refuse-perte') {
+        poser(corps, 'span', 'accueil-demande-expl', perdues.length === 1 ? X.perteUn : tx('pertePlus', [perdues.length]));
+      }
+      // Les fiches perdues, dépliées : on les voit avant d'appliquer quand même.
+      if (perdues.length > 0) {
+        var det = poser(li, 'details', 'accueil-details accueil-demande-perdues');
+        det.open = true;
+        poser(det, 'summary', '', tx('perdues', [perdues.length]));
+        var lp = poser(det, 'ul', '');
+        perdues.forEach(function (x) { poser(lp, 'li', '', x); });
+      }
+      if (d.confirme_par) {
+        poser(li, 'p', 'accueil-demande-confirmee', tx('confirmee', [d.confirme_par, dateCourte(d.confirme_le)]));
+        return;
+      }
+      var gestes = poser(li, 'div', 'accueil-demande-gestes');
+      var demandeur = !!moi && moi === d.par;
+      var qm = SZH.bouton(X.quandMeme, function () {
+        api.postMessage({ type: MSG.ACCUEIL_DEMANDE_CONFIRMER, moissonneur: mo.id, id: d.id });
+      }, 'accueil-demande-quand-meme', demandeur ? X.quandMemeTip : tx('quandMemeAutre', [d.par]));
+      qm.disabled = !demandeur;
+      gestes.appendChild(qm);
+      // Un bouton grisé ne se survole pas au clavier : la raison s'écrit aussi en clair.
+      if (!demandeur) { poser(gestes, 'span', 'accueil-demande-qui', tx('quandMemeAutre', [d.par])); }
     }
 
     // ---- Réglages de la rédaction : la carte protégée ----

@@ -24,6 +24,7 @@
 //     SZH_APERCU_CRANS=1 : la finesse du tri (crans, notes, réglage de la rédaction au cran 6), avec
 //     &etat=finesse-garder|finesse-garde|finesse-masquees|finesse-aide|finesse-identique|finesse-pourquoi|finesse-colonne
 //     SZH_APERCU_MULTI=1 : les affaires fédérales en propositions multilingues (marque « fr · de », titres officiels)
+//     SZH_APERCU_SANS_TERMES=1 : avec SZH_APERCU_CRANS, les notes sans les termes (ni vue Termes, ni demandes)
 //     SZH_APERCU_REEL=<dossier> : un lot du parlement (lot et etat.json) à la place du lot synthétique, hors dépôt
 //
 // Capture (Edge headless, depuis Windows) :
@@ -334,6 +335,28 @@ function cransDemo() {
   return SEUILS_DEMO.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: par[i], rappel: rappel[i], rappel_sur: 79,
     identique_au_cran_precedent: i > 0 && SEUILS_DEMO[i - 1] === s }));
 }
+const SANS_TERMES = !!process.env.SZH_APERCU_SANS_TERMES;
+// Le vocabulaire du moissonneur parlementaire, synthétique : un terme, sa langue, son rôle, et ses
+// fiches de référence (ref, ref_seul) ; le dernier n'en a pas, pour montrer « – ».
+function vocabulaireDemo(l) {
+  const fr = [['pédagogie spécialisée', 'ancrage', 15, 1], ['handicap', 'ancrage', 5, 0], ['enseignement spécialisé', 'ancrage', 6, 0],
+    ['besoins éducatifs particuliers', 'ancrage', 3, 0], ['logopédie', 'ancrage', 2, 1], ['surdité', 'ancrage', 6, 0],
+    ['intégration scolaire', 'ancrage', 6, 0], ['accompagnement', 'ambigu', 3, 0], ['égalité des chances', 'ambigu', 1, 0],
+    ['autonomie', 'ambigu', 2, 0], ['différenciation', 'ambigu', 3, 0], ['harcèlement', 'ambigu', 2, 0],
+    ['participation', 'ambigu', 3, 1], ['élèves', 'ecole', 9, 0], ['pénurie d’enseignants', 'ecole', 6, 0],
+    ['petite enfance', 'theme', 1, 0]];
+  const de = [['Sonderpädagogik', 'ancrage', 15, 1], ['Behinderung', 'ancrage', 5, 0], ['Sonderschulung', 'ancrage', 6, 0],
+    ['besonderer Bildungsbedarf', 'ancrage', 3, 0], ['Logopädie', 'ancrage', 2, 1], ['Gehörlosigkeit', 'ancrage', 6, 0],
+    ['schulische Integration', 'ancrage', 6, 0], ['Begleitung', 'ambigu', 3, 0], ['Chancengleichheit', 'ambigu', 1, 0],
+    ['Selbstständigkeit', 'ambigu', 2, 0], ['Differenzierung', 'ambigu', 3, 0], ['Mobbing', 'ambigu', 2, 0],
+    ['Teilhabe', 'ambigu', 3, 1], ['Lernende', 'ecole', 9, 0], ['Lehrpersonenmangel', 'ecole', 6, 0],
+    ['frühe Kindheit', 'theme', 1, 0]];
+  const liste = (l === 'de' ? de : fr).map((x) => ({ terme: x[0], langue: l, role: x[1], ref: x[2], ref_seul: x[3] }));
+  liste.push({ terme: 'scuola speciale', langue: 'it', role: 'ancrage', ref: 4, ref_seul: 0 });
+  liste.push({ terme: 'docente di sostegno', langue: 'it', role: 'ancrage', ref: null, ref_seul: null });
+  liste[5].sansNote = true;
+  return liste;
+}
 function noterInterventions(interventions, l, inter, t) {
   const sujets = t(['Repas à l’école', 'Horaires des transports scolaires', 'Devoirs surveillés', 'Bâtiments scolaires',
     'Rentrée scolaire', 'Cantines', 'Numérique à l’école', 'Éducation physique', 'Classes d’accueil', 'Écoles de musique'],
@@ -345,19 +368,45 @@ function noterInterventions(interventions, l, inter, t) {
       t(['Question', 'Postulat', 'Interpellation'][i % 3] + ' : ' + sujets[i % sujets.length].toLowerCase(),
         sujets[i % sujets.length] + ': ' + ['Anfrage', 'Postulat', 'Interpellation'][i % 3])));
   }
-  const termes = (score) => [
-    { terme: t('aménagement', 'Nachteilsausgleich'), langue: l, role: score > 50 ? 'ancrage' : 'ambigu', ou: 'titre', note_sans: Math.max(0, score - 15) },
-    { terme: t('élèves', 'Lernende'), langue: l, role: 'ecole', ou: 'texte', note_sans: Math.max(0, score - 4) },
-    { terme: l === 'de' ? 'pédagogie spécialisée' : 'Sonderpädagogik', langue: l === 'de' ? 'fr' : 'de', role: 'ancrage', ou: 'extrait', note_sans: Math.max(0, score - 8) }
-  ];
+  const vocabulaire = vocabulaireDemo(l);
+  const ous = ['titre', 'texte', 'extrait'];
+  const poids = { ancrage: 22, ambigu: 7, ecole: 4, theme: 2 };
+  // Un à quatre termes par intervention, tirés du vocabulaire sans hasard ; « surdité » / « Gehörlosigkeit »
+  // n'a pas de note_sans, pour montrer un compte approché.
+  const termes = (score, i) => {
+    const n = 1 + (i % 4), res = [];
+    for (let k = 0; k < n; k++) {
+      const v = vocabulaire[(i * 5 + k * 3) % vocabulaire.length];
+      if (res.some((x) => x.terme === v.terme)) { continue; }
+      const x = { terme: v.terme, langue: v.langue, role: v.role, ou: ous[(i + k) % 3] };
+      if (!v.sansNote) { x.note_sans = Math.max(0, score - poids[v.role] - k * 3); }
+      res.push(x);
+    }
+    return res;
+  };
   const categorie = (s) => (s >= 56 ? 'titre' : s >= 29 ? 'texte-dense' : s >= 12 ? 'signal-faible' : s >= 5 ? 'ecole' : 'theme');
   interventions.forEach((x, i) => {
     // Les dix premières, sujets du handicap, notées haut ; les objets d'école, bas.
     const score = i < 10 ? [62, 88, 79, 41, 33, 91, 58, 30, 47, 66][i] : [2, 3, 7, 8, 11, 12, 14, 19, 22, 26][i % 10] + (i % 3);
-    x.pertinence = Object.assign({}, x.pertinence, { score: score, categorie: categorie(score), termes: termes(score) });
+    x.pertinence = Object.assign({}, x.pertinence, { score: score, categorie: categorie(score) });
+    if (!SANS_TERMES) { x.pertinence.termes = termes(score, i); }
   });
 }
 
+function libelleMoissonneurDemo(id) { const v = T('doc.prop.moissonneur.' + id); return v === 'doc.prop.moissonneur.' + id ? id : v; }
+// Des demandes synthétiques, de chaque statut, avec la réponse du moissonneur dans etat.json.
+function demandesDemo(racine, l) {
+  const t = (fr, de) => (l === 'de' ? de : fr);
+  const ecrire = (terme, sens, par) => pr.ecrireDemande(racine, 'parlement', { terme: terme, langue: l, sens: sens, par: par }).demande;
+  const a = ecrire(t('harcèlement', 'Mobbing'), 'exclusion', t('Claire Exemple', 'Jonas Beispiel'));
+  const b = ecrire(t('jeux vidéo', 'Videospiele'), 'exclusion', 'Jonas Beispiel');
+  const chemin = path.join(pr.cheminMoissons(racine), 'parlement', 'etat.json');
+  const etat = JSON.parse(fs.readFileSync(chemin, 'utf8'));
+  etat.demandes = [{ id: b.id, statut: 'applique', mesure_le: '2026-09-15',
+    effet: { rappel_avant: 73, rappel_apres: 73, par_mois_avant: 84, par_mois_apres: 81, complet: true } }];
+  void a;
+  fs.writeFileSync(chemin, JSON.stringify(etat));
+}
 function donneesPropositionsDemo(l) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-propositions-'));
   const lots = lotsSynthetiques(l);
@@ -399,7 +448,11 @@ function donneesPropositionsDemo(l) {
     fs.writeFileSync(path.join(pr.cheminMoissons(racine), 'parlement', 'etat.json'), JSON.stringify({
       format: 'pronto-etat/1', moissonneur: 'parlement', derniere_moisson: '2026-10-01T05:12:00Z',
       crans: { fr: cransDemo(), de: cransDemo() }, crans_calcules_le: '2026-10-01',
-      crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' } }));
+      crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
+      rappel_sur: 79,
+      termes: SANS_TERMES ? undefined : vocabulaireDemo(l).filter((v) => v.ref !== null)
+        .map((v) => ({ terme: v.terme, langue: v.langue, role: v.role, ref: v.ref, ref_seul: v.ref_seul })) }));
+    if (!SANS_TERMES) { demandesDemo(racine, l); }
     fs.mkdirSync(path.join(pr.cheminMoissons(racine), '_Reglages'), { recursive: true });
     fs.writeFileSync(pr.cheminReglages(racine, l), JSON.stringify({ parlement: { intervention: {
       cran: 6, par: l === 'de' ? 'Jonas Beispiel' : 'Claire Exemple', le: '2026-10-01' } } }));
@@ -411,7 +464,7 @@ function donneesPropositionsDemo(l) {
     recherche: { derniere_moisson: '2026-09-28T04:40:00Z', propositions_ecrites: 4, sources_en_echec: [] },
     isbn: { derniere_moisson: '2026-09-30T06:05:00Z', propositions_ecrites: 1, sources_en_echec: [] }
   };
-  const libelleMoissonneur = (id) => { const v = T('doc.prop.moissonneur.' + id); return v === 'doc.prop.moissonneur.' + id ? id : v; };
+  const libelleMoissonneur = libelleMoissonneurDemo;
   const types = kirby.typesConnus().map((type) => {
     const def = kirby.definitionType(type) || {};
     return { type: type, libelle: kirby.libelleCockpitType(type, l),
@@ -437,11 +490,25 @@ function donneesPropositionsDemo(l) {
       calculeLe: String(e.crans_calcules_le || ''), fenetre: e.crans_fenetre || null,
       reglage: (vue.reglages[m] || {})[x.type] || null, apercu: null };
   }
+  // Les termes et les demandes, comme documentation-hote.js#termesEtDemandes ; les filtres d'avance,
+  // pour que le faux hôte réponde à propFiltreTerme sans la règle.
+  const termes = pr.comptesTermes(racine, l, {}, lu);
+  const demandes = {};
+  const filtres = {};
+  for (const m of Object.keys(termes)) {
+    termes[m].libelle = libelleMoissonneurDemo(m);
+    demandes[m] = pr.listerDemandes(racine, m).demandes;
+    for (const x of termes[m].termes) {
+      for (const ty of Object.keys(termes[m].types)) {
+        filtres[[ty, x.terme, x.role, x.langue].join('|')] = pr.filtrerSurTerme(lu.propositions.filter((p) => p.type === ty), x).map((p) => p.cle);
+      }
+    }
+  }
   const pourVue = (x) => {
     const f = x.doublon ? pr.ficheDoublon(racine, x) : null;
     return { cle: x.cle, type: x.type, moissonneur: x.moissonneur, recolte: x.recolte, source: x.cle.split(':')[1],
       valeurs: x.valeurs, doutes: x.doutes, brut: x.brut, pertinence: x.pertinence, doublon: x.doublon, motif: x.motif || '',
-      cas: x.cas, raisons: x.raisons, bloquants: pr.bloquants(x), aussi: x.valeurs.canton === 'CH',
+      cas: x.cas, raisons: x.raisons, bloquants: pr.bloquants(x), aussi: x.valeurs.canton === 'CH', dossier: x.dossier,
       langues: pr.languesDe(x), titres: x.titres || null,
       cranMax: pr.cranMax(x, vue.crans[x.dossier || x.moissonneur] || null),
       doublonFiche: f ? { valeurs: f.valeurs, numero: l === 'de' ? 'Zeitschrift 2026/3' : 'Revue 2026/3' } : null };
@@ -453,6 +520,7 @@ function donneesPropositionsDemo(l) {
     etats: Object.keys(etats).map((m) => ({ moissonneur: m, libelle: libelleMoissonneur(m), connu: true,
       derniere: etats[m].derniere_moisson, propositions: etats[m].propositions_ecrites, echecs: etats[m].sources_en_echec })),
     colonnes: {},
+    termes: termes, demandes: demandes, filtre: null, regleTerme: pr.REGLE_TERME, filtres: filtres,
     // Ce que bloquants() rend, d'avance : avant toute saisie, et une fois les recommandations
     // appliquées (le faux hôte n'a pas la règle, il la rejoue).
     verifications: Object.fromEntries(lu.propositions.map((x) => {
@@ -617,6 +685,15 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '          repondreFinesse(msg);\n' +
   '        } else if (msg.type === "propAccepter" || msg.type === "propRefuser" || msg.type === "propAnnuler") {\n' +
   '          repondreGeste(msg);\n' +
+  '        } else if (msg.type === "propFiltreTerme") {\n' +
+  '          PROP.filtre = msg.terme ? { typeFiche: msg.typeFiche, terme: msg.terme, role: msg.role, langue: msg.langue,\n' +
+  '            cles: PROP.filtres[[msg.typeFiche, msg.terme, msg.role, msg.langue].join("|")] || [] } : null;\n' +
+  '          envoyerPropositions(null);\n' +
+  '        } else if (msg.type === "propDemandeEcrire") {\n' +
+  '          (PROP.demandes[msg.moissonneur] = PROP.demandes[msg.moissonneur] || []).unshift({ id: "demo-" + Date.now(), terme: msg.terme,\n' +
+  '            langue: msg.langue, sens: msg.sens, par: "Claire Exemple", le: "2026-10-03T09:00:00Z", statut: "en-attente", effet: null, fiches_perdues: [], mesure_le: "" });\n' +
+  '          var dg = JSON.parse(JSON.stringify(PROP)); dg.demandeGeste = { ok: true, moissonneur: msg.moissonneur, terme: msg.terme, langue: msg.langue, sens: msg.sens };\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: dg }));\n' +
   '        } else if (msg.type === "archiveReprendre") {\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveReprise", ok: true } }));\n' +
   '        }\n' +
@@ -684,6 +761,18 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    if (etat === "finesse-identique") { curseur(5); panel.querySelector(".prop-finesse-aide").click(); }\n' +
   '    if (etat === "finesse-pourquoi") { ligne("26.4021").querySelector(".prop-titre").click(); }\n' +
   '    if (etat === "finesse-colonne") { panel.querySelector(".prop-bouton-colonnes").click(); Array.prototype.filter.call(document.querySelectorAll(".prop-menu-colonnes button"), function (b) { return b.dataset.col === "cran"; })[0].click(); }\n' +
+  '    var termes = function () { tab("_termes"); };\n' +
+  '    var ligneTerme = function (mot) { return Array.prototype.filter.call(panel.querySelectorAll("tr[data-terme]"), function (tr) { return tr.dataset.terme === mot; })[0]; };\n' +
+  '    var refSeul = function () { return panel.querySelector(".prop-ne-plus--ref"); };\n' +
+  '    var sansRef = function () { return Array.prototype.filter.call(panel.querySelectorAll(".prop-ne-plus"), function (b) { return !b.classList.contains("prop-ne-plus--ref") && !b.disabled; })[0]; };\n' +
+  '    if (etat === "termes") { termes(); }\n' +
+  '    if (etat === "termes-role") { termes(); var sr = panel.querySelector(".prop-termes-role"); sr.value = "ambigu"; sr.dispatchEvent(new Event("change")); }\n' +
+  '    if (etat === "termes-filtre") { termes(); panel.querySelector(".prop-terme").click(); }\n' +
+  '    if (etat === "termes-neplus-ref") { termes(); refSeul().click(); }\n' +
+  '    if (etat === "termes-neplus") { termes(); sansRef().click(); }\n' +
+  '    if (etat === "termes-ajouter-erreur") { termes(); panel.querySelector(".prop-termes-ajouter").click(); var c = document.getElementById("prop-termes-form-terme"); c.value = "classe(s)"; c.dispatchEvent(new Event("input")); }\n' +
+  '    if (etat === "termes-demande") { termes(); sansRef().click(); panel.querySelector(".prop-termes-demander").click(); }\n' +
+  '    if (etat === "pourquoi-menu") { ligne("26.4021").querySelector(".prop-titre").click(); panel.querySelector(".prop-pourquoi-puce").click(); }\n' +
   '    if (etat === "largeur") { var s = panel.querySelector("th.prop-th-titre .prop-poignee"); for (var k = 0; k < 6; k++) { s.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); } s.focus(); }\n' +
   '  }\n' +
   '})();\n' +

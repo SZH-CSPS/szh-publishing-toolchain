@@ -376,3 +376,26 @@ body {
 .accueil-finesse-marque { font-weight: 700; }
 .accueil-moiss-commun { margin: var(--e1) 0 0; color: var(--encre); }
 .accueil-moiss-categories { margin: var(--e2) 0 0; padding-left: 1.6rem; font-size: var(--t-libelle); }
+
+/* Les demandes sur le lexique, dans Réglages > Moissonnage. */
+.accueil-moiss-bandeau > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e3); }
+.accueil-moiss-bandeau .szh-bouton { margin-left: auto; padding: .1em .6em; }
+.accueil-moiss-avert { margin: var(--e2) 0 0; }
+.accueil-demandes { list-style: none; margin: var(--e2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--e2); }
+.accueil-demande { display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2) var(--e3);
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini); background: var(--surface); }
+.accueil-demande-tete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e3); font-size: var(--t-libelle); }
+.accueil-demande-statut { min-width: 7rem; justify-content: center; font-size: var(--t-mini); }
+.accueil-demande-par, .accueil-demande-langue { color: var(--encre-2); }
+.accueil-demande-retirer { padding: .1em .6em; font-size: var(--t-libelle); }
+.accueil-demande-corps { display: flex; flex-wrap: wrap; gap: var(--e1) var(--e3); font-size: var(--t-libelle); }
+.accueil-demande-effet { font-weight: 700; font-variant-numeric: tabular-nums; }
+.accueil-demande-perdues { margin-top: 0; font-size: var(--t-libelle); }
+.accueil-demande-perdues ul { margin: var(--e1) 0 0; padding-left: 1.4rem; }
+.accueil-demande-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
+.accueil-demande-quand-meme { padding: .1em .6em; font-size: var(--t-libelle); }
+/* Grisé, le geste reste lisible : la raison est écrite à côté. */
+.accueil-demande-quand-meme:disabled, .accueil-demande-quand-meme:disabled:hover,
+.accueil-demande-retirer:disabled, .accueil-demande-retirer:disabled:hover { opacity: 1; color: var(--encre);
+  background: var(--fond); border: 1px dashed var(--encre-2); cursor: default; }
+.accueil-demande-qui, .accueil-demande-confirmee { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); }

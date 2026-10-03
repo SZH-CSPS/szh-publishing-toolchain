@@ -827,7 +827,284 @@ function lireAuteurDemande(racineArbreVal, moissonneur, id) {
   return { par: s(d.par), le: s(d.le), confirme_par: s(d.confirme_par), confirme_le: s(d.confirme_le) };
 }
 
+// ---- Termes : ce que chaque terme ramène, au cran que la vue regarde ----------------------
+
+function termesDe(p) {
+  const t = p && p.pertinence && Array.isArray(p.pertinence.termes) ? p.pertinence.termes : [];
+  return t.filter((x) => x && typeof x.terme === 'string' && x.terme.trim() !== '');
+}
+function nombreOuNul(v) { return typeof v === 'number' && isFinite(v) ? v : null; }
+function cleTerme(x) { return [x.terme, x.langue || '', x.role || ''].join('|'); }
+
+// Les fiches de référence de chaque terme (etat.termes), ou null si le moissonneur n'en écrit pas.
+function refsDe(etat) {
+  if (!etat || !Array.isArray(etat.termes)) { return null; }
+  const res = new Map();
+  for (const t of etat.termes) {
+    if (!t || typeof t.terme !== 'string') { continue; }
+    res.set(cleTerme(t), { ref: nombreOuNul(t.ref), refSeul: nombreOuNul(t.ref_seul) });
+  }
+  return res;
+}
+
+// comptesTermes(racine, langue, apercu?, lu?) -> { moissonneur: { types: { type: cran }, visibles,
+// total, rappelSur, approx, termes: [{ terme, langue, role, ramene, seul, approx, ref, refSeul }] } }.
+// Chaque proposition est jugée au cran regardé pour son type, sur les crans de son moissonneur.
+// « seul » : visible, et ne le serait plus avec note_sans. Sans note_sans, seule une proposition
+// à un terme compte, et la ligne porte approx. Un moissonneur sans crans ou sans termes n'y est pas.
+function comptesTermes(racineArbreVal, langue, apercu, lu) {
+  const l = lu || listerPropositions(racineArbreVal, langue);
+  const vue = finessePourVue(racineArbreVal, langue, l.etats, apercu);
+  const parM = {};
+  for (const p of l.propositions) {
+    const m = moissonneurDe(p);
+    const crans = vue.crans[m];
+    if (!crans) { continue; }
+    if (!parM[m]) {
+      const e = l.etats[m] || {};
+      parM[m] = { types: {}, visibles: 0, total: 0, approx: false, avecTermes: false, refs: refsDe(e), lignes: new Map(),
+        rappelSur: nombreOuNul(e.rappel_sur) !== null ? e.rappel_sur : nombreOuNul(crans[0].rappel_sur) };
+    }
+    const r = parM[m];
+    const k = vue.cranVu(p);
+    const visible = cranMax(p, crans) >= k;
+    const ts = termesDe(p);
+    r.types[p.type] = k;
+    r.total += 1;
+    if (visible) { r.visibles += 1; }
+    if (ts.length > 0) { r.avecTermes = true; }
+    for (const x of ts) {
+      const cle = cleTerme(x);
+      let t = r.lignes.get(cle);
+      if (!t) {
+        const ref = r.refs ? (r.refs.get(cle) || { ref: null, refSeul: null }) : { ref: null, refSeul: null };
+        t = { terme: x.terme, langue: String(x.langue || ''), role: String(x.role || ''), ramene: 0, seul: 0, approx: false,
+          ref: ref.ref, refSeul: ref.refSeul };
+        r.lignes.set(cle, t);
+      }
+      if (!visible) { continue; }
+      t.ramene += 1;
+      const sans = nombreOuNul(x.note_sans);
+      if (sans !== null) {
+        if (cranMax({ pertinence: { score: sans } }, crans) < k) { t.seul += 1; }
+      } else {
+        t.approx = true;
+        r.approx = true;
+        if (ts.length === 1) { t.seul += 1; }
+      }
+    }
+  }
+  const res = {};
+  for (const m of Object.keys(parM)) {
+    const r = parM[m];
+    if (!r.avecTermes) { continue; }
+    const termes = Array.from(r.lignes.values()).sort((a, b) => (b.seul - a.seul) || (b.ramene - a.ramene)
+      || a.terme.localeCompare(b.terme, langue));
+    res[m] = { types: r.types, visibles: r.visibles, total: r.total, rappelSur: r.rappelSur, approx: r.approx, termes: termes };
+  }
+  return res;
+}
+
+// filtrerSurTerme(propositions, { terme, role?, langue? }) -> celles qui portent ce terme, comparé
+// tel quel : un terme n'est jamais une expression régulière.
+function porteTerme(p, f) {
+  return termesDe(p).some((x) => x.terme === f.terme && (!f.role || x.role === f.role) && (!f.langue || x.langue === f.langue));
+}
+function filtrerSurTerme(propositions, filtre) {
+  const liste = Array.isArray(propositions) ? propositions : [];
+  if (!filtre || typeof filtre.terme !== 'string' || filtre.terme === '') { return liste.slice(); }
+  return liste.filter((p) => porteTerme(p, filtre));
+}
+
+// ---- Demandes sur le lexique ---------------------------------------------------------------
+//
+// Une demande par fichier, <moissonneur>\demandes\<id>.json, que le cockpit écrit et que le
+// moissonneur mesure ; sa réponse arrive dans etat.json (demandes, demandes_ignorees).
+
+const SENS_DEMANDE = ['ajout', 'exclusion', 'retrait'];
+const LANGUES_TERME = ['fr', 'de', 'it'];
+const STATUTS_DEMANDE = ['en-attente', 'applique', 'applique-partiel', 'refuse-perte', 'refuse-bruit', 'doublon',
+  'a-confirmer', 'retrait-en-attente'];
+const LONGUEUR_TERME = 60;
+// Lettres, espaces, tirets et apostrophes : rien qu'un moissonneur puisse lire comme un motif.
+const RE_CARACTERE_INTERDIT = /[^\p{L}\p{M} '’-]/u;
+// La même règle, envoyée à la page pour qu'elle signale l'erreur pendant la frappe.
+const REGLE_TERME = Object.freeze({ longueur: LONGUEUR_TERME, interdit: RE_CARACTERE_INTERDIT.source });
+
+// validerTerme(t) -> { ok, terme, raison?, caractere? } : le terme normalisé (NFC, sans blancs
+// autour), ou la raison du refus.
+function validerTerme(brut) {
+  const t = String(brut === undefined || brut === null ? '' : brut).normalize('NFC').trim();
+  if (t === '') { return { ok: false, raison: 'terme-vide', terme: t }; }
+  if (Array.from(t).length > LONGUEUR_TERME) { return { ok: false, raison: 'terme-long', terme: t }; }
+  const m = RE_CARACTERE_INTERDIT.exec(t);
+  if (m) { return { ok: false, raison: 'terme-caractere', caractere: m[0], terme: t }; }
+  if (!/\p{L}/u.test(t)) { return { ok: false, raison: 'terme-caractere', caractere: t.charAt(0), terme: t }; }
+  return { ok: true, terme: t };
+}
+function memeTerme(a, b) { return String(a).normalize('NFC').trim().toLocaleLowerCase() === String(b).normalize('NFC').trim().toLocaleLowerCase(); }
+
+function cheminDemandes(racineArbreVal, moissonneur) { return path.join(cheminMoissons(racineArbreVal), moissonneur, 'demandes'); }
+function maintenantIso() { return new Date().toISOString().slice(0, 19) + 'Z'; }
+function nouvelIdDemande() {
+  const d = new Date().toISOString();
+  return d.slice(0, 10).replace(/-/g, '') + '-' + d.slice(11, 19).replace(/:/g, '') + '-' + crypto.randomBytes(4).toString('hex');
+}
+
+// Le contenu d'un fichier de demande, réduit à ses champs, ou null s'il n'est pas conforme.
+function demandeConforme(d, id) {
+  if (!d || typeof d !== 'object' || Array.isArray(d) || d.id !== id) { return null; }
+  const v = validerTerme(d.terme);
+  if (!v.ok || v.terme !== d.terme || LANGUES_TERME.indexOf(d.langue) === -1 || SENS_DEMANDE.indexOf(d.sens) === -1) { return null; }
+  const s = (x) => String(x === undefined || x === null ? '' : x);
+  const res = { id: id, terme: d.terme, langue: d.langue, sens: d.sens, par: s(d.par), le: s(d.le) };
+  if (d.confirme_par !== undefined) { res.confirme_par = s(d.confirme_par); }
+  if (d.confirme_le !== undefined) { res.confirme_le = s(d.confirme_le); }
+  return res;
+}
+
+function lireFichiersDemandes(racineArbreVal, moissonneur, avertissements) {
+  let noms;
+  try { noms = fs.readdirSync(cheminDemandes(racineArbreVal, moissonneur)); } catch (e) { return []; }
+  const res = [];
+  for (const nom of noms.filter((x) => /\.json$/.test(x)).sort()) {
+    const id = nom.slice(0, -5);
+    if (!RE_ID_SUR.test(id)) { avertissements.push({ code: 'demande-nom-invalide', moissonneur: moissonneur, fichier: nom }); continue; }
+    let d = null;
+    try { d = demandeConforme(JSON.parse(fs.readFileSync(path.join(cheminDemandes(racineArbreVal, moissonneur), nom), 'utf8').replace(/^﻿/, '')), id); }
+    catch (e) { d = null; }
+    if (!d) { avertissements.push({ code: 'demande-illisible', moissonneur: moissonneur, fichier: nom }); continue; }
+    res.push(d);
+  }
+  return res;
+}
+
+// La réponse du moissonneur à une demande : statut, effet mesuré, fiches perdues.
+function reponseDemande(r) {
+  const effet = r.effet && typeof r.effet === 'object' ? {
+    rappel_avant: nombreOuNul(r.effet.rappel_avant), rappel_apres: nombreOuNul(r.effet.rappel_apres),
+    par_mois_avant: nombreOuNul(r.effet.par_mois_avant), par_mois_apres: nombreOuNul(r.effet.par_mois_apres),
+    complet: r.effet.complet !== false
+  } : null;
+  return {
+    statut: STATUTS_DEMANDE.indexOf(r.statut) !== -1 ? r.statut : 'en-attente', effet: effet,
+    fiches_perdues: Array.isArray(r.fiches_perdues) ? r.fiches_perdues.map(String) : [],
+    mesure_le: String(r.mesure_le || '')
+  };
+}
+
+// listerDemandes(racine, moissonneur) -> { demandes, avertissements } : les fichiers de demande
+// (qui, quand, terme, sens), avec la réponse du moissonneur (statut, effet, fiches_perdues,
+// mesure_le) ; sans réponse, en attente. Une demande appliquée dont le retrait attend est en
+// « retrait-en-attente ». Les plus récentes d'abord.
+function listerDemandes(racineArbreVal, moissonneur) {
+  const avertissements = [];
+  if (!moissonneurValide(moissonneur)) { return { demandes: [], avertissements: avertissements }; }
+  const etat = lireEtat(path.join(cheminMoissons(racineArbreVal), moissonneur), moissonneur, avertissements) || {};
+  const reponses = new Map();
+  for (const r of Array.isArray(etat.demandes) ? etat.demandes : []) {
+    if (r && typeof r.id === 'string') { reponses.set(r.id, reponseDemande(r)); }
+  }
+  for (const x of Array.isArray(etat.demandes_ignorees) ? etat.demandes_ignorees : []) {
+    if (x && typeof x === 'object') {
+      avertissements.push({ code: 'demande-ignoree', moissonneur: moissonneur, fichier: String(x.fichier || ''), raison: String(x.raison || '') });
+    }
+  }
+  const sansReponse = { statut: 'en-attente', effet: null, fiches_perdues: [], mesure_le: '' };
+  const demandes = lireFichiersDemandes(racineArbreVal, moissonneur, avertissements)
+    .map((d) => Object.assign({}, d, reponses.get(d.id) || sansReponse));
+  for (const d of demandes) {
+    if (d.sens === 'retrait' || (d.statut !== 'applique' && d.statut !== 'applique-partiel')) { continue; }
+    const retrait = demandes.find((x) => x.sens === 'retrait' && x.statut === 'en-attente' && x.langue === d.langue && memeTerme(x.terme, d.terme));
+    if (retrait) { d.statut = 'retrait-en-attente'; d.retrait = retrait.id; }
+  }
+  demandes.sort((a, b) => (a.le < b.le ? 1 : a.le > b.le ? -1 : (a.id < b.id ? 1 : -1)));
+  return { demandes: demandes, avertissements: avertissements };
+}
+
+function ecrireFichierDemande(racineArbreVal, moissonneur, d) {
+  const chemin = path.join(cheminDemandes(racineArbreVal, moissonneur), d.id + '.json');
+  fs.mkdirSync(path.dirname(chemin), { recursive: true });
+  ecrireAtomique(chemin, JSON.stringify(d, null, 2) + '\n');
+}
+
+// ecrireDemande(racine, moissonneur, { terme, langue, sens, par }) -> { ok, demande, raison? }.
+// La même demande encore en attente (terme, langue, sens) est refusée : raison « doublon ».
+function ecrireDemande(racineArbreVal, moissonneur, demande) {
+  const d = demande || {};
+  if (!moissonneurValide(moissonneur)) { return { ok: false, raison: 'moissonneur-invalide' }; }
+  if (SENS_DEMANDE.indexOf(d.sens) === -1) { return { ok: false, raison: 'sens-invalide' }; }
+  if (LANGUES_TERME.indexOf(d.langue) === -1) { return { ok: false, raison: 'langue-invalide' }; }
+  const v = validerTerme(d.terme);
+  if (!v.ok) { return { ok: false, raison: v.raison, caractere: v.caractere }; }
+  const deja = listerDemandes(racineArbreVal, moissonneur).demandes.find((x) => x.statut === 'en-attente'
+    && x.sens === d.sens && x.langue === d.langue && memeTerme(x.terme, v.terme));
+  if (deja) { return { ok: false, raison: 'doublon', demande: deja }; }
+  let id = nouvelIdDemande();
+  while (fs.existsSync(path.join(cheminDemandes(racineArbreVal, moissonneur), id + '.json'))) { id = nouvelIdDemande(); }
+  const ecrite = { id: id, terme: v.terme, langue: d.langue, sens: d.sens, par: String(d.par || '—'), le: maintenantIso() };
+  ecrireFichierDemande(racineArbreVal, moissonneur, ecrite);
+  return { ok: true, demande: ecrite };
+}
+
+function trouverDemande(racineArbreVal, moissonneur, id) {
+  if (!moissonneurValide(moissonneur) || typeof id !== 'string' || !RE_ID_SUR.test(id)) { return null; }
+  return listerDemandes(racineArbreVal, moissonneur).demandes.find((x) => x.id === id) || null;
+}
+function contenuFichier(d) {
+  const res = { id: d.id, terme: d.terme, langue: d.langue, sens: d.sens, par: d.par, le: d.le };
+  if (d.confirme_par !== undefined) { res.confirme_par = d.confirme_par; }
+  if (d.confirme_le !== undefined) { res.confirme_le = d.confirme_le; }
+  return res;
+}
+
+// confirmerDemande(racine, moissonneur, id, par) -> { ok, demande, raison? } : « Appliquer quand
+// même » une demande refusée pour perte, par son seul demandeur, une fois.
+function confirmerDemande(racineArbreVal, moissonneur, id, par) {
+  const d = trouverDemande(racineArbreVal, moissonneur, id);
+  if (!d) { return { ok: false, raison: 'demande-introuvable' }; }
+  if (d.statut !== 'refuse-perte' && d.statut !== 'a-confirmer') { return { ok: false, raison: 'pas-refusee' }; }
+  const qui = String(par || '');
+  if (!qui || qui === '—') { return { ok: false, raison: 'auteur-inconnu' }; }
+  if (qui !== d.par) { return { ok: false, raison: 'pas-le-demandeur' }; }
+  if (d.confirme_par) { return { ok: false, raison: 'deja-confirmee' }; }
+  const ecrite = Object.assign(contenuFichier(d), { confirme_par: qui, confirme_le: maintenantIso() });
+  ecrireFichierDemande(racineArbreVal, moissonneur, ecrite);
+  return { ok: true, demande: ecrite };
+}
+
+// retirerDemande(racine, moissonneur, id, par) -> { ok, action, demande, retrait?, raison? }.
+// En attente, refusée ou en doublon : le fichier part (action « supprimee », `demande` garde son
+// contenu pour Annuler). Appliquée : une demande de retrait s'écrit (action « retrait »).
+function retirerDemande(racineArbreVal, moissonneur, id, par) {
+  const d = trouverDemande(racineArbreVal, moissonneur, id);
+  if (!d) { return { ok: false, raison: 'demande-introuvable' }; }
+  if (d.statut === 'retrait-en-attente') { return { ok: false, raison: 'retrait-deja-demande' }; }
+  if (d.statut === 'applique' || d.statut === 'applique-partiel') {
+    const r = ecrireDemande(racineArbreVal, moissonneur, { terme: d.terme, langue: d.langue, sens: 'retrait', par: par });
+    if (!r.ok) { return r; }
+    return { ok: true, action: 'retrait', demande: contenuFichier(d), retrait: r.demande };
+  }
+  try { fs.unlinkSync(path.join(cheminDemandes(racineArbreVal, moissonneur), d.id + '.json')); }
+  catch (e) { return { ok: false, raison: 'demande-introuvable' }; }
+  return { ok: true, action: 'supprimee', demande: contenuFichier(d) };
+}
+
+// retablirDemande(racine, moissonneur, contenu) -> { ok, raison? } : remet tel quel le fichier
+// d'une demande retirée (Annuler). Jamais par-dessus un fichier présent.
+function retablirDemande(racineArbreVal, moissonneur, contenu) {
+  const id = contenu && typeof contenu.id === 'string' ? contenu.id : '';
+  if (!moissonneurValide(moissonneur) || !RE_ID_SUR.test(id)) { return { ok: false, raison: 'demande-invalide' }; }
+  const d = demandeConforme(contenu, id);
+  if (!d) { return { ok: false, raison: 'demande-invalide' }; }
+  if (fs.existsSync(path.join(cheminDemandes(racineArbreVal, moissonneur), id + '.json'))) { return { ok: false, raison: 'demande-presente' }; }
+  ecrireFichierDemande(racineArbreVal, moissonneur, d);
+  return { ok: true };
+}
+
 module.exports = {
+  comptesTermes, filtrerSurTerme, validerTerme, listerDemandes, ecrireDemande, confirmerDemande,
+  retirerDemande, retablirDemande, SENS_DEMANDE, STATUTS_DEMANDE, LANGUES_TERME, REGLE_TERME,
   FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS, NB_CRANS,
   cransDe, cranMax, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
   finessePourVue, comptesCrans, compterVisibles, resumeMoissonneurs, lireAuteurDemande,

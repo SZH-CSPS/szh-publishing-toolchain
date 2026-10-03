@@ -171,7 +171,15 @@ const MSG = Object.freeze({
   // que PROP_FINESSE_ANNULER { typeFiche } rétablit. ACCUEIL_FINESSE { moissonneur, typeFiche,
   // langue, cran } règle le partagé depuis les Paramètres de l'Accueil.
   PROP_FINESSE_APERCU: 'propFinesseApercu', PROP_FINESSE_GARDER: 'propFinesseGarder',
-  PROP_FINESSE_ANNULER: 'propFinesseAnnuler', ACCUEIL_FINESSE: 'accueilFinesse'
+  PROP_FINESSE_ANNULER: 'propFinesseAnnuler', ACCUEIL_FINESSE: 'accueilFinesse',
+  // Les termes : PROP_FILTRE_TERME { typeFiche, terme, role, langue } filtre l'onglet du type sur un
+  // terme (terme vide : retire le filtre) ; PROP_DEMANDE_ECRIRE { moissonneur, terme, langue, sens }
+  // écrit une demande sur le lexique. Les comptes par terme voyagent dans PROP_DONNEES (termes).
+  // Les Paramètres de l'Accueil : ACCUEIL_DEMANDE_CONFIRMER et ACCUEIL_DEMANDE_RETIRER { moissonneur,
+  // id }, ACCUEIL_DEMANDE_ANNULER défait le dernier retrait, ACCUEIL_OUVRIR_TERMES { moissonneur }.
+  PROP_FILTRE_TERME: 'propFiltreTerme', PROP_DEMANDE_ECRIRE: 'propDemandeEcrire',
+  ACCUEIL_DEMANDE_CONFIRMER: 'accueilDemandeConfirmer', ACCUEIL_DEMANDE_RETIRER: 'accueilDemandeRetirer',
+  ACCUEIL_DEMANDE_ANNULER: 'accueilDemandeAnnuler', ACCUEIL_OUVRIR_TERMES: 'accueilOuvrirTermes'
 });
 
 module.exports = { MSG };

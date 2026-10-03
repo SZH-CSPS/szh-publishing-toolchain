@@ -322,6 +322,38 @@ _Moissons\
 Le moissonneur ne lit ni ne garde `par` et `confirme_par` : la vue relit l’auteur dans le fichier
 de la demande.
 
+### Les termes et les demandes, côté cockpit
+
+- **`rappel_sur`** des termes est une clé de `etat.json`, au même niveau que `termes` ; à défaut,
+  le cockpit prend le `rappel_sur` du premier cran. Un terme absent de `etat.termes` a « – » pour
+  réf. et réf. seul.
+- **« Seul à ramener »** se compte au cran que la vue regarde pour le type de la proposition :
+  l’aperçu du poste, sinon le réglage partagé de son moissonneur. Une proposition y compte si elle
+  est visible et ne le serait plus avec `note_sans` pour score. Sans `note_sans`, seule une
+  proposition à un seul terme compte, et la vue marque le nombre d’un « ≈ ».
+- **Plusieurs moissonneurs sur un même type** : chaque proposition se juge sur les crans de son
+  moissonneur, au même numéro de cran (les crans sont les déciles de chacun) ; les comptes les
+  additionnent, et « Garder ce cran pour la rédaction » écrit le réglage de chacun.
+- **L’`id`** d’une demande vaut `AAAAMMJJ-HHMMSS-<8 chiffres hexadécimaux>` : un nom sûr, unique
+  d’un poste à l’autre. Le fichier s’écrit d’un coup (nom temporaire, puis renommage).
+- **Le terme** est gardé normalisé (NFC, sans blancs autour). La page reçoit la règle de saisie de
+  l’hôte (`regleTerme` : longueur et caractères interdits) pour signaler l’erreur pendant la
+  frappe ; l’hôte la revérifie à l’écriture.
+- **Un doublon** (même terme sans tenir compte de la casse, même langue, même sens, encore en
+  attente) est refusé, et la vue nomme la demande qui attend déjà.
+- **Sans réponse** dans `etat.demandes`, une demande est `en-attente`. Une demande appliquée dont un
+  retrait attend sa mesure se montre `retrait-en-attente`, même si le moissonneur ne l’écrit pas.
+- **« Appliquer quand même »** n’est offert que pour `refuse-perte` ou `a-confirmer`, sous les
+  fiches perdues dépliées, et seulement à la personne qui a fait la demande (`par` égal au nom du
+  poste, jamais « – ») : le cockpit pose alors `confirme_par` et `confirme_le` dans le même
+  fichier. Tout le monde voit qui a confirmé et quand.
+- **Retirer** une demande en attente, refusée ou en doublon supprime son fichier. Retirer une
+  demande appliquée, même en partie, écrit une nouvelle demande de sens `retrait`, sur le même
+  terme et la même langue ; le moissonneur la mesure comme les autres. « Annuler », juste après,
+  remet le fichier retiré tel quel, ou retire la demande de retrait.
+- **`demandes_ignorees`**, et un fichier de demande illisible ou dont l’`id` ne correspond pas à son
+  nom, remontent comme avertissements dans Réglages > Moissonnage.
+
 ## Les commandes `estimer` et `tout`
 
 Un moissonneur offre ces deux commandes, que le cockpit pourra lancer de la même façon pour

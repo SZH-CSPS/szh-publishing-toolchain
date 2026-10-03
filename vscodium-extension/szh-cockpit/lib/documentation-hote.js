@@ -369,7 +369,45 @@ function textesDocumentation() {
     propCategorieTheme: T('doc.prop.categorie.theme'),
     // Les propositions multilingues.
     propLanguesTip: T('doc.prop.langues.tip'), propTitreOfficiel: T('doc.prop.titreOfficiel'),
-    propAutreGardee: T('doc.prop.b.autreGardee')
+    propAutreGardee: T('doc.prop.b.autreGardee'),
+    // L'onglet Termes, Pourquoi cliquable et les demandes sur le lexique.
+    propTermesOnglet: T('doc.prop.termes.onglet'), propTermesMoissonneur: T('doc.prop.termes.moissonneur'),
+    propTermesComptesAu: T('doc.prop.termes.comptesAu'), propTermesChercher: T('doc.prop.termes.chercher'),
+    propTermesRole: T('doc.prop.termes.role'), propTermesLangue: T('doc.prop.termes.langue'),
+    propTermesTous: T('doc.prop.termes.tous'), propTermesToutes: T('doc.prop.termes.toutes'),
+    propTermesAjouter: T('doc.prop.termes.ajouter'), propTermesColTerme: T('doc.prop.termes.col.terme'),
+    propTermesColLangue: T('doc.prop.termes.col.langue'), propTermesColRole: T('doc.prop.termes.col.role'),
+    propTermesColRamene: T('doc.prop.termes.col.ramene'), propTermesColSeul: T('doc.prop.termes.col.seul'),
+    propTermesColRef: T('doc.prop.termes.col.ref'), propTermesColRefSeul: T('doc.prop.termes.col.refSeul'),
+    propTermesColDemande: T('doc.prop.termes.col.demande'), propTermesColGeste: T('doc.prop.termes.col.geste'),
+    propTermesTipRamene: T('doc.prop.termes.tip.ramene'), propTermesTipSeul: T('doc.prop.termes.tip.seul'),
+    propTermesTipRef: T('doc.prop.termes.tip.ref'), propTermesTipRefSeul: T('doc.prop.termes.tip.refSeul'),
+    propTermesTrier: T('doc.prop.termes.trier'), propTermesLignes: T('doc.prop.termes.lignes'),
+    propTermesAucun: T('doc.prop.termes.aucun'), propTermesPrecaution1: T('doc.prop.termes.precaution1'),
+    propTermesPrecaution2: T('doc.prop.termes.precaution2'), propTermesApprox: T('doc.prop.termes.approx'),
+    propTermesApproxTip: T('doc.prop.termes.approxTip'), propTermesVoir: T('doc.prop.termes.voir'),
+    propTermesVoirTip: T('doc.prop.termes.voirTip'), propTermesMenu: T('doc.prop.termes.menu'),
+    propTermesNePlus: T('doc.prop.termes.nePlus'), propTermesNePlusLabel: T('doc.prop.termes.nePlusLabel'),
+    propTermesNePlusRef: T('doc.prop.termes.nePlusRef'), propTermesDemandee: T('doc.prop.termes.demandee'),
+    propTermesMesure: T('doc.prop.termes.mesure'), propTermesMesureAu: T('doc.prop.termes.mesureAu'),
+    propTermesAvertRefSeulUn: T('doc.prop.termes.avertRefSeul.un'), propTermesAvertRefSeulPlus: T('doc.prop.termes.avertRefSeul.plus'),
+    propTermesInfo: T('doc.prop.termes.info'), propTermesDemander: T('doc.prop.termes.demander'),
+    propTermesFermer: T('doc.prop.termes.fermer'), propTermesEcrite: T('doc.prop.termes.ecrite'),
+    propTermesRefus: T('doc.prop.termes.refus'), propTermesFiltre: T('doc.prop.termes.filtre'),
+    propTermesRetirerFiltre: T('doc.prop.termes.retirerFiltre'), propTermesPourquoiAide: T('doc.prop.termes.pourquoiAide'),
+    propTermesFormTitre: T('doc.prop.termes.form.titre'), propTermesFormTerme: T('doc.prop.termes.form.terme'),
+    propTermesFormLangue: T('doc.prop.termes.form.langue'), propTermesFormSens: T('doc.prop.termes.form.sens'),
+    propTermesFormAjout: T('doc.prop.termes.form.ajout'), propTermesFormExclusion: T('doc.prop.termes.form.exclusion'),
+    propTermesFormEnvoyer: T('doc.prop.termes.form.envoyer'), propTermesFormAnnuler: T('doc.prop.termes.form.annuler'),
+    propTermesFormAide: T('doc.prop.termes.form.aide'), propTermesErrVide: T('doc.prop.termes.err.vide'),
+    propTermesErrLong: T('doc.prop.termes.err.long'), propTermesErrCaractere: T('doc.prop.termes.err.caractere'),
+    propTermesErrDoublon: T('doc.prop.termes.err.doublon'), propTermesSensAjout: T('doc.prop.termes.sens.ajout'),
+    propTermesSensExclusion: T('doc.prop.termes.sens.exclusion'), propTermesSensRetrait: T('doc.prop.termes.sens.retrait'),
+    propStEnAttente: T('accueil.regl.moiss.st.en-attente'), propStApplique: T('accueil.regl.moiss.st.applique'),
+    propStAppliquePartiel: T('accueil.regl.moiss.st.applique-partiel'), propStRefusePerte: T('accueil.regl.moiss.st.refuse-perte'),
+    propStRefuseBruit: T('accueil.regl.moiss.st.refuse-bruit'), propStDoublon: T('accueil.regl.moiss.st.doublon'),
+    propStAConfirmer: T('accueil.regl.moiss.st.a-confirmer'), propStRetraitEnAttente: T('accueil.regl.moiss.st.retrait-en-attente'),
+    propFinesseDeMoissonneur: T('doc.prop.finesse.deMoissonneur')
   };
 }
 
@@ -559,28 +597,59 @@ function finesseParType(racineArbreVal, langue, lu) {
     const f = res[p.type] = res[p.type] || { moissonneurs: [] };
     if (f.moissonneurs.indexOf(m) === -1) { f.moissonneurs.push(m); f.moissonneurs.sort(); }
   }
-  for (const type of Object.keys(res)) {
-    const m = res[type].moissonneurs[0];
+  // Ce que chaque moissonneur du type apporte : ses crans et son réglage. Une proposition se
+  // juge sur ceux de son moissonneur ; le premier, rangé par nom, donne les champs du type.
+  const deMoissonneur = (m, type) => {
     const e = lu.etats[m] || {};
-    const reglage = (vue.reglages[m] || {})[type] || null;
-    Object.assign(res[type], {
-      crans: vue.crans[m],
+    return {
+      libelle: libelleMoissonneur(m), crans: vue.crans[m],
       source: String((e.crans_source || {})[langue] || ''),
       calculeLe: String(e.crans_calcules_le || ''),
       fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
         ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
-      reglage: reglage,
-      apercu: Number.isInteger(ap[type]) ? ap[type] : null
+      reglage: (vue.reglages[m] || {})[type] || null
+    };
+  };
+  for (const type of Object.keys(res)) {
+    const parMoissonneur = {};
+    for (const m of res[type].moissonneurs) { parMoissonneur[m] = deMoissonneur(m, type); }
+    const premier = parMoissonneur[res[type].moissonneurs[0]];
+    Object.assign(res[type], {
+      crans: premier.crans, source: premier.source, calculeLe: premier.calculeLe, fenetre: premier.fenetre,
+      reglage: premier.reglage,
+      apercu: Number.isInteger(ap[type]) ? ap[type] : null,
+      parMoissonneur: parMoissonneur
     });
   }
   return { parType: res, vue: vue };
 }
 
-// donneesPropositions(racineArbreVal, langue, revueJeton, resultat?, connues?) -> le message
-// PROP_DONNEES. `connues` (une Map) retient les propositions servies, par cle.
-function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connues) {
+// Les comptes par terme de chaque moissonneur à termes, avec ses demandes sur le lexique.
+function termesEtDemandes(racineArbreVal, langue, lu) {
+  const termes = propositions.comptesTermes(racineArbreVal, langue, apercuFinesse(langue), lu);
+  const demandes = {};
+  for (const m of Object.keys(termes)) {
+    termes[m].libelle = libelleMoissonneur(m);
+    demandes[m] = propositions.listerDemandes(racineArbreVal, m).demandes;
+  }
+  return { termes: termes, demandes: demandes };
+}
+
+// Le filtre sur un terme, posé depuis la vue Termes : les cles de l'onglet de son type qui le portent.
+function filtreServi(lu, filtre) {
+  if (!filtre) { return null; }
+  const duType = lu.propositions.filter((p) => p.type === filtre.typeFiche);
+  return Object.assign({}, filtre, { cles: propositions.filtrerSurTerme(duType, filtre).map((p) => p.cle) });
+}
+
+// donneesPropositions(racineArbreVal, langue, revueJeton, resultat?, connues?, extra?) -> le message
+// PROP_DONNEES. `connues` (une Map) retient les propositions servies, par cle. `extra` : { filtre,
+// ongletDemande, demandeGeste }, ce que le panneau garde ou vient de faire.
+function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connues, extra) {
+  const x = extra || {};
   const lu = propositions.listerPropositions(racineArbreVal, langue);
   const finesse = finesseParType(racineArbreVal, langue, lu);
+  const td = termesEtDemandes(racineArbreVal, langue, lu);
   if (connues) {
     connues.clear();
     for (const p of lu.propositions) { connues.set(p.cle, p); }
@@ -588,7 +657,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
   const pourVue = (p) => {
     const fiche = p.doublon ? propositions.ficheDoublon(racineArbreVal, p) : null;
     return {
-      cle: p.cle, type: p.type, moissonneur: p.moissonneur, recolte: String(p.recolte || ''),
+      cle: p.cle, type: p.type, moissonneur: p.moissonneur, dossier: p.dossier || p.moissonneur, recolte: String(p.recolte || ''),
       // Les langues où elle se montre, et les titres officiels d'une proposition multilingue.
       langues: propositions.languesDe(p), titres: p.titres || null,
       source: String(p.cle).split(':')[1] || p.moissonneur,
@@ -613,9 +682,13 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
     propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
     refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
     etats: etatsPropositions(lu.etats),
-    colonnes: (etatPoste && etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS)) || {}
+    colonnes: (etatPoste && etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS)) || {},
+    termes: td.termes, demandes: td.demandes, filtre: filtreServi(lu, x.filtre || null),
+    regleTerme: propositions.REGLE_TERME
   };
   if (resultat) { msg.resultat = resultat; }
+  if (x.ongletDemande) { msg.ongletDemande = x.ongletDemande; }
+  if (x.demandeGeste) { msg.demandeGeste = x.demandeGeste; }
   return msg;
 }
 
@@ -722,6 +795,15 @@ async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, cate
 // qu'aucun panneau n'a encore chargé cet onglet : l'arbre n'affiche alors aucun badge. Une
 // seule variable de module : un numéro ouvert par fenêtre VSCodium, pas de table par racine.
 let dernierCompteArchive;
+
+// « Ouvrir Propositions › Termes » vers un panneau déjà ouvert : par slug, de quoi lui pousser
+// l'onglet demandé avec ses données (la page ne relaie à la vue que PROP_DONNEES).
+const pousseursOnglet = new Map();
+// La catégorie « _termes:<moissonneur> » de szh.ouvrirActualite('propositions', …).
+function ongletTermesDemande(onglet, categorie) {
+  const m = /^_termes(?::(.*))?$/.exec(String(categorie || ''));
+  return onglet === 'propositions' && m ? { onglet: '_termes', moissonneur: m[1] || '' } : null;
+}
 function compteArchiveConnu() { return dernierCompteArchive; }
 
 // Un formulaire par unité, sous viewType 'szhDocumentation' et le slug pour clé
@@ -753,6 +835,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     // longtemps, la bascule passe donc par ce message dédié — jamais en reconstruisant
     // « charger », qui rejouerait un rechargement complet pour un simple changement de vue.
     if (onglet) { repondrePanneau(existant, { type: MSG.ONGLET_ACTIVER, cle: onglet, categorie: categorie }); }
+    const demandeTermes = ongletTermesDemande(onglet, categorie);
+    if (demandeTermes && pousseursOnglet.has(slug)) { pousseursOnglet.get(slug)(demandeTermes); }
     return;
   }
   await fermerTousLesApercus();
@@ -770,6 +854,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     surPret: (msg) => traiterPret(msg),
     surMessage: (msg) => traiterMessage(msg),
     surFermeture: () => {
+      pousseursOnglet.delete(slug);
       for (const id of idsImagesEnAttente) { kirby.nettoyerImageProvisoire(id); }
       idsImagesEnAttente.clear();
     }
@@ -797,7 +882,15 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   // Les propositions servies à la vue, par cle : le détail les vérifie à chaque saisie sans
   // relire les lots.
   const propositionsConnues = new Map();
-  const donneesProp = (resultat) => donneesPropositions(racineArbreVal, langue, revueJeton, resultat, propositionsConnues);
+  // Le filtre sur un terme tient jusqu'à ce qu'on le retire ; l'onglet Termes demandé part une fois.
+  let filtreTerme = null;
+  let ongletDemande = ongletTermesDemande(onglet, categorie);
+  const donneesProp = (resultat, extra) => {
+    const x = Object.assign({ filtre: filtreTerme, ongletDemande: ongletDemande }, extra || {});
+    ongletDemande = null;
+    return donneesPropositions(racineArbreVal, langue, revueJeton, resultat, propositionsConnues, x);
+  };
+  pousseursOnglet.set(slug, (demande) => repondrePanneau(panneau, donneesProp(null, { ongletDemande: demande })));
 
   function listerRessources(budget) {
     const fiches = kirby.listerFichesNumero(racineArbreVal, langue, ausgabeId);
@@ -1271,6 +1364,26 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       if (!reponse) { return; }
       repondrePanneau(panneau, reponse);
       if (rafraichirTout) { rafraichirTout(); }
+      return;
+    }
+    // Les termes : un filtre de l'onglet d'un type, gardé par le panneau ; une demande sur le
+    // lexique, écrite au nom du poste. La règle et la validation restent dans lib/propositions.js.
+    if (msg.type === MSG.PROP_FILTRE_TERME) {
+      const typeFiche = String(msg.typeFiche || '');
+      const terme = typeof msg.terme === 'string' ? msg.terme : '';
+      filtreTerme = terme && kirby.typeConnu(typeFiche)
+        ? { typeFiche: typeFiche, terme: terme, role: String(msg.role || ''), langue: String(msg.langue || '') } : null;
+      repondrePanneau(panneau, donneesProp());
+      return;
+    }
+    if (msg.type === MSG.PROP_DEMANDE_ECRIRE) {
+      const moissonneur = String(msg.moissonneur || '');
+      const sens = msg.sens === 'ajout' ? 'ajout' : msg.sens === 'exclusion' ? 'exclusion' : '';
+      const r = propositions.ecrireDemande(racineArbreVal, moissonneur,
+        { terme: msg.terme, langue: String(msg.langue || ''), sens: sens, par: auteurPoste() });
+      const geste = { ok: r.ok, moissonneur: moissonneur, terme: String(msg.terme || ''), langue: String(msg.langue || ''), sens: sens };
+      if (!r.ok) { geste.raison = r.raison; if (r.caractere) { geste.caractere = r.caractere; } }
+      repondrePanneau(panneau, donneesProp(null, { demandeGeste: geste }));
       return;
     }
     // Le lien vient du lot, jamais de la page : la page ne désigne que la proposition.

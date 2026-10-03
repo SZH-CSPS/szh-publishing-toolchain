@@ -192,6 +192,7 @@ function chargerHote() {
     hoteReglages = {
       accueil: require(path.join(COCKPIT, 'lib', 'accueil-reglages-hote.js')),
       session: require(path.join(COCKPIT, 'lib', 'session.js')),
+      coedition: require(path.join(COCKPIT, 'lib', 'coedition.js')),
       profils: require(path.join(COCKPIT, 'lib', 'profil.js')),
       services: require(path.join(COCKPIT, 'lib', 'services-env.js'))
     };
@@ -200,8 +201,9 @@ function chargerHote() {
   return hoteReglages;
 }
 // Une racine active jetable : vide, ou avec deux moissonneurs synthétiques (`moissons`), l'un
-// avec ses crans et un réglage par revue, l'autre sans crans.
-function racineMoissons(avec) {
+// avec ses crans et un réglage par revue, l'autre sans crans. `avec` vaut 'demandes' pour ajouter
+// des demandes sur le lexique de chaque statut, avec la réponse du moissonneur.
+function racineMoissons(avec, langue) {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-moissons-'));
   process.on('exit', () => { try { fs.rmSync(racine, { recursive: true, force: true }); } catch (e) { /* débris */ } });
   if (!avec) { return racine; }
@@ -222,7 +224,57 @@ function racineMoissons(avec) {
   ecrire('isbn', 'etat.json', JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'isbn', derniere_moisson: '2026-09-30T06:05:00Z' }));
   ecrire('_Reglages', 'fr.json', JSON.stringify({ parlement: { intervention: { cran: 6, par: 'Claire Exemple', le: '2026-10-01' } } }));
   ecrire('_Reglages', 'de.json', JSON.stringify({ parlement: { intervention: { cran: 5, par: 'Jonas Beispiel', le: '2026-09-24' } } }));
+  if (avec === 'demandes') { demandesSynthetiques(base, ecrire, langue, crans); }
   return racine;
+}
+
+// Une demande de chaque statut, aux noms et titres fictifs ; la personne du poste est la première.
+function demandesSynthetiques(base, ecrire, langue, crans) {
+  const de = langue === 'de';
+  const moi = de ? 'Jonas Beispiel' : 'Claire Exemple', autre = de ? 'Claire Exemple' : 'Jonas Beispiel';
+  const t = (fr, all) => (de ? all : fr);
+  const effet = (a, b, c, d, complet) => ({ rappel_avant: a, rappel_apres: b, par_mois_avant: c, par_mois_apres: d, complet: complet });
+  const liste = [
+    ['20261002-091500-a1b2c3d4', t('harcèlement', 'Mobbing'), 'exclusion', moi, '2026-10-02T09:15:00Z', null],
+    ['20260903-140000-b2c3d4e5', t('jeux vidéo', 'Videospiele'), 'exclusion', autre, '2026-09-03T14:00:00Z',
+      { statut: 'applique', mesure_le: '2026-09-15', effet: effet(73, 73, 84, 81, true) }],
+    ['20260922-101000-c3d4e5f6', t('classe ressource', 'Förderklasse'), 'ajout', moi, '2026-09-22T10:10:00Z',
+      { statut: 'applique-partiel', mesure_le: '2026-10-01', effet: effet(73, 74, 81, 82, false) }],
+    ['20260910-083000-d4e5f6a7', t('intégration', 'Integration'), 'exclusion', moi, '2026-09-10T08:30:00Z',
+      { statut: 'refuse-perte', mesure_le: '2026-09-15', effet: effet(73, 70, 81, 69, true),
+        fiches_perdues: t(['Intégration au cycle 3 : bilan après dix ans', 'Intégration à l’école enfantine : quelles ressources ?',
+          'Transition vers le secondaire : garantir l’intégration'], ['Integration im Zyklus 3: Bilanz nach zehn Jahren',
+          'Integration im Kindergarten: welche Ressourcen?', 'Übergang in die Sekundarstufe: Integration sichern']) }],
+    ['20260911-160000-e5f6a7b8', t('participation', 'Teilhabe'), 'exclusion', autre, '2026-09-11T16:00:00Z',
+      { statut: 'refuse-perte', mesure_le: '2026-09-15', effet: effet(73, 72, 81, 76, true),
+        fiches_perdues: [t('Participation des familles à l’école spécialisée', 'Teilhabe der Familien an der Sonderschule')] }],
+    ['20260912-110000-f6a7b8c9', t('école', 'Schule'), 'ajout', moi, '2026-09-12T11:00:00Z',
+      { statut: 'refuse-bruit', mesure_le: '2026-09-15', effet: effet(73, 75, 81, 115, true) }],
+    ['20260928-090000-a7b8c9d0', t('logopédie', 'Logopädie'), 'ajout', autre, '2026-09-28T09:00:00Z',
+      { statut: 'doublon', mesure_le: '2026-10-01' }],
+    ['20260830-120000-b8c9d0e1', t('autonomie', 'Selbstständigkeit'), 'exclusion', moi, '2026-08-30T12:00:00Z',
+      { statut: 'a-confirmer', mesure_le: '2026-09-15',
+        fiches_perdues: [t('Autonomie des élèves en classe spécialisée', 'Selbstständigkeit in der Sonderklasse')] }],
+    ['20260825-080000-c9d0e1f2', t('inclusion', 'Inklusion'), 'exclusion', moi, '2026-08-25T08:00:00Z',
+      { statut: 'refuse-perte', mesure_le: '2026-09-01',
+        fiches_perdues: [t('École inclusive : un état des lieux', 'Inklusive Schule: eine Bestandsaufnahme')] },
+      { confirme_par: moi, confirme_le: '2026-09-02T07:45:00Z' }],
+    ['20260820-150000-d0e1f2a3', t('devoirs', 'Hausaufgaben'), 'exclusion', autre, '2026-08-20T15:00:00Z',
+      { statut: 'applique', mesure_le: '2026-09-01', effet: effet(73, 73, 88, 84, true) }],
+    ['20261003-081500-e1f2a3b4', t('devoirs', 'Hausaufgaben'), 'retrait', moi, '2026-10-03T08:15:00Z', null]
+  ];
+  const reponses = [];
+  for (const [id, terme, sens, par, le, reponse, extra] of liste) {
+    ecrire(path.join('parlement', 'demandes'), id + '.json',
+      JSON.stringify(Object.assign({ id: id, terme: terme, langue: langue, sens: sens, par: par, le: le }, extra || {})));
+    if (reponse) { reponses.push(Object.assign({ id: id, fiches_perdues: [] }, reponse)); }
+  }
+  // Un fichier que le moissonneur a écarté : son nom n'est pas sûr.
+  const etat = JSON.parse(fs.readFileSync(path.join(base, 'parlement', 'etat.json'), 'utf8'));
+  etat.demandes = reponses;
+  etat.demandes_ignorees = [{ fichier: 'demande (copie).json', raison: t('nom de fichier non sûr', 'unsicherer Dateiname') }];
+  void crans;
+  ecrire('parlement', 'etat.json', JSON.stringify(etat));
 }
 
 // Le message « valeurs » que l'hôte enverrait : `livre` ouvre un livre dans la fenêtre (les blocs
@@ -232,8 +284,13 @@ function valeursReglages(langue, opts) {
   const hote = chargerHote();
   hote.session.poserProfilOuvrage(o.livre ? hote.profils.PROFILS.livre : null);
   // La racine active de l'aperçu est toujours jetable : jamais les moissons du poste.
-  process.env.SZH_RACINE_PROD = racineMoissons(!!o.moissons);
+  process.env.SZH_RACINE_PROD = racineMoissons(o.moissons, langue);
+  // Les demandes : le poste porte un nom fictif, celui de la personne qui en a fait certaines.
+  if (o.moissons === 'demandes') {
+    hote.session.poserIdentiteCoedition(hote.coedition.identite(langue === 'de' ? 'Jonas Beispiel' : 'Claire Exemple'));
+  }
   const msg = hote.accueil.messageValeurs();
+  hote.session.poserIdentiteCoedition(null);
   msg.poste.produitAuto = produitParDefaut(langue, '', '', ['revue', 'zeitschrift', 'livre']);
   if (o.deverrouille) { msg.proteges = Object.assign({}, msg.proteges, { deverrouille: true }); }
   return msg;
@@ -326,6 +383,9 @@ function etats(langue) {
     // La section Moissonnage, mise en tête de la capture : ce qui la précède est masqué.
     'R4-moissonnage-fr': { valeurs: { moissons: true }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
     'R4-moissonnage-de': { valeurs: { moissons: true }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
+    // Les demandes sur le lexique, un exemple de chaque statut.
+    'R5-demandes-fr': { valeurs: { moissons: 'demandes' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
+    'R5-demandes-de': { valeurs: { moissons: 'demandes' }, etapes: [['clic', '#onglet-reglages'], ['masquerAvant', '#regl-moissonnage']] },
     'J1-ouvert': { etapes: journal },
     'J2-signaler': { etapes: signaler },
     'J3-envoye': { etapes: signaler.concat([['clic', '#jrn-signal-envoyer'],
@@ -405,7 +465,7 @@ function liste() {
   const fr = Object.keys(etats('fr')).filter((n) => !/-de$/.test(n)).map((n) => ({ nom: n, langue: 'fr' }));
   // Le Préprocessing en allemand : la Zeitschrift d'office, et une réussite.
   const preprocDe = [{ nom: 'PP1-repos', langue: 'de' }, { nom: 'PP5-alertes', langue: 'de' }];
-  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }], preprocDe);
+  return fr.concat([{ nom: 'P1-repos', langue: 'de' }, { nom: 'S1-repos', langue: 'de' }, { nom: 'R1-reglages-de', langue: 'de' }, { nom: 'R4-moissonnage-de', langue: 'de' }, { nom: 'R5-demandes-de', langue: 'de' }], preprocDe);
 }
 
 function ecrire(dossier, filtres) {

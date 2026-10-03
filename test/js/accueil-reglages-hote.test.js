@@ -281,3 +281,73 @@ test('moissonnage : sans _Moissons, pas de section ; avec, chaque moissonneur, s
     fs.rmSync(moissons, { recursive: true, force: true });
   }
 });
+
+test('moissonnage : les demandes sur le lexique — liste, « Appliquer quand même » par le demandeur, Retirer et Annuler, ouvrir Termes', async () => {
+  const pr = require(path.join(COCKPIT, 'lib', 'propositions.js'));
+  const base = path.join(TRAVAIL, 'Base');
+  const moissons = pr.cheminMoissons(base);
+  fs.rmSync(moissons, { recursive: true, force: true });
+  const ecrire = (m, nom, contenu) => { fs.mkdirSync(path.join(moissons, m), { recursive: true }); fs.writeFileSync(path.join(moissons, m, nom), contenu); };
+  const seuils = [0, 5, 9, 12, 12, 18, 29, 38, 56, 78];
+  const crans = seuils.map((s, i) => ({ cran: i + 1, seuil: s, par_mois: 80 - i * 7, rappel: 70 - i, rappel_sur: 79 }));
+  const etatAvec = (demandes) => JSON.stringify({ format: 'pronto-etat/1', moissonneur: 'parlement', crans: { fr: crans, de: crans },
+    demandes: demandes, demandes_ignorees: [{ fichier: 'x y.json', raison: 'id non sûr' }] });
+  ecrire('parlement', 'etat.json', etatAvec([]));
+  ecrire('parlement', '2026-10-01-1.jsonl', JSON.stringify({ format: 'pronto-proposition/1', cle: 'parlement:x:1', moissonneur: 'parlement',
+    type: 'intervention', langue: 'fr', valeurs: { title: 'Essai' }, pertinence: { score: 20 } }) + '\n');
+  const perte = pr.ecrireDemande(base, 'parlement', { terme: 'intégration', langue: 'fr', sens: 'exclusion', par: 'Poste Essai' }).demande;
+  const autre = pr.ecrireDemande(base, 'parlement', { terme: 'participation', langue: 'fr', sens: 'exclusion', par: 'Jonas Beispiel' }).demande;
+  const appliquee = pr.ecrireDemande(base, 'parlement', { terme: 'jeux vidéo', langue: 'fr', sens: 'exclusion', par: 'Jonas Beispiel' }).demande;
+  ecrire('parlement', 'etat.json', etatAvec([
+    { id: perte.id, statut: 'refuse-perte', fiches_perdues: ['Intégration au cycle 3'], mesure_le: '2026-10-02',
+      effet: { rappel_avant: 73, rappel_apres: 70, par_mois_avant: 81, par_mois_apres: 69, complet: true } },
+    { id: autre.id, statut: 'refuse-perte', fiches_perdues: ['Participation des familles'] },
+    { id: appliquee.id, statut: 'applique' }]));
+  HOTE.configuration['szh.nomUtilisateur'] = 'Poste Essai';
+  require(path.join(COCKPIT, 'lib', 'coedition-hote.js')).oublierIdentiteCoedition();
+  try {
+    await envoyer({ type: MSG.ACCUEIL_SERVICE, service: 'shlinkUrl', valeur: '' });
+    let m = dits(MSG.VALEURS).pop().moissonnage;
+    assert.strictEqual(m.moi, 'Poste Essai', 'la page sait qui regarde, pour « Appliquer quand même »');
+    const p = m.moissonneurs.find((x) => x.id === 'parlement');
+    assert.deepStrictEqual(p.demandes.map((d) => d.statut).sort(), ['applique', 'refuse-perte', 'refuse-perte']);
+    assert.deepStrictEqual(p.avertissements.map((a) => a.code), ['demande-ignoree']);
+    assert.strictEqual(p.aTermes, false, 'ses propositions ne portent pas de termes');
+    assert.ok(m.textes.st && m.textes.st['refuse-perte'] && m.textes.quandMeme, 'les libellés des demandes viennent avec la section');
+    // Appliquer quand même : le demandeur seul.
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_CONFIRMER, moissonneur: 'parlement', id: autre.id });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.find((d) => d.id === autre.id).confirme_par, undefined);
+    assert.strictEqual(dits(MSG.VALEURS).pop().moissonnage.demandeGeste.raison, 'pas-le-demandeur');
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_CONFIRMER, moissonneur: 'parlement', id: perte.id });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.find((d) => d.id === perte.id).confirme_par, 'Poste Essai');
+    m = dits(MSG.VALEURS).pop().moissonnage;
+    assert.deepStrictEqual([m.demandeGeste.geste, m.demandeGeste.ok], ['confirmee', true]);
+    // Retirer une demande appliquée : une demande de retrait ; Annuler la retire.
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_RETIRER, moissonneur: 'parlement', id: appliquee.id });
+    m = dits(MSG.VALEURS).pop().moissonnage;
+    assert.deepStrictEqual([m.demandeGeste.geste, m.demandeGeste.action, m.demandeGeste.terme], ['retiree', 'retrait', 'jeux vidéo']);
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.find((d) => d.id === appliquee.id).statut, 'retrait-en-attente');
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_ANNULER });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.find((d) => d.id === appliquee.id).statut, 'applique');
+    assert.strictEqual(dits(MSG.VALEURS).pop().moissonnage.demandeGeste.geste, 'annulee');
+    // Retirer une demande refusée : le fichier part ; Annuler le remet.
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_RETIRER, moissonneur: 'parlement', id: autre.id });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.some((d) => d.id === autre.id), false);
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_ANNULER });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.some((d) => d.id === autre.id), true);
+    await envoyer({ type: MSG.ACCUEIL_DEMANDE_ANNULER });
+    assert.strictEqual(pr.listerDemandes(base, 'parlement').demandes.length, 3, 'une seule annulation par retrait');
+    // Ouvrir Propositions › Termes : la commande de l'arbre, sur l'onglet Termes de ce moissonneur.
+    const avant = HOTE.stub.commands._journal.length;
+    await envoyer({ type: MSG.ACCUEIL_OUVRIR_TERMES, moissonneur: 'parlement' });
+    const joue = HOTE.stub.commands._journal.slice(avant).find((c) => c.id === 'szh.ouvrirActualite');
+    assert.ok(joue, 'la commande n’est pas partie');
+    assert.deepStrictEqual(joue.args, ['propositions', '_termes:parlement']);
+    await envoyer({ type: MSG.ACCUEIL_OUVRIR_TERMES, moissonneur: '../x' });
+    assert.strictEqual(HOTE.stub.commands._journal.slice(avant).filter((c) => c.id === 'szh.ouvrirActualite').length, 1);
+  } finally {
+    delete HOTE.configuration['szh.nomUtilisateur'];
+    require(path.join(COCKPIT, 'lib', 'coedition-hote.js')).oublierIdentiteCoedition();
+    fs.rmSync(moissons, { recursive: true, force: true });
+  }
+});

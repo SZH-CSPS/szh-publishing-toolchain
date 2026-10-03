@@ -257,3 +257,90 @@
 /* Une proposition visible des deux rédactions : la marque « fr · de », en texte. */
 .prop-langues { display: inline-block; margin-left: var(--e1); padding: 0 .4em; font-size: var(--t-mini);
   color: var(--encre-2); border: 1px solid var(--filet-fort); border-radius: 999px; white-space: nowrap; }
+
+/* ---- L'onglet Termes : après les types, séparé par un filet ---- */
+.prop-onglet-sep { width: 1px; align-self: stretch; margin: var(--e1) var(--e2); background: var(--filet-fort); }
+.prop-onglet-ico { width: 13px; height: 13px; flex: 0 0 auto; }
+.prop-termes > * { flex: 0 0 auto; }
+.prop-termes > .prop-termes-defile { flex: 1 1 auto; min-height: 0; }
+.prop-termes-segments { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); overflow: hidden; }
+.prop-termes-segment { position: relative; display: block; font-size: var(--t-libelle); }
+.prop-termes-segment + .prop-termes-segment { border-left: 1px solid var(--vscode-input-border, var(--filet)); }
+.prop-termes-segment input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.prop-termes-segment span { display: block; padding: .2em .8em; cursor: pointer; color: var(--encre); }
+.prop-termes-segment input:checked + span { background: var(--vscode-button-background, var(--accent)); color: var(--vscode-button-foreground, var(--fond)); }
+.prop-termes-segment input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -3px; }
+.prop-termes-comptes { margin: 0; font-size: var(--t-libelle); color: var(--encre); }
+.prop-termes-chercher { font: inherit; font-size: var(--t-libelle); width: 14rem; max-width: 100%; padding: .15em .4em;
+  color: var(--vscode-input-foreground, inherit); background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
+.prop-termes-chercher:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.prop-termes-ajouter { display: inline-flex; align-items: center; gap: var(--e1); padding: .12em .6em; font-size: var(--t-libelle); }
+.prop-termes-ajouter svg { width: 12px; height: 12px; }
+.prop-termes-avis:empty { display: none; }
+.prop-termes-avis .szh-notif { margin: 0; }
+.prop-termes-compte { margin: 0; font-size: var(--t-mini); color: var(--encre-2); }
+
+/* Le tableau des termes : l'en-tête collant de .prop-table, les nombres alignés à droite. */
+.prop-table-termes { table-layout: auto; }
+.prop-table-termes td { height: 1.6rem; padding-top: .1rem; padding-bottom: .1rem; }
+.prop-table-termes th.prop-termes-num, .prop-table-termes td.prop-termes-num { text-align: right; font-variant-numeric: tabular-nums; }
+.prop-termes-fort { font-weight: 700; }
+.prop-tri { padding: 0; border: 0; background: none; font: inherit; color: inherit; letter-spacing: inherit;
+  text-transform: inherit; cursor: pointer; }
+.prop-tri:hover { color: var(--encre); text-decoration: underline; }
+.prop-tri:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.prop-table-termes th[aria-sort] { color: var(--encre); }
+.prop-terme { padding: 0; border: 0; background: none; font: inherit; color: var(--vscode-textLink-foreground, var(--accent));
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.prop-terme:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.prop-termes-statut { font-size: var(--t-mini); white-space: nowrap; }
+.prop-td-geste { text-align: right; }
+/* « Ne plus proposer » : une icône, cernée d'ambre et marquée d'un triangle quand des fiches de
+   référence ne sont retrouvées que par ce terme. */
+.szh-bouton.prop-ne-plus { display: inline-flex; align-items: center; gap: .15em; padding: .15em .35em; min-height: 0; }
+.prop-ne-plus svg { width: 12px; height: 12px; }
+.szh-bouton.prop-ne-plus--ref, .szh-bouton.prop-ne-plus--ref:hover { color: var(--encre); background: var(--fond);
+  border: 1px solid var(--avert); }
+.prop-ne-plus .prop-ne-plus-marque { color: var(--avert); }
+.prop-termes-precautions { flex: 0 0 auto; padding: var(--e1) 0 var(--e2); border-top: 1px solid var(--filet); }
+.prop-termes-precautions p { margin: 0; font-size: var(--t-mini); color: var(--encre-2); }
+
+/* Le panneau « Ne plus proposer ». */
+.prop-termes-panneau { width: 23rem; max-width: calc(100vw - 2rem); max-height: none; overflow: visible;
+  display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2) var(--e3); box-sizing: border-box; }
+.prop-termes-panneau p { margin: 0; }
+.prop-termes-panneau-titre { font-weight: 700; }
+.prop-termes-mesure { font-weight: 700; font-size: var(--t-libelle); font-variant-numeric: tabular-nums; }
+.prop-termes-aide { font-size: var(--t-libelle); color: var(--encre-2); }
+.prop-termes-panneau p.prop-termes-avert { margin: var(--e1) 0; font-size: var(--t-libelle); }
+.prop-termes-panneau .prop-gestes { margin-top: var(--e1); }
+
+/* Le bandeau du filtre sur un terme. */
+.prop-termes-bandeau-zone[hidden] { display: none; }
+.prop-termes-bandeau { margin: 0; }
+.prop-termes-bandeau > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e2); }
+
+/* « Ajouter un terme ». */
+.prop-termes-form { display: flex; flex-direction: column; gap: var(--e2); padding: var(--e3); }
+.prop-termes-form-titre { margin: 0; font-size: var(--t-corps); }
+.prop-termes-form-ligne { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--e2) var(--e4); }
+.prop-termes-form-terme { flex: 1 1 18rem; }
+.prop-termes-form-terme input { width: 100%; box-sizing: border-box; }
+.prop-termes-erreur { margin: var(--e1) 0 0; font-size: var(--t-libelle); font-weight: 700; color: var(--danger); }
+.prop-termes-erreur[hidden] { display: none; }
+.prop-termes-form input[aria-invalid="true"] { outline: 2px solid var(--danger); outline-offset: -1px; }
+.prop-termes-form-sens { display: flex; flex-direction: column; gap: .1rem; margin: 0; padding: 0; border: 0; font-size: var(--t-libelle); }
+.prop-termes-form-sens legend { padding: 0; margin-bottom: .2rem; font-weight: 700; }
+.prop-termes-radio { display: inline-flex; align-items: center; gap: var(--e1); }
+.prop-termes-radio input { margin: 0; accent-color: var(--accent); }
+.prop-termes-form p.prop-termes-aide { margin: 0; }
+
+/* Pourquoi : un terme cliquable est une puce. */
+.prop-pourquoi-puce { padding: .05em .5em; font: inherit; color: var(--encre); background: var(--fond);
+  border: 1px solid var(--filet-fort); border-radius: 999px; cursor: pointer; }
+.prop-pourquoi-puce:hover { background: var(--surface-tete); }
+.prop-pourquoi-puce:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.prop-pourquoi-puce--demandee { border-style: dashed; }
+.prop-pourquoi-puce--demandee .prop-pourquoi-mot { text-decoration: line-through; }
+.prop-pourquoi p.prop-pourquoi-aide { font-size: var(--t-mini); color: var(--encre-2); }

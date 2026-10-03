@@ -388,7 +388,10 @@ test('page : « Pourquoi » dans le détail — la note, la catégorie en clair,
   const terme = ancrage.querySelector('.prop-pourquoi-terme');
   assert.strictEqual(terme.querySelector('.prop-pourquoi-mot').getAttribute('lang'), 'de', 'un terme d’une autre langue la déclare');
   assert.ok(terme.textContent.indexOf('Nachteilsausgleich') !== -1 && terme.textContent.indexOf(txt.propOuExtrait) !== -1);
-  assert.strictEqual(s.querySelectorAll('button').length, 0, 'les termes ne sont pas cliquables dans ce lot');
+  // Chaque terme s'ouvre sur ses gestes (test/js/propositions-termes.test.js).
+  const boutons = s.querySelectorAll('button');
+  assert.strictEqual(boutons.length, 3, 'un bouton par terme');
+  boutons.forEach((b) => assert.strictEqual(b.getAttribute('aria-haspopup'), 'menu'));
 });
 
 test('libellés : la finesse a ses clés en fr et en de, sans « Vorschlag », et les catégories des moissonneurs', () => {

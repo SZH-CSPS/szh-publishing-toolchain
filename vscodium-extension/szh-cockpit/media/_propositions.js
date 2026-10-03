@@ -11,9 +11,12 @@
 //                     dansNumero, depuisDetail } ; propRefuser { cles, motif } ;
 //                     propAnnuler { cles } ; propColonnes { typeFiche, reglage } ;
 //                     propOuvrirSource { cle } ; propVerifier { cle, jeton, valeurs, touches } ;
-//                     propRecreer { cle, valeurs } ; docDateFormer (media/_fiche-doc.js)
+//                     propRecreer { cle, valeurs } ; docDateFormer (media/_fiche-doc.js) ;
+//                     propFiltreTerme { typeFiche, terme, role, langue } ;
+//                     propDemandeEcrire { moissonneur, terme, langue, sens }
 //   hôte -> webview : propDonnees { langue, cible, revueAutre, types, propositions, refusees,
-//                     etats, colonnes, resultat? } ;
+//                     etats, colonnes, termes, demandes, filtre, regleTerme, resultat?,
+//                     ongletDemande?, demandeGeste? } ;
 //                     propVerifie { cle, jeton, bloquants }
 // Un geste qui recharge la Documentation du numéro passe par opts.apresEcriture : les cartes
 // modifiées du numéro s'enregistrent d'abord, le geste part à l'accusé.
@@ -80,6 +83,11 @@
     var apercuLocal = {};
     var voirMasquees = {};
     var finesseAvis = null;
+    // L'onglet Termes : le moissonneur choisi, le tri, la recherche, les filtres, le formulaire
+    // d'ajout et l'avis qui suit une demande ; puis la demande partie, en attente de sa réponse.
+    var termesEtat = { moissonneur: null, tri: 'seul', sens: -1, q: '', role: '', langue: '', form: false, avis: null };
+    var formTermes = null;
+    var attenteDemande = null;
     var zone = {};
     var menu = null;
     var apresEcriture = opts.apresEcriture || function (geste) { geste(); };
@@ -135,8 +143,34 @@
       return apercuLocal[t] || f.apercu || cranPartage(t);
     }
     function visibleAu(p, k) { return !finesseDe(p.type) || (p.cranMax || NB_CRANS) >= k; }
-    function visible(p) { return visibleAu(p, cranVu(p.type)); }
-    function identique(t, k) { var c = finesseDe(t).crans[k - 1]; return !!(c && c.identique_au_cran_precedent); }
+    // Sans aperçu du poste, une proposition suit le réglage de son moissonneur : les crans sont
+    // les déciles de chacun, un même numéro de cran se compare d'un moissonneur à l'autre.
+    function cranVuP(p) {
+      var f = finesseDe(p.type);
+      if (!f) { return 1; }
+      if (apercuLocal[p.type] || f.apercu) { return apercuLocal[p.type] || f.apercu; }
+      var pm = f.parMoissonneur && f.parMoissonneur[p.dossier];
+      if (pm) { return pm.reglage ? pm.reglage.cran : 1; }
+      return cranPartage(p.type);
+    }
+    function visible(p) { return visibleAu(p, cranVuP(p)); }
+    // Les moissonneurs à crans du type : { libelle, crans, reglage… } pour chacun.
+    function moissonneursDe(t) {
+      var f = finesseDe(t), pm = (f && f.parMoissonneur) || {};
+      var ms = (f && f.moissonneurs) || [];
+      return ms.filter(function (m) { return !!pm[m]; }).map(function (m) { return pm[m]; });
+    }
+    // Un cran est identique au précédent quand il l'est chez chaque moissonneur du type.
+    function identique(t, k) {
+      var ms = moissonneursDe(t);
+      var listes = ms.length > 1 ? ms.map(function (x) { return x.crans; }) : [finesseDe(t).crans];
+      return listes.every(function (crans) { var c = crans[k - 1]; return !!(c && c.identique_au_cran_precedent); });
+    }
+    function comptesVus(t) {
+      var att = attente().filter(function (p) { return p.type === t; });
+      var v = att.filter(visible).length;
+      return { visibles: v, masquees: att.length - v };
+    }
     // Le premier cran de la suite de crans identiques qui finit en k.
     function cranRepere(t, k) { var j = k; while (j > 1 && identique(t, j)) { j--; } return j; }
     function comptesAu(t, k) {
@@ -156,8 +190,13 @@
     }
     // Les lignes de l'onglet : en attente dans l'ordre de l'hôte, les masquées seulement si on
     // les montre, puis les refusées si demandé.
+    // Le filtre sur un terme posé depuis la vue Termes, s'il vise cet onglet : l'hôte en donne les cles.
+    function filtreTermeActif() { var f = donnees && donnees.filtre; return f && f.typeFiche === onglet ? f : null; }
     function lignesOnglet() {
-      var l = attente().filter(function (p) { return p.type === onglet && filtre(p) && (visible(p) || !!voirMasquees[onglet]); });
+      var ft = filtreTermeActif();
+      var l = attente().filter(function (p) {
+        return p.type === onglet && filtre(p) && (visible(p) || !!voirMasquees[onglet]) && (!ft || ft.cles.indexOf(p.cle) !== -1);
+      });
       if (!afficherRefusees) { return l; }
       return l.concat(refusees().filter(function (p) { return p.type === onglet && filtre(p); }));
     }
@@ -278,9 +317,10 @@
     function rendreOnglets() {
       barreOnglets.textContent = '';
       var visibles = ongletsVisibles();
-      barreOnglets.hidden = visibles.length === 0;
-      if (visibles.length > 0 && visibles.indexOf(onglet) === -1) { onglet = visibles[0]; }
-      if (visibles.length === 0) { onglet = null; }
+      var nav = aTermes() ? visibles.concat(['_termes']) : visibles;
+      barreOnglets.hidden = nav.length === 0;
+      if (nav.length > 0 && nav.indexOf(onglet) === -1) { onglet = nav[0]; }
+      if (nav.length === 0) { onglet = null; }
       visibles.forEach(function (t) {
         var k = comptes(t);
         var b = document.createElement('button');
@@ -302,17 +342,40 @@
           poser(pb, 'span', 'prop-masque', ' ' + remplir('propDontB', [k.b]));
         }
         b.addEventListener('click', function () { changerOnglet(t); });
+        naviguer(b, t);
+        barreOnglets.appendChild(b);
+      });
+      if (aTermes()) {
+        poser(barreOnglets, 'span', 'prop-onglet-sep').setAttribute('aria-hidden', 'true');
+        var bt = document.createElement('button');
+        bt.type = 'button';
+        bt.id = 'prop-onglet-_termes';
+        bt.className = 'doc-onglet prop-onglet-termes' + (onglet === '_termes' ? ' doc-onglet--actif' : '');
+        bt.dataset.type = '_termes';
+        bt.setAttribute('role', 'tab');
+        bt.setAttribute('aria-selected', onglet === '_termes' ? 'true' : 'false');
+        bt.setAttribute('aria-controls', 'panel-propositions');
+        bt.tabIndex = onglet === '_termes' ? 0 : -1;
+        var ic = icone('loupe');
+        ic.classList.add('prop-onglet-ico');
+        bt.appendChild(ic);
+        poser(bt, 'span', null, TXT.propTermesOnglet);
+        bt.addEventListener('click', function () { changerOnglet('_termes'); });
+        naviguer(bt, '_termes');
+        barreOnglets.appendChild(bt);
+      }
+      // Les flèches passent d'un onglet à l'autre, Termes compris.
+      function naviguer(b, t) {
         b.addEventListener('keydown', function (ev) {
           if (ev.key !== 'ArrowRight' && ev.key !== 'ArrowLeft') { return; }
           ev.preventDefault();
-          var i = visibles.indexOf(t) + (ev.key === 'ArrowRight' ? 1 : -1);
-          var cible = visibles[(i + visibles.length) % visibles.length];
+          var i = nav.indexOf(t) + (ev.key === 'ArrowRight' ? 1 : -1);
+          var cible = nav[(i + nav.length) % nav.length];
           changerOnglet(cible);
           var nb = barreOnglets.querySelector('[data-type="' + cible + '"]');
           if (nb) { nb.focus(); }
         });
-        barreOnglets.appendChild(b);
-      });
+      }
       panel.setAttribute('role', 'tabpanel');
       if (onglet) { panel.setAttribute('aria-labelledby', 'prop-onglet-' + onglet); }
     }
@@ -336,6 +399,7 @@
         return;
       }
       if (!onglet) { opts.titre.textContent = TXT.propVue || ''; rendreVide(); return; }
+      if (onglet === '_termes') { rendreTermes(); return; }
       opts.titre.textContent = remplir('propTitreVue', [typeDe(onglet).libelle]);
       var vue = poser(panel, 'div', 'prop-vue');
       // L'état des moissonneurs qui alimentent cet onglet (etat.json).
@@ -386,6 +450,9 @@
       // Sous la ligne : « Garder ce cran pour la rédaction », puis le bandeau qui le suit.
       zone.garde = poser(vue, 'div', 'prop-finesse-garde');
       rendreGarde();
+      // Le filtre sur un terme, et de quoi le retirer.
+      zone.bandeau = poser(vue, 'div', 'prop-termes-bandeau-zone');
+      rendreBandeauFiltre();
 
       var split = poser(vue, 'div', 'prop-split');
       zone.split = split;
@@ -425,7 +492,7 @@
       poser(g, 'span', 'prop-finesse-bout', TXT.propFinesseStrict).setAttribute('aria-hidden', 'true');
       var lecture = poser(g, 'output', 'prop-finesse-lecture');
       lecture.id = 'prop-finesse-lecture';
-      var k0 = cranVu(type), n0 = comptesAu(type, k0);
+      var k0 = cranVu(type), n0 = comptesVus(type);
       if (n0.masquees > 0) {
         poser(g, 'span', 'prop-point', '·').setAttribute('aria-hidden', 'true');
         var voir = SZH.bouton(voirMasquees[type] ? TXT.propFinesseCacher : TXT.propFinesseVoir, function () {
@@ -453,7 +520,7 @@
       det.hidden = true;
       zone.finesseDetail = det;
       function lire(k) {
-        var n = comptesAu(type, k);
+        var n = k === k0 ? comptesVus(type) : comptesAu(type, k);
         var vis = nombre('propFinesseVisibles', n.visibles, [n.visibles]);
         var mas = nombre('propFinesseMasquees', n.masquees, [n.masquees]);
         if (identique(type, k)) {
@@ -482,16 +549,24 @@
     }
     // Les chiffres du cran k, une phrase par ligne.
     function texteAide(type, k) {
-      var f = finesseDe(type), c = f.crans[k - 1] || {}, l = [];
+      var l = [];
       if (identique(type, k)) { l.push(remplir('propFinesseIdentiqueTip', [k, cranRepere(type, k)])); }
+      var ms = moissonneursDe(type);
+      if (ms.length > 1) {
+        ms.forEach(function (x) { l.push(remplir('propFinesseDeMoissonneur', [x.libelle])); chiffresAide(l, x, k); });
+      } else { chiffresAide(l, finesseDe(type), k); }
+      l.push(TXT.propFinesseApercu);
+      return l.join('\n');
+    }
+    // Les chiffres d'un moissonneur au cran k : volume, rappel, date des crans, réglage partagé.
+    function chiffresAide(l, f, k) {
+      var c = f.crans[k - 1] || {};
       if (f.fenetre) { l.push(remplir('propFinesseParMois', [c.par_mois, dateCourte(f.fenetre.du), dateCourte(f.fenetre.au)])); }
       l.push(typeof c.rappel === 'number' ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
       if (f.calculeLe) { l.push(remplir('propFinesseCalcule', [dateCourte(f.calculeLe)])); }
       if (f.source === 'commun') { l.push(TXT.propFinesseCommun); }
       l.push(f.reglage ? remplir('propFinesseRegle', [donnees.revue, f.reglage.cran, f.reglage.par, dateCourte(f.reglage.le)])
         : remplir('propFinesseRegleAucun', [donnees.revue]));
-      l.push(TXT.propFinesseApercu);
-      return l.join('\n');
     }
     // « Garder ce cran pour la rédaction » n'apparait que si l'aperçu du poste diffère du réglage
     // partagé ; le bandeau qui suit le geste permet de l'annuler.
@@ -998,6 +1073,12 @@
         na.setAttribute('role', 'status');
         zone.pied.appendChild(na);
       }
+      if (termesEtat.avis && onglet !== '_termes') {
+        var nt = SZH.notif(termesEtat.avis.ton, termesEtat.avis.texte);
+        nt.classList.add('prop-avis');
+        nt.setAttribute('role', 'status');
+        zone.pied.appendChild(nt);
+      }
       echouees.forEach(function (x) {
         var ne = SZH.notif('attention', [document.createTextNode(remplir('propIntrouvable', [titreCourt(x.p)]))]);
         ne.classList.add('prop-echouee');
@@ -1248,6 +1329,7 @@
       zone.liste.hidden = plein;
       if (zone.filtres) { zone.filtres.hidden = plein; zone.moissons.hidden = plein; }
       if (zone.garde) { zone.garde.hidden = plein || !zone.garde.firstChild; }
+      if (zone.bandeau) { zone.bandeau.hidden = plein || !zone.bandeau.firstChild; }
       if (!detailCle) { return; }
       var att = attenteOnglet();
       var a = poser(zone.split, 'aside', 'szh-carte prop-detail');
@@ -1548,6 +1630,8 @@
           [CATEGORIES[pe.categorie] ? TXT[CATEGORIES[pe.categorie]] : String(pe.categorie)]));
       }
       var termes = Array.isArray(pe.termes) ? pe.termes.filter(function (x) { return x && x.terme; }) : [];
+      // Un terme s'ouvre sur ses gestes quand le moissonneur a sa vue Termes.
+      var cliquable = !!termesDonnes()[p.dossier || p.moissonneur] && enAttente(p);
       var rangOu = { titre: 0, texte: 1, extrait: 2 };
       var roles = Object.keys(ROLES);
       termes.forEach(function (x) { if (roles.indexOf(x.role) === -1) { roles.push(x.role); } });
@@ -1558,7 +1642,8 @@
         var l = poser(s, 'p', 'prop-pourquoi-termes');
         poser(l, 'span', 'prop-pourquoi-role', ROLES[role] ? TXT[ROLES[role]] : String(role));
         ts.forEach(function (x) {
-          var t = poser(l, 'span', 'prop-pourquoi-terme');
+          var t = cliquable ? poser(l, 'button', 'prop-pourquoi-terme prop-pourquoi-puce') : poser(l, 'span', 'prop-pourquoi-terme');
+          if (cliquable) { brancherTermePourquoi(t, p, x); }
           var mot = poser(t, 'span', 'prop-pourquoi-mot', String(x.terme));
           // Entre parenthèses : la langue du terme si elle n'est pas celle du numéro, puis l'emplacement.
           var precisions = [];
@@ -1567,6 +1652,7 @@
           if (precisions.length > 0) { poser(t, 'span', 'prop-pourquoi-ou', ' (' + precisions.join(', ') + ')'); }
         });
       });
+      if (cliquable && termes.length > 0) { poser(s, 'p', 'prop-pourquoi-aide', TXT.propTermesPourquoiAide); }
     }
     function rendreDoublon(parent, p) {
       var f = p.doublonFiche;
@@ -1603,6 +1689,457 @@
       });
     }
 
+    // ---- Termes : ce que chaque terme ramène, et les demandes sur le lexique ----------------
+    // Les comptes viennent de l'hôte (lib/propositions.js, comptesTermes) ; la page trie, cherche
+    // et filtre, puis envoie un filtre ou une demande, que l'hôte valide encore.
+    var ROLES_ORDRE = ['ancrage', 'ambigu', 'ecole', 'theme'];
+    var ST = {
+      'en-attente': 'propStEnAttente', applique: 'propStApplique', 'applique-partiel': 'propStAppliquePartiel',
+      'refuse-perte': 'propStRefusePerte', 'refuse-bruit': 'propStRefuseBruit', doublon: 'propStDoublon',
+      'a-confirmer': 'propStAConfirmer', 'retrait-en-attente': 'propStRetraitEnAttente'
+    };
+    var TON_STATUT = { applique: 'ok', 'applique-partiel': 'ok', 'refuse-perte': 'attention', 'refuse-bruit': 'attention', 'a-confirmer': 'attention' };
+    var SENS = { ajout: 'propTermesSensAjout', exclusion: 'propTermesSensExclusion', retrait: 'propTermesSensRetrait' };
+    var COLS_TERMES = [
+      { id: 'terme', lib: 'propTermesColTerme' }, { id: 'langue', lib: 'propTermesColLangue' },
+      { id: 'role', lib: 'propTermesColRole' },
+      { id: 'ramene', lib: 'propTermesColRamene', num: true, tip: 'propTermesTipRamene' },
+      { id: 'seul', lib: 'propTermesColSeul', num: true, tip: 'propTermesTipSeul' },
+      { id: 'ref', lib: 'propTermesColRef', num: true, tip: 'propTermesTipRef' },
+      { id: 'refSeul', lib: 'propTermesColRefSeul', num: true, tip: 'propTermesTipRefSeul' },
+      { id: 'demande', lib: 'propTermesColDemande' }, { id: 'geste', lib: 'propTermesColGeste', fixe: true }
+    ];
+    function termesDonnes() { return (donnees && donnees.termes) || {}; }
+    function moissonneursTermes() { return Object.keys(termesDonnes()).sort(); }
+    function aTermes() { return moissonneursTermes().length > 0; }
+    function demandesDe(m) { return ((donnees && donnees.demandes) || {})[m] || []; }
+    function memeTerme(a, b) {
+      return String(a).normalize('NFC').trim().toLocaleLowerCase() === String(b).normalize('NFC').trim().toLocaleLowerCase();
+    }
+    // La plus récente demande sur ce terme dans cette langue (l'hôte les range de la plus récente).
+    function derniereDemande(m, terme, langue) {
+      return demandesDe(m).filter(function (d) { return d.langue === langue && memeTerme(d.terme, terme); })[0] || null;
+    }
+    function exclusionEnAttente(m, terme, langue) {
+      return demandesDe(m).some(function (d) {
+        return d.sens === 'exclusion' && d.statut === 'en-attente' && d.langue === langue && memeTerme(d.terme, terme);
+      });
+    }
+    function libelleRole(r) { return ROLES[r] ? TXT[ROLES[r]] : String(r || ''); }
+    function libelleStatut(s) { return ST[s] ? TXT[ST[s]] : String(s || ''); }
+    function libelleSens(s) { return SENS[s] ? TXT[SENS[s]] : String(s || ''); }
+    function tiret(v) { return v === null || v === undefined ? '–' : String(v); }
+    function ligneDuTerme(m, x) {
+      var t = termesDonnes()[m];
+      var l = t ? t.termes.filter(function (y) { return y.terme === x.terme && y.langue === x.langue && y.role === x.role; })[0] : null;
+      return l || { terme: x.terme, langue: x.langue, role: x.role, ramene: 0, seul: 0, approx: false, ref: null, refSeul: null };
+    }
+    // Le cran regardé pour les types que ce moissonneur alimente.
+    function cransTermes(m) {
+      var t = termesDonnes()[m] || {}, vus = [];
+      Object.keys(t.types || {}).sort().forEach(function (ty) { if (vus.indexOf(t.types[ty]) === -1) { vus.push(t.types[ty]); } });
+      return vus.join('/');
+    }
+    // L'onglet où voir les propositions d'un terme : le type de ce moissonneur qui en a le plus.
+    function typeDuMoissonneur(m) {
+      var t = termesDonnes()[m] || {}, meilleur = null, n = -1;
+      Object.keys(t.types || {}).sort().forEach(function (ty) {
+        var k = attente().filter(function (p) { return p.type === ty && (p.dossier || p.moissonneur) === m; }).length;
+        if (k > n) { n = k; meilleur = ty; }
+      });
+      return meilleur;
+    }
+
+    // Le filtre sur un terme : l'hôte rend les cles qui le portent ; l'onglet du type s'ouvre.
+    function filtrerSurTerme(typeFiche, x) {
+      fermerMenu(false);
+      if (!typeFiche) { return; }
+      api.postMessage({ type: SZH.MSG.PROP_FILTRE_TERME, typeFiche: typeFiche, terme: x.terme, role: x.role, langue: x.langue });
+      onglet = typeFiche;
+      selection.clear();
+      dernierCoche = null;
+      detailCle = null;
+      courant = null;
+      toutRendre(false);
+    }
+    function retirerFiltre() {
+      var f = donnees && donnees.filtre;
+      if (f) { api.postMessage({ type: SZH.MSG.PROP_FILTRE_TERME, typeFiche: f.typeFiche, terme: '' }); }
+    }
+    function rendreBandeauFiltre() {
+      var z = zone.bandeau;
+      if (!z) { return; }
+      z.textContent = '';
+      var f = filtreTermeActif();
+      if (f) {
+        var att = attente().filter(function (p) { return p.type === onglet && f.cles.indexOf(p.cle) !== -1; });
+        var vis = att.filter(visible).length;
+        var texte = remplir('propTermesFiltre', [f.terme, libelleRole(f.role), vis, cranVu(onglet), att.length - vis]);
+        var n = SZH.notif('info', [document.createTextNode(texte + ' · ')]);
+        n.classList.add('prop-termes-bandeau');
+        n.querySelector('span').appendChild(SZH.bouton(TXT.propTermesRetirerFiltre, retirerFiltre, 'prop-lien prop-termes-retirer-filtre'));
+        z.appendChild(n);
+      }
+      z.hidden = !z.firstChild;
+    }
+
+    // Une demande part ; sa réponse revient avec les données (demandeGeste).
+    function demander(m, terme, langue, sens, source) {
+      attenteDemande = { source: source };
+      api.postMessage({ type: SZH.MSG.PROP_DEMANDE_ECRIRE, moissonneur: m, terme: terme, langue: langue, sens: sens });
+    }
+    function poserAvisTermes(a) {
+      if (termesEtat.avis && termesEtat.avis.minuteur) { clearTimeout(termesEtat.avis.minuteur); }
+      termesEtat.avis = a;
+      if (a) {
+        a.minuteur = setTimeout(function () {
+          termesEtat.avis = null;
+          var z = panel.querySelector('.prop-termes-avis');
+          if (z) { z.textContent = ''; }
+          rendrePied();
+        }, DUREE_BANDEAU);
+      }
+    }
+    function texteRefusDemande(g) {
+      if (g.raison === 'terme-vide') { return TXT.propTermesErrVide; }
+      if (g.raison === 'terme-long') { return remplir('propTermesErrLong', [Array.from(String(g.terme).trim()).length]); }
+      if (g.raison === 'terme-caractere') { return remplir('propTermesErrCaractere', [g.caractere || '']); }
+      return remplir('propTermesRefus', [g.raison || '']);
+    }
+    function recevoirDemande(g) {
+      var source = attenteDemande ? attenteDemande.source : '';
+      attenteDemande = null;
+      if (g.ok) {
+        poserAvisTermes({ ton: 'ok', texte: remplir('propTermesEcrite', [libelleSens(g.sens), g.terme, g.langue]) });
+        if (source === 'form') { termesEtat.form = false; formTermes = null; }
+        return;
+      }
+      if (source === 'form' && formTermes) { formTermes.erreurHote = texteRefusDemande(g); return; }
+      poserAvisTermes({ ton: 'attention', texte: texteRefusDemande(g) });
+    }
+
+    // « Ne plus proposer » : la mesure du terme, l'avertissement s'il ferait perdre des fiches de
+    // référence, puis la demande. Rien ne change avant la prochaine passe du moissonneur.
+    function ouvrirNePlus(source, m, x) {
+      if (menu && menu.source === source) { fermerMenu(true); return; }
+      fermerMenu(false);
+      var l = ligneDuTerme(m, x), t = termesDonnes()[m] || {};
+      menu = document.createElement('div');
+      menu.className = 'szh-sugg prop-menu prop-termes-panneau';
+      menu.setAttribute('role', 'dialog');
+      menu.setAttribute('aria-label', remplir('propTermesNePlusLabel', [x.terme]));
+      menu.source = source;
+      poser(menu, 'p', 'prop-termes-panneau-titre', remplir('propTermesNePlusLabel', [x.terme]));
+      poser(menu, 'p', 'prop-termes-mesure', remplir('propTermesMesure', [(l.approx ? '≈ ' : '') + l.seul, tiret(l.ref), tiret(l.refSeul)]));
+      poser(menu, 'p', 'prop-termes-aide', remplir('propTermesMesureAu', [cransTermes(m), tiret(t.rappelSur)]));
+      if (l.refSeul > 0) {
+        var a = SZH.notif('attention', nombre('propTermesAvertRefSeul', l.refSeul, [l.refSeul]));
+        a.classList.add('prop-termes-avert');
+        menu.appendChild(a);
+      }
+      poser(menu, 'p', 'prop-termes-aide', TXT.propTermesInfo);
+      var g = poser(menu, 'div', 'prop-gestes');
+      if (exclusionEnAttente(m, x.terme, x.langue)) {
+        poser(g, 'span', 'szh-pastille', TXT.propTermesDemandee);
+      } else {
+        g.appendChild(SZH.bouton(TXT.propTermesDemander, function () {
+          fermerMenu(false);
+          demander(m, x.terme, x.langue, 'exclusion', 'panneau');
+        }, (l.refSeul > 0 ? '' : 'szh-bouton--principal ') + 'prop-termes-demander'));
+      }
+      g.appendChild(SZH.bouton(TXT.propTermesFermer, function () { fermerMenu(true); }, 'prop-termes-fermer'));
+      placerMenu(source, true);
+      var cible = menu.querySelector('.prop-termes-demander') || menu.querySelector('.prop-termes-fermer');
+      if (cible) { cible.focus(); }
+    }
+
+    // Pourquoi : un terme ouvre un petit menu, voir ses propositions ou ne plus le proposer.
+    function brancherTermePourquoi(b, p, x) {
+      var m = p.dossier || p.moissonneur;
+      b.type = 'button';
+      b.setAttribute('aria-haspopup', 'menu');
+      b.setAttribute('aria-expanded', 'false');
+      b.title = remplir('propTermesMenu', [x.terme]);
+      if (exclusionEnAttente(m, x.terme, x.langue)) { b.classList.add('prop-pourquoi-puce--demandee'); }
+      b.addEventListener('click', function () { ouvrirMenuTerme(b, p, x); });
+    }
+    function ouvrirMenuTerme(source, p, x) {
+      if (menu && menu.source === source) { fermerMenu(true); return; }
+      fermerMenu(false);
+      var m = p.dossier || p.moissonneur;
+      menu = document.createElement('div');
+      menu.className = 'szh-sugg prop-menu prop-termes-menu';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', remplir('propTermesMenu', [x.terme]));
+      menu.source = source;
+      var voir = poser(menu, 'button', 'szh-sugg-item', TXT.propTermesVoir);
+      voir.type = 'button';
+      voir.setAttribute('role', 'menuitem');
+      voir.addEventListener('click', function () { filtrerSurTerme(p.type, x); });
+      var ne = poser(menu, 'button', 'szh-sugg-item', TXT.propTermesNePlus);
+      ne.type = 'button';
+      ne.setAttribute('role', 'menuitem');
+      ne.addEventListener('click', function () { fermerMenu(false); ouvrirNePlus(source, m, x); });
+      placerMenu(source, false);
+      voir.focus();
+    }
+
+    function selectTermes(parent, libelle, options, valeur, cls) {
+      var l = poser(parent, 'label', 'doc-reservoir-case');
+      poser(l, 'span', 'doc-reservoir-filtre-label', libelle);
+      var s = poser(l, 'select', cls);
+      options.forEach(function (o) { var op = poser(s, 'option', null, o[1]); op.value = o[0]; });
+      s.value = valeur;
+      return s;
+    }
+    function pastilleStatut(parent, d) {
+      var ton = TON_STATUT[d.statut];
+      var signe = d.sens === 'ajout' ? '+ ' : d.sens === 'exclusion' ? '− ' : '↺ ';
+      var s = poser(parent, 'span', 'szh-pastille prop-termes-statut' + (ton ? ' szh-pastille--' + ton : ''), signe + libelleStatut(d.statut));
+      s.title = libelleSens(d.sens) + ' · ' + libelleStatut(d.statut);
+      return s;
+    }
+
+    // L'onglet Termes : un moissonneur, ses termes au cran regardé, triés, cherchés, filtrés.
+    function rendreTermes() {
+      var E = termesEtat;
+      var ms = moissonneursTermes();
+      if (ms.indexOf(E.moissonneur) === -1) { E.moissonneur = ms[0]; }
+      var m = E.moissonneur, t = termesDonnes()[m];
+      opts.titre.textContent = remplir('propTitreVue', [TXT.propTermesOnglet]);
+      var vue = poser(panel, 'div', 'prop-vue prop-termes');
+      var tete = poser(vue, 'div', 'prop-filtres');
+      if (ms.length > 1) {
+        var lbl = poser(tete, 'span', 'prop-finesse-nom', TXT.propTermesMoissonneur);
+        lbl.id = 'prop-termes-moissonneur';
+        var seg = poser(tete, 'div', 'prop-termes-segments');
+        seg.setAttribute('role', 'radiogroup');
+        seg.setAttribute('aria-labelledby', lbl.id);
+        ms.forEach(function (x) {
+          var l = poser(seg, 'label', 'prop-termes-segment');
+          var ra = poser(l, 'input');
+          ra.type = 'radio';
+          ra.name = 'prop-termes-moissonneur';
+          ra.value = x;
+          ra.checked = x === m;
+          ra.addEventListener('change', function () { E.moissonneur = x; E.form = false; formTermes = null; toutRendre(false); });
+          poser(l, 'span', null, termesDonnes()[x].libelle || x);
+        });
+      }
+      poser(tete, 'p', 'prop-termes-comptes', remplir('propTermesComptesAu', [cransTermes(m), t.visibles, t.total]));
+
+      var fl = poser(vue, 'div', 'prop-filtres prop-termes-filtres');
+      var q = poser(fl, 'input', 'prop-termes-chercher');
+      q.type = 'search';
+      q.placeholder = TXT.propTermesChercher;
+      q.value = E.q;
+      q.setAttribute('aria-label', TXT.propTermesChercher);
+      var sr = selectTermes(fl, TXT.propTermesRole, [['', TXT.propTermesTous]].concat(ROLES_ORDRE.map(function (r) { return [r, libelleRole(r)]; })),
+        E.role, 'prop-termes-role');
+      var sl = selectTermes(fl, TXT.propTermesLangue, [['', TXT.propTermesToutes], ['fr', 'fr'], ['de', 'de'], ['it', 'it']], E.langue, 'prop-termes-langue');
+      poser(fl, 'span', 'szh-pousse');
+      var ba = SZH.bouton('', function () {
+        E.form = !E.form;
+        if (E.form && !formTermes) { formTermes = { terme: '', langue: donnees.langue, sens: 'ajout', essai: false, erreurHote: '' }; }
+        toutRendre(false);
+        var cible = E.form ? panel.querySelector('[id="prop-termes-form-terme"]') : panel.querySelector('.prop-termes-ajouter');
+        if (cible) { cible.focus(); }
+      }, 'prop-termes-ajouter');
+      ba.appendChild(icone('plus'));
+      poser(ba, 'span', null, TXT.propTermesAjouter);
+      ba.setAttribute('aria-expanded', E.form ? 'true' : 'false');
+      ba.setAttribute('aria-controls', 'prop-termes-form');
+      fl.appendChild(ba);
+      if (E.form && formTermes) { formulaireTerme(vue, m); }
+      var avis = poser(vue, 'div', 'prop-termes-avis');
+      avis.setAttribute('aria-live', 'polite');
+      if (E.avis) { avis.appendChild(SZH.notif(E.avis.ton, E.avis.texte)); }
+
+      var compte = poser(vue, 'p', 'prop-termes-compte');
+      var defile = poser(vue, 'div', 'prop-defile prop-termes-defile');
+      var table = poser(defile, 'table', 'prop-table prop-table-termes');
+      table.setAttribute('aria-label', remplir('propTitreVue', [TXT.propTermesOnglet]));
+      var trh = poser(poser(table, 'thead'), 'tr');
+      var tbody = poser(table, 'tbody');
+      COLS_TERMES.forEach(function (c) {
+        var th = poser(trh, 'th', 'prop-termes-th-' + c.id + (c.num ? ' prop-termes-num' : ''));
+        th.setAttribute('scope', 'col');
+        th.dataset.col = c.id;
+        if (c.fixe) { poser(th, 'span', 'prop-masque', TXT[c.lib]); return; }
+        var b = poser(th, 'button', 'prop-tri', TXT[c.lib]);
+        b.type = 'button';
+        b.title = c.tip ? remplir(c.tip, [tiret(t.rappelSur)]) : remplir('propTermesTrier', [TXT[c.lib]]);
+        b.addEventListener('click', function () {
+          if (E.tri === c.id) { E.sens = -E.sens; } else { E.tri = c.id; E.sens = c.num ? -1 : 1; }
+          remplirTable();
+          b.focus();
+        });
+      });
+      function valeur(x) {
+        if (E.tri === 'demande') { var d = derniereDemande(m, x.terme, x.langue); return d ? libelleStatut(d.statut) : ''; }
+        if (E.tri === 'role') { return libelleRole(x.role); }
+        if (E.tri === 'terme' || E.tri === 'langue') { return String(x[E.tri] || ''); }
+        var v = x[E.tri];
+        return v === null || v === undefined ? -1 : v;
+      }
+      function comparer(a, b) {
+        var va = valeur(a), vb = valeur(b);
+        var d = (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), donnees.langue)) * E.sens;
+        if (d === 0) { d = b.ramene - a.ramene; }
+        if (d === 0) { d = a.terme.localeCompare(b.terme, donnees.langue); }
+        return d;
+      }
+      function remplirTable() {
+        trh.querySelectorAll('th').forEach(function (th) {
+          var sens = th.querySelector('.prop-tri-sens');
+          if (sens) { sens.remove(); }
+          if (th.dataset.col === E.tri) {
+            th.setAttribute('aria-sort', E.sens < 0 ? 'descending' : 'ascending');
+            poser(th.querySelector('.prop-tri'), 'span', 'prop-tri-sens', E.sens < 0 ? ' ▼' : ' ▲').setAttribute('aria-hidden', 'true');
+          } else { th.removeAttribute('aria-sort'); }
+        });
+        var qq = E.q.trim().toLocaleLowerCase();
+        var l = t.termes.filter(function (x) {
+          return (!qq || x.terme.toLocaleLowerCase().indexOf(qq) !== -1) && (!E.role || x.role === E.role) && (!E.langue || x.langue === E.langue);
+        });
+        l.sort(comparer);
+        compte.textContent = remplir('propTermesLignes', [l.length, t.termes.length]);
+        tbody.textContent = '';
+        if (l.length === 0) {
+          var td0 = poser(poser(tbody, 'tr'), 'td', 'prop-discret', TXT.propTermesAucun);
+          td0.colSpan = COLS_TERMES.length;
+        }
+        l.forEach(function (x) { ligneTermeTable(tbody, m, x); });
+      }
+      q.addEventListener('input', function () { E.q = q.value; remplirTable(); });
+      sr.addEventListener('change', function () { E.role = sr.value; remplirTable(); });
+      sl.addEventListener('change', function () { E.langue = sl.value; remplirTable(); });
+      remplirTable();
+      var pied = poser(vue, 'div', 'prop-termes-precautions');
+      poser(pied, 'p', null, TXT.propTermesPrecaution1);
+      poser(pied, 'p', null, TXT.propTermesPrecaution2);
+      if (t.approx) { poser(pied, 'p', 'prop-termes-approx', TXT.propTermesApprox); }
+    }
+    function ligneTermeTable(tbody, m, x) {
+      var tr = poser(tbody, 'tr', 'prop-ligne-terme');
+      tr.dataset.terme = x.terme;
+      var td = poser(tr, 'td', 'prop-td-terme');
+      var b = poser(td, 'button', 'prop-terme', x.terme);
+      b.type = 'button';
+      if (x.langue && x.langue !== donnees.langue) { b.setAttribute('lang', x.langue); }
+      b.title = remplir('propTermesVoirTip', [x.terme]);
+      b.addEventListener('click', function () { filtrerSurTerme(typeDuMoissonneur(m), x); });
+      poser(tr, 'td', 'prop-discret', x.langue);
+      poser(tr, 'td', null, libelleRole(x.role));
+      poser(tr, 'td', 'prop-termes-num', String(x.ramene));
+      var seul = poser(tr, 'td', 'prop-termes-num prop-termes-fort', (x.approx ? '≈ ' : '') + x.seul);
+      if (x.approx) { seul.title = TXT.propTermesApproxTip; }
+      poser(tr, 'td', 'prop-termes-num', tiret(x.ref));
+      poser(tr, 'td', 'prop-termes-num', tiret(x.refSeul));
+      var tdd = poser(tr, 'td');
+      var d = derniereDemande(m, x.terme, x.langue);
+      if (d) { pastilleStatut(tdd, d); }
+      // Une icône, marquée quand des fiches de référence ne sont retrouvées que par ce terme.
+      var tdg = poser(tr, 'td', 'prop-td-geste');
+      var marque = x.refSeul > 0;
+      var nom = remplir(marque ? 'propTermesNePlusRef' : 'propTermesNePlusLabel', [x.terme]);
+      var g = SZH.bouton('', function () { ouvrirNePlus(g, m, x); }, 'prop-ne-plus' + (marque ? ' prop-ne-plus--ref' : ''), nom);
+      g.setAttribute('aria-label', nom);
+      g.setAttribute('aria-haspopup', 'dialog');
+      g.setAttribute('aria-expanded', 'false');
+      g.appendChild(icone('croix'));
+      if (marque) { var ia = icone('attention'); ia.classList.add('prop-ne-plus-marque'); g.appendChild(ia); }
+      if (exclusionEnAttente(m, x.terme, x.langue)) { g.disabled = true; g.title = TXT.propTermesDemandee; }
+      tdg.appendChild(g);
+    }
+
+    // « Ajouter un terme » : la règle de saisie vient de l'hôte (regleTerme) ; l'erreur s'affiche
+    // pendant la frappe, sous le champ, et la même demande en attente se signale.
+    function erreurTerme(v, F, m) {
+      var t = String(v || '').normalize('NFC').trim();
+      if (!t) { return F.essai ? TXT.propTermesErrVide : ''; }
+      var regle = (donnees && donnees.regleTerme) || {};
+      var n = Array.from(t).length;
+      if (regle.longueur && n > regle.longueur) { return remplir('propTermesErrLong', [n]); }
+      var interdit = null;
+      try { interdit = regle.interdit ? new RegExp(regle.interdit, 'u').exec(t) : null; } catch (e) { interdit = null; }
+      if (interdit) { return remplir('propTermesErrCaractere', [interdit[0]]); }
+      var d = demandesDe(m).filter(function (x) {
+        return x.statut === 'en-attente' && x.sens === F.sens && x.langue === F.langue && memeTerme(x.terme, t);
+      })[0];
+      if (d) { return remplir('propTermesErrDoublon', [d.par, dateCourte(d.le)]); }
+      return F.erreurHote || '';
+    }
+    function formulaireTerme(vue, m) {
+      var F = formTermes;
+      var f = poser(vue, 'form', 'szh-carte prop-termes-form');
+      f.id = 'prop-termes-form';
+      f.noValidate = true;
+      var h = poser(f, 'h3', 'prop-termes-form-titre', TXT.propTermesFormTitre);
+      h.id = 'prop-termes-form-titre';
+      f.setAttribute('aria-labelledby', h.id);
+      var ligne = poser(f, 'div', 'prop-termes-form-ligne');
+      var c1 = poser(ligne, 'div', 'szh-champ prop-termes-form-terme');
+      var l1 = poser(c1, 'label', null, TXT.propTermesFormTerme);
+      l1.htmlFor = 'prop-termes-form-terme';
+      var i1 = poser(c1, 'input');
+      i1.id = 'prop-termes-form-terme';
+      i1.type = 'text';
+      i1.value = F.terme;
+      i1.autocomplete = 'off';
+      var err = poser(c1, 'p', 'prop-termes-erreur');
+      err.id = 'prop-termes-form-erreur';
+      err.hidden = true;
+      var c2 = poser(ligne, 'div', 'szh-champ');
+      var l2 = poser(c2, 'label', null, TXT.propTermesFormLangue);
+      l2.htmlFor = 'prop-termes-form-langue';
+      var s2 = poser(c2, 'select');
+      s2.id = 'prop-termes-form-langue';
+      ['fr', 'de', 'it'].forEach(function (l) { var o = poser(s2, 'option', null, l); o.value = l; });
+      s2.value = F.langue;
+      var fs = poser(ligne, 'fieldset', 'prop-termes-form-sens');
+      poser(fs, 'legend', null, TXT.propTermesFormSens);
+      [['ajout', TXT.propTermesFormAjout], ['exclusion', TXT.propTermesFormExclusion]].forEach(function (o) {
+        var l = poser(fs, 'label', 'prop-termes-radio');
+        var r = poser(l, 'input');
+        r.type = 'radio';
+        r.name = 'prop-termes-form-sens';
+        r.value = o[0];
+        r.checked = F.sens === o[0];
+        r.addEventListener('change', function () { if (r.checked) { F.sens = o[0]; F.erreurHote = ''; } valider(); });
+        poser(l, 'span', null, o[1]);
+      });
+      poser(f, 'p', 'prop-termes-aide', TXT.propTermesFormAide);
+      var g = poser(f, 'div', 'prop-gestes');
+      var env = SZH.bouton(TXT.propTermesFormEnvoyer, function () {}, 'szh-bouton--principal prop-termes-envoyer');
+      env.type = 'submit';
+      g.appendChild(env);
+      g.appendChild(SZH.bouton(TXT.propTermesFormAnnuler, function () {
+        termesEtat.form = false;
+        formTermes = null;
+        toutRendre(false);
+        var b = panel.querySelector('.prop-termes-ajouter');
+        if (b) { b.focus(); }
+      }, 'prop-termes-annuler'));
+      function valider() {
+        var e = erreurTerme(i1.value, F, m);
+        err.textContent = e;
+        err.hidden = !e;
+        i1.setAttribute('aria-invalid', e ? 'true' : 'false');
+        if (e) { i1.setAttribute('aria-describedby', err.id); } else { i1.removeAttribute('aria-describedby'); }
+        return e;
+      }
+      i1.addEventListener('input', function () { F.terme = i1.value; F.erreurHote = ''; valider(); });
+      s2.addEventListener('change', function () { F.langue = s2.value; F.erreurHote = ''; valider(); });
+      f.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        F.essai = true;
+        if (valider()) { i1.focus(); return; }
+        demander(m, i1.value.normalize('NFC').trim(), F.langue, F.sens, 'form');
+      });
+      valider();
+    }
+
     // ---- Clavier : sur le panneau, pour ne jamais agir hors de la vue ------------------------
     function enSaisie(el) {
       if (!el) { return false; }
@@ -1614,7 +2151,7 @@
     function surTouche(ev) {
       if (menu) {
         if (ev.key === 'Escape') { ev.preventDefault(); fermerMenu(true); return; }
-        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        if ((ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && menu.getAttribute('role') !== 'dialog') {
           ev.preventDefault();
           var items = Array.prototype.slice.call(menu.querySelectorAll('button'));
           var i = items.indexOf(document.activeElement) + (ev.key === 'ArrowDown' ? 1 : -1);
@@ -1625,7 +2162,7 @@
           ev.preventDefault();
           ev.target.click();
         }
-        if (ev.key === 'Tab') { fermerMenu(false); }
+        if (ev.key === 'Tab' && menu.getAttribute('role') !== 'dialog') { fermerMenu(false); }
         return;
       }
       var cible0 = ev.target;
@@ -1637,7 +2174,7 @@
         if (annulable) { ev.preventDefault(); annuler(); }
         return;
       }
-      if (ev.ctrlKey || ev.altKey || ev.metaKey || !onglet) { return; }
+      if (ev.ctrlKey || ev.altKey || ev.metaKey || !onglet || onglet === '_termes') { return; }
       if (cible0 && cible0.getAttribute && cible0.getAttribute('role') === 'separator') { return; }
       var lignes = lignesOnglet();
       var idx = lignes.map(function (p) { return p.cle; }).indexOf(courant);
@@ -1736,6 +2273,15 @@
       if (reglages === null) { reglages = Object.assign({}, msg.colonnes || {}); }
       // La marque de l'autre revue : la valeur d'office la première fois qu'on voit la proposition.
       (msg.propositions || []).forEach(function (p) { if (!(p.cle in aussi)) { aussi[p.cle] = !!p.aussi; } });
+      // « Ouvrir Propositions › Termes » : l'onglet Termes, sur le moissonneur demandé.
+      if (msg.ongletDemande && msg.ongletDemande.onglet === '_termes') {
+        onglet = '_termes';
+        if (msg.ongletDemande.moissonneur) { termesEtat.moissonneur = msg.ongletDemande.moissonneur; }
+        selection.clear();
+        detailCle = null;
+        courant = null;
+      }
+      if (msg.demandeGeste) { recevoirDemande(msg.demandeGeste); }
       if (msg.resultat) { appliquerResultat(msg.resultat); }
       if (!panel.hidden) { toutRendre(!!msg.resultat); }
       return true;
