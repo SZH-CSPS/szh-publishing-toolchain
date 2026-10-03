@@ -11,6 +11,27 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.8.0
+
+Medium : la vue Propositions sait doser ce qu'elle montre (curseur de finesse à 10 crans), dit
+pourquoi chaque proposition remonte, et montre ce que chaque mot-clé ramène.
+
+**Production.**
+- Propositions : curseur de finesse de 1 « Très large » à 10 « Strict », réglage normal au
+  cran 2 ; chaque cran affiche ce qu'il montre et masque, et ce qu'il retrouve des fiches
+  publiées. L'aperçu reste sur le poste ; « Garder ce cran pour la rédaction » le partage.
+  L'infobulle dit que la note n'est pas encore calibrée.
+- Propositions : « Pourquoi » donne la note, la catégorie et les termes qui ont fait remonter
+  la proposition.
+- Vue Termes : pour chaque mot-clé, ce qu'il ramène, ce qu'il est seul à ramener et les fiches
+  publiées qu'il retrouve ; un clic filtre la liste. Demandes « Ne plus proposer » et
+  « Ajouter un terme », suivies dans Paramètres > Moissonnage (« Demander quand même » quand
+  une fiche publiée serait perdue).
+- Objets fédéraux et des cantons bilingues : une seule proposition, avec ses titres officiels,
+  visible des deux revues ; acceptée, la fiche naît dans la langue du numéro, et l'autre
+  langue suit (cochée d'office pour les objets fédéraux).
+- Le détail passe en pleine largeur sous 1 280 px de vue (mesuré dans VSCodium).
+
 ## 3.7.3
 
 Mineure : dans le sommaire des livres, le numéro de page d'un titre sur deux lignes se place sur

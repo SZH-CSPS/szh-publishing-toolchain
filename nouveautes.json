@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.8": {
+    "fr": {
+      "titre": "Des propositions à doser",
+      "points": [
+        "Dans Propositions, un curseur règle la finesse du tri, de « Très large » à « Strict » ; il indique ce qu’il masque et ce qu’il retrouve des interventions déjà publiées.",
+        "« Pourquoi » explique chaque proposition : sa note et les mots-clés qui l’ont fait remonter.",
+        "La vue Termes montre ce que chaque mot-clé ramène ; vous pouvez demander de ne plus proposer un terme, ou d’en ajouter un.",
+        "Un objet fédéral n’apparaît qu’une fois, avec son titre officiel dans votre langue, et peut être proposé aussi à l’autre revue."
+      ]
+    },
+    "de": {
+      "titre": "Treffer nach Mass",
+      "points": [
+        "Unter Treffer stellt ein Regler die Feinheit der Auswahl ein, von «Sehr breit» bis «Streng»; er zeigt, was er ausblendet und welche bereits veröffentlichten Vorstösse er findet.",
+        "«Warum» erklärt jeden Treffer: seine Bewertung und die Stichwörter, die ihn hervorgebracht haben.",
+        "Die Ansicht Begriffe zeigt, was jedes Stichwort findet; Sie können beantragen, einen Begriff nicht mehr vorzuschlagen oder einen neuen aufzunehmen.",
+        "Ein Bundesgeschäft erscheint nur einmal, mit seinem offiziellen Titel in Ihrer Sprache, und kann auch der anderen Zeitschrift vorgelegt werden."
+      ]
+    }
+  },
   "3.7": {
     "fr": {
       "titre": "Des notes de bas de page à leur place",
