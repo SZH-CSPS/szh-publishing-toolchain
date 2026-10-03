@@ -304,7 +304,9 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-classique .szh-couv-1re-pied { position: absolute; left: 116.59mm; top: 201.07mm; }
 .szh-couv-classique.szh-couv-illustration-pleine .szh-couv-1re-pied { left: 114.02mm; }
 .szh-couv-classique .szh-couv-logo { left: 0; top: 0; }
-.szh-couv-classique .szh-couv-4e-texte { left: 19.5mm; width: 105.8mm; top: 40.06mm; }
+/* Justification de 4e : largeur, approche et coupures réglées pour que les lignes finissent
+   sur les mêmes mots que les références InDesign (compte dans les planches de comparaison). */
+.szh-couv-classique .szh-couv-4e-texte { left: 19.5mm; width: 105.4mm; top: 40.06mm; }
 .szh-couv-classique .szh-couv-isbn { top: 202.77mm; }
 
 /* ═══ 5. Modèle recherche — calqué sur « Menschen mit Lernschwierigkeiten auf
@@ -346,7 +348,10 @@ a { color: inherit; text-decoration: none; }
 .szh-couv-recherche .szh-couv-dos-texte { font-family: 'SZH Condensed', var(--font-sans); }
 .szh-couv-recherche .szh-couv-logo { left: 110.76mm; top: 4.07mm; }
 
-.szh-couv-recherche .szh-couv-4e-texte { left: 17.25mm; top: 41.01mm; }
+.szh-couv-recherche .szh-couv-4e-texte {
+  left: 17.25mm; top: 41.01mm; letter-spacing: 0.005em; word-spacing: -0.02em;
+  hyphenate-limit-chars: 5 2 2;
+}
 .szh-couv-recherche .szh-couv-isbn { top: 202.53mm; }
 /* Filets à 197,04 et 216,96 mm : capucine sur l'aplat, blancs sur la bande et le dos. */
 .szh-couv-recherche .szh-couv-filet-haut, .szh-couv-recherche .szh-couv-filet-bas {
@@ -434,11 +439,11 @@ a { color: inherit; text-decoration: none; }
 }
 .szh-couv-prospectrum .szh-couv-logo { left: 83.6mm; top: -0.65mm; }
 
-.szh-couv-prospectrum .szh-couv-4e-texte { top: 51.81mm; }
+.szh-couv-prospectrum .szh-couv-4e-texte { top: 51.81mm; width: 105.3mm; word-spacing: 0.02em; }
 .szh-couv-prospectrum .szh-couv-4e-texte h1, .szh-couv-prospectrum .szh-couv-4e-texte h2,
 .szh-couv-prospectrum .szh-couv-4e-texte h3 {
   margin: 0 0 13.5pt 0; font-size: 10pt; line-height: 13.5pt; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.1em;
+  text-transform: uppercase; letter-spacing: 0.1em; word-spacing: 0;
 }
 .szh-couv-prospectrum .szh-couv-4e-texte p + h1, .szh-couv-prospectrum .szh-couv-4e-texte p + h2,
 .szh-couv-prospectrum .szh-couv-4e-texte p + h3 { margin-top: 27pt; }

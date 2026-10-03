@@ -193,6 +193,11 @@ def controler_couverture(out, nom, buch, ref):
         textes = [f for f in operateurs(r) if isinstance(f, str)]
         if any(re.search(r'(?<![\w.])[\d.]+ [\d.]+ [\d.]+ [\d.]+ (?:k|K|scn|SCN)\b', f) for f in textes):
             fail('%s : couleurs CMJN dans le PDF écran' % ecran)
+        # Une illustration CMJN fournie telle quelle (JPEG d'InDesign ou de Photoshop) doit
+        # sortir en RGB à l'écran : laissée en CMJN, chaque lecteur la convertit à sa façon.
+        images = [str(f[1]) for f in operateurs(r) if isinstance(f, tuple)]
+        if any('CMYK' in x for x in images):
+            fail('%s : image CMJN dans le PDF écran (%s)' % (ecran, images))
         if not echecs or ecran not in echecs[-1]:
             ok('%s : 2 pages RGB %d×%d' % (ecran, largeur, hauteur))
 

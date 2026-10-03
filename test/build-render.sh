@@ -253,7 +253,10 @@ if [ -z "$only" ]; then
     cp -a "$REPO/test/livre-normal" "$copie"
     if [ "$modele" = recherche ]; then
       bloc='couverture:\n  modele: recherche'
-      cp "$REPO/test/livre-falc/couverture/illustration.jpg" "$copie/couverture/"
+      # Illustration en JPEG CMJN, comme celles qu'exportent InDesign et Photoshop : le PDF
+      # écran doit la recevoir en RGB (livre-sorties-check.py).
+      "$FONTPY" -c "import sys; from PIL import Image; Image.open(sys.argv[1]).convert('CMYK').save(sys.argv[2], quality=90)" \
+        "$REPO/test/livre-falc/couverture/illustration.jpg" "$copie/couverture/illustration.jpg"
     else
       bloc='couverture:\n  modele: prospectrum\n  titre-2: "Un banc // pour la machine"\n  sous-titre-2: "Second titre"'
       sed -i 's/^couleur-impression:.*/couleur-impression: sapin/' "$copie/buch.yaml"

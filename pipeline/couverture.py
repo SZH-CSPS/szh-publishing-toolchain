@@ -539,6 +539,11 @@ def illustration_uri(chemin, mode, profil_icc, fond_cmjn):
     if mode == 'impression':
         print('[couverture] ⚠ illustration SVG : ses couleurs passent telles quelles dans le '
               'PDF d\'impression, sans conversion CMJN.', file=sys.stderr)
+    elif ext in ('.jpg', '.jpeg'):
+        from PIL import Image
+        im = Image.open(chemin)
+        if im.mode == 'CMYK':   # JPEG CMJN d'InDesign ou de Photoshop : l'écran n'a que du RGB
+            return _cmjn_vers_srgb(im, profil_icc)
     return _data_uri(mime, open(chemin, 'rb').read())
 
 
@@ -548,10 +553,18 @@ def fond_uri(nom, mode, profil_icc):
     chemin = os.path.join(FONDS_DIR, nom)
     if mode == 'impression':
         return _data_uri('image/jpeg', open(chemin, 'rb').read())
-    from PIL import Image, ImageCms
+    from PIL import Image
+    return _cmjn_vers_srgb(Image.open(chemin), profil_icc)
+
+
+def _cmjn_vers_srgb(im, profil_icc):
+    """Une image CMJN en JPEG sRGB : par son profil incorporé s'il en a un, sinon par le
+    profil d'impression ; intention relative colorimétrique, compensation du point noir."""
+    from PIL import ImageCms
+    source = (ImageCms.ImageCmsProfile(io.BytesIO(im.info['icc_profile']))
+              if im.info.get('icc_profile') else ImageCms.ImageCmsProfile(profil_icc))
     rgb = ImageCms.profileToProfile(
-        Image.open(chemin), ImageCms.ImageCmsProfile(profil_icc),
-        ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')),
+        im, source, ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')),
         renderingIntent=ImageCms.Intent.RELATIVE_COLORIMETRIC, outputMode='RGB',
         flags=ImageCms.Flags.BLACKPOINTCOMPENSATION)
     tampon = io.BytesIO()
@@ -817,9 +830,9 @@ def composer(opts, buch, mode):
     couleurs = palette(buch, ref, mode)
     impression = mode == 'impression'
     fp = fond_perdu_mm(buch) if impression else 0.0
-    # Le fond ProSpectrum, en CMJN, passe aussi par le profil pour les sorties écran.
-    icc = (profil_icc(buch, opts.get('icc-dir')) if impression or modele == 'prospectrum'
-           else None)
+    # Le fond ProSpectrum et une illustration CMJN passent aussi par le profil pour l'écran.
+    icc = (profil_icc(buch, opts.get('icc-dir'))
+           if impression or modele == 'prospectrum' or opts.get('illustration') else None)
     fond = fond_uri('prospectrum.jpg', mode, icc) if modele == 'prospectrum' else None
 
     fond_cle, fond_t = fond_couverture(buch)
