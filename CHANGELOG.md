@@ -11,6 +11,25 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.7.1
+
+Mineure : le détail d'une proposition se corrige avant d'être accepté, et une image de livre
+remplacée sous le même nom recompile le livre.
+
+**Production.**
+- Propositions : le détail présente les champs de la fiche, préremplis ; un champ en doute
+  montre ce qui a été lu et un bouton « Appliquer » à la forme imprimée ; Accepter et Garder
+  enregistrent d'abord la page ; « Recréer la fiche » après un échec d'écriture.
+- Documentation : les dates des lignes de suivi montrent leur forme imprimée.
+- Livres : remplacer une image sous le même nom (logos de l'impressum, illustration de partie,
+  portraits des notices, badge, logo de page de titre, fond de couverture) recompile le livre ;
+  le PDF n'est plus déclaré à jour à tort.
+
+**Interne.**
+- Les constructeurs de champs de la Documentation vivent dans `media/_fiche-doc.js` (rendu
+  identique au pixel).
+- Test du verdict PDF/UA rendu déterministe (rouge intermittent sur la CI windows).
+
 ## 3.7.0
 
 Medium, release lourde (l'image est reconstruite) : deux correctifs de WeasyPrint pour les
