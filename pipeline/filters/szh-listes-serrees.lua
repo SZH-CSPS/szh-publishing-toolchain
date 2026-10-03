@@ -90,12 +90,18 @@ end
 
 -- Une liste qui reprend à « 7. » : WeasyPrint ignore l'attribut start de <ol> et imprime
 -- « 1. ». La liste passe dans une boîte qui porte son rang de départ, lu en counter-reset
--- par partage-filtres.css (.szh-liste-rang).
+-- par partage-filtres.css (.szh-liste-rang). Quand la liste atteint 10, data-deux-chiffres
+-- donne le rang du premier item à deux chiffres, que print.css décale comme le 10e item
+-- d'une liste qui part de 1.
 function OrderedList(l)
   l.content = resserrer_items(l.content)
   local debut = l.listAttributes and l.listAttributes.start or l.start or 1
   if debut == 1 then return l end
-  return pandoc.Div({ l }, pandoc.Attr('', { 'szh-liste-rang' }, { style = '--szh-rang: ' .. (debut - 1) }))
+  local attrs = { style = '--szh-rang: ' .. (debut - 1) }
+  if debut + #l.content - 1 >= 10 then
+    attrs['data-deux-chiffres'] = tostring(math.max(1, 11 - debut))
+  end
+  return pandoc.Div({ l }, pandoc.Attr('', { 'szh-liste-rang' }, attrs))
 end
 
 -- Les listes de définitions ont la même structure de balisage (<DL>/<DT>/<DD>) et une autre

@@ -768,6 +768,17 @@ ol > li { padding-left: 0.959277em; }
    numéro commence toujours sur la marge et le texte toujours à 1,7 em. Trois chiffres ne
    tiennent plus dans 1,7 em (1,74 em) : sans objet pour une liste d'article. */
 ol > li:nth-child(n+10) { margin-left: 0.498535em; padding-left: 0.460742em; }
+/* Liste qui reprend plus loin (szh-listes-serrees.lua) : data-deux-chiffres donne le rang du
+   premier item à deux chiffres, décalé comme le 10e item d'une liste qui part de 1. */
+.szh-liste-rang[data-deux-chiffres="1"] > ol > li:nth-child(n+1),
+.szh-liste-rang[data-deux-chiffres="2"] > ol > li:nth-child(n+2),
+.szh-liste-rang[data-deux-chiffres="3"] > ol > li:nth-child(n+3),
+.szh-liste-rang[data-deux-chiffres="4"] > ol > li:nth-child(n+4),
+.szh-liste-rang[data-deux-chiffres="5"] > ol > li:nth-child(n+5),
+.szh-liste-rang[data-deux-chiffres="6"] > ol > li:nth-child(n+6),
+.szh-liste-rang[data-deux-chiffres="7"] > ol > li:nth-child(n+7),
+.szh-liste-rang[data-deux-chiffres="8"] > ol > li:nth-child(n+8),
+.szh-liste-rang[data-deux-chiffres="9"] > ol > li:nth-child(n+9) { margin-left: 0.498535em; padding-left: 0.460742em; }
 /* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
    mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
    non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. Chiffres à
@@ -777,6 +788,15 @@ ol > li::marker { color: var(--c-num-marker); font-weight: 400; font-variant-num
 blockquote ol { padding-left: 0.692383em; }
 blockquote ol > li { padding-left: 1.007617em; }
 blockquote ol > li:nth-child(n+10) { margin-left: 0.468262em; padding-left: 0.539355em; }
+blockquote .szh-liste-rang[data-deux-chiffres="1"] > ol > li:nth-child(n+1),
+blockquote .szh-liste-rang[data-deux-chiffres="2"] > ol > li:nth-child(n+2),
+blockquote .szh-liste-rang[data-deux-chiffres="3"] > ol > li:nth-child(n+3),
+blockquote .szh-liste-rang[data-deux-chiffres="4"] > ol > li:nth-child(n+4),
+blockquote .szh-liste-rang[data-deux-chiffres="5"] > ol > li:nth-child(n+5),
+blockquote .szh-liste-rang[data-deux-chiffres="6"] > ol > li:nth-child(n+6),
+blockquote .szh-liste-rang[data-deux-chiffres="7"] > ol > li:nth-child(n+7),
+blockquote .szh-liste-rang[data-deux-chiffres="8"] > ol > li:nth-child(n+8),
+blockquote .szh-liste-rang[data-deux-chiffres="9"] > ol > li:nth-child(n+9) { margin-left: 0.468262em; padding-left: 0.539355em; }
 /* Listes imbriquées : re-numérotation / re-puçage cohérents. */
 li > ul, li > ol { margin: 0.2em 0 0.1em; }
 
