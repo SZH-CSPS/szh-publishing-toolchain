@@ -88,9 +88,14 @@ function BulletList(l)
   return l
 end
 
+-- Une liste qui reprend à « 7. » : WeasyPrint ignore l'attribut start de <ol> et imprime
+-- « 1. ». La liste passe dans une boîte qui porte son rang de départ, lu en counter-reset
+-- par partage-filtres.css (.szh-liste-rang).
 function OrderedList(l)
   l.content = resserrer_items(l.content)
-  return l
+  local debut = l.listAttributes and l.listAttributes.start or l.start or 1
+  if debut == 1 then return l end
+  return pandoc.Div({ l }, pandoc.Attr('', { 'szh-liste-rang' }, { style = '--szh-rang: ' .. (debut - 1) }))
 end
 
 -- Les listes de définitions ont la même structure de balisage (<DL>/<DT>/<DD>) et une autre

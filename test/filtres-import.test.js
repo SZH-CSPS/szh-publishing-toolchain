@@ -98,6 +98,21 @@ test('notes : une note à deux paragraphes est aplatie en une seule ligne', () =
   assert.strictEqual((html.match(/<span class="szh-note">/g) || []).length, 1, html);
 });
 
+// ── szh-listes-serrees.lua : une liste qui reprend à « 7. » garde son rang ──────────────
+// WeasyPrint ignore l'attribut start d'un <ol> : la liste porte son rang dans une boîte
+// enveloppe (.szh-liste-rang, --szh-rang), que partage-filtres.css lit en counter-reset.
+const LISTE_REPRISE = 'Texte.\n\n7. Sieben\n8. Acht\n';
+
+test('listes : une liste qui commence à 7 est enveloppée avec son rang de départ', () => {
+  const html = pandoc(LISTE_REPRISE, { vers: 'html5', filtres: ['szh-listes-serrees.lua'] });
+  assert.match(html, /<div class="szh-liste-rang" style="--szh-rang: 6">\s*<ol start="7"/, html);
+});
+
+test('listes : une liste qui commence à 1 reste nue', () => {
+  const html = pandoc('1. Eins\n2. Zwei\n', { vers: 'html5', filtres: ['szh-listes-serrees.lua'] });
+  assert.doesNotMatch(html, /szh-liste-rang/, html);
+});
+
 // ── szh-listes-serrees.lua : une liste lâche perd ses <p> internes (PDF/UA-1 7.2-20) ───
 // Branché deux fois dans pipeline/Makefile (PDF et aperçu), toujours avant
 // szh-tabelle-inclure. Sortie observée : le nombre de <p> à l'intérieur de la liste.

@@ -131,6 +131,9 @@ function cas() {
     l.push({ nom, base, html: livre('<section class="szh-liminaire szh-page-titre"><p class="szh-auteurs">' + noms
       + '</p><p class="szh-titre">Ein Titel</p><p class="szh-sous-titre">Ein Untertitel</p></section>') });
   }
+  // Liste numérotée qui reprend à 7 (balisage de szh-listes-serrees.lua).
+  l.push({ nom: 'liste-rang', base, html: livre(chapitre('a', '<p>' + TEXTE + '</p>'
+    + '<div class="szh-liste-rang" style="--szh-rang: 6"><ol start="7"><li>Sieben</li><li>Acht</li></ol></div>')) });
   // Impressum court et impressum long : la fin du texte tombe au même endroit.
   for (const [nom, n] of [['impressum-court', 3], ['impressum-long', 9]]) {
     l.push({ nom, base, html: livre('<section class="szh-liminaire szh-impressum">'
@@ -289,4 +292,13 @@ test('rendu normal : le titre de la page de titre ne bouge pas avec la ligne des
     proche(v.ls[v.i][0], 48.6, 0.25, nom + ', titre');
     proche(v.ls[0][0], 23.8, 0.25, nom + ', éditeurs');
   }
+});
+
+// Une liste qui reprend à 7 (HfH p166) imprime 7., 8. et non 1., 2.
+test('rendu normal : une liste numérotée garde son rang de départ', (t) => {
+  if (sansPandocWsl) { sauter.wsl(t); return; }
+  const texte = mesures()['liste-rang'].pages.flat().map((x) => x[3]).join('\n');
+  assert.match(texte, /7\./, texte);
+  assert.match(texte, /8\./, texte);
+  assert.doesNotMatch(texte, /(^|\n)1\.\s/, texte);
 });

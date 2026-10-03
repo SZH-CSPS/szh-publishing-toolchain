@@ -758,13 +758,11 @@ li { position: relative; padding-left: 0.945776em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 /* Le marqueur hérite l'interligne du <li> : sa ligne de base se cale sur celle du texte. */
 ul > li::marker { color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; }
-/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré — un
-   `<ol start="13">` numérote « 1. ». Les variantes ont été essayées : natif pur, ::marker,
-   ::before + counter(list-item), compteur maison. Toutes donnent « 1. ». Une liste qui doit
-   commencer à un autre rang ne peut donc pas s'obtenir en CSS ici. Conséquence côté saisie :
-   un descriptif de fiche qui commence par « 13. » perdrait son nombre en silence —
-   lib/ressources.js (cockpit) échappe donc le point à l'écriture, pour que ce texte reste un
-   paragraphe. L'attribut `type` (« a. », « i. ») est ignoré de même : szh-numero l'emporte. */
+/* ⚠ WeasyPrint n'honore pas l'attribut `start` d'un <ol> : un `<ol start="13">` numérote
+   « 1. ». szh-listes-serrees.lua enveloppe donc une telle liste dans .szh-liste-rang, dont
+   partage-filtres.css lit le rang de départ en counter-reset. Côté saisie, lib/ressources.js
+   (cockpit) échappe le point d'un descriptif de fiche qui commence par « 13. », pour que ce
+   texte reste un paragraphe. L'attribut `type` (« a. », « i. ») est ignoré de même : szh-numero l'emporte. */
 ol > li { padding-left: 0.959277em; }
 /* À partir de 10, le numéro gagne un chiffre : le <li> s'écarte d'autant (marge), pour que le
    numéro commence toujours sur la marge et le texte toujours à 1,7 em. Trois chiffres ne

@@ -274,3 +274,7 @@ a.szh-orcid::after { content: none; }
 div.szh-image-introuvable { margin: 1.4em 0; padding: 1.2em 1em; break-inside: avoid; }
 div.szh-image-introuvable > p { margin: 0; text-align: left; text-indent: 0; }
 span.szh-image-introuvable { padding: 0 0.25em; }
+
+/* Liste qui reprend à un autre rang que 1, posée par szh-listes-serrees.lua : WeasyPrint
+   ignore l'attribut start de <ol>, le rang de départ passe par le compteur list-item. */
+.szh-liste-rang > ol { counter-reset: list-item var(--szh-rang, 0); }
