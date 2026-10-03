@@ -32,8 +32,9 @@
   var poser = SZH.poser, icone = SZH.icone;
 
   // Sous cette largeur de la webview, le détail prend toute la place et l'emporte sur les
-  // largeurs mémorisées. Valeur provisoire, à fixer dans une vraie fenêtre VSCodium.
-  var SEUIL_DETAIL_PLEIN = 960;
+  // largeurs mémorisées. Mesuré dans VSCodium (03.10.2026) : à 1160 px, le tableau à côté du
+  // détail défile en largeur et tronque ses colonnes ; à 1290 px, il se lit sans défiler.
+  var SEUIL_DETAIL_PLEIN = 1280;
   var LARGEUR_MAX = 900, PAS_CLAVIER = 16, PAS_CLAVIER_GRAND = 64;
   var DUREE_BANDEAU = 10000, DUREE_AVIS = 6000;
   // Au plus une vérification par l'hôte dans cet intervalle, pendant la frappe.

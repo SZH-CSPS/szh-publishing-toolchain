@@ -592,6 +592,12 @@ test('page : sous le seuil, le détail prend toute la largeur, avec « ← Liste
   assert.strictEqual(panel.querySelector('.prop-detail .szh-tete-nom').textContent, 'Zêta fédéral');
   page.redimensionner(1400);
   assert.ok(panel.querySelector('.prop-split--detail'));
+  // Mesuré dans VSCodium : entre 960 et 1280 px de vue, le tableau à côté du détail défile
+  // en largeur et tronque ses colonnes ; le détail y prend donc toute la place.
+  page.redimensionner(1200);
+  assert.ok(panel.querySelector('.prop-split--plein'), 'à 1200 px, le détail devait passer en pleine largeur');
+  page.redimensionner(1300);
+  assert.ok(panel.querySelector('.prop-split--detail'), 'à 1300 px, le détail reste à côté du tableau');
 });
 
 test('page : sans rien en attente, la vue dit les dernières moissons et leurs échecs', async () => {
