@@ -92,6 +92,11 @@ let tour = 0;
 async function compilerEtValider(reperes) {
   tour++;
   fs.writeFileSync(PDF, '%PDF-1.7 essai ' + tour + '\n', 'utf8');
+  // Les PDF d'essai ont tous la même taille, et coedition.empreinte() ne relit le fichier
+  // que si la taille ou le mtime change : deux écritures dans le même tic d'horloge
+  // passaient pour le même PDF, jamais revalidé. Un mtime propre à chaque tour l'exclut.
+  const t = 1700000000 + tour;
+  fs.utimesSync(PDF, t, t);
   reperesRendus = reperes;
   await pdfua.planifier(racine);
   await new Promise((r) => setImmediate(r));
