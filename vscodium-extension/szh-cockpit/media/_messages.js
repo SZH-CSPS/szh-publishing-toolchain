@@ -142,10 +142,13 @@ SZH.MSG = Object.freeze({
   DOC_AUTREREVUE_CHARGER: 'docAutreRevueCharger', DOC_AUTREREVUE_DONNEES: 'docAutreRevueDonnees',
   // Documentation, vue « Propositions » (lib/propositions.js). La page demande les données
   // (PROP_CHARGER) ; l'hôte les rend, et les renvoie après chaque geste avec son résultat
-  // (PROP_DONNEES). Les gestes : accepter { demandes: [{ cle, aussi }], dansNumero,
+  // (PROP_DONNEES). Les gestes : accepter { demandes: [{ cle, aussi, valeurs?, touches? }], dansNumero,
   // depuisDetail }, refuser { cles, motif }, annuler { cles }. PROP_COLONNES range le réglage
   // des colonnes d'un type ({ typeFiche, reglage }) dans le globalState du poste.
   PROP_CHARGER: 'propCharger', PROP_DONNEES: 'propDonnees',
   PROP_ACCEPTER: 'propAccepter', PROP_REFUSER: 'propRefuser', PROP_ANNULER: 'propAnnuler',
-  PROP_COLONNES: 'propColonnes', PROP_OUVRIR_SOURCE: 'propOuvrirSource'
+  PROP_COLONNES: 'propColonnes', PROP_OUVRIR_SOURCE: 'propOuvrirSource',
+  // Le détail : PROP_VERIFIER { cle, jeton, valeurs, touches } -> PROP_VERIFIE { cle, jeton,
+  // bloquants } ; PROP_RECREER { cle, valeurs } recrée la fiche d'une acceptée introuvable.
+  PROP_VERIFIER: 'propVerifier', PROP_VERIFIE: 'propVerifie', PROP_RECREER: 'propRecreer'
 });

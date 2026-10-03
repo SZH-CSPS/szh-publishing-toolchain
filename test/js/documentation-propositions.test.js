@@ -274,7 +274,7 @@ function pageDocumentation(ressources, vue) {
   const txt = libellesHote(RACINE, ['textesDocumentation']);
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css', '_propositions.css'],
-    jsPartage: ['_messages.js', '_propositions.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js', '_propositions.js'], txt: txt
   });
   page.envoyer({
     type: MSG.CHARGER, slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -325,7 +325,7 @@ async function relayer(page, p) {
     p.messages.length = 0;
     await p._recepteur(m);
     for (const r of p.messages) {
-      if (r.type === MSG.PROP_DONNEES || r.type === MSG.CHARGER) { page.envoyer(JSON.parse(JSON.stringify(r))); }
+      if (r.type === MSG.PROP_DONNEES || r.type === MSG.CHARGER || r.type === MSG.PROP_VERIFIE) { page.envoyer(JSON.parse(JSON.stringify(r))); }
     }
   }
   return envoyes;
@@ -549,19 +549,34 @@ test('page : la poignée de largeur se manie au clavier et se mémorise', async 
   assert.strictEqual(m.reglage.largeurs.titre, avant + 16);
 });
 
-test('page : avec une carte du numéro non enregistrée, Accepter est refusé et le dit', async () => {
+test('page : avec une carte du numéro non enregistrée, Accepter et Garder l’enregistrent d’abord, et partent à l’accusé', async () => {
   repartir();
-  const { page, panel, txt } = await vueBranchee([LIVRE_CARTE]);
+  let page, panel, p;
+  for (const [id, classe, dansNumero] of [['GE-1', '.prop-bouton-accepter', true], ['NE-1', '.prop-bouton-garder', false]]) {
+    ({ page, panel, p } = await vueBranchee([LIVRE_CARTE]));
+    onglet(page, 'intervention').click();
+    const titre = champTitre(page);
+    titre.value = 'Saisie en cours ' + id;
+    titre.dispatchEvent({ type: 'input' });
+    page.messages.length = 0;
+    ligne(panel, id).querySelector(classe).click();
+    assert.strictEqual(envoyes(page, MSG.ENREGISTRER).length, 1, 'la carte part d’abord');
+    assert.strictEqual(envoyes(page, MSG.PROP_ACCEPTER).length, 0, 'le geste attend l’accusé');
+    page.envoyer({ type: MSG.ENREGISTRE, auto: true, correspondances: [] });
+    const m = envoyes(page, MSG.PROP_ACCEPTER);
+    assert.strictEqual(m.length, 1, 'le geste part à l’accusé');
+    assert.strictEqual(m[0].dansNumero, dansNumero);
+    await relayer(page, p);
+    assert.strictEqual(pr.lireDecision(RACINE_ARBRE, cle(id)).decision, 'accepte');
+  }
+  // Refuser ne recharge rien : il part aussitôt.
   const titre = champTitre(page);
-  titre.value = 'Saisie en cours';
+  titre.value = 'Encore une saisie';
   titre.dispatchEvent({ type: 'input' });
-  onglet(page, 'intervention').click();
-  ligne(panel, 'GE-1').querySelector('.prop-bouton-accepter').click();
-  assert.strictEqual(envoyes(page, MSG.PROP_ACCEPTER).length, 0, 'le rechargement qui suivrait perdrait la saisie');
-  assert.strictEqual(panel.querySelector('.prop-avis').textContent, txt.propEnregistrerDabord);
-  // Refuser ne recharge rien : il reste possible.
-  ligne(panel, 'GE-1').querySelector('.prop-bouton-refuser').click();
+  page.messages.length = 0;
+  ligne(panel, 'CH-1').querySelector('.prop-bouton-refuser').click();
   assert.strictEqual(envoyes(page, MSG.PROP_REFUSER).length, 1);
+  assert.strictEqual(envoyes(page, MSG.ENREGISTRER).length, 0);
 });
 
 test('page : sous le seuil, le détail prend toute la largeur, avec « ← Liste » et « Suivante »', async () => {
@@ -646,4 +661,258 @@ test('libellés : « Vorschlag » est réservé aux suggestions, les objets mois
   assert.deepStrictEqual(fautives, []);
   assert.strictEqual(TEXTES_COCKPIT.de['doc.prop.vue'], 'Treffer');
   assert.match(TEXTES_COCKPIT.fr['sugg.aide'], /^Une suggestion ne remplace rien/);
+});
+
+// ---- Le formulaire du détail ------------------------------------------------------------------
+
+test('hôte : PROP_VERIFIER répond par bloquants(), compte tenu des valeurs et des champs touchés', async () => {
+  repartir();
+  const p = await panneau();
+  const verifier = async (valeurs, touches) => {
+    p.messages.length = 0;
+    await p._recepteur({ type: MSG.PROP_VERIFIER, cle: cle('VD-1'), jeton: 4, valeurs: valeurs, touches: touches });
+    const r = derniere(p, MSG.PROP_VERIFIE);
+    assert.ok(r, 'aucune réponse PROP_VERIFIE');
+    assert.strictEqual(r.cle, cle('VD-1'));
+    assert.strictEqual(r.jeton, 4);
+    return r.bloquants;
+  };
+  const v = LOT.find((x) => x.cle === cle('VD-1')).valeurs;
+  assert.deepStrictEqual(await verifier(v, []), [{ code: 'doute-non-touche', champ: 'date' }]);
+  assert.deepStrictEqual(await verifier(Object.assign({}, v, { date: '4 mars' }), ['date']), [{ code: 'date-hors-format', champ: 'date' }]);
+  assert.deepStrictEqual(await verifier(Object.assign({}, v, { date: '2026-03-05' }), ['date']), []);
+});
+
+test('hôte : à l’acceptation depuis le détail, bloquants() est rappelé et refuse ce qui bloque', async () => {
+  repartir();
+  const p = await panneau();
+  const v = Object.assign({}, LOT.find((x) => x.cle === cle('VD-1')).valeurs, { date: '2026-03-05' });
+  await p._recepteur({ type: MSG.PROP_ACCEPTER, dansNumero: true, depuisDetail: true,
+    demandes: [{ cle: cle('VD-1'), valeurs: v, touches: [] }] });
+  assert.deepStrictEqual(derniere(p, MSG.PROP_DONNEES).resultat.ignorees, [{ cle: cle('VD-1'), raison: 'a-verifier' }]);
+  assert.strictEqual(pr.lireDecision(RACINE_ARBRE, cle('VD-1')), null);
+  await p._recepteur({ type: MSG.PROP_ACCEPTER, dansNumero: true, depuisDetail: true,
+    demandes: [{ cle: cle('VD-1'), valeurs: v, touches: ['date'] }] });
+  const f = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).find((x) => x.valeurs.title === 'Date douteuse');
+  assert.ok(f, 'la fiche n’est pas créée');
+  assert.strictEqual(f.valeurs.date, '2026-03-05');
+});
+
+// La création de fiche échoue, une fois : l'acceptation laisse sa décision (raison fiche-introuvable).
+function creationEnEchec() {
+  const origine = kirby.creerFiche;
+  kirby.creerFiche = function () { kirby.creerFiche = origine; throw new Error('disque plein'); };
+  return () => { kirby.creerFiche = origine; };
+}
+
+test('hôte : une création échouée se dit dans le résultat, et PROP_RECREER recrée avec l’Uuid de la décision', async () => {
+  repartir();
+  const p = await panneau();
+  const remettre = creationEnEchec();
+  try {
+    await p._recepteur({ type: MSG.PROP_ACCEPTER, dansNumero: true, demandes: [{ cle: cle('GE-1') }] });
+  } finally { remettre(); }
+  const d = derniere(p, MSG.PROP_DONNEES);
+  assert.deepStrictEqual(d.resultat.echecs, [{ cle: cle('GE-1'), raison: 'fiche-introuvable' }]);
+  assert.strictEqual(d.introuvables, undefined, 'la vue ne liste plus d’introuvables');
+  const uuid = pr.lireDecision(RACINE_ARBRE, cle('GE-1')).fiche;
+  const v = Object.assign({}, LOT.find((x) => x.cle === cle('GE-1')).valeurs, { title: 'Alpha recréée' });
+  p.messages.length = 0;
+  await p._recepteur({ type: MSG.PROP_RECREER, cle: cle('GE-1'), valeurs: v });
+  const r = derniere(p, MSG.PROP_DONNEES);
+  assert.strictEqual(r.resultat.geste, 'recree');
+  assert.deepStrictEqual(r.resultat.faites, [cle('GE-1')]);
+  const f = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).find((x) => x.uuid === uuid);
+  assert.ok(f && f.valeurs.title === 'Alpha recréée', 'fiche absente ou sans la saisie');
+  assert.ok(p.messages.some((m) => m.type === MSG.CHARGER), 'la Documentation du numéro doit se recharger');
+  await p._recepteur({ type: MSG.PROP_RECREER, cle: cle('GE-1'), valeurs: v });
+  assert.deepStrictEqual(derniere(p, MSG.PROP_DONNEES).resultat.echecs, [{ cle: cle('GE-1'), raison: 'fiche-presente' }]);
+});
+
+function detail(panel) { const d = panel.querySelector('.prop-detail'); assert.ok(d, 'détail absent'); return d; }
+function champDetail(panel, cleChamp) {
+  const c = detail(panel).querySelector('[data-champ="' + cleChamp + '"]');
+  assert.ok(c, 'champ absent du formulaire : ' + cleChamp);
+  return c;
+}
+function formeDate(page, valeur, forme) {
+  const m = envoyes(page, MSG.DOC_DATE_FORMER).filter((x) => x.valeurs[x.valeurs.length - 1] === valeur).pop();
+  assert.ok(m, 'aucune demande de forme pour ' + valeur);
+  page.envoyer({ type: MSG.DOC_DATE_FORMEE, jeton: m.jeton, ok: true, forme: forme });
+}
+
+test('page : le détail porte les champs du contrat, préremplis ; un champ en doute est marqué, lu à côté, Appliquer à la forme imprimée', async () => {
+  repartir();
+  const { page, panel, txt } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'VD-1').querySelector('.prop-bouton-verifier').click();
+  const det = detail(panel);
+  assert.strictEqual(champDetail(panel, 'title').querySelector('input').value, 'Date douteuse');
+  assert.strictEqual(champDetail(panel, 'canton').querySelector('select').value, 'VD');
+  const date = champDetail(panel, 'date');
+  assert.ok(date.classList.contains('prop-champ--doute'), 'le champ en doute n’est pas marqué');
+  assert.ok(date.textContent.indexOf(txt.propDouteLu.replace('{0}', '4 mars')) !== -1, 'la valeur lue manque à côté du champ');
+  assert.ok(date.textContent.indexOf(txt.propDouteDateIllisible) !== -1, 'le texte du doute manque');
+  assert.strictEqual(champDetail(panel, 'canton').classList.contains('prop-champ--doute'), false);
+  const appliquer = date.querySelector('.prop-appliquer');
+  assert.ok(appliquer, 'bouton Appliquer absent');
+  formeDate(page, '2026-03-04', '04.03.2026');
+  assert.strictEqual(appliquer.textContent, txt.propAppliquer.replace('{0}', '04.03.2026'));
+  assert.ok(det.querySelector('.prop-doutes').textContent.indexOf(txt.propDouteSuggestion.replace('{0}', '04.03.2026')) !== -1,
+    'la liste des doutes doit montrer la forme imprimée');
+  // Rien ne s'écrit avant le geste.
+  assert.strictEqual(envoyes(page, MSG.ENREGISTRER).length, 0);
+});
+
+test('page : Appliquer pose l’ISO et touche le champ ; l’hôte débloque Accepter, qui envoie la saisie', async () => {
+  repartir();
+  const { page, panel, p } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'VD-1').querySelector('.prop-bouton-verifier').click();
+  assert.strictEqual(detail(panel).querySelector('.prop-detail-accepter').disabled, true);
+  page.messages.length = 0;
+  champDetail(panel, 'date').querySelector('.prop-appliquer').click();
+  assert.strictEqual(champDetail(panel, 'date').querySelector('input').value, '2026-03-04');
+  const v = envoyes(page, MSG.PROP_VERIFIER).pop();
+  assert.ok(v, 'la page doit demander bloquants() à l’hôte');
+  assert.deepStrictEqual(v.touches, ['date']);
+  assert.strictEqual(v.valeurs.date, '2026-03-04');
+  assert.strictEqual(detail(panel).querySelector('.prop-detail-accepter').disabled, true, 'la page ne décide pas seule');
+  await relayer(page, p);
+  const acc = detail(panel).querySelector('.prop-detail-accepter');
+  assert.strictEqual(acc.disabled, false);
+  assert.strictEqual(detail(panel).querySelector('.prop-bloque'), null, '« Vérifiez d’abord » doit disparaitre');
+  acc.click();
+  const m = envoyes(page, MSG.PROP_ACCEPTER).pop();
+  assert.strictEqual(m.depuisDetail, true);
+  assert.strictEqual(m.demandes[0].valeurs.date, '2026-03-04');
+  assert.deepStrictEqual(m.demandes[0].touches, ['date']);
+  await relayer(page, p);
+  const uuid = pr.lireDecision(RACINE_ARBRE, cle('VD-1')).fiche;
+  const f = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).find((x) => x.uuid === uuid);
+  assert.strictEqual(f.valeurs.date, '2026-03-04');
+});
+
+test('page : une saisie touche le champ ; une date hors format garde Accepter grisé, avec sa raison', async () => {
+  repartir();
+  const { page, panel, p, txt } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'VD-1').querySelector('.prop-bouton-verifier').click();
+  const input = champDetail(panel, 'date').querySelector('input');
+  input.type = 'text';
+  input.value = '4 mars';
+  input.dispatchEvent({ type: 'input' });
+  input.dispatchEvent({ type: 'focusout', bubbles: true });
+  const v = envoyes(page, MSG.PROP_VERIFIER).pop();
+  assert.deepStrictEqual(v.touches, ['date']);
+  await relayer(page, p);
+  const acc = detail(panel).querySelector('.prop-detail-accepter');
+  assert.strictEqual(acc.disabled, true);
+  assert.strictEqual(acc.title, txt.propBloque.replace('{0}', 'Date'));
+  input.type = 'date';
+  input.value = '2026-03-05';
+  input.dispatchEvent({ type: 'input' });
+  input.dispatchEvent({ type: 'focusout', bubbles: true });
+  await relayer(page, p);
+  assert.strictEqual(detail(panel).querySelector('.prop-detail-accepter').disabled, false);
+  // Le champ reste marqué : le doute se lit jusqu'au geste.
+  assert.ok(champDetail(panel, 'date').classList.contains('prop-champ--doute'));
+});
+
+test('page : la saisie du détail survit à un rendu de la vue', async () => {
+  repartir();
+  const { page, panel } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'VD-1').querySelector('.prop-bouton-verifier').click();
+  const t = champDetail(panel, 'title').querySelector('input');
+  t.value = 'Titre retouché';
+  t.dispatchEvent({ type: 'input' });
+  page.redimensionner(800);
+  page.redimensionner(1400);
+  assert.strictEqual(champDetail(panel, 'title').querySelector('input').value, 'Titre retouché');
+});
+
+test('page : une création échouée offre « Recréer la fiche », dans le pied et le détail, avec la saisie', async () => {
+  repartir();
+  const { page, panel, p, txt } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'GE-1').querySelector('.prop-titre').click();
+  const t = champDetail(panel, 'title').querySelector('input');
+  t.value = 'Alpha corrigée';
+  t.dispatchEvent({ type: 'input' });
+  await relayer(page, p);
+  detail(panel).querySelector('.prop-detail-accepter').click();
+  const remettre = creationEnEchec();
+  try { await relayer(page, p); } finally { remettre(); }
+  const offre = panel.querySelector('.prop-pied .prop-echouee');
+  assert.ok(offre, 'le pied doit offrir de recréer');
+  assert.ok(offre.textContent.indexOf(txt.propIntrouvable.replace('{0}', 'Alpha genevois')) !== -1, offre.textContent);
+  assert.ok(lignes(panel).every((tr) => tr.dataset.cle !== cle('GE-1')), 'une acceptée ne revient pas dans la liste');
+  const det = detail(panel);
+  assert.strictEqual(det.querySelector('.prop-detail-accepter'), null, 'on n’accepte pas deux fois');
+  assert.strictEqual(champDetail(panel, 'title').querySelector('input').value, 'Alpha corrigée', 'la saisie reste');
+  page.messages.length = 0;
+  det.querySelector('.prop-recreer').click();
+  const m = envoyes(page, MSG.PROP_RECREER).pop();
+  assert.ok(m, 'PROP_RECREER absent');
+  assert.strictEqual(m.valeurs.title, 'Alpha corrigée');
+  await relayer(page, p);
+  const uuid = pr.lireDecision(RACINE_ARBRE, cle('GE-1')).fiche;
+  assert.ok(kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).some((x) => x.uuid === uuid && x.valeurs.title === 'Alpha corrigée'));
+  assert.strictEqual(panel.querySelector('.prop-echouee'), null, 'l’offre part avec la recréation');
+  assert.ok(panel.querySelector('.prop-bandeau'), 'le bandeau dit le geste');
+});
+
+test('page : une acceptation échouée en lot s’offre aussi à recréer, avec les valeurs de la proposition', async () => {
+  repartir();
+  const { page, panel, p } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'NE-1').querySelector('.prop-bouton-accepter').click();
+  const remettre = creationEnEchec();
+  try { await relayer(page, p); } finally { remettre(); }
+  assert.strictEqual(panel.querySelector('.prop-detail'), null);
+  panel.querySelector('.prop-pied .prop-recreer').click();
+  const m = envoyes(page, MSG.PROP_RECREER).pop();
+  assert.strictEqual(m.valeurs.title, 'Bêta neuchâtelois');
+});
+
+test('page : une fiche acceptée puis supprimée dans la Documentation ne revient pas dans la vue', async () => {
+  repartir();
+  const pr0 = await panneau();
+  await pr0._recepteur({ type: MSG.PROP_ACCEPTER, dansNumero: true, demandes: [{ cle: cle('GE-1') }] });
+  const uuid = pr.lireDecision(RACINE_ARBRE, cle('GE-1')).fiche;
+  const f = kirby.listerFichesNumero(RACINE_ARBRE, 'fr', ausgabeId()).find((x) => x.uuid === uuid);
+  assert.ok(kirby.supprimerFicheLangue(RACINE_ARBRE, f.slug, 'fr').ok, 'suppression impossible');
+  const { page, panel } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  assert.ok(lignes(panel).every((tr) => tr.dataset.cle !== cle('GE-1')), 'la supprimée revient dans la liste');
+  assert.strictEqual(panel.querySelector('.prop-recreer'), null, 'aucune offre de recréation');
+  assert.strictEqual(panel.querySelector('.prop-echouee'), null);
+});
+
+test('page : le champ couverture n’est pas dans le formulaire, une ligne dit de l’ajouter après acceptation', async () => {
+  repartir();
+  ecrireLot('2026-10-02-1.jsonl', [proposition('livre', 'L-1', { categorie: 'manuel', title: 'Un livre', auteurs: 'A',
+    annee: '2026', editeur: 'E', descriptif: 'D' })], 'isbn');
+  const { page, panel, txt } = await vueBranchee();
+  onglet(page, 'livre').click();
+  ligne(panel, 'L-1').querySelector('.prop-titre').click();
+  assert.strictEqual(detail(panel).querySelector('[data-champ="couverture"]'), null);
+  assert.ok(detail(panel).textContent.indexOf(txt.propCouverture) !== -1);
+});
+
+test('page : dans le détail, la date d’une ligne de suivi montre aussi sa forme imprimée', async () => {
+  repartir();
+  ecrireLot('2026-10-02-1.jsonl', [intervention('SU-1', 'GE', 'Avec un suivi',
+    { valeurs: { title: 'Avec un suivi', canton: 'GE', categorie: 'motion', numero: 'M 7', date: '2026-03-04',
+      source: 'openparldata', suivi: [{ date: '2026-05-02', genre: '', libelle: 'Réponse', lien: '' }] } })]);
+  const { page, panel, txt } = await vueBranchee();
+  onglet(page, 'intervention').click();
+  ligne(panel, 'SU-1').querySelector('.prop-titre').click();
+  const date = champDetail(panel, 'suivi').querySelectorAll('input').find((e) => e.id.indexOf('sc-suivi-date-') === 0);
+  assert.ok(date, 'date de suivi absente du formulaire');
+  page.messages.length = 0;
+  date.dispatchEvent({ type: 'blur' });
+  formeDate(page, '2026-05-02', '02.05.2026');
+  assert.strictEqual(date.parent.querySelector('.doc-date-forme').textContent, txt.dateImprime.replace('{0}', '02.05.2026'));
 });

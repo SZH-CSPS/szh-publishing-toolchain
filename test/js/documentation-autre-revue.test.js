@@ -79,7 +79,7 @@ function pageReprise(valeursReprise) {
   const typesConfig = doc._libelles.typesRessourceConfig('fr', 'revue');
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,

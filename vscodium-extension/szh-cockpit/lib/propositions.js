@@ -422,10 +422,21 @@ function enAttenteParCle(racineArbreVal, langue) {
   return new Map(listerPropositions(racineArbreVal, langue).propositions.map((p) => [p.cle, p]));
 }
 
-// accepterLot(racine, langue, [{ cle, aussi }], { ausgabeId, depuisDetail })
+// Les valeurs saisies dans le détail, réduites aux clés du contrat, par-dessus la proposition.
+function valeursSaisies(p, saisies) {
+  const res = Object.assign({}, p.valeurs || {});
+  for (const c of kirby.champsDuType(p.type)) {
+    if (c.saisie === 'fichier' || !Object.prototype.hasOwnProperty.call(saisies, c.cle)) { continue; }
+    res[c.cle] = saisies[c.cle];
+  }
+  return res;
+}
+
+// accepterLot(racine, langue, [{ cle, aussi, valeurs?, touches? }], { ausgabeId, depuisDetail })
 //   -> { faites: [cle], ignorees: [{ cle, raison }], echecs: [{ cle, raison }] }.
-// Un cas B ne s'accepte que depuis son détail, seul, et sans rien qui bloque ; ses valeurs
-// sont celles de la proposition, telles quelles. `aussi` vaut pour sa seule proposition.
+// En lot, une proposition s'accepte telle quelle, et un cas B jamais. Depuis son détail, seule,
+// elle s'accepte avec les valeurs saisies si bloquants() ne trouve rien, compte tenu des champs
+// touchés. `aussi` vaut pour sa seule proposition.
 function accepterLot(racineArbreVal, langue, demandes, options) {
   const o = options || {};
   const attente = enAttenteParCle(racineArbreVal, langue);
@@ -435,11 +446,16 @@ function accepterLot(racineArbreVal, langue, demandes, options) {
     const p = attente.get(String((d && d.cle) || ''));
     if (!p) { res.ignorees.push({ cle: String((d && d.cle) || ''), raison: 'deja-decidee' }); continue; }
     const seulDepuisDetail = !!o.depuisDetail && liste.length === 1;
-    if (classer(p).cas === 'B' && !(seulDepuisDetail && bloquants(p).length === 0)) {
+    const saisies = seulDepuisDetail && d.valeurs && typeof d.valeurs === 'object' && !Array.isArray(d.valeurs)
+      ? valeursSaisies(p, d.valeurs) : null;
+    const touches = Array.isArray(d.touches) ? d.touches.map(String) : [];
+    const bloque = saisies ? bloquants(p, saisies, touches).length > 0
+      : classer(p).cas === 'B' && !(seulDepuisDetail && bloquants(p).length === 0);
+    if (bloque) {
       res.ignorees.push({ cle: p.cle, raison: 'a-verifier' });
       continue;
     }
-    const r = accepter(racineArbreVal, p, p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi });
+    const r = accepter(racineArbreVal, p, saisies || p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi });
     if (r.ok) { res.faites.push(p.cle); } else { res.echecs.push({ cle: p.cle, raison: r.raison }); }
   }
   return res;
@@ -486,11 +502,40 @@ function ficheDoublon(racineArbreVal, p) {
   return null;
 }
 
+// ---- Fiche introuvable ------------------------------------------------------------------
+
+// lireProposition(racine, cle) -> la proposition de cette cle, décidée ou non, ou null : celle
+// dont l'acceptation vient d'échouer n'est plus en attente.
+function lireProposition(racineArbreVal, cle) {
+  return lireLots(racineArbreVal).parCle.get(String(cle)) || null;
+}
+
+// recreerFiche(racine, cle, p, valeurs, { ausgabeId, proposerAutreRevue }) -> { ok, uuid, slug, raison? }.
+// La fiche d'une acceptation dont la création vient d'échouer (raison fiche-introuvable),
+// avec l'Uuid que porte la décision : jamais une seconde fiche.
+function recreerFiche(racineArbreVal, cle, p, valeurs, options) {
+  const o = options || {};
+  const d = lireDecision(racineArbreVal, cle);
+  if (!d || d.decision !== 'accepte' || !d.fiche) { return { ok: false, raison: 'pas-acceptee' }; }
+  if (!p || p.cle !== d.cle || !kirby.typeConnu(p.type)) { return { ok: false, raison: 'type-inconnu' }; }
+  if (fichesParUuid(racineArbreVal, d.fiche).length > 0) { return { ok: false, raison: 'fiche-presente' }; }
+  const v = valeursSaisies(p, valeurs && typeof valeurs === 'object' ? valeurs : {});
+  const ecarts = ecartsFormat(p.type, v);
+  if (ecarts.length > 0) { return { ok: false, raison: 'valeurs-hors-format', ecarts: ecarts }; }
+  const ausgabeId = o.ausgabeId || '';
+  const cree = kirby.creerFiche(racineArbreVal, p.langue, p.type, v, ausgabeId, null, null, d.fiche);
+  if (ausgabeId) { kirby.reordonnerNumero(racineArbreVal, p.langue, ausgabeId); }
+  if (o.proposerAutreRevue) {
+    for (const autre of kirby.autresLangues(p.langue)) { kirby.ecrireStatutFiche(racineArbreVal, autre, d.fiche, 'a-traduire'); }
+  }
+  return { ok: true, uuid: d.fiche, slug: cree.slug };
+}
+
 module.exports = {
   FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,
   listerPropositions, listerRefusees, classer, bloquants, ordonner, compterPropositions,
   lireDecision, ecrireDecision, annulerDecision,
   accepter, refuser, annulerAcceptation,
-  accepterLot, refuserLot, annulerLot, ficheDoublon
+  accepterLot, refuserLot, annulerLot, ficheDoublon, lireProposition, recreerFiche
 };

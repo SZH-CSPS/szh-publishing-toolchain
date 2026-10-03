@@ -19,7 +19,7 @@
 //   node outils-dev/apercu-documentation.js archive     (bibliothèque de production factice, boutons en icônes)
 //   node outils-dev/apercu-documentation.js numero livre   (Documentation du numéro, catégorie « Livres » seule)
 //   node outils-dev/apercu-documentation.js propositions   (lots synthétiques ; SZH_LANGUE=de pour la Zeitschrift)
-//     …?onglet=propositions&etat=liste|selection|detail-b|detail-recherche|doublon|colonnes|annuler|largeur|recherche|vide
+//     …?onglet=propositions&etat=liste|selection|detail-b|detail-b-applique|echec|detail-recherche|doublon|colonnes|annuler|largeur|recherche|vide
 //     &theme=clair|sombre : les couleurs d’un thème de l’éditeur, sinon les replis de _design.css
 //
 // Capture (Edge headless, depuis Windows) :
@@ -38,63 +38,15 @@ const { construireHtml } = require(path.join(COCKPIT, 'lib', 'webviews', 'util.j
 const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 
-// ---- Libellés : la même fonction que l'hôte, mais lue directement (pas de require('vscode')
-// transitif dans documentation-hote.js à ce point du fichier — cycle-vie.js, apercu.js…) :
-// on rejoue ici exactement ce que textesDocumentation() compose, champ par champ.
+// ---- Libellés : relus dans documentation-hote.js#textesDocumentation (pas de require('vscode')
+// transitif ici) : la liste ne diverge jamais de celle de l'hôte.
 function textesDocumentation() {
-  return {
-    choisirFichier: T('medias.choisirFichier'),
-    imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
-    errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
-    retirerTip: T('ressource.retirer.tip'), supprimerTip: T('ressource.supprimer.tip'),
-    supprimerNumeroTip: T('ressource.supprimerNumero.tip'),
-    sansTitre: T('ressource.sansTitre'), manque: T('ressource.manque'), optionVide: T('ressource.option.vide'),
-    badgeIncomplet: T('doc.badge.incomplet'), badgeVide: T('doc.badge.vide'),
-    sommaire: T('doc.sommaire'), groupeRubriques: T('doc.groupe.rubriques'), groupeFiches: T('doc.groupe.fiches'),
-    viderTip: T('rubrique.vider.tip'),
-    champContenu: T('rubrique.champ.contenu'), champContenuIndice: T('rubrique.champ.contenu.indice'),
-    gras: T('rubrique.gras'), grasTip: T('rubrique.gras.tip'),
-    italique: T('rubrique.italique'), italiqueTip: T('rubrique.italique.tip'),
-    lien: T('rubrique.lien'), lienTip: T('rubrique.lien.tip'),
-    liste: T('rubrique.liste'), listeTip: T('rubrique.liste.tip'),
-    ajouterLigne: T('doc.suivi.ajouter'), ajouterLigneTip: T('doc.suivi.ajouter.tip'),
-    retirerLigneTip: T('doc.suivi.retirer.tip'),
-    enregistrer: T('img.enregistrer'), enregistrerTip: T('doc.enregistrer.tip'),
-    enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'), rienAEcrire: T('doc.rienAEcrire'),
-    retour: T('img.retour'), retourTip: T('doc.retour.tip'),
-    apercu: T('doc.apercu'), apercuTip: T('doc.apercu.tip'),
-    ongletTraductions: T('doc.onglet.traductions'), ongletReservoir: T('doc.onglet.reservoir'),
-    ongletNumero: T('doc.onglet.numero'),
-    traductionsVide: T('doc.traductions.vide'),
-    traduireDansNumero: T('doc.traductions.traduire'), traduireDansNumeroTip: T('doc.traductions.traduire.tip'),
-    reservoirFiltre: T('doc.reservoir.filtre'), reservoirFiltreTous: T('doc.reservoir.filtre.tous'),
-    reservoirVide: T('doc.reservoir.vide'),
-    reservoirATraduire: T('doc.reservoir.atraduire'), reservoirATraduireTip: T('doc.reservoir.atraduire.tip'),
-    reservoirIgnorer: T('doc.reservoir.ignorer'), reservoirIgnorerTip: T('doc.reservoir.ignorer.tip'),
-    reservoirAfficherIgnorees: T('doc.reservoir.afficherIgnorees'),
-    reservoirToutSelectionner: T('doc.reservoir.toutSelectionner'),
-    reservoirAnnuler: T('doc.reservoir.annuler'), reservoirAnnulerTip: T('doc.reservoir.annuler.tip'),
-    orphelinesTitre: T('doc.orphelines.titre'), orphelinesVide: T('doc.orphelines.vide'),
-    tirerDansNumero: T('doc.orphelines.tirer'), tirerDansNumeroTip: T('doc.orphelines.tirer.tip'),
-    ongletArchive: T('doc.onglet.archive'),
-    archiveChargement: T('doc.archive.chargement'),
-    archiveActualiser: T('doc.archive.actualiser'), archiveActualiserTip: T('doc.archive.actualiser.tip'),
-    archiveAncrageIntrouvable: T('doc.archive.ancrageIntrouvable'),
-    archiveVide: T('doc.archive.vide'),
-    archiveRechercheIndice: T('doc.archive.rechercheIndice'),
-    archiveFiltreType: T('doc.archive.filtre.type'), archiveFiltreTypeTous: T('doc.archive.filtre.typeTous'),
-    archiveFiltreRevue: T('doc.archive.filtre.revue'), archiveFiltreRevueToutes: T('doc.archive.filtre.revueToutes'),
-    archiveFiltreNumero: T('doc.archive.filtre.numero'), archiveFiltreNumeroTous: T('doc.archive.filtre.numeroTous'),
-    archiveFiltreAnnee: T('doc.archive.filtre.annee'), archiveFiltreAnneeToutes: T('doc.archive.filtre.anneeToutes'),
-    archiveAucunResultat: T('doc.archive.aucunResultat'),
-    archiveSansNumero: T('doc.archive.sansNumero'),
-    archiveReprendre: T('doc.archive.reprendre'), archiveReprendreTip: T('doc.archive.reprendre.tip'),
-    archiveEditerTip: T('doc.archive.editer.tip'),
-    archiveRepriseOk: T('doc.archive.reprise.ok'), archiveRepriseEchec: T('doc.archive.reprise.echec'),
-    archiveApercuTitre: T('doc.archive.apercu.titre'), archiveApercuFermer: T('doc.archive.apercu.fermer'),
-    archiveApercuImageChargement: T('doc.archive.apercu.imageChargement'),
-    archiveCompteur: T('doc.archive.compteur')
-  };
+  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'documentation-hote.js'), 'utf8');
+  const debut = src.indexOf('function textesDocumentation()');
+  const bloc = src.slice(debut, src.indexOf('\n}', debut));
+  const res = {};
+  for (const m of bloc.matchAll(/([A-Za-z][A-Za-z0-9]*): T\('([^']+)'\)/g)) { res[m[1]] = T(m[2]); }
+  return res;
 }
 
 // ---- typesConfig / typesRubrique : composés depuis le contrat réel, comme configChamp() /
@@ -126,6 +78,10 @@ function configChamp(champ, langue) {
     c.options = optionsListe(champ.liste, langue);
     if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
   }
+  if (champ.saisie === 'liste_multiple') {
+    c.options = optionsListe(champ.liste, langue)
+      .sort((a, b) => a.libelle.localeCompare(b.libelle, langue, { sensitivity: 'base', numeric: true }));
+  }
   if (champ.saisie === 'structure') { c.structureChamps = champ.champs.map((sc) => configChamp(sc, langue)); }
   if (champ.saisie === 'fichier') { c.extensions = champ.extensions || []; }
   if (champ.saisie === 'derive') {
@@ -145,6 +101,7 @@ function typesRessourceConfig(langue) {
       valeur: type, libelleSection: kirby.libelleCockpitType(type, langue),
       libelleAjouter: T('ressource.ajouter.' + type), libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
       avecImage: !!champFichier, champFichier: champFichier,
+      plage: (kirby.definitionType(type) || {}).plage || null,
       champs: kirby.champsDuType(type).map((c) => configChamp(c, langue))
     };
   });
@@ -189,7 +146,11 @@ const ressources = [
   { id: 'r5', type: 'agenda', apercu: null, valeurs: {
     evenement: 'colloque', title: 'Journée romande de la pédagogie spécialisée', debut: '2026-11-05',
     fin: '2026-11-05', lieu: 'Lausanne', organisateur: 'CSPS',
-    descriptif: 'Une journée de conférences et d’ateliers pour les praticien·ne·s.', lien: '' } }
+    descriptif: 'Une journée de conférences et d’ateliers pour les praticien·ne·s.', lien: '' } },
+  { id: 'r6', type: 'recherche', apercu: null, valeurs: {
+    title: 'Coenseignement en classe inclusive', institutions: 'HEP Exemple', debut: '2025-01',
+    fin: '2027', lien: 'https://exemple.org/recherche', lien_libelle: '',
+    descriptif: 'Observation de binômes enseignants dans vingt classes.' } }
 ];
 
 const traductions = [
@@ -408,7 +369,15 @@ function donneesPropositionsDemo(l) {
     types: types, propositions: pr.ordonner(lu.propositions, l).map(pourVue), refusees: [],
     etats: Object.keys(etats).map((m) => ({ moissonneur: m, libelle: libelleMoissonneur(m), connu: true,
       derniere: etats[m].derniere_moisson, propositions: etats[m].propositions_ecrites, echecs: etats[m].sources_en_echec })),
-    colonnes: {}
+    colonnes: {},
+    // Ce que bloquants() rend, d'avance : avant toute saisie, et une fois les recommandations
+    // appliquées (le faux hôte n'a pas la règle, il la rejoue).
+    verifications: Object.fromEntries(lu.propositions.map((x) => {
+      const champs = (x.doutes || []).map((d) => d.champ);
+      const appliquees = Object.assign({}, x.valeurs);
+      (x.doutes || []).forEach((d) => { if (d.suggestion) { appliquees[d.champ] = d.suggestion; } });
+      return [x.cle, { avant: pr.bloquants(x), apres: pr.bloquants(x, appliquees, champs), champs: champs }];
+    }))
   };
   fs.rmSync(racine, { recursive: true, force: true });
   return donnees;
@@ -427,17 +396,56 @@ function textesPropositions() {
 const txt = Object.assign(textesDocumentation(), textesPropositions());
 const messageCharger = {
   type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
-  typesConfig: typesRessourceConfig('fr'), typesRubrique: typesRubriqueConfig('fr'),
+  typesConfig: typesRessourceConfig(LANGUE_PROP), typesRubrique: typesRubriqueConfig(LANGUE_PROP),
   rubriques: rubriques, ressources: ressources,
   traductions: traductions, reservoirNumeros: reservoirNumeros, reservoir: reservoirActives,
   orphelines: orphelines,
   limites: { image: { extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'], maxi: 8 * 1024 * 1024 } }
 };
 
+// ---- Dates imprimées : formées d'avance par lib/date-apercu.js (le seul moteur), pour que le
+// faux hôte réponde aussitôt à docDateFormer. Une demande hors de cette table reste sans forme.
+function demandesDates() {
+  const res = [];
+  const typeDe = (t) => typesRessourceConfig(LANGUE_PROP).find((x) => x.valeur === t) || { champs: [] };
+  for (const r of ressources) {
+    const t = typeDe(r.type);
+    for (const c of t.champs) {
+      const v = r.valeurs[c.cle];
+      if ((c.saisie === 'date' || c.saisie === 'date_partielle') && v) {
+        if (t.plage && t.plage.indexOf(c.cle) !== -1) { res.push(['plage', t.plage.map((k) => String(r.valeurs[k] || ''))]); }
+        else { res.push([c.saisie, [v]]); }
+      }
+      if (c.saisie === 'structure') {
+        for (const l of (v || [])) {
+          for (const sc of c.structureChamps) { if (sc.saisie === 'date' && l[sc.cle]) { res.push(['date', [l[sc.cle]]]); } }
+        }
+      }
+    }
+  }
+  for (const x of PROPOSITIONS.propositions) {
+    for (const d of x.doutes || []) {
+      const c = kirby.champsDuType(x.type).find((k) => k.cle === d.champ);
+      if (c && d.suggestion) { res.push([c.saisie, [d.suggestion]]); }
+    }
+  }
+  return res;
+}
+function formesDates() {
+  const code = 'const d = require(' + JSON.stringify(path.join(COCKPIT, 'lib', 'date-apercu.js')) + ');'
+    + 'const q = ' + JSON.stringify(demandesDates()) + ';'
+    // Une à une : date-apercu.js refuse au-delà de quatre demandes en vol.
+    + '(async () => { const t = {}; for (const x of q) { t[JSON.stringify(x)] = await d.former({ saisie: x[0], lang: '
+    + JSON.stringify(LANGUE_PROP) + ', valeurs: x[1] }, { delaiMs: 20000 }); } process.stdout.write(JSON.stringify(t)); })();';
+  try { return JSON.parse(require('child_process').execFileSync(process.execPath, ['-e', code], { encoding: 'utf8' })); }
+  catch (e) { return {}; }
+}
+const FORMES = formesDates();
+
 // ---- Assemblage : le même appel que documentation-hote.js#htmlDocumentation -----------
 const nonce = crypto.randomBytes(16).toString('hex');
 const html = construireHtml('documentation', nonce, {
-  cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_propositions.js'],
+  cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_fiche-doc.js', '_propositions.js'],
   titre: 'Documentation – aperçu autonome',
   csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
 });
@@ -455,6 +463,8 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '  var RESERVOIR = { actives: ' + JSON.stringify(reservoirActives) + ', ignorees: ' + JSON.stringify(reservoirIgnorees) + ' };\n' +
   '  var ARCHIVE = ' + JSON.stringify(archive) + ';\n' +
   '  var PROP = ' + JSON.stringify(PROPOSITIONS) + ';\n' +
+  '  var FORMES = ' + JSON.stringify(FORMES) + ';\n' +
+  '  var VERIF = PROP.verifications;\n' +
   // La vue Propositions : un faux hôte qui retire et rend les propositions comme le vrai.
   '  var ORDRE = PROP.propositions.map(function (p) { return p.cle; }), DECIDEES = {};\n' +
   '  var paramsProp = new URLSearchParams(location.search);\n' +
@@ -477,6 +487,11 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '        DECIDEES[p.cle] = p; faites.push(p.cle); return false;\n' +
   '      });\n' +
   '    }\n' +
+  // ?etat=echec : la création de la fiche échoue, la décision reste (raison fiche-introuvable).
+  '    if (paramsProp.get("etat") === "echec" && geste === "accepte") {\n' +
+  '      envoyerPropositions({ geste: geste, faites: [], ignorees: [], echecs: faites.map(function (c) { return { cle: c, raison: "fiche-introuvable" }; }), motif: "" });\n' +
+  '      return;\n' +
+  '    }\n' +
   '    envoyerPropositions({ geste: geste, faites: faites, ignorees: [], echecs: [], motif: msg.motif || "" });\n' +
   '  }\n' +
   '  var vraiApi = null;\n' +
@@ -494,6 +509,13 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveDonnees", ok: true, fiches: ARCHIVE } }));\n' +
   '        } else if (msg.type === "archiveImage") {\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveImageDonnee", ficheType: msg.ficheType, slug: msg.slug, apercu: null } }));\n' +
+  '        } else if (msg.type === "propVerifier") {\n' +
+  '          var v = VERIF[msg.cle] || { avant: [], apres: [], champs: [] };\n' +
+  '          var tous = v.champs.every(function (c) { return msg.touches.indexOf(c) !== -1; });\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: { type: "propVerifie", cle: msg.cle, jeton: msg.jeton, bloquants: tous ? v.apres : v.avant } }));\n' +
+  '        } else if (msg.type === "docDateFormer") {\n' +
+  '          var forme = FORMES[JSON.stringify([msg.saisie, msg.valeurs])] || { indisponible: true };\n' +
+  '          window.dispatchEvent(new MessageEvent("message", { data: Object.assign({ type: "docDateFormee", jeton: msg.jeton }, forme) }));\n' +
   '        } else if (msg.type === "propCharger") {\n' +
   '          envoyerPropositions(null);\n' +
   '        } else if (msg.type === "propAccepter" || msg.type === "propRefuser" || msg.type === "propAnnuler") {\n' +
@@ -530,6 +552,16 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    }\n' +
   // ?onglet=propositions&etat=… : l'état de la vue à capturer.
   '    if (onglet === "propositions") { etatPropositions(params.get("etat") || "liste"); }\n' +
+  // ?ouvrir=1 : la première carte de la catégorie affichée, dépliée, ses dates formées.
+  '    if (params.get("ouvrir")) {\n' +
+  '      var sections = Array.prototype.filter.call(document.querySelectorAll(".doc-section"), function (x) { return !x.hidden; });\n' +
+  '      var bascule = sections[0] && sections[0].querySelector(".doc-bascule");\n' +
+  '      if (bascule) {\n' +
+  '        bascule.click();\n' +
+  '        var corps = bascule.closest(".doc-carte").querySelector(".doc-corps");\n' +
+  '        Array.prototype.forEach.call(corps.querySelectorAll("input"), function (i) { i.dispatchEvent(new Event("blur")); });\n' +
+  '      }\n' +
+  '    }\n' +
   '  });\n' +
   '  function etatPropositions(etat) {\n' +
   '    var panel = document.getElementById("panel-propositions");\n' +
@@ -540,7 +572,9 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '    if (etat === "vide") { return; }\n' +
   '    tab("intervention");\n' +
   '    if (etat === "selection") { [0, 3, 4].forEach(function (i) { rangs()[i].querySelector(".prop-case").click(); }); }\n' +
-  '    if (etat === "detail-b") { ligne("26-POS-041").querySelector(".prop-bouton-verifier").click(); }\n' +
+  '    if (etat === "detail-b" || etat === "detail-b-applique") { ligne("26-POS-041").querySelector(".prop-bouton-verifier").click(); }\n' +
+  '    if (etat === "detail-b-applique") { panel.querySelector(".prop-appliquer").click(); }\n' +
+  '    if (etat === "echec") { ligne("26.4021").querySelector(".prop-titre").click(); panel.querySelector(".prop-detail-accepter").click(); }\n' +
   '    if (etat === "detail-recherche") { tab("recherche"); rangs()[0].querySelector(".prop-bouton-verifier").click(); }\n' +
   '    if (etat === "doublon") { ligne("26.3712").querySelector(".prop-bouton-verifier").click(); }\n' +
   '    if (etat === "colonnes") { panel.querySelector(".prop-bouton-colonnes").click(); }\n' +

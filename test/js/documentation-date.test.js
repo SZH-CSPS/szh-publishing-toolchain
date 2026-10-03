@@ -55,7 +55,7 @@ function pageAvecFiches(ressources) {
   const txt = libellesHote(RACINE, ['textesDocumentation']);
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -178,4 +178,45 @@ test('page : une date partielle part en « date_partielle », son modèle suit l
   assert.deepStrictEqual([...d.valeurs], ['2026-03']);
   page.envoyer({ type: MSG.DOC_DATE_FORMEE, jeton: d.jeton, ok: true, erreur: 'format', forme: '2026-3' });
   assert.ok(ligneSous(debut).textContent.includes(txt.dateErreurFormatPartiel));
+});
+
+// ---- Les dates des lignes de suivi -------------------------------------------------------
+
+const INTERVENTION_SUIVI = { id: 'i2', type: 'intervention', apercu: null, valeurs: {
+  canton: 'CH', categorie: 'motion', numero: '1', date: '2024-06-12', title: 'M', etat: '', etat_date: '',
+  suivi: [{ date: '2026-06-01', genre: '', libelle: 'Réponse', lien: '' }] } };
+function datesSuivi(page) {
+  return page.document.querySelectorAll('input').filter((e) => e.id.indexOf('sc-suivi-date-') === 0);
+}
+
+test('page : la date d’une ligne de suivi montre sa forme imprimée, à la sortie du champ', () => {
+  const { page, txt } = pageAvecFiches([INTERVENTION_SUIVI]);
+  const [date] = datesSuivi(page);
+  assert.ok(date, 'date de suivi absente');
+  date.dispatchEvent({ type: 'input' });
+  assert.strictEqual(demandes(page).length, 0, 'jamais un message par frappe');
+  date.dispatchEvent({ type: 'blur' });
+  const [d] = demandes(page);
+  assert.strictEqual(d.saisie, 'date');
+  assert.deepStrictEqual([...d.valeurs], ['2026-06-01']);
+  page.envoyer({ type: MSG.DOC_DATE_FORMEE, jeton: d.jeton, ok: true, forme: '01.06.2026' });
+  assert.strictEqual(ligneSous(date).textContent, txt.dateImprime.replace('{0}', '01.06.2026'));
+});
+
+test('page : une ligne de suivi ajoutée a son propre aperçu, distinct de la ligne voisine', () => {
+  const { page, txt } = pageAvecFiches([INTERVENTION_SUIVI]);
+  const ajouter = page.document.querySelectorAll('button').find((b) => b.classList.contains('doc-structure-ajouter'));
+  ajouter.click();
+  const [premiere, neuve] = datesSuivi(page);
+  assert.ok(neuve, 'la ligne ajoutée n’a pas de date');
+  neuve.value = '2026-07-02';
+  neuve.dispatchEvent({ type: 'blur' });
+  const [d] = demandes(page);
+  assert.deepStrictEqual([...d.valeurs], ['2026-07-02']);
+  page.envoyer({ type: MSG.DOC_DATE_FORMEE, jeton: d.jeton, ok: true, erreur: 'impossible', forme: '02.07.2026' });
+  assert.ok(ligneSous(neuve).classList.contains('doc-date-forme--erreur'));
+  assert.ok(neuve.classList.contains('doc-date-champ--erreur'));
+  assert.strictEqual(ligneSous(premiere).textContent, '', 'la ligne voisine reste muette');
+  assert.ok(!premiere.classList.contains('doc-date-champ--erreur'));
+  assert.ok(txt.dateErreurImpossible);
 });

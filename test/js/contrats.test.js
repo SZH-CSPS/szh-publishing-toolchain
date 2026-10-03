@@ -1251,10 +1251,11 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
     // TXT.xxx — ils arrivent dans une table à part, comme `libelles` de textesNumero() plus
     // bas — d'où leur absence de cette liste, qui ne surveille que les TXT.xxx littéraux du
     // script. La page porte les DEUX familles depuis le 02.09.2026 (fiches et rubriques),
-    // donc une seule fonction hôte pour les deux séries de libellés.
+    // donc une seule fonction hôte pour les deux séries de libellés. Les champs d'une fiche
+    // vivent dans media/_fiche-doc.js, qui lit ses libellés par txt().xxx.
     'documentation': {
       libelles: cles('textesDocumentation'),
-      fragments: ['_commun.js']
+      fragments: ['_commun.js', '_fiche-doc.js']
     },
     // Le formulaire du numero et la vue « Articles » partagent media/_numero.js : ses
     // libelles viennent de textesNumero(), qu'Object.assign ajoute a la table de la vue.
@@ -1287,7 +1288,7 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   for (const page of Object.keys(pages)) {
     const js = pages[page].fragments.concat([page + '.js'])
       .map((f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')).join('\n');
-    for (const m of js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)) {
+    for (const m of js.matchAll(/(?:\bTXT|\btxt\(\))\.([A-Za-z0-9_]+)/g)) {
       assert.ok(pages[page].libelles.has(m[1]),
         'libellé « ' + m[1] +' » utilisé par ' + page + ' mais absent de l’hôte');
     }

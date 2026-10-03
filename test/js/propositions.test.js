@@ -642,3 +642,64 @@ test('ficheDoublon : la fiche existante que désigne un doublon probable', () =>
     assert.strictEqual(pr.ficheDoublon(racine, { type: 'livre', langue: 'fr', doublon: null }), null);
   } finally { nettoyer(racine); }
 });
+
+// ---- Le formulaire de détail : valeurs saisies, champs touchés, fiche à recréer ------------
+
+test('accepterLot depuis le détail : les valeurs saisies, après bloquants() avec les champs touchés', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const b = intervention('1', { doutes: [{ champ: 'date', code: 'date-illisible', detail: 'x', suggestion: '2026-03-04' }] });
+    b.valeurs.date = '';
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [b]);
+    const saisies = Object.assign({}, b.valeurs, { date: '2026-03-04', title: 'Titre corrigé', inconnu: 'x' });
+    const nonTouche = pr.accepterLot(racine, 'fr', [{ cle: b.cle, valeurs: saisies, touches: [] }],
+      { ausgabeId: idRevue, depuisDetail: true });
+    assert.deepStrictEqual(nonTouche.ignorees, [{ cle: b.cle, raison: 'a-verifier' }], 'un doute non touché bloque encore');
+    const horsFormat = pr.accepterLot(racine, 'fr', [{ cle: b.cle, valeurs: Object.assign({}, saisies, { date: '4 mars' }), touches: ['date'] }],
+      { ausgabeId: idRevue, depuisDetail: true });
+    assert.deepStrictEqual(horsFormat.ignorees, [{ cle: b.cle, raison: 'a-verifier' }], 'une date hors format bloque');
+    assert.strictEqual(pr.lireDecision(racine, b.cle), null);
+    const r = pr.accepterLot(racine, 'fr', [{ cle: b.cle, valeurs: saisies, touches: ['date'] }],
+      { ausgabeId: idRevue, depuisDetail: true });
+    assert.deepStrictEqual(r.faites, [b.cle]);
+    const f = kc.listerFichesNumero(racine, 'fr', idRevue)[0];
+    assert.strictEqual(f.valeurs.title, 'Titre corrigé');
+    assert.strictEqual(f.valeurs.date, '2026-03-04');
+    assert.strictEqual(f.valeurs.inconnu, undefined, 'une clé hors contrat ne s’écrit pas');
+  } finally { nettoyer(racine); }
+});
+
+test('accepterLot : un cas A dont la saisie sort du format est refusé ; hors détail, les valeurs saisies ne comptent pas', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const a = intervention('1');
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [a]);
+    const mal = Object.assign({}, a.valeurs, { date: '13.03.2026' });
+    const r = pr.accepterLot(racine, 'fr', [{ cle: a.cle, valeurs: mal, touches: ['date'] }], { ausgabeId: idRevue, depuisDetail: true });
+    assert.deepStrictEqual(r.ignorees, [{ cle: a.cle, raison: 'a-verifier' }]);
+    const lot = pr.accepterLot(racine, 'fr', [{ cle: a.cle, valeurs: Object.assign({}, a.valeurs, { title: 'Autre' }) }], { ausgabeId: idRevue });
+    assert.deepStrictEqual(lot.faites, [a.cle]);
+    assert.strictEqual(kc.listerFichesNumero(racine, 'fr', idRevue)[0].valeurs.title, a.valeurs.title,
+      'en lot, la proposition telle quelle');
+  } finally { nettoyer(racine); }
+});
+
+test('recreerFiche : la fiche d’une acceptation dont la création a échoué, avec l’Uuid de la décision, une seule fois', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const p = intervention('1');
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [p]);
+    assert.strictEqual(pr.recreerFiche(racine, p.cle, p, p.valeurs, {}).raison, 'pas-acceptee');
+    pr.ecrireDecision(racine, { cle: p.cle, decision: 'accepte', fiche: 'EEEEEEEEEEEEEEEE' });
+    const mal = pr.recreerFiche(racine, p.cle, p, Object.assign({}, p.valeurs, { date: 'mars' }), { ausgabeId: idRevue });
+    assert.strictEqual(mal.raison, 'valeurs-hors-format');
+    const r = pr.recreerFiche(racine, p.cle, p, Object.assign({}, p.valeurs, { title: 'Recréée' }), { ausgabeId: idRevue });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.uuid, 'EEEEEEEEEEEEEEEE');
+    const f = kc.listerFichesNumero(racine, 'fr', idRevue);
+    assert.deepStrictEqual(f.map((x) => [x.uuid, x.valeurs.title]), [['EEEEEEEEEEEEEEEE', 'Recréée']]);
+    assert.strictEqual(pr.lireProposition(racine, p.cle).cle, p.cle, 'une décidée se relit encore');
+    assert.strictEqual(pr.recreerFiche(racine, p.cle, p, p.valeurs, { ausgabeId: idRevue }).raison, 'fiche-presente');
+    assert.strictEqual(kc.listerFichesNumero(racine, 'fr', idRevue).length, 1, 'jamais deux fiches');
+  } finally { nettoyer(racine); }
+});

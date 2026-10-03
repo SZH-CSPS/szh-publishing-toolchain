@@ -21,7 +21,7 @@ function page(ressources, categorie) {
   const txt = libellesHote(RACINE, ['textesDocumentation']);
   const p = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   p.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,

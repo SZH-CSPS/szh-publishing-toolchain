@@ -109,7 +109,7 @@ test('structure : seules les fonctions de szh-commun.lua forment une date suisse
 // vient du script. D'autres modules du cockpit datent leurs propres écrans (accueil,
 // journaux) et ne sont pas visés.
 test('structure : aucune date suisse formée en JavaScript côté Documentation', () => {
-  const surfaces = ['lib/date-apercu.js', 'lib/documentation-hote.js', 'media/documentation.js'];
+  const surfaces = ['lib/date-apercu.js', 'lib/documentation-hote.js', 'media/documentation.js', 'media/_fiche-doc.js'];
   const RE = [/\.get(UTC)?Date\(\)/, /toLocaleDateString/, /\[[123]\]\s*\+\s*'\.'/, /padStart\(2[^\n]*'\.'/];
   for (const s of surfaces) {
     const code = fs.readFileSync(path.join(COCKPIT, s), 'utf8').replace(/^\s*\/\/.*$/gm, '');

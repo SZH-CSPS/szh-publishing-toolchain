@@ -336,7 +336,11 @@ function textesDocumentation() {
     propVide: T('doc.prop.vide'), propVideMoissons: T('doc.prop.videMoissons'),
     propVideSans: T('doc.prop.videSans'), propVideAucune: T('doc.prop.videAucune'),
     propChargement: T('doc.prop.chargement'),
-    propEnregistrerDabord: T('doc.prop.enregistrerDabord')
+    propAppliquer: T('doc.prop.appliquer'), propAppliquerTip: T('doc.prop.appliquer.tip'),
+    propChamps: T('doc.prop.champs'), propCouverture: T('doc.prop.couverture'),
+    propIntrouvable: T('doc.prop.introuvable'),
+    propRecreer: T('doc.prop.recreer'), propRecreerTip: T('doc.prop.recreer.tip'),
+    propBRecree: T('doc.prop.b.recree')
   };
 }
 
@@ -482,9 +486,14 @@ function etatsPropositions(etats) {
   });
 }
 
-// donneesPropositions(racineArbreVal, langue, revueJeton, resultat?) -> le message PROP_DONNEES.
-function donneesPropositions(racineArbreVal, langue, revueJeton, resultat) {
+// donneesPropositions(racineArbreVal, langue, revueJeton, resultat?, connues?) -> le message
+// PROP_DONNEES. `connues` (une Map) retient les propositions servies, par cle.
+function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connues) {
   const lu = propositions.listerPropositions(racineArbreVal, langue);
+  if (connues) {
+    connues.clear();
+    for (const p of lu.propositions) { connues.set(p.cle, p); }
+  }
   const pourVue = (p) => {
     const fiche = p.doublon ? propositions.ficheDoublon(racineArbreVal, p) : null;
     return {
@@ -515,7 +524,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat) {
 
 function htmlDocumentation(nonce) {
   return construireHtml('documentation', nonce, {
-    cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_propositions.js'],
+    cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_fiche-doc.js', '_propositions.js'],
     titre: T('doc.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
@@ -688,6 +697,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   // sans quoi « la vue choisie survit à un rechargement complet » (media/documentation.js)
   // ne serait plus vrai pour cette toute première vue.
   let premierPret = true;
+  // Les propositions servies à la vue, par cle : le détail les vérifie à chaque saisie sans
+  // relire les lots.
+  const propositionsConnues = new Map();
+  const donneesProp = (resultat) => donneesPropositions(racineArbreVal, langue, revueJeton, resultat, propositionsConnues);
 
   function listerRessources(budget) {
     const fiches = kirby.listerFichesNumero(racineArbreVal, langue, ausgabeId);
@@ -804,8 +817,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   // Un geste de la vue Propositions : accepter (dans ce numéro ou au réservoir), refuser, ou
   // défaire un geste entier. La vue repart avec le résultat, l'arbre suit.
   async function traiterGesteProposition(msg) {
-    const refusVerrou = (geste) => repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton,
-      { geste: geste, refus: 'verrou', faites: [], ignorees: [], echecs: [] }));
+    const refusVerrou = (geste) => repondrePanneau(panneau,
+      donneesProp({ geste: geste, refus: 'verrou', faites: [], ignorees: [], echecs: [] }));
     let resultat;
     let recharger = false;
     if (msg.type === MSG.PROP_ACCEPTER) {
@@ -815,6 +828,16 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       resultat = Object.assign({ geste: geste }, propositions.accepterLot(racineArbreVal, langue, msg.demandes,
         { ausgabeId: dansNumero ? ausgabeId : '', depuisDetail: !!msg.depuisDetail }));
       recharger = resultat.faites.length > 0;
+    } else if (msg.type === MSG.PROP_RECREER) {
+      // L'acceptation vient d'échouer à créer la fiche : la recréer dans ce numéro, avec l'Uuid
+      // de sa décision. recreerFiche refuse si la fiche existe ou si rien n'est accepté.
+      if (refuserSiVerrouille()) { refusVerrou('recree'); return; }
+      const cle = String(msg.cle || '');
+      const p = propositions.lireProposition(racineArbreVal, cle);
+      const r = p && p.langue === langue ? propositions.recreerFiche(racineArbreVal, cle, p, msg.valeurs, { ausgabeId: ausgabeId })
+        : { ok: false, raison: 'pas-acceptee' };
+      resultat = { geste: 'recree', faites: r.ok ? [cle] : [], ignorees: [], echecs: r.ok ? [] : [{ cle: cle, raison: r.raison }] };
+      recharger = r.ok;
     } else if (msg.type === MSG.PROP_REFUSER) {
       const motif = propositions.MOTIFS_REFUS.indexOf(msg.motif) !== -1 ? msg.motif : '';
       resultat = Object.assign({ geste: 'refuse', motif: motif },
@@ -831,7 +854,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       recharger = resultat.fichesSupprimees > 0;
     }
     if (recharger) { await charger(panneau); }
-    repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton, resultat));
+    repondrePanneau(panneau, donneesProp(resultat));
     if (rafraichirTout) { rafraichirTout(); }
   }
 
@@ -1056,17 +1079,33 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     }
     // Vue « Propositions ». La lecture est demandée par la page, puis renvoyée après chaque
     // geste avec son résultat. Un geste qui crée ou retire une fiche recharge aussi la
-    // Documentation du numéro (charger) ; la page refuse elle-même ce geste tant qu'elle a une
-    // carte non enregistrée, que ce rechargement perdrait.
+    // Documentation du numéro (charger) ; la page enregistre d'abord ses cartes modifiées, que
+    // ce rechargement perdrait, et n'envoie le geste qu'à l'accusé.
     if (msg.type === MSG.PROP_CHARGER) {
-      repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton));
+      repondrePanneau(panneau, donneesProp());
       return;
     }
-    if (msg.type === MSG.PROP_ACCEPTER || msg.type === MSG.PROP_REFUSER || msg.type === MSG.PROP_ANNULER) {
+    // Le détail demande ce qui bloque l'acceptation de sa saisie : la règle reste ici.
+    if (msg.type === MSG.PROP_VERIFIER) {
+      const cle = String(msg.cle || '');
+      // Une proposition qui n'est plus en attente n'a plus que sa fiche à recréer : ses doutes
+      // ont été confirmés à l'acceptation, seul le format compte.
+      const enAttente = propositionsConnues.get(cle);
+      const decision = enAttente ? null : propositions.lireDecision(racineArbreVal, cle);
+      const p = enAttente || (decision && decision.decision === 'accepte' ? propositions.lireProposition(racineArbreVal, cle) : null);
+      const valeurs = msg.valeurs && typeof msg.valeurs === 'object' && !Array.isArray(msg.valeurs) ? msg.valeurs : {};
+      const touches = (Array.isArray(msg.touches) ? msg.touches.map(String) : [])
+        .concat(p && !enAttente ? (p.doutes || []).map((d) => String((d && d.champ) || '')) : []);
+      repondrePanneau(panneau, { type: MSG.PROP_VERIFIE, cle: cle, jeton: msg.jeton,
+        bloquants: p ? propositions.bloquants(p, valeurs, touches) : [{ code: 'deja-decidee', champ: null }] });
+      return;
+    }
+    if (msg.type === MSG.PROP_ACCEPTER || msg.type === MSG.PROP_REFUSER || msg.type === MSG.PROP_ANNULER
+      || msg.type === MSG.PROP_RECREER) {
       // La page attend toujours une réponse avant un autre geste : une erreur la lui donne aussi.
       try { await traiterGesteProposition(msg); }
       catch (e) {
-        repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton,
+        repondrePanneau(panneau, donneesProp(
           { geste: '', faites: [], ignorees: [], echecs: [{ cle: '', raison: String((e && e.message) || e) }] }));
       }
       return;

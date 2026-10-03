@@ -4,16 +4,24 @@
 // chaque geste.
 //
 //   SZH.vuePropositions(opts) -> { afficher(), recevoir(msg) }
-//     opts = { api, panel, barreOnglets, titre, corps, txt(), estModifie() }
+//     opts = { api, panel, barreOnglets, titre, txt(), types(), apresEcriture(geste) }
 //
 // Protocole avec l'hôte :
-//   webview -> hôte : propCharger ; propAccepter { demandes: [{ cle, aussi }], dansNumero,
-//                     depuisDetail } ; propRefuser { cles, motif } ; propAnnuler { cles } ;
-//                     propColonnes { typeFiche, reglage } ; propOuvrirSource { cle }
+//   webview -> hôte : propCharger ; propAccepter { demandes: [{ cle, aussi, valeurs?, touches? }],
+//                     dansNumero, depuisDetail } ; propRefuser { cles, motif } ;
+//                     propAnnuler { cles } ; propColonnes { typeFiche, reglage } ;
+//                     propOuvrirSource { cle } ; propVerifier { cle, jeton, valeurs, touches } ;
+//                     propRecreer { cle, valeurs } ; docDateFormer (media/_fiche-doc.js)
 //   hôte -> webview : propDonnees { langue, cible, revueAutre, types, propositions, refusees,
-//                     etats, colonnes, resultat? }
-// Un geste qui recharge la Documentation du numéro est refusé tant qu'une carte du numéro
-// n'est pas enregistrée : le rechargement la perdrait.
+//                     etats, colonnes, resultat? } ;
+//                     propVerifie { cle, jeton, bloquants }
+// Un geste qui recharge la Documentation du numéro passe par opts.apresEcriture : les cartes
+// modifiées du numéro s'enregistrent d'abord, le geste part à l'accusé.
+//
+// Le détail porte les champs du contrat (media/_fiche-doc.js), préremplis par la proposition.
+// Rien ne s'écrit avant un geste. Ce qui bloque l'acceptation vient de l'hôte (bloquants()),
+// redemandé après chaque saisie. Une acceptation dont la fiche n'a pas pu être créée (raison
+// fiche-introuvable) s'offre à recréer, avec les mêmes valeurs, dans le pied et dans son détail.
 
 (function () {
   'use strict';
@@ -25,6 +33,8 @@
   var SEUIL_DETAIL_PLEIN = 960;
   var LARGEUR_MAX = 900, PAS_CLAVIER = 16, PAS_CLAVIER_GRAND = 64;
   var DUREE_BANDEAU = 10000, DUREE_AVIS = 6000;
+  // Au plus une vérification par l'hôte dans cet intervalle, pendant la frappe.
+  var INTERVALLE_VERIFIER = 200;
   var CODES_DOUTE = {
     'date-illisible': 'propDouteDateIllisible', 'langue-devinee': 'propDouteLangueDevinee',
     'correspondance-incertaine': 'propDouteCorrespondanceIncertaine', 'valeur-hors-liste': 'propDouteValeurHorsListe',
@@ -59,6 +69,20 @@
     var pertinenceAuto = false;  // Pertinence masquée d'elle-même, détail ouvert
     var zone = {};
     var menu = null;
+    var apresEcriture = opts.apresEcriture || function (geste) { geste(); };
+    // Le formulaire du détail ouvert : { cle, c, element, touches, bloquants, formes, jeton,
+    // dernier, minuteur }. Il survit aux rendus de la vue tant que le détail reste sur sa
+    // proposition ; sa saisie se perd à la fermeture.
+    var form = null;
+    var echouees = [];
+    var nForm = 0;
+    var champsDoc = SZH.ficheDoc.creer({
+      api: api,
+      txt: function () { return TXT; },
+      types: function () { return (opts.types && opts.types()) || []; },
+      index: function () { nForm += 1; return 'p' + nForm; },
+      surSaisie: function (c, cle) { toucher(c, cle); }
+    });
 
     // ---- Données ----------------------------------------------------------------------------
     function typeDe(t) { return ((donnees && donnees.types) || []).filter(function (x) { return x.type === t; })[0] || null; }
@@ -74,11 +98,14 @@
     }
     function attente() { return (donnees && donnees.propositions) || []; }
     function refusees() { return (donnees && donnees.refusees) || []; }
+    // Les acceptations de cette session dont la fiche n'a pas pu être créée : { p, valeurs }.
+    function echoueesP() { return echouees.map(function (x) { return x.p; }); }
     function trouver(cle) {
-      return attente().filter(function (p) { return p.cle === cle; })[0]
-        || refusees().filter(function (p) { return p.cle === cle; })[0] || null;
+      var tous = attente().concat(echoueesP(), refusees());
+      return tous.filter(function (p) { return p.cle === cle; })[0] || null;
     }
     function enAttente(p) { return attente().indexOf(p) !== -1; }
+    function estEchouee(p) { return echoueesP().indexOf(p) !== -1; }
     function estB(p) { return p.cas === 'B'; }
     function ongletsVisibles() {
       return ((donnees && donnees.types) || []).map(function (t) { return t.type; })
@@ -113,18 +140,21 @@
       });
       return r;
     }
+    // Ce qui bloque : la dernière réponse de l'hôte pour le détail ouvert, sinon celle des données.
+    function bloquantsDe(p) { return form && form.cle === p.cle ? form.bloquants : (p.bloquants || []); }
     function nomsBloquants(p) {
       var vus = {}, noms = [];
-      (p.bloquants || []).forEach(function (x) {
+      bloquantsDe(p).forEach(function (x) {
         if (vus[x.champ]) { return; }
         vus[x.champ] = true;
         noms.push(libelleChamp(p.type, x.champ));
       });
       return noms.join(', ');
     }
-    // Un cas B ne s'accepte que depuis son détail ouvert, et sans rien qui bloque.
+    // Un cas B ne s'accepte que depuis son détail ouvert ; depuis le détail, rien ne doit bloquer.
     function acceptable(p, depuisDetail) {
-      return !estB(p) || (depuisDetail && p.cle === detailCle && (p.bloquants || []).length === 0);
+      if (depuisDetail && p.cle === detailCle) { return bloquantsDe(p).length === 0; }
+      return !estB(p);
     }
     // Un libellé repris dans une phrase : en minuscule, sauf en allemand, où le nom garde sa majuscule.
     function enTexte(s) {
@@ -476,7 +506,7 @@
     function celluleLigne(tr, p, c, refusee, att) {
       if (c.id === 'case') {
         var tdc = poser(tr, 'td');
-        if (refusee) { return; }
+        if (!enAttente(p)) { return; }
         var cb = poser(tdc, 'input', 'prop-case');
         cb.type = 'checkbox';
         cb.checked = selection.has(p.cle);
@@ -772,6 +802,14 @@
         na.setAttribute('role', 'status');
         zone.pied.appendChild(na);
       }
+      echouees.forEach(function (x) {
+        var ne = SZH.notif('attention', [document.createTextNode(remplir('propIntrouvable', [titreCourt(x.p)]))]);
+        ne.classList.add('prop-echouee');
+        ne.setAttribute('role', 'status');
+        var br = SZH.bouton(TXT.propRecreer, function () { recreer(x.p); }, 'prop-recreer', TXT.propRecreerTip);
+        ne.querySelector('span').appendChild(br);
+        zone.pied.appendChild(ne);
+      });
       if (annulable) {
         var n = SZH.notif('ok', [document.createTextNode(annulable.texte)]);
         n.classList.add('prop-bandeau');
@@ -826,12 +864,8 @@
     }
 
     // ---- Gestes ----------------------------------------------------------------------------------
-    // Ce qui recharge la Documentation du numéro attend que ses cartes soient enregistrées.
-    function numeroEnregistre() {
-      if (!opts.estModifie()) { return true; }
-      avertir(TXT.propEnregistrerDabord);
-      return false;
-    }
+    // Accepter et Garder rechargent la Documentation du numéro : ils passent par apresEcriture,
+    // qui enregistre d'abord ses cartes modifiées. Refuser ne recharge rien et part aussitôt.
     function agir(geste, cles, motif) {
       var depuisDetail = !!detailCle && cles.length === 1 && cles[0] === detailCle;
       cles = cles.filter(function (c) { var p = trouver(c); return p && enAttente(p); });
@@ -839,21 +873,47 @@
         cles = cles.filter(function (c) { return acceptable(trouver(c), depuisDetail); });
       }
       if (cles.length === 0 || enCours) { return; }
-      if (geste !== 'refuse' && !numeroEnregistre()) { return; }
-      avis = null;
-      enCours = {
-        geste: geste, cles: cles, motif: motif || '', depuisDetail: depuisDetail,
-        avant: attenteOnglet().map(function (p) { return p.cle; }),
-        titres: cles.map(function (c) { return titreCourt(trouver(c)); })
-      };
-      if (geste === 'refuse') {
-        api.postMessage({ type: SZH.MSG.PROP_REFUSER, cles: cles, motif: motif || '' });
-      } else {
+      var envoyer = function () {
+        if (enCours) { return; }
+        avis = null;
+        enCours = {
+          geste: geste, cles: cles, motif: motif || '', depuisDetail: depuisDetail,
+          avant: attenteOnglet().map(function (p) { return p.cle; }),
+          titres: cles.map(function (c) { return titreCourt(trouver(c)); }), envois: {}
+        };
+        if (geste === 'refuse') {
+          api.postMessage({ type: SZH.MSG.PROP_REFUSER, cles: cles, motif: motif || '' });
+          return;
+        }
         api.postMessage({
           type: SZH.MSG.PROP_ACCEPTER, dansNumero: geste === 'accepte', depuisDetail: depuisDetail,
-          demandes: cles.map(function (c) { return { cle: c, aussi: !!aussi[c] }; })
+          demandes: cles.map(function (c) {
+            var d = { cle: c, aussi: !!aussi[c] };
+            var p = trouver(c);
+            // Depuis le détail, la saisie part avec les champs touchés.
+            if (depuisDetail && form && form.cle === c) {
+              d.valeurs = champsDoc.valeursFiche(form.c);
+              d.touches = Array.from(form.touches);
+            }
+            enCours.envois[c] = { p: p, valeurs: d.valeurs || p.valeurs };
+            return d;
+          })
         });
-      }
+      };
+      if (geste === 'refuse') { envoyer(); } else { apresEcriture(envoyer); }
+    }
+    // La fiche d'une acceptation dont la création a échoué : la saisie du détail s'il est ouvert
+    // sur elle, sinon les valeurs envoyées à l'acceptation.
+    function recreer(p) {
+      var x = echouees.filter(function (e) { return e.p === p; })[0];
+      if (enCours || !x || bloquantsDe(p).length > 0) { return; }
+      apresEcriture(function () {
+        if (enCours) { return; }
+        avis = null;
+        enCours = { geste: 'recree', cles: [p.cle], avant: [], titres: [titreCourt(p)] };
+        var valeurs = form && form.cle === p.cle ? champsDoc.valeursFiche(form.c) : x.valeurs;
+        api.postMessage({ type: SZH.MSG.PROP_RECREER, cle: p.cle, valeurs: valeurs });
+      });
     }
     function annuler() {
       if (!annulable || enCours) { return; }
@@ -864,10 +924,14 @@
         toutRendre(true);
         return;
       }
-      if (annulable.geste !== 'refuse' && !numeroEnregistre()) { return; }
       var cles = annulable.cles;
-      enCours = { geste: 'annule', cles: cles, avant: [], titres: [] };
-      api.postMessage({ type: SZH.MSG.PROP_ANNULER, cles: cles });
+      var envoyer = function () {
+        if (enCours) { return; }
+        enCours = { geste: 'annule', cles: cles, avant: [], titres: [] };
+        api.postMessage({ type: SZH.MSG.PROP_ANNULER, cles: cles });
+      };
+      // Défaire une acceptation retire une fiche, et recharge le numéro.
+      if (annulable.geste === 'refuse') { envoyer(); } else { apresEcriture(envoyer); }
     }
     function reprendre(cle) {
       if (enCours) { return; }
@@ -896,6 +960,7 @@
         t = n === 1 ? (m ? remplir('propBRefuseMotif', [t1, m]) : remplir('propBRefuse', [t1]))
           : (m ? nombre('propBLotRefuseMotif', n, [n, m]) : nombre('propBLotRefuse', n, [n]));
       } else if (e.geste === 'reprise') { t = remplir('propBReprise', [e.titres[0]]); }
+      else if (r.geste === 'recree') { t = remplir('propBRecree', [t1]); }
       else { t = remplir('propBAnnule', [n]); }
       if (r.geste === 'accepte' || r.geste === 'garde') {
         var nAussi = r.faites.filter(function (c) { return aussi[c]; }).length;
@@ -910,12 +975,23 @@
       var e = enCours || { geste: r.geste, cles: r.faites || [], avant: [], titres: [] };
       enCours = null;
       if (r.refus === 'verrou') { avertir(TXT.propVerrou); return; }
-      if ((r.echecs || []).length > 0) {
-        avertir(nombre('propBEchec', r.echecs.length, [r.echecs.length, r.echecs.map(function (x) { return x.raison; }).join(', ')]));
+      if (r.geste === 'recree') {
+        echouees = echouees.filter(function (x) { return r.faites.indexOf(x.p.cle) === -1; });
+      }
+      var autres = (r.echecs || []).filter(function (x) {
+        if (x.raison !== 'fiche-introuvable' || !e.envois || !e.envois[x.cle]) { return true; }
+        // Une acceptée, déjà décidée, ne se représente pas : seule sa fiche reste à créer.
+        var envoi = e.envois[x.cle];
+        echouees = echouees.filter(function (y) { return y.p.cle !== x.cle; });
+        echouees.push({ p: Object.assign({}, envoi.p, { bloquants: [] }), valeurs: envoi.valeurs });
+        return false;
+      });
+      if (autres.length > 0) {
+        avertir(nombre('propBEchec', autres.length, [autres.length, autres.map(function (x) { return x.raison; }).join(', ')]));
       }
       r.faites.forEach(function (c) { selection.delete(c); });
       if (r.faites.length === 0) { return; }
-      var defaisable = r.geste !== 'annule';
+      var defaisable = r.geste !== 'annule' && r.geste !== 'recree';
       poserAnnulable({ cles: defaisable ? r.faites.slice() : [], geste: r.geste, texte: texteResultat(e, r) });
       if (r.geste === 'annule') {
         // Défaire ramène la première proposition sous les yeux, dans son onglet.
@@ -957,6 +1033,7 @@
     }
     function fermerDetail() {
       detailCle = null;
+      form = null;
       pertinenceAuto = false;
       rendreDetail();
       rendreTable();
@@ -1005,60 +1082,21 @@
       lien.addEventListener('click', function () { api.postMessage({ type: SZH.MSG.PROP_OUVRIR_SOURCE, cle: p.cle }); });
       if (estB(p) && enAttente(p)) { cps.appendChild(SZH.notif('attention', remplir('propResumeB', [raisonsB(p).join(', ')]))); }
 
+      if (estEchouee(p)) { cps.appendChild(SZH.notif('attention', remplir('propIntrouvable', [titreDe(p)]))); }
+
       // Les gestes restent collés en haut du détail quand on descend.
-      if (enAttente(p)) {
-        var colle = poser(cps, 'div', 'prop-colle');
-        var g = poser(colle, 'div', 'prop-gestes');
-        var bloque = nomsBloquants(p);
-        zone.bAccepter = SZH.bouton(TXT.propAccepter, function () { agir('accepte', [p.cle]); }, 'szh-bouton--principal prop-detail-accepter', TXT.propAccepterTip);
-        zone.bGarder = SZH.bouton(TXT.propGarder, function () { agir('garde', [p.cle]); }, 'prop-detail-garder', TXT.propGarderTip);
-        [zone.bAccepter, zone.bGarder].forEach(function (b) {
-          b.disabled = !!bloque;
-          if (bloque) { b.title = remplir('propBloque', [bloque]); }
-        });
-        g.appendChild(zone.bAccepter);
-        g.appendChild(zone.bGarder);
-        g.appendChild(boutonRefus(function () { agir('refuse', [p.cle]); }, function (m) { agir('refuse', [p.cle], m); }));
-        if (bloque) {
-          var bl = poser(colle, 'p', 'prop-bloque');
-          bl.appendChild(icone('attention'));
-          poser(bl, 'span', null, remplir('propBloque', [bloque]));
-        }
-        var manque = (p.raisons || []).filter(function (x) { return x.code === 'requis-vide' && !enDoute(p, x.champ); })
-          .map(function (x) { return libelleChamp(p.type, x.champ); });
-        if (manque.length > 0) {
-          var mq = poser(colle, 'p', 'prop-bloque prop-manque');
-          mq.appendChild(icone('info'));
-          poser(mq, 'span', null, remplir('propManque', [manque.join(', ')]));
-        }
-        if (donnees.revueAutre) {
-          var lc = poser(colle, 'label', 'prop-case-aussi');
-          lc.title = remplir('propProposerAussiTip', [donnees.revueAutre]);
-          var cc = poser(lc, 'input');
-          cc.type = 'checkbox';
-          cc.checked = !!aussi[p.cle];
-          cc.addEventListener('change', function () { aussi[p.cle] = cc.checked; rendreTable(); });
-          poser(lc, 'span', null, remplir('propProposerAussi', [donnees.revueAutre]));
-        }
+      var vivante = enAttente(p) || estEchouee(p);
+      zone.colle = null;
+      if (vivante) {
+        zone.colle = poser(cps, 'div', 'prop-colle');
+        rendreGestes(p);
       }
 
       if (p.doublon) { rendreDoublon(cps, p); }
+      // Les champs du contrat, préremplis : on corrige, puis on accepte.
+      if (vivante) { cps.appendChild(formulaireDe(p).element); }
       rendreDoutes(cps, p);
-
-      // Les valeurs proposées, en lecture seule : le formulaire viendra.
-      var champs = typeDe(p.type).champs.filter(function (c) {
-        var v = p.valeurs[c.cle];
-        return c.saisie !== 'derive' && v !== undefined && v !== null && String(v) !== '';
-      });
-      if (champs.length > 0) {
-        var sv = poser(cps, 'section', 'prop-valeurs');
-        poser(sv, 'h4', 'prop-sous-titre', TXT.propValeurs);
-        var dlv = poser(sv, 'dl', 'prop-dl');
-        champs.forEach(function (c) {
-          poser(dlv, 'dt', null, c.libelle);
-          poser(dlv, 'dd', null, valeurLisible(p.type, c, p.valeurs[c.cle]));
-        });
-      }
+      if (!vivante) { valeursEnLecture(cps, p); }
       // Les valeurs lues à la source (brut), et l'identité de la proposition.
       var det = poser(cps, 'details', 'prop-brut-bloc');
       det.open = true;
@@ -1071,6 +1109,196 @@
           poser(dl, 'dt', null, x[0]);
           poser(dl, 'dd', null, x[1] === '' || x[1] === null || x[1] === undefined ? '–' : typeof x[1] === 'object' ? JSON.stringify(x[1]) : String(x[1]));
         });
+    }
+    // Une refusée se lit sans se corriger.
+    function valeursEnLecture(cps, p) {
+      var champs = typeDe(p.type).champs.filter(function (c) {
+        var v = p.valeurs[c.cle];
+        return c.saisie !== 'derive' && v !== undefined && v !== null && String(v) !== '';
+      });
+      if (champs.length === 0) { return; }
+      var sv = poser(cps, 'section', 'prop-valeurs');
+      poser(sv, 'h4', 'prop-sous-titre', TXT.propValeurs);
+      var dlv = poser(sv, 'dl', 'prop-dl');
+      champs.forEach(function (c) {
+        poser(dlv, 'dt', null, c.libelle);
+        poser(dlv, 'dd', null, valeurLisible(p.type, c, p.valeurs[c.cle]));
+      });
+    }
+    // Les gestes du détail, refaits à chaque réponse de l'hôte sur ce qui bloque.
+    function rendreGestes(p) {
+      var colle = zone.colle;
+      if (!colle) { return; }
+      colle.textContent = '';
+      var g = poser(colle, 'div', 'prop-gestes');
+      var bloque = nomsBloquants(p);
+      zone.bAccepter = zone.bGarder = null;
+      if (estEchouee(p)) {
+        var br = SZH.bouton(TXT.propRecreer, function () { recreer(p); }, 'szh-bouton--principal prop-recreer', TXT.propRecreerTip);
+        br.disabled = !!bloque;
+        if (bloque) { br.title = remplir('propBloque', [bloque]); }
+        g.appendChild(br);
+      } else {
+        zone.bAccepter = SZH.bouton(TXT.propAccepter, function () { agir('accepte', [p.cle]); }, 'szh-bouton--principal prop-detail-accepter', TXT.propAccepterTip);
+        zone.bGarder = SZH.bouton(TXT.propGarder, function () { agir('garde', [p.cle]); }, 'prop-detail-garder', TXT.propGarderTip);
+        [zone.bAccepter, zone.bGarder].forEach(function (b) {
+          b.disabled = !!bloque;
+          if (bloque) { b.title = remplir('propBloque', [bloque]); }
+        });
+        g.appendChild(zone.bAccepter);
+        g.appendChild(zone.bGarder);
+        g.appendChild(boutonRefus(function () { agir('refuse', [p.cle]); }, function (m) { agir('refuse', [p.cle], m); }));
+      }
+      if (bloque) {
+        var bl = poser(colle, 'p', 'prop-bloque');
+        bl.appendChild(icone('attention'));
+        poser(bl, 'span', null, remplir('propBloque', [bloque]));
+      }
+      if (!enAttente(p)) { return; }
+      var manque = (p.raisons || []).filter(function (x) { return x.code === 'requis-vide' && !enDoute(p, x.champ); })
+        .map(function (x) { return libelleChamp(p.type, x.champ); });
+      if (manque.length > 0) {
+        var mq = poser(colle, 'p', 'prop-bloque prop-manque');
+        mq.appendChild(icone('info'));
+        poser(mq, 'span', null, remplir('propManque', [manque.join(', ')]));
+      }
+      if (donnees.revueAutre) {
+        var lc = poser(colle, 'label', 'prop-case-aussi');
+        lc.title = remplir('propProposerAussiTip', [donnees.revueAutre]);
+        var cc = poser(lc, 'input');
+        cc.type = 'checkbox';
+        cc.checked = !!aussi[p.cle];
+        cc.addEventListener('change', function () { aussi[p.cle] = cc.checked; rendreTable(); });
+        poser(lc, 'span', null, remplir('propProposerAussi', [donnees.revueAutre]));
+      }
+    }
+
+    // ---- Le formulaire du détail -----------------------------------------------------------
+    function typeDoc(type) {
+      var types = (opts.types && opts.types()) || [];
+      return types.filter(function (t) { return t.valeur === type; })[0] || null;
+    }
+    // Les dates passent par l'aperçu de l'hôte (lib/date-apercu.js) : le bouton montre la forme
+    // imprimée, la valeur appliquée reste l'ISO.
+    var SAISIES_DATE = { date: true, date_partielle: true };
+    function libelleSuggestion(cfg, valeur) {
+      if (form && form.formes[cfg.cle]) { return form.formes[cfg.cle]; }
+      if (cfg.saisie === 'liste') {
+        var o = (cfg.options || []).filter(function (x) { return x.valeur === valeur; })[0];
+        return o ? o.libelle : valeur;
+      }
+      return valeur;
+    }
+    function formulaireDe(p) {
+      if (form && form.cle === p.cle) { return form; }
+      var t = typeDoc(p.type);
+      // Une couverture se dépose sur la fiche, une fois acceptée : pas ici.
+      var champs = t ? t.champs.filter(function (x) { return x.saisie !== 'fichier'; }) : [];
+      var c = {
+        famille: 'fiche', id: p.cle, type: p.type, index: 'p' + (++nForm), ctl: {}, champs: champs,
+        avecImage: false, image: '', apercu: null, persistee: false, touchee: false, enregistree: null
+      };
+      var el = document.createElement('section');
+      el.className = 'prop-formulaire';
+      form = { cle: p.cle, c: c, element: el, touches: new Set(), bloquants: (p.bloquants || []).slice(),
+        formes: {}, jeton: 0, dernier: 0, minuteur: null };
+      poser(el, 'h4', 'prop-sous-titre', TXT.propChamps);
+      var grille = poser(el, 'div', 'prop-champs');
+      var v = p.valeurs || {};
+      champs.forEach(function (cfg) {
+        var conteneur = champsDoc.champ(grille, c, cfg, v);
+        conteneur.dataset.champ = cfg.cle;
+        conteneur.classList.add('prop-champ');
+        marquerDoutes(p, cfg, conteneur);
+      });
+      champsDoc.majConditionnels(c);
+      champsDoc.majDerives(c);
+      if (t && t.champs.some(function (x) { return x.saisie === 'fichier'; })) {
+        var lc = poser(el, 'p', 'prop-bloque prop-couverture');
+        lc.appendChild(icone('info'));
+        poser(lc, 'span', null, TXT.propCouverture);
+      }
+      // À la sortie d'un champ, l'hôte revoit aussitôt ce qui bloque.
+      el.addEventListener('focusout', function () { verifierSaisie(); });
+      return form;
+    }
+    // Un champ en doute : bordure, icône, le doute, la valeur lue à côté, et la recommandation.
+    function marquerDoutes(p, cfg, conteneur) {
+      var doutes = (p.doutes || []).filter(function (d) { return d.champ === cfg.cle; });
+      if (doutes.length === 0) { return; }
+      conteneur.classList.add('prop-champ--doute');
+      var etiquette = conteneur.firstChild;
+      if (etiquette) { etiquette.insertBefore(icone('attention'), etiquette.firstChild); }
+      var brut = Object.prototype.hasOwnProperty.call(p.brut || {}, cfg.cle) ? p.brut[cfg.cle] : null;
+      doutes.forEach(function (d) {
+        var l = poser(conteneur, 'div', 'prop-champ-doute');
+        poser(l, 'span', 'prop-champ-doute-code', CODES_DOUTE[d.code] ? TXT[CODES_DOUTE[d.code]] : d.code);
+        if (d.detail) { poser(l, 'span', 'prop-doute', d.detail); }
+        if (d.code === 'champ-introuvable') { poser(l, 'span', 'prop-brut', TXT.propDouteAbsent); }
+        else if (brut !== null) { poser(l, 'span', 'prop-brut', remplir('propDouteLu', [String(brut)])); }
+        if (!d.suggestion) { return; }
+        var sug = String(d.suggestion);
+        var b = SZH.bouton(remplir('propAppliquer', [libelleSuggestion(cfg, sug)]), function () { appliquer(cfg, sug); },
+          'prop-appliquer', TXT.propAppliquerTip);
+        b.dataset.champ = cfg.cle;
+        l.appendChild(b);
+        if (SAISIES_DATE[cfg.saisie]) { demanderForme(cfg, sug, b); }
+      });
+    }
+    // Le bouton n'est peut-être pas encore dans le détail quand la réponse arrive : on le garde.
+    function demanderForme(cfg, valeur, bouton) {
+      var f0 = form;
+      SZH.ficheDoc.former(api, cfg.saisie, [valeur], function (msg) {
+        if (form !== f0 || !msg.ok || msg.erreur || !msg.forme) { return; }
+        form.formes[cfg.cle] = msg.forme;
+        bouton.textContent = remplir('propAppliquer', [msg.forme]);
+        if (!zone.detail) { return; }
+        Array.prototype.forEach.call(zone.detail.querySelectorAll('.prop-appliquer'), function (b) {
+          if (b.dataset.champ === cfg.cle) { b.textContent = remplir('propAppliquer', [msg.forme]); }
+        });
+        Array.prototype.forEach.call(zone.detail.querySelectorAll('.prop-suggestion'), function (x) {
+          if (x.dataset.champ === cfg.cle) { x.textContent = remplir('propDouteSuggestion', [msg.forme]); }
+        });
+      });
+    }
+    // Appliquer : la valeur recommandée dans le champ, comme une saisie.
+    function appliquer(cfg, valeur) {
+      if (!form) { return; }
+      var i = form.c.ctl[cfg.cle];
+      if (!i || typeof i.value !== 'string') { return; }
+      if (cfg.saisie === 'liste') { champsDoc.poserOptions(i, cfg.options || [], valeur); }
+      else if (cfg.saisie === 'date') { champsDoc.poserValeurDate(i, valeur); }
+      else { i.value = valeur; }
+      i.dispatchEvent(new Event(cfg.saisie === 'liste' ? 'change' : 'input'));
+      i.dispatchEvent(new Event('blur'));
+      verifierSaisie();
+    }
+    // Un champ touché ne bloque plus par son doute ; l'hôte le redit, au plus une fois par
+    // intervalle pendant la frappe.
+    function toucher(c, cle) {
+      if (!form || form.c !== c) { return; }
+      form.touches.add(cle);
+      var ecoule = Date.now() - form.dernier;
+      if (ecoule >= INTERVALLE_VERIFIER) { verifierSaisie(); return; }
+      if (!form.minuteur) {
+        var f0 = form;
+        form.minuteur = setTimeout(function () { f0.minuteur = null; if (form === f0) { verifierSaisie(); } }, INTERVALLE_VERIFIER - ecoule);
+      }
+    }
+    function verifierSaisie() {
+      if (!form) { return; }
+      clearTimeout(form.minuteur);
+      form.minuteur = null;
+      form.dernier = Date.now();
+      form.jeton += 1;
+      api.postMessage({ type: SZH.MSG.PROP_VERIFIER, cle: form.cle, jeton: form.jeton,
+        valeurs: champsDoc.valeursFiche(form.c), touches: Array.from(form.touches) });
+    }
+    function recevoirVerification(msg) {
+      if (!form || msg.cle !== form.cle || msg.jeton !== form.jeton) { return; }
+      form.bloquants = Array.isArray(msg.bloquants) ? msg.bloquants : [];
+      var p = trouver(form.cle);
+      if (p && detailCle === p.cle) { rendreGestes(p); }
     }
     function valeurLisible(type, c, v) {
       if (Array.isArray(v)) {
@@ -1093,7 +1321,11 @@
         var brut = Object.prototype.hasOwnProperty.call(p.brut || {}, d.champ) ? p.brut[d.champ] : null;
         if (d.code === 'champ-introuvable') { poser(b, 'p', 'prop-brut', TXT.propDouteAbsent); }
         else if (brut !== null) { poser(b, 'p', 'prop-brut', remplir('propDouteLu', [String(brut)])); }
-        if (d.suggestion) { poser(b, 'p', 'prop-suggestion', remplir('propDouteSuggestion', [String(d.suggestion)])); }
+        if (d.suggestion) {
+          var forme = form && form.cle === p.cle && form.formes[d.champ];
+          var ps = poser(b, 'p', 'prop-suggestion', remplir('propDouteSuggestion', [forme || String(d.suggestion)]));
+          ps.dataset.champ = d.champ;
+        }
       });
     }
     function rendreDoublon(parent, p) {
@@ -1252,6 +1484,7 @@
       toutRendre(false);
     }
     function recevoir(msg) {
+      if (msg.type === SZH.MSG.PROP_VERIFIE) { recevoirVerification(msg); return true; }
       if (msg.type !== SZH.MSG.PROP_DONNEES) { return false; }
       TXT = opts.txt() || {};
       donnees = msg;

@@ -1733,7 +1733,7 @@ function pageDocumentation() {
   const txt = DOC_TXT();
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -1857,7 +1857,7 @@ test('documentation : une valeur hors liste n’est pas perdue au chargement', (
   const txt = DOC_TXT();
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -2130,7 +2130,7 @@ function pageDocumentationAvecOnglets(extra) {
   const txt = DOC_TXT();
   const page = ouvrir({
     racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
-    jsPartage: ['_messages.js'], txt: txt
+    jsPartage: ['_messages.js', '_fiche-doc.js'], txt: txt
   });
   const message = Object.assign({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,

@@ -319,6 +319,8 @@ media/
   _messages.js          table SZH.MSG, copie navigateur de lib/messages.js
   _auteurs.{css,js}     fiche d'auteur·e et sa modale d'édition, pour trois vues
   _fiches.{css,js}      cartes de métadonnées d'article et modale photo, pour deux formulaires
+  _fiche-doc.js         champs d'une fiche de Documentation tirés du contrat, et l'aperçu de
+                        la date imprimée : la carte du numéro et le détail d'une proposition
   _liste.css            liste de cartes des vues d'ensemble, pour trois vues
   _numero.{css,js}      formulaire des métadonnées du numéro et de sa couverture, pour
                         metadata-issue, metadata-book et articles

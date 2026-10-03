@@ -170,6 +170,18 @@
 .prop-case-aussi { display: inline-flex; align-items: center; gap: var(--e1); font-size: var(--t-libelle); cursor: pointer; }
 .prop-case-aussi input { margin: 0; accent-color: var(--accent); }
 
+/* Le formulaire : les champs de la Documentation (media/_fiche-doc.js), un champ en doute cerné. */
+.prop-formulaire { display: flex; flex-direction: column; gap: var(--e2); }
+.prop-champs { display: flex; flex-direction: column; gap: var(--e3); }
+.prop-champ--doute { padding: var(--e2); border: 1px solid var(--avert); border-left-width: 3px;
+  border-radius: var(--rayon-mini); }
+.prop-champ--doute > label svg, .prop-champ--doute > span svg { margin-right: .3em; vertical-align: -.15em; color: var(--avert); }
+.prop-champ-doute { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e2); font-size: var(--t-libelle); }
+.prop-champ-doute-code { font-weight: 700; }
+.szh-bouton.prop-appliquer { margin-left: auto; }
+.prop-couverture svg { color: var(--encre-2); }
+.prop-echouee .prop-recreer { margin-left: var(--e2); }
+
 .prop-sous-titre { margin: 0 0 var(--e1); font-size: var(--t-mini); font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; color: var(--encre-2); }
 .prop-doutes { display: flex; flex-direction: column; gap: var(--e2); }
