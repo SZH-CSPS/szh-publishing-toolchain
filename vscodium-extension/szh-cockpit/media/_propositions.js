@@ -1842,7 +1842,7 @@
       if (exclusionEnAttente(m, x.terme, x.langue)) {
         poser(g, 'span', 'szh-pastille', TXT.propTermesDemandee);
       } else {
-        g.appendChild(SZH.bouton(TXT.propTermesDemander, function () {
+        g.appendChild(SZH.bouton(l.refSeul > 0 ? TXT.propTermesDemanderQuandMeme : TXT.propTermesDemander, function () {
           fermerMenu(false);
           demander(m, x.terme, x.langue, 'exclusion', 'panneau');
         }, (l.refSeul > 0 ? '' : 'szh-bouton--principal ') + 'prop-termes-demander'));

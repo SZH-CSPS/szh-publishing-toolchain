@@ -521,6 +521,8 @@ test('page Termes : « Ne plus proposer » est une icône, marquée quand réf. 
   assert.strictEqual(d.querySelector('.prop-termes-mesure').textContent, r(txt.propTermesMesure, [1, 5, 2]));
   assert.ok(d.querySelector('.prop-termes-avert').textContent.indexOf(r(txt.propTermesAvertRefSeulPlus, [2])) !== -1);
   assert.ok(d.textContent.indexOf(txt.propTermesInfo) !== -1);
+  assert.strictEqual(d.querySelector('.prop-termes-demander').textContent, txt.propTermesDemanderQuandMeme,
+    'un refus annoncé : le bouton le dit');
   d.querySelector('.prop-termes-fermer').click();
   assert.strictEqual(panel.querySelector('.prop-termes-panneau'), null);
   // Réf. seul = 0 : pas d'avertissement ; Demander écrit l'exclusion.
@@ -528,6 +530,7 @@ test('page Termes : « Ne plus proposer » est une icône, marquée quand réf. 
   d = panel.querySelector('.prop-termes-panneau');
   assert.strictEqual(d.querySelector('.prop-termes-mesure').textContent, r(txt.propTermesMesure, [1, 12, 0]));
   assert.strictEqual(d.querySelector('.prop-termes-avert'), null);
+  assert.strictEqual(d.querySelector('.prop-termes-demander').textContent, txt.propTermesDemander);
   page.messages.length = 0;
   d.querySelector('.prop-termes-demander').click();
   assert.deepStrictEqual(copie(page.messages.filter((m) => m.type === MSG.PROP_DEMANDE_ECRIRE)),

@@ -392,6 +392,7 @@ function textesDocumentation() {
     propTermesMesure: T('doc.prop.termes.mesure'), propTermesMesureAu: T('doc.prop.termes.mesureAu'),
     propTermesAvertRefSeulUn: T('doc.prop.termes.avertRefSeul.un'), propTermesAvertRefSeulPlus: T('doc.prop.termes.avertRefSeul.plus'),
     propTermesInfo: T('doc.prop.termes.info'), propTermesDemander: T('doc.prop.termes.demander'),
+    propTermesDemanderQuandMeme: T('doc.prop.termes.demanderQuandMeme'),
     propTermesFermer: T('doc.prop.termes.fermer'), propTermesEcrite: T('doc.prop.termes.ecrite'),
     propTermesRefus: T('doc.prop.termes.refus'), propTermesFiltre: T('doc.prop.termes.filtre'),
     propTermesRetirerFiltre: T('doc.prop.termes.retirerFiltre'), propTermesPourquoiAide: T('doc.prop.termes.pourquoiAide'),
