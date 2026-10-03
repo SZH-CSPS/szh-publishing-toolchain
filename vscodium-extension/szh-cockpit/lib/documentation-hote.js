@@ -353,7 +353,7 @@ function textesDocumentation() {
     propFinesseVoirTip: T('doc.prop.finesse.voir.tip'), propFinesseAide: T('doc.prop.finesse.aide'),
     propFinesseParMois: T('doc.prop.finesse.parMois'), propFinesseRappel: T('doc.prop.finesse.rappel'),
     propFinesseRappelSans: T('doc.prop.finesse.rappelSans'), propFinesseCalcule: T('doc.prop.finesse.calcule'),
-    propFinesseCommun: T('doc.prop.finesse.commun'), propFinesseRegle: T('doc.prop.finesse.regle'),
+    propFinesseCommun: T('doc.prop.finesse.commun'), propFinesseNonCalibree: T('doc.prop.finesse.nonCalibree'), propFinesseRegle: T('doc.prop.finesse.regle'),
     propFinesseRegleAucun: T('doc.prop.finesse.regleAucun'), propFinesseIdentiqueTip: T('doc.prop.finesse.identiqueTip'),
     propFinesseApercu: T('doc.prop.finesse.apercu'), propFinesseGarder: T('doc.prop.finesse.garder'),
     propFinesseGarderTip: T('doc.prop.finesse.garder.tip'), propFinesseGarde: T('doc.prop.finesse.garde'),
@@ -606,6 +606,7 @@ function finesseParType(racineArbreVal, langue, lu) {
       libelle: libelleMoissonneur(m), crans: vue.crans[m],
       source: String((e.crans_source || {})[langue] || ''),
       calculeLe: String(e.crans_calcules_le || ''),
+      calibree: e.note_calibree === true,
       fenetre: e.crans_fenetre && typeof e.crans_fenetre === 'object'
         ? { du: String(e.crans_fenetre.du || ''), au: String(e.crans_fenetre.au || '') } : null,
       reglage: (vue.reglages[m] || {})[type] || null
@@ -617,6 +618,7 @@ function finesseParType(racineArbreVal, langue, lu) {
     const premier = parMoissonneur[res[type].moissonneurs[0]];
     Object.assign(res[type], {
       crans: premier.crans, source: premier.source, calculeLe: premier.calculeLe, fenetre: premier.fenetre,
+      calibree: premier.calibree,
       reglage: premier.reglage,
       apercu: Number.isInteger(ap[type]) ? ap[type] : null,
       parMoissonneur: parMoissonneur

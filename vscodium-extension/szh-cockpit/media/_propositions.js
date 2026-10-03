@@ -565,6 +565,7 @@
       l.push(typeof c.rappel === 'number' ? remplir('propFinesseRappel', [c.rappel, c.rappel_sur]) : TXT.propFinesseRappelSans);
       if (f.calculeLe) { l.push(remplir('propFinesseCalcule', [dateCourte(f.calculeLe)])); }
       if (f.source === 'commun') { l.push(TXT.propFinesseCommun); }
+      if (!f.calibree) { l.push(TXT.propFinesseNonCalibree); }
       l.push(f.reglage ? remplir('propFinesseRegle', [donnees.revue, f.reglage.cran, f.reglage.par, dateCourte(f.reglage.le)])
         : remplir('propFinesseRegleAucun', [donnees.revue]));
     }

@@ -90,7 +90,8 @@ function repartir(options) {
   ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'recherche'), '2026-10-01-1.jsonl', JSON.stringify(recherche('R1', 'Une recherche')) + '\n');
   ecrireEtat('parlement', o.sansCrans ? {} : {
     crans: { fr: crans(), de: crans() }, crans_calcules_le: '2026-10-01',
-    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' }
+    crans_source: { fr: 'langue', de: 'commun' }, crans_fenetre: { du: '2026-04-01', au: '2026-09-30' },
+    ...(o.calibree ? { note_calibree: true } : {})
   });
   ecrireEtat('recherche', { propositions_ecrites: 1 });
   if (o.reglage) { pr.ecrireReglage(RACINE_ARBRE, 'fr', 'parlement', 'intervention', o.reglage, 'Claire Exemple'); }
@@ -319,6 +320,17 @@ test('page : « les voir » montre les masquées en grisé, en italique et avec 
   tout.checked = true;
   tout.dispatchEvent({ type: 'change' });
   assert.strictEqual(panel.querySelector('.prop-selbar-compte').textContent, r(txt.propSelectionPlus, [5]));
+});
+
+// Tant que la note n'est pas calibrée sur des jugements humains, le curseur coupe surtout par
+// volume : l'infobulle le dit, et se tait quand le moissonneur annonce une note calibrée.
+test('page : l’infobulle dit que la note n’est pas calibrée, sauf si le moissonneur l’annonce', async () => {
+  repartir({ reglage: 6 });
+  let v = await vueBranchee();
+  assert.ok(v.panel.querySelector('.prop-finesse-aide').title.indexOf(v.txt.propFinesseNonCalibree) !== -1);
+  repartir({ reglage: 6, calibree: true });
+  v = await vueBranchee();
+  assert.strictEqual(v.panel.querySelector('.prop-finesse-aide').title.indexOf(v.txt.propFinesseNonCalibree), -1);
 });
 
 test('page : l’infobulle « ? » porte les chiffres du cran, et un cran identique le dit', async () => {

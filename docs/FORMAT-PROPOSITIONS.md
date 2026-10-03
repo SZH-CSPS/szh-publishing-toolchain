@@ -269,6 +269,7 @@ Sans `score`, ou sans crans pour sa langue, elle est visible à tous les crans.
 |---|---|
 | `crans` | `{ fr: [...], de: [...] }`, 10 entrées par langue : `{ cran: 1..10, seuil, par_mois, rappel, rappel_sur, identique_au_cran_precedent }` ; le cran 1 a le seuil 0 (Large), le cran 10 est Strict |
 | `crans_calcules_le` | date AAAA-MM-JJ, recalcul trimestriel |
+| `note_calibree` | facultatif, `true` quand la note a été calibrée sur des jugements humains ; sinon la vue dit que le curseur coupe surtout par volume |
 | `crans_source` | `{ fr: "langue" \| "commun", de: … }` : une langue qui a moins de 200 propositions sur 12 mois, ou plus de 3 crans identiques, prend les déciles communs, et le champ le dit |
 | `crans_fenetre` | `{ du, au }`, la fenêtre du `par_mois` |
 | `termes` | `[{ terme, langue, role, ref, ref_seul }]`, avec `rappel_sur` à côté |
