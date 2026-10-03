@@ -70,7 +70,11 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   --filet: var(--vscode-panel-border, rgba(128, 128, 128, .35));
   --filet-fort: var(--vscode-contrastBorder, var(--vscode-panel-border, rgba(128, 128, 128, .6)));
   --encre: var(--vscode-foreground, #ccc);
-  --encre-2: var(--vscode-descriptionForeground, rgba(204, 204, 204, .75));
+  /* L'encre secondaire porte des libellés, des valeurs lues et des comptes. Le gris
+     secondaire de l'éditeur seul ne vaut que Lc 59 sur blanc en Light+ (le thème des
+     postes) : on le tire aux trois quarts vers l'encre, soit Lc 76, sous l'encre (81) qui
+     est le plafond du thème. Mesuré par test/js/cockpit-contraste.test.js. */
+  --encre-2: color-mix(in srgb, var(--vscode-descriptionForeground, rgba(204, 204, 204, .75)) 25%, var(--encre));
 
   /* Couleurs sémantiques : une seule valeur chacune, choisie parmi celles qui étaient déjà
      en usage (grep sur les pages avant ce lot), le jeton de l'éditeur passant devant. Toute
@@ -95,7 +99,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 /* Moteur sans color-mix : la teinte revient au jeton de l'éditeur. Sans ce repli la
    variable serait invalide et les surfaces qui s'en servent deviendraient transparentes. */
 @supports not (color: color-mix(in srgb, white 50%, black)) {
-  :root { --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12)); }
+  :root { --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12));
+          --encre-2: var(--vscode-descriptionForeground, rgba(204, 204, 204, .75)); }
 }
 
 /* ═══ 2. Surfaces et séparations ══════════════════════════════════════════════

@@ -21,7 +21,7 @@
 .image-infos { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: .12rem; }
 .image-nom { font-family: var(--vscode-editor-font-family, monospace); font-size: .9em;
   overflow-wrap: anywhere; }
-.image-desc { color: var(--vscode-descriptionForeground); font-size: .82em; }
+.image-desc { color: var(--encre-2); font-size: .82em; }
 .image-etat { font-size: .82em; min-height: 1em; color: var(--ok); }
 .image-etat.erreur { color: var(--danger); }
 /* Dépôt de l'original : .szh-depot (_design.css §11). */

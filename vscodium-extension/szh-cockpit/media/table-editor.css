@@ -56,12 +56,12 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
 .panneau .sousbloc { padding: .25rem 0 .1rem; }
 .panneau .sousbloc + .sousbloc { border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.2)); margin-top: .2rem; }
 .panneau .sbtitre { font-size: .82em; font-weight: 600; margin: .15rem 0 .2rem;
-  color: var(--vscode-descriptionForeground); }
+  color: var(--encre-2); }
 .panneau .radios { display: flex; flex-direction: column; gap: .05rem; }
 .panneau label.opt { display: flex; align-items: center; gap: .35em; font-size: .86em;
   padding: .08rem 0; cursor: pointer; }
 .panneau label.opt input { margin: 0; cursor: pointer; }
-.panneau .note { font-size: .78em; color: var(--vscode-descriptionForeground); margin: .25rem 0 0; font-style: italic; }
+.panneau .note { font-size: .78em; color: var(--encre-2); margin: .25rem 0 0; font-style: italic; }
 /* Sous-bloc désactivé, faute d'en-tête correspondant : grisé, avec une explication. */
 .panneau .sousbloc.inactif { opacity: .5; }
 .panneau label.opt input:disabled { cursor: default; }
@@ -83,7 +83,7 @@ table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size:
 table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
   background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
 .poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));
-  color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;
+  color: var(--encre-2); cursor: pointer; text-align: center; user-select: none;
   min-width: 1.4em; padding: .15em .3em; font-size: .8em; }
 .poignee.pnum { min-width: 2.4em; }
 .poignee.selh { background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.35));
