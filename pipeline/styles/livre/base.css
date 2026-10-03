@@ -124,14 +124,18 @@ figure + p, ul + p, ol + p, blockquote + p, table + p, .szh-tableau-boite + p,
 /* ── Sommaire ──────────────────────────────────────────────────────────────
    Le numéro de page est posé par target-counter() : le sommaire est écrit avec des liens
    internes, et c'est WeasyPrint qui résout la page à la pagination. Une table des matières
-   écrite à la main serait fausse au premier ajout de paragraphe. */
+   écrite à la main serait fausse au premier ajout de paragraphe.
+   Le numéro se pose sur la première ligne d'une entrée de plusieurs lignes : en position
+   absolue dans l'entrée, et non en flottant, qui le descendrait sur la dernière ligne. Il
+   reste après le titre dans l'arbre de structure. La charte réserve sa colonne
+   (padding-right de l'entrée), sans quoi le titre passerait dessous. */
 .szh-sommaire { break-before: recto; }
 .szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
-.szh-sommaire li { break-inside: avoid; }
+.szh-sommaire li { break-inside: avoid; position: relative; }
 .szh-sommaire a { text-decoration: none; color: inherit; }
 .szh-sommaire a::after {
   content: target-counter(attr(href), page);
-  float: right;
+  position: absolute; top: 0; right: 0;
   font-variant-numeric: tabular-nums;
 }
 

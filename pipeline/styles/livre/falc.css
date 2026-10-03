@@ -407,7 +407,9 @@ li { margin-bottom: 0; line-height: 1.48; }
   /* Le texte au milieu de la case, donc au milieu de la marque en regard. */
   display: flex; align-items: center;
 }
-.szh-sommaire li > span { flex: 1; }  /* le <span> qui porte le lien (livre-assembler.py) */
+/* Le <span> qui porte le lien (livre-assembler.py) ancre le numéro de page (base.css) : il
+   commence à la première ligne du titre, le <li> centré, non. Colonne du numéro réservée. */
+.szh-sommaire li > span { flex: 1; position: relative; padding-right: 10mm; }
 .szh-sommaire li:first-child { border-top: 0; }
 /* La marque déborde dans la marge extérieure de la page (le sommaire n'est pas paginé en
    recto/verso comme les chapitres, une seule règle suffit), flush au bord rogné, même

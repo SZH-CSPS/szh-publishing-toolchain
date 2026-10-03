@@ -492,7 +492,10 @@ En maquette normal, le séparateur de légende est le deux-points (« Abbildung 
   appelle et passe à chaque chapitre en `SZH_NUMERO_CHAPITRE` ; `szh-sections.lua` l'écrit.
 - *Sommaire* : la partie au niveau 0, les chapitres au niveau 1, leurs intertitres au niveau
   2 avec `sommaire-niveaux: 2` ; la bibliographie n'y entre jamais ; un liminaire écrit qui
-  suit le sommaire et chaque pièce de fin y entrent, sans numéro.
+  suit le sommaire et chaque pièce de fin y entrent, sans numéro. Le numéro de page d'une
+  entrée de plusieurs lignes se pose sur sa première ligne (`livre/base.css`), dans une
+  colonne de 10 mm que le titre ne franchit pas, en maquette normal (plat ou hiérarchique)
+  comme en FALC.
 - *Pièces de fin* (`pieces-fin:`) : compilées comme les liminaires, chacune sur un recto.
   Deux mises en page de notices s'écrivent dans le `.md` : `::: notices` (un paragraphe par
   notice, le nom en `**Nom Prénom (Dr.):**`) et `::: {.notices .portraits}` (des `##` de

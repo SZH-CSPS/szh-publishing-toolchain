@@ -144,8 +144,9 @@ h2, h3, h4, figure { margin-break: discard; }
 
 /* ═══ Sommaire ════════════════════════════════════════════════════════════════
    Au fer à gauche, sans retrait : la graisse seule distingue les niveaux. Le folio, au fer
-   à droite, prend la graisse de l'entrée. Une ligne vide avant chaque entrée de rang 1. */
-.szh-sommaire li { font-size: 10pt; line-height: var(--ligne); margin: 0; padding: 0;
+   à droite, prend la graisse de l'entrée et se pose sur sa première ligne ; le titre
+   s'arrête avant la colonne des folios. Une ligne vide avant chaque entrée de rang 1. */
+.szh-sommaire li { font-size: 10pt; line-height: var(--ligne); margin: 0; padding: 0 10mm 0 0;
                    text-align: left; hyphens: none; }
 .szh-sommaire .niveau-1 { font-weight: 700; letter-spacing: 0.035em; margin-top: var(--ligne); }
 .szh-sommaire .niveau-1:first-child { margin-top: 0; }
@@ -325,7 +326,7 @@ html[data-tableaux="zebre"] .szh-tableau-boite > table:not([data-zebre-lig]):not
 html[data-tableaux="zebre"] .szh-tableau-boite > table > caption { margin-bottom: 3.7mm; }
 
 /* sommaire: hierarchique — les chapitres seuls, en SZH Condensed, le folio gras sur la
-   dernière ligne du titre, les auteur·e·s dessous en romain ; une ligne vide entre deux
+   première ligne du titre, les auteur·e·s dessous en romain ; une ligne vide entre deux
    entrées, deux avant la première. Approche relevée sur les largeurs de mots de la
    référence : 0,035 em aux titres, 0,045 em aux auteur·e·s, 0,05 em aux parties. */
 html[data-sommaire="hierarchique"] .szh-sommaire li {
@@ -339,10 +340,7 @@ html[data-sommaire="hierarchique"] .szh-sommaire ol { padding-top: calc(2 * var(
 html[data-sommaire="hierarchique"] .szh-sommaire .niveau-1:first-child { margin-top: 0; }
 html[data-sommaire="hierarchique"] .szh-sommaire-auteurs { display: block; font-weight: 400;
                                                            letter-spacing: 0.045em; }
-/* Le titre s'arrête avant la colonne des folios, le folio reste au fer à droite. */
-html[data-sommaire="hierarchique"] .szh-sommaire li { padding-right: 10mm; }
-html[data-sommaire="hierarchique"] .szh-sommaire a::after { margin-right: -10mm; }
-/* Le folio flottant hériterait le retrait négatif de l'entrée de partie. */
+/* Le folio hériterait le retrait négatif de l'entrée de partie. */
 .szh-sommaire a::after { text-indent: 0; }
 
 /* sommaire-page: verso — le sommaire s'ouvre sur une page paire, en double page. */
