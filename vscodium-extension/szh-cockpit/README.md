@@ -198,8 +198,9 @@ lib/
                         table des capacités (contextes szh.peut.*) ; courant() rend le
                         profil actif
   propositions.js       propositions des moissonneurs : lecture des lots de _Moissons\, cas A/B
-                        revalidés contre le contrat, décisions, accepter/refuser/annuler. Pur,
-                        sans vscode ; la fiche passe par kirby-contenu.js
+                        revalidés contre le contrat, décisions, accepter/refuser/annuler, en lot
+                        pour la vue, et le compte de l’arbre en cache. Pur, sans vscode ; la
+                        fiche passe par kirby-contenu.js
   qualite-image.js      seuils de résolution des images et verdict de qualité
   rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
                         résolution passive de l'ancrage SharePoint, masquage, anti-
@@ -321,6 +322,8 @@ media/
   _liste.css            liste de cartes des vues d'ensemble, pour trois vues
   _numero.{css,js}      formulaire des métadonnées du numéro et de sa couverture, pour
                         metadata-issue, metadata-book et articles
+  _propositions.{css,js} vue « Propositions » de la Documentation : un onglet par type de
+                        fiche, tableau, gestes en lot, colonnes réglables, détail
   apercu.{css,js}       fragment injecté dans l'aperçu HTML
   import-verif.{html,css,js}      vérification après import Word
   medias-article.{html,css,js}    gestionnaire des médias d'un article

@@ -502,3 +502,143 @@ test('creerFiche sans uuidImpose écrit octet pour octet le fichier d’avant, a
     } finally { nettoyer(autre.racine); }
   } finally { nettoyer(racine); nettoyer(depot); }
 });
+
+// ---- Compte de l'arbre, en cache ----------------------------------------------------------
+
+// Compte les lectures de lots pendant `fn` : le cache se juge à ce qu'il ne relit pas.
+function lecturesDeLots(fn) {
+  const origine = fs.readFileSync;
+  let n = 0;
+  fs.readFileSync = function (chemin) {
+    if (/\.jsonl$/.test(String(chemin))) { n++; }
+    return origine.apply(fs, arguments);
+  };
+  try { fn(); } finally { fs.readFileSync = origine; }
+  return n;
+}
+
+test('compterPropositions : en attente et cas B, dans la langue demandée', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [
+      intervention('1'),
+      intervention('2', { doutes: [{ champ: 'date', code: 'date-illisible', detail: 'mois en lettres' }] }),
+      intervention('3', { langue: 'de' })
+    ]);
+    assert.deepStrictEqual(pr.compterPropositions(racine, 'fr'), { total: 2, aVerifier: 1 });
+    assert.deepStrictEqual(pr.compterPropositions(racine, 'de'), { total: 1, aVerifier: 0 });
+  } finally { nettoyer(racine); }
+});
+
+test('compterPropositions : un lot inchangé n’est pas relu, un lot ou une décision de plus si', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [intervention('1'), intervention('2')]);
+    assert.strictEqual(lecturesDeLots(() => pr.compterPropositions(racine, 'fr')), 1);
+    let compte;
+    assert.strictEqual(lecturesDeLots(() => { compte = pr.compterPropositions(racine, 'fr'); }), 0,
+      'un lot inchangé a été relu');
+    assert.deepStrictEqual(compte, { total: 2, aVerifier: 0 });
+
+    ecrireLot(racine, 'essai', '2026-10-03-1.jsonl', [intervention('3')]);
+    assert.strictEqual(lecturesDeLots(() => { compte = pr.compterPropositions(racine, 'fr'); }), 2);
+    assert.deepStrictEqual(compte, { total: 3, aVerifier: 0 });
+
+    assert.ok(pr.refuser(racine, intervention('1')).ok);
+    assert.deepStrictEqual(pr.compterPropositions(racine, 'fr'), { total: 2, aVerifier: 0 },
+      'une décision écrite doit sortir la proposition du compte');
+    // Le dossier des décisions existe désormais : seule sa propre date dit qu'une décision s'ajoute.
+    assert.ok(pr.refuser(racine, intervention('2')).ok);
+    assert.deepStrictEqual(pr.compterPropositions(racine, 'fr'), { total: 1, aVerifier: 0 },
+      'une seconde décision doit aussi sortir sa proposition du compte');
+  } finally { nettoyer(racine); }
+});
+
+// ---- Ordre de la vue ----------------------------------------------------------------------
+
+test('ordonner : les cas B en tête, puis l’ordre `tri` du contrat (CH d’abord, puis le titre)', () => {
+  const doublon = { uuid: 'x', slug: 'y', certitude: 'probable' };
+  const liste = [
+    avecValeurs(intervention('1'), { canton: 'VD', title: 'Bêta' }),
+    avecValeurs(intervention('2'), { canton: 'CH', title: 'Zêta' }),
+    avecValeurs(intervention('3'), { canton: 'GE', title: 'Alpha' }),
+    Object.assign(avecValeurs(intervention('4'), { canton: 'VD', title: 'Oméga' }), { doublon: doublon })
+  ];
+  const r = pr.ordonner(liste, 'fr');
+  assert.deepStrictEqual(r.map((p) => p.valeurs.title), ['Oméga', 'Zêta', 'Alpha', 'Bêta']);
+  assert.deepStrictEqual(r.map((p) => p.cas), ['B', 'A', 'A', 'A']);
+  assert.deepStrictEqual(codes(r[0].raisons), ['doublon:null']);
+});
+
+test('listerRefusees : les refus de cette langue, avec leur motif', () => {
+  const { racine } = bibliotheque();
+  try {
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [intervention('1'), intervention('2'), intervention('3', { langue: 'de' })]);
+    pr.refuser(racine, intervention('1'), 'hors-sujet');
+    pr.refuser(racine, intervention('3'));
+    const r = pr.listerRefusees(racine, 'fr');
+    assert.deepStrictEqual(r.map((p) => [p.cle, p.motif]), [['essai:source-exemple:GE:1', 'hors-sujet']]);
+  } finally { nettoyer(racine); }
+});
+
+// ---- Gestes en lot --------------------------------------------------------------------------
+
+test('accepterLot : les cas A seulement ; un cas B passe depuis son détail s’il n’a rien qui bloque', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const a = intervention('1');
+    const bDoute = intervention('2', { doutes: [{ champ: 'date', code: 'date-illisible', detail: 'x' }] });
+    const bDoublon = intervention('3', { doublon: { uuid: 'u', slug: 's', certitude: 'probable' } });
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', [a, bDoute, bDoublon]);
+    const r = pr.accepterLot(racine, 'fr', [{ cle: a.cle, aussi: true }, { cle: bDoute.cle }, { cle: bDoublon.cle }],
+      { ausgabeId: idRevue });
+    assert.deepStrictEqual(r.faites, [a.cle]);
+    assert.deepStrictEqual(r.ignorees.map((x) => x.cle).sort(), [bDoute.cle, bDoublon.cle].sort());
+    const d = pr.lireDecision(racine, a.cle);
+    assert.strictEqual(d.decision, 'accepte');
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', d.fiche).statut, 'a-traduire', '« aussi » se passe par proposition');
+    assert.strictEqual(pr.lireDecision(racine, bDoute.cle), null);
+
+    const seul = pr.accepterLot(racine, 'fr', [{ cle: bDoublon.cle }], { ausgabeId: '', depuisDetail: true });
+    assert.deepStrictEqual(seul.faites, [bDoublon.cle], 'un doublon probable n’a rien à toucher : son détail l’accepte');
+    assert.strictEqual(kc.lireStatutFiche(racine, 'de', pr.lireDecision(racine, bDoublon.cle).fiche), null);
+    const bloque = pr.accepterLot(racine, 'fr', [{ cle: bDoute.cle }], { ausgabeId: '', depuisDetail: true });
+    assert.deepStrictEqual(bloque.faites, []);
+    assert.deepStrictEqual(bloque.ignorees, [{ cle: bDoute.cle, raison: 'a-verifier' }]);
+  } finally { nettoyer(racine); }
+});
+
+test('refuserLot puis annulerLot : un lot entier se défait, acceptations comprises', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const l = ['1', '2', '3'].map((i) => intervention(i));
+    ecrireLot(racine, 'essai', '2026-10-02-1.jsonl', l);
+    const refus = pr.refuserLot(racine, 'fr', [l[0].cle, l[1].cle], 'hors-sujet');
+    assert.deepStrictEqual(refus.faites, [l[0].cle, l[1].cle]);
+    assert.strictEqual(pr.lireDecision(racine, l[1].cle).motif, 'hors-sujet');
+    const acc = pr.accepterLot(racine, 'fr', [{ cle: l[2].cle }], { ausgabeId: idRevue });
+    const uuid = pr.lireDecision(racine, l[2].cle).fiche;
+    assert.strictEqual(kc.listerFichesNumero(racine, 'fr', idRevue).length, 1);
+
+    const r = pr.annulerLot(racine, refus.faites.concat(acc.faites));
+    assert.deepStrictEqual(r.faites.sort(), l.map((p) => p.cle).sort());
+    assert.strictEqual(r.fichesSupprimees, 1);
+    for (const p of l) { assert.strictEqual(pr.lireDecision(racine, p.cle), null); }
+    assert.strictEqual(kc.listerFichesNumero(racine, 'fr', idRevue).length, 0);
+    assert.strictEqual(kc.trouverSlugParUuid(racine, 'fr', uuid), null);
+    assert.strictEqual(pr.listerPropositions(racine, 'fr').propositions.length, 3);
+  } finally { nettoyer(racine); }
+});
+
+test('ficheDoublon : la fiche existante que désigne un doublon probable', () => {
+  const { racine, idRevue } = bibliotheque();
+  try {
+    const f = kc.creerFiche(racine, 'fr', 'livre', LIVRE, idRevue);
+    const p = { type: 'livre', langue: 'fr', doublon: { uuid: f.uuid, slug: f.slug, certitude: 'probable' } };
+    const d = pr.ficheDoublon(racine, p);
+    assert.strictEqual(d.valeurs.title, 'Un livre');
+    assert.strictEqual(d.ausgabe, idRevue);
+    assert.strictEqual(pr.ficheDoublon(racine, Object.assign({}, p, { doublon: { uuid: 'autre', slug: f.slug } })), null);
+    assert.strictEqual(pr.ficheDoublon(racine, { type: 'livre', langue: 'fr', doublon: null }), null);
+  } finally { nettoyer(racine); }
+});

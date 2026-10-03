@@ -23,7 +23,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T } = require('./i18n');
+const { T, TEXTES_COCKPIT } = require('./i18n');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
@@ -37,6 +37,7 @@ const { apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, TAILLE_MAX_IMAGE_IMP
 const kirby = require('./kirby-contenu');
 const dateApercu = require('./date-apercu');
 const autreRevue = require('./autre-revue');
+const propositions = require('./propositions');
 // Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
 // PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
 // Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
@@ -68,7 +69,9 @@ let ctx = {
   // d'exception.
   apercuOuvert: () => false,
   basculerApercu: async () => {},
-  rafraichirApercuSiOuvert: async () => {}
+  rafraichirApercuSiOuvert: async () => {},
+  // Le contexte de l'extension : son globalState garde les colonnes de la vue Propositions.
+  etatPoste: () => null
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -251,7 +254,89 @@ function textesDocumentation() {
     autreRevueEchec: T('doc.autrerevue.echec'),
     autreRevueRemplacer: T('doc.autrerevue.remplacer'), autreRevueRemplacerOui: T('doc.autrerevue.remplacer.oui'),
     autreRevueAnnuler: T('doc.autrerevue.annuler'), autreRevueFermer: T('doc.autrerevue.fermer'),
-    autreRevueRempli: T('doc.autrerevue.rempli')
+    autreRevueRempli: T('doc.autrerevue.rempli'),
+    // Vue « Propositions » (media/_propositions.js).
+    propVue: T('doc.prop.vue'), propTitreVue: T('doc.prop.titreVue'),
+    propOngletTipUn: T('doc.prop.onglet.tip.un'), propOngletTipPlus: T('doc.prop.onglet.tip.plus'),
+    propOngletTipAUn: T('doc.prop.onglet.tipA.un'),
+    propOngletTipAPlus: T('doc.prop.onglet.tipA.plus'), propDontB: T('doc.prop.dontB'),
+    propAVerifier: T('doc.prop.aVerifier'), propRefusee: T('doc.prop.refusee'),
+    propColEtat: T('doc.prop.col.etat'), propColTitre: T('doc.prop.col.titre'),
+    propColType: T('doc.prop.col.type'), propColPertinence: T('doc.prop.col.pertinence'),
+    propColGestes: T('doc.prop.col.gestes'), propCaseTout: T('doc.prop.caseTout'),
+    propCaseLigne: T('doc.prop.caseLigne'), propAccepter: T('doc.prop.accepter'),
+    propAccepterCourt: T('doc.prop.accepter.court'), propAccepterTip: T('doc.prop.accepter.tip'),
+    propGarder: T('doc.prop.garder'), propGarderCourt: T('doc.prop.garder.court'),
+    propGarderTip: T('doc.prop.garder.tip'), propRefuser: T('doc.prop.refuser'),
+    propRefuserTip: T('doc.prop.refuser.tip'), propMotifsTip: T('doc.prop.motifs.tip'),
+    propMotifHorsSujet: T('doc.prop.motif.horsSujet'),
+    propMotifDoublon: T('doc.prop.motif.doublon'), propMotifAutre: T('doc.prop.motif.autre'),
+    propVerifier: T('doc.prop.verifier'), propVerifierTip: T('doc.prop.verifier.tip'),
+    propAussiLabel: T('doc.prop.aussi.label'), propAussiTip: T('doc.prop.aussi.tip'),
+    propAussiRetire: T('doc.prop.aussi.retire'), propVerifierDabord: T('doc.prop.verifierDabord'),
+    propBloque: T('doc.prop.bloque'), propColonnes: T('doc.prop.colonnes'),
+    propColonnesTip: T('doc.prop.colonnes.tip'), propColonneFixe: T('doc.prop.colonneFixe'),
+    propRetablir: T('doc.prop.retablir'), propRetablirTip: T('doc.prop.retablir.tip'),
+    propSeparateur: T('doc.prop.separateur'), propSeparateurTip: T('doc.prop.separateur.tip'),
+    propListe: T('doc.prop.liste'), propListeTip: T('doc.prop.liste.tip'),
+    propSuivante: T('doc.prop.suivante'), propSuivanteTip: T('doc.prop.suivante.tip'),
+    propFermer: T('doc.prop.fermer'), propRaccourcis: T('doc.prop.raccourcis'),
+    propRaccourcisDetail: T('doc.prop.raccourcis.detail'), propReprendre: T('doc.prop.reprendre'),
+    propReprendreTip: T('doc.prop.reprendre.tip'), propSelectionUn: T('doc.prop.selection.un'),
+    propSelectionPlus: T('doc.prop.selection.plus'),
+    propAVerifierDabordUn: T('doc.prop.aVerifierDabord.un'),
+    propAVerifierDabordPlus: T('doc.prop.aVerifierDabord.plus'),
+    propAVerifierDabordTip: T('doc.prop.aVerifierDabord.tip'),
+    propDeselectionner: T('doc.prop.deselectionner'), propAnnuler: T('doc.prop.annuler'),
+    propAnnulerTip: T('doc.prop.annuler.tip'), propBAccepte: T('doc.prop.b.accepte'),
+    propBGarde: T('doc.prop.b.garde'), propBRefuse: T('doc.prop.b.refuse'),
+    propBRefuseMotif: T('doc.prop.b.refuseMotif'), propBLotAccepteUn: T('doc.prop.b.lotAccepte.un'),
+    propBLotAcceptePlus: T('doc.prop.b.lotAccepte.plus'),
+    propBLotGardeUn: T('doc.prop.b.lotGarde.un'), propBLotGardePlus: T('doc.prop.b.lotGarde.plus'),
+    propBLotRefuseUn: T('doc.prop.b.lotRefuse.un'),
+    propBLotRefusePlus: T('doc.prop.b.lotRefuse.plus'),
+    propBLotRefuseMotifUn: T('doc.prop.b.lotRefuseMotif.un'),
+    propBLotRefuseMotifPlus: T('doc.prop.b.lotRefuseMotif.plus'), propBAussi: T('doc.prop.b.aussi'),
+    propBLotAussiUn: T('doc.prop.b.lotAussi.un'), propBLotAussiPlus: T('doc.prop.b.lotAussi.plus'),
+    propBIgnoreesUn: T('doc.prop.b.ignorees.un'), propBIgnoreesPlus: T('doc.prop.b.ignorees.plus'),
+    propBReprise: T('doc.prop.b.reprise'), propBAnnule: T('doc.prop.b.annule'),
+    propBEchecUn: T('doc.prop.b.echec.un'), propBEchecPlus: T('doc.prop.b.echec.plus'),
+    propVerrou: T('doc.prop.verrou'), propOuvrirSource: T('doc.prop.ouvrirSource'),
+    propOuvrirSourceTip: T('doc.prop.ouvrirSource.tip'), propPosition: T('doc.prop.position'),
+    propRecolteeLe: T('doc.prop.recolteeLe'), propProposerAussi: T('doc.prop.proposerAussi'),
+    propProposerAussiTip: T('doc.prop.proposerAussi.tip'), propDoutes: T('doc.prop.doutes'),
+    propDouteDateIllisible: T('doc.prop.doute.dateIllisible'),
+    propDouteLangueDevinee: T('doc.prop.doute.langueDevinee'),
+    propDouteCorrespondanceIncertaine: T('doc.prop.doute.correspondanceIncertaine'),
+    propDouteValeurHorsListe: T('doc.prop.doute.valeurHorsListe'),
+    propDouteChampIntrouvable: T('doc.prop.doute.champIntrouvable'),
+    propDouteTexteTronque: T('doc.prop.doute.texteTronque'),
+    propDouteSuggestion: T('doc.prop.doute.suggestion'), propDouteLu: T('doc.prop.doute.lu'),
+    propDouteAbsent: T('doc.prop.doute.absent'), propLangue: T('doc.prop.langue'),
+    propValeurs: T('doc.prop.valeurs'), propBrut: T('doc.prop.brut'),
+    propBrutCle: T('doc.prop.brut.cle'), propBrutLien: T('doc.prop.brut.lien'),
+    propDoublonTitre: T('doc.prop.doublon.titre'), propDoublonTexte: T('doc.prop.doublon.texte'),
+    propDoublonIntrouvable: T('doc.prop.doublon.introuvable'),
+    propDoublonSansNumero: T('doc.prop.doublon.sansNumero'),
+    propDoublonChamp: T('doc.prop.doublon.champ'),
+    propDoublonProposition: T('doc.prop.doublon.proposition'),
+    propDoublonFiche: T('doc.prop.doublon.fiche'),
+    propDoublonDiffere: T('doc.prop.doublon.differe'),
+    propDoublonRefuser: T('doc.prop.doublon.refuser'),
+    propDoublonRefuserTip: T('doc.prop.doublon.refuser.tip'),
+    propRaisonDoute: T('doc.prop.raison.doute'), propRaisonRequis: T('doc.prop.raison.requis'),
+    propRaisonFormat: T('doc.prop.raison.format'), propRaisonDoublon: T('doc.prop.raison.doublon'),
+    propResumeB: T('doc.prop.resumeB'), propManque: T('doc.prop.manque'),
+    propPertinenceRetenu: T('doc.prop.pertinence.retenu'),
+    propPertinenceARelire: T('doc.prop.pertinence.aRelire'),
+    propFiltrePertinence: T('doc.prop.filtrePertinence'), propToutes: T('doc.prop.toutes'),
+    propAfficherRefusees: T('doc.prop.afficherRefusees'), propMoissonUn: T('doc.prop.moisson.un'),
+    propMoissonPlus: T('doc.prop.moisson.plus'), propMoissonCourtUn: T('doc.prop.moissonCourt.un'),
+    propMoissonCourtPlus: T('doc.prop.moissonCourt.plus'), propEchec: T('doc.prop.echec'),
+    propVide: T('doc.prop.vide'), propVideMoissons: T('doc.prop.videMoissons'),
+    propVideSans: T('doc.prop.videSans'), propVideAucune: T('doc.prop.videAucune'),
+    propChargement: T('doc.prop.chargement'),
+    propEnregistrerDabord: T('doc.prop.enregistrerDabord')
   };
 }
 
@@ -351,9 +436,86 @@ function construireReponseArchive() {
   return { type: MSG.ARCHIVE_DONNEES, ok: true, fiches: fiches };
 }
 
+// ---- La vue « Propositions » : ce que la page affiche, composé ici ------------------------
+//
+// Toute la logique (lots, décisions, cas A/B, ordre) vit dans lib/propositions.js ; ces
+// fonctions ne font que la mettre en forme pour la page, dans la langue du numéro.
+
+// Le réglage des colonnes de la vue, par type de fiche : propre au poste, jamais partagé.
+const CLE_COLONNES_PROPOSITIONS = 'szh.propositions.colonnes';
+
+function libelleMoissonneur(id) {
+  const cle = 'doc.prop.moissonneur.' + id;
+  return TEXTES_COCKPIT.fr[cle] !== undefined ? T(cle) : id;
+}
+
+// Les types de fiche tels que la vue les montre : libellé, colonnes de tri, et les libellés
+// des jetons de liste, pour qu'une valeur se lise en clair.
+function typesPropositions(langue) {
+  return kirby.typesConnus().map((type) => {
+    const def = kirby.definitionType(type) || {};
+    const champs = kirby.champsDuType(type).map((c) => {
+      const x = { cle: c.cle, libelle: c.libelle[langue] || c.libelle.fr, saisie: c.saisie };
+      if (c.saisie === 'liste' || c.saisie === 'liste_multiple') {
+        x.libelles = {};
+        for (const v of kirby.valeursListe(c.liste)) { x.libelles[v.jeton] = v[langue] || v.fr; }
+      }
+      return x;
+    });
+    return {
+      type: type, libelle: kirby.libelleCockpitType(type, langue),
+      tri: (def.tri || ['title']).filter((k) => k !== 'title'),
+      categorie: !!kirby.champDuType(type, 'categorie'), champs: champs
+    };
+  });
+}
+
+function etatsPropositions(etats) {
+  return Object.keys(etats || {}).map((m) => {
+    const e = etats[m] || {};
+    return {
+      moissonneur: m, libelle: libelleMoissonneur(m), connu: !!etats[m],
+      derniere: String(e.derniere_moisson || ''), propositions: Number(e.propositions_ecrites) || 0,
+      echecs: (Array.isArray(e.sources_en_echec) ? e.sources_en_echec : [])
+        .map((x) => ({ source: String((x && x.source) || ''), raison: String((x && x.raison) || '') }))
+    };
+  });
+}
+
+// donneesPropositions(racineArbreVal, langue, revueJeton, resultat?) -> le message PROP_DONNEES.
+function donneesPropositions(racineArbreVal, langue, revueJeton, resultat) {
+  const lu = propositions.listerPropositions(racineArbreVal, langue);
+  const pourVue = (p) => {
+    const fiche = p.doublon ? propositions.ficheDoublon(racineArbreVal, p) : null;
+    return {
+      cle: p.cle, type: p.type, moissonneur: p.moissonneur, recolte: String(p.recolte || ''),
+      source: String(p.cle).split(':')[1] || p.moissonneur,
+      valeurs: p.valeurs || {}, doutes: Array.isArray(p.doutes) ? p.doutes : [], brut: p.brut || {},
+      pertinence: p.pertinence || null, doublon: p.doublon || null, motif: p.motif || '',
+      cas: p.cas, raisons: p.raisons, bloquants: propositions.bloquants(p),
+      // « Proposer aussi à l'autre revue » : cochée d'office pour la Confédération seule.
+      aussi: (p.valeurs || {}).canton === 'CH',
+      doublonFiche: fiche ? { valeurs: fiche.valeurs, numero: nomNumeroPour(racineArbreVal, fiche.ausgabe) } : null
+    };
+  };
+  const etatPoste = ctx.etatPoste();
+  const autre = kirby.autreRevue(revueJeton);
+  const msg = {
+    type: MSG.PROP_DONNEES, langue: langue, cible: kirby.autresLangues(langue)[0] || '',
+    revueAutre: autre ? ctx.nomRevueAffiche(autre) : '',
+    types: typesPropositions(langue),
+    propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
+    refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
+    etats: etatsPropositions(lu.etats),
+    colonnes: (etatPoste && etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS)) || {}
+  };
+  if (resultat) { msg.resultat = resultat; }
+  return msg;
+}
+
 function htmlDocumentation(nonce) {
   return construireHtml('documentation', nonce, {
-    cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+    cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_propositions.js'],
     titre: T('doc.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
@@ -430,7 +592,7 @@ function creerPageDocumentation(fournisseur) {
 
 // `onglet` : posé par les entrées de l'arbre (extension.js#_itemsActualite /
 // _itemsDocumentationNumero, commande szh.ouvrirActualite) — l'un de 'numero'/'traductions'/
-// 'reservoir'/'archive'. `categorie` n'a de sens que pour 'numero' : 'rubriques' ou l'un des
+// 'reservoir'/'archive'/'propositions'. `categorie` n'a de sens que pour 'numero' : 'rubriques' ou l'un des
 // types de fiche du contrat (ordreTypes) — une seule catégorie affichée à la fois, jamais un
 // sommaire. Les deux sont absents (undefined) pour l'en-tête « ACTUALITÉ » et la commande
 // szh.documentation : le formulaire s'ouvre alors sur sa vue par défaut (webview) / celle
@@ -638,6 +800,40 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
     if (total > 0 && rafraichirTout) { rafraichirTout(); }
     return { total: total, correspondances: correspondances };
   };
+
+  // Un geste de la vue Propositions : accepter (dans ce numéro ou au réservoir), refuser, ou
+  // défaire un geste entier. La vue repart avec le résultat, l'arbre suit.
+  async function traiterGesteProposition(msg) {
+    const refusVerrou = (geste) => repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton,
+      { geste: geste, refus: 'verrou', faites: [], ignorees: [], echecs: [] }));
+    let resultat;
+    let recharger = false;
+    if (msg.type === MSG.PROP_ACCEPTER) {
+      const dansNumero = !!msg.dansNumero;
+      const geste = dansNumero ? 'accepte' : 'garde';
+      if (dansNumero && refuserSiVerrouille()) { refusVerrou(geste); return; }
+      resultat = Object.assign({ geste: geste }, propositions.accepterLot(racineArbreVal, langue, msg.demandes,
+        { ausgabeId: dansNumero ? ausgabeId : '', depuisDetail: !!msg.depuisDetail }));
+      recharger = resultat.faites.length > 0;
+    } else if (msg.type === MSG.PROP_REFUSER) {
+      const motif = propositions.MOTIFS_REFUS.indexOf(msg.motif) !== -1 ? msg.motif : '';
+      resultat = Object.assign({ geste: 'refuse', motif: motif },
+        propositions.refuserLot(racineArbreVal, langue, msg.cles, motif));
+    } else {
+      // Défaire une acceptation retire la fiche créée, peut-être de ce numéro.
+      const cles = Array.isArray(msg.cles) ? msg.cles.map(String) : [];
+      const acceptation = cles.some((c) => {
+        const d = propositions.lireDecision(racineArbreVal, c);
+        return d && d.decision === 'accepte';
+      });
+      if (acceptation && refuserSiVerrouille()) { refusVerrou('annule'); return; }
+      resultat = Object.assign({ geste: 'annule' }, propositions.annulerLot(racineArbreVal, cles));
+      recharger = resultat.fichesSupprimees > 0;
+    }
+    if (recharger) { await charger(panneau); }
+    repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton, resultat));
+    if (rafraichirTout) { rafraichirTout(); }
+  }
 
   async function traiterPret(msg) {
     const extra = { requete: msg.requete };
@@ -856,6 +1052,41 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       } else {
         repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('doc.archive.reprise.echec') });
       }
+      return;
+    }
+    // Vue « Propositions ». La lecture est demandée par la page, puis renvoyée après chaque
+    // geste avec son résultat. Un geste qui crée ou retire une fiche recharge aussi la
+    // Documentation du numéro (charger) ; la page refuse elle-même ce geste tant qu'elle a une
+    // carte non enregistrée, que ce rechargement perdrait.
+    if (msg.type === MSG.PROP_CHARGER) {
+      repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton));
+      return;
+    }
+    if (msg.type === MSG.PROP_ACCEPTER || msg.type === MSG.PROP_REFUSER || msg.type === MSG.PROP_ANNULER) {
+      // La page attend toujours une réponse avant un autre geste : une erreur la lui donne aussi.
+      try { await traiterGesteProposition(msg); }
+      catch (e) {
+        repondrePanneau(panneau, donneesPropositions(racineArbreVal, langue, revueJeton,
+          { geste: '', faites: [], ignorees: [], echecs: [{ cle: '', raison: String((e && e.message) || e) }] }));
+      }
+      return;
+    }
+    if (msg.type === MSG.PROP_COLONNES) {
+      const etatPoste = ctx.etatPoste();
+      const typeFiche = String(msg.typeFiche || '');
+      if (!etatPoste || !kirby.typeConnu(typeFiche)) { return; }
+      const table = Object.assign({}, etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS) || {});
+      if (msg.reglage) { table[typeFiche] = msg.reglage; } else { delete table[typeFiche]; }
+      await etatPoste.globalState.update(CLE_COLONNES_PROPOSITIONS, table);
+      return;
+    }
+    // Le lien vient du lot, jamais de la page : la page ne désigne que la proposition.
+    if (msg.type === MSG.PROP_OUVRIR_SOURCE) {
+      const cible = String(msg.cle || '');
+      const p = propositions.listerPropositions(racineArbreVal, langue).propositions
+        .concat(propositions.listerRefusees(racineArbreVal, langue)).find((x) => x.cle === cible);
+      const url = p ? String(p.lien_source || '') : '';
+      if (/^https?:\/\//i.test(url)) { await vscode.env.openExternal(vscode.Uri.parse(url)); }
       return;
     }
     // L'aperçu de la date imprimée, dans la langue du numéro : une lecture, donc pas de garde

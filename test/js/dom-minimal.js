@@ -282,6 +282,7 @@ function ouvrir(opts) {
 
   const parId = {};
   const messages = [];
+  const observes = [];
   let surMessage = null;
   const document = {
     head: element('head'), body: element('body'), documentElement: element('html'),
@@ -339,6 +340,12 @@ function ouvrir(opts) {
       this.bubbles = !!(opts && opts.bubbles);
     },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
+    // Retient ce que la page observe ; `redimensionner(largeur)` (plus bas) le déclenche.
+    ResizeObserver: function (fn) {
+      this.observe = (el) => { observes.push({ el: el, fn: fn }); };
+      this.unobserve = () => {};
+      this.disconnect = () => {};
+    },
     console: console
   };
   contexte.globalThis = contexte;
@@ -359,6 +366,10 @@ function ouvrir(opts) {
     envoyer: (msg) => {
       if (!surMessage) { throw new Error('la page n’écoute pas les messages'); }
       surMessage({ data: msg });
+    },
+    // Ce que verrait un ResizeObserver : chaque élément observé prend cette largeur.
+    redimensionner: (largeur) => {
+      for (const o of observes) { o.fn([{ target: o.el, contentRect: { width: largeur, height: 600 } }]); }
     },
     compter: (selecteur) => chercher(racineDom(), selecteur).length,
     compterPage: (selecteur) => chercher(document.body, selecteur).length,

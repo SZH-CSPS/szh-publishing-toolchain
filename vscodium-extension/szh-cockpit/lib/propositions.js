@@ -74,22 +74,47 @@ function verifierLigne(texte) {
   return { proposition: p };
 }
 
-// Les clés des décisions présentes, lues une fois pour toute la liste.
-function clesDecidees(racineArbreVal) {
+// Les décisions présentes, lues une fois pour toute la liste : cle -> décision.
+function decisionsParCle(racineArbreVal) {
   let noms;
-  try { noms = fs.readdirSync(cheminDecisions(racineArbreVal)); } catch (e) { return new Set(); }
-  const res = new Set();
+  try { noms = fs.readdirSync(cheminDecisions(racineArbreVal)); } catch (e) { return new Map(); }
+  const res = new Map();
   for (const nom of noms) {
     if (!/^[0-9a-f]{16}\.txt$/.test(nom)) { continue; }
     const d = lireDecisionFichier(path.join(cheminDecisions(racineArbreVal), nom));
-    if (d && empreinteCle(d.cle) + '.txt' === nom) { res.add(d.cle); }
+    if (d && empreinteCle(d.cle) + '.txt' === nom) { res.set(d.cle, d); }
   }
   return res;
 }
+function clesDecidees(racineArbreVal) { return new Set(decisionsParCle(racineArbreVal).keys()); }
 
 // listerPropositions(racine, langue) -> { propositions, avertissements, etats }.
 // Pour une même cle, la ligne du lot le plus récent l'emporte, et dans un lot la dernière.
 function listerPropositions(racineArbreVal, langue) {
+  const lu = lireLots(racineArbreVal);
+  const decidees = clesDecidees(racineArbreVal);
+  const propositions = [];
+  for (const p of lu.parCle.values()) {
+    if (decidees.has(p.cle) || p.langue !== langue) { continue; }
+    propositions.push(p);
+  }
+  return { propositions: propositions, avertissements: lu.avertissements, etats: lu.etats };
+}
+
+// listerRefusees(racine, langue) -> les propositions refusées de cette langue, chacune avec
+// son `motif`, pour revenir sur un refus.
+function listerRefusees(racineArbreVal, langue) {
+  const decisions = decisionsParCle(racineArbreVal);
+  const res = [];
+  for (const p of lireLots(racineArbreVal).parCle.values()) {
+    const d = decisions.get(p.cle);
+    if (!d || d.decision !== 'refuse' || p.langue !== langue) { continue; }
+    res.push(Object.assign({}, p, { motif: d.motif }));
+  }
+  return res;
+}
+
+function lireLots(racineArbreVal) {
   const avertissements = [];
   const etats = {};
   const parCle = new Map();
@@ -123,13 +148,63 @@ function listerPropositions(racineArbreVal, langue) {
       });
     }
   }
-  const decidees = clesDecidees(racineArbreVal);
-  const propositions = [];
-  for (const p of parCle.values()) {
-    if (decidees.has(p.cle) || p.langue !== langue) { continue; }
-    propositions.push(p);
+  return { parCle: parCle, avertissements: avertissements, etats: etats };
+}
+
+// ---- Compte de l'arbre --------------------------------------------------------------
+
+// L'empreinte de ce que le compte lit : les dossiers (un lot ou une décision ajoutés les
+// changent) et chaque lot. Un stat ne télécharge pas un fichier « en ligne seulement »,
+// une lecture si : c'est tout l'intérêt de ce cache sur OneDrive.
+function empreinteMoissons(racineArbreVal) {
+  const base = cheminMoissons(racineArbreVal);
+  const parts = [];
+  const noter = (chemin, extra) => {
+    try { const s = fs.statSync(chemin); parts.push(chemin + '|' + s.mtimeMs + '|' + s.size + '|' + (extra || '')); }
+    catch (e) { parts.push(chemin + '|absent'); }
+  };
+  let decisions = [];
+  try { decisions = fs.readdirSync(path.join(base, DOSSIER_DECISIONS)); } catch (e) { /* aucune décision */ }
+  noter(base);
+  noter(path.join(base, DOSSIER_DECISIONS), String(decisions.length));
+  for (const m of dossiersMoissonneurs(racineArbreVal)) {
+    const dossier = path.join(base, m);
+    noter(dossier);
+    let noms = [];
+    try { noms = fs.readdirSync(dossier); } catch (e) { /* dossier disparu entre-temps */ }
+    for (const nom of noms.filter((n) => /\.jsonl$/.test(n)).sort()) { noter(path.join(dossier, nom)); }
   }
-  return { propositions: propositions, avertissements: avertissements, etats: etats };
+  return parts.join('\n');
+}
+
+const cacheComptes = new Map();
+
+// compterPropositions(racine, langue) -> { total, aVerifier } : les propositions en attente
+// dans cette langue, dont les cas B. Rien n'est relu tant que l'empreinte et le contrat
+// n'ont pas changé.
+function compterPropositions(racineArbreVal, langue) {
+  const cle = racineArbreVal + '|' + langue;
+  const empreinte = empreinteMoissons(racineArbreVal);
+  const contratCourant = kirby.contrat();
+  const connu = cacheComptes.get(cle);
+  if (connu && connu.empreinte === empreinte && connu.contrat === contratCourant) {
+    return { total: connu.total, aVerifier: connu.aVerifier };
+  }
+  const { propositions } = listerPropositions(racineArbreVal, langue);
+  const aVerifier = propositions.filter((p) => classer(p).cas === 'B').length;
+  cacheComptes.set(cle, { empreinte: empreinte, contrat: contratCourant, total: propositions.length, aVerifier: aVerifier });
+  return { total: propositions.length, aVerifier: aVerifier };
+}
+
+// ---- Ordre de la vue ------------------------------------------------------------------
+
+// ordonner(propositions, langue) -> les mêmes, chacune avec `cas` et `raisons` : les cas B
+// en tête, puis l'ordre `tri` du contrat, celui des fiches imprimées.
+function ordonner(propositions, langue) {
+  const classees = propositions.map((p) => Object.assign({}, p, classer(p)));
+  const b = kirby.calculerOrdreFiches(classees.filter((p) => p.cas === 'B'), langue);
+  const a = kirby.calculerOrdreFiches(classees.filter((p) => p.cas === 'A'), langue);
+  return b.concat(a);
 }
 
 // ---- Revalidation contre le contrat -------------------------------------------------
@@ -341,10 +416,81 @@ function annulerAcceptation(racineArbreVal, cle) {
   return { ok: annule.ok, ficheSupprimee: !!f };
 }
 
+// ---- Gestes de la vue, en lot -----------------------------------------------------------
+
+function enAttenteParCle(racineArbreVal, langue) {
+  return new Map(listerPropositions(racineArbreVal, langue).propositions.map((p) => [p.cle, p]));
+}
+
+// accepterLot(racine, langue, [{ cle, aussi }], { ausgabeId, depuisDetail })
+//   -> { faites: [cle], ignorees: [{ cle, raison }], echecs: [{ cle, raison }] }.
+// Un cas B ne s'accepte que depuis son détail, seul, et sans rien qui bloque ; ses valeurs
+// sont celles de la proposition, telles quelles. `aussi` vaut pour sa seule proposition.
+function accepterLot(racineArbreVal, langue, demandes, options) {
+  const o = options || {};
+  const attente = enAttenteParCle(racineArbreVal, langue);
+  const liste = Array.isArray(demandes) ? demandes : [];
+  const res = { faites: [], ignorees: [], echecs: [] };
+  for (const d of liste) {
+    const p = attente.get(String((d && d.cle) || ''));
+    if (!p) { res.ignorees.push({ cle: String((d && d.cle) || ''), raison: 'deja-decidee' }); continue; }
+    const seulDepuisDetail = !!o.depuisDetail && liste.length === 1;
+    if (classer(p).cas === 'B' && !(seulDepuisDetail && bloquants(p).length === 0)) {
+      res.ignorees.push({ cle: p.cle, raison: 'a-verifier' });
+      continue;
+    }
+    const r = accepter(racineArbreVal, p, p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi });
+    if (r.ok) { res.faites.push(p.cle); } else { res.echecs.push({ cle: p.cle, raison: r.raison }); }
+  }
+  return res;
+}
+
+// refuserLot(racine, langue, [cle], motif?) -> { faites, ignorees, echecs }.
+function refuserLot(racineArbreVal, langue, cles, motif) {
+  const attente = enAttenteParCle(racineArbreVal, langue);
+  const res = { faites: [], ignorees: [], echecs: [] };
+  for (const cle of (Array.isArray(cles) ? cles : [])) {
+    const p = attente.get(String(cle));
+    if (!p) { res.ignorees.push({ cle: String(cle), raison: 'deja-decidee' }); continue; }
+    const r = refuser(racineArbreVal, p, motif);
+    if (r.ok) { res.faites.push(p.cle); } else { res.echecs.push({ cle: p.cle, raison: r.raison }); }
+  }
+  return res;
+}
+
+// annulerLot(racine, [cle]) -> { faites, echecs, fichesSupprimees } : chaque décision se
+// défait selon sa nature, une acceptation avec la fiche qu'elle a créée.
+function annulerLot(racineArbreVal, cles) {
+  const res = { faites: [], echecs: [], fichesSupprimees: 0 };
+  for (const cle of (Array.isArray(cles) ? cles : [])) {
+    const d = lireDecision(racineArbreVal, cle);
+    if (!d) { res.echecs.push({ cle: String(cle), raison: 'pas-decidee' }); continue; }
+    const r = d.decision === 'accepte' ? annulerAcceptation(racineArbreVal, cle) : annulerDecision(racineArbreVal, cle);
+    if (!r.ok) { res.echecs.push({ cle: d.cle, raison: r.raison || 'echec' }); continue; }
+    res.faites.push(d.cle);
+    if (r.ficheSupprimee) { res.fichesSupprimees++; }
+  }
+  return res;
+}
+
+// ficheDoublon(racine, p) -> { valeurs, ausgabe, langue } | null : la fiche que désigne un
+// doublon probable, dans la langue de la proposition d'abord.
+function ficheDoublon(racineArbreVal, p) {
+  const d = p && p.doublon;
+  if (!d || !d.slug || !d.uuid || !kirby.typeConnu(p.type)) { return null; }
+  const langues = [p.langue].concat(kirby.languesDuContrat().filter((l) => l !== p.langue));
+  for (const langue of langues) {
+    const f = kirby.lireFicheSlugLangue(racineArbreVal, String(d.slug), langue, p.type);
+    if (f && f.uuid === d.uuid) { return { valeurs: f.valeurs, ausgabe: f.ausgabe || '', langue: langue }; }
+  }
+  return null;
+}
+
 module.exports = {
   FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,
-  listerPropositions, classer, bloquants,
+  listerPropositions, listerRefusees, classer, bloquants, ordonner, compterPropositions,
   lireDecision, ecrireDecision, annulerDecision,
-  accepter, refuser, annulerAcceptation
+  accepter, refuser, annulerAcceptation,
+  accepterLot, refuserLot, annulerLot, ficheDoublon
 };

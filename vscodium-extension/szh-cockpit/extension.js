@@ -320,6 +320,7 @@ const {
 // vivent toutes deux dans documentation.<lang>.txt et les dossiers de fiches. Remplace
 // lib/ressources.js et lib/rubriques.js.
 const kirbyLib = require('./lib/kirby-contenu');
+const propositionsLib = require('./lib/propositions');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -887,9 +888,22 @@ class FournisseurRevue {
       + kirbyLib.listerOrphelines(racineArbreVal, langue).length;
     const nBlocs = compterBlocsDocumentation(this.racine, this.slugDocumentation());
     const nArchive = documentationHote.compteArchiveConnu();
+    // Les propositions des moissonneurs : un compte en cache (lib/propositions.js), relu
+    // seulement quand un lot ou une décision change.
+    let prop = { total: 0, aVerifier: 0 };
+    try { prop = propositionsLib.compterPropositions(racineArbreVal, langue); }
+    catch (e) { console.warn('propositions : compte impossible — ' + ((e && e.message) || e)); }
+    const nProp = prop.total === 1 ? '.un' : '.plus';
+    const tipProp = prop.total === 0 ? T('arbre.actualite.propositions.tipVide')
+      : prop.aVerifier ? T('arbre.actualite.propositions.tip' + nProp, [prop.total, prop.aVerifier])
+        : T('arbre.actualite.propositions.tipA' + nProp, [prop.total]);
     const entrees = [
       { cle: 'numero', libelle: T('doc.onglet.numero'), icone: 'book', compte: nBlocs,
         tip: T('arbre.actualite.numero.tip') },
+      // Juste après le numéro : c'est là qu'arrive le neuf. L'icône d'avertissement dit
+      // qu'il y a des cas à vérifier, l'infobulle combien.
+      { cle: 'propositions', libelle: T('doc.prop.vue'), icone: prop.aVerifier ? 'warning' : 'lightbulb',
+        couleur: prop.aVerifier ? 'list.warningForeground' : undefined, compte: prop.total, tip: tipProp },
       { cle: 'traductions', libelle: T('doc.onglet.traductions'), icone: 'globe',
         compte: nTraductions, tip: T('arbre.actualite.traductions.tip') },
       { cle: 'reservoir', libelle: T('doc.onglet.reservoir'), icone: 'inbox',
@@ -903,7 +917,7 @@ class FournisseurRevue {
       it.id = 'actualite:' + e.cle;
       if (e.enfants) { it.categorie = e.enfants; }
       it.contextValue = 'actualite-entree';
-      it.iconPath = new vscode.ThemeIcon(e.icone);
+      it.iconPath = e.couleur ? new vscode.ThemeIcon(e.icone, new vscode.ThemeColor(e.couleur)) : new vscode.ThemeIcon(e.icone);
       if (typeof e.compte === 'number' && e.compte > 0) { it.description = '(' + e.compte + ')'; }
       it.tooltip = e.tip;
       it.command = { command: 'szh.ouvrirActualite', title: e.libelle,
@@ -3237,6 +3251,7 @@ function activate(context) {
   // Le contexte, pour lib/controles-hote.js : les constats fermés et les slugs retirés
   // s'écrivent dans son globalState.
   controlesHote.configurer({ etatPoste: () => context });
+  documentationHote.configurer({ etatPoste: () => context });
   // Rien n'attend ce travail : il ne conditionne aucune commande, et le faire attendre
   // retarderait l'ouverture de la barre latérale.
   poserReglagesMaison(context).catch((e) => {

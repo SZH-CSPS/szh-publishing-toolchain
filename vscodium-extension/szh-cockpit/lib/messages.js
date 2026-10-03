@@ -154,7 +154,15 @@ const MSG = Object.freeze({
   DOC_DATE_FORMER: 'docDateFormer', DOC_DATE_FORMEE: 'docDateFormee',
   // Documentation, fiche « D'une revue à l'autre » : la page demande, une fois par panneau,
   // les articles de l'autre revue ; l'hôte répond { ok, numeros, illisibles } (lib/autre-revue.js).
-  DOC_AUTREREVUE_CHARGER: 'docAutreRevueCharger', DOC_AUTREREVUE_DONNEES: 'docAutreRevueDonnees'
+  DOC_AUTREREVUE_CHARGER: 'docAutreRevueCharger', DOC_AUTREREVUE_DONNEES: 'docAutreRevueDonnees',
+  // Documentation, vue « Propositions » (lib/propositions.js). La page demande les données
+  // (PROP_CHARGER) ; l'hôte les rend, et les renvoie après chaque geste avec son résultat
+  // (PROP_DONNEES). Les gestes : accepter { demandes: [{ cle, aussi }], dansNumero,
+  // depuisDetail }, refuser { cles, motif }, annuler { cles }. PROP_COLONNES range le réglage
+  // des colonnes d'un type ({ typeFiche, reglage }) dans le globalState du poste.
+  PROP_CHARGER: 'propCharger', PROP_DONNEES: 'propDonnees',
+  PROP_ACCEPTER: 'propAccepter', PROP_REFUSER: 'propRefuser', PROP_ANNULER: 'propAnnuler',
+  PROP_COLONNES: 'propColonnes', PROP_OUVRIR_SOURCE: 'propOuvrirSource'
 });
 
 module.exports = { MSG };

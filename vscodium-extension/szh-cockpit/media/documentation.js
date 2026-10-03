@@ -38,6 +38,9 @@
 // un type de typesConfig { valeur, libelleSection, libelleAjouter, libelleAjouterTip,
 // avecImage, champFichier, champs: [{ cle, libelle, saisie, requis, quand?, options?,
 // dependDe?, optionsParCanton?, structureChamps?, extensions?, depuis?, table? }] }.
+// La vue « Propositions » a son propre protocole, décrit en tête de media/_propositions.js
+// (propCharger, propAccepter, propRefuser, propAnnuler, propColonnes, propOuvrirSource,
+// propDonnees).
 var api = acquireVsCodeApi();
 function imageDepot() {
   return Object.assign({ format: 'errFormat', poids: 'errTropVolumineuse' }, SZH.LIMITES.image);
@@ -54,6 +57,8 @@ var panelReservoir = document.getElementById('panel-reservoir');
 var panelNumero = document.getElementById('panel-numero');
 var panelArchive = document.getElementById('panel-archive');
 var panelWeb = document.getElementById('panel-web');
+var panelPropositions = document.getElementById('panel-propositions');
+var corpsPage = document.getElementById('corps');
 var zoneSections = document.getElementById('sections');
 var compteurId = 0;
 var compteurIndex = 0;
@@ -1402,6 +1407,20 @@ function construireBarreCategories() {
     barreCategories.appendChild(b);
   });
 }
+// La vue « Propositions » (media/_propositions.js), montée la première fois qu'on l'ouvre.
+// Ses gestes qui rechargent la page attendent que les cartes du numéro soient enregistrées :
+// estModifie() le lui dit.
+var propositions = null;
+function vuePropositions() {
+  if (!propositions) {
+    propositions = SZH.vuePropositions({
+      api: api, panel: panelPropositions, barreOnglets: barreCategories, titre: titreVue,
+      txt: function () { return TXT; }, estModifie: function () { return estModifie(); }
+    });
+  }
+  return propositions;
+}
+
 // Bascule la visibilité des quatre panneaux et pose le titre de la vue choisie — appelée
 // après chaque rendre() et à chaque message ongletActiver (l'arbre, panneau déjà ouvert).
 // Toute la navigation vit désormais dans l'arbre : la page n'a plus de barre d'onglets ni de
@@ -1413,6 +1432,8 @@ function appliquerVue() {
   panelNumero.hidden = vueOnglet !== 'numero';
   panelArchive.hidden = vueOnglet !== 'archive';
   panelWeb.hidden = vueOnglet !== 'web';
+  panelPropositions.hidden = vueOnglet !== 'propositions';
+  corpsPage.classList.toggle('prop-plein', vueOnglet === 'propositions');
   if (vueOnglet === 'numero') { appliquerFiltreNumero(); }
   barreCategories.hidden = vueOnglet !== 'numero';
   if (vueOnglet === 'numero') { construireBarreCategories(); }
@@ -1421,12 +1442,15 @@ function appliquerVue() {
   else if (vueOnglet === 'reservoir') { titre = TXT.ongletReservoir || ''; }
   else if (vueOnglet === 'archive') { titre = TXT.ongletArchive || ''; }
   else if (vueOnglet === 'web') { titre = TXT.webTitre || ''; }
+  else if (vueOnglet === 'propositions') { titre = TXT.propVue || ''; }
   else {
     var categorieLibelle = libelleCategorieNumero();
     titre = (TXT.ongletNumero || '') + (categorieLibelle ? ' – ' + categorieLibelle : '');
   }
   titreVue.textContent = titre;
   if (vueOnglet === 'archive') { assurerChargementArchive(); }
+  // La vue Propositions pose elle-même ses onglets de type et son titre.
+  if (vueOnglet === 'propositions') { vuePropositions().afficher(); }
 }
 
 // ---- Onglet Archive : toute la bibliothèque de PRODUCTION, lecture seule --------------
@@ -1874,6 +1898,7 @@ window.addEventListener('message', function (ev) {
     etat(msg.ok ? (TXT.archiveRepriseOk || '') : ('⚠ ' + (msg.message || '')));
     return;
   }
+  if (msg.type === SZH.MSG.PROP_DONNEES) { vuePropositions().recevoir(msg); return; }
   console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });

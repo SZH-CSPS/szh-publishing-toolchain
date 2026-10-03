@@ -18,6 +18,9 @@
 //   node outils-dev/apercu-documentation.js traductions
 //   node outils-dev/apercu-documentation.js archive     (bibliothèque de production factice, boutons en icônes)
 //   node outils-dev/apercu-documentation.js numero livre   (Documentation du numéro, catégorie « Livres » seule)
+//   node outils-dev/apercu-documentation.js propositions   (lots synthétiques ; SZH_LANGUE=de pour la Zeitschrift)
+//     …?onglet=propositions&etat=liste|selection|detail-b|detail-recherche|doublon|colonnes|annuler|largeur|recherche|vide
+//     &theme=clair|sombre : les couleurs d’un thème de l’éditeur, sinon les replis de _design.css
 //
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<sortie.png> --window-size=1400,1400 "<chemin-html>"
@@ -288,7 +291,140 @@ for (let i = 0; i < 12; i++) {
   }));
 }
 
-const txt = textesDocumentation();
+// ---- Vue « Propositions » : lots synthétiques, classés par lib/propositions.js -------------
+//
+// Aucune personne ni aucun objet réels. Les lots sont écrits dans une bibliothèque jetable, puis
+// relus, classés et ordonnés par lib/propositions.js, comme le ferait l'hôte ; la mise en forme
+// reprend celle de documentation-hote.js#donneesPropositions. La langue du numéro est celle de
+// l'interface (SZH_LANGUE=de pour la Zeitschrift).
+const pr = require(path.join(COCKPIT, 'lib', 'propositions.js'));
+const { langueCockpit } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+const LANGUE_PROP = langueCockpit();
+
+function lotsSynthetiques(l) {
+  const t = (fr, de) => (l === 'de' ? de : fr);
+  const p = (o) => Object.assign({ format: 'pronto-proposition/1', langue: l, recolte: '2026-10-01T05:12:00Z', doutes: [], brut: {},
+    pertinence: { verdict: 'retenu', raison: t('ancrage « pédagogie spécialisée »', 'Anker «Sonderpädagogik»') }, doublon: null }, o);
+  const inter = (id, canton, categorie, titre, extra) => p(Object.assign({
+    cle: 'parlement:exemple:' + canton + ':' + id, moissonneur: 'parlement', type: 'intervention',
+    lien_source: 'https://parlement.exemple.ch/objets/' + id,
+    valeurs: { canton: canton, categorie: categorie, numero: id, date: '2026-09-11', title: titre,
+      lien: 'https://parlement.exemple.ch/objets/' + id, etat: 'depose', source: 'openparldata' }
+  }, extra || {}));
+  const interventions = [
+    inter('26-POS-041', 'VD', 'postulat', t('Pour un accueil inclusif dans les structures parascolaires', 'Für eine inklusive Betreuung in Tagesstrukturen'), {
+      doutes: [{ champ: 'date', code: 'date-illisible', detail: t('jour et mois lus, année déduite de la session', 'Tag und Monat gelesen, Jahr aus der Session abgeleitet'), suggestion: '2026-03-04' }],
+      brut: { date: t('séance du 4 mars', 'Sitzung vom 4. März'), type_harmonise: 'Postulat', session: t('printemps 2026', 'Frühjahr 2026') } }),
+    inter('M-3120', 'GE', 'motion', t('Garantir des places en enseignement spécialisé à la rentrée', 'Genügend Plätze in der Sonderschulung zum Schulbeginn'), {
+      doutes: [{ champ: 'categorie', code: 'correspondance-incertaine', detail: t('type harmonisé « Proposition de motion », rapproché de « Motion »', 'harmonisierter Typ «Motionsvorschlag», der «Motion» zugeordnet') }],
+      brut: { categorie: t('Proposition de motion', 'Motionsvorschlag') },
+      pertinence: { verdict: 'a-relire', raison: t('ancrage « enseignement spécialisé » seul', 'nur Anker «Sonderschulung»') } }),
+    inter('26.3712', 'CH', 'motion', t('Renforcer la formation continue en pédagogie spécialisée', 'Weiterbildung in Sonderpädagogik stärken'), {
+      lien_source: 'https://curia.exemple.ch/objets/26.3712', doublon: { uuid: '', slug: '', certitude: 'probable' } }),
+    inter('26.4021', 'CH', 'postulat', t('Évaluer l’accès aux mesures de pédagogie spécialisée dans le préscolaire', 'Zugang zu sonderpädagogischen Massnahmen im Vorschulalter prüfen')),
+    inter('26.4105', 'CH', 'interpellation', t('Quelles données sur les élèves à besoins éducatifs particuliers ?', 'Welche Daten zu Lernenden mit besonderem Bildungsbedarf?'), {
+      pertinence: { verdict: 'a-relire', raison: t('ancrage « besoins éducatifs particuliers » seul', 'nur Anker «besonderer Bildungsbedarf»') } }),
+    inter('26.7533', 'CH', 'question', t('Langue des signes à l’école obligatoire', 'Gebärdensprache in der obligatorischen Schule')),
+    inter('2026-GC-118', 'FR', 'motion', t('Logopédie en milieu scolaire : réduire les délais d’attente', 'Logopädie in der Schule: Wartezeiten verkürzen')),
+    inter('2026.09.204', 'VS', 'question', t('Transport scolaire des élèves en situation de handicap', 'Schultransport für Lernende mit Behinderung')),
+    inter('26.412', 'JU', 'postulat', t('Soutien au personnel enseignant spécialisé en début de carrière', 'Unterstützung für schulische Heilpädagoginnen und Heilpädagogen beim Berufseinstieg')),
+    inter('311-2026', 'BE', 'interpellation', t('Écoles spécialisées du Jura bernois : quelle planification ?', 'Sonderschulen im Berner Jura: welche Planung?'))
+  ];
+  const rech = (id, titre, inst, debut, fin, desc, extra) => p(Object.assign({
+    cle: 'recherche:exemple:' + id, moissonneur: 'recherche', type: 'recherche', recolte: '2026-09-28T04:40:00Z',
+    lien_source: 'https://recherche.exemple.ch/projets/' + id,
+    valeurs: { title: titre, institutions: inst, debut: debut, fin: fin, lien: 'https://recherche.exemple.ch/projets/' + id, descriptif: desc }
+  }, extra || {}));
+  const recherches = [
+    rech('2024-17', t('Parcours scolaires des élèves avec un trouble du spectre de l’autisme', 'Schullaufbahnen von Lernenden mit Autismus-Spektrum-Störung'),
+      t('HEP Exemple', 'PH Beispiel'), '', '2027', t('Étude longitudinale des transitions entre degrés.', 'Längsschnittstudie zu den Übergängen zwischen den Stufen.'), {
+        doutes: [{ champ: 'debut', code: 'date-illisible', detail: t('période en toutes lettres', 'Zeitraum ausgeschrieben'), suggestion: '2024-09' }],
+        brut: { debut: t('septembre 2024 – …', 'September 2024 – …') } }),
+    rech('2025-03', t('Coenseignement en classe inclusive : effets sur les apprentissages', 'Teamteaching in inklusiven Klassen: Wirkung auf das Lernen'),
+      t('HEP Exemple', 'PH Beispiel'), '2025-01', '2027-12', t('Observation de binômes enseignants dans vingt classes.', 'Beobachtung von Lehrpersonen-Tandems in zwanzig Klassen.')),
+    rech('p-1012', t('Littératie et déficience intellectuelle à l’adolescence', 'Literalität und geistige Behinderung im Jugendalter'),
+      t('Université Exemple', 'Universität Beispiel'), '2024', '2026', t('Évaluation d’un programme de lecture adapté.', 'Evaluation eines angepassten Leseprogramms.'), {
+        pertinence: { verdict: 'a-relire', raison: t('ancrage « déficience » seul', 'nur Anker «Behinderung»') } }),
+    rech('p-1044', t('Accessibilité numérique des moyens d’enseignement', 'Digitale Barrierefreiheit von Lehrmitteln'),
+      t('Université Exemple', 'Universität Beispiel'), '2025-09', '2027-08', t('Audit de manuels numériques.', 'Prüfung digitaler Lehrmittel.'))
+  ];
+  const livres = [
+    p({ cle: 'isbn:exemple:978-2-0000-0001-1', moissonneur: 'isbn', type: 'livre', recolte: '2026-09-30T06:05:00Z',
+      lien_source: 'https://catalogue.exemple.ch/isbn/9782000000011',
+      valeurs: { categorie: 'manuel', title: t('Enseigner dans une classe hétérogène', 'Unterrichten in heterogenen Klassen'), auteurs: 'A. Exemple',
+        annee: '2026', editeur: t('Éditions Exemple', 'Beispiel Verlag'), descriptif: t('Un guide pratique.', 'Ein Praxisleitfaden.') } })
+  ];
+  // La date de la première est celle que le moissonneur n'a pas su lire.
+  interventions[0].valeurs.date = '';
+  return interventions.concat(recherches, livres);
+}
+
+function donneesPropositionsDemo(l) {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-propositions-'));
+  const lots = lotsSynthetiques(l);
+  // La fiche qui ressemble à la proposition marquée doublon : une vraie fiche de la bibliothèque jetable.
+  const marquee = lots.find((x) => x.doublon);
+  const fiche = kirby.creerFiche(racine, l, 'intervention', Object.assign({}, marquee.valeurs,
+    { title: l === 'de' ? 'Weiterbildung Sonderpädagogik: Angebot stärken' : 'Formation continue en pédagogie spécialisée : renforcer l’offre',
+      date: '2026-06-16' }), 'id-demo-numero');
+  marquee.doublon = { uuid: fiche.uuid, slug: fiche.slug, certitude: 'probable' };
+  for (const m of ['parlement', 'recherche', 'isbn']) {
+    const dossier = path.join(pr.cheminMoissons(racine), m);
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, '2026-10-01-1.jsonl'),
+      lots.filter((x) => x.moissonneur === m).map((x) => JSON.stringify(x)).join('\n') + '\n');
+  }
+  const etats = {
+    parlement: { derniere_moisson: '2026-10-01T05:12:00Z', propositions_ecrites: 10,
+      sources_en_echec: [{ source: l === 'de' ? 'Grosser Rat NE (OpenParlData)' : 'Grand Conseil NE (OpenParlData)',
+        raison: l === 'de' ? 'Zeitüberschreitung nach drei Versuchen' : 'délai dépassé après trois essais' }] },
+    recherche: { derniere_moisson: '2026-09-28T04:40:00Z', propositions_ecrites: 4, sources_en_echec: [] },
+    isbn: { derniere_moisson: '2026-09-30T06:05:00Z', propositions_ecrites: 1, sources_en_echec: [] }
+  };
+  const libelleMoissonneur = (id) => { const v = T('doc.prop.moissonneur.' + id); return v === 'doc.prop.moissonneur.' + id ? id : v; };
+  const types = kirby.typesConnus().map((type) => {
+    const def = kirby.definitionType(type) || {};
+    return { type: type, libelle: kirby.libelleCockpitType(type, l),
+      tri: (def.tri || ['title']).filter((k) => k !== 'title'), categorie: !!kirby.champDuType(type, 'categorie'),
+      champs: kirby.champsDuType(type).map((c) => {
+        const x = { cle: c.cle, libelle: c.libelle[l] || c.libelle.fr, saisie: c.saisie };
+        if (c.saisie === 'liste' || c.saisie === 'liste_multiple') {
+          x.libelles = {};
+          for (const v of kirby.valeursListe(c.liste)) { x.libelles[v.jeton] = v[l] || v.fr; }
+        }
+        return x;
+      }) };
+  });
+  const pourVue = (x) => {
+    const f = x.doublon ? pr.ficheDoublon(racine, x) : null;
+    return { cle: x.cle, type: x.type, moissonneur: x.moissonneur, recolte: x.recolte, source: x.cle.split(':')[1],
+      valeurs: x.valeurs, doutes: x.doutes, brut: x.brut, pertinence: x.pertinence, doublon: x.doublon, motif: x.motif || '',
+      cas: x.cas, raisons: x.raisons, bloquants: pr.bloquants(x), aussi: x.valeurs.canton === 'CH',
+      doublonFiche: f ? { valeurs: f.valeurs, numero: l === 'de' ? 'Zeitschrift 2026/3' : 'Revue 2026/3' } : null };
+  };
+  const lu = pr.listerPropositions(racine, l);
+  const donnees = {
+    type: 'propDonnees', langue: l, cible: l === 'de' ? 'fr' : 'de', revueAutre: l === 'de' ? 'Revue' : 'Zeitschrift',
+    types: types, propositions: pr.ordonner(lu.propositions, l).map(pourVue), refusees: [],
+    etats: Object.keys(etats).map((m) => ({ moissonneur: m, libelle: libelleMoissonneur(m), connu: true,
+      derniere: etats[m].derniere_moisson, propositions: etats[m].propositions_ecrites, echecs: etats[m].sources_en_echec })),
+    colonnes: {}
+  };
+  fs.rmSync(racine, { recursive: true, force: true });
+  return donnees;
+}
+const PROPOSITIONS = donneesPropositionsDemo(LANGUE_PROP);
+
+// Les libellés de la vue, relus dans documentation-hote.js#textesDocumentation : la liste est
+// longue et ne doit pas diverger de celle de l'hôte.
+function textesPropositions() {
+  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'documentation-hote.js'), 'utf8');
+  const res = {};
+  for (const m of src.matchAll(/(prop[A-Za-z0-9]*): T\('([^']+)'\)/g)) { res[m[1]] = T(m[2]); }
+  return res;
+}
+
+const txt = Object.assign(textesDocumentation(), textesPropositions());
 const messageCharger = {
   type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
   typesConfig: typesRessourceConfig('fr'), typesRubrique: typesRubriqueConfig('fr'),
@@ -301,7 +437,7 @@ const messageCharger = {
 // ---- Assemblage : le même appel que documentation-hote.js#htmlDocumentation -----------
 const nonce = crypto.randomBytes(16).toString('hex');
 const html = construireHtml('documentation', nonce, {
-  cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+  cssPartage: ['_design.css', '_propositions.css'], jsPartage: ['_messages.js', '_propositions.js'],
   titre: 'Documentation – aperçu autonome',
   csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
 });
@@ -318,6 +454,31 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '  var CHARGER = ' + JSON.stringify(messageCharger) + ';\n' +
   '  var RESERVOIR = { actives: ' + JSON.stringify(reservoirActives) + ', ignorees: ' + JSON.stringify(reservoirIgnorees) + ' };\n' +
   '  var ARCHIVE = ' + JSON.stringify(archive) + ';\n' +
+  '  var PROP = ' + JSON.stringify(PROPOSITIONS) + ';\n' +
+  // La vue Propositions : un faux hôte qui retire et rend les propositions comme le vrai.
+  '  var ORDRE = PROP.propositions.map(function (p) { return p.cle; }), DECIDEES = {};\n' +
+  '  var paramsProp = new URLSearchParams(location.search);\n' +
+  '  if (paramsProp.get("etat") === "vide") { PROP.propositions = []; }\n' +
+  '  function envoyerPropositions(resultat) {\n' +
+  '    var d = JSON.parse(JSON.stringify(PROP));\n' +
+  '    if (resultat) { d.resultat = resultat; }\n' +
+  '    window.dispatchEvent(new MessageEvent("message", { data: d }));\n' +
+  '  }\n' +
+  '  function repondreGeste(msg) {\n' +
+  '    var cles = msg.type === "propAccepter" ? msg.demandes.map(function (d) { return d.cle; }) : msg.cles;\n' +
+  '    var geste = msg.type === "propAccepter" ? (msg.dansNumero ? "accepte" : "garde") : (msg.type === "propRefuser" ? "refuse" : "annule");\n' +
+  '    var faites = [];\n' +
+  '    if (geste === "annule") {\n' +
+  '      cles.forEach(function (c) { if (DECIDEES[c]) { PROP.propositions.push(DECIDEES[c]); delete DECIDEES[c]; faites.push(c); } });\n' +
+  '      PROP.propositions.sort(function (a, b) { return ORDRE.indexOf(a.cle) - ORDRE.indexOf(b.cle); });\n' +
+  '    } else {\n' +
+  '      PROP.propositions = PROP.propositions.filter(function (p) {\n' +
+  '        if (cles.indexOf(p.cle) === -1 || (geste !== "refuse" && p.cas === "B" && !msg.depuisDetail)) { return true; }\n' +
+  '        DECIDEES[p.cle] = p; faites.push(p.cle); return false;\n' +
+  '      });\n' +
+  '    }\n' +
+  '    envoyerPropositions({ geste: geste, faites: faites, ignorees: [], echecs: [], motif: msg.motif || "" });\n' +
+  '  }\n' +
   '  var vraiApi = null;\n' +
   '  window.acquireVsCodeApi = function () {\n' +
   '    if (vraiApi) { return vraiApi; }\n' +
@@ -333,6 +494,10 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveDonnees", ok: true, fiches: ARCHIVE } }));\n' +
   '        } else if (msg.type === "archiveImage") {\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveImageDonnee", ficheType: msg.ficheType, slug: msg.slug, apercu: null } }));\n' +
+  '        } else if (msg.type === "propCharger") {\n' +
+  '          envoyerPropositions(null);\n' +
+  '        } else if (msg.type === "propAccepter" || msg.type === "propRefuser" || msg.type === "propAnnuler") {\n' +
+  '          repondreGeste(msg);\n' +
   '        } else if (msg.type === "archiveReprendre") {\n' +
   '          window.dispatchEvent(new MessageEvent("message", { data: { type: "archiveReprise", ok: true } }));\n' +
   '        }\n' +
@@ -363,10 +528,53 @@ const shim = '<script nonce="' + nonce + '">\n' +
   '        cases[i].dispatchEvent(new Event("change"));\n' +
   '      }\n' +
   '    }\n' +
+  // ?onglet=propositions&etat=… : l'état de la vue à capturer.
+  '    if (onglet === "propositions") { etatPropositions(params.get("etat") || "liste"); }\n' +
   '  });\n' +
+  '  function etatPropositions(etat) {\n' +
+  '    var panel = document.getElementById("panel-propositions");\n' +
+  '    var tab = function (t) { var b = document.querySelector("#barreCategories [data-type=\\"" + t + "\\"]"); if (b) { b.click(); } };\n' +
+  '    var ligne = function (fragment) { return Array.prototype.filter.call(panel.querySelectorAll("tr[data-cle]"), function (tr) { return tr.dataset.cle.indexOf(fragment) !== -1; })[0]; };\n' +
+  '    var rangs = function () { return panel.querySelectorAll("tr[data-cle]"); };\n' +
+  '    if (etat === "recherche") { tab("recherche"); return; }\n' +
+  '    if (etat === "vide") { return; }\n' +
+  '    tab("intervention");\n' +
+  '    if (etat === "selection") { [0, 3, 4].forEach(function (i) { rangs()[i].querySelector(".prop-case").click(); }); }\n' +
+  '    if (etat === "detail-b") { ligne("26-POS-041").querySelector(".prop-bouton-verifier").click(); }\n' +
+  '    if (etat === "detail-recherche") { tab("recherche"); rangs()[0].querySelector(".prop-bouton-verifier").click(); }\n' +
+  '    if (etat === "doublon") { ligne("26.3712").querySelector(".prop-bouton-verifier").click(); }\n' +
+  '    if (etat === "colonnes") { panel.querySelector(".prop-bouton-colonnes").click(); }\n' +
+  '    if (etat === "annuler") { ligne("2026-GC-118").querySelector(".prop-bouton-refuser").click(); }\n' +
+  '    if (etat === "largeur") { var s = panel.querySelector("th.prop-th-titre .prop-poignee"); for (var k = 0; k < 6; k++) { s.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); } s.focus(); }\n' +
+  '  }\n' +
   '})();\n' +
   '</script>\n';
-const htmlAutonome = html.replace('<script nonce="' + nonce + '">', shim + '<script nonce="' + nonce + '">');
+// Deux thèmes de l'éditeur, posés comme le ferait VSCodium (?theme=clair|sombre) ; sans
+// paramètre, les replis de _design.css.
+const PALETTES = {
+  clair: '--vscode-font-family: "Segoe WPC", "Segoe UI", sans-serif; --vscode-font-size: 13px;'
+    + '--vscode-editor-background: #ffffff; --vscode-foreground: #616161; --vscode-descriptionForeground: #717171;'
+    + '--vscode-editorWidget-background: #f3f3f3; --vscode-panel-border: rgba(128, 128, 128, 0.35); --vscode-focusBorder: #0090f1;'
+    + '--vscode-button-background: #007acc; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #0062a3;'
+    + '--vscode-button-secondaryBackground: #5f6a79; --vscode-button-secondaryForeground: #ffffff;'
+    + '--vscode-input-background: #ffffff; --vscode-input-foreground: #616161; --vscode-input-border: #cecece;'
+    + '--vscode-editorWarning-foreground: #bf8803; --vscode-errorForeground: #a1260d; --vscode-charts-green: #388a34;'
+    + '--vscode-textLink-foreground: #006ab1; --vscode-toolbar-hoverBackground: rgba(184, 184, 184, 0.31); --vscode-widget-shadow: rgba(0, 0, 0, 0.16);',
+  sombre: '--vscode-font-family: "Segoe WPC", "Segoe UI", sans-serif; --vscode-font-size: 13px;'
+    + '--vscode-editor-background: #1f1f1f; --vscode-foreground: #cccccc; --vscode-descriptionForeground: #9d9d9d;'
+    + '--vscode-editorWidget-background: #202020; --vscode-panel-border: #2b2b2b; --vscode-focusBorder: #0078d4;'
+    + '--vscode-button-background: #0078d4; --vscode-button-foreground: #ffffff; --vscode-button-hoverBackground: #026ec1;'
+    + '--vscode-button-secondaryBackground: #313131; --vscode-button-secondaryForeground: #cccccc;'
+    + '--vscode-input-background: #313131; --vscode-input-foreground: #cccccc; --vscode-input-border: #3c3c3c;'
+    + '--vscode-editorWarning-foreground: #cca700; --vscode-errorForeground: #f85149; --vscode-charts-green: #89d185;'
+    + '--vscode-textLink-foreground: #4daafc; --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31); --vscode-widget-shadow: rgba(0, 0, 0, 0.36);'
+};
+const palettes = Object.keys(PALETTES).map((nom) =>
+  '<style id="palette-' + nom + '" media="not all">:root { color-scheme: ' + (nom === 'clair' ? 'light' : 'dark') + '; ' + PALETTES[nom] + ' }</style>\n').join('')
+  + '<script nonce="' + nonce + '">(function () { var t = new URLSearchParams(location.search).get("theme");'
+  + ' var s = t && document.getElementById("palette-" + t); if (s) { s.media = "all"; } })();</script>\n';
+const htmlAutonome = html.replace('<script nonce="' + nonce + '">', shim + '<script nonce="' + nonce + '">')
+  .replace('</head>', palettes + '</head>');
 
 // ---- Écriture ---------------------------------------------------------------------------
 const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-documentation-'));

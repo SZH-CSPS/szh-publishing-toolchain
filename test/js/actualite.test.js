@@ -113,7 +113,7 @@ test('sans page de Documentation, l’en-tête ACTUALITÉ n’a pas de badge, se
   const e = await entete();
   assert.strictEqual(e.description, undefined, 'aucun bloc à compter : pas de badge — ' + e.description);
   const enfants = await enfantsDe('section-actualite');
-  assert.strictEqual(enfants.length, 5, 'les cinq entrées doivent exister même sans page de Documentation');
+  assert.strictEqual(enfants.length, 6, 'les six entrées (Propositions comprise) doivent exister même sans page de Documentation');
   for (const it of enfants) { assert.strictEqual(it.description, undefined, 'rien à compter encore : ' + it.label); }
 });
 
@@ -146,7 +146,7 @@ test('la page créée n’apparaît NI dans ARTICLES, NI dans ACTUALITÉ (qui ga
   assert.ok(articles.some((it) => it.slug === '01-essai'), 'un article ordinaire a disparu de ARTICLES');
   const actualite = await enfantsDe('section-actualite');
   assert.ok(!actualite.some((it) => it.slug === SLUG_DOC), 'ACTUALITÉ ne liste jamais la page elle-même');
-  assert.strictEqual(actualite.length, 5, 'toujours les cinq entrées, rien d’autre');
+  assert.strictEqual(actualite.length, 6, 'toujours les six entrées (Propositions comprise), rien d’autre');
 });
 
 test('le badge de l’en-tête compte les fiches et les rubriques non vides', async () => {
