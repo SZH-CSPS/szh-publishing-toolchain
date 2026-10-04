@@ -261,6 +261,14 @@ test('bloquants : un doute hors des champs du type (la langue) ne bloque pas', (
   assert.deepStrictEqual(pr.bloquants(p, p.valeurs, []), []);
 });
 
+// Un nom de personne dans le titre se signale (cas B) sans bloquer : le titre est peut-être juste.
+test('bloquants : un doute personne-nommee classe en B mais ne bloque pas', () => {
+  const p = intervention('1', { doutes: [{ champ: 'title', code: 'personne-nommee', detail: 'nom de personne possible dans le titre : F*** K***' }] });
+  assert.strictEqual(pr.classer(p).cas, 'B');
+  assert.deepStrictEqual(pr.bloquants(p, p.valeurs, []), []);
+  assert.ok(pr.CODES_DOUTE.includes('personne-nommee'));
+});
+
 // ---- Décisions --------------------------------------------------------------------------
 
 test('ecrireDecision écrit Cle, Decision, Motif et Date sous l’empreinte, puis refuse de réécrire', () => {

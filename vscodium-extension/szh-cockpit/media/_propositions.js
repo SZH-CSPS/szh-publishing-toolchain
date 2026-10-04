@@ -42,7 +42,8 @@
   var CODES_DOUTE = {
     'date-illisible': 'propDouteDateIllisible', 'langue-devinee': 'propDouteLangueDevinee',
     'correspondance-incertaine': 'propDouteCorrespondanceIncertaine', 'valeur-hors-liste': 'propDouteValeurHorsListe',
-    'champ-introuvable': 'propDouteChampIntrouvable', 'texte-tronque': 'propDouteTexteTronque'
+    'champ-introuvable': 'propDouteChampIntrouvable', 'texte-tronque': 'propDouteTexteTronque',
+    'personne-nommee': 'propDoutePersonneNommee'
   };
   var MOTIFS = { 'hors-sujet': 'propMotifHorsSujet', doublon: 'propMotifDoublon', autre: 'propMotifAutre' };
   var PERTINENCES = { retenu: 'propPertinenceRetenu', 'a-relire': 'propPertinenceARelire' };

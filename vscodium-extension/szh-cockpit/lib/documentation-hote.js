@@ -311,7 +311,7 @@ function textesDocumentation() {
     propDouteCorrespondanceIncertaine: T('doc.prop.doute.correspondanceIncertaine'),
     propDouteValeurHorsListe: T('doc.prop.doute.valeurHorsListe'),
     propDouteChampIntrouvable: T('doc.prop.doute.champIntrouvable'),
-    propDouteTexteTronque: T('doc.prop.doute.texteTronque'),
+    propDouteTexteTronque: T('doc.prop.doute.texteTronque'), propDoutePersonneNommee: T('doc.prop.doute.personneNommee'),
     propDouteSuggestion: T('doc.prop.doute.suggestion'), propDouteLu: T('doc.prop.doute.lu'),
     propDouteAbsent: T('doc.prop.doute.absent'), propLangue: T('doc.prop.langue'),
     propValeurs: T('doc.prop.valeurs'), propBrut: T('doc.prop.brut'),

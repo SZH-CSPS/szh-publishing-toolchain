@@ -11,7 +11,9 @@ const { ecrireAtomique } = require('./yaml');
 const FORMAT = 'pronto-proposition/1';
 const FORMAT_ETAT = 'pronto-etat/1';
 const CODES_DOUTE = ['date-illisible', 'langue-devinee', 'correspondance-incertaine',
-  'valeur-hors-liste', 'champ-introuvable', 'texte-tronque'];
+  'valeur-hors-liste', 'champ-introuvable', 'texte-tronque', 'personne-nommee'];
+// Ces doutes se signalent (cas B) sans bloquer l'acceptation : il n'y a rien à corriger d'office.
+const DOUTES_SIGNAL = ['personne-nommee'];
 const DECISIONS = ['accepte', 'refuse'];
 const MOTIFS_REFUS = ['hors-sujet', 'doublon', 'autre'];
 const DOSSIER_DECISIONS = '_Decisions';
@@ -321,6 +323,7 @@ function bloquants(p, valeursSaisies, champsTouches) {
   const res = [];
   const vus = new Set();
   for (const d of doutesDe(p)) {
+    if (DOUTES_SIGNAL.indexOf(d.code) !== -1) { continue; }
     if (!clesType.has(d.champ) || touches.has(d.champ) || vus.has(d.champ)) { continue; }
     vus.add(d.champ);
     res.push({ code: 'doute-non-touche', champ: d.champ });
