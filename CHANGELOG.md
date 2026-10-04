@@ -11,6 +11,15 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.8.1
+
+Mineure : la vue Propositions signale un nom de personne dans un titre.
+
+**Production.**
+- Propositions : un titre qui nomme peut-être une personne (ni auteur ni signataire) porte
+  le doute « Nom de personne dans le titre ». Le nom est masqué, et le doute signale sans
+  bloquer l’acceptation.
+
 ## 3.8.0
 
 Medium : la vue Propositions sait doser ce qu'elle montre (curseur de finesse à 10 crans), dit
