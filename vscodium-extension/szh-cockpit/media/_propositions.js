@@ -15,7 +15,7 @@
 //                     propFiltreTerme { typeFiche, terme, role, langue } ;
 //                     propDemandeEcrire { moissonneur, terme, langue, sens }
 //   hôte -> webview : propDonnees { langue, cible, revueAutre, types, propositions, refusees,
-//                     etats, colonnes, termes, demandes, filtre, regleTerme, resultat?,
+//                     acceptees, etats, colonnes, termes, demandes, filtre, regleTerme, resultat?,
 //                     ongletDemande?, demandeGeste? } ;
 //                     propVerifie { cle, jeton, bloquants }
 // Un geste qui recharge la Documentation du numéro passe par opts.apresEcriture : les cartes
@@ -55,6 +55,51 @@
   var ROLES = { ancrage: 'propRoleAncrage', ambigu: 'propRoleAmbigu', ecole: 'propRoleEcole', theme: 'propRoleTheme' };
   var OU = { titre: 'propOuTitre', texte: 'propOuTexte', extrait: 'propOuExtrait' };
   var NB_CRANS = 10;
+  // Ce qui empêche d'annuler une acceptation depuis la vue (lib/propositions.js, gardeAnnulation).
+  var GARDES = { 'dans-numero': 'propGardeDansNumero', publiee: 'propGardePubliee', 'fiche-traduite': 'propGardeTraduite' };
+
+  // ---- Tri et réglage des colonnes : fonctions pures, éprouvées sous Node --------------------
+  function vide(v) { return v === null || v === undefined || v === '' || (typeof v === 'number' && isNaN(v)); }
+  // Sans tri, l'ordre reçu. Sinon par valeurDe(p, col), en nombre ou en texte dans la langue de
+  // la vue ; une valeur vide reste en fin dans les deux sens, une égalité garde l'ordre reçu.
+  function trier(lignes, tri, valeurDe, langue) {
+    var l = (lignes || []).map(function (p, i) { return { p: p, i: i, v: tri && tri.col ? valeurDe(p, tri.col) : null }; });
+    if (!tri || !tri.col) { return l.map(function (x) { return x.p; }); }
+    l.sort(function (a, b) {
+      var va = vide(a.v), vb = vide(b.v);
+      if (va || vb) { return va && vb ? a.i - b.i : (va ? 1 : -1); }
+      var d = typeof a.v === 'number' && typeof b.v === 'number' ? a.v - b.v
+        : String(a.v).localeCompare(String(b.v), langue, { sensitivity: 'base', numeric: true });
+      return d !== 0 ? d * tri.sens : a.i - b.i;
+    });
+    return l.map(function (x) { return x.p; });
+  }
+  // Une décimale, à la virgule comme en fr et en de ; un entier se lit sans « ,0 ».
+  function formaterScore(x) {
+    if (typeof x !== 'number' || !isFinite(x)) { return ''; }
+    var r = Math.round(x * 10) / 10;
+    return r === Math.round(r) ? String(r) : r.toFixed(1).replace('.', ',');
+  }
+  // Le réglage d'un type tel que le poste l'a gardé : { largeurs, masquees, tri }. L'ancienne
+  // colonne Cran se reporte sur Score ; ce qui ne se lit pas s'ignore.
+  function reglageColonnes(brut) {
+    var r = brut && typeof brut === 'object' ? brut : {};
+    var largeurs = r.largeurs && typeof r.largeurs === 'object' && !Array.isArray(r.largeurs) ? Object.assign({}, r.largeurs) : {};
+    if ('cran' in largeurs) {
+      if (!('score' in largeurs)) { largeurs.score = largeurs.cran; }
+      delete largeurs.cran;
+    }
+    var masquees = [];
+    (Array.isArray(r.masquees) ? r.masquees : []).forEach(function (id) {
+      var x = id === 'cran' ? 'score' : String(id);
+      if (masquees.indexOf(x) === -1) { masquees.push(x); }
+    });
+    var t = r.tri;
+    var tri = t && typeof t === 'object' && typeof t.col === 'string' && t.col && (t.sens === 1 || t.sens === -1)
+      ? { col: t.col === 'cran' ? 'score' : t.col, sens: t.sens } : null;
+    return { largeurs: largeurs, masquees: masquees, tri: tri };
+  }
+  SZH.propositionsTri = { trier: trier, formaterScore: formaterScore, reglageColonnes: reglageColonnes };
 
   function vuePropositions(opts) {
     var api = opts.api, panel = opts.panel, barreOnglets = opts.barreOnglets;
@@ -66,7 +111,7 @@
     // ---- État -----------------------------------------------------------------------------
     var donnees = null;          // le dernier propDonnees
     var demande = false;         // propCharger déjà parti
-    var reglages = null;         // colonnes par type : { largeurs, masquees }, lu une fois
+    var reglages = null;         // colonnes par type : { largeurs, masquees, tri }, lu une fois
     var aussi = {};              // cle -> la marque de l'autre revue
     var onglet = null;
     var selection = new Set();
@@ -74,7 +119,9 @@
     var courant = null;
     var detailCle = null;
     var filtrePertinence = '';
-    var afficherRefusees = false;
+    // Les deux filtres exclusifs : '' (en attente), 'refusees' ou 'acceptees' (récemment).
+    var filtreDecision = '';
+    var nGarde = 0;
     var annulable = null;        // { cles, texte, geste, minuteur, defaire? }
     var avis = null;             // { texte, minuteur }
     var enCours = null;          // le geste parti, en attente de son résultat
@@ -121,14 +168,16 @@
     }
     function attente() { return (donnees && donnees.propositions) || []; }
     function refusees() { return (donnees && donnees.refusees) || []; }
+    function acceptees() { return (donnees && donnees.acceptees) || []; }
     // Les acceptations de cette session dont la fiche n'a pas pu être créée : { p, valeurs }.
     function echoueesP() { return echouees.map(function (x) { return x.p; }); }
     function trouver(cle) {
-      var tous = attente().concat(echoueesP(), refusees());
+      var tous = attente().concat(echoueesP(), refusees(), acceptees());
       return tous.filter(function (p) { return p.cle === cle; })[0] || null;
     }
     function enAttente(p) { return attente().indexOf(p) !== -1; }
     function estEchouee(p) { return echoueesP().indexOf(p) !== -1; }
+    function estAcceptee(p) { return acceptees().indexOf(p) !== -1; }
     function estB(p) { return p.cas === 'B'; }
     function ongletsVisibles() {
       return ((donnees && donnees.types) || []).map(function (t) { return t.type; })
@@ -193,16 +242,38 @@
       return !filtrePertinence || (p.pertinence && p.pertinence.verdict === filtrePertinence);
     }
     // Les lignes de l'onglet : en attente dans l'ordre de l'hôte, les masquées seulement si on
-    // les montre, puis les refusées si demandé.
+    // les montre ; ou, filtre posé, les refusées seules ou les acceptées seules. Puis le tri du poste.
     // Le filtre sur un terme posé depuis la vue Termes, s'il vise cet onglet : l'hôte en donne les cles.
     function filtreTermeActif() { var f = donnees && donnees.filtre; return f && f.typeFiche === onglet ? f : null; }
     function lignesOnglet() {
-      var ft = filtreTermeActif();
-      var l = attente().filter(function (p) {
-        return p.type === onglet && filtre(p) && (visible(p) || !!voirMasquees[onglet]) && (!ft || ft.cles.indexOf(p.cle) !== -1);
-      });
-      if (!afficherRefusees) { return l; }
-      return l.concat(refusees().filter(function (p) { return p.type === onglet && filtre(p); }));
+      var l;
+      if (filtreDecision) {
+        l = (filtreDecision === 'acceptees' ? acceptees() : refusees()).filter(function (p) { return p.type === onglet && filtre(p); });
+      } else {
+        var ft = filtreTermeActif();
+        l = attente().filter(function (p) {
+          return p.type === onglet && filtre(p) && (visible(p) || !!voirMasquees[onglet]) && (!ft || ft.cles.indexOf(p.cle) !== -1);
+        });
+      }
+      return trier(l, triEffectif(onglet), valeurTri, (donnees && donnees.langue) || 'fr');
+    }
+    // La valeur d'une ligne pour le tri : ce que la cellule montre, le score en nombre.
+    function rangEtat(p) { return estAcceptee(p) ? 3 : !enAttente(p) ? 2 : estB(p) ? 0 : 1; }
+    function valeurTri(p, col) {
+      if (col === 'etat') { return rangEtat(p); }
+      if (col === 'titre') { return titreDe(p); }
+      if (col === 'score') { return p.pertinence && typeof p.pertinence.score === 'number' ? p.pertinence.score : null; }
+      if (col === 'pertinence') { var v = p.pertinence ? p.pertinence.verdict : ''; return PERTINENCES[v] ? TXT[PERTINENCES[v]] : null; }
+      if (col.indexOf('champ:') === 0) {
+        var k = col.slice(6), x = (p.valeurs || {})[k] || '';
+        return x && k === 'categorie' ? libelleJeton(p.type, k, x) : x || null;
+      }
+      return null;
+    }
+    // Le tri mémorisé, s'il vise une colonne affichée et triable.
+    function triEffectif(type) {
+      var t = typeDe(type) ? reglageDe(type).tri : null;
+      return t && colonnesVisibles(type).some(function (c) { return c.id === t.col && !c.fixe; }) ? t : null;
     }
     // Les masquées montrées ne comptent pas : ni dans la position, ni pour la case de tête.
     function attenteOnglet() { return lignesOnglet().filter(function (p) { return enAttente(p) && visible(p); }); }
@@ -408,7 +479,7 @@
       var vue = poser(panel, 'div', 'prop-vue');
       // L'état des moissonneurs qui alimentent cet onglet (etat.json).
       var noms = {};
-      attente().concat(refusees()).forEach(function (p) { if (p.type === onglet) { noms[p.moissonneur] = true; } });
+      attente().concat(refusees(), acceptees()).forEach(function (p) { if (p.type === onglet) { noms[p.moissonneur] = true; } });
       var m = poser(vue, 'div', 'prop-moissons');
       (donnees.etats || []).filter(function (e) { return noms[e.moissonneur] && e.connu; })
         .forEach(function (e) { ligneMoisson(m, e); });
@@ -427,12 +498,19 @@
         sel.value = filtrePertinence;
         sel.addEventListener('change', function () { filtrePertinence = sel.value; selection.clear(); rendreTable(); rendrePied(); });
       }
-      var lr = poser(f, 'label', 'doc-reservoir-case');
-      var cr = poser(lr, 'input', 'prop-afficher-refusees');
-      cr.type = 'checkbox';
-      cr.checked = afficherRefusees;
-      poser(lr, 'span', null, TXT.propAfficherRefusees);
-      cr.addEventListener('change', function () { afficherRefusees = cr.checked; rendreTable(); });
+      // Deux filtres exclusifs, en boutons pressés ; « Tout afficher » ramène aux propositions en attente.
+      var gd = poser(f, 'span', 'prop-filtres-decision');
+      gd.setAttribute('role', 'group');
+      gd.setAttribute('aria-label', TXT.propFiltres);
+      [['refusees', TXT.propAfficherRefusees], ['acceptees', TXT.propAfficherAcceptees]].forEach(function (x) {
+        var b = SZH.bouton(x[1], function () { changerFiltreDecision(filtreDecision === x[0] ? '' : x[0], x[0]); }, 'prop-filtre-' + x[0]);
+        b.setAttribute('aria-pressed', filtreDecision === x[0] ? 'true' : 'false');
+        gd.appendChild(b);
+      });
+      if (filtreDecision) {
+        var ancien = filtreDecision;
+        gd.appendChild(SZH.bouton(TXT.propToutAfficher, function () { changerFiltreDecision('', ancien); }, 'prop-tout-afficher'));
+      }
       poser(f, 'span', 'szh-pousse');
       var bc = SZH.bouton('', function () { ouvrirMenuColonnes(bc); }, 'prop-bouton-colonnes', TXT.propColonnesTip);
       bc.appendChild(icone('tableau'));
@@ -470,6 +548,16 @@
       rendreTable();
       rendreDetail();
       rendrePied();
+    }
+    // Passer d'un filtre de décision à l'autre. La sélection ne survit pas : ses cases ne se
+    // voient plus, et un geste en lot ne doit pas viser des lignes cachées. Le focus revient au
+    // bouton du filtre touché.
+    function changerFiltreDecision(f, bouton) {
+      if (f) { selection.clear(); }
+      filtreDecision = f;
+      rendreVue();
+      var b = panel.querySelector('.prop-filtre-' + bouton);
+      if (b) { b.focus(); }
     }
     function basculerAide(b) {
       var t = panel.querySelector('.prop-aide-texte');
@@ -653,22 +741,19 @@
       if (d.categorie && d.tri.indexOf('categorie') === -1) {
         cols.push({ id: 'champ:categorie', cle: 'categorie', libelle: TXT.propColType, defaut: 118, min: 56, masquable: true });
       }
-      // Un type qui a des crans montre son cran à la place de la pertinence, masqué tant qu'on ne
-      // l'a pas demandé dans le menu.
-      if (finesseDe(type)) { cols.push({ id: 'cran', libelle: TXT.propColCran, defaut: 76, min: 44, masquable: true, montrable: true }); }
-      else { cols.push({ id: 'pertinence', libelle: TXT.propColPertinence, defaut: 108, min: 56, masquable: true }); }
+      // La note du moissonneur, pour tout type ; le cran se lit dans son infobulle. Un type qui a
+      // des crans n'a pas la colonne Pertinence.
+      cols.push({ id: 'score', libelle: TXT.propColScore, defaut: 88, min: 44, masquable: true });
+      if (!finesseDe(type)) { cols.push({ id: 'pertinence', libelle: TXT.propColPertinence, defaut: 108, min: 56, masquable: true }); }
       cols.push({ id: 'gestes', libelle: TXT.propColGestes, fixe: true });
       return cols;
     }
-    function reglageDe(type) {
-      var r = (reglages || {})[type] || {};
-      return { largeurs: Object.assign({}, r.largeurs || {}), masquees: (r.masquees || []).slice(), montrees: (r.montrees || []).slice() };
-    }
-    function reglageVide(r) { return Object.keys(r.largeurs).length === 0 && r.masquees.length === 0 && r.montrees.length === 0; }
-    // « montrees » n'est écrit que s'il sert : les réglages d'avant restent identiques.
+    function reglageDe(type) { return reglageColonnes((reglages || {})[type]); }
+    function reglageVide(r) { return Object.keys(r.largeurs).length === 0 && r.masquees.length === 0 && !r.tri; }
+    // « tri » n'est écrit que s'il sert : les réglages d'avant restent identiques.
     function aSauver(r) {
       var x = { largeurs: r.largeurs, masquees: r.masquees };
-      if (r.montrees.length > 0) { x.montrees = r.montrees; }
+      if (r.tri) { x.tri = r.tri; }
       return x;
     }
     function poserReglage(type, r) {
@@ -682,11 +767,10 @@
     }
     function detailPlein() { return !!detailCle && largeurVue > 0 && largeurVue < SEUIL_DETAIL_PLEIN; }
     function colonnesVisibles(type) {
-      var m = reglageDe(type).masquees, montrees = reglageDe(type).montrees;
+      var m = reglageDe(type).masquees;
       var serre = pertinenceAuto && !!detailCle && !detailPlein();
       return colonnesDe(type).filter(function (c) {
         if (c.fixe || c.masquable === false) { return true; }
-        if (c.montrable) { return montrees.indexOf(c.id) !== -1; }
         if (serre && c.id === 'pertinence') { return false; }
         return m.indexOf(c.id) === -1;
       });
@@ -720,9 +804,11 @@
       var trh = poser(poser(t, 'thead'), 'tr');
       // La case de tête ne coche que les visibles : une masquée montrée ne compte pas.
       var att = lignes.filter(function (p) { return enAttente(p) && visible(p); });
+      var tri = triEffectif(onglet);
       cols.forEach(function (c) {
         var th = poser(trh, 'th', 'prop-th-' + c.id.replace(':', '-'));
         th.setAttribute('scope', 'col');
+        th.dataset.col = c.id;
         if (c.id === 'case') {
           var caseTout = poser(th, 'input', 'prop-case-tout');
           caseTout.type = 'checkbox';
@@ -739,14 +825,20 @@
           });
           return;
         }
-        poser(th, 'span', 'prop-th-libelle', c.libelle);
-        if (c.id === 'gestes') { th.classList.add('prop-th-droite'); return; }
+        if (c.id === 'gestes') { poser(th, 'span', 'prop-th-libelle', c.libelle); th.classList.add('prop-th-droite'); return; }
+        enteteTriable(th, c.libelle, remplir('propTrierTip', [c.libelle]), function () { basculerTri(c); });
+        marquerTri(th, !!tri && tri.col === c.id, tri ? tri.sens : 1);
         poserPoignee(th, c);
       });
       var tbody = poser(t, 'tbody');
+      if (lignes.length === 0 && filtreDecision) {
+        var td0 = poser(poser(tbody, 'tr'), 'td', 'prop-discret prop-vide-filtre',
+          filtreDecision === 'acceptees' ? TXT.propAucuneAcceptee : TXT.propAucuneRefusee);
+        td0.colSpan = cols.length;
+      }
       lignes.forEach(function (p, i) {
-        var refusee = !enAttente(p);
-        var masquee = !refusee && !visible(p);
+        var refusee = !enAttente(p) && !estAcceptee(p);
+        var masquee = enAttente(p) && !visible(p);
         var tr = poser(tbody, 'tr', 'prop-ligne' + (p.cle === courant ? ' prop-ligne--courante' : '') + (refusee ? ' prop-ligne--refusee' : '')
           + (masquee ? ' prop-ligne--masquee' : ''));
         tr.dataset.cle = p.cle;
@@ -797,7 +889,16 @@
       }
       if (c.id === 'etat') {
         var tde = poser(tr, 'td', 'prop-td-etat');
-        if (refusee) {
+        if (estAcceptee(p)) {
+          // Le mot, et la date dessous : la colonne reste étroite.
+          var ta = remplir('propAcceptee', [dateCourte(p.acceptee && p.acceptee.date)]);
+          var sa = poser(tde, 'span', 'prop-etat prop-etat--acceptee');
+          sa.title = ta;
+          sa.appendChild(icone('ok'));
+          poser(sa, 'span', 'prop-masque', ta);
+          poser(sa, 'span', null, ta.split(' ')[0]).setAttribute('aria-hidden', 'true');
+          poser(tde, 'span', 'prop-sousligne', dateCourte(p.acceptee && p.acceptee.date)).setAttribute('aria-hidden', 'true');
+        } else if (refusee) {
           var sr = poser(tde, 'span', 'prop-etat prop-etat--refusee');
           sr.appendChild(icone('croix'));
           poser(sr, 'span', null, TXT.propRefusee + (p.motif && MOTIFS[p.motif] ? ' (' + libelleMotif(p.motif) + ')' : ''));
@@ -836,11 +937,16 @@
         if (v) { td.title = libelleJeton(p.type, c.cle, v); }
         return;
       }
-      if (c.id === 'cran') {
-        var k = p.cranMax || NB_CRANS;
-        var score = p.pertinence && typeof p.pertinence.score === 'number' ? arrondi(p.pertinence.score) : '–';
-        var tdk = poser(tr, 'td', 'prop-discret prop-td-cran', '1–' + k);
-        tdk.title = remplir('propCranTip', [k, score]);
+      if (c.id === 'score') {
+        var score = formaterScore(p.pertinence && p.pertinence.score);
+        var tdk = poser(tr, 'td', 'prop-td-score', score);
+        if (!score) {
+          poser(tdk, 'span', 'prop-discret', '–').setAttribute('aria-hidden', 'true');
+          poser(tdk, 'span', 'prop-masque', TXT.propSansScore);
+          return;
+        }
+        // Le cran le plus haut où elle reste visible, pour un type qui a des crans.
+        tdk.title = finesseDe(p.type) ? remplir('propCranTip', [p.cranMax || NB_CRANS, score]) : remplir('propScoreTip', [score]);
         return;
       }
       if (c.id === 'pertinence') {
@@ -852,6 +958,7 @@
       // Les gestes, et devant eux la marque de l'autre revue.
       var tda = poser(tr, 'td', 'prop-td-actions');
       var act = poser(tda, 'span', 'prop-actions');
+      if (estAcceptee(p)) { gesteAcceptee(act, p); return; }
       if (refusee) {
         act.appendChild(SZH.bouton(TXT.propReprendre, function () { reprendre(p.cle); }, 'prop-bouton-reprendre', TXT.propReprendreTip));
         return;
@@ -871,6 +978,24 @@
           function () { agir('garde', [p.cle]); }, 'prop-bouton-garder'));
       }
       act.appendChild(boutonRefus(function () { agir('refuse', [p.cle]); }, function (m) { agir('refuse', [p.cle], m); }));
+    }
+
+    // Une acceptée : « Annuler l'acceptation ». Si la fiche est dans un numéro ou publiée, le
+    // bouton reste, désactivé, et la raison s'écrit à côté (aria-describedby).
+    function gesteAcceptee(act, p) {
+      var raison = p.garde ? (GARDES[p.garde] ? TXT[GARDES[p.garde]] : p.garde) : '';
+      if (raison) {
+        nGarde += 1;
+        var r = poser(act, 'span', 'prop-garde-raison', raison);
+        r.id = 'prop-garde-' + nGarde;
+      }
+      var b = SZH.bouton(TXT.propAnnulerAcceptation, function () { if (!raison) { annulerAcceptee(p); } },
+        'prop-bouton-annuler-acceptation', raison || TXT.propAnnulerAcceptationTip);
+      if (raison) {
+        b.setAttribute('aria-disabled', 'true');
+        b.setAttribute('aria-describedby', r.id);
+      }
+      act.appendChild(b);
     }
 
     // Les largeurs : chaque colonne réglée garde sa valeur ; le titre non réglé prend le reste ;
@@ -924,6 +1049,40 @@
     function largeurCourante(c) {
       if (zone.largeurs && zone.largeurs[c.id]) { return zone.largeurs[c.id]; }
       return reglageDe(onglet).largeurs[c.id] || c.defaut || c.min;
+    }
+
+    // Un en-tête triable, commun aux propositions et aux termes : un bouton qui porte le libellé,
+    // la flèche du sens à côté (jamais la couleur seule), et aria-sort sur le th.
+    function enteteTriable(th, libelle, tip, surClic) {
+      var b = poser(th, 'button', 'prop-tri');
+      poser(b, 'span', 'prop-tri-libelle', libelle);
+      b.type = 'button';
+      b.title = tip;
+      b.dataset.tri = th.dataset.col;
+      b.addEventListener('click', surClic);
+      return b;
+    }
+    function marquerTri(th, actif, sens) {
+      var b = th.querySelector('.prop-tri');
+      var s = b && b.querySelector('.prop-tri-sens');
+      if (s) { s.remove(); }
+      if (!actif || !b) { th.removeAttribute('aria-sort'); return; }
+      th.setAttribute('aria-sort', sens < 0 ? 'descending' : 'ascending');
+      poser(b, 'span', 'prop-tri-sens', sens < 0 ? ' ▼' : ' ▲').setAttribute('aria-hidden', 'true');
+    }
+    // Un clic trie, le deuxième inverse le sens, le troisième rend l'ordre par défaut. Le score
+    // commence par le plus fort. Mémorisé par type, dans le réglage de colonnes du poste.
+    function basculerTri(c) {
+      var r = reglageDe(onglet);
+      var t = triEffectif(onglet);
+      var premier = c.id === 'score' ? -1 : 1;
+      if (!t || t.col !== c.id) { r.tri = { col: c.id, sens: premier }; }
+      else if (t.sens === premier) { r.tri = { col: c.id, sens: -premier }; }
+      else { r.tri = null; }
+      sauverReglage(onglet, r);
+      rendreTable();
+      var b = zone.table && zone.table.querySelector('[data-tri="' + c.id + '"]');
+      if (b) { b.focus(); }
     }
 
     // La poignée sur le bord droit d'un en-tête : glisser, ou flèches quand elle a le focus.
@@ -983,14 +1142,14 @@
     // Le menu « Colonnes » : une case par colonne, puis « Rétablir les largeurs ».
     function basculerColonne(id) {
       var r = reglageDe(onglet);
-      var montrable = colonnesDe(onglet).some(function (c) { return c.id === id && c.montrable; });
-      var liste = montrable ? r.montrees : r.masquees, i = liste.indexOf(id);
-      if (i === -1) { liste.push(id); } else { liste.splice(i, 1); }
+      var i = r.masquees.indexOf(id);
+      if (i === -1) { r.masquees.push(id); } else { r.masquees.splice(i, 1); }
       sauverReglage(onglet, r);
       rendreTable();
     }
     function retablirColonnes() {
-      sauverReglage(onglet, { largeurs: {}, masquees: [], montrees: [] });
+      // Les largeurs et les colonnes masquées ; le tri reste.
+      sauverReglage(onglet, { largeurs: {}, masquees: [], tri: reglageDe(onglet).tri });
       zone.largeurs = null;
       rendreTable();
     }
@@ -1006,7 +1165,7 @@
       menu.addEventListener('keyup', function (ev) { if (ev.key === ' ') { ev.preventDefault(); } });
       function remplirMenu() {
         menu.textContent = '';
-        var m = reglageDe(onglet).masquees, montrees = reglageDe(onglet).montrees;
+        var m = reglageDe(onglet).masquees;
         colonnesDe(onglet).forEach(function (c) {
           if (c.id === 'case') { return; }
           var it = poser(menu, 'button', 'szh-sugg-item prop-menu-case');
@@ -1014,7 +1173,7 @@
           it.setAttribute('role', 'menuitemcheckbox');
           it.dataset.col = c.id;
           var fixe = c.fixe || c.masquable === false;
-          var coche = fixe || (c.montrable ? montrees.indexOf(c.id) !== -1 : m.indexOf(c.id) === -1);
+          var coche = fixe || m.indexOf(c.id) === -1;
           it.setAttribute('aria-checked', coche ? 'true' : 'false');
           var marque = poser(it, 'span', 'prop-menu-marque');
           marque.setAttribute('aria-hidden', 'true');
@@ -1220,6 +1379,16 @@
       // Défaire une acceptation retire une fiche, et recharge le numéro.
       if (annulable.geste === 'refuse') { envoyer(); } else { apresEcriture(envoyer); }
     }
+    // Annuler une acceptation depuis le filtre des acceptées : la fiche part, comme au bandeau.
+    function annulerAcceptee(p) {
+      if (enCours) { return; }
+      apresEcriture(function () {
+        if (enCours) { return; }
+        avis = null;
+        enCours = { geste: 'retrait', cles: [p.cle], avant: [], titres: [titreCourt(p)] };
+        api.postMessage({ type: SZH.MSG.PROP_ANNULER, cles: [p.cle] });
+      });
+    }
     function reprendre(cle) {
       if (enCours) { return; }
       enCours = { geste: 'reprise', cles: [cle], avant: [], titres: [titreCourt(trouver(cle))] };
@@ -1247,6 +1416,7 @@
         t = n === 1 ? (m ? remplir('propBRefuseMotif', [t1, m]) : remplir('propBRefuse', [t1]))
           : (m ? nombre('propBLotRefuseMotif', n, [n, m]) : nombre('propBLotRefuse', n, [n]));
       } else if (e.geste === 'reprise') { t = remplir('propBReprise', [e.titres[0]]); }
+      else if (e.geste === 'retrait') { t = remplir('propBAcceptationAnnulee', [e.titres[0]]); }
       else if (r.geste === 'recree') { t = remplir('propBRecree', [t1]); }
       else { t = remplir('propBAnnule', [n]); }
       if (r.geste === 'accepte' || r.geste === 'garde') {
@@ -1273,7 +1443,10 @@
         echouees.push({ p: Object.assign({}, envoi.p, { bloquants: [] }), valeurs: envoi.valeurs });
         return false;
       });
-      if (autres.length > 0) {
+      // Une annulation refusée par la garde dit pourquoi, en toutes lettres.
+      var gardees = autres.filter(function (x) { return GARDES[x.raison]; });
+      if (gardees.length > 0 && gardees.length === autres.length) { avertir(TXT[GARDES[gardees[0].raison]]); }
+      else if (autres.length > 0) {
         avertir(nombre('propBEchec', autres.length, [autres.length, autres.map(function (x) { return x.raison; }).join(', ')]));
       }
       r.faites.forEach(function (c) { selection.delete(c); });
@@ -1976,10 +2149,7 @@
         th.setAttribute('scope', 'col');
         th.dataset.col = c.id;
         if (c.fixe) { poser(th, 'span', 'prop-masque', TXT[c.lib]); return; }
-        var b = poser(th, 'button', 'prop-tri', TXT[c.lib]);
-        b.type = 'button';
-        b.title = c.tip ? remplir(c.tip, [tiret(t.rappelSur)]) : remplir('propTermesTrier', [TXT[c.lib]]);
-        b.addEventListener('click', function () {
+        var b = enteteTriable(th, TXT[c.lib], c.tip ? remplir(c.tip, [tiret(t.rappelSur)]) : remplir('propTermesTrier', [TXT[c.lib]]), function () {
           if (E.tri === c.id) { E.sens = -E.sens; } else { E.tri = c.id; E.sens = c.num ? -1 : 1; }
           remplirTable();
           b.focus();
@@ -2000,14 +2170,7 @@
         return d;
       }
       function remplirTable() {
-        trh.querySelectorAll('th').forEach(function (th) {
-          var sens = th.querySelector('.prop-tri-sens');
-          if (sens) { sens.remove(); }
-          if (th.dataset.col === E.tri) {
-            th.setAttribute('aria-sort', E.sens < 0 ? 'descending' : 'ascending');
-            poser(th.querySelector('.prop-tri'), 'span', 'prop-tri-sens', E.sens < 0 ? ' ▼' : ' ▲').setAttribute('aria-hidden', 'true');
-          } else { th.removeAttribute('aria-sort'); }
-        });
+        trh.querySelectorAll('th').forEach(function (th) { marquerTri(th, th.dataset.col === E.tri, E.sens); });
         var qq = E.q.trim().toLocaleLowerCase();
         var l = t.termes.filter(function (x) {
           return (!qq || x.terme.toLocaleLowerCase().indexOf(qq) !== -1) && (!E.role || x.role === E.role) && (!E.langue || x.langue === E.langue);

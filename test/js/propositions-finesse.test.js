@@ -1,6 +1,6 @@
 // La finesse du tri dans la vue « Propositions » : l'hôte (crans, aperçu du poste, réglage
 // partagé), l'arbre qui suit ce que la personne voit, et la page (curseur, masquées, colonne
-// Cran, « Pourquoi »). Les lots et les crans sont synthétiques (docs/FORMAT-PROPOSITIONS.md).
+// Score, « Pourquoi »). Les lots et les crans sont synthétiques (docs/FORMAT-PROPOSITIONS.md).
 //
 //   node --test test/js/propositions-finesse.test.js
 'use strict';
@@ -377,22 +377,23 @@ test('page : un type sans crans garde le filtre de pertinence et sa colonne, san
   assert.strictEqual(panel.querySelector('.prop-finesse-curseur'), null);
 });
 
-test('page : la colonne Cran remplace Pertinence, masquée par défaut, réactivable par le menu Colonnes', async () => {
+test('page : la colonne Score remplace Cran et Pertinence, visible, son infobulle garde le cran', async () => {
   repartir({ reglage: 6 });
   const { page, panel, txt } = await vueBranchee();
   assert.strictEqual(panel.querySelector('th.prop-th-pertinence'), null);
-  assert.strictEqual(panel.querySelector('th.prop-th-cran'), null, 'Cran masquée par défaut');
+  assert.strictEqual(panel.querySelector('th.prop-th-cran'), null);
+  assert.ok(panel.querySelector('th.prop-th-score'), 'Score visible par défaut');
+  const td = lignes(panel).find((tr) => tr.dataset.cle === cle('D')).querySelector('.prop-td-score');
+  assert.strictEqual(td.textContent, '20');
+  assert.strictEqual(td.title, r(txt.propCranTip, [6, '20']));
   panel.querySelector('.prop-bouton-colonnes').click();
-  const item = panel.querySelector('.prop-menu-colonnes').querySelectorAll('button').find((b) => b.dataset.col === 'cran');
-  assert.strictEqual(item.getAttribute('aria-checked'), 'false');
-  assert.strictEqual(item.textContent, txt.propColCran);
+  const item = panel.querySelector('.prop-menu-colonnes').querySelectorAll('button').find((b) => b.dataset.col === 'score');
+  assert.strictEqual(item.getAttribute('aria-checked'), 'true');
+  assert.strictEqual(item.textContent, txt.propColScore);
   item.click();
   const m = page.messages.filter((x) => x.type === MSG.PROP_COLONNES).pop();
-  assert.deepStrictEqual(copie(m.reglage), { largeurs: {}, masquees: [], montrees: ['cran'] });
-  assert.ok(panel.querySelector('th.prop-th-cran'));
-  const td = lignes(panel).find((tr) => tr.dataset.cle === cle('D')).querySelector('.prop-td-cran');
-  assert.strictEqual(td.textContent, '1–6');
-  assert.strictEqual(td.title, r(txt.propCranTip, [6, 20]));
+  assert.deepStrictEqual(copie(m.reglage), { largeurs: {}, masquees: ['score'] });
+  assert.strictEqual(panel.querySelector('th.prop-th-score'), null);
 });
 
 test('page : « Pourquoi » dans le détail — la note, la catégorie en clair, les termes par rôle et leur emplacement', async () => {

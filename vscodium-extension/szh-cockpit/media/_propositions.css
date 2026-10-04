@@ -18,6 +18,8 @@
 .prop-echec svg { color: var(--avert); }
 
 .prop-filtres { display: flex; align-items: center; gap: var(--e3); flex-wrap: wrap; }
+.prop-filtres-decision { display: inline-flex; align-items: center; gap: var(--e1); flex-wrap: wrap; }
+.prop-filtres-decision .szh-bouton { font-size: var(--t-libelle); padding: .1em .6em; }
 .prop-filtres select { font: inherit; font-size: var(--t-libelle); padding: .1em .3em;
   color: var(--vscode-input-foreground, inherit); background: var(--vscode-input-background, transparent);
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
@@ -81,6 +83,12 @@
 .prop-etat svg { flex: 0 0 auto; color: var(--avert); }
 .prop-etat--refusee { font-weight: 400; color: var(--encre-2); }
 .prop-etat--refusee svg { color: var(--encre-2); }
+/* Une acceptée : le mot et la date disent l'état, l'icône ne fait que le doubler. */
+.prop-etat--acceptee { font-weight: 400; color: var(--encre-2); }
+.prop-etat--acceptee svg { color: var(--encre-2); }
+/* Pourquoi une acceptation ne s'annule pas d'ici : écrit à côté du bouton, qui reste lisible. */
+.prop-garde-raison { font-size: var(--t-mini); color: var(--encre-2); }
+.prop-bouton-annuler-acceptation[aria-disabled="true"] { opacity: .45; cursor: default; }
 
 /* Le titre tient sur deux lignes au plus ; une recherche a dessous une ligne grise. */
 .prop-table td.prop-td-titre { white-space: normal; }
@@ -242,7 +250,8 @@
 .prop-ligne--masquee td { color: var(--encre-2); }
 .prop-ligne--masquee .prop-titre { color: var(--encre-2); font-style: italic; }
 .prop-masquee-mot { display: block; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
-.prop-td-cran { font-variant-numeric: tabular-nums; }
+/* Le score : aligné à droite, chiffres de même chasse. */
+.prop-table td.prop-td-score, .prop-table th.prop-th-score { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ---- Pourquoi, dans le détail ---- */
 .prop-pourquoi { display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2) var(--e3);
@@ -290,7 +299,12 @@
   text-transform: inherit; cursor: pointer; }
 .prop-tri:hover { color: var(--encre); text-decoration: underline; }
 .prop-tri:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.prop-table-termes th[aria-sort] { color: var(--encre); }
+.prop-table th[aria-sort] { color: var(--encre); }
+/* Dans un en-tête réglable, le bouton s'arrête avant la poignée (le padding droit du th). */
+.prop-table th .prop-tri { display: inline-flex; align-items: baseline; max-width: 100%; vertical-align: bottom; }
+.prop-tri-libelle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La flèche du sens ne se tronque jamais : c'est elle qui dit le sens, pas la couleur. */
+.prop-tri-sens { flex: 0 0 auto; white-space: pre; }
 .prop-terme { padding: 0; border: 0; background: none; font: inherit; color: var(--vscode-textLink-foreground, var(--accent));
   text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
 .prop-terme:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

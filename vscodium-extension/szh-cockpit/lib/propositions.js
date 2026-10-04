@@ -142,6 +142,34 @@ function listerRefusees(racineArbreVal, langue) {
   return res;
 }
 
+// listerAcceptees(racine, langue) -> les propositions acceptées de cette langue dont la décision
+// est encore là (avant la purge des lots), la plus récente en tête : `acceptee` { date, fiche },
+// et `garde`, ce qui empêche d'annuler d'ici ('' si rien, voir gardeAnnulation).
+function listerAcceptees(racineArbreVal, langue) {
+  const decisions = decisionsParCle(racineArbreVal);
+  const acceptees = [...lireLots(racineArbreVal).parCle.values()].filter((p) => {
+    const d = decisions.get(p.cle);
+    return d && d.decision === 'accepte' && languesDe(p).indexOf(langue) !== -1;
+  });
+  if (acceptees.length === 0) { return []; }
+  // Une fiche acceptée vit dans le dossier du type de sa proposition : seuls ceux-là se lisent.
+  const index = indexFiches(racineArbreVal, new Set(acceptees.map((p) => p.type)));
+  const archives = numerosArchives(racineArbreVal);
+  const res = [];
+  for (const p of acceptees) {
+    const d = decisions.get(p.cle);
+    let mtime = 0;
+    try { mtime = fs.statSync(cheminDecision(racineArbreVal, p.cle)).mtimeMs; } catch (e) { /* lue à l'instant */ }
+    const plan = planAnnulation(d, langue, index);
+    res.push(Object.assign({}, projeter(p, langue), {
+      acceptee: { date: d.date, fiche: d.fiche }, garde: plan.raison || raisonGarde(racineArbreVal, plan.aRetirer, archives), _mtime: mtime
+    }));
+  }
+  // La date de la décision n'a que le jour : l'heure du fichier départage un même jour.
+  res.sort((a, b) => (a.acceptee.date < b.acceptee.date ? 1 : a.acceptee.date > b.acceptee.date ? -1 : b._mtime - a._mtime));
+  return res.map((x) => { delete x._mtime; return x; });
+}
+
 function lireLots(racineArbreVal) {
   const avertissements = [];
   const etats = {};
@@ -477,38 +505,69 @@ function refuser(racineArbreVal, p, motif) {
   return ecrireDecision(racineArbreVal, { cle: (p || {}).cle, decision: 'refuse', motif: motif || '' });
 }
 
-// La fiche d'un Uuid, toutes langues : [{ type, slug, langue, ausgabe }].
-function fichesParUuid(racineArbreVal, uuid) {
-  const res = [];
+// Les fiches de la bibliothèque par Uuid, toutes langues : uuid -> [{ type, slug, langue, ausgabe }].
+// `types` (un Set, facultatif) borne la lecture aux dossiers de ces types.
+function indexFiches(racineArbreVal, types) {
+  const res = new Map();
   for (const { type, slug } of kirby.listerSlugsBibliotheque(racineArbreVal)) {
+    if (types && !types.has(type)) { continue; }
     for (const langue of kirby.languesDuContrat()) {
       const f = kirby.lireFicheSlugLangue(racineArbreVal, slug, langue, type);
-      if (f && f.uuid === uuid) { res.push({ type: type, slug: slug, langue: langue, ausgabe: f.ausgabe }); }
+      if (!f || !f.uuid) { continue; }
+      if (!res.has(f.uuid)) { res.set(f.uuid, []); }
+      res.get(f.uuid).push({ type: type, slug: slug, langue: langue, ausgabe: f.ausgabe });
     }
   }
   return res;
 }
 
-// annulerAcceptation(racine, cle) -> { ok, ficheSupprimee, raison? } : la fiche créée, puis
-// le statut de l'autre langue, puis la décision. La suppression vise (type, slug) : le
-// même slug peut exister sous un autre type, que supprimerFicheLangue pourrait viser.
+// Ce que défaire une acceptation retirerait : { aRetirer, autreGardee } ou { raison }.
 // Pour une proposition multilingue (sa décision garde ses titres), `langue` désigne la vue :
-// son fichier part toujours, celui de l'autre langue seulement s'il n'est dans aucun numéro ;
-// sinon il reste et `autreGardee` le dit.
-function annulerAcceptation(racineArbreVal, cle, langue) {
+// son fichier part toujours, celui de l'autre langue seulement s'il n'est dans aucun numéro.
+function planAnnulation(d, langue, index) {
+  const fiches = d.fiche ? (index.get(d.fiche) || []) : [];
+  if (fiches.length <= 1) { return { aRetirer: fiches, autreGardee: false }; }
+  if (!d.titres) { return { raison: 'fiche-traduite' }; }
+  const vue = fiches.filter((f) => f.langue === langue);
+  if (vue.length === 0) { return { raison: 'fiche-traduite' }; }
+  const autreGardee = fiches.some((f) => f.langue !== langue && !!f.ausgabe);
+  return { aRetirer: autreGardee ? vue : fiches, autreGardee: autreGardee };
+}
+
+// La garde de l'annulation : une fiche à retirer déjà dans un numéro (« dans-numero »), ou
+// dans un numéro archivé (« publiee »), ne se retire pas d'ici.
+function numerosArchives(racineArbreVal) {
+  return new Set(kirby.listerNumeros(racineArbreVal).filter((n) => n.archive && n.id).map((n) => n.id));
+}
+function raisonGarde(racineArbreVal, aRetirer, archives) {
+  const numeros = aRetirer.filter((f) => !!f.ausgabe).map((f) => f.ausgabe);
+  if (numeros.length === 0) { return ''; }
+  const a = archives || numerosArchives(racineArbreVal);
+  return numeros.some((id) => a.has(id)) ? 'publiee' : 'dans-numero';
+}
+
+// gardeAnnulation(racine, cle, langue) -> '' | 'dans-numero' | 'publiee' | 'fiche-traduite'.
+function gardeAnnulation(racineArbreVal, cle, langue, index) {
+  const d = lireDecision(racineArbreVal, cle);
+  if (!d || d.decision !== 'accepte') { return ''; }
+  const plan = planAnnulation(d, langue, index || indexFiches(racineArbreVal));
+  return plan.raison || raisonGarde(racineArbreVal, plan.aRetirer);
+}
+
+// annulerAcceptation(racine, cle, langue?, { garde }?) -> { ok, ficheSupprimee, raison? } : la
+// fiche créée, puis le statut de l'autre langue, puis la décision. La suppression vise
+// (type, slug) : le même slug peut exister sous un autre type, que supprimerFicheLangue
+// pourrait viser. Le fichier de l'autre langue gardé, `autreGardee` le dit. Avec `garde`,
+// une fiche dans un numéro ou publiée refuse l'annulation (raisonGarde).
+function annulerAcceptation(racineArbreVal, cle, langue, options) {
   const d = lireDecision(racineArbreVal, cle);
   if (!d || d.decision !== 'accepte') { return { ok: false, raison: 'pas-acceptee' }; }
-  const fiches = d.fiche ? fichesParUuid(racineArbreVal, d.fiche) : [];
-  let aRetirer = fiches;
-  let autreGardee = false;
-  if (fiches.length > 1) {
-    if (!d.titres) { return { ok: false, raison: 'fiche-traduite' }; }
-    const vue = fiches.filter((f) => f.langue === langue);
-    const autres = fiches.filter((f) => f.langue !== langue);
-    if (vue.length === 0) { return { ok: false, raison: 'fiche-traduite' }; }
-    autreGardee = autres.some((f) => !!f.ausgabe);
-    aRetirer = autreGardee ? vue : fiches;
-  }
+  const plan = planAnnulation(d, langue, indexFiches(racineArbreVal));
+  if (plan.raison) { return { ok: false, raison: plan.raison }; }
+  const garde = options && options.garde ? raisonGarde(racineArbreVal, plan.aRetirer) : '';
+  if (garde) { return { ok: false, raison: garde }; }
+  const aRetirer = plan.aRetirer;
+  const autreGardee = plan.autreGardee;
   for (const f of aRetirer) {
     const dossier = kirby.cheminFiche(racineArbreVal, f.type, f.slug);
     fs.unlinkSync(path.join(dossier, kirby.nomFichierContenu(f.type, f.langue)));
@@ -587,13 +646,19 @@ function refuserLot(racineArbreVal, langue, cles, motif) {
 
 // annulerLot(racine, [cle], langue?) -> { faites, echecs, fichesSupprimees, autresGardees } :
 // `langue` est celle de la vue (voir annulerAcceptation). Chaque décision se
-// défait selon sa nature, une acceptation avec la fiche qu'elle a créée.
-function annulerLot(racineArbreVal, cles, langue) {
+// défait selon sa nature, une acceptation avec la fiche qu'elle a créée. `options` : { garde,
+// sauf } ; la garde vaut pour chaque acceptation, sauf celles de `sauf` (le geste qu'on vient de
+// faire, que le bandeau « Annuler » défait même dans un numéro).
+function annulerLot(racineArbreVal, cles, langue, options) {
+  const o = options || {};
+  const sauf = new Set(Array.isArray(o.sauf) ? o.sauf : []);
   const res = { faites: [], echecs: [], fichesSupprimees: 0, autresGardees: 0 };
   for (const cle of (Array.isArray(cles) ? cles : [])) {
     const d = lireDecision(racineArbreVal, cle);
     if (!d) { res.echecs.push({ cle: String(cle), raison: 'pas-decidee' }); continue; }
-    const r = d.decision === 'accepte' ? annulerAcceptation(racineArbreVal, cle, langue) : annulerDecision(racineArbreVal, cle);
+    const r = d.decision === 'accepte'
+      ? annulerAcceptation(racineArbreVal, cle, langue, { garde: !!o.garde && !sauf.has(d.cle) })
+      : annulerDecision(racineArbreVal, cle);
     if (!r.ok) { res.echecs.push({ cle: d.cle, raison: r.raison || 'echec' }); continue; }
     res.faites.push(d.cle);
     if (r.ficheSupprimee) { res.fichesSupprimees++; }
@@ -644,7 +709,7 @@ function recreerFiche(racineArbreVal, cle, p, valeurs, options) {
   if (!p || p.cle !== d.cle || !kirby.typeConnu(p.type)) { return { ok: false, raison: 'type-inconnu' }; }
   const langue = langueVue(p, o.langue);
   if (!langue) { return { ok: false, raison: 'langue-absente' }; }
-  if (fichesParUuid(racineArbreVal, d.fiche).length > 0) { return { ok: false, raison: 'fiche-presente' }; }
+  if ((indexFiches(racineArbreVal).get(d.fiche) || []).length > 0) { return { ok: false, raison: 'fiche-presente' }; }
   const v = valeursSaisies(projeter(p, langue), valeurs && typeof valeurs === 'object' ? valeurs : {});
   const ecarts = ecartsFormat(p.type, v);
   if (ecarts.length > 0) { return { ok: false, raison: 'valeurs-hors-format', ecarts: ecarts }; }
@@ -1124,9 +1189,9 @@ module.exports = {
   cransDe, cranMax, cranDefautDe, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
   finessePourVue, comptesCrans, compterVisibles, resumeMoissonneurs, lireAuteurDemande,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,
-  listerPropositions, listerRefusees, classer, bloquants, ordonner, compterPropositions,
+  listerPropositions, listerRefusees, listerAcceptees, classer, bloquants, ordonner, compterPropositions,
   lireDecision, ecrireDecision, annulerDecision,
-  accepter, refuser, annulerAcceptation,
+  accepter, refuser, annulerAcceptation, gardeAnnulation,
   accepterLot, refuserLot, annulerLot, ficheDoublon, lireProposition, recreerFiche,
   languesDe, titresOfficielsDeFiche
 };

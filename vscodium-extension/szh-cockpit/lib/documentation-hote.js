@@ -358,7 +358,14 @@ function textesDocumentation() {
     propFinesseRegleAucun: T('doc.prop.finesse.regleAucun'), propFinesseIdentiqueTip: T('doc.prop.finesse.identiqueTip'),
     propFinesseApercu: T('doc.prop.finesse.apercu'), propFinesseGarder: T('doc.prop.finesse.garder'),
     propFinesseGarderTip: T('doc.prop.finesse.garder.tip'), propFinesseGarde: T('doc.prop.finesse.garde'),
-    propFinesseMasquee: T('doc.prop.finesse.masquee'), propColCran: T('doc.prop.col.cran'),
+    propFinesseMasquee: T('doc.prop.finesse.masquee'), propColScore: T('doc.prop.col.score'),
+    propSansScore: T('doc.prop.sansScore'), propScoreTip: T('doc.prop.score.tip'), propTrierTip: T('doc.prop.trier.tip'),
+    propFiltres: T('doc.prop.filtres'), propAfficherAcceptees: T('doc.prop.afficherAcceptees'),
+    propToutAfficher: T('doc.prop.toutAfficher'), propAcceptee: T('doc.prop.acceptee'),
+    propAnnulerAcceptation: T('doc.prop.annulerAcceptation'), propAnnulerAcceptationTip: T('doc.prop.annulerAcceptation.tip'),
+    propGardeDansNumero: T('doc.prop.garde.dansNumero'), propGardePubliee: T('doc.prop.garde.publiee'),
+    propGardeTraduite: T('doc.prop.garde.traduite'), propBAcceptationAnnulee: T('doc.prop.b.acceptationAnnulee'),
+    propAucuneRefusee: T('doc.prop.aucuneRefusee'), propAucuneAcceptee: T('doc.prop.aucuneAcceptee'),
     propCranTip: T('doc.prop.cran.tip'), propPourquoi: T('doc.prop.pourquoi'),
     propPourquoiNote: T('doc.prop.pourquoi.note'), propPourquoiSansNote: T('doc.prop.pourquoi.sansNote'),
     propPourquoiCategorie: T('doc.prop.pourquoi.categorie'),
@@ -669,6 +676,8 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
       source: String(p.cle).split(':')[1] || p.moissonneur,
       valeurs: p.valeurs || {}, doutes: Array.isArray(p.doutes) ? p.doutes : [], brut: p.brut || {},
       pertinence: p.pertinence || null, doublon: p.doublon || null, motif: p.motif || '',
+      // Une acceptée : la date de sa décision, et ce qui en empêche l'annulation d'ici.
+      acceptee: p.acceptee || null, garde: p.garde || '',
       cas: p.cas, raisons: p.raisons, bloquants: propositions.bloquants(p),
       // Le cran le plus haut où elle reste visible (10 sans crans ou sans note).
       cranMax: propositions.cranMax(p, finesse.vue.crans[p.dossier || p.moissonneur] || null),
@@ -687,6 +696,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
     types: typesPropositions(langue),
     propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
     refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
+    acceptees: propositions.listerAcceptees(racineArbreVal, langue).map(pourVue),
     etats: etatsPropositions(lu.etats),
     colonnes: (etatPoste && etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS)) || {},
     termes: td.termes, demandes: td.demandes, filtre: filtreServi(lu, x.filtre || null),
@@ -1012,6 +1022,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
 
   // Un geste de la vue Propositions : accepter (dans ce numéro ou au réservoir), refuser, ou
   // défaire un geste entier. La vue repart avec le résultat, l'arbre suit.
+  // Les acceptations du dernier geste : le bandeau « Annuler » les défait même dans un numéro ;
+  // toute autre annulation d'une acceptation passe par la garde (gardeAnnulation).
+  let derniersAcceptes = [];
   async function traiterGesteProposition(msg) {
     const refusVerrou = (geste) => repondrePanneau(panneau,
       donneesProp({ geste: geste, refus: 'verrou', faites: [], ignorees: [], echecs: [] }));
@@ -1024,6 +1037,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       resultat = Object.assign({ geste: geste }, propositions.accepterLot(racineArbreVal, langue, msg.demandes,
         { ausgabeId: dansNumero ? ausgabeId : '', depuisDetail: !!msg.depuisDetail }));
       recharger = resultat.faites.length > 0;
+      derniersAcceptes = resultat.faites.slice();
     } else if (msg.type === MSG.PROP_RECREER) {
       // L'acceptation vient d'échouer à créer la fiche : la recréer dans ce numéro, avec l'Uuid
       // de sa décision. recreerFiche refuse si la fiche existe ou si rien n'est accepté.
@@ -1039,6 +1053,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       const motif = propositions.MOTIFS_REFUS.indexOf(msg.motif) !== -1 ? msg.motif : '';
       resultat = Object.assign({ geste: 'refuse', motif: motif },
         propositions.refuserLot(racineArbreVal, langue, msg.cles, motif));
+      derniersAcceptes = [];
     } else {
       // Défaire une acceptation retire la fiche créée, peut-être de ce numéro.
       const cles = Array.isArray(msg.cles) ? msg.cles.map(String) : [];
@@ -1047,7 +1062,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
         return d && d.decision === 'accepte';
       });
       if (acceptation && refuserSiVerrouille()) { refusVerrou('annule'); return; }
-      resultat = Object.assign({ geste: 'annule' }, propositions.annulerLot(racineArbreVal, cles, langue));
+      resultat = Object.assign({ geste: 'annule' },
+        propositions.annulerLot(racineArbreVal, cles, langue, { garde: true, sauf: derniersAcceptes }));
+      derniersAcceptes = [];
       recharger = resultat.fichesSupprimees > 0;
     }
     if (recharger) { await charger(panneau); }
