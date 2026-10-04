@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.9": {
+    "fr": {
+      "titre": "Des propositions à trier",
+      "points": [
+        "Dans Propositions, la colonne Score donne la note de chaque proposition ; le cran passe dans l’infobulle.",
+        "Un clic sur un en-tête de colonne trie la liste, un deuxième inverse le sens, un troisième revient à l’ordre habituel.",
+        "« Afficher les acceptées des 30 derniers jours » montre vos dernières acceptations, et vous pouvez en annuler une tant que la fiche n’est pas dans un numéro.",
+        "« Afficher les refusées » et ce nouveau bouton n’affichent que leurs lignes ; « Tout afficher » ramène à la liste complète."
+      ]
+    },
+    "de": {
+      "titre": "Treffer sortieren",
+      "points": [
+        "In den Treffern zeigt die Spalte Note die Bewertung jedes Treffers; die Stufe steht im Tooltip.",
+        "Ein Klick auf einen Spaltenkopf sortiert die Liste, ein zweiter kehrt die Reihenfolge um, ein dritter stellt die übliche Ordnung wieder her.",
+        "«Übernommene der letzten 30 Tage anzeigen» zeigt Ihre letzten Übernahmen; eine Übernahme lässt sich rückgängig machen, solange der Eintrag in keiner Ausgabe steht.",
+        "«Abgelehnte anzeigen» und diese neue Schaltfläche zeigen nur ihre Zeilen; «Alle anzeigen» führt zur ganzen Liste zurück."
+      ]
+    }
+  },
   "3.8": {
     "fr": {
       "titre": "Des propositions à doser",

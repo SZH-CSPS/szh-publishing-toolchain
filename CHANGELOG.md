@@ -11,6 +11,17 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.9.0
+
+Medium : la vue Propositions se trie et se filtre.
+
+**Production.**
+- Propositions : colonne Score à la place de Cran (le cran passe dans l’infobulle), « – » sans
+  score ; tri par en-tête sur chaque colonne, avec `aria-sort`, mémorisé par poste.
+- Propositions : filtres exclusifs « Afficher les refusées » et « Afficher les acceptées des
+  30 derniers jours », et « Tout afficher ». Une acceptation s’annule depuis la liste, sauf si la
+  fiche est dans un numéro ou publiée ; la raison est affichée.
+
 ## 3.8.2
 
 Mineure : le doute sur un nom de personne vaut pour tout champ texte.
