@@ -86,7 +86,9 @@ Les dates suivent la saisie du contrat : `date` en `AAAA-MM-JJ`, `date_partiell
 `AAAA-MM` ou `AAAA-MM-JJ`, `annee` en `AAAA`.
 
 Aucun nom de personne n’entre dans un lot hors des champs du contrat qui le demandent
-(`auteurs`, `realisateur`).
+(`auteurs`, `realisateur`). Le `descriptif` fait exception : il est repris tel que la
+source le donne, dans `valeurs` comme dans `brut`, noms compris, sans doute
+`personne-nommee`, et la rédaction le reformule.
 
 ### Codes de doute
 
