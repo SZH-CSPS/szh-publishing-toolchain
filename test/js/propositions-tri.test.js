@@ -357,7 +357,8 @@ test('page : « refusées » et « acceptées récemment » sont deux filtres ex
   const ref = filtre(panel, 'refusees'), acc = filtre(panel, 'acceptees');
   assert.strictEqual(ref.getAttribute('aria-pressed'), 'false');
   assert.strictEqual(acc.getAttribute('aria-pressed'), 'false');
-  assert.strictEqual(acc.textContent, txt.propAfficherAcceptees);
+  assert.strictEqual(acc.textContent, r(txt.propAfficherAcceptees, [pr.JOURS_ACCEPTEES]));
+  assert.ok(acc.textContent.indexOf('30') !== -1, 'le libellé dit la borne');
   assert.strictEqual(panel.querySelector('.prop-tout-afficher'), null);
   ref.click();
   assert.deepStrictEqual(ids(panel), ['NE-1'], 'les refusées seules');
@@ -390,6 +391,8 @@ test('page : un filtre de décision vide la sélection ; le tri vaut aussi dans 
 });
 
 // Les dates des décisions, posées à la main : la plus récente en tête.
+// Le jour, n jours avant aujourd'hui (UTC), au format des décisions.
+function ilYa(n) { return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10); }
 function dater(cleP, date, mtime) {
   const f = pr.cheminDecision(RACINE_ARBRE, cleP);
   fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^Date: .*$/m, 'Date: ' + date));
@@ -402,12 +405,13 @@ test('hôte : les acceptées récentes de la langue, la plus récente en tête, 
   pr.accepter(RACINE_ARBRE, LOT[1], LOT[1].valeurs, { ausgabeId: ausgabeId() });
   pr.accepter(RACINE_ARBRE, LOT[4], LOT[4].valeurs, {});
   pr.refuser(RACINE_ARBRE, LOT[3]);
-  dater(cle('GE-1'), '2026-09-01');
-  dater(cle('CH-1'), '2026-10-03', new Date('2026-10-03T08:00:00Z'));
-  dater(cle('BE-1'), '2026-10-03', new Date('2026-10-03T09:00:00Z'));
+  dater(cle('GE-1'), ilYa(20));
+  dater(cle('CH-1'), ilYa(1), new Date(Date.now() - 3600000));
+  dater(cle('BE-1'), ilYa(1), new Date(Date.now() - 60000));
   const d = await donnees(await panneau());
   assert.deepStrictEqual(d.acceptees.map((x) => x.cle), [cle('BE-1'), cle('CH-1'), cle('GE-1')]);
-  assert.deepStrictEqual(d.acceptees.map((x) => x.acceptee.date), ['2026-10-03', '2026-10-03', '2026-09-01']);
+  assert.deepStrictEqual(d.acceptees.map((x) => x.acceptee.date), [ilYa(1), ilYa(1), ilYa(20)]);
+  assert.strictEqual(d.joursAcceptees, pr.JOURS_ACCEPTEES);
   assert.deepStrictEqual(d.acceptees.map((x) => x.garde), ['', 'dans-numero', '']);
   assert.ok(!d.propositions.some((x) => x.cle === cle('GE-1')));
 });
@@ -551,14 +555,53 @@ test('bibliothèque : listerAcceptees ne rend que la langue, la plus récente en
       const f = pr.cheminDecision(racine, c);
       fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^Date: .*$/m, 'Date: ' + date));
     };
-    dater2(LOT[0].cle, '2026-08-01');
+    dater2(LOT[0].cle, '2026-09-10');
     dater2(LOT[1].cle, '2026-10-01');
-    dater2(LOT[4].cle, '2026-09-01');
-    const l = pr.listerAcceptees(racine, 'fr');
+    dater2(LOT[4].cle, '2026-09-20');
+    dater2(de.cle, '2026-10-01');
+    const le = new Date('2026-10-04T12:00:00Z');
+    const l = pr.listerAcceptees(racine, 'fr', le);
     assert.deepStrictEqual(l.map((x) => x.cle), [LOT[1].cle, LOT[4].cle, LOT[0].cle]);
     assert.deepStrictEqual(l.map((x) => x.garde), ['dans-numero', '', '']);
-    assert.deepStrictEqual(pr.listerAcceptees(racine, 'de').map((x) => x.cle), [de.cle]);
+    assert.deepStrictEqual(pr.listerAcceptees(racine, 'de', le).map((x) => x.cle), [de.cle]);
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+test('bibliothèque : « récemment » vaut 30 jours : J-29 et J-30 listées, J-31 non, à une date donnée', () => {
+  const { racine } = bibliotheque();
+  try {
+    assert.strictEqual(pr.JOURS_ACCEPTEES, 30);
+    const [a, b, c] = [LOT[0], LOT[1], LOT[4]];
+    lot(racine, [a, b, c]);
+    for (const x of [a, b, c]) { pr.accepter(racine, x, x.valeurs, {}); }
+    const poser = (x, date) => {
+      const f = pr.cheminDecision(racine, x.cle);
+      fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace(/^Date: .*$/m, 'Date: ' + date));
+    };
+    poser(a, '2026-09-05');   // J-29
+    poser(b, '2026-09-04');   // J-30
+    poser(c, '2026-09-03');   // J-31
+    const le = new Date('2026-10-04T08:00:00Z');
+    assert.deepStrictEqual(pr.listerAcceptees(racine, 'fr', le).map((x) => x.cle), [a.cle, b.cle]);
+    // La même bibliothèque, un jour plus tard : J-30 sort à son tour.
+    assert.deepStrictEqual(pr.listerAcceptees(racine, 'fr', new Date('2026-10-05T08:00:00Z')).map((x) => x.cle), [a.cle]);
+    // Hors borne, la décision reste : elle n'est que hors de la liste.
+    assert.ok(pr.lireDecision(racine, c.cle));
+  } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+});
+
+// La raison d'une garde est le seul texte qui explique un bouton désactivé, au plus petit corps :
+// elle prend l'encre principale (Lc 80,9 en Light+ contre 75,7). L'état « Acceptée » reste en
+// encre secondaire, comme « refusée ».
+test('contraste : la raison d’une garde en --encre, l’état « Acceptée » en --encre-2, jetons que cockpit-contraste mesure', () => {
+  const css = fs.readFileSync(path.join(COCKPIT, 'media', '_propositions.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const [sel, jeton] of [['.prop-garde-raison', 'var(--encre)'], ['.prop-etat--acceptee', 'var(--encre-2)']]) {
+    const blocs = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].split(',').some((x) => x.trim() === sel));
+    assert.ok(blocs.length > 0, 'règle absente : ' + sel);
+    const couleurs = blocs.map((m) => (/(?:^|;)\s*color\s*:\s*([^;]+)/.exec(m[2]) || [])[1]).filter(Boolean).map((x) => x.trim());
+    assert.deepStrictEqual(couleurs, [jeton], sel + ' : sa couleur doit rester le jeton mesuré');
+    assert.ok(!blocs.some((m) => /opacity/.test(m[2])), sel + ' : une opacité défait la mesure du jeton');
+  }
 });
 
 test('libellés : les clés du tri et des filtres existent en fr et en de, avec « Treffer », jamais « Vorschlag »', () => {

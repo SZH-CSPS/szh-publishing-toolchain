@@ -20,6 +20,8 @@ const DOSSIER_DECISIONS = '_Decisions';
 const RE_LOT = /^(\d{4}-\d{2}-\d{2})-(\d+)\.jsonl$/;
 // Finesse du tri : dix crans par moissonneur et par langue, réglés pour toute une rédaction.
 const NB_CRANS = 10;
+// « Acceptées récemment » : les décisions des 30 derniers jours (décision de la supervision).
+const JOURS_ACCEPTEES = 30;
 const DOSSIER_REGLAGES = '_Reglages';
 const RE_ID_SUR = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -142,14 +144,17 @@ function listerRefusees(racineArbreVal, langue) {
   return res;
 }
 
-// listerAcceptees(racine, langue) -> les propositions acceptées de cette langue dont la décision
-// est encore là (avant la purge des lots), la plus récente en tête : `acceptee` { date, fiche },
-// et `garde`, ce qui empêche d'annuler d'ici ('' si rien, voir gardeAnnulation).
-function listerAcceptees(racineArbreVal, langue) {
+// listerAcceptees(racine, langue, maintenant?) -> les propositions acceptées de cette langue
+// depuis JOURS_ACCEPTEES jours (jour de la décision compris, en UTC), la plus récente en tête :
+// `acceptee` { date, fiche }, et `garde`, ce qui empêche d'annuler d'ici ('' si rien, voir
+// gardeAnnulation). Les fiches ne se lisent que pour ces décisions-là.
+function listerAcceptees(racineArbreVal, langue, maintenant) {
+  const t = (maintenant instanceof Date ? maintenant : new Date()).getTime();
+  const borne = new Date(t - JOURS_ACCEPTEES * 86400000).toISOString().slice(0, 10);
   const decisions = decisionsParCle(racineArbreVal);
   const acceptees = [...lireLots(racineArbreVal).parCle.values()].filter((p) => {
     const d = decisions.get(p.cle);
-    return d && d.decision === 'accepte' && languesDe(p).indexOf(langue) !== -1;
+    return d && d.decision === 'accepte' && d.date >= borne && languesDe(p).indexOf(langue) !== -1;
   });
   if (acceptees.length === 0) { return []; }
   // Une fiche acceptée vit dans le dossier du type de sa proposition : seuls ceux-là se lisent.
@@ -1185,7 +1190,7 @@ function retablirDemande(racineArbreVal, moissonneur, contenu) {
 module.exports = {
   comptesTermes, filtrerSurTerme, validerTerme, listerDemandes, ecrireDemande, confirmerDemande,
   retirerDemande, retablirDemande, SENS_DEMANDE, STATUTS_DEMANDE, LANGUES_TERME, REGLE_TERME,
-  FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS, NB_CRANS,
+  FORMAT, FORMAT_ETAT, CODES_DOUTE, DECISIONS, MOTIFS_REFUS, NB_CRANS, JOURS_ACCEPTEES,
   cransDe, cranMax, cranDefautDe, cheminReglages, lireReglages, ecrireReglage, retablirReglage,
   finessePourVue, comptesCrans, compterVisibles, resumeMoissonneurs, lireAuteurDemande,
   cheminMoissons, cheminDecisions, cheminDecision, empreinteCle,

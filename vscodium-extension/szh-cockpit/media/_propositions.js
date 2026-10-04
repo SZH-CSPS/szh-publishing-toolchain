@@ -15,7 +15,7 @@
 //                     propFiltreTerme { typeFiche, terme, role, langue } ;
 //                     propDemandeEcrire { moissonneur, terme, langue, sens }
 //   hôte -> webview : propDonnees { langue, cible, revueAutre, types, propositions, refusees,
-//                     acceptees, etats, colonnes, termes, demandes, filtre, regleTerme, resultat?,
+//                     acceptees, joursAcceptees, etats, colonnes, termes, demandes, filtre, regleTerme, resultat?,
 //                     ongletDemande?, demandeGeste? } ;
 //                     propVerifie { cle, jeton, bloquants }
 // Un geste qui recharge la Documentation du numéro passe par opts.apresEcriture : les cartes
@@ -502,7 +502,8 @@
       var gd = poser(f, 'span', 'prop-filtres-decision');
       gd.setAttribute('role', 'group');
       gd.setAttribute('aria-label', TXT.propFiltres);
-      [['refusees', TXT.propAfficherRefusees], ['acceptees', TXT.propAfficherAcceptees]].forEach(function (x) {
+      var jours = donnees.joursAcceptees || 30;
+      [['refusees', TXT.propAfficherRefusees], ['acceptees', remplir('propAfficherAcceptees', [jours])]].forEach(function (x) {
         var b = SZH.bouton(x[1], function () { changerFiltreDecision(filtreDecision === x[0] ? '' : x[0], x[0]); }, 'prop-filtre-' + x[0]);
         b.setAttribute('aria-pressed', filtreDecision === x[0] ? 'true' : 'false');
         gd.appendChild(b);
@@ -833,7 +834,7 @@
       var tbody = poser(t, 'tbody');
       if (lignes.length === 0 && filtreDecision) {
         var td0 = poser(poser(tbody, 'tr'), 'td', 'prop-discret prop-vide-filtre',
-          filtreDecision === 'acceptees' ? TXT.propAucuneAcceptee : TXT.propAucuneRefusee);
+          filtreDecision === 'acceptees' ? remplir('propAucuneAcceptee', [donnees.joursAcceptees || 30]) : TXT.propAucuneRefusee);
         td0.colSpan = cols.length;
       }
       lignes.forEach(function (p, i) {

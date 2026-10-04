@@ -697,6 +697,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
     propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
     refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
     acceptees: propositions.listerAcceptees(racineArbreVal, langue).map(pourVue),
+    joursAcceptees: propositions.JOURS_ACCEPTEES,
     etats: etatsPropositions(lu.etats),
     colonnes: (etatPoste && etatPoste.globalState.get(CLE_COLONNES_PROPOSITIONS)) || {},
     termes: td.termes, demandes: td.demandes, filtre: filtreServi(lu, x.filtre || null),

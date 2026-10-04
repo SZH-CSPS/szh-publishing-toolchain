@@ -86,8 +86,9 @@
 /* Une acceptée : le mot et la date disent l'état, l'icône ne fait que le doubler. */
 .prop-etat--acceptee { font-weight: 400; color: var(--encre-2); }
 .prop-etat--acceptee svg { color: var(--encre-2); }
-/* Pourquoi une acceptation ne s'annule pas d'ici : écrit à côté du bouton, qui reste lisible. */
-.prop-garde-raison { font-size: var(--t-mini); color: var(--encre-2); }
+/* Pourquoi une acceptation ne s'annule pas d'ici : le seul texte qui explique le bouton désactivé,
+   au plus petit corps ; l'encre principale (Lc 80,9 en Light+, 75,7 avec l'encre secondaire). */
+.prop-garde-raison { font-size: var(--t-mini); color: var(--encre); }
 .prop-bouton-annuler-acceptation[aria-disabled="true"] { opacity: .45; cursor: default; }
 
 /* Le titre tient sur deux lignes au plus ; une recherche a dessous une ligne grise. */
