@@ -101,7 +101,7 @@ l’invente pas.
 | `valeur-hors-liste` | la valeur lue n’a aucun jeton dans la liste du champ |
 | `champ-introuvable` | la source ne donne pas ce champ |
 | `texte-tronque` | le texte a été coupé (titre ou descriptif trop long, page incomplète) |
-| `personne-nommee` | un nom de personne possible dans le titre, qui n’est ni l’auteur ni un signataire ; `detail` le donne masqué (« F*** K*** »), jamais en clair. Ce doute signale sans bloquer l’acceptation |
+| `personne-nommee` | un nom de personne possible dans un champ texte (`title`, `descriptif`…, que `champ` désigne), qui n’est ni l’auteur ni un signataire ; `detail` le donne masqué (« F*** K*** »), jamais en clair. Ce doute signale sans bloquer l’acceptation |
 
 ### La règle de `brut`
 

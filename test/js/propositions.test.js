@@ -269,6 +269,17 @@ test('bloquants : un doute personne-nommee classe en B mais ne bloque pas', () =
   assert.ok(pr.CODES_DOUTE.includes('personne-nommee'));
 });
 
+test('bloquants : personne-nommee sur le descriptif d’une recherche classe en B sans bloquer', () => {
+  const p = intervention('2', {
+    cle: 'recherche:source-exemple:R2', moissonneur: 'recherche', type: 'recherche',
+    valeurs: { title: 'Projet d’essai', institutions: 'Haute école exemple', debut: '2025', fin: '2027',
+      lien: 'https://recherche.exemple.ch/r2', descriptif: 'Un projet mené avec une école.' },
+    doutes: [{ champ: 'descriptif', code: 'personne-nommee', detail: 'nom de personne possible dans le texte : A*** B***' }]
+  });
+  assert.deepStrictEqual(pr.classer(p).raisons, [{ code: 'doute', champ: 'descriptif' }], 'B par le seul doute');
+  assert.deepStrictEqual(pr.bloquants(p, p.valeurs, []), []);
+});
+
 // ---- Décisions --------------------------------------------------------------------------
 
 test('ecrireDecision écrit Cle, Decision, Motif et Date sous l’empreinte, puis refuse de réécrire', () => {
