@@ -11,6 +11,15 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.8.2
+
+Mineure : le doute sur un nom de personne vaut pour tout champ texte.
+
+**Production.**
+- Propositions : le doute « Nom de personne dans le texte » peut viser un autre champ que le
+  titre. Le descriptif d’une recherche est repris tel que la source le donne ; la rédaction le
+  reformule.
+
 ## 3.8.1
 
 Mineure : la vue Propositions signale un nom de personne dans un titre.
