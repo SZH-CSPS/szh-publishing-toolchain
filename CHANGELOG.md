@@ -21,6 +21,8 @@ Medium : la vue Propositions se trie et se filtre.
 - Propositions : filtres exclusifs « Afficher les refusées » et « Afficher les acceptées des
   30 derniers jours », et « Tout afficher ». Une acceptation s’annule depuis la liste, sauf si la
   fiche est dans un numéro ou publiée ; la raison est affichée.
+- Propositions : le compte suit un réglage réécrit aussitôt (sous Windows, même date et même
+  taille de fichier ; le premier commit de la 3.9.0 a échoué en CI pour cette raison).
 
 ## 3.8.2
 
