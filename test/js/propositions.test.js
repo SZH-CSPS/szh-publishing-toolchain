@@ -839,9 +839,14 @@ test('compterVisibles : les comptes suivent le réglage partagé, puis l’aper�
     ecrireEtatCrans(racine, 'essai', { fr: crans(), de: crans() });
     assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 3, aVerifier: 1, masquees: 0 }, 'sans réglage : cran 1');
     // Un réglage déjà là : seul le fichier change, pas le dossier ; le cache doit le voir.
+    // Sous Windows, deux écritures rapprochées gardent le même mtime (horloge à ~16 ms) et la même taille.
+    const fReglage = path.join(pr.cheminMoissons(racine), '_Reglages', 'fr.json');
+    const t = new Date('2026-10-04T10:00:00Z');
     pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 1, 'A');
+    fs.utimesSync(fReglage, t, t);
     assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 3, aVerifier: 1, masquees: 0 });
     pr.ecrireReglage(racine, 'fr', 'essai', 'intervention', 6, 'A');
+    fs.utimesSync(fReglage, t, t);
     assert.deepStrictEqual(pr.compterVisibles(racine, 'fr'), { total: 2, aVerifier: 1, masquees: 1 }, 'le cache suit le réglage');
     assert.deepStrictEqual(pr.compterVisibles(racine, 'fr', { intervention: 10 }), { total: 1, aVerifier: 1, masquees: 2 });
     assert.deepStrictEqual(pr.compterVisibles(racine, 'fr', { intervention: 1 }), { total: 3, aVerifier: 1, masquees: 0 });

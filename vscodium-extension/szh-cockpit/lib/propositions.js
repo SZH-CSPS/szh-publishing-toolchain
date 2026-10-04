@@ -224,15 +224,22 @@ function empreinteMoissons(racineArbreVal) {
     try { const s = fs.statSync(chemin); parts.push(chemin + '|' + s.mtimeMs + '|' + s.size + '|' + (extra || '')); }
     catch (e) { parts.push(chemin + '|absent'); }
   };
+  // Réglages et etat.json sont de toute façon lus par le compte : leur contenu entre dans
+  // l'empreinte, car deux écritures rapprochées gardent sous Windows le même mtime et la même taille.
+  const noterContenu = (chemin) => {
+    let h = '';
+    try { h = crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); } catch (e) { /* absent */ }
+    noter(chemin, h);
+  };
   let decisions = [];
   try { decisions = fs.readdirSync(path.join(base, DOSSIER_DECISIONS)); } catch (e) { /* aucune décision */ }
   noter(base);
   noter(path.join(base, DOSSIER_DECISIONS), String(decisions.length));
-  for (const l of kirby.languesDuContrat()) { noter(cheminReglages(racineArbreVal, l)); }
+  for (const l of kirby.languesDuContrat()) { noterContenu(cheminReglages(racineArbreVal, l)); }
   for (const m of dossiersMoissonneurs(racineArbreVal)) {
     const dossier = path.join(base, m);
     noter(dossier);
-    noter(path.join(dossier, 'etat.json'));
+    noterContenu(path.join(dossier, 'etat.json'));
     let noms = [];
     try { noms = fs.readdirSync(dossier); } catch (e) { /* dossier disparu entre-temps */ }
     for (const nom of noms.filter((n) => /\.jsonl$/.test(n)).sort()) { noter(path.join(dossier, nom)); }
