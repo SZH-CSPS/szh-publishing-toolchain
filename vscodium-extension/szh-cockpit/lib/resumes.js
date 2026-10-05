@@ -103,7 +103,7 @@ function construireRequete(p, langue, P) {
   const utilisateur = remplir(g.utilisateur[langue], { fiche: JSON.stringify(fiche), source: source.texte });
   return {
     messages: [{ role: 'system', content: systeme }, { role: 'user', content: utilisateur }],
-    type: t, source: source, fiche: fiche
+    type: t, source: source, fiche: fiche, langue: langue
   };
 }
 
@@ -157,7 +157,7 @@ function doutesDe(texte, req) {
   const doutes = [];
   const reference = req.source.texte + '\n' + JSON.stringify(req.fiche);
   for (const n of nombresHorsSource(texte, reference)) { doutes.push({ code: 'nombre-hors-source', detail: n }); }
-  if (texte.length > req.type.max || texte.length < req.type.min) {
+  if (tropLong(texte, req.type, req.langue) || texte.length < req.type.min) {
     doutes.push({ code: 'longueur-hors-plage', detail: String(texte.length) });
   }
   if (req.source.tronquee) { doutes.push({ code: 'source-tronquee', detail: String(req.source.texte.length) }); }
@@ -166,8 +166,16 @@ function doutesDe(texte, req) {
 
 // ---- La génération ------------------------------------------------------------------------
 
-// resumer(p, langue, { client, modele, poste, P? }) -> le résumé, prêt à écrire. Une relance,
-// une seule, quand le premier jet dépasse la borne haute.
+function nbMots(texte) { return String(texte).trim().split(/\s+/).filter(Boolean).length; }
+// Trop long : au-delà de la borne haute en caractères, ou du nombre de mots permis.
+function tropLong(texte, type, langue) {
+  const mots = (type.mots_max || {})[langue];
+  return texte.length > type.max || (Number.isInteger(mots) && nbMots(texte) > mots);
+}
+const RELANCES_MAX = 2;
+
+// resumer(p, langue, { client, modele, poste, P? }) -> le résumé, prêt à écrire. Deux relances au
+// plus quand un jet est trop long ; au-delà, le doute de longueur le dit.
 async function resumer(p, langue, options) {
   const o = options || {};
   const g = o.P || prompts();
@@ -178,10 +186,11 @@ async function resumer(p, langue, options) {
   let texte = nettoyer(r.texte);
   let jetons = r.jetons;
   let relance = false;
-  if (texte.length > req.type.max) {
-    const suite = req.messages.concat([{ role: 'assistant', content: texte },
+  let messages = req.messages;
+  for (let i = 0; i < RELANCES_MAX && tropLong(texte, req.type, langue); i++) {
+    messages = messages.concat([{ role: 'assistant', content: texte },
       { role: 'user', content: remplir(g.relance[langue], { n: texte.length, max: req.type.max }) }]);
-    r = await o.client.chat(corps(suite));
+    r = await o.client.chat(corps(messages));
     texte = nettoyer(r.texte);
     jetons += r.jetons;
     relance = true;
@@ -211,11 +220,14 @@ function lireResume(racineArbreVal, langue, cle) {
   catch (e) { return null; }
   return resumeConforme(r) && r.cle === cle ? r : null;
 }
-// Un résumé vaut tant que sa source n'a pas changé ; sinon il est périmé et se régénère.
+// Un résumé vaut tant que sa source n'a pas changé et qu'il tient dans la plage actuelle ; sinon il
+// est périmé et se régénère (une plage resserrée refait donc les résumés trop longs).
 function resumeValide(p, langue, resume, P) {
   if (!resumeConforme(resume) || resume.cle !== p.cle) { return false; }
-  const s = sourceDe(p, P || prompts());
-  return !!s && resume.source_empreinte === empreinteTexte(s.texte);
+  const g = P || prompts();
+  const s = sourceDe(p, g);
+  if (!s || resume.source_empreinte !== empreinteTexte(s.texte)) { return false; }
+  return !tropLong(resume.texte, g.types[p.type], langue);
 }
 
 // resumesValides(racine, langue, propositions) -> Map cle -> résumé. Le dossier se lit une fois,

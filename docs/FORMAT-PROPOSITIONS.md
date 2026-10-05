@@ -120,9 +120,14 @@ l’invente pas.
 
 Le bouton « Raccourcir les résumés » (Paramètres de l’Accueil, Moissonnage) fait écrire par
 Mistral le descriptif des propositions en attente de la langue active :
-- `recherche` : un `descriptif` de plus de 1 400 caractères est raccourci (plage 600 à 1 400,
-  cible 1 000) ;
-- `intervention` : le descriptif est créé depuis `texte_depose` (plage 400 à 700, cible 550).
+- `recherche` : un `descriptif` de plus de 1 000 caractères est raccourci (plage 700 à 1 000,
+  cible 850, 150 mots au plus en fr et 135 en de) ;
+- `intervention` : le descriptif est créé depuis `texte_depose` (plage 400 à 700, cible 550,
+  80 mots au plus en fr et 70 en de).
+
+Un jet trop long (caractères ou mots) est relancé deux fois au plus ; s'il l'est encore, le doute
+`longueur-hors-plage` le dit. Un résumé enregistré qui dépasse la plage actuelle est périmé et se
+régénère.
 
 Les prompts sont versionnés dans `vscodium-extension/szh-cockpit/prompts/resume-descriptif.json`.
 Seuls les textes publics d’une proposition partent chez Mistral, jamais un manuscrit ni un fichier

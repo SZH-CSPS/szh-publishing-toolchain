@@ -106,7 +106,7 @@ test('requête : le prompt de la langue cible, la consigne du type, la fiche, et
   const req = resumes.construireRequete(p, 'de');
   assert.strictEqual(req.messages.length, 2);
   assert.ok(req.messages[0].content.startsWith('Du verfasst'), 'le système allemand pour la Zeitschrift');
-  assert.ok(req.messages[0].content.indexOf('Fünf bis sieben Sätze') !== -1, '{mots} remplacé');
+  assert.ok(req.messages[0].content.indexOf('Vier bis sechs Sätze') !== -1, '{mots} remplacé');
   assert.ok(req.messages[0].content.indexOf('{mots}') === -1);
   assert.ok(req.messages[0].content.endsWith(resumes.prompts().types.recherche.consigne.de));
   const u = req.messages[1].content;
@@ -129,7 +129,7 @@ test('prompts : versionnés, deux langues, une plage et une consigne par type', 
     assert.ok(P.systeme[l] && P.utilisateur[l] && P.relance[l], 'variante ' + l);
     for (const t of ['recherche', 'intervention']) { assert.ok(P.types[t].mots[l] && P.types[t].consigne[l]); }
   }
-  assert.deepStrictEqual([P.types.recherche.min, P.types.recherche.max, P.types.recherche.cible], [600, 1400, 1000]);
+  assert.deepStrictEqual([P.types.recherche.min, P.types.recherche.max, P.types.recherche.cible], [700, 1000, 850]);
   assert.deepStrictEqual([P.types.intervention.min, P.types.intervention.max, P.types.intervention.cible], [400, 700, 550]);
   assert.strictEqual(P.modele, 'ministral-14b-2512');
 });
@@ -233,7 +233,7 @@ test('résumer : un premier jet trop long est relancé une fois, avec la consign
   const relance = client.appels[1].messages;
   assert.strictEqual(relance.length, 4);
   assert.strictEqual(relance[2].role, 'assistant');
-  assert.strictEqual(relance[3].content, 'Ce descriptif fait 1600 caractères. Raccourcis-le à moins de 1400 caractères, espaces comprises, sans rien ajouter ni changer de sens. Réponds uniquement par le descriptif raccourci.');
+  assert.strictEqual(relance[3].content, 'Ce descriptif fait 1600 caractères. Raccourcis-le à moins de 1000 caractères, espaces comprises, sans rien ajouter ni changer de sens. Réponds uniquement par le descriptif raccourci.');
   assert.deepStrictEqual([client.appels[0].temperature, client.appels[0].max_tokens, client.appels[0].model], [0.1, 800, 'ministral-14b-2512']);
   assert.strictEqual(r.texte, 'Le projet étudie la lecture chez 120 élèves.', 'une ligne, sans guillemets autour');
   assert.deepStrictEqual([r.format, r.cle, r.langue, r.modele, r.prompt, r.poste, r.relance, r.jetons, r.mode],
@@ -242,8 +242,31 @@ test('résumer : un premier jet trop long est relancé une fois, avec la consign
   assert.deepStrictEqual(r.doutes.map((d) => d.code), ['longueur-hors-plage']);
 });
 
+test('résumer : trop de mots sous la borne en caractères relance aussi ; deux relances au plus, puis un doute', async () => {
+  const bavard = 'abcd '.repeat(160).trim();
+  let client = faussesReponses([bavard, ('Le projet étudie la lecture chez 120 élèves de 5 cantons. ').repeat(13).trim()]);
+  let r = await resumes.resumer(recherche('a', LONG), 'fr', { client, modele: 'm' });
+  assert.ok(bavard.length <= 1000, 'sous la borne en caractères');
+  assert.strictEqual(client.appels.length, 2, '160 mots dépassent les 150 permis en fr');
+  assert.strictEqual(r.relance, true);
+  assert.deepStrictEqual(r.doutes, []);
+  client = faussesReponses(['a'.repeat(1300), 'a'.repeat(1200), 'a'.repeat(1100), 'jamais lu']);
+  r = await resumes.resumer(recherche('a', LONG), 'fr', { client, modele: 'm' });
+  assert.strictEqual(client.appels.length, 3, 'deux relances, pas une de plus');
+  assert.strictEqual(client.appels[2].messages.length, 6, 'la seconde relance garde la première');
+  assert.deepStrictEqual(r.doutes.map((d) => d.code), ['longueur-hors-plage']);
+});
+
+test('résumé valide : un résumé plus long que la plage actuelle est périmé et se régénère', async () => {
+  const p = recherche('a', LONG);
+  const court = { format: 'pronto-resume/1', cle: p.cle, langue: 'fr', texte: 'a'.repeat(900),
+    source_empreinte: resumes.empreinteTexte(LONG.trim()) };
+  assert.strictEqual(resumes.resumeValide(p, 'fr', court), true);
+  assert.strictEqual(resumes.resumeValide(p, 'fr', Object.assign({}, court, { texte: 'a'.repeat(1372) })), false);
+});
+
 test('résumer : un jet dans la plage part tel quel, sans relance ; un chiffre inventé fait un doute', async () => {
-  const texte = ('Le projet étudie la lecture chez 30 élèves de 5 cantons entre 2020 et 2024. ').repeat(9).trim();
+  const texte = ('Le projet étudie la lecture chez 30 élèves de 5 cantons entre 2020 et 2024. ').repeat(10).trim();
   const client = faussesReponses([texte]);
   const r = await resumes.resumer(recherche('a', LONG), 'fr', { client, modele: 'm' });
   assert.strictEqual(client.appels.length, 1);

@@ -17,12 +17,13 @@
   "recherche": {
    "mode": "raccourcir",
    "source": "descriptif",
-   "min": 600,
-   "max": 1400,
-   "cible": 1000,
+   "min": 700,
+   "max": 1000,
+   "cible": 850,
+   "mots_max": { "fr": 150, "de": 135 },
    "mots": {
-    "fr": "Cinq à sept phrases, 100 à 170 mots au plus",
-    "de": "Fünf bis sieben Sätze, höchstens 90 bis 150 Wörter"
+    "fr": "Quatre à six phrases, 110 à 150 mots au plus",
+    "de": "Vier bis sechs Sätze, höchstens 100 bis 135 Wörter"
    },
    "consigne": {
     "fr": "L'objet est un projet de recherche. Commence par ce que le projet étudie ou développe. Puis dis : le constat qui le motive, avec au plus un chiffre de contexte présenté comme tel ; l'objectif ou la question ; la population et le terrain ; la méthode ; les produits visés ou obtenus. Ignore les références bibliographiques, les publications et la composition de l'équipe.",
@@ -35,6 +36,7 @@
    "min": 400,
    "max": 700,
    "cible": 550,
+   "mots_max": { "fr": 80, "de": 70 },
    "mots": {
     "fr": "Trois ou quatre phrases courtes, 50 à 80 mots au plus",
     "de": "Drei oder vier kurze Sätze, höchstens 45 bis 70 Wörter"
