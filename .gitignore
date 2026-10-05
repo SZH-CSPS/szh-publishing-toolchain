@@ -32,3 +32,6 @@ tmp/
 .import.log
 .szh-journal.log
 .szh-pdfua.json
+
+# Clés d'API locales : jamais dans le dépôt public.
+*.secret
