@@ -213,3 +213,26 @@ test('page : en lot, sans bascule, la sous-ligne montre le résumé généré et
   await relayer(page, p);
   assert.strictEqual(ficheAcceptee(A.cle).valeurs.descriptif, GENERE);
 });
+
+test('page : le descriptif montre tout son texte, jusqu’à la hauteur visible de la colonne', async () => {
+  repartir();
+  const { page, panel } = await vue();
+  ligne(panel, A.cle).querySelector('.prop-titre').click();
+  const { conteneur, saisie } = champDescriptif(panel);
+  assert.ok(saisie.classList.contains('szh-texte-long'));
+  // La disposition que le DOM factice n'a pas : 20 px par ligne de 80 caractères, une
+  // colonne de 600 px dont 100 pour les gestes collés.
+  saisie.getClientRects = () => [{}];
+  Object.defineProperty(saisie, 'scrollHeight', { get: () => Math.ceil(saisie.value.length / 80) * 20 });
+  panel.querySelector('.prop-detail-corps').clientHeight = 600;
+  panel.querySelector('.prop-colle').offsetHeight = 100;
+  assert.strictEqual(saisie.style.height, undefined, 'détaché, le champ n’a pas été mesuré');
+  page.redimensionner(2000);
+  assert.strictEqual(saisie.style.height, Math.ceil(GENERE.length / 80) * 20 + 'px', 'visible, il prend la hauteur du résumé');
+  assert.strictEqual(saisie.style.overflowY, 'hidden');
+  conteneur.querySelector('.prop-resume-bascule').click();
+  assert.strictEqual(saisie.value, ORIGINAL);
+  assert.ok(Math.ceil(ORIGINAL.length / 80) * 20 > 452);
+  assert.strictEqual(saisie.style.height, '452px', 'l’original long s’arrête à la colonne, moins les gestes et l’intitulé');
+  assert.strictEqual(saisie.style.overflowY, 'auto');
+});

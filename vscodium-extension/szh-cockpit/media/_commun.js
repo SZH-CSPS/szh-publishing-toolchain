@@ -15,6 +15,7 @@
 //   SZH.poserAccent(hex)          la couleur annuelle du numéro devient l'accent
 //   SZH.barreBoutons(...)         la barre de commandes d'une vue, et sa zone d'état
 //   SZH.listeCartes(opts)         la liste de cartes des vues d'ensemble
+//   SZH.suivreHauteur(zone, max)  un textarea à la hauteur de son texte, jusqu'à un plafond
 var SZH = (function () {
   'use strict';
 
@@ -1676,6 +1677,62 @@ var SZH = (function () {
     lecteur.readAsDataURL(fichier);
   }
 
+  // ---- Un textarea à la hauteur de son texte ----
+  //
+  // La zone prend la hauteur de son texte, jusqu'au plafond au-delà duquel elle défile
+  // elle-même. Une hauteur tirée au coin l'emporte : la frappe suivante ne la reprend pas.
+  // Une zone cachée ou détachée n'a pas de boîte (scrollHeight 0) : on n'y touche pas, et
+  // suivreHauteur la mesure quand elle prend une largeur.
+  var HAUTEUR_MAX = 480;
+  function ajusterHauteur(zone, plafond) {
+    if (zone.dataset.hauteurTiree === '1') { return; }
+    if (zone.dataset.hauteurPosee && zone.style.height && zone.style.height !== zone.dataset.hauteurPosee) {
+      zone.dataset.hauteurTiree = '1'; zone.style.overflowY = 'auto'; return;
+    }
+    if (typeof zone.getClientRects !== 'function' || zone.getClientRects().length === 0) { return; }
+    var max = plafond > 0 ? plafond : HAUTEUR_MAX;
+    // Replier la zone pour la mesurer raccourcit un instant la page : les ascenseurs
+    // au-dessus d'elle reprennent ensuite leur position.
+    var defiles = [];
+    for (var p = zone.parentElement; p; p = p.parentElement) {
+      if (p.scrollTop > 0) { defiles.push([p, p.scrollTop]); }
+    }
+    zone.style.height = 'auto';
+    var h = zone.scrollHeight;
+    if (h > 0) {
+      // scrollHeight compte le remplissage, pas la bordure : `height` suit box-sizing.
+      var cs = typeof getComputedStyle === 'function' ? getComputedStyle(zone) : null;
+      if (cs && cs.boxSizing === 'border-box') {
+        h += (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+      } else if (cs) {
+        h -= (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+      }
+      zone.style.height = Math.min(Math.ceil(h), max) + 'px';
+      zone.dataset.hauteurPosee = zone.style.height;
+      zone.style.overflowY = h > max ? 'auto' : 'hidden';
+    }
+    defiles.forEach(function (x) { x[0].scrollTop = x[1]; });
+  }
+  // Branche une zone : mesure à la saisie et chaque fois que sa largeur change (elle
+  // devient visible, la fenêtre s'élargit). `plafond` est un nombre ou une fonction qui le
+  // rend, relue à chaque mesure. Rend la fonction de mesure, pour une valeur posée par code.
+  function suivreHauteur(zone, plafond) {
+    var ajuster = function () { ajusterHauteur(zone, typeof plafond === 'function' ? plafond() : plafond); };
+    zone.addEventListener('input', ajuster);
+    if (typeof ResizeObserver === 'function') {
+      var largeur = 0;
+      new ResizeObserver(function (entrees) {
+        var e = entrees && entrees[entrees.length - 1];
+        var l = e && e.contentRect ? e.contentRect.width : 0;
+        if (l === largeur) { return; }
+        largeur = l;
+        if (l > 0) { ajuster(); }
+      }).observe(zone);
+    }
+    ajuster();
+    return ajuster;
+  }
+
   return {
     autoEnregistrement: autoEnregistrement, motsCles: motsCles,
     choixFerme: choixFerme, choixLangue: choixLangue,
@@ -1690,6 +1747,7 @@ var SZH = (function () {
     appliquerLimites: appliquerLimites,
     plier: plier, plierAvecIndex: plierAvecIndex, debutsDeMot: debutsDeMot,
     chercherDebut: chercherDebut, poserAvecGras: poserAvecGras,
-    construireDepot: construireDepot, lireBase64: lireBase64
+    construireDepot: construireDepot, lireBase64: lireBase64,
+    ajusterHauteur: ajusterHauteur, suivreHauteur: suivreHauteur
   };
 })();

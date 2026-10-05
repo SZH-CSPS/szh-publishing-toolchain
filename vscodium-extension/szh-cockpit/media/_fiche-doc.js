@@ -36,7 +36,9 @@
       extensionsImage: function () { return []; },
       envoyerImage: function () {}, poserVignette: function () {},
       // Après toute saisie dans un champ, par sa clé.
-      surSaisie: function () {}
+      surSaisie: function () {},
+      // Le plafond d'un champ texte_long, en px ; 0 garde celui de SZH.ajusterHauteur.
+      plafondTexteLong: function () { return 0; }
     }, options || {});
     function txt() { return ctx.txt() || {}; }
 
@@ -260,10 +262,13 @@
         }
         i.addEventListener('change', surChangement);
       } else if (champCfg.saisie === 'texte_long') {
+        // Tout le texte d'emblée : la zone prend sa hauteur, jusqu'au plafond de la page.
         i = document.createElement('textarea');
         i.rows = 3;
         i.maxLength = 4000;
+        i.className = 'szh-texte-long';
         i.addEventListener('input', surChangement);
+        SZH.suivreHauteur(i, ctx.plafondTexteLong);
       } else {
         i = document.createElement('input');
         i.maxLength = champCfg.saisie === 'annee' ? 4 : 300;
@@ -531,6 +536,7 @@
           if (poserValeurDate(c.ctl[champCfg.cle], String(v0 || ''))) { demanderApercuDesDates(c, champCfg.cle); }
         }
         else { c.ctl[champCfg.cle].value = String(v0 || ''); }
+        if (champCfg.saisie === 'texte_long') { SZH.ajusterHauteur(c.ctl[champCfg.cle], ctx.plafondTexteLong()); }
       }
       if (champCfg.quand) {
         c.conditionnels = c.conditionnels || [];

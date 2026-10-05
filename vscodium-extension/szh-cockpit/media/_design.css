@@ -196,6 +196,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .szh-champ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .szh-champ input:disabled,
 .szh-champ textarea:disabled { opacity: .5; }
+/* Un texte long prend la hauteur de son texte (SZH.suivreHauteur) ; le coin tire en hauteur seulement. */
+.szh-champ textarea.szh-texte-long { resize: vertical; }
 .szh-grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
 .szh-grille-2 > * { min-width: 0; }
 @media (max-width: 42rem) { .szh-grille-2 { grid-template-columns: 1fr; } }

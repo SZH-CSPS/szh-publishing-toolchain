@@ -162,21 +162,7 @@ function basculerListe(valeur, debut, fin) {
   var nvBloc = nvLignes.join('\n');
   return { valeur: valeur.slice(0, debutLigne) + nvBloc + valeur.slice(finLigne), debut: debutLigne, fin: debutLigne + nvBloc.length };
 }
-var HAUTEUR_MAX = 480;
-function ajusterHauteur(zone) {
-  try {
-    if (zone.dataset.hauteurTiree === '1') { return; }
-    if (zone.dataset.hauteurPosee && zone.style.height && zone.style.height !== zone.dataset.hauteurPosee) {
-      zone.dataset.hauteurTiree = '1'; zone.style.overflowY = 'auto'; return;
-    }
-    zone.style.height = 'auto';
-    if (typeof zone.scrollHeight === 'number' && zone.scrollHeight > 0) {
-      zone.style.height = Math.min(zone.scrollHeight, HAUTEUR_MAX) + 'px';
-      zone.dataset.hauteurPosee = zone.style.height;
-      zone.style.overflowY = zone.scrollHeight > HAUTEUR_MAX ? 'auto' : 'hidden';
-    }
-  } catch (e) { /* environnement sans mesure de disposition (tests) */ }
-}
+// La hauteur d'un champ de prose suit son texte : SZH.suivreHauteur (media/_commun.js).
 function appliquer(c, fn) {
   var zone = c.ctl.contenu;
   var debut = zone.selectionStart || 0;
@@ -184,7 +170,7 @@ function appliquer(c, fn) {
   var res = fn(String(zone.value || ''), debut, fin);
   zone.value = res.valeur;
   c.touchee = true;
-  ajusterHauteur(zone);
+  SZH.ajusterHauteur(zone);
   try { zone.focus(); zone.setSelectionRange(res.debut, res.fin); } catch (e) { /* sélection indisponible (tests) */ }
   etat('');
   majEtatCarte(c);
@@ -594,7 +580,7 @@ function construireRubrique(type, rubrique, persistee) {
   zone.rows = 4;
   if (TXT.champContenuIndice) { zone.placeholder = TXT.champContenuIndice; }
   zone.addEventListener('input', function () {
-    c.touchee = true; ajusterHauteur(zone); etat(''); majEtatCarte(c); majModifie();
+    c.touchee = true; etat(''); majEtatCarte(c); majModifie();
   });
   zone.addEventListener('keydown', function (ev) {
     if (!(ev.ctrlKey || ev.metaKey)) { return; }
@@ -606,7 +592,7 @@ function construireRubrique(type, rubrique, persistee) {
   c.ctl.contenu = zone;
 
   zone.value = String(rubrique.contenu || '');
-  ajusterHauteur(zone);
+  SZH.suivreHauteur(zone);
   c.enregistree = c.persistee ? valeurs(c) : null;
 
   cartes.push(c);
@@ -615,7 +601,7 @@ function construireRubrique(type, rubrique, persistee) {
 }
 function viderRubrique(c) {
   c.ctl.contenu.value = '';
-  ajusterHauteur(c.ctl.contenu);
+  SZH.ajusterHauteur(c.ctl.contenu);
   c.touchee = true;
   majEtatCarte(c);
   majModifie();

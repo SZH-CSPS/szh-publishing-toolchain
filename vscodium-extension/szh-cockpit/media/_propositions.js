@@ -155,8 +155,19 @@
       txt: function () { return TXT; },
       types: function () { return (opts.types && opts.types()) || []; },
       index: function () { nForm += 1; return 'p' + nForm; },
-      surSaisie: function (c, cle) { toucher(c, cle); }
+      surSaisie: function (c, cle) { toucher(c, cle); },
+      plafondTexteLong: plafondTexteLong
     });
+    // Un texte long se lit d'un seul regard : au plus la hauteur que la colonne de détail
+    // montre sous ses gestes collés, moins son intitulé. Au-delà, il défile lui-même, et la
+    // colonne garde de quoi défiler autour.
+    var PLAFOND_MIN = 240, MARGE_INTITULE = 48;
+    function plafondTexteLong() {
+      var cps = zone.detail && zone.detail.querySelector('.prop-detail-corps');
+      if (!cps || !cps.clientHeight) { return 0; }
+      var colle = (zone.colle && zone.colle.offsetHeight) || 0;
+      return Math.max(PLAFOND_MIN, cps.clientHeight - colle - MARGE_INTITULE);
+    }
 
     // ---- Données ----------------------------------------------------------------------------
     function typeDe(t) { return ((donnees && donnees.types) || []).filter(function (x) { return x.type === t; })[0] || null; }

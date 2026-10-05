@@ -137,14 +137,14 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-outil--gras { font-weight: 700; }
 .doc-outil--italique { font-style: italic; }
 
-/* Un textarea qui grandit avec son texte (voir ajusterHauteur() dans le script), jusqu'à un
+/* Un textarea qui grandit avec son texte (SZH.suivreHauteur, media/_commun.js), jusqu'à un
    plafond au-delà duquel il défile lui-même plutôt que de pousser la page à l'infini — une
    bibliographie de trente références ne doit pas se lire dans une fenêtre de trois lignes,
    mais ne doit pas non plus noyer la carte suivante.
    `min-height` vaut le double de ce qu'il valait : ces champs reçoivent des paragraphes, et
    un cadre de trois lignes disait le contraire. `resize: vertical` rend le coin tirable pour
    les cas où même le plafond ne suffit pas ; la hauteur tirée gagne alors sur la mesure
-   automatique (ajusterHauteur), sans quoi la frappe suivante la reprendrait aussitôt. */
+   automatique, sans quoi la frappe suivante la reprendrait aussitôt. */
 .doc-champ textarea {
   width: 100%; box-sizing: border-box; resize: vertical;
   min-height: 12rem; overflow-y: hidden;
