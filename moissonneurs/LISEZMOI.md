@@ -184,6 +184,23 @@ des noms. Chaque moissonneur n'y ajoute que ses chemins et le préfixe de ses cl
   des pages de détail refusées (trois au moins) compte de même. Deux passes de suite ainsi désactivent la source,
   que `python3 -B -m recherche reactiver <source> --base …` rétablit.
 - Une attente de plus de 10 s demandée par un site (429) s'annonce par une ligne `attente`.
+- **Le socle se publie depuis le poste de développement**, comme celui du parlement :
+
+  ```
+  python3 -B -m recherche publier --base <harvest.sqlite> --racine <_NewsUndActu> --poste <nom> --compte <nom>
+                                  [--attente-creneau s]
+  python3 -B -m recherche absorber --base <harvest.sqlite> --racine <_NewsUndActu>
+  ```
+
+  `publier` prend le créneau du poste (code 4 s'il est tenu), relit les journaux des postes dans la base (comme
+  `absorber`), puis écrit `_Moissons/recherche/_partage/socle.json` et rend le créneau. Le socle porte les tables
+  `projets` (sans `derniere_vue`), `decisions`, `sources` et `urls_refusees`, triées par clé. Sans changement, il
+  garde son `publie_le` et sort identique à l'octet. Sous `PRONTO_MOISSON_PASSE`, il est refusé en code 2 avant le
+  créneau, et la base reste intacte. Sur la sortie standard, une ligne `{"type":"socle", "chemin", "octets",
+  "inchange", "tables"}`.
+- `absorber` reprend les lignes de journaux que la base n'a pas encore lues (table locale `partage_absorbes`). La
+  base tient lieu de socle dans la fusion de `partage.py` : elle sort dans l'état qu'une passe verrait. Un projet déjà
+  en base garde son `id` et sa `derniere_vue`.
 
 ## Le moissonneur des interventions parlementaires (`parlement/`)
 

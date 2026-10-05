@@ -34,6 +34,8 @@ REQUIS = {
     'ignorer': ('base',),
     'retablir': ('base',),
     'reactiver': ('base',),
+    'absorber': ('base', 'racine'),
+    'publier': ('base', 'racine', 'poste', 'compte'),
 }
 
 
@@ -225,6 +227,49 @@ def cmd_reactiver(config, con, args):
     return 0
 
 
+def cmd_absorber(config, con, args):
+    """Relit l'état partagé dans la base du poste de dev : à faire avant toute opération sur la base."""
+    _, journaux, reprises = etat.absorber(con, config['_racine'])
+    emit_json({'type': 'absorption', 'journaux': len(journaux), 'lignes': reprises})
+    return 0
+
+
+def cmd_publier(config, con, args):
+    """Publie le socle : relit les journaux dans la base de dev, puis écrit sous créneau. Sans changement, le socle
+    garde son heure de publication et sort identique à l'octet."""
+    # Refusé avant le créneau et l'absorption, et pas seulement par partage.publier_socle : la base reste intacte.
+    if os.environ.get(partage.VARIABLE_PASSE):
+        dire('publier : refusé, une passe mensuelle n’écrit jamais le socle')
+        return 2
+    racine = config['_racine']
+    c = creneau.Creneau(creneau.DossierCreneau(os.path.join(racine, '_Moissons', creneau.DOSSIER)), args.poste,
+                        args.compte, 'cli', [NOM], attente_s=args.attente_creneau)
+    try:
+        annonce = c.prendre()
+    except creneau.Occupe as o:
+        dire(f"créneau tenu par {o.autre.get('poste')} ({o.autre.get('compte')}) depuis {o.autre.get('debut')}")
+        return 4
+    try:
+        try:
+            ancien, _, _ = etat.absorber(con, racine)
+        except etat.EtatAbsent:
+            ancien = None
+            dire('aucun socle publié : premier socle')
+        tables, absorbes = etat.tables_du_socle(con), etat.absorbes(con)
+        inchange = bool(ancien) and (ancien.get('tables'), ancien.get('absorbes'), ancien.get('poste'),
+                                     ancien.get('compte')) == (tables, absorbes, args.poste, args.compte)
+        chemin = partage.publier_socle(racine, NOM, args.poste, args.compte, tables, absorbes, annonce,
+                                       maintenant=ancien['publie_le'] if inchange else None)
+    except partage.SocleInterdit as e:
+        dire(f'publier : refusé, {e}')
+        return 2
+    finally:
+        c.retirer()
+    emit_json({'type': 'socle', 'chemin': chemin, 'octets': os.path.getsize(chemin), 'inchange': inchange,
+               'tables': {t: len(l) for t, l in tables.items()}})
+    return 0
+
+
 def construire_analyseur():
     commun = argparse.ArgumentParser(add_help=False)
     commun.add_argument('--racine', help='dossier _NewsUndActu de la racine active')
@@ -287,6 +332,13 @@ def construire_analyseur():
                          help='réactive une source désactivée (site:phsg, skbf…) ou une page refusée (son adresse)')
     sp.add_argument('cible')
     sp.set_defaults(func=cmd_reactiver)
+
+    sp = sous.add_parser('absorber', parents=[commun], help="poste de dev : relit l'état partagé dans la base")
+    sp.set_defaults(func=cmd_absorber)
+
+    sp = sous.add_parser('publier', parents=[commun], help='poste de dev : publie le socle, sous créneau')
+    sp.add_argument('--attente-creneau', type=float, default=creneau.ATTENTE_S)
+    sp.set_defaults(func=cmd_publier)
 
     return p
 

@@ -40,7 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_projets_statut ON projets(statut);
 """
 
 # decisions : les décisions de la rédaction relues dans _Decisions\ ; `purgee` = fichier effacé par la purge, la
-# décision vaut toujours. migrations : ce qui a été fait une fois sur la base, avec son bilan.
+# décision vaut toujours. migrations : ce qui a été fait une fois sur la base, avec son bilan. partage_absorbes : au
+# poste de développement, la dernière ligne de chaque journal de l'état partagé reprise dans la base.
 SCHEMA_AUTRES = """
 CREATE INDEX IF NOT EXISTS idx_projets_cle_proposition ON projets(cle_proposition);
 CREATE TABLE IF NOT EXISTS decisions (
@@ -67,6 +68,10 @@ CREATE TABLE IF NOT EXISTS urls_refusees (
     source TEXT NOT NULL,
     echecs_consecutifs INTEGER NOT NULL DEFAULT 0,
     refusee_le TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS partage_absorbes (
+    journal TEXT PRIMARY KEY,
+    n INTEGER NOT NULL
 );
 """
 

@@ -96,3 +96,51 @@ def differentiel(con, avant):
     if retirees:
         delta['retirees'] = retirees
     return delta
+
+
+# --------------------------------------------------------------------------- poste de développement
+
+def tables_du_socle(con):
+    """{table: [lignes]} : ce que la base de dev publie, triées par clé ; `derniere_vue` n'y est pas."""
+    return {t: [l for _, l in sorted(lignes.items(), key=lambda kv: partage.cle_de(SCHEMA[t], kv[1]))]
+            for t, lignes in instantane(con).items()}
+
+
+def absorbes(con):
+    return {r[0]: r[1] for r in con.execute('SELECT journal, n FROM partage_absorbes')}
+
+
+def absorber(con, racine):
+    """Reprend dans la base de dev les lignes de journaux qu'elle n'a pas encore lues. Rend (socle, journaux, lignes
+    reprises). La base tient lieu de socle dans partage.fusionner : elle sort dans l'état qu'une passe verrait. Un
+    projet déjà en base garde son `id` et sa `derniere_vue`. Lève EtatAbsent sans socle."""
+    socle = partage.lire_socle(racine, NOM)
+    journaux = partage.lire_journaux(racine, NOM)
+    deja = absorbes(con)
+    avant = instantane(con)
+    fusion = partage.fusionner({'absorbes': deja, 'tables': {t: list(l.values()) for t, l in avant.items()}},
+                               journaux, SCHEMA)
+    reprises = sum(1 for nom, lignes in journaux.items() for l in lignes
+                   if l.get('t') in SCHEMA and isinstance(l.get('n'), int) and l['n'] > int(deja.get(nom, 0)))
+    a_ecrire = {}
+    for table in TABLES:
+        presentes = {partage._texte_cle(partage.cle_de(SCHEMA[table], l)): l for l in avant[table].values()}
+        for cle, ligne in fusion[table].items():
+            ancienne = presentes.get(cle)
+            if ligne == ancienne:
+                continue
+            ligne = dict(ligne)
+            if table == 'projets' and ancienne is not None:
+                ligne['id'] = ancienne['id']
+                ligne['derniere_vue'] = con.execute('SELECT derniere_vue FROM projets WHERE id = ?',
+                                                    (ancienne['id'],)).fetchone()[0]
+            a_ecrire.setdefault(table, []).append(ligne)
+        for cle, ligne in presentes.items():
+            if cle not in fusion[table]:
+                conditions = ' AND '.join(f'{c} = ?' for c in TABLES[table])
+                con.execute(f'DELETE FROM {table} WHERE {conditions}', [ligne[c] for c in TABLES[table]])
+    remplir(con, a_ecrire)
+    for nom, n in partage.absorbes_de({'absorbes': deja}, journaux).items():
+        con.execute('INSERT OR REPLACE INTO partage_absorbes(journal, n) VALUES (?, ?)', (nom, n))
+    con.commit()
+    return socle, journaux, reprises
