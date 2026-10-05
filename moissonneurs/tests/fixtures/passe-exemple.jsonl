@@ -1,0 +1,23 @@
+{"format": "pronto-moisson/1", "type": "creneau", "etat": "pris", "poste": "poste-exemple", "compte": "compte-exemple", "debut": "2026-11-01T06:00:00Z"}
+{"format": "pronto-moisson/1", "type": "debut", "moissonneurs": ["parlement", "recherche"], "estimation": {"parlement": {"requetes": 45, "delai_s": 2.0, "budget": 800}, "recherche": {"requetes": 60, "delai_s": 3.0, "budget": 3000}}, "declencheur": "cockpit", "heure": "2026-11-01T06:00:00Z", "budget_mois": {"parlement": {"budget": 800, "marge": 50, "somme": 0, "plafond": 750}, "recherche": {"budget": 3000, "marge": 50, "somme": 0, "plafond": 2950}}, "racine_test": false}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "GE", "requetes": 12, "budget": 750, "reste_s": 21, "fraction": 0.26666666666666666}
+{"format": "pronto-moisson/1", "type": "avertissement", "moissonneur": "parlement", "message": "corps VD en échec (HTTPError: 500)"}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "BE", "requetes": 24, "budget": 750, "reste_s": 20, "fraction": 0.5333333333333333}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "criblage", "requetes": 36, "budget": 750, "reste_s": 8, "fraction": 0.8}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "textes", "requetes": 41, "budget": 750, "reste_s": 4, "fraction": 0.9111111111111111}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "classement", "requetes": 41, "budget": 750, "reste_s": 4, "fraction": 0.9111111111111111}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "propositions", "requetes": 41, "budget": 750, "reste_s": 4, "fraction": 0.9111111111111111}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "parlement", "etape": "purge", "requetes": 41, "budget": 750, "reste_s": 4, "fraction": 0.9111111111111111}
+{"format": "pronto-moisson/1", "type": "lot", "moissonneur": "parlement", "chemin": "parlement/2026-11-01-1.jsonl", "propositions": 14}
+{"format": "pronto-moisson/1", "type": "moissonneur_fin", "moissonneur": "parlement", "code": 0, "interrompu": null, "sources_en_echec": [{"source": "VD", "raison": "HTTPError: 500"}], "purge": {"lots": 1, "decisions": 2}, "sources_desactivees": [], "plantage": false}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "recherche", "etape": "hfh", "requetes": 6, "budget": 2950, "reste_s": 68, "fraction": 0.1}
+{"format": "pronto-moisson/1", "type": "attente", "moissonneur": "recherche", "etape": "phbern", "secondes": 120, "motif": "429", "hote": "www.phbern.example"}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "recherche", "etape": "phbern", "requetes": 8, "budget": 2950, "reste_s": 98, "fraction": 0.13333333333333333}
+{"format": "pronto-moisson/1", "type": "avertissement", "moissonneur": "recherche", "message": "PH St. Gallen a refusé l’accès (403)"}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "recherche", "etape": "skbf", "requetes": 9, "budget": 2950, "reste_s": 128, "fraction": 0.15}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "recherche", "etape": "propositions", "requetes": 9, "budget": 2950, "reste_s": 128, "fraction": 0.15}
+{"format": "pronto-moisson/1", "type": "etape", "moissonneur": "recherche", "etape": "purge", "requetes": 9, "budget": 2950, "reste_s": 128, "fraction": 0.15}
+{"format": "pronto-moisson/1", "type": "lot", "moissonneur": "recherche", "chemin": "recherche/2026-11-01-1.jsonl", "propositions": 2}
+{"format": "pronto-moisson/1", "type": "moissonneur_fin", "moissonneur": "recherche", "code": 3, "interrompu": "arret", "sources_en_echec": [{"source": "phsg", "raison": "403"}], "purge": {"lots": 0, "decisions": 0}, "sources_desactivees": ["phlu"], "plantage": false}
+{"format": "pronto-moisson/1", "type": "creneau", "etat": "retire", "poste": "poste-exemple", "compte": "compte-exemple", "debut": "2026-11-01T06:00:00Z"}
+{"format": "pronto-moisson/1", "type": "fin", "code": 3, "duree_s": 90.0}

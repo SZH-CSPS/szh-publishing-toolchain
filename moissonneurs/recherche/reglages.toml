@@ -1,0 +1,72 @@
+# Réglages du moissonneur de recherches. Aucun chemin ici : ils viennent de la ligne de commande (--racine, --cache,
+# et sur le poste de développement --base et --fichier-snf).
+
+# Langue d'une proposition dont ni la page ni le titre ne disent sûrement la langue (avec le doute
+# langue-devinee) : fr ou de.
+langue_par_defaut = "de"
+
+# Délai entre deux requêtes vers un même site (secondes).
+delai = 3
+
+# Requêtes au plus par mois, tous postes confondus : moisson.py en tire le plafond de la passe (--plafond). Avec
+# une base locale (--base), plafond de l'exécution. Au-delà, la moisson s'arrête (interrompu « budget », code 3).
+budget = 3000
+
+[filtre]
+# Un projet est retenu si son institution est dans `institutions_toujours`, si un mot de `mots`
+# apparaît dans son titre ou son descriptif, ou un mot de `mots_titre` dans son titre
+# (sans casse ni accents, début de mot).
+institutions_toujours = [
+  "Interkantonale Hochschule für Heilpädagogik",
+  "HfH",
+  "Heilpädagogik",
+  "pédagogie spécialisée",
+]
+mots = [
+  # de
+  "heilpädagog", "sonderpädagog", "sonderschul", "integrative schul", "schulische integration",
+  "förderbedarf", "sonderpädagogisch", "nachteilsausgleich",
+  "autismus", "autist", "adhs", "legasthen", "dyskalkul", "lernschwierig", "lernstörung",
+  "verhaltensauffällig", "herausforderndes verhalten", "gebärdensprach", "hörbeeinträcht", "gehörlos",
+  "sehbeeinträcht", "sehbehinder", "logopäd", "psychomotor", "frühförder", "frühe förderung",
+  "heilpädagogische früherziehung", "leichte sprache",
+  # fr
+  "pédagogie spécialisée", "enseignement spécialisé", "intégration scolaire",
+  "besoins éducatifs particuliers", "besoins particuliers", "autis", "tdah", "dyslex", "dyscalcul",
+  "troubles des apprentissages", "trouble du développement", "surdité", "langue des signes",
+  "malvoyan", "aveugle", "logopéd", "psychomotric", "éducation précoce",
+  "compensation des désavantages", "facile à lire",
+  # en
+  "special education", "special needs", "autism", "adhd",
+  "dyslexia", "sign language", "visual impairment",
+  # courants mais sûrs dans un résumé d'éducation, de psychologie ou de sociologie
+  "behinderung", "gehörlos", "handicap", "sourd", "disabilit", "deaf", "early childhood intervention",
+]
+# Cherchés dans le titre seulement, et pour le FNS seulement dans les `disciplines` : trop
+# courants ailleurs pour être un signal.
+mots_titre = [
+  "inklusi", "inclusi", "beeinträchtig", "déficience", "wohlbefinden", "bien-être",
+  "wellbeing", "well-being", "barrierefrei", "accessib",
+]
+
+[sources.snf]
+actif = true
+# Seuls les subsides dont le début est postérieur à cette date sont examinés.
+depuis = "2024-01-01"
+# Domaines FNS (MainDiscipline) dont on lit le résumé ; ailleurs, seul le titre compte.
+disciplines = ["Education and learning sciences", "Psychology", "Sociology", "Social work"]
+# Codes FNS cherchés dans AllDisciplines (105 = sciences de l'éducation), pour les projets
+# interdisciplinaires dont le domaine principal est « SSH + LS » ou autre.
+codes_disciplines = ["105"]
+# L'export FNS se télécharge à la main (le robots.txt de data.snf.ch interdit tout robot) : son chemin,
+# `fichier_local`, vient de --fichier-snf. Hors de la passe mensuelle ; vide = tentative de téléchargement, refusée.
+
+[sources.skbf]
+actif = true
+depuis = "2024-01-01"
+
+[sources.sites]
+actif = true
+depuis = "2024-01-01"
+# Chaque site est décrit dans sources/sites.py ; on ne liste ici que ceux à interroger.
+liste = ["hfh", "phbern", "phsg", "ehb", "phzh", "phfhnw", "phlu", "hepvd", "hepbejune", "hepfr"]
