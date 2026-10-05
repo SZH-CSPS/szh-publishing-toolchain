@@ -22,6 +22,8 @@ Mineure : moisson et import FNS depuis le cockpit, résumés plus courts, descri
 - Résumés Mistral des recherches : 700 à 1 000 caractères, plafond en mots contrôlé, deux
   relances au plus ; un résumé plus long que la plage se régénère.
 - Propositions : le Descriptif s’affiche en entier à l’ouverture, toujours redimensionnable.
+- Données FNS : le nom du fichier choisi s’affiche aussi correctement sous Linux (le premier commit
+  de la 3.10.1 a échoué en CI pour cette raison).
 
 **Développement.**
 - `moissonneurs/` livrés dans le toolkit : parlement et recherche, état partagé fusionnable
