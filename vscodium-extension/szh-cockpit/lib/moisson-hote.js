@@ -270,7 +270,7 @@ async function preparerFns() {
   const chemin = await ctx.choisirFichier();
   if (!chemin) { return; }
   if (!fichierLisible(chemin)) { dernierBilan = { ok: false, texte: T('moisson.fns.cheminRefuse', [chemin]), genre: 'import-fns' }; return; }
-  preparation = { genre: 'import-fns', etat: 'confirmation', fichier: chemin, fichierAffiche: path.basename(chemin) };
+  preparation = { genre: 'import-fns', etat: 'confirmation', fichier: chemin, fichierAffiche: path.win32.basename(chemin) };
 }
 
 // La passe : stdout ligne à ligne, chaque événement appliqué puis l'état renvoyé.
