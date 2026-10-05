@@ -1,0 +1,9 @@
+{"format":"pronto-journal/1","moissonneur":"exemple","poste":"poste-b__y"}
+{"n":1,"maj":"2026-11-03T09:00:00Z","t":"projets","k":["3"],"r":{"id":"3","statut":"propose","titre":"C"}}
+{"n":2,"maj":"2026-11-03T09:00:00Z","t":"projets","k":["2"],"r":{"id":"2","statut":"vu","titre":"B2"}}
+{"n":3,"maj":"2026-11-03T09:00:00Z","t":"corps","k":["GE"],"r":{"body_key":"GE","repere":"2026-10-18","n":15}}
+{"n":4,"maj":"2026-11-03T09:00:00Z","t":"connues","k":["GE"],"r":{"body_key":"GE","ids":{"3":"2026-10-20"}}}
+{"n":5,"maj":"2026-11-03T09:00:00Z","t":"decisions","k":["k1"],"r":null}
+{"n":6,"maj":"2026-11-03T11:00:00Z","t":"decisions","k":["k2"],"r":null}
+{"n":7,"maj":"2026-11-01T07:00:00Z","t":"projets","k":["1"],"r":{"id":"1","statut":"vu","titre":"A2"}}
+une ligne illisible

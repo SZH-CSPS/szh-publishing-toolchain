@@ -67,7 +67,7 @@ def prendre_creneau(chemins, poste, compte, declencheur, moissonneurs, duree_est
 
 
 def lancer_enfant(argv, cwd, stderr):
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8')
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8', **{partage.VARIABLE_PASSE: '1'})
     # Une session à part : le Ctrl+C du terminal n'atteint que moisson.py, qui le traduit en demande d'arrêt.
     return subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=stderr, stdin=subprocess.DEVNULL,
                             text=True, encoding='utf-8', errors='replace', bufsize=1, start_new_session=True,

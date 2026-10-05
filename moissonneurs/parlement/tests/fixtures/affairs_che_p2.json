@@ -1,0 +1,7 @@
+{"meta": {"total_records": 3, "has_more": false},
+ "data": [
+  {"id": 9003, "body_key": "CHE", "external_id": "20240999", "number": "24.999",
+   "title": {"fr": "Ancienne affaire"}, "type_name": {"fr": "Postulat"}, "type_harmonized_id": 3,
+   "begin_date": "2024-03-01", "updated_at": "2024-12-30T01:00:00"},
+  {"body_key": "CHE", "title": "sans identité"}
+ ]}

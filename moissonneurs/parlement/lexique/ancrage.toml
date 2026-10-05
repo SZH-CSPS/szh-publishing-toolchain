@@ -1,0 +1,286 @@
+# Ancrage : condition NÉCESSAIRE pour qu'une affaire soit retenue.
+# Un terme est une chaîne ou { t, s, m, cs, ambigu }. Défauts pris dans le concept.
+#   s      source : cdph:artN | termdat | lhand | lai | concordat | edudoc | corpus | manuel
+#   m      mode : "debut" (début de mot, défaut : couvre flexions) | "mot" (mot entier) | "sous" (n'importe où,
+#          utile pour les composés allemands)
+#   cs     true : respecte la casse (sigles)
+#   ambigu true : jamais suffisant seul pour retenir
+#   contexte "ecole" : ne compte que si un terme de [contexte.ecole] figure aussi dans le même texte
+# La comparaison se fait sans accents ni casse, apostrophes ramenées à l'espace. Le contrôle du sourçage CDPH est un outil d'étude, hors de ce dépôt ;
+# contrôle que chaque terme "cdph:artN" figure bien dans cet article, dans sa langue.
+
+[contexte.ecole]
+fr = ["école", "élève", "scolaire", "scolarité", "enseignement", "enseignant", "classe", "formation"]
+de = ["Schule", "Schüler", "schulisch", "Unterricht", "Lehrperson", "Klasse", "Bildung", { t = "schul", m = "sous" }]
+it = ["scuola", "allievo", "alunno", "scolastic", "insegnamento", "docente", "classe", "formazione"]
+
+# ---- Handicap, droits des personnes handicapées ----------------------------------------------
+
+[[concept]]
+id = "handicap"
+s = "cdph:art1"
+fr = ["handicap", { t = "invalidité", s = "lai" }, { t = "assurance-invalidité", s = "lai" }]
+de = [{ t = "Behinderung", m = "sous" }, { t = "behindert", m = "sous", s = "lhand" }, { t = "Invalidität", s = "lai" },
+      { t = "Invalidenversicherung", s = "lai" }, { t = "Handicap", s = "manuel" }]
+it = ["disabilità", { t = "disabil", m = "debut" }, { t = "invalidità", s = "lai" },
+      { t = "assicurazione invalidità", s = "lai" }, { t = "handicap", s = "manuel" }]
+
+[[concept]]
+id = "beeintraechtigung"
+s = "manuel"
+de = ["Menschen mit Beeinträchtigung", "Personen mit Beeinträchtigung", "mit Beeinträchtigungen",
+      "Kinder mit Beeinträchtigung", "Jugendliche mit Beeinträchtigung"]
+fr = ["en situation de handicap", { t = "limitations fonctionnelles", ambigu = true }]
+it = ["con limitazioni funzionali"]
+
+[[concept]]
+id = "sigles-textes"
+s = "manuel"
+m = "mot"
+cs = true
+# Scénario R (03.10.2026) : « AI » et « IV » nus, « IVG » et « BRK » nus abandonnés (intelligence artificielle, chiffre romain,
+# Appenzell Rhodes-Intérieures, interruption de grossesse, Baurekurskommission) ; UN-BRK et les formes « l'AI », « der IV »
+# (concept ai-formes-non-ambigues) restent.
+fr = ["CDPH", "LHand", "BFEH", { t = "LAI", s = "lai" }]
+de = ["UN-BRK", "BehiG", "EBGB"]
+it = ["CDPD", "LDis", "UFPD", { t = "LAI", s = "lai" }]
+
+[[concept]]
+id = "textes-et-organisations"
+s = "manuel"
+fr = ["Convention relative aux droits des personnes handicapées", "loi sur l'égalité pour les handicapés",
+      "égalité pour les personnes handicapées", "politique en faveur des personnes handicapées",
+      "loi sur l'inclusion", "Inclusion Handicap", "Pro Infirmis", "Procap", "Pro Audito", "Pro Retina",
+      "Bureau fédéral de l'égalité pour les personnes handicapées"]
+de = ["Behindertenrechtskonvention", "Behindertengleichstellungsgesetz", "Behindertenpolitik",
+      "Inklusionsgesetz", "Behindertenhilfegesetz", "Inclusion Handicap", "Pro Infirmis", "Procap",
+      "Pro Audito", "Pro Retina", "Eidgenössisches Büro für die Gleichstellung von Menschen mit Behinderungen",
+      "Bundesgesetz über die Invalidenversicherung"]
+it = ["Convenzione sui diritti delle persone con disabilità", "legge sui disabili",
+      "politica a favore dei disabili", "legge sull'inclusione", "Inclusion Handicap", "Pro Infirmis",
+      "Procap", "Pro Audito", "Pro Retina", "legge federale sull'assicurazione per l'invalidità"]
+
+[[concept]]
+id = "amenagement-raisonnable"
+s = "cdph:art2"
+fr = ["aménagement raisonnable", { t = "aménagements raisonnables", s = "cdph:art5" }]
+de = ["angemessene Vorkehrungen", "angemessener Vorkehrungen"]
+it = ["accomodamento ragionevole", { t = "accomodamenti ragionevoli", s = "cdph:art5" }]
+
+[[concept]]
+id = "conception-universelle"
+s = "cdph:art2"
+ambigu = true
+fr = ["conception universelle"]
+de = ["universelles Design", { t = "Universal Design", s = "manuel" }]
+it = ["progettazione universale"]
+
+[[concept]]
+id = "accessibilite"
+s = "cdph:art9"
+ambigu = true
+fr = ["accessibilité", { t = "sans obstacles", s = "manuel" }, { t = "sans barrières", s = "manuel" }]
+de = [{ t = "Barrierefreiheit", s = "manuel" }, { t = "barrierefrei", s = "manuel" }]
+it = [{ t = "senza barriere", s = "manuel" }, { t = "senza ostacoli", s = "manuel" }]
+
+[[concept]]
+id = "communication-adaptee"
+s = "cdph:art2"
+fr = [{ t = "langue des signes", s = "cdph:art21" }, "langues des signes", "braille", "langue simplifiée",
+      { t = "communication améliorée et alternative", s = "cdph:art21" },
+      { t = "faciles à lire et à comprendre", s = "cdph:art9" }, { t = "FALC", s = "manuel", m = "mot", cs = true }]
+de = ["Gebärdensprache", "Braille", { t = "einfache Sprache", s = "cdph:art2", ambigu = true },
+      { t = "Leichte Sprache", s = "manuel" }, { t = "unterstützte Kommunikation", s = "manuel" },
+      { t = "leicht lesbarer und verständlicher", s = "cdph:art9" }]
+it = ["linguaggio dei segni", { t = "lingua dei segni", s = "manuel" }, "braille", "linguaggio semplice", { t = "lingua facile", s = "manuel" },
+      { t = "comunicazione aumentativa e alternativa", s = "manuel" }]
+
+[[concept]]
+id = "surdite-cecite"
+s = "manuel"
+fr = [{ t = "surdité", s = "manuel" }, { t = "sourd", s = "cdph:art24" }, "malentendant", "malvoyant",
+      "déficience visuelle", "déficience auditive", { t = "aveugles", s = "cdph:art24" }, "cécité",
+      "sourdaveugle", "implant cochléaire"]
+de = ["Gehörlos", "Schwerhörig", "hörgeschädigt", "sehbehindert", "Blindheit", "Taubblind", "Cochlea-Implantat",
+      { t = "Gehörlose", s = "cdph:art24" }]
+it = [{ t = "sordità", s = "manuel" }, { t = "sordi", s = "cdph:art24" }, "ipoacusia", "ipovedente", "cecità",
+      "sordocieco", "impianto cocleare", { t = "ciechi", s = "cdph:art24" }]
+
+[[concept]]
+id = "troubles-et-handicaps-nommes"
+s = "manuel"
+fr = ["autisme", "autiste", "TDAH", "dyslexie", "dyscalculie", "dysphasie", "dyspraxie", "troubles dys",
+      "trouble du spectre de l'autisme", "troubles de l'apprentissage", "troubles des apprentissages",
+      "déficience intellectuelle", "handicap mental", "polyhandicap", "plurihandicap", "trisomie",
+      "paralysie cérébrale", "infirmité motrice cérébrale", "trouble du langage", "troubles du langage",
+      "troubles du comportement", "trouble du comportement", "fauteuil roulant", "chien d'assistance",
+      { t = "maladie rare", ambigu = true }, { t = "santé psychique", ambigu = true },
+      { t = "troubles psychiques", ambigu = true }, { t = "DYS", m = "mot", cs = true }]
+de = ["Autismus", "Autist", "ADHS", "ADHD", "Legasthenie", "Dyskalkulie", "Lernstörung", "Lese-Rechtschreib",
+      "Teilleistungsschwäche", "geistige Behinderung", "kognitive Beeinträchtigung", "Mehrfachbehinderung",
+      "Down-Syndrom", "Cerebralparese", "Zerebralparese", "Sprachstörung", "Sprachentwicklungsstörung",
+      "Verhaltensauffälligkeit", "Verhaltensstörung", "Rollstuhl", "Assistenzhund", "Blindenführhund",
+      { t = "seltene Krankheit", ambigu = true }, { t = "psychische Beeinträchtigung", ambigu = true },
+      { t = "psychische Erkrankung", ambigu = true }]
+it = ["autismo", "autistic", "ADHD", "dislessia", "discalculia", "disturbi dell'apprendimento",
+      "disturbi specifici dell'apprendimento", "disabilità intellettiva", "ritardo mentale", "pluridisabilità",
+      "sindrome di Down", "paralisi cerebrale", "disturbo del linguaggio", "disturbi del linguaggio",
+      "disturbi del comportamento", "sedia a rotelle", "cane di assistenza",
+      { t = "malattia rara", ambigu = true }, { t = "salute psichica", ambigu = true }]
+
+# ---- Pédagogie spécialisée, besoins éducatifs particuliers -----------------------------------
+
+[[concept]]
+id = "pedagogie-specialisee"
+s = "manuel"
+fr = ["pédagogie spécialisée", "enseignement spécialisé", "école spécialisée", "classe spécialisée",
+      "besoins éducatifs particuliers", "besoins éducatifs spécifiques", "mesures renforcées",
+      "mesure renforcée", "pédagogie curative", "éducation spécialisée", "enseignant spécialisé",
+      "enseignante spécialisée", "enseignant-e spécialisé", "école inclusive", "inclusion scolaire",
+      "scolarisation inclusive", "intégration scolaire", "scolarisation spécialisée",
+      "procédure d'évaluation standardisée", "compensation des désavantages", "logopédie", "psychomotricité",
+      "éducation précoce spécialisée", "élèves à besoins particuliers", "enseignement spécialisé",
+      "institution spécialisée",
+      { t = "inclusion", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "intégration", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "besoins particuliers", ambigu = true, s = "manuel" }]
+de = ["Sonderpädagogik", "sonderpädagog", "Heilpädagogik", "heilpädagog", "Sonderschul", "Sonderklasse", "Sonderbeschulung", "Förderklasse", "Förderlehrperson", "IF-Lehrperson", "integrative Schule",
+      "integrativen Schule", "integrative Schulform", "integrativer Unterricht", "integrativen Unterricht",
+      "inklusive Schule", "inklusiven Schule", "inklusiver Unterricht", "Schulen für alle", { t = "HfH", m = "mot", cs = true },
+      "Hochschule für Heilpädagogik", { t = "Recht auf Grundschulung", ambigu = true }, { t = "Schulassistenz", ambigu = true },
+      { t = "bedarfsgerechter Unterricht", ambigu = true }, { t = "frühe Förderung", ambigu = true },
+      { t = "integrativ", ambigu = true, contexte = "ecole" }, "sonderpädagogische Institution",
+      "Kleinklasse", "integrative Förderung", "integrative Schulung", "integrative Sonderschulung",
+      "schulische Integration", "schulische Inklusion", "besonderer Bildungsbedarf",
+      "besondere Bildungsbedürfnisse", "Nachteilsausgleich",
+      "Sonderpädagogik-Konkordat", "sonderpädagogischer Förderbedarf", { t = "Förderbedarf", contexte = "ecole" }, "logopäd",
+      "Psychomotorik", { t = "Abklärungsverfahren", ambigu = true }, "standardisiertes Abklärungsverfahren",
+      { t = "Inklusion", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "Integration", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "besondere Bedürfnisse", ambigu = true, s = "manuel" }]
+it = ["pedagogia speciale", "pedagogia specializzata", "scuola speciale", "classe speciale",
+      "bisogni educativi speciali", "bisogni educativi particolari", "insegnante di sostegno",
+      "docente di sostegno", "sostegno pedagogico", "educazione speciale", "scuola inclusiva",
+      "inclusione scolastica", "integrazione scolastica", "pedagogia curativa", "provvedimenti di pedagogia speciale",
+      "logopedia", "psicomotricità", "scolarizzazione speciale", "istituzione specializzata",
+      { t = "inclusione", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "integrazione", ambigu = true, s = "manuel", contexte = "ecole" },
+      { t = "bisogni particolari", ambigu = true, s = "manuel" }]
+
+[[concept]]
+id = "haut-potentiel"
+s = "manuel"
+fr = ["haut potentiel", "surdoué", "précocité intellectuelle", "hauts potentiels", "élèves à haut potentiel"]
+de = ["Hochbegabung", "hochbegabt", "Begabtenförderung", "besonders begabte"]
+it = ["alto potenziale", "plusdotat", "superdotat", "alunni dotati", "doti particolari"]
+
+[[concept]]
+id = "allophonie"
+s = "manuel"
+contexte = "ecole"
+fr = ["allophone", "langue seconde", "classe d'accueil", "français langue seconde", "élèves migrants"]
+de = ["Deutsch als Zweitsprache", "fremdsprachige Schüler", "fremdsprachige Kinder", "Aufnahmeklasse",
+      "Willkommensklasse", { t = "Sprachförderung", ambigu = true }, { t = "DaZ", m = "mot", cs = true }]
+it = ["allofon", "alloglott", "italiano L2", "lingua seconda", "classe di accoglienza"]
+
+# ---- Domaines de vie touchés, quand ils nomment une situation de handicap ---------------------
+
+[[concept]]
+id = "droits-et-prestations"
+s = "lai"
+fr = ["contribution d'assistance", "allocation pour impotent", "rente d'invalidité", "réadaptation professionnelle",
+      "mesures de réadaptation", { t = "moyens auxiliaires", ambigu = true },
+      { t = "assistance personnelle", s = "manuel" }, { t = "atelier protégé", s = "manuel" },
+      { t = "ateliers protégés", s = "manuel" }, { t = "institutions pour personnes handicapées", s = "manuel" },
+      { t = "aides à la mobilité", s = "manuel" }]
+de = ["Assistenzbeitrag", "Hilflosenentschädigung", "Invalidenrente",
+      "berufliche Eingliederung", "Eingliederungsmassnahmen", { t = "geschützte Werkstätte", s = "manuel" },
+      { t = "geschützte Arbeitsplätze", s = "manuel" }, { t = "Behindertenwerkstatt", s = "manuel" }]
+it = ["contributo per l'assistenza", "assegno per grandi invalidi", "rendita d'invalidità", "mezzi ausiliari",
+      { t = "integrazione professionale", ambigu = true }, "provvedimenti d'integrazione", { t = "assistenza personale", s = "manuel" },
+      { t = "laboratorio protetto", s = "manuel" }, { t = "laboratori protetti", s = "manuel" }]
+
+[[concept]]
+id = "capacite-juridique-droit-de-vote"
+s = "cdph:art12"
+ambigu = true
+# Scénario R (03.10.2026) : droit de vote, droits politiques, autodétermination, Handlungsfähigkeit, Erwachsenenschutz et
+# protection de l'adulte abandonnés (0 oui sur 53 objets jugés).
+fr = ["capacité juridique", { t = "curatelle", s = "cdph:art23" }, { t = "capacité de discernement", s = "manuel" },
+      { t = "vie autonome", s = "manuel" }, { t = "autonomie de vie", s = "cdph:art19" }]
+de = [{ t = "Beistandschaft", s = "cdph:art23" }, { t = "Urteilsfähigkeit", s = "manuel"},
+      { t = "selbstbestimmtes Leben", s = "manuel" }, { t = "unabhängige Lebensführung", s = "cdph:art19" }]
+it = ["capacità giuridica", { t = "curatela", s = "cdph:art23" }, { t = "capacità di discernimento", s = "manuel" },
+      { t = "vita indipendente", s = "cdph:art19" }]
+
+# Ancrages forts rattrapés (oui perdu par le scénario R : SO V 2026-01-26 « Aufhebung Stimmrechtsausschluss »).
+[[concept]]
+id = "exclusion-droit-de-vote"
+s = "manuel"
+fr = ["exclusion du droit de vote", "curatelle de portée générale"]
+de = ["Stimmrechtsausschluss", "umfassende Beistandschaft", "umfassenden Beistandschaft"]
+it = ["esclusione dal diritto di voto", "curatela generale"]
+
+# ---- Ajouts du contrôle du vocabulaire (étape 4) : formes réellement employées par la LAI / IVG ----
+
+[[concept]]
+id = "vocabulaire-lai"
+s = "lai"
+fr = ["infirmité congénitale", "infirmités congénitales", { t = "impotent", ambigu = true }]
+de = ["Geburtsgebrechen", "Invalidenhilfe", { t = "Hilflosigkeit", ambigu = true },
+      { t = "Frühintervention", ambigu = true }]
+it = ["grandi invalidi", "grande invalido", { t = "intervento tempestivo", ambigu = true }]
+
+# ---- École ordinaire, hors ancrage (option `ecole_generale` de reglages.toml) ----
+# Les 79 interventions publiées en 2025 contiennent ~30 objets de politique scolaire générale (Volksschule,
+# Kindergarten, Lehrpersonen…) sans terme de handicap ni de besoins particuliers dans le titre. Cette liste
+# les reconnaît pour un palier « à relire » facultatif ; elle ne retient jamais rien seule.
+
+[ecole_generale]
+fr = ["école obligatoire", "école primaire", "école enfantine", "enseignant", "enseignante", "corps enseignant",
+      "école publique", "scolarité obligatoire", "statut enseignant", "taille des classes"]
+de = ["Volksschule", "Primarschule", "Kindergarten", "Unterstufe", "Sekundarstufe", "Lehrperson", "Lehrpersonen",
+      "Schüler", "Klassengrösse", "Unterricht", "Schulen", "Lehrmittel", "Spielgruppe",
+      "Bildungspolitik", "Bildungsqualität"]
+it = ["scuola dell'obbligo", "scuola elementare", "scuola dell'infanzia", "scuola pubblica",
+      "scuola media", "dimensione delle classi"]
+# Scénario R du rapport des mots-clés (03.10.2026) : les mots génériques (école, écoles, scolaire, scuola, scuole, scolastic,
+# Schule, Lernende, docente, docenti, insegnanti, élèves, allievi) n'amenaient que du bruit ; « Schulen » est gardé (une fiche
+# publiée en dépend).
+
+# ---- Revue adverse du 03.10.2026 (constats 4 et 9) ----------------------------------------------------------------
+# Formes non ambiguës de l'assurance-invalidité (le sigle nu « AI » / « IV » ne compte plus que dans le titre).
+
+[[concept]]
+id = "ai-formes-non-ambigues"
+s = "manuel"
+cs = true
+m = "mot"
+fr = ["rente AI", "rentes AI", "Rente AI", "Rentes AI", "office AI", "assuré AI", "assurés AI", "experts AI", "expertises AI",
+      "l'AI", "L'AI"]
+de = [{ t = "IV-Stelle", m = "debut" }, { t = "IV-Rente", m = "debut" }, { t = "IV-Gutacht", m = "debut" },
+      { t = "IV-Revision", m = "debut" }, { t = "IV-Leistung", m = "debut" }, { t = "IV-Bezüg", m = "debut" },
+      { t = "IV-Schulden", m = "debut" }, { t = "IV-Finanzierung", m = "debut" }, { t = "IV-Beitrag", m = "debut" },
+      { t = "IV-Berufsberatung", m = "debut" }, { t = "IV-Verfahren", m = "debut" }, { t = "IV-Taggeld", m = "debut" },
+      "der IV", "die IV", "zur IV"]
+it = ["rendita AI", "rendite AI", "Rendita AI", "Rendite AI", "l'AI", "dell'AI", "all'AI", "nell'AI", "sull'AI", "dall'AI"]
+
+# Termes qui ne comptent que dans le TITRE (jamais dans le texte ni côté serveur).
+
+[[concept]]
+id = "titre-seul-fort"
+s = "manuel"
+ts = true
+fr = ["mobilité réduite", { t = "PMR", m = "mot", cs = true }]
+de = ["pädagogische Massnahmen", "Frühförderung", "Förderzentrum"]
+it = ["mobilità ridotta"]
+
+[[concept]]
+id = "titre-seul-ambigu"
+s = "manuel"
+ts = true
+ambigu = true
+fr = ["inclusifs", "inclusives", "enfants placés", "inclusif"]
+de = [{ t = "auffälligkeit", m = "sous" }, "beeinträchtigte", "psychisch erkrankt", "psychisch krank",
+      { t = "jugendpsychiatr", m = "sous" }, "Förder- und Schutzbedarf", "Kinderspitex"]
+it = ["curatel", "bambini collocati"]

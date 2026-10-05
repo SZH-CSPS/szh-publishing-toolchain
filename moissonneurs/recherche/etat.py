@@ -5,8 +5,17 @@ import partage
 from . import db
 
 NOM = 'recherche'
-# Tables publiées, avec leur clé. `migrations` n'en est pas : elle ne vaut que pour une base locale ancienne.
-TABLES = {'projets': 'id', 'decisions': 'cle', 'sources': 'source', 'urls_refusees': 'url'}
+# Statuts qui l'emportent sur un simple « vu » quand deux postes ont appris la même chose.
+STATUTS_FORTS = ('propose', 'doublon', 'existant', 'ignore', 'exporte')
+# Tables publiées, avec leur clé et leur règle de fusion. Un projet se reconnaît à (source, source_id) : deux postes
+# peuvent donner le même `id` à deux projets différents. `migrations` ne vaut que pour une base locale ancienne.
+SCHEMA = {
+    'projets': {'cle': ('source', 'source_id'), 'rang': {'champ': 'statut', 'valeurs': {s: 1 for s in STATUTS_FORTS}}},
+    'decisions': {'cle': ('cle',), 'rang': {'champ': 'purgee', 'valeurs': {'1': 2}, 'defaut': 1}, 'rang_retrait': 1},
+    'sources': {'cle': ('source',)},
+    'urls_refusees': {'cle': ('url',)},
+}
+TABLES = {t: r['cle'] for t, r in SCHEMA.items()}
 # Colonnes qui bougent sans rien apprendre à la passe suivante.
 IGNOREES = {'derniere_vue'}
 
@@ -18,38 +27,56 @@ def base_en_memoire():
     return db.connecter(':memory:')
 
 
+def _inserer(con, table, ligne):
+    colonnes = ', '.join(ligne)
+    marques = ', '.join('?' for _ in ligne)
+    con.execute(f'INSERT OR REPLACE INTO {table} ({colonnes}) VALUES ({marques})', list(ligne.values()))
+
+
 def remplir(con, tables):
-    """Insère {table: [lignes]} dans `con` ; une colonne ignorée qui manque reprend la valeur de `premiere_vue`."""
+    """Insère {table: [lignes]} dans `con`. Les projets gardent leur ordre d'`id` ; un `id` déjà pris par un autre
+    projet (deux postes en même temps) en reçoit un neuf. Une colonne ignorée qui manque reprend `premiere_vue`."""
     for table in TABLES:
-        for ligne in tables.get(table, []):
-            ligne = dict(ligne)
+        lignes = [dict(l) for l in tables.get(table, [])]
+        if table == 'projets':
+            lignes.sort(key=lambda l: (l.get('id') is None, l.get('id') or 0, l.get('premiere_vue', ''),
+                                       l.get('source', ''), l.get('source_id', '')))
+        for ligne in lignes:
             if table == 'projets':
                 ligne.setdefault('derniere_vue', ligne.get('premiere_vue', ''))
-            colonnes = ', '.join(ligne)
-            marques = ', '.join('?' for _ in ligne)
-            con.execute(f'INSERT OR REPLACE INTO {table} ({colonnes}) VALUES ({marques})', list(ligne.values()))
+                pris = ligne.get('id') is not None and con.execute(
+                    'SELECT 1 FROM projets WHERE id = ? AND NOT (source = ? AND source_id = ?)',
+                    (ligne['id'], ligne.get('source'), ligne.get('source_id'))).fetchone()
+                if pris:
+                    ligne.pop('id')
+            _inserer(con, table, ligne)
     con.commit()
     return con
 
 
 def charger_etat(racine):
     """Base en mémoire remplie depuis l'état partagé de `racine`. Lève EtatAbsent."""
-    return remplir(base_en_memoire(), partage.charger_etat(racine, NOM))
+    return remplir(base_en_memoire(), partage.charger_etat(racine, NOM, SCHEMA))
 
 
 def publier_journal(racine, poste, delta):
     """Ajoute `delta` (voir differentiel) au journal de `poste` dans l'état partagé."""
-    partage.publier_journal(racine, NOM, poste, delta)
+    partage.publier_journal(racine, NOM, poste, delta, SCHEMA)
+
+
+def _cle(table, ligne):
+    cle = tuple(ligne[c] for c in TABLES[table])
+    return cle[0] if len(cle) == 1 else cle
 
 
 def instantane(con):
     """{table: {clé: ligne sans les colonnes ignorées}}."""
     sortie = {}
-    for table, cle in TABLES.items():
+    for table in TABLES:
         lignes = {}
         for r in con.execute(f'SELECT * FROM {table}'):
             ligne = {k: r[k] for k in r.keys() if k not in IGNOREES}
-            lignes[ligne[cle]] = ligne
+            lignes[_cle(table, ligne)] = ligne
         sortie[table] = lignes
     return sortie
 

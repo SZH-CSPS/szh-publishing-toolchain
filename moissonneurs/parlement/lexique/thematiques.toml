@@ -1,0 +1,224 @@
+# Thématiques de la Revue suisse de pédagogie spécialisée et de la Schweizerische Zeitschrift für Heilpädagogik.
+# Périmètre élargi, décision du 02.10.2026 : un faux positif se refuse dans la vue Propositions, un faux
+# négatif ne se voit jamais. Une affaire qui touche une thématique SANS ancrage handicap ni besoins particuliers
+# devient « à relire » (jamais « retenu »), uniquement d'après son titre.
+#
+# Sources de la liste (chaque thème dit lesquelles) :
+#   csps.ch      arborescence « Thèmes » du site du CSPS (2 pages lues le 02.10.2026 : accueil et plan du site)
+#   categories   PRONTO/docs/DEV/Categories.md (catégories en place et proposées, §3 thème, §4 degré, §5 besoins)
+#   contrat      PRONTO/pipeline/kirby/champs-documentation.json (types et rubriques de la Documentation)
+#   fiches       titres des fiches de _NewsUndActu\Fiches (rundschau 136, revueblick 33, forschung 9, vorstoesse 79)
+# Mêmes conventions de termes que ancrage.toml. Le thème « école ordinaire » (liste `ecole_generale` de
+# ancrage.toml) reste à part : il a son interrupteur `[classement] ecole_generale`.
+
+[[theme]]
+id = "conception-universelle"
+fr_libelle = "Conception universelle de l'apprentissage"
+de_libelle = "Universal Design for Learning"
+sources = ["csps.ch:/themes/conception-universelle-de-l-apprentissage", "categories:§3 conception-universelle"]
+fr = ["conception universelle de l'apprentissage", "apprentissage universel", "design universel", "écoles pour tous"]
+de = ["universelles Lernen", "Universal Design for Learning", "Lernen für alle", "Schule für alle", "Schulen für alle"]
+it = ["progettazione universale dell'apprendimento", "apprendimento universale", "scuola per tutti"]
+
+[[theme]]
+id = "offre-pedagogie-specialisee"
+fr_libelle = "Offre en pédagogie spécialisée"
+de_libelle = "Angebote der Sonderpädagogik"
+sources = ["csps.ch:/themes/offre-en-pedagogie-specialisee", "fiches:rundschau"]
+fr = ["éducation précoce", "orthophonie", "offres socio-pédagogiques", "pédagogie sociale", "éducateur social",
+      "éducation sociale", "école en milieu hospitalier", "école à l'hôpital", "enseignement à domicile"]
+de = ["Früherziehung", "Sozialpädagogik", "sozialpädagogisch", "Schule im Spital", "Spitalschule", "Heimschule",
+      "Hausunterricht", "Logopädie", "Psychomotorik"]
+it = ["educazione precoce", "pedagogia sociale", "educatore sociale", "scuola in ospedale", "insegnamento a domicilio"]
+
+[[theme]]
+id = "cadre-legal"
+fr_libelle = "Cadre légal et financier"
+de_libelle = "Rechtlicher und finanzieller Rahmen"
+sources = ["csps.ch:/themes/cadre-legal-et-financier", "categories:§3 droit-structures", "categories:§3 financement"]
+fr = ["convention intercantonale", "accord intercantonal", "droit à l'éducation",
+      "financement de l'école", "concept cantonal", "loi scolaire", "loi sur la pédagogie"]
+de = ["interkantonale Vereinbarung", "Konkordat", "Recht auf Bildung", "Schulgesetz",
+      "Volksschulgesetz", "Bildungsgesetz", "Finanzierung der Schule"]
+it = ["convenzione intercantonale", "concordato",
+      "diritto all'istruzione", "legge sulla scuola"]
+
+[[theme]]
+id = "formation-professionnelle-transition"
+fr_libelle = "Formation professionnelle et transitions"
+de_libelle = "Berufsbildung und Übergänge"
+sources = ["csps.ch:/themes/formation-professionelle", "categories:§4 postobligatoire", "categories:§3 transition",
+           "fiches:revueblick"]
+fr = ["choix professionnel", "transition école", "année de transition", "apprentissage professionnel",
+      "attestation fédérale", "offres transitoires", "insertion professionnelle", "orientation professionnelle"]
+de = ["Berufswahl", "Übergang Schule", "Brückenangebot", "Berufsbildner", "Attest",
+      "Berufsberatung", "Zentrum für Brückenangebote"]
+it = ["scelta professionale", "transizione scuola", "anno di transizione", "apprendistato",
+      "orientamento professionale", "inserimento professionale"]
+
+[[theme]]
+id = "tic-inclusion-numerique"
+fr_libelle = "Numérique, médias et inclusion numérique"
+de_libelle = "Digitalisierung, Medien und digitale Inklusion"
+sources = ["csps.ch:/themes/tic", "categories:§3 numerique", "fiches:rundschau", "fiches:forschung", "fiches:vorstoesse"]
+fr = ["inclusion numérique", "technologies d'assistance", "compétences médiatiques", "protection de la jeunesse face aux médias",
+      "numérique à l'école", "écrans", "smartphone", "réseaux sociaux", "médias numériques"]
+de = ["digitale Inklusion", "digitale Teilhabe", "Medienkompetenz", "Jugendmedienschutz", "Kinder- und Jugendschutz",
+      "digitale Medien", "digitale Lehrmittel", "digitale Schule", "künstliche Intelligenz", "Smartphone", "Bildschirm",
+      "soziale Medien"]
+it = ["inclusione digitale", "tecnologie assistive", "competenze mediatiche", "protezione dei giovani dai media",
+      "smartphone", "social media"]
+
+[[theme]]
+id = "statistique-monitorage"
+fr_libelle = "Statistique et monitorage de l'éducation"
+de_libelle = "Statistik und Bildungsmonitoring"
+sources = ["csps.ch:/themes/statistiques", "categories:§3 statistique", "fiches:rundschau"]
+fr = ["statistique de l'enseignement", "monitorage de l'éducation", "compétences fondamentales", "évaluation de la qualité",
+      "enquête auprès des cantons", "rapport sur l'éducation"]
+de = ["Bildungsstatistik", "Bildungsmonitoring", "Grundkompetenzen", "Qualitätsentwicklung", "Schulqualität",
+      "Unterrichtsqualität", "Bildungsbericht", "Kantonsumfrage"]
+it = ["statistica dell'educazione", "monitoraggio dell'educazione", "competenze fondamentali", "qualità della scuola"]
+
+[[theme]]
+id = "formation-des-professionnels"
+fr_libelle = "Formation des professionnel·les"
+de_libelle = "Ausbildung der Fachpersonen"
+sources = ["csps.ch:/themes/formations-et-professions-du-domaine-de-la-pedagogie-specialisee", "categories:§3 formation-professionnels",
+           "fiches:rundschau"]
+fr = ["formation des enseignants", "formation du corps enseignant", "pénurie d'enseignants",
+      "pénurie de personnel enseignant", "formation continue des enseignants", "reconnaissance des diplômes",
+      "enseignants sans formation", "personnel enseignant"]
+de = ["Lehrerbildung", "Lehrpersonenbildung", "Lehrpersonenmangel", "Lehrermangel",
+      "Weiterbildung der Lehrpersonen", "Anerkennung von Diplomen", "ohne Lehrdiplom",
+      "Quereinstieg", "Lehrpersonen ohne Ausbildung"]
+it = ["formazione dei docenti", "mancanza di docenti", "carenza di docenti",
+      "formazione continua dei docenti", "riconoscimento dei diplomi"]
+
+[[theme]]
+id = "international-education"
+fr_libelle = "International"
+de_libelle = "Internationales"
+sources = ["csps.ch:/themes/international", "categories:§3 international", "fiches:rundschau"]
+fr = ["agence européenne", "european agency", "eurydice", "unesco", "éducation inclusive en europe"]
+de = ["Europäische Agentur", "European Agency", "Eurydice", "UNESCO", "inklusive Bildung in Europa"]
+it = ["agenzia europea", "european agency", "eurydice", "unesco"]
+
+[[theme]]
+id = "petite-enfance"
+fr_libelle = "Petite enfance"
+de_libelle = "Frühe Kindheit"
+sources = ["categories:§4 petite-enfance", "fiches:vorstoesse", "csps.ch:/projets (Inclusive Early Childhood Education)"]
+fr = ["accueil extrafamilial", "prise en charge précoce", "jardin d'enfants",
+      "enfants en bas âge"]
+de = ["frühe Kindheit", "frühkindlich", "familienergänzende Betreuung", "Krippe",
+      "Spielgruppe", "Vorschulalter", "Frühe Sprachförderung", "Kleinkind"]
+it = ["prima infanzia", "accoglienza extrafamiliare", "asilo nido", "bambini in età prescolare"]
+
+[[theme]]
+id = "violence-protection"
+fr_libelle = "Violence, maltraitance et protection de l'enfance"
+de_libelle = "Gewalt, Misshandlung und Kinderschutz"
+sources = ["fiches:revueblick (maltraitance, 6 articles)", "fiches:rundschau (violence basée sur le genre)", "categories:§5 comportement"]
+fr = ["maltraitance", "violence domestique", "violence basée sur le genre", "violence à l'école", "protection de l'enfance",
+      "protection des mineurs", "harcèlement", "cyberharcèlement", "abus sexuels", "violences sexuelles"]
+de = ["Misshandlung", "häusliche Gewalt", "geschlechtsspezifische Gewalt", "Gewalt an Schulen", "Kinderschutz",
+      "Kindesschutz", "Mobbing", "Cybermobbing", "sexuelle Gewalt", "sexueller Missbrauch", "gewaltfrei"]
+it = ["maltrattamento", "violenza domestica", "violenza di genere", "protezione dell'infanzia", "protezione dei minori",
+      "bullismo", "cyberbullismo", "abusi sessuali"]
+
+[[theme]]
+id = "sante-bien-etre"
+fr_libelle = "Santé, santé psychique et bien-être"
+de_libelle = "Gesundheit, psychische Gesundheit und Wohlbefinden"
+sources = ["fiches:revueblick (santé, soins, santé mentale)", "categories:§5 sante-psychique, maladies-chroniques",
+           "fiches:rundschau (démence)"]
+fr = ["santé psychique", "santé mentale", "bien-être", "résilience", "burnout", "accès aux soins", "promotion de la santé",
+      "démence", "maladie chronique", "soins palliatifs", "psychiatrie", "pédopsychiatrie", "suicide"]
+de = ["psychische Gesundheit", "psychische Belastung", "Wohlbefinden", "Resilienz", "Burnout", "Zugang zur Gesundheitsversorgung",
+      "Gesundheitsförderung", "Demenz", "chronische Krankheit", "Palliative", "Psychiatrie", "Kinder- und Jugendpsychiatrie",
+      "Suizid", "Gesundheitsversorgung"]
+it = ["salute psichica", "salute mentale", "benessere", "resilienza", "burnout", "accesso alle cure", "promozione della salute",
+      "demenza", "malattia cronica", "psichiatria", "psichiatria infantile", "suicidio"]
+
+[[theme]]
+id = "famille-proches"
+fr_libelle = "Familles et proches aidants"
+de_libelle = "Familien und betreuende Angehörige"
+sources = ["fiches:revueblick (burnout parental)", "fiches:rundschau (Familienarbeit)", "categories:§6 parents-proches"]
+fr = ["proches aidants", "proche aidant", "aidants naturels", "congé parental", "parentalité", "soutien aux familles",
+      "familles monoparentales", "éducation sexuelle", "éducation à la sexualité"]
+de = ["betreuende Angehörige", "pflegende Angehörige", "Betreuungsgutschriften", "Elternzeit", "Elternbildung",
+      "Familienunterstützung", "Familienarbeit", "Sexualaufklärung", "Sexualerziehung", "Sexualpädagogik"]
+it = ["familiari curanti", "familiari che assistono", "congedo parentale", "genitorialità", "sostegno alle famiglie",
+      "educazione sessuale"]
+
+[[theme]]
+id = "egalite-diversite"
+fr_libelle = "Égalité des chances, équité et diversité"
+de_libelle = "Chancengerechtigkeit und Vielfalt"
+sources = ["contrat:rubriques et listes (portée, varia)", "fiches:vorstoesse (Durchmischung, Chancengleichheit)",
+           "fiches:rundschau (diversité, discrimination)"]
+fr = ["égalité des chances", "équité éducative", "équité en éducation", "diversité", "hétérogénéité", "mixité sociale",
+      "discrimination", "racisme", "égalité entre femmes et hommes", "genre"]
+de = ["Chancengleichheit", "Chancengerechtigkeit", "Bildungsgerechtigkeit", "Vielfalt", "Heterogenität", "Durchmischung",
+      "Diskriminierung", "Rassismus"]
+it = ["pari opportunità", "equità educativa", "diversità", "eterogeneità", "mescolanza sociale", "discriminazione",
+      "razzismo"]
+
+[[theme]]
+id = "culture-sport-loisirs"
+fr_libelle = "Culture, sport et loisirs"
+de_libelle = "Kultur, Sport und Freizeit"
+sources = ["fiches:rundschau (Special Olympics, Paralympics, Bibliothèque sonore)", "fiches:filme et buecher", "categories:§7 accessibilité et format"]
+fr = ["paralympiques", "special olympics", "sport adapté", "sport inclusif", "accessibilité culturelle", "livre audio", "audiodescription",
+      "bibliothèque sonore", "loisirs inclusifs", "cinéma"]
+de = ["Paralympics", "Special Olympics", "Behindertensport", "inklusiver Sport", "Kulturzugang", "Hörbuch", "Audiodeskription",
+      "Freizeitangebot", "Kino", "Untertitel"]
+it = ["paralimpiadi", "special olympics", "sport adattato", "sport inclusivo", "accessibilità culturale", "audiolibro",
+      "audiodescrizione", "tempo libero"]
+
+[[theme]]
+id = "evaluation-orientation-scolaire"
+fr_libelle = "Évaluation, orientation et parcours scolaire"
+de_libelle = "Beurteilung, Selektion und Schullaufbahn"
+sources = ["csps.ch:/themes/pes (procédure d'évaluation standardisée)", "fiches:vorstoesse (Benotung, Übertritt, Förderklassen)"]
+fr = ["évaluation des élèves", "notes scolaires", "orientation scolaire", "parcours scolaire", "redoublement", "passage au secondaire",
+      "maturité", "examen d'admission", "accès au gymnase", "devoirs à domicile"]
+de = ["Beurteilung der Schüler", "Benotung", "Zeugnis", "Schullaufbahn", "Repetition", "Übertritt", "Selektion", "Aufnahmeprüfung",
+      "Zugang zum Gymnasium", "Hausaufgaben", "Standortgespräch", "Lernstandserhebung"]
+it = ["valutazione degli allievi", "note scolastiche", "orientamento scolastico", "percorso scolastico", "ripetizione dell'anno",
+      "passaggio alla scuola media", "esame di ammissione", "compiti a casa"]
+
+[[theme]]
+id = "emploi-societe"
+fr_libelle = "Emploi, logement et vie en société des personnes vulnérables"
+de_libelle = "Arbeit, Wohnen und Teilhabe verletzlicher Personen"
+sources = ["contrat:champs de la Documentation (agenda, horizon)", "categories:§4 age-adulte", "fiches:rundschau (marché du travail inclusif)"]
+fr = ["marché du travail inclusif", "emploi inclusif", "logement accompagné", "foyer", "établissement socioéducatif",
+      "établissement médico-social", "aide à l'enfance", "placement d'enfants"]
+de = ["inklusiver Arbeitsmarkt", "inklusive Arbeitswelt", "begleitetes Wohnen", "Wohnheim", "sozialpädagogische Institution",
+      "Heimkinder", "Kinder- und Jugendhilfe", "Fremdplatzierung"]
+it = ["mercato del lavoro inclusivo", "alloggio accompagnato", "istituto socioeducativo", "aiuto all'infanzia",
+      "collocamento di minori"]
+
+# Arbitrage du 03.10.2026 (scénario « 47 à relire par mois ») : une thématique n'est acceptée que si le titre porte
+# aussi un mot d'enfance, de jeunesse ou d'école. Radicaux, cherchés en sous-chaîne, sans accent ni casse.
+[contexte_theme]
+fr = ["ecole", "enfan", "jeune", "scolai", "enseign", "creche", "pedagog", { t = "formation", m = "mot" },
+      { t = "formations", m = "mot" }]
+de = ["schul", "lernend", "lehrperson", "lehrer", "kind", "jugend", "klasse", "kita", "spielgrupp", "bildung", "padagog",
+      "ausbildung", "student",
+      "Zentrum für Brückenangebot"]       # décision du 03.10.2026 : ce thème s'admet sans mot d'enfance (BS 24.5517)
+it = ["scuol", "alliev", "bambin", "giovan", "minor", "docent", "insegnant", "scolast", "infanzia", "formazion"]
+
+[[theme]]
+id = "travail-social-scolaire"
+fr_libelle = "Travail social scolaire"
+de_libelle = "Schulsozialarbeit"
+sources = ["fiches:forschung/schul-connect-eine-digitale-losung-zur/recherche.de.txt (Schulsozialarbeit, institution partenaire)"]
+fr = ["travail social scolaire", "travail social en milieu scolaire", "travailleur social en milieu scolaire",
+      "travailleurs sociaux en milieu scolaire", "travailleuse sociale en milieu scolaire", "travailleuses sociales en milieu scolaire"]
+de = ["Schulsozialarbeit", "Schulsozialarbeiter"]
+it = ["lavoro sociale scolastico", "assistenza sociale scolastica", "operatore sociale scolastico", "operatori sociali scolastici",
+      "operatrice sociale scolastica"]

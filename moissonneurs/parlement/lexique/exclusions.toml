@@ -1,0 +1,79 @@
+# Exclusions. Trois mécanismes, tous lisibles dans la raison du verdict.
+
+# 1. Neutralisations : le passage est effacé avant la recherche d'ancrage (faux amis du mot "handicap",
+#    "Behinderung" au sens d'entrave). Mêmes conventions de termes que ancrage.toml.
+[neutralisation]
+fr = ["handicap concurrentiel", "handicap structurel de la place", "dette handicape", "handicap fiscal",
+      "haute école spécialisée", "hautes écoles spécialisées", "haute école specialisée"]
+de = ["Verkehrsbehinderung", "Behinderung des Verkehrs", "Behinderung der Amtsführung",
+      "Behinderung einer Amtshandlung", "Behinderung von Rettungskräften", "Behinderung der Rettungskräfte",
+      "Behinderung der Justiz", "Behinderungen im Verkehr", "Behinderungen im Strassenverkehr",
+      "Baustellen behinder", "Behinderung der Strafverfolgung", "Baurekurskommission",
+      "behindern", "behindert den", "behindert die", "behindert das", "behindert dem", "behindert der", "behindert sbb",
+      "behindert nicht", "behindert sie", "behindert ihn", "behindert es"]
+it = ["handicap concorrenziale", "intralcio al traffico"]
+
+# 2. Termes qui, à eux seuls, déplacent l'ambiguïté vers le côté "migration" ou "technique" : ils abaissent
+#    le verdict d'un cran (retenu -> a-relire) quand l'ancrage fort manque.
+[abaisse]
+fr = ["intégration des étrangers", "intégration des migrants", "intégration des réfugiés", "politique d'intégration",
+      "cours d'intégration", "asile", "naturalisation", "requérants d'asile"]
+de = ["Integrationsförderung", "Integration von Ausländern", "Integration von Migranten",
+      "Integration von Flüchtlingen", "Integrationsagenda", "Integrationsvereinbarung", "Aufenthaltsbewilligung",
+      "Asyl", "Einbürgerung", "Ausländerintegration", "Migrationsbevölkerung"]
+it = ["integrazione degli stranieri", "integrazione dei migranti", "integrazione dei rifugiati",
+      "politica d'integrazione", "permesso di dimora", "asilo", "naturalizzazione"]
+
+# 3. Types d'objets (type_name cantonal brut) d'un Regierungsgeschäft / affaire du gouvernement :
+#    à garder (lois scolaires, messages) ou à jeter (budgets, comptes). Comparaison sans casse ni accents,
+#    en début de libellé. Étude du 18.09.2026.
+[regierungsgeschaeft]
+garder = ["Gesetz", "Gesetzgebungsgeschäft", "Botschaften", "Botschaft", "Vorlage", "Bericht und Antrag", "Weisung",
+          "Message", "Projet de loi", "Messaggio"]
+jeter = ["Jahresrechnung", "Geschäftsbericht", "Globalbudget", "Kreditgeschäft", "Sachgeschäft",
+         "Regierungsratsbeschluss", "Verwaltungsgeschäft", "Compte", "Comptes", "Budget", "Rapport de gestion"]
+
+# 4. Types harmonisés écartés d'office (étude, section C) : id -> motif.
+[types_ecartes]
+6 = "élection"
+14 = "naturalisation"
+13 = "amendement (fragment d'un objet parent)"
+
+# 5. Types harmonisés qui ne sont JAMAIS « retenu » : verdict plafonné à « a-relire ».
+[types_a_relire]
+10 = "heure des questions (question orale d'une ligne)"
+15 = "document d'information"
+
+# 6. Termes gardés dans le lexique local (classement) mais JAMAIS envoyés à la recherche serveur : la recherche plein texte
+#    de l'API n'est pas une recherche de phrase ; pour ces termes la phrase est absente de 88 à 100 % des candidats
+#    (revue adverse du 03.10.2026, constat 1 ; aucune des 79 fiches de référence ne leur doit sa candidature).
+[recherche_serveur.exclure]
+fr = ["mesure renforcée", "mesures renforcées", "classe spécialisée", "classe d'accueil", "haut potentiel",
+      "aménagement raisonnable", "intégration scolaire", "aménagements raisonnables", "hauts potentiels",
+      "assistance personnelle"]
+de = ["verstärkte Massnahmen", "Schulen für alle", "unterstützte Kommunikation", "inklusive Schule", "inklusiven Schule",
+      "Leichte Sprache", "schulische Integration"]
+it = ["assistenza personale", "integrazione professionale", "lingua seconda"]
+
+# 1b. Neutralisations par expression régulière, sur le texte sans accent ni casse : « behindert » au sens verbal
+#     (entraver), jamais l'adjectif du champ (« behinderte Kinder », « sind behindert »). Prudence : on ne neutralise
+#     que les formes conjuguées, « behindert » devant un auxiliaire, un article ou une ponctuation, ou après un adverbe.
+[neutralisation_regex]
+de = [
+  '\bbehinder(?:n|st|e)\b',
+  '\bbehinderten\s+(?:den|das|dem|sie|ihn|es|uns|sich)\b',
+  '\bbehindert\s+(?:wird|werden|wurde|wurden|worden|hat|haben|hatte|hatten|zu|zudem|durch|dessen|den|die|das|dem|der|des|sich|uns|sie|ihn|es|sbb|innovationen)\b',
+  '\b(?:wird|werden|wurde|wurden|worden|hat|haben|hatte|hatten|nicht|massiv|stark|erheblich|zusatzlich|unnotig|weiter|aktiv|wieder|zudem|auch|nur|dadurch|oft|immer|bereits)\s+behindert\b',
+  '(?<!\bist )(?<!\bsind )(?<!\bwar )(?<!\bwaren )(?<!\bsei )\bbehindert(?=\s*(?:[.,;:?!)<]|$))',
+  # « schul » (contexte d'école) ne se lit pas dans « Entschuldigung » ni « Schulden » (mais « IV-Schulden » reste une dette de l'AI)
+  'entschuldigung',
+  '(?<!iv-)schulden',
+]
+
+# 1c. Scénario R (03.10.2026) : ces termes forts de la famille AI/handicap sont ignorés dans l'EXTRAIT de recherche (texte
+#     absent), où ils ne sont qu'une mention (TVA, guichets uniques, robots livreurs…). Au titre et dans un texte dense ils
+#     comptent toujours. Comparaison sans accent ni casse.
+[hors_extrait]
+termes = ["Behinderung", "behindert", "Invalidenversicherung", "IV-Rente", "Invalidenrente", "invalidité", "berufliche Eingliederung",
+          "Geburtsgebrechen", "der IV", "die IV", "zur IV", "IV-Stelle", "Hilflosenentschädigung", "Verhaltensauffälligkeit",
+          "kognitive Beeinträchtigung", "Rollstuhl", "ADHS", "Invalidität"]

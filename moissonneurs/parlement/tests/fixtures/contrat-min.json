@@ -1,0 +1,10 @@
+{"listes": {
+  "canton": [{"jeton": "CH"}, {"jeton": "AG"}, {"jeton": "AI"}, {"jeton": "AR"}, {"jeton": "BE"}, {"jeton": "BL"},
+             {"jeton": "BS"}, {"jeton": "FR"}, {"jeton": "GE"}, {"jeton": "GL"}, {"jeton": "GR"}, {"jeton": "JU"},
+             {"jeton": "LU"}, {"jeton": "NE"}, {"jeton": "NW"}, {"jeton": "OW"}, {"jeton": "SG"}, {"jeton": "SH"},
+             {"jeton": "SO"}, {"jeton": "SZ"}, {"jeton": "TG"}, {"jeton": "TI"}, {"jeton": "UR"}, {"jeton": "VD"},
+             {"jeton": "VS"}, {"jeton": "ZG"}, {"jeton": "ZH"}],
+  "instrument": [{"jeton": "motion"}, {"jeton": "postulat"}, {"jeton": "interpellation"}, {"jeton": "question"},
+                 {"jeton": "question-heure"}, {"jeton": "initiative-parlementaire"}, {"jeton": "initiative-cantonale"},
+                 {"jeton": "petition"}, {"jeton": "objet-gouvernement"}, {"jeton": "objet-parlement"}]
+}}

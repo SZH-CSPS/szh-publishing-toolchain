@@ -1,0 +1,20 @@
+{
+  "etat": {
+    "projets": {
+      "[\"1\"]": {"id": "1", "statut": "vu", "titre": "A2"},
+      "[\"2\"]": {"id": "2", "statut": "propose", "titre": "B"},
+      "[\"3\"]": {"id": "3", "statut": "propose", "titre": "C"}
+    },
+    "decisions": {
+      "[\"k1\"]": {"cle": "k1", "decision": "refuse", "purgee": 1}
+    },
+    "corps": {
+      "[\"GE\"]": {"body_key": "GE", "repere": "2026-10-20", "n": 15}
+    },
+    "connues": {
+      "[\"GE\"]": {"body_key": "GE", "ids": {"1": "2026-09-01", "2": "2026-09-15", "3": "2026-10-20"}}
+    }
+  },
+  "absorbes_apres_lecture": {"poste-a__x": 5, "poste-b__y": 7},
+  "requetes": {"mois": "2026-11", "somme": 420, "propre_poste_a": 120}
+}

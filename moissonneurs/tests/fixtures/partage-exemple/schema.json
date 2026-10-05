@@ -1,0 +1,6 @@
+{
+  "projets": {"cle": ["id"], "fusion": "rang", "rang": {"champ": "statut", "valeurs": {"propose": 1}}},
+  "decisions": {"cle": ["cle"], "rang": {"champ": "purgee", "valeurs": {"1": 2}, "defaut": 1}, "rang_retrait": 1},
+  "corps": {"cle": ["body_key"], "fusion": "max"},
+  "connues": {"cle": ["body_key"], "fusion": "union"}
+}

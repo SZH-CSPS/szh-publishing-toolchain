@@ -116,18 +116,20 @@ L'arrêt est local au poste qui moissonne : le fichier `arret` du dossier de pas
 
 ## L'état partagé (`partage.py`)
 
-Une interface seulement, que l'état partagé remplira :
-- `etat_present(racine, m)` : le socle existe. `moisson.py` le demande avant le créneau ; sans socle pour aucun des
+Le format est dans [`docs/FORMAT-MOISSONS.md`](../docs/FORMAT-MOISSONS.md) : un socle, un journal par poste, un
+compteur par poste et par mois, fusionnés à la lecture.
+- `etat_present(racine, m)` : un socle existe. `moisson.py` le demande avant le créneau ; sans socle pour aucun des
   moissonneurs demandés, refus `etat-absent` (code 2), sinon le moissonneur sans socle est sauté avec un avertissement ;
-- `charger_etat(racine, m)` : `{table: [lignes]}`, le socle et les journaux fusionnés. Le moissonneur les charge dans
-  une base SQLite en mémoire et y fait tourner son code tel quel ;
-- `publier_journal(racine, m, poste, delta)` : le moissonneur ajoute ce qu'il a appris au seul journal de son poste,
-  après chaque source et à la fin. Une passe n'écrit rien d'autre du partage : le socle ne s'écrit que depuis le
-  poste de développement ;
+- `charger_etat(racine, m, schema)` : `{table: [lignes]}`, le socle et les journaux fusionnés. Le moissonneur les
+  charge dans une base SQLite en mémoire et y fait tourner son code tel quel ;
+- `publier_journal(racine, m, poste, delta, schema)` : le moissonneur ajoute ce qu'il a appris au seul journal de son
+  poste, après chaque source ou corps et à la fin ;
+- `publier_socle(…)` : seulement depuis le poste de développement, sous son créneau. Une passe lancée par
+  `moisson.py` porte `PRONTO_MOISSON_PASSE` et ne peut pas l'écrire ;
+- `somme_mois`, `ecrire_requetes` : le budget du mois, sommé sur tous les postes ;
 - `cle_poste(poste, compte)` : le nom `poste__compte` des fichiers qu'un seul poste écrit.
 
-Tant que `charger_etat` et `publier_journal` ne sont pas branchés, ils lèvent `EtatAbsent` : une passe mensuelle
-s'arrête en code 2 sans rien écrire, et seul le mode local `--base` du poste de développement tourne.
+Sans socle, `charger_etat` et `publier_journal` lèvent `EtatAbsent` : une passe s'arrête en code 2 sans rien écrire.
 
 Coutures de `moisson.py` qu'un test remplace : `chemins_passe(args)`, `prendre_creneau(…)`, `lancer_enfant(…)`.
 
@@ -143,6 +145,28 @@ Coutures de `moisson.py` qu'un test remplace : `chemins_passe(args)`, `prendre_c
   des pages de détail refusées (trois au moins) compte de même. Deux passes de suite ainsi désactivent la source,
   que `python3 -B -m recherche reactiver <source> --base …` rétablit.
 - Une attente de plus de 10 s demandée par un site (429) s'annonce par une ligne `attente`.
+
+## Le moissonneur des interventions parlementaires (`parlement/`)
+
+Les affaires d'OpenParlData.ch (CC BY 4.0) : Confédération, cantons et grandes villes, filtrées sur le handicap et
+les besoins éducatifs particuliers. Réglages dans `parlement/reglages.toml`, sans aucun chemin ; lexiques dans
+`parlement/lexique/`, des termes seulement.
+
+- **La passe mensuelle** (`tout`, sans `--base`) part de l'état partagé. Elle est la seule à interroger l'API `/v1/`,
+  par des requêtes anonymes (aucun User-Agent maison), 2 s entre deux requêtes, dans le plafond que `moisson.py` tire
+  du budget du mois (800). Pour chaque corps, du plus petit au plus gros, des pages de 50 triées par `-begin_date`,
+  jusqu'au premier dépôt strictement antérieur au repère de dépôt ; le jour du repère est relu. Puis la recherche des
+  termes pour la Confédération, et les documents des nouvelles candidates. Elle n'importe rien, ne fait ni liste ni
+  sauvegarde, et ne recalibre pas les crans.
+- **Le poste de développement** garde la base complète (`--base`) et les opérations lourdes : `importer` (les exports
+  de `files.openparldata.ch`, aucune requête à l'API), `classer`, `lister`, `absorber` (relire les journaux avant
+  toute opération lourde), `publier` (refiger et publier le socle, sous créneau). Avec `--base`, `tout` n'appelle
+  jamais l'API : seule la passe mensuelle compte son budget.
+- **Aucun nom de personne** dans un titre : auteurs, signataires et « primo firmatario » sont coupés ; le contrôle
+  indépendant des noms tourne à chaque export (un défaut retient la ligne, un nom possible pose le doute
+  `personne-nommee`).
+- **`texte_depose`** : le texte déposé, nettoyé et plafonné (voir docs/FORMAT-PROPOSITIONS.md).
+- Un lot prend le numéro qui suit le plus grand du jour, sur le disque ou en base.
 
 ## Le contrat `pronto-moisson/1`
 

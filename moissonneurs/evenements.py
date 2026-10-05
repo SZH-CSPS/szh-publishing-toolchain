@@ -220,7 +220,8 @@ TABLES = {
     },
     'parlement': {
         'progression': {'restauration': None, 'import-affaires': None, 'import-documents': 'corps', 'import': None,
-                        'mensuelle': None, 'moisson': 'corps', 'criblage': None, 'titres': None, 'textes': None,
+                        'mensuelle': None, 'moisson': 'corps', 'recherche': 'source', 'criblage': None, 'titres': None,
+                        'textes': None,
                         'classement': None, 'liste': None, 'propositions': None, 'controle-noms': None,
                         'finesse': None, 'purge': None, 'sauvegarde': None},
         # Sorties des sous-commandes `compteur`, `mensuelle` et `importer` : une étape nommée par le type.

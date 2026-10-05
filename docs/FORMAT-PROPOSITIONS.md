@@ -150,6 +150,23 @@ d’un coup (nom temporaire, puis renommage) et une régénération l’écrase.
 Un résumé dont `source_empreinte` ne correspond plus au texte actuel de la proposition est
 périmé : la vue ne l’affiche plus et la passe suivante le régénère. Un résumé valide est sauté.
 
+### `texte_depose` : ce que produit le moissonneur du parlement
+
+Le champ est facultatif, au niveau de la proposition. Le moissonneur du parlement le remplit ainsi
+(`moissonneurs/parlement/texte.py`) :
+- **le document** : celui qui porte l'intervention elle-même, choisi sur son nom (texte déposé,
+  motion, interpellation…), jamais la réponse du gouvernement, une décision ou un débat ; pour la
+  Confédération, le texte déposé puis le développement ;
+- **plusieurs documents** : chacun commence par la ligne `[Document : nom]` ;
+- **nettoyé** : sans balisage HTML, sans CSS, sans entités ni images, les lignes coupées au milieu
+  d'une phrase recollées, et sans en-tête. L'adresse, la date, le numéro, le titre et tout paragraphe
+  qui nomme un auteur ou un signataire partent, en tête et dans les premiers paragraphes du corps ;
+- **plafonné à 20 000 caractères** : au-delà, coupé à la dernière fin de phrase et suivi de « […] » ;
+- **absent** quand aucun document n'a de texte utile.
+
+Un nom cité plus loin dans le corps n'est pas retiré : comme le `descriptif`, le texte reste celui
+que la source a publié. Il ne sert que d'entrée au résumé, dont le prompt exclut tout nom de personne.
+
 ## Une proposition, une langue
 
 Le moissonneur oriente chaque objet vers une seule revue et ne produit jamais deux

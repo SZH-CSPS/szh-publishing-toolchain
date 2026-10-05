@@ -1,0 +1,81 @@
+# Réglages du moissonneur des interventions parlementaires. Aucun chemin ici : ils viennent de la ligne de commande
+# (--racine, --cache, et sur le poste de développement --base).
+
+[reseau]
+base = "https://api.openparldata.ch/v1"
+# Requêtes anonymes : aucun User-Agent maison, aucune adresse.
+delai = 2.0          # secondes entre deux requêtes, une seule à la fois
+budget = 3000        # requêtes réelles par exécution au poste de développement (le chiffre annoncé à OpenParlData)
+timeout = 30
+
+[moisson]
+depuis = "2024-07-01"   # profondeur : la publication suit le dépôt de plusieurs mois
+limite = 500            # affaires par page de liste
+# Corps suivis : la Confédération (CHE) et les 26 cantons. Les villes viennent de [villes].
+cantons = ["AG", "AI", "AR", "BE", "BL", "BS", "FR", "GE", "GL", "GR", "JU", "LU", "NE",
+           "NW", "OW", "SG", "SH", "SO", "SZ", "TG", "TI", "UR", "VD", "VS", "ZG", "ZH"]
+confederation = "CHE"
+
+[villes]
+# Les dix plus grandes communes de Suisse présentes dans OpenParlData. Le nom sert à retrouver le body_key dans la
+# liste des corps ; `cle` se renseigne après la découverte (commande `corps`). Le canton est celui de la fiche.
+suivies = [
+  { nom = "Zürich",      canton = "ZH", cle = "261" },
+  { nom = "Genève",      canton = "GE", cle = "6621" },
+  { nom = "Basel",       canton = "BS", cle = "" },     # corps 2701 sans affaires dans l'API : le canton BS couvre la ville
+  { nom = "Lausanne",    canton = "VD", cle = "5586" },
+  { nom = "Bern",        canton = "BE", cle = "351" },
+  { nom = "Winterthur",  canton = "ZH", cle = "230" },
+  { nom = "Luzern",      canton = "LU", cle = "1061" },
+  { nom = "St. Gallen",  canton = "SG", cle = "3203" },
+  { nom = "Lugano",      canton = "TI", cle = "5192" },
+  { nom = "Biel/Bienne", canton = "BE", cle = "" },     # corps 371 sans affaires dans l'API
+]
+
+[criblage]
+# Étage 1 : recherche plein texte côté serveur.
+scope = "all"
+limite = 500
+# Les affaires déposées avant cette date ne deviennent jamais des fiches.
+date_min_fiche = "2024-07-01"
+
+[classement]
+# Périmètre élargi : un faux positif se refuse, un faux négatif ne se voit jamais. Une affaire d'école ordinaire
+# sans ancrage handicap ni besoins particuliers passe en « à relire » au lieu d'être écartée. Jamais « retenu » sans ancrage.
+ecole_generale = true
+# Périmètre élargi aux thématiques de la Revue (lexique/thematiques.toml) : toujours « à relire ».
+themes_elargis = true
+# Vivier élargi : un objet sinon écarté qui a au moins 2 termes forts distincts dans le texte devient « à relire »
+# (catégorie texte-large, note de 0 à 4,99, jamais « retenu ») ; c'est le cran 1 « très large » du curseur.
+vivier_large = true
+
+[finesse]
+# Cran 10 (Strict) : le plus bas score du réglage normal qui laisse au plus ce nombre de fiches de référence de la langue,
+# recalculé à chaque recalcul trimestriel. Une langue sans fiche de référence (fr) prend le seuil de de.
+rappel_strict = 20
+# Profil des volumes entre les crans 2 et 10 : « lineaire » (pas égaux) ou « geometrique » (rapport constant).
+profil = "lineaire"
+
+[exports]
+# Import de base par les exports en lot (fichiers statiques, CC BY 4.0), au poste de développement. Chaque fichier est
+# téléchargé une fois par passe, avec l'en-tête par défaut (anonyme), 5 s entre deux fichiers, puis supprimé.
+base_url = "https://files.openparldata.ch/exports/"
+delai = 5.0
+
+[mensuelle]
+# Passe incrémentale par l'API /v1/ depuis le repère : 2 s entre deux requêtes, 800 requêtes par mois sommées sur tous
+# les postes (moisson.py en tire --plafond), arrêt net au plafond.
+active = true
+budget = 800
+limite = 50            # affaires par page de liste de la passe mensuelle (l'import et le criblage gardent la leur)
+delai = 2.0
+
+[export]
+# Verdicts qui partent en proposition. Les autres restent classés, sans proposition écrite ni marque d'export : ils
+# partent plus tard si la liste change. Absent ou vide : ["retenu"]. Permis : "retenu", "a-relire".
+verdicts = ["retenu", "a-relire"]
+# Arriéré du premier lot : les « à relire » déposés plus de 3 mois avant la moisson ne partent pas au premier lot.
+arriere_a_relire_mois = 3
+# Finesse : score par bandes, catégorie et termes avec note_sans dans chaque proposition ; crans par langue dans
+# etat.json, figés par trimestre au poste de développement.
+finesse = true

@@ -1,0 +1,11 @@
+{"meta": {"total_records": 3, "has_more": true},
+ "data": [
+  {"id": 9001, "body_key": "CHE", "external_id": "20254057", "number": "25.4057",
+   "title": {"de": "Assistenzhunde: Rechtsrahmen", "fr": "Chiens d'assistance : cadre juridique"},
+   "type_name": {"de": "Motion", "fr": "Motion"}, "type_harmonized_id": 2,
+   "begin_date": "2025-09-22", "updated_at": "2026-09-18T03:37:51",
+   "url_external": "https://example.invalid/20254057", "url_oparl": "https://example.invalid/oparl/9001"},
+  {"id": 9002, "body_key": "CHE", "external_id": "20260100", "number": "26.100",
+   "title": {"de": "Budget 2027"}, "type_name": {"de": "Geschäft des Bundesrates"},
+   "type_harmonized_id": 9, "begin_date": "2026-08-01", "updated_at": "2026-09-10T02:00:00"}
+ ]}

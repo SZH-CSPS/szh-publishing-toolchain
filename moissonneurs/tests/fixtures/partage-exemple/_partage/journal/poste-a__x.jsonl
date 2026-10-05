@@ -1,0 +1,6 @@
+{"format":"pronto-journal/1","moissonneur":"exemple","poste":"poste-a__x"}
+{"n":1,"maj":"2026-11-01T10:00:00Z","t":"projets","k":["1"],"r":{"id":"1","statut":"vu","titre":"A-absorbe"}}
+{"n":2,"maj":"2026-11-01T10:00:00Z","t":"corps","k":["GE"],"r":{"body_key":"GE","repere":"2026-12-31","n":99}}
+{"n":3,"maj":"2026-11-03T10:00:00Z","t":"projets","k":["3"],"r":{"id":"3","statut":"vu","titre":"C"}}
+{"n":4,"maj":"2026-11-03T10:00:00Z","t":"corps","k":["GE"],"r":{"body_key":"GE","repere":"2026-10-20","n":12}}
+{"n":5,"maj":"2026-11-03T10:00:00Z","t":"decisions","k":["k2"],"r":{"cle":"k2","decision":"accepte","purgee":0}}

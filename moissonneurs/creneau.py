@@ -11,7 +11,7 @@ import time
 import partage
 
 FORMAT = 'pronto-creneau/1'
-FORMAT_REQUETES = 'pronto-requetes/1'
+FORMAT_REQUETES = partage.FORMAT_REQUETES
 DOSSIER = '_Creneau'
 PERIME_S = 15 * 60
 BATTEMENT_S = 60
@@ -169,29 +169,8 @@ class Creneau:
 
 # --------------------------------------------------------------------------- budget du mois
 
-def dossier_requetes(moissons, m, mois):
-    return os.path.join(moissons, m, '_partage', 'requetes', mois)
-
-
-def somme_mois(moissons, m, mois, ma_cle):
-    """(somme de tous les postes, part de ce poste) pour le mois ; un compteur illisible ne compte pas."""
-    d = dossier_requetes(moissons, m, mois)
-    try:
-        noms = os.listdir(d)
-    except FileNotFoundError:
-        return 0, 0
-    somme = propre = 0
-    for n in noms:
-        if not n.endswith('.json'):
-            continue
-        c = _lire_json(os.path.join(d, n))
-        n_req = c.get('requetes') if isinstance(c, dict) else None
-        if not isinstance(n_req, int) or isinstance(n_req, bool) or n_req < 0:
-            continue
-        somme += n_req
-        if n == ma_cle + '.json':
-            propre = n_req
-    return somme, propre
+# Le compteur du mois vit dans partage.py, avec le reste de l'état partagé.
+dossier_requetes, somme_mois, ecrire_requetes = partage.dossier_requetes, partage.somme_mois, partage.ecrire_requetes
 
 
 def epuise(budget, somme, marge=MARGE_REQUETES):
@@ -201,9 +180,3 @@ def epuise(budget, somme, marge=MARGE_REQUETES):
 
 def plafond_local(budget, somme, marge=MARGE_REQUETES):
     return None if budget is None else max(budget - marge - somme, 0)
-
-
-def ecrire_requetes(moissons, m, mois, ma_cle, requetes, maintenant):
-    """Le compteur de CE poste : chaque poste n'écrit que le sien."""
-    ecrire_json_atomique(os.path.join(dossier_requetes(moissons, m, mois), ma_cle + '.json'),
-                         {'format': FORMAT_REQUETES, 'mois': mois, 'requetes': requetes, 'maj': iso(maintenant)})
