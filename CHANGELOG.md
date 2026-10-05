@@ -11,6 +11,22 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.1
+
+Mineure : moisson et import FNS depuis le cockpit, résumés plus courts, descriptif lisible en entier.
+
+**Production.**
+- Paramètres > Moissonnage : « Lancer la moisson » depuis n’importe quel poste (avancement, Arrêter,
+  créneau d’un autre poste, budget du mois) et bloc « Données FNS » (import du CSV téléchargé à
+  la main). Le bouton reste désactivé tant que l’état partagé n’est pas publié.
+- Résumés Mistral des recherches : 700 à 1 000 caractères, plafond en mots contrôlé, deux
+  relances au plus ; un résumé plus long que la plage se régénère.
+- Propositions : le Descriptif s’affiche en entier à l’ouverture, toujours redimensionnable.
+
+**Développement.**
+- `moissonneurs/` livrés dans le toolkit : parlement et recherche, état partagé fusionnable
+  dans `_Moissons/<m>/_partage/`, publication du socle depuis le poste de développement.
+
 ## 3.10.0
 
 Medium : résumés générés par Mistral dans les propositions, éditeur sans bruit.
