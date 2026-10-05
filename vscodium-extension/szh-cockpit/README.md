@@ -203,6 +203,13 @@ lib/
                         comptes par terme et les demandes sur le lexique. Pur, sans vscode ;
                         la fiche passe par kirby-contenu.js
   qualite-image.js      seuils de résolution des images et verdict de qualité
+  mistral.js            client de l’API Mistral en https de la stdlib : chat, liste des modèles,
+                        nouvel essai sur un 429 ; la clé ne sort jamais de l’en-tête
+  resumes.js            résumés générés des propositions : requête (textes publics seuls), garde
+                        de fidélité sur les nombres, magasin _Moissons\_Resumes et péremption
+                        par empreinte de la source ; prompts dans prompts/resume-descriptif.json
+  resumes-hote.js       « Raccourcir les résumés » dans Paramètres de l’Accueil : clé Mistral
+                        dans le coffre, son test, le modèle, la passe avec progression et arrêt
   rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
                         résolution passive de l'ancrage SharePoint, masquage, anti-
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
@@ -303,6 +310,8 @@ outils/
                         stdout, lancée par l'Accueil avec le Node qu'embarque
                         VSCodium (ELECTRON_RUN_AS_NODE=1) ; --langue fr|de, le français à
                         défaut
+prompts/                 prompts versionnés de Mistral (resume-descriptif.json : version, variantes
+                        fr et de, consigne et plage par type, relance), lus par lib/resumes.js
 mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue
                         (envoi-auteur.fr.twig, traduction.de.twig, …) — voir son README.md
 export-templates/        gabarits Twig des quatre exports du secrétariat (lib/secretariat.js) :

@@ -18,6 +18,7 @@ const secretariat = require('./accueil-secretariat-hote');
 const journal = require('./accueil-journal-hote');
 const reglages = require('./accueil-reglages-hote');
 const preproc = require('./accueil-preproc-hote');
+const resumesHote = require('./resumes-hote');
 const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 
 const VIEW_TYPE = 'szhAccueil';
@@ -105,6 +106,7 @@ async function donnees() {
 async function envoyerDonnees(panneau) {
   repondre(panneau, await donnees());
   repondre(panneau, reglages.messageValeurs());
+  repondre(panneau, resumesHote.etat());
 }
 
 // Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
@@ -153,7 +155,12 @@ async function creer(msg, panneau) {
 // Les messages du Secrétariat et du Log vont à leur module.
 async function surMessage(msg, panneau) {
   if (secretariat.surMessage(msg) || journal.surMessage(msg) || preproc.surMessage(msg)) { return; }
-  if (msg.type === MSG.ACCUEIL_ONGLET) { reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m)); return; }
+  if (msg.type === MSG.ACCUEIL_ONGLET) {
+    reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m));
+    if (msg.onglet === 'reglages') { resumesHote.envoyerEtat(); }
+    return;
+  }
+  if (await resumesHote.surMessage(msg)) { return; }
   if (await reglages.surMessage(msg, (m) => repondre(panneau, m))) { return; }
   if (msg.type === MSG.ACCUEIL_OUVRIR) {
     if (cheminsConnus.has(msg.chemin)) { await ouvrirDossier(msg.chemin); }
@@ -192,7 +199,7 @@ function ouvrirAccueil(opts) {
     html: htmlAccueil,
     surPret: (msg, p) => envoyerDonnees(p).then(() => preproc.envoyerEtat()),
     surMessage: (msg, p) => surMessage(msg, p),
-    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); }
+    surFermeture: () => { panneauActif = null; secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter(); }
   });
   panneauActif = panneau;
   if (!nouveau && onglet) {
@@ -219,6 +226,7 @@ function configurerOnglets() {
   reglages.configurer({ rafraichirTout: (opts) => { if (ctx.rafraichirTout) { ctx.rafraichirTout(opts); } },
     recharger: () => { if (panneauActif) { envoyerDonnees(panneauActif); } },
     rechargerPage: () => rechargerPage('reglages') });
+  resumesHote.configurer({ envoyer });
   journal.configurer({ envoyer, ouvrirDossier: ouvrirDossierOs,
     ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
     ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
@@ -237,7 +245,7 @@ function configurerOnglets() {
 function arreter() {
   if (relecture) { clearTimeout(relecture); relecture = null; }
   if (fermeture) { clearTimeout(fermeture); fermeture = null; }
-  secretariat.arreter(); reglages.arreter(); preproc.arreter();
+  secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter();
 }
 
 // À l'activation : la commande, et l'ouverture d'office dans une fenêtre sans dossier ni
@@ -247,6 +255,7 @@ function demarrer(context) {
   etatPoste = context;
   configurerOnglets();
   reglages.demarrer(context);
+  resumesHote.demarrer(context);
   context.subscriptions.push(vscode.commands.registerCommand('szh.accueil', () => retourAccueil()));
   // La barre d'activité est masquée : le retour à l'Accueil a son bouton, à gauche de la barre d'état.
   const bouton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 1000);

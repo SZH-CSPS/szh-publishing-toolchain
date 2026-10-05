@@ -155,6 +155,12 @@
           "scope": "application",
           "description": "%config.shlinkUrl%"
         },
+        "szh.mistralModele": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "description": "%config.mistralModele%"
+        },
         "szh.produitParDefaut": {
           "type": "string",
           "enum": [

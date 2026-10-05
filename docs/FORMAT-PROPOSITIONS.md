@@ -19,8 +19,10 @@ lecture seule, comme la bibliothèque `Fiches\`.
     ├── <moissonneur>\              un dossier par moissonneur, nom court en minuscules
     │   ├── AAAA-MM-JJ-<n>.jsonl    un lot par exécution qui a trouvé quelque chose
     │   └── etat.json               l'état de la dernière exécution
-    └── _Decisions\
-        └── <empreinte>.txt         une décision de la rédaction par proposition
+    ├── _Decisions\
+    │   └── <empreinte>.txt         une décision de la rédaction par proposition
+    └── _Resumes\
+        └── <langue>\<empreinte>.json  un résumé généré par Mistral, écrit par le cockpit
 ```
 
 - `<racine>` est la racine active : la production, ou `Revues-TESTING` en mode test.
@@ -80,7 +82,8 @@ Les pannes restent locales :
 | `doutes` | ce que le moissonneur sait avoir deviné ou n’a pas pu lire, champ par champ : `{ champ, code, detail, suggestion? }`. `detail` explique, il ne répète pas la valeur lue. `suggestion`, facultative, est une valeur conforme que la rédaction applique d’un clic |
 | `brut` | les valeurs telles que lues, avant normalisation (voir plus bas) |
 | `pertinence` | facultative : `{ verdict, raison }`, `verdict` valant `retenu` ou `a-relire`. Un objet `ecarte` ne s’exporte jamais. `score`, `categorie` et `termes` s’y ajoutent pour la finesse du tri (voir plus bas) |
-| `doublon` | facultatif : `{ uuid, slug, certitude: "probable" }`, une fiche existante qui semble la même. Un doublon sûr ne s’exporte pas |
+| `doublon` | facultatif : `{ uuid, slug, certitude: "probable" }`, une fiche existante qui semble la même. Un doublon sûr ne s’exporte pas |
+| `texte_depose` | facultatif, intervention seulement : le texte déposé, en clair, d’où le cockpit tire un résumé (voir « Les résumés générés »). Plusieurs documents se suivent, chacun annoncé par une ligne `[Document : <nom>]` : le texte déposé, puis la réponse de l’exécutif s’il y en a une. Au plus 20 000 caractères : le moissonneur coupe au-delà, et le cockpit coupe aussi un texte plus long avant l’envoi (doute `source-tronquee` du résumé). **Pas encore produit par le moissonneur `parlement`** |
 
 Les dates suivent la saisie du contrat : `date` en `AAAA-MM-JJ`, `date_partielle` en `AAAA`,
 `AAAA-MM` ou `AAAA-MM-JJ`, `annee` en `AAAA`.
@@ -112,6 +115,40 @@ l’invente pas.
 - Un champ introuvable n’a rien dans `brut`.
 - Les autres clés sont libres. `brut` se réduit à ce qui sert à juger : jamais la page
   entière.
+
+## Les résumés générés
+
+Le bouton « Raccourcir les résumés » (Paramètres de l’Accueil, Moissonnage) fait écrire par
+Mistral le descriptif des propositions en attente de la langue active :
+- `recherche` : un `descriptif` de plus de 1 400 caractères est raccourci (plage 600 à 1 400,
+  cible 1 000) ;
+- `intervention` : le descriptif est créé depuis `texte_depose` (plage 400 à 700, cible 550).
+
+Les prompts sont versionnés dans `vscodium-extension/szh-cockpit/prompts/resume-descriptif.json`.
+Seuls les textes publics d’une proposition partent chez Mistral, jamais un manuscrit ni un fichier
+de revue. Le résultat n’est pas assez fidèle pour se passer de relecture : la vue Propositions
+l’affiche par défaut, marqué « Résumé généré (Mistral), à relire », à côté de l’original, et
+l’acceptation écrit dans la fiche le texte affiché.
+
+Un fichier par proposition et par langue, `_Moissons\_Resumes\<langue>\<empreinte>.json`,
+l’empreinte étant celle de la décision (16 caractères du SHA-256 de la `cle`). Il est écrit
+d’un coup (nom temporaire, puis renommage) et une régénération l’écrase. Exemple :
+`test/js/fixtures/resume-exemple.json`.
+
+| Champ | Règle |
+|---|---|
+| `format` | toujours `pronto-resume/1` ; une autre valeur fait ignorer le fichier |
+| `cle`, `langue` | la proposition et la langue du résumé |
+| `texte` | le résumé, un seul paragraphe de texte brut |
+| `modele`, `prompt` | le modèle Mistral et la version du prompt (`v6`) |
+| `date`, `poste` | ISO 8601 en UTC, et le nom du poste qui l’a demandé |
+| `source_empreinte`, `source_car` | le SHA-256 (hexadécimal) et la longueur du texte envoyé |
+| `mode` | `raccourcir` (un descriptif) ou `creer` (un texte déposé) |
+| `relance`, `jetons` | si une relance a suivi un premier jet trop long, et les jetons consommés |
+| `doutes` | `[{ code, detail }]` : `nombre-hors-source` (un nombre entier ou décimal de la sortie qui n’est pas, comme nombre entier, dans la source ou la fiche : « 20 » ne se lit pas dans « 2020 »), `longueur-hors-plage`, `source-tronquee` |
+
+Un résumé dont `source_empreinte` ne correspond plus au texte actuel de la proposition est
+périmé : la vue ne l’affiche plus et la passe suivante le régénère. Un résumé valide est sauté.
 
 ## Une proposition, une langue
 

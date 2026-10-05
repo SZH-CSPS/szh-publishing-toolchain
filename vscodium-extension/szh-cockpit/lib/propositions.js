@@ -614,8 +614,10 @@ function valeursSaisies(p, saisies) {
   return res;
 }
 
-// accepterLot(racine, langue, [{ cle, aussi, valeurs?, touches? }], { ausgabeId, depuisDetail })
+// accepterLot(racine, langue, [{ cle, aussi, valeurs?, touches?, original? }], { ausgabeId, depuisDetail, descriptifs? })
 //   -> { faites: [cle], ignorees: [{ cle, raison }], echecs: [{ cle, raison }] }.
+// `descriptifs` (Map cle -> texte) : le résumé généré, que la vue affiche par défaut ; une
+// acceptation en lot l'écrit à la place du descriptif, sauf si la vue montrait l'original.
 // En lot, une proposition s'accepte telle quelle, et un cas B jamais. Depuis son détail, seule,
 // elle s'accepte avec les valeurs saisies si bloquants() ne trouve rien, compte tenu des champs
 // touchés. `aussi` vaut pour sa seule proposition.
@@ -637,7 +639,9 @@ function accepterLot(racineArbreVal, langue, demandes, options) {
       res.ignorees.push({ cle: p.cle, raison: 'a-verifier' });
       continue;
     }
-    const r = accepter(racineArbreVal, p, saisies || p.valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi, langue: langue });
+    const genere = !saisies && !d.original && o.descriptifs ? o.descriptifs.get(p.cle) : undefined;
+    const valeurs = saisies || (genere ? Object.assign({}, p.valeurs, { descriptif: genere }) : p.valeurs);
+    const r = accepter(racineArbreVal, p, valeurs, { ausgabeId: o.ausgabeId || '', proposerAutreRevue: !!d.aussi, langue: langue });
     if (r.ok) { res.faites.push(p.cle); } else { res.echecs.push({ cle: p.cle, raison: r.raison }); }
   }
   return res;

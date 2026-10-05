@@ -189,6 +189,18 @@
 .prop-champ-doute-code { font-weight: 700; }
 .szh-bouton.prop-appliquer { margin-left: auto; }
 .prop-couverture svg { color: var(--encre-2); }
+/* Le descriptif tiré d’un résumé généré : la mention, sa provenance, ses doutes et la bascule. */
+.prop-resume { display: flex; flex-direction: column; gap: var(--e1); padding: var(--e2); border: 1px solid var(--filet);
+  border-left: 3px solid var(--accent); border-radius: var(--rayon-mini); font-size: var(--t-libelle); }
+.prop-resume--original { border-left-color: var(--filet-fort); }
+.prop-resume-tete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e2); margin: 0; }
+.prop-resume-tete svg { color: var(--accent); }
+.prop-resume-mention { font-weight: 700; }
+.szh-bouton.prop-resume-bascule { margin-left: auto; }
+.prop-resume-meta { margin: 0; color: var(--encre-2); }
+.prop-resume-doutes-titre { display: flex; align-items: center; gap: var(--e1); margin: 0; font-weight: 700; }
+.prop-resume-doutes-titre svg { color: var(--avert); }
+.prop-resume-doutes ul { margin: 0; padding-left: var(--e4); }
 .prop-echouee .prop-recreer { margin-left: var(--e2); }
 
 .prop-sous-titre { margin: 0 0 var(--e1); font-size: var(--t-mini); font-weight: 700; letter-spacing: .04em;

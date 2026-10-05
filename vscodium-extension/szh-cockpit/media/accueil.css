@@ -399,3 +399,14 @@ body {
 .accueil-demande-retirer:disabled, .accueil-demande-retirer:disabled:hover { opacity: 1; color: var(--encre);
   background: var(--fond); border: 1px dashed var(--encre-2); cursor: default; }
 .accueil-demande-qui, .accueil-demande-confirmee { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); }
+
+/* ═══ Paramètres : la clé Mistral et « Raccourcir les résumés » ═══════════════════ */
+.accueil-mistral-test:empty { display: none; }
+.accueil-mistral-test .szh-notif { margin: var(--e2) 0 0; }
+.accueil-resumes[hidden] { display: none; }
+.accueil-resumes-compte { font-variant-numeric: tabular-nums; }
+.accueil-resumes-progression { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); margin-top: var(--e2);
+  font-size: var(--t-libelle); font-variant-numeric: tabular-nums; }
+.accueil-resumes-progression progress { width: 12rem; accent-color: var(--accent); }
+.accueil-resumes .szh-notif { margin: var(--e2) 0 0; }
+#regl-mistral .accueil-tache-action { display: flex; gap: var(--e2); }

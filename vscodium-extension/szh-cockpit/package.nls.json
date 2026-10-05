@@ -61,6 +61,7 @@
   "cmd.fmt.falcHeader": "En-tête de chapitre (FALC)",
   "cmd.fmt.qrLink": "Code QR",
   "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
+  "config.mistralModele": "Modèle Mistral qui raccourcit les résumés des propositions. Vide = le modèle des prompts (ministral-14b-2512). La clé d’API ne se règle que dans l’onglet Paramètres de Pronto.",
   "config.shlinkUrl": "Adresse du raccourcisseur de liens (Shlink) qui raccourcit les liens des codes QR. Vide = aucun raccourcissement. La clé d’API ne se règle que dans l’onglet Paramètres de Pronto.",
   "config.produitParDefaut": "Produit proposé à l’ouverture de Pronto. Vide = selon la langue.",
   "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf.",

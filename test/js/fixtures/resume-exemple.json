@@ -1,0 +1,21 @@
+{
+ "format": "pronto-resume/1",
+ "cle": "recherche:hepvd:lire-ensemble",
+ "langue": "fr",
+ "texte": "Le projet étudie la lecture chez 120 élèves de cinq cantons, entre 2020 et 2024. Il observe les pratiques des enseignantes et des enseignants et décrit les obstacles que rencontrent les élèves en situation de handicap. Les résultats visés sont des pistes pour l’enseignement de la lecture en classe ordinaire.",
+ "modele": "ministral-14b-2512",
+ "prompt": "v6",
+ "date": "2026-10-05T09:30:00Z",
+ "poste": "POSTE-EXEMPLE",
+ "source_empreinte": "f32f670ae9265b5c6587beea9bd8dc63e5ea6e13b2e604316a990dbc107af7e9",
+ "source_car": 1949,
+ "mode": "raccourcir",
+ "relance": false,
+ "jetons": 1873,
+ "doutes": [
+  {
+   "code": "longueur-hors-plage",
+   "detail": "309"
+  }
+ ]
+}

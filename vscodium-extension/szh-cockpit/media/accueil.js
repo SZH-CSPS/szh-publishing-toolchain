@@ -1447,6 +1447,71 @@
     service('shlinkUrl', TXT.rgShlinkUrl, TXT.rgShlinkUrlAide, 'text');
     service('shlinkCle', TXT.rgShlinkCle, '', 'password');
     service('ojsCle', TXT.rgOjsCle, TXT.rgOjsCleAide, 'password');
+    // La clé Mistral : propre au poste, elle ne revient jamais à la page ; « Tester » interroge l'API.
+    var mistral = (function () {
+      var r = rangee(d, TXT.rgMistralCle, TXT.rgMistralCleAide);
+      r.el.id = 'regl-mistral';
+      var champ = poser(r.reglage, 'div', 'szh-champ accueil-champ-titre accueil-champ-cle');
+      var saisie = poser(champ, 'input', '');
+      saisie.type = 'password';
+      saisie.autocomplete = 'off';
+      saisie.setAttribute('aria-labelledby', r.nom.id);
+      var pastille = poser(r.reglage, 'span', 'szh-pastille');
+      var supprimer = SZH.bouton(TXT.rgMistralSupprimer, function () {
+        api.postMessage({ type: MSG.ACCUEIL_MISTRAL_CLE, valeur: '' });
+      }, 'accueil-lien accueil-mistral-supprimer');
+      r.reglage.appendChild(supprimer);
+      var envoyee = false;
+      var enregistrer = SZH.bouton(TXT.rgEnregistrer, function () {
+        if (enregistrer.disabled) { return; }
+        envoyee = true;
+        api.postMessage({ type: MSG.ACCUEIL_MISTRAL_CLE, valeur: saisie.value.trim() });
+      }, 'accueil-mistral-enregistrer');
+      var tester = SZH.bouton(TXT.rgMistralTester, function () {
+        api.postMessage({ type: MSG.ACCUEIL_MISTRAL_TESTER });
+      }, 'accueil-mistral-tester');
+      r.action.appendChild(enregistrer);
+      r.action.appendChild(tester);
+      var test = poser(r.el, 'div', 'accueil-mistral-test');
+      test.setAttribute('role', 'status');
+      saisie.addEventListener('input', function () { enregistrer.disabled = saisie.value.trim() === ''; });
+      saisie.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); enregistrer.click(); } });
+      enregistrer.disabled = true;
+
+      // L'aide nomme le modèle par défaut, que l'hôte envoie avec son état.
+      var rm = rangee(d, TXT.rgMistralModele, TXT.rgMistralModeleAide);
+      var champM = poser(rm.reglage, 'div', 'szh-champ accueil-champ-titre');
+      var modele = poser(champM, 'input', '');
+      modele.type = 'text';
+      modele.autocomplete = 'off';
+      modele.spellcheck = false;
+      modele.setAttribute('aria-labelledby', rm.nom.id);
+      var actuel = '';
+      var enregistrerM = SZH.bouton(TXT.rgEnregistrer, function () {
+        if (enregistrerM.disabled) { return; }
+        api.postMessage({ type: MSG.ACCUEIL_MISTRAL_MODELE, valeur: modele.value.trim() });
+      }, 'accueil-mistral-modele');
+      rm.action.appendChild(enregistrerM);
+      modele.addEventListener('input', function () { enregistrerM.disabled = modele.value.trim() === actuel; });
+      modele.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); enregistrerM.click(); } });
+
+      function rendre(e) {
+        // La saisie se vide une fois la clé enregistrée, jamais pendant la frappe.
+        if (envoyee) { saisie.value = ''; envoyee = false; }
+        enregistrer.disabled = saisie.value.trim() === '';
+        pastille.textContent = e.cle ? TXT.rgDefinie : TXT.rgAbsente;
+        pastille.classList.toggle('szh-pastille--ok', !!e.cle);
+        supprimer.hidden = !e.cle;
+        tester.disabled = !e.cle;
+        test.textContent = '';
+        if (e.test) { test.appendChild(SZH.notif(e.test.ok ? 'ok' : 'attention', e.test.texte)); }
+        rm.aide.textContent = SZH.remplir(TXT, 'rgMistralModeleAide', [e.modeleDefaut]);
+        if (document.activeElement !== modele) { modele.value = e.modele; }
+        actuel = e.modele;
+        enregistrerM.disabled = modele.value.trim() === actuel;
+      }
+      return { rendre: rendre };
+    })();
     poser(zones, 'p', 'accueil-astuce accueil-coffre', TXT.rgCoffre);
     function majService(cle) {
       var x = services[cle];
@@ -1495,6 +1560,45 @@
     var moiss = poser(zones, 'section', 'accueil-moissonnage');
     moiss.id = 'regl-moissonnage';
     moiss.hidden = true;
+    // Raccourcir les résumés : sous le Moissonnage, la passe Mistral sur les propositions en attente.
+    var resumesZone = poser(zones, 'section', 'accueil-resumes');
+    resumesZone.id = 'regl-resumes';
+    resumesZone.hidden = true;
+    var etatResumes = null;
+    function milliers(n) { return String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f'); }
+    function rendreResumes(e) {
+      if (e) { etatResumes = e; }
+      var x = etatResumes;
+      resumesZone.textContent = '';
+      resumesZone.hidden = !x || !x.disponible || moiss.hidden;
+      if (resumesZone.hidden) { return; }
+      var l = poser(resumesZone, 'div', 'accueil-taches');
+      var r = rangee(l, TXT.rgRsTitre, TXT.rgRsAide);
+      r.el.classList.add('accueil-moiss-large');
+      var revue = x.langue === 'de' ? TXT.rgRsRevueDe : TXT.rgRsRevueFr;
+      poser(r.el, 'p', 'accueil-tache-aide accueil-resumes-compte', x.candidats === 0
+        ? SZH.remplir(TXT, 'rgRsAucune', [revue]) : pluriel(x.candidats, 'rgRsCompte', [x.candidats, revue, milliers(x.jetons)]));
+      if (x.enCours) {
+        var pr = poser(r.el, 'div', 'accueil-resumes-progression');
+        var barre = poser(pr, 'progress', '');
+        barre.max = x.enCours.total || 1;
+        barre.value = x.enCours.fait;
+        barre.setAttribute('aria-labelledby', r.nom.id);
+        var lu = poser(pr, 'span', '', SZH.remplir(TXT, 'rgRsProgression', [x.enCours.fait, x.enCours.total, milliers(x.enCours.jetons)]));
+        lu.setAttribute('role', 'status');
+        if (x.enCours.arret) { poser(pr, 'span', 'accueil-tache-aide', TXT.rgRsArret); }
+        var stop = SZH.bouton(TXT.rgRsArreter, function () { api.postMessage({ type: MSG.ACCUEIL_RESUMES_ARRETER }); }, 'accueil-resumes-arreter');
+        stop.disabled = !!x.enCours.arret;
+        r.action.appendChild(stop);
+      } else {
+        var go = SZH.bouton(TXT.rgRsLancer, function () { api.postMessage({ type: MSG.ACCUEIL_RESUMES_LANCER }); },
+          'szh-bouton--principal accueil-resumes-lancer');
+        go.disabled = !x.cle || x.candidats === 0;
+        r.action.appendChild(go);
+        if (!x.cle) { poser(r.el, 'p', 'accueil-tache-aide accueil-resumes-sans-cle', TXT.rgRsSansCle); }
+      }
+      if (x.bilan) { r.el.appendChild(SZH.notif(x.bilan.ok ? 'ok' : 'attention', x.bilan.texte)); }
+    }
     function dateCourte(iso) {
       var d = String(iso || '').slice(0, 10).split('-');
       return d.length === 3 ? d[2] + '.' + d[1] + '.' + d[0] : '';
@@ -2232,6 +2336,7 @@
         return true;
       }
       if (msg.type === MSG.PROTEGES) { protegesEtat = msg; appliquerVerrou(); return true; }
+      if (msg.type === MSG.ACCUEIL_RESUMES_ETAT) { mistral.rendre(msg); rendreResumes(msg); return true; }
       if (msg.type !== MSG.VALEURS) { return false; }
       afficherErreur('');
       cocher(msg.valeurs || {});
@@ -2242,6 +2347,7 @@
       if (msg.services) { rendreServices(msg.services); }
       rendreSuggestions(msg.suggInterface);
       rendreMoissonnage(msg.moissonnage || null);
+      rendreResumes(null);
       if (msg.proteges) { protegesEtat = msg.proteges; }
       if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
       // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs.

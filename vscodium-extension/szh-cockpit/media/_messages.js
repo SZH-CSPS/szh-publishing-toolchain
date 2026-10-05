@@ -164,5 +164,11 @@ SZH.MSG = Object.freeze({
   // id }, ACCUEIL_DEMANDE_ANNULER défait le dernier retrait, ACCUEIL_OUVRIR_TERMES { moissonneur }.
   PROP_FILTRE_TERME: 'propFiltreTerme', PROP_DEMANDE_ECRIRE: 'propDemandeEcrire',
   ACCUEIL_DEMANDE_CONFIRMER: 'accueilDemandeConfirmer', ACCUEIL_DEMANDE_RETIRER: 'accueilDemandeRetirer',
-  ACCUEIL_DEMANDE_ANNULER: 'accueilDemandeAnnuler', ACCUEIL_OUVRIR_TERMES: 'accueilOuvrirTermes'
+  ACCUEIL_DEMANDE_ANNULER: 'accueilDemandeAnnuler', ACCUEIL_OUVRIR_TERMES: 'accueilOuvrirTermes',
+  // Raccourcir les résumés (lib/resumes-hote.js) : ACCUEIL_MISTRAL_CLE { valeur } pose ou efface la
+  // clé, ACCUEIL_MISTRAL_TESTER, ACCUEIL_MISTRAL_MODELE { valeur }, ACCUEIL_RESUMES_LANCER et
+  // ACCUEIL_RESUMES_ARRETER ; l'hôte répond par ACCUEIL_RESUMES_ETAT, jamais avec la clé.
+  ACCUEIL_MISTRAL_CLE: 'accueilMistralCle', ACCUEIL_MISTRAL_TESTER: 'accueilMistralTester',
+  ACCUEIL_MISTRAL_MODELE: 'accueilMistralModele', ACCUEIL_RESUMES_LANCER: 'accueilResumesLancer',
+  ACCUEIL_RESUMES_ARRETER: 'accueilResumesArreter', ACCUEIL_RESUMES_ETAT: 'accueilResumesEtat'
 });

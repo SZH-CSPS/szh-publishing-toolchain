@@ -7,7 +7,7 @@
 //     opts = { api, panel, barreOnglets, titre, txt(), types(), apresEcriture(geste) }
 //
 // Protocole avec l'hôte :
-//   webview -> hôte : propCharger ; propAccepter { demandes: [{ cle, aussi, valeurs?, touches? }],
+//   webview -> hôte : propCharger ; propAccepter { demandes: [{ cle, aussi, valeurs?, touches?, original? }],
 //                     dansNumero, depuisDetail } ; propRefuser { cles, motif } ;
 //                     propAnnuler { cles } ; propColonnes { typeFiche, reglage } ;
 //                     propOuvrirSource { cle } ; propVerifier { cle, jeton, valeurs, touches } ;
@@ -22,6 +22,9 @@
 // modifiées du numéro s'enregistrent d'abord, le geste part à l'accusé.
 //
 // Le détail porte les champs du contrat (media/_fiche-doc.js), préremplis par la proposition.
+// Un résumé généré (p.resume) remplit le descriptif par défaut, marqué « à relire » ; la
+// bascule « Voir l'original » rend le descriptif de la source. Ce qui s'affiche est ce qui
+// s'écrit : en lot, `original` dit à l'hôte de garder le descriptif de la source.
 // Rien ne s'écrit avant un geste. Ce qui bloque l'acceptation vient de l'hôte (bloquants()),
 // redemandé après chaque saisie. Une acceptation dont la fiche n'a pas pu être créée (raison
 // fiche-introuvable) s'offre à recréer, avec les mêmes valeurs, dans le pied et dans son détail.
@@ -113,6 +116,7 @@
     var demande = false;         // propCharger déjà parti
     var reglages = null;         // colonnes par type : { largeurs, masquees, tri }, lu une fois
     var aussi = {};              // cle -> la marque de l'autre revue
+    var vueOriginale = {};       // cle -> vrai quand le détail montre l'original plutôt que le résumé généré
     var onglet = null;
     var selection = new Set();
     var dernierCoche = null;
@@ -781,7 +785,18 @@
     // La deuxième ligne grise d'une recherche : institutions, puis le début du descriptif.
     function sousLigne(p) {
       if (p.type !== 'recherche') { return ''; }
-      return [p.valeurs.institutions, p.valeurs.descriptif].filter(Boolean).join(' · ');
+      var v = valeursAffichees(p);
+      return [v.institutions, v.descriptif].filter(Boolean).join(' · ');
+    }
+    // Les valeurs telles que la vue les montre : le résumé généré à la place du descriptif, tant
+    // qu'on n'a pas demandé l'original.
+    function valeursAffichees(p) {
+      var v = p.valeurs || {};
+      if (!p.resume || vueOriginale[p.cle]) { return v; }
+      var r = {};
+      Object.keys(v).forEach(function (k) { r[k] = v[k]; });
+      r.descriptif = p.resume.texte;
+      return r;
     }
     function rendreTable() {
       if (!zone.defile) { return; }
@@ -1337,12 +1352,13 @@
           demandes: cles.map(function (c) {
             var d = { cle: c, aussi: !!aussi[c] };
             var p = trouver(c);
+            if (p.resume && vueOriginale[c]) { d.original = true; }
             // Depuis le détail, la saisie part avec les champs touchés.
             if (depuisDetail && form && form.cle === c) {
               d.valeurs = champsDoc.valeursFiche(form.c);
               d.touches = Array.from(form.touches);
             }
-            enCours.envois[c] = { p: p, valeurs: d.valeurs || p.valeurs };
+            enCours.envois[c] = { p: p, valeurs: d.valeurs || valeursAffichees(p) };
             return d;
           })
         });
@@ -1673,12 +1689,13 @@
         formes: {}, jeton: 0, dernier: 0, minuteur: null };
       poser(el, 'h4', 'prop-sous-titre', TXT.propChamps);
       var grille = poser(el, 'div', 'prop-champs');
-      var v = p.valeurs || {};
+      var v = valeursAffichees(p);
       champs.forEach(function (cfg) {
         var conteneur = champsDoc.champ(grille, c, cfg, v);
         conteneur.dataset.champ = cfg.cle;
         conteneur.classList.add('prop-champ');
         marquerDoutes(p, cfg, conteneur);
+        if (cfg.cle === 'descriptif' && p.resume) { marquerResume(p, cfg, conteneur); }
       });
       champsDoc.majConditionnels(c);
       champsDoc.majDerives(c);
@@ -1690,6 +1707,56 @@
       // À la sortie d'un champ, l'hôte revoit aussitôt ce qui bloque.
       el.addEventListener('focusout', function () { verifierSaisie(); });
       return form;
+    }
+    // Le descriptif tiré d'un résumé généré : la mention, d'où il vient, ses doutes de fidélité et
+    // la bascule vers l'original. Basculer remplace le texte du champ, comme une saisie.
+    var CODES_RESUME = { 'nombre-hors-source': 'propResumeNombre', 'longueur-hors-plage': 'propResumeLongueur',
+      'source-tronquee': 'propResumeTronquee' };
+    function marquerResume(p, cfg, conteneur) {
+      var r = p.resume;
+      var bloc = poser(conteneur, 'div', 'prop-resume');
+      var tete = poser(bloc, 'p', 'prop-resume-tete');
+      tete.appendChild(icone('info'));
+      var mention = poser(tete, 'span', 'prop-resume-mention');
+      var bascule = SZH.bouton('', function () { basculerResume(p, cfg); }, 'prop-resume-bascule');
+      tete.appendChild(bascule);
+      poser(bloc, 'p', 'prop-resume-meta', remplir('propResumeMeta', [r.modele, r.prompt, dateCourte(r.date)]));
+      if (r.mode === 'creer') { poser(bloc, 'p', 'prop-resume-meta', TXT.propResumeSansOriginal); }
+      if (r.doutes.length > 0) {
+        var d = poser(bloc, 'div', 'prop-resume-doutes');
+        var t = poser(d, 'p', 'prop-resume-doutes-titre');
+        t.appendChild(icone('attention'));
+        poser(t, 'span', null, TXT.propResumeDoutes);
+        var ul = poser(d, 'ul', null);
+        r.doutes.forEach(function (x) {
+          poser(ul, 'li', 'prop-resume-doute', CODES_RESUME[x.code] ? remplir(CODES_RESUME[x.code], [x.detail]) : String(x.code));
+        });
+      }
+      majResume(p, bloc);
+    }
+    function majResume(p, bloc) {
+      var orig = !!vueOriginale[p.cle];
+      bloc.classList.toggle('prop-resume--original', orig);
+      // La provenance et les doutes sont ceux du résumé généré : l'original ne les montre pas.
+      Array.prototype.forEach.call(bloc.querySelectorAll('.prop-resume-meta'), function (x) { x.hidden = orig; });
+      Array.prototype.forEach.call(bloc.querySelectorAll('.prop-resume-doutes'), function (x) { x.hidden = orig; });
+      bloc.querySelector('.prop-resume-mention').textContent = orig ? TXT.propResumeOriginal : TXT.propResumeGenere;
+      var b = bloc.querySelector('.prop-resume-bascule');
+      b.textContent = orig ? TXT.propResumeVoirGenere : TXT.propResumeVoirOriginal;
+      b.setAttribute('aria-pressed', orig ? 'true' : 'false');
+    }
+    function basculerResume(p, cfg) {
+      vueOriginale[p.cle] = !vueOriginale[p.cle];
+      if (form && form.cle === p.cle) {
+        var i = form.c.ctl[cfg.cle];
+        if (i && typeof i.value === 'string') {
+          i.value = String(valeursAffichees(p).descriptif || '');
+          i.dispatchEvent(new Event('input'));
+        }
+        var bloc = form.element.querySelector('.prop-resume');
+        if (bloc) { majResume(p, bloc); }
+      }
+      rendreTable();
     }
     // Un champ en doute : bordure, icône, le doute, la valeur lue à côté, et la recommandation.
     function marquerDoutes(p, cfg, conteneur) {

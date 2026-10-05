@@ -38,6 +38,7 @@ const kirby = require('./kirby-contenu');
 const dateApercu = require('./date-apercu');
 const autreRevue = require('./autre-revue');
 const propositions = require('./propositions');
+const resumes = require('./resumes');
 const { moiCoedition } = require('./coedition-hote');
 // Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
 // PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
@@ -312,6 +313,12 @@ function textesDocumentation() {
     propDouteValeurHorsListe: T('doc.prop.doute.valeurHorsListe'),
     propDouteChampIntrouvable: T('doc.prop.doute.champIntrouvable'),
     propDouteTexteTronque: T('doc.prop.doute.texteTronque'), propDoutePersonneNommee: T('doc.prop.doute.personneNommee'),
+    // Le résumé généré par Mistral (lib/resumes.js).
+    propResumeGenere: T('doc.prop.resume.genere'), propResumeOriginal: T('doc.prop.resume.original'),
+    propResumeVoirOriginal: T('doc.prop.resume.voirOriginal'), propResumeVoirGenere: T('doc.prop.resume.voirGenere'),
+    propResumeMeta: T('doc.prop.resume.meta'), propResumeSansOriginal: T('doc.prop.resume.sansOriginal'),
+    propResumeNombre: T('doc.prop.resume.nombre'), propResumeLongueur: T('doc.prop.resume.longueur'),
+    propResumeTronquee: T('doc.prop.resume.tronquee'), propResumeDoutes: T('doc.prop.resume.doutes'),
     propDouteSuggestion: T('doc.prop.doute.suggestion'), propDouteLu: T('doc.prop.doute.lu'),
     propDouteAbsent: T('doc.prop.doute.absent'), propLangue: T('doc.prop.langue'),
     propValeurs: T('doc.prop.valeurs'), propBrut: T('doc.prop.brut'),
@@ -655,6 +662,20 @@ function filtreServi(lu, filtre) {
   return Object.assign({}, filtre, { cles: propositions.filtrerSurTerme(duType, filtre).map((p) => p.cle) });
 }
 
+// Ce que la vue montre d'un résumé généré : le texte, d'où il vient, et ses doutes.
+function resumePourVue(r) {
+  if (!r) { return null; }
+  return { texte: r.texte, modele: String(r.modele || ''), prompt: String(r.prompt || ''), date: String(r.date || ''),
+    mode: String(r.mode || ''), doutes: Array.isArray(r.doutes) ? r.doutes : [] };
+}
+// Les résumés générés valides des propositions en attente, cle -> texte : ce qu'une acceptation écrit.
+function descriptifsGeneres(racineArbreVal, langue) {
+  const lu = propositions.listerPropositions(racineArbreVal, langue).propositions;
+  const res = new Map();
+  for (const [cle, r] of resumes.resumesValides(racineArbreVal, langue, lu)) { res.set(cle, r.texte); }
+  return res;
+}
+
 // donneesPropositions(racineArbreVal, langue, revueJeton, resultat?, connues?, extra?) -> le message
 // PROP_DONNEES. `connues` (une Map) retient les propositions servies, par cle. `extra` : { filtre,
 // ongletDemande, demandeGeste }, ce que le panneau garde ou vient de faire.
@@ -663,6 +684,8 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
   const lu = propositions.listerPropositions(racineArbreVal, langue);
   const finesse = finesseParType(racineArbreVal, langue, lu);
   const td = termesEtDemandes(racineArbreVal, langue, lu);
+  // Le résumé généré qui vaut encore pour sa source : la vue l'affiche par défaut.
+  const generes = resumes.resumesValides(racineArbreVal, langue, lu.propositions);
   if (connues) {
     connues.clear();
     for (const p of lu.propositions) { connues.set(p.cle, p); }
@@ -681,6 +704,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
       cas: p.cas, raisons: p.raisons, bloquants: propositions.bloquants(p),
       // Le cran le plus haut où elle reste visible (10 sans crans ou sans note).
       cranMax: propositions.cranMax(p, finesse.vue.crans[p.dossier || p.moissonneur] || null),
+      resume: resumePourVue(generes.get(p.cle)),
       // « Proposer aussi à l'autre revue » : cochée d'office pour la Confédération seule.
       aussi: (p.valeurs || {}).canton === 'CH',
       doublonFiche: fiche ? { valeurs: fiche.valeurs, numero: nomNumeroPour(racineArbreVal, fiche.ausgabe) } : null
@@ -1036,7 +1060,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       const geste = dansNumero ? 'accepte' : 'garde';
       if (dansNumero && refuserSiVerrouille()) { refusVerrou(geste); return; }
       resultat = Object.assign({ geste: geste }, propositions.accepterLot(racineArbreVal, langue, msg.demandes,
-        { ausgabeId: dansNumero ? ausgabeId : '', depuisDetail: !!msg.depuisDetail }));
+        { ausgabeId: dansNumero ? ausgabeId : '', depuisDetail: !!msg.depuisDetail,
+          descriptifs: descriptifsGeneres(racineArbreVal, langue) }));
       recharger = resultat.faites.length > 0;
       derniersAcceptes = resultat.faites.slice();
     } else if (msg.type === MSG.PROP_RECREER) {
