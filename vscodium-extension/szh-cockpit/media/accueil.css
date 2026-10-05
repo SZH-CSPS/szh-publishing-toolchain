@@ -410,3 +410,10 @@ body {
 .accueil-resumes-progression progress { width: 12rem; accent-color: var(--accent); }
 .accueil-resumes .szh-notif { margin: var(--e2) 0 0; }
 #regl-mistral .accueil-tache-action { display: flex; gap: var(--e2); }
+
+/* ═══ Paramètres : « Moisson mensuelle » et « Données FNS » ═════════════════════════ */
+.accueil-moisson[hidden] { display: none; }
+.accueil-moisson .accueil-tache-action { display: flex; gap: var(--e2); }
+.accueil-moisson .szh-notif { margin: var(--e2) 0 0; }
+.accueil-moisson-etat, .accueil-moisson-compte { font-variant-numeric: tabular-nums; }
+.accueil-moisson-nom { font-size: var(--t-libelle); }

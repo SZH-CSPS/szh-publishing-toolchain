@@ -317,7 +317,7 @@ if (-not $toolkitOk) {
     # Même liste que $dossiersGeres (Remove-SzhToolkitOrphelins ci-dessus) : sans
     # livre-template, new-livre.ps1 s'arrêterait sur « Gabarit de livre introuvable » sur un
     # poste installé par ce repli.
-    foreach ($d in 'pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows') {
+    foreach ($d in 'pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows', 'moissonneurs') {
       $src  = Join-Path $racineDepot $d
       $dest = Join-Path $SzhToolkit $d
       # Le dossier de destination est créé d'abord, puis c'est son contenu (le *) qui est

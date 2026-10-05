@@ -4,6 +4,7 @@ Le score ne dépend que de la bande (la catégorie du classement) et d'une modul
 hasard, aucun recouvrement entre bandes. `note_calibree` n'est jamais écrit : la note n'est pas calibrée sur des jugements.
 """
 import bisect
+import contextlib
 import copy
 import dataclasses
 import datetime
@@ -108,8 +109,39 @@ def _classer(lex, a, texte, extrait, config):
                               vivier_large=bool(cl.get('vivier_large', False)))
 
 
+# Actif dans `une_seule_fois()` : {fonction: (lexique, réglages, arguments, résultat)} du dernier appel.
+_dernier = None
+
+
+@contextlib.contextmanager
+def une_seule_fois():
+    """Dans ce bloc, un classement ou un relevé de termes redemandé tel quel n'est pas recalculé : `finesse_de` et
+    `evaluer` classent le même texte, avec le même lexique (comparé par identité : `sans_terme` en fait une copie)."""
+    global _dernier
+    ancien, _dernier = _dernier, {}
+    try:
+        yield
+    finally:
+        _dernier = ancien
+
+
+def _une_fois(nom, lex, config, args, calcul):
+    if _dernier is None:
+        return calcul()
+    vu = _dernier.get(nom)
+    if vu is not None and vu[0] is lex and vu[1] is config and vu[2] == args:
+        return vu[3]
+    resultat = calcul()
+    _dernier[nom] = (lex, config, args, resultat)
+    return resultat
+
+
 def _evaluer(lex, a, texte, extrait, config):
     """(Resultat, score, catégorie) ; score 0 et catégorie 0 si la proposition n'en est plus une."""
+    return _une_fois('evaluer', lex, config, (a, texte, extrait), lambda: _evaluer_calcul(lex, a, texte, extrait, config))
+
+
+def _evaluer_calcul(lex, a, texte, extrait, config):
     res = _classer(lex, a, texte, extrait, config)
     if res.verdict == 'ecarte':
         return res, 0.0, 0
@@ -122,6 +154,10 @@ def _evaluer(lex, a, texte, extrait, config):
 
 def termes_de(lex, a, texte, extrait, cat):
     """[(terme, langue, role, ou)] de la proposition, un terme une seule fois à son emplacement le plus fort."""
+    return _une_fois('termes', lex, None, (a, texte, extrait, cat), lambda: _termes_calcul(lex, a, texte, extrait, cat))
+
+
+def _termes_calcul(lex, a, texte, extrait, cat):
     titre = a['title']
     trouves = {}
     ordre = {'titre': 0, 'texte': 1, 'extrait': 1}

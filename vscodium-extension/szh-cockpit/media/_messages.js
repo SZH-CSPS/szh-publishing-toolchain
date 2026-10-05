@@ -170,5 +170,14 @@ SZH.MSG = Object.freeze({
   // ACCUEIL_RESUMES_ARRETER ; l'hôte répond par ACCUEIL_RESUMES_ETAT, jamais avec la clé.
   ACCUEIL_MISTRAL_CLE: 'accueilMistralCle', ACCUEIL_MISTRAL_TESTER: 'accueilMistralTester',
   ACCUEIL_MISTRAL_MODELE: 'accueilMistralModele', ACCUEIL_RESUMES_LANCER: 'accueilResumesLancer',
-  ACCUEIL_RESUMES_ARRETER: 'accueilResumesArreter', ACCUEIL_RESUMES_ETAT: 'accueilResumesEtat'
+  ACCUEIL_RESUMES_ARRETER: 'accueilResumesArreter', ACCUEIL_RESUMES_ETAT: 'accueilResumesEtat',
+  // Moisson mensuelle et données FNS (lib/moisson-hote.js) : ACCUEIL_MOISSON_PREPARER estime la durée,
+  // ACCUEIL_FNS_CHOISIR ouvre le sélecteur de fichier dans l'hôte, ACCUEIL_MOISSON_LANCER confirme l'un
+  // ou l'autre, ACCUEIL_MOISSON_ANNULER y renonce, ACCUEIL_MOISSON_ARRETER demande l'arrêt ;
+  // ACCUEIL_FNS_LIEN ouvre data.snf.ch et ACCUEIL_MOISSON_PROPOSITIONS la vue Propositions. L'hôte
+  // répond par ACCUEIL_MOISSON_ETAT.
+  ACCUEIL_MOISSON_PREPARER: 'accueilMoissonPreparer', ACCUEIL_MOISSON_LANCER: 'accueilMoissonLancer',
+  ACCUEIL_MOISSON_ANNULER: 'accueilMoissonAnnuler', ACCUEIL_MOISSON_ARRETER: 'accueilMoissonArreter',
+  ACCUEIL_MOISSON_PROPOSITIONS: 'accueilMoissonPropositions', ACCUEIL_MOISSON_ETAT: 'accueilMoissonEtat',
+  ACCUEIL_FNS_CHOISIR: 'accueilFnsChoisir', ACCUEIL_FNS_LIEN: 'accueilFnsLien'
 });

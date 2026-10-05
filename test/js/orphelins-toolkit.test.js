@@ -186,6 +186,19 @@ test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copi
     + livresNonGeres.join(', '));
 });
 
+test('la boucle de repli de bootstrap.ps1 copie les mêmes dossiers que $dossiersGeres, moissonneurs compris', () => {
+  // Un poste installé par le repli hors ligne doit recevoir tout le toolkit : sans
+  // moissonneurs, le bouton de la moisson mensuelle échouerait sur ce poste-là seulement.
+  const mGeres = COMMUN.match(/\$dossiersGeres = @\(([^)]*)\)/);
+  assert.ok(mGeres, 'szh-common.ps1 : $dossiersGeres a changé de forme');
+  const dossiersGeres = mGeres[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
+  const mBoucle = BOOTSTRAP.match(/foreach \(\$d in ('[^)]*')\) \{\r\n\s*\$src  = Join-Path \$racineDepot \$d/);
+  assert.ok(mBoucle, 'bootstrap.ps1 : la boucle de repli a changé de forme, la comparaison ne sait plus la lire');
+  const copies = mBoucle[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
+  assert.deepStrictEqual(copies, dossiersGeres);
+  assert.ok(dossiersGeres.indexOf('moissonneurs') !== -1, '$dossiersGeres ne connaît pas moissonneurs');
+});
+
 // ---- Le second défaut : update-launcher.ps1 sans mutex ----
 
 test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le relâche partout', () => {

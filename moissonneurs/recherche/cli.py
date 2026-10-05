@@ -9,6 +9,7 @@ import re
 import sys
 import tomllib
 
+import creneau
 import partage
 
 from . import db, decisions, etat, moisson, propositions, tout
@@ -177,7 +178,7 @@ def cmd_estimer(config, con, args):
 
 
 def cmd_tout(config, con, args):
-    ouvrir = publier = None
+    ouvrir = publier = borne = None
     if not args.base:      # la passe mensuelle : l'état partagé, chargé en mémoire, puis publié en différentiel
         racine, poste = config['_racine'], partage.cle_poste(args.poste, args.compte)
 
@@ -186,8 +187,11 @@ def cmd_tout(config, con, args):
 
         def publier(delta):
             etat.publier_journal(racine, poste, delta)
+        if not args.hors_ligne:
+            borne = partage.budget_partage(racine, NOM, args.poste, args.compte, int(config.get('budget', 0) or 0),
+                                           creneau.MARGE_REQUETES, args.plafond)
     _, code = tout.tout(config, emit_json, hors_ligne=args.hors_ligne, a_blanc=args.a_blanc, ouvrir=ouvrir,
-                        publier=publier)
+                        publier=publier, borne=borne)
     return code
 
 

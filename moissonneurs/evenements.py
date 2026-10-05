@@ -10,10 +10,13 @@ import time
 
 FORMAT = 'pronto-moisson/1'
 MOISSONNEURS = ('parlement', 'recherche')
-DECLENCHEURS = ('cockpit', 'raccourci', 'cli')
+# Qui lance une passe (`--declencheur`) ; un import de l'export FNS se déclare `import-fns`.
+APPELANTS = ('cockpit', 'raccourci', 'cli')
+DECLENCHEURS = APPELANTS + ('import-fns',)
 INTERROMPUS = ('budget', '403', 'arret')
 ETATS_CRENEAU = ('pris', 'refuse', 'repris-perime', 'retire')
-RAISONS_REFUS = ('deja-en-cours', 'budget-epuise', 'etat-absent', 'racine-absente', 'config-invalide')
+RAISONS_REFUS = ('deja-en-cours', 'budget-epuise', 'etat-absent', 'racine-absente', 'config-invalide',
+                 'fichier-invalide')
 CODES_MOISSONNEUR = (0, 1, 2, 3)
 CODES_PASSE = (0, 1, 2, 3, 4, 5)
 # Du moins grave au plus grave ; 4 ne vient que du créneau, avant toute passe.
@@ -175,14 +178,14 @@ def valider(evt):
         ecarts.append(f'format attendu {FORMAT}')
     schema = TYPES.get(evt.get('type'))
     if schema is None:
-        return ecarts + [f"type inconnu : {evt.get('type')!r}"]
+        return ecarts + [f"type inconnu : {evt.get('type')!r}"]
     for champ, f in schema.items():
         if champ not in evt:
-            ecarts.append(f'champ manquant : {champ}')
+            ecarts.append(f'champ manquant : {champ}')
         elif not f(evt[champ]):
-            ecarts.append(f'valeur hors contrat : {champ} = {evt[champ]!r}')
+            ecarts.append(f'valeur hors contrat : {champ} = {evt[champ]!r}')
     for champ in set(evt) - set(schema) - {'format', 'type'}:
-        ecarts.append(f'champ hors contrat : {champ}')
+        ecarts.append(f'champ hors contrat : {champ}')
     return ecarts
 
 

@@ -1560,6 +1560,100 @@
     var moiss = poser(zones, 'section', 'accueil-moissonnage');
     moiss.id = 'regl-moissonnage';
     moiss.hidden = true;
+    // Moisson mensuelle et données FNS : visibles sur tout poste, sous le Moissonnage. L'hôte envoie
+    // ses phrases toutes faites ; la page ne calcule ni durée ni budget.
+    var moissonZone = poser(zones, 'section', 'accueil-moisson');
+    moissonZone.id = 'regl-moisson';
+    moissonZone.hidden = true;
+    var etatMoisson = null;
+    function boutonMoisson(parent, texte, type, cls) {
+      var b = SZH.bouton(texte, function () { api.postMessage({ type: type }); }, cls);
+      parent.appendChild(b);
+      return b;
+    }
+    function rendreMoisson(e) {
+      if (e) { etatMoisson = e; }
+      var x = etatMoisson;
+      moissonZone.textContent = '';
+      moissonZone.hidden = !x;
+      if (!x) { return; }
+      var X = x.textes;
+      if (moiss.hidden) { poser(moissonZone, 'h2', 'accueil-intertitre', X.section); }
+      var l = poser(moissonZone, 'div', 'accueil-taches');
+      var r = rangee(l, X.titre, X.aide);
+      r.el.classList.add('accueil-moiss-large', 'accueil-moisson-mensuelle');
+      x.moissonneurs.forEach(function (m) {
+        var p = poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-etat');
+        poser(p, 'strong', '', m.libelle + ' · ');
+        p.appendChild(document.createTextNode(m.ligne));
+      });
+      if (x.creneau && !x.passe) { r.el.appendChild(SZH.notif('info', x.creneau)); }
+      var prep = x.preparation;
+      if (x.passe && x.passe.genre === 'mensuelle') { rendrePasse(r, x.passe, X); }
+      else if (prep && prep.genre === 'mensuelle') { rendrePreparation(r, prep, X); }
+      else {
+        var go = boutonMoisson(r.action, x.test ? X.lancerTest : X.lancer, MSG.ACCUEIL_MOISSON_PREPARER,
+          'szh-bouton--principal accueil-moisson-lancer');
+        go.disabled = !!x.raison || !!x.passe || !!prep;
+        if (x.raison) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-raison', x.raison); }
+      }
+      if (x.bilan && !x.passe && !prep && (x.bilan.genre || 'mensuelle') === 'mensuelle') { rendreBilan(r, x.bilan, X); }
+      if (!x.fns) { return; }
+      var f = rangee(l, X.fnsTitre, X.fnsAide);
+      f.el.classList.add('accueil-moiss-large', 'accueil-moisson-fns');
+      var lien = poser(f.el, 'p', 'accueil-tache-aide');
+      var a = poser(lien, 'a', 'accueil-moisson-fns-lien', X.fnsLien);
+      a.href = '#';
+      a.addEventListener('click', function (ev) { ev.preventDefault(); api.postMessage({ type: MSG.ACCUEIL_FNS_LIEN }); });
+      lien.appendChild(document.createTextNode(' · ' + X.fnsRobots));
+      poser(f.el, 'p', 'accueil-tache-aide', X.fnsTelechargements);
+      poser(f.el, 'p', 'accueil-tache-aide accueil-moisson-fns-dernier', x.fns.dernier);
+      poser(f.el, 'p', 'accueil-tache-aide accueil-moisson-fns-frequence', X.fnsFrequence + ' ' + x.fns.prochaine);
+      if (x.passe && x.passe.genre === 'import-fns') { rendrePasse(f, x.passe, X); }
+      else if (prep && prep.genre === 'import-fns') { rendrePreparation(f, prep, X); }
+      else {
+        var imp = boutonMoisson(f.action, X.fnsImporter, MSG.ACCUEIL_FNS_CHOISIR, 'accueil-moisson-fns-importer');
+        imp.disabled = !!x.passe || !!prep || !!x.creneau || !!x.fns.raison;
+        if (x.fns.raison) { poser(f.el, 'p', 'accueil-tache-aide accueil-moisson-raison', x.fns.raison); }
+      }
+      if (x.bilan && !x.passe && !prep && x.bilan.genre === 'import-fns') { rendreBilan(f, x.bilan, X); }
+    }
+    function rendrePreparation(r, prep, X) {
+      var n = SZH.notif(prep.etat === 'confirmation' ? 'attention' : 'info', prep.texte);
+      n.classList.add('accueil-moisson-confirmation');
+      r.el.appendChild(n);
+      if (prep.etat !== 'confirmation') { return; }
+      boutonMoisson(r.action, X.annuler, MSG.ACCUEIL_MOISSON_ANNULER, 'accueil-moisson-annuler');
+      boutonMoisson(r.action, X.confirmer, MSG.ACCUEIL_MOISSON_LANCER, 'szh-bouton--principal accueil-moisson-confirmer');
+    }
+    function rendrePasse(r, p, X) {
+      // Un seul message par corps ou source pour le lecteur d'écran : les compteurs ne sont pas annoncés.
+      var statut = poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-statut', p.statut);
+      statut.setAttribute('role', 'status');
+      p.lignes.forEach(function (ligne) {
+        var pr = poser(r.el, 'div', 'accueil-resumes-progression accueil-moisson-ligne');
+        var barre = poser(pr, 'progress', '');
+        barre.max = 1;
+        barre.value = ligne.fraction;
+        barre.setAttribute('aria-label', ligne.libelle);
+        poser(pr, 'span', 'accueil-moisson-nom', ligne.libelle + (ligne.etape ? ' · ' + ligne.etape : ''));
+        poser(pr, 'span', 'accueil-tache-aide accueil-moisson-compte', ligne.detail);
+        if (ligne.attente) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-attente', ligne.attente); }
+        if (ligne.lot) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-lot', ligne.lot); }
+      });
+      p.avertissements.forEach(function (a) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-avert', '⚠ ' + a); });
+      if (p.arretDemande) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-arret', X.arretDemande); }
+      else if (!p.peutArreter) { poser(r.el, 'p', 'accueil-tache-aide', X.arretApres); }
+      var stop = boutonMoisson(r.action, X.arreter, MSG.ACCUEIL_MOISSON_ARRETER, 'accueil-moisson-arreter');
+      stop.disabled = !p.peutArreter;
+    }
+    function rendreBilan(r, b, X) {
+      var n = SZH.notif(b.ton || (b.ok ? 'ok' : 'attention'), b.texte);
+      n.classList.add('accueil-moisson-bilan');
+      r.el.appendChild(n);
+      (b.lots || []).concat(b.details || []).forEach(function (t) { poser(r.el, 'p', 'accueil-tache-aide accueil-moisson-bilan-ligne', t); });
+      if (b.lien) { boutonMoisson(r.action, X.voirPropositions, MSG.ACCUEIL_MOISSON_PROPOSITIONS, 'accueil-moisson-propositions'); }
+    }
     // Raccourcir les résumés : sous le Moissonnage, la passe Mistral sur les propositions en attente.
     var resumesZone = poser(zones, 'section', 'accueil-resumes');
     resumesZone.id = 'regl-resumes';
@@ -2337,6 +2431,7 @@
       }
       if (msg.type === MSG.PROTEGES) { protegesEtat = msg; appliquerVerrou(); return true; }
       if (msg.type === MSG.ACCUEIL_RESUMES_ETAT) { mistral.rendre(msg); rendreResumes(msg); return true; }
+      if (msg.type === MSG.ACCUEIL_MOISSON_ETAT) { rendreMoisson(msg); return true; }
       if (msg.type !== MSG.VALEURS) { return false; }
       afficherErreur('');
       cocher(msg.valeurs || {});
@@ -2348,6 +2443,7 @@
       rendreSuggestions(msg.suggInterface);
       rendreMoissonnage(msg.moissonnage || null);
       rendreResumes(null);
+      rendreMoisson(null);
       if (msg.proteges) { protegesEtat = msg.proteges; }
       if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
       // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs.

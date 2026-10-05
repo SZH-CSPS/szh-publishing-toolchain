@@ -86,10 +86,11 @@ def analyser(argv):
     commun.add_argument('--racine')
     commun.add_argument('--poste')
     commun.add_argument('--compte')
-    commun.add_argument('--declencheur', choices=ev.DECLENCHEURS, default='cli')
+    commun.add_argument('--declencheur', choices=ev.APPELANTS, default='cli')
     commun.add_argument('--evenements', choices=('json', 'console'))
     commun.add_argument('--attente-creneau', type=float, default=creneau.ATTENTE_S)
     commun.add_argument('--racine-test', action='store_true')
+    commun.add_argument('--arret')
     passe = Analyseur(add_help=False)
     passe.add_argument('--hors-ligne', action='store_true')
     passe.add_argument('--a-blanc', action='store_true')
@@ -101,15 +102,20 @@ def analyser(argv):
     s.add_argument('moissonneur')
     s = sous.add_parser('estimer', parents=[commun])
     s.add_argument('moissonneur')
+    s = sous.add_parser('import-fns', parents=[commun])
+    s.add_argument('--fichier')
     args = p.parse_args(argv)
-    for option in ('racine', 'poste', 'compte'):
+    for option in ('racine', 'poste', 'compte') + (('fichier',) if args.commande == 'import-fns' else ()):
         if not getattr(args, option):
             raise Refus('config-invalide', f'option --{option} manquante')
     if args.commande == 'mensuelle':
         args.moissonneurs = [args.seulement] if args.seulement else list(ORDRE)
+    elif args.commande == 'import-fns':
+        args.moissonneurs = ['recherche']
+        args.fichier = chemin_local(args.fichier) if os.name == 'posix' else args.fichier
     else:
         if args.moissonneur not in ORDRE:
-            raise Refus('config-invalide', f'moissonneur inconnu : {args.moissonneur}')
+            raise Refus('config-invalide', f'moissonneur inconnu : {args.moissonneur}')
         args.moissonneurs = [args.moissonneur]
     for absent in ('hors_ligne', 'a_blanc'):
         setattr(args, absent, getattr(args, absent, False))
@@ -163,7 +169,9 @@ class Passe:
         self.cle = creneau.cle(args.poste, args.compte)
         self.enfant, self.courant = None, None
         self.sigints, self.arret_annonce = 0, False
-        self.ecrits = {}
+        self.ecrits, self.lots, self.fins = {}, {}, {}
+        # Un import FNS : options de plus pour l'enfant, et aucun compteur (il ne fait aucune requête).
+        self.opts_enfant, self.sans_compteur = [], False
 
     def _python(self, m, commande, *opts):
         return [sys.executable, '-B', '-m', m, commande, '--racine', self.chemins['racine'], '--poste',
@@ -223,7 +231,7 @@ class Passe:
 
     def _compter(self, m, requetes):
         """Le compteur du mois de CE poste, après chaque étape et en fin de moissonneur."""
-        if self.args.hors_ligne:
+        if self.args.hors_ligne or self.sans_compteur:
             return
         total = self.budgets[m]['propre'] + requetes
         if self.ecrits.get(m) == total:
@@ -233,6 +241,22 @@ class Passe:
             self.ecrits[m] = total
         except OSError as e:
             self.emettre(ev.avertissement(m, f'compteur de requêtes non écrit · {ev.citer(e)}'))
+
+    def _bilan(self, m, requetes, fin_m):
+        """Le bilan de la passe de `m`, lu par le cockpit de tous les postes (docs/FORMAT-MOISSONS.md). Un import FNS a
+        sa propre note."""
+        if self.sans_compteur:
+            return
+        lot = self.lots.get(m)
+        try:
+            partage.ecrire_bilan_passe(self.chemins['moissons'], m, self.mois, self.cle, {
+                'poste': self.args.poste, 'compte': self.args.compte, 'declencheur': self.args.declencheur,
+                'debut': creneau.iso(self.debut_passe), 'fin': creneau.iso(self.maintenant()), 'requetes': requetes,
+                'code': fin_m['code'], 'interrompu': fin_m['interrompu'], 'lot': lot['chemin'] if lot else None,
+                'propositions': lot['propositions'] if lot else 0, 'hors_ligne': self.args.hors_ligne,
+                'a_blanc': self.args.a_blanc})
+        except OSError as e:
+            self.emettre(ev.avertissement(m, f'bilan de passe non écrit · {ev.citer(e)}'))
 
     def _queue_journal(self, journal):
         try:
@@ -251,7 +275,7 @@ class Passe:
         opts = ['--arret', self.arret, '--cache', self.cache]
         if plafond is not None:
             opts += ['--plafond', str(plafond)]
-        opts += ['--hors-ligne'] * self.args.hors_ligne + ['--a-blanc'] * self.args.a_blanc
+        opts += ['--hors-ligne'] * self.args.hors_ligne + ['--a-blanc'] * self.args.a_blanc + self.opts_enfant
         horodatage = self.maintenant().strftime('%Y%m%dT%H%M%S')
         os.makedirs(self.journaux, exist_ok=True)
         journal = open(os.path.join(self.journaux, f'{horodatage}-{os.getpid()}-{m}.log'), 'w+b')
@@ -264,6 +288,8 @@ class Passe:
                         self.emettre(e)
                         if e['type'] == 'etape':
                             self._compter(m, trad.requetes)
+                        elif e['type'] == 'lot':
+                            self.lots[m] = e
                     if self.sigints and not self.arret_annonce:
                         self._annoncer_arret()
             except ArretForce:
@@ -274,6 +300,8 @@ class Passe:
                 queue = self._queue_journal(journal)
                 self.emettre(ev.avertissement(m, f'fin du journal d’erreurs · {ev.citer(queue or "vide", QUEUE_JOURNAL)}'))
             self.emettre(fin_m)
+            self.fins[m] = fin_m
+            self._bilan(m, trad.requetes, fin_m)
         finally:
             self.enfant = None
             self._compter(m, trad.requetes)
@@ -295,11 +323,20 @@ class Passe:
         id_passe = f"{self.maintenant().strftime('%Y%m%dT%H%M%S')}-{os.getpid()}"
         local = os.path.join(DOSSIER_LOCAL, id_passe)
         self.arret, self.cache = os.path.join(local, 'arret'), os.path.join(local, 'cache')
+        if self.args.arret:
+            # Le fichier d'arrêt de l'appelant (le cockpit) : un fichier déjà là vient d'une passe ancienne.
+            self.arret = chemin_local(self.args.arret) if os.name == 'posix' else self.args.arret
+            try:
+                os.remove(self.arret)
+            except FileNotFoundError:
+                pass
         self.journaux = os.path.join(DOSSIER_LOCAL, 'journaux')
         os.makedirs(self.cache, exist_ok=True)
         try:
             if self.args.commande == 'estimer':
                 return self._estimer_seul()
+            if self.args.commande == 'import-fns':
+                return self._import_fns(t0)
             return self._passe(t0)
         except Exception as e:      # dernier filet : la passe dit sa panne au lieu de mourir en silence
             self.emettre(ev.avertissement(None, f'erreur inattendue · {ev.citer(f"{type(e).__name__}: {e}")}'))
@@ -339,7 +376,7 @@ class Passe:
         # Sans socle publié depuis le poste de développement, un moissonneur ne part pas : il reprendrait tout de zéro.
         sans_etat = [m for m in presents if not partage.etat_present(self.chemins['racine'], m)]
         if presents and len(sans_etat) == len(presents):
-            return self._refuser('etat-absent', f"état partagé absent · {', '.join(sans_etat)} : publier le socle "
+            return self._refuser('etat-absent', f"état partagé absent · {', '.join(sans_etat)} : publier le socle "
                                                   "depuis le poste de développement")
         for m in sans_etat:
             presents.remove(m)
@@ -372,11 +409,17 @@ class Passe:
                 break
             n = est['requetes'] if self.plafonds[m] is None else min(est['requetes'], self.plafonds[m])
             duree += n * est['delai_s']
+        budget_mois = {m: {k: v for k, v in self.budgets[m].items() if k != 'propre'} for m in presents}
+        return self._sous_creneau(t0, presents, duree, a.declencheur, budget_mois, avertissements)
+
+    def _sous_creneau(self, t0, presents, duree, declencheur, budget_mois, avertissements, apres=None):
+        """Prend le créneau, lance chaque moissonneur, rend le créneau. `apres(codes)` tourne encore sous créneau."""
+        a = self.args
 
         def signaler(etat, annonce):
             self.emettre(ev.creneau(etat, annonce['poste'], annonce['compte'], annonce['debut']))
         try:
-            pris = prendre_creneau(self.chemins, a.poste, a.compte, a.declencheur, presents, duree,
+            pris = prendre_creneau(self.chemins, a.poste, a.compte, declencheur, presents, duree,
                                    a.attente_creneau, self.maintenant, signaler)
         except creneau.Occupe as o:
             autre = o.autre
@@ -392,10 +435,9 @@ class Passe:
             ancien = signal.signal(signal.SIGINT, self._sur_sigint)
         codes = []
         try:
-            self.emettre(ev.debut(presents, {m: self.estimations[m][0] for m in presents}, a.declencheur,
-                                  creneau.iso(self.maintenant()),
-                                  {m: {k: v for k, v in self.budgets[m].items() if k != 'propre'}
-                                   for m in presents}, a.racine_test))
+            self.debut_passe = self.maintenant()
+            self.emettre(ev.debut(presents, {m: self.estimations[m][0] for m in presents}, declencheur,
+                                  creneau.iso(self.debut_passe), budget_mois, a.racine_test))
             for m, message in avertissements:
                 self.emettre(ev.avertissement(m, message))
             for m in presents:
@@ -404,6 +446,8 @@ class Passe:
                     codes.append(3)
                     continue
                 codes.append(self.lancer(m))
+            if apres is not None:
+                apres(codes)
         except ArretForce:
             codes.append(3)
         except Exception as e:
@@ -419,6 +463,51 @@ class Passe:
         code = ev.plus_grave(codes)
         self.emettre(ev.fin(code, round(max(self.horloge() - t0, 0), 1)))
         return code
+
+    def _import_fns(self, t0):
+        """L'export FNS téléchargé à la main : contrôlé avant tout, lu par la recherche sous créneau, sans requête."""
+        from recherche import import_fns
+        from recherche.sources import snf
+        a, m = self.args, 'recherche'
+        if not self.present(m):
+            return self._refuser('config-invalide', f'moissonneur {m} absent de cette installation')
+        try:
+            snf.controler_entete(a.fichier)
+        except snf.FichierInvalide as e:
+            return self._refuser('fichier-invalide', str(e))
+        if not partage.etat_present(self.chemins['racine'], m):
+            return self._refuser('etat-absent', f'état partagé absent · {m} : publier le socle depuis le poste de '
+                                                'développement')
+        try:
+            fichier = snf.controler(a.fichier)
+        except snf.FichierInvalide as e:
+            return self._refuser('fichier-invalide', str(e))
+        except OSError as e:
+            return self._refuser('fichier-invalide', f'fichier illisible · {ev.citer(e)}')
+        precedente = import_fns.derniere(self.chemins['racine'])
+        avertissements = [(m, x) for x in [import_fns.plus_ancien(fichier, precedente)] if x]
+        if fichier['illisibles']:
+            avertissements.append((m, f"{fichier['illisibles']} ligne(s) illisible(s) sur {fichier['lignes']}, "
+                                      'passée(s)'))
+        self.estimations = {m: (ev.estimation_de({'requetes': 0, 'delai_s': 0}), [], None)}
+        self.plafonds = {m: 0}           # aucune requête : une seule ferait sortir l'enfant en « budget »
+        self.opts_enfant = ['--sources', 'snf', '--fichier-snf', a.fichier]
+        self.sans_compteur = True
+
+        def noter(codes):
+            fin_m = self.fins.get(m)
+            if fin_m is None or fin_m['code'] not in (0, 1) or fin_m['plantage'] \
+                    or any(e['source'] == 'snf' for e in fin_m['sources_en_echec']):
+                self.emettre(ev.avertissement(m, 'import inachevé : aucune note d’import écrite'))
+                return
+            lot = self.lots.get(m)
+            try:
+                import_fns.ecrire(self.chemins['racine'], a.poste, a.compte, creneau.iso(self.maintenant()), fichier,
+                                  lot['propositions'] if lot else 0, lot['chemin'] if lot else None, precedente)
+            except OSError as e:
+                self.emettre(ev.avertissement(m, f'note d’import non écrite · {ev.citer(e)}'))
+                codes.append(1)
+        return self._sous_creneau(t0, [m], 0, 'import-fns', {}, avertissements, apres=noter)
 
 
 def principal(argv=None, sortie=None, entree=None, horloge=time.monotonic, maintenant=creneau.maintenant_utc,

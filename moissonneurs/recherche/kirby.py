@@ -3,28 +3,10 @@
 import os
 import re
 
-SEPARATEUR = '----'
+from commun import lire_txt
+
 DOSSIER_TYPE = 'forschung'
 TEMPLATE = 'recherche'
-
-
-def lire_txt(texte):
-    """Parseur minimal : {cle-minuscule: valeur}, title et uuid compris."""
-    champs = {}
-    for morceau in texte.replace('\r\n', '\n').rstrip('\n').split('\n\n' + SEPARATEUR + '\n\n'):
-        m = re.match(r'^([A-Za-z0-9_]+):[ \t]?(.*)$', morceau.split('\n', 1)[0])
-        if not m:
-            continue
-        reste = morceau.split('\n', 1)[1] if '\n' in morceau else None
-        if reste is None:
-            valeur = m.group(2)
-        elif m.group(2).strip() == '':
-            valeur = reste[1:] if reste.startswith('\n') else reste
-        else:
-            valeur = m.group(2) + '\n' + reste
-        champs[m.group(1).lower()] = '\n'.join(
-            SEPARATEUR if l == '\\' + SEPARATEUR else l for l in valeur.split('\n'))
-    return champs
 
 
 def fiches_existantes(racine_fiches):

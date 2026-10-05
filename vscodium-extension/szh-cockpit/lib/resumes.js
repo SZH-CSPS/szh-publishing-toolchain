@@ -15,6 +15,8 @@ const CHEMIN_PROMPTS = path.join(__dirname, '..', 'prompts', 'resume-descriptif.
 // Ce que coute un appel hors du texte source : la sortie et la marge du gabarit, en jetons.
 const JETONS_SORTIE = 300;
 const CARACTERES_PAR_JETON = 3.5;
+// La marque que le moissonneur du parlement pose au bout d'un texte déposé coupé (moissonneurs/parlement/texte.py).
+const SUITE_COUPEE = '[…]';
 
 let promptsCache = null;
 function prompts() {
@@ -49,8 +51,10 @@ function sourceDe(p, P) {
     texte = typeof p.texte_depose === 'string' ? p.texte_depose.trim() : '';
     if (texte === '') { return null; }
   } else { return null; }
-  const tronquee = texte.length > g.plafond_source;
-  return { texte: tronquee ? texte.slice(0, g.plafond_source) : texte, mode: t.mode, tronquee: tronquee };
+  const coupe = texte.length > g.plafond_source;
+  // « […] » en fin de texte déposé : le moissonneur l'a déjà coupé à son plafond.
+  const tronquee = coupe || (t.source === 'texte_depose' && texte.endsWith(SUITE_COUPEE));
+  return { texte: coupe ? texte.slice(0, g.plafond_source) : texte, mode: t.mode, tronquee: tronquee };
 }
 
 // L'exécutif d'une intervention, par le corps de sa cle (`parlement:openparldata:<corps>:…`) :

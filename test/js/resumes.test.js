@@ -87,6 +87,20 @@ test('source : une intervention n’a de résumé que si son lot porte le texte 
   assert.deepStrictEqual([t.tronquee, t.texte.length], [true, resumes.prompts().plafond_source]);
 });
 
+test('source : un texte déposé qui finit par « […] » a été coupé par le moissonneur, d’où le doute source-tronquee', () => {
+  const coupe = 'Le Grand Conseil demande un plan pour l’école inclusive. […]';
+  const s = resumes.sourceDe(intervention('BE', '1', coupe + '\n'));
+  assert.deepStrictEqual([s.tronquee, s.texte], [true, coupe], 'le texte reste entier, il est seulement marqué');
+  const req = resumes.construireRequete(intervention('BE', '1', coupe), 'fr');
+  assert.deepStrictEqual(resumes.doutesDe('Une motion.', req).filter((d) => d.code === 'source-tronquee'),
+    [{ code: 'source-tronquee', detail: String(coupe.length) }]);
+  // « […] » au milieu, ou un descriptif de recherche qui en finit : rien n'a été coupé par le moissonneur.
+  assert.strictEqual(resumes.sourceDe(intervention('BE', '1', 'Il cite « […] » puis conclut.')).tronquee, false);
+  const P = resumes.prompts();
+  const d = 'x'.repeat(P.types.recherche.max) + ' […]';
+  assert.strictEqual(resumes.sourceDe(recherche('a', d)).tronquee, false);
+});
+
 test('requête : le prompt de la langue cible, la consigne du type, la fiche, et rien d’autre que la proposition', () => {
   const p = recherche('a', LONG);
   const req = resumes.construireRequete(p, 'de');

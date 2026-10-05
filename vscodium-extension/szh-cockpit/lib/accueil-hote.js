@@ -19,6 +19,7 @@ const journal = require('./accueil-journal-hote');
 const reglages = require('./accueil-reglages-hote');
 const preproc = require('./accueil-preproc-hote');
 const resumesHote = require('./resumes-hote');
+const moissonHote = require('./moisson-hote');
 const { ouvrirAvecSysteme } = require('./ouvrir-systeme');
 
 const VIEW_TYPE = 'szhAccueil';
@@ -107,6 +108,7 @@ async function envoyerDonnees(panneau) {
   repondre(panneau, await donnees());
   repondre(panneau, reglages.messageValeurs());
   repondre(panneau, resumesHote.etat());
+  repondre(panneau, moissonHote.etat());
 }
 
 // Le dossier s'ouvre dans cette fenêtre, et devient le dernier ouvert. Un export en cours
@@ -157,10 +159,11 @@ async function surMessage(msg, panneau) {
   if (secretariat.surMessage(msg) || journal.surMessage(msg) || preproc.surMessage(msg)) { return; }
   if (msg.type === MSG.ACCUEIL_ONGLET) {
     reglages.surOnglet(msg.onglet, (m) => repondre(panneau, m));
-    if (msg.onglet === 'reglages') { resumesHote.envoyerEtat(); }
+    if (msg.onglet === 'reglages') { resumesHote.envoyerEtat(); moissonHote.surOnglet(); }
     return;
   }
   if (await resumesHote.surMessage(msg)) { return; }
+  if (await moissonHote.surMessage(msg)) { return; }
   if (await reglages.surMessage(msg, (m) => repondre(panneau, m))) { return; }
   if (msg.type === MSG.ACCUEIL_OUVRIR) {
     if (cheminsConnus.has(msg.chemin)) { await ouvrirDossier(msg.chemin); }
@@ -227,6 +230,12 @@ function configurerOnglets() {
     recharger: () => { if (panneauActif) { envoyerDonnees(panneauActif); } },
     rechargerPage: () => rechargerPage('reglages') });
   resumesHote.configurer({ envoyer });
+  // Après une passe, la vue Propositions, les réglages et les résumés relisent les lots.
+  moissonHote.configurer({ envoyer, apresPasse: () => {
+    if (ctx.rafraichirTout) { ctx.rafraichirTout(); }
+    envoyer(reglages.messageValeurs());
+    resumesHote.envoyerEtat();
+  } });
   journal.configurer({ envoyer, ouvrirDossier: ouvrirDossierOs,
     ouvrirEditeur: (chemin) => vscode.window.showTextDocument(vscode.Uri.file(chemin), { preview: false }),
     ouvrirLien: (uri) => vscode.env.openExternal(vscode.Uri.parse(uri)),
@@ -245,7 +254,7 @@ function configurerOnglets() {
 function arreter() {
   if (relecture) { clearTimeout(relecture); relecture = null; }
   if (fermeture) { clearTimeout(fermeture); fermeture = null; }
-  secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter();
+  secretariat.arreter(); reglages.arreter(); preproc.arreter(); resumesHote.arreter(); moissonHote.arreter();
 }
 
 // À l'activation : la commande, et l'ouverture d'office dans une fenêtre sans dossier ni

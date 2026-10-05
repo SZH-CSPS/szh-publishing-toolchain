@@ -302,7 +302,7 @@ jobs:
           # livre-template : sans lui, new-livre.ps1 s'arrête sur « Gabarit de livre
           # introuvable » sur tous les postes — le gabarit ne vit que dans le toolkit
           # déployé, jamais dans le dépôt d'un poste.
-          cp -r pipeline vscodium-user revue-template livre-template windows toolkit/
+          cp -r pipeline vscodium-user revue-template livre-template windows moissonneurs toolkit/
           # nouveautes.json : la note que « Quoi de neuf » montre à la rédaction. Livrée avec
           # le TOOLKIT et non dans le VSIX du cockpit — elle est indexée par version du
           # toolkit, et la loger dans l'extension forcerait un bump du cockpit à chaque

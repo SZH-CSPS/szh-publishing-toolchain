@@ -10,6 +10,8 @@ import sqlite3
 import sys
 import time
 
+import commun
+
 from . import classement, criblage, export_propositions, lexique, liste, moisson, purge, sauvegarde
 from .reseau import Acces403, ArretDemande, BudgetEpuise, Reseau
 from .stockage import Base
@@ -125,7 +127,7 @@ def hybride(config):
 
 
 def tout(config, emit, source=None, reseau=None, lex=None, aujourdhui=None, hors_ligne=False, telechargeur=None,
-         ouvrir=None, publier=None, a_blanc=False, maintenant=None):
+         ouvrir=None, publier=None, a_blanc=False, maintenant=None, borne=None):
     """Enchaîne tout. Rend (resume, code de sortie : 0 ok, 1 ok avec échecs, 2 configuration, 3 interrompu).
 
     hors_ligne : aucune requête (ni moisson, ni criblage, ni textes) ; classement, propositions, purge et etat.json se
@@ -208,7 +210,7 @@ def tout(config, emit, source=None, reseau=None, lex=None, aujourdhui=None, hors
     if mode_hybride and not hors_ligne and config['mensuelle'].get('active', False):
         try:
             from . import passe_mensuelle
-            reseau_m, _ = passe_mensuelle.reseau_mensuel(config, base, aujourdhui)
+            reseau_m, _ = passe_mensuelle.reseau_mensuel(config, base, aujourdhui, borne=borne)
             reseau = reseau_courant['r'] = reseau_m
             rm = passe_mensuelle.passe(config, base, reseau_m, source, lex, aujourdhui, progression=progression_passe)
             for c, v in rm['corps'].items():
@@ -417,7 +419,6 @@ def _bloquer(config, emit, erreur):
 def ecrire_etat(config, resume):
     """`etat.json` à côté des lots : ce que le panneau Propositions affiche en tête de l'onglet. Écrit d'un coup."""
     dossier = config['sortie']['propositions']
-    os.makedirs(dossier, exist_ok=True)
     etat = {'format': 'pronto-etat/1', 'moissonneur': NOM, 'contrat': VERSION_CONTRAT,
             'derniere_moisson': resume.get('derniere_moisson') or export_propositions.utc_maintenant(), 'duree_s': resume.get('duree_s'),
             'requetes': resume.get('requetes', 0), 'propositions_ecrites': resume.get('propositions_ecrites', 0),
@@ -432,13 +433,7 @@ def ecrire_etat(config, resume):
             'a_relire_classement': resume.get('a_relire_classement', 0),
             'sources_en_echec': resume.get('sources_en_echec', []), 'etapes_en_echec': resume.get('etapes_en_echec', []),
             'interrompu': resume.get('interrompu'), 'erreur': resume.get('erreur', '')}
-    chemin = os.path.join(dossier, 'etat.json')
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(etat, f, ensure_ascii=False, indent=2)
-        f.write('\n')
-    os.replace(tmp, chemin)
-    return chemin
+    return commun.ecrire_etat(dossier, etat)
 
 
 def recalculer_etat(config, lex=None, aujourdhui=None):
@@ -461,9 +456,4 @@ def recalculer_etat(config, lex=None, aujourdhui=None):
     for cle in ('crans', 'crans_source', 'crans_calcules_le', 'crans_fenetre', 'cran_defaut', 'termes', 'rappel_sur'):
         etat.pop(cle, None)
     etat.update(bloc)
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(etat, f, ensure_ascii=False, indent=2)
-        f.write('\n')
-    os.replace(tmp, chemin)
-    return chemin
+    return commun.ecrire_etat(config['sortie']['propositions'], etat)

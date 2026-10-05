@@ -1,6 +1,7 @@
 """Fonds national suisse (data.snf.ch), sur le poste de dev seulement : lit en flux grants_with_abstracts.csv, téléchargé
 à la main. Aucune colonne à nom de personne n'est lue, et `Institute` perd ses noms possibles."""
 import csv
+import datetime
 import html
 import os
 import re
@@ -12,6 +13,88 @@ from .. import filtre as filtre_module, personnes
 
 URL_CSV = 'https://data.snf.ch/datasets/grants_with_abstracts.csv'
 URL_GRANT = 'https://data.snf.ch/grants/grant/{}'
+
+# Les seules colonnes lues. Aucune ne porte un nom de personne : ResponsibleApplicantName n'y est pas (figé par un test).
+COLONNES_LUES = ('GrantNumber', 'Title', 'TitleEnglish', 'ResearchInstitution', 'Institute', 'MainDiscipline',
+                 'AllDisciplines', 'EffectiveGrantStartDate', 'EffectiveGrantEndDate', 'State', 'Keywords',
+                 'CallDecisionYear', 'CallEndDate', 'Abstract', 'LaySummary_De', 'LaySummary_Fr', 'LaySummary_En',
+                 'LaySummary_It')
+# Exigées à l'import : ce que `moissonner` lit, et les résumés qui distinguent l'export « with abstracts » de grants.csv.
+RESUMES = ('Abstract', 'LaySummary_De', 'LaySummary_Fr', 'LaySummary_En')
+COLONNES_EXIGEES = ('GrantNumber', 'Title', 'TitleEnglish', 'ResearchInstitution', 'Institute', 'MainDiscipline',
+                    'AllDisciplines', 'EffectiveGrantStartDate', 'EffectiveGrantEndDate', 'State') + RESUMES
+# Un export plus petit est tronqué (le vrai : 430 Mo, 91 000 subsides en 2026).
+TAILLE_MIN = 50_000_000
+LIGNES_MIN = 10_000
+PART_ILLISIBLES = 0.01
+
+
+class FichierInvalide(Exception):
+    """Ce fichier n'est pas l'export FNS attendu ; le message se montre tel quel."""
+
+
+def _ouvrir(chemin):
+    # BOM facultatif ; un octet invalide devient U+FFFD et rend sa ligne illisible, sans arrêter la lecture.
+    return open(chemin, encoding='utf-8-sig', errors='replace', newline='')
+
+
+def controler_entete(chemin):
+    """Taille et en-tête, sans lire le reste. Rend la liste des colonnes, ou lève FichierInvalide."""
+    if not os.path.isfile(chemin):
+        raise FichierInvalide(f'fichier introuvable : {chemin}')
+    taille = os.path.getsize(chemin)
+    if taille < TAILLE_MIN:
+        raise FichierInvalide(f'fichier trop petit ({taille // 1_000_000} Mo, au moins {TAILLE_MIN // 1_000_000} '
+                              'attendus) : le téléchargement est sans doute incomplet')
+    with _ouvrir(chemin) as f:
+        entete = f.readline().rstrip('\r\n')
+    if ';' not in entete:
+        raise FichierInvalide("ce fichier n’est pas l’export FNS attendu : les colonnes ne sont pas séparées par « ; »")
+    colonnes = next(csv.reader([entete], delimiter=';'))
+    manquantes = [c for c in COLONNES_EXIGEES if c not in colonnes]
+    if manquantes and set(manquantes) <= set(RESUMES):
+        raise FichierInvalide('c’est l’export sans résumés (grants.csv) : téléchargez « Grants with abstracts »')
+    if manquantes:
+        raise FichierInvalide("ce fichier n’est pas l’export FNS attendu : colonnes manquantes : " + ', '.join(manquantes))
+    return colonnes
+
+
+def lignes(chemin, bilan=None):
+    """Les lignes lisibles de l'export, réduites aux COLONNES_LUES, en flux. `bilan` (dict) reçoit `lignes` et
+    `illisibles` : une ligne au mauvais nombre de champs, sans numéro de subside ou à l'octet invalide."""
+    bilan = bilan if bilan is not None else {}
+    bilan.update(lignes=0, illisibles=0)
+    with _ouvrir(chemin) as f:
+        for brute in csv.DictReader(f, delimiter=';'):
+            bilan['lignes'] += 1
+            ligne = {c: brute.get(c) for c in COLONNES_LUES if c in brute}
+            if (None in brute or any(v is None for v in brute.values())
+                    or not (ligne.get('GrantNumber') or '').strip() or any('�' in (v or '') for v in ligne.values())):
+                bilan['illisibles'] += 1
+                continue
+            yield ligne
+
+
+def controler(chemin):
+    """Lecture complète avant l'import : {taille, mtime, lignes, illisibles, max_call_end, appels}, ou FichierInvalide
+    (en-tête, taille, moins de LIGNES_MIN lignes, plus de PART_ILLISIBLES de lignes illisibles)."""
+    controler_entete(chemin)
+    bilan, appels = {}, {}
+    for ligne in lignes(chemin, bilan):
+        mois = _date(ligne.get('CallEndDate'))[:7]
+        if len(mois) == 7:
+            appels[mois] = appels.get(mois, 0) + 1
+    if bilan['lignes'] < LIGNES_MIN:
+        raise FichierInvalide(f"{bilan['lignes']} lignes seulement (au moins {LIGNES_MIN} attendues) : "
+                              'le téléchargement est sans doute incomplet')
+    if bilan['illisibles'] > PART_ILLISIBLES * bilan['lignes']:
+        raise FichierInvalide(f"{bilan['illisibles']} lignes illisibles sur {bilan['lignes']} : fichier abîmé, "
+                              'téléchargez-le à nouveau')
+    stat = os.stat(chemin)
+    return {'taille': stat.st_size,
+            'mtime': datetime.datetime.fromtimestamp(stat.st_mtime, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'lignes': bilan['lignes'], 'illisibles': bilan['illisibles'],
+            'max_call_end': max(appels, default=''), 'appels': dict(sorted(appels.items()))}
 
 
 # Le FNS suffixe l'institution de son sigle (« Pädagogische Hochschule Zürich – PHZH »),
@@ -126,49 +209,47 @@ def moissonner(config, reseau, connus):
         raise FileNotFoundError('export FNS introuvable : ' + chemin_csv
                                 + ' (télécharger ' + URL_CSV + ' à la main, voir LISEZMOI.md)')
 
-    with open(chemin_csv, encoding='utf-8-sig', newline='') as f:
-        lecteur = csv.DictReader(f, delimiter=';')
-        for ligne in lecteur:
-            debut = _date(ligne.get('EffectiveGrantStartDate'))
-            if depuis and debut and debut < depuis:
-                continue  # trivialement hors fenêtre
+    for ligne in lignes(chemin_csv):
+        debut = _date(ligne.get('EffectiveGrantStartDate'))
+        if depuis and debut and debut < depuis:
+            continue  # trivialement hors fenêtre
 
-            numero = (ligne.get('GrantNumber') or '').strip()
-            if not numero:
-                continue
+        numero = (ligne.get('GrantNumber') or '').strip()
+        if not numero:
+            continue
 
-            titre = (ligne.get('Title') or '').strip()
-            langue = _deviner_langue(titre, ligne.get('TitleEnglish'))
-            descriptif = _descriptif(ligne, langue)
-            institutions = _nettoyer_institution(ligne.get('ResearchInstitution'))
+        titre = (ligne.get('Title') or '').strip()
+        langue = _deviner_langue(titre, ligne.get('TitleEnglish'))
+        descriptif = _descriptif(ligne, langue)
+        institutions = _nettoyer_institution(ligne.get('ResearchInstitution'))
 
-            projet = Projet(
-                source='snf',
-                source_id=numero,
-                url=URL_GRANT.format(numero),
-                title=titre,
-                langue=langue,
-                institutions=institutions,
-                debut=debut,
-                fin=_date(ligne.get('EffectiveGrantEndDate')),
-                descriptif=descriptif,
-                date_source=(ligne.get('CallDecisionYear') or '').strip(),
-                extra={
-                    'main_discipline': ligne.get('MainDiscipline', ''),
-                    'institute': personnes.retirer_noms(ligne.get('Institute')),
-                    'state': ligne.get('State', ''),
-                    'keywords': ligne.get('Keywords', ''),
-                },
-            )
-            if not projet.extra['institute']:
-                del projet.extra['institute']     # rien d'utile hors des noms retirés
+        projet = Projet(
+            source='snf',
+            source_id=numero,
+            url=URL_GRANT.format(numero),
+            title=titre,
+            langue=langue,
+            institutions=institutions,
+            debut=debut,
+            fin=_date(ligne.get('EffectiveGrantEndDate')),
+            descriptif=descriptif,
+            date_source=(ligne.get('CallDecisionYear') or '').strip(),
+            extra={
+                'main_discipline': ligne.get('MainDiscipline', ''),
+                'institute': personnes.retirer_noms(ligne.get('Institute')),
+                'state': ligne.get('State', ''),
+                'keywords': ligne.get('Keywords', ''),
+            },
+        )
+        if not projet.extra['institute']:
+            del projet.extra['institute']     # rien d'utile hors des noms retirés
 
-            # Hors des domaines de `disciplines`, le résumé n'est pas lu : un « accessible » en
-            # physique ou un « impair » en biologie ne doit pas faire entrer le subside.
-            avec_resume = (_discipline_toujours(ligne.get('MainDiscipline', ''), disciplines_config)
-                           or _code_discipline(ligne.get('AllDisciplines', ''), codes_config))
-            if not filtre_module.pertinence(projet, config_filtre, avec_descriptif=avec_resume):
-                continue
-            projet.extra['resume_lu'] = avec_resume
+        # Hors des domaines de `disciplines`, le résumé n'est pas lu : un « accessible » en
+        # physique ou un « impair » en biologie ne doit pas faire entrer le subside.
+        avec_resume = (_discipline_toujours(ligne.get('MainDiscipline', ''), disciplines_config)
+                       or _code_discipline(ligne.get('AllDisciplines', ''), codes_config))
+        if not filtre_module.pertinence(projet, config_filtre, avec_descriptif=avec_resume):
+            continue
+        projet.extra['resume_lu'] = avec_resume
 
-            yield projet
+        yield projet

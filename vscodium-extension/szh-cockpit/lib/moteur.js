@@ -10,10 +10,12 @@ const services = require('./services-env');
 const DISTRO = wsl.DISTRO;
 
 // Les arguments de wsl.exe autour d'une commande du moteur. `cwd` passe tel quel à --cd :
-// c'est wsl.exe qui traduit le chemin Windows, UNC et OneDrive compris.
-function argsMoteur(argv, cwd) {
-  const tete = cwd ? ['-d', DISTRO, '--cd', cwd, '--'] : ['-d', DISTRO, '--'];
-  return tete.concat(argv || []);
+// c'est wsl.exe qui traduit le chemin Windows, UNC et OneDrive compris. `sansShell` lance la
+// commande par -e : avec --, wsl.exe recolle les arguments et les fait relire par le shell de la
+// distro, où un argument à espace ou à apostrophe se casse.
+function argsMoteur(argv, cwd, sansShell) {
+  const tete = cwd ? ['-d', DISTRO, '--cd', cwd] : ['-d', DISTRO];
+  return tete.concat([sansShell ? '-e' : '--'], argv || []);
 }
 
 // -> le ChildProcess brut, à l'appelant d'en lire les issues. Lève si wsl.exe ne se lance
@@ -26,7 +28,7 @@ function executer(argv, options) {
   if (o.stdio !== undefined) { opts.stdio = o.stdio; }
   const env = services.environnement(process.env);
   if (env) { opts.env = env; }
-  return cp.spawn(wsl.cheminWsl(), argsMoteur(argv, o.cwd), opts);
+  return cp.spawn(wsl.cheminWsl(), argsMoteur(argv, o.cwd, o.sansShell), opts);
 }
 
 // La commande d'une tâche VS Code. wsl.exe y est cherché dans le PATH, comme dans

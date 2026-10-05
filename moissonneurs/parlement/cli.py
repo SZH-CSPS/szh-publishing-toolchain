@@ -79,7 +79,7 @@ def construire_config(args, reglages=REGLAGES):
 
 
 def cmd_tout(cfg, args):
-    ouvrir = publier = None
+    ouvrir = publier = borne = None
     if not args.base:      # la passe mensuelle : l'état partagé, chargé en mémoire, puis publié au journal du poste
         racine, poste = cfg['_racine'], partage.cle_poste(args.poste, args.compte)
 
@@ -88,8 +88,11 @@ def cmd_tout(cfg, args):
 
         def publier(delta):
             etat.publier_journal(racine, poste, delta)
+        if not args.hors_ligne:
+            borne = partage.budget_partage(racine, NOM, args.poste, args.compte,
+                                           int(cfg['mensuelle'].get('budget', 800)), creneau.MARGE_REQUETES, args.plafond)
     _, code = tout.tout(cfg, emit_json, hors_ligne=args.hors_ligne, a_blanc=args.a_blanc, ouvrir=ouvrir,
-                        publier=publier)
+                        publier=publier, borne=borne)
     return code
 
 
@@ -176,7 +179,8 @@ def cmd_publier(cfg, args):
             dire('aucun socle publié : premier socle')
         lex = lexique.charger()
         jour = datetime.date.today().isoformat()
-        etat.figer(base, cfg, lex)
+        reprise = etat.figer(base, cfg, lex, empreinte_lex=etat.empreinte_lexique())
+        dire(f'figé : {reprise.calcules} calcul(s), {reprise.repris} repris sans changement')
         etat.figer_valeurs(base, cfg, lex, jour, chemin_crans=os.path.join(os.path.dirname(cfg['stockage']['base']),
                                                                          'crans.json'))
         tables = etat.tables_du_socle(base)

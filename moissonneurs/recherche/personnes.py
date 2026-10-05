@@ -2,16 +2,13 @@
 signalés masqués (doute `personne-nommee`) dans le titre et les institutions, retirés d'un champ brut."""
 import re
 
+from commun import masque  # noqa: F401  (le masque est commun aux moissonneurs)
+
 _CAP = r"[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿß'’]+(?:-[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿß'’]+)?"
 _CIVIL = re.compile(r"(?<![\w.])(?:M\.|MM\.|Mme|Mmes|Mlle|Frau|Herrn?)\s+(" + _CAP + r"(?:\s+" + _CAP + r"){1,2})(?![\w])")
 _ACADEMIQUE = re.compile(r"(?<![\w.])(?:Prof\.|Dr\.|PD|Dre)(?:\s+(?:Dr\.|Prof\.|phil\.|rer\.|nat\.|med\.|paed\.|habil\.|em\.|des\.|h\.\s?c\.))*"
                          r"\s+(" + _CAP + r"(?:\s+" + _CAP + r"){0,2})(?![\w])")
 _CITATION = re.compile(r"(?<![\w])(" + _CAP + r"(?:\s+" + _CAP + r")?),\s+((?:[A-Z]\.\s?)+?)(?=\s*(?:,|&|\(\d{4}))")
-
-
-def masque(seq):
-    """« Anna Beispiel » devient « A*** B*** » : jamais un nom en clair dans un message."""
-    return ' '.join(w[0] + '***' if w[:1].isupper() else w for w in seq.split())
 
 
 def noms_possibles(texte):

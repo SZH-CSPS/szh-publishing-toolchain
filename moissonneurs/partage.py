@@ -10,6 +10,8 @@ import os
 import re
 import unicodedata
 
+import commun
+
 SOCLE = 'socle.json'
 FORMAT_SOCLE = 'pronto-socle/1'
 FORMAT_JOURNAL = 'pronto-journal/1'
@@ -48,23 +50,11 @@ def cle_poste(poste, compte):
 
 # --------------------------------------------------------------------------- écriture et lecture
 
-def ecrire_json_atomique(chemin, contenu, compact=False):
-    """`.tmp` puis renommage sur le même nom : un lecteur ne voit jamais un fichier à moitié écrit."""
-    os.makedirs(os.path.dirname(chemin), exist_ok=True)
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(contenu, f, ensure_ascii=False, separators=(',', ':') if compact else None)
-        f.write('\n')
-    os.replace(tmp, chemin)
+ecrire_json_atomique = commun.ecrire_json_atomique
 
 
 def _ecrire_lignes_atomique(chemin, lignes):
-    os.makedirs(os.path.dirname(chemin), exist_ok=True)
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        for ligne in lignes:
-            f.write(json.dumps(ligne, ensure_ascii=False, separators=(',', ':')) + '\n')
-    os.replace(tmp, chemin)
+    commun.ecrire_lignes_atomique(chemin, lignes, compact=True)
 
 
 def lire_json(chemin):
@@ -345,3 +335,54 @@ def ecrire_requetes(moissons, m, mois, ma_cle, requetes, maintenant):
     ecrire_json_atomique(os.path.join(dossier_requetes(moissons, m, mois), ma_cle + '.json'),
                          {'format': FORMAT_REQUETES, 'mois': mois, 'requetes': requetes,
                           'maj': maintenant.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')})
+
+
+# Pendant une passe, les compteurs des autres postes sont relus toutes les RELIRE_TOUS_LES requêtes.
+RELIRE_TOUS_LES = 50
+
+
+class BudgetPartage:
+    """Le plafond d'une passe, abaissé en route par ce que les autres postes dépensent pendant ce temps.
+
+    Appelé avec les requêtes déjà faites, il rend la limite : la passe s'arrête net quand la somme du mois (les autres
+    postes, plus ce poste avant la passe, plus la passe) atteint `budget − marge`. Le compteur de ce poste n'est lu
+    qu'au départ : moisson.py le réécrit pendant la passe."""
+
+    def __init__(self, moissons, m, mois, ma_cle, budget, marge, plafond, tous_les=RELIRE_TOUS_LES):
+        self._lire = lambda: somme_mois(moissons, m, mois, ma_cle)
+        somme, self.propre = self._lire()
+        self.budget, self.marge, self.plafond, self.tous_les = budget, marge, plafond, tous_les
+        self.lu_a = 0
+        self.limite = self._borne(somme - self.propre)
+
+    def _borne(self, autres):
+        return max(0, min(self.plafond, self.budget - self.marge - self.propre - autres))
+
+    def __call__(self, requetes):
+        if requetes - self.lu_a >= self.tous_les:
+            self.lu_a = requetes
+            somme, propre = self._lire()
+            self.limite = self._borne(somme - propre)
+        return self.limite
+
+
+def budget_partage(racine, m, poste, compte, budget, marge, plafond, maintenant=None):
+    """La borne d'une passe lancée avec `--plafond`, ou None sans budget du mois."""
+    if plafond is None or not budget:
+        return None
+    mois = (maintenant or datetime.datetime.now(datetime.timezone.utc)).strftime('%Y-%m')
+    return BudgetPartage(os.path.join(racine, '_Moissons'), m, mois, cle_poste(poste, compte), budget, marge, plafond)
+
+
+# --------------------------------------------------------------------------- bilan des passes
+
+FORMAT_PASSE = 'pronto-passe/1'
+
+
+def ecrire_bilan_passe(moissons, m, mois, ma_cle, bilan):
+    """`<m>/_partage/passes/<AAAA-MM>/<poste__compte>-<AAAAMMJJTHHMMSSZ>.json` : un fichier par passe et par
+    moissonneur, écrit par son seul poste. `bilan['debut']` (ISO UTC) donne l'heure du nom. Rend le chemin."""
+    heure = re.sub(r'[-:]', '', bilan['debut'])
+    chemin = os.path.join(moissons, m, '_partage', 'passes', mois, f'{ma_cle}-{heure}.json')
+    ecrire_json_atomique(chemin, {'format': FORMAT_PASSE, 'moissonneur': m, **bilan})
+    return chemin

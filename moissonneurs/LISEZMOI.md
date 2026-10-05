@@ -13,6 +13,7 @@ python3 -B moisson.py mensuelle --racine <_NewsUndActu> --poste <nom> --compte <
                                 [--seulement parlement|recherche] [--hors-ligne] [--a-blanc]
 python3 -B moisson.py tout <m>  --racine … --poste … --compte … [--hors-ligne] [--a-blanc]
 python3 -B moisson.py estimer <m> --racine … --poste … --compte …
+python3 -B moisson.py import-fns --fichier <export FNS .csv> --racine … --poste … --compte …
 ```
 
 Options communes :
@@ -21,8 +22,9 @@ Options communes :
 |---|---|
 | `--racine` | le dossier `_NewsUndActu` actif (production ou racine de test), obligatoire. Un chemin `C:\…` devient `/mnt/c/…` |
 | `--poste`, `--compte` | le nom de machine Windows et le compte, obligatoires. Ils nomment l'annonce de créneau et le compteur du mois |
-| `--declencheur` | `cockpit`, `raccourci` ou `cli` (défaut). `raccourci` fait attendre Entrée à la fin, en console |
+| `--declencheur` | `cockpit`, `raccourci` ou `cli` (défaut). `raccourci` fait attendre Entrée à la fin, en console. `import-fns` se déclare lui-même `import-fns` dans `debut` |
 | `--evenements` | `json` ou `console`. Défaut : `console` si stdout est un terminal, `json` sinon |
+| `--arret` | le fichier de demande d'arrêt, choisi par l'appelant (chemin WSL, ou `C:\…`). Le créer arrête la passe comme le premier Ctrl+C : chaque moissonneur le lit avant sa requête suivante, écrit son lot partiel et sort en 3 ; les suivants ne partent pas. Un fichier déjà présent au lancement est effacé : il vient d'une passe ancienne. Sans l'option : `/tmp/pronto-moisson/<id-passe>/arret` |
 | `--attente-creneau` | secondes entre l'écriture de l'annonce et sa relecture (90 par défaut) |
 | `--racine-test` | drapeau posé par l'appelant quand la racine est celle de test ; recopié dans `debut.racine_test`. `moisson.py` ne devine pas, et c'est l'appelant qui choisit `--hors-ligne` |
 
@@ -30,6 +32,29 @@ Options communes :
 en `console`, il la résume.
 
 `python3 -B console.py [--pause] < evenements.jsonl` rejoue une passe enregistrée.
+
+### `import-fns` : l'export du FNS
+
+Le FNS interdit les robots : « Grants with abstracts (CSV) » se télécharge à la main sur data.snf.ch, puis
+`import-fns --fichier <chemin>` le lit sur place, en flux, sans le copier et sans aucune requête réseau.
+1. **Contrôles, avant le créneau.** Taille d'au moins 50 Mo, puis l'en-tête seul : séparateur `;`, BOM facultatif,
+   colonnes de `snf.COLONNES_EXIGEES` (dont `Abstract` et `LaySummary_De|Fr|En`). Puis une lecture complète : au moins
+   10 000 lignes, au plus 1 % de lignes illisibles (mauvais nombre de champs, sans `GrantNumber`, octet invalide). Un
+   échec : `refus` `fichier-invalide` (code 2), avec un `detail` lisible (« c’est l’export sans résumés (grants.csv) »,
+   « colonnes manquantes : … »). Sans socle : `refus` `etat-absent`.
+2. **Sous créneau.** Mêmes événements qu'une passe, avec `debut.declencheur` = `import-fns`, `debut.moissonneurs` =
+   `["recherche"]` et `debut.budget_mois` = `{}`. Le moissonneur de recherche tourne sur la seule source `snf`
+   (`--sources snf --fichier-snf <chemin> --plafond 0` : une requête le ferait sortir en `budget`). Aucun compteur du
+   mois n'est écrit.
+3. **Dédoublonnage et filtre.** Ceux de la passe : `recherche:snf:<GrantNumber>` contre l'état partagé, le filtre de
+   `recherche/reglages.toml`. Le lot est un lot ordinaire, `_Moissons/recherche/AAAA-MM-JJ-n.jsonl`.
+4. **La note d'import**, si le moissonneur finit en 0 ou 1 sans échec de la source `snf` :
+   `_Moissons/recherche/_partage/imports-fns/<AAAA-MM-JJ>-<poste>__<compte>.json` (docs/FORMAT-MOISSONS.md). Un
+   fichier plus ancien que celui du dernier import (dernière clôture d'appel, puis nombre de lignes) donne un
+   `avertissement`, pas un refus.
+
+Seules les colonnes de `snf.COLONNES_LUES` sont lues : `ResponsibleApplicantName` n'y est pas, et `Institute` perd ses
+noms possibles.
 
 ## Ce que `moisson.py` lit et écrit
 
@@ -43,6 +68,8 @@ en `console`, il la résume.
     <m>/_partage/socle.json             l'état publié depuis le poste de développement ; sans lui : refus etat-absent
     <m>/_partage/journal/…              ce que la passe a appris, écrit par le moissonneur (partage.py)
     <m>/_partage/requetes/<AAAA-MM>/<poste>__<compte>.json   le compteur du mois de CE poste
+    <m>/_partage/passes/<AAAA-MM>/<poste>__<compte>-<AAAAMMJJTHHMMSSZ>.json   le bilan de chaque passe
+    recherche/_partage/imports-fns/<AAAA-MM-JJ>-<poste>__<compte>.json  la note de chaque import FNS
 /tmp/pronto-moisson/<id-passe>/         local et jetable, effacé en fin de passe
   arret                                 la demande d'arrêt
   cache/                                le cache HTTP de la passe
@@ -96,19 +123,22 @@ Une courtoisie entre postes, sans garantie d’exclusion.
 
 - `somme` : le total des compteurs `<m>/_partage/requetes/<mois>/*.json` de tous les postes ; un compteur illisible
   ne compte pas. Le mois est celui de l'heure UTC au début de la passe.
-- Un moissonneur est épuisé si `somme ≥ budget − MARGE_REQUETES` (`creneau.py`, valeur provisoire) : à l'égalité, le
-  plafond de la passe vaudrait déjà 0. Tous épuisés :
-  refus `budget-epuise`, code 4, avant toute prise de créneau. Un seul parmi d'autres : il est sauté avec un
+- Un moissonneur est épuisé si `somme ≥ budget − MARGE_REQUETES` (`creneau.py`, 120 : ce qu'un autre poste dépense
+  pendant 4 min de latence OneDrive, à 2 s la requête) : à l'égalité, le plafond de la passe vaudrait déjà 0. Tous
+  épuisés : refus `budget-epuise`, code 4, avant toute prise de créneau. Un seul parmi d'autres : il est sauté avec un
   avertissement.
 - Le plafond local `budget − marge − somme` est passé par `--plafond`.
+- Pendant la passe, le moissonneur relit les compteurs des autres postes toutes les 50 requêtes
+  (`partage.BudgetPartage`) et s'arrête net (`interrompu: "budget"`, code 3) dès que la somme du mois atteint
+  `budget − marge`. Le compteur de son propre poste n'est lu qu'au départ.
 - Seul `moisson.py` écrit le compteur de son poste : après chaque `etape` qui fait avancer les requêtes, puis dans le
   `finally` de chaque moissonneur, pour qu'une passe interrompue compte ses requêtes réelles.
 - `--hors-ligne` : ni contrôle, ni plafond, ni compteur.
 
 ## L'arrêt
 
-L'arrêt est local au poste qui moissonne : le fichier `arret` du dossier de passe.
-- Le bouton Arrêter du cockpit le crée.
+L'arrêt est local au poste qui moissonne : le fichier `--arret`, ou à défaut `arret` du dossier de passe.
+- Le bouton Arrêter du cockpit crée le fichier qu'il a passé par `--arret`.
 - En console, le premier Ctrl+C le crée et annonce « arrêt demandé… » ; le moissonneur le lit avant sa requête
   suivante. Le second Ctrl+C tue le moissonneur et clôt la passe en code 3, le créneau rendu.
 - Le moissonneur tourne dans sa propre session : le Ctrl+C du terminal n'atteint que `moisson.py`.
@@ -126,19 +156,28 @@ compteur par poste et par mois, fusionnés à la lecture.
   poste, après chaque source ou corps et à la fin ;
 - `publier_socle(…)` : seulement depuis le poste de développement, sous son créneau. Une passe lancée par
   `moisson.py` porte `PRONTO_MOISSON_PASSE` et ne peut pas l'écrire ;
-- `somme_mois`, `ecrire_requetes` : le budget du mois, sommé sur tous les postes ;
+- `somme_mois`, `ecrire_requetes`, `BudgetPartage` : le budget du mois, sommé sur tous les postes ;
+- `ecrire_bilan_passe` : le bilan de chaque passe, `{format: "pronto-passe/1", moissonneur, poste, compte, declencheur,
+  debut, fin, requetes, code, interrompu, lot, propositions, hors_ligne, a_blanc}`, écrit par `moisson.py` ;
 - `cle_poste(poste, compte)` : le nom `poste__compte` des fichiers qu'un seul poste écrit.
 
 Sans socle, `charger_etat` et `publier_journal` lèvent `EtatAbsent` : une passe s'arrête en code 2 sans rien écrire.
 
 Coutures de `moisson.py` qu'un test remplace : `chemins_passe(args)`, `prendre_creneau(…)`, `lancer_enfant(…)`.
 
+## Ce que les moissonneurs partagent (`commun.py`)
+
+Écriture atomique (`.tmp` puis renommage), nom et écriture d'un lot (le numéro suit le plus grand du jour, sur le
+disque ou en base), `etat.json`, lecture des fichiers Kirby et des décisions de la rédaction, purge à six mois, masque
+des noms. Chaque moissonneur n'y ajoute que ses chemins et le préfixe de ses clés.
+
 ## Le moissonneur de recherches (`recherche/`)
 
 - Réglages dans `recherche/reglages.toml`, sans aucun chemin : les chemins viennent de `--racine`, `--cache` et,
   sur le poste de développement, de `--base` (une base SQLite locale) et `--fichier-snf`.
 - Le FNS n'entre pas dans la passe mensuelle : son export se télécharge à la main (le robots.txt de data.snf.ch
-  interdit les robots). `--sources snf` le lit, sur le poste de développement.
+  interdit les robots). `moisson.py import-fns` le lit depuis n'importe quel poste (voir plus haut) ; `--sources snf`
+  avec `--base` le lit encore sur le poste de développement.
 - User-Agent identifié, robots.txt respecté, délai par hôte ; les en-têtes envoyés sont figés par un test.
 - Un 403 sur une page de détail saute la page ; elle est retentée à la passe suivante, puis notée refusée.
 - Un 403 sur un point d'entrée (robots.txt, plan du site, liste) arrête la source pour la passe ; plus de la moitié
@@ -162,6 +201,11 @@ les besoins éducatifs particuliers. Réglages dans `parlement/reglages.toml`, s
   de `files.openparldata.ch`, aucune requête à l'API), `classer`, `lister`, `absorber` (relire les journaux avant
   toute opération lourde), `publier` (refiger et publier le socle, sous créneau). Avec `--base`, `tout` n'appelle
   jamais l'API : seule la passe mensuelle compte son budget.
+- **`publier` ne refige que ce qui a changé.** Chaque note et chaque texte figés sont notés dans la table locale
+  `reprise_figee`, avec l'empreinte de tout ce que leur calcul a lu : la version `etat.VERSION_FIGER`, le code des
+  modules de `etat.MODULES_FIGER`, les fichiers du lexique, les réglages, la ligne de l'affaire, ses bruts et ses
+  documents. Une empreinte inchangée reprend le résultat tel quel ; un lexique, un réglage ou un module changé
+  refigent tout. Le socle sort identique à l'octet.
 - **Aucun nom de personne** dans un titre : auteurs, signataires et « primo firmatario » sont coupés ; le contrôle
   indépendant des noms tourne à chaque export (un défaut retient la ligne, un nom possible pose le doute
   `personne-nommee`).
@@ -176,14 +220,14 @@ Une ligne JSON par événement sur stdout en mode `json`, et rien d'autre. Chaqu
 | Type | Champs |
 |---|---|
 | `creneau` | `etat` (`pris` \| `refuse` \| `repris-perime` \| `retire`), `poste`, `compte`, `debut` (ISO UTC) ; de NOTRE annonce pour `pris` et `retire`, de l'AUTRE pour `refuse` et `repris-perime` |
-| `debut` | `moissonneurs[]`, `estimation{<m>:{requetes, delai_s, budget}}`, `declencheur`, `heure` (ISO UTC), `budget_mois{<m>:{budget, marge, somme, plafond}}`, `racine_test` (booléen) |
+| `debut` | `moissonneurs[]`, `estimation{<m>:{requetes, delai_s, budget}}`, `declencheur` (`cockpit` \| `raccourci` \| `cli` \| `import-fns`), `heure` (ISO UTC), `budget_mois{<m>:{budget, marge, somme, plafond}}`, `racine_test` (booléen) |
 | `etape` | `moissonneur`, `etape` (un corps, une source, ou une étape), `requetes` (de cette passe), `budget` (le plafond de la passe, ou null), `reste_s` (entier ou null), `fraction` (0 à 1, ou null) |
 | `attente` | `moissonneur`, `etape` (la source), `secondes`, `motif` (ou null), `hote` (ou null) : un site demande d'attendre ; la passe n'est pas bloquée |
 | `avertissement` | `moissonneur` (null pour la passe entière), `message` (fr) |
 | `lot` | `moissonneur`, `chemin` (relatif à `_Moissons`, par exemple `parlement/2026-11-01-1.jsonl`), `propositions` |
 | `moissonneur_fin` | `moissonneur`, `code` (0 à 3), `interrompu` (null \| `budget` \| `403` \| `arret`), `sources_en_echec[{source, raison}]`, `purge{lots, decisions}` (des nombres), `sources_desactivees[]`, `plantage` (booléen : code 1 sans `resume`) |
 | `fin` | `code` (le plus grave de la passe), `duree_s` |
-| `refus` | `raison` (`deja-en-cours` \| `budget-epuise` \| `etat-absent` \| `racine-absente` \| `config-invalide`), `detail` (fr) |
+| `refus` | `raison` (`deja-en-cours` \| `budget-epuise` \| `etat-absent` \| `racine-absente` \| `config-invalide` \| `fichier-invalide`), `detail` (fr) |
 
 Ordre : `creneau` (`repris-perime`*, puis `pris`) ; `debut` ; les avertissements de préparation ; pour chaque
 moissonneur ses `etape`, `attente`, `avertissement` et `lot`, puis son `moissonneur_fin` ; `creneau` `retire` ;
@@ -216,7 +260,7 @@ perdue : elle devient un `avertissement` qui la cite, tronquée à 200 caractèr
 |---|---|
 | 0 | tout est bon |
 | 1 | terminé, avec des échecs signalés |
-| 2 | configuration invalide (commande incomplète, racine ou état absents) |
+| 2 | configuration invalide (commande incomplète, racine ou état absents, export FNS refusé) |
 | 3 | au moins un moissonneur interrompu |
 | 4 | refusé par le créneau : une passe tourne déjà, ou le budget du mois est épuisé pour tous |
 | 5 | erreur inattendue : un moissonneur a planté, ou `moisson.py` lui-même |

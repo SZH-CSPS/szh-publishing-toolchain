@@ -10,9 +10,11 @@ import json
 import os
 import re
 
+import commun
+from commun import moins_mois, nom_lot as _nom_lot
+
 from . import correspondances as corr
 from . import decisions, finesse, lexique, noms, reference, texte
-from .purge import moins_mois
 from .stockage import avant_date_min, maintenant as horodatage
 
 FORMAT = 'pronto-proposition/1'
@@ -286,15 +288,6 @@ def contexte_noms(base):
                          frozenset(ctx.lieux) | frozenset(fige['lieux']))
 
 
-def _nom_lot(dossier, jour, connus=()):
-    """Le numéro suit le plus grand du jour, sur le disque ou en base : un lot supprimé ne rend pas son numéro, sinon
-    le suivant passerait avant un lot plus ancien."""
-    motif = re.compile(re.escape(jour) + r'-(\d+)\.jsonl(\.tmp)?$')
-    presents = os.listdir(dossier) if os.path.isdir(dossier) else []
-    numeros = [int(m.group(1)) for m in map(motif.match, presents + list(connus)) if m]
-    return os.path.join(dossier, f'{jour}-{max(numeros, default=0) + 1}.jsonl')
-
-
 def exporter(config, base, maintenant=None, a_blanc=False):
     """Écrit un lot de propositions. Rend {'lot': chemin | None, 'ecrites': n, 'ecartees': [(clé affaire, raison)]}.
 
@@ -353,13 +346,7 @@ def exporter(config, base, maintenant=None, a_blanc=False):
     lots_connus = [r['lot'] for r in base.c.execute('SELECT DISTINCT lot FROM propositions')]
     lot_prevu = os.path.basename(_nom_lot(dossier, recolte[:10], lots_connus)) if lignes else ''
     if lignes and not a_blanc:
-        os.makedirs(dossier, exist_ok=True)
-        chemin = _nom_lot(dossier, recolte[:10], lots_connus)
-        tmp = chemin + '.tmp'
-        with open(tmp, 'x', encoding='utf-8', newline='\n') as f:
-            for p in lignes:
-                f.write(json.dumps(p, ensure_ascii=False, sort_keys=False) + '\n')
-        os.replace(tmp, chemin)
+        chemin = commun.ecrire_lot(dossier, recolte[:10], lignes, lots_connus)
         for cle, emp in ecrites:
             base.c.execute('INSERT OR REPLACE INTO propositions(cle, empreinte, lot, ecrit_le) VALUES (?,?,?,?)',
                            (cle, emp, os.path.basename(chemin), horodatage()))

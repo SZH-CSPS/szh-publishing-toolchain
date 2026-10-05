@@ -145,7 +145,7 @@ ouvre l'Accueil. Un lien `szh://`, `-Produit` ou `-Versions` passent à
 
 Une jonction vers la racine suffit parce que le toolkit livré est le dépôt lui-même :
 `release.yml` le construit par `cp -r pipeline vscodium-user revue-template livre-template
-windows`. Le script recrée le fichier `VERSION` (`0.0.0-dev+<sha court>`), gitignoré.
+windows moissonneurs`. Le script recrée le fichier `VERSION` (`0.0.0-dev+<sha court>`), gitignoré.
 L'instance n'exerce ni `bootstrap.ps1`, ni `update.ps1`, ni les tâches planifiées, ni le
 protocole `szh://` : un lien `szh://` ouvre la production. Valider un déploiement demande
 une vraie release.
@@ -168,6 +168,36 @@ Pièges :
 
 Défaire l'instance : supprimer `C:\ProgramData\SZH-dev` et l'entrée « Pronto (dev) ».
 `Remove-Item -Recurse` retire les jonctions sans suivre leur cible : le dépôt ne risque rien.
+
+## La moisson mensuelle hors du cockpit
+
+La moisson mensuelle est une seule commande, `moissonneurs/moisson.py` (contrat dans
+[`../moissonneurs/LISEZMOI.md`](../moissonneurs/LISEZMOI.md)). Le bouton de Paramètres >
+Moissonnage la lance sur tout poste ; la console la rend sur le poste de développement, par un
+raccourci Bureau ou à la main. Le raccourci n'est posé par aucun script du dépôt, ni
+`update.ps1` ni `bootstrap.ps1` : la rédaction ne le reçoit jamais. Sur le poste de
+développement, une fois, dans PowerShell :
+
+```powershell
+$racine = '<racine de production>\_NewsUndActu'
+$ws = New-Object -ComObject WScript.Shell
+$lnk = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Moisson mensuelle (Pronto).lnk'))
+$lnk.TargetPath = Join-Path $env:SystemRoot 'System32\wsl.exe'
+$lnk.Arguments = '-d SZH-Publishing -e python3 -B /mnt/c/ProgramData/SZH/toolkit/moissonneurs/moisson.py mensuelle --racine "' + $racine + '" --poste ' + $env:COMPUTERNAME + ' --compte ' + $env:USERNAME + ' --declencheur raccourci --evenements console'
+$lnk.IconLocation = 'C:\ProgramData\SZH\toolkit\windows\pronto.ico'
+$lnk.Save()
+```
+
+- `-e`, et non `--` : wsl.exe passe alors chaque argument tel quel, et la racine OneDrive porte
+  des espaces.
+- `--declencheur raccourci` fait attendre Entrée à la fin, pour que la fenêtre reste ouverte. Le
+  premier Ctrl+C demande l'arrêt ; le second coupe net.
+- Le chemin du toolkit est écrit en dur : si `C:\ProgramData\SZH\toolkit` change, on refait le
+  raccourci.
+- En ligne de commande, la même ligne, précédée de `wsl.exe`, sans `--declencheur`.
+
+Le cockpit passe la racine active. Sur Revues-TESTING, il ajoute `--hors-ligne --racine-test` :
+une passe de test ne fait aucune requête réseau.
 
 ---
 

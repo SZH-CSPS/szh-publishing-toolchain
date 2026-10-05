@@ -16,7 +16,8 @@ from recherche.tests import outils
 # aucun nom de personne.
 COLONNES_LUES = {'GrantNumber', 'Title', 'TitleEnglish', 'ResearchInstitution', 'Institute', 'MainDiscipline',
                  'AllDisciplines', 'EffectiveGrantStartDate', 'EffectiveGrantEndDate', 'CallDecisionYear', 'State',
-                 'Keywords', 'Abstract', 'LaySummary_De', 'LaySummary_En', 'LaySummary_Fr', 'LaySummary_It'}
+                 'Keywords', 'Abstract', 'LaySummary_De', 'LaySummary_En', 'LaySummary_Fr', 'LaySummary_It',
+                 'CallEndDate'}   # la clôture de l'appel : l'indice de fraîcheur de l'export, noté à l'import
 LIGNE = {
     'GrantNumber': '900001', 'Title': 'Autismus und Lesen im Zauberwald',
     'TitleEnglish': 'Autism and reading in the magic forest', 'ResponsibleApplicantName': 'Anna Beispiel',

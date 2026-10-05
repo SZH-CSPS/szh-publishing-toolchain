@@ -5,6 +5,8 @@ import json
 import os
 import re
 
+import commun
+
 from . import db, decisions, institutions, kirby, personnes
 from .dates import couper_duree, fin_ouverte, lire_date_partielle, valide
 from .nettoyage import retirer_balisage
@@ -27,7 +29,8 @@ class ConfigurationInvalide(Exception):
 def verifier_config(config):
     if config.get('langue_par_defaut', 'de') not in LANGUES:
         raise ConfigurationInvalide(f"langue_par_defaut : fr ou de attendu, reçu {config.get('langue_par_defaut')!r}")
-    for cle in ('base', 'propositions', 'bibliotheque'):
+    # La base n'en est pas : la passe mensuelle n'en a pas, elle travaille sur l'état partagé chargé en mémoire.
+    for cle in ('propositions', 'bibliotheque'):
         if not str(config.get(cle) or '').strip():
             raise ConfigurationInvalide(f'{cle} : chemin vide')
 
@@ -284,28 +287,9 @@ def construire(groupe, cle, config, index, recolte):
     return p, '', principal
 
 
-# ---- Le lot ------------------------------------------------------------------------------------------------------
+# ---- Le lot : nom et écriture dans commun.py ---------------------------------------------------------------------
 
-def _nom_lot(dossier, jour, connus=()):
-    """Le numéro suit le plus grand du jour, sur le disque ou en base : un lot supprimé ne rend pas son numéro, sinon
-    le suivant passerait avant un lot plus ancien."""
-    motif = re.compile(re.escape(jour) + r'-(\d+)\.jsonl(\.tmp)?$')
-    presents = os.listdir(dossier) if os.path.isdir(dossier) else []
-    numeros = [int(m.group(1)) for m in map(motif.match, presents + list(connus)) if m]
-    return os.path.join(dossier, f'{jour}-{max(numeros, default=0) + 1}.jsonl')
-
-
-def ecrire_lot(dossier, jour, lignes, connus=()):
-    """Écrit le lot sous un nom temporaire, puis le renomme. `connus` : noms de lots déjà notés en base. Rend son
-    chemin."""
-    os.makedirs(dossier, exist_ok=True)
-    chemin = _nom_lot(dossier, jour, connus)
-    tmp = chemin + '.tmp'
-    with open(tmp, 'x', encoding='utf-8', newline='\n') as f:
-        for p in lignes:
-            f.write(json.dumps(p, ensure_ascii=False) + '\n')
-    os.replace(tmp, chemin)
-    return chemin
+_nom_lot, ecrire_lot = commun.nom_lot, commun.ecrire_lot
 
 
 def exporter(config, con, maintenant=None, a_blanc=False):

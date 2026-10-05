@@ -47,12 +47,14 @@ def construire_url(base, chemin, params=None):
 
 
 class Reseau:
-    def __init__(self, cfg, *, user_agent=None, ouvrir=None, dormir=None, horloge=None):
+    def __init__(self, cfg, *, user_agent=None, ouvrir=None, dormir=None, horloge=None, borne=None):
         """cfg : section [reseau] des réglages (delai, budget, cache, timeout, journal, arret).
 
         Sans user_agent, les requêtes partent anonymes : urllib met son en-tête par défaut. `arret` : fichier de demande
-        d'arrêt, regardé avant chaque requête réelle.
+        d'arrêt, regardé avant chaque requête réelle. `borne(requêtes)` : la limite du budget partagé entre postes
+        (partage.BudgetPartage), qui peut baisser en route.
         """
+        self.borne = borne
         self.fichier_arret = cfg.get('arret') or ''
         self.delai = float(cfg.get('delai', 2.0))
         self.budget = int(cfg.get('budget', 3000))
@@ -116,8 +118,9 @@ class Reseau:
         for essai in range(1, ESSAIS_MAX + 1):
             if self.fichier_arret and os.path.exists(self.fichier_arret):
                 raise ArretDemande('arrêt demandé')
-            if self.requetes >= self.budget:
-                raise BudgetEpuise(f'budget de {self.budget} requêtes atteint')
+            limite = self.budget if self.borne is None else min(self.budget, self.borne(self.requetes))
+            if self.requetes >= limite:
+                raise BudgetEpuise(f'budget de {limite} requêtes atteint')
             self._attendre()
             self.requetes += 1
             en_tetes_requete = {'Accept': 'application/json, */*;q=0.5'}

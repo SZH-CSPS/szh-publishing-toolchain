@@ -12,6 +12,8 @@ import collections
 import re
 import unicodedata
 
+from commun import masque  # noqa: F401  (le masque est commun aux moissonneurs)
+
 _TOK = r"(?:[A-ZÀ-ÖØ-Ý][A-Za-zÀ-ÖØ-öø-ÿ'’\-]+|[A-Z]\.)"
 _PARTICULES = ('de', 'von', 'van', 'der', 'di', 'da', 'du', 'le', 'la')
 _SEQ = re.compile(_TOK + r"(?:\s+(?:(?:de|von|van|der|di|da|du|le|la)\s+)?" + _TOK + r")+")
@@ -179,8 +181,3 @@ def analyser(textes, ctx):
                     continue                                                    # « Épuration de Sierre » : un nom commun en tête
                 noter(doutes, seq)
     return defauts, doutes
-
-
-def masque(seq):
-    """« Hans Keller » devient « H*** K*** » : jamais un nom en clair dans un message."""
-    return ' '.join(w[0] + '***' if w[0].isupper() else w for w in seq.split())

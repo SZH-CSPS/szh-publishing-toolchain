@@ -50,6 +50,15 @@ test('executer : wsl.exe de System32, --cd seulement avec cwd, aucun env passé'
   }]);
 });
 
+test('executer sansShell : -e au lieu de --, pour que chaque argument arrive entier au moteur', () => {
+  // Avec --, wsl.exe recolle les arguments et les fait relire par le shell de la distro : un
+  // chemin à espace ou à apostrophe s'y casse. -e les passe un à un.
+  appels.length = 0;
+  moteur.executer(['python3', '-B', '/mnt/c/Users/x/OneDrive - SZH CSPS/l’a.py'], { sansShell: true });
+  assert.deepStrictEqual(appels.map((a) => a.args),
+    [['-d', 'SZH-Publishing', '-e', 'python3', '-B', '/mnt/c/Users/x/OneDrive - SZH CSPS/l’a.py']]);
+});
+
 test('ligneTache : wsl.exe du PATH, la racine Windows telle quelle', () => {
   assert.deepStrictEqual(moteur.ligneTache(['make', '-j2'], { cwd: 'C:\\Revue\\essai' }), {
     commande: 'wsl.exe', args: ['-d', 'SZH-Publishing', '--cd', 'C:\\Revue\\essai', '--', 'make', '-j2']

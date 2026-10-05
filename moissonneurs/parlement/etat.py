@@ -5,15 +5,18 @@ le code du moissonneur y tourne tel quel. Les affaires en attente d'un lot y ent
 et leur texte déposé ont été calculés au poste de développement, qui garde les textes. La passe publie dans son
 journal ce qu'elle a appris. Le détail et les mesures sont dans docs/FORMAT-MOISSONS.md.
 """
+import hashlib
 import json
+import os
 
 import partage
 
-from . import export_propositions as ep, finesse, noms, reference
+from . import export_propositions as ep, finesse, lexique, noms, reference
 from . import correspondances as corr
 from .stockage import Base, avant_date_min
 
 NOM = 'parlement'
+ICI = os.path.dirname(os.path.abspath(__file__))
 CHAMPS_DATE = ep.CHAMPS_DATE
 EXPORTABLES = ('retenu', 'a-relire')
 
@@ -180,11 +183,101 @@ def en_attente(base, config):
     return sortie
 
 
-def figer(base, config, lex, recalculer=None):
+# Version du calcul figé : à monter quand la note ou le texte déposé changent sans que le code listé ci-dessous change.
+VERSION_FIGER = 1
+# Le code qui calcule ce qui est figé : un changement de l'un d'eux fait tout refiger.
+MODULES_FIGER = ('classement', 'correspondances', 'export_propositions', 'finesse', 'lexique', 'stockage', 'texte')
+# Sections des réglages sans effet sur le calcul : des chemins et le réseau.
+HORS_CALCUL = ('_racine', 'reseau', 'stockage', 'sortie', 'bibliotheque', 'exports', 'mensuelle')
+
+
+def _sha(*morceaux):
+    h = hashlib.sha256()
+    for m in morceaux:
+        h.update(m if isinstance(m, bytes) else str(m).encode('utf-8'))
+        h.update(b'\0')
+    return h.hexdigest()
+
+
+def empreinte_lexique(dossier=None):
+    """Empreinte des fichiers du lexique : un terme changé fait refiger toutes les affaires."""
+    dossier = dossier or lexique.DOSSIER
+    morceaux = []
+    for nom in sorted(os.listdir(dossier)):
+        chemin = os.path.join(dossier, nom)
+        if os.path.isfile(chemin):
+            with open(chemin, 'rb') as f:
+                morceaux += [nom, f.read()]
+    return _sha(*morceaux)
+
+
+class _Reprise:
+    """Ce qui a été figé, avec l'empreinte de tout ce que son calcul a lu, dans une table du seul poste de dev.
+
+    L'empreinte réunit la version du calcul, son code, le lexique, les réglages, la ligne de l'affaire, toutes les
+    versions de son brut et ses documents. Le résultat est repris de cette table, pas de `figees` ni de `finesse`
+    qu'un journal absorbé peut avoir réécrites."""
+
+    def __init__(self, base, config, empreinte_lex):
+        self.c = base.c
+        self.c.execute('CREATE TABLE IF NOT EXISTS reprise_figee (quoi TEXT NOT NULL, body_key TEXT NOT NULL, '
+                       'external_id TEXT NOT NULL, cle TEXT NOT NULL, donnees TEXT NOT NULL, '
+                       'PRIMARY KEY (quoi, body_key, external_id))')
+        code = []
+        for nom in MODULES_FIGER:
+            with open(os.path.join(ICI, nom + '.py'), 'rb') as f:
+                code += [nom, f.read()]
+        reglages = {k: v for k, v in config.items() if k not in HORS_CALCUL}
+        self.commun = _sha(VERSION_FIGER, _sha(*code), empreinte_lex,
+                           json.dumps(reglages, sort_keys=True, ensure_ascii=False, default=str))
+        self._cles = {}
+        self.repris = self.calcules = 0
+
+    def cle(self, a):
+        k = (a['body_key'], a['external_id'])
+        if k not in self._cles:
+            ligne = {n: a[n] for n in a.keys() if n != 'derniere_vue'}
+            morceaux = [self.commun, json.dumps(ligne, sort_keys=True, ensure_ascii=False, default=str)]
+            for r in self.c.execute('SELECT empreinte, recu_le, charge FROM bruts WHERE cle=? ORDER BY recu_le, empreinte',
+                                    (f'affaire:{k[0]}:{k[1]}',)):
+                morceaux += [r[0], r[1], r[2]]
+            for r in self.c.execute('SELECT doc_id, nom, langue, texte FROM documents WHERE body_key=? AND id_api=? '
+                                    'ORDER BY doc_id', (k[0], a['id_api'])):
+                morceaux += [json.dumps([r[0], r[1], r[2]], ensure_ascii=False), r[3] or '']
+            self._cles[k] = _sha(*morceaux)
+        return self._cles[k]
+
+    def calculer(self, quoi, a, calcul):
+        """Le résultat repris si l'empreinte n'a pas bougé, sinon calculé et noté."""
+        cle = self.cle(a)
+        r = self.c.execute('SELECT cle, donnees FROM reprise_figee WHERE quoi=? AND body_key=? AND external_id=?',
+                           (quoi, a['body_key'], a['external_id'])).fetchone()
+        if r is not None and r[0] == cle:
+            self.repris += 1
+            return json.loads(r[1])
+        valeur = calcul()
+        self.c.execute('INSERT OR REPLACE INTO reprise_figee VALUES (?,?,?,?,?)',
+                       (quoi, a['body_key'], a['external_id'], cle, json.dumps(valeur, ensure_ascii=False)))
+        self.calcules += 1
+        return valeur
+
+
+def figer(base, config, lex, recalculer=None, empreinte_lex=None):
     """Remplit `finesse` (toute affaire exportable) et `figees` (les affaires en attente) à partir des textes présents.
 
     Une affaire sans texte dans cette base garde ce qui y est déjà figé : il vient d'un journal, calculé par le poste
-    qui avait son texte. `recalculer(clé)` dit si le texte est ici ; par défaut, des documents ou un texte récupéré."""
+    qui avait son texte. `recalculer(clé)` dit si le texte est ici ; par défaut, des documents ou un texte récupéré.
+    `empreinte_lex` (poste de dev) : ce qui a déjà été figé et dont rien n'a changé est repris sans recalcul."""
+    reprise = _Reprise(base, config, empreinte_lex) if empreinte_lex else None
+
+    def calculer(quoi, a, calcul):
+        return calcul() if reprise is None else reprise.calculer(quoi, a, calcul)
+    with finesse.une_seule_fois():
+        _figer(base, config, lex, recalculer, calculer)
+    return reprise
+
+
+def _figer(base, config, lex, recalculer, calculer):
     c = base.c
     if recalculer is None:
         avec_texte = {(r[0], r[1]) for r in c.execute('SELECT body_key, external_id FROM textes_recuperes')}
@@ -202,7 +295,7 @@ def figer(base, config, lex, recalculer=None):
         if a_texte or base.donnees_figees('finesse', *k) is None:
             if a_texte:
                 c.execute('DELETE FROM figees WHERE body_key=? AND external_id=?', k)
-            f = finesse.finesse_de(config, base, lex, a)
+            f = calculer('finesse', a, lambda: finesse.finesse_de(config, base, lex, a))
             if f is None:
                 c.execute('DELETE FROM finesse WHERE body_key=? AND external_id=?', k)
             else:
@@ -210,7 +303,7 @@ def figer(base, config, lex, recalculer=None):
                           (*k, json.dumps(f, ensure_ascii=False)))
         if k in attente and (a_texte or base.donnees_figees('figees', *k) is None):
             c.execute('DELETE FROM figees WHERE body_key=? AND external_id=?', k)
-            lu = ep.lu_dans_les_documents(config, base, a, lex_finesse)
+            lu = calculer('figees', a, lambda: ep.lu_dans_les_documents(config, base, a, lex_finesse))
             c.execute('INSERT OR REPLACE INTO figees(body_key, external_id, donnees) VALUES (?,?,?)',
                       (*k, json.dumps(lu, ensure_ascii=False)))
     for k in {(r[0], r[1]) for r in c.execute('SELECT body_key, external_id FROM figees')} - attente:

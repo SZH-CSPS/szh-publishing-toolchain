@@ -210,6 +210,11 @@ lib/
                         par empreinte de la source ; prompts dans prompts/resume-descriptif.json
   resumes-hote.js       « Raccourcir les résumés » dans Paramètres de l’Accueil : clé Mistral
                         dans le coffre, son test, le modèle, la passe avec progression et arrêt
+  moisson.js            la moisson vue du cockpit, sans vscode : créneau, compteurs du mois,
+                        socle et imports FNS lus dans _Moissons, état d'une passe tiré des
+                        événements pronto-moisson/1
+  moisson-hote.js       « Moisson mensuelle » et « Données FNS » dans Paramètres de l'Accueil :
+                        durée estimée, moisson.py dans le moteur, progression, Arrêter (--arret)
   rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
                         résolution passive de l'ancrage SharePoint, masquage, anti-
                         inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js

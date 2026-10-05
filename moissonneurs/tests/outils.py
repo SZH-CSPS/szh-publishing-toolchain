@@ -9,7 +9,7 @@ import time
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 RACINE = os.path.dirname(ICI)
-MODULES = ('moisson.py', 'evenements.py', 'console.py', 'creneau.py', 'partage.py')
+MODULES = ('moisson.py', 'evenements.py', 'console.py', 'creneau.py', 'partage.py', 'commun.py')
 SOCLE_FICTIF = {'format': 'socle-fictif', 'note': 'publié par le poste de développement'}
 
 # Le faux moissonneur rejoue `<racine>/_Moissons/<nom>/scenario.json`. Avant chaque pas marqué `requete`, il

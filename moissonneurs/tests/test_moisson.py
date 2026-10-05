@@ -234,15 +234,15 @@ class Budget(AvecArbre):
                                'requetes': '$faites'},
                               dict(outils.resume(nom, interrompu='budget'), requetes='$faites')]}
         a = self.arbre({nom: sc})
-        ecrire_compteur(a, nom, 'poste-b__compte-b', 690)
+        ecrire_compteur(a, nom, 'poste-b__compte-b', 620)
         ecrire_compteur(a, nom, 'poste-a__compte-a', 10)
         ecrire_compteur(a, nom, 'poste-c__compte-c', 500, mois='2000-01')        # un autre mois ne compte pas
         p = a.lancer('tout', nom, *a.poste())
         self.assertEqual(p.returncode, 3, p.stdout)
-        plafond = 800 - creneau.MARGE_REQUETES - 700
+        plafond = 800 - creneau.MARGE_REQUETES - 630
         self.assertEqual(option(a.argv_enfant(nom), '--plafond'), str(plafond))
         evts = self.json_pur(p.stdout)
-        self.assertEqual(de_type(evts, 'debut')[0]['budget_mois'][nom]['somme'], 700)
+        self.assertEqual(de_type(evts, 'debut')[0]['budget_mois'][nom]['somme'], 630)
         self.assertEqual(max(e['requetes'] for e in de_type(evts, 'etape')), plafond)
         f, = de_type(evts, 'moissonneur_fin')
         self.assertEqual(f['interrompu'], 'budget')
@@ -432,8 +432,9 @@ class Coutures(AvecArbre):
                             for e in de_type(evts, 'avertissement')))
         self.assertFalse(os.path.exists(a.chemin('parlement', 'argv.json')))
 
-    def test_la_passe_n_ecrit_que_son_compteur(self):
-        # Le socle ne s'écrit que depuis le poste de développement : moisson.py n'y touche jamais.
+    def test_la_passe_n_ecrit_que_son_compteur_et_son_bilan(self):
+        # Le socle ne s'écrit que depuis le poste de développement : moisson.py n'y touche jamais. Il n'écrit que les
+        # fichiers de son poste : le compteur du mois et le bilan de la passe.
         a = self.arbre({'parlement': scenario_simple('parlement'), 'recherche': scenario_simple('recherche')})
         with open(a.socle('recherche'), encoding='utf-8') as f:
             avant = f.read()
@@ -441,9 +442,12 @@ class Coutures(AvecArbre):
         self.assertEqual(code, 0)
         for m in ('parlement', 'recherche'):
             with self.subTest(moissonneur=m):
-                self.assertEqual(sorted(os.listdir(a.chemin(m, '_partage'))), ['requetes', 'socle.json'])
+                self.assertEqual(sorted(os.listdir(a.chemin(m, '_partage'))), ['passes', 'requetes', 'socle.json'])
                 self.assertEqual(os.listdir(a.chemin(m, '_partage', 'requetes', mois_courant())),
                                  ['poste-a__compte-a.json'])
+                bilans = os.listdir(a.chemin(m, '_partage', 'passes', mois_courant()))
+                self.assertEqual(len(bilans), 1)
+                self.assertTrue(bilans[0].startswith('poste-a__compte-a-'), bilans)
         with open(a.socle('recherche'), encoding='utf-8') as f:
             self.assertEqual(f.read(), avant)
         self.assertEqual(a.creneaux(), [])

@@ -261,7 +261,7 @@ class BudgetDuMois(unittest.TestCase):
         self.assertEqual(cr.somme_mois(self.tmp, 'parlement', '2026-11', 'a__x'), (10, 10))
 
     def test_epuise_et_plafond(self):
-        self.assertEqual(cr.MARGE_REQUETES, 50)
+        self.assertEqual(cr.MARGE_REQUETES, 120)
         self.assertFalse(cr.epuise(800, 749, 50))
         self.assertTrue(cr.epuise(800, 750, 50))       # plafond nul : épuisé
         self.assertTrue(cr.epuise(800, 751, 50))

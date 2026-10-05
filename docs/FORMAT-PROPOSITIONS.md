@@ -145,7 +145,7 @@ d’un coup (nom temporaire, puis renommage) et une régénération l’écrase.
 | `source_empreinte`, `source_car` | le SHA-256 (hexadécimal) et la longueur du texte envoyé |
 | `mode` | `raccourcir` (un descriptif) ou `creer` (un texte déposé) |
 | `relance`, `jetons` | si une relance a suivi un premier jet trop long, et les jetons consommés |
-| `doutes` | `[{ code, detail }]` : `nombre-hors-source` (un nombre entier ou décimal de la sortie qui n’est pas, comme nombre entier, dans la source ou la fiche : « 20 » ne se lit pas dans « 2020 »), `longueur-hors-plage`, `source-tronquee` |
+| `doutes` | `[{ code, detail }]` : `nombre-hors-source` (un nombre entier ou décimal de la sortie qui n’est pas, comme nombre entier, dans la source ou la fiche : « 20 » ne se lit pas dans « 2020 »), `longueur-hors-plage`, `source-tronquee` (la source a été coupée : par le cockpit à son plafond, ou déjà par le moissonneur, dont le texte déposé finit alors par « […] ») |
 
 Un résumé dont `source_empreinte` ne correspond plus au texte actuel de la proposition est
 périmé : la vue ne l’affiche plus et la passe suivante le régénère. Un résumé valide est sauté.

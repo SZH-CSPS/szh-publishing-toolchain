@@ -6,29 +6,10 @@ cockpit de Pronto le fait (`lib/kirby-contenu.js`), après acceptation d'une pro
 import os
 import re
 
-SEPARATEUR = '----'
+from commun import lire_txt
+
 DOSSIER_TYPE = 'vorstoesse'
 TEMPLATE = 'intervention'
-
-
-def lire_txt(texte):
-    """{cle-minuscule: valeur}, title et uuid compris."""
-    champs = {}
-    for morceau in texte.replace('\r\n', '\n').rstrip('\n').split('\n\n' + SEPARATEUR + '\n\n'):
-        if not morceau.strip():
-            continue
-        premiere, _, reste = morceau.partition('\n')
-        m = re.match(r'^([A-Za-z0-9_]+):[ \t]?(.*)$', premiere)
-        if not m:
-            continue
-        if '\n' not in morceau:
-            valeur = m.group(2)
-        elif m.group(2).strip() == '':
-            valeur = reste[1:] if reste.startswith('\n') else reste
-        else:
-            valeur = m.group(2) + '\n' + reste
-        champs[m.group(1).lower()] = '\n'.join(SEPARATEUR if l == '\\' + SEPARATEUR else l for l in valeur.split('\n'))
-    return champs
 
 
 def fiches_existantes(racine_fiches):

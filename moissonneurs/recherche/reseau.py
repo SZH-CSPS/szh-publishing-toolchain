@@ -54,7 +54,7 @@ def afflux(bilan):
 
 
 class Reseau:
-    def __init__(self, config, fichier_arret=None, signaler=None, urls_refusees=()):
+    def __init__(self, config, fichier_arret=None, signaler=None, urls_refusees=(), borne=None):
         self.delai = float(config.get('delai', 1.0))
         self.dossier_cache = config['cache']
         os.makedirs(self.dossier_cache, exist_ok=True)
@@ -65,6 +65,8 @@ class Reseau:
         # Le budget des réglages (0 : sans limite) et le plafond de la passe, reçu de moisson.py (0 : aucune requête).
         bornes = [int(config.get('budget', 0) or 0) or None, config.get('plafond')]
         self.limite = min((b for b in bornes if b is not None), default=None)
+        # La limite du budget partagé entre postes (partage.BudgetPartage), qui peut baisser en route.
+        self.borne = borne
         self.fichier_arret = fichier_arret or ''
         self.signaler = signaler or (lambda evenement: None)
         self.source = ''       # la source en cours, posée par l'appelant : elle range les refus et les attentes
@@ -75,8 +77,12 @@ class Reseau:
     def _compter(self):
         if self.fichier_arret and os.path.exists(self.fichier_arret):
             raise ArretDemande(f'demande d\'arrêt : {self.fichier_arret}')
-        if self.limite is not None and self.requetes >= self.limite:
-            raise BudgetEpuise(f'plafond de {self.limite} requêtes atteint')
+        limite = self.limite
+        if self.borne is not None:
+            partagee = self.borne(self.requetes)
+            limite = partagee if limite is None else min(limite, partagee)
+        if limite is not None and self.requetes >= limite:
+            raise BudgetEpuise(f'plafond de {limite} requêtes atteint')
         self.requetes += 1
 
     def _bilan(self):

@@ -14,7 +14,9 @@ celui de [`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md).
     └── _partage\
         ├── socle.json                      l'état publié par le poste de développement
         ├── journal\<poste>__<compte>.jsonl  ce qu'un poste a appris depuis le socle
-        └── requetes\<AAAA-MM>\<poste>__<compte>.json   les requêtes de ce poste ce mois-là
+        ├── requetes\<AAAA-MM>\<poste>__<compte>.json   les requêtes de ce poste ce mois-là
+        ├── passes\<AAAA-MM>\<poste>__<compte>-<heure>.json   le bilan de chaque passe
+        └── imports-fns\<AAAA-MM-JJ>-<poste>__<compte>.json   la note de chaque import FNS (recherche)
 ```
 
 - Chaque fichier n'a qu'un écrivain. Le socle s'écrit au poste de développement, sous son créneau ;
@@ -90,8 +92,62 @@ et un test du cockpit doit rendre le même résultat.
 
 - Le budget du mois est la somme des compteurs de tous les postes. Un compteur illisible ne compte pas.
 - Seul `moisson.py` écrit le compteur de son poste, après chaque étape et en fin de moissonneur.
-- `creneau.MARGE_REQUETES` borne ce qu'un autre poste a pu dépenser sans être encore visible : on
+- `creneau.MARGE_REQUETES` (120) borne ce qu'un autre poste a pu dépenser sans être encore visible : on
   refuse la passe à `somme ≥ budget − marge`, et `--plafond` vaut `budget − marge − somme`.
+- Pendant la passe, le moissonneur relit les compteurs des autres postes toutes les 50 requêtes et
+  s'arrête net dès que la somme atteint `budget − marge`.
+
+## Le bilan d'une passe : `passes\<AAAA-MM>\<poste>__<compte>-<AAAAMMJJTHHMMSSZ>.json`
+
+```json
+{ "format": "pronto-passe/1", "moissonneur": "parlement", "poste": "…", "compte": "…",
+  "declencheur": "cockpit", "debut": "2026-11-02T08:00:00Z", "fin": "2026-11-02T08:31:12Z",
+  "requetes": 412, "code": 0, "interrompu": null, "lot": "parlement/2026-11-02-1.jsonl",
+  "propositions": 17, "hors_ligne": false, "a_blanc": false }
+```
+
+- Un fichier par passe et par moissonneur, écrit par `moisson.py` à la fin du moissonneur. L'heure du
+  nom est celle de `debut`, sans séparateurs.
+- `lot` vaut `null` quand rien n'a été déposé. Une passe à blanc ou hors ligne écrit aussi son bilan ;
+  le cockpit qui cherche « la dernière passe » écarte celles où `a_blanc` est vrai.
+
+## La note d'import FNS : `recherche\_partage\imports-fns\<AAAA-MM-JJ>-<poste>__<compte>.json`
+
+```json
+{ "format": "pronto-import-fns/1", "date": "2026-11-28", "heure": "2026-11-28T09:12:00Z",
+  "poste": "…", "compte": "…",
+  "fichier": { "taille": 430395693, "mtime": "2026-11-27T16:02:11Z", "lignes": 91297, "illisibles": 0,
+               "max_call_end": "2026-04", "appels": { "2025-10": 349, "2026-04": 412 } },
+  "appels_nouveaux": ["2026-04"], "nouvelles": 14, "lot": "recherche/2026-11-28-1.jsonl" }
+```
+
+- Écrite par `moisson.py import-fns`, seulement si l'import a abouti. Un second import du même poste le
+  même jour la remplace.
+- `mtime` est la date du téléchargement, pas celle des données : l'export n'est pas daté. L'indice de
+  fraîcheur est `max_call_end`, le mois de la dernière clôture d'appel (`CallEndDate`).
+- `appels` compte les subsides par mois de clôture d'appel ; `appels_nouveaux` dit ceux qui manquaient
+  au fichier de l'import précédent (vide au premier import), pour mesurer le délai réel de publication.
+- `nouvelles` : les propositions du lot ; `lot` : son chemin relatif à `_Moissons`, ou `null`.
+- Le cockpit lit la note dont `heure` est la plus récente.
+
+## Ce que le cockpit lit
+
+Paramètres > Moissonnage (`lib/moisson.js`) lit ces fichiers sans passer par le moteur, pour dire
+avant tout lancement pourquoi le bouton est désactivé :
+- les annonces de `_Creneau\`, avec la même péremption que `creneau.py` ;
+- la somme du mois de chaque moissonneur, comparée au budget qu'`estimer` rend ;
+- la présence d'un `socle*.json` ;
+- le plus récent des bilans `_partage\passes\` (`pronto-passe/1`), hors passes à blanc, pour la
+  dernière passe et son poste ; à défaut, `etat.json` ;
+- la plus récente des notes `recherche\_partage\imports-fns\*.json` (`pronto-import-fns/1`), par
+  `heure`, puis par `date` (le jour seul) à défaut.
+
+Arrêter crée le fichier que le cockpit a passé par `--arret`, un fichier temporaire du poste ; il
+n'est actif qu'après l'événement `debut`.
+
+`PERIME_S`, `ATTENTE_S` et `MARGE_REQUETES` sont recopiés dans `lib/moisson.js` ;
+`test/js/moisson.test.js` les compare à `creneau.py`. `moisson.py` reste seul juge : le cockpit
+ne fait que prévenir.
 
 ## Le parlement
 

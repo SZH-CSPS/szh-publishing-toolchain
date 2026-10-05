@@ -7,6 +7,8 @@ import sqlite3
 import sys
 import time
 
+import commun
+
 from . import db, etat, moisson, propositions, purge
 from .reseau import Acces403, ArretDemande, BudgetEpuise, Reseau, afflux
 
@@ -83,7 +85,8 @@ def _date_lisible(iso):
         return iso
 
 
-def tout(config, emit, aujourdhui=None, hors_ligne=False, reseau=None, a_blanc=False, ouvrir=None, publier=None):
+def tout(config, emit, aujourdhui=None, hors_ligne=False, reseau=None, a_blanc=False, ouvrir=None, publier=None,
+         borne=None):
     """Moisson, lot, purge, etat.json. Rend (résumé, code : 0 ok, 1 échecs signalés, 2 configuration, 3 interrompu).
 
     hors_ligne : aucune source n'est appelée ; le lot, la purge et etat.json se font sur la base telle qu'elle est.
@@ -94,11 +97,14 @@ def tout(config, emit, aujourdhui=None, hors_ligne=False, reseau=None, a_blanc=F
     jour = aujourdhui or datetime.date.today().isoformat()
     try:
         propositions.verifier_config(config)
+        if not ouvrir and not str(config.get('base') or '').strip():
+            raise propositions.ConfigurationInvalide('base : chemin vide')
         con = ouvrir() if ouvrir else db.connecter(config['base'])
     except (propositions.ConfigurationInvalide, etat.EtatAbsent, sqlite3.Error, OSError) as e:
         return _bloquer(config, emit, f'{type(e).__name__}: {e}')
     if reseau is None and not hors_ligne:
-        reseau = Reseau(config, fichier_arret=config.get('arret'), signaler=emit, urls_refusees=db.urls_refusees(con))
+        reseau = Reseau(config, fichier_arret=config.get('arret'), signaler=emit, urls_refusees=db.urls_refusees(con),
+                        borne=borne)
     sources_echec, etapes_echec, interrompu, nouveaux = [], [], None, {}
     tentees, en_403, desactivees_resume = [], [], []
     publie = {'avant': etat.instantane(con) if publier else None}
@@ -250,16 +256,6 @@ CHAMPS_ETAT = ('derniere_moisson', 'duree_s', 'requetes', 'propositions_ecrites'
 
 def ecrire_etat(config, resume):
     """etat.json (`pronto-etat/1`) à côté des lots, écrit d'un coup. Ni `crans` ni `cran_defaut` : pas de score ici."""
-    dossier = config['propositions']
-    if not str(dossier or '').strip():
-        raise OSError('dossier des propositions vide')
-    os.makedirs(dossier, exist_ok=True)
     etat_json = {'format': 'pronto-etat/1', 'moissonneur': NOM, 'contrat': VERSION_CONTRAT}
     etat_json.update({c: resume[c] for c in CHAMPS_ETAT if c in resume})
-    chemin = os.path.join(dossier, 'etat.json')
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(etat_json, f, ensure_ascii=False, indent=2)
-        f.write('\n')
-    os.replace(tmp, chemin)
-    return chemin
+    return commun.ecrire_etat(config['propositions'], etat_json)

@@ -584,6 +584,43 @@ def extraire_twig(lignes, langue):
         yield i, langue, masque, _demasquer(codes)
 
 
+RE_PY_CODE = re.compile(r"\{[^{}]*\}")
+
+
+def extraire_py(lignes, langue):
+    """moissonneurs/*.py : les littéraux de prose d'une ligne de code.
+
+    Ce que console.py affiche, et ce que moisson.py et evenements.py envoient au cockpit
+    (avertissements, détails d'un refus). Les docstrings et les commentaires ne s'affichent
+    pas ; le code d'une f-string ({…}) est masqué par un jeton, comme le code du Markdown.
+    """
+    dans_doc = False
+    for i, l in enumerate(lignes):
+        s = l.strip()
+        n = s.count('"""')
+        if dans_doc:
+            dans_doc = n % 2 == 0
+            continue
+        if s.startswith('"""') or s.startswith('#'):
+            dans_doc = s.startswith('"""') and n % 2 == 1
+            continue
+        for m in RE_LITTERAL.finditer(l):
+            groupe = 1 if m.group(1) is not None else 2
+            v = m.group(groupe)
+            if not _est_prose(v):
+                continue
+            codes = []
+
+            def masquer(x, codes=codes):
+                codes.append(x.group(0))
+                return JETON + str(len(codes) - 1) + JETON
+
+            masque = RE_PY_CODE.sub(masquer, v)
+            demasquer = _demasquer(codes)
+            placer = _remplacant_intervalle(*m.span(groupe))
+            yield i, langue, masque, (lambda neuve, ligne, d=demasquer, p=placer: p(d(neuve, ligne), ligne))
+
+
 # Ce qui est lu, et rien d'autre. Chaque entrée : (chemin, extracteur, langue par défaut).
 # La langue par défaut ne sert qu'aux surfaces monolingues ; les autres la portent dans
 # leur structure.
@@ -613,6 +650,11 @@ SURFACES = [
     # donc selon ses propres règles — c'est le meilleur exemple qu'elles puissent donner.
     ("docs/TYPOGRAPHIE-FR.md", extraire_texte, "fr"),
     ("docs/TYPOGRAPHIE-DE.md", extraire_texte, "de"),
+    # Les messages des moissonneurs : la console du poste de développement, et ce que le cockpit
+    # affiche tel quel (avertissements d'une passe, détail d'un refus). Français seulement.
+    ("moissonneurs/console.py", extraire_py, "fr"),
+    ("moissonneurs/moisson.py", extraire_py, "fr"),
+    ("moissonneurs/evenements.py", extraire_py, "fr"),
 ]
 
 # Les filtres Lua portent les libellés imprimés dans le PDF : licence, titres de rubrique,

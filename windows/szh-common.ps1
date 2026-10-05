@@ -784,12 +784,12 @@ function Remove-SzhToolkitOrphelins {
   elseif ($Toolkit) { $Toolkit = [System.IO.Path]::GetFullPath($Toolkit) }
   if ($Extrait -and (Test-Path -LiteralPath $Extrait)) { $Extrait = (Get-Item -LiteralPath $Extrait).FullName }
   elseif ($Extrait) { $Extrait = [System.IO.Path]::GetFullPath($Extrait) }
-  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
+  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows', 'moissonneurs')
   $retires = New-Object System.Collections.ArrayList
   $avertissements = New-Object System.Collections.ArrayList
 
   # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
-  # Une extraction vide (zip qui réussit sans rien contenir) viderait sinon les cinq dossiers
+  # Une extraction vide (zip qui réussit sans rien contenir) viderait sinon tous les dossiers
   # gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si l'extraction ne porte
   # ni le VERSION ni un seul des dossiers gérés, elle ne dit rien de fiable sur cette version :
   # le nettoyage entier s'abstient plutôt que de juger sur du vide.
@@ -799,7 +799,7 @@ function Remove-SzhToolkitOrphelins {
     if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
   }
   if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
-    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
+    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des dossiers gérés -- rien n''est fiable à comparer')
     return [ordered]@{ retires = $retires; avertissements = $avertissements }
   }
 

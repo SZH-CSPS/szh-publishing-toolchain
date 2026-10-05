@@ -4,7 +4,6 @@ Le créneau est une courtoisie sans garantie d’exclusion : avec un retard de s
 passes peuvent se croiser. Les lots et l'état sont idempotents ; la marge borne le seul vrai risque, le budget.
 """
 import datetime
-import json
 import os
 import time
 
@@ -18,7 +17,7 @@ BATTEMENT_S = 60
 ATTENTE_S = 90
 ECHEANCE_MIN_S = 30 * 60
 ECHEANCE_MAX_S = 6 * 3600
-MARGE_REQUETES = 50  # provisoire : à chiffrer après la mesure de latence entre deux postes
+MARGE_REQUETES = 120  # ce qu'un autre poste dépense sans être vu : 4 min de latence OneDrive à 2 s la requête
 
 
 def maintenant_utc():
@@ -40,22 +39,7 @@ def mois_de(dt):
 normaliser, cle = partage.normaliser, partage.cle_poste
 
 
-def ecrire_json_atomique(chemin, contenu):
-    """`.tmp` puis renommage sur le même nom : un lecteur ne voit jamais un fichier à moitié écrit."""
-    os.makedirs(os.path.dirname(chemin), exist_ok=True)
-    tmp = chemin + '.tmp'
-    with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
-        json.dump(contenu, f, ensure_ascii=False)
-        f.write('\n')
-    os.replace(tmp, chemin)
-
-
-def _lire_json(chemin):
-    try:
-        with open(chemin, encoding='utf-8') as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return None
+ecrire_json_atomique, _lire_json = partage.ecrire_json_atomique, partage.lire_json
 
 
 class DossierCreneau:
