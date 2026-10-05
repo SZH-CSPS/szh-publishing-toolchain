@@ -304,6 +304,11 @@ try {
   . (Join-Path $racineDepot 'windows\szh-common.ps1')
   Set-SzhRaccourciDev -RacineDepot $racineDepot -NomRaccourci $NOM_RACCOURCI_DEV -DossierMenu $Menu
 
+  # Le cockpit est une jonction vers le depot : chaque changement de son package.json fait
+  # differer le cache d'extensions de VSCodium, qui affiche alors "Extensions have been modified
+  # on disk". Aucun reglage ne le coupe ; le jeter ne coute qu'un rebalayage au demarrage.
+  Get-ChildItem (Join-Path $BaseDev 'codium\data\CachedProfilesData') -Recurse -Filter 'extensions.user.cache' -ErrorAction SilentlyContinue | Remove-Item -Force
+
   if ($Lien -or $Produit -or $Versions) {
     $transmis = @{}
     if ($Lien) { $transmis['Lien'] = $Lien }

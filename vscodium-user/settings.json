@@ -10,6 +10,8 @@
   "workbench.editor.editorActionsLocation": "hidden",
   "window.commandCenter": false,
   "window.menuBarVisibility": "compact",
+  // Pas de barre latérale secondaire (le panneau « Chat », vide) à droite de l'article.
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
   // « Pronto » ouvre une fenêtre vide, sur l’Accueil : rien ne se rouvre au démarrage.
   "window.restoreWindows": "none",
   "editor.minimap.enabled": false,
@@ -52,7 +54,10 @@
     "Aperçu / Export PDF": ["**/articles/**/*.md", "**/liminaires/**/*.md", "**/*.css", "**/ausgabe.yaml", "**/buch.yaml"]
   },
   "triggerTaskOnSave.restart": true,           // sauvegardes rapprochées : on relance
-  "triggerTaskOnSave.showStatusBarToggle": true,
+  // Pas de bascule « Trigger Task on Save » dans la barre d'état : un clic y couperait la
+  // compilation à l'enregistrement, sans rien dire. Le verrou d'un numéro passe par
+  // triggerTaskOnSave.tasks (lib/verrou.js).
+  "triggerTaskOnSave.showStatusBarToggle": false,
   "task.allowAutomaticTasks": "on",
 
   "search.exclude": { "**/out/**": true, "**/media/**": true },
@@ -80,6 +85,11 @@
     // Priorité de compilation posée par le cockpit pour le Makefile (lib/apercu.js) :
     // rien à y lire, l'aperçu suffit.
     "**/.szh-apercu": true,
+    // Verdicts PDF/UA en cache (lib/pdfua-hote.js), folios du numéro (pipeline/pagination.py)
+    // et empreintes d'import d'un article (pipeline/reimporter.py).
+    "**/.szh-pdfua.json": true,
+    "**/.szh-pagination.json": true,
+    "**/.szh-import.empreintes": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,

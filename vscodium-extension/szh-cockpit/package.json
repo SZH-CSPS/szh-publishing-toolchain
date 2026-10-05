@@ -229,6 +229,7 @@
       "workbench.editor.editorActionsLocation": "hidden",
       "window.commandCenter": false,
       "window.menuBarVisibility": "compact",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
       "window.restoreWindows": "none",
       "editor.minimap.enabled": false,
       "breadcrumbs.enabled": false,
@@ -274,7 +275,7 @@
         ]
       },
       "triggerTaskOnSave.restart": true,
-      "triggerTaskOnSave.showStatusBarToggle": true,
+      "triggerTaskOnSave.showStatusBarToggle": false,
       "task.allowAutomaticTasks": "on",
       "search.exclude": {
         "**/out/**": true,
@@ -292,6 +293,9 @@
         "**/.import.log": true,
         "**/.szh-edition": true,
         "**/.szh-apercu": true,
+        "**/.szh-pdfua.json": true,
+        "**/.szh-pagination.json": true,
+        "**/.szh-import.empreintes": true,
         "**/Thumbs.db": true,
         "**/~$*": true,
         "**/*.lnk": true,
