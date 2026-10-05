@@ -11,6 +11,24 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.0
+
+Medium : résumés générés par Mistral dans les propositions, éditeur sans bruit.
+
+**Production.**
+- Paramètres : clé d’API Mistral rangée dans le coffre du poste (jamais dans un fichier), avec
+  « Tester la clé ».
+- Propositions : bouton « Raccourcir les résumés » (prompt v6, ministral-14b par défaut) ; le
+  résumé généré s’affiche par défaut avec « à relire », l’original reste visible ; un nombre
+  absent de la source lève un doute. Les résumés vivent dans `_Moissons/_Resumes/`.
+- Éditeur : ni panneau Chat, ni bascule « Trigger Task on Save », ni fichiers `.szh-*` dans
+  l’explorateur.
+
+**Développement.**
+- `moissonneurs/` : la recherche et la commande `moisson.py` (créneau, budget, événements),
+  pas encore livrées dans le toolkit.
+- Instance de dev : le cache d’extensions est jeté au lancement.
+
 ## 3.9.0
 
 Medium : la vue Propositions se trie et se filtre.

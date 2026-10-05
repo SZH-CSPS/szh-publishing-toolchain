@@ -15,6 +15,26 @@
     "",
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
+  "3.10": {
+    "fr": {
+      "titre": "Des résumés plus courts, un éditeur plus calme",
+      "points": [
+        "Dans Paramètres, vous pouvez enregistrer une clé d’API Mistral pour ce poste et la tester.",
+        "Le bouton « Raccourcir les résumés » fait résumer les descriptifs trop longs des propositions, dans la langue de la revue.",
+        "Dans Propositions, le résumé généré s’affiche par défaut avec la mention « à relire » ; « Voir l’original » montre le texte de la source.",
+        "L’éditeur n’affiche plus le panneau Chat, la bascule anglaise de la barre d’état ni les fichiers techniques après une compilation."
+      ]
+    },
+    "de": {
+      "titre": "Kürzere Zusammenfassungen, ruhigerer Editor",
+      "points": [
+        "In den Einstellungen können Sie für diesen Arbeitsplatz einen Mistral-API-Schlüssel speichern und testen.",
+        "Die Schaltfläche «Zusammenfassungen kürzen» lässt zu lange Beschreibungen der Treffer in der Sprache der Zeitschrift zusammenfassen.",
+        "In den Treffern erscheint die erstellte Zusammenfassung standardmässig mit dem Hinweis «bitte prüfen»; «Original anzeigen» zeigt den Quelltext.",
+        "Der Editor zeigt nach einer Kompilierung weder das Chat-Fenster noch den englischen Schalter in der Statusleiste noch technische Dateien."
+      ]
+    }
+  },
   "3.9": {
     "fr": {
       "titre": "Des propositions à trier",
