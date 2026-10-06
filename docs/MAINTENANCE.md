@@ -455,7 +455,9 @@ raccourci épinglé à la barre des tâches est une copie que la migration ne to
 dépingler et réépingler à la main. Le sous-dossier `SZH\` du menu appartient à un autre produit
 et n'est jamais touché. « Pronto » porte l'identité de barre des tâches de VSCodium
 (`VSCodium.VSCodium`), pour n'avoir qu'un bouton avec l'éditeur, et l'updater
-`SZH.Publishing.MiseAJour` (`$SzhAppIds`).
+`SZH.Publishing.MiseAJour` (`$SzhAppIds`). Le menu Démarrer ne montre qu'une entrée par
+identité : les raccourcis de l'installeur VSCodium reçoivent `SZH.Publishing.VSCodium` à chaque
+pose (`Set-SzhRaccourcisCodium`), sans quoi « VSCodium » prend la place de « Pronto ».
 
 Les Réglages de l'Accueil portent les réglages du compte (langue, produit par défaut, mise à
 jour visible ou silencieuse) et un réglage du poste, « Mode développeur (dossiers de test) »,

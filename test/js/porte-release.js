@@ -269,14 +269,16 @@ function verifierSuite(runner) {
     // destructuration de spawnSync/exec — voir gardes.js, section « interposition ».
     args.push('--require', GARDES_JS);
   }
-  args.push('--test', '--test-timeout=180000', '--test-reporter=tap',
+  // Les délais de la suite exigeante de CLAUDE.md : sur /mnt/c, l'unittest des moissonneurs
+  // dépasse à lui seul trois minutes, et la suite entière dix.
+  args.push('--test', '--test-timeout=300000', '--test-reporter=tap',
     '--test-reporter-destination=' + tap);
   args.push(...fichiers);
   const env = envPourRunner(runner);
   let r;
   try {
     r = spawnSync(process.execPath, args, { cwd: RACINE, env, encoding: 'utf8',
-      maxBuffer: 256 * 1024 * 1024, timeout: 330000 });
+      maxBuffer: 256 * 1024 * 1024, timeout: 1200000 });
   } catch (e) {
     r = { error: e };
   }

@@ -672,11 +672,10 @@ test('la migration : un menu à cinq anciennes entrées n’en garde plus que de
     assert.strictEqual(r.apres.length, 2, 'le menu ne porte plus exactement deux entrées');
   });
 
-// Un seul bouton dans la barre des tâches : « Pronto » prend l'identité de VSCodium, et la
-// barre reprend l'icône d'un raccourci de même identité. Un .lnk de VSCodium sans icône (le
-// poste de Robin en porte un, posé le 23.09.2026 au premier niveau du menu) donnerait au
-// bouton l'icône de l'exécutable : la pose des raccourcis lui donne pronto.ico.
-test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium reçoivent pronto.ico',
+// Un seul bouton dans la barre des tâches : « Pronto » prend l'identité de VSCodium. Le menu
+// Démarrer, lui, ne montre qu'une entrée par identité, et c'est « VSCodium » qui l'emportait :
+// les raccourcis de l'installeur reçoivent donc une identité à eux, et pronto.ico.
+test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium en reçoivent une autre',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-codium-lnk-'));
     const menu = path.join(travail, 'Programs');
@@ -691,14 +690,17 @@ test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium reç
       '$menu = $args[0]; $toolkit = $args[1]; $sortie = $args[2]; $exe = $args[3]',
       '$sh = New-Object -ComObject WScript.Shell',
       "New-Item -ItemType Directory -Force -Path (Join-Path $menu 'VSCodium') | Out-Null",
-      // Celui de l'installeur, dans son dossier, et celui sans icône du premier niveau.
+      // Celui de l'installeur, dans son dossier, sans icône ; celui du premier niveau porte
+      // déjà pronto.ico, comme sur un poste passé par la 3.10, et garde pourtant l'identité.
       "foreach ($n in 'VSCodium\\VSCodium.lnk', 'VSCodium.lnk') {",
-      '  $l = $sh.CreateShortcut((Join-Path $menu $n)); $l.TargetPath = $exe; $l.Save()',
+      '  $l = $sh.CreateShortcut((Join-Path $menu $n)); $l.TargetPath = $exe',
+      "  if ($n -eq 'VSCodium.lnk') { $l.IconLocation = (Join-Path $toolkit 'windows\\pronto.ico') + ',0' }",
+      '  $l.Save()',
       "  [void](Set-SzhLnkAppId (Join-Path $menu $n) 'VSCodium.VSCodium') }",
       "$b = $sh.CreateShortcut((Join-Path $menu 'Bloc-notes.lnk'))",
       '$b.TargetPath = (Join-Path $env:WINDIR \'System32\\notepad.exe\'); $b.Save()',
       '$p = Set-SzhRaccourcisMenu -Menu $menu -Toolkit $toolkit',
-      '$r = [ordered]@{ manques = @($p.manques); icones = @($p.icones); lnk = [ordered]@{} }',
+      '$r = [ordered]@{ manques = @($p.manques); codium = @($p.codium); lnk = [ordered]@{} }',
       "foreach ($n in 'Pronto.lnk', 'Pronto (Updater).lnk', 'VSCodium.lnk', 'VSCodium\\VSCodium.lnk', 'Bloc-notes.lnk') {",
       '  $f = Join-Path $menu $n; $l = $sh.CreateShortcut($f)',
       '  $r.lnk[$n] = [ordered]@{ icone = [string]$l.IconLocation; appid = [string](Get-SzhLnkAppId $f) } }',
@@ -718,9 +720,10 @@ test('Pronto prend l’identité de VSCodium, et les raccourcis de VSCodium reç
     const voulue = path.join(RACINE, 'windows', 'pronto.ico') + ',0';
     for (const n of ['VSCodium.lnk', 'VSCodium\\VSCodium.lnk']) {
       assert.strictEqual(r.lnk[n].icone.toLowerCase(), voulue.toLowerCase(), n + ' garde l’icône de l’exécutable');
-      assert.strictEqual(r.lnk[n].appid, 'VSCodium.VSCodium', n + ' a perdu son identité');
+      assert.strictEqual(r.lnk[n].appid, 'SZH.Publishing.VSCodium',
+        n + ' partage l’identité de Pronto, qui disparaît alors du menu Démarrer');
     }
-    assert.deepStrictEqual(r.icones.slice().sort(), ['VSCodium.lnk', 'VSCodium.lnk']);
+    assert.deepStrictEqual(r.codium.slice().sort(), ['VSCodium.lnk', 'VSCodium.lnk']);
     assert.strictEqual(r.lnk['Bloc-notes.lnk'].icone, ',0', 'un raccourci étranger a été retouché');
     assert.deepStrictEqual(r.manques, []);
   });

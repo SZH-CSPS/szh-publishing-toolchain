@@ -11,6 +11,20 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.2
+
+Mineure : « Pronto » réapparaît au menu Démarrer.
+
+**Production.**
+- Menu Démarrer et recherche Windows : l’entrée « Pronto » était remplacée par « VSCodium »,
+  les deux raccourcis partageant la même identité de barre des tâches. Les raccourcis de
+  l’installeur VSCodium reçoivent désormais leur propre identité (`Set-SzhRaccourcisCodium`),
+  reprise à chaque ouverture de session ; le bouton unique dans la barre des tâches ne change pas.
+
+**Développement.**
+- `porte-release.js` reprend les délais de la suite exigeante (300 s par test, 20 min par
+  runner) : depuis l’unittest des moissonneurs, la suite dépassait son plafond de 330 s.
+
 ## 3.10.1
 
 Mineure : moisson et import FNS depuis le cockpit, résumés plus courts, descriptif lisible en entier.

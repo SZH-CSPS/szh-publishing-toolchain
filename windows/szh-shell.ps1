@@ -209,7 +209,9 @@ function Start-SzhAccueil {
 #     au lieu d'épingler powershell.exe.
 #
 # Deux identités, une par entrée de menu : « Pronto » prend celle de VSCodium, qu'il ouvre, et
-# la mise à jour garde la sienne.
+# la mise à jour garde la sienne. Le menu Démarrer et sa recherche ne montrent qu'une entrée
+# par identité : les raccourcis de l'installeur VSCodium en reçoivent donc une troisième, sans
+# quoi « VSCodium » l'emporte et « Pronto » disparaît du menu.
 #
 # ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
 # ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
@@ -222,6 +224,8 @@ $script:SzhAppIds = @{
   # n'avoir qu'un bouton avec la fenêtre de l'éditeur qu'il ouvre.
   'codium' = 'VSCodium.VSCodium'
   'maj'   = 'SZH.Publishing.MiseAJour'
+  # Celle des raccourcis posés par l'installeur VSCodium, qu'aucun processus ne déclare.
+  'installeur' = 'SZH.Publishing.VSCodium'
 }
 
 # Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
@@ -551,14 +555,16 @@ function Get-SzhRaccourcisObsoletes {
   return $noms
 }
 
-# Les raccourcis qui visent VSCodium.exe portent la même identité que « Pronto », et la barre
-# des tâches prend l'icône de l'un d'eux : un seul sans icône, et le bouton montre celle de
-# l'exécutable. Ils reçoivent donc pronto.ico, au premier niveau du menu et dans le dossier
-# « VSCodium » de l'installeur, comme le fait patch-icone.ps1. Rend les noms retouchés.
-function Set-SzhIconeRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
+# Les raccourcis qui visent VSCodium.exe, au premier niveau du menu et dans le dossier
+# « VSCodium » de l'installeur, reçoivent pronto.ico, comme le fait patch-icone.ps1, et
+# l'identité 'installeur' : avec celle de « Pronto », ils l'effaceraient du menu Démarrer.
+# L'installeur la leur rend à chaque mise à jour de VSCodium, d'où une reprise à chaque pose.
+# Rend les noms retouchés.
+function Set-SzhRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
   $retouches = New-Object System.Collections.ArrayList
-  if (-not (Test-Path -LiteralPath $Icone)) { return $retouches }
-  $voulu = ('{0},0' -f $Icone)
+  $voulu = ''
+  if (Test-Path -LiteralPath $Icone) { $voulu = ('{0},0' -f $Icone) }
+  $identite = Get-SzhAppId 'installeur'
   foreach ($dossier in @($Menu, (Join-Path $Menu 'VSCodium'))) {
     if (-not (Test-Path -LiteralPath $dossier)) { continue }
     foreach ($f in @(Get-ChildItem -LiteralPath $dossier -Filter '*.lnk' -File -ErrorAction SilentlyContinue)) {
@@ -566,13 +572,17 @@ function Set-SzhIconeRaccourcisCodium([string]$Menu, [string]$Icone, $Shell) {
         $lnk = $Shell.CreateShortcut($f.FullName)
         $cible = [string]$lnk.TargetPath
         if ((-not $cible) -or ((Split-Path $cible -Leaf) -ne 'VSCodium.exe')) { continue }
-        if ([string]$lnk.IconLocation -eq $voulu) { continue }
-        # WScript.Shell garde l'identité en réécrivant le fichier ; on la relit quand même.
-        $identite = Get-SzhLnkAppId $f.FullName
-        $lnk.IconLocation = $voulu
-        $lnk.Save()
-        if ($identite -and ((Get-SzhLnkAppId $f.FullName) -ne $identite)) { [void](Set-SzhLnkAppId $f.FullName $identite) }
-        [void]$retouches.Add($f.Name)
+        $retouche = $false
+        if ($voulu -and ([string]$lnk.IconLocation -ne $voulu)) {
+          $lnk.IconLocation = $voulu
+          $lnk.Save()
+          $retouche = $true
+        }
+        # Après Save() : WScript.Shell réécrit le fichier entier.
+        if ((Get-SzhLnkAppId $f.FullName) -ne $identite) {
+          if (Set-SzhLnkAppId $f.FullName $identite) { $retouche = $true }
+        }
+        if ($retouche) { [void]$retouches.Add($f.Name) }
       } catch { }
     }
   }
@@ -594,7 +604,7 @@ function Set-SzhRaccourcisMenu {
     poses   = New-Object System.Collections.ArrayList
     retires = New-Object System.Collections.ArrayList
     manques = New-Object System.Collections.ArrayList
-    icones  = New-Object System.Collections.ArrayList
+    codium  = New-Object System.Collections.ArrayList
   }
   $voulus = @(Get-SzhRaccourcisMenu -Toolkit $Toolkit)
   $canoniques = @{}
@@ -640,9 +650,9 @@ function Set-SzhRaccourcisMenu {
     }
   }
 
-  foreach ($n in @(Set-SzhIconeRaccourcisCodium $Menu (Join-Path $Toolkit 'windows\pronto.ico') $shell)) {
-    [void]$bilan.icones.Add($n)
-    Write-SzhLog ('raccourcis : pronto.ico posé sur ' + $n + ', qui vise VSCodium')
+  foreach ($n in @(Set-SzhRaccourcisCodium $Menu (Join-Path $Toolkit 'windows\pronto.ico') $shell)) {
+    [void]$bilan.codium.Add($n)
+    Write-SzhLog ('raccourcis : icône et identité posées sur ' + $n + ', qui vise VSCodium')
   }
 
   # Une seule ligne suffit à dire qu'un dossier entier se refuse, et elle doit dire la
