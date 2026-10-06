@@ -23,7 +23,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T, TEXTES_COCKPIT } = require('./i18n');
+const { T, TEXTES_COCKPIT, langueCockpit } = require('./i18n');
 const { MSG } = require('./messages');
 const session = require('./session');
 const profils = require('./profil');
@@ -91,6 +91,8 @@ function repondrePanneau(panneau, message) {
 }
 
 // ---- Libellés composés depuis le contrat -------------------------------------------
+// Leur `langue` est celle de l'interface (langueCockpit()), comme les boutons, et jamais celle
+// du numéro, qui ne vaut que pour les données lues et écrites.
 
 function optionsInstrument(canton, langue) {
   return kirby.ordreInstruments(canton).map((jeton) => {
@@ -527,7 +529,8 @@ function construireReponseArchive() {
 // ---- La vue « Propositions » : ce que la page affiche, composé ici ------------------------
 //
 // Toute la logique (lots, décisions, cas A/B, ordre) vit dans lib/propositions.js ; ces
-// fonctions ne font que la mettre en forme pour la page, dans la langue du numéro.
+// fonctions ne font que la mettre en forme pour la page : les données dans la langue du
+// numéro, les libellés dans celle de l'interface.
 
 // Le réglage des colonnes de la vue, par type de fiche : propre au poste, jamais partagé.
 const CLE_COLONNES_PROPOSITIONS = 'szh.propositions.colonnes';
@@ -717,7 +720,7 @@ function donneesPropositions(racineArbreVal, langue, revueJeton, resultat, connu
     revueAutre: autre ? ctx.nomRevueAffiche(autre) : '',
     revue: ctx.nomRevueAffiche(revueJeton),
     finesse: finesse.parType,
-    types: typesPropositions(langue),
+    types: typesPropositions(langueCockpit()),
     propositions: propositions.ordonner(lu.propositions, langue).map(pourVue),
     refusees: propositions.ordonner(propositions.listerRefusees(racineArbreVal, langue), langue).map(pourVue),
     acceptees: propositions.listerAcceptees(racineArbreVal, langue).map(pourVue),
@@ -951,7 +954,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   }
   function listerTraductions() {
     return kirby.listerTraductionsATraire(racineArbreVal, langue).map((t) => ({
-      slug: t.slug, type: t.type, typeLibelle: kirby.libelleType(t.type, langue), titre: t.titreSource,
+      slug: t.slug, type: t.type, typeLibelle: kirby.libelleType(t.type, langueCockpit()), titre: t.titreSource,
       origine: T('doc.origine.numero', [ctx.nomRevueAffiche(t.langueSource === 'de' ? 'zeitschrift' : 'revue'),
         nomNumeroPour(racineArbreVal, t.ausgabeSource)])
     }));
@@ -963,13 +966,13 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   }
   function listerReservoirEntrees(avecIgnorees) {
     return kirby.listerReservoir(racineArbreVal, langue, { avecIgnorees: !!avecIgnorees }).map((r) => ({
-      slug: r.slug, uuid: r.uuid, type: r.type, typeLibelle: kirby.libelleType(r.type, langue),
+      slug: r.slug, uuid: r.uuid, type: r.type, typeLibelle: kirby.libelleType(r.type, langueCockpit()),
       titre: r.titreSource, ausgabeSource: r.ausgabeSource, ignoree: !!r.ignoree
     }));
   }
   function listerMesOrphelines() {
     return kirby.listerOrphelines(racineArbreVal, langue).map((f) => ({
-      slug: f.slug, uuid: f.uuid, type: f.type, typeLibelle: kirby.libelleType(f.type, langue), titre: f.valeurs.title
+      slug: f.slug, uuid: f.uuid, type: f.type, typeLibelle: kirby.libelleType(f.type, langueCockpit()), titre: f.valeurs.title
     }));
   }
 
@@ -979,8 +982,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       type: MSG.CHARGER, slug: slug,
       ressources: listerRessources(budget),
       rubriques: listerRubriques(),
-      typesConfig: typesRessourceConfig(langue, revueJeton),
-      typesRubrique: typesRubriqueConfig(revueJeton, langue),
+      typesConfig: typesRessourceConfig(langueCockpit(), revueJeton),
+      typesRubrique: typesRubriqueConfig(revueJeton, langueCockpit()),
       traductions: listerTraductions(),
       reservoirNumeros: listerReservoirNumeros(),
       reservoir: listerReservoirEntrees(false),

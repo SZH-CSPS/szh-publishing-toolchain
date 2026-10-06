@@ -9,6 +9,7 @@ const os = require('os');
 const path = require('path');
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
+require('./poste-isole');
 
 // Les notifications sorties, avec leurs boutons ; les commandes lancées ; la réponse à donner.
 const notifs = [];

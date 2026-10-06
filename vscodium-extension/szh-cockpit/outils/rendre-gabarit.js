@@ -174,7 +174,7 @@ function construireEntete(decisions, produit, alertesBrutes) {
   const regleResume = 'Forme.LongueurResume.' + (produit === 'zeitschrift' ? 'Zeitschrift' : 'Revue');
   const alerteResume = liste.find((a) => a.rule === regleResume);
   const fourchetteResume = alerteResume ? alerteResume.suggested
-    : (produit === 'zeitschrift' ? ('jusqu’à ' + RESUME_MAX_ZEITSCHRIFT + ' signes')
+    : (produit === 'zeitschrift' ? ('höchstens ' + RESUME_MAX_ZEITSCHRIFT + ' Zeichen')
       : ('entre ' + RESUME_MIN_REVUE + ' et ' + RESUME_MAX_REVUE + ' signes'));
 
   return {

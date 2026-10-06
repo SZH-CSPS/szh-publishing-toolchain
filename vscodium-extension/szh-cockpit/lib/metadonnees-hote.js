@@ -8,7 +8,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 
-const { T, TP } = require('./i18n');
+const { T, TP, langueCockpit } = require('./i18n');
 const { toolkitPoste } = require('./poste');
 const { MSG } = require('./messages');
 const session = require('./session');
@@ -780,8 +780,9 @@ function licencesTraduites() {
   return LICENCES_ARTICLE.map((l) => ({ valeur: l.cle, libelle: T('licence.' + l.cle) }));
 }
 
-// Deux groupes, dans la langue par défaut du numéro.
-function typesTraduits(langue) {
+// Deux groupes, dans la langue de l'interface : la fiche n'enregistre que le jeton.
+function typesTraduits() {
+  const langue = langueCockpit();
   const options = (liste, groupe) => liste.map((t) => ({
     valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t,
     groupe: (GROUPES_TYPES[groupe] || {})[langue] || (GROUPES_TYPES[groupe] || {}).fr || ''
@@ -1413,7 +1414,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs, focus
       // Les champs que la carte construit selon le profil (construireCarte(), media/_fiches.js).
       capacites: profilCourant().capacites,
       accent: ctx.lireCouleurAccent(fournisseur.racine),
-      types: typesTraduits(langue),
+      types: typesTraduits(),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
       limites: limitesMedias(),
       formeDoi: { motif: forme.motif.source, exemple: forme.exemple },
@@ -1561,11 +1562,10 @@ function cheminFeuilleVerif(racine, filtre) {
 }
 
 // Les tables de libellés que le module de rendu ne peut pas connaître : il ne parle
-// aucune langue. Les types sont dans celle du numéro (c'est ainsi qu'ils s'affichent
-// dans le formulaire), le reste dans celle de l'interface.
-function libellesFeuilleVerif(langueNumero) {
+// aucune langue. Tout suit l'interface, les types comme dans le formulaire.
+function libellesFeuilleVerif() {
   const types = {};
-  for (const t of TYPES_ARTICLE) { types[t] = (LIBELLES_TYPES[t] || {})[langueNumero] || t; }
+  for (const t of TYPES_ARTICLE) { types[t] = (LIBELLES_TYPES[t] || {})[langueCockpit()] || t; }
   const licences = {};
   for (const l of LICENCES_ARTICLE) { licences[l.cle] = T('licence.' + l.cle); }
   return {
@@ -1618,7 +1618,7 @@ async function genererFeuilleVerif(fournisseur, filtre, panneau) {
     lireMetadonneesArticles(fournisseur, filtre), {
       numero: titreNumero(racine),
       horodatage: horodatageFeuille(),
-      libelles: libellesFeuilleVerif(langueRevue(racine)),
+      libelles: libellesFeuilleVerif(),
       textes: textesFeuilleVerif()
     });
   if (modele.total === 0) {

@@ -54,15 +54,8 @@ process.env.SZH_RESEAU_INTERDIT = '1';
 // lanceur ouvert, et sans ce détour la suite entière basculait en allemand sur un poste
 // allemand — mille assertions comparées à des textes français. Le premier ferait de même
 // le jour où un rédacteur cache les tâches de la vue « Articles », choix qui vit dans
-// config.json. Posés seulement s'ils ne le sont pas déjà : plusieurs contrôles pointent
-// SZH_CONFIG_OJS vers leur propre fichier, et c'est le leur qui doit gagner.
-const POSTE_ESSAI = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-poste-'));
-for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POSTE', 'state.json']]) {
-  if (process.env[variable]) { continue; }
-  const chemin = path.join(POSTE_ESSAI, nom);
-  fs.writeFileSync(chemin, '{}' + LF);
-  process.env[variable] = chemin;
-}
+// config.json. Voir poste-isole.js.
+require('./poste-isole');
 
 // L'état du compte (%LOCALAPPDATA%\\SZH\\etat-utilisateur.json) : détourné vers un dossier jetable, sauf
 // si le test a déjà posé le sien sous le dossier temporaire. Le lanceur y lit ses réglages d'avant

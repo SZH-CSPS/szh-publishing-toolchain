@@ -23,22 +23,9 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const os = require('os');
 
-// Les deux fichiers du poste que lib/i18n.js interroge pour choisir sa langue —
-// C:\ProgramData\SZH\config.json et state.json — détournés vers des fichiers vides. Sans
-// ce détour, un poste allemand (state.json porte la langue du dernier lanceur ouvert)
-// ferait rendre à T() des textes allemands, et toute la suite, qui compare à des textes
-// français, tomberait. Un test ne lit rien de la machine qui l'exécute. Posés seulement
-// s'ils ne le sont pas déjà : plusieurs contrôles pointent SZH_CONFIG_OJS vers leur propre
-// fichier, et c'est le leur qui doit gagner.
-const POSTE_ESSAI = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-poste-dom-'));
-for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POSTE', 'state.json']]) {
-  if (process.env[variable]) { continue; }
-  const chemin = path.join(POSTE_ESSAI, nom);
-  fs.writeFileSync(chemin, '{}' + String.fromCharCode(10));
-  process.env[variable] = chemin;
-}
+// Les fichiers du poste qui décident de la langue, détournés : voir poste-isole.js.
+require('./poste-isole');
 
 // Charge un module de lib/ en neutralisant `require('vscode')`, absent hors de l'éditeur.
 function chargerAvecVscodeFactice(chemin) {

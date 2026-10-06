@@ -76,6 +76,21 @@ test('fiche : un focus qui ne correspond à aucun champ ne fait rien lever côt�
   assert.strictEqual(HOTE.erreurs.length, 0);
 });
 
+// La liste « Type d'article » est un libellé d'interface : elle suit l'interface, pas la
+// langue du numéro (la fiche n'enregistre que le jeton).
+test('fiche : interface allemande sur un numéro français, la liste des types est en allemand', async () => {
+  process.env.SZH_LANGUE = 'de';
+  try {
+    const p = panneauFiche();
+    p.messages.length = 0;
+    await HOTE.executer('szh.metadonneesArticle', { slug: SLUG });
+    const types = dernieresValeurs(p).types;
+    const tribune = types.find((t) => t.valeur === 'tribune-libre');
+    assert.strictEqual(tribune.libelle, 'Freie Tribüne');
+    assert.strictEqual(tribune.groupe, 'Ausserhalb des Schwerpunkts');
+  } finally { delete process.env.SZH_LANGUE; }
+});
+
 // ---- « numero » (szh.metadonnees -> ouvrirMetadonnees) -----------------------------------
 //
 // Avant la revue F03, cette commande était enregistrée SANS paramètre du tout : ni slug

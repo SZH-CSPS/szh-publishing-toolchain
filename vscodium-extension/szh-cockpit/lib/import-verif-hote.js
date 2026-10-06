@@ -106,7 +106,7 @@ function envoyerValeursImportVerif(panneau, fournisseur, extra) {
     articles: lireArticlesImport(fournisseur),
     langue: langue,
     accent: ctx.lireCouleurAccent(fournisseur.racine),
-    types: typesTraduits(langue),
+    types: typesTraduits(),
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
     // Le plafond des originaux d'image (section « Originaux des images ») et celui des
     // photos d'auteur·e·s (modale partagée) : plus aucun littéral côté webview.

@@ -10,6 +10,7 @@ const os = require('os');
 const path = require('path');
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
+require('./poste-isole');
 
 // Les éléments de barre d'état créés par installerBarres, dans l'ordre : compteur, badge PDF/UA.
 const barres = [];

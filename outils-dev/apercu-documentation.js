@@ -43,6 +43,8 @@ const COCKPIT = path.join(__dirname, '..', 'vscodium-extension', 'szh-cockpit');
 const { construireHtml } = require(path.join(COCKPIT, 'lib', 'webviews', 'util.js'));
 const kirby = require(path.join(COCKPIT, 'lib', 'kirby-contenu.js'));
 const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+// Les libellés suivent la langue de l'interface, comme dans l'hôte, et non celle des fiches.
+const LANGUE_UI = require(path.join(COCKPIT, 'lib', 'i18n.js')).langueCockpit();
 
 // ---- Libellés : relus dans documentation-hote.js#textesDocumentation (pas de require('vscode')
 // transitif ici) : la liste ne diverge jamais de celle de l'hôte.
@@ -160,10 +162,10 @@ const ressources = [
 ];
 
 const traductions = [
-  { slug: 'demo-trad-1', type: 'livre', typeLibelle: kirby.libelleType('livre', 'fr'),
-    titre: 'Anders fähig', origine: 'Zeitschrift, numéro 2026-02' },
-  { slug: 'demo-trad-2', type: 'horizon', typeLibelle: kirby.libelleType('horizon', 'fr'),
-    titre: 'Neue Behindertenstrategie des Bundes', origine: 'Zeitschrift, numéro 2026-02' }
+  { slug: 'demo-trad-1', type: 'livre', typeLibelle: kirby.libelleType('livre', LANGUE_UI),
+    titre: 'Anders fähig', origine: T('doc.origine.numero', ['Zeitschrift', '2026-02']) },
+  { slug: 'demo-trad-2', type: 'horizon', typeLibelle: kirby.libelleType('horizon', LANGUE_UI),
+    titre: 'Neue Behindertenstrategie des Bundes', origine: T('doc.origine.numero', ['Zeitschrift', '2026-02']) }
 ];
 
 // Réservoir : quatre fiches allemandes rattachées à un numéro de la Zeitschrift, dont une
@@ -171,22 +173,22 @@ const traductions = [
 // shim plus bas) fait vraiment basculer entre les deux vues, comme le ferait l'hôte réel.
 const reservoirNumeros = [{ id: 'demo-num-zeitschrift', nom: 'Zeitschrift 2026-02' }];
 const reservoirActives = [
-  { slug: 'demo-res-1', uuid: 'res-uuid-1', type: 'livre', typeLibelle: kirby.libelleType('livre', 'fr'),
+  { slug: 'demo-res-1', uuid: 'res-uuid-1', type: 'livre', typeLibelle: kirby.libelleType('livre', LANGUE_UI),
     titre: 'Vielfalt leben', ausgabeSource: 'demo-num-zeitschrift', ignoree: false },
-  { slug: 'demo-res-2', uuid: 'res-uuid-2', type: 'film', typeLibelle: kirby.libelleType('film', 'fr'),
+  { slug: 'demo-res-2', uuid: 'res-uuid-2', type: 'film', typeLibelle: kirby.libelleType('film', LANGUE_UI),
     titre: 'Wege zur Inklusion', ausgabeSource: 'demo-num-zeitschrift', ignoree: false },
-  { slug: 'demo-res-3', uuid: 'res-uuid-3', type: 'recherche', typeLibelle: kirby.libelleType('recherche', 'fr'),
+  { slug: 'demo-res-3', uuid: 'res-uuid-3', type: 'recherche', typeLibelle: kirby.libelleType('recherche', LANGUE_UI),
     titre: 'Frühförderung im Kanton Bern', ausgabeSource: 'demo-num-zeitschrift', ignoree: false }
 ];
 const reservoirIgnorees = [
-  { slug: 'demo-res-4', uuid: 'res-uuid-4', type: 'agenda', typeLibelle: kirby.libelleType('agenda', 'fr'),
+  { slug: 'demo-res-4', uuid: 'res-uuid-4', type: 'agenda', typeLibelle: kirby.libelleType('agenda', LANGUE_UI),
     titre: 'Weiterbildung Sonderpädagogik', ausgabeSource: 'demo-num-zeitschrift', ignoree: true }
 ];
 
 const orphelines = [
-  { slug: 'demo-orph-1', uuid: 'orph-uuid-1', type: 'livre', typeLibelle: kirby.libelleType('livre', 'fr'),
+  { slug: 'demo-orph-1', uuid: 'orph-uuid-1', type: 'livre', typeLibelle: kirby.libelleType('livre', LANGUE_UI),
     titre: 'Un livre détaché d’un ancien numéro' },
-  { slug: 'demo-orph-2', uuid: 'orph-uuid-2', type: 'reprise', typeLibelle: kirby.libelleType('reprise', 'fr'),
+  { slug: 'demo-orph-2', uuid: 'orph-uuid-2', type: 'reprise', typeLibelle: kirby.libelleType('reprise', LANGUE_UI),
     titre: 'Une reprise jamais rattachée' }
 ];
 

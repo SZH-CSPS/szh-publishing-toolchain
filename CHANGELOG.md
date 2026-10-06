@@ -11,6 +11,26 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 3.10.3
+
+Mineure : l’Actualité et les fiches d’article dans la langue de l’interface.
+
+**Production.**
+- Actualité : les types de fiche, noms de champs, valeurs de liste et rubriques suivent la
+  langue de l’interface, comme les boutons. Ils suivaient celle du numéro : une interface
+  allemande sur un numéro de la Revue montrait des champs en français. Les données lues et
+  écrites restent dans la langue du numéro.
+- Métadonnées des articles et Vérification de l’import : la liste « Type d’article » suit
+  l’interface, de même que la colonne Type de la feuille de vérification imprimable.
+- Rapport de nettoyage d’un manuscrit de la Zeitschrift : la fourchette du résumé dit
+  « höchstens 700 Zeichen » au lieu de « jusqu’à 700 signes ».
+
+**Développement.**
+- `test/js/poste-isole.js` détourne `config.json` et `state.json` du poste pour tout fichier
+  de test, y compris ceux qui montent leur propre faux `vscode` (`controles-gestes`,
+  `controles-hote`) : un poste réglé en allemand ne fait plus échouer la suite.
+- `outils-dev/apercu-documentation.js` : les libellés de type suivent la langue de l’interface.
+
 ## 3.10.2
 
 Mineure : « Pronto » réapparaît au menu Démarrer.

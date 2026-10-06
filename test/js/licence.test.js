@@ -218,7 +218,7 @@ test('les deux formulaires de cartes recoivent la liste des licences', () => {
   // sans erreur et sans qu'aucune page ne s'en plaigne.
   // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
   const ext = sourceExtensionEtLib(COCKPIT);
-  const envois = ext.split("types: typesTraduits(langue)").slice(1);
+  const envois = ext.split("types: typesTraduits()").slice(1);
   assert.strictEqual(envois.length, 2, 'le nombre d’envois de cartes a changé');
   for (const suite of envois) {
     assert.match(suite.slice(0, 200), /licences: licencesTraduites\(\), licenceDefaut: LICENCE_DEFAUT/,

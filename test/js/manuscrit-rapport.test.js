@@ -306,6 +306,12 @@ test('l’en-tête reconnue (titre, auteurs, résumé, mots-clés, DOI) est rend
   assert.match(html, /signes \(fourchette du produit/, 'compte de signes du résumé absent');
 });
 
+test('zeitschrift : la fourchette du résumé dans la norme est dite en allemand', () => {
+  const html = rendre(Object.assign({}, RAPPORT_MINIMAL, { produit: 'zeitschrift' }), 'zeitschrift');
+  assert.match(html, /Zeichen \(Richtwert: höchstens 700 Zeichen\)/, 'fourchette allemande absente');
+  assert.doesNotMatch(html, /jusqu’à \d+ signes/, 'fourchette française dans le rapport allemand');
+});
+
 test('cas A (entête non ré-analysée) : la section le dit, sans planter', () => {
   const rapportCasA = Object.assign({}, RAPPORT_PLAFOND, { gabarit: 'A', alertes: { total: 0, error: 0, warning: 0, suggestion: 0, liste: [], groupes: {} } });
   const html = rendre(rapportCasA, 'revue');

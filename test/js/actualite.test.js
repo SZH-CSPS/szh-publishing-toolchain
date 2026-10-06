@@ -452,6 +452,27 @@ test('le dépôt provisoire d’image est vidé quand le formulaire se ferme san
     'le dépôt provisoire aurait dû être vidé à la fermeture du formulaire');
 });
 
+// Le test des fabriques plus bas leur passe la langue lui-même : celui-ci prend ce que l'hôte
+// envoie vraiment. Interface allemande sur un numéro de la Revue (fr) : les noms de champs,
+// de types et de rubriques suivent l'interface, comme les boutons.
+test('ACTUALITÉ : interface allemande sur un numéro français, le formulaire servi est en allemand', async () => {
+  process.env.SZH_LANGUE = 'de';
+  try {
+    assert.strictEqual(yaml.langueRevue(REVUE), 'fr', 'le numéro d’essai n’est plus français : le test ne prouve rien');
+    await HOTE.executer('szh.documentation');
+    const p = await panneau();
+    const m = charge(p);
+    const livre = m.typesConfig.find((t) => t.valeur === 'livre');
+    assert.strictEqual(livre.libelleSection, 'Bücher', 'type de fiche');
+    const canton = m.typesConfig.find((t) => t.valeur === 'intervention').champs.find((c) => c.cle === 'canton');
+    assert.strictEqual(canton.libelle, 'Kanton', 'nom de champ');
+    assert.strictEqual(canton.options.find((o) => o.valeur === 'GE').libelle, 'Genf', 'valeur de liste');
+    assert.strictEqual(m.typesRubrique.find((r) => r.valeur === 'podcasts').libelleSection,
+      'Dokumentarfilme und Podcasts', 'rubrique');
+    await p._recepteur({ type: 'retourArticle', modifie: false, ressources: [], rubriques: [] });
+  } finally { delete process.env.SZH_LANGUE; }
+});
+
 // ---- szh.ouvrirActualite : ouverture sur un onglet, bascule d'un panneau déjà ouvert ----
 //
 // Le panneau est fermé à ce point du fichier (le test précédent l'a refermé par
