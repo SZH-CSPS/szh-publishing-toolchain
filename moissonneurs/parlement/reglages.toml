@@ -40,13 +40,13 @@ limite = 500
 date_min_fiche = "2024-07-01"
 
 [classement]
-# Périmètre élargi : un faux positif se refuse, un faux négatif ne se voit jamais. Une affaire d'école ordinaire
-# sans ancrage handicap ni besoins particuliers passe en « à relire » au lieu d'être écartée. Jamais « retenu » sans ancrage.
+# Périmètre élargi : un faux positif se refuse, un faux négatif ne se voit pas. Une affaire d'école ordinaire sans
+# ancrage handicap ni besoins particuliers passe en « à relire » au lieu d'être écartée, jamais en « retenu ».
 ecole_generale = true
 # Périmètre élargi aux thématiques de la Revue (lexique/thematiques.toml) : toujours « à relire ».
 themes_elargis = true
 # Vivier élargi : un objet sinon écarté qui a au moins 2 termes forts distincts dans le texte devient « à relire »
-# (catégorie texte-large, note de 0 à 4,99, jamais « retenu ») ; c'est le cran 1 « très large » du curseur.
+# (catégorie texte-large, note de 0 à 4,99, pas « retenu ») ; c'est le cran 1 « très large » du curseur.
 vivier_large = true
 
 [finesse]
@@ -64,7 +64,7 @@ delai = 5.0
 
 [mensuelle]
 # Passe incrémentale par l'API /v1/ depuis le repère : 2 s entre deux requêtes, 800 requêtes par mois sommées sur tous
-# les postes (moisson.py en tire --plafond), arrêt net au plafond.
+# les postes (moisson.py en tire --plafond) ; la passe s'arrête au plafond.
 active = true
 budget = 800
 limite = 50            # affaires par page de liste de la passe mensuelle (l'import et le criblage gardent la leur)

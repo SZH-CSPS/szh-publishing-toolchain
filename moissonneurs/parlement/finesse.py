@@ -30,7 +30,7 @@ POIDS = {
 }
 SATURATION = {'forts_titre': 3, 'forts_texte': 5, 'occurrences': 20, 'densite': 5.0, 'ambigus_titre': 2, 'forts_extrait': 3,
               'termes_ecole': 3, 'texte_faible': 4, 'theme_aussi': 3, 'themes': 3, 'termes_theme': 4}
-# Crans (§15) : 10 par langue ; une langue sous 200 propositions sur 12 mois, ou à plus de 3 crans identiques, prend le commun.
+# Crans : 10 par langue ; une langue sous 200 propositions sur 12 mois, ou à plus de 3 crans identiques, prend le commun.
 NB_CRANS = 10
 VERSION = 5      # version de la note : les crans figés d'une autre version sont recalculés (5 : pas de volume réguliers entre les crans)
 PROFIL = 'lineaire'  # profil des volumes entre les crans 2 et 10 ([finesse] profil : lineaire | geometrique)

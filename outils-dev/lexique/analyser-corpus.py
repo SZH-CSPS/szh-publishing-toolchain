@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-# Analyse linguistique du corpus OJS (tmp/corpus-ojs, 288 galleys DOCX publiées) pour nourrir
-# le lexique maison de pipeline/vale/lexique/. stdlib seule (pas de spaCy, pas de PyYAML),
-# exécution prévue dans la WSL SZH-Publishing (pandoc 3.5 et vale 3.22.0 n'existent que là).
+# Analyse linguistique du corpus OJS (tmp/corpus-ojs, galleys DOCX publiées) pour préparer
+# le lexique de pipeline/vale/lexique/. Bibliothèque standard seule. Se lance dans la WSL
+# SZH-Publishing, qui a pandoc et vale.
 #
-# Ce script ne fait QUE l'analyse et écrit des brouillons dans tmp/lexique/ (hors git) :
-# fréquences, termes du domaine, sigles, variantes, vocabulaire du handicap, faux positifs
-# Vale, et un lexique CANDIDAT déjà dans le schéma final (candidat-lexique-<langue>.csv). La
-# décision éditoriale (garder/couper une ligne, statut privilégié/déconseillé) reste dans le
-# rapport de l'agent — ce script ne fait que proposer, à partir de règles versionnées ici.
+# Écrit des brouillons dans tmp/lexique/ (hors git) : fréquences, termes du domaine, sigles,
+# variantes, vocabulaire du handicap, faux positifs Vale, et un lexique candidat au format
+# final (candidat-lexique-<langue>.csv). Le tri éditorial des lignes se fait ensuite à la main.
 #
-# L'italien (2 articles) est ignoré : hors périmètre du brief, trop peu de documents pour
-# rien y mesurer d'utile.
+# L'italien (2 articles) est ignoré : trop peu de documents.
 import argparse
 import csv
 import json
@@ -30,9 +27,8 @@ VALE_BIN_DEFAUT = str(Path.home() / '.local' / 'bin' / 'vale')
 LANGUES = ('fr', 'de')
 
 # ---------------------------------------------------------------------------------------
-# Titres de bibliographie : même lexique que pronto_modele.lire_titres_bib(), mais sur du
-# texte pandoc déjà aplati (pas de style de paragraphe disponible ici, seul le TEXTE du
-# titre compte). Comparaison après aplatir() : accents et casse indifférents.
+# Titres de bibliographie : mêmes mots que pronto_modele.lire_titres_bib(), comparés sur le
+# texte pandoc après aplatir() (sans style de paragraphe, sans accents ni casse).
 TITRES_BIBLIO = {
     'references', 'bibliographie', 'bibliographieundquellen', 'literatur',
     'literaturverzeichnis', 'quellenverzeichnis', 'quellen',
@@ -40,9 +36,8 @@ TITRES_BIBLIO = {
 RE_NUM_TITRE = re.compile(r'^\d+[.)]?\s*')
 PREFIXES_TITRE_BIBLIO = ('listedes', 'listede', 'liste')
 
-# Marqueurs de résumé / mots-clés qui bornent le bloc d'auteurs à écarter (item du brief :
-# « les blocs d'auteurs »). Paragraphe COURT (< 60 caractères) = un titre isolé ; paragraphe
-# plus long = résumé et titre fusionnés dans le même bloc par pandoc (repéré sur le corpus).
+# Marqueurs de résumé et de mots-clés qui terminent le bloc d'auteurs à écarter. Paragraphe
+# court (< 60 caractères) : un titre isolé ; plus long : pandoc a fusionné titre et résumé.
 RE_RESUME = re.compile(r'^(résumé|resume|abstract|zusammenfassung)\s*:?\s*', re.IGNORECASE)
 RE_MOTSCLES = re.compile(
     r'^(mots[\s-]?cl[ée]s?|schlüsselw[oö]rter|schlagw[oö]rter)\s*:?\s*', re.IGNORECASE)
@@ -53,7 +48,7 @@ LIMITE_PARAGRAPHES_ENTETE = 20
 # internes. Les chiffres et la ponctuation ne font jamais partie d'un token.
 RE_TOKEN = re.compile(r"[^\W\d_]+(?:[-'’][^\W\d_]+)+|[^\W\d_]+", re.UNICODE)
 RE_SIGLE = re.compile(r'\b[A-ZÄÖÜ]{2,}\d{0,3}\b')
-# roman numerals et artefacts fréquents d'export Word à ne jamais compter comme un sigle
+# chiffres romains et artefacts fréquents de l'export Word, qui ne sont pas des sigles
 SIGLES_IGNORES = {
     'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV',
     'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'PDF', 'DOCX',
@@ -69,8 +64,8 @@ RE_DEV_AVANT = re.compile(
 RE_PHRASE = re.compile(r'(?<=[.!?])\s+(?=[A-ZÀ-ÖØ-Þ0-9«"])')
 
 # ---------------------------------------------------------------------------------------
-# Mots-outils (grammaticaux) : exclus des n-grammes lexicaux. Listes courtes, à la main,
-# versionnées ici — pas de corpus de référence externe (hors périmètre du brief).
+# Mots-outils (grammaticaux) : exclus des n-grammes lexicaux. Listes courtes, écrites à la
+# main.
 STOPWORDS = {
     'fr': set("""
         le la les l un une des de du au aux et ou où mais donc or ni car ce cet cette ces
@@ -96,8 +91,8 @@ STOPWORDS = {
     """.split()),
 }
 
-# Vocabulaire générique et académique, fréquent partout mais jamais un terme du domaine —
-# retiré des seuls TERMES DU DOMAINE (item 2), pas des fréquences brutes (item 1).
+# Vocabulaire générique et académique, fréquent partout mais pas propre au domaine : retiré
+# des termes du domaine, pas des fréquences brutes.
 MOTS_COURANTS = {
     'fr': set("""
         étude recherche résultats résultat exemple cas partir être fait fait font faut
@@ -121,7 +116,7 @@ MOTS_COURANTS = {
     """.split()),
 }
 
-# Racines de classification heuristique des termes du domaine (item 2). Ordre de priorité :
+# Racines de classification des termes du domaine. Ordre de priorité :
 # handicap > ecole > institution > methode > autre. Un n-gramme est classé dans la première
 # catégorie dont une racine apparaît dans UN de ses tokens (sous-chaîne, accents aplatis).
 RACINES_CATEGORIE = {
@@ -148,9 +143,8 @@ RACINES_CATEGORIE = {
 }
 ORDRE_CATEGORIES = ['handicap', 'ecole', 'institution', 'methode']
 
-# Groupes de synonymes connus, hors portée de la normalisation mécanique (accent/trait
-# d'union/espace/pluriel/casse/point médian) : décision éditoriale déjà documentée dans le
-# brief lui-même. Petite liste, versionnée, PAS déduite automatiquement.
+# Groupes de synonymes que la normalisation mécanique (accent, trait d'union, espace,
+# pluriel, casse, point médian) ne réunit pas. Liste éditoriale, écrite à la main.
 SYNONYMES_CONNUS = {
     'fr': [
         (['besoins éducatifs particuliers'], 'besoins particuliers'),
@@ -162,13 +156,13 @@ SYNONYMES_CONNUS = {
     ],
 }
 
-# Vocabulaire du handicap à mesurer tel quel (item 5), motif -> libellé pour le rapport.
+# Vocabulaire du handicap à mesurer tel quel, motif -> libellé pour le rapport.
 VOCAB_HANDICAP = {
     'fr': [
         (r'personnes? en situation de handicap', 'personne en situation de handicap'),
         (r'personnes? handicap[ée]e?s?', 'personne handicapée'),
-        # point médian LITTÉRAL et obligatoire (\xb7 = « · ») : sans lui ce motif engloutit
-        # aussi « handicapée(s) » et double le compte de la ligne précédente (mesuré).
+        # Point médian obligatoire (\xb7 = « · ») : sans lui, le motif prend aussi
+        # « handicapée(s) » et compte deux fois la ligne précédente.
         (r'handicap[ée]\xb7e\xb7s?\b', "handicapé·e·s"),
         (r'd[ée]ficiences?', 'déficience'),
         (r'troubles?\b', 'trouble'),
@@ -185,30 +179,24 @@ VOCAB_HANDICAP = {
 
 
 def aplatir(texte):
-    """Minuscules, sans accents, sans espaces ni ponctuation — même principe que
-    pronto_modele.aplatir(), réécrit ici pour ne pas dépendre d'un module de production."""
+    """Minuscules, sans accents, sans espaces ni ponctuation, comme pronto_modele.aplatir()."""
     nfkd = unicodedata.normalize('NFKD', texte.lower())
     sans_accents = ''.join(c for c in nfkd if not unicodedata.combining(c))
     return re.sub(r'[^a-z0-9]', '', sans_accents)
 
 
 def cle_surete(terme):
-    """Clé de regroupement SANS pliage d'accent ni de pluriel : seuls trait d'union, espace,
-    deux-points, point médian et casse sont aplatis. C'est la SEULE clé assez sûre pour
-    promouvoir un groupe en forme privilégiée automatiquement (voir grouper_variantes) —
-    mesuré sur le corpus réel : plier les accents fait collisionner des mots DIFFÉRENTS
-    (« élève » nom et « élevé » participe passé donnent tous deux « eleve », « mesure » et
-    « mesuré » aussi) alors qu'un trait d'union ou une espace en trop ne change jamais le mot
-    (« coenseignement »/« co-enseignement », « Schüler:innen »/tolère un point médian)."""
+    """Clé de regroupement qui ignore trait d'union, espace, deux-points, point médian et
+    casse, mais pas les accents ni le pluriel. Seule clé assez sûre pour choisir
+    automatiquement une forme privilégiée : sans accents, « élève » et « élevé » se
+    confondraient (« coenseignement »/« co-enseignement » se réunissent)."""
     plat = terme.lower().replace('·', '').replace(':', '').replace('-', '')
     return re.sub(r'\s+', '', plat)
 
 
 def cle_large(terme):
-    """Clé plus permissive (accent ET pluriel simple pliés en plus de cle_surete) : utile
-    pour REPÉRER des groupes à signaler « à trancher », jamais pour privilégier
-    automatiquement (voir la note de cle_surete sur le risque de collision de mots
-    différents)."""
+    """cle_surete() qui ignore aussi les accents et le pluriel simple : repère des groupes
+    « à trancher », sans choisir de forme (voir cle_surete)."""
     nfkd = unicodedata.normalize('NFKD', terme.lower())
     sans_accents = ''.join(c for c in nfkd if not unicodedata.combining(c))
     sans_accents = sans_accents.replace('·', '').replace(':', '').replace('-', '')
@@ -325,10 +313,8 @@ def construire_ngrammes(corps_paragraphes_id, stopwords):
 
 
 def surface_dominante(surface_counter):
-    """Comme most_common(1), sauf qu'une forme en début de phrase (majuscule de
-    circonstance, sans le vouloir dire) ne doit pas devenir la forme retenue si sa jumelle
-    tout en minuscules existe avec un poids comparable (mesuré : « Co-responsable » élu
-    au lieu de « co-responsable » simplement parce qu'il ouvrait plus de phrases)."""
+    """Comme most_common(1), mais préfère la forme en minuscules si elle pèse au moins 30 %
+    de la forme capitalisée (« Co-responsable » en début de phrase)."""
     classement = surface_counter.most_common()
     meilleure, n_meilleure = classement[0]
     for forme, n in classement[1:]:
@@ -347,19 +333,14 @@ def categoriser(cle, langue):
 
 
 def extraire_sigles_et_developpements(corps_paragraphes_id):
-    """(occ, developpements, dev_docs) — dev_docs[sigle] : l'ensemble des DOCUMENTS où CE
-    document développe lui-même le sigle (pas seulement le corpus dans son ensemble). C'est
-    la preuve d'usage qui décide, colonne `exiger_developpement` : un sigle que la maison
-    développe elle-même dans plus de la moitié des documents où il apparaît a une vraie
-    habitude à faire respecter ; un sigle établi (BEP, CUA…) que personne ne redéveloppe
-    jamais n'en a aucune — l'exiger serait une règle fausse par construction sur des textes
-    déjà relus quatre fois."""
+    """(occ, developpements, dev_docs). dev_docs[sigle] : les documents qui développent
+    eux-mêmes le sigle. Cette proportion décide de la colonne `exiger_developpement` : un
+    sigle établi (BEP, CUA…) que les textes publiés ne développent pas ne doit pas l'exiger."""
     occ = defaultdict(lambda: {'freq': 0, 'docs': set()})
     developpements = defaultdict(Counter)
     dev_docs = defaultdict(set)
-    # un vrai sigle n'apparaît (presque) jamais aussi en minuscules ailleurs dans le corpus :
-    # « QUOI » en tête de titre est le mot « quoi », pas un sigle — ce filtre écarte ce bruit
-    # de capitalisation (titres, débuts de phrase) sans dictionnaire externe.
+    # Un vrai sigle n'apparaît presque jamais en minuscules : « QUOI » dans un titre est le
+    # mot « quoi ». Ce filtre écarte les majuscules de titre sans dictionnaire.
     minuscules_vues = set()
     for _, paragraphes in corps_paragraphes_id:
         for p in paragraphes:
@@ -389,28 +370,24 @@ def extraire_sigles_et_developpements(corps_paragraphes_id):
     return occ, developpements, dev_docs
 
 
-# Une forme épicène (trait d'union, point médian ou point) n'est PAS une variante
-# orthographique de la forme féminine ou masculine seule : « adolescent-e-s » et
-# « adolescentes » ont un sens différent (inclusif vs féminin seul), même si le regroupement
-# mécanique par trait d'union les fait tomber sur la même clé. Même motif que la règle Vale
-# CSPS.Epicene.FormesNonListees (lue, jamais modifiée ici) — piège documenté dans le
-# LISEZMOI du dossier Vale : ne jamais mélanger épicène et vocabulaire.
+# Une forme épicène (trait d'union, point médian ou point) n'est pas une variante
+# orthographique : « adolescent-e-s » et « adolescentes » n'ont pas le même sens, même si le
+# regroupement par trait d'union les réunit. Même motif que la règle Vale
+# CSPS.Epicene.FormesNonListees (voir le LISEZMOI du dossier Vale).
 RE_EPICENE_SUFFIXE = re.compile(
     r'[a-zà-öø-ÿ]{3,}-e(?:-s)?$|[a-zà-öø-ÿ]{3,}·[a-zà-öø-ÿ]{1,8}(?:·s)?$'
     r'|[a-zà-öø-ÿ]{3,}\.(?:e|es)$'
-    # suffixes de genre au trait d'union hors du motif de FormesNonListees.yml (qui ne
-    # couvre que « -e »/« -e-s ») mais tout aussi réels dans les manuscrits : « -le-s »
-    # (professionnel-le-s), « -ve-s » (actif-ve-s) — jamais un vrai mot composé (« burn-out »,
-    # « socio-éducatif » finissent tous par plus de deux lettres non suivies de « -s »).
+    # Suffixes de genre que FormesNonListees.yml ne couvre pas (il s'arrête à « -e »/« -e-s ») :
+    # « -le-s » (professionnel-le-s), « -ve-s » (actif-ve-s). Un vrai mot composé
+    # (« burn-out », « socio-éducatif ») finit par plus de deux lettres.
     r'|[a-zà-öø-ÿ]{3,}-(?:le|ve)-s$', re.IGNORECASE)
 
 
 def grouper_variantes(ngrammes_n1):
-    """Deux regroupements, pas un : `orthographe` (clé SANS pliage du pluriel — les membres
-    ne diffèrent que par accent/trait d'union/espace/casse/point médian, jamais par le
-    nombre) peut être promu automatiquement en forme privilégiée du lexique, sans risque
-    grammatical. `grammaticale` (clé AVEC pliage du pluriel, qui a fallu pour regrouper) reste
-    toujours « à trancher » : un substantif au pluriel n'est pas une faute du singulier."""
+    """Deux regroupements. `orthographe` (membres qui ne diffèrent que par accent, trait
+    d'union, espace, casse ou point médian) peut donner une forme privilégiée.
+    `grammaticale` (réuni en ignorant le pluriel) reste « à trancher » : un pluriel n'est pas
+    une faute du singulier."""
     groupes_stricts = defaultdict(list)
     for cle, entree in ngrammes_n1.items():
         if RE_EPICENE_SUFFIXE.search(cle):
@@ -445,19 +422,17 @@ def grouper_variantes(ngrammes_n1):
         if len(membres) < 2:
             continue
         if frozenset(m[0] for m in membres) in dans_stricte:
-            continue  # déjà couvert par le regroupement orthographique (mêmes membres)
+            continue  # mêmes membres que le regroupement orthographique
         resultat.append(resumer(membres, 'grammaticale'))
-    # orthographe d'abord (rare mais c'est la seule à alimenter Coherence.yml) : sinon les
-    # paires singulier/pluriel à forte fréquence (« personnes »/« personne », 1603) noient
-    # « coenseignement »/« co-enseignement » (48) sous le plafond CAP_VARIANTES.
+    # Orthographe d'abord (seule à alimenter Coherence.yml) : sinon les paires
+    # singulier/pluriel fréquentes (« personnes »/« personne ») rempliraient CAP_VARIANTES.
     resultat.sort(key=lambda r: (0 if r['type'] == 'orthographe' else 1, -r['frequence']))
     return resultat
 
 
 def lire_swap_yaml(chemin):
-    """Mini-lecteur de la seule forme utilisée dans ce dépôt : un bloc `swap:` avec des
-    lignes `  "clé": valeur` ou `  clé: valeur`. Pas un parseur YAML général — stdlib
-    seule, pas de PyYAML (contrainte du brief) ; suffisant pour les fichiers réels ici."""
+    """Lit un bloc `swap:` de lignes `  "clé": valeur` ou `  clé: valeur`, la seule forme
+    employée dans le dépôt. Pas un lecteur YAML général."""
     swap = {}
     dans_bloc = False
     try:
@@ -478,13 +453,9 @@ def lire_swap_yaml(chemin):
 
 
 def mesurer_vocabulaire_handicap(corps_paragraphes_id, langue, regles_swap):
-    """Le « contredit » se juge sur du TEXTE réel, pas sur une comparaison de deux motifs
-    entre eux (essayé d'abord, mesuré faux : deux motifs textuellement proches peuvent ne
-    jamais se matcher l'un l'autre en tant que regex — « [ée] » dans le motif texte ne
-    matche pas le caractère « [ » littéral de l'autre motif). On compile chaque motif
-    « fautif » d'une règle Vale existante et on le fait tourner sur les PASSAGES réellement
-    trouvés par VOCAB_HANDICAP : si un passage publié (quatre relectures) matche un motif que
-    la règle proscrit, c'est un faux positif certain de cette règle."""
+    """Fait tourner chaque motif proscrit des règles Vale existantes sur les passages
+    trouvés par VOCAB_HANDICAP. Un passage publié qui correspond à un motif proscrit est un
+    faux positif de la règle (comparer deux motifs entre eux ne marche pas)."""
     fautifs_compiles = []
     for fautif in regles_swap:
         try:
@@ -527,9 +498,8 @@ def ecrire_csv(chemin, entetes, lignes):
 
 
 def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, vocab_handicap, langue):
-    """Assemble les lignes candidates dans le schéma final du CSV. Budget visé : 300 à 800
-    lignes (décision du brief) — atteint en composant, dans cet ordre de priorité,
-    vocabulaire du handicap mesuré, sigles connus, groupes de variantes, puis termes du
+    """Assemble les lignes candidates au format final du CSV, 300 à 800 lignes, dans cet
+    ordre : vocabulaire du handicap, sigles connus, groupes de variantes, puis termes du
     domaine par fréquence décroissante jusqu'au budget."""
     lignes = []
     vus = set()
@@ -543,8 +513,7 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
         lignes.append([terme, categorie, forme_priv, '|'.join(variantes_l), freq, docs,
                         sigle_dev or '', statut, source, ex1, ex2, note, exiger_dev])
 
-    # 1. vocabulaire du handicap (toujours inclus, mesuré même à fréquence nulle : ça se
-    # signale aussi).
+    # 1. Vocabulaire du handicap, toujours inclus, même à fréquence nulle.
     for v in vocab_handicap:
         if v['contredit_regle_deconseillee']:
             statut = 'deconseille'
@@ -562,10 +531,9 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
         ajouter(v['libelle'], 'handicap', v['libelle'], [], v['frequence'], v['documents'],
                 '', statut, source, ex1, ex2, note)
 
-    # 2. sigles connus, un document ne suffit pas (trop de bruit de capitalisation isolée
-    # malgré le filtre « vu aussi en minuscules ») : au moins DEUX documents distincts.
-    # Plafonné pour laisser de la place aux termes du domaine (item 2) dans le budget total
-    # de 300 à 800 lignes visé par le brief — priorité aux sigles DÉVELOPPÉS dans le corpus.
+    # 2. Sigles vus dans au moins deux documents (un seul laisse passer des majuscules
+    # isolées). Plafonnés pour laisser de la place aux termes du domaine ; priorité aux
+    # sigles développés dans le corpus.
     CAP_SIGLES = 150
     sigles_retenus = [(s, c) for s, c in sigles_occ.items() if len(c['docs']) >= 2]
     sigles_retenus.sort(key=lambda sc: (0 if sigles_dev.get(sc[0]) else 1, -sc[1]['freq']))
@@ -574,18 +542,10 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
         if sigle in sigles_dev and sigles_dev[sigle]:
             dev = sigles_dev[sigle].most_common(1)[0][0]
         note = '' if dev else 'sigle jamais développé dans le corpus'
-        # exiger_developpement : la maison a-t-elle, EN PRATIQUE, l'habitude de redévelopper
-        # ce sigle ? Preuve d'usage, pas de principe. Seuil calibré, pas juste posé à > 50 % :
-        # mesuré en vrai sur ce corpus, un seuil à 50 % laissait passer trop de sigles
-        # développés « souvent mais pas toujours » (CDPH 16/23 = 70 %, TSA 9/14 = 64 %) et
-        # rendait la règle encore bruyante (705 alertes/53 documents fr, 603/91 de — largement
-        # au-dessus de la cible « < 5 % des documents »). Un cran net existe dans les données
-        # entre 60 % et 70 % (voir le rapport) : au-delà de 75 %, le risque de « pas développé
-        # ici » tombe à 1,1 % des documents fr et 1,5 % en de. Seuil retenu : strictement plus
-        # de 75 % des documents où le sigle apparaît le développent eux-mêmes. Certains sigles
-        # cités comme exemples de « non » restent malgré tout à « oui » quand la preuve
-        # d'usage les contredit (CUA développé dans 11/11 documents où il apparaît sur ce
-        # corpus, BEP dans 6/7) — voir le rapport, décision documentée, pas silencieuse.
+        # exiger_developpement : oui si plus de 75 % des documents où le sigle apparaît le
+        # développent. À 50 %, des sigles développés « souvent » (CDPH 70 %, TSA 64 %)
+        # donnaient trop d'alertes ; au-dessus de 75 %, l'alerte touche moins de 2 % des
+        # documents.
         n_docs_sigle = len(compte['docs'])
         n_docs_dev = len(dev_docs.get(sigle, ()))
         SEUIL_EXIGER_DEV = 0.75
@@ -596,11 +556,8 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
         ajouter(sigle, 'sigle', sigle, [], compte['freq'], len(compte['docs']), dev,
                 'neutre', '', '', '', note, exiger_dev=exiger)
 
-    # 3. groupes de variantes mécaniques, plafonnés pour la même raison. Le type
-    # « orthographe » (accent/trait d'union/espace/casse/point médian, jamais de pluriel
-    # replié) est sûr à privilégier automatiquement — c'est mécanique, pas un jugement
-    # éditorial. Le type « grammaticale » (a fallu plier un pluriel pour regrouper) reste
-    # à trancher : un pluriel n'est pas une faute du singulier.
+    # 3. Groupes de variantes, plafonnés eux aussi. Le type « orthographe » reçoit une forme
+    # privilégiée ; le type « grammaticale » reste à trancher.
     CAP_VARIANTES = 150
     n_variantes_ajoutees = 0
     for grp in variantes:
@@ -614,10 +571,8 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
                                      'mécanique : accent/trait d\'union/espace/casse/point '
                                      'médian, forme majoritaire du corpus)', '')
         elif grp['type'] == 'orthographe':
-            # décision : en allemand, un trait d'union isolé dans un mot composé long est
-            # presque toujours une coupure de justification du DOCX source (mesuré : « so-wie »
-            # / « be-deutung » / « in-nen »…), pas une variante orthographique éditoriale —
-            # jamais privilégié automatiquement pour cette langue, juste signalé.
+            # En allemand, un trait d'union isolé dans un mot est presque toujours une coupure
+            # de justification du DOCX (« so-wie », « be-deutung ») : signalé, pas privilégié.
             statut, source, note = ('a_trancher', '',
                                      'trait d\'union isolé (allemand) : probable coupure de '
                                      'justification du document source, pas une variante '
@@ -631,15 +586,14 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
                 grp['documents'], '', statut, source, '', '', note)
         n_variantes_ajoutees += 1
 
-    # 3bis. synonymes connus (liste éditoriale, hors portée mécanique).
+    # 3bis. Synonymes connus (liste éditoriale).
     for variantes_txt, forme in SYNONYMES_CONNUS.get(langue, []):
         ajouter(forme, categoriser(forme, langue), forme, variantes_txt, 0, 0, '',
                 'a_trancher', 'brief 21.09.2026',
                 '', '', 'synonymes cités par le brief, non comptés automatiquement')
 
-    # 4. termes du domaine (item 2), par fréquence décroissante, jusqu'au budget qui reste
-    # (300 à 800 lignes AU TOTAL, décision du brief — pas 800 termes du domaine en plus du
-    # reste).
+    # 4. Termes du domaine, par fréquence décroissante, jusqu'au budget restant (300 à 800
+    # lignes au total).
     BUDGET_TOTAL = 750
     BUDGET_MAX = max(BUDGET_TOTAL - len(lignes), 100)
     candidats_domaine = []
@@ -662,7 +616,7 @@ def construire_candidats(ngrammes, sigles_occ, sigles_dev, dev_docs, variantes, 
         ajouter(surface, cat, surface, [], freq, docs, '', 'neutre', '',
                 ex[0] if ex else '', ex[1] if len(ex) > 1 else '', '')
 
-    # repli si le budget minimal (300) n'est pas atteint : seuil de documents abaissé à 3.
+    # Si le minimum de 300 lignes n'est pas atteint : seuil de documents abaissé à 3.
     if len(lignes) < 300:
         for n in (1, 2, 3):
             for cle, e in ngrammes[n].items():
@@ -723,12 +677,9 @@ def agreger_vale(resultats_par_fichier):
 
 
 def regrouper_sigle_pour_bilan(agg):
-    """Une règle Vale PAR sigle (`CSPS.Lexique.Sigle-CUA`, `CSPS.Lexique.Sigle-BEP`…, voir
-    generer-lexique.py) donnerait un bilan illisible telle quelle — un cumul sous une clé
-    synthétique `<Style>.Lexique.Sigle` (documents réunis, pas simplement additionnés : un
-    même document touché par deux sigles ne doit compter qu'une fois) pour rendre compte du
-    volume total demandé par le brief. Le détail par sigle reste entier dans
-    vale-faux-positifs-<langue>.csv, jamais perdu, seulement résumé ici."""
+    """Cumule les règles Vale par sigle (`CSPS.Lexique.Sigle-CUA`…) sous une clé
+    `<Style>.Lexique.Sigle`, documents réunis (un document compte une fois). Le détail par
+    sigle reste dans vale-faux-positifs-<langue>.csv."""
     fusion = defaultdict(lambda: {'alertes': 0, 'docs': set()})
     reste = {}
     for regle, e in agg.items():

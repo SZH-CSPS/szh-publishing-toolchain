@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-# Moissonne les articles PUBLIÉS d'ojs.szh.ch (Revue suisse de pédagogie spécialisée +
-# Schweizerische Zeitschrift für Heilpädagogik) sur une fenêtre glissante de deux ans, pour
-# constituer un corpus de texte (lexique maison, Vale). Ne fait AUCUNE analyse : seulement
-# l'inventaire (OAI-PMH, oai_dc) et le téléchargement des galleys (DOCX de préférence, PDF
-# à défaut). stdlib seule, exécution prévue dans la WSL SZH-Publishing.
+# Moissonne les articles publiés d'ojs.szh.ch (Revue et Zeitschrift) sur les deux dernières
+# années, pour constituer un corpus de texte (lexique, Vale). Inventaire par OAI-PMH
+# (oai_dc) et téléchargement des galleys (DOCX, sinon PDF), sans analyse. Bibliothèque
+# standard seule ; se lance dans la WSL SZH-Publishing.
 #
-# Piège vérifié en direct le 21.09.2026 sur l'instance (OJS 3.5.0.4) : `&from=AAAA-MM-JJ`
-# sur ListRecords filtre le DATESTAMP (dernière modification en base), pas la date de
-# publication (dc:date) — un article de 2018 peut porter un datestamp de 2022 (migration),
-# et un article récent peut ne pas avoir été retouché depuis son import. Même constat que
-# lib/secretariat.js (commandeNumerosOjs) ; la décision ici est la même mais plus stricte :
-# AUCUN `from` n'est envoyé, la liste complète des deux revues est moissonnée (336 et 701
-# notices le 21.09.2026), et le filtrage de fenêtre se fait uniquement sur dc:date, en local.
+# `&from=` de ListRecords filtre la date de dernière modification en base, pas la date de
+# publication : un article de 2018 peut avoir été modifié en 2022. Aucun `from` n'est donc
+# envoyé ; tout est moissonné et filtré localement sur dc:date (comme
+# commandeNumerosOjs de lib/secretariat.js).
 #
-# Second piège, nouveau celui-ci : la réponse de téléchargement d'une galley (.../article/
-# download/<id>/<galleyId>) ne porte PAS de Content-Length (transfert chunké, vérifié au
-# curl -D le 21.09.2026) — la règle « un fichier déjà présent avec la bonne taille n'est pas
-# retéléchargé » ne peut donc pas se vérifier par la taille annoncée par le serveur. Le
-# cache local se contente alors de la présence d'un fichier non vide (SEUIL_FICHIER_VALIDE).
+# Le téléchargement d'une galley n'annonce pas de Content-Length (transfert par blocs) : un
+# fichier en cache est gardé s'il dépasse SEUIL_FICHIER_VALIDE.
 import argparse
 import csv
 import hashlib
@@ -37,8 +30,8 @@ USER_AGENT = 'SZH-Publishing-lexique-ojs/1.0 (+depot szh-publishing-toolchain; r
 PAUSE_DEFAUT_S = 1.0
 ESSAIS_RESEAU = 5
 DELAI_TOTAL_S = 60
-# En dessous de ce seuil un fichier en cache est retélechargé : un .docx ou .pdf réel d'un
-# article de revue ne descend jamais sous 1 Ko, un fichier plus petit trahit une coupure.
+# Un fichier en cache plus petit est retéléchargé : un vrai .docx ou .pdf d'article dépasse
+# 1 Ko, un fichier plus petit vient d'une coupure.
 SEUIL_FICHIER_VALIDE = 1024
 
 NS = {
@@ -76,9 +69,8 @@ FORMATS_GALLEY = {
 # ---- Réseau : une porte d'entrée unique, hôte restreint, pause imposée -------------------
 
 class HoteRestreint(urllib.request.HTTPRedirectHandler):
-    """N'autorise les redirections que vers ojs.szh.ch en https — même garde que
-    resoudreRedirection() de lib/oai-pmh.js, pour la même raison : une redirection vers un
-    autre hôte (proxy captif, DNS détourné) ne doit jamais recevoir nos requêtes suivantes."""
+    """N'autorise les redirections que vers ojs.szh.ch en https, comme resoudreRedirection()
+    de lib/oai-pmh.js : un autre hôte (portail captif, DNS détourné) ne reçoit rien."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         cible = urlparse(newurl)
@@ -100,10 +92,9 @@ def _attendre_son_tour(pause_s):
 
 
 def ouvrir(url, pause_s):
-    """Une requête à la fois : attend son tour, vérifie l'hôte de départ, retente sur un
-    503 ou une panne réseau (ESSAIS_RESEAU essais, délai croissant), n'accepte jamais un
-    hôte de départ hors ojs.szh.ch (garde symétrique de HoteRestreint, qui ne couvre que les
-    redirections)."""
+    """Une requête à la fois : attend son tour, refuse un hôte hors ojs.szh.ch (HoteRestreint
+    ne couvre que les redirections), retente sur un 503 ou une panne réseau (ESSAIS_RESEAU
+    essais, délai croissant)."""
     depart = urlparse(url)
     if depart.hostname != HOTE_AUTORISE:
         raise RuntimeError('hôte de départ refusé (pas ' + HOTE_AUTORISE + ') : ' + url)
@@ -134,8 +125,8 @@ def ouvrir(url, pause_s):
 # ---- Moisson OAI-PMH (oai_dc), pagination complète, aucun `from` -------------------------
 
 def moissonner_oai(base_url, pause_s, emettre):
-    """Toutes les notices d'une revue, en un seul passage (voir la note de tête sur le
-    piège du `from`). Rend une liste d'éléments <record> (ElementTree)."""
+    """Toutes les notices d'une revue, sans `from` (voir l'en-tête). Rend une liste
+    d'éléments <record> (ElementTree)."""
     enregistrements = []
     url = base_url + '?verb=ListRecords&metadataPrefix=oai_dc'
     jetons_vus = set()
@@ -252,9 +243,8 @@ def decoder_record(record_el, produit):
         if ext and ext not in galleys:
             galleys[ext] = url
 
-    # Auteurs : ne garder que ceux de LA langue de l'article (les mêmes noms sont répétés
-    # une fois par langue de métadonnées disponible — vu en direct le 21.09.2026, Ayer/Morand
-    # dupliqués fr+de à l'identique) ; à défaut la première langue rencontrée.
+    # Auteurs : ceux de la langue de l'article, car l'OAI répète les noms dans chaque langue
+    # de métadonnées ; à défaut, la première langue rencontrée.
     creators_par_lang = {}
     for el in dc.findall('dc:creator', NS):
         lang = el.get('{http://www.w3.org/XML/1998/namespace}lang', '')
@@ -274,11 +264,8 @@ def decoder_record(record_el, produit):
         revue_lettre = mDoi.group(1)
         annee = mDoi.group(2)
         numero = mDoi.group(3)
-    # Vu en direct le 21.09.2026 sur l'article 1767 : un DOI d'instance jamais substitué
-    # (« 10.57161/r2026-03-%x ») ET un dc:source sans parenthèse d'année (« Bd. 16 Nr. 03:
-    # Titre; 57-71 », sans « (2026) ») — les deux sources habituelles de l'année sont donc
-    # muettes ensemble, alors que dc:date, lui, est complet. Repli sur son année plutôt que
-    # sur '0000' : un dossier de sortie « 0000 » serait un mensonge, dc:date ne l'est pas.
+    # Un DOI non substitué (« 10.57161/r2026-03-%x ») et un dc:source sans année peuvent
+    # coexister : l'année vient alors de dc:date plutôt que de valoir « 0000 ».
     if not annee and date_pub:
         m_annee_date = re.match(r'^(\d{4})', date_pub)
         if m_annee_date:
@@ -296,15 +283,12 @@ def decoder_record(record_el, produit):
     }
 
 
-# ---- Fenêtre de dates, sans dépendre du `from` de l'OAI (voir la note de tête) -----------
+# ---- Fenêtre de dates, sans le `from` de l'OAI (voir l'en-tête) --------------------------
 
 def date_pub_comparable(art):
-    """Une date comparable pour le filtre de fenêtre, ou None si rien d'exploitable.
-    dc:date est apparu présent à 100% sur les échantillons relevés le 21.09.2026 (deux
-    pages de 100 notices, une par revue) ; le repli sur l'année seule (source/DOI) n'est là
-    que pour le cas rare où il manquerait, et se traite alors au 1er janvier de l'année —
-    prudent pour une borne basse (inclut l'année entière), signalé si ça change le verdict
-    de la fenêtre (voir marquer_dans_fenetre)."""
+    """Une date comparable pour le filtre de fenêtre, ou None. Sans dc:date, l'année seule
+    (source ou DOI) vaut 1er janvier : l'année entière entre dans la fenêtre, et
+    marquer_dans_fenetre le signale si cela change le verdict."""
     if art['date_pub']:
         m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', art['date_pub'])
         if m:
@@ -343,9 +327,8 @@ def ascii_slug(texte, longueur_max=60):
 # ---- Téléchargement d'une galley -----------------------------------------------------------
 
 def telecharger_galley(url, dest, pause_s):
-    """Rend (octets, sha256) ; lève sur échec. Écrit en flux, sans jamais charger tout le
-    fichier en mémoire — même prudence que recupererHttps (lib/oai-pmh.js), même si aucune
-    galley observée n'approche une taille dangereuse."""
+    """Rend (octets, sha256) ; lève sur échec. Écrit en flux, sans charger tout le fichier
+    en mémoire, comme recupererHttps (lib/oai-pmh.js)."""
     OCTETS_MAX = 200 * 1024 * 1024
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name('~$' + dest.name)
@@ -464,10 +447,8 @@ def main():
                     else:
                         emettre('  téléchargement : ' + fichier_rel)
                         octets, sha = telecharger_galley(url_galley, dest, args.pause)
-                    # Validité minimale : un .docx est un zip (signature PK\x03\x04), un
-                    # .pdf commence par %PDF. Un fichier qui ne respecte pas sa propre
-                    # signature est compté « illisible » et gardé sur disque pour examen,
-                    # plutôt que supprimé en silence.
+                    # Un .docx commence par PK\x03\x04, un .pdf par %PDF. Sinon le fichier est
+                    # compté « illisible » et gardé sur disque pour examen.
                     with open(dest, 'rb') as f:
                         entete = f.read(5)
                     valide = (entete[:4] == b'PK\x03\x04') if type_galley == 'docx' else (entete[:4] == b'%PDF')

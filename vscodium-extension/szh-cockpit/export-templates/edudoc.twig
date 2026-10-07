@@ -1,25 +1,22 @@
-{# edudoc.twig : le CSV d'import Edudoc, entièrement d'après l'OAI (décision de Robin) —
-   écrit par lib/secretariat.js (commande « edudoc »). Colonnes reprises de l'ancien script
-   tmp/export et secretariat/OJS_Export_Edudoc.py (create_excel, populate_excel_list), dans
-   le même ordre. CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF posés par
-   lib/secretariat.js (versCsvFinal) — ce gabarit n'écrit que le texte, en ";" et en "\n".
+{# edudoc.twig : le CSV d'import Edudoc, tiré de l'OAI. Écrit par lib/secretariat.js
+   (commande « edudoc »).
+   CSV suisse : séparateur ";". Le BOM UTF-8 et les fins de ligne CRLF sont posés par
+   lib/secretariat.js (versCsvFinal) ; ce gabarit écrit ";" et "\n".
    Les colonnes fixes (037__a, 336__a, 338__a, 790__a, 910__a-1, 950__a) sont des constantes
-   de la maison, écrites ici en clair ; tout ce qui varie par article passe par |csv.
+   écrites en clair ; tout ce qui varie par article passe par |csv.
 
-   Les colonnes 7001_a-1 … 7001_a-N (une par auteur·e, jusqu'au maximum rencontré dans cet
-   export) sont déjà complétées à droite par des cellules vides dans `enTetesAuteurs` et
-   dans `articles[].auteursInverses` : ce gabarit n'a qu'à les faire défiler, jamais à
-   compter jusqu'à N lui-même (le moteur ne sait pas faire d'arithmétique). Les colonnes
-   690__a-1/690__b-1 … 690__a-N/690__b-N (mots-clés MARC, $a = allemand, $b = français)
-   suivent exactement le même principe, en fin de ligne — voir `enTetesDescripteurs` et
-   `articles[].descripteurs` plus bas.
+   Les colonnes 7001_a-1 … 7001_a-N (une par auteur·e, jusqu'au maximum de l'export) arrivent
+   complétées à droite par des cellules vides, dans `enTetesAuteurs` et
+   `articles[].auteursInverses` : le gabarit les parcourt sans compter (le moteur n'a pas
+   d'arithmétique). Même principe, en fin de ligne, pour les colonnes 690__a-1/690__b-1 …
+   (mots-clés MARC, $a = allemand, $b = français) : `enTetesDescripteurs` et
+   `articles[].descripteurs`.
 
-   Mots-clés (690) : décision de Robin, leur source est le .meta.yaml de l'article dans le
-   numéro local, jamais l'OAI (voir lib/secretariat.js, commandeEdudoc) — absents si aucune
-   racine locale n'a été fournie à l'export (--numero), ou si aucun article local ne porte
-   le DOI de la ligne. Seuls les descripteurs reconnus par le thésaurus edudoc partent ici ;
-   ce que la rédaction a saisi sans que le thésaurus le reconnaisse est compté et signalé
-   par la commande (avert), jamais silencieusement perdu.
+   Les mots-clés (690) viennent du .meta.yaml de l'article dans le numéro local, pas de
+   l'OAI (lib/secretariat.js, commandeEdudoc). Ils manquent si l'export n'a pas reçu de
+   numéro local (--numero) ou si aucun article local ne porte le DOI de la ligne. Seuls les
+   descripteurs reconnus par le thésaurus edudoc sont exportés ; la commande compte et
+   signale les autres.
 
    Variables disponibles ici :
    dateExport              "2026-09-14" (583__c : date du jour, une seule fois pour tout l'export)
@@ -35,7 +32,7 @@
    articles[].annee                 "2026" (269__a)
    articles[].volume                "16" (773__j-1)
    articles[].numero                "03" (773__k-1)
-   articles[].pages                 "27-32" (773__q-1 ; souvent vide sur les numéros récents, l'OAI ne les porte pas encore)
+   articles[].pages                 "27-32" (773__q-1 ; souvent vide sur les numéros récents, faute de pages dans l'OAI)
    articles[].revueId               "207536" ou "202299" (773__0-2)
    articles[].revueTitre             "Revue suisse de pédagogie spécialisée" (773__t-2)
    articles[].resume                 le résumé dans la langue de l'article (520__a)
@@ -44,7 +41,7 @@
    articles[].auteursInverses[]      ["Dentz, Amélie", "Frank Baud, Bianca", …] déjà en forme "Nom, Prénom",
                                       complétée à droite jusqu'à la longueur de `enTetesAuteurs`
    articles[].descripteurs[]         [{de: "Inklusion (SZH)", fr: "inclusion (CSPS)"}, …] forme canonique du
-                                      thésaurus edudoc (jamais celle tapée par la rédaction), complétée à
+                                      thésaurus edudoc (pas celle saisie par la rédaction), complétée à
                                       droite par {de: "", fr: ""} jusqu'à la longueur de `enTetesDescripteurs`
 #}
 {% block contenu -%}

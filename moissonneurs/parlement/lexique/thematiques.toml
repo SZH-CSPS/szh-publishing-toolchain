@@ -1,13 +1,13 @@
 # Thématiques de la Revue suisse de pédagogie spécialisée et de la Schweizerische Zeitschrift für Heilpädagogik.
-# Périmètre élargi, décision du 02.10.2026 : un faux positif se refuse dans la vue Propositions, un faux
-# négatif ne se voit jamais. Une affaire qui touche une thématique SANS ancrage handicap ni besoins particuliers
-# devient « à relire » (jamais « retenu »), uniquement d'après son titre.
+# Périmètre élargi : un faux positif se refuse dans la vue Propositions, un faux négatif ne se voit pas. Une affaire
+# qui touche une thématique sans ancrage handicap ni besoins particuliers devient « à relire » (pas « retenu »),
+# d'après son titre seul.
 #
 # Sources de la liste (chaque thème dit lesquelles) :
-#   csps.ch      arborescence « Thèmes » du site du CSPS (2 pages lues le 02.10.2026 : accueil et plan du site)
-#   categories   PRONTO/docs/DEV/Categories.md (catégories en place et proposées, §3 thème, §4 degré, §5 besoins)
-#   contrat      PRONTO/pipeline/kirby/champs-documentation.json (types et rubriques de la Documentation)
-#   fiches       titres des fiches de _NewsUndActu\Fiches (rundschau 136, revueblick 33, forschung 9, vorstoesse 79)
+#   csps.ch      arborescence « Thèmes » du site du CSPS (accueil et plan du site)
+#   categories   catégories de la Documentation, en place et proposées (thème, degré, besoins)
+#   contrat      pipeline/kirby/champs-documentation.json (types et rubriques de la Documentation)
+#   fiches       titres des fiches de _NewsUndActu\Fiches (rundschau, revueblick, forschung, vorstoesse)
 # Mêmes conventions de termes que ancrage.toml. Le thème « école ordinaire » (liste `ecole_generale` de
 # ancrage.toml) reste à part : il a son interrupteur `[classement] ecole_generale`.
 
@@ -202,8 +202,8 @@ de = ["inklusiver Arbeitsmarkt", "inklusive Arbeitswelt", "begleitetes Wohnen", 
 it = ["mercato del lavoro inclusivo", "alloggio accompagnato", "istituto socioeducativo", "aiuto all'infanzia",
       "collocamento di minori"]
 
-# Arbitrage du 03.10.2026 (scénario « 47 à relire par mois ») : une thématique n'est acceptée que si le titre porte
-# aussi un mot d'enfance, de jeunesse ou d'école. Radicaux, cherchés en sous-chaîne, sans accent ni casse.
+# Une thématique n'est acceptée que si le titre porte aussi un mot d'enfance, de jeunesse ou d'école (pour limiter
+# le nombre de « à relire »). Radicaux, cherchés en sous-chaîne, sans accent ni casse.
 [contexte_theme]
 fr = ["ecole", "enfan", "jeune", "scolai", "enseign", "creche", "pedagog", { t = "formation", m = "mot" },
       { t = "formations", m = "mot" }]

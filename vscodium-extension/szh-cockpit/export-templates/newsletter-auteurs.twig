@@ -1,9 +1,8 @@
 {# newsletter-auteurs.twig : auteurs.csv, une ligne par auteur·e du numéro, dans l'ordre
-   des articles puis alphabétique du nom dans l'article — écrit par lib/secretariat.js
-   (commande « newsletter »). CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF
-   posés par lib/secretariat.js (versCsvFinal), pas par ce gabarit — il n'écrit que le texte,
-   en ";" et en "\n". Toutes les valeurs passent par le filtre |csv (guillemets doublés,
-   toujours entre guillemets droits).
+   des articles puis du nom dans l'article. Écrit par lib/secretariat.js (commande
+   « newsletter »). CSV suisse : séparateur ";". Le BOM UTF-8 et les fins de ligne CRLF sont
+   posés par lib/secretariat.js (versCsvFinal) ; ce gabarit écrit ";" et "\n". Toutes les
+   valeurs passent par le filtre |csv (entre guillemets droits, guillemets internes doublés).
 
    Variables disponibles ici :
    numero.cle             "2026-03" (non utilisé dans les colonnes ci-dessous, disponible si besoin)

@@ -1,12 +1,10 @@
 {# metadonnees.twig : le rapport texte de la commande « metadonnees » — comparaison, numéro
    par numéro et article par article (appariés par DOI), entre les fiches locales et ce que
-   l'OAI a publié. Lancé à la main, lu à l'écran ou dans un éditeur de texte : pas de CSV,
-   pas de mise en forme HTML, juste un texte clair. Écrit par lib/secretariat.js.
+   l'OAI a publié. Un texte simple, lu à l'écran. Écrit par lib/secretariat.js.
 
-   ⚠ L'OAI moissonné par la commande « numeros-ojs » est en oai_dc, qui ne porte PAS
-   l'affiliation des auteur·e·s (seul le format marcxml le ferait) : `noteAffiliation`
-   le rappelle sur chaque article comparé plutôt que de laisser croire à une vérification
-   qui n'a pas eu lieu.
+   L'OAI moissonné par la commande « numeros-ojs » est en oai_dc, qui ne porte pas
+   l'affiliation des auteur·e·s (marcxml la porterait) : `noteAffiliation` le rappelle sur
+   chaque article comparé.
 
    Variables disponibles ici :
    dateComparaison            "2026-09-14"

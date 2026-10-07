@@ -1,6 +1,6 @@
 #!/bin/bash
-# Démo du correctif 55 : la note d'un paragraphe déjà posé n'est plus chassée à la page
-# suivante pour loger la 2e ligne d'un paragraphe qui manque de lignes pour orphans.
+# Démo du correctif 55 : la note d'un paragraphe déjà posé reste sur sa page quand le
+# paragraphe suivant manque de lignes pour respecter orphans.
 # Deux rendus : nu, patché. Pas de repagination dans reportee.html, le 50 n'y joue pas.
 # Lancer dans la WSL : wsl.exe -d SZH-Publishing -- bash <chemin>/demo.sh
 ICI="$(cd "$(dirname "$0")" && pwd)"

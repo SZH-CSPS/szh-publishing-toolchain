@@ -1,6 +1,6 @@
 #!/bin/bash
-# Démo du correctif 50 : une note reportée à la page suivante n'y est plus imprimée une
-# seconde fois quand un target-counter fait repaginer. Deux rendus : nu, patché.
+# Démo du correctif 50 : une note reportée à la page suivante n'y est imprimée qu'une fois,
+# même quand un target-counter fait repaginer. Deux rendus : nu, patché.
 # Lancer dans la WSL : wsl.exe -d SZH-Publishing -- bash <chemin>/demo.sh
 ICI="$(cd "$(dirname "$0")" && pwd)"
 . "$ICI/../../demo-commun.sh"

@@ -1,4 +1,4 @@
-# Exclusions. Trois mécanismes, tous lisibles dans la raison du verdict.
+# Exclusions. Chaque mécanisme apparaît dans la raison du verdict.
 
 # 1. Neutralisations : le passage est effacé avant la recherche d'ancrage (faux amis du mot "handicap",
 #    "Behinderung" au sens d'entrave). Mêmes conventions de termes que ancrage.toml.
@@ -26,27 +26,26 @@ it = ["integrazione degli stranieri", "integrazione dei migranti", "integrazione
 
 # 3. Types d'objets (type_name cantonal brut) d'un Regierungsgeschäft / affaire du gouvernement :
 #    à garder (lois scolaires, messages) ou à jeter (budgets, comptes). Comparaison sans casse ni accents,
-#    en début de libellé. Étude du 18.09.2026.
+#    en début de libellé.
 [regierungsgeschaeft]
 garder = ["Gesetz", "Gesetzgebungsgeschäft", "Botschaften", "Botschaft", "Vorlage", "Bericht und Antrag", "Weisung",
           "Message", "Projet de loi", "Messaggio"]
 jeter = ["Jahresrechnung", "Geschäftsbericht", "Globalbudget", "Kreditgeschäft", "Sachgeschäft",
          "Regierungsratsbeschluss", "Verwaltungsgeschäft", "Compte", "Comptes", "Budget", "Rapport de gestion"]
 
-# 4. Types harmonisés écartés d'office (étude, section C) : id -> motif.
+# 4. Types harmonisés écartés d'office : id -> motif.
 [types_ecartes]
 6 = "élection"
 14 = "naturalisation"
 13 = "amendement (fragment d'un objet parent)"
 
-# 5. Types harmonisés qui ne sont JAMAIS « retenu » : verdict plafonné à « a-relire ».
+# 5. Types harmonisés plafonnés à « a-relire ».
 [types_a_relire]
 10 = "heure des questions (question orale d'une ligne)"
 15 = "document d'information"
 
-# 6. Termes gardés dans le lexique local (classement) mais JAMAIS envoyés à la recherche serveur : la recherche plein texte
-#    de l'API n'est pas une recherche de phrase ; pour ces termes la phrase est absente de 88 à 100 % des candidats
-#    (revue adverse du 03.10.2026, constat 1 ; aucune des 79 fiches de référence ne leur doit sa candidature).
+# 6. Termes gardés pour le classement local mais pas envoyés à la recherche serveur : la recherche plein texte de l'API
+#    ne cherche pas la phrase entière, et pour ces termes la phrase manque dans 88 à 100 % des candidats.
 [recherche_serveur.exclure]
 fr = ["mesure renforcée", "mesures renforcées", "classe spécialisée", "classe d'accueil", "haut potentiel",
       "aménagement raisonnable", "intégration scolaire", "aménagements raisonnables", "hauts potentiels",
@@ -56,8 +55,8 @@ de = ["verstärkte Massnahmen", "Schulen für alle", "unterstützte Kommunikatio
 it = ["assistenza personale", "integrazione professionale", "lingua seconda"]
 
 # 1b. Neutralisations par expression régulière, sur le texte sans accent ni casse : « behindert » au sens verbal
-#     (entraver), jamais l'adjectif du champ (« behinderte Kinder », « sind behindert »). Prudence : on ne neutralise
-#     que les formes conjuguées, « behindert » devant un auxiliaire, un article ou une ponctuation, ou après un adverbe.
+#     (entraver), pas l'adjectif du champ (« behinderte Kinder », « sind behindert »). Seules les formes conjuguées sont
+#     neutralisées : « behindert » devant un auxiliaire, un article ou une ponctuation, ou après un adverbe.
 [neutralisation_regex]
 de = [
   '\bbehinder(?:n|st|e)\b',
@@ -70,9 +69,9 @@ de = [
   '(?<!iv-)schulden',
 ]
 
-# 1c. Scénario R (03.10.2026) : ces termes forts de la famille AI/handicap sont ignorés dans l'EXTRAIT de recherche (texte
-#     absent), où ils ne sont qu'une mention (TVA, guichets uniques, robots livreurs…). Au titre et dans un texte dense ils
-#     comptent toujours. Comparaison sans accent ni casse.
+# 1c. Termes forts de la famille AI/handicap ignorés dans l'extrait de recherche (quand le texte manque), où ils ne sont
+#     qu'une mention (TVA, guichets uniques, robots livreurs…). Ils comptent au titre et dans le texte complet.
+#     Comparaison sans accent ni casse.
 [hors_extrait]
 termes = ["Behinderung", "behindert", "Invalidenversicherung", "IV-Rente", "Invalidenrente", "invalidité", "berufliche Eingliederung",
           "Geburtsgebrechen", "der IV", "die IV", "zur IV", "IV-Stelle", "Hilflosenentschädigung", "Verhaltensauffälligkeit",

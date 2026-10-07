@@ -1,49 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# generer-noms.py — construit pipeline/lexique/noms-famille.txt : la base lexicale PUBLIQUE
-# que manuscrit_noms.BaseNoms (lot A) lit en renfort de la base OJS du poste (absente sur un
-# poste de développement sans C:\ProgramData\SZH, et TOUJOURS absente sur les runners CI —
-# contrat, §3.2 et §2 bis). Contrat du lot : docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.
+# Construit pipeline/lexique/noms-famille.txt, base de noms de famille publique que
+# manuscrit_noms.BaseNoms lit en plus de la base OJS du poste (absente en développement et
+# sur la CI). Voir docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# UNE seule source écrite sur disque (§5.1 du contrat — confidentialité : ce dépôt est destiné
-# à devenir public) : noms-famille.txt <- les bibliographies des galleys PUBLIÉES du corpus
-# local (--corpus, tmp/docx-dev par défaut — HORS DÉPÔT, tmp/ est dans .gitignore). Une entrée
-# APA commence par « Nom, P. » / « Nom, P., & Autre, Q. » : le nom de famille y est CERTIFIÉ
-# par la forme elle-même, jamais deviné.
+# Source : les bibliographies des galleys publiées du corpus local (--corpus, tmp/docx-dev
+# par défaut, hors dépôt). Une entrée APA commence par « Nom, P. » : la forme garantit que
+# c'est un nom de famille.
 #
-# ⚠ Décision de Robin, 22.09.2026 : prenoms.txt (le champ `prenom` de la base OJS du poste,
-# --base-auteurs) N'EST PLUS PRODUIT — retiré de pipeline/lexique/. Motif : ce fichier n'était
-# que la COPIE d'une donnée déjà présente et à jour sur le poste
-# (C:\ProgramData\SZH\auteurs.json, lui-même dérivé de la base d'auteurs OJS de la maison) ;
-# il ne servait que de REPLI pour manuscrit_noms.BaseNoms quand cette base est absente — repli
-# devenu inutile puisque le moissonnage de la base OJS est désormais déclenché au lancement de
-# l'application (voir le rapport de livraison de ce lot). Un dépôt destiné à devenir public n'a
-# pas à porter la copie d'une donnée maison qui n'apporte rien de plus que l'original.
+# --base-auteurs (C:\ProgramData\SZH\auteurs.json) sert seulement au filtrage : un nom connu
+# de la base OJS échappe au seuil de bruit (« Wu », vu une fois et court, est gardé). Rien de
+# cette base n'est écrit dans le fichier produit, qui va dans un dépôt public.
 #
-# --base-auteurs SUBSISTE malgré tout, pour un usage bien plus étroit qu'avant : le filtrage de
-# noms-famille.txt (§5.2, règle 4 — « ne jamais écarter un jeton présent dans la base OJS »)
-# a besoin de savoir quels jetons de NOM la base connaît, pour immuniser contre le seuil de
-# bruit (règle 3) un nom de famille rare mais réel (« Wu », vu une seule fois dans le corpus
-# ET court, mais présent comme nom dans auteurs.json -> gardé). Le champ `prenom` d'une fiche
-# n'est plus LU pour lui-même ; il ne sert plus qu'à la définition d'une fiche « propre »
-# (charger_noms_ojs_propres() ci-dessous — INCHANGÉE : nom ET prénom non vides, comme avant
-# cette suppression, pour ne pas élargir au passage le périmètre de l'immunité en même temps
-# qu'on retire prenoms.txt — un élargissement séparé, à décider et mesurer à part, jamais un
-# effet de bord de cette suppression).
-#
-# stdlib seule. Patron repris de deux scripts voisins :
-#   - outils-dev/lexique/generer-lexique.py : CLI à tiret, arguments analysés à la main
-#     (pas d'argparse dans CE script précis — cohérence avec le reste du dossier lexique/,
-#     qui n'en a pas besoin : cinq options, aucune validation croisée).
-#   - outils-dev/lexique/moissonner-ojs.py : commentaires denses, chaque seuil chiffré
-#     justifié par une mesure DATÉE, jamais par intuition.
-# Lecture du .docx en stdlib (zipfile + xml.etree), patron de pipeline/pronto_docx.py — pas
-# de lecteur complet réécrit, seul le texte des paragraphes est nécessaire ici. Le repérage
-# de la bibliographie réutilise pipeline/docx-meta.py (chargé par chemin, comme le fait déjà
-# pipeline/manuscrit_entete.py pour ce même fichier — son nom porte un tiret, `import
-# docx-meta` est syntaxiquement impossible) : Classeur, pstyle, texte_paragraphe,
-# normaliser, ressemble_a_une_reference, etendue_biblio, detecter_type, PARTICULES — rien de
-# tout cela n'est ré-écrit ici.
+# Bibliothèque standard seule. Le .docx se lit par zipfile + xml.etree ; le repérage de la
+# bibliographie vient de pipeline/docx-meta.py (Classeur, pstyle, texte_paragraphe,
+# etendue_biblio, detecter_type, PARTICULES…).
 #
 #   python3 generer-noms.py --corpus tmp/docx-dev --base-auteurs C:\ProgramData\SZH\auteurs.json --sortie pipeline/lexique
 #   python3 generer-noms.py --corpus tmp/docx-dev --statistiques   (n'écrit rien)
@@ -66,9 +37,8 @@ SORTIE_DEFAUT = os.path.join(RACINE, 'pipeline', 'lexique')
 
 
 def _charger_module_a_tiret(nom_fichier, nom_module):
-    """docx-meta.py porte un tiret : pas un module importable par son nom (convention du
-    dépôt, §3 du contrat). Chargé par chemin, exactement comme manuscrit_entete.py et
-    manuscrit_biblio.py le font déjà pour ce même fichier."""
+    """Charge un module de pipeline/ par son chemin : un nom à tiret (docx-meta.py) ne
+    s'importe pas."""
     chemin = os.path.join(RACINE, 'pipeline', nom_fichier)
     spec = importlib.util.spec_from_file_location(nom_module, chemin)
     module = importlib.util.module_from_spec(spec)
@@ -80,13 +50,8 @@ dm = _charger_module_a_tiret('docx-meta.py', 'szh_docx_meta_pour_lexique_noms')
 
 
 # ---------------------------------------------------------------------------------
-# Pliage d'un jeton — DOIT rester identique à celui que manuscrit_noms.BaseNoms appliquera
-# aux jetons qu'elle lit dans ces fichiers (contrat, §3.2) : NFD, minuscules, combinants
-# retirés, ponctuation de bord seule retirée (jamais un tiret interne, qui porte le sens
-# dans « Anne-Françoise » ou « Sermier-Dessemontet »). Dupliqué ici (ce script ne peut pas
-# importer manuscrit_noms.py, qui n'existe pas encore au moment où ce lot tourne — lot A,
-# en parallèle) : la duplication est le pliage lui-même, six lignes, décrit noir sur blanc
-# au §3.2 du contrat, pas une improvisation.
+# Pliage, identique à manuscrit_noms._plier() : NFD, minuscules, diacritiques retirés,
+# ponctuation retirée aux bords seulement (le tiret de « Anne-Françoise » reste).
 PONCTUATION_BORD = string.punctuation + '«»‘’“”…‑–—'
 
 
@@ -97,23 +62,19 @@ def plier(jeton):
 
 
 def valide(jeton):
-    """Règle commune aux deux fichiers (§5.2, règle 1) : au moins 2 lettres, sans chiffre,
-    sans arobase. `isalpha()` est trop strict (rejette Anne-Françoise, Sermier-Dessemontet,
-    Wood de Wilde une fois réduit) : on compte les lettres réelles (Unicode) et on refuse
-    séparément chiffre et arobase, jamais un `\\w` qui les laisserait passer."""
+    """Au moins 2 lettres, sans chiffre ni arobase. `isalpha()` rejetterait
+    « anne-francoise » ; `\\w` laisserait passer les chiffres."""
     if not jeton or '@' in jeton or any(c.isdigit() for c in jeton):
         return False
     return sum(1 for c in jeton if c.isalpha()) >= 2
 
 
 # ---------------------------------------------------------------------------------
-# Source 1 — noms de famille depuis les bibliographies du corpus (§5.1, source 1).
+# Noms de famille tirés des bibliographies du corpus.
 
-# Un auteur ou une autrice APA s'écrit « Nom, P. » ou « Nom Compose, P.-P. » : au plus trois
-# mots capitalisés (mesuré sur le corpus tmp/docx-dev, 22.09.2026 — « Sahli Lozano »,
-# « Hagmann-von Arx », « Wood de Wilde » couvrent le cas le plus long observé, jamais 4),
-# précédé le cas échéant d'UNE particule (dm.PARTICULES), suivi d'une virgule puis d'une ou
-# plusieurs initiales (« M. », « J.-P. », « M. A. »).
+# Un auteur APA s'écrit « Nom, P. » ou « Nom Composé, P.-P. » : au plus trois mots
+# capitalisés (« Hagmann-von Arx », « Wood de Wilde »), précédés au plus d'une particule
+# (dm.PARTICULES), puis une virgule et une ou plusieurs initiales (« M. », « J.-P. »).
 _PARTICULE_RE = '(?:' + '|'.join(sorted(re.escape(p) for p in dm.PARTICULES)) + ')'
 _MOT_NOM = r"[A-ZÀ-ÖØ-Þ][\wÀ-ÖØ-öø-ÿ'’-]*"
 _SURNOM = _PARTICULE_RE + r'\s+' + _MOT_NOM + r'(?:\s+' + _MOT_NOM + r'){0,2}' + \
@@ -121,44 +82,29 @@ _SURNOM = _PARTICULE_RE + r'\s+' + _MOT_NOM + r'(?:\s+' + _MOT_NOM + r'){0,2}' +
 RE_AUTEUR_APA = re.compile(
     r'(?:' + _SURNOM + r'),\s*[A-ZÀ-ÖØ-Þ]\.(?:[\s-]?[A-ZÀ-ÖØ-Þ]\.)*')
 
-# Année de publication : marque la fin de la liste d'autrices/auteurs dans une référence
-# APA (« (2020). » ou « (2020, 28. Juli): »), jamais franchie par la recherche de noms — au-
-# delà commencent le titre, l'éditeur, les pages, un « In A. Untel (Ed.), » dont le nom de
-# l'éditeur est écrit dans l'AUTRE sens (Prénom Nom) et ne doit jamais être confondu avec un
-# auteur. Repli à 180 signes si aucune parenthèse d'année n'est trouvée (référence sans
-# année identifiable, "s.d."/"n.d.") : large pour une liste de 3-4 auteurs, borné pour ne
-# jamais dériver dans le corps d'une longue référence.
+# L'année (« (2020). », « (2020, 28. Juli): ») clôt la liste des auteurs : la recherche de
+# noms s'arrête là. Au-delà, un « In A. Untel (Ed.), » écrit l'éditeur dans l'autre sens.
+# Sans année (« s.d. »), on lit les 180 premiers signes.
 RE_ANNEE_REFERENCE = re.compile(r'\((?:19|20)\d{2}[a-z]?[,)]')
 SEGMENT_AUTEURS_MAX = 180
 
-# Défense en profondeur (§5.2, règle 2) : sur le corpus mesuré (tmp/docx-dev, 77 fichiers,
-# 22.09.2026), AUCUN auteur institutionnel (ISB, MSB NRW, BFS, EDK, HfH, UNESCO, OECD,
-# SKBF, BASS, BKS, ARTISET, Robert Bosch Stiftung…) n'a jamais franchi le filtre ci-dessus :
-# une référence institutionnelle s'écrit « SIGLE (2020). » ou « Nom complet (2020). »,
-# jamais « SIGLE, X. (2020) » — la virgule + initiale ne matche pas. Cette liste ne sert
-# donc à rien sur CE corpus ; elle reste en gardienne fermée et courte pour un corpus futur
-# plus large (toutes les galleys, pas seulement les 77 de ce poste) qui pourrait un jour
-# produire une forme qu'on n'a pas encore vue — jamais pour rejeter un nom de famille réel.
+# Garde-fou : un auteur institutionnel s'écrit « SIGLE (2020). », sans virgule ni initiale,
+# et ne passe donc pas le motif ci-dessus. Cette courte liste couvre une forme inattendue
+# dans un corpus plus large.
 MOTS_OUTILS_INSTITUTION = {
     'et', 'und', 'and', 'sowie', 'in', 'im', 'ed', 'eds', 'hrsg', 'hg', 'coll',
     'vol', 'dir', 'trad', 'szh', 'csps', 'edk', 'bfs', 'hfh', 'oecd', 'unesco',
     'who', 'oms', 'isb', 'msb', 'bkd', 'bks', 'bass', 'skbf', 'artiset', 'nrw',
 }
 
-# Seuil de bruit (§5.2, règle 3) : un jeton vu dans UNE SEULE référence de tout le corpus
-# ET de moins de 4 lettres. Mesuré sur tmp/docx-dev (77 fichiers, 22.09.2026, jeton de
-# STOCKAGE = dernier mot non-particule d'un nom capté, compté par RÉFÉRENCE distincte, pas
-# par occurrence) : 1301 jetons distincts au total : le seuil à 4 lettres en écarte 20
-# ('ha', 'hu', 'wu', 'yu', 'mao', 'rao'…, très probablement des fragments d'OCR ou de
-# translittération tronquée) ; le même calcul à 5 lettres en écarterait 118 — un saut de
-# 20 à 118 pour une seule lettre de plus est le signe que 4 est le seuil qui sépare le bruit
-# du signal ici, pas un chiffre choisi à l'intuition.
+# Seuil de bruit : un jeton vu dans une seule référence et de moins de 4 lettres est écarté
+# ('ha', 'hu', 'mao'…). Sur 1301 jetons, 4 lettres en écarte 20 ; 5 lettres en écarterait
+# 118, dont de vrais noms.
 SEUIL_LONGUEUR_BRUIT = 4
 
 
 def _blocs_du_corps(racine):
-    """[w:p | w:tbl] de premier niveau — patron de pronto_docx.blocs_du_corps() (même
-    fichier justifié en tête : lecture stdlib, aucun lecteur complet réécrit)."""
+    """[w:p | w:tbl] de premier niveau, comme pronto_docx.blocs_du_corps()."""
     body = racine.find(dm.W + 'body')
     if body is None:
         return []
@@ -171,11 +117,8 @@ def _segment_auteurs(texte):
 
 
 def _jeton_stockage(surnom):
-    """Le jeton qui sera effectivement testé par `BaseNoms.poids_nom()` : le DERNIER mot
-    non-particule d'un nom composé (§3.2 du contrat — « Sermier Dessemontet », « de
-    Chambrier » se testent sur leur dernier jeton non-particule). Stocker la phrase entière
-    stockerait un jeton (« sermier dessemontet ») que personne n'interroge jamais : le seul
-    jeton qu'un appelant construit, c'est celui-ci."""
+    """Le jeton que `BaseNoms.poids_nom()` cherche : le dernier mot non-particule du nom
+    (« Sermier Dessemontet » -> « dessemontet »)."""
     mots = surnom.split()
     particules_pliees = {plier(p) for p in dm.PARTICULES}
     while len(mots) > 1 and plier(mots[0]) in particules_pliees:
@@ -184,9 +127,8 @@ def _jeton_stockage(surnom):
 
 
 def _noms_de_reference(texte):
-    """{jeton de stockage} distincts trouvés dans UNE référence — un set, pas une liste :
-    une référence qui citerait deux fois le même nom (rare, jamais vu) ne doit compter que
-    pour UNE occurrence dans le comptage par référence du seuil de bruit ci-dessus."""
+    """Les jetons distincts d'une référence (un ensemble : le seuil de bruit compte par
+    référence)."""
     trouves = set()
     for m in RE_AUTEUR_APA.finditer(_segment_auteurs(texte)):
         surnom = m.group(0).split(',')[0].strip()
@@ -197,10 +139,8 @@ def _noms_de_reference(texte):
 
 
 def moissonner_noms_famille(dossier_corpus, emettre):
-    """(Counter jeton->nb de références distinctes qui le portent, stats) sur tout le
-    corpus. N'échoue jamais sur UN fichier illisible (zip corrompu, document.xml absent) :
-    le compte, avertit, continue — un lot de 77 fichiers ne doit pas s'arrêter sur le
-    premier accroc (même prudence que docx-meta.principal())."""
+    """(Counter jeton -> nombre de références qui le portent, stats) sur tout le corpus. Un
+    fichier illisible est compté, signalé et sauté."""
     compte = Counter()
     stats = {'fichiers': 0, 'illisibles': 0, 'documentation_ecartes': 0,
              'avec_biblio_stylee': 0, 'paragraphes_biblio': 0, 'references_reconnues': 0,
@@ -211,10 +151,8 @@ def moissonner_noms_famille(dossier_corpus, emettre):
         nom_fichier = os.path.basename(chemin)
         type_article, _ = dm.detecter_type(nom_fichier, '', '')
         if type_article == 'documentation':
-            # etendue_biblio() traite lui-même ce cas : une documentation N'A PAS de
-            # bibliographie détachable, sa liste EST son contenu (commentaire de
-            # docx-meta.etendue_biblio()) — la sauter ici évite de moissonner cent
-            # cinquante paragraphes de texte comme s'ils étaient des références.
+            # Une documentation n'a pas de bibliographie séparée : sa liste est son contenu,
+            # qu'on ne lit pas comme des références.
             stats['documentation_ecartes'] += 1
             continue
         try:
@@ -227,15 +165,10 @@ def moissonner_noms_famille(dossier_corpus, emettre):
             continue
         classeur = dm.Classeur(styles)
         blocs = _blocs_du_corps(racine)
-        # etendue_biblio() ne rend que des CLÉS DE COMPARAISON tronquées (cle_comparaison,
-        # pour l'appariement pandoc) — jamais le texte brut, inutilisable ici pour lire un
-        # nom. On l'appelle malgré tout pour ses STATS (voie, nombre de paragraphes stylés,
-        # titre reconnu ou non — §5.1 : « lire_titres_bib(), ressemble_a_une_reference(),
-        # etendue_biblio() existent déjà, sers-t'en ») ; le TEXTE des paragraphes de
-        # bibliographie, lui, vient du même critère qu'elle utilise en interne pour les
-        # repérer (Classeur.famille(pstyle(e)) == 'biblio') — un sous-ensemble STRICT de
-        # l'étendue qu'elle borne (elle élargit ensuite aux paragraphes non stylés compris
-        # entre deux paragraphes stylés) : plus prudent, jamais plus large.
+        # etendue_biblio() ne rend que des clés de comparaison tronquées : on ne lui prend
+        # que ses statistiques. Le texte vient des paragraphes de style bibliographie
+        # (Classeur.famille(pstyle(e)) == 'biblio'), sans les paragraphes non stylés
+        # qu'etendue_biblio() ajoute entre deux paragraphes stylés.
         _, _, stats_biblio = dm.etendue_biblio(blocs, classeur, type_article)
         if stats_biblio['voie'] == 'style':
             stats['avec_biblio_stylee'] += 1
@@ -259,12 +192,8 @@ def moissonner_noms_famille(dossier_corpus, emettre):
 
 
 def filtrer_noms_famille(compte, jetons_connus_ojs):
-    """Applique les règles 1-3 du §5.2. Règle 4 (« ne jamais écarter un jeton présent dans
-    la base OJS ») : `jetons_connus_ojs` (les jetons de NOM — dernier mot non-particule —
-    des fiches propres de la base OJS, JAMAIS écrits dans un fichier, juste consultés ici
-    pour lever le filtre de bruit) rend un jeton immunisé contre la seule règle 3 (occurrence
-    unique + court) ; les règles 1 (validité) et 2 (mots-outils) restent absolues — un jeton
-    invalide (chiffre, arobase) resterait invalide même connu de la base OJS."""
+    """Écarte les jetons invalides, les mots d'institution et le bruit (une seule référence
+    et court). Un jeton de `jetons_connus_ojs` échappe au seul critère de bruit."""
     retenus = set()
     for jeton, n_refs in compte.items():
         if not valide(jeton):
@@ -278,19 +207,12 @@ def filtrer_noms_famille(compte, jetons_connus_ojs):
 
 
 # ---------------------------------------------------------------------------------
-# La base OJS du poste (§5.1, source 2 jusqu'au 22.09.2026 ; ne sert plus qu'au FILTRAGE de
-# noms-famille.txt depuis cette date — voir l'en-tête). On y lit encore le `nom` de chaque
-# fiche propre, jamais l'e-mail, jamais l'affiliation ; le `prenom` n'est plus lu QUE pour
-# décider si une fiche compte comme propre (voir charger_noms_ojs_propres() plus bas).
+# La base OJS du poste, pour le filtrage seulement. On y lit le `nom` des fiches propres ;
+# le `prenom` sert à décider si une fiche est propre. Ni e-mail ni affiliation.
 
-# Une fiche est écartée ENTIÈREMENT (nom ET prénom, même si un seul des deux champs est en
-# cause — §3.2 du contrat : « écarter la fiche entière, ne rien deviner ») si l'un de ses
-# deux champs contient un chiffre, une arobase, une barre oblique, ou vaut exactement un mot
-# de la liste d'institutions ci-dessous. Mesuré sur C:\ProgramData\SZH\auteurs.json le
-# 22.09.2026 (1157 fiches) : 4 fiches écartées par cette règle (toutes liées à
-# « SZH/CSPS » / « Edition » portés dans le champ nom OU prénom — la fiche générique de
-# l'institution elle-même, entrée plusieurs fois avec des champs inversés), 1153 fiches
-# propres restantes.
+# Une fiche est écartée entière si son nom ou son prénom contient un chiffre, une arobase,
+# une barre oblique, ou vaut un des mots d'institution ci-dessous (fiches « SZH/CSPS »,
+# « Edition »).
 MOTS_INSTITUTION_AUTEURS = {
     'szh', 'csps', 'szh-csps', 'szh/csps', 'edition', 'edition szh/csps',
     'zeitschrift', 'revue', 'redaction', 'rédaction', 'redaktion',
@@ -308,17 +230,9 @@ def _champ_bruite(valeur):
 
 
 def charger_noms_ojs_propres(chemin_base_auteurs, emettre):
-    """[nom, ...] — le champ `nom` de chaque fiche PROPRE de la base OJS, ou [] si le fichier
-    est absent ou illisible — silencieux (cette base est un à-côté, pas une dépendance dure :
-    ce script écrit ce qu'il peut, jamais une erreur bloquante pour un fichier facultatif).
-    N'alimente plus AUCUN fichier écrit sur disque depuis le 22.09.2026 (prenoms.txt retiré,
-    voir l'en-tête) : sert uniquement à construire l'ensemble d'immunité de la règle 4
-    (filtrer_noms_famille() plus bas). Une fiche compte comme propre si nom ET prénom sont
-    non vides ET aucun des deux n'est bruité (_champ_bruite ci-dessus) — l'exigence du prénom
-    est CONSERVÉE telle quelle bien qu'il ne soit plus lu nulle part ailleurs : c'est la même
-    définition de fiche « propre » qu'avant la suppression de prenoms.txt, pour ne pas élargir
-    au passage le périmètre de l'immunité — un élargissement séparé, à décider et mesurer à
-    part, jamais un effet de bord de cette suppression."""
+    """[nom, ...] : le `nom` de chaque fiche propre de la base OJS (nom et prénom non vides,
+    aucun des deux bruité), ou [] avec un message si le fichier est absent ou illisible.
+    Sert seulement à filtrer_noms_famille()."""
     if not chemin_base_auteurs or not os.path.isfile(chemin_base_auteurs):
         emettre('base OJS introuvable : %s (aucune immunité de la règle 4 pour ce lot)'
                 % chemin_base_auteurs)
@@ -343,16 +257,13 @@ def charger_noms_ojs_propres(chemin_base_auteurs, emettre):
 
 
 def dernier_jeton_nom(nom):
-    """Même règle que _jeton_stockage() ci-dessus, appliquée au champ `nom` d'une fiche OJS
-    plutôt qu'à une référence bibliographique — utilisée UNIQUEMENT pour construire
-    l'ensemble d'immunité de filtrer_noms_famille() (règle 4), jamais écrite dans un
-    fichier : le champ `nom` d'auteurs.json n'alimente jamais noms-famille.txt (§5.1)."""
+    """_jeton_stockage() appliqué au `nom` d'une fiche OJS, pour filtrer_noms_famille()."""
     return _jeton_stockage(nom)
 
 
 # ---------------------------------------------------------------------------------
-# Écriture — en-tête commenté, un jeton par ligne, triés, jamais de doublon, fin de ligne LF
-# (idempotent : même corpus, mêmes octets).
+# Écriture : en-tête commenté, un jeton par ligne, triés, sans doublon, fins de ligne LF
+# (même corpus, mêmes octets).
 
 def _ecrire_lexique(chemin, jetons, commentaires):
     lignes = ['# ' + c + '\n' for c in commentaires]
@@ -375,7 +286,7 @@ def ecrire_noms_famille(dossier_sortie, jetons, n_fichiers_corpus, n_avec_biblio
 
 
 # ---------------------------------------------------------------------------------
-# CLI — à tiret, arguments analysés à la main (patron de generer-lexique.py).
+# Ligne de commande.
 
 USAGE = (
     'usage : generer-noms.py --corpus <dossier> [--base-auteurs <fichier>] '

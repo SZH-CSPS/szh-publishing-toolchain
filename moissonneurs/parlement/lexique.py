@@ -258,7 +258,7 @@ def charger(dossier=DOSSIER):
                    [t for lang in LANGUES for t in _termes_de(a.get('ecole_generale', {}).get(lang), lang,
                                                               {'s': 'manuel'}, 'ecole_generale')],
                    _charger_themes(dossier))
-    # Termes gardés dans le lexique local mais jamais envoyés à la recherche serveur (revue adverse, constat 1)
+    # Termes gardés dans le lexique local mais pas envoyés à la recherche serveur (voir exclusions.toml)
     rs = x.get('recherche_serveur', {}).get('exclure', {})
     lex.contexte_theme = _charger_contexte_theme(dossier)
     lex.hors_extrait = {normaliser(t) for t in x.get('hors_extrait', {}).get('termes', [])}

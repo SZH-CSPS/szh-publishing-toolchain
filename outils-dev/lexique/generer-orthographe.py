@@ -1,27 +1,17 @@
 #!/usr/bin/env python3
-# Lit pipeline/vale/lexique/orthographe-rectifiee.csv (la SOURCE DE VÉRITÉ, une paire
-# traditionnelle/rectifiée par ligne) et écrit, de façon idempotente (même entrée -> mêmes
-# octets), une règle Vale `substitution` PAR CATÉGORIE dans
-# pipeline/vale/styles/CSPS/Orthographe/Rectifiee-<Categorie>.yml.
+# Lit pipeline/vale/lexique/orthographe-rectifiee.csv (une paire traditionnelle/rectifiée
+# par ligne) et écrit une règle Vale `substitution` par catégorie dans
+# pipeline/vale/styles/CSPS/Orthographe/Rectifiee-<Categorie>.yml. Même entrée, mêmes
+# octets. Bibliothèque standard seule, sur le modèle de generer-lexique.py.
 #
-# stdlib seule (csv + re), comme outils-dev/lexique/generer-lexique.py, dont ce script
-# reprend le patron (en-tête « généré », nettoyage des anciens fichiers avant réécriture,
-# tri des paires pour une sortie stable indépendante de l'ordre du CSV).
+# Toutes les règles sont en `warning` : la Revue écrit en orthographe rectifiée, une graphie
+# traditionnelle est une faute. `action: replace` (`action='fix'` dans manuscrit_vale.py) :
+# la correction part en révision Word, que la rédaction accepte d'un clic.
 #
-# Niveau des règles : `warning` pour TOUTES les catégories, sans exception — décision de la
-# rédaction du 21.09.2026 : la Revue écrit en orthographe rectifiée (pas en traditionnelle),
-# une graphie traditionnelle rencontrée est donc une faute résiduelle à corriger, jamais une
-# simple suggestion à vérifier. `action: replace` (donc `action='fix'` côté manuscrit_vale.py)
-# pour que la correction parte en révision Word que la rédaction accepte d'un clic (§7 ter du
-# contrat) — jamais une correction silencieuse.
-#
-# La majuscule initiale : Vale (`ignorecase: false`, choisi pour ne JAMAIS renvoyer une
-# suggestion à la mauvaise casse — voir le LISEZMOI) ne fait AUCUN pliage de casse. Une paire
-# self CSV « événement;évènement » ne lève donc rien sur « Événement » en tête de phrase, mesuré
-# en vrai (vale 3.22.0, essai isolé) : sans une seconde paire à majuscule initiale, la moitié
-# des occurrences en tête de phrase échapperait au contrôle. D'où une SECONDE paire, générée
-# automatiquement ici (jamais dans le CSV, qui ne porte qu'une ligne par mot) dès que le
-# premier caractère de la forme traditionnelle est une lettre bas-de-casse.
+# Vale tourne avec `ignorecase: false` (pour ne pas proposer une suggestion à la mauvaise
+# casse, voir le LISEZMOI) : « événement » ne trouve pas « Événement ». Une seconde paire à
+# majuscule initiale est donc générée ici quand la forme traditionnelle commence par une
+# minuscule ; le CSV n'a qu'une ligne par mot.
 import csv
 import re
 import sys
@@ -38,7 +28,7 @@ ENTETE_YAML_GENERE = (
 
 # Nom de fichier par catégorie du CSV (colonne `categorie`) -> reste du nom
 # `Rectifiee-<Nom>.yml`, et la citation qui va dans le commentaire d'en-tête de chaque
-# fichier (section Wikipédia précise, comme demandé pour la famille TraitUnion).
+# fichier (section Wikipédia précise).
 CATEGORIES = {
     'circonflexe': ('Circonflexe',
         "accent circonflexe sur i/u supprimé (Wikipédia : Rectifications orthographiques du "
@@ -98,20 +88,10 @@ def _yaml_str(valeur):
     return '"' + v + '"'
 
 
-# ⚠ Mesuré en vrai (vale 3.22.0, 21.09.2026) : dans une chaîne YAML entre GUILLEMETS DOUBLES,
-# `\b` (UN antislash) est un échappement reconnu (le caractère « retour arrière », U+0008), pas
-# un antislash littéral suivi d'un `b` — un motif TAPÉ À LA MAIN comme `"\bévénement\b"` ne lève
-# donc JAMAIS rien, silencieusement. `_yaml_str()` ci-dessus double l'antislash (« \\b »)
-# précisément pour écrire la bonne chaîne malgré ça, et ÇA MARCHE (revérifié : un fichier généré
-# avec `_yaml_str()` sur les motifs, guillemets doubles compris, lève bien les alertes) — ce
-# n'est donc pas un défaut de `_yaml_str()` lui-même. `_yaml_regex_str()` (guillemets SIMPLES)
-# reste préféré ici : les guillemets simples YAML ne connaissent AUCUN échappement (sauf `''`
-# pour un guillemet simple littéral), un motif qui les utilise est WYSIWYG à l'ŒIL, jamais
-# retraité — c'est la même convention que `pipeline/vale/styles/CSPS/Epicene/
-# FormesContractees.yml` (tokens entre guillemets simples), choisie ici pour éviter tout risque
-# lors d'une correction manuelle future de ce générateur, même si le doublage de `_yaml_str()`
-# fonctionne correctement quand le CODE le fait pour vous. Ce n'est PAS un piège RE2 : RE2 gère
-# très bien un `\b` collé à une lettre accentuée (« île », « événement » — mesuré).
+# Les motifs s'écrivent entre guillemets simples YAML, qui n'ont aucun échappement (sauf
+# `''`) : le motif se lit tel quel. Entre guillemets doubles, `\b` devient le caractère
+# U+0008, et un motif retouché à la main comme `"\bévénement\b"` ne trouve plus rien. Même
+# convention que pipeline/vale/styles/CSPS/Epicene/FormesContractees.yml.
 def _yaml_regex_str(motif):
     return "'" + motif.replace("'", "''") + "'"
 
@@ -120,23 +100,17 @@ def _majuscule_initiale(mot):
     return mot[:1].upper() + mot[1:]
 
 
-# Mots dont la forme À MAJUSCULE INITIALE collisionne avec un nom propre/titre RÉEL, mesuré
-# sur le corpus publié (92 articles fr, 21.09.2026) : « Maître » comme titre professionnel/
-# académique (« Maître d'enseignement », bloc d'autrices et auteurs) et « Boîte » comme nom
-# propre d'outil (« La Boîte », projet cité par son nom). La forme bas-de-casse (« maître »,
-# « boîte »ployée comme nom commun ordinaire) reste couverte normalement — seule la paire à
-# MAJUSCULE INITIALE est supprimée pour ces mots, jamais la paire de base. Décision documentée
-# ici plutôt que dans le CSV (pas de colonne dédiée pour un cas aussi rare) : si ce piège
-# touche un troisième mot, faire une vraie colonne `sans_majuscule` au lieu d'agrandir cette
-# liste sans fin.
+# Mots dont la forme à majuscule initiale est aussi un titre ou un nom propre dans les
+# articles publiés (« Maître d'enseignement », « La Boîte ») : pas de paire à majuscule pour
+# eux, la paire en minuscules reste. Au-delà de deux mots, mieux vaut une colonne
+# `sans_majuscule` dans le CSV.
 SANS_PAIRE_MAJUSCULE = {'maître', 'boîte'}
 
 
 def construire_paires(lignes_categorie):
     """[(motif_regex, remplacement), ...] triées, une paire de base par ligne du CSV, plus
-    une paire à majuscule initiale quand la forme traditionnelle commence par une lettre
-    bas-de-casse (voir l'en-tête : mesuré, `ignorecase: false` ne plie aucune casse) — sauf
-    pour SANS_PAIRE_MAJUSCULE (voir juste au-dessus)."""
+    une paire à majuscule initiale quand la forme traditionnelle commence par une minuscule
+    (voir l'en-tête), sauf pour SANS_PAIRE_MAJUSCULE."""
     paires = {}
     for row in lignes_categorie:
         trad = (row.get('traditionnelle') or '').strip()
@@ -202,9 +176,8 @@ def main():
             continue
         par_categorie.setdefault(cat, []).append(row)
 
-    # Idempotence même si une catégorie disparaît d'une exécution à l'autre : on repart d'un
-    # dossier nettoyé de tout ancien Rectifiee-*.yml avant de réécrire (même principe que
-    # generer-lexique.py pour Sigle-*.yml).
+    # Supprime les anciens Rectifiee-*.yml avant d'écrire : une catégorie disparue du CSV
+    # ne laisse pas de fichier.
     for f in styles_dir.glob('Rectifiee-*.yml'):
         f.unlink()
 

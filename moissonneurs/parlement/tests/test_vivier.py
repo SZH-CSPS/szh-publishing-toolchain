@@ -1,4 +1,4 @@
-"""Vivier élargi (décision du 03.10.2026) : texte-large, bande 0 à 4,99, jamais « retenu » ; crans, cran_defaut."""
+"""Vivier élargi : texte-large, bande 0 à 4,99, jamais « retenu » ; crans, cran_defaut."""
 import json
 import os
 import unittest

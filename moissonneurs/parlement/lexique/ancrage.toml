@@ -1,13 +1,13 @@
-# Ancrage : condition NÉCESSAIRE pour qu'une affaire soit retenue.
+# Ancrage : condition nécessaire pour qu'une affaire soit retenue.
 # Un terme est une chaîne ou { t, s, m, cs, ambigu }. Défauts pris dans le concept.
 #   s      source : cdph:artN | termdat | lhand | lai | concordat | edudoc | corpus | manuel
 #   m      mode : "debut" (début de mot, défaut : couvre flexions) | "mot" (mot entier) | "sous" (n'importe où,
 #          utile pour les composés allemands)
 #   cs     true : respecte la casse (sigles)
-#   ambigu true : jamais suffisant seul pour retenir
+#   ambigu true : ne suffit pas seul pour retenir
 #   contexte "ecole" : ne compte que si un terme de [contexte.ecole] figure aussi dans le même texte
-# La comparaison se fait sans accents ni casse, apostrophes ramenées à l'espace. Le contrôle du sourçage CDPH est un outil d'étude, hors de ce dépôt ;
-# contrôle que chaque terme "cdph:artN" figure bien dans cet article, dans sa langue.
+# La comparaison se fait sans accents ni casse, apostrophes ramenées à l'espace. Qu'un terme "cdph:artN" figure bien
+# dans cet article, dans sa langue, se contrôle par un outil d'étude hors de ce dépôt.
 
 [contexte.ecole]
 fr = ["école", "élève", "scolaire", "scolarité", "enseignement", "enseignant", "classe", "formation"]
@@ -38,9 +38,9 @@ id = "sigles-textes"
 s = "manuel"
 m = "mot"
 cs = true
-# Scénario R (03.10.2026) : « AI » et « IV » nus, « IVG » et « BRK » nus abandonnés (intelligence artificielle, chiffre romain,
-# Appenzell Rhodes-Intérieures, interruption de grossesse, Baurekurskommission) ; UN-BRK et les formes « l'AI », « der IV »
-# (concept ai-formes-non-ambigues) restent.
+# « AI », « IV », « IVG » et « BRK » nus sont exclus : ils désignent aussi l'intelligence artificielle, un chiffre romain,
+# Appenzell Rhodes-Intérieures, l'interruption de grossesse, la Baurekurskommission. UN-BRK et les formes « l'AI »,
+# « der IV » (concept ai-formes-non-ambigues) comptent.
 fr = ["CDPH", "LHand", "BFEH", { t = "LAI", s = "lai" }]
 de = ["UN-BRK", "BehiG", "EBGB"]
 it = ["CDPD", "LDis", "UFPD", { t = "LAI", s = "lai" }]
@@ -204,8 +204,8 @@ it = ["contributo per l'assistenza", "assegno per grandi invalidi", "rendita d'i
 id = "capacite-juridique-droit-de-vote"
 s = "cdph:art12"
 ambigu = true
-# Scénario R (03.10.2026) : droit de vote, droits politiques, autodétermination, Handlungsfähigkeit, Erwachsenenschutz et
-# protection de l'adulte abandonnés (0 oui sur 53 objets jugés).
+# Droit de vote, droits politiques, autodétermination, Handlungsfähigkeit, Erwachsenenschutz et protection de l'adulte
+# sont exclus : ils n'amenaient aucun objet pertinent.
 fr = ["capacité juridique", { t = "curatelle", s = "cdph:art23" }, { t = "capacité de discernement", s = "manuel" },
       { t = "vie autonome", s = "manuel" }, { t = "autonomie de vie", s = "cdph:art19" }]
 de = [{ t = "Beistandschaft", s = "cdph:art23" }, { t = "Urteilsfähigkeit", s = "manuel"},
@@ -213,7 +213,7 @@ de = [{ t = "Beistandschaft", s = "cdph:art23" }, { t = "Urteilsfähigkeit", s =
 it = ["capacità giuridica", { t = "curatela", s = "cdph:art23" }, { t = "capacità di discernimento", s = "manuel" },
       { t = "vita indipendente", s = "cdph:art19" }]
 
-# Ancrages forts rattrapés (oui perdu par le scénario R : SO V 2026-01-26 « Aufhebung Stimmrechtsausschluss »).
+# Ancrages forts du droit de vote des personnes sous curatelle (par exemple « Aufhebung Stimmrechtsausschluss »).
 [[concept]]
 id = "exclusion-droit-de-vote"
 s = "manuel"
@@ -221,7 +221,7 @@ fr = ["exclusion du droit de vote", "curatelle de portée générale"]
 de = ["Stimmrechtsausschluss", "umfassende Beistandschaft", "umfassenden Beistandschaft"]
 it = ["esclusione dal diritto di voto", "curatela generale"]
 
-# ---- Ajouts du contrôle du vocabulaire (étape 4) : formes réellement employées par la LAI / IVG ----
+# ---- Formes employées par la LAI / IVG ----
 
 [[concept]]
 id = "vocabulaire-lai"
@@ -232,9 +232,9 @@ de = ["Geburtsgebrechen", "Invalidenhilfe", { t = "Hilflosigkeit", ambigu = true
 it = ["grandi invalidi", "grande invalido", { t = "intervento tempestivo", ambigu = true }]
 
 # ---- École ordinaire, hors ancrage (option `ecole_generale` de reglages.toml) ----
-# Les 79 interventions publiées en 2025 contiennent ~30 objets de politique scolaire générale (Volksschule,
-# Kindergarten, Lehrpersonen…) sans terme de handicap ni de besoins particuliers dans le titre. Cette liste
-# les reconnaît pour un palier « à relire » facultatif ; elle ne retient jamais rien seule.
+# Objets de politique scolaire générale (Volksschule, Kindergarten, Lehrpersonen…) sans terme de handicap ni de
+# besoins particuliers dans le titre. Cette liste les fait passer en « à relire » si l'option est active ; elle ne
+# retient rien seule.
 
 [ecole_generale]
 fr = ["école obligatoire", "école primaire", "école enfantine", "enseignant", "enseignante", "corps enseignant",
@@ -244,12 +244,11 @@ de = ["Volksschule", "Primarschule", "Kindergarten", "Unterstufe", "Sekundarstuf
       "Bildungspolitik", "Bildungsqualität"]
 it = ["scuola dell'obbligo", "scuola elementare", "scuola dell'infanzia", "scuola pubblica",
       "scuola media", "dimensione delle classi"]
-# Scénario R du rapport des mots-clés (03.10.2026) : les mots génériques (école, écoles, scolaire, scuola, scuole, scolastic,
-# Schule, Lernende, docente, docenti, insegnanti, élèves, allievi) n'amenaient que du bruit ; « Schulen » est gardé (une fiche
-# publiée en dépend).
+# Les mots génériques (école, scolaire, scuola, Schule, Lernende, docente, insegnanti, élèves, allievi…) sont exclus : ils
+# n'amènent que du bruit. « Schulen » est gardé : une fiche publiée en dépend.
 
-# ---- Revue adverse du 03.10.2026 (constats 4 et 9) ----------------------------------------------------------------
-# Formes non ambiguës de l'assurance-invalidité (le sigle nu « AI » / « IV » ne compte plus que dans le titre).
+# ---- Assurance-invalidité ---------------------------------------------------------------------------------------
+# Formes non ambiguës de l'assurance-invalidité (le sigle nu « AI » / « IV » ne compte que dans le titre).
 
 [[concept]]
 id = "ai-formes-non-ambigues"
@@ -265,7 +264,7 @@ de = [{ t = "IV-Stelle", m = "debut" }, { t = "IV-Rente", m = "debut" }, { t = "
       "der IV", "die IV", "zur IV"]
 it = ["rendita AI", "rendite AI", "Rendita AI", "Rendite AI", "l'AI", "dell'AI", "all'AI", "nell'AI", "sull'AI", "dall'AI"]
 
-# Termes qui ne comptent que dans le TITRE (jamais dans le texte ni côté serveur).
+# Termes qui ne comptent que dans le titre (ni dans le texte, ni dans la recherche serveur).
 
 [[concept]]
 id = "titre-seul-fort"

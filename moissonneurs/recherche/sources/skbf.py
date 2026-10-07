@@ -8,7 +8,7 @@ from ..modele import Projet
 from ..reseau import Refus403Page
 from ._commun import texte_simple, texte_paragraphes, capturer
 
-# Ce que le site impose (constaté le 24.09.2026) :
+# Ce que le site impose :
 # - `searchterm` est un OU de mots ; `sort=4` trie par numéro décroissant ;
 # - `limit` est un décalage, pas une taille : 25 résultats par page, toujours ;
 # - la page est en UTF-8 ; <html> n'a pas de lang et le détail est bilingue de/fr : la langue reste vide ;

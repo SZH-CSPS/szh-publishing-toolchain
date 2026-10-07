@@ -1,10 +1,9 @@
 {# newsletter-dossier-thematique.twig : le bloc HTML de la rubrique Dossier thématique, à coller tel quel
    dans Mailchimp. Écrit dans 2-dossier-thematique.txt par lib/secretariat.js (commande « newsletter »),
    à la suite de 0-intro.txt, dans l'ordre Éditorial, Dossier, Varia, Tribune, Documentation,
-   le même pour les deux revues. Un gabarit par rubrique plutôt qu'un seul partagé : le moteur
-   ne sait pas inclure un autre gabarit, et la rédaction doit pouvoir retoucher UNE rubrique
-   sans toucher aux autres. Le balisage est celui de la newsletter Mailchimp : un seul <p>,
-   les articles séparés par une ligne vide, le titre dans l'autre langue en italique.
+   le même pour les deux revues. Un gabarit par rubrique, pour retoucher une rubrique sans les
+   autres (le moteur ne sait pas inclure un gabarit). Balisage de la newsletter Mailchimp : un
+   seul <p>, les articles séparés par une ligne vide, le titre dans l'autre langue en italique.
 
    Seul le bloc `contenu` est écrit dans le fichier (convention du moteur, lib/gabarits.js).
 
@@ -20,7 +19,7 @@
    numero.url            adresse de la page du numéro sur OJS ("" si l'année ou le numéro manque)
    section.cle           "DT"
    section.titre         "Dossier thématique" (côté Zeitschrift "Themenschwerpunkt" dans la configuration, mais ce gabarit écrit « ZUM SCHWERPUNKT ») ; mis en majuscules par le gabarit
-   articles              les articles de CETTE rubrique seulement, dans l'ordre du numéro
+   articles              les articles de cette rubrique, dans l'ordre du numéro
    articles[].slug                 "02-inclusion-scolaire"
    articles[].doi                  "10.57161/r2026-03-02" (chaîne vide si l'article n'a pas de DOI)
    articles[].urlDoi               "https://doi.org/10.57161/r2026-03-02" (vide si pas de DOI)
@@ -28,7 +27,7 @@
    articles[].lien                 l'adresse du titre : urlDoi, sinon urlOjs, sinon "" (le titre sort alors sans lien)
    articles[].signature            "Anne Dupont et Bruno Meyer"
    articles[].titre                titre + ". " + sous-titre s'il existe, dans la langue du numéro
-   articles[].titreAutreLangue     le même titre dans l'AUTRE langue de la revue ("" s'il n'existe pas)
+   articles[].titreAutreLangue     le même titre dans l'autre langue de la revue ("" s'il n'existe pas)
    articles[].rang                 rang du DOI (0, 1, 2…), ou -1 si l'article n'en reçoit pas
    articles[].auteurs[]            les 7 champs de la fiche + nomComplet/nomInverse (non utilisés ici)
 #}

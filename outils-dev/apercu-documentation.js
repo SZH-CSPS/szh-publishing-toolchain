@@ -1,16 +1,10 @@
-// Rendu autonome du formulaire Documentation (media/documentation.html/.css/.js), hors
-// toolkit — un outil de développement, jamais déployé sur un poste de rédaction. Écrit un
-// HTML autonome sous os.tmpdir() : mêmes CSS et JS que la vraie webview (assemblés par
-// lib/webviews/util.js#construireHtml, la fonction que l'hôte utilise réellement), avec des
-// données factices réalistes et un shim `acquireVsCodeApi()` qui répond localement au lieu
-// d'un vrai hôte VSCodium — jamais de vscode-resource:, un simple fichier à ouvrir.
+// Outil de développement : écrit sous os.tmpdir() un HTML autonome de la webview
+// Documentation (media/documentation.html/.css/.js), pour juger ses vues sans ouvrir
+// VSCodium. Mêmes CSS et JS que la vraie webview (lib/webviews/util.js#construireHtml),
+// données factices, et un faux `acquireVsCodeApi()` qui répond dans la page.
 //
-// Sert à juger le rendu des vues (Documentation du numéro — par catégorie, Traductions à
-// faire, Réservoir, Archive) sans ouvrir VSCodium — voir docs/notes de session « aperçu
-// d'une webview hors de l'éditeur » (WSL/Edge headless, capture PNG avant/après). Depuis le
-// 23.09.2026, la page n'a plus de barre d'onglets ni de sommaire : la navigation est
-// simulée ici comme le ferait l'arbre (message ongletActiver), pas par un clic sur un bouton
-// qui n'existe plus.
+// La page n'a pas d'onglets : on change de vue comme le fait l'arbre, par le message
+// ongletActiver.
 //
 // Usage :
 //   node outils-dev/apercu-documentation.js
@@ -46,8 +40,7 @@ const { T } = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 // Les libellés suivent la langue de l'interface, comme dans l'hôte, et non celle des fiches.
 const LANGUE_UI = require(path.join(COCKPIT, 'lib', 'i18n.js')).langueCockpit();
 
-// ---- Libellés : relus dans documentation-hote.js#textesDocumentation (pas de require('vscode')
-// transitif ici) : la liste ne diverge jamais de celle de l'hôte.
+// ---- Libellés : relus dans documentation-hote.js#textesDocumentation, sans charger vscode.
 function textesDocumentation() {
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'documentation-hote.js'), 'utf8');
   const debut = src.indexOf('function textesDocumentation()');
@@ -57,9 +50,8 @@ function textesDocumentation() {
   return res;
 }
 
-// ---- typesConfig / typesRubrique : composés depuis le contrat réel, comme configChamp() /
-// typesRessourceConfig() de lib/documentation-hote.js — jamais recopiés à la main, pour ne
-// jamais montrer un formulaire que le contrat ne produirait pas vraiment.
+// ---- typesConfig / typesRubrique : composés depuis le vrai contrat, comme configChamp() et
+// typesRessourceConfig() de lib/documentation-hote.js.
 function optionsInstrument(canton, langue) {
   return kirby.ordreInstruments(canton).map((jeton) => {
     const libelle = ((kirby.valeursListe('instrument').find((x) => x.jeton === jeton) || {})[langue]) || jeton;
@@ -168,9 +160,8 @@ const traductions = [
     titre: 'Neue Behindertenstrategie des Bundes', origine: T('doc.origine.numero', ['Zeitschrift', '2026-02']) }
 ];
 
-// Réservoir : quatre fiches allemandes rattachées à un numéro de la Zeitschrift, dont une
-// déjà ignorée — l'interrupteur « Afficher les ignorées » (RESERVOIR_FILTRE, géré par le
-// shim plus bas) fait vraiment basculer entre les deux vues, comme le ferait l'hôte réel.
+// Réservoir : quatre fiches allemandes d'un numéro de la Zeitschrift, dont une ignorée.
+// Le faux hôte gère l'interrupteur « Afficher les ignorées » (RESERVOIR_FILTRE).
 const reservoirNumeros = [{ id: 'demo-num-zeitschrift', nom: 'Zeitschrift 2026-02' }];
 const reservoirActives = [
   { slug: 'demo-res-1', uuid: 'res-uuid-1', type: 'livre', typeLibelle: kirby.libelleType('livre', LANGUE_UI),
@@ -192,11 +183,9 @@ const orphelines = [
     titre: 'Une reprise jamais rattachée' }
 ];
 
-// Onglet Archive : une vingtaine de fiches de la bibliothèque de PRODUCTION (docs/FORMAT-
-// DOCUMENTATION-KIRBY.md), toutes langues et tous numéros confondus — même forme que
-// ligneArchive() dans lib/documentation-hote.js. Quelques-unes bilingues (les deux langues
-// présentes), certaines sans numéro de rattachement (orphelines côté production), pour que
-// l'aperçu montre chaque cas de la liste et des filtres.
+// Archive : une vingtaine de fiches de la bibliothèque de production, toutes langues et
+// tous numéros, de la forme de ligneArchive() (lib/documentation-hote.js). Certaines sont
+// bilingues, d'autres sans numéro, pour montrer chaque cas de la liste et des filtres.
 function ficheArchiveDemo(n) {
   const base = {
     r1: { type: 'livre', titreFr: 'Grandir avec un handicap', titreDe: 'Mit Behinderung aufwachsen',
@@ -226,7 +215,7 @@ function ficheArchiveDemo(n) {
     r7: { type: 'recherche', titreFr: 'La détection précoce dans le canton de Berne', titreDe: '', langues: ['fr'],
       champs: { institutions: 'Université de Berne', debut: '2022', fin: '2026',
         descriptif: 'Un projet longitudinal sur le dépistage précoce.' },
-      // Orpheline côté production : jamais rattachée à un numéro.
+      // Rattachée à aucun numéro.
       numero: null },
     r8: { type: 'reprise', titreFr: 'D’une revue à l’autre : un article marquant', titreDe: '', langues: ['fr'],
       champs: { revue: 'zeitschrift', auteurs: 'M. Weber', reference: 'Vol. 40, no 2, p. 14–22',
@@ -247,9 +236,7 @@ function ficheArchiveDemo(n) {
 }
 const archive = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'].map((cle, i) =>
   ficheArchiveDemo({ cle: cle, slug: 'demo-arch-' + (i + 1) }));
-// Complète à une vingtaine de fiches (Robin : « une vingtaine ») en variant le millésime des
-// huit fiches ci-dessus — assez pour juger la liste, la recherche et les quatre filtres sans
-// recopier vingt fiches à la main.
+// Complète à une vingtaine de fiches en variant le millésime des huit fiches ci-dessus.
 for (let i = 0; i < 12; i++) {
   const modele = archive[i % 8];
   const annee = String(2018 + (i % 6));
@@ -542,8 +529,7 @@ function donneesPropositionsDemo(l) {
 }
 const PROPOSITIONS = donneesPropositionsDemo(LANGUE_PROP);
 
-// Les libellés de la vue, relus dans documentation-hote.js#textesDocumentation : la liste est
-// longue et ne doit pas diverger de celle de l'hôte.
+// Les libellés de la vue, relus dans documentation-hote.js#textesDocumentation.
 function textesPropositions() {
   const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'documentation-hote.js'), 'utf8');
   const res = {};
@@ -611,11 +597,10 @@ const html = construireHtml('documentation', nonce, {
 
 // ---- Shim : un faux hôte, dans la page elle-même ---------------------------------------
 //
-// Répond de façon SYNCHRONE à « pret » (dispatchEvent, pas postMessage — qui serait
-// asynchrone) : le rendu est donc déjà complet avant que le script principal ne rende la
-// main, aucune capture d'écran ne peut arriver « trop tôt ». Le même nonce que le script
-// principal, exigé par la CSP `script-src 'nonce-…'`. `?onglet=reservoir|traductions|numero`
-// bascule directement sur cet onglet, pour capturer chaque onglet séparément.
+// Répond à « pret » de façon synchrone (dispatchEvent ; postMessage serait asynchrone) : le
+// rendu est complet avant que le script principal rende la main, et une capture d'écran ne
+// peut pas arriver trop tôt. Même nonce que le script principal, exigé par la CSP.
+// `?onglet=reservoir|traductions|numero` ouvre directement cette vue.
 const shim = '<script nonce="' + nonce + '">\n' +
   '(function () {\n' +
   '  var CHARGER = ' + JSON.stringify(messageCharger) + ';\n' +

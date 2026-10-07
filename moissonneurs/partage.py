@@ -331,7 +331,7 @@ def somme_mois(moissons, m, mois, ma_cle):
 
 
 def ecrire_requetes(moissons, m, mois, ma_cle, requetes, maintenant):
-    """Le compteur de CE poste : chaque poste n'écrit que le sien. `maintenant` : datetime UTC."""
+    """Le compteur de ce poste : chaque poste n'écrit que le sien. `maintenant` : datetime UTC."""
     ecrire_json_atomique(os.path.join(dossier_requetes(moissons, m, mois), ma_cle + '.json'),
                          {'format': FORMAT_REQUETES, 'mois': mois, 'requetes': requetes,
                           'maj': maintenant.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')})

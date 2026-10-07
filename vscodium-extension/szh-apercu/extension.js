@@ -7,7 +7,7 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 
-// ⚠ Doit rester identique au label de la tâche dans vscodium-user/tasks.json.
+// Identique au label de la tâche dans vscodium-user/tasks.json.
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const VUE_PDF = 'pdf.preview'; // éditeur personnalisé de tomoki1207.pdf
 

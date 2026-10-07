@@ -4,7 +4,7 @@
 # test/build-render.sh), PyYAML pour le contrôle YAML de test/js/porte-release.js.
 # Versions épinglées : le rendu au pixel ne se compare qu'à moteur identique.
 #
-# Depuis Windows, par l'outil PowerShell (jamais Git Bash, qui casse /mnt/c) :
+# Depuis Windows, par PowerShell (Git Bash casse les chemins /mnt/c) :
 #   wsl.exe -d SZH-Publishing -- bash /mnt/c/<dépôt>/outils-dev/venv-dev.sh
 set -euo pipefail
 

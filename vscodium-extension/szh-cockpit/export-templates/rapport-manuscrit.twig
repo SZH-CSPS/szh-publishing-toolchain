@@ -1,19 +1,16 @@
 {# rapport-manuscrit.twig : la page HTML autonome du nettoyeur de manuscrit (Article),
    rendue par lib/gabarits.js (construireVueRapportManuscrit, outils/rendre-gabarit.js, appelé
-   par lib/accueil-preproc-hote.js). Contrat complet : docs/ARCHITECTURE-nettoyeur-manuscrit.md,
-   §7/§7 bis/§7 ter/§9/§10. Sans réseau, sans script, une seule page ouverte dans le
-   navigateur par défaut du poste -- une relectrice ne voit jamais la machine qui l'a produite.
+   par lib/accueil-preproc-hote.js). Contrat : docs/ARCHITECTURE-nettoyeur-manuscrit.md.
+   Une page sans réseau ni script, ouverte dans le navigateur par défaut du poste.
 
-   Le JSON brut de pipeline/manuscrit-nettoyer.py n'arrive jamais ici tel quel : ce gabarit
-   ne sait ni trancher une liste ni juger une image (lib/gabarits.js n'a pas d'arithmétique),
-   donc outils/rendre-gabarit.js le transforme d'abord en `vue` (voir
-   construireVueRapportManuscrit, même fichier, et test/js/manuscrit-rapport.test.js qui la
-   prouve). `produit` seul arrive à côté, brut.
+   Le moteur n'a pas d'arithmétique : outils/rendre-gabarit.js transforme d'abord le JSON de
+   pipeline/manuscrit-nettoyer.py en `vue` (construireVueRapportManuscrit, testée par
+   test/js/manuscrit-rapport.test.js). `produit` arrive à côté, tel quel.
 
    Variables disponibles ici :
-   produit                         "revue" | "zeitschrift" -- décide la langue de CETTE page
-   vue.refus                       true sur un refus : alors SEULS vue.entree/message existent
-   vue.entree                      nom de fichier seul, jamais un chemin
+   produit                         "revue" | "zeitschrift" -- décide la langue de la page
+   vue.refus                       true sur un refus : seuls vue.entree et vue.message existent alors
+   vue.entree                      nom de fichier seul, sans chemin
    vue.message                     phrase de refus, déjà rédigée pour une relectrice
    -- sinon (vue.refus est faux) --
    vue.gabarit                     "A" | "B"
@@ -37,12 +34,11 @@
    vue.titres.retrogrades[]         {source, style, motif}
    vue.titres.signal_inhabituel     bool ; vue.titres.total_retenus
    vue.titres.rabattus_niveau3      int ; vue.titres.rejet_contrainte bool
-   vue.gras_non_promus[]            {source, motif, dans_tableau} -- source d'un paragraphe de
-                                    cellule = celui du TABLEAU porteur (jamais une position
-                                    locale à la cellule) ; dans_tableau le dit
+   vue.gras_non_promus[]            {source, motif, dans_tableau} -- dans une cellule, source
+                                    est la position du tableau qui la contient
    vue.images[]                     {nom, source, largeur_px, hauteur_px, alt_absent,
                                      niveau, mesure, min, conseille}
-   vue.bibliographie                null tant que non branché, sinon {stats{...}}
+   vue.bibliographie                null (pas encore branché), sinon {stats{...}}
    vue.typographie_abandons[]       {source, motif}
    vue.typographie_avertissements[] phrases déjà dans la langue du produit
    vue.avertissements_import[]      constats de lecture (en-têtes et pieds non lus, zones de
@@ -55,8 +51,8 @@
 <title>{% if produit == 'zeitschrift' %}Bereinigungsbericht{% else %}Rapport de nettoyage{% endif %} – {{ vue.entree|e }}</title>
 <style>
 {# Palette : pipeline/styles/couleurs.css, crans 800/900 (texte blanc, |Lc| >= 90 dès 14 px)
-   et 50/100 (texte noir, |Lc| >= 91) -- copiés ici, jamais importés, pour rester une page
-   AUTONOME (§8 du contrat) ; à resynchroniser si la charte annuelle change ces crans. #}
+   et 50/100 (texte noir, |Lc| >= 91), copiés pour que la page reste autonome. À
+   resynchroniser si la charte annuelle change ces crans. #}
 :root {
   --papier: #FFFFFF; --texte: #1A1A1A; --bord: #CCCCCC;
   --gris-clair: #E6E6E6; --zebre: #F2F2F2;

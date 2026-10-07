@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-# Lit pipeline/vale/lexique/lexique-fr.csv et lexique-de.csv (la SOURCE DE VÉRITÉ, éditable
-# au tableur) et écrit, de façon idempotente (même entrée -> mêmes octets) :
-#   - tmp/lexique/lexique-<langue>.xlsx   un classeur Office Open XML, stdlib seule
+# Lit pipeline/vale/lexique/lexique-fr.csv et lexique-de.csv (éditables au tableur) et
+# écrit (même entrée, mêmes octets) :
+#   - tmp/lexique/lexique-<langue>.xlsx   un classeur Office Open XML
 #   - tmp/lexique/lexique.tbx             TBX-Basic (ISO 30042), fr+de
-#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Coherence.yml    règle de substitution générée
-#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Sigle-<SIGLE>.yml  une règle conditionnelle PAR
-#     sigle à `exiger_developpement=oui` (jamais une seule règle générique à `%s` : mesuré en
-#     vrai que Vale 3.22.0 ne substitue pas `%s` dans `second`, voir construire_regles_sigle)
-#   - tmp/lexique/accept-<langue>.txt     vocabulaire accepté (voir LISEZMOI : ce fichier
-#     n'est PAS dans la liste des fichiers autorisés sous pipeline/vale/styles/.../Lexique/
-#     (glob *.yml uniquement) — il est donc généré en zone hors git, comme le xlsx et le
-#     tbx, en attendant une décision sur son emplacement définitif.
+#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Coherence.yml    règle de substitution
+#   - pipeline/vale/styles/{CSPS,SZH}/Lexique/Sigle-<SIGLE>.yml  une règle conditionnelle
+#     par sigle à `exiger_developpement=oui` (voir construire_regles_sigle)
+#   - tmp/lexique/accept-<langue>.txt     vocabulaire accepté, hors git : le dossier Lexique/
+#     n'admet que des *.yml (voir le LISEZMOI), et son emplacement reste à décider.
 #
-# stdlib seule (zipfile + xml.etree pour le xlsx et le tbx, pas d'openpyxl/PyYAML).
+# Bibliothèque standard seule (zipfile + xml.etree pour le xlsx et le tbx).
 import csv
 import re
 import sys
@@ -51,8 +48,8 @@ def lire_lexique(chemin):
 
 
 # ------------------------------------------------------------------------------------------
-# XLSX — Office Open XML minimal écrit à la main (zipfile + XML), chaînes en ligne
-# (inlineStr) pour éviter un fichier sharedStrings.xml séparé, comme le tolère le brief.
+# XLSX : Office Open XML minimal écrit à la main, chaînes en ligne (inlineStr), sans
+# sharedStrings.xml.
 
 def _colonne_lettre(indice0):
     lettres = ''
@@ -253,16 +250,14 @@ def ecrire_tbx(chemin, lignes_fr, lignes_de):
     tbx = construire_tbx(lignes_fr, lignes_de)
     brut = ET.tostring(tbx, encoding='unicode')
     contenu = '<?xml version="1.0" encoding="UTF-8"?>\n' + brut + '\n'
-    # vérifie que ce qu'on écrit est bien formé avant de l'écrire (le brief le demande
-    # explicitement : validé par ET.fromstring).
+    # Vérifie que le XML est bien formé avant de l'écrire.
     ET.fromstring(contenu)
     chemin.write_text(contenu, encoding='utf-8')
 
 
 # ------------------------------------------------------------------------------------------
-# Règles Vale générées : Coherence.yml (substitution, paires privilégiées uniquement) et
-# Sigle.yml (conditional, un seul motif %s pour tous les sigles connus — voir la doc Vale
-# de l'extension conditional : `second` peut réutiliser la capture de `first` via %s).
+# Règles Vale générées : Coherence.yml (substitution, paires privilégiées seulement) et
+# Sigle-<SIGLE>.yml (conditional, un fichier par sigle).
 
 def _yaml_str(valeur):
     v = valeur.replace('\\', '\\\\').replace('"', '\\"')
@@ -304,21 +299,14 @@ def construire_coherence_yaml(lignes, langue):
     return ''.join(lignes_yaml), ecartes
 
 
-# Vale 3.22.0 mesuré EN VRAI (trois essais isolés, un style minimal, un seul sigle) : la
-# règle `conditional` ne substitue JAMAIS `%s` dans `second` — le `%s` reste le texte
-# littéral « %s », que le document ne contient jamais, donc `second` ne matche JAMAIS et
-# CHAQUE occurrence de `first` est signalée, sigle développé ou non. C'est l'idiome « un seul
-# `first` en alternation + `%s` dans `second` » que la documentation Vale décrit pour les
-# acronymes qui est en cause : il ne fonctionne pas dans cette version, mesuré, pas supposé
-# (voir le rapport : test isolé « (CUA) » présent sur la MÊME ligne que le sigle, toujours
-# signalé). Sans `%s`, un `first`/`second` tous deux littéraux fonctionne bien (mesuré aussi).
-# D'où une règle PAR SIGLE (fichier `Sigle-<SIGLE>.yml`), jamais une règle générique.
+# Vale 3.22.0 ne substitue pas `%s` dans le `second` d'une règle `conditional` : l'idiome
+# décrit par la documentation pour les acronymes signale toutes les occurrences, sigle
+# développé ou non. Avec un `first` et un `second` littéraux, la règle marche : d'où un
+# fichier par sigle.
 def construire_regles_sigle(lignes, langue):
-    """{nom_fichier: contenu} — un fichier YAML par sigle à `exiger_developpement=oui`.
-    `exiger_developpement` (oui/non, défaut non) est le SEUL filtre qui compte : un sigle
-    dont le développement est connu mais que la maison ne redéveloppe elle-même que
-    rarement (mesuré : HES, CDPH…) reste hors de cette règle — l'exiger serait une règle
-    fausse par construction sur des textes déjà relus quatre fois."""
+    """{nom_fichier: contenu} : un fichier YAML par sigle à `exiger_developpement=oui`
+    (défaut non). Un sigle que les textes publiés développent rarement (HES, CDPH…) n'a
+    pas de règle."""
     sortie = {}
     sigles = sorted({row['terme'] for row in lignes
                       if row.get('categorie') == 'sigle' and row.get('sigle_developpement')
@@ -343,9 +331,8 @@ def construire_regles_sigle(lignes, langue):
         lignes_yaml.append('level: suggestion\n')
         lignes_yaml.append('ignorecase: false\n')
         lignes_yaml.append("first: '\\b{s}\\b'\n".format(s=s))
-        # apostrophe : seule la courbe ’ (celle que pandoc écrit pour une élision, mesuré sur
-        # le corpus — « l’apprentissage ») — jamais la droite ' à l'intérieur d'une valeur
-        # YAML entre guillemets simples, qui exigerait un doublage ('') pour s'échapper.
+        # Apostrophe courbe ’, celle que pandoc écrit pour une élision (« l’apprentissage ») ;
+        # une droite devrait être doublée ('') dans une valeur YAML entre guillemets simples.
         lignes_yaml.append(
             "second: '(?:[\\wÀ-ÿ’]+[\\s-]+){{1,6}}\\({s}\\)|{s}\\s*\\([\\wÀ-ÿ’ -]{{2,80}}?\\)'\n"
             .format(s=s))
@@ -400,10 +387,8 @@ def main():
     (dossier_fr / 'Coherence.yml').write_text(coherence_fr, encoding='utf-8', newline='\n')
     (dossier_de / 'Coherence.yml').write_text(coherence_de, encoding='utf-8', newline='\n')
 
-    # Un fichier PAR SIGLE (voir construire_regles_sigle) : on nettoie d'abord tous les
-    # anciens Sigle-*.yml (et l'ancien Sigle.yml, un seul fichier générique, abandonné —
-    # voir le rapport) pour qu'une régénération soit vraiment reproductible même quand un
-    # sigle sort de la liste `exiger_developpement=oui` d'une exécution à l'autre.
+    # Supprime d'abord les anciens Sigle-*.yml (et Sigle.yml) : un sigle sorti de la liste
+    # ne laisse pas de fichier.
     for dossier in (dossier_fr, dossier_de):
         for f in dossier.glob('Sigle*.yml'):
             f.unlink()

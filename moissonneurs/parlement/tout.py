@@ -225,7 +225,7 @@ def tout(config, emit, source=None, reseau=None, lex=None, aujourdhui=None, hors
         except Exception as e:
             etape_ko('mensuelle', f'{type(e).__name__}: {e}')
 
-    # 1. Moisson par corps (mode historique, sans [exports] : API seule)
+    # 1. Moisson par corps, sans [exports] : API seule
     ident = base.debuter_execution('tout')
     try:
         for c in ([] if (hors_ligne or mode_hybride) else moisson.corps_suivis(config, base)):

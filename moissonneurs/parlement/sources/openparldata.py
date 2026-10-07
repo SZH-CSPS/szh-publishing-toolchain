@@ -1,8 +1,7 @@
 """Source OpenParlData.ch (api.openparldata.ch/v1, CC BY 4.0). Seul module qui connaît ses champs.
 
-Les noms de champs viennent de l'étude de l'API (docs/TODO/harvester-interventions-parlementaires.md) ;
-ceux qu'elle ne donne pas (date de dépôt, listes enveloppées) sont lus avec des replis, constatés sur les
-premières réponses réelles.
+Les champs que l'API ne documente pas clairement (date de dépôt, listes enveloppées) sont lus avec des replis,
+établis sur des réponses réelles. Voir moissonneurs/LISEZMOI.md.
 """
 from dataclasses import dataclass, field
 

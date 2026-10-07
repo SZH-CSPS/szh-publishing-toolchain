@@ -45,7 +45,7 @@ def chemin_local(p):
     return '/mnt/' + m.group(1).lower() + '/' + m.group(2).replace('\\', '/')
 
 
-# --------------------------------------------------------------------------- coutures remplaçables
+# --------------------------------------------------------------------------- fonctions remplacées par les tests
 
 def chemins_passe(args):
     """Les chemins partagés tirés de la racine active. Refuse si `_Moissons` n'existe pas : on ne devine rien."""
@@ -230,7 +230,7 @@ class Passe:
             pass        # écriture interrompue en plein milieu : l'annonce partira avec l'événement suivant
 
     def _compter(self, m, requetes):
-        """Le compteur du mois de CE poste, après chaque étape et en fin de moissonneur."""
+        """Le compteur du mois de ce poste, après chaque étape et en fin de moissonneur."""
         if self.args.hors_ligne or self.sans_compteur:
             return
         total = self.budgets[m]['propre'] + requetes

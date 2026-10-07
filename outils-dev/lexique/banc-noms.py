@@ -1,59 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# banc-noms.py — le banc de mesure du signal `lexique` de pipeline/manuscrit_noms.py, en
-# LEAVE-ONE-OUT sur la base d'auteurs réelle du poste. Contrat :
-# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 ter (la table qu'il porte est produite
-# par ce script) et §5.5 quater (le lexique du dépôt, ce que ce banc sert à dimensionner).
+# Banc de mesure du signal `lexique` de pipeline/manuscrit_noms.py, sur la base d'auteurs
+# du poste. Sert à choisir la taille du lexique du dépôt (voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md).
 #
-# La table du §5.5 ter existait avant ce script, produite par un bout de code ad hoc jamais
-# committé (22.09.2026). Le remettre au propre était le premier livrable du chantier
-# du lexique élargi : sans banc réutilisable, aucun palier de lexique ne
-# peut être ni proposé ni refusé sur des chiffres.
+# Chaque fiche de C:\ProgramData\SZH\auteurs.json a un prénom et un nom dans deux champs :
+# l'ordre réel est connu. Le banc recolle « Prénom Nom », interroge
+# manuscrit_noms._signal_lexique() et compare la réponse à l'ordre réel.
 #
-# ---------------------------------------------------------------------------------
-# CE QUE LE BANC MESURE
-#
-# Chaque fiche de C:\ProgramData\SZH\auteurs.json porte un prénom et un nom dans DEUX CHAMPS
-# DISTINCTS : l'ordre y est structurel, jamais deviné. On peut donc recoller « Prénom Nom »
-# en ordre DIRECT, poser la question à manuscrit_noms._signal_lexique() et savoir si sa
-# réponse est juste — la seule vérité terrain disponible sans annoter un corpus à la main.
-#
-# LEAVE-ONE-OUT : la fiche jugée est RETIRÉE de la base avant d'être jugée (son jeton de
-# prénom et son jeton de nom décrémentés d'une unité, un poids tombé à zéro valant absence).
-# Sans cela chaque fiche se reconnaîtrait elle-même et le banc rendrait ~100 % de succès sans
-# rien mesurer du tout. Le lexique du dépôt (noms-famille.txt et ses semblables), lui, n'est
-# PAS retiré : il ne vient pas de la base d'auteurs, et c'est précisément son apport qu'on
-# veut lire dans la colonne « tranché juste ».
+# La fiche jugée est d'abord retirée de la base (ses deux jetons décrémentés d'une unité),
+# sinon elle se reconnaîtrait elle-même (leave-one-out). Le lexique du dépôt n'est pas
+# retiré : c'est son apport qu'on mesure.
 #
 # Quatre colonnes, exclusives :
 #   tranché juste — le signal rend ORDRE_DIRECT, l'ordre réel de la fiche.
-#   à l'envers    — le signal rend ORDRE_INVERSE : une réponse FAUSSE, pas un silence.
+#   à l'envers    — le signal rend ORDRE_INVERSE : une réponse fausse.
 #   indécis       — score_direct == score_inverse et tous deux > 0 : la base connaît les deux
 #                   jetons des deux côtés, elle ne peut pas départager.
 #   muet          — score_direct == score_inverse == 0 : la base ne connaît ni l'un ni l'autre.
-# « indécis » et « muet » ont le même effet aval (le signal se tait, la convention prénom-nom
-# s'applique) mais des causes opposées, et c'est l'élargissement du lexique qui fait passer des
-# fiches de l'un à l'autre : les séparer est tout l'intérêt du banc.
+# « indécis » et « muet » ont le même effet (le signal se tait) mais des causes opposées ;
+# un lexique plus grand fait passer des fiches de « muet » à « indécis ».
 #
-# ---------------------------------------------------------------------------------
-# ⚠ LA LIMITE DE CE BANC, À CITER PARTOUT OÙ SA TABLE EST CITÉE
+# Limite : le banc juge des fiches isolées. Il ne voit pas la propagation
+# (manuscrit_noms.trancher_groupe()), par laquelle un segment tranché impose son ordre aux
+# autres segments du document. Il sous-estime donc le gain d'un lexique plus grand, et aussi
+# le coût d'une inversion, qui peut retourner un article entier. C'est un outil de
+# comparaison entre tailles de lexique : une taille ne s'adopte que si elle n'augmente pas
+# la colonne « à l'envers ».
 #
-# Il juge des fiches ISOLÉES, une par une. Il ne voit donc RIEN de la propagation
-# (manuscrit_noms.trancher_groupe(), §5.5 ter du contrat), par laquelle un seul segment
-# tranché impose son ordre à tous les segments restés en `defaut` du même document.
-# Conséquence dans les deux sens :
-#   - il SOUS-ESTIME le gain d'un lexique élargi : en conditions réelles il suffit qu'UN
-#     segment d'un article soit tranché pour que tout l'article bascule dans le bon ordre ;
-#   - il SOUS-ESTIME le coût d'une inversion : une inversion tranchée à tort ne reste pas
-#     locale, elle se propage et peut retourner un article entier.
-# Ce n'est donc jamais une mesure de ce que vit un manuscrit. C'est un banc de COMPARAISON
-# ENTRE PALIERS de lexique, et rien de plus. La deuxième conséquence est la raison du critère
-# d'acceptation asymétrique du brief : un palier ne s'adopte que s'il n'augmente pas la
-# colonne « à l'envers », même quand il fait gagner beaucoup de « tranché juste ».
-#
-# ---------------------------------------------------------------------------------
-# stdlib seule, comme tout outils-dev/lexique/. CLI à tiret analysée à la main (cohérence avec
-# generer-noms.py et moissonner-ojs.py du même dossier).
+# Bibliothèque standard seule.
 #
 #   python3 banc-noms.py                                  (lexique du dépôt tel qu'il est)
 #   python3 banc-noms.py --sans-lexique                   (témoin : base OJS seule)
@@ -70,10 +45,7 @@ LEXIQUE_DEFAUT = os.path.join(RACINE, 'pipeline', 'lexique')
 
 
 def _charger_module_a_tiret(chemin, nom_module):
-    """manuscrit_noms.py porte un tiret BAS et s'importerait normalement — mais il vit dans
-    pipeline/, pas ici, et il charge lui-même docx-meta.py par chemin relatif à SON dossier.
-    Le charger par chemin (plutôt qu'un sys.path.insert) évite d'ajouter pipeline/ au chemin
-    d'import de ce script, où il ferait de l'ombre à d'autres modules."""
+    """Charge un module de pipeline/ par son chemin, sans ajouter pipeline/ à sys.path."""
     spec = importlib.util.spec_from_file_location(nom_module, chemin)
     module = importlib.util.module_from_spec(spec)
     sys.modules[nom_module] = module
@@ -85,27 +57,21 @@ mn = _charger_module_a_tiret(
     os.path.join(RACINE, 'pipeline', 'manuscrit_noms.py'), 'szh_manuscrit_noms_pour_banc')
 
 
-# Les fichiers que BaseNoms.charger() lit en production, repris de manuscrit_noms lui-même —
-# jamais recopiés ici : le banc doit mesurer ce qui tourne, pas ce qu'on croit qui tourne.
+# Les fichiers que BaseNoms.charger() lit en production, lus dans manuscrit_noms.
 FICHIERS_PRODUCTION = [(nom, cote) for nom, cote, _ in mn.FICHIERS_LEXIQUE]
 
 
 # ---------------------------------------------------------------------------------
-# La base, montée à la main À PARTIR DES CHARGEURS DE PRODUCTION.
+# La base, montée avec les chargeurs de production.
 #
-# On n'appelle pas BaseNoms.charger() : elle fixe la liste des fichiers de lexique (celle de
-# FICHIERS_LEXIQUE), et tout l'objet de ce banc est d'en essayer d'autres. On réemploie
-# donc ses DEUX chargeurs tels quels — _charger_base_auteurs() et _charger_fichier_lexique() —
-# puis on remplit une BaseNoms avec le résultat. Aucun pliage, aucun filtre de bruit, aucune
-# règle de candidat n'est réécrite ici : si la production change d'avis sur l'un d'eux, le banc
-# change d'avis en même temps. C'est la seule façon qu'une mesure ait encore un sens six mois
-# plus tard.
+# BaseNoms.charger() fixe la liste des fichiers de lexique ; le banc veut en essayer
+# d'autres. Il appelle donc _charger_base_auteurs() et _charger_fichier_lexique() et
+# remplit une BaseNoms avec le résultat : pliage, filtres et règles restent ceux de la
+# production.
 
 def monter_base(chemin_auteurs, fichiers_noms, fichiers_prenoms):
-    """(base, prenoms, noms, n_fiches_ojs) — `prenoms` et `noms` sont les dictionnaires VIVANTS
-    de la base : c'est en les modifiant que le leave-one-out retire une fiche, sans jamais
-    remonter une base entière par fiche (1152 rechargements d'un fichier de 300 Ko plus des deux
-    index publics : plusieurs minutes, contre une fraction de seconde pour la décrémentation)."""
+    """(base, prenoms, noms, n_fiches_ojs). `prenoms` et `noms` sont les dictionnaires de la
+    base elle-même : le leave-one-out les modifie au lieu de recharger la base par fiche."""
     prenoms, noms = {}, {}
     n_fiches, _ = mn._charger_base_auteurs(chemin_auteurs, prenoms, noms)
     for chemin in fichiers_noms:
@@ -122,16 +88,10 @@ def monter_base(chemin_auteurs, fichiers_noms, fichiers_prenoms):
 
 
 def fiches_jugeables(chemin_auteurs):
-    """[(prenom_brut, nom_brut), ...] — exactement les fiches que _charger_base_auteurs() a
-    RETENUES, dans le même ordre et sous les mêmes règles (bruit institutionnel, champ vide).
-    Le filtre est réappliqué ici plutôt que déduit : une fiche qui n'a pas nourri la base ne
-    doit pas non plus être jugée par le banc, sans quoi les deux populations divergent et le
-    leave-one-out décrémente des jetons qui n'ont jamais été ajoutés.
-
-    Mesuré le 22.09.2026 sur C:\\ProgramData\\SZH\\auteurs.json : 1157 fiches au fichier,
-    1155 jugeables — 2 fiches perdues, non par le filtre de bruit (dont les 4 fiches
-    documentées au §5.5 ter tombent aussi) mais par un champ vide. C'est le 1155 de la table
-    du contrat."""
+    """[(prenom_brut, nom_brut), ...] : les fiches que _charger_base_auteurs() retient, dans
+    le même ordre et avec les mêmes règles (bruit institutionnel, champ vide). Une fiche
+    absente de la base ne doit pas être jugée : le leave-one-out retirerait des jetons jamais
+    ajoutés."""
     import json
     try:
         with open(chemin_auteurs, encoding='utf-8') as f:
@@ -159,10 +119,8 @@ def fiches_jugeables(chemin_auteurs):
 # Le leave-one-out proprement dit.
 
 def _retirer(dico, jeton):
-    """Décrémente un poids, et RETIRE la clé quand il tombe à zéro : BaseNoms.poids_*() teste
-    `> 0`, mais un jeton à 0 laissé en place fausserait tout comptage ultérieur du dictionnaire
-    (la taille de la base, affichée en tête de rapport). Rend le poids retiré, pour le
-    remettre exactement tel quel."""
+    """Décrémente un poids et retire la clé à zéro (une clé à 0 fausserait la taille de la
+    base affichée dans le rapport). Rend le poids d'avant, pour le remettre tel quel."""
     n = dico.get(jeton, 0)
     if n <= 1:
         dico.pop(jeton, None)
@@ -185,20 +143,16 @@ def mesurer(chemin_auteurs, fichiers_noms, fichiers_prenoms):
     exemples_envers = []
 
     for prenom_brut, nom_brut in fiches_jugeables(chemin_auteurs):
-        # Le segment tel qu'un manuscrit l'écrirait en ordre DIRECT. `split()` sur les deux
-        # champs : « Anne-Françoise » + « de Chambrier » -> 3 jetons, et ce sont les règles de
-        # candidat de manuscrit_noms (tête = premier jeton non-particule, queue = dernier
-        # jeton non-particule) qui retrouvent les deux jetons utiles — jamais ce banc.
+        # Le segment en ordre direct. Les règles de manuscrit_noms (premier et dernier jeton
+        # non-particule) retrouvent les deux jetons utiles de « Anne-Françoise de Chambrier ».
         jetons = prenom_brut.split() + nom_brut.split()
         if len(jetons) < 2:
-            # Ne peut pas arriver (les deux champs sont non vides), gardé par principe : le
-            # banc ne doit jamais poser à un signal une question mal formée.
+            # Garde : les deux champs sont non vides.
             compte['muet'] += 1
             continue
 
-        # Retrait de la fiche. Les jetons retirés sont ceux que _charger_base_auteurs() avait
-        # AJOUTÉS — donc calculés sur chaque champ SÉPARÉMENT (candidat_debut du prénom,
-        # candidat_fin du nom), et non sur le segment recollé.
+        # Retrait de la fiche : les jetons que _charger_base_auteurs() a ajoutés, calculés
+        # sur chaque champ séparément (candidat_debut du prénom, candidat_fin du nom).
         j_prenom = mn._candidat_debut(prenom_brut.split())
         j_nom = mn._candidat_fin(nom_brut.split())
         poids_prenom = _retirer(prenoms, j_prenom) if j_prenom else 0
@@ -212,11 +166,8 @@ def mesurer(chemin_auteurs, fichiers_noms, fichiers_prenoms):
                 exemples_envers.append((prenom_brut, nom_brut,
                                         mn._candidat_debut(jetons), mn._candidat_fin(jetons)))
             else:
-                # Muet ou indécis : la distinction n'est pas dans la réponse du signal (il rend
-                # (None, 0, '') dans les deux cas), elle est dans les scores. Recalculés ici
-                # avec la MÊME formule que _signal_lexique — trois lignes, le seul endroit du
-                # banc qui redise quelque chose de la production, et le contrat les écrit
-                # noir sur blanc (§5.5 ter).
+                # Muet ou indécis : le signal rend (None, 0, '') dans les deux cas. Les scores,
+                # recalculés avec la formule de _signal_lexique, les distinguent.
                 tete, queue = mn._candidat_debut(jetons), mn._candidat_fin(jetons)
                 connus = (base.poids_prenom(tete) + base.poids_nom(queue)
                           + base.poids_nom(tete) + base.poids_prenom(queue))
@@ -293,21 +244,16 @@ def main(argv):
             print('option inconnue : %s' % a)
             return _usage()
 
-    # Sans --noms ni --prenoms ni --sans-lexique : EXACTEMENT ce que BaseNoms.charger() lit en
-    # production, pas un sous-ensemble. La liste est reprise de manuscrit_noms lui-même plutôt
-    # que recopiée : un quatrième fichier ajouté là-bas entre ici sans que personne y pense, et
-    # le banc ne peut pas se mettre à mesurer, en silence, autre chose que ce qui tourne.
+    # Sans --noms, --prenoms ni --sans-lexique : les fichiers que BaseNoms.charger() lit en
+    # production.
     if not sans_lexique and not fichiers_noms and not fichiers_prenoms:
         for nom_fichier, cible in FICHIERS_PRODUCTION:
             chemin_fichier = os.path.join(LEXIQUE_DEFAUT, nom_fichier)
             if os.path.isfile(chemin_fichier):
                 (fichiers_noms if cible == 'noms' else fichiers_prenoms).append(chemin_fichier)
 
-    # _resoudre_chemin_base_auteurs() rend TEL QUEL un chemin explicite, sans vérifier qu'il
-    # existe : c'est correct pour la production (un chemin absent y vaut « pas de base », et
-    # le chargeur se tait), mais pour un banc c'est un piège. Un --auteurs mal tapé rendrait
-    # une table complète et parfaitement fausse, où chaque colonne raconte l'absence de base
-    # plutôt qu'un palier. Ici, l'absence est une ERREUR, jamais un silence.
+    # _resoudre_chemin_base_auteurs() ne vérifie pas qu'un chemin explicite existe. Un
+    # --auteurs mal tapé donnerait une table fausse : ici, une base absente est une erreur.
     chemin = mn._resoudre_chemin_base_auteurs(chemin_auteurs)
     if chemin and not os.path.isfile(chemin):
         chemin = None

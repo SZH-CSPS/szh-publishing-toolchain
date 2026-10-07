@@ -1,12 +1,12 @@
-// Rendu autonome de l'Accueil dans l'éditeur (media/accueil.html/.css/.js), hors toolkit : un
-// HTML par état, assemblé par construireHtml comme dans l'éditeur, avec un faux hôte qui
-// répond à « pret » puis rejoue les gestes et les messages de l'état demandé.
+// Outil de développement : écrit un HTML autonome de l'Accueil (media/accueil.html/.css/.js)
+// par état, assemblé par construireHtml comme dans l'éditeur, avec un faux hôte qui répond à
+// « pret » puis rejoue les clics et les messages de l'état demandé.
 //
 // Usage :
 //   node outils-dev/apercu-accueil.js [dossier]          tous les états
 //   node outils-dev/apercu-accueil.js [dossier] S1 J2    quelques états seulement
-// Les valeurs de l'onglet Paramètres sortent du VRAI hôte (lib/accueil-reglages-hote.js), joué sous
-// un faux vscode et sur des fichiers jetables : aucun fichier du poste n'est lu ni écrit.
+// Les valeurs de l'onglet Paramètres sortent du vrai hôte (lib/accueil-reglages-hote.js), joué
+// sous un faux vscode sur des fichiers temporaires : aucun fichier du poste n'est lu ni écrit.
 // Capture (Edge headless, depuis Windows) :
 //   msedge --headless --disable-gpu --screenshot=<png> --window-size=1100,720 file:///<html>
 'use strict';
@@ -139,8 +139,8 @@ function transcript() {
   ].join('\n');
 }
 
-// Ce que secretariat-cli.js devrait écrire : des textes cibles, en langage clair et au vrai
-// pluriel, que le contrat actuel ne donne pas encore (voir la planche).
+// Textes cibles, en langage clair et au bon pluriel, que secretariat-cli.js ne produit pas
+// encore ainsi.
 const PHRASES = {
   fr: {
     lecture: 'Lecture du numéro 2026-03…', ed: 'Éditorial : 1 article', dt: 'Dossier thématique : 4 articles',
@@ -157,8 +157,9 @@ const PHRASES = {
 };
 
 // ---- Les valeurs des réglages : le vrai hôte, sous un faux vscode -----------------------
-// Un hôte unique par processus : le crochet de require ne se défait pas. Les fichiers du poste
-// (config.json, état du compte, cache des auteur·e·s) sont détournés vers un dossier jetable.
+// Un seul hôte par processus : le crochet posé sur require ne se retire pas. Les fichiers du
+// poste (config.json, état du compte, cache des auteur·e·s) sont détournés vers un dossier
+// temporaire.
 let hoteReglages = null;
 function chargerHote() {
   if (hoteReglages) { return hoteReglages; }
@@ -286,7 +287,7 @@ function valeursReglages(langue, opts) {
   const o = opts || {};
   const hote = chargerHote();
   hote.session.poserProfilOuvrage(o.livre ? hote.profils.PROFILS.livre : null);
-  // La racine active de l'aperçu est toujours jetable : jamais les moissons du poste.
+  // La racine active de l'aperçu est un dossier temporaire, pas les moissons du poste.
   process.env.SZH_RACINE_PROD = racineMoissons(o.moissons, langue);
   // Les demandes : le poste porte un nom fictif, celui de la personne qui en a fait certaines.
   if (o.moissons === 'demandes') {

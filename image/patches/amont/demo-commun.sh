@@ -1,8 +1,7 @@
 # Outils communs des démos (sourcé par <nn>-<nom>/demo/demo.sh, dans la WSL SZH-Publishing).
-# Fabrique deux copies jetables du venv WeasyPrint : « nu » (WeasyPrint 70 tel que publié,
-# tous les correctifs SZH retirés, sauf le socle éventuel) et « patché » (nu + le seul
-# correctif démontré, posé par image/patch-weasyprint.sh). /opt/weasyprint n'est jamais
-# modifié.
+# Fabrique deux copies temporaires du venv WeasyPrint : « nu » (WeasyPrint tel que publié,
+# sans correctif SZH sauf le socle éventuel) et « patché » (nu + le correctif démontré,
+# posé par image/patch-weasyprint.sh). /opt/weasyprint reste intact.
 set -eu
 export LC_ALL=C.UTF-8 PYTHONIOENCODING=utf-8
 
@@ -34,8 +33,8 @@ preparer_venvs() {
     if [ $manque = 0 ]; then
       liste="$(tac "$temoin")"
     else
-      # Image construite avant un renommage : on retire les patchs du dossier qui sont
-      # posés, ceux qui s'appliquent encore ne le sont pas.
+      # Le témoin nomme des patchs absents du dossier (renommés depuis la construction de
+      # l'image) : on retire les patchs du dossier qui ne s'appliquent plus, donc posés.
       liste="$(cd "$dossier" && ls -r -- *.patch)"
     fi
     for p in $liste; do

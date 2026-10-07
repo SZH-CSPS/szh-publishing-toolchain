@@ -1,7 +1,7 @@
 """Type harmonisé -> jeton `instrument` du contrat de Pronto ; corps -> canton ; langue de la fiche.
 
 Aucun jeton n'est inventé : un type sans jeton rend None et l'export le signale.
-Les correspondances viennent de l'étude des types de l'API (septembre 2026).
+Les correspondances viennent d'une étude des types de l'API.
 """
 import re
 
@@ -28,7 +28,7 @@ TYPES_HARMONISES = {
     13: (None, 'Ergänzungsantrag', False),
 }
 
-# Genève : le type est en préfixe du champ `number` (étude, 776 affaires sans exception).
+# Genève : le type est en préfixe du champ `number`, pour toutes les affaires.
 PREFIXES_GE = {
     'M': ('motion', 'Motion'), 'PO': ('postulat', 'Postulat'),
     'IU': ('interpellation', 'Interpellation urgente'), 'IUE': ('interpellation', 'Interpellation urgente écrite'),
@@ -39,8 +39,8 @@ PREFIXES_GE = {
 }
 PREFIXES_GE_ECARTES = {'E': 'élection', 'GR': 'grâce'}
 
-# Lucerne : le type est la lettre du numéro (`2026A 835`) quand l'API ne le donne pas. Table du rapport des catégories,
-# vérifiée sur les affaires lucernoises dont l'API donne le type (A 251/251, P 224/224, M 67/74, B 61/61, E 1/1).
+# Lucerne : le type est la lettre du numéro (`2026A 835`) quand l'API ne le donne pas. Table vérifiée sur les affaires
+# lucernoises dont l'API donne le type (A 251/251, P 224/224, M 67/74, B 61/61, E 1/1).
 # lettre -> (jeton, libellé, id harmonisé, à confirmer)
 PREFIXES_LU = {
     'A': ('question', 'Anfrage', 12, False), 'P': ('postulat', 'Postulat', 3, False), 'M': ('motion', 'Motion', 2, False),
@@ -56,7 +56,7 @@ PREFIXES_VD = {
     'PRE': (None, 'Préavis', None, False), 'RAI': (None, 'Rapport intermédiaire', None, False),
     'GRA': (None, 'Grâce', 'grâce', False),
 }
-# Types dont seul l'ancrage fort au titre est retenu (rapport des catégories, 03.10.2026) : Parlamentarische Initiative,
+# Types dont seul l'ancrage fort au titre est retenu : Parlamentarische Initiative,
 # Vernehmlassung, Volksinitiative, Fragestunde, Informationsdokument, Bericht ; Genève PL, RD, IN, R ; Standesinitiative.
 HARM_RESTREINTS = {4, 5, 7, 10, 15, 16}
 PREFIXES_GE_RESTREINTS = {'PL', 'RD', 'IN', 'R'}
@@ -166,7 +166,7 @@ def canton_de(body_key, config=None):
 LANGUE_MAJORITAIRE = {'BE': 'de', 'FR': 'fr', 'VS': 'fr', 'GR': 'de', 'CH': 'de'}
 ALLEMAND = {'AG', 'AI', 'AR', 'BL', 'BS', 'GL', 'LU', 'NW', 'OW', 'SG', 'SH', 'SO', 'SZ', 'TG', 'UR', 'ZG', 'ZH'}
 FRANCAIS = {'GE', 'VD', 'NE', 'JU'}
-ITALIEN = {'TI'}   # fiche .fr pour la Revue (décision du 02.10.2026), titre gardé en italien
+ITALIEN = {'TI'}   # fiche .fr pour la Revue, titre gardé en italien
 
 MOTS = {
     'fr': {'le', 'la', 'les', 'des', 'du', 'de', 'pour', 'et', 'en', 'une', 'un', 'sur', 'dans', 'au', 'aux', 'que', 'qui'},

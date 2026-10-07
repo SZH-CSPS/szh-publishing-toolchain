@@ -86,8 +86,8 @@ def _decouvrir_hepvd(site, reseau, depuis):
         base = chemin.rsplit('/projets-de-recherche', 1)[0] + '/projets-de-recherche/'
         for m in re.finditer(r'href="(' + re.escape(base) + r'[^"/]+\.html)"', page_unite):
             sortie.append(racine + m.group(1))
-    # Limite mesurée : ces pages de liste ne portent pas de date -> aucun filtrage `depuis`
-    # possible ici (contrairement aux sites à sitemap), et pas de lastmod pour date_source.
+    # Ces pages de liste ne portent pas de date : pas de filtrage `depuis` (contrairement aux
+    # sites à sitemap), et pas de lastmod pour date_source.
     return [(url, '') for url in sorted(set(sortie))]
 
 
@@ -174,8 +174,8 @@ def _analyser_ehb(page, url):
     titre = texte_simple(capturer(page, r'<h1[^>]*>(.*?)</h1>', dotall=True) or '')
     lang = capturer(page, r'<html[^>]*\blang="([a-z]{2})"') or 'de'
     debut = fin = ''
-    # attention : rendre le 2e <time> optionnel dans la même regex fait courir le moteur lazy
-    # au plus court (il « réussit » sans jamais le chercher) -> deux motifs bien distincts.
+    # Deux motifs distincts : un 2e <time> optionnel dans la même regex serait sauté par le
+    # quantificateur paresseux, qui réussit sans le chercher.
     m = re.search(r'field-label">Datum</div>\s*<div class="field-value">\s*'
                   r'<time datetime="(\d{4}-\d{2}-\d{2})[^"]*">.*?'
                   r'<time datetime="(\d{4}-\d{2}-\d{2})[^"]*">', page, re.S)

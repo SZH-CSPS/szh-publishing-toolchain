@@ -1,9 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Lance une instance de developpement de Pronto, qui lit le depot en place par jonctions et
-  ne copie jamais rien. Elle ne touche jamais a l'installation de production sous
-  C:\ProgramData\SZH ni aux reglages VSCodium du compte, c'est le seul invariant qui ne se
-  negocie pas.
+  Lance une instance de developpement de Pronto, qui lit le depot en place par jonctions,
+  sans rien copier. Elle ne touche ni a l'installation de production (C:\ProgramData\SZH)
+  ni aux reglages VSCodium du compte.
 
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1
     powershell -ExecutionPolicy Bypass -File outils-dev\pronto-dev.ps1 -Simuler -BaseDev <dossier>
@@ -11,14 +10,14 @@
   Sans argument, il ouvre VSCodium sans dossier sur l'Accueil du cockpit (Start-SzhAccueil).
   Un lien szh://, -Produit ou -Versions passent par windows\open-revue.ps1.
 
-  Compatibilite, Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
+  Compatible Windows PowerShell 5.1 (pas de ?. ?? ?: && ||).
 #>
 [CmdletBinding()]
 param(
   [string]$BaseDev = 'C:\ProgramData\SZH-dev',
   [switch]$Simuler,
-  # Vide ou absent, c'est le vrai menu Demarrer (comportement inchange). Renseigne, c'est ce
-  # dossier-la qui recoit le .lnk - meme forme que $Menu de Set-SzhRaccourcisMenu.
+  # Dossier qui recoit le .lnk ; vide, le vrai menu Demarrer. Meme forme que $Menu de
+  # Set-SzhRaccourcisMenu.
   [string]$Menu = '',
   # Les trois parametres d'open-revue.ps1, transmis par nom : un tableau etale passerait
   # "-Produit" comme une valeur positionnelle.
@@ -29,12 +28,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# Choix provisoire, pas encore tranche par Robin - une seule ligne a changer si la decision
-# change. Designe quelle entree de basesRevues fournit le dossier des revues de developpement.
+# Entree de basesRevues qui fournit le dossier des revues de developpement (choix provisoire).
 $CLE_BASESREVUES_DEV = 'dev'
 
-# Nom du fichier .lnk pose au menu Demarrer par ce script - une seule ligne a changer si le
-# nom change. Jamais pose par update.ps1 ni bootstrap.ps1 : voir Set-SzhRaccourciDev plus bas.
+# Nom du .lnk que ce script pose au menu Demarrer (update.ps1 et bootstrap.ps1 ne le posent
+# pas).
 $NOM_RACCOURCI_DEV = 'Pronto (dev)'
 
 # ---- racine du depot, et garde d'entree ----
@@ -47,17 +45,16 @@ if (-not (Test-Path -LiteralPath $makefileDepot)) {
 }
 
 # ---- crochet pre-push : la porte rapide (test/js/porte-release.js --rapide) avant un push ----
-# Idempotent (git config ecrase sans se plaindre) et jamais bloquant : un vieux clone sans
-# .githooks/pre-push ne doit pas empecher pronto-dev.ps1 de demarrer. SZH_SANS_PORTE=1
-# contourne le crochet lui-meme, au moment du push - voir .githooks/pre-push et docs/DEVELOPPEMENT.md.
+# Sans effet s'il est deja pose, et sans erreur bloquante : un clone sans .githooks/pre-push
+# demarre quand meme. SZH_SANS_PORTE=1 contourne le crochet au moment du push (voir
+# .githooks/pre-push et docs/DEVELOPPEMENT.md).
 try {
   git -C $racineDepot config core.hooksPath .githooks 2>$null | Out-Null
 } catch { }
 
 # ---- conversion vers la forme WSL d'un chemin Windows ----
-# Identique, au caractere pres, a versWsl() de
-# vscodium-extension\szh-cockpit\lib\chemins-poste.js - lettre de lecteur minusculisee,
-# antislash convertis.
+# Meme resultat que versWsl() de vscodium-extension\szh-cockpit\lib\chemins-poste.js :
+# lettre de lecteur en minuscule, barres inverses converties.
 function ConvertTo-SzhCheminWsl([string]$CheminWindows) {
   $resolu = ([System.IO.Path]::GetFullPath($CheminWindows) -replace '\\', '/')
   if ($resolu -match '^([A-Za-z]):/(.*)$') {
@@ -67,10 +64,9 @@ function ConvertTo-SzhCheminWsl([string]$CheminWindows) {
 }
 
 # ---- raccourci "Pronto (dev)" au menu Demarrer, pose a chaque lancement reel ----
-# Jamais en mode -Simuler. Idempotent - si le .lnk existe deja et vise deja le bon script,
-# rien n'est reecrit. Ne leve jamais : un menu Demarrer verrouille par une strategie de
-# groupe ne doit pas faire echouer un lancement par ailleurs reussi, meme comportement que
-# Set-SzhRaccourcisMenu en production.
+# Pas en mode -Simuler. Un .lnk qui vise deja le bon script n'est pas reecrit. Ne leve pas
+# d'erreur : un menu Demarrer verrouille par une strategie de groupe ne doit pas faire
+# echouer le lancement (comme Set-SzhRaccourcisMenu en production).
 function Set-SzhRaccourciDev([string]$RacineDepot, [string]$NomRaccourci, [string]$DossierMenu) {
   try {
     $dossierMenu = $DossierMenu
@@ -137,16 +133,16 @@ $variables = [ordered]@{
   SZH_BASE            = $BaseDev
   SZH_TOOLKIT         = $cheminToolkit
   SZH_COCKPIT_DOSSIER = $cheminCockpit
-  # Lu par Start-SzhCodium (szh-shell.ps1) - sans elle VSCodium ouvrirait le profil de
-  # production, et tout ce qui est seme sous <baseDev>\codium ne servirait jamais a rien.
+  # Lu par Start-SzhCodium (szh-shell.ps1) : sans elle, VSCodium ouvrirait le profil de
+  # production au lieu de <baseDev>\codium.
   SZH_CODIUM_PROFIL   = Join-Path $BaseDev 'codium'
   # Les journaux de mise a jour du poste, en lecture : aucune mise a jour n'ecrit sous baseDev.
   SZH_JOURNAUX_MAJ    = Join-Path $env:ProgramData 'SZH\logs'
 }
 
 if ($Simuler) {
-  # Hors du tableau fichiers : ni sous baseDev ni sous la racine du depot, un controle
-  # existant refuse tout chemin de fichiers qui ne l'est pas.
+  # Hors du tableau fichiers : ce chemin n'est ni sous baseDev ni sous le depot, ce que le
+  # controle de ce tableau refuserait.
   $dossierMenuPlan = $Menu
   if (-not $dossierMenuPlan) { $dossierMenuPlan = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs' }
   $cheminRaccourciPlan = Join-Path $dossierMenuPlan ($NOM_RACCOURCI_DEV + '.lnk')
@@ -160,8 +156,8 @@ if ($Simuler) {
     variables   = $variables
     makefileWsl = $makefileWsl
   }
-  # Octets UTF-8 ecrits directement sur le flux, hors Write-Output - celui-ci passe par
-  # l'encodage de la console et abimerait un accent en PowerShell 5.1 non interactif.
+  # Octets UTF-8 ecrits directement sur le flux : Write-Output passe par l'encodage de la
+  # console et abimerait un accent en PowerShell 5.1 non interactif.
   $json = ($sortie | ConvertTo-Json -Depth 6)
   $octets = [System.Text.Encoding]::UTF8.GetBytes($json)
   $flux = [Console]::OpenStandardOutput()
@@ -181,8 +177,8 @@ try {
   function Set-SzhJonction([string]$Lien, [string]$Cible) {
     if (Test-Path -LiteralPath $Lien) {
       if (-not (Test-SzhEstJonction $Lien)) {
-        # Un vrai dossier deja present ne se remplace jamais tout seul - refuser bruyamment
-        # est le seul geste sur, effacer a sa place perdrait un dossier de travail reel.
+        # Un vrai dossier a cet endroit n'est pas remplace : ce serait perdre un dossier de
+        # travail.
         throw ('refus - ' + $Lien + ' existe deja comme un vrai dossier, pas une jonction. Rien n''a ete touche.')
       }
       $item = Get-Item -LiteralPath $Lien -Force
@@ -193,7 +189,7 @@ try {
           [System.IO.Path]::GetFullPath($Cible).TrimEnd('\'))
       }
       if ($memeCible) { return }
-      # .Delete() sans recursion ne retire que le lien, jamais le contenu de la cible visee.
+      # .Delete() sans recursion retire le lien seul, pas le contenu de la cible.
       $item.Delete()
     }
     $parent = Split-Path $Lien -Parent
@@ -242,8 +238,7 @@ try {
       repo              = 'SZH-CSPS/szh-publishing-toolchain'
       revuesRoots       = @()
       basesRevues       = $basesRevues
-      # Jamais "production" ici, cette instance de developpement ne doit jamais toucher aux
-      # vraies revues.
+      # "test" : l'instance de developpement ne touche pas aux vraies revues.
       emplacementRevues = 'test'
     }
     $json = ($cfgDev | ConvertTo-Json -Depth 5)
@@ -275,10 +270,9 @@ try {
   }
 
   # ---- tasks.json, reecrit a chaque lancement pour qu'une retouche du depot se voie tout de suite ----
-  # Le prefixe SZH_CONFIG est le seul moyen de faire lire ce dossier de developpement par le
-  # filtre pandoc szh-citations.lua - wsl.exe ne transmet pas l'environnement de Windows sans
-  # WSLENV, et sans ce prefixe la compilation dev lirait les titres de bibliographie de la
-  # configuration de production.
+  # Le prefixe SZH_CONFIG fait lire la configuration de developpement par szh-citations.lua :
+  # wsl.exe ne transmet pas l'environnement Windows sans WSLENV, et le filtre lirait sinon
+  # les titres de bibliographie de la production.
   $srcTasks = Join-Path $srcUser 'tasks.json'
   if (Test-Path -LiteralPath $srcTasks) {
     $contenu = Get-Content -LiteralPath $srcTasks -Raw -Encoding UTF8
@@ -291,22 +285,21 @@ try {
   }
 
   # ---- variables d'environnement, uniquement pour ce processus ----
-  # Jamais setx, jamais une variable machine ou utilisateur - une variable qui fuiterait
-  # ferait tourner le VSCodium de production sur la configuration de developpement, en silence.
+  # Pas de setx ni de variable machine ou utilisateur : elle ferait tourner le VSCodium de
+  # production sur la configuration de developpement.
   $env:SZH_BASE = $variables.SZH_BASE
   $env:SZH_TOOLKIT = $variables.SZH_TOOLKIT
   $env:SZH_COCKPIT_DOSSIER = $variables.SZH_COCKPIT_DOSSIER
   $env:SZH_CODIUM_PROFIL = $variables.SZH_CODIUM_PROFIL
   $env:SZH_JOURNAUX_MAJ = $variables.SZH_JOURNAUX_MAJ
 
-  # ---- raccourci "Pronto (dev)" au menu Demarrer - pose ici et seulement ici, voir le ----
-  # ---- commentaire de Set-SzhRaccourciDev plus haut ----
+  # ---- raccourci "Pronto (dev)" au menu Demarrer (voir Set-SzhRaccourciDev) ----
   . (Join-Path $racineDepot 'windows\szh-common.ps1')
   Set-SzhRaccourciDev -RacineDepot $racineDepot -NomRaccourci $NOM_RACCOURCI_DEV -DossierMenu $Menu
 
-  # Le cockpit est une jonction vers le depot : chaque changement de son package.json fait
-  # differer le cache d'extensions de VSCodium, qui affiche alors "Extensions have been modified
-  # on disk". Aucun reglage ne le coupe ; le jeter ne coute qu'un rebalayage au demarrage.
+  # Le cockpit est une jonction vers le depot : un changement de son package.json rend le
+  # cache d'extensions de VSCodium obsolete, qui affiche alors "Extensions have been
+  # modified on disk". Aucun reglage ne coupe ce message ; on supprime le cache.
   Get-ChildItem (Join-Path $BaseDev 'codium\data\CachedProfilesData') -Recurse -Filter 'extensions.user.cache' -ErrorAction SilentlyContinue | Remove-Item -Force
 
   if ($Lien -or $Produit -or $Versions) {

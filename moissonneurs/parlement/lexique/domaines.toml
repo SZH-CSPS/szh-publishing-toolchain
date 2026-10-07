@@ -1,4 +1,4 @@
-# Domaines de la CDPH : servent à CLASSER, jamais à retenir.
+# Domaines de la CDPH : servent à classer, pas à retenir.
 # `rang` fixe l'ordre de la liste (l'éducation en tête) et départage les égalités.
 # Mêmes conventions de termes que ancrage.toml (chaîne ou { t, s, m }); source par défaut `manuel`.
 # Le sourçage des termes dans les articles de la CDPH se contrôle hors de ce dépôt.

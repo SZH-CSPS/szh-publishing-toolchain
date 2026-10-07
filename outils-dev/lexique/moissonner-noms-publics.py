@@ -1,63 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# moissonner-noms-publics.py — construit les DEUX index de fréquence PUBLICS du lexique :
+# Construit les deux index de fréquence publics du lexique :
 #   pipeline/lexique/noms-frequents.txt     (noms de famille)
 #   pipeline/lexique/prenoms-frequents.txt  (prénoms)
-# lus par manuscrit_noms.BaseNoms en renfort de la base OJS du poste. Contrat :
-# docs/ARCHITECTURE-nettoyeur-manuscrit.md, §5.5 quater.
+# que manuscrit_noms.BaseNoms lit en plus de la base OJS du poste. Voir
+# docs/ARCHITECTURE-nettoyeur-manuscrit.md.
 #
-# ⚠ CE SCRIPT N'EST PAS generer-noms.py, ET NE LE REMPLACE PAS.
-# `noms-famille.txt` (les 1282 noms tirés des bibliographies du corpus local, fabriqué par
-# generer-noms.py) reste un fichier DISTINCT, produit par un script distinct, régénéré
-# séparément. Décision d'architecture prise ici, option (A) du §7 du brief, pour deux raisons
-# mesurées : (1) les provenances ne se mélangent pas — chaque fichier porte sa source et sa
-# licence en en-tête, ce qui est une CONDITION de la licence de l'OFS ; (2) generer-noms.py
-# lancé sans corpus valide réécrit son fichier VIDE sans s'arrêter (piège documenté au §7 du
-# brief) : avec deux fichiers, cet accident ne peut plus emporter que le sien.
+# noms-famille.txt (noms tirés des bibliographies du corpus, par generer-noms.py) reste un
+# fichier séparé : chaque fichier porte sa source et sa licence en en-tête.
 #
-# ---------------------------------------------------------------------------------
-# LE PROBLÈME, ET POURQUOI « PLUS GROS » N'EST PAS « MEILLEUR »
-#
-# manuscrit_noms._signal_lexique() ne teste pas une appartenance, il COMPARE deux hypothèses :
+# Pourquoi deux index et un filtre. manuscrit_noms._signal_lexique() compare deux hypothèses :
 #   score_direct  = (tête connue comme prénom) + (queue connue comme nom)
 #   score_inverse = (tête connue comme nom)    + (queue connue comme prénom)
-# Verser des noms de famille sans verser de prénoms ne renforce donc qu'un côté de la balance,
-# et produit deux dégâts : l'EXTINCTION (les deux jetons connus des deux côtés -> égalité ->
-# le signal se tait là où il tranchait juste) et l'INVERSION (« Thomas Aebischer » avec
-# `thomas` en nom de famille et `aebischer` inconnu -> le signal répond « ordre inverse », une
-# réponse FAUSSE, pas un silence). D'où les deux fichiers, et surtout le filtre ci-dessous.
+# Un jeton connu des deux côtés annule le signal ; un prénom rangé parmi les noms (« thomas »)
+# le retourne (« Thomas Aebischer » lu à l'envers). Les sources de l'OFS donnent, pour un même
+# jeton, son poids comme nom et comme prénom sur la même population : le filtre de
+# discrimination (discriminer()) range chaque jeton du côté qui domine, ou l'écarte, selon
+# --rapport. Les jetons concernés sont peu nombreux (environ 5 % des noms) mais très portés
+# (martin, peter, michel, walter, simon…). Le réglage se mesure avec banc-noms.py.
 #
-# LE FILTRE DE DISCRIMINATION est ce qui fait la qualité du lot, pas le palier retenu.
-# Les deux sources de l'OFS décrivent la MÊME population résidante : pour un jeton donné on
-# dispose donc de son poids comme nom de famille ET de son poids comme prénom, sur la même
-# échelle. Mesuré le 22.09.2026 sur les données 2025 : 14 750 jetons pliés apparaissent des
-# deux côtés, et parmi le top 30 000 des noms de famille, 1 383 (4,6 %) pèsent plus lourd
-# comme prénom que comme nom — dont, tout en haut du classement, martin, peter, michel,
-# walter, simon, werner, richard, gabriel, ernst, rosa. Ce sont exactement les jetons qui
-# fabriquent des inversions. Le filtre les ATTRIBUE (au côté qui domine) ou les ÉCARTE des
-# deux côtés, selon --rapport ; le choix se règle au banc (outils-dev/lexique/banc-noms.py),
-# jamais à l'intuition.
+# Sources, toutes publiques ; aucune ne vient de C:\ProgramData\SZH\auteurs.json :
+#   OFS          obligation d'indiquer la source (opendata.swiss « terms_by ») ;
+#   INSEE/Etalab Licence Ouverte 2.0, mention de la paternité.
+# Les citations sont écrites dans l'en-tête de chaque fichier produit, qui voyage seul.
 #
-# ---------------------------------------------------------------------------------
-# SOURCES, ET CE QUE LEUR LICENCE EXIGE
-#
-# Toutes publiques, toutes vérifiées sur pièce le 22.09.2026 (le brief les donnait de mémoire,
-# sans les avoir ouvertes — trois de ses hypothèses se sont révélées fausses, voir les
-# commentaires de SOURCES ci-dessous). AUCUNE ne dérive de C:\ProgramData\SZH\auteurs.json :
-# ce script ne lit jamais ce fichier, et n'en a aucun moyen de le faire.
-#
-#   OFS  — obligation d'indiquer la source (opendata.swiss « terms_by »).
-#   INSEE/Etalab — Licence Ouverte 2.0, mention de la paternité.
-# Cette obligation est honorée dans l'EN-TÊTE DE CHAQUE FICHIER PRODUIT, pas seulement ici :
-# c'est le fichier qui voyage, pas le script.
-#
-# ---------------------------------------------------------------------------------
-# CE QUI VA DANS LE DÉPÔT, ET CE QUI N'Y VA PAS
-# Le CSV brut téléchargé (38 Mo pour les quatre) reste dans tmp/ (déjà dans .gitignore).
-# Seuls les deux fichiers pliés, filtrés, tronqués au palier et triés sont committés.
-#
-# stdlib seule (y compris pour lire un CSV : csv est de la stdlib). CLI à tiret analysée à la
-# main, comme generer-noms.py et moissonner-ojs.py du même dossier.
+# Les CSV téléchargés (38 Mo) restent dans tmp/ ; seuls les deux fichiers produits sont
+# versionnés. Bibliothèque standard seule.
 #
 #   python3 moissonner-noms-publics.py --telecharger          (remplit le cache tmp/, réseau)
 #   python3 moissonner-noms-publics.py --statistiques         (n'écrit aucun fichier)
@@ -77,21 +45,17 @@ RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 CACHE_DEFAUT = os.path.join(RACINE, 'tmp', 'lexique-sources')
 SORTIE_DEFAUT = os.path.join(RACINE, 'pipeline', 'lexique')
 
-# Le serveur de l'OFS (dam-api.bfs.admin.ch) rend 403 à une requête sans en-tête User-Agent —
-# mesuré le 22.09.2026, l'urllib nu échoue et la même URL passe avec cet en-tête. Ce n'est pas
-# une authentification, juste un filtre d'agent ; il est donc honnête d'annoncer qui appelle.
+# Le serveur de l'OFS (dam-api.bfs.admin.ch) répond 403 à une requête sans User-Agent.
 ENTETES = {'User-Agent': 'Mozilla/5.0 (compatible; szh-publishing-toolchain; +https://szh.ch)',
            'Accept': 'text/csv, */*'}
 
 
 # ---------------------------------------------------------------------------------
-# Les sources. Chaque entrée porte ce qu'il faut pour CITER la source dans l'en-tête du
-# fichier produit — c'est une obligation de licence, pas une politesse.
+# Les sources. `citation` est recopiée dans l'en-tête du fichier produit (obligation de
+# licence).
 
 SOURCES = [
-    # ⚠ Le brief pointait la version « par région linguistique » publiée en 2022 (données
-    # 2021). Vérifié le 22.09.2026 sur l'API CKAN d'opendata.swiss : une édition 2026 existe
-    # (données 2025), c'est elle qui est prise. 238 962 noms distincts, 8 557 230 personnes.
+    # Édition 2026 (données 2025) : 238 962 noms distincts, 8 557 230 personnes.
     {'cle': 'ofs-noms', 'cible': 'nom',
      'url': 'https://dam-api.bfs.admin.ch/hub/api/dam/assets/36752522/master',
      'fichier': 'ofs-noms-2025.csv',
@@ -99,11 +63,7 @@ SOURCES = [
      'citation': "OFS, Noms de famille de la population résidante permanente par région "
                  "linguistique, état 2025 (publié le 21.08.2026) — opendata.swiss, "
                  "utilisation libre avec obligation d'indiquer la source"},
-    # ⚠ Le brief supposait que l'OFS « supprime les noms trop rares » sans connaître le seuil,
-    # et parlait de « plus d'un demi-million de noms distincts ». Les deux sont faux, mesuré
-    # sur le fichier : le seuil de suppression vaut 3 (aucune ligne en dessous, ni pour les
-    # noms ni pour les prénoms), et il reste 238 962 noms, pas 500 000. La « queue » que le
-    # brief craignait est donc déjà coupée à la source.
+    # L'OFS ne publie pas les noms et prénoms portés par moins de 3 personnes.
     {'cle': 'ofs-prenoms-f', 'cible': 'prenom',
      'url': 'https://dam-api.bfs.admin.ch/hub/api/dam/assets/36752506/master',
      'fichier': 'ofs-prenoms-f-2025.csv',
@@ -118,15 +78,9 @@ SOURCES = [
      'citation': "OFS, Prénoms masculins de la population selon l'année de naissance, "
                  "Suisse, état 2025 — opendata.swiss, utilisation libre avec obligation "
                  "d'indiquer la source"},
-    # ⚠ Le brief proposait aussi un jeu CC0 « 75 pays » (GitHub, popular-names-by-country) :
-    # vérifié le 22.09.2026, il pèse 95 Ko et ne porte qu'une centaine de noms par pays —
-    # entièrement contenu dans ce qui suit, sans intérêt ici. Écarté.
-    #
-    # La France, elle, apporte une VRAIE queue : 879 421 patronymes et 209 309 prénoms avec
-    # leur nombre d'occurrences. Extraction de la base SIRENE, donc biaisée vers les personnes
-    # inscrites au registre des entreprises, et l'éditeur prévient lui-même qu'« aucune
-    # vérification du contenu n'est faite » — d'où SEUIL_BRUIT_INSEE plus bas, sans lequel le
-    # fichier verse des chaînes comme « 838930E » ou « AAAAAA » dans le lexique.
+    # La source française apporte les noms rares : 879 421 patronymes et 209 309 prénoms,
+    # extraits de la base SIRENE (registre des entreprises), sans vérification par l'éditeur.
+    # SEUIL_BRUIT_INSEE écarte les matricules et saisies accidentelles (« 838930E », « AAAAAA »).
     {'cle': 'insee-noms', 'cible': 'nom',
      'url': 'https://static.data.gouv.fr/resources/liste-de-prenoms-et-patronymes/'
             '20181014-162921/patronymes.csv',
@@ -143,20 +97,13 @@ SOURCES = [
                  "SIRENE, 2018 — Licence Ouverte 2.0 (Etalab)"},
 ]
 
-# Seuil de bruit propre à la source INSEE (les sources de l'OFS n'en ont pas besoin : elles
-# sont déjà coupées à 3 par le producteur, et vérifiées). Mesuré le 22.09.2026 : à 1
-# occurrence le fichier verse des matricules et des saisies accidentelles ; à 50 il n'en
-# reste plus dans un échantillon de 200 jetons tirés au hasard. Retenu 50, et non un chiffre
-# rond plus haut, parce que la queue française utile (un patronyme porté par quelques dizaines
-# de personnes) est précisément ce qu'on vient chercher dans cette source.
+# Seuil de bruit de la source INSEE. À 50 occurrences, un échantillon de 200 jetons ne
+# contient plus de bruit ; plus haut, on perdrait les patronymes rares qu'on vient chercher.
 SEUIL_BRUIT_INSEE = 50
 
-# Particules — le lexique compare un JETON, et manuscrit_noms teste le dernier jeton
-# non-particule d'un nom (« da Silva » se teste sur « silva »). Recopiées ici plutôt
-# qu'importées de pipeline/docx-meta.py : ce script tourne sur un poste de développement, la
-# liste est courte et figée, et l'import par chemin d'un module à tiret pour treize mots
-# coûterait plus cher en lignes qu'il n'en économise. Toute divergence serait sans effet : au
-# pire un jeton de particule entre dans le lexique, où il n'est jamais interrogé.
+# Particules : manuscrit_noms teste le dernier jeton non-particule d'un nom (« da Silva » se
+# teste sur « silva »). Copie de la liste de pipeline/docx-meta.py ; une divergence ferait au
+# pire entrer une particule dans le lexique, où elle n'est jamais cherchée.
 PARTICULES = {
     'de', 'du', 'des', 'da', 'das', 'di', 'del', 'della', 'dos', 'do', 'van', 'von', 'der',
     'den', 'ten', 'ter', 'le', 'la', 'el', 'al', 'bin', 'ben', 'af', 'av', 'zu', 'vom', 'zum',
@@ -165,10 +112,8 @@ PARTICULES = {
 
 
 # ---------------------------------------------------------------------------------
-# Pliage — DOIT rester identique à manuscrit_noms._plier() (contrat, §3.2) : NFD, minuscules,
-# combinants retirés, ponctuation de BORD seule retirée (jamais le tiret interne de
-# « Anne-Françoise », qui porte le sens). Même duplication assumée que dans generer-noms.py,
-# et pour la même raison : six lignes écrites noir sur blanc dans le contrat.
+# Pliage, identique à manuscrit_noms._plier() : NFD, minuscules, diacritiques retirés,
+# ponctuation retirée aux bords seulement (le tiret de « Anne-Françoise » reste).
 PONCTUATION_BORD = string.punctuation + '«»‘’“”…‑–—'
 
 
@@ -179,21 +124,17 @@ def plier(jeton):
 
 
 def valide(jeton):
-    """Même règle que generer-noms.valide() (§5.2, règle 1) : au moins 2 lettres, aucun
-    chiffre, aucune arobase. `isalpha()` serait trop strict — il rejetterait
-    « anne-francoise » et « sermier-dessemontet ». Une lettre de plus est exigée ici que la
-    seule non-vacuité, parce que les deux sources contiennent des initiales isolées."""
+    """Au moins 2 lettres, aucun chiffre, aucune arobase (comme generer-noms.valide(), qui
+    n'exige qu'une lettre : les sources publiques contiennent des initiales isolées).
+    `isalpha()` rejetterait « anne-francoise »."""
     if not jeton or '@' in jeton or any(c.isdigit() for c in jeton):
         return False
     return sum(1 for c in jeton if c.isalpha()) >= 2
 
 
 def jeton_de_nom(brut):
-    """Le jeton qu'un nom de famille présentera à manuscrit_noms : son DERNIER mot
-    non-particule (_candidat_fin du contrat, §3.2). Mesuré le 22.09.2026 sur la source OFS :
-    297 528 noms d'un seul mot, 9 309 de deux, 527 de trois, 4 de quatre — la règle ne
-    concerne donc que 3 % des entrées, mais ce sont les « da Silva » et les « von Arx », des
-    noms très portés."""
+    """Le jeton sous lequel manuscrit_noms cherche un nom de famille : son dernier mot
+    non-particule (« da Silva » -> « silva »)."""
     mots = [plier(m) for m in (brut or '').split()]
     mots = [m for m in mots if m]
     if not mots:
@@ -205,10 +146,7 @@ def jeton_de_nom(brut):
 
 
 def jeton_de_prenom(brut):
-    """Le jeton qu'un prénom présentera : son PREMIER mot (_candidat_debut). Les deux sources
-    de prénoms ne portent que des prénoms d'un seul mot (mesuré : 1 019 069 lignes de l'OFS,
-    zéro espace), le `split()` est donc une garde, pas une règle active — mais la source
-    française n'a pas été vérifiée sur ce point ligne à ligne."""
+    """Le jeton sous lequel manuscrit_noms cherche un prénom : son premier mot."""
     mots = [plier(m) for m in (brut or '').split()]
     return mots[0] if mots else ''
 
@@ -217,8 +155,8 @@ def jeton_de_prenom(brut):
 # Téléchargement et lecture.
 
 def telecharger(cache, emettre):
-    """Remplit le cache. Les fichiers déjà présents ne sont pas retéléchargés (38 Mo en tout,
-    et les sources ne bougent qu'une fois l'an) — effacer le fichier force la reprise."""
+    """Remplit le cache. Un fichier déjà présent n'est pas retéléchargé : l'effacer pour
+    le reprendre."""
     os.makedirs(cache, exist_ok=True)
     for src in SOURCES:
         chemin = os.path.join(cache, src['fichier'])
@@ -235,12 +173,10 @@ def telecharger(cache, emettre):
 
 
 def lire_source(src, cache, emettre):
-    """Counter {jeton plié -> poids agrégé}. Les deux sources de l'OFS ventilent une même
-    personne sur plusieurs lignes (par région linguistique pour les noms, par année de
-    naissance pour les prénoms) : l'agrégation par jeton est donc indispensable, et elle
-    absorbe au passage les variantes que le pliage réunit (« Müller » et « Muller » deviennent
-    le même jeton, leurs poids s'ajoutent). Source absente -> Counter vide et un message ;
-    jamais une exception (le script doit pouvoir tourner avec une source de moins et le dire)."""
+    """(Counter {jeton plié -> poids}, nombre de lignes). Les sources de l'OFS répartissent
+    une même population sur plusieurs lignes (par région, par année de naissance) : les poids
+    s'additionnent par jeton, ce qui réunit aussi « Müller » et « Muller ». Source absente :
+    Counter vide et un message, sans exception."""
     chemin = os.path.join(cache, src['fichier'])
     if not os.path.isfile(chemin):
         emettre('source absente : %s (lancer --telecharger)' % src['fichier'])
@@ -249,8 +185,8 @@ def lire_source(src, cache, emettre):
     lignes = 0
     seuil = SEUIL_BRUIT_INSEE if src['cle'].startswith('insee') else 0
     extraire = jeton_de_nom if src['cible'] == 'nom' else jeton_de_prenom
-    # encoding='utf-8-sig' : les quatre fichiers de l'OFS portent une BOM, la lire comme du
-    # simple utf-8 collerait la BOM au nom de la première colonne et casserait le DictReader.
+    # utf-8-sig : les fichiers de l'OFS ont un BOM, qui sinon se collerait au nom de la
+    # première colonne.
     with open(chemin, encoding='utf-8-sig', newline='') as f:
         for ligne in csv.DictReader(f):
             lignes += 1
@@ -270,24 +206,19 @@ def lire_source(src, cache, emettre):
 
 
 # ---------------------------------------------------------------------------------
-# Le filtre de discrimination (§5.3 du brief) — le cœur du lot.
+# Le filtre de discrimination.
 
 def discriminer(poids_noms, poids_prenoms, rapport):
     """(noms_retenus, prenoms_retenus, ecartes) — trois Counter, chaque jeton dans au plus un
     des deux premiers.
 
-    Règle : un jeton entre dans les NOMS si son poids de nom vaut au moins `rapport` fois son
-    poids de prénom ; dans les PRÉNOMS si l'inverse ; nulle part si aucune des deux conditions
-    n'est remplie (la « zone neutre », vide quand rapport vaut 1). Un jeton inconnu de l'autre
-    côté (poids 0) satisfait toujours sa condition : la très grande majorité des jetons ne sont
-    donc pas concernés par ce filtre.
+    Un jeton entre dans les noms si son poids de nom vaut au moins `rapport` fois son poids
+    de prénom, dans les prénoms dans le cas inverse, nulle part sinon (zone neutre, vide quand
+    rapport vaut 1). Un jeton absent de l'autre côté (poids 0) entre toujours.
 
-    Pourquoi ATTRIBUER plutôt qu'ÉCARTER des deux côtés (ce que le §5.3 du brief demandait
-    littéralement) : écarter « peter » des deux index le rend muet sur « Peter Müller »,
-    l'attribuer aux prénoms le fait trancher juste, et ne peut pas mentir sur « Müller Peter »
-    (qui tranche juste aussi, en ordre inverse). L'écart au brief est assumé, et il est
-    mesurable : `--rapport` très grand se rapproche du comportement qu'il décrivait. C'est le
-    banc qui arbitre, pas ce commentaire."""
+    Ranger « peter » parmi les prénoms tranche juste sur « Peter Müller » comme sur
+    « Müller Peter » ; l'écarter des deux côtés rendrait le signal muet. Un `--rapport` très
+    grand se rapproche de l'écart pur."""
     noms, prenoms, ecartes = Counter(), Counter(), Counter()
     for jeton, pn in poids_noms.items():
         pp = poids_prenoms.get(jeton, 0)
@@ -305,9 +236,8 @@ def discriminer(poids_noms, poids_prenoms, rapport):
 
 
 def tete(compte, palier):
-    """Les `palier` jetons les plus lourds, rendus TRIÉS ALPHABÉTIQUEMENT (c'est la forme du
-    fichier : un diff git lisible, et manuscrit_noms ne lit jamais l'ordre). Le classement par
-    poids ne sert qu'à décider QUI entre, jamais dans quel ordre."""
+    """(les `palier` jetons les plus lourds triés alphabétiquement, poids du dernier retenu).
+    L'ordre alphabétique rend le diff lisible ; manuscrit_noms ne lit pas l'ordre."""
     ordonne = sorted(compte.items(), key=lambda kv: (-kv[1], kv[0]))
     if palier and palier > 0:
         ordonne = ordonne[:palier]
@@ -319,9 +249,8 @@ def tete(compte, palier):
 # Écriture.
 
 def ecrire(chemin, jetons, titre, citations, seuil, rapport, emettre):
-    """Un jeton par ligne, `#` en commentaire — la forme que _charger_fichier_lexique() lit.
-    L'en-tête porte les citations de source : c'est une CONDITION des deux licences, et le
-    fichier voyage seul (le dépôt a vocation à devenir public)."""
+    """Un jeton par ligne, `#` en commentaire, la forme que lit _charger_fichier_lexique().
+    L'en-tête porte les citations de source exigées par les licences."""
     os.makedirs(os.path.dirname(chemin) or '.', exist_ok=True)
     with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
         f.write('# %s — jetons pliés, un par ligne, triés.\n' % os.path.basename(chemin))
@@ -357,21 +286,12 @@ def _usage():
 def main(argv):
     cache = CACHE_DEFAUT
     sortie = SORTIE_DEFAUT
-    # 0 = aucune troncature, et c'est le DÉFAUT — c'est aussi ce qui est committé. Mesuré au
-    # banc le 22.09.2026, à rapport 2, sur les 1152 fiches réelles : chaque palier intermédiaire
-    # est strictement moins bon que le suivant, sur les DEUX colonnes qui comptent.
-    #   30 000 / 8 000    -> 1086 justes (94,3 %), 10 inversions, 25 muets, 105 Ko en dépôt
-    #   30 000 / tous     -> 1095 (95,1 %),         9,            16,       227 Ko
-    #   100 000 / 30 000  -> 1101 (95,6 %),         9,            13,       359 Ko
-    #   tout (228k/55k)   -> 1110 (96,4 %),         7,             7,       816 Ko
-    # Le palier complet corrige TROIS inversions réelles (« Ayala Borghini », « Kolja Ernst »,
-    # « Simoni Symeonidou » — des prénoms et des noms rares en Suisse, absents des têtes de
-    # classement) et n'en introduit AUCUNE. C'est le critère d'acceptation du §6 du brief,
-    # appliqué : le plus grand palier qui ne fait pas monter « à l'envers » et fait baisser
-    # « muet ». Le coût est en poids de dépôt, jamais en temps : le chargement de la base passe
-    # de 19 à 133 ms, sur un nettoyage qui en prend 2300.
-    # Tronquer reste possible (--palier-noms 30000 --palier-prenoms 8000) ; ce n'est pas le
-    # défaut, pour qu'une régénération ne rétrécisse jamais le lexique sans qu'on l'ait demandé.
+    # Palier 0 = pas de troncature, ce qui est versionné. Au banc (banc-noms.py, rapport 2),
+    # chaque palier plus grand donne plus de noms justes et moins d'inversions :
+    #   30 000 / 8 000    -> 94,3 % justes, 10 inversions, 25 muets, 105 Ko
+    #   tout (228k/55k)   -> 96,4 % justes,  7 inversions,  7 muets, 816 Ko
+    # Le coût est en taille de fichier ; le chargement passe de 19 à 133 ms, sur un
+    # nettoyage de 2,3 s.
     palier_noms = 0
     palier_prenoms = 0
     rapport = 1.0
@@ -427,9 +347,7 @@ def main(argv):
             citations_prenoms.append(src['citation'])
 
     if not poids_noms or not poids_prenoms:
-        # Même piège que celui documenté au §7 du brief pour generer-noms.py — ici on
-        # REFUSE d'écrire plutôt que d'écrire un fichier vide. Un lexique vide ne se
-        # distingue pas d'un lexique absent pour manuscrit_noms, mais il écrase le précédent.
+        # Rien n'est écrit : un lexique vide écraserait le précédent.
         emettre('ERREUR : une des deux familles de sources est vide (%d source(s) manquante(s)). '
                 'Rien n\'est écrit — lancer --telecharger.' % manquantes)
         return 1
@@ -440,10 +358,8 @@ def main(argv):
             '%d retenus côté nom, %d côté prénom, %d en zone neutre (écartés des deux).'
             % (rapport, len(poids_noms), len(poids_prenoms), len(noms), len(prenoms),
                len(ecartes)))
-    # Les jetons DÉPLACÉS — présents comme nom de famille dans la source, mais versés aux
-    # prénoms parce que leur poids de prénom domine. Ce sont eux qui, versés naïvement aux
-    # noms, fabriqueraient les inversions du §3 du brief : les afficher est la mesure du
-    # filtre, pas un ornement.
+    # Jetons présents comme nom de famille mais rangés parmi les prénoms : ceux qui, parmi les
+    # noms, produiraient des inversions.
     deplaces = sorted(((poids_noms[j], j) for j in poids_noms if j in prenoms), reverse=True)
     emettre('  dont %d jeton(s) présents comme NOM dans la source mais versés aux PRÉNOMS '
             '(leur poids de prénom domine) ;' % len(deplaces))

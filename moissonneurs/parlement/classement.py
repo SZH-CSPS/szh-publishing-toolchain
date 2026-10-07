@@ -68,7 +68,7 @@ def classer(lex, a, texte, candidat=True, ecole_generale=False, themes_elargis=F
     def fin(verdict, score, raison, domaine='', details=None):
         return Resultat(verdict, round(score, 2), domaine, type_['jeton'] or '', raison, details or {})
 
-    # 0. Arriéré historique : objets anciens que la source date de la période suivie (revue adverse, constat 5)
+    # 0. Arriéré historique : objets anciens que la source date de la période suivie
     arriere = _arriere(a)
     if arriere:
         return fin('ecarte', 0, 'arriéré historique : ' + arriere)
@@ -90,7 +90,7 @@ def classer(lex, a, texte, candidat=True, ecole_generale=False, themes_elargis=F
     # Les termes « titre seul » (sigles ambigus IV, AI, droits politiques, inklusiv…) ne comptent jamais dans le texte
     x_forts, x_faibles = (_forts_faibles([t for t in lex.ancrages(texte) if not t.terme.titre_seul])
                           if texte else ([], []))
-    if extrait:      # dans l'extrait de recherche, la famille AI/handicap n'est qu'une mention (scénario R)
+    if extrait:      # dans l'extrait de recherche, la famille AI/handicap n'est qu'une mention (exclusions.toml, 1c)
         x_forts = [t for t in x_forts if lexique_normaliser(t.terme.texte) not in lex.hors_extrait]
     abaisse = lex.abaissements(titre + ' ' + texte[:20000])
     dom_titre = lex.compter_domaines(titre)
@@ -123,7 +123,7 @@ def classer(lex, a, texte, candidat=True, ecole_generale=False, themes_elargis=F
             return 'a-relire', raison + ' ; affaire du gouvernement de type non listé, à relire'
         return verdict, raison
 
-    # Types restreints (rapport des catégories) : seul un ancrage fort au titre garde l'objet ; messages gouvernementaux
+    # Types restreints : seul un ancrage fort au titre garde l'objet ; messages gouvernementaux
     # sans type harmonisé (TI Messaggio, JU Message, SH Vorlage Parlament : régie « garder ») compris.
     restreint = type_.get('restreint') or (harm is None and regie == 'garder' and type_.get('origine') != 'prefixe-vd')
     if restreint and not t_forts:

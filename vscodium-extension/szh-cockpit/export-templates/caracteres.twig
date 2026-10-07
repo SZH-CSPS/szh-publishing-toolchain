@@ -1,8 +1,7 @@
-{# caracteres.twig : le CSV du compte de caractères, entièrement d'après l'OAI et la galley
-   HTML téléchargée — écrit par lib/secretariat.js (commande « caracteres »). Colonnes
-   inspirées de excel_fields dans tmp/export et secretariat/OJS_Export_Article_count.py.
-   CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF posés par lib/secretariat.js
-   (versCsvFinal) — ce gabarit n'écrit que le texte, en ";" et en "\n". Toutes les valeurs
+{# caracteres.twig : le CSV du compte de caractères, tiré de l'OAI et de la galley HTML
+   téléchargée. Écrit par lib/secretariat.js (commande « caracteres »).
+   CSV suisse : séparateur ";". Le BOM UTF-8 et les fins de ligne CRLF sont posés par
+   lib/secretariat.js (versCsvFinal) ; ce gabarit écrit ";" et "\n". Toutes les valeurs
    passent par |csv.
 
    Variables disponibles ici :
