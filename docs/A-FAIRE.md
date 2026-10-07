@@ -20,6 +20,8 @@ est faite. Les questions à trancher sont marquées « À décider ».
   `test/documentation-kirby.test.py`, `test/liens-courts.test.py` et
   `test/livre-migrer-meta.test.py`. `test/filtres-note-credits.test.js` tourne en CI mais pas
   dans la commande de la suite exigeante.
+- `test/documentation-kirby.test.js` échoue sur « rendu : livre — pastille traduite, image
+  décorative… » (`szh-decor` absent), déjà avant la refonte de la doc.
 - La CI lance les tests avec un délai de 120 000 ms, la suite exigeante avec 300 000 ms.
 
 ## Mise en production
