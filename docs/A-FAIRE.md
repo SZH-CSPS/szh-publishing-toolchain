@@ -16,6 +16,12 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Avant de passer pandoc au-delà de 3.9 : revoir les quatre tests de
   `test/filtres-pandoc.test.js` qui dépendent de la forme du HTML des rubriques.
 
+- Ni la suite exigeante ni la CI ne lancent `test/documentation-kirby.test.js`,
+  `test/documentation-kirby.test.py`, `test/liens-courts.test.py` et
+  `test/livre-migrer-meta.test.py`. `test/filtres-note-credits.test.js` tourne en CI mais pas
+  dans la commande de la suite exigeante.
+- La CI lance les tests avec un délai de 120 000 ms, la suite exigeante avec 300 000 ms.
+
 ## Mise en production
 
 - Faire un aller-retour de version sur un poste de test : installer une version antérieure,
