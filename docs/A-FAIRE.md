@@ -32,6 +32,14 @@ est faite. Les questions à trancher sont marquées « À décider ».
   absente vaut `test`, et `bootstrap.ps1` installe un poste neuf en mode test.
 - `bootstrap.ps1` affiche encore, en fin d'installation, « onglet Revue (ou Zeitschrift) >
   Nouvelle revue... » : le chemin est aujourd'hui Accueil → onglet Nouveau.
+- La clé `revuesRoots` ne sert plus qu'à compter des numéros : la vider ou la retirer.
+- `_Systeme\journaux` et `_Systeme\suggestions` n'ont aucun écrivain.
+- Vérifier le cockpit (Node) et la WSL (Python) derrière un proxy authentifié : seul
+  PowerShell est réglé pour cela.
+- La clé OJS est stockée mais aucun code ne s'en sert. La gravité `echec-partiel` des
+  rapports d'erreur n'est jamais employée.
+- Confirmer avec le prestataire les domaines GitHub à autoriser pour les téléchargements
+  (`objects.githubusercontent.com`, peut-être `release-assets.githubusercontent.com`).
 - Archiver une fois en production. Confirmer l'arborescence de production et l'ancrage
   SharePoint sur un poste de la rédaction.
 - Vérifier qu'aucun poste n'a encore l'ancienne forme `_NewsUndActu\Revue\` et

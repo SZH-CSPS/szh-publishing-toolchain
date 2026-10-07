@@ -1,331 +1,209 @@
-# Où vivent les revues
+# Où vivent les publications
 
-Un seul réglage décide de l'endroit où le lanceur cherche, crée et archive les numéros :
-la clé **`emplacementRevues`** de `C:\ProgramData\SZH\config.json`, qui vaut `test` ou
-`production`. Elle déplace la **racine** de tout le travail. Elle ne déplace **aucun
-fichier** : les dossiers restent où ils sont, c'est le regard de l'outil qui change.
+Les numéros de la Revue et de la Zeitschrift, les livres et la bibliothèque de la
+Documentation vivent dans des dossiers synchronisés par OneDrive. Pronto connaît deux
+racines : une racine de **test** et une racine de **production**. Un réglage du poste choisit
+la racine active ; le code ne contient aucun autre chemin de travail.
 
----
+Cette page décrit les deux racines, leur arborescence, le dossier `_Systeme\` commun à tous
+les postes, ce qui reste sur le poste, et comment passer de test à production. Les mots
+« numéro », « toolkit » et « Accueil » sont définis dans le
+[vocabulaire](ARCHITECTURE.md#vocabulaire).
 
-## 1. Les deux racines
+## Les deux racines
 
 | Emplacement | Racine |
 |---|---|
 | `test` | `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING` |
-| `production` | `<ancrage SharePoint>\2_Produkte\54_Pronto` |
+| `production` | `<ancrage>\2_Produkte\54_Pronto` |
 
-L'ancrage SharePoint est le dossier `Daten_Allgemein - General`, **cherché** sur le poste et
-non déduit d'un chemin écrit à la main (§4 et `docs/RAPPORTS-ERREUR.md`, §1). Sur un poste
-ordinaire il vaut `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General`.
+L'**ancrage** est le dossier `Daten_Allgemein - General` de la bibliothèque SharePoint
+synchronisée. Pronto le cherche sur le poste ; il ne le déduit pas d'une variable
+d'environnement. Sur un poste ordinaire, il vaut
+`%USERPROFILE%\SZH CSPS\Daten_Allgemein - General`. La recherche est décrite plus bas, dans
+[L'ancrage SharePoint](#lancrage-sharepoint).
 
-> **`54_Pronto` est le dossier de production de l'outil**, qui s'appelle Pronto.
-> Le segment ne vit qu'à **deux** endroits dans tout le dépôt, et nulle part ailleurs :
->
-> | Langage | Constante | Fichier |
-> |---|---|---|
-> | PowerShell | `$script:SzhSegmentApplication` | `windows\szh-ancrage.ps1` |
-> | JavaScript | `SEGMENT_APPLICATION` | `szh-cockpit\lib\rapport-erreur.js` |
->
-> Si le dossier devait un jour changer de nom : corriger ces deux chaînes, renommer le
-> dossier sur SharePoint, publier. Tout le reste — racine de production, dossier des
-> rapports, titre du lanceur — suit tout seul. Les tests
-> `test/js/ancrage-sharepoint.test.js` et `test/js/rapport-erreur.test.js` refusent que le
-> littéral soit recopié ailleurs.
+`54_Pronto` est le dossier de l'application. Les autres dossiers de `2_Produkte`
+(`52_Revue`, `53_Zeitschrift`, `54_Buch`, `51_Dokumentation`…) appartiennent à d'autres
+équipes : Pronto ne les lit pas et n'y écrit pas.
 
-Les racines ne sont **plus** surchargeables par une clé de `config.json` : cette clé primait
-sur tout, y compris sur l'ancrage trouvé, et un poste dont la bibliothèque avait déménagé
-restait muet (voir §4, `Get-SzhBaseRevuesPour`). Pour un essai, et pour un essai seulement,
-deux variables d'environnement les remplacent telles quelles — `SZH_RACINE_TEST` et
-`SZH_RACINE_PROD`, sur le modèle de `SZH_ANCRAGE` et `SZH_RAPPORTS`.
+La clé `emplacementRevues` de `C:\ProgramData\SZH\config.json` choisit la racine active
+([Choisir la racine active](#choisir-la-racine-active)). Changer cette clé ne déplace aucun
+fichier : seul l'endroit où Pronto regarde change.
 
-### La même arborescence sous les deux racines — sauf `_Systeme\`
+## L'arborescence
 
-C'est une exigence : **une seule table de sous-dossiers**, seule la racine change. Un essai
-dans le dossier de test exerce donc exactement les chemins de la production — à UNE
-exception près, `_Systeme\`, qui ne suit jamais la racine active (§1bis ci-dessous).
+Les deux racines ont la même arborescence. Un essai dans la racine de test passe donc par les
+mêmes chemins que la production.
 
 ```
-<racine active>\             (test OU production, selon emplacementRevues)
-├── Revue\                   les numéros en cours, directement
-├── Zeitschrift\             idem
-├── Books\                   idem
-├── _Archive\                Revue\  Zeitschrift\  Books\
-├── _NewsUndActu\            Fiches\  _Statuts\fr\  _Statuts\de\
-└── Exports\                 Newsletter\  Edudoc\  Caractères par article\  Contrôle des métadonnées\  Préprocessing\
+<racine active>\                 test ou production, selon emplacementRevues
+├── Revue\                       numéros en cours de la Revue
+├── Zeitschrift\                 numéros en cours de la Zeitschrift
+├── Books\                       livres en cours
+├── _Archive\
+│   ├── Revue\
+│   ├── Zeitschrift\
+│   └── Books\
+├── _NewsUndActu\                bibliothèque de la Documentation
+│   ├── Fiches\
+│   ├── _Statuts\fr\
+│   ├── _Statuts\de\
+│   └── _Moissons\               propositions des moissonneurs
+└── Exports\
+    ├── Newsletter\
+    ├── Edudoc\
+    ├── Caractères par article\
+    ├── Contrôle des métadonnées\
+    └── Préprocessing\
 
-<racine de PRODUCTION>\      (toujours celle-ci, même quand la racine active est « test »)
-└── _Systeme\                 rapports\  journaux\  suggestions\  inventaire\  compteurs\  exports\
+<racine de production>\          toujours celle-ci, même en mode test
+└── _Systeme\
+    ├── rapports\
+    ├── inventaire\
+    ├── compteurs\
+    └── exports\
 ```
 
-| | Revue (fr) | Zeitschrift (de) | Books |
-|---|---|---|---|
-| en cours | `Revue` | `Zeitschrift` | `Books` |
-| archives | `_Archive\Revue` | `_Archive\Zeitschrift` | `_Archive\Books` |
+Règles de l'arborescence :
 
-Un dossier n'est un numéro que s'il porte un `ausgabe.yaml` (un livre : un `buch.yaml`).
-Tout le reste est ignoré par le lanceur, listé ou non.
+- Un dossier est un numéro s'il contient un `ausgabe.yaml`, un livre s'il contient un
+  `buch.yaml`. Les autres dossiers sont ignorés.
+- Un numéro en cours est à un niveau sous la racine, un numéro archivé à deux. Le code
+  retrouve la racine en reconnaissant les noms de dossier (le dossier produit, puis
+  `_Archive`), jamais en comptant des niveaux.
+- L'archivage déplace un numéro de `Revue\` vers `_Archive\Revue\` dans la même racine
+  (`windows/archive-revue.ps1`, lancé depuis le panneau d'export du cockpit).
+- Les noms de dossier commencent par une majuscule : on les lit dans l'Explorateur.
 
-**Les deux états n'ont pas la même profondeur, et c'est voulu.** Un numéro en cours est à
-un cran sous la racine, un numéro archivé à deux. Ce qu'on ouvre tous les jours est donc au
-plus court, et ce qui dort est rangé dans un seul dossier qu'on replie une fois pour cacher
-dix ans des trois produits.
+En emplacement `test`, Pronto crée au démarrage les dossiers manquants de l'arbre, sauf
+`_Systeme\` (`Initialize-SzhEmplacementsTest`). En production, il ne crée rien : l'arbre est
+celui de SharePoint.
 
-Conséquence pour qui écrit du code : **on ne remonte jamais vers la racine en comptant des
-crans**, mais en reconnaissant des **noms** — le dossier produit, puis éventuellement
-`_Archive` au-dessus.
+### Qui écrit dans les dossiers hors produit
 
-Tous les sous-dossiers de l'arbre portent une **capitale** : ils sont faits pour être lus
-par une personne, dans l'Explorateur et dans OneDrive. Ceux de `_Archive\` prennent celle
-de leur dossier produit (`_Archive\Revue`) ; ceux de la bibliothèque aussi
-(`_NewsUndActu\Fiches`, `_NewsUndActu\_Statuts\fr`, `_NewsUndActu\_Statuts\de`).
-
-**`_NewsUndActu\` a changé de forme le 23.09.2026.** Jusque-là (magasin posé le 15.09.2026,
-jamais réellement déployé), le code envisageait deux sous-dossiers par jeton de produit
-(`_NewsUndActu\Revue\`, `_NewsUndActu\Zeitschrift\`) — un magasin qui triait par revue
-d'origine. La bibliothèque qui l'a remplacé trie par **langue**, pas par revue : `Fiches\`
-porte les fiches elles-mêmes, `_Statuts\fr\` et `_Statuts\de\` leur état par langue (détail
-du format : `docs/FORMAT-DOCUMENTATION-KIRBY.md`). Côté PowerShell, ce dépôt ne fait que
-garantir que les trois dossiers existent (`windows\szh-produits.ps1`,
-`$SzhDossiersBibliotheque` ; `windows\szh-migration.ps1` les crée aussi s'ils manquent
-encore). Le contenu de `Fiches\` et de `_Statuts\` est géré par le cockpit, hors du
-périmètre PowerShell de ce document.
-
-Les dossiers hors produit :
-
-| Dossier | Ce qu'il porte | Qui l'écrit |
+| Dossier | Contenu | Écrit par |
 |---|---|---|
-| `_NewsUndActu\Fiches\` | les fiches de la bibliothèque, **partagées par les deux rédactions** | le cockpit (`vscodium-extension\szh-cockpit`) |
-| `_NewsUndActu\_Statuts\fr\`, `_NewsUndActu\_Statuts\de\` | l'état des fiches, par langue | le cockpit |
-| `Exports\<export>\` | les sorties du secrétariat : newsletter et contrôle des métadonnées par numéro, Edudoc et caractères à plat | l'Accueil du cockpit (`lib/accueil-secretariat-hote.js`) |
-| `Exports\Préprocessing\<manuscrit>\` | un dossier par nettoyage, puis `(2)`, `(3)`… : la copie du manuscrit, le document nettoyé et son rapport | l'onglet Préprocessing de l'Accueil (`lib/accueil-preproc-hote.js`) |
+| `_NewsUndActu\Fiches\` | les fiches de la Documentation, communes aux deux rédactions ([`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md)) | le cockpit |
+| `_NewsUndActu\_Statuts\fr\`, `_Statuts\de\` | l'état des fiches, par langue | le cockpit |
+| `_NewsUndActu\_Moissons\` | un dossier par moissonneur, ses lots de propositions et les décisions de la rédaction ([`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md), [`FORMAT-MOISSONS.md`](FORMAT-MOISSONS.md)) | les moissonneurs et le cockpit |
+| `Exports\<export>\` | les sorties du secrétariat : newsletter, Edudoc, caractères par article, contrôle des métadonnées | l'Accueil (`lib/accueil-secretariat-hote.js`) |
+| `Exports\Préprocessing\` | un dossier par nettoyage de manuscrit : la copie du Word, le document nettoyé et son rapport | l'onglet Préprocessing de l'Accueil (`lib/accueil-preproc-hote.js`) |
 
-`_Systeme\` (rapports, journaux, suggestions, inventaire, compteurs, exports) N'EST PAS un dossier hors produit
-de la racine active : il vit **toujours** sur SharePoint, voir §1bis ci-dessous.
+Côté PowerShell, la table `$SzhDossiersCommuns` (`windows/szh-produits.ps1`) ne garantit que
+l'existence de `Fiches\`, `_Statuts\fr\`, `_Statuts\de\` et `Exports\`.
 
-En emplacement `test`, le lanceur crée les dossiers manquants de tout cet arbre au
-démarrage (`Initialize-SzhEmplacementsTest`) — `_Systeme\` excepté, qui n'en fait pas
-partie. En production, jamais : l'arborescence de la racine active est celle de SharePoint.
-La migration automatique (`windows\szh-migration.ps1`, §8) les crée aussi, dans le dossier
-de test seulement, si un poste n'a jamais ouvert le lanceur en mode test.
+## Le dossier `_Systeme\`
 
-### 1bis. `_Systeme\` : toujours sur SharePoint, jamais sur la racine active
+`_Systeme\` reçoit ce que tous les postes doivent voir au même endroit : rapports d'erreur,
+inventaire des postes, compteurs d'usage, historique des exports. Il est toujours sous la
+racine de **production**, dérivé de l'ancrage, même quand le poste travaille en test.
+Ainsi, deux postes sur des emplacements différents écrivent dans le même dossier.
 
-Rapports d'erreur, journaux, suggestions et inventaire des postes ne suivent **jamais**
-`emplacementRevues` : ils vivent sous la racine de PRODUCTION, dérivée de l'ancrage
-SharePoint (`Resolve-SzhAncrage`), même quand le poste travaille dans le dossier de test.
-Deux rédacteur·rice·s sur des emplacements différents doivent voir le **même** inventaire et
-les **mêmes** rapports — les faire suivre la racine active aurait éparpillé ces quatre
-dossiers entre `Revues-TESTING` et SharePoint selon qui les a écrits en dernier.
-
-| Dossier | Ce qu'il porte | Qui l'écrit |
+| Dossier | Contenu | Écrit par |
 |---|---|---|
-| `_Systeme\rapports\` | les rapports d'erreur automatiques (`docs/RAPPORTS-ERREUR.md`) | `lib\rapport-erreur.js`, `windows\szh-rapport.ps1` |
-| `_Systeme\inventaire\` | le **check-in mensuel des postes** : un CSV par machine (`<POSTE>.csv`), une ligne par mois **et par compte Windows**, créée si elle manque et rafraîchie sinon. Le nom du fichier ne porte que le nom de la machine — l'identité de la personne (compte, adresse de connexion) vit **dans** le fichier, jamais dans son nom, qui s'affiche à tout le monde dans un dossier synchronisé. UTF-8 avec BOM, séparateur point-virgule : il s'ouvre d'un double-clic. | `windows\szh-checkin.ps1`, appelé une fois par `Invoke-SzhTachesDemarrage` au démarrage |
-| `_Systeme\compteurs\` | les **compteurs d'usage** du nettoyeur de manuscrit et de l'import Word : un petit CSV par événement (`<AAAAMMJJ>-<POSTE>-<source>-<6hex>.csv`), fait de noms de mesures et d'entiers, **sans aucun texte de manuscrit**. Conservés 24 mois, lus par `outils\compteurs-synthese.js`. Voir « Les compteurs ne sont pas des rapports » dans `docs/RAPPORTS-ERREUR.md`. Surcharge de test : `SZH_COMPTEURS` (le dossier lui-même). | `lib\compteurs.js` (import, cockpit) ; le lanceur et la CLI du nettoyeur (nettoyeur) |
-| `_Systeme\exports\` | l'**historique des exports** Edudoc et « Caractères par article » : `historique.json`, par export et par revue, chaque numéro avec la date de son dernier export. Partagé entre les postes, pour que chacun précoche les mêmes numéros ; le mode test écrit dans `historique-test.json`, à côté, pour qu'un essai ne pollue pas la production. Lecture tolérante (absent, illisible ou injoignable : historique vide, l'export n'est jamais bloqué) ; écriture atomique (temporaire `~$`) après relecture et fusion du fichier ; un échec ne laisse qu'une ligne au journal. Surcharge de test : `SZH_HISTORIQUE_EXPORTS` (le dossier lui-même). | `lib\accueil-secretariat-hote.js` |
-| `_Systeme\journaux\`, `_Systeme\suggestions\` | réservés | personne, pour l'instant |
+| `_Systeme\rapports\` | les rapports d'erreur automatiques, un JSON par incident ([`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md)) | `lib/rapport-erreur.js`, `windows/szh-rapport.ps1` |
+| `_Systeme\inventaire\` | l'inventaire des postes : un CSV par machine (`<POSTE>.csv`), une ligne par mois et par compte Windows | `windows/szh-checkin.ps1` |
+| `_Systeme\compteurs\` | les compteurs d'usage du nettoyeur et de l'import, un petit CSV par événement, sans texte de manuscrit ([format](RAPPORTS-ERREUR.md#les-compteurs-dusage)) | `lib/compteurs.js` |
+| `_Systeme\exports\` | `historique.json` : pour Edudoc et « Caractères par article », la date du dernier export de chaque numéro, pour que tous les postes précochent les mêmes numéros. En mode test : `historique-test.json` | `lib/accueil-secretariat-hote.js` |
 
-Résolu par `Get-SzhDossierSysteme` (`windows\szh-produits.ps1`), qui appelle
-`Resolve-SzhAncrage` lui-même plutôt que `Get-SzhBaseRevuesPour` — c'est précisément ce
-détour qui empêche ces quatre dossiers de suivre `emplacementRevues`. Rend `''` si
-l'ancrage SharePoint n'est pas résolu : comme pour un rapport d'erreur, pas de repli
-silencieux vers OneDrive — l'appelant journalise et passe son tour (§1 « rapports d'erreur
-déplacés » ci-dessus, `docs/RAPPORTS-ERREUR.md`). Le dossier est créé s'il manque : il est à
-nous, contrairement aux dossiers de produits que SharePoint fournit.
+Le chemin vient de `Get-SzhDossierSysteme` (`windows/szh-produits.ps1`) côté PowerShell et
+de `dossierSystemeDepuisAncrage` (`lib/rapport-erreur.js`) côté cockpit. Les deux partent de
+l'ancrage, et non de la racine active. Si l'ancrage est introuvable, ils rendent un chemin
+vide : l'appelant écrit une ligne de journal et n'écrit rien ailleurs. Le dossier est créé
+s'il manque.
 
----
+L'inventaire contient l'adresse de connexion de la personne, dans une colonne. Le nom du
+fichier, lui, ne porte que le nom de la machine, parce qu'il est visible de tous dans le
+dossier partagé. Le CSV est en UTF-8 avec BOM et séparateur point-virgule : il s'ouvre d'un
+double-clic dans Excel. Il n'est écrit que si l'ancrage est trouvé.
 
-## 2. Ce que chaque racine contient, dossier par dossier
+L'historique des exports se lit avec tolérance : absent, illisible ou injoignable, il vaut
+un historique vide, et l'export continue. Il s'écrit par un fichier temporaire préfixé `~$`,
+après relecture et fusion.
 
-### `test` — `…\OneDrive - SZH CSPS\Revues-TESTING`
+## L'ancrage SharePoint
 
-| Dossier | Contenu réel (après migration) |
+`Resolve-SzhAncrage` (`windows/szh-ancrage.ps1`) cherche l'ancrage à quatre niveaux, sans
+jamais ouvrir de fenêtre :
+
+| Niveau | Origine | Source |
+|---|---|---|
+| 1 | `essai` | la variable d'environnement `SZH_ANCRAGE` |
+| 2 | `config` | `C:\ProgramData\SZH\config.json`, clé `ancrageSharePoint` (tout le poste) |
+| 3 | `cache` | `%LOCALAPPDATA%\SZH\etat-utilisateur.json`, clé `ancrageSharePoint` (ce compte) ; un chemin disparu est ignoré et effacé |
+| 4 | `auto` | recherche dans `%USERPROFILE%\SZH CSPS`, `%OneDriveCommercial%`, `%OneDrive%`, `%USERPROFILE%\OneDrive - SZH CSPS`, puis les autres dossiers candidats du profil |
+
+Au démarrage de Pronto, `Initialize-SzhAncrage` ajoute un cinquième niveau : si rien n'est
+trouvé, elle ouvre un sélecteur de dossier. Elle ne le fait qu'une fois par lancement, et
+pas plus d'une fois toutes les 24 heures. Un succès est mémorisé dans `etat-utilisateur.json`.
+
+Dans le sélecteur, on peut choisir :
+
+- l'ancrage lui-même, ou n'importe quel dossier en dessous (`2_Produkte`, un numéro…) :
+  Pronto remonte les parents ;
+- un dossier au-dessus de l'ancrage, jusqu'à trois niveaux plus haut (`SZH CSPS`, le dossier
+  du profil) : Pronto descend, mais pas plus loin, pour ne pas parcourir tout un disque.
+
+Le cockpit lit l'ancrage avec `resoudreAncrage()` (`lib/rapport-erreur.js`), sur les trois
+premiers niveaux seulement. Il compte sur le démarrage de Pronto, qui a déjà rempli le cache.
+
+## Ce qui reste sur le poste
+
+Ces fichiers ne dépendent pas de la racine active.
+
+| Quoi | Chemin |
 |---|---|
-| `Revue` | `2027-01`, `2027-02`, `test` — trois numéros (avec `ausgabe.yaml`) · `2027-05` — dossier **sans** `ausgabe.yaml`, invisible du lanceur |
-| `_Archive\Revue` | vide |
-| `Zeitschrift` | `2027-01` — un numéro |
-| `_Archive\Zeitschrift` | vide |
+| Configuration du poste, lue par PowerShell et le cockpit | `C:\ProgramData\SZH\config.json` |
+| État du poste (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
+| Toolkit déployé | `C:\ProgramData\SZH\toolkit\` (`VERSION`, `pipeline\`, `windows\`, `revue-template\`, `vscodium-user\`…) |
+| Téléchargements des mises à jour | `C:\ProgramData\SZH\staging\` |
+| Journal (une ligne par action, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` |
+| Journaux d'installation et de mise à jour | `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log`, `update-<horodatage>.log` |
+| Auteurs et autrices publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
+| Disque de la WSL, un par compte | `C:\ProgramData\SZH\WSL\<SID>\SZH-Publishing\ext4.vhdx` |
+| État de ce compte : ancrage en cache, langue, mise à jour silencieuse, anti-inondation des rapports, anciennes clés Shlink et OJS chiffrées | `%LOCALAPPDATA%\SZH\etat-utilisateur.json` |
+| Cadence de la mise à jour hebdomadaire, par compte | `%LOCALAPPDATA%\SZH\maj-auto.json` |
+| Rapports et compteurs en attente de réseau | `%LOCALAPPDATA%\SZH\rapports-en-attente\`, `%LOCALAPPDATA%\SZH\compteurs-en-attente\` |
+| Lien `szh://traduction/…` en attente d'ouverture | `%LOCALAPPDATA%\SZH\intention.json` |
+| Réglages de VSCodium et de Pronto (produit proposé, adresse Shlink, langue, thème…) | `%APPDATA%\VSCodium\User\settings.json` |
+| Clés d'API Shlink, OJS et Mistral | le coffre de VSCodium, chiffré pour ce compte ([`SECURITE.md`](SECURITE.md#les-secrets-sur-le-poste)) |
+| Extensions VSCodium | `%USERPROFILE%\.vscode-oss\extensions\` |
+| Raccourcis du menu Démarrer | `Pronto.lnk` et `Pronto (Updater).lnk`, noms tenus par `$SzhNomApplication` et `$SzhNomMiseAJour` (`windows/szh-shell.ps1`) |
 
-Un numéro ressemble à ceci : `ausgabe.yaml`, `articles/`, `articles-word/`, `out/`,
-`BIENVENUE.md`, `Ouvrir la revue.lnk`.
+Le désinstalleur retire `C:\ProgramData\SZH` sauf `WSL\` : les disques des distributions ne
+sont ni désinscrits ni supprimés ([`MAINTENANCE.md`](MAINTENANCE.md)).
 
-`Ouvrir la revue.lnk` (`Ouvrir le livre.lnk` pour un livre) **ne contient aucun chemin du
-poste** : il vise `%WINDIR%\System32\wscript.exe` et lui passe `//B`, les deux scripts du
-toolkit (`hidden.vbs` puis `open-revue.ps1`, sous `C:\ProgramData\SZH\toolkit\windows\`) et
-un lien `szh://ouvrir/<produit>/<id>`. C'est ce qui le rend valable sur les deux postes ET
-après un renommage ou un archivage : la cible est une racine machine, et le numéro est
-désigné par son `id:` (posé une fois, jamais recalculé), jamais par son nom de dossier ni
-son chemin. Il est posé par `Set-SzhRaccourciRevue` (`windows/szh-shell.ps1`), qui pose
-l'id manquant au passage s'il n'existe pas encore (`Set-SzhAusgabeIdSiAbsent`).
+## Ce qu'un numéro contient en plus
 
-### `production` — `…\Daten_Allgemein - General\2_Produkte\54_Pronto`
+### Le raccourci « Ouvrir la revue »
 
-Arbre neuf : c'est **le nôtre**, et non plus les dossiers produits d'autres équipes
-(`52_Revue`, `53_Zeitschrift`, `54_Buch`), où l'outil n'a jamais créé un seul numéro. Ces
-dossiers-là restent où ils sont, avec leurs Word, leurs Excel et leurs dossiers par année :
-l'outil n'y touche plus du tout et ne les regarde plus.
+Chaque numéro contient `Ouvrir la revue.lnk` (`Ouvrir le livre.lnk` pour un livre). Il ne
+contient aucun chemin propre au poste ou au compte :
 
-La bibliothèque `2_Produkte` porte aussi `50_Open_Access`, `51_Dokumentation`, `56_Website`,
-`57_Kongress`, `58_Forum`, `Bücher`, `Podcast`… : même chose, l'outil les ignore.
+```
+cible      %WINDIR%\System32\wscript.exe
+arguments  //B "<toolkit>\windows\hidden.vbs" "<toolkit>\windows\open-revue.ps1" "szh://ouvrir/<produit>/<id>"
+```
 
-**Conséquence, à lire deux fois :** basculer sur `production` avant d'avoir déplacé les
-numéros ouvre un lanceur dont les listes sont **vides**. Rien n'est perdu — les numéros
-restent dans `Revues-TESTING` — mais le lanceur ne les montre plus. Voir §8.
+Le numéro est désigné par son `id:` (dans `ausgabe.yaml` ou `buch.yaml`), posé une fois et
+jamais recalculé. Le raccourci fonctionne donc sur tous les postes, après un renommage ou un
+archivage. Il est posé par `Set-SzhRaccourciRevue` (`windows/szh-shell.ps1`), qui ajoute
+l'`id:` s'il manque.
 
-### Un troisième dossier, hérité
+### Le dossier `.szh-avant-reimport\`
 
-`C:\Users\robin\OneDrive - SZH CSPS\Revues` contient `2026-04` et `test`. Ni l'un ni
-l'autre ne porte d'`ausgabe.yaml` : ce ne sont pas des numéros. Ce chemin est encore listé
-dans la clé `revuesRoots` de `config.json` (posée par une ancienne version du script de
-création). Cette clé ne sert plus qu'à **compter** les numéros restés hors de
-l'arborescence officielle, pour les signaler sous les listes du lanceur. Elle n'ouvre rien
-et ne déplace rien ; ici, elle ne signale rien non plus.
+« Réimporter cet article » enregistre l'état d'avant dans
+`.szh-avant-reimport\<slug>\<horodatage>\`, à la racine du numéro : le dossier de l'article,
+le Word remplacé, la fiche que ce Word aurait produite, les portraits, un `journal.txt` et un
+`LISEZ-MOI.txt` bilingue. Ce dossier suit le numéro (synchronisation, archivage). Rien ne le
+vide : on le supprime à la main une fois le numéro publié.
 
----
+Le point initial le cache à l'explorateur du cockpit et aux recensements d'articles. Les
+dossiers `articles\.szh-reimport-<slug>\` et `articles\.szh-bascule-<slug>\` sont autre chose :
+des opérations en cours, reprises ou nettoyées à la compilation suivante.
 
-### Un dossier que le réimport ajoute à un numéro
-
-Depuis le 23.08.2026, un numéro peut porter à sa racine un dossier
-`.szh-avant-reimport/<slug>/<horodatage>/`. Il est écrit par « Réimporter cet article »,
-**avant** tout remplacement, et contient l'état d'avant : le dossier complet de l'article
-(déplacé, non copié), le Word consommé, la fiche que le Word aurait produite, les portraits
-du Word, un `journal.txt` et un `LISEZ-MOI.txt` bilingue.
-
-Il suit donc le numéro : synchronisé par OneDrive comme le reste, emporté à l'archivage.
-Rien ne le nettoie — c'est un filet de sécurité, pas un cache. Il se supprime à la main
-quand le numéro est publié.
-
-Le nom commence par un point : l'explorateur de l'éditeur et les recensements d'articles de
-la chaîne l'ignorent. Ne pas le confondre avec `articles/.szh-reimport-<slug>/` ni
-`articles/.szh-bascule-<slug>/`, qui sont des chantiers en cours — ceux-là sont repris ou
-nettoyés automatiquement à la compilation suivante.
-
-## 3. Tout le reste : ce qui ne bouge jamais
-
-Rien de cette liste ne dépend de `emplacementRevues`.
-
-| Quoi | Chemin sur ce poste |
-|---|---|
-| Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
-| État du **poste** (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
-| État de **ce compte** (environnement WSL, extensions posées, langue et mise à jour silencieuse — clés `langueInterface` et `majSilencieuse`, écrites par les Réglages de l'Accueil (et autrefois par le lanceur WinForms) parce que les scripts PowerShell et la tâche planifiée les lisent ; `ongletDefaut` n'est lu qu'une fois, au premier lancement, pour être recopié dans `szh.produitParDefaut`) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
-| **Réglages simples** de l'onglet **Paramètres** : produit proposé (`szh.produitParDefaut`), adresse Shlink (`szh.shlinkUrl`, en clair : ce n'est pas un secret ; portée application, donc jamais lue dans un dossier de travail), langue (`szh.langue`), thème, tailles, aperçu | réglages utilisateur de VSCodium, `%APPDATA%\VSCodium\User\settings.json` |
-| **Clés d'API Shlink et OJS** | le coffre de VSCodium (`context.secrets`, clés `szh.shlinkCle` et `szh.ojsCle`), chiffré par le système pour ce compte ; **jamais** dans un fichier, un journal ni un message vers la page : la page ne reçoit que « définie » ou « absente ». Le cockpit les pose dans l'environnement de chaque `wsl.exe` qu'il lance (`SZH_SHLINK_URL`, `SZH_SHLINK_CLE`, `SZH_OJS_CLE`, avec `WSLENV` en `/u`, `lib/services-env.js`, `lib/moteur.js`), relues à chaque changement du coffre |
-| Cadence de la vérification hebdomadaire, par compte | `C:\Users\robin\AppData\Local\SZH\maj-auto.json` |
-| Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
-| Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |
-| Journaux détaillés d'une mise à jour | `C:\ProgramData\SZH\logs\update-<horodatage>.log` — les dix derniers se listent dans l'onglet **Log** de l'Accueil (`lib/journaux-maj.js`) |
-| Archive des journaux réunis pour le support (bouton « Envoyer les journaux » de l'onglet Journal) | dossier temporaire de l'utilisateur, `journaux-szh-<poste>-<horodatage>.zip` — l'outil ne la nettoie pas |
-| Téléchargements et versions installables hors ligne | `C:\ProgramData\SZH\staging\` (`toolkit-<v>.zip`, `manifest-<v>.json`, `szh-publishing-rootfs-<v>.tar.gz`) |
-| Toolkit déployé (maquette, scripts, gabarit) | `C:\ProgramData\SZH\toolkit\` — `VERSION`, `pipeline\`, `windows\`, `revue-template\`, `vscodium-user\` |
-| Version du toolkit installée | `C:\ProgramData\SZH\toolkit\VERSION` → `2026.08.41` |
-| Disque de la distro WSL, **un par compte** | `C:\ProgramData\SZH\WSL\<SID>\SZH-Publishing\ext4.vhdx` (2,4 Go) |
-| Journaux détaillés d'une installation | `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log` |
-| Extensions VSCodium installées | `C:\Users\robin\.vscode-oss\extensions\` — dont `szh-csps.szh-cockpit-0.22.1` et `szh-csps.szh-apercu-0.1.2` |
-| Réglages de l'éditeur | `C:\Users\robin\AppData\Roaming\VSCodium\User\settings.json` |
-| Intention d'ouverture (lien `szh://traduction/…`, usage unique) | `C:\Users\robin\AppData\Local\SZH\intention.json` |
-| Cible du raccourci d'un numéro | `C:\Windows\System32\wscript.exe` + `C:\ProgramData\SZH\toolkit\windows\{hidden.vbs, open-revue.ps1}` — aucun chemin de profil |
-| Raccourcis du menu Démarrer | `Pronto.lnk`, `Pronto (Updater).lnk` (posés par `update.ps1` ; noms tenus dans `$SzhNomApplication`/`$SzhNomMiseAJour`, `windows/szh-shell.ps1`) |
-| Archives d'un numéro | **dans la racine active**, sous `_Archive\Revue` / `_Archive\Zeitschrift` / `_Archive\Books` |
-
-L'archivage ne sort jamais de la racine active : un numéro archivé passe de
-son dossier produit à `_Archive\<Produit>` **dans la même racine**. Le magasin
-`_NewsUndActu\`, lui, ne bouge pas — c'est tout l'intérêt de l'avoir posé à la racine.
-
-Le désinstalleur de poste (`docs/MAINTENANCE.md`, § Désinstaller un poste) retire le reste
-de `C:\ProgramData\SZH` mais laisse toujours `WSL\` et la racine elle-même : les disques des
-distributions ne sont jamais désinscrits ni supprimés.
-
----
-
-## 4. Qui décide quoi
-
-| Où | Quoi | Appelé par |
-|---|---|---|
-| `windows\szh-produits.ps1` · `Resolve-SzhEmplacementRevues` | La règle : clé neuve, puis clé ancienne, puis défaut. Pure, ne lit ni disque ni fichier. | tout le reste de cette liste |
-| `windows\szh-produits.ps1` · `Initialize-SzhEmplacementRevues` | Écrit la valeur en clair dans `config.json` si elle manque, après avoir compté les numéros des trois racines (revue, zeitschrift, **et livre**). Une fois par poste, journalisée. | `Get-SzhEmplacementRevues` |
-| `windows\szh-produits.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhEmplacements`, `Get-SzhEtiquetteRacine` |
-| `windows\szh-produits.ps1` · `Get-SzhBaseRevuesPour` | La racine. **Seul endroit du dépôt qui connaît ces deux chemins.** Trois sources, de la plus forte à la plus faible : (1) la surcharge d'essai `SZH_RACINE_TEST` / `SZH_RACINE_PROD` ; (2) pour `prod` seulement, l'**ancrage SharePoint** résolu (`Resolve-SzhAncrage`), dont la racine dérive ; (3) le défaut codé en dur. **`basesRevues` a été supprimée le 15.09.2026** : une racine écrite à la main primait sur l'ancrage trouvé, et rendait muet un poste dont la bibliothèque avait déménagé. `dev` ne regarde jamais l'ancrage. | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
-| `windows\szh-ancrage.ps1` · `$script:SzhSegmentApplication` | **Le nom du dossier de l'application, côté PowerShell — la seule chaîne à corriger si ce dossier changeait de nom.** `$SzhDeriveBaseProduits` (= `2_Produkte\<application>`) et `$SzhDeriveDossierRapports` (= `…\_Systeme\rapports`) en dérivent. | `Get-SzhBaseProduitsDepuisAncrage`, `Get-SzhDossierRapportsDepuisAncrage` |
-| `szh-cockpit\lib\rapport-erreur.js` · `SEGMENT_APPLICATION` | **Son jumeau JavaScript.** Les deux se changent ENSEMBLE ; `test/js/rapport-erreur-ps.test.js` compare les deux dérivations sur le même ancrage. | `SEGMENTS_DOSSIER_RAPPORTS` |
-| `windows\szh-produits.ps1` · `$script:SzhSousDossiers`, `$script:SzhDossiersCommuns` | **Les six chemins de produit et les dossiers hors produit qui suivent la racine active.** Une seule table pour les deux racines : il n'existe aucun chemin qui dépende de l'emplacement actif. Les trois dossiers de la bibliothèque en dérivent, par `$SzhNomDossierReserve` et `$SzhDossiersBibliotheque`. `_Systeme\` n'y figure PAS : voir `Get-SzhDossierSysteme` plus haut. | `Get-SzhEmplacements`, `Initialize-SzhEmplacementsTest` |
-| `windows\szh-migration.ps1` · `Invoke-SzhMigrationArborescence` | La migration AUTOMATIQUE, dans le dossier de **test** seulement (jamais SharePoint), appelée par `update.ps1` à chaque mise à jour. Déplace enfant par enfant (jamais tout un dossier d'un coup, pour qu'un conflit sur un nom n'empêche pas les autres) ; un conflit laisse la source en place et se journalise. Pose aussi un `id:` manquant sur chaque numéro/livre trouvé (`Update-SzhIdsManquants`, jamais un recalcul) et refait le raccourci de chaque numéro déplacé. Idempotente : rien à faire une fois les six dossiers sources vidés. | `update.ps1`, une fois par mise à jour |
-| `szh-cockpit\lib\kirby-contenu.js` · `racineArbre` | Le côté cockpit de l'arborescence : remonte du dossier ouvert à la racine, et de là à `_NewsUndActu\Fiches\`, en reconnaissant des noms de dossiers, jamais en comptant des crans. | `lib\documentation-hote.js` |
-| `windows\szh-epinglage.ps1` · `Invoke-SzhEpinglageHorsLigne` | Marque « Toujours conserver sur cet appareil » (OneDrive Files On-Demand) le numéro en cours de chaque revue et la bibliothèque `_NewsUndActu`, sans geste manuel (§8bis). Jamais bloquant, jamais en simulation. | `Invoke-SzhTachesDemarrage` (`szh-shell.ps1`), juste après le check-in |
-| `windows\szh-ancrage.ps1` · `Resolve-SzhAncrage` / `Initialize-SzhAncrage` | L'ancrage SharePoint : le dossier `Daten_Allgemein - General`, dont `2_Produkte` **dérive** — cherché (4 niveaux passifs, jamais de fenêtre), pas déduit d'une variable d'environnement. `Initialize-SzhAncrage` seule peut ouvrir un sélecteur de dossier, une fois par lancement. Détail complet : `docs/RAPPORTS-ERREUR.md`, §1. | `Get-SzhBaseRevuesPour`, `Invoke-SzhTachesDemarrage` |
-| `windows\szh-produits.ps1` · `Measure-SzhNumeros` | Compte les dossiers portant un manifeste (`ausgabe.yaml` pour une revue ou une zeitschrift, `buch.yaml` pour un livre), en cours et aux archives, dans une racine. Un livre compte donc lui aussi dans la bascule automatique `test`/`production`. | `Initialize-SzhEmplacementRevues` |
-| `windows\szh-produits.ps1` · `Get-SzhEmplacements` | Les quatre dossiers de revue du poste (plus les deux du livre), plus l'emplacement actif. Journalise la racine une fois par lancement. | `lib/auteurs-corpus.js`, `new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` |
-| `windows\szh-produits.ps1` · `Initialize-SzhEmplacementsTest` | Crée les dossiers manquants de tout l'arbre — les six des produits et les six hors produit — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. En simulation, seulement sous `SZH_RACINE_TEST`. | `Invoke-SzhTachesDemarrage` |
-| `windows\open-revue.ps1` | « Pronto » : les tâches de démarrage (`Invoke-SzhTachesDemarrage`), puis l'Accueil du cockpit (`Start-SzhAccueil`), ou le numéro d'un lien `szh://` (`Open-SzhLien`). `open-livre.ps1` en est l'enveloppe. | menu Démarrer, liens `szh://` |
-| `windows\szh-checkin.ps1` · `Invoke-SzhCheckin` | Le **check-in mensuel du poste** : `_Systeme\inventaire\<POSTE>.csv`, une ligne par mois et par compte. Le dossier vient de `Get-SzhDossierSysteme 'inventaire'`, TOUJOURS ancré sur SharePoint, jamais un chemin en dur ni la racine active — et **n'est écrit que si l'ancrage est résolu** — sinon un poste sans ancrage fabriquerait un faux arbre SharePoint sous son profil. Sérialisé par le mutex de poste, écrit atomiquement (temporaire `~$`, nettoyé par un `finally`), et jamais bloquant : un dossier partagé injoignable laisse une ligne de journal. En simulation, seulement sous un ancrage d'essai (`SZH_ANCRAGE`). | `Invoke-SzhTachesDemarrage`, une fois par lancement |
-| `test\js\checkin-postes.test.js` | Éprouve la forme du CSV, l'unicité de la ligne mois + compte, son rafraîchissement, l'adresse absente tolérée, le temporaire nettoyé, et « Pronto » qui s'ouvre malgré un dossier partagé injoignable. | `node --test` |
-| `windows\new-revue.ps1`, `windows\new-livre.ps1` | Crée un numéro ou un livre dans le dossier « en cours » de la racine active ; `new-revue.ps1` écrit en plus l'année, le numéro et le volume. | onglet Nouveau de l'Accueil (`lib/accueil-nouveau.js`) |
-| `windows\szh-produits.ps1` · `Get-SzhVolumePour` | Le volume d'après l'année : Zeitschrift = année − 1994, Revue = année − 2010. **Seul endroit du dépôt qui porte ces deux années zéro.** | l'onglet Nouveau de l'Accueil, `new-revue.ps1` |
-| `windows\szh-produits.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | l'onglet Nouveau de l'Accueil |
-| `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
-| `windows\archive-revue.ps1` | Déplace un numéro **ou un livre** « en cours » ⇄ « archives », dans la racine active — `$estLivre` choisit la variante `.livre` des textes et le sous-dossier de livre. | panneau d'export du cockpit |
-| `szh-cockpit\lib\archivage.js` · `configAvecEmplacement` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » des Réglages de l'Accueil (`lib/accueil-reglages-hote.js`) |
-| `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | `lireEmplacementRevues` / `lireModeDeveloppeur`, pour le seul badge de la barre d'état (`extension.js`) |
-| `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` / `ecrireModeDeveloppeur` | Existent encore, exportées, mais **plus appelées par aucune commande du cockpit** : le groupe de boutons radio du formulaire « Réglages SZH » a disparu quand la bascule a déménagé dans le lanceur. | aucune, côté interface — gardées pour les tests |
-| `windows\bootstrap.ps1` | Pose `config.json` sur un poste neuf, avec `devMode = $true` (donc l'emplacement de test). **N'y écrit plus aucune racine.** | installation, une fois |
-| `test\js\emplacements.test.js` | Soumet les deux moitiés aux mêmes configurations et refuse qu'elles divergent. | `node --test` |
-
----
-
-## 5. Ce que change la bascule, concrètement
-
-| | `test` → `production` | `production` → `test` |
-|---|---|---|
-| **Ce qui bouge** | rien sur le disque | rien sur le disque |
-| **Ce que le lanceur liste** | les numéros du dossier de l'application | les numéros de `Revues-TESTING` |
-| **Ce qui devient invisible** | les numéros de `Revues-TESTING` | ceux du dossier de l'application |
-| **« Nouvelle revue… » crée dans** | `…\54_Pronto\Revue` | `Revues-TESTING\Revue` |
-| **L'archivage déplace vers** | `…\_Archive\Revue` | `Revues-TESTING\_Archive\Revue` |
-| **Les dossiers manquants de l'arbre** | ne sont **pas** créés | sont créés au prochain lancement |
-| **Ce que le lanceur affiche en plus** | rien | bandeau rouge (bloc d'informations, formulaires « Nouveau… ») |
-| **Ce que le cockpit affiche en plus** | rien | badge orangé « Dossier de test » dans la barre d'état |
-| **Un numéro déjà ouvert dans l'éditeur** | reste ouvert et se compile normalement : le chemin est celui de la fenêtre, pas celui du réglage | idem |
-| **Ce qui ne bouge pas** | toute la colonne du §3 : toolkit, WSL, extensions, journal, réglages de l'éditeur | idem |
-
----
-
-## 6. Lire l'emplacement actif sans ouvrir un fichier
-
-1. **Le titre de la fenêtre du lanceur** (menu Démarrer → *Pronto*) le porte
-   toujours, dans les deux sens — **un seul titre**, quel que soit l'onglet ouvert (Revue,
-   Zeitschrift ou Book), depuis que les trois produits partagent une fenêtre unique ; seule
-   l'étiquette de la racine suit la langue du lanceur :
-   - `Pronto – dossier de test (Revues-TESTING)`
-   - `Pronto – dossier de production (54_Pronto)`
-   - `Pronto – Testordner (Revues-TESTING)`
-   - `Pronto – Produktionsordner (54_Pronto)`
-
-   Le jeton entre parenthèses est la **feuille** de la racine active
-   (`Get-SzhEtiquetteRacine`) : en production, c'est donc le dossier de l'application, et il
-   suivrait un renommage de ce dossier sans qu'on touche à une ligne de code.
-2. **Le bloc d'informations du lanceur**, sous les deux listes, donne le chemin complet de
-   la racine active — dans les **deux** racines, et non plus en test seulement. C'était le
-   cas grave qui restait muet : un lanceur basculé sur `production`, listes vides, ne disait
-   pas pourquoi.
-   - `Revue dans : C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
-   - `Revue dans : C:\Users\robin\SZH CSPS\Daten_Allgemein - General\2_Produkte\54_Pronto`
-   - `Zeitschrift in: C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
-   Le mot « dossier de test » n'y est plus, mais le chemin le nomme. Et le titre de la
-   fenêtre, lui, garde l'étiquette en clair.
-3. **Le journal** `C:\ProgramData\SZH\logs\szh-<année>-<mois>.log` porte une ligne par
-   lancement :
-   `revues : emplacement "test" -> C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
-   et, la première fois que la valeur a été figée :
-   `emplacement des revues : "test" ecrit dans config.json (numeros trouves : test 4, production 0)`
-4. **Le badge de la barre d'état du cockpit**, une fois un numéro ouvert dans l'éditeur : icône
-   éprouvette, fond orangé, étiqueté « Dossier de test » (« Testordner » en allemand), visible
-   seulement en test. **Un clic ouvre l'onglet Paramètres** du lanceur (`szh.reglages`), où se
-   règle le mode développeur ; l'infobulle distingue, comme avant, un poste sans
-   `config.json` (le test par défaut) d'un poste où l'emplacement `test` est écrit en clair.
-
----
-
-## 7. La clé, ses valeurs, et celle d'avant
+## Choisir la racine active
 
 ```json
 {
@@ -333,166 +211,159 @@ distributions ne sont jamais désinscrits ni supprimés.
 }
 ```
 
-| Valeur | Effet |
-|---|---|
-| `"test"` | racine de test (`Revues-TESTING`) |
-| `"production"` | racine de production (`…\2_Produkte\54_Pronto`) |
-| autre chose | ignorée : on retombe sur la clé `devMode`, puis sur `test` |
+La clé est lue dans cet ordre, de la même façon par PowerShell (`Resolve-SzhEmplacementRevues`)
+et par le cockpit (`resoudreEmplacementRevues`, `lib/archivage.js`) :
 
-Ordre de lecture, identique côté PowerShell et côté cockpit :
+1. `emplacementRevues` : `"test"` ou `"production"`, casse et espaces indifférents ;
+2. sinon `devMode`, l'ancienne clé : `true` donne `test`, `false` donne `production`
+   (`"true"`, `"false"`, `1` et `0` sont acceptés) ;
+3. sinon `test`.
 
-1. `emplacementRevues` — `"test"` / `"production"`, casse et espaces indifférents ;
-2. `devMode` — l'**ancienne** clé, encore lue : `true` = test, `false` = production
-   (`"true"`, `"false"`, `1` et `0` acceptés de la même façon des deux côtés) ;
-3. faute des deux : `test` — ce que voyaient tous les postes avant que la clé existe.
+Si `config.json` ne porte aucune des deux clés, Pronto écrit `emplacementRevues` au premier
+lancement (`Initialize-SzhEmplacementRevues`). Il choisit `production` seulement si la
+racine de production contient des numéros et celle de test aucun ; sinon `test`. Le choix
+est journalisé :
 
-La bascule se fait dans les Réglages de l'Accueil (réglage « Mode développeur »), qui
-écrivent **les deux** clés à la fois (`configAvecEmplacement`, `lib/archivage.js`), puis
-rechargent les listes : un poste resté sur un toolkit plus ancien continue de lire `devMode`
-et voit la même chose.
+```
+emplacement des revues : "test" ecrit dans config.json (numeros trouves : test 4, production 0)
+```
 
-Au premier lancement après la mise à jour, un poste dont `config.json` ne portait aucune
-des deux clés se voit écrire `emplacementRevues` en clair. La valeur retenue suit le
-disque et jamais au détriment de ce qui existe : `production` seulement si la racine de
-production porte des numéros **et** celle de test aucun ; dans tous les autres cas `test`,
-c'est-à-dire exactement ce que le poste voyait déjà.
+**Changer d'emplacement.** Dans l'Accueil, onglet Paramètres, le réglage « Mode développeur
+(dossiers de test) » écrit les deux clés à la fois (`configAvecEmplacement`,
+`lib/archivage.js`). Il vaut pour tout le poste, pas pour un seul compte. On peut aussi
+modifier `config.json` dans le Bloc-notes.
 
----
+Effet de la bascule :
 
-## 8. Reprise : « je ne vois plus mes revues »
-
-1. Menu Démarrer → **Pronto**. Lire le **titre de la fenêtre**.
-2. S'il dit `dossier de production (54_Pronto)` et que les listes sont vides : les numéros
-   sont dans la racine de test, l'interrupteur est du mauvais côté. **Rien n'a été
-   déplacé ni supprimé.**
-3. Remettre l'interrupteur :
-   - *par le lanceur* — menu Démarrer → **Pronto** → onglet **Paramètres** →
-     « Mode développeur (dossiers de test) » → Activé (c'est le nom d'avant de l'emplacement
-     de test). Ce réglage vaut pour **tout le poste**, pas pour un seul compte Windows, et les
-     listes ne le suivent qu'à la prochaine ouverture du lanceur ;
-   - *à la main* — ouvrir `C:\ProgramData\SZH\config.json` dans le Bloc-notes et poser
-     `"emplacementRevues": "test"`, en gardant le reste du fichier tel quel.
-4. Fermer le lanceur, le rouvrir : le titre doit dire `dossier de test (Revues-TESTING)` et
-   les numéros reparaître.
-5. Vérification à froid : les quatre numéros sont visibles dans l'Explorateur sous
-   `C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING\Revue` et
-   `…\Zeitschrift`, avec ou sans lanceur.
-6. Si le titre disait déjà `dossier de test` et que la liste est vide : ce n'est pas
-   l'interrupteur. Regarder si OneDrive a fini de synchroniser (icône de la barre des
-   tâches), puis le journal du jour dans `C:\ProgramData\SZH\logs\`.
-7. **Un geste de plus si le titre dit bien `production`** : la racine de production vient de
-   l'**ancrage SharePoint**, et de rien d'autre depuis le 15.09.2026 (la clé de configuration
-   qui pouvait la forcer a été supprimée) — le dossier `Daten_Allgemein - General`,
-   **cherché**, pas déduit
-   d'une variable d'environnement (`%OneDrive%` ne suffit pas). Introuvable : le bloc
-   d'informations du lanceur porte une ligne dédiée (« Dossier partagé SharePoint
-   introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché. »),
-   et un sélecteur de dossier s'ouvre au **prochain lancement qui suit de plus de 24 h** la
-   dernière tentative — jamais plus tôt, pour ne pas harceler. Un dossier **enfant** de
-   l'ancrage convient toujours, à n'importe quelle profondeur (la remontée des parents est
-   gratuite, sans limite) : `Daten_Allgemein - General` lui-même, `2_Produkte`, un numéro
-   précis, jusqu'au dossier des rapports. Un dossier **parent** convient aussi, mais la
-   descente est bornée à 3 niveaux sous le dossier choisi (garde-fou anti-`C:\`) : `SZH CSPS`
-   et `C:\Users\<compte>` sont tous deux à l'intérieur de cette limite sur ce poste, un
-   ancêtre plus lointain ne le serait pas. Pour ne pas attendre les 24 h : poser
-   `ancrageSharePoint` à la main dans
-   `C:\ProgramData\SZH\config.json` (tout le poste) ou dans
-   `%LOCALAPPDATA%\SZH\etat-utilisateur.json` (ce compte) fait sauter l'attente au lancement
-   suivant. Détail complet de la résolution : `docs/RAPPORTS-ERREUR.md`, §1.
-
-Sens inverse — passer un poste de rédaction en production : poser
-`"emplacementRevues": "production"`, puis **déplacer** les numéros de
-`Revues-TESTING\Revue` vers
-`…\2_Produkte\54_Pronto\Revue` à la main (l'outil ne les suit pas tout seul, et la migration
-automatique de `windows\szh-migration.ps1` ne touche JAMAIS SharePoint), et vérifier
-au passage que la bibliothèque SharePoint est bien synchronisée sous ce nom-là.
-
----
-
-## 8bis. Épinglage hors ligne (OneDrive Files On-Demand)
-
-Demande de Robin, 24.09.2026 : que tout le monde ait, hors connexion et sans le moindre
-geste, le numéro en cours de chaque revue et la bibliothèque `_NewsUndActu` — sans attendre
-qu'un OneDrive « en ligne seulement » les télécharge au premier clic, un jour de coupure ou
-de trajet.
-
-**Ce qui est marqué « Toujours conserver sur cet appareil ».**
-
-| Quoi | Où | Jamais |
+| | vers `production` | vers `test` |
 |---|---|---|
-| Chaque numéro **en cours** des revues, chaque livre **en cours** | `Revue\`, `Zeitschrift\`, `Books\` de la racine **ACTIVE** (test ou production, selon `emplacementRevues`) | `_Archive\` |
-| `_NewsUndActu\Fiches`, `_NewsUndActu\_Statuts` | racine de **PRODUCTION** (`<ancrage>\2_Produkte\54_Pronto`, que l'onglet Archive du cockpit lit toujours), **et** racine active si elle en diffère (mode test) | `_NewsUndActu\_Import-*` |
+| Fichiers déplacés | aucun | aucun |
+| Numéros listés par l'Accueil | ceux de `54_Pronto` | ceux de `Revues-TESTING` |
+| Un nouveau numéro est créé dans | `…\54_Pronto\Revue` | `Revues-TESTING\Revue` |
+| L'archivage déplace vers | `…\54_Pronto\_Archive\Revue` | `Revues-TESTING\_Archive\Revue` |
+| Dossiers manquants de l'arbre | ne sont pas créés | sont créés au lancement suivant |
+| Avertissement affiché | aucun | bandeau « Mode test » dans l'Accueil, badge « Dossier de test » dans la barre d'état |
+| Numéro déjà ouvert dans l'éditeur | reste ouvert et compile : son chemin est celui de la fenêtre | idem |
+| `_Systeme\`, toolkit, WSL, journaux, réglages | inchangés | inchangés |
 
-Un numéro se reconnaît à son `ausgabe.yaml`, un livre à son `buch.yaml`, même définition que
-partout ailleurs dans ce document : les livres en cours de `Books\` sont épinglés comme les
-numéros depuis le 24.09.2026 (`$script:SzhEpinglageProduits` et `$script:SzhEpinglageManifeste`,
-`windows\szh-epinglage.ps1`). La bibliothèque est ciblée **par nom** (`Fiches`, `_Statuts`), jamais
-par un balayage de `_NewsUndActu\` entier — `_Import-*` n'est donc jamais concerné.
+Un poste neuf démarre en `test` : `bootstrap.ps1` écrit `devMode = $true`. Sur un poste de
+rédaction, on passe en production juste après l'installation.
 
-**La mécanique, mesurée sur ce poste.** Un dossier synchronisé par OneDrive porte l'attribut
-.NET `ReparsePoint` (`0x400`) ; « Toujours conserver sur cet appareil » pose en plus
-`FILE_ATTRIBUTE_PINNED` (`0x80000`), « Libérer de l'espace » pose `FILE_ATTRIBUTE_UNPINNED`
-(`0x100000`) — deux valeurs que `[System.IO.FileAttributes]` ne nomme pas. Pour chaque
-dossier cible dont l'attribut ne porte pas déjà `0x80000`, deux appels de
-`%SystemRoot%\System32\attrib.exe` : `+P -U "<dossier>"` (le dossier lui-même), puis
-`+P -U "<dossier>\*" /S /D` (tout son contenu). Mesuré le 24.09.2026 : `attrib "<dossier>" /S
-/D` ne descend PAS dans le dossier, il cherche dans l'arbre parent tout dossier du même nom.
-Chaque appel part en processus **caché et non attendu**
-(`Start-Process -WindowStyle Hidden`, sans `-Wait`) — le lanceur ne doit jamais attendre un
-téléchargement OneDrive. Un dossier déjà épinglé ne demande rien : ce qu'on y ajoutera
-ensuite hérite de l'épinglage de son dossier. Un dossier hors OneDrive (pas de
-`ReparsePoint`) est ignoré, jamais une erreur.
+### Passer un poste en production
 
-**Où.** `windows\szh-epinglage.ps1`, dot-sourcé par `windows\szh-common.ps1` (le huitième
-fil, après la migration) :
+1. Poser `"emplacementRevues": "production"` (Accueil → Paramètres, ou `config.json`).
+2. Déplacer à la main les numéros de `Revues-TESTING\Revue` (et `Zeitschrift`, `Books`) vers
+   les mêmes dossiers sous `…\2_Produkte\54_Pronto\`. Pronto ne les déplace pas.
+3. Vérifier que la bibliothèque SharePoint est synchronisée sous le nom attendu, et que
+   l'Accueil affiche le chemin de production.
 
-| Fonction | Rôle |
-|---|---|
-| `Get-SzhDossiersAEpingler` | Pure : racine active + racine de production → la liste des dossiers à examiner. |
-| `Test-SzhDossierEpingle` | L'attribut d'UN dossier → `'epingle'` \| `'aepingler'` \| `'horsonedrive'` \| `'absent'`. |
-| `Start-SzhEpinglageProcessus` | Lance `attrib.exe` pour de vrai, caché et non attendu. |
-| `Invoke-SzhEpinglageHorsLigne` | Orchestration : construit le plan (sauf s'il est fourni), applique la vérification et le lancement à chaque dossier, rend `{ examines; lances; deja; ignores }`. |
+`windows/szh-migration.ps1` (`Invoke-SzhMigrationArborescence`, lancé par `update.ps1` à
+chaque mise à jour) ne travaille que dans la racine de test. Il range les numéros de
+l'ancienne forme (`52_Revue\RV02_Redaction`, `53_Zeitschrift\ZS99_Archives`…) dans
+l'arborescence actuelle, un numéro à la fois, sans jamais écraser : en cas de conflit de nom,
+la source reste en place et le conflit est journalisé. Il pose aussi les `id:` manquants et
+refait les raccourcis.
 
-Appelée par `Invoke-SzhTachesDemarrage` (`windows\szh-shell.ps1`), juste après
-`Invoke-SzhCheckin`, dans un `try` — jamais bloquant, jamais une fenêtre (D5) : un
-`attrib.exe` introuvable ou un dossier hors OneDrive ne doit pas empêcher « Pronto » de
-s'ouvrir. Une ligne de journal récapitulative
-**seulement** quand quelque chose a vraiment été lancé — cette passe tourne à chaque
-ouverture, la plupart du temps sans rien à faire.
+## Lire l'emplacement actif
 
-**Réglage de désactivation**, dans `config.json` (comme les autres booléens, lus par
-`Resolve-SzhBooleenConfig`) :
+- **L'Accueil**, onglet du produit, sous la liste : « Revue dans : `<chemin>` ». En mode
+  test, un bandeau dit que tout ce qu'on crée va dans le dossier de test. En production,
+  si l'ancrage est introuvable, un bandeau le dit aussi.
+- **La barre d'état du cockpit**, quand un numéro est ouvert et le poste en test : un badge
+  « Dossier de test » (« Testordner »). Un clic ouvre l'onglet Paramètres de l'Accueil.
+- **Le journal** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log`, une ligne par lancement :
+
+  ```
+  revues : emplacement "test" -> C:\Users\<compte>\OneDrive - SZH CSPS\Revues-TESTING
+  ```
+
+## Dépannage : l'Accueil n'affiche plus les numéros
+
+1. Ouvrir Pronto et lire, sous la liste, la ligne « Revue dans : … ».
+2. Si le chemin est celui de `54_Pronto` et que les numéros sont dans `Revues-TESTING` : le
+   poste est du mauvais côté. Rien n'est perdu. Activer « Mode développeur (dossiers de
+   test) » dans Accueil → Paramètres, ou poser `"emplacementRevues": "test"` dans
+   `config.json`, puis rouvrir Pronto.
+3. Si le chemin est celui de `Revues-TESTING` et la liste vide : vérifier dans l'Explorateur
+   que les numéros sont bien sous `Revues-TESTING\Revue`, puis que OneDrive a fini de
+   synchroniser, puis lire le journal du jour.
+4. Si l'Accueil affiche « Dossier partagé SharePoint introuvable » : l'ancrage n'est pas
+   trouvé. Le sélecteur de dossier s'ouvrira au prochain lancement, si la dernière demande
+   date de plus de 24 heures. Pour ne pas attendre, poser `ancrageSharePoint` à la main,
+   avec le chemin de `Daten_Allgemein - General`, dans `C:\ProgramData\SZH\config.json`
+   (tout le poste) ou dans `%LOCALAPPDATA%\SZH\etat-utilisateur.json` (ce compte).
+
+## Épinglage hors ligne
+
+À chaque lancement, Pronto marque « Toujours conserver sur cet appareil » les dossiers dont
+la rédaction a besoin, pour qu'ils restent disponibles sans réseau :
+
+| Épinglé | Où | Jamais épinglé |
+|---|---|---|
+| chaque numéro et chaque livre en cours (dossier avec `ausgabe.yaml` ou `buch.yaml`) | `Revue\`, `Zeitschrift\`, `Books\` de la racine active | `_Archive\` |
+| `_NewsUndActu\Fiches` et `_NewsUndActu\_Statuts` | racine de production, et racine active si elle est différente | le reste de `_NewsUndActu\` |
+
+Fonctionnement (`windows/szh-epinglage.ps1`) :
+
+- Un dossier synchronisé par OneDrive porte l'attribut `ReparsePoint` (`0x400`). Un dossier
+  épinglé porte en plus `0x80000` (`FILE_ATTRIBUTE_PINNED`). Un dossier hors OneDrive est
+  ignoré.
+- Pour un dossier pas encore épinglé, Pronto lance deux fois
+  `%SystemRoot%\System32\attrib.exe`, caché et sans attendre la fin :
+  `+P -U "<dossier>"`, puis `+P -U "<dossier>\*" /S /D`. Le second appel est nécessaire :
+  `attrib "<dossier>" /S /D` ne descend pas dans le dossier, il cherche des dossiers du même
+  nom dans l'arbre parent.
+- Un fichier ajouté plus tard dans un dossier épinglé hérite de l'épinglage.
+- Une ligne de journal n'est écrite que si un `attrib.exe` a été lancé.
+- Rien n'est lancé en simulation (`SZH_LANCEUR_SIMULE=1`). Une erreur n'empêche jamais
+  Pronto de s'ouvrir.
+
+Pour désactiver l'épinglage sur un poste, dans `config.json` :
 
 ```json
 { "epinglageHorsLigne": false }
 ```
 
-Absent = actif. Réglé à `false`, rien n'est examiné ni lancé.
+## Qui décide quoi dans le code
 
-**Jamais en simulation** (`SZH_LANCEUR_SIMULE=1`, comme `szh-ancrage.ps1` et
-`szh-rapport.ps1`) : le plan est calculé comme d'habitude, mais aucun `attrib.exe` ne part
-pour de vrai.
+| Où | Rôle |
+|---|---|
+| `windows/szh-produits.ps1` · `$SzhSousDossiers`, `$SzhDossiersCommuns` | la table des dossiers de l'arborescence, une seule pour les deux racines |
+| `windows/szh-produits.ps1` · `Get-SzhBaseRevuesPour` | la racine d'un emplacement : surcharge d'essai, puis ancrage (production), puis valeur par défaut |
+| `windows/szh-produits.ps1` · `Resolve-SzhEmplacementRevues`, `Get-SzhEmplacementRevues` | la règle de lecture de `emplacementRevues` |
+| `windows/szh-produits.ps1` · `Get-SzhDossierSysteme` | le chemin d'un sous-dossier de `_Systeme\` |
+| `windows/szh-produits.ps1` · `Get-SzhVolumePour`, `Find-SzhNumeroVolume` | le volume d'après l'année (Zeitschrift : année − 1994 ; Revue : année − 2010), et le refus d'un numéro déjà existant |
+| `windows/szh-ancrage.ps1` · `Resolve-SzhAncrage`, `Initialize-SzhAncrage` | l'ancrage SharePoint |
+| `windows/szh-shell.ps1` · `Invoke-SzhTachesDemarrage` | au lancement : ancrage, envoi des rapports en attente, inventaire, épinglage, dossiers de test, secrets |
+| `windows/new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` | création et archivage, dans la racine active |
+| `windows/szh-migration.ps1` | rangement de l'ancienne forme, dans la racine de test seulement |
+| `lib/inventaire.js` | côté cockpit : la racine active et les numéros listés par l'Accueil |
+| `lib/archivage.js` | côté cockpit : lecture et écriture de `emplacementRevues` |
+| `lib/kirby-contenu.js` · `racineArbre` | remonte d'un numéro ouvert jusqu'à la racine, puis `_NewsUndActu\Fiches\` |
 
-`test\js\epinglage-hors-ligne.test.js` éprouve le plan (numéros en cours seulement, jamais
-`_Archive` ni `Books` ni `_Import-*`), la distinction production/racine active, le réglage
-désactivé, la simulation, et les deux issues « lancé »/« déjà épinglé » — vérification
-d'attribut et lancement de processus injectés, jamais un vrai `attrib.exe` dans un test.
+`test/js/emplacements.test.js` soumet PowerShell et cockpit aux mêmes configurations et
+vérifie qu'ils choisissent la même racine. `test/js/inventaire.test.js` fait de même pour la
+liste des numéros.
 
----
+Pour un essai, des variables d'environnement remplacent les racines telles quelles :
+`SZH_RACINE_TEST`, `SZH_RACINE_PROD`, `SZH_ANCRAGE`. Elles ne doivent pas être posées sur un
+poste de rédaction.
 
-## 9. Ce qui reste à poser
+La clé `revuesRoots` de `config.json` liste des dossiers hors de l'arborescence. Elle sert
+seulement à compter les numéros qui y restent, avec `%OneDrive%\Revues`, pour les signaler
+sous la liste de l'Accueil.
 
-- **Le cockpit ne dit pas encore l'emplacement actif** dans sa barre latérale : le badge de
-  la barre d'état (§6) ne fait qu'annoncer, il ne règle plus rien : le réglage se fait dans
-  les Réglages de l'Accueil.
-- **`bootstrap.ps1` pose encore `devMode = $true`** sur un poste neuf, donc l'emplacement
-  de test. Sur un poste de rédaction, poser `"emplacementRevues": "production"` juste après
-  l'installation — ou corriger le script.
-- **`revuesRoots` est trompeuse** : elle ne sert plus qu'au comptage des numéros restés
-  dehors. Elle peut être vidée sans rien casser.
-- **Le dossier `54_Pronto` reste à créer sur SharePoint** : le code le nomme ainsi des deux
-  côtés (§1) ; reste à poser le dossier dans la bibliothèque et à publier.
-- **`_Systeme\journaux\` et `_Systeme\suggestions\` sont créés mais vides** : aucun code
-  n'y écrit encore. `Exports\` n'est écrit que par l'Accueil du cockpit.
-  `_Systeme\inventaire\`, lui, est écrit
-  depuis le 15.09.2026 (`windows\szh-checkin.ps1`).
+## Renommer le dossier de l'application
+
+Le nom `54_Pronto` est écrit à deux endroits :
+
+| Langage | Constante | Fichier |
+|---|---|---|
+| PowerShell | `$script:SzhSegmentApplication` | `windows/szh-ancrage.ps1` |
+| JavaScript | `SEGMENT_APPLICATION` | `vscodium-extension/szh-cockpit/lib/rapport-erreur.js` |
+
+Pour renommer le dossier : changer les deux constantes, renommer le dossier sur SharePoint,
+publier une version. La racine de production, `_Systeme\` et les rapports suivent.
+`test/js/ancrage-sharepoint.test.js` et `test/js/rapport-erreur.test.js` refusent que le nom
+soit écrit ailleurs ; `test/js/rapport-erreur-ps.test.js` vérifie que les deux constantes
+donnent le même chemin.
