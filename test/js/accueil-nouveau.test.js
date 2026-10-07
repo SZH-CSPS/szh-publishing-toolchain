@@ -83,6 +83,12 @@ test('nouveau : un numéro et un livre se créent depuis le gabarit, nommés par
   const ausgabe = fs.readFileSync(path.join(r.chemin, 'ausgabe.yaml'), 'utf8');
   assert.match(ausgabe, /^volume: "?16"?$/m);
   assert.match(ausgabe, /^numero: "04"$/m);
+  // L'article d'exemple et les modèles d'article Pronto restent dans le toolkit.
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.chemin, 'articles')), [],
+    'le dossier « articles » d’un numéro neuf doit être vide');
+  const modeles = fs.readdirSync(r.chemin).filter((n) => /^Pronto - /.test(n));
+  assert.deepStrictEqual(modeles, [], 'modèles Pronto copiés dans le numéro');
+  assert.ok(fs.existsSync(path.join(r.chemin, 'articles-word', 'LISEZ-MOI.txt')));
   const l = await creer(livre());
   assert.strictEqual(l.ok, true, JSON.stringify(l));
   assert.strictEqual(path.dirname(l.chemin), path.join(BASE, 'Books'));

@@ -436,7 +436,7 @@ besoin d'administrateur ; seule la montée de VSCodium ou de SumatraPDF reste ma
 
 Lanceur « Pronto » → onglet Revue, Zeitschrift ou Book → *Nouveau…*. Le dossier est créé
 dans les « en cours » du produit, dans la racine active ([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
-`new-revue.ps1` (ou `new-livre.ps1`) copie le gabarit, écrit le jeton de produit et l'`id:`,
+`new-revue.ps1` (ou `new-livre.ps1`) copie le gabarit (pour une revue, sans l'article d'exemple ni les modèles d'article Pronto), écrit le jeton de produit et l'`id:`,
 déduit année et numéro du nom du dossier, estampille la version du toolkit et pose le
 raccourci « Ouvrir la revue » (« Ouvrir le livre »).
 

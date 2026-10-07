@@ -8,8 +8,8 @@ branchement (réduit au nettoyage du 01.10.2026 ; le plan d’origine est dans l
 
 ## Décisions en attente
 
-- [ ] **Les deux gabarits dans `revue-template/`** partent désormais dans chaque nouveau numéro,
-  à sa racine — comme `livre-template/Modele-chapitre-SZH.docx`. Voulu, ou à déplacer ?
+- [x] **Les deux gabarits dans `revue-template/`** ne partent plus dans les nouveaux numéros
+  (Robin, 07.10.2026) : `new-revue.ps1` les laisse dans le toolkit, avec l’article d’exemple.
 - [ ] **`Fichier d'origine`** a disparu du bloc figure entre la v1 et la v2 du gabarit.
   Volontaire ?
 

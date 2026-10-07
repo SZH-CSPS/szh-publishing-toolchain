@@ -48,7 +48,12 @@ if ($existait) {
 } else {
   # -Force sur Get-ChildItem, pas seulement sur Copy-Item : un gabarit caché (.gitkeep,
   # .gitattributes) suit désormais la copie, là où le joker '*' seul le sautait.
-  Get-ChildItem -LiteralPath $template -Force | Copy-Item -Destination $Dossier -Recurse -Force
+  # L'article d'exemple et les modèles d'article Pronto restent dans le toolkit, où le
+  # nettoyeur et les tests les lisent : un numéro neuf part avec « articles » vide.
+  Get-ChildItem -LiteralPath $template -Force |
+    Where-Object { $_.Name -ne 'articles' -and $_.Name -notlike 'Pronto - *' } |
+    Copy-Item -Destination $Dossier -Recurse -Force
+  New-Item -ItemType Directory -Force -Path (Join-Path $Dossier 'articles') | Out-Null
 }
 $chemin = (Resolve-Path -LiteralPath $Dossier).Path
 
