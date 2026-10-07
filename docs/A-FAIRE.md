@@ -145,8 +145,11 @@ est faite. Les questions à trancher sont marquées « À décider ».
 - Catégories des fiches : à décider (trois axes, libellés, `jeunesse`, âge minimal et
   accessibilité des films, ISBN, réduire `instrument` de 20 à 8 valeurs). Corriger la fiche
   *The Holdovers*, classée documentaire.
+- Trier les projets de recherche repérés à la main (liste dans l'historique git de
+  `docs/TODO/projets-recherche-a-trier.md`), si la vue Propositions ne l'a pas déjà fait.
 - Créer la bibliothèque de groupe Zotero et y abonner les flux RSS repérés (Cairn,
-  OpenEdition, A.N.A.E., Pages romandes, CFHE…).
+  OpenEdition, A.N.A.E., Pages romandes, CFHE… ; liste détaillée dans l'historique git de
+  `docs/TODO/news-und-actu-rapport-veille.md`).
 
 ## Site Kirby
 
