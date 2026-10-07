@@ -422,7 +422,7 @@ fois par clone par `git config core.hooksPath .githooks` (`pronto-dev.ps1` le fa
 
 ## Patcher WeasyPrint
 
-On ne patche WeasyPrint qu'en dernier recours, et seulement avec la validation de Robin. On
+On ne patche WeasyPrint qu'en dernier recours, et seulement avec l'accord du responsable du dépôt (Robin Morand). On
 essaie d'abord le CSS, le HTML produit par la chaîne et les options officielles.
 
 | Quoi | Où |
@@ -440,7 +440,7 @@ Règles :
 - Le cas de test doit échouer sur WeasyPrint sans patch et passer sur l'image patchée.
 - Preuves avant de fusionner : démo minimale avant/après, empreintes et pixels du banc,
   veraPDF sans `FAIL`.
-- Rien ne se publie chez WeasyPrint sans Robin.
+- Rien ne se publie chez WeasyPrint sans l'accord du responsable du dépôt.
 - Un patch n'arrive sur les postes qu'à la reconstruction de l'image. D'ici là, les tests
   qui en dépendent sautent sous le motif « correctif WeasyPrint absent ».
 - À chaque montée de WeasyPrint, on vérifie d'abord si l'amont a corrigé chaque défaut, et on

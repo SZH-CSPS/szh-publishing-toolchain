@@ -6,15 +6,15 @@ Vous n’avez rien à taper de particulier. Écrivez au kilomètre, avec l’apo
 guillemets de votre clavier : la chaîne pose la bonne typographie à la compilation, dans
 la langue déclarée de l’article. Un passage marqué dans une autre langue – un mot
 `[Nachteilsausgleich]{lang=de}`, une citation entourée de `::: {lang=de}` – suit les
-règles de SA langue ; en anglais (`lang=en`) ou dans une autre langue, la chaîne n’y touche pas.
+règles de sa langue ; en anglais (`lang=en`) ou dans une autre langue, la chaîne n’y touche pas.
 
 **Votre fichier n’est jamais modifié.** La correction a lieu au moment où le PDF se
 fabrique. Le Markdown reste exactement ce que vous avez écrit – lisible, comparable d’une
 version à l’autre – et c’est la sortie qui est composée dans les règles.
 
 > Les règles viennent du *Guide du typographe*, le code romand publié par le Groupe de
-> Lausanne de l’Association suisse des typographes, confronté aux 421 articles déjà
-> publiés sur ojs.szh.ch. Le détail des mesures est dans [TYPOGRAPHIE.md](TYPOGRAPHIE.md).
+> Lausanne de l’Association suisse des typographes. Le détail technique est dans
+> [TYPOGRAPHIE.md](TYPOGRAPHIE.md).
 
 ---
 
@@ -88,14 +88,14 @@ nombre et son unité (`12 km`, `54,5 hectares`, `20 ans`), un renvoi et son num�
 chiffre romain d’un nom (`Louis XIV`). Cela ne se voit que dans le PDF : c’est là que les
 lignes se coupent.
 
-**E6** – un nombre groupé ne se coupe plus jamais en fin de ligne. La chaîne **ne groupe
+**E6** – un nombre groupé ne se coupe pas en fin de ligne. La chaîne **ne groupe
 pas à votre place** : si vous écrivez `35000`, cela reste `35000`. Le groupement est une
 décision de rédaction ; nous ne faisons que le protéger.
 
 **E7 et E8** ramassent les espaces en trop : rien à l’intérieur des parenthèses et des
 crochets, rien devant une virgule ou un point.
 
-**E9** – dans un tableau, une étiquette ne se coupe plus entre l’ordinal et le mot qui
+**E9** – dans un tableau, une étiquette ne se coupe pas entre l’ordinal et le mot qui
 suit : `1. Étape` reste sur une seule ligne, au lieu d’écraser la colonne. La règle ne vaut
 que pour le **premier mot d’une cellule** ; dans le corps du texte, une phrase comme « en
 2021. Ensuite » n’est jamais soudée.
@@ -181,7 +181,7 @@ ses mots composés, et lui retirer des coupures écarterait les mots au lieu de 
 
 ## Ce qui vous est signalé, mais jamais corrigé
 
-Ces deux-là demandent votre jugement : la machine ne peut pas trancher à votre place. Ils
+Ces trois-là demandent votre jugement : la machine ne peut pas trancher à votre place. Ils
 apparaissent dans **Contrôles** après la compilation.
 
 | Code | Ce qui est signalé | Pourquoi vous seul pouvez décider |

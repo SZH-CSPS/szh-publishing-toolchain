@@ -8,7 +8,7 @@ Ce dossier contient, pour chacun, de quoi le juger et le proposer au projet Weas
 - `ISSUE.md` : un brouillon d'issue ou de commentaire ;
 - `demo/` : des HTML minimaux et `demo.sh`, qui montre le PDF avant et après le correctif.
 
-Rien n'est publié chez WeasyPrint sans l'accord du mainteneur de Pronto. Les règles pour
+Rien n'est publié chez WeasyPrint sans l'accord du responsable du dépôt (Robin Morand). Les règles pour
 écrire un correctif (dernier recours, un fichier par fonctionnalité, `--fuzz=0`) sont dans
 le [`CLAUDE.md`](../../../CLAUDE.md) du dépôt. À chaque montée de WeasyPrint, chaque correctif
 est rejugé avec ces dossiers : l'amont l'a-t-il intégré, le code a-t-il bougé ?

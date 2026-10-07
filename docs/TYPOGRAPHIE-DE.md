@@ -5,15 +5,15 @@ Für die deutschsprachige Redaktion der *Schweizerischen Zeitschrift für Heilp�
 Sie müssen nichts Besonderes tippen. Schreiben Sie fortlaufend, mit dem Apostroph und den
 Anführungszeichen Ihrer Tastatur: Die Kette setzt beim Kompilieren die richtige Typografie,
 in der deklarierten Sprache des Artikels. Eine als anderssprachig markierte Stelle – ein Wort
-`[Pédagogie spécialisée]{lang=fr}`, ein Zitat in `::: {lang=fr}` – folgt den Regeln IHRER
+`[Pédagogie spécialisée]{lang=fr}`, ein Zitat in `::: {lang=fr}` – folgt den Regeln ihrer
 Sprache; auf Englisch (`lang=en`) oder in einer anderen Sprache lässt die Kette sie unberührt.
 
 **Ihre Datei wird nie verändert.** Die Korrektur geschieht in dem Moment, in dem das PDF
 entsteht. Das Markdown bleibt genau das, was Sie geschrieben haben – lesbar, von Fassung zu
 Fassung vergleichbar – und gesetzt wird die Ausgabe.
 
-> Die Regeln stammen aus dem Duden und dem Schweizer Usus, abgeglichen mit den 421 bereits
-> auf ojs.szh.ch publizierten Beiträgen. Die Messungen im Detail stehen in
+> Die Regeln stammen aus dem Duden und dem Schweizer Usus. Die technischen Einzelheiten
+> stehen in
 > [TYPOGRAPHIE.md](TYPOGRAPHIE.md) (auf Französisch).
 
 ---
@@ -70,7 +70,7 @@ ihre Einheit (`12 km`, `3 Tagen`, `8.30 Uhr`), einen Verweis und seine Nummer (`
 seinen Monat (`6. August 2017`), das Geld (`CHF 499.–`, `25 €`) und die römische Zahl nach
 einem Namen (`Louis XIV`). Das sieht man nur im PDF: Dort brechen die Zeilen.
 
-**E6** – eine gruppierte Zahl bricht nie mehr am Zeilenende. Die Kette gruppiert **nicht
+**E6** – eine gruppierte Zahl bricht nicht am Zeilenende. Die Kette gruppiert **nicht
 für Sie**: Schreiben Sie `35000`, bleibt es `35000`. Die Gruppierung ist ein
 redaktioneller Entscheid, wir schützen sie bloss. Das gilt auch für die schweizerische
 Schreibung mit Hochkomma – `35'000` bricht ohnehin nicht.
@@ -78,7 +78,7 @@ Schreibung mit Hochkomma – `35'000` bricht ohnehin nicht.
 **E7 und E8** räumen überzählige Leerschläge auf: nichts innerhalb der Klammern, nichts vor
 einem Komma oder einem Punkt.
 
-**E9** – in einer Tabelle wird eine Zelle nicht mehr zwischen der Ordnungszahl und dem
+**E9** – in einer Tabelle wird eine Zelle nicht zwischen der Ordnungszahl und dem
 folgenden Wort getrennt: `1. Hilfe` bleibt in einer Zeile, statt die Spalte
 zusammenzudrücken. Die Regel gilt nur für das **erste Wort einer Zelle**; im Fliesstext
 wird ein Satz wie «im Jahr 2021. Danach» nie zusammengezogen.
@@ -96,7 +96,7 @@ Geviertstrich `—`. Im Deutschen steht er zwischen zwei gewöhnlichen Leerzeich
 **T2** – nur **Seitenbereiche** erhalten den Halbgeviertstrich; erkennbar sind sie am
 `S.` davor. `2020-2021` und `COVID-19` behalten ihren Bindestrich.
 
-Im Französischen gilt seit dem 08.09.2026 das Gegenteil: Dort schreibt der Westschweizer
+Im Französischen gilt das Gegenteil: Dort schreibt der Westschweizer
 Usus den Bindestrich (`pp. 12-25`). Die Kette wandelt in beide Richtungen, Sie müssen also
 nicht daran denken.
 

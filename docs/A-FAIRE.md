@@ -126,6 +126,19 @@ est faite. Les questions à trancher sont marquées « À décider ».
   pareil par pandoc et par KirbyText.
 - Masquer `ressources` côté allemand.
 
+## Accessibilité
+
+- Avertir quand une figure numérotée a `alt=""`.
+- HTML : les notes sont lues au fil du texte ; à reprendre avec une vraie sortie web.
+- EPUB : `conformsTo`, `accessibilitySummary`, `page-list` ; EPUBCheck et Ace ne sont pas
+  dans l'image.
+- Sommaire du livre : `/LI` sans `/Lbl` et `/Link` imbriqués, à examiner.
+- Correctif possible du `/Contents` des liens internes (lire `aria-label`, `title`, le texte
+  du lien).
+- Faire un essai avec un vrai lecteur d'écran.
+- Vérifier le PDF imprimeur de `test/livre-normal` (erreur `AssertionError` dans
+  `resolve_math` constatée une fois).
+
 ## WeasyPrint
 
 - Proposer les correctifs aux auteurs de WeasyPrint (`image/patches/amont/`), si Robin le
