@@ -304,8 +304,9 @@ const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.
   'meta.livre.licence', 'meta.livre.couleur',
   'meta.livre.grammage', 'meta.livre.main', 'meta.livre.dosMm', 'meta.livre.fondPerduMm',
   'meta.livre.traitsDeCoupe', 'meta.livre.profilCmjn',
-  // Responsables, couleurs de l'imprimé, fond, papier de couverture, dos calculé,
-  // illustration et 4e de couverture.
+  // Responsables, couleurs de l’imprimé, fond, papier de couverture, dos calculé,
+  // illustration et 4e de couverture. (Pas d’apostrophe droite dans ce tableau : un test
+  // en extrait les clés entre apostrophes droites.)
   'fiches.auteur.ajouter', 'meta.livre.auteurs', 'meta.livre.editeurs', 'meta.livre.mention',
   'meta.livre.mention.defaut.fr', 'meta.livre.mention.defaut.de',
   'meta.livre.mention.defaut.it', 'meta.livre.mention.defaut.en',
