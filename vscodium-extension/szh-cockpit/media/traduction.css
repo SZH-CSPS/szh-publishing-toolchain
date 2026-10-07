@@ -1,11 +1,11 @@
-/* Corps de page, champs et boutons nus : le socle de _design.css (body/h1 §0, .carte §9).
-   Seule la largeur diffère du défaut (52rem) : une ligne suffit à la régler. */
+/* Panneau de traduction. Le corps, les champs et les boutons viennent de _design.css ; seule
+   la largeur change. */
 body { --page-max: 56rem; }
 h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 var(--e3);
   font-family: var(--vscode-editor-font-family, monospace); }
 
-/* Une carte par champ à traduire ; le liséré de gauche porte l'état, et c'est la seule
-   couleur de la page — d'où un liséré, et non un fond. */
+/* Une carte par champ à traduire. Le liséré de gauche porte l'état : c'est la seule couleur
+   de la page. */
 .carte { background: var(--surface); border: 1px solid var(--filet);
   border-left-width: 3px; border-left-color: var(--filet);
   border-radius: var(--rayon); padding: var(--e3) var(--e4) var(--e4); margin: 0 0 var(--e5);
@@ -21,7 +21,7 @@ h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 va
 .badge.traduit { color: var(--ok);
   border-color: var(--ok); }
 
-/* Texte source : lisible et copiable, jamais éditable — il vit dans la fiche. */
+/* Texte source : lisible et copiable, non éditable (il se modifie dans la fiche). */
 .source { white-space: pre-wrap; padding: var(--e2) var(--e3); border-radius: var(--rayon-mini);
   background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.1));
   border: 1px dashed var(--filet); color: var(--encre); }
@@ -33,15 +33,12 @@ h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 va
 .ligne-statut select { flex: 1 1 auto; }
 .carte.modifie h3::after { content: " ●"; color: var(--avert); }
 
-/* Rien à traduire : un message, pas une page vide. */
 .rien { color: var(--encre-2); margin: var(--e4) 0; }
 
 /* ---- Bloc « Question / commentaire », en tête du formulaire. */
 .carte.commentaire { border-left-color: var(--vscode-charts-purple, #b180d7); }
 .carte.commentaire label { margin-top: 0; }
-/* La ligne qui dit où va ce commentaire : sur la carte de l'article, sous les yeux de
-   toute l'équipe. Sans elle, ce champ passait pour un pense-bête privé — et son libellé
-   d'aide était réclamé par l'hôte sans exister nulle part, donc jamais affiché. */
+/* Dit où va le commentaire : sur la carte de l'article, visible par toute l'équipe. */
 .carte.commentaire .aide { margin: var(--e1) 0 0; font-size: var(--t-mini);
   color: var(--encre-2); }
 
@@ -52,5 +49,4 @@ h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 va
   background: var(--vscode-button-background); }
 .actions-source button.deepl:hover { background: var(--vscode-button-hoverBackground); }
 
-/* Les mots-clés appariés viennent du fragment SZH.motsCles (media/_commun.js), qui pose
-   lui-même son style. */
+/* Les mots-clés appariés : SZH.motsCles (_commun.js) pose son propre style. */

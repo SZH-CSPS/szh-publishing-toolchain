@@ -1,8 +1,7 @@
-/* L'Accueil dans l'éditeur : six onglets posés sur le socle (_design.css). Aucune couleur
-   ici, rien que des jetons : le thème de l'éditeur décide de tout. */
-/* Centré sur une fenêtre large : le vide passe dans les marges intérieures, à parts égales.
-   Par la marge intérieure et non `margin: auto`, qui retirerait la marge par défaut du body et
-   décalerait la page d'autant sur une fenêtre étroite. */
+/* L'Accueil dans l'éditeur : six onglets posés sur _design.css. Jetons uniquement, le thème
+   de l'éditeur décide des couleurs. */
+/* Centré sur une fenêtre large par la marge intérieure : `margin: auto` retirerait la marge
+   par défaut du body et décalerait la page sur une fenêtre étroite. */
 body {
   --page-max: 64rem; padding-top: var(--e3); padding-bottom: var(--e4);
   padding-inline: max(var(--e5), calc((100% - var(--page-max)) / 2));
@@ -21,8 +20,8 @@ body {
   border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
   white-space: nowrap;
 }
-/* La largeur du libellé en gras, réservée d'avance par un double invisible : l'onglet qui
-   passe en gras ne décale plus ses voisins. */
+/* La largeur du libellé en gras est réservée par un double invisible : l'onglet qui passe en
+   gras ne décale pas ses voisins. */
 .accueil-onglet::after {
   content: attr(data-libelle); font-weight: 700;
   height: 0; overflow: hidden; visibility: hidden; user-select: none; pointer-events: none;
@@ -106,8 +105,8 @@ body {
 .accueil-liste:focus .accueil-option.actif {
   outline: 1px solid var(--vscode-list-focusOutline, var(--accent)); outline-offset: -1px;
 }
-/* Sur une ligne choisie, la pastille prend la couleur du texte : sa teinte d'état ne se
-   lirait plus sur le fond de sélection, et le mot suffit à dire l'état. */
+/* Sur une ligne choisie, la pastille prend la couleur du texte : sa teinte ne se lirait pas
+   sur le fond de sélection, et le mot dit l'état. */
 .accueil-liste:focus .accueil-option[aria-selected="true"] .szh-pastille { color: inherit; border-color: currentColor; }
 .accueil-cellule-nom { font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 5em; font-weight: 600; }
 .accueil-cellule-titre { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -146,8 +145,8 @@ body {
   font-size: var(--t-section); font-weight: 700; text-transform: none;
   color: var(--encre-2); margin: var(--e5) 0 var(--e2);
 }
-/* Trois colonnes : ce que fait la tâche, son réglage déjà rempli, son bouton. Étroit, le
-   réglage passe sous le texte et le bouton reste à droite. */
+/* Trois colonnes : ce que fait la tâche, son réglage, son bouton. En étroit, le réglage
+   passe sous le texte et le bouton reste à droite. */
 .accueil-tache-ligne {
   display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(0, 1.25fr) 8.5rem;
   gap: var(--e2) var(--e4); align-items: center;
@@ -219,8 +218,8 @@ body {
 #panneau-preproc .accueil-segment input:disabled + span { opacity: .55; cursor: default; }
 .preproc-details { margin: 0 0 var(--e3); }
 .preproc-details[hidden] { display: none; }
-/* La zone du geste : au repos, le bouton et ce qui est déjà décidé ; pendant le nettoyage,
-   le manuscrit, l'étape et Interrompre, à la même place. */
+/* La zone d'action : au repos, le bouton et les choix faits ; pendant le nettoyage, le
+   manuscrit, l'étape et Interrompre, à la même place. */
 .preproc-zone {
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini);
   padding: var(--e4); background: var(--vscode-input-background, var(--fond));
@@ -265,8 +264,7 @@ body {
 .accueil-jrn-tete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2) var(--e3); margin-bottom: var(--e2); min-height: 1.9rem; }
 .accueil-jrn-tete h2 { font-size: var(--t-corps); font-weight: 700; margin: 0; }
 .accueil-jrn-extrait { margin: 0 0 var(--e2); font-size: var(--t-libelle); color: var(--encre-2); }
-/* Pas de retour à la ligne : un transcript PowerShell s'aligne en colonnes, et couper une
-   ligne ferait perdre de vue où elle commence. */
+/* Pas de retour à la ligne : un transcript PowerShell s'aligne en colonnes. */
 .accueil-jrn-texte {
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: var(--vscode-editor-font-size, var(--t-libelle));
@@ -300,7 +298,7 @@ body {
 #panneau-reglages .accueil-tache-reglage .accueil-champ-cle { flex: 0 1 12rem; }
 #panneau-reglages .accueil-tache-reglage .szh-champ input { width: 100%; box-sizing: border-box; }
 
-/* La carte des réglages de la rédaction : verrouillée tant qu'on ne la déverrouille pas. */
+/* La carte des réglages de la rédaction, verrouillée par défaut. */
 .accueil-carte-proteges { margin-top: var(--e6); }
 .accueil-verrou { display: inline-flex; align-items: center; gap: var(--e1); }
 .accueil-verrou input { accent-color: var(--accent); }
@@ -308,9 +306,9 @@ body {
 .accueil-carte-proteges .accueil-details > summary .accueil-astuce { font-weight: 400; }
 .accueil-carte-proteges .szh-notif { margin-top: 0; }
 
-/* Les blocs à tables de correspondance — export OJS, titre de la bibliographie, tâches — sont
-   des grilles : une colonne par revue, une rangée par champ. Le libellé de chaque case est porté
-   par aria-label : l'en-tête de colonne seul ne se lit pas à la voix. */
+/* Les blocs à tables de correspondance (export OJS, titre de la bibliographie, tâches) sont
+   des grilles : une colonne par revue, une rangée par champ. Chaque case porte son libellé
+   en aria-label, l'en-tête de colonne seul ne se lisant pas à la voix. */
 .regl-zone { margin-top: var(--e2); }
 .regl-zone .szh-notif { margin: 0 0 var(--e2); }
 .regl-zone fieldset { border: 1px solid var(--filet); border-radius: var(--rayon);
@@ -330,15 +328,13 @@ body {
   border-radius: var(--rayon-mini);
 }
 .regl-grille input:focus, .regl-grille select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-/* Un champ vide n'est pas une valeur : c'est une valeur qu'il faut aller relever. Le pointillé le
-   dit sans couleur, donc aussi en monochrome. */
+/* Un champ vide est une valeur à relever : le pointillé le dit sans couleur. */
 .regl-grille input.vide { border-style: dashed; border-color: var(--filet-fort); }
-/* Clé d'une rubrique livrée : lisible, pas modifiable — c'est l'intitulé qui se corrige. */
+/* Clé d'une rubrique livrée : en lecture seule, c'est l'intitulé qui se corrige. */
 .regl-grille input.cle-livree { background: transparent; border-color: transparent;
   color: var(--encre-2); font-weight: 700; }
-/* Verrouillés, ces blocs se lisent mais ne se saisissent plus : pas de fond de saisie, le curseur
-   du texte ordinaire. Le contraste du texte, lui, ne baisse PAS — un réglage qu'on ne peut pas
-   changer doit rester lisible. */
+/* Verrouillés, ces blocs se lisent sans se saisir : pas de fond de saisie, curseur de texte
+   ordinaire. Le contraste du texte reste le même. */
 .regl-zone .fige { background: transparent; cursor: default; }
 .regl-zone input.fige, .regl-zone select.fige, .regl-zone textarea.fige { box-shadow: none; }
 .regl-zone button.fige { opacity: .5; }
@@ -394,7 +390,7 @@ body {
 .accueil-demande-perdues ul { margin: var(--e1) 0 0; padding-left: 1.4rem; }
 .accueil-demande-gestes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e2); }
 .accueil-demande-quand-meme { padding: .1em .6em; font-size: var(--t-libelle); }
-/* Grisé, le geste reste lisible : la raison est écrite à côté. */
+/* Grisée, l'action reste lisible : la raison est écrite à côté. */
 .accueil-demande-quand-meme:disabled, .accueil-demande-quand-meme:disabled:hover,
 .accueil-demande-retirer:disabled, .accueil-demande-retirer:disabled:hover { opacity: 1; color: var(--encre);
   background: var(--fond); border: 1px dashed var(--encre-2); cursor: default; }

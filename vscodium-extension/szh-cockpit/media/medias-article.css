@@ -1,6 +1,6 @@
-/* Gestionnaire des médias : une carte par figure, repliée sur ses seuls aperçus. Le clic sur
-   un aperçu déplie, sous la rangée, le formulaire de cette image — jamais un formulaire par
-   image empilé. Aucune couleur en dur, rien que les jetons de thème (_design.css). */
+/* Gestionnaire des médias : une carte par figure, repliée sur ses aperçus. Un clic sur un
+   aperçu déplie le formulaire de cette image sous la rangée. Couleurs : jetons de
+   _design.css uniquement. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh;
@@ -20,8 +20,8 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .pastilles { display: inline-flex; gap: var(--e1); flex-wrap: wrap; }
 
 /* ── Une carte par figure ──────────────────────────────────────────────────────
-   Repliée, elle ne montre que ses aperçus et la zone d'ajout : c'est ce qui la rend
-   courte dans une liste qui peut compter des dizaines d'images. */
+   Repliée, elle ne montre que ses aperçus et la zone d'ajout, pour rester courte dans une
+   liste de dizaines d'images. */
 .carte-figure { padding: var(--e3); display: flex; flex-direction: column; gap: var(--e3); }
 
 .figure-vignettes { display: flex; flex-wrap: wrap; gap: var(--e2); }
@@ -34,9 +34,8 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .vignette--ouverte { border-color: var(--accent);
   background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
 .vignette-image { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
-/* Le ton se pose ici, jamais sur .vignette : sa bordure à elle dit « survolée »/« ouverte »,
-   et les deux ne doivent pas se marcher dessus. Le padding tient la bordure à l'écart de
-   l'image — collée, elle se lirait comme le cadre de la photo elle-même. */
+/* Le ton se pose ici et non sur .vignette, dont la bordure dit « survolée » ou « ouverte ».
+   Le padding écarte la bordure de l'image, qu'on prendrait sinon pour le cadre de la photo. */
 .vignette-image--danger { border: 2px solid var(--danger); padding: var(--e1); border-radius: var(--rayon-mini); }
 .vignette-image--attention { border: 2px solid var(--avert); padding: var(--e1); border-radius: var(--rayon-mini); }
 .vignette img { display: block; max-width: 100%; max-height: 7rem;
@@ -44,13 +43,12 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .vignette .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
 .vignette-nom-ligne { display: flex; align-items: center; justify-content: space-between; gap: var(--e1); }
 .vignette-nom { font-size: var(--t-mini); overflow-wrap: anywhere; }
-/* Le pivot est celui du seul chevron : « .vignette svg » ferait aussi tourner le triangle
-   d'alerte et les pictogrammes des pastilles quand la vignette s'ouvre. */
+/* Seul le chevron pivote : « .vignette svg » ferait aussi tourner le triangle d'alerte et
+   les pictogrammes des pastilles. */
 .vignette-nom-ligne svg { flex: 0 0 auto; transition: transform .15s ease; }
 .vignette[aria-expanded="true"] .vignette-nom-ligne svg { transform: rotate(180deg); }
-/* Le triangle rouge des défauts bloquants, sur le coin de l'aperçu. Une pastille au fond du
-   thème le détache de n'importe quelle photo — claire, sombre ou rouge elle-même —, la
-   couleur vient de --danger (errorForeground du thème), lisible en clair comme en sombre. */
+/* Le triangle rouge des défauts bloquants, au coin de l'aperçu. La pastille au fond du
+   thème le détache de toute photo ; --danger (errorForeground) se lit dans les deux thèmes. */
 .vignette { position: relative; }
 .vignette-alerte { position: absolute; top: var(--e1); right: var(--e1);
   display: inline-flex; align-items: center; justify-content: center;
@@ -79,14 +77,13 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   overflow-wrap: anywhere; }
 
 /* ── Le formulaire d'une image, déplié sous la rangée ─────────────────────────
-   Le filet d'accent à gauche dit qu'on est entré dans une image précise : un fil visuel
-   entre l'aperçu cliqué et son formulaire. */
+   Le filet d'accent à gauche le relie à l'aperçu cliqué. */
 .media-form { display: flex; flex-direction: column; gap: var(--e3);
   border-left: 3px solid var(--accent); padding: var(--e2) 0 var(--e2) var(--e3); }
 .form-tete { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
 .form-tete .szh-ico:disabled { opacity: .4; cursor: default; }
 
-/* Portraits : inchangés, ils gardent leur aperçu agrandissable au clic. */
+/* Portraits : aperçu agrandissable au clic. */
 .visuel { display: flex; }
 .apercu { padding: var(--e1); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   background: var(--fond); cursor: zoom-in; display: block; max-width: 100%; }
@@ -96,25 +93,23 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .visuel--portrait .apercu img { max-height: 9rem; }
 .visuel .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
 
-/* Dépôt de fichier : remplacer une image, ou en ajouter une à côté. Même forme (.szh-depot,
-   _design.css §11), seul le titre distingue les deux gestes. */
-/* Un seul geste de fichier à la fois par figure : la classe va sur la carte entière, qui
-   porte les deux zones de dépôt de tous ses membres. */
+/* Dépôt de fichier : remplacer une image, ou en ajouter une. Même forme (.szh-depot,
+   _design.css), seul le titre change. */
+/* Une seule opération de fichier à la fois par figure : la classe va sur la carte entière,
+   qui porte les zones de dépôt de tous ses membres. */
 .occupe .szh-depot { opacity: .5; }
 .occupe .vignette img { opacity: .6; }
 
 .szh-notif .szh-bouton { margin-left: var(--e2); }
 .modale-nom { overflow-wrap: anywhere; }
 
-/* Zone que son état refuse : le cadre s'efface, le titre reste lisible. On ne masque pas —
-   un dépôt sur une zone absente n'expliquerait rien, alors qu'une zone grisée qui répond
-   « insérez d'abord cette image » se comprend. */
+/* Zone que son état refuse : le cadre s'efface, le titre reste lisible. La zone reste
+   visible pour qu'un dépôt reçoive son explication (« insérez d'abord cette image »). */
 .depot--refuse { opacity: .55; }
 .grille-choix { display: flex; flex-direction: column; gap: var(--e1);
   width: 100%; min-width: 0; margin-top: var(--e1); }
 .grille-choix select { max-width: 100%; }
 .grille-choix-actions { display: flex; gap: var(--e1); flex-wrap: wrap; }
 
-/* Les deux sorties côte à côte : elles se choisissent l'une contre l'autre, et les lire
-   sur deux lignes ferait croire à deux gestes de nature différente. */
+/* Les deux sorties côte à côte : elles s'excluent l'une l'autre. */
 .grille-sorties { display: flex; gap: var(--e2); flex-wrap: wrap; }

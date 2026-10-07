@@ -1,4 +1,3 @@
-/* Méta-données du numéro : un formulaire court, posé sur le socle (_design.css : body/h1
-   §0, largeur par défaut 52rem) et sur le fragment partagé _numero.css, qui dessine les
-   champs. Il ne reste ici que la largeur. */
+/* Métadonnées du numéro. Les champs sont dessinés par _numero.css, le reste par _design.css :
+   seule la largeur se règle ici. */
 body { --page-max: 38rem; }

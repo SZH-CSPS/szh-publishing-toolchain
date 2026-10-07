@@ -1,8 +1,8 @@
-/* Liste de cartes d'une vue d'ensemble : la mise en page que SZH.listeCartes construit
-   (media/_commun.js). Partagée par « Traductions », « Word en attente » et « Articles » —
-   trois vues, un seul dessin. Tout le reste vient du socle (_design.css). */
+/* Liste de cartes d'une vue d'ensemble, construite par SZH.listeCartes (_commun.js).
+   Partagée par « Traductions », « Word en attente » et « Articles ». Le reste vient de
+   _design.css. */
 
-/* Un écart franc entre les lignes : ce sont des blocs indépendants, pas un tableau. */
+/* Un écart franc entre les lignes : ce sont des blocs indépendants. */
 .szh-liste { display: flex; flex-direction: column; gap: var(--e3); }
 .szh-liste > * { flex: 0 0 auto; }
 .titre-section { margin: var(--e5) 0 0; font-size: var(--t-section); font-weight: 700;
@@ -12,26 +12,22 @@
 
 .ligne .szh-tete { flex-wrap: wrap; }
 .ligne .szh-corps { padding: var(--e3) var(--e3) 0; }
-/* Le pied : « Ouvrir » à gauche, l'état juste à côté. Toujours à la même place, quelle que
-   soit la longueur du titre — c'est ce qui rend une liste lisible d'un coup d'œil.
-   flex-wrap : quand les boutons et les pastilles ne tiennent plus sur une ligne, le pied
-   entier passe à la ligne suivante — jamais un seul bouton qui plierait son texte. */
+/* Le pied : « Ouvrir » à gauche, l'état juste à côté, à la même place quelle que soit la
+   longueur du titre. flex-wrap : si boutons et pastilles ne tiennent plus sur une ligne,
+   le pied entier passe à la ligne, sans qu'un bouton plie son texte. */
 .ligne-pied {
   display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2);
   padding: var(--e3);
 }
 .ligne-pied:empty { display: none; }
 
-/* Plusieurs défauts dans une carte : une phrase par défaut, empilées, et le bas du bloc
-   reprend la marge que le pied donnait — le pied d'une carte groupée est vide, donc replié
-   (.ligne-pied:empty), et sans cela la dernière phrase touchait le bord. */
+/* Plusieurs défauts dans une carte : une phrase par défaut, empilées. Le pied d'une carte
+   groupée est vide, donc replié (.ligne-pied:empty) : le bloc reprend sa marge du bas. */
 .ligne .szh-messages { display: flex; flex-direction: column; gap: var(--e2);
   padding-bottom: var(--e3); }
 
-/* Le geste d'un défaut, au bout de sa phrase. Étroit et sans fond : c'est une flèche dans
-   du texte, pas un bouton de barre — trois boutons pleins empilés dans une carte pesaient
-   plus que les phrases qu'ils accompagnent. La cible reste au-dessus du pouce (1,5 rem à la
-   taille d'interface par défaut), et le survol lui rend un fond, donc un contour.
+/* L'action d'un défaut, au bout de sa phrase : étroite et sans fond, une flèche dans du
+   texte plutôt qu'un bouton de barre. La cible garde 1,5 rem, et le survol lui rend un fond.
    vertical-align : un inline-flex se pose sur la ligne de base, ce qui suspendait la flèche
    au-dessus du texte. */
 .szh-ico--enligne {
@@ -39,22 +35,22 @@
   vertical-align: -.35em; color: inherit;
 }
 
-/* Un défaut en quatre étages (SZH.listeCartes, messageEnEtages) : le titre et son (i), les
-   objets en cause, la phrase d'action, le bouton. Chaque étage sur sa ligne — c'est ce qui
-   fait lire le titre d'abord et le geste en dernier, dans l'ordre où on les fait. */
+/* Un défaut en quatre étages (messageEnEtages de SZH.listeCartes) : le titre et son (i), les
+   objets en cause, la phrase d'action, le bouton. Un étage par ligne, dans l'ordre où on
+   les lit et les fait. */
 .szh-notif--etages > span { display: flex; flex-direction: column; align-items: flex-start;
   gap: var(--e1); min-width: 0; }
 .szh-msg-titre { font-weight: 700; }
 .szh-msg-pourquoi { opacity: .7; }
 .szh-msg-pourquoi:hover, .szh-msg-pourquoi:focus-visible,
 .szh-msg-pourquoi[aria-expanded="true"] { opacity: 1; }
-/* L'explication dépliée : plus petite, en retrait de couleur — une note, pas une phrase de
-   plus à faire. [hidden] doit gagner sur le display de l'étage. */
-/* pre-line : un extrait de journal garde une ligne par ligne, une phrase se replie comme avant. */
+/* L'explication dépliée, plus petite et plus pâle. [hidden] doit gagner sur le display de
+   l'étage. */
+/* pre-line : un extrait de journal garde ses lignes, une phrase se replie normalement. */
 .szh-msg-infobulle { font-size: var(--t-mini); color: var(--encre-2); line-height: 1.45; white-space: pre-line; }
 .szh-msg-infobulle[hidden] { display: none; }
-/* Un objet en cause : un lien, pas un bouton de barre — souligné, à la couleur des liens
-   du thème, et sa flèche le suit. Le survol et le focus clavier restent ceux d'un lien. */
+/* Un objet en cause se présente comme un lien : souligné, à la couleur des liens du thème,
+   suivi de sa flèche. */
 .szh-lien-objet {
   display: inline-flex; align-items: center; gap: .2em;
   padding: 0; border: 0; background: none; font: inherit; cursor: pointer;
@@ -67,29 +63,25 @@
 .szh-lien-objet svg { flex: 0 0 auto; }
 .szh-msg-geste .szh-bouton { gap: .35em; }
 
-/* La croix d'un message « Pour information », contre le bord droit de sa boîte. Elle est
-   discrète tant qu'on ne la vise pas : ce message n'a rien à faire faire, et sa croix ne
-   doit pas peser plus que sa phrase. margin-left: auto — .szh-notif est un flex, et c'est
-   ce qui plaque la croix à droite sans la sortir de la boîte. */
+/* La croix d'un message « Pour information », contre le bord droit de sa boîte, discrète
+   tant qu'on ne la vise pas. margin-left: auto la plaque à droite dans le flex de
+   .szh-notif. */
 .szh-notif-croix {
   margin-left: auto; flex: 0 0 auto;
   width: 1.5rem; height: 1.5rem; opacity: .55;
 }
 .szh-notif-croix:hover, .szh-notif-croix:focus-visible { opacity: 1; }
 
-/* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
-   thème, le fond reste celui des autres. */
+/* Un bouton qui détruit : le texte prend la couleur d'erreur du thème, le fond ne change
+   pas. */
 .bouton-danger { color: var(--danger); }
 .bouton-danger:hover { color: var(--vscode-button-foreground, #fff);
   background: var(--danger); }
 
-/* Ce qui reste à faire sur la carte, dans son propre encadré : un filet et un fond
-   distincts séparent franchement ce qui l'attend du reste de la carte, plutôt qu'une case
-   de plus au milieu de l'aperçu. L'entête porte un titre compact et l'avancement — « 2/4
-   tâches », déplacé ici depuis la pastille du pied — puis une case par tâche, en
-   colonne et non en ligne : un intitulé de six mots ne se coupe pas au milieu, et la case
-   reste collée au texte qu'elle coche. Viennent ensuite, dans le même cadre, les deux
-   groupes de constats — voir plus bas. */
+/* Ce qui reste à faire sur la carte, dans son propre encadré (filet et fond distincts).
+   L'entête porte un titre compact et l'avancement (« 2/4 tâches »), puis une case par
+   tâche, en colonne pour qu'un intitulé long ne se coupe pas. Les deux groupes de constats
+   suivent dans le même cadre. */
 .szh-taches { display: flex; flex-direction: column; gap: var(--e1);
   margin: var(--e3) var(--e3) 0; padding: var(--e2) var(--e3);
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
@@ -113,28 +105,21 @@
 .szh-tache:hover { color: var(--accent); }
 
 /* Ce que la carte signale, sous ses tâches et dans le même encadré : « Attention » pour ce
-   qui mérite un regard, « Erreur / bloquant » pour ce qui arrêtera la publication. Chaque
-   groupe porte le titre compact des tâches, teinté de son ton — c'est le titre qui dit la
-   gravité, les messages restent lisibles. Un écart franc au-dessus du premier groupe le
-   détache de la dernière case à cocher. */
+   qui mérite un regard, « Erreur / bloquant » pour ce qui arrêtera la publication. Le titre
+   de chaque groupe, teinté de son ton, dit la gravité. Un écart franc détache le premier
+   groupe de la dernière case à cocher. */
 .szh-constats { display: flex; flex-direction: column; gap: var(--e1);
   margin-top: var(--e2); }
 .szh-constats-titre { margin: 0; }
 .szh-constats--attention .szh-constats-titre { color: var(--avert); }
 .szh-constats--danger .szh-constats-titre { color: var(--danger); }
-/* Plus petits que le corps de la carte : ce sont des notes en marge d'un titre, pas des
-   paragraphes à lire. Le même corps que celui qu'ils avaient dans la barre de titre.
-   margin: 0 — un .szh-notif est un <p>, et la marge par défaut du navigateur s'ajoutait au
-   gap du conteneur : deux messages voisins se retrouvaient à trois interlignes l'un de
-   l'autre dans un encadré qui cherche justement à les serrer. */
+/* Plus petits que le corps de la carte : ce sont des notes. margin: 0, car un .szh-notif est
+   un <p> dont la marge par défaut s'ajouterait au gap du conteneur. */
 .szh-constats .szh-notif { font-size: var(--t-mini); padding: var(--e1) var(--e2); margin: 0; }
 
-/* La carte que SZH.listeCartes().focaliser() vient d'amener à l'écran (revue F03, boutons
-   de constat qui visent le dépôt Word par nom de fichier) : les mêmes couleurs que le
-   surlignage d'un passage dans l'éditeur (extension.js, surlignerFocus), jamais une teinte
-   en dur — pour que la carte se lise comme le même geste, sous une autre forme. La
-   transition n'anime que la disparition : la carte apparaît déjà marquée, à l'instant où
-   elle vient d'être amenée à l'écran. */
+/* La carte que SZH.listeCartes().focaliser() vient d'amener à l'écran (par exemple depuis un
+   constat qui vise un dépôt Word) : mêmes couleurs que le surlignage d'un passage dans
+   l'éditeur (surlignerFocus d'extension.js). La transition n'anime que la disparition. */
 .szh-carte--focus {
   background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, .33));
   outline: 2px solid var(--vscode-editor-findMatchBorder, var(--accent));

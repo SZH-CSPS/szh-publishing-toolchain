@@ -34,9 +34,9 @@
 
   var poser = SZH.poser, icone = SZH.icone;
 
-  // Sous cette largeur de la webview, le détail prend toute la place et l'emporte sur les
-  // largeurs mémorisées. Mesuré dans VSCodium (03.10.2026) : à 1160 px, le tableau à côté du
-  // détail défile en largeur et tronque ses colonnes ; à 1290 px, il se lit sans défiler.
+  // Sous cette largeur de la webview, le détail prend toute la place, quelles que soient les
+  // largeurs mémorisées. Dans VSCodium, à 1160 px, le tableau à côté du détail défile en
+  // largeur et tronque ses colonnes ; à 1290 px, il se lit sans défiler.
   var SEUIL_DETAIL_PLEIN = 1280;
   var LARGEUR_MAX = 900, PAS_CLAVIER = 16, PAS_CLAVIER_GRAND = 64;
   var DUREE_BANDEAU = 10000, DUREE_AVIS = 6000;
@@ -83,8 +83,8 @@
     var r = Math.round(x * 10) / 10;
     return r === Math.round(r) ? String(r) : r.toFixed(1).replace('.', ',');
   }
-  // Le réglage d'un type tel que le poste l'a gardé : { largeurs, masquees, tri }. L'ancienne
-  // colonne Cran se reporte sur Score ; ce qui ne se lit pas s'ignore.
+  // Le réglage d'un type tel que le poste l'a gardé : { largeurs, masquees, tri }. Une colonne
+  // Cran enregistrée se reporte sur Score ; ce qui ne se lit pas est ignoré.
   function reglageColonnes(brut) {
     var r = brut && typeof brut === 'object' ? brut : {};
     var largeurs = r.largeurs && typeof r.largeurs === 'object' && !Array.isArray(r.largeurs) ? Object.assign({}, r.largeurs) : {};
@@ -771,7 +771,7 @@
     }
     function reglageDe(type) { return reglageColonnes((reglages || {})[type]); }
     function reglageVide(r) { return Object.keys(r.largeurs).length === 0 && r.masquees.length === 0 && !r.tri; }
-    // « tri » n'est écrit que s'il sert : les réglages d'avant restent identiques.
+    // « tri » n'est écrit que s'il sert : un réglage sans tri reste identique.
     function aSauver(r) {
       var x = { largeurs: r.largeurs, masquees: r.masquees };
       if (r.tri) { x.tri = r.tri; }
@@ -2397,7 +2397,7 @@
       valider();
     }
 
-    // ---- Clavier : sur le panneau, pour ne jamais agir hors de la vue ------------------------
+    // ---- Clavier : écouté sur le panneau, pour n'agir que dans la vue -----------------------
     function enSaisie(el) {
       if (!el) { return false; }
       if (el.isContentEditable) { return true; }

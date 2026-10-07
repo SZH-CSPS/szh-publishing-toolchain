@@ -1,5 +1,5 @@
-/* Vue « Propositions » de la Documentation (media/_propositions.js). Rien que les jetons de
-   _design.css, et des classes préfixées prop-. */
+/* Vue « Propositions » de la Documentation (_propositions.js). Jetons de _design.css,
+   classes préfixées prop-. */
 
 /* La vue tient la hauteur de la page : seuls le tableau et le détail défilent. */
 .corps.prop-plein { overflow: hidden; display: flex; flex-direction: column; padding-bottom: 0; }
@@ -49,9 +49,9 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .prop-table td { padding: .25rem var(--e2); border-bottom: 1px solid var(--filet); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; vertical-align: middle; height: 1.9rem; }
-/* La poignée de largeur, sur le bord droit de l'en-tête : un trait de 1 px au repos, de 3 px au
-   survol et au focus. La cible fait 9 px. L'encre secondaire et non le filet : le filet du
-   thème sombre ne se détache pas du fond (APCA). */
+/* La poignée de largeur, sur le bord droit de l'en-tête : un trait de 1 px au repos, de 3 px
+   au survol et au focus, pour une cible de 9 px. Encre secondaire plutôt que filet : le
+   filet du thème sombre ne se détache pas du fond (APCA). */
 .prop-poignee { position: absolute; top: 0; bottom: 0; right: -4px; width: 9px; z-index: 2; cursor: col-resize;
   touch-action: none; background: linear-gradient(to right, transparent 4px, var(--encre-2) 4px, var(--encre-2) 5px, transparent 5px); }
 .prop-poignee:hover, .prop-poignee:focus-visible, .prop-poignee--active {
@@ -86,8 +86,8 @@
 /* Une acceptée : le mot et la date disent l'état, l'icône ne fait que le doubler. */
 .prop-etat--acceptee { font-weight: 400; color: var(--encre-2); }
 .prop-etat--acceptee svg { color: var(--encre-2); }
-/* Pourquoi une acceptation ne s'annule pas d'ici : le seul texte qui explique le bouton désactivé,
-   au plus petit corps ; l'encre principale (Lc 80,9 en Light+, 75,7 avec l'encre secondaire). */
+/* La raison pour laquelle une acceptation ne s'annule pas ici. Plus petit corps, encre
+   principale pour le contraste (Lc 80,9 en Light+, 75,7 avec l'encre secondaire). */
 .prop-garde-raison { font-size: var(--t-mini); color: var(--encre); }
 .prop-bouton-annuler-acceptation[aria-disabled="true"] { opacity: .45; cursor: default; }
 
@@ -112,8 +112,8 @@
   border-bottom-left-radius: 0; border-left: 1px solid var(--fond); }
 .prop-refus-menu svg { width: 11px; height: 11px; }
 .prop-ico-geste { flex: 0 0 auto; width: 12px; height: 12px; }
-/* Vérifier : pas le bleu d'Accepter. Le fond de la page et un cerne ambre, l'ambre des cas B ;
-   l'icône et le mot restent, la teinte ne fait que les doubler. */
+/* Vérifier : fond de la page et cerne ambre (celui des cas B), pour se distinguer du bleu
+   d'Accepter ; l'icône et le mot portent le sens. */
 .szh-bouton.prop-bouton-verifier { color: var(--encre); background: var(--fond); border: 1px solid var(--avert); }
 .szh-bouton.prop-bouton-verifier:hover { color: var(--encre); background: color-mix(in srgb, var(--avert) 14%, var(--fond)); }
 .prop-bouton-verifier .prop-ico-geste { color: var(--avert); }
@@ -131,7 +131,7 @@
 .prop-zone--serre .prop-actions .prop-libelle-geste { display: none; }
 .prop-zone--serre .prop-actions .szh-bouton:not(.prop-aussi) { padding: .2em .4em; }
 
-/* Un geste désactivé reste lisible : la raison est écrite à côté, il ne doit pas s'effacer. */
+/* Un geste désactivé reste lisible : sa raison est écrite à côté. */
 .prop-vue .szh-bouton:disabled, .prop-vue .szh-bouton:disabled:hover { opacity: 1; color: var(--encre);
   background: var(--fond); border: 1px dashed var(--encre-2); }
 
@@ -179,7 +179,7 @@
 .prop-case-aussi { display: inline-flex; align-items: center; gap: var(--e1); font-size: var(--t-libelle); cursor: pointer; }
 .prop-case-aussi input { margin: 0; accent-color: var(--accent); }
 
-/* Le formulaire : les champs de la Documentation (media/_fiche-doc.js), un champ en doute cerné. */
+/* Le formulaire : les champs de la Documentation (_fiche-doc.js), un champ en doute cerné. */
 .prop-formulaire { display: flex; flex-direction: column; gap: var(--e2); }
 .prop-champs { display: flex; flex-direction: column; gap: var(--e3); }
 .prop-champ--doute { padding: var(--e2); border: 1px solid var(--avert); border-left-width: 3px;
@@ -259,7 +259,7 @@
 .prop-finesse-bandeau { margin: 0; flex: 1 1 auto; }
 .prop-finesse-bandeau > span { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1) var(--e3); }
 .prop-finesse-bandeau .szh-bouton { margin-left: auto; padding: .1em .6em; }
-/* Une masquée montrée : grisée, en italique, et le mot « masquée » qui ne laisse pas la couleur seule. */
+/* Une masquée montrée : grisée, en italique, avec le mot « masquée » en plus de la couleur. */
 .prop-ligne--masquee td { color: var(--encre-2); }
 .prop-ligne--masquee .prop-titre { color: var(--encre-2); font-style: italic; }
 .prop-masquee-mot { display: block; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
@@ -316,7 +316,7 @@
 /* Dans un en-tête réglable, le bouton s'arrête avant la poignée (le padding droit du th). */
 .prop-table th .prop-tri { display: inline-flex; align-items: baseline; max-width: 100%; vertical-align: bottom; }
 .prop-tri-libelle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* La flèche du sens ne se tronque jamais : c'est elle qui dit le sens, pas la couleur. */
+/* La flèche du sens ne se tronque pas : c'est elle qui dit le sens. */
 .prop-tri-sens { flex: 0 0 auto; white-space: pre; }
 .prop-terme { padding: 0; border: 0; background: none; font: inherit; color: var(--vscode-textLink-foreground, var(--accent));
   text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }

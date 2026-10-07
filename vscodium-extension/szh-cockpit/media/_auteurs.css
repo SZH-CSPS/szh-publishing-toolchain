@@ -1,6 +1,5 @@
-/* Fiche d'auteur·e et sa modale d'édition, posées par media/_auteurs.js. Chargées par les
-   trois vues qui montrent des auteur·e·s, pour qu'un changement d'apparence se fasse ici
-   et nulle part ailleurs. Le socle (_design.css) fournit les jetons et les boutons. */
+/* Fiche d'auteur·e et sa modale d'édition, posées par _auteurs.js. Chargé par les trois vues
+   qui montrent des auteur·e·s. Les jetons et les boutons viennent de _design.css. */
 
 /* ---- Fiche affichée : la photo, le nom, les coordonnées, et de quoi éditer. */
 .auteur-fiche {
@@ -19,7 +18,7 @@
 }
 .auteur-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .auteur-portrait.sans-photo { color: var(--encre-2); background: none; border-style: dashed; }
-/* Photo présente mais pas envoyée — budget des vignettes épuisé : le cadre reste plein, pour
+/* Photo présente mais non envoyée (budget des vignettes épuisé) : le cadre reste plein, pour
    qu'on ne la croie pas absente. */
 .auteur-portrait.photo-cachee { color: var(--encre-2); }
 .auteur-loupe {
@@ -37,8 +36,8 @@
 .auteur-boutons { flex: 0 0 auto; display: flex; align-items: center; gap: var(--e1);
   flex-wrap: wrap; }
 
-/* ---- Modale d'édition : le voile est celui de SZH.modale (.szh-modale, _design.css) ;
-   cette classe n'habille plus que la boîte. */
+/* ---- Modale d'édition : le voile vient de SZH.modale (.szh-modale, _design.css), cette
+   classe habille la boîte. */
 .modale-auteur {
   background: var(--vscode-editor-background); color: var(--encre);
   border: 1px solid var(--filet-fort); border-radius: var(--rayon);
@@ -50,16 +49,15 @@
 .modale-auteur > h3 {
   margin: 0 0 var(--e4); font-size: var(--t-titre); font-weight: 700;
 }
-/* Des paires de champs courts : la grille reste pleine, sans cellule vide. Le ROR fait
-   exception et prend la ligne entière — une URL ne tient pas dans une demi-largeur. */
+/* Des paires de champs courts. Le ROR prend la ligne entière : une URL ne tient pas dans une
+   demi-largeur. */
 .auteur-grille { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
 .auteur-grille > * { min-width: 0; }
 .auteur-grille .szh-champ--large { grid-column: 1 / -1; }
 @media (max-width: 34rem) { .auteur-grille { grid-template-columns: 1fr; } }
 
-/* .szh-depot (_design.css §11) est une rangée par défaut ; ce dépôt-ci empile trois lignes
-   centrées (le texte, « ou », le bouton) — le seul des cinq dans ce cas — d'où ce
-   `display: block` qui annule la rangée partagée sans toucher au reste (couleurs, survol). */
+/* .szh-depot (_design.css) est une rangée ; ce dépôt-ci empile trois lignes centrées (le
+   texte, « ou », le bouton). */
 .modale-auteur .szh-depot {
   display: block;
   border: 2px dashed var(--vscode-panel-border, rgba(128, 128, 128, .6));
@@ -93,8 +91,8 @@
 .boutons-modale { display: flex; gap: var(--e2); flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---- Autocomplétion prénom/nom : les auteur·e·s déjà publiés (OAI, lib/auteurs-ojs.js).
-   La boîte (.szh-sugg, partagée avec les mots-clés — _design.css §10) se rattache au bloc
-   du champ où l'on tape ; elle n'existe pas tant que l'hôte n'a pas envoyé de liste, et
-   disparaît dès qu'aucun nom ne correspond. */
+   La boîte (.szh-sugg, partagée avec les mots-clés, _design.css) se rattache au champ où
+   l'on tape ; elle n'existe qu'une fois la liste reçue de l'hôte, et disparaît quand aucun
+   nom ne correspond. */
 .auteur-grille .szh-champ { position: relative; }
 .auteur-grille .szh-sugg { left: 0; right: 0; }

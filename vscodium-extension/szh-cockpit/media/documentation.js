@@ -1,27 +1,25 @@
 (function () {
 'use strict';
-// La Documentation d'un numéro — « Actualité et ressources » / « News & Ressourcen » — en un
-// seul formulaire : les rubriques de texte riche (références du dossier, tour d'horizon…)
-// puis les fiches structurées (livres, films, interventions parlementaires, agenda…).
+// La Documentation d'un numéro (« Actualité et ressources » / « News & Ressourcen ») : les
+// rubriques de texte riche (références du dossier, tour d'horizon…) puis les fiches
+// structurées (livres, films, interventions parlementaires, agenda…).
 //
-// Depuis que la Documentation est une arborescence Kirby (lib/kirby-contenu.js), CHAQUE champ
-// d'une fiche — y compris son titre — vient de `typesConfig[].champs`, dans l'ordre du
-// contrat (pipeline/kirby/champs-documentation.json) : cette page ne connaît AUCUN nom de
-// champ en dur, hormis `canton` (le seul dont dépend l'ordre d'un autre menu, voir
-// rafraichirDependants) et les quatre sous-champs de `suivi` (date/genre/libelle/lien, eux
-// aussi transmis par l'hôte, jamais supposés). Ces champs se construisent dans
-// media/_fiche-doc.js, que le détail d'une proposition emploie aussi.
+// La Documentation est une arborescence Kirby (lib/kirby-contenu.js). Chaque champ d'une
+// fiche, titre compris, vient de `typesConfig[].champs`, dans l'ordre du contrat
+// (pipeline/kirby/champs-documentation.json). Seuls noms de champs connus ici : `canton`
+// (dont dépend l'ordre d'un autre menu, voir rafraichirDependants) et les quatre sous-champs
+// de `suivi` (date/genre/libelle/lien, transmis par l'hôte). Les champs se construisent dans
+// _fiche-doc.js, que le détail d'une proposition emploie aussi.
 //
-// Quatre partis de mise en page, inchangés depuis l'ancienne version :
+// Mise en page :
 //   1. Tout est pliable. Un seul accordéon ouvert à la fois dans toute la page.
-//   2. Un sommaire collant à droite.
-//   3. Rien d'incomplet n'est refusé — une pastille dit ce qui manque.
-//   4. Rien ne dépasse d'une carte repliée.
+//   2. Rien d'incomplet n'est refusé : une pastille dit ce qui manque.
+//   3. Rien ne dépasse d'une carte repliée.
 //
-// Identité d'une carte : un identifiant que cette page choisit à la création (nouvelId()).
-// Une fiche neuve n'a pas encore d'Uuid Kirby — l'hôte le crée à l'écriture (kirby-contenu.js,
-// ajouterFiche) et le renvoie dans `correspondances` (voir le protocole ci-dessous) : c'est
-// alors, et alors seulement, que l'identifiant de la carte change pour devenir cet Uuid.
+// Identité d'une carte : un identifiant choisi à la création (nouvelId()). Une fiche neuve
+// n'a pas encore d'Uuid Kirby : l'hôte le crée à l'écriture (ajouterFiche,
+// kirby-contenu.js) et le renvoie dans `correspondances` ; l'identifiant de la carte devient
+// alors cet Uuid.
 //
 // Protocole. Vers l'hôte :
 //   pret ; modifie { modifie } ; enregistrer { auto, ressources, rubriques } ;
@@ -39,9 +37,7 @@
 // un type de typesConfig { valeur, libelleSection, libelleAjouter, libelleAjouterTip,
 // avecImage, champFichier, champs: [{ cle, libelle, saisie, requis, quand?, options?,
 // dependDe?, optionsParCanton?, structureChamps?, extensions?, depuis?, table? }] }.
-// La vue « Propositions » a son propre protocole, décrit en tête de media/_propositions.js
-// (propCharger, propAccepter, propRefuser, propAnnuler, propColonnes, propOuvrirSource,
-// propVerifier, propRecreer, propDonnees, propVerifie).
+// La vue « Propositions » a son propre protocole, décrit en tête de _propositions.js.
 var api = acquireVsCodeApi();
 function imageDepot() {
   return Object.assign({ format: 'errFormat', poids: 'errTropVolumineuse' }, SZH.LIMITES.image);
@@ -63,17 +59,16 @@ var corpsPage = document.getElementById('corps');
 var zoneSections = document.getElementById('sections');
 var compteurId = 0;
 var compteurIndex = 0;
-// La navigation entière vit dans l'arbre (Robin, 23.09.2026) : plus de barre d'onglets dans
-// la page, plus de sommaire latéral — un seul panneau à la fois, choisi par l'hôte
+// La navigation se fait dans l'arbre : un seul panneau à la fois, choisi par l'hôte
 // (charger.vueInitiale au premier chargement, ongletActiver ensuite). « Documentation du
-// numéro » ouvre par défaut sur « Rubriques ». Mémorisé pour la session du panneau : jamais
-// réinitialisé par rendre(), rejoué à chaque charger().
+// numéro » s'ouvre sur « Rubriques ». Gardé pour la session du panneau : rendre() ne le
+// réinitialise pas.
 var vueOnglet = 'numero';
 var vueCategorie = 'rubriques';
-// L'onglet Archive : toute la bibliothèque de PRODUCTION, lue à la demande seulement — voir
-// assurerChargementArchive(). `images` met en cache l'aperçu d'une fiche par « type|slug »,
-// demandé une seule fois (ARCHIVE_IMAGE) même si l'aperçu se rouvre plusieurs fois dans la
-// session. `repriseEnCours` désactive les boutons « Reprendre » le temps d'un aller-retour.
+// L'onglet Archive : toute la bibliothèque de production, lue à la demande (voir
+// assurerChargementArchive()). `images` garde l'aperçu d'une fiche par « type|slug »,
+// demandé une seule fois (ARCHIVE_IMAGE). `repriseEnCours` désactive les boutons
+// « Reprendre » le temps d'un aller-retour.
 var archiveEtat = {
   charge: false, chargement: false, erreur: null, fiches: [], images: {},
   filtreTexte: '', filtreType: '', filtreRevue: '', filtreNumero: '', filtreAnnee: '',
@@ -98,7 +93,7 @@ function allerA(el) {
   catch (e) { /* environnement sans mise en page (tests) */ }
 }
 
-// ---- Barre d'outils de texte riche (rubriques) — inchangée -----------------------------
+// ---- Barre d'outils de texte riche (rubriques) -----------------------------------------
 function outilBouton(cls, libelle, titre, fn) {
   var b = document.createElement('button');
   b.type = 'button';
@@ -162,7 +157,7 @@ function basculerListe(valeur, debut, fin) {
   var nvBloc = nvLignes.join('\n');
   return { valeur: valeur.slice(0, debutLigne) + nvBloc + valeur.slice(finLigne), debut: debutLigne, fin: debutLigne + nvBloc.length };
 }
-// La hauteur d'un champ de prose suit son texte : SZH.suivreHauteur (media/_commun.js).
+// La hauteur d'un champ de prose suit son texte : SZH.suivreHauteur (_commun.js).
 function appliquer(c, fn) {
   var zone = c.ctl.contenu;
   var debut = zone.selectionStart || 0;
@@ -179,7 +174,7 @@ function appliquer(c, fn) {
 
 // ---- Valeurs, complétude, modification --------------------------------------------------
 //
-// Les valeurs et la complétude d'une fiche viennent de media/_fiche-doc.js ; une rubrique n'a
+// Les valeurs et la complétude d'une fiche viennent de _fiche-doc.js ; une rubrique n'a
 // que son contenu.
 function valeurs(c) {
   return c.famille === 'rubrique'
@@ -191,7 +186,7 @@ function champsManquants(c) {
   return ficheDoc.champsManquants(c);
 }
 // Ce qui suffit pour écrire une fiche : au moins un champ non vide (la pastille dit ce qui
-// manque encore, ce n'est jamais un refus d'écrire).
+// manque encore, l'écriture n'est pas refusée).
 function aQuelqueChose(c) {
   var v = valeurs(c);
   for (var cle in v) {
@@ -253,7 +248,7 @@ function majEtatCarte(c) {
   majCompteursSection();
 }
 
-// ---- Les champs d'une fiche : media/_fiche-doc.js -------------------------------------
+// ---- Les champs d'une fiche : _fiche-doc.js -------------------------------------------
 var ficheDoc = SZH.ficheDoc.creer({
   api: api,
   txt: function () { return TXT; },
@@ -271,8 +266,8 @@ var recevoirApercuDate = SZH.ficheDoc.recevoirDate;
 //
 // Sur la fiche que l'hôte désigne (typesConfig[].preremplissage, la fiche « D'une revue à
 // l'autre »), un bouton ouvre la liste des articles de l'autre revue, demandée à l'hôte une
-// seule fois par panneau. Un choix remplit la carte comme une saisie : rien n'est écrit sur
-// le disque avant l'enregistrement ordinaire. Remplacer un champ déjà rempli se confirme.
+// fois par panneau. Un choix remplit la carte comme une saisie, sans rien écrire avant
+// l'enregistrement ordinaire. Remplacer un champ déjà rempli demande confirmation.
 var autreRevueEtat = { demande: false, donnees: null, carte: null, choix: null, filtre: '' };
 var modaleAutreRevue = null;
 function preremplissageDuType(type) {
@@ -347,7 +342,8 @@ function rendreAutreRevue() {
   });
   if (trouves === 0) { texte(zone, 'p', 'doc-vue-vide', SZH.remplir(TXT, 'autreRevueVide', [nom])); }
 }
-// Remplacer un champ rempli par une autre valeur se confirme ; compléter un champ vide, non.
+// Remplacer un champ rempli par une autre valeur demande confirmation ; compléter un champ
+// vide, non.
 function choisirAutreRevue(a) {
   var c = autreRevueEtat.carte;
   if (!c) { return; }
@@ -491,15 +487,14 @@ function construireFiche(section, ressource, persistee) {
   c.element = s;
 
   var tete = construireTete(c, s, 'doc-tete');
-  // Retirer du numéro = rendre orpheline (l'hôte vide Ausgabe, jamais un effacement) : la
-  // fiche reste dans la bibliothèque, disponible depuis « Mes orphelines ». Une carte neuve,
-  // jamais enregistrée, se retire simplement du DOM (voir retirerFiche).
+  // Retirer du numéro rend la fiche orpheline (l'hôte vide Ausgabe, sans effacer) : elle
+  // reste dans la bibliothèque, visible dans « Mes orphelines ». Une carte jamais
+  // enregistrée se retire simplement du DOM (voir retirerFiche).
   c.ctl.retirer = boutonIcone('bas', TXT.retirerTip || '', function () { retirerFiche(c); });
   tete.appendChild(c.ctl.retirer);
-  // Supprimer = effacement définitif, geste DISTINCT du précédent (icône et tooltip à part) —
-  // demandé sur « Documentation du numéro » (23.09.2026). L'hôte demande confirmation
-  // (modale native) avant d'agir ; une carte jamais enregistrée n'a rien à effacer, un
-  // simple retrait du DOM suffit (voir supprimerFicheCarte).
+  // Supprimer efface la fiche définitivement, avec une icône et une infobulle distinctes.
+  // L'hôte demande confirmation (modale native) ; une carte jamais enregistrée se retire
+  // simplement du DOM (voir supprimerFicheCarte).
   c.ctl.supprimer = boutonIcone('poubelle', TXT.supprimerNumeroTip || '',
     function () { supprimerFicheCarte(c); }, 'szh-ico--danger');
   tete.appendChild(c.ctl.supprimer);
@@ -536,9 +531,9 @@ function retirerFiche(c) {
   majCompteursSection();
   majModifie();
 }
-// Supprimer une carte pour de bon : rien à optimiser côté DOM avant la réponse de l'hôte —
-// la confirmation est une modale NATIVE (côté hôte), le rédacteur peut annuler. Le panneau se
-// recharge entièrement sur la confirmation (documentation-hote.js), comme SUPPRIMER (orphelines).
+// Supprimer une carte : l'hôte demande confirmation (modale native), et le panneau se
+// recharge entièrement après confirmation (documentation-hote.js), comme pour SUPPRIMER
+// (orphelines).
 function supprimerFicheCarte(c) {
   if (!c.persistee) { retirerFiche(c); return; }
   api.postMessage({ type: SZH.MSG.SUPPRIMER_FICHE_NUMERO, id: c.id });
@@ -633,10 +628,8 @@ function construireSectionFiches(type) {
 
 // ---- Compteurs de section ---------------------------------------------------------------
 //
-// Le sommaire latéral a disparu (23.09.2026) : la navigation entre catégories vit dans
-// l'arbre, qui affiche déjà les mêmes comptes en face de chaque entrée — le répéter ici
-// aurait fait doublon (Robin). Seul le compteur posé sur l'en-tête de la section restante
-// (« Livres (2) », visible pendant qu'elle est affichée) survit.
+// La navigation entre catégories se fait dans l'arbre, qui affiche les comptes. Seul
+// l'en-tête de la section affichée porte son compteur (« Livres (2) »).
 function compteCartes(famille, type) {
   var n = 0;
   for (var i = 0; i < cartes.length; i++) { if (cartes[i].famille === famille && cartes[i].type === type) { n++; } }
@@ -653,11 +646,10 @@ function majCompteursSection() {
 
 // ---- Barre d'en-tête, avec son bouton bascule « Aperçu du PDF » -----------------------
 //
-// Ouvre/ferme l'aperçu de CETTE page à côté (colonne voisine) — même mécanisme que celui
-// d'un article (documentation-hote.js#basculerApercuDocumentation). L'état affiché suit
-// TOUJOURS la réponse de l'hôte (apercuEtat, ou le champ apercuOuvert de charger()), jamais
-// une supposition côté page : l'aperçu peut se fermer à la croix, sans qu'aucun clic ici ne
-// le sache — c'est l'hôte qui le redit alors (onDidChangeViewState du panneau).
+// Ouvre ou ferme l'aperçu de cette page dans la colonne voisine, comme pour un article
+// (documentation-hote.js#basculerApercuDocumentation). L'état affiché suit la réponse de
+// l'hôte (apercuEtat, ou apercuOuvert dans charger()) : l'aperçu peut se fermer à la croix,
+// et c'est alors l'hôte qui le signale (onDidChangeViewState du panneau).
 function construireBarre() {
   ctl = SZH.construireBarre(barre, {
     txt: TXT,
@@ -671,8 +663,8 @@ function construireBarre() {
     }
   });
 }
-// aria-pressed suffit : _design.css donne déjà le fond plein à .szh-bouton[aria-pressed="true"]
-// (même règle que les autres interrupteurs de la maison, media/_fiches.js#traductionsVisibles).
+// aria-pressed suffit : _design.css donne le fond plein à .szh-bouton[aria-pressed="true"]
+// (comme les autres interrupteurs, _fiches.js#traductionsVisibles).
 function majApercuBascule(ouvert) {
   if (!ctl.apercu) { return; }
   ctl.apercu.setAttribute('aria-pressed', ouvert ? 'true' : 'false');
@@ -682,19 +674,13 @@ function trouverFiche(id) {
   return null;
 }
 
-// ---- Onglets : Traductions à faire | Réservoir | Documentation du numéro --------------
+// ---- Vues Traductions à faire et Réservoir ----------------------------------------------
 //
-// Trois onglets, dans cet ordre — Robin a demandé des onglets, pas des sections empilées
-// (23.09.2026). « Mes orphelines » est une PARTIE de l'onglet Réservoir, pas un onglet à
-// part. « Documentation du numéro » (rubriques + fiches rattachées, l'ancien contenu de
-// cette page) est ouvert par défaut ; les deux autres portent un compteur du nombre
-// d'éléments en attente. L'onglet choisi est mémorisé pour la session du panneau — rien ne
-// réinitialise `ongletActif`, y compris un rechargement complet (rendre() le relit sans le
-// changer).
+// « Mes orphelines » fait partie de la vue Réservoir.
 //
-// Chaque ligne d'une liste montre le type et le titre (tels qu'écrits dans l'AUTRE langue —
-// jamais traduits ici) et un ou deux gestes, envoyés à l'hôte par leur `slug` (fiche) ou
-// leur `uuid` (décision de statut, indépendante du numéro).
+// Chaque ligne d'une liste montre le type et le titre (tels qu'écrits dans l'autre langue,
+// sans traduction) et une ou deux actions, envoyées à l'hôte avec le `slug` (fiche) ou
+// l'`uuid` (décision de statut, indépendante du numéro).
 function ligneVue(parent, libelleType, titre) {
   var l = texte(parent, 'div', 'doc-vue-ligne');
   texte(l, 'span', 'doc-vue-type', libelleType || '');
@@ -714,7 +700,7 @@ function construireTraductions(parent, traductions) {
   });
 }
 // Vue « Publier sur le site web » : une notice statique, sans message vers l'hôte. Le
-// bouton n'a pas d'écouteur : il annonce le geste à venir.
+// bouton, sans écouteur, annonce une fonction à venir.
 function construireWeb(parent) {
   parent.textContent = '';
   var zone = texte(parent, 'div', 'doc-web');
@@ -767,9 +753,9 @@ function construireReservoir(parent, msg) {
   texte(toggle, 'span', null, TXT.reservoirAfficherIgnorees || '');
 
   // ---- Sélection multiple : une case par ligne, « Tout sélectionner » (sur les lignes
-  // visibles après filtre), une barre d'actions en lot — À traduire / Ignorer d'un côté,
-  // Annuler la décision de l'autre (même bascule que les boutons par ligne, jamais les deux
-  // jeux en même temps). Un seul message par geste en lot, un tableau d'uuid.
+  // visibles après filtre), une barre d'actions en lot : À traduire / Ignorer, ou Annuler la
+  // décision, selon la vue (comme les boutons par ligne). Un seul message par action en lot,
+  // avec un tableau d'uuid.
   var selectionnes = new Set();
   var visiblesCourantes = [];
 
@@ -827,7 +813,7 @@ function construireReservoir(parent, msg) {
     var choisis = Object.keys(actifs).filter(function (id) { return actifs[id]; });
     var visibles = entrees.filter(function (r) { return choisis.length === 0 || choisis.indexOf(r.ausgabeSource) !== -1; });
     visiblesCourantes = visibles;
-    // Une ligne qui sort du filtre ne doit pas rester sélectionnée en silence.
+    // Une ligne qui sort du filtre est désélectionnée.
     var visiblesUuid = new Set(visibles.map(function (r) { return r.uuid; }));
     selectionnes.forEach(function (u) { if (!visiblesUuid.has(u)) { selectionnes.delete(u); } });
     if (visibles.length === 0) { texte(liste, 'p', 'doc-vue-vide', TXT.reservoirVide || ''); majBarreLot(); return; }
@@ -863,15 +849,15 @@ function construireReservoir(parent, msg) {
   });
   rendreListe();
 
-  // Réponse ciblée de l'hôte à RESERVOIR_FILTRE (voir le message « reservoir » plus bas) :
-  // seule cette liste se remet à jour, jamais tout le formulaire.
+  // Réponse ciblée de l'hôte à RESERVOIR_FILTRE (voir le message « reservoir ») : seule
+  // cette liste est mise à jour.
   ctl.reservoirMaj = function (avecIgnorees, nouvellesEntrees) {
     toggleCb.checked = avecIgnorees;
     entrees = nouvellesEntrees;
     rendreListe();
   };
 
-  // « Mes orphelines » est une PARTIE de l'onglet Réservoir, pas un onglet à part.
+  // « Mes orphelines » fait partie de la vue Réservoir.
   construireOrphelines(parent, Array.isArray(msg.orphelines) ? msg.orphelines : []);
 }
 
@@ -882,10 +868,9 @@ function libelleCategorieNumero() {
   var t = TYPES.filter(function (x) { return x.valeur === vueCategorie; })[0];
   return t ? (t.libelleSection || t.valeur) : '';
 }
-// Dans « Documentation du numéro », UNE SEULE catégorie à la fois (Robin, 23.09.2026) :
-// toutes les cartes de rubrique se cachent sauf en catégorie 'rubriques', toutes les
-// sections de fiches se cachent sauf celle dont le type est visé — jamais une reconstruction,
-// juste un .hidden, comme le reste de la page.
+// Dans « Documentation du numéro », une seule catégorie à la fois : les cartes de rubrique
+// sont cachées hors de la catégorie 'rubriques', les sections de fiches hors de leur type.
+// Rien n'est reconstruit, seul .hidden change.
 function appliquerFiltreNumero() {
   for (var i = 0; i < cartes.length; i++) {
     var c = cartes[i];
@@ -898,9 +883,9 @@ function appliquerFiltreNumero() {
     s.corps.hidden = !visible;
   }
 }
-// La barre des catégories de « Documentation du numéro » (Robin, 24.09.2026) : Rubriques
-// puis un type de fiche par onglet, dans l'ordre du contrat, chacun avec son compte. Un clic
-// ne recharge rien : il change la catégorie visée et réapplique le filtre.
+// La barre des catégories de « Documentation du numéro » : Rubriques, puis un type de fiche
+// par onglet, dans l'ordre du contrat, chacun avec son compte. Un clic change la catégorie
+// visée et réapplique le filtre, sans rien recharger.
 function construireBarreCategories() {
   barreCategories.textContent = '';
   var entrees = [{ cle: 'rubriques', libelle: TXT.groupeRubriques || '', compte: null }];
@@ -928,9 +913,9 @@ function construireBarreCategories() {
     barreCategories.appendChild(b);
   });
 }
-// La vue « Propositions » (media/_propositions.js), montée la première fois qu'on l'ouvre.
-// Ses gestes qui rechargent la page passent par apresEcriture : les cartes du numéro
-// s'enregistrent d'abord.
+// La vue « Propositions » (_propositions.js), montée la première fois qu'on l'ouvre. Ses
+// actions qui rechargent la page passent par apresEcriture : les cartes du numéro sont
+// d'abord enregistrées.
 var propositions = null;
 function vuePropositions() {
   if (!propositions) {
@@ -943,11 +928,9 @@ function vuePropositions() {
   return propositions;
 }
 
-// Bascule la visibilité des quatre panneaux et pose le titre de la vue choisie — appelée
-// après chaque rendre() et à chaque message ongletActiver (l'arbre, panneau déjà ouvert).
-// Toute la navigation vit désormais dans l'arbre : la page n'a plus de barre d'onglets ni de
-// sommaire latéral (l'un faisait doublon avec l'autre). Déclenche aussi la lecture (une
-// fois) de la bibliothèque de production dès qu'on arrive sur Archive.
+// Affiche le panneau de la vue choisie et pose son titre, après chaque rendre() et à chaque
+// message ongletActiver (arbre, panneau déjà ouvert). Lance aussi, une fois, la lecture de
+// la bibliothèque de production à l'arrivée sur Archive.
 function appliquerVue() {
   panelTraductions.hidden = vueOnglet !== 'traductions';
   panelReservoir.hidden = vueOnglet !== 'reservoir';
@@ -975,13 +958,12 @@ function appliquerVue() {
   if (vueOnglet === 'propositions') { vuePropositions().afficher(); }
 }
 
-// ---- Onglet Archive : toute la bibliothèque de PRODUCTION, lecture seule --------------
+// ---- Onglet Archive : toute la bibliothèque de production, lecture seule ----------------
 //
-// Lue une seule fois par session de panneau (assurerChargementArchive), jamais à charger() —
-// des centaines de fiches sur OneDrive ne doivent pas ralentir l'ouverture ordinaire du
-// formulaire. Le bouton « Actualiser » (actualiserArchive) force une relecture. L'image
-// d'une fiche est demandée à part, au clic sur son aperçu (demanderImageArchive) : la envoyer
-// en bloc avec la liste en referait une par fiche à chaque lecture.
+// Lue une fois par session de panneau (assurerChargementArchive), pas à charger() : des
+// centaines de fiches sur OneDrive ralentiraient l'ouverture du formulaire. « Actualiser »
+// (actualiserArchive) force une relecture. L'image d'une fiche est demandée au clic sur son
+// aperçu (demanderImageArchive), pour ne pas toutes les envoyer à chaque lecture.
 function assurerChargementArchive() {
   if (archiveEtat.charge || archiveEtat.chargement) { return; }
   archiveEtat.chargement = true;
@@ -1013,8 +995,8 @@ function numerosLigneArchive(f) {
   if (!f.numeros || f.numeros.length === 0) { return TXT.archiveSansNumero || ''; }
   return f.numeros.map(function (n) { return n.label; }).join(', ');
 }
-// « Les deux revues » / littéraux, jamais traduits — même convention que lib/yaml.js#titreNumero
-// (les noms des deux publications sont identiques dans les deux langues de l'interface).
+// « Les deux revues » et les noms des revues ne se traduisent pas, comme dans
+// lib/yaml.js#titreNumero.
 var NOMS_REVUE_ARCHIVE = { revue: 'Revue', zeitschrift: 'Zeitschrift' };
 
 function optionsDistinctesArchive(extraire) {
@@ -1167,9 +1149,8 @@ function reprendreArchive(f, boutonReprendre) {
   api.postMessage({ type: SZH.MSG.ARCHIVE_REPRENDRE, ficheType: f.type, slug: f.slug });
 }
 
-// Trois icônes, dans cet ordre (Robin, 23.09.2026) — plus de boutons texte : Reprendre
-// (flèche, agit), Aperçu (oeil, agit), Éditer (crayon, grisé « à venir » — rien ne branche
-// encore l'édition d'une fiche archivée).
+// Trois icônes, dans cet ordre : Reprendre (flèche), Aperçu (œil), Éditer (crayon, grisé :
+// l'édition d'une fiche archivée n'est pas encore branchée).
 function rendreListeArchive(zoneListe) {
   zoneListe.textContent = '';
   var visibles = archiveEtat.fiches.filter(ficheCorrespondFiltresArchive);
@@ -1283,9 +1264,9 @@ function enregistrer(auto) {
 }
 var autoEnr = SZH.autoEnregistrement({ delai: 0, estModifie: estModifie, enregistrer: enregistrer });
 
-// Un geste que l'hôte fait suivre d'un rechargement (tirer, traduire) attend que les cartes
-// soient écrites : sinon le rechargement les remettrait à leur valeur du disque. L'écriture
-// passe par autoEnr, qui ne double jamais un envoi déjà en vol.
+// Une action que l'hôte fait suivre d'un rechargement (tirer, traduire) attend que les
+// cartes soient écrites, sinon le rechargement les remettrait à leur valeur du disque.
+// L'écriture passe par autoEnr, qui ne double pas un envoi en cours.
 var gesteApresEcriture = null;
 function apresEcriture(geste) {
   if (!estModifie()) { geste(); return; }
@@ -1319,10 +1300,9 @@ window.addEventListener('message', function (ev) {
     IMAGE = imageDepot();
     if (msg.i18n) { TXT = msg.i18n; construireBarre(); }
     // La vue demandée par une entrée de l'arbre (extension.js#_itemsActualite /
-    // _itemsDocumentationNumero), portée par l'hôte SEULEMENT sur ce tout premier « charger »
-    // (documentation-hote.js#ouvrirDocumentation ne la pose qu'au premier « pret »). Absente
-    // sur tout rechargement suivant — vueOnglet/vueCategorie restent alors ce qui était
-    // affiché, comme le veut le commentaire au-dessus de ces variables.
+    // _itemsDocumentationNumero), envoyée seulement dans le premier « charger »
+    // (documentation-hote.js#ouvrirDocumentation). Aux rechargements suivants,
+    // vueOnglet/vueCategorie restent ce qui était affiché.
     if (msg.vueInitiale && msg.vueInitiale.onglet) {
       vueOnglet = String(msg.vueInitiale.onglet);
       vueCategorie = String(msg.vueInitiale.categorie || 'rubriques');
@@ -1339,16 +1319,16 @@ window.addEventListener('message', function (ev) {
     recevoirAutreRevue(msg);
     return;
   }
-  // Un panneau DÉJÀ OUVERT qu'une entrée de l'arbre rappelle sur une autre vue — jamais un
-  // rechargement, juste la bascule (documentation-hote.js#ouvrirDocumentation).
+  // Un panneau déjà ouvert qu'une entrée de l'arbre rappelle sur une autre vue : bascule
+  // seulement, sans rechargement (documentation-hote.js#ouvrirDocumentation).
   if (msg.type === SZH.MSG.ONGLET_ACTIVER) {
     vueOnglet = String(msg.cle || 'numero');
     vueCategorie = String(msg.categorie || 'rubriques');
     appliquerVue();
     return;
   }
-  // L'état réel du bouton « Aperçu du PDF » — réponse à APERCU_BASCULER, ou poussé tout seul
-  // quand ce panneau redevient actif (l'aperçu peut s'être fermé à la croix entre-temps).
+  // L'état réel du bouton « Aperçu du PDF » : réponse à APERCU_BASCULER, ou envoyé quand le
+  // panneau redevient actif (l'aperçu a pu être fermé à la croix).
   if (msg.type === SZH.MSG.APERCU_ETAT) {
     majApercuBascule(!!msg.ouvert);
     return;
@@ -1395,8 +1375,8 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
-  // Réponse ciblée à RESERVOIR_FILTRE (l'interrupteur « afficher les ignorées ») : ne
-  // reconstruit que la liste du réservoir, jamais tout le formulaire.
+  // Réponse ciblée à RESERVOIR_FILTRE (l'interrupteur « afficher les ignorées ») : seule la
+  // liste du réservoir est reconstruite.
   if (msg.type === 'reservoir') {
     if (ctl.reservoirMaj) { ctl.reservoirMaj(!!msg.avecIgnorees, Array.isArray(msg.entrees) ? msg.entrees : []); }
     return;
@@ -1429,9 +1409,9 @@ window.addEventListener('message', function (ev) {
   }
   if (msg.type === SZH.MSG.ARCHIVE_REPRISE) {
     archiveEtat.repriseEnCours = false;
-    // Un nouvel enregistrement (msg.ok) a déjà déclenché un « charger » séparé côté hôte, qui
-    // reconstruit « Documentation du numéro » — ici, on ne fait que réactiver les boutons de
-    // la liste Archive (restés désactivés le temps de l'aller-retour) et donner le mot final.
+    // Un enregistrement réussi (msg.ok) a déjà déclenché un « charger » séparé côté hôte,
+    // qui reconstruit « Documentation du numéro » : ici, on réactive seulement les boutons de
+    // la liste Archive et on affiche le message final.
     rendreArchive();
     etat(msg.ok ? (TXT.archiveRepriseOk || '') : ('⚠ ' + (msg.message || '')));
     return;

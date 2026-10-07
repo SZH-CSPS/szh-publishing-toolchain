@@ -1,37 +1,31 @@
 /* La Documentation d'un numéro : rubriques de texte riche et fiches structurées dans un
-   seul formulaire, tout pliable, avec un sommaire collant à droite. Remplace
-   ressources-article.css et rubriques-article.css.
-   Aucune couleur en dur, rien que les jetons de thème (_design.css). */
-/* `max-width: none` : le socle (_design.css) borne le corps à --page-max, une largeur de
-   lecture faite pour une page qui coule toute seule. Cette page-ci ne coule pas, elle tient
-   deux colonnes dont la seconde est collée à droite — sous la borne, le sommaire flottait au
-   milieu de la fenêtre avec une large bande vide à sa droite. C'est .doc-colonnes, plus bas,
-   qui borne maintenant la seule colonne qui doit l'être : le formulaire. */
+   seul formulaire repliable, avec un sommaire collant à droite. Couleurs : jetons de
+   _design.css uniquement. */
+/* `max-width: none` : _design.css borne le corps à --page-max. Ici, la page tient deux
+   colonnes dont la seconde est collée à droite ; c'est .doc-colonnes qui borne le
+   formulaire. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh; max-width: none;
   display: flex; flex-direction: column; overflow: hidden; }
 
-/* C'est .corps qui défile — et c'est donc lui qui sert de référence au sommaire collant :
-   `position: sticky` se cale sur le plus proche ancêtre défilant, pas sur la fenêtre. */
+/* .corps défile, et sert donc de référence au sommaire collant : `position: sticky` se cale
+   sur le plus proche ancêtre qui défile, pas sur la fenêtre. */
 .corps { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: var(--e6); }
 
-/* Deux colonnes : le formulaire, et le sommaire. `align-items: start` est ce qui permet au
-   sommaire de rester collé — étiré sur toute la hauteur (le défaut, `stretch`), il n'aurait
-   jamais de quoi glisser. */
-/* Le formulaire s'arrête à 64rem — au-delà, une ligne de texte se suit mal d'un bord à
-   l'autre — et `space-between` donne tout le reste à l'écart entre les deux colonnes, ce qui
-   colle le sommaire au bord droit de la fenêtre au lieu de laisser une bande vide après lui.
-   Sur une fenêtre étroite, la borne ne joue pas et les deux colonnes se serrent comme avant. */
+/* Deux colonnes : le formulaire et le sommaire. `align-items: start` permet au sommaire de
+   rester collé : étiré sur toute la hauteur (`stretch`), il n'aurait pas de place pour
+   glisser. */
+/* Le formulaire s'arrête à 64rem, pour la lecture, et `space-between` colle le sommaire au
+   bord droit de la fenêtre. Sur une fenêtre étroite, les deux colonnes se serrent. */
 .doc-colonnes { display: grid; grid-template-columns: minmax(0, 64rem) 15rem;
   gap: var(--e5); align-items: start; justify-content: space-between; }
 .doc-panels { min-width: 0; }
 .doc-sections { display: flex; flex-direction: column; gap: var(--e3); min-width: 0; }
 .doc-sections > * { flex: 0 0 auto; }
 
-/* Fenêtre étroite : une seule colonne, et le sommaire repasse en tête — il dit la structure,
-   c'est par lui qu'on commence. Il cesse alors d'être collant : deux zones collantes dans
-   une colonne unique se marcheraient dessus. */
+/* Fenêtre étroite : une seule colonne, le sommaire en tête. Il n'est plus collant : deux
+   zones collantes dans une même colonne se chevaucheraient. */
 @media (max-width: 52rem) {
   .doc-colonnes { grid-template-columns: minmax(0, 1fr); }
   .doc-sommaire { position: static; order: -1; max-height: none; }
@@ -53,8 +47,8 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-sommaire-lien:hover { color: var(--accent); }
 .doc-sommaire-lien:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .doc-sommaire-nom { flex: 1 1 auto; min-width: 0; }
-/* La marque dit l'état sans couleur seule : un nombre pour une catégorie de fiches, le mot
-   « vide » pour une rubrique qui ne s'imprimera pas. */
+/* La marque dit l'état autrement que par la couleur : un nombre pour une catégorie de
+   fiches, le mot « vide » pour une rubrique qui ne s'imprimera pas. */
 .doc-sommaire-marque { flex: 0 0 auto; font-size: var(--t-mini); color: var(--encre-2); }
 .doc-sommaire-marque--compte { font-weight: 700; color: var(--encre); }
 .doc-sommaire-marque--vide { font-style: italic; }
@@ -67,16 +61,15 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-titre-fiches { display: flex; align-items: baseline; gap: var(--e2); }
 .doc-compte-section { font-weight: 400; letter-spacing: 0; text-transform: none; }
 
-/* Une catégorie : ses cartes, puis son bouton d'ajout — toujours à cette place, jamais en
-   bas de toute la page, où il faudrait défiler après chaque type. */
+/* Une catégorie : ses cartes, puis son bouton d'ajout, juste en dessous et non en bas de la
+   page. */
 .doc-section { display: flex; flex-direction: column; gap: var(--e2); }
 .doc-ajouter { align-self: flex-start; }
 
 /* ---- Accordéon : cartes de fiches et rubriques, même en-tête ------------------------- */
-/* L'en-tête est un <button> pleine largeur : cliquable à la souris, atteignable au clavier,
-   annoncé avec son état par aria-expanded (voir documentation.js). Le corps se replie par
-   l'attribut hidden, ce qui le sort aussi de l'arbre d'accessibilité — une carte fermée
-   n'est donc pas lue par une synthèse vocale. */
+/* L'en-tête est un <button> pleine largeur, annoncé avec son état par aria-expanded
+   (documentation.js). Le corps se replie par l'attribut hidden, qui le retire aussi de
+   l'arbre d'accessibilité. */
 .doc-carte { padding: var(--e2) var(--e3); display: flex; flex-direction: column; gap: var(--e2); }
 .doc-tete { display: flex; align-items: center; gap: var(--e2); }
 
@@ -89,27 +82,25 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-bascule-libelle { flex: 0 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Le chevron dit l'état par sa forme et non par la couleur seule, et pivote à l'ouverture. */
+/* Le chevron dit l'état par sa forme, et pivote à l'ouverture. */
 .doc-bascule::before { content: '▸'; flex: 0 0 auto;
   color: var(--encre-2); transition: transform .12s ease; }
 .doc-carte--ouverte .doc-bascule::before { transform: rotate(90deg); }
 
 /* La pastille d'état, dans l'en-tête : « non complet » pour une fiche à laquelle il manque
-   un champ requis, « vide » pour une rubrique qui ne s'imprimera pas. Elle a remplacé le
-   pavé « À compléter avant l'enregistrement », supprimé avec le refus d'écrire. */
+   un champ requis, « vide » pour une rubrique qui ne s'imprimera pas. */
 .doc-badge { flex: 0 0 auto; font-weight: 400; }
 
 .doc-corps { display: flex; flex-direction: column; gap: var(--e2); padding-top: var(--e2); }
 
-/* Le titre est le seul champ en pleine largeur ; le reste se lit à côté d'une saisie voisine
-   sans que l'œil retraverse toute la carte. */
+/* Le titre est le seul champ en pleine largeur ; les autres vont par paires. */
 .doc-biblio { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--e3); }
 .doc-biblio > * { min-width: 0; }
 
 /* ---- Dépôt de l'image de couverture -------------------------------------------------- */
-/* Même forme que le dépôt du gestionnaire des médias (medias-article.css), en plus compact :
-   une seule zone par fiche, jamais deux gestes à distinguer ici. */
+/* Même forme que le dépôt du gestionnaire des médias (medias-article.css), plus compacte :
+   une seule zone par fiche. */
 .doc-image { display: flex; gap: var(--e3); align-items: flex-start; flex-wrap: wrap; }
 .doc-vignette { flex: 0 0 auto; width: 5.5rem; height: 5.5rem;
   display: flex; align-items: center; justify-content: center;
@@ -129,31 +120,25 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-depot-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
 
 /* ---- Rubriques : barre d'outils et champ de prose ------------------------------------ */
-/* Gras, italique, lien, liste — chacun agit sur la sélection du textarea voisin. Le style
-   visuel (graisse, italique) porte l'affordance ; le texte du bouton reste celui que l'hôte
-   fournit (i18n), rien n'est écrit en dur ici. */
+/* Gras, italique, lien, liste : chacun agit sur la sélection du textarea voisin. Le style
+   du bouton (graisse, italique) montre son effet ; son texte vient de l'hôte (i18n). */
 .doc-outils { display: flex; gap: var(--e1); flex-wrap: wrap; }
 .doc-outil { padding: .2em .6em; font-size: var(--t-libelle); }
 .doc-outil--gras { font-weight: 700; }
 .doc-outil--italique { font-style: italic; }
 
-/* Un textarea qui grandit avec son texte (SZH.suivreHauteur, media/_commun.js), jusqu'à un
-   plafond au-delà duquel il défile lui-même plutôt que de pousser la page à l'infini — une
-   bibliographie de trente références ne doit pas se lire dans une fenêtre de trois lignes,
-   mais ne doit pas non plus noyer la carte suivante.
-   `min-height` vaut le double de ce qu'il valait : ces champs reçoivent des paragraphes, et
-   un cadre de trois lignes disait le contraire. `resize: vertical` rend le coin tirable pour
-   les cas où même le plafond ne suffit pas ; la hauteur tirée gagne alors sur la mesure
-   automatique, sans quoi la frappe suivante la reprendrait aussitôt. */
+/* Un textarea qui grandit avec son texte (SZH.suivreHauteur, _commun.js) jusqu'à un
+   plafond, puis défile. `min-height` montre que le champ attend des paragraphes.
+   `resize: vertical` permet de tirer le coin au-delà du plafond ; la hauteur tirée
+   l'emporte alors sur la mesure automatique, sans quoi la frappe suivante l'annulerait. */
 .doc-champ textarea {
   width: 100%; box-sizing: border-box; resize: vertical;
   min-height: 12rem; overflow-y: hidden;
   font-family: inherit; line-height: var(--interligne);
 }
 
-/* Une rubrique n'a qu'un bloc : sa carte porte donc le titre imprimé de la rubrique, et se
-   distingue d'une carte de fiche par ce liseré d'accent — c'est la structure du numéro, pas
-   une entrée parmi d'autres. */
+/* Une rubrique n'a qu'un bloc : sa carte porte le titre imprimé de la rubrique, et un
+   liseré d'accent la distingue d'une carte de fiche. */
 .doc-rubrique { border-left: 3px solid var(--accent); }
 
 /* ---- Champ `structure` (le suivi d'une intervention) : des lignes répétables ---------- */
@@ -164,7 +149,7 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   padding: var(--e1) var(--e2); border: 1px solid var(--filet); border-radius: var(--rayon-mini); }
 .doc-structure-souschamp { flex: 1 1 8rem; min-width: 0; display: flex; flex-direction: column; gap: .2em; }
 .doc-structure-souschamp label { font-size: var(--t-mini); color: var(--encre-2); }
-/* Les champs s'alignent par le haut : la forme imprimée d'une date pousse sa seule colonne. Le
+/* Les champs s'alignent par le haut : la forme imprimée d'une date allonge sa colonne. Le
    bouton de retrait descend de la hauteur d'une étiquette. */
 .doc-structure-ligne > button { margin-top: calc(var(--t-mini) * var(--interligne) + .2em); }
 .doc-structure-ajouter { align-self: flex-start; }
@@ -175,9 +160,8 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 /* Petite liste (genre) : cases côte à côte, comme une liste d'étiquettes. */
 .doc-liste-multiple-cases { display: flex; flex-wrap: wrap; gap: var(--e2) var(--e3); }
 .doc-liste-multiple-case { display: flex; align-items: center; gap: .3em; font-size: var(--t-libelle); }
-/* Grande liste (pays) : étiquettes retirables au-dessus, recherche en dessous — la liste de
-   résultats flotte par-dessus le reste du formulaire (position: absolute), jamais en
-   poussant le contenu qui suit. */
+/* Grande liste (pays) : étiquettes retirables au-dessus, recherche en dessous. La liste de
+   résultats flotte par-dessus le formulaire (position: absolute) sans pousser la suite. */
 .doc-liste-multiple-chips { display: flex; flex-wrap: wrap; gap: var(--e1); }
 .doc-liste-multiple-chip { display: inline-flex; align-items: center; gap: .3em;
   padding: .15em .5em; border-radius: 999px; font-size: var(--t-mini);
@@ -195,14 +179,14 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-liste-multiple-resultat:hover { background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
 .doc-liste-multiple-resultats .doc-vue-vide { margin: 0; padding: .3em .6em; }
 
-/* ---- Champ `derive` (le type Curia) : lecture seule, jamais saisi --------------------- */
+/* ---- Champ `derive` (le type Curia) : lecture seule -------------------------------------- */
 .doc-champ-derive { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--t-libelle); }
 .doc-derive-valeur { color: var(--encre-2); }
 .doc-derive-valeur:empty::before { content: '–'; }
 
 /* ---- Onglets : Traductions à faire | Réservoir | Documentation du numéro ------------- */
-/* Une barre fixe entre la barre d'outils et le corps défilant — jamais dans .corps, sinon
-   elle défilerait avec le contenu au lieu de rester en tête. */
+/* Une barre fixe entre la barre d'outils et le corps défilant, hors de .corps pour ne pas
+   défiler avec le contenu. */
 .doc-onglets { flex: 0 0 auto; display: flex; gap: var(--e1);
   border-bottom: 1px solid var(--filet); padding: 0 var(--e1); }
 .doc-onglet { display: flex; align-items: center; gap: var(--e1);
@@ -231,21 +215,20 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-vue-titre { flex: 1 1 auto; min-width: 8rem; }
 .doc-vue-origine { flex: 0 0 auto; font-size: var(--t-mini); color: var(--encre-2); }
 .doc-vue-bouton { flex: 0 0 auto; }
-/* Le filtre par numéro (réservoir) : une ligne de cases à cocher, sélection multiple —
-   aucune cochée = tous les numéros. */
+/* Le filtre par numéro (réservoir) : une ligne de cases à cocher. Aucune cochée = tous les
+   numéros. */
 .doc-reservoir-filtre { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
 .doc-reservoir-filtre-label { font-size: var(--t-mini); color: var(--encre-2); }
 .doc-reservoir-case { display: flex; align-items: center; gap: .3em; font-size: var(--t-libelle); }
 .doc-reservoir-toggle { margin-left: auto; }
-/* La barre d'actions en lot : « Tout sélectionner » à gauche, les trois gestes à droite —
-   seuls ceux qui s'appliquent à la vue courante (actives ou ignorées) sont visibles, et
-   chacun se désactive tant qu'aucune ligne n'est cochée (voir majBarreLot(), documentation.js). */
+/* La barre d'actions en lot : « Tout sélectionner » à gauche, les actions à droite. Seules
+   celles qui s'appliquent à la vue courante (actives ou ignorées) sont visibles, et chacune
+   reste désactivée tant qu'aucune ligne n'est cochée (majBarreLot(), documentation.js). */
 .doc-reservoir-lot { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
   padding: var(--e1) 0; border-bottom: 1px solid var(--filet); margin-bottom: var(--e1); }
 .doc-reservoir-lot-boutons { display: flex; gap: var(--e2); margin-left: auto; flex-wrap: wrap; }
 .doc-reservoir-lot-boutons button:disabled { opacity: .5; cursor: not-allowed; }
-/* « Mes orphelines » : une partie de l'onglet Réservoir, pas un onglet à part — un simple
-   liseré la distingue du reste de la liste. */
+/* « Mes orphelines » : une partie de l'onglet Réservoir, distinguée par un liseré. */
 .doc-vue-orphelines { border-left: 3px solid var(--encre-2); padding-left: var(--e3);
   display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e2); }
 .doc-vue-titre-section { margin: 0; font-size: var(--t-section); font-weight: 700;
@@ -256,9 +239,9 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .doc-archive-compteur { font-size: var(--t-mini); color: var(--encre-2); }
 .doc-archive-erreur { margin: 0; font-size: var(--t-libelle);
   color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
-/* Une ligne de filtres qui se replie proprement sur une fenêtre étroite : recherche pleine
-   largeur en premier, puis les quatre sélecteurs côte à côte, chacun aligné sur sa base
-   (label au-dessus, champ en dessous) — jamais deux hauteurs de ligne différentes. */
+/* Une ligne de filtres qui se replie sur une fenêtre étroite : la recherche en pleine
+   largeur, puis les quatre sélecteurs côte à côte, chacun avec son label au-dessus du
+   champ, alignés sur la même hauteur. */
 .doc-archive-filtres { display: flex; align-items: flex-end; gap: var(--e3); flex-wrap: wrap;
   margin-bottom: var(--e2); }
 .doc-archive-recherche { flex: 1 1 14rem; min-width: 10rem; box-sizing: border-box;

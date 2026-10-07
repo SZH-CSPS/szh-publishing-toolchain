@@ -1,10 +1,10 @@
-/* Propre au formulaire « Metadonnees des articles ». La carte, sa tete, les auteurs et la
-   modale photo viennent de _design.css et de _fiches.css. */
+/* Formulaire « Métadonnées des articles ». La carte, sa tête, les auteurs et la modale photo
+   viennent de _design.css et de _fiches.css. */
 .carte > h2 { font-family: var(--vscode-editor-font-family, monospace); }
 .modale h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700; }
 .modifie > h2::after { content: " ●"; color: var(--avert); }
 
-/* Bandeau « un seul article affiche », visible seulement en vue filtree. */
+/* Bandeau « un seul article affiché », visible en vue filtrée. */
 .filtre { display: flex; align-items: center; gap: var(--e3); margin: 0 0 var(--e4);
   padding: var(--e2) var(--e3); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
   color: var(--encre-2);

@@ -1,13 +1,12 @@
 /* Vue d'ensemble d'une section : la barre de commandes, puis une ligne par élément. La
-   liste et ses cartes viennent du fragment partagé _liste.css, le reste du socle
-   (_design.css : body/h1 §0, largeur par défaut 52rem) ; il ne reste ici que la largeur. */
+   liste et ses cartes viennent de _liste.css, le reste de _design.css ; seule la largeur
+   se règle ici. */
 body { --page-max: 60rem; }
 
-/* Le voile « Analyse en cours… » (media/vue-ensemble.js, poserVoile) : ce qui est dessous
-   va peut-être changer. Grisé et flouté pour qu'on ne s'y fie pas, sans clic possible
-   pour qu'on n'agisse pas dessus ; la bulle au centre dit pourquoi. Posé soit sur la carte
-   de l'article compilé, soit sur toute la liste (#lignes). Les couleurs sont celles du
-   socle (_design.css) : le voile suit le thème clair ou sombre sans rien redéclarer. */
+/* Le voile « Analyse en cours… » (poserVoile de vue-ensemble.js), posé sur les cartes
+   des articles en cours de compilation. Ce qui est dessous peut changer : il
+   est grisé, flouté et ne reçoit pas les clics ; la bulle au centre dit pourquoi. Les
+   couleurs de _design.css suivent le thème clair ou sombre. */
 .szh-analyse-cible { position: relative; }
 .szh-analyse-cible > :not(.szh-analyse-voile) {
   opacity: .45; filter: blur(1.5px); pointer-events: none; user-select: none;
@@ -18,8 +17,7 @@ body { --page-max: 60rem; }
   display: flex; align-items: center; justify-content: center; gap: var(--e2);
   pointer-events: none;
 }
-/* La liste entière peut dépasser l'écran : la bulle reste en vue en haut de la zone
-   plutôt que perdue au milieu d'une liste qu'on a fait défiler. */
+/* Sur une longue liste, la bulle reste en vue en haut de la zone. */
 .szh-liste.szh-analyse-cible > .szh-analyse-voile {
   align-items: flex-start; padding-top: var(--e7);
 }
@@ -46,13 +44,9 @@ body { --page-max: 60rem; }
   animation: szh-analyse-tourne .8s linear infinite;
 }
 @keyframes szh-analyse-tourne { to { transform: rotate(360deg); } }
-/* Mouvement réduit : la roue tourne quand même, deux fois plus lentement. La pulsation
-   d'abord posée à sa place (opacité à .4) ne se voyait pas : sur un poste où Windows a
-   coupé ses animations (« Afficher les animations dans Windows », MinAnimate = 0, que
-   Chromium lit comme prefers-reduced-motion), la roue passait pour figée et la rédaction
-   ne savait plus si l'analyse tournait (constaté le 29.09.2026). Une roue d'un rem est
-   l'indicateur d'attente lui-même, pas un décor qui défile : on la ralentit, on ne
-   l'arrête pas. Seules les transitions du voile, elles, disparaissent. */
+/* Mouvement réduit : la roue tourne deux fois plus lentement, sans s'arrêter. Windows,
+   animations coupées (MinAnimate = 0), se lit dans Chromium comme prefers-reduced-motion ;
+   une roue arrêtée passerait pour figée. Seules les transitions du voile disparaissent. */
 @media (prefers-reduced-motion: reduce) {
   .szh-analyse-roue { animation-duration: 1.6s; }
   .szh-analyse-cible > :not(.szh-analyse-voile) { transition: none; }

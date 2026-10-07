@@ -4,9 +4,9 @@ var api=acquireVsCodeApi();
 var modele=null, dispo=null, occ2=null, TXT={}, accent='', teintes={}, PRESETS=[];
 var selection=null, ancre=null, cellActive=null, ctl={};
 // Historique : deux piles d'états du modèle. Une opération de structure y empile l'état
-// d'avant, une édition de texte est empilée à la perte de focus de la cellule,
-// `avantEdition` étant l'instantané pris à la prise de focus. `modeleEnregistre` est
-// l'état écrit sur le disque.
+// d'avant ; une édition de texte est empilée à la perte de focus de la cellule, à partir de
+// `avantEdition`, pris à la prise de focus. `modeleEnregistre` est l'état écrit sur le
+// disque.
 var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
 // sélection par glisser : { ancre:cellule, actif:bool }
 var glisse=null;
@@ -30,10 +30,10 @@ function poserInline(el,contenu,images,c){el.textContent='';var re=/<\/?(?:stron
 function inlineDeNoeud(n){var out='';n.childNodes.forEach(function(ch){
   if(ch.nodeType===3){out+=echap(ch.nodeValue);}
   else if(ch.nodeType===1){var tg=ch.tagName.toLowerCase();
-    // L'image rendue en vignette rend sa balise telle que l'hôte l'a écrite : ni l'aperçu
-    // (data:) ni la pastille n'entrent jamais dans le fichier.
+    // La vignette rend la balise telle que l'hôte l'a écrite : ni l'aperçu (data:) ni la
+    // pastille n'entrent dans le fichier.
     if(ch.dataset&&ch.dataset.balise){out+=ch.dataset.balise;}
-    // Une <img> nue vient d'un collage natif dans la cellule : son src d'origine, tel quel.
+    // Une <img> nue vient d'un collage natif dans la cellule : on garde son src d'origine.
     else if(tg==='img'){var s0=ch.getAttribute('src')||'';if(s0&&!/^[a-z]+:/i.test(s0)){out+='<img src="'+echapAttr(s0)+'" alt="'+echapAttr(ch.getAttribute('alt')||'')+'">';}}
     else if(tg==='br'){out+='<br>';}
     else if(tg==='strong'||tg==='b'){out+='<strong>'+inlineDeNoeud(ch)+'</strong>';}
@@ -55,10 +55,9 @@ function clampSel(s){if(!s||!dispo)return null;var rMax=Math.min(s.rMax,dispo.nb
 // ---- Teintes de l'aperçu, aux mêmes valeurs que print.css et couleurs.css ----
 
 function accBrut(){return accent||null;}
-// Les teintes sont lues, jamais recalculées : l'hôte les prend dans out/.szh-accent.css,
-// le fichier que le pipeline écrit et que WeasyPrint applique. Réimplémenter ici une
-// formule de contraste ferait diverger l'aperçu du PDF. Sans valeur reçue, faute de
-// compilation, on retombe sur les gris neutres de print.css.
+// Les teintes sont lues, pas recalculées : l'hôte les prend dans out/.szh-accent.css, le
+// fichier que le pipeline écrit et que WeasyPrint applique, pour que l'aperçu suive le PDF.
+// Sans compilation, on retombe sur les gris neutres de print.css.
 function clairAccent(){return teintes.clair||null;}
 function fonceAccent(){return teintes.fonce||null;}
 var GRIS_CLAIR='#e6e6e6', TEINTE_ZEBRE='#f2f2f2', ACCENT_GRIS='#9a9a9a';
@@ -67,9 +66,9 @@ function fondDe(v){
   if(v==='couleur'){return {bg:clairAccent()||'#ededed',fg:'#000000'};}
   if(v==='gris'){return {bg:GRIS_CLAIR,fg:'#000000'};}
   return null;}
-// Aperçu des styles de niveau tableau, en miroir de print.css et posé en style en ligne
-// sur les .cell ; le fichier écrit, lui, reste piloté par le modèle. L'ordre suit
-// print.css — zébrage, en-têtes, total, bordures — le dernier l'emportant.
+// Aperçu des styles de niveau tableau, calqué sur print.css et posé en style en ligne sur
+// les .cell ; le fichier écrit suit le modèle. L'ordre est celui de print.css (zébrage,
+// en-têtes, total, bordures), le dernier l'emportant.
 function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
   var eL=a.enteteLignes,N=dispo.nbLignes;
   var accLigne=teintes.filet||accBrut()||ACCENT_GRIS;
@@ -82,13 +81,13 @@ function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
       if(thead){if(a.zebreLigEntetes&&((a.zebreLig==='paires')===((r+1)%2===0)))el.style.background=TEINTE_ZEBRE;}
       else if((a.zebreLig==='paires')===(((r-eL)+1)%2===0))el.style.background=TEINTE_ZEBRE;
     }
-    // En miroir de nth-child : l'ordinal est le rang de la cellule dans sa rangée.
+    // Comme nth-child : l'ordinal est le rang de la cellule dans sa rangée.
     if(a.zebreCol!=='aucun'){
       var par=(a.zebreCol==='paires')===((ci+1)%2===0);
       if(a.zebreColEntetes){if(par)el.style.background=TEINTE_ZEBRE;}
       else if(!thead&&!cell.th&&par)el.style.background=TEINTE_ZEBRE;
     }
-    /* Titre de section : print.css le style via th[scope^="row"] — même miroir ici. */
+    /* Titre de section : print.css le style par th[scope^="row"], de même ici. */
     if(cell.th&&(cell.scope==='row'||cell.section)){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
     else if(cell.th&&cell.scope==='col'){var fc=fondDe(a.ecFond);if(fc){el.style.background=fc.bg;el.style.color=fc.fg;}if(a.ecGras)el.style.fontWeight='700';}
     if(!thead&&r===N-1){var ft=fondDe(a.totalFond);if(ft){el.style.background=ft.bg;el.style.color=ft.fg;}if(a.totalGras)el.style.fontWeight='700';}
@@ -113,7 +112,7 @@ function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='
     var cr={rMin:c.r0,cMin:c.c0,rMax:c.r0+c.rowspan-1,cMax:c.c0+c.colspan-1};
     var dans=selection&&cr.rMin>=selection.rMin&&cr.rMax<=selection.rMax&&cr.cMin>=selection.cMin&&cr.cMax<=selection.cMax;
     if(!dans){ancre=c;cellActive=c;selection=etendre(cr);majEditable();marquer();}
-    // Clic droit SUR une image : ses deux gestes en tête du menu ; ailleurs dans la
+    // Clic droit sur une image : ses deux actions en tête du menu ; ailleurs dans la
     // cellule, « Insérer une image… ».
     var vi=vignetteSous(ev.target);
     ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1),
@@ -201,12 +200,11 @@ document.addEventListener('mousemove',function(ev){if(dragP||glisse){masquerPlus
 // ---- Images des cellules ----
 //
 // Une <img> du contenu devient une vignette non éditable qui garde sa balise d'origine
-// (data-balise), relue telle quelle par inlineDeNoeud : l'aperçu n'entre jamais dans le
-// fichier. L'aperçu voyage en data: (l'hôte le lit, lib/table-images.js), la webview
-// n'ayant aucune racine locale autorisée ; faute de fichier, un cadre le dit en toutes
-// lettres, jamais une image cassée muette. La pastille rouge suit le verdict que l'hôte a
-// calculé (disposition -> images[].sansAlternative) : elle tombe au rechargement qui suit
-// la saisie du texte alternatif.
+// (data-balise), relue telle quelle par inlineDeNoeud : l'aperçu n'entre pas dans le
+// fichier. L'aperçu arrive en data: (lu par l'hôte, lib/table-images.js), la webview
+// n'ayant aucune racine locale autorisée ; sans fichier, un cadre l'écrit en toutes
+// lettres. La pastille rouge suit le verdict de l'hôte (disposition -> images[].sansAlternative)
+// et disparaît au rechargement qui suit la saisie du texte alternatif.
 var APERCUS={};        // src relatif à l'article -> { etat:'ok'|'introuvable'|'indisponible', uri }
 var saisieApres=null;  // { li, ci, n } : image tout juste insérée, dont la saisie s'ouvre au rechargement
 var saisie=null;       // la boîte « Texte alternatif » ouverte
@@ -229,8 +227,8 @@ function vignetteImage(balise,info,c,n){info=info||{};
   return w;}
 function imageDe(li,ci,n){var lg=dispo&&dispo.lignes[li];var c=lg&&lg.cellules[ci];return c&&c.images?c.images[n]:null;}
 // Remplacer ou insérer : l'hôte ouvre le sélecteur de fichier, copie l'image dans media/
-// sous un nom libre et répond par son src (TABLE_IMAGE_CHOISIE) ; l'opération part alors
-// d'ici, pour entrer dans l'historique comme toute autre.
+// sous un nom libre et répond par son src (TABLE_IMAGE_CHOISIE). L'opération part d'ici,
+// pour entrer dans l'historique.
 function choisirImage(action,c,n){fermerMenu();recolter();
   api.postMessage({type:SZH.MSG.TABLE_IMAGE_CHOISIR,action:action,li:c.li,ci:c.ci,n:n||0});}
 function imageChoisie(msg){if(!msg||!msg.src||!modele)return;
@@ -244,8 +242,8 @@ function retirerNoeud(n){if(!n)return;if(n.remove)n.remove();else if(n.parentNod
 function fermerSaisie(){retirerNoeud(saisie);saisie=null;}
 function radioSaisie(parent,libelle){var l=document.createElement('label');l.className='szh-opt';var i=document.createElement('input');i.type='radio';i.name='role-alt-cellule';
   l.appendChild(i);var s=document.createElement('span');s.className='txt';s.textContent=libelle||'';l.appendChild(s);parent.appendChild(l);return i;}
-// La saisie reprend les mots du gestionnaire des médias (img.role.*, img.alt) : une image
-// se décrit de la même façon, qu'elle soit dans le texte ou dans une cellule.
+// La saisie reprend les mots du gestionnaire des médias (img.role.*, img.alt) : une image se
+// décrit de la même façon dans le texte ou dans une cellule.
 function ouvrirSaisieAlt(li,ci,n){fermerMenu();fermerSaisie();var info=imageDe(li,ci,n);if(!info)return;
   var v=document.createElement('div');v.className='szh-modale visible saisie-alt';
   v.setAttribute('role','dialog');v.setAttribute('aria-modal','true');v.setAttribute('aria-labelledby','saisie-alt-titre');
@@ -273,17 +271,17 @@ function ouvrirSaisieAlt(li,ci,n){fermerMenu();fermerSaisie();var info=imageDe(l
   document.body.appendChild(v);saisie=v;
   saisie.valider=valider;   // pour les tests : le geste « Valider » sans chercher le bouton
   if(rDeco.checked)rDeco.focus();else i.focus();}
-// Le point d'entrée « aller à cette image » (item.focusImage à l'ouverture, ou FOCALISER sur
-// un éditeur déjà ouvert) : nom de fichier seul, comparé sans casse au nom du src. La cellule
-// est sélectionnée et amenée à l'écran ; sans texte alternatif, la saisie s'ouvre d'office.
+// Aller à une image (item.focusImage à l'ouverture, ou FOCALISER sur un éditeur déjà
+// ouvert) : nom de fichier seul, comparé sans casse au nom du src. La cellule est
+// sélectionnée et amenée à l'écran ; sans texte alternatif, la saisie s'ouvre d'office.
 function focaliserImage(nomVise){var nom=String(nomVise||'').replace(/\\/g,'/').split('/').pop().toLowerCase();if(!nom||!dispo)return false;
   var trouve=null;
   dispo.lignes.some(function(lg){return lg.cellules.some(function(c){return (c.images||[]).some(function(im,k){
     if(String(im.src||'').split('/').pop().toLowerCase()===nom){trouve={c:c,n:k,im:im};return true;}return false;});});});
   if(!trouve)return false;
   var c=trouve.c;ancre=c;cellActive=c;selection=rectCell(c);majEditable();marquer();
-  // Recherche par comparaison numérique plutôt que par sélecteur d'attribut : le même
-  // chemin sert au DOM des tests, où dataset n'est pas converti en chaîne.
+  // Comparaison numérique plutôt que sélecteur d'attribut : le même chemin sert au DOM des
+  // tests, où dataset n'est pas converti en chaîne.
   var el=Array.prototype.filter.call(zone.querySelectorAll('.cell'),function(e){return +e.dataset.li===c.li&&+e.dataset.ci===c.ci;})[0]||null;
   if(el&&el.scrollIntoView){try{el.scrollIntoView({block:'center',inline:'nearest'});}catch(e){el.scrollIntoView();}}
   if(trouve.im.sansAlternative)ouvrirSaisieAlt(c.li,c.ci,trouve.n);
@@ -302,8 +300,8 @@ function texteDansPlage(rMin,cMin,rMax,cMax){recolter();if(!occ2)return false;va
 function supprimer(nom,args,rMin,cMin,rMax,cMax){op(nom,args,texteDansPlage(rMin,cMin,rMax,cMax)?{confirmer:true}:null);}
 function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.createElement('div');m.className='ctxmenu';m.setAttribute('role','menu');
   m.addEventListener('contextmenu',function(e){e.preventDefault();});
-  // Images : sur une image, décrire ou remplacer celle-là ; ailleurs dans une cellule
-  // seule, en insérer une (ajoutée en fin de cellule, saisie du texte alternatif aussitôt).
+  // Images : sur une image, la décrire ou la remplacer ; ailleurs dans une cellule seule, en
+  // insérer une (en fin de cellule, avec saisie du texte alternatif aussitôt).
   if(ctx.cellule){var ce=ctx.cellule;
     if(ctx.image!==null&&ctx.image!==undefined){var nI=ctx.image;
       m.appendChild(itemMenu(TXT['image.menuAlt'],function(){recolter();ouvrirSaisieAlt(ce.li,ce.ci,nI);}));
@@ -320,15 +318,14 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
   if(plage()){sepMenu(m);m.appendChild(itemMenu(TXT.fusionner,function(){op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));}
   if(ctx.fusionnee){if(!plage())sepMenu(m);m.appendChild(itemMenu(TXT.scinder,function(){op('scinder',{rMin:ctx.rMin,cMin:ctx.cMin,rMax:ctx.rMax,cMax:ctx.cMax});}));}
   // L'alignement porte sur la sélection courante : une cellule, une plage, ou la ligne et
-  // la colonne entières qu'une poignée vient de sélectionner. Il vit ici et non dans la
-  // barre — c'est un geste local, qu'on fait sur ce qu'on a sous le curseur.
+  // la colonne entières qu'une poignée vient de sélectionner.
   if(selection){sepMenu(m);
     m.appendChild(itemMenu(TXT['ctx.alignGauche'],function(){aligner('left');}));
     m.appendChild(itemMenu(TXT['ctx.alignCentre'],function(){aligner('center');}));
     m.appendChild(itemMenu(TXT['ctx.alignDroite'],function(){aligner('right');}));}
-  // « Retirer » n'apparaît que si l'en-tête correspondant existe. Au-delà d'une rangée
-  // ou d'une colonne, le libellé dit combien l'action en définira : le geste part de la
-  // 2e ligne, l'en-tête couvrira les deux premières — rien d'implicite.
+  // « Retirer » n'apparaît que si l'en-tête correspondant existe. Au-delà d'une rangée ou
+  // d'une colonne, le libellé dit combien l'action en définira (sélectionner la 2e ligne
+  // met les deux premières en en-tête).
   var sens=sensEntete(selection);
   if(sens){sepMenu(m);
     var nE=nEntete(sens,selection);
@@ -336,14 +333,13 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(lblE,onDefinirEntete));
     var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
     if(aRetirer){m.appendChild(itemMenu(TXT.enteteRetirer,onRetirerEntete));}}
-  // Titre de section (en-tête intermédiaire) : une seule rangée visée. Les deux
-  // premières rangées (MAX_ENTETES) appartiennent à la zone d'en-tête — « Définir
-  // comme en-tête » y a sa place, pas un titre de section : « définir » n'est offert
-  // qu'à partir de la 3e rangée. « Retirer » reste toujours possible, pour un fichier
-  // qui porterait déjà un titre plus haut. Le titre peut être partiel : il porte sur
-  // la plage sélectionnée (fusionnée en une cellule si besoin — une cellule déjà
-  // fusionnée n'est pas étendue) et couvre les colonnes de sa fusion pour les rangées
-  // qui suivent, jusqu'au prochain titre. Inactif -> le rôle part, la fusion reste.
+  // Titre de section (en-tête intermédiaire) : une seule rangée visée. Les deux premières
+  // rangées (MAX_ENTETES) forment la zone d'en-tête : « définir » n'est offert qu'à partir
+  // de la 3e rangée. « Retirer » reste possible partout, pour un fichier qui porterait déjà
+  // un titre plus haut. Le titre peut être partiel : il porte sur la plage sélectionnée
+  // (fusionnée en une cellule si besoin ; une cellule déjà fusionnée n'est pas étendue) et
+  // couvre les colonnes de sa fusion pour les rangées qui suivent, jusqu'au prochain titre.
+  // Désactivé, le rôle part et la fusion reste.
   if(selection&&selection.rMin===selection.rMax&&modele&&dispo&&dispo.nbLignes>1){
     var rSec=selection.rMin,lgSec=dispo.lignes[rSec];
     var estSec=!!(lgSec&&lgSec.cellules.some(function(c){
@@ -371,8 +367,8 @@ function construireBarre(){barre.textContent='';barre.className='szh-barre';
   ge.appendChild(bouton(TXT.vider,function(){viderSel('contenu');},'',TXT['tip.vider']));
   ge.appendChild(bouton(TXT.effacerForme,function(){viderSel('forme');},'',TXT['tip.effacerForme']));
   barre.appendChild(ge);
-  // L'aperçu de l'article est fermé à l'ouverture de l'éditeur pour libérer de la largeur
-  // et se rouvre ici à la demande.
+  // L'aperçu de l'article est fermé à l'ouverture de l'éditeur, pour libérer de la
+  // largeur ; il se rouvre ici.
   var ga2=groupe(TXT.grpApercu);
   ga2.appendChild(bouton(TXT.apercuVoir,function(){api.postMessage({type: SZH.MSG.APERCU_OUVRIR});},'',TXT['tip.apercuVoir']));
   ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type: SZH.MSG.APERCU_FERMER});},'',TXT['tip.apercuCacher']));
@@ -385,12 +381,13 @@ function construireBarre(){barre.textContent='';barre.className='szh-barre';
 // ---- Légende, texte alternatif et crédits du tableau ----
 //
 // Cinq champs au-dessus de la grille : `legende` devient le <caption> du fichier, `alt`
-// son data-alt, puis data-copyright, data-source et data-note (imprimée sous le tableau). Tous sont traités comme le texte d'une
-// cellule — récoltés dans le modèle, photographiés à la prise de focus, empilés à la perte
-// de focus — et participent donc à annuler et rétablir sans re-rendu de la grille.
+// son data-alt, puis data-copyright, data-source et data-note (imprimée sous le tableau).
+// Ils sont traités comme le texte d'une cellule (récoltés dans le modèle, photographiés à
+// la prise de focus, empilés à la perte de focus), et passent donc par annuler et
+// rétablir sans nouveau rendu de la grille.
 //
-// La légende seule est de l'en-ligne dans le modèle : le champ en montre le texte à plat,
-// et le retoucher remet la légende à plat.
+// Seule la légende est de l'en-ligne dans le modèle : le champ en montre le texte à plat,
+// et la retoucher la remet à plat.
 function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<img\b[^>]*>/g,'').replace(/<\/?(?:strong|em)>/g,''));}
 function champTexte(cle,large,parent){
   var d=document.createElement('div');d.className='szh-champ'+(large?' large':'');
@@ -401,8 +398,8 @@ function champTexte(cle,large,parent){
   i.addEventListener('input',function(){etat('');majModifie();});
   i.addEventListener('blur',function(){commitTexte();});
   d.appendChild(l);d.appendChild(i);(parent||boiteChamps).appendChild(d);champs[cle]=i;}
-// Même ordre que la fiche d'une image dans le gestionnaire des médias : ce qui s'affiche
-// d'abord, les crédits ensuite, l'accessibilité en dernier, sous son intertitre.
+// Même ordre que la fiche d'une image dans le gestionnaire des médias : ce qui s'affiche,
+// puis les crédits, puis l'accessibilité sous son intertitre.
 function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';champs={};
   champTexte('legende',true);
   var credits=document.createElement('div');credits.className='szh-grille-2';boiteChamps.appendChild(credits);
@@ -411,19 +408,18 @@ function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';ch
   champTexte('note',true);
   var titre=document.createElement('p');titre.className='szh-section';titre.textContent=TXT['section.a11y']||'';
   boiteChamps.appendChild(titre);
-  // Le cas courant est le champ vide : un tableau bien fait se lit seul, ses en-têtes
-  // suffisent. Le libellé le dit, pour que personne ne croie devoir le remplir.
+  // Le plus souvent, le champ reste vide : les en-têtes d'un tableau bien fait suffisent,
+  // et le libellé le dit.
   champTexte('alt',true);
-  // Mais quand une description s'impose, encore faut-il savoir quoi écrire : ce texte
-  // d'aide explique le rôle du champ, avec un exemple, dans le style discret des autres
-  // aides du cockpit. Relié au champ, pour que la synthèse vocale le lise aussi.
+  // Le texte d'aide explique le rôle du champ, avec un exemple ; il est relié au champ pour
+  // que la synthèse vocale le lise aussi.
   var aide=document.createElement('p');aide.id='aide-alt';
   aide.className='szh-notif szh-notif--info szh-notif--discret';
   aide.textContent=TXT['alt.aide']||'';boiteChamps.appendChild(aide);
   if(champs.alt)champs.alt.setAttribute('aria-describedby','aide-alt');}
-// Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour
-// la légende, la comparaison porte sur la projection à plat, si bien que le modèle garde
-// sa légende en ligne tant que le champ n'est pas retouché.
+// Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour la
+// légende, on compare la projection à plat : le modèle garde la légende en ligne tant que le
+// champ n'est pas retouché.
 function recolterChamps(){if(!modele)return;
   if(champs.legende){var saisi=String(champs.legende.value||'').replace(/[\r\n]+/g,' ').trim();
     if(saisi!==texteDeInline(modele.attrs.legende||'').trim())modele.attrs.legende=echap(saisi);}
@@ -435,11 +431,10 @@ function majChamps(){if(!modele)return;
   ['alt','copyright','source','note'].forEach(function(cle){if(!champs[cle])return;
     var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
 // Sens d'en-tête déduit de la sélection : une rangée du haut sur toute la largeur donne
-// 'lignes', une colonne de gauche sur toute la hauteur donne 'colonnes', sinon le bord
-// touché décide. Un en-tête est toujours contigu depuis le bord (c'est ce que th/scope
-// savent décrire) : la sélection n'a donc pas besoin de partir du bord — désigner la
-// 2e ligne suffit à demander « les 2 premières lignes en en-tête », le libellé du menu
-// l'annonce. Au-delà de MAX_ENTETES rangées ou colonnes de profondeur, null.
+// 'lignes', une colonne de gauche sur toute la hauteur 'colonnes', sinon le bord touché
+// décide. Un en-tête part toujours du bord (c'est ce que th/scope décrivent) : sélectionner
+// la 2e ligne demande « les 2 premières lignes en en-tête », et le libellé du menu
+// l'annonce. Au-delà de MAX_ENTETES rangées ou colonnes, null.
 var MAX_ENTETES=2;   // miroir de normaliserModele (lib/table-model.js)
 function sensEntete(s){if(!s||!dispo)return null;var nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
   var pleineLargeur=(s.cMin===0&&s.cMax===nbC-1),pleineHauteur=(s.rMin===0&&s.rMax===nbL-1);
@@ -454,7 +449,7 @@ function sensEntete(s){if(!s||!dispo)return null;var nbC=dispo.nbColonnes,nbL=di
 function nEntete(sens,s){return Math.min(MAX_ENTETES,(sens==='lignes'?s.rMax:s.cMax)+1);}
 function onDefinirEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}
   op('entete',{sens:sens,n:nEntete(sens,selection)});}
-// Ne retire que l'en-tête du sens déduit, lignes ou colonnes, jamais les deux.
+// Retire l'en-tête du sens déduit seulement, lignes ou colonnes.
 function onRetirerEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}op('enteteRetirer',{sens:sens});}
 function viderSel(mode){if(!selection){etat(TXT.rien);return;}op('vider',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,mode:mode});}
 function aligner(v){if(!selection){etat(TXT.rien);return;}op('aligner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,valeur:v});}
@@ -462,8 +457,8 @@ function aligner(v){if(!selection){etat(TXT.rien);return;}op('aligner',{rMin:sel
 // ---- Panneau de mise en forme : préréglages, en-têtes, tableau ----
 //
 // Les contrôles lisent le modèle et postent au changement les opérations styleEntete et
-// reglage : l'hôte met à jour les attributs et renvoie « charger », d'où un aperçu qui
-// suit. L'annulation passe par op(), comme pour toute autre opération.
+// reglage ; l'hôte met à jour les attributs et renvoie « charger », qui rafraîchit l'aperçu.
+// L'annulation passe par op(), comme toute autre opération.
 function fmt(s,v){return String(s||'').split('{0}').join(v);}
 function fieldsetZone(legende){var fs=document.createElement('fieldset');fs.className='zone';var lg=document.createElement('legend');lg.textContent=legende;fs.appendChild(lg);return fs;}
 function caseACocher(label,onCh){var l=document.createElement('label');l.className='opt';var i=document.createElement('input');i.type='checkbox';i.addEventListener('change',onCh);l.appendChild(i);l.appendChild(document.createTextNode(label));return {label:l,input:i};}
@@ -489,13 +484,12 @@ function sousBlocZebre(parent,titre,champ,champEnt){var bloc=document.createElem
   var ent=caseACocher(TXT['zebre.entetes'],function(){op('reglage',{champ:champEnt,valeur:ent.input.checked});});bloc.appendChild(ent.label);o.entetes=ent.input;
   parent.appendChild(bloc);return o;}
 function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-label',TXT['zone.styles']||'');
-  // Deux colonnes : les styles d'en-tête à droite, le reste à gauche. Sur une seule
-  // colonne, l'ensemble dépasse la hauteur de la fenêtre.
+  // Deux colonnes, styles d'en-tête à droite : sur une seule colonne, l'ensemble dépasserait
+  // la hauteur de la fenêtre.
   var colG=document.createElement('div');colG.className='colonne';
   var colD=document.createElement('div');colD.className='colonne';
   panneau.appendChild(colG);panneau.appendChild(colD);
-  // La liste et l'ordre des préréglages viennent de l'hôte, via PRESETS_ORDRE : en retirer
-  // un côté modèle le fait disparaître ici sans autre retouche.
+  // La liste et l'ordre des préréglages viennent de l'hôte (PRESETS_ORDRE).
   var z1=fieldsetZone(TXT['zone.preset']);
   var opts=(PRESETS||[]).map(function(cle){return [cle,TXT['preset.'+cle]||cle];});
   ctl.preset=groupeRadios('preset',opts,function(v){op('preset',{nom:v});});
@@ -545,8 +539,8 @@ function majModifie(){var m=estModifie();var ind=document.getElementById('indic'
   if(m!==dernierModifie){dernierModifie=m;api.postMessage({type: SZH.MSG.MODIFIE,modifie:m});}}
 function enregistrerTable(auto){recolter();enrEnCours=clone(modele);
   api.postMessage({type: SZH.MSG.ENREGISTRER,auto:!!auto,modele:modele});}
-// Enregistrement automatique, sans risque ici : l'écriture ne touche que
-// articles/<slug>/tables/<n>.html et ne déclenche aucune recompilation.
+// Enregistrement automatique : l'écriture ne touche que articles/<slug>/tables/<n>.html et
+// ne déclenche aucune recompilation.
 var autoEnr=SZH.autoEnregistrement({estModifie:estModifie,enregistrer:enregistrerTable});
 function retourArticle(){recolter();api.postMessage({type: SZH.MSG.RETOUR_ARTICLE,modifie:estModifie(),modele:modele});}
 
@@ -561,11 +555,11 @@ zone.addEventListener('paste',collerDepuisPresse);
 // ---- Copie de la sélection (Ctrl+C) ----
 //
 // Une sélection de texte dans la cellule garde la copie native. Sinon, la sélection de
-// cellules part au presse-papiers : une cellule seule -> son texte (et son balisage en
-// text/html, que le collage natif ré-insère au curseur, strong/em compris) ; une plage ->
-// TSV + <table> minimal, colspan/rowspan compris — c'est le format que le collage de
-// l'éditeur (op coller) et Excel/Word savent relire. La sélection étant toujours étendue
-// aux fusions entières (etendre), chaque origine de cellule tombe dans le rectangle.
+// cellules part au presse-papiers : une cellule seule donne son texte (et son balisage en
+// text/html, que le collage natif réinsère au curseur, strong/em compris) ; une plage
+// donne du TSV et un <table> minimal, colspan/rowspan compris, que le collage de l'éditeur
+// (op coller), Excel et Word savent relire. La sélection étant étendue aux fusions
+// entières (etendre), chaque origine de cellule tombe dans le rectangle.
 function copierSelection(ev){
   var s=window.getSelection?window.getSelection():null;
   if(s&&String(s).length>0)return;                 // copie native du texte sélectionné
@@ -619,9 +613,9 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       construireBarre();}
-    // Un « charger » sans i18n est le résultat d'une opération ou d'une annulation :
-    // ⚠ ne pas réinitialiser l'historique ici, sans quoi « Annuler » reste sans effet.
-    // Les piles ne sont touchées que par op et commitTexte.
+    // Un « charger » sans i18n est le résultat d'une opération ou d'une annulation : ne pas
+    // réinitialiser l'historique ici, sinon « Annuler » reste sans effet. Seuls op et
+    // commitTexte touchent les piles.
     selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();
     if(saisieApres){var sa=saisieApres;saisieApres=null;if(imageDe(sa.li,sa.ci,sa.n))ouvrirSaisieAlt(sa.li,sa.ci,sa.n);}
     else if(msg.focusImage){focaliserImage(msg.focusImage);}}

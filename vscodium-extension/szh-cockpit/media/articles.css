@@ -1,41 +1,33 @@
 /* Vue « Articles » : la barre de commandes, les métadonnées du numéro repliées, puis une
    carte par article. Les cartes viennent de _liste.css, le formulaire du numéro de
-   _numero.css, le reste du socle (_design.css : body/h1 §0, largeur par défaut 52rem). Il
-   ne reste ici que la largeur, le bloc repliable et la modale des tâches. */
+   _numero.css, le reste de _design.css. Ici : la largeur, le bloc repliable et la modale
+   des tâches. */
 body { --page-max: 60rem; }
 
-/* Plus compact que le socle : un numéro complet pose une carte par article, et --t-titre
-   (1.05rem) ne laissait voir que deux ou trois titres sans défiler. À --t-section
-   (.82rem), un titre ordinaire tient sur une ligne — un titre exceptionnellement long
-   garde pourtant le droit de passer à la ligne, rien ici ne l'en empêche : la troncature
-   n'existe que dans le bandeau du mode « Changer l'ordre » (.tete-nom-tronque, plus bas),
-   où une seule ligne est une contrainte du bandeau, pas un choix de lisibilité. Les trois
-   sélecteurs par id restent locaux à cette vue : le socle (_liste.css) sert aussi
-   « Traductions » et « Word en attente », qui n'ont pas à en hériter. */
+/* Titres plus petits que dans _liste.css (--t-section, .82rem, au lieu de --t-titre) : un
+   numéro complet compte une carte par article, et un titre ordinaire tient ainsi sur une
+   ligne. Un titre long passe à la ligne ; seul le bandeau du mode « Changer l'ordre » le
+   tronque (.tete-nom-tronque). Les sélecteurs par id restent propres à cette vue, car
+   _liste.css sert aussi « Traductions » et « Word en attente ». */
 #cartes.szh-liste { gap: var(--e2); }
 #cartes .szh-tete { padding: var(--e1) var(--e3); }
 #cartes .szh-tete-nom { font-size: var(--t-section); }
 
-/* La barre en deux lignes — filtres au-dessus, gestes en dessous (media/articles.js
-   répartit `boutons` entre #barreFiltres et #barreActions selon `groupe`, extension.js).
-   .szh-barre (socle, _design.css) reste le seul sticky/bord/marge : #barre n'ajoute que la
-   direction en colonne, l'écart entre les deux lignes tenant lieu de la marge basse d'une
-   ligne de boutons ordinaire. Chaque ligne redevient un simple flex-row, ce que .szh-barre
-   faisait pour une seule rangée de boutons. */
+/* La barre en deux lignes : filtres au-dessus, actions en dessous. articles.js répartit
+   `boutons` entre #barreFiltres et #barreActions selon `groupe` (extension.js). .szh-barre
+   (_design.css) reste le seul à poser sticky, bord et marge ; #barre passe en colonne, et
+   l'écart entre les deux lignes remplace la marge basse d'une rangée de boutons. */
 #barre.art-barre { flex-direction: column; align-items: stretch; }
 .art-barre-ligne {
   display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
 }
-/* Mode « Changer l'ordre » : plus de tâche, d'aperçu ni d'avertissement à montrer sur les
-   bandeaux minimaux (decorerBandeauOrdre, media/articles.js) — les quatre interrupteurs de
-   la ligne du haut y seraient inertes, et une ligne de boutons sans effet est un mensonge.
-   La ligne se cache par `hidden` (media/articles.js) plutôt que par un simple vidage : le
-   socle (_design.css, [hidden] { display: none !important }) l'emporte sur le display:flex
-   ci-dessus et referme la ligne sans laisser le moindre écart avant celle des gestes.
-   Rien à ajouter ici — c'est bien le point de cette règle du socle. */
+/* Mode « Changer l'ordre » : les interrupteurs de la ligne du haut n'ont pas d'effet sur
+   les bandeaux réduits (decorerBandeauOrdre, articles.js). La ligne est cachée par `hidden`,
+   que _design.css impose ([hidden] { display: none !important }) sur le display:flex
+   ci-dessus : elle se referme sans laisser d'écart. */
 
-/* Les métadonnées du numéro sont là quand on les cherche, et repliées le reste du temps :
-   la page sert d'abord à voir où en sont les articles. */
+/* Les métadonnées du numéro sont repliées par défaut : la page sert d'abord à suivre les
+   articles. */
 .bloc { margin: var(--e4) 0 0; border: 1px solid var(--filet);
   border-radius: var(--rayon); background: var(--surface); }
 .bloc > summary { cursor: pointer; padding: var(--e3);
@@ -43,70 +35,54 @@ body { --page-max: 60rem; }
   text-transform: uppercase; color: var(--encre-2); }
 .bloc > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .bloc[open] > summary { border-bottom: 1px solid var(--filet); }
-/* La bande blanche du bouton « Enregistrer » : le fond de la barre (--fond) tranche sur
-   celui du bloc (--surface), elle se lit donc comme une bande à part entière, et le bouton
-   doit y être centré. Il y flottait haut, et pour deux raisons qui se cumulaient : le socle
-   de .szh-barre pose une marge basse, qui appartient au bloc et non à la bande, et le
-   calage local annulait le padding bas. La marge est donc reprise ici, l'espace avant le
-   premier champ passe au formulaire, et la bande n'a plus qu'un padding égal en haut et en
-   bas. */
+/* La bande du bouton « Enregistrer » : le fond de la barre (--fond) tranche sur celui du
+   bloc (--surface), et le bouton doit y être centré. La marge basse que .szh-barre pose
+   est donc reprise ici, l'espace avant le premier champ passe au formulaire, et la bande a
+   le même padding en haut et en bas. */
 .bloc > .szh-barre { padding: var(--e3); margin-bottom: 0; }
 .bloc > #numero { padding: var(--e4) var(--e3); max-width: 38rem; }
 
 /* ---- L'aperçu des métadonnées sur la carte ----
-   Non éditable, et cela doit se voir : pas de cadre de champ, pas de fond de saisie, rien
-   qui ressemble à un formulaire. Une liste de définitions serrée, en petit corps, et un
-   filet à gauche pour dire que ce bloc appartient à la carte au-dessus.
-
-   « Le plus compact possible mais lisible » : deux colonnes, l'intitulé aligné à droite
-   contre sa valeur, un pas vertical d'un quart de rem. Neuf champs tiennent alors dans la
-   hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
+   Non éditable, et cela se voit : ni cadre de champ ni fond de saisie. Une liste de
+   définitions serrée, en petit corps, avec un filet à gauche qui la rattache à la carte.
+   Deux colonnes, l'intitulé aligné à droite contre sa valeur, un pas vertical d'un quart
+   de rem : neuf champs tiennent dans la hauteur d'un paragraphe. */
 .carte-apercu { padding: var(--e2) var(--e3) 0; }
 
-/* Le seul geste qui reste dans la barre de titre : replier l'aperçu des métadonnées. Le
-   bouton « Ouvrir l'article » l'a quitté — le même geste ferme déjà le pied de carte, et
-   le répéter ici doublait un bouton pour rien. Les avertissements, eux, ont quitté cette
-   barre pour l'encadré « À faire » (media/_liste.css, .szh-constats) — ils tenaient mal
-   dans une colonne serrée contre le bord droit, et ils sont de la même nature qu'une tâche.
-
-   margin-left: auto pousse le bouton hors du titre, qui reste seul à gauche et porte
-   maintenant lui-même la bascule (.szh-tete-nom--bascule, plus bas) ; il passe sous le
-   titre si la carte manque de largeur, .szh-tete portant déjà flex-wrap (_liste.css). */
+/* Le bouton de la barre de titre : replier l'aperçu des métadonnées. margin-left: auto le
+   pousse à droite du titre, qui porte lui-même la bascule (.szh-tete-nom--bascule) ; il
+   passe sous le titre si la carte manque de largeur, .szh-tete portant flex-wrap
+   (_liste.css). */
 .carte-gestes { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2);
   margin-left: auto; }
-/* Le titre prend la place qui reste et cède la sienne aux boutons plutôt que de les
-   comprimer : sans min-width: 0, un titre long refuserait de se replier. */
+/* Le titre prend la place qui reste sans comprimer les boutons : sans min-width: 0, un
+   titre long refuserait de se replier. */
 .ligne .szh-tete-nom { flex: 1 1 12rem; min-width: 0; }
 
-/* Le titre devient lui-même la bascule quand la carte porte un aperçu (decorerTete,
-   media/articles.js) : un vrai <button>, jamais un <div> cliquable, pour rester atteignable
-   au clavier et actionnable par Entrée/Espace. Reset des styles de bouton du navigateur,
-   pour qu'il continue à se lire comme un titre plutôt que comme un contrôle de formulaire. */
+/* Le titre devient la bascule quand la carte porte un aperçu (decorerTete, articles.js) :
+   un vrai <button>, atteignable au clavier et actionnable par Entrée ou Espace. Les styles
+   de bouton du navigateur sont remis à zéro pour qu'il se lise comme un titre. */
 .szh-tete-nom--bascule { background: none; border: none; padding: 0; margin: 0;
   font: inherit; text-align: left; cursor: pointer; color: inherit; }
 .szh-tete-nom--bascule:hover { color: var(--accent); }
 .szh-tete-nom--bascule:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Le chevron du bouton « Afficher / cacher les métadonnées » suit ce qu'il annonce : vers
-   le bas quand l'aperçu est là et qu'un clic le replie, vers la droite quand il est replié.
-   La même convention que le bloc « Méta-données du numéro » juste au-dessus. */
+/* Le chevron suit ce qu'il annonce : vers le bas quand l'aperçu est ouvert, vers la droite
+   quand il est replié, comme le bloc « Métadonnées du numéro ». */
 .bouton-bascule svg { transition: transform .12s ease; }
 .bouton-bascule[aria-expanded="false"] svg { transform: rotate(-90deg); }
 
 /* ---- Le mode « Changer l'ordre » : la carte réduite à un bandeau de titre ----
-   Les deux flèches, tout à gauche, avant le rang et le titre (decorerBandeauOrdre,
-   media/articles.js). Un bouton désactivé annonce un bord du numéro, pas une panne — le
-   même repli visuel que .szh-bouton:disabled (_design.css), porté ici sur .szh-ico, que
-   ces flèches utilisent pour rester une simple icône. */
+   Les deux flèches, à gauche du rang et du titre (decorerBandeauOrdre, articles.js). Un
+   bouton désactivé signale un bord du numéro : même aspect que .szh-bouton:disabled
+   (_design.css), porté ici sur .szh-ico. */
 .carte-ordre { display: flex; align-items: center; gap: var(--e1); flex: 0 0 auto; }
 .carte-ordre button:disabled { opacity: .45; cursor: default; }
-/* Tronqué sur une seule ligne, dans ce mode seulement : le bandeau doit tenir en une
-   ligne quoi qu'il arrive, contrairement au titre de la carte complète (#cartes
-   .szh-tete-nom, plus haut), qui a le droit de passer à la ligne. La largeur complète du
-   texte reste lisible en infobulle (decorerBandeauOrdre pose le titre entier en `title`). */
+/* Dans ce mode, le titre est tronqué sur une ligne ; le titre entier reste en infobulle
+   (`title`, posé par decorerBandeauOrdre). */
 .tete-nom-tronque { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* Garantit la seule ligne ci-dessus : .szh-tete porte flex-wrap par défaut (_liste.css),
-   utile à la carte complète mais qui romprait justement la contrainte du bandeau. */
+/* Pour tenir sur une ligne, on annule le flex-wrap que .szh-tete porte par défaut
+   (_liste.css). */
 #cartes.mode-ordre .szh-tete { flex-wrap: nowrap; }
 
 .apercu-grille { margin: 0; font-size: var(--t-libelle); }
@@ -119,25 +95,24 @@ body { --page-max: 60rem; }
 .apercu-valeur { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4em;
   line-height: 1.45; }
 .apercu-texte { overflow-wrap: anywhere; }
-/* Ce qui n'est pas encore là, ou qui ne concorde pas, prend la couleur d'avertissement du
-   thème : un « — » gris se confond avec le reste, et c'est justement ce qu'on cherche. */
+/* Ce qui manque ou ne concorde pas prend la couleur d'avertissement du thème, pour se
+   détacher du reste. */
 .apercu-valeur--attention .apercu-texte { color: var(--avert); }
 
-/* Le badge de langue tient la place d'un intitulé répété. Chiffres et capitales alignés,
-   largeur fixe : la colonne des textes commence au même endroit sur toutes les rangées. */
+/* Le badge de langue remplace un intitulé répété. Largeur fixe : la colonne des textes
+   commence au même endroit sur toutes les rangées. */
 .apercu-langue { flex: 0 0 auto; min-width: 1.9em; text-align: center;
   font-size: var(--t-mini); font-weight: 700; letter-spacing: .04em;
   color: var(--encre-2); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   padding: 0 .25em; }
-/* Ce que la fiche porte déjà — ORCID, adresse, photo — en marque discrète : la présence
-   suffit, et une adresse d'auteur·e n'a rien à faire dans un aperçu resté ouvert. */
+/* Ce que la fiche porte déjà (ORCID, adresse, photo) s'affiche en marque discrète : la
+   présence suffit, l'adresse elle-même n'a pas à paraître. */
 .apercu-marque { flex: 0 0 auto; font-size: var(--t-mini); color: var(--encre-2);
   border: 1px dashed var(--filet); border-radius: var(--rayon-mini); padding: 0 .3em; }
 
-/* La seule chose qui se coche dans ce bloc, et elle ne touche pas la fiche : c'est une
-   décision sur le numéro. Sur la ligne du DOI qu'elle concerne, et non plus détachée sous
-   la grille entière : un flex-item de plus dans .apercu-valeur, comme le badge de
-   langue ou une marque « manuel » — avec l'écart qui la sépare du texte du DOI. */
+/* La seule case à cocher du bloc, qui décide du numéro et ne touche pas la fiche. Elle est
+   sur la ligne du DOI qu'elle concerne, comme un élément flex de plus dans .apercu-valeur,
+   séparée du texte du DOI par un écart. */
 .apercu-doi { display: inline-flex; align-items: center; gap: .35em; cursor: pointer;
   margin: 0 0 0 .5em; font-size: var(--t-libelle); color: var(--encre); }
 .apercu-doi input { accent-color: var(--accent); }
@@ -145,13 +120,14 @@ body { --page-max: 60rem; }
 .apercu-doi input:disabled { cursor: default; }
 .apercu-doi input:disabled + span { color: var(--encre-2); }
 
-/* Étroit — un écran partagé en deux — l'intitulé passe au-dessus de sa valeur : une colonne
-   de 7,5 em couperait chaque titre sur trois lignes. */
+/* Écran étroit : l'intitulé passe au-dessus de sa valeur, une colonne de 7,5 em couperait
+   chaque titre sur trois lignes. */
 @media (max-width: 44rem) {
   .apercu-rangee { grid-template-columns: 1fr; gap: 0; padding: var(--e1) 0; }
   .apercu-cle { text-align: left; }
 }
 
-/* Le formulaire du livre dans la vue CHAPITRES : listes de personnes et aide d une ligne sous un champ (le pendant de media/metadata-book.css, dont le reste règle une autre page). */
+/* Le formulaire du livre dans la vue Chapitres : listes de personnes et aide d'une ligne
+   sous un champ, comme dans metadata-book.css. */
 .personnes-liste { display: flex; flex-direction: column; gap: var(--e2); margin: var(--e1) 0 var(--e2); }
 .champ-aide { margin: var(--e1) 0 0; font-size: var(--t-libelle); color: var(--encre-2); }

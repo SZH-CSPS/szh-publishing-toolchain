@@ -1,6 +1,6 @@
-// Webview « Métadonnées des articles » : une carte par article, un bandeau de filtre
+// Webview « Métadonnées des articles » : une carte par article, et un bandeau de filtre
 // quand l'hôte n'en envoie qu'une partie. Les cartes et la modale photo viennent de
-// SZH.cartesArticles (media/_fiches.js).
+// SZH.cartesArticles (_fiches.js).
 //
 // Protocole avec l'hôte, en plus de photo-*, du DOI manuel et de l'enregistrement (voir
 // _fiches.js) :
@@ -20,8 +20,8 @@
   const boutonRetour = document.getElementById('retour');
   let dernierModifie = false;
 
-  // L'hôte doit savoir si des cartes sont modifiées : c'est lui qui garde le formulaire
-  // contre un rechargement. On ne poste qu'aux changements d'état, pas à chaque frappe.
+  // L'hôte protège le formulaire contre un rechargement : il doit savoir si des cartes sont
+  // modifiées. On ne poste qu'aux changements d'état.
   function signalerModifie() {
     const m = cartes.estModifie();
     if (m === dernierModifie) { return; }
@@ -39,8 +39,8 @@
       rendreFiltre(msg.filtre || null);
       // Le retour n'a de sens que filtré sur un seul article : c'est lui qu'on rouvre.
       boutonRetour.hidden = !(Array.isArray(msg.filtre) && msg.filtre.length === 1);
-      // Les cartes viennent d'être recréées : la carte visée par « Markdown » peut ne
-      // plus être à l'écran (un filtre a changé). On repart de la première.
+      // Les cartes viennent d'être recréées, et la carte visée par « Markdown » peut avoir
+      // disparu (filtre changé) : on repart de la première.
       slugVise = '';
     }
   });
@@ -50,18 +50,14 @@
 
   // ---- Le texte de l'article, à droite de sa fiche ----
   //
-  // Interrupteur, comme celui des traductions : le libellé nomme la chose, l'oeil et le
-  // fond disent si elle est à l'écran. Mais l'état n'est PAS tenu ici : c'est un onglet de
-  // l'éditeur, qui se ferme aussi à la croix. La page demande donc une bascule et attend la
-  // réponse de l'hôte pour se peindre — sans quoi le bouton resterait allumé devant un
-  // onglet fermé, et le clic suivant ne ferait rien de visible.
+  // Interrupteur, comme celui des traductions. L'état n'est pas tenu ici : le texte est un
+  // onglet de l'éditeur, qui peut se fermer à la croix. La page demande une bascule et se
+  // met à jour sur la réponse de l'hôte.
   const boutonMd = document.getElementById('markdown');
   let mdVisible = false;
 
-  // La carte visée : la dernière à avoir reçu le focus, à défaut la première de la liste.
-  // Le formulaire s'ouvre presque toujours filtré sur un seul article — c'est le bouton
-  // « Éditer les métadonnées » de l'arbre et des cartes — et la question ne se pose alors
-  // pas ; sur « Voir tous les articles », c'est là où l'on travaille qui décide.
+  // La carte visée : la dernière à avoir reçu le focus, à défaut la première de la liste
+  // (le formulaire s'ouvre le plus souvent filtré sur un seul article).
   let slugVise = '';
   conteneur.addEventListener('focusin', function (e) {
     const cible = e && e.target;
@@ -90,22 +86,21 @@
   });
   peindreMd();
 
-  // « Changer la langue de l'article » : la langue se change sur chaque carte — son
-  // sélecteur permute les contenus entre l'ancienne et la nouvelle langue (_fiches.js).
-  // Le bouton de la barre est un aiguillage : il dit où se fait le geste.
+  // « Changer la langue de l'article » : la langue se change sur chaque carte, dont le
+  // sélecteur permute les contenus entre l'ancienne et la nouvelle langue (_fiches.js). Le
+  // bouton de la barre explique où le faire.
   document.getElementById('langue').addEventListener('click', function () {
     etat.textContent = TXT.langueAvenir;
   });
 
-  // « Vérifier les méta (print) » : la feuille A4, une page par article. Elle se lit du
-  // disque, donc on envoie d'abord les cartes modifiées — l'hôte les enregistre, puis
-  // génère et ouvre la feuille dans le navigateur, qui sait imprimer alors qu'une webview
-  // ne le sait pas.
+  // « Vérifier les méta (print) » : la feuille A4, une page par article, lue sur le disque.
+  // On envoie d'abord les cartes modifiées ; l'hôte les enregistre, puis génère la feuille et
+  // l'ouvre dans le navigateur, qui sait imprimer (une webview ne le sait pas).
   document.getElementById('verifMeta').addEventListener('click', function () {
     vscodeApi.postMessage({ type: SZH.MSG.VERIF_META, articles: cartes.modifiees() });
   });
 
-  // « ← Retour à l'article » : l'hôte pose la garde « non enregistré », comme aux Médias.
+  // « ← Retour à l'article » : l'hôte vérifie s'il reste des modifications, comme aux Médias.
   boutonRetour.textContent = TXT.retour || '';
   boutonRetour.title = TXT.retourTip || '';
   boutonRetour.addEventListener('click', function () {
@@ -127,8 +122,8 @@
     bandeauFiltre.hidden = false;
   }
 
-  // L'hôte répond sans renvoyer les valeurs quand l'enregistrement est automatique,
-  // pour ne pas re-rendre la page sous les doigts.
+  // En enregistrement automatique, l'hôte ne renvoie pas les valeurs, pour ne pas
+  // reconstruire la page pendant la saisie.
   cartes.enregistrement(document.getElementById('enregistrer'));
 
   let recu = false;
@@ -136,9 +131,9 @@
     const msg = e.data || {};
     recu = true;
     if (cartes.message(msg)) { return; }
-    // L'hôte veut recharger le formulaire alors que des cartes sont modifiées : il lui
-    // faut ce qu'elles contiennent pour pouvoir les enregistrer.
-    // L'état de l'onglet, dit par l'hôte — jamais deviné ici.
+    // L'hôte veut recharger le formulaire alors que des cartes sont modifiées : il reçoit
+    // leur contenu pour pouvoir les enregistrer.
+    // L'état de l'onglet, tel que l'hôte le donne.
     if (msg.type === SZH.MSG.MARKDOWN) {
       mdVisible = msg.visible === true;
       peindreMd();

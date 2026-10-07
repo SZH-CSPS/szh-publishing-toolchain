@@ -1,6 +1,5 @@
-/* Propre au panneau « Vérification de l'import » : les badges d'état, le compteur de
-   champs vides et les rangées d'images. La carte, sa tête, les auteurs et la modale photo
-   viennent de _design.css et de _fiches.css : on ne redonne ici que la police du slug. */
+/* Panneau « Vérification de l'import » : badges d'état, compteur de champs vides, rangées
+   d'images. La carte, les auteurs et la modale photo viennent de _design.css et _fiches.css. */
 .carte > h2 { font-family: var(--vscode-editor-font-family, monospace); }
 /* ---- Badges d'état : « détecté » quand le champ est rempli, « à compléter » sinon. */
 .badge { margin-left: .5em; font-weight: normal; font-size: .75em;
@@ -24,7 +23,7 @@
 .image-desc { color: var(--encre-2); font-size: .82em; }
 .image-etat { font-size: .82em; min-height: 1em; color: var(--ok); }
 .image-etat.erreur { color: var(--danger); }
-/* Dépôt de l'original : .szh-depot (_design.css §11). */
+/* Dépôt de l'original : .szh-depot (_design.css). */
 .image-ligne.occupe .szh-depot { opacity: .5; pointer-events: none; }
 .modale h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700;
   border: none; padding: 0; text-transform: none; letter-spacing: normal; color: var(--encre); }

@@ -6,9 +6,9 @@
 
   var texte = SZH.poser, ligne = SZH.ligne, bouton = SZH.bouton, boutonIcone = SZH.boutonIcone;
 
-  // Les demandes de forme imprimée (DOC_DATE_FORMER) de tous les formulaires de la page : un
-  // seul compteur de jetons, une seule table de rappels, pour que DOC_DATE_FORMEE trouve son
-  // destinataire.
+  // Les demandes de forme imprimée (DOC_DATE_FORMER) de tous les formulaires de la page
+  // partagent un compteur de jetons et une table de rappels, pour que DOC_DATE_FORMEE
+  // trouve son destinataire.
   var DELAI_APERCU_DATE = 400;
   var DELAI_REPONSE_DATE = 5000;
   var rappelsDate = {};
@@ -44,12 +44,11 @@
 
     // ---- Valeurs et complétude -----------------------------------------------------------
     //
-    // La complétude reprend exactement la règle de kirby-contenu.js#champsManquants : un champ
-    // `requis` dont `quand` ne tient pas ne compte pas, `structure` est vide si aucune ligne
-    // n'a rien.
+    // La complétude suit kirby-contenu.js#champsManquants : un champ `requis` dont `quand`
+    // ne tient pas ne compte pas ; une `structure` est vide si aucune ligne n'a rien.
     function valeurChamp(c, champCfg) {
-      // `fichier` ne pose pas de contrôle dans c.ctl (la zone de dépôt n'est pas un champ de
-      // texte) : sa valeur vit à part, dans c.image — voir champFichier() plus bas.
+      // `fichier` n'a pas de contrôle dans c.ctl : sa valeur est dans c.image (voir
+      // champFichier()).
       if (champCfg.saisie === 'fichier') { return c.image || ''; }
       var ctlChamp = c.ctl[champCfg.cle];
       if (!ctlChamp) { return (champCfg.saisie === 'structure' || champCfg.saisie === 'liste_multiple') ? [] : ''; }
@@ -92,9 +91,9 @@
         cd.conteneur.hidden = !quandSatisfait(cd.quand, v);
       }
     }
-    // Le menu des instruments d'une intervention : quand le canton change, ses options
-    // reviennent recomposées (celles qui l'observent en tête), la valeur choisie conservée si
-    // elle existe encore dans le nouveau jeu.
+    // Le menu des instruments d'une intervention : quand le canton change, ses options sont
+    // recomposées (celles qui l'observent en tête), et la valeur choisie est gardée si elle
+    // existe encore.
     function rafraichirDependants(c, cleChangee) {
       if (!c.dependants) { return; }
       for (var i = 0; i < c.dependants.length; i++) {
@@ -109,7 +108,7 @@
       }
     }
     // Les valeurs `derive` (curia…) affichées en lecture seule, recalculées depuis le champ
-    // dont elles dépendent — jamais saisies, voir kirby-contenu.js#valeurDerive.
+    // dont elles dépendent (kirby-contenu.js#valeurDerive).
     function majDerives(c) {
       if (!c.derives) { return; }
       for (var i = 0; i < c.derives.length; i++) {
@@ -122,7 +121,7 @@
     }
 
     // ---- Un champ : texte, texte_long, url, date, date_partielle, annee, liste, derive,
-    //      structure, fichier — tout vient de champCfg, rien n'est un nom de champ en dur -----
+    //      structure, fichier. Tout vient de champCfg, aucun nom de champ en dur -----------
     function poserOptions(sel, options, valeurGardee) {
       var courant = valeurGardee !== undefined ? valeurGardee : sel.value;
       sel.textContent = '';
@@ -288,7 +287,7 @@
 
     // ---- Date stockée hors calendrier ---------------------------------------------------
     //
-    // Un <input type="date"> vide sans rien dire une valeur qui n'existe pas au calendrier
+    // Un <input type="date"> se vide sans prévenir sur une valeur hors calendrier
     // (2026-02-30), et l'enregistrement suivant l'écrirait vide. Le champ repasse alors en
     // texte et garde la valeur lue ; rend true dans ce cas, pour que l'appelant la signale.
     function poserValeurDate(input, v) {
@@ -309,11 +308,10 @@
     // ---- Aperçu de la date imprimée ------------------------------------------------------
     //
     // Sous un champ de date, la forme que le PDF imprimera, calculée par l'hôte avec le
-    // formateur de la chaîne (lib/date-apercu.js) et jamais ici. La demande part 400 ms après la
-    // dernière frappe, ou aussitôt à la sortie du champ ; seule la réponse au dernier jeton
-    // compte. Les deux dates d'une plage (debut et fin de l'agenda) partagent une seule ligne
-    // d'aperçu, sous la fin, ou sous le début si la fin est vide. Rien n'est bloqué : la
-    // saisie reste libre et l'enregistrement aussi.
+    // formateur de la chaîne (lib/date-apercu.js). La demande part 400 ms après la dernière
+    // frappe, ou dès la sortie du champ ; seule la réponse au dernier jeton compte. Les deux
+    // dates d'une plage (début et fin de l'agenda) partagent une ligne d'aperçu, sous la fin,
+    // ou sous le début si la fin est vide. La saisie et l'enregistrement restent libres.
     function plageDuType(type) {
       var t = ctx.types().filter(function (x) { return x.valeur === type; })[0];
       return (t && Array.isArray(t.plage) && t.plage.length === 2) ? t.plage : null;
@@ -404,12 +402,12 @@
     }
 
     // ---- Champ `liste_multiple` (genre et pays d'un film) : plusieurs jetons de la même liste
-    //      (docs/FORMAT-DOCUMENTATION-KIRBY.md, saisie liste_multiple) --------------------------
+    //      (docs/FORMAT-DOCUMENTATION-KIRBY.md) -------------------------------------------------
     //
-    // Deux rendus, choisis par le nombre d'options — jamais par le nom du champ (le contrat peut
-    // gagner d'autres champs `liste_multiple` demain) : une petite liste (genre, neuf jetons) se
-    // coche directement ; une grande (pays, 250) se cherche et se pose en étiquettes retirables,
-    // triées par nom dans la langue de l'interface (typesRessourceConfig, documentation-hote.js).
+    // Le rendu dépend du nombre d'options, pas du nom du champ : une petite liste (genre, neuf
+    // jetons) se coche directement ; une grande (pays, 250) se cherche et se pose en étiquettes
+    // retirables, triées par nom dans la langue de l'interface (typesRessourceConfig,
+    // documentation-hote.js).
     var SEUIL_LISTE_MULTIPLE_RECHERCHE = 15;
 
     function champListeMultipleCases(parent, c, champCfg, valeursInitiales) {
@@ -496,7 +494,7 @@
           item.type = 'button';
           item.className = 'doc-liste-multiple-resultat';
           item.textContent = o.libelle;
-          // mousedown, pas click : précède le blur du champ texte, sinon la liste se cache
+          // mousedown et non click : il précède le blur du champ texte, qui cacherait la liste
           // avant que le clic ne l'atteigne.
           item.addEventListener('mousedown', function (ev) { ev.preventDefault(); ajouter(o.valeur); });
           listeResultats.appendChild(item);

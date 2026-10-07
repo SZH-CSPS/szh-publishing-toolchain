@@ -1,36 +1,34 @@
-/* Base commune aux deux formulaires de metadonnees d'article : la carte, ses champs et sa
-   zone d'auteurs. Posee apres _design.css, qui fournit la carte, la barre, les
-   notifications, les boutons et le corps de page (body/h1, --page-max par defaut : 52rem,
-   la largeur que ces deux pages veulent), et apres _auteurs.css, a qui appartiennent la
-   fiche d'auteur·e et sa modale : rien ici ne doit les redefinir.
-   La page peut surcharger : la verification d'import decore .carte h2 de badges. */
+/* Base commune aux deux formulaires de métadonnées d'article : la carte, ses champs et sa
+   zone d'auteurs. Posée après _design.css (carte, barre, notifications, boutons, corps de
+   page, largeur 52rem) et après _auteurs.css (fiche d'auteur·e et sa modale).
+   La vérification d'import ajoute des badges à .carte h2. */
 
-/* Une pile de cartes, separees par un ecart franc : entre deux articles, c'est le vide
-   qui dit la coupure, mieux qu'un filet de plus. */
+/* Une pile de cartes séparées par un écart franc : le vide marque la coupure entre deux
+   articles. */
 /* La zone des auteur·e·s : des fiches empilees, puis le bouton d'ajout. */
 .auteurs { display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
 .auteurs .auteur-fiche { width: 100%; }
 
 #cartes { display: flex; flex-direction: column; gap: var(--e5); }
-#cartes > * { flex: 0 0 auto; }        /* une carte garde sa hauteur, jamais comprimee */
+#cartes > * { flex: 0 0 auto; }        /* une carte garde sa hauteur */
 .carte { padding: 0 var(--e5) var(--e5); margin: 0; }
 
-/* Tete de carte : le titre de l'article deborde la carte pour en occuper la largeur,
-   sur fond distinct et liseré d'accent. C'est ce qui donne un debut a chaque bloc. */
+/* Tête de carte : le titre de l'article déborde sur toute la largeur de la carte, sur fond
+   distinct et liseré d'accent. */
 .carte > h2 { font-size: var(--t-titre); font-weight: 700;
   margin: 0 calc(-1 * var(--e5)) var(--e4); padding: var(--e2) var(--e5);
   background: var(--surface-tete); border-bottom: 1px solid var(--filet);
   box-shadow: inset 3px 0 0 var(--accent);
   display: flex; align-items: baseline; gap: var(--e3); flex-wrap: wrap; }
 
-/* Intitules et champs nus : le socle de _design.css (§9, portee a .carte). */
-/* Traductions : construites toujours, cachees par defaut, revelees par la barre. Chaque
-   langue a sa classe champ-<lang>, et la carte ne montre que celles qu'elle porte via
-   avec-<lang> : la langue de l'article, la langue par defaut de la revue, et chaque
-   langue « manquante » cochee. Cacher par :not() plutot que reveler par display:block :
-   chaque element (intitule, champ, badge du dialogue d'import) garde ainsi son propre
-   affichage. Le selecteur d'id garde le dernier mot, sinon une langue cochee resterait
-   visible sous « masquer les traductions ». */
+/* Intitulés et champs nus : _design.css, restreint à .carte. */
+/* Traductions : toujours construites, cachées par défaut. Chaque langue a sa classe
+   champ-<lang>, et la carte montre celles qu'elle porte via avec-<lang> : la langue de
+   l'article, la langue par défaut de la revue et chaque langue « manquante » cochée.
+   On cache par :not() au lieu de révéler par display:block, pour que chaque élément
+   (intitulé, champ, badge du dialogue d'import) garde son propre affichage. Le sélecteur
+   d'id l'emporte, sinon une langue cochée resterait visible sous « masquer les
+   traductions ». */
 .carte:not(.avec-fr) .champ-fr, .carte:not(.avec-de) .champ-de,
 .carte:not(.avec-it) .champ-it { display: none; }
 #cartes.sans-trad .champ-trad { display: none; }
@@ -38,52 +36,46 @@
 .case-langue + .case-langue { margin-top: var(--e2); }
 .case-langue input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
-/* Compteur de caracteres du resume (media/_fiches.js, seuilResume) : discret par defaut,
-   il ne vire l'ambre puis le rouge qu'a l'approche du seuil ou la mise en page bascule le
-   resume en page 2 -- jamais de bordure ni de fond, la seule couleur du texte porte le
-   signal, et rien n'empeche l'enregistrement. Marge negative en haut : il colle au champ
-   qu'il decrit plutot que de se lire comme un intitule a part. Il porte les memes classes
-   champ-<lang>/champ-trad que le champ qu'il accompagne : il se cache avec lui. */
+/* Compteur de caractères du résumé (seuilResume de _fiches.js). Discret, il passe à l'ambre
+   puis au rouge à l'approche du seuil où la mise en page renvoie le résumé en page 2. Seule
+   la couleur du texte change ; l'enregistrement reste possible. La marge négative le colle
+   au champ. Il porte les classes champ-<lang>/champ-trad de son champ, et se cache avec lui. */
 .compteur-resume { margin: -.2em 0 var(--e3); font-size: var(--t-mini); color: var(--encre-2);
   text-align: right; }
 .compteur-resume--proche { color: var(--avert); }
 .compteur-resume--depasse { color: var(--danger); }
 
-/* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
-   rend le champ editable, apres l'avertissement modal pose par l'hote. */
+/* DOI : calculé par l'hôte et affiché verrouillé. La case « Définir manuellement le DOI »
+   le rend éditable, après l'avertissement modal posé par l'hôte. */
 input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor: default; }
-/* Notes discretes sous le champ DOI (forme attendue, doublon avec une autre carte) : jamais
-   bloquantes, retirees par simple masquage (voir champDoi, media/_fiches.js). */
+/* Notes sous le champ DOI (forme attendue, doublon avec une autre carte) : non bloquantes,
+   retirées par masquage (champDoi de _fiches.js). */
 .doi-note { margin: var(--e1) 0 0; }
 .case-doi { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e1); }
 .case-doi input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
-/* Case « hors sommaire » (livre seulement, media/_fiches.js) : meme gabarit que .case-doi
-   ci-dessus, et sa ligne d'aide juste dessous, sur le modele discret de .doi-note. */
+/* Case « hors sommaire » (livre seulement) : même gabarit que .case-doi, avec sa ligne
+   d'aide dessous comme .doi-note. */
 .case-sommaire { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e4); display: block; }
 .case-sommaire input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 .case-sommaire-aide { margin: var(--e1) 0 0; font-size: var(--t-mini); color: var(--encre-2); }
 
-/* boutons nus : le socle de _design.css (§9, portee a .carte). */
+/* Boutons nus : _design.css, restreint à .carte. */
 
-/* ---- Autocomplétion des mots-clés (media/_fiches.js) : le vocabulaire edudoc.ch. La
-   grille elle-même (.mc-*) est injectée par _commun.js ; on ne fait ici qu'ajouter de quoi
-   positionner la boîte de suggestions (.szh-sugg, _design.css §10, partagée avec les
-   auteur·e·s) sous la case où l'on tape, à l'intérieur de sa rangée — jamais sous la
-   grille entière, qui couvre plusieurs langues. */
+/* ---- Autocomplétion des mots-clés (vocabulaire edudoc.ch, _fiches.js). La grille (.mc-*)
+   est injectée par _commun.js ; ici, le placement de la boîte de suggestions (.szh-sugg,
+   _design.css, partagée avec les auteur·e·s) sous la case où l'on tape, dans sa rangée, et
+   non sous la grille entière qui couvre plusieurs langues. */
 .mc-rangee { position: relative; }
 
-/* Le second rideau : quand aucun descripteur ne correspond, la boîte ne montre plus qu'une
-   seule ligne — un geste délibéré, jamais un choix dans la liste. Une police oblique plutôt
-   qu'une couleur : une couleur de plus se perdrait à côté de .szh-sugg-item.actif, qui prend
-   déjà la couleur de sélection de l'éditeur. */
+/* Quand aucun descripteur ne correspond, la boîte ne montre qu'une ligne, à choisir
+   délibérément. Elle est en oblique : une couleur se confondrait avec .szh-sugg-item.actif,
+   qui prend déjà la couleur de sélection de l'éditeur. */
 .szh-sugg-item--hors-thesaurus { font-style: italic; }
 
-/* La pastille « hors thésaurus » (media/_fiches.js, appliquerMarqueurs) : une puce discrète
-   au coin du champ, jamais un fond ni une bordure qui alourdirait la grille — elle signale,
-   elle ne bloque rien. Positionnée en JS (offsetLeft/offsetWidth du champ, comme .szh-sugg
-   juste au-dessus) : chaque colonne a une largeur différente selon les langues affichées, il
-   n'y a pas de coordonnée fixe possible. */
+/* La pastille « hors thésaurus » (appliquerMarqueurs de _fiches.js) : une puce au coin du
+   champ, sans fond ni bordure ; elle signale sans bloquer. Positionnée en JS
+   (offsetLeft/offsetWidth du champ) : la largeur des colonnes dépend des langues affichées. */
 .mc-hors-thesaurus {
   position: absolute; top: 2px; width: .5rem; height: .5rem; border-radius: 50%;
   background: var(--avert);

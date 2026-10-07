@@ -10,9 +10,8 @@
       vscodeApi.postMessage({ type: SZH.MSG.BASCULER });
     });
   }
-  // Le survol ne surligne que des éléments de bloc : pandoc pose aussi des positions sur
-  // l'en-ligne, si bien qu'un simple closest('[data-pos]') surlignerait un mot en gras au
-  // lieu de son paragraphe.
+  // Le survol ne surligne que des blocs : pandoc pose aussi des positions sur l'en-ligne, et
+  // closest('[data-pos]') surlignerait un mot en gras au lieu de son paragraphe.
   var BLOCS = {
     P: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, LI: 1, DT: 1, DD: 1,
     BLOCKQUOTE: 1, PRE: 1, FIGURE: 1, FIGCAPTION: 1, TABLE: 1, CAPTION: 1,
@@ -40,16 +39,15 @@
     var res = resoudreClic(e.target, e.clientX, e.clientY);
     if (!res) { return; }
     e.preventDefault();
-    // En plus du bloc, on transmet le mot sous le curseur pour viser le mot exact dans
-    // la source ; l'hôte se replie sur le bloc s'il est vide ou introuvable.
+    // Le mot sous le curseur vise le mot exact dans la source ; l'hôte se replie sur le bloc
+    // s'il est vide ou introuvable.
     vscodeApi.postMessage({ type: SZH.MSG.REVELE, pos: res.pos, mot: res.mot });
   });
 
-  // Résout un clic en { pos, mot } : normalement le bloc sous le curseur, comme au survol,
-  // plus le mot pointé pour que l'hôte y place le curseur. Un clic tombé dans une zone
-  // sans position, typiquement un tableau inclus, vise le bloc positionné le plus proche
-  // dans l'ordre du document ; aucun mot n'est transmis alors, le texte d'une cellule
-  // n'appartenant pas à la source .md.
+  // Résout un clic en { pos, mot } : le bloc sous le curseur, comme au survol, et le mot
+  // pointé, où l'hôte placera le curseur. Un clic hors position (un tableau inclus, par
+  // exemple) vise le bloc positionné le plus proche dans l'ordre du document, sans mot : le
+  // texte d'une cellule n'est pas dans la source .md.
   function resoudreClic(cible, x, y) {
     var c = blocDe(cible);
     if (c) { return { pos: c.getAttribute('data-pos'), mot: motAuPoint(x, y) }; }
@@ -70,8 +68,8 @@
     return precedent || suivant;
   }
 
-  // Mot sous le point (x, y), via l'API de caret du moteur : on étend depuis l'offset du
-  // clic jusqu'aux délimiteurs. Chaîne vide hors du texte ou entre deux mots.
+  // Mot sous le point (x, y), par l'API de caret du moteur, étendu jusqu'aux délimiteurs.
+  // Chaîne vide hors du texte ou entre deux mots.
   function motAuPoint(x, y) {
     var noeud = null, offset = 0;
     if (document.caretRangeFromPoint) {
@@ -122,7 +120,7 @@
     return b ? b.getBoundingClientRect().height : 0;
   }
 
-  // Garde anti-boucle : ignore le scroll déclenché par notre propre défilement.
+  // Ignore le scroll déclenché par notre propre défilement, pour éviter une boucle.
   var defilementProgrammatique = false;
   var minuteurProg = null;
   var minuteurScroll = null;
@@ -131,10 +129,9 @@
     return el.getBoundingClientRect().top + (window.pageYOffset || 0);
   }
 
-  // Éditeur -> aperçu : place l'aperçu en face de `ligne`. Caler au début du bloc courant
-  // donnerait des paliers de plusieurs lignes dans un long paragraphe ; on interpole donc
-  // entre le sommet du bloc courant et celui du bloc suivant, ce qui couvre aussi les
-  // lignes sans span.
+  // Éditeur -> aperçu : place l'aperçu en face de `ligne`, par interpolation entre le sommet
+  // du bloc courant et celui du suivant ; caler au début du bloc ferait des paliers dans un
+  // long paragraphe. Couvre aussi les lignes sans span.
   function scrollVersLigne(ligne) {
     if (!blocs.length) { indexerBlocs(); }
     if (!blocs.length) { return; }
@@ -242,8 +239,7 @@
     cible.el.classList.add('szh-actif');
     blocActif = cible.el;
     surlignerMot(cible.el, mot);
-    // Amener en vue seulement si le bloc est hors écran, sous la garde anti-boucle : le
-    // défilement programmatique qui suit ne doit pas repartir en sens inverse.
+    // Amène en vue seulement si le bloc est hors écran, sous la garde anti-boucle.
     var r = cible.el.getBoundingClientRect();
     if (r.top < bandeauHauteur() || r.bottom > (window.innerHeight || 0)) {
       defilementProgrammatique = true;
@@ -262,9 +258,9 @@
 
   indexerBlocs();
 
-  // Une recompilation recharge la page : elle se replace sur la ligne que l'hôte lui
-  // transmet, sous la garde anti-boucle, puis de nouveau une fois les images chargées,
-  // qui décalent les blocs.
+  // Une recompilation recharge la page : elle se replace sur la ligne transmise par l'hôte,
+  // sous la garde anti-boucle, puis de nouveau une fois les images chargées, qui décalent
+  // les blocs.
   var ligneInitiale = parseInt(SZH.LIGNE_INITIALE, 10) || 0;
   if (ligneInitiale > 0) {
     scrollVersLigne(ligneInitiale);

@@ -1,31 +1,26 @@
 /* Socle visuel commun aux formulaires du cockpit, posé avant la feuille de la page.
-   Sans lui, chaque vue redéfinissait sa carte, ses champs et ses avis : d'où le patchwork,
-   et l'impression que tout a le même poids.
 
-   Le parti est celui de la revue, avec les couleurs de l'éditeur : la structure, le rythme
-   vertical et l'échelle typographique viennent de pipeline/styles/print.css ; les couleurs
-   restent les jetons --vscode-*, pour que le thème clair ou sombre de l'utilisateur et ses
-   réglages de contraste continuent de s'appliquer sans que nous ayons à les garantir.
-   L'accent est la couleur annuelle du numéro (--szh-accent), posée par l'hôte ; à défaut,
-   c'est la couleur de focus de l'éditeur.
+   La structure, le rythme vertical et l'échelle typographique viennent de
+   pipeline/styles/print.css ; les couleurs sont les jetons --vscode-*, pour que le thème
+   clair ou sombre de l'utilisateur et ses réglages de contraste s'appliquent. L'accent est
+   la couleur annuelle du numéro (--szh-accent), posée par l'hôte ; à défaut, la couleur de
+   focus de l'éditeur.
 
    Plan : 0. page · 1. jetons · 2. surfaces et séparations · 3. barre d'en-tête · 4. champs
    et intitulés · 5. notifications · 6. boutons et icônes · 7. pastilles d'état · 8. modale ·
    9. champs et boutons nus (.carte) · 10. boîte de suggestions · 11. zone de dépôt ·
    12. pastille du vérificateur de traduction. */
 
-/* Un élément caché le reste, quoi que sa classe pose comme display : plusieurs blocs du
-   socle sont des flex, qui l'emporteraient sur le display:none par défaut de [hidden]. */
+/* Un élément caché le reste, quel que soit son display : plusieurs blocs du socle sont des
+   flex, qui l'emporteraient sur le display:none par défaut de [hidden]. */
 [hidden] { display: none !important; }
 
 /* ═══ 0. Page ══════════════════════════════════════════════════════════════════
-   Deux variantes de body/h1 vivaient en autant de copies que de pages. La variante
-   « formulaire » (la plupart des pages : une largeur de lecture, un padding généreux) est
-   ici, sa largeur réglée par --page-max ; une page l'ajuste d'une ligne : `body { --page-max:
-   60rem; }`. La variante « plein écran » (documentation.css, medias-article.css : hauteur
-   de la fenêtre entière, défilement propre à un panneau interne) reste propre à ces deux
-   pages, qui redéfinissent body en entier après ce socle — <body> lui-même ne peut pas
-   porter de classe distinguant les deux, la balise étant posée par construireHtml. */
+   La mise en page « formulaire » (largeur de lecture, padding généreux), sa largeur réglée
+   par --page-max ; une page l'ajuste d'une ligne : `body { --page-max: 60rem; }`. Les pages
+   « plein écran » (documentation.css, medias-article.css : hauteur de la fenêtre, défilement
+   dans un panneau interne) redéfinissent body en entier après ce socle, car <body>, posé
+   par construireHtml, ne peut pas porter de classe. */
 body {
   font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
@@ -36,14 +31,12 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* ═══ 1. Jetons ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* Échelle d'espacement : un pas de 4 px, comme la maquette. Tout écart s'y rapporte,
-     de sorte qu'aucune marge n'est choisie au hasard. */
+  /* Échelle d'espacement : un pas de 4 px, comme la maquette. Tout écart s'y rapporte. */
   --e1: .25rem;  --e2: .5rem;   --e3: .75rem;  --e4: 1rem;
   --e5: 1.5rem;  --e6: 2rem;    --e7: 3rem;
 
-  /* Échelle typographique. Le corps est celui de l'éditeur ; les intitulés montent en
-     graisse et en interlettrage plutôt qu'en taille — c'est ce qui les rend lisibles sans
-     les faire crier. */
+  /* Échelle typographique. Le corps est celui de l'éditeur ; les intitulés se distinguent
+     par la graisse et l'interlettrage plutôt que par la taille. */
   --t-mini: .72rem;
   --t-libelle: .78rem;
   --t-corps: 1rem;
@@ -57,46 +50,43 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   /* Accent : la couleur annuelle si l'hôte l'a posée, sinon le focus de l'éditeur. */
   --accent: var(--szh-accent, var(--vscode-focusBorder, #3794ff));
 
-  /* Surfaces et filets. Le filet fort sert aux séparations qui portent du sens (entre deux
-     articles, entre deux images) ; le filet simple aux découpes internes. */
+  /* Surfaces et filets. Le filet fort sépare ce qui porte du sens (deux articles, deux
+     images) ; le filet simple les découpes internes. */
   --fond: var(--vscode-editor-background, #1e1e1e);
   --surface: var(--vscode-editorWidget-background, rgba(128, 128, 128, .06));
   /* La tête d'une carte doit se distinguer de son corps, or plusieurs thèmes donnent la
-     même couleur au bloc de citation et au panneau : on teinte donc la surface avec un peu
-     d'encre, ce qui fonctionne en clair comme en sombre. Le repli est en @supports plus
-     bas : deux déclarations d'une même propriété personnalisée ne se replient pas l'une
-     sur l'autre, la dernière gagne toujours. */
+     même couleur au bloc de citation et au panneau : on teinte la surface avec un peu
+     d'encre, ce qui marche en clair comme en sombre. Le repli est en @supports plus bas :
+     de deux déclarations d'une même propriété personnalisée, la dernière gagne toujours. */
   --surface-tete: color-mix(in srgb, var(--encre) 7%, var(--surface));
   --filet: var(--vscode-panel-border, rgba(128, 128, 128, .35));
   --filet-fort: var(--vscode-contrastBorder, var(--vscode-panel-border, rgba(128, 128, 128, .6)));
   --encre: var(--vscode-foreground, #ccc);
   /* L'encre secondaire porte des libellés, des valeurs lues et des comptes. Le gris
-     secondaire de l'éditeur seul ne vaut que Lc 59 sur blanc en Light+ (le thème des
-     postes) : on le tire aux trois quarts vers l'encre, soit Lc 76, sous l'encre (81) qui
-     est le plafond du thème. Mesuré par test/js/cockpit-contraste.test.js. */
+     secondaire de l'éditeur ne vaut que Lc 59 sur blanc en Light+ (le thème des postes) :
+     on le tire aux trois quarts vers l'encre, soit Lc 76, sous l'encre (81). Mesuré par
+     test/js/cockpit-contraste.test.js. */
   --encre-2: color-mix(in srgb, var(--vscode-descriptionForeground, rgba(204, 204, 204, .75)) 25%, var(--encre));
 
-  /* Couleurs sémantiques : une seule valeur chacune, choisie parmi celles qui étaient déjà
-     en usage (grep sur les pages avant ce lot), le jeton de l'éditeur passant devant. Toute
-     teinte en dur d'une des trois familles se remplace par l'un de ces trois jetons. */
+  /* Couleurs sémantiques : une valeur chacune, le jeton de l'éditeur en premier. Toute
+     teinte en dur d'une de ces familles se remplace par l'un de ces jetons. */
   --danger: var(--vscode-errorForeground, #f85149);
   --avert: var(--vscode-editorWarning-foreground, #d1901e);
   --ok: var(--vscode-charts-green, #3fb950);
 
-  /* Échelle de superposition : quatre plans, du plus bas au plus haut. Une valeur nue
-     ailleurs qu'ici serait un cinquième plan inventé au hasard, sans savoir où il se range
-     face aux autres. */
+  /* Échelle de superposition : quatre plans, du plus bas au plus haut. Tout z-index passe
+     par l'un d'eux. */
   --z-sugg: 10;      /* boîte de suggestions (auteur·e·s, mots-clés) */
   --z-barre: 20;     /* barre de commandes, collante en tête de formulaire */
   --z-modale: 100;   /* voile de modale */
   --z-menu: 1000;    /* menu contextuel (éditeur de tableau) */
 
-  /* Largeur d'un formulaire « page » (variante pleine largeur : documentation.css et
-     medias-article.css redéfinissent body en entier, hors de ce jeton). */
+  /* Largeur d'un formulaire « page » (documentation.css et medias-article.css redéfinissent
+     body sans ce jeton). */
   --page-max: 52rem;
 }
 
-/* Moteur sans color-mix : la teinte revient au jeton de l'éditeur. Sans ce repli la
+/* Moteur sans color-mix : la teinte revient au jeton de l'éditeur. Sans ce repli, la
    variable serait invalide et les surfaces qui s'en servent deviendraient transparentes. */
 @supports not (color: color-mix(in srgb, white 50%, black)) {
   :root { --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12));
@@ -104,23 +94,21 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ 2. Surfaces et séparations ══════════════════════════════════════════════
-   La carte est le bloc de base : une surface franchement détachée du fond, un filet
-   complet, et un liseré d'accent en tête. Entre deux cartes, l'écart fait le reste : c'est
-   la séparation la plus lisible qui existe, et elle ne coûte pas un pixel de bordure. */
-/* Entre deux cartes, l'écart fait la séparation : c'est la plus lisible qui existe, et
-   elle ne coûte pas un pixel de bordure. Chaque page pose cet écart sur son conteneur. */
+   La carte est le bloc de base : une surface détachée du fond, un filet complet et un
+   liseré d'accent en tête. Entre deux cartes, l'écart fait la séparation ; chaque page pose
+   cet écart sur son conteneur. */
 .szh-carte {
   background: var(--surface);
   border: 1px solid var(--filet);
   border-radius: var(--rayon);
   overflow: hidden;                  /* la tête épouse le rayon */
-  /* Une ombre légère, celle des panneaux de l'éditeur : elle détache la carte du fond
-     mieux qu'un filet plus épais, qui alourdirait une longue liste. */
+  /* L'ombre légère des panneaux de l'éditeur détache la carte du fond sans alourdir une
+     longue liste. */
   box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18));
 }
 
 /* Tête de carte : le nom de ce qu'on édite, ses états, et l'action qui le détruit. Fond
-   distinct et liseré d'accent — c'est ce qui donne un début et une fin à chaque bloc. */
+   distinct et liseré d'accent. */
 .szh-tete {
   display: flex; align-items: center; gap: var(--e3);
   padding: var(--e2) var(--e3);
@@ -140,8 +128,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 .szh-corps { padding: var(--e4); }
 
-/* Découpe interne : un intitulé de section sur un filet. Sert à séparer ce qui se lit
-   ensemble de ce qui se lit ailleurs, sans ajouter une boîte de plus. */
+/* Découpe interne : un intitulé de section sur un filet, sans boîte de plus. */
 .szh-section {
   display: flex; align-items: center; gap: var(--e2);
   margin: var(--e5) 0 var(--e3);
@@ -155,8 +142,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .szh-section:first-child { margin-top: 0; }
 
 /* ═══ 3. Barre d'en-tête ══════════════════════════════════════════════════════
-   Les boutons qui commandent tout le formulaire, toujours à la même place et toujours
-   visibles : dans un formulaire long, un « Enregistrer » qui défile est un piège. */
+   Les boutons qui commandent tout le formulaire, toujours visibles à la même place : dans
+   un formulaire long, « Enregistrer » ne doit pas défiler hors de vue. */
 .szh-barre {
   position: sticky; top: 0; z-index: var(--z-barre);
   display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
@@ -175,8 +162,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ 4. Champs et intitulés ══════════════════════════════════════════════════
-   L'intitulé est ce qui manquait le plus : il était gris, minuscule et sans graisse, donc
-   invisible. Il monte en graisse et prend la couleur du texte, pas celle des notes. */
+   L'intitulé, en graisse et à la couleur du texte. */
 .szh-champ { display: flex; flex-direction: column; gap: var(--e1); }
 .szh-champ > label {
   font-size: var(--t-libelle); font-weight: 700;
@@ -202,9 +188,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .szh-grille-2 > * { min-width: 0; }
 @media (max-width: 42rem) { .szh-grille-2 { grid-template-columns: 1fr; } }
 
-/* Groupe de choix : le cadre reste, mais discret — c'est le contenu qui compte.
-   Un libellé d'option se suffit à lui-même : les formulaires ne portent plus de texte
-   d'aide sous les champs, ce qui se raconte ayant sa place dans le guide, pas dans la page. */
+/* Groupe de choix : un cadre discret. Le libellé d'option se suffit : les explications vont
+   dans le guide, pas sous les champs. */
 .szh-groupe {
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   padding: var(--e1) var(--e3) var(--e2); margin: 0;
@@ -223,10 +208,9 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* ═══ 5. Notifications ════════════════════════════════════════════════════════
    Un seul objet pour tous les messages du cockpit : liseré coloré à gauche, fond teinté,
-   pictogramme, texte. Quatre tons, et le ton dit la nature du message — information,
-   réussite, attention, blocage. Repris tel quel par toutes les vues.
-   Les fonds sont teintés depuis les jetons de l'éditeur : color-mix pour les tons qui n'ont
-   pas de jeton de fond, avec un repli plat pour les moteurs qui l'ignorent. */
+   pictogramme, texte. Quatre tons : information, réussite, attention, blocage.
+   Les fonds sont teintés depuis les jetons de l'éditeur : color-mix pour les tons sans
+   jeton de fond, avec un repli plat pour les moteurs qui l'ignorent. */
 .szh-notif {
   display: flex; align-items: flex-start; gap: var(--e2);
   padding: var(--e2) var(--e3);
@@ -265,10 +249,9 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ 6. Boutons et icônes ════════════════════════════════════════════════════ */
-/* white-space + flex-shrink: 0 — un bouton compressé par ses voisins pliait son texte sur
-   deux lignes plutôt que de garder sa taille : deux boutons voisins n'avaient alors
-   plus la même hauteur. Un pied de carte qui manque de place doit passer à la ligne en
-   entier (.ligne-pied, media/_liste.css), jamais rogner un seul bouton. */
+/* white-space et flex-shrink: 0 : un bouton comprimé par ses voisins plierait son texte sur
+   deux lignes et n'aurait plus la hauteur des autres. Un pied de carte trop étroit passe à
+   la ligne en entier (.ligne-pied, _liste.css). */
 .szh-bouton {
   font: inherit; padding: .35em .75em;
   display: inline-flex; align-items: center; gap: var(--e2); flex-shrink: 0;
@@ -287,9 +270,9 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   background: var(--vscode-button-background, #0e639c);
 }
 .szh-bouton--principal:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
-/* Pressé : les couleurs de bouton de l'éditeur, dont le contraste est garanti, et l'accent
-   en cerne. La couleur annuelle ne sert jamais de fond à du texte — plusieurs teintes de la
-   palette tombent sous 2:1 avec du blanc. */
+/* Pressé : les couleurs de bouton de l'éditeur, au contraste garanti, et l'accent en cerne.
+   La couleur annuelle ne sert pas de fond à du texte : plusieurs teintes de la palette
+   tombent sous 2:1 avec du blanc. */
 .szh-bouton[aria-pressed="true"] {
   background: var(--vscode-button-background, #0e639c);
   color: var(--vscode-button-foreground, #fff);
@@ -310,7 +293,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .szh-ico--danger:hover { color: var(--danger); }
 
 /* ═══ 7. Pastilles d'état ═════════════════════════════════════════════════════
-   Un état se lit d'un coup d'œil dans la tête de carte, sans lire une phrase. */
+   Un état se lit d'un coup d'œil dans la tête de carte. */
 .szh-pastille {
   display: inline-flex; align-items: center; gap: var(--e1);
   /* Le pictogramme prend la couleur du ton, comme le texte. */
@@ -326,8 +309,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 /* Les tons suivent ceux de l'arbre, pour qu'un état se reconnaisse d'un panneau à l'autre :
    bleu ce qui est lancé, ambre ce qui attend un regard, vert ce qui est clos. L'ambre est
-   celui des avertissements de l'éditeur, lisible sur fond clair comme sombre — « charts »
-   ne l'est pas. */
+   celui des avertissements de l'éditeur, lisible sur fond clair comme sombre, ce que n'est
+   pas celui de « charts ». */
 .szh-pastille--info {
   border-color: var(--vscode-charts-blue, #3794ff);
   color: var(--vscode-charts-blue, #3794ff);
@@ -342,7 +325,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ 8. Modale ═══════════════════════════════════════════════════════════════
-   Agrandir un aperçu : le fond s'assombrit, l'image occupe la place, tout le reste attend. */
+   Agrandir un aperçu : le fond s'assombrit, l'image occupe la place. */
 .szh-modale {
   position: fixed; inset: 0; z-index: var(--z-modale);
   display: none; align-items: center; justify-content: center;
@@ -365,13 +348,11 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ 9. Champs et boutons nus, dans une carte sans wrapper .szh-champ ═════════
-   Métadonnées des articles et vérification de l'import (_fiches.css) d'un côté,
-   Traduction de l'autre : les deux construisent leurs cartes sous la même classe `.carte`
-   (aucune autre page ne s'en sert) sans passer par .szh-champ ni .szh-bouton pour chaque
-   champ. Portée à `.carte` et non posée nue sur toute la page : un `<label>` de Réglages
-   ou un `<input type=radio>` d'un autre panneau n'a pas à en hériter.
+   Métadonnées des articles et vérification de l'import (_fiches.css), et Traduction,
+   construisent leurs cartes sous la classe `.carte` sans .szh-champ ni .szh-bouton. Les
+   règles sont restreintes à `.carte` pour ne pas toucher les autres panneaux.
    `:not([type=checkbox]):not([type=radio])` évite d'étirer une case ou un bouton radio à
-   width:100%, ce que ferait un input nu sans cette garde. */
+   width:100%. */
 .carte label {
   display: block; margin: var(--e4) 0 var(--e1);
   font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre);
@@ -419,17 +400,17 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
   color: var(--vscode-list-activeSelectionForeground, var(--encre));
 }
-/* La part trouvée : le gras seul la marque, une couleur d'accent se perdrait sur la ligne
-   survolée, qui prend déjà la couleur de sélection de l'éditeur. */
+/* La part trouvée est en gras : une couleur d'accent se perdrait sur la ligne survolée,
+   qui prend déjà la couleur de sélection de l'éditeur. */
 .szh-sugg-item strong { font-weight: 700; }
 /* Le filet entre deux groupes (auteur·e·s : noms de famille au-dessus, prénoms dessous). */
 .szh-sugg-filet { height: 1px; margin: var(--e1) var(--e2); background: var(--filet-fort); }
 
 /* ═══ 11. Zone de dépôt ═════════════════════════════════════════════════════════
    Le motif complet (SZH.construireDepot, _commun.js) : icône et libellé facultatifs, un
-   bouton « Choisir un fichier », le glisser-déposer, une zone d'état. Posée par cinq
-   pages (couverture du numéro, portrait d'auteur·e, image de ressource, figure d'article,
-   original d'une image importée) : un seul cadre, avant ce lot un par page. */
+   bouton « Choisir un fichier », le glisser-déposer, une zone d'état. Utilisé pour la
+   couverture du numéro, le portrait d'auteur·e, l'image de ressource, la figure d'article
+   et l'original d'une image importée. */
 .szh-depot {
   display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
   padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
@@ -448,35 +429,25 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 
 /* ═══ 12. Pastille du vérificateur de traduction ════════════════════
-   Posée à CÔTÉ de l'intitulé d'un champ traduisible, jamais dans le champ de saisie
-   qu'elle ne doit pas rétrécir : d'où l'inline-flex, et le calage sur le MILIEU de la ligne
-   et non sur la ligne de base — depuis qu'elle porte du texte, sa propre ligne de base est
-   celle de ses deux capitales, et un calage en `-.25em` la faisait pendre sous l'intitulé,
-   qui gagnait 2 px par champ. Avec `middle`, la carte fait exactement la hauteur qu'elle
-   faisait du temps du dessin (mesuré : 1476 px dans le harnais tmp/apercu-suggestion).
-   Elle n'apparaît que si le mode est actif (lib/archivage.js, lireVerifTraduction), et
-   c'est la même sur les trois pages qui la portent — fiches, vérification de l'import,
-   panneau « Traductions ».
+   Posée à côté de l'intitulé d'un champ traduisible, hors du champ de saisie qu'elle ne
+   doit pas rétrécir : d'où l'inline-flex, et le calage sur le milieu de la ligne. Calée sur
+   la ligne de base (celle de ses deux capitales), elle pendrait sous l'intitulé et
+   ajouterait 2 px par champ. Elle n'apparaît que si le mode est actif (lireVerifTraduction
+   de lib/archivage.js), et sert aux fiches, à la vérification de l'import et au panneau
+   « Traductions ».
 
-   Elle porte le CODE DE LANGUE en capitales — FR, DE, IT — et non plus le dessin
-   d'ICONES.traduction (_commun.js). Deux raisons, réglées d'un coup : le dessin, fait pour
-   un bouton de barre, tombait en bouillie à la taille d'un intitulé ; et les deux pastilles
-   des mots-clés, posées côte à côte contre le même intitulé, étaient alors indiscernables —
-   seule l'infobulle disait laquelle visait le français. Le panneau « Traductions » nomme
-   déjà ses colonnes FR et DE : le vocabulaire est le même.
+   Elle porte le code de langue en capitales (FR, DE, IT), ce qui distingue les deux
+   pastilles des mots-clés posées côte à côte, et reprend les noms de colonnes du panneau
+   « Traductions ».
 
-   Elle doit se lire comme un BOUTON, pas comme une étiquette, sans quoi on ne la clique
-   pas : d'où le cadre et la surface au repos, que les intitulés de colonne du bloc des
-   mots-clés (.mc-entete, _commun.js — du texte nu, sans cadre) n'ont pas. Discrète au
-   repos — elle accompagne un intitulé, elle ne le concurrence pas — elle prend l'accent au
-   survol et au focus. La cible reste de 1.4rem de haut, assez large pour la souris sur une
-   ligne d'intitulé.
+   Elle doit se lire comme un bouton : d'où le cadre et la surface au repos, que n'ont pas
+   les intitulés de colonne des mots-clés (.mc-entete, _commun.js). Discrète au repos, elle
+   prend l'accent au survol et au focus. La cible fait 1.4rem de haut.
 
-   ⚠ Le sélecteur `.carte .szh-sugg-trad` n'est pas une redondance : `.carte button` (§9) et
-     `.entete-source button` (traduction.css) sont tous deux plus spécifiques qu'une classe
-     seule, et rendraient la pastille à l'aspect d'un bouton de formulaire. Deux classes
-     l'emportent sur une classe et un élément. La forme nue reste pour une page qui la
-     poserait hors d'une carte. */
+   Le sélecteur `.carte .szh-sugg-trad` est nécessaire : `.carte button` (section 9) et
+   `.entete-source button` (traduction.css) sont plus spécifiques qu'une classe seule, et
+   donneraient à la pastille l'aspect d'un bouton de formulaire. La forme nue sert hors
+   d'une carte. */
 .szh-sugg-trad,
 .carte .szh-sugg-trad {
   display: inline-flex; align-items: center; justify-content: center;
@@ -486,7 +457,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   background: var(--surface); color: var(--encre-2); cursor: pointer;
   /* Un bouton n'hérite pas de la police de la page : sans font-family, les deux capitales
-     partaient dans la police système des formulaires, plus large que le reste de la ligne. */
+     prendraient la police système des formulaires, plus large. */
   font-family: inherit; font-size: var(--t-mini); font-weight: 700;
   line-height: 1; letter-spacing: .05em;
 }
@@ -501,14 +472,11 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 }
 
 /* ═══ Mode « Trad » ═══════════════════════════════════════════════════════════ */
-/* Le bandeau posé en tête de tout panneau qui détourne ses clics. Collé en haut : un
-   panneau qu'on fait défiler ne doit pas perdre l'explication de ce qui lui arrive, ni la
-   sortie. Le ton « attention » et non « danger » — rien n'est cassé, et rien ne s'écrit —
-   mais il ne se confond pas avec les notes d'aide des pages. */
-/* align-items reste celui du socle (flex-start) : la phrase du bandeau tient sur deux
-   lignes dans un panneau de largeur ordinaire, et un pictogramme centré sur le bloc entier
-   se retrouvait dans la gouttière, à hauteur du dernier mot, comme s'il annonçait autre
-   chose. En tête de la première ligne, il annonce la phrase. */
+/* Le bandeau posé en tête de tout panneau qui détourne ses clics. Collé en haut, pour que
+   l'explication et la sortie restent visibles quand on fait défiler. Ton « attention » :
+   rien n'est cassé et rien ne s'écrit. */
+/* align-items reste flex-start : la phrase tient souvent sur deux lignes, et le pictogramme
+   doit rester en tête de la première. */
 .szh-trad-bandeau {
   position: sticky; top: 0; z-index: 30;
   margin: 0 0 var(--e3);
@@ -519,6 +487,6 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   display: flex; flex: 1 1 auto; flex-wrap: wrap;
   align-items: center; gap: var(--e2) var(--e3);
 }
-/* Le bouton de sortie à l'extrémité : c'est la seule chose cliquable de la page tant que
-   le mode est actif, elle doit se trouver sans chercher. */
+/* Le bouton de sortie à l'extrémité : seule chose cliquable de la page tant que le mode
+   est actif. */
 .szh-trad-bandeau .szh-trad-sortie { margin-left: auto; }

@@ -1,29 +1,20 @@
-// Vue « Articles » : l'ordre du numéro, l'avancement de chaque article, et les
-// métadonnées du numéro. Trois choses au même endroit parce qu'on les regarde ensemble
-// quand on monte un numéro.
+// Vue « Articles » : l'ordre du numéro, l'avancement de chaque article et les métadonnées
+// du numéro, regardés ensemble quand on monte un numéro.
 //
-// Rien n'est décidé ici. Les cartes sont posées par SZH.listeCartes et la barre par
-// SZH.barreBoutons (media/_commun.js), les mêmes que « Traductions » et « Word en
-// attente ». Le formulaire du numéro est SZH.formulaireNumero (media/_numero.js), le même
-// que la page « Méta-données du numéro » : un champ ajouté à sa table apparaît ici sans
-// seconde modification.
+// Les cartes sont posées par SZH.listeCartes et la barre par SZH.barreBoutons (_commun.js),
+// comme dans « Traductions » et « Word en attente ». Le formulaire du numéro est
+// SZH.formulaireNumero (_numero.js), le même que la page « Métadonnées du numéro ».
 //
-// Les INTITULÉS des tâches ne se règlent plus ici. Ils décrivent le processus éditorial
-// d'une revue et valent pour toute la rédaction : ils ont rejoint les réglages protégés,
-// dans « Réglages SZH » (lib/reglages-proteges.js). Le bouton de la barre est devenu un
-// aiguillage, comme « Changer la langue de l'article » sur la fiche : il dit où se fait le
-// geste. Cette page ne garde que les CASES à cocher, qui, elles, sont propres à un article.
+// Les intitulés des tâches se règlent dans les réglages protégés (« Réglages SZH »,
+// lib/reglages-proteges.js) ; le bouton de la barre y renvoie. Cette page porte les cases à
+// cocher, propres à chaque article.
 //
-// L'aperçu des métadonnées, lui, est propre à cette page — il n'existe nulle part
-// ailleurs : partout ailleurs, les métadonnées d'un article sont un formulaire. Ici on
-// regarde, on ne saisit pas, et les deux boutons du pied mènent aux formulaires qui, eux,
-// écrivent. La carte reste celle de SZH.listeCartes : cette page n'en refait pas une, elle
-// insère son aperçu dedans.
+// L'aperçu des métadonnées est en lecture seule ; les deux boutons du pied mènent aux
+// formulaires qui écrivent. Il est inséré dans la carte de SZH.listeCartes.
 //
-// Variante livre (TXT.estLivre, posé par l'hôte quand le dossier porte un buch.yaml) : la même
-// page montre les chapitres, avec SZH.formulaireLivre (media/_numero.js) en tête à la place
-// du formulaire du numéro. Rien d'autre ne change côté page : l'hôte n'envoie ni DOI, ni case
-// « pas de DOI », ni tâches, et les cartes se posent comme celles d'un numéro.
+// Variante livre (TXT.estLivre, posé par l'hôte quand le dossier porte un buch.yaml) : la
+// page montre les chapitres, avec SZH.formulaireLivre (_numero.js) en tête. L'hôte n'envoie
+// alors ni DOI, ni case « pas de DOI », ni tâches.
 //
 // Protocole. Vers l'hôte :
 //   pret ; ouvrir { cle } ; action { cle, id } ; tache { cle, id, cochee } ;
@@ -39,24 +30,22 @@
 //   apercu   = { lignes: [{ libelle, valeurs: [{ marque, texte, marques, ton }] }] }
 //   constats = [{ ton, texte }] — posés par SZH.listeCartes dans l'encadré « À faire »
 //   sansDoi  = { coche, verrouille }
-//   ordre    = { monter, descendre } — { desactive, tip, ariaLabel } chacun ; envoyé QUE
-//              dans le mode « Changer l'ordre » (msg.ordre === true), qui vide alors
+//   ordre    = { monter, descendre } ({ desactive, tip, ariaLabel } chacun), envoyé
+//              seulement en mode « Changer l'ordre » (msg.ordre === true), qui vide alors
 //              apercu/constats/taches/actions : voir decorerBandeauOrdre()
 //
-// `boutons` reste un tableau à PLAT — l'hôte ne connaît que lui, jamais deux lignes. Chaque
-// bouton porte { …, groupe }, et c'est CETTE page qui le répartit sur ses deux lignes de
-// barre (decorerBarre() plus bas) : `groupe: 'filtre'` va sur celle du haut, tout le reste
-// (`'action'`, ou l'absence du champ) sur celle du bas. Le split en deux lignes est un
-// détail de PRÉSENTATION propre à cette page, pas une clause du protocole.
+// `boutons` est un tableau à plat. Chaque bouton porte { …, groupe }, et cette page le
+// répartit sur ses deux lignes de barre (decorerBarre()) : `groupe: 'filtre'` en haut, le
+// reste (`'action'` ou champ absent) en bas. Les deux lignes sont un choix de présentation
+// de la page, pas une clause du protocole.
 (function () {
   'use strict';
   var api = acquireVsCodeApi();
   var TXT = __TXT__;
   var poser = SZH.poser;
   var titre = document.getElementById('titre');
-  // Deux lignes dans la même barre (media/articles.html, media/articles.css) : les filtres
-  // au-dessus, les gestes en dessous — voir decorerBarre() plus bas pour la répartition et
-  // le sort de la ligne des filtres en mode « Changer l'ordre ».
+  // Deux lignes dans la même barre (articles.html, articles.css) : les filtres au-dessus,
+  // les actions en dessous ; voir decorerBarre().
   var barreFiltres = document.getElementById('barreFiltres');
   var barreActions = document.getElementById('barreActions');
   var ctlEtat = null;
@@ -76,9 +65,9 @@
     conteneur: cartes,
     textes: function () { return TXT; },
     onOuvrir: function (cle) { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); },
-    // « Ouvrir l'article » est en fin de pied et arrive donc par `actions`, comme les
-    // autres boutons ; c'est pourtant le même geste que la flèche de l'entête, et il part
-    // par le même message. L'hôte n'a qu'un chemin pour ouvrir un article, pas deux.
+    // « Ouvrir l'article », en fin de pied, arrive par `actions` comme les autres boutons,
+    // mais part par le même message que la flèche de l'entête : l'hôte n'a qu'un chemin
+    // pour ouvrir un article.
     onAction: function (cle, id) {
       if (id === 'ouvrir') { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); return; }
       api.postMessage({ type: SZH.MSG.ACTION, cle: cle, id: id });
@@ -90,51 +79,40 @@
 
   // ---- L'aperçu, posé dans la carte ----
   //
-  // Les cartes viennent de SZH.listeCartes, le composant des trois vues d'ensemble. Cette
-  // page n'en écrit pas une seconde : elle prend celles qui viennent d'être posées, dans
-  // l'ordre où elles l'ont été — le même que celui des lignes — et glisse son bloc juste
-  // avant les tâches, donc entre l'en-tête et le pied.
+  // Les cartes viennent de SZH.listeCartes. La page les reprend dans l'ordre où elles ont
+  // été posées (celui des lignes) et insère son bloc avant les tâches, entre l'en-tête et le
+  // pied.
   //
-  // Rien n'y est modifiable, à une exception près et elle est explicite : la case « pas de
-  // DOI », qui n'est pas une métadonnée de l'article mais une décision sur le numéro.
+  // Rien n'y est modifiable, sauf la case « pas de DOI », qui est une décision sur le
+  // numéro et non une métadonnée de l'article.
   function decorer(lignes) {
     var boites = cartes.querySelectorAll('.szh-carte');
     for (var i = 0; i < boites.length && i < lignes.length; i++) {
       var ligne = lignes[i] || {};
-      // Le mode « Changer l'ordre » réduit la carte à un bandeau : l'hôte ne lui envoie
-      // plus ni aperçu, ni tâches, ni constats (chargeArticles, extension.js) — rien à
-      // déplier, rien à ouvrir. C'est un décor entièrement différent, voir
-      // decorerBandeauOrdre() plus bas.
+      // Le mode « Changer l'ordre » réduit la carte à un bandeau : l'hôte n'envoie ni
+      // aperçu, ni tâches, ni constats (chargeArticles, extension.js). Voir
+      // decorerBandeauOrdre().
       if (ordreActif) { decorerBandeauOrdre(boites[i], ligne); continue; }
       var bloc = construireBloc(ligne);
       if (bloc) {
         var cible = boites[i].querySelector('.szh-taches') || boites[i].querySelector('.ligne-pied');
         if (cible) { boites[i].insertBefore(bloc, cible); } else { boites[i].appendChild(bloc); }
       }
-      // Après le bloc, et non avant : la barre de titre porte le bouton qui le replie.
+      // Après le bloc : la barre de titre porte le bouton qui le replie.
       decorerTete(boites[i], ligne, bloc);
     }
   }
 
-  // La tête de la carte : le nom du dossier n'y est plus répété à côté du titre —
-  // « 01 · Construire sa propre rampe » porte déjà le rang, et redire le slug juste après
-  // ne faisait que doubler la même information. Le slug reste l'identifiant technique de
-  // l'article ; il se lit maintenant en infobulle du titre plutôt que sur sa propre ligne.
-  // Les avertissements de la carte ne vivent plus ici : ils sont descendus dans l'encadré
-  // « À faire », sous les tâches et groupés par gravité (SZH.listeCartes, media/_commun.js).
-  // Un avertissement est de la même nature qu'une tâche — quelque chose qui attend — et il
-  // se lisait mal en colonne serrée contre le bord droit de la barre de titre.
-  //
-  // Ne reste donc qu'un geste, à droite du titre : replier l'aperçu des métadonnées. Le
-  // bouton « Ouvrir l'article » a quitté l'entête — le même geste ferme déjà le pied de
-  // carte, et le répéter ici doublait un bouton pour rien. Le titre lui-même devient la
-  // seconde commande de la bascule : un vrai <button>, jamais un <div> cliquable, pour
-  // rester atteignable au clavier et actionnable par Entrée/Espace.
+  // La tête de la carte. Le titre (« 01 · Construire sa propre rampe ») porte déjà le rang ;
+  // le slug se lit en infobulle. Les avertissements sont dans l'encadré « À faire »
+  // (SZH.listeCartes). À droite du titre, un seul bouton : replier l'aperçu des
+  // métadonnées. Le titre lui-même sert aussi de bascule : un vrai <button>, atteignable au
+  // clavier et actionnable par Entrée ou Espace.
   function decorerTete(carte, ligne, bloc) {
     var tete = carte.querySelector('.szh-tete');
     if (!tete) { return; }
-    // L'hôte n'envoie plus `meta` pour cette vue (voir extension.js, chargeArticles) ; le
-    // retrait ci-dessous reste une garde, au cas où un ancien message traînerait encore.
+    // L'hôte n'envoie pas `meta` pour cette vue (chargeArticles, extension.js) ; le retrait
+    // ci-dessous est une précaution.
     var meta = tete.querySelector('.szh-tete-meta');
     if (meta) { meta.remove(); }
     var nom = tete.querySelector('.szh-tete-nom');
@@ -158,10 +136,9 @@
 
   // ---- Le bandeau du mode « Changer l'ordre » ----
   //
-  // La carte s'y réduit à un simple bandeau de titre : rien à lire, rien à cocher, rien à
-  // ouvrir, seulement à classer — l'hôte ne lui a rien envoyé d'autre (chargeArticles,
-  // extension.js). Les deux seuls gestes qui restent, monter et descendre, passent donc
-  // tout à gauche du bandeau, avant même le rang et le titre.
+  // La carte se réduit à un bandeau de titre : seulement à classer, l'hôte n'envoie rien
+  // d'autre (chargeArticles, extension.js). Les flèches monter et descendre se placent à
+  // gauche du bandeau, avant le rang et le titre.
   function decorerBandeauOrdre(carte, ligne) {
     var tete = carte.querySelector('.szh-tete');
     if (!tete) { return; }
@@ -169,17 +146,16 @@
     if (meta) { meta.remove(); }
     var nom = tete.querySelector('.szh-tete-nom');
     if (nom) {
-      // Tronqué sur une seule ligne, ici seulement : le bandeau doit tenir en une ligne
-      // quoi qu'il arrive — contrairement à la carte complète, où un titre exceptionnel a
-      // le droit de passer à la ligne (media/articles.css, #cartes .szh-tete-nom).
+      // Tronqué sur une ligne dans ce mode seulement ; dans la carte complète, le titre
+      // passe à la ligne (articles.css, #cartes .szh-tete-nom).
       nom.classList.add('tete-nom-tronque');
       nom.title = ligne.titre || '';
     }
     var o = ligne.ordre || {};
     var cle = String(ligne.cle || '');
-    // Construit à part, puis inséré en tête : jamais ajouté d'abord à `tete` pour être
-    // ensuite déplacé, ce qui dupliquerait le nœud dans un DOM qui ne sait pas vraiment
-    // repositionner (voir le correctif d'insertBefore, test/js/dom-minimal.js).
+    // Construit à part puis inséré en tête, sans passer d'abord par `tete` : un déplacement
+    // dupliquerait le nœud dans le DOM des tests (voir insertBefore dans
+    // test/js/dom-minimal.js).
     var boutons = document.createElement('div');
     boutons.className = 'carte-ordre';
     boutons.appendChild(boutonFlecheOrdre('monter', 'haut', o.monter, cle));
@@ -188,11 +164,10 @@
   }
 
   // Une flèche seule, sans libellé visible. L'infobulle reprend le tip générique de la
-  // carte complète (art.monter.tip / art.descendre.tip, mêmes clés) ; l'aria-label, lui,
-  // est SPÉCIFIQUE — il nomme l'article et le rang visé, calculé côté hôte (prefixeOrdre,
-  // lib/articles.js) — sans quoi deux flèches « Monter » consécutives se liraient pareil
-  // au clavier. Un bouton désactivé porte déjà le générique en repli (chargeArticles) : il
-  // n'annonce donc jamais un rang qui n'existe pas.
+  // carte complète (art.monter.tip / art.descendre.tip) ; l'aria-label nomme l'article et le
+  // rang visé, calculé par l'hôte (prefixeOrdre, lib/articles.js), pour que deux flèches
+  // « Monter » consécutives se distinguent au clavier. Un bouton désactivé porte le
+  // libellé générique (chargeArticles) : il n'annonce pas de rang inexistant.
   function boutonFlecheOrdre(id, icone, info, cle) {
     var o = info || {};
     var b = document.createElement('button');
@@ -208,34 +183,29 @@
     return b;
   }
 
-  // Les aperçus repliés, par slug. Retenu pour la durée de la page : un re-rendu — un ordre
-  // enregistré, une métadonnée de numéro écrite — repose toutes les cartes, et sans cette
-  // mémoire il redéplierait ce qu'on vient de replier. La page n'a pas
-  // `retainContextWhenHidden` : passer à un autre onglet et revenir remet tout à plat, et
-  // c'est assumé — l'état déplié est celui qui montre tout, jamais celui qui cache.
+  // Les aperçus repliés, par slug, gardés pour la durée de la page : un nouveau rendu (un
+  // ordre enregistré, une métadonnée de numéro écrite) repose toutes les cartes et
+  // redéplierait ce qu'on vient de replier. Sans `retainContextWhenHidden`, changer
+  // d'onglet et revenir remet tout à l'état de départ.
   //
-  // Ce ne sont que des exceptions : l'état de départ de toutes les cartes vient de l'hôte
-  // (metaRepliees, l'interrupteur « Cacher les métadonnées » de la barre), et un slug
-  // absent d'ici le suit. Actionner l'interrupteur efface les exceptions — c'est un geste
-  // qui porte sur toutes les cartes, il ne laisse pas trois cartes en travers.
+  // Ce sont des exceptions : l'état de départ de toutes les cartes vient de l'hôte
+  // (metaRepliees, l'interrupteur « Cacher les métadonnées » de la barre). Actionner
+  // l'interrupteur efface les exceptions.
   var replies = Object.create(null);
   var metaRepliees = false;
   // L'état du mode « Changer l'ordre », lu à chaque message « valeurs » (msg.ordre) : il
-  // décide, dans decorer() ci-dessus, entre la carte complète et le bandeau minimal.
+  // choisit, dans decorer(), entre la carte complète et le bandeau.
   var ordreActif = false;
 
   function estReplie(cle) {
     return (cle in replies) ? replies[cle] === true : metaRepliees;
   }
 
-  // Le bouton « Afficher / cacher les métadonnées » d'une carte, réduit au chevron : plus
-  // de texte visible, la carte en porte déjà assez pour rester compacte. Ce qu'il replie
-  // est le seul bloc d'aperçu : le titre, les tâches et les constats restent, puisque
-  // c'est sur eux qu'on parcourt un numéro. Son libellé dit toujours le geste à venir, pas
-  // l'état courant — « Cacher les métadonnées » quand elles sont là — mais ne vit plus que
-  // dans l'infobulle et l'aria-label, faute de texte pour le porter ; `aria-expanded` dit
-  // l'état. `boutonTitre`, quand il existe, est LE MÊME geste sous une autre forme : les
-  // deux se déclenchent l'un l'autre et partagent `aria-expanded`.
+  // Le bouton « Afficher / cacher les métadonnées » d'une carte, réduit au chevron. Il ne
+  // replie que le bloc d'aperçu : le titre, les tâches et les constats restent. Son libellé,
+  // dans l'infobulle et l'aria-label, dit l'action à venir ; `aria-expanded` dit l'état.
+  // `boutonTitre`, s'il existe, fait la même chose : les deux se déclenchent l'un l'autre et
+  // partagent `aria-expanded`.
   function basculeApercu(cle, bloc, boutonTitre) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -257,9 +227,9 @@
     return b;
   }
 
-  // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu ni case. Les
-  // avertissements (ligne.constats) sont posés dans la tête de la carte par decorerTete()
-  // ci-dessus : ce bloc ne porte plus que l'aperçu des métadonnées et l'échappatoire.
+  // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu ni case. Le bloc
+  // porte l'aperçu des métadonnées et la case « pas de DOI » ; les avertissements
+  // (ligne.constats) sont posés par SZH.listeCartes.
   function construireBloc(ligne) {
     var apercu = ligne.apercu || null;
     var sansDoi = ligne.sansDoi || null;
@@ -268,9 +238,8 @@
     bloc.className = 'carte-apercu';
     if (apercu) { poserGrille(bloc, apercu.lignes || []); }
     if (sansDoi) {
-      // Sur la même ligne que le DOI qu'elle concerne : la case rejoint la valeur
-      // de la dernière rangée de la grille — la ligne DOI, toujours en fin d'aperçu — au
-      // lieu de rester un bloc à part sous la grille entière.
+      // Sur la ligne du DOI qu'elle concerne : la case rejoint la valeur de la dernière
+      // rangée de la grille, toujours celle du DOI.
       var valeurs = bloc.querySelectorAll('.apercu-valeur');
       poserCaseDoi(valeurs.length > 0 ? valeurs[valeurs.length - 1] : bloc, ligne);
     }
@@ -278,8 +247,8 @@
   }
 
   // Une rangée par champ : l'intitulé d'un côté, une valeur par langue de l'autre. Une liste
-  // de définitions, et non un tableau : ce sont des couples nom/valeur, et un lecteur
-  // d'écran les annonce alors comme tels.
+  // de définitions plutôt qu'un tableau, pour qu'un lecteur d'écran annonce des couples
+  // nom/valeur.
   function poserGrille(bloc, lignes) {
     var dl = poser(bloc, 'dl', 'apercu-grille');
     for (var i = 0; i < lignes.length; i++) {
@@ -294,8 +263,8 @@
   function poserValeur(dd, valeur) {
     var ton = valeur.ton ? ' apercu-valeur--' + valeur.ton : '';
     var el = poser(dd, 'div', 'apercu-valeur' + ton);
-    // Le badge de langue tient la place d'un intitulé répété : « Titre (français) » trois
-    // fois de suite ne se lit pas, « FR » se voit.
+    // Le badge de langue remplace un intitulé répété (« FR » plutôt que « Titre
+    // (français) » trois fois).
     if (valeur.marque) { poser(el, 'span', 'apercu-langue', valeur.marque); }
     poser(el, 'span', 'apercu-texte', valeur.texte || '');
     var marques = valeur.marques || [];
@@ -304,9 +273,9 @@
     }
   }
 
-  // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : la case montre
-  // alors l'état sans laisser croire qu'on peut en changer. `parent` est la valeur de la
-  // ligne DOI de l'aperçu — ou, à défaut d'aperçu, le bloc entier.
+  // La case « pas de DOI ». Verrouillée quand la rubrique décide : elle montre l'état sans
+  // permettre de le changer. `parent` est la valeur de la ligne DOI de l'aperçu, ou à défaut
+  // le bloc entier.
   function poserCaseDoi(parent, ligne) {
     var etat = ligne.sansDoi || {};
     var l = poser(parent, 'label', 'apercu-doi');
@@ -326,17 +295,13 @@
 
   // ---- La barre en deux lignes ----
   //
-  // `groupe` (posé par l'hôte, extension.js) dit la ligne : 'filtre' pour les quatre
-  // interrupteurs, tout le reste (`'action'`, ou l'absence du champ) pour les gestes —
-  // jamais un bouton perdu entre deux lignes. En mode « Changer l'ordre », la ligne des
-  // filtres disparaît (hidden, donc sans le moindre écart — voir media/articles.css) : les
-  // quatre interrupteurs y seraient inertes, la vue n'ayant plus ni tâche, ni aperçu, ni
-  // avertissement à montrer sur ses bandeaux réduits à deux flèches, et une ligne de
-  // boutons sans effet est un mensonge. L'état de la barre (role="status") ne vit que sur
-  // la ligne des gestes : c'est le seul endroit d'où partent les phrases qu'elle affiche
-  // (« Terminer » qui renomme, par exemple) — les interrupteurs, eux, ne renvoient jamais
-  // rien (actionArticle, extension.js) ; deux zones role="status" à la fois auraient fait
-  // annoncer un lecteur d'écran deux fois, ou pas du tout.
+  // `groupe` (posé par l'hôte, extension.js) choisit la ligne : 'filtre' pour les quatre
+  // interrupteurs, le reste (`'action'` ou champ absent) pour les actions. En mode « Changer
+  // l'ordre », la ligne des filtres est cachée (hidden, sans écart, voir articles.css) : ses
+  // interrupteurs n'auraient pas d'effet sur les bandeaux réduits. L'état de la barre
+  // (role="status") est sur la ligne des actions seulement, d'où partent les phrases qu'elle
+  // affiche (actionArticle, extension.js) : deux zones role="status" feraient annoncer un
+  // lecteur d'écran deux fois, ou pas du tout.
   function decorerBarre(boutons) {
     var filtres = [];
     var actions = [];
@@ -355,31 +320,28 @@
     var msg = ev.data || {};
     recu = true;
     // Le formulaire du numéro traite « valeurs », « enregistre », « erreur » et
-    // « couverture » ; la page continue sur ce que la vue ajoute autour. Un re-rendu ne
-    // doit pas jeter une saisie en cours : le formulaire n'est rechargé que s'il n'a rien
-    // de non enregistré, comme le panneau de traduction s'en garde.
+    // « couverture » ; la page traite le reste. Pour ne pas perdre une saisie en cours, le
+    // formulaire n'est rechargé que s'il n'a rien de non enregistré.
     var traiteParNumero = false;
     if (msg.type !== SZH.MSG.VALEURS || !numero.estModifie()) { traiteParNumero = numero.message(msg); }
     if (msg.type === SZH.MSG.VALEURS) {
       SZH.poserAccent(msg.accent);
       titre.textContent = msg.titre || '';
-      // Avant decorer(), qui pose les blocs et lit cet état. L'interrupteur vient de
-      // bouger : les cartes tenues à part retrouvent le rang, sans quoi celle qu'on avait
-      // dépliée resterait seule ouverte sur une liste qu'on vient de tout replier.
+      // Avant decorer(), qui lit cet état. Quand l'interrupteur vient de changer, les
+      // exceptions sont effacées, sans quoi une carte dépliée resterait seule ouverte.
       var repliDemande = msg.metaRepliees === true;
       if (repliDemande !== metaRepliees) { metaRepliees = repliDemande; replies = Object.create(null); }
       ordreActif = msg.ordre === true;
-      // Accroche CSS pour le mode : le bandeau ne doit jamais passer à la ligne
-      // (media/articles.css, #cartes.mode-ordre .szh-tete), contrairement à la carte
-      // complète, où .szh-tete porte flex-wrap (media/_liste.css).
+      // Classe CSS du mode : le bandeau ne passe pas à la ligne (articles.css,
+      // #cartes.mode-ordre .szh-tete), alors que .szh-tete porte flex-wrap (_liste.css).
       cartes.classList.toggle('mode-ordre', ordreActif);
       decorerBarre(msg.boutons || []);
       liste.rendre(msg.lignes || []);
       decorer(msg.lignes || []);
       return;
     }
-    // Une case cochée ne renvoie que sa pastille : reconstruire la liste ferait perdre au
-    // clavier le focus de la case qu'il vient d'utiliser.
+    // Une case cochée ne renvoie que sa pastille : reconstruire la liste ferait perdre le
+    // focus clavier de la case.
     if (msg.type === SZH.MSG.AVANCEMENT) {
       liste.majPastilles(msg.cle, msg.pastilles || [], msg.tachesResume);
       return;

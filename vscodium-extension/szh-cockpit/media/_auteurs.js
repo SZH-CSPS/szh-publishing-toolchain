@@ -3,11 +3,9 @@
 //
 //   SZH.auteurs(opts)  ->  { apercu(parent, ctx), ouvrir(ctx), message(msg) }
 //
-// Un seul endroit décrit un·e auteur·e, et un seul endroit l'édite. Les trois vues
-// n'apportent que le contexte (quel article, quel rang) et l'endroit où le résultat est
-// écrit — le formulaire de métadonnées le garde dans sa carte jusqu'à son enregistrement,
-// le gestionnaire des médias l'envoie tout de suite à l'hôte. Sans ce partage, la moindre
-// retouche demandait deux corrections, dans deux fichiers, avec deux occasions d'oublier.
+// Les trois vues fournissent le contexte (quel article, quel rang) et la façon d'écrire le
+// résultat : le formulaire de métadonnées le garde dans sa carte jusqu'à l'enregistrement,
+// le gestionnaire des médias l'envoie tout de suite à l'hôte.
 //
 // opts = {
 //   api          l'objet d'acquireVsCodeApi, pour la partie photo
@@ -17,14 +15,14 @@
 //                sache qu'elle porte du non-enregistré
 //   surApercu    surApercu(uri, nom) : agrandir la photo, là où la vue sait le faire
 //   sansPhoto    vrai : la modale n'offre pas la photo (formulaire du livre, dont les
-//                personnes n'ont pas de portrait) ; absent, rien ne change
+//                personnes n'ont pas de portrait)
 // }
 //
 // ctx = { slug, index, auteur, apercu, element, surRetirer } — `apercu` est la vignette en
 // data: URI que l'hôte a jointe, `element` la fiche affichée, à refaire après une édition,
 // `surRetirer` n'est fourni que là où retirer un·e auteur·e a un sens.
 //
-// Protocole photo, inchangé et commun aux trois vues :
+// Protocole photo, commun aux trois vues :
 //   webview -> hôte : photo-ouvrir { slug, index, photo } ;
 //                     photo-deposer { slug, index, prenom, nom, nomFichier, donneesBase64 } ;
 //                     photo-choisir { slug, index, base, version }
@@ -40,21 +38,19 @@
 // À la frappe dans nom ou prénom (deux caractères et plus), la modale propose des
 // suggestions filtrées sans tenir compte de la casse ni des accents, en deux groupes
 // séparés d'un filet : d'abord les noms de famille qui commencent par la saisie, triés par
-// nom, puis les prénoms, triés par prénom. C'est l'ordre dans lequel on cherche quelqu'un —
-// par son nom de famille, presque toujours. La part trouvée est mise en gras.
+// nom, puis les prénoms, triés par prénom. La part trouvée est en gras.
 //
-// « Commence par » se juge au début de chaque mot, pas de la seule chaîne : sinon « wilde »
-// ne trouverait pas « Wood de Wilde » et « arx » pas « von Arx », deux graphies courantes
-// chez nos auteur·e·s.
+// « Commence par » se juge au début de chaque mot : « wilde » trouve « Wood de Wilde », et
+// « arx » trouve « von Arx ».
 //
-// Choisir une suggestion écrase toujours nom et prénom, mais ne remplit les autres champs
-// que s'ils sont vides : une correction déjà tapée n'est jamais effacée.
+// Choisir une suggestion remplace nom et prénom, mais ne remplit les autres champs que
+// s'ils sont vides : une correction déjà tapée est gardée.
 
 (function () {
   'use strict';
 
-  // Le nom d'abord, à gauche : c'est par lui qu'on cherche et qu'on désigne quelqu'un.
-  // `ror` prend une ligne entière — une URL n'entre pas dans une demi-largeur.
+  // Le nom d'abord, à gauche : c'est par lui qu'on cherche quelqu'un. `ror` prend une ligne
+  // entière : une URL ne tient pas dans une demi-largeur.
   var CHAMPS = [['nom', 'aNom'], ['prenom', 'aPrenom'], ['fonction', 'aFonction'],
     ['affiliation', 'aAffiliation'], ['ror', 'aRor'], ['orcid', 'aOrcid'], ['email', 'aEmail']];
   var CHAMPS_LARGES = ['ror'];
@@ -65,9 +61,8 @@
   var SUGG_MAX = 10;                 // au-delà, ce n'est plus un menu mais une liste
   var SUGG_MAX_NOMS = 7;             // pour que le second groupe se voie toujours
   var VERSIONS = [['sans-fond', 'vSansFond'], ['avec-fond', 'vAvecFond'], ['original', 'vOriginal']];
-  // Plus de plafond littéral ici : SZH.LIMITES.photo (media/_commun.js), alimenté par
-  // l'hôte (message « valeurs »/« charger », limites.photoMax/photoExtensions), lu au
-  // moment du dépôt — jamais mis en cache, pour rester à jour si l'hôte change d'avis.
+  // Plafond de taille : SZH.LIMITES.photo (_commun.js), mis à jour par l'hôte (message
+  // « valeurs » ou « charger », limites.photoMax/photoExtensions) et lu au moment du dépôt.
 
   function auteurs(opts) {
     var api = opts.api;
@@ -83,11 +78,8 @@
     var attente = null;     // fonction qui reprend la sauvegarde après photo-valeur
     var connus = [];        // auteur·e·s publiés (message auteurs-connus), pour suggérer
 
-    // Casse, accents, positions et séparateurs de mot : le même moteur que _fiches.js pour
-    // les mots-clés edudoc.ch, partagé depuis _commun.js. Les deux divergences qui les
-    // séparaient — plier() sans repli des espaces de bord, séparateur de mot sans virgule
-    // ni point-virgule — sont tranchées vers le comportement le plus large (voir le
-    // commentaire de SZH.plier) : sans effet ici, un nom ne portant ni l'un ni l'autre.
+    // Casse, accents, positions et séparateurs de mot : le moteur de _commun.js, partagé
+    // avec les mots-clés edudoc.ch de _fiches.js (voir SZH.plier).
     var plier = SZH.plier;
     var plierAvecIndex = SZH.plierAvecIndex;
     var debutsDeMot = SZH.debutsDeMot;
@@ -107,8 +99,8 @@
           pNom: pNom, pPrenom: pPrenom,
           dNom: debutsDeMot(pNom.plie), dPrenom: debutsDeMot(pPrenom.plie)
         };
-        // Les champs d'enrichissement voyagent tels quels : la modale n'en fait rien
-        // d'autre que remplir du vide quand on choisit la suggestion.
+        // Les champs d'enrichissement passent tels quels : la modale s'en sert seulement pour
+        // remplir les champs vides quand on choisit la suggestion.
         for (var k = 0; k < ENRICHIS.length; k++) {
           e[ENRICHIS[k]] = String(a[ENRICHIS[k]] || '').replace(/\s+/g, ' ').trim();
         }
@@ -116,15 +108,15 @@
       }
     }
 
-    // texte() est SZH.poser (_commun.js) : même geste créer/classer/remplir/insérer,
-    // partagé avec documentation.js et medias-article.js.
+    // texte() est SZH.poser (_commun.js), partagé avec documentation.js et
+    // medias-article.js.
     var texte = SZH.poser;
     function nomComplet(a) {
       return ((a && a.prenom ? String(a.prenom) : '') + ' ' +
         (a && a.nom ? String(a.nom) : '')).trim();
     }
-    // Les lignes vides ne s'affichent pas : une fiche à moitié remplie ne doit pas laisser
-    // des séparateurs orphelins.
+    // Les lignes vides ne s'affichent pas, pour qu'une fiche incomplète ne laisse pas de
+    // séparateurs orphelins.
     function joindre(morceaux, separateur) {
       var utiles = [];
       for (var i = 0; i < morceaux.length; i++) {
@@ -136,8 +128,8 @@
 
     // ---- Fiche affichée ----
     //
-    // Statique : rien à saisir ici. Une carte d'article portait six champs par auteur·e,
-    // soit trente-six cases pour six personnes, où l'on ne lisait plus rien.
+    // En lecture seule : la saisie se fait dans la modale, pour que la carte d'article reste
+    // lisible.
     function apercu(parent, contexte) {
       var d = texte(parent, 'div', 'auteur-fiche');
       contexte.element = d;
@@ -147,8 +139,8 @@
         var img = document.createElement('img');
         img.src = contexte.apercu;
         img.alt = nomComplet(contexte.auteur) || (TXT.auteurSansNom || '');
-        // Agrandir, là où la vue sait le faire : c'est le panneau des médias qui juge une
-        // image, et une pastille de trois rem n'y suffit pas.
+        // Agrandir, là où la vue sait le faire (le panneau des médias, qui sert à juger les
+        // images).
         if (surApercu) {
           var loupe = document.createElement('button');
           loupe.type = 'button';
@@ -222,8 +214,8 @@
         rs[i].disabled = !dispo;
         if (dispo) { aucune = false; }
       }
-      // Aucune version sur le disque : ni choix ni cadre d'aperçu, qui ne montreraient
-      // qu'un damier vide et trois boutons éteints.
+      // Aucune version sur le disque : ni choix ni cadre d'aperçu, qui n'afficheraient qu'un
+      // damier vide et trois boutons éteints.
       modale.radios.hidden = aucune;
       modale.cadre.hidden = aucune;
     }
@@ -243,13 +235,12 @@
       if (ctx) { ctx.occupe = occupe; }
     }
 
-    // La lecture et le découpage base64 viennent de SZH.lireBase64 (_commun.js), communs
-    // aux cinq pages qui déposent un fichier.
+    // Lecture et découpage base64 : SZH.lireBase64 (_commun.js).
     function deposerFichier(f) {
       if (!ctx || ctx.occupe) { return; }
       var prenom = modale.champs.prenom.value.trim();
       var nom = modale.champs.nom.value.trim();
-      // Le nom d'abord : il nomme le fichier déposé, et l'hôte ne peut pas l'inventer.
+      // Le nom d'abord : il nomme le fichier déposé, et l'hôte ne peut pas le deviner.
       if (prenom === '' && nom === '') { poserNote(TXT.photoNomRequis, true); return; }
       var courant = ctx;
       SZH.lireBase64(f, {
@@ -269,8 +260,8 @@
     }
 
     // ---- Modale ----
-    // Le voile, le clic à côté, Échap et le retour du focus sont ceux de SZH.modale
-    // (_commun.js) — cette modale n'en construit plus sa propre copie.
+    // Le voile, le clic à côté, Échap et le retour du focus viennent de SZH.modale
+    // (_commun.js).
     function construireModale() {
       modaleCtl = SZH.modale({
         classeBoite: 'modale modale-auteur',
@@ -311,9 +302,8 @@
 
       // ---- Autocomplétion prénom/nom, depuis la liste des auteur·e·s publiés ----
       //
-      // Une seule boîte de suggestions, rattachée au bloc du champ où l'on tape. Elle ne
-      // remplit que prénom et nom — OAI-PMH n'expose rien d'autre — et ne s'affiche que si
-      // l'hôte a envoyé une liste : sans elle, aucune UI parasite.
+      // Une seule boîte de suggestions, rattachée au bloc du champ où l'on tape. Elle n'existe
+      // que si l'hôte a envoyé une liste.
       var boiteSugg = document.createElement('div');
       boiteSugg.className = 'szh-sugg';
       boiteSugg.hidden = true;
@@ -330,9 +320,9 @@
       function choisirSuggestion(a) {
         champs.nom.value = a.nom;
         champs.prenom.value = a.prenom;
-        // Le reste ne remplit que du vide : on suggère une personne déjà publiée, mais elle
-        // a pu changer de poste ou d'institution depuis, et ce que le rédacteur vient de
-        // taper vaut mieux que ce que dit l'archive. Une correction n'est jamais effacée.
+        // Le reste ne remplit que les champs vides : la personne a pu changer de poste ou
+        // d'institution depuis sa publication, et ce que le rédacteur vient de taper l'emporte
+        // sur l'archive.
         for (var i = 0; i < ENRICHIS.length; i++) {
           var cle = ENRICHIS[i];
           if (champs[cle] && champs[cle].value.trim() === '' && a[cle]) {
@@ -353,12 +343,12 @@
         }
         suggEtat.actif = idx;
       }
-      // Partagée avec _fiches.js depuis _commun.js.
+      // Partagée avec _fiches.js par _commun.js.
       var poserAvecGras = SZH.poserAvecGras;
 
-      // Une saisie de plusieurs mots — « robin mor » — cherche à travers le prénom ET le
-      // nom : chaque mot doit commencer un mot de l'un ou de l'autre. Elle ne se range dans
-      // aucun des deux groupes, qui n'ont plus de sens là ; elle rend une liste unique.
+      // Une saisie de plusieurs mots (« robin mor ») cherche à travers le prénom et le nom :
+      // chaque mot doit commencer un mot de l'un ou de l'autre. Elle rend une seule liste,
+      // sans groupes.
       function chercherMots(a, mots) {
         var zNom = [];
         var zPrenom = [];
@@ -373,8 +363,8 @@
         return { auteur: a, zNom: zNom.sort(ordre), zPrenom: zPrenom.sort(ordre) };
       }
 
-      // Les deux groupes, dans l'ordre où on les lit — ou un seul, pour une saisie de
-      // plusieurs mots.
+      // Les deux groupes, dans l'ordre de lecture, ou un seul pour une saisie de plusieurs
+      // mots.
       function trierTrouves(saisie) {
         var noms = [];
         var prenoms = [];
@@ -408,9 +398,9 @@
         };
         noms.sort(par('nom', 'prenom'));
         prenoms.sort(par('prenom', 'nom'));
-        // Les noms de famille passent devant, mais on leur laisse une borne quand un second
-        // groupe existe : sinon un préfixe courant remplirait la liste et le filet — donc
-        // la recherche par prénom — ne se verrait jamais.
+        // Les noms de famille passent devant, mais sont bornés quand un second groupe existe :
+        // sinon un préfixe courant remplirait la liste, et la recherche par prénom ne se
+        // verrait pas.
         var plafondNoms = prenoms.length > 0 ? SUGG_MAX_NOMS : SUGG_MAX;
         noms = noms.slice(0, plafondNoms);
         return { noms: noms, prenoms: prenoms.slice(0, SUGG_MAX - noms.length) };
@@ -430,20 +420,20 @@
           b.className = 'szh-sugg-item';
           b.setAttribute('role', 'option');
           b.setAttribute('aria-selected', 'false');
-          // Toujours « Prénom Nom » à l'affichage, quel que soit le groupe : c'est ainsi
-          // qu'on lit un nom, et la mise en gras dit déjà sur quoi la trouvaille a porté.
+          // Toujours « Prénom Nom » à l'affichage, quel que soit le groupe ; la mise en gras
+          // dit sur quoi porte la correspondance.
           poserAvecGras(b, a.pPrenom, t.zPrenom);
           if (a.prenom !== '' && a.nom !== '') { b.appendChild(document.createTextNode(' ')); }
           poserAvecGras(b, a.pNom, t.zNom);
-          // mousedown neutralisé : le clic ne doit pas d'abord voler le focus du champ.
+          // mousedown neutralisé : le clic ne doit pas voler le focus du champ.
           b.addEventListener('mousedown', function (e) { e.preventDefault(); });
           b.addEventListener('click', function () { choisirSuggestion(a); });
           boiteSugg.appendChild(b);
           suggEtat.items.push({ element: b, auteur: a });
         };
         for (var m = 0; m < groupes.noms.length; m++) { poser(groupes.noms[m]); }
-        // Le filet ne sépare que deux groupes réellement présents, et n'entre jamais dans
-        // les items : les flèches ne doivent pas s'y arrêter.
+        // Le filet ne sépare que deux groupes présents, hors des items, pour que les flèches
+        // ne s'y arrêtent pas.
         if (groupes.noms.length > 0 && groupes.prenoms.length > 0) {
           var filet = texte(boiteSugg, 'div', 'szh-sugg-filet');
           filet.setAttribute('role', 'presentation');
@@ -464,8 +454,8 @@
           return;
         }
         if (e.key === 'Escape') {
-          // Seule la liste se ferme — la propagation est coupée, sinon le gestionnaire de
-          // la page fermerait la modale entière du même geste.
+          // Seule la liste se ferme : la propagation est coupée, sinon le gestionnaire de la
+          // page fermerait aussi la modale.
           e.preventDefault();
           if (e.stopPropagation) { e.stopPropagation(); }
           fermerSuggestions();
@@ -670,7 +660,7 @@
       return true;
     }
 
-    // Échap ferme désormais par SZH.modale, qui écoute tant que le voile est visible.
+    // Échap est géré par SZH.modale, qui écoute tant que le voile est visible.
 
     return { apercu: apercu, ouvrir: ouvrir, message: message, fermer: fermer };
   }

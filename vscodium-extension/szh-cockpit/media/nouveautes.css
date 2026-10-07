@@ -1,7 +1,5 @@
-/* « Quoi de neuf » : une page qui se lit, rien à y remplir. Le socle (_design.css) pose
-   body, h1 et la largeur ; il ne reste ici que la colonne — plus étroite que les
-   formulaires, parce qu'une ligne de texte courant se lit mal au-delà — et les deux
-   niveaux de la liste. */
+/* « Quoi de neuf » : une page à lire. _design.css pose body, h1 et la largeur ; ici, une
+   colonne plus étroite, pour la lecture, et les deux niveaux de la liste. */
 body { --page-max: 44rem; }
 
 .szh-version {
@@ -17,8 +15,7 @@ body { --page-max: 44rem; }
   font-size: 1.05em;
 }
 
-/* Le medium en regard du titre : on n'annonce jamais une mineure, la ligne dirait donc
-   toujours deux nombres — « 1.2 », pas « 1.2.13 ». */
+/* Le numéro de version medium à côté du titre, en deux nombres (« 1.2 »). */
 .szh-note .szh-medium {
   margin-left: 0.5rem;
   opacity: 0.6;

@@ -1,11 +1,10 @@
-// Panneau « Traduction » : une carte par bloc à traduire — titre et sous-titre ensemble,
-// résumé, mots-clés appariés — avec le texte source en lecture seule, la traduction à
+// Panneau « Traduction » : une carte par bloc à traduire (titre et sous-titre ensemble,
+// résumé, mots-clés appariés), avec le texte source en lecture seule, la traduction à
 // saisir et un état par bloc. DOM construit sans injection HTML, valeurs reçues par
-// postMessage, enregistrement automatique par SZH.autoEnregistrement (media/_commun.js).
+// postMessage, enregistrement automatique par SZH.autoEnregistrement (_commun.js).
 //
-// Les états de masse sont dans la barre du haut, avec un texte court et un pictogramme :
-// c'est le geste le plus fréquent du suivi — l'article revient de traduction, on le passe
-// en relecture, puis on le finalise — et il n'a rien à faire au milieu de la page.
+// Les changements d'état de tout l'article (retour de traduction, relecture, finalisation)
+// sont dans la barre du haut.
 //
 // Protocole avec l'hôte :
 //   webview -> hôte : pret ; modifie { modifie } ; lien ; copier { texte } ;
@@ -18,9 +17,8 @@
 //                     copie ; focus
 //
 // Le vérificateur de traduction (verifTrad) pose une pastille à côté de l'intitulé de
-// chaque champ cible. Elle ne fait rien à ce panneau-ci : elle ouvre un formulaire où l'on
-// PROPOSE une autre traduction, à l'intention de qui relira. Ce panneau, lui, écrit dans la
-// fiche pour de bon — les deux gestes cohabitent, et ne doivent pas se confondre.
+// chaque champ cible. Elle ouvre un formulaire où l'on propose une autre traduction, pour
+// la relecture ; ce panneau-ci, lui, écrit dans la fiche.
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -35,16 +33,15 @@
   let SLUG = null;
   let LANGUE_SOURCE = 'fr';
   let STATUTS = [];          // [{ valeur, libelle }], envoyés par l'hôte
-  // Vérificateur de traduction : un réglage du poste, posé par l'hôte dans « valeurs »
-  // (lib/archivage.js#lireVerifTraduction). Un panneau déjà ouvert quand le réglage change
-  // ne le voit qu'au prochain « valeurs » — ici, un changement d'article ou un
-  // rechargement suffit, les cartes étant reconstruites à chaque fois.
+  // Vérificateur de traduction : un réglage du poste, envoyé par l'hôte dans « valeurs »
+  // (lib/archivage.js#lireVerifTraduction). Un changement de réglage s'applique au
+  // prochain « valeurs » (changement d'article ou rechargement), qui reconstruit les cartes.
   let VERIF_TRAD = false;
   let modifie = false;
   let dernierModifie = false;
 
-  // L'hôte doit savoir si le panneau porte des modifications : c'est lui qui pose la
-  // garde avant de changer d'article.
+  // L'hôte doit savoir si le panneau porte des modifications : il vérifie avant de changer
+  // d'article.
   function signalerModifie() {
     if (modifie === dernierModifie) { return; }
     dernierModifie = modifie;
@@ -78,10 +75,10 @@
     badge.classList.toggle('traduit', total > 0 && remplies === total);
   }
 
-  // La pastille du vérificateur, dans l'intitulé du champ cible et non dans la zone de
-  // saisie, qu'elle ne doit pas rétrécir. `lireValeur` est appelée AU CLIC : ce qui part à
-  // l'hôte est la traduction telle qu'elle est affichée à cet instant, frappe en cours
-  // comprise. Même contenu et même classe que sur les fiches (_design.css, §12).
+  // La pastille du vérificateur, dans l'intitulé du champ cible, hors de la zone de saisie
+  // qu'elle ne doit pas rétrécir. `lireValeur` est appelée au clic : l'hôte reçoit la
+  // traduction telle qu'elle est affichée, frappe en cours comprise. Même contenu et même
+  // classe que sur les fiches (_design.css).
   function pastilleTraduction(parent, champ, langue, lireValeur) {
     if (!VERIF_TRAD) { return null; }
     const b = document.createElement('button');
@@ -89,8 +86,8 @@
     b.className = 'szh-sugg-trad';
     b.title = TXT.suggPastille || '';
     b.setAttribute('aria-label', (TXT.suggPastille || '') + ' – ' + champ + ' ' + langue.toUpperCase());
-    // Le code de langue en capitales plutôt que le dessin : voir _fiches.js, même raison —
-    // illisible à la taille d'un intitulé, et muet sur la langue visée.
+    // Le code de langue en capitales : un dessin serait illisible à cette taille et ne
+    // dirait pas la langue visée.
     b.textContent = langue.toUpperCase();
     b.addEventListener('click', function () {
       vscodeApi.postMessage({
@@ -160,9 +157,9 @@
     carte.appendChild(zone);
   }
 
-  // ---- Les mots-clés : le fragment partagé SZH.motsCles (media/_commun.js). Ici la
-  // colonne source est en lecture seule et la structure figée : on traduit des mots-clés
-  // sans en inventer, le formulaire de métadonnées étant là pour en ajouter.
+  // ---- Les mots-clés : le fragment partagé SZH.motsCles (_commun.js). La colonne source
+  // est en lecture seule et la structure figée : on traduit les mots-clés existants ; on en
+  // ajoute dans le formulaire de métadonnées.
   const editeursMotsCles = {};        // clé de carte -> fragment
 
   function champMotsCles(carte, groupe, champ) {
@@ -194,9 +191,9 @@
     editeur.langueCible = groupe.langue;
     editeursMotsCles[groupe.cle] = editeur;
     carte.appendChild(editeur.element);
-    // Une seule pastille pour toute la liste, et non une par mot : le champ traduisible
-    // est « keywords » dans une langue, pas chacune de ses cases. La valeur part jointe
-    // par des retours à la ligne, un mot-clé par ligne, dans l'ordre de la grille.
+    // Une seule pastille pour toute la liste : le champ traduisible est « keywords » dans
+    // une langue. La valeur part jointe par des retours à la ligne, un mot-clé par ligne,
+    // dans l'ordre de la grille.
     pastilleTraduction(l, 'keywords', groupe.langue, function () {
       return Array.prototype.slice.call(editeur.element.querySelectorAll('input'))
         .map(function (i) { return i.value.trim(); })
@@ -216,8 +213,8 @@
     h3.textContent = groupe.libelle;
     const badge = document.createElement('span');
     badge.className = 'badge';
-    // majBadge() la remet à jour à chaque frappe (traduit / à traduire, ou X/Y mots-clés) :
-    // sans annonce, un lecteur d'écran ne dit jamais que l'état d'un bloc vient de changer.
+    // majBadge() la met à jour à chaque frappe (traduit / à traduire, ou X/Y mots-clés) ;
+    // l'annonce permet au lecteur d'écran de dire que l'état a changé.
     badge.setAttribute('role', 'status');
     badge.setAttribute('aria-live', 'polite');
     h3.appendChild(badge);
@@ -253,10 +250,9 @@
     return carte;
   }
 
-  // Les trois pas du flux, posés sur tous les blocs de l'article d'un clic, puis
-  // enregistrés — ce qui emporte aussi les textes en cours de saisie. Revenir en arrière
-  // se fait bloc par bloc, avec le sélecteur de chaque carte : personne ne « dé-finalise »
-  // un article entier d'un geste.
+  // Les trois étapes du flux, posées d'un clic sur tous les blocs de l'article, puis
+  // enregistrées avec les textes en cours de saisie. Revenir en arrière se fait bloc par
+  // bloc, avec le sélecteur de chaque carte.
   const PAS = [
     { valeur: 'pret-traduction', libelle: 'courtTraduction', icone: 'fleche' },
     { valeur: 'pret-relecture', libelle: 'courtRelecture', icone: 'oeil' },
@@ -302,7 +298,7 @@
   }
 
   // « Envoyer pour traduction » : l'hôte fabrique le lien szh:// et ouvre le brouillon
-  // d'e-mail. Ni garde de modification, ni enregistrement forcé.
+  // d'e-mail, sans enregistrer.
   function poserBoutonEnvoyer() {
     if (!TXT.envoyer || document.getElementById('envoyer')) { return; }
     const bouton = document.createElement('button');
@@ -325,7 +321,7 @@
     SLUG = msg.slug || null;
     STATUTS = msg.statuts || [];
     LANGUE_SOURCE = msg.langueSource || 'fr';
-    // Posé avant la reconstruction des cartes : c'est elle qui pose les pastilles.
+    // Posé avant la reconstruction des cartes, qui pose les pastilles.
     VERIF_TRAD = msg.verifTrad === true;
     titreArticle.textContent = SLUG || '';
     conteneur.textContent = '';
@@ -399,8 +395,8 @@
     const msg = e.data || {};
     recu = true;
     if (msg.type === SZH.MSG.VALEURS) { rendre(msg); return; }
-    // L'hôte veut changer d'article alors que le panneau est modifié : il lui faut ce que
-    // la webview contient pour l'enregistrer avant de recharger.
+    // L'hôte veut changer d'article alors que le panneau est modifié : il reçoit son
+    // contenu pour l'enregistrer avant de recharger.
     if (msg.type === SZH.MSG.DEMANDE_RECHARGEMENT) {
       vscodeApi.postMessage(Object.assign(collecter(false), { type: SZH.MSG.RECHARGEMENT }));
       return;
@@ -413,14 +409,14 @@
       etat.textContent = TXT.enregistre;
       return;
     }
-    // Clic sur un bloc de l'arbre alors que le panneau montre déjà cet article : pas de
-    // re-rendu, qui perdrait une saisie en cours, juste le focus.
+    // Clic dans l'arbre sur l'article déjà affiché : pas de nouveau rendu, qui perdrait une
+    // saisie en cours, seulement le focus.
     if (msg.type === SZH.MSG.FOCUS) { viser(msg.cle); return; }
     if (msg.type === SZH.MSG.COPIE) { etat.textContent = TXT.copie; return; }
     if (msg.type === SZH.MSG.ERREUR) { auto.confirme(); etat.textContent = '⚠ ' + msg.message; }
   });
 
-  // Un dépôt hors d'une zone prévue ne doit jamais faire naviguer la webview.
+  // Un dépôt hors d'une zone prévue ne doit pas faire naviguer la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
   SZH.annoncerPret(vscodeApi, function () { return recu; });

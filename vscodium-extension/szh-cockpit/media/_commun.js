@@ -7,7 +7,7 @@
 //   SZH.choixFerme(opts)          un intitulé et un <select> à liste fermée, sur une carte
 //   SZH.choixLangue(opts)         le <select> de la langue d'un article, posé sur sa carte
 //   SZH.annoncerPret(api, recu)   « pret », redemandé tant que l'hôte se tait
-//   SZH.modeTradJamais()          cette page ne détourne JAMAIS ses clics (mode « Trad »)
+//   SZH.modeTradJamais()          cette page ne détourne pas ses clics (mode « Trad »)
 //   SZH.icone(nom)                une icône de 16 px, dessinée en SVG
 //   SZH.notif(ton, contenu)       une notification : info, ok, attention, danger
 //   SZH.poser(parent, balise, …)  créer, classer, remplir, insérer : le geste de base
@@ -21,11 +21,10 @@ var SZH = (function () {
 
   // ---- Icônes ----
   //
-  // Un jeu minimal, dessiné en SVG plutôt qu'en caractères : une icône doit suivre la
-  // couleur du texte (`currentColor`) et rester nette à toutes les échelles. Chaque dessin
-  // est une liste de primitives [balise, attributs] — des cercles et des rectangles quand
-  // c'est possible, un tracé quand il le faut : une longue donnée de path se relit mal et
-  // se corrige encore plus mal.
+  // Un jeu minimal en SVG : une icône suit la couleur du texte (`currentColor`) et reste
+  // nette à toutes les échelles. Chaque dessin est une liste de primitives
+  // [balise, attributs] : cercles et rectangles quand c'est possible, un tracé sinon, car
+  // une longue donnée de path se relit et se corrige mal.
   var SVG_NS = 'http://www.w3.org/2000/svg';
   var TRACE_POUBELLE = 'M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zM9 2H6v1h3V2zM4 13h7V4H4v9zm2-8H5v7h1V5zm1 0h1v7H7V5zm2 0h1v7H9V5z';
   var TRACE_CAMERA = 'M6.2 2a1 1 0 0 0-.9.55L4.6 4H2.5A1.5 1.5 0 0 0 1 5.5v7A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 4h-2.1l-.7-1.45a1 1 0 0 0-.9-.55H6.2zM8 6a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5zm0 1.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z';
@@ -51,11 +50,11 @@ var SZH = (function () {
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
     ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
-    // Fermer un message : deux traits nus. Jamais un cercle autour — ce serait l'icône
-    // `danger`, et la croix qui efface se lirait comme la croix qui alarme.
+    // Fermer un message : deux traits nus, sans cercle autour, qui en ferait l'icône
+    // `danger`.
     croix: [['path', { d: 'M4.3 4.3 11.7 11.7M11.7 4.3 4.3 11.7', fill: 'none',
       stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round' }]],
-    // Ajouter : deux barres, rien de plus. Le libellé du bouton dit quoi.
+    // Ajouter : deux barres. Le libellé du bouton dit quoi.
     plus: [['path', { d: 'M7.25 3h1.5v4.25H13v1.5H8.75V13h-1.5V8.75H3v-1.5h4.25V3z' }]],
     // Rien n'est commencé : le cercle vide de l'arbre.
     cercle: [['circle', { cx: '8', cy: '8', r: '5.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }]],
@@ -70,22 +69,21 @@ var SZH = (function () {
     // Déplacer un article dans le numéro : la même flèche, debout.
     haut: [['path', { d: 'M8 2.5 12.5 7l-1.06 1.06L8.75 5.35V13h-1.5V5.35L4.56 8.06 3.5 7 8 2.5z' }]],
     bas: [['path', { d: 'M8 13.5 3.5 9l1.06-1.06L7.25 10.65V3h1.5v7.65l2.69-2.71L12.5 9 8 13.5z' }]],
-    // Un tableau : le cadre et ses deux filets, en contour comme l'imprimante — l'éditeur
-    // de tableaux, destination d'un bouton de constat (lib/constats.js, lieu « table »).
+    // Un tableau : le cadre et ses deux filets, en contour comme l'imprimante. Sert à
+    // l'éditeur de tableaux, destination d'un bouton de constat (lib/constats.js, lieu « table »).
     tableau: [
       ['rect', Object.assign({ x: '2', y: '2.75', width: '12', height: '10.5', rx: '1' }, CONTOUR)],
       ['path', Object.assign({ d: 'M2 6.25h12M6.5 6.25v7' }, CONTOUR)]
     ],
-    // Déplier : un chevron, sans hampe — une flèche se lirait « télécharger ».
+    // Déplier : un chevron, sans hampe (une flèche se lirait « télécharger »).
     chevron: [['path', { d: 'M8 10.6 3.3 5.9l1.06-1.06L8 8.48l3.64-3.64L12.7 5.9 8 10.6z' }]],
     oeil: [
       ['path', { d: 'M8 3.25C4.7 3.25 2 5.15 1.15 8 2 10.85 4.7 12.75 8 12.75s6-1.9 6.85-4.75C14 5.15 11.3 3.25 8 3.25zm0 1.5c2.4 0 4.4 1.3 5.25 3.25C12.4 9.95 10.4 11.25 8 11.25S3.6 9.95 2.75 8C3.6 6.05 5.6 4.75 8 4.75z' }],
       ['circle', { cx: '8', cy: '8', r: '1.9' }]
     ],
-    // L'oeil ferme : une paupiere baissee et trois cils, jamais un oeil barre d'un trait.
-    // A 14 px le trait oblique se superpose au dessin plein de `oeil` et les deux etats
-    // deviennent une tache indistincte ; la paupiere, elle, change la SILHOUETTE, ce qui se
-    // lit du coin de l'oeil. Les cils partent de la courbe elle-meme (t = .25, .5, .75).
+    // L'œil fermé : une paupière baissée et trois cils, plutôt qu'un œil barré : à 14 px, le
+    // trait oblique se confondrait avec le dessin plein de `oeil`, alors que la paupière
+    // change la silhouette. Les cils partent de la courbe elle-même (t = .25, .5, .75).
     'oeil-ferme': [
       ['path', { d: 'M2 7.5Q8 13 14 7.5', fill: 'none', stroke: 'currentColor',
         'stroke-width': '1.6', 'stroke-linecap': 'round' }],
@@ -98,17 +96,14 @@ var SZH = (function () {
       ['path', { d: 'M10.4 10.4 14 14', fill: 'none', stroke: 'currentColor',
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
-    // Imprimer : le corps et la feuille, tous deux en contour (CONTOUR), comme ses voisines
-    // de la barre. Un premier essai à trois rectangles PLEINS se fondait en un seul bloc
-    // noir à 14 px (comparé rendu contre rendu, tmp/apercu-articles/) ; un second à un seul
-    // rectangle plein pour la feuille détonnait encore parmi des icônes en trait. Deux
-    // rectangles en contour, l'un posé sur l'autre, suffisent à lire « corps » et « feuille »
-    // sans jamais fondre en un pâté.
+    // Imprimer : le corps et la feuille, deux rectangles en contour (CONTOUR), comme les
+    // icônes voisines de la barre. Des rectangles pleins se fondraient en un seul bloc noir
+    // à 14 px.
     imprimante: [
       ['rect', Object.assign({ x: '2', y: '6', width: '12', height: '6', rx: '1' }, CONTOUR)],
       ['rect', Object.assign({ x: '5', y: '2', width: '6', height: '4.5' }, CONTOUR)]
     ],
-    // Éditer : un crayon, en contour — l'onglet Archive (« Éditer », grisé, à venir).
+    // Éditer : un crayon, en contour (onglet Archive, « Éditer », grisé).
     crayon: [
       ['path', { d: 'M11.3 1.7a1.5 1.5 0 0 1 2.1 0l.9.9a1.5 1.5 0 0 1 0 2.1L6 13l-3.3.7L3.4 10.4 11.3 1.7z',
         fill: 'none', stroke: 'currentColor', 'stroke-width': '1.4', 'stroke-linejoin': 'round' }],
@@ -136,8 +131,7 @@ var SZH = (function () {
 
   // ---- Un élément, posé dans son parent ----
   //
-  // Créer, classer, remplir, insérer : quatre lignes qui revenaient dans chaque page. Une
-  // seule implémentation, sur SZH, à côté d'icone et de notif.
+  // Créer, classer, remplir, insérer : le geste de base de toutes les pages.
   function poser(parent, balise, cls, contenu) {
     var e = document.createElement(balise);
     if (cls) { e.className = cls; }
@@ -149,9 +143,9 @@ var SZH = (function () {
   // ---- Modale ----
   //
   // Le voile, la boîte, la fermeture au clic à côté et à Échap, et le retour du focus là
-  // d'où l'on vient — sans quoi le clavier repartirait du haut de la page. Le style vit
-  // dans _design.css (.szh-modale, .szh-modale-boite, .szh-modale-pied) ; la boîte prend
-  // la classe que l'appelant lui donne.
+  // d'où l'on vient, sans quoi le clavier repartirait du haut de la page. Le style est dans
+  // _design.css (.szh-modale, .szh-modale-boite, .szh-modale-pied) ; la boîte prend la
+  // classe que l'appelant lui donne.
   //
   // opts.classeBoite   classes de la boîte, « szh-modale-boite » par défaut
   // opts.construire(boite)   remplit la boîte, appelé une seule fois
@@ -178,8 +172,7 @@ var SZH = (function () {
       voile.setAttribute('role', 'dialog');
       voile.setAttribute('aria-modal', 'true');
       boite = poser(voile, 'div', o.classeBoite || 'szh-modale-boite');
-      // Cliquer à côté referme, comme dans toute visionneuse ; Échap aussi, comme dans
-      // toute boîte de dialogue — et c'est la seule sortie au clavier.
+      // Cliquer à côté referme ; Échap aussi, seule sortie au clavier.
       voile.addEventListener('click', function (ev) { if (ev.target === voile) { fermer(); } });
       document.addEventListener('keydown', function (ev) {
         if ((ev.key === 'Escape' || ev.key === 'Esc') && voile.classList.contains('visible')) {
@@ -205,15 +198,14 @@ var SZH = (function () {
 
   // ---- Accent du numéro ----
   //
-  // La couleur annuelle lue dans ausgabe.yaml, que le socle (_design.css) reprend comme
-  // accent. Validée avant d'entrer dans une propriété CSS : une valeur venue de l'hôte
-  // n'entre jamais telle quelle dans une feuille de style.
+  // La couleur annuelle lue dans ausgabe.yaml, que _design.css reprend comme accent. Elle
+  // est validée avant d'entrer dans une propriété CSS : une valeur venue de l'hôte n'entre
+  // pas telle quelle dans une feuille de style.
   function poserAccent(hex) {
     var valide = /^#[0-9A-Fa-f]{6}$/.test(String(hex || ''));
     try {
       // Retirer la propriété quand l'hôte n'envoie rien : le numéro peut avoir perdu sa
-      // couleur, et le panneau se recharge sans être refermé. Sans cela l'ancienne teinte
-      // resterait accrochée à la racine.
+      // couleur, et le panneau se recharge sans être refermé.
       if (valide) { document.documentElement.style.setProperty('--szh-accent', hex); }
       else { document.documentElement.style.removeProperty('--szh-accent'); }
     } catch (e) { /* pas de racine stylable : le socle garde sa couleur de repli */ }
@@ -221,17 +213,17 @@ var SZH = (function () {
 
   // ---- Notifications ----
   //
-  // Un seul objet pour tous les messages du cockpit, et le ton dit la nature : `info` pour
-  // ce qui explique, `ok` pour ce qui a réussi, `attention` pour ce qui mérite un regard,
-  // `danger` pour ce qui ne passera pas la publication. Le style vit dans _design.css.
+  // Un seul objet pour tous les messages du cockpit ; le ton dit la nature : `info` pour ce
+  // qui explique, `ok` pour ce qui a réussi, `attention` pour ce qui mérite un regard,
+  // `danger` pour ce qui bloquera la publication. Le style est dans _design.css.
   // `contenu` est un texte, ou une liste de nœuds quand le message porte de la mise en
-  // forme ; jamais de HTML injecté.
+  // forme ; pas de HTML injecté.
   function notif(ton, contenu, opts) {
     var o = opts || {};
     var p = document.createElement('p');
     p.className = 'szh-notif szh-notif--' + ton + (o.discret ? ' szh-notif--discret' : '');
-    // La variante discrète n'a pas de pictogramme : elle sert aussi écrite à la main dans
-    // le HTML d'une page, où il n'y a pas de SVG à poser — les deux doivent se ressembler.
+    // La variante discrète n'a pas de pictogramme : elle s'écrit aussi à la main dans le
+    // HTML d'une page, sans SVG, et les deux doivent se ressembler.
     if (!o.discret) { p.appendChild(icone(ton === 'ok' ? 'ok' : (ton === 'info' ? 'info' : ton))); }
     var corps = document.createElement('span');
     if (Array.isArray(contenu)) {
@@ -245,12 +237,11 @@ var SZH = (function () {
 
   // ---- Enregistrement automatique ----
   //
-  // Trois déclencheurs : un délai après la dernière frappe, et non un enregistrement
-  // périodique, pour ne pas écrire au milieu d'un mot ; la perte de focus ou le changement
-  // d'un champ ; et la perte de focus de la webview entière ou son passage en
-  // arrière-plan, dernier rempart avant que VS Code ne détruise le DOM, ces panneaux
-  // n'ayant pas `retainContextWhenHidden`. L'hôte répond sans renvoyer les valeurs quand
-  // la demande est automatique, ce qui évite un re-rendu sous les doigts.
+  // Trois déclencheurs : un délai après la dernière frappe (pour ne pas écrire au milieu
+  // d'un mot) ; la perte de focus ou le changement d'un champ ; la perte de focus de la
+  // webview ou son passage en arrière-plan, dernier moment avant que VS Code ne détruise le
+  // DOM (ces panneaux n'ont pas `retainContextWhenHidden`). L'hôte répond sans renvoyer les
+  // valeurs quand la demande est automatique, pour ne pas refaire le rendu pendant la saisie.
   //
   // `opts.delai` à 0 supprime le minuteur et le déclencheur au champ, ne laissant que la
   // perte de focus de la webview : c'est ce qu'il faut à la fiche image, dont l'écriture
@@ -284,9 +275,8 @@ var SZH = (function () {
 
     if (surChamp) {
       document.addEventListener('input', programmer, true);
-      // « change » en phase de remontée, et non en capture : le gestionnaire de la cible
-      // doit avoir marqué sa modification avant qu'on décide d'écrire, sans quoi le
-      // changement d'un choix ne déclenche rien.
+      // « change » en phase de remontée, et non en capture : le gestionnaire de la cible doit
+      // avoir marqué sa modification avant qu'on décide d'écrire.
       document.addEventListener('change', ecrire, false);
       document.addEventListener('focusout', ecrire, true);
     }
@@ -301,11 +291,10 @@ var SZH = (function () {
   // ---- Mots-clés appariés ----
   //
   // « diagnostic » ↔ « Diagnose » : le seul lien entre les listes est la position. D'où
-  // cette grille, une rangée par mot-clé et une colonne par langue, dont l'ordre n'est pas
-  // modifiable à la souris ; on ajoute ou on retire une rangée entière, jamais un mot dans
-  // une seule langue, et l'appariement reste juste par construction. Une case laissée vide
-  // s'écrit avec la marque plutôt que vide, sans quoi la valeur disparaîtrait à la
-  // sérialisation et tout ce qui suit remonterait d'un cran.
+  // cette grille, une rangée par mot-clé et une colonne par langue, dont l'ordre ne se
+  // modifie pas à la souris ; on ajoute ou retire une rangée entière, jamais un mot dans
+  // une seule langue, et l'appariement reste juste. Une case vide s'écrit avec la marque,
+  // sans quoi la valeur disparaîtrait à la sérialisation et la suite remonterait d'un cran.
   //
   // opts.langues  [{ code, libelle, lecture }]  lecture:true = colonne non éditable
   // opts.listes   { fr:[…], de:[…] }            valeurs de départ
@@ -313,10 +302,9 @@ var SZH = (function () {
   // opts.edition  rangées ajoutables et retirables, ou structure figée pour le panneau de
   //               traduction, où l'on traduit sans inventer de mots-clés
   // opts.onChange appelé à chaque frappe et à chaque ajout ou retrait de rangée
-  // opts.surRendu appelé à la fin de rendre(), une fois le DOM interne (re)construit — pour
-  //               qui doit reposer, après coup, quelque chose que rendre() vient d'effacer
-  //               (_fiches.js s'en sert pour la pastille « hors thésaurus », jamais tenue
-  //               dans le modèle)
+  // opts.surRendu appelé à la fin de rendre(), une fois le DOM interne reconstruit, pour
+  //               reposer ce que rendre() vient d'effacer (_fiches.js : la pastille « hors
+  //               thésaurus », absente du modèle)
   //
   // collecter() rend les listes déjà alignées : chaque langue entamée est complétée par
   // la marque, et une langue dont aucune case n'est remplie rend une liste vide.
@@ -363,9 +351,8 @@ var SZH = (function () {
     var element = document.createElement('div');
     var langues = opts.langues || [];
     var corps = null;
-    // Modèle interne pour toutes les langues rencontrées, y compris celles qui ne sont pas
-    // affichées : sans lui, retirer une rangée décalerait la langue masquée et le
-    // formulaire perdrait ses mots-clés italiens dès qu'on toucherait aux autres.
+    // Modèle interne pour toutes les langues rencontrées, masquées comprises : sans lui,
+    // retirer une rangée décalerait la langue masquée et ferait perdre ses mots-clés.
     var modele = {};
     (function () {
       var listes = opts.listes || {};
@@ -422,9 +409,8 @@ var SZH = (function () {
       i.type = 'text';
       i.dataset.langue = langue.code;
       i.value = valeur;
-      // MARQUE reste la sentinelle écrite dans le YAML (estMarque, ci-dessus) : ce que le
-      // champ vide affiche vient d'une clé i18n envoyée par l'hôte, dans la langue de
-      // l'interface — jamais l'anglais figé de la sentinelle.
+      // MARQUE reste la sentinelle écrite dans le YAML (estMarque) ; le champ vide affiche
+      // un texte i18n envoyé par l'hôte, dans la langue de l'interface.
       i.placeholder = textes.aTraduire || MARQUE;
       i.setAttribute('aria-label',
         (textes.motCle || '{0}').split('{0}').join(langue.libelle) + ' ' +
@@ -489,9 +475,9 @@ var SZH = (function () {
       return res;
     }
 
-    // ⚠ Reconstruit le DOM depuis le modèle, sans jamais le relire : après un ajout ou un
-    // retrait de rangée, absorber() y remettrait l'ancien DOM, encore à l'écran, et le
-    // retrait resterait sans effet.
+    // Reconstruit le DOM depuis le modèle, sans le relire : après un ajout ou un retrait de
+    // rangée, absorber() y remettrait l'ancien DOM encore à l'écran, et le retrait resterait
+    // sans effet.
     function rendre() {
       element.textContent = '';
       corps = document.createElement('div');
@@ -540,14 +526,10 @@ var SZH = (function () {
         element.appendChild(pied);
       }
 
-      // Crochet d'après-rendu : rendre() vient d'effacer et de reconstruire tout le DOM
-      // interne (voir son commentaire plus haut) — quiconque tenait quelque chose EN DEHORS
-      // du modèle (un marqueur, jamais persisté, recalculé à l'affichage) doit le reposer
-      // maintenant, sans quoi il resterait accroché à des noeuds qui viennent de disparaître.
-      // Un MutationObserver aurait pu jouer ce rôle sans exposer ce crochet, mais il aurait
-      // fallu ignorer ses propres mutations pour ne pas boucler et deviner quand le DOM est
-      // stable ; un appel explicite, en fin de rendre(), sur le modèle d'opts.onChange déjà
-      // là, est plus direct et ne dépend d'aucune API du navigateur hôte.
+      // Crochet d'après-rendu : rendre() vient de reconstruire tout le DOM interne. Ce qui est
+      // tenu hors du modèle (un marqueur recalculé à l'affichage) doit être reposé ici, sans
+      // quoi il resterait sur des nœuds disparus. Un appel explicite, comme opts.onChange,
+      // évite un MutationObserver qui devrait ignorer ses propres mutations.
       if (opts.surRendu) { opts.surRendu(); }
     }
 
@@ -564,8 +546,8 @@ var SZH = (function () {
     }
 
     // Permutation de deux langues : les listes s'échangent en entier, colonnes masquées
-    // comprises — c'est le geste du changement de langue d'un article, où les mots-clés
-    // suivent les titres. L'écran est relu d'abord, pour la frappe en cours.
+    // comprises (changement de langue d'un article, où les mots-clés suivent les titres).
+    // L'écran est relu d'abord, pour la frappe en cours.
     function permuter(a, b) {
       absorber();
       var t = modele[a] || [];
@@ -588,9 +570,9 @@ var SZH = (function () {
   // ---- Choix fermé posé sur une carte ----
   //
   // Un intitulé, un <select>, une liste d'options fermée, et la valeur de la fiche quand
-  // elle en déclare une. Deux champs s'en servent : la langue de l'article et sa licence.
-  // Le `for`/`id` est apparié — sans lui, un lecteur d'écran annonce un choix sans dire
-  // lequel — et la valeur est relue par `select[data-cle=<cle>]`, comme le type d'article.
+  // elle en déclare une. Sert à la langue de l'article et à sa licence. Le `for`/`id` est
+  // apparié, pour que le lecteur d'écran dise de quel choix il s'agit ; la valeur est relue
+  // par `select[data-cle=<cle>]`, comme le type d'article.
   //
   // opts.cle      nom du champ, qui devient le `data-cle` du <select>
   // opts.libelle  intitulé affiché
@@ -599,9 +581,8 @@ var SZH = (function () {
   // opts.defaut   valeur présélectionnée à défaut ; sinon la première option
   // opts.onChange appelé au changement
   //
-  // Rend { label, select } : c'est l'appelant qui les insère où il veut dans sa carte.
-  // Le compteur d'identifiants évite d'en exiger un de l'appelant, qui construit une
-  // carte par article.
+  // Rend { label, select } ; l'appelant les insère où il veut dans sa carte. Les
+  // identifiants viennent d'un compteur interne.
   var nChoixFerme = 0;
 
   function choixFerme(opts) {
@@ -634,22 +615,22 @@ var SZH = (function () {
   // ---- Langue d'un article ----
   //
   // La langue vit dans la fiche <slug>.meta.yaml et prime, au rendu, sur celle du numéro :
-  // c'est elle qui décide de `<html lang>`, du `/Lang` du PDF, des libellés « Figure /
-  // Abbildung » et de la langue dans laquelle les titres doivent exister. Un choix fermé,
-  // donc, sur les trois langues de la revue — l'anglais n'a pas de maquette.
+  // elle décide de `<html lang>`, du `/Lang` du PDF, des libellés « Figure / Abbildung » et
+  // de la langue dans laquelle les titres doivent exister. Choix fermé sur les trois
+  // langues de la revue (pas d'anglais).
   //
-  // Une fiche sans `lang` s'ouvre sur la langue du numéro, exactement le repli que fait
-  // szh-maquette.lua : le formulaire ne doit jamais montrer une autre langue que celle qui
-  // s'imprimera. Le premier enregistrement de la carte la rend explicite, et
-  // l'avertissement de compilation s'éteint.
+  // Une fiche sans `lang` s'ouvre sur la langue du numéro, comme le repli de
+  // szh-maquette.lua : le formulaire montre la langue qui s'imprimera. Le premier
+  // enregistrement de la carte la rend explicite, et l'avertissement de compilation
+  // disparaît.
   //
   // opts.valeur   langue déclarée dans la fiche, ou '' si elle ne l'est pas
   // opts.defaut   langue du numéro, présélectionnée à défaut
   // opts.textes   { libelle, fr, de, it }
   // opts.onChange appelé au changement
   //
-  // Rend { label, select } : c'est choixFerme qui les fabrique, cette fonction ne portant
-  // plus que la liste fermée des langues et leurs noms.
+  // Rend { label, select }, fabriqués par choixFerme ; cette fonction porte la liste des
+  // langues et leurs noms.
   var LANGUES_CHOIX = ['fr', 'de', 'it'];
 
   function choixLangue(opts) {
@@ -666,15 +647,13 @@ var SZH = (function () {
 
   // ---- L'écoute des messages de l'hôte, partagée ----
   //
-  // Le socle doit entendre l'hôte pour son propre compte — le mode « Trad », plus bas —
-  // sans rien demander aux pages : elles sont douze, et la treizième oublierait la ligne de
-  // relais. Il pose donc son écoute ici, une fois, et chaîne celle que chaque page posera
-  // ensuite : une seule écoute réelle sur `window`, plusieurs destinataires, servis dans
-  // l'ordre où ils se sont annoncés.
+  // Le socle écoute l'hôte pour son propre compte (le mode « Trad », plus bas) sans rien
+  // demander aux pages. Il pose son écoute ici, une fois, et chaîne celle que chaque page
+  // posera ensuite : une seule écoute réelle sur `window`, plusieurs destinataires, servis
+  // dans l'ordre où ils se sont annoncés.
   //
-  // Un destinataire qui rend `true` a CONSOMMÉ le message et arrête la chaîne : les
-  // messages du socle ne sont pas ceux de la page, et les lui passer ferait crier « type de
-  // message inconnu » dans chacune des pages qui surveillent leur protocole.
+  // Un destinataire qui rend `true` a consommé le message et arrête la chaîne : sinon les
+  // pages afficheraient « type de message inconnu » pour les messages du socle.
   var ecouteursHote = [];
   var ecouteInstallee = false;
   var ajouterEcouteur = window.addEventListener.bind(window);
@@ -697,25 +676,21 @@ var SZH = (function () {
 
   // ---- Mode « Trad » : relire les libellés de l'outil là où ils s'affichent ----
   //
-  // Allumé dans les réglages, il détourne le clic : au lieu de faire ce que le bouton fait
-  // d'habitude, un clic sur n'importe quel texte d'un panneau ouvre le formulaire de
-  // suggestion sur CE texte-là. C'est la seule façon de relire les libellés de l'outil là
-  // où ils s'affichent : ils sont plus de mille, créés à des centaines d'endroits, et les
-  // marquer un par un serait intenable — le prochain bouton ajouté oublierait sa marque.
-  // L'interception est donc écrite ICI, une fois, et vaut pour toutes les pages.
+  // Activé dans les réglages, il détourne le clic : un clic sur n'importe quel texte d'un
+  // panneau ouvre le formulaire de suggestion sur ce texte, au lieu de l'action habituelle.
+  // Les libellés de l'outil, plus de mille, sont créés à des centaines d'endroits :
+  // l'interception est écrite ici, une fois, pour toutes les pages.
   //
-  // À ne pas confondre avec la pastille du vérificateur de traduction : celle-ci sert les
-  // quatre champs traduisibles d'un ARTICLE et passe par une seule fonction. Les deux modes
-  // sont indépendants et peuvent être allumés en même temps.
+  // À distinguer de la pastille du vérificateur de traduction, qui sert les quatre champs
+  // traduisibles d'un article. Les deux modes sont indépendants.
   //
-  // DEUX GARDE-FOUS, sans lesquels le mode serait un piège.
-  //   1. On doit TOUJOURS pouvoir l'éteindre. Le formulaire de suggestion s'exclut lui-même
-  //      (SZH.modeTradJamais, en tête de son script), et la barre d'onglets de l'Accueil comme son
-  //      onglet Paramètres sont exemptés (data-trad-exempt) : sans cela on allumerait le mode sans
-  //      plus pouvoir l'éteindre. S'y ajoutent deux sorties depuis n'importe quel panneau :
-  //      le bouton du bandeau, et la touche Échap.
-  //   2. Le mode se VOIT. Un outil dont plus aucun bouton ne répond, sans explication,
-  //      passe pour cassé : tout panneau qui détourne pose un bandeau en tête de page.
+  // Deux garde-fous :
+  //   1. On peut toujours l'éteindre. Le formulaire de suggestion s'exclut lui-même
+  //      (SZH.modeTradJamais, en tête de son script), et la barre d'onglets de l'Accueil et
+  //      son onglet Paramètres sont exemptés (data-trad-exempt). Depuis tout panneau, on peut
+  //      aussi sortir par le bouton du bandeau ou par Échap.
+  //   2. Le mode se voit : tout panneau qui détourne ses clics pose un bandeau en tête de
+  //      page.
   //
   // Protocole avec l'hôte :
   //   webview -> hôte : modeTrad (demande) ; modeTrad { actif: false } (extinction) ;
@@ -731,8 +706,8 @@ var SZH = (function () {
   // ---- Retrouver la clé du texte cliqué ----
   //
   // Même recherche que lib/index-textes.js, côté page : l'hôte envoie l'index une fois, et
-  // c'est ici qu'on le consulte, à chaque clic. Les deux doivent rendre la même chose —
-  // test/js/mode-trad.test.js compare les clés postées à celles du module.
+  // on le consulte ici à chaque clic. test/js/mode-trad.test.js vérifie que les deux
+  // rendent les mêmes clés.
   var RE_ESPACES_TRAD = /[\s   ]+/g;
 
   function normaliserTrad(texte) {
@@ -773,8 +748,8 @@ var SZH = (function () {
 
   // ---- Le texte visé par un clic ----
   //
-  // Le texte qu'un élément porte EN PROPRE, et non celui de ses descendants réunis : sans
-  // cette distinction, un clic dans la marge rendrait le panneau entier.
+  // Le texte qu'un élément porte en propre, et non celui de tous ses descendants : sinon un
+  // clic dans la marge rendrait le panneau entier.
   function texteEnPropre(e) {
     var enfants = e.childNodes || [];
     var propre = '';
@@ -784,14 +759,14 @@ var SZH = (function () {
       else if (enfants[i].nodeType === 1) { elements++; }
     }
     propre = normaliserTrad(propre);
-    // Sans aucun descendant, le textContent EST le texte propre.
+    // Sans descendant, le textContent est le texte propre.
     if (propre === '' && elements === 0) { propre = normaliserTrad(e.textContent); }
     return propre;
   }
 
-  // Ces éléments-là portent un libellé d'un seul tenant : un bouton fait d'un pictogramme
-  // et d'un mot n'a pas de texte « en propre », et c'est pourtant son mot qu'on vient
-  // relire. Ailleurs, on s'en tient au texte propre.
+  // Ces éléments portent un libellé d'un seul tenant : un bouton fait d'un pictogramme et
+  // d'un mot n'a pas de texte en propre, et c'est son mot qu'on veut relire. Ailleurs, on
+  // s'en tient au texte propre.
   var CONTROLES_TRAD = ['button', 'a', 'label', 'legend', 'option', 'summary', 'th', 'dt'];
 
   function valeurAttribut(e, prop, nom) {
@@ -808,9 +783,8 @@ var SZH = (function () {
       t = normaliserTrad(e.textContent);
       if (t !== '') { return t; }
     }
-    // Les textes qui ne vivent dans aucun nœud de texte. `value` seulement sur un bouton :
-    // sur un champ de saisie, ce serait ce que le rédacteur vient de taper, jamais un
-    // libellé de l'outil.
+    // Les textes qui ne sont dans aucun nœud de texte. `value` sur un bouton seulement : sur
+    // un champ de saisie, ce serait la saisie du rédacteur.
     var type = String(e.type || '').toLowerCase();
     if (balise === 'button' || (balise === 'input' &&
         ['button', 'submit', 'reset'].indexOf(type) !== -1)) {
@@ -824,7 +798,7 @@ var SZH = (function () {
     return valeurAttribut(e, null, 'aria-label');
   }
 
-  // L'élément le plus PROCHE qui porte un texte, en remontant depuis la cible du clic.
+  // L'élément le plus proche qui porte un texte, en remontant depuis la cible du clic.
   function texteCliquable(depart) {
     var e = depart;
     var garde = 0;
@@ -832,8 +806,8 @@ var SZH = (function () {
       var t = texteDe(e);
       if (t !== '') { return t; }
       if (e === document.body) { return ''; }
-      // Remonter d'un cran : `parentElement` dans le DOM, les replis pour les hôtes de
-      // rendu réduits, où le lien porte un autre nom.
+      // Remonter d'un cran : `parentElement` dans le DOM, et des replis pour les DOM réduits
+      // des tests, où le lien porte un autre nom.
       e = e.parentElement || e.parentNode || e.parent;
       garde++;
     }
@@ -846,8 +820,8 @@ var SZH = (function () {
     return !!(e.closest && e.closest('.szh-trad-bandeau'));
   }
 
-  // Une zone marquée data-trad-exempt garde ses clics, mode allumé : la page qui la porte n'est pas
-  // exclue en entier, mais ce qui permet d'éteindre le mode (ses réglages, sa barre d'onglets) l'est.
+  // Une zone marquée data-trad-exempt garde ses clics quand le mode est actif : ce qui permet
+  // de l'éteindre (réglages, barre d'onglets) reste utilisable.
   function exempteTrad(depart) {
     var e = depart;
     var garde = 0;
@@ -864,7 +838,7 @@ var SZH = (function () {
     var cible = ev.target || null;
     // Le bandeau reste cliquable : c'est la sortie du mode.
     if (dansBandeau(cible) || exempteTrad(cible)) { return; }
-    // On barre la route AVANT de savoir si un texte a été trouvé : sinon un clic dans la
+    // On bloque le clic avant de savoir si un texte a été trouvé : sinon un clic dans la
     // marge d'un bouton ferait l'action normale alors que le bandeau annonce le contraire.
     if (ev.preventDefault) { ev.preventDefault(); }
     if (ev.stopPropagation) { ev.stopPropagation(); }
@@ -881,9 +855,9 @@ var SZH = (function () {
     eteindreTrad();
   }
 
-  // Éteindre depuis n'importe quel panneau. On éteint ICI d'abord — la page redevient
-  // cliquable sans attendre l'hôte — puis on le lui dit : c'est lui qui écrit le réglage et
-  // prévient les autres panneaux ouverts.
+  // Éteindre depuis n'importe quel panneau : on éteint ici d'abord, pour que la page
+  // redevienne cliquable sans attendre, puis on prévient l'hôte, qui écrit le réglage et
+  // prévient les autres panneaux.
   function eteindreTrad() {
     appliquerTrad({ actif: false });
     if (trad.api) {
@@ -924,22 +898,20 @@ var SZH = (function () {
     if (!trad.actif) { retirerBandeau(); return; }
     if (!trad.branche) {
       trad.branche = true;
-      // En CAPTURE et sur <body> : tout le contenu de la page y est, et la capture y passe
-      // avant le moindre gestionnaire posé sur un descendant — sans quoi le bouton aurait
-      // déjà agi quand nous serions prévenus.
+      // En capture et sur <body> : la capture passe avant tout gestionnaire posé sur un
+      // descendant, sans quoi le bouton aurait déjà agi.
       document.body.addEventListener('click', surClicTrad, true);
       document.body.addEventListener('keydown', surToucheTrad, true);
     }
     poserBandeau();
   }
 
-  // L'index pèse des dizaines de kilo-octets : il ne part que si le mode est allumé. C'est
-  // donc la page qui demande, et l'hôte qui répond — ou se tait.
+  // L'index pèse des dizaines de kilo-octets : il n'est envoyé que si le mode est actif. La
+  // page demande, l'hôte répond, ou non.
   //
-  // La demande voyage AVEC le « pret » (voir annoncerPret) plutôt que dans un message à
-  // elle : un aller-retour de plus à chaque ouverture de panneau n'apprendrait rien de
-  // neuf, et le socle n'a pas à ajouter un message au protocole que chaque page décrit en
-  // tête de son fichier.
+  // La demande part avec le « pret » (voir annoncerPret), sans message propre : cela évite
+  // un aller-retour à chaque ouverture de panneau et un message de plus dans le protocole
+  // de chaque page.
   function demanderModeTrad(api) {
     if (trad.exclue || !api) { return false; }
     trad.demandee = true;
@@ -956,25 +928,21 @@ var SZH = (function () {
 
   // ---- Annonce de la page ----
   //
-  // Poser le HTML d'une webview la charge : un hôte qui branche son écoute après ce
-  // geste peut manquer le « pret » de la page, ne jamais envoyer les valeurs, et laisser
-  // un formulaire vide sans que rien ne le dise. Les hôtes du cockpit écoutent maintenant
-  // avant de poser le HTML ; cette reprise est la seconde ceinture, pour les fois où
-  // l'ordre se reperdrait ou où le message se perd ailleurs. `recu` doit rendre vrai dès
-  // le premier message reçu de l'hôte, quel qu'il soit.
+  // L'hôte peut manquer le « pret » de la page s'il branche son écoute après avoir posé le
+  // HTML ; le formulaire resterait alors vide. Les hôtes du cockpit écoutent avant de poser
+  // le HTML ; cette relance couvre les autres cas. `recu` doit rendre vrai dès le premier
+  // message reçu de l'hôte.
   //
   // Un jeton (`requete`), le même à chaque relance : sur un aller-retour lent, l'hôte peut
-  // répondre deux fois à « pret » avant que la première réponse n'arrive, et la seconde
-  // « valeurs »/« charger » atterrirait alors après que le rédacteur a commencé à taper —
-  // la reconstruire écraserait cette saisie. L'hôte recopie ce jeton dans sa réponse ;
-  // jetonDejaTraite() (plus bas) dit à la page laquelle honorer.
+  // répondre deux fois à « pret », et la seconde « valeurs »/« charger » arriverait pendant
+  // la saisie, qu'elle écraserait. L'hôte recopie ce jeton dans sa réponse ;
+  // jetonDejaTraite() dit à la page laquelle traiter.
   function annoncerPret(api, recu) {
     var essais = 0;
     var requete = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    // Toutes les pages passent par ici, avec leur api : c'est le seul endroit où le socle
-    // tienne de quoi parler à l'hôte sans que chacune ait à le lui passer. `modeTrad` dit
-    // « et dis-moi aussi si le mode est allumé » ; les pages qui s'en excluent ne le
-    // portent pas, et l'hôte ne leur envoie donc jamais l'index.
+    // Toutes les pages passent par ici avec leur api : c'est là que le socle peut parler à
+    // l'hôte. `modeTrad` demande aussi l'état du mode « Trad » ; les pages qui s'en excluent
+    // ne le portent pas, et l'hôte ne leur envoie pas l'index.
     var pret = { type: SZH.MSG.PRET, requete: requete };
     if (demanderModeTrad(api)) { pret.modeTrad = true; }
     api.postMessage(pret);
@@ -987,12 +955,11 @@ var SZH = (function () {
   }
 
   // Course pret/valeurs : rend vrai si `msg` est un doublon à ignorer (même jeton qu'une
-  // réponse déjà traitée), faux sinon — et retient alors ce jeton comme consommé. `etat`
-  // est un objet `{ jeton: null }` tenu par la page, un par formulaire. Une réponse sans
-  // jeton (un rechargement déclenché par un geste, pas par « pret ») n'est jamais un
-  // doublon. Un rechargement forcé (`msg.rechargement === true` : fiche périmée, écrite
-  // ailleurs, ou réponse à « demande-rechargement ») passe toujours, même sur un jeton déjà
-  // vu — sans quoi la webview resterait périmée sous les yeux du rédacteur.
+  // réponse déjà traitée), faux sinon, et retient alors ce jeton. `etat` est un objet
+  // `{ jeton: null }` tenu par la page, un par formulaire. Une réponse sans jeton (un
+  // rechargement déclenché par une action, pas par « pret ») n'est jamais un doublon. Un
+  // rechargement forcé (`msg.rechargement === true` : fiche périmée, écrite ailleurs, ou
+  // réponse à « demande-rechargement ») passe toujours, même sur un jeton déjà vu.
   function jetonDejaTraite(etat, msg) {
     if (msg.rechargement) { return false; }
     if (msg.requete === undefined || msg.requete === null) { return false; }
@@ -1003,27 +970,22 @@ var SZH = (function () {
 
   // ---- Barre de commandes ----
   //
-  // Texte court plus pictogramme : le premier dit ce que fait le bouton, le second le fait
-  // reconnaître d'un coup d'oeil dans une barre qui en porte plusieurs. Un bouton vaut
+  // Texte court et pictogramme : le texte dit ce que fait le bouton, le pictogramme le fait
+  // reconnaître dans une barre qui en porte plusieurs. Un bouton vaut
   // { id, libelle, icone, tip, principal, danger, desactive, actif, groupe } et
-  // `onAction(id)` est appelé au clic — `groupe` n'est lu par aucune fonction d'ici : c'est
-  // un contrat entre l'hôte et la page appelante (media/articles.js, qui répartit ses
-  // boutons sur deux lignes selon ce champ), invisible à ce composant. Rend la zone d'état
-  // de la barre, où l'appelant écrit ce qu'il vient de faire.
+  // `onAction(id)` est appelé au clic. `groupe` n'est pas lu ici : c'est un contrat entre
+  // l'hôte et la page (articles.js, qui répartit ses boutons sur deux lignes). Rend la zone
+  // d'état de la barre, où l'appelant écrit ce qu'il vient de faire.
   //
   // `opts.sansEtat` omet le pousse et la zone d'état (rend alors null) : une page à
-  // plusieurs barres ne doit en garder qu'UNE avec role="status" — deux zones concurrentes,
-  // et un lecteur d'écran annoncerait deux fois le même geste, ou aucune. Sans cette
-  // option, tout se comporte comme avant : les trois autres vues d'ensemble (Traductions,
-  // Word en attente, Contrôles, media/vue-ensemble.js) n'ont qu'une barre et ne la passent
-  // jamais.
+  // plusieurs barres ne doit garder qu'une zone role="status", sinon un lecteur d'écran
+  // annoncerait deux fois la même chose, ou rien.
   //
-  // `actif` (booléen, absent sur un bouton ordinaire) fait de ce bouton un INTERRUPTEUR :
-  // aria-pressed part avec, et _design.css lui donne alors le fond plein. L'état allumé
-  // veut dire « ce que ce bouton commande est à l'écran », jamais « le clic va l'allumer »
-  // — c'est le sens que le reste de l'éditeur donne à un bouton de barre allumé. Le libellé
-  // d'un interrupteur ne bouge donc PLUS avec son état (WAI-ARIA : un bouton à bascule garde
-  // son nom, seul aria-pressed change) ; c'est l'infobulle qui dit le geste à venir.
+  // `actif` (booléen, absent sur un bouton ordinaire) fait du bouton un interrupteur :
+  // aria-pressed est posé, et _design.css lui donne le fond plein. Allumé veut dire « ce que
+  // ce bouton commande est à l'écran », comme dans le reste de l'éditeur. Le libellé d'un
+  // interrupteur ne change pas avec son état (un bouton à bascule WAI-ARIA garde son nom,
+  // seul aria-pressed change) ; l'infobulle dit l'action à venir.
   function boutonCommande(b, onAction) {
     var el = document.createElement('button');
     el.type = 'button';
@@ -1065,11 +1027,10 @@ var SZH = (function () {
   // ---- Liste de cartes ----
   //
   // Une carte par élément, trois étages fixes : la tête et sa mesure, ce qu'il y a à lire,
-  // puis les commandes et l'état. Tout dans une seule rangée passait à la ligne au hasard
-  // des longueurs, et deux cartes voisines ne se lisaient plus de la même façon.
+  // puis les commandes et l'état, pour que deux cartes voisines se lisent de la même façon.
   //
-  // Une seule implémentation pour toutes les vues d'ensemble — « Traductions », « Word en
-  // attente », « Articles » — et pour celles qui viendront. Une ligne vaut :
+  // Sert à toutes les vues d'ensemble (« Traductions », « Word en attente », « Articles »).
+  // Une ligne vaut :
   //
   //   { cle, groupe, titre, meta, notif: { ton, texte },
   //     messages: [{ ton, texte, action,
@@ -1079,45 +1040,41 @@ var SZH = (function () {
   //     taches: [{ id, libelle, faite }],
   //     constats: [{ ton, texte }] }
   //
-  // `messages` : plusieurs défauts dans une même carte, une phrase chacun, le geste de
-  // chacun au bout de sa phrase. C'est ce qui permet à la vue Contrôles de tenir un article
-  // par carte au lieu d'une carte par défaut. `action` vaut une entrée de `actions` — ou
-  // null quand rien n'est à faire ailleurs — et part par le même opts.onAction(cle, id).
-  // Avec `titre`, le message se pose en quatre étages (messageEnEtages) ; sans lui, la
-  // phrase `texte` et sa flèche, comme avant — les autres vues n'ont rien à changer.
+  // `messages` : plusieurs défauts dans une même carte, une phrase chacun, avec son action au
+  // bout. La vue Contrôles tient ainsi un article par carte. `action` vaut une entrée de
+  // `actions`, ou null quand rien n'est à faire ailleurs, et part par le même
+  // opts.onAction(cle, id). Avec `titre`, le message se pose en quatre étages
+  // (messageEnEtages) ; sans lui, la phrase `texte` et sa flèche.
   //
   // opts.conteneur   élément qui reçoit les cartes
   // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
   // opts.onOuvrir(cle) / opts.onAction(cle, id) / opts.onTache(cle, id, cochee)
   //
   // Rend { rendre, majPastilles, focaliser }. `focaliser(valeur)` amène à l'écran la carte
-  // dont `cle` vaut `valeur` et la marque quelques secondes — additif : une carte dont
-  // `cle` est vide ne porte pas de [data-cle] et ne se rend pas autrement qu'avant.
+  // dont `cle` vaut `valeur` et la marque quelques secondes ; une carte sans `cle` ne porte
+  // pas de [data-cle].
   function listeCartes(opts) {
     var conteneur = opts.conteneur;
     var lireTextes = opts.textes || function () { return {}; };
-    // Les pieds de carte, par clé : c'est ce qui permet de rafraîchir une seule pastille
-    // sans reconstruire la liste. Les compteurs de tâches suivent le même besoin :
-    // cocher une case ne repose que son entête, jamais la carte entière.
+    // Les pieds de carte, par clé : on peut rafraîchir une seule pastille sans reconstruire
+    // la liste. De même pour les compteurs de tâches : cocher une case ne repose que son
+    // entête.
     var pieds = {};
     var compteurs = {};
 
     // Le compteur de l'entête « À faire », posé à la construction et reposé seul quand une
-    // case est cochée. `resume` est { texte, toutes } ou null quand la revue ne définit
-    // aucune tâche — un entête sans compteur n'affiche alors que son titre.
+    // case est cochée. `resume` est { texte, toutes }, ou null quand la revue ne définit
+    // aucune tâche (l'entête n'affiche alors que son titre).
     function poserCompteurTaches(compteur, resume) {
       compteur.textContent = resume ? (resume.texte || '') : '';
       compteur.classList.toggle('szh-taches-compteur--ok', !!(resume && resume.toutes));
     }
 
-    // Ce qui reste à faire sur cette carte, dans un seul encadré : les tâches cochables,
-    // puis ce que la carte signale — d'abord ce qui mérite un regard, ensuite ce qui
-    // arrêtera la publication. Trois groupes, trois titres, un seul cadre : l'avancement et
-    // les avertissements se lisent d'un coup, et non l'un dans le pied et l'autre dans la
-    // barre de titre.
+    // Ce qui reste à faire sur cette carte, dans un seul encadré : les tâches cochables, puis
+    // ce que la carte signale (d'abord ce qui mérite un regard, ensuite ce qui arrêtera la
+    // publication). Trois groupes, trois titres, un seul cadre.
     //
-    // L'encadré naît dès qu'un des trois groupes a quelque chose à montrer ; une carte sans
-    // tâche ni constat n'en a pas du tout.
+    // L'encadré n'existe que si l'un des trois groupes a quelque chose à montrer.
     //
     // -> { bloc, compteur } ; `compteur` est null quand la revue ne définit aucune tâche,
     // l'entête « À faire » n'étant alors pas posé.
@@ -1153,13 +1110,13 @@ var SZH = (function () {
       return { bloc: bloc, compteur: compteur };
     }
 
-    // Un groupe de constats d'un même ton, titre compris — rien du tout quand aucun
-    // constat ne porte ce ton, plutôt qu'un titre suivi du vide.
+    // Un groupe de constats d'un même ton, titre compris ; rien quand aucun constat ne porte
+    // ce ton.
     function poserGroupeConstats(bloc, constats, ton, titre) {
       var miens = [];
       for (var i = 0; i < constats.length; i++) {
-        // Les tons inconnus retombent sur « attention » : un constat ne doit jamais
-        // disparaître parce que son ton a été mal orthographié côté hôte.
+        // Un ton inconnu retombe sur « attention » : un constat ne doit pas disparaître pour
+        // un ton mal orthographié côté hôte.
         var mien = constats[i].ton === 'danger' ? 'danger' : 'attention';
         if (mien === ton) { miens.push(constats[i]); }
       }
@@ -1171,10 +1128,8 @@ var SZH = (function () {
       }
     }
 
-    // Une phrase de défaut et, au bout, le geste qui mène là où on le corrige. Le bouton
-    // est posé DANS le corps de la notification, pas à côté : il suit ainsi le dernier mot
-    // et se replie avec le texte, au lieu de s'ancrer dans un coin que l'œil ne relie plus
-    // à la phrase.
+    // Une phrase de défaut et, au bout, le bouton qui mène là où on le corrige. Le bouton est
+    // dans le corps de la notification : il suit le dernier mot et se replie avec le texte.
     function messageAvecGeste(ligne, msg) {
       if (msg.titre) { return messageEnEtages(ligne, msg); }
       var contenu = [document.createTextNode(msg.texte || '')];
@@ -1197,11 +1152,11 @@ var SZH = (function () {
     //   Ajoutez une description dans …          UNE phrase d'action
     //   [Ouvrir Médias de l'article →]          le bouton
     //
-    // L'explication — pourquoi c'est un défaut, ce qui a été gardé, le repère ISO — n'est
-    // plus dans la phrase : elle est l'infobulle du bouton (i) et de toute la boîte au
-    // survol, et le même bouton la déplie sous le titre au clic ou au clavier (Entrée,
-    // Espace) : une infobulle seule ne s'atteint pas sans souris. Le message garde `texte`
-    // (titre et consigne) : c'est lui que l'hôte retient pour une croix fermée.
+    // L'explication (pourquoi c'est un défaut, ce qui a été gardé, le repère ISO) est
+    // l'infobulle du bouton (i) et de toute la boîte au survol ; le même bouton la déplie
+    // sous le titre au clic ou au clavier (Entrée, Espace), une infobulle seule ne
+    // s'atteignant pas sans souris. Le message garde `texte` (titre et consigne) : c'est lui
+    // que l'hôte retient pour une croix fermée.
     var numeroPourquoi = 0;
     function messageEnEtages(ligne, msg) {
       var cle = String(ligne.cle || '');
@@ -1285,17 +1240,16 @@ var SZH = (function () {
     }
 
     function avecCroix(boite, msg) {
-      // La croix, seulement là où l'hôte l'autorise — c'est lui qui sait qu'un message est
-      // gris (lib/constats.js, fermable), et la page ne le redevine pas. Elle est posée
-      // hors du corps, contre le bord droit : le geste du défaut suit la phrase, celui-ci
-      // ferme la boîte et n'a rien à voir avec ce qu'elle dit.
+      // La croix, seulement là où l'hôte l'autorise (lib/constats.js, fermable). Elle est
+      // hors du corps, contre le bord droit : elle ferme la boîte, sans rapport avec l'action
+      // du défaut.
       if (msg.fermable && msg.empreinte) {
         var mots = lireTextes() || {};
         boite.appendChild(boutonIcone('croix', mots.fermerConstat || '',
           (function (empreinte, elem) {
             return function () {
-              // Retirée tout de suite : l'hôte renverra la vue, mais le clic doit se voir
-              // sans attendre l'aller-retour.
+              // Retirée tout de suite : l'hôte renverra la vue, mais le clic doit se voir sans
+              // attendre.
               elem.remove();
               if (opts.onFermer) { opts.onFermer(empreinte); }
             };
@@ -1305,10 +1259,10 @@ var SZH = (function () {
       return boite;
     }
 
-    // Les pastilles d'une carte, reposées seules, et le compteur de son entête « À faire »
-    // avec elles quand l'hôte l'envoie. Cocher une tâche ne doit pas reconstruire la liste :
-    // le clavier perdrait le focus de la case qu'il vient d'utiliser, et deux clics
-    // rapprochés courraient contre un DOM en train d'être remplacé.
+    // Les pastilles d'une carte, reposées seules, avec le compteur de son entête « À faire »
+    // quand l'hôte l'envoie. Cocher une tâche ne reconstruit pas la liste : le clavier
+    // perdrait le focus de la case, et deux clics rapprochés tomberaient sur un DOM en cours
+    // de remplacement.
     function majPastilles(cle, pastilles, tachesResume) {
       var pied = pieds[String(cle)];
       if (pied) {
@@ -1349,22 +1303,20 @@ var SZH = (function () {
           poser(conteneur, 'h2', 'titre-section', groupe);
         }
         var carte = poser(conteneur, 'section', 'szh-carte ligne');
-        // [data-cle] additif : posé seulement quand la ligne porte une clé (le rapport de
-        // conversion, par ex., n'en a pas). C'est ce que focaliser() retrouve — une carte
-        // sans identifiant se rend exactement comme avant (revue F03, 22.09.2026).
+        // [data-cle] posé seulement quand la ligne porte une clé (le rapport de conversion
+        // n'en a pas). C'est ce que focaliser() retrouve.
         if (l.cle) { carte.dataset.cle = String(l.cle); }
         var tete = poser(carte, 'header', 'szh-tete');
         poser(tete, 'p', 'szh-tete-nom', l.titre || '');
         if (l.meta) { poser(tete, 'span', 'szh-tete-meta', l.meta); }
-        // Ce qui demande d'être lu — un commentaire, un message de conversion, une erreur —
-        // vit dans le corps de la carte, pas dans une infobulle.
+        // Ce qui demande d'être lu (un commentaire, un message de conversion, une erreur)
+        // est dans le corps de la carte, pas dans une infobulle.
         if (l.notif && l.notif.texte) {
           var corps = poser(carte, 'div', 'szh-corps');
           corps.appendChild(notif(l.notif.ton || 'info', l.notif.texte));
         }
-        // Les défauts d'une carte groupée. Un pied par défaut aurait rendu la carte
-        // illisible — trois phrases, trois rangées de boutons ; le geste tient donc au
-        // bout de la phrase, en flèche étroite (.szh-ico--enligne, media/_liste.css).
+        // Les défauts d'une carte groupée : l'action est au bout de la phrase, en flèche
+        // étroite (.szh-ico--enligne, _liste.css), plutôt qu'un pied par défaut.
         var messages = l.messages || [];
         if (messages.length > 0) {
           var corpsM = poser(carte, 'div', 'szh-corps szh-messages');
@@ -1389,15 +1341,12 @@ var SZH = (function () {
       }
     }
 
-    // Amène une carte précise à l'écran et la marque quelques secondes — le pendant, pour
-    // une liste, de ce que focaliserChamp() fait sur un formulaire (media/_fiches.js) et
-    // focaliser() sur une figure (media/medias-article.js) : même économie, un [data-cle]
-    // et un temps d'affichage, jamais une seconde implémentation.
+    // Amène une carte à l'écran et la marque quelques secondes, comme focaliserChamp() sur
+    // un formulaire (_fiches.js) et focaliser() sur une figure (medias-article.js).
     //
-    // `valeur` vide, ou qui ne correspond à aucun [data-cle] : rien ne se passe, jamais
-    // d'erreur affichée, jamais de marquage faux — la table (lib/constats.js) vise « word »
-    // avec des focus que toutes les cartes ne portent pas (le rapport de conversion n'a pas
-    // de `cle`), et un fichier réimporté peut avoir disparu de la liste entre-temps.
+    // `valeur` vide, ou sans [data-cle] correspondant : rien ne se passe. lib/constats.js
+    // vise « word » avec des focus que toutes les cartes ne portent pas, et un fichier
+    // réimporté peut avoir quitté la liste.
     var minuteurFocus = null;
     var carteFocalisee = null;
     function focaliser(valeur) {
@@ -1405,10 +1354,10 @@ var SZH = (function () {
       if (minuteurFocus) { clearTimeout(minuteurFocus); minuteurFocus = null; }
       if (carteFocalisee) { carteFocalisee.classList.remove('szh-carte--focus'); carteFocalisee = null; }
       if (v === '') { return; }
-      // Une comparaison directe, pas un sélecteur CSS construit avec `v` : un nom de
-      // fichier Word porte des caractères (espaces, parenthèses, accents) qu'un sélecteur
-      // attribut ne prend pas tous proprement, là où focaliserChamp() peut se permettre un
-      // sélecteur parce que ses clés de champ sont un jeu fermé (id de formulaire).
+      // Comparaison directe, sans sélecteur CSS construit avec `v` : un nom de fichier Word
+      // porte des caractères (espaces, parenthèses, accents) qu'un sélecteur d'attribut ne
+      // prend pas tous proprement. focaliserChamp() peut utiliser un sélecteur, ses clés
+      // formant un jeu fermé.
       var carte = null;
       var candidates = conteneur.querySelectorAll('.szh-carte[data-cle]');
       for (var i = 0; i < candidates.length; i++) {
@@ -1428,13 +1377,11 @@ var SZH = (function () {
     return { rendre: rendre, majPastilles: majPastilles, focaliser: focaliser };
   }
 
-  // ---- Petits gestes de construction, recopiés à l'identique dans plusieurs pages ----
+  // ---- Petits gestes de construction, partagés par plusieurs pages ----
   //
   // Un bouton texte, un bouton d'icône seule, une ligne aplatie (retours à la ligne rendus
   // en espace), un gabarit « {0} » substitué depuis une table de textes, et l'écriture
-  // d'une zone d'état : cinq fonctions d'une ligne ou deux, qui vivaient à l'identique dans
-  // documentation.js et medias-article.js. Une page les reprend par un simple alias
-  // (`var bouton = SZH.bouton;`), sans toucher à ses appels.
+  // d'une zone d'état. Une page les reprend par un alias (`var bouton = SZH.bouton;`).
   function bouton(txt, fn, cls, titre) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -1464,18 +1411,15 @@ var SZH = (function () {
 
   // ---- Barre d'en-tête d'un formulaire pleine page ----
   //
-  // documentation.js et medias-article.js construisaient chacun la même barre — bouton
-  // Enregistrer, bouton Retour, indicateur de modification, zone d'état — à trois lignes
-  // d'écart : le message que « Retour » envoie à l'hôte, propre à chaque page, et un
-  // compteur supplémentaire pour le gestionnaire des médias. Les deux voyagent par
-  // `opts.onRetour` et `opts.avecCompte`.
+  // La barre de documentation.js et de medias-article.js : bouton Enregistrer, bouton
+  // Retour, indicateur de modification, zone d'état. Le message de « Retour » passe par
+  // `opts.onRetour`, le compteur du gestionnaire des médias par `opts.avecCompte`.
   //
   // opts = { txt, onEnregistrer(), onRetour(), avecCompte, onApercu() }
   // Rend { enregistrer, indic, etat, compte?, apercu? } : les éléments que la page doit
-  // garder. `onApercu` est optionnel (documentation.js seul, pour l'instant) : un bouton
-  // bascule (« Aperçu du PDF ») s'ajoute entre Enregistrer et Retour, aria-pressed suivant
-  // l'état que la page lui pose elle-même (majApercuBascule) — jamais tenu ici, un aperçu se
-  // ferme aussi à la croix, hors de portée de ce bouton.
+  // garder. `onApercu` (facultatif, documentation.js) ajoute un interrupteur « Aperçu du
+  // PDF » entre Enregistrer et Retour ; la page pose elle-même son aria-pressed
+  // (majApercuBascule), car l'aperçu peut se fermer à la croix.
   function construireBarre(conteneur, opts) {
     var o = opts || {};
     var txt = o.txt || {};
@@ -1505,19 +1449,17 @@ var SZH = (function () {
   // ---- Plafonds d'image ----
   //
   // Deux profils : une figure d'article (50 Mo, les formats du pipeline y compris le SVG)
-  // et une photo d'auteur·e (20 Mo, jamais de SVG ni de GIF, le WebP en plus). Une seule
-  // table plutôt que quatre copies dispersées. Ces valeurs ne sont qu'un repli : le message
-  // de chargement de chaque webview porte `limites` (lib/medias.js et les constantes photo
-  // d'extension.js, la source unique), et appliquerLimites() les pose ici — la table ne
-  // change donc que si l'hôte la dément, jamais par une seconde copie littérale.
+  // et une photo d'auteur·e (20 Mo, sans SVG ni GIF, avec le WebP). Ces valeurs sont un
+  // repli : le message de chargement de chaque webview porte `limites` (lib/medias.js et
+  // les constantes photo d'extension.js, qui font foi), et appliquerLimites() les pose ici.
   var LIMITES = {
     image: { maxi: 50 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'] },
     photo: { maxi: 20 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'webp'] }
   };
 
-  // `limites` = { imageMax, imageExtensions, photoMax, photoExtensions } (ou absent : les
-  // valeurs ci-dessus restent alors en place, repli utile aux tests qui postent un message
-  // minimal). Une clé manquante isolément laisse sa propre valeur par défaut inchangée.
+  // `limites` = { imageMax, imageExtensions, photoMax, photoExtensions }. Absent, les valeurs
+  // ci-dessus restent en place (utile aux tests qui postent un message minimal). Une clé
+  // manquante laisse sa valeur par défaut.
   function appliquerLimites(limites) {
     if (!limites) { return; }
     if (limites.imageMax !== undefined) { LIMITES.image.maxi = limites.imageMax; }
@@ -1528,13 +1470,9 @@ var SZH = (function () {
 
   // ---- Moteur d'autocomplétion partagé (noms d'auteur·e·s, mots-clés edudoc.ch) ----
   //
-  // _auteurs.js et _fiches.js pliaient chacun casse et accents à leur façon pour chercher
-  // « commence par ce mot », avec deux écarts qui ne se justifiaient pas : `plier()`
-  // laissait les espaces de bord (le point d'appel des auteur·e·s les retirait après coup,
-  // celui des mots-clés jamais) et le jeu de séparateurs de mot des auteur·e·s ignorait la
-  // virgule et le point-virgule, qui séparent pourtant les descripteurs d'un thésaurus
-  // (« troubles, difficultés »). On garde le comportement le plus large des deux : un
-  // repli systématique, et le séparateur qui inclut la ponctuation des deux usages.
+  // Plie casse et accents pour chercher « commence par ce mot ». `plier()` retire les
+  // espaces de bord, et les séparateurs de mot incluent la virgule et le point-virgule, qui
+  // séparent les descripteurs d'un thésaurus (« troubles, difficultés »).
   var SEPARE_MOT = /[\s\-'’.,;]/;
 
   // Casse et accents pliés, sans le détail des positions : sert à comparer deux noms
@@ -1546,10 +1484,10 @@ var SZH = (function () {
     return s;
   }
 
-  // Plie un texte ET garde, pour chaque caractère du plié, l'indice du caractère d'origine
-  // dont il vient : sans cette table, mettre en gras la part trouvée obligerait à découper
-  // l'original aux indices du plié — ce qui se décale exactement sur les caractères qu'un
-  // repli Unicode change de longueur (« İ », par exemple).
+  // Plie un texte et garde, pour chaque caractère du plié, l'indice du caractère d'origine :
+  // sans cette table, mettre en gras la part trouvée obligerait à découper l'original aux
+  // indices du plié, qui se décalent sur les caractères dont le repli Unicode change la
+  // longueur (« İ », par exemple).
   function plierAvecIndex(brut) {
     var src = String(brut === undefined || brut === null ? '' : brut);
     var plie = '';
@@ -1563,7 +1501,7 @@ var SZH = (function () {
     return { source: src, plie: plie, index: index };
   }
 
-  // Les indices, dans le plié, où commence un mot — espace, trait d'union, apostrophes,
+  // Les indices, dans le plié, où commence un mot : espace, trait d'union, apostrophes,
   // point d'initiale, virgule et point-virgule séparent deux mots.
   function debutsDeMot(plie) {
     var debuts = [];
@@ -1584,7 +1522,7 @@ var SZH = (function () {
 
   // Pose un texte dans `parent`, les parts trouvées en gras. `zones` est une liste de
   // [début, longueur] en indices du plié ; la table d'index les ramène sur l'original.
-  // Rien n'est construit en HTML : un nom ou un descripteur est une donnée, pas du balisage.
+  // Rien n'est construit en HTML : un nom ou un descripteur est une donnée.
   function poserAvecGras(parent, pli, zones) {
     var brut = pli.source;
     var pose = 0;
@@ -1604,11 +1542,9 @@ var SZH = (function () {
 
   // ---- Zone de dépôt : le motif complet, posé une fois ----
   //
-  // Cinq pages en avaient chacune une copie : input file caché + bouton « Choisir un
-  // fichier » + glisser-déposer, sur un même cadre `.szh-depot` (survol : `.szh-depot.survol`,
-  // media/_design.css). Cette fonction ne décide de rien après le choix du fichier :
-  // `opts.surFichier(fichier)` reçoit le File choisi ou déposé, à charge pour l'appelant de
-  // le valider et de le lire — voir `SZH.lireBase64` plus bas, le second motif recopié.
+  // Input file caché, bouton « Choisir un fichier » et glisser-déposer, sur un cadre
+  // `.szh-depot` (survol : `.szh-depot.survol`, _design.css). `opts.surFichier(fichier)`
+  // reçoit le File choisi ou déposé ; l'appelant le valide et le lit (voir `SZH.lireBase64`).
   //
   // opts.parent, opts.libelle, opts.icone ('camera' par défaut), opts.tip,
   // opts.extensions (liste, sans le point), opts.texteChoisir, opts.texteOu (facultatif,
@@ -1619,9 +1555,7 @@ var SZH = (function () {
     var o = opts || {};
     var d = poser(o.parent, 'div', 'szh-depot');
     if (o.tip) { d.title = o.tip; }
-    // Icône et libellé facultatifs : une zone qui n'en reçoit ni l'un ni l'autre reste
-    // muette, comme avant l'unification de ce motif — ajouter un pictogramme que
-    // personne n'a demandé serait le changement visuel que ce lot s'interdit.
+    // Icône et libellé facultatifs : une zone qui n'en reçoit pas n'en affiche pas.
     var titre = poser(d, 'span', 'szh-depot-titre');
     if (o.icone) { titre.appendChild(icone(o.icone)); }
     if (o.libelle) { poser(titre, 'span', null, o.libelle); }
@@ -1646,16 +1580,15 @@ var SZH = (function () {
       var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
       if (f) { surFichier(f); }
     });
-    // « alert » et non « status » : cette zone ne porte que le sort d'UN dépôt (en cours,
-    // refusé, réussi), jamais un message d'ambiance — elle mérite d'interrompre plutôt que
-    // d'attendre une pause dans la parole, contrairement à la barre d'état générale.
+    // « alert » et non « status » : cette zone porte le sort d'un dépôt (en cours, refusé,
+    // réussi), qui mérite d'interrompre la lecture, contrairement à la barre d'état générale.
     var etat = poser(d, 'span', 'szh-depot-etat');
     etat.setAttribute('role', 'alert');
     return { element: d, titre: titre, choisir: choisir, fichier: fichier, etat: etat };
   }
 
-  // Lecture d'un fichier en base64, formats et poids revérifiés ici et par l'hôte de toute
-  // façon : la webview le dit tout de suite plutôt que d'envoyer un fichier qu'il refusera.
+  // Lecture d'un fichier en base64. Formats et poids sont vérifiés ici pour répondre tout
+  // de suite, et revérifiés par l'hôte.
   //
   // opts.extensions, opts.maxi (octets), opts.surDonnees(fichier, base64),
   // opts.surErreur(message), opts.surLecture() (facultatif, appelé avant la lecture)

@@ -1,7 +1,7 @@
-// Webview « Vérification de l'import » : les mêmes cartes que « Métadonnées des
-// articles » (SZH.cartesArticles, media/_fiches.js), décorées d'un badge par champ et
-// d'un compteur de champs vides, plus une section « Originaux des images » où déposer
-// l'original d'une image importée, à nom conservé.
+// Webview « Vérification de l'import » : les cartes de « Métadonnées des articles »
+// (SZH.cartesArticles, _fiches.js), avec un badge par champ et un compteur de champs vides,
+// et une section « Originaux des images » où déposer l'original d'une image importée, sous
+// le même nom.
 //
 // Protocole avec l'hôte, en plus de photo-*, du DOI manuel et de l'enregistrement (voir
 // _fiches.js) :
@@ -17,13 +17,11 @@
   const vscodeApi = acquireVsCodeApi();
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
-  // Plus de plafond littéral ici : SZH.LIMITES.image (media/_commun.js), tenu à jour par
-  // le message « valeurs » de l'hôte (cartes.message, media/_fiches.js), lu au moment du
-  // dépôt — jamais mis en cache.
+  // Plafond de taille : SZH.LIMITES.image (_commun.js), mis à jour par le message « valeurs »
+  // (cartes.message, _fiches.js) et lu au moment du dépôt.
 
-  // Identifiants des champs vides d'une carte, d'après ses valeurs et les langues que la
-  // carte affiche (langue de l'article, langue de la revue, langues cochées). Fonction
-  // pure, sans DOM.
+  // Identifiants des champs vides d'une carte, d'après ses valeurs et les langues qu'elle
+  // affiche (langue de l'article, langue de la revue, langues cochées). Sans DOM.
   function listeChampsVides(valeurs, languesVisibles) {
     const v = valeurs || {};
     const langues = Array.isArray(languesVisibles) && languesVisibles.length > 0
@@ -36,8 +34,7 @@
         if (!plein((v[cle] || {})[lg])) { vides.push(cle + '.' + lg); }
       }
     }
-    // Le doi ne compte pas : il est calculé par l'hôte et affiché verrouillé, il n'y a
-    // rien à compléter — seule l'échappatoire « Définir manuellement le DOI » en pose un.
+    // Le DOI ne compte pas : il est calculé par l'hôte et affiché verrouillé.
     for (const lg of langues) {
       const liste = (v.keywords || {})[lg];
       if (!Array.isArray(liste) || !liste.some(plein)) { vides.push('keywords.' + lg); }
@@ -58,8 +55,8 @@
     return b;
   }
 
-  // Les langues que la carte affiche : la mécanique avec-<lang> de _fiches.js les pose
-  // et les tient à jour, y compris au changement de langue de l'article.
+  // Les langues que la carte affiche, posées et tenues à jour par la mécanique avec-<lang>
+  // de _fiches.js.
   function languesCarte(carte) {
     return ['fr', 'de', 'it'].filter((lg) => carte.classList.contains('avec-' + lg));
   }
@@ -83,9 +80,8 @@
     api: vscodeApi,
     txt: TXT,
     etat: etat,
-    // Les badges « à compléter » sont posés dans les intitulés, y compris ceux des
-    // traductions : les cacher au départ masquerait la moitié de ce que ce panneau
-    // annonce dans sa tête de carte.
+    // Les badges « à compléter » vont aussi dans les intitulés des traductions, sans quoi
+    // le compte de la tête de carte désignerait des champs invisibles.
     traductionsVisibles: true,
     decor: {
       titre: function (h2, slug) {
@@ -117,8 +113,8 @@
 
   // ---- Originaux des images ----
   //
-  // Une rangée par image de media/. Le remplacement est fait par l'hôte, qui demande
-  // confirmation et conserve le nom ; ici on lit le fichier déposé et on reflète l'état.
+  // Une rangée par image de media/. L'hôte fait le remplacement, après confirmation, en
+  // gardant le nom ; ici on lit le fichier déposé et on affiche l'état.
   function poserEtatImage(ligne, texte, estErreur) {
     const e = ligne.querySelector('.image-etat');
     if (!e) { return; }
@@ -189,8 +185,8 @@
     for (const image of images) { ligneImage(slug, zone, image); }
   }
 
-  // Rangée d'image visée par une réponse de l'hôte, slug et chemin relatif recontrôlés :
-  // jamais de sélecteur construit sur une valeur libre.
+  // Rangée d'image visée par une réponse de l'hôte, retrouvée par comparaison du slug et du
+  // chemin relatif, sans sélecteur construit sur une valeur libre.
   function trouverLigneImage(slug, relatif) {
     for (const ligne of conteneur.querySelectorAll('.image-ligne')) {
       const carte = ligne.closest('.carte');
@@ -199,12 +195,11 @@
     return null;
   }
 
-  // L'hôte répond sans renvoyer les valeurs quand l'enregistrement est automatique,
-  // pour ne pas re-rendre la page sous les doigts.
+  // En enregistrement automatique, l'hôte ne renvoie pas les valeurs, pour ne pas
+  // reconstruire la page pendant la saisie.
   cartes.enregistrement(document.getElementById('enregistrer'));
-  // « Fermer » : l'hôte décide, et demande confirmation si des modifications ne sont pas
-  // enregistrées. On lui passe l'état modifié et les cartes concernées, pour qu'il puisse
-  // enregistrer depuis sa propre boîte de dialogue.
+  // « Fermer » : l'hôte décide, et demande confirmation s'il reste des modifications. Il
+  // reçoit l'état et les cartes, pour pouvoir enregistrer depuis sa boîte de dialogue.
   document.getElementById('fermer').addEventListener('click', function () {
     vscodeApi.postMessage({ type: SZH.MSG.FERMER, modifie: cartes.estModifie(), articles: cartes.modifiees() });
   });

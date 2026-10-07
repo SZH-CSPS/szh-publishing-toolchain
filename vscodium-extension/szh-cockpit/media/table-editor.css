@@ -2,12 +2,10 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e2) var(--e4) 0;
   box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-/* La barre est .szh-barre (_design.css §3, --z-barre compris) : la carte pose sa classe
-   elle-même, cette page n'a plus à en redire le style — l'ancienne règle .barre ne
-   correspondait déjà plus à rien, l'élément portant toujours szh-barre. */
+/* La barre est .szh-barre (_design.css, --z-barre compris), posée par la carte. */
 :root {
-  /* Empilement propre à la grille du tableau : poignées collantes, bouton flottant. Une
-     échelle locale, sans rapport avec celle des autres pages (--z-menu excepté, partagé). */
+  /* Empilement propre à la grille du tableau : poignées collantes, bouton flottant
+     (--z-menu est partagé avec les autres pages). */
   --z-pnum: 2; --z-poignee: 3; --z-coin: 4; --z-plus: 900;
 }
 .grp { display: inline-flex; align-items: center; gap: var(--e1); padding: .1rem var(--e1);
@@ -25,25 +23,24 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: var(--rayon-mini); }
 #etat { font-size: var(--t-libelle); color: var(--encre-2); margin-left: var(--e1); }
 #indic { font-size: .95em; color: var(--avert); margin-left: .1rem; font-weight: 700; }
-/* Champs au-dessus de la grille, dans l'ordre de la fiche d'une image : la légende, qui
-   devient le <caption> du fichier, les crédits, puis l'accessibilité sous son intertitre.
-   Les intitulés sont au-dessus des champs, comme partout ailleurs. */
+/* Champs au-dessus de la grille, dans l'ordre de la fiche d'une image : la légende (le
+   <caption> du fichier), les crédits, puis l'accessibilité sous son intertitre. */
 .champs { display: flex; flex-direction: column; gap: var(--e2); padding: 0 0 var(--e3); }
 .champs .szh-champ { min-width: 0; }
 .champs .szh-section:first-child { margin-top: 0; }
-/* Corps : la colonne d'édition à gauche, le panneau de mise en forme à droite, empilés
-   sur un écran étroit. Un seul ascenseur pour tout l'éditeur — champs, grille et panneau
-   défilent ensemble, seule la barre reste en place. C'est aussi lui qui fige les en-têtes,
-   la position collante se mesurant sur le plus proche ancêtre qui défile. */
+/* Corps : la colonne d'édition à gauche, le panneau de mise en forme à droite, empilés sur
+   un écran étroit. Un seul ascenseur pour tout l'éditeur, seule la barre reste en place.
+   C'est aussi lui qui fige les en-têtes : la position collante se mesure sur le plus proche
+   ancêtre qui défile. */
 .corps { display: flex; flex: 1 1 auto; gap: var(--e3); min-height: 0;
   align-items: flex-start; flex-wrap: wrap; overflow: auto; }
-/* La colonne d'édition garde sa largeur minimale de contenu : un tableau trop large pousse
-   le panneau dessous, au lieu de déborder par-dessus faute d'ascenseur à lui. */
+/* La colonne d'édition garde sa largeur minimale : un tableau trop large pousse le panneau
+   dessous au lieu de déborder par-dessus. */
 .defile { flex: 1 1 22rem; }
 
 /* ---- Panneau de style ----
-   Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasse la hauteur utile
-   et le zébrage se retrouve hors écran. Il se replie en une colonne sous 34rem. */
+   Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasserait la hauteur utile.
+   Une seule colonne sous 34rem. */
 .panneau { flex: 0 0 34rem; max-width: 40rem;
   display: flex; flex-direction: row; flex-wrap: wrap; gap: .6rem; align-items: flex-start; }
 .panneau .colonne { flex: 1 1 15rem; min-width: 14rem;
@@ -73,10 +70,9 @@ table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: var(--
 table.grille .poignee.pnum { position: sticky; left: 0; z-index: var(--z-pnum); }
 table.grille .coin { position: sticky; top: 0; left: 0; z-index: var(--z-coin); }
 table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
-/* Une cellule d'en-tête est un <th>, que le navigateur met en gras par défaut, ce qui
-   laisse croire que le style « gras » est actif : on annule ce gras, le style réel étant
-   posé en ligne par l'aperçu. Le repère qui marque l'en-tête est un pseudo-élément, ni
-   éditable ni récolté. */
+/* Une cellule d'en-tête est un <th>, gras par défaut, ce qui ferait croire le style « gras »
+   actif : on annule ce gras, le style réel étant posé en ligne par l'aperçu. Le repère de
+   l'en-tête est un pseudo-élément, ni éditable ni récolté. */
 table.grille th.cell { font-weight: 400; }
 table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size: .8em;
   font-weight: 400; opacity: .5; vertical-align: .06em; }
@@ -92,8 +88,8 @@ table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
 .coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
 .poignee { position: relative; }
 .poignee.drop { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* Le « + » est centré par flex : line-height/text-align laissaient le glyphe décalé
-   vers le haut du cercle (métriques de la police système). */
+/* Le « + » est centré par flex : line-height et text-align le laissent décalé vers le haut
+   (métriques de la police système). */
 .plusins { position: fixed; z-index: var(--z-plus); width: 18px; height: 18px; padding: 0;
   display: flex; align-items: center; justify-content: center; line-height: 1;
   border-radius: 50%; font-size: 13px; font-weight: 700;
@@ -112,9 +108,8 @@ table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
   background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, rgba(128,128,128,.4))); }
 
 /* ---- Images des cellules ----
-   Une vignette de taille bornée, quelle que soit la largeur que le fichier demande au PDF
-   (width="173" venu du Word) : la grille reste lisible. La pastille reprend celle des
-   vignettes du gestionnaire des médias (medias-article.css, .vignette-alerte). */
+   Vignette de taille bornée, quelle que soit la largeur demandée au PDF (width="173" venu
+   du Word). La pastille reprend .vignette-alerte de medias-article.css. */
 .cimg { position: relative; display: inline-block; vertical-align: top; margin: .1em .15em;
   user-select: none; cursor: context-menu; }
 .cimg img { display: block; max-width: 10rem; max-height: 10rem; width: auto; height: auto;
@@ -130,7 +125,7 @@ table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
   background: var(--fond); color: var(--danger); border: 2px solid var(--danger);
   box-shadow: 0 0 0 1px var(--fond); }
 .cimg-alerte svg { width: 1rem; height: 1rem; }
-/* Saisie du texte alternatif : la modale du socle, avec une boîte de formulaire. */
+/* Saisie du texte alternatif : la modale de _design.css, avec une boîte de formulaire. */
 .saisie-alt .saisie-boite { display: flex; flex-direction: column; gap: var(--e3);
   width: min(34rem, 100%); padding: var(--e4) var(--e5);
   background: var(--vscode-editorWidget-background, var(--fond)); color: var(--encre);

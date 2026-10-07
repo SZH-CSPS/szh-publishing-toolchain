@@ -1,10 +1,9 @@
-/* Méta-données du livre : le pendant de metadata-issue.css pour buch.yaml — même cadre,
-   posé sur le socle (_design.css : body/h1 §0, largeur par défaut 52rem) et sur le
-   fragment partagé _numero.css, qui dessine les champs. Il ne reste ici que la largeur. */
+/* Métadonnées du livre (buch.yaml), sur le modèle de metadata-issue.css. Les champs sont
+   dessinés par _numero.css, le reste par _design.css. */
 body { --page-max: 38rem; }
 
-/* Auteur·e·s et éditeur·rice·s : les fiches des articles (_auteurs.css), l'une sous l'autre,
-   et le bouton « Ajouter » sous la dernière. */
+/* Auteur·e·s et éditeur·rice·s : les fiches de _auteurs.css, l'une sous l'autre, puis le
+   bouton « Ajouter ». */
 .personnes-liste { display: flex; flex-direction: column; gap: var(--e2); margin: var(--e1) 0 var(--e2); }
 
 /* Aide d'une ligne sous un champ (« // force un retour à la ligne »). */

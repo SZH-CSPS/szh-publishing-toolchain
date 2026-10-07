@@ -72,7 +72,7 @@
     b.type = 'button';
     b.id = 'onglet-' + o.cle;
     // Le pseudo-élément ::after réserve la largeur du libellé en gras : l'onglet choisi ne
-    // pousse plus ses voisins.
+    // pousse pas ses voisins.
     b.dataset.libelle = o.libelle;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-controls', 'panneau-' + o.cle);
@@ -117,7 +117,7 @@
     if (cle === 'secretariat') { assurerOjs(revueSec()); }
     if (cle === 'journal') { ouvrirJournalRecent(); }
   }
-  // Produits d'abord, toujours : c'est le geste de tous les quinze jours.
+  // Produits d'abord : c'est l'usage de tous les quinze jours.
   activer('produits', false);
 
   // ---- Le produit choisi ----
@@ -2073,8 +2073,8 @@
         etiquette.textContent = champ.libelle + (champ.requis ? ' *' : '');
         g.appendChild(etiquette);
         ojs.locales.forEach(function (loc) {
-          // Une revue absente de la configuration reçue (poste pas à jour, champ ajouté depuis)
-          // se lit vide plutôt que de faire lever toute la page.
+          // Une revue absente de la configuration reçue (poste pas à jour, champ ajouté
+          // depuis) se lit vide, sans faire échouer toute la page.
           g.appendChild(champTexte((ojs.config.revues[loc] || {})[champ.cle],
             champ.libelle + ' – ' + ojs.revues[loc], { revue: loc, champ: champ.cle }));
         });
@@ -2209,7 +2209,7 @@
       ojs.locales.forEach(function (loc) { revues[loc] = {}; });
       ojsZone.querySelectorAll('[data-champ]').forEach(function (champ) {
         // Un champ dont la revue n'est plus une locale connue (config rechargée entre-temps)
-        // est ignoré plutôt que de faire échouer toute la collecte.
+        // est ignoré, sans faire échouer toute la collecte.
         if (!revues[champ.dataset.revue]) { return; }
         revues[champ.dataset.revue][champ.dataset.champ] = champ.value.trim();
       });
@@ -2286,10 +2286,10 @@
     });
 
     // ---- Tâches par article ----
-    // Les intitulés décrivent le PROCESSUS éditorial d'une revue : ils valent pour tous ses
-    // numéros. L'identifiant n'est PAS à l'écran : c'est lui qui est écrit dans le sidecar de
-    // chaque article, et le montrer inviterait à le corriger, ce qui décocherait la tâche
-    // partout. Il voyage dans un attribut et ne bouge plus (normaliserTaches, lib/articles.js).
+    // Les intitulés décrivent le processus éditorial d'une revue : ils valent pour tous ses
+    // numéros. L'identifiant n'est pas affiché : il est écrit dans le sidecar de chaque
+    // article, et le corriger décocherait la tâche partout. Il voyage dans un attribut et ne
+    // change pas (normaliserTaches, lib/articles.js).
     var taches = null;           // { revues: [{cle, libelle}], table: {revue: [...]}, max }
     var tachesModifie = false;
     function marquerTaches() { tachesModifie = true; autoTaches.programmer(); }
@@ -2358,8 +2358,8 @@
       resume(blocTaches, morceaux.join(' – '));
       appliquerVerrou();                     // le bloc vient d'être reconstruit, à neuf
     }
-    // Relit l'écran. L'identifiant vient de l'attribut, jamais d'un recalcul : corriger une faute
-    // dans un intitulé ne doit pas décocher la tâche sur les articles qui la portent.
+    // Relit l'écran. L'identifiant vient de l'attribut, sans recalcul : corriger une faute
+    // dans un intitulé ne décoche pas la tâche sur les articles qui la portent.
     function collecterTaches() {
       var sortie = {};
       taches.revues.forEach(function (revue) { sortie[revue.cle] = []; });
@@ -2384,20 +2384,19 @@
     });
 
     // ---- Le verrou ----
-    // Ces blocs décrivent la chaîne de publication, pas le confort d'une personne : une rubrique
-    // renommée sur un seul poste range ses articles dans la mauvaise section de la revue. Ils se
-    // lisent donc seulement, et la page ne décide jamais de son verrou : elle demande, et se règle
-    // sur ce que l'hôte répond (c'est lui qui pose la modale, qu'une webview ne peut pas bloquer).
+    // Ces blocs décrivent la chaîne de publication : une rubrique renommée sur un seul poste
+    // range ses articles dans la mauvaise section de la revue. Ils sont donc en lecture
+    // seule par défaut. La page demande le déverrouillage et suit la réponse de l'hôte, qui
+    // pose la modale (une webview ne peut pas en bloquer une).
     var protegesEtat = { deverrouille: false, divergences: [], avertissement: '' };
-    // Posé sur les CONTRÔLES des trois blocs, et non sur chaque fabrique de champ : un champ
-    // ajouté plus tard est verrouillé sans qu'on ait à y penser.
+    // Le verrou porte sur les contrôles des trois blocs, et non sur chaque fabrique de
+    // champ : un champ ajouté plus tard est verrouillé lui aussi.
     function appliquerVerrou() {
       var verrouille = !protegesEtat.deverrouille;
       [biblioZone, tachesZone, ojsZone].forEach(function (bl) {
         bl.querySelectorAll('input, select, textarea, button').forEach(function (el) {
           // readOnly sur un champ de saisie, disabled sur le reste : un champ désactivé sort de
-          // l'ordre de tabulation et n'est plus lisible au lecteur d'écran, alors qu'un réglage
-          // qu'on ne peut pas changer doit rester lisible.
+          // l'ordre de tabulation et n'est plus lu par le lecteur d'écran.
           if (el.tagName === 'INPUT' && el.type === 'text') { el.readOnly = verrouille || !!el.dataset.livree; }
           else { el.disabled = verrouille; }
           el.classList.toggle('fige', verrouille);
@@ -2419,11 +2418,11 @@
 
     // Rend vrai quand le message est un message des réglages.
     function surMessage(msg) {
-      // Un accusé nomme son bloc : sans cela, l'accusé de l'un confirmerait l'écriture en vol de
-      // l'autre. Le bloc sans nom est celui de l'export OJS, le plus ancien des trois.
+      // Un accusé nomme son bloc, sans quoi l'accusé de l'un confirmerait l'écriture en cours
+      // de l'autre. Le bloc sans nom est celui de l'export OJS.
       if (msg.type === MSG.ENREGISTRE) { confirmerBloc(msg.bloc); return true; }
-      // Une écriture ratée relâche le verrou de l'auto-enregistrement autant qu'un succès : sinon
-      // plus rien ne s'enregistre jamais après le premier échec.
+      // Une écriture ratée relâche le verrou de l'auto-enregistrement comme un succès : sinon
+      // plus rien ne s'enregistrerait après le premier échec.
       if (msg.type === MSG.ERREUR) {
         if (msg.bloc !== 'service') { confirmerBloc(msg.bloc); }
         afficherErreur(msg.message);

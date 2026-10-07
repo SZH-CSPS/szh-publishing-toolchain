@@ -1,36 +1,29 @@
 (function () {
 'use strict';
-// Gestionnaire des médias d'un article : une carte par figure — une image seule, ou toutes
-// les images d'une même grille — repliée sur ses seuls aperçus. En pied, les portraits des
-// auteur·e·s, qui ne sont pas des figures : on n'y juge que la qualité, on y choisit la
-// version retenue, et on les remplace.
+// Gestionnaire des médias d'un article : une carte par figure (une image seule, ou toutes
+// les images d'une même grille), repliée sur ses aperçus. En pied, les portraits des
+// auteur·e·s, qui ne sont pas des figures : on en juge la qualité, on choisit la version
+// retenue, on les remplace.
 //
-// Ce que la disposition dit. Une figure ouverte est longue à parcourir, et la plupart du
-// temps on ne regarde qu'une image parmi d'autres : la carte reste donc courte par défaut,
-// réduite à la rangée d'aperçus et à l'ajout d'une image à côté. Cliquer sur un aperçu
-// déplie son formulaire sous la rangée — jamais un formulaire par image empilé, jamais deux
-// ouverts à la fois dans la même figure — et le marque des deux côtés : un filet d'accent
-// sur l'aperçu, et un autre sur le bord gauche du formulaire qu'il commande. Une figure de
-// plusieurs images porte en plus un accordéon, replié lui aussi : les réglages qui valent
-// pour le groupe entier — disposition, légende de la figure — n'ont pas leur place dans le
-// formulaire d'une image parmi d'autres. Ce qui ne change pas avec le pli : l'état d'une
-// image — jamais insérée, basse résolution, muette, doublon — se lit sur son aperçu sans
-// rien déplier, parce qu'un défaut caché derrière un pli est un défaut qu'on ne corrige
-// jamais.
+// Disposition. La carte reste courte par défaut : la rangée d'aperçus et l'ajout d'une
+// image à côté. Un clic sur un aperçu déplie son formulaire sous la rangée (un seul ouvert
+// à la fois par figure), marqué par un filet d'accent sur l'aperçu et sur le bord gauche du
+// formulaire. Une figure de plusieurs images a en plus un accordéon, replié, pour les
+// réglages du groupe (disposition, légende de la figure). L'état d'une image (jamais
+// insérée, basse résolution, muette, doublon) se lit sur son aperçu sans rien déplier.
 //
-// Mêmes règles que les autres webviews : aucune donnée dans le HTML, tout arrive par
-// postMessage, page construite en DOM sans innerHTML. Les aperçus sont des data: URI
-// fournies par l'hôte, d'où le img-src data: de la CSP.
+// Comme les autres webviews : aucune donnée dans le HTML, tout arrive par postMessage, page
+// construite en DOM sans innerHTML. Les aperçus sont des data: URI fournies par l'hôte,
+// d'où le img-src data: de la CSP.
 //
-// Les auteur·e·s sont affichés et édités par SZH.auteurs (media/_auteurs.js), le même
-// composant que le formulaire des métadonnées : la fiche, la modale, le dépôt de photo et
-// le choix de version n'existent qu'une fois. Cette vue n'apporte que l'écriture, immédiate
-// ici puisqu'il n'y a pas de carte d'article à enregistrer.
+// Les auteur·e·s sont affichés et édités par SZH.auteurs (_auteurs.js), le composant du
+// formulaire des métadonnées. Cette vue ajoute l'écriture, immédiate ici puisqu'il n'y a
+// pas de carte d'article à enregistrer.
 //
 // Une grille est une figure faite de plusieurs images : un numéro, une légende, un bloc. Sa
-// légende n'appartient qu'à l'ancre — la première image — et vit dans l'accordéon du
-// groupe ; les autres membres n'ont pas de champ légende du tout, et rendent au moment
-// d'enregistrer la valeur reçue de l'hôte, telle quelle.
+// légende appartient à l'ancre (la première image) et se saisit dans l'accordéon du
+// groupe ; les autres membres n'ont pas de champ légende, et renvoient à l'enregistrement
+// la valeur reçue de l'hôte.
 //
 // Protocole. Vers l'hôte :
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
@@ -55,11 +48,9 @@
 // { disposition, auto, membres } ; et un portrait { base, index, nom, auteur, auteurFiche,
 // version, description, apercu, qualite, rattache }.
 var api = acquireVsCodeApi();
-// Mêmes plafonds et mêmes formats que l'hôte, qui recontrôle tout : ici, c'est pour
-// répondre tout de suite plutôt que d'envoyer 50 Mo pour rien. Plus de littéral recopié
-// depuis lib/medias.js : SZH.LIMITES.image (media/_commun.js) porte le repli, et le
-// message « charger » de l'hôte (limites.imageMax/imageExtensions) le tient à jour —
-// recalculé à chaque chargement (voir plus bas, SZH.MSG.CHARGER).
+// Plafonds et formats contrôlés ici pour répondre tout de suite, sans envoyer 50 Mo pour
+// rien ; l'hôte recontrôle. SZH.LIMITES.image (_commun.js) porte le repli, et le message
+// « charger » (limites.imageMax/imageExtensions) le met à jour à chaque chargement.
 function imageDepot() {
   return Object.assign({ format: 'errFormat', poids: 'errTropVolumineuse' }, SZH.LIMITES.image);
 }
@@ -68,31 +59,30 @@ var TXT = {}, ctl = {}, cartes = [], figures = [], portraits = [], dernierModifi
 // Course pret/charger (SZH.jetonDejaTraite, _commun.js) : un jeton, un seul formulaire.
 var etatJeton = { jeton: null };
 // Les grilles de l'article, telles que l'hôte les a lues dans le .md, et ce qu'il permet
-// d'en faire. Rien n'est recalculé ici : les cartes portent l'indice de leur grille, la
-// disposition automatique est celle que le rendu choisira, et le formulaire ne fait que
-// les montrer.
+// d'en faire. Rien n'est recalculé ici : les cartes portent l'indice de leur grille, et la
+// disposition automatique est celle que le rendu choisira.
 var grilles = [], DISPOSITIONS = {}, GRILLE_MAX = 6, AUTO = 'auto';
 var barre = document.getElementById('barre');
 var corps = document.getElementById('corps');
 var modale = null;
 
-// bouton/boutonIcone/texte/ligne/remplir : identiques à documentation.js, partagées
-// depuis _commun.js — texte() y est déjà connu sous le nom SZH.poser.
+// bouton/boutonIcone/texte/ligne/remplir : partagées avec documentation.js par _commun.js
+// (texte() s'y appelle SZH.poser).
 var bouton = SZH.bouton;
 var boutonIcone = SZH.boutonIcone;
 var texte = SZH.poser;
 var ligne = SZH.ligne;
 function remplir(cle, valeurs) { return SZH.remplir(TXT, cle, valeurs); }
 function etat(msg) { SZH.poserEtat(ctl.etat, msg); }
-// Écriture immédiate : cette vue n'a pas de carte d'article à enregistrer, et la fiche
-// d'auteur·e n'a donc nulle part où attendre. L'hôte confirme, ou dit pourquoi il refuse.
+// Écriture immédiate : sans carte d'article à enregistrer, la fiche d'auteur·e n'a pas où
+// attendre. L'hôte confirme, ou dit pourquoi il refuse.
 var attenteAuteur = null;
 var ctlAuteurs = null;
 function creerCtlAuteurs() {
   return SZH.auteurs({
     api: api, txt: TXT,
-    // Ce panneau sait agrandir une image : c'est son métier de la juger, et une pastille
-    // de trois rem ne suffit pas à décider si un portrait tient la page.
+    // Ce panneau sert à juger les images : une pastille de trois rem ne suffit pas à dire si
+    // un portrait tient la page, on peut donc l'agrandir.
     surApercu: function (uri, nom) { ouvrirModale(uri, nom); },
     persister: function (fiche, auteur, fini) {
       attenteAuteur = { index: fiche.index, fini: fini };
@@ -106,7 +96,7 @@ function creerCtlAuteurs() {
 }
 
 // ---- Valeurs d'une carte ----
-// Les deux états du texte alternatif viennent du choix de rôle, jamais d'un champ vide :
+// Les deux états du texte alternatif viennent du choix de rôle, pas d'un champ vide :
 //   « décrit »     -> altDefini vaut vrai si le champ porte un texte ; sinon l'attribut
 //                     est absent et le pipeline retombe sur la légende ;
 //   « décorative » -> altDefini vaut vrai avec une valeur vide, ce qui écrit alt="" et
@@ -115,9 +105,9 @@ function creerCtlAuteurs() {
 // comme dans lib/references.js.
 function decorative(c) { return !!(c.ctl.roleDeco && c.ctl.roleDeco.checked); }
 function horsFigure(c) { return !!(c.ctl.horsFigure && c.ctl.horsFigure.checked); }
-// Un membre de grille sans champ légende (tous, sauf l'ancre) n'a rien à relire : on rend
-// la valeur reçue de l'hôte, mémorisée à la construction. Sans cela une légende parasite
-// resterait sur une image suivante et serait effacée au premier enregistrement, en silence.
+// Un membre de grille sans champ légende (tous sauf l'ancre) renvoie la valeur reçue de
+// l'hôte, gardée à la construction. Sinon une légende parasite resterait sur une image
+// suivante et serait effacée en silence au premier enregistrement.
 function legendeDe(c) {
   return c.ctl.legende ? (horsFigure(c) ? '' : ligne(c.ctl.legende.value)) : c.legendeFigee;
 }
@@ -148,8 +138,8 @@ function poserValeurs(c, v) {
   c.ctl.source.value = String(v.source || '');
   if (c.ctl.note) { c.ctl.note.value = String(v.note || ''); }
   // « Sans légende ni numéro » n'a pas de sens dans une grille : c'est la figure entière
-  // qui porte le numéro, et l'image n'a pas de légende propre à supprimer. La case est
-  // décochée d'office, et le prochain enregistrement ôtera la classe du .md.
+  // qui porte le numéro. La case est décochée d'office, et le prochain enregistrement
+  // retire la classe du .md.
   c.ctl.horsFigure.checked = !!v.horsFigure && c.grille === null;
 }
 function majRole(c) {
@@ -162,20 +152,19 @@ function majRole(c) {
   majPastilles(c);
 }
 
-// Ni texte alternatif, ni légende sur laquelle retomber, et pas déclarée décorative : le
-// rendu la traitera en image décorative, ce que personne n'a forcément décidé. Même règle
-// que imagesSansAlternative() de lib/references.js, que l'export OJS applique au moment de
-// publier ; ici elle se voit pendant la saisie.
-// Fonction pure : le formulaire (texte complet) et la pastille (juste sa présence) lisent
-// tous deux ce message, pour ne jamais diverger.
+// Ni texte alternatif, ni légende sur laquelle retomber, ni rôle décoratif : le rendu
+// traiterait l'image comme décorative sans que personne l'ait décidé. Même règle que
+// imagesSansAlternative() de lib/references.js, appliquée par l'export OJS ; ici, elle se
+// voit pendant la saisie. Le formulaire (texte complet) et la pastille (présence seule)
+// lisent tous deux ce message.
 function messageAlerteAlt(c) {
-  // Carte verrouillée (aucune insertion) : les trois remèdes que le message propose sont
-  // hors d'atteinte, et le rendu n'affiche pas l'image. Rien à dire ici.
+  // Carte verrouillée (aucune insertion) : les remèdes proposés sont hors d'atteinte, et le
+  // rendu n'affiche pas l'image. Pas de message.
   if (c.occurrences === 0) { return ''; }
   var manque = !decorative(c) && ligne(c.ctl.alt.value) === ''
     && (horsFigure(c) || legendeDe(c) === '');
   if (manque) { return TXT.altManquant || ''; }
-  // c.sansAlternative vient de l'hôte, qui a lu toutes les insertions : il tombe à
+  // c.sansAlternative vient de l'hôte, qui a lu toutes les insertions ; il disparaît à
   // l'enregistrement, qui les aligne sur les valeurs de la carte.
   if (c.sansAlternative) { return TXT.altDivergent || ''; }
   return '';
@@ -191,8 +180,7 @@ function majAlerteAlt(c) {
   }
 }
 
-// Verdict de qualité, sous l'image qu'il juge : il vient de l'hôte (lib/qualite-image.js),
-// la webview n'en refait pas le calcul.
+// Verdict de qualité, sous l'image qu'il juge, calculé par l'hôte (lib/qualite-image.js).
 function messageQualite(q) {
   q = q || {};
   if (q.niveau !== 'insuffisant' && q.niveau !== 'juste') { return ''; }
@@ -205,8 +193,8 @@ function messageQualite(q) {
 function poserQualite(boite, qualite) {
   boite.textContent = '';
   var q = qualite || {};
-  // Le ton est reposé à chaque verdict : après un remplacement réussi, la classe
-  // « attention » du fichier précédent ne doit pas rester accrochée à la boîte.
+  // Le ton est reposé à chaque verdict : après un remplacement, la classe « attention » du
+  // fichier précédent ne doit pas rester.
   if (q.niveau !== 'insuffisant' && q.niveau !== 'juste') {
     boite.className = 'szh-notif';
     boite.hidden = true;
@@ -219,9 +207,8 @@ function poserQualite(boite, qualite) {
 }
 
 // Le ton d'une image, calculé une seule fois pour que le cadre de la vignette et sa pastille
-// ne puissent jamais se contredire. Rouge est seul à bloquer — une image muette fait échouer
-// la validation PDF/UA, donc l'export — les deux autres défauts partent tels quels si
-// personne n'y touche.
+// concordent. Seul le rouge bloque : une image muette fait échouer la validation PDF/UA,
+// donc l'export ; les deux autres défauts n'empêchent pas la publication.
 function tonImage(c) {
   if (messageAlerteAlt(c) !== '') { return 'danger'; }
   if ((c.qualite && (c.qualite.niveau === 'insuffisant' || c.qualite.niveau === 'juste'))
@@ -231,9 +218,9 @@ function tonImage(c) {
   return '';
 }
 
-// Pastilles d'état : deux conteneurs identiques, la vignette repliée et l'en-tête du
-// formulaire déplié, pour que ce qui cloche se voie même sans rien ouvrir. Chaque pastille de
-// ton porte son pictogramme avant son texte : la couleur seule ne parle pas à tout le monde.
+// Pastilles d'état, dans deux conteneurs identiques : la vignette repliée et l'en-tête du
+// formulaire déplié. Chaque pastille porte son pictogramme avant son texte, en plus de la
+// couleur.
 function remplirPastilles(zone, c) {
   zone.textContent = '';
   if (c.occurrences === 0) {
@@ -261,8 +248,8 @@ function majPastilles(c) {
   if (c.ctl.pastilles) { remplirPastilles(c.ctl.pastilles, c); }
   if (c.ctl.pastillesVignette) { remplirPastilles(c.ctl.pastillesVignette, c); }
   majDoublon(c);
-  // Le ton se repose à chaque mise à jour, comme le verdict de qualité : sans cela, la
-  // classe du fichier remplacé resterait accrochée au cadre de son remplaçant.
+  // Le ton est reposé à chaque mise à jour, comme le verdict de qualité, pour ne pas garder
+  // la classe du fichier remplacé.
   if (c.ctl.vignetteImage) {
     c.ctl.vignetteImage.className = 'vignette-image';
     var ton = tonImage(c);
@@ -271,13 +258,12 @@ function majPastilles(c) {
   majAlerteVignette(c);
 }
 
-// Le triangle rouge posé sur le coin de l'aperçu : ce qui bloque l'export se repère d'un
-// coup d'œil dans une liste de vingt images, sans lire les pastilles. Il ne suit que le
-// rouge de tonImage — l'image muette, seul défaut bloquant que les données d'une image
-// portent (le fichier existe par construction : la liste est lue sur le disque ; un JPEG
-// CMJN est converti à l'import ; basse résolution, doublon et « jamais insérée » partent
-// tels quels). L'infobulle est courte ; le message complet est dans le formulaire, et la
-// pastille « image muette » le redit en texte pour le lecteur d'écran — d'où aria-hidden.
+// Le triangle rouge sur le coin de l'aperçu : ce qui bloque l'export se repère dans une
+// liste de vingt images sans lire les pastilles. Il suit le rouge de tonImage : l'image
+// muette, seul défaut bloquant que portent les données d'une image (le fichier existe, la
+// liste étant lue sur le disque ; un JPEG CMJN est converti à l'import). L'infobulle est
+// courte ; le message complet est dans le formulaire, et la pastille « image muette » le
+// redit en texte pour le lecteur d'écran, d'où aria-hidden.
 function majAlerteVignette(c) {
   var a = c.ctl.alerteVignette;
   if (!a) { return; }
@@ -286,10 +272,9 @@ function majAlerteVignette(c) {
   a.title = bloque ? (TXT.alerteDescription || '') : '';
 }
 
-// Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu. Le nom du
-// jumeau est écrit dans la carte, et non porté par l'infobulle d'une pastille : au clavier
-// comme au lecteur d'écran, un title sur un span n'est jamais lu, et sans le nom on ne
-// peut pas agir.
+// Deux noms pour un seul visuel, reconnus par l'hôte à l'empreinte du contenu. Le nom du
+// jumeau est écrit dans la carte : un title sur un span n'est lu ni au clavier ni par le
+// lecteur d'écran, et sans le nom on ne peut pas agir.
 function majDoublon(c) {
   var b = c.ctl.doublon;
   if (!b) { return; }
@@ -317,8 +302,8 @@ function majModifie() {
   }
   if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: SZH.MSG.MODIFIE, modifie: m }); }
 }
-// Cartes à écrire : celles qui ont au moins une insertion dans le texte, seul endroit où
-// une légende et des crédits se rangent.
+// Cartes à écrire : celles qui ont au moins une insertion dans le texte, seul endroit où se
+// rangent légende et crédits.
 function medias() {
   var res = [];
   for (var i = 0; i < cartes.length; i++) {
@@ -329,8 +314,8 @@ function medias() {
 }
 
 // ---- Briques d'un formulaire ----
-// `libelle` remplace l'intitulé par défaut : la légende d'une grille est celle de la
-// figure entière, et l'intitulé doit le dire là où le champ ne le dirait pas.
+// `libelle` remplace l'intitulé par défaut : la légende d'une grille est celle de la figure
+// entière, et l'intitulé doit le dire.
 function champ(parent, c, cle, libelle) {
   var d = texte(parent, 'div', 'szh-champ');
   var id = 'ch-' + cle + '-' + c.index;
@@ -367,9 +352,8 @@ function caseHorsFigure(parent, c) {
   c.ctl.horsFigure = i;
 }
 
-// La carte porte deux zones de dépôt — remplacer, et ajouter à côté — et la réponse doit
-// s'afficher dans celle d'où le fichier est parti : un « format non pris en charge » sous
-// l'autre zone se lirait comme un reproche adressé au mauvais geste.
+// La carte porte deux zones de dépôt (remplacer, ajouter à côté) ; la réponse s'affiche
+// dans celle d'où le fichier est parti.
 function poserEtatMedia(c, message, erreur) {
   var cible = c.ctl.zoneActive || c.ctl.etatMedia;
   if (!cible) { return; }
@@ -381,13 +365,11 @@ function poserEtatMedia(c, message, erreur) {
   cible.className = 'szh-depot-etat' + (erreur ? ' erreur' : '');
 }
 
-// Lit le fichier déposé ou choisi et l'envoie à l'hôte, qui demande confirmation, garde
-// le nom du fichier cible et répond media-remplace / media-erreur / media-annulee.
-// Un seul geste de fichier à la fois par figure : la classe .occupe va sur la carte de
-// figure entière, qui porte les deux zones de dépôt de tous ses membres. La lecture et le
-// découpage base64 sont ceux de SZH.lireBase64 (_commun.js), communs aux cinq pages qui
-// déposent un fichier ; ce qui reste propre à cette carte, c'est le verrou « occupe » et
-// le message à construire.
+// Lit le fichier déposé ou choisi et l'envoie à l'hôte, qui demande confirmation, garde le
+// nom du fichier cible et répond media-remplace / media-erreur / media-annulee. Un seul
+// dépôt à la fois par figure : la classe .occupe va sur la carte de figure entière, qui
+// porte les zones de dépôt de tous ses membres. Lecture et découpage base64 :
+// SZH.lireBase64 (_commun.js).
 function envoyerFichier(c, f, typeMessage, cle, genre, extra, zone) {
   if (c.figure.element.classList.contains('occupe')) { return; }
   c.ctl.zoneActive = zone || null;                 // là où la réponse s'affichera
@@ -395,8 +377,8 @@ function envoyerFichier(c, f, typeMessage, cle, genre, extra, zone) {
     extensions: genre.extensions, maxi: genre.maxi,
     msgFormat: '⚠ ' + (TXT[genre.format] || ''), msgPoids: '⚠ ' + (TXT[genre.poids] || ''),
     surLecture: function () {
-      // Marquée occupée avant la lecture, pas dans son rappel : deux dépôts rapprochés
-      // passeraient sinon tous les deux la garde et écriraient deux fois.
+      // Marquée occupée avant la lecture, et non dans son rappel : sinon deux dépôts
+      // rapprochés passeraient tous deux la garde et écriraient deux fois.
       c.figure.element.classList.add('occupe');    // levée par la réponse de l'hôte
       poserEtatMedia(c, '…');
     },
@@ -413,18 +395,17 @@ function envoyerFichier(c, f, typeMessage, cle, genre, extra, zone) {
   });
 }
 
-// Le dépôt vient juste sous l'image, après le verdict de qualité : on regarde le fichier,
-// on lit ce qui lui manque, on le remplace. Un intitulé court suffit à cette place.
-// `o` = { type, cle, genre, libelle, icone, tip, extra } ; `extra` (une fonction) ajoute
-// des champs au message au moment du dépôt — c'est par là qu'un « ajouter à côté » emporte
-// les saisies en cours, qu'une réécriture du .md écraserait sinon.
+// Le dépôt vient sous l'image, après le verdict de qualité. `o` = { type, cle, genre,
+// libelle, icone, tip, extra } ; `extra` (une fonction) ajoute des champs au message au
+// moment du dépôt : c'est ainsi qu'« ajouter à côté » emporte les saisies en cours,
+// qu'une réécriture du .md écraserait.
 function zoneDepot(parent, c, o) {
   var d = SZH.construireDepot({
     parent: parent, tip: o.tip, icone: o.icone || 'camera', libelle: o.libelle || '',
     extensions: o.genre.extensions, texteChoisir: TXT.choisirFichier || '',
     surFichier: function (f) {
-      // Un dépôt sur une zone que son état refuse doit dire pourquoi, à cet endroit-là :
-      // l'infobulle du cadre ne se lit pas quand on vient de lâcher un fichier dessus.
+      // Un dépôt sur une zone que son état refuse dit pourquoi à cet endroit : l'infobulle du
+      // cadre ne se lit pas quand on vient d'y lâcher un fichier.
       var refus = o.refus ? o.refus() : '';
       if (refus) {
         c.ctl.zoneActive = d.etat;
@@ -437,16 +418,15 @@ function zoneDepot(parent, c, o) {
   if (!c.ctl.etatsMedia) { c.ctl.etatsMedia = []; }
   c.ctl.etatsMedia.push(d.etat);
   if (!c.ctl.etatMedia) { c.ctl.etatMedia = d.etat; }   // repli : la première zone posée
-  // Deux appelants (zoneACote, ci-dessous) attendent encore etat/boutonChoisir sur
-  // l'élément rendu, comme l'ancienne implémentation : on les y repose.
+  // Deux appelants (zoneACote, ci-dessous) lisent etat/boutonChoisir sur l'élément rendu :
+  // on les y pose.
   d.element.etat = d.etat;
   d.element.boutonChoisir = d.choisir;
   return d.element;
 }
 
-// L'aperçu d'une vignette : image, ou constat qu'il n'y en a pas. Contrairement à l'ancien
-// aperçu de carte, un clic ne l'agrandit plus — le clic de la vignette sert au pli — d'où un
-// simple span, jamais un bouton imbriqué dans le bouton .vignette.
+// L'aperçu d'une vignette : l'image, ou un texte s'il n'y en a pas. Le clic de la vignette
+// sert au pli : l'aperçu est un simple span, pas un bouton imbriqué dans le bouton .vignette.
 function poserVignetteImage(zone, apercu) {
   zone.textContent = '';
   if (!apercu) {
@@ -459,8 +439,8 @@ function poserVignetteImage(zone, apercu) {
   zone.appendChild(img);
 }
 
-// L'aperçu des portraits, lui, reste un bouton agrandissant : ce n'est pas une figure, et
-// il n'y a pas de pli à gérer autour de lui.
+// L'aperçu des portraits est un bouton qui agrandit : ce n'est pas une figure, il n'y a pas
+// de pli.
 function poserVisuel(zone, nom, apercu) {
   zone.textContent = '';
   if (!apercu) {
@@ -481,12 +461,11 @@ function poserVisuel(zone, nom, apercu) {
 }
 
 // ---- Modale d'aperçu ----
-// L'aperçu du formulaire est petit par nécessité : c'est là qu'on juge une image, et il faut
-// pouvoir la voir en grand sans quitter le formulaire.
+// L'aperçu du formulaire est petit : on peut agrandir l'image sans quitter le formulaire.
 function ouvrirModale(apercu, nom) {
   if (!modale) { return; }
-  // D'où l'on vient : le bouton d'aperçu disparaît du flux quand la modale se ferme, et
-  // sans cela le clavier repartirait du haut du formulaire.
+  // Le bouton d'aperçu peut avoir quitté le flux à la fermeture ; sans cette mémoire, le
+  // clavier repartirait du haut du formulaire.
   modale.retour = document.activeElement || null;
   modale.img.src = apercu;
   modale.img.alt = nom || '';
@@ -522,8 +501,8 @@ function construireModale() {
 
 // ---- Grilles ----
 // Une disposition est une suite de rangées : « 2-2 » = deux rangées de deux. Le libellé se
-// déduit de la forme plutôt que d'une clé par cas — seize dispositions feraient seize
-// libellés à traduire, et le jour où la table en gagne une, sa ligne manquerait.
+// déduit de la forme plutôt que d'une clé par cas, pour ne pas multiplier les libellés à
+// traduire.
 function libelleDisposition(code) {
   var r = String(code).split('-').map(Number);
   if (r.length === 1) { return remplir('dispositionLigne', [r[0]]); }
@@ -549,8 +528,8 @@ function grilleDe(c) {
 }
 
 // Les images qu'on peut mettre à côté de celle-ci : celles qui ne sont pas déjà dans une
-// grille et qui ne sont pas insérées plusieurs fois. Une image insérée deux fois n'est pas
-// candidate parce que rien ne dirait laquelle de ses insertions doit être déplacée.
+// grille et qui ne sont insérées qu'une fois (pour une image insérée deux fois, rien ne
+// dirait quelle insertion déplacer).
 function candidates(c) {
   var res = [];
   for (var i = 0; i < cartes.length; i++) {
@@ -561,23 +540,21 @@ function candidates(c) {
   return res;
 }
 
-// La seconde zone de dépôt, sous celle qui remplace, et volontairement de la même forme :
-// deux gestes voisins, deux cadres voisins, et c'est le titre qui les distingue. Elle
-// accepte un fichier venu du disque — ce que le choix parmi les images de l'article ne
-// permettait pas — et garde ce choix-là en second bouton, parce qu'après un import Word
-// les images à ranger côte à côte sont déjà toutes dans l'article.
+// La seconde zone de dépôt, sous celle qui remplace, de même forme ; le titre les distingue.
+// Elle accepte un fichier venu du disque, et propose en second bouton le choix parmi les
+// images de l'article (après un import Word, elles y sont souvent déjà).
 //
-// Une seule par figure, posée sous .figure-vignettes, ancrée sur l'ancre de la figure —
-// c'est correct : poserDansGrille() ajoute en queue de la grille quelle que soit l'ancre.
+// Une seule par figure, sous .figure-vignettes, ancrée sur l'ancre de la figure :
+// poserDansGrille() ajoute en queue de la grille quelle que soit l'ancre.
 //
-// Ce que le dépôt ne fait pas : écraser. Le fichier entre sous un nom neuf, et l'hôte
-// demande confirmation avant d'écrire quoi que ce soit.
+// Le dépôt n'écrase rien : le fichier entre sous un nom neuf, et l'hôte demande
+// confirmation avant d'écrire.
 function zoneACote(parent, c) {
   var d = zoneDepot(parent, c, {
     type: SZH.MSG.AJOUTER_A_COTE, cle: 'relatif', genre: IMAGE, icone: 'plus',
     libelle: TXT.grilleDeposer || '', tip: TXT.grilleDeposerTip || '',
-    // Les saisies en cours voyagent avec le fichier : la pose réécrit le .md et recharge
-    // le formulaire, qui les perdrait.
+    // Les saisies en cours partent avec le fichier : la pose réécrit le .md et recharge le
+    // formulaire, qui les perdrait.
     extra: function () { return { medias: medias() }; },
     refus: function () { return empechementGrille(c); }
   });
@@ -585,8 +562,7 @@ function zoneACote(parent, c) {
   var article = bouton(TXT.grilleDeposerArticle || '', function () { ouvrirChoixGrille(c); });
   d.insertBefore(article, d.etat);
 
-  // Le choix parmi les images de l'article, déplié sous la zone : une modale de plus,
-  // pour une liste de cinq noms, coûterait plus qu'elle ne rapporte.
+  // Le choix parmi les images de l'article, déplié sous la zone plutôt que dans une modale.
   var choix = texte(d, 'div', 'grille-choix');
   choix.hidden = true;
   var id = 'grille-ajout-' + c.index;
@@ -624,13 +600,13 @@ function ouvrirChoixGrille(c) {
   try { sel.focus(); } catch (e) { /* pas focalisable */ }
 }
 
-// Ce qui empêche d'ajouter une voisine se dit sur la zone elle-même : sans cela le dépôt
-// se ferait, l'hôte refuserait, et rien n'aurait prévenu. Deux empêchements seulement
-// portent sur le fichier déposé — image jamais insérée, grille pleine ; le troisième
-// (aucune autre image de l'article) ne concerne que le second bouton.
+// Ce qui empêche d'ajouter une voisine se dit sur la zone elle-même, avant que l'hôte ne
+// refuse. Deux empêchements portent sur le fichier déposé (image jamais insérée, grille
+// pleine) ; le troisième (aucune autre image dans l'article) ne concerne que le second
+// bouton.
 function empechementGrille(c) {
   var g = grilleDe(c);
-  // Jamais insérée : il n'y a pas de figure autour de laquelle bâtir la grille.
+  // Jamais insérée : pas de figure autour de laquelle bâtir la grille.
   if (c.occurrences === 0) { return TXT.grilleHorsTexte || ''; }
   if (g && g.membres.length >= GRILLE_MAX) { return TXT.grillePleine || ''; }
   return '';
@@ -651,10 +627,9 @@ function majAjoutGrille(c) {
 }
 
 // ---- Figures ----
-// Regroupement, dans l'ordre de msg.medias — l'hôte trie déjà. Les membres d'une grille ne
-// sont pas forcément contigus dans la liste : on les ramasse par indice de grille, pas par
-// position, et on les trie par rangGrille pour que l'ancre (rangGrille 0) soit toujours en
-// tête.
+// Regroupement, dans l'ordre de msg.medias (trié par l'hôte). Les membres d'une grille ne
+// sont pas forcément contigus : on les ramasse par indice de grille, et on les trie par
+// rangGrille pour que l'ancre (rangGrille 0) soit en tête.
 function regrouperFigures(listeMedias) {
   var figs = [], vues = {};
   for (var i = 0; i < listeMedias.length; i++) {
@@ -697,9 +672,8 @@ function nouvelleCarte(media, index, figure) {
   };
 }
 
-// L'aperçu cliquable : un seul geste, plier/déplier son formulaire. L'agrandissement est
-// déplacé dans l'en-tête du formulaire (icône oeil), sans quoi un clic ferait deux choses à
-// la fois.
+// L'aperçu cliquable plie et déplie son formulaire. L'agrandissement est dans l'en-tête du
+// formulaire (icône œil), pour qu'un clic ne fasse pas deux choses.
 function construireVignette(parent, c) {
   var b = document.createElement('button');
   b.type = 'button';
@@ -739,8 +713,8 @@ function basculerForm(figure, c) {
   figure.ouvert = ferme ? null : c;
 }
 
-// L'accordéon du groupe : les réglages qui valent pour la figure entière — disposition,
-// légende — et rien d'autre. Un seul par figure de plusieurs images, jamais un par image.
+// L'accordéon du groupe : les réglages de la figure entière (disposition, légende). Un seul
+// par figure de plusieurs images.
 function construireGroupeAccordeon(parent, figure) {
   var g = grilleDe(figure.ancre);
   if (!g) { return; }
@@ -773,8 +747,8 @@ function construireGroupeAccordeon(parent, figure) {
   var sel = document.createElement('select');
   sel.id = idDisp;
   sel.title = TXT.grilleDispositionTip || '';
-  // « Automatique » nomme ce qu'il choisirait : un mode dont on ne voit pas le résultat
-  // ne se choisit pas de confiance. La valeur vient de l'hôte, qui a mesuré les fichiers.
+  // « Automatique » nomme la disposition qu'il choisirait, mesurée par l'hôte sur les
+  // fichiers.
   option(sel, AUTO, g.auto ? remplir('dispositionAuto', [libelleDisposition(g.auto)])
                            : (TXT.dispositionAutoSimple || ''));
   var codes = DISPOSITIONS[g.membres.length] || [];
@@ -787,13 +761,13 @@ function construireGroupeAccordeon(parent, figure) {
   });
   dispo.appendChild(sel);
 
-  // La légende de la figure : portée par l'ancre, ici et nulle part ailleurs.
+  // La légende de la figure, portée par l'ancre.
   champ(corpsAcc, figure.ancre, 'legende', TXT.grilleLegende);
   var champLegende = figure.ancre.ctl.legende;
   champLegende.addEventListener('input', function () {
     legendeTete.textContent = ligne(champLegende.value) || (TXT.grilleLegendeAbsente || '');
   });
-  // La note suit la légende : elle aussi est celle de la figure entière.
+  // La note suit la légende : elle aussi vaut pour la figure entière.
   champ(corpsAcc, figure.ancre, 'note');
 
   tete.addEventListener('click', function () {
@@ -803,9 +777,9 @@ function construireGroupeAccordeon(parent, figure) {
   });
 }
 
-// Les deux sorties d'une grille agissent sur une image : elles vivent donc dans son
-// formulaire, pas dans l'accordéon commun. Un booléen inversé, et « sortir de la grille »
-// effacerait l'insertion au lieu de la déplacer — sans que rien à l'écran ne change.
+// Les deux sorties d'une grille agissent sur une image : elles sont dans son formulaire,
+// pas dans l'accordéon commun. Attention au sens du booléen : inversé, « sortir de la
+// grille » effacerait l'insertion au lieu de la déplacer, sans changement visible.
 function construireSortiesGrille(parent, c) {
   var sorties = texte(parent, 'div', 'grille-sorties');
   sorties.appendChild(bouton(TXT.grilleRetirer || '', function () {
@@ -818,8 +792,8 @@ function construireSortiesGrille(parent, c) {
   }, '', TXT.grilleOterTip));
 }
 
-// Le formulaire d'une image, replié par défaut. Sa légende n'existe que si sa figure n'a
-// qu'un seul membre — sinon elle vit dans l'accordéon du groupe, portée par l'ancre.
+// Le formulaire d'une image, replié par défaut. Il n'a de champ légende que si sa figure
+// n'a qu'un membre ; sinon la légende est dans l'accordéon du groupe, portée par l'ancre.
 function construireFormulaireImage(parent, figure, c) {
   var d = texte(parent, 'div', 'media-form');
   d.id = 'mf-' + c.index;
@@ -838,8 +812,8 @@ function construireFormulaireImage(parent, figure, c) {
   c.ctl.oeil.disabled = !c.apercu;                 // rien à agrandir sans aperçu
   tete.appendChild(c.ctl.oeil);
   tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () {
-    // Les saisies en cours voyagent avec : une suppression dans une grille fait recharger
-    // le formulaire côté hôte, qui les écraserait sans cela.
+    // Les saisies en cours partent avec : une suppression dans une grille recharge le
+    // formulaire côté hôte, qui les écraserait.
     api.postMessage({ type: SZH.MSG.RETIRER, relatif: c.relatif, medias: medias() });
   }, 'szh-ico--danger'));
 
@@ -862,9 +836,8 @@ function construireFormulaireImage(parent, figure, c) {
   champ(credits, c, 'copyright');
   champ(credits, c, 'source');
   if (figure.membres.length === 1) { champ(d, c, 'note'); }
-  // La case « sans légende ni numéro » suit les crédits : c'est le second réglage qui
-  // change ce que la mise en page fabrique. L'accessibilité vient après, comme un chapitre
-  // à part.
+  // La case « sans légende ni numéro » suit les crédits : c'est le second réglage qui change
+  // la mise en page. L'accessibilité vient ensuite, à part.
   caseHorsFigure(d, c);
 
   texte(d, 'p', 'szh-section', TXT.sectionAccessibilite || '');
@@ -911,8 +884,8 @@ function construireFigure(fig, listeMedias) {
   return fig;
 }
 
-// Avis d'insertion. Sans insertion, le formulaire se verrouille : il n'y a nulle part où
-// écrire légende et crédits, et le seul geste utile est d'insérer l'image dans le texte.
+// Avis d'insertion. Sans insertion, le formulaire est verrouillé : légende et crédits n'ont
+// nulle part où s'écrire, il faut d'abord insérer l'image dans le texte.
 function poserOcc(c) {
   var b = c.ctl.occ;
   b.textContent = '';
@@ -934,9 +907,9 @@ function poserOcc(c) {
   if (verrou) { majAlerteAlt(c); majPastilles(c); } else { majRole(c); }
 }
 
-// Carte d'un portrait : ce que la vue des médias a de plus à dire sur le fichier — son
-// poids, sa version retenue, son verdict de qualité — autour de la fiche d'auteur·e, qui
-// est celle du formulaire des métadonnées et sert aussi à éditer la personne.
+// Carte d'un portrait : le poids du fichier, sa version retenue, son verdict de qualité,
+// autour de la fiche d'auteur·e du formulaire des métadonnées, qui sert aussi à éditer la
+// personne.
 function cartePortrait(portrait, index) {
   var c = { base: String(portrait.base || ''), index: index, ctl: {}, portrait: portrait };
   var s = texte(corps, 'section', 'szh-carte carte-portrait');
@@ -961,8 +934,8 @@ function rendrePortrait(c) {
   texte(tete, 'span', 'szh-pousse');
 
   var corpsCarte = texte(c.element, 'div', 'szh-corps');
-  // Un portrait qu'aucune fiche ne désigne n'a pas d'auteur·e à éditer : il ne reste que
-  // le fichier, son verdict, et le constat qu'il ne sert à rien.
+  // Un portrait qu'aucune fiche ne désigne : pas d'auteur·e à éditer, seulement le fichier,
+  // son verdict, et la mention qu'il ne sert pas.
   if (portrait.rattache) {
     c.fiche = {
       slug: portrait.slug, index: portrait.index,
@@ -978,8 +951,8 @@ function rendrePortrait(c) {
 }
 
 // ---- Barre d'en-tête ----
-// Les commandes du formulaire, toujours à la même place et toujours visibles : dans une
-// liste de médias qui défile, un « Enregistrer » en bas de page ne se retrouve pas.
+// Les commandes du formulaire, toujours visibles à la même place, au-dessus d'une liste de
+// médias qui défile.
 function construireBarre() {
   ctl = SZH.construireBarre(barre, {
     txt: TXT, avecCompte: true,
@@ -1004,8 +977,8 @@ function rendre(msg) {
   if (msg.grilleAuto) { AUTO = String(msg.grilleAuto); }
 
   texte(corps, 'h2', 'titre-section', TXT.sectionImages || '');
-  // Toujours construit, montré quand la liste est vide : une image retirée est la seule
-  // chose qui vide la liste sans repasser par ici.
+  // Toujours construit, montré quand la liste est vide : retirer une image peut vider la
+  // liste sans repasser par ici.
   ctl.aucuneImage = SZH.notif('info', TXT.aucuneImage || '');
   corps.appendChild(ctl.aucuneImage);
   var groupes = regrouperFigures(listeMedias);
@@ -1020,8 +993,8 @@ function rendre(msg) {
       portraits.push(cartePortrait(listePortraits[j], j));
     }
   }
-  // Après coup seulement : ce qu'un bouton « à côté » peut offrir se lit dans les autres
-  // cartes, qui n'existaient pas encore quand la sienne s'est construite.
+  // Après la construction de toutes les cartes : ce qu'un bouton « à côté » peut offrir
+  // dépend des autres cartes.
   for (var k = 0; k < cartes.length; k++) { majAjoutGrille(cartes[k]); }
   dernierModifie = false;
   etat('');
@@ -1031,7 +1004,7 @@ function rendre(msg) {
 }
 
 // Le compte de la barre et l'avis « aucune image » se déduisent de la liste courante :
-// retirer une image les change sans que la page soit rechargée.
+// retirer une image les change sans recharger la page.
 function majResume() {
   if (ctl.compte) { ctl.compte.textContent = remplir('resume', [cartes.length, portraits.length]); }
   if (ctl.aucuneImage) { ctl.aucuneImage.hidden = cartes.length > 0; }
@@ -1072,8 +1045,8 @@ function enregistrer(auto) {
   api.postMessage({ type: SZH.MSG.ENREGISTRER, auto: !!auto, medias: liste });
 }
 // Ni minuteur ni enregistrement au changement de champ : l'écriture passe par un
-// WorkspaceEdit et un doc.save() sur le .md, qui recompile l'article. Reste le filet
-// principal, l'écriture quand la webview perd le focus.
+// WorkspaceEdit et un doc.save() sur le .md, qui recompile l'article. Elle a lieu quand la
+// webview perd le focus.
 var autoEnr = SZH.autoEnregistrement({ delai: 0, estModifie: estModifie, enregistrer: enregistrer });
 
 document.addEventListener('keydown', function (ev) {
@@ -1088,7 +1061,7 @@ window.addEventListener('message', function (ev) {
   recu = true;
   if (msg.type === SZH.MSG.CHARGER) {
     // Course pret/charger : un doublon de la réponse à « pret » (aller-retour lent) ne
-    // doit pas reconstruire la page une seconde fois, sauf rechargement forcé.
+    // reconstruit pas la page, sauf rechargement forcé.
     if (SZH.jetonDejaTraite(etatJeton, msg)) { return; }
     SZH.poserAccent(msg.accent);
     SZH.appliquerLimites(msg.limites);
@@ -1107,7 +1080,7 @@ window.addEventListener('message', function (ev) {
     for (var i = 0; i < cartes.length; i++) {
       cartes[i].enregistrees = valeurs(cartes[i]);
       // L'écriture reporte les valeurs de la carte sur toutes les insertions : plus de
-      // divergence à signaler.
+      // divergence.
       cartes[i].sansAlternative = false;
       majAlerteAlt(cartes[i]);
       majPastilles(cartes[i]);
@@ -1117,10 +1090,10 @@ window.addEventListener('message', function (ev) {
     return;
   }
   if (msg.type === SZH.MSG.ERREUR) { autoEnr.confirme(); etat('⚠ ' + msg.message); return; }
-  // Ctrl+Alt+F sur un panneau déjà ouvert : l'hôte ne recharge pas la page — il y perdrait
-  // les saisies non écrites — il demande seulement d'amener la carte à l'écran.
+  // Ctrl+Alt+F sur un panneau déjà ouvert : l'hôte ne recharge pas la page, ce qui
+  // perdrait les saisies non écrites ; il demande d'amener la carte à l'écran.
   if (msg.type === SZH.MSG.FOCALISER) { focaliser(msg.relatif); return; }
-  // Réponses ciblées : la carte est retrouvée par son chemin relatif, jamais par un
+  // Réponses ciblées : la carte est retrouvée par comparaison de son chemin relatif, sans
   // sélecteur construit sur une valeur libre. Une réponse pour une carte disparue est
   // ignorée.
   if (msg.type === SZH.MSG.MEDIA_REMPLACE || msg.type === SZH.MSG.MEDIA_ERREUR || msg.type === SZH.MSG.MEDIA_ANNULEE) {
@@ -1143,10 +1116,9 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
-  // Média retiré : son aperçu et son formulaire quittent la page, avec son état modifié ;
-  // si la figure n'a plus de membre, elle quitte la page à son tour. Le cas d'un membre de
-  // grille est traité par l'hôte, qui recharge tout le formulaire (une suppression y change
-  // le compte et la disposition) : ce chemin ne reste utile qu'à l'image seule.
+  // Média retiré : son aperçu et son formulaire quittent la page, avec son état modifié ; une
+  // figure sans membre disparaît aussi. Pour un membre de grille, l'hôte recharge tout le
+  // formulaire (le compte et la disposition changent) : ce chemin ne sert qu'à l'image seule.
   if (msg.type === SZH.MSG.MEDIA_RETIRE) {
     var r = trouverCarte(msg.relatif);
     if (!r) { return; }
@@ -1160,8 +1132,8 @@ window.addEventListener('message', function (ev) {
       fig.element.remove();
       figures = figures.filter(function (x) { return x !== fig; });
     }
-    // Le jumeau survivant n'est plus un doublon de rien : sans cela il garderait sa
-    // pastille et nommerait le fichier qu'on vient de supprimer.
+    // Le jumeau restant n'est plus un doublon : sans cela il garderait sa pastille et
+    // nommerait le fichier supprimé.
     for (var k = 0; k < cartes.length; k++) {
       var reste = cartes[k].doublons.filter(function (n) { return n !== r.relatif; });
       if (reste.length !== cartes[k].doublons.length) {
@@ -1169,15 +1141,15 @@ window.addEventListener('message', function (ev) {
         majPastilles(cartes[k]);
       }
     }
-    // Une carte de moins, c'est une voisine possible de moins : les boutons « à côté » des
-    // autres cartes ne proposent plus la même chose.
+    // Une carte de moins, une voisine possible de moins : les boutons « à côté » des autres
+    // cartes sont mis à jour.
     for (var m = 0; m < cartes.length; m++) { majAjoutGrille(cartes[m]); }
     majResume();
     majModifie();
     return;
   }
-  // La fiche d'auteur·e a été écrite : la modale se referme, et la carte du portrait suit
-  // ce que l'hôte vient de relire sur le disque — la photo a pu changer de version.
+  // La fiche d'auteur·e a été écrite : la modale se referme, et la carte du portrait suit ce
+  // que l'hôte vient de relire sur le disque (la photo a pu changer de version).
   if (msg.type === SZH.MSG.AUTEUR_ENREGISTRE || msg.type === SZH.MSG.AUTEUR_ERREUR) {
     var suite = attenteAuteur;
     attenteAuteur = null;
@@ -1192,8 +1164,8 @@ window.addEventListener('message', function (ev) {
       if (msg.portrait) { p.portrait = msg.portrait; p.portrait.slug = msg.slug; }
       else { p.portrait.auteurFiche = msg.auteur || {}; }
       rendrePortrait(p);
-      // Le bouton d'où l'on venait vient d'être détaché : le focus revient sur celui de la
-      // fiche refaite, sans quoi le clavier repartirait du haut du panneau.
+      // Le bouton d'origine vient d'être retiré : le focus passe à celui de la fiche refaite,
+      // sans quoi le clavier repartirait du haut du panneau.
       if (p.fiche && p.fiche.boutonEditer) {
         try { p.fiche.boutonEditer.focus(); } catch (e) { /* pas focalisable */ }
       }

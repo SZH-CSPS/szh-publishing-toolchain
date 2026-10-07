@@ -1,8 +1,5 @@
-// Page « Méta-données du numéro » : elle ne fait plus que poser le formulaire partagé
-// SZH.formulaireNumero (media/_numero.js) et lui passer les messages. Le formulaire
-// lui-même — la table des champs, la couverture, l'enregistrement automatique — vit dans
-// ce fragment, que la vue « Articles » monte à l'identique : un champ ajouté là apparaît
-// ici sans seconde modification.
+// Page « Métadonnées du numéro » : pose le formulaire SZH.formulaireNumero (_numero.js),
+// partagé avec la vue « Articles », et lui transmet les messages.
 //
 // Protocole avec l'hôte : celui de _numero.js, plus l'annonce « pret ».
 (function () {
