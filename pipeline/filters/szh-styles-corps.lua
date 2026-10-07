@@ -1,6 +1,5 @@
--- szh-styles-corps.lua — premier filtre de l'import : les paragraphes que
--- docx-styles-corps.py a marqués deviennent les blocs du cockpit (palette « Blocs »),
--- au lieu de se perdre en paragraphes nus.
+-- Premier filtre de l'import : les paragraphes que docx-styles-corps.py a marqués
+-- deviennent les blocs du cockpit (palette « Blocs »).
 --
 --   SZH Important                     -> ::: {.important}
 --   SZH Hervorhebung                  -> ::: {.highlight}
@@ -8,29 +7,23 @@
 --   Auhors / Authors / Auteurs / …    -> ::: {.szh-auteurs}  (livre seulement, voir
 --                                        docx-styles-corps.py, STYLES_AUTEURS_CHAPITRE)
 --
--- Le marqueur (zone privée d'Unicode, U+E000 classe U+E001) ouvre le premier Str du
--- paragraphe. Il est retiré ici, avant tout autre filtre : les suivants voient le texte
--- exact qu'ils voyaient sans ce pré-pass. Deux paragraphes consécutifs du même style
--- forment un seul bloc, comme dans Word — sauf szh-auteurs (voir FUSIONNABLES) : une ligne
--- d'auteur·e·s est UN paragraphe, jamais plusieurs.
+-- Le marqueur (U+E000 classe U+E001, zone privée d'Unicode) ouvre le premier Str du
+-- paragraphe. Il est retiré ici, avant tout autre filtre. Des paragraphes consécutifs du
+-- même style forment un seul bloc, sauf pour szh-auteurs (voir FUSIONNABLES).
 --
--- « Quote » (Citation) n'est pas dans la liste : pandoc en fait déjà un BlockQuote.
+-- Le style « Quote » n'est pas traité : pandoc en fait déjà un BlockQuote.
 
 local DEBUT, FIN = '\u{E000}', '\u{E001}'
 local CLASSES = { important = true, highlight = true, question = true, ['szh-auteurs'] = true }
 
--- Classes qui ont le droit d'avaler le paragraphe stylé suivant dans le MÊME bloc.
--- szh-auteurs en est exclu à dessein : constaté sur redf_Lerngeschichten_clean.docx (le
--- premier paragraphe de corps d'un chapitre gardait par mégarde le style « Auhors » du
--- Word) qu'une fusion aurait avalé tout ce paragraphe DANS la ligne d'auteur·e·s — un
--- défaut invisible à l'import, qui n'apparaîtrait qu'à la relecture du livre composé. Deux
--- paragraphes « Auhors » consécutifs donnent donc deux blocs .szh-auteurs distincts : une
--- anomalie visible (et donc corrigible), jamais un paragraphe de récit disparu en silence.
+-- Classes dont deux paragraphes consécutifs fusionnent en un bloc. szh-auteurs en est
+-- exclu : un paragraphe de corps qui a gardé par erreur le style « Auhors » serait avalé
+-- dans la ligne d'auteur·e·s sans que rien ne se voie. Deux blocs .szh-auteurs distincts,
+-- eux, se remarquent à la relecture.
 local FUSIONNABLES = { important = true, highlight = true, question = true }
 
--- La classe marquée en tête de ce bloc, et le bloc sans son marqueur ; nil sinon.
--- [%l%-]+ et non %l+ : « szh-auteurs » porte un tiret, les trois autres classes non — le
--- jeu de caractères élargi ne change donc rien pour elles.
+-- Rend la classe marquée en tête du bloc et le bloc sans son marqueur, ou nil.
+-- [%l%-]+ : « szh-auteurs » porte un tiret.
 local function demarquer(b)
   if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
   local premier = b.content[1]

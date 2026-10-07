@@ -1,10 +1,9 @@
--- Compilation : résout les références de tableau posées à l'import,
---   ::: {.szh-tabelle src="tables/table-NN.html"}  ->  contenu HTML du fichier.
--- Cwd = dossier de l'article (le Makefile fait cd articles/<slug>), donc les chemins
--- relatifs tombent juste. Fichier manquant ou référence cassée -> bloc d'avertissement
--- visible dans le rendu, pas d'échec silencieux.
--- Ce filtre inclut, il ne numérote pas : c'est szh-numerotation.lua, branché après,
--- qui insère « Tableau N — » dans le <caption> attendu en tête du <table> inclus.
+-- Compilation : remplace chaque référence de tableau posée à l'import par le HTML du
+-- fichier, ::: {.szh-tabelle src="tables/table-NN.html"}.
+-- Le chemin est relatif au dossier de l'article, où le Makefile se place. Un fichier
+-- manquant donne un bloc d'avertissement visible dans le rendu.
+-- La numérotation (« Tableau N — » dans le <caption>) est faite ensuite par
+-- szh-numerotation.lua.
 
 local function avertissement(texte)
   return pandoc.Div(

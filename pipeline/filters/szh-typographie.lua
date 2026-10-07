@@ -1,32 +1,27 @@
--- Compilation : applique au texte de l'article la typographie de la maison, selon la
--- langue déclarée de l'article. Douze règles, codées A1 à C2, listées pour la rédaction
--- dans docs/TYPOGRAPHIE-FR.md et docs/TYPOGRAPHIE-DE.md.
+-- Compilation : applique au texte de l'article la typographie de la maison, selon sa
+-- langue (fr, de, it). Règles appliquées : A1 à A5, E1 à E9, T1, T2, S1, S2, S4 et L2 ;
+-- C1 à C3 sont signalées sans correction. Les codes sont ceux de docs/TYPOGRAPHIE.md ;
+-- la rédaction lit docs/TYPOGRAPHIE-FR.md et docs/TYPOGRAPHIE-DE.md.
 --
--- ⚠ Le fichier .md n'est jamais réécrit. La normalisation a lieu à la compilation, sur
--- l'arbre pandoc : la source reste exactement ce que la rédaction a tapé, lisible et
--- comparable d'une version à l'autre, et c'est la sortie — PDF, HTML, galley DOCX — qui
--- porte la typographie. Semer des insécables et des chevrons dans le .md le rendrait
--- pénible à relire pour un gain nul : personne ne lit le Markdown, tout le monde lit le PDF.
+-- Le .md n'est pas réécrit : la typographie est posée sur l'arbre pandoc, et la source
+-- reste ce que la rédaction a tapé.
 --
--- Le fait qui commande tout : français et allemand ont des règles opposées d'espacement.
--- Le français sépare (insécable devant la ponctuation haute, à l'intérieur des
--- guillemets), l'allemand suisse et l'italien collent. Une règle unique serait fausse pour
--- l'une des deux langues. Les mesures qui l'établissent sont dans docs/TYPOGRAPHIE.md.
+-- Français et allemand ont des règles d'espacement opposées : le français sépare
+-- (insécable devant la ponctuation haute, à l'intérieur des guillemets), l'allemand
+-- suisse et l'italien collent.
 --
--- Place dans la chaîne : sixième, après szh-tabelle-scope et avant szh-numerotation et
--- szh-citations (voir l'ordre des --lua-filter dans le Makefile), pour ne normaliser que le
--- texte de la rédaction. Ancrages protégés malgré cet ordre par assainir_iso(), dans
--- szh-citations.lua, qui ramène les caractères posés ici à une longueur d'octets constante.
+-- Place dans la chaîne (pipeline/filtres.mk) : après szh-tabelle-scope, avant
+-- szh-titre-lignes, szh-numerotation et szh-citations, pour ne traiter que le texte de la
+-- rédaction. assainir_iso(), dans szh-citations.lua, neutralise les caractères posés ici
+-- pour ses ancrages.
 --
--- Ce qui n'est pas corrigé, et pourquoi :
---   * le « ß » d'un article allemand : « Klauß » n'est pas « Klauss », et une citation
---     d'un ouvrage allemand garde son orthographe. Le filtre le signale (code C1) ;
---   * les guillemets droits que pandoc n'a pas su apparier : les remplacer au jugé
---     ouvrirait ou fermerait au hasard. Signalés aussi (code C2) ;
---   * les plages de nombres en général (« 2020-2021 », « COVID-19 », un DOI, une date
---     ISO) : seules les plages de pages, reconnaissables à leur « p. » ou « S. », passent
---     au demi-cadratin (T2) ;
---   * le contenu des `code` et des blocs de code, jamais touché.
+-- Non corrigé :
+--   * le « ß » d'un article allemand (C1, signalé) : un nom propre ou une citation le
+--     gardent ;
+--   * les guillemets droits que pandoc n'a pas appariés (C2, signalé) ;
+--   * les plages de nombres autres que des pages (« 2020-2021 », « COVID-19 », un DOI) :
+--     seules les plages précédées de « p. » ou « S. » sont traitées (T2) ;
+--   * le contenu des `code` et des blocs de code.
 
 local NBSP = '\194\160'                       -- U+00A0, l'espace insécable
 local FINE = '\226\128\175'                   -- U+202F, la fine insécable
@@ -40,17 +35,14 @@ local SO, SF = '\226\128\185', '\226\128\186' -- ‹ ›
 local SIMPLE_OUVRANT_FR = '\226\128\152'      -- U+2018 ‘ : ouvre en français, ferme en allemand
 local SIMPLE_OUVRANT_DE = '\226\128\154'      -- U+201A ‚ : ouvre toujours (idiome allemand natif)
 
--- Lettre « au sens large » : les classes Lua sont des classes d'octets et %a ne connaît
--- que l'ASCII. « d'été » porte un é sur deux octets, dont le premier vaut 0xC3 : sans la
--- plage \128-\255, la règle A1 raterait une élision sur deux, celles qui précèdent un
--- accent. Tout octet non-ASCII est ici tenu pour une lettre, ce qui suffit : le caractère
--- qui nous intéresse, l'apostrophe, est ASCII et ne peut pas être confondu.
+-- Lettre au sens large. Les classes Lua portent sur des octets et %a ne connaît que
+-- l'ASCII : tout octet non ASCII est tenu pour une lettre, sinon A1 raterait « d'été ».
+-- L'apostrophe, ASCII, ne peut pas être confondue.
 local LETTRE = '[%a\128-\255]'
 
--- ⚠ Aucune classe d'octets ne peut décrire « une espace, quelle qu'elle soit ». L'octet
--- 0xC2 ouvre l'insécable et le guillemet « : une classe [ \194\160…] mangerait la moitié
--- d'un chevron. Les règles d'espacement travaillent donc sur une liste de caractères,
--- découpée ici, et non sur des motifs Lua.
+-- Découpe une chaîne UTF-8 en caractères. Une classe d'octets ne peut pas décrire « une
+-- espace quelconque » : l'octet 0xC2 ouvre à la fois l'insécable et le chevron «. Les
+-- règles d'espacement travaillent donc sur cette liste.
 local function caracteres(t)
   local out = {}
   for c in t:gmatch('[^\128-\191][\128-\191]*') do out[#out + 1] = c end
@@ -59,18 +51,15 @@ end
 
 local EST_ESPACE = { [' '] = true, [NBSP] = true,
                      ['\226\128\175'] = true, ['\226\128\137'] = true }
--- Les deux qui ne se coupent pas : l'insécable ordinaire et la fine insécable. Une règle
--- qui demande « une insécable » est déjà tenue par l'une comme par l'autre.
+-- L'insécable et la fine insécable satisfont toutes deux une règle qui demande une
+-- insécable.
 local INSECABLES = { [NBSP] = true, ['\226\128\175'] = true }
 local HAUTE = { [';'] = true, [':'] = true, ['!'] = true, ['?'] = true }
--- E3 · les deux signes qui se séparent de leur nombre dans les TROIS langues. Le pour
--- mille suit le pour-cent : même règle, même mesure (Guide du typographe, « le
--- pourcentage et le pour mille : les caractères sont séparés par une espace fine »).
+-- E3 : signes séparés de leur nombre dans les trois langues.
 local SEPARE_NOMBRE = { ['%'] = true, [PMILLE] = true }
 
--- Les signes multi-octets qui ne sont pas des lettres. Tout ce qui fait plus d'un octet
--- sans figurer ici — é, ü, œ, ç — en est une, ce qui suffit à décider si une insécable
--- doit se poser devant un deux-points.
+-- Signes de plusieurs octets qui ne sont pas des lettres. Tout autre caractère de plusieurs
+-- octets (é, ü, œ, ç) compte comme une lettre.
 local PAS_LETTRE = {
   [GO] = true, [GF] = true, [SO] = true, [SF] = true,
   [ELL] = true, [DEMI] = true, [CADRATIN] = true, [APO] = true, [NBSP] = true,
@@ -82,17 +71,11 @@ local function est_lettre(c)
   return c:match('%a') ~= nil
 end
 
--- ⚠ Bascule de casse maison, et ce n'est pas un caprice : string.lower() travaille sur
--- les OCTETS et suit la locale. Sous une page de code Latin-1 — celle d'un Windows
--- francophone —, il lit l'octet 0xC3, celui qui ouvre « é » en UTF-8, comme le « Ã »
--- Latin-1 et le rend 0xE3. « Malgré » en sortait mutilé et introuvable dans les tables de
--- mots, tandis que « Pendant », tout en ASCII, passait : le défaut ne se voyait que sur
--- les entrées accentuées. Mesuré le 08.09.2026 sur ce filtre.
---
--- Les intervalles [A-Z] et [a-z] sont des intervalles d'octets, hors locale, et aucun
--- octet d'un caractère UTF-8 multi-octet n'y tombe : les têtes valent 0xC0 et plus, les
--- suites 0x80 à 0xBF. Les clés accentuées des tables sont donc écrites en minuscules, et
--- la comparaison ne porte que sur ce qui est décidable.
+-- Changement de casse ASCII seulement. string.lower() suit la locale : sous Latin-1
+-- (Windows francophone), il change l'octet 0xC3 qui ouvre « é » en UTF-8, et « Malgré »
+-- devient introuvable dans les tables de mots. Les intervalles [A-Z] et [a-z] ne touchent
+-- aucun octet d'un caractère UTF-8 de plusieurs octets. Les clés accentuées des tables
+-- sont donc écrites en minuscules.
 local function bas_de_casse(t)
   return (t:gsub('[A-Z]', function(c) return string.char(c:byte() + 32) end))
 end
@@ -101,18 +84,17 @@ local function haut_de_casse(t)
   return (t:gsub('[a-z]', function(c) return string.char(c:byte() - 32) end))
 end
 
--- Langue de composition, arrêtée une fois pour toutes au premier passage.
+-- Langue de composition.
 local LANGUE = 'fr'
 local COLLEE = false        -- vrai pour l'allemand et l'italien : rien ne se sépare
 
--- Constats à écrire une fois le document parcouru : le même « ß » revient vingt fois, et
--- une ligne de journal par occurrence noierait la vue des contrôles.
+-- Signalements, écrits une fois le document parcouru : une ligne par code, pas par
+-- occurrence.
 local SLUG = ''
 local vus = {}
 local constats = {}
 
--- Module commun (contexte, slug_article) : un chargement raté arrête la compilation, ce
--- filtre ne pouvant plus dire dans quelle langue composer.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -130,19 +112,14 @@ do
   commun = module
 end
 
--- ------------------------------------------------------------------------- les constats
+-- ------------------------------------------------------------------- les signalements
 --
--- « | » sépare les champs : un mot du texte qui en porterait un couperait la ligne en
--- deux. Même protection qu'ailleurs (commun.sans_barre) ; le cas ne peut guère se produire
--- pour un mot, mais autant s'en prémunir au même endroit qu'ailleurs.
+-- « | » sépare les champs du message : commun.sans_barre le retire d'un mot cité.
 local sans_barre = commun.sans_barre
 
--- Le mot qui contient l'octet de position `pos` (telle que la rend t:find) dans `t` : ses
--- bornes sont les caractères qui l'entourent jusqu'à la première espace de part et
--- d'autre, ou le début/la fin de la chaîne. Construit sur caracteres() — la liste de
--- caractères UTF-8 pleins définie en tête de fichier — et non sur des octets, pour ne
--- jamais couper au milieu d'un caractère multioctet ; c'est ce qui permet à ce qui suit de
--- ne jamais indexer d'octets pour retrouver « Klauß » ou une majuscule accentuée.
+-- Rend le mot de `t` qui contient l'octet `pos` (position rendue par t:find), borné par
+-- les espaces. Travaille sur caracteres() pour ne pas couper un caractère de plusieurs
+-- octets.
 local function mot_en(t, pos)
   if not pos then return nil end
   local cs = caracteres(t)
@@ -164,12 +141,10 @@ local function mot_en(t, pos)
   return table.concat(cs, '', debut, fin)
 end
 
--- Format du journal, celui que lib/journal.js sait déjà découper :
+-- Format de la ligne de journal, lue par lib/journal.js :
 --   [typo-avertissement] <code> | article « … » | mot « … » | <phrase fr> | [de] <Satz de>
--- Le champ « mot » est le mot fautif tel qu'il s'écrit dans le texte ; absent quand aucune
--- position n'a pu être établie, jamais écrit vide. La famille « typo » lui est neuve :
--- elle s'affichera sans clé d'i18n, avec la phrase écrite ici, dans la langue de
--- l'interface. C'est prévu, et dit dans journal.js.
+-- Le champ « mot » est omis quand le mot n'a pas pu être retrouvé. La famille « typo »
+-- n'a pas de clé i18n : journal.js affiche la phrase écrite ici.
 local function signaler(code, mot, phrase_fr, phrase_de)
   if vus[code] then return end
   vus[code] = true
@@ -181,8 +156,8 @@ end
 
 -- ------------------------------------------------------ règles internes à une chaîne
 --
--- Tout ce qui se décide sans regarder l'inline voisin. L'ordre compte à un endroit : A2
--- pose les chevrons avant que E1 ne s'occupe de leur espacement.
+-- Ce qui se décide sans regarder l'inline voisin. A2 pose les chevrons avant que E1 ne
+-- règle leur espacement.
 
 -- A1 · apostrophe typographique dans les élisions
 local function a1_apostrophe(t)
@@ -194,21 +169,15 @@ local function a1_apostrophe(t)
   return t
 end
 
--- A2 · les guillemets DOUBLES courbes d'un traitement de texte deviennent des chevrons.
+-- A2 · les guillemets doubles courbes deviennent des chevrons.
 --
--- ⚠ « “ » n'a pas de sens fixe : il ouvre en anglais (“word”) et il ferme en allemand
--- d'Allemagne („Wort“). Une table de correspondance fixe le rendait donc ouvrant dans
--- « „Guten Tag“ », qui sortait « «Guten Tag« ». On tranche par le voisinage, comme le
--- fait tout correcteur de guillemets : un guillemet suivi d'une lettre ouvre, un
--- guillemet précédé d'une lettre ferme.
+-- « “ » ouvre en anglais (“word”) et ferme en allemand („Wort“) : il ouvre s'il est suivi
+-- d'une lettre, sinon il ferme.
 --
--- Les guillemets SIMPLES (règle A3 : ‘ ’ ‚) n'y figurent plus depuis le 22.09.2026. Cette
--- fonction travaille chaîne par chaîne, et « ’ » ne peut pas s'y décider seul : c'est tantôt
--- un fermant (« ‘mot’ »), tantôt une apostrophe d'élision (« qu’il », posée par A1) — la
--- même question qui distingue ‘ ouvrant du français de ‘ fermant de l'idiome allemand
--- ‚…‘. Aucune des deux ne se tranche sans savoir si une citation est déjà ouverte, un état
--- qu'une seule chaîne ne porte pas. Voir a3_chevrons_sur_liste, plus bas, qui voit le
--- paragraphe entier et fait cet appariement.
+-- Les guillemets simples (A3) sont traités par a3_chevrons_sur_liste, qui voit le
+-- paragraphe entier : « ’ » peut fermer une citation ou être une apostrophe (« qu’il »),
+-- et ‘ ouvre en français mais ferme dans ‚…‘. Seul l'état de la citation en cours permet
+-- de trancher.
 local COURBES = {
   ['\226\128\158'] = { GO, GO },       -- „ : ouvre toujours
   ['\226\128\159'] = { GO, GO },       -- ‟ : ouvre toujours
@@ -260,22 +229,16 @@ local function e4_abreviations(t)
   return t
 end
 
--- T2 · plage de pages. Le contexte « p. » ou « S. » est ce qui rend la règle sûre : hors
--- de lui, « 2020-2021 » peut être un exercice et « COVID-19 » un nom. Passe avant
--- e4_abreviations, qui remplacerait l'espace par une insécable et rendrait le contexte
--- méconnaissable.
+-- T2 · plage de pages. Seules les plages précédées de « p. », « pp. » ou « S. » sont
+-- traitées : « 2020-2021 » ou « COVID-19 » ne sont pas des plages de pages. Passe avant
+-- e4_abreviations, qui remplacerait l'espace du motif par une insécable.
 --
--- ⚠ Deux prescriptions inverses, comme E1, E2 et T1 (décidé le 08.09.2026) : le trait
--- d'union est le « bis-Strich » romand — « le trait d'union est utilisé en Suisse romande
--- entre les chiffres », Règles typographiques, Schule für Gestaltung Zürich 2018, § trait
--- d'union, qui décline le Guide du typographe —, alors que le Duden veut le demi-cadratin.
--- Un article français écrit donc « pp. 12-25 », un article allemand « S. 12–25 », et la
--- règle convertit dans les deux sens : ce que la rédaction a tapé ne décide pas.
+-- Le français de Suisse romande écrit le trait d'union (« pp. 12-25 »), l'allemand le
+-- demi-cadratin (« S. 12–25 ») : la règle convertit dans les deux sens.
 --
--- Deux formes, parce que pandoc en produit deux : le lecteur markdown « smart » soude
--- certaines abréviations au nombre qui suit par une insécable — « pp.<NBSP>12-25 » arrive
--- en une seule chaîne, « S. 3-4 » en trois inlines. La seconde est reprise plus bas, sur
--- la liste ; celle-ci ne voit que la première.
+-- Le lecteur markdown « smart » soude parfois l'abréviation au nombre par une insécable :
+-- « pp.<NBSP>12-25 » arrive en une seule chaîne, « S. 3-4 » en trois inlines. Ce second
+-- cas est traité sur la liste (t2_sur_liste).
 local function t2_plage_pages(t)
   local depuis, vers = '%-', DEMI              -- allemand, italien
   if not COLLEE then depuis, vers = DEMI, '-' end
@@ -286,10 +249,9 @@ end
 
 -- E1/E2/E3 · l'espacement, sur la liste de caractères.
 --
--- Une suite d'espaces adjacente à un chevron, à une ponctuation haute ou à un pour-cent
--- devient une insécable en français, rien du tout en allemand ; et là où l'espace manque,
--- le français la pose. Un chevron en bout de chaîne est laissé tel quel : c'est la passe
--- sur la liste d'inlines qui tranchera, elle seule voit ce qui suit.
+-- Une suite d'espaces voisine d'un chevron ou d'une ponctuation haute devient une
+-- insécable en français et disparaît en allemand ; si l'espace manque, le français la
+-- pose. Un chevron en bout de chaîne est traité sur la liste d'inlines, qui voit la suite.
 local function e_espacement(t)
   local cs = caracteres(t)
   local n = #cs
@@ -301,22 +263,13 @@ local function e_espacement(t)
       local j = i
       while j <= n and EST_ESPACE[cs[j]] do j = j + 1 end
       local avant, apres = out[#out], cs[j]
-      -- Une insécable déjà posée satisfait la règle, qu'elle soit ordinaire ou fine : la
-      -- maquette écrit « Source⍽: » avec une fine insécable (szh-numerotation.lua), et
-      -- l'élargir en insécable ordinaire défairait une décision de composition.
+      -- Une insécable déjà posée est gardée telle quelle, fine comprise (la maquette en
+      -- compose, par exemple dans « Source : »).
       local insec = (j == i + 1 and INSECABLES[cs[i]]) and cs[i] or NBSP
-      -- E3 vaut dans les TROIS langues : elle se décide donc avant COLLEE et non dedans.
-      -- Rangée dans `colle` comme avant, elle faisait disparaître l'espace de « 80 % » en
-      -- allemand partout où la chaîne portait un vrai blanc — un titre, un résumé, une
-      -- cellule de tableau réinjecté. Les articles n'en voyaient rien : dans le corps,
-      -- « 80 % » arrive en trois inlines et c'est sort_de_l_espace qui tranche.
+      -- E3 vaut dans les trois langues : décidé avant COLLEE.
       local separe = (apres ~= nil and SEPARE_NOMBRE[apres]
                       and avant ~= nil and avant:match('^%d$') ~= nil)
-      -- Les chevrons SIMPLES (‹ ›, posés par a3_chevrons_sur_liste) suivent la même règle
-      -- que les doubles : E1 ne distingue pas le niveau de citation, seulement « juste à
-      -- l'intérieur d'un chevron ». Ajouté le 22.09.2026 avec la conscience du niveau
-      -- dans a3_chevrons_sur_liste, qui réutilise CETTE fonction plutôt que d'inventer un
-      -- mécanisme d'espacement parallèle.
+      -- E1 et E2. Les chevrons simples (‹ ›) suivent la même règle que les doubles.
       local colle = (avant == GO or avant == SO) or (apres == GF or apres == SF)
                     or (apres ~= nil and HAUTE[apres])
       if separe then
@@ -338,8 +291,8 @@ local function e_espacement(t)
           out[#out + 1] = NBSP
         elseif HAUTE[c] and est_lettre(avant)
             and (cs[i + 1] == nil or EST_ESPACE[cs[i + 1]] or HAUTE[cs[i + 1]]) then
-          -- fin de mot seulement : « https://… » garde ses deux-points, « 10:30 » aussi,
-          -- « DOI: » non.
+          -- En fin de mot seulement : « https://… » et « 10:30 » gardent leurs
+          -- deux-points collés, pas « DOI: ».
           out[#out + 1] = NBSP
         end
       end
@@ -372,16 +325,12 @@ end
 
 -- ══════════════════════════════════════ les jetons, et les règles qui les regardent
 --
--- Un « jeton » est un mot avec la ponctuation qui y est collée : « art. », « 12 », « km »,
--- « (ci-joint) ». Les règles ajoutées le 08.09.2026 — E5 à E8, A4a, E6 — ne regardent
--- jamais plus que le jeton de gauche et celui de droite, et c'est ce qui leur permet de
--- servir aux DEUX mécaniques du filtre sans être écrites deux fois : la chaîne entière
--- (une MetaString, le texte d'un tableau réinjecté) et la liste d'inlines, où l'espace
--- est un élément et non un caractère.
+-- Un jeton est un mot avec la ponctuation collée : « art. », « 12 », « km »,
+-- « (ci-joint) ». Les règles E5 à E8 et A4 (« À » isolé) ne regardent que le jeton de
+-- gauche et celui de droite. Elles servent ainsi aux chaînes entières (MetaString, texte
+-- d'un tableau inséré) comme à la liste d'inlines, où l'espace est un élément.
 --
--- ⚠ Le découpage se fait sur la liste de caractères, jamais sur une classe d'octets :
--- voir l'avertissement en tête de fichier. Une classe [^ \194\160…] exclurait l'octet
--- 0xC2, qui ouvre « et », et couperait les chevrons en deux.
+-- Le découpage se fait sur caracteres(), pas sur une classe d'octets (voir caracteres).
 local function jetons(t)
   local sortie = {}
   local courant, espace = '', nil
@@ -399,8 +348,8 @@ local function jetons(t)
   return sortie
 end
 
--- Le dernier jeton d'un texte, et le premier : ce que voit une règle de voisinage quand
--- l'espace n'est pas un caractère de la chaîne mais un élément de la liste d'inlines.
+-- Dernier et premier jeton d'un texte : ce que voit une règle de voisinage quand l'espace
+-- est un élément de la liste d'inlines.
 local function jeton_gauche(t)
   local js = jetons(t)
   local dernier = js[#js]
@@ -422,10 +371,8 @@ local function ici(v)
   return v[LANGUE] == true
 end
 
--- E5 · ce qui ne se sépare pas d'un nombre. Les unités abrégées d'abord ; le Guide
--- demande de ne PAS les abréger dans le texte courant, d'où la seconde liste, celle des
--- unités écrites en mots — « 54,5 hectares » coupé en fin de ligne est le même défaut que
--- « 54,5 ha » coupé.
+-- E5 · ce qui ne se sépare pas du nombre qui précède : unités abrégées, puis unités
+-- écrites en mots (« 54,5 hectares »).
 local APRES_NOMBRE = {
   -- longueurs, masses, volumes, surfaces
   km = true, m = true, cm = true, mm = true, kg = true, g = true, mg = true, t = true,
@@ -437,8 +384,7 @@ local APRES_NOMBRE = {
   -- monnaie : « 160 fr. », « 18 fr. 70 », « 25 € »
   ['fr.'] = { fr = true }, ['ct.'] = { fr = true }, CHF = true, EUR = true,
   ['\226\130\172'] = true,                     -- €
-  -- degrés : « 39,1 °C ». Le signe seul (« un angle de 90° ») est collé au nombre et ne
-  -- passe donc jamais par ici, faute d'espace à décider.
+  -- degrés : « 39,1 °C ». Le signe seul (« 90° ») est collé au nombre, sans espace.
   ['\194\176C'] = true, ['\194\176'] = true,
   -- unités en mots, les trois langues de la revue
   heures = { fr = true }, minutes = { fr = true }, secondes = { fr = true },
@@ -455,13 +401,12 @@ local APRES_NOMBRE = {
   Hektar = { de = true }, Gramm = { de = true }, Tonnen = { de = true },
   anni = { it = true }, mesi = { it = true }, ore = { it = true },
 }
--- Le second membre d'une heure : « 4 h 04 », « 22 h 27 min 07 s ». La règle est la même
--- dans les trois langues, l'abréviation étant internationale.
+-- Second membre d'une durée ou d'une heure : « 4 h 04 », « 22 h 27 min 07 s », dans les
+-- trois langues.
 local AVANT_CHIFFRES = { h = true, min = true, s = true }
 
--- E5 · ce qui ne se sépare pas du nombre qui SUIT : le renvoi normatif, la monnaie
--- placée devant. « p. », « pp. », « n° » et « S. » sont déjà tenus par E4 et ne sont pas
--- repris ici.
+-- E5 · ce qui ne se sépare pas du nombre qui suit : renvois (« art. 8 ») et monnaie
+-- placée devant. « p. », « pp. », « n° » et « S. » relèvent de E4.
 local AVANT_NOMBRE = {
   ['art.'] = { fr = true }, ['al.'] = { fr = true }, ['chap.'] = { fr = true },
   ['ch.'] = { fr = true }, ['fig.'] = { fr = true }, ['tabl.'] = { fr = true },
@@ -474,8 +419,8 @@ local AVANT_NOMBRE = {
   CHF = true, EUR = true, ['Fr.'] = { fr = true }, ['\226\130\172'] = true,
 }
 
--- E5 · la civilité et le titre ne se séparent pas du nom. « Dr » et « Dre » sans point
--- sont l'usage romand ; l'allemand écrit « Dr. ».
+-- E5 · la civilité et le titre ne se séparent pas du nom. Le français écrit « Dr » et
+-- « Dre » sans point, l'allemand « Dr. ».
 local CIVILITES = {
   ['M.'] = { fr = true }, ['MM.'] = { fr = true }, Mme = { fr = true },
   Mmes = { fr = true }, Mlle = { fr = true }, Mlles = { fr = true },
@@ -499,35 +444,31 @@ local MOIS = {
   ottobre = { it = true }, novembre = { it = true }, dicembre = { it = true },
 }
 
--- Le jeton sans la ponctuation qui le termine : « km. » se lit « km », « 725, » se lit
--- « 725 ». La forme entière est essayée d'abord, sans quoi « fr. » deviendrait « fr ».
+-- Le jeton sans sa ponctuation finale : « km. » donne « km », « 725, » donne « 725 ».
+-- Les appelants essaient d'abord la forme entière, pour garder « fr. ».
 local function nu(j)
   return (j:gsub('[%.,;:%)%]%!%?]+$', ''))
 end
 
--- Ce que devient l'espace entre deux jetons, pour les règles qui n'ont besoin de rien
--- d'autre : 'garder', 'insecable', 'fine' ou 'retirer'.
+-- Rend ce que devient l'espace entre deux jetons : 'garder', 'insecable', 'fine' ou
+-- 'retirer'.
 local function verdict_jetons(g, d)
   if g == '' or d == '' then return 'garder' end
   local dn, gn = nu(d), nu(g)
 
-  -- E7 · pas d'espace à l'intérieur des parenthèses ni des crochets. Le Guide est net et
-  -- les deux langues s'accordent ici : « (ci-joint) », jamais « ( ci-joint ) ».
+  -- E7 · pas d'espace à l'intérieur des parenthèses ni des crochets : « (ci-joint) ».
   if g:sub(-1) == '(' or g:sub(-1) == '[' then return 'retirer' end
   if d:sub(1, 1) == ')' or d:sub(1, 1) == ']' then return 'retirer' end
 
-  -- E8 · la virgule et le point sont collés au mot qui les précède, dans les deux
-  -- langues. Un point suivi d'un chiffre est une décimale ou une numérotation, et l'on
-  -- n'y touche pas. Les points de suspension ne passent pas par ici : S1 en a fait un
-  -- « … », qui garde son espace quand il remplace un mot au milieu d'une phrase.
+  -- E8 · la virgule et le point se collent au mot qui précède. Un point suivi d'un
+  -- chiffre (décimale, numérotation) est laissé. Les points de suspension, devenus « … »
+  -- par S1, gardent leur espace.
   if d:sub(1, 1) == ',' then return 'retirer' end
   if d:sub(1, 1) == '.' and not d:sub(2, 2):match('%d') then return 'retirer' end
 
-  -- E6 · le groupement des nombres ne se coupe pas. Le français groupe par trois à
-  -- partir de cinq chiffres, à la fine ; l'allemand suisse groupe à l'apostrophe, qui
-  -- n'ouvre aucune coupure et n'a donc rien à protéger. La règle ne CONVERTIT pas
-  -- 35000 en 35 000 : ce serait changer le texte, et c'est une décision de rédaction.
-  -- Ici on ne fait que rendre insécable ce que la rédaction a déjà groupé.
+  -- E6 · un nombre groupé par tranches de trois ne se coupe pas : l'espace devient une
+  -- fine insécable. L'allemand suisse groupe à l'apostrophe, qui ne se coupe pas. La
+  -- règle ne groupe pas un nombre écrit d'un bloc (35000).
   if g:match('%d$') and dn:match('^%d%d%d$') then return 'fine' end
 
   -- E5 · les insécables de contexte.
@@ -543,15 +484,15 @@ local function verdict_jetons(g, d)
     if d:match('^%u') then return 'insecable' end
   end
   -- Le chiffre romain qui suit un nom : « Louis XIV », « Jean-Paul II ». Deux signes au
-  -- moins — un « I » seul est plus souvent le pronom anglais que le nombre un.
+  -- moins : un « I » seul est plus souvent le pronom anglais.
   if g:match('^%u%a%a') and dn:match('^[IVXLCDM][IVXLCDM]+$') then return 'insecable' end
 
   return 'garder'
 end
 
--- Les règles de jetons, appliquées à une chaîne entière. Ne sert donc qu'aux MetaString
--- (titre, sous-titre, résumés) et au texte des tableaux réinjectés : un Str de pandoc ne
--- contient jamais d'espace, et c'est sort_de_l_espace() qui décide pour lui.
+-- Règles de jetons sur une chaîne entière : MetaString (titre, sous-titre, résumés) et
+-- texte des tableaux insérés. Un Str de pandoc ne contient pas d'espace ; entre deux Str,
+-- c'est sort_de_l_espace() qui décide.
 local function e_jetons(t)
   local js = jetons(t)
   local sortie = {}
@@ -575,23 +516,14 @@ end
 
 -- ───────────────────────────────────────────────────────── A4 · majuscules accentuées
 --
--- Le Guide accentue les capitales comme les bas de casse, versales comprises : « À
--- l'heure actuelle », « ÉTAT DES LIEUX ». C'est le défaut le plus coûteux de la chaîne,
--- parce qu'il est IRRÉVERSIBLE en aval : print.css passe l'en-tête courant (§2), la
--- rubrique du hero (§5) et le titre d'un encadré (§8) en `text-transform: uppercase`, et
--- une rubrique tapée « Ecole inclusive » y sort « ECOLE INCLUSIVE », où plus rien ne
--- laisse deviner l'accent perdu.
+-- Les capitales s'accentuent : « À l'heure actuelle », « ÉTAT DES LIEUX ». print.css met
+-- en capitales l'en-tête courant, la rubrique de couverture et le titre d'un encadré
+-- (`text-transform: uppercase`) : un accent manquant n'y est plus visible.
 --
--- ⚠ Deux régimes, et la raison de la différence est l'anglais. « Education » est un mot
--- français mal accentué dans un titre de rubrique, mais c'est le mot juste dans
--- « International Journal of Inclusive Education », qui se cite au fil du texte et en
--- bibliographie. Le lexique ne CORRIGE donc que là où l'anglais n'a rien à faire — titre,
--- sous-titre, intertitres — et se contente de SIGNALER dans le corps (code C3).
+-- Le lexique corrige les titres, sous-titres et intertitres. Dans le corps, il signale
+-- seulement (C3) : « Education » est juste dans un titre anglais cité.
 --
--- Chaque entrée ne rectifie que la CAPITALE D'ATTAQUE et laisse la suite du mot telle
--- quelle : « Elève » devient « Élève » parce que l'accent grave, lui, se tape sans peine
--- sur un clavier suisse. Un mot dont il manquerait aussi un accent intérieur est une
--- faute d'orthographe, pas un défaut de composition, et n'est pas de ce ressort.
+-- Chaque entrée ne corrige que la capitale initiale : « Elève » devient « Élève ».
 local LEXIQUE_MAJ = {
   { 'Ecol', '\195\137col' },      { 'Educ', '\195\137duc' },
   { 'Etat', '\195\137tat' },      { 'Etabl', '\195\137tabl' },
@@ -613,9 +545,8 @@ local LEXIQUE_MAJ = {
   { 'Etre', '\195\138tre' },      -- circonflexe, et non aigu
 }
 
--- Le « A » isolé qui est un « À ». La liste des mots qui peuvent le suivre est fermée, et
--- c'est elle qui rend la règle sûre : « A. Dupont » est une initiale (le point la retient
--- ici), « A Study of… » un titre anglais, et ni l'un ni l'autre ne figure ci-dessous.
+-- Le « A » isolé qui est un « À ». La liste fermée des mots qui peuvent le suivre écarte
+-- « A. Dupont » (initiale) et « A Study of… » (titre anglais).
 local SUIVANTS_A = {
   la = true, le = true, les = true, un = true, une = true, des = true, ce = true,
   cet = true, cette = true, ces = true, son = true, sa = true, ses = true, leur = true,
@@ -628,20 +559,16 @@ local SUIVANTS_A = {
   moyen = true, deux = true, trois = true, nouveau = true, ['l\226\128\153'] = true,
 }
 
--- Vrai si le jeton peut suivre un « À » : un mot de la liste, ou n'importe quel mot élidé
--- (« l’école », « l’heure ») — l'élision ne s'écrit qu'après une préposition ou un
--- déterminant, jamais après la lettre A d'une énumération.
+-- Vrai si le jeton peut suivre un « À » : un mot de la liste, ou un mot élidé en « l’ »
+-- (« l’école »).
 local function suit_un_a(d)
   if d == '' then return false end
   if d:sub(1, 4) == 'l' .. APO then return true end
   return SUIVANTS_A[bas_de_casse(nu(d))] == true
 end
 
--- ⚠ En OUVERTURE DE PHRASE seulement, et c'est une correction de ma première version :
--- un « A » capital au milieu d'une phrase — « il va A la maison » — n'est pas un « À »
--- mais un « à » minuscule, et le remplacer par la capitale accentuée aggraverait la
--- faute au lieu de la corriger. Hors début de phrase, c'est une coquille de casse, que le
--- filtre n'a aucun moyen de distinguer d'un intitulé (« variante A la plus courte »).
+-- En début de phrase seulement. Au milieu d'une phrase, « A » est une faute de casse pour
+-- « à », ou un intitulé (« variante A la plus courte ») : le filtre n'y touche pas.
 local FIN_DE_PHRASE = { ['.'] = true, ['!'] = true, ['?'] = true, [':'] = true }
 
 local function ouvre_une_phrase(jeton)
@@ -668,7 +595,7 @@ local function a4_a_isole(t)
   return table.concat(sortie)
 end
 
--- Correction du lexique : titres seulement, voir l'avertissement ci-dessus.
+-- Correction du lexique, pour les titres seulement.
 local function a4_capitales(t)
   if COLLEE then return t end
   for _, paire in ipairs(LEXIQUE_MAJ) do
@@ -677,12 +604,9 @@ local function a4_capitales(t)
   return t
 end
 
--- Signalement dans le corps : le mot est laissé tel quel, et la relecture tranche.
---
--- ⚠ Appelé en fin de course, sur le document entier (vider_constats), et non au fil des
--- chaînes : à ce moment-là les titres ont DÉJÀ reçu a4_capitales, et ce qui subsiste est
--- donc exactement ce qui n'a pas été corrigé. Appelé depuis normaliser_texte, il avertissait
--- pour un intertitre qu'il venait lui-même de rectifier.
+-- Signalement C3 dans le corps, mot laissé tel quel. Appelé en fin de passe sur le
+-- document entier (vider_constats), quand les titres sont déjà corrigés : seul ce qui
+-- reste est signalé.
 local function a4_signaler(t)
   if COLLEE then return end
   for _, paire in ipairs(LEXIQUE_MAJ) do
@@ -703,12 +627,10 @@ end
 
 -- ─────────────────────────────────────────────────────────────── A5 · ligatures œ et æ
 --
--- Obligatoires en français, et sur une liste fermée : c'est ce qui évite « coefficient »,
--- « coexister », « moelle », « poêle », « Groenland » et « goéland », où le o et le e ne
--- se lient pas. Chaque entrée est une SUITE DE LETTRES qui n'apparaît dans aucun autre
--- mot que celui de sa famille — « oeuvre » ne se rencontre que dans œuvre, œuvrer,
--- chef-d'œuvre, main-d'œuvre, désœuvré —, ce qui permet de la corriger n'importe où dans
--- le mot sans avoir à énumérer les formes fléchies.
+-- Français seulement, sur une liste fermée : « coefficient », « moelle » ou « goéland » ne
+-- prennent pas de ligature. Chaque entrée est une suite de lettres propre à une famille de
+-- mots (« oeuvre » : œuvre, œuvrer, chef-d'œuvre, désœuvré…), corrigée où qu'elle
+-- apparaisse dans le mot.
 local OE, OE_MAJ = '\197\147', '\197\146'      -- œ, Œ
 local AE, AE_MAJ = '\195\166', '\195\134'      -- æ, Æ
 local LIGATURES = {
@@ -723,11 +645,8 @@ local LIGATURES = {
   { 'curriculum vitae', 'curriculum vit' .. AE },
 }
 
--- La casse est portée par la première lettre : « Oeuvre » et « OEUVRE » s'écrivent avec
--- la ligature capitale, « ŒUVRE ». Les trois formes sont donc essayées.
--- ⚠ :upper() est un traitement d'OCTETS : il ne connaît ni œ, ni æ, ni é. La capitale
--- d'une ligature est donc écrite à la main, et les deux fonctions ci-dessous travaillent
--- sur la liste de caractères, comme tout le reste du fichier.
+-- Capitales des ligatures, écrites à la main : :upper() travaille sur des octets et ne
+-- connaît ni œ ni æ.
 local CAPITALE = { [OE] = OE_MAJ, [AE] = AE_MAJ }
 
 local function initiale_capitale(t)
@@ -743,8 +662,7 @@ local function en_capitales(t)
   return table.concat(out)
 end
 
--- Les trois graphies qu'un traitement de texte peut produire : « oeuvre », « Oeuvre » en
--- tête de phrase, « OEUVRE » dans un titre saisi en capitales.
+-- Trois graphies : « oeuvre », « Oeuvre », « OEUVRE ».
 local function a5_ligatures(t)
   if COLLEE then return t end
   for _, paire in ipairs(LIGATURES) do
@@ -758,17 +676,10 @@ end
 
 -- ──────────────────────────────────────────────────── S4 · le point abréviatif final
 --
--- « Le point abréviatif absorbe le point final » : « etc.. » n'existe pas, et « etc… »
--- non plus — le Guide interdit les points de suspension derrière une abréviation. S1
--- ayant déjà réduit « ... » à « … », tout « .. » qui subsiste est un point doublé.
--- ⚠ Pas de %f[%W] pour clore le motif : le caractère qui précède la frontière serait un
--- point, qui appartient lui-même à %W, et l'appariement ne peut alors jamais avoir lieu.
--- Le troisième point est donc écarté à la main, par [^%.] et par une variante en fin de
--- chaîne — un « etc.. » de pandoc finit presque toujours son Str.
---
--- « etc... » a d'ailleurs déjà perdu son point abréviatif quand on arrive ici : S1 a lu
--- les trois premiers points comme des points de suspension et rendu « etc… ». C'est donc
--- « etc » sans point, suivi du signe, qu'il faut reconnaître.
+-- Le point abréviatif absorbe le point final : ni « etc.. » ni « etc… ». S1 étant passé,
+-- tout « .. » restant est un point doublé, et « etc... » est déjà devenu « etc… ».
+-- Le motif ne peut pas se clore par %f[%W] (le point est lui-même dans %W) : le
+-- troisième point est écarté par [^%.], avec une variante en fin de chaîne.
 local function s4_point_abreviatif(t)
   t = t:gsub('(%a)%.%.([^%.])', '%1.%2')
   t = t:gsub('(%a)%.%.$', '%1.')
@@ -779,10 +690,9 @@ end
 
 -- ─────────────────────────────────── T1 · l'insécable devant le tiret d'incise (français)
 --
--- Le tiret d'incise ne commence pas une ligne : il reste avec le mot qu'il suit. La règle
--- est déjà celle de test/typo-check.py pour l'interface (_incise_fr) ; elle manquait ici,
--- et le corps des articles ne l'avait donc jamais. Elle ne CRÉE pas d'espace : « mot–mot »
--- sans blanc n'est pas une incise, et le tiret y est peut-être voulu.
+-- Le tiret d'incise ne commence pas une ligne : il reste avec le mot qu'il suit (même
+-- règle que _incise_fr de test/typo-check.py). Aucune espace n'est ajoutée : « mot–mot »
+-- n'est pas une incise.
 local function t1_incise(t)
   if COLLEE then return t end
   return (t:gsub('([^ ' .. NBSP .. '])[ ]' .. DEMI .. '[ ]', '%1' .. NBSP .. DEMI .. ' '))
@@ -790,18 +700,15 @@ end
 
 -- ────────────────────────────────────────── L2 · déterminant, préposition, conjonction
 --
--- Dans un titre, un mot outil ne reste pas seul en fin de ligne : « … comme partenaire de
--- / formation » se recompose « … / comme partenaire de formation ». La coupure se fait
--- DEVANT le déterminant ou la préposition, ce qu'obtient une insécable derrière lui.
+-- Dans un titre, un mot outil ne reste pas seul en fin de ligne : une insécable le lie au
+-- mot qui le suit, et la coupure se fait devant lui.
 --
--- ⚠ Titres et sous-titres seulement. Dans le corps, souder tous les mots outils d'un
--- paragraphe justifié en colonne étroite fabriquerait des lézardes : c'est le nombre de
--- points de coupure qui permet à WeasyPrint de répartir le blanc.
+-- Titres et sous-titres seulement : dans un paragraphe justifié, moins de points de
+-- coupure donnerait des blancs plus larges.
 --
--- Le plafond de 30 signes n'est pas décoratif : le titre du hero vit dans une boîte de
--- 67 % de la justification (print.css §5, `.szh-hero-main`), soit environ 34 signes à
--- 25 px, et cette boîte est en `overflow: hidden`. Un groupe insécable plus long qu'elle
--- serait tronqué sans bruit. Au-delà du plafond, l'espace reste donc sécable.
+-- Plafond de 30 signes par groupe insécable : le titre de couverture tient dans une boîte
+-- d'environ 34 signes (`.szh-hero-main`, print.css) en `overflow: hidden`, qui tronquerait
+-- sans bruit un groupe plus long.
 local PLAFOND_LIE = 30
 local MOTS_LIES = {
   fr = {
@@ -851,12 +758,12 @@ local function mot_lie(j)
   return table_langue[bas_de_casse(nu(j))] == true
 end
 
--- Longueur en SIGNES et non en octets : « préférence » compte dix signes, pas douze.
+-- Longueur en signes et non en octets.
 local function longueur(t)
   return (utf8 and utf8.len(t)) or #t
 end
 
--- Version chaîne : le titre du hero est une MetaString, donc une phrase entière.
+-- L2 sur une chaîne entière (le titre de couverture est une MetaString).
 local function l2_texte(t)
   local js = jetons(t)
   local sortie = {}
@@ -899,8 +806,7 @@ local function normaliser_texte(t)
   return t
 end
 
--- Les règles réservées aux titres : le lexique des majuscules accentuées et la soudure
--- des mots outils. Appliquées au titre, au sous-titre et aux intertitres, jamais au corps.
+-- Règles propres aux titres (A4 lexique, L2) : titre, sous-titre et intertitres.
 local function normaliser_titre(t)
   return l2_texte(a4_capitales(t))
 end
@@ -908,12 +814,10 @@ end
 -- ------------------------------------------------ règles qui traversent une frontière
 --
 -- pandoc découpe « mot : suite » en Str/Space/Str : l'espace à corriger est un élément de
--- la liste, pas un caractère d'une chaîne. Ces règles-là se jouent donc sur la liste
--- d'inlines, et pas dans normaliser_texte.
+-- la liste d'inlines. Ces règles travaillent donc sur la liste.
 
--- Texte d'un inline, en descendant dans les conteneurs : « **mot** : suite » a son
--- « mot » enfoui dans un Strong. Le code rend une sentinelle : aucune règle ne s'applique
--- de part et d'autre de lui.
+-- Texte d'un inline, conteneurs compris (« **mot** : suite »). Le code et le HTML brut
+-- rendent une sentinelle, qui bloque toute règle de part et d'autre.
 local function texte_de(inl)
   if inl == nil then return '' end
   if inl.t == 'Str' then return inl.text end
@@ -925,16 +829,14 @@ local function texte_de(inl)
   return ''
 end
 
--- Ce que devient l'espace entre `avant` et `apres` : une insécable, rien, ou lui-même.
+-- Rend ce que devient l'espace entre `avant` et `apres` (voir verdict_jetons).
 local function sort_de_l_espace(avant, apres)
   local ta = texte_de(avant)
   local ts = texte_de(apres)
   if ta:sub(-1) == '\0' or ts:sub(1, 1) == '\0' then return 'garder' end
 
-  -- E1 · guillemets. L'ouvrant se reconnaît en queue de chaîne, le fermant en tête. Le
-  -- chevron simple (SO/SF, 3 octets) compte au même titre que le double (GO/GF, 2 octets) :
-  -- a3_chevrons_sur_liste peut laisser un ouvrant ou un fermant simple juste contre une
-  -- frontière d'inline, exactement comme A2 le fait déjà pour le double.
+  -- E1 · guillemets : l'ouvrant en fin de chaîne, le fermant en tête. Chevrons simples
+  -- (3 octets) et doubles (2 octets).
   if ta:sub(-2) == GO or ta:sub(-3) == SO then return COLLEE and 'retirer' or 'insecable' end
   if ts:sub(1, 2) == GF or ts:sub(1, 3) == SF then return COLLEE and 'retirer' or 'insecable' end
 
@@ -946,8 +848,7 @@ local function sort_de_l_espace(avant, apres)
   end
 
   -- T1 · le tiret d'incise ne commence pas une ligne (français). Le tiret doit être seul
-  -- ou suivi d'un blanc : le « 12–25 » d'une plage de pages allemande commence par un
-  -- chiffre et ne passe donc jamais par ici.
+  -- ou suivi d'un blanc.
   if not COLLEE and ts:sub(1, 3) == DEMI and (#ts == 3 or ts:sub(4, 4) == ' ') then
     return 'insecable'
   end
@@ -968,33 +869,26 @@ local function sort_de_l_espace(avant, apres)
     if ta:match('n\194\176$') and ts:match('^%d') then return 'insecable' end
   end
 
-  -- E5 à E8 · les règles de jetons, les mêmes exactement que sur une chaîne entière : le
-  -- jeton de gauche est le dernier de l'inline précédent, celui de droite le premier du
-  -- suivant. Écrire la règle une seule fois est ce qui garantit qu'un « 12 km » de
-  -- tableau et un « 12 km » de paragraphe se composent pareil.
+  -- E5 à E8 · mêmes règles que sur une chaîne entière : le jeton de gauche est le dernier
+  -- de l'inline précédent, celui de droite le premier du suivant.
   return verdict_jetons(jeton_gauche(ta), jeton_droite(ts))
 end
 
--- E9 · dans un tableau, l'ordinal en tête de cellule ne se coupe pas de son mot
---
--- « 1. Hilfe » en première colonne d'un tableau se coupait à l'espace après le point : le
--- numéro seul sur une ligne, le mot sur l'autre, et la colonne d'étiquettes s'en trouvait
--- écrasée. La règle ne vaut que pour le PREMIER texte d'une cellule <td>/<th> — jamais
--- dans un paragraphe, où « im Jahr 2021. Danach » ne doit surtout pas se souder.
+-- E9 · dans un tableau, l'ordinal en tête de cellule ne se sépare pas de son mot
+-- (« 1. Hilfe »). Seulement pour le premier texte d'une cellule <td>/<th> : dans un
+-- paragraphe, « im Jahr 2021. Danach » ne doit pas se souder.
 local function e9_ordinal_tete(t)
   return (t:gsub('^(%s*%d%d?%d?%.) (' .. LETTRE .. ')', '%1' .. NBSP .. '%2'))
 end
 
--- Balises transparentes entre l'ouverture de cellule et son texte : ce qu'un traitement de
--- texte y met couramment (gras, italique, lien, exposant, paragraphe), jamais rien qui
--- doive clore l'occasion.
+-- Balises admises entre l'ouverture de la cellule et son premier texte (gras, italique,
+-- lien, exposant, paragraphe).
 local TRANSPARENTE_E9 = {
   strong = true, b = true, em = true, i = true, span = true, p = true,
   a = true, sup = true,
 }
 
--- Nom de balise en bas de casse, sans le « / » de fermeture ni les attributs : de
--- « <TD class="x"> » ou « </th> » on ne garde que « td » ou « th ».
+-- Nom de balise en bas de casse : « <TD class="x"> » donne « td », « </th> » « th ».
 local function nom_balise(tag)
   local nom = tag:match('^<%s*/?%s*([%a][%w]*)')
   return nom and bas_de_casse(nom) or nil
@@ -1004,16 +898,15 @@ local function fermante(tag) return tag:sub(1, 2) == '</' end
 
 -- ------------------------------------------------------- les attributs imprimés d'un bloc
 --
--- szh-numerotation.lua compose sous la figure ou le tableau la note, le copyright et la
--- source, APRÈS ce filtre : ils y arrivaient donc bruts (« fin 2025 : voir l'annexe »,
--- mesuré le 30.09.2026). Ils reçoivent ici les règles du texte, dans la langue de
--- l'article ; aucun autre attribut (alt, src, classes, ids) n'est touché.
+-- szh-numerotation.lua imprime, après ce filtre, la note, le copyright et la source d'une
+-- figure ou d'un tableau. Ces attributs reçoivent donc ici les règles du texte. Les autres
+-- (alt, src, classes, identifiants) ne sont pas touchés.
 local ATTRIBUTS_IMPRIMES = { 'note', 'copyright', 'source' }
 
 local ENTITES = { amp = '&', lt = '<', gt = '>', quot = '"', apos = "'" }
 
--- Une valeur d'attribut HTML est échappée : on la décode avant les règles (sinon « &amp; »
--- se lirait comme un mot suivi d'un point-virgule), et on la réécrit échappée après.
+-- Une valeur d'attribut HTML est décodée avant les règles (sinon « &amp; » se lirait comme
+-- un mot suivi d'un point-virgule), puis réécrite échappée.
 local function decoder_entites(s)
   return (s:gsub('&(#?)(%w+);', function(diese, nom)
     if diese == '#' then
@@ -1035,7 +928,7 @@ local function echapper_attribut(s, delimiteur)
   return (s:gsub("'", '&#39;'))
 end
 
--- data-note, data-copyright et data-source du <table …> que szh-tabelle-inclure a réinjecté.
+-- data-note, data-copyright et data-source du <table …> inséré par szh-tabelle-inclure.
 local function normaliser_attributs_table(balise)
   for _, nom in ipairs(ATTRIBUTS_IMPRIMES) do
     for _, q in ipairs({ '"', "'" }) do
@@ -1064,12 +957,11 @@ local function transformer_image(img)
   return change and img or nil
 end
 
--- --------------------------------------------------------------------- le HTML réinjecté
+-- ----------------------------------------------------------------------- le HTML inséré
 --
--- szh-tabelle-inclure pose les tableaux en RawBlock html : leur texte n'est plus un Str et
--- échapperait à tout. On y passe donc à la main, en ne touchant que ce qui est entre deux
--- balises — jamais un nom d'élément, et d'attribut que les trois imprimés du <table>
--- (normaliser_attributs_table).
+-- szh-tabelle-inclure pose les tableaux en RawBlock html, dont le texte n'est pas un Str.
+-- On ne traite que le texte entre les balises, plus les trois attributs imprimés du
+-- <table> (normaliser_attributs_table).
 local function normaliser_html(html)
   local sortie = {}
   local i = 1
@@ -1077,21 +969,17 @@ local function normaliser_html(html)
   while true do
     local d = html:find('<', i, true)
     local morceau = d and html:sub(i, d - 1) or html:sub(i)
-    -- E9 : seul le premier morceau non blanc suivant l'ouverture de cellule est concerné,
-    -- et une seule fois — un morceau fait uniquement de blancs/sauts de ligne (indentation
-    -- du tableau) laisse l'occasion ouverte, cf. <td>\n<p>…</p></td>.
+    -- E9 : seul le premier morceau non blanc après l'ouverture de cellule est concerné.
+    -- Un morceau de blancs (indentation, <td>\n<p>…</p></td>) ne compte pas.
     if attente_e9 and morceau:match('%S') then
       morceau = e9_ordinal_tete(morceau)
       attente_e9 = false
     end
-    -- Le texte entre deux balises est échappé HTML : sans ce décodage, « &amp; » se lisait
-    -- comme un mot suivi d'un point-virgule, et E2 rendait « &amp ; » (mesuré le 30.09.2026
-    -- sur « Effectifs &amp; durées »), imprimé tel quel.
+    -- Texte décodé avant les règles, sinon E2 ferait de « &amp; » un « &amp ; ».
     sortie[#sortie + 1] = echapper_texte_html(normaliser_texte(decoder_entites(morceau)))
     if not d then break end
-    -- Un commentaire HTML n'est pas une balise : son premier « > » ne le ferme pas, et le
-    -- traiter comme tel rendait normalisable le texte qui suit — les commentaires du banc
-    -- d'essai, qui expliquent des défauts voulus, s'en trouvaient réécrits.
+    -- Un commentaire HTML se ferme à « --> », pas au premier « > » : son texte n'est pas
+    -- traité.
     local f
     if html:sub(d, d + 3) == '<!--' then
       local fin_c = html:find('-->', d, true)
@@ -1104,9 +992,8 @@ local function normaliser_html(html)
       break
     end
     local balise = html:sub(d, f)
-    -- E9 : <caption> n'est pas une cellule et n'ouvre donc jamais l'occasion. Une balise
-    -- transparente (TRANSPARENTE_E9) la laisse ouverte ; toute autre — <tr>, <table>, un
-    -- commentaire, ou la fermeture de la cellule elle-même — la referme.
+    -- E9 : seuls <td> et <th> ouvrent l'attente (pas <caption>). Une balise de
+    -- TRANSPARENTE_E9 la laisse ouverte ; toute autre la referme.
     local nom = nom_balise(balise)
     if nom == 'td' or nom == 'th' then
       attente_e9 = not fermante(balise)
@@ -1124,24 +1011,17 @@ end
 
 -- ------------------------------------------------------------------------ les métadonnées
 --
--- Le titre, le sous-titre et les résumés partent dans la couverture et dans les
--- métadonnées du PDF : ils relèvent de la même typographie que le corps. Liste blanche
--- stricte — un DOI, une URL, une classe CSS ou un nom de fichier n'ont pas de typographie,
--- et une insécable y serait un défaut.
+-- Le titre, le sous-titre et les résumés vont sur la couverture et dans les métadonnées du
+-- PDF : ils reçoivent la typographie du corps. Seules les clés listées ici sont traitées :
+-- un DOI, une URL ou un nom de fichier ne doivent pas l'être.
 local META_TEXTE = {
   'pagetitle', 'description', 'licence-texte',     -- `resumes` : normaliser_resumes()
 }
 local META_AUTEUR = { 'fonction', 'affiliation' }
 
--- Les clés qui portent un TITRE, et reçoivent en plus A4 (lexique des majuscules
--- accentuées) et L2 (soudure des mots outils).
---
--- ⚠ `titre-affiche` et `sous-titre-affiche` sont ce que le hero imprime réellement
--- (gabarit szh-article.html, lignes 110 et 112). szh-maquette.lua les pose AVANT ce
--- filtre, en MetaString, à partir de `title` : normaliser `title` seul ne les touchait
--- donc pas, et la couverture n'avait aucune typographie — ni insécable devant un
--- deux-points, ni chevron, ni ligature (constaté le 08.09.2026). Normaliser les quatre
--- clés est ce qui rend la couverture conforme au corps.
+-- Clés de titre, qui reçoivent en plus A4 (lexique) et L2. `titre-affiche` et
+-- `sous-titre-affiche`, posés par szh-maquette.lua avant ce filtre, sont ce que la
+-- couverture imprime (gabarit szh-article.html).
 local META_TITRE = { 'title', 'subtitle', 'titre-affiche', 'sous-titre-affiche' }
 
 local function normaliser_valeur_meta(v, apres)
@@ -1151,11 +1031,8 @@ local function normaliser_valeur_meta(v, apres)
     if apres ~= nil then t = apres(t) end
     return t
   end
-  -- ⚠ Une MetaString arrive dans un filtre Lua en CHAÎNE NUE, et non en table portant un
-  -- champ `.t` : c'est ainsi que pandoc la marshale. Sans ce premier cas, la clé
-  -- `titre-affiche` que szh-maquette.lua pose en pandoc.MetaString traversait la
-  -- normalisation sans rien recevoir — le test de type ne mordait jamais, en silence, une
-  -- chaîne Lua rendant nil pour n'importe quel champ. Mesuré le 08.09.2026.
+  -- Une MetaString arrive dans un filtre Lua en chaîne nue, sans champ `.t` : le type
+  -- Lua se teste en premier.
   if type(v) == 'string' then return pandoc.MetaString(regles(v)) end
   if v.t == 'MetaString' then return pandoc.MetaString(regles(v.text)) end
   if v.walk then
@@ -1166,9 +1043,8 @@ end
 
 -- ------------------------------------------------------------------------------ passes
 --
--- Deux tables de filtre : la première arrête la langue sur le document entier, la seconde
--- transforme. Les fondre en une seule laisserait ouverte la question de savoir si Meta
--- passe avant les blocs ; ainsi elle ne se pose pas.
+-- Les passes sont listées en fin de fichier. La première fixe la langue d'après les
+-- métadonnées, avant tout traitement du corps.
 
 local function poser_langue(meta)
   LANGUE = commun.contexte(meta).lang
@@ -1177,7 +1053,7 @@ local function poser_langue(meta)
   return nil
 end
 
--- `f` tourne avec LANGUE/COLLEE posés sur `court`, puis les deux sont rendus.
+-- Exécute `f` avec LANGUE/COLLEE posés sur `court`, puis les rétablit.
 local function avec_langue(court, f)
   local langue0, collee0 = LANGUE, COLLEE
   LANGUE, COLLEE = court, (court ~= 'fr')
@@ -1187,19 +1063,18 @@ local function avec_langue(court, f)
   return r
 end
 
--- Un résumé se compose dans SA langue, pas dans celle de l'article : la Zeitschrift publie
--- des résumés français, la Revue des résumés allemands. Une langue autre que fr, de ou it
--- garde celle de l'article.
+-- Un résumé se compose dans sa propre langue (la Zeitschrift publie des résumés français,
+-- la Revue des résumés allemands). Une langue autre que fr, de ou it garde celle de
+-- l'article.
 local function dans_la_langue(l, f)
   local court = tostring(l or ''):lower():sub(1, 2)
   if court ~= 'fr' and court ~= 'de' and court ~= 'it' then return f() end
   return avec_langue(court, f)
 end
 
--- ⚠ `resumes` (posé par szh-maquette.lua) est une liste de MetaMap dont `texte` arrive en
--- chaîne nue : l'ancien passage par normaliser_valeur_meta sur la LISTE ne visitait que les
--- Str et n'atteignait jamais ce texte — aucun résumé n'avait de typographie (mesuré le
--- 30.09.2026). Chaque texte est donc normalisé un par un, dans la langue de son `lang`.
+-- `resumes` (posé par szh-maquette.lua) est une liste de MetaMap dont `texte` arrive en
+-- chaîne nue, hors de portée d'un walk sur des Str. Chaque texte est donc traité un par
+-- un, dans la langue de son `lang`.
 local function normaliser_resumes(liste)
   if type(liste) ~= 'table' then return liste end
   for _, r in ipairs(liste) do
@@ -1216,8 +1091,8 @@ local function transformer_meta(meta)
     if meta[cle] ~= nil then meta[cle] = normaliser_valeur_meta(meta[cle]) end
   end
   if meta.resumes ~= nil then meta.resumes = normaliser_resumes(meta.resumes) end
-  -- `resume` (langue -> texte), tel que la fiche le porte : c'est lui que lit la chaîne
-  -- d'aperçu, qui ne charge pas szh-maquette.lua.
+  -- `resume` (langue -> texte), tel que la fiche le porte : lu par la chaîne d'aperçu,
+  -- qui ne charge pas szh-maquette.lua.
   if type(meta.resume) == 'table' and meta.resume.t == nil then
     for l, v in pairs(meta.resume) do
       meta.resume[l] = dans_la_langue(l, function() return normaliser_valeur_meta(v) end)
@@ -1241,9 +1116,8 @@ local function transformer_meta(meta)
   return meta
 end
 
--- T2 sur la liste : pandoc coupe « pp. 12-25 » en trois inlines, l'abreviation et la
--- plage n'etant jamais dans la meme chaine. Le contexte qui rend la regle sure — « p. »,
--- « pp. », « S. » — ne se lit donc qu'ici.
+-- T2 sur la liste : quand pandoc coupe « pp. 12-25 » en trois inlines, l'abréviation qui
+-- rend la règle sûre se lit dans l'inline précédent.
 local function t2_sur_liste(inl)
   local depuis, vers = '%-', DEMI              -- allemand, italien
   if not COLLEE then depuis, vers = DEMI, '-' end
@@ -1261,16 +1135,15 @@ local function t2_sur_liste(inl)
   return inl
 end
 
--- A4a sur la liste : « À l'école » arrive en trois inlines — Str « A », Space, Str
--- « l’école » —, et le « A » ne peut donc pas se décider dans sa propre chaîne. Même
--- restriction qu'en chaîne : ouverture de phrase seulement.
+-- A4 (« À » isolé) sur la liste : « A l'école » arrive en Str « A », Space, Str
+-- « l’école ». En début de phrase seulement, comme sur une chaîne.
 local function a4_sur_liste(inl)
   if COLLEE then return inl end
   local debut = true
   for i = 1, #inl do
     local el = inl[i]
     if el.t == 'Space' or el.t == 'SoftBreak' then
-      -- l'espace ne referme pas une phrase : l'état reste celui du jeton précédent
+      -- l'espace ne change pas l'état : celui du jeton précédent reste
     else
       if debut and el.t == 'Str' and el.text == 'A' then
         local j = i + 1
@@ -1285,10 +1158,8 @@ local function a4_sur_liste(inl)
   return inl
 end
 
--- L2 sur la liste : les intertitres du corps. Le titre y est déjà découpé en Str, Space,
--- Str, et le mot outil à souder est donc le dernier jeton de l'inline qui précède
--- l'espace. Le plafond de 30 signes se compte sur le groupe insécable en cours, ce que
--- seule cette passe-ci peut faire : elle voit la ligne entière.
+-- L2 sur la liste, pour les intertitres : le mot outil est le dernier jeton de l'inline
+-- qui précède l'espace. Le plafond se compte sur le groupe insécable en cours.
 local function l2_sur_liste(inl)
   local sortie = pandoc.Inlines({})
   local lie = 0
@@ -1312,13 +1183,9 @@ local function l2_sur_liste(inl)
   return sortie
 end
 
--- Les intertitres reçoivent les règles de titre. pandoc filtre les inlines d'un bloc
--- avant le bloc : transformer_inlines et transformer_str sont donc déjà passés ici, et il
--- ne reste que ce qui est réservé aux titres.
---
--- ⚠ Avant szh-sections.lua, qui écrira le numéro de section devant le titre : le premier
--- mot est encore le premier mot, et A4 ne se trompe pas de position. C'est aussi ce qui
--- fait qu'aucun numéro ne vient s'intercaler dans un groupe soudé par L2.
+-- Règles de titre pour les intertitres. pandoc filtre les inlines d'un bloc avant le
+-- bloc : transformer_str et transformer_inlines sont déjà passés. Ce filtre s'exécute
+-- avant szh-sections.lua, qui ajoute le numéro de section en tête du titre.
 local function transformer_header(h)
   h.content = l2_sur_liste(h.content:walk({
     Str = function(s) return pandoc.Str(a4_capitales(s.text)) end,
@@ -1326,71 +1193,34 @@ local function transformer_header(h)
   return h
 end
 
--- A3 · les guillemets SIMPLES, appariés ET NIVELÉS sur toute la liste d'inlines d'un
--- paragraphe.
+-- A3 · les guillemets simples, appariés et rangés par niveau sur toute la liste d'inlines
+-- d'un paragraphe.
 --
--- a2a3_chevrons (ci-dessus, table COURBES) ne voit qu'une seule chaîne. Un « ‘mot’ » qui
--- tient dans un seul Str s'apparierait très bien tout seul, caractère par caractère — mais
--- le pont du nettoyeur de manuscrit (pipeline/manuscrit_typo.py, _construire_inlines)
--- découpe le texte en un Str PAR MOT : dès qu'une citation dépasse un mot, le cas courant,
--- l'ouvrant et le fermant vivent dans deux Str différents et sont invisibles l'un à l'autre
--- à l'intérieur d'une seule chaîne. Cette passe-ci voit toute la liste — le même principe
--- que sort_de_l_espace pour E1/E2 — et c'est elle qui apparie pour de bon. Défaut mesuré le
--- 22.09.2026 sur un document réel : 18 paires sur 18 dépareillées avant ce correctif.
+-- Une citation de plusieurs mots a son ouvrant et son fermant dans deux Str différents (le
+-- nettoyeur de manuscrit, pipeline/manuscrit_typo.py, produit même un Str par mot) : seule
+-- la liste entière permet de les apparier.
 --
--- ⚠ Un premier correctif (toujours daté du 22.09.2026) appariait déjà juste, mais écrivait
--- TOUJOURS des chevrons simples ‹ ›, quel que soit le niveau — confondant l'appariement
--- (un problème résolu) avec la RÈGLE (A2/A3 : docs/TYPOGRAPHIE-FR.md, lignes 24-40), qui ne
--- regarde jamais le caractère d'origine mais le niveau de citation. Une paire de PREMIER
--- niveau donne « » comme n'importe quel guillemet (A2 : « quels qu'ils soient ») ; seule
--- une paire imbriquée DANS une citation déjà ouverte donne ‹ › (A3). Mesuré une seconde
--- fois sur le même document réel (tmp/docx-cleaner-error/1408_Alves.docx) : ‘cartographie’
--- et ‘étiquette’ y sont des citations de premier niveau, et sortaient à tort en ‹ ›.
+-- Le résultat dépend du niveau de citation, pas du caractère d'origine : une paire de
+-- premier niveau donne « » (A2), une paire imbriquée dans une citation ouverte donne ‹ ›
+-- (A3).
 --
--- Deux idiomes à distinguer, jamais par la seule POSITION (un « ‘ » n'annonce pas la même
--- chose selon la langue) mais par un ÉTAT qui se pose au premier caractère ouvrant
--- rencontré :
---   * français : « ‘ » ouvre, « ’ » ferme — sauf quand « ’ » est une élision
---     (lettre’lettre, posée par A1), qui n'est jamais un fermant. Le caractère ‘ ’ est
---     AMBIGU sur le niveau : la rédaction française l'emploie aussi bien pour un premier
---     niveau (habitude de clavier) que pour une vraie imbrication — le niveau se mesure
---     donc, il ne se déduit pas du caractère ;
---   * allemand : « ‚ » (U+201A, ouvrant bas) ouvre, et c'est alors « ‘ » qui ferme — le
---     MÊME caractère qui ouvre en français. D'où l'état : jamais la position seule, toujours
---     la conjonction (position ET citation ouverte). Ici le caractère n'est PAS ambigu :
---     l'idiome allemand natif réserve ‚ ‘ au second niveau (le premier niveau natif est
---     „ “, et le Duden ne l'emploie jamais seul) — ‚ganz konkret‘ vaut donc TOUJOURS ‹ › ,
---     même hors de toute « » déjà ouverte dans le paragraphe, par construction de l'idiome
---     et non par mesure de profondeur. Vérifié le 22.09.2026 : aucune occurrence de ‚ ‘
---     dans le corpus allemand disponible (tmp/docx-dev, tmp/docx-cleaner-error) pour le
---     mesurer sur du réel — la règle retenue est donc celle du Duden, non une mesure locale.
+-- Deux usages, distingués par un état posé au premier ouvrant :
+--   * français : « ‘ » ouvre, « ’ » ferme, sauf entre deux lettres (élision posée par A1).
+--     La rédaction emploie ‘ ’ pour un premier niveau comme pour une imbrication : le
+--     niveau se mesure ;
+--   * allemand : « ‚ » (U+201A) ouvre et « ‘ » ferme, le caractère qui ouvre en français.
+--     ‚ ‘ est réservé au second niveau (le premier est „ “) : ‚ganz konkret‘ donne
+--     toujours ‹ ›.
 --
--- Le niveau d'une paire française se décide à l'OUVERTURE, à la profondeur de chevrons
--- doubles « » déjà comptée dans le flux à cet instant — qu'ils viennent de la plume de
--- l'autrice ou de a2a3_chevrons, qui a déjà tourné sur chaque Str (transformer_str précède
--- transformer_inlines, voir transformer_header ci-dessous pour la même remarque) : au
--- moment où a3_chevrons_sur_liste s'exécute, un « " » tapé par l'autrice et un « “ »
--- converti par A2 sont déjà le même caractère GO/GF, indiscernables et c'est très bien
--- ainsi. profondeur > 0 à l'ouverture => paire DANS une citation déjà ouverte => ‹ › ;
--- profondeur == 0 => premier niveau => « ».
+-- Le niveau d'une paire française se décide à l'ouverture, selon le nombre de chevrons
+-- doubles « » ouverts à cet endroit. a2a3_chevrons a déjà converti chaque Str : un « " »
+-- tapé et un « “ » converti sont tous deux devenus GO/GF.
 --
--- Aucun chevron orphelin : la passe travaille en DEUX temps, un repérage de toutes les
--- paires complètes d'abord (rien n'est écrit tant qu'un fermant n'est pas trouvé), puis
--- l'écriture des seules paires trouvées. Un ouvrant resté sans fermant jusqu'à la fin du
--- paragraphe reste donc « ‘ » ou « ‚ » tel quel — un texte inchangé vaut mieux qu'un texte
--- à moitié converti.
+-- La passe repère d'abord les paires complètes, puis n'écrit qu'elles : un ouvrant sans
+-- fermant reste tel quel. Un inline opaque (Code, RawInline…) interrompt la recherche.
 --
--- Une frontière opaque (Code, RawInline, tout ce qui n'est ni Str ni Space/SoftBreak)
--- referme la recherche sans convertir : une citation ouverte avant elle n'est jamais réputée
--- fermée au-delà.
---
--- Les insécables : posées en relançant e_espacement (E1, plus haut) sur la chaîne déjà
--- réécrite, pour CHAQUE Str touché — la même fonction qui pose déjà l'insécable après un
--- GO et avant un GF pour les chevrons doubles d'A2. e_espacement reconnaît maintenant SO et
--- SF au même titre que GO et GF (extension du 22.09.2026, voir plus haut) : aucun mécanisme
--- d'espacement parallèle n'est écrit ici. e_espacement est sûre à rappeler sur une chaîne
--- déjà normalisée (elle reconnaît une insécable déjà posée et ne la double pas), ce qui
--- permet de la relancer sans rejouer tout normaliser_texte.
+-- Les insécables sont posées en relançant e_espacement sur chaque Str modifié ; elle ne
+-- double pas une insécable déjà présente.
 local function a3_chevrons_sur_liste(inl)
   local flux = {}
   for i = 1, #inl do
@@ -1407,10 +1237,9 @@ local function a3_chevrons_sur_liste(inl)
   end
 
   -- attente : 'fr' ou 'de' tant qu'un ouvrant cherche son fermant, sinon nil ; `debut` est
-  -- sa position dans `flux`. `profondeur` compte les chevrons doubles « » déjà présents
-  -- dans le flux à mesure qu'on avance ; `profondeur_ouverture` fige sa valeur au moment où
-  -- une paire française s'ouvre, seule mesure qui compte pour décider de son niveau (une
-  -- paire refermée après que profondeur a changé ne doit pas changer d'avis en route).
+  -- sa position dans `flux`. `profondeur` compte les chevrons doubles « » ouverts ;
+  -- `profondeur_ouverture` garde sa valeur à l'ouverture d'une paire française, qui seule
+  -- décide de son niveau.
   local attente, debut, profondeur_ouverture = nil, nil, 0
   local profondeur = 0
   local paires = {}
@@ -1424,9 +1253,8 @@ local function a3_chevrons_sur_liste(inl)
     end
     if c == '\0' then
       attente, debut = nil, nil
-    elseif c == SIMPLE_OUVRANT_DE then           -- ‚ : ouvre toujours l'idiome allemand,
-                                                  -- et c'est TOUJOURS un second niveau —
-                                                  -- voir la note de tête de fonction.
+    elseif c == SIMPLE_OUVRANT_DE then           -- ‚ : ouvre l'usage allemand, second
+                                                  -- niveau
       if attente == nil then attente, debut = 'de', n end
     elseif c == SIMPLE_OUVRANT_FR then           -- ‘ : ferme l'allemand en attente, sinon ouvre le français
       if attente == 'de' then
@@ -1448,15 +1276,15 @@ local function a3_chevrons_sur_liste(inl)
       end
     end
   end
-  -- `attente` encore posé ici : ouvrant sans fermant, volontairement laissé tel quel.
+  -- `attente` encore posé ici : ouvrant sans fermant, laissé tel quel.
 
   if #paires == 0 then return inl end
 
   local ecrire = {}
   for _, p in ipairs(paires) do
     local fo, ff = flux[p.ouvrant], flux[p.fermant]
-    -- Premier niveau français => chevrons doubles, comme n'importe quel guillemet (A2).
-    -- Idiome allemand et imbrication française => chevrons simples (A3).
+    -- Premier niveau français : chevrons doubles (A2). Usage allemand et imbrication
+    -- française : chevrons simples (A3).
     local co, cf = SO, SF
     if p.niveau == 'premier' then co, cf = GO, GF end
     ecrire[fo.i] = ecrire[fo.i] or {}
@@ -1489,8 +1317,7 @@ local function transformer_inlines(inl)
       elseif quoi ~= 'retirer' then
         sortie:insert(el)
       end
-      -- « retirer » : rien n'est inséré, les deux voisins se collent — ce que veut
-      -- l'allemand autour d'un chevron et devant un deux-points.
+      -- « retirer » : rien n'est inséré, les deux voisins se collent.
     else
       sortie:insert(el)
     end
@@ -1498,10 +1325,8 @@ local function transformer_inlines(inl)
   return sortie
 end
 
--- A2/A3 · ce que pandoc a su apparier lui-même. Le lecteur markdown « smart » rend
--- « "…" » en Quoted : c'est l'appariement le plus sûr dont on dispose, et bien meilleur
--- que toute heuristique qu'on écrirait ici. L'espacement est posé dans la foulée, dans la
--- langue de l'article.
+-- A2/A3 · guillemets déjà appariés par pandoc : le lecteur markdown « smart » rend
+-- « "…" » en Quoted. Les chevrons et leur espacement sont posés ici.
 local function transformer_quoted(q)
   local ouv, fer = GO, GF
   if q.quotetype == 'SingleQuote' then ouv, fer = SO, SF end
@@ -1523,23 +1348,17 @@ end
 
 -- ─────────────────────────────────────────────── passages dans une autre langue
 --
--- Un Div ou un Span qui porte `lang` se compose dans SA langue, pas dans celle de l'article :
--- une citation allemande d'un article français (`::: {lang=de}` autour d'un « > »), un mot
--- `[Nachteilsausgleich]{lang=de}`, et l'inverse dans la Zeitschrift. Avant le 30.09.2026, le
--- filtre y posait les insécables françaises (« Aufgabe[nb]» ») : une seule langue par
--- document était forcément fausse pour l'autre.
---   * fr, de, it : les règles de cette langue, telles quelles ;
---   * toute autre langue (en…) : aucune règle — ni espacement français, ni chevrons, ni
---     apostrophe. Le texte reste celui de la rédaction, et pandoc y pose ses guillemets ;
+-- Un Div ou un Span qui porte `lang` se compose dans sa langue : une citation allemande
+-- dans un article français (`::: {lang=de}`), un mot `[Nachteilsausgleich]{lang=de}`.
+--   * fr, de, it : les règles de cette langue ;
+--   * autre langue (en…) : aucune règle, pandoc y pose ses guillemets ;
 --   * même langue que la région qui l'entoure : rien ne change.
--- Les passages s'imbriquent : chacun est traité à part, dans sa langue, le plus intérieur
--- d'abord, puis mis de côté pendant que la région qui l'entoure est traitée — sans quoi la
--- passe de l'article repasserait dessus.
+-- Les passages s'imbriquent : chacun est traité dans sa langue, le plus intérieur
+-- d'abord, puis mis de côté pendant le traitement de la région qui l'entoure.
 --
--- ⚠ Mis de côté, un Span garde en témoin le texte de son contenu : la région qui l'entoure
--- décide de l'espace qui le borde en regardant ses voisins (sort_de_l_espace). Vidé,
--- « [Wort]{lang=de} : suite » perdait l'insécable française devant le deux-points, qui
--- appartient à la phrase française. Le témoin est jeté au retour.
+-- Mis de côté, un Span garde le texte de son contenu comme témoin : la région voisine
+-- décide de l'espace qui le borde en regardant ce texte (« [Wort]{lang=de} : suite »
+-- garde son insécable française). Le témoin est retiré au retour.
 local ATTR_REGION = 'data-szh-typo-region'
 local LANGUES_REGLES = { fr = true, de = true, it = true }
 
@@ -1596,10 +1415,9 @@ local function transformer_document(doc)
   return doc
 end
 
--- Les constats partent en fin de course, une ligne par code et non par occurrence. C3
--- (majuscules non accentuées) se cherche ICI, sur le document déjà transformé : les titres
--- y sont corrigés, et il ne reste donc que le corps, seul endroit où le filtre s'abstient.
--- Un passage dans une autre langue se juge dans la sienne, comme il a été composé.
+-- Les signalements partent en fin de passe, une ligne par code. C3 se cherche ici, sur le
+-- document transformé où les titres sont déjà corrigés. Un passage dans une autre langue
+-- est jugé dans la sienne.
 local function signaler_region(elements)
   local function passage(el)
     local court = langue_de_passage(el)

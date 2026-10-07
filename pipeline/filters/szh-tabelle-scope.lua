@@ -1,10 +1,10 @@
 -- Rendu HTML : pose scope sur les cellules d'en-tête des tableaux écrits en markdown
--- (RGAA 5.7), que pandoc sort en <th> nus. Le writer HTML émet tel quel l'attribut
--- posé dans l'Attr de la cellule (pandoc 3.5 et 3.9) :
+-- (RGAA 5.7), que pandoc sort en <th> sans scope. Le writer HTML recopie l'attribut posé
+-- dans l'Attr de la cellule :
 --   * rangées du <thead>           -> scope="col" (colspan > 1 : "colgroup") ;
 --   * colonnes d'en-tête de rangée -> scope="row" (rowspan > 1 : "rowgroup").
--- Les tableaux de l'éditeur maison (.szh-tableau) n'entrent pas ici : réinjectés en
--- RawBlock html, ils portent déjà leur scope.
+-- Les tableaux de l'éditeur du cockpit (.szh-tableau) arrivent en RawBlock html et portent
+-- déjà leur scope.
 
 local function poser(cell, seul, groupe)
   cell.attr.attributes['scope'] =

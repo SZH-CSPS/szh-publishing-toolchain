@@ -1,12 +1,10 @@
--- Fiches de « ressources » d'un article : un livre, un film, une intervention parlementaire,
--- une recherche en cours, un tour d'horizon, la reprise d'un article de la revue sœur, une
--- manifestation de l'agenda — ce qui remplit la Documentation d'un numéro (« Actualité et
--- ressources » / « News & Ressourcen »), écrite par documentation-kirby.py depuis
--- l'arborescence Kirby (docs/FORMAT-DOCUMENTATION-KIRBY.md). Un seul moteur générique, décliné
--- par le contrat pipeline/kirby/champs-documentation.json — jamais un filtre par type, jamais
--- une table recopiée ici : ce filtre LIT le JSON (types, listes, suiviImprime), il ne le
--- redit pas. Le même JSON alimente le formulaire du cockpit et le convertisseur : un seul
--- endroit où changer un libellé, une liste ou un gabarit de lien.
+-- Compose les fiches de ressources de la Documentation d'un numéro (« Actualité et
+-- ressources » / « News & Ressourcen ») : livre, film, intervention parlementaire,
+-- recherche en cours, tour d'horizon, reprise d'un article de la revue sœur, agenda.
+-- Le .md est écrit par documentation-kirby.py depuis l'arborescence Kirby
+-- (docs/FORMAT-DOCUMENTATION-KIRBY.md). Types, libellés, listes et gabarits se lisent dans
+-- pipeline/kirby/champs-documentation.json, que lisent aussi le formulaire du cockpit et le
+-- convertisseur.
 --
 --   ::: {#r1a2b3c4 .szh-ressource type="livre" title="Le silence des bêtes"
 --        auteurs="Jean Dupont, Marie Martin" annee="2019" editeur="Éditions XYZ"
@@ -16,58 +14,46 @@
 --   ![](media/couverture-x.jpg){alt=""}
 --   :::
 --
--- Ce qui sort (livre) :
+-- donne (livre) :
 --   <div class="szh-ressource szh-ressource-livre">
 --     <div class="szh-ressource-titre"><p>Le silence des bêtes</p></div>
 --     <div class="szh-ressource-corps">
+--       <div class="szh-ressource-image">…</div>
 --       <div class="szh-ressource-texte">
 --         <div class="szh-ressource-biblio"><p>Jean Dupont, Marie Martin · 2019 · Éditions XYZ</p></div>
 --         <div class="szh-ressource-pastille"><p>Manuel</p></div>
 --         <p>Descriptif…</p>
 --         <div class="szh-ressource-lien"><p><a href="…">En savoir plus sur le livre …</a></p></div>
 --       </div>
---       <div class="szh-ressource-image">…</div>
 --     </div>
 --   </div>
 --
--- print.css met le titre au-dessus de tout, et dans .szh-ressource-corps le texte à gauche,
--- l'image au quart de la largeur alignée à droite (cahier des charges).
+-- print.css place le titre en haut, puis le texte à gauche et l'image à droite, au quart
+-- de la largeur.
 --
--- L'image est toujours décorative (cahier des charges) : le convertisseur l'écrit avec un
--- alt="" et sans légende, et ce filtre la laisse exactement ainsi — un pandoc.Image nu, sans
--- description — à szh-numerotation.lua, branché plus loin dans le Makefile (après
--- szh-figure.lua). C'est lui qui,
--- pour toute image sans texte ni description, pose déjà role="presentation" et la bascule en
--- fond CSS (fonction en_decor de ce filtre) : le seul moyen d'obtenir un PDF/UA-1 conforme,
--- un <img alt=""> sortant en /Figure sans /Alt, ce que la règle 7.3 interdit — voir son
--- commentaire de tête. Dupliquer ce mécanisme ici l'aurait fait diverger tôt ou tard.
--- print.css n'a donc qu'à annuler la largeur que ce mécanisme calcule pour une figure pleine
--- colonne — la nôtre visant le quart de la largeur — voir la règle
--- « .szh-ressource-image .szh-decor ».
+-- L'image est décorative : le convertisseur l'écrit avec alt="" et sans légende, et ce
+-- filtre la laisse telle quelle. szh-numerotation.lua, plus loin dans la chaîne, la
+-- transforme en fond CSS (en_decor) : un <img alt=""> sortirait en /Figure sans /Alt,
+-- refusé par PDF/UA-1. print.css ajuste sa largeur (« .szh-ressource-image .szh-decor »).
 --
--- Le texte du lien — « En savoir plus sur le livre {titre} » — n'est jamais écrit dans le
--- .md : soit c'est `lien_libelle`, saisi tel quel par la fiche, soit il se déduit du gabarit
--- `libelleLien` du type et de la langue de l'article (JSON). C'est ce qui le rend explicite
--- et non modifiable par mégarde — donc utilisable hors contexte par un lecteur d'écran — et
--- ce qui lui permet de suivre un titre corrigé après coup sans qu'on doive retaper le lien.
+-- Le texte du lien ne s'écrit pas dans le .md : c'est `lien_libelle` s'il est saisi,
+-- sinon le gabarit `libelleLien` du type dans la langue de l'article (« En savoir plus sur
+-- le livre {titre} »). Il reste ainsi explicite hors contexte pour un lecteur d'écran, et
+-- suit un titre corrigé.
 --
--- Place dans la chaîne : après szh-typographie.lua (le descriptif profite des mêmes
--- guillemets et espaces insécables que le reste de l'article) et avant szh-numerotation.lua,
--- qui doit encore trouver un pandoc.Image nu pour le rendre décoratif.
+-- Place dans la chaîne : après szh-typographie.lua (le descriptif reçoit la même
+-- typographie que l'article) et avant szh-numerotation.lua (qui doit trouver l'image nue).
 --
--- `curia` et `source` (intervention) sont des données de travail : posées en attribut par le
--- convertisseur, elles ne sont JAMAIS imprimées par ce filtre — voir l'absence des deux dans
--- BIBLIO_CHAMPS plus bas, volontaire.
+-- `curia` et `source` (intervention) sont des données de travail : le convertisseur les
+-- pose en attribut, mais elles ne s'impriment pas (absentes de BIBLIO_CHAMPS).
 
 local utils = pandoc.utils
 
--- Module commun (a_classe, contexte...) : un chargement raté arrête la compilation, ce
--- filtre ne pouvant plus dire de langue fiable sans lui.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
-  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : voir szh-commun.lua (celui-ci nomme le script
-  -- reçu par pandoc en ligne de commande, pas ce fichier quand un autre le charge par
-  -- dofile).
+  -- debug.getinfo donne le chemin de ce fichier ; PANDOC_SCRIPT_FILE donnerait celui du
+  -- script passé à pandoc, qui peut être un autre.
   local function dossier_ce_fichier()
     local source = debug.getinfo(1, 'S').source
     if source:sub(1, 1) == '@' then source = source:sub(2) end
@@ -85,11 +71,11 @@ end
 
 local CLASSE = 'szh-ressource'
 
--- Chargement du contrat JSON : TYPES (libellés, libellé de lien, pastille, champs — d'où
--- l'on tire, par fiche, la définition d'un champ donné), LISTES (jeton -> libellé fr/de) et
--- SUIVI_IMPRIME (gabarit de la ligne de suivi). Chemin résolu depuis le dossier de CE
--- fichier, comme szh-commun.lua ci-dessus. Un chargement raté arrête la compilation : sans
--- lui, ce filtre ne saurait plus nommer un seul libellé.
+-- Contrat JSON, lu depuis le dossier de ce fichier. Sans lui, la compilation s'arrête.
+--   TYPES          libellés, libellé de lien, pastille et champs de chaque type ;
+--   LISTES         jeton -> libellé fr/de, par liste ;
+--   SUIVI_IMPRIME  gabarit de la ligne de suivi, par langue ;
+--   CHAMPS_PAR_CLE définition d'un champ, par type puis par clé.
 local TYPES, LISTES, SUIVI_IMPRIME, CHAMPS_PAR_CLE
 do
   local function dossier_ce_fichier()
@@ -128,29 +114,23 @@ do
   end
 end
 
--- Les champs qui composent la ligne sous le titre, par type et dans l'ordre d'affichage —
--- seule table encore écrite à la main : le JSON liste tous les champs d'une fiche (y
--- compris title, descriptif, lien, lien_libelle, la pastille, l'état, le suivi, curia et
--- source), pas seulement ceux de cette ligne-là. horizon est vide à dessein : sa seule
--- mention est le canton, et seulement si régional (voir plus bas, hors de ce mécanisme).
+-- Champs de la ligne bibliographique sous le titre, par type et dans l'ordre d'affichage.
+-- Le JSON liste tous les champs d'une fiche ; cette table dit lesquels vont sur cette
+-- ligne. horizon n'y a rien : sa seule mention est le canton, si la portée est régionale
+-- (voir ligne_biblio).
 local BIBLIO_CHAMPS = {
   horizon      = {},
   recherche    = { 'institutions', 'debut', 'fin' },
   intervention = { 'canton', 'categorie', 'numero', 'date' },
   livre        = { 'auteurs', 'annee', 'editeur' },
-  -- réalisateur · année · genre · pays · distributeur : genre et pays (liste_multiple,
-  -- decision de Robin du 23.09.2026) s'intercalent entre l'année et le distributeur —
-  -- avant le distributeur, qui est le champ le moins identifiant du film (souvent absent),
-  -- et après année, dans l'ordre où le formulaire du cockpit les présente déjà (JSON,
-  -- type film : title, categorie, genre, pays, realisateur, annee, distributeur…).
+  -- Genre et pays avant le distributeur, champ le moins identifiant et souvent absent.
   film         = { 'realisateur', 'annee', 'genre', 'pays', 'distributeur' },
   reprise      = { 'auteurs', 'revue', 'reference', 'doi' },
   agenda       = { 'evenement', 'debut', 'fin', 'lieu', 'organisateur' },
 }
 
--- La paire de dates qui se fond en une seule mention à l'impression, par type — seulement
--- l'agenda (cahier des charges) : les dates de la recherche sont partielles et restent deux
--- mentions distinctes.
+-- Paire de dates imprimée en une seule plage, par type. Seul l'agenda en a une : les dates
+-- partielles de la recherche restent deux mentions.
 local PLAGE = { agenda = { debut = 'debut', fin = 'fin' } }
 
 local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
@@ -159,25 +139,17 @@ local function champ_def(type_, cle)
   return CHAMPS_PAR_CLE[type_] and CHAMPS_PAR_CLE[type_][cle]
 end
 
--- Une valeur en chaîne pour affichage %n littéral (gsub interprète % dans le motif de
--- remplacement) : doubler les % de la valeur avant de la passer en second argument de gsub.
--- ⚠ Le double jeu de parenthèses n'est pas cosmétique : `s:gsub(...)` rend DEUX valeurs
---   (la chaîne, le nombre de remplacements), et un `return` nu les propagerait toutes les
---   deux. Un appelant qui glisse ensuite ce résultat en dernier argument d'un AUTRE gsub
---   (comme plus bas) verrait ce compte se glisser en troisième argument — le nombre MAXIMAL
---   de remplacements — et un compte de 0 (aucun « % » à doubler) annulerait alors tout
---   remplacement. Mesuré : {genre}/{date}/{titre} restaient littéraux dans la sortie.
+-- Double les % d'une valeur passée comme remplacement à gsub, qui interprète %n.
+-- Les parenthèses extérieures gardent la seule chaîne : gsub rend aussi le nombre de
+-- remplacements, qui, passé en dernier argument d'un autre gsub, en deviendrait le
+-- maximum (0 annulerait tout remplacement).
 local function echapper_pourcent(s) return ((s or ''):gsub('%%', '%%%%')) end
 
--- Les dates (ISO stockée, forme suisse imprimée) : commun.date_suisse,
+-- Les dates (ISO stockée, forme suisse imprimée) passent par commun.date_suisse,
 -- commun.date_partielle_suisse et commun.plage_date, partagées avec l'aperçu du cockpit.
 
--- Plusieurs jetons de la même liste (saisie `liste_multiple`, valeur « jeton1, jeton2 » —
--- convention posée par documentation-kirby.py, qui transporte cette chaîne telle quelle en
--- attribut, jamais éclatée) : chaque jeton traduit dans la langue de l'article, joints par
--- « , ». Un jeton absent de la liste du contrat (saisie manuelle fautive, liste modifiée
--- depuis) sort tel quel plutôt que de disparaître ou de faire échouer la compilation — même
--- principe que le repli de `formater_champ` pour une liste simple.
+-- Champ `liste_multiple` (« jeton1, jeton2 », tel que l'écrit documentation-kirby.py) :
+-- chaque jeton traduit, joints par « , ». Un jeton inconnu du contrat sort tel quel.
 local function formater_liste_multiple(def, v, lang)
   local morceaux = {}
   for jeton in (v or ''):gmatch('[^,]+') do
@@ -190,10 +162,9 @@ local function formater_liste_multiple(def, v, lang)
   return table.concat(morceaux, ', ')
 end
 
--- La valeur d'un champ, mise en forme selon sa saisie (JSON) : un jeton de liste devient son
--- libellé traduit (sauf `canton`, toujours affiché en code — cahier des charges), plusieurs
--- jetons (liste_multiple) sont chacun traduits puis joints par « , », une date ou une date
--- partielle passe en forme suisse, tout le reste sort tel quel.
+-- Met en forme la valeur d'un champ selon sa saisie (JSON) : un jeton de liste devient son
+-- libellé traduit (sauf `canton`, affiché en code), une date ou une date partielle passe en
+-- forme suisse, le reste sort tel quel.
 local function formater_champ(type_, cle, v, lang)
   local def = champ_def(type_, cle)
   local saisie = def and def.saisie
@@ -213,9 +184,8 @@ end
 
 local a_classe = commun.a_classe
 
--- L'image seule d'un Para/Plain, si elle n'est accompagnée que d'espaces — même lecture
--- qu'image_hors_figure() de szh-numerotation.lua, dont ce filtre ne peut pas dépendre (deux
--- chaînes indépendantes, aucune n'importe l'autre).
+-- Rend l'image d'un Para/Plain qui ne contient qu'elle et des espaces, sinon nil. Même
+-- lecture qu'image_hors_figure() de szh-numerotation.lua.
 local function image_seule_de(b)
   if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
   local img = nil
@@ -230,9 +200,8 @@ local function image_seule_de(b)
   return img
 end
 
--- La bibliographie courte, sous le titre : les champs de BIBLIO_CHAMPS[type_] qui portent
--- une valeur, mis en forme (formater_champ) et séparés par un point médian — même séparateur
--- que la légende d'une grille de plusieurs membres (media/medias-article.js, grilleMembres).
+-- Ligne bibliographique sous le titre : les champs non vides de BIBLIO_CHAMPS[type_], mis
+-- en forme et séparés par « · ».
 local function ligne_biblio(attrs, type_, lang)
   local champs = BIBLIO_CHAMPS[type_] or {}
   local plage = PLAGE[type_]
@@ -250,8 +219,7 @@ local function ligne_biblio(attrs, type_, lang)
       end
     end
   end
-  -- Le tour d'horizon n'a pas de BIBLIO_CHAMPS : sa seule mention est le canton, seulement
-  -- si la portée est régionale (cahier des charges) — écrit en code, jamais traduit.
+  -- Tour d'horizon : le canton seul, en code, si la portée est régionale.
   if type_ == 'horizon' and attrs['portee'] == 'regional' then
     local canton = attrs['canton']
     if canton and canton:match('%S') then morceaux[#morceaux + 1] = canton end
@@ -272,8 +240,7 @@ local function ligne_etat(attrs, type_, lang)
   return libelle
 end
 
--- La pastille de catégorie (livre, film) : le champ nommé par TYPES[type_].pastille,
--- traduit comme un champ de liste ordinaire.
+-- Pastille de catégorie (livre, film) : le champ nommé par TYPES[type_].pastille, traduit.
 local function texte_pastille(attrs, type_, lang)
   local champ = TYPES[type_] and TYPES[type_].pastille
   if not champ then return nil end
@@ -282,10 +249,9 @@ local function texte_pastille(attrs, type_, lang)
   return formater_champ(type_, champ, v, lang)
 end
 
--- Une entrée de suivi (date, genre, libelle, lien) mise en forme selon suiviImprime[lang] :
--- « {genre} du {date} : {libelle} » (fr) / « {genre} vom {date}: {libelle} » (de). Le
--- segment « : {libelle} » disparaît si le libellé est vide (motif générique : deux-points
--- entouré d'espaces optionnelles, valable des deux côtés de la langue).
+-- Met en forme une entrée de suivi (date, genre, libelle, lien) selon suiviImprime[lang] :
+-- « {genre} du {date} : {libelle} » (fr), « {genre} vom {date}: {libelle} » (de). Sans
+-- libellé, le segment « : {libelle} » disparaît, espaces comprises.
 local function ligne_suivi(entree, lang)
   local gabarit = SUIVI_IMPRIME[lang] or SUIVI_IMPRIME.fr or '{genre} — {date}{libelle}'
   local genre_lbl = (LISTES['genre_suivi'] and LISTES['genre_suivi'][entree.genre]
@@ -304,16 +270,14 @@ local function ligne_suivi(entree, lang)
   return texte
 end
 
--- Un bloc porté par une classe, seul moyen de donner un style à un Para ou un Plain : ni
--- l'un ni l'autre n'a d'attributs dans l'API pandoc. Même idiome que le Span de
--- szh-numerotation.lua (prefixer/crediter), un niveau plus haut puisqu'il s'agit ici d'un
--- bloc entier et non d'une portion de texte.
+-- Enveloppe des blocs dans un Div de classe : Para et Plain n'ont pas d'attributs dans
+-- pandoc.
 local function bloc_classe(classe, contenu)
   return pandoc.Div(contenu, pandoc.Attr('', { classe }, {}))
 end
 
--- Un type dont le nom ne peut pas casser la liste de classes HTML (espace, accolade…) —
--- un contrôle bon marché contre un .md écrit à la main avec type="deux mots".
+-- Vrai si le type peut entrer dans une classe HTML (pas d'espace ni d'accolade, par
+-- exemple dans un .md écrit à la main).
 local function type_sain(t) return t ~= nil and t:match('^%a[%w_%-]*$') ~= nil end
 
 local CLASSE_SUIVI_ENTREE = 'szh-suivi-entree'
@@ -329,9 +293,8 @@ function Pandoc(doc)
       local type_ = div.attributes['type'] or ''
       local titre = div.attributes['title'] or ''
 
-      -- Le contenu du bloc : les divs imbriquées .szh-suivi-entree (une par entrée de
-      -- suivi, posées par documentation-kirby.py — voir sa tête), une image au plus (la
-      -- première rencontrée), le reste est le descriptif.
+      -- Contenu du bloc : des Div .szh-suivi-entree (une par entrée de suivi, posées par
+      -- documentation-kirby.py), une image au plus (la première), et le descriptif.
       local image, descriptif, suivi = nil, pandoc.Blocks({}), {}
       for _, b in ipairs(div.content) do
         local traite = false
@@ -349,8 +312,8 @@ function Pandoc(doc)
         if not traite then descriptif:insert(b) end
       end
 
-      -- Colonne de texte : bibliographie courte, pastille, état, suivi, descriptif, lien —
-      -- dans cet ordre, celui d'une notule de lecture augmentée des champs d'intervention.
+      -- Colonne de texte, dans l'ordre : ligne bibliographique, pastille, état, suivi,
+      -- descriptif, lien.
       local texte = pandoc.Blocks({})
       local biblio = ligne_biblio(div.attributes, type_, lang)
       if biblio then texte:insert(bloc_classe('szh-ressource-biblio', { pandoc.Para({ pandoc.Str(biblio) }) })) end
@@ -394,23 +357,14 @@ function Pandoc(doc)
         }))
       end
 
-      -- Colonne d'image : laissée nue (voir l'en-tête du fichier) — c'est
-      -- szh-numerotation.lua qui la rendra décorative, plus loin dans le Makefile.
-      -- Absente du tout si la fiche n'a pas d'image : print.css n'a alors pas à deviner
-      -- une case vide, et le texte reprend naturellement toute la largeur.
+      -- Colonne d'image, laissée nue pour szh-numerotation.lua. Sans image, pas de colonne :
+      -- le texte prend toute la largeur.
       --
-      -- ⚠ L'image passe AVANT la colonne de texte, et ce n'est pas cosmétique : print.css
-      --   la met en `float: right`, et un flottant s'ancre là où il paraît dans le flux.
-      --   Placé après le texte, il s'ancrait sous lui — donc à la page suivante pour une
-      --   fiche un peu longue. Le rendu visuel, lui, est le même : image en haut à droite,
-      --   texte à gauche.
-      --   Le passage de `display: flex` à un flottant a été mesuré sur WeasyPrint 69 : un
-      --   conteneur flex n'y est pas sécable, si bien qu'une fiche plus haute qu'une page
-      --   laissait une page entière vide (fond de carte seul, titre en tête) avant de
-      --   reprendre à la page suivante — malgré `break-inside: avoid`. Constaté sur la
-      --   Documentation allemande du 2027-02, reproduit à l'isolé.
-      --   L'image reste décorative (role="presentation", posé par szh-numerotation.lua) :
-      --   sa place dans l'ordre de lecture PDF/UA ne change rien pour un lecteur d'écran.
+      -- L'image vient avant le texte : print.css la met en `float: right`, et un flottant
+      -- s'ancre à sa place dans le flux. Après le texte, elle tomberait sous lui, voire à
+      -- la page suivante. Un conteneur flex ne convient pas : WeasyPrint ne le coupe pas
+      -- entre deux pages, et une fiche plus haute qu'une page laisse une page vide.
+      -- L'image étant décorative, sa place ne change rien pour un lecteur d'écran.
       local corps_enfants = {}
       if image then
         corps_enfants[#corps_enfants + 1] =
@@ -425,10 +379,7 @@ function Pandoc(doc)
 
       local classes = { CLASSE }
       if type_sain(type_) then classes[#classes + 1] = CLASSE .. '-' .. type_ end
-      -- Accroche générique pour print.css : pas de nom de type ici, seulement le fait
-      -- constaté qu'il n'y a pas d'image dans ce bloc — ce qui couvre aussi bien
-      -- intervention/recherche (qui n'en portent jamais) qu'un livre saisi à la main sans
-      -- couverture. Une case vide au quart de la largeur serait pire qu'une entrée compacte.
+      -- Classe pour print.css quand la fiche n'a pas d'image, quel que soit son type.
       if not image then classes[#classes + 1] = CLASSE .. '-sans-image' end
       return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
     end,

@@ -1,60 +1,44 @@
--- Numérote les titres du corps **dans le texte** : « 2 », « 2.1 », « 2.1.1 », posés en
--- tête du <h2>/<h3>/<h4> comme un vrai contenu et non en CSS.
+-- Numérote les titres du corps dans le texte : « 2 », « 2.1 », « 2.1.1 » en tête du
+-- <h2>/<h3>/<h4>, dans un Span de classe szh-num-section.
 --
--- Pourquoi pas en CSS. print.css faisait `h2::before { content: counter(sec1) }`. Un
--- numéro posé par `content:` est du contenu généré : il n'existe que dans le rendu
--- paginé. Le galley DOCX de l'export OJS, régénéré depuis le HTML par le writer docx de
--- pandoc, sortait donc avec des titres **sans numéro** — là où le PDF affiche « 2.1 ».
--- Un renvoi « voir section 2.1 » dans le corps ne désignait rien dans le Word que reçoit
--- le lecteur. Écrit dans le texte, le numéro suit l'article partout : PDF, HTML, DOCX,
--- aperçu du cockpit.
+-- Le numéro est du vrai contenu et non un compteur CSS : le galley DOCX, produit depuis le
+-- HTML par pandoc, perdrait un numéro généré par `content:`. print.css ne doit donc pas
+-- numéroter les titres, sinon le numéro sort deux fois (un styles/print.css local ancien
+-- peut encore porter des compteurs sec1/sec2/sec3).
 --
--- ⚠ La numérotation CSS a été retirée de print.css en même temps. Les deux ne doivent
---   jamais coexister : « 2.1 2.1 Introduction » serait pire que le défaut d'origine. Un
---   numéro qui porte un `styles/print.css` local hérité peut encore contenir les anciens
---   compteurs `sec1/sec2/sec3`.
+-- Trois rangs sont numérotés. Les rangs viennent de szh-niveaux.lua, qui compacte les
+-- niveaux présents à partir de 2 : la suite n'a pas de trou.
 --
--- Trois rangs numérotés, pas plus : c'est ce que faisait le CSS (h5 et h6 gardaient la
--- taille et la graisse de h4 sans numéro), et un « 2.1.1.1.1 » ne se lit plus. Les rangs
--- viennent de szh-niveaux.lua, qui compacte les niveaux réellement présents à partir de 2 :
--- il n'y a donc jamais de trou dans la suite, et un h4 est bien un troisième rang.
+-- Le titre du résumé et celui du bloc « À propos des auteur·e·s » sont écrits par le
+-- template szh-article.html, hors du document pandoc, et ne sont pas numérotés.
 --
--- Ne numérote pas ce qu'il ne voit pas : le titre du résumé et celui du bloc « À propos
--- des auteur·e·s » sont écrits par le template szh-article.html, hors document pandoc.
--- Le CSS devait les dé-numéroter à la main (`counter-increment: none`) ; ce n'est plus
--- nécessaire, et ces neutralisations ont été retirées avec les compteurs.
---
--- Tourne AVANT szh-citations.lua, pas après (voir l'ordre des --lua-filter dans le
--- Makefile) : ce qui rend cet ordre sûr est texte_de_titre(), dans szh-citations.lua, qui
--- retire le Span de numéro (classe szh-num-section) avant de comparer le titre au lexique.
+-- S'exécute avant szh-citations.lua, dont texte_de_titre() retire le Span de numéro avant
+-- de comparer un titre au lexique.
 
 local PREMIER_RANG = 2      -- <h2> = premier rang de section (le <h1> est le titre de l'article)
 local RANGS = 3             -- h2, h3, h4 numérotés ; h5 et h6 non
 local CLASSE = 'szh-num-section'
--- Espace insécable entre le numéro et le titre : le numéro ne doit jamais se retrouver
--- seul en fin de ligne. print.css ajoute la respiration visuelle (margin-right).
+-- Espace insécable entre le numéro et le titre, pour que le numéro ne reste pas seul en
+-- fin de ligne. print.css ajoute l'espacement visuel (margin-right).
 local LIAISON = '\u{00A0}'
 
--- Livre seulement : un livre compile chaque chapitre par une invocation pandoc séparée
--- (pipeline/profils/livre.mk), et le <h1> qu'on rejette ci-dessus pour un article — sa
--- page de garde, hors document pandoc — est ici le titre du chapitre. Un livre publié le
--- numérote (« 2 Theoretische Konzepte… ») et les sections s'y accrochent (« 2.1 »,
--- « 2.1.1 »). SZH_CHAPITRE porte le rang du chapitre ; absent (hors livre, ou pour les
--- pièces liminaires qui ne le reçoivent pas), RANG_CHAPITRE reste nil et tout ce qui suit
--- retombe sur le comportement d'un article, à l'identique. Posé par Pandoc(doc), d'après le
--- contexte de composition.
+-- Livre : chaque chapitre est compilé par un appel séparé à pandoc
+-- (pipeline/profils/livre.mk), et son <h1> est le titre du chapitre. Il reçoit le numéro
+-- du chapitre (« 2 Theoretische Konzepte ») et les sections le reprennent (« 2.1 »).
+-- SZH_CHAPITRE porte le rang du chapitre. Sans lui (article, pièces liminaires d'un
+-- livre), RANG_CHAPITRE reste nil et le filtre numérote comme pour un article. Posé par
+-- Pandoc(doc).
 local RANG_CHAPITRE = nil
 
 -- Livre en maquette normal : le bloc `mise-en-page:` de buch.yaml dit si le titre de
--- chapitre et les sections portent un numéro (commun.mise_en_page, défauts du contrat
--- pipeline/livre/mise-en-page.json). Hors livre normal, tout reste numéroté.
+-- chapitre et les sections portent un numéro (commun.mise_en_page, valeurs par défaut dans
+-- pipeline/livre/mise-en-page.json). Ailleurs, tout est numéroté.
 local NUMEROTER_CHAPITRE, NUMEROTER_SECTIONS = true, true
 -- Le numéro écrit dans le titre du chapitre et en tête de ses sections : le rang, ou
 -- celui de sa partie (`numeros-chapitres: partie`).
 local NUMERO_CHAPITRE = nil
 
--- Module commun (contexte) : un chargement raté arrête la compilation, ce filtre ne
--- pouvant plus dire dans quelle langue il compose.
+-- Module commun. Sans lui le filtre ne peut pas travailler : la compilation s'arrête.
 local commun
 do
   local function dossier_ce_fichier()
@@ -74,8 +58,8 @@ end
 
 local compteurs = {}
 
--- Un titre déjà numéroté est laissé tel quel : la chaîne ne passe qu'une fois, mais un
--- rendu deux fois filtré ne doit pas doubler le numéro.
+-- Un titre déjà numéroté est laissé tel quel, pour qu'un document filtré deux fois ne
+-- reçoive pas deux numéros.
 local function deja_numerote(inlines)
   local premier = inlines[1]
   if not premier or premier.t ~= 'Span' then return false end
@@ -96,13 +80,10 @@ local function poser_numero(h, numero)
   return h
 end
 
--- Une rubrique de la Documentation ne se numérote pas. Son titre (« Rundschau »,
--- « Ressourcen ») est posé plus tard par szh-rubrique.lua et échappe donc déjà à ce
--- filtre ; ce qui suit met à l'abri ce que le rédacteur écrit DANS le bloc. Une brève
--- d'actualité intitulée « 1.1 Schweizer Engagement an der UN-BRK-Konferenz » n'a pas de
--- sens : la Documentation est une suite de rubriques, pas un article à sections.
--- Le fenced div du .md porte déjà la classe quand ce filtre passe, bien avant
--- szh-rubrique.lua. Même exception dans szh-niveaux.lua, qui ne compacte pas ces rangs.
+-- Les titres écrits dans une rubrique de la Documentation (div .szh-rubrique du .md) ne
+-- sont pas numérotés : la Documentation est une suite de rubriques, pas un article à
+-- sections. Le titre de la rubrique elle-même est posé plus tard par szh-rubrique.lua.
+-- szh-niveaux.lua fait la même exception.
 local CLASSE_RUBRIQUE = 'szh-rubrique'
 local function est_rubrique(el)
   if el.t ~= 'Div' then return false end
@@ -115,8 +96,7 @@ end
 local function numeroter(h)
   if deja_numerote(h.content) then return nil end
 
-  -- Le titre de chapitre, un seul par document livre : il reçoit le rang du chapitre
-  -- lui-même, sans point — c'est le niveau dont les sections suivantes héritent.
+  -- Titre de chapitre (livre) : le numéro du chapitre seul, que les sections reprennent.
   if RANG_CHAPITRE and h.level == 1 then
     if not NUMEROTER_CHAPITRE or not NUMERO_CHAPITRE then return nil end
     return poser_numero(h, NUMERO_CHAPITRE)
@@ -129,24 +109,23 @@ local function numeroter(h)
   compteurs[rang] = (compteurs[rang] or 0) + 1
   for plus_profond = rang + 1, RANGS do compteurs[plus_profond] = 0 end
 
-  -- Le numéro de chapitre, s'il y en a un, précède toujours les rangs de section : dans le
-  -- chapitre 2, un <h2> donne « 2.1 » et non « 1 ».
+  -- Le numéro de chapitre, s'il y en a un, précède les rangs : dans le chapitre 2, un <h2>
+  -- donne « 2.1 ».
   local morceaux = {}
   if RANG_CHAPITRE and NUMERO_CHAPITRE then morceaux[#morceaux + 1] = NUMERO_CHAPITRE end
   for i = 1, rang do morceaux[#morceaux + 1] = tostring(compteurs[i]) end
   return poser_numero(h, table.concat(morceaux, '.'))
 end
 
--- Un seul point d'entrée, et pas de `function Header` globale : les deux coexisteraient,
--- pandoc appliquant la seconde à TOUS les titres avant d'appeler Pandoc — les titres de
--- rubrique seraient numérotés quand même. `false` en second retour arrête la descente
--- (traverse = 'topdown', pandoc >= 2.17).
+-- Pas de `function Header` globale : pandoc l'appliquerait à tous les titres avant
+-- Pandoc(), rubriques comprises. Ici, `false` en second retour arrête la descente dans
+-- une rubrique (traverse = 'topdown').
 function Pandoc(doc)
   local livre = commun.contexte(doc.meta).produit == 'livre'
   RANG_CHAPITRE = livre and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
   local mep = commun.mise_en_page(doc.meta)
   NUMEROTER_CHAPITRE = not mep or mep['numeros-chapitres'] ~= 'aucun'
-  -- `partie` : le numéro « 1.1 » que livre.mk a calculé une fois (livre-assembler.py
+  -- `partie` : le numéro « 1.1 » calculé par livre.mk (livre-assembler.py
   -- --numeros-chapitres) ; vide pour un chapitre hors d'une partie numérotée.
   NUMERO_CHAPITRE = RANG_CHAPITRE and tostring(RANG_CHAPITRE) or nil
   if mep and mep['numeros-chapitres'] == 'partie' then
