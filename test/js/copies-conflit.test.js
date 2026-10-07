@@ -371,6 +371,7 @@ test('cycle-vie : les deux appelants ajoutent le dossier partagé à ce qu’ils
   assert.ok(appels.length >= 3,
     'lib/cycle-vie.js n’appelle copiesDuDossierPartage() que ' + appels.length + ' fois '
     + '(sa définition, plus les deux balayages)');
-  assert.ok(source.indexOf('majConflitsScm(racine, copies.concat(copiesDuDossierPartage()))') !== -1,
+  assert.ok(source.indexOf(
+    'majConflitsScm(racine, sansCopiesRedondantes(copies.concat(copiesDuDossierPartage())))') !== -1,
     'rafraichirConflitsScm oublie le dossier partagé');
 });

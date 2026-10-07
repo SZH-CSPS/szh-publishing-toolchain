@@ -20,7 +20,8 @@ const {
   versionInstallee, versionsDivergent, lancerArchivage, lancerChoixVersion, tailleDossier
 } = require('./archivage');
 const {
-  chercherCopies, chercherCopiesPlat, copieConflitPour, inverserBloc, appliquerBlocs
+  chercherCopies, chercherCopiesPlat, copieConflitPour, estCopieConflit, memeContenu,
+  copieRedondante, inverserBloc, appliquerBlocs
 } = require('./copies-conflit');
 // Uniquement pour SITUER le dossier partagé de l'outil (voir copiesDuDossierPartage plus
 // bas) : ce module-ci n'écrit aucun rapport. lib/rapport-erreur.js ne dépend que de
@@ -408,7 +409,7 @@ function avertirCopiesConflit(racine) {
   // Le numéro d'abord, le dossier partagé ensuite : chaque liste est triée pour elle-même,
   // et c'est ce qui compte ici — une copie dans le numéro ouvert passe avant une copie dans
   // un dossier de service, que l'on signale surtout pour qu'elle cesse d'être invisible.
-  copies = copies.concat(copiesDuDossierPartage());
+  copies = sansCopiesRedondantes(copies.concat(copiesDuDossierPartage()));
   // La barre du contrôle de source suit à chaque balayage, avertissement ou pas : c'est elle
   // qui garde la liste sous la main quand la fenêtre a été fermée d'un revers.
   majConflitsScm(racine, copies);
@@ -509,8 +510,9 @@ async function prendreCopieConflit(chemin, copie) {
 //   « Prendre cette version » écrit le bloc de la copie dans le fichier du numéro ;
 //   « Garder la mienne »      écrit le bloc du fichier du numéro dans la copie.
 // Dans les deux cas la divergence disparaît. Quand il n'en reste plus une seule, la copie ne
-// contient plus rien que le numéro n'ait pas : sa suppression est alors proposée, et le
-// conflit est clos sans qu'un octet ait été perdu de vue.
+// contient plus rien que le numéro n'ait pas : elle est supprimée, et le conflit est clos
+// sans qu'un octet ait été perdu. Même chose quand la résolution se fait à la main puis
+// s'enregistre (copieResolueEnregistree), ou quand le balayage trouve une copie identique.
 //
 // ⚠ Rien de tout cela ne calcule un diff : les blocs arrivent de l'éditeur, en argument des
 // commandes (uri du document, tableau des blocs, index du bloc affiché). Le contrat est celui
@@ -668,7 +670,7 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
     // L'écriture n'est pas passée par le point d'écriture du fichier du numéro : les
     // formulaires ouverts doivent quand même savoir que le disque a bougé de notre fait.
     rafraichirEmpreinteCoedition(racine, chemin);
-    if (texte === sien) { proposerSuppressionCopie(copie); }
+    if (memeContenu(texte, sien)) { await supprimerCopieConflit(copie, false); }
     return;
   }
 
@@ -683,21 +685,38 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
   }
   // Le contenu « original » a changé : sans cet avis, la gouttière garderait ses marques.
   changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
-  if (texte === mien) { proposerSuppressionCopie(copie); }
+  // Une frappe non enregistrée fait partie de « ma version » : la copie attend alors
+  // l'enregistrement (copieResolueEnregistree), sans quoi fermer sans enregistrer perdrait tout.
+  if (memeContenu(texte, mien) && !doc.isDirty) { await supprimerCopieConflit(copie, false); }
 }
 
-// Les deux fichiers disent maintenant la même chose : la copie ne retient plus rien. On le
-// dit et on propose de la retirer — jamais sans le demander, effacer un fichier reste un
-// geste de l'utilisateur.
-function proposerSuppressionCopie(copie) {
-  const bouton = T('conflit.copie.supprimer');
-  vscode.window.showInformationMessage(T('conflit.copie.identiques', [path.basename(copie)]), bouton)
-    .then((choix) => { if (choix === bouton) { supprimerCopieConflit(copie, false); } });
+// Après un enregistrement : si le fichier enregistré, ou sa copie en conflit, ne diffère plus
+// de l'autre, la copie est retirée. C'est le chemin de la résolution faite à la main dans la
+// comparaison, que les commandes bloc par bloc ne voient pas passer.
+function copieResolueEnregistree(chemin) {
+  if (!sousLaRacineConflits(chemin)) { return; }
+  const dossier = path.dirname(chemin);
+  const verdict = estCopieConflit(path.basename(chemin),
+    (voisin) => fs.existsSync(path.join(dossier, voisin)));
+  const original = verdict ? path.join(dossier, verdict.original) : chemin;
+  const copie = verdict ? chemin : copieConflitPour(chemin);
+  if (copie && copieRedondante(original, copie)) { supprimerCopieConflit(copie, false); }
+}
+
+// Les copies identiques à leur original sont supprimées au passage, sans avertissement : une
+// copie résolue mais restée sur le disque se réannoncerait à chaque ouverture du numéro.
+function sansCopiesRedondantes(copies) {
+  return copies.filter((c) => {
+    if (!copieRedondante(c.cheminOriginal, c.chemin)) { return true; }
+    try { fs.unlinkSync(c.chemin); } catch (e) { return true; }
+    copieOubliee(c.chemin);
+    return false;
+  });
 }
 
 // `demander` : la commande explicite passe par une confirmation modale, parce qu'elle peut
-// être lancée sur une copie qui contient encore du travail. La suppression proposée après
-// convergence, elle, a déjà eu son bouton.
+// être lancée sur une copie qui contient encore du travail. La suppression après
+// convergence, elle, ne perd rien et ne demande rien.
 async function supprimerCopieConflit(copie, demander) {
   if (!copie || !fs.existsSync(copie)) { return; }
   if (demander) {
@@ -709,13 +728,18 @@ async function supprimerCopieConflit(copie, demander) {
   }
   try { fs.unlinkSync(copie); }
   catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(copie), String((e && e.message) || e)])); return; }
+  copieOubliee(copie);
+  rafraichirConflitsScm();
+}
+
+// Ce qui suit la suppression d'une copie, hors contrôle de source.
+function copieOubliee(copie) {
   // Retirée du jeu des fichiers déjà signalés : si le synchroniseur en dépose une autre plus
   // tard, elle sera annoncée comme une nouvelle.
   copiesSignalees.delete(copie);
   // La copie a disparu : le fournisseur de contenu doit le savoir, sinon la gouttière
   // continuerait de comparer avec ce qui n'existe plus.
   changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
-  rafraichirConflitsScm();
   vscode.window.setStatusBarMessage(T('conflit.copie.supprimee', [path.basename(copie)]), 4000);
 }
 
@@ -727,7 +751,7 @@ function rafraichirConflitsScm() {
   if (!racine) { majConflitsScm(null, []); return; }
   let copies = [];
   try { copies = chercherCopies(racine); } catch (e) { copies = []; }
-  majConflitsScm(racine, copies.concat(copiesDuDossierPartage()));
+  majConflitsScm(racine, sansCopiesRedondantes(copies.concat(copiesDuDossierPartage())));
 }
 
 module.exports = {
@@ -741,5 +765,5 @@ module.exports = {
   dossierPartageOutil, copiesDuDossierPartage,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
   cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
-  rafraichirConflitsScm, majConflitsScm, libererScm
+  copieResolueEnregistree, rafraichirConflitsScm, majConflitsScm, libererScm
 };

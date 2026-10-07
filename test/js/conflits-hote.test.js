@@ -110,17 +110,119 @@ test('l’entrée du contrôle de source n’existe que le temps du conflit', as
     'l’entrée survit alors qu’il n’y a plus de copie en conflit');
 });
 
+// Une seconde divergence en fin de copie : trancher le premier bloc ne suffit plus à
+// rendre les deux versions identiques.
+function ajouterDivergenceFinale() {
+  fs.appendFileSync(COPIE, '\n# ligne restée sur l’autre poste\n');
+}
+
 test('« Garder la mienne » écrit mon bloc dans la copie, pas l’inverse', async () => {
   await pret;
   const bloc = poserCopie();
+  ajouterDivergenceFinale();
   try {
     const avant = fs.readFileSync(AUSGABE, 'utf8');
+    const titre = (t) => t.split('\n').find((l) => l.startsWith('title:'));
     await P.resoudreBlocConflit(Uri.file(AUSGABE), [bloc], 0, false);
     assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), avant,
       'le fichier du numéro a été touché alors qu’on gardait sa version');
-    assert.strictEqual(fs.readFileSync(COPIE, 'utf8'), avant,
+    assert.ok(fs.existsSync(COPIE), 'la copie a disparu alors qu’une divergence reste');
+    assert.strictEqual(titre(fs.readFileSync(COPIE, 'utf8')), titre(avant),
       'la copie n’a pas reçu ma version du bloc');
   } finally { retirerCopie(); }
+});
+
+// ---- La copie résolue disparaît d'elle-même ---------------------------------------
+//
+// Une copie qui ne retient plus rien que le fichier du numéro n'ait pas est supprimée
+// sans question : rien ne se perd, et une copie oubliée là se réannonçait à chaque
+// ouverture du numéro.
+test('la dernière divergence tranchée par « Garder la mienne » : la copie disparaît', async () => {
+  await pret;
+  const bloc = poserCopie();
+  try {
+    const modales = HOTE.modales.length;
+    await P.resoudreBlocConflit(Uri.file(AUSGABE), [bloc], 0, false);
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie résolue est encore là');
+    assert.strictEqual(HOTE.modales.length, modales, 'une question a été posée pour rien');
+  } finally { retirerCopie(); }
+});
+
+test('la dernière divergence tranchée par « Prendre cette version » : la copie disparaît', async () => {
+  await pret;
+  const bloc = poserCopie();
+  try {
+    await P.resoudreBlocConflit(Uri.file(AUSGABE), [bloc], 0, true);
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie résolue est encore là');
+  } finally { retirerCopie(); }
+});
+
+test('un enregistrement qui rend le fichier identique à sa copie retire la copie', async () => {
+  await pret;
+  poserCopie();
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  try {
+    // Résolu à la main dans la comparaison : le fichier reprend le texte de la copie.
+    fs.writeFileSync(AUSGABE, fs.readFileSync(COPIE, 'utf8'));
+    HOTE.enregistrerDocument(AUSGABE);
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie résolue est encore là');
+  } finally {
+    fs.writeFileSync(AUSGABE, avantYaml);
+    retirerCopie();
+  }
+});
+
+test('enregistrer la copie elle-même, devenue identique, la retire aussi', async () => {
+  await pret;
+  poserCopie();
+  try {
+    fs.writeFileSync(COPIE, fs.readFileSync(AUSGABE, 'utf8'));
+    HOTE.enregistrerDocument(COPIE);
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie résolue est encore là');
+  } finally { retirerCopie(); }
+});
+
+test('un enregistrement qui laisse une divergence garde la copie', async () => {
+  await pret;
+  poserCopie();
+  try {
+    HOTE.enregistrerDocument(AUSGABE);
+    assert.ok(fs.existsSync(COPIE), 'une copie qui diffère encore a été supprimée');
+  } finally { retirerCopie(); }
+});
+
+test('au balayage, une copie déjà identique (BOM, CRLF) est retirée sans avertissement', async () => {
+  await pret;
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  fs.writeFileSync(COPIE, '﻿' + avantYaml.replace(/\n/g, '\r\n'));
+  try {
+    P.oublierCopiesSignalees();
+    const avant = HOTE.avertissements.length;
+    P.avertirCopiesConflit(REVUE);
+    assert.strictEqual(fs.existsSync(COPIE), false, 'la copie identique est encore là');
+    assert.strictEqual(HOTE.avertissements.length, avant,
+      'une copie qui ne retient rien a été annoncée comme un conflit');
+  } finally { retirerCopie(); }
+});
+
+test('au balayage, une copie qui diffère est annoncée et gardée', async () => {
+  await pret;
+  poserCopie();
+  try {
+    P.oublierCopiesSignalees();
+    const avant = HOTE.avertissements.length;
+    P.avertirCopiesConflit(REVUE);
+    assert.ok(fs.existsSync(COPIE), 'une copie qui diffère a été supprimée');
+    assert.strictEqual(HOTE.avertissements.length, avant + 1, 'la copie n’a pas été annoncée');
+  } finally { retirerCopie(); }
+});
+
+test('memeContenu ignore BOM, fins de ligne et sauts de ligne finaux, rien d’autre', () => {
+  const cc = require(path.join(COCKPIT, 'lib', 'copies-conflit.js'));
+  assert.ok(cc.memeContenu('a\nb\n', '﻿a\r\nb'));
+  assert.ok(cc.memeContenu('a\nb', 'a\nb\n\n'));
+  assert.ok(!cc.memeContenu('a\nb', 'a\nb '), 'une espace finale est une divergence');
+  assert.ok(!cc.memeContenu('a\n\nb', 'a\nb'), 'une ligne vide intérieure est une divergence');
 });
 
 test('« Prendre cette version » refuse tant qu’un autre poste tient le fichier', async () => {

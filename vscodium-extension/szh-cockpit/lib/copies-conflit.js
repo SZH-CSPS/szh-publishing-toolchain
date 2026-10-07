@@ -191,6 +191,21 @@ function copieConflitPour(chemin) {
   return path.join(dossier, trouvees[0]);
 }
 
+// Deux versions qui ne diffèrent que par le BOM, les fins de ligne ou les sauts de ligne
+// finaux disent la même chose : l'éditeur ne marque pas ces écarts, et l'enregistrement
+// peut en remettre un de lui-même (files.insertFinalNewline).
+function memeContenu(a, b) {
+  const norme = (t) => String(t === undefined || t === null ? '' : t)
+    .replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+  return norme(a) === norme(b);
+}
+
+// La copie ne retient plus rien que l'original n'ait. Faux dès que l'un des deux ne se lit pas.
+function copieRedondante(original, copie) {
+  try { return memeContenu(fs.readFileSync(original, 'utf8'), fs.readFileSync(copie, 'utf8')); }
+  catch (e) { return false; }
+}
+
 // ---- Résoudre une copie en conflit, bloc par bloc --------------------------------
 //
 // C'est l'éditeur qui calcule les blocs de divergence : il les passe aux commandes du menu
@@ -261,5 +276,5 @@ function appliquerBlocs(texteOriginal, texteModifie, blocs) {
 
 module.exports = {
   MARQUEURS, EXTENSIONS, estCopieConflit, chercherCopies, chercherCopiesPlat, copieConflitPour,
-  decouperLignes, assemblerLignes, inverserBloc, appliquerBlocs
+  memeContenu, copieRedondante, decouperLignes, assemblerLignes, inverserBloc, appliquerBlocs
 };

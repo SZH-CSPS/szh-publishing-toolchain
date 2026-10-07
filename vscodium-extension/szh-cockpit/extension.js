@@ -172,7 +172,7 @@ const {
   oublierCopiesSignalees, avertirCopiesConflit, comparerConflit,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
   cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
-  rafraichirConflitsScm
+  copieResolueEnregistree, rafraichirConflitsScm
 } = cycleVie;
 // Les rappels vers l'hôte que lib/cycle-vie.js ne peut pas connaître par require (voir son
 // en-tête) : posés une seule fois, ici. Toutes les fonctions visées sont des déclarations de
@@ -3667,6 +3667,8 @@ function activate(context) {
       if (!doc || !doc.uri || !doc.uri.fsPath) { return; }
       controlesHote.retenirEnregistrement(fournisseur, doc.uri.fsPath);
       controlesHote.compilerChapitreEnregistre(fournisseur, doc.uri.fsPath);
+      // Une copie en conflit résolue à la main disparaît à l'enregistrement.
+      copieResolueEnregistree(doc.uri.fsPath);
     }),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

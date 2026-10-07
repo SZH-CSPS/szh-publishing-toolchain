@@ -119,12 +119,11 @@ Un fichier ou un dossier dont le chemin porte un accent ou un espace doit s'ouvr
 
 ## Copies en conflit (OneDrive)
 
-- [ ] **« Comparer les deux versions »** : le message « Trancher … d’un coup ? » propose « Garder ma version » et « Prendre celle de la copie », avec chacun sa confirmation ; la copie disparaît ensuite.
-
 - [ ] **Créer à la main `ausgabe - copie en conflit.yaml`** à côté d'`ausgabe.yaml`, avec une ligne différente.
   - Un repère de marge apparaît dans `ausgabe.yaml`.
   - Cliquer le repère ouvre la divergence, avec les boutons « Prendre cette version » et « Garder la mienne ».
-  - Quand plus rien ne diverge, l'outil propose de supprimer la copie.
+  - Quand plus rien ne diverge, la copie disparaît d'elle-même, sans question, et ne se réannonce pas à la réouverture.
+  - Résolue à la main dans la comparaison puis enregistrée : même chose.
   - Sans copie en conflit, aucun repère ne s'affiche dans la marge.
 
 ## Laissés tels quels (décision de Robin, 02.10.2026)
