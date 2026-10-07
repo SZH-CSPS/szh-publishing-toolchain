@@ -1,60 +1,67 @@
 # La documentation
 
-Par où commencer : [`ARCHITECTURE.md`](ARCHITECTURE.md), puis le document du sujet qu'on
-touche. La documentation des rédactions est [`../userdoc.md`](../userdoc.md), lue aussi par le
-cockpit.
+Commencer par [`ARCHITECTURE.md`](ARCHITECTURE.md), qui donne la vue d'ensemble et le
+vocabulaire. La documentation des rédactions est [`../userdoc.md`](../userdoc.md).
 
-## Architecture
+## Exploiter les postes
 
-| Document | Ce qu'il décrit |
+| Document | Contenu |
 |---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | les trois mondes, le schéma, ce qui est commun et distinct entre revue, Zeitschrift et livre, puis chaque couche et ses modules |
-| [`ARCHITECTURE-LIVRES.md`](ARCHITECTURE-LIVRES.md) | le moteur livre : dossier, `buch.yaml`, assemblage par fragments, sorties, CMJN, EPUB, maquettes normale et FALC |
-| [`ARCHITECTURE-nettoyeur-manuscrit.md`](ARCHITECTURE-nettoyeur-manuscrit.md) | le contrat du nettoyeur de manuscrit, cité paragraphe par paragraphe par le code et les tests |
-| [`SORTIES.md`](SORTIES.md) | ce que produit une compilation, le contrat de balisage du HTML publié et la pile de feuilles de style |
-| [`EMPLACEMENTS.md`](EMPLACEMENTS.md) | où vivent les publications : les deux racines, l'arborescence, `_Systeme\`, la bascule test/production et la reprise |
-| [`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md) | le format de la bibliothèque de fiches de la Documentation, partagé avec le site Kirby |
-| [`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md) | le contrat des moissonneurs : lots de propositions, codes de doute, décisions, `etat.json`, `estimer` et `tout`, purge |
-| [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) | les rapports d'erreur automatiques : schéma, masquage, plafonds, codes, compteurs d'usage |
-| [`TRADUCTION.md`](TRADUCTION.md) | le vérificateur de traduction et le mode « Trad » : des suggestions, jamais une édition |
-| [`ACCESSIBILITE.md`](ACCESSIBILITE.md) | les normes visées, ce qui est en place et les règles de travail |
-| [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md) | les limites d'accessibilité connues, format par format : norme, gravité, origine, statut |
-| [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md) | ce qu'il faudrait refaire, morceau par morceau, pour tourner sous Linux et macOS |
+| [`MAINTENANCE.md`](MAINTENANCE.md) | installer, mettre à jour, dépanner et surveiller un poste ; mettre à jour la WSL ; les moissonneurs ; les gestes récurrents |
+| [`EMPLACEMENTS.md`](EMPLACEMENTS.md) | où vivent les publications sur SharePoint, racines de test et de production |
+| [`SECURITE.md`](SECURITE.md) | le modèle de confiance du déploiement, les secrets, les connexions sortantes |
+| [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) | les rapports d'erreur automatiques et les compteurs d'usage |
 
-## Travailler sur le dépôt et le parc
+## Développer
 
-| Document | Ce qu'il décrit |
+| Document | Contenu |
 |---|---|
-| [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md) | les environnements (tout Python dans la WSL), les tests et la suite exigeante, le banc et ses empreintes, l'instance de dev, l'évolution du gabarit d'article et de sa clé cachée, la publication d'une version, les pièges |
-| [`MAINTENANCE.md`](MAINTENANCE.md) | le guide d'exploitation : installer, régler, surveiller et réparer un poste, symptôme par symptôme, désinstaller |
-| [`SECURITE.md`](SECURITE.md) | le modèle de confiance du déploiement et la liste à vérifier avec le prestataire |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | vue d'ensemble, schémas, parties du dépôt, vocabulaire |
+| [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md) | environnements, tests, banc de rendu, instance de développement, gabarit d'article, publier une version |
+| [`ARCHITECTURE-LIVRES.md`](ARCHITECTURE-LIVRES.md) | le moteur livre |
+| [`ARCHITECTURE-nettoyeur-manuscrit.md`](ARCHITECTURE-nettoyeur-manuscrit.md) | le nettoyeur de manuscrit |
+| [`SORTIES.md`](SORTIES.md) | ce que produit une compilation, et la pile des feuilles de style |
+| [`TRADUCTION.md`](TRADUCTION.md) | le vérificateur de traduction et le mode « Trad » |
+| [`MULTIPLATEFORME.md`](MULTIPLATEFORME.md) | ce qu'il faudrait refaire pour Linux et macOS |
+| [`ECRIRE-LA-DOC.md`](ECRIRE-LA-DOC.md) | comment écrire la documentation et les commentaires |
 
-## Typographie
+## Formats de données
 
-| Document | Ce qu'il décrit |
+| Document | Contenu |
 |---|---|
-| [`TYPOGRAPHIE.md`](TYPOGRAPHIE.md) | les règles maison et les mesures qui les fondent ; contrôlé par `test/typo-check.py` |
-| [`TYPOGRAPHIE-FR.md`](TYPOGRAPHIE-FR.md), [`TYPOGRAPHIE-DE.md`](TYPOGRAPHIE-DE.md) | ce que la chaîne corrige toute seule, pour chaque rédaction et dans sa langue |
-| [`palette.html`](palette.html) | la planche de la palette annuelle, régénérée par `test/palette-html.py` |
+| [`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md) | les fiches de la Documentation, partagées avec le site Kirby |
+| [`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md) | les propositions déposées par les moissonneurs |
+| [`FORMAT-MOISSONS.md`](FORMAT-MOISSONS.md) | l'état partagé des moissons |
+
+## Accessibilité et typographie
+
+| Document | Contenu |
+|---|---|
+| [`ACCESSIBILITE.md`](ACCESSIBILITE.md) | normes visées, ce qui est en place, comment on vérifie |
+| [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md) | les limites connues, format par format |
+| [`TYPOGRAPHIE.md`](TYPOGRAPHIE.md) | les règles typographiques maison |
+| [`TYPOGRAPHIE-FR.md`](TYPOGRAPHIE-FR.md), [`TYPOGRAPHIE-DE.md`](TYPOGRAPHIE-DE.md) | pour les rédactions : ce que la chaîne corrige toute seule |
+| [`palette.html`](palette.html) | la palette annuelle, générée par `test/palette-html.py` |
 
 ## Suivi
 
-| Document | Ce qu'il décrit |
+| Document | Contenu |
 |---|---|
-| [`TODO/`](TODO/) | ce qui reste à faire, un fichier par chantier |
-| [`JOURNAL-LOTS-2026.md`](JOURNAL-LOTS-2026.md) | archive des lots de 2026, laissée telle quelle |
+| [`A-FAIRE.md`](A-FAIRE.md) | ce qui reste à faire, par thème |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | ce qui a changé, version par version |
 
 ## Ailleurs dans le dépôt
 
-| Document | Ce qu'il décrit |
+| Document | Contenu |
 |---|---|
-| [`../test/README.md`](../test/README.md) | le banc d'essai, ses corpus et ses contrôles |
-| [`../vscodium-extension/szh-cockpit/README.md`](../vscodium-extension/szh-cockpit/README.md) | chaque module du cockpit en une ligne |
+| [`../test/README.md`](../test/README.md) | le banc d'essai et les contrôles |
+| [`../moissonneurs/LISEZMOI.md`](../moissonneurs/LISEZMOI.md) | lancer et dépanner les moissonneurs |
+| [`../vscodium-extension/szh-cockpit/README.md`](../vscodium-extension/szh-cockpit/README.md) | les modules du cockpit |
 | [`../vscodium-extension/szh-apercu/README.md`](../vscodium-extension/szh-apercu/README.md) | l'extension d'aperçu PDF |
-| [`../vscodium-extension/szh-cockpit/mail-templates/README.md`](../vscodium-extension/szh-cockpit/mail-templates/README.md), [`../windows/mail-templates/README.md`](../windows/mail-templates/README.md) | les gabarits de courriel du cockpit et du lanceur |
-| [`../windows/APPS.md`](../windows/APPS.md), [`../windows/VSIX.md`](../windows/VSIX.md) | les applications et les extensions épinglées |
-| [`../image/patches/amont/README.md`](../image/patches/amont/README.md) | les correctifs de WeasyPrint et ce qu'en sait l'amont |
-| [`../pipeline/fonts/README.md`](../pipeline/fonts/README.md) | les polices empaquetées |
-| [`../pipeline/vale/LISEZMOI.md`](../pipeline/vale/LISEZMOI.md) | les règles Vale du nettoyeur, pour la rédaction |
-| [`../kirby/LISEZMOI.md`](../kirby/LISEZMOI.md) | les blueprints Kirby générés |
+| [`../vscodium-extension/szh-cockpit/mail-templates/README.md`](../vscodium-extension/szh-cockpit/mail-templates/README.md), [`../windows/mail-templates/README.md`](../windows/mail-templates/README.md) | les gabarits de courriel |
+| [`../windows/APPS.md`](../windows/APPS.md), [`../windows/VSIX.md`](../windows/VSIX.md) | les applications et extensions épinglées |
+| [`../image/patches/amont/README.md`](../image/patches/amont/README.md) | les correctifs de WeasyPrint |
+| [`../pipeline/fonts/README.md`](../pipeline/fonts/README.md) | les polices |
+| [`../pipeline/vale/LISEZMOI.md`](../pipeline/vale/LISEZMOI.md) | les règles Vale du nettoyeur |
+| [`../kirby/LISEZMOI.md`](../kirby/LISEZMOI.md) | les blueprints Kirby |
 | [`../test/composition/LISEZMOI.md`](../test/composition/LISEZMOI.md) | le corpus de composition |
