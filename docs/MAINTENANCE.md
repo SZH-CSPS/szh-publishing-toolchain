@@ -1,1374 +1,919 @@
 # Guide d'exploitation
 
-Ce que le mainteneur doit surveiller pour que la chaîne continue de fonctionner, ce
-qu'il faut regarder, à quelle fréquence, et quoi faire quand ça casse. Installer, régler et
-réparer un poste sont au §4 ; les réglages de l'éditeur et la langue de l'interface au §3.
-Publier une version est dans [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version).
+Ce guide s'adresse à la personne qui maintient les postes de rédaction : installer un poste,
+le garder à jour, mettre à jour l'environnement Linux, dépanner, surveiller, et faire les
+gestes qui reviennent chaque année. Publier une version de Pronto est décrit dans
+[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version).
 
-Le principe qui rend tout le reste supportable : **aucune donnée de revue ne vit dans
-la chaîne**. Les articles sont sur OneDrive, le reste est du code versionné et
-redéployable. Une distro cassée, un poste réinstallé, un toolkit corrompu se
-réparent sans rien perdre.
+Aucune donnée de revue ne vit dans la chaîne. Les articles, les images et les PDF sont sur
+SharePoint (OneDrive) ; tout le reste est du code versionné, qu'on peut redéployer. Une
+distribution WSL cassée, un toolkit abîmé ou un poste réinstallé se réparent sans rien
+perdre.
 
----
+Les mots propres à Pronto (toolkit, image, numéro, cockpit, Accueil…) sont définis dans le
+[vocabulaire](ARCHITECTURE.md#vocabulaire).
 
-## Le geste de contrôle universel
+## Sommaire
 
-Avant et après toute intervention, compiler un article de test :
-
-```powershell
-wsl -d SZH-Publishing -- bash -lc "cd /mnt/c/<chemin>/szh-publishing-toolchain/test && make -f ../pipeline/Makefile out/contenu-long/contenu-long.pdf"
-```
-
-Un PDF produit sans erreur, la chaîne est saine. Le contrôle complet, qui vérifie en
-plus les allers-retours du cockpit et les valeurs recopiées d'un fichier à l'autre :
-
-```powershell
-node --test test/js/*.test.js > sortie.txt 2>&1   # tout le harnais, puis lire sortie.txt
-```
-
-et, dans la WSL (`wsl.exe -d SZH-Publishing -- …`, depuis PowerShell) :
-
-```sh
-python3 test/apca-check.py             # contrastes de la palette
-python3 test/typo-check.py             # typographie des deux langues
-python3 test/typo-articles.py          # typographie des articles, par pandoc
-bash test/build-render.sh              # build + capture PNG de chaque page
-```
-
-Sur un poste de rédaction, l'équivalent est : ouvrir une revue, `Ctrl+S`, voir
-l'aperçu se mettre à jour.
+1. [En bref](#en-bref)
+2. [Installer, passer en production, désinstaller](#installer-passer-en-production-désinstaller)
+3. [Comment un poste se met à jour](#comment-un-poste-se-met-à-jour)
+4. [Mettre à jour la WSL (l'image)](#mettre-à-jour-la-wsl-limage)
+5. [Dépannage](#dépannage)
+6. [Surveiller](#surveiller)
+7. [Les moissonneurs](#les-moissonneurs)
+8. [Gestes récurrents](#gestes-récurrents)
+9. [Réglages de l'éditeur et langue de l'interface](#réglages-de-léditeur-et-langue-de-linterface)
+10. [Si tout casse : la reprise minimale](#si-tout-casse--la-reprise-minimale)
 
 ---
 
-## Le diagnostic d'un poste, et le piège de l'élévation
+## En bref
 
-**Une commande, dans la session de la personne concernée, sans élévation :**
+### Ce qui tourne où
 
-```powershell
-powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\diagnostic.ps1
-```
+Le schéma d'ensemble est dans [`ARCHITECTURE.md`](ARCHITECTURE.md#vue-densemble). Pour le
+dépannage, il faut surtout savoir ce qui appartient au poste et ce qui appartient à chaque
+compte Windows :
 
-Elle ne modifie rien. Elle sépare ce qui appartient au **poste** (toolkit, éditeur, place
-libre, tâche planifiée) de ce qui appartient au **compte** (environnement WSL, extensions,
-réglages, raccourcis, associations `.md` et `szh://`), et nomme le geste qui répare. Code de
-sortie 0 si tout est en place pour ce compte, 1 sinon.
-
-**Le piège de l'élévation.** L'installation d'un poste se lance en
-administrateur. Quand l'élévation se fait avec un **compte de support** depuis la session
-d'un **rédacteur**, tout le script tourne sous le compte de support : `HKCU`, `%APPDATA%`,
-`%LOCALAPPDATA%` et l'enregistrement des distributions WSL sont ceux du support. Or
-l'essentiel de l'outil s'installe **par utilisateur**. Le rédacteur ouvre donc sa session
-sans extensions, sans réglages, sans raccourcis et sans environnement de fabrication — sur
-un poste dont le journal dit « tout est à jour ».
-
-Ce que la chaîne en fait :
-
-- `bootstrap.ps1` compare le compte qui installe à celui de la session ouverte, l'écrit au
-  journal, et **ne lance pas** la première mise à jour quand ils diffèrent : elle poserait
-  3 Go d'environnement dans un profil de support qui ne rédigera jamais ;
-- chaque ligne de journal qui pose quelque chose par utilisateur **nomme le compte** ;
-- la passe silencieuse ne demande plus seulement « le poste est-il à jour ? » mais aussi
-  « **et ce compte, a-t-il tout reçu ?** » — c'est ce qui répare le poste tout seul à la
-  première ouverture de session du rédacteur ;
-- une étape en panne n'emporte plus les suivantes : un environnement WSL qui refuse de
-  s'installer ne prive plus personne de ses raccourcis ni de ses extensions.
-
-**Rien de tout cela n'exige d'attendre.** Dans la session du rédacteur, sans élévation :
-« Pronto (Updater) » depuis le menu Démarrer suffit à tout poser.
-
----
-
-## Calendrier
-
-| Quand | Geste | Durée |
-|---|---|---|
-| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau (majeure / medium / mineure, voir [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#numéroter)) et écrire sa section dans `CHANGELOG.md` ; **pour un medium ou une majeure**, écrire aussi sa note bilingue dans `nouveautes.json` — c'est elle que les rédactions liront | 15 min |
-| **Avant chaque numéro** (≈ 4×/an) | compiler le numéro précédent pour confirmer que rien n'a bougé ; vérifier que les dossiers de revue sont « toujours conservés sur cet appareil » côté OneDrive | 10 min |
-| **Après une mise à jour majeure de Windows** | test de fumée sur un poste ; `wsl --version` et `wsl -l -v` | 15 min |
-| **Après un changement de politique antivirus ou Intune** | re-vérifier les exclusions WSL (elles ne sont pas posées automatiquement, voir § Poste) | 10 min |
-| **Sur un poste installé avant août 2026** | une fois, en administrateur : `Set-SzhTacheMaj` pour passer le déclencheur de « quotidien 11 h » à « mardi 14 h ». Le rythme, lui, est déjà hebdomadaire sans ce geste (voir § Poste) | 2 min |
-| **2×/an** | compacter le `.vhdx` des postes ; reconstruire le rootfs (correctifs Debian, Pandoc, WeasyPrint) et le tester avant release | ½ journée |
-| **1×/an** | vérifier la fin de support de la base Debian ; relire `windows/vsix.lock` et décider des bumps ; vérifier que les huit extensions épinglées sont toujours publiées sur Open VSX | 2 h |
-| **1×/an** | vérifier que la version de VSCodium des postes est toujours compatible avec le pack de langue allemand épinglé | 15 min |
-
----
-
-## 1. WSL et Windows
-
-### Le disque WSL grossit et ne se réduit jamais
-
-**Symptôme.** Le disque du poste sature ; personne ne comprend pourquoi.
-Le `ext4.vhdx` (`C:\ProgramData\SZH\WSL\*.vhdx`) croît à chaque compilation et ne se
-compacte jamais tout seul.
-
-**À observer.** La taille du `.vhdx` dans l'Explorateur ; `wsl --system df -h` pour
-l'usage interne. **Deux fois par an**, ou dès que le disque du poste passe sous 15 Go.
-
-**Manœuvre.** `wsl --shutdown`, puis compacter : `Optimize-VHD` (si Hyper-V est
-présent) ou `diskpart` (`select vdisk file="…"` / `attach vdisk readonly` /
-`compact vdisk` / `detach vdisk`).
-
-### Une mise à jour du moteur WSL change le comportement
-
-**Symptôme.** Après un Windows Update, `Ctrl+S` ne produit plus de PDF, ou la
-compilation se bloque sans message. Les causes déjà vues ailleurs : montage `/mnt/c`
-modifié, systemd activé ou désactivé, réseau de la VM changé.
-
-**À observer.** `wsl --version` et `wsl --status` — noter la version qui marche, dans
-ce fichier, à chaque fois qu'on la constate saine. **Après chaque mise à jour notable
-de Windows**, faire le test de fumée.
-
-**Manœuvre.** `wsl --shutdown` d'abord : il règle la majorité des blocages
-transitoires (horloge décalée après veille, montage figé). Si la régression persiste,
-`wsl --update --rollback`, puis geler la version le temps de corriger.
-
-### La distro ne démarre pas
-
-**Symptôme.** « Aucune distribution installée », ou un démarrage qui n'aboutit pas.
-
-**À observer.** `wsl -l -v` : la distro `SZH-Publishing` doit être là, en version 2.
-Sinon : la virtualisation est-elle activée dans le BIOS ? Les fonctionnalités Windows
-« Plateforme de machine virtuelle » et « Sous-système Windows pour Linux » ?
-
-**Manœuvre.** Réactiver les fonctionnalités Windows, redémarrer. En dernier recours,
-relancer `bootstrap.ps1` en administrateur, depuis un clone frais du dépôt (jamais depuis
-`C:\ProgramData\SZH\toolkit`, que le groupe Utilisateurs peut réécrire — un administrateur
-qui l'exécuterait tel quel exécuterait aussi bien un code qu'un compte standard y aurait
-déposé) :
-
-```powershell
-git clone https://github.com/SZH-CSPS/szh-publishing-toolchain.git
-powershell -ExecutionPolicy Bypass -File .\szh-publishing-toolchain\windows\bootstrap.ps1
-```
-
-### La distro est corrompue
-
-**Symptôme.** Erreurs d'entrée-sortie, paquets cassés, compilation impossible après
-une coupure brutale ou un disque plein.
-
-**Manœuvre.** `wsl --unregister SZH-Publishing` puis réimporter le rootfs — le
-mécanisme de mise à jour le refait tout seul, ou à la main, **dans la session du compte
-concerné** :
-
-```powershell
-$tar = (Get-ChildItem 'C:\ProgramData\SZH\staging\szh-publishing-rootfs-*.tar.gz' | Sort-Object Name -Descending)[0].FullName
-$sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
-wsl --import SZH-Publishing "C:\ProgramData\SZH\WSL\$sid\SZH-Publishing" $tar --version 2
-wsl --terminate SZH-Publishing
-wsl -d SZH-Publishing --exec /bin/true      # doit finir sans rien afficher
-```
-
-Aucune donnée de revue n'est dans la distro : il n'y a rien à sauver avant.
-
-**Un dossier par SID, et pourquoi.** L'enregistrement d'une distribution WSL est **par
-utilisateur** (`HKCU\...\Lxss`), alors que son dossier était commun au poste. Le deuxième
-compte d'un poste n'avait donc aucune distribution enregistrée mais trouvait le dossier
-déjà pris, et `wsl --import` refusait :
-`Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS` — sans issue, puisque rien ne nettoyait
-jamais ce reste. Pire, le `wsl --unregister` du premier compte aurait effacé le disque du
-second. Depuis 2026-08, chaque compte a le sien, et `update.ps1` écarte de lui-même un
-reste d'installation trouvé à sa place.
-
-### Contraintes à ne pas oublier
-
-- `inotify` ne traverse pas `/mnt/c` : ne jamais bâtir une fonction sur un watcher
-  qui lirait `/mnt/c` depuis Linux — il ne se déclenchera pas.
-- `/mnt/c` est lent, et c'est normal : les fichiers sont sur OneDrive.
-- Ne jamais faire un `apt install` ou un `pip install` directement dans la distro :
-  le poste diverge des autres et le rendu cesse d'être reproductible. Toute évolution
-  passe par `image/` et une release. Un poste bricolé se répare en le réimportant.
-
----
-
-## 2. Le rootfs et ses outils
-
-Le rootfs est figé au moment de sa construction : deux postes produisent exactement le
-même PDF. La contrepartie est que les correctifs amont ne s'appliquent pas tant qu'on
-ne reconstruit pas l'image.
-
-⚠ **Cette promesse a une condition, et elle n'est pas dans le rootfs : les polices.**
-WeasyPrint ne trouve dans `pipeline/fonts/` que ce qui y est livré ; tout caractère
-qu'aucune face livrée ne couvre est comblé par **fontconfig**, au moment du rendu, avec
-ce qu'il trouve sur la machine. Le PDF dépend alors de la machine, et non du dépôt. Le
-cas était réel et mesuré : aucune face ne portait U+25B8 (la puce de toutes les listes)
-ni U+2010 (le trait d'union de chaque coupure de mot), et les PDF du banc embarquaient
-DejaVu et Noto. La fine insécable de « Source : », rendue par la police de repli,
-ressortait même en espace ordinaire d'un copier-coller. Les six caractères manquants ont
-été ajoutés aux faces Open Sans (voir `pipeline/fonts/README.md`), et le contrôle qui
-garde la promesse est **`test/polices-check.py`**, lancé dans la WSL : il refuse tout PDF embarquant
-une police absente de `pipeline/fonts/`. `test/build-render.sh` l'appelle. Une police
-ajoutée à la maquette, ou un caractère nouveau écrit par un filtre, se signale là.
-
-Versions actuellement épinglées, à lire dans les fichiers :
-
-| Élément | Où | Valeur |
-|---|---|---|
-| Base Debian | `image/Containerfile` (`DEBIAN_TAG`) | `13-slim` |
-| Pandoc | `image/Containerfile` (`PANDOC_VERSION`, `PANDOC_SHA256`) | 3.7.0.2, `.deb` vérifié par sha256 |
-| WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 70.0, 12 pins transitifs, et pypdf |
-| Venv des portraits | `image/requirements-portraits.txt` | rembg 2.0.85, onnxruntime 1.30.0, 30 pins en tout |
-| Vale, le vérificateur du nettoyeur | `image/Containerfile` (`VALE_VERSION`, `VALE_SHA256`) | 3.22.0 |
-| Modèles de détourage des portraits | `image/Containerfile` | deux `.onnx` vérifiés par sha256 |
-| veraPDF, le validateur PDF/UA | `image/Containerfile` (`VERAPDF_VERSION`, `VERAPDF_URL`, `VERAPDF_SHA256`) | 1.30.2, installeur vérifié par sha256 |
-
-veraPDF est un outil Java, et l'image n'embarque **pas** de JRE : une étape de build
-jetable taille un runtime au `jlink` (56 Mio, sept modules — `java.desktop` et
-`java.management` sont mesurés indispensables) et le rootfs n'en reçoit que le résultat.
-Le JDK et `binutils` qui servent à le fabriquer, 292 Mio à eux deux, restent dans
-l'étape jetable. Coût total dans le rootfs : **72 Mio**, dont 16 pour le pack CLI.
-L'URL du zip est **versionnée** et non l'alias « dernière version » : le sha256 sans
-l'URL versionnée ne suffit pas, l'alias suivrait le prochain amont et ferait mentir
-l'empreinte.
-
-**Tout est épinglé.** Le rootfs n'a plus de composant libre : AnyStyle, seul élément
-non épinglé, a quitté l'image avec la bibliographie BibTeX — les références ne sont plus
-converties, elles restent le texte de la rédaction et un filtre Lua les relie aux appels.
-Deux reconstructions du rootfs à partir du même dépôt donnent donc le même rendu.
-
-**Symptôme d'un bump raté.** Le PDF change d'aspect sans qu'aucun contenu ait bougé :
-césures différentes (Pyphen), rendu de tableau modifié (WeasyPrint), titres numérotés
-autrement (Pandoc).
-
-**À observer.** Après toute reconstruction : `bash test/build-render.sh`, puis
-comparer les PNG page à page avec ceux d'avant. C'est le seul contrôle qui voie une
-régression de mise en page. Le même script enchaîne trois verdicts d'ensemble, et
-chacun doit rester vert : la porte PDF/UA-1 du banc, le contrôle des polices
-(`test/polices-check.py`) et le corpus d'accessibilité (`test/accessibilite/`, un second
-dossier de numéro — sa porte PDF/UA doit rendre 0, et l'écart de numérotation voulu entre
-ses deux versions linguistiques doit rester signalé).
-
-**Quand.** Reconstruire **deux fois par an**, ou tout de suite en cas de faille de
-sécurité Debian, ou quand un correctif amont dont on a besoin est publié.
-
-**Manœuvre.** Modifier `image/Containerfile` et `image/requirements.txt`, laisser la
-CI reconstruire (le rootfs n'est rebâti que si `image/` a changé ; sinon forcer par
-Actions → release → *Run workflow* → case `force_rootfs`), tester sur le banc d'essai,
-puis publier. Les postes récupèrent le nouveau rootfs en silence.
-
-### Fin de support de la base Debian
-
-**À observer.** La version dans `image/Containerfile` et le calendrier de support de
-Debian (support standard environ trois ans après la sortie, puis LTS). **Une fois par
-an.**
-
-**Manœuvre.** Monter d'une version majeure dans le `Containerfile`, reconstruire,
-tester. C'est l'opération lourde et rare : prévoir une demi-journée à une journée, et
-la faire **entre deux numéros**, jamais pendant un bouclage.
-
----
-
-## 3. VSCodium et les extensions
-
-### Une montée de version de VSCodium casse une extension maison
-
-**Symptôme.** La barre « Pronto » ne s'affiche plus, ou une commande répond par une
-erreur dans la console de l'hôte d'extensions.
-
-**Ce qui protège aujourd'hui.** Les postes sont figés : `vscodium-user/settings.json`
-pose `update.mode: manual` et `extensions.autoUpdate: false`. Une montée de version
-est donc toujours une décision.
-
-**Ce qui expose.** Les deux extensions déclarent `engines.vscode: ^1.75.0`, sans borne
-haute : rien n'empêche une version future de les charger et de les casser. Les points
-les plus fragiles, par ordre de probabilité :
-
-1. `document.execCommand` dans l'éditeur de tableau (`media/table-editor.js`) : c'est
-   une API dépréciée de Chromium. Le gras et l'italique dans les cellules cesseront de
-   fonctionner un jour, sans message d'erreur.
-2. La commande interne `workbench.action.closeWindow`, appelée à la fin de
-   l'archivage : si elle disparaît, le numéro est archivé mais la fenêtre ne se ferme
-   pas et le déplacement du dossier échoue.
-3. `vscode.tasks.fetchTasks()` doit retrouver les tâches **utilisateur** de
-   `%APPDATA%\VSCodium\User\tasks.json`. C'est un comportement historiquement instable
-   selon les versions ; s'il change, plus aucun build ne part.
-
-**À observer.** Avant de faire monter le parc : installer la nouvelle version sur un
-seul poste, ouvrir une revue, et faire le parcours complet — cliquer un article,
-`Ctrl+S`, basculer l'aperçu, éditer un tableau, verrouiller puis déverrouiller le
-numéro, archiver puis désarchiver. **À chaque montée de version, donc au plus une ou
-deux fois par an.**
-
-### Le pack de langue allemand refuse de s'installer
-
-**Symptôme.** L'interface reste en anglais sur un poste germanophone.
-
-**Cause.** Un pack de langue déclare `engines ^1.<minor>.0` : il exige une version de
-VSCodium **au moins** égale à la sienne. `windows/vsix.lock` épingle donc `1.108.0`,
-compatible avec le poste de référence en 1.109 et au-delà — la dernière version
-publiée serait refusée.
-
-**À observer.** Après toute montée de VSCodium, que le pack s'installe encore.
-**Une fois par an**, ou à chaque montée.
-
-### Une extension tierce disparaît d'Open VSX
-
-**Symptôme.** La CI échoue au téléchargement d'un VSIX, ou une extension n'est plus
-installée sur les nouveaux postes.
-
-**Ce n'est pas théorique** : `csholmq.excel-to-markdown-table` a déjà été retirée.
-
-**À observer.** Ouvrir les huit URL de `windows/vsix.lock` une fois par an. La CI le
-fait de fait à chaque release : une release qui échoue à cette étape, c'est ce
-symptôme.
-
-**Manœuvre.** Chercher un remplaçant, ou vendoriser le `.vsix` dans le dépôt.
-
-### Les réglages de l'éditeur, et pourquoi la mise à jour n'y touche pas
-
-Le gabarit commenté `vscodium-user/settings.json` est la source unique de ce que la maison
-impose à tous les postes. Il est recopié tel quel dans `contributes.configurationDefaults`
-du cockpit (`package.json`), et `test/js/reglages-flotte.test.js` refuse que les deux
-divergent, en affichant le bloc à recoller.
-
-Un défaut d'extension vit sous le fichier du rédacteur au lieu de le remplacer : `update.ps1`
-ne recopie `settings.json` que sur un poste qui n'en a pas, et ce que le rédacteur choisit dans
-« Réglages Pronto » (thème, zoom, taille de police, langue, mode d'aperçu) survit à la mise à
-jour. `keybindings.json` et `tasks.json`, eux, sont écrasés : personne ne les édite.
-
-L'éditeur refuse en silence certains défauts d'extension, selon la portée du réglage :
-mesuré sur VSCodium 1.121, `update.mode`, `extensions.autoUpdate`,
-`extensions.autoCheckUpdates`, `window.commandCenter` et `window.menuBarVisibility` (portée
-« application ») sont retirés avec un simple avertissement. `poserReglagesMaison`
-(`extension.js`) relit au démarrage le défaut effectif de chaque clé et pose lui-même, par
-`getConfiguration().update(…, Global)`, celles qui n'ont pas pris, une fois par valeur voulue :
-l'empreinte du gabarit est mémorisée, pour ne pas réimposer à chaque ouverture un réglage que
-le rédacteur a délibérément changé.
-
-### Les réglages protégés
-
-Trois blocs de « Réglages Pronto » décrivent la chaîne de publication et non le confort d'une
-personne : la configuration de l'export OJS, les titres de bibliographie et les tâches
-éditoriales par article (`tachesArticle`). Une rubrique OJS renommée sur un seul poste ferait
-atterrir ses articles dans la mauvaise section ; deux jeux de tâches feraient suivre le même
-numéro de deux façons. Ils sont donc en lecture seule, et déployés depuis
-`windows/settings-protected.json` vers `C:\ProgramData\SZH\settings-protected.json`, écrasé à
-chaque mise à jour.
-
-Le cockpit relaie ces blocs dans `config.json`, seul fichier que `szh-citations.lua` sache lire
-depuis la WSL, et seulement quand la référence a changé : sinon une modification locale
-disparaîtrait le lendemain. Un bloc absent du fichier déployé laisse celui du poste intact ;
-seul un bloc présent prend la main. Le fichier part vide.
-
-Le rédacteur peut déverrouiller (case à cocher, question modale). Sa modification vaut alors
-sur son poste jusqu'à la prochaine mise à jour ; le formulaire affiche un bandeau, le bouton
-« Télécharger les réglages protégés » produit le fichier à transmettre, et
-`windows/diagnostic.ps1` (§ *Réglages de la rédaction*) sort la divergence en défaut.
-
-### La langue de l'interface
-
-Deux sources indépendantes, ce qui rend possible un écran mi-français mi-allemand. Les menus
-de l'éditeur, les titres de commandes et les descriptions de réglages viennent de
-`package.nls.json` et `package.nls.de.json`, que VSCodium résout selon sa propre langue
-d'affichage (`argv.json`, clé `locale`, et le pack de langue épinglé dans `vsix.lock`). Tout le
-reste vient de `lib/i18n.js`, que `sourceLangue()` résout par cette cascade :
-
-| # | Source | Où |
-|---|--------|-----|
-| 1 | `SZH_LANGUE` | l'environnement : un essai, jamais posée sur un poste |
-| 2 | réglage `szh.langue` | réglages de l'éditeur, écrits par « Réglages SZH » |
-| 3 | clé `langue` | configuration du poste, hors des réglages de l'éditeur |
-| 4 | clé `langue` | état du poste (`state.json`), écrite autrefois par le lanceur WinForms |
-| 5 | langue d'affichage de l'éditeur | `argv.json` et pack de langue |
-| 6 | langue d'affichage de Windows | locale du système |
-| — | français | faute de mieux |
-
-L'étage 4 existe parce que les postes affichent Windows et VSCodium en anglais : ni l'un ni
-l'autre ne dit l'équipe qui s'en sert. Le socle PowerShell, lui, le sait par sa propre
-cascade (compte, `state.json`, langue de Windows, allemand en dernier recours, `$SzhLangue`
-dans `szh-common.ps1`). L'étage 3 double l'étage 2 dans un fichier que rien d'autre ne
-réécrit : le choix survit à tout ce qui toucherait aux réglages de l'éditeur.
-
-Quand les deux moitiés divergent, `windows/diagnostic.ps1` (§ *Langue de l'interface*) pose les
-six sources côte à côte, et « Réglages Pronto » affiche la discordance sous le choix de la langue.
-Des menus en anglais ne sont pas une discordance : aucun pack de langue français n'est épinglé.
-Gardé par `test/js/langue-interface.test.js`.
-
-### Raccourcis clavier, et qui les fournit
-
-| Raccourci | Effet | Fourni par |
-|---|---|---|
-| `Ctrl+S` | enregistrer : import des Word déposés puis régénération | triggertaskonsave |
-| `Ctrl+B` / `Ctrl+I` / `Ctrl+U` | gras / italique / souligné | szh-cockpit |
-| `Ctrl+Alt+1` / `2` / `3` | titre de niveau 1 / 2 / 3 | szh-cockpit |
-| `Ctrl+Alt+W` / `H` / `Q` | bloc Important / Mise en évidence / Question | szh-cockpit |
-| `Ctrl+Alt+C` | citation | szh-cockpit |
-| `Ctrl+Alt+F` / `Ctrl+Alt+T` | insérer une figure / un tableau | szh-cockpit |
-| `Ctrl+Alt+N` | insérer une note de bas de page | szh-cockpit |
-| `Ctrl+Alt+K` | insérer un lien | szh-cockpit |
-| `Ctrl+Alt+V` | coller un tableau depuis Excel ou Word, fusions comprises | szh-cockpit |
-| `Ctrl+Alt+Entrée` | saut de page, dans le PDF seulement | szh-cockpit |
-| `Ctrl+Alt+A` / `S` / `D` | panneaux Commande / Édition / Export | szh-cockpit |
-| `Ctrl+Alt+P` | basculer l'aperçu HTML ⇄ PDF ; sur un `.biblio.md`, montrer ou cacher son rendu | szh-cockpit |
-| `Ctrl+Alt+I` | convertir les Word en attente, par le cockpit (`szh.convertirEnAttente`) : ordre du numéro et vérification de l'import | szh-cockpit |
-| `Ctrl+E` / `Ctrl+Maj+B` | relancer la compilation | tâche utilisateur |
-| `Ctrl+Alt+R` | recharger la fenêtre, si l'aperçu se fige | keybindings |
-| `Ctrl+Espace` | suggestions de blocs `:::` | VS Code, réactivé en Markdown |
-| `Entrée` dans une liste | continuation automatique | markdown-all-in-one |
-| `Tab` dans un tableau | cellule suivante, formatage automatique | markdowntable |
-
----
-
-## 4. Le poste Windows
-
-### Préparer un poste, une fois, en administrateur
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\windows\bootstrap.ps1
-```
-
-`windows\Installer le poste SZH.cmd` fait la même chose à double-clic. Le script active la
-WSL, installe VSCodium et SumatraPDF au niveau machine, dans les versions figées par
-`windows/apps.lock` (téléchargement direct, sha256 et signature vérifiés, voir
-[`../windows/APPS.md`](../windows/APPS.md)), donne aux Utilisateurs le droit d'écrire dans
-`C:\ProgramData\SZH`, pose les raccourcis, crée les tâches planifiées (mise à jour,
-préchauffage WSL) et lance la première mise à jour. Si la WSL était absente : redémarrer, puis
-relancer.
-
-Le script pose aussi, pour le compte qui l'exécute, tout ce qui est par utilisateur
-(extensions, réglages, raccourcis, environnement WSL). Élevé avec un compte de support depuis
-la session d'un rédacteur, il ne peut pas servir ce rédacteur : il le dit et laisse la tâche
-planifiée le faire à sa prochaine ouverture de session (voir plus haut « Le diagnostic d'un
-poste »). Restent à poser à la main les exclusions antivirus (ci-dessous). Ensuite, plus
-besoin d'administrateur ; seule la montée de VSCodium ou de SumatraPDF reste manuelle.
-
-### Créer un numéro ou un livre
-
-Lanceur « Pronto » → onglet Revue, Zeitschrift ou Book → *Nouveau…*. Le dossier est créé
-dans les « en cours » du produit, dans la racine active ([`EMPLACEMENTS.md`](EMPLACEMENTS.md)).
-`new-revue.ps1` (ou `new-livre.ps1`) copie le gabarit (pour une revue, sans l'article d'exemple ni les modèles d'article Pronto), écrit le jeton de produit et l'`id:`,
-déduit année et numéro du nom du dossier, estampille la version du toolkit et pose le
-raccourci « Ouvrir la revue » (« Ouvrir le livre »).
-
-### Le lanceur et ses réglages
-
-Deux entrées au menu Démarrer, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
-(`szh-shell.ps1`) : « Pronto », sans console (`wscript.exe //B hidden.vbs`), qui ouvre
-VSCodium sur l'Accueil du cockpit, et
-« Pronto (Updater) », qui lance `update.ps1` dans une fenêtre visible. Leurs noms vivent dans
-`$SzhNomApplication` et `$SzhNomMiseAJour`. `bootstrap.ps1`, `update.ps1` et
-`update-launcher.ps1` posent les raccourcis, ce dernier à chaque ouverture de session : un
-poste déjà à jour reçoit ainsi une entrée ajoutée après coup. Un ancien raccourci se reconnaît
-à sa cible et non à son nom, ce qui retire tout seul ceux d'un renommage ; la désinstallation,
-qui peut survenir sans toolkit, a besoin de la liste figée de `Get-SzhRaccourcisObsoletes`. Un
-raccourci épinglé à la barre des tâches est une copie que la migration ne touche pas : le
-dépingler et réépingler à la main. Le sous-dossier `SZH\` du menu appartient à un autre produit
-et n'est jamais touché. « Pronto » porte l'identité de barre des tâches de VSCodium
-(`VSCodium.VSCodium`), pour n'avoir qu'un bouton avec l'éditeur, et l'updater
-`SZH.Publishing.MiseAJour` (`$SzhAppIds`). Le menu Démarrer ne montre qu'une entrée par
-identité : les raccourcis de l'installeur VSCodium reçoivent `SZH.Publishing.VSCodium` à chaque
-pose (`Set-SzhRaccourcisCodium`), sans quoi « VSCodium » prend la place de « Pronto ».
-
-Les Réglages de l'Accueil portent les réglages du compte (langue, produit par défaut, mise à
-jour visible ou silencieuse) et un réglage du poste, « Mode développeur (dossiers de test) »,
-qui bascule `emplacementRevues` (`configAvecEmplacement`, `lib/archivage.js`).
-
-L'onglet **Log** de l'Accueil liste les dix derniers transcrits de mise à jour
-(`C:\ProgramData\SZH\logs\update-<horodatage>.log`, `lib/journaux-maj.js`) avec leur date,
-tirée du nom du fichier, et leur verdict, lu sur la fin du transcript. Deux boutons : « Signaler une erreur… » écrit un rapport
-`LANCEUR-SIGNALEMENT` avec le journal choisi ([`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) §7) ;
-« Envoyer les journaux… » réunit les journaux dans un zip du dossier temporaire et ouvre un
-brouillon de courriel au support, la pièce jointe restant à glisser à la main.
-
-### Revenir à une version précédente
-
-`update.ps1 -Version <X>`, ou *Changer de version…* (dans l'Accueil, ou dans l'avertissement de
-divergence du cockpit), qui ouvre le sélecteur `open-revue.ps1 -Versions`. Volontairement manuel et visible :
-l'opération remplace le rootfs et les extensions, et demande de redémarrer l'éditeur.
-
-### Réparer un poste
-
-Un script qui répare (`bootstrap.ps1` relancé en administrateur, `update.ps1` en ligne de
-commande) ne s'exécute jamais depuis `C:\ProgramData\SZH\toolkit` sous élévation : ce dossier
-est inscriptible par le groupe Utilisateurs, et un administrateur qui l'exécuterait tel quel
-exécuterait aussi bien un code qu'un compte standard y aurait déposé. Toujours repartir d'un
-clone frais du dépôt, ou d'une archive `toolkit-<v>.zip` fraîchement téléchargée et vérifiée
-par sha256. Les manœuvres par symptôme suivent ; la reprise minimale est en fin de document.
-
-### Les exclusions antivirus ne sont pas posées automatiquement
-
-**Attention** : `bootstrap.ps1` **affiche** la liste des exclusions à poser, il ne les
-pose pas. Si personne ne les a saisies, l'antivirus inspecte le `.vhdx` et les
-processus de la VM à chaque compilation.
-
-**Symptôme.** Les builds prennent plusieurs dizaines de secondes au lieu de quelques
-secondes ; parfois un fichier reste verrouillé.
-
-**À observer.** Que les exclusions existent bien : `C:\ProgramData\SZH\WSL\` (tous
-sous-dossiers, un par SID de compte, `*.vhdx`),
-`C:\ProgramData\SZH\staging\*`, et les processus `vmcompute.exe`, `vmmem.exe`,
-`wsl.exe`, `wslservice.exe`. **Après tout changement de politique de sécurité
-centrale**, une politique Intune pouvant les réécraser.
-
-### Le double-clic sur un `.md` n'ouvre plus la revue
-
-**Cause probable.** Windows scelle le choix d'application par défaut dans une clé
-signée : une autre installation (ou l'utilisateur) a repris l'association.
-
-**À observer.** Que `HKCU\Software\Classes\.md\OpenWithProgids` contient toujours
-`SZH.Markdown`, et que « Ouvrir avec » propose « Pronto ».
-
-**Manœuvre.** Relancer `update.ps1` ; le geste « Toujours utiliser cette application »
-reste à faire par l'utilisateur, une fois.
-
-### Les liens `szh://` : deux verbes, une seule grammaire
-
-| Lien | Qui l'émet | Ce qu'il fait |
-|---|---|---|
-| `szh://traduction/<produit>/<numéro>[/<article>]` | « Envoyer pour traduction » (cockpit) | ouvre le numéro **sur le suivi de traduction** (`revue`, `zeitschrift`) |
-| `szh://ouvrir/<produit>/<numéro>` | le raccourci posé à la racine de chaque numéro | ouvre le dossier, rien de plus (`revue`, `zeitschrift`, `livre`) |
-
-La grammaire est écrite **deux fois**, et volontairement : `$SzhLienMotif` /
-`$SzhLienMotifOuvrir` dans `windows/szh-produits.ps1`, `MOTIF_TRADUCTION` / `MOTIF_OUVRIR`
-dans `vscodium-extension/szh-cockpit/lib/liens.js`. Les quatre littéraux sont comparés
-caractère par caractère par `test/js/raccourcis-portables.test.js` : modifier un côté sans
-l'autre fait échouer la suite. Un lien vient toujours d'une source non fiable (un e-mail,
-un `.lnk` recopié par OneDrive) — il ne porte jamais de chemin, et le dossier est cherché
-dans les seules racines connues du poste.
-
-La résolution diffère d'un verbe à l'autre : `traduction` cherche dans la racine **active**,
-`ouvrir` dans la racine active **puis** dans celle de **production** (`Find-SzhProduitOuvrir`).
-Un numéro introuvable donne une boîte de dialogue, jamais un silence.
-
-### Le raccourci « Ouvrir la revue » d'un numéro ne fait rien
-
-**Symptôme.** Double-clic sans effet sur un numéro arrivé par OneDrive depuis l'autre poste.
-
-**Cause.** Un raccourci d'avant le 15.09.2026 : il visait l'exécutable de l'éditeur (installé
-sous le profil de l'utilisateur) et lui passait le chemin absolu du numéro. Les deux chemins
-contiennent le nom du compte Windows, et aucun des deux n'existe sur l'autre poste.
-
-**Manœuvre.** Rouvrir le numéro depuis le menu Démarrer puis l'archiver/désarchiver, ou le
-recréer : `Set-SzhRaccourciRevue` réécrit alors le raccourci dans sa forme portable. Pour un
-lot entier de numéros dans le dossier de test, une mise à jour de l'outil les refait tous
-à la fois (`windows/szh-migration.ps1`, `Invoke-SzhMigrationArborescence`, appelée par
-`update.ps1` — voir docs/EMPLACEMENTS.md §8).
-
-**À observer.** Propriétés du `.lnk` : la cible doit être `wscript.exe` et les arguments
-doivent se terminer par un lien `szh://ouvrir/…`. S'il y figure un `C:\Users\…`, le raccourci
-est périmé.
-
-### Les liens `szh://` ne font rien depuis un e-mail
-
-**Deux causes possibles**, toutes deux déjà rencontrées.
-1. Le schéma n'est pas déclaré protocole de confiance Office : Outlook avertit puis
-   n'ouvre rien. La clé est posée par `update.ps1` sous
-   `HKCU\…\Trusted Protocols\All Applications\szh:`.
-2. Le destinataire est sur le **nouvel** Outlook, qui ne connaît pas ce protocole. Le
-   corps de l'e-mail porte pour cette raison une ligne de repli « menu Démarrer → … ». Ce
-   texte vient de `traduction.fr.twig` / `traduction.de.twig`, dans
-   `vscodium-extension/szh-cockpit/mail-templates/`, rendu par `lib/courriel.js`.
-
-### La mise à jour automatique : ce qui la déclenche, et ce qui la retient
-
-La tâche planifiée **« SZH - Mise a jour »** porte deux déclencheurs, et les deux comptent :
-
-| Déclencheur | Rôle |
+| Niveau | Ce qu'on y trouve |
 |---|---|
-| **hebdomadaire, mardi 14 h** | le rythme demandé : une mise à jour par semaine |
-| **à l'ouverture de session** | le rattrapage, et le seul bon moment de la journée (voir plus bas) |
+| Le poste (`C:\ProgramData\SZH`) | `toolkit\` (l'outillage), `staging\` (téléchargements), `logs\`, `config.json` (réglages du poste), `state.json`, `settings-protected.json`, `WSL\<SID>\` (le disque Linux de chaque compte) ; VSCodium et SumatraPDF, installés pour toute la machine ; les tâches planifiées |
+| Chaque compte | l'enregistrement de la distribution WSL `SZH-Publishing`, les extensions et réglages de VSCodium (`%APPDATA%\VSCodium\User`), `%LOCALAPPDATA%\SZH` (`etat-utilisateur.json`, `maj-auto.json`, files d'attente des rapports et compteurs), `%USERPROFILE%\.wslconfig`, les raccourcis du menu Démarrer, l'association `.md` et le protocole `szh:` |
+| SharePoint | les numéros, les livres, la Documentation (`_NewsUndActu`) et `_Systeme` (rapports, inventaire, compteurs). Voir [`EMPLACEMENTS.md`](EMPLACEMENTS.md) |
 
-La cadence, elle, **n'est pas dans les déclencheurs** : elle est dans
-`windows/szh-taches.ps1`, que `Test-SzhFenetreMaj` applique à chaque passage. La tâche ouvre
-des occasions ; le script décide s'il en profite. Deux raisons à ce partage.
+Comme l'essentiel s'installe par compte, un poste peut être à jour et pourtant inutilisable
+pour la personne qui s'en sert. C'est le premier point à vérifier.
 
-1. Le déclencheur d'ouverture de session revient **chaque matin**. Sans garde, « une fois par
-   semaine » serait un vœu.
-2. `bootstrap.ps1` ne tourne qu'à l'installation, et la tâche vit dans la **racine du
-   planificateur**, que seul un administrateur peut réécrire — or une mise à jour ne demande
-   jamais l'élévation. Mesuré : `Set-ScheduledTask` comme `Register-ScheduledTask` rendent
-   *Access is denied* pour un compte non élevé, y compris membre du groupe Administrateurs
-   mais sans élévation. Un poste installé avant août 2026 garderait donc son déclencheur
-   quotidien de 11 h **pour toujours**. Le script, lui, est remplacé sur chaque poste à la
-   mise à jour suivante, sans intervention : c'est par lui que le rythme change partout.
+### Le contrôle rapide
 
-La conséquence à connaître : sur un poste déjà installé, le déclencheur reste quotidien
-jusqu'à ce qu'un administrateur passe, mais **le rythme effectif est déjà hebdomadaire**. Le
-journal le dit à chaque passage :
+Avant et après toute intervention :
 
-```
-check : tâche planifiée refusee — écarts : déclencheur quotidien à retirer ; …
-check : tâche planifiée non corrigée (Access is denied.) — un administrateur doit…
-```
+1. **Diagnostic du compte.** Dans la session de la personne concernée, sans élévation :
 
-**Manœuvre**, une seule fois par poste, dans un PowerShell **en administrateur**, depuis un
-clone frais du dépôt ou une archive toolkit fraîchement téléchargée et vérifiée par sha256,
-extraite dans un dossier de l'administrateur — **jamais** en dot-sourçant
-`C:\ProgramData\SZH\toolkit\windows\*.ps1` : ce dossier est inscriptible par le groupe
-Utilisateurs (mises à jour sans administrateur), et un administrateur qui l'exécuterait tel
-quel exécuterait aussi bien un code qu'un compte standard y aurait déposé — exactement la
-faille d'élévation locale que `bootstrap.ps1` évite désormais pour lui-même (§ Sécurité) :
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\diagnostic.ps1
+   ```
+
+   Le script ne modifie rien. Il affiche, par sections (comptes, poste, ce compte, réglages
+   de la rédaction, langue de l'interface, mises à jour), ce qui est en place et ce qui
+   manque, avec le geste qui répare. Code de sortie 0 si tout est en place pour ce compte,
+   1 sinon.
+
+2. **Une compilation.** Ouvrir un numéro dans Pronto, ouvrir un article, `Ctrl+S`.
+   L'aperçu et le PDF doivent se mettre à jour, et le badge « PDF/UA » de la barre d'état
+   doit afficher un verdict.
+
+3. **Depuis un clone du dépôt** (poste de développement), compiler l'article de test :
+
+   ```powershell
+   wsl -d SZH-Publishing -- bash -lc "cd /mnt/c/<chemin>/szh-publishing-toolchain/test && make -f ../pipeline/Makefile out/contenu-long/contenu-long.pdf"
+   ```
+
+   Un PDF produit sans erreur : la chaîne est saine.
+
+---
+
+## Installer, passer en production, désinstaller
+
+### Installer un poste
+
+Une fois par poste, en administrateur.
+
+1. Récupérer un clone frais du dépôt (ou une archive `toolkit-<version>.zip` téléchargée
+   depuis GitHub et vérifiée par son sha256). On ne lance jamais un script élevé depuis
+   `C:\ProgramData\SZH\toolkit` : ce dossier est modifiable par tous les utilisateurs du
+   poste, et un administrateur exécuterait aussi ce qu'un compte standard y aurait déposé.
+
+   ```powershell
+   git clone https://github.com/SZH-CSPS/szh-publishing-toolchain.git
+   powershell -ExecutionPolicy Bypass -File .\szh-publishing-toolchain\windows\bootstrap.ps1
+   ```
+
+   Le double-clic sur `windows\Installer le poste SZH.cmd` fait la même chose.
+
+2. Le script :
+   - active la WSL si elle manque. Il faut alors redémarrer le poste et relancer le script ;
+   - installe VSCodium et SumatraPDF pour toute la machine, dans les versions de
+     `windows/apps.lock`, après vérification du sha256 et de la signature
+     ([`windows/APPS.md`](../windows/APPS.md)) ;
+   - donne au groupe Utilisateurs le droit de modifier `C:\ProgramData\SZH`, ce qui permet
+     ensuite les mises à jour sans administrateur ;
+   - pose le toolkit, les raccourcis du menu Démarrer, et deux tâches planifiées :
+     `SZH - Mise a jour` et `SZH - Prechauffage WSL` (démarre la WSL à l'ouverture de
+     session, pour que la première compilation soit rapide) ;
+   - lance la première mise à jour, qui pose tout ce qui est par compte ;
+   - affiche à la fin la liste des exclusions antivirus et la commande de diagnostic.
+
+   Le journal est dans `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log`.
+
+3. **Le piège de l'élévation.** Si l'élévation se fait avec un compte de support depuis la
+   session d'un rédacteur, le script tourne sous le compte de support : extensions,
+   réglages, raccourcis et distribution WSL iraient dans le profil du support. Le script le
+   détecte, l'écrit au journal et ne lance pas la première mise à jour. Le rédacteur reçoit
+   tout à sa prochaine ouverture de session, par la tâche planifiée. Pour ne pas attendre :
+   dans la session du rédacteur, sans élévation, menu Démarrer → « Pronto (Updater) ».
+
+4. **Poser les exclusions antivirus.** Le script les affiche mais ne les pose pas. Sans
+   elles, l'antivirus inspecte le disque Linux à chaque compilation, qui prend alors
+   plusieurs dizaines de secondes au lieu de quelques-unes :
+   - dossiers : `C:\ProgramData\SZH\WSL\` (tous les sous-dossiers, `*.vhdx`) et
+     `C:\ProgramData\SZH\staging\*` ;
+   - processus : `vmcompute.exe`, `vmmem.exe`, `wsl.exe`, `wslservice.exe`.
+
+5. **Vérifier les accès réseau.** Les postes doivent joindre `github.com`,
+   `api.github.com` et `objects.githubusercontent.com` (mises à jour), et
+   `www.sumatrapdfreader.org` (installation). La liste et les autres points à voir avec le
+   prestataire informatique sont dans [`SECURITE.md`](SECURITE.md).
+
+6. Passer le poste en production (section suivante), puis faire le
+   [contrôle rapide](#le-contrôle-rapide) dans la session de chaque rédacteur.
+
+### Passer un poste neuf du mode test à la production
+
+`bootstrap.ps1` crée un `config.json` neuf réglé sur les dossiers de test (`devMode = $true`).
+Un poste neuf cherche donc les numéros dans `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING`.
+Sur un poste de rédaction, il faut le basculer après l'installation :
+
+1. Vérifier que la bibliothèque SharePoint `Daten_Allgemein - General` est synchronisée par
+   OneDrive sur le poste : la racine de production en dépend
+   (`…\Daten_Allgemein - General\2_Produkte\54_Pronto`).
+2. Ouvrir Pronto, Accueil → **Paramètres** → « Mode développeur (dossiers de test) » →
+   **Désactivé**. Le réglage vaut pour tout le poste. À la main, c'est la clé
+   `"emplacementRevues": "production"` de `C:\ProgramData\SZH\config.json` (l'ancienne clé
+   `devMode` est encore lue quand `emplacementRevues` manque).
+3. Vérifier : la bannière « Mode test » de l'Accueil disparaît, les numéros de production
+   s'affichent, et un numéro ouvert ne porte plus le badge « Dossier de test ». Le journal
+   du mois (`C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log`) note
+   `revues : emplacement "…" -> <chemin>`.
+
+La bascule ne déplace aucun fichier. Les numéros créés en mode test restent dans
+`Revues-TESTING` ; pour les garder, on les déplace à la main vers `…\54_Pronto\Revue` (ou
+`Zeitschrift`). Le détail des deux racines est dans [`EMPLACEMENTS.md`](EMPLACEMENTS.md).
+
+### Désinstaller
+
+Avant de sortir un poste du parc ou de le réaffecter, ou pour retirer un compte qui n'utilise
+plus Pronto. Comme l'installation, on lance le script depuis un clone frais, jamais depuis
+`C:\ProgramData\SZH\toolkit` sous élévation.
 
 ```powershell
-git clone https://github.com/SZH-CSPS/szh-publishing-toolchain.git
-. '.\szh-publishing-toolchain\windows\szh-common.ps1'
-. '.\szh-publishing-toolchain\windows\szh-taches.ps1'
-Set-SzhTacheMaj
+powershell -ExecutionPolicy Bypass -File .\szh-publishing-toolchain\windows\uninstall.ps1 -Simuler
+powershell -ExecutionPolicy Bypass -File .\szh-publishing-toolchain\windows\uninstall.ps1
 ```
 
-Le bilan rendu vaut `conforme` (rien à faire, rien écrit), `corrigee` (elle différait),
-`creee` (elle manquait), `refusee` (pas assez de droits) ou `illisible` (le planificateur n'a
-pas répondu). Une tâche déjà juste **n'est pas recréée** : la réécrire lui remettrait son
-historique à zéro. Relancer `bootstrap.ps1` fait la même chose, en plus du reste.
-
-### Les quatre états du poste : verrouillé, éteint, en veille, personne connecté
-
-La question revient : *si l'ordinateur est éteint, en veille ou verrouillé, il n'y a pas de
-mise à jour ?* Réponse état par état, avec ce sur quoi elle s'appuie.
-
-| État du poste | Ça tourne ? | Ce qui se passe | Appui |
-|---|---|---|---|
-| **Verrouillé** (session ouverte, écran verrouillé) | **Oui** | Verrouiller n'est pas se déconnecter : la session reste ouverte, et c'est tout ce que la tâche exige. | `quser` rend l'état `Active` pour une session de console verrouillée ; et le planificateur traite le verrouillage comme un *changement d'état de session* (`SessionStateChangeTrigger`, états `SessionLock` / `SessionUnlock`), type de déclencheur **distinct** de l'ouverture de session — s'il fallait les confondre, ces deux types n'existeraient pas. |
-| **Éteint** | Non — rien ne tourne sur un poste éteint | Mais la fenêtre manquée est **rattrapée** : `StartWhenAvailable` est posé, la tâche part à la première occasion après le retour, avec un délai par défaut de **10 minutes**. Et l'ouverture de session la rattrape de toute façon, souvent plus tôt. | XML de la tâche (`<StartWhenAvailable>true</StartWhenAvailable>`) et la documentation Microsoft de `TaskSettings.StartWhenAvailable` : « *they are started after a delay. The default delay is 10 minutes* ». |
-| **En veille** | Non, et **volontairement** : la tâche ne réveille pas le poste | Elle part au réveil, par le même rattrapage. Sur le poste de référence, la veille arrive après 4 h d'inactivité sur secteur (10 min sur batterie) : un mardi de travail, le poste est éveillé à 14 h. | XML (`WakeToRun` absent, donc `false`) ; `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` mesuré : `0x3840` = 4 h sur secteur, `0x258` = 10 min sur batterie. |
-| **Allumé, personne connecté** | Non | La tâche tourne dans la session d'un utilisateur connecté. Sans session, rien. Ce n'est pas un défaut : la mise à jour installe des extensions et des réglages **dans le profil** de l'utilisateur, et il n'y a pas de profil sans session. | XML : `<GroupId>S-1-5-32-545</GroupId>` (groupe Utilisateurs) sans `<LogonType>Password</LogonType>`, c'est-à-dire « exécuter seulement si l'utilisateur est connecté ». |
-
-**Le cinquième état, celui qu'on n'avait pas vu : sur batterie.**
-`DisallowStartIfOnBatteries` vaut `true` par défaut, et il l'était sur la tâche installée. Un
-portable jamais branché ne se mettait donc **jamais** à jour — ni le mardi, ni à l'ouverture
-de session. Le passage du quotidien à l'hebdomadaire aurait aggravé le cas, de sept occasions
-par semaine à une. `New-SzhTacheMajReglages` pose désormais `-AllowStartIfOnBatteries` ;
-`-DontStopIfGoingOnBatteries` reste, donc une mise à jour commencée sur secteur n'est pas
-coupée par un débranchement.
-
-**Pourquoi pas `-WakeToRun`.** Il existe, il réveillerait le poste à 14 h, et il a été
-écarté :
-
-- il dépend du réglage « autoriser les minuteurs de réveil » du plan d'alimentation, qui
-  n'est pas le même sur secteur et sur batterie — mesuré sur le poste de référence :
-  `Enable` sur secteur, `Disable` sur batterie. Une stratégie centrale peut le désactiver
-  partout, et la tâche paraîtrait alors réglée sans jamais réveiller personne ;
-- il se comporte autrement sur les machines à veille moderne (S0 Low Power Idle) que sur les
-  machines à veille S3 ;
-- réveiller un poste à 14 h pour télécharger **574 Mo** d'image WSL est intrusif, et le
-  rédacteur n'a rien demandé ;
-- surtout il est **inutile** : `StartWhenAvailable` rattrape la fenêtre manquée, et
-  l'ouverture de session la rattrape encore mieux — c'est même le seul moment de la journée
-  où l'éditeur n'est pas ouvert.
-
-Un réveil serait la bonne réponse s'il fallait absolument que la mise à jour tombe à une
-heure précise. Ce n'est pas le cas : ce qui compte est qu'elle tombe une fois par semaine.
-
-### La mise à jour renonce, et repasse plus tard
-
-14 h tombe en pleine après-midi de travail, et une mise à jour peut remplacer l'**image WSL**
-— 574 Mo à la dernière release. L'installation doit alors désenregistrer la distribution, ce
-qu'elle ne peut pas faire pendant qu'une compilation s'en sert : c'est exactement ce que dit
-`err.wsl`, qui demande de fermer l'éditeur.
-
-`Test-SzhMomentMaj` (`windows/szh-taches.ps1`) mesure donc le moment, mais **seulement quand
-l'environnement de fabrication change** (`-RemplaceEnvironnement`) : un toolkit, des
-extensions et des réglages s'installent très bien sous l'éditeur ouvert, et renoncer là
-retarderait des corrections pour rien. `update-launcher.ps1` (la passe silencieuse) **et**
-`update.ps1` (la mise à jour manuelle depuis le menu Démarrer) l'appellent tous les deux avant
-de désenregistrer la distribution — avant ce garde-fou, une mise à jour lancée à la main
-pouvait couper une compilation en vol, ce que seule la passe silencieuse évitait.
-
-| Ce qui est mesuré | Comment | Conséquence |
-|---|---|---|
-| Une compilation en vol | un client `wsl.exe` dont la ligne de commande porte le `Makefile` de la chaîne — la forme que prend `Ctrl+S`, voir `vscodium-user/tasks.json` — **et** les processus lus dans `/proc` à l'intérieur de la distro : l'image n'embarque pas `procps`, donc ni `ps` ni `pgrep` | **Renoncement sans appel** : la couper détruit du travail |
-| L'éditeur est ouvert | un processus `VSCodium` | Renoncement, réversible (voir le délai de politesse) |
-| La distribution tourne | `wsl -l --running -q`, qui rend des noms de distributions sans la colonne d'état, laquelle est traduite selon la langue de WSL | **N'est plus, à elle seule, un motif de renoncement** : le préchauffage WSL démarre la distribution à chaque ouverture de session, sur le même déclencheur que la mise à jour — y renoncer revenait à ne (presque) plus jamais trouver de fenêtre. Elle sert seulement à armer la sonde de compilation en vol ci-dessus ; sans elle et sans l'éditeur ouvert, `update.ps1` fait `--terminate` puis désenregistre |
-
-Un renoncement **ne consomme pas la fenêtre de la semaine** : le prochain déclenchement
-réessaie, et l'ouverture de session du lendemain est justement un bon moment. C'est la raison
-profonde de garder ce déclencheur.
-
-Il laisse une ligne de journal, et jamais rien à l'écran :
-
-```
-check : renoncement, l'éditeur est ouvert (fois 1) -> nouvel essai au prochain déclenchement
-```
-
-plus un état dans `C:\ProgramData\SZH\maj-auto.json` (`derniereVerif`, `bloqueDepuis`,
-`bloqueFois`, `bloqueRaison`, `alerteLe`). Fichier séparé de `state.json`, que `update.ps1`
-réécrit entièrement à chaque succès et qui effacerait la cadence. **`derniereVerif` — la
-fenêtre de la semaine — ne s'écrit qu'au succès** (`Save-SzhVerifFaite`) : un renoncement ou
-un échec (`Save-SzhBlocage`) la laisse inchangée, pour que le prochain déclenchement retente
-la même semaine plutôt que d'attendre la suivante.
-
-**Une seule mise à jour à la fois.** `update-launcher.ps1` pose un mutex nommé, à l'échelle
-du poste (`New-SzhMutexPoste`, `szh-common.ps1`) : deux comptes connectés en même temps, ou
-un déclenchement qui chevauche le précédent, ne lancent jamais deux passes ensemble. Un
-processus mort en tenant ce mutex le laisse « abandonné » — le cas est reconnu
-(`AbandonedMutexException`) et repris plutôt que traité comme « déjà pris », auquel cas la
-passe se serait tue pour toujours. La ligne de journal `check : mutex abandonné par une
-passe précédente, repris` dit que ce cas s'est produit.
-
-**Et si ça dure ?** Un poste qui ne se met plus à jour depuis six semaines ne doit pas
-l'apprendre par un journal que personne ne lit. Au bout de **28 jours** de blocage
-(`$SzhMajPolitesse`) — quatre fenêtres hebdomadaires et une vingtaine d'ouvertures de session
-gâchées : ce n'est plus un mauvais moment, c'est un blocage —, la passe cesse d'être polie :
-
-- les gênes réversibles cèdent : elle installe même sous l'éditeur ouvert, et si cela échoue,
-  la fenêtre visible affiche `err.wsl`, qui dit quoi fermer ;
-- une compilation en vol, elle, ne cède jamais ;
-- si c'est le contrôle lui-même qui échoue (réseau, empreinte), la **fenêtre visible est
-  ouverte quand même**, pour que l'échec se voie : c'est elle qui parlera, avec le journal et
-  l'e-mail au support à portée de clic. La passe silencieuse, elle, reste muette ;
-- une alerte visible par semaine au plus (`alerteLe`), sinon la passe muette deviendrait la
-  plus bavarde de la chaîne.
-
-Sujet et corps de cet e-mail de support viennent de `windows/mail-templates/`
-(`support.fr.twig`, `.de.twig`, `.en.twig`), rendus par `Get-SzhCourriel`
-(`windows/szh-common.ps1`).
-
-**À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` et
-`C:\ProgramData\SZH\maj-auto.json` : un `bloqueFois` à deux chiffres avec un
-`bloqueDepuis` ancien est un poste qui décroche. **Avant chaque numéro**, la barre d'état du
-cockpit, qui compare la version du toolkit à celle qui a créé le numéro, suffit.
-
-### La mise à jour silencieuse change la façon de dépanner un poste
-
-Depuis le 14.09.2026, un réglage « Mise à jour de l'outil » (aujourd'hui dans les Réglages de
-l'Accueil) choisit une fenêtre visible (défaut) ou silencieuse. Rangé **par compte**, clé
-`majSilencieuse` de `%LOCALAPPDATA%\SZH\etat-utilisateur.json`, lue par
-`Get-SzhMajSilencieuse` (`windows/szh-common.ps1`) — pas par poste :
-la distribution WSL et les extensions se posent par utilisateur, un réglage commun aurait rendu
-muette la mise à jour d'un compte qui n'en voulait pas.
-
-**Savoir si un poste est en silencieux.** Ouvrir `%LOCALAPPDATA%\SZH\etat-utilisateur.json` de
-ce compte et lire `majSilencieuse` (absente ou `false` = fenêtre visible). Rien à l'écran ne le
-trahit autrement : c'est justement le but du réglage.
-
-**Ce qui change mécaniquement.** `Start-SzhFenetreMaj` (`windows/update-launcher.ps1`) lance
-alors `update.ps1 -Silencieux` par `WScript.Shell.Run(cmd, 0, $true)` plutôt que par
-`Start-Process -WindowStyle Hidden` : ce dernier crée le processus **puis** le redimensionne, ce
-qui peut laisser clignoter une console — mesuré, pas supposé. `-Silencieux` pose
-`$script:SzhSansInteraction` (`windows/update.ps1`), qui rend `Show-SzhErreur` non bloquant :
-sans lui, l'écran d'erreur attendrait une touche que personne ne peut taper, et bloquerait le
-processus **pour toujours**, mutex de mise à jour compris.
-
-**Où lire ce qui s'est passé.** Le mode silencieux ne réduit **aucune** trace : le transcript
-complet de chaque tentative reste dans `C:\ProgramData\SZH\logs\update-<horodatage>.log`, ce
-qui change c'est seulement l'absence de fenêtre. Deux façons de le lire, du plus simple au plus
-brut :
-- l'onglet **Log** de l'Accueil (`lib/journaux-maj.js`) liste les dix
-  derniers, avec date, verdict (lu sur la fin du transcript — pied
-  de page `Stop-Transcript` absent → `inconnu`, présent avec `✓` → `ok`, sans → `echec`) et
-  taille ; un clic l'affiche en entier. C'est aussi de là que partent « Signaler une erreur… »
-  (voir [`docs/RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md), qui documente un défaut trouvé sur ce
-  chemin) et « Envoyer les journaux… » (archive zip des dix journaux et du journal mensuel dans
-  le dossier temporaire de l'utilisateur, brouillon de courriel au support) ;
-- à la main, directement dans `C:\ProgramData\SZH\logs\`.
-
-**L'alerte des postes bloqués reste visible, silence ou pas.** Le réglage écarte la fenêtre de
-**routine** ; il ne coupe pas l'alerte du poste bloqué depuis 28 jours (§ ci-dessus,
-`Test-SzhPolitesseExpiree`) : `update-launcher.ps1` appelle alors `Start-SzhFenetreMaj -Visible`,
-qui **passe outre** le réglage silencieux — un poste très en retard resterait sinon aussi le
-plus muet, exactement celui qui a le plus besoin d'être vu.
-
-### L'e-mail de traduction ne part pas
-
-**Cause.** Le brouillon passe par `mailto:`, donc par le client de messagerie déclaré
-par défaut dans Windows. S'il ne s'ouvre pas, c'est ce réglage-là qu'il faut regarder,
-pas le toolkit. Le lien de traduction est de toute façon copié dans le presse-papiers :
-un collage dans un message écrit à la main donne le même résultat. Sujet et corps viennent de
-`traduction.fr.twig` / `traduction.de.twig` (`vscodium-extension/szh-cockpit/mail-templates/`),
-rendus par `lib/courriel.js` — une correction de texte se fait là, sans toucher au code.
-
-**À observer.** Rarement. L'ancienne voie par automatisation COM d'Outlook, qui seule
-donnait un lien cliquable, a été retirée le 23.08.2026 : elle ne fonctionnait pas avec
-le nouveau client Outlook.
-
----
-
-## 5. GitHub et la livraison
-
-### Une release passe mais n'arrive jamais sur les postes
-
-**C'est le piège le plus silencieux de toute la chaîne.** `update.ps1` compare la
-version **déclarée dans le `package.json`** de chaque extension à celle qui est
-installée. Si le code d'une extension change sans que sa `version` soit incrémentée,
-le VSIX est bien reconstruit et publié, mais **jamais réinstallé**.
-
-**Ce qui protège désormais.** `release.yml` compare, pour chaque extension, le contenu de
-son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suivi, la release
-échoue avant même de construire les VSIX, en nommant le fichier en cause.
-
-**À observer.** `node test/js/porte-release.js --version X.Y.Z` rejoue ce contrôle de bump en
-local, avant le commit `release:` (voir
-[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version)).
-
-⚠ **La version d'une extension n'est pas celle du toolkit, et ne le devient pas avec
-`1.0.0`.** `szh-cockpit` suit son propre compte (`0.60.0` à la release `1.0.0`), parce que le
-contrôle de bump se fonde sur « ce dossier a-t-il changé ? » : aligner les deux forcerait un
-bump des deux extensions à chaque release, y compris quand elles n'ont pas bougé d'une ligne.
-
-### Un raccourci du menu Démarrer ne se pose pas
-
-**Symptôme.** Une entrée manque au menu Démarrer d'un poste — le plus souvent
-« Pronto (Updater) » — alors que la mise à jour s'est terminée sans erreur.
-
-**À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` : chaque entrée non posée y
-laisse une ligne `raccourci du menu Démarrer non posé -> …`, et une ligne d'ensemble quand
-le dossier entier se refuse. Puis le dossier lui-même,
-`%APPDATA%\Microsoft\Windows\Start Menu\Programs` : est-il inscriptible pour cet
-utilisateur ?
-
-**Pourquoi ce n'est jamais fatal.** Même posture que la ruche de classes : un menu Démarrer
-tenu par une stratégie de groupe ne doit pas faire échouer une mise à jour par ailleurs
-réussie. La mise à jour reste atteignable par le bouton *Changer de version…* de l'Accueil et
-par la tâche planifiée qui la déclenche.
-
-**Manœuvre.** Rien, d'ordinaire : `update-launcher.ps1` repose les deux entrées à chaque
-ouverture de session, avant même de regarder s'il y a du neuf. Si la stratégie de groupe est
-définitive, il faut passer par le menu « Tous les utilisateurs »
-(`%ProgramData%\Microsoft\Windows\Start Menu\Programs`) — à faire déployer par
-l'informatique, et **pas** depuis ces scripts : les deux menus se superposent, et l'entrée
-apparaîtrait deux fois sur les postes qui ont déjà la sienne.
-
-**Attention.** Le sous-dossier `SZH\` du menu Démarrer (`SZH Updater`, `SZH AppLauncher`)
-appartient à l'AppLauncher interne, pas à cette chaîne. Le nettoyage des anciens raccourcis
-ne parcourt que le premier niveau du menu, exprès.
-
-### Un fichier supprimé du dépôt reste sur les postes déjà déployés
-
-`update.ps1` extrait le toolkit par `Expand-Archive -Force` : il écrase ce qui a changé,
-mais **ne supprime jamais** ce qui a disparu du zip. Un filtre Lua, un script ou un
-dossier retiré du dépôt continue donc de vivre dans
-`C:\ProgramData\SZH\toolkit\` sur tous les postes existants — inoffensif tant que rien ne
-l'appelle, trompeur pour qui inspecte un poste.
-
-**À observer.** Après une release qui supprime des fichiers, comparer le contenu de
-`C:\ProgramData\SZH\toolkit\pipeline` à celui du dépôt sur un poste.
-
-**Manœuvre.** Les retirer à la main, ou ne rien faire : ils ne coûtent que de la place.
-Le nettoyage complet passe par une réinstallation du toolkit.
-
-### Deux workflows, et ils ne gardent pas la même porte
-
-`ci.yml` se déclenche à chaque push sur `main` et à chaque pull request : il **vérifie** —
-contrats du cockpit (`node --test test/js/*.test.js`, sur ubuntu et sur windows), banc
-`test/` recompilé de zéro, puis `make verifier-ua`. `release.yml` **publie**, et seulement
-après un `ci` vert sur un commit `release: X.Y.Z …` (`workflow_run`) : il pose alors le tag
-lui-même. Un tag n'est donc jamais posé sur un commit que la CI n'a pas jugé.
-
-`ci.yml` installe lui-même pandoc 3.7.0.2, WeasyPrint depuis `image/requirements.txt` et
-veraPDF 1.30.2, tous épinglés et vérifiés par sha256 — sans quoi son verdict ne serait
-pas celui de la flotte. Il n'installe pas `requirements-portraits.txt` : la chaîne PDF
-ne s'en sert pas. `test/out/` n'étant pas versionné, tout est recompilé, rien n'est
-repris d'un artefact.
-
-**À observer.** Un rouge de `ci.yml` sur un commit qui ne touche ni le pipeline ni le
-banc : c'est le signe d'un outil tiré du réseau qui a bougé, pas d'une régression.
-
-### La CI se casse sans qu'une ligne du dépôt ait changé
-
-**Cause.** Les outils tirés du réseau au moment du build. `vsce` est désormais borné à
-sa version majeure, mais reste résolu à chaud ; l'image des runners GitHub change ; le
-registre npm et Open VSX sont des services tiers.
-
-**À observer.** Le résultat de chaque release. **Manœuvre** : figer la version exacte
-qui marchait dans `.github/workflows/release.yml`.
-
-### Le dépôt redevient privé, ou l'API GitHub limite les appels
-
-**Symptôme.** Les postes ne se mettent plus à jour, avec une erreur de téléchargement.
-
-**Rappel.** L'auto-update sans jeton exige un dépôt public. La racine de confiance de
-tout le système est **le droit de publier une release** : c'est le contrôle de
-sécurité le plus important, à garder restreint et protégé par une double
-authentification.
-
----
-
-## 6. OneDrive et les données
-
-### Un dossier de revue n'est pas téléchargé localement
-
-**Symptôme.** La compilation échoue ou reste bloquée : WSL lit des fichiers fantômes à
-travers `/mnt/c`.
-
-**À observer.** L'icône OneDrive du dossier de revue doit être un rond vert plein, pas
-un nuage. **Avant chaque numéro**, et sur tout poste nouvellement configuré.
-
-**Manœuvre.** Clic droit → « Toujours conserver sur cet appareil », attendre la fin de
-la synchronisation avant de compiler.
-
-### Un fichier reste verrouillé pendant l'export
-
-**Cause.** Un PDF ouvert dans un lecteur est verrouillé côté Windows ; le cockpit
-ferme donc les onglets d'aperçu avant tout `clean` ou toute suppression. Un PDF ouvert
-**hors** de l'éditeur (SumatraPDF, Acrobat) échappe à cette précaution.
-
-**Manœuvre.** Fermer le lecteur externe et relancer « Tout recompiler ».
-
-### Deux personnes ouvrent le même numéro
-
-Rien ne l'empêche, et deux garde-fous en limitent l'effet. Un formulaire pose un bail de deux
-minutes sur le fichier qu'il modifie (`lib/coedition.js`, `lib/coedition-hote.js`) : un
-second poste voit que l'autre écrit et refuse son geste plutôt que d'écraser. Pour le reste,
-OneDrive crée une copie en conflit, que le cockpit détecte et fait résoudre bloc par bloc
-(`lib/copies-conflit.js`, `lib/cycle-vie.js`). **La règle de travail reste : un article, une
-personne à la fois.**
-
-### Verrouiller, archiver, désarchiver
-
-`locked` et `archived` dans `ausgabe.yaml` (ou `buch.yaml`) font foi. Le panneau d'export
-(`Ctrl+Alt+D`) porte les trois gestes. Un numéro verrouillé passe en lecture seule
-(`lib/verrou.js`), refuse toute commande d'écriture et ne se recompile plus tout seul.
-L'archivage supprime `out/`, en chiffrant le gain de place dans la confirmation, puis déplace
-le dossier vers `_Archive\` (`windows/archive-revue.ps1`) et rouvre l'éditeur dessus.
-
-### L'Accueil n'affiche plus aucune revue
-
-**Cause la plus probable.** L'interrupteur `emplacementRevues` de
-`C:\ProgramData\SZH\config.json` a changé de côté. Il déplace la racine où l'Accueil
-cherche les numéros, sans déplacer un seul fichier : les revues sont toujours là, l'Accueil
-regarde ailleurs.
-
-**À observer.** Le journal du mois porte la racine active :
-`revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
-information : le badge « Dossier de test » de sa barre d'état.
-
-**Manœuvre.** [`docs/EMPLACEMENTS.md`](EMPLACEMENTS.md) §8 — la cartographie complète des
-deux racines, ce que chacune contient, et la reprise pas à pas.
-
----
-
-## 7. Le contenu
-
-### Un Word ne se convertit plus
-
-**Symptôme.** Le fichier reste dans `articles-word/` et le panneau signale un échec.
-
-**À observer.** Le journal de la tâche d'import dans le terminal de l'éditeur. Les
-causes déjà vues : un `.doc` ancien (non pris en charge, seuls `.docx` et `.odt` le
-sont), un fichier encore ouvert dans Word, un document dont les styles ne portent
-aucun nom reconnu.
-
-**Manœuvre.** Réenregistrer le document en `.docx` depuis Word, ou appliquer les
-styles attendus. Le corpus de mise au point est dans `tmp/docx-dev/` (hors dépôt) :
-c'est là qu'on rejoue un cas qui échoue.
-
-### Le titre a été coupé en deux, ou aurait dû l'être
-
-**Symptôme.** Après l'import, « Métadonnées des articles » montre un titre plus court que
-celui du Word, et le reste dans le champ **sous-titre** — ou l'inverse, le titre entier est
-resté d'une pièce avec son deux-points au milieu.
-
-**Le mécanisme.** Les deux revues écrivent souvent titre et sous-titre sur une seule ligne,
-sans style *Untertitel* derrière : « Inclusion scolaire : le rôle de l'enseignant ». La ligne
-entière partait alors en titre, et la maquette, qui compose les deux différemment, n'avait
-plus rien à composer. Depuis, `docx-meta.py` coupe au **premier deux-points suivi d'une
-espace**, et **seulement quand le document n'a donné aucun sous-titre** : un style
-*Untertitel* dans le Word a toujours le dernier mot, et le titre reste alors entier.
-
-**Ce qui ne se coupe jamais.** Un deux-points collé à ce qui suit — heures (« 10:30 »),
-rapports, URL (« https:// ») — et un titre qui commence par une numérotation (« 2 : Die
-Schule »). La partie gauche ne peut pas enjamber un deux-points : une heure en tête de titre
-empêche la coupe au lieu de la déplacer.
-
-**À observer.** Le code `sous-titre-deduit` du journal d'import, et `"sous_titre_source"` sur
-la ligne `[import-meta]` : `style` (lu dans le Word), `heuristique` (deviné à la taille des
-caractères), `deux-points` (coupé ici), `aucun`. Le constat n'est pas rouge — rien n'est
-cassé — mais il se dit, parce que la coupe est une décision de l'outil et pas une lecture du
-document.
-
-**Manœuvre.** La carte du constat ouvre le champ **titre** du formulaire : titre et
-sous-titre y sont voisins, et une coupe fausse se défait d'un copier-coller. Une coupe
-**manquante** se fait à la main au même endroit ; inutile de retoucher le Word pour ça.
-
-### La fiche n'a que les noms : ni fonction, ni e-mail, ni portrait
-
-**Symptôme.** Après l'import, « Métadonnées des articles » montre les autrices et auteurs
-avec leur seul prénom et nom, le tableau du Word s'imprime tel quel en fin d'article au
-lieu d'être composé en bloc auteurs, et `portraits/` est vide. La ligne
-`[import-meta]` du journal le dit en un mot : `"source": "byline"`.
-
-**Le mécanisme.** `docx-meta.py` lit d'abord le tableau de fin du Word — une cellule par
-personne, nom, fonction, affiliation, e-mail, portrait. Le jugement est **strict** : une
-seule cellule qu'il ne sait pas lire et le tableau entier reste dans le corps, la fiche se
-rabattant sur la ligne d'auteurs sous le titre, qui ne porte que des noms. C'est voulu —
-un encadré de contenu en fin d'article ne doit pas se faire prendre pour un bloc auteurs —
-mais le prix d'une cellule illisible est élevé.
-
-**À observer.** Le code `tableau-auteurs-non-lu` du journal d'import. Il ne se lève que
-lorsqu'un tableau refusé en fin de document porte un **e-mail** : c'est ce signal qui
-distingue un bloc auteurs qu'on n'a pas su lire d'un encadré qu'on a eu raison de laisser.
-Sans ce code, le repli était muet — il a laissé passer dix-sept articles du corpus.
-
-**Causes déjà vues, et ce que la chaîne sait désormais lire.** Un titre académique inconnu
-en tête de cellule (« Prof. ém. Dre », « Dr. theol. », « Dipl.-Psych. », « Dr.in »,
-« Univ.-Prof. em. Dr. Dr. et Prof. h. c. ») ; une première ligne qui ne porte que des
-titres, le nom étant à la ligne suivante ; un crédit de photo posé dans la cellule du
-portrait (« © Franca Pedrazetti ») ; un encadré de contenu placé **après** le bloc auteurs,
-qui le masquait entièrement. Ces quatre cas sont lus depuis le 26.08.2026, mesurés sur les
-486 Word du corpus de mise au point : 404 tableaux lus deviennent 421, sans régression.
-
-**Reste illisible, et c'est assumé.** La notice biographique en prose libre
-(« Monica Induni-Pianezzi est autrice et formatrice, ainsi que… »). Le schéma d'auteur n'a
-pas de champ pour une biographie ; le tableau reste donc dans le corps et s'imprime, ce
-qui est le bon comportement. Huit articles du corpus sont dans ce cas.
-
-**Manœuvre.** Compléter la fiche à la main dans « Métadonnées des articles » — c'est le
-plus court quand l'article est déjà importé. Ou remettre chaque personne dans sa propre
-cellule du Word (nom, puis fonction, puis e-mail), puis *Réimporter cet article*.
-
-**Voisin.** Le code `credit-photo-non-repris` : le tableau des auteurs portait un crédit de
-photo, il part avec le tableau et ne s'imprimera plus, le schéma n'ayant pas de champ pour
-lui. Le message cite le crédit mot pour mot, à reporter où il doit paraître.
-
-### Le portrait d'un auteur n'a pas de texte alternatif, et n'est pas dans le Word
-
-**Ce n'est pas un défaut, c'est une décision** du 24.08.2026. Le portrait est une image
-décorative : le nom de la personne est écrit juste à côté, dans le bloc « À propos des
-auteur·e·s ». Un texte alternatif qui répète ce nom est du bruit ; un qui se trompe — photo
-appariée à la mauvaise personne, logo, photo de groupe — affirme une identité fausse à un
-lecteur d'écran.
-
-**Pourquoi ce n'est pas un `<img>`.** WeasyPrint 69 balise **tout** `<img>` en `/Figure`
-(et 70 fait de même pour tout `<svg>` inline, dont il ne lit l'alternative que dans un
-`<title>` : c'est pourquoi le filigrane et les flèches du hero sont eux aussi des fonds),
-même avec `role="presentation"`, même avec `aria-hidden="true"` — mesuré par cas minimal. Et
-une `/Figure` sans `/Alt` viole PDF/UA-1 §7.3, donc la porte `verifier-ua` la refuserait. Le
-portrait est donc un `<span>` vide à fond CSS, dont l'URL passe par un `<style>` du `<head>`
-du gabarit : c'est le seul endroit où `--embed-resources` réécrit les `url()`, et le seul où
-les règles ne réapparaissent pas en texte clair dans le galley DOCX.
-
-Mesuré : les `/Figure` de portrait passent de 4 à 0 sur un article à quatre auteur·e·s, les
-images restent dans le PDF (le compte d'objets image ne bouge pas), et le rendu est
-identique **au pixel** sur quinze pages.
-
-**Conséquence connue.** Le portrait n'existe pas dans le galley DOCX : un fond CSS ne
-traverse pas le writer docx de pandoc, qui lit le HTML sans son CSS. Le galley Word passe de
-724 Ko à 28 Ko sur un article à quatre portraits. Le texte du bloc auteurs est intact. Si
-OJS doit recevoir les portraits en Word, il faudra un second passage qui les réinjecte côté
-docx — le HTML devant rester sans `<img>`.
-
-### Un appel de citation n'est pas lié à sa référence
-
-**Symptôme.** Le journal de compilation porte une ligne
-`[citations-avertissement] appel-sans-reference | article « 01-inclusion » | appel « (Shaw et al., 2023) » | …`,
-ou le même avec le code `appel-ambigu`. Dans l'aperçu du cockpit, l'appel est souligné en
-pointillé. Le deuxième champ est le code stable, et c'est lui qu'on cherche : les phrases
-qui suivent (française, puis allemande après `[de]`) ne sont qu'un repli d'affichage et
-peuvent être reformulées.
-
-**Causes.** Le nom de l'appel ne correspond à aucune entrée de la liste — coquille dans le
-texte, référence absente de la liste, parenthèse déséquilibrée dans le Word — ou deux
-références partagent le même premier auteur et la même année, et l'appel ne dit pas
-laquelle.
-
-**Manœuvre.** Curseur dans l'appel, `Ctrl+Alt+S`, « Lier un appel à une référence », choisir
-l'entrée. Le `.md` reçoit un lien markdown que la compilation respecte ensuite. Le code
-`reference-orpheline` signale l'inverse : une entrée que le texte ne cite pas, à vérifier
-côté rédaction.
-
-**Symptôme voisin.** Le code `ancrage-inconnu` : le texte de la référence a changé depuis la
-pose du lien, donc son identifiant aussi. Refaire l'opération.
-
-### « Lier un appel à une référence » refuse de s'ouvrir
-
-**Cause.** Depuis le 23.08.2026, le cockpit ne calcule plus lui-même les identifiants
-d'ancrage : il lit la table de repli dans `pipeline/filters/szh-citations.lua` du toolkit
-installé, pour que les deux moitiés ne puissent plus diverger. Si le toolkit et le cockpit
-ne sont pas de la même version, la table n'a pas la forme attendue et la commande refuse
-plutôt que de proposer des ancres que la compilation ne posera pas.
-
-**À observer dans le journal de l'hôte :**
-`[citations] table REPLI_BLOCS absente de <chemin> : format de filtre incompatible avec ce cockpit.`
-`[citations] REPLI_BLOCS de <chemin> ne porte que N jetons sur 656 attendus.`
-
-**Manœuvre.** Lancer la mise à jour du toolkit, ou choisir une version cohérente par le
-bouton que la notification propose. Le rédacteur, lui, ne voit qu'une phrase : les deux
-moitiés du logiciel ne sont pas de la même version, et la mise à jour règle le cas.
-
-**Symptôme voisin.** Le code `caractere-sans-repli` : un nom d'auteur porte une
-lettre dont l'identifiant d'ancrage ne sait rien faire, et qui est donc retirée. Le repli
-couvre tout le latin, diacritiques et lettres barrées comprises ; le grec, le cyrillique et
-l'arabe, non. Un auteur nommé en cyrillique donne un identifiant vide, d'où un lien qui ne
-tient pas. Manœuvre : lier l'appel à la main, ou translittérer le nom dans la liste de
-références. Une ligne par caractère, pas par occurrence.
-
-### La bibliographie d'un article ne se comporte pas comme prévu
-
-**Le mécanisme, en une phrase.** Depuis le 24.08.2026 la bibliographie est une donnée, comme
-un tableau : `docx-meta.py` lit son étendue dans les **styles** du `.docx`,
-`szh-biblio-detacher.lua` l'écrit dans `articles/<slug>/<slug>.biblio.md` — les références
-seules, sans titre — et laisse une référence `::: {.szh-biblio src=…}` à sa place dans le
-corps. La compilation (`szh-citations.lua`) résout la référence, pose le titre dans la langue
-de l'article et ancre chaque entrée. Trois pannes propres en découlent, et un code stable
-chacune.
-
-**1. La bibliographie n'est pas détectée : la liste reste dans le corps.**
-Codes `biblio-non-detachee` (à l'import) et `biblio-dans-le-corps` (à chaque compilation).
-L'article est **entier** — rien n'est perdu, la liste est simplement dans le texte, et
-l'export vers la plateforme partira sans liste de références. Cause : les références ne
-portent pas le style de bibliographie dans le Word ; le document annonce sa liste par un
-titre seul. Le style est le seul signal fiable, mesuré sur les 421 galleys publiés — un
-découpage deviné dans le corps se trompait sur les entrées à cheval sur deux paragraphes.
-**Manœuvre :** appliquer le style de bibliographie aux références dans le Word, puis
-*Réimporter cet article*.
-
-**Depuis le 16.09.2026**, `szh-biblio-detacher.lua` crée `<slug>.biblio.md` à *tout* import,
-même sans aucune étendue détectée (bornes vides) — vide, avec son marqueur posé en fin
-d'article. But : la rédaction a désormais un endroit où écrire une bibliographie que
-l'auteur n'a pas fournie, exactement comme pour un article qui en avait une. Un fichier
-vide n'imprime rien à la compilation (aucun titre, aucune section : voir `est_vide()` dans
-`szh-citations.lua`) — le cas 1 ci-dessus n'en est donc pas changé pour le lecteur du PDF,
-seulement pour l'arborescence du cockpit, où l'entrée « Bibliographie » apparaît désormais
-même sur un article qui n'en a pas. **Ceci ne vaut que pour un import à venir** : un
-article déjà présent sur le disque, importé avant ce correctif, n'en reçoit pas un
-rétroactivement, et continue de se compiler sans bibliographie ni avertissement.
-
-**2. Un encadré rouge « Bibliographie introuvable » à la place de la liste.**
-Code `biblio-introuvable`. Le corps porte encore sa référence, et le fichier
-`<slug>.biblio.md` a été supprimé ou renommé — l'encadré rouge est le même que celui d'un
-tableau introuvable, règle `.szh-tabelle-manquante, .szh-biblio-manquante` de `print.css`.
-**Manœuvre :** *Réimporter cet article*, ou retirer le bloc `::: {.szh-biblio …}` du texte
-si l'article ne doit plus avoir de liste.
-
-**3. Des références restent hors de la liste.** Codes `biblio-references-restees` (des
-paragraphes suivent la liste sans porter son style) et `biblio-incomplete` (des paragraphes
-de l'étendue n'ont pas suivi). Elles restent dans le texte, juste après la liste : rien n'est
-perdu, mais elles ne seront ni ancrées ni exportées comme des entrées. **Manœuvre :** leur
-donner le style de bibliographie dans le Word, puis réimporter. Sur le corpus des 421
-galleys, un seul article était concerné, et c'était un intertitre promu en titre.
-
-**4. Une référence ajoutée à la main a disparu après un réimport.** L'arborescence du cockpit
-ouvre `<slug>.biblio.md` d'un clic, ce fichier se corrige donc ici aussi — et le réimport
-l'arbitre comme un tableau, sur les empreintes de `.szh-import.empreintes` : le Word livre
-les mêmes références qu'à l'import → la version d'ici est **gardée** ; le Word en livre
-d'autres et personne n'avait touché → il **remplace** ; les deux ont bougé → le Word gagne,
-parce que le texte corrigé cite ses références, et le conflit est **nommé** (`biblio-conflit`)
-avec le chemin de la version d'avant, sous `.szh-avant-reimport/`. Deux voisins : `biblio-retiree`
-(ce Word ne détache plus de bibliographie, le fichier s'en va avec) et `biblio-origine-inconnue`
-(article importé avant que la chaîne ne note cette empreinte — toute différence est alors
-signalée par prudence). **Manœuvre :** ouvrir la version d'avant que le message nomme et
-recopier ce qui doit revenir ; ou *Annuler le réimport*, qui remet l'article entier.
-
-**5. Le marqueur `::: {.szh-biblio src=…}` nomme un fichier qui n'existe plus, après un
-renommage d'article.** Symptôme observé le 16.09.2026 sur tout un numéro : « Changer
-l'ordre », la suppression d'un article, ou le préfixage à l'import renomment le dossier et
-ses fichiers (`lib/renumerotation-fs.js:alignerFichiers`), mais le `src=` à l'intérieur du
-`.md` visait encore l'ancien nom — `biblio-introuvable` au premier PDF suivant, pour une
-bibliographie pourtant intacte à côté. Corrigé à la racine : tout renommage réécrit
-désormais le marqueur dans le même geste (`reecrireMarqueurBiblio`). Un numéro déjà touché
-guérit seul, sans intervention : `reparerMarqueursOrphelins`, appelée avant chaque
-compilation lancée depuis le cockpit (`lancerBuild`, « Tout recompiler », l'export OJS),
-réécrit le marqueur sur l'unique `*.biblio.md` du dossier quand celui qu'il nomme est
-introuvable. Zéro ou plusieurs candidats : elle ne devine pas, et `biblio-introuvable`
-continue de le dire — c'est alors un vrai cas 2 ci-dessus, pas un marqueur périmé.
-
-**À observer.** Après un import, les codes `biblio-non-detachee` et `biblio-dans-le-corps` du
-journal : ils disent qu'un article n'a pas de `<slug>.biblio.md` alors qu'il a bien une liste
-de références. Le PDF, lui, ne montre rien — c'est l'export vers la plateforme qui partirait
-sans liste.
-
-### Le PDF n'est plus balisé PDF/UA
-
-**Symptôme.** Le message « PDF/UA-1 indisponible → PDF balisé simple » apparaît dans
-le journal de compilation. L'accessibilité du PDF est dégradée, mais le build réussit —
-c'est délibéré : le balisage ne doit jamais faire échouer une publication.
-
-**À observer.** Ce message, après toute montée de WeasyPrint. **À chaque
-reconstruction du rootfs.**
-
-**Manœuvre.** Relancer WeasyPrint à la main sur le HTML produit, sans rediriger la
-sortie d'erreur, pour voir la vraie cause.
-
-### La porte PDF/UA refuse l'export
-
-**Où elle est.** `make verifier-ua`, appelée par `docx` et `tout-exporter`, jamais par
-`all` ni `pdf` : le rédacteur doit pouvoir sortir l'épreuve d'un article encore
-imparfait. Elle garde ce qui part chez l'imprimeur et dans OJS, là où la conformité est
-une promesse publique.
-
-**Comment lire le verdict.** `pipeline/rapport-ua.py` traduit le XML de veraPDF en
-français puis en allemand : une ligne par règle, avec ce qui est en cause et le geste de
-correction. Trois codes de sortie, et ils ne disent pas la même chose : **0** conforme,
-**1** non conforme, **2 panne d'outillage**. Cette troisième valeur est le cœur du
-dispositif : un validateur absent, un runtime Java cassé, un PDF illisible ne doivent
-jamais se lire comme un succès.
-
-**Le piège du runtime, qui a failli passer inaperçu.** Un `JAVA_HOME` qui ne pointe sur
-rien fait sortir le lanceur veraPDF en code **1** — le code réservé au « PDF non
-conforme ». La porte accuserait alors des PDF parfaits, et le message serait
-parfaitement crédible. D'où deux garde-fous : `$VERAPDF_JAVA/bin/java` est vérifié avant
-l'appel, et dès que le rapport est inexploitable la sortie d'erreur du validateur est
-recrachée telle quelle — seul endroit où la vraie cause se lit.
-
-**Chemins.** `VERAPDF` (défaut `/opt/verapdf-cli/verapdf`) et `VERAPDF_JAVA` (défaut
-`/opt/jre-min`), surchargeables depuis l'environnement : c'est ainsi que `ci.yml` les
-fait pointer sur son installation à lui.
-
-**À observer.** Que les cinq cas se comportent encore comme prévu après toute montée de
-veraPDF ou du runtime : témoin conforme, validateur absent, runtime cassé, PDF tronqué,
-PDF non conforme. **À chaque reconstruction du rootfs.**
-
-### La validation PDF/UA en arrière-plan, après chaque Ctrl+S
-
-**Le mécanisme.** La logique de la porte vit dans `pipeline/verifier-ua.sh` (garde-fous
-d'outillage, appel de veraPDF, traduction par `rapport-ua.py`) ; la cible `verifier-ua` du
-Makefile ne fait qu'appeler ce script. `lib/pdfua-hote.js`, côté
-cockpit, lance ce même script dans WSL après chaque compilation réussie — sans attendre
-l'export, et sans jamais bloquer la rédaction — et pose un badge dans la barre d'état
-(« PDF/UA », icône `$(verified)` conforme, `$(error)` non conforme, `$(sync~spin)` en
-cours, `$(question)` panne d'outillage) pour l'article ouvert, ou pour le livre.
-
-**Le cache.** `<racine>/.szh-pdfua.json` (ignoré par git, comme `.szh-journal.log`) garde un
-verdict par empreinte de PDF (`lib/coedition.js#empreinte`) : un Ctrl+S qui ne touche pas au
-PDF ouvert ne relance rien. Un seul travail de validation en vol par numéro ; si une
-compilation démarre pendant qu'un travail est en cours, son résultat est jeté au retour — le
-PDF jugé n'est peut-être plus celui du disque — et la compilation suivante replanifie.
-
-**Le réglage.** `szh.controlePdfUa` (booléen, `true` par défaut) désactive tout ceci : badge
-et constats retombent à « inconnu » sans que le cache disque soit effacé.
-
-**Ce qui remonte dans les Contrôles.** Un PDF non conforme apparaît sous « Accessibilité du
-PDF », comme un refus d'export, et compte comme bloquant ; une panne d'outillage y apparaît
-comme un simple avertissement (`ctl.pdfua.outillage`), jamais comme un verdict.
-
-**À observer.** Que `pipeline/verifier-ua.sh` reste la seule logique de la porte : la cible
-`verifier-ua` du Makefile ne doit jamais reprendre son propre garde-fou en double.
-
-### Un passage en langue seconde n'est pas annoncé comme tel
-
-**Non-conformité connue, et elle passe la porte.** Un article français porte un
-`Zusammenfassung` allemand ; le gabarit pose bien `<div class="szh-abstract" lang="de">`,
-et le PDF n'en garde rien. Mesuré sur `test/out/figures/figures.pdf` : `/Lang` du
-document = `fr`, et **aucun** élément de l'arbre de structure ne porte de `/Lang`. Un
-lecteur d'écran lira donc le résumé allemand avec une voix française.
-
-**Cause, en amont.** WeasyPrint 70 n'écrit `/Lang` qu'à un seul endroit, le catalogue du
-document (`weasyprint/pdf/__init__.py`) ; `weasyprint/pdf/tags.py`, qui construit les
-éléments de structure, n'en pose aucun. **Rien côté HTML ne peut donc corriger ce défaut** :
-l'attribut `lang` est simplement perdu. C'est l'une des limites listées dans
-[`ACCESSIBILITE.md`](ACCESSIBILITE.md#limites).
-
-**Pourquoi veraPDF passe quand même.** Sa règle de clause 7.2 sur le texte du contenu de
-page se lit `gContainsCatalogLang == true || Lang != null` : un `/Lang` dans le catalogue
-la satisfait, où que la langue change ensuite. Aucune machine ne sait deviner qu'un
-paragraphe est allemand ; le contrôle est dégénéré par construction, et un `PASS ua1` ne
-dit donc rien sur ce point. Le banc **contient** le cas — l'article `figures` est en `fr`
-avec un résumé `de` — et rend `PASS`.
-
-**À observer.** Cette limite à chaque montée de WeasyPrint :
-`grep -rn Lang /opt/weasyprint/lib/python3*/site-packages/weasyprint/pdf/`. Le jour où
-une quatrième occurrence apparaît sur un élément de structure, le défaut devient
-corrigeable. D'ici là, ne pas l'écrire comme réglé.
-
-Les autres non-conformités connues, format par format — PDF, HTML, DOCX, livre — sont
-tenues dans [LIMITES-ACCESSIBILITE.md](LIMITES-ACCESSIBILITE.md).
-
-### Un tableau disparaît du PDF
-
-**Cause.** Le fichier `tables/table-NN.html` référencé par l'article a été supprimé ou
-renommé. L'article affiche alors un encadré rouge « tableau introuvable » à sa place.
-
-**Manœuvre.** Rouvrir le tableau depuis la barre « Pronto » et le réenregistrer, ou
-retirer la référence du texte.
-
----
-
-## Désinstaller un poste
-
-À utiliser avant de sortir un poste du parc, de le réaffecter, ou pour retirer proprement
-un compte qui n'utilise plus l'outil (`-ProfilSeulement`).
-
-**D'où le lancer.** Depuis un clone frais du dépôt ou une extraction de
-`toolkit-<v>.zip` — jamais depuis `C:\ProgramData\SZH\toolkit` sous élévation, même règle
-que « Réparer un poste » (§4) : ce dossier est inscriptible par le groupe
-Utilisateurs, et un administrateur qui l'exécuterait tel quel exécuterait aussi bien un
-code qu'un compte standard y aurait déposé. `-Simuler` n'est pas concerné : il ne fait
-qu'afficher un plan.
-
-**Comment lancer.** Double-clic sur `Désinstaller le poste SZH.cmd`, ou en ligne de
-commande :
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -Simuler
-powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
-```
-
-Commencer toujours par `-Simuler` et lire le plan affiché : rien n'est touché, et
-l'administrateur n'est pas exigé pour ce mode.
-
-**Paramètres.**
-
-| Paramètre | Effet |
+On commence toujours par `-Simuler`, qui affiche le plan sans rien toucher et sans exiger
+d'administrateur. Le double-clic sur `windows\Désinstaller le poste SZH.cmd` fait la même
+chose.
+
+| Option | Effet |
 |---|---|
-| `-Simuler` | affiche le plan sans rien toucher ; n'exige pas l'administrateur |
-| `-Json` | avec `-Simuler` : le plan en JSON sur la sortie standard, rien d'autre — pour les tests et l'inspection automatisée ; aucune suppression n'a lieu |
-| `-ProfilSeulement` | sans administrateur : ne retire que ce qui est au compte courant (raccourcis, fichiers profil, registre, extensions), jamais les fichiers du poste ni les tâches planifiées |
-| `-TousLesProfils` | administrateur ; en plus du compte courant, les fichiers profil (jamais le registre) de chaque compte sous `C:\Users` ayant un dossier `AppData` |
-| `-Applications` | désinstalle aussi VSCodium et SumatraPDF (Program Files) ; jamais par défaut, logiciels partagés |
-| `-SansConfirmation` | n'attend pas que « oui » soit tapé en clair avant d'agir |
+| `-Simuler` | affiche le plan, ne touche à rien |
+| `-Json` | avec `-Simuler` : le plan en JSON |
+| `-ProfilSeulement` | sans administrateur : ne retire que ce qui appartient au compte courant |
+| `-TousLesProfils` | retire aussi les fichiers de profil des autres comptes (pas leur registre : chacun le retire depuis sa session avec `-ProfilSeulement`) |
+| `-Applications` | désinstalle aussi VSCodium et SumatraPDF |
+| `-SansConfirmation` | n'attend pas que l'on tape « oui » |
 
-**Ordre d'application.** Tâches planifiées, puis extensions VSCodium, raccourcis du menu
-Démarrer, fichiers du compte, registre (HKCU), fichiers du poste
-(`C:\ProgramData\SZH`), puis applications.
+Le script retire les tâches planifiées, les extensions et réglages VSCodium, les raccourcis,
+les clés de registre du compte, puis le contenu de `C:\ProgramData\SZH`. Il garde toujours
+la distribution WSL et son disque (`C:\ProgramData\SZH\WSL\`), `.wslconfig`,
+`%APPDATA%\VSCodium\argv.json` et, bien sûr, les revues.
 
-**Ce qui est retiré.**
-- le toolkit et tout ce qu'`update.ps1` pose sous `C:\ProgramData\SZH` (`staging`, `logs`,
-  `comptes`, `config.json`, `state.json`, `auteurs.json`, `mots-cles.json`,
-  `maj-auto.json`, et les restes `toolkit.neuf` / `toolkit.vieux` d'une bascule
-  interrompue) ;
-- les deux tâches planifiées (`SZH - Mise a jour`, `SZH - Prechauffage WSL`) ;
-- les raccourcis du menu Démarrer : les deux actuels (`Pronto`,
-  `Pronto (Updater)`), plus tout ancien nom encore présent sur ce poste
-  (`Get-SzhRaccourcisObsoletes`, `szh-shell.ps1`) ;
-- les réglages et extraits de code VSCodium du compte ;
-- les extensions VSCodium épinglées (`vsix.lock`), plus `szh-cockpit` et `szh-apercu` ;
-- les clés de registre HKCU posées par `update.ps1` (association `.md`, protocole
-  `szh:`, confiance Office pour Outlook).
+Code de sortie : 0 si tout s'est bien passé, 1 si des suppressions ont échoué, 2 en cas de
+refus (pas administrateur, VSCodium ouvert, mise à jour en cours, lancé depuis le toolkit
+sous élévation, confirmation refusée). Le journal est dans
+`%TEMP%\szh-desinstallation-<horodatage>.log`.
 
-**Ce qui est toujours conservé, quelle que soit l'option.**
-- la distribution WSL et son enregistrement : jamais désinscrite ;
-- `C:\ProgramData\SZH\WSL\` et son contenu : les disques des rédacteurs, un par compte ;
-- la racine `C:\ProgramData\SZH` elle-même, tant que `WSL\` existe ;
-- `%USERPROFILE%\.wslconfig` (réglages WSL globaux, valent pour toutes les distributions) ;
-- `%APPDATA%\VSCodium\argv.json` (langue de l'éditeur, réglage commun à tous les postes
-  VSCodium) ;
-- les revues et les livres eux-mêmes, sur OneDrive ou ailleurs.
-
-**Retirer la distribution ensuite, si on le veut vraiment.** Le désinstalleur ne le fait
-jamais. À la main, par chaque compte du poste (l'enregistrement d'une distribution WSL est
-par utilisateur, voir plus haut « Un dossier par SID, et pourquoi ») :
+Pour retirer aussi la distribution, chaque compte du poste lance dans sa session :
 
 ```powershell
 wsl --unregister SZH-Publishing
 ```
 
-Efface le disque de la distribution pour ce compte, donc tout l'environnement de
-fabrication — jamais une donnée de revue, qui n'y vit pas.
+---
 
-**Pré-conditions qui font refuser.**
+## Comment un poste se met à jour
 
-| Condition | Code de sortie |
+Une version de Pronto est publiée par GitHub Actions
+([`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#publier-une-version)). Elle comprend un
+`manifest.json` (versions et empreintes sha256), le toolkit (`toolkit-<version>.zip`), les
+extensions VSCodium (`.vsix`) et, seulement quand `image/` a changé, l'image WSL
+(`szh-publishing-rootfs-<version>.tar.gz`, environ 600 Mo).
+
+### Le déroulement
+
+1. **La tâche planifiée** `SZH - Mise a jour` part à chaque ouverture de session et chaque
+   mardi à 14 h. Elle lance `update-launcher.ps1` sans fenêtre.
+2. **La passe silencieuse** remet d'aplomb les raccourcis du menu Démarrer et la tâche
+   planifiée, puis, au plus une fois par semaine (depuis le dernier mardi 14 h), lit le
+   `manifest.json` de la dernière version sur GitHub. Une seule passe tourne à la fois sur
+   le poste.
+3. **S'il y a du neuf**, elle met d'abord le toolkit à niveau, puis lance `update.ps1` dans
+   une fenêtre visible. Si le compte a choisi « En silence » (Accueil → Paramètres → « Mise à
+   jour de l'outil »), la fenêtre n'apparaît pas ; les journaux sont les mêmes.
+4. **`update.ps1`** fait cinq étapes. Une étape en échec n'empêche pas les suivantes.
+
+| Étape | Ce qu'elle fait |
 |---|---|
-| lancé depuis `C:\ProgramData\SZH\toolkit` sous élévation (hors `-Simuler`) | 2 |
-| pas administrateur (hors `-Simuler` et `-ProfilSeulement`) | 2 |
-| une mise à jour est en cours (mutex de poste) | 2 |
-| VSCodium ouvert (hors `-Simuler`) | 2 |
-| confirmation refusée (« oui » non tapé, hors `-SansConfirmation`) | 2 |
-| des suppressions ont échoué | 1 |
-| tout s'est déroulé sans échec | 0 |
+| 1/5 toolkit | télécharge l'archive, vérifie le sha256, remplace `C:\ProgramData\SZH\toolkit` d'un bloc et retire les fichiers que la nouvelle version ne contient plus |
+| 2/5 image WSL | seulement si la version de l'image change, ou si la distribution manque pour ce compte : télécharge, vérifie le sha256, exige 5 Go libres, puis remplace la distribution (`--unregister`, `--import`) et vérifie qu'elle démarre |
+| 3/5 extensions | installe chaque extension dont la version diffère de celle du manifest |
+| 4/5 réglages | `settings.json` seulement s'il manque ; `keybindings.json` et `tasks.json` remplacés ; `settings-protected.json` ; `.wslconfig` (l'original est gardé une fois dans `.wslconfig.szh-avant`) ; association `.md` et protocole `szh:` |
+| 5/5 nettoyage | garde deux images et deux toolkits dans `staging\` (pour revenir en arrière), cinq manifests, supprime les `.vsix` |
 
-**Journal.** `%TEMP%\szh-desinstallation-<horodatage>.log`.
+### Ce qui retient une mise à jour
 
-**La limite des autres comptes.** `-TousLesProfils` ne retire que les fichiers profil des
-autres comptes ; leur registre ne se retire que depuis leur propre session, avec
-`-ProfilSeulement`.
+Toolkit, extensions et réglages s'installent même si l'éditeur est ouvert. Remplacer
+l'image WSL, non : il faut désenregistrer la distribution. Dans ce cas seulement, la mise à
+jour renonce si VSCodium est ouvert ou si une compilation tourne. Elle le note au journal
+(`check : renoncement, …`) et réessaie au déclenchement suivant, le plus souvent à
+l'ouverture de session du lendemain, avant que l'éditeur soit ouvert.
 
-**VSCodium et SumatraPDF** ne sont désinstallés qu'avec `-Applications` explicite : ce sont
-des logiciels partagés avec d'autres usages du poste.
+Au bout de 28 jours de blocage, la mise à jour s'installe même sous l'éditeur ouvert (jamais
+pendant une compilation) et ouvre une fenêtre visible, même en mode silencieux, au plus une
+fois par semaine. L'état de ces renoncements est dans `%LOCALAPPDATA%\SZH\maj-auto.json`,
+propre à chaque compte (`derniereVerif`, `bloqueDepuis`, `bloqueFois`, `bloqueRaison`,
+`alerteLe`).
+
+Selon l'état du poste :
+
+- **verrouillé** : la mise à jour tourne, la session reste ouverte ;
+- **éteint ou en veille** : rien ne tourne, et la tâche ne réveille pas le poste. Le
+  rendez-vous manqué est rattrapé au retour, ou à la prochaine ouverture de session ;
+- **sur batterie** : la mise à jour tourne ;
+- **allumé sans personne de connecté** : rien ne tourne. La mise à jour pose des éléments
+  dans le profil de l'utilisateur, il faut une session ouverte.
+
+### Forcer une mise à jour
+
+Dans la session de la personne, sans élévation : menu Démarrer → **« Pronto (Updater) »**.
+En ligne de commande :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\update.ps1
+```
+
+Si cette mise à jour remplace `update.ps1` lui-même, la passe en cours continue avec
+l'ancien script : on la relance une fois.
+
+### Revenir à une version précédente
+
+Accueil → onglet **Produits** → **« Changer de version… »** (le même bouton apparaît dans
+l'avertissement du cockpit quand le toolkit et l'extension ne sont pas de la même version).
+La fenêtre liste les versions publiées. En ligne de commande :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\update.ps1 -Version 3.10.4
+```
+
+L'opération remplace l'image et les extensions : il faut fermer VSCodium, puis le rouvrir.
+
+### Les journaux
+
+| Fichier | Contenu |
+|---|---|
+| `C:\ProgramData\SZH\logs\update-<AAAAMMJJ-HHmmss>.log` | transcription complète de chaque mise à jour ; les dix dernières sont gardées |
+| `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` | journal du mois : passes silencieuses, renoncements, raccourcis, emplacement actif ; trois mois gardés |
+| `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log` | installation |
+
+L'onglet **Log** de l'Accueil liste les dix dernières mises à jour avec leur date et leur
+issue (réussie, échouée, inconnue). Son bouton « Signaler un problème… » enregistre un
+rapport avec le journal affiché, puis ouvre le dossier des journaux et un brouillon de
+courriel au support.
+
+---
+
+## Mettre à jour la WSL (l'image)
+
+L'image WSL ne se met jamais à jour sur un poste. On la reconstruit à partir de `image/`, on
+la teste, on la publie dans une version, et chaque poste la réimporte à sa mise à jour
+suivante. Chaque construction prend les correctifs Debian du jour (`apt-get upgrade`), alors
+que les outils qui décident du rendu restent épinglés.
+
+Rien ne déclenche cette reconstruction automatiquement : c'est un geste humain. On la fait
+au moins deux fois par an, tout de suite en cas de faille de sécurité dans Debian ou Pillow,
+et quand on a besoin d'un correctif d'un outil. On la fait entre deux numéros, jamais pendant
+un bouclage.
+
+### Où sont épinglées les versions
+
+| Élément | Fichier | Version actuelle |
+|---|---|---|
+| Base Debian | `image/Containerfile`, `DEBIAN_TAG` | `13-slim` |
+| pandoc | `image/Containerfile`, `PANDOC_VERSION` et `PANDOC_SHA256` ; aussi `image/build-rootfs.sh` (même valeur) | 3.7.0.2 |
+| WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 70.0, pillow 12.3.0, pypdf 6.19.0 |
+| Correctifs de WeasyPrint | `image/patches/weasyprint-70.0/` | 8 correctifs |
+| Détourage des portraits | `image/requirements-portraits.txt` ; modèles `.onnx` dans `image/Containerfile` (sha256) | — |
+| veraPDF (contrôle PDF/UA) | `image/Containerfile`, `VERAPDF_VERSION`, URL versionnée et sha256 | 1.30.2 |
+| Vale (nettoyeur de manuscrit) | `image/Containerfile`, `VALE_VERSION` et sha256 | 3.22.0 |
+| Profil de couleur FOGRA52 | `image/Containerfile` (sha256) | — |
+
+pandoc reste à 3.7.0.2 : à partir de 3.8, le lecteur Word sort le contenu d'une zone de
+texte avant son paragraphe d'ancrage, et beaucoup de manuscrits réels ont des zones de texte.
+
+### Ce qu'on ne fait jamais
+
+- **Pas d'`apt install` ni de `pip install` dans la distribution d'un poste.** Le poste
+  divergerait des autres et produirait d'autres PDF. Un poste modifié à la main se réimporte.
+- **Pas de mise à jour automatique dans la distribution** (`unattended-upgrades`). Pango et
+  HarfBuzz mettent le texte en page : une nouvelle version change les coupures de ligne,
+  donc la pagination. Appliquée à des dates différentes sur des postes différents, elle
+  ferait sortir deux PDF différents du même numéro.
+- **Pas d'URL « dernière version »** dans le `Containerfile` : une empreinte sha256 ne vaut
+  qu'avec une URL versionnée.
+
+### La procédure
+
+1. **Revoir les dépendances Python.** Dans la WSL, créer un environnement propre, y
+   installer les versions voulues, puis recopier le `pip freeze` dans
+   `image/requirements.txt` (WeasyPrint) ou `image/requirements-portraits.txt`. La commande
+   exacte est en tête de chaque fichier. C'est là que se corrigent les failles de Pillow.
+2. **Monter au besoin une ligne `ARG` du `Containerfile`** (Debian, pandoc, veraPDF, Vale),
+   avec la nouvelle empreinte sha256 et une URL versionnée. Pour pandoc, changer aussi
+   `PANDOC_VERSION` dans `image/build-rootfs.sh`.
+3. **Si WeasyPrint change de version**, rejuger les correctifs (voir plus bas).
+4. **Construire l'image en local**, dans la WSL de développement (podman) :
+
+   ```sh
+   bash image/build-rootfs.sh <version>
+   ```
+
+   Le script produit `szh-publishing-rootfs-<version>.tar.gz` et son `.sha256`.
+5. **L'éprouver.** L'importer dans une distribution d'essai, y lancer
+   `bash test/build-render.sh`, et comparer les PNG page à page avec ceux de la version
+   précédente (méthode dans [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#le-banc-de-rendu-et-ses-empreintes)).
+   Le script enchaîne trois contrôles qui doivent rester verts : le contrôle PDF/UA-1 du
+   banc, `test/polices-check.py` (aucune police de secours prise sur la machine) et le
+   corpus `test/accessibilite/`. La CI ne remplace pas cette étape : elle installe pandoc,
+   WeasyPrint et veraPDF directement sur son serveur Ubuntu, hors de l'image, et ne compare
+   aucun PNG.
+6. **Publier** une version (« release lourde »). La CI reconstruit l'image dès que `image/`
+   a changé depuis la version précédente (`image/patches/amont/` mis à part). Pour la
+   reconstruire sans rien changer dans `image/`, par exemple pour prendre les seuls
+   correctifs Debian : GitHub → Actions → `release` → *Run workflow*, avec la nouvelle
+   version et la case `force_rootfs` cochée.
+7. **Les postes** reçoivent l'image à leur mise à jour suivante
+   ([étape 2/5](#le-déroulement)).
+
+### Les correctifs de WeasyPrint
+
+WeasyPrint est corrigé par huit petits correctifs, un par fonctionnalité, dans
+`image/patches/weasyprint-70.0/` : en-têtes de tableau, images décoratives, césure, espace en
+fin de ligne, marges en artefact, `dc:language`, notes en double, notes reportées. Chacun a
+son dossier dans `image/patches/amont/` (description du défaut, démonstration) et son cas
+dans `test/weasyprint-patch-check.py`.
+
+À chaque nouvelle version de WeasyPrint :
+
+1. créer `image/patches/weasyprint-<nouvelle version>/` : sans lui, `image/patch-weasyprint.sh`
+   refuse de construire ;
+2. pour chaque correctif, vérifier si WeasyPrint a corrigé le défaut lui-même. Retirer ceux
+   qui ne servent plus (ou les renommer en `.patch.off`) ;
+3. chaque correctif restant doit s'appliquer seul, sans décalage (`--fuzz=0`) ;
+4. lancer `test/weasyprint-patch-check.py` dans la WSL ;
+5. après la construction, compiler et vérifier que le journal ne dit pas
+   « PDF/UA-1 indisponible → PDF balisé simple » ;
+6. vérifier si WeasyPrint sait enfin poser la langue d'un passage (`/Lang` sur un élément) :
+
+   ```sh
+   grep -rn Lang /opt/weasyprint/lib/python3*/site-packages/weasyprint/pdf/
+   ```
+
+   Aujourd'hui, `/Lang` n'est posé que sur le document entier. Voir
+   [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md).
+
+Après une montée de veraPDF ou de son Java, vérifier que la porte PDF/UA distingue toujours
+ses trois issues : 0 conforme, 1 non conforme, 2 panne d'outillage (validateur absent, Java
+cassé, PDF illisible).
+
+### Fin de support de Debian
+
+Une fois par an, comparer `DEBIAN_TAG` au calendrier de Debian (support standard environ
+trois ans, puis LTS). Debian 13 est sortie en août 2025. Changer de version majeure se fait
+en modifiant `DEBIAN_TAG`, puis en suivant toute la procédure ci-dessus ; compter une demi-
+journée à une journée.
+
+### Réparer la distribution d'un compte
+
+La distribution est enregistrée par compte, et chaque compte a son disque dans
+`C:\ProgramData\SZH\WSL\<SID>\SZH-Publishing`. Tout se fait dans la session du compte
+concerné, sans élévation.
+
+1. Commencer par `wsl --shutdown`. Cela règle la plupart des blocages passagers (horloge
+   décalée après une veille, montage figé).
+2. Si la distribution est corrompue (erreurs d'entrée-sortie après une coupure ou un disque
+   plein), la supprimer puis la faire réinstaller par la mise à jour, qui réimporte
+   l'image quand la distribution manque :
+
+   ```powershell
+   wsl --unregister SZH-Publishing
+   ```
+
+   puis menu Démarrer → « Pronto (Updater) », éditeur fermé.
+3. À la main, sans réseau, depuis l'image gardée dans `staging\` :
+
+   ```powershell
+   $tar = (Get-ChildItem 'C:\ProgramData\SZH\staging\szh-publishing-rootfs-*.tar.gz' | Sort-Object Name -Descending)[0].FullName
+   $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+   wsl --import SZH-Publishing "C:\ProgramData\SZH\WSL\$sid\SZH-Publishing" $tar --version 2
+   wsl --terminate SZH-Publishing
+   wsl -d SZH-Publishing --exec /bin/true      # doit finir sans rien afficher
+   ```
+
+Il n'y a rien à sauvegarder avant : aucune donnée de revue n'est dans la distribution.
+
+**Taille du disque.** `.wslconfig` active `sparseVhd`, qui rend la place libérée, et chaque
+nouvelle image arrive sur un disque neuf. Si un `ext4.vhdx` reste très gros (disque du
+poste sous 15 Go) : `wsl --shutdown`, puis compacter le fichier par `Optimize-VHD` (si
+Hyper-V est installé) ou par `diskpart` (`select vdisk file="…"`, `attach vdisk readonly`,
+`compact vdisk`, `detach vdisk`).
+
+---
+
+## Dépannage
+
+Une entrée par symptôme. Dans tous les cas, commencer par le
+[contrôle rapide](#le-contrôle-rapide), dans la session de la personne.
+
+### Poste et WSL
+
+**Le rédacteur n'a ni extensions, ni raccourcis, ni PDF, alors que le poste est « à jour ».**
+- Cause probable : l'installation a été faite avec un compte de support élevé ; tout a été
+  posé pour ce compte-là.
+- Que faire : dans la session du rédacteur, sans élévation, « Pronto (Updater) ». Puis
+  `diagnostic.ps1`.
+
+**`Ctrl+S` ne produit plus rien, ou la compilation reste bloquée.**
+- Cause probable : WSL figée (souvent après une veille).
+- Que faire : `wsl --shutdown`, puis recompiler.
+
+**Après une mise à jour de Windows, plus aucun PDF.**
+- Cause probable : le moteur WSL a changé (montage de `/mnt/c`, réseau de la machine
+  virtuelle).
+- Que faire : `wsl --shutdown` ; noter `wsl --version` ; si le défaut persiste,
+  `wsl --update --rollback`, et garder cette version le temps de corriger.
+
+**« Aucune distribution installée », ou la distribution ne démarre pas.**
+- Causes probables : la distribution n'est pas enregistrée pour ce compte ; la
+  virtualisation est désactivée dans le firmware ; les fonctionnalités Windows
+  « Plateforme de machine virtuelle » et « Sous-système Windows pour Linux » sont coupées.
+- Que faire : `wsl -l -v` doit montrer `SZH-Publishing` en version 2. Sinon,
+  « Pronto (Updater) » dans la session du compte. Si la mise à jour dit que
+  l'environnement « refuse de démarrer », faire activer la virtualisation par
+  l'informatique. En dernier recours, relancer `bootstrap.ps1` en administrateur depuis
+  un clone frais.
+
+**La mise à jour dit « son dossier est déjà pris sur ce poste ».**
+- Cause probable : un reste d'installation interrompue dans `C:\ProgramData\SZH\WSL\<SID>\`.
+- Que faire : relancer la mise à jour, qui écarte ce reste. Si le message revient,
+  redémarrer le poste puis relancer.
+
+**La mise à jour dit qu'il ne reste que quelques Go libres.**
+- Cause : il faut 5 Go libres sur `C:` pour remplacer l'image.
+- Que faire : libérer de la place (voir « Taille du disque » ci-dessus), relancer.
+
+**La mise à jour dit qu'un fichier téléchargé « est arrivé abîmé ».**
+- Cause : le sha256 ne correspond pas, souvent une connexion coupée en route.
+- Que faire : relancer ; si cela se répète, regarder le réseau ou le proxy.
+
+**Les compilations prennent plusieurs dizaines de secondes, ou un fichier reste verrouillé.**
+- Cause probable : exclusions antivirus absentes, ou effacées par une politique centrale.
+- Que faire : les poser (liste dans [Installer un poste](#installer-un-poste)).
+
+**Le disque du poste se remplit.**
+- Cause probable : le `ext4.vhdx` d'un compte, ou de vieux comptes.
+- Que faire : voir « Taille du disque » ci-dessus ; supprimer les distributions des comptes
+  qui ne servent plus.
+
+### Mise à jour
+
+**Un poste ne se met plus à jour.**
+- Causes probables : renoncements répétés (éditeur toujours ouvert au moment de remplacer
+  l'image), réseau, poste toujours éteint le mardi et jamais redémarré.
+- Que faire : lire `szh-<AAAA-MM>.log`, le dernier `update-*.log` et
+  `%LOCALAPPDATA%\SZH\maj-auto.json` du compte (`bloqueFois` élevé et `bloqueDepuis` ancien :
+  le poste décroche). Lancer « Pronto (Updater) », éditeur fermé.
+
+**Le journal dit « tâche planifiée refusee » ou « non corrigée (Access is denied.) ».**
+- Cause : la tâche planifiée diffère de la forme voulue (par exemple un ancien déclencheur
+  quotidien), et seul un administrateur peut la réécrire. La cadence hebdomadaire s'applique
+  quand même.
+- Que faire : une fois, en administrateur, depuis un clone frais :
+
+  ```powershell
+  . '.\szh-publishing-toolchain\windows\szh-common.ps1'
+  . '.\szh-publishing-toolchain\windows\szh-taches.ps1'
+  Set-SzhTacheMaj
+  ```
+
+  Le bilan vaut `conforme`, `corrigee`, `creee`, `refusee` ou `illisible`. Relancer
+  `bootstrap.ps1` fait la même chose.
+
+**Les postes échouent tous au téléchargement.**
+- Cause probable : le dépôt est devenu privé, ou GitHub limite les appels. La mise à jour
+  sans jeton exige un dépôt public.
+- Que faire : vérifier la visibilité du dépôt et la page des versions sur GitHub.
+
+**Une version est publiée mais une extension n'est pas réinstallée.**
+- Cause : la mise à jour compare la `version` du `package.json` de l'extension. La CI refuse
+  une version dont le dossier d'une extension a changé sans que sa `version` monte ; ce cas
+  ne devrait donc plus arriver.
+- Que faire : `node test/js/porte-release.js --version X.Y.Z` avant le commit de version.
+
+**« Lier un appel à une référence » refuse de s'ouvrir, ou le cockpit signale deux versions
+différentes.**
+- Cause : le toolkit et l'extension cockpit ne sont pas de la même version.
+- Que faire : « Pronto (Updater) », ou « Changer de version… » vers une version cohérente.
+
+**Un rapport `ACCUEIL-COCKPIT-ABSENT` arrive dans `_Systeme`.**
+- Cause : le cockpit manque sur ce compte, ou est trop ancien pour l'Accueil.
+- Que faire : « Pronto (Updater) » dans la session du compte.
+
+### Windows : raccourcis, fichiers, liens
+
+**Une entrée manque au menu Démarrer (souvent « Pronto (Updater) »).**
+- Cause probable : une stratégie de groupe interdit l'écriture dans le menu Démarrer du
+  compte. Le journal du mois porte `raccourci du menu Démarrer non posé -> …`.
+- Que faire : en général rien, la passe silencieuse les repose à chaque ouverture de
+  session. Si la stratégie est définitive, faire déployer le raccourci par l'informatique
+  dans le menu « Tous les utilisateurs ». Le sous-dossier `SZH\` du menu appartient à un
+  autre produit : on n'y touche pas. Un raccourci épinglé à la barre des tâches est une
+  copie : le désépingler et le réépingler à la main après un changement.
+
+**Le double-clic sur un `.md` n'ouvre plus Pronto.**
+- Cause probable : une autre application a repris l'association.
+- Que faire : relancer « Pronto (Updater) » ; l'utilisateur choisit ensuite une fois
+  « Toujours utiliser cette application » dans « Ouvrir avec ».
+
+**Un lien `szh://` reçu par courriel ne fait rien.**
+- Causes probables : le protocole n'est pas déclaré « de confiance » pour Office (la clé
+  `HKCU\…\Trusted Protocols\All Applications\szh:` est posée par la mise à jour), ou la
+  personne utilise le nouvel Outlook, qui ne connaît pas ce protocole.
+- Que faire : relancer la mise à jour ; avec le nouvel Outlook, suivre la ligne de repli
+  écrite dans le courriel (menu Démarrer → …).
+
+**Le raccourci « Ouvrir la revue » d'un numéro ne fait rien.**
+- Cause probable : un raccourci ancien, qui contient un chemin `C:\Users\…` d'un autre poste.
+  Un raccourci correct vise `wscript.exe` et finit par `szh://ouvrir/…`.
+- Que faire : ouvrir le numéro depuis l'Accueil, puis l'archiver et le désarchiver, ce qui
+  réécrit le raccourci.
+
+**Le brouillon de courriel (traduction, support) ne s'ouvre pas.**
+- Cause : il passe par `mailto:`, donc par le client de messagerie par défaut de Windows.
+- Que faire : vérifier ce réglage de Windows. Le lien de traduction est aussi copié dans le
+  presse-papiers.
+
+### OneDrive et données
+
+**L'Accueil n'affiche plus aucun numéro.**
+- Causes probables : le poste est passé du mauvais côté (`emplacementRevues`), ou la
+  bibliothèque SharePoint n'est plus trouvée sur le disque.
+- Que faire : regarder la bannière « Mode test » de l'Accueil et la ligne
+  `revues : emplacement "…" -> <chemin>` du journal du mois. La reprise pas à pas est dans
+  [`EMPLACEMENTS.md`](EMPLACEMENTS.md).
+
+**La compilation échoue ou reste bloquée sur un numéro.**
+- Cause probable : le dossier est « en ligne seulement » sur OneDrive (icône de nuage) ;
+  la WSL lit alors des fichiers absents.
+- Que faire : clic droit → « Toujours conserver sur cet appareil », attendre la
+  synchronisation. Pronto épingle de lui-même, à chaque ouverture, les numéros et livres en
+  cours et la bibliothèque `_NewsUndActu` (sauf si `"epinglageHorsLigne": false` est posé
+  dans `config.json`).
+
+**Un fichier reste verrouillé pendant un export ou un archivage.**
+- Cause : un PDF ouvert hors de l'éditeur (SumatraPDF, Acrobat).
+- Que faire : fermer ce lecteur et relancer « Tout recompiler ».
+
+**Deux personnes ont modifié le même numéro.**
+- Ce qui se passe : un formulaire réserve pendant deux minutes le fichier qu'il modifie ;
+  pour le reste, OneDrive crée une copie en conflit, que le cockpit détecte et fait résoudre.
+- Règle de travail : un article, une personne à la fois.
+
+### Contenu et compilation
+
+**Un Word ne se convertit pas : il reste dans `articles-word/`.**
+- Causes probables : un `.doc` ancien (seuls `.docx` et `.odt` sont lus), un fichier encore
+  ouvert dans Word, des styles qu'aucune règle ne reconnaît.
+- Que faire : fermer Word ; réenregistrer en `.docx` ; appliquer les styles du gabarit
+  (« Pronto – modèle d'article »).
+
+**Le titre a été coupé en titre et sous-titre, ou aurait dû l'être.**
+- Cause : sans style de sous-titre dans le Word, l'import coupe au premier deux-points suivi
+  d'une espace. Le journal d'import porte le code `sous-titre-deduit`.
+- Que faire : corriger dans « Métadonnées des articles », champ titre.
+
+**La fiche n'a que les noms des auteurs : ni fonction, ni courriel, ni portrait.**
+- Cause : le tableau des auteurs en fin de Word n'a pas pu être lu (une cellule illisible
+  suffit). Code `tableau-auteurs-non-lu`. Une notice biographique en prose ne se lit jamais :
+  le tableau reste alors dans le texte, c'est voulu.
+- Que faire : compléter la fiche à la main, ou remettre une personne par cellule dans le
+  Word puis « Réimporter cet article ». Le code `credit-photo-non-repris` cite un crédit de
+  photo à reporter à la main.
+
+**Un appel de citation n'est pas relié à sa référence.**
+- Cause : codes `appel-sans-reference` (nom ou année sans entrée correspondante) ou
+  `appel-ambigu` (deux entrées possibles) ; l'appel est souligné en pointillé dans l'aperçu.
+  `ancrage-inconnu` : la référence a changé depuis la pose du lien. `caractere-sans-repli` :
+  un nom en alphabet non latin.
+- Que faire : curseur dans l'appel, panneau Édition (`Ctrl+Alt+S`) → « Lier un appel à une
+  référence ». `reference-orpheline` signale une entrée que le texte ne cite pas.
+
+**La bibliographie reste dans le texte, ou un encadré rouge remplace la liste.**
+- `biblio-non-detachee`, `biblio-dans-le-corps` : les références n'ont pas le style de
+  bibliographie dans le Word ; elles restent dans le corps et ne partiront pas comme
+  références vers OJS. Appliquer le style dans le Word, puis réimporter.
+- `biblio-introuvable` (encadré rouge) : le fichier `<slug>.biblio.md` a été supprimé ou
+  renommé. Réimporter l'article, ou retirer le bloc `::: {.szh-biblio …}` du texte.
+- `biblio-references-restees`, `biblio-incomplete` : quelques références n'ont pas le style ;
+  les styler dans le Word, puis réimporter.
+- `biblio-conflit` après un réimport : le Word et la rédaction ont tous deux changé la liste ;
+  la version de la rédaction est gardée sous `.szh-avant-reimport/`, ou « Annuler le
+  réimport ».
+
+**Un encadré rouge « tableau introuvable ».**
+- Cause : le fichier `tables/table-NN.html` a été supprimé ou renommé.
+- Que faire : rouvrir le tableau depuis la barre « Pronto » et l'enregistrer, ou retirer la
+  référence du texte.
+
+**Le journal dit « PDF/UA-1 indisponible → PDF balisé simple ».**
+- Cause : WeasyPrint n'a pas pu produire le PDF/UA ; le PDF est produit quand même, moins
+  accessible.
+- Que faire : relancer WeasyPrint à la main sur le HTML, sans masquer la sortie d'erreur,
+  pour voir la cause. Arrive surtout après une montée de WeasyPrint.
+
+**Le badge PDF/UA montre un point d'interrogation, ou la porte PDF/UA sort en code 2.**
+- Cause : panne d'outillage (veraPDF absent, Java cassé, PDF illisible), et non un PDF non
+  conforme.
+- Que faire : lire la sortie d'erreur de veraPDF, recopiée telle quelle par
+  `pipeline/verifier-ua.sh`. Les chemins viennent de `VERAPDF` (par défaut
+  `/opt/verapdf-cli/verapdf`) et `VERAPDF_JAVA` (par défaut `/opt/jre-min`). Si l'image est
+  abîmée, réparer la distribution.
+
+**Un résumé en langue étrangère est lu avec la voix de la langue de l'article.**
+- Cause : limite connue de WeasyPrint, que veraPDF ne détecte pas. Voir
+  [`LIMITES-ACCESSIBILITE.md`](LIMITES-ACCESSIBILITE.md).
+
+### GitHub et CI
+
+**La CI devient rouge sans qu'une ligne du dépôt ait changé.**
+- Cause probable : un outil tiré du réseau a bougé (`vsce`, image des serveurs GitHub,
+  Open VSX indisponible).
+- Que faire : lire le journal de l'étape ; figer la version qui marchait dans
+  `.github/workflows/release.yml`. Une extension retirée d'Open VSX se remplace, ou son
+  `.vsix` se place dans le dépôt ([`windows/VSIX.md`](../windows/VSIX.md)).
+
+**Le pack de langue allemand refuse de s'installer.**
+- Cause : un pack de langue exige une version de VSCodium au moins égale à la sienne.
+- Que faire : garder dans `windows/vsix.lock` un pack dont la version ne dépasse pas celle
+  de VSCodium (`windows/apps.lock`).
+
+---
+
+## Surveiller
+
+| Quoi | Où | Quand | Ce qu'on cherche |
+|---|---|---|---|
+| Rapports d'erreur | `<SharePoint>\2_Produkte\54_Pronto\_Systeme\rapports\` | chaque semaine | un code qui revient, un poste qui revient. Format et codes : [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md) |
+| Inventaire des postes | `_Systeme\inventaire\<POSTE>.csv`, une ligne par mois et par compte (versions du toolkit, du cockpit, de l'éditeur, de l'image, emplacement, place libre…) | chaque mois | un poste absent du mois (éteint ou cassé), une version en retard, un poste en mode test, peu de place libre |
+| Compteurs d'usage (import, nettoyeur) | `_Systeme\compteurs\` | chaque trimestre | l'usage réel ; purger les fichiers de plus de 24 mois |
+| Résultat des versions publiées | GitHub → Actions | à chaque version | `ci` et `release` verts |
+| Journaux d'un poste | `C:\ProgramData\SZH\logs\`, onglet Log de l'Accueil | sur incident | |
+| Barre d'état du cockpit | dans un numéro ouvert | avant chaque numéro | la version du toolkit, comparée à celle qui a créé le numéro |
+
+L'inventaire est écrit à chaque ouverture de Pronto, seulement si la bibliothèque SharePoint
+est trouvée sur le poste. Les rapports et compteurs écrits hors ligne attendent dans
+`%LOCALAPPDATA%\SZH\` et partent à l'ouverture suivante.
+
+La synthèse des compteurs se fait avec le Node de VSCodium, depuis un clone du dépôt :
+
+```powershell
+$env:ELECTRON_RUN_AS_NODE = '1'
+& "$env:ProgramFiles\VSCodium\VSCodium.exe" vscodium-extension\szh-cockpit\outils\compteurs-synthese.js --depuis 2026-07-01
+```
+
+Les options (`--jusqua`, `--contexte prod|dev|tous`, `--sortie`, `--purger`) sont décrites
+dans [`RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md).
+
+Une fois par an, vérifier aussi : la fin de support de Debian, que les extensions de
+`windows/vsix.lock` sont toujours publiées sur Open VSX, et que le pack de langue allemand
+reste compatible avec la version de VSCodium.
+
+---
+
+## Les moissonneurs
+
+Les moissonneurs cherchent des nouveautés pour la rubrique Documentation. Ils déposent des
+propositions, que la rédaction accepte ou refuse dans la vue « Propositions » du cockpit ;
+ils ne créent jamais de fiche. Le fonctionnement complet est dans
+[`moissonneurs/LISEZMOI.md`](../moissonneurs/LISEZMOI.md),
+[`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md) et [`FORMAT-MOISSONS.md`](FORMAT-MOISSONS.md).
+
+### Lesquels
+
+| Moissonneur | Ce qu'il cherche | Sources |
+|---|---|---|
+| `parlement` | interventions parlementaires | API OpenParlData.ch : Confédération, 26 cantons, quelques villes |
+| `recherche` | projets de recherche | `skbf` (CSRE), `sites` (sites de hautes écoles : hfh, phbern, phsg, ehb, phzh, phfhnw, phlu, hepvd, hepbejune, hepfr), `snf` (export du FNS, importé à la main) |
+
+Ils sont écrits en Python et tournent dans la WSL du poste qui les lance. Ils sont livrés dans
+le toolkit (`C:\ProgramData\SZH\toolkit\moissonneurs\`).
+
+### Qui les lance
+
+Personne automatiquement : aucune tâche planifiée, aucun serveur, aucune CI ne les lance.
+Une personne de la rédaction les lance depuis le cockpit :
+
+- Accueil → **Paramètres** → **Moissonnage** → « Lancer la moisson mensuelle ». Le cockpit
+  estime la durée, prend le créneau (une seule moisson à la fois, tous postes confondus),
+  puis lance les deux moissonneurs l'un après l'autre. En mode test, la moisson tourne sans
+  requête réseau ;
+- au même endroit, « Données FNS » → « Importer les données FNS… » : le FNS interdit les
+  robots, on télécharge l'export « Grants with abstracts (CSV) » sur data.snf.ch puis on
+  l'importe. Fréquence conseillée : tous les six mois, fin mai et fin novembre.
+
+« Mensuelle » désigne le budget de requêtes, compté par mois et pour tous les postes ensemble
+(800 requêtes pour `parlement`, 3000 pour `recherche`). Ce n'est pas un calendrier.
+
+On peut aussi les lancer en ligne de commande, dans la WSL ; la commande est dans
+[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#la-moisson-mensuelle-hors-du-cockpit).
+
+### Où sont leurs réglages
+
+| Fichier | Contenu |
+|---|---|
+| `moissonneurs/parlement/reglages.toml` | `[reseau]` (adresse, délai), `[moisson]` (cantons, date de départ), `[villes]`, filtres, `[mensuelle]` (`active`, `budget`), `[export]` (`depose_depuis` : date avant laquelle une affaire ne part pas en proposition) |
+| `moissonneurs/recherche/reglages.toml` | `delai`, `budget`, `[filtre]`, `[sources.snf]`, `[sources.skbf]`, `[sources.sites]` (`actif`, `liste`) |
+| `moissonneurs/recherche/sources/sites.py` | la description de chaque site ; quatre sont coupés dans le code (`actif=False`, avec leur raison) : phzh, phlu, hepbejune, hepfr |
+| `_NewsUndActu\_Moissons\_Reglages\` (SharePoint) | la finesse du tri des propositions, réglée depuis Accueil → Paramètres → Moissonnage |
+
+Ces fichiers font partie du toolkit, qui est remplacé à chaque mise à jour. Une modification
+faite sur un poste disparaît donc à la mise à jour suivante : un changement durable passe par
+le dépôt et une nouvelle version. Il n'existe aucun réglage du cockpit, aucune clé de
+`config.json` et aucune variable d'environnement pour les moissonneurs.
+
+### Désactiver un moissonneur ou une source
+
+| Pour… | Comment | Portée |
+|---|---|---|
+| couper une source de `recherche` | `actif = false` dans `[sources.snf]`, `[sources.skbf]` ou `[sources.sites]` de `recherche/reglages.toml` | tous les postes, après une nouvelle version |
+| couper un site | le retirer de `liste` dans `[sources.sites]`, ou `actif=False` dans `recherche/sources/sites.py` | tous les postes, après une nouvelle version |
+| couper les requêtes de `parlement` | `[mensuelle] active = false` dans `parlement/reglages.toml` : la passe mensuelle n'interroge plus l'API | tous les postes, après une nouvelle version |
+| ne lancer qu'un seul moissonneur, une fois | en ligne de commande : `python3 -B moisson.py mensuelle … --seulement parlement` (ou `recherche`). Le cockpit ne propose pas ce choix | cette passe |
+| arrêter une passe en cours | bouton « Arrêter » du cockpit : le lot partiel est déposé | cette passe |
+| couper un moissonneur partout, sans nouvelle version | retirer son état partagé, `_NewsUndActu\_Moissons\<moissonneur>\_partage\socle.json`. La moisson le saute (« état partagé absent ») ; si aucun n'a d'état partagé, le bouton est grisé. Le socle se republie depuis le poste de développement | tous les postes, immédiatement |
+
+Les moissonneurs s'arrêtent aussi d'eux-mêmes : quand le budget du mois est épuisé (ils
+sont alors sautés jusqu'au mois suivant), et, pour `recherche`, quand une source répond
+« accès refusé » (403) deux passes de suite. Une source ainsi coupée se réactive au poste de
+développement par `python3 -B -m recherche reactiver <source> --base …`.
+
+### Ajouter un moissonneur
+
+C'est un travail de développement. Il faut, dans le dépôt : un paquet
+`moissonneurs/<nom>/` avec son `__main__.py` et les commandes `tout` et `estimer` ; le nom
+dans `MOISSONNEURS` (`moissonneurs/evenements.py`) et une table de traduction dans
+`evenements.TABLES` ; le libellé `doc.prop.moissonneur.<nom>` en français et en allemand dans
+`lib/i18n.js` ; des tests ; puis publier son socle dans `_Moissons\<nom>\_partage\` depuis le
+poste de développement, et une nouvelle version. Le contrat des lots et des commandes est
+dans [`FORMAT-PROPOSITIONS.md`](FORMAT-PROPOSITIONS.md) et
+[`moissonneurs/LISEZMOI.md`](../moissonneurs/LISEZMOI.md).
+
+### Pannes connues
+
+| Ce qu'on voit | Cause | Que faire |
+|---|---|---|
+| « Le dossier _Moissons est introuvable » | `_NewsUndActu\_Moissons` manque à la racine active ; rien ne le crée | vérifier la racine active (mode test ?), ou créer le dossier |
+| « L'état partagé est absent » | pas de `socle.json` pour ce moissonneur | publier le socle depuis le poste de développement |
+| « Le budget de requêtes du mois est épuisé » | les passes du mois ont consommé le budget, tous postes confondus | attendre le mois suivant |
+| « Une moisson tourne déjà depuis le poste … » | une autre passe a pris le créneau. Une passe tuée laisse son annonce environ 15 minutes ; la latence de OneDrive peut laisser deux passes se chevaucher | attendre l'heure de fin affichée |
+| « Ce fichier n'est pas l'export FNS attendu » | fichier de moins de 50 Mo ou de 10 000 lignes, colonnes manquantes (souvent l'export sans résumés), plus de 1 % de lignes illisibles | télécharger « Grants with abstracts (CSV) » |
+| `parlement` s'arrête sur « accès refusé (403) » | OpenParlData refuse l'accès ; toute la moisson `parlement` s'arrête, le lot partiel est déposé | vérifier la page de l'API ; ne pas insister |
+| des requêtes ralentissent (429, 503) | le serveur demande d'attendre. Les moissonneurs espacent seuls leurs requêtes ; `parlement` abandonne un corps (un canton) après cinq échecs de suite | rien, sauf si cela se répète d'un mois à l'autre |
+| peu de propositions d'un canton | certains cantons publient leurs textes avec des mois de retard, ou partiellement (Vaud, Schaffhouse) ; un zéro récent n'est pas une absence | rien |
+| peu de projets en Suisse romande, dates manquantes | quatre sites sont coupés ; certains sites ne donnent pas de date ; la CSRE enregistre ses projets avec retard | rien, limite connue |
+
+---
+
+## Gestes récurrents
+
+### Avant chaque numéro
+
+- Recompiler le numéro précédent : le PDF ne doit pas avoir changé.
+- Vérifier que les dossiers du numéro sont « toujours conservés sur cet appareil » (rond
+  vert plein dans OneDrive).
+- Regarder la version du toolkit dans la barre d'état du cockpit.
+
+### Nouveau numéro, nouveau livre
+
+Accueil → onglet **Nouveau**. Le dossier est créé dans les numéros « en cours » de la racine
+active (attention au mode test). `new-revue.ps1` (ou `new-livre.ps1`) copie le modèle (pour une
+revue, sans article d'exemple), écrit l'année, le numéro, le volume, la version du toolkit,
+et pose le raccourci « Ouvrir la revue » (« Ouvrir le livre »). Un numéro qui reprend un
+volume et un numéro existants est refusé.
+
+### Verrouiller et archiver
+
+Panneau Export (`Ctrl+Alt+D`) : « Archiver et verrouiller le numéro », « Déverrouiller le
+numéro », « Désarchiver le numéro ». Les clés `locked` et `archived` de `ausgabe.yaml` (ou
+`buch.yaml`) font foi. Un numéro verrouillé est en lecture seule et ne se recompile plus.
+L'archivage supprime `out/`, puis déplace le dossier vers `_Archive\` (`archive-revue.ps1`).
+
+### Nouvelle année
+
+Rien à faire. La couleur de l'année et le numéro de volume se calculent depuis l'année :
+
+- couleur : elle avance d'un cran par an dans la liste des six teintes (bleu acier, capucine,
+  Mountbatten, moutarde, poireau, rouge), à partir de bleu acier pour la Zeitschrift et de
+  poireau pour la Revue en 2026. Une couleur peut être imposée pour un numéro par la clé
+  `couleur` de son `ausgabe.yaml` ;
+- volume : année − 1994 pour la Zeitschrift, année − 2010 pour la Revue.
+
+### Bascule test / production
+
+La clé `emplacementRevues` (`test` ou `production`) de `C:\ProgramData\SZH\config.json` vaut
+pour tout le poste. Elle se change dans Accueil → Paramètres → « Mode développeur (dossiers
+de test) ». Elle ne déplace aucun fichier. Voir
+[Passer un poste neuf en production](#passer-un-poste-neuf-du-mode-test-à-la-production) et
+[`EMPLACEMENTS.md`](EMPLACEMENTS.md).
+
+### Sauvegardes
+
+Le dépôt n'a pas de mécanisme de sauvegarde propre. Les données sont sur SharePoint, qui
+garde l'historique des versions de chaque fichier et une corbeille, selon les réglages de la
+bibliothèque. Un fichier écrasé ou supprimé se récupère donc depuis SharePoint (« Historique
+des versions », « Corbeille »). La chaîne elle-même se réinstalle depuis GitHub.
+
+Ne sont pas transférables d'un poste à l'autre : les clés d'API (OJS, Shlink, Mistral),
+gardées chiffrées par compte. Il faut les ressaisir sur un nouveau poste (Accueil →
+Paramètres → Services en ligne).
+
+### Monter VSCodium, SumatraPDF ou une extension
+
+Ces versions sont épinglées : `windows/apps.lock` pour les applications
+([`windows/APPS.md`](../windows/APPS.md)), `windows/vsix.lock` pour les extensions
+([`windows/VSIX.md`](../windows/VSIX.md)). Les postes ne se mettent pas à jour seuls
+(`update.mode: manual`, `extensions.autoUpdate: false`).
+
+Avant de monter VSCodium sur tous les postes, faire le parcours complet sur un seul : ouvrir
+un numéro, cliquer un article, `Ctrl+S`, basculer l'aperçu, éditer un tableau (gras et
+italique dans une cellule), verrouiller puis déverrouiller, archiver puis désarchiver. Ce
+sont les points les plus fragiles. Vérifier aussi que le pack de langue allemand s'installe.
+
+### Le gabarit Word
+
+Le gabarit « Pronto – modèle d'article » est livré avec le toolkit. Le modifier est décrit
+dans [`DEVELOPPEMENT.md`](DEVELOPPEMENT.md#faire-évoluer-le-gabarit-darticle).
+
+---
+
+## Réglages de l'éditeur et langue de l'interface
+
+### Réglages de l'éditeur
+
+`vscodium-user/settings.json` est la source des réglages que la maison impose à tous les
+postes. La mise à jour ne le copie que sur un compte qui n'en a pas : ce que la personne
+choisit ensuite (thème, zoom, taille de police, langue, mode d'aperçu) survit aux mises à
+jour. `keybindings.json` et `tasks.json`, eux, sont remplacés à chaque mise à jour. Les
+raccourcis clavier sont décrits dans [`userdoc.md`](../userdoc.md).
+
+### Les réglages protégés
+
+Trois blocs décrivent la chaîne de publication plutôt que le confort d'une personne : la
+configuration de l'export OJS, les titres de bibliographie et les tâches éditoriales par
+article. Ils viennent de `windows/settings-protected.json`, copié dans
+`C:\ProgramData\SZH\settings-protected.json` à chaque mise à jour, et sont en lecture seule
+dans « Réglages Pronto ». Un bloc absent de ce fichier laisse le réglage du poste intact.
+
+Une personne peut les déverrouiller sur son poste ; sa modification vaut jusqu'à la mise à
+jour suivante. `diagnostic.ps1` signale cet écart (section « Réglages de la rédaction »).
+Pour la rendre durable, on la reporte dans `windows/settings-protected.json` et on publie une
+version.
+
+### La langue de l'interface
+
+Deux sources indépendantes, d'où parfois un écran mi-français mi-allemand :
+
+- les menus de VSCodium et les titres de commandes suivent la langue de VSCodium
+  (`%APPDATA%\VSCodium\argv.json`, clé `locale`, et le pack de langue allemand). Il n'y a
+  pas de pack français : des menus en anglais sont normaux pour un poste francophone ;
+- tout le reste du cockpit suit, dans cet ordre : le réglage « Langue de l'interface » de
+  « Réglages Pronto » (`szh.langue`), la clé `langue` de `config.json`, la clé `langue` de
+  `state.json`, la langue de VSCodium, la langue de Windows, puis le français.
+
+Quand les deux divergent, `diagnostic.ps1` (section « Langue de l'interface ») affiche toutes
+les sources côte à côte.
 
 ---
 
 ## Si tout casse : la reprise minimale
 
-1. `wsl --shutdown`, puis test de fumée. Cela règle la plupart des blocages.
-2. Toujours en échec : `wsl --unregister SZH-Publishing`, puis réimporter le dernier
-   rootfs.
+1. `wsl --shutdown`, puis recompiler. Cela règle la plupart des blocages.
+2. Toujours en échec : `wsl --unregister SZH-Publishing`, puis « Pronto (Updater) »
+   (ou réimport à la main, voir [Réparer la distribution](#réparer-la-distribution-dun-compte)).
 3. Toujours en échec : relancer `bootstrap.ps1` en administrateur, depuis un clone frais du
-   dépôt ou une archive toolkit fraîchement téléchargée et vérifiée, extraite dans un
-   dossier de l'administrateur (jamais depuis `C:\ProgramData\SZH\toolkit`, inscriptible
-   par le groupe Utilisateurs) — il réinstalle proprement.
-4. En dernier recours : `update.ps1 -Version <X>` revient à la version précédente du
-   toolkit, conservée en regard de la courante.
+   dépôt.
+4. En dernier recours : revenir à la version précédente (« Changer de version… » ou
+   `update.ps1 -Version <X>`).
 
-Aucune de ces étapes ne touche aux revues. Le contenu est sur OneDrive, il est
-toujours là.
+Aucune de ces étapes ne touche aux revues : le contenu est sur SharePoint.

@@ -24,6 +24,8 @@ est faite. Les questions à trancher sont marquées « À décider ».
   existant, désarchivage, raccourci « Ouvrir la revue.lnk » sur un autre poste.
 - À décider : passer `emplacementRevues` à `production` par défaut. Aujourd'hui, une clé
   absente vaut `test`, et `bootstrap.ps1` installe un poste neuf en mode test.
+- `bootstrap.ps1` affiche encore, en fin d'installation, « onglet Revue (ou Zeitschrift) >
+  Nouvelle revue... » : le chemin est aujourd'hui Accueil → onglet Nouveau.
 - Archiver une fois en production. Confirmer l'arborescence de production et l'ancrage
   SharePoint sur un poste de la rédaction.
 - Vérifier qu'aucun poste n'a encore l'ancienne forme `_NewsUndActu\Revue\` et
