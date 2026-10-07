@@ -1,72 +1,67 @@
-# Dossier amont des correctifs WeasyPrint
+# Correctifs WeasyPrint : dossiers pour l'amont
 
-Pour chaque correctif de `image/patches/weasyprint-70.0/`, ce qu'en sait l'amont
-(Kozea/WeasyPrint), une démo avant/après et un texte prêt pour une issue ou une PR.
-**Rien n'est publié chez WeasyPrint** : c'est à Robin de décider, et de reformuler.
+Pronto applique des correctifs à WeasyPrint ([`../weasyprint-70.0/`](../weasyprint-70.0/)).
+Ce dossier contient, pour chacun, de quoi le juger et le proposer au projet WeasyPrint
+(Kozea/WeasyPrint) :
 
-## La règle de Robin
+- `RAPPORT.md` : le défaut, ce qu'en dit l'amont (issues, état de `main`), la conduite à tenir ;
+- `ISSUE.md` : un brouillon d'issue ou de commentaire ;
+- `demo/` : des HTML minimaux et `demo.sh`, qui montre le PDF avant et après le correctif.
 
-- On ne patche WeasyPrint **qu'en dernier recours**, après avoir épuisé le CSS, le HTML
-  produit par la chaîne et la configuration, et **seulement après validation de Robin**.
-- **Un fichier de patch par fonctionnalité**, dans `image/patches/weasyprint-<version>/`,
-  posé par `image/patch-weasyprint.sh`.
-- À chaque montée de version, chaque patch est rejugé : l'amont l'a-t-il intégré, le code
-  a-t-il bougé ? Ce dossier sert à ce jugement.
+Rien n'est publié chez WeasyPrint sans l'accord du mainteneur de Pronto. Les règles pour
+écrire un correctif (dernier recours, un fichier par fonctionnalité, `--fuzz=0`) sont dans
+le [`CLAUDE.md`](../../../CLAUDE.md) du dépôt. À chaque montée de WeasyPrint, chaque correctif
+est rejugé avec ces dossiers : l'amont l'a-t-il intégré, le code a-t-il bougé ?
 
-## Les huit correctifs et un contournement (état au 03.10.2026, WeasyPrint 70.0, `main` 369b1534)
+## Les correctifs
 
-| Patch | Défaut | Statut amont | Recommandation |
-|---|---|---|---|
-| [10-tableaux-entetes](10-tableaux-entetes/RAPPORT.md) | `/Headers` vides ou faux sous un `th` en `colspan`/`rowspan` (UA-1 7.5-1). | Aucune issue ; code introduit en août 2026 (#2881), test sans `th` fusionné ; liZe invite à signaler (#2508). `main` inchangé. | Issue, code sur demande ; garder puis retirer. |
-| [15-images-decoratives](15-images-decoratives/RAPPORT.md) | `<img alt="" role="presentation">` en `/Figure` sans `/Alt` (UA-1 7.3-1). | #2550 ouverte, « Yes, that would be useful », sans suite. `main` inchangé. | Commentaire sur #2550 ; garder. |
-| [20-cesure-trait](20-cesure-trait/RAPPORT.md) | Trait de césure copié comme un vrai caractère. veraPDF ne voit rien. Porte aussi le dessin de l'espace du 25, inséparable. | « It's not in WeasyPrint, but it would be useful » (#2132), aucune issue. `main` inchangé. | Issue, code sur demande ; garder. |
-| [25-espace-fin-de-ligne](25-espace-fin-de-ligne/RAPPORT.md) | Espace de fin de ligne absente de la couche texte. veraPDF ne voit rien. Sans effet sans le 20. | Refus de principe (#1635, #2715 « We won't try to please them all »). `main` inchangé. | Garder sans proposer, rejuger à chaque montée. |
-| [30-marges-artefact](30-marges-artefact/RAPPORT.md) | En-têtes, pieds et folios en MCID rattachés à rien, au lieu d'artefacts de pagination. veraPDF ne le voit que si une marge a une opacité. | #1836 ouverte depuis 2023 ; liZe croit l'artefact réservé à PDF 2.0 (confusion élément de structure / contenu marqué) et dit « no way to do this easily ». `main` inchangé. | Commentaire sur #1836 avec l'approche, code sur demande ; garder. |
-| [40-xmp-dc-language](40-xmp-dc-language/RAPPORT.md) | `dc:language` absent du XMP ; `--xmp-metadata` n'ajoute qu'un second `rdf:RDF`, ignoré par pypdf. | Aucune issue ; `--xmp-metadata` pensé pour Factur-X (#2338, #2658) ; précédent accepté pour `dc:description` (#2681). `main` inchangé. | Issue qui offre la PR (diff prêt) ; garder, puis retirer. Pas encore posé dans la WSL : reconstruire l'image. |
-| [50-notes-doublon](50-notes-doublon/RAPPORT.md) | Note reportée imprimée deux fois quand un `target-counter` fait repaginer : `context.reported_footnotes` n'est pas dans l'état de page de `page_maker`, une page « à jour » sautée ne la consomme pas. Livres. | #1700 (fermée, 57.0) : mêmes conditions, seul le plantage en fin de document corrigé (c64eec8). Aucune issue sur le doublon. `main` inchangé. | Issue qui offre la PR ; garder, puis retirer. |
-| [55-notes-reportees](55-notes-reportees/RAPPORT.md) | Note chassée à la page suivante, loin de son appel, pour loger une ligne d'un paragraphe suivant à court d'`orphans`. Revue et livres, rare. | Code ajouté par #2437 (66.0, fix #2432) ; liZe : « we'll probably need more real samples ». Aucune issue sur ce cas. `main` inchangé. | Issue qui cite #2432/#2437 et offre la PR ; garder, puis retirer. |
-| [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | `<a>` enfant direct d'un conteneur flex sans annotation `/Link` (`blockify()` jette `box.link`). Pas de patch : un `<span>` intermédiaire suffit, posé par la chaîne. | #2941 ouverte le 28.09.2026, reconnue par liZe ("we'll find a way to fix that"), sans PR. | Ne rien publier ; rejuger à la montée. |
+| Dossier | Défaut corrigé | Conduite à tenir |
+|---|---|---|
+| [10-tableaux-entetes](10-tableaux-entetes/RAPPORT.md) | `/Headers` vides ou faux sous un `th` fusionné (`colspan`, `rowspan`) | issue, code sur demande |
+| [15-images-decoratives](15-images-decoratives/RAPPORT.md) | `<img alt="" role="presentation">` balisée `/Figure` sans `/Alt` | commentaire sur l'issue #2550 |
+| [20-cesure-trait](20-cesure-trait/RAPPORT.md) | le trait de césure est copié comme un vrai caractère | issue, code sur demande |
+| [25-espace-fin-de-ligne](25-espace-fin-de-ligne/RAPPORT.md) | l'espace de fin de ligne manque dans la couche texte | garder sans proposer : l'amont refuse ce genre de changement |
+| [30-marges-artefact](30-marges-artefact/RAPPORT.md) | en-têtes, pieds et folios ne sont pas marqués comme artefacts de pagination | commentaire sur l'issue #1836 |
+| [40-xmp-dc-language](40-xmp-dc-language/RAPPORT.md) | `dc:language` absent des métadonnées XMP | issue qui propose la PR |
+| [50-notes-doublon](50-notes-doublon/RAPPORT.md) | une note reportée est imprimée deux fois quand un `target-counter` fait repaginer (livres) | issue qui propose la PR |
+| [55-notes-reportees](55-notes-reportees/RAPPORT.md) | une note est repoussée à la page suivante, loin de son appel | issue qui propose la PR |
+| [sans-patch-lien-flex](sans-patch-lien-flex/RAPPORT.md) | un `<a>` enfant direct d'un conteneur flex perd son annotation `/Link` | pas de correctif : Pronto insère un `<span>` intermédiaire ; issue #2941 déjà ouverte |
 
-Le 10 et le 15 portaient un seul patch, le 20 et le 25 aussi : scindés le 01.10.2026, sans
-changer le code obtenu une fois tous posés (paquets comparés, 0 différence). Le dessin de
-l'espace de fin de ligne est resté dans le 20 : il lit les variables du trait de césure dans
-`draw_first_line`, et une même ligne ne peut pas appartenir à deux patchs. Le 25 s'applique
-donc seul, mais n'a d'effet qu'avec le 20.
+Le 25 s'applique seul mais n'a d'effet qu'avec le 20 : le dessin de l'espace de fin de ligne
+est dans le 20, car il lit les variables du trait de césure dans `draw_first_line`.
 
-## Les canevas de contribution de WeasyPrint
+## Proposer à WeasyPrint
 
-Le dépôt n'a ni modèle d'issue ni modèle de PR (`.github/` : `CONTRIBUTING.md`,
-`FUNDING.yml`, `workflows/`), et pas de Discussions. `CONTRIBUTING.md` renvoie aux
-[Guidelines for Contributors](https://www.courtbouillon.org/code-of-conduct/#guidelines-for-contributors)
-de CourtBouillon :
+WeasyPrint n'a pas de modèle d'issue ni de PR. Son `CONTRIBUTING.md` renvoie aux
+[règles de CourtBouillon](https://www.courtbouillon.org/code-of-conduct/#guidelines-for-contributors) :
+des textes courts, écrits soi-même, sans intertitres ; un exemple minimal ; demander avant
+d'envoyer du code ; une seule PR ouverte à la fois. Une demande qui ne les suit pas peut être
+fermée sans discussion.
 
-> Use your own words, write with your keyboard. Stay short: a few lines are often enough.
-> Don't use long chapters with titles. Don't open a pull request if you have another pull
-> request opened on our projects. Report real bugs you have in real life. Attach a short
-> sample that shows the bug. Ask before sending code. Open an issue or write a comment and
-> wait for more information.
+Chaque `ISSUE.md` est donc un brouillon, à réécrire avec ses propres mots avant de le poster.
+On commente une issue existante plutôt que d'en ouvrir une seconde. Une PR doit passer les
+tests pytest de WeasyPrint (Ghostscript et polices DejaVu requis) et `ruff check`.
 
-« Issues and pull requests that don't follow these rules may be closed with no further
-discussion. » D'où des textes courts, sans intertitres, qui demandent avant d'envoyer du
-code, et deux commentaires sur des issues existantes (#2550, #1836) plutôt que des
-doublons. **Chaque `ISSUE.md` est à réécrire par Robin avec ses mots avant de poster** ;
-une PR à la fois. La doc « contribute » du site (`docs/contribute.rst`) ajoute : tests
-pytest (Ghostscript et polices DejaVu requis), style vérifié par `ruff check`.
+## Lancer une démo
 
-## Les démos
+Dans la WSL, depuis l'outil PowerShell :
 
-Chaque `<nn>-<nom>/demo/demo.sh` se lance dans la WSL :
-
-```
-wsl.exe -d SZH-Publishing -- bash /mnt/c/Users/robin/Documents/Prog/szh-publishing-toolchain/image/patches/amont/<nn>-<nom>/demo/demo.sh
+```powershell
+wsl.exe -d SZH-Publishing -- bash /mnt/c/<chemin du dépôt>/image/patches/amont/<dossier>/demo/demo.sh
 ```
 
-`demo-commun.sh` copie `/opt/weasyprint` deux fois dans un dossier temporaire : « nu »
-(les correctifs listés dans `szh-patchs.txt` retirés par `patch -R` ; si l'image a été
-construite avant un renommage, ceux du dossier qui sont posés, puis chaque patch du dossier
-doit s'appliquer au nu) et « patché » (nu plus le seul correctif démontré, posé par
-`image/patch-weasyprint.sh`). La démo du 25 pose le 20 sur les deux, en socle. `/opt`
-n'est jamais modifié. Les preuves viennent de veraPDF `--flavour ua1` et d'`inspecter.py` (pypdf) :
-arbre de structure, MCID orphelins, marques `/Artifact`, flux, texte extrait, XMP.
-veraPDF ne teste que l'automatisable : aucune démo ne dit qu'un lecteur d'écran lit mieux,
-ce point reste non vérifié.
+[`demo-commun.sh`](demo-commun.sh) copie `/opt/weasyprint` deux fois dans un dossier
+temporaire, sans toucher à `/opt` :
+
+- **nu** : les correctifs posés (liste `szh-patchs.txt`) sont retirés par `patch -R` ;
+- **patché** : le nu, plus le seul correctif démontré, posé par `image/patch-weasyprint.sh`.
+
+Un correctif qui ne marche qu'avec un autre (le 25 avec le 20) reçoit cet autre sur les deux
+copies. La démo rend chaque HTML avec les deux copies, puis compare :
+
+- veraPDF `--flavour ua1` : le verdict se lit sur l'absence de règle en échec ;
+- [`inspecter.py`](inspecter.py) (pypdf) : arbre de structure, MCID orphelins, marques
+  `/Artifact`, flux de contenu, texte extrait, XMP.
+
+veraPDF ne teste que ce qui s'automatise. Ce qu'un lecteur d'écran lit réellement reste
+non vérifié par ces démos.

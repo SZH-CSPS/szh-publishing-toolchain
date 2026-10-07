@@ -1,40 +1,53 @@
-# Gabarits de courriel
+# Gabarits de courriel du cockpit
 
-Un fichier par courriel et par langue : `nom.langue.twig` (`envoi-auteur.fr.twig`,
-`envoi-auteur.de.twig`, `traduction.fr.twig`, `traduction.de.twig`, `support.fr.twig`,
-`support.de.twig`). La langue manquante
-retombe sur `.fr.twig` — voir `lib/courriel.js`, `rendreCourriel(nom, langue, variables)`.
+Ce dossier contient le texte des courriels que le cockpit prépare dans le client de
+messagerie. On peut le retoucher sans toucher au code.
 
-Chaque gabarit porte deux blocs obligatoires :
+Un fichier par courriel et par langue : `<nom>.<langue>.twig`. Si la langue demandée manque,
+le cockpit prend `<nom>.fr.twig` (`lib/courriel.js`, fonction `rendreCourriel`).
 
-```
+| Courriel | Préparé par | Langue | Variables |
+|---|---|---|---|
+| `envoi-auteur` | « Envoyer cet article à l’auteur » (version finale) | celle de l'article | `titre` (de l'article), `numero` (titre du numéro), `auteurs` (liste des noms), `langue` |
+| `traduction` | « Envoyer pour traduction » | `fr` pour la Zeitschrift, `de` pour la Revue | `quoi`, `lien`, `produit` (`revue` ou `zeitschrift`), `langue` |
+| `support` | le signalement d'un problème depuis la vue Contrôles | celle du cockpit | `poste`, `numero` (dossier du numéro), `controle` (`source/code` du problème), `article` (slug, vide pour le numéro), `rapport` (chemin du rapport, ou la raison de son absence) |
+
+Le courriel au support ne contient pas le texte d'un article. Son corps est coupé à
+1500 caractères, la longueur qu'un lien `mailto:` supporte.
+
+## Forme d'un gabarit
+
+Chaque gabarit a deux blocs :
+
+```twig
 {% block sujet %}…{% endblock %}
 {% block corps %}
 …
 {% endblock %}
 ```
 
-Variables disponibles :
+Les blancs autour du sujet sont retirés. Le corps perd le retour à la ligne qui suit
+`{% block corps %}` et celui qui précède `{% endblock %}`.
 
-- `envoi-auteur` : `titre` (titre de l'article), `numero` (titre du numéro), `auteurs`
-  (liste des noms d'auteurs, pour un usage futur), `langue`.
-- `traduction` : `quoi`, `lien`, `produit` (`zeitschrift` ou `revue`), `langue`.
-- `support` : `poste`, `numero` (dossier du numéro), `controle` (`source/code` du constat),
-  `article` (slug, vide pour le numéro), `rapport` (chemin du fichier de rapport, ou la raison de
-  son absence). Jamais de texte d'article.
+## Syntaxe
 
-Syntaxe reconnue (sous-ensemble de Twig, texte brut, sans échappement) : `{{ variable }}`,
-`{{ a.b.c }}`, littéraux `'texte'`, `3`, `true`, `false`, `null` ; les filtres `default(x)`,
-`upper`, `lower`, `trim`, `capitalize`, `join(sep)`, `length`, `first`, `last` ;
-`{% if %}`/`{% elseif %}`/`{% else %}`/`{% endif %}` avec `x`, `not x`, `x == y`, `x != y`,
-`x is empty`, `x is defined`, `x is not empty`, combinés par `and`/`or` ;
-`{% for x in liste %}`/`{% else %}`/`{% endfor %}` avec `loop.index`, `loop.index0`,
-`loop.first`, `loop.last`, `loop.length` ; `{% set x = expr %}` ; `{# commentaire #}` ;
-`{% block nom %}` au premier niveau ; le contrôle des blancs `{%- -%}` à la Twig.
+Le moteur est [`lib/gabarits.js`](../lib/gabarits.js), un sous-ensemble de Twig qui produit
+du texte brut, sans échappement automatique.
 
-Non reconnu : parenthèses dans les conditions, calcul arithmétique, macros, inclusion d'un
-autre gabarit, échappement HTML. Voir `lib/gabarits.js`.
+- Valeurs : `{{ variable }}`, `{{ a.b.c }}`, littéraux `'texte'`, `3`, `true`, `false`,
+  `null`.
+- Filtres : `default(x)`, `upper`, `lower`, `trim`, `capitalize`, `join(sep)`, `length`,
+  `first`, `last`, `csv`, `escape` (alias `e`, pour un gabarit HTML).
+- Conditions : `{% if %}`, `{% elseif %}`, `{% else %}`, `{% endif %}`, avec `x`, `not x`,
+  `x == y`, `x != y`, `x is empty`, `x is not empty`, `x is defined`, combinés par `and` et
+  `or`, sans parenthèses.
+- Boucles : `{% for x in liste %}`, `{% else %}`, `{% endfor %}`, avec `loop.index`,
+  `loop.index0`, `loop.first`, `loop.last`, `loop.length`.
+- Aussi : `{% set x = expr %}`, `{# commentaire #}`, `{% block nom %}` au premier niveau,
+  le contrôle des blancs `{%- -%}`.
 
-Le lanceur Windows a ses propres gabarits, dans `windows/mail-templates/` : même
-convention sujet/corps, mais son petit moteur PowerShell (`Get-SzhCourriel`,
-`windows/szh-common.ps1`) ne comprend que les variables, les blocs et les commentaires.
+Le moteur ne connaît pas le calcul, les macros ni l'inclusion d'un autre gabarit. Une
+erreur de syntaxe donne le nom du gabarit et le numéro de ligne.
+
+Le lanceur Windows a ses propres gabarits, rendus par le même moteur :
+[`windows/mail-templates/`](../../../windows/mail-templates/README.md).

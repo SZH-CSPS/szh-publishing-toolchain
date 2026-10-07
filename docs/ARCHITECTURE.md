@@ -197,6 +197,34 @@ Linux.
 `test/js/chaines-filtres.test.js` vérifie que les filtres communs sont dans le même ordre
 partout.
 
+#### L'import d'un Word
+
+`import-docx.sh` choisit le lecteur document par document. Un Word rempli dans le gabarit
+Pronto (reconnu à sa propriété cachée `SZH-Gabarit`, ou à défaut à ses styles `SZH Cle` et
+`SZH Aide`) est lu par `pronto-lire.py`. Les autres Word sont lus par `docx-meta.py`, qui
+devine les métadonnées à partir de la mise en forme.
+
+- La langue de l'article vient du produit du numéro : Revue → français, Zeitschrift →
+  allemand. Un article en italien se corrige ensuite dans sa fiche.
+- Dans le gabarit, les deux premiers tableaux sont lus par leur position : le premier porte
+  les métadonnées, le second les auteurs.
+- Une figure ou un tableau du gabarit est précédé de paragraphes de style `SZH Cle Abb` ou
+  `SZH Cle Tab` (légende, texte alternatif, copyright, source). Le lecteur les transmet à
+  `szh-legendes.lua` pour les images et à `docx-tables.py` pour les tableaux.
+- Les étiquettes du gabarit sont reconnues même mal tapées (proximité, formes sans accent,
+  synonymes), avec un avertissement. Une étiquette inconnue ou illisible fait refuser
+  l'import : rien n'est créé, et le Word reste en attente avec un message qui la nomme.
+- Pandoc perd les styles de paragraphe d'un Word. `docx-styles-corps.py` prépare donc une
+  copie où les styles utiles (« SZH Important », « SZH Question »…) sont marqués, et
+  `szh-styles-corps.lua` les retrouve.
+- Un `.odt` est converti en `.docx` par LibreOffice avant toute lecture.
+- La bibliographie est détachée dans `<slug>.biblio.md`. `szh-citations.lua` la remet en place
+  à la compilation et relie les appels. Les titres de bibliographie reconnus sont la liste
+  `TITRES_BIB` de `szh-citations.lua`, que le cockpit relit aussi.
+
+Mettre à jour le gabarit lui-même est décrit dans
+[`DEVELOPPEMENT.md`](DEVELOPPEMENT.md).
+
 #### Les filtres Lua (`pipeline/filters/`)
 
 Chaque liste de filtres commence par `szh-contexte.lua`. Il fixe une fois la langue
@@ -324,6 +352,22 @@ par `lib/gabarits.js`. Les scripts Windows passent par ce même moteur.
 **L'Accueil** est la page qui s'ouvre quand on lance Pronto : produits, création d'un numéro
 ou d'un livre, secrétariat, journal, nettoyeur de manuscrit, réglages. Il est porté par
 `lib/accueil-hote.js` et les modules `accueil-*.js`.
+
+**La Documentation et les propositions.** La rubrique Documentation est faite de fiches
+(format Kirby, [`FORMAT-DOCUMENTATION-KIRBY.md`](FORMAT-DOCUMENTATION-KIRBY.md)). Seul le
+cockpit écrit une fiche, par `lib/kirby-contenu.js`. Les propositions des moissonneurs
+s'affichent dans la vue « Propositions » (`lib/propositions.js`), où la rédaction les accepte
+ou les refuse.
+
+**Quelques règles du cockpit :**
+- aucune dépendance npm ;
+- pas d'`innerHTML` dans les pages : on construit les éléments avec `media/_commun.js` ;
+- toute écriture de fichier est atomique (fichier temporaire puis renommage), parce que
+  OneDrive peut synchroniser un fichier à moitié écrit ;
+- le DOI d'un article est calculé par `lib/articles.js` ; la rédaction peut le fixer à la main,
+  et un doublon bloque l'export OJS ;
+- la liste des auteurs connus vient du serveur OAI public d'ojs.szh.ch (noms seulement),
+  rafraîchie chaque mois dans `C:\ProgramData\SZH\auteurs.json`.
 
 **Les tests** : `test/js/webviews.test.js` affiche chaque page dans un faux navigateur, et
 `test/js/hote.test.js` démarre l'extension sur un faux VSCodium (`test/js/hote-factice.js`).

@@ -1,37 +1,26 @@
 # Gabarits de courriel du lanceur Windows
 
-Un fichier par courriel et par langue : `nom.langue.twig` (`support.fr.twig`,
-`support.de.twig`, `support.en.twig`). Repli sur `.fr.twig` — voir `Get-SzhCourriel`
-dans `windows/szh-common.ps1`.
+Ce dossier contient le courriel au support que propose l'écran d'erreur de la mise à jour
+(`Show-SzhErreur`, touche `E`).
 
-Même convention que le cockpit : deux blocs, `{% block sujet %}…{% endblock %}` et
-`{% block corps %}…{% endblock %}`.
+Un fichier par langue : `support.fr.twig`, `support.de.twig`, `support.en.twig`. Si la langue
+du poste manque, `support.fr.twig` est utilisé. Variables : `poste`, `etape`, `message`,
+`journal`.
 
-## Un seul moteur
+La forme (blocs `sujet` et `corps`) et la syntaxe sont celles des gabarits du cockpit :
+[`vscodium-extension/szh-cockpit/mail-templates/`](../../vscodium-extension/szh-cockpit/mail-templates/README.md).
 
-Depuis le 14.09.2026, ces gabarits sont rendus par **le même moteur que le cockpit**
-(`vscodium-extension/szh-cockpit/lib/gabarits.js`) — plus de sous-ensemble restreint,
-plus de mini-Twig écrit à la main côté PowerShell. `Get-SzhCourriel` appelle
-`outils/rendre-gabarit.js` (dans l'extension du cockpit), exécuté par le Node
-qu'embarque VSCodium (`ELECTRON_RUN_AS_NODE=1`) : un aller-retour JSON sur
-stdin/stdout, par `Invoke-SzhNodeCockpit` (`windows/szh-shell.ps1`). Toute la syntaxe de `lib/gabarits.js` est donc
-disponible ici — `{% if %}`, `{% for %}`, `loop.*`, les filtres — voir
-`vscodium-extension/szh-cockpit/mail-templates/README.md` pour le détail.
+## Rendu
 
-La convention de rendu (sujet débarrassé de ses blancs de bord, corps amputé d'un
-retour à la ligne de chaque côté, puis conversion en CRLF) reste du ressort de
-`Get-SzhCourriel`, pas du moteur : c'est une convention d'appel, identique à celle du
-cockpit (`lib/courriel.js#rendreCourriel`).
+`Get-SzhCourriel` (`windows/szh-common.ps1`) fait rendre le gabarit par le moteur du cockpit,
+`lib/gabarits.js`. Il appelle `outils/rendre-gabarit.js` de l'extension du cockpit avec le
+Node de VSCodium (`ELECTRON_RUN_AS_NODE=1`), par `Invoke-SzhNodeCockpit`
+(`windows/szh-shell.ps1`). L'échange se fait en JSON sur l'entrée et la sortie standard.
+Le résultat est ensuite converti en fins de ligne CRLF, et le corps coupé à 1500 caractères.
 
-## Le repli
+## Repli
 
-`Get-SzhCourriel` est appelée par `Show-SzhErreur`, l'écran d'une mise à jour qui a
-échoué — y compris à la toute première installation, où VSCodium peut ne pas encore
-être posé sur le poste. Si l'exécutable, le dossier de l'extension du cockpit ou
-`outils/rendre-gabarit.js` sont introuvables, ou si le rendu échoue pour n'importe
-quelle raison, `Get-SzhCourriel` **ne lève jamais** : elle rend un message minimal
-assemblé depuis `windows/szh-textes.ps1` (clés `courriel.repli.sujet` /
-`courriel.repli.corps`) et journalise pourquoi le repli a servi
-(`Write-SzhLog`). Ce repli n'est pas un second moteur : il ne lit jamais un `.twig` et
-ne substitue jamais un `{{ }}`, c'est un texte d'incident volontairement différent du
-gabarit habituel.
+Si le rendu échoue (VSCodium ou l'extension pas encore installés, par exemple à la première
+installation), `Get-SzhCourriel` rend un texte simple tiré de `windows/szh-textes.ps1`
+(clés `courriel.repli.sujet` et `courriel.repli.corps`) et note la raison dans le journal.
+Ce texte ne lit aucun gabarit.

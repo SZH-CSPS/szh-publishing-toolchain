@@ -27,13 +27,15 @@ Ce dépôt contient l'outillage, pas les publications : celles-ci vivent sur Sha
 
 | Pour | Lire |
 |---|---|
-| comprendre le dépôt, couche par couche | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| comprendre le dépôt (vue d'ensemble et schémas) | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | tous les documents, en une ligne chacun | [`docs/README.md`](docs/README.md) |
 | développer, tester, publier une version | [`docs/DEVELOPPEMENT.md`](docs/DEVELOPPEMENT.md) |
 | installer, surveiller et réparer un poste | [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) |
 | le moteur livre | [`docs/ARCHITECTURE-LIVRES.md`](docs/ARCHITECTURE-LIVRES.md) |
 | l'accessibilité et ses limites | [`docs/ACCESSIBILITE.md`](docs/ACCESSIBILITE.md) |
 | les gestes de la rédaction | [`userdoc.md`](userdoc.md) |
+| ce qui reste à faire | [`docs/A-FAIRE.md`](docs/A-FAIRE.md) |
+| écrire la doc et les commentaires | [`docs/ECRIRE-LA-DOC.md`](docs/ECRIRE-LA-DOC.md) |
 | ce qui a changé, version par version | [`CHANGELOG.md`](CHANGELOG.md) |
 
 ## Numéroter une version
@@ -55,6 +57,7 @@ windows/             lanceur, installation, mise à jour, diagnostic, désinstal
 revue-template/      gabarit d'un numéro neuf
 livre-template/      gabarit d'un livre neuf
 kirby/               blueprints Kirby de la Documentation
+moissonneurs/        recherche de nouveautés pour la Documentation (voir moissonneurs/LISEZMOI.md)
 test/                banc d'essai, contrôles et contrats (voir test/README.md)
 outils-dev/          outils du poste de développement
 docs/                la documentation

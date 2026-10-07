@@ -1,13 +1,28 @@
 # SZH — Aperçu automatique
 
-Extension interne SZH/CSPS. Après chaque compilation réussie (tâche « Aperçu / Export PDF »),
-ouvre l'aperçu PDF de l'article actif (`out/<article>/<article>.pdf`) en **vue scindée à droite**,
-sans voler le focus, et seulement s'il n'est pas déjà ouvert — le rechargement continu est
-ensuite assuré par tomoki1207.pdf.
+Petite extension VSCodium qui ouvre le PDF de l'article actif après chaque compilation
+réussie.
 
-Réglages : `szh.apercuAuto` (défaut `true`) active l'ouverture automatique ; elle
-n'a lieu que si `szh.apercuMode` vaut `pdf`, la colonne de droite appartenant sinon
-à l'aperçu HTML du cockpit.
+Quand la tâche « Aperçu / Export PDF » se termine sans erreur, l'extension ouvre
+`out/<slug>/<slug>.pdf` dans une colonne à droite, sans prendre le focus. Elle ne fait rien
+dans ces cas :
 
-Construite et publiée par la CI du dépôt (`release.yml`), installée sur les postes par
-`update.ps1` via le `manifest.json` de la Release — même canal que les extensions épinglées.
+- le fichier actif n'est pas `articles/<slug>/<slug>.md` ou `chapitres/<slug>/<slug>.md` ;
+- le PDF n'existe pas ;
+- le PDF est déjà ouvert (l'extension `tomoki1207.pdf` le recharge alors seule).
+
+Le nom de la tâche est écrit dans [`extension.js`](extension.js). Il doit rester identique
+au `label` de la tâche dans [`vscodium-user/tasks.json`](../../vscodium-user/tasks.json).
+
+## Réglages
+
+| Réglage | Défaut | Effet |
+|---|---|---|
+| `szh.apercuAuto` | `true` | active l'ouverture automatique |
+| `szh.apercuMode` (déclaré par le cockpit) | `html` | l'extension n'agit qu'en mode `pdf` ; en mode `html`, la colonne de droite revient à l'aperçu HTML du cockpit |
+
+## Construction et installation
+
+La CI ([`release.yml`](../../.github/workflows/release.yml)) construit le `.vsix` et l'inscrit
+au `manifest.json` de la version publiée. `windows/update.ps1` l'installe sur les postes,
+avec les extensions épinglées ([`windows/VSIX.md`](../../windows/VSIX.md)).
