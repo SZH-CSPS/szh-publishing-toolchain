@@ -253,6 +253,27 @@ test('page : un ancien réglage qui nomme `cran` se lit sans erreur et se report
   assert.ok(th(panel, 'score'));
 });
 
+// ---- La colonne Date --------------------------------------------------------------------------
+
+test('page : un type qui a un champ date montre la date de dépôt, en JJ.MM.AAAA, et se trie par elle', async () => {
+  repartir();
+  const dates = { 'GE-1': '2026-09-15', 'CH-1': '2025-11-02', 'VD-1': '', 'NE-1': '2026-09-01', 'BE-1': '2026-10-03' };
+  const lot = LOT.map((l) => Object.assign({}, l, { valeurs: Object.assign({}, l.valeurs, { date: dates[l.cle.split(':').pop()] }) }));
+  ecrire(path.join(pr.cheminMoissons(RACINE_ARBRE), 'parlement'), '2026-10-01-1.jsonl', lot.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  const { page, panel } = await vueBranchee();
+  assert.ok(th(panel, 'champ:date'), 'colonne Date absente');
+  const rang = panel.querySelectorAll('th').map((x) => x.dataset.col).indexOf('champ:date');
+  const td = (id) => ligne(panel, id).querySelectorAll('td')[rang];
+  assert.strictEqual(td('GE-1').textContent, '15.09.2026');
+  assert.strictEqual(td('VD-1').textContent, '–');
+  trierPar(panel, 'champ:date');
+  assert.deepStrictEqual(ids(panel), ['CH-1', 'NE-1', 'GE-1', 'BE-1', 'VD-1']);
+  trierPar(panel, 'champ:date');
+  assert.deepStrictEqual(ids(panel), ['BE-1', 'GE-1', 'NE-1', 'CH-1', 'VD-1']);
+  onglet(page, 'recherche').click();
+  assert.strictEqual(th(panel, 'champ:date'), undefined, 'la recherche n’a pas de champ date');
+});
+
 // ---- Le tri ---------------------------------------------------------------------------------
 
 test('page : sans tri mémorisé, l’ordre de l’hôte, et aucun aria-sort', async () => {
@@ -266,7 +287,7 @@ test('page : chaque colonne hors case et gestes se trie par un bouton dans son e
   repartir();
   const { panel } = await vueBranchee();
   const cols = panel.querySelectorAll('th').map((x) => x.dataset.col);
-  assert.deepStrictEqual(cols, ['case', 'etat', 'titre', 'champ:canton', 'champ:categorie', 'score', 'pertinence', 'gestes']);
+  assert.deepStrictEqual(cols, ['case', 'etat', 'titre', 'champ:canton', 'champ:categorie', 'champ:date', 'score', 'pertinence', 'gestes']);
   for (const c of cols) {
     const b = th(panel, c).querySelector('.prop-tri');
     if (c === 'case' || c === 'gestes') { assert.strictEqual(b, null, c); continue; }

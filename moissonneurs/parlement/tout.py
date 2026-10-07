@@ -152,6 +152,7 @@ def tout(config, emit, source=None, reseau=None, lex=None, aujourdhui=None, hors
     try:
         export_propositions.verdicts_exportes(config)
         export_propositions.arriere_a_relire_mois(config)
+        export_propositions.depose_depuis(config)
     except export_propositions.ConfigurationExport as e:
         base.fermer()
         return _bloquer(config, emit, str(e))

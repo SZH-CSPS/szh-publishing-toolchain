@@ -304,6 +304,7 @@ def exporter(config, base, maintenant=None, a_blanc=False):
     deja = {r['cle']: r['empreinte'] for r in base.c.execute('SELECT cle, empreinte FROM propositions')}
     lignes, ecartees, ecrites = [], [], []
     autorises = verdicts_exportes(config)
+    depuis = depose_depuis(config)
     lex = lexique.charger() if (config.get('export') or {}).get('finesse') else None
     ctx_noms = contexte_noms(base)
     hors_filtre = hors_arriere = 0
@@ -327,7 +328,7 @@ def exporter(config, base, maintenant=None, a_blanc=False):
         if avant_date_min(a['date_depot'], mini):
             ecartees.append((court, f'déposée avant {mini}'))
             continue
-        if a['verdict'] not in autorises:
+        if a['verdict'] not in autorises or avant_date_min(a['date_depot'], depuis):
             hors_filtre += 1          # reste en base, jamais marquée exportée : elle pourra partir plus tard
             continue
         if limite_arriere and a['verdict'] == 'a-relire' and avant_date_min(a['date_depot'], limite_arriere):
@@ -373,6 +374,17 @@ def verdicts_exportes(config):
     if inconnus:
         raise ConfigurationExport(f"[export] verdicts : valeur inconnue {inconnus!r} (attendu : retenu, a-relire)")
     return tuple(dict.fromkeys(liste))
+
+
+def depose_depuis(config):
+    """`[export] depose_depuis` : AAAA-MM-JJ, les affaires déposées avant ne partent pas en proposition ('' : pas de limite).
+
+    Contrairement à `date_min_fiche`, elles restent classées et comptent dans la finesse.
+    """
+    v = (config.get('export') or {}).get('depose_depuis', '')
+    if not isinstance(v, str) or (v and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', v)):
+        raise ConfigurationExport(f"[export] depose_depuis : date AAAA-MM-JJ attendue, reçu {v!r}")
+    return v
 
 
 def arriere_a_relire_mois(config):

@@ -427,6 +427,43 @@ class TestArriereDuPremierLot(unittest.TestCase):
         self.assertEqual(ep.arriere_a_relire_mois(self.cfg), 0)
 
 
+class TestDeposeDepuis(unittest.TestCase):
+    """[export] depose_depuis : à chaque lot, une affaire déposée avant reste classée, sans proposition ni marque."""
+    setUp, tearDown, ajouter, lot = (TestPropositions.setUp, TestPropositions.tearDown, TestPropositions.ajouter,
+                                     TestPropositions.lot)
+
+    def preparer(self):
+        self.cfg['export'] = {'verdicts': ['retenu', 'a-relire'], 'depose_depuis': '2026-09-01'}
+        self.ajouter(aff('ZH', '1', 'Sonderpädagogik', depot='2025-06-10'), verdict='retenu')
+        self.ajouter(aff('ZH', '2', 'Inklusion an der Schule', depot='2026-08-31'), verdict='a-relire')
+        self.ajouter(aff('ZH', '3', 'Inklusion in der Schule', depot='2026-09-01'), verdict='a-relire')
+        self.ajouter(aff('ZH', '4', 'Inklusion im Hort', depot=''), verdict='retenu')
+
+    def cles(self, res):
+        return sorted(p['cle'].rsplit(':', 1)[1] for p in self.lot(res))
+
+    def test_les_affaires_deposees_avant_ne_partent_pas_meme_retenues(self):
+        self.preparer()
+        res = ep.exporter(self.cfg, self.base)
+        self.assertEqual(self.cles(res), ['3', '4'])                 # 3 : pile à la date, 4 : sans date
+        self.assertEqual(res['hors_lot_filtre'], 2)
+
+    def test_elles_ne_sont_pas_marquees_et_partent_si_la_date_recule(self):
+        self.preparer()
+        ep.exporter(self.cfg, self.base)
+        self.cfg['export']['depose_depuis'] = '2024-07-01'
+        res = ep.exporter(self.cfg, self.base)
+        self.assertEqual(self.cles(res), ['1', '2'])
+
+    def test_valeur_invalide_est_une_erreur_de_configuration(self):
+        for v in ('septembre', '2026-9-1', 20260901, True):
+            self.cfg['export'] = {'depose_depuis': v}
+            with self.assertRaises(ep.ConfigurationExport, msg=repr(v)):
+                ep.depose_depuis(self.cfg)
+        self.cfg['export'] = {}
+        self.assertEqual(ep.depose_depuis(self.cfg), '')
+
+
 class TestPropositionsMultilingues(unittest.TestCase):
     """FORMAT-PROPOSITIONS.md « Une proposition pour les deux revues » : `langues` + `titres` à la racine, jamais `langue` ni `valeurs.title`."""
     setUp, tearDown, ajouter, lot = (TestPropositions.setUp, TestPropositions.tearDown, TestPropositions.ajouter,

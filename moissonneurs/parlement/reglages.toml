@@ -76,6 +76,9 @@ delai = 2.0
 verdicts = ["retenu", "a-relire"]
 # Arriéré du premier lot : les « à relire » déposés plus de 3 mois avant la moisson ne partent pas au premier lot.
 arriere_a_relire_mois = 3
+# À chaque lot : les affaires déposées avant cette date restent classées, sans proposition. Contrairement à
+# date_min_fiche, elles comptent toujours dans la finesse (crans, fiches de référence).
+depose_depuis = "2026-09-01"
 # Finesse : score par bandes, catégorie et termes avec note_sans dans chaque proposition ; crans par langue dans
 # etat.json, figés par trimestre au poste de développement.
 finesse = true

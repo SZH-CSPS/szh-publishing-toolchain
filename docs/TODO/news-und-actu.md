@@ -28,6 +28,8 @@ Projets de la première moisson, à trier : [projets-recherche-a-trier.md](proje
 
 ## Catégories des fiches : à trancher (rien d'implémenté)
 
+Le détail de chaque groupe, avec ses jetons et ses libellés fr/de, est dans [../DEV/Categories.md](../DEV/Categories.md).
+
 - [ ] Adopter les **trois axes communs** (thème, degré ou étape de vie, besoins et handicap),
       et faire valider les libellés contre la terminologie SZH et CDIP.
 - [ ] **Thèmes** : les 8 dossiers 21 à 28 de `1_Themen` tels quels ? Faut-il y ajouter

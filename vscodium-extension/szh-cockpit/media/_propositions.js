@@ -757,6 +757,11 @@
       if (d.categorie && d.tri.indexOf('categorie') === -1) {
         cols.push({ id: 'champ:categorie', cle: 'categorie', libelle: TXT.propColType, defaut: 118, min: 56, masquable: true });
       }
+      // La date du champ « date » (le dépôt d'une intervention), en JJ.MM.AAAA ; l'ISO trie juste.
+      var cd = champDe(type, 'date');
+      if (cd && cd.saisie === 'date' && d.tri.indexOf('date') === -1) {
+        cols.push({ id: 'champ:date', cle: 'date', libelle: cd.libelle, defaut: 92, min: 44, masquable: true });
+      }
       // La note du moissonneur, pour tout type ; le cran se lit dans son infobulle. Un type qui a
       // des crans n'a pas la colonne Pertinence.
       cols.push({ id: 'score', libelle: TXT.propColScore, defaut: 88, min: 44, masquable: true });
@@ -959,7 +964,7 @@
       if (c.cle) {
         var v = p.valeurs[c.cle] || '';
         // Le type se lit en clair ; le canton reste son sigle, son nom en infobulle.
-        var court = c.cle === 'categorie' ? libelleJeton(p.type, c.cle, v) : v;
+        var court = c.cle === 'categorie' ? libelleJeton(p.type, c.cle, v) : c.cle === 'date' ? dateCourte(v) : v;
         var td = poser(tr, 'td', 'prop-td-cle', court || '–');
         if (v) { td.title = libelleJeton(p.type, c.cle, v); }
         return;
