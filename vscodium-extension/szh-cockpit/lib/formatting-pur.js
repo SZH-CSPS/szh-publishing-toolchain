@@ -1,11 +1,7 @@
-// La part de lib/formatting.js qui ne référence pas `vscode` : transformations de texte,
-// pose des blocs ::: (.important/.highlight/.question), squelettes de tableau, noms de
-// fichiers sûrs, et la palette du menu contextuel qui les rassemble.
-//
-// Extrait de lib/formatting.js pour que lib/medias.js et lib/panneaux.js puissent la
-// réutiliser sans tirer tout l'hôte avec elle — lib/formatting.js requiert `vscode`, et un
-// module qui vit hors de l'éditeur (lib/medias.js, rejoué seul en test) ne peut pas le
-// charger. lib/formatting.js réexporte tout ce qui suit pour ne casser aucun appelant.
+// Partie de la mise en forme qui ne dépend pas de `vscode` : transformations de texte,
+// blocs ::: , tableaux, notes, liens, noms de fichiers libres et palette du menu
+// contextuel. lib/medias.js et lib/panneaux.js l'utilisent hors de l'éditeur ;
+// lib/formatting.js la réexporte.
 'use strict';
 
 const fs = require('fs');
@@ -19,8 +15,7 @@ const { analyserAusgabe } = require('./yaml');
 function estEnrobe(t, marqueur) {
   if (t.length < marqueur.length * 2) { return false; }
   if (!t.startsWith(marqueur) || !t.endsWith(marqueur)) { return false; }
-  // Ne pas confondre italique (*) et gras (**) : sinon « **x** » se dégraisserait en
-  // « *x* » au lieu de recevoir l'italique.
+  // « **x** » est en gras, pas en italique : l'italique s'y ajoute au lieu d'ôter une étoile.
   if (marqueur === '*' && (t.startsWith('**') || t.endsWith('**'))) { return false; }
   return true;
 }
@@ -52,10 +47,9 @@ function basculerCitation(texte) {
   return lignes.map((l) => '> ' + l).join('\n');
 }
 
-// Attribut d'un bloc de classe : {.classe} ou {.classe data-titre="…"}. L'antislash est
-// échappé avant le guillemet (comme citerValeur() de references.js:176-180), jamais
-// retiré : un titre qui cite un mot ne doit pas perdre ses guillemets en silence — pandoc
-// lit lui-même cette forme d'attribut cité.
+// Attribut d'un bloc de classe : {.classe} ou {.classe data-titre="…"}. Antislash puis
+// guillemets sont échappés, comme dans citerValeur() de lib/references.js ; pandoc lit
+// cette forme et le titre garde ses guillemets.
 function attrBloc(classe, titre) {
   const titrePropre = String(titre || '').trim();
   if (titrePropre === '') { return '{.' + classe + '}'; }
@@ -69,21 +63,17 @@ function enroberBloc(texte, classe, titre) {
 
 // ---- Pose d'un bloc ::: de classe (.important, .highlight, .question) ----
 //
-// enroberBloc fabrique le texte du bloc, mais ne suffit pas à le poser : un « fenced
-// div » pandoc doit commencer en colonne 0 et être séparé de ses voisins par une ligne
-// vide — même exigence que blocReferenceTable —, et réappliquer la commande dans un bloc
-// existant doit mettre sa ligne d'ouverture à jour, pas imbriquer un second bloc que
-// pandoc rendrait comme deux cadres l'un dans l'autre.
+// Un « fenced div » pandoc commence en colonne 0 et est séparé de ses voisins par une
+// ligne vide. Réappliquer la commande dans un bloc existant met à jour sa ligne
+// d'ouverture au lieu d'imbriquer un second bloc.
 
-// Les classes que le panneau d'édition pose, seules que poserBloc a le droit de
-// réécrire. Les autres divs — .szh-tabelle, .szh-saut — portent des données (src=…)
-// qu'une réécriture perdrait : dedans, le nouveau bloc se pose après, jamais à la place.
+// Les classes que poserBloc peut réécrire. Les autres divs (.szh-tabelle, .szh-saut)
+// portent des données (src=…) : le nouveau bloc se pose après eux.
 const CLASSES_BLOCS = ['important', 'highlight', 'question'];
 
-// Le fenced div qui contient les lignes [debut, fin] de la sélection, ou null. Remontée
-// depuis la sélection : une fermeture rencontrée au-dessus (hors ligne du curseur, qui
-// peut être la fermeture elle-même) signifie un bloc déjà clos, donc une sélection à
-// l'extérieur. Un bloc jamais refermé ne compte pas : on ne sait pas où il finit.
+// Le fenced div qui contient les lignes [debut, fin], ou null. En remontant, une
+// fermeture au-dessus de la première ligne signifie que la sélection est hors bloc. Un
+// bloc jamais refermé ne compte pas.
 function blocAutour(lignes, debut, fin) {
   let ouverture = -1;
   for (let i = debut; i >= 0; i--) {
@@ -92,7 +82,6 @@ function blocAutour(lignes, debut, fin) {
   }
   if (ouverture === -1) { return null; }
   const fermeture = fermetureDeDiv(lignes, ouverture);
-  // Sélection débordant sous la fermeture : pas « dans » le bloc, on n'y touche pas.
   if (fermeture === -1 || fin > fermeture) { return null; }
   return { ouverture: ouverture, fermeture: fermeture,
     attrs: RE_DIV_OUVERTURE.exec(lignes[ouverture])[1] };
@@ -101,11 +90,9 @@ function blocAutour(lignes, debut, fin) {
 // poserBloc(lignes, sel, classe, titre) -> { ligneDebut, ligneFin, texte, curseur }
 //
 // `lignes` : les lignes du document ; `sel` : { debutLigne, debutCol, finLigne, finCol }.
-// Rend la plage de lignes entières à remplacer, son nouveau texte, et où poser le
-// curseur (fin de la dernière ligne de contenu du bloc : c'est là qu'on tape, et c'est
-// ce qui fait qu'une seconde frappe retombe dans le bloc et le met à jour au lieu d'en
-// empiler un second). Pur — c'est appliquerBlocClasse (lib/formatting.js) qui traduit en
-// édition vscode.
+// Rend la plage de lignes entières à remplacer, son nouveau texte, et le curseur, posé en
+// fin de la dernière ligne de contenu : une seconde frappe retombe ainsi dans le bloc et
+// le met à jour. appliquerBlocClasse (lib/formatting.js) en fait une édition vscode.
 function poserBloc(lignes, sel, classe, titre) {
   const tab = Array.isArray(lignes) && lignes.length > 0
     ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
@@ -126,25 +113,22 @@ function poserBloc(lignes, sel, classe, titre) {
   let bordHaut = true, bordBas = true;   // le bloc touche-t-il le bord de la plage ?
 
   if (aNous) {
-    // Dans un bloc du panneau : réécrire la ligne d'ouverture — nouvelle classe, nouveau
-    // titre —, garder le contenu tel quel. C'est la sémantique « à jour », pas « en plus ».
+    // Dans un bloc de CLASSES_BLOCS : nouvelle ligne d'ouverture, contenu inchangé.
     morceaux = ['::: ' + attrBloc(classe, titre)]
       .concat(tab.slice(existant.ouverture + 1, existant.fermeture), [':::']);
     fermetureIdx = morceaux.length - 1;
     ligneDebut = existant.ouverture;
     ligneFin = existant.fermeture;
   } else if (existant) {
-    // Dans un div étranger : ni imbriquer, ni le réécrire. Le nouveau bloc, vide, se
-    // pose après sa fermeture ; le texte du div n'en sort pas.
+    // Dans un autre div : le nouveau bloc, vide, se pose après sa fermeture.
     morceaux = [tab[existant.fermeture], ''].concat(enroberBloc('', classe, titre).split('\n'));
     fermetureIdx = morceaux.length - 1;
     ligneDebut = existant.fermeture;
     ligneFin = existant.fermeture;
     bordHaut = false;                    // la fermeture du div étranger reste en tête
   } else {
-    // Insertion : la sélection devient le contenu du bloc. Les restes d'une ligne coupée
-    // sont gardés autour, séparés du bloc par une ligne vide ; un reste fait de blancs
-    // seuls est abandonné, le bloc devant démarrer en colonne 0.
+    // La sélection devient le contenu du bloc. Les restes d'une ligne coupée restent
+    // autour, séparés par une ligne vide ; un reste de blancs seuls est abandonné.
     const avant = tab[dl].slice(0, dc);
     const apres = tab[fl].slice(fc);
     const contenu = dl === fl ? tab[dl].slice(dc, fc)
@@ -160,10 +144,9 @@ function poserBloc(lignes, sel, classe, titre) {
     bordBas = post.length === 0;
   }
 
-  // Lignes vides voisines, quand le bloc touche le bord de la plage : avalées dans la
-  // plage puis réémises — exactement une contre un voisin non vide, aucune contre le
-  // bord du document. C'est ce qui évite autant le bloc collé à un paragraphe que les
-  // deux ou trois lignes vides qu'un aller-retour laisserait s'accumuler.
+  // Les lignes vides voisines sont reprises dans la plage puis réémises : une seule
+  // contre un voisin non vide, aucune contre le bord du document. Ainsi elles ne
+  // s'accumulent pas d'une pose à l'autre.
   if (bordHaut) {
     while (ligneDebut > 0 && tab[ligneDebut - 1].trim() === '') { ligneDebut--; }
     if (ligneDebut > 0) { morceaux.unshift(''); fermetureIdx++; }
@@ -201,15 +184,11 @@ function tableauVierge(colonne) {
   });
 }
 
-// Borne commune aux noms de fichiers « premier libre » : au-delà, mieux vaut un échec net
-// qu'une boucle qui ne rendrait jamais la main (dossier pathologique, appelant qui boucle
-// par erreur sur le même nom).
+// Nombre d'essais avant d'abandonner la recherche d'un nom libre.
 const BORNE_NOM_LIBRE = 1000;
 
-// Premier nom libre dans `dossier`, en partant de `nom`, gardé tel quel : ce qui est ajouté
-// ici, c'est seulement le suffixe qui évite d'écraser un fichier déjà là. Assainir le nom
-// (espaces, accents, que make coupe ou mal lit) est l'affaire de l'appelant, avant : tous
-// ceux qui copient dans media/ passent d'abord par nomImageAssaini (lib/medias.js).
+// Premier nom libre dans `dossier` : `nom`, ou `nom-1`, `nom-2`… L'appelant a déjà
+// assaini le nom (nomImageAssaini, lib/medias.js).
 function nomMediaUnique(dossier, nom) {
   const ext = path.extname(nom);
   const base = path.basename(nom, ext);
@@ -226,9 +205,7 @@ function nomMediaUnique(dossier, nom) {
   return candidat;
 }
 
-// Premier nom libre : table-NN.html, NN sur deux chiffres comme dans
-// pipeline/docx-tables.py. Le premier libre et non le dernier plus un, pour ne pas
-// réécrire un tableau importé après la suppression d'un intermédiaire.
+// Premier nom table-NN.html libre (NN sur deux chiffres, comme pipeline/docx-tables.py).
 function nomTableLibre(dossier) {
   for (let n = 1; n < 1000; n++) {
     const nom = 'table-' + (n < 10 ? '0' + n : String(n)) + '.html';
@@ -239,20 +216,16 @@ function nomTableLibre(dossier) {
   return 'table-999.html';
 }
 
-// Bloc de référence à insérer dans le .md, à la lettre de ce que pose
-// szh-tabelle-reference.lua à l'import et de ce que résout szh-tabelle-inclure.lua. Un
-// « fenced div » pandoc doit commencer en début de ligne et être séparé du paragraphe
-// voisin, d'où les lignes vides ajoutées d'après `avant` et `apres`.
+// Bloc de référence à un tableau, sous la forme que pose szh-tabelle-reference.lua et que
+// lit szh-tabelle-inclure.lua. Une ligne vide le sépare du texte voisin (`avant`, `apres`).
 function blocReferenceTable(nom, avant, apres) {
   const bloc = '::: {.szh-tabelle src="tables/' + nom + '"}\n:::';
   return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
-// Marqueur de saut de page : un « fenced div » vide, pandoc n'offrant pas de balise
-// universelle et `\newpage` ne valant que pour LaTeX, alors que le PDF sort de
-// WeasyPrint. C'est print.css qui lui donne son sens, par `break-after: page`, ce qui le
-// rend inerte en HTML.
+// Saut de page : un fenced div vide .szh-saut, que print.css traduit en saut de page
+// (`\newpage` ne vaut que pour LaTeX). Sans effet en HTML.
 function blocSautPage(avant, apres) {
   const bloc = '::: {.szh-saut}\n:::';
   return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
@@ -262,14 +235,10 @@ function blocSautPage(avant, apres) {
 // insererBlocIsole(lignes, point, bloc) -> { ligneDebut, ligneFin, texte, curseur }
 //
 // Pose un bloc ::: (saut de page, référence de tableau, en-tête FALC, QR) au point
-// d'insertion, isolé par UNE ligne vide de chaque voisin non vide. blocSautPage et
-// blocReferenceTable ne regardaient que la ligne du curseur : posé sur une ligne vide collée
-// à un paragraphe, le bloc s'y collait aussi, et pandoc le lisait comme la suite du
-// paragraphe (constaté par Robin, 30.09.2026). Ici, comme dans poserBloc, les lignes
-// voisines décident : les lignes vides qui touchent le point sont avalées puis réémises,
-// exactement une contre un voisin, aucune contre le bord du document. La ligne du curseur
-// coupée en deux garde ses deux moitiés, chacune séparée du bloc. `curseur` : le début du
-// bloc (sa ligne d'ouverture), pour qui voudrait y placer le curseur. Pur.
+// d'insertion, séparé de chaque voisin non vide par une ligne vide ; sans elle, pandoc
+// lirait le bloc comme la suite du paragraphe. Les lignes vides voisines sont traitées
+// comme dans poserBloc. Une ligne coupée garde ses deux moitiés autour du bloc.
+// `curseur` : la ligne d'ouverture du bloc.
 function insererBlocIsole(lignes, point, bloc) {
   const tab = Array.isArray(lignes) && lignes.length > 0
     ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
@@ -300,20 +269,12 @@ function blocTableSeul(nom) {
 
 // ---- Insérer une note de bas de page ----
 //
-// Forme retenue, décidée le 09.09.2026 : la note en RÉFÉRENCE — [^n] au fil du texte, sa
-// définition [^n]: détachée en fin de document — jamais la note inline ^[…]. Deux raisons.
-// D'abord, c'est la forme que rend pipeline/import-docx.sh : pandoc, appelé vers
-// markdown-simple_tables-multiline_tables-grid_tables, sort TOUJOURS les notes Word en
-// [^n] avec leur définition en fin de document — la rédaction l'a donc déjà sous les yeux
-// dans chaque article importé, et une seconde forme la dérouterait sans raison. Ensuite,
-// une note inline noyée en plein milieu d'une phrase rendrait le paragraphe illisible dans
-// l'éditeur : exactement ce qu'on cherche à épargner à un public non technique en lui
-// donnant un raccourci plutôt que la syntaxe pandoc à retenir par cœur.
+// La note s'écrit en référence : [^n] dans le texte, sa définition [^n]: en fin de
+// document. C'est la forme que produit l'import Word (pipeline/import-docx.sh), et elle
+// garde le paragraphe lisible, contrairement à la note en ligne ^[…].
 
-// Le plus petit entier absent des étiquettes [^n] déjà posées dans le document — l'appel et
-// sa définition s'écrivent tous deux [^n], compter l'un compte l'autre sans double emploi.
-// Les étiquettes non numériques que pandoc sait aussi lire ([^note-a]) ne sont pas des
-// entiers : le \d+ ne les capture pas, elles ne faussent donc jamais le calcul.
+// Le plus petit entier absent des étiquettes [^n] du document. Les étiquettes non
+// numériques ([^note-a]) sont ignorées.
 function premiereNoteLibre(texte) {
   const prises = new Set();
   const re = /\[\^(\d+)\]/g;
@@ -327,19 +288,10 @@ function premiereNoteLibre(texte) {
 // noteBasPage(lignes, sel) -> { ligneDebut, ligneFin, texte, curseur }
 //
 // `lignes` : les lignes du document ; `sel` : { debutLigne, debutCol, finLigne, finCol }.
-// Pose l'appel [^n] à la fin de la sélection — donc au curseur, sur une sélection vide, le
-// cas courant — et ajoute sa définition [^n]:  en fin de document, précédée d'une ligne
-// vide si le document n'en finit pas déjà par une : pandoc l'exige pour reconnaître une
-// définition de note. Rend le curseur en fin de cette ligne de définition, là où la
-// personne va taper le texte de sa note.
-//
-// ⚠ La sélection ne sert qu'à SITUER l'appel, à sa fin : son texte n'est ni déplacé ni
-// supprimé. Amputer le corps du texte pour y loger l'appel serait destructeur et
-// surprenant — tout le contraire de ce qu'un raccourci de mise en forme doit faire.
-//
-// Pure — comme poserBloc, dont elle reprend la forme : aucune dépendance à vscode, un
-// document en mémoire en entrée, une plage de lignes à remplacer en sortie ; c'est
-// fmtNoteBasPage (lib/formatting.js) qui traduit en édition vscode.
+// Pose l'appel [^n] à la fin de la sélection, dont le texte reste en place, et ajoute la
+// définition [^n]: en fin de document, précédée d'une ligne vide (pandoc l'exige). Le
+// curseur est rendu en fin de la définition. fmtNoteBasPage (lib/formatting.js) en fait
+// une édition vscode.
 function noteBasPage(lignes, sel) {
   const tab = Array.isArray(lignes) && lignes.length > 0
     ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
@@ -352,13 +304,10 @@ function noteBasPage(lignes, sel) {
   if (dl === fl && fc < dc) { const t = dc; dc = fc; fc = t; }
 
   const etiquette = '[^' + premiereNoteLibre(tab.join('\n')) + ']';
-  // L'appel se pose à la fin de la sélection ; ce qui la précède sur cette ligne — le texte
-  // sélectionné compris — n'est pas touché.
   const ligneAppel = tab[fl].slice(0, fc) + etiquette + tab[fl].slice(fc);
-  const suite = tab.slice(fl + 1);               // tout ce qui suit l'appel, intact
+  const suite = tab.slice(fl + 1);
 
-  // « Le document finit-il déjà par une ligne vide ? » se lit APRÈS la pose de l'appel :
-  // posé sur ce qui était la dernière ligne, il la rend forcément non vide.
+  // La dernière ligne se lit après la pose de l'appel, qui a pu la rendre non vide.
   const derniereLigne = suite.length > 0 ? suite[suite.length - 1] : ligneAppel;
   const definition = (derniereLigne.trim() === '' ? [] : ['']).concat([etiquette + ': ']);
 
@@ -373,16 +322,15 @@ function noteBasPage(lignes, sel) {
 
 // ---- Insérer un lien ----
 //
-// normaliserUrl(brut) -> adresse prête à poser entre parenthèses, ou null si ce qui a été
-// saisi n'a pas l'air d'une adresse. On tape rarement le schéma : « www.csps.ch » devient
-// https://www.csps.ch, « nom@csps.ch » un mailto:. Une adresse qui a déjà son schéma
-// (https:, mailto:, doi:…) est gardée telle quelle. Les espaces et les parenthèses sont
-// encodés : ils fermeraient la destination du lien Markdown au mauvais endroit.
+// normaliserUrl(brut) -> adresse prête pour un lien Markdown, ou null si la saisie n'est
+// pas une adresse. « www.csps.ch » devient https://www.csps.ch, « nom@csps.ch » un
+// mailto: ; une adresse avec schéma est gardée. Espaces, parenthèses et chevrons sont
+// encodés, car ils fermeraient le lien au mauvais endroit.
 function normaliserUrl(brut) {
   let u = String(brut === undefined || brut === null ? '' : brut).trim();
   if (u === '') { return null; }
   if (/^[a-z][a-z0-9+.-]*:/i.test(u)) {
-    // « https:// » seul, la valeur proposée d'office, n'est pas encore une adresse.
+    // « https:// » seul, la valeur proposée par défaut, n'est pas une adresse.
     if (/^[a-z][a-z0-9+.-]*:\/*$/i.test(u)) { return null; }
   } else if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(u)) {
     u = 'mailto:' + u;
@@ -402,17 +350,13 @@ function lienMarkdown(texte, url) {
   return '[' + t + '](' + url + ')';
 }
 
-// ---- Styles « Livre » : en-tête de chapitre FALC, code QR (docs/ARCHITECTURE-LIVRES.md) ----
+// ---- Livre : en-tête de chapitre FALC et code QR (docs/ARCHITECTURE-LIVRES.md) ----
 //
-// Deux snippets réservés au profil livre (jamais une revue ni une Zeitschrift) : un
-// encadré « cette histoire existe aussi en audio » et un QR cliquable réutilisable. Posés
-// en vscode.SnippetString (tabulations sur les champs) par fmtFalcHeader/fmtQrLink,
-// lib/formatting.js — ce qui suit ne fabrique que leur texte, sans toucher à l'éditeur.
+// Texte des deux snippets du profil livre : l'encadré « cette histoire existe aussi en
+// audio » et le QR cliquable. fmtFalcHeader et fmtQrLink (lib/formatting.js) les posent
+// en vscode.SnippetString.
 
-// Texte par défaut de l'en-tête FALC, dans la langue du LIVRE (buch.yaml `lang`), jamais
-// celle de l'interface. it/en par analogie avec fr/de : aucun livre it/en composé à ce
-// jour, mais le formulaire buch.yaml (media/_numero.js, CHAMPS_LIVRE) accepte déjà les
-// quatre langues.
+// Textes par défaut de l'en-tête FALC, dans les quatre langues qu'accepte buch.yaml.
 const FALC_HEADER_TEXTES = {
   fr: { audio: 'Cette histoire existe aussi en audio.', scan: 'Scannez le code QR.', ecoute: 'Écoutez l’histoire.' },
   de: { audio: 'Diese Geschichte gibt es auch zum Hören.', scan: 'Scannen Sie den QR-Code.', ecoute: 'Hören Sie zu.' },
@@ -420,10 +364,8 @@ const FALC_HEADER_TEXTES = {
   en: { audio: 'This story is also available as audio.', scan: 'Scan the QR code.', ecoute: 'Listen to the story.' }
 };
 
-// La langue du LIVRE — pas celle de l'interface, ni yaml.langueRevue() qui la borne à
-// fr/de/it (LANGUES_META) : buch.yaml accepte aussi 'en', et l'en-tête FALC doit pouvoir
-// s'y écrire. Lecture directe, brute, avec repli sur 'fr' — un buch.yaml illisible ou une
-// langue hors table ne doivent jamais faire échouer l'insertion du snippet.
+// Langue du livre (`lang` de buch.yaml), 'fr' si le fichier est illisible ou la langue
+// inconnue. yaml.langueRevue() ne convient pas : elle écarte 'en'.
 function langueLivre(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(String(racine || ''), 'buch.yaml'), 'utf8')); }
@@ -432,11 +374,9 @@ function langueLivre(racine) {
   return FALC_HEADER_TEXTES[brut] ? brut : 'fr';
 }
 
-// Le corps (SnippetString.value) de l'en-tête FALC : un intitulé et deux étapes numérotées
-// modifiables (${1} à ${3}, par défaut dans la langue du livre), une image avec son texte
-// alternatif (${4}/${5}, alt par défaut dans la langue de l'INTERFACE — altDefaut, fourni
-// par l'appelant), un bloc qr-link (${6}). Pur : aucune ligne vide autour, c'est l'appelant
-// qui les ajoute selon ce qui entoure le point d'insertion (comme blocSautPage ci-dessus).
+// Corps du snippet d'en-tête FALC : un intitulé et deux étapes (${1} à ${3}, dans la
+// langue du livre), une image et son alt (${4}, ${5} ; `altDefaut` est dans la langue de
+// l'interface), un bloc qr-link (${6}). Sans lignes vides autour : l'appelant les ajoute.
 function texteFalcHeader(langue, altDefaut) {
   const t = FALC_HEADER_TEXTES[langue] || FALC_HEADER_TEXTES.fr;
   return [
@@ -455,14 +395,13 @@ function texteFalcHeader(langue, altDefaut) {
   ].join('\n');
 }
 
-// Le corps du QR cliquable seul : tracked/size explicites (les deux réglages qu'on retouche
-// le plus souvent), les autres options (background, color, title — voir
-// docs/ARCHITECTURE-LIVRES.md) s'ajoutent à la main, dites par palette.qrLink.detail.
+// Corps du snippet de QR cliquable, avec les deux réglages les plus courants (tracked,
+// size). Les autres options (background, color, title) sont dans
+// docs/ARCHITECTURE-LIVRES.md et rappelées par palette.qrLink.detail.
 const TEXTE_QR_LINK = '::: {.qr-link tracked=true size=25mm}\n${1:https://}\n:::';
 
-// Groupe « Livre » du panneau d'édition et du clic droit (PALETTE_MEF ci-dessous) : les
-// appelants (lib/panneaux.js, lib/formatting.js) ne le concatènent que pour le profil
-// livre — jamais filtré ici, ce module ignore tout profil.
+// Groupe « Livre » de la palette. lib/panneaux.js et lib/formatting.js ne l'ajoutent que
+// pour le profil livre.
 const PALETTE_MEF_LIVRE = [
   ['--', 'palette.g.livre'],
   ['palette.falcHeader', 'szh.fmt.falcHeader', '', ''],
@@ -471,8 +410,8 @@ const PALETTE_MEF_LIVRE = [
 
 // Palette du menu contextuel, bâtie sur les commandes szh.fmt.*. Format d'une entrée :
 // ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône,
-// cléDétail?] — cléDétail (facultative) nomme un texte T() affiché en second niveau du
-// QuickPickItem (voir itemsDepuisEntrees, lib/panneaux.js et ouvrirMiseEnForme).
+// cléDétail?]. cléDétail, facultative, nomme un texte T() affiché en seconde ligne du
+// QuickPickItem (itemsDepuisEntrees, lib/panneaux.js).
 const PALETTE_MEF = [
   ['--', 'palette.g.style'],
   ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
@@ -496,8 +435,8 @@ const PALETTE_MEF = [
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];
 
-// Le clic droit « Mise en forme » : PALETTE_MEF, plus « Lier une référence » après le lien.
-// Hors de PALETTE_MEF, parce que le panneau Édition la porte déjà dans son groupe Article.
+// Clic droit « Mise en forme » : PALETTE_MEF plus « Lier une référence » après le lien.
+// Cette entrée manque à PALETTE_MEF car le panneau Édition l'a dans son groupe Article.
 const PALETTE_CLIC_DROIT = (() => {
   const p = PALETTE_MEF.slice();
   const i = p.findIndex((e) => e[1] === 'szh.fmt.lien');

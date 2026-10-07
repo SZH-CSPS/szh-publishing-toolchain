@@ -1,40 +1,30 @@
-// Liens profonds « szh:// ». Un tel lien ne porte AUCUN chemin : il nomme un produit et un
-// numéro (par son IDENTIFIANT, jamais son nom de dossier depuis le 23.09.2026), et le
-// lanceur retrouve le dossier en cherchant cet identifiant dans les emplacements connus du
-// poste. C'est ce qui le rend valable d'un poste à l'autre, là où un chemin absolu contient
-// le nom du compte Windows et meurt au premier voyage par OneDrive -- et ce qui le rend
-// valable après un RENOMMAGE ou un ARCHIVAGE du dossier, là où un lien par nom mourait au
-// premier des deux : l'identifiant, lui, ne bouge jamais (posé une fois à la création,
-// jamais recalculé -- new-revue.ps1, new-livre.ps1).
+// Liens profonds « szh:// ». Un lien ne porte pas de chemin : il nomme un produit et
+// l'identifiant d'un numéro, et le lanceur cherche cet identifiant dans les emplacements
+// connus du poste. Le lien reste donc valable d'un poste à l'autre (un chemin absolu
+// contient le compte Windows) et après un renommage ou un archivage du dossier.
 //
-// Deux verbes, à maintenir identiques au parseur de windows/szh-produits.ps1 (Get-SzhLien,
-// $SzhLienMotif / $SzhLienMotifOuvrir) :
+// Deux verbes, identiques au parseur de windows/szh-produits.ps1 (Get-SzhLien,
+// $SzhLienMotif, $SzhLienMotifOuvrir) :
 //
 //     szh://traduction/<produit>/<id>[/<article>]
 //       Collé dans un e-mail par « Envoyer pour traduction » : ouvre le numéro dans
 //       VSCodium, sur le suivi de traduction. produit : « revue » | « zeitschrift ».
 //
 //     szh://ouvrir/<produit>/<id>
-//       Ce que porte le raccourci « Ouvrir la revue.lnk » (« Ouvrir le livre.lnk ») posé à
-//       la racine de chaque numéro : ouvre le dossier, rien de plus. Le livre s'ajoute ici
-//       aux deux revues, parce qu'il porte le même raccourci.
+//       Porté par le raccourci « Ouvrir la revue.lnk » (« Ouvrir le livre.lnk ») à la racine
+//       de chaque numéro : ouvre le dossier. produit : « revue » | « zeitschrift » | « livre ».
 //
-//   id      : la clé `id:` d'ausgabe.yaml / buch.yaml -- 16 caractères [A-Za-z0-9], posée
-//             une fois à la création et jamais recalculée. Résolue par une recherche dans
-//             les numéros/livres EN COURS et ARCHIVÉS du produit (jamais un chemin).
-//   article : slug de l'article (« 03-inklusion »), verbe « traduction » seulement
+//   id      : la clé `id:` d'ausgabe.yaml / buch.yaml, 16 caractères [A-Za-z0-9], posée à
+//             la création (new-revue.ps1, new-livre.ps1) et jamais recalculée. Cherchée
+//             parmi les numéros en cours et archivés du produit.
+//   article : slug de l'article (« 03-inklusion »), verbe « traduction » seulement.
 //
-// Pas de rétrocompatibilité avec un lien portant l'ancien nom de dossier : aucune
-// production n'était en cours au moment du changement.
+// Un lien reçu par e-mail n'est pas fiable : les deux côtés appliquent le même alphabet strict.
 //
-// Un lien reçu par e-mail est une donnée non fiable, d'où l'alphabet strict ci-dessous,
-// appliqué des deux côtés.
-//
-// Le lanceur ne peut pas demander à VSCodium d'ouvrir tel panneau : il dépose une
-// intention à usage unique dans %LOCALAPPDATA%\SZH\intention.json puis ouvre le dossier,
-// et le cockpit la lit à l'activation, vérifie qu'elle vise bien cette revue, la supprime
-// et ouvre le panneau. Elle reste hors du dossier de revue pour ne pas le suivre sur
-// OneDrive.
+// Le lanceur ne peut pas demander à VSCodium d'ouvrir un panneau : il dépose une intention à
+// usage unique dans %LOCALAPPDATA%\SZH\intention.json, puis ouvre le dossier. À l'activation,
+// le cockpit la lit, vérifie qu'elle vise cette revue, la supprime et ouvre le panneau.
+// Elle vit hors du dossier de revue pour ne pas être synchronisée par OneDrive.
 'use strict';
 
 const fs = require('fs');
@@ -45,33 +35,20 @@ const SCHEMA = 'szh';
 const VUE_TRADUCTION = 'traduction';
 const VUE_OUVRIR = 'ouvrir';
 
-// 16 caractères [A-Za-z0-9], ni plus ni moins : la forme exacte de `id:` (ausgabe.yaml,
-// buch.yaml). Aucun séparateur de chemin, aucune lettre de lecteur, aucun « .. » possible
-// dans cet alphabet -- inutile de les refuser à part, comme il fallait le faire pour un nom
-// de dossier.
+// Forme exacte de `id:`. Cet alphabet exclut séparateur de chemin, lettre de lecteur et « .. ».
 const RE_ID = /^[A-Za-z0-9]{16}$/;
 const RE_SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PRODUITS = ['revue', 'zeitschrift'];
-// Le livre ne figure QUE dans le verbe « ouvrir » : il n'a pas de suivi de traduction, donc
-// rien à faire dans « traduction », et l'y admettre ouvrirait une grammaire vers un panneau
-// qui n'existe pas pour lui.
+// Le livre n'a pas de suivi de traduction : il n'est admis que dans le verbe « ouvrir ».
 const PRODUITS_OUVRIR = ['revue', 'zeitschrift', 'livre'];
 
-// ⚠ Ces deux chaînes sont recopiées CARACTÈRE POUR CARACTÈRE de $script:SzhLienMotif et
-// $script:SzhLienMotifOuvrir (windows/szh-produits.ps1). C'est délibérément une copie et non
-// une dérivation : les deux mondes ne partagent aucun fichier. Un banc de test
-// (test/js/raccourcis-portables.test.js) compare les quatre littéraux et fait échouer la
-// suite dès qu'un côté bouge seul — une grammaire qui diverge, c'est un lien qui s'ouvre
-// d'un côté et se refuse de l'autre, sans que personne ne sache lequel a raison.
+// Copies exactes de $script:SzhLienMotif et $script:SzhLienMotifOuvrir
+// (windows/szh-produits.ps1), qui ne partage aucun fichier avec le cockpit.
+// test/js/raccourcis-portables.test.js vérifie que les deux côtés sont identiques.
 const MOTIF_TRADUCTION = '^szh://traduction/(revue|zeitschrift)/([A-Za-z0-9]{16})(?:/([a-z0-9][a-z0-9-]{0,63}))?/?$';
 const MOTIF_OUVRIR = '^szh://ouvrir/(revue|zeitschrift|livre)/([A-Za-z0-9]{16})/?$';
-// L'indicateur « i » n'est pas une facilité : c'est ce qui aligne l'analyse sur PowerShell,
-// dont l'opérateur -match ignore la casse par défaut. Sans lui, « szh://OUVRIR/revue/… »
-// s'ouvrirait sur le poste et se ferait refuser par le cockpit — exactement la divergence
-// que la copie des deux motifs cherche à empêcher. Les alphabets restent bornés de la même
-// façon : rien de ce qui est refusé (séparateur, lettre de lecteur, longueur) ne passe pour
-// autant. La casse D'ORIGINE est rendue telle quelle, des deux côtés ($Matches[n] côté
-// PowerShell), et c'est le résolveur qui la normalise.
+// « i » aligne l'analyse sur -match de PowerShell, qui ignore la casse. Les valeurs sont
+// rendues dans leur casse d'origine, des deux côtés ; le résolveur la normalise.
 const RE_TRADUCTION = new RegExp(MOTIF_TRADUCTION, 'i');
 const RE_OUVRIR = new RegExp(MOTIF_OUVRIR, 'i');
 
@@ -85,8 +62,7 @@ function slugLienValide(slug) {
   return RE_SLUG.test(v) && v.indexOf('--') === -1;
 }
 
-// Chaîne vide si un élément ne passe pas les gardes : mieux vaut pas de lien qu'un lien
-// qui ouvrira autre chose. `slug` est facultatif, et vise alors tout le numéro.
+// Chaîne vide si un élément est invalide. Sans `slug`, le lien vise tout le numéro.
 function construireLienTraduction(produit, id, slug) {
   const p = String(produit === undefined || produit === null ? '' : produit);
   if (PRODUITS.indexOf(p) === -1) { return ''; }
@@ -98,9 +74,7 @@ function construireLienTraduction(produit, id, slug) {
   return base + '/' + s;
 }
 
-// Le lien que porte le raccourci posé à la racine d'un numéro. Même prudence que ci-dessus :
-// chaîne vide si le produit est inconnu ou l'id hors alphabet — mieux vaut pas de raccourci
-// qu'un raccourci qui ouvre autre chose.
+// Lien du raccourci posé à la racine d'un numéro ; chaîne vide si le produit ou l'id est invalide.
 function construireLienOuvrir(produit, id) {
   const p = String(produit === undefined || produit === null ? '' : produit);
   if (PRODUITS_OUVRIR.indexOf(p) === -1) { return ''; }
@@ -108,11 +82,9 @@ function construireLienOuvrir(produit, id) {
   return SCHEMA + '://' + VUE_OUVRIR + '/' + p + '/' + id;
 }
 
-// Jumeau exact de Get-SzhLien (windows/szh-produits.ps1) : -> { vue, produit, id, article },
-// ou null si la grammaire n'est pas respectée. Le nettoyage d'entrée reproduit le sien dans
-// le même ordre — le gestionnaire de protocole de Windows peut ajouter des espaces, un « / »
-// final ou un caractère nul. L'alphabet de l'id (16 alnum) exclut par construction tout
-// séparateur et tout « .. » : inutile de les refuser à part.
+// Même analyse que Get-SzhLien (windows/szh-produits.ps1) : -> { vue, produit, id, article },
+// ou null. Le nettoyage d'entrée suit le même ordre : le gestionnaire de protocole de Windows
+// peut ajouter des espaces, un « / » final ou un caractère nul.
 function analyserLien(lien) {
   if (lien === undefined || lien === null || lien === '') { return null; }
   const net = String(lien).trim().replace(/^\u0000+/, '').replace(/\u0000+$/, '');
@@ -127,21 +99,20 @@ function analyserLien(lien) {
   return null;
 }
 
-// ⚠ Même chemin que Set-SzhIntention dans windows/szh-common.ps1.
+// Même chemin que Set-SzhIntention (windows/szh-common.ps1).
 const DOSSIER_INTENTION = path.join(racineUtilisateur(), 'SZH');
 const FICHIER_INTENTION = path.join(DOSSIER_INTENTION, 'intention.json');
 const PEREMPTION_MS = 5 * 60 * 1000;
 
-// Lit l'intention si elle vise `racine` et n'est pas périmée, puis la supprime ; renvoie
-// { vue, article } ou null, sans jamais lever. Une intention qui vise une autre revue est
-// laissée en place pour la bonne fenêtre ; périmée ou illisible, elle part.
+// Lit l'intention si elle vise `racine` et n'est pas périmée, puis la supprime ; rend
+// { vue, article } ou null, sans lever. Une intention pour une autre revue reste en place
+// pour sa fenêtre ; périmée ou illisible, elle est supprimée.
 function consommerIntention(racine) {
   let brut;
   try { brut = fs.readFileSync(FICHIER_INTENTION, 'utf8'); }
-  catch (e) { return null; }                       // absente : le cas normal
+  catch (e) { return null; }                       // absente : cas normal
   let intention = null;
-  // BOM retiré avant l'analyse : PowerShell peut en poser un et JSON.parse le refuse,
-  // l'intention passerait alors pour illisible.
+  // PowerShell peut poser un BOM, que JSON.parse refuse.
   try { intention = JSON.parse(String(brut).replace(/^﻿/, '')); } catch (e) { intention = null; }
   const pose = intention && Number(intention.pose);
   const perimee = !intention || !pose || !isFinite(pose) || (Date.now() - pose) > PEREMPTION_MS;

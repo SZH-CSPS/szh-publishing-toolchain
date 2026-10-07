@@ -1,96 +1,58 @@
-// Ce que la chaîne de compilation a relevé, relu dans son journal.
+// Lit le journal de compilation (.szh-journal.log, écrit par `tee` dans
+// vscodium-user/tasks.json) et le traduit en constats que le cockpit affiche sur des cartes.
 //
-// La chaîne détecte beaucoup — appel de citation sans référence, tableau sans en-tête,
-// titre vide dans la langue de l'article, PDF non conforme PDF/UA, image manquante — et
-// tout partait sur la sortie d'erreur d'un terminal que rien n'ouvre. Le journal est
-// désormais écrit dans un fichier (voir vscodium-user/tasks.json, `tee`), et ce module le
-// traduit en constats que l'interface pose sur des cartes.
+// Règles du module :
+//  1. Une seule langue à l'écran, celle du cockpit. Le pipeline écrit ses deux langues sur
+//     la même ligne, l'allemande introduite par « [de] » ; on garde la moitié demandée.
+//  2. C'est le code d'une ligne qui décide, pas sa phrase. Seule la prose du Makefile, de
+//     pandoc et de WeasyPrint est encore reconnue, dans des fonctions de repli signalées.
+//  3. Une ligne non reconnue est jetée, sauf si elle porte « ⚠ » ou « ✗ » sous un préfixe
+//     maison : un nouvel avertissement du pipeline s'affiche sans règle ici, le bruit des
+//     outils (propriété CSS ignorée, chemin de venv) ne s'affiche pas.
+//  4. Trois tons : `danger`, la compilation s'est arrêtée ou le document n'est pas
+//     publiable ; `attention`, il faut regarder avant de publier ; `info`, un chiffre pour
+//     situer. Un avertissement non bloquant ne s'affiche pas comme un échec.
 //
-// Trois règles tiennent tout le module :
+// En bas de fichier, constatsReimport() traduit la ligne JSON du réimport d'un article avec
+// les mêmes tables de tons et de libellés.
 //
-//  1. Une seule langue à l'écran, celle du cockpit. Le pipeline, faute de mécanisme de
-//     locale en shell et en Python, met ses deux langues sur la même ligne (l'allemande
-//     introduite par « [de] ») ; quelques lignes anciennes n'en portent qu'une. Quand les
-//     deux moitiés existent, on garde celle qu'on demande ; quand une seule existe, on
-//     passe par une clé d'i18n et la prose du pipeline devient un repli.
-//
-//  1 bis. Et c'est un code, jamais une phrase, qui décide de tout. Ce module a longtemps
-//     reconnu la prose de szh-maquette.lua et de szh-citations.lua, dans les deux langues,
-//     pour pouvoir la redire : une reformulation innocente cassait la remontée, en
-//     silence. Les filtres écrivent désormais le format à codes, et la seule prose encore
-//     reconnue ici est celle d'outils qui ne sont pas de la maison (pandoc, WeasyPrint) ou
-//     du Makefile — un repli, nommé comme tel à chaque endroit où il subsiste.
-//
-//  2. Le silence par défaut. Une ligne non reconnue est jetée, sauf si elle porte « ⚠ »
-//     ou « ✗ » sous un préfixe de la maison : un nouvel avertissement du pipeline
-//     apparaîtra donc à l'écran même sans règle ici, mais le bruit d'outillage
-//     (« Ignored `overflow-x: auto`, unknown property ») n'y arrive jamais. Un message qui
-//     nomme une propriété CSS ou un chemin de venv n'est pas un message pour une
-//     rédactrice.
-//
-//  3. Trois tons, et ils ne mentent pas. `danger` = la compilation s'est arrêtée ou le
-//     document produit n'est pas publiable ; `attention` = c'est sorti, mais il faut
-//     regarder avant de publier ; `info` = un chiffre pour situer. Un avertissement non
-//     bloquant ne doit jamais se présenter comme un échec — c'est exactement le piège que
-//     lireRapportImport() a longtemps tendu en classant « danger » toute ligne portant ⚠.
-//
-// Une exception, en bas de fichier : le réimport d'un article corrigé est le seul maillon
-// que le cockpit lance lui-même, et il répond par une ligne JSON. constatsReimport() la
-// traduit en constats de la même forme, avec les mêmes tables de tons et de libellés —
-// c'est tout l'intérêt qu'elle vive ici.
-//
-// Un constat vaut :
-//   { source, code, ton, cle, args, slug, brut }
-// où `cle` est une clé d'i18n (vide si seule la prose du pipeline est disponible), `args`
-// ses substitutions, `slug` l'article concerné quand on le sait, et `brut` la phrase du
-// pipeline dans la langue demandée — repli d'affichage, et rien de plus.
+// Un constat vaut { source, code, ton, cle, args, slug, brut } : `cle` est une clé d'i18n
+// (vide si seule la phrase du pipeline existe), `args` ses substitutions, `slug` l'article
+// concerné s'il est connu, `brut` la phrase du pipeline dans la langue demandée, en repli.
 'use strict';
 
 const { TL } = require('./i18n');
 const { gravite } = require('./constats');
 
-// Séparateur des clés de dédoublonnage : un caractère qu'aucune phrase du journal ne
-// contient, pour que deux constats voisins ne se confondent pas.
+// Séparateur des clés de dédoublonnage : un caractère absent de toute phrase du journal.
 const SEP = '\u0001';
 
 // ---- Le format à codes ---------------------------------------------------------
 //
 //   [<source>-<ton>] <code> | <champ> | … | <phrase fr> | [de] <Satz de>
 //
-// C'est le seul format que le pipeline pose exprès pour cette interface, et il porte tout
-// ce dont elle a besoin : la source (la famille de contrôle, telle que la vue la nomme),
-// le ton, un code stable d'où vient la clé d'i18n, des champs nommés d'où viennent ses
-// substitutions, et les deux langues — celle qu'on n'affiche pas est jetée ici.
-//
-// Trois tons, trois préfixes, une seule grammaire. « blocage » dit que la compilation
-// s'est arrêtée : le filtre qui l'écrit sort ensuite sur un code non nul. Rien ici n'a à
-// le deviner d'une phrase.
+// La source est la famille de contrôle, le code donne la clé d'i18n, les champs nommés
+// donnent ses substitutions. « blocage » signale que la compilation s'est arrêtée : le
+// filtre qui l'écrit sort ensuite en erreur.
 const TONS_PREFIXE = { blocage: 'danger', avertissement: 'attention', info: 'info' };
 
-// La famille d'une ligne, ou null si le préfixe n'est pas de cette forme. Une source neuve
-// arrive donc à l'écran sans qu'on soit repassé ici : elle n'aura ni clé d'i18n ni
-// substitutions, et montrera la phrase du pipeline dans la bonne langue.
+// La source et le ton d'un préfixe, ou null s'il n'a pas cette forme. Une source inconnue
+// d'ici s'affiche quand même, avec la phrase du pipeline.
 function familleCode(prefixe) {
   const m = prefixe.match(/^([a-z]+)-(blocage|avertissement|info)$/);
   if (!m) { return null; }
   return { source: m[1], ton: TONS_PREFIXE[m[2]] };
 }
 
-// Ton par code, là où le préfixe ne suffit pas. Une seule source en a besoin, et elle est
-// particulière : l'import écrit tout sous « [import-avertissement] » parce qu'il ne
-// s'arrête jamais — il convertit ce qu'il peut et rend compte à la fin — et quelques-uns
-// de ses codes sont pourtant des échecs. Ailleurs, le préfixe dit le ton et cette table
-// n'a rien à dire.
-// Un code absent d'ici prend « attention », le ton du préfixe. Les codes du réimport y
-// figurent tous, y compris ceux qui prennent ce défaut : c'est la seule façon de relire la
-// règle des cinq issues d'un seul regard.
+// Ton par code pour l'import, qui écrit tout sous « [import-avertissement] » (il convertit
+// ce qu'il peut et rend compte à la fin) alors que certains de ses codes sont des échecs.
+// Un code absent prend le ton du préfixe. Les codes du réimport sont tous listés, même
+// ceux qui valent le défaut, pour que la règle se lise d'un bloc.
 const TONS_IMPORT = {
   'tableau-sans-entete': 'attention',
   'langue-deduite': 'attention',
   'sous-titre-deduit': 'attention',
-  // Rien n'a été créé, mais l'import se termine en code 0 : le Word attend, l'article
-  // publié est encore l'ancien. Ce n'est pas un échec, et le dire comme tel ferait croire
-  // à un numéro cassé.
+  // Rien n'a été créé et l'article publié reste l'ancien : ce n'est pas un échec.
   'word-redepose': 'attention',
   'origine-inconnue': 'attention',
   'titre-manquant': 'attention',
@@ -101,21 +63,18 @@ const TONS_IMPORT = {
   'tableau-texte-perdu': 'attention',
   // ---- Le lecteur du gabarit « Pronto » (pipeline/pronto-lire.py) ------------------
   //
-  // Branché sur la chaîne d'import le 22.09.2026. Ce lecteur LIT une structure imposée par
-  // un gabarit, là où docx-meta.py DEVINE sur des Word hérités : il n'a donc pas le droit de
-  // deviner, et ses codes se rangent en trois familles, listées ici d'un bloc parce que c'est
-  // la règle qui se relit, pas le code isolé.
+  // Ce lecteur lit une structure imposée par le gabarit et ne devine pas (contrairement à
+  // docx-meta.py). Ses codes se rangent en trois familles.
   //
-  //   ROUGE — une clé PRÉSENTE (valeur non vide) qu'il n'a pas su ranger. L'import est
-  //   REFUSÉ en entier : ni fiche, ni article, le Word reste en attente. C'est la seule
-  //   façon de ne pas perdre en silence ce que cette clé portait.
+  //   Rouge : une clé non vide qu'il n'a pas su ranger. L'import est refusé en entier (ni
+  //   fiche ni article, le Word reste en attente), pour ne pas perdre ce qu'elle portait.
   'etiquette-metadonnees-inconnue': 'danger',
   'auteur-etiquette-inconnue': 'danger',
   'auteur-champ-hors-gabarit': 'danger',
   'metadonnees-champ-hors-gabarit': 'danger',
   'bloc-etiquette-inconnue': 'danger',
   'cle-ambigue': 'danger',
-  //   AMBRE — l'article est importé, mais quelque chose demande un coup d'œil dans le Word.
+  //   Ambre : l'article est importé, mais un point du Word est à vérifier.
   'cle-approximee': 'attention',
   'type-article-non-reconnu': 'attention',
   'structure-inattendue': 'attention',
@@ -124,74 +83,57 @@ const TONS_IMPORT = {
   'bloc-cles-sans-contenu': 'attention',
   'bloc-mal-forme': 'attention',
   'biblio-tableau-apres-titre': 'attention',
-  //   INFO — un constat, aucun geste. Un champ du gabarit laissé vide, deux blocs que la
-  //   conversion a collés et que le lecteur a RÉPARÉS, un champ retiré du gabarit qui traîne
-  //   encore dans un vieux document : rien n'est perdu et il n'y a rien à faire tout de suite.
+  //   Info : rien n'est perdu, rien à faire (champ laissé vide, blocs collés que le lecteur
+  //   a réparés, champ retiré du gabarit dans un ancien document).
   'cle-attendue-absente': 'info',
   'blocs-colles': 'info',
   'langue-du-document-ignoree': 'info',
   // ---- Le réimport d'un article corrigé -----------------------------------------
   //
-  // Ses codes sont listés en entier, ton par ton, même quand c'est « attention » : c'est
-  // ici que se lit la règle des cinq issues, et elle ne se lit que d'un bloc.
-  //
-  //   Refusé — rien n'a été touché, et il y a un geste à faire. Jamais « danger » : peindre
-  //   en rouge un réimport qui n'a rien remplacé ferait croire à un numéro cassé.
+  //   Refusé : rien n'a été touché, il y a une action à faire. En « attention » : un rouge
+  //   ferait croire à un numéro cassé.
   'reimport-sans-article': 'attention',
   'reimport-sans-word': 'attention',
   'reimport-fiche-sans-source': 'attention',
   'reimport-plusieurs-articles': 'attention',
   'annuler-sans-etat': 'attention',
-  //   Échoué — la conversion ou le disque a lâché ; l'article est intact.
+  //   Échoué : la conversion ou le disque a lâché ; l'article est intact.
   'reimport-echec': 'danger',
   'reimport-panne': 'danger',
-  //   Interrompu à la main : rien n'a été remplacé à moitié. Ce n'est pas une panne.
+  //   Interrompu à la main : rien n'a été remplacé à moitié.
   'reimport-interrompu': 'attention',
-  //   Réussi — ce que le remplacement a coûté, et où retrouver ce qu'il a déplacé.
+  //   Réussi : ce que le remplacement a coûté, et où retrouver ce qu'il a déplacé.
   'fiche-du-word-differente': 'attention',
   'tableau-conflit': 'attention',
   'tableaux-origine-inconnue': 'attention',
   'image-non-reimportee': 'attention',
   'corps-retravaille': 'attention',
-  //   La bibliographie détachée, sur le même modèle que les tableaux. Une seule des trois
-  //   demande un geste : le conflit, où deux versions existent et où l'une doit être
-  //   recopiée dans l'autre. Les deux autres constatent — la liste est repartie dans le
-  //   texte, ou l'on ne peut pas savoir d'où venait celle d'ici — et un constat peint en
-  //   orange se prendrait pour un défaut.
+  //   Bibliographie détachée : seul le conflit (deux versions, l'une à recopier dans
+  //   l'autre) demande une action ; les deux autres sont de simples informations.
   'biblio-conflit': 'attention',
   'biblio-retiree': 'info',
   'biblio-origine-inconnue': 'info',
-  //   Une reprise réussie n'a rien à faire faire : elle se dit, et c'est tout.
   'reimport-reprise': 'info',
-  //   ... sauf quand le dossier n'a pas pu être remis en place : l'article manque au numéro.
+  //   Le dossier n'a pas pu être remis en place : l'article manque au numéro.
   'reimport-reprise-impossible': 'danger'
 };
 
-// Un code absent de la table ci-dessus prend le ton de son préfixe, et sa phrase vient du
-// pipeline, qui l'écrit dans les deux langues. Un code neuf arrive donc à l'écran, dans la
-// bonne langue et sans se faire prendre pour un échec, avant même qu'on soit repassé ici.
-
-// Clé d'i18n par code, quand la maison écrit mieux que le pipeline. Un code absent d'ici
-// garde la phrase du pipeline, dans la langue demandée.
+// Clé d'i18n par code, quand le cockpit a sa propre phrase. Un code absent garde la phrase
+// du pipeline, dans la langue demandée.
 const CLES_IMPORT = {
   'tableau-sans-entete': 'ctl.import.tableau-sans-entete',
   'langue-deduite': 'ctl.import.langue-deduite',
   'sous-titre-deduit': 'ctl.import.sous-titre-deduit',
   'word-redepose': 'ctl.import.word-redepose',
   'origine-inconnue': 'ctl.import.origine-inconnue',
-  // La bibliographie détachée du corps de l'article, à l'import (szh-biblio-detacher.lua).
-  // Ses quatre codes passent par le chemin générique — préfixe « [import-<ton>] », sans
-  // règle nommée ici — et arrivaient donc à l'écran avec la prose du filtre, en allemand
-  // sur un poste allemand et sous un triangle d'avertissement pour le cas NOMINAL. Ils ont
-  // désormais leur phrase, et leur ligne dans lib/constats.js décide de leur couleur.
+  // Bibliographie détachée à l'import (szh-biblio-detacher.lua). Leur couleur est décidée
+  // dans lib/constats.js.
   'biblio-detachee': 'ctl.import.biblio-detachee',
   'biblio-incomplete': 'ctl.import.biblio-incomplete',
   'biblio-bornes-perdues': 'ctl.import.biblio-bornes-perdues',
   'biblio-fichier-refuse': 'ctl.import.biblio-fichier-refuse',
-  // Le lecteur du gabarit « Pronto ». Ses phrases à lui sont longues et détaillées (elles
-  // doivent tenir seules dans un terminal) ; celles-ci sont plus courtes, et disent le geste
-  // plutôt que le mécanisme. Le lecteur nomme déjà l'étiquette fautive dans ses champs — c'est
-  // elle, et rien d'autre, qui est reprise en substitution.
+  // Le lecteur du gabarit « Pronto ». Ses phrases, faites pour un terminal, sont longues ;
+  // celles-ci disent plutôt quoi faire, et reprennent l'étiquette fautive en substitution.
   'etiquette-metadonnees-inconnue': 'ctl.import.pronto-meta-inconnue',
   'auteur-etiquette-inconnue': 'ctl.import.pronto-auteur-inconnue',
   'auteur-champ-hors-gabarit': 'ctl.import.pronto-champ-hors-gabarit',
@@ -209,9 +151,8 @@ const CLES_IMPORT = {
   'blocs-colles': 'ctl.import.pronto-blocs-colles',
   'biblio-tableau-apres-titre': 'ctl.import.pronto-biblio-tableau',
   'langue-du-document-ignoree': 'ctl.import.pronto-langue-ignoree',
-  // Le réimport. Une seule table pour les deux chemins qui mènent ces codes à l'écran —
-  // le journal d'import relu ligne à ligne, et la ligne JSON que le cockpit reçoit quand
-  // il lance le réimport lui-même (constatsReimport ci-dessous).
+  // Le réimport. Table partagée entre le journal d'import et la ligne JSON lue par
+  // constatsReimport().
   'reimport-sans-article': 'ctl.reimport.sans-article',
   'reimport-sans-word': 'ctl.reimport.sans-word',
   'reimport-fiche-sans-source': 'ctl.reimport.fiche-sans-source',
@@ -232,8 +173,7 @@ const CLES_IMPORT = {
   'reimport-reprise-impossible': 'ctl.reimport.reprise-impossible'
 };
 
-// « meta » : szh-maquette.lua, les métadonnées et la langue de l'article. Ses cinq cas ont
-// tous leur phrase ici — c'est la maison qui parle, le filtre ne fournit qu'un repli.
+// « meta » : szh-maquette.lua, les métadonnées et la langue de l'article.
 const CLES_META = {
   'champ-vide': 'ctl.meta.champvide',
   'marque-champ': 'ctl.meta.marque.champ',
@@ -242,8 +182,8 @@ const CLES_META = {
   'langue-inconnue': 'ctl.meta.langueinconnue'
 };
 
-// « citations » : szh-citations.lua. Le corpus historique donne ~27 % d'appels non liés,
-// « appel-sans-reference » est donc le message le plus vu de toute la chaîne.
+// « citations » : szh-citations.lua. « appel-sans-reference » est le message le plus
+// fréquent de la chaîne.
 const CLES_CITATIONS = {
   'appel-sans-reference': 'ctl.cit.sansref',
   'appel-ambigu': 'ctl.cit.ambigu',
@@ -253,46 +193,41 @@ const CLES_CITATIONS = {
   'bilan': 'ctl.cit.bilan'
 };
 
-// « livre » : pipeline/livre-assembler.py (la pièce liminaire manquante arrête
-// l'assemblage) et pipeline/profils/livre.mk (verifie-livre — un chapitre écarté ou
-// introuvable ne bloque pas, il se corrige avant la prochaine compilation). Les deux
-// avertissements du Makefile nomment leur unité par le champ « chapitre », jamais
-// « article » — voir ARGS et lireConstatCode, qui l'accepte comme équivalent.
+// « livre » : pipeline/livre-assembler.py (une pièce liminaire manquante arrête
+// l'assemblage) et la cible verifie-livre de pipeline/profils/livre.mk (un chapitre écarté
+// ou introuvable ne bloque pas). Ces lignes nomment leur unité par le champ « chapitre »,
+// que lireConstatCode() accepte à la place d'« article ».
 const CLES_LIVRE = {
   'liminaire-introuvable': 'ctl.livre.liminaireintrouvable',
   'chapitre-ecarte': 'ctl.livre.chapitreecarte',
   'chapitre-introuvable': 'ctl.livre.chapitreintrouvable'
 };
 
-// « numerotation » : szh-numerotation.lua, l'unique code émis à ce jour signale une image
-// sans texte alternatif ET sans légende — le seul cas rouge de l'encadré « lecteur d'écran »
-// de l'aperçu (szh-apercu-lecteur-ecran.lua) et de imagesSansAlternative() (lib/references.js).
+// « numerotation » : szh-numerotation.lua signale une image sans texte alternatif ni
+// légende, comme l'encadré « lecteur d'écran » de l'aperçu et imagesSansAlternative()
+// (lib/references.js).
 const CLES_NUMEROTATION = { 'figure-sans-alt': 'ctl.figure.sansalt' };
 
-// « rendu » au format à codes : szh-image-introuvable.lua, qui remplace l'image absente par
-// un cadre. Même code et même phrase que les deux replis pandoc et WeasyPrint de lireRendu().
+// « rendu » : szh-image-introuvable.lua, qui remplace l'image absente par un cadre. Même
+// code et même phrase que les replis pandoc et WeasyPrint de lireRendu().
 const CLES_RENDU = { 'image-manquante': 'ctl.image.manquante' };
 
 const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS, livre: CLES_LIVRE,
   numerotation: CLES_NUMEROTATION, rendu: CLES_RENDU };
 const TONS = { import: TONS_IMPORT };
 
-// Les substitutions de la phrase de la maison, par « source/code ». Elles se prennent dans
-// les champs nommés de la ligne, jamais dans leur position : le pipeline peut en ajouter
-// un sans décaler les autres. Un code sans entrée ici n'a pas de substitution — ce qui est
-// le cas de tous ceux dont la phrase reste celle du pipeline.
+// Substitutions de la phrase du cockpit, par « source/code ». Elles se prennent par nom de
+// champ et non par position : le pipeline peut ajouter un champ sans décaler les autres.
 const ARGS = {
   'import/tableau-sans-entete': (ch) => [ch('tableau')],
   'import/langue-deduite': (ch, l) => [nomLangue(ch('langue'), l)],
   'import/sous-titre-deduit': (ch) => [ch('soustitre')],
   'import/word-redepose': (ch) => [ch('fichier')],
   'import/origine-inconnue': (ch) => [ch('fichier')],
-  // Le seul des quatre codes de bibliographie qui ait un nombre à dire : combien de
-  // paragraphes sont restés dans le texte. Les trois autres se suffisent.
+  // Nombre de paragraphes restés dans le texte.
   'import/biblio-incomplete': (ch) => [ch('paragraphes')],
-  // Le lecteur du gabarit « Pronto ». Chaque phrase nomme CE qui a bloqué ou surpris —
-  // l'étiquette telle qu'elle est tapée dans le Word, le numéro du tableau, la légende du
-  // bloc : sans ça, on renverrait la personne chercher dans son document sans lui dire quoi.
+  // Le lecteur du gabarit « Pronto » : chaque phrase nomme ce qu'il faut retrouver dans le
+  // Word (étiquette telle que tapée, numéro du tableau, légende du bloc).
   'import/etiquette-metadonnees-inconnue': (ch) => [ch('etiquette')],
   'import/auteur-etiquette-inconnue': (ch) => [ch('ligne')],
   'import/auteur-champ-hors-gabarit': (ch) => [ch('champ')],
@@ -312,8 +247,7 @@ const ARGS = {
   'meta/champ-vide': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-champ': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],
   'meta/marque-motcle': (ch, l) => [ch('motcle'), nomLangue(ch('langue'), l)],
-  // La langue est inconnue, justement : son jeton se cite tel quel, il n'a pas de nom à
-  // traduire. Même champ que « langue-deduite », traitement inverse.
+  // Langue inconnue : son code se cite tel quel, il n'a pas de nom à traduire.
   'meta/langue-inconnue': (ch) => [ch('langue')],
   'citations/appel-sans-reference': (ch) => [ch('appel')],
   'citations/appel-ambigu': (ch) => [ch('appel')],
@@ -325,32 +259,25 @@ const ARGS = {
   'livre/liminaire-introuvable': (ch) => [ch('pièce')],
   'livre/chapitre-ecarte': (ch) => [ch('chapitre')],
   'livre/chapitre-introuvable': (ch) => [ch('chapitre')],
-  // Substitution PAR NOM de champ (« image « … » »), comme partout ailleurs ici : nomFichier()
-  // retire le chemin, un chemin n'aidant personne à retrouver une image dans un formulaire.
   'numerotation/figure-sans-alt': (ch) => [nomFichier(ch('image'))],
   'rendu/image-manquante': (ch) => [nomFichier(ch('image'))]
 };
 
-// Préfixes de la maison qui n'ont pas (encore) de format à codes : le Makefile, les
-// journaux d'import, szh-niveaux.lua. S'y ajoutent « citations » et « szh », la prose que
-// les deux filtres écrivaient avant les codes : un numéro rouvert avec un journal d'hier
-// en porte, et mieux vaut le montrer brut que se taire. Une ligne qui ne porte aucun de
-// ces préfixes n'est regardée que par les règles nommées (WeasyPrint, pandoc) ; tout le
-// reste est du bruit d'outillage.
+// Préfixes maison sans format à codes : le Makefile, les journaux d'import, szh-niveaux.lua.
+// « citations » et « szh » couvrent les anciens journaux, encore présents dans des numéros
+// rouverts : leurs lignes s'affichent brutes. Une ligne sans aucun de ces préfixes n'est lue
+// que par les règles pandoc et WeasyPrint de lireRendu().
 const PREFIXES = ['citations', 'szh', 'pipeline', 'pdf-ua', 'niveaux', 'import',
                   'docx-tables'];
 
-// Nom lisible d'un champ de fiche et d'une langue : les mêmes libellés que les
-// formulaires, pas les clés YAML.
+// Nom lisible d'un champ de fiche ou d'une langue, avec les libellés des formulaires.
 function nomChamp(cle, langue) {
   const connus = { title: 'trad.champ.title', subtitle: 'trad.champ.subtitle', resume: 'trad.champ.resume' };
   return connus[cle] ? TL(langue, connus[cle]) : cle;
 }
 
-// Le nom de fichier seul : les outils nomment l'image par son chemin, parfois par une URL
-// file://, et un chemin n'aide personne à retrouver une image dans un formulaire.
-// ⚠ Les deux séparateurs, et la contre-oblique doublée : un littéral à contre-oblique
-//   simple s'effondrerait en silence.
+// Le nom de fichier seul, sans chemin ni URL file:// : c'est ainsi qu'on retrouve l'image
+// dans un formulaire. La regex accepte les deux séparateurs.
 function nomFichier(chemin) {
   return String(chemin).replace(/[?#].*$/, '').replace(/^.*[/\\]/, '');
 }
@@ -362,21 +289,17 @@ function nomLangue(code, langue) {
 
 // ---- Lecture ligne à ligne -------------------------------------------------------
 
-// Le préfixe « [xxx] » d'une ligne, et ce qui reste. La moitié allemande d'une ligne
-// bilingue porte « [xxx] [de] » : elle est reconnue ici pour être gardée ou jetée selon la
-// langue demandée.
+// Le préfixe « [xxx] » d'une ligne et le reste. La moitié allemande d'une ligne bilingue
+// porte « [xxx] [de] ».
 function decouper(ligne) {
   const m = ligne.match(/^\[([a-z-]+)\]\s?(\[de\]\s?)?(.*)$/);
   if (!m) { return null; }
   return { prefixe: m[1], allemand: !!m[2], reste: m[3] };
 }
 
-// ⚠ Repli sur la prose — « [pipeline] », les lignes du Makefile. Le shell n'a pas de
-// table de codes, et ces messages sont écrits en clair dans les recettes ; on reconnaît
-// donc leur phrase, et reformuler l'une d'elles coupe la remontée. Le jour où le Makefile
-// passe au format à codes ([pipeline-blocage] …), cette fonction disparaît. Certaines de
-// ses lignes portent leur moitié allemande, d'autres non ; on passe par une clé d'i18n
-// dans les deux cas, la phrase de la maison disant la même chose en mieux.
+// Repli sur la prose : « [pipeline] », les messages écrits en clair dans les recettes du
+// Makefile. Reformuler l'un d'eux dans le Makefile empêche de le reconnaître ici. Chaque
+// phrase reconnue mène à une clé d'i18n.
 function lirePipeline(reste) {
   let m = reste.match(/^⚠ L'article «\s*(.+?)\s*» n'a pas de titre/);
   if (m) {
@@ -409,9 +332,8 @@ function lirePipeline(reste) {
     return { source: 'pipeline', code: 'profil-rien', ton: 'info', slug: '',
              cle: 'ctl.profil.rien', args: [], champs: {} };
   }
-  // La prose a dérivé (Makefile:242, cible profil-book-sans-fichier) : la regex suit
-  // désormais celle-là, mot pour mot — sans quoi ce constat ne peut plus jamais apparaître
-  // (revue F03, 22.09.2026 ; test/js/contrats.test.js le tient depuis).
+  // Phrase de la cible profil-book-sans-fichier du Makefile, mot pour mot
+  // (test/js/contrats.test.js vérifie la concordance).
   if (/^Ce dossier déclare « profil: book » mais n'a pas de buch\.yaml\./.test(reste)) {
     return { source: 'pipeline', code: 'profil-differe', ton: 'danger', slug: '',
              cle: 'ctl.profil.differe', args: [], champs: {} };
@@ -428,10 +350,8 @@ function lirePipeline(reste) {
   return null;
 }
 
-// ⚠ Repli sur la prose — « [import] », le journal de conversion du Makefile (les
-// avertissements de l'import, eux, ont leurs codes : voir « [import-avertissement] »). Ses
-// lignes de bilan restent à la vue « Word en attente », qui les montre déjà ; seuls les
-// échecs remontent ici.
+// Repli sur la prose : « [import] », le journal de conversion du Makefile. Seuls les échecs
+// remontent ici ; le bilan est affiché par la vue « Word en attente ».
 function lireImport(reste) {
   let m = reste.match(/^⚠ échec sur\s*:\s*(.+?)(?:\s*[—(].*)?$/);
   if (m) {
@@ -446,10 +366,8 @@ function lireImport(reste) {
   return null;
 }
 
-// ⚠ Repli sur la prose — « [niveaux] », szh-niveaux.lua, qui écrit ses deux langues. On
-// reconnaît la moitié utile et on redit la phrase soi-même — deux lignes du pipeline pour
-// un seul constat. Un code stable y mettrait fin, comme pour szh-maquette et
-// szh-citations ; ce filtre est hors du chantier qui les a convertis.
+// Repli sur la prose : « [niveaux] », szh-niveaux.lua, qui n'écrit pas encore le format à
+// codes. Les deux moitiés de langue sont reconnues et donnent un seul constat.
 function lireNiveaux(reste) {
   const m = reste.match(/^(\S+)\s*:\s*(?:plus de \d+ rangs de titre|mehr als \d+ Titelstufen)\s*—\s*(?:les niveaux|die Stufen)\s+(.+?)\s+(?:se retrouvent|landen)/);
   if (!m) { return null; }
@@ -457,15 +375,11 @@ function lireNiveaux(reste) {
            cle: 'ctl.niveaux', args: [m[2]], champs: {} };
 }
 
-// Repli assumé, et le seul qui le restera : pandoc et WeasyPrint, en anglais et sans
-// préfixe de la maison. Ce sont des outils étrangers — on ne leur demandera pas d'écrire
-// nos codes, et c'est aussi pourquoi eux seuls ont encore besoin du contexte d'article
-// pris sur la ligne de commande. Trois de leurs avertissements concernent la rédaction ; tous les autres parlent de la feuille de style
-// du toolkit ou du gabarit, et n'ont rien à faire sous les yeux d'une rédactrice — « Ignored
-// `overflow-x: auto`, unknown property » ne dit rien à personne d'utile.
+// Lignes de pandoc et de WeasyPrint, en anglais et sans préfixe maison. Leur article vient
+// de la ligne de commande pandoc qui précède. Seuls les avertissements utiles à la rédaction
+// sont retenus ; les autres concernent la feuille de style.
 function lireRendu(ligne, slug) {
-  // pandoc, à l'incorporation des ressources : c'est lui, et non WeasyPrint, qui voit
-  // l'image manquante en premier — mesuré sur un article dont la figure a été renommée.
+  // pandoc voit l'image manquante avant WeasyPrint, en incorporant les ressources.
   let m = ligne.match(/^\[WARNING\] Could not fetch resource (.+?)\s*$/);
   if (m) {
     return { source: 'rendu', code: 'image-manquante', ton: 'danger', slug: slug,
@@ -481,14 +395,10 @@ function lireRendu(ligne, slug) {
     return { source: 'rendu', code: 'police-manquante', ton: 'attention', slug: slug,
              cle: 'ctl.police.manquante', args: [m[1]], champs: { police: m[1] } };
   }
-  // mv, au dépôt final du PDF dans out/ : mesuré sur ce poste, quand un lecteur (Adobe
-  // Reader) tient le PDF ouvert, WeasyPrint a bien écrit son fichier temporaire, et c'est
-  // ce déplacement qui refuse. La ligne ne porte aucun préfixe de la maison : sans cette
-  // règle, le silence par défaut la jetait, et la compilation s'arrêtait sans cause visible.
-  // Le Makefile apprend son propre code ([pipeline-blocage] pdf-verrouille) ; ce repli reste
-  // utile tant qu'un poste a un cockpit neuf et un toolkit ancien qui ne l'écrit pas encore.
-  // Le slug vient du chemin de destination, pas du contexte pandoc : cette ligne peut
-  // arriver seule dans le journal, sans la ligne pandoc qui poserait courant.slug.
+  // mv refuse de déposer le PDF dans out/ quand un lecteur (Adobe Reader) le tient ouvert.
+  // Le Makefile écrit aussi « [pipeline-blocage] pdf-verrouille » ; cette règle couvre un
+  // toolkit plus ancien que le cockpit. Le slug vient du chemin de destination, car la
+  // ligne peut arriver sans ligne pandoc avant elle.
   m = ligne.match(/^mv: cannot move '.*?' to '(.+\.pdf)': Permission denied$/);
   if (m) {
     return { source: 'pipeline', code: 'pdf-verrouille', ton: 'danger',
@@ -499,10 +409,8 @@ function lireRendu(ligne, slug) {
 }
 
 // Les champs d'une ligne codée sont nommés : « article « 03-autre » », « champ « title » »,
-// « tableau 2 », « appel « (Sen, 2001) » ». Un champ que personne ne nomme — un chemin, un
-// « détail : … » — est ignoré sans bruit : le pipeline en pose, et ce n'est pas une erreur.
-// Les noms allemands sont acceptés au cas où un émetteur les écrive un jour ; aucun ne le
-// fait aujourd'hui.
+// « tableau 2 », « appel « (Sen, 2001) » ». Un champ sans cette forme (un chemin, un
+// « détail : … ») est ignoré. Les noms allemands sont acceptés par précaution.
 const ALIAS_CHAMP = { Artikel: 'article', Datei: 'fichier', Tabelle: 'tableau',
                       Sprache: 'langue', Feld: 'champ', Schlagwort: 'motcle' };
 
@@ -516,8 +424,7 @@ function champsNommes(restants) {
   return champs;
 }
 
-// Une ligne du format à codes. Le préfixe a déjà donné la source et le ton ; ici on prend
-// le code, les champs, et la moitié de langue demandée.
+// Une ligne du format à codes : le code, les champs et la phrase dans la langue demandée.
 function lireConstatCode(famille, reste, langue) {
   const champs = reste.split('|').map((c) => c.trim());
   const code = champs.shift() || '';
@@ -531,19 +438,13 @@ function lireConstatCode(famille, reste, langue) {
   if (restants.length > 0) { fr = restants.pop(); }   // la phrase française ferme la liste
   const nommes = champsNommes(restants);
   const ch = (nom) => (nommes[nom] === undefined ? '' : nommes[nom]);
-  // Le bilan de citations ne vaut d'être lu que s'il reste quelque chose à lier : sinon il
-  // remplirait la vue d'une carte par article pour dire que tout va bien.
+  // Le bilan de citations n'est gardé que si `ambigus` ou `sansref` n'est pas nul.
   if (famille.source === 'citations' && code === 'bilan'
       && Number(ch('ambigus')) === 0 && Number(ch('sansref')) === 0) { return null; }
   const args = ARGS[famille.source + '/' + code];
-  // Un livre n'a pas d'« article » : ses unités sont des chapitres, et le champ qui les
-  // nomme s'appelle donc « chapitre » — seul un numéro écrit « article ». Les deux ne
-  // coexistent jamais sur une même ligne, l'un des deux vaut toujours ''.
-  // pdf-verrouille est le seul code où ni l'un ni l'autre n'existe : `mv` ne connaît que le
-  // fichier de destination (out/<slug>/<slug>.pdf), pas le contexte d'article de pandoc.
-  // Mesuré (22.09.2026) : sans ce repli, cette ligne sort du format à codes avec slug: '' —
-  // la carte s'affichait, mais son bouton n'aurait rien eu à ouvrir. Même dérivation que le
-  // repli sur l'ancienne prose de `mv` ci-dessus (slugDuPdf + nomFichier).
+  // Un numéro nomme son unité « article », un livre « chapitre ». pdf-verrouille n'a ni
+  // l'un ni l'autre : le slug se tire du fichier de destination (out/<slug>/<slug>.pdf),
+  // sans quoi la carte n'aurait rien à ouvrir.
   let slug = ch('article') || ch('chapitre');
   if (!slug && famille.source === 'pipeline' && code === 'pdf-verrouille') {
     slug = slugDuPdf(nomFichier(ch('fichier')));
@@ -559,9 +460,8 @@ function lireConstatCode(famille, reste, langue) {
 
 // ---- Le journal entier -----------------------------------------------------------
 
-// Les lignes « [pdf-ua] » se lisent en bloc : un titre de règle, sa cause et son geste
-// arrivent sur trois lignes successives, et la même chose suit en allemand. On garde le
-// bloc de la langue demandée, et le verdict devient une phrase de la maison.
+// Les lignes « [pdf-ua] » se lisent en bloc : le titre d'une règle, sa cause et la
+// correction arrivent sur des lignes successives, puis la même chose en allemand.
 function lirePdfUa(reste, courant) {
   let m = reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+(?:NON conforme|NICHT konform), (\d+)/);
   if (m) {
@@ -575,9 +475,9 @@ function lirePdfUa(reste, courant) {
     return { source: 'pdfua', code: 'regle', ton: 'danger', slug: courant.pdf,
              cle: '', args: [], champs: { regle: m[1], explication: '' }, brut: m[1] };
   }
-  // Cause et geste d'une règle : accrochés au constat qu'on vient de poser.
+  // Cause et correction d'une règle : rattachées au constat précédent.
   if (/^\s{4,}\S/.test(reste)) { return { suite: reste.trim() }; }
-  // Son repère ISO, qui dit où la corriger (lib/constats.js, CIBLES_REGLE_PDFUA).
+  // Repère ISO de la règle, qui dit où la corriger (CIBLES_REGLE_PDFUA, lib/constats.js).
   m = reste.match(/^\s*ISO 14289-1 (\S+)$/);
   if (m) { return { repere: m[1] }; }
   if (reste.indexOf('✗') === 0) {
@@ -594,19 +494,15 @@ function slugDuPdf(nom) {
 // verdictsPdfUa(texte) -> [{ fichier, verdict: 'conforme'|'non-conforme', regles,
 // details: { fr: [{ regle, explication, repere }], de: [...] } }], avec une propriété
 // `outillage: true` posée sur le tableau rendu si une ligne « [pdf-ua] ✗ » est présente.
-// `details` garde chaque règle en échec dans les deux langues : sans lui, le cockpit ne
-// savait dire que « 1 règle(s) ne sont pas respectées », jamais laquelle.
+// `details` garde chaque règle en échec dans les deux langues.
 //
-// Indépendant de lirePdfUa/analyserJournal ci-dessus : ceux-là relisent .szh-journal.log
-// après coup et jettent le cas conforme (rien à en dire à l'écran) ; ceci relit la sortie
-// BRUTE de verifier-ua.sh juste après l'avoir lancée (lib/pdfua-hote.js, côté cockpit), où
-// le verdict conforme compte autant que le non-conforme — c'est lui qui dit si un article
-// est bon à publier.
+// Lit la sortie brute de verifier-ua.sh juste après son lancement (lib/pdfua-hote.js).
+// Contrairement à analyserJournal(), le verdict conforme est gardé : il dit si l'article est
+// bon à publier.
 function verdictsPdfUa(texte) {
   const verdicts = [];
   const parFichier = new Map();
-  // Le verdict, puis la règle, dont on lit la suite : rapport-ua.py écrit un bloc entier
-  // par langue, le français d'abord.
+  // rapport-ua.py écrit un bloc entier par langue, le français d'abord.
   const verdictDe = (fichier, verdict, regles) => {
     let v = parFichier.get(fichier);
     if (!v) {
@@ -635,7 +531,7 @@ function verdictsPdfUa(texte) {
       fiche.details[langue].push(regle);
       continue;
     }
-    // Cause et geste, repliés sous leur en-tête ; le repère ISO (deux espaces) n'en est pas.
+    // Cause et correction (quatre espaces ou plus) ; le repère ISO n'en a que deux.
     if (regle && /^\s{4,}\S/.test(coupe.reste)) {
       regle.explication = (regle.explication + ' ' + coupe.reste).replace(/\s+/g, ' ').trim();
       continue;
@@ -649,17 +545,11 @@ function verdictsPdfUa(texte) {
   return verdicts;
 }
 
-// Le résumé « PDF non conforme PDF/UA — N règle(s) ne sont pas respectées » n'a plus sa
-// place dès que les règles elles-mêmes suivent : la carte disait deux fois la même chose,
-// d'abord en chiffre, puis règle par règle, et le compteur de la barre d'état comptait le
-// même défaut N + 1 fois. On l'écarte donc pour tout article (slug, '' = le livre) dont au
-// moins une règle « pdfua/regle » est dans la liste — quelle que soit la source de l'une
-// et de l'autre : le journal d'un export et le cache PDF/UA parlent souvent du même PDF.
-//
-// Il reste là où il est seul : un verdict sans règles lisibles (cache d'avant `details`,
-// bloc de règles tronqué) doit encore faire apparaître l'article dans « À corriger ».
-// Le badge de la barre d'état, lui, ne lit pas ces constats (pdfuaHote.etat) et garde son
-// compte de règles.
+// Retire le résumé « PDF non conforme PDF/UA — N règle(s) » d'un article (slug, '' pour le
+// livre) dont au moins une règle « pdfua/regle » est listée : sinon le défaut serait compté
+// N + 1 fois. Sans règle lisible (ancien cache, bloc tronqué), le résumé reste, pour que
+// l'article apparaisse dans « À corriger ». Le badge de la barre d'état ne lit pas ces
+// constats (pdfuaHote.etat).
 function sansResumePdfUaRedondant(constats) {
   const liste = Array.isArray(constats) ? constats : [];
   const detailles = new Set();
@@ -671,9 +561,8 @@ function sansResumePdfUaRedondant(constats) {
     && detailles.has(String(c.slug || ''))));
 }
 
-// Certaines lignes portent leurs deux langues d'un seul tenant, l'allemande introduite par
-// « [de] » au milieu de la phrase : c'est le cas des lignes « [import] » du Makefile. On
-// coupe, et on ne garde que la moitié demandée.
+// La moitié demandée d'une ligne dont l'allemand suit « [de] » au milieu de la phrase
+// (lignes « [import] » du Makefile).
 function moitieInline(texte, langue) {
   const i = texte.indexOf('[de] ');
   if (i === -1) { return texte; }
@@ -681,11 +570,8 @@ function moitieInline(texte, langue) {
 }
 
 // analyserJournal(texte, langue) -> [constat]
-// `langue` vaut 'fr' ou 'de' : c'est celle du cockpit, et la seule qui sortira d'ici.
-//
-// Les deux moitiés de langue sont lues, puis départagées à la fin. Ne lire d'emblée que la
-// moitié demandée paraissait plus simple, et perdait tout ce que le pipeline n'écrit qu'en
-// français — les avertissements de citations, les plus nombreux du lot.
+// `langue` ('fr' ou 'de') est celle du cockpit. Les deux moitiés de langue sont lues puis
+// départagées à la fin, car certaines lignes n'existent qu'en français.
 function analyserJournal(texte, langue) {
   const lang = langue === 'de' ? 'de' : 'fr';
   const constats = [];
@@ -698,8 +584,7 @@ function analyserJournal(texte, langue) {
   for (const brute of String(texte === undefined || texte === null ? '' : texte).split(/\r?\n/)) {
     const ligne = brute.replace(/\s+$/, '');
     if (ligne === '') { continue; }
-    // Contexte : les avertissements des filtres ne nomment pas leur article, la ligne de
-    // commande de pandoc le fait juste avant.
+    // Les filtres ne nomment pas leur article : la ligne de commande pandoc qui précède le fait.
     let m = ligne.match(/^pandoc articles\/([^/]+)\//);
     if (m) { courant.slug = m[1]; dernier = null; continue; }
     m = ligne.match(/^pandoc .* -> out\/([^/]+)\//);
@@ -729,8 +614,7 @@ function analyserJournal(texte, langue) {
         continue;
       }
       if (constat && constat.suite) {
-        // Cause ou geste d'une règle : la phrase se poursuit sur le constat précédent, et
-        // seulement s'il vient de la même moitié de langue.
+        // Suite d'une règle : ajoutée au constat précédent s'il est de la même langue.
         if (dernier && dernier.moitie === moitie) {
           dernier.brut = dernier.brut + ' ' + constat.suite;
           if (dernier.champs.explication !== undefined) {
@@ -742,9 +626,7 @@ function analyserJournal(texte, langue) {
       }
     }
     if (constat) { poser(constat, moitie); continue; }
-    // Rien de reconnu, mais la ligne se plaint : mieux vaut une phrase brute qu'un
-    // silence. C'est ce qui fera apparaître le prochain avertissement du pipeline sans
-    // qu'on ait eu à revenir ici.
+    // Ligne non reconnue qui porte ⚠ ou ✗ : affichée brute.
     if (/[⚠✗]/.test(coupe.reste)) {
       poser({ source: coupe.prefixe === 'pdf-ua' ? 'pdfua' : 'pipeline',
               code: 'autre', ton: coupe.reste.indexOf('✗') !== -1 ? 'danger' : 'attention',
@@ -754,8 +636,6 @@ function analyserJournal(texte, langue) {
     }
     dernier = null;
   }
-  // Un export qui a validé ses PDF écrit le verdict ET ses règles : le résumé n'y survit
-  // que si aucune règle n'a pu être lue (sansResumePdfUaRedondant).
   return sansResumePdfUaRedondant(departager(constats, lang));
 }
 
@@ -767,16 +647,13 @@ function complet(constat, moitie) {
   };
 }
 
-// Deux raisons de voir deux fois le même constat, et elles ne se règlent pas pareil :
-//
-//   * la chaîne compile chaque article deux fois — le PDF et l'aperçu cliquable — et ses
-//     filtres parlent donc deux fois. Deux constats identiques : on en garde un.
-//   * une ligne bilingue a été lue dans ses deux moitiés. Deux constats jumeaux dont la
-//     phrase brute diffère : on garde celui de la langue du cockpit.
-//
-// Les jumeaux d'un constat sans clé d'i18n ne se reconnaissent pas à leur texte, qui est
-// justement ce qui les sépare : ils se reconnaissent à leur rang dans leur moitié. Les
-// deux moitiés listent les mêmes choses dans le même ordre.
+// Dédoublonne les constats :
+//   * chaque article est compilé deux fois (PDF et aperçu) : de deux constats identiques,
+//     on en garde un ;
+//   * une ligne bilingue est lue dans ses deux moitiés : on garde celle de la langue du
+//     cockpit.
+// Sans clé d'i18n, deux jumeaux diffèrent par leur texte : on les apparie par leur rang
+// dans leur moitié, les deux moitiés listant les mêmes choses dans le même ordre.
 function departager(constats, langue) {
   const rangs = new Map();
   const groupes = new Map();
@@ -803,15 +680,9 @@ function departager(constats, langue) {
   });
 }
 
-// Les articles que cette compilation a réellement traversés, d'après les lignes de pandoc
-// — les deux mêmes formes que le lecteur de contexte reconnaît plus haut.
-//
-// `make` est incrémental et le journal est réécrit à chaque tâche : enregistrer un seul
-// article donne un journal qui ne parle que de lui. Sans cette liste, l'hôte remplaçait
-// tous les constats par ceux du dernier passage, et ceux des autres articles disparaissaient
-// alors que leurs défauts tenaient toujours — la liste mentait par omission, et dans le sens
-// rassurant. Elle sert à ne jeter que les constats des articles recompilés : un défaut
-// corrigé s'en va, un défaut qu'on n'a pas retouché reste.
+// Les articles compilés lors de ce passage, d'après les lignes de commande pandoc.
+// `make` est incrémental et le journal est réécrit à chaque tâche : l'hôte ne remplace que
+// les constats de ces articles, et garde ceux des autres.
 function slugsCompiles(texte) {
   const vus = new Set();
   for (const brute of String(texte === undefined || texte === null ? '' : texte).split(/\r?\n/)) {
@@ -822,22 +693,11 @@ function slugsCompiles(texte) {
   return vus;
 }
 
-// La phrase à montrer : celle de la maison si le constat a une clé, celle du pipeline
-// sinon. Jamais les deux langues, jamais une clé nue.
-// Les phrases du seul constat d'import qui mérite une BOÎTE DE DIALOGUE, et non une ligne de
-// plus dans un panneau : `bloc-mal-forme`, le garde-fou du gabarit « Pronto ». Un tableau qui
-// porte les étiquettes d'une figure ou d'un tableau sans en avoir la forme s'imprimera tel
-// quel, sa légende ne sera ni numérotée ni reprise comme texte alternatif, et la seule
-// réparation possible est dans le document Word — qu'il faut donc rouvrir avant de continuer.
-// Un avertissement qu'on lit trois jours plus tard ne fait rouvrir aucun Word.
-//
-// La phrase rendue est celle du pipeline (`brut`), déjà dans la langue demandée et déjà
-// porteuse des trois repères qui permettent de retrouver le tableau — sa page quand Word a
-// repaginé, son rang, sa légende. On ne la reformule pas : elle se dégrade déjà proprement
-// quand la pagination manque, et c'est mesuré côté pipeline.
-//
-// Dédoublonné : le journal d'import n'est pas remis à zéro entre deux conversions, la même
-// ligne peut s'y trouver deux fois, et une modale qui se répète se lit mal.
+// Les phrases des constats `bloc-mal-forme`, montrées dans une boîte de dialogue : un
+// tableau qui porte les étiquettes d'une figure ou d'un tableau sans en avoir la forme
+// s'imprime tel quel, sans numéro ni texte alternatif, et ne se répare que dans le Word.
+// La phrase est celle du pipeline (`brut`), qui situe le tableau (page, rang, légende).
+// Dédoublonnées : le journal d'import n'est pas vidé entre deux conversions.
 function phrasesBlocMalForme(texte, langue) {
   const vues = [];
   for (const c of analyserJournal(texte, langue)) {
@@ -848,15 +708,16 @@ function phrasesBlocMalForme(texte, langue) {
   return vues;
 }
 
+// La phrase à montrer : celle du cockpit si le constat a une clé, celle du pipeline sinon.
 function phraseConstat(constat, langue) {
   if (constat.cle) { return TL(langue, constat.cle, constat.args); }
   return constat.brut || '';
 }
 
-// Ce que la barre d'état, la notification et l'arbre ont besoin de savoir. Compté par la
-// gravité de lib/constats.js, celle qui range la vue « À corriger » : le ton porté par le
-// constat n'en décide pas (une carte regroupée n'en a aucun). `contexte` : le même que la
-// vue (controles-hote.contexteConstats) ; absent, la validation PDF/UA compte pour active.
+// Les comptes de la barre d'état, de la notification et de l'arbre. Comptés par la gravité
+// de lib/constats.js, comme la vue « À corriger », et non par le ton (une carte regroupée
+// n'en a pas). `contexte` est celui de la vue (controles-hote.contexteConstats) ; absent,
+// la validation PDF/UA compte comme active.
 function resumeJournal(constats, contexte) {
   let bloquants = 0, avertissements = 0, infos = 0;
   for (const c of constats || []) {
@@ -871,23 +732,14 @@ function resumeJournal(constats, contexte) {
 
 // ---- Les citations, regroupées par article ---------------------------------------
 //
-// La vue « Articles » pose sur chaque carte l'état des références de son article : un
-// rédacteur doit voir d'un coup d'oeil lequel a un problème, sans lire la liste entière des
-// constats. Ce regroupement vit ici et non dans la vue, parce qu'il n'y a qu'un lecteur de
-// journal et que les codes sont déjà nommés plus haut : un code ajouté à szh-citations
-// arrive ici dès qu'il est inscrit dans CLES_CITATIONS.
-//
-// Trois codes seulement, ceux qui parlent d'un lien manquant ou douteux entre le texte et
-// la bibliographie. « bilan » est un chiffre, pas un défaut ; « ancrage-inconnu » et
-// « caractere-sans-repli » sont d'autres familles, et la vue « Contrôles » les montre
-// toutes. Ce sont des codes et non des phrases : la prose des filtres n'est plus lue nulle
-// part dans ce module, et ce regroupement ne la relit pas non plus.
+// La vue « Articles » montre sur chaque carte l'état des références de l'article. Seuls
+// comptent les codes d'un lien manquant ou douteux entre le texte et la bibliographie ; la
+// vue « Contrôles » montre les autres.
 const CODES_CITATIONS_CARTE = ['appel-sans-reference', 'appel-ambigu', 'reference-orpheline'];
 
 // -> Map slug -> { 'appel-sans-reference': n, 'appel-ambigu': n, 'reference-orpheline': n,
 //                  total: n }
-// Un constat sans article — le pipeline n'a pas nommé le fichier — n'est rattaché à aucune
-// carte : le compter sur toutes serait faux.
+// Un constat sans article n'est rattaché à aucune carte.
 function citationsParArticle(constats) {
   const parSlug = new Map();
   for (const c of (constats || [])) {
@@ -908,21 +760,16 @@ function citationsParArticle(constats) {
 
 // ---- Le réimport d'un article corrigé, lu dans sa ligne JSON ---------------------
 //
-// Le réimport est le seul maillon que le cockpit lance lui-même et dont il lit la réponse :
-// une ligne JSON sur la sortie normale, pendant que ses messages partent, eux, dans le
-// journal d'import comme ceux de la conversion. Les deux chemins mènent donc les mêmes
-// codes à l'écran, et c'est exprès qu'ils partagent tout ce qui précède — TONS_IMPORT pour
-// le ton, CLES_IMPORT pour la phrase. Une seconde table serait une seconde vérité.
+// Le cockpit lance le réimport et lit sa réponse, une ligne JSON sur la sortie standard ;
+// ses messages vont dans le journal d'import. Les deux chemins partagent TONS_IMPORT et
+// CLES_IMPORT.
 //
-// Le ton des quatre issues, celui de la notification qui suit le geste. Il ne se déduit pas
-// des avertissements : « refusé » n'en porte qu'un, et pourtant rien n'a été touché.
-//
-//   reussi   le texte vient du Word ; ce qu'il a coûté est dans les avertissements
-//   rien     le Word n'apportait rien. Ni échec ni avertissement : un fait
-//   refuse   rien n'a été touché, et il y a un geste à faire. Jamais « danger »
+// Ton de la notification, selon l'issue :
+//   reussi   le texte vient du Word ; les avertissements disent ce que ça a coûté
+//   rien     le Word n'apportait rien
+//   refuse   rien n'a été touché, il y a une action à faire
 //   echec    la conversion ou le disque a lâché ; l'article est intact
-//
-// Une réponse absente ou inconnue vaut « danger » : ne rien dire serait pire.
+// Une issue absente ou inconnue vaut « danger ».
 const TONS_RESULTAT_REIMPORT = {
   reussi: 'ok', rien: 'info', refuse: 'attention', echec: 'danger'
 };
@@ -932,9 +779,8 @@ function tonResultatReimport(resultat) {
   return TONS_RESULTAT_REIMPORT[nom] || 'danger';
 }
 
-// La ligne JSON du réimport -> des constats, de la même forme que ceux du journal, pour la
-// même vue et la même barre d'état. `slug` sert de repli : les refus les plus précoces
-// répondent sans nom d'article, et une carte sans article n'est pas ouvrable.
+// La ligne JSON du réimport -> des constats de même forme que ceux du journal. `slug` sert
+// de repli : les refus précoces répondent sans nom d'article.
 function constatsReimport(resultat, slug) {
   const r = resultat || {};
   const article = String(r.article || slug || '');
@@ -948,9 +794,8 @@ function constatsReimport(resultat, slug) {
       source: 'import', code: code,
       ton: TONS_IMPORT[code] || 'attention',
       cle: CLES_IMPORT[code] || '', args: [], slug: article,
-      // Aucune phrase brute de repli : le script parle sur sa sortie d'erreur, que le
-      // cockpit ne lit pas. Un code sans clé d'i18n ne doit donc pas donner une carte
-      // muette — il est écarté, et reste lisible dans le journal d'import.
+      // Pas de phrase de repli (le script écrit ses phrases sur la sortie d'erreur) : un
+      // code sans clé d'i18n est écarté ; il reste lisible dans le journal d'import.
       brut: ''
     });
   }

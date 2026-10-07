@@ -1,12 +1,10 @@
-// Libellés du cockpit : le dictionnaire TEXTES_COCKPIT, la fonction de traduction
-// T(clé[, args]) et le choix de la langue. TL(langue, clé[, args]) impose une langue —
-// pour l'e-mail « Envoyer pour traduction », écrit dans la langue de l'équipe qui traduit.
+// Libellés du cockpit : le dictionnaire TEXTES_COCKPIT, la traduction T(clé[, args]) et le
+// choix de la langue. TL(langue, clé[, args]) impose une langue, par exemple pour l'e-mail
+// « Envoyer pour traduction », écrit dans la langue de l'équipe qui traduit.
 'use strict';
 
-// Hors de l'éditeur — harnais de test, ou un module de lib/ appelé en ligne de commande —
-// « vscode » n'existe pas. Le module doit se charger quand même : sans cela, tout ce qui
-// traduit un message devient inéprouvable et lib/export-ojs.js n'est plus lançable à la
-// main. La langue retombe alors sur SZH_LANGUE, puis sur le français.
+// Hors de l'éditeur (tests, module de lib/ lancé en ligne de commande), « vscode » n'existe
+// pas : le module se charge quand même, et la langue vient des autres sources.
 const fs = require('fs');
 const path = require('path');
 const { basePoste } = require('./poste');
@@ -14,30 +12,23 @@ let vscode = null;
 try { vscode = require('vscode'); } catch (e) { /* hors éditeur */ }
 
 // Toutes les chaînes visibles passent par T(clé[, args]). La langue vient de sourceLangue(),
-// tout en bas de ce fichier, qui interroge six sources dans l'ordre et dit laquelle a
-// tranché.
+// en bas de ce fichier.
 //
-// ⚠ Les titres de commandes, les noms de vues et les descriptions de réglages déclarés dans
-//   package.json ne passent PAS par ici : ils passent par %clé% et package.nls*.json, que
-//   VSCodium résout selon SA PROPRE langue d'affichage (argv.json, « locale ») et non selon
-//   la langue du cockpit. Ce sont deux mécanismes indépendants, et c'est la seule façon
-//   d'obtenir une interface mi-allemande mi-française : des menus dans une langue et des
-//   formulaires dans l'autre. Les deux se rejoignent parce que le formulaire de réglages
-//   écrit les deux d'un même geste (extension.js, ecrireLocaleArgv) et parce que la langue
-//   d'affichage de VSCodium est l'une des sources ci-dessous. Quand elles divergent quand
-//   même — réglage posé à la main, pack de langue absent, SZH_LANGUE traînant dans
-//   l'environnement — c'est windows/diagnostic.ps1 qui les met côte à côte.
+// Les titres de commandes, noms de vues et descriptions de réglages de package.json passent
+// par %clé% et package.nls*.json : VSCodium les résout selon sa propre langue d'affichage
+// (argv.json, « locale »), pas selon celle du cockpit. Le formulaire de réglages écrit les
+// deux à la fois (extension.js, ecrireLocaleArgv). Si elles divergent quand même (réglage
+// manuel, pack de langue absent, SZH_LANGUE dans l'environnement), windows/diagnostic.ps1
+// les montre côte à côte.
 
 const TEXTES_COCKPIT = {
   fr: {
-    // Les trois en-têtes de section de l'arbre, en majuscules : le TreeView natif n'a ni
-    // gras ni taille de police, la casse fait la saillance. Elles sont voulues, pas un
-    // style à normaliser à la relecture.
+    // En-têtes de section de l'arbre en majuscules, voulues : le TreeView natif n'a ni gras
+    // ni taille de police.
     'arbre.articles': 'ARTICLES',
     'arbre.chapitres': 'CHAPITRES',
-    // Le nom d'une unité de texte au singulier, dans la langue de l'interface — la clé
-    // que lib/profil.js#cleLibelle() forme depuis le profil actif (revue -> article,
-    // livre -> chapitre), pour des messages qui ne nomment pas l'un des deux en dur.
+    // Nom de l'unité de texte du profil actif (revue -> article, livre -> chapitre), choisi
+    // par lib/profil.js#cleLibelle().
     'unite.article': 'article',
     'unite.chapitre': 'chapitre',
     'livre.apercu.absent': 'Le livre n’a pas encore été composé : il n’y a pas de PDF à montrer. Compilez-le, puis rouvrez l’aperçu.',
@@ -50,9 +41,8 @@ const TEXTES_COCKPIT = {
     'arbre.controles.rien': 'Rien à signaler',
     'arbre.traductions': 'TRADUCTIONS',
     'arbre.actualite': 'ACTUALITÉ',
-    // Les entrées de la section ACTUALITÉ (extension.js#_itemsActualite) : chacune ouvre le
-    // formulaire de Documentation directement sur cette vue. « Publier sur le site web » est
-    // grisée (pas encore livré, 23.09.2026).
+    // Entrées de la section ACTUALITÉ (extension.js#_itemsActualite) : chacune ouvre le
+    // formulaire de Documentation sur sa vue. « Publier sur le site web » est grisée.
     'arbre.actualite.traductions.tip': 'Fiches de l’autre revue marquées « à traduire » – clic = ouvrir cette vue',
     'arbre.actualite.reservoir.tip': 'Fiches de l’autre revue en attente d’une décision, et mes fiches orphelines – clic = ouvrir cette vue',
     'arbre.actualite.numero.tip': 'Rubriques et fiches rattachées à ce numéro – clic = ouvrir cette vue',
@@ -91,18 +81,15 @@ const TEXTES_COCKPIT = {
     'statut.supprime': 'Article « {0} » supprimé.',
     'statut.supprime.renumerote': 'Article « {0} » supprimé, et {1} dossier(s) renumérotés.',
     'art.suppr.renumerote.echec': 'L’article est supprimé, mais les dossiers restants n’ont pas tous pu être renumérotés ({0}). Reprenez-les par « Changer l’ordre ».',
-    // La suppression retente pendant une dizaine de secondes : sans ce mot, l'attente
-    // passerait pour un blocage.
+    // La suppression retente pendant une dizaine de secondes : ce texte explique l'attente.
     'statut.suppression.reprise': '« {0} » est encore utilisé par une autre application – nouvelle tentative…',
     'statut.image.remplacee': 'Image « {0} » remplacée – recompilez pour voir le PDF à jour.',
     'statut.table.enregistree': 'Tableau « {0} » enregistré – le PDF se met à jour.',
     'statut.ausgabe': 'Métadonnées du numéro enregistrées.',
     'statut.fiches': '{0} fiche(s) de métadonnées enregistrée(s).',
     'err.tache': 'Cette action a besoin d’un réglage de l’éditeur qui manque sur ce poste. Lancez « Pronto (Updater) » depuis le menu Démarrer, puis rouvrez le numéro. Rien n’a été modifié.',
-    // Repli : ce message ne sort que si le journal de compilation n'a rien à dire.
-    // Quand il a quelque chose, c'est la vue « Contrôles » qui parle,
-    // et elle nomme la cause. L'ancien texte renvoyait au panneau du terminal, que
-    // `reveal: never` n'ouvre jamais.
+    // Repli, quand le journal de compilation ne dit rien ; sinon la vue « Contrôles » nomme
+    // la cause. Le panneau du terminal ne s'ouvre pas (`reveal: never`).
     'err.build': 'La compilation n’a pas abouti, et la chaîne n’a rien dit de plus. Enregistrez à nouveau (Ctrl+S) pour réessayer ; si cela se reproduit, signalez-le. Vos textes n’ont pas été touchés.',
     'err.import': 'La conversion des documents Word n’a pas abouti. Les fichiers sont restés dans « articles-word » : rien n’est perdu. Réessayez ; si cela se reproduit, signalez-le avec le document en cause.',
     'err.export': 'La recompilation complète n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le. Vos textes, vos images et vos métadonnées n’ont pas été touchés.',
@@ -143,8 +130,8 @@ const TEXTES_COCKPIT = {
     'livre.web.err': 'Le HTML web n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
     'err.pdf.introuvable': 'Aucun PDF pour « {0} » : il n’a pas encore été produit.',
     'err.suppression': '« {0} » n’a pas pu être entièrement supprimé ({1}). Fermez l’aperçu et les formulaires ouverts sur cet article, puis réessayez.',
-    // Un article à moitié effacé n'a plus de ligne dans l'arbre : « réessayez » n'aurait
-    // aucun sens ici, c'est le cockpit qui reprend la main.
+    // Un article à moitié effacé n'a plus de ligne dans l'arbre : le cockpit termine
+    // lui-même, sans demander de réessayer.
     'err.suppression.article': '« {0} » n’a pas pu être entièrement supprimé ({1}). Fermez l’aperçu et les formulaires ouverts sur cet article : une dernière tentative a lieu toute seule une minute plus tard, sans rien vous demander.',
     'err.copie': '« {0} » n’a pas pu être copié ({1}). Vérifiez que le fichier existe encore et qu’il n’est pas ouvert dans un autre programme.',
     'err.commande': 'Cette action n’a pas abouti ({0}). Rien n’a été enregistré. Réessayez ; si cela se reproduit, signalez-le.',
@@ -176,10 +163,9 @@ const TEXTES_COCKPIT = {
     'ojs.revue.fr': 'Revue suisse de pédagogie spécialisée',
     'ojs.revue.de': 'Schweizerische Zeitschrift für Heilpädagogik',
     'ojs.titre': 'Export OJS',
-    // Les réglages protégés : l'export OJS et le titre de la bibliographie. Ils décrivent la
-    // chaîne de publication et non le confort d'une personne — une rubrique renommée sur un
-    // seul poste fait atterrir ses articles dans la mauvaise section de la revue. D'où la
-    // lecture seule, et un déverrouillage qui dit ce qu'il engage.
+    // Réglages protégés (export OJS, titre de la bibliographie) : ils engagent la chaîne de
+    // publication. Une rubrique renommée sur un seul poste enverrait ses articles dans la
+    // mauvaise section. Ils sont en lecture seule, et le déverrouillage dit ce qu'il engage.
     'regl.proteges.titre': 'Réglages de la rédaction',
     'regl.proteges.verrouille': 'Ces réglages valent pour toute la rédaction et sont déployés sur tous les postes : ils se lisent ici, ils ne se modifient pas.',
     'regl.proteges.deverrouiller': 'Déverrouiller',
@@ -189,8 +175,8 @@ const TEXTES_COCKPIT = {
     'regl.proteges.refus': 'Ces réglages sont verrouillés. Cochez « Déverrouiller » pour les modifier.',
     'regl.proteges.bloc.ojs': 'Export OJS',
     'regl.proteges.bloc.biblio': 'Titre de la bibliographie',
-    // Le nom du bloc EST la clé de config.json (CLE_TACHES, lib/articles.js) : c'est elle
-    // que BLOCS énumère, et le bandeau de divergence la traduit par cette clé-ci.
+    // Le nom du bloc est la clé de config.json (CLE_TACHES, lib/articles.js), énumérée par
+    // BLOCS ; le bandeau de divergence la traduit par cette clé-ci.
     'regl.proteges.bloc.tachesArticle': 'Tâches par article',
     'regl.proteges.diverge': '{0} : ce poste ne porte plus les valeurs de la rédaction. Envoyez-les à la personne qui administre l’outil ; sans cela, la prochaine mise à jour les remplacera.',
     'regl.proteges.telecharger': 'Télécharger les réglages protégés',
@@ -272,16 +258,14 @@ const TEXTES_COCKPIT = {
     'ojs.avert.rorSansNom': 'ROR renseigné sans affiliation en toutes lettres : {0} – OJS exige un nom avec l’identifiant, rien ne part. Complétez le champ Affiliation.',
     'ojs.avert.alt': '{0} image(s) sans texte alternatif ni légende, et non déclarées décoratives : {1} – elles partiraient en images décoratives. À reprendre dans le formulaire des médias.',
     'ojs.avert.legende': '{0} figure(s) portent encore la légende posée par défaut à l’insertion : {1} – elle s’imprimerait telle quelle sous la figure.',
-    // Droits réservés : rien à mettre dans licenseUrl, et l'élément est omis plutôt que
-    // rempli d'une adresse fausse. OJS retombe alors sur la licence de la revue, ce que
-    // personne n'a décidé — d'où l'avertissement.
+    // Droits réservés : licenseUrl est omis. OJS applique alors la licence de la revue,
+    // d'où l'avertissement.
     'ojs.avert.licence.reserves': 'article en droits réservés : <licenseUrl> est omis, et OJS appliquera la licence par défaut de la revue. À vérifier dans OJS après l’import.',
     'ojs.avert.licence.figure': 'licence {0} annoncée sur la couverture, mais {1} figure(s) portent un crédit tiers : {2}. Vérifiez que la reprise est autorisée sous cette licence, ou passez l’article en droits réservés.',
     'ojs.avert.citations.aucune': 'aucune bibliographie pour cet article – <citations> omis.',
     'ojs.avert.citations.tables': 'Références non envoyées pour ce numéro : {0}',
     'ojs.avert.citations.corps': 'bibliographie encore dans le texte : les références envoyées sont celles que le texte laisse deviner. Réimportez l’article pour les mettre à part.',
-    // Le titre de la bibliographie : un réglage, parce que la composition le pose et que le
-    // texte ne le porte plus.
+    // Le titre de la bibliographie est posé par la composition, pas par le texte.
     'biblio.titre': 'Titre de la bibliographie',
     'biblio.intro': 'Le titre de la bibliographie est posé à la composition, dans la langue de l’article. Les intitulés ci-dessous sont ceux des deux revues ; les modifier ici suffit, il n’y a rien à changer dans les articles.',
     'biblio.col.langue': 'Langue de l’article',
@@ -303,10 +287,9 @@ const TEXTES_COCKPIT = {
     'modale.remplacer.detail.image': 'L’ancienne image sera écrasée. Le nom « {0} » est conservé (le texte de l’article pointe ce nom).',
     'modale.remplacer.detail.format': '⚠ Le fichier choisi est un .{0} mais l’image de l’article est un .{1} : le contenu ne correspondra plus à l’extension et le rendu peut casser.\n',
     'modale.remplacer.bouton': 'Remplacer',
-    // Le garde-fou du gabarit « Pronto » : un tableau qui porte les étiquettes d’une figure
-    // ou d’un tableau sans en avoir la forme. Une modale, et non une ligne de panneau — la
-    // seule réparation possible est dans le document Word, qu’il faut rouvrir. Le détail de
-    // la boîte porte les phrases du pipeline, qui nomment la page, le rang et la légende.
+    // Gabarit « Pronto » : un tableau porte les étiquettes d’une figure ou d’un tableau sans
+    // en avoir la forme. Boîte de dialogue, car la réparation se fait dans le Word ; son
+    // détail reprend les phrases du pipeline (page, rang, légende).
     'modale.bloc-mal-forme.titre': 'Attention : {0} tableau(x) de ce qui vient d’être importé portent les étiquettes d’une figure ou d’un tableau, sans en avoir la forme. Ils s’imprimeront tels quels, et leur légende ne sera ni numérotée ni reprise comme texte alternatif.',
     'modale.bloc-mal-forme.bouton': 'J’ai compris',
     'modale.conflit.question': 'Ces fichiers sont déjà en attente : {0}.\nQue faire ?',
@@ -338,11 +321,9 @@ const TEXTES_COCKPIT = {
     'meta.couleur.bleuacier': 'Bleu acier',
     'meta.couleur.mountbatten': 'Mountbatten',
     'meta.entete.condensee': 'Condenser l’en-tête de couverture',
-    // ---- Formulaire « Métadonnées du livre » (media/metadata-book.*), sur le modèle du
-    // formulaire du numéro ci-dessus, mais pour buch.yaml : titre, type d’ouvrage, langue,
-    // maquette, format, collection, identifiants, licence, couleur d’accent, et le papier
-    // (grammage, main, dos imposé, fond perdu, traits de coupe, profil CMJN) — les variables
-    // dont dépend le dos calculé de la couverture (docs/ARCHITECTURE-LIVRES.md §3).
+    // ---- Formulaire « Métadonnées du livre » (media/metadata-book.*), pour buch.yaml. Le
+    // papier (grammage, main, dos imposé, fond perdu, traits de coupe, profil CMJN) détermine
+    // le dos calculé de la couverture (docs/ARCHITECTURE-LIVRES.md).
     'meta.livre.panneau': 'Métadonnées du livre',
     'meta.livre.titre': 'Titre',
     'meta.livre.soustitre': 'Sous-titre',
@@ -423,13 +404,12 @@ const TEXTES_COCKPIT = {
     'fiches.langue.avenir': 'La langue se choisit sur chaque carte, juste sous le type d’article.',
     'fiches.langue.avenir.livre': 'La langue se choisit sur chaque carte, en tête de la fiche.',
     // Langue de l'article : elle prime sur celle du numéro au rendu (titres imprimés,
-    // libellés Figure/Tableau, /Lang du PDF). Les noms de langues sont ceux du
-    // formulaire du numéro, une seule table pour les deux.
+    // libellés Figure/Tableau, /Lang du PDF). Noms de langues partagés avec le formulaire
+    // du numéro.
     'fiches.langue.article': 'Langue de l’article',
     'fiches.langue.article.livre': 'Langue du chapitre',
-    // Licence de l'article. Les six licences Creative Commons 4.0 et le cas « droits
-    // réservés » d'une reprise ; les clés sont celles de LICENCES_ARTICLE (lib/yaml.js),
-    // et le sigle est en graphie de la maison, celle qui s'imprime sur la couverture.
+    // Licence de l'article : les six licences Creative Commons 4.0 et « droits réservés ».
+    // Clés de LICENCES_ARTICLE (lib/yaml.js) ; le sigle est celui imprimé sur la couverture.
     'fiches.licence': 'Licence de l’article',
     'licence.cc-by-4.0': 'CC-BY 4.0 – attribution',
     'licence.cc-by-sa-4.0': 'CC-BY-SA 4.0 – attribution, partage aux mêmes conditions',
@@ -441,9 +421,8 @@ const TEXTES_COCKPIT = {
     // Interrupteur : le libellé nomme la chose, les deux autres clés sont ses infobulles
     // selon l'état (voir traductions(), media/_fiches.js).
     'fiches.trad.bouton': 'Traductions',
-    // Le texte de l'article, ouvert à droite de sa fiche : même interrupteur, mêmes trois
-    // clés. Le refus est dit dans la zone d'état de la barre plutôt qu'en boîte de
-    // dialogue — c'est une précision, pas un incident.
+    // Le texte de l'article, ouvert à droite de sa fiche : même interrupteur. Le refus
+    // s'affiche dans la zone d'état de la barre, pas en boîte de dialogue.
     'fiches.md.bouton': 'Markdown',
     'fiches.md.afficher': 'Ouvrir le texte de l’article à droite de sa fiche : de quoi y recopier un titre, un résumé ou une référence sans fermer le formulaire.',
     'fiches.md.afficher.livre': 'Ouvrir le texte du chapitre à droite de sa fiche : de quoi y recopier un titre, un résumé ou une référence sans fermer le formulaire.',
@@ -451,9 +430,8 @@ const TEXTES_COCKPIT = {
     'fiches.md.masquer.livre': 'Refermer le texte du chapitre et rendre toute la place à sa fiche.',
     'fiches.md.horsarticle': 'Cliquez d’abord dans la fiche de l’article dont vous voulez voir le texte.',
     // ---- Feuille « Vérifier les méta (print) » ----
-    // Une page A4 par article, ouverte dans le navigateur, qui l'imprime. La consigne
-    // longue ne s'imprime PAS : elle est lue une fois, à l'écran, avant le Ctrl+P. Ce qui
-    // part sur le papier tient en une ligne, parce qu'elle se répète sur chaque page.
+    // Une page A4 par article, imprimée depuis le navigateur. La consigne longue ne s'affiche
+    // qu'à l'écran ; la version imprimée tient en une ligne, répétée sur chaque page.
     'verif.bouton': 'Vérifier les méta (print)',
     'verif.titre': 'Vérification des métadonnées',
     'verif.article': 'article',
@@ -481,8 +459,7 @@ const TEXTES_COCKPIT = {
     'fiches.resume': 'Résumé ({0})',
     // Compteur de caractères sous chaque résumé (media/_fiches.js, seuilResume) :
     // {0} le nombre de caractères saisis, {1} le seuil recommandé (750, ou 700 dès le
-    // sixième mot-clé de la même langue). Un chiffre, une barre, un chiffre : rien à
-    // ponctuer, donc rien à espacer d’insécable ici.
+    // sixième mot-clé de la même langue). Pas de ponctuation, donc pas d’espace insécable.
     'fiches.resume.compteur': '{0} / {1} caractères',
     'fiches.auteurs': 'Auteur·e·s',
     'fiches.auteur.ajouter': '➕ Ajouter une autrice ou un auteur',
@@ -498,14 +475,14 @@ const TEXTES_COCKPIT = {
     'fiches.motscles.titre': 'Mots-clés',
     'fiches.motcle.ajouter': '➕ Ajouter un mot-clé',
     'fiches.motcle.retirer': 'Retirer ce mot-clé (dans toutes les langues)',
-    // Placeholder d'un mot-clé vide (TO BE TRANSLATED, la sentinelle écrite dans le YAML) : affiché dans la langue de l'interface, jamais en anglais figé.
+    // Texte indicatif d'un mot-clé encore à « TO BE TRANSLATED » dans le YAML, dans la langue
+    // de l'interface.
     'mc.aTraduire': 'à traduire',
     'fiches.motscles.suggestions': 'Descripteurs edudoc.ch déjà utilisés dans les deux revues',
-    // La pastille « hors thésaurus » (media/_fiches.js) : posée sur une case non vide dont
-    // la valeur n'est pas un descripteur edudoc.ch. Jamais écrite nulle part, recalculée à
-    // l'affichage — voir son commentaire dans _fiches.js.
+    // La pastille « hors thésaurus » (media/_fiches.js) : sur une case dont la valeur n'est
+    // pas un descripteur edudoc.ch. Recalculée à l'affichage, jamais enregistrée.
     'mc.horsThesaurus': 'Ce mot-clé n’est pas un descripteur edudoc.ch : il ne partira pas à l’export.',
-    // Le second rideau de la boîte de suggestions, quand aucun descripteur ne correspond.
+    // Boîte de suggestions, quand aucun descripteur ne correspond.
     'mc.ajouterHorsThesaurus': 'Ajouter « {0} » hors thésaurus',
     'fiches.ajout.fr': ' + Français (champs FR)',
     'fiches.ajout.de': ' + Allemand (champs DE)',
@@ -534,8 +511,8 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.oui': 'Revenir au DOI calculé',
     'fiches.doi.forme': 'Forme attendue : {0}',
     'fiches.doi.double': 'Déjà porté par {0}',
-    // Case « hors sommaire », livre seulement (jamais pour un article) : voir
-    // construireCarte() dans media/_fiches.js et estLivre dans metadonnees-hote.js.
+    // Case « hors sommaire », livre seulement : voir construireCarte() dans media/_fiches.js
+    // et estLivre dans metadonnees-hote.js.
     'fiches.sommaire': 'Ne pas afficher ce chapitre dans la table des matières',
     'fiches.sommaire.aide': 'Le chapitre n’a alors ni numéro, ni pastille, ni marque de tranche ; les autres chapitres sont renumérotés.',
     'vue.ouvrir': 'Ouvrir',
@@ -548,38 +525,34 @@ const TEXTES_COCKPIT = {
     'art.numero.section.livre': 'Métadonnées du livre',
     'art.liste.section': 'Articles du numéro',
     'art.liste.section.livre': 'Chapitres du livre',
-    // Les deux lignes de la barre de commandes (media/articles.html, media/articles.js) :
-    // aucun titre visible entre elles — la vue vise à gagner de la hauteur, deux titres
-    // de section la reprendraient — donc c’est l’aria-label qui les nomme pour un
-    // lecteur d’écran, sur le conteneur de chaque ligne.
+    // Les deux lignes de la barre de commandes (media/articles.html, media/articles.js) n’ont
+    // pas de titre visible, pour gagner de la hauteur : l’aria-label de chaque ligne les
+    // nomme pour un lecteur d’écran.
     'art.barre.filtres.aria': 'Filtres d’affichage',
     'art.barre.actions.aria': 'Actions',
     'art.arbre.tooltip': '{0} – dossier « {1} » – {2}',
     'art.sansfiche': 'Pas de titre dans la fiche de cet article : c’est son slug qui s’affiche ici, et la compilation refusera de partir.',
     'art.ouvrir': 'Ouvrir le texte',
     'art.ouvrir.tip': 'Ouvrir le texte de l’article dans l’éditeur. Ni compilation ni aperçu : on vient y lire ou corriger.',
-    // « Voir le PDF (Explorateur) » : le seul cas où l’article n’a
-    // encore aucun PDF à montrer — jamais compilé, ou la dernière compilation a
-    // échoué sans rien laisser dans out/<slug>/. voirPdfArticle (extension.js) se
-    // rabat d’abord sur ce dossier s’il existe ; cette clé ne sert que quand il n’y a
-    // vraiment rien à révéler.
+    // « Voir le PDF (Explorateur) » quand l’article n’a ni PDF ni dossier out/<slug>/
+    // (jamais compilé, ou échec sans sortie). Sinon voirPdfArticle (extension.js) montre ce
+    // dossier.
     'art.pdf.absent': 'Aucun PDF pour « {0} » : cet article n’a pas encore été compilé.',
     'art.monter': 'Monter',
     'art.monter.tip': 'Placer cet article un cran plus haut dans le numéro. Aucun dossier n’est renommé.',
     'art.descendre': 'Descendre',
     'art.descendre.tip': 'Placer cet article un cran plus bas dans le numéro. Aucun dossier n’est renommé.',
     // Les deux flèches du bandeau, en mode « Changer l'ordre » : l'infobulle reprend les
-    // tips ci-dessus (le geste est le même), mais l'aria-label nomme l'article ET le rang
-    // visé, calculé côté hôte (prefixeOrdre) — sinon deux flèches « Monter » consécutives
-    // se liraient pareil au clavier.
+    // tips ci-dessus ; l'aria-label nomme l'article et le rang visé (prefixeOrdre, côté
+    // hôte), pour distinguer deux flèches « Monter » au clavier.
     'art.ordre.aria.monter': 'Monter « {0} » au rang {1}',
     'art.ordre.aria.descendre': 'Descendre « {0} » au rang {1}',
     'art.bouton.paginer': 'Paginer',
     'art.bouton.ojs': 'Exporter pour OJS',
     'art.bouton.ojs.tip': 'Recompiler le numéro, puis produire les galleys DOCX et le XML d’import OJS à la racine du numéro.',
-    // Le mode « Changer l'ordre » : on déplace autant qu'on veut sans rien écrire, et
-    // « Terminer » renomme les dossiers d'un seul lot. Renommer à chaque clic ferait
-    // autant d'occasions de tomber sur un fichier ouvert ou une synchronisation en cours.
+    // Le mode « Changer l'ordre » : les déplacements n'écrivent rien ; « Terminer » renomme
+    // les dossiers en une fois, pour limiter les conflits avec un fichier ouvert ou une
+    // synchronisation en cours.
     'art.ordre.mode': 'Changer l’ordre',
     'art.ordre.mode.tip': 'Déplacer les articles, puis aligner les dossiers sur les rangs affichés. Rien n’est écrit avant « Terminer ».',
     'art.ordre.terminer': 'Terminer',
@@ -590,19 +563,17 @@ const TEXTES_COCKPIT = {
     'art.ordre.echec': 'Les dossiers n’ont pas tous pu être renommés ({0}). Fermez ce qui est ouvert, puis reprenez « Changer l’ordre ».',
     'art.ordre.enregistre': 'Ordre du numéro enregistré – cet article est en position {0}.',
     'art.taches.titre': 'Tâches par article',
-    // Les quatre interrupteurs d'affichage de la vue. Leur libellé nomme CE QU'ILS MONTRENT
-    // et ne bouge plus avec l'état : c'est l'oeil, le fond plein et aria-pressed qui disent
-    // si la chose est à l'écran. Un libellé « Cacher les tâches » sur un bouton allumé
-    // disait le contraire de son fond, et il fallait lire les deux pour trancher.
-    // L'infobulle, elle, annonce le geste à venir — d'où deux clés par interrupteur.
+    // Les interrupteurs d'affichage de la vue. Le libellé nomme ce qu'ils montrent et ne
+    // change pas avec l'état, que disent l'œil, le fond plein et aria-pressed. L'infobulle
+    // annonce l'action : deux clés par interrupteur.
     'art.taches.bouton': 'Tâches',
     'art.taches.cacher.tip': 'Retirer la liste des tâches de chaque carte : rien n’est décoché, la liste est seulement plus courte à lire.',
     'art.taches.afficher.tip': 'Remontrer la liste des tâches à cocher sur chaque carte.',
     'art.trad.bouton': 'Traductions',
     'art.trad.cacher.tip': 'N’afficher que les champs dans la langue de l’article : titre, sous-titre, résumé et mots-clés de l’autre langue restent écrits, ils ne sont plus montrés ici.',
     'art.trad.afficher.tip': 'Remontrer les champs traduits dans l’autre langue, à côté de ceux de la langue de l’article.',
-    // Le quatrième interrupteur : les avertissements de la carte (ligne.constats), posés
-    // dans l'encadré « À faire ». Même modèle que les trois précédents.
+    // Le quatrième interrupteur : les avertissements de la carte (ligne.constats), dans
+    // l'encadré « À faire ».
     'art.constats.bouton': 'Avertissements',
     'art.constats.cacher.tip': 'Retirer les avertissements de chaque carte : rien n’est corrigé, ils sont seulement moins nombreux à lire ici.',
     'art.constats.afficher.tip': 'Remontrer les avertissements sur chaque carte.',
@@ -615,8 +586,7 @@ const TEXTES_COCKPIT = {
     'art.taches.enregistrees': '✓ Tâches enregistrées',
     'art.taches.avancement': '{0}/{1} tâches',
     'art.taches.toutes': 'tout est fait',
-    // Titre compact de l'encadré des tâches sur chaque carte d'article : le
-    // compteur d'avancement ci-dessus vient s'afficher juste à côté, dans le même entête.
+    // Titre de l'encadré des tâches d'une carte ; le compteur ci-dessus s'affiche à côté.
     'art.taches.entete': 'À faire',
     'art.couverture': 'Couverture du numéro',
     'art.couverture.absente': 'Aucune couverture : l’export OJS partirait sans image de numéro.',
@@ -637,10 +607,8 @@ const TEXTES_COCKPIT = {
     'art.envoi.dossier': 'Ouvrir le dossier du PDF',
     'art.envoi.presse.echec': 'Presse-papiers refusé : ouvrez le dossier du PDF et glissez le fichier dans le message.',
     'art.envoi.mail.echec': 'Aucun client de messagerie n’a répondu. Le PDF reste au presse-papiers : {0}',
-    // L'aperçu des métadonnées sur la carte de l'article. Intitulés courts : la carte en
-    // porte neuf d'affilée, et « Langue de l'article » sur la carte d'un article dit deux
-    // fois la même chose. Les quatre champs de texte reprennent les intitulés du suivi de
-    // traduction (trad.champ.*), qui sont déjà ceux-là.
+    // L'aperçu des métadonnées sur la carte de l'article, en intitulés courts (la carte en
+    // aligne neuf). Les champs de texte reprennent les intitulés trad.champ.*.
     'art.apercu.type': 'Rubrique',
     'art.apercu.langue': 'Langue',
     'art.apercu.langue.numero': 'celle du numéro',
@@ -654,9 +622,8 @@ const TEXTES_COCKPIT = {
     'art.meta.voir': 'Afficher les métadonnées',
     'art.meta.cacher': 'Cacher les métadonnées',
     'art.meta.bouton': 'Métadonnées',
-    // Les deux libellés ci-dessus restent ceux du chevron d'UNE carte, qui n'est pas un
-    // interrupteur de barre : il dit le geste, et rien ne l'allume. L'interrupteur de la
-    // barre, lui, porte le nom de la chose et deux infobulles selon la portée.
+    // Les deux libellés ci-dessus sont ceux du chevron d'une carte, qui dit l'action.
+    // L'interrupteur de la barre nomme la chose, avec deux infobulles selon la portée.
     'art.meta.cacher.tip': 'Replier l’aperçu des métadonnées sur toutes les cartes : ne restent que leur titre, leurs tâches et ce qu’elles signalent. Une carte se déplie toujours seule, par son chevron.',
     'art.meta.voir.tip': 'Remontrer l’aperçu des métadonnées sur toutes les cartes.',
     'art.meta.editer': 'Éditer les métadonnées',
@@ -679,12 +646,12 @@ const TEXTES_COCKPIT = {
     'art.doi.enregistre': 'Enregistré : {0} article(s) sans DOI dans ce numéro.',
     'art.ordre.frontiere': 'Refusé : un article sans DOI reste après ceux qui en portent un. Sinon la numérotation des DOI ne suivrait plus l’ordre de lecture.',
     'art.ordre.archive': 'Ce numéro est archivé : son sommaire est arrêté et son ordre ne change plus, parce que les DOI qui en découlent sont déposés. Sortez-le des archives pour le réordonner.',
-    // Un livre n'a qu'un DOI pour l'ouvrage entier, pas un par chapitre : la même
-    // phrase vaut quand même, le sommaire figé par l'archivage restant la vraie raison.
+    // Un livre n'a qu'un DOI pour l'ouvrage entier ; la phrase vaut quand même, la raison
+    // étant le sommaire figé par l'archivage.
     'art.ordre.archive.livre': 'Ce livre est archivé : son sommaire est arrêté et son ordre ne change plus, parce que les DOI qui en découlent sont déposés. Sortez-le des archives pour le réordonner.',
     'art.ordre.archive.bouton': 'Sortir des archives',
-    // Le compteur d'images et ce qui manque. Les photos des autrices et auteurs n'y sont
-    // pas : elles ne sont pas des figures et ne portent ni légende ni texte alternatif.
+    // Le compteur d'images et ce qui manque. Les portraits des auteurs ne sont pas des
+    // figures et n'y sont pas comptés.
     'art.constats.attention': 'Attention',
     'art.constats.danger': 'Erreur / bloquant',
     'art.images.sansalt': '{0} image(s) apportent une information et n’ont pas de texte alternatif : un lecteur d’écran ne dira rien de ce qu’elles montrent.',
@@ -826,9 +793,8 @@ const TEXTES_COCKPIT = {
     'fmt.coller.pastableau': 'Le presse-papiers ne contient pas de tableau : copiez d’abord des cellules dans Excel ou Word.',
     'fmt.coller.horsarticle': 'Ouvrez d’abord le texte d’un article : un tableau se colle dans un article, pas dans un autre document.',
     'fmt.coller.creee': 'Tableau « {0} » créé et référencé dans l’article.',
-    // Texte alternatif par défaut de l’image de l’en-tête FALC (szh.fmt.falcHeader) :
-    // dans la langue de l’INTERFACE, jamais celle du livre (texteFalcHeader la reçoit en
-    // argument plutôt que de la choisir elle-même).
+    // Texte alternatif par défaut de l’image de l’en-tête FALC (szh.fmt.falcHeader), dans la
+    // langue de l’interface, que texteFalcHeader reçoit en argument.
     'fmt.falcHeader.alt': 'Texte alternatif de l’image',
     'palette.placeholder': 'Mise en forme – choisir une action',
     'palette.horsmd': 'Ouvrez un article (.md) pour la mise en forme.',
@@ -853,8 +819,8 @@ const TEXTES_COCKPIT = {
     'palette.tableau': 'Insérer un tableau',
     'palette.collerTableau': 'Coller un tableau depuis Excel/Word',
     'palette.sautPage': 'Insérer un saut de page (PDF seulement)',
-    // Groupe « Livre » (PALETTE_MEF_LIVRE, lib/formatting-pur.js) : deux styles-snippets
-    // réservés aux livres, jamais montrés pour une revue ni une Zeitschrift.
+    // Groupe « Livre » (PALETTE_MEF_LIVRE, lib/formatting-pur.js) : deux snippets de style
+    // réservés aux livres.
     'palette.g.livre': 'Livre',
     'palette.falcHeader': 'En-tête de chapitre (FALC)',
     'palette.qrLink': 'Code QR',
@@ -878,11 +844,9 @@ const TEXTES_COCKPIT = {
     'cit.selection': 'Placez le curseur dans l’appel de citation, ou sélectionnez-le.',
     'cit.placeholder': 'Référence à lier à « {0} »',
     'cit.fait': 'Appel lié à {0}.',
-    // Les ancres de référence sont calculées par l'outil de composition, jamais par le
-    // cockpit seul : si l'outil manque ou n'est pas de la même version, le liage s'arrête
-    // ici. Le message ne dit pas laquelle des deux moitiés est en avance — on ne le sait
-    // pas, et la mise à jour règle les deux sens. Le chemin et le nom de la table fautive
-    // vont au journal de l'hôte, pas ici.
+    // Les ancres de référence sont calculées par l'outil de composition : s'il manque ou
+    // n'a pas la même version que le cockpit, le liage s'arrête. La mise à jour règle les
+    // deux cas. Le chemin et la table fautive vont au journal de l'hôte.
     'cit.toolkit.discordant': 'Votre outil de composition et le cockpit ne sont pas de la '
       + 'même version : les ancres de références ne peuvent pas être calculées, et le lien '
       + 'posé ici pointerait dans le vide. Mettez le logiciel à jour, puis réessayez.',
@@ -930,8 +894,8 @@ const TEXTES_COCKPIT = {
     'verrou.refuse.bouton.livre': 'Déverrouiller le livre',
 
     // ---- Co-édition : deux postes sur le même numéro ----
-    // Rien à voir avec « verrou.refuse » juste au-dessus, qui parle du numéro gelé en
-    // lecture seule. Ici, le fichier est simplement en train d’être modifié ailleurs.
+    // Le fichier est modifié sur un autre poste. « verrou.refuse », au-dessus, concerne le
+    // numéro gelé en lecture seule.
     'coedition.pris': 'Ce fichier est en cours de modification par {0} – rien n’a été enregistré. La main se libère seule deux minutes après son dernier geste : réessayez dans un instant.',
     'coedition.pris.court': 'En cours de modification par {0}',
     'coedition.fiche.prise': 'Fiche de « {0} » : en cours de modification par {1}. Rien n’a été enregistré pour cet article.',
@@ -957,7 +921,7 @@ const TEXTES_COCKPIT = {
     'modale.archiver.question': 'Archiver et verrouiller « {0} » ?',
     'modale.archiver.detail': 'Le numéro passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources – textes, images, tableaux, métadonnées, traductions – sont intégralement conservées, et « Recompiler le PDF de cet article » (ou « Tout recompiler ») les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis le numéro se rouvrira depuis les archives.',
     // Un livre n'a ni « Recompiler le PDF de cet article » ni traduction suivie (capacités de
-    // lib/profil.js) : compiler le livre régénère tout, il n'y a qu'une option.
+    // lib/profil.js) : compiler le livre régénère tout.
     'modale.archiver.detail.livre': 'Le livre passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources – textes, images, tableaux, métadonnées – sont intégralement conservées, et « Compiler le livre » les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis le livre se rouvrira depuis les archives.',
     'modale.archiver.bouton': 'Archiver et verrouiller',
     'modale.archiver.rien': 'aucun document produit pour l’instant',
@@ -967,7 +931,7 @@ const TEXTES_COCKPIT = {
     'modale.desarchiver.bouton': 'Désarchiver',
     'modale.deverrouiller.question': 'Déverrouiller « {0} » ?',
     'modale.deverrouiller.detail': 'Le numéro redevient modifiable : l’éditeur quitte la lecture seule et tous les gestes de la barre « Pronto » sont réactivés.\n\nUn numéro déjà publié n’a en principe plus à changer – verrouillez-le de nouveau une fois la correction faite.',
-    // Pas de barre « Pronto » sur un livre : le nom générique du cockpit.
+    // Sur un livre, le nom générique du cockpit remplace « Pronto ».
     'modale.deverrouiller.detail.livre': 'Le livre redevient modifiable : l’éditeur quitte la lecture seule et tous les gestes du cockpit sont réactivés.\n\nUn livre déjà publié n’a en principe plus à changer – verrouillez-le de nouveau une fois la correction faite.',
     'modale.deverrouiller.bouton': 'Déverrouiller',
     'statut.archivage': 'Archivage en cours – cette fenêtre va se fermer…',
@@ -999,8 +963,8 @@ const TEXTES_COCKPIT = {
     'version.divergence': 'Ce numéro a été créé avec la version {1} du logiciel, ce poste a la {0}. La maquette a changé entre les deux : relisez le PDF avant de le publier.',
     'version.divergence.bouton': 'Changer de version…',
     'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Pronto », bouton « Version du logiciel… ».',
-    // regl.dev / regl.dev.oui / regl.dev.non : parties avec le groupe du formulaire, qui a
-    // déménagé dans l'onglet « Paramètres » du lanceur Windows.
+    // regl.dev / regl.dev.oui / regl.dev.non : ce réglage est dans l'onglet « Paramètres » du
+    // lanceur Windows.
     'err.dev.ecriture': 'Ce réglage n’a pas pu être enregistré ({0}) : il reprendra sa valeur précédente à la prochaine ouverture.',
     'table.titre': 'Tableau – {0}',
     'table.curseur.aucun': 'Placez le curseur sur un tableau du texte, puis réessayez.',
@@ -1222,9 +1186,9 @@ const TEXTES_COCKPIT = {
     'img.occ.zero': 'Jamais insérée : nulle part où écrire sa légende.',
     'img.apercu.absent': 'Aperçu indisponible (fichier illisible, format non affichable ou trop volumineux).',
 
-    // ---- Fiches de la Documentation (livre, film, intervention…) — les noms de champ et
-    // de type viennent du contrat (pipeline/kirby/champs-documentation.json), plus aucun
-    // n'est dupliqué ici : ne restent que les textes d'interface qui n'en sont pas. ----
+    // ---- Fiches de la Documentation (livre, film, intervention…). Les noms de champ et de
+    // type viennent de pipeline/kirby/champs-documentation.json ; ici, seuls les textes
+    // d'interface. ----
     'ressource.ajouter.livre': 'Ajouter un livre',
     'ressource.ajouter.livre.tip': 'Ajouter une nouvelle fiche de livre',
     'ressource.ajouter.film': 'Ajouter un film',
@@ -1242,8 +1206,8 @@ const TEXTES_COCKPIT = {
     'ressource.retirer.tip': 'Retirer cette fiche du numéro : elle redevient orpheline, disponible depuis « Mes orphelines »',
     'ressource.supprimer.tip': 'Supprimer définitivement cette fiche orpheline',
     'ressource.supprimer.question': 'Supprimer définitivement cette fiche ?',
-    // Depuis une carte de « Documentation du numéro » (23.09.2026) — distinct de « Retirer
-    // du numéro », qui ne fait que la détacher : ce geste-ci efface pour de bon.
+    // Depuis une carte de « Documentation du numéro » : efface la fiche, alors que « Retirer
+    // du numéro » la détache seulement.
     'ressource.supprimerNumero.tip': 'Supprimer définitivement cette fiche',
     'ressource.supprimerNumero.question': 'Supprimer définitivement cette fiche ? Si une version existe dans l’autre langue, elle sera conservée.',
     'ressource.supprimee': '✓ Fiche supprimée',
@@ -1264,8 +1228,8 @@ const TEXTES_COCKPIT = {
     'doc.enregistre': '✓ Documentation enregistrée',
     'doc.rienAEcrire': 'Rien à enregistrer pour l’instant.',
     'doc.retour.tip': 'Enregistrer d’abord, puis refermer',
-    // Le bouton « Aperçu du PDF », à côté de « Enregistrer » (23.09.2026) : ouvre/ferme
-    // l'aperçu de cette page dans la colonne voisine, même mécanisme que celui d'un article.
+    // Le bouton « Aperçu du PDF », à côté de « Enregistrer » : ouvre ou ferme l'aperçu de
+    // cette page dans la colonne voisine, comme pour un article.
     'doc.apercu': 'Aperçu du PDF',
     'doc.apercu.tip': 'Afficher ou masquer l’aperçu de cette page, dans la colonne voisine',
     'doc.statut.enregistres': '{0} bloc(s) enregistré(s).',
@@ -1283,7 +1247,7 @@ const TEXTES_COCKPIT = {
     'doc.listeMultiple.retirer.tip': 'Retirer',
     'rubrique.vider.tip': 'Vider ce bloc : la rubrique ne s’imprimera plus',
 
-    // ── Traductions à faire / Réservoir / Mes orphelines (bibliotheque partagee) ──
+    // ── Traductions à faire / Réservoir / Mes orphelines (bibliothèque partagée) ──
     'doc.onglet.traductions': 'Traductions à faire',
     'doc.onglet.reservoir': 'Réservoir',
     'doc.onglet.numero': 'Documentation du numéro',
@@ -1338,7 +1302,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.compteur': '{0} fiche(s)',
 
     // ── Rubriques de texte riche d'un article de Documentation ─────────────────
-    // Leur titre imprimé vient du contrat (rubriques[].titre), jamais d'ici.
+    // Leur titre imprimé vient du contrat (rubriques[].titre).
     'rubrique.champ.contenu': 'Texte',
     'rubrique.champ.contenu.indice': 'Une entrée par paragraphe. Ligne vide = nouveau paragraphe.',
     'rubrique.gras': 'Gras',
@@ -1383,8 +1347,8 @@ const TEXTES_COCKPIT = {
     'regl.liensReferences': 'Liens entre les appels de citation et les références',
     'regl.liensReferences.actifs': 'Actifs',
     'regl.liensReferences.desactives': 'Désactivés (les liens posés à la main restent actifs)',
-    // La liste des auteur·e·s publiés (autocomplétion de la modale d'auteur·e) : un état
-    // informatif, rien à régler — elle se rafraîchit seule, au plus une fois par semaine.
+    // La liste des auteur·e·s publiés (autocomplétion de la modale d'auteur·e) : une
+    // information ; elle se rafraîchit seule, au plus une fois par semaine.
     'regl.auteurs.titre': 'Auteur·e·s publié·e·s (autocomplétion)',
     'regl.auteurs.maj': 'OJS moissonné le {0} – {1} nom(s), {2} institution(s) ROR. Au plus une fois par mois, depuis ojs.szh.ch.',
     'regl.auteurs.jamais': 'OJS pas encore moissonné – la liste se construira seule dès qu’ojs.szh.ch sera joignable.',
@@ -1394,37 +1358,35 @@ const TEXTES_COCKPIT = {
     'cmyk.err': 'Conversion CMJN impossible : {0}',
     'cmyk.err.wsl': 'Les images d’imprimerie n’ont pas pu être converties : l’outil de traitement n’a pas répondu. Elles restent telles quelles, et le PDF peut sortir avec des couleurs fausses. Réessayez, ou lancez « Pronto (Updater) » depuis le menu Démarrer.',
     'regl.langue': 'Langue de l’interface',
-    // Ne paraît que si les menus de VSCodium et les textes du cockpit divergent : deux
-    // mécanismes indépendants les décident (voir l’en-tête de ce fichier), et une interface
-    // à moitié dans chaque langue ne se devine pas, elle se dit.
+    // Affiché seulement si les menus de VSCodium et les textes du cockpit ne sont pas dans
+    // la même langue (voir l’en-tête de ce fichier).
     'regl.langue.discordance': 'Les formulaires sont en {0}, les menus de VSCodium en {1}. Choisissez la langue ci-dessus, puis redémarrez VSCodium : les deux se remettront d’accord.',
     // ---- Vérificateur de traduction (lib/suggestion-traduction.js) ----
-    // Le réglage vit dans config.json et non dans les réglages de l'éditeur : trois
-    // panneaux le lisent, et la mise à jour du poste réécrit ces derniers en entier.
+    // Le réglage vit dans config.json : trois panneaux le lisent, et la mise à jour du poste
+    // réécrit entièrement les réglages de l'éditeur.
     'regl.verifTrad': 'Vérificateur de traduction',
     // ---- Mode « Trad » (lib/index-textes.js, media/_commun.js) ----
-    // Jumeau du vérificateur ci-dessus, pour les textes de l'OUTIL : allumé, un clic sur
-    // n'importe quel libellé d'un panneau ouvre le formulaire de suggestion sur CE
-    // texte-là. Les deux modes sont indépendants et peuvent être allumés ensemble.
-    // Le bandeau posé en haut de chaque panneau qui détourne les clics. Sans lui, un outil
-    // dont plus aucun bouton ne répond passe pour cassé.
+    // Comme le vérificateur ci-dessus, mais pour les textes de l'outil : un clic sur un
+    // libellé d'un panneau ouvre le formulaire de suggestion sur ce texte. Les deux modes
+    // sont indépendants. Le bandeau, en haut de chaque panneau, signale que les clics sont
+    // détournés.
     'trad.mode.bandeau': 'Mode « Trad » actif : un clic sur un texte de cette page ouvre une suggestion, au lieu de faire ce que le bouton fait d’habitude. Échap éteint le mode.',
     'trad.mode.eteindre': 'Éteindre le mode « Trad »',
-    // Les suggestions sur les textes de l'outil, dans les réglages : sans ce compte et ce
-    // bouton, elles seraient écrites et jamais relues.
+    // Les suggestions sur les textes de l'outil, dans les réglages : leur nombre et un
+    // bouton pour ouvrir le dossier.
     'regl.suggInterface.titre': 'Suggestions sur les textes de l’outil',
     'regl.suggInterface.ouvrir': 'Ouvrir le dossier',
     // ---- Fichier de langue de l'interface (lib/export-langue.js) ----
-    // Le pendant, pour les libellés du cockpit, du vérificateur ci-dessus : une copie
-    // qu'on envoie à qui relit. Rien ne se relit en retour, c'est un geste humain.
+    // Une copie des libellés du cockpit, à envoyer à la personne qui relit. Rien n'est
+    // réimporté.
     'regl.exportLangue.titre': 'Fichier de langue de l’interface',
     'regl.exportLangue': 'Télécharger (JSON)',
     'regl.exportLangue.faite': 'Fichier de langue enregistré dans « {0} ».',
     'regl.exportLangue.echec': 'Fichier de langue non enregistré : {0} ({1}).',
-    // La seule place où dire ce qu'est ce fichier : un JSON ne porte pas de commentaire.
+    // Texte placé dans le fichier exporté, car un JSON ne peut pas porter de commentaire.
     'regl.exportLangue.lire': 'Ce fichier est une COPIE des textes du cockpit : le corriger ne change rien à l’interface. Renvoyez-le à la personne qui administre l’outil.',
-    // La pastille posée à côté de chaque intitulé traduisible, et le formulaire qu'elle
-    // ouvre. Le texte publié n'y est jamais modifié : on propose, quelqu'un lira.
+    // La pastille à côté de chaque intitulé traduisible, et le formulaire qu'elle ouvre. Le
+    // texte publié n'est pas modifié : la suggestion est enregistrée pour être relue.
     'sugg.pastille': 'Proposer une autre traduction pour ce champ',
     'sugg.titre': 'Proposer une traduction',
     'sugg.titre.un': 'Proposer une traduction – {0}',
@@ -1438,8 +1400,8 @@ const TEXTES_COCKPIT = {
     'sugg.commentaire.aide': 'Un contresens, un terme de la maison, une tournure plus claire.',
     'sugg.aide': 'Une suggestion ne remplace rien : le texte publié ne bouge pas tant que personne n’a tranché.',
     'sugg.enregistrer': 'Enregistrer la suggestion',
-    // Le second geste : ce texte ne devrait pas exister. Le bouton l'arme, il n'envoie
-    // rien ; « Enregistrer la suggestion » reste le seul envoi.
+    // Signaler qu'un texte ne devrait pas exister. Le bouton le marque sans rien envoyer ;
+    // « Enregistrer la suggestion » envoie.
     'sugg.supprimer': 'Proposer de supprimer ce texte',
     'sugg.supprimer.quoi': 'Sera enregistré : ce texte ne devrait pas exister. Aucune traduction n’est proposée à la place.',
     'sugg.annuler': 'Annuler',
@@ -1452,8 +1414,7 @@ const TEXTES_COCKPIT = {
     'sugg.champ.resume': 'Résumé',
     'sugg.champ.keywords': 'Mots-clés',
     // ---- Le même formulaire, visé sur un texte de l'outil (mode « Trad ») ----
-    // Ni article, ni champ, ni langue d'article : la clé du libellé, et la langue de
-    // l'interface. Le reste du formulaire ne bouge pas.
+    // Sans article ni champ : la clé du libellé et la langue de l'interface.
     'sugg.titre.interface': 'Proposer une traduction – texte de l’outil',
     'sugg.cible': 'Texte',
     'sugg.cible.interface': 'Texte de l’interface de l’outil',
@@ -1472,13 +1433,11 @@ const TEXTES_COCKPIT = {
 
     // ---- Contrôles de la compilation (lib/journal.js) ----
     //
-    // La chaîne relève une dizaine de choses à chaque compilation, et tout partait sur la
-    // sortie d'erreur d'un terminal que rien n'ouvre. Ces phrases sont ce qu'un rédacteur
-    // en lit. Trois temps pour chacune, dans cet ordre : ce qui s'est passé, le geste, et
-    // pourquoi cela arrête la publication quand cela l'arrête. Aucune n'a le droit de
-    // nommer un filtre, un chemin ou un code de sortie.
-    // Les huit destinations d’un bouton de constat (lib/constats.js). Huit paires, quel
-    // que soit le nombre de défauts : c’est la cible qui est nommée, jamais le défaut.
+    // Les phrases que la rédaction lit. Chacune dit, dans cet ordre : ce qui s'est passé, ce
+    // qu'il faut faire, et pourquoi cela bloque la publication le cas échéant. Aucune ne nomme
+    // un filtre, un chemin ou un code de sortie.
+    // Les huit destinations d’un bouton de constat (lib/constats.js) : le bouton nomme la
+    // cible, pas le défaut.
     'action.article': 'Vers l’article',
     'action.article.tip': 'Ouvrir le texte de l’article dans l’éditeur.',
     'action.fiche': 'Éditer les métadonnées',
@@ -1500,13 +1459,12 @@ const TEXTES_COCKPIT = {
     'action.apercu.tip': 'Fermer l’aperçu PDF, qui tient peut-être le fichier ouvert.',
     'action.pagination': 'Rafraîchir la pagination',
     'action.pagination.tip': 'Recalculer les folios du numéro et recompiler les articles décalés.',
-    // Le PDF déjà produit d’un article précis (szh.voirPdfArticle) : distinct d’« apercu »,
-    // qui est un INTERRUPTEUR sur l’article en aperçu courant et ne peut viser personne en
-    // particulier (revue F03, 22.09.2026 — pipeline/pdf-verrouille visait « apercu » à tort).
+    // Le PDF déjà produit d’un article précis (szh.voirPdfArticle). « apercu » est un
+    // interrupteur sur l’article en aperçu et ne vise pas un article donné.
     'action.pdf': 'Voir le PDF',
     'action.pdf.tip': 'Ouvrir le PDF de cet article dans l’Explorateur.',
-    // Les intitulés des défauts : un groupe nominal court, jamais une phrase. L’objet
-    // vient des champs du constat, le geste est dans le bouton — voir lib/constats.js.
+    // Les intitulés des défauts : un groupe nominal court. L’objet vient des champs du
+    // constat, l’action est dans le bouton (lib/constats.js).
     'defaut.titre-manquant': 'Titre manquant',
     'defaut.dossier-espaces': 'Espaces dans le nom d’un dossier',
     'detail.dossier-espaces': 'Renommez le dossier sans espaces : l’outil ne sait pas lire un nom de dossier qui contient des espaces.',
@@ -1524,8 +1482,7 @@ const TEXTES_COCKPIT = {
     'defaut.niveaux-ecrases': 'Titres trop profonds',
     'defaut.police-manquante': 'Police non installée',
     // La typographie (szh-typographie.lua). L'usage suisse écrit « ss » ; un nom propre et
-    // une citation gardent le « ß », et le filtre n'y touche pas — nuance à garder, d'où
-    // le détail pour ce seul cas des trois.
+    // une citation gardent le « ß », que le filtre ne touche pas : d'où le détail.
     'defaut.typo-eszett': '« ß » à la place de « ss »',
     'detail.typo-eszett': 'L’usage suisse écrit « ss » ; un nom propre ou une citation le gardent, le filtre n’y touche pas.',
     'defaut.typo-guillemets-droits': 'Guillemets droits au lieu de chevrons',
@@ -1562,7 +1519,7 @@ const TEXTES_COCKPIT = {
     'defaut.sous-titre-deduit': 'Sous-titre déduit du titre',
     'defaut.word-redepose': 'Word déjà utilisé',
     'defaut.origine-inconnue': 'Origine du dossier inconnue',
-    // Le lecteur du gabarit « Pronto », branché sur l'import le 22.09.2026.
+    // Le lecteur du gabarit « Pronto ».
     'defaut.pronto-meta-inconnue': 'Étiquette inconnue dans les métadonnées',
     'defaut.pronto-auteur-inconnue': 'Étiquette inconnue chez les auteur·e·s',
     'defaut.pronto-champ-hors-gabarit': 'Champ absent du gabarit',
@@ -1577,7 +1534,7 @@ const TEXTES_COCKPIT = {
     'defaut.pronto-bloc-vide': 'Bloc sans image ni tableau',
     'defaut.pronto-cles-sans-contenu': 'Clés de bloc sans contenu',
     'defaut.pronto-bloc-mal-forme': 'Tableau aux allures de bloc',
-    // Garantie « rien ne disparaît » de l'import (29.09.2026).
+    // Garantie « rien ne disparaît » de l'import.
     'defaut.bloc-valeur-non-reprise': 'Valeur de figure restée dans le texte',
     'defaut.image-absente-import': 'Image du Word remise en fin d’article',
     'defaut.figure-alt-a-completer': 'Texte alternatif à compléter',
@@ -1585,7 +1542,7 @@ const TEXTES_COCKPIT = {
     'defaut.pronto-blocs-colles': 'Blocs collés, séparés à la lecture',
     'defaut.pronto-biblio-tableau': 'Tableau dans la bibliographie',
     'defaut.pronto-langue-ignoree': 'Champ de langue ignoré',
-    // Quatre codes de docx-meta.py restés sans ligne ici (revue F03, 22.09.2026).
+    // Codes de docx-meta.py.
     'defaut.tableau-auteurs-non-lu': 'Tableau des autrices et auteurs non lu',
     'defaut.biblio-references-restees': 'Références restées hors de la liste',
     'defaut.biblio-non-detachee': 'Bibliographie non mise à part',
@@ -1613,10 +1570,8 @@ const TEXTES_COCKPIT = {
     'detail.biblio-conflit': 'La liste corrigée ici a été remplacée par celle du Word. À vérifier.',
     'defaut.biblio-retiree': 'Liste de références retirée du Word',
     'defaut.biblio-inconnue': 'État de la liste de références inconnu',
-    // La bibliographie détachée à l'import (szh-biblio-detacher.lua). Le premier est le cas
-    // NOMINAL : il se disait « Literaturverzeichnis ausgelagert : 9 von 9 erwarteten
-    // Absätzen », dans la langue du filtre et sous un triangle d'avertissement. Un succès
-    // s'annonce comme un succès, et la croix de la carte permet de le faire taire.
+    // La bibliographie détachée à l'import (szh-biblio-detacher.lua). Le premier code est
+    // un succès, annoncé comme tel ; la croix de la carte le referme.
     'defaut.biblio-detachee': 'Bibliographie correctement récupérée',
     'defaut.biblio-incomplete': 'Bibliographie récupérée, sauf quelques paragraphes',
     'detail.biblio-incomplete': 'Ils sont {0} et suivent la liste dans le texte ; rien n’est perdu. Si ce sont des références, donnez-leur le style de bibliographie dans le Word et réimportez.',
@@ -1642,7 +1597,7 @@ const TEXTES_COCKPIT = {
     'defaut.pagination-perimee': 'Pagination à mettre à jour',
     'defaut.export-refus': 'Export refusé',
     // Les cartes qui regroupent les objets d’un même défaut (lib/constats.js, regrouper) :
-    // le compte dans le titre, puis un lien par objet. `.1` et `.n` : le singulier se dit.
+    // le compte dans le titre, puis un lien par objet. `.1` pour le singulier, `.n` sinon.
     'defaut.images-sans-description': 'Images sans description',
     'defaut.images-sans-description.1': '1 image sans description',
     'defaut.images-sans-description.n': '{0} images sans description',
@@ -1668,8 +1623,8 @@ const TEXTES_COCKPIT = {
     'objet.image.tableau': 'dans {0}',
     // Le bouton qui déplie l’explication d’une carte : ce qui ne tient pas dans la phrase.
     'ctl.pourquoi': 'Pourquoi ?',
-    // La phrase d’action de chaque défaut : une seule, et qui commence par le geste. Le
-    // pourquoi est dans l’infobulle (ctl.*, ou infobulle.* quand la maison n’en a pas).
+    // La phrase d’action de chaque défaut commence par ce qu’il faut faire. Le pourquoi est
+    // dans l’infobulle (ctl.*, ou infobulle.* à défaut).
     'consigne.titre-manquant': 'Saisissez le titre dans la fiche de l’article.',
     'consigne.dossier-espaces': 'Renommez le dossier sans espaces dans l’explorateur de Windows.',
     'consigne.aucun-article': 'Déposez un document Word sur la barre « Pronto ».',
@@ -1767,16 +1722,16 @@ const TEXTES_COCKPIT = {
     'ctl.groupe.bloquant': 'Ce qui empêche de publier',
     'ctl.groupe.avert': 'À regarder avant de publier',
     'ctl.groupe.info': 'Pour information',
-    // La croix d'un message gris. Elle ne se pose que sur eux (lib/constats.js, fermable) :
-    // un bloquant se corrige, il ne se referme pas.
+    // La croix d'un message gris (lib/constats.js, fermable). Un message bloquant n'en a pas :
+    // il se corrige.
     'ctl.constat.fermer': 'Ne plus afficher ce message',
     'ctl.badge.bloquant': 'bloquant',
     'ctl.badge.avert': 'à vérifier',
     'ctl.barre.bloquant': '$(error) {0} à corriger',
     'ctl.barre.avert': '$(warning) {0} à vérifier',
     'ctl.barre.tooltip': 'Ce que la dernière compilation a relevé – cliquer pour l’ouvrir.',
-    // Deux phrases, et la différence compte : le code de sortie de la tâche dit si la
-    // chaîne s'est arrêtée ou si elle a produit un document qu'on ne peut pas publier.
+    // Deux phrases distinctes : le code de sortie de la tâche dit si la chaîne s'est arrêtée
+    // ou si elle a produit un document non publiable.
     'ctl.notif.arret': 'La compilation s’est arrêtée : {0} point(s) à corriger.',
     'ctl.notif.echec': 'Le PDF n’a pas pu être produit à cause d’une erreur inconnue. Réessayez ; si cela se répète, contactez le support.',
     'ctl.notif.bloquant': 'Ce qui vient d’être compilé n’est pas publiable : {0} point(s) à corriger.',
@@ -1798,8 +1753,8 @@ const TEXTES_COCKPIT = {
     'ctl.signaler.refuse': 'Le signalement n’a pas pu être enregistré.',
     'ctl.support.rapport.deja': 'déjà enregistré tout à l’heure (identifiant {0})',
     'ctl.support.rapport.absent': 'le rapport n’a pas pu être enregistré sur ce poste',
-    // Le voile posé sur les messages pendant une compilation et sa validation PDF/UA : ce
-    // qui est dessous va peut-être changer, il ne faut pas s'y fier ni cliquer dessus.
+    // Le voile posé sur les messages pendant une compilation et sa validation PDF/UA : ils
+    // vont peut-être changer.
     'ctl.analyse.encours': 'Analyse en cours…',
     'ctl.article': 'Article « {0} »',
     'ctl.numero': 'Ce numéro',
@@ -1815,15 +1770,14 @@ const TEXTES_COCKPIT = {
     // livre-scinder.py remontent au panneau « Contrôles » par ce libellé.
     'ctl.source.scission': 'Scission du manuscrit',
     'ctl.source.pagination': 'Pagination',
-    // szh-numerotation.lua : la même image sans alt ni légende que l'encadré « lecteur
-    // d'écran » de l'aperçu (szh-apercu-lecteur-ecran.lua) montre déjà à la relecture,
-    // signalée ici pour être retrouvée sans rouvrir l'aperçu de chaque article.
+    // szh-numerotation.lua : image sans alt ni légende, la même que signale l'encadré
+    // « lecteur d'écran » de l'aperçu, listée ici pour tous les articles.
     'ctl.source.numerotation': 'Figures',
     'ctl.figure.sansalt': 'L’image {0} n’a ni texte alternatif ni légende : un lecteur d’écran n’en dira rien.',
     'ctl.action.medias': 'Décrire les images',
     'ctl.action.medias.tip': 'Ouvrir le formulaire des images de cet article.',
-    // Citations : szh-citations.lua n'écrit qu'en français, ces phrases sont donc la seule
-    // version bilingue qui existe.
+    // Citations : szh-citations.lua n'écrit qu'en français ; ces phrases en sont la version
+    // bilingue.
     'ctl.cit.sansref': 'L’appel {0} ne mène à aucune référence : la liste des références n’a pas d’entrée à ce nom et à cette année. Ajoutez la référence à la fin de l’article, ou corrigez le nom ou l’année dans l’appel. En l’état, le lecteur ne peut pas remonter à la source.',
     'ctl.cit.ambigu': 'L’appel {0} peut renvoyer à deux références du même auteur et de la même année : personne ne peut choisir à votre place. Placez le curseur dans l’appel, puis « Lier un appel à une référence ». Sans ce geste, l’appel restera sans lien.',
     'ctl.cit.jamais': 'La référence « {0} » n’est citée nulle part dans l’article. Citez-la dans le texte, ou retirez-la de la liste : une référence que rien n’appelle est le plus souvent le reste d’une coupe.',
@@ -1836,7 +1790,7 @@ const TEXTES_COCKPIT = {
     'ctl.meta.marque.motcle': 'Le mot-clé n° {0} en {1} est resté sur la marque de traduction : c’est elle qui s’imprimerait sur la couverture. Ouvrez « Métadonnées des articles » et traduisez-le en {1}, ou retirez la rangée entière. La compilation s’arrête ici.',
     'ctl.meta.sanslangue': 'Aucune langue n’est déclarée pour cet article : il est donc composé dans celle du numéro. Si l’article est écrit dans une autre langue, choisissez-la dans « Métadonnées des articles » – c’est elle qui décide des titres imprimés et de ce qu’un lecteur d’écran annonce.',
     'ctl.meta.langueinconnue': 'La langue « {0} » de cet article n’est pas une langue de la revue. Ouvrez « Métadonnées des articles » et choisissez le français, l’allemand ou l’italien. La compilation s’arrête ici : personne ne peut deviner en quelle langue composer.',
-    // Compilation : les messages du Makefile, redits ici pour n'en garder que l'essentiel.
+    // Compilation : les messages du Makefile, en version courte.
     'ctl.titre.manquant': 'Cet article n’a pas de titre. Ouvrez « Métadonnées des articles », saisissez-le, enregistrez, puis recompilez (Ctrl+S). La compilation s’arrête ici : le PDF sortirait avec un titre vide tout en s’annonçant accessible, et un lecteur d’écran n’aurait rien à annoncer.',
     'ctl.espaces': 'Un dossier d’article contient des espaces dans son nom, et la chaîne ne sait pas les suivre. Renommez-le sans espaces. La compilation s’arrête ici : l’article ne serait pas produit.',
     'ctl.aucunarticle': 'Ce numéro n’a encore aucun article. Déposez les documents Word dans le dossier « articles-word », puis enregistrez (Ctrl+S) : ils seront convertis.',
@@ -1857,8 +1811,8 @@ const TEXTES_COCKPIT = {
     'ctl.niveaux': 'Les titres de cet article descendent plus bas que ce que la mise en page distingue : les niveaux {0} s’affichent tous pareil. Remontez les sous-titres les plus profonds d’un rang. En l’état, deux sections de profondeurs différentes sont indiscernables pour un lecteur d’écran.',
     'ctl.image.manquante': 'L’image « {0} » est appelée par le texte mais introuvable sur le disque : elle a été renommée ou supprimée. Ouvrez « Médias de l’article » pour la redéposer, ou retirez son insertion du texte. Le document est sorti avec un cadre à sa place, et l’export reste bloqué tant qu’elle manque.',
     'ctl.police.manquante': 'La police « {0} » n’est pas installée : le document est composé avec une police de remplacement, et les longueurs de ligne ne sont plus celles prévues. Signalez-le, c’est l’outil qui est en cause, pas l’article.',
-    // Import Word. Les phrases du pipeline existent déjà dans les deux langues ; celles-ci
-    // sont plus courtes, et les trois codes sans clé ici gardent les siennes.
+    // Import Word : versions courtes des phrases du pipeline. Un code sans clé ici garde la
+    // phrase du pipeline.
     'ctl.import.echec': 'Le document Word « {0} » n’a pas pu être converti. Il reste dans « articles-word » : rien n’a été perdu. Ouvrez-le dans Word ou LibreOffice, réenregistrez-le (.docx ou .odt), puis relancez la conversion. S’il résiste, signalez-le avec le fichier.',
     'ctl.import.restes': '{0} document(s) Word ne sont pas entrés dans le numéro et attendent encore dans « articles-word ». Le numéro se publierait sans eux : réglez chaque cas ci-dessus avant de continuer.',
     'ctl.import.tableau-sans-entete': 'Aucun en-tête n’a pu être reconnu dans le tableau {0} de cet article. Si sa première rangée ou sa première colonne en est un, ouvrez-le dans l’éditeur de tableaux et déclarez-le (clic droit) : un lecteur d’écran pourra alors relier chaque cellule à son en-tête. Si ce tableau n’a réellement pas d’en-tête, il n’y a rien à faire.',
@@ -1866,14 +1820,14 @@ const TEXTES_COCKPIT = {
     'ctl.import.sous-titre-deduit': 'Le document Word ne donnait qu’un titre, avec un deux-points au milieu : ce qui suit est devenu le sous-titre « {0} ». Vérifiez la coupe dans « Métadonnées des articles » – titre et sous-titre ne se composent pas de la même façon, et il suffit de recoller les deux champs si elle est fausse.',
     'ctl.import.word-redepose': 'Le document « {0} » a déjà servi à créer cet article : c’est sa version corrigée qui vient d’être déposée. Rien n’a été touché, et l’article publié est encore l’ancien. Pour publier la correction sans perdre la fiche, les portraits ni les traductions, faites un clic droit sur l’article, « Réimporter cet article » – ou servez-vous du bouton posé sur ce fichier dans l’onglet « Word en attente ».',
     'ctl.import.origine-inconnue': 'Un article porte déjà le nom de dossier qu’aurait pris « {0} », et on ne sait pas de quel document Word il vient. Rien n’a été créé, pour ne pas mettre deux fois le même article dans le numéro. S’il s’agit d’un autre article, renommez le fichier Word et enregistrez (Ctrl+S) ; s’il s’agit du même, corrigé, servez-vous du bouton « Réimporter cet article » posé sur ce fichier dans l’onglet « Word en attente » : il vous fera désigner l’article à corriger.',
-    // Les quatre constats de la bibliographie détachée. Phrases entières : elles partent
-    // aussi en notification, où il n'y a pas de tête de carte pour nommer l'article.
+    // Les quatre constats de la bibliographie détachée, en phrases complètes : elles servent
+    // aussi de notification, sans carte pour nommer l'article.
     'ctl.import.biblio-detachee': 'La bibliographie de cet article a été correctement récupérée.',
     'ctl.import.biblio-incomplete': 'La bibliographie a été récupérée, sauf {0} paragraphe(s) restés dans le texte, juste après la liste.',
     'ctl.import.biblio-bornes-perdues': 'La bibliographie a été repérée dans le Word, mais ses bornes n’ont pas été retrouvées après conversion : elle reste dans le texte.',
     'ctl.import.biblio-fichier-refuse': 'La bibliographie n’a pas pu être enregistrée à part : elle reste dans le texte de l’article.',
     // Le lecteur du gabarit « Pronto ». Les quatre premiers refusent l'import : ils disent
-    // donc d'abord ce qui n'a PAS eu lieu, puis le geste, jamais le mécanisme.
+    // d'abord ce qui n'a pas eu lieu, puis quoi faire.
     'ctl.import.pronto-meta-inconnue': 'Le tableau des métadonnées porte l’étiquette « {0} », que le gabarit ne connaît pas. L’article n’a pas été importé : ce que cette étiquette annonçait serait parti nulle part. Corrigez-la dans le document Word et enregistrez (Ctrl+S) – la conversion repart toute seule.',
     'ctl.import.pronto-auteur-inconnue': 'Le tableau des autrices et auteurs porte une ligne que le gabarit ne connaît pas : « {0} ». L’article n’a pas été importé, pour ne pas perdre ce qu’elle contient. Corrigez l’étiquette dans le document Word, puis enregistrez (Ctrl+S).',
     'ctl.import.pronto-champ-hors-gabarit': 'Le tableau des autrices et auteurs porte un champ que le gabarit n’a pas : « {0} ». L’étiquette n’a rien de fautif, c’est le gabarit qui n’a pas de case pour elle. L’article n’a pas été importé, pour ne pas perdre cette valeur ; le message du journal dit où va l’information (la photo, par exemple, se dépose dans la cellule de gauche).',
@@ -1893,9 +1847,8 @@ const TEXTES_COCKPIT = {
     'ctl.import.pronto-langue-ignoree': 'Ce document porte encore un champ « Langue de l’article » (« {0} ») : il n’est plus lu. La langue vient de la revue du numéro – Revue en français, Zeitschrift en allemand. Si cet article est dans une autre langue, corrigez-la ici.',
     // ---- Le réimport d'un article corrigé ----
     //
-    // Les libellés des codes que le réimport rend. La table qui les associe à leur code
-    // est lib/journal.js, avec celle des tons : il n'y a qu'un endroit à lire pour savoir
-    // ce qu'une issue dit, et de quelle couleur elle le dit.
+    // Les libellés des codes du réimport. Leur association aux codes et aux tons est dans
+    // lib/journal.js.
     'ctl.reimport.sans-article': 'Aucun article de ce numéro ne correspond à ce document Word. Rien n’a été touché. S’il s’agit d’un article nouveau, glissez le fichier sur la barre « Pronto » et il sera importé ; s’il s’agit de la version corrigée d’un article dont le nom de fichier a changé, lancez « Réimporter cet article » depuis l’article et désignez-lui ce fichier.',
     'ctl.reimport.sans-word': 'Le document Word de cet article n’attend pas dans le numéro : il n’y a rien à réimporter, et rien n’a été touché. Déposez la version corrigée sur la barre « Pronto » sous ce même nom de fichier, puis recommencez.',
     'ctl.reimport.fiche-sans-source': 'On ne sait pas de quel document Word cet article vient : il a été importé avant que la chaîne ne le note. Rien n’a été touché – remplacer le texte par celui d’un document non identifié serait un coup de dés. Déposez le Word corrigé, puis désignez-le à cet article depuis l’onglet « Word en attente ».',
@@ -1944,13 +1897,12 @@ const TEXTES_COCKPIT = {
     'reimport.choisirArticle.titre': 'Quel article « {0} » corrige-t-il ?',
     'statut.reimport': 'Remplacement du texte de « {0} »…',
     'statut.reimport.annule': 'Retour au texte d’avant de « {0} »…',
-    // Le badge « Dossier de test » de la barre d'état : un poste qui pointe sur
-    // l'arborescence de test le dit, en couleur — la décision test/production reste ouverte.
+    // Le badge « Dossier de test » de la barre d'état, sur un poste qui pointe sur
+    // l'arborescence de test.
     'etat.barre.test': 'Dossier de test',
     'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production.',
     'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut.',
-    // Le badge n'ouvre plus rien au clic depuis que le réglage a quitté le cockpit : cette
-    // phrase dit où il vit désormais.
+    // Le badge ne réagit pas au clic : cette phrase dit où se trouve le réglage.
     'etat.barre.test.parametres': 'Se règle dans les Paramètres de Pronto : un clic ouvre cet onglet.',
     // L'Accueil (media/accueil.js). Les textes repris du lanceur Windows
     // (windows/szh-textes.ps1) gardent leur sens ; un texte compté a ses deux formes (.un, .plus).
@@ -2761,13 +2713,11 @@ const TEXTES_COCKPIT = {
     'accueil.regl.moiss.st.retrait-en-attente': 'retrait en attente',
   },
   de: {
-    // Le badge « Testordner » : voir le commentaire côté français, même contrat.
     'etat.barre.test': 'Testordner',
     'etat.barre.test.tooltip': 'Dieser Arbeitsplatz arbeitet im Testordner: hier angelegte Ausgaben sind nicht in der Produktion.',
     'etat.barre.test.defaut': 'Keine Arbeitsplatz-Konfiguration gefunden: der Testordner wird standardmässig verwendet.',
-    // Kein Klick mehr auf das Badge: das Feld hat das Cockpit verlassen, diese Zeile sagt wohin.
     'etat.barre.test.parametres': 'Wird in den Einstellungen von Pronto festgelegt: ein Klick öffnet diesen Reiter.',
-    // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
+    // En-têtes de section de l'arbre, en majuscules comme en français.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
     'unite.article': 'Artikel',
@@ -2827,7 +2777,7 @@ const TEXTES_COCKPIT = {
     'err.build': 'Die Kompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Speichern Sie erneut (Ctrl+S), um es nochmals zu versuchen; wiederholt sich das, melden Sie es. Ihre Texte sind unberührt.',
     'err.import': 'Die Umwandlung der Word-Dokumente ist nicht durchgelaufen. Die Dateien sind in «articles-word» geblieben: nichts ist verloren. Versuchen Sie es erneut; wiederholt sich das, melden Sie es mit dem betroffenen Dokument.',
     'err.export': 'Die vollständige Neukompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es. Ihre Texte, Bilder und Metadaten sind unberührt.',
-    // Die vier Buch-Ausgaben, jede mit ihrer eigenen Aufgabe (Status, Erfolg, Fehler).
+    // Les quatre sorties du livre, chacune sa propre tâche (statut, réussite, échec).
     'livre.imprimeur.statut': 'Druck-PDF des Buches wird erstellt…',
     'livre.imprimeur.fait': 'Das Druck-PDF des Buches ist bereit.',
     'livre.imprimeur.err': 'Das Druck-PDF wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
@@ -3009,7 +2959,6 @@ const TEXTES_COCKPIT = {
     'modale.remplacer.detail.image': 'Das alte Bild wird überschrieben. Der Name «{0}» bleibt erhalten (der Artikeltext verweist auf diesen Namen).',
     'modale.remplacer.detail.format': '⚠ Die gewählte Datei ist eine .{0}, das Bild des Artikels aber eine .{1}: Inhalt und Endung passen nicht mehr zusammen, die Ausgabe kann brechen.\n',
     'modale.remplacer.bouton': 'Ersetzen',
-    // Der Schutz der Vorlage «Pronto» — siehe die französische Fassung für das Warum.
     'modale.bloc-mal-forme.titre': 'Achtung: {0} Tabelle(n) des soeben Importierten tragen die Bezeichnungen einer Abbildung oder Tabelle, ohne deren Form zu haben. Sie werden so gedruckt, wie sie sind, und ihre Legende wird weder nummeriert noch als Alternativtext übernommen.',
     'modale.bloc-mal-forme.bouton': 'Verstanden',
     'modale.conflit.question': 'Diese Dateien warten bereits: {0}.\nWas tun?',
@@ -3033,11 +2982,9 @@ const TEXTES_COCKPIT = {
     'meta.langue.de': 'Deutsch',
     'meta.langue.en': 'Englisch',
     'meta.langue.it': 'Italienisch',
-    // Les noms de couleurs ne se traduisent pas (décision de la rédaction) : l'ordre des
-    // pastilles à l'écran EST l'ordre dans lequel la couleur avance d'une année à l'autre
-    // (couleurAnnuelle, lib/yaml.js), et traduire les noms les rangerait autrement en
-    // allemand — « la couleur de l'an prochain est la suivante à droite » cesserait d'être
-    // vrai. Un seul jeu de noms, un seul ordre : mêmes valeurs qu'en français.
+    // Les noms de couleurs ne se traduisent pas : l'ordre des pastilles est celui dans lequel
+    // la couleur avance d'une année à l'autre (couleurAnnuelle, lib/yaml.js), et des noms
+    // traduits se trieraient autrement. Mêmes valeurs qu'en français.
     'meta.couleur': 'Farbe der Ausgabe',
     'meta.couleur.rouge': 'Rouge',
     'meta.couleur.capucine': 'Capucine',
@@ -3142,7 +3089,7 @@ const TEXTES_COCKPIT = {
     'fiches.md.masquer': 'Den Artikeltext wieder schliessen und dem Formular den ganzen Platz geben.',
     'fiches.md.masquer.livre': 'Den Kapiteltext wieder schliessen und dem Formular den ganzen Platz geben.',
     'fiches.md.horsarticle': 'Klicken Sie zuerst in das Formular des Artikels, dessen Text Sie sehen möchten.',
-    // ---- Blatt «Metadaten prüfen (Druck)» ----
+    // ---- Feuille « Vérifier les méta (print) » ----
     'verif.bouton': 'Metadaten prüfen (Druck)',
     'verif.titre': 'Prüfung der Metadaten',
     'verif.article': 'Artikel',
@@ -3214,7 +3161,7 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.oui': 'Zum berechneten DOI zurück',
     'fiches.doi.forme': 'Erwartete Form: {0}',
     'fiches.doi.double': 'Bereits vergeben an {0}',
-    // Kontrollkästchen «hors sommaire», nur für Bücher (nie für Artikel).
+    // Case « hors sommaire », livre seulement.
     'fiches.sommaire': 'Dieses Kapitel nicht im Inhaltsverzeichnis anzeigen',
     'fiches.sommaire.aide': 'Das Kapitel hat dann weder Nummer noch Kapitelsymbol noch Registermarke; die übrigen Kapitel werden neu nummeriert.',
     'vue.ouvrir': 'Öffnen',
@@ -3227,21 +3174,14 @@ const TEXTES_COCKPIT = {
     'art.numero.section.livre': 'Metadaten des Buches',
     'art.liste.section': 'Artikel der Ausgabe',
     'art.liste.section.livre': 'Kapitel des Buches',
-    // Die beiden Zeilen der Befehlsleiste (media/articles.html, media/articles.js): kein
-    // sichtbarer Titel dazwischen — die Ansicht soll Höhe gewinnen, zwei Abschnittstitel
-    // würden das wieder aufheben — daher benennt sie das aria-label je Zeile für
-    // Screenreader.
+    // Les deux lignes de la barre de commandes : voir le commentaire côté français.
     'art.barre.filtres.aria': 'Anzeigefilter',
     'art.barre.actions.aria': 'Aktionen',
     'art.arbre.tooltip': '{0} – Ordner «{1}» – {2}',
     'art.sansfiche': 'Kein Titel im Datenblatt dieses Artikels: hier steht sein Slug, und die Kompilierung wird sich weigern.',
     'art.ouvrir': 'Text öffnen',
     'art.ouvrir.tip': 'Den Text des Artikels im Editor öffnen. Keine Kompilierung, keine Vorschau: hier wird gelesen oder korrigiert.',
-    // «PDF ansehen (Explorer)»: der einzige Fall, in dem der Artikel noch kein PDF
-    // zum Anzeigen hat — nie kompiliert, oder die letzte Kompilierung ist ohne
-    // Ergebnis in out/<slug>/ fehlgeschlagen. voirPdfArticle (extension.js) weicht
-    // zuerst auf diesen Ordner aus, falls er existiert; dieser Schlüssel greift nur,
-    // wenn es wirklich nichts zu zeigen gibt.
+    // « Voir le PDF (Explorateur) » sans PDF à montrer : voir le commentaire côté français.
     'art.pdf.absent': 'Kein PDF für «{0}»: dieser Artikel wurde noch nicht kompiliert.',
     'art.monter': 'Nach oben',
     'art.monter.tip': 'Diesen Artikel eine Stufe höher in die Ausgabe setzen. Kein Ordner wird umbenannt.',
@@ -3475,9 +3415,7 @@ const TEXTES_COCKPIT = {
     'fmt.coller.pastableau': 'In der Zwischenablage ist keine Tabelle: kopieren Sie zuerst Zellen in Excel oder Word.',
     'fmt.coller.horsarticle': 'Öffnen Sie zuerst den Text eines Artikels: eine Tabelle wird in einen Artikel eingefügt, nicht in ein anderes Dokument.',
     'fmt.coller.creee': 'Tabelle «{0}» erstellt und im Artikel referenziert.',
-    // Alternativtext des Bildes im FALC-Kapitelkopf (szh.fmt.falcHeader): in der Sprache
-    // der OBERFLÄCHE, nie jener des Buchs (texteFalcHeader erhält ihn als Argument, statt
-    // ihn selbst zu wählen).
+    // Texte alternatif par défaut de l’image de l’en-tête FALC, dans la langue de l’interface.
     'fmt.falcHeader.alt': 'Alternativtext des Bildes',
     'palette.placeholder': 'Formatierung – Aktion wählen',
     'palette.horsmd': 'Öffnen Sie einen Artikel (.md) für die Formatierung.',
@@ -3502,8 +3440,7 @@ const TEXTES_COCKPIT = {
     'palette.tableau': 'Tabelle einfügen',
     'palette.collerTableau': 'Tabelle aus Excel/Word einfügen',
     'palette.sautPage': 'Seitenumbruch einfügen (nur PDF)',
-    // Gruppe «Buch» (PALETTE_MEF_LIVRE, lib/formatting-pur.js): zwei Snippet-Stile nur
-    // für Bücher, nie sichtbar für eine Zeitschrift oder Revue.
+    // Groupe « Livre » (PALETTE_MEF_LIVRE, lib/formatting-pur.js), réservé aux livres.
     'palette.g.livre': 'Buch',
     'palette.falcHeader': 'Kapitelkopf (FALC)',
     'palette.qrLink': 'QR-Code',
@@ -3537,7 +3474,7 @@ const TEXTES_COCKPIT = {
     'panneau.traduction': 'Übersetzung des aktuellen Artikels',
     'panneau.toutExporter': 'Alles neu kompilieren',
     'panneau.exporterXml': 'Ausgabe für OJS exportieren',
-    // Die vier Buch-Ausgaben, nur für dieses Profil im Export-Panel angeboten.
+    // Les quatre sorties du livre, proposées dans le panneau Export pour ce profil seul.
     'panneau.livreImprimeur': 'Druck-PDF des Buches',
     'panneau.livreCouverture': 'Umschlag des Buches',
     'panneau.livreEpub': 'EPUB des Buches',
@@ -3639,8 +3576,7 @@ const TEXTES_COCKPIT = {
     'version.divergence': 'Diese Ausgabe wurde mit Version {1} der Software erstellt, dieser Arbeitsplatz hat Version {0}. Das Layout hat sich dazwischen geändert: Prüfen Sie das PDF vor der Veröffentlichung.',
     'version.divergence.bouton': 'Version wechseln…',
     'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Pronto», Schaltfläche «Version der Software…».',
-    // regl.dev / regl.dev.oui / regl.dev.non : dasselbe Feld ist in den Reiter
-    // «Einstellungen» des Windows-Starters umgezogen.
+    // regl.dev / regl.dev.oui / regl.dev.non : réglage dans l'onglet « Paramètres » du lanceur.
     'err.dev.ecriture': 'Diese Einstellung konnte nicht gespeichert werden ({0}): sie nimmt beim nächsten Öffnen wieder ihren vorherigen Wert an.',
     'table.titre': 'Tabelle – {0}',
     'table.curseur.aucun': 'Setzen Sie den Cursor auf eine Tabelle im Text und versuchen Sie es dann erneut.',
@@ -3860,7 +3796,7 @@ const TEXTES_COCKPIT = {
     'img.occ.zero': 'Nie eingefügt: keine Stelle für die Bildunterschrift.',
     'img.apercu.absent': 'Vorschau nicht verfügbar (Datei nicht lesbar, Format nicht darstellbar oder zu gross).',
 
-    // ---- Ressourcen-Einträge eines Artikels (Buch, Film, …) ----
+    // ---- Fiches de la Documentation (livre, film, …) ----
     'ressource.ajouter.livre': 'Buch hinzufügen',
     'ressource.ajouter.livre.tip': 'Einen neuen Bucheintrag hinzufügen',
     'ressource.ajouter.film': 'Film hinzufügen',
@@ -3885,7 +3821,7 @@ const TEXTES_COCKPIT = {
     'ressource.manque': 'Es fehlt noch: {0}.',
     'ressource.option.vide': '–',
 
-    // ---- Das Dokumentationsformular: beide Familien zusammen ----
+    // ---- Le formulaire de Documentation : les deux familles réunies ----
     'doc.titre': 'Dokumentation – {0}',
     'doc.titre.page': 'News & Ressourcen',
     'doc.sommaire': 'Übersicht',
@@ -3906,14 +3842,13 @@ const TEXTES_COCKPIT = {
     'doc.suivi.ajouter': 'Zeile hinzufügen',
     'doc.suivi.ajouter.tip': 'Eine Verlaufszeile hinzufügen',
     'doc.suivi.retirer.tip': 'Diese Verlaufszeile entfernen',
-    // Feld `liste_multiple` (Genre und Land eines Films): Checkbox für eine kleine
-    // Liste (Genre), Suche + entfernbare Chips für eine grosse Liste (Land).
+    // Champ `liste_multiple` (genre et pays d'un film).
     'doc.listeMultiple.recherche': 'Suchen…',
     'doc.listeMultiple.aucunResultat': 'Kein Ergebnis.',
     'doc.listeMultiple.retirer.tip': 'Entfernen',
     'rubrique.vider.tip': 'Diesen Block leeren: die Rubrik wird nicht mehr gedruckt',
 
-    // ── Zu übersetzen / Reserve / Meine herrenlosen Einträge (gemeinsame Bibliothek) ──
+    // ── Traductions à faire / Réservoir / Mes orphelines (bibliothèque partagée) ──
     'doc.onglet.traductions': 'Zu übersetzen',
     'doc.onglet.reservoir': 'Reserve',
     'doc.onglet.numero': 'Dokumentation der Ausgabe',
@@ -3939,7 +3874,7 @@ const TEXTES_COCKPIT = {
     'doc.origine.numero': '{0}, Ausgabe {1}',
     'doc.id.double': 'Die Kennung dieser Ausgabe trägt auch: {0}. Prüfen Sie, ob es sich um einen irrtümlich kopierten Ordner handelt.',
 
-    // ── Registerkarte Archiv: die gesamte Produktionsbibliothek, nur lesbar ────
+    // ── Onglet Archive : toute la bibliothèque de production, lecture seule ────
     'doc.onglet.archive': 'Archiv',
     'doc.archive.chargement': 'Produktionsbibliothek wird gelesen…',
     'doc.archive.actualiser': 'Aktualisieren',
@@ -3967,7 +3902,7 @@ const TEXTES_COCKPIT = {
     'doc.archive.apercu.imageChargement': 'Bild wird geladen…',
     'doc.archive.compteur': '{0} Eintrag/Einträge',
 
-    // ── Rubriken mit Fliesstext eines Dokumentationsartikels ──────────────────
+    // ── Rubriques de texte riche d'un article de Documentation ─────────────────
     'rubrique.champ.contenu': 'Text',
     'rubrique.champ.contenu.indice': 'Ein Eintrag pro Absatz. Leerzeile = neuer Absatz.',
     'rubrique.gras': 'Fett',
@@ -4022,13 +3957,13 @@ const TEXTES_COCKPIT = {
     'cmyk.err.wsl': 'Die Druckbilder konnten nicht umgewandelt werden: das Verarbeitungswerkzeug hat nicht geantwortet. Sie bleiben unverändert, und das PDF kann mit falschen Farben herauskommen. Versuchen Sie es erneut, oder starten Sie «Pronto (Updater)» über das Startmenü.',
     'regl.langue': 'Sprache der Oberfläche',
     'regl.langue.discordance': 'Die Formulare sind auf {0}, die Menüs von VSCodium auf {1}. Wählen Sie oben die Sprache und starten Sie VSCodium neu: dann stimmen beide wieder überein.',
-    // Übersetzungen gegenlesen: siehe den französischen Kommentar, gleiche Abmachung.
+    // Vérificateur de traduction : voir le commentaire côté français.
     'regl.verifTrad': 'Übersetzungen gegenlesen',
     'trad.mode.bandeau': 'Modus «Trad» aktiv: ein Klick auf einen Text dieser Seite öffnet einen Vorschlag, statt das zu tun, was die Schaltfläche sonst tut. Esc schaltet den Modus aus.',
     'trad.mode.eteindre': 'Modus «Trad» ausschalten',
     'regl.suggInterface.titre': 'Vorschläge zu den Texten des Werkzeugs',
     'regl.suggInterface.ouvrir': 'Ordner öffnen',
-    // Sprachdatei der Oberfläche: siehe den französischen Kommentar, gleiche Abmachung.
+    // Fichier de langue de l'interface : voir le commentaire côté français.
     'regl.exportLangue.titre': 'Sprachdatei der Oberfläche',
     'regl.exportLangue': 'Herunterladen (JSON)',
     'regl.exportLangue.faite': 'Sprachdatei in «{0}» gespeichert.',
@@ -4074,7 +4009,7 @@ const TEXTES_COCKPIT = {
     'apercu.encours': 'Kompilierung läuft, bitte einige Sekunden warten…',
     'apercu.gele': 'Ausgabe eingefroren: die automatische Kompilierung ist abgeschaltet. Verwenden Sie «PDF dieses Artikels neu kompilieren» (Ctrl+Alt+D oder die Schaltfläche beim Überfahren des Artikels), um die Dokumente neu zu erzeugen.',
 
-    // ---- Prüfungen der Kompilierung (lib/journal.js) ----
+    // ---- Contrôles de la compilation (lib/journal.js) ----
     'action.article': 'Zum Artikel',
     'action.article.tip': 'Den Text des Artikels im Editor öffnen.',
     'action.fiche': 'Metadaten bearbeiten',
@@ -4148,7 +4083,7 @@ const TEXTES_COCKPIT = {
     'defaut.sous-titre-deduit': 'Untertitel aus dem Titel abgeleitet',
     'defaut.word-redepose': 'Word bereits verwendet',
     'defaut.origine-inconnue': 'Herkunft des Ordners unbekannt',
-    // Der Leser der Vorlage « Pronto », seit dem 22.09.2026 am Import angeschlossen.
+    // Le lecteur du gabarit « Pronto ».
     'defaut.pronto-meta-inconnue': 'Unbekannte Bezeichnung in den Metadaten',
     'defaut.pronto-auteur-inconnue': 'Unbekannte Bezeichnung bei den Autor:innen',
     'defaut.pronto-champ-hors-gabarit': 'Feld nicht in der Vorlage',
@@ -4197,7 +4132,7 @@ const TEXTES_COCKPIT = {
     'detail.biblio-conflit': 'Die hier korrigierte Liste wurde durch jene des Word ersetzt. Zu prüfen.',
     'defaut.biblio-retiree': 'Literaturliste im Word entfernt',
     'defaut.biblio-inconnue': 'Zustand der Literaturliste unbekannt',
-    // Das ausgelagerte Literaturverzeichnis beim Import (szh-biblio-detacher.lua).
+    // La bibliographie détachée à l'import (szh-biblio-detacher.lua).
     'defaut.biblio-detachee': 'Literaturverzeichnis korrekt übernommen',
     'defaut.biblio-incomplete': 'Literaturverzeichnis übernommen, ausser einigen Absätzen',
     'detail.biblio-incomplete': 'Es sind {0}; sie folgen im Text direkt auf die Liste, es geht nichts verloren. Sind es Einträge, geben Sie ihnen im Word die Formatvorlage für Literaturverzeichnisse und importieren Sie neu.',
@@ -4407,7 +4342,7 @@ const TEXTES_COCKPIT = {
     'ctl.pdfua.nonconforme': 'Das PDF dieses Artikels erfüllt die Norm für Barrierefreiheit nicht: {0} Regel(n) sind nicht eingehalten. Die Punkte darunter nennen sie einzeln. Der Export wird angehalten: diese Datei geht mit einem Versprechen zur Barrierefreiheit in die Druckerei und in die Online-Zeitschrift, das sie nicht hält.',
     'ctl.pdfua.aucun': 'Es gibt kein PDF zu prüfen: noch wurde nichts kompiliert. Speichern Sie einen Artikel (Ctrl+S), oder wählen Sie «Alles neu kompilieren».',
     'ctl.pdfua.outillage': 'Die Barrierefreiheitsprüfung konnte diesmal nicht durchgeführt werden. Speichern Sie erneut; wiederholt sich das, melden Sie es.',
-    // Das Badge in der Statusleiste (lib/pdfua-hote.js), für den geöffneten Artikel oder das Buch.
+    // Le badge de la barre d'état (lib/pdfua-hote.js), pour l'article ouvert ou le livre.
     'pdfua.badge.conforme': 'PDF ist PDF/UA-1-konform, geprüft am {0}',
     'pdfua.badge.nonconforme': 'PDF noch nicht barrierefrei: {0} Punkt(e) zu beheben. Klicken Sie, um sie anzuzeigen.',
     'pdfua.badge.encours': 'PDF/UA-Prüfung läuft',
@@ -4426,7 +4361,7 @@ const TEXTES_COCKPIT = {
     'ctl.import.biblio-incomplete': 'Das Literaturverzeichnis wurde übernommen, ausser {0} Absatz/Absätzen, die im Text direkt nach der Liste geblieben sind.',
     'ctl.import.biblio-bornes-perdues': 'Das Literaturverzeichnis wurde im Word erkannt, seine Grenzen liessen sich nach der Konvertierung aber nicht wiederfinden: es bleibt im Text.',
     'ctl.import.biblio-fichier-refuse': 'Das Literaturverzeichnis konnte nicht separat gespeichert werden: es bleibt im Text des Artikels.',
-    // Der Leser der Vorlage « Pronto ». Die ersten vier verweigern den Import.
+    // Le lecteur du gabarit « Pronto ». Les quatre premiers refusent l'import.
     'ctl.import.pronto-meta-inconnue': 'Die Metadatentabelle enthält die Bezeichnung «{0}», die der Vorlage unbekannt ist. Der Artikel wurde nicht importiert: was diese Bezeichnung ankündigte, wäre nirgendwo gelandet. Korrigieren Sie sie im Word-Dokument und speichern Sie (Ctrl+S) – die Konvertierung startet von selbst neu.',
     'ctl.import.pronto-auteur-inconnue': 'Die Tabelle der Autorinnen und Autoren enthält eine der Vorlage unbekannte Zeile: «{0}». Der Artikel wurde nicht importiert, damit ihr Inhalt nicht verloren geht. Korrigieren Sie die Bezeichnung im Word-Dokument und speichern Sie (Ctrl+S).',
     'ctl.import.pronto-champ-hors-gabarit': 'Die Tabelle der Autorinnen und Autoren enthält ein Feld, das die Vorlage nicht hat: «{0}». An der Bezeichnung ist nichts falsch, die Vorlage hat nur kein Feld dafür. Der Artikel wurde nicht importiert, damit dieser Wert nicht verloren geht; die Meldung im Protokoll sagt, wohin die Angabe gehört (das Foto etwa in die linke Zelle).',
@@ -4444,7 +4379,7 @@ const TEXTES_COCKPIT = {
     'ctl.import.pronto-blocs-colles': '{0} Abbildungs- oder Tabellenblöcke berührten sich im Dokument und sind bei der Konvertierung verschmolzen. Sie wurden trotzdem einzeln erkannt; lassen Sie künftig eine leere Zeile zwischen zwei Blöcken.',
     'ctl.import.pronto-biblio-tableau': 'Direkt nach dem Titel «{0}» steht eine Tabelle: dort endet das Literaturverzeichnis. Prüfen Sie, ob alle Einträge übernommen wurden.',
     'ctl.import.pronto-langue-ignoree': 'Dieses Dokument enthält noch ein Feld «Langue de l’article» («{0}»): es wird nicht mehr gelesen. Die Sprache ergibt sich aus der Zeitschrift der Ausgabe – Revue auf Französisch, Zeitschrift auf Deutsch. Ist dieser Artikel in einer anderen Sprache, korrigieren Sie sie hier.',
-    // ---- Neuimport eines korrigierten Artikels ----
+    // ---- Le réimport d'un article corrigé ----
     'ctl.reimport.sans-article': 'Kein Artikel dieser Ausgabe passt zu diesem Word-Dokument. Es wurde nichts angetastet. Ist es ein neuer Artikel, ziehen Sie die Datei auf die Leiste «Pronto», und sie wird importiert; ist es die korrigierte Fassung eines Artikels, dessen Dateiname sich geändert hat, starten Sie «Artikel neu importieren» beim Artikel und weisen Sie ihm diese Datei zu.',
     'ctl.reimport.sans-word': 'Die Word-Datei dieses Artikels wartet nicht in der Ausgabe: es gibt nichts neu zu importieren, und es wurde nichts angetastet. Legen Sie die korrigierte Fassung unter demselben Dateinamen auf der Leiste «Pronto» ab und versuchen Sie es erneut.',
     'ctl.reimport.fiche-sans-source': 'Es ist nicht bekannt, aus welchem Word-Dokument dieser Artikel stammt: er wurde importiert, bevor die Kette dies festhielt. Es wurde nichts angetastet – den Text durch den eines nicht identifizierten Dokuments zu ersetzen wäre ein Glücksspiel. Legen Sie die korrigierte Word-Datei ab und weisen Sie sie diesem Artikel im Reiter «Wartende Word-Dateien» zu.',
@@ -4488,7 +4423,7 @@ const TEXTES_COCKPIT = {
     'reimport.choisirArticle.titre': 'Welchen Artikel korrigiert «{0}»?',
     'statut.reimport': 'Text von «{0}» wird ersetzt…',
     'statut.reimport.annule': 'Rückkehr zum vorherigen Text von «{0}»…',
-    // Die Startseite (media/accueil.js) : voir le commentaire côté français.
+    // L'Accueil (media/accueil.js) : voir le commentaire côté français.
     'accueil.titre': 'Startseite',
     'accueil.bouton.aide': 'Alles speichern, die Ausgabe schliessen und zur Startseite zurückkehren',
     'accueil.onglets': 'Bereiche der Startseite',
@@ -5293,32 +5228,24 @@ const TEXTES_COCKPIT = {
 
 // ---- Le choix de la langue -------------------------------------------------------
 //
-// Six sources, dans cet ordre, et la première qui répond gagne. L'ordre n'est pas
-// arbitraire : il va du plus explicite au plus deviné.
+// Six sources, de la plus explicite à la plus devinée ; la première qui répond l'emporte :
 //
-//   1. SZH_LANGUE        un essai, pour lire un même message dans les deux langues sans
-//                        toucher au poste. Jamais posée sur un poste de rédaction — et si
-//                        elle traîne quand même dans l'environnement, elle explique à elle
-//                        seule un cockpit qui refuse de suivre le reste de l'interface.
-//   2. szh.langue        le choix du rédacteur, fait dans le formulaire de réglages.
-//   3. config.json       le MÊME choix, écrit une seconde fois hors de %APPDATA%. Ce n'est
-//                        pas une redondance de confort : windows/update.ps1 réécrit
-//                        entièrement les réglages de l'éditeur à chaque mise à jour, et le
-//                        choix du rédacteur disparaissait avec eux — l'outil remis à jour
-//                        reparlait français sur un poste allemand.
-//   4. state.json        la langue choisie par le rédacteur (l'ancien onglet « Paramètres »
-//                        du lanceur l'y écrivait). Ce n'est plus un signal automatique déduit
-//                        du raccourci cliqué : ce choix explicite en décide.
+//   1. SZH_LANGUE        pour lire un message dans l'autre langue sans toucher au poste.
+//                        Elle n'est pas posée sur un poste de rédaction : si elle l'est,
+//                        le cockpit ne suit plus le reste de l'interface.
+//   2. szh.langue        le choix fait dans le formulaire de réglages.
+//   3. config.json       le même choix, écrit hors de %APPDATA%, car windows/update.ps1
+//                        réécrit entièrement les réglages de l'éditeur à chaque mise à jour.
+//   4. state.json        la langue choisie dans l'onglet « Paramètres » du lanceur.
 //   5. VSCodium          sa langue d'affichage, quand un pack de langue est installé.
 //   6. Windows           sa langue d'affichage, par la locale du système.
 //
-// … et le français en dernier recours, faute de mieux.
+// À défaut, le français.
 const BASE_POSTE = basePoste();
 
-// Mêmes surcharges que partout ailleurs dans le cockpit : SZH_CONFIG_OJS pour config.json
-// (lib/archivage.js l'emploie déjà), SZH_ETAT_POSTE pour state.json. Des fonctions et non
-// des constantes, pour voir une surcharge posée après le chargement du module — c'est
-// ainsi que les tests travaillent sans jamais toucher C:\ProgramData\SZH.
+// Surcharges : SZH_CONFIG_OJS pour config.json, SZH_ETAT_POSTE pour state.json. Des
+// fonctions plutôt que des constantes, pour voir une surcharge posée après le chargement
+// du module (les tests n'écrivent pas dans C:\ProgramData\SZH).
 function cheminConfigDuPoste() {
   return String(process.env.SZH_CONFIG_OJS || '').trim() || path.join(BASE_POSTE, 'config.json');
 }
@@ -5326,9 +5253,8 @@ function cheminEtatDuPoste() {
   return String(process.env.SZH_ETAT_POSTE || '').trim() || path.join(BASE_POSTE, 'state.json');
 }
 
-// La clé `langue` d'un de ces deux fichiers, ou '' — fichier absent, illisible, valeur
-// inconnue. Le BOM est retiré avant l'analyse : Save-SzhState en pose un, et JSON.parse
-// le refuse (même contournement que lib/archivage.js).
+// La clé `langue` d'un de ces deux fichiers, ou '' (fichier absent, illisible, valeur
+// inconnue). Le BOM est retiré : Save-SzhState en pose un, et JSON.parse le refuse.
 function langueDansJson(chemin) {
   try {
     const brut = String(fs.readFileSync(chemin, 'utf8')).replace(/^﻿/, '');
@@ -5337,8 +5263,8 @@ function langueDansJson(chemin) {
   } catch (e) { return ''; }
 }
 
-// La langue d'affichage de Windows. Node la donne par sa locale par défaut, qui vient de
-// l'ICU du système ; LANG et LC_ALL servent de repli hors Windows, pour le harnais de test.
+// La langue d'affichage de Windows, par la locale par défaut de Node (ICU du système) ;
+// LANG et LC_ALL servent de repli hors Windows, pour les tests.
 function langueDuSysteme() {
   let brut = '';
   try { brut = String(Intl.DateTimeFormat().resolvedOptions().locale || ''); } catch (e) { brut = ''; }
@@ -5347,10 +5273,9 @@ function langueDuSysteme() {
   return (v === 'fr' || v === 'de') ? v : '';
 }
 
-// T() appelle sourceLangue() à chaque chaîne traduite : les deux fichiers du poste sont
-// donc lus une seule fois et gardés. oublierLanguePoste() jette ce souvenir — le
-// formulaire de réglages l'appelle après avoir écrit, et les tests après avoir posé un
-// config.json.
+// T() appelle sourceLangue() à chaque chaîne : les deux fichiers du poste sont lus une
+// fois et gardés en mémoire. oublierLanguePoste() vide ce cache ; le formulaire de
+// réglages l'appelle après avoir écrit, les tests après avoir posé un config.json.
 let languesDuPoste = null;
 function oublierLanguePoste() { languesDuPoste = null; }
 function lireLanguesDuPoste() {
@@ -5364,9 +5289,8 @@ function lireLanguesDuPoste() {
   return languesDuPoste;
 }
 
-// -> { langue, source }. `source` ne sert qu'à se faire comprendre : le formulaire de
-// réglages l'affiche et windows/diagnostic.ps1 le recoupe, pour qu'une interface
-// mi-allemande mi-française se diagnostique en la regardant plutôt qu'en la devinant.
+// -> { langue, source }. `source` est affichée par le formulaire de réglages et recoupée
+// par windows/diagnostic.ps1, pour diagnostiquer une interface à moitié dans chaque langue.
 function sourceLangue() {
   const impose = String(process.env.SZH_LANGUE || '').toLowerCase().slice(0, 2);
   if (impose === 'fr' || impose === 'de') { return { langue: impose, source: 'essai' }; }

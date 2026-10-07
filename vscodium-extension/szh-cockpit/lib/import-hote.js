@@ -1,7 +1,6 @@
-// Import guidé : conversion des .docx et .odt de articles-word/ (un .odt est converti en
-// .docx par import-docx.sh, tout au début de sa chaîne), écriture de l'ordre des
-// nouveaux articles, et la compilation qui suit un import réussi. Impur (tâches, disque,
-// dialogues) ; les rappels vers l'hôte passent par configurer() plus bas, jamais par require.
+// Import des Word (.docx et .odt) du dépôt articles-word/ : conversion, préfixe et ordre
+// des nouveaux articles, compilation qui suit. Les rappels vers l'hôte passent par
+// configurer().
 'use strict';
 
 const vscode = require('vscode');
@@ -21,7 +20,7 @@ const { refuserSiVerrouille } = require('./cycle-vie');
 const { refusCoedition } = require('./coedition-hote');
 const { ouvrirImportVerif } = require('./import-verif-hote');
 
-// À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
+// Identiques aux labels de vscodium-user/tasks.json.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 
@@ -37,21 +36,16 @@ let ctx = {
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
 
-// Le profil du dossier ouvert (lib/profil.js#courant) et ce qui en découle.
 function profilCourant() { return profils.courant(); }
 function dossierUnites() { return profilCourant().unites.dossier; }
 function cleOrdre() { return profilCourant().unites.ordre; }
 function cheminConfig(racine) { return path.join(racine, profilCourant().config); }
 
-// Le nombre de tête de chaque Word en attente (.docx ou .odt), avant que « make import » ne
-// les supprime — la seule fenêtre où ce nombre existe encore (slugifierArticle() ne le
-// porte plus).
-// Regroupés par slug de base (avant désambiguïsation d'homonyme, slugifierArticle()) : un
-// même titre tronqué à 39 caractères peut être partagé par deux Word différents
-// (« … Teil 1 », « … Teil 2 »), chacun avec son propre numéro. La file conserve l'ordre de
-// traitement de _docxEnAttente() — le même ordre alphabétique que suit la boucle d'import du
-// Makefile — pour que resoudreNumeroOrdre() ci-dessous retrouve le bon numéro même une fois
-// le slug suffixé « -2 ».
+// Le numéro de tête du nom de chaque Word en attente, à lire avant que « make import »
+// supprime les Word (le slug ne le porte pas). -> Map slug de base -> file de numéros.
+// Deux Word peuvent donner le même slug de base (titre tronqué à 39 caractères) ; la file
+// suit l'ordre alphabétique de la boucle d'import du Makefile, ce qui permet à
+// resoudreNumeroOrdre() d'attribuer le bon numéro au slug suffixé « -2 ».
 function numerosOrdreEnAttente(fournisseur) {
   const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
   const parBase = new Map();
@@ -63,11 +57,8 @@ function numerosOrdreEnAttente(fournisseur) {
   return parBase;
 }
 
-// Un slug nouvellement importé retrouve son numéro de tête par le slug de base qui l'a
-// produit : exact s'il n'a pas d'homonyme, sinon en retirant le suffixe « -2 », « -3 »… que
-// l'import lui a donné (la boucle de désambiguïsation du Makefile, à l'image de
-// slugifierArticleUnique()). null si le Word n'en portait pas — un article sans numéro de
-// tête ne doit pas s'en voir inventer un.
+// Numéro de tête d'un slug importé, retrouvé par son slug de base (le slug lui-même, ou
+// sans le suffixe « -2 », « -3 »… ajouté par le Makefile). null si le Word n'en avait pas.
 function resoudreNumeroOrdre(slug, parBase) {
   const s = String(slug);
   if (parBase.has(s) && parBase.get(s).length > 0) { return parBase.get(s).shift(); }
@@ -78,69 +69,50 @@ function resoudreNumeroOrdre(slug, parBase) {
   return null;
 }
 
-// Le rang qui décide du préfixe d'un dossier nouvellement importé est celui de l'ordre
-// ÉCRAN final (ordreFinal ci-dessous, calculé par ecrireOrdreNouveauxArticles avant tout
-// renommage) — jamais le nombre de tête du Word. Ce nombre ne fait que placer l'article
-// dans cet ordre ; une fois la place décidée, seul le rang compte, exactement comme
-// Monter/Descendre ne connaît que le rang (lib/renumerotation.js:nomVoulu()). Confondre les
-// deux referait le bug que ce module corrige ailleurs : un dossier qui ne porte plus le
-// nombre que l'écran affiche.
+// Préfixe les dossiers des nouveaux articles par leur rang dans `ordreFinal` (l'ordre
+// affiché), comme Monter/Descendre (nomVoulu(), lib/renumerotation.js). Le numéro de tête
+// du Word ne sert qu'à placer l'article dans cet ordre.
 //
-// Seuls les dossiers de `nouveaux` sont touchés : un article déjà présent, même sans
-// préfixe, reste tel quel — ce n'est pas à un import de réaligner tout le numéro en
-// silence, ce geste-là appartient à « Terminer » (lib/renumerotation-fs.js), sur demande
-// explicite. Un numéro peut donc mélanger des dossiers préfixés et non préfixés : assumé.
+// Les articles déjà présents ne sont pas renommés : réaligner tout le numéro est le rôle
+// de « Terminer » (lib/renumerotation-fs.js). Un numéro peut donc mêler dossiers préfixés
+// et non préfixés.
 //
-// Un nom cible déjà occupé (par un dossier antérieur au même nom, préfixé ou pas) ne laisse
-// PAS l'article sans préfixe : un article sans préfixe est un article qu'on ne retrouve
-// pas dans l'Explorateur, exactement le problème que ce préfixe corrige. On monte donc
-// d'un rang à la fois au-delà de celui calculé, jusqu'au premier nom libre — l'article se
-// pose en fin de chaîne plutôt que de rester nu. Borné tout de même : un numéro compte au
-// plus quelques dizaines d'articles, et une occupation de tous les rangs jusque-là ne peut
-// arriver que par accident (un script qui boucle, un dossier recréé en masse) — le seul cas
-// où l'on revient au repli sans préfixe, en dernier recours, jamais en fonctionnement normal.
+// Si le nom visé est pris, on essaie les rangs suivants jusqu'au premier nom libre. Au-delà
+// de MAX_RECHERCHE_RANG_LIBRE essais, le dossier garde son nom sans préfixe.
 const MAX_RECHERCHE_RANG_LIBRE = 999;
 
-// -> Map ancien slug -> nouveau slug, pour les seuls dossiers effectivement renommés.
+// -> Map ancien slug -> nouveau slug, pour les dossiers renommés.
 function prefixerNouveauxArticles(racine, ordreFinal, nouveaux) {
   const base = path.join(racine, dossierUnites());
   const aNouveau = new Set(nouveaux);
   const renommes = new Map();
   ordreFinal.forEach((slug, rang) => {
-    if (!aNouveau.has(slug)) { return; }             // article déjà présent : jamais touché
+    if (!aNouveau.has(slug)) { return; }
     let cible = prefixeOrdre(rang) + '-' + tige(slug);
     if (cible === slug) { return; }
     let r = rang;
     while (fs.existsSync(path.join(base, cible))) {
       r++;
-      if (r - rang > MAX_RECHERCHE_RANG_LIBRE) { return; }   // cas absurde : reste sans préfixe
+      if (r - rang > MAX_RECHERCHE_RANG_LIBRE) { return; }
       cible = prefixeOrdre(r) + '-' + tige(slug);
     }
     fs.renameSync(path.join(base, slug), path.join(base, cible));
-    // Même règle que renumeroter() : le .md, la fiche et les sidecars suivent le dossier,
-    // sans quoi le Makefile ne retrouve plus le .md sous le nom qu'il exige.
+    // Le .md, la fiche et les fichiers annexes prennent le nom du dossier, que le
+    // Makefile exige (comme dans renumeroter()).
     alignerFichiers(base, cible);
     renommes.set(slug, cible);
   });
   return renommes;
 }
 
-// Ce câblage est essentiel : sans lui, les articles nouvellement importés retombent sur le
-// repli alphabétique de _sousDossiersAvecMd() (ordonnerArticles(), lib/articles.js), qui n'a
-// plus aucun rapport avec le numéro que le rédacteur a mis dans le nom de ses Word — l'ordre
-// voulu se perdrait en silence. `cleOrdre()` écrit `ordre-articles` ou `ordre-chapitres`
-// selon le profil ouvert : le câblage vaut donc pour une revue comme pour un livre.
+// Écrit l'ordre des articles (`ordre-articles` ou `ordre-chapitres` selon le profil) avec
+// les nouveaux en queue de l'ordre existant `avant`. Sans cette écriture, ils seraient
+// rangés par ordre alphabétique et le numéro mis dans le nom des Word serait perdu.
+// Entre eux, les articles numérotés viennent d'abord, par numéro ; les autres suivent dans
+// l'ordre de l'import (tri stable).
 //
-// Les nouveaux articles sont toujours ajoutés en queue de l'ordre déjà établi (`avant`,
-// l'ordre effectif au moment où l'import a démarré) : un import n'a pas à décider où glisser
-// un article dans un sommaire que la rédaction a déjà arrêté. Entre eux, les numérotés
-// viennent d'abord, dans l'ordre du Word ; les autres (Word sans numéro de tête, ou mélange
-// des deux) suivent, dans l'ordre où l'import les a rangés — le tri est stable, un nombre
-// égal ou absent (null) ne bouscule donc personne.
-//
-// -> Map ancien slug -> nouveau slug (voir prefixerNouveauxArticles) : l'appelant en a
-// besoin pour parler du bon dossier une fois l'écriture faite (conversion CMYK, vérification
-// d'import) — ces slugs-là ont changé sous ses pieds.
+// -> Map ancien slug -> nouveau slug (prefixerNouveauxArticles), dont l'appelant a besoin
+// pour la suite (conversion CMJN, vérification d'import).
 function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
   const racine = fournisseur.racine;
   const numeroDe = new Map();
@@ -153,46 +125,33 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
     return na - nb;
   });
   const complet = Array.from(avant).concat(tries);
-  // La règle du DOI reste respectée dans le fichier lui-même, pas seulement à la lecture —
-  // même raison qu'à la case « pas de DOI » : ausgabe.yaml voyage seul sur SharePoint et se
-  // relit à la main, il doit dire la même chose que l'écran. C'est cet ordre, après le tri
-  // DOI, qui fixe le rang de chacun : le renommage ci-dessous ne fait que le nommer, il ne
-  // le recalcule pas.
+  // Le tri DOI s'applique aussi dans le fichier : ausgabe.yaml se relit à la main et doit
+  // montrer l'ordre de l'écran. Cet ordre fixe le rang, donc le préfixe, de chacun.
   const ordreFinal = trierParDoi(complet, ctx.articlesSansDoi(racine, complet));
-  // Les dossiers d'abord, l'ordre ensuite — jamais l'inverse : une interruption entre les
-  // deux laisserait sinon ausgabe.yaml désigner un dossier qui n'existe pas encore sous ce
-  // nom, exactement le risque que renumeroter() évite par la même règle
-  // (lib/renumerotation-fs.js).
+  // Les dossiers d'abord, l'ordre ensuite : une interruption entre les deux ne laisse pas
+  // ausgabe.yaml nommer un dossier inexistant (même règle que renumeroter()).
   const renommes = prefixerNouveauxArticles(racine, ordreFinal, nouveaux);
   const modifies = {};
   modifies[cleOrdre()] = ordreFinal.map((slug) => renommes.get(slug) || slug);
-  // Geste sans session de saisie : on regarde le bail, on ne le prend pas. Si quelqu'un
-  // modifie ausgabe.yaml en ce moment, on laisse l'auto-réparation de listerArticles()
-  // (repli alphabétique, à la prochaine lecture) faire l'affaire plutôt que d'entrer en
-  // conflit avec cette écriture — l'import a déjà réussi, ce n'est pas à lui d'échouer pour
-  // un ordre qui se répare de toute façon. Les dossiers, eux, restent renommés dans tous les
-  // cas : l'auto-réparation les retrouvera sous leur nom définitif, jamais sous l'ancien.
+  // On vérifie le bail de co-édition sans le prendre. Si quelqu'un d'autre modifie
+  // ausgabe.yaml, l'ordre n'est pas écrit : listerArticles() le réparera à la prochaine
+  // lecture (repli alphabétique), avec les dossiers déjà renommés.
   if (refusCoedition(racine, cheminConfig(racine))) { return renommes; }
   ctx.ecrireClesAusgabe(racine, modifies);
   return renommes;
 }
 
-// ---- Le garde-fou du gabarit : une boîte de dialogue, pas une ligne de plus ------------
+// ---- Bloc mal formé du gabarit : une boîte de dialogue ---------------------------------
 //
-// `bloc-mal-forme` se lève quand un tableau porte les étiquettes d'une figure ou d'un tableau
-// (« Légende : », « Texte alternatif : », « Copyright : », « Source : », « Note : ») sans en avoir la forme.
-// Ce qui suit n'est PAS cosmétique : ce tableau s'imprimera tel quel, sa légende ne sera ni
-// numérotée ni reprise comme texte alternatif, et il n'y a qu'un seul endroit où le réparer —
-// le document Word, qu'il faut rouvrir. Un avertissement qu'on lit trois jours plus tard, dans
-// un panneau, ne fait rouvrir aucun Word : d'où la modale.
+// `bloc-mal-forme` signale un tableau qui porte les étiquettes d'une figure ou d'un tableau
+// (« Légende : », « Texte alternatif : », « Copyright : », « Source : », « Note : ») sans
+// en avoir la forme. Il s'imprimerait tel quel, sans numéro ni texte alternatif, et seul le
+// Word peut être corrigé : d'où une modale plutôt qu'une ligne de journal.
 //
-// Le message vient du pipeline (`brut`), déjà écrit dans la langue du cockpit et déjà porteur
-// des trois repères qui permettent de retrouver le tableau : sa page quand Word a repaginé, son
-// rang, et sa légende. Il se dégrade proprement sans pagination — c'est mesuré côté pipeline,
-// et c'est pour ça qu'on ne le reformule pas ici.
+// Le message vient du pipeline, dans la langue du cockpit, avec la page (si Word l'a
+// calculée), le rang et la légende du tableau ; il est affiché tel quel.
 
-// La lecture du disque, et rien d'autre : le tri des constats vit dans lib/journal.js
-// (phrasesBlocMalForme), pur et exerçable sans vscode.
+// Lit .import.log ; le tri des messages est fait par phrasesBlocMalForme (lib/journal.js).
 function blocsMalFormes(racine, depot) {
   let texte = '';
   try { texte = fs.readFileSync(path.join(racine, depot, '.import.log'), 'utf8'); }
@@ -203,8 +162,7 @@ function blocsMalFormes(racine, depot) {
 async function avertirBlocsMalFormes(racine) {
   const phrases = blocsMalFormes(racine, profilCourant().depot);
   if (phrases.length === 0) { return; }
-  // `detail` porte les phrases : le titre d'une modale VS Code est tronqué, et c'est dans le
-  // détail que tient le repérage (page, rang, légende) sans lequel on cherche à l'aveugle.
+  // Les phrases vont dans `detail` : le titre d'une modale VS Code est tronqué.
   await vscode.window.showWarningMessage(
     T('modale.bloc-mal-forme.titre', [String(phrases.length)]),
     { modal: true, detail: phrases.join('\n\n') },
@@ -212,8 +170,8 @@ async function avertirBlocsMalFormes(racine) {
   );
 }
 
-// Appelée pendant que session.importEnCours() est posé, d'où le drapeau de compilation géré
-// ici. Un échec n'annule pas l'import.
+// Appelée pendant que session.importEnCours() est posé ; gère donc elle-même le drapeau de
+// compilation. Un échec n'annule pas l'import.
 async function compilerApresImport() {
   if (session.buildEnCours()) { return; }
   session.poserBuildEnCours(true);
@@ -227,8 +185,8 @@ async function compilerApresImport() {
   }
 }
 
-// Les Word restés dans le dépôt dont l'article existe déjà : l'import les a ignorés, ce
-// sont des Word corrigés. Même prédicat que le badge « déjà converti » de la vue Word.
+// Les Word du dépôt dont l'article existe déjà (des versions corrigées, que l'import
+// ignore), comme le badge « déjà converti » de la vue Word.
 // -> [{ word, slug }], slug étant le dossier réel (préfixé ou non).
 function wordsCorrigesEnAttente(fournisseur) {
   const articles = fournisseur.listerArticles();
@@ -262,41 +220,34 @@ async function annoncerAucunNouveau(fournisseur) {
   vscode.window.showInformationMessage(T('info.importes.aucun'));
 }
 
-// La suite d'un import qui a ramené des articles, commune à l'import guidé et à l'import
-// fait par une tâche hors du cockpit. `dejaCompile` : la tâche a compilé après avoir
-// importé (`make all`) ; on ne recompile alors que si un dossier a changé de nom ou si une
-// image a changé de couleurs. Mute `nouveaux` vers les noms réels sur le disque.
+// Suite d'un import qui a ramené des articles, pour l'import guidé comme pour une tâche
+// lancée hors du cockpit. `dejaCompile` : la tâche a déjà compilé (`make all`) ; on ne
+// recompile que si un dossier a été renommé ou une image convertie. Remplace dans
+// `nouveaux` les slugs renommés par leur nouveau nom.
 async function finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase, dejaCompile) {
-  // Le numéro du Word migre ici, dans ordre-articles/ordre-chapitres : sans cette
-  // écriture, l'ordre voulu par le rédacteur se perd en silence dès le prochain
-  // listerArticles() (rafraichirTout() ci-dessous, puis chaque rendu de l'arbre). Cette
-  // même écriture préfixe aussi les dossiers créés par cet import (prefixerNouveauxArticles) :
-  // `nouveaux` porte encore les anciens noms après l'appel, d'où le remplacement qui
-  // suit — tout ce qui parle d'un de ces articles après ce point doit parler du dossier
-  // qui existe réellement sur le disque, pas de celui que « make import » avait posé.
   const renommes = ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
   for (let i = 0; i < nouveaux.length; i++) { nouveaux[i] = renommes.get(nouveaux[i]) || nouveaux[i]; }
-  // Ce que `make all` a compilé sous l'ancien nom : un PDF périmé que l'export pourrait
-  // reprendre (même règle que renumeroter()).
+  // Retire ce que `make all` a compilé sous l'ancien nom, que l'export pourrait reprendre
+  // (comme renumeroter()).
   if (dejaCompile) {
     const sortie = profils.chemins(profilCourant(), fournisseur.racine).sortie;
     for (const ancien of renommes.keys()) {
       try { fs.rmSync(path.join(sortie, ancien), { recursive: true, force: true }); } catch (e) { /* rien à retirer */ }
     }
   }
-  // Avant la compilation : un JPEG d'imprimerie converti après coup laisserait
-  // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
+  // Conversion CMJN avant la compilation, pour que le PDF ait les couleurs converties.
   const aConvertir = [];
   for (const slug of nouveaux) {
     const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
     for (const relatif of fournisseur._imagesArticle(slug)) { aConvertir.push(path.join(base, relatif)); }
   }
   const convertis = await ctx.convertirCmykSiBesoin(aConvertir);
-  // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
+  // Avant le dialogue de vérification, dont « Remplacer » refuse d'agir pendant une
+  // compilation.
   if (!dejaCompile || renommes.size > 0 || convertis > 0) { await compilerApresImport(); }
   rafraichirTout();
-  // Avant le dialogue de vérification : celui-ci fait relire l'article, et il vaut mieux
-  // savoir AVANT de le relire qu'un de ses tableaux n'a pas été lu comme une figure.
+  // Avant le dialogue de vérification, pour qu'on sache avant de relire l'article qu'un
+  // tableau n'a pas été reconnu.
   await avertirBlocsMalFormes(fournisseur.racine);
   await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
 }
@@ -305,8 +256,8 @@ async function finirImport(fournisseur, rafraichirTout, avant, nouveaux, parBase
 //
 // Le Makefile reconnaît un Word corrigé par son nom ou par la fiche (`source:`) ; renommé
 // par l'auteur, il deviendrait un doublon. On pose donc la question pour tout Word dont le
-// slug ne nomme aucun article mais dont la tige prolonge celle d'un article, ou l'inverse.
-// Préfixe seulement, jamais de ressemblance floue. -> [{ word, slug }]
+// slug ne nomme aucun article mais dont la tige prolonge celle d'un article, ou l'inverse
+// (comparaison de préfixe seulement). -> [{ word, slug }]
 function wordsRessemblants(fournisseur) {
   const racine = fournisseur.racine;
   const articles = fournisseur.listerArticles();
@@ -335,8 +286,8 @@ function lireMeta(racine, slug) {
   catch (e) { return analyserMeta(''); }
 }
 
-// Une modale par Word ressemblant. -> { corriges: [{ word, slug }], ecartes: [nom] } ;
-// un Word corrigé ou dont la question est annulée ne part pas à la conversion.
+// Une modale par Word ressemblant. -> { corriges: [{ word, slug }], ecartes: [nom] }.
+// Un Word déclaré corrigé, ou dont la question est annulée, n'est pas converti.
 async function demanderRessemblances(fournisseur) {
   const corriges = [];
   const ecartes = [];
@@ -356,9 +307,9 @@ async function demanderRessemblances(fournisseur) {
   return { corriges, ecartes };
 }
 
-// Le temps de la conversion, les Word écartés attendent dans un sous-dossier du dépôt, que
-// la boucle d'import du Makefile ne parcourt pas. Remis en place à la fin, et au début de
-// la conversion suivante si une fenêtre fermée en cours de route les y a laissés.
+// Pendant la conversion, les Word écartés attendent dans ce sous-dossier du dépôt, que le
+// Makefile ne parcourt pas. Ils sont remis en place à la fin, ou au début de la
+// conversion suivante si la fenêtre a été fermée entre-temps.
 const DOSSIER_ECARTES = '.szh-ecartes';
 
 function ecarterWords(depot, noms) {
@@ -373,7 +324,7 @@ function remettreWords(depot) {
   let noms;
   try { noms = fs.readdirSync(cache); } catch (e) { return; }
   for (const nom of noms) {
-    // Un Word du même nom déposé entre-temps l'emporte ; l'ancien reste à l'écart.
+    // Un Word du même nom déposé entre-temps l'emporte ; l'ancien reste dans le cache.
     if (fs.existsSync(path.join(depot, nom))) { continue; }
     try { fs.renameSync(path.join(cache, nom), path.join(depot, nom)); } catch (e) { /* réessayé la fois suivante */ }
   }
@@ -383,10 +334,10 @@ function remettreWords(depot) {
 // ---- Import fait par une tâche hors du cockpit -----------------------------------------
 //
 // `make all` (Ctrl+S, Ctrl+E) et la tâche d'import (au démarrage, Ctrl+Alt+I) importent
-// les Word du dépôt sans passer par lancerConversion. Au démarrage d'une telle tâche, on
-// note la liste des articles et les numéros des Word ; à la fin de la dernière tâche en
-// vol, les articles apparus reçoivent la même suite que l'import guidé. Rien n'est noté
-// pendant un import guidé : ses propres tâches passent aussi par ces événements.
+// les Word du dépôt sans passer par lancerConversion. Au début d'une telle tâche, on note
+// la liste des articles et les numéros des Word ; à la fin de la dernière tâche en cours,
+// les articles apparus reçoivent la même suite que l'import guidé. Rien n'est noté pendant
+// un import guidé, dont les tâches passent aussi par ici.
 let importExterne = null;
 
 function noterDebutTache(fournisseur, nomTache) {
@@ -397,7 +348,7 @@ function noterDebutTache(fournisseur, nomTache) {
     return;
   }
   const parBase = numerosOrdreEnAttente(fournisseur);
-  if (parBase.size === 0) { return; }              // aucun Word en attente : rien à importer
+  if (parBase.size === 0) { return; }              // aucun Word en attente
   importExterne = {
     racine: fournisseur.racine, avant: new Set(fournisseur.listerArticles()), parBase: parBase,
     dejaCompile: nomTache === NOM_TACHE_BUILD, echec: false
@@ -412,7 +363,7 @@ async function finirImportExterne(fournisseur, rafraichirTout) {
   const e = importExterne;
   if (!e || session.tachesSuiviesEnVol() > 0) { return; }
   importExterne = null;
-  // Comme lancerConversion : une tâche en échec ne touche ni à l'ordre ni aux dossiers.
+  // Après une tâche en échec, l'ordre et les dossiers restent tels quels.
   if (e.echec || session.importEnCours() || e.racine !== fournisseur.racine) { return; }
   if (session.etatNumero().verrouillee) { return; }
   const nouveaux = fournisseur.listerArticles().filter((s) => !e.avant.has(s));
@@ -429,14 +380,13 @@ async function finirImportExterne(fournisseur, rafraichirTout) {
 // annoncer une fois le drapeau d'import levé, ou null.
 async function convertirDepot(fournisseur, rafraichirTout, depot, annoncer) {
   const avant = new Set(fournisseur.listerArticles());
-  // Capté avant le lancement de la tâche : « make import » supprime les Word convertis
-  // (.docx ou .odt), et avec eux le seul endroit où vivait encore le numéro de tête du
-  // rédacteur.
+  // Lu avant la tâche : « make import » supprime les Word convertis, et leur numéro de tête
+  // avec eux.
   const parBase = numerosOrdreEnAttente(fournisseur);
   const code = await ctx.lancerTache(NOM_TACHE_IMPORT);
   remettreWords(depot);
   rafraichirTout();
-  if (code === null) { return null; }            // tâche introuvable, déjà signalé
+  if (code === null) { return null; }            // tâche introuvable, déjà signalée
   if (code !== 0) {
     ctx.avertirEchecCompilation('err.import');
     return null;
@@ -450,12 +400,12 @@ async function convertirDepot(fournisseur, rafraichirTout, depot, annoncer) {
   return annoncer ? () => annoncerAucunNouveau(fournisseur) : null;
 }
 
-// Convertit les Word de articles-word/ ; les nouveaux articles sont comptés en comparant
-// la liste avant et après, pas en lisant la sortie de la tâche.
+// Convertit les Word de articles-word/. Les nouveaux articles se trouvent en comparant la
+// liste des articles avant et après la tâche.
 async function lancerConversion(fournisseur, rafraichirTout) {
   if (session.importEnCours()) { vscode.window.setStatusBarMessage(T('statut.import.encours'), 3000); return; }
   session.poserImportEnCours(true);
-  importExterne = null;                            // cet import-ci fait la suite lui-même
+  importExterne = null;                            // cet import fait sa suite lui-même
   const statut = vscode.window.setStatusBarMessage(T('statut.import'));
   const depot = path.join(fournisseur.racine, profilCourant().depot);
   let apresImport = null;
@@ -474,16 +424,13 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     remettreWords(depot);
     statut.dispose();
     session.poserImportEnCours(false);
-    // Après le dialogue de vérification (branche nouveaux.length > 0) comme après un
-    // échec ou un import qui ne ramène rien (branches ci-dessus, sans compilerApresImport) :
-    // dans tous les cas, ce qu'un enregistrement de fiche a vu refuser pendant cette
-    // fenêtre repart maintenant.
+    // Dans tous les cas, les compilations refusées pendant l'import (enregistrement d'une
+    // fiche, par exemple) repartent maintenant.
     ctx.rejouerCompilationsDifferees();
   }
-  // Sans attendre la notification, comme avant : le dépôt ou la vue qui a lancé l'import
-  // n'a pas à rester suspendu à un clic. Une commande qui échoue est déjà signalée par
-  // envelopperCommande (extension.js). Le réimport refuse de partir pendant un import :
-  // il vient donc après, un Word à la fois.
+  // Sans attendre la réponse à la notification, pour ne pas bloquer ce qui a lancé
+  // l'import. Les erreurs sont signalées par envelopperCommande (extension.js). Le
+  // réimport refuse de partir pendant un import : il vient donc après, un Word à la fois.
   if (apresImport) { apresImport().catch(() => {}); }
   if (corriges.length > 0) {
     (async () => {
@@ -492,9 +439,9 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   }
 }
 
-// Commun au bouton « Importer des Word » et au glisser-déposer : copie vers
-// articles-word/ (chapitres-word/ pour un livre — profilCourant().depot), conflits en
-// modale, puis conversion.
+// Commun au bouton « Importer des Word » et au glisser-déposer : copie dans le dépôt
+// (articles-word/, ou chapitres-word/ pour un livre), conflits de nom en modale, puis
+// conversion.
 async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const racine = fournisseur.racine;
   if (!racine || !Array.isArray(uris) || uris.length === 0) { return; }
@@ -503,7 +450,7 @@ async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const dossierWord = path.join(racine, profilCourant().depot);
   try { fs.mkdirSync(dossierWord, { recursive: true }); } catch (e) { /* existe déjà */ }
 
-  // Plutôt qu'un renommage automatique, qui créerait un article dupliqué au slug suffixé.
+  // On demande plutôt que de renommer : un nom suffixé créerait un article en double.
   const conflits = choix.filter((u) => fs.existsSync(path.join(dossierWord, path.basename(u.fsPath))));
   let remplacer = true;
   if (conflits.length > 0) {
@@ -550,7 +497,7 @@ function controleurDepotVue(fournisseur, rafraichirTout) {
     dropMimeTypes: ['text/uri-list'],
     dragMimeTypes: [],
     handleDrop: async (cible, dataTransfer) => {
-      if (refuserSiVerrouille()) { return; }       // le dépôt écrit, comme le bouton
+      if (refuserSiVerrouille()) { return; }
       const item = dataTransfer.get('text/uri-list');
       if (!item) { return; }
       const brut = await item.asString();

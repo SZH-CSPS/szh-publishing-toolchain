@@ -1,46 +1,31 @@
-// Fichier de langue du cockpit : tous les libellés de l'interface, français et allemand
-// côte à côte, dans un seul JSON qu'on peut envoyer à quelqu'un qui relit.
+// Exporte tous les libellés de l'interface du cockpit, français et allemand côte à côte,
+// dans un JSON à faire relire. Le fichier est une copie : le corriger ne change pas
+// l'interface ; les corrections se reportent à la main dans lib/i18n.js et les
+// package.nls*.json.
 //
-// Ce que ce module garde, et ce qu'il ne fait pas. Le fichier produit est une COPIE : il
-// se lit, s'annote, se corrige dans un tableur ou un éditeur de texte, et rien de tout
-// cela ne change l'interface. La reprise des corrections est un geste humain, plus tard,
-// dans lib/i18n.js et dans les package.nls*.json. C'est le pendant, pour l'interface
-// elle-même, de lib/suggestion-traduction.js, qui propose sans écrire pour les textes des
-// articles.
+// Une clé absente d'une langue sort quand même, avec `null` en face, pour que le trou se
+// voie. Les valeurs sortent telles quelles (apostrophes, espaces insécables, marqueurs {0}),
+// pour que la relecture porte sur la chaîne affichée.
 //
-// ⚠ Une clé qui manque dans une langue sort quand même, avec `null` en face. Escamoter le
-//   trou serait le pire service à rendre à qui relit : c'est justement le trou qu'on
-//   voudrait lui voir signaler, et une entrée absente ne se remarque pas.
+// Deux sources : `cockpit` pour TEXTES_COCKPIT (lib/i18n.js), résolu selon la langue du
+// cockpit, et `commandes` pour les package.nls*.json, résolus selon la langue de VSCodium.
 //
-// ⚠ Les valeurs partent TELLES QUELLES — apostrophes typographiques, espaces insécables,
-//   guillemets, marqueurs {0}. Une normalisation quelconque ferait relire un texte que
-//   personne ne voit à l'écran, et les corrections reviendraient sur une autre chaîne que
-//   celle affichée.
-//
-// Deux sources, parce que les libellés du cockpit viennent de deux mécanismes
-// indépendants : `cockpit` pour TEXTES_COCKPIT (lib/i18n.js), que T() résout selon la
-// langue du cockpit, et `commandes` pour les package.nls*.json, que VSCodium résout selon
-// SA propre langue d'affichage. Les deux se voient à l'écran ; n'en exporter qu'une
-// laisserait la moitié des titres de commandes et le tutoriel hors de la relecture.
-//
-// Module pur : ni vscode, ni fs, ni disque. Les tables, la version et les deux phrases
-// d'avertissement lui sont passées par l'appelant.
+// Module pur, sans vscode ni disque : l'appelant fournit les tables, la version et les
+// phrases d'avertissement.
 'use strict';
 
-// La version du format, écrite dans chaque fichier : un relecteur doit pouvoir dire à
-// quelle grammaire il a affaire sans la deviner.
+// Version du format, écrite dans chaque fichier.
 const SCHEMA = 'szh-langue/1';
 const EXTENSION = 'szh-cockpit';
 
-// Les deux langues de l'interface. Il n'y a pas de table anglaise, et ce n'est pas un
-// oubli : le cockpit ne s'affiche qu'en français et en allemand.
+// Le cockpit s'affiche en français et en allemand seulement.
 const LANGUES = ['fr', 'de'];
 
-// Les deux mécanismes de libellés, dans l'ordre où ils sortent. Voir l'en-tête.
+// Ordre de sortie des deux sources.
 const SOURCES = ['cockpit', 'commandes'];
 
-// Le nom proposé à l'enregistrement. La version y est, pour qu'un fichier relu six mois
-// plus tard se raccroche à ce qui était affiché ce jour-là.
+// Nom proposé à l'enregistrement, avec la version, pour rattacher le fichier à
+// l'interface de ce jour-là.
 function nomFichier(version) {
   const v = String(version === undefined || version === null ? '' : version).trim();
   return 'langue-' + EXTENSION + (v === '' ? '' : '-' + v) + '.json';
@@ -48,8 +33,7 @@ function nomFichier(version) {
 
 function p2(n) { return String(n).padStart(2, '0'); }
 
-// ISO 8601 AVEC fuseau, en heure locale — même forme que lib/suggestion-traduction.js et
-// pour la même raison : un horodatage nu se relit à une heure près selon le lecteur.
+// ISO 8601 en heure locale avec fuseau, comme lib/suggestion-traduction.js.
 function horodatageIso(date) {
   const d = date instanceof Date ? date : new Date();
   const dec = -d.getTimezoneOffset();
@@ -59,9 +43,8 @@ function horodatageIso(date) {
     (dec >= 0 ? '+' : '-') + p2(Math.floor(abs / 60)) + ':' + p2(abs % 60);
 }
 
-// Comparaison par unités de code, jamais localeCompare : l'ordre doit être le même sur
-// tous les postes et d'une version de Node à l'autre, pour que deux exports successifs se
-// comparent ligne à ligne au lieu de se réordonner tout seuls.
+// Compare par unités de code et non par localeCompare : l'ordre reste le même d'un poste
+// et d'une version de Node à l'autre, et deux exports se comparent ligne à ligne.
 function avant(a, b) {
   if (a === b) { return 0; }
   return a < b ? -1 : 1;
@@ -71,8 +54,7 @@ function table(valeurs) {
   return valeurs && typeof valeurs === 'object' ? valeurs : {};
 }
 
-// Toutes les clés des deux langues, réunies. L'union, et pas l'une des deux : une clé
-// ajoutée d'un seul côté est exactement ce qu'on veut voir sortir.
+// Union des clés des deux langues, triée.
 function clesReunies(paire) {
   const vues = Object.create(null);
   const cles = [];
@@ -84,8 +66,8 @@ function clesReunies(paire) {
   return cles.sort(avant);
 }
 
-// Les entrées d'une source, triées par clé. `null` dit « cette langue ne porte pas cette
-// clé » ; une valeur vide, elle, est une vraie valeur et sort telle quelle.
+// Entrées d'une source, triées par clé. `null` : la langue n'a pas cette clé ; une chaîne
+// vide est une vraie valeur.
 function entreesSource(source, paire) {
   const p = paire && typeof paire === 'object' ? paire : {};
   return clesReunies(p).map((cle) => {
@@ -98,23 +80,19 @@ function entreesSource(source, paire) {
   });
 }
 
-// L'objet à sérialiser. `options` :
+// Construit l'objet à sérialiser, clés dans l'ordre du format. `options` :
 //   cockpit   { fr, de }  TEXTES_COCKPIT
 //   commandes { fr, de }  package.nls.json et package.nls.de.json
 //   version   la version du package.json
-//   lire      { fr, de }  la phrase d'avertissement, dans chaque langue
-//   date      pour les tests ; à défaut, maintenant
-//
-// L'ordre des clés est celui du format : un fichier se lit de haut en bas sans sauter.
+//   lire      { fr, de }  la phrase d'avertissement dans chaque langue
+//   date      pour les tests ; par défaut, maintenant
 function construire(options) {
   const o = options || {};
   const lire = o.lire && typeof o.lire === 'object' ? o.lire : {};
   const sources = { cockpit: o.cockpit, commandes: o.commandes };
   let entrees = [];
   for (const source of SOURCES) { entrees = entrees.concat(entreesSource(source, sources[source])); }
-  // Le tri final redit ce que la construction faisait déjà. Ce n'est pas un doublon
-  // inutile : c'est lui qui tient la promesse « trié par source puis par clé », et une
-  // source ajoutée plus tard, dans le désordre, n'y échappera pas.
+  // Tri final par source puis par clé, valable aussi pour une source ajoutée plus tard.
   entrees.sort((a, b) => avant(a.source, b.source) || avant(a.cle, b.cle));
   return {
     schema: SCHEMA,
@@ -130,8 +108,7 @@ function construire(options) {
   };
 }
 
-// Indenté à deux espaces et terminé par un saut de ligne : le fichier s'ouvre dans un
-// éditeur de texte et se compare d'un export à l'autre avec un outil de diff ordinaire.
+// Indenté à deux espaces, saut de ligne final : lisible dans un éditeur, comparable par diff.
 function serialiser(objet) {
   return JSON.stringify(objet, null, 2) + '\n';
 }

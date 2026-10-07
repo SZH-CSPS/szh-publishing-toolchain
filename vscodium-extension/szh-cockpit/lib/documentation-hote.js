@@ -1,22 +1,20 @@
-// La Documentation d'un numéro : rubriques (propres au numéro) et fiches (bibliothèque
-// partagée _NewsUndActu\Fiches\, lib/kirby-contenu.js) dans un seul formulaire, plus les
-// deux vues qui font vivre la bibliothèque entre les deux revues : « Traductions à faire »
-// et « Réservoir » (docs/FORMAT-DOCUMENTATION-KIRBY.md). Remplace l'ancien rangement des
-// fiches dans le numéro et lib/reserve.js, supprimés — aucune rétrocompatibilité.
+// Panneau de la Documentation d'un numéro. Un formulaire réunit les rubriques, propres au
+// numéro, et les fiches de la bibliothèque partagée _NewsUndActu\Fiches\
+// (lib/kirby-contenu.js). S'y ajoutent les onglets « Traductions à faire », « Réservoir »,
+// Archive et Propositions (docs/FORMAT-DOCUMENTATION-KIRBY.md).
 //
-// Moteur générique — une section par type de kirby.typesConnus() et une rubrique par
-// kirby.rubriquesPourRevue() — plutôt qu'un formulaire par type : les champs viennent du
-// contrat (pipeline/kirby/champs-documentation.json), ce fichier ne fait que les lire et
-// composer leurs libellés dans la langue de l'interface.
+// Le formulaire est générique : une section par type de kirby.typesConnus() et une rubrique
+// par kirby.rubriquesPourRevue(). Les champs viennent de
+// pipeline/kirby/champs-documentation.json ; ce fichier compose leurs libellés dans la
+// langue de l'interface.
 //
-// Ce que la webview fait seule : ajouter une fiche, la retirer du DOM, taper dans ses
-// champs, plier et déplier. Ce qui touche le disque : enregistrer (par lot), retirer une
-// fiche du numéro (elle redevient orpheline), la supprimer pour de bon si elle l'était déjà,
-// déposer une image de couverture, traduire/tirer une fiche dans ce numéro, et les décisions
-// du réservoir (à traduire / ignorer / annuler).
+// La webview ajoute, retire, remplit et plie les fiches seule. L'hôte écrit sur le disque :
+// enregistrer (par lot), retirer une fiche du numéro (elle devient orpheline), supprimer une
+// orpheline, déposer une image, traduire ou reprendre une fiche dans ce numéro, et les
+// décisions du réservoir (à traduire, ignorer, annuler).
 //
-// ⚠ compterBlocsDocumentation() reste dans extension.js : le fournisseur d'arbre (classe
-// FournisseurRevue) l'appelle pour le badge de la section « ACTUALITÉ ».
+// compterBlocsDocumentation() reste dans extension.js : l'arbre (FournisseurRevue) s'en sert
+// pour le badge de la section « ACTUALITÉ ».
 'use strict';
 
 const vscode = require('vscode');
@@ -40,20 +38,16 @@ const autreRevue = require('./autre-revue');
 const propositions = require('./propositions');
 const resumes = require('./resumes');
 const { moiCoedition } = require('./coedition-hote');
-// Résolution de l'ancrage SharePoint : l'onglet Archive lit TOUJOURS la bibliothèque de
-// PRODUCTION, même quand le numéro ouvert est en mode test (docs/EMPLACEMENTS.md, §1).
-// Aucun chemin de production en dur ici : SEGMENT_APPLICATION est le seul endroit JavaScript
-// qui porte le nom du dossier de l'application (lib/rapport-erreur.js) ; racineProduction()
-// ci-dessous en dérive de la même façon que resoudreDossierRapports(), sans le segment
-// `_Systeme\rapports` propre aux rapports d'erreur.
+// L'onglet Archive lit la bibliothèque de production, même quand le numéro ouvert est en
+// mode test (docs/EMPLACEMENTS.md). Voir racineProduction().
 const rapportErreur = require('./rapport-erreur');
 
-// Doivent rester alignées avec les constantes du même nom dans extension.js (le type de
-// fiche de la page de Documentation, et le slug qu'elle prend par défaut).
+// Mêmes valeurs que les constantes homonymes d'extension.js : type de fiche et slug par
+// défaut de la page de Documentation.
 const TYPE_ACTUALITE = 'documentation';
 const SLUG_DOCUMENTATION = 'documentation';
-// La fiche « D'une revue à l'autre » : la seule qui se préremplit depuis un article de
-// l'autre revue. Le contrat n'en dit rien, la page ne connaît aucun nom de type.
+// Seule fiche qui se préremplit depuis un article de l'autre revue. Le contrat ne la
+// distingue pas : son type est nommé ici.
 const TYPE_REPRISE = 'reprise';
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
@@ -65,10 +59,7 @@ let ctx = {
   nomRevueAffiche: (revue) => String(revue || ''),
   convertirCmykSiBesoin: async () => 0,
   repondreModeTrad: require('./traduction-hote').repondreModeTrad,
-  // Le bouton « Aperçu du PDF » (extension.js#apercuOuvertPourSlug/
-  // basculerApercuDocumentation/rafraichirApercuDocumentationSiOuvert). Un module non
-  // configuré (contrôle isolé) répond « jamais ouvert, rien ne bascule » — sans effet, pas
-  // d'exception.
+  // Bouton « Aperçu du PDF », fourni par extension.js. Par défaut : aperçu fermé, sans effet.
   apercuOuvert: () => false,
   basculerApercu: async () => {},
   rafraichirApercuSiOuvert: async () => {},
@@ -91,8 +82,8 @@ function repondrePanneau(panneau, message) {
 }
 
 // ---- Libellés composés depuis le contrat -------------------------------------------
-// Leur `langue` est celle de l'interface (langueCockpit()), comme les boutons, et jamais celle
-// du numéro, qui ne vaut que pour les données lues et écrites.
+// Libellés dans la langue de l'interface (langueCockpit()), comme les boutons. La langue du
+// numéro ne sert qu'aux données.
 
 function optionsInstrument(canton, langue) {
   return kirby.ordreInstruments(canton).map((jeton) => {
@@ -120,9 +111,8 @@ function configChamp(champ, langue) {
     if (champ.liste === 'instrument') { c.dependDe = 'canton'; c.optionsParCanton = tableInstrumentsParCanton(langue); }
   }
   if (champ.saisie === 'liste_multiple') {
-    // Triées par nom (Robin) — jamais l'ordre du JSON, qui pour `pays` n'a aucun sens
-    // éditorial (250 codes ISO). Locale-aware : « Ile-de-France » et « Île-de-France »
-    // voisinent, comme partout ailleurs dans ce formulaire (calculerOrdreFiches).
+    // Triées par libellé : l'ordre du JSON n'a pas de sens éditorial (250 codes ISO pour
+    // `pays`). Le tri selon la langue range « Ile-de-France » à côté de « Île-de-France ».
     c.options = optionsListe(champ.liste, langue)
       .sort((a, b) => a.libelle.localeCompare(b.libelle, langue, { sensitivity: 'base', numeric: true }));
   }
@@ -152,9 +142,8 @@ function typesRessourceConfig(langue, revueJeton) {
     const champFichier = kirby.champFichierDuType(type);
     return {
       valeur: type,
-      // libelleCockpitType : le libellé COURT réservé au cockpit s'il existe (contrat,
-      // types[].libelleCourt — « Agenda » plutôt que « Agenda et formation continue » —,
-      // Robin), jamais libelleType (le long, imprimé) en dur ici.
+      // Libellé court du contrat s'il existe (« Agenda » plutôt que « Agenda et formation
+      // continue »), sinon le libellé imprimé.
       libelleSection: kirby.libelleCockpitType(type, langue),
       libelleAjouter: T('ressource.ajouter.' + type),
       libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
@@ -173,10 +162,8 @@ function typesRubriqueConfig(revueJeton, langue) {
   return kirby.rubriquesPourRevue(revueJeton).map((r) => ({ valeur: r.cle, libelleSection: r.titre[langue] || r.titre.fr }));
 }
 
-// Tous les libellés du formulaire de Documentation qui ne sont pas des noms de champ.
-//
-// ⚠ Une clé oubliée ici ne casse rien : la page affiche « undefined » à sa place. C'est
-//   test/js/contrats.test.js qui l'attrape.
+// Libellés du formulaire de Documentation autres que les noms de champ. Une clé oubliée
+// s'affiche « undefined » ; test/js/contrats.test.js la détecte.
 function textesDocumentation() {
   return {
     choisirFichier: T('medias.choisirFichier'),
@@ -430,29 +417,24 @@ function textesDocumentation() {
   };
 }
 
-// ---- L'onglet Archive : bibliothèque de PRODUCTION, toujours — même en mode test ------
+// ---- Onglet Archive : la bibliothèque de production, même en mode test ---------------
 //
-// racineProduction() : dérivée de l'ancrage SharePoint résolu (rapport-erreur.js#resoudreAncrage,
-// LE SEUL module qui sait le trouver sans jamais balayer le disque ni ouvrir de fenêtre —
-// exactement ce qu'il faut ici, un panneau webview n'a pas de quoi montrer un sélecteur de
-// dossier). `null` si l'ancrage n'est pas résolu : l'appelant journalise dans l’onglet, rien
-// d'autre (docs/EMPLACEMENTS.md, §1 et §8). AUCUN segment de chemin en dur ici :
-// rapportErreur.SEGMENT_APPLICATION est le seul endroit JavaScript qui porte le nom du
-// dossier de production.
+// Racine de production, dérivée de l'ancrage SharePoint (rapportErreur.resoudreAncrage, qui
+// ne parcourt pas le disque et n'ouvre pas de sélecteur de dossier). `null` si l'ancrage
+// n'est pas trouvé ; l'appelant le signale dans l'onglet (docs/EMPLACEMENTS.md). Le nom du
+// dossier vient de rapportErreur.SEGMENT_APPLICATION.
 function racineProduction() {
   const ancrage = rapportErreur.resoudreAncrage();
   if (!ancrage || !ancrage.trouve) { return null; }
-  // resoudreAncrage rend des séparateurs Windows (normaliserSeparateursAncrage) : hors de
-  // Windows (runner Linux de la CI), les remettre en « / » avant d'y joindre quoi que ce soit.
+  // resoudreAncrage rend des séparateurs Windows : hors Windows (CI Linux), on les remet en
+  // « / » avant de joindre.
   const base = process.platform === 'win32' ? ancrage.chemin : String(ancrage.chemin).replace(/\\/g, '/');
   return path.join(base, '2_Produkte', rapportErreur.SEGMENT_APPLICATION);
 }
 
-// indexNumerosProduction(racineProductionVal) -> { <id>: { label, revue, annee } } — résout
-// l'id Ausgabe d'une fiche en un libellé lisible (« Revue 2025/1 »), en lisant les
-// ausgabe.yaml des numéros en cours ET archivés de la racine de PRODUCTION (kirby.listerNumeros
-// couvre déjà les deux). `annee` extraite du libellé (premier groupe de 4 chiffres), pour le
-// filtre par année de l'onglet Archive.
+// { <id>: { label, revue, annee } } : le libellé lisible (« Revue 2025/1 ») de chaque
+// numéro, en cours ou archivé, de la racine de production. `annee` (premier groupe de quatre
+// chiffres du libellé) sert au filtre par année de l'onglet Archive.
 function indexNumerosProduction(racineProductionVal) {
   const index = {};
   for (const n of kirby.listerNumeros(racineProductionVal)) {
@@ -464,17 +446,15 @@ function indexNumerosProduction(racineProductionVal) {
   return index;
 }
 
-// Un id inconnu de l'index (numéro renommé, déplacé hors de l'arbre, ou dossier copié à la
-// main sans id retrouvé) s'affiche par son id tel quel — jamais masqué, jamais une ligne
-// vide (docs/FORMAT-DOCUMENTATION-KIRBY.md, esprit des avertissements de kirby-contenu.js).
+// Un id absent de l'index (numéro renommé, déplacé, copié sans id) s'affiche tel quel.
 function libelleNumeroIndexe(index, id) {
   const e = index[id];
   return e ? Object.assign({ id: id }, e) : { id: id, label: id, revue: '', annee: '' };
 }
 
-// Le texte plein cherché par la recherche de l'onglet Archive : titre, descriptif et les
-// quelques champs « auteur/lieu » qui existent selon le type — jamais les champs système, ni
-// les listes fermées (canton, catégorie…), qui ont leur propre filtre.
+// Champs lus par la recherche plein texte de l'onglet Archive : titre, descriptif, et champs
+// d'auteur ou de lieu selon le type. Les listes fermées (canton, catégorie…) ont leur
+// propre filtre.
 const CHAMPS_RECHERCHE_ARCHIVE = ['title', 'descriptif', 'auteurs', 'institutions', 'realisateur', 'organisateur', 'lieu', 'editeur', 'distributeur'];
 function texteRechercheArchive(valeursParLangue) {
   const morceaux = [];
@@ -486,10 +466,8 @@ function texteRechercheArchive(valeursParLangue) {
   return morceaux.join(' ').toLowerCase();
 }
 
-// Un enregistrement de kirby.listerBibliothequeComplete() -> une ligne pour l'onglet Archive :
-// titre dans chaque langue présente, valeurs complètes de chaque langue (texte seulement —
-// l'image, plus lourde, est demandée à part au clic, voir ARCHIVE_IMAGE plus bas), et les
-// numéros de rattachement lisibles, un par langue rattachée.
+// Une ligne de l'onglet Archive : titres et valeurs de chaque langue présente (texte seul,
+// l'image se demande au clic par ARCHIVE_IMAGE), et numéros de rattachement lisibles.
 function ligneArchive(enregistrement, index) {
   const langues = kirby.languesDuContrat();
   const titres = {}, valeurs = {}, numeros = [];
@@ -513,9 +491,8 @@ function ligneArchive(enregistrement, index) {
   };
 }
 
-// construireReponseArchive() -> le message ARCHIVE_DONNEES envoyé sur demande (jamais à
-// l'ouverture du panneau) — lit la bibliothèque de production UNE fois, ici, et rien d'autre
-// ne la relit tant que la page ne redemande pas ARCHIVE_CHARGER/ARCHIVE_ACTUALISER.
+// Message ARCHIVE_DONNEES, envoyé quand la page le demande (ARCHIVE_CHARGER ou
+// ARCHIVE_ACTUALISER) : la bibliothèque de production n'est lue qu'à ce moment.
 function construireReponseArchive() {
   const racineProductionVal = racineProduction();
   if (!racineProductionVal) {
@@ -526,13 +503,12 @@ function construireReponseArchive() {
   return { type: MSG.ARCHIVE_DONNEES, ok: true, fiches: fiches };
 }
 
-// ---- La vue « Propositions » : ce que la page affiche, composé ici ------------------------
+// ---- Vue « Propositions » : mise en forme pour la page --------------------------------
 //
-// Toute la logique (lots, décisions, cas A/B, ordre) vit dans lib/propositions.js ; ces
-// fonctions ne font que la mettre en forme pour la page : les données dans la langue du
-// numéro, les libellés dans celle de l'interface.
+// La logique (lots, décisions, ordre) vit dans lib/propositions.js. Ici : les données dans
+// la langue du numéro, les libellés dans celle de l'interface.
 
-// Le réglage des colonnes de la vue, par type de fiche : propre au poste, jamais partagé.
+// Réglage des colonnes de la vue, par type de fiche, propre au poste.
 const CLE_COLONNES_PROPOSITIONS = 'szh.propositions.colonnes';
 
 function libelleMoissonneur(id) {
@@ -540,8 +516,8 @@ function libelleMoissonneur(id) {
   return TEXTES_COCKPIT.fr[cle] !== undefined ? T(cle) : id;
 }
 
-// Les types de fiche tels que la vue les montre : libellé, colonnes de tri, et les libellés
-// des jetons de liste, pour qu'une valeur se lise en clair.
+// Types de fiche tels que la vue les montre : libellé, colonnes de tri, et libellés des
+// valeurs de liste.
 function typesPropositions(langue) {
   return kirby.typesConnus().map((type) => {
     const def = kirby.definitionType(type) || {};
@@ -573,8 +549,8 @@ function etatsPropositions(etats) {
   });
 }
 
-// L'aperçu de la finesse : le cran que ce poste regarde, par langue et par type de fiche. Propre
-// au poste, jamais partagé ; le réglage de la rédaction vit dans _Moissons\_Reglages.
+// Aperçu de la finesse : le cran que ce poste regarde, par langue et par type de fiche,
+// propre au poste. Le réglage de la rédaction vit dans _Moissons\_Reglages.
 const CLE_FINESSE_APERCU = 'szh.propositions.finesse';
 
 function apercuFinesse(langue) {
@@ -592,8 +568,8 @@ async function poserApercuFinesse(langue, typeFiche, cran) {
   await etatPoste.globalState.update(CLE_FINESSE_APERCU, table);
 }
 
-// Qui règle la finesse pour la rédaction : le nom que la co-édition montre déjà aux autres
-// postes (réglage szh.nomUtilisateur, sinon la session Windows), « — » à défaut.
+// Nom de qui règle la finesse pour la rédaction : celui que montre la co-édition
+// (szh.nomUtilisateur, sinon la session Windows), « — » à défaut.
 function auteurPoste() {
   const nom = String(moiCoedition().utilisateur || '');
   return nom && nom !== 'inconnu' ? nom : '—';
@@ -744,27 +720,25 @@ function htmlDocumentation(nonce) {
   });
 }
 
-// Le nom du numéro (nom de dossier) qui porte cet id, dans l'arbre — pour afficher « de la
-// Zeitschrift, numéro 2026-01 » sans faire porter ce calcul à kirby-contenu.js (pur, mais
-// sans notion d'affichage).
+// Nom du dossier du numéro qui porte cet id dans l'arbre, pour afficher « de la
+// Zeitschrift, numéro 2026-01 ».
 function nomNumeroPour(racineArbreVal, ausgabeId) {
   if (!ausgabeId) { return ''; }
   const trouve = kirby.listerNumeros(racineArbreVal).find((n) => n.id === ausgabeId);
   return trouve ? trouve.nom : '';
 }
 
-// La liste d'Uuid d'un geste de décision du réservoir : `uuids` (sélection multiple, la
-// barre d'actions en lot) prime sur `uuid` (bouton d'une seule ligne) — jamais les deux à la
-// fois côté webview, mais peu importe si c'était le cas : ce n'est pas un cumul.
+// Uuid visés par une décision du réservoir : `uuids` (sélection multiple) prime sur `uuid`
+// (bouton d'une ligne).
 function uuidsDuMessage(msg) {
   if (Array.isArray(msg.uuids)) { return msg.uuids.map((u) => String(u || '')).filter((u) => u !== ''); }
   const seul = String(msg.uuid || '');
   return seul === '' ? [] : [seul];
 }
 
-// Dépose l'image d'une fiche AVANT qu'elle n'ait de dossier (elle n'existe encore que dans
-// la webview) : mise de côté hors bibliothèque (kirby.deposerImageProvisoire, os.tmpdir()),
-// installée dans le dossier de la fiche au moment où enregistrer() l'écrit.
+// Dépose l'image d'une fiche pas encore enregistrée. L'image attend hors bibliothèque
+// (kirby.deposerImageProvisoire, os.tmpdir()) ; enregistrer() l'installe dans le dossier de
+// la fiche.
 async function deposerImageRessource(panneau, idsImagesEnAttente, msg) {
   const id = String(msg.id || '');
   const echec = (message) => repondrePanneau(panneau, { type: MSG.IMAGE_ERREUR, id: id, message: message });
@@ -785,10 +759,9 @@ async function deposerImageRessource(panneau, idsImagesEnAttente, msg) {
   });
 }
 
-// Crée la page de Documentation du numéro : son dossier, sa fiche de métadonnées de type
-// « documentation » et son documentation.<lang>.txt (les rubriques naissent vides). Aucune
-// fiche : elles vivent toutes dans la bibliothèque partagée. Rend le slug, ou null si
-// l'écriture a échoué.
+// Crée la page de Documentation du numéro : dossier, métadonnées de type « documentation »
+// et documentation.<lang>.txt aux rubriques vides. Les fiches vivent dans la bibliothèque
+// partagée. Rend le slug, ou null si l'écriture échoue.
 function creerPageDocumentation(fournisseur) {
   const racine = fournisseur.racine;
   const base = path.join(racine, dossierUnites());
@@ -813,13 +786,11 @@ function creerPageDocumentation(fournisseur) {
   return slug;
 }
 
-// `onglet` : posé par les entrées de l'arbre (extension.js#_itemsActualite /
-// _itemsDocumentationNumero, commande szh.ouvrirActualite) — l'un de 'numero'/'traductions'/
-// 'reservoir'/'archive'/'propositions'. `categorie` n'a de sens que pour 'numero' : 'rubriques' ou l'un des
-// types de fiche du contrat (ordreTypes) — une seule catégorie affichée à la fois, jamais un
-// sommaire. Les deux sont absents (undefined) pour l'en-tête « ACTUALITÉ » et la commande
-// szh.documentation : le formulaire s'ouvre alors sur sa vue par défaut (webview) / celle
-// déjà affichée si le panneau vit déjà.
+// `onglet` : 'numero', 'traductions', 'reservoir', 'archive' ou 'propositions', posé par
+// les entrées de l'arbre et szh.ouvrirActualite. `categorie`, pour 'numero' seulement :
+// 'rubriques' ou un type de fiche du contrat ; une seule catégorie s'affiche à la fois.
+// Sans les deux (en-tête « ACTUALITÉ », szh.documentation), le panneau s'ouvre sur sa vue
+// par défaut, ou garde sa vue s'il est déjà ouvert.
 async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, categorie) {
   if (!fournisseur.racine) { return; }
   if (!profils.courant().capacites.documentation) { return; }   // un livre n'a pas de Documentation
@@ -833,15 +804,14 @@ async function ouvrirPageDocumentation(fournisseur, rafraichirTout, onglet, cate
   await ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, categorie);
 }
 
-// Le compte de l'entrée Archive dans l'arbre (extension.js#_itemsActualite) : jamais une
-// lecture à part de la bibliothèque de production pour l'arbre — repris du dernier
-// ARCHIVE_CHARGER/ARCHIVE_ACTUALISER servi à un panneau, quel qu'il soit. `undefined` tant
-// qu'aucun panneau n'a encore chargé cet onglet : l'arbre n'affiche alors aucun badge. Une
-// seule variable de module : un numéro ouvert par fenêtre VSCodium, pas de table par racine.
+// Compte de l'entrée Archive dans l'arbre, repris du dernier chargement de l'onglet par un
+// panneau : l'arbre ne relit pas la bibliothèque. `undefined` tant qu'aucun panneau ne l'a
+// chargé (pas de badge). Une seule variable : un numéro ouvert par fenêtre VSCodium.
 let dernierCompteArchive;
 
-// « Ouvrir Propositions › Termes » vers un panneau déjà ouvert : par slug, de quoi lui pousser
-// l'onglet demandé avec ses données (la page ne relaie à la vue que PROP_DONNEES).
+// Pour « Ouvrir Propositions › Termes » quand le panneau est déjà ouvert : par slug, la
+// fonction qui lui envoie l'onglet avec ses données (la page ne transmet à la vue que
+// PROP_DONNEES).
 const pousseursOnglet = new Map();
 // La catégorie « _termes:<moissonneur> » de szh.ouvrirActualite('propositions', …).
 function ongletTermesDemande(onglet, categorie) {
@@ -868,16 +838,14 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   const langue = langueRevue(racine);
   const revueJeton = ctx.revueCourante(racine);
   const racineArbreVal = kirby.racineArbre(racine);
-  // L'id est normalement déjà posé — extension.js#majContexte le fait à l'ouverture du
-  // numéro, avec l'avertissement de doublon. assurerIdNumero() est idempotente : filet de
-  // sécurité si ce formulaire s'ouvrait avant tout passage par majContexte.
+  // L'id du numéro est normalement posé à l'ouverture (extension.js#majContexte).
+  // assurerIdNumero() est idempotente et couvre le cas où ce panneau s'ouvrirait avant.
   const ausgabeId = assurerIdNumero(racine);
 
   const existant = revelerPanneau({ viewType: 'szhDocumentation', cle: slug });
   if (existant) {
-    // Le panneau vit déjà : le premier chargement (charger.vueInitiale) est passé depuis
-    // longtemps, la bascule passe donc par ce message dédié — jamais en reconstruisant
-    // « charger », qui rejouerait un rechargement complet pour un simple changement de vue.
+    // Panneau déjà ouvert : la vue demandée passe par un message dédié, sans recharger tout
+    // le formulaire.
     if (onglet) { repondrePanneau(existant, { type: MSG.ONGLET_ACTIVER, cle: onglet, categorie: categorie }); }
     const demandeTermes = ongletTermesDemande(onglet, categorie);
     if (demandeTermes && pousseursOnglet.has(slug)) { pousseursOnglet.get(slug)(demandeTermes); }
@@ -885,11 +853,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
   }
   await fermerTousLesApercus();
   const titrePanneau = T('doc.titre.page');
-  // Toute image déposée dans cette session et jamais réclamée par une fiche enregistrée
-  // (carte retirée avant sauvegarde, panneau fermé sans enregistrer) doit être nettoyée : le
-  // dépôt vit hors bibliothèque (os.tmpdir()), mais rien n'empêche qu'il s'accumule.
+  // Images déposées dans cette session et pas encore rattachées à une fiche enregistrée :
+  // elles sont effacées de os.tmpdir() à la fermeture du panneau.
   const idsImagesEnAttente = new Set();
-  // Les gestionnaires ne sont appelés qu'une fois cette fonction finie : ils peuvent lire
+  // Les gestionnaires ne s'exécutent qu'après la fin de cette fonction : ils peuvent appeler
   // les fonctions déclarées plus bas.
   const { panneau } = panneauUnique({
     viewType: 'szhDocumentation', cle: slug, titre: titrePanneau, retenir: true,
@@ -903,25 +870,20 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       idsImagesEnAttente.clear();
     }
   });
-  // Le bouton « Aperçu du PDF » peut se désynchroniser si l'aperçu se ferme à la croix
-  // pendant que ce panneau est en arrière-plan (un aperçu fermé ne le dit à personne
-  // d'autre que lui-même) : à chaque fois que ce panneau redevient actif, l'état réel est
-  // renvoyé — sans ça, rien d'autre ne préviendrait la page.
+  // Un aperçu fermé à la croix ne prévient pas ce panneau : l'état du bouton « Aperçu du PDF »
+  // est renvoyé chaque fois que le panneau redevient actif.
   panneau.onDidChangeViewState((e) => {
     if (e && e.webviewPanel && e.webviewPanel.active) {
       repondrePanneau(panneau, { type: MSG.APERCU_ETAT, ouvert: ctx.apercuOuvert(racine, slug) });
     }
   });
 
-  // uuid -> slug, pour les fiches DE CE NUMÉRO — reconstruit à chaque charger() : c'est ce
-  // qui permet à enregistrer()/retirer() de retrouver le dossier d'une fiche existante sans
-  // parcourir toute la bibliothèque à chaque frappe.
+  // uuid -> slug des fiches de ce numéro, reconstruit à chaque charger(), pour que
+  // enregistrer() et retirer() trouvent le dossier d'une fiche sans parcourir la bibliothèque.
   let slugParUuid = new Map();
-  // onglet/categorie ne doivent atteindre la page QU'à son tout premier chargement (charger.
-  // vueInitiale, lu une fois par media/documentation.js) : un rechargement complet plus
-  // tard (RETIRER, TRADUIRE_DANS_NUMERO…) ne doit jamais reposer l'utilisateur sur cette vue,
-  // sans quoi « la vue choisie survit à un rechargement complet » (media/documentation.js)
-  // ne serait plus vrai pour cette toute première vue.
+  // onglet et categorie ne partent qu'au premier chargement (charger.vueInitiale) : un
+  // rechargement complet ultérieur (RETIRER, TRADUIRE_DANS_NUMERO…) garde la vue choisie par
+  // la personne.
   let premierPret = true;
   // Les propositions servies à la vue, par cle : le détail les vérifie à chaque saisie sans
   // relire les lots.
@@ -991,8 +953,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       accent: ctx.lireCouleurAccent(racine),
       i18n: textesDocumentation(),
       limites: ctx.limitesMedias(),
-      // L'état du bouton « Aperçu du PDF » : recalculé à CHAQUE chargement (jamais mémorisé
-      // ici), pour rester vrai même si l'aperçu a été fermé à la croix entre-temps.
+      // Recalculé à chaque chargement : l'aperçu a pu être fermé à la croix entre-temps.
       apercuOuvert: ctx.apercuOuvert(racine, slug)
     }, extra || {}));
   }
@@ -1023,10 +984,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       }
       total++;
     }
-    // Les fiches se rangent d'elles-mêmes — une seule fois, après la boucle.
+    // Rangement des fiches, une fois après la boucle.
     if (total > 0) { kirby.reordonnerNumero(racineArbreVal, langue, ausgabeId); }
 
-    // Les rubriques ensuite, sans tri d'aucune sorte — leur ordre est un choix éditorial.
+    // Les rubriques ensuite, dans l'ordre reçu : c'est un choix éditorial.
     if (Array.isArray(listeRubriques) && listeRubriques.length > 0) {
       const pageActuelle = kirby.lirePage(dossierArticle, langue);
       const rubriques = Object.assign({}, pageActuelle.rubriques);
@@ -1164,24 +1125,20 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       const resultat = await enregistrer(msg.ressources, msg.rubriques);
       repondrePanneau(panneau, { type: MSG.ENREGISTRE, auto: !!msg.auto, correspondances: resultat.correspondances });
       if (resultat.total > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [resultat.total]), 5000); }
-      // L'aperçu ouvert (bouton « Aperçu du PDF ») se rafraîchit tout seul — jamais attendu :
-      // une compilation ne doit pas retarder la confirmation d'enregistrement. Rien à faire
-      // si rien n'a changé (résultat.total === 0), ni si aucun aperçu de CE slug n'est ouvert
-      // (ctx.rafraichirApercuSiOuvert le vérifie lui-même).
+      // L'aperçu ouvert de ce slug se recompile en arrière-plan, sans retarder la confirmation
+      // d'enregistrement, et seulement si quelque chose a changé.
       if (resultat.total > 0) { ctx.rafraichirApercuSiOuvert(fournisseur, slug).catch(() => { /* signalé côté build */ }); }
       return;
     }
-    // Le bouton « Aperçu du PDF » : bascule (ouvre en compilant toujours, ou ferme), puis
-    // l'état réel est renvoyé — jamais optimiste côté page, l'ouverture peut échouer
-    // (verrou, numéro gelé) sans qu'aucune exception ne remonte ici.
+    // Bouton « Aperçu du PDF » : ouvre (en compilant) ou ferme, puis renvoie l'état réel,
+    // car l'ouverture peut échouer (verrou, numéro gelé) sans lever d'exception.
     if (msg.type === MSG.APERCU_BASCULER) {
       await ctx.basculerApercu(fournisseur, slug);
       repondrePanneau(panneau, { type: MSG.APERCU_ETAT, ouvert: ctx.apercuOuvert(racine, slug) });
       return;
     }
-    // Retirer une fiche du numéro = la rendre orpheline (Ausgabe vidé) — jamais une
-    // suppression. Une rubrique vidée, elle, reste dans le fichier de page : c'est
-    // enregistrer() qui la vide, pas ce message (voir le formulaire).
+    // Retirer une fiche du numéro la rend orpheline (Ausgabe vidé), sans la supprimer. Une
+    // rubrique vidée reste dans le fichier de page : c'est enregistrer() qui la vide.
     if (msg.type === MSG.RETIRER) {
       if (refuserSiVerrouille()) {
         repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
@@ -1196,8 +1153,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       if (rafraichirTout) { rafraichirTout(); }
       return;
     }
-    // Supprimer pour de bon : seulement une fiche déjà orpheline (« Mes orphelines »),
-    // avec confirmation — supprimerFicheOrpheline() refuse elle-même une fiche rattachée.
+    // Suppression définitive d'une orpheline (« Mes orphelines »), après confirmation.
+    // supprimerFicheOrpheline() refuse une fiche rattachée.
     if (msg.type === MSG.SUPPRIMER) {
       if (refuserSiVerrouille()) { return; }
       const slugCible = String(msg.slug || '');
@@ -1212,11 +1169,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       }
       return;
     }
-    // Supprimer pour de bon une carte de « Documentation du numéro », rattachée ou non —
-    // geste DISTINCT de RETIRER (qui ne fait que la détacher). N'ôte que le fichier de la
-    // langue du numéro ; si l'autre langue existe, elle reste (la confirmation le dit). Une
-    // carte jamais enregistrée n'atteint jamais l'hôte (voir supprimerFicheCarte, media/
-    // documentation.js) : id est ici toujours un Uuid Kirby réel.
+    // Suppression définitive d'une carte de « Documentation du numéro », rattachée ou non
+    // (RETIRER ne fait que la détacher). Seul le fichier de la langue du numéro disparaît ;
+    // l'autre langue reste, et la confirmation le dit. Une carte jamais enregistrée est
+    // supprimée côté page (media/documentation.js) : id est toujours un Uuid Kirby réel.
     if (msg.type === MSG.SUPPRIMER_FICHE_NUMERO) {
       if (refuserSiVerrouille()) {
         repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verrou.refuse') });
@@ -1246,8 +1202,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       await deposerImageRessource(panneau, idsImagesEnAttente, msg);
       return;
     }
-    // Traduire une fiche du réservoir/traductions-à-faire dans CE numéro : crée le fichier
-    // de ma langue, pré-rempli depuis l'autre langue, Ausgabe = ce numéro.
+    // Traduire une fiche (réservoir, traductions à faire) dans ce numéro : crée le fichier de
+    // la langue du numéro, prérempli depuis l'autre langue, avec Ausgabe = ce numéro.
     if (msg.type === MSG.TRADUIRE_DANS_NUMERO) {
       if (refuserSiVerrouille()) { return; }
       const slugCible = String(msg.slug || '');
@@ -1274,11 +1230,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       }
       return;
     }
-    // Décisions du réservoir : ne touchent jamais à ce numéro (statuts hors bibliothèque de
-    // fiches), donc pas de garde de verrou — c'est un tri personnel, indépendant du numéro
-    // ouvert. `uuids` (sélection multiple) ou `uuid` (bouton d'une seule ligne) : dans les
-    // deux cas, un seul passage d'écriture puis un seul rechargement — jamais un message par
-    // fiche, jamais un rechargement par fiche.
+    // Décisions du réservoir : un tri personnel, rangé hors de la bibliothèque des fiches et
+    // indépendant du numéro ouvert, donc sans garde de verrou. Une seule écriture et un seul
+    // rechargement, quel que soit le nombre de fiches.
     if (msg.type === MSG.MARQUER_A_TRADUIRE || msg.type === MSG.IGNORER_TRADUCTION || msg.type === MSG.ANNULER_DECISION) {
       const uuids = uuidsDuMessage(msg);
       if (uuids.length === 0) { return; }
@@ -1290,8 +1244,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       await charger(panneau);
       return;
     }
-    // L'interrupteur « afficher les ignorées » : une réponse ciblée, pas un rechargement
-    // complet — la sélection de numéros du filtre, côté webview, n'a pas à être reconstruite.
+    // « Afficher les ignorées » : une réponse ciblée, sans rechargement complet, pour garder
+    // la sélection de numéros du filtre.
     if (msg.type === MSG.RESERVOIR_FILTRE) {
       repondrePanneau(panneau, {
         type: MSG.RESERVOIR, avecIgnorees: !!msg.avecIgnorees,
@@ -1299,11 +1253,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       });
       return;
     }
-    // Onglet Archive : lu à la demande seulement (ARCHIVE_CHARGER — première ouverture de
-    // l'onglet — ou ARCHIVE_ACTUALISER — bouton « Actualiser »), jamais à charger(). Pas de
-    // garde de verrou : c'est une LECTURE de la bibliothèque de production, jamais du numéro
-    // ouvert. Le compte obtenu ici alimente aussi le badge de l'entrée Archive dans l'arbre
-    // (compteArchiveConnu, plus bas) — jamais une lecture à part pour l'arbre.
+    // Onglet Archive : lu seulement sur demande (ARCHIVE_CHARGER à la première ouverture,
+    // ARCHIVE_ACTUALISER au bouton « Actualiser »). Lecture de la production, donc sans garde
+    // de verrou. Le compte obtenu sert aussi au badge de l'arbre (compteArchiveConnu).
     if (msg.type === MSG.ARCHIVE_CHARGER || msg.type === MSG.ARCHIVE_ACTUALISER) {
       const reponse = construireReponseArchive();
       repondrePanneau(panneau, reponse);
@@ -1314,9 +1266,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       }
       return;
     }
-    // L'image d'une fiche archivée, demandée à part (au clic sur l'aperçu) : jamais en bloc
-    // avec ARCHIVE_DONNEES, qui porterait alors une image par fiche pour des centaines de
-    // fiches à chaque ouverture de l'onglet.
+    // Image d'une fiche archivée, envoyée au clic : l'inclure dans ARCHIVE_DONNEES ferait
+    // partir une image par fiche, pour des centaines de fiches.
     if (msg.type === MSG.ARCHIVE_IMAGE) {
       const ficheType = String(msg.ficheType || '');
       const slugCible = String(msg.slug || '');
@@ -1340,10 +1291,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       repondrePanneau(panneau, { type: MSG.ARCHIVE_IMAGE_DONNEE, ficheType: ficheType, slug: slugCible, apercu: apercu });
       return;
     }
-    // « Reprendre dans ce numéro » : crée une fiche NEUVE (nouvel Uuid, nouveau dossier)
-    // dans la bibliothèque ACTIVE (racineArbreVal — celle du numéro ouvert, test ou
-    // production), rattachée à CE numéro, avec `origine` = Uuid de la fiche archivée. La
-    // fiche archivée (bibliothèque de production) n'est jamais modifiée.
+    // « Reprendre dans ce numéro » : crée une fiche neuve (nouvel Uuid, nouveau dossier) dans
+    // la bibliothèque du numéro ouvert (test ou production), rattachée à ce numéro, avec
+    // `origine` = Uuid de la fiche archivée, qui reste inchangée.
     if (msg.type === MSG.ARCHIVE_REPRENDRE) {
       if (refuserSiVerrouille()) {
         repondrePanneau(panneau, { type: MSG.ARCHIVE_REPRISE, ok: false, message: T('verrou.refuse') });
@@ -1448,10 +1398,7 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       if (/^https?:\/\//i.test(url)) { await vscode.env.openExternal(vscode.Uri.parse(url)); }
       return;
     }
-    // L'aperçu de la date imprimée, dans la langue du numéro : une lecture, donc pas de garde
-    // de verrou.
-    // Les articles de l'autre revue, dans la racine active : une lecture, demandée une fois
-    // par panneau, au premier clic.
+    // Articles de l'autre revue dans la racine active, demandés au premier clic.
     if (msg.type === MSG.DOC_AUTREREVUE_CHARGER) {
       let reponse;
       try {
@@ -1462,6 +1409,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
       repondrePanneau(panneau, Object.assign({ type: MSG.DOC_AUTREREVUE_DONNEES }, reponse));
       return;
     }
+    // Aperçu de la date imprimée, dans la langue du numéro. Lecture seule : pas de garde de
+    // verrou.
     if (msg.type === MSG.DOC_DATE_FORMER) {
       const r = await dateApercu.former({ saisie: msg.saisie, lang: langue, valeurs: msg.valeurs });
       repondrePanneau(panneau, Object.assign({ type: MSG.DOC_DATE_FORMEE, jeton: msg.jeton }, r));
@@ -1473,8 +1422,8 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, slug, onglet, ca
         if (choix === 'annuler') { return; }          // Annuler : on reste
         if (choix === 'enregistrer') { await enregistrer(msg.ressources, msg.rubriques); }
       }
-      // La page de Documentation n'a pas de texte à relire : son arborescence n'est qu'un
-      // magasin de rubriques, jamais ouverte à la main — le panneau se ferme sur l'arbre.
+      // La page de Documentation n'a pas de texte à relire : le panneau se ferme et revient à
+      // l'arbre.
       panneau.dispose();
       if (rafraichirTout) { rafraichirTout(); }
       return;
@@ -1487,9 +1436,7 @@ module.exports = {
   configurer,
   ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe,
   dossierArticleDoc, compteArchiveConnu, compterPropositionsVues,
-  // Les fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne sont pas
-  // pures — elles lisent la langue et le contrat — et c'est précisément ce qu'il faut
-  // éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige que
-  // tout diffère.
+  // Fabriques de libellés exposées pour test/js/actualite.test.js, qui vérifie qu'elles
+  // diffèrent d'une langue à l'autre.
   _libelles: { textesDocumentation, typesRessourceConfig, typesRubriqueConfig, optionsInstrument }
 };

@@ -1,5 +1,4 @@
-// Les journaux de mise à jour du poste : les dix derniers update-*.log, leur verdict et leur
-// fin.
+// Journaux de mise à jour du poste : les dix derniers update-*.log, leur verdict et leur fin.
 'use strict';
 
 const fs = require('fs');
@@ -10,7 +9,7 @@ const COMBIEN = 10;
 const LIGNES_VERDICT = 40;
 const LIGNES_FIN = 200;
 
-// SZH_JOURNAUX_MAJ : l'instance de dev lit les journaux du poste, sa propre base n'en reçoit jamais.
+// SZH_JOURNAUX_MAJ permet à l'instance de dev de lire les journaux du poste.
 function dossierJournaux() {
   return String(process.env.SZH_JOURNAUX_MAJ || '').trim() || path.join(basePoste(), 'logs');
 }
@@ -23,9 +22,9 @@ function lignesDe(texte) {
   return lignes;
 }
 
-// Une mise à jour finie écrit la fin de sa transcription ; elle a réussi si sa fin porte la
-// coche. Le pied de page de Stop-Transcript est traduit par la langue de Windows : on reconnaît
-// sa forme (astérisques, titre, ligne portant l'horodatage à 14 chiffres, astérisques), pas son texte.
+// Une mise à jour finie se termine par le pied de Stop-Transcript ; elle a réussi si cette fin
+// porte la coche ✓. Le pied est traduit dans la langue de Windows : on reconnaît sa forme
+// (astérisques, titre, ligne à horodatage de 14 chiffres, astérisques), pas son texte.
 const PIED_TRANSCRIPT = /\*{5,}\n[^\n]+\n[^\n]*\d{14}[^\n]*\n\*{5,}\s*$/;
 
 function verdictJournal(chemin) {
@@ -36,8 +35,7 @@ function verdictJournal(chemin) {
   return fin.indexOf('✓') !== -1 ? 'ok' : 'echec';
 }
 
-// La date vient du nom (update-yyyyMMdd-HHmmss.log), en heure locale ; à défaut, de la date
-// du fichier, comme dans le socle.
+// Date tirée du nom update-yyyyMMdd-HHmmss.log, en heure locale ; null si le nom ne colle pas.
 function dateDuNom(nom) {
   const m = /^update-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/i.exec(nom);
   if (!m) { return null; }

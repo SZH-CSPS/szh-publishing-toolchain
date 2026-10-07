@@ -1,5 +1,7 @@
-// Le dialogue « Vérification de l'import », ouvert à la fin d'une conversion dès qu'un
-// nouvel article est apparu. Les rappels vers l'hôte passent par configurer().
+// Dialogue « Vérification de l'import », ouvert à la fin d'une conversion qui a créé au moins
+// un article. Une section par article : la carte de métadonnées avec des badges « détecté »
+// ou « à compléter », les photos des auteur·e·s, et les images de articles/<slug>/media/ à
+// remplacer par leur original sous le même nom.
 'use strict';
 
 const vscode = require('vscode');
@@ -26,11 +28,10 @@ const {
 } = require('./metadonnees-hote');
 
 // ---- Rappels vers l'hôte ----------------------------------------------------------
-// Posés une seule fois dans extension.js. Les valeurs par défaut ne servent qu'à ne pas
-// planter un test qui require ce module seul.
+// Posés par extension.js. Les défauts permettent de charger le module seul dans un test.
 let ctx = {
   lireCouleurAccent: () => '',
-  // Le remplacement d'une image est celui du gestionnaire des médias (extension.js).
+  // Remplacement d'image du gestionnaire des médias.
   remplacerFichierImage: async () => ({ etat: 'erreur', message: 'lib/import-verif-hote.js non configuré' })
 };
 
@@ -42,11 +43,6 @@ function profilCourant() { return profils.courant(); }
 function repondrePanneau(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
 }
-
-// Ouvert à la fin de lancerConversion dès qu'un nouvel article est apparu. Une section
-// par article : la carte de métadonnées du formulaire des fiches, avec des badges
-// « détecté » ou « à compléter » ; les photos d'auteur·e·s ; et les images de
-// articles/<slug>/media/, à remplacer par leur original en gardant leur nom.
 
 let slugsImportVerif = [];                         // slugs de la dernière conversion
 
@@ -69,7 +65,7 @@ function htmlImportVerif(nonce) {
   });
 }
 
-// Articles de la dernière conversion, slugs revalidés.
+// Articles de la dernière conversion encore présents, avec carte, images et vignettes.
 function lireArticlesImport(fournisseur) {
   const budgetVignettes = { reste: BUDGET_VIGNETTES };
   const connus = new Set(fournisseur.listerArticles());
@@ -97,8 +93,8 @@ function lireArticlesImport(fournisseur) {
   return articles;
 }
 
-// `extra` porte le jeton de la course pret/valeurs : `{ requete }` en réponse à
-// « pret », `{ rechargement: true }` pour un rechargement forcé (fiche périmée).
+// `extra` : `{ requete }` en réponse à « pret », `{ rechargement: true }` pour un
+// rechargement forcé (fiche périmée).
 function envoyerValeursImportVerif(panneau, fournisseur, extra) {
   const langue = langueRevue(fournisseur.racine);
   repondrePanneau(panneau, Object.assign({
@@ -108,19 +104,17 @@ function envoyerValeursImportVerif(panneau, fournisseur, extra) {
     accent: ctx.lireCouleurAccent(fournisseur.racine),
     types: typesTraduits(),
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
-    // Le plafond des originaux d'image (section « Originaux des images ») et celui des
-    // photos d'auteur·e·s (modale partagée) : plus aucun littéral côté webview.
+    // Plafonds de taille des images et des photos d'auteur·e·s.
     limites: limitesMedias(),
-    // Le vérificateur de traduction : relu à chaque envoi de valeurs, c'est-à-dire à
-    // chaque reconstruction des cartes.
+    // Relu à chaque reconstruction des cartes.
     verifTrad: lireVerifTraduction()
   }, extra || {}));
   envoyerAuteursConnus(panneau, fournisseur.racine);
   envoyerMotsClesConnus(panneau);
 }
 
-// Le remplacement lui-même est celui du gestionnaire des médias ; ici, seul l'aller-retour
-// avec la webview change. Une annulation est signalée, qui réactive la zone de dépôt.
+// Remplace une image par le gestionnaire des médias et en informe la webview. Une
+// annulation est signalée aussi : elle réactive la zone de dépôt.
 async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   const slug = String(msg.slug || '');
   const relatif = String(msg.relatif || '');
@@ -147,7 +141,6 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   // Les gestionnaires ne sont appelés qu'une fois cette fonction finie.
   const { panneau, nouveau } = panneauUnique({
     viewType: 'szhImportVerif', titre: T('importv.titre'),
-    // Mode « Trad » : l'état du mode, et le clic détourné — voir repondreModeTrad.
     modeTrad: (panneau, msg) => repondreModeTrad(panneau, msg),
     html: htmlImportVerif,
     surPret: (msg, p) => envoyerValeursImportVerif(p, fournisseur, { requete: msg.requete }),
@@ -166,7 +159,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (msg.type === MSG.SUGGERER_TRADUCTION) { ouvrirSuggestionTraduction(fournisseur, msg); return; }
     if (msg.type === MSG.REMPLACER_IMAGE) { await remplacerImageImport(fournisseur, rafraichirTout, panneau, msg); return; }
     if (msg.type === MSG.FERMER) {
-      // Seul chemin de fermeture contrôlable : la croix de l'onglet est hors de portée.
+      // Seule fermeture où l'on peut demander confirmation : la croix de l'onglet ne le permet pas.
       if (msg.modifie) {
         const choix = await confirmerAbandon(T('importv.quitter.question'));
         if (choix === 'annuler') { return; }                       // Annuler : on reste
@@ -198,8 +191,8 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    // Pas de re-rendu sur un enregistrement automatique : le curseur serait perdu. Une
-    // fiche périmée l'exige quand même — voir le formulaire des fiches.
+    // Pas de re-rendu après un enregistrement automatique, qui ferait perdre le curseur,
+    // sauf si la fiche est périmée.
     if (!msg.auto || res.recharger) {
       envoyerValeursImportVerif(panneau, fournisseur, res.recharger ? { rechargement: true } : undefined);
     }

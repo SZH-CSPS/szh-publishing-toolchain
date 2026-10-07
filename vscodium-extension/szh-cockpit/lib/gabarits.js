@@ -1,7 +1,6 @@
-// Moteur de gabarits : un sous-ensemble de Twig, texte brut, sans dépendance et sans
-// vscode. Sert les courriels du cockpit (lib/courriel.js, mail-templates/*.twig) mais ne
-// connaît rien d'eux : compiler(source, nom) analyse une fois, rendre(variables) rejoue
-// autant de fois qu'il faut.
+// Moteur de gabarits : un sous-ensemble de Twig, en texte brut, sans dépendance ni
+// vscode. compiler(source, nom) analyse une fois ; rendre(variables) rend le texte de
+// chaque {% block %}, autant de fois qu'il faut.
 //
 // Reconnu : {{ expr }} (chemin de variable, littéral, filtres |nom ou |nom(args)) ;
 // {% if %}/{% elseif %}/{% else %}/{% endif %} avec x, not x, x == y, x != y, x is empty,
@@ -9,19 +8,14 @@
 // {% for x in liste %}/{% else %}/{% endfor %} avec loop.index, loop.index0, loop.first,
 // loop.last, loop.length ; {% set x = expr %} ; {# commentaire #} ; {% block nom %} au
 // premier niveau ; le contrôle des blancs à la Twig ({%- -%} etc.).
-// Non reconnu : parenthèses dans les conditions, expressions arithmétiques, macros,
-// inclusion d'un autre gabarit, échappement AUTOMATIQUE (le texte sort tel quel ; un
-// gabarit HTML doit poser le filtre |e sur chaque valeur, voir FILTRES_CONNUS).
+// Non reconnu : parenthèses dans les conditions, arithmétique, macros, inclusion d'un
+// autre gabarit, échappement automatique (voir ECHAPPEMENTS_HTML).
 //
-// ⚠ Ce moteur est le SEUL du produit, et doit le rester. Trois surfaces s'en servent : les
-// courriels du cockpit (lib/courriel.js), les exports du secrétariat (lib/secretariat.js,
-// lancés par outils/secretariat-cli.js) et le lanceur PowerShell, qui n'en porte aucun et
-// fait rendre ses gabarits de courriel par outils/rendre-gabarit.js, exécuté par le Node
-// qu'embarque VSCodium (ELECTRON_RUN_AS_NODE=1). Deux portages ont été écrits puis retirés
-// — un en Python pour la WSL, un en PowerShell pour le lanceur : deux moteurs d'un même
-// langage de gabarit divergent, et ces gabarits sont faits pour être retouchés par la
-// rédaction, qui ne peut pas deviner lequel des deux la relira. Le filtre « csv » vient des
-// exports, qui écrivent des CSV entiers en gabarit.
+// C'est le seul moteur de gabarits du produit. Il sert les courriels du cockpit
+// (lib/courriel.js), les exports du secrétariat (lib/secretariat.js) et le lanceur
+// PowerShell, qui passe par outils/rendre-gabarit.js lancé avec le Node de VSCodium
+// (ELECTRON_RUN_AS_NODE=1). Un second moteur, en Python ou en PowerShell, finirait par
+// rendre autrement les mêmes gabarits, que la rédaction retouche.
 'use strict';
 
 const FILTRES_CONNUS = [
@@ -29,11 +23,9 @@ const FILTRES_CONNUS = [
   'csv', 'escape', 'e'
 ];
 
-// Le moteur sort le texte tel quel — c'est voulu pour les courriels et les exports, qui
-// sont en texte brut. La feuille de vérification, elle, est du HTML : un titre d'article
-// contenant « & » ou « < » y casserait la page. `escape` (alias `e`) est donc à poser sur
-// CHAQUE valeur d'un gabarit HTML ; il n'y a pas d'échappement automatique, et il ne peut
-// pas y en avoir sans changer le sens des gabarits déjà écrits.
+// Le moteur sort les valeurs telles quelles, ce que veulent les courriels et les exports.
+// Dans un gabarit HTML (la feuille de vérification), chaque valeur doit passer par le
+// filtre `escape` (alias `e`).
 const ECHAPPEMENTS_HTML = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 function erreur(nomGabarit, ligne, message) {
@@ -44,8 +36,7 @@ function erreur(nomGabarit, ligne, message) {
 
 const RE_TAG = /\{\{(-?)([\s\S]*?)(-?)\}\}|\{%(-?)([\s\S]*?)(-?)%\}|\{#(-?)([\s\S]*?)(-?)#\}/g;
 
-// Le premier mot d'un tag est son nom, le reste son argument — « if x == y » devient
-// nomTag: 'if', argument: 'x == y'.
+// « if x == y » -> { nomTag: 'if', argument: 'x == y' }.
 function decouperTag(corps) {
   const t = corps.trim();
   const m = /^(\S+)\s*([\s\S]*)$/.exec(t);
@@ -350,8 +341,8 @@ function evaluerBase(noeud, portee) {
   return noeud.type === 'litteral' ? noeud.valeur : evaluerChemin(noeud.parties, portee);
 }
 
-// La vacuité à la Twig : '', 0, null, undefined, false, [] sont vides — et donc, pour
-// `default`, remplaçables. C'est délibéré : `{{ 0|default('x') }}` rend bien « x ».
+// Vide au sens de Twig : '', 0, null, undefined, false, []. `{{ 0|default('x') }}` rend
+// donc « x ».
 function estVide(v) {
   if (v === '' || v === 0 || v === null || v === undefined || v === false) { return true; }
   return Array.isArray(v) && v.length === 0;
@@ -380,14 +371,10 @@ function appliquerFiltre(nom, v, args) {
       if (Array.isArray(v)) { return v[v.length - 1]; }
       if (typeof v === 'string') { return v.charAt(v.length - 1); }
       return undefined;
-    // Toujours citer, et non « seulement si nécessaire » : une règle sans condition se
-    // vérifie d'un coup d'œil dans un gabarit, et un tableur lit sans broncher un champ
-    // cité qui n'en avait pas besoin. C'est ce qui permet d'écrire un CSV entier dans un
-    // gabarit sans qu'un point-virgule se retrouve un jour au milieu d'un titre.
+    // Champ toujours entre guillemets : un séparateur dans la valeur ne coupe jamais le
+    // champ, et un tableur lit sans peine un champ cité sans nécessité.
     case 'csv': return '"' + formaterValeur(v).replace(/"/g, '""') + '"';
-    // L'apostrophe et le guillemet sont échappés comme le reste : un gabarit HTML pose
-    // aussi des valeurs dans des attributs, et distinguer les deux contextes demanderait
-    // au moteur de savoir où il écrit — ce qu'il ne sait pas.
+    // Guillemets et apostrophe compris, pour les valeurs posées dans un attribut.
     case 'escape':
     case 'e': return formaterValeur(v).replace(/[&<>"']/g, (c) => ECHAPPEMENTS_HTML[c]);
     default: return v; // inatteignable : le nom est validé à l'analyse
@@ -419,9 +406,8 @@ function evaluerCondition(noeud, portee) {
   }
 }
 
-// Sortie de {{ expr }} : Twig rend un booléen vrai par « 1 », faux par rien — un raccourci
-// qui surprend, mais nos gabarits n'affichent jamais un booléen brut ; les tests le
-// couvrent pour mémoire.
+// Sortie de {{ expr }}. Comme Twig, un booléen vrai donne « 1 », faux donne rien ; une
+// liste est jointe par « , ».
 function formaterValeur(v) {
   if (v === undefined || v === null || v === false) { return ''; }
   if (v === true) { return '1'; }

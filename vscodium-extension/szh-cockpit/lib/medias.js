@@ -1,17 +1,7 @@
 // Médias d'un article : dimensions d'image sans dépendance, noms de fichiers sûrs,
-// versions d'un portrait en data: URI, et détection des doublons dans media/. Rien ici ne
-// dépend de vscode ni de l'état du module hôte (profil actif, panneaux ouverts, build en
-// cours) : chaque fonction reçoit en paramètre tout ce dont elle a besoin, et se rejoue
-// donc seule en test — comme lib/qualite-image.js et lib/cmyk.js, dont ce module est le
-// voisin naturel.
-//
-// Ce qui vit dans lib/medias-hote.js et non ici : le gestionnaire de webview des médias
-// (ouvrirGestionMedias) et les agrégats qui en dépendent (listerMediasArticle,
-// listerPortraitsArticle, listerGrillesArticle, ajouterImageACote) — ils lisent
-// `fournisseur` et dossierUnites(), donc le profil actif. Restés dans extension.js, pour
-// la même raison de dépendance au profil actif ou à l'état du module hôte :
-// remplacerFichierImage et vignetteAuteur, qui touchent aussi vscode.window et l'état de
-// build dans le même geste.
+// versions d'un portrait en data: URI, détection des doublons dans media/. Aucune
+// dépendance à vscode ni au profil actif : chaque fonction reçoit ce dont elle a besoin.
+// Le gestionnaire de webview des médias vit dans lib/medias-hote.js.
 'use strict';
 
 const fs = require('fs');
@@ -22,18 +12,16 @@ const { nomMediaUnique } = require('./formatting-pur');
 
 // ---- Extensions et poids acceptés pour une image déposée par une webview ---------
 const EXTENSIONS_IMAGE_IMPORT = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
-const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // 50 Mo, vérifiés webview et hôte
+const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // 50 Mo, vérifiés par la webview et l'hôte
 
 // ---- Dimensions et description d'une image ---------------------------------------
 
 // Segment SOF d'un JPEG -> { composantes, largeur, hauteur }, ou null si indéterminable.
 // lib/cmyk.js#composantesJpeg délègue ici pour le nombre de composantes seul.
 //
-// ⚠ Le fichier est parcouru de segment en segment, et non sur une fenêtre de tête : un
-// JPEG d'imprimerie porte son profil ICC CMJN en segments APP2, et un profil comme ISO
-// Coated v2 pèse près de deux mégaoctets. Le marqueur SOF tombe alors très au-delà des
-// premiers kilooctets — précisément sur les fichiers que cette lecture existe pour
-// attraper. Chaque lecture ne prend que douze octets, à la position calculée.
+// Le fichier est parcouru de segment en segment, douze octets à la fois, et non sur une
+// fenêtre de tête : un JPEG d'imprimerie porte son profil ICC CMJN (jusqu'à 2 Mo) en
+// segments APP2, et le SOF tombe loin après.
 function sofJpeg(chemin) {
   let fd = null;
   try {
@@ -42,8 +30,7 @@ function sofJpeg(chemin) {
     const seg = Buffer.alloc(12);
     if (fs.readSync(fd, seg, 0, 2, 0) !== 2 || seg[0] !== 0xff || seg[1] !== 0xd8) { return null; }
     let pos = 2;
-    // Garde-fou : un fichier tronqué ou brouillé ne doit pas faire tourner la boucle sans
-    // fin. Aucun JPEG réel ne porte des milliers de segments d'en-tête.
+    // Borne la boucle sur un fichier corrompu ; un vrai JPEG a bien moins de segments d'en-tête.
     let segments = 0;
     while (pos + 4 <= taille && segments++ < 4096) {
       const lu = fs.readSync(fd, seg, 0, 12, pos);
@@ -73,8 +60,7 @@ function sofJpeg(chemin) {
   }
 }
 
-// Lues dans les en-têtes : sûres pour PNG, GIF et SVG, au mieux pour JPEG ; null si
-// indéterminable, la description retombant sur le poids seul.
+// Dimensions lues dans les en-têtes (PNG, GIF, JPEG, WEBP, SVG) ; null si indéterminables.
 function lireDimensionsImage(chemin) {
   let fd = null;
   try {
@@ -92,8 +78,7 @@ function lireDimensionsImage(chemin) {
       const sof = sofJpeg(chemin);
       return sof ? { largeur: sof.largeur, hauteur: sof.hauteur } : null;
     }
-    // WEBP : conteneur RIFF, trois formes de bloc. Les portraits en acceptent, et sans
-    // dimensions le formulaire des médias n'aurait aucun verdict à rendre.
+    // WEBP (accepté pour les portraits) : conteneur RIFF, trois formes de bloc.
     if (lu >= 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
       const bloc = b.toString('latin1', 12, 16);
       if (bloc === 'VP8X') {                                      // étendu : 24 bits - 1
@@ -127,7 +112,7 @@ function lireDimensionsImage(chemin) {
   }
 }
 
-// « 1 234 × 567 · 245 Ko » ; virgule française pour les Mo.
+// « 1234 × 567 · 245 Ko », ou le poids seul sans dimensions ; virgule décimale pour les Mo.
 function decrireImage(chemin) {
   let octets = 0;
   try { octets = fs.statSync(chemin).size; } catch (e) { return ''; }
@@ -147,12 +132,10 @@ function formatImage(nom) {
 
 // ---- Noms de fichiers sûrs, dans media/ --------------------------------------------
 
-// Nom de fichier tiré de ce qu'une webview annonce, donc de ce qu'un rédacteur a nommé :
-// accents, espaces, parenthèses, et parfois un chemin entier. On garde le nom d'origine
-// — il dit quelque chose au rédacteur — mais réduit à ce qui traverse sans dommage un lien
-// markdown, un Makefile et WSL. « Insérer une figure » (lib/formatting.js) y passe aussi
-// depuis le 29.09.2026 : un espace dans media/ arrête make (« No rule to make target »).
-// Le dossier n'est jamais lu depuis l'appelant : seul le dernier segment survit.
+// Nom de fichier sûr tiré du nom annoncé par une webview (accents, espaces, parfois un
+// chemin entier) : seul le dernier segment est gardé, réduit à ce qui passe dans un lien
+// markdown, un Makefile et WSL. Un espace dans media/ arrête make (« No rule to make
+// target »). null si l'extension n'est pas acceptée.
 function nomImageAssaini(nomFichier) {
   const brut = String(nomFichier || '').replace(/\\/g, '/');
   const base = brut.slice(brut.lastIndexOf('/') + 1);
@@ -162,13 +145,11 @@ function nomImageAssaini(nomFichier) {
   return corps.slice(0, 60) + '.' + (ext === 'jpeg' ? 'jpg' : ext);
 }
 
-// Nom libre dans media/ : nomMediaUnique de lib/formatting-pur.js, qui ne référence pas
-// vscode et se laisse donc importer ici. Le nom `nomMediaLibre` reste, pour ne rien
-// changer aux appelants (extension.js) ni aux tests qui le connaissent sous ce nom.
+// Nom libre dans media/ ; alias de nomMediaUnique (lib/formatting-pur.js).
 const nomMediaLibre = nomMediaUnique;
 
-// Chemin d'image reçu de la webview d'import : relatif à articles/<slug>/media/,
-// segments sûrs, extension d'image. Aucun chemin n'est construit sans passer ici. Pure.
+// Valide un chemin d'image reçu de la webview d'import : relatif à articles/<slug>/media/,
+// segments sûrs, extension d'image. Tout chemin construit à partir de la webview passe ici.
 function relatifImageValide(relatif) {
   const c = String(relatif === undefined || relatif === null ? '' : relatif);
   if (c === '' || c.length > 300 || /[\\:\r\n]/.test(c)) { return false; }
@@ -183,8 +164,8 @@ function relatifImageValide(relatif) {
 
 const MIMES_PHOTO = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
 
-// Le champ `photo` est posé par la modale, jamais saisi : seul un chemin relatif sous
-// portraits/, sans remontée ni segment vide, est accepté.
+// Le champ `photo` est posé par la modale : seul un chemin portraits/<nom>, sans remontée,
+// est accepté. Rend '' sinon.
 function assainirCheminPhoto(valeur) {
   const c = String(valeur === undefined || valeur === null ? '' : valeur).trim();
   if (c === '' || c.length > 300) { return ''; }
@@ -196,10 +177,9 @@ function assainirCheminPhoto(valeur) {
   return c;
 }
 
-// Champ `photo` déjà assaini -> { base, version } : une base, trois suffixes.
-// La base n'est pas contrôlée ici : baseAuteurValide s'en charge chez les appelants, qui
-// doivent tous répondre quelque chose — une modale qui a désactivé son bouton avant
-// d'envoyer reste figée sur un silence.
+// Champ `photo` déjà assaini -> { base, version }, version parmi original, avec-fond,
+// sans-fond ; null sinon. Les appelants valident la base par baseAuteurValide et doivent
+// toujours répondre à la webview : la modale a désactivé son bouton en attendant.
 function decomposerPhoto(photo) {
   const nom = String(photo || '').replace(/^portraits\//, '');
   let m = nom.match(/^(.+)\.original\.[a-z0-9]+$/i);
@@ -211,12 +191,12 @@ function decomposerPhoto(photo) {
   return null;
 }
 
-// Un seul segment de chemin, alphabet sûr : pas de remontée hors de portraits/.
+// Un seul segment de chemin, alphabet sûr : aucune remontée hors de portraits/.
 function baseAuteurValide(base) {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(String(base || ''));
 }
 
-// Aperçus de la modale ; null si l'image est illisible.
+// Aperçu en data: URI pour la modale ; null si l'image est illisible.
 function dataUriImage(chemin) {
   try {
     const ext = (chemin.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
@@ -225,7 +205,7 @@ function dataUriImage(chemin) {
   } catch (e) { return null; }
 }
 
-// <base>.original.<ext> présent dans `dossier`, dont la webview ignore l'extension.
+// Nom du fichier <base>.original.<ext> de `dossier`, quelle que soit l'extension ; null sinon.
 function trouverOriginal(dossier, base) {
   let noms = [];
   try { noms = fs.readdirSync(dossier); } catch (e) { return null; }
@@ -253,10 +233,9 @@ const MIMES_APERCU_MEDIA = {
 };
 // Au-delà, pas d'aperçu : le base64 d'une grosse image gonflerait le postMessage.
 const TAILLE_MAX_APERCU_MEDIA = 8 * 1024 * 1024;
-// Et un plafond pour le message entier : le formulaire charge d'un coup les aperçus de
-// toutes les images et de tous les portraits. Quinze photos d'impression suffiraient à
-// envoyer plus de cent mégaoctets de base64 dans un seul postMessage et à figer l'hôte.
-// Passé le budget, les cartes suivantes s'affichent sans aperçu.
+// Plafond pour le message entier : le formulaire envoie d'un coup les aperçus de toutes les
+// images et de tous les portraits, et quelques photos d'impression suffiraient à figer
+// l'hôte. Passé le budget, les cartes suivantes s'affichent sans aperçu.
 const BUDGET_APERCUS_MEDIA = 24 * 1024 * 1024;
 
 // `budget` (facultatif) = { reste: octets } décrémenté au fil des aperçus rendus.
@@ -276,9 +255,8 @@ function apercuMedia(chemin, budget) {
 
 // ---- Doublons dans media/ : deux noms, un seul contenu -----------------------------
 
-// Fichiers identiques sous deux noms : Word duplique volontiers la même image, et deux
-// cartes pour un seul visuel se remplissent deux fois, avec deux légendes qui divergent.
-// L'empreinte du contenu le dit, là où la taille seule se trompe.
+// Empreinte SHA-1 du contenu, pour repérer une image dupliquée sous deux noms (fréquent
+// à l'import Word) ; null si illisible.
 function empreinteFichier(chemin) {
   try { return crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); }
   catch (e) { return null; }
@@ -288,9 +266,8 @@ function tailleFichier(chemin) {
   try { return fs.statSync(chemin).size; } catch (e) { return -1; }
 }
 
-// relatif -> empreinte, pour les seuls fichiers dont la taille est partagée : deux contenus
-// identiques ont forcément la même taille, et l'immense majorité des articles n'a aucun
-// doublon. Sans ce tri, chaque chargement relisait tous les fichiers pour rien.
+// relatif -> empreinte, pour les seuls fichiers dont la taille est partagée avec un autre :
+// deux contenus identiques ont la même taille, et cela évite de lire tous les fichiers.
 function empreintesPartagees(base, relatifs) {
   const parTaille = new Map();
   for (const relatif of relatifs) {
